@@ -91,50 +91,13 @@
   let insertionCount = 0;  // Incrementing counter to track unique insertions
   let lastUserInput = '';  // Track actual user typing to detect real input vs pollution
 
-  // Username tracking for tab completion
-  const recentUsernames = new Set();  // Track usernames from chat (max 200)
-  const MAX_USERNAMES = 200;
-
   // Clean up tracking sets on page teardown
   acSignal.addEventListener('abort', () => {
     recentlyInserted.clear()
-    recentUsernames.clear()
     lastInsertedEmote = null
     insertionCount = 0
     lastUserInput = ''
   })
-
-  /**
-   * Find a username matching the search term
-   * Uses window.heatsyncKnownChatters from content.js (populated from chat messages)
-   */
-  function findUsernameMatch(search) {
-    if (!search || search.length < 2) return null;
-    const searchLower = search.toLowerCase();
-
-    // Get chatters from content.js
-    const chatters = window.heatsyncKnownChatters;
-    if (!chatters || chatters.size === 0) {
-      log(' 👤 No known chatters for username completion');
-      return null;
-    }
-
-    // Find prefix match first (exact start)
-    for (const [username] of chatters) {
-      if (username.toLowerCase().startsWith(searchLower)) {
-        return username;
-      }
-    }
-
-    // Then try substring match
-    for (const [username] of chatters) {
-      if (username.toLowerCase().includes(searchLower)) {
-        return username;
-      }
-    }
-
-    return null;
-  }
 
   // Emoji shortcodes for :name: autocomplete (Discord/Slack style)
   // Use comprehensive emoji dataset from emoji-data.js (loaded before this script)
@@ -146,71 +109,6 @@
     }
   }
   const EMOJI_ENTRIES = typeof EMOJI_DATA !== 'undefined' ? EMOJI_DATA.map(e => [e.name, e.emoji]) : []
-
-  // Extract usernames from chat messages
-  let _usernameTrackerActive = false
-  function trackUsernamesFromChat() {
-    if (_usernameTrackerActive) return
-    // Observe chat for new messages
-    const chatContainer = document.querySelector('[data-test-selector="chat-scrollable-area__message-container"]') ||
-                          document.querySelector('.chat-scrollable-area__message-container');
-
-    if (!chatContainer) return;
-    _usernameTrackerActive = true
-
-    cleanup.trackObserver(new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        for (const node of mutation.addedNodes) {
-          if (node.nodeType !== 1) continue;
-
-          // Find username - try data attribute first (most reliable)
-          let username = null;
-
-          // Try data-a-user attribute (contains clean username)
-          const usernameEl = node.querySelector('[data-a-user]');
-          if (usernameEl) {
-            username = usernameEl.getAttribute('data-a-user');
-          }
-
-          // Fallback: try innerText of username span (only direct text, not children)
-          if (!username) {
-            const displayNameEl = node.querySelector('.chat-author__display-name');
-            if (displayNameEl) {
-              // Get only direct text nodes, not child elements
-              for (const child of displayNameEl.childNodes) {
-                if (child.nodeType === 3) {  // Text node
-                  const text = child.textContent.trim();
-                  if (text.length > 0 && !text.includes(':')) {
-                    username = text;
-                    break;
-                  }
-                }
-              }
-            }
-          }
-
-          if (username && username.length > 0 && username.length < 30) {
-            recentUsernames.add(username);
-            log('👤 Tracked username:', username, '(total:', recentUsernames.size + ')');
-
-            // Keep only last 200 usernames (memory efficient)
-            if (recentUsernames.size > MAX_USERNAMES) {
-              const firstItem = recentUsernames.values().next().value;
-              recentUsernames.delete(firstItem);
-            }
-          }
-        }
-      }
-    }), 'username-tracker').observe(chatContainer, { childList: true, subtree: true });
-    log('✅ Username tracking started');
-  }
-
-  // Start tracking after DOM ready
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', trackUsernamesFromChat, { signal: acSignal });
-  } else {
-    cleanup.setTimeout(trackUsernamesFromChat, 1000);  // Delay for Twitch to render chat
-  }
 
   // ========== Extension Settings ==========
   // Read settings from localStorage (synced with heatsync-button.js panel)
@@ -860,20 +758,6 @@
           hsMatches.push(emote);
         }
 
-        // Add usernames that match (with or without @ prefix)
-        const usernameMatches = [];
-        const searchWithoutAt = searchLower.startsWith('@') ? searchLower.slice(1) : searchLower;
-
-        log('🔍 Searching usernames for:', searchWithoutAt, '| Total tracked:', recentUsernames.size);
-        for (const username of recentUsernames) {
-          const usernameLower = username.toLowerCase();
-          if (usernameLower.includes(searchWithoutAt)) {
-            usernameMatches.push(username);
-            log('✅ Username match:', username);
-          }
-        }
-        log('📋 Found', usernameMatches.length, 'username matches');
-
         // 7TV-style fix: Modify srcSet on React elements for our emotes
         results.forEach((m) => {
           if (!m.element || !Array.isArray(m.element) || !m.element[0]) return;
@@ -934,21 +818,8 @@
           });
         }
 
-        // Add username matches (only ones that START with search, not substring)
-        for (const username of usernameMatches) {
-          const usernameLower = username.toLowerCase();
-          // Only add usernames that START with search (not substring matches)
-          if (!usernameLower.startsWith(searchWithoutAt)) continue;
-
-          // Check if already in results
-          if (results.some(r => r.replacement === username || r.replacement === '@' + username)) continue;
-
-          results.push({
-            current: input,
-            replacement: username,
-            element: null  // No emote, just text insertion
-          });
-        }
+        // Usernames intentionally NOT injected — Twitch's native @user completion
+        // covers that surface. Bare-word Tab is emote-only.
 
         // Emoji shortcodes (:name:) handled by Tab cycling only — not injected into dropdown
 
@@ -1660,38 +1531,8 @@
           }
         }
 
-        // USERNAME COMPLETION FALLBACK: If no emote matches, try username
-        if (!hasMultipleMatches || cycleState.matches.length === 0) {
-          const inputText = inputEl.textContent || '';
-          // Get the last word (partial username)
-          const lastWordMatch = inputText.match(/(\w+)\s*$/);
-          if (lastWordMatch && lastWordMatch[1].length >= 2) {
-            const searchTerm = lastWordMatch[1];
-            const usernameMatch = findUsernameMatch(searchTerm);
-            if (usernameMatch) {
-              e.preventDefault();
-              e.stopPropagation();
-              e.stopImmediatePropagation();
-
-              log(' 👤 Tab username completion:', searchTerm, '→', usernameMatch);
-
-              const inst = chatInputInst || findChatInput();
-              const slateEditor = inst?.chatInputRef?.state?.slateEditor;
-              if (slateEditor) {
-                // Delete the partial text
-                const endPt = slateEditor.end([]);
-                slateEditor.select(endPt);
-                for (let i = 0; i < searchTerm.length; i++) {
-                  slateEditor.deleteBackward('character');
-                }
-                // Insert @username with space
-                slateEditor.insertText('@' + usernameMatch + ' ');
-                log(' ✅ Username inserted:', usernameMatch);
-                return;
-              }
-            }
-          }
-        }
+        // No emote-match → fall through to Twitch's native Tab handling
+        // (covers @user completion via Twitch's own chatter list).
       }
 
       // SHIFT+TAB CYCLING: Cycle backwards through matches

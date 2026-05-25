@@ -234,19 +234,37 @@ async function fetchRemoteEmoteMatches(search) {
   const wasEmpty = acState.matches.length === 0
   const prev = acState.matches[acState.index]
   acState.matches.push(...add.slice(0, 60))
-  // Own/channel emotes first, then remote — each block: prefix before substring,
-  // then by 7TV popularity (most-used first). Channel/owned 7TV emotes inherit the
-  // global rank instead of ordering alphabetically. Non-7TV remote (BTTV/FFZ) lack
-  // a rank, so `_ai` keeps their provider popularity order; local ties fall to alpha.
+  // Merged sort: same rules as the local-only sort plus a popularity tier for
+  // remote 7TV catalog. Order:
+  //   1. prefix > substring
+  //   2. local > remote                       (own set / channel / globals beat catalog)
+  //   3. local tier (own > channel > global)
+  //   4. sub > non-sub
+  //   5. MRU recent > never-used
+  //   6. 7TV pop rank                         (catalog ordering; local 7TV inherits)
+  //   7. remote provider order (`_ai`)
+  //   8. shorter prefix-match wins
+  //   9. alpha (skipped for remote-vs-remote)
   const rankOf = (m) => { const r = popRank.get((m.name || '').toLowerCase()); return r === undefined ? Infinity : r }
+  const _recentList = (typeof loadRecentEmotes === 'function') ? loadRecentEmotes() : []
+  const _recentRank = new Map()
+  for (let i = 0; i < _recentList.length; i++) _recentRank.set(_recentList[i], i)
   acState.matches.sort((a, b) => {
+    if (a.priority !== b.priority) return a.priority - b.priority
     const al = a.remote ? 1 : 0, bl = b.remote ? 1 : 0
     if (al !== bl) return al - bl
-    if (a.priority !== b.priority) return a.priority - b.priority
-    const ar = rankOf(a), br = rankOf(b)
-    if (ar !== br) return ar - br
+    if (!a.remote && !b.remote) {
+      const at = a.tier ?? 9, bt = b.tier ?? 9
+      if (at !== bt) return at - bt
+    }
     if (!!a.sub !== !!b.sub) return a.sub ? -1 : 1
+    const ar = _recentRank.get(a.name) ?? Infinity
+    const br = _recentRank.get(b.name) ?? Infinity
+    if (ar !== br) return ar - br
+    const apop = rankOf(a), bpop = rankOf(b)
+    if (apop !== bpop) return apop - bpop
     if (a.remote && b.remote) return (a._ai || 0) - (b._ai || 0)
+    if (a.priority === 0 && a.name.length !== b.name.length) return a.name.length - b.name.length
     return (a.name || '').localeCompare(b.name || '')
   })
   // No local match existed when Tab was pressed — insert the first remote hit now.
@@ -2667,55 +2685,49 @@ function findEmoteMatches(search) {
   const searchTerm = isUserSearch ? search.slice(1) : search;
   const searchLower = searchTerm.toLowerCase();
 
-  const recency = getRecencyMap()
-
-  // Search usernames if @ prefix or if it could be a username
-  const _hsPrefetchList = []
-  if (isUserSearch || searchTerm.length >= 2) {
+  // Username completion ONLY when explicit @prefix. Bare words never surface
+  // usernames — they pollute emote results and the @ form is the supported way
+  // to mention someone. Recency map / color prefetch only run on @search.
+  if (isUserSearch) {
+    const recency = getRecencyMap()
+    const _hsPrefetchList = []
     for (const username of usernameCache) {
       if (!username) continue
       const userLower = username.toLowerCase();
-      // Resolution priority: knownColors → _hsUserColorCache → fetch
       let color = (typeof knownColors !== 'undefined' && knownColors.get(userLower)) || null
       if (!color && _hsUserColorCache.has(userLower)) color = _hsUserColorCache.get(userLower) || null
       if (!color) _hsPrefetchList.push(userLower)
-      color = color || '#fff'
       const recencyRank = recency.get(userLower)
-      if (isUserSearch) {
-        if (userLower.startsWith(searchLower)) {
-          matches.push({ name: '@' + username, url: null, priority: 0, type: 'user', recencyRank });
-        }
-      } else {
-        if (userLower.startsWith(searchLower)) {
-          matches.push({ name: username, url: null, priority: 0, type: 'user-bare', color, recencyRank });
-        } else if (userLower.includes(searchLower)) {
-          matches.push({ name: username, url: null, priority: 2, type: 'user-bare', color, recencyRank });
-        }
+      if (userLower.startsWith(searchLower)) {
+        matches.push({ name: '@' + username, url: null, priority: 0, type: 'user', recencyRank });
       }
     }
-  }
-  // Fire batched prefetch — by the time user hits Tab, colors are likely cached
-  if (_hsPrefetchList.length) {
-    try { hsPrefetchUserColors(_hsPrefetchList.slice(0, 30)) } catch {}
+    if (_hsPrefetchList.length) {
+      try { hsPrefetchUserColors(_hsPrefetchList.slice(0, 30)) } catch {}
+    }
   }
 
-  // Search emote cache (unless explicitly searching users with @)
+  // Search emote cache (unless explicitly searching users with @).
+  // Three tiers, in order: 0 = viewer's own set (heatsync inventory + native sub
+  // emotes), 1 = current channel BTTV/FFZ/7TV, 2 = globals. Tier rides on each
+  // pushed match so the sort can rank "own > channel > global" without
+  // re-walking the source maps.
   if (!isUserSearch) {
-    // Composition pool: globals + current channel + viewer's personal set.
-    // viewerPersonalEmotes carries heatsync inventory uploads AND owned native
-    // Twitch sub emotes — both are sendable as your own outgoing message.
-    const acEmotes = new Map(emoteCache);
-    const acChCache = channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()];
-    if (acChCache) for (const [k, v] of acChCache) acEmotes.set(k, v);
-    for (const [k, v] of viewerPersonalEmotes) acEmotes.set(k, v);
+    const tierByName = new Map()
+    const acEmotes = new Map()
+    for (const [k, v] of emoteCache) { acEmotes.set(k, v); tierByName.set(k, 2) }
+    const acChCache = channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()]
+    if (acChCache) for (const [k, v] of acChCache) { acEmotes.set(k, v); tierByName.set(k, 1) }
+    for (const [k, v] of viewerPersonalEmotes) { acEmotes.set(k, v); tierByName.set(k, 0) }
     for (const [name, emote] of acEmotes) {
       // Only tab-complete heatsync emotes you own (can't send emotes not in your set)
       if (emote.source === 'heatsync' && emote.state !== 'owned') continue;
       const sub = !!emote.subscription;
+      const tier = tierByName.get(name) ?? 2
       if (name.toLowerCase().startsWith(searchLower)) {
-        matches.push({ name, url: emote.url, source: emote.source, priority: 0, type: 'emote', sub });
+        matches.push({ name, url: emote.url, source: emote.source, priority: 0, tier, type: 'emote', sub });
       } else if (name.toLowerCase().includes(searchLower)) {
-        matches.push({ name, url: emote.url, source: emote.source, priority: 1, type: 'emote', sub });
+        matches.push({ name, url: emote.url, source: emote.source, priority: 1, tier, type: 'emote', sub });
       }
     }
     // 7TV "name0" overlay convention: a trailing "0" turns an emote into a
@@ -2733,10 +2745,11 @@ function findEmoteMatches(search) {
         const nl = name.toLowerCase();
         const overlayName = name + '0';
         if (seen.has(overlayName.toLowerCase())) continue;
+        const tier = tierByName.get(name) ?? 2
         if (nl === baseLower) {
-          matches.push({ name: overlayName, url: emote.url, source: emote.source, priority: 0, type: 'emote', sub: !!emote.subscription });
+          matches.push({ name: overlayName, url: emote.url, source: emote.source, priority: 0, tier, type: 'emote', sub: !!emote.subscription });
         } else if (nl.startsWith(baseLower)) {
-          matches.push({ name: overlayName, url: emote.url, source: emote.source, priority: 1, type: 'emote', sub: !!emote.subscription });
+          matches.push({ name: overlayName, url: emote.url, source: emote.source, priority: 1, tier, type: 'emote', sub: !!emote.subscription });
         }
       }
     }
@@ -2759,15 +2772,26 @@ function findEmoteMatches(search) {
     }
   }
 
-  // Sort: prefix matches first, then sub emotes (rare + entitlement-scarce),
-  // then by recency for username matches, then alphabetical.
+  // Sort order (most-correct first):
+  //   1. prefix > substring                  (priority)
+  //   2. own set > channel > globals         (tier; emoji/non-emote have no tier)
+  //   3. sub emote > non-sub                 (entitlement-scarce)
+  //   4. recently-used > never-used          (local MRU, fills as you insert)
+  //   5. shorter prefix-match > longer       (Kap → Kappa before KappaPride)
+  //   6. alpha
+  const _recentList = (typeof loadRecentEmotes === 'function') ? loadRecentEmotes() : []
+  const _recentRank = new Map()
+  for (let i = 0; i < _recentList.length; i++) _recentRank.set(_recentList[i], i)
   matches.sort((a, b) => {
-    if (a.priority !== b.priority) return a.priority - b.priority;
-    if (!!a.sub !== !!b.sub) return a.sub ? -1 : 1;
-    const ar = (a.recencyRank ?? Infinity)
-    const br = (b.recencyRank ?? Infinity)
-    if (ar !== br) return ar - br;
-    return a.name.localeCompare(b.name);
+    if (a.priority !== b.priority) return a.priority - b.priority
+    const at = a.tier ?? 9, bt = b.tier ?? 9
+    if (at !== bt) return at - bt
+    if (!!a.sub !== !!b.sub) return a.sub ? -1 : 1
+    const ar = _recentRank.get(a.name) ?? Infinity
+    const br = _recentRank.get(b.name) ?? Infinity
+    if (ar !== br) return ar - br
+    if (a.priority === 0 && a.name.length !== b.name.length) return a.name.length - b.name.length
+    return a.name.localeCompare(b.name)
   });
 
   return matches;
@@ -3056,6 +3080,17 @@ function insertCompletionWysiwyg(match) {
       const space = userSpan.nextSibling
       if (space) placeCaretAfter(space, 1)
       else placeCaretAfter(userSpan)
+    } else if (match.type === 'user') {
+      // @user cycle marker — generic cycling-text span (matches emoji's pattern,
+      // unwraps to plain text on cycle-end via hideAutocomplete).
+      const span = document.createElement('span')
+      span.className = 'hs-cycling-text'
+      span.textContent = match.name
+      span.dataset.completionName = match.name
+      existingEmote.replaceWith(span)
+      const space = span.nextSibling
+      if (space) placeCaretAfter(space, 1)
+      else placeCaretAfter(span)
     } else {
       const textNode = document.createTextNode(match.name + ' ');
       existingEmote.replaceWith(textNode);
@@ -3092,6 +3127,13 @@ function insertCompletionWysiwyg(match) {
       const space = userSpan.nextSibling
       if (space) placeCaretAfter(space, 1)
       else placeCaretAfter(userSpan)
+    } else if (match.type === 'user') {
+      // @user cycle — update span text in place (same shape emoji uses)
+      existingText.textContent = match.name
+      existingText.dataset.completionName = match.name
+      const space = existingText.nextSibling
+      if (space) placeCaretAfter(space, 1)
+      else placeCaretAfter(existingText)
     } else {
       const textNode = document.createTextNode(match.name + ' ')
       existingText.replaceWith(textNode)
@@ -3134,6 +3176,16 @@ function insertCompletionWysiwyg(match) {
       const space = existingUser.nextSibling
       if (space) placeCaretAfter(space, 1)
       else placeCaretAfter(existingUser)
+    } else if (match.type === 'user') {
+      // Cycling from a bare-mention chip onto an @user — swap chip for cycling-text
+      const span = document.createElement('span')
+      span.className = 'hs-cycling-text'
+      span.textContent = match.name
+      span.dataset.completionName = match.name
+      existingUser.replaceWith(span)
+      const space = span.nextSibling
+      if (space) placeCaretAfter(space, 1)
+      else placeCaretAfter(span)
     } else {
       const textNode = document.createTextNode(match.name + ' ')
       existingUser.replaceWith(textNode)
@@ -3292,8 +3344,16 @@ function insertCompletionWysiwyg(match) {
     // Bare-name mention chip: colored, hoverable, clickable
     const userSpan = createUserMentionSpan(match.name, match.color)
     insertElement(userSpan)
+  } else if (match.type === 'user') {
+    // @user — wrap in cycling-text span so subsequent Tabs replace this chip
+    // (without a marker, the cycle would append a second @user onto the line).
+    const span = document.createElement('span')
+    span.className = 'hs-cycling-text'
+    span.textContent = match.name
+    span.dataset.completionName = match.name
+    insertElement(span)
   } else {
-    // User/text completion - just insert text
+    // Plain text completion (fallback)
     const newText = before + match.name + ' ' + after;
     textNode.textContent = newText;
     const newPos = before.length + match.name.length + 1;

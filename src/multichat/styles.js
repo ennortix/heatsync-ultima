@@ -7087,15 +7087,25 @@ function injectStyles() {
       max-width: 100% !important;
       overflow-x: hidden !important;
     }
-    /* Kick's stream-card / category grids use viewport-based media queries
-       (sm:grid-cols-2 etc) — but body is shrunken so the viewport breakpoint
-       doesn't match what fits in body. result: 1-2 columns rendered when
-       3-4 would fit, leaving empty space on the right edge between content
-       and chat. Override to a container-relative auto-fill so cards always
-       fill available width. minmax(170px,1fr) keeps cards readable. */
-    body.hs-platform-kick.hs-kick-no-channel main section[class*="grid"],
+    /* Kick's stream-card / category grids have grid-cols-N classes but at
+       narrow viewports the parent flips them to display:flex with shrink-0
+       cards — so they overflow horizontally past body width and underlap
+       the chat panel. Force display:grid + auto-fill so cards wrap into
+       rows that fill the available body width regardless of viewport
+       breakpoint. min-width:0 + width:auto on items lets the grid actually
+       shrink the cards into slots (otherwise the w-full + shrink-0 combo
+       keeps them at their intrinsic 268px). */
+    body.hs-platform-kick.hs-kick-no-channel main section[class*="grid-cols"],
     body.hs-platform-kick.hs-kick-no-channel main div[class*="grid-cols"] {
+      display: grid !important;
       grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)) !important;
+      grid-auto-flow: row !important;
+    }
+    body.hs-platform-kick.hs-kick-no-channel main section[class*="grid-cols"] > *,
+    body.hs-platform-kick.hs-kick-no-channel main div[class*="grid-cols"] > * {
+      min-width: 0 !important;
+      max-width: 100% !important;
+      flex-shrink: 1 !important;
     }
     /* Push content below Kick's fixed 60px nav so the first row of video
        thumbnails isn't half-hidden under it. chat-top covers the nav (own

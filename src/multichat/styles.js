@@ -7074,6 +7074,18 @@ function injectStyles() {
       padding-left: 0 !important;
       padding-right: 0 !important;
       padding-bottom: 0 !important;
+      overflow-x: hidden !important;
+    }
+    /* Kick's homepage grids use shrink-0 cards which overflow the parent
+       at our shrunken viewport width — cards push past body width and end
+       up under the chat panel. Clip the overflow at the app-shell wrapper
+       and the group/main wrapper too. Vertical scroll preserved. */
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-left .group\/main,
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-right .group\/main,
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-top .group\/main,
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-bottom .group\/main {
+      max-width: 100% !important;
+      overflow-x: hidden !important;
     }
     /* Push content below Kick's fixed 60px nav so the first row of video
        thumbnails isn't half-hidden under it. chat-top covers the nav (own

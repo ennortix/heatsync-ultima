@@ -375,7 +375,18 @@
   function getDeviceId() {
     try {
       const raw = localStorage.getItem('local_storage_device_id')
-      if (raw) return raw.replace(/^"|"$/g, '')
+      if (raw) {
+        const id = raw.replace(/^"|"$/g, '')
+        // Persist to documentElement so content.js (isolated world) can copy it
+        // to chrome.storage.local, where the SW reads it for off-twitch follows
+        // that need to mint integrity without a twitch.tv tab open.
+        try {
+          if (document.documentElement.dataset.hsTwitchDeviceId !== id) {
+            document.documentElement.dataset.hsTwitchDeviceId = id
+          }
+        } catch {}
+        return id
+      }
     } catch {}
     try {
       const m = document.cookie.match(/(?:^|;\s*)unique_id=([^;]+)/)

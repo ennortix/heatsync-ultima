@@ -5537,9 +5537,24 @@ async function handleMessage(message, sender, sendResponse) {
         const authCookie = await browser.cookies.get({ url: 'https://twitch.tv', name: 'auth-token' })
         console.warn('[hs-xf-sw] auth cookie present=', !!authCookie?.value)
         if (!authCookie?.value) { sendResponse({ ok: false, error: 'twitch_not_logged_in' }); return }
-        const idCookie = await browser.cookies.get({ url: 'https://twitch.tv', name: 'unique_id' })
-        const deviceId = idCookie?.value || ('heatsync-' + Math.random().toString(36).slice(2, 18))
-        console.warn('[hs-xf-sw] deviceId from unique_id=', !!idCookie?.value)
+        // Prefer the localStorage device-id (captured by content.js on any
+        // twitch.tv visit) — Twitch's integrity check rejects the unique_id
+        // cookie alone. Fall back to cookie then random.
+        let deviceId = null
+        let deviceIdSource = 'random'
+        try {
+          const stored = await browser.storage.local.get('hs_twitch_device_id')
+          if (stored?.hs_twitch_device_id) {
+            deviceId = stored.hs_twitch_device_id
+            deviceIdSource = 'localStorage'
+          }
+        } catch {}
+        if (!deviceId) {
+          const idCookie = await browser.cookies.get({ url: 'https://twitch.tv', name: 'unique_id' })
+          if (idCookie?.value) { deviceId = idCookie.value; deviceIdSource = 'cookie' }
+        }
+        if (!deviceId) deviceId = 'heatsync-' + Math.random().toString(36).slice(2, 18)
+        console.warn('[hs-xf-sw] deviceId source=', deviceIdSource)
         const clientId = 'kimne78kx3ncx6brgo4mv6wki5h1ko'
         const operationName = follow ? 'FollowButton_FollowUser' : 'FollowButton_UnfollowUser'
         const hash = follow

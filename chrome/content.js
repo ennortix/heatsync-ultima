@@ -3184,6 +3184,20 @@ async function loadInventory() {
 // Create emote bridge BEFORE loading inventory so updateEmoteBridge() works
 if (window.location.hostname.includes('twitch.tv')) {
   injectTwitchAutocompleteHook();
+  // Persist the real Twitch local_storage_device_id to chrome.storage as soon
+  // as early-inject-main.js populates the dataset. SW reads this for off-twitch
+  // follow propagation (gql.twitch.tv/integrity wants the localStorage device
+  // id, not unique_id cookie). Without this, off-twitch follows get
+  // "failed integrity check" from twitch.
+  const _pollDeviceId = setInterval(() => {
+    try {
+      const id = document.documentElement.dataset.hsTwitchDeviceId
+      if (!id) return
+      clearInterval(_pollDeviceId)
+      chrome.storage?.local?.set?.({ hs_twitch_device_id: id })
+    } catch {}
+  }, 500)
+  cleanup.setTimeout(() => clearInterval(_pollDeviceId), 30000)
 }
 
 loadInventory();

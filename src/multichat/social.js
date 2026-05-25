@@ -120,7 +120,11 @@ async function loadHsUsername() {
     hsCurrentUserId = ui?.id ? String(ui.id) : null
     // Cross-platform mention aliases: any name across Twitch/Kick/YT counts as
     // a mention of the user, even if the chat is on a different platform.
+    // ui.username (heatsync core name) is always included so bare-name mentions
+    // resolve even when getCurrentUsername() returns null (e.g. logged-out Kick
+    // tab) and no platform aliases are configured.
     mentionAliases = new Set()
+    if (ui?.username) mentionAliases.add(ui.username.toLowerCase())
     if (ui?.kick_username) mentionAliases.add(ui.kick_username.toLowerCase())
     if (ui?.youtube_username) mentionAliases.add(ui.youtube_username.toLowerCase())
     if (ui?.twitch_username) mentionAliases.add(ui.twitch_username.toLowerCase())
@@ -251,6 +255,7 @@ async function loadHsAuth() {
         hsCurrentUsername = ui?.username?.toLowerCase() || null
         hsCurrentUserId = ui?.id ? String(ui.id) : null
         mentionAliases = new Set()
+        if (ui?.username) mentionAliases.add(ui.username.toLowerCase())
         if (ui?.kick_username) mentionAliases.add(ui.kick_username.toLowerCase())
         if (ui?.youtube_username) mentionAliases.add(ui.youtube_username.toLowerCase())
         if (ui?.twitch_username) mentionAliases.add(ui.twitch_username.toLowerCase())
@@ -1531,6 +1536,41 @@ function renderThreadView(msgsEl) {
   requestAnimationFrame(() => { isProgrammaticScroll = false; });
 
   if (typeof resolvePendingFeedEmbeds === 'function') resolvePendingFeedEmbeds(msgsEl)
+}
+
+// Plain-text dump of the current thread view (OP + all replies). Used by the
+// universal right-click menu's "copy thread" item. Walks rendered DOM so
+// emote <img alt> + already-escaped content come out as a user would read them.
+function getActiveThreadCopyText() {
+  const opDiv = document.querySelector('.hs-thread-op')
+  if (!opDiv) return null
+  const container = document.querySelector('.hs-thread-container')
+  const rows = [opDiv, ...(container ? container.querySelectorAll(':scope > .hs-thread-reply') : [])]
+  const lines = []
+  for (const div of rows) {
+    const tag = div.querySelector('.hs-feed-tag')?.textContent?.trim() || ''
+    const userEl = div.querySelector('.hs-feed-user')
+    const user = userEl?.textContent?.trim() || 'anonymous'
+    const id = div.dataset?.msgId ? ` >>${div.dataset.msgId.replace(/^0+/, '') || '0'}` : ''
+    const body = _extractFeedBodyText(div.querySelector('.hs-feed-body'))
+    lines.push(`${tag ? tag + ' ' : ''}${user}${id}: ${body}`)
+  }
+  return lines.join('\n')
+}
+
+function _extractFeedBodyText(root) {
+  if (!root) return ''
+  const parts = []
+  const walk = (node) => {
+    if (node.nodeType === 3) { parts.push(node.textContent); return }
+    if (node.nodeType !== 1) return
+    if (node.classList?.contains('hs-feed-edited')) return
+    if (node.tagName === 'BR') { parts.push('\n'); return }
+    if (node.tagName === 'IMG' && node.alt) { parts.push(node.alt); return }
+    for (const c of node.childNodes) walk(c)
+  }
+  for (const c of root.childNodes) walk(c)
+  return parts.join('').replace(/[ \t]+/g, ' ').replace(/ ?\n ?/g, '\n').trim()
 }
 
 async function postFeedMessage(text, { topLevel = false } = {}) {

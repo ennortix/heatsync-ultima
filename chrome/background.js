@@ -5542,29 +5542,22 @@ async function handleMessage(message, sender, sendResponse) {
     ;(async () => {
       try {
         const { targetID, follow, disableNotifications } = message
-        console.warn('[hs-xf-sw] twitch_follow_direct enter', { targetID, follow, disableNotifications })
         if (!targetID) { sendResponse({ ok: false, error: 'no target id' }); return }
         const authCookie = await browser.cookies.get({ url: 'https://twitch.tv', name: 'auth-token' })
-        console.warn('[hs-xf-sw] auth cookie present=', !!authCookie?.value)
         if (!authCookie?.value) { sendResponse({ ok: false, error: 'twitch_not_logged_in' }); return }
         // Prefer the localStorage device-id (captured by content.js on any
         // twitch.tv visit) — Twitch's integrity check rejects the unique_id
         // cookie alone. Fall back to cookie then random.
         let deviceId = null
-        let deviceIdSource = 'random'
         try {
           const stored = await browser.storage.local.get('hs_twitch_device_id')
-          if (stored?.hs_twitch_device_id) {
-            deviceId = stored.hs_twitch_device_id
-            deviceIdSource = 'localStorage'
-          }
+          if (stored?.hs_twitch_device_id) deviceId = stored.hs_twitch_device_id
         } catch {}
         if (!deviceId) {
           const idCookie = await browser.cookies.get({ url: 'https://twitch.tv', name: 'unique_id' })
-          if (idCookie?.value) { deviceId = idCookie.value; deviceIdSource = 'cookie' }
+          if (idCookie?.value) deviceId = idCookie.value
         }
         if (!deviceId) deviceId = 'heatsync-' + Math.random().toString(36).slice(2, 18)
-        console.warn('[hs-xf-sw] deviceId source=', deviceIdSource)
         const clientId = 'kimne78kx3ncx6brgo4mv6wki5h1ko'
         const operationName = follow ? 'FollowButton_FollowUser' : 'FollowButton_UnfollowUser'
         const hash = follow
@@ -5587,13 +5580,11 @@ async function handleMessage(message, sender, sendResponse) {
             },
             body: '{}',
           })
-          console.warn('[hs-xf-sw] integrity resp status=', ir.status, 'ok=', ir.ok)
           if (ir.ok) {
             const id = await ir.json()
             integrity = id?.token || null
-            console.warn('[hs-xf-sw] integrity token present=', !!integrity)
           }
-        } catch (e) { console.warn('[hs-xf-sw] integrity error:', e?.message); log('twitch_follow_direct integrity error:', e?.message) }
+        } catch (e) { log('twitch_follow_direct integrity error:', e?.message) }
 
         const headers = {
           'Content-Type': 'application/json',
@@ -5612,10 +5603,8 @@ async function handleMessage(message, sender, sendResponse) {
             extensions: { persistedQuery: { version: 1, sha256Hash: hash } },
           }),
         })
-        console.warn('[hs-xf-sw] gql fetch status=', fr.status, 'ok=', fr.ok)
         if (!fr.ok) { sendResponse({ ok: false, error: `twitch gql ${fr.status}` }); return }
         const data = await fr.json()
-        console.warn('[hs-xf-sw] gql data=', JSON.stringify(data).slice(0, 300))
         const items = Array.isArray(data) ? data[0] : data
         if (items?.errors?.length) {
           const msg = String(items.errors[0].message || '').toLowerCase()

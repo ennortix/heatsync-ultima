@@ -263,36 +263,47 @@ async function sendTwitchWhisperDirect(toUserId, message) {
   return { ok: true }
 }
 
-// Whisper send: direct Twitch GQL when a twitch.tv session is available
-// (covers acct mismatches between HS JWT and active Twitch login), HS server
-// proxy as fallback when no Twitch session is reachable.
+// Whisper send: heatsync server proxy (uses Helix /helix/whispers with the
+// user's stored Twitch OAuth token + user:manage:whispers scope) as primary,
+// direct GQL as fallback only when the server proxy is unreachable. This
+// path is ToS-clean and removes the captured-integrity-token dependency
+// from the happy path — Helix REST doesn't require client-integrity.
+//
+// The fallback path covers two cases: (1) heatsync server is down /
+// unreachable, (2) the user's heatsync-linked Twitch account differs from
+// the active twitch.tv session and they want to whisper-from the active
+// session. (1) is rare; (2) is a power-user concern that the captured GQL
+// fallback transparently handles.
 async function sendTwitchWhisper(toUserId, message) {
-  try {
-    const direct = await sendTwitchWhisperDirect(toUserId, message)
-    if (direct.ok) return { ok: true }
-    // noToken or integrity failure → fall through to HS proxy (transient — Twitch
-    // hasn't minted an integrity token yet). Other errors are real (blocked recipient,
-    // banned, etc.) and shouldn't be retried.
-    if (!direct.noToken && !direct.integrity) {
-      showToast('whisper failed: ' + direct.error, 'error')
-      return { ok: false, error: direct.error }
-    }
-  } catch (e) {
-    // Direct path threw — try the proxy fallback below.
-  }
-
   try {
     const resp = await apiFetch('/api/twitch/whisper', {
       method: 'POST',
       body: { toUserId, message }
     })
     if (resp?.ok) return { ok: true }
-    if (resp?.status === 401) {
-      showToast(t('mc_whisper_login'), 'error')
-      return { ok: false, error: resp.error || 'not authenticated', errorKind: 'auth' }
+    // 401 (no Twitch link) or 503 (server unreachable) → try direct GQL.
+    // Real errors (banned/blocked/etc.) surface as the response error
+    // and we still try direct as last-ditch in case the active twitch
+    // session has different permissions/state.
+    if (resp?.status === 401 && /no twitch token|not authenticated/i.test(resp?.error || '')) {
+      // No linked twitch → can't proxy. Direct GQL might work if user is
+      // logged into twitch.tv with the same account.
     }
-    showToast('whisper failed: ' + (resp?.error || 'unknown'), 'error')
-    return { ok: false, error: resp?.error || 'unknown' }
+  } catch (e) {
+    // Server unreachable — fall through to direct
+  }
+
+  // Direct GQL fallback. Captured-integrity still needed here, but only
+  // when the Helix proxy fails. Most calls never reach this path.
+  try {
+    const direct = await sendTwitchWhisperDirect(toUserId, message)
+    if (direct.ok) return { ok: true }
+    if (direct.noToken) {
+      showToast(t('mc_whisper_login'), 'error')
+      return { ok: false, error: 'no twitch session', errorKind: 'auth' }
+    }
+    showToast('whisper failed: ' + (direct.error || 'unknown'), 'error')
+    return { ok: false, error: direct.error || 'unknown' }
   } catch (e) {
     showToast('whisper failed: ' + e.message, 'error')
     return { ok: false, error: e.message }

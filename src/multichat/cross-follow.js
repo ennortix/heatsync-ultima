@@ -88,6 +88,7 @@ async function drainPendingFollows(platform) {
   const mine = q.filter(x => x.platform === platform)
   if (!mine.length) return { ok: true, drained: 0 }
   let drained = 0
+  const drainedItems = []
   for (const item of mine) {
     let result = { error: 'unknown platform' }
     if (platform === 'twitch') {
@@ -97,7 +98,21 @@ async function drainPendingFollows(platform) {
     } else if (platform === 'kick') {
       result = await _kickFollow(item.target, item.action === 'follow')
     }
-    if (result?.ok) { drained++; await _dequeueMatching(platform, item.target) }
+    if (result?.ok) {
+      drained++
+      drainedItems.push(item)
+      await _dequeueMatching(platform, item.target)
+    }
+  }
+  // Soft success toast so the user knows their queued follows just synced.
+  if (drained > 0 && typeof showToast === 'function') {
+    const sample = drainedItems[0]?.username || drainedItems[0]?.target || ''
+    const verb = drainedItems[0]?.action === 'unfollow' ? 'unfollowed' : 'followed'
+    if (drained === 1 && sample) {
+      showToast(`${verb} ${sample} on ${platform}`, 'success')
+    } else {
+      showToast(`synced ${drained} pending ${platform} follow(s)`, 'success')
+    }
   }
   return { ok: true, drained }
 }
@@ -190,10 +205,8 @@ async function _twitchFollow(targetID, follow, disableNotifications) {
 // Returns: { twitch: {...}, kick: {...} } — caller can surface diagnostics
 // in dev mode but the default UX is silent best-effort.
 async function propagateFollow(follow, target) {
-  console.warn('[hs-xf] ENTRY follow=', follow, 'target=', target)
   if (!target) return { twitch: { skipped: 'no target' }, kick: { skipped: 'no target' } }
   const settings = await _crossFollowSettings()
-  console.warn('[hs-xf] settings=', settings)
   const tasks = []
   const out = { twitch: { skipped: 'no twitch id' }, kick: { skipped: 'no kick username' } }
 
@@ -238,11 +251,35 @@ async function propagateFollow(follow, target) {
   }
 
   if (tasks.length) await Promise.allSettled(tasks)
+  // Surface meaningful state to the user. Heatsync follow already toasted
+  // "following X" — we add ONE additional toast only if cross-platform
+  // propagation didn't fully complete (queued / login needed / 2fa).
+  // Silent on full success.
   try {
-    console.warn('[hs-xfollow]', follow ? 'follow' : 'unfollow',
-      target?.twitch_username || target?.kick_username || '?',
-      'twitch=' + JSON.stringify(out.twitch),
-      'kick=' + JSON.stringify(out.kick))
+    const u = target?.twitch_username || target?.kick_username || 'them'
+    const verb = follow ? 'follow' : 'unfollow'
+    const tErr = out.twitch?.error && !out.twitch?.ok ? out.twitch.error : null
+    const kErr = out.kick?.error && !out.kick?.ok ? out.kick.error : null
+    let msg = null
+    if (tErr === 'twitch_not_logged_in') {
+      msg = `log in to twitch.tv to mirror this ${verb}`
+    } else if (tErr === '2fa_required') {
+      msg = `twitch needs 2FA confirmation — ${verb} on twitch.tv directly`
+    } else if (tErr === 'no_twitch_tab' || tErr === 'stale_twitch_tab' ||
+               tErr === 'integrity_check_failed' || tErr === 'twitch_hash_stale' ||
+               tErr === 'twitch_gql_timeout' || /failed integrity/i.test(tErr || '')) {
+      msg = `twitch ${verb} queued — will sync on your next twitch.tv visit`
+    } else if (tErr) {
+      msg = `twitch ${verb} failed: ${tErr}`
+    }
+    if (kErr === 'kick_not_logged_in') {
+      const k = `kick ${verb} queued — will sync when you log in to kick.com`
+      msg = msg ? msg + ' · ' + k : k
+    } else if (kErr) {
+      const k = `kick ${verb} failed: ${kErr}`
+      msg = msg ? msg + ' · ' + k : k
+    }
+    if (msg && typeof showToast === 'function') showToast(msg, 'info')
   } catch {}
   return out
 }

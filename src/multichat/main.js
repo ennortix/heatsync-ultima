@@ -2429,6 +2429,10 @@
         }
         return out
       }
+      // Expose chain walkers so input.js's right-click handler can build the
+      // "copy thread" item for any chat row (overlay-row or native).
+      window.__hsMcLookupMsg = lookupMsgById
+      window.__hsMcWalkThread = walkThreadMembers
       // Forward wheel events from the reply-stack overlays to the chat
       // container. Without this, wheeling while hovering the overlay
       // (positioned above/below the active row) does nothing — the overlay
@@ -9337,25 +9341,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }
     } catch (e) {}
 
-    // Kick methods
-    if (hostPlatform === 'kick') {
-      // Method K1: Kick profile link in sidebar/nav
-      try {
-        const profileLink = document.querySelector('a[href^="/profile"]');
-        if (profileLink) {
-          const match = profileLink.getAttribute('href')?.match(/\/profile\/([^/?]+)/);
-          if (match?.[1]) return match[1].toLowerCase();
-        }
-      } catch (e) {}
-      // Method K2: Kick sidebar username
-      try {
-        const userEl = document.querySelector('.sidebar-username, nav [class*="username"]');
-        if (userEl?.textContent?.trim()) {
-          const name = userEl.textContent.trim();
-          if (name.length > 0 && name.length < 30 && /^[a-zA-Z0-9_]+$/.test(name)) return name.toLowerCase();
-        }
-      } catch (e) {}
-    }
+    // Kick — DOM selectors keep getting stripped (current redesign moved login to
+    // an unlabeled person-icon button with no /profile link). Cross-platform
+    // mention detection now falls back to ui.username via mentionAliases, so we
+    // don't fight the moving target here. Returning null is fine.
 
     return null;
   }

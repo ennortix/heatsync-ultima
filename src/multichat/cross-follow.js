@@ -104,6 +104,11 @@ async function drainPendingFollows(platform) {
       await _dequeueMatching(platform, item.target)
     }
   }
+  // Log drain attempt outcome — useful to see in console why a pending follow
+  // didn't sync (e.g. apollo path failed silently). One line per drain cycle.
+  try {
+    if (mine.length) console.warn('[heatsync] drained', platform, drained, 'of', mine.length, 'pending')
+  } catch {}
   // Soft success toast so the user knows their queued follows just synced.
   if (drained > 0 && typeof showToast === 'function') {
     const sample = drainedItems[0]?.username || drainedItems[0]?.target || ''

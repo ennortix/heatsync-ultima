@@ -401,6 +401,9 @@ browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
     tabChannels.delete(tabId)
     saveTabChannels()
   }
+  // URL change = real navigation (not SPA). Clear drain dedup so the next
+  // status:complete on this tabId can fire a fresh drain.
+  if (changeInfo.url) _drainAttempted.delete(tabId)
   // Cross-follow queue drain trigger. When a twitch.tv / kick.com tab
   // finishes loading, ask its content script to drain any pending follows
   // that were queued while the user was elsewhere (or while the platform
@@ -5437,6 +5440,12 @@ async function handleMessage(message, sender, sendResponse) {
         const reloadCandidate = candidates.find(t => !_staleTwitchReloaded.has(t.id))
         if (reloadCandidate) {
           _staleTwitchReloaded.add(reloadCandidate.id)
+          // Critical: clear the drain-attempted dedup for this tab so that
+          // when the reloaded page fires tabs.onUpdated 'complete', the drain
+          // trigger fires again instead of being deduped against the old
+          // pre-reload drain attempt (which got swallowed by the orphaned
+          // listener and never actually drained).
+          _drainAttempted.delete(reloadCandidate.id)
           try { browser.tabs.reload(reloadCandidate.id) } catch {}
           sendResponse({ ok: false, error: 'stale_twitch_tab', reloaded: true })
           return

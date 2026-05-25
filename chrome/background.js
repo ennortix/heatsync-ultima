@@ -5549,108 +5549,75 @@ async function handleMessage(message, sender, sendResponse) {
     })()
     return true
 
-  } else if (message.type === 'twitch_follow_direct') {
-    // SW-direct Twitch follow/unfollow. Works from ANY tab (kick.com,
-    // youtube.com, heatsync.org, etc.) — does not require a twitch.tv tab
-    // to be open. We read the user's twitch auth-token cookie, mint a
-    // Client-Integrity JWT, and fire the FollowButton GQL mutation with
-    // the seeded persisted-query hash.
+  } else if (message.type === 'twitch_follow_via_click') {
+    // Last-resort follow path: open the user's channel page in a background
+    // tab, programmatically click Twitch's native follow button, close the
+    // tab. Bypasses anti-bot entirely because the click goes through Twitch's
+    // own React handler — Apollo links + integrity attach naturally.
     //
-    // Twitch GQL anti-bot wants the integrity device-id to match the one
-    // on the user's twitch.tv localStorage; SW can't read localStorage, so
-    // we fall back to the `unique_id` cookie. In practice this is accepted
-    // for low-volume actions; if anti-bot blocks, _followMutation queues
-    // and the next twitch.tv tab visit drains via twitch_relay (which uses
-    // the real localStorage device id).
+    // Requires the channel slug (twitch_username), not just the ID. Each
+    // follow opens + closes one background tab; brief visible flash on some
+    // window managers but no persistent tab.
     ;(async () => {
+      let newTab = null
       try {
-        const { targetID, follow, disableNotifications } = message
-        if (!targetID) { sendResponse({ ok: false, error: 'no target id' }); return }
-        const authCookie = await browser.cookies.get({ url: 'https://twitch.tv', name: 'auth-token' })
-        if (!authCookie?.value) { sendResponse({ ok: false, error: 'twitch_not_logged_in' }); return }
-        // Prefer the localStorage device-id (captured by content.js on any
-        // twitch.tv visit) — Twitch's integrity check rejects the unique_id
-        // cookie alone. Fall back to cookie then random.
-        let deviceId = null
-        try {
-          const stored = await browser.storage.local.get('hs_twitch_device_id')
-          if (stored?.hs_twitch_device_id) deviceId = stored.hs_twitch_device_id
-        } catch {}
-        if (!deviceId) {
-          const idCookie = await browser.cookies.get({ url: 'https://twitch.tv', name: 'unique_id' })
-          if (idCookie?.value) deviceId = idCookie.value
-        }
-        if (!deviceId) deviceId = 'heatsync-' + Math.random().toString(36).slice(2, 18)
-        const clientId = 'kimne78kx3ncx6brgo4mv6wki5h1ko'
-        const operationName = follow ? 'FollowButton_FollowUser' : 'FollowButton_UnfollowUser'
-        const hash = follow
-          ? '800e7346bdf7e5278a3c1d3f21b2b56e2639928f86815677a7126b093b2fdd08'
-          : 'f7dae976ebf41c755ae2d758546bfd176b4eeb856656098bb40e0a672ca0d880'
-        const variables = follow
-          ? { input: { targetID: String(targetID), disableNotifications: !!disableNotifications } }
-          : { input: { targetID: String(targetID) } }
+        const slug = String(message.slug || '').toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 30)
+        const follow = !!message.follow
+        if (!slug) { sendResponse({ ok: false, error: 'no_slug' }); return }
+        // Auth check upfront — no point opening tab if not logged in.
+        const cookie = await browser.cookies.get({ url: 'https://twitch.tv', name: 'auth-token' })
+        if (!cookie?.value) { sendResponse({ ok: false, error: 'twitch_not_logged_in' }); return }
 
-        // Mint integrity JWT
-        let integrity = null
-        try {
-          const ir = await fetchWithTimeout('https://gql.twitch.tv/integrity', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Client-Id': clientId,
-              'Authorization': 'OAuth ' + authCookie.value,
-              'X-Device-Id': deviceId,
-            },
-            body: '{}',
-          })
-          if (ir.ok) {
-            const id = await ir.json()
-            integrity = id?.token || null
-          }
-        } catch (e) { log('twitch_follow_direct integrity error:', e?.message) }
-
-        const headers = {
-          'Content-Type': 'application/json',
-          'Client-Id': clientId,
-          'Authorization': 'OAuth ' + authCookie.value,
-          'X-Device-Id': deviceId,
-        }
-        if (integrity) headers['Client-Integrity'] = integrity
-
-        const fr = await fetchWithTimeout('https://gql.twitch.tv/gql', {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            operationName,
-            variables,
-            extensions: { persistedQuery: { version: 1, sha256Hash: hash } },
-          }),
+        // Open in background; user barely notices on most window managers.
+        newTab = await browser.tabs.create({
+          url: `https://www.twitch.tv/${encodeURIComponent(slug)}`,
+          active: false,
         })
-        if (!fr.ok) { sendResponse({ ok: false, error: `twitch gql ${fr.status}` }); return }
-        const data = await fr.json()
-        const items = Array.isArray(data) ? data[0] : data
-        if (items?.errors?.length) {
-          const msg = String(items.errors[0].message || '').toLowerCase()
-          if (msg.includes('already') || msg.includes('not followed') || msg.includes('not following')) {
-            sendResponse({ ok: true, idempotent: true }); return
+
+        // Wait for content script to be ready. tabs.onUpdated 'complete' fires
+        // when document.readyState is complete, but Twitch's React app needs
+        // more time to render the follow button. We poll-ping the content
+        // script which responds once it has registered its message handler.
+        const ready = await new Promise((resolve) => {
+          let attempts = 0
+          const tick = async () => {
+            attempts++
+            if (attempts > 40) { resolve(false); return } // ~20s max
+            try {
+              const r = await browser.tabs.sendMessage(newTab.id, { type: 'hs_ping' })
+              if (r?.ok) { resolve(true); return }
+            } catch {}
+            setTimeout(tick, 500)
           }
-          if (msg.includes('integrity')) { sendResponse({ ok: false, error: 'integrity_check_failed' }); return }
-          sendResponse({ ok: false, error: items.errors[0].message }); return
+          setTimeout(tick, 1500)
+        })
+        if (!ready) {
+          sendResponse({ ok: false, error: 'tab_not_ready' })
+          return
         }
-        const resultField = follow ? 'followUser' : 'unfollowUser'
-        const err = items?.data?.[resultField]?.error
-        if (err) {
-          const code = String(err.code || '')
-          if (code === 'TARGET_ALREADY_FOLLOWED' || code === 'TARGET_NOT_FOLLOWED') {
-            sendResponse({ ok: true, idempotent: true }); return
-          }
-          if (code === 'TARGET_TWO_FACTOR_REQUIRED') { sendResponse({ ok: false, error: '2fa_required' }); return }
-          sendResponse({ ok: false, error: code }); return
+
+        // Issue the click — content script handles React-tree button discovery,
+        // confirm-modal handling for unfollows, and idempotent state checks.
+        let result
+        try {
+          result = await browser.tabs.sendMessage(newTab.id, {
+            type: 'hs_click_follow_button',
+            follow,
+            slug,
+          })
+        } catch (e) {
+          result = { ok: false, error: 'click_relay_failed' }
         }
-        sendResponse({ ok: true })
+        sendResponse(result || { ok: false, error: 'no_click_response' })
       } catch (e) {
-        log('twitch_follow_direct error:', e?.message)
+        log('twitch_follow_via_click error:', e?.message)
         sendResponse({ ok: false, error: e?.message || 'fetch failed' })
+      } finally {
+        // Close the tab regardless of outcome. Small delay so the click POST
+        // can complete + Twitch UI shows the state update before teardown.
+        if (newTab?.id) {
+          setTimeout(() => { try { browser.tabs.remove(newTab.id) } catch {} }, 2500)
+        }
       }
     })()
     return true

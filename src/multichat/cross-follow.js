@@ -92,9 +92,15 @@ async function drainPendingFollows(platform) {
   for (const item of mine) {
     let result = { error: 'unknown platform' }
     if (platform === 'twitch') {
-      result = await (typeof followTwitchUserById === 'function'
-        ? followTwitchUserById(item.target, item.action === 'follow', item.disableNotifications)
-        : { error: 'no helper' })
+      // Use _twitchFollow (full chain incl. DOM-click) when slug available,
+      // otherwise fall back to id-only path which only attempts the GQL routes.
+      if (item.username) {
+        result = await _twitchFollow(item.target, item.action === 'follow', item.disableNotifications, item.username)
+      } else {
+        result = await (typeof followTwitchUserById === 'function'
+          ? followTwitchUserById(item.target, item.action === 'follow', item.disableNotifications)
+          : { error: 'no helper' })
+      }
     } else if (platform === 'kick') {
       result = await _kickFollow(item.target, item.action === 'follow')
     }
@@ -172,35 +178,40 @@ async function _kickFollow(slug, follow) {
 // Queue: integrity_check_failed / twitch_not_logged_in / no_twitch_tab all
 // get queued for a later retry when the user opens a twitch.tv tab (drain
 // triggers via tabs.onUpdated).
-async function _twitchFollow(targetID, follow, disableNotifications) {
+async function _twitchFollow(targetID, follow, disableNotifications, targetSlug) {
   if (!targetID) return { error: 'no target id' }
 
-  // Try SW-direct first — fastest, works from any context.
-  try {
-    const swResp = await safeSendMessage({
-      type: 'twitch_follow_direct',
-      targetID,
-      follow: !!follow,
-      disableNotifications: !!disableNotifications,
-    })
-    if (swResp?.ok) return { ok: true, idempotent: !!swResp.idempotent }
-    // twitch_not_logged_in is terminal — user needs to log in to twitch.
-    if (swResp?.error === 'twitch_not_logged_in') return { error: 'twitch_not_logged_in', queueable: true }
-    // 2fa_required is terminal — user has 2FA on state changes.
-    if (swResp?.error === '2fa_required') return { error: '2fa_required' }
-    // integrity_check_failed → fall through to in-page / relay path which has
-    // a better device-id match.
-  } catch (e) {
-    // Network or SW error → fall through
-  }
-
-  // In-page / relay path (uses MAIN-world integrity, more reliable).
+  // Try the in-page / tab-relay GQL path first — instant when it works, no
+  // tab spawn. apolloMutate + gqlProxy fail when Twitch's bundle has moved
+  // their Apollo client out of reach OR anti-bot rejects raw integrity
+  // tokens (the common case post-2025). When that happens, fall through to
+  // the DOM-click path which sidesteps all of it.
   if (typeof followTwitchUserById === 'function') {
     const r = await followTwitchUserById(targetID, follow, disableNotifications)
     if (r?.ok) return r
-    return r || { error: 'twitch follow failed', queueable: true }
+    if (r?.error === '2fa_required') return r
   }
-  return { error: 'twitch helper missing', queueable: true }
+
+  // DOM-click fallback: open twitch.tv/{slug} in a background tab, click the
+  // native follow/following button (Twitch's own React handler fires the
+  // mutation through Apollo with proper integrity), close the tab. Slow
+  // (~5s) but reliable — bypasses anti-bot entirely.
+  if (targetSlug) {
+    try {
+      const r = await safeSendMessage({
+        type: 'twitch_follow_via_click',
+        slug: targetSlug,
+        follow: !!follow,
+      })
+      if (r?.ok) return { ok: true, idempotent: !!r.idempotent, viaClick: true }
+      if (r?.error === 'twitch_not_logged_in') return { error: 'twitch_not_logged_in', queueable: true }
+      return { error: r?.error || 'dom_click_failed', queueable: true }
+    } catch (e) {
+      return { error: 'dom_click_threw', queueable: true }
+    }
+  }
+
+  return { error: 'twitch follow failed', queueable: true }
 }
 
 // ─── Main entry: called from pcToggleFollow + pcToggleBlock ─────────────────
@@ -217,7 +228,7 @@ async function propagateFollow(follow, target) {
 
   if (settings.twitch && target.twitch_id) {
     tasks.push((async () => {
-      const r = await _twitchFollow(target.twitch_id, follow, !settings.twitchNotifyTarget)
+      const r = await _twitchFollow(target.twitch_id, follow, !settings.twitchNotifyTarget, target.twitch_username || null)
       if (r?.ok) {
         out.twitch = { ok: true, idempotent: !!r.idempotent }
         await _dequeueMatching('twitch', String(target.twitch_id))

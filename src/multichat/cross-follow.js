@@ -238,6 +238,11 @@ async function propagateFollow(follow, target) {
   }
 
   if (tasks.length) await Promise.allSettled(tasks)
-  try { console.warn('[hs-xfollow]', follow ? 'follow' : 'unfollow', target?.twitch_username || target?.kick_username || '?', out) } catch {}
+  try {
+    console.warn('[hs-xfollow]', follow ? 'follow' : 'unfollow',
+      target?.twitch_username || target?.kick_username || '?',
+      'twitch=' + JSON.stringify(out.twitch),
+      'kick=' + JSON.stringify(out.kick))
+  } catch {}
   return out
 }

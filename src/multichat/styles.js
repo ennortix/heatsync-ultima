@@ -7098,7 +7098,10 @@ function injectStyles() {
     body.hs-platform-kick.hs-kick-no-channel main section[class*="grid-cols"],
     body.hs-platform-kick.hs-kick-no-channel main div[class*="grid-cols"] {
       display: grid !important;
-      grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)) !important;
+      /* min(170px, 100%) — when body is narrower than 170 (very small window
+         with wide chat), slots collapse to 1 column at body width instead of
+         overflowing. Above 170 it stays at the readable 170 floor. */
+      grid-template-columns: repeat(auto-fill, minmax(min(170px, 100%), 1fr)) !important;
       grid-auto-flow: row !important;
     }
     body.hs-platform-kick.hs-kick-no-channel main section[class*="grid-cols"] > *,

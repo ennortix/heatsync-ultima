@@ -5356,6 +5356,16 @@ async function handleMessage(message, sender, sendResponse) {
       colors: cachedFollowColors
     });
     return true; // Required for Firefox — sendResponse ignored without this
+  } else if (message.type === 'get_roomstate') {
+    // Return cached IRC ROOMSTATE for a channel (modes from the JOIN tag set).
+    // Available as soon as the SW's IRC connection has joined the channel —
+    // works from any host (Twitch/Kick/YT) because IRC is shared.
+    const ch = (message.channel || '').toString().toLowerCase()
+    if (!ch) { sendResponse({ ok: false, error: 'no channel' }); return true }
+    const state = BG_IRC?.roomstates?.get(ch) || null
+    sendResponse({ ok: true, state })
+    return true
+
   } else if (message.type === 'twitch_gql_authed') {
     // Cross-platform Twitch GQL: queries authenticated with the twitch.tv
     // auth-token cookie, so content scripts on Kick/YouTube can read mod

@@ -342,6 +342,26 @@ class IRC {
     if (!msg.type || msg.type === 'usernotice' || msg.type === 'notice') {
       const buf = this.channels.get(ch)
       buf.push(msg)
+      // Relay PRIVMSGs to server archive (ON CONFLICT DO NOTHING dedupes across
+      // multiple viewers). Skip replays from BG history merge.
+      if (!msg.type && !msg.isHistory && msg.user && msg.text && msg.id) {
+        try {
+          chrome.runtime.sendMessage({
+            type: 'ws_send',
+            data: {
+              type: 'twitch:chat:relay',
+              channel: ch,
+              username: msg.login || String(msg.user).toLowerCase(),
+              display_name: msg.user,
+              message: msg.text,
+              message_id: msg.id,
+              timestamp: msg.time || Date.now(),
+              emote_refs: msg.twitchEmotes ? { twitch: msg.twitchEmotes } : null,
+              reply_to_id: msg.replyTo?.id || null,
+            }
+          }).catch(() => {})
+        } catch {}
+      }
       if (msg.type === 'notice') {
         if (msg.noticeType === 'ban_success' || msg.noticeType === 'timeout_success') {
           const targetLc = (msg.targetUser || '').toLowerCase()

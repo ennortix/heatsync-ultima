@@ -1720,6 +1720,15 @@ function injectStyles() {
          and rows must paint immediately, not be replaced by a 28px placeholder */
       content-visibility: visible !important;
       contain-intrinsic-size: auto !important;
+      /* The olive overlays sit above the active row in fixed position. Letting
+         text selection span overlay→chat created a two-plane multi-range
+         clipboard mess ("copies both planes"). Right-click → copy thread is
+         the canonical path now; selection on overlay rows is disabled so a
+         chat-row drag-select stays clean even when the cursor crosses the
+         overlay region. */
+      user-select: none;
+      -webkit-user-select: none;
+      cursor: default;
     }
     #hs-mc-reply-stack-down .hs-mc-reply-stack-row .hs-mc-reply-btn,
     #hs-mc-reply-stack .hs-mc-reply-stack-row .hs-mc-reply-btn {
@@ -4895,6 +4904,50 @@ function injectStyles() {
       width: 28px;
       height: 28px;
     }
+    .hs-mc-pred-links .hs-mc-quicklink-section {
+      padding: 10px 14px 4px;
+      font-size: 10px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .hs-mc-pred-links .hs-mc-quicklink-section:first-child {
+      padding-top: 4px;
+    }
+
+    /* ═══ /status panel ═══
+       All text 13px CozetteVector — anything else looks jank in Chrome's
+       renderer (see memory: feedback_browser_text_cozette_13). The crisp
+       block on body.hs-font-bitmap covers descendants so we don't repeat
+       it here; just lock the family + size. */
+    .hs-mc-status-overlay {
+      position: fixed; bottom: 60px; right: 20px; z-index: 99999;
+      background: #000; border: 2px solid #ff8700;
+      padding: 12px 16px; min-width: 280px; max-width: 420px;
+      font: 13px/1.4 'CozetteVector', 'Courier New', monospace;
+      color: #fff;
+      box-shadow: 0 0 12px rgba(255,135,0,0.5);
+      cursor: pointer;
+    }
+    .hs-mc-status-loading { font-size: 13px; color: #999; }
+    .hs-mc-status-title { font-size: 13px; font-weight: 600; color: #ff8700; }
+    .hs-mc-status-sub { font-size: 13px; margin-top: 2px; }
+    .hs-mc-status-sub.live { color: #59ff8a; }
+    .hs-mc-status-sub.off  { color: #999; }
+    .hs-mc-status-streamtitle { font-size: 13px; color: #fff; margin-top: 6px; }
+    .hs-mc-status-meta { font-size: 13px; color: #999; margin-top: 2px; }
+    .hs-mc-status-section {
+      margin-top: 10px; padding-bottom: 4px;
+      font-size: 13px; color: #666;
+      text-transform: uppercase;
+      border-bottom: 1px solid #222;
+    }
+    .hs-mc-status-modes { margin-top: 4px; }
+    .hs-mc-status-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 13px; }
+    .hs-mc-status-key { color: #ccc; }
+    .hs-mc-status-val.on  { color: #59ff8a; }
+    .hs-mc-status-val.off { color: #666; }
+    .hs-mc-status-note { font-size: 13px; color: #555; margin-top: 4px; }
 
     /* ═══ Rewards ═══ */
     .hs-mc-rewards {
@@ -6955,8 +7008,12 @@ function injectStyles() {
       box-sizing: border-box !important;
       margin: 0 !important;
     }
+    /* Kick's nav is position:fixed 60px tall full viewport width. With chat-right/
+       left docked to top:0 the panel covers the right ~340px of the nav including
+       the login/search/profile icons. Offset down by nav height so those stay
+       reachable; mirrors --hs-twitch-topnav-h pattern. */
     body.hs-platform-kick.hs-kick-no-channel.hs-chat-right #hs-mc-container {
-      top: 0 !important;
+      top: var(--hs-kick-topnav-h, 60px) !important;
       bottom: 0 !important;
       right: 0 !important;
       left: auto !important;
@@ -6964,7 +7021,7 @@ function injectStyles() {
       height: auto !important;
     }
     body.hs-platform-kick.hs-kick-no-channel.hs-chat-left #hs-mc-container {
-      top: 0 !important;
+      top: var(--hs-kick-topnav-h, 60px) !important;
       bottom: 0 !important;
       left: 0 !important;
       right: auto !important;
@@ -7008,16 +7065,53 @@ function injectStyles() {
     /* On no-channel pages, the existing kick.hs-chat-left main padding rule
        (padding-left: var(--hs-chat-w)) is wrong — there's no #channel-
        chatroom to anchor against and we already shifted body via
-       margin-left. Cancel the padding so main flows naturally inside the
-       shrunken body. */
+       margin-left. Cancel the horizontal padding so main flows naturally
+       inside the shrunken body. */
     body.hs-platform-kick.hs-kick-no-channel.hs-chat-left main,
     body.hs-platform-kick.hs-kick-no-channel.hs-chat-right main,
     body.hs-platform-kick.hs-kick-no-channel.hs-chat-top main,
     body.hs-platform-kick.hs-kick-no-channel.hs-chat-bottom main {
       padding-left: 0 !important;
       padding-right: 0 !important;
-      padding-top: 0 !important;
       padding-bottom: 0 !important;
+    }
+    /* Push content below Kick's fixed 60px nav so the first row of video
+       thumbnails isn't half-hidden under it. chat-top covers the nav (own
+       body margin-top handles it); chat-right/left/bottom all leave the
+       nav visible and need this offset. */
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-right main,
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-left main,
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-bottom main {
+      padding-top: var(--hs-kick-topnav-h, 60px) !important;
+    }
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-top main {
+      padding-top: 0 !important;
+    }
+    /* Kick fullscreen modals (login, 2FA, captcha) render a fixed full-viewport-
+       width dialog centered via transform translate(-50%, -50%) — with our
+       squeezed body the right ~340px of the modal content (incl. the 2FA code
+       input) ends up under the chat panel.
+       Shrink the dialog to body width and shift the centering anchor so it
+       lives inside the visible body area; also shrink the dimming backdrop so
+       the chat panel stays interactive alongside. role=dialog + data-state are
+       Kick-specific (HeatSync never uses either), so this can't self-trigger. */
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-right .z-dialog[data-state="open"] {
+      right: var(--hs-chat-w, 340px) !important;
+    }
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-left .z-dialog[data-state="open"] {
+      left: var(--hs-chat-w, 340px) !important;
+    }
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-right [role="dialog"][data-state="open"] {
+      width: calc(100vw - var(--hs-chat-w, 340px)) !important;
+      max-width: calc(100vw - var(--hs-chat-w, 340px)) !important;
+      left: calc(50% - var(--hs-chat-w, 340px) / 2) !important;
+      right: auto !important;
+    }
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-left [role="dialog"][data-state="open"] {
+      width: calc(100vw - var(--hs-chat-w, 340px)) !important;
+      max-width: calc(100vw - var(--hs-chat-w, 340px)) !important;
+      left: calc(50% + var(--hs-chat-w, 340px) / 2) !important;
+      right: auto !important;
     }
     /* Kick wraps content in a flex container with w-xvw (= 100vw)
        which ignores the body width shrink — main ends up overflowing
@@ -7796,6 +7890,95 @@ function injectStyles() {
     body.hs-platform-yt.hs-mode-theatre.hs-chat-bottom ytd-watch-flexy[theater] #full-bleed-container,
     body.hs-platform-yt.hs-mode-theatre.hs-chat-bottom ytd-watch-flexy[theater] #player-full-bleed-container {
       padding-bottom: var(--hs-chat-h, 35vh) !important;
+    }
+
+    /* === Chat-log viewer (chat-logs.js) === */
+    .hs-cl-wrap {
+      display: flex; flex-direction: column;
+      height: 100%; width: 100%;
+      background: #000; color: #fff;
+      font-family: var(--hs-mc-font);
+      font-size: 13px; line-height: 17px;
+      box-sizing: border-box;
+    }
+    .hs-cl-hdr {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 6px 8px;
+      background: #0a0a0a;
+      border-bottom: 1px solid #222;
+      flex-shrink: 0;
+    }
+    .hs-cl-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+    .hs-cl-title-name { font-weight: 700; color: #fff; }
+    .hs-cl-title-sub { color: #999; font-size: 11px; }
+    .hs-cl-close {
+      width: 22px; height: 22px; padding: 0;
+      background: transparent; color: #999;
+      border: 1px solid #333; cursor: pointer;
+      font-size: 16px; line-height: 1;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .hs-cl-close:hover { background: #fff; color: #000; border-color: #fff; }
+    .hs-cl-ctrls {
+      display: flex; gap: 4px; padding: 4px 8px;
+      background: #0a0a0a;
+      border-bottom: 1px solid #222;
+      flex-shrink: 0;
+    }
+    .hs-cl-search {
+      flex: 1;
+      background: #000; color: #fff;
+      border: 1px solid #333; padding: 3px 6px;
+      font-family: inherit; font-size: 12px;
+      outline: none;
+    }
+    .hs-cl-search:focus { border-color: #ff8700; }
+    .hs-cl-scope, .hs-cl-export {
+      background: #111; color: #ccc;
+      border: 1px solid #333; padding: 2px 8px;
+      cursor: pointer; font-family: inherit; font-size: 11px;
+    }
+    .hs-cl-scope:hover, .hs-cl-export:hover {
+      background: #fff; color: #000; border-color: #fff;
+    }
+    .hs-cl-list {
+      flex: 1; overflow-y: auto; overflow-x: hidden;
+      padding: 4px 8px;
+    }
+    .hs-cl-row {
+      padding: 1px 0;
+      display: flex; flex-wrap: wrap; align-items: baseline;
+      gap: 6px;
+      border-bottom: 1px solid #0a0a0a;
+    }
+    .hs-cl-row.hs-cl-deleted {
+      opacity: 0.5;
+      text-decoration: line-through;
+    }
+    .hs-cl-ts {
+      color: #555; font-size: 10px;
+      font-variant-numeric: tabular-nums;
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+    .hs-cl-ch {
+      color: #ff8700; font-size: 11px; flex-shrink: 0;
+    }
+    .hs-cl-user {
+      color: #fff; font-weight: 700; flex-shrink: 0;
+    }
+    .hs-cl-body { color: #ddd; min-width: 0; word-break: break-word; }
+    .hs-cl-emote {
+      height: 18px; width: auto; vertical-align: middle;
+      display: inline-block;
+    }
+    .hs-cl-empty {
+      color: #666; text-align: center; padding: 40px 8px;
+      font-style: italic;
+    }
+    .hs-cl-loader {
+      color: #555; text-align: center; padding: 12px 8px;
+      font-size: 11px;
     }
 
   `;

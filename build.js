@@ -113,6 +113,7 @@ const MULTICHAT_MODULES = [
   'cross-follow.js',
   'input.js',
   'profile-card.js',
+  'chat-logs.js',
 ]
 
 function readMultichatModules() {

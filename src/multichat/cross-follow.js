@@ -181,37 +181,36 @@ async function _kickFollow(slug, follow) {
 async function _twitchFollow(targetID, follow, disableNotifications, targetSlug) {
   if (!targetID) return { error: 'no target id' }
 
-  // Try the in-page / tab-relay GQL path first — instant when it works, no
-  // tab spawn. apolloMutate + gqlProxy fail when Twitch's bundle has moved
-  // their Apollo client out of reach OR anti-bot rejects raw integrity
-  // tokens (the common case post-2025). When that happens, fall through to
-  // the DOM-click path which sidesteps all of it.
-  if (typeof followTwitchUserById === 'function') {
-    const r = await followTwitchUserById(targetID, follow, disableNotifications)
-    if (r?.ok) return r
-    if (r?.error === '2fa_required') return r
+  // DOM-click is the only reliable path. The two GQL alternatives are both
+  // broken on current Twitch:
+  //   - apolloMutate: webpack-Document lookup fails (Twitch refactored their
+  //     React + webpack bundle, our finder can't locate the FollowUser doc)
+  //   - gqlProxy with captured integrity: anti-bot returns 'failed integrity
+  //     check' because the JWT only validates when attached via Apollo's
+  //     link chain (which we can't replicate from raw fetch)
+  // The DOM-click path goes through Twitch's own React click handler, so
+  // Apollo links + integrity attach naturally — bypasses anti-bot entirely.
+  // Cost: ~5s per follow (background tab open + click + close). Fragile
+  // alternatives stripped — no point spending 1-2s timing out on dead paths.
+  if (!targetSlug) {
+    // No slug = we only have a numeric twitch_id. DOM-click needs the
+    // /channel-slug URL path. Queue for next twitch visit (where the user
+    // can manually find them) — or surface as terminal if username missing.
+    return { error: 'no_slug', queueable: true }
   }
-
-  // DOM-click fallback: open twitch.tv/{slug} in a background tab, click the
-  // native follow/following button (Twitch's own React handler fires the
-  // mutation through Apollo with proper integrity), close the tab. Slow
-  // (~5s) but reliable — bypasses anti-bot entirely.
-  if (targetSlug) {
-    try {
-      const r = await safeSendMessage({
-        type: 'twitch_follow_via_click',
-        slug: targetSlug,
-        follow: !!follow,
-      })
-      if (r?.ok) return { ok: true, idempotent: !!r.idempotent, viaClick: true }
-      if (r?.error === 'twitch_not_logged_in') return { error: 'twitch_not_logged_in', queueable: true }
-      return { error: r?.error || 'dom_click_failed', queueable: true }
-    } catch (e) {
-      return { error: 'dom_click_threw', queueable: true }
-    }
+  try {
+    const r = await safeSendMessage({
+      type: 'twitch_follow_via_click',
+      slug: targetSlug,
+      follow: !!follow,
+    })
+    if (r?.ok) return { ok: true, idempotent: !!r.idempotent, viaClick: true }
+    if (r?.error === 'twitch_not_logged_in') return { error: 'twitch_not_logged_in', queueable: true }
+    if (r?.error === '2fa_required') return { error: '2fa_required' }
+    return { error: r?.error || 'dom_click_failed', queueable: true }
+  } catch (e) {
+    return { error: 'dom_click_threw', queueable: true }
   }
-
-  return { error: 'twitch follow failed', queueable: true }
 }
 
 // ─── Main entry: called from pcToggleFollow + pcToggleBlock ─────────────────

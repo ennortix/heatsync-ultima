@@ -3883,6 +3883,7 @@ async function _followMutation(targetID, follow, disableNotifications) {
   // gate rejects rawQuery messages, and the Document is loaded from webpack
   // instead. searchTerm matches the FollowUser/UnfollowUser allowlist entry.
   const apolloResult = await apolloMutate({ searchTerm: operationName, variables, resultField })
+  console.warn('[heatsync] apolloMutate', operationName, '→', JSON.stringify(apolloResult).slice(0, 200))
   if (apolloResult?.ok) return { ok: true }
   if (apolloResult?.error) {
     const eMsg = String(apolloResult.error).toLowerCase()
@@ -3898,6 +3899,7 @@ async function _followMutation(targetID, follow, disableNotifications) {
   // try before queueing in case of transient Apollo lookup issues.
   try {
     const data = await gqlProxy(operationName, variables)
+    console.warn('[heatsync] gqlProxy', operationName, '→', JSON.stringify(data).slice(0, 200))
     const d = Array.isArray(data) ? data[0] : data
     if (d?.errors?.length) {
       const msg = String(d.errors[0].message || '').toLowerCase()
@@ -3915,9 +3917,8 @@ async function _followMutation(targetID, follow, disableNotifications) {
     }
     return { ok: true }
   } catch (e) {
+    console.warn('[heatsync] gqlProxy threw', operationName, e?.message)
     const msg = String(e?.message || '').toLowerCase()
-    // Hash missing from MAIN-world gql.hashes — Twitch may have rotated.
-    // Auto-capture will eventually update; queue so next attempt uses fresh hash.
     if (msg.includes('no hash') || msg.includes('hash not available')) {
       return { error: 'twitch_hash_stale', queueable: true }
     }

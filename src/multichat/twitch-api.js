@@ -3869,7 +3869,7 @@ async function _followMutation(targetID, follow, disableNotifications) {
     })
     if (resp?.ok && resp.result) return resp.result
     if (resp?.error === 'no_twitch_tab')   return { error: 'no_twitch_tab', queueable: true }
-    if (resp?.error === 'stale_twitch_tab') return { error: 'stale_twitch_tab', queueable: true }
+    if (resp?.error === 'stale_twitch_tab') return { error: 'stale_twitch_tab', queueable: true, reloaded: !!resp.reloaded }
     return { error: resp?.error || 'relay failed', queueable: true }
   }
 

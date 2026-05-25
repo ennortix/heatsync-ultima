@@ -217,7 +217,7 @@ async function propagateFollow(follow, target) {
         out.twitch = { ok: true, idempotent: !!r.idempotent }
         await _dequeueMatching('twitch', String(target.twitch_id))
       } else {
-        out.twitch = { error: r?.error || 'twitch follow failed' }
+        out.twitch = { error: r?.error || 'twitch follow failed', reloaded: !!r?.reloaded }
         if (r?.queueable) {
           await _enqueue({
             platform: 'twitch',
@@ -265,6 +265,8 @@ async function propagateFollow(follow, target) {
       msg = `log in to twitch.tv to mirror this ${verb}`
     } else if (tErr === '2fa_required') {
       msg = `twitch needs 2FA confirmation — ${verb} on twitch.tv directly`
+    } else if (tErr === 'stale_twitch_tab' && out.twitch?.reloaded) {
+      msg = `refreshing twitch.tv to sync ${verb} — hold on`
     } else if (tErr === 'no_twitch_tab' || tErr === 'stale_twitch_tab' ||
                tErr === 'integrity_check_failed' || tErr === 'twitch_hash_stale' ||
                tErr === 'twitch_gql_timeout' || /failed integrity/i.test(tErr || '')) {

@@ -416,6 +416,9 @@ browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
 // content script noops. We also dedupe by tabId+platform so a SPA reload
 // doesn't repeat-drain.
 const _drainAttempted = new Map() // tabId → Set<platform>
+// Track twitch tabs we've already reloaded once to recover from ext-reload
+// orphaned content scripts — never reload the same tab twice in a session.
+const _staleTwitchReloaded = new Set()
 async function _maybeTriggerCrossFollowDrain(tabId) {
   let tab
   try { tab = await browser.tabs.get(tabId) } catch { return }
@@ -434,7 +437,7 @@ async function _maybeTriggerCrossFollowDrain(tabId) {
     browser.tabs.sendMessage(tabId, { type: 'cross_follow_drain', platform }).catch(() => {})
   }, 2500)
 }
-browser.tabs.onRemoved.addListener((tabId) => { _drainAttempted.delete(tabId) })
+browser.tabs.onRemoved.addListener((tabId) => { _drainAttempted.delete(tabId); _staleTwitchReloaded.delete(tabId) })
 let current7TVEmoteSetId = null; // Track current 7TV emote set ID for EventAPI
 let seventvEmoteSetIds = new Map(); // channelName → 7TV emote set ID
 let blockedEmotes = new Set();
@@ -5397,8 +5400,8 @@ async function handleMessage(message, sender, sendResponse) {
 
   } else if (message.type === 'twitch_relay') {
     // Relay a Twitch API call through an open twitch.tv tab. Used for
-    // mutations (ban/timeout/delete) that require a Client-Integrity token
-    // which can only be minted from a Twitch page context.
+    // mutations (ban/timeout/delete/follow) that require a Client-Integrity
+    // token which can only be minted from a Twitch page context.
     ;(async () => {
       try {
         const tabs = await browser.tabs.query({ url: '*://*.twitch.tv/*' })
@@ -5408,8 +5411,7 @@ async function handleMessage(message, sender, sendResponse) {
         }
         // Try every Twitch tab — after an extension reload, content scripts
         // in existing tabs become orphans (no listener for new message types)
-        // until the page is refreshed. Fall through to the next tab, then
-        // surface a 'stale_twitch_tab' code so the UI can prompt a refresh.
+        // until the page is refreshed.
         const candidates = [...tabs.filter(t => t.active), ...tabs.filter(t => !t.active)]
         let lastErr = null
         for (const tab of candidates) {
@@ -5426,6 +5428,18 @@ async function handleMessage(message, sender, sendResponse) {
             sendResponse({ ok: false, error: lastErr })
             return
           }
+        }
+        // All tabs are stale (orphaned content scripts from ext reload). Self-heal
+        // by reloading the most recently focused twitch tab — on load, the new
+        // content script registers a fresh listener and the queue drain trigger
+        // (tabs.onUpdated complete) sweeps pending follows. Dedupe per-tab via
+        // _staleTwitchReloaded so we don't loop-reload the same tab.
+        const reloadCandidate = candidates.find(t => !_staleTwitchReloaded.has(t.id))
+        if (reloadCandidate) {
+          _staleTwitchReloaded.add(reloadCandidate.id)
+          try { browser.tabs.reload(reloadCandidate.id) } catch {}
+          sendResponse({ ok: false, error: 'stale_twitch_tab', reloaded: true })
+          return
         }
         sendResponse({ ok: false, error: 'stale_twitch_tab' })
       } catch (e) {

@@ -422,6 +422,9 @@ const _drainAttempted = new Map() // tabId → Set<platform>
 // Track twitch tabs we've already reloaded once to recover from ext-reload
 // orphaned content scripts — never reload the same tab twice in a session.
 const _staleTwitchReloaded = new Set()
+// Serialize twitch_follow_via_click calls so a queue drain of N items
+// doesn't open N background tabs concurrently. Promise-chain semaphore.
+let _twitchClickQueue = Promise.resolve()
 async function _maybeTriggerCrossFollowDrain(tabId) {
   let tab
   try { tab = await browser.tabs.get(tabId) } catch { return }
@@ -5558,7 +5561,15 @@ async function handleMessage(message, sender, sendResponse) {
     // Requires the channel slug (twitch_username), not just the ID. Each
     // follow opens + closes one background tab; brief visible flash on some
     // window managers but no persistent tab.
+    //
+    // Serialized via _twitchClickQueue — concurrent callers (drain of N
+    // queued follows, rapid manual clicks) chain rather than fan out into
+    // N background tabs all at once.
     ;(async () => {
+      const prev = _twitchClickQueue
+      let release
+      _twitchClickQueue = new Promise(r => { release = r })
+      await prev
       let newTab = null
       try {
         const slug = String(message.slug || '').toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 30)
@@ -5618,6 +5629,9 @@ async function handleMessage(message, sender, sendResponse) {
         if (newTab?.id) {
           setTimeout(() => { try { browser.tabs.remove(newTab.id) } catch {} }, 2500)
         }
+        // Release the serialization queue so the next call can proceed.
+        // 3.5s gap = 2.5s tab teardown + 1s breathing room for anti-bot.
+        setTimeout(() => release(), 3500)
       }
     })()
     return true

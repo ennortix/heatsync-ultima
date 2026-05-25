@@ -2755,6 +2755,23 @@ function findEmoteMatches(search) {
     }
   }
 
+  // Bare-word username fallback — when nothing emote-y matched, scan
+  // usernameCache. Only kicks in for searches that didn't start with @ / :
+  // so the explicit-@ path keeps its dedicated behavior (recency + color
+  // prefetch). Inserted WITHOUT the @ prefix so the user gets the same
+  // bare-name they typed (e.g. typing "lichen" + Tab → "licheness").
+  if (!isUserSearch && !search.startsWith(':') && matches.length === 0 && typeof usernameCache !== 'undefined') {
+    for (const username of usernameCache) {
+      if (!username) continue
+      const userLower = username.toLowerCase()
+      if (userLower.startsWith(searchLower)) {
+        matches.push({ name: username, url: null, priority: 0, type: 'user' })
+      } else if (userLower.includes(searchLower)) {
+        matches.push({ name: username, url: null, priority: 1, type: 'user' })
+      }
+    }
+  }
+
   // Emoji shortcodes when typing :prefix
   if (search.startsWith(':') && typeof EMOJI_DATA !== 'undefined') {
     const emojiPrefix = search.slice(1).toLowerCase();

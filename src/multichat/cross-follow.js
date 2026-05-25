@@ -27,7 +27,10 @@ const HS_PENDING_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
 // each call so toggling in settings UI applies without a reload.
 async function _crossFollowSettings() {
   try {
-    const stored = await new Promise(r => api.storage.local.get(['ui_settings'], r))
+    // api.storage.local.get returns a Promise directly — don't wrap it with a
+    // callback shim or it hangs forever. (Earlier version wrapped it; the
+    // callback never fired because api.storage's get is promise-based.)
+    const stored = await api.storage.local.get(['ui_settings'])
     const ui = stored?.ui_settings || {}
     return {
       twitch: ui.crossFollowTwitch !== false,
@@ -43,9 +46,8 @@ async function _crossFollowSettings() {
 
 async function _readQueue() {
   try {
-    const stored = await new Promise(r => api.storage.local.get([HS_PENDING_KEY], r))
+    const stored = await api.storage.local.get([HS_PENDING_KEY])
     const arr = Array.isArray(stored?.[HS_PENDING_KEY]) ? stored[HS_PENDING_KEY] : []
-    // Drop stale + cap at HS_PENDING_MAX (oldest first)
     const cutoff = Date.now() - HS_PENDING_MAX_AGE_MS
     const fresh = arr.filter(x => x && typeof x.ts === 'number' && x.ts >= cutoff)
     return fresh.slice(-HS_PENDING_MAX)
@@ -56,7 +58,7 @@ async function _readQueue() {
 
 async function _writeQueue(arr) {
   try {
-    await new Promise(r => api.storage.local.set({ [HS_PENDING_KEY]: arr }, r))
+    await api.storage.local.set({ [HS_PENDING_KEY]: arr })
   } catch {}
 }
 

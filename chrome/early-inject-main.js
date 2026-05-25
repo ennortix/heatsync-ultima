@@ -583,6 +583,12 @@
         'RedeemCustomReward',
         'SendChatMessage',
         'JoinRaid',
+        // Cross-platform follow: use Twitch's own Apollo client so the
+        // integrity token + auth chain attach naturally. Direct GQL fetches
+        // (even with manually-minted integrity) get rejected as "failed
+        // integrity check" — Apollo links are what Twitch's anti-bot trusts.
+        'FollowUser',
+        'UnfollowUser',
       ]
       if (e.data.searchTerm && !ALLOWED_MUTATIONS.some(m => e.data.searchTerm.includes(m))) {
         log('heatsync-apollo-mutate: rejected — searchTerm not in allowlist:', e.data.searchTerm)

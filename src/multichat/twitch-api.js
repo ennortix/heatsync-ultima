@@ -20,33 +20,128 @@ function formatPoints(n) {
   return String(n)
 }
 
+// Curated launcher of native Twitch surfaces, sectioned by role. Items with
+// `direct:true` route through triggerTwitchFeature() (existing handlers like
+// sub-purchase + clip-create that aren't plain window.open). Audience gates:
+// 'mod' shows when viewer mods the channel; 'broadcaster' when the channel
+// IS the viewer (twilight-user.login === channel); dashboard deep-links only
+// resolve for the owner, so they stay hidden until then.
 function renderQuickLinks() {
-  const links = document.createElement('div')
-  links.className = 'hs-mc-pred-links'
+  const wrap = document.createElement('div')
+  wrap.className = 'hs-mc-pred-links'
 
-  // Cheer is dedicated to its own bits sub-tab; quick-links is for navigation
-  // shortcuts only. Keeping cheer here would duplicate the bits sub-tab entry.
-  const items = [
-    { action: 'sub',    accent: '#e91916', icon: '<svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2l2.39 4.84 5.34.78-3.86 3.77.91 5.31L10 14.27l-4.78 2.51.91-5.31L2.27 7.62l5.34-.78L10 2z"/></svg>', label: 'subscribe' },
-    { action: 'clip',   accent: '#bf94ff', icon: '<svg width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M18 7h-2V5a2 2 0 00-2-2H6a2 2 0 00-2 2v2H2v4l8 6 8-6V7zM6 5h8v2H6V5z"/></svg>', label: 'create clip' },
-    { action: 'popout', accent: '#4a90d9', icon: '<svg width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M4 4h6v2H6v8h8v-4h2v6H4V4zm8 0h4v4h-2V6.41l-4.3 4.3-1.4-1.42L12.58 6H11V4z"></path></svg>', label: 'popout chat' },
-    { action: 'mod',    accent: '#00c8af', icon: '<svg width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M10 2l6 2.7V9c0 4.4-2.5 8.3-6 10-3.5-1.7-6-5.6-6-10V4.7L10 2z"/></svg>', label: 'mod view' }
+  const ch = (getActiveTwitchChannel() || getCurrentChannel() || '').toString().toLowerCase()
+  const own = getOwnTwitchLogin()
+  const isBroadcaster = !!(ch && own && own === ch)
+  const isMod = isBroadcaster || _twitchIsMod
+
+  // Static SVG strings parsed once per item — no user input ever reaches
+  // here (icons + labels are all from the SECTIONS list below). We use
+  // DOMParser instead of innerHTML to satisfy the security-reminder hook.
+  function svgNode(svgStr) {
+    const doc = new DOMParser().parseFromString(svgStr, 'image/svg+xml')
+    return doc.documentElement
+  }
+
+  const ICONS = {
+    sub:       '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2l2.39 4.84 5.34.78-3.86 3.77.91 5.31L10 14.27l-4.78 2.51.91-5.31L2.27 7.62l5.34-.78L10 2z"/></svg>',
+    clip:      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M18 7h-2V5a2 2 0 00-2-2H6a2 2 0 00-2 2v2H2v4l8 6 8-6V7zM6 5h8v2H6V5z"/></svg>',
+    popout:    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M4 4h6v2H6v8h8v-4h2v6H4V4zm8 0h4v4h-2V6.41l-4.3 4.3-1.4-1.42L12.58 6H11V4z"/></svg>',
+    shield:    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M10 2l6 2.7V9c0 4.4-2.5 8.3-6 10-3.5-1.7-6-5.6-6-10V4.7L10 2z"/></svg>',
+    dashboard: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M3 3h6v6H3V3zm8 0h6v6h-6V3zM3 11h6v6H3v-6zm8 4h6v2h-6v-2zm0-4h6v2h-6v-2z"/></svg>',
+    settings:  '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M10 6.5A3.5 3.5 0 1010 13.5 3.5 3.5 0 0010 6.5zm6.5 3.5a6.5 6.5 0 00-.1-1.1l2-1.5-1.5-2.6-2.3.8c-.6-.5-1.3-.9-2-1.2L12.2 2h-3l-.4 2.4c-.7.3-1.4.7-2 1.2l-2.3-.8L3 7.4l2 1.5a6.6 6.6 0 000 2.2L3 12.6l1.5 2.6 2.3-.8c.6.5 1.3.9 2 1.2l.4 2.4h3l.4-2.4c.7-.3 1.4-.7 2-1.2l2.3.8 1.5-2.6-2-1.5c.1-.4.1-.7.1-1.1z"/></svg>',
+    chart:     '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M3 17V3h2v14h12v2H3zm4-3V8h2v6H7zm4 0V5h2v9h-2zm4 0V10h2v4h-2z"/></svg>',
+    people:    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M7 8a3 3 0 100-6 3 3 0 000 6zm6 1a2 2 0 100-4 2 2 0 000 4zM1 17v-1c0-2.5 4-4 6-4s6 1.5 6 4v1H1zm12-1c0-1.2-.8-2.2-2-2.9.6-.1 1.3-.1 2-.1 2 0 5 1 5 3v1h-5v-1z"/></svg>',
+    cash:      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M10 2a8 8 0 100 16 8 8 0 000-16zm.5 12.5v1h-1v-1c-1.4-.2-2.5-1-2.7-2.5H8c.1.6.5 1 1.5 1 .8 0 1.5-.3 1.5-1 0-.5-.3-.8-1.5-1.1-1.5-.4-2.8-.9-2.8-2.4 0-1.1 1-1.9 2.3-2.1V5h1v1.4c1.2.2 2.2.8 2.5 2.1H11c-.1-.5-.5-1-1.5-1-.7 0-1.5.3-1.5.9 0 .6.4.9 1.5 1.2 1.7.5 2.8 1 2.8 2.4 0 1.2-1 2-2.3 2.4z"/></svg>',
+    video:     '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M2 5h12v10H2V5zm14 2l4-2v10l-4-2V7z"/></svg>',
+    calendar:  '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M4 4h2V2h2v2h4V2h2v2h2v14H4V4zm0 4v8h12V8H4z"/></svg>',
+    info:      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M10 2a8 8 0 100 16 8 8 0 000-16zm0 4a1 1 0 110 2 1 1 0 010-2zm-1 4h2v6H9v-6z"/></svg>',
+    user:      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M10 10a4 4 0 100-8 4 4 0 000 8zm0 2c-3 0-7 1.5-7 4.5V18h14v-1.5c0-3-4-4.5-7-4.5z"/></svg>',
+    gift:      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M3 8v10h14V8H3zm0-3h14v2H3V5zm5-3a2 2 0 012 2 2 2 0 012-2 2 2 0 010 4h-4a2 2 0 010-4z"/></svg>',
+    lock:      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M5 9V7a5 5 0 0110 0v2h1v9H4V9h1zm2 0h6V7a3 3 0 00-6 0v2z"/></svg>',
+    arrow:     '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
+  }
+
+  const SECTIONS = [
+    { label: null, show: true, items: [
+      { action: 'sub',    accent: '#e91916', icon: ICONS.sub,    label: 'subscribe',   direct: true },
+      { action: 'clip',   accent: '#bf94ff', icon: ICONS.clip,   label: 'create clip', direct: true, audience: 'mod' },
+      { action: 'popout', accent: '#4a90d9', icon: ICONS.popout, label: 'popout chat', direct: true },
+    ]},
+    { label: 'mod tools', show: isMod, items: [
+      { accent: '#00c8af', icon: ICONS.shield, label: 'mod view (chat, automod, blocked terms)', url: (c) => `https://www.twitch.tv/moderator/${c}`, opts: 'width=1200,height=800' },
+    ]},
+    { label: 'broadcaster', show: isBroadcaster, items: [
+      { accent: '#9147ff', icon: ICONS.dashboard, label: 'creator dashboard',  url: (c) => `https://dashboard.twitch.tv/u/${c}/home`,            opts: 'width=1200,height=800' },
+      { accent: '#9147ff', icon: ICONS.video,     label: 'stream manager',     url: (c) => `https://dashboard.twitch.tv/u/${c}/stream-manager`, opts: 'width=1200,height=800' },
+      { accent: '#9147ff', icon: ICONS.settings,  label: 'moderation settings (automod, blocked terms)', url: (c) => `https://dashboard.twitch.tv/u/${c}/settings/moderation`, opts: 'width=1000,height=750' },
+      { accent: '#9147ff', icon: ICONS.settings,  label: 'channel settings',   url: (c) => `https://dashboard.twitch.tv/u/${c}/settings/channel`,    opts: 'width=1000,height=750' },
+      { accent: '#9147ff', icon: ICONS.people,    label: 'community (mods, vips, follows)', url: (c) => `https://dashboard.twitch.tv/u/${c}/community`, opts: 'width=1000,height=750' },
+      { accent: '#9147ff', icon: ICONS.cash,      label: 'monetization',       url: (c) => `https://dashboard.twitch.tv/u/${c}/monetization`,        opts: 'width=1000,height=750' },
+      { accent: '#9147ff', icon: ICONS.chart,     label: 'analytics',          url: (c) => `https://dashboard.twitch.tv/u/${c}/analytics/stream-summary`, opts: 'width=1200,height=800' },
+    ]},
+    { label: 'channel pages', show: !!ch, items: [
+      { accent: '#888', icon: ICONS.info,     label: 'about page',  url: (c) => `https://www.twitch.tv/${c}/about` },
+      { accent: '#888', icon: ICONS.video,    label: 'videos',      url: (c) => `https://www.twitch.tv/${c}/videos` },
+      { accent: '#888', icon: ICONS.video,    label: 'clips',       url: (c) => `https://www.twitch.tv/${c}/clips` },
+      { accent: '#888', icon: ICONS.calendar, label: 'schedule',    url: (c) => `https://www.twitch.tv/${c}/schedule` },
+    ]},
+    { label: 'your account', show: true, items: [
+      { accent: '#888', icon: ICONS.gift,     label: 'drops / inventory',  url: () => 'https://www.twitch.tv/inventory' },
+      { accent: '#888', icon: ICONS.sub,      label: 'my subscriptions',   url: () => 'https://www.twitch.tv/subscriptions' },
+      { accent: '#888', icon: ICONS.user,     label: 'following directory',url: () => 'https://www.twitch.tv/directory/following' },
+      { accent: '#888', icon: ICONS.settings, label: 'twitch settings',    url: () => 'https://www.twitch.tv/settings' },
+      { accent: '#888', icon: ICONS.lock,     label: 'privacy + security', url: () => 'https://www.twitch.tv/settings/security' },
+    ]},
   ]
 
-  for (const item of items) {
-    const el = document.createElement('div')
-    el.className = 'hs-mc-menu-item hs-mc-pred-link'
-    el.dataset.action = item.action
-    el.style.setProperty('--menu-accent', item.accent)
-    // Static HTML with SVG icons only — no dynamic values, safe innerHTML
-    el.innerHTML = `<div class="hs-mc-menu-icon">${item.icon}</div><div class="hs-mc-menu-text"><div class="hs-mc-menu-title">${item.label}</div></div><svg class="hs-mc-menu-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`
-    el.addEventListener('click', (e) => {
-      e.stopPropagation()
-      triggerTwitchFeature(item.action)
+  for (const section of SECTIONS) {
+    if (section.show === false) continue
+    const visible = section.items.filter(it => {
+      if (it.audience === 'mod' && !isMod) return false
+      if (it.audience === 'broadcaster' && !isBroadcaster) return false
+      return true
     })
-    links.appendChild(el)
+    if (!visible.length) continue
+    if (section.label) {
+      const h = document.createElement('div')
+      h.className = 'hs-mc-quicklink-section'
+      h.textContent = section.label
+      wrap.appendChild(h)
+    }
+    for (const item of visible) {
+      const el = document.createElement('div')
+      el.className = 'hs-mc-menu-item hs-mc-pred-link'
+      if (item.action) el.dataset.action = item.action
+      el.style.setProperty('--menu-accent', item.accent)
+
+      const iconWrap = document.createElement('div')
+      iconWrap.className = 'hs-mc-menu-icon'
+      iconWrap.appendChild(svgNode(item.icon))
+      el.appendChild(iconWrap)
+
+      const text = document.createElement('div')
+      text.className = 'hs-mc-menu-text'
+      const title = document.createElement('div')
+      title.className = 'hs-mc-menu-title'
+      title.textContent = item.label
+      text.appendChild(title)
+      el.appendChild(text)
+
+      const arrow = svgNode(ICONS.arrow)
+      arrow.setAttribute('class', 'hs-mc-menu-arrow')
+      el.appendChild(arrow)
+
+      el.addEventListener('click', (e) => {
+        e.stopPropagation()
+        if (item.direct) { triggerTwitchFeature(item.action); return }
+        if (!ch) { showToast('no twitch channel', 'error'); return }
+        try { window.open(item.url(ch), '_blank', item.opts || 'noopener') } catch {}
+      })
+      wrap.appendChild(el)
+    }
   }
-  return links
+  return wrap
 }
 
 // ═══ Chat Color Picker ═══
@@ -2138,9 +2233,114 @@ function triggerTwitchFeature(action) {
   return true;
 }
 
+// Fetch + render chat status (modes + stream info) for `channel`. Used by
+// /status slash command. Modes come from the SW's cached IRC ROOMSTATE
+// (always available once the channel is joined, works cross-host because
+// IRC lives in the background service worker). Stream info comes from an
+// unauthenticated Twitch GQL query (works on Twitch/Kick/YT via the SW
+// gql_authed bridge). Either source can fail independently and the panel
+// degrades gracefully (modes-only or stream-only is still useful).
+async function buildChatStatusPanel(channel) {
+  const ch = (channel || '').toString().toLowerCase()
+  if (!ch || !/^[a-z0-9_]{2,40}$/.test(ch)) return null
+
+  const [roomstateResp, gqlResp] = await Promise.all([
+    safeSendMessage({ type: 'get_roomstate', channel: ch }).catch(() => null),
+    twitchGql(`{ user(login:"${ch}") { id displayName stream { id type viewersCount createdAt game { name } } broadcastSettings { title language } } }`).catch(() => null),
+  ])
+
+  const rs = roomstateResp?.ok ? roomstateResp.state : null
+  const u  = gqlResp?.data?.user || null
+  const stream = u?.stream || null
+  const bs = u?.broadcastSettings || null
+  if (!rs && !u) return null
+
+  const panel = document.createElement('div')
+  panel.className = 'hs-mc-status-panel'
+
+  const title = document.createElement('div')
+  title.className = 'hs-mc-status-title'
+  title.textContent = '#' + (u?.displayName || ch)
+  panel.appendChild(title)
+
+  const sub = document.createElement('div')
+  sub.className = 'hs-mc-status-sub'
+  if (stream && stream.type === 'live') {
+    const started = new Date(stream.createdAt).getTime()
+    const mins = Math.max(0, Math.floor((Date.now() - started) / 60000))
+    const h = Math.floor(mins / 60), m = mins % 60
+    const uptime = h ? `${h}h ${m}m` : `${m}m`
+    const viewers = (stream.viewersCount || 0).toLocaleString('en-US')
+    sub.textContent = `LIVE · ${uptime} · ${viewers} viewers`
+    sub.classList.add('live')
+  } else {
+    sub.textContent = 'OFFLINE'
+    sub.classList.add('off')
+  }
+  panel.appendChild(sub)
+
+  if (bs?.title) {
+    const t = document.createElement('div')
+    t.className = 'hs-mc-status-streamtitle'
+    t.textContent = '"' + bs.title + '"'
+    panel.appendChild(t)
+  }
+  const metaParts = []
+  if (stream?.game?.name) metaParts.push(stream.game.name)
+  if (bs?.language) metaParts.push(bs.language)
+  if (metaParts.length) {
+    const meta = document.createElement('div')
+    meta.className = 'hs-mc-status-meta'
+    meta.textContent = metaParts.join(' · ')
+    panel.appendChild(meta)
+  }
+
+  const modesHeader = document.createElement('div')
+  modesHeader.className = 'hs-mc-status-section'
+  modesHeader.textContent = 'chat modes'
+  panel.appendChild(modesHeader)
+
+  const grid = document.createElement('div')
+  grid.className = 'hs-mc-status-modes'
+
+  if (rs) {
+    // followersOnly: -1 = off, 0 = on no min, N>0 = N min req
+    const followerOn = rs.followersOnly != null && rs.followersOnly >= 0
+    const followerDetail = followerOn && rs.followersOnly > 0 ? `${rs.followersOnly} min` : null
+    const slowOn = rs.slow != null && rs.slow > 0
+    const modes = [
+      ['emote-only',    rs.emoteOnly === true],
+      ['follower-mode', followerOn, followerDetail],
+      ['sub-mode',      rs.subsOnly === true],
+      ['slow-mode',     slowOn, slowOn ? `${rs.slow}s` : null],
+      ['unique-chat',   rs.r9k === true],
+    ]
+    for (const [label, on, detail] of modes) {
+      const row = document.createElement('div')
+      row.className = 'hs-mc-status-row'
+      const k = document.createElement('span')
+      k.className = 'hs-mc-status-key'
+      k.textContent = label
+      const v = document.createElement('span')
+      v.className = 'hs-mc-status-val ' + (on ? 'on' : 'off')
+      v.textContent = on ? (detail ? `on (${detail})` : 'on') : 'off'
+      row.appendChild(k)
+      row.appendChild(v)
+      grid.appendChild(row)
+    }
+  } else {
+    const empty = document.createElement('div')
+    empty.className = 'hs-mc-status-note'
+    empty.textContent = '(modes unknown — channel not joined yet)'
+    grid.appendChild(empty)
+  }
+  panel.appendChild(grid)
+  return panel
+}
+
 // Best-effort own twitch login — read Twitch's stored user blob if we're on
-// twitch.tv; otherwise null (the launcher still works, just no broadcaster
-// detection so dashboard deep-links stay hidden).
+// twitch.tv; otherwise null. Used by renderQuickLinks to gate broadcaster-only
+// dashboard deep-links (they only resolve for the channel owner).
 function getOwnTwitchLogin() {
   try {
     const raw = localStorage.getItem('twilight-user')
@@ -2149,71 +2349,6 @@ function getOwnTwitchLogin() {
     const login = (obj?.login || obj?.userName || '').toString().toLowerCase()
     return login || null
   } catch { return null }
-}
-
-// Curated launcher of native Twitch surfaces. Audience gates: 'all' for
-// public pages + viewer-account; 'mod' for the moderator hub (covers
-// blocked terms + automod via gear); 'broadcaster' for dashboard deep-links
-// which only resolve for the channel owner.
-const TWITCH_NATIVE_LINKS = [
-  { section: 'mod tools' },
-  { id: 'modview',     audience: 'mod',         label: 'mod view (chat + automod + blocked terms)', url: (ch) => `https://www.twitch.tv/moderator/${ch}`,                                 opts: 'width=1200,height=800' },
-
-  { section: 'broadcaster' },
-  { id: 'streammgr',   audience: 'broadcaster', label: 'stream manager',         url: (ch) => `https://dashboard.twitch.tv/u/${ch}/stream-manager`,            opts: 'width=1200,height=800' },
-  { id: 'dashboard',   audience: 'broadcaster', label: 'creator dashboard',      url: (ch) => `https://dashboard.twitch.tv/u/${ch}/home`,                      opts: 'width=1200,height=800' },
-  { id: 'modsettings', audience: 'broadcaster', label: 'moderation settings',    url: (ch) => `https://dashboard.twitch.tv/u/${ch}/settings/moderation`,       opts: 'width=1000,height=750' },
-  { id: 'chansettings',audience: 'broadcaster', label: 'channel settings',       url: (ch) => `https://dashboard.twitch.tv/u/${ch}/settings/channel`,          opts: 'width=1000,height=750' },
-  { id: 'community',   audience: 'broadcaster', label: 'community (mods, vips, follows)', url: (ch) => `https://dashboard.twitch.tv/u/${ch}/community`,        opts: 'width=1000,height=750' },
-  { id: 'monetize',    audience: 'broadcaster', label: 'monetization (subs, bits)', url: (ch) => `https://dashboard.twitch.tv/u/${ch}/monetization`,           opts: 'width=1000,height=750' },
-  { id: 'analytics',   audience: 'broadcaster', label: 'analytics',              url: (ch) => `https://dashboard.twitch.tv/u/${ch}/analytics/stream-summary`,  opts: 'width=1200,height=800' },
-
-  { section: 'channel pages' },
-  { id: 'about',       audience: 'all', label: 'about page',  url: (ch) => `https://www.twitch.tv/${ch}/about` },
-  { id: 'videos',      audience: 'all', label: 'videos',      url: (ch) => `https://www.twitch.tv/${ch}/videos` },
-  { id: 'clips',       audience: 'all', label: 'clips',       url: (ch) => `https://www.twitch.tv/${ch}/clips` },
-  { id: 'schedule',    audience: 'all', label: 'schedule',    url: (ch) => `https://www.twitch.tv/${ch}/schedule` },
-  { id: 'popoutchat',  audience: 'all', label: 'popout chat', url: (ch) => `https://www.twitch.tv/popout/${ch}/chat?popout=`, opts: 'width=400,height=600' },
-
-  { section: 'your account' },
-  { id: 'inventory',   audience: 'all', label: 'drops / inventory',  url: () => `https://www.twitch.tv/inventory` },
-  { id: 'mysubs',      audience: 'all', label: 'my subscriptions',   url: () => `https://www.twitch.tv/subscriptions` },
-  { id: 'following',   audience: 'all', label: 'following directory',url: () => `https://www.twitch.tv/directory/following` },
-  { id: 'prefs',       audience: 'all', label: 'twitch settings',    url: () => `https://www.twitch.tv/settings` },
-  { id: 'security',    audience: 'all', label: 'privacy + security', url: () => `https://www.twitch.tv/settings/security` },
-]
-
-// Open the native-Twitch launcher menu at (x, y) for `channel`.
-// Filters items by role: broadcaster gets dashboard deep-links, mods get the
-// hub. Falls back to active channel if none provided.
-function openTwitchNativeLauncher(x, y, channel) {
-  const ch = (channel || getActiveTwitchChannel() || getCurrentChannel() || '').toString().toLowerCase()
-  if (!ch || !/^[a-z0-9_]{2,40}$/.test(ch)) {
-    showToast('no twitch channel selected', 'error')
-    return
-  }
-  const own = getOwnTwitchLogin()
-  const isBroadcaster = !!(own && own === ch)
-  const isMod = isBroadcaster || _twitchIsMod
-
-  const items = []
-  let pendingSection = null
-  for (const e of TWITCH_NATIVE_LINKS) {
-    if (e.section) { pendingSection = e.section; continue }
-    if (e.audience === 'broadcaster' && !isBroadcaster) continue
-    if (e.audience === 'mod' && !isMod) continue
-    if (pendingSection) {
-      if (items.length) items.push('sep')
-      items.push({ section: pendingSection })
-      pendingSection = null
-    }
-    items.push({
-      label: e.label,
-      fn: () => { try { window.open(e.url(ch, own), '_blank', e.opts || 'noopener') } catch {} }
-    })
-  }
-  if (!items.length) { showToast('no twitch links available', 'error'); return }
-  showHsCtxMenu(x, y, 'twitch · ' + ch, items)
 }
 
 // Twitch IRC badge rendering
@@ -2599,10 +2734,15 @@ function apolloMutate({ searchTerm, variables, resultField, rawQuery }) {
       }
     }
     window.addEventListener('message', handler, { signal })
-    window.postMessage({
+    // Only include rawQuery when caller provided one — the MAIN-world security
+    // gate rejects any message that has the rawQuery field set, even if empty
+    // string. Apollo path loads Document from webpack so rawQuery is optional.
+    const msg = {
       type: 'heatsync-apollo-mutate', id, searchTerm, variables,
-      resultField, rawQuery, nonce: window.HS?.getMainWorldNonce?.() || null
-    }, location.origin)
+      resultField, nonce: window.HS?.getMainWorldNonce?.() || null
+    }
+    if (rawQuery) msg.rawQuery = rawQuery
+    window.postMessage(msg, location.origin)
     const timer = setTimeout(() => {
       ac.abort()
       resolve({ error: 'apollo mutation timeout' })
@@ -3733,9 +3873,29 @@ async function _followMutation(targetID, follow, disableNotifications) {
     return { error: resp?.error || 'relay failed', queueable: true }
   }
 
-  // On Twitch: gqlProxy with operation name + variables (no rawQuery — MAIN
-  // world rejects rawQuery for security). Hash + integrity attached server-side
-  // by executeGqlProxy in early-inject-main.js.
+  // On Twitch: use Twitch's OWN Apollo client (MAIN-world apolloMutate path).
+  // Direct gql.twitch.tv POSTs — even with freshly-minted integrity JWT —
+  // get rejected as "failed integrity check" because the token only validates
+  // when attached via Apollo's link chain (which handles fingerprinting,
+  // session-id correlation, etc.). apolloMutate finds the GQL Document from
+  // Twitch's webpack modules and calls apolloClient.mutate, identical to
+  // what Twitch's own follow button does. No rawQuery — MAIN-world security
+  // gate rejects rawQuery messages, and the Document is loaded from webpack
+  // instead. searchTerm matches the FollowUser/UnfollowUser allowlist entry.
+  const apolloResult = await apolloMutate({ searchTerm: operationName, variables, resultField })
+  if (apolloResult?.ok) return { ok: true }
+  if (apolloResult?.error) {
+    const eMsg = String(apolloResult.error).toLowerCase()
+    if (eMsg.includes('already') || eMsg.includes('not following') || eMsg.includes('not_followed') || eMsg.includes('already_followed')) {
+      return { ok: true, idempotent: true }
+    }
+    if (eMsg.includes('two_factor') || eMsg === '2fa_required') return { error: '2fa_required' }
+    // Fall through to gqlProxy as last-ditch on apollo failure
+  }
+
+  // Last-resort fallback: direct gqlProxy persisted query. Rarely works when
+  // Apollo path didn't (integrity tokens generally don't validate raw), but
+  // try before queueing in case of transient Apollo lookup issues.
   try {
     const data = await gqlProxy(operationName, variables)
     const d = Array.isArray(data) ? data[0] : data

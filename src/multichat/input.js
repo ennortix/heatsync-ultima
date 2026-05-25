@@ -277,12 +277,15 @@ const SLASH_COMMANDS = [
   { cmd: 'w',          args: '<user> <msg>',  desc: 'twitch whisper' },
   { cmd: 'dm',         args: '<user> <msg>',  desc: 'heatsync DM' },
   { cmd: 'r',          args: '<msg>',         desc: 'reply to last whisper' },
+  { cmd: 'follow',     args: '<user>',        desc: 'follow on heatsync (+ twitch/kick mirror)' },
+  { cmd: 'unfollow',   args: '<user>',        desc: 'unfollow on heatsync (+ twitch/kick mirror)' },
   { cmd: 'mute',       args: '<user>',        desc: 'local mute 24h' },
   { cmd: 'unmute',     args: '<user>',        desc: 'local unmute' },
   { cmd: 'shrug',      args: '[text]',        desc: 'append ¯\\_(ツ)_/¯' },
   { cmd: 'tableflip',  args: '[text]',        desc: 'append (╯°□°)╯︵ ┻━┻' },
   { cmd: 'unflip',     args: '[text]',        desc: 'append ┬─┬ノ( ゜-゜ノ)' },
   { cmd: 'lclear',     args: '',              desc: 'clear current tab locally' },
+  { cmd: 'status',     args: '[channel]',     desc: 'show chat modes + stream info' },
   { cmd: 'help',       args: '',              desc: 'list commands' },
   { cmd: 'me',         args: '<action>',      desc: 'twitch/kick action message' },
   { cmd: 'ban',        args: '<user>',        desc: 'twitch/kick ban (mod)' },
@@ -1063,10 +1066,29 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
     { label: 'whisper', fn: () => _openWhisperFor(username) },
     { label: 'mention', fn: () => _mentionInMcInput(username) },
     { label: 'view profile', fn: () => openProfileCard(username, platform) },
+  ]
+  // Chat-log items — only for twitch (only platform with relay wired)
+  const isTwitch = (platform || 'twitch') === 'twitch'
+  if (isTwitch) {
+    const msgChannel = msg?.dataset?.msgChannel || (typeof getLiveChannel === 'function' ? getLiveChannel() : null)
+    if (msgChannel) {
+      items.push({ label: `chat logs in #${msgChannel}`, fn: () => openChatLogsView(username, { platform: 'twitch', channel: msgChannel }) })
+    }
+    items.push({ label: 'chat logs (all channels)', fn: () => openChatLogsView(username, { platform: 'twitch' }) })
+  }
+  items.push(
     'sep',
     { label: 'copy name', fn: () => { try { navigator.clipboard.writeText(username) } catch {} } },
-  ]
+  )
   if (msg) items.push({ label: 'copy message', fn: () => { try { navigator.clipboard.writeText(_extractMcMsgText(msg)) } catch {} } })
+  if (feedDiv && typeof getActiveThreadCopyText === 'function') {
+    const threadTxt = getActiveThreadCopyText()
+    if (threadTxt) items.push({ label: 'copy thread', fn: () => { try { navigator.clipboard.writeText(threadTxt); showToast('thread copied', 'success') } catch {} } })
+  }
+  if (msg) {
+    const chainTxt = _extractMcChainText(msg)
+    if (chainTxt) items.push({ label: 'copy thread', fn: () => { try { navigator.clipboard.writeText(chainTxt); showToast('thread copied', 'success') } catch {} } })
+  }
   if (feedMsg && typeof isOwnFeedPost === 'function' && isOwnFeedPost(feedMsg)) {
     items.push('sep')
     const remaining = (typeof EDIT_WINDOW_MS !== 'undefined' ? EDIT_WINDOW_MS : 0) - (Date.now() - new Date(feedMsg.created_at).getTime())
@@ -1131,6 +1153,33 @@ function _toggleMcBlock(username) {
   }
   // buildMessageDiv filters blocked users, so a full re-render hides/restores them.
   renderMessages(currentTab)
+}
+
+// Build the plain-text dump of a chat reply chain (ancestors + this + descendants)
+// using the channel buffer walkers exposed by main.js. Returns null when the
+// row isn't part of a multi-message thread, so the menu item only appears
+// where it would do something.
+function _extractMcChainText(msg) {
+  if (!msg) return null
+  const lookup = window.__hsMcLookupMsg
+  const walk = window.__hsMcWalkThread
+  if (typeof lookup !== 'function' || typeof walk !== 'function') return null
+  const channel = msg.dataset.msgChannel || ''
+  const platform = msg.dataset.msgPlatform || ''
+  const ownId = msg.dataset.msgId || ''
+  if (!ownId) return null
+  const own = lookup(channel, platform, ownId)
+  if (!own) return null
+  const { ancestors, descendants } = walk(channel, platform, own, 128) || { ancestors: [], descendants: [] }
+  const chain = [...ancestors, own, ...descendants]
+  if (chain.length < 2) return null
+  return chain.map(_formatMcChainLine).join('\n')
+}
+
+function _formatMcChainLine(m) {
+  const user = m.displayName || m.user || m.username || 'anon'
+  const text = (m.text || m.message || m.body || '').replace(/\s+/g, ' ').trim()
+  return `${user}: ${text}`
 }
 
 function _extractMcMsgText(msg) {
@@ -3753,6 +3802,30 @@ async function handleSlashCommand(text, input) {
     return true
   }
 
+  if (cmd === 'follow' || cmd === 'unfollow') {
+    const u = rest.trim().replace(/^@/, '').toLowerCase()
+    if (!u) { showToast('usage: /' + cmd + ' <user>'); return true }
+    if (typeof resolveIdentity !== 'function') { showToast('not ready', 'error'); return true }
+    const ri = await resolveIdentity(u, {})
+    const p = ri?.profile
+    const id = p?.id || p?.userId
+    if (!id) {
+      if (ri?.transient) {
+        showToast(ri.status === 429 ? 'rate limited — try in a sec' : `couldn't reach server (${ri.status || 'net'})`, 'error')
+      } else {
+        showToast(u + " isn't on heatsync", 'error')
+      }
+      return true
+    }
+    const yf = !!(p.relationship?.youFollow || p.relationship?.isFollowing)
+    const wantFollow = cmd === 'follow'
+    if (wantFollow && yf) { showToast('already following ' + u); return true }
+    if (!wantFollow && !yf) { showToast('not following ' + u); return true }
+    // pcToggleFollow flips the current state — pass `yf` as currentlyFollowing
+    pcToggleFollow(id, u, yf)
+    return true
+  }
+
   if (cmd === 'mute') {
     const u = rest.trim().replace(/^@/, '').toLowerCase()
     if (!u) { showToast('usage: /mute <user>'); return true }
@@ -3802,6 +3875,20 @@ async function handleSlashCommand(text, input) {
   if (cmd === 'help') {
     showSlashHelp()
     clearInput(input)
+    return true
+  }
+
+  // /status [channel] — show current chat modes + stream info for a twitch
+  // channel. Defaults to the current channel tab. Mod-only fields (chat
+  // delay) light up automatically when the viewer mods the channel.
+  if (cmd === 'status' || cmd === 'modes') {
+    const arg = rest.trim().toLowerCase().replace(/^#/, '')
+    const ch = (arg && /^[a-z0-9_]{2,40}$/.test(arg))
+      ? arg
+      : (typeof currentTab === 'string' && /^[a-z0-9_]{2,40}$/.test(currentTab) ? currentTab : null)
+    if (!ch) { showToast('/status needs a channel tab (or /status <name>)', 'error'); return true }
+    clearInput(input)
+    showChatStatusPanel(ch)
     return true
   }
 
@@ -3869,6 +3956,7 @@ const SLASH_HELP_LINES = [
   '/tableflip [text]      — append (╯°□°)╯︵ ┻━┻',
   '/unflip [text]         — append ┬─┬ノ( ゜-゜ノ)',
   '/lclear                — clear current tab locally',
+  '/status [channel]      — show chat modes + stream info',
   '/help                  — this list',
   '',
   'twitch mod (routed via GQL, need a channel tab):',
@@ -3890,11 +3978,39 @@ function showSlashHelp() {
   if (panel) { panel.remove(); return }
   panel = document.createElement('div')
   panel.id = 'hs-mc-slash-help'
-  panel.style.cssText = 'position:fixed;bottom:60px;right:20px;z-index:99999;background:#000;border:2px solid #ff8700;padding:10px 14px;font:12px/1.4 monospace;color:#fff;white-space:pre;max-width:420px;box-shadow:0 0 12px rgba(255,135,0,0.5)'
+  panel.style.cssText = "position:fixed;bottom:60px;right:20px;z-index:99999;background:#000;border:2px solid #ff8700;padding:10px 14px;font:13px/1.4 'CozetteVector','Courier New',monospace;color:#fff;white-space:pre;max-width:420px;box-shadow:0 0 12px rgba(255,135,0,0.5)"
   panel.textContent = SLASH_HELP_LINES.join('\n')
   panel.addEventListener('click', () => panel.remove())
   document.body.appendChild(panel)
   setTimeout(() => panel?.remove(), 12000)
+}
+
+// Mounts the status panel built by buildChatStatusPanel into a fixed
+// overlay anchored bottom-right (matches /help). Click panel or wait 20s
+// to dismiss. Re-invoking /status replaces the existing panel.
+async function showChatStatusPanel(channel) {
+  document.getElementById('hs-mc-status-overlay')?.remove()
+  const wrap = document.createElement('div')
+  wrap.id = 'hs-mc-status-overlay'
+  wrap.className = 'hs-mc-status-overlay'
+  const loading = document.createElement('div')
+  loading.className = 'hs-mc-status-loading'
+  loading.textContent = 'fetching #' + channel + '…'
+  wrap.appendChild(loading)
+  wrap.addEventListener('click', () => wrap.remove())
+  document.body.appendChild(wrap)
+  let panel
+  try { panel = await buildChatStatusPanel(channel) }
+  catch (e) { panel = null }
+  if (!document.body.contains(wrap)) return
+  if (!panel) {
+    loading.textContent = 'could not fetch #' + channel + ' (offline or not on twitch?)'
+    setTimeout(() => wrap?.remove(), 5000)
+    return
+  }
+  loading.remove()
+  wrap.appendChild(panel)
+  setTimeout(() => wrap?.remove(), 20000)
 }
 
 async function sendSlashWhisper(platform, username, text, input) {

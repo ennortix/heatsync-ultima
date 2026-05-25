@@ -5079,7 +5079,7 @@ async function handleMessage(message, sender, sendResponse) {
 
   // Forward WS message from content scripts (used by multichat kick channels)
   if (message.type === 'ws_send') {
-    const allowedWsTypes = ['channel:join', 'channel:leave', 'emote:used', 'youtube:subscribe', 'youtube:unsubscribe', 'multichat:sync', 'user:mute', 'user:unmute', 'ui-state:sync']
+    const allowedWsTypes = ['channel:join', 'channel:leave', 'emote:used', 'youtube:subscribe', 'youtube:unsubscribe', 'multichat:sync', 'user:mute', 'user:unmute', 'ui-state:sync', 'twitch:chat:relay']
     if (message.data && allowedWsTypes.includes(message.data.type)) {
       // Track multichat-added channel joins so we can replay on WS reconnect
       // (server restarts, network blips, SW resume — any of these orphan the join).
@@ -5532,11 +5532,14 @@ async function handleMessage(message, sender, sendResponse) {
     ;(async () => {
       try {
         const { targetID, follow, disableNotifications } = message
+        console.warn('[hs-xf-sw] twitch_follow_direct enter', { targetID, follow, disableNotifications })
         if (!targetID) { sendResponse({ ok: false, error: 'no target id' }); return }
         const authCookie = await browser.cookies.get({ url: 'https://twitch.tv', name: 'auth-token' })
+        console.warn('[hs-xf-sw] auth cookie present=', !!authCookie?.value)
         if (!authCookie?.value) { sendResponse({ ok: false, error: 'twitch_not_logged_in' }); return }
         const idCookie = await browser.cookies.get({ url: 'https://twitch.tv', name: 'unique_id' })
         const deviceId = idCookie?.value || ('heatsync-' + Math.random().toString(36).slice(2, 18))
+        console.warn('[hs-xf-sw] deviceId from unique_id=', !!idCookie?.value)
         const clientId = 'kimne78kx3ncx6brgo4mv6wki5h1ko'
         const operationName = follow ? 'FollowButton_FollowUser' : 'FollowButton_UnfollowUser'
         const hash = follow
@@ -5559,11 +5562,13 @@ async function handleMessage(message, sender, sendResponse) {
             },
             body: '{}',
           })
+          console.warn('[hs-xf-sw] integrity resp status=', ir.status, 'ok=', ir.ok)
           if (ir.ok) {
             const id = await ir.json()
             integrity = id?.token || null
+            console.warn('[hs-xf-sw] integrity token present=', !!integrity)
           }
-        } catch (e) { log('twitch_follow_direct integrity error:', e?.message) }
+        } catch (e) { console.warn('[hs-xf-sw] integrity error:', e?.message); log('twitch_follow_direct integrity error:', e?.message) }
 
         const headers = {
           'Content-Type': 'application/json',
@@ -5582,8 +5587,10 @@ async function handleMessage(message, sender, sendResponse) {
             extensions: { persistedQuery: { version: 1, sha256Hash: hash } },
           }),
         })
+        console.warn('[hs-xf-sw] gql fetch status=', fr.status, 'ok=', fr.ok)
         if (!fr.ok) { sendResponse({ ok: false, error: `twitch gql ${fr.status}` }); return }
         const data = await fr.json()
+        console.warn('[hs-xf-sw] gql data=', JSON.stringify(data).slice(0, 300))
         const items = Array.isArray(data) ? data[0] : data
         if (items?.errors?.length) {
           const msg = String(items.errors[0].message || '').toLowerCase()
@@ -6528,6 +6535,10 @@ function bgIrcParseLine(raw, channelHint) {
     const privmsg = raw.match(/PRIVMSG #([^ ]+) :(.+)$/)
     if (privmsg) {
       const displayName = tags['display-name'] || 'anonymous'
+      // Extract IRC source login (correct for unicode display names where
+      // display.toLowerCase() ≠ login). Format: :user!user@user.tmi.twitch.tv
+      const loginMatch = raw.match(/^@[^ ]+ :([^!]+)!/)
+      const login = loginMatch ? loginMatch[1] : ''
       let text = privmsg[2]
       let isAction = false
       if (text.charCodeAt(0) === 1 && text.startsWith('\x01ACTION ')) {
@@ -6536,6 +6547,7 @@ function bgIrcParseLine(raw, channelHint) {
       }
       const msg = {
         user: displayName,
+        login,
         userId: tags['user-id'] || '',
         text,
         color: bgIrcSanitizeColor(tags.color || '#fff'),

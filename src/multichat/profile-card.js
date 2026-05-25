@@ -792,8 +792,11 @@ async function pcToggleFollow(profileId, username, currentlyFollowing) {
     // Cross-platform propagation — server returns target.{twitch_id, kick_username}
     // on success. Fire and forget; failures queue locally for next platform tab.
     const tgt = resp?.data?.target || resp?.target || null
+    console.warn('[hs-xf-call] tgt=', tgt, 'haveFn=', typeof propagateFollow, 'resp=', resp)
     if (tgt && typeof propagateFollow === 'function') {
-      propagateFollow(targetFollowing, tgt).catch(() => {})
+      propagateFollow(targetFollowing, tgt).catch(e => console.warn('[hs-xf-call] propagate threw', e))
+    } else {
+      console.warn('[hs-xf-call] SKIPPED — tgt missing or no propagateFollow')
     }
   } catch (e) {
     if (activeProfileCard?.data?.relationship) {

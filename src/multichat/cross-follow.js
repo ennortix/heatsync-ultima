@@ -188,8 +188,10 @@ async function _twitchFollow(targetID, follow, disableNotifications) {
 // Returns: { twitch: {...}, kick: {...} } — caller can surface diagnostics
 // in dev mode but the default UX is silent best-effort.
 async function propagateFollow(follow, target) {
+  console.warn('[hs-xf] ENTRY follow=', follow, 'target=', target)
   if (!target) return { twitch: { skipped: 'no target' }, kick: { skipped: 'no target' } }
   const settings = await _crossFollowSettings()
+  console.warn('[hs-xf] settings=', settings)
   const tasks = []
   const out = { twitch: { skipped: 'no twitch id' }, kick: { skipped: 'no kick username' } }
 
@@ -234,6 +236,6 @@ async function propagateFollow(follow, target) {
   }
 
   if (tasks.length) await Promise.allSettled(tasks)
-  try { console.log('[hs-xfollow]', follow ? 'follow' : 'unfollow', target?.twitch_username || target?.kick_username || '?', out) } catch {}
+  try { console.warn('[hs-xfollow]', follow ? 'follow' : 'unfollow', target?.twitch_username || target?.kick_username || '?', out) } catch {}
   return out
 }

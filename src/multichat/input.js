@@ -1127,16 +1127,16 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
   }
   items.push(
     'sep',
-    { label: 'copy name', fn: () => { try { navigator.clipboard.writeText(username) } catch {} } },
+    { label: 'copy name', fn: () => { try { navigator.clipboard.writeText(username).catch(() => {}) } catch {} } },
   )
-  if (msg) items.push({ label: 'copy message', fn: () => { try { navigator.clipboard.writeText(_extractMcMsgText(msg)) } catch {} } })
+  if (msg) items.push({ label: 'copy message', fn: () => { try { navigator.clipboard.writeText(_extractMcMsgText(msg)).catch(() => {}) } catch {} } })
   if (feedDiv && typeof getActiveThreadCopyText === 'function') {
     const threadTxt = getActiveThreadCopyText()
-    if (threadTxt) items.push({ label: 'copy thread', fn: () => { try { navigator.clipboard.writeText(threadTxt); showToast('thread copied', 'success') } catch {} } })
+    if (threadTxt) items.push({ label: 'copy thread', fn: () => { try { navigator.clipboard.writeText(threadTxt).then(() => showToast('thread copied', 'success')).catch(() => {}) } catch {} } })
   }
   if (msg) {
     const chainTxt = _extractMcChainText(msg)
-    if (chainTxt) items.push({ label: 'copy thread', fn: () => { try { navigator.clipboard.writeText(chainTxt); showToast('thread copied', 'success') } catch {} } })
+    if (chainTxt) items.push({ label: 'copy thread', fn: () => { try { navigator.clipboard.writeText(chainTxt).then(() => showToast('thread copied', 'success')).catch(() => {}) } catch {} } })
   }
   if (feedMsg && typeof isOwnFeedPost === 'function' && isOwnFeedPost(feedMsg)) {
     items.push('sep')

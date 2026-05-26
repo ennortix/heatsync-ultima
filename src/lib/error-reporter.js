@@ -116,9 +116,23 @@
       || /\b(heatsync|content\.js|multichat\.js|heatsync-button\.js|autocomplete-hook\.js|chat-injector\.js)\b/.test(s)
   }
 
+  // Known-noise patterns that the browser raises regardless of our code,
+  // OR transient API rejections that aren't actionable. Filter at capture
+  // time so the buffer stays focused on real failures.
+  function _isNoise(msg) {
+    if (!msg) return false
+    return /^ResizeObserver loop/.test(msg)
+      || /Document is not focused/.test(msg) // Clipboard API when window unfocused
+      || /^signal is aborted/i.test(msg)     // AbortController teardown
+      || /Extension context invalidated/.test(msg) // ext reload mid-call
+      || /Could not establish connection.*Receiving end does not exist/.test(msg) // cold SW wake — handled with retry
+      || /^Connection timeout$/.test(msg) // bg WS reconnect — scheduleReconnect handles recovery
+  }
+
   function _onError(e) {
     try {
       const f = _fmtErr(e.error != null ? e.error : e.message)
+      if (_isNoise(f.msg)) return
       if (!_isOurs(f.stack, e.filename)) return
       _capture({
         ts: Date.now(), type: 'error', plat: _plat, ver: _ver,
@@ -134,6 +148,7 @@
     try {
       const f = _fmtErr(e.reason)
       const stack = f.stack || _synthStack(2)
+      if (_isNoise(f.msg)) return
       if (!_isOurs(stack, '')) return
       _capture({
         ts: Date.now(), type: 'rejection', plat: _plat, ver: _ver,

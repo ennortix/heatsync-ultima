@@ -86,8 +86,11 @@
   const sessionWentLiveSeen = new Set()
   // Content-script load time. Used as a connect-snapshot grace for the FIRST
   // stream:online emission per channel — sessionWentLiveSeen only catches the
-  // second emission onward. SW WS auth + snapshot burst lands up to ~20s
-  // after content load on slow connects, so 30s.
+  // second emission onward. SW WS auth + snapshot burst can take ~20-60s on
+  // slow connects + cold SW boot; 30s wasn't enough (users saw 5+ "went live"
+  // bursts on reload). 90s comfortably covers the slow path; a genuine
+  // off→on transition during the grace is rare and resurfaces correctly on
+  // the next /offline /online cycle.
   const mcStartedAt = Date.now()
   let irc = null;
   let kickChat = null;
@@ -11820,7 +11823,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           // re-broadcast of the same channel is deduped).
           if (sessionWentLiveSeen.has(channel)) return;
           const _alreadyLive = liveChannelSet?.has(channel) || _swLiveSet?.has(channel);
-          const _inGrace = Date.now() - mcStartedAt < 30000;
+          const _inGrace = Date.now() - mcStartedAt < 90000;
           sessionWentLiveSeen.add(channel);
           if (_alreadyLive || _inGrace) return;
           text = msg.game ? `[${channel}] \u25C6 went live \u2014 ${msg.game}` : `[${channel}] \u25C6 went live`;
@@ -12083,7 +12086,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           // re-broadcast of the same channel is deduped).
           if (sessionWentLiveSeen.has(channel)) return;
           const _alreadyLive = liveChannelSet?.has(channel) || _swLiveSet?.has(channel);
-          const _inGrace = Date.now() - mcStartedAt < 30000;
+          const _inGrace = Date.now() - mcStartedAt < 90000;
           sessionWentLiveSeen.add(channel);
           if (_alreadyLive || _inGrace) return;
           text = msg.game ? `[${channel}] \u25C6 went live \u2014 ${msg.game}` : `[${channel}] \u25C6 went live`;

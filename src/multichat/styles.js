@@ -5673,6 +5673,17 @@ function injectStyles() {
     .hs-popout .hs-mc-rotate-chat {
       display: none !important;
     }
+    /* Popout chat fills the window — there's no host video next to it to
+       reclaim space from. The orange resize handles just shrink the chat
+       and leave dead space. Hide them; the user resizes via OS window
+       edges. (#hs-c-resize-handle is the chat-container handle that
+       actually renders in popout; the others belong to in-page layouts.) */
+    .hs-popout #hs-mc-resize-handle,
+    .hs-popout #hs-c-resize-handle,
+    .hs-popout #hs-yt-resize-handle,
+    .hs-popout #hs-kick-resize-handle {
+      display: none !important;
+    }
     /* Vertical tab modes (left/right) — stretch util buttons (C T F- F+ ⚙ ⛶)
        to fill the column width as a unified segmented control matching the
        channel-tab strip above. Without this, 5-6 buttons × 18px in a wider

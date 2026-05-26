@@ -8,9 +8,17 @@ const WHISPER_TIMELINE_MAX_READ = 500 // hard cap on READ messages; unread are N
 // dual delivery still collapses even when one side lacks an ID.
 const _whisperSeen = new Set()
 const _WHISPER_SEEN_MAX = 2000
+// Hash full whisper text (djb2). 64-char-prefix dedup collided on long
+// whispers sharing an intro — one of the two silently dropped, no unread
+// badge for the dropped one. Full-text hash is stable, 32-bit, fits the key.
+function _hashText(s) {
+  let h = 5381
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0
+  return h
+}
 function _whisperDedupKey(platform, id, user, time, text) {
   if (id) return `${platform}:${id}`
-  return `${platform}|${(user || '').toLowerCase()}|${time || 0}|${(text || '').slice(0, 64)}`
+  return `${platform}|${(user || '').toLowerCase()}|${time || 0}|${_hashText(text || '')}`
 }
 function _whisperMarkSeen(key) {
   if (_whisperSeen.has(key)) return true

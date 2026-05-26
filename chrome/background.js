@@ -5640,7 +5640,12 @@ async function handleMessage(message, sender, sendResponse) {
         }
         const result = await browser.tabs.sendMessage(targetTabId, {
           type: 'youtube_send_relay',
-          text
+          text,
+          // awaitConfirm makes the relay run the 2.5s observer race in
+          // youtube-content.js (1024+) so we know whether YT actually
+          // accepted the send (rate-limit / slow-mode / disabled button
+          // would otherwise return ok:true after the click animation).
+          awaitConfirm: true
         })
         sendResponse(result || { ok: false, error: 'no response from tab' })
       } catch (e) {

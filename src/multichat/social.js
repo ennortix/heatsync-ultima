@@ -875,6 +875,18 @@ async function fetchFeed(append = false) {
   feedHasMore = resp.data?.pagination?.hasMore ?? msgs.length >= 30;
   feedLoaded = true;
   feedLastFetch = Date.now();
+  // Seed latestAt.live from the newest post we just got. Without this, the
+  // unread dot is event-driven only (WS new-message), so a user opening the
+  // ext after sleep sees 12 unread feed posts but no red dot until the 13th
+  // event arrives. Bumping latestAt here makes hasUnseen('live') agree with
+  // the actual server backlog.
+  if (!append && msgs.length > 0 && typeof noteSeenEvent === 'function') {
+    const newestTs = msgs.reduce((mx, m) => {
+      const ts = m.created_at ? new Date(m.created_at).getTime() : 0
+      return ts > mx ? ts : mx
+    }, 0)
+    if (newestTs > 0) noteSeenEvent('live', newestTs)
+  }
   if (currentTab === 'feed') renderFeed();
 }
 

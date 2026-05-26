@@ -31,7 +31,13 @@ let _seenSaveTimer = null
 function _saveSeenLocal() {
   if (_seenSaveTimer) cleanup.clearTimeout(_seenSaveTimer)
   _seenSaveTimer = cleanup.setTimeout(() => {
-    try { chrome.storage.local.set({ [SEEN_STORAGE_KEY]: { latestAt: { ...latestAt } } }) }
+    // Persist both latestAt AND seenAt. For authed users, seenAt is
+    // server-authoritative and gets clobbered by the GET on next boot — local
+    // serves only as instant-paint before the network lands. For anonymous
+    // users, the server skip in loadSeenState means seenAt would reset to 0
+    // on every reload and undo their clears; persisting it locally is the
+    // only way their bumps survive a refresh.
+    try { chrome.storage.local.set({ [SEEN_STORAGE_KEY]: { latestAt: { ...latestAt }, seenAt: { ...seenAt } } }) }
     catch (e) { warn('seen-state save failed:', e?.message) }
   }, 500)
 }

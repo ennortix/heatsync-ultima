@@ -263,38 +263,57 @@ async function sendTwitchWhisperDirect(toUserId, message) {
   return { ok: true }
 }
 
-// Whisper send: heatsync server proxy (uses Helix /helix/whispers with the
-// user's stored Twitch OAuth token + user:manage:whispers scope) as primary,
-// direct GQL as fallback only when the server proxy is unreachable. This
-// path is ToS-clean and removes the captured-integrity-token dependency
-// from the happy path — Helix REST doesn't require client-integrity.
+// Whisper send: heatsync server proxy (Helix /helix/whispers with the user's
+// stored Twitch OAuth + user:manage:whispers scope) is the primary path —
+// ToS-clean and works from any origin since it doesn't need Client-Integrity.
 //
-// The fallback path covers two cases: (1) heatsync server is down /
-// unreachable, (2) the user's heatsync-linked Twitch account differs from
-// the active twitch.tv session and they want to whisper-from the active
-// session. (1) is rare; (2) is a power-user concern that the captured GQL
-// fallback transparently handles.
+// Direct GQL fallback only runs on twitch.tv pages where the MAIN-world proxy
+// can mint a Client-Integrity JWT. Off twitch.tv (kick.com, youtube.com) the
+// integrity service rejects mutations as "failed integrity check" no matter
+// what, so the fallback is structurally dead and we short-circuit it to
+// surface the real proxy error (usually "log in to heatsync" / "link twitch")
+// instead of a misleading integrity message.
+//
+// On-twitch fallback still covers: (1) heatsync server unreachable, (2) the
+// user's heatsync-linked Twitch account differs from the active twitch.tv
+// session and they want to whisper-from the active session.
 async function sendTwitchWhisper(toUserId, message) {
+  const onTwitch = typeof _isOnTwitchPage === 'function' ? _isOnTwitchPage() : /(^|\.)twitch\.tv$/i.test(location.hostname || '')
+
+  let serverResp = null
+  let serverThrew = false
   try {
-    const resp = await apiFetch('/api/twitch/whisper', {
+    serverResp = await apiFetch('/api/twitch/whisper', {
       method: 'POST',
       body: { toUserId, message }
     })
-    if (resp?.ok) return { ok: true }
-    // 401 (no Twitch link) or 503 (server unreachable) → try direct GQL.
-    // Real errors (banned/blocked/etc.) surface as the response error
-    // and we still try direct as last-ditch in case the active twitch
-    // session has different permissions/state.
-    if (resp?.status === 401 && /no twitch token|not authenticated/i.test(resp?.error || '')) {
-      // No linked twitch → can't proxy. Direct GQL might work if user is
-      // logged into twitch.tv with the same account.
-    }
+    if (serverResp?.ok) return { ok: true }
   } catch (e) {
-    // Server unreachable — fall through to direct
+    serverThrew = true
   }
 
-  // Direct GQL fallback. Captured-integrity still needed here, but only
-  // when the Helix proxy fails. Most calls never reach this path.
+  const respStatus = Number(serverResp?.status) || 0
+  const respError = String(serverResp?.error || '')
+  const isAuthFail = respStatus === 401 && /no twitch token|not authenticated|re-login/i.test(respError)
+
+  // Off twitch.tv: direct GQL can't get integrity, so don't pretend to retry.
+  // Surface the real proxy error — actionable for the user.
+  if (!onTwitch) {
+    if (isAuthFail) {
+      showToast(t('mc_whisper_login'), 'error')
+      return { ok: false, error: 'log in to heatsync.org to send whispers', errorKind: 'auth' }
+    }
+    if (serverThrew || respStatus >= 500 || !serverResp) {
+      const msg = 'heatsync server unreachable'
+      showToast('whisper failed: ' + msg, 'error')
+      return { ok: false, error: msg, errorKind: 'server' }
+    }
+    const errText = respError || `twitch error ${respStatus}`
+    showToast('whisper failed: ' + errText, 'error')
+    return { ok: false, error: errText }
+  }
+
+  // On twitch.tv: direct GQL fallback. Integrity mintable here.
   try {
     const direct = await sendTwitchWhisperDirect(toUserId, message)
     if (direct.ok) return { ok: true }

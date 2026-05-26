@@ -63,29 +63,45 @@ window.addEventListener('pagehide', () => lifecycle.abort())
 let _hsMcTakenOver = false
 window.__heatsyncMcLifecycle = {
   abort: () => { _hsMcTakenOver = true; try { lifecycle.abort() } catch (_) {} },
-  // Diagnostic probe — exposes IRC/Kick/YT chat state so page-context JS
-  // (devtools console, automation scripts) can inspect what got joined and
-  // what messages are buffered. All references are late-bound via the
-  // module-level let/const declarations elsewhere in the IIFE.
-  dbg: () => {
-    const safeChans = (chat) => {
-      if (!chat?.channels) return null
-      const out = {}
+  // Diagnostic probe — exposes IRC/Kick/YT chat state. Callable both from
+  // isolated-world content scripts (via window.__heatsyncMcLifecycle.dbg())
+  // AND from page MAIN world via a CustomEvent bridge:
+  //   document.dispatchEvent(new CustomEvent('hs-dbg-probe'))
+  //   then read document.documentElement.dataset.hsDbg
+  // The MAIN-world dispatch is what makes this usable from devtools console
+  // (which defaults to MAIN unless context is switched).
+  dbg: () => _hsBuildDbg(),
+}
+function _hsBuildDbg() {
+  const safeChans = (chat) => {
+    if (!chat?.channels) return null
+    const out = {}
+    try {
       for (const [ch, buf] of chat.channels) {
         out[ch] = { count: buf?.getAll?.()?.length ?? 0 }
       }
-      return out
-    }
-    return {
-      irc: typeof irc !== 'undefined' ? safeChans(irc) : 'no irc',
-      kick: typeof kickChat !== 'undefined' ? safeChans(kickChat) : 'no kickChat',
-      currentTab: typeof currentTab !== 'undefined' ? currentTab : null,
-      channels: typeof channels !== 'undefined' && Array.isArray(channels)
-        ? channels.map(c => ({ id: c.id, twitch: c.twitch, kick: c.kick, youtube: c.youtube }))
-        : 'no channels',
-    }
-  },
+    } catch (e) { return 'err: ' + e?.message }
+    return out
+  }
+  return {
+    irc: typeof irc !== 'undefined' ? safeChans(irc) : 'no irc',
+    kick: typeof kickChat !== 'undefined' ? safeChans(kickChat) : 'no kickChat',
+    currentTab: typeof currentTab !== 'undefined' ? currentTab : null,
+    channels: typeof config !== 'undefined' && Array.isArray(config?.channels)
+      ? config.channels.map(c => ({ id: c.id, twitch: c.twitch, kick: c.kick, youtube: c.youtube }))
+      : 'no config.channels',
+    platformFilters: typeof platformFilters !== 'undefined' ? platformFilters : null,
+  }
 }
+// MAIN-world bridge: dispatchEvent('hs-dbg-probe') from page → content script
+// writes JSON snapshot to documentElement.dataset.hsDbg → MAIN reads.
+document.addEventListener('hs-dbg-probe', () => {
+  try {
+    document.documentElement.dataset.hsDbg = JSON.stringify(_hsBuildDbg())
+  } catch (e) {
+    document.documentElement.dataset.hsDbg = 'err:' + (e?.message || 'unknown')
+  }
+}, true)
 
 // Fast context-death detector. chrome.runtime.id becomes undefined sync on
 // extension reload. Tear down lifecycle immediately, then defer reload to

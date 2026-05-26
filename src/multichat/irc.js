@@ -451,6 +451,16 @@ class IRC {
         }
       }
     } catch (e) { log('BG history fetch failed:', e?.message) }
+    // Self-healing: if BG returned 0 msgs (cold SW / robotty still in flight)
+    // OR broadcast was lost, re-pull at 3s + 8s + 20s. Cheap (single message,
+    // no fetch) and idempotent — _refreshFromBg only mutates when SW has data.
+    for (const delay of [3000, 8000, 20000]) {
+      setTimeout(() => {
+        if (this._destroyed || !this.channels.has(ch)) return
+        if ((this.channels.get(ch)?.size || 0) >= 200) return
+        this._refreshFromBg(ch)
+      }, delay)
+    }
   }
 
   part(ch) {
@@ -862,6 +872,13 @@ class KickChat {
     if (!hydrated) await this.loadHistory(kickUsername)
     safeSendMessage({ type: 'ws_send', data: { type: 'channel:join', platform: 'kick', channel: kickUsername } })
     log('Kick joined', kickUsername, '(webhook mode)')
+    for (const delay of [3000, 8000, 20000]) {
+      setTimeout(() => {
+        if (this._destroyed || !this.channels.has(kickUsername)) return
+        if ((this.channels.get(kickUsername)?.size || 0) >= 200) return
+        this._refreshFromBg(kickUsername)
+      }, delay)
+    }
   }
 
   part(kickUsername) {

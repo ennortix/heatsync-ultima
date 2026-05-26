@@ -62,7 +62,29 @@ window.addEventListener('pagehide', () => lifecycle.abort())
 // i.e. a NEW multichat.js instance took over. Internal aborts skip the flag.
 let _hsMcTakenOver = false
 window.__heatsyncMcLifecycle = {
-  abort: () => { _hsMcTakenOver = true; try { lifecycle.abort() } catch (_) {} }
+  abort: () => { _hsMcTakenOver = true; try { lifecycle.abort() } catch (_) {} },
+  // Diagnostic probe — exposes IRC/Kick/YT chat state so page-context JS
+  // (devtools console, automation scripts) can inspect what got joined and
+  // what messages are buffered. All references are late-bound via the
+  // module-level let/const declarations elsewhere in the IIFE.
+  dbg: () => {
+    const safeChans = (chat) => {
+      if (!chat?.channels) return null
+      const out = {}
+      for (const [ch, buf] of chat.channels) {
+        out[ch] = { count: buf?.getAll?.()?.length ?? 0 }
+      }
+      return out
+    }
+    return {
+      irc: typeof irc !== 'undefined' ? safeChans(irc) : 'no irc',
+      kick: typeof kickChat !== 'undefined' ? safeChans(kickChat) : 'no kickChat',
+      currentTab: typeof currentTab !== 'undefined' ? currentTab : null,
+      channels: typeof channels !== 'undefined' && Array.isArray(channels)
+        ? channels.map(c => ({ id: c.id, twitch: c.twitch, kick: c.kick, youtube: c.youtube }))
+        : 'no channels',
+    }
+  },
 }
 
 // Fast context-death detector. chrome.runtime.id becomes undefined sync on

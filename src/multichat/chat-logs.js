@@ -249,7 +249,8 @@ function renderChatLogsView() {
     const empty = document.createElement('div')
     empty.className = 'hs-cl-empty'
     if (activeChatLogs.backfillPending) {
-      empty.textContent = `fetching historical logs from logs.ivr.fi… try refresh in ~30s`
+      const src = activeChatLogs.platform === 'kick' ? 'kick archive' : 'logs.ivr.fi'
+      empty.textContent = `fetching historical logs from ${src}… try refresh in ~30s`
     } else {
       empty.textContent = query
         ? `no matches for "${query}"`

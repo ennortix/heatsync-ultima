@@ -2098,21 +2098,45 @@
         continue
       }
 
-      // Kick emote format: [emote:ID:NAME] -> render as image from Kick CDN
+      // Kick emote format: [emote:ID:NAME] -> render as image from Kick CDN.
+      // When the name matches a known 7TV/BTTV/FFZ/heatsync entry, prefer that
+      // entry's URL (animated/full-quality), carry its hash (for block/add),
+      // and honor zero-width so overlay stacking matches Twitch parity.
       const kickEmoteMatch = word.match(/^\[emote:(\d+):([^\]]+)\]$/)
       if (kickEmoteMatch) {
         const [, emoteId, emoteName] = kickEmoteMatch
         const kickUrl = `https://files.kick.com/emotes/${emoteId}/fullsize`
-        const safeKickUrl = escapeHtml(kickUrl)
-        const safeName = escapeHtml(emoteName)
-        // Cross-reference caches to find real provider (7tv/bttv/ffz), fall back to kick
-        const cached = emoteCache.get(emoteName) || (channel && channelEmoteCaches[channel]?.get(emoteName))
+        const cached = senderEmotes?.get(emoteName)
+          || (channel && channelEmoteCaches[channel]?.get(emoteName))
+          || extraCache?.get(emoteName)
+          || emoteCache.get(emoteName)
+          || _rfGate(_rf?.get(emoteName))
+        const useCachedUrl = !!(cached?.url && !/^https?:\/\/files\.kick\.com\//i.test(cached.url))
+        const finalUrl = useCachedUrl ? cached.url : kickUrl
         const provider = cached?.source || 'kick'
-        const imgHtmlRaw = `<span class="hs-mc-emote-wrapper hs-state-channel" data-emote-name="${safeName}" data-emote-url="${safeKickUrl}" data-state="channel" data-source="${escapeHtml(provider)}"><img src="${safeKickUrl}" alt="${safeName}" title="${safeName} (${escapeHtml(provider)} via kick)" class="hs-mc-emote hs-emote-channel" data-emote-name="${safeName}" data-state="channel" data-source="${escapeHtml(provider)}" loading="lazy" decoding="async"></span>`
-        _flushStackToResult()
-        if (pendingWhitespace) { result.push(pendingWhitespace); pendingWhitespace = '' }
-        pendingStack = { items: [{ kind: 'base', raw: imgHtmlRaw, mods: pendingMods.slice(), hue: pendingHue }] }
-        pendingMods = []; pendingHue = null
+        const isOverlay = !!(cached?.zeroWidth) || (cached && zeroWidthFromAnyCache(emoteName))
+        const isBlocked = blockedEmoteNames.has(emoteName)
+        let state = isBlocked ? 'blocked' : (cached?.state || 'channel')
+        if (state === 'unadded' && inventoryEmotes.has(emoteName)) state = 'owned'
+        const safeName = escapeHtml(emoteName)
+        const safeUrl = escapeHtml(getChatResUrl(finalUrl))
+        const safeProvider = escapeHtml(provider)
+        const safeHash = cached?.hash ? escapeHtml(cached.hash) : ''
+        const ownerAttr = cached?.ownerDisplay ? ` data-owner="${escapeHtml(cached.ownerDisplay)}"` : ''
+        const titleAttr = useCachedUrl ? safeName : `${safeName} (${safeProvider} via kick)`
+        const imgHtmlRaw = `<span class="hs-mc-emote-wrapper hs-state-${state}" data-emote-name="${safeName}" data-emote-url="${safeUrl}" data-state="${state}" data-source="${safeProvider}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}><img src="${safeUrl}" alt="${safeName}" title="${titleAttr}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${safeName}" data-state="${state}" data-source="${safeProvider}"${ownerAttr} loading="lazy" decoding="async"></span>`
+        if (isOverlay && pendingStack) {
+          const itemMods = pendingMods.slice()
+          const itemHue = pendingHue
+          pendingMods = []; pendingHue = null
+          pendingStack.items.push({ kind: 'overlay', raw: imgHtmlRaw, mods: itemMods, hue: itemHue })
+          pendingWhitespace = ''
+        } else {
+          _flushStackToResult()
+          if (pendingWhitespace) { result.push(pendingWhitespace); pendingWhitespace = '' }
+          pendingStack = { items: [{ kind: 'base', raw: imgHtmlRaw, mods: pendingMods.slice(), hue: pendingHue }] }
+          pendingMods = []; pendingHue = null
+        }
         continue
       }
 

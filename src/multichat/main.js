@@ -944,6 +944,97 @@
     }
   }
 
+  // ─── Kick username → 7TV cosmetics + twitchId lookup ───
+  // Kick chat WS doesn't propagate user_id to the panel, but 7TV's /users/kick/{username}
+  // endpoint accepts the kick handle directly and returns the linked twitch connection.
+  // We use the returned twitchId as the cosmetics cache key so a chatter with linked
+  // accounts gets the same paint/badge across both platforms.
+  const kickNameResolved = new Map()      // kickHandle → twitchId | null
+  const kickNameLookupPending = new Set()
+  let kickNameLookupTimer = null
+  const KICK_NAME_BATCH = 8
+  const KICK_NAME_CACHE_MAX = 1000
+
+  function evictKickNameCache() {
+    if (kickNameResolved.size >= KICK_NAME_CACHE_MAX) {
+      kickNameResolved.delete(kickNameResolved.keys().next().value)
+    }
+  }
+
+  function queueKickNameToCosmetics(user) {
+    const key = (user || '').toLowerCase()
+    if (!key) return
+    if (kickNameResolved.has(key)) return
+    if (kickNameLookupPending.has(key)) return
+    kickNameLookupPending.add(key)
+    if (kickNameLookupPending.size >= KICK_NAME_BATCH) {
+      if (kickNameLookupTimer) { cleanup.clearTimeout(kickNameLookupTimer); kickNameLookupTimer = null }
+      flushKickNameLookups()
+      return
+    }
+    if (!kickNameLookupTimer) {
+      kickNameLookupTimer = cleanup.setTimeout(() => {
+        kickNameLookupTimer = null
+        flushKickNameLookups()
+      }, 800)
+    }
+  }
+
+  async function flushKickNameLookups() {
+    if (!kickNameLookupPending.size) return
+    const batch = [...kickNameLookupPending].slice(0, KICK_NAME_BATCH)
+    batch.forEach(k => kickNameLookupPending.delete(k))
+    let resp = null
+    try {
+      resp = await safeSendMessage({ type: 'get_kick_user_cosmetics', kickUsernames: batch })
+    } catch { resp = null }
+    const cosmetics = resp?.cosmetics || {}
+    const changedIds = []
+    for (const key of batch) {
+      const c = cosmetics[key]
+      evictKickNameCache()
+      const tid = c?.twitchId ? String(c.twitchId) : null
+      kickNameResolved.set(key, tid)
+      if (!tid) continue
+      // Fold the {paint, badge} into the twitch-id-keyed cosmetics cache so the
+      // existing updateCosmeticsInPlace pipeline paints by uid.
+      setMcCosmetic(tid, { paint: c.paint || null, badge: c.badge || null })
+      changedIds.push(tid)
+      // Backfill data-uid on rendered Kick msgs by lowercase username so
+      // updateCosmeticsInPlace finds the right rows.
+      const container = document.getElementById('hs-mc-messages')
+      if (container) {
+        const sel = `.hs-mc-msg .hs-mc-user[data-platform="kick"][data-username="${CSS.escape(key)}"]`
+        for (const userEl of container.querySelectorAll(sel)) {
+          const div = userEl.closest('.hs-mc-msg')
+          if (div && !div.dataset.uid) div.dataset.uid = tid
+        }
+      }
+      // Patch buffered Kick messages so the next render picks up userId and
+      // walks the cosmetics-aware path.
+      const patchBuf = (buf) => {
+        if (!buf || (!Array.isArray(buf) && !(buf && typeof buf[Symbol.iterator] === 'function'))) return
+        for (const m of buf) {
+          if (m && m.platform === 'kick' && m.user) {
+            const mk = m.user.toLowerCase()
+            if (mk === key) { m.userId = tid; m._renderedHtml = null }
+          }
+        }
+      }
+      if (typeof kickChat !== 'undefined' && kickChat?.channels) {
+        for (const ch of kickChat.channels.keys()) patchBuf(kickChat.getMessages(ch))
+      }
+      if (typeof mentionsBuffer !== 'undefined') patchBuf(mentionsBuffer)
+    }
+    if (changedIds.length) updateCosmeticsInPlace(changedIds)
+    if (kickNameLookupPending.size > 0 && !kickNameLookupTimer) {
+      kickNameLookupTimer = cleanup.setTimeout(() => {
+        kickNameLookupTimer = null
+        flushKickNameLookups()
+      }, 1500)
+    }
+  }
+
   // 7TV cosmetics queue — batch lookups to avoid per-message requests
   function queueMcCosmeticsLookup(userId) {
     if (!userId || mcUserCosmetics.has(userId)) return
@@ -7121,6 +7212,15 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (cached) m.userId = cached
       else if (cached === undefined) queueYtNameToTwitchId(m.user)
     }
+    // Kick: panel sees usernames only — resolve via 7TV/v3/users/kick/{name}
+    // which also returns the linked twitch_id when present. Hoist into m.userId
+    // so the existing cosmetics pipeline applies.
+    if (!m.userId && m.platform === 'kick' && m.user) {
+      const kKey = (m.user || '').toLowerCase()
+      const cached = kickNameResolved.get(kKey)
+      if (cached) m.userId = cached
+      else if (cached === undefined) queueKickNameToCosmetics(m.user)
+    }
     if (m.userId) {
       badges += renderThirdPartyBadges(m.userId)
       if (!mcUserCosmetics.has(m.userId)) queueMcCosmeticsLookup(m.userId)
@@ -7659,50 +7759,33 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (active.length === 0) return []
     if (active.length === 1) return active[0].slice(-limit)
 
-    const perSource = Math.ceil(limit / active.length)
-    // Take each platform's most recent messages (internally chronological)
-    const slices = active.map(s => s.slice(-perSource))
-    const total = slices.reduce((n, s) => n + s.length, 0)
+    // Co-live detection. When every source's newest msg lands within ~10 min
+    // of each other AND is fresh (<1h old), both platforms are streaming now
+    // — a firehose twitch can drown a trickle YT/kick, so apply the
+    // proportional per-source cap to preserve fairness. Otherwise (offline
+    // channel with sparse recent traffic, or sources timestamps far apart)
+    // let chronological order rule so older historical msgs from a sparse
+    // source don't get amputated by a too-small slice(-250).
+    const maxTimes = active.map(s => s[s.length - 1]?.time || 0)
+    const newestMax = Math.max(...maxTimes)
+    const oldestMax = Math.min(...maxTimes)
+    const CO_LIVE_WINDOW_MS = 10 * 60 * 1000
+    const RECENT_THRESHOLD_MS = 60 * 60 * 1000
+    const coLive = (newestMax - oldestMax) < CO_LIVE_WINDOW_MS && newestMax > Date.now() - RECENT_THRESHOLD_MS
 
-    // Proportional interleave: distribute each source evenly across output
-    // using Bresenham-style stepping so platforms are sprinkled throughout
-    const result = new Array(total)
-    const positions = slices.map(() => [])
-
-    // Assign output positions to each source proportionally
-    for (let si = 0; si < slices.length; si++) {
-      const count = slices[si].length
-      if (count === 0) continue
-      const step = total / count
-      for (let i = 0; i < count; i++) {
-        positions[si].push(Math.floor(i * step + si * step / slices.length))
-      }
+    const pool = []
+    if (coLive) {
+      const perSource = Math.ceil(limit / active.length)
+      for (const s of active) pool.push(...s.slice(-perSource))
+    } else {
+      for (const s of active) pool.push(...s.slice(-limit))
     }
 
-    // Fill result array — resolve collisions by finding next free slot
-    const used = new Uint8Array(total)
-    for (let si = 0; si < slices.length; si++) {
-      for (let i = 0; i < slices[si].length; i++) {
-        let pos = positions[si][i]
-        while (pos < total && used[pos]) pos++
-        if (pos >= total) { pos = 0; while (used[pos]) pos++ }
-        result[pos] = slices[si][i]
-        used[pos] = 1
-      }
-    }
-
-    const merged = result.filter(Boolean).slice(-limit)
-
-    // FULL chronological sort by time. Per-source slicing above already caps
-    // each platform's contribution (perSource = 500/N), so a high-volume
-    // twitch chat can't wash out kick/yt in the merged result. Sorting the
-    // full merged list by (time, stable-id) ensures deterministic order
-    // across renders — without the secondary key, tied timestamps flip
-    // positions when Bresenham layout shifts as `total` grows, and the
-    // render-diff treats each flipped pair as new inserts → duplicate DOM
-    // nodes accumulating to 1000s over a long stream.
-    merged.sort(byTimeStable)
-    return merged
+    // Stable chronological sort. Secondary stableMsgId key keeps tied
+    // timestamps deterministic across renders — without it, the insert-only
+    // diff treats every flipped pair as a new insert and duplicates pile up.
+    pool.sort(byTimeStable)
+    return pool.slice(-limit)
   }
   function stableMsgId(m) {
     return m.id || m.base36_id || `${m.user || ''}:${m.time || ''}:${(m.text || '').slice(0, 32)}`
@@ -11545,6 +11628,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
     // Handle incoming Kick messages
     kickChat.on('message', (msg) => {
+      // Lazy-resolve username → 7TV cosmetics + twitchId. First sighting per
+      // session triggers one /users/kick/{name} fetch; result is cached and
+      // backfilled into the rendered DOM so paints/badges paint in place.
+      if (msg.user && !msg.userId) queueKickNameToCosmetics(msg.user)
       // Suppress echo of own sent messages (dedup dual-send) — pass 'kick'
       // so host-platform preference can favor this echo when on kick.com.
       if (isSentEcho(msg.text, 'kick')) return
@@ -12238,9 +12325,19 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // /settings, …) never mount #channel-chatroom. Body-mount immediately
       // so the persistent overlay appears without waiting on the 15s safety
       // timeout. Single-segment paths likely become a channel page once
-      // chatroom mounts; waitForMount handles that.
+      // chatroom mounts; waitForMount handles that — except for the reserved
+      // path names below, which look channel-shaped to the regex but never
+      // mount a chatroom, leaving the overlay invisible on /browse etc.
+      const KICK_RESERVED_PATHS = new Set([
+        'browse', 'categories', 'category', 'following', 'search', 'settings',
+        'dashboard', 'help', 'messages', 'notifications', 'community',
+        'about', 'subscriptions', 'wallet', 'verify', 'login', 'signup',
+        'logout', 'privacy', 'terms', 'rules', 'careers', 'press',
+        'profile', 'support'
+      ]);
       const isPopout = document.body.classList.contains('hs-popout');
-      const couldBeChannel = !!location.pathname.match(/^\/[a-zA-Z0-9_-]+\/?$/) && !isPopout;
+      const segMatch = location.pathname.match(/^\/([a-zA-Z0-9_-]+)\/?$/);
+      const couldBeChannel = !!segMatch && !KICK_RESERVED_PATHS.has(segMatch[1].toLowerCase()) && !isPopout;
       if (!couldBeChannel) {
         ensureUIElements();
         switchTab(_savedActiveTab || 'live');

@@ -1085,14 +1085,14 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
     { label: 'mention', fn: () => _mentionInMcInput(username) },
     { label: 'view profile', fn: () => openProfileCard(username, platform) },
   ]
-  // Chat-log items — only for twitch (only platform with relay wired)
-  const isTwitch = (platform || 'twitch') === 'twitch'
-  if (isTwitch) {
+  // Chat-log items — twitch + kick (yt has no relay)
+  const logPlatform = (platform || 'twitch')
+  if (logPlatform === 'twitch' || logPlatform === 'kick') {
     const msgChannel = msg?.dataset?.msgChannel || (typeof getLiveChannel === 'function' ? getLiveChannel() : null)
     if (msgChannel) {
-      items.push({ label: `chat logs in #${msgChannel}`, fn: () => openChatLogsView(username, { platform: 'twitch', channel: msgChannel }) })
+      items.push({ label: `chat logs in #${msgChannel}`, fn: () => openChatLogsView(username, { platform: logPlatform, channel: msgChannel }) })
     }
-    items.push({ label: 'chat logs (all channels)', fn: () => openChatLogsView(username, { platform: 'twitch' }) })
+    items.push({ label: 'chat logs (all channels)', fn: () => openChatLogsView(username, { platform: logPlatform }) })
   }
   items.push(
     'sep',
@@ -3969,24 +3969,55 @@ async function handleSlashCommand(text, input) {
     return true
   }
 
-  // ─── Twitch mod actions (deprecated from IRC PRIVMSG in 2023; routed via GQL) ───
+  // ─── Mod actions ─── Twitch via GQL, Kick via tab-relay API.
+  // On a Twitch+Kick dual-link tab, dispatch to BOTH and surface a combined toast
+  // so a mod can sanction a user everywhere with one command.
   // currentTab = channel login when on a per-channel tab; on aggregate tabs we
   // can't pick a single channel, so refuse with a useful toast.
   const modChannel = (typeof currentTab === 'string' && /^[a-z0-9_]{2,40}$/i.test(currentTab))
     ? currentTab : null
+  const _modCh = modChannel ? config.channels.find(c => c.id === modChannel) : null
+  const _twitchModName = _modCh?.twitch || (modChannel && !_modCh ? modChannel : null)
+  const _kickModSlug = _modCh?.kick || null
+
+  async function _kickMod(action, params) {
+    if (!_kickModSlug) return null
+    return safeSendMessage({ type: 'kick_mod_action', action, slug: _kickModSlug, ...params })
+  }
+
+  function _combinedToast(label, target, tResp, kResp) {
+    const tOk = tResp?.ok
+    const kOk = kResp?.ok
+    if (tResp && kResp) {
+      if (tOk && kOk) { showToast(`${label} ${target} (twitch+kick)`, 'success'); return true }
+      if (tOk) { showToast(`${label} ${target} on twitch — kick failed: ${kResp.error || 'unknown'}`, 'error'); return true }
+      if (kOk) { showToast(`${label} ${target} on kick — twitch failed: ${tResp.error || 'unknown'}`, 'error'); return true }
+      showToast(`${label} failed: twitch ${tResp.error || '?'} / kick ${kResp.error || '?'}`, 'error'); return false
+    }
+    const only = tResp || kResp
+    showToast(only?.ok ? `${label} ${target}` : `${label} failed: ${only?.error || 'unknown'}`, only?.ok ? 'success' : 'error')
+    return !!only?.ok
+  }
 
   if (cmd === 'ban' || cmd === 'timeout' || cmd === 'unban') {
     if (!modChannel) {
       showToast(`/${cmd} needs a channel tab (not live/mentions/posts)`, 'error')
       return true
     }
+    if (!_twitchModName && !_kickModSlug) {
+      showToast(`/${cmd} needs a twitch or kick channel`, 'error')
+      return true
+    }
     if (cmd === 'ban') {
       const m = rest.match(/^@?(\S+)(?:\s+(.+))?$/)
       if (!m) { showToast('usage: /ban <user> [reason]', 'error'); return true }
       const [, target, reason] = m
-      const resp = await banTwitchUser(modChannel, target, reason || '')
-      showToast(resp.ok ? `banned ${target}` : `ban failed: ${resp.error || 'unknown'}`, resp.ok ? 'success' : 'error')
-      if (resp.ok) clearInput(input)
+      const [tResp, kResp] = await Promise.all([
+        _twitchModName ? banTwitchUser(_twitchModName, target, reason || '') : null,
+        _kickMod('ban', { username: target, reason: reason || '' })
+      ])
+      const ok = _combinedToast('banned', target, tResp, kResp)
+      if (ok) clearInput(input)
       return true
     }
     if (cmd === 'timeout') {
@@ -3994,17 +4025,23 @@ async function handleSlashCommand(text, input) {
       if (!m) { showToast('usage: /timeout <user> [seconds] [reason]', 'error'); return true }
       const [, target, secStr, reason] = m
       const sec = secStr ? Math.max(1, parseInt(secStr)) : 600
-      const resp = await timeoutTwitchUser(modChannel, target, sec, reason || '')
-      showToast(resp.ok ? `timed out ${target} ${sec}s` : `timeout failed: ${resp.error || 'unknown'}`, resp.ok ? 'success' : 'error')
-      if (resp.ok) clearInput(input)
+      const [tResp, kResp] = await Promise.all([
+        _twitchModName ? timeoutTwitchUser(_twitchModName, target, sec, reason || '') : null,
+        _kickMod('timeout', { username: target, durationMin: Math.max(1, Math.round(sec / 60)), reason: reason || '' })
+      ])
+      const ok = _combinedToast(`timed out ${sec}s`, target, tResp, kResp)
+      if (ok) clearInput(input)
       return true
     }
     if (cmd === 'unban') {
       const target = rest.trim().replace(/^@/, '')
       if (!target) { showToast('usage: /unban <user>', 'error'); return true }
-      const resp = await unbanTwitchUser(modChannel, target)
-      showToast(resp.ok ? `unbanned ${target}` : `unban failed: ${resp.error || 'unknown'}`, resp.ok ? 'success' : 'error')
-      if (resp.ok) clearInput(input)
+      const [tResp, kResp] = await Promise.all([
+        _twitchModName ? unbanTwitchUser(_twitchModName, target) : null,
+        _kickMod('unban', { username: target })
+      ])
+      const ok = _combinedToast('unbanned', target, tResp, kResp)
+      if (ok) clearInput(input)
       return true
     }
   }
@@ -4013,7 +4050,21 @@ async function handleSlashCommand(text, input) {
     if (!modChannel) { showToast('/delete needs a channel tab', 'error'); return true }
     const messageID = rest.trim()
     if (!messageID) { showToast('usage: /delete <message-id> (right-click a message)', 'error'); return true }
-    const resp = await deleteTwitchMessage(modChannel, messageID)
+    // Routing: prefer Twitch (UUID) vs Kick (snowflake-ish) by id shape.
+    // Twitch msg ids are UUIDv4. Kick chat msg ids are also UUID. Without a
+    // reliable shape distinguisher, try Twitch first when linked, else Kick.
+    let resp
+    if (_twitchModName) {
+      resp = await deleteTwitchMessage(_twitchModName, messageID)
+      if (!resp.ok && _kickModSlug) {
+        // Twitch rejected — try Kick (the id was probably a Kick message)
+        resp = await safeSendMessage({ type: 'kick_mod_action', action: 'delete', slug: _kickModSlug, messageId: messageID })
+      }
+    } else if (_kickModSlug) {
+      resp = await safeSendMessage({ type: 'kick_mod_action', action: 'delete', slug: _kickModSlug, messageId: messageID })
+    } else {
+      showToast('/delete needs a twitch or kick channel', 'error'); return true
+    }
     showToast(resp.ok ? 'deleted' : `delete failed: ${resp.error || 'unknown'}`, resp.ok ? 'success' : 'error')
     if (resp.ok) clearInput(input)
     return true
@@ -4036,7 +4087,7 @@ const SLASH_HELP_LINES = [
   '/status [channel]      — show chat modes + stream info',
   '/help                  — this list',
   '',
-  'twitch mod (routed via GQL, need a channel tab):',
+  'mod (need a channel tab — fires both twitch+kick if linked):',
   '/ban <user> [reason]   — perma ban',
   '/timeout <user> [s] [r]— timeout, default 600s',
   '/unban <user>          — unban or end timeout',

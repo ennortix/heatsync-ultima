@@ -1607,6 +1607,8 @@ async function fetchFFZChannelEmotes(channelName) {
 const twitchIdCache = new Map();
 const TWITCH_ID_CACHE_MAX = 1000;
 const kickChannelIdCache = new Map();
+const kickChatroomIdCache = new Map();
+const kickUsernameToIdCache = new Map();
 let twitchIdPersistTimer = null;
 function persistTwitchIdCache() {
   if (twitchIdPersistTimer) return;
@@ -5528,6 +5530,57 @@ async function handleMessage(message, sender, sendResponse) {
     })()
     return true
 
+  } else if (message.type === 'kick_mod_action') {
+    // Kick moderation — ban / timeout / unban / delete-message.
+    // Routed through a kick.com tab so same-origin XSRF + session cookies apply.
+    // Shape: { action: 'ban'|'timeout'|'unban'|'delete', slug, username?, durationMin?, reason?, messageId? }
+    ;(async () => {
+      try {
+        const action = String(message.action || '')
+        const slug = String(message.slug || '').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 64)
+        if (!action || !slug) { sendResponse({ ok: false, error: 'missing params' }); return }
+        const cookie = await browser.cookies.get({ url: 'https://kick.com', name: 'XSRF-TOKEN' })
+        if (!cookie?.value) { sendResponse({ ok: false, error: 'kick_not_logged_in' }); return }
+        const tabs = await browser.tabs.query({ url: '*://*.kick.com/*' })
+        if (!tabs || tabs.length === 0) { sendResponse({ ok: false, error: 'no_kick_tab' }); return }
+        // For delete we need the chatroomId — resolve once per slug, cached.
+        let chatroomId = null
+        if (action === 'delete') {
+          chatroomId = kickChatroomIdCache.get(slug)
+          if (!chatroomId) {
+            const resp = await fetchWithTimeout(`https://kick.com/api/v2/channels/${encodeURIComponent(slug)}`)
+            if (resp.ok) {
+              const data = await resp.json().catch(() => null)
+              chatroomId = data?.chatroom?.id || null
+              if (chatroomId) {
+                if (kickChatroomIdCache.size >= 100) {
+                  kickChatroomIdCache.delete(kickChatroomIdCache.keys().next().value)
+                }
+                kickChatroomIdCache.set(slug, chatroomId)
+              }
+            }
+            if (!chatroomId) { sendResponse({ ok: false, error: 'no_chatroom' }); return }
+          }
+        }
+        const result = await browser.tabs.sendMessage(tabs[0].id, {
+          type: 'kick_mod_relay',
+          action,
+          slug,
+          chatroomId,
+          username: message.username || '',
+          durationMin: message.durationMin || 0,
+          reason: message.reason || '',
+          messageId: message.messageId || '',
+          xsrfToken: cookie.value
+        })
+        sendResponse(result || { ok: false, error: 'no response from tab' })
+      } catch (e) {
+        log('kick_mod_action error:', e.message)
+        sendResponse({ ok: false, error: e.message })
+      }
+    })()
+    return true
+
   } else if (message.type === 'youtube_send_message') {
     (async () => {
       try {
@@ -5728,6 +5781,11 @@ async function handleMessage(message, sender, sendResponse) {
     })()
     return true
   } else if (message.type === 'get_kick_user_cosmetics') {
+    // 7TV's /v3/users/kick/{id} expects the numeric Kick user_id, not the
+    // username — username lookups return 404 user_not_found. Resolve via
+    // kick.com/api/v1/users/{username} first (returns {id, username, ...}),
+    // cache that id forever (LRU), then hit 7TV with the id to pull cosmetics
+    // and the linked Twitch connection.
     const usernames = (message.kickUsernames || []).slice(0, 10)
     ;(async () => {
       const result = {}
@@ -5741,8 +5799,27 @@ async function handleMessage(message, sender, sendResponse) {
           return
         }
         try {
-          const resp = await fetchWithTimeout(`https://7tv.io/v3/users/kick/${username}`)
-          if (!resp.ok) { setUserCosmetic(cacheKey, null); result[username] = null; return }
+          // Step 1 — username → kick user_id (cached separately)
+          let kickUserId = kickUsernameToIdCache.get(username)
+          if (!kickUserId) {
+            const userResp = await fetchWithTimeout(`https://kick.com/api/v1/users/${encodeURIComponent(username)}`)
+            if (!userResp.ok) {
+              userResp.body?.cancel?.()
+              setUserCosmetic(cacheKey, null)
+              result[username] = null
+              return
+            }
+            const userData = await userResp.json().catch(() => null)
+            kickUserId = userData?.id || null
+            if (!kickUserId) { setUserCosmetic(cacheKey, null); result[username] = null; return }
+            if (kickUsernameToIdCache.size >= 1000) {
+              kickUsernameToIdCache.delete(kickUsernameToIdCache.keys().next().value)
+            }
+            kickUsernameToIdCache.set(username, kickUserId)
+          }
+          // Step 2 — kick user_id → 7TV cosmetics + twitch connection
+          const resp = await fetchWithTimeout(`https://7tv.io/v3/users/kick/${kickUserId}`)
+          if (!resp.ok) { resp.body?.cancel?.(); setUserCosmetic(cacheKey, null); result[username] = null; return }
           const data = await resp.json()
           const ids7tv = extract7TVCosmeticIds(data)
           const cosmetic = await resolve7TVCosmeticIds(ids7tv)

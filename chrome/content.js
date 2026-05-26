@@ -3687,6 +3687,61 @@ if (window.location.hostname.includes('kick.com')) {
   chrome.runtime.onMessage.addListener(_onMessageKickRelay)
 }
 
+// Kick mod relay — ban / timeout / unban / delete-message.
+// Runs on kick.com tab so X-XSRF-TOKEN + session cookies are same-origin.
+function _onMessageKickModRelay(message, sender, sendResponse) {
+  if (message.type !== 'kick_mod_relay') return
+  const xsrf = decodeURIComponent(message.xsrfToken || '')
+  const baseHeaders = {
+    'Accept': 'application/json',
+    'Content-Type': 'application/json',
+    'X-XSRF-TOKEN': xsrf
+  }
+  let url, method, body
+  const slug = encodeURIComponent(String(message.slug || ''))
+  const username = String(message.username || '').replace(/^@/, '')
+  if (message.action === 'ban') {
+    url = `https://kick.com/api/v2/channels/${slug}/bans`
+    method = 'POST'
+    body = { banned_username: username, permanent: true }
+    if (message.reason) body.reason = message.reason
+  } else if (message.action === 'timeout') {
+    url = `https://kick.com/api/v2/channels/${slug}/bans`
+    method = 'POST'
+    body = { banned_username: username, permanent: false, duration: Math.max(1, Math.floor(Number(message.durationMin) || 10)) }
+    if (message.reason) body.reason = message.reason
+  } else if (message.action === 'unban') {
+    url = `https://kick.com/api/v2/channels/${slug}/bans/${encodeURIComponent(username)}`
+    method = 'DELETE'
+    body = null
+  } else if (message.action === 'delete') {
+    if (!message.chatroomId || !message.messageId) { sendResponse({ ok: false, error: 'missing params' }); return true }
+    url = `https://kick.com/api/v2/chatrooms/${encodeURIComponent(message.chatroomId)}/messages/${encodeURIComponent(message.messageId)}`
+    method = 'DELETE'
+    body = null
+  } else {
+    sendResponse({ ok: false, error: 'unknown action' })
+    return true
+  }
+  const init = {
+    method,
+    headers: baseHeaders,
+    credentials: 'include',
+    signal: AbortSignal.timeout(8000)
+  }
+  if (body) init.body = JSON.stringify(body)
+  fetch(url, init).then(r => {
+    if (r.ok || r.status === 204) { sendResponse({ ok: true }); return }
+    r.text().then(t => sendResponse({ ok: false, error: `${r.status}: ${t.slice(0, 200)}` }))
+      .catch(() => sendResponse({ ok: false, error: `${r.status}` }))
+  }).catch(e => sendResponse({ ok: false, error: e.message }))
+  return true
+}
+if (window.location.hostname.includes('kick.com')) {
+  chrome.runtime.onMessage.removeListener(_onMessageKickModRelay)
+  chrome.runtime.onMessage.addListener(_onMessageKickModRelay)
+}
+
 
 // Debounce reprocessing so rapid emote updates only trigger one pass
 let reprocessDebounce = null;

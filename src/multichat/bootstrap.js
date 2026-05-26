@@ -83,6 +83,20 @@ function _hsBuildDbg() {
     } catch (e) { return 'err: ' + e?.message }
     return out
   }
+  const kickResolvedSample = (() => {
+    try {
+      if (typeof kickNameResolved === 'undefined') return 'no kickNameResolved'
+      const entries = [...kickNameResolved.entries()].slice(0, 20)
+      const hits = entries.filter(([, v]) => v != null).length
+      return { size: kickNameResolved.size, hits, sample: entries.slice(0, 10) }
+    } catch (e) { return 'err: ' + e?.message }
+  })()
+  const kickPending = (() => {
+    try {
+      if (typeof kickNameLookupPending === 'undefined') return 'no kickNameLookupPending'
+      return { pending: kickNameLookupPending.size, sample: [...kickNameLookupPending].slice(0, 10) }
+    } catch (e) { return 'err: ' + e?.message }
+  })()
   return {
     irc: typeof irc !== 'undefined' ? safeChans(irc) : 'no irc',
     kick: typeof kickChat !== 'undefined' ? safeChans(kickChat) : 'no kickChat',
@@ -91,6 +105,8 @@ function _hsBuildDbg() {
       ? config.channels.map(c => ({ id: c.id, twitch: c.twitch, kick: c.kick, youtube: c.youtube }))
       : 'no config.channels',
     platformFilters: typeof platformFilters !== 'undefined' ? platformFilters : null,
+    kickResolved: kickResolvedSample,
+    kickPendingLookups: kickPending,
   }
 }
 // MAIN-world bridge: dispatchEvent('hs-dbg-probe') from page → content script
@@ -100,6 +116,53 @@ document.addEventListener('hs-dbg-probe', () => {
     document.documentElement.dataset.hsDbg = JSON.stringify(_hsBuildDbg())
   } catch (e) {
     document.documentElement.dataset.hsDbg = 'err:' + (e?.message || 'unknown')
+  }
+}, true)
+document.addEventListener('hs-dbg-render-trace', (e) => {
+  try {
+    const id = (e?.detail?.id || '').toLowerCase()
+    const ch = (typeof getChannelById === 'function') ? getChannelById(id) : null
+    const tw = ch?.twitch
+    const kk = ch?.kick
+    const ircMsgs = tw && typeof irc !== 'undefined' ? (irc?.getMessages(tw) || []) : []
+    const kickMsgs = kk && typeof kickChat !== 'undefined' ? (kickChat?.getMessages(kk) || []) : []
+    const ytMsgs = (typeof channelYtMessages !== 'undefined') ? (channelYtMessages.get(id) || []) : []
+    const filt = (typeof getPlatformFilter === 'function') ? getPlatformFilter(id) : null
+    const out = {
+      id, ch_twitch: tw, ch_kick: kk,
+      ircMsgs_len: ircMsgs.length,
+      kickMsgs_len: kickMsgs.length,
+      ytMsgs_len: ytMsgs.length,
+      filt,
+      ircTimes: ircMsgs.slice(-3).map(m => ({u: m.user, t: m.time, txt: (m.text||'').slice(0,30)})),
+      ytTimes: ytMsgs.slice(-3).map(m => ({u: m.user, t: m.time, txt: (m.text||'').slice(0,30)})),
+      ircHidden: ircMsgs.filter(m => m?.hidden).length,
+    }
+    document.documentElement.dataset.hsDbg3 = JSON.stringify(out)
+  } catch (err) {
+    document.documentElement.dataset.hsDbg3 = 'err:' + (err?.message || 'unknown')
+  }
+}, true)
+document.addEventListener('hs-dbg-twitch-sample', (e) => {
+  try {
+    const ch = (e?.detail?.ch || '').toLowerCase()
+    const buf = (typeof irc !== 'undefined') ? irc?.channels?.get(ch) : null
+    if (!buf) { document.documentElement.dataset.hsDbg2 = JSON.stringify({err: 'no buf'}); return }
+    const all = buf.getAll()
+    const times = all.map(m => m.time || 0).filter(t => t)
+    const minT = times.length ? Math.min(...times) : 0
+    const maxT = times.length ? Math.max(...times) : 0
+    const sample = all.slice(-3).map(m => ({user: m.user, time: m.time, text: m.text?.slice(0,40), platform: m.platform, hidden: m.hidden, isHistory: m.isHistory, type: m.type}))
+    document.documentElement.dataset.hsDbg2 = JSON.stringify({
+      total: all.length,
+      noTime: all.length - times.length,
+      minT, maxT,
+      minISO: minT ? new Date(minT).toISOString() : null,
+      maxISO: maxT ? new Date(maxT).toISOString() : null,
+      sample
+    })
+  } catch (err) {
+    document.documentElement.dataset.hsDbg2 = 'err:' + (err?.message || 'unknown')
   }
 }, true)
 

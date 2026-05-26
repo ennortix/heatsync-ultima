@@ -171,12 +171,14 @@ const CONFIG = {
     TWITCH_CHANNEL_LEADERBOARD: '[class*="channel-leaderboard"]',
     TWITCH_MARQUEE: '[class*="marquee-animation"]',
 
-    // Kick chat containers
-    KICK_CHAT_CONTAINER: '#chatroom-messages',
-    KICK_CHAT_CONTAINER_INNER: '#chatroom-messages .no-scrollbar',
-    KICK_CHAT_ROOM: '#channel-chatroom',
-    KICK_CHAT_MESSAGES: '[data-index]',
-    KICK_IDENTITY: '.chat-identity-name',
+    // Kick chat containers — querySelector accepts CSV; first match wins so
+    // primary selector is canonical and rest are defensive fallbacks against
+    // Kick redesigns. Adding alternates is cheaper than reactive hot-fixes.
+    KICK_CHAT_CONTAINER: '#chatroom-messages, #channel-chatroom [class*="messages"], [class*="chat-messages-container"]',
+    KICK_CHAT_CONTAINER_INNER: '#chatroom-messages .no-scrollbar, #chatroom-messages [class*="scroll"], [class*="chat-messages-container"] [class*="scroll"]',
+    KICK_CHAT_ROOM: '#channel-chatroom, [class*="chat-room"], [class*="chatroom"]',
+    KICK_CHAT_MESSAGES: '[data-index], [class*="chat-entry"]',
+    KICK_IDENTITY: '.chat-identity-name, [class*="chat-identity"], [class*="chat-author"]',
 
     // Native emote selectors (combined via COMBINED_EMOTE_SELECTOR in content.js)
     NATIVE_EMOTE_IMG: 'img[data-a-target="emote-name"]',

@@ -131,6 +131,12 @@ async function openProfileCard(username, platform) {
 
   try {
     const platParam = platform ? `?platform=${encodeURIComponent(platform)}` : ''
+    // Fire kick enrichment in parallel for kick-platform users — Kick API is
+    // public/CORS-friendly and adds bio + socials + pfp + linked twitch even
+    // when the user has no heatsync profile.
+    const kickEnrichP = (platform === 'kick')
+      ? pcFetchKickEnrich(username).catch(() => null)
+      : Promise.resolve(null)
     const resp = await apiFetch(`/api/profile/${encodeURIComponent(username)}${platParam}`)
     if (!activeProfileCard || activeProfileCard.username !== username) return
     let profile = (resp?.ok && resp.data?.profile) ? resp.data.profile : null
@@ -141,11 +147,18 @@ async function openProfileCard(username, platform) {
       if (!activeProfileCard || activeProfileCard.username !== username) return
       if (twResp?.ok && twResp.data?.profile) profile = twResp.data.profile
     }
+    const kickEnrich = await kickEnrichP
+    if (!activeProfileCard || activeProfileCard.username !== username) return
     if (profile) {
+      if (kickEnrich) pcMergeKickEnrich(profile, kickEnrich)
       activeProfileCard.data = profile
       if (typeof _profileCache !== 'undefined') {
         _profileCache.set(cacheKey, { profile, ts: Date.now() })
       }
+    } else if (kickEnrich) {
+      // Build a synthetic profile from Kick data so the card has something useful
+      // instead of "no profile" — bio, socials, pfp, cross-link to twitch.
+      activeProfileCard.data = pcSynthFromKickEnrich(username, kickEnrich)
     } else {
       activeProfileCard.data = { error: true, username }
     }
@@ -154,6 +167,55 @@ async function openProfileCard(username, platform) {
     if (!activeProfileCard) return
     activeProfileCard.data = { error: true, username }
     renderProfileCardView()
+  }
+}
+
+// Fetch kick.com/api/v1/users/{name} → bio, twitter, facebook, instagram,
+// youtube, discord, tiktok, profilepic. Also captures linked twitch username
+// via getKickLinkedTwitch (populated by the 7TV-via-kick cosmetics path).
+async function pcFetchKickEnrich(username) {
+  if (!username) return null
+  const u = String(username).toLowerCase()
+  try {
+    const resp = await fetch(`https://kick.com/api/v1/users/${encodeURIComponent(u)}`, { credentials: 'omit' })
+    if (!resp.ok) return null
+    const data = await resp.json().catch(() => null)
+    if (!data?.id) return null
+    return {
+      kick_user_id: data.id,
+      kick_username: data.username || u,
+      kick_profile_pic: data.profilepic || null,
+      kick_bio: data.bio || null,
+      kick_socials: {
+        twitter: data.twitter || null,
+        facebook: data.facebook || null,
+        instagram: data.instagram || null,
+        youtube: data.youtube || null,
+        discord: data.discord || null,
+        tiktok: data.tiktok || null,
+      },
+      linked_twitch_username: (typeof getKickLinkedTwitch === 'function') ? getKickLinkedTwitch(u) : null,
+    }
+  } catch { return null }
+}
+
+function pcMergeKickEnrich(profile, kickEnrich) {
+  if (!profile.bio && kickEnrich.kick_bio) profile.bio = kickEnrich.kick_bio
+  if (!profile.kick_profile_pic && kickEnrich.kick_profile_pic) profile.kick_profile_pic = kickEnrich.kick_profile_pic
+  if (!profile.kick_username && kickEnrich.kick_username) profile.kick_username = kickEnrich.kick_username
+  profile._kick_socials = kickEnrich.kick_socials
+  profile._linked_twitch_username = kickEnrich.linked_twitch_username || profile.twitch_username || null
+}
+
+function pcSynthFromKickEnrich(username, kickEnrich) {
+  return {
+    display_name: kickEnrich.kick_username || username,
+    kick_username: kickEnrich.kick_username || username,
+    kick_profile_pic: kickEnrich.kick_profile_pic || null,
+    bio: kickEnrich.kick_bio || null,
+    _kick_socials: kickEnrich.kick_socials,
+    _linked_twitch_username: kickEnrich.linked_twitch_username,
+    _synth_kick_only: true,
   }
 }
 
@@ -433,6 +495,61 @@ function renderProfileCardView() {
     bio.className = 'hs-pcard-bio'
     pcAppendBioWithAutolinks(bio, data.bio)
     idText.appendChild(bio)
+  }
+
+  // Cross-platform link — "also @xqc on twitch" for Kick chatters whose 7TV
+  // account links a Twitch handle. Surfaces the unified identity.
+  const linkedTwitch = data?._linked_twitch_username || data?.twitch_username
+  if (linkedTwitch && activeProfileCard.platform === 'kick') {
+    const xref = document.createElement('div')
+    xref.className = 'hs-pcard-xref'
+    xref.style.cssText = 'font-size:13px;color:#999;margin-top:2px;'
+    xref.appendChild(document.createTextNode('also '))
+    const a = document.createElement('a')
+    a.href = `https://twitch.tv/${encodeURIComponent(linkedTwitch)}`
+    a.target = '_blank'
+    a.rel = 'noopener noreferrer'
+    a.style.cssText = 'color:#9146ff;font-weight:700;text-decoration:none;'
+    a.textContent = '@' + linkedTwitch
+    xref.appendChild(a)
+    xref.appendChild(document.createTextNode(' on twitch'))
+    idText.appendChild(xref)
+  }
+
+  // Kick socials row — twitter, instagram, youtube, tiktok, discord, facebook.
+  // Compact icon-ish text links, only rendered when populated. Pure visibility
+  // win for Kick-only users who'd otherwise see a near-empty card.
+  const kickSocials = data?._kick_socials
+  if (kickSocials) {
+    const socEntries = []
+    if (kickSocials.twitter) socEntries.push(['twitter', `https://twitter.com/${kickSocials.twitter}`])
+    if (kickSocials.instagram) socEntries.push(['instagram', `https://instagram.com/${kickSocials.instagram}`])
+    if (kickSocials.youtube) socEntries.push(['youtube', kickSocials.youtube.startsWith('http') ? kickSocials.youtube : `https://youtube.com/${kickSocials.youtube}`])
+    if (kickSocials.tiktok) socEntries.push(['tiktok', `https://tiktok.com/@${kickSocials.tiktok}`])
+    if (kickSocials.facebook) socEntries.push(['facebook', kickSocials.facebook.startsWith('http') ? kickSocials.facebook : `https://facebook.com/${kickSocials.facebook}`])
+    if (kickSocials.discord) socEntries.push(['discord', kickSocials.discord])
+    if (socEntries.length) {
+      const soc = document.createElement('div')
+      soc.className = 'hs-pcard-socials'
+      soc.style.cssText = 'font-size:13px;margin-top:3px;display:flex;flex-wrap:wrap;gap:6px;'
+      for (const [label, href] of socEntries) {
+        if (!/^https?:\/\//i.test(href)) {
+          const span = document.createElement('span')
+          span.style.cssText = 'color:#999;'
+          span.textContent = `${label}: ${href}`
+          soc.appendChild(span)
+        } else {
+          const a = document.createElement('a')
+          a.href = href
+          a.target = '_blank'
+          a.rel = 'noopener noreferrer'
+          a.style.cssText = 'color:#53fc18;text-decoration:none;'
+          a.textContent = label
+          soc.appendChild(a)
+        }
+      }
+      idText.appendChild(soc)
+    }
   }
 
   idRow.appendChild(idText)

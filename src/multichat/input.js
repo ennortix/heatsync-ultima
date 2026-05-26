@@ -4278,6 +4278,15 @@ async function sendMessage() {
   let ch = null
   if (currentTab === 'live') {
     targetChannel = getLiveChannel()
+    // Live tab itself isn't a config entry. Resolve the linked channel pair
+    // by matching the live channel name to either twitch or kick slug so a
+    // dual-link channel fans out to BOTH platforms on Live tab, not just the
+    // host. Without this, sending from Live on twitch.tv to a twitch+kick
+    // dual-link channel skipped Kick (kickSlug undefined → sendToKick=false).
+    if (targetChannel) {
+      const lower = targetChannel.toLowerCase()
+      ch = config.channels.find(c => c.twitch?.toLowerCase() === lower || c.kick?.toLowerCase() === lower) || null
+    }
   } else if (currentTab === 'add' || currentTab === 'settings') {
     flashInputError(input)
     return
@@ -4291,13 +4300,15 @@ async function sendMessage() {
     return
   }
 
-  // Resolve platform targets
+  // Resolve platform targets. Anonymous-live (no ch match) falls back to the
+  // host platform only. Configured channels (with ch) fan out to every linked
+  // platform regardless of the host.
   const kickSlug = ch?.kick
   const twitchName = ch?.twitch
-  const isLiveKick = currentTab === 'live' && hostPlatform === 'kick'
+  const anonLive = currentTab === 'live' && !ch
 
-  const sendToKick = !!kickSlug || isLiveKick
-  const sendToTwitch = !!twitchName && !isLiveKick
+  const sendToKick = !!kickSlug || (anonLive && hostPlatform === 'kick')
+  const sendToTwitch = !!twitchName || (anonLive && hostPlatform === 'twitch')
 
   const ytUrl = ch?.youtube
   const isLiveYt = currentTab === 'live' && hostPlatform === 'yt'

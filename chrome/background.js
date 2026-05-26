@@ -5825,7 +5825,10 @@ async function handleMessage(message, sender, sendResponse) {
           const cosmetic = await resolve7TVCosmeticIds(ids7tv)
           const twitchConn = data?.user?.connections?.find(c => c.platform === 'TWITCH')
           const twitchId = twitchConn?.id || null
-          const full = cosmetic ? { ...cosmetic, twitchId } : { paint: null, badge: null, twitchId }
+          const twitchUsername = twitchConn?.username || null
+          const full = cosmetic
+            ? { ...cosmetic, twitchId, twitchUsername }
+            : { paint: null, badge: null, twitchId, twitchUsername }
           setUserCosmetic(cacheKey, full)
           result[username] = full
         } catch (e) { setUserCosmetic(cacheKey, null); result[username] = null }

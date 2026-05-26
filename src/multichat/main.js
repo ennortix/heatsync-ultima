@@ -950,6 +950,7 @@
   // We use the returned twitchId as the cosmetics cache key so a chatter with linked
   // accounts gets the same paint/badge across both platforms.
   const kickNameResolved = new Map()      // kickHandle → twitchId | null
+  const kickNameToTwitchUsername = new Map() // kickHandle → twitchUsername | null
   const kickNameLookupPending = new Set()
   let kickNameLookupTimer = null
   const KICK_NAME_BATCH = 8
@@ -957,8 +958,21 @@
 
   function evictKickNameCache() {
     if (kickNameResolved.size >= KICK_NAME_CACHE_MAX) {
-      kickNameResolved.delete(kickNameResolved.keys().next().value)
+      const oldest = kickNameResolved.keys().next().value
+      kickNameResolved.delete(oldest)
+      kickNameToTwitchUsername.delete(oldest)
     }
+  }
+
+  // Exposed for profile-card.js / tooltips.js cross-platform identity render.
+  // Returns the linked twitch username if known, else null. Triggers a lookup
+  // when first asked so the second hover/right-click picks up the answer.
+  function getKickLinkedTwitch(kickUsername) {
+    if (!kickUsername) return null
+    const k = String(kickUsername).toLowerCase()
+    if (kickNameToTwitchUsername.has(k)) return kickNameToTwitchUsername.get(k)
+    queueKickNameToCosmetics(k)
+    return null
   }
 
   function queueKickNameToCosmetics(user) {
@@ -995,6 +1009,7 @@
       evictKickNameCache()
       const tid = c?.twitchId ? String(c.twitchId) : null
       kickNameResolved.set(key, tid)
+      kickNameToTwitchUsername.set(key, c?.twitchUsername || null)
       if (!tid) continue
       // Fold the {paint, badge} into the twitch-id-keyed cosmetics cache so the
       // existing updateCosmeticsInPlace pipeline paints by uid.
@@ -5731,10 +5746,19 @@
         else label = ch.youtube.replace(/^https?:\/\/(www\.)?youtube\.com\//, '').replace(/\/.*$/, '')
       }
       tab.textContent = label;
-      // Restore live dot from cached liveChannelSet (survives tab recreate)
+      // Restore live dot from cached liveChannelSet (survives tab recreate).
+      // Check BOTH twitch and kick slugs — a Kick-only channel or a paired
+      // channel whose twitch handle differs from its kick slug would otherwise
+      // miss the dot. SW followed snapshot already populates kick slugs into
+      // liveChannelSet at line ~8908.
       if (liveChannelSet.size > 0) {
-        const twitch = ch.twitch || ch.id
-        tab.dataset.live = String(liveChannelSet.has(twitch.toLowerCase()))
+        const tw = ch.twitch?.toLowerCase()
+        const ki = ch.kick?.toLowerCase()
+        const idLower = ch.id?.toLowerCase()
+        const isLive = (tw && liveChannelSet.has(tw))
+          || (ki && liveChannelSet.has(ki))
+          || (!tw && !ki && idLower && liveChannelSet.has(idLower))
+        tab.dataset.live = String(isLive)
       }
       // YT-only tabs aren't in liveChannelSet (which is Twitch-only), so
       // re-derive live state from the resolved YouTube subscription. This
@@ -9020,12 +9044,19 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (!tabBarElement) return;
     config.channels.forEach(ch => {
       const id = ch.id;
-      const twitch = ch.twitch || ch.id;
       const tab = tabBarElement.querySelector(`[data-tab="${id}"]`);
       if (!tab) return;
       const isYtOnly = !ch.twitch && !ch.kick && ch.youtube;
       if (isYtOnly) return;
-      tab.dataset.live = String(liveChannelSet.has(twitch.toLowerCase()));
+      // Check both twitch + kick slugs so Kick-only channels (and pairs whose
+      // twitch handle differs from kick slug) get the live dot too.
+      const tw = ch.twitch?.toLowerCase();
+      const ki = ch.kick?.toLowerCase();
+      const idLower = id?.toLowerCase();
+      const isLive = (tw && liveChannelSet.has(tw))
+        || (ki && liveChannelSet.has(ki))
+        || (!tw && !ki && idLower && liveChannelSet.has(idLower));
+      tab.dataset.live = String(isLive);
     });
   }
 

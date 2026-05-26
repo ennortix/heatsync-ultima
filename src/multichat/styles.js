@@ -2674,13 +2674,14 @@ function injectStyles() {
        Emoji visual overflows the 18px box vertically — intentional. */
     .hs-mc-emoji {
       font-size: calc(1em * var(--hs-emoji-scale, 2));
-      /* Unitless 1 = line-height tracks font-size, so the inline-block reports
-         its own height as the glyph's full em-box. Without this, line-height
-         stayed at 18px while the glyph rendered at 26px — emoji-only rows
-         had the top 4px of the glyph clipped by .hs-mc-msg's overflow:hidden
-         (only emote-bearing rows survived because the 32px emote img forced
-         the line box larger). */
-      line-height: 1;
+      /* line-height matches --hs-emote-size so the inline-block reports the
+         same height as emote imgs. line-height: 1 (= font-size = ~26px) left
+         the glyph filling the box edge-to-edge; some emoji glyphs (Noto)
+         bleed 1-2px past their em-box → clipped by .hs-mc-msg's
+         overflow:hidden. Pinning to emote size gives ~3px headroom above
+         and below the glyph, matches emote-row visual height, keeps mixed
+         emoji+text rows visually consistent with emote+text rows. */
+      line-height: var(--hs-emote-size, 32px);
       vertical-align: middle;
       display: inline-block;
     }

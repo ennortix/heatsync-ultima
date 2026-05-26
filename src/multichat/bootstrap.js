@@ -124,6 +124,27 @@ document.addEventListener('hs-dbg-probe', () => {
 // text from event.detail.text. Times the call + reports whether IRC state
 // changed afterward. The event.detail.text is REAL text — caller is
 // responsible (only used by automation against safe channels).
+// hs-dbg-twitch-badges → returns twitchBadgeUrls Map stats so we can see if
+// global + channel badges have populated. Helps diagnose "MOD/SUB as text"
+// regressions when running off-twitch.
+document.addEventListener('hs-dbg-twitch-badges', () => {
+  try {
+    const urls = (typeof twitchBadgeUrls !== 'undefined') ? [...twitchBadgeUrls.entries()] : null
+    const fetched = (typeof badgesFetchedChannels !== 'undefined') ? [...badgesFetchedChannels] : null
+    const globalDone = (typeof globalBadgesFetched !== 'undefined') ? globalBadgesFetched : null
+    const sample = urls?.slice(0, 30).map(([k, v]) => [k, v?.slice(0, 50)])
+    const modKeys = urls?.filter(([k]) => k.includes('moderator') || k.includes('broadcaster') || k.includes('vip'))
+    document.documentElement.dataset.hsDbgTwitchBadges = JSON.stringify({
+      total: urls?.length ?? null,
+      globalDone,
+      fetchedChannels: fetched,
+      modVipBroadcasterKeys: modKeys?.length ?? null,
+      sample,
+    })
+  } catch (e) {
+    document.documentElement.dataset.hsDbgTwitchBadges = 'err:' + (e?.message || 'unknown')
+  }
+}, true)
 // hs-dbg-test-irc-connect → invoke connectAuthIrc directly to test if the
 // IRC WebSocket can open from this origin. No PRIVMSG sent — just connect.
 document.addEventListener('hs-dbg-test-irc-connect', () => {

@@ -2501,14 +2501,11 @@ async function fetchGlobalBadges() {
   if (globalBadgesFetched) return
   globalBadgesFetched = true
   try {
-    const resp = await fetch(TWITCH_GQL, {
-      method: 'POST',
-      headers: { 'Client-Id': TWITCH_CLIENT_ID, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: '{ badges { imageURL(size: NORMAL) setID version } }' }),
-      signal: AbortSignal.timeout(5000)
-    })
-    if (!resp.ok) { globalBadgesFetched = false; return }
-    const data = await resp.json()
+    // Route through twitchGql so off-twitch contexts (kick.com / youtube.com)
+    // pick up global badges too — direct fetch to gql.twitch.tv from kick.com
+    // origin fails silently (CORS/Origin headers), leaving moderator/vip/
+    // broadcaster/premium badges as text-only "MOD" / "VIP" / "LIVE" chips.
+    const data = await twitchGql('{ badges { imageURL(size: NORMAL) setID version } }')
     const badges = data?.data?.badges
     if (!badges) { globalBadgesFetched = false; return }
     for (const b of badges) {

@@ -75,11 +75,22 @@ function trackSentMessage(text, hostOverride) {
 
 // Hydrate from storage on load + listen for cross-tab updates.
 // Listener is tracked via cleanup so SPA reinit doesn't stack copies.
+// recentSentHydrated Promise lets BG-history loaders await this before
+// stamping platform badges — otherwise the storage-hydration race lets the
+// echo render as the IRC echo's actual origin (twitch) instead of the
+// sending host (kick).
+let _recentSentHydrated = null
+{
+  let _hydrateResolve = null
+  _recentSentHydrated = new Promise(r => { _hydrateResolve = r })
+  try {
+    chrome.storage.local.get(RECENT_SENT_KEY).then((data) => {
+      const incoming = data?.[RECENT_SENT_KEY]
+      if (Array.isArray(incoming)) _recentSentMessages = _pruneRecent(incoming)
+    }).catch(() => {}).finally(() => { try { _hydrateResolve() } catch {} })
+  } catch (_) { _hydrateResolve() }
+}
 try {
-  chrome.storage.local.get(RECENT_SENT_KEY).then((data) => {
-    const incoming = data?.[RECENT_SENT_KEY]
-    if (Array.isArray(incoming)) _recentSentMessages = _pruneRecent(incoming)
-  }).catch(() => {})
   if (!window._hsMcInputStorageListener) {
     const _inputStorageHandler = (changes, area) => {
       if (area !== 'local' || !changes[RECENT_SENT_KEY]) return

@@ -394,6 +394,7 @@ class IRC {
       const buf = this.channels.get(ch)
       const wasSize = buf.size
       buf.clear()
+      try { if (typeof _recentSentHydrated !== 'undefined') await _recentSentHydrated } catch {}
       for (const m of resp.msgs || []) {
         m.isHistory = true
         if (m.user) {
@@ -401,6 +402,10 @@ class IRC {
           try { setKnownColor(m.user.toLowerCase(), m.color, m.userId) } catch {}
         }
         if (m.subMonths) { try { trackSubTenure(ch, m.user, m.subMonths) } catch {} }
+        try {
+          const sentHost = peekSentHost(m.text)
+          if (sentHost) m.platform = sentHost === 'yt' ? 'youtube' : sentHost
+        } catch {}
         buf.push(m)
       }
       try { _dropAllTabCaches() } catch {}
@@ -426,7 +431,12 @@ class IRC {
     // restored history from BG renders with proper images on first paint.
     try { fetchChannelBadges(ch) } catch {}
     try { chrome.runtime.sendMessage({ type: 'bg_irc_join', channel: ch }).catch(() => {}) } catch {}
-    // Pull initial buffer from BG (in-memory; instant on warm SW)
+    // Pull initial buffer from BG (in-memory; instant on warm SW). Await the
+    // sent-message storage hydration first so own-message [K]/[H]/[Y] badges
+    // survive page refresh — otherwise peekSentHost can race with this load
+    // and miss the host override, reverting the badge to the echo's actual
+    // origin (twitch).
+    try { if (typeof _recentSentHydrated !== 'undefined') await _recentSentHydrated } catch {}
     try {
       const resp = await chrome.runtime.sendMessage({ type: 'bg_irc_history', channel: ch })
       if (resp?.ok && Array.isArray(resp.msgs) && resp.msgs.length > 0) {
@@ -438,6 +448,12 @@ class IRC {
             try { setKnownColor(m.user.toLowerCase(), m.color, m.userId) } catch {}
           }
           if (m.subMonths) { try { trackSubTenure(ch, m.user, m.subMonths) } catch {} }
+          // Host attribution override — IRC echo arrives as platform='twitch';
+          // if we tracked this exact text as a kick/yt/heatsync send, retag.
+          try {
+            const sentHost = peekSentHost(m.text)
+            if (sentHost) m.platform = sentHost === 'yt' ? 'youtube' : sentHost
+          } catch {}
           buf.push(m)
         }
         log('BG history hydrated:', resp.msgs.length, 'msgs for', ch)
@@ -726,12 +742,17 @@ class KickChat {
       const buf = this.channels.get(ch)
       const wasSize = buf.size
       buf.clear()
+      try { if (typeof _recentSentHydrated !== 'undefined') await _recentSentHydrated } catch {}
       for (const m of resp.msgs) {
         m.isHistory = true
         if (m.user) {
           try { addUsername(m.user) } catch {}
           try { setKnownColor(m.user.toLowerCase(), m.color, m.userId) } catch {}
         }
+        try {
+          const sentHost = peekSentHost(m.text)
+          if (sentHost) m.platform = sentHost === 'yt' ? 'youtube' : sentHost
+        } catch {}
         buf.push(m)
       }
       try { _dropAllTabCaches() } catch {}
@@ -859,12 +880,17 @@ class KickChat {
       const resp = await chrome.runtime.sendMessage({ type: 'bg_kick_history', channel: kickUsername })
       if (resp?.ok && Array.isArray(resp.msgs) && resp.msgs.length > 0) {
         const buf = this.channels.get(kickUsername)
+        try { if (typeof _recentSentHydrated !== 'undefined') await _recentSentHydrated } catch {}
         for (const m of resp.msgs) {
           m.isHistory = true
           if (m.user) {
             try { addUsername(m.user) } catch {}
             try { setKnownColor(m.user.toLowerCase(), m.color, m.userId) } catch {}
           }
+          try {
+            const sentHost = peekSentHost(m.text)
+            if (sentHost) m.platform = sentHost === 'yt' ? 'youtube' : sentHost
+          } catch {}
           buf.push(m)
         }
         hydrated = true

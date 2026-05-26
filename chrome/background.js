@@ -6200,6 +6200,20 @@ async function initialize() {
         const [platform, channel] = key.split('/')
         if (platform && channel) wsSend({ type: 'channel:join', platform, channel })
       }
+      // Also refetch channel owner emotes for every restored channel — the
+      // WS rejoin above only subscribes to live broadcasts, it doesn't
+      // refresh per-channel BTTV+FFZ+7TV sets. Without this, every multichat
+      // tab except the active one renders raw text until the user clicks
+      // each tab (content-side join_channel only fires for the page channel).
+      // Internal cache-and-TTL gating in fetchChannelOwnerEmotes makes
+      // duplicate calls cheap.
+      for (const key of joinedExtraChannels) {
+        const [platform, channel] = key.split('/')
+        if (!platform || !channel) continue
+        // Stagger by 50ms each to avoid 5-10 simultaneous third-party fetches.
+        const delay = [...joinedExtraChannels].indexOf(key) * 50
+        setTimeout(() => fetchChannelOwnerEmotes(channel, null, platform).catch(() => {}), delay)
+      }
     }
     // Also seed joinedExtraChannels from the user's multichat config — covers
     // the very first launch after install (or storage wipe) before any content

@@ -1,5 +1,19 @@
 # changelog
 
+## [1.5.3] — 2026-05-26
+
+### changed
+- welcome page rebuilt as a 3-step visual onboarding focused on the personal-emote-set wedge (replaces the prior 4-line landing). uses Cozette + i18n step keys; mobile-collapsing grid.
+- copy reframe across acquisition surfaces (welcome page, README hero, store listing, reviewer notes): leads with "5000-slot personal emote set, no streamer approval, no subscription" and explicitly surfaces the left-click-to-add mechanic that was already in the code but never documented in user-facing copy. multichat reframed as supporting feature.
+- welcome page wedge-critical strings (tagline, step 2 desc, step 3 title + desc) are hardcoded inline rather than pulled from `messages.json` — the new wedge framing renders for all locales without waiting on a 34-locale `messages.json` translation pass. `messages.json` keeps its prior strings for future i18n alignment.
+
+### fixed
+- store listing no longer claims "rename emotes directly from the picker" — feature never existed in code (audit pass).
+- twitch chat backfill paths (persisted-buffer restore, robotty backfill, justlog backfill) now skip `roomstate`/`userstate`/`whisper` types. those non-renderable types were filling the 500-msg render ring with null divs and presenting as empty chat on restored channels.
+
+### internal
+- added `hs-dbg-render-deep` and `hs-dbg-emotes` event listeners in multichat bootstrap for inspecting render-merge state and emote-cache state during debug sessions.
+
 ## [1.5.2] — 2026-05-22
 
 ### added

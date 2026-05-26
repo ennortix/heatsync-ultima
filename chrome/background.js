@@ -6811,7 +6811,13 @@ async function bgIrcRestoreFromStorage() {
       const ch = k.slice('hs_irc_'.length)
       if (!ch || !v?.msgs?.length || Date.now() - v.ts >= 86400000) continue
       const buf = new BGCircularBuffer(BG_IRC_PERSIST_MAX)
-      for (const m of v.msgs) buf.push(m)
+      // Purge non-renderable types from legacy persisted buffers. Earlier
+      // backfill paths pushed ROOMSTATE/USERSTATE/WHISPER into the ring;
+      // they fill 500-msg toRender slots with null divs → chat appears empty.
+      for (const m of v.msgs) {
+        if (m?.type === 'roomstate' || m?.type === 'userstate' || m?.type === 'whisper') continue
+        buf.push(m)
+      }
       BG_IRC.channels.set(ch, buf)
       n++
     }
@@ -7167,6 +7173,10 @@ function bgIrcFetchRobotty(ch) {
       for (const line of data.messages) {
         const msg = bgIrcParseLine(line, ch)
         if (!msg) continue
+        // Non-renderable types (roomstate/userstate/whisper) belong in their
+        // dedicated maps, not the chat buffer. Live path filters them; without
+        // this skip the backfill paths flooded the ring with mode-toggle dupes.
+        if (msg.type === 'roomstate' || msg.type === 'userstate' || msg.type === 'whisper') continue
         msg.isHistory = true
         if (msg.id && existingIds.has(msg.id)) continue
         if (!msg.id && existingFp.has(fpKey(msg))) continue
@@ -7243,6 +7253,7 @@ function bgIrcFetchJustlog(ch) {
           if (!raw) continue
           const msg = bgIrcParseLine(raw, ch)
           if (!msg) continue
+          if (msg.type === 'roomstate' || msg.type === 'userstate' || msg.type === 'whisper') continue
           msg.isHistory = true
           if (msg.id && existingIds.has(msg.id)) continue
           if (!msg.id && existingFp.has(fpKey(msg))) continue

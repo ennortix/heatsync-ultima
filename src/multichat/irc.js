@@ -396,6 +396,7 @@ class IRC {
       buf.clear()
       try { if (typeof _recentSentHydrated !== 'undefined') await _recentSentHydrated } catch {}
       for (const m of resp.msgs || []) {
+        if (m?.type === 'roomstate' || m?.type === 'userstate' || m?.type === 'whisper') continue
         m.isHistory = true
         if (m.user) {
           try { addUsername(m.user) } catch {}
@@ -442,6 +443,7 @@ class IRC {
       if (resp?.ok && Array.isArray(resp.msgs) && resp.msgs.length > 0) {
         const buf = this.channels.get(ch)
         for (const m of resp.msgs) {
+          if (m?.type === 'roomstate' || m?.type === 'userstate' || m?.type === 'whisper') continue
           m.isHistory = true
           if (m.user) {
             try { addUsername(m.user) } catch {}

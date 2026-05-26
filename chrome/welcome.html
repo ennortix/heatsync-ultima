@@ -14,7 +14,7 @@
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
-      height: 100%;
+      min-height: 100%;
       background: #000;
       color: #fff;
       font-family: 'CozetteVector', monospace, 'Noto Color Emoji';
@@ -23,20 +23,139 @@
       -webkit-font-smoothing: none;
       font-smooth: never;
       text-rendering: optimizeSpeed;
+      font-kerning: normal;
+      font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
     }
     body {
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 24px;
+      padding: 32px 16px;
     }
-    a { color: #fff; text-decoration: underline; }
-    a:hover, a:focus-visible { background: #fff; color: #000; outline: none; }
+    main {
+      width: 100%;
+      max-width: 720px;
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+    }
+    header {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      text-align: center;
+    }
+    header img { width: 48px; height: 48px; }
+    h1 {
+      font-size: 18px;
+      font-weight: 400;
+      letter-spacing: 0.3px;
+    }
+    .tagline {
+      color: #ff8700;
+      font-size: 14px;
+      letter-spacing: 0.2px;
+    }
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+    .step {
+      border: 1px solid rgba(255,255,255,0.12);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-height: 120px;
+    }
+    .step .num {
+      color: #ff8700;
+      font-size: 16px;
+      font-weight: 400;
+    }
+    .step h2 {
+      font-size: 13px;
+      font-weight: 400;
+      letter-spacing: 0.2px;
+    }
+    .step p {
+      color: #999;
+      font-size: 13px;
+    }
+    .cta {
+      align-self: center;
+      padding: 12px 24px;
+      background: #ff8700;
+      color: #000;
+      text-decoration: none;
+      font-size: 14px;
+      letter-spacing: 0.3px;
+      border: 1px solid #ff8700;
+    }
+    .cta:hover, .cta:focus-visible {
+      background: #fff;
+      color: #000;
+      border-color: #fff;
+      outline: none;
+    }
+    footer {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      color: #666;
+      font-size: 13px;
+    }
+    footer a {
+      color: #999;
+      text-decoration: underline;
+    }
+    footer a:hover, footer a:focus-visible {
+      background: #fff;
+      color: #000;
+      outline: none;
+    }
+    @media (max-width: 600px) {
+      .steps { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
-  <div>
-    heatsync installed. go to <a href="https://heatsync.org" target="_blank">heatsync.org</a> to link your account.
-  </div>
+  <main>
+    <header>
+      <img src="icon-48.png" alt="">
+      <h1 data-i18n="welcome_title">welcome to heatsync</h1>
+      <p class="tagline">your emote set in any chat — no streamer approval</p>
+    </header>
+
+    <section class="steps">
+      <article class="step">
+        <span class="num">1</span>
+        <h2 data-i18n="welcome_step1_title">log in at heatsync.org</h2>
+        <p data-i18n="welcome_step1_desc">sign in with twitch or kick to create your account</p>
+      </article>
+      <article class="step">
+        <span class="num">2</span>
+        <h2 data-i18n="welcome_step2_title">upload your emotes</h2>
+        <p>drag any image — 5000 free slots, no approval queue</p>
+      </article>
+      <article class="step">
+        <span class="num">3</span>
+        <h2>use them anywhere</h2>
+        <p>open any twitch/kick/youtube live stream. tab-complete to send, or click any emote in chat to add it to your set.</p>
+      </article>
+    </section>
+
+    <a class="cta" href="https://heatsync.org" target="_blank" rel="noopener" data-i18n="welcome_cta">get started</a>
+
+    <footer>
+      <a href="https://heatsync.org/legal/privacy" target="_blank" rel="noopener" data-i18n="welcome_privacy">privacy</a>
+      ·
+      <a href="https://github.com/mellen9999/heatsync-extension" target="_blank" rel="noopener" data-i18n="welcome_source">source</a>
+    </footer>
+  </main>
+
+  <script src="welcome.js"></script>
 </body>
 </html>

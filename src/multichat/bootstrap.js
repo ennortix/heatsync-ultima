@@ -396,6 +396,65 @@ document.addEventListener('hs-dbg-render-trace', (e) => {
     document.documentElement.dataset.hsDbg3 = 'err:' + (err?.message || 'unknown')
   }
 }, true)
+document.addEventListener('hs-dbg-emotes', (e) => {
+  try {
+    const ch = (e?.detail?.ch || '').toLowerCase()
+    const out = {
+      globalCacheSize: (typeof emoteCache !== 'undefined') ? emoteCache.size : -1,
+      viewerPersonalSize: (typeof viewerPersonalEmotes !== 'undefined') ? viewerPersonalEmotes.size : -1,
+      channelKeys: (typeof channelEmoteCaches !== 'undefined') ? Object.keys(channelEmoteCaches) : null,
+      channelSizes: {},
+      sampleNames: {},
+    }
+    if (typeof channelEmoteCaches !== 'undefined') {
+      for (const [k, v] of Object.entries(channelEmoteCaches)) {
+        out.channelSizes[k] = v?.size || 0
+        if (k === ch) out.sampleNames[k] = [...v.keys()].slice(0, 12)
+      }
+    }
+    out.emoteFirstLoad = (typeof _emoteFirstLoad !== 'undefined') ? [..._emoteFirstLoad] : null
+    document.documentElement.dataset.hsDbgEmotes = JSON.stringify(out)
+  } catch (err) {
+    document.documentElement.dataset.hsDbgEmotes = 'err:' + (err?.message || 'unknown')
+  }
+}, true)
+document.addEventListener('hs-dbg-render-deep', (e) => {
+  try {
+    const id = (e?.detail?.id || '').toLowerCase()
+    const ch = (typeof getChannelById === 'function') ? getChannelById(id) : null
+    const tw = ch?.twitch
+    const kk = ch?.kick
+    const ircMsgs = tw && typeof irc !== 'undefined' ? (irc?.getMessages(tw) || []) : []
+    const kickMsgs = kk && typeof kickChat !== 'undefined' ? (kickChat?.getMessages(kk) || []) : []
+    let ytMsgs = (typeof channelYtMessages !== 'undefined') ? (channelYtMessages.get(id) || []) : []
+    const autoYt = (typeof channelYtMessages !== 'undefined') ? (channelYtMessages.get('__live_yt_auto__') || []) : []
+    const ytAutoMerged = autoYt.length > 0 && typeof isLiveChannelMessage === 'function' && isLiveChannelMessage({ channel: tw || kk || id })
+    if (ytAutoMerged) ytMsgs = ytMsgs.length ? [...ytMsgs, ...autoYt] : autoYt
+    const filt = (typeof getPlatformFilter === 'function') ? getPlatformFilter(id) : null
+    const fmInput = [filt?.twitch ? ircMsgs : [], filt?.kick ? kickMsgs : [], filt?.youtube ? ytMsgs : []]
+    const merged = (typeof fairMerge === 'function') ? fairMerge(fmInput) : []
+    const out = {
+      id, tw, kk,
+      ircMsgs_len: ircMsgs.length,
+      kickMsgs_len: kickMsgs.length,
+      ytMsgs_len: ytMsgs.length,
+      autoYt_len: autoYt.length,
+      ytAutoMerged,
+      filt,
+      fmInputLens: fmInput.map(s => s.length),
+      merged_len: merged.length,
+      mergedSampleTop: merged.slice(0,3).map(m => ({u:m.user, t:m.time, type:m.type, txt:(m.text||'').slice(0,30)})),
+      mergedSampleBottom: merged.slice(-3).map(m => ({u:m.user, t:m.time, type:m.type, txt:(m.text||'').slice(0,30)})),
+      isMultiPlat: (typeof isMultiPlatformTab === 'function') ? isMultiPlatformTab(id) : null,
+      domRenderCap: (typeof DOM_RENDER_CAP !== 'undefined') ? DOM_RENDER_CAP : null,
+      currentTab: typeof currentTab !== 'undefined' ? currentTab : null,
+      renderEpoch: typeof _renderEpoch !== 'undefined' ? _renderEpoch : null,
+    }
+    document.documentElement.dataset.hsDbgDeep = JSON.stringify(out)
+  } catch (err) {
+    document.documentElement.dataset.hsDbgDeep = 'err:' + (err?.message || 'unknown')
+  }
+}, true)
 document.addEventListener('hs-dbg-twitch-sample', (e) => {
   try {
     const ch = (e?.detail?.ch || '').toLowerCase()

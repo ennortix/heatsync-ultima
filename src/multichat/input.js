@@ -50,11 +50,14 @@ function ownBadgesFor(channel) {
 // Echo dedup — suppress own message echoes from IRC/KickChat relay
 // Uses a Set of {text, time} to handle rapid sends without overwriting
 let _recentSentMessages = []
-const SENT_DEDUP_WINDOW = 10000 // 10s
+const SENT_DEDUP_WINDOW = 10000 // 10s — used by isSentEcho to suppress dual-send duplicates only
+const SENT_HOST_WINDOW = 24 * 60 * 60 * 1000 // 24h — peekSentHost needs longer so badge survives refresh
 const RECENT_SENT_KEY = 'hs_recent_sent'
 
 function _pruneRecent(arr) {
-  const cutoff = Date.now() - SENT_DEDUP_WINDOW
+  // Prune to the LONGER window so peekSentHost can attribute badges across
+  // refreshes. isSentEcho applies its own tighter cutoff at lookup time.
+  const cutoff = Date.now() - SENT_HOST_WINDOW
   return arr.filter(e => e && e.time >= cutoff)
 }
 
@@ -126,7 +129,10 @@ function isSentEcho(msgText, _msgPlatform) {
 // matches — letting echoes from elsewhere (e.g. heatsync.org website sends)
 // keep whatever platform tag the server attached.
 function peekSentHost(msgText) {
-  const cutoff = Date.now() - SENT_DEDUP_WINDOW
+  // Use the longer SENT_HOST_WINDOW (24h) — badge attribution must survive
+  // page refresh, BG buffer replay, and channel-switch hydration. The dedup
+  // path (isSentEcho) uses the tighter 10s window separately.
+  const cutoff = Date.now() - SENT_HOST_WINDOW
   for (let i = _recentSentMessages.length - 1; i >= 0; i--) {
     const entry = _recentSentMessages[i]
     if (entry.time < cutoff) break

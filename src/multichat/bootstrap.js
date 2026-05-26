@@ -118,6 +118,145 @@ document.addEventListener('hs-dbg-probe', () => {
     document.documentElement.dataset.hsDbg = 'err:' + (e?.message || 'unknown')
   }
 }, true)
+// hs-dbg-test-token → tests getTwitchAuthTokenAsync without exposing the
+// token value. Surfaces whether the BG cookie fetch is returning a token.
+// hs-dbg-test-send → invoke sendMessage() from isolated world with the test
+// text from event.detail.text. Times the call + reports whether IRC state
+// changed afterward. The event.detail.text is REAL text — caller is
+// responsible (only used by automation against safe channels).
+// hs-dbg-test-irc-connect → invoke connectAuthIrc directly to test if the
+// IRC WebSocket can open from this origin. No PRIVMSG sent — just connect.
+document.addEventListener('hs-dbg-test-irc-connect', () => {
+  ;(async () => {
+    try {
+      const tokenFn = (typeof getTwitchAuthTokenAsync === 'function') ? getTwitchAuthTokenAsync : null
+      const connectFn = (typeof connectAuthIrc === 'function') ? connectAuthIrc : null
+      if (!tokenFn || !connectFn) {
+        document.documentElement.dataset.hsDbgTestIrcConnect = JSON.stringify({ err: 'no fn(s)' })
+        return
+      }
+      const t0 = Date.now()
+      const { token, username } = await tokenFn()
+      if (!token) {
+        document.documentElement.dataset.hsDbgTestIrcConnect = JSON.stringify({ err: 'no token' })
+        return
+      }
+      const nick = username || (typeof currentUsername !== 'undefined' ? currentUsername : null)
+      if (!nick) {
+        document.documentElement.dataset.hsDbgTestIrcConnect = JSON.stringify({ err: 'no nick' })
+        return
+      }
+      const result = await Promise.race([
+        connectFn(token, nick),
+        new Promise(r => setTimeout(() => r('timeout-5s'), 5000))
+      ])
+      const wsState = (typeof authState !== 'undefined' && authState?.ws)
+        ? ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][authState.ws.readyState]
+        : 'no ws'
+      document.documentElement.dataset.hsDbgTestIrcConnect = JSON.stringify({
+        result: typeof result === 'boolean' ? result : String(result),
+        ready: (typeof authState !== 'undefined') ? !!authState.ready : null,
+        wsState,
+        elapsed: Date.now() - t0,
+      })
+    } catch (e) {
+      document.documentElement.dataset.hsDbgTestIrcConnect = JSON.stringify({ err: e?.message })
+    }
+  })()
+}, true)
+document.addEventListener('hs-dbg-test-send', (e) => {
+  document.documentElement.dataset.hsDbgTestSendStart = String(Date.now())
+  ;(async () => {
+    try {
+      const input = document.getElementById('hs-mc-input')
+      const text = String(e?.detail?.text || '')
+      if (!input) {
+        document.documentElement.dataset.hsDbgTestSend = JSON.stringify({ err: 'no input' })
+        return
+      }
+      if (input.tagName === 'DIV') input.textContent = text
+      else input.value = text
+      const beforeReady = (typeof authState !== 'undefined') ? !!authState.ready : null
+      const t0 = Date.now()
+      if (typeof sendMessage !== 'function') {
+        document.documentElement.dataset.hsDbgTestSend = JSON.stringify({ err: 'no sendMessage fn' })
+        return
+      }
+      try { sendMessage() } catch (sendErr) {
+        document.documentElement.dataset.hsDbgTestSend = JSON.stringify({ err: 'sendMessage threw: ' + sendErr?.message })
+        return
+      }
+      // Wait for async send pipeline
+      await new Promise(r => setTimeout(r, 2000))
+      const afterReady = (typeof authState !== 'undefined') ? !!authState.ready : null
+      const wsState = (typeof authState !== 'undefined' && authState?.ws)
+        ? ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][authState.ws.readyState]
+        : 'no ws'
+      const queueLen = (typeof authState !== 'undefined') ? (authState.sendQueue?.length ?? null) : null
+      document.documentElement.dataset.hsDbgTestSend = JSON.stringify({
+        textLen: text.length,
+        beforeReady, afterReady, wsState, queueLen,
+        elapsed: Date.now() - t0,
+        inputCleared: (input.tagName === 'DIV' ? input.textContent : input.value) === '',
+      })
+    } catch (err) {
+      document.documentElement.dataset.hsDbgTestSend = JSON.stringify({ err: err?.message })
+    }
+  })()
+}, true)
+document.addEventListener('hs-dbg-test-token', () => {
+  ;(async () => {
+    try {
+      const fn = (typeof getTwitchAuthTokenAsync === 'function') ? getTwitchAuthTokenAsync : null
+      if (!fn) {
+        document.documentElement.dataset.hsDbgTestToken = JSON.stringify({ err: 'no fn' })
+        return
+      }
+      const t0 = Date.now()
+      // Race against 3s timeout so a hung await is observable
+      const TIMEOUT = new Promise((_, rej) => setTimeout(() => rej(new Error('timeout 3s')), 3000))
+      let result
+      try {
+        result = await Promise.race([fn(), TIMEOUT])
+      } catch (raceErr) {
+        document.documentElement.dataset.hsDbgTestToken = JSON.stringify({
+          err: raceErr?.message || 'race-fail', elapsed: Date.now() - t0
+        })
+        return
+      }
+      const elapsed = Date.now() - t0
+      document.documentElement.dataset.hsDbgTestToken = JSON.stringify({
+        hasToken: !!result?.token,
+        tokenLen: result?.token ? result.token.length : 0,
+        hasUsername: !!result?.username,
+        elapsed
+      })
+    } catch (e) {
+      document.documentElement.dataset.hsDbgTestToken = JSON.stringify({ err: e?.message })
+    }
+  })()
+}, true)
+// hs-dbg-auth-irc → returns Twitch IRC auth/WS state. Diagnoses cross-origin
+// send failures (kick.com viewer trying to send to a Twitch channel tab).
+document.addEventListener('hs-dbg-auth-irc', () => {
+  try {
+    const wsState = (typeof authState !== 'undefined' && authState?.ws)
+      ? ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][authState.ws.readyState]
+      : 'no ws'
+    const out = {
+      hasAuthState: typeof authState !== 'undefined',
+      ready: typeof authState !== 'undefined' ? !!authState.ready : null,
+      wsState,
+      joined: typeof authState !== 'undefined' ? [...(authState.joined || [])] : null,
+      sendQueueLen: typeof authState !== 'undefined' ? (authState.sendQueue?.length ?? null) : null,
+      currentUsername: typeof currentUsername !== 'undefined' ? currentUsername : null,
+      hostPlatform: typeof hostPlatform !== 'undefined' ? hostPlatform : null,
+    }
+    document.documentElement.dataset.hsDbgAuthIrc = JSON.stringify(out)
+  } catch (e) {
+    document.documentElement.dataset.hsDbgAuthIrc = 'err:' + (e?.message || 'unknown')
+  }
+}, true)
 // hs-dbg-kick-badge-urls → returns kickBadgeUrls Map state so we can verify
 // fetchKickChannelBadges populated entries for the current Kick channel(s).
 document.addEventListener('hs-dbg-kick-badge-urls', () => {

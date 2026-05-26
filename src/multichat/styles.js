@@ -7928,6 +7928,10 @@ function injectStyles() {
     }
 
     /* === Chat-log viewer (chat-logs.js) === */
+    /* All children inherit 13px var(--hs-mc-font) to match the rest of the
+       overlay — Cozette is a bitmap font keyed to 13px; smaller sizes look
+       blurry. Explicit overrides only where information density demands a
+       lighter weight (timestamp on its own line vs inline). */
     .hs-cl-wrap {
       display: flex; flex-direction: column;
       height: 100%; width: 100%;
@@ -7938,7 +7942,7 @@ function injectStyles() {
     }
     .hs-cl-hdr {
       display: flex; align-items: center; justify-content: space-between;
-      padding: 3px 6px;
+      padding: 4px 6px;
       background: #0a0a0a;
       border-bottom: 1px solid #222;
       flex-shrink: 0;
@@ -7946,18 +7950,18 @@ function injectStyles() {
     }
     .hs-cl-title { display: flex; align-items: baseline; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
     .hs-cl-title-name { font-weight: 700; color: #fff; }
-    .hs-cl-title-sub { color: #999; font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
+    .hs-cl-title-sub { color: #999; overflow: hidden; text-overflow: ellipsis; }
     .hs-cl-close {
-      width: 18px; height: 18px; padding: 0;
+      width: 22px; height: 22px; padding: 0;
       background: transparent; color: #999;
       border: 1px solid #333; cursor: pointer;
-      font-size: 13px; line-height: 1;
+      font-family: inherit; font-size: 13px; line-height: 1;
       display: flex; align-items: center; justify-content: center;
       flex-shrink: 0;
     }
     .hs-cl-close:hover { background: #fff; color: #000; border-color: #fff; }
     .hs-cl-ctrls {
-      display: flex; flex-wrap: wrap; gap: 3px; padding: 3px 6px;
+      display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 6px;
       background: #0a0a0a;
       border-bottom: 1px solid #222;
       flex-shrink: 0;
@@ -7966,17 +7970,17 @@ function injectStyles() {
     .hs-cl-search {
       flex: 1 1 100px; min-width: 80px;
       background: #000; color: #fff;
-      border: 1px solid #333; padding: 2px 5px;
-      font-family: inherit; font-size: 11px;
-      outline: none; height: 20px;
+      border: 1px solid #333; padding: 2px 6px;
+      font-family: inherit; font-size: 13px; line-height: 17px;
+      outline: none; height: 22px;
       box-sizing: border-box;
     }
     .hs-cl-search:focus { border-color: #ff8700; }
     .hs-cl-scope, .hs-cl-export {
       background: #111; color: #ccc;
-      border: 1px solid #333; padding: 1px 5px;
-      cursor: pointer; font-family: inherit; font-size: 10px;
-      height: 20px; line-height: 16px;
+      border: 1px solid #333; padding: 1px 6px;
+      cursor: pointer; font-family: inherit; font-size: 13px;
+      height: 22px; line-height: 18px;
       box-sizing: border-box;
       flex-shrink: 0;
     }
@@ -7998,13 +8002,13 @@ function injectStyles() {
       text-decoration: line-through;
     }
     .hs-cl-ts {
-      color: #555; font-size: 10px;
+      color: #555;
       font-variant-numeric: tabular-nums;
       flex-shrink: 0;
       white-space: nowrap;
     }
     .hs-cl-ch {
-      color: #ff8700; font-size: 11px; flex-shrink: 0;
+      color: #ff8700; flex-shrink: 0;
     }
     .hs-cl-user {
       color: #fff; font-weight: 700; flex-shrink: 0;
@@ -8016,11 +8020,9 @@ function injectStyles() {
     }
     .hs-cl-empty {
       color: #666; text-align: center; padding: 40px 8px;
-      font-style: italic;
     }
     .hs-cl-loader {
       color: #555; text-align: center; padding: 12px 8px;
-      font-size: 11px;
     }
 
   `;

@@ -307,12 +307,32 @@ function renderChatLogRow(r) {
   const name = document.createElement('span')
   name.className = 'hs-cl-user'
   name.textContent = r.display_name || r.username || '?'
-  // Color from heatsync color cache if present
+  // Color + paint cosmetics — match the live chat renderer so the viewer's
+  // username display is consistent with what the user sees in chat. Walk:
+  // 1) knownColors map (live chat color, captured from IRC tags / Helix users)
+  // 2) twitch user id from knownUserIds map for the paint lookup
+  // 3) getMcPaintStyle returns a complete CSS style string (background-clip
+  //    gradient for paints, plain color: rgba(…) for solid-color paints)
+  // If neither is available, fall back to plain white (default).
   try {
-    if (typeof getKnownColor === 'function') {
-      const c = getKnownColor((r.username || '').toLowerCase())
-      if (c) name.style.color = c
+    const ulow = (r.username || '').toLowerCase()
+    let color = null
+    if (typeof knownColors !== 'undefined' && knownColors instanceof Map) {
+      color = knownColors.get(ulow) || null
     }
+    let paintApplied = false
+    if (typeof knownUserIds !== 'undefined' && knownUserIds instanceof Map &&
+        typeof getMcPaintStyle === 'function') {
+      const uid = knownUserIds.get(ulow)
+      if (uid) {
+        const paintCss = getMcPaintStyle(String(uid))
+        if (paintCss) {
+          name.style.cssText = paintCss
+          paintApplied = true
+        }
+      }
+    }
+    if (!paintApplied && color) name.style.color = color
   } catch {}
   row.appendChild(name)
 

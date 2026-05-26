@@ -7092,7 +7092,8 @@ function bgIrcFetchRobotty(ch) {
 // response size. Channels not in the archive 404 cleanly — non-fatal.
 const JUSTLOG_INSTANCES = [
   'https://logs.ivr.fi',
-  'https://logs.spanix.team'
+  'https://logs.zonian.dev',
+  'https://logs.spanix.team',
 ]
 const BG_IRC_JUSTLOG_COOLDOWN_MS = 5 * 60 * 1000
 function bgIrcFetchJustlog(ch) {

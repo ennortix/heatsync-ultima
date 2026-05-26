@@ -7938,40 +7938,47 @@ function injectStyles() {
     }
     .hs-cl-hdr {
       display: flex; align-items: center; justify-content: space-between;
-      padding: 6px 8px;
+      padding: 3px 6px;
       background: #0a0a0a;
       border-bottom: 1px solid #222;
       flex-shrink: 0;
+      gap: 6px;
     }
-    .hs-cl-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+    .hs-cl-title { display: flex; align-items: baseline; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
     .hs-cl-title-name { font-weight: 700; color: #fff; }
-    .hs-cl-title-sub { color: #999; font-size: 11px; }
+    .hs-cl-title-sub { color: #999; font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
     .hs-cl-close {
-      width: 22px; height: 22px; padding: 0;
+      width: 18px; height: 18px; padding: 0;
       background: transparent; color: #999;
       border: 1px solid #333; cursor: pointer;
-      font-size: 16px; line-height: 1;
+      font-size: 13px; line-height: 1;
       display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
     }
     .hs-cl-close:hover { background: #fff; color: #000; border-color: #fff; }
     .hs-cl-ctrls {
-      display: flex; gap: 4px; padding: 4px 8px;
+      display: flex; flex-wrap: wrap; gap: 3px; padding: 3px 6px;
       background: #0a0a0a;
       border-bottom: 1px solid #222;
       flex-shrink: 0;
+      align-items: center;
     }
     .hs-cl-search {
-      flex: 1;
+      flex: 1 1 100px; min-width: 80px;
       background: #000; color: #fff;
-      border: 1px solid #333; padding: 3px 6px;
-      font-family: inherit; font-size: 12px;
-      outline: none;
+      border: 1px solid #333; padding: 2px 5px;
+      font-family: inherit; font-size: 11px;
+      outline: none; height: 20px;
+      box-sizing: border-box;
     }
     .hs-cl-search:focus { border-color: #ff8700; }
     .hs-cl-scope, .hs-cl-export {
       background: #111; color: #ccc;
-      border: 1px solid #333; padding: 2px 8px;
-      cursor: pointer; font-family: inherit; font-size: 11px;
+      border: 1px solid #333; padding: 1px 5px;
+      cursor: pointer; font-family: inherit; font-size: 10px;
+      height: 20px; line-height: 16px;
+      box-sizing: border-box;
+      flex-shrink: 0;
     }
     .hs-cl-scope:hover, .hs-cl-export:hover {
       background: #fff; color: #000; border-color: #fff;

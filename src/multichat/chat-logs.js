@@ -165,7 +165,7 @@ function renderChatLogsView() {
   tName.textContent = username
   const tSub = document.createElement('span')
   tSub.className = 'hs-cl-title-sub'
-  tSub.textContent = channel ? `in #${channel}` : 'across all channels'
+  tSub.textContent = channel ? `#${channel}` : 'all channels'
   title.appendChild(tName); title.appendChild(tSub)
   hdr.appendChild(title)
 
@@ -185,7 +185,8 @@ function renderChatLogsView() {
   const search = document.createElement('input')
   search.type = 'text'
   search.className = 'hs-cl-search'
-  search.placeholder = `search ${username}'s messages…`
+  search.placeholder = 'search…'
+  search.title = `search ${username}'s messages`
   search.value = query || ''
   let searchTimer = null
   search.addEventListener('input', () => {
@@ -199,8 +200,8 @@ function renderChatLogsView() {
     const scopeBtn = document.createElement('button')
     scopeBtn.className = 'hs-cl-scope'
     scopeBtn.type = 'button'
-    scopeBtn.textContent = scope === 'channel' ? `#${channel} only` : 'all channels'
-    scopeBtn.title = 'toggle scope'
+    scopeBtn.textContent = scope === 'channel' ? `#${channel}` : 'all'
+    scopeBtn.title = scope === 'channel' ? `currently scoped to #${channel} — click to see all channels` : 'currently showing all channels — click to scope to #' + channel
     scopeBtn.addEventListener('click', async () => {
       const newScope = scope === 'channel' ? 'all' : 'channel'
       activeChatLogs.scope = newScope

@@ -16,6 +16,31 @@ const isKick = window.location.hostname.includes('kick.com');
 
 const API_URL = 'https://heatsync.org'; // Production server
 
+// heatsync.org gate — return BEFORE any chat/style injection runs. The
+// extension's content script gets matched on heatsync.org for OAuth-token
+// pickup (auth_token query param after Twitch login redirect), but the
+// rest of this file (~3000 lines: emote stacking, profile cards, native
+// chat decoration, style block injection) is designed for twitch.tv /
+// kick.com chat overlays. Letting any of it run on heatsync.org pollutes
+// the site with !important style rules (.hs-pc-live red badge etc.) and
+// makes heatsync.org's own CSS fight the extension's cascade. Handle the
+// OAuth case + bail. Valid `return` because this file is wrapped in an
+// IIFE (line 2).
+if (window.location.hostname === 'heatsync.org' ||
+    window.location.hostname.endsWith('.heatsync.org')) {
+  log(' 🔍 Content script on heatsync.org — OAuth-only mode');
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlToken = urlParams.get('auth_token');
+    if (urlToken && /^[\w-]+\.[\w-]+\.[\w-]+$/.test(urlToken)) {
+      log(' ✓ Found auth_token in URL, sending to background (length:', urlToken.length, ')');
+      try { chrome.runtime.sendMessage({ type: 'set_auth_token', token: urlToken }); } catch {}
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  } catch {}
+  return;
+}
+
 // Native emote selectors for stackAdjacentOverlayEmotes — pre-joined to avoid per-call allocation
 const NATIVE_EMOTE_SELECTORS = [
   'img.chat-line__message--emote',           // Classic Twitch
@@ -3002,28 +3027,9 @@ const showToast = window.HS?.showToast || function(msg) {
   cleanup.setTimeout(() => t.remove(), 2500)
 }
 
-// If on heatsync site, send auth token to background
-const isHeatsyncSite =
-  window.location.hostname === 'heatsync.org' ||
-  window.location.hostname.endsWith('.heatsync.org');
-
-if (isHeatsyncSite) {
-  log(' 🔍 Content script running on', window.location.hostname);
-
-  // Check URL for auth_token parameter (from OAuth redirect)
-  const urlParams = new URLSearchParams(window.location.search);
-  const urlToken = urlParams.get('auth_token');
-
-  if (urlToken && /^[\w-]+\.[\w-]+\.[\w-]+$/.test(urlToken)) {
-    log(' ✓ Found auth_token in URL, sending to background (length:', urlToken.length, ')');
-    safeSendMessage({ type: 'set_auth_token', token: urlToken }).catch(() => {});
-    // Clean URL
-    window.history.replaceState({}, document.title, window.location.pathname);
-  }
-
-  // Website handles its own emotes/chat — don't run Twitch/Kick handlers here
-  return
-}
+// heatsync.org gate moved to the top of this file (right after API_URL).
+// The early-return there means we never reach this point on heatsync.org,
+// so the legacy block here is removed — OAuth handling already done.
 
 // Normalize emote URL - fix URLs that got saved with wrong base domain
 function normalizeEmoteUrl(url) {

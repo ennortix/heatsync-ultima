@@ -639,19 +639,59 @@
           }
 
           if (apolloClient && searchTerm) {
-            // Load the mutation document from Twitch's webpack modules
+            // Load the mutation Document from Twitch's webpack modules.
+            // GQL operation Docs that reference fragments (e.g. FollowButton_FollowUser
+            // spreads followButtonFragment) require RESOLVING webpack deps so the
+            // fragment Documents get inlined into definitions[]. A naive empty-{}
+            // require stub leaves the fragment unresolved, .mutate() then throws
+            // "Unknown fragment", and the caller falls back to direct gql.twitch.tv
+            // fetch which gets "failed integrity check". Recursive loader fixes both.
             const chunks = window.webpackChunktwitch_twilight || []
+            const modCache = {}
+            const findFactory = (id) => {
+              for (const chunk of chunks) {
+                const mods = chunk[1]
+                if (mods && typeof mods === 'object' && typeof mods[id] === 'function') return mods[id]
+              }
+              return null
+            }
+            const proxyStub = () => {
+              const t = function () { return proxyStub() }
+              return new Proxy(t, {
+                get(_, p) {
+                  if (p === 'default') return t
+                  if (p === Symbol.iterator) return function* () {}
+                  if (p === 'length') return 0
+                  return proxyStub()
+                },
+                apply() { return proxyStub() }
+              })
+            }
+            const loadMod = (id) => {
+              const key = String(id)
+              if (modCache[key]) return modCache[key]
+              const factory = findFactory(key)
+              if (!factory) return proxyStub()
+              const m = { exports: {} }
+              const req = (depId) => {
+                if (typeof depId === 'number' || /^\d+$/.test(String(depId))) return loadMod(depId)
+                return proxyStub()
+              }
+              try { factory(m, m.exports, req) } catch {}
+              modCache[key] = m.exports
+              return m.exports
+            }
             let doc = null
             for (const chunk of chunks) {
               const mods = chunk[1]
               if (!mods || typeof mods !== 'object') continue
-              for (const [, factory] of Object.entries(mods)) {
+              for (const [id, factory] of Object.entries(mods)) {
                 if (typeof factory !== 'function') continue
                 const src = factory.toString()
                 if (!src.includes(searchTerm)) continue
-                const m = { exports: {} }
-                try { factory(m, m.exports, function() { return {} }) } catch {}
-                if (m.exports?.kind === 'Document') { doc = m.exports; break }
+                const exp = loadMod(id)
+                if (exp?.kind === 'Document' && exp.definitions?.some(d => d.name?.value === searchTerm)) { doc = exp; break }
+                if (exp?.default?.kind === 'Document' && exp.default.definitions?.some(d => d.name?.value === searchTerm)) { doc = exp.default; break }
               }
               if (doc) break
             }

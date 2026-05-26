@@ -166,19 +166,24 @@ async function _kickFollow(slug, follow) {
 
 // ─── Twitch follow ──────────────────────────────────────────────────────────
 //
-// Twitch's anti-bot blocks ALL programmatic follow paths:
-//   - GQL with captured / minted integrity → "failed integrity check"
-//   - Apollo client finder → broken on current Twitch (bundle refactored)
-//   - Synthetic button click → React ignores (isTrusted check)
-//   - Fiber onClick invocation → renderer hangs
-// Per empirical testing (2026-05). Twitch wants real user gestures on their
-// channel page. We provide an "open twitch page" link in the profile card
-// instead so the user can click follow there themselves — see profile-card.js.
+// Twitch's public follow REST API was killed Aug 2023. Only programmatic path
+// left is the FollowButton_FollowUser GQL mutation — but only when fired
+// through Twitch's OWN Apollo client (so the link chain attaches the strong
+// per-mutation integrity tokens Twitch's anti-bot demands). Direct gql.twitch.tv
+// fetches with even a freshly-minted /integrity token get rejected as
+// "failed integrity check" — the strong tokens only validate when added by
+// Apollo's link middleware. Verified 2026-05-26.
 //
-// This stub returns silently — heatsync follow is the source of truth; the
-// twitch side is opt-in manual via the profile card link.
-async function _twitchFollow(_targetID, _follow, _disableNotifications, _targetSlug) {
-  return { skipped: 'manual_follow_only' }
+// _followMutation (twitch-api.js) handles all the routing:
+//   - on twitch.tv: apolloMutate via MAIN-world finder (Document + fragment deps
+//     resolved via recursive webpack require — see early-inject-main.js)
+//   - off twitch.tv: relay through any open twitch.tv tab (background SW
+//     picks the tab + executes the script there)
+//   - no twitch.tv tab open: queueable — drained next time user visits twitch.tv
+async function _twitchFollow(targetID, follow, disableNotifications, _targetSlug) {
+  if (!targetID) return { error: 'no target id' }
+  if (typeof followTwitchUserById !== 'function') return { error: 'follow helper missing' }
+  return followTwitchUserById(targetID, follow, disableNotifications)
 }
 
 // ─── Main entry: called from pcToggleFollow + pcToggleBlock ─────────────────
@@ -190,13 +195,31 @@ async function _twitchFollow(_targetID, _follow, _disableNotifications, _targetS
 async function propagateFollow(follow, target) {
   if (!target) return { kick: { skipped: 'no target' } }
   const settings = await _crossFollowSettings()
-  const out = { kick: { skipped: 'no kick username' } }
+  const out = { twitch: { skipped: 'no twitch id' }, kick: { skipped: 'no kick username' } }
 
-  // Twitch propagation is no longer programmatic — anti-bot blocks every
-  // viable path. Users follow on twitch via the profile card's "open on
-  // twitch" link, which navigates to the channel page where they can click
-  // the native follow button themselves. Heatsync follow remains the source
-  // of truth regardless.
+  if (settings.twitch && target.twitch_id) {
+    const verb = follow ? 'follow' : 'unfollow'
+    const r = await _twitchFollow(target.twitch_id, follow, false, target.twitch_username)
+    if (r?.ok) {
+      out.twitch = { ok: true, idempotent: !!r.idempotent }
+      await _dequeueMatching('twitch', String(target.twitch_id))
+    } else {
+      out.twitch = { error: r?.error || 'twitch follow failed' }
+      if (r?.queueable) {
+        await _enqueue({
+          platform: 'twitch',
+          target: String(target.twitch_id),
+          username: target.twitch_username ? String(target.twitch_username).toLowerCase() : undefined,
+          action: follow ? 'follow' : 'unfollow',
+          disableNotifications: false
+        })
+      }
+      // Surface 2fa requirement — user has to satisfy it on twitch.tv
+      if (r?.error === '2fa_required' && typeof showToast === 'function') {
+        showToast(`twitch ${verb} blocked: 2FA required — complete on twitch.tv`, 'info')
+      }
+    }
+  }
 
   if (settings.kick && target.kick_username) {
     const verb = follow ? 'follow' : 'unfollow'

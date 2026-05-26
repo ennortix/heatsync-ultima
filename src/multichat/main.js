@@ -6220,7 +6220,7 @@
           })
           const errs = data?.errors || data?.data?.shareResub?.error
           if (errs) console.warn('[heatsync-ext] resub-share GQL error:', JSON.stringify(errs).slice(0, 200))
-          else console.log('[heatsync-ext] resub-share: GQL fired ok')
+          else log('resub-share: GQL fired ok')
         } catch (e) {
           console.warn('[heatsync-ext] resub-share GQL threw:', e?.message || e)
         }
@@ -6347,7 +6347,7 @@
                   type: 'click', button: 0, buttons: 0,
                 }
                 oc(fakeEvt)
-                console.log('[heatsync-ext] watchstreak-share: fired via fiber onClick')
+                log('watchstreak-share: fired via fiber onClick')
                 return true
               }
             }
@@ -6366,7 +6366,7 @@
               btn.dispatchEvent(new MouseEvent('click', opts))
               btn.click()
             } finally { _allowNativeShare = false }
-            console.log('[heatsync-ext] watchstreak-share: fired via DOM click sequence')
+            log('watchstreak-share: fired via DOM click sequence')
             return true
           } catch (e) {
             console.warn('[heatsync-ext] watchstreak-share DOM click threw:', e)

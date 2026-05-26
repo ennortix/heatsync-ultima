@@ -22,11 +22,18 @@
 - **multichat extra channels rendered raw text until clicked** — on SW boot the restore path replayed `channel:join` over the WS for every channel in `joinedExtraChannels`, but never called `fetchChannelOwnerEmotes` for those channels. only the page channel's emotes refetched. now: each restored channel gets a 50ms-staggered `fetchChannelOwnerEmotes` so every multichat tab has emotes ready when first opened.
 - **emoji-only chat rows clipped emoji at the top** — `.hs-mc-emoji` had `font-size: calc(1em * 2)` (~26px in chat context) but `line-height: 18px` hardcoded, so the inline-block reported itself as 18px tall, the 26px glyph centered and extended 4px above the line box, and `.hs-mc-msg`'s `overflow: hidden` clipped that overflow. emote-bearing rows survived because the 32px emote img forced the line box larger. fix: `line-height: var(--hs-emote-size, 32px)` so the emoji span height matches emote-img height — gives ~3px headroom above and below the 26px glyph (accommodates Noto Color Emoji 1-2px bleed), and makes emoji+text rows visually consistent with emote+text rows.
 - **popout util row had empty side gap** — with C (rotate-chat) hidden in popout, the remaining T/F-/F+/⚙ buttons collapsed to 4×18px in a 90px column, leaving ~18px of empty space. now flex:1 each so they stretch to fill the column as one segmented control.
-- store listing no longer claims "rename emotes directly from the picker" — feature never existed in code (audit pass).
+- store listing now discloses that personal emote set, feed, and whispers require a heatsync.org login (free); third-party emote and cosmetic rendering works without an account. previous copy could leave a reader thinking nothing required auth.
 - twitch chat backfill paths (persisted-buffer restore, robotty backfill, justlog backfill) now skip `roomstate`/`userstate`/`whisper` types. those non-renderable types were filling the 500-msg render ring with null divs and presenting as empty chat on restored channels.
 
 ### internal
 - added `hs-dbg-render-deep` and `hs-dbg-emotes` event listeners in multichat bootstrap for inspecting render-merge state and emote-cache state during debug sessions.
+- removed three unguarded `console.log` breadcrumbs in `src/multichat/main.js` (resub-share fired ok, watchstreak-share fiber, watchstreak-share DOM click). these fired on every share user action and leaked to production console; now routed through `MC_DEBUG`-gated `log()`.
+
+### permissions / privacy disclosure
+- added `https://api.7tv.app/*` to chrome and firefox host_permissions. the 7TV v4 GraphQL search endpoint was being fetched from three content-script sites (heatsync-button.js, autocomplete-hook.js, src/multichat/emotes.js) without an explicit declaration. it worked today because 7TV serves permissive CORS, but the host should be declared for store review and reliability.
+- added `youtube-keyboard-guard.js` to the firefox manifest content_scripts (MAIN world, document_start, www.youtube.com). previously chrome-only; firefox YT users were missing the YT hotkey isolation that lets multichat input swallow keystrokes intended for it instead of triggering YT's page-level shortcuts.
+- privacy policy: docs/PRIVACY.md updated to disclose `api.7tv.app` (emote search), `logs.zonian.dev` (already declared but undocumented), and corrected the YouTube row from "DOM only" to call out the oembed and live-page metadata fetches that route chat messages. store-assets/copy/PRIVACY.md re-synced from the canonical so the version pasted into store consoles matches.
+- store listing host table now lists `api.7tv.app` and `logs.zonian.dev`.
 
 ## [1.5.2] — 2026-05-22
 

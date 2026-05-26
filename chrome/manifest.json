@@ -30,6 +30,7 @@
     "https://events.7tv.io/*",
     "https://cdn.betterttv.net/*",
     "https://cdn.7tv.app/*",
+    "https://api.7tv.app/*",
     "https://recent-messages.robotty.de/api/v2/recent-messages/*",
     "https://logs.ivr.fi/*",
     "https://logs.zonian.dev/*",

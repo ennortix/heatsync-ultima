@@ -36,7 +36,8 @@ all processing is read-only. the extension does not modify your accounts or sett
 - **heatsync.org:** your account profile, emote inventory, and blocked emotes list (encrypted at rest)
 - **7tv.io, frankerfacez.com, betterttv.net:** no storage — their APIs return cosmetics on-demand only
 - **decapi.me:** no storage — stateless username→ID lookup
-- **twitch, kick, youtube:** no data collected — the extension reads Twitch/Kick/YouTube's public chat DOM only
+- **twitch, kick:** no data collected — the extension reads Twitch/Kick's public chat DOM only
+- **www.youtube.com:** YouTube channel handles and video IDs are sent only to fetch live-page metadata (oembed) so live-chat messages route to the correct multichat tab — no message content or viewer data is collected
 
 ## third-party services
 
@@ -47,14 +48,16 @@ the extension communicates with the following services. **no personal data is so
 | heatsync.org | auth token, emote names, blocked IDs | fetch and sync your emotes |
 | heatsync.org | channel names | real-time emote broadcasts via WebSocket |
 | heatsync.org | chat/feed link URLs you hover or that appear in feed posts | proxy link previews and embed metadata so the request isn't made from your IP |
-| 7tv.io | twitch user IDs, emote names | fetch paint gradients and badges |
+| 7tv.io | twitch/kick user IDs, emote names | fetch paint gradients and badges |
+| api.7tv.app | search query string | resolve unknown emote names typed in tab-complete |
 | frankerfacez.com (FFZ) | emote names (batch query) | fetch badge metadata |
 | betterttv.net (BTTV) | emote names (batch query) | fetch badge metadata |
 | decapi.me | channel names (streamer usernames) | resolve to Twitch ID for cosmetics lookups |
 | recent-messages.robotty.de | channel names | fetch recent Twitch chat history on join |
-| logs.ivr.fi, logs.spanix.team | channel names | fetch extended Twitch chat history on join |
+| logs.ivr.fi, logs.spanix.team, logs.zonian.dev | channel names + usernames | fetch extended Twitch chat history and per-user log search on join |
 | api.chatterino.com | none (public GET, no personal data) | fetch Chatterino contributor badges |
-| twitch.tv, kick.com, youtube.com | none — extension reads DOM only | display overlays in chat |
+| twitch.tv, kick.com | none — extension reads DOM only | display overlays in chat |
+| www.youtube.com | YouTube channel handles + video IDs | fetch live-page metadata (oembed) to resolve channels and route live-chat messages |
 
 ## what we don't collect
 

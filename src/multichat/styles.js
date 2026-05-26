@@ -5673,12 +5673,14 @@ function injectStyles() {
     .hs-popout .hs-mc-rotate-chat {
       display: none !important;
     }
-    /* Popout: with C hidden, the util row collapses to 4×18px (T, F-, F+, ⚙)
-       in a 90px column → ~18px of empty side gap. Stretch each button to fill
-       the column so the row reads as a unified segmented control matching
-       the channel-tab strip above. */
-    .hs-popout.hs-tabs-right .hs-mc-util-row .hs-mc-util-btn,
-    .hs-popout.hs-tabs-left .hs-mc-util-row .hs-mc-util-btn {
+    /* Vertical tab modes (left/right) — stretch util buttons (C T F- F+ ⚙ ⛶)
+       to fill the column width as a unified segmented control matching the
+       channel-tab strip above. Without this, 5-6 buttons × 18px in a wider
+       column leaves a visible gap on the right; popout mode (where C is
+       hidden) showed this most clearly. Same rule covers in-page overlay
+       and popout window. */
+    .hs-tabs-right .hs-mc-util-row .hs-mc-util-btn,
+    .hs-tabs-left .hs-mc-util-row .hs-mc-util-btn {
       flex: 1 1 0 !important;
       width: auto !important;
       max-width: none !important;

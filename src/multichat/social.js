@@ -853,7 +853,14 @@ async function fetchFeed(append = false) {
   const resp = await apiFetch(`/api/messages?sort=time&limit=30&page=${page}&following=true`, { auth: true });
   feedLoading = false;
   if (!resp.ok) {
-    console.error('[heatsync-mc] Feed fetch failed — full resp:', JSON.stringify(resp));
+    // 429 means the user has multichat open in many tabs hitting /api/messages
+    // simultaneously — expected, not a bug, don't spam the error log. log via
+    // debug instead. true server errors (5xx, 401) still console.error.
+    if (resp.status === 429) {
+      log('feed fetch 429 — rate-limited, will retry on next stale check')
+    } else {
+      console.error('[heatsync-mc] Feed fetch failed — full resp:', JSON.stringify(resp));
+    }
     if (currentTab === 'feed') {
       const msgsEl = document.getElementById('hs-mc-messages');
       if (msgsEl && feedMessages.length === 0) {

@@ -1071,7 +1071,10 @@ function fetchEmoteInventory() {
     inventoryFetchOK = true
     broadcastToTabs({ type: 'inventory_update', emotes: emoteInventory })
   } catch (error) {
-    console.error('[heatsync] fetchEmoteInventory failed:', error.message || error)
+    // AbortError = SW reinit / ext-reload cancelled an in-flight fetch.
+    // Expected, not a real failure — keep the noise out of the error log.
+    const isAbort = error?.name === 'AbortError' || /aborted/i.test(error?.message || '')
+    if (!isAbort) console.error('[heatsync] fetchEmoteInventory failed:', error.message || error)
     // Network/timeout — preserve warm cache. Broadcasting [] here was the
     // source of the cold-start "no emotes" symptom: a single transient
     // failure nuked the in-memory inventory AND every tab's rendered emotes.

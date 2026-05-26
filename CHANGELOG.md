@@ -26,6 +26,11 @@
 - store listing now discloses that personal emote set, feed, and whispers require a heatsync.org login (free); third-party emote and cosmetic rendering works without an account. previous copy could leave a reader thinking nothing required auth.
 - twitch chat backfill paths (persisted-buffer restore, robotty backfill, justlog backfill) now skip `roomstate`/`userstate`/`whisper` types. those non-renderable types were filling the 500-msg render ring with null divs and presenting as empty chat on restored channels.
 
+### error-log noise (from production error-reporter)
+- `[heatsync] fetchEmoteInventory failed: signal is aborted without reason` was logged as console.error on every SW reinit / extension reload. expected behavior (AbortController cancels in-flight fetch on teardown), not a real failure. now suppressed when `error.name === 'AbortError'` or the message includes 'aborted'.
+- `[heatsync-mc] Feed fetch failed — full resp: {...429}` spammed on the rate-limit response when the user has multichat open across many tabs racing /api/messages. 429 is expected throttling, not a server fault — logged via debug `log()` instead of console.error. 5xx / 401 still console.error.
+- `Cannot read properties of null (reading 'querySelectorAll')` in `reapplyBadgesToExistingMessages` — twitch SPA-nav can reparent the chat tree between `findChatContainer()` returning and the next sync tick, leaving a stale reference. added a defensive `typeof container.querySelectorAll === 'function'` guard before iterating.
+
 ### removed
 - options page (`options.html`) deleted; `options_ui` removed from both manifests; "settings" link removed from the popup. settings now live solely inside the in-chat ⚙ button. previous options page was a one-paragraph stub that just told you to open chat — redundant surface.
 

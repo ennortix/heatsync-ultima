@@ -8442,7 +8442,12 @@ function reapplyBadgesToExistingMessages() {
     return
   }
   const container = findChatContainer()
-  if (!container) return
+  // Defensive: findChatContainer can return a stale reference whose node was
+  // detached between sync check and call (Twitch SPA-nav reparents the chat
+  // tree). Verify it still has querySelectorAll before calling. Without this,
+  // the runtime onMessage handler crashed with "Cannot read properties of
+  // null (reading 'querySelectorAll')" on rare reparent races.
+  if (!container || typeof container.querySelectorAll !== 'function') return
   let matched = 0
   container.querySelectorAll('[data-hs-cosmetic-user-id]').forEach(el => {
     const uid = el.dataset.hsCosmeticUserId

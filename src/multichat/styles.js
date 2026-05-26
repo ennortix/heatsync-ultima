@@ -5673,6 +5673,17 @@ function injectStyles() {
     .hs-popout .hs-mc-rotate-chat {
       display: none !important;
     }
+    /* Popout: with C hidden, the util row collapses to 4×18px (T, F-, F+, ⚙)
+       in a 90px column → ~18px of empty side gap. Stretch each button to fill
+       the column so the row reads as a unified segmented control matching
+       the channel-tab strip above. */
+    .hs-popout.hs-tabs-right .hs-mc-util-row .hs-mc-util-btn,
+    .hs-popout.hs-tabs-left .hs-mc-util-row .hs-mc-util-btn {
+      flex: 1 1 0 !important;
+      width: auto !important;
+      max-width: none !important;
+      min-width: 0 !important;
+    }
     .hs-popout #hs-mc-emote-picker {
       left: 0 !important;
       right: 0 !important;

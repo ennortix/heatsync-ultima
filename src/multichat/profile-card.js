@@ -583,8 +583,8 @@ function renderProfileCardView() {
 
     const actions = [
       { label: youFollow ? 'unfollow' : 'follow', fn: () => pcToggleFollow(profileId, username, youFollow), disabled: !profileId },
-      { label: 'whisper', fn: () => pcDoWhisper(username) },
-      { label: 'dm', fn: () => pcDoDm(username) },
+      { label: 'whisper', fn: () => pcDoWhisper(username, activeProfileCard?.platform) },
+      { label: 'dm', fn: () => pcDoDm(username, activeProfileCard?.platform) },
       { label: 'mention', fn: () => pcMention(data?.display_name || username) },
       { label: isMuted ? 'unmute' : 'mute', fn: () => pcToggleMute(username) },
       { label: youBlock ? 'unblock' : 'block', fn: () => pcToggleBlock(profileId, username, youBlock), disabled: !profileId },
@@ -1007,24 +1007,10 @@ async function pcToggleBlock(profileId, username, currentlyBlocked) {
   }
 }
 
-function pcDoWhisper(username) {
+function pcDoWhisper(username, platform) {
   closeProfileCard()
-  switchTab('whispers')
-  // Pre-fill input with /w <username> for quick start
-  cleanup.setTimeout(() => {
-    const input = document.getElementById('hs-mc-input')
-    if (input) {
-      const cmd = `/w ${username} `
-      if (input.tagName === 'INPUT') {
-        input.value = cmd
-        input.focus()
-        input.setSelectionRange(cmd.length, cmd.length)
-      } else {
-        input.textContent = cmd
-        input.focus()
-      }
-    }
-  }, 50)
+  // _openWhisperFor handles platform-aware twitch-handle resolution + tab switch + prefill.
+  cleanup.setTimeout(() => _openWhisperFor(username, platform), 50)
 }
 
 function setupProfileCardHandlers() {
@@ -1127,24 +1113,10 @@ function pcMention(name) {
   }, 60)
 }
 
-function pcDoDm(username) {
+function pcDoDm(username, platform) {
   closeProfileCard()
-  switchTab('whispers')
-  // Pre-fill input with /dm <username> for quick start (heatsync DM, not Twitch whisper)
-  cleanup.setTimeout(() => {
-    const input = document.getElementById('hs-mc-input')
-    if (input) {
-      const cmd = `/dm ${username} `
-      if (input.tagName === 'INPUT') {
-        input.value = cmd
-        input.focus()
-        input.setSelectionRange(cmd.length, cmd.length)
-      } else {
-        input.textContent = cmd
-        input.focus()
-      }
-    }
-  }, 50)
+  // _openDmFor handles platform-aware heatsync-handle resolution + tab switch + prefill.
+  cleanup.setTimeout(() => _openDmFor(username, platform), 50)
 }
 
 async function pcAddAsChannel(username) {

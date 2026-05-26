@@ -1081,7 +1081,8 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
     { key: 'block', label: youBlock ? 'unblock' : 'block', danger: !youBlock, fn: () => hsBlockFromMenu(username, platform) },
     { label: isMuted ? 'unmute' : 'mute (24h)', danger: !isMuted, fn: () => _toggleMcMute(username, platform) },
     'sep',
-    { label: 'whisper', fn: () => _openWhisperFor(username) },
+    { label: 'whisper', fn: () => _openWhisperFor(username, platform) },
+    { label: 'dm', fn: () => _openDmFor(username, platform) },
     { label: 'mention', fn: () => _mentionInMcInput(username) },
     { label: 'view profile', fn: () => openProfileCard(username, platform) },
   ]
@@ -1240,19 +1241,64 @@ function _extractMcMsgText(msg) {
   return parts.join(' ').replace(/\s+/g, ' ').trim()
 }
 
-function _openWhisperFor(username) {
-  if (typeof switchTab === 'function') switchTab('whispers')
+function _prefillMcInput(text) {
   const input = document.getElementById('hs-mc-input')
   if (!input) return
-  const prefill = `/w ${username} `
   if (input.tagName === 'INPUT' || input.tagName === 'TEXTAREA') {
-    input.value = prefill
+    input.value = text
     input.focus()
-    try { input.setSelectionRange(prefill.length, prefill.length) } catch {}
+    try { input.setSelectionRange(text.length, text.length) } catch {}
   } else {
-    input.textContent = prefill
+    input.textContent = text
     input.focus()
   }
+}
+
+// Cross-platform whisper open: when the target is a kick/yt user, resolve to
+// their linked twitch handle via /api/profile?platform= so the typed /w lands
+// on the right twitch acct (decapi only knows twitch). If they have no linked
+// twitch, bail with a clear "try /dm" hint instead of letting /w 404.
+async function _openWhisperFor(username, platform) {
+  if (typeof switchTab === 'function') switchTab('whispers')
+  let whisperName = username
+  if (platform && platform !== 'twitch') {
+    try {
+      const resp = await apiFetch(`/api/profile/${encodeURIComponent(username.toLowerCase())}?platform=${encodeURIComponent(platform)}`)
+      const tw = resp?.data?.profile?.twitch_username || resp?.data?.profile?._linked_twitch_username
+      if (tw) {
+        whisperName = tw
+      } else {
+        showToast(`${username} has no twitch — try /dm instead`, 'error')
+        return
+      }
+    } catch {
+      // network failed — fall back to raw name, let /w try decapi
+    }
+  }
+  _prefillMcInput(`/w ${whisperName} `)
+}
+
+// Cross-platform DM open: resolve username with the chat's platform hint so
+// kick/yt-only handles map to their heatsync username. Without the hint the
+// server only matches by users.username — fails when handles differ.
+async function _openDmFor(username, platform) {
+  if (typeof switchTab === 'function') switchTab('whispers')
+  let hsName = username
+  if (platform && platform !== 'heatsync') {
+    try {
+      const resp = await apiFetch(`/api/profile/${encodeURIComponent(username.toLowerCase())}?platform=${encodeURIComponent(platform)}`)
+      const u = resp?.data?.profile?.username
+      if (u) {
+        hsName = u
+      } else {
+        showToast(`${username} isn't on heatsync`, 'error')
+        return
+      }
+    } catch {
+      // network failed — fall back to raw name, let /dm try server-side
+    }
+  }
+  _prefillMcInput(`/dm ${hsName} `)
 }
 
 function _mentionInMcInput(username) {

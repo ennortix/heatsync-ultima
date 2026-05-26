@@ -396,6 +396,48 @@ document.addEventListener('hs-dbg-render-trace', (e) => {
     document.documentElement.dataset.hsDbg3 = 'err:' + (err?.message || 'unknown')
   }
 }, true)
+document.addEventListener('hs-dbg-render-deep', (e) => {
+  try {
+    const id = (e?.detail?.id || '').toLowerCase()
+    const ch = (typeof getChannelById === 'function') ? getChannelById(id) : null
+    const tw = ch?.twitch
+    const kk = ch?.kick
+    const ircMsgs = tw && typeof irc !== 'undefined' ? (irc?.getMessages(tw) || []) : []
+    const kickMsgs = kk && typeof kickChat !== 'undefined' ? (kickChat?.getMessages(kk) || []) : []
+    let ytMsgs = (typeof channelYtMessages !== 'undefined') ? (channelYtMessages.get(id) || []) : []
+    const autoYt = (typeof channelYtMessages !== 'undefined') ? (channelYtMessages.get('__live_yt_auto__') || []) : []
+    const ytAutoMerged = autoYt.length > 0 && typeof isLiveChannelMessage === 'function' && isLiveChannelMessage({ channel: tw || kk || id })
+    if (ytAutoMerged) ytMsgs = ytMsgs.length ? [...ytMsgs, ...autoYt] : autoYt
+    const filt = (typeof getPlatformFilter === 'function') ? getPlatformFilter(id) : null
+    const fmInput = [filt?.twitch ? ircMsgs : [], filt?.kick ? kickMsgs : [], filt?.youtube ? ytMsgs : []]
+    const fmInputLens = fmInput.map(s => s.length)
+    const merged = (typeof fairMerge === 'function') ? fairMerge(fmInput) : []
+    const activityCount = (typeof activityEvents !== 'undefined' && Array.isArray(activityEvents)) ? activityEvents.length : -1
+    const activityFollow = (typeof activityEvents !== 'undefined') ? activityEvents.filter(x => x?.eventClass?.includes?.('event-follow')).length : -1
+    const out = {
+      id, tw, kk,
+      ircMsgs_len: ircMsgs.length,
+      kickMsgs_len: kickMsgs.length,
+      ytMsgs_len: ytMsgs.length,
+      autoYt_len: autoYt.length,
+      ytAutoMerged,
+      filt,
+      fmInputLens,
+      merged_len: merged.length,
+      mergedSampleTop: merged.slice(0,3).map(m => ({u:m.user, t:m.time, type:m.type, txt:(m.text||'').slice(0,30)})),
+      mergedSampleBottom: merged.slice(-3).map(m => ({u:m.user, t:m.time, type:m.type, txt:(m.text||'').slice(0,30)})),
+      activityCount,
+      activityFollow,
+      isMultiPlat: (typeof isMultiPlatformTab === 'function') ? isMultiPlatformTab(id) : null,
+      domRenderCap: (typeof DOM_RENDER_CAP !== 'undefined') ? DOM_RENDER_CAP : null,
+      currentTab: typeof currentTab !== 'undefined' ? currentTab : null,
+      renderEpoch: typeof _renderEpoch !== 'undefined' ? _renderEpoch : null,
+    }
+    document.documentElement.dataset.hsDbgDeep = JSON.stringify(out)
+  } catch (err) {
+    document.documentElement.dataset.hsDbgDeep = 'err:' + (err?.message || 'unknown') + '\n' + (err?.stack || '').slice(0,400)
+  }
+}, true)
 document.addEventListener('hs-dbg-twitch-sample', (e) => {
   try {
     const ch = (e?.detail?.ch || '').toLowerCase()

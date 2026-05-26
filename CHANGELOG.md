@@ -1,5 +1,13 @@
 # changelog
 
+## [1.5.3] — 2026-05-26
+
+### changed
+- reframed external acquisition copy (README, store listing, reviewer notes) around the wedge: your personal 5000-slot emote set works in any twitch/kick/youtube chat, no streamer approval, no subscription. multichat is now positioned as a supporting feature rather than the lead.
+
+### internal
+- added `hs-dbg-render-deep` event listener in multichat bootstrap for inspecting merge state, platform filter, render epoch, and activity buffer during debug sessions.
+
 ## [1.5.2] — 2026-05-22
 
 ### added

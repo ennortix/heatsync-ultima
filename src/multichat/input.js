@@ -1065,7 +1065,7 @@ async function hsBlockFromMenu(username, platform) {
   // Registered → real account-level block (persists, auto-unfollows). Otherwise
   // fall back to a local session hide so block still works on non-heatsync users.
   if (id) pcToggleBlock(id, username, !!(p.relationship?.youBlock || p.relationship?.isBlocked))
-  else _toggleMcBlock(username)
+  else _toggleMcBlock(username, platform)
 }
 
 // Build the universal action menu. follow=1, block=2 always lead; whisper/
@@ -1074,12 +1074,12 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
   const { msg, feedDiv, feedMsg } = ctx
   const rel = hsRelPeek(username, platform)?.relationship || null
   const youFollow = !!(rel?.youFollow || rel?.isFollowing)
-  const youBlock = !!(rel?.youBlock || rel?.isBlocked) || blockedUsers.has(String(username).toLowerCase())
-  const isMuted = mutedUsers.has(username)
+  const youBlock = !!(rel?.youBlock || rel?.isBlocked) || (typeof isUserBlocked === 'function' ? isUserBlocked(username, platform) : blockedUsers.has(String(username).toLowerCase()))
+  const isMuted = (typeof isUserMuted === 'function') ? isUserMuted(username, platform) : mutedUsers.has(username)
   const items = [
     { key: 'follow', label: youFollow ? 'unfollow' : 'follow', fn: () => hsFollowFromMenu(username, platform) },
     { key: 'block', label: youBlock ? 'unblock' : 'block', danger: !youBlock, fn: () => hsBlockFromMenu(username, platform) },
-    { label: isMuted ? 'unmute' : 'mute (24h)', danger: !isMuted, fn: () => _toggleMcMute(username) },
+    { label: isMuted ? 'unmute' : 'mute (24h)', danger: !isMuted, fn: () => _toggleMcMute(username, platform) },
     'sep',
     { label: 'whisper', fn: () => _openWhisperFor(username) },
     { label: 'mention', fn: () => _mentionInMcInput(username) },
@@ -1129,7 +1129,7 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
       const menu = document.getElementById('hs-mc-msg-ctx')
       if (!menu) return
       const yf = !!(r.youFollow || r.isFollowing)
-      const yb = !!(r.youBlock || r.isBlocked) || blockedUsers.has(String(username).toLowerCase())
+      const yb = !!(r.youBlock || r.isBlocked) || (typeof isUserBlocked === 'function' ? isUserBlocked(username, platform) : blockedUsers.has(String(username).toLowerCase()))
       const followEl = menu.querySelector('[data-hs-key="follow"] .hs-mc-em-label')
       if (followEl) followEl.textContent = yf ? 'unfollow' : 'follow'
       const blockEl = menu.querySelector('[data-hs-key="block"] .hs-mc-em-label')
@@ -1141,33 +1141,45 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
   }
 }
 
-function _toggleMcMute(username) {
-  let wasUnmute = false
-  if (mutedUsers.has(username)) {
-    mutedUsers.delete(username)
-    wasUnmute = true
+function _toggleMcMute(username, platform) {
+  const aliases = (typeof getUserAliases === 'function') ? getUserAliases(username, platform) : [String(username).toLowerCase()]
+  const primary = aliases[0]
+  const wasMuted = (typeof isUserMuted === 'function')
+    ? isUserMuted(username, platform)
+    : mutedUsers.has(primary)
+  const wasUnmute = wasMuted
+  if (wasMuted) {
+    for (const a of aliases) mutedUsers.delete(a)
     showToast(`unmuted ${username}`, 'success')
-    safeSendMessage({ type: 'unmute_user', username })
+    for (const a of aliases) safeSendMessage({ type: 'unmute_user', username: a })
   } else {
-    mutedUsers.add(username)
-    showToast(`muted ${username} (24h)`, 'success')
-    safeSendMessage({ type: 'mute_user', username, expiresAt: Date.now() + 86400000 })
+    for (const a of aliases) mutedUsers.add(a)
+    const aliasNote = aliases.length > 1 ? ` (+linked @${aliases[1]})` : ''
+    showToast(`muted ${username}${aliasNote} (24h)`, 'success')
+    const exp = Date.now() + 86400000
+    for (const a of aliases) safeSendMessage({ type: 'mute_user', username: a, expiresAt: exp })
   }
   chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] })
-  if (wasUnmute) restoreMcUnmutedDom(username)
+  if (wasUnmute) {
+    for (const a of aliases) restoreMcUnmutedDom(a)
+  }
   renderMessages(currentTab)
 }
 
-function _toggleMcBlock(username) {
-  const u = String(username).toLowerCase()
-  if (blockedUsers.has(u)) {
-    blockedUsers.delete(u)
+function _toggleMcBlock(username, platform) {
+  const aliases = (typeof getUserAliases === 'function') ? getUserAliases(username, platform) : [String(username).toLowerCase()]
+  const wasBlocked = (typeof isUserBlocked === 'function')
+    ? isUserBlocked(username, platform)
+    : blockedUsers.has(aliases[0])
+  if (wasBlocked) {
+    for (const a of aliases) blockedUsers.delete(a)
     showToast(`unblocked ${username}`, 'success')
-    safeSendMessage({ type: 'unblock_user', username: u })
+    for (const a of aliases) safeSendMessage({ type: 'unblock_user', username: a })
   } else {
-    blockedUsers.add(u)
-    showToast(`blocked ${username}`, 'success')
-    safeSendMessage({ type: 'block_user', username: u })
+    for (const a of aliases) blockedUsers.add(a)
+    const aliasNote = aliases.length > 1 ? ` (+linked @${aliases[1]})` : ''
+    showToast(`blocked ${username}${aliasNote}`, 'success')
+    for (const a of aliases) safeSendMessage({ type: 'block_user', username: a })
   }
   // buildMessageDiv filters blocked users, so a full re-render hides/restores them.
   renderMessages(currentTab)
@@ -1346,7 +1358,11 @@ function applyMcMutes() {
   document.querySelectorAll('.hs-mc-msg').forEach(msg => {
     const userEl = msg.querySelector('.hs-mc-user');
     const username = userEl?.textContent?.trim()?.toLowerCase();
-    if (username && mutedUsers.has(username)) {
+    const platform = userEl?.dataset?.platform;
+    const muted = username && (typeof isUserMuted === 'function'
+      ? isUserMuted(username, platform)
+      : mutedUsers.has(username));
+    if (muted) {
       stripMcMutedMessage(msg);
     } else {
       msg.classList.remove('hs-mc-muted');
@@ -3906,11 +3922,17 @@ async function handleSlashCommand(text, input) {
   if (cmd === 'mute') {
     const u = rest.trim().replace(/^@/, '').toLowerCase()
     if (!u) { showToast('usage: /mute <user>'); return true }
-    if (mutedUsers.has(u)) { showToast(`${u} already muted`); return true }
-    mutedUsers.add(u)
+    // platform unknown from slash command — try both kick→twitch aliasing and
+    // raw username. getUserAliases handles unknown-platform gracefully.
+    const aliases = (typeof getUserAliases === 'function') ? getUserAliases(u, null) : [u]
+    const already = (typeof isUserMuted === 'function') ? isUserMuted(u, null) : mutedUsers.has(u)
+    if (already) { showToast(`${u} already muted`); return true }
+    for (const a of aliases) mutedUsers.add(a)
     chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] })
-    safeSendMessage({ type: 'mute_user', username: u, expiresAt: Date.now() + 86400000 })
-    showToast(`muted ${u} (24h)`, 'success')
+    const exp = Date.now() + 86400000
+    for (const a of aliases) safeSendMessage({ type: 'mute_user', username: a, expiresAt: exp })
+    const aliasNote = aliases.length > 1 ? ` (+@${aliases[1]})` : ''
+    showToast(`muted ${u}${aliasNote} (24h)`, 'success')
     renderMessages(currentTab)
     return true
   }
@@ -3918,10 +3940,12 @@ async function handleSlashCommand(text, input) {
   if (cmd === 'unmute') {
     const u = rest.trim().replace(/^@/, '').toLowerCase()
     if (!u) { showToast('usage: /unmute <user>'); return true }
-    if (!mutedUsers.has(u)) { showToast(`${u} not muted`); return true }
-    mutedUsers.delete(u)
+    const aliases = (typeof getUserAliases === 'function') ? getUserAliases(u, null) : [u]
+    const wasMuted = (typeof isUserMuted === 'function') ? isUserMuted(u, null) : mutedUsers.has(u)
+    if (!wasMuted) { showToast(`${u} not muted`); return true }
+    for (const a of aliases) mutedUsers.delete(a)
     chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] })
-    safeSendMessage({ type: 'unmute_user', username: u })
+    for (const a of aliases) safeSendMessage({ type: 'unmute_user', username: a })
     showToast(`unmuted ${u}`, 'success')
     renderMessages(currentTab)
     return true

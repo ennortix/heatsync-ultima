@@ -118,6 +118,28 @@ document.addEventListener('hs-dbg-probe', () => {
     document.documentElement.dataset.hsDbg = 'err:' + (e?.message || 'unknown')
   }
 }, true)
+// hs-dbg-alias-probe → returns getUserAliases() + mute/block state for a test
+// user. Lets MAIN-world verify the cross-platform alias resolution end-to-end.
+document.addEventListener('hs-dbg-alias-probe', (e) => {
+  try {
+    const username = e?.detail?.username || ''
+    const platform = e?.detail?.platform || null
+    const aliases = (typeof getUserAliases === 'function') ? getUserAliases(username, platform) : null
+    const muted = (typeof isUserMuted === 'function') ? isUserMuted(username, platform) : null
+    const blocked = (typeof isUserBlocked === 'function') ? isUserBlocked(username, platform) : null
+    const mutedAll = (typeof mutedUsers !== 'undefined' && mutedUsers instanceof Set) ? [...mutedUsers] : null
+    const blockedAll = (typeof blockedUsers !== 'undefined' && blockedUsers instanceof Set) ? [...blockedUsers] : null
+    document.documentElement.dataset.hsDbgAlias = JSON.stringify({
+      username, platform, aliases, muted, blocked,
+      mutedCount: mutedAll?.length ?? null,
+      blockedCount: blockedAll?.length ?? null,
+      mutedAll: mutedAll?.slice(-20),
+      blockedAll: blockedAll?.slice(-20),
+    })
+  } catch (err) {
+    document.documentElement.dataset.hsDbgAlias = 'err:' + (err?.message || 'unknown')
+  }
+}, true)
 document.addEventListener('hs-dbg-render-trace', (e) => {
   try {
     const id = (e?.detail?.id || '').toLowerCase()

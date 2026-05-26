@@ -569,7 +569,7 @@ function renderProfileCardView() {
     const grid = document.createElement('div')
     grid.className = 'hs-pcard-action-grid'
 
-    const isMuted = mutedUsers.has(username)
+    const isMuted = (typeof isUserMuted === 'function') ? isUserMuted(username, activeProfileCard.platform) : mutedUsers.has(username)
     const inChannels = config.channels.some(c => {
       const id = c.id?.toLowerCase()
       const tw = c.twitch?.toLowerCase()
@@ -856,12 +856,16 @@ function pcOpenExt(url) {
 
 function pcToggleMute(username) {
   username = username.toLowerCase()
-  if (mutedUsers.has(username)) {
-    mutedUsers.delete(username)
-    safeSendMessage({ type: 'unmute_user', username })
+  const platform = activeProfileCard?.platform
+  const aliases = (typeof getUserAliases === 'function') ? getUserAliases(username, platform) : [username]
+  const wasMuted = (typeof isUserMuted === 'function') ? isUserMuted(username, platform) : mutedUsers.has(username)
+  if (wasMuted) {
+    for (const a of aliases) mutedUsers.delete(a)
+    for (const a of aliases) safeSendMessage({ type: 'unmute_user', username: a })
   } else {
-    mutedUsers.add(username)
-    safeSendMessage({ type: 'mute_user', username, expiresAt: Date.now() + 86400000 })
+    for (const a of aliases) mutedUsers.add(a)
+    const exp = Date.now() + 86400000
+    for (const a of aliases) safeSendMessage({ type: 'mute_user', username: a, expiresAt: exp })
   }
   chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] })
   renderProfileCardView()

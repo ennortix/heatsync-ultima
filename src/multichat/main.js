@@ -143,6 +143,42 @@
   // Synced with background's block_user/unblock_user (shared with content.js).
   let blockedUsers = new Set();
 
+  // ─── User-key aliasing ─── When a Kick chatter has a 7TV-linked Twitch
+  // handle (kickNameToTwitchUsername populated by the cosmetics pipeline),
+  // mute/block actions fan out to BOTH names. So one mute on a Kick chatter
+  // also silences them when they post on Twitch, and vice-versa. Unmute
+  // mirrors. mentionAliases (mentions.js) covers the inverse for YOUR own
+  // identity already.
+  function getUserAliases(username, platform) {
+    const u = String(username || '').toLowerCase()
+    if (!u) return []
+    const out = [u]
+    // Kick→Twitch: only direction we have a map for. Reverse (twitch→kick)
+    // would need a separate cache populated from kick-side lookups; not built
+    // because we'd be guessing kick handles for every Twitch chatter.
+    if (typeof kickNameToTwitchUsername !== 'undefined') {
+      const tw = kickNameToTwitchUsername.get(u)
+      if (tw && tw.toLowerCase() !== u) out.push(tw.toLowerCase())
+    }
+    return out
+  }
+
+  function isUserMuted(username, platform) {
+    if (!username) return false
+    for (const a of getUserAliases(username, platform)) {
+      if (mutedUsers.has(a)) return true
+    }
+    return false
+  }
+
+  function isUserBlocked(username, platform) {
+    if (!username) return false
+    for (const a of getUserAliases(username, platform)) {
+      if (blockedUsers.has(a)) return true
+    }
+    return false
+  }
+
   // Active settings sub-tab — persisted across re-renders
   let _settingsSubtab = 'display';
   // Cached server content-filter settings (lazy-loaded when filters sub-tab shown)
@@ -7023,7 +7059,7 @@
     // Blocked user — fully hide (skip render entirely). Both the append and the
     // full-rebuild path go through buildMessageDiv, so returning null here hides
     // the message everywhere. Unblock + renderMessages brings them back.
-    if (m.user && blockedUsers.has(String(m.user).toLowerCase())) return null;
+    if (m.user && isUserBlocked(m.user, m.platform)) return null;
     // Stream event — render as magenta inline notification.
     // Render-time gate: skip if the corresponding hermes toggle is off
     // (buffer can hold events saved before a toggle flipped). Mirrors the
@@ -7702,9 +7738,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     trimMessagesEl(msgsEl, DOM_RENDER_CAP);
 
     // Apply mute to just this message — strip content for muted users.
-    // msg.user is the sender; avoid a DOM scan to recompute it.
+    // msg.user is the sender; avoid a DOM scan to recompute it. Routes
+    // through isUserMuted so a kick chatter whose linked twitch handle was
+    // muted (or vice-versa) gets stripped on either platform.
     const username = msg.user ? String(msg.user).toLowerCase() : '';
-    if (username && mutedUsers.has(username)) {
+    if (username && isUserMuted(username, msg.platform)) {
       stripMcMutedMessage(div);
     }
 

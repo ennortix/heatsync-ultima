@@ -614,9 +614,12 @@ class KickChat {
         const channel = d.channel?.toLowerCase()
         this._touchChannel(channel)
         if (!channel || !this.channels.has(channel)) return
-        // Convert Kick badge objects [{name,version}] to Twitch-style "name/version" string
+        // Convert Kick badge objects to Twitch-style "name/version" string.
+        // Kick WS payload uses {type, text, count} per badge; some pass-through
+        // paths re-shape to {name, version}. Accept BOTH so type-shape payloads
+        // don't collapse to 'badge/1' (which has no BADGE_STYLES entry → blank).
         const badgeStr = Array.isArray(d.badges)
-          ? d.badges.map(b => `${b.name || 'badge'}/${b.version || '1'}`).join(',')
+          ? d.badges.map(b => `${b.type || b.name || 'badge'}/${b.version || b.count || '1'}`).join(',')
           : ''
         const msg = {
           user: d.username || 'unknown',

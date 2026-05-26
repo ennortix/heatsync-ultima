@@ -7619,7 +7619,7 @@ function bgKickIngestBackfill(ch, data) {
   const buf = BG_KICK.channels.get(ch)
   // Normalize Kick badge array → "name/version,name/version" string
   const badgeStr = Array.isArray(data.badges)
-    ? data.badges.map(b => `${b.name || 'badge'}/${b.version || '1'}`).join(',')
+    ? data.badges.map(b => `${b.type || b.name || 'badge'}/${b.version || b.count || '1'}`).join(',')
     : ''
   const msg = {
     user: data.username || data.displayName || data.user || 'unknown',
@@ -7706,7 +7706,7 @@ async function bgKickFetchArchive(ch, beforeIso) {
       const user = r.display_name || r.username || 'unknown'
       const ts = r.timestamp ? new Date(r.timestamp).getTime() : Date.now()
       const badgeStr = Array.isArray(r.badges)
-        ? r.badges.map(b => `${b.name || 'badge'}/${b.version || '1'}`).join(',')
+        ? r.badges.map(b => `${b.type || b.name || 'badge'}/${b.version || b.count || '1'}`).join(',')
         : (typeof r.badges === 'string' ? r.badges : '')
       const msg = {
         user, text, color: '#53fc18', badges: badgeStr,

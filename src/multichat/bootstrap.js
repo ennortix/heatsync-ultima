@@ -118,6 +118,28 @@ document.addEventListener('hs-dbg-probe', () => {
     document.documentElement.dataset.hsDbg = 'err:' + (e?.message || 'unknown')
   }
 }, true)
+// hs-dbg-kick-badges → returns a sample of recent kick msgs with their .badges
+// string so we can see whether the WS payload actually carries badge types.
+document.addEventListener('hs-dbg-kick-badges', () => {
+  try {
+    const out = []
+    if (typeof kickChat !== 'undefined' && kickChat?.channels) {
+      for (const [ch, buf] of kickChat.channels) {
+        const all = buf?.getAll?.() || []
+        for (const m of all.slice(-30)) {
+          if (m?.badges && m.badges.length > 0) {
+            out.push({ ch, u: m.user, badges: m.badges })
+            if (out.length >= 12) break
+          }
+        }
+        if (out.length >= 12) break
+      }
+    }
+    document.documentElement.dataset.hsDbgKickBadges = JSON.stringify(out)
+  } catch (e) {
+    document.documentElement.dataset.hsDbgKickBadges = 'err:' + (e?.message || 'unknown')
+  }
+}, true)
 // hs-dbg-alias-probe → returns getUserAliases() + mute/block state for a test
 // user. Lets MAIN-world verify the cross-platform alias resolution end-to-end.
 document.addEventListener('hs-dbg-alias-probe', (e) => {

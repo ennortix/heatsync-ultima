@@ -7226,9 +7226,20 @@
           id === 'followers_on' || id === 'followers_on_zero' || id === 'followers_off' ||
           id === 'r9k_on' || id === 'r9k_off') return 'hs-mc-notice-mode'
       if (id === 'sub' || id === 'resub') return 'hs-mc-notice-sub'
+      // Kick event names — heatsync server passes Kick-side strings through;
+      // normalize to the same CSS classes Twitch sub/gift events use so the
+      // sub-purple border, gift-bubble pink, etc. render identically.
+      if (id === 'subscription' || id === 'channel.subscription.new' ||
+          id === 'channel.subscription.renewal' || id === 'resubscription') return 'hs-mc-notice-sub'
       if (id === 'subgift' || id === 'anonsubgift' || id === 'submysterygift' ||
-          id === 'giftpaidupgrade' || id === 'anongiftpaidupgrade') return 'hs-mc-notice-gift'
+          id === 'giftpaidupgrade' || id === 'anongiftpaidupgrade' ||
+          id === 'gift_subscription' || id === 'gifted_subscriptions' ||
+          id === 'channel.subscription.gifts') return 'hs-mc-notice-gift'
       if (id === 'raid' || id === 'unraid') return 'hs-mc-notice-raid'
+      // Kick host events — render same as raid
+      if (id === 'host' || id === 'unhost' || id === 'channel.host') return 'hs-mc-notice-raid'
+      // Kick "Kicks" gifted events (already wired in irc.js as kicksEvent)
+      if (id === 'kicks_gifted' || id === 'kicks') return 'hs-mc-notice-bits'
       if (id === 'announcement') return 'hs-mc-notice-announce'
       if (id === 'bitsbadgetier') return 'hs-mc-notice-bits'
       if (id === 'watchstreak') return 'hs-mc-notice-watchstreak'
@@ -7260,7 +7271,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         return ''
       }).join('')
     } else {
-      badges = renderBadges(m.badges, m.channel, m.platform)
+      // m.badgePlatform preserves the ORIGINAL chat origin (twitch IRC vs
+       // Kick WS) when peekSentHost retags m.platform to the user's send-host
+       // ('kick' on own msg from kick.com). Badge URL lookup must use the
+       // origin platform — mod/sub badges on a Twitch IRC msg always belong
+       // to the Twitch badge namespace, regardless of [K]/[T] indicator.
+      badges = renderBadges(m.badges, m.channel, m.badgePlatform || m.platform)
     }
     // YT messages don't carry a Twitch ID — resolve via heatsync profile
     // lookup keyed by the YT @handle. If cached, hoist into m.userId so the
@@ -11651,6 +11667,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (msg.user?.toLowerCase() === currentUsername?.toLowerCase()) {
         const sentHost = peekSentHost(msg.text)
         if (sentHost) {
+          // IRC origin — badges are Twitch namespace regardless of [K] retag.
+          msg.badgePlatform = 'twitch'
           msg.platform = sentHost === 'yt' ? 'youtube' : sentHost
         }
       }
@@ -11710,6 +11728,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (msg.user?.toLowerCase() === currentUsername?.toLowerCase()) {
         const sentHost = peekSentHost(msg.text)
         if (sentHost) {
+          // Kick origin — badges look up in kickBadgeUrls.
+          msg.badgePlatform = 'kick'
           msg.platform = sentHost === 'yt' ? 'youtube' : sentHost
         }
       }

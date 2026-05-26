@@ -404,7 +404,7 @@ class IRC {
         if (m.subMonths) { try { trackSubTenure(ch, m.user, m.subMonths) } catch {} }
         try {
           const sentHost = peekSentHost(m.text)
-          if (sentHost) m.platform = sentHost === 'yt' ? 'youtube' : sentHost
+          if (sentHost) { m.badgePlatform = 'twitch'; m.platform = sentHost === 'yt' ? 'youtube' : sentHost }
         } catch {}
         buf.push(m)
       }
@@ -452,7 +452,7 @@ class IRC {
           // if we tracked this exact text as a kick/yt/heatsync send, retag.
           try {
             const sentHost = peekSentHost(m.text)
-            if (sentHost) m.platform = sentHost === 'yt' ? 'youtube' : sentHost
+            if (sentHost) { m.badgePlatform = 'twitch'; m.platform = sentHost === 'yt' ? 'youtube' : sentHost }
           } catch {}
           buf.push(m)
         }
@@ -751,7 +751,7 @@ class KickChat {
         }
         try {
           const sentHost = peekSentHost(m.text)
-          if (sentHost) m.platform = sentHost === 'yt' ? 'youtube' : sentHost
+          if (sentHost) { m.badgePlatform = 'kick'; m.platform = sentHost === 'yt' ? 'youtube' : sentHost }
         } catch {}
         buf.push(m)
       }
@@ -889,7 +889,7 @@ class KickChat {
           }
           try {
             const sentHost = peekSentHost(m.text)
-            if (sentHost) m.platform = sentHost === 'yt' ? 'youtube' : sentHost
+            if (sentHost) { m.badgePlatform = 'kick'; m.platform = sentHost === 'yt' ? 'youtube' : sentHost }
           } catch {}
           buf.push(m)
         }

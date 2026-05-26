@@ -124,6 +124,38 @@ document.addEventListener('hs-dbg-probe', () => {
 // text from event.detail.text. Times the call + reports whether IRC state
 // changed afterward. The event.detail.text is REAL text — caller is
 // responsible (only used by automation against safe channels).
+// hs-dbg-twitch-badges-lookup → resolve a specific (channel, name, version)
+// combo so we can see WHY a particular badge renders as text — is the URL
+// missing from the Map, or is renderBadges using a wrong key?
+document.addEventListener('hs-dbg-twitch-badges-lookup', (e) => {
+  try {
+    const channel = e?.detail?.channel || 'nl_kripp'
+    const name = e?.detail?.name || 'moderator'
+    const version = e?.detail?.version || '1'
+    const directChannel = twitchBadgeUrls.get(`${channel}:${name}/${version}`)
+    let nearestVer = null
+    let nearestUrl = null
+    try {
+      nearestVer = findNearestChannelBadgeVersion(channel, name, version)
+      if (nearestVer) nearestUrl = twitchBadgeUrls.get(`${channel}:${name}/${nearestVer}`)
+    } catch {}
+    const globalExact = twitchBadgeUrls.get(`${name}/${version}`)
+    const globalOne = twitchBadgeUrls.get(`${name}/1`)
+    // Enumerate any keys containing the name
+    const relatedKeys = [...twitchBadgeUrls.keys()].filter(k => k.includes(name)).slice(0, 20)
+    document.documentElement.dataset.hsDbgTwitchBadgesLookup = JSON.stringify({
+      channel, name, version,
+      directChannelHit: !!directChannel,
+      nearestVer, nearestHit: !!nearestUrl,
+      globalExactHit: !!globalExact,
+      globalOneHit: !!globalOne,
+      relatedKeys,
+      mapTotal: twitchBadgeUrls.size,
+    })
+  } catch (err) {
+    document.documentElement.dataset.hsDbgTwitchBadgesLookup = 'err:' + (err?.message || 'unknown')
+  }
+}, true)
 // hs-dbg-twitch-badges → returns twitchBadgeUrls Map stats so we can see if
 // global + channel badges have populated. Helps diagnose "MOD/SUB as text"
 // regressions when running off-twitch.

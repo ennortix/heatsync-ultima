@@ -177,23 +177,40 @@ async function pcFetchKickEnrich(username) {
   if (!username) return null
   const u = String(username).toLowerCase()
   try {
-    const resp = await fetch(`https://kick.com/api/v1/users/${encodeURIComponent(u)}`, { credentials: 'omit' })
-    if (!resp.ok) return null
-    const data = await resp.json().catch(() => null)
-    if (!data?.id) return null
+    // Fetch user record + channel record in parallel — most Kick users have
+    // both (their channel slug == username). Channel returns follower_count,
+    // recent_categories, livestream state. User has bio + socials. Combined
+    // gives an S-tier profile-card.
+    const [userRes, chanRes] = await Promise.allSettled([
+      fetch(`https://kick.com/api/v1/users/${encodeURIComponent(u)}`, { credentials: 'omit' }),
+      fetch(`https://kick.com/api/v2/channels/${encodeURIComponent(u)}`, { credentials: 'omit' })
+    ])
+    const data = (userRes.status === 'fulfilled' && userRes.value.ok)
+      ? await userRes.value.json().catch(() => null) : null
+    const chan = (chanRes.status === 'fulfilled' && chanRes.value.ok)
+      ? await chanRes.value.json().catch(() => null) : null
+    if (!data?.id && !chan?.id) return null
     return {
-      kick_user_id: data.id,
-      kick_username: data.username || u,
-      kick_profile_pic: data.profilepic || null,
-      kick_bio: data.bio || null,
+      kick_user_id: data?.id || chan?.user_id || null,
+      kick_username: data?.username || chan?.slug || u,
+      kick_profile_pic: data?.profilepic || chan?.user?.profile_pic || null,
+      kick_bio: data?.bio || chan?.user?.bio || null,
       kick_socials: {
-        twitter: data.twitter || null,
-        facebook: data.facebook || null,
-        instagram: data.instagram || null,
-        youtube: data.youtube || null,
-        discord: data.discord || null,
-        tiktok: data.tiktok || null,
+        twitter: data?.twitter || chan?.user?.twitter || null,
+        facebook: data?.facebook || chan?.user?.facebook || null,
+        instagram: data?.instagram || chan?.user?.instagram || null,
+        youtube: data?.youtube || chan?.user?.youtube || null,
+        discord: data?.discord || chan?.user?.discord || null,
+        tiktok: data?.tiktok || chan?.user?.tiktok || null,
       },
+      kick_followers: chan?.followers_count || null,
+      kick_is_live: !!chan?.livestream,
+      kick_live_viewers: chan?.livestream?.viewer_count || null,
+      kick_live_title: chan?.livestream?.session_title || null,
+      kick_recent_categories: Array.isArray(chan?.recent_categories)
+        ? chan.recent_categories.slice(0, 3).map(c => ({ name: c.name, slug: c.slug }))
+        : null,
+      kick_verified: !!chan?.verified,
       linked_twitch_username: (typeof getKickLinkedTwitch === 'function') ? getKickLinkedTwitch(u) : null,
     }
   } catch { return null }
@@ -203,7 +220,14 @@ function pcMergeKickEnrich(profile, kickEnrich) {
   if (!profile.bio && kickEnrich.kick_bio) profile.bio = kickEnrich.kick_bio
   if (!profile.kick_profile_pic && kickEnrich.kick_profile_pic) profile.kick_profile_pic = kickEnrich.kick_profile_pic
   if (!profile.kick_username && kickEnrich.kick_username) profile.kick_username = kickEnrich.kick_username
+  // Merge to canonical Kick fields so the existing stats render picks them up
+  if (kickEnrich.kick_followers && !profile.kick_followers) profile.kick_followers = kickEnrich.kick_followers
+  if (typeof kickEnrich.kick_is_live === 'boolean' && profile.kick_is_live == null) profile.kick_is_live = kickEnrich.kick_is_live
+  if (kickEnrich.kick_live_viewers && !profile.kick_viewer_count) profile.kick_viewer_count = kickEnrich.kick_live_viewers
+  if (kickEnrich.kick_verified && !profile.kick_verified) profile.kick_verified = true
   profile._kick_socials = kickEnrich.kick_socials
+  profile._kick_live_title = kickEnrich.kick_live_title
+  profile._kick_recent_categories = kickEnrich.kick_recent_categories
   profile._linked_twitch_username = kickEnrich.linked_twitch_username || profile.twitch_username || null
 }
 
@@ -213,7 +237,13 @@ function pcSynthFromKickEnrich(username, kickEnrich) {
     kick_username: kickEnrich.kick_username || username,
     kick_profile_pic: kickEnrich.kick_profile_pic || null,
     bio: kickEnrich.kick_bio || null,
+    kick_followers: kickEnrich.kick_followers || null,
+    kick_is_live: kickEnrich.kick_is_live,
+    kick_viewer_count: kickEnrich.kick_live_viewers || null,
+    kick_verified: kickEnrich.kick_verified || false,
     _kick_socials: kickEnrich.kick_socials,
+    _kick_live_title: kickEnrich.kick_live_title,
+    _kick_recent_categories: kickEnrich.kick_recent_categories,
     _linked_twitch_username: kickEnrich.linked_twitch_username,
     _synth_kick_only: true,
   }
@@ -716,6 +746,16 @@ function renderProfileCardView() {
     // counts — posts neutral, followers blue (popularity scalar)
     if (posts) addRow('posts', pcFmt(posts))
     if (followers) addRow('followers', pcFmt(followers), 'val-followers')
+    // Kick channel-specific stats from /api/v2/channels — only when no
+    // heatsync-tracked twitch followers (would be redundant) or when the
+    // profile is Kick-only (synth).
+    if (data._kick_recent_categories && data._kick_recent_categories.length) {
+      const cat = data._kick_recent_categories[0]
+      if (cat?.name) addRow('playing', cat.name, 'val-kick')
+    }
+    if (data.kick_is_live && data._kick_live_title) {
+      addRow('stream', data._kick_live_title.slice(0, 60))
+    }
 
     // Relationship — direction-coded colors. Outflow (you→them) cool side
     // of the wheel (cyan/violet); inflow (them→you) warm side (magenta/pink);
@@ -854,10 +894,12 @@ function pcOpenExt(url) {
   window.open(url, '_blank', 'noopener,noreferrer')
 }
 
-function pcToggleMute(username) {
+async function pcToggleMute(username) {
   username = username.toLowerCase()
   const platform = activeProfileCard?.platform
-  const aliases = (typeof getUserAliases === 'function') ? getUserAliases(username, platform) : [username]
+  const aliases = (typeof expandUserAliases === 'function')
+    ? await expandUserAliases(username, platform)
+    : ((typeof getUserAliases === 'function') ? getUserAliases(username, platform) : [username])
   const wasMuted = (typeof isUserMuted === 'function') ? isUserMuted(username, platform) : mutedUsers.has(username)
   if (wasMuted) {
     for (const a of aliases) mutedUsers.delete(a)

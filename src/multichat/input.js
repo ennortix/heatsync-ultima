@@ -1098,11 +1098,24 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
     { key: 'block', label: youBlock ? 'unblock' : 'block', danger: !youBlock, fn: () => hsBlockFromMenu(username, platform) },
     { label: isMuted ? 'unmute' : 'mute (24h)', danger: !isMuted, fn: () => _toggleMcMute(username, platform) },
     'sep',
+  ]
+  // Reply — only when right-clicked on a real chat message with an id (Twitch
+  // IRC msg-id or Kick msg id). The same setReplyState the reply-button uses.
+  if (msg?.dataset?.msgId) {
+    items.push({
+      label: 'reply', fn: () => setReplyState({
+        msgId: msg.dataset.msgId,
+        user: msg.dataset.msgUser || username,
+        channel: msg.dataset.msgChannel || ''
+      })
+    })
+  }
+  items.push(
     { label: 'whisper', fn: () => _openWhisperFor(username, platform) },
     { label: 'dm', fn: () => _openDmFor(username, platform) },
     { label: 'mention', fn: () => _mentionInMcInput(username) },
     { label: 'view profile', fn: () => openProfileCard(username, platform) },
-  ]
+  )
   // Chat-log items — twitch + kick (yt has no relay)
   const logPlatform = (platform || 'twitch')
   if (logPlatform === 'twitch' || logPlatform === 'kick') {
@@ -1159,9 +1172,44 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
   }
 }
 
-function _toggleMcMute(username, platform) {
-  const aliases = (typeof getUserAliases === 'function') ? getUserAliases(username, platform) : [String(username).toLowerCase()]
-  const primary = aliases[0]
+// Expand a username/platform pair into ALL known cross-platform aliases.
+// Combines local synchronous getUserAliases (7TV-derived kick→twitch from
+// cosmetics flow) with heatsync /api/profile (canonical source for users on
+// the platform: returns twitch_username + kick_username regardless of which
+// direction you queried). Async because profile is one network round-trip.
+async function expandUserAliases(username, platform) {
+  const seen = new Set()
+  const out = []
+  const push = v => {
+    if (!v) return
+    const k = String(v).toLowerCase()
+    if (seen.has(k)) return
+    seen.add(k); out.push(k)
+  }
+  // Sync local aliases first — kick→twitch from 7TV cosmetics, etc.
+  const local = (typeof getUserAliases === 'function')
+    ? getUserAliases(username, platform)
+    : [String(username || '').toLowerCase()]
+  for (const a of local) push(a)
+  // Heatsync profile lookup — registered users return both twitch_username
+  // and kick_username. Non-registered users return error: we silently fall
+  // back to local-only aliases.
+  if (typeof resolveIdentity === 'function') {
+    try {
+      const ri = await resolveIdentity(username, { platform })
+      const p = ri?.profile
+      if (p) {
+        if (p.twitch_username) push(p.twitch_username)
+        if (p.kick_username) push(p.kick_username)
+      }
+    } catch {}
+  }
+  return out
+}
+
+async function _toggleMcMute(username, platform) {
+  const aliases = await expandUserAliases(username, platform)
+  const primary = aliases[0] || String(username).toLowerCase()
   const wasMuted = (typeof isUserMuted === 'function')
     ? isUserMuted(username, platform)
     : mutedUsers.has(primary)
@@ -1172,7 +1220,8 @@ function _toggleMcMute(username, platform) {
     for (const a of aliases) safeSendMessage({ type: 'unmute_user', username: a })
   } else {
     for (const a of aliases) mutedUsers.add(a)
-    const aliasNote = aliases.length > 1 ? ` (+linked @${aliases[1]})` : ''
+    const otherAlias = aliases.slice(1).filter(a => a !== primary)
+    const aliasNote = otherAlias.length ? ` (+linked @${otherAlias.join(' @')})` : ''
     showToast(`muted ${username}${aliasNote} (24h)`, 'success')
     const exp = Date.now() + 86400000
     for (const a of aliases) safeSendMessage({ type: 'mute_user', username: a, expiresAt: exp })
@@ -1184,8 +1233,8 @@ function _toggleMcMute(username, platform) {
   renderMessages(currentTab)
 }
 
-function _toggleMcBlock(username, platform) {
-  const aliases = (typeof getUserAliases === 'function') ? getUserAliases(username, platform) : [String(username).toLowerCase()]
+async function _toggleMcBlock(username, platform) {
+  const aliases = await expandUserAliases(username, platform)
   const wasBlocked = (typeof isUserBlocked === 'function')
     ? isUserBlocked(username, platform)
     : blockedUsers.has(aliases[0])
@@ -1195,7 +1244,9 @@ function _toggleMcBlock(username, platform) {
     for (const a of aliases) safeSendMessage({ type: 'unblock_user', username: a })
   } else {
     for (const a of aliases) blockedUsers.add(a)
-    const aliasNote = aliases.length > 1 ? ` (+linked @${aliases[1]})` : ''
+    const primary = aliases[0] || String(username).toLowerCase()
+    const other = aliases.slice(1).filter(a => a !== primary)
+    const aliasNote = other.length ? ` (+linked @${other.join(' @')})` : ''
     showToast(`blocked ${username}${aliasNote}`, 'success')
     for (const a of aliases) safeSendMessage({ type: 'block_user', username: a })
   }

@@ -74,6 +74,11 @@ async function loadSeenState() {
   refreshSeenBadges()
 }
 
+// Pending bumps that the server didn't ack — replayed on tab visibility.
+// Without this, a network blip during clear meant `seenAt` regressed on next
+// reload (server still showed the old timestamp) and the dot reappeared.
+const _pendingBumps = new Map()
+
 // Push the new "last viewed" up to the server. Optimistic — local state
 // updates immediately so the red dot disappears even if the network is slow.
 async function bumpSeen(surface, at) {
@@ -81,6 +86,7 @@ async function bumpSeen(surface, at) {
   const ts = typeof at === 'number' ? at : Date.now()
   // Monotonic locally too — never undo a clear that landed via WS.
   if (ts > seenAt[surface]) seenAt[surface] = ts
+  _saveSeenLocal()
   refreshSeenBadges()
   if (typeof hsAuthToken !== 'undefined' && !hsAuthToken) return
   try {
@@ -91,9 +97,33 @@ async function bumpSeen(surface, at) {
     if (resp?.ok && typeof resp.data?.at === 'number') {
       // Server may clamp to GREATEST() — accept its value.
       if (resp.data.at > seenAt[surface]) seenAt[surface] = resp.data.at
+      _pendingBumps.delete(surface)
       refreshSeenBadges()
+    } else {
+      _pendingBumps.set(surface, ts)
     }
-  } catch (e) { warn('seen-state POST failed:', e?.message) }
+  } catch (e) {
+    warn('seen-state POST failed:', e?.message)
+    _pendingBumps.set(surface, ts)
+  }
+}
+
+// Retry any pending bumps when the tab returns to visible. Most failures are
+// transient network blips; one retry usually wins. No exponential backoff —
+// if it fails twice the user will clear again later (Map only holds latest
+// per surface anyway).
+if (!window._hsMcSeenRetryInstalled) {
+  window._hsMcSeenRetryInstalled = true
+  try {
+    cleanup.addEventListener(document, 'visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return
+      if (_pendingBumps.size === 0) return
+      for (const [surface, ts] of [..._pendingBumps]) {
+        _pendingBumps.delete(surface)
+        bumpSeen(surface, ts)
+      }
+    })
+  } catch {}
 }
 
 // Apply a WS-pushed seen:update from another client.

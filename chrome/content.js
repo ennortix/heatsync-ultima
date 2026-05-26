@@ -3085,6 +3085,15 @@ async function loadInventory() {
       currentChannelOwner = myChannel;
 
       log(` ✅ Loaded from storage in ${(performance.now() - loadStart).toFixed(0)}ms:`, emoteInventory.length, 'personal,', globalEmotes.length, 'global,', channelEmotes.length, 'channel');
+      // If globals are warm but channel emotes are missing, ask BG to refetch.
+      // Channel emotes only refilled via the join_channel handler chain, which
+      // is racing the live-paint that's about to render existing DOM messages.
+      // Without an explicit refetch trigger here, channel emotes for the
+      // current page can stay empty for several seconds (or forever on a
+      // cold-cache page-load if BG init misses the trigger).
+      if (myChannel && channelEmotes.length === 0) {
+        try { safeSendMessage({ type: 'get_picker_emotes', channel: myChannel }).catch(() => {}) } catch {}
+      }
       hideLoadingStatus();
       debouncedProcessExistingMessages();
       updateEmoteBridge(); // Update Twitch autocomplete hook

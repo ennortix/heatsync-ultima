@@ -5,8 +5,6 @@
   const input = document.getElementById('popout-input');
   const btn = document.getElementById('popout-btn');
   const detected = document.getElementById('detected');
-  const linkOptions = document.getElementById('link-options');
-
   let platform = 'twitch';
   let ytIsHandle = false;
 
@@ -136,11 +134,6 @@
     setDetected(null, null);
   });
   input.addEventListener('focus', function() { input.select(); });
-
-  linkOptions.addEventListener('click', function(e) {
-    e.preventDefault();
-    if (chrome.runtime.openOptionsPage) chrome.runtime.openOptionsPage();
-  });
 
   // Errors footer: left-click → copy last 50 to clipboard, right-click → clear.
   // Stored as ring-buffer in chrome.storage.local key 'hs_errors' by lib/error-reporter.js

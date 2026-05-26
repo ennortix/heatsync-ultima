@@ -26,6 +26,9 @@
 - store listing now discloses that personal emote set, feed, and whispers require a heatsync.org login (free); third-party emote and cosmetic rendering works without an account. previous copy could leave a reader thinking nothing required auth.
 - twitch chat backfill paths (persisted-buffer restore, robotty backfill, justlog backfill) now skip `roomstate`/`userstate`/`whisper` types. those non-renderable types were filling the 500-msg render ring with null divs and presenting as empty chat on restored channels.
 
+### removed
+- options page (`options.html`) deleted; `options_ui` removed from both manifests; "settings" link removed from the popup. settings now live solely inside the in-chat ⚙ button. previous options page was a one-paragraph stub that just told you to open chat — redundant surface.
+
 ### internal
 - added `hs-dbg-render-deep` and `hs-dbg-emotes` event listeners in multichat bootstrap for inspecting render-merge state and emote-cache state during debug sessions.
 - removed three unguarded `console.log` breadcrumbs in `src/multichat/main.js` (resub-share fired ok, watchstreak-share fiber, watchstreak-share DOM click). these fired on every share user action and leaked to production console; now routed through `MC_DEBUG`-gated `log()`.

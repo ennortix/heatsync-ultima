@@ -847,6 +847,10 @@ class KickChat {
     this.channels.set(kickUsername, new CircularBuffer(3000))
     // Seed watchdog clock — full grace period before re-asserting.
     this._chanLastSeen.set(kickUsername, Date.now())
+    // Pre-warm Kick subscriber badges (defer past init so any panel mount
+    // races finish before the populate). No render side-effects in the
+    // helper — natural re-render picks up the new entries.
+    setTimeout(() => { try { fetchKickChannelBadges(kickUsername) } catch {} }, 1500)
     // god-tier: ask BG for in-memory buffer first (always fresher than the
     // chrome.storage.local debounced write). Fall back to local persisted
     // history if BG is cold.

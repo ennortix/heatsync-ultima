@@ -7260,7 +7260,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         return ''
       }).join('')
     } else {
-      badges = renderBadges(m.badges, m.channel)
+      badges = renderBadges(m.badges, m.channel, m.platform)
     }
     // YT messages don't carry a Twitch ID — resolve via heatsync profile
     // lookup keyed by the YT @handle. If cached, hoist into m.userId so the

@@ -5438,6 +5438,35 @@ async function handleMessage(message, sender, sendResponse) {
     })()
     return true
 
+  } else if (message.type === 'kick_channel_badges') {
+    // Fetch kick.com/api/v2/channels/{slug}.subscriber_badges → [{months, src}].
+    // Run from BG so kick.com fetch isn't gated by the panel's cross-origin
+    // CORS rules (panel may be on twitch.tv/youtube.com viewing a linked Kick
+    // channel). Cached per-slug for the SW lifetime via reuse of the
+    // kickChannelIdCache pattern.
+    ;(async () => {
+      try {
+        const slug = String(message.slug || '').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 64)
+        if (!slug) { sendResponse({ ok: false, error: 'missing slug' }); return }
+        const resp = await fetchWithTimeout(`https://kick.com/api/v2/channels/${encodeURIComponent(slug)}`)
+        if (!resp.ok) { resp.body?.cancel?.(); sendResponse({ ok: false, error: 'kick api ' + resp.status }); return }
+        const data = await resp.json().catch(() => null)
+        const sub = Array.isArray(data?.subscriber_badges) ? data.subscriber_badges : []
+        const badges = []
+        for (const b of sub) {
+          const months = parseInt(b?.months, 10)
+          const src = b?.badge_image?.src
+          if (Number.isFinite(months) && typeof src === 'string' && /^https?:\/\//i.test(src)) {
+            badges.push({ months, src })
+          }
+        }
+        sendResponse({ ok: true, badges })
+      } catch (e) {
+        sendResponse({ ok: false, error: e?.message || 'fetch_failed' })
+      }
+    })()
+    return true
+
   } else if (message.type === 'kick_resolve_channel') {
     // Resolve Kick channel slug → numeric channelId
     (async () => {

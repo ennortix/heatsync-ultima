@@ -118,6 +118,23 @@ document.addEventListener('hs-dbg-probe', () => {
     document.documentElement.dataset.hsDbg = 'err:' + (e?.message || 'unknown')
   }
 }, true)
+// hs-dbg-kick-badge-urls → returns kickBadgeUrls Map state so we can verify
+// fetchKickChannelBadges populated entries for the current Kick channel(s).
+document.addEventListener('hs-dbg-kick-badge-urls', () => {
+  try {
+    const urls = (typeof kickBadgeUrls !== 'undefined') ? [...kickBadgeUrls.entries()] : null
+    const fetched = (typeof kickBadgesFetchedChannels !== 'undefined') ? [...kickBadgesFetchedChannels] : null
+    const failed = (typeof kickBadgesFailedAt !== 'undefined') ? [...kickBadgesFailedAt.entries()] : null
+    const inflight = (typeof kickBadgesInFlight !== 'undefined') ? [...kickBadgesInFlight] : null
+    document.documentElement.dataset.hsDbgKickBadgeUrls = JSON.stringify({
+      urlsCount: urls?.length ?? null,
+      urlsSample: urls?.slice(0, 12),
+      fetched, failed, inflight,
+    })
+  } catch (e) {
+    document.documentElement.dataset.hsDbgKickBadgeUrls = 'err:' + (e?.message || 'unknown')
+  }
+}, true)
 // hs-dbg-kick-badges → returns a sample of recent kick msgs with their .badges
 // string so we can see whether the WS payload actually carries badge types.
 document.addEventListener('hs-dbg-kick-badges', () => {

@@ -3618,21 +3618,115 @@ async function fetchChannelBadges(channelLogin) {
   }
 }
 
-function renderBadges(badgesStr, channel) {
+// Kick subscriber badges. Routes through BG (kick_channel_badges) so the
+// cross-origin fetch isn't gated by the panel's CORS rules — panel may be on
+// twitch.tv viewing a linked Kick channel. Populates twitchBadgeUrls under
+// (slug):subscriber/(months) so renderBadges' channel-prefixed lookup picks
+// them up without any caller change. No render-side effects — natural
+// re-render on next msg picks up the new entries; calling renderMessages
+// from here risked init-timing crashes.
+// Kick badges live in their own Map so dual-link channels don't collide with
+// Twitch's tier-encoded sub badge versions (1000/2000/3000 for tiers vs Kick's
+// linear month numbers 1/2/3/6/12). renderBadges checks platform to pick which
+// Map to use.
+const kickBadgeUrls = new Map()
+const kickChannelBadgeVersions = new Map()
+const kickBadgesFetchedChannels = new Set()
+const kickBadgesInFlight = new Set()
+const kickBadgesFailedAt = new Map()
+
+function findNearestKickBadgeVersion(channel, name, version) {
+  const versions = kickChannelBadgeVersions.get(`${channel}:${name}`)
+  if (!versions || versions.length === 0) return null
+  const v = parseInt(version, 10)
+  if (!Number.isFinite(v)) return null
+  let best = -1
+  for (const vv of versions) {
+    if (vv > v) break
+    if (vv > best) best = vv
+  }
+  return best >= 0 ? String(best) : null
+}
+
+async function fetchKickChannelBadges(slug) {
+  if (!slug) return
+  slug = String(slug).toLowerCase()
+  if (kickBadgesFetchedChannels.has(slug)) return
+  if (kickBadgesInFlight.has(slug)) return
+  const lastFail = kickBadgesFailedAt.get(slug)
+  if (lastFail && Date.now() - lastFail < BADGE_FAILURE_BACKOFF_MS) return
+  kickBadgesInFlight.add(slug)
+  try {
+    const resp = await safeSendMessage({ type: 'kick_channel_badges', slug })
+    if (!resp?.ok || !Array.isArray(resp.badges) || resp.badges.length === 0) {
+      if (kickBadgesFailedAt.size >= BADGES_FAILED_MAX) {
+        kickBadgesFailedAt.delete(kickBadgesFailedAt.keys().next().value)
+      }
+      kickBadgesFailedAt.set(slug, Date.now())
+      return
+    }
+    const monthsList = []
+    for (const b of resp.badges) {
+      if (Number.isFinite(b.months) && typeof b.src === 'string') {
+        kickBadgeUrls.set(slug + ':subscriber/' + b.months, b.src)
+        monthsList.push(b.months)
+      }
+    }
+    if (monthsList.length) {
+      monthsList.sort((a, b) => a - b)
+      kickChannelBadgeVersions.set(slug + ':subscriber', monthsList)
+      kickBadgesFetchedChannels.add(slug)
+      kickBadgesFailedAt.delete(slug)
+      if (kickBadgesFetchedChannels.size > 20) {
+        const oldest = kickBadgesFetchedChannels.values().next().value
+        kickBadgesFetchedChannels.delete(oldest)
+        const prefix = oldest + ':subscriber/'
+        for (const key of [...kickBadgeUrls.keys()]) {
+          if (key.startsWith(prefix)) kickBadgeUrls.delete(key)
+        }
+        kickChannelBadgeVersions.delete(oldest + ':subscriber')
+      }
+    }
+  } catch (e) {
+    if (kickBadgesFailedAt.size >= BADGES_FAILED_MAX) {
+      kickBadgesFailedAt.delete(kickBadgesFailedAt.keys().next().value)
+    }
+    kickBadgesFailedAt.set(slug, Date.now())
+  } finally {
+    kickBadgesInFlight.delete(slug)
+  }
+}
+
+function renderBadges(badgesStr, channel, platform) {
   if (!badgesStr) return ''
+  const isKick = platform === 'kick'
   return badgesStr.split(',').map(badge => {
     const [name, version] = badge.split('/')
-    // Channel-specific exact match → channel-specific nearest-tier (e.g. 5mo
-    // sub on a channel that only defines 0/3/6 → use 3) → global exact →
-    // global "/1" generic-star fallback.
-    let url = channel && twitchBadgeUrls.get(`${channel}:${name}/${version}`)
-    if (!url && channel) {
-      const nearest = findNearestChannelBadgeVersion(channel, name, version)
-      if (nearest != null) url = twitchBadgeUrls.get(`${channel}:${name}/${nearest}`)
+    let url = null
+    if (isKick && channel) {
+      // Kick-only lookup. Never fall through to Twitch URLs — Twitch sub badges
+      // are keyed by tier-encoded versions (1000/2000/3000) which mismatch
+      // Kick's linear month numbers (1/2/3/6/12); the Twitch findNearest would
+      // return e.g. "subscriber/0" for Kick's "subscriber/1" producing a wrong
+      // tier badge. Better to show the text-style chip when no Kick URL exists.
+      url = kickBadgeUrls.get(`${channel}:${name}/${version}`)
+      if (!url) {
+        const nearest = findNearestKickBadgeVersion(channel, name, version)
+        if (nearest != null) url = kickBadgeUrls.get(`${channel}:${name}/${nearest}`)
+      }
+    } else {
+      // Channel-specific exact match → channel-specific nearest-tier (e.g. 5mo
+      // sub on a channel that only defines 0/3/6 → use 3) → global exact →
+      // global "/1" generic-star fallback.
+      url = channel && twitchBadgeUrls.get(`${channel}:${name}/${version}`)
+      if (!url && channel) {
+        const nearest = findNearestChannelBadgeVersion(channel, name, version)
+        if (nearest != null) url = twitchBadgeUrls.get(`${channel}:${name}/${nearest}`)
+      }
+      url = url
+        || twitchBadgeUrls.get(`${name}/${version}`)
+        || twitchBadgeUrls.get(`${name}/1`)
     }
-    url = url
-      || twitchBadgeUrls.get(`${name}/${version}`)
-      || twitchBadgeUrls.get(`${name}/1`)
     if (url) {
       // FFZ custom badges are white icons on transparent bg — add badge-type background
       const ffzKey = channel && `${channel}:${name}/`

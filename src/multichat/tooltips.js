@@ -985,7 +985,7 @@
         const rTwitch = recent.find(m => (m.platform || 'twitch') === 'twitch' && m.badges)
         if (rTwitch && typeof renderBadges === 'function') nativeBadges += renderBadges(rTwitch.badges, rTwitch.channel)
         const rKick = recent.find(m => m.platform === 'kick' && m.badges)
-        if (rKick && typeof renderBadges === 'function') nativeBadges += renderBadges(rKick.badges, rKick.channel)
+        if (rKick && typeof renderBadges === 'function') nativeBadges += renderBadges(rKick.badges, rKick.channel, 'kick')
       } catch {}
       const platRow = platform === 'kick' ? `<dt>kick</dt><dd class="val-kick" data-k="kick">${safeName}</dd>`
         : (platform === 'youtube' || platform === 'yt') ? `<dt>yt</dt><dd class="val-yt" data-k="yt">${safeName}</dd>`

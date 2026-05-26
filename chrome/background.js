@@ -296,11 +296,16 @@ browser.runtime.onInstalled.addListener((details) => {
   // Clear any stale intervals from previous version
   activeIntervals.forEach(id => clearInterval(id));
   activeIntervals.clear();
-  // Clear channel emote cache (in-memory + storage) so stale data doesn't block refetches
-  channelEmotesMap = {};
-  channelEmotesFetchedAt = {};
-  browser.storage.local.remove('channel_emotes_map').catch(() => {})
-  browser.storage.local.remove('channel_emotes_fetched_at').catch(() => {})
+  // Only nuke channel emotes on first install — on 'update' or 'chrome_update'
+  // wiping the cache means every tracked multichat channel renders raw text
+  // until the user clicks each tab (channel emotes are "half the emote pool").
+  // CHANNEL_EMOTES_TTL + per-fetch failure backdating already cover staleness.
+  if (details.reason === 'install') {
+    channelEmotesMap = {};
+    channelEmotesFetchedAt = {};
+    browser.storage.local.remove('channel_emotes_map').catch(() => {})
+    browser.storage.local.remove('channel_emotes_fetched_at').catch(() => {})
+  }
   // Don't re-inject content scripts on update. Soft-reinjection of 1.5MB of
   // bundled JS on top of a live React-mounted Twitch DOM was blanking the
   // renderer (and worse — crashing Chrome when fanned out to N tabs). Content

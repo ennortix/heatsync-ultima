@@ -1,5 +1,45 @@
 // Auth IRC - authenticated Twitch IRC connection for sending messages
 
+// Twitch NOTICE msg-id → user-friendly toast. Without this, rejected PRIVMSGs
+// (slowmode/followers-only/duplicate/banned/AutoMod/...) silently clear the
+// input and never echo back through the BG anonymous socket — the dominant
+// "I sent it but it didn't post" symptom. The auth socket is the only socket
+// Twitch sends these NOTICEs to. Set from https://dev.twitch.tv/docs/irc/msg-id/.
+const TWITCH_SEND_REJECT_NOTICES = new Map([
+  ['msg_followersonly', 'followers-only mode — follow the channel to chat'],
+  ['msg_followersonly_followed', 'follow the channel a bit longer to chat'],
+  ['msg_followersonly_zero', 'followers-only — you need to follow first'],
+  ['msg_subsonly', 'subscribers-only — sub to chat here'],
+  ['msg_emoteonly', 'emote-only mode — message must be all emotes'],
+  ['msg_slowmode', 'slow mode — please wait a moment'],
+  ['msg_r9k', 'unique-chat mode — message must be unique'],
+  ['msg_duplicate', 'duplicate message — twitch rejected it'],
+  ['msg_banned', 'you are banned from this channel'],
+  ['msg_timedout', 'you are timed out'],
+  ['msg_rejected', 'AutoMod is checking your message'],
+  ['msg_rejected_mandatory', 'AutoMod blocked your message'],
+  ['msg_channel_suspended', 'channel is suspended'],
+  ['msg_channel_blocked', 'channel is blocking messages'],
+  ['msg_verified_email', 'channel requires a verified email to chat'],
+  ['msg_requires_verified_phone_number', 'channel requires a verified phone to chat'],
+  ['no_permission', 'no permission to do that here'],
+  ['unrecognized_cmd', 'twitch did not recognize that command'],
+  ['tos_ban', 'you are banned from twitch'],
+])
+
+function parseNoticeMsgId(line) {
+  // Tags arrive before the colon: @msg-id=msg_followersonly;... :tmi.twitch.tv NOTICE ...
+  if (!line.startsWith('@')) return null
+  const tagsEnd = line.indexOf(' ')
+  if (tagsEnd === -1) return null
+  for (const kv of line.slice(1, tagsEnd).split(';')) {
+    const eq = kv.indexOf('=')
+    if (eq === -1) continue
+    if (kv.slice(0, eq) === 'msg-id') return kv.slice(eq + 1)
+  }
+  return null
+}
+
 const authState = {
   ws: null,
   ready: false,
@@ -71,7 +111,14 @@ function handleAuthIrcMessage(event) {
     }
     const partMatch = line.match(/:(\w+)!\w+@\w+\.tmi\.twitch\.tv PART #(\w+)/);
     if (partMatch) { authState.joined.delete(partMatch[2].toLowerCase()); continue; }
-    if (line.includes('NOTICE') && MC_DEBUG) console.warn('[HS] Auth IRC NOTICE:', line.slice(0, 200));
+    if (line.includes(' NOTICE ')) {
+      const msgId = parseNoticeMsgId(line)
+      if (msgId && TWITCH_SEND_REJECT_NOTICES.has(msgId) && typeof showToast === 'function') {
+        showToast(TWITCH_SEND_REJECT_NOTICES.get(msgId), 'error')
+      }
+      if (MC_DEBUG) console.warn('[HS] Auth IRC NOTICE:', line.slice(0, 200))
+      continue
+    }
     if (line.includes('RECONNECT')) {
       log('Auth IRC: Twitch sent RECONNECT');
       const prev = cleanupAuthIrc();
@@ -195,11 +242,15 @@ function joinChannel(channel) {
   if (!authIrcAlive()) return Promise.resolve(false);
   try { authState.ws.send(`JOIN #${channel}\r\n`); } catch { return Promise.resolve(false); }
   return new Promise(resolve => {
+    // Twitch JOIN ack: usually <100ms, but slow network / mid-reconnect can
+    // run to ~1.5s. Old 500ms timeout + faking joined=true silently broke
+    // sends for the WS lifetime — every later PRIVMSG to that channel hit
+    // tmi.twitch.tv as a never-joined client and dropped without a NOTICE.
+    // Now: longer timeout, no fake-success; caller retries via sendIrcMessage.
     const timer = cleanup.setTimeout(() => {
       authState.joinWaiters.delete(channel);
-      authState.joined.add(channel);
-      resolve(true);
-    }, 500);
+      resolve(false);
+    }, 2000);
     authState.joinWaiters.set(channel, { resolve, timer });
   });
 }
@@ -239,7 +290,17 @@ async function sendIrcMessage(channel, text, token, replyParentId, overrideNick)
           return 'queued';
         }
       }
-      if (!authState.joined.has(channel)) await joinChannel(channel);
+      if (!authState.joined.has(channel)) {
+        const joined = await joinChannel(channel)
+        // joinChannel no longer fakes success on timeout; bail to retry rather
+        // than PRIVMSG into a never-joined channel (twitch drops it silently).
+        if (!joined) {
+          if (attempt < 2) continue;
+          if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text });
+          if (typeof showToast === 'function') showToast(`couldn't join #${channel} chat — queued`, 'error')
+          return 'queued';
+        }
+      }
       if (!authIrcAlive()) {
         if (attempt < 2) { cleanupAuthIrc(); continue; }
         if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text });

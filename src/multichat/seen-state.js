@@ -100,6 +100,22 @@ function applySeenUpdate(surface, at) {
   }
 }
 
+// Register the seen:update WS listener at module load — NOT gated behind
+// social tab init like before. Cross-device clears (user clears mentions on
+// the website while the ext is open in another tab) used to land before
+// listenForSocialEvents() ran and got silently dropped, so the red dot
+// stayed lit until the next event landed. seen-state.js is loaded before
+// social.js in the build concat, so module-level registration here is the
+// earliest possible point.
+if (!window._hsMcSeenUpdateListener) {
+  window._hsMcSeenUpdateListener = true
+  try {
+    cleanup.addListener(chrome.runtime?.onMessage, (msg) => {
+      if (msg?.type === 'seen_update') applySeenUpdate(msg.surface, msg.at)
+    })
+  } catch {}
+}
+
 // Note that a new event happened on a surface (incoming whisper, mention,
 // feed post). Bumps the local latest-at so the red dot persists across a
 // hard refresh until the user views the tab.

@@ -431,7 +431,10 @@ class IRC {
     // Pre-warm channel badges (sub tiers, FFZ custom mod/vip overrides) so
     // restored history from BG renders with proper images on first paint.
     try { fetchChannelBadges(ch) } catch {}
-    try { chrome.runtime.sendMessage({ type: 'bg_irc_join', channel: ch }).catch(() => {}) } catch {}
+    // Route through safeSendMessage so cold-SW wake retries — direct sendMessage
+    // here silently lost the join on SW eviction, BG never joined the channel,
+    // own PRIVMSG echoes never returned, user had to refresh to recover.
+    try { safeSendMessage({ type: 'bg_irc_join', channel: ch }).catch(() => {}) } catch {}
     // Pull initial buffer from BG (in-memory; instant on warm SW). Await the
     // sent-message storage hydration first so own-message [K]/[H]/[Y] badges
     // survive page refresh — otherwise peekSentHost can race with this load

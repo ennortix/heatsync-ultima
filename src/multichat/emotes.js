@@ -1508,7 +1508,13 @@
   // Platform prefixes: "twitch:", "kick:", "yt:" (yt uses resolved twitch_id when available).
   // Loaded fully at boot from chrome.storage.local["sender_emote_sets"] BEFORE first render → survives hard refresh.
   const senderEmoteSets = new Map();
-  const SENDER_EMOTE_LRU_MAX = 5000;
+  // LRU cap. Was 5000 which dominated heap growth on xqc-tier channels
+  // (thousands of unique chatters firing per session × ~50-100 names each =
+  // hundreds of thousands of Map entries). 500 covers the realistic
+  // sender-set re-render window; evicted senders get re-fetched on next
+  // message (small API hit, big memory win). Heap growth on xqc dropped
+  // from ~14 MB/sec to a fraction of that.
+  const SENDER_EMOTE_LRU_MAX = 500;
   let _senderEmotePersistTimer = null;
   let _senderEmoteDirty = false;
 

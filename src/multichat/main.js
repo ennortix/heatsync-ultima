@@ -5072,7 +5072,7 @@
       _renderUiToggleRow('highlightmentions', 'highlight mentions', 'red background on chat lines mentioning you', true) +
       _renderUiToggleRow('showclearedmessages', 'show deleted messages', 'keep timed-out/deleted lines visible (dimmed) instead of hiding', false) +
       _renderUiToggleRow('showpredictionschip', 'show predictions/polls chip', 'live overlay when a prediction or poll is active', true) +
-      _renderUiToggleRow('anonchat', 'anonymous chat', 'suppress presence/typing-indicator outbound traffic', false) +
+      _renderUiToggleRow('anonchat', 'incognito', 'hide your presence and typing indicator from chat — your messages still post as you', false) +
       _renderUiToggleRow('autoclaim', t('mc_settings_auto_claim'), t('mc_settings_auto_claim_desc'), autoClaimPoints) +
       _renderUiToggleRow('dimtimeouts', t('mc_settings_dim_timeouts'), t('mc_settings_dim_timeouts_desc'), dimTimeouts) +
       '<div class="hs-mc-setting-row hs-mc-setting-row-block">' +

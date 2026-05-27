@@ -1,5 +1,24 @@
 # changelog
 
+## [1.5.4] — 2026-05-26
+
+### perf
+- **senderEmoteSets memory pressure on busy chats** — the cap was 5000 senders × Map<emoteName, emoteData> (typically 50-100 entries each). on xqc-tier channels (thousands of unique chatters firing per session) this dominated heap growth (~14 MB/sec → GC pauses every few seconds → video stutter + chat chunk + animated emotes freezing for ~1s). cap lowered to 500; evicted senders re-fetch their set on next message (small API hit, big memory win).
+- **sender_emote_sets boot-load was uncapped** — even after lowering the live cap, the persisted store from prior versions still had ~5000 entries, and `loadSenderEmoteSets` restored all of them at boot — heap ~500 MB before any chat fired. now truncates the boot load to LRU max (keeps the most-recent 500 via insertion order) AND re-persists the truncated set so storage shrinks too.
+- **persist debounce 500 ms → 4000 ms** — on busy chat the storage write fired 2× per second; each write serialized the whole map to JSON (~30-100 ms of main-thread blocking). 4s catches a session's adds before unload; visibilitychange-style flush still works.
+- **persist body wrapped in requestIdleCallback** — JSON serialize + storage write now run between frames instead of competing with chat render. the 1-second animated-emote freezes during persist bursts should be gone.
+- **7TV search perPage 200 → 60** — picker search was rendering 200 result imgs simultaneously, blasting cdn.7tv.app with concurrent fetches (CDN burst-dropped some, jank from 200-img layout pass). 60 is enough to find the emote you want; user can refine.
+
+### fixed
+- **picker tooltip flickered for ~1 frame on hover** — three compounding causes:
+  1. the `mousemove` dismiss-guard didn't except the tooltip element itself, so when the 4× tooltip rendered under the cursor the next mousemove saw target=tooltip → onEmote=false → instant dismiss. added `target.closest('#hs-emote-tooltip')` + `#hs-badge-tooltip` exceptions.
+  2. picker search/discover rows render as `.hs-discover-item` containing `.hs-discover-thumb` — the show path + dismiss-guard only recognized `.hs-mc-picker-emote-wrap` (grid). search hovers either fired no tooltip or fired then instantly dismissed. both paths now accept `.hs-discover-item` + `.hs-discover-thumb`.
+  3. the document-level capture-phase scroll dismiss caught xqc-tier chat auto-scroll (continuous scroll events on the chat container), killing picker tooltips ~1 frame after they appeared. `heatsync_menu_scroll_dismiss` memory already documented this. removed the capture-phase scroll listener entirely; wheel events still dismiss intentional user scrolls.
+- **stale `channel_emotes_map` cache corruption** — v1.5.3 stopped wiping channel_emotes_map on every ext reload (correctly, to preserve warm cache across upgrades). but long-corrupt entries from prior versions sat there orphaned — e.g. a Chatterino badge row leaked into `channelEmotesMap[xqc]` sometime in a past version and never got cleaned because no clean re-fetch ever ran. on xqc the picker showed exactly 1 emote ("Chatterino Supporter") and refetch never fired because the cold-cache trigger requires `length === 0`. added a one-time `migrated_emote_cache_v154` migration that wipes the cache on first v1.5.4 boot; `fetchChannelOwnerEmotes` repopulates per channel as visited.
+
+### polish
+- **C / T / F- / F+ / ⚙ / ⛶ util buttons rendered blurry** — Cozette is a bitmap font that needs the full crisp render block (`-webkit-font-smoothing: none`, `font-smooth: never`, `text-rendering: optimizeSpeed`, `font-feature-settings`) to render sharp at 13 px. the util buttons inherited the family but not the render block. additionally, `line-height: 1` (= 13 px) inside an 18 px box with `align-items: center` placed the glyph at a 2.5 px (half-pixel) offset — bitmap glyphs need integer-pixel baseline. switched to `line-height: 18px` (= box height) + `display: inline-block` + `text-align: center` so the baseline lands on an integer pixel. button dimensions unchanged (still 18 × 18).
+
 ## [1.5.3] — 2026-05-26
 
 ### changed

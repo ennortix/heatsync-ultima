@@ -5045,11 +5045,6 @@
       _renderUiToggleRow('readablenames', 'readable names', "brighten dim username colors so they're readable on the black bg", readableNamesEnabled) +
       _renderUiToggleRow('firstchatter', t('mc_settings_first_chatter'), t('mc_settings_first_chatter_desc'), firstChatterGlow) +
       _renderUiToggleRow('autohide', t('mc_settings_auto_hide'), t('mc_settings_auto_hide_desc'), autoHideInput) +
-      _renderUiToggleRow('hidechatheader', 'hide header', 'hide chat room header bar', true) +
-      _renderUiToggleRow('compactchatinput', 'compact input', 'minimize chat input buttons', true) +
-      _renderUiToggleRow('hidestreamtitle', 'hide stream title', 'hide the stream title above chat', false) +
-      _renderUiToggleRow('hideviewercount', 'hide viewer count', 'hide viewer count display', false) +
-      _renderUiToggleRow('showcosmetics', 'cosmetics', '7TV/BTTV/FFZ paints and badges', true) +
       _renderUiToggleRow('showplatformbadges', 'platform badges', '[T] [K] [Y] labels on messages', platformBadgesEnabled) +
     '</div>';
   }
@@ -5058,21 +5053,12 @@
     return '<div class="hs-mc-settings-group">' +
       '<div class="hs-mc-settings-group-title">input</div>' +
       _renderUiToggleRow('wysiwyg', t('mc_settings_input_preview'), t('mc_settings_input_preview_desc'), wysiwygEnabled) +
-      _renderUiToggleRow('emotewysiwyg', 'wysiwyg emotes', 'show emote images in chat input while typing', true) +
-      _renderUiToggleRow('emotespaceafter', 'space after emote', 'auto-insert space after tab completion', true) +
-      _renderUiToggleRow('emoteplaceholdermode', 'placeholder mode', 'show colored boxes instead of emote images', false) +
       _renderUiToggleRow('vi', t('mc_settings_vi_mode'), t('mc_settings_vi_mode_desc'), viModeEnabled) +
     '</div>' +
     '<div class="hs-mc-settings-group">' +
       '<div class="hs-mc-settings-group-title">messages</div>' +
       _renderUiToggleRow('links', t('mc_settings_clickable_links'), t('mc_settings_clickable_links_desc'), linksEnabled) +
       _renderUiToggleRow('linkpreviews', t('mc_settings_link_previews'), t('mc_settings_link_previews_desc'), linkPreviewsEnabled) +
-      _renderUiToggleRow('emotemodifiers', 'BTTV & FFZ emote modifiers', 'w! h! ffzX ffzY c!#hex chains on the previous emote', true) +
-      _renderUiToggleRow('usercolors', 'per-user color overrides', 'right-click a username in chat to set its display color', true) +
-      _renderUiToggleRow('highlightmentions', 'highlight mentions', 'red background on chat lines mentioning you', true) +
-      _renderUiToggleRow('showclearedmessages', 'show deleted messages', 'keep timed-out/deleted lines visible (dimmed) instead of hiding', false) +
-      _renderUiToggleRow('showpredictionschip', 'show predictions/polls chip', 'live overlay when a prediction or poll is active', true) +
-      _renderUiToggleRow('anonchat', 'incognito', 'hide your presence and typing indicator from chat — your messages still post as you', false) +
       _renderUiToggleRow('autoclaim', t('mc_settings_auto_claim'), t('mc_settings_auto_claim_desc'), autoClaimPoints) +
       _renderUiToggleRow('dimtimeouts', t('mc_settings_dim_timeouts'), t('mc_settings_dim_timeouts_desc'), dimTimeouts) +
       '<div class="hs-mc-setting-row hs-mc-setting-row-block">' +
@@ -5108,13 +5094,6 @@
       '<div class="hs-mc-setting-row">' +
         '<button class="hs-mc-toggle-pill" data-storage-key="hs_notifications"><span class="hs-mc-toggle-knob"></span></button>' +
         '<span class="hs-mc-setting-label" data-tip="show a desktop notification when someone @s you">browser notification on mention</span>' +
-      '</div>' +
-    '</div>' +
-    '<div class="hs-mc-settings-group">' +
-      '<div class="hs-mc-settings-group-title">cross-platform follow -- mirror heatsync follows onto kick (twitch anti-bot blocks automation; use the link in profile cards instead)</div>' +
-      '<div class="hs-mc-setting-row">' +
-        '<button class="hs-mc-toggle-pill" data-uisetting="crossFollowKick"><span class="hs-mc-toggle-knob"></span></button>' +
-        '<span class="hs-mc-setting-label" data-tip="when you follow on heatsync, also follow on kick if they have a linked kick account. needs a kick.com login; queues otherwise">auto-follow on kick</span>' +
       '</div>' +
     '</div>';
   }
@@ -5301,35 +5280,8 @@
         if (famSel) famSel.value = ui.fontFamily || 'CozetteVector';
         var fszSel = msgsEl.querySelector('select[data-setting="fontsize"]');
         if (fszSel) fszSel.value = ui.fontSize || '13';
-        var boolMap = {
-          hidechatheader:    ui.hideChatHeader !== undefined ? ui.hideChatHeader : true,
-          compactchatinput:  ui.compactChatInput !== undefined ? ui.compactChatInput : true,
-          hidestreamtitle:   !!ui.hideStreamTitle,
-          hideviewercount:   !!ui.hideViewerCount,
-          showcosmetics:     ui.showCosmetics !== undefined ? ui.showCosmetics : true,
-          showplatformbadges: platformBadgesEnabled,
-        };
-        Object.entries(boolMap).forEach(function(kv) {
-          var pill = msgsEl.querySelector('.hs-mc-toggle-pill[data-setting="' + kv[0] + '"]');
-          if (pill) pill.classList.toggle('active', !!kv[1]);
-        });
-      }
-      if (_settingsSubtab === 'chat') {
-        var chatBoolMap = {
-          emotewysiwyg:        ui.emoteWysiwyg !== undefined ? ui.emoteWysiwyg : true,
-          emotespaceafter:     ui.emoteSpaceAfter !== undefined ? ui.emoteSpaceAfter : true,
-          emoteplaceholdermode: !!ui.emotePlaceholderMode,
-          emotemodifiers:      ui.emoteModifiers !== undefined ? ui.emoteModifiers : true,
-          usercolors:          ui.userColors !== undefined ? ui.userColors : true,
-          highlightmentions:   ui.highlightMentions !== undefined ? ui.highlightMentions : true,
-          showclearedmessages: !!ui.showClearedMessages,
-          showpredictionschip: ui.showPredictionsChip !== undefined ? ui.showPredictionsChip : true,
-          anonchat:            !!ui.anonChat,
-        };
-        Object.entries(chatBoolMap).forEach(function(kv) {
-          var pill = msgsEl.querySelector('.hs-mc-toggle-pill[data-setting="' + kv[0] + '"]');
-          if (pill) pill.classList.toggle('active', !!kv[1]);
-        });
+        var pill = msgsEl.querySelector('.hs-mc-toggle-pill[data-setting="showplatformbadges"]');
+        if (pill) pill.classList.toggle('active', !!platformBadgesEnabled);
       }
       if (_settingsSubtab === 'mod') {
         var capsPill = msgsEl.querySelector('.hs-mc-toggle-pill[data-uisetting="automodAllCaps"]');
@@ -5343,11 +5295,6 @@
         var crashPill = msgsEl.querySelector('.hs-mc-toggle-pill[data-uisetting="crashTelemetry"]');
         if (crashPill) crashPill.classList.toggle('active', !!ui.crashTelemetry);
         if (ui.crashTelemetry) _loadCrashLog();
-      }
-      if (_settingsSubtab === 'notifs') {
-        // Cross-follow toggle defaults on — only mark inactive when explicitly false
-        var xfkPill = msgsEl.querySelector('.hs-mc-toggle-pill[data-uisetting="crossFollowKick"]');
-        if (xfkPill) xfkPill.classList.toggle('active', ui.crossFollowKick !== false);
       }
     }).catch(function() {});
 
@@ -5485,21 +5432,7 @@
         }
         // Options-only ui_settings boolean toggles (map data-setting kebab -> camelCase)
         var uiSettingKeyMap = {
-          hidechatheader:       'hideChatHeader',
-          compactchatinput:     'compactChatInput',
-          hidestreamtitle:      'hideStreamTitle',
-          hideviewercount:      'hideViewerCount',
-          showcosmetics:        'showCosmetics',
           showplatformbadges:   'showPlatformBadges',
-          emotewysiwyg:         'emoteWysiwyg',
-          emotespaceafter:      'emoteSpaceAfter',
-          emoteplaceholdermode: 'emotePlaceholderMode',
-          emotemodifiers:       'emoteModifiers',
-          usercolors:           'userColors',
-          highlightmentions:    'highlightMentions',
-          showclearedmessages:  'showClearedMessages',
-          showpredictionschip:  'showPredictionsChip',
-          anonchat:             'anonChat',
         };
         if (uiSettingKeyMap[setting]) {
           var camelKey = uiSettingKeyMap[setting];

@@ -324,13 +324,27 @@ function injectStyles() {
       flex: 0 0 18px !important;
       box-sizing: border-box !important;
       font-size: 13px !important;
-      line-height: 1 !important;
+      /* line-height = box height keeps the glyph baseline on an integer
+         pixel inside the 18px box. flex align-items:center placed the
+         13px glyph at (18-13)/2 = 2.5px → half-pixel offset → Cozette
+         bitmap glyphs rendered blurry. */
+      line-height: 18px !important;
       letter-spacing: 0 !important;
-      display: inline-flex !important;
-      align-items: center !important;
-      justify-content: center !important;
+      /* inline-block (not inline-flex) so the line-height anchors text
+         baseline-aligned, not flex-centered. */
+      display: inline-block !important;
+      text-align: center !important;
+      vertical-align: top !important;
       border-width: 1px !important;
       font-family: inherit !important;
+      /* Cozette bitmap font needs the full crisp render block — without
+         these, the browser anti-aliases the glyph and the buttons read
+         as blurry-soft. mirrors heatsync.org base.css text rules. */
+      -webkit-font-smoothing: none !important;
+      font-smooth: never !important;
+      text-rendering: optimizeSpeed !important;
+      font-kerning: normal !important;
+      font-feature-settings: "kern" 1, "liga" 1, "calt" 1 !important;
     }
     /* Last button in each cluster keeps its own right border (no overlap target) */
     .hs-mc-util-btn:last-child,

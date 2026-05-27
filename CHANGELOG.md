@@ -1,6 +1,6 @@
 # changelog
 
-## [unreleased] — v1.6 NSFW
+## [1.6.0] — 2026-05-27
 
 ### added
 - **per-viewer NSFW emote filter** — emotes scored ≥0.7 confidence on sexual / gore SightEngine categories (the soft band below the existing 0.85 hard-ban / CSAM quarantine threshold) are now hidden by default. flip the toggle in ⚙ → filters → content to receive them; flagged emotes render with a 2px dashed cyan (#00d7d7) border and the tooltip suffixes " · NSFW" so you always know what's flagged for everyone else. weapon / drugs / offensive categories don't trigger the filter — too false-positive heavy.
@@ -13,8 +13,19 @@
 - **self-hosted upload moderation reuse** — emote-add for `/uploads/` URLs now calls scanImage with `PUBLIC_URL`-prefixed URL so the cache key aligns with the upload-time scan; nsfw fields recover from cache without paying for a second SightEngine call.
 - **backfill script** — `scripts/backfill-nsfw.ts` re-scans existing emotes via SightEngine and stamps the new columns. idempotent (`nsfw_categories = '{}'` is the "never scanned" marker — any real scan response writes at least one subcategory key). supports `--dry-run` for cost preview and `--limit=N` for bounded runs.
 
+### scoped
+- **source scope locked to self-hosted uploads only** — only emotes hosted by heatsync (`/uploads/`) flow through SightEngine. platform CDNs (Twitch / Kick / 7TV / BTTV / FFZ) trust upstream moderation — parallel scanning wasted API spend and would create policy conflicts with their moderators. v1.6 filter is "viewer control over content heatsync hosts", not "second-guess 7TV".
+
+### audit pass (caught + fixed pre-release)
+- **upload-time scans never actually ran** — pre-existing silent bug. `server/moderation/trusted-cdns.ts` included `heatsync.org`, so `scanImage('https://heatsync.org/uploads/...')` short-circuited to `allow` before reaching SightEngine. v1.6 would have inherited the bug — flagged emotes would have never been flagged because no scan ran. removed heatsync.org from the trusted list. cost delta: +$0.002 per genuine upload, zero per downstream reference (cache-by-URL-hash hits the upload-time scan).
+- **dead ext settings UI removed** — the multichat ⚙ → filters subtab previously rendered 11 `allow_nsfw_*` toggles fetching `/api/user/settings` for a JSONB blob the server never returned. toggles stayed disabled forever, confusing UX. removed `_SERVER_FILTER_DEFS` + `_loadServerFilters` + `[data-server-setting]` handler. subtab now shows only the v1.6 content / NSFW toggle.
+- **CORS allow-methods explicit list** — `@elysiajs/cors`'s per-path method discovery only saw the first endpoint registered at `/api/user/settings`, so PATCH preflight returned `Allow-Methods: GET` and silently denied PATCH requests client-side. fixed via explicit `methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS']` in the cors plugin config.
+- **fragment-composition swapped for two-query split** — `/api/emotes/hot` + `/api/emotes/user/:name` used `const nsfwClause = sql\`AND NOT...\`` with the postgres.js fragment pattern. fine in prod (returns a Fragment), broke vitest's sql mock (returns a Promise → unhandled rejection in error-path tests). switched to inline conditional with two full SELECTs. trivial query duplication, deploy test gate passes again.
+
 ### deferred
 - **channel emote filter (`/api/channel/:name/emotes`)** — external CDN-sourced (BTTV / FFZ / 7TV channel sets, not in our DB) so per-row `nsfw_flagged` is unavailable. filtering would require a per-URL DB JOIN that fights the 1h browser + 24h CF cache. NSFW emotes that get added to inventory via the auto-add-on-send flow then DO flow through the v1.6 filter on the cross-user path. revisit if NSFW slips through here at scale.
+- **broader content filters (NSFW text, hate speech, violence, etc.)** — out of scope for v1.6. those settings belong on a heatsync.org settings page (user-account-level) rather than in the ext, since they affect feed posts / comments / bios across surfaces, not just chat. v1.7+ work.
+- **backfill existing self-hosted emotes** — the 9 pre-v1.6 self-hosted uploads on prod have `nsfw_score=0` because the upload-time scan was a no-op (per the audit-pass bug). low-risk: existing rows render unfiltered (default-safe), and going forward every new upload is scanned. backfill via `bun scripts/backfill-nsfw.ts` on prod is optional polish, ~$0.018 for 9 rows.
 
 ## [1.5.4] — 2026-05-26
 

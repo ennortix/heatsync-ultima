@@ -5095,6 +5095,13 @@
         '<button class="hs-mc-toggle-pill" data-storage-key="hs_notifications"><span class="hs-mc-toggle-knob"></span></button>' +
         '<span class="hs-mc-setting-label" data-tip="show a desktop notification when someone @s you">browser notification on mention</span>' +
       '</div>' +
+    '</div>' +
+    '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title">cross-platform follow</div>' +
+      '<div class="hs-mc-setting-row">' +
+        '<button class="hs-mc-toggle-pill" data-uisetting="crossFollowKick"><span class="hs-mc-toggle-knob"></span></button>' +
+        '<span class="hs-mc-setting-label" data-tip="when you follow on heatsync, also follow on kick if they have a linked kick account. needs a kick.com login; queues otherwise">also follow on kick</span>' +
+      '</div>' +
     '</div>';
   }
 
@@ -5142,7 +5149,6 @@
   }
 
   function _renderSystemSubtab(ui) {
-    var dbg = !!(ui && ui.debugLogging);
     var crash = !!(ui && ui.crashTelemetry);
     return '<div class="hs-mc-settings-group">' +
       '<div class="hs-mc-settings-group-title">tabs</div>' +
@@ -5178,10 +5184,6 @@
     '</div>' +
     '<div class="hs-mc-settings-group">' +
       '<div class="hs-mc-settings-group-title">advanced</div>' +
-      '<div class="hs-mc-setting-row">' +
-        '<button class="hs-mc-toggle-pill' + (dbg ? ' active' : '') + '" data-uisetting="debugLogging"><span class="hs-mc-toggle-knob"></span></button>' +
-        '<span class="hs-mc-setting-label" data-tip="verbose console output, reload tab after toggle">debug logging</span>' +
-      '</div>' +
       '<div class="hs-mc-setting-row">' +
         '<button class="hs-mc-toggle-pill' + (crash ? ' active' : '') + '" data-uisetting="crashTelemetry"><span class="hs-mc-toggle-knob"></span></button>' +
         '<span class="hs-mc-setting-label" data-tip="show the diagnostic errors panel below. errors are always captured locally to chrome.storage and never uploaded; this toggle only controls the panel\'s visibility.">show diagnostic errors</span>' +
@@ -5290,11 +5292,14 @@
         if (reTa) reTa.value = typeof ui.automodRegex === 'string' ? ui.automodRegex : '';
       }
       if (_settingsSubtab === 'system') {
-        var dbgPill = msgsEl.querySelector('.hs-mc-toggle-pill[data-uisetting="debugLogging"]');
-        if (dbgPill) dbgPill.classList.toggle('active', !!ui.debugLogging);
         var crashPill = msgsEl.querySelector('.hs-mc-toggle-pill[data-uisetting="crashTelemetry"]');
         if (crashPill) crashPill.classList.toggle('active', !!ui.crashTelemetry);
         if (ui.crashTelemetry) _loadCrashLog();
+      }
+      if (_settingsSubtab === 'notifs') {
+        // crossFollowKick defaults on — only inactive when explicitly false
+        var xfkPill = msgsEl.querySelector('.hs-mc-toggle-pill[data-uisetting="crossFollowKick"]');
+        if (xfkPill) xfkPill.classList.toggle('active', ui.crossFollowKick !== false);
       }
     }).catch(function() {});
 

@@ -442,9 +442,12 @@
         if (userTooltip?.classList.contains('visible')) hideUserTooltip()
       })
     }
+    // Wheel dismiss is fine (deliberate user input). Skip the capture-phase
+    // scroll listener: per heatsync_menu_scroll_dismiss memory, capture:true
+    // here means xqc-tier auto-scrolling chat fires scroll continuously,
+    // dismissing picker tooltips ~1 frame after they show. Wheel covers the
+    // intentional case (user scrolls); auto-scroll no longer kills hovers.
     cleanup.addEventListener(document, 'wheel', dismissAllTooltips, { passive: true })
-    // scroll doesn't bubble — capture phase catches scroll on any child container
-    document.addEventListener('scroll', dismissAllTooltips, { capture: true, passive: true, signal: mcSignal })
 
     let _tooltipRafPending = false
     cleanup.addEventListener(document, 'mousemove', (e) => {

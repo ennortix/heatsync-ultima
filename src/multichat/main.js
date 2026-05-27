@@ -184,8 +184,6 @@
 
   // Active settings sub-tab — persisted across re-renders
   let _settingsSubtab = 'display';
-  // Cached server content-filter settings (lazy-loaded when filters sub-tab shown)
-  let _serverSettings = null;
   // v1.6 NSFW — local mirror of users.show_nsfw_emotes. BG owns the
   // authoritative state in chrome.storage.viewer_show_nsfw; this is hydrated
   // when the settings tab renders so the pill paints with the right state.
@@ -5135,46 +5133,21 @@
     '</div>';
   }
 
-  var _SERVER_FILTER_DEFS = [
-    { key: 'allow_nsfw_text',       label: 'nsfw text',        desc: 'show sexually explicit text in chat' },
-    { key: 'allow_nsfw_images',     label: 'nsfw images',      desc: 'show adult image emotes' },
-    { key: 'allow_nsfw_videos',     label: 'nsfw videos',      desc: 'show adult video clips' },
-    { key: 'allow_nsfw_emotes',     label: 'nsfw emotes',      desc: 'render emotes flagged as nsfw' },
-    { key: 'allow_nsfw_usernames',  label: 'nsfw usernames',   desc: 'show usernames flagged as inappropriate' },
-    { key: 'allow_violent_content', label: 'violent content',  desc: 'show messages containing violent content' },
-    { key: 'allow_hate_speech',     label: 'hate speech',      desc: 'show messages flagged for hate speech' },
-    { key: 'allow_weapons',         label: 'weapons',          desc: 'show content referencing weapons' },
-    { key: 'allow_drugs',           label: 'drugs',            desc: 'show content referencing drugs' },
-    { key: 'show_spam',             label: 'spam',             desc: 'show messages detected as spam' },
-    { key: 'show_hidden_messages',  label: 'hidden messages',  desc: 'show server-hidden messages' },
-  ];
-
   function _renderFiltersSubtab() {
-    var sv = _serverSettings;
     // v1.6 — Content section: per-viewer NSFW emote opt-in. Default OFF
     // hides flagged emotes server-side; toggle on to receive them with the
     // 2px dashed cyan border. Initial state hydrates from chrome.storage
     // (BG side keeps it in sync via onChanged) so the pill renders correctly
-    // before the GET round-trips.
+    // before the GET round-trips. The prior 11-toggle "server-synced
+    // filters" block was unwired — server never read those keys, the
+    // subtab silently failed to load. Removed in the v1.6 audit pass.
     var nsfwOn = !!_viewerShowNsfwLocal;
-    var contentBlock = '<div class="hs-mc-settings-group">' +
+    return '<div class="hs-mc-settings-group">' +
       '<div class="hs-mc-settings-group-title">content</div>' +
       '<div class="hs-mc-setting-row">' +
         '<button class="hs-mc-toggle-pill' + (nsfwOn ? ' active' : '') + '" data-nsfw-pill><span class="hs-mc-toggle-knob"></span></button>' +
         '<span class="hs-mc-setting-label" data-tip="NSFW emotes (sexual / gore content above 70% confidence) are hidden by default. Toggle on to see them with a dashed cyan border.">show NSFW-flagged emotes</span>' +
       '</div>' +
-    '</div>';
-    return contentBlock +
-    '<div class="hs-mc-settings-group">' +
-      '<div class="hs-mc-settings-group-title">content filters (server-synced)</div>' +
-      '<div class="hs-mc-set-status" id="hs-set-srv-status"></div>' +
-      _SERVER_FILTER_DEFS.map(function(def) {
-        var on = sv ? !!sv[def.key] : false;
-        return '<div class="hs-mc-setting-row">' +
-          '<button class="hs-mc-toggle-pill' + (on ? ' active' : '') + '" data-server-setting="' + def.key + '"' + (sv ? '' : ' disabled') + '><span class="hs-mc-toggle-knob"></span></button>' +
-          '<span class="hs-mc-setting-label" data-tip="' + escapeHtml(def.desc) + '">' + escapeHtml(def.label) + '</span>' +
-        '</div>';
-      }).join('') +
     '</div>';
   }
 
@@ -5241,52 +5214,10 @@
     '</div>';
   }
 
-  // Lazy-load server content filters; only fetches once per session
-  async function _loadServerFilters() {
-    var statusEl = document.getElementById('hs-set-srv-status');
-    if (_serverSettings !== null) {
-      // Already loaded -- reflect current state in DOM
-      if (statusEl) { statusEl.textContent = ''; statusEl.className = 'hs-mc-set-status'; }
-      for (var i = 0; i < _SERVER_FILTER_DEFS.length; i++) {
-        var def = _SERVER_FILTER_DEFS[i];
-        var pill = document.querySelector('.hs-mc-toggle-pill[data-server-setting="' + def.key + '"]');
-        if (pill) {
-          pill.classList.toggle('active', !!_serverSettings[def.key]);
-          pill.removeAttribute('disabled');
-        }
-      }
-      return;
-    }
-    if (statusEl) { statusEl.textContent = 'loading…'; statusEl.className = 'hs-mc-set-status'; }
-    try {
-      var resp = await safeSendMessage({ type: 'api_fetch', path: '/api/user/settings', method: 'GET', auth: true });
-      if (!resp || !resp.ok) {
-        var st = resp && resp.status;
-        if (st === 401 || st === 403) {
-          if (statusEl) { statusEl.textContent = 'not logged in — sign in at heatsync.org'; statusEl.className = 'hs-mc-set-status'; }
-        } else {
-          if (statusEl) { statusEl.textContent = 'failed to load: ' + ((resp && resp.error) || 'unknown'); statusEl.className = 'hs-mc-set-status err'; }
-        }
-        return;
-      }
-      _serverSettings = (resp.data && resp.data.settings) || resp.settings || null;
-      if (!_serverSettings) {
-        if (statusEl) { statusEl.textContent = 'no settings data returned'; statusEl.className = 'hs-mc-set-status err'; }
-        return;
-      }
-      for (var j = 0; j < _SERVER_FILTER_DEFS.length; j++) {
-        var def2 = _SERVER_FILTER_DEFS[j];
-        var pill2 = document.querySelector('.hs-mc-toggle-pill[data-server-setting="' + def2.key + '"]');
-        if (pill2) {
-          pill2.classList.toggle('active', !!_serverSettings[def2.key]);
-          pill2.removeAttribute('disabled');
-        }
-      }
-      if (statusEl) { statusEl.textContent = ''; statusEl.className = 'hs-mc-set-status'; }
-    } catch (err) {
-      if (statusEl) { statusEl.textContent = 'not logged in — sign in at heatsync.org'; statusEl.className = 'hs-mc-set-status'; }
-    }
-  }
+  // _loadServerFilters removed in v1.6 audit pass — fetched /api/user/settings
+  // expecting a JSONB `settings` blob that the server never produced. The
+  // 11 toggles it populated were unwired (server didn't read those keys),
+  // so removing it has no functional change. See _SERVER_FILTER_DEFS deletion.
 
   // Load recent errors + diag snapshot into the system sub-tab pre element.
   // Reads hs_errors directly (single source of truth — written by lib/error-reporter).
@@ -5410,7 +5341,6 @@
     }).catch(function() {});
 
     if (_settingsSubtab === 'notifs') _populateNotifStorageToggle();
-    if (_settingsSubtab === 'filters') _loadServerFilters();
 
     // Wire up toggles via event delegation
     if (msgsEl._hsSettingsClick) msgsEl.removeEventListener('click', msgsEl._hsSettingsClick);
@@ -5442,36 +5372,9 @@
         return;
       }
 
-      // Server content filter toggles
-      var serverPill = e.target.closest('.hs-mc-toggle-pill[data-server-setting]');
-      if (serverPill) {
-        if (serverPill.disabled || serverPill.hasAttribute('disabled')) return;
-        var srvKey = serverPill.dataset.serverSetting;
-        if (!_serverSettings) return;
-        var srvNext = !_serverSettings[srvKey];
-        _serverSettings[srvKey] = srvNext;
-        serverPill.classList.toggle('active', srvNext);
-        serverPill.setAttribute('disabled', '');
-        var statusEl = document.getElementById('hs-set-srv-status');
-        if (statusEl) { statusEl.textContent = 'saving…'; statusEl.className = 'hs-mc-set-status'; }
-        safeSendMessage({ type: 'api_fetch', path: '/api/user/settings', method: 'PATCH', auth: true, body: { [srvKey]: srvNext } }).then(function(resp) {
-          if (!resp || !resp.ok) {
-            _serverSettings[srvKey] = !srvNext;
-            serverPill.classList.toggle('active', !srvNext);
-            if (statusEl) { statusEl.textContent = 'save failed: ' + ((resp && resp.error) || 'unknown'); statusEl.className = 'hs-mc-set-status err'; }
-          } else {
-            if (statusEl) { statusEl.textContent = 'saved'; statusEl.className = 'hs-mc-set-status ok'; }
-            cleanup.setTimeout(function() { if (statusEl) { statusEl.textContent = ''; statusEl.className = 'hs-mc-set-status'; } }, 1500);
-          }
-        }).catch(function(err) {
-          _serverSettings[srvKey] = !srvNext;
-          serverPill.classList.toggle('active', !srvNext);
-          if (statusEl) { statusEl.textContent = 'save failed: ' + ((err && err.message) || 'unknown'); statusEl.className = 'hs-mc-set-status err'; }
-        }).finally(function() {
-          serverPill.removeAttribute('disabled');
-        });
-        return;
-      }
+      // [data-server-setting] handler removed in v1.6 audit pass — see
+      // _SERVER_FILTER_DEFS deletion above. PATCH'd /api/user/settings with
+      // unwired keys; server never read them.
 
       // v1.6 NSFW per-viewer toggle — PATCH /api/user/settings, mirror to
       // chrome.storage so the BG (which appends include_nsfw= to emote

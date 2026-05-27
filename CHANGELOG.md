@@ -1,5 +1,20 @@
 # changelog
 
+## [1.6.1] — 2026-05-27
+
+### added
+- **cross-tab / cross-device settings sync** — toggling the NSFW pill on any surface (tab, second laptop, future heatsync.org settings page) instantly mirrors on every other surface for that user. server PATCH commits the column then broadcasts `user_settings:update` over WS to every active connection. BG-side handler in chrome/background.js updates `viewerShowNsfw` + writes `chrome.storage.local`; existing `chrome.storage.onChanged` listener live-updates the visible toggle pill DOM in any open settings panel without a re-render.
+- **chat repaints immediately on toggle** — `refresh_all` now also clears the sender-emote LRU cache so cross-user inventory sets re-fetch with the new `include_nsfw` param. Previously the 5min TTL would delay repaint.
+
+### infrastructure
+- **WSServerMessage union extended** — `{ type: 'user_settings:update', show_nsfw_emotes?: boolean, ts: number }`. Future column-stored prefs join the same payload shape (no schema migration when adding fields).
+- **WS handler gate avoids double-action on origin tab** — `(msg.show_nsfw_emotes !== viewerShowNsfw)` short-circuits on the tab that initiated the PATCH (its local-write already updated state), so refresh_all only fires on receiving devices.
+
+### v1.6 architectural direction (locked)
+- ext multichat panel is the primary surface for content filter settings — not duplicated on heatsync.org
+- new filter categories ship one-at-a-time as full features (server filter logic + UI toggle), never as placeholder UI
+- sync layer added here applies automatically to every future toggle that lives on `users.*` columns
+
 ## [1.6.0] — 2026-05-27
 
 ### added

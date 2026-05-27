@@ -4298,6 +4298,39 @@ function handleWSMessage(msg) {
       break
     }
 
+    // v1.6 cross-device sync for column-stored prefs (PATCH /api/user/settings).
+    // Server broadcasts this to every WS-connected device for the user, so a
+    // NSFW toggle flipped in tab A mirrors instantly in tab B / desktop 2 /
+    // phone, without polling. The chrome.storage.local write triggers the
+    // existing onChanged listener which updates BG's viewerShowNsfw global +
+    // every content-script tab's _viewerShowNsfwLocal mirror.
+    //
+    // The gate (!== viewerShowNsfw) makes this a no-op for the originating
+    // tab (its own click handler already updated the value before the WS
+    // round-trip), so we only do the heavy work on receiving devices.
+    case 'user_settings:update': {
+      if (typeof msg.show_nsfw_emotes === 'boolean' && msg.show_nsfw_emotes !== viewerShowNsfw) {
+        log(' user_settings:update received: show_nsfw_emotes →', msg.show_nsfw_emotes)
+        viewerShowNsfw = msg.show_nsfw_emotes
+        browser.storage.local.set({ viewer_show_nsfw: viewerShowNsfw }).catch(() => {})
+        // Invalidate cross-user batch caches + refetch own inventory so the
+        // chat repaints with the new filter immediately, not at the next
+        // channel switch. Mirrors what the originating tab's click handler
+        // does after PATCH success.
+        Promise.all([
+          fetchEmoteInventory(),
+          fetchBlockedEmotes(),
+        ]).catch(() => {})
+        // Drop sender-emote LRU so next message render re-fetches with the
+        // new include_nsfw param. Same cache the inventory-block path uses
+        // (globalThis.__senderEmoteCache), guarded for lazy init order.
+        try {
+          if (globalThis.__senderEmoteCache?.clear) globalThis.__senderEmoteCache.clear()
+        } catch {}
+      }
+      break
+    }
+
     // Server-evaluated mention rule match — show inline notif in multichat overlay.
     case 'mention:rule-match': {
       const d = msg.data
@@ -5404,7 +5437,13 @@ async function handleMessage(message, sender, sendResponse) {
     })()
     return true
   } else if (message.type === 'refresh_all') {
-    // Refresh all emotes (called from popup)
+    // Refresh all emotes — called from popup AND from the NSFW toggle
+    // click path (chat needs to repaint with the new filter without
+    // waiting for the 5min sender-emote LRU TTL). Clear sender cache
+    // here so cross-user emote sets re-fetch fresh on next message.
+    try {
+      if (globalThis.__senderEmoteCache?.clear) globalThis.__senderEmoteCache.clear()
+    } catch {}
     (async () => {
       await Promise.all([
         fetchGlobalEmotes(),

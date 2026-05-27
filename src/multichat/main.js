@@ -187,6 +187,12 @@
   // v1.6 NSFW — local mirror of users.show_nsfw_emotes. BG owns the
   // authoritative state in chrome.storage.viewer_show_nsfw; this is hydrated
   // when the settings tab renders so the pill paints with the right state.
+  //
+  // onChanged listener also live-syncs the visible toggle pill — when the
+  // server broadcasts a user_settings:update WS event (toggle flipped from
+  // another tab / device), BG writes storage → onChanged fires here →
+  // every open settings panel updates the pill class in-place without a
+  // re-render. Same listener fires from local writes too; idempotent.
   let _viewerShowNsfwLocal = false;
   try {
     chrome.storage.local.get('viewer_show_nsfw', function(d) {
@@ -195,7 +201,12 @@
     chrome.storage.onChanged.addListener(function(changes, area) {
       if (area !== 'local') return;
       if (changes.viewer_show_nsfw && typeof changes.viewer_show_nsfw.newValue === 'boolean') {
-        _viewerShowNsfwLocal = changes.viewer_show_nsfw.newValue;
+        const next = changes.viewer_show_nsfw.newValue;
+        _viewerShowNsfwLocal = next;
+        // Update any visible pill — live cross-tab sync without re-render
+        document.querySelectorAll('.hs-mc-toggle-pill[data-nsfw-pill]').forEach(function(pill) {
+          pill.classList.toggle('active', next);
+        });
       }
     });
   } catch {}

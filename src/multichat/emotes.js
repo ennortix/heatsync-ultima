@@ -396,9 +396,10 @@
     // img.dataset.state; without this update right-click on a blocked picker
     // emote returns state='global' and re-blocks instead of unblocking.
     const state = isBlocked ? 'blocked' : (emote.state || 'global')
-    const wrapCls = isBlocked
+    const nsfwTag = emote.nsfw ? ' hs-state-nsfw' : ''
+    const wrapCls = (isBlocked
       ? 'hs-mc-picker-emote-wrap blocked'
-      : (state === 'unadded' ? 'hs-mc-picker-emote-wrap unadded' : 'hs-mc-picker-emote-wrap')
+      : (state === 'unadded' ? 'hs-mc-picker-emote-wrap unadded' : 'hs-mc-picker-emote-wrap')) + nsfwTag
     const safeName = escapeHtml(name)
     return `<span class="${wrapCls}" data-name="${safeName}"><img src="${escapeHtml(emote.url)}" alt="${safeName}" title="${safeName} (${escapeHtml(emote.source)})" class="hs-mc-picker-emote hs-emote-${escapeHtml(emote.source)}" data-name="${safeName}" data-source="${escapeHtml(emote.source)}" data-state="${state}" loading="lazy"></span>`
   }
@@ -883,6 +884,7 @@
     // Owned shadows global/channel — surface what the user actually controls.
     img.dataset.state = inventoryEmotes.has(emoteName) ? 'owned' : (emote.state || 'global')
     img.classList.add('hs-state-' + img.dataset.state)
+    if (emote.nsfw) img.classList.add('hs-state-nsfw')  // v1.6 cyan dashed
     if (isOverlay) img.dataset.zeroWidth = '1'
     // Broken-image recovery — shared helper in input.js (cache-bust retry then
     // text fallback). Defined later in the bundle but function declarations
@@ -1847,7 +1849,7 @@
         if (e.name && e.url) {
           const source = e.source || detectEmoteSource(e.url, 'heatsync');
           const state = getEmoteState(e.name, source);
-          emoteCache.set(e.name, { url: e.url, source, state, zeroWidth: !!e.zeroWidth });
+          emoteCache.set(e.name, { url: e.url, source, state, zeroWidth: !!e.zeroWidth, nsfw: !!e.nsfw });
           while (emoteCache.size > 2000) { emoteCache.delete(emoteCache.keys().next().value) }
           if (e.hash) registerHash(e.name, e.hash);
         }
@@ -1863,7 +1865,7 @@
           const source = e.source || 'heatsync';
           // server returns zero_width (snake_case from postgres column), older
           // payloads may carry zeroWidth — accept either; falsy default is fine.
-          viewerPersonalEmotes.set(e.name, { url: e.url, source, state: 'owned', zeroWidth: !!(e.zero_width ?? e.zeroWidth), subscription: !!e.subscription, slot: e.slot });
+          viewerPersonalEmotes.set(e.name, { url: e.url, source, state: 'owned', zeroWidth: !!(e.zero_width ?? e.zeroWidth), subscription: !!e.subscription, slot: e.slot, nsfw: !!e.nsfw });
         }
       });
 
@@ -2162,7 +2164,8 @@
         const safeHash = cached?.hash ? escapeHtml(cached.hash) : ''
         const ownerAttr = cached?.ownerDisplay ? ` data-owner="${escapeHtml(cached.ownerDisplay)}"` : ''
         const titleAttr = useCachedUrl ? safeName : `${safeName} (${safeProvider} via kick)`
-        const imgHtmlRaw = `<span class="hs-mc-emote-wrapper hs-state-${state}" data-emote-name="${safeName}" data-emote-url="${safeUrl}" data-state="${state}" data-source="${safeProvider}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}><img src="${safeUrl}" alt="${safeName}" title="${titleAttr}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${safeName}" data-state="${state}" data-source="${safeProvider}"${ownerAttr} loading="lazy" decoding="async"></span>`
+        const nsfwClass = cached?.nsfw ? ' hs-state-nsfw' : ''
+        const imgHtmlRaw = `<span class="hs-mc-emote-wrapper hs-state-${state}${nsfwClass}" data-emote-name="${safeName}" data-emote-url="${safeUrl}" data-state="${state}" data-source="${safeProvider}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}><img src="${safeUrl}" alt="${safeName}" title="${titleAttr}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${safeName}" data-state="${state}" data-source="${safeProvider}"${ownerAttr} loading="lazy" decoding="async"></span>`
         if (isOverlay && pendingStack) {
           const itemMods = pendingMods.slice()
           const itemHue = pendingHue
@@ -2268,7 +2271,8 @@
             }
           }
         } catch (e) {}
-        const imgHtmlRaw = `<span class="hs-mc-emote-wrapper hs-state-${state}${staleClass}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}${staleAttr}><img src="${imgSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${displayName}" data-state="${state}" data-source="${source}"${ownerAttr} loading="lazy" decoding="async"></span>`;
+        const nsfwClass = emote.nsfw ? ' hs-state-nsfw' : ''
+        const imgHtmlRaw = `<span class="hs-mc-emote-wrapper hs-state-${state}${staleClass}${nsfwClass}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}${staleAttr}><img src="${imgSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${displayName}" data-state="${state}" data-source="${source}"${ownerAttr} loading="lazy" decoding="async"></span>`;
 
         // Build the new item — inline-glued suffix mod attaches to THIS emote
         // (e.g. "RainTimew!" → wide RainTime, not wide whatever-was-base).

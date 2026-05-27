@@ -235,9 +235,14 @@
     if (isStale) {
       label = staleActor ? `${label} · removed by @${staleActor}` : `${label} · removed from channel`
     }
+    // v1.6 NSFW — flagged emotes get an explicit suffix so viewers who
+    // opted in know which emotes are filtered for everyone else.
+    const pickerWrap = (hoveredImg || e.target)?.closest?.('.hs-mc-picker-emote-wrap')
+    const isNsfw = wrapper?.classList.contains('hs-state-nsfw') || pickerWrap?.classList.contains('hs-state-nsfw') || (hoveredImg?.classList?.contains?.('hs-state-nsfw'))
+    if (isNsfw) label = `${label} · NSFW`
     stateEl.textContent = label;
     const srcClass = (state === 'global' || state === 'channel' || state === 'sub') && source ? ' src-' + source.toLowerCase().replace(/[^a-z0-9]/g, '') : ''
-    stateEl.className = 'tooltip-source ' + (state || 'global') + srcClass + (isStale ? ' stale' : '');
+    stateEl.className = 'tooltip-source ' + (state || 'global') + srcClass + (isStale ? ' stale' : '') + (isNsfw ? ' nsfw' : '');
 
     // Position: anchor above the emote element
     const anchorEl = hoveredImg || e.target;

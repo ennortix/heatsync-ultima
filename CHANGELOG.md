@@ -1,5 +1,21 @@
 # changelog
 
+## [unreleased] — v1.6 NSFW
+
+### added
+- **per-viewer NSFW emote filter** — emotes scored ≥0.7 confidence on sexual / gore SightEngine categories (the soft band below the existing 0.85 hard-ban / CSAM quarantine threshold) are now hidden by default. flip the toggle in ⚙ → filters → content to receive them; flagged emotes render with a 2px dashed cyan (#00d7d7) border and the tooltip suffixes " · NSFW" so you always know what's flagged for everyone else. weapon / drugs / offensive categories don't trigger the filter — too false-positive heavy.
+- **own inventory always renders to you** — your own NSFW-flagged emotes always show in your set regardless of the toggle. the filter applies to other senders' emotes (cross-user rendering paths: `/api/users/:id/emotes`, `/api/users/emotes/batch`, `/api/emotes/user/:name`, `/api/emotes/hot`).
+- **server settings endpoint** — `GET` / `PATCH /api/user/settings` for the `show_nsfw_emotes` boolean. lives on `users.show_nsfw_emotes` (direct column) rather than the `user_settings.settings` JSONB blob so the emote-fetch hot path can SELECT it without JSON-parse cost.
+
+### infrastructure
+- **migration 165** — emotes gains `nsfw_score REAL`, `nsfw_categories JSONB`, and `nsfw_flagged BOOLEAN GENERATED ALWAYS AS (...) STORED` + partial index on flagged=true. existing rows default to score=0 / categories={} until backfilled. users gains `show_nsfw_emotes BOOLEAN NOT NULL DEFAULT false`. the generated column casts the 0.7 threshold to REAL so exact-boundary rows flag correctly (REAL 0.7 → ~0.69999998 in double-precision space silently slides under).
+- **scanImage now returns nsfw subcategory snapshot** — `ModerationResult` gains optional `nsfw_score` + `nsfw_categories` keys (`nudity_raw` / `nudity_partial` / `nudity_suggestive` / `sexual_activity` / `gore`). populated only by `parseImageResponse`; text-scan results leave them undefined. emote-add layer reads them off the modResult and persists.
+- **self-hosted upload moderation reuse** — emote-add for `/uploads/` URLs now calls scanImage with `PUBLIC_URL`-prefixed URL so the cache key aligns with the upload-time scan; nsfw fields recover from cache without paying for a second SightEngine call.
+- **backfill script** — `scripts/backfill-nsfw.ts` re-scans existing emotes via SightEngine and stamps the new columns. idempotent (`nsfw_categories = '{}'` is the "never scanned" marker — any real scan response writes at least one subcategory key). supports `--dry-run` for cost preview and `--limit=N` for bounded runs.
+
+### deferred
+- **channel emote filter (`/api/channel/:name/emotes`)** — external CDN-sourced (BTTV / FFZ / 7TV channel sets, not in our DB) so per-row `nsfw_flagged` is unavailable. filtering would require a per-URL DB JOIN that fights the 1h browser + 24h CF cache. NSFW emotes that get added to inventory via the auto-add-on-send flow then DO flow through the v1.6 filter on the cross-user path. revisit if NSFW slips through here at scale.
+
 ## [1.5.4] — 2026-05-26
 
 ### perf

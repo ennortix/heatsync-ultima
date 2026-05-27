@@ -186,6 +186,21 @@
   let _settingsSubtab = 'display';
   // Cached server content-filter settings (lazy-loaded when filters sub-tab shown)
   let _serverSettings = null;
+  // v1.6 NSFW — local mirror of users.show_nsfw_emotes. BG owns the
+  // authoritative state in chrome.storage.viewer_show_nsfw; this is hydrated
+  // when the settings tab renders so the pill paints with the right state.
+  let _viewerShowNsfwLocal = false;
+  try {
+    chrome.storage.local.get('viewer_show_nsfw', function(d) {
+      if (typeof d?.viewer_show_nsfw === 'boolean') _viewerShowNsfwLocal = d.viewer_show_nsfw;
+    });
+    chrome.storage.onChanged.addListener(function(changes, area) {
+      if (area !== 'local') return;
+      if (changes.viewer_show_nsfw && typeof changes.viewer_show_nsfw.newValue === 'boolean') {
+        _viewerShowNsfwLocal = changes.viewer_show_nsfw.newValue;
+      }
+    });
+  } catch {}
 
   // Per-tab platform filters: { [tabId]: { twitch, kick, youtube } }, defaults all true
   let platformFilters = {};
@@ -5136,7 +5151,21 @@
 
   function _renderFiltersSubtab() {
     var sv = _serverSettings;
-    return '<div class="hs-mc-settings-group">' +
+    // v1.6 — Content section: per-viewer NSFW emote opt-in. Default OFF
+    // hides flagged emotes server-side; toggle on to receive them with the
+    // 2px dashed cyan border. Initial state hydrates from chrome.storage
+    // (BG side keeps it in sync via onChanged) so the pill renders correctly
+    // before the GET round-trips.
+    var nsfwOn = !!_viewerShowNsfwLocal;
+    var contentBlock = '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title">content</div>' +
+      '<div class="hs-mc-setting-row">' +
+        '<button class="hs-mc-toggle-pill' + (nsfwOn ? ' active' : '') + '" data-nsfw-pill><span class="hs-mc-toggle-knob"></span></button>' +
+        '<span class="hs-mc-setting-label" data-tip="NSFW emotes (sexual / gore content above 70% confidence) are hidden by default. Toggle on to see them with a dashed cyan border.">show NSFW-flagged emotes</span>' +
+      '</div>' +
+    '</div>';
+    return contentBlock +
+    '<div class="hs-mc-settings-group">' +
       '<div class="hs-mc-settings-group-title">content filters (server-synced)</div>' +
       '<div class="hs-mc-set-status" id="hs-set-srv-status"></div>' +
       _SERVER_FILTER_DEFS.map(function(def) {
@@ -5440,6 +5469,44 @@
           if (statusEl) { statusEl.textContent = 'save failed: ' + ((err && err.message) || 'unknown'); statusEl.className = 'hs-mc-set-status err'; }
         }).finally(function() {
           serverPill.removeAttribute('disabled');
+        });
+        return;
+      }
+
+      // v1.6 NSFW per-viewer toggle — PATCH /api/user/settings, mirror to
+      // chrome.storage so the BG (which appends include_nsfw= to emote
+      // fetches) and other tabs pick up the new state via onChanged. Inline
+      // emote caches get flushed by triggering refresh_all so cross-user
+      // sets re-fetch with the new filter.
+      var nsfwPill = e.target.closest('.hs-mc-toggle-pill[data-nsfw-pill]');
+      if (nsfwPill) {
+        var nsfwNext = !nsfwPill.classList.contains('active');
+        nsfwPill.classList.toggle('active', nsfwNext);
+        _viewerShowNsfwLocal = nsfwNext;
+        chrome.storage.local.set({ viewer_show_nsfw: nsfwNext });
+        safeSendMessage({
+          type: 'api_fetch',
+          path: '/api/user/settings',
+          method: 'PATCH',
+          auth: true,
+          body: { show_nsfw_emotes: nsfwNext }
+        }).then(function(resp) {
+          if (!resp || !resp.ok) {
+            // Rollback the local + storage state so the pill matches reality.
+            nsfwPill.classList.toggle('active', !nsfwNext);
+            _viewerShowNsfwLocal = !nsfwNext;
+            chrome.storage.local.set({ viewer_show_nsfw: !nsfwNext });
+            showToast('failed to save NSFW setting — try again', 'error');
+            return;
+          }
+          // Re-fetch emote sets with the new filter so the chat repaints
+          // immediately instead of waiting for the next channel switch.
+          safeSendMessage({ type: 'refresh_all' }).catch(function() {});
+        }).catch(function() {
+          nsfwPill.classList.toggle('active', !nsfwNext);
+          _viewerShowNsfwLocal = !nsfwNext;
+          chrome.storage.local.set({ viewer_show_nsfw: !nsfwNext });
+          showToast('failed to save NSFW setting — try again', 'error');
         });
         return;
       }

@@ -2850,6 +2850,18 @@ function injectStyles() {
     .hs-mc-emote-wrapper.hs-state-channel::before { background: #00ff00; }
     .hs-mc-emote-wrapper.hs-state-blocked::before { background: #ff0000; }
 
+    /* v1.6 NSFW — viewers who opt in to see flagged emotes get a 2px dashed
+       cyan border on the image. Applies to chat messages, picker grid /
+       search rows, and the input-bar emote chip. The class is mutually
+       compatible with state-* classes (an emote can be owned AND nsfw). */
+    .hs-mc-emote-wrapper.hs-state-nsfw > img,
+    .hs-mc-picker-emote-wrap.hs-state-nsfw > img,
+    .hs-mc-picker-emote-wrap.hs-state-nsfw,
+    img.hs-input-emote.hs-state-nsfw {
+      border: 2px dashed #00d7d7 !important;
+      box-sizing: border-box !important;
+    }
+
     /* Stale ghost: emote was in the channel set when the message posted but
        has since been removed. Dim + desaturate the cached IMG; muted-orange
        marker distinguishes from active orange unadded state. */

@@ -363,6 +363,23 @@ browser.storage.local.get(['channel_emotes', 'channel_emotes_owner']).then(async
 
 let emoteInventory = [];
 let globalEmotes = []; // BTTV, FFZ, 7TV global emotes
+
+// Hydrate viewerShowNsfw from storage on SW wake-up so emote fetches that
+// fire before fetchViewerSettings() resolves still use the right flag.
+// onChanged listener below keeps in-memory state in sync when settings UI
+// or other tabs flip the toggle.
+browser.storage.local.get('viewer_show_nsfw').then(d => {
+  if (typeof d?.viewer_show_nsfw === 'boolean') viewerShowNsfw = d.viewer_show_nsfw
+}).catch(() => {})
+browser.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local') return
+  const c = changes.viewer_show_nsfw
+  if (c && typeof c.newValue === 'boolean' && c.newValue !== viewerShowNsfw) {
+    viewerShowNsfw = c.newValue
+    log(' viewer_show_nsfw changed →', viewerShowNsfw)
+  }
+})
+
 let channelEmotesMap = {}; // Per-channel emotes: { channelName: emotes[] }
 let channelEmotesFetchedAt = {}; // channelName → timestamp of last successful fetch
 
@@ -493,6 +510,12 @@ const CHANNEL_BANNER_TTL = 12 * 60 * 60 * 1000
 const CHANNEL_BANNER_MAX = 800
 let followedUsers = []; // Users the current user follows
 let currentUsername = null; // Logged-in user's username
+// v1.6 NSFW per-viewer state. Default OFF (hide flagged emotes); flipped
+// via the multichat panel ⚙ → Content → "show NSFW-flagged emotes" toggle,
+// which PATCHes /api/user/settings and writes viewer_show_nsfw to storage.
+// Every emote-fetch BG call appends `?include_nsfw=${viewerShowNsfw}` so
+// the server filter decision tracks each viewer's per-account preference.
+let viewerShowNsfw = false;
 let socket = null;
 let lastBroadcastWasEmpty = false // Track to prevent spamming 0-emote broadcasts
 // Tracks the last user-initiated block/unblock per hash so late-arriving WS
@@ -615,7 +638,8 @@ browser.cookies.onChanged.addListener((changeInfo) => {
       emoteInventory = []
       blockedEmotes = new Set()
       followedUsers = []
-      browser.storage.local.remove(['emote_inventory', 'blocked_emotes', 'auth_token_encrypted', 'auth_token', 'user_info']).catch(err => log(' storage remove failed:', err?.message))
+      viewerShowNsfw = false
+      browser.storage.local.remove(['emote_inventory', 'blocked_emotes', 'auth_token_encrypted', 'auth_token', 'user_info', 'viewer_show_nsfw']).catch(err => log(' storage remove failed:', err?.message))
       broadcastToTabs({ type: 'auth_changed', loggedIn: false })
     } else {
       log(' Auth cookie set — logging in')
@@ -626,6 +650,7 @@ browser.cookies.onChanged.addListener((changeInfo) => {
       fetchBlockedEmotes().catch(err => log(' fetchBlockedEmotes failed:', err?.message))
       fetchFollowedUsers().catch(err => log(' fetchFollowedUsers failed:', err?.message))
       fetchUserInfo().catch(err => log(' fetchUserInfo failed:', err?.message))
+      fetchViewerSettings().catch(err => log(' fetchViewerSettings failed:', err?.message))
       connectWebSocket().catch(err => log(' connectWebSocket failed:', err?.message))
       subscribeToPush(c.value).catch(err => log(' subscribeToPush failed:', err?.message))
       broadcastToTabs({ type: 'auth_changed', loggedIn: true })
@@ -1015,7 +1040,7 @@ function fetchEmoteInventory() {
     }
 
     log(' Fetching user inventory from API');
-    const response = await fetchWithTimeout(`${API_URL}/api/user/emotes`, {
+    const response = await fetchWithTimeout(withNsfwParam(`${API_URL}/api/user/emotes`), {
       headers: {
         'Authorization': `Bearer ${authToken}`
       }
@@ -1056,7 +1081,8 @@ function fetchEmoteInventory() {
       height: emote.height,
       slot: emote.slot_number,
       usage_count: emote.usage_count,
-      zero_width: !!emote.zero_width  // 7TV overlay flag — drives stacking in chat
+      zero_width: !!emote.zero_width,  // 7TV overlay flag — drives stacking in chat
+      nsfw: !!emote.nsfw  // v1.6 — cyan-dashed border + tooltip suffix
     }));
     log(' 🔍 Transformed inventory length:', inventoryEmotes.length);
     log(' 🔍 First transformed emote:', inventoryEmotes[0]);
@@ -1549,6 +1575,38 @@ async function fetchUserInfo() {
   } catch (error) {
     console.error('[heatsync] fetchUserInfo failed:', error.message || error)
   }
+}
+
+// v1.6 NSFW — load the viewer's show_nsfw_emotes setting. Falls back to
+// stored value if the network call fails, then to OFF. The flag flows into
+// every emote-fetch via withNsfwParam() below.
+async function fetchViewerSettings() {
+  try {
+    const authToken = await getAuthCookie()
+    if (!authToken) {
+      viewerShowNsfw = false
+      browser.storage.local.set({ viewer_show_nsfw: false })
+      return
+    }
+    const resp = await fetchWithTimeout(`${API_URL}/api/user/settings`, {
+      credentials: 'include',
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    })
+    if (!resp.ok) { resp.body?.cancel(); return }
+    const data = await resp.json().catch(() => null)
+    if (data && typeof data.show_nsfw_emotes === 'boolean') {
+      viewerShowNsfw = data.show_nsfw_emotes
+      browser.storage.local.set({ viewer_show_nsfw: viewerShowNsfw })
+    }
+  } catch (error) {
+    log(' fetchViewerSettings failed:', error?.message)
+  }
+}
+
+// Append include_nsfw= to an emote-fetch URL. URL may already have a query.
+function withNsfwParam(url) {
+  const sep = url.includes('?') ? '&' : '?'
+  return `${url}${sep}include_nsfw=${viewerShowNsfw ? 'true' : 'false'}`
 }
 
 // Validate emote objects from third-party APIs to bound string sizes and URL patterns
@@ -2054,7 +2112,7 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
 
     // Fetch heatsync emotes + resolve Twitch ID in PARALLEL (both needed before third-party fetch)
     const [heatsyncResult, resolvedChannelId] = await Promise.all([
-      fetchWithTimeout(`${API_URL}/api/emotes/user/${encodeURIComponent(channelName)}`).catch(() => null),
+      fetchWithTimeout(withNsfwParam(`${API_URL}/api/emotes/user/${encodeURIComponent(channelName)}`)).catch(() => null),
       (platform !== 'kick' && !channelId) ? lookupTwitchUserId(channelName) : Promise.resolve(channelId)
     ]);
     let heatsyncEmotes = [];
@@ -5352,7 +5410,8 @@ async function handleMessage(message, sender, sendResponse) {
         fetchGlobalEmotes(),
         fetchEmoteInventory(),
         fetchBlockedEmotes(),
-        fetchUserInfo()
+        fetchUserInfo(),
+        fetchViewerSettings()
       ]);
       sendResponse({ success: true });
     })();
@@ -5918,7 +5977,7 @@ async function handleMessage(message, sender, sendResponse) {
         .filter(id => /^\d+$/.test(id)))]
       let hsBatch = {}
       if (_missIds.length) {
-        const hb = await fetchWithTimeout(`${API_URL}/api/users/emotes/batch?ids=${_missIds.join(',')}`, { credentials: 'omit', noBackoff: true }).then(r => r.ok ? r.json() : null).catch(() => null)
+        const hb = await fetchWithTimeout(withNsfwParam(`${API_URL}/api/users/emotes/batch?ids=${_missIds.join(',')}`), { credentials: 'omit', noBackoff: true }).then(r => r.ok ? r.json() : null).catch(() => null)
         hsBatch = hb?.sets || {}
       }
       await Promise.all(senderKeys.map(async (key) => {
@@ -6033,7 +6092,8 @@ async function handleMessage(message, sender, sendResponse) {
             // processEmotes upgrades to 'owned' if they already have it.
             state: 'unadded',
             zeroWidth: !!(e.zero_width ?? e.zeroWidth ?? prevZW),
-            hash: e.hash || ''
+            hash: e.hash || '',
+            nsfw: !!e.nsfw  // v1.6 — cyan dashed border in chat + picker
           }
         }
         cache.set(key, { emotes: collected, ts: Date.now() })
@@ -6338,7 +6398,8 @@ async function initialize() {
     fetchEmoteInventory(),
     fetchBlockedEmotes(),
     fetchFollowedUsers(),
-    fetchUserInfo()
+    fetchUserInfo(),
+    fetchViewerSettings()
   ]).then(() => {
     log(' ✓ All fetches complete - global:', globalEmotes.length, 'personal:', emoteInventory.length);
     broadcastToTabs({ type: 'loading_status', done: true });

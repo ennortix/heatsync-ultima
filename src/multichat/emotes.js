@@ -1520,16 +1520,31 @@
 
   function _scheduleSenderEmotePersist() {
     if (_senderEmotePersistTimer || !_senderEmoteDirty) return;
+    // Was 500ms debounce — on busy channels this fired 2× per second, each
+    // serializing the whole 500-entry Map to JSON + storage write (~30-100ms
+    // of main-thread work each). Now 4000ms: still catches a session's worth
+    // of additions on tab close, doesn't spam during heavy chat. Persist also
+    // runs on visibilitychange below so unsynced state is flushed when the
+    // user navigates away.
     _senderEmotePersistTimer = cleanup.setTimeout(() => {
       _senderEmotePersistTimer = null;
       if (!_senderEmoteDirty) return;
       _senderEmoteDirty = false;
-      const out = {};
-      for (const [k, m] of senderEmoteSets) {
-        out[k] = Object.fromEntries(m);
+      // Build the persist payload inside requestIdleCallback so the JSON
+      // serialization + storage write don't compete with chat render frames.
+      const writeIt = () => {
+        const out = {};
+        for (const [k, m] of senderEmoteSets) {
+          out[k] = Object.fromEntries(m);
+        }
+        try { chrome.storage.local.set({ sender_emote_sets: out }) } catch {}
       }
-      try { chrome.storage.local.set({ sender_emote_sets: out }) } catch {}
-    }, 500);
+      if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(writeIt, { timeout: 5000 })
+      } else {
+        writeIt()
+      }
+    }, 4000);
   }
 
   // Merge a sender's fetched set, UPDATING entries whose url/state/source changed
@@ -1628,12 +1643,29 @@
       // is handled non-destructively: the in-memory freshness map is empty after a
       // reload, so every sender is re-fetched once this session, and mergeSenderEmotes
       // UPDATES changed entries in place (no discard → no text gap while refreshing).
+      //
+      // CAP THE LOAD: prior versions persisted up to ~5000 senders. Loading all
+      // of them brought the in-memory map to its old size at boot, eating 100s
+      // of MB before any chat fired. Cap to LRU_MAX. Truncation keeps the LAST
+      // (most-recent) entries since Object.entries preserves insertion order
+      // and the persist also writes in insertion order.
       const obj = stored.sender_emote_sets || {};
-      for (const [k, names] of Object.entries(obj)) {
+      const entries = Object.entries(obj);
+      const truncated = entries.length > SENDER_EMOTE_LRU_MAX
+        ? entries.slice(-SENDER_EMOTE_LRU_MAX)
+        : entries;
+      for (const [k, names] of truncated) {
         if (!names || typeof names !== 'object') continue;
         senderEmoteSets.set(k, new Map(Object.entries(names)));
       }
-      log('Loaded sender_emote_sets:', senderEmoteSets.size, 'senders');
+      if (entries.length > SENDER_EMOTE_LRU_MAX) {
+        log('Loaded sender_emote_sets:', senderEmoteSets.size, 'of', entries.length, 'persisted (truncated to LRU cap)');
+        // Persist the truncation back so the storage shrinks too.
+        _senderEmoteDirty = true;
+        _scheduleSenderEmotePersist();
+      } else {
+        log('Loaded sender_emote_sets:', senderEmoteSets.size, 'senders');
+      }
     } catch (e) {
       log('Error loading sender_emote_sets:', e);
     }

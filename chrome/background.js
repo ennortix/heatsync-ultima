@@ -1610,7 +1610,12 @@ function withNsfwParam(url) {
 }
 
 // Validate emote objects from third-party APIs to bound string sizes and URL patterns
-const EMOTE_CDN_PATTERN = /^https:\/\/(cdn\.(betterttv\.net|7tv\.app|frankerfacez\.com)|static-cdn\.jtvnw\.net|heatsync\.org|files\.kick\.com)\//
+// Allowlist of CDN hosts emote URLs can come from. cdn.heatsync.org is
+// added explicitly — server-side toAbsoluteEmoteUrl rewrites /uploads/*
+// to cdn.heatsync.org (CDN-cached subdomain), so leaving it off the
+// allowlist silently dropped every self-hosted emote (including v1.6
+// flagged emotes the user uploaded) from the ext inventory.
+const EMOTE_CDN_PATTERN = /^https:\/\/(cdn\.(betterttv\.net|7tv\.app|frankerfacez\.com|heatsync\.org)|static-cdn\.jtvnw\.net|heatsync\.org|files\.kick\.com)\//
 const MAX_EMOTE_NAME_LEN = 100
 const MAX_EMOTES_PER_SOURCE = 5000
 function sanitizeEmote(e) {

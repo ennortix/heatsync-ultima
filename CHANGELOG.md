@@ -1,5 +1,11 @@
 # changelog
 
+## [1.6.3] — 2026-05-27
+
+### fixed
+- **self-hosted emotes silently filtered from inventory** — `EMOTE_CDN_PATTERN` in chrome/background.js allowed `heatsync.org/uploads/*` but NOT `cdn.heatsync.org/uploads/*`. The server's `toAbsoluteEmoteUrl` rewrites `/uploads/` to the cdn subdomain for edge caching, so EVERY user upload was being rejected by `sanitizeEmote` and never made it into the ext's `emoteInventory`. Picker, popup, autocomplete all silently missing self-hosted emotes. The v1.6 NSFW flag worked correctly server-side — users just never saw their flagged emote in the ext because the emote itself was filtered out before the cyan border could paint.
+- Pattern now: `cdn.(betterttv|7tv|frankerfacez|heatsync).net|app|com|org` + the existing host-allowlist entries.
+
 ## [1.6.2] — 2026-05-27
 
 ### fixed

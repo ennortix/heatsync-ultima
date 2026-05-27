@@ -1,5 +1,14 @@
 # changelog
 
+## [1.6.4] — 2026-05-27
+
+### changed
+- **flagged-emote indicator: cyan `#00d7d7` → teal `#008080`** (xterm-256 #30, heatsync ANSI palette). Less attention-grabbing on busy chat surfaces, better fit with the muted indicator style elsewhere.
+- **border scoped to decision surfaces only** — picker grid/search rows + input-bar chip keep the dashed border; chat-row rendering drops the border (the "·NSFW" tooltip suffix on hover still surfaces flag state). Reasoning: when a viewer deliberately opts in to see flagged emotes, painting a border on every one in chat is visual noise without useful signal. Border survives where you're MAKING DECISIONS about the emote (picker → add it, input chip → send it); it's gone where you're just READING.
+
+### fixed
+- **double border in picker** — CSS applied the border to both the picker `<span>` wrapper AND the inner `<img>`. Removed the wrapper selector; only the img paints now.
+
 ## [1.6.3] — 2026-05-27
 
 ### fixed

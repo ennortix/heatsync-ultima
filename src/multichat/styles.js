@@ -2850,15 +2850,16 @@ function injectStyles() {
     .hs-mc-emote-wrapper.hs-state-channel::before { background: #00ff00; }
     .hs-mc-emote-wrapper.hs-state-blocked::before { background: #ff0000; }
 
-    /* v1.6 NSFW — viewers who opt in to see flagged emotes get a 2px dashed
-       cyan border on the image. Applies to chat messages, picker grid /
-       search rows, and the input-bar emote chip. The class is mutually
-       compatible with state-* classes (an emote can be owned AND nsfw). */
-    .hs-mc-emote-wrapper.hs-state-nsfw > img,
+    /* v1.6 NSFW — 2px dashed teal (#008080, xterm-256 #30) border on
+       flagged emotes in DECISION surfaces (picker, input chip). Chat
+       rows do NOT paint a border — when a viewer opts in to see flagged
+       content, the cyan-on-every-flagged-emote was visual noise. The
+       wrapper still carries hs-state-nsfw class for tooltip hooks
+       ("·NSFW" suffix still works on hover) — just no painted border
+       on the chat side. */
     .hs-mc-picker-emote-wrap.hs-state-nsfw > img,
-    .hs-mc-picker-emote-wrap.hs-state-nsfw,
     img.hs-input-emote.hs-state-nsfw {
-      border: 2px dashed #00d7d7 !important;
+      border: 2px dashed #008080 !important;
       box-sizing: border-box !important;
     }
 

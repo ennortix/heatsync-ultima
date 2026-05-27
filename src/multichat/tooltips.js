@@ -345,14 +345,21 @@
       // img — mirrors findEmoteTarget so the 4x tooltip + name show in-picker.
       const wrapper = target.closest('.hs-mc-emote-wrapper');
       const pickerWrap = !wrapper ? target.closest('.hs-mc-picker-emote-wrap') : null;
+      // Picker search/discover rows live in .hs-discover-item with an
+      // .hs-discover-thumb img — different DOM structure than the grid
+      // (.hs-mc-picker-emote-wrap) but the same intent: hover should
+      // surface the 4x preview + name + state.
+      const discoverItem = !wrapper && !pickerWrap ? target.closest('.hs-discover-item') : null;
       const img = wrapper ? wrapper.querySelector('img')
         : pickerWrap ? pickerWrap.querySelector('img')
+        : discoverItem ? discoverItem.querySelector('img.hs-discover-thumb')
         : (target.tagName === 'IMG' && (
             target.classList.contains('hs-mc-emote') ||
             target.classList.contains('hs-mc-picker-emote') ||
-            target.classList.contains('hs-input-emote')
+            target.classList.contains('hs-input-emote') ||
+            target.classList.contains('hs-discover-thumb')
           ) ? target : null);
-      if (!img && !wrapper && !pickerWrap) return;
+      if (!img && !wrapper && !pickerWrap && !discoverItem) return;
 
       const emoteName = wrapper?.dataset.emoteName || pickerWrap?.dataset.name || img?.alt || img?.dataset.emoteName || img?.title?.split(' ')[0];
       if (!emoteName) return;
@@ -449,10 +456,12 @@
         _tooltipRafPending = false
         const onEmote = target?.closest?.('.hs-mc-emote-wrapper') ||
           target?.closest?.('.hs-mc-picker-emote-wrap') ||
+          target?.closest?.('.hs-discover-item') ||
           (target?.tagName === 'IMG' && (
             target.classList?.contains('hs-mc-emote') ||
             target.classList?.contains('hs-mc-picker-emote') ||
-            target.classList?.contains('hs-input-emote')
+            target.classList?.contains('hs-input-emote') ||
+            target.classList?.contains('hs-discover-thumb')
           ))
         const onUser = target?.closest?.('.hs-mc-user')
         const onBadge = target?.tagName === 'IMG' && target.classList?.contains('hs-mc-badge-img')

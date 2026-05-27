@@ -355,6 +355,14 @@ function pcMakePill(plat, name, isLive) {
   }
   // Don't intercept these clicks — they should follow the link in a new tab
   pill.dataset.pcardPill = '1'
+  // Hotkey: t/k/y/h jumps to the matching platform pill. Click() opens the
+  // href in a new tab (target=_blank). Set as .hs-pcard-action so the
+  // shared keydown handler at the bottom of this file picks it up.
+  const keyMap = { twitch: 't', kick: 'k', youtube: 'y', heatsync: 'h' }
+  if (keyMap[plat]) {
+    pill.classList.add('hs-pcard-action')
+    pill.dataset.pcKey = keyMap[plat]
+  }
   return pill
 }
 
@@ -611,21 +619,25 @@ function renderProfileCardView() {
     const youBlock = !!(data?.relationship?.youBlock ?? data?.relationship?.isBlocked)
     const profileId = data?.id || data?.userId || null
 
+    // hotkeys: f follow / w whisper / d dm / @ mention / m mute / b block /
+    // + add channel. Letter shown as a leading [k] indicator. Platform
+    // pills get t/k/y/h on the pcMakePill side.
     const actions = [
-      { label: youFollow ? 'unfollow' : 'follow', fn: () => pcToggleFollow(profileId, username, youFollow), disabled: !profileId },
-      { label: 'whisper', fn: () => pcDoWhisper(username, activeProfileCard?.platform) },
-      { label: 'dm', fn: () => pcDoDm(username, activeProfileCard?.platform) },
-      { label: 'mention', fn: () => pcMention(data?.display_name || username) },
-      { label: isMuted ? 'unmute' : 'mute', fn: () => pcToggleMute(username) },
-      { label: youBlock ? 'unblock' : 'block', fn: () => pcToggleBlock(profileId, username, youBlock), disabled: !profileId },
+      { label: youFollow ? 'unfollow' : 'follow', key: 'f', fn: () => pcToggleFollow(profileId, username, youFollow), disabled: !profileId },
+      { label: 'whisper', key: 'w', fn: () => pcDoWhisper(username, activeProfileCard?.platform) },
+      { label: 'dm', key: 'd', fn: () => pcDoDm(username, activeProfileCard?.platform) },
+      { label: 'mention', key: '@', fn: () => pcMention(data?.display_name || username) },
+      { label: isMuted ? 'unmute' : 'mute', key: 'm', fn: () => pcToggleMute(username) },
+      { label: youBlock ? 'unblock' : 'block', key: 'b', fn: () => pcToggleBlock(profileId, username, youBlock), disabled: !profileId },
     ]
-    if (!inChannels) actions.push({ label: 'add channel', fn: () => pcAddAsChannel(username) })
+    if (!inChannels) actions.push({ label: 'add channel', key: '+', fn: () => pcAddAsChannel(username) })
 
     for (const a of actions) {
       const btn = document.createElement('button')
       btn.className = 'hs-pcard-action'
       if (a.disabled) btn.disabled = true
       btn.textContent = a.label
+      if (a.key) btn.dataset.pcKey = a.key
       btn.addEventListener('click', a.fn)
       grid.appendChild(btn)
     }
@@ -1110,10 +1122,13 @@ function setupProfileCardHandlers() {
       return
     }
     if (e.key === 'Escape') { e.preventDefault(); closeProfileCard(); return }
+    // Keymap: t/k/y/h jump to platform pills (twitch/kick/youtube/heatsync),
+    // f follow, w whisper, d dm, @ mention, m mute, b block, + add channel.
+    // '=' aliases '+' (shifted on US keyboards) for one-handed access.
     const key = e.key.toLowerCase()
-    const map = { t: 't', k: 'k', y: 'y', h: 'h', w: 'w', m: 'm', x: 'x', '+': '+', '=': '+', c: 'c' }
-    const target = map[key]
-    if (!target) return
+    const allowed = new Set(['t', 'k', 'y', 'h', 'f', 'w', 'd', '@', 'm', 'b', '+', '='])
+    if (!allowed.has(key)) return
+    const target = key === '=' ? '+' : key
     const btn = document.querySelector(`.hs-pcard-action[data-pc-key="${target}"]`)
     if (btn && !btn.disabled) {
       e.preventDefault()

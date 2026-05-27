@@ -1,5 +1,18 @@
 # changelog
 
+## [1.6.2] — 2026-05-27
+
+### fixed
+- **profile-card hotkeys were dead** — the keydown handler queried `[data-pc-key]` but nothing set the attribute. Pressing `t/k/y/h/f/w/d/@/m/b/+` did nothing for ~every session this code shipped in. Now wired: `t/k/y/h` jump to twitch/kick/youtube/heatsync profile pills, `f` follow, `w` whisper, `d` dm, `@` mention, `m` mute, `b` block, `+` add channel.
+- **crash telemetry toggle copy was misleading** — said "capture errors locally (never auto-uploaded)" implying the toggle controls capture. Capture runs unconditionally; the toggle only shows/hides the diagnostic panel. Relabeled "show diagnostic errors" with accurate tip — privacy promise unchanged, expectation now matches reality.
+
+### related (server-side, deployed in heatsync@9353b61e — no client change required)
+- **moderation cache no longer leaks trust-tier results across users** — trusted-user bypass at scanText was caching its `allow` result under sha256(text), so the next untrusted/banned caller inherited the free pass. Cache write removed for trust-based bypass; deterministic tier-0 results still cache (correct).
+- **upload + emote-add now honor SIGHTENGINE_FAIL_CLOSED on scan throws** — previous try/catch logged the error and let the file through with `moderationResult=undefined`, inverting the env var. Now rejects + cleans the file when fail-closed mode is on.
+- **cleanup.ts deletes from the right path** — previously resolved against cwd()/public; files lived at UPLOAD_DIR. Every delete ENOENT'd silently and disk grew unbounded.
+- **phash dedup works on /uploads/** — added UPLOAD_DIR to candidate base paths; previously only checked /opt/heatsync/dist + cwd()/public, neither of which contained the actual files post-Caddyfile-fix.
+- **upload.ts UPLOAD_DIR prod fallback aligned with Caddyfile** — defaults to /var/lib/heatsync/uploads when the env var is missing.
+
 ## [1.6.1] — 2026-05-27
 
 ### added

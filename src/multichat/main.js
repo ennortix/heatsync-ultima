@@ -5205,7 +5205,7 @@
       '</div>' +
       '<div class="hs-mc-setting-row">' +
         '<button class="hs-mc-toggle-pill' + (crash ? ' active' : '') + '" data-uisetting="crashTelemetry"><span class="hs-mc-toggle-knob"></span></button>' +
-        '<span class="hs-mc-setting-label" data-tip="capture errors locally for diagnosis (never auto-uploaded)">crash telemetry</span>' +
+        '<span class="hs-mc-setting-label" data-tip="show the diagnostic errors panel below. errors are always captured locally to chrome.storage and never uploaded; this toggle only controls the panel\'s visibility.">show diagnostic errors</span>' +
       '</div>' +
       (crash ? '<div class="hs-mc-setting-row hs-mc-setting-row-block" id="hs-set-crashlog-row">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;width:100%">' +

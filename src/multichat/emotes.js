@@ -104,7 +104,7 @@
       body: JSON.stringify({
         operationName: 'SearchEmotes',
         query: MC_SEVEN_TV_V4_GQL,
-        variables: { query: q, page: 1, perPage: 200 }
+        variables: { query: q, page: 1, perPage: 60 }
       })
     })
     if (!resp.ok) throw new Error(`7tv ${resp.status}`)

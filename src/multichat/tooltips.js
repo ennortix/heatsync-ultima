@@ -457,14 +457,19 @@
         const onUser = target?.closest?.('.hs-mc-user')
         const onBadge = target?.tagName === 'IMG' && target.classList?.contains('hs-mc-badge-img')
 
-        // Kill badge tooltip if not on a badge
-        if (badgeTooltip?.classList.contains('visible') && !onBadge) {
+        // Kill badge tooltip if not on a badge (or the tooltip itself).
+        // The 4x tooltip lands under the cursor on small badges; without the
+        // tooltip-self check the very next mousemove sees target=tooltip,
+        // dismisses, and the user sees a 1-frame flicker.
+        if (badgeTooltip?.classList.contains('visible') && !onBadge && !target?.closest?.('#hs-badge-tooltip')) {
           hideBadgeTooltip()
         }
 
-        // Kill emote tooltip instantly if not on an emote
+        // Kill emote tooltip instantly if not on an emote (or the tooltip
+        // itself). Same self-overlap fix — picker search 4x tooltips covered
+        // the cursor and were dismissing on first post-show mousemove.
         if (emoteTooltip?.classList.contains('visible')) {
-          if (!onEmote) {
+          if (!onEmote && !target?.closest?.('#hs-emote-tooltip')) {
             hideEmoteTooltip()
             document.querySelectorAll('.hs-emote-highlight').forEach(w => w.classList.remove('hs-emote-highlight'))
           }

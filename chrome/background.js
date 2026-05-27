@@ -335,6 +335,22 @@ browser.storage.local.get('migrated_to_prod_v2').then(async (data) => {
   }
 }).catch(err => log(' Migration check failed:', err?.message));
 
+// v1.5.4 one-time wipe of channel_emotes_map cache. v1.5.3 stopped wiping
+// the cache on every ext reload (good for warm state across upgrades) but
+// left long-corrupt entries from prior versions intact (a Chatterino badge
+// row leaked into channelEmotesMap[xqc] over a year ago; never got pruned
+// because no clean re-fetch ever ran). Run once on v1.5.4 boot: clear,
+// then let fetchChannelOwnerEmotes repopulate per channel as visited.
+browser.storage.local.get('migrated_emote_cache_v154').then(async (data) => {
+  if (!data.migrated_emote_cache_v154) {
+    channelEmotesMap = {};
+    channelEmotesFetchedAt = {};
+    await browser.storage.local.remove(['channel_emotes_map', 'channel_emotes_fetched_at']);
+    await browser.storage.local.set({ migrated_emote_cache_v154: true });
+    log(' v1.5.4 channel_emotes_map migration: cleared stale cache');
+  }
+}).catch(err => log(' v1.5.4 migration check failed:', err?.message));
+
 // Migrate old single channel_emotes to per-channel map
 browser.storage.local.get(['channel_emotes', 'channel_emotes_owner']).then(async (data) => {
   if (data.channel_emotes && data.channel_emotes_owner) {

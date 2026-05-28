@@ -872,35 +872,50 @@ function initInput() {
         return;
       }
       // Collapsed stack left-click → add unowned emotes to inventory, then
-      // paste every postable emote to input in DOM order.
+      // paste every postable item (emotes + emojis) to input in DOM order.
+      // Emojis in the nest are treated as first-class stack members so a
+      // composite like "emote + :smile:0 overlay" round-trips into the input
+      // intact instead of dropping the emoji.
       // (skip locked/blocked emotes — viewer can't post them)
       const collapsedStack = e.target.closest('.hs-mc-emote-stack:not(.expanded)');
       if (collapsedStack) {
         e.preventDefault();
         e.stopPropagation();
-        const wrappers = [...collapsedStack.querySelectorAll('.hs-mc-emote-wrapper[data-emote-name]')];
-        const postable = wrappers.filter(w => {
-          const s = w.dataset.state;
-          return s !== 'locked' && s !== 'blocked';
-        });
-        if (wrappers.length > 0 && postable.length === 0) {
-          showToast(`🔒 stack has nothing postable`, 'error');
+        const stackInner = collapsedStack.querySelector('.hs-mc-emote-stack-emotes');
+        const stackChildren = stackInner ? [...stackInner.children] : [];
+        const items = [];
+        let hadUnpostableEmote = false;
+        for (const c of stackChildren) {
+          if (c.classList?.contains('hs-mc-emote-wrapper') && c.dataset.emoteName) {
+            const s = c.dataset.state;
+            if (s === 'locked' || s === 'blocked') { hadUnpostableEmote = true; continue }
+            items.push({ kind: 'emote', el: c });
+          } else if (c.classList?.contains('hs-mc-emoji')) {
+            items.push({ kind: 'emoji', el: c });
+          }
+        }
+        if (items.length === 0) {
+          if (hadUnpostableEmote) showToast(`🔒 stack has nothing postable`, 'error');
           return;
         }
-        if (postable.length > 0) {
-          // Fire add-to-inventory for each unowned (don't block paste on the
-          // server roundtrip; state flips green when each resolves).
-          for (const w of postable) {
-            if (w.dataset.state === 'unadded') {
-              const name = w.dataset.emoteName;
-              if (!name || pendingEmoteOps.has(name)) continue;
-              const url = w.dataset.emoteUrl || w.querySelector('img')?.src || '';
-              const source = w.dataset.source || 'heatsync';
-              addEmoteToInventory(name, url, source, w);
-            }
+        // Fire add-to-inventory for each unowned emote (don't block paste on the
+        // server roundtrip; state flips green when each resolves).
+        for (const it of items) {
+          if (it.kind !== 'emote') continue;
+          const w = it.el;
+          if (w.dataset.state === 'unadded') {
+            const name = w.dataset.emoteName;
+            if (!name || pendingEmoteOps.has(name)) continue;
+            const url = w.dataset.emoteUrl || w.querySelector('img')?.src || '';
+            const source = w.dataset.source || 'heatsync';
+            addEmoteToInventory(name, url, source, w);
           }
-          showInputBar();
-          for (const w of postable) {
+        }
+        showInputBar();
+        for (let i = 0; i < items.length; i++) {
+          const it = items[i];
+          if (it.kind === 'emote') {
+            const w = it.el;
             const name = w.dataset.emoteName;
             if (!name) continue;
             // Wire words are stashed on the wrapper at render time by
@@ -909,11 +924,16 @@ function initInput() {
             const wImg = w.querySelector('img');
             const modWords = wImg?.dataset?.hsWords || w.dataset?.hsWords || '';
             pasteEmoteToInput(name, modWords);
+          } else {
+            // Non-first item is an overlay — stack onto the previous chip so
+            // getInputText emits ":name:0" (or unicode-stacked) on the wire.
+            pasteEmojiSpanFromNestToInput(it.el, i > 0);
           }
-          const input = document.getElementById('hs-mc-input');
-          if (input) input.focus();
-          flashAllEmotes(postable[0].dataset.emoteName, 'hs-flash-paste');
         }
+        const input = document.getElementById('hs-mc-input');
+        if (input) input.focus();
+        const firstEmote = items.find(it => it.kind === 'emote');
+        if (firstEmote) flashAllEmotes(firstEmote.el.dataset.emoteName, 'hs-flash-paste');
         return;
       }
 

@@ -1078,6 +1078,57 @@
     input.focus();
   }
 
+  // Paste an emoji span (from a chat-rendered nest) into the input. asOverlay
+  // stacks onto the previous chip so the nest's base+overlay composition is
+  // reproduced — getInputText then emits ":name:0" for overlay emojis on send.
+  // Chat-rendered emoji spans carry the shortcode in title=":name:" (no
+  // data-emoji-name) so we recover it from there; raw unicode emojis have no
+  // title and round-trip as the unicode char.
+  function pasteEmojiSpanFromNestToInput(srcSpan, asOverlay) {
+    const input = document.getElementById('hs-mc-input')
+    if (!input || !srcSpan) return
+    const span = document.createElement('span')
+    span.className = 'hs-mc-emoji'
+    span.textContent = srcSpan.textContent || ''
+    span.setAttribute('contenteditable', 'false')
+    const t = srcSpan.getAttribute('title') || ''
+    const m = t.match(/^:([a-z0-9_+-]+):$/i)
+    if (m) {
+      span.setAttribute('data-emoji-name', m[1])
+      span.title = t
+    }
+    const wireWords = srcSpan.dataset?.hsWords || srcSpan.getAttribute('data-hs-words') || ''
+    if (wireWords) span.setAttribute('data-hs-words', wireWords)
+    if (asOverlay) {
+      const target = findLastInputEmote(input)
+      if (target) {
+        let next = target.nextSibling
+        while (next) {
+          if (next.nodeType === Node.TEXT_NODE && next.textContent.trim() === '') {
+            const rm = next; next = next.nextSibling; rm.remove()
+          } else break
+        }
+        stackInputEmote(target, span)
+        input.appendChild(document.createTextNode(' '))
+        cursorToEnd(input)
+        pendingMessage = getInputText()
+        return
+      }
+    }
+    // Base insert — pad away from any preceding chip so chip-merge safeguards
+    // don't collapse adjacent emoji spans back into plain text.
+    const last = input.lastChild
+    const needPad = last && (
+      (last.nodeType === Node.ELEMENT_NODE) ||
+      (last.nodeType === Node.TEXT_NODE && !/\s$/.test(last.textContent || ''))
+    )
+    if (needPad) input.appendChild(document.createTextNode(' '))
+    input.appendChild(span)
+    input.appendChild(document.createTextNode(' '))
+    cursorToEnd(input)
+    pendingMessage = getInputText()
+  }
+
   // Remove emote from inventory via background.js
   async function removeEmoteFromInventory(emoteName, targetEl) {
     if (!emoteName) return;

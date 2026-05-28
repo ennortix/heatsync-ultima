@@ -351,6 +351,25 @@ class IRC {
     try { fetchChannelBadges(ch) } catch {}
     if (!msg.type || msg.type === 'usernotice' || msg.type === 'notice') {
       const buf = this.channels.get(ch)
+      // Twitch sends BOTH a CLEARCHAT (everyone) and a timeout_success/ban_success
+      // NOTICE (mod-only feedback) for the same event. CLEARCHAT path produces a
+      // canonical notice with targetUser+banDuration; the mod-feedback NOTICE is
+      // redundant. Dedup by (noticeType, target, time window).
+      if (msg.type === 'notice' && !msg.targetUser &&
+          (msg.noticeType === 'timeout_success' || msg.noticeType === 'ban_success')) {
+        const tm = (msg.text || '').match(/^(\S+) has been/)
+        const targetLc = tm ? tm[1].toLowerCase() : ''
+        if (targetLc) {
+          for (const existing of buf.getAll()) {
+            if (existing.type !== 'notice') continue
+            if (existing.noticeType !== msg.noticeType) continue
+            if (!existing.targetUser) continue
+            if (existing.targetUser.toLowerCase() !== targetLc) continue
+            if (Math.abs((existing.time || 0) - (msg.time || 0)) > 10000) continue
+            return
+          }
+        }
+      }
       buf.push(msg)
       // Relay PRIVMSGs to server archive (ON CONFLICT DO NOTHING dedupes across
       // multiple viewers). Skip replays from BG history merge.

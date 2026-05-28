@@ -1294,7 +1294,7 @@ function _extractMcMsgText(msg) {
       parts.push(node.textContent)
     } else if (node.nodeType === 1) {
       const cls = node.classList
-      if (cls?.contains('hs-mc-platform-badge') || cls?.contains('hs-mc-badge') || cls?.contains('hs-mc-time') || cls?.contains('hs-mc-reply-ctx')) {
+      if (cls?.contains('hs-mc-platform-badge') || cls?.contains('hs-mc-badge') || cls?.contains('hs-mc-time') || cls?.contains('hs-mc-reply-ctx') || cls?.contains('hs-mc-reply-btn') || cls?.contains('hs-mod-toolbar')) {
         // skip
       } else if (node.tagName === 'IMG' && node.alt) {
         parts.push(node.alt)
@@ -1306,7 +1306,7 @@ function _extractMcMsgText(msg) {
     }
     node = node.nextSibling
   }
-  return parts.join(' ').replace(/\s+/g, ' ').trim()
+  return parts.join(' ').replace(/\s+/g, ' ').replace(/^\s*:\s*/, '').trim()
 }
 
 function _prefillMcInput(text) {

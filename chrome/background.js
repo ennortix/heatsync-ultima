@@ -6677,10 +6677,33 @@ self.addEventListener('notificationclick', (ev) => {
 const BG_IRC_PERSIST_MAX = 3000
 const BG_IRC_PERSIST_DEBOUNCE_MS = 1500
 const BG_IRC_COLOR_RE = /^#[0-9a-fA-F]{3,6}$/
+// Bump whenever IRC parser semantics change. bgIrcRestoreFromStorage wipes
+// hs_irc_* cached buffers + lastRobottyAt so robotty refetches everything
+// through the new parser. v3: BG USERNOTICE parser now extracts tags.emotes,
+// promotes viewermilestone+watch-streak → 'watchstreak' msgId, and carries
+// streakCount — mirrors the content-script parser.
+const BG_IRC_PARSER_VERSION = 3
 
 function bgIrcSanitizeColor(c) {
   if (!c) return '#fff'
   return BG_IRC_COLOR_RE.test(c) ? c : '#fff'
+}
+
+function bgIrcParseEmotesTag(emotesTag, text) {
+  if (!emotesTag) return null
+  const out = {}
+  for (const part of emotesTag.split('/')) {
+    const [emoteId, posStr] = part.split(':')
+    if (!emoteId || !posStr) continue
+    const firstPos = posStr.split(',')[0]
+    const [start, end] = firstPos.split('-').map(Number)
+    if (isNaN(start) || isNaN(end)) continue
+    const name = text.slice(start, end + 1)
+    if (name && !out[name]) {
+      out[name] = `https://static-cdn.jtvnw.net/emoticons/v2/${emoteId}/default/dark/2.0`
+    }
+  }
+  return Object.keys(out).length > 0 ? out : null
 }
 
 function bgIrcParseTags(tagStr) {
@@ -6729,21 +6752,8 @@ function bgIrcParseLine(raw, channelHint) {
           threadId: tags['reply-thread-parent-msg-id'] || tags['reply-parent-msg-id'] || ''
         } : null
       }
-      if (tags.emotes) {
-        const twitchEmotes = {}
-        for (const part of tags.emotes.split('/')) {
-          const [emoteId, posStr] = part.split(':')
-          if (!emoteId || !posStr) continue
-          const firstPos = posStr.split(',')[0]
-          const [start, end] = firstPos.split('-').map(Number)
-          if (isNaN(start) || isNaN(end)) continue
-          const name = text.slice(start, end + 1)
-          if (name && !twitchEmotes[name]) {
-            twitchEmotes[name] = `https://static-cdn.jtvnw.net/emoticons/v2/${emoteId}/default/dark/2.0`
-          }
-        }
-        if (Object.keys(twitchEmotes).length > 0) msg.twitchEmotes = twitchEmotes
-      }
+      const twitchEmotes = bgIrcParseEmotesTag(tags.emotes, text)
+      if (twitchEmotes) msg.twitchEmotes = twitchEmotes
       if (isAction) msg.isAction = true
       const bits = parseInt(tags.bits) || 0
       if (bits > 0) msg.bits = bits
@@ -6773,16 +6783,22 @@ function bgIrcParseLine(raw, channelHint) {
       const raidFrom = tags['msg-param-displayName'] ? decodeURIComponent(tags['msg-param-displayName'].replace(/\\s/g, ' ')) : ''
       const announceColor = tags['msg-param-color'] || ''
       const bitsTier = parseInt(tags['msg-param-threshold']) || 0
+      const category = tags['msg-param-category'] || ''
+      const rawMsgId = tags['msg-id'] || ''
+      const msgId = (rawMsgId === 'viewermilestone' && category === 'watch-streak') ? 'watchstreak' : rawMsgId
+      const streakCount = (msgId === 'watchstreak') ? (parseInt(tags['msg-param-value'], 10) || 0) : 0
+      const userText = usernotice[2] || ''
+      const twitchEmotes = bgIrcParseEmotesTag(tags.emotes, userText)
       return {
         user: displayName,
-        text: usernotice[2] || '',
+        text: userText,
         systemMsg: decodeURIComponent((tags['system-msg'] || '').replace(/\\s/g, ' ')),
         color: bgIrcSanitizeColor(tags.color || '#fff'),
         badges: tags.badges || '',
         channel: channelHint || usernotice[1].toLowerCase(),
         time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
         type: 'usernotice',
-        msgId: tags['msg-id'] || '',
+        msgId,
         subTier: tier,
         subMonths: months,
         giftCount,
@@ -6791,6 +6807,8 @@ function bgIrcParseLine(raw, channelHint) {
         raidFrom,
         announceColor,
         bitsTier,
+        streakCount,
+        twitchEmotes: twitchEmotes || undefined,
         id: tags.id || ''
       }
     }
@@ -6953,9 +6971,18 @@ async function bgIrcRestoreFromStorage() {
   BG_IRC.storageRestored = true
   try {
     const all = await chrome.storage.local.get(null)
+    const storedVer = all.hs_irc_parser_version | 0
+    if (storedVer !== BG_IRC_PARSER_VERSION) {
+      const stale = Object.keys(all).filter(k => k.startsWith('hs_irc_') && !k.startsWith('hs_irc_sync_') && k !== 'hs_irc_parser_version')
+      if (stale.length) await chrome.storage.local.remove(stale).catch(() => {})
+      await chrome.storage.local.set({ hs_irc_parser_version: BG_IRC_PARSER_VERSION }).catch(() => {})
+      await chrome.storage.session?.remove?.('hs_irc_last_robotty').catch?.(() => {})
+      log('BG IRC parser version bump', storedVer, '→', BG_IRC_PARSER_VERSION, '— wiped', stale.length, 'cached channel buffers')
+      return
+    }
     let n = 0
     for (const [k, v] of Object.entries(all)) {
-      if (!k.startsWith('hs_irc_') || k.startsWith('hs_irc_sync_')) continue
+      if (!k.startsWith('hs_irc_') || k.startsWith('hs_irc_sync_') || k === 'hs_irc_parser_version') continue
       const ch = k.slice('hs_irc_'.length)
       if (!ch || !v?.msgs?.length || Date.now() - v.ts >= 86400000) continue
       const buf = new BGCircularBuffer(BG_IRC_PERSIST_MAX)

@@ -10,6 +10,28 @@ function parseTags(tagStr) {
   return tags
 }
 
+// Parse the IRC `emotes=` tag (emoteId:start-end,start-end/...) into a
+// { name: cdnUrl } map keyed off positions in the message text. Shared by
+// PRIVMSG and USERNOTICE — the latter's user-typed portion (e.g. a watchstreak
+// share message) carries the same tag and follower/sub emotes only render
+// when this map is populated.
+function parseTwitchEmotesTag(emotesTag, text) {
+  if (!emotesTag) return null
+  const out = {}
+  for (const part of emotesTag.split('/')) {
+    const [emoteId, posStr] = part.split(':')
+    if (!emoteId || !posStr) continue
+    const firstPos = posStr.split(',')[0]
+    const [start, end] = firstPos.split('-').map(Number)
+    if (isNaN(start) || isNaN(end)) continue
+    const name = text.slice(start, end + 1)
+    if (name && !out[name]) {
+      out[name] = `https://static-cdn.jtvnw.net/emoticons/v2/${emoteId}/default/dark/2.0`
+    }
+  }
+  return Object.keys(out).length > 0 ? out : null
+}
+
 function parseIrcLine(raw, channel) {
   try {
     const tagsMatch = raw.match(/^@([^ ]+)/)
@@ -43,23 +65,8 @@ function parseIrcLine(raw, channel) {
           threadId: tags['reply-thread-parent-msg-id'] || tags['reply-parent-msg-id'] || ''
         } : null
       }
-      // Parse Twitch IRC emote positions → { name: url } map for rendering
-      // Format: emoteId:start-end,start-end/emoteId:start-end
-      if (tags.emotes) {
-        const twitchEmotes = {}
-        for (const part of tags.emotes.split('/')) {
-          const [emoteId, posStr] = part.split(':')
-          if (!emoteId || !posStr) continue
-          const firstPos = posStr.split(',')[0]
-          const [start, end] = firstPos.split('-').map(Number)
-          if (isNaN(start) || isNaN(end)) continue
-          const name = text.slice(start, end + 1)
-          if (name && !twitchEmotes[name]) {
-            twitchEmotes[name] = `https://static-cdn.jtvnw.net/emoticons/v2/${emoteId}/default/dark/2.0`
-          }
-        }
-        if (Object.keys(twitchEmotes).length > 0) msg.twitchEmotes = twitchEmotes
-      }
+      const twitchEmotes = parseTwitchEmotesTag(tags.emotes, text)
+      if (twitchEmotes) msg.twitchEmotes = twitchEmotes
       if (isAction) msg.isAction = true
       const bits = parseInt(tags.bits) || 0
       if (bits > 0) msg.bits = bits
@@ -105,9 +112,11 @@ function parseIrcLine(raw, channel) {
         ? 'watchstreak' : rawMsgId
       const streakCount = (msgId === 'watchstreak')
         ? (parseInt(tags['msg-param-value'], 10) || 0) : 0
+      const userText = usernotice[2] || ''
+      const twitchEmotes = parseTwitchEmotesTag(tags.emotes, userText)
       return {
         user: displayName,
-        text: usernotice[2] || '',
+        text: userText,
         systemMsg: decodeURIComponent((tags['system-msg'] || '').replace(/\\s/g, ' ')),
         color: sanitizeColor(tags.color || '#fff'),
         badges: tags.badges || '',
@@ -124,6 +133,7 @@ function parseIrcLine(raw, channel) {
         announceColor,
         bitsTier,
         streakCount,
+        twitchEmotes: twitchEmotes || undefined,
         id: tags.id || ''
       }
     }

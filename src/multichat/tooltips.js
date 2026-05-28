@@ -1351,6 +1351,7 @@
         img.src = data.image;
         img.alt = '';
         img.loading = 'lazy';
+        img.onerror = () => { img.remove(); if (_linkTargetEl) positionTooltipAtElement(tip, _linkTargetEl); };
         tip.appendChild(img);
         hasContent = true;
       }

@@ -2457,46 +2457,18 @@
       msgsEl.addEventListener('load', onImgLoadOrError, { capture: true, passive: true, signal: mcSignal })
       msgsEl.addEventListener('error', onImgLoadOrError, { capture: true, passive: true, signal: mcSignal })
 
-      // Reply-chain stack overlay — viewport-bounded stack of all parents above hovered row
+      // Reply-chain stack overlay — viewport-bounded stack of all parents above active row
       let _stackActiveRow = null
       // Live-extend bookkeeping: when a new reply arrives whose replyTo matches
       // the bottommost id of the current descendant chain, append it to the
       // down-stack so the user sees the new message slide into the olive zebra
-      // without breaking hover.
+      // while the thread is open.
       let _stackTailId = ''
       let _stackChannel = ''
       let _stackPlatform = ''
       let _stackOwnId = ''
       let _stackThreadId = ''
-      // Layout-shift gate: chat auto-scroll on a new message slides a different
-      // row under a stationary cursor; the browser fires synthetic mouseover
-      // events for the new element. Compare cursor coords to the previous
-      // mouseover — identical coords mean cursor didn't actually move, so skip.
-      let _lastMouseoverX = -1, _lastMouseoverY = -1
-      // Hover-zone tracking: the stack stays open while the cursor is over the
-      // row OR the overlay (geometric union). Stepping outside schedules a
-      // short grace dismiss (60ms) — long enough to absorb mouse jitter and
-      // brief oscillation, short enough to feel instant.
-      let _dismissTimer = null
-      const cancelDismiss = () => { if (_dismissTimer) { cleanup.clearTimeout(_dismissTimer); _dismissTimer = null } }
-      const scheduleDismiss = () => {
-        if (_dismissTimer) return
-        _dismissTimer = cleanup.setTimeout(() => { _dismissTimer = null; dismissStack() }, 60)
-      }
-      const isInHoverZone = (x, y) => {
-        if (!_stackActiveRow) return false
-        const r = _stackActiveRow.getBoundingClientRect()
-        const oUp = document.getElementById('hs-mc-reply-stack')
-        const oDown = document.getElementById('hs-mc-reply-stack-down')
-        const oUpRect = oUp && oUp.style.display === 'block' ? oUp.getBoundingClientRect() : null
-        const oDownRect = oDown && oDown.style.display === 'block' ? oDown.getBoundingClientRect() : null
-        let yTop = r.top, yBot = r.bottom, xLeft = r.left, xRight = r.right
-        if (oUpRect) { yTop = Math.min(yTop, oUpRect.top); xLeft = Math.min(xLeft, oUpRect.left); xRight = Math.max(xRight, oUpRect.right) }
-        if (oDownRect) { yBot = Math.max(yBot, oDownRect.bottom); xLeft = Math.min(xLeft, oDownRect.left); xRight = Math.max(xRight, oDownRect.right) }
-        return x >= xLeft && x <= xRight && y >= yTop && y <= yBot
-      }
       const dismissStack = () => {
-        cancelDismiss()
         _stackStyleCache = null
         const overlay = document.getElementById('hs-mc-reply-stack')
         if (overlay) {
@@ -2786,37 +2758,37 @@
         _stackThreadId = threadId || ''
       }
 
-      msgsEl.addEventListener('mouseover', (e) => {
-        const msg = e.target.closest('.hs-mc-msg')
-        if (!msg) return
-        // Layout-shift gate: identical cursor coords as the previous mouseover
-        // means the cursor didn't move — auto-scroll slid a new row under a
-        // stationary cursor. Skip.
-        if (e.clientX === _lastMouseoverX && e.clientY === _lastMouseoverY) return
-        _lastMouseoverX = e.clientX
-        _lastMouseoverY = e.clientY
-        // Switch when hovering a DIFFERENT reply (cancel any pending dismiss).
-        if (msg.dataset.replyId && msg !== _stackActiveRow) {
-          cancelDismiss()
-          showStack(msg)
-        }
-      }, { passive: true, signal: mcSignal })
-      // Dismissal driven by geometric hover zone. mousemove on document fires
-      // on every cursor pixel; rAF-throttle the layout reads to one per frame
-      // even when the cursor moves at 1000+ events/sec on a high-poll mouse.
-      let _hoverMoveRaf = 0
-      let _hoverMoveX = 0, _hoverMoveY = 0
-      document.addEventListener('mousemove', (e) => {
+      // Click the "Replying to" pill to open the thread stack. Click again on
+      // the same row's pill to close. Click on the @user link inside the pill
+      // still navigates to the profile (target=_blank). Opens pause chat
+      // auto-scroll so the active row doesn't slide out from under the stack.
+      msgsEl.addEventListener('click', (e) => {
+        const pill = e.target.closest('.hs-mc-reply-ctx')
+        if (!pill) return
+        if (e.target.closest('a')) return
+        const msg = pill.closest('.hs-mc-msg')
+        if (!msg || !msg.dataset.replyId) return
+        e.preventDefault()
+        e.stopPropagation()
+        if (_stackActiveRow === msg) { dismissStack(); return }
+        if (_stackActiveRow) dismissStack()
+        setPaused(true)
+        showStack(msg)
+      }, { signal: mcSignal })
+      // Dismiss on outside click — keep open when clicking inside the active
+      // row or either overlay (chip-expand, link clicks, etc.).
+      document.addEventListener('mousedown', (e) => {
         if (!_stackActiveRow) return
-        _hoverMoveX = e.clientX; _hoverMoveY = e.clientY
-        if (_hoverMoveRaf) return
-        _hoverMoveRaf = requestAnimationFrame(() => {
-          _hoverMoveRaf = 0
-          if (!_stackActiveRow) return
-          if (isInHoverZone(_hoverMoveX, _hoverMoveY)) cancelDismiss()
-          else scheduleDismiss()
-        })
-      }, { passive: true, signal: mcSignal })
+        if (_stackActiveRow.contains(e.target)) return
+        const oUp = document.getElementById('hs-mc-reply-stack')
+        if (oUp && oUp.contains(e.target)) return
+        const oDown = document.getElementById('hs-mc-reply-stack-down')
+        if (oDown && oDown.contains(e.target)) return
+        dismissStack()
+      }, { signal: mcSignal })
+      document.addEventListener('keydown', (e) => {
+        if (_stackActiveRow && e.key === 'Escape') { dismissStack(); e.stopPropagation() }
+      }, { signal: mcSignal })
       // On chat scroll, follow the active row by repositioning both overlays
       // (up + down) instead of dismissing. Only dismiss if the row scrolled
       // fully out of the chat viewport. Cache style metrics that don't change

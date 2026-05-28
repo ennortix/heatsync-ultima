@@ -2052,6 +2052,15 @@ function injectStyles() {
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      cursor: pointer;
+      user-select: none;
+    }
+    .hs-mc-msg:not(.hs-mc-reply-stack-active) .hs-mc-reply-ctx:hover {
+      background: #fff;
+      color: #000;
+    }
+    .hs-mc-msg:not(.hs-mc-reply-stack-active) .hs-mc-reply-ctx:hover .hs-mc-reply-user {
+      color: #000;
     }
     .hs-mc-reply-user {
       color: #808080;

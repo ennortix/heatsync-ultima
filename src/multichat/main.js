@@ -2812,15 +2812,26 @@
         return _msgsRectCache
       }
       let _repositionRaf = 0
+      // Click-opened stack: scroll-out HIDES overlays (display:none) but keeps
+      // their content + state so scrolling back into view restores them. The
+      // gate for "should this overlay be visible if room allows?" is whether
+      // it has children — showStack populates children, dismissStack clears.
       const repositionStack = () => {
         if (_repositionRaf) return
         _repositionRaf = requestAnimationFrame(() => {
           _repositionRaf = 0
           if (!_stackActiveRow) return
+          // Row trimmed out of DOM (chat hit render cap during scroll) — no
+          // way to restore. Real dismiss so click again on a new row works.
+          if (!_stackActiveRow.isConnected) { dismissStack(); return }
           const cRect = getMsgsRect()
           const hRect = _stackActiveRow.getBoundingClientRect()
-          if (hRect.bottom < cRect.top || hRect.top > cRect.bottom) {
-            dismissStack()
+          const overlayUp = document.getElementById('hs-mc-reply-stack')
+          const overlayDown = document.getElementById('hs-mc-reply-stack-down')
+          const rowOutOfView = hRect.bottom < cRect.top || hRect.top > cRect.bottom
+          if (rowOutOfView) {
+            if (overlayUp) overlayUp.style.display = 'none'
+            if (overlayDown) overlayDown.style.display = 'none'
             return
           }
           if (!_stackStyleCache || _stackStyleCache.row !== _stackActiveRow) {
@@ -2828,26 +2839,24 @@
           }
           const { layoutH } = _stackStyleCache
 
-          const overlayUp = document.getElementById('hs-mc-reply-stack')
-          if (overlayUp && overlayUp.style.display === 'block') {
+          if (overlayUp && overlayUp.firstChild) {
             const availableUp = hRect.top - cRect.top
             if (availableUp < 24) {
               overlayUp.style.display = 'none'
-              overlayUp.replaceChildren()
             } else {
+              overlayUp.style.display = 'block'
               overlayUp.style.left = hRect.left + 'px'
               overlayUp.style.width = hRect.width + 'px'
               overlayUp.style.bottom = (layoutH - hRect.top) + 'px'
               overlayUp.style.maxHeight = availableUp + 'px'
             }
           }
-          const overlayDown = document.getElementById('hs-mc-reply-stack-down')
-          if (overlayDown && overlayDown.style.display === 'block') {
+          if (overlayDown && overlayDown.firstChild) {
             const availableDown = cRect.bottom - hRect.bottom
             if (availableDown < 24) {
               overlayDown.style.display = 'none'
-              overlayDown.replaceChildren()
             } else {
+              overlayDown.style.display = 'block'
               overlayDown.style.left = hRect.left + 'px'
               overlayDown.style.width = hRect.width + 'px'
               overlayDown.style.top = hRect.bottom + 'px'
@@ -2857,7 +2866,7 @@
         })
       }
       msgsEl.addEventListener('scroll', repositionStack, { passive: true, signal: mcSignal })
-      window.addEventListener('resize', () => { invalidateMsgsRect(); if (_stackActiveRow) dismissStack() }, { passive: true, signal: mcSignal })
+      window.addEventListener('resize', () => { invalidateMsgsRect(); if (_stackActiveRow) repositionStack() }, { passive: true, signal: mcSignal })
       // Panel resize (drag handle) and tab/input bar height shifts change the
       // msgsEl viewport rect. Invalidate the cache so the next scroll-frame
       // reposition uses fresh coords.

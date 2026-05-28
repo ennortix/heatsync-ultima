@@ -9031,8 +9031,23 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     const match = location.pathname.match(/^\/(?:popout\/|embed\/)?([a-zA-Z0-9_]+)/);
     if (match && match[1]) {
       const channel = match[1].toLowerCase();
-      // Skip non-channel pages
-      if (['directory', 'settings', 'videos', 'moderator', 'subscriptions'].includes(channel)) {
+      // Skip non-channel pages. Prod logs showed the server subscribing to
+      // 'browse', 'u', 'mellen9' as Kick channels — the old 5-entry list
+      // missed most of both platforms' reserved paths. expanded to cover
+      // both twitch + kick reserved paths so we don't burn API quota
+      // (kick rate-limits subscribe; each garbage slug eats budget).
+      const NON_CHANNEL_PATHS = new Set([
+        // shared
+        'directory', 'settings', 'videos', 'moderator', 'subscriptions',
+        'search', 'help', 'about', 'jobs', 'contact', 'wallet', 'inventory',
+        'friends', 'admin', 'broadcast', 'drops', 'store', 'popout', 'embed',
+        // twitch-specific
+        'partners', 'turbo', 'prime', 'p', 'subs', 'turbo-faq', 'bits',
+        // kick-specific
+        'browse', 'category', 'categories', 'community', 'clips', 'leaderboards',
+        'dashboard', 'vods', 'u', 'auth', 'authorize',
+      ]);
+      if (NON_CHANNEL_PATHS.has(channel)) {
         return null;
       }
       return channel;

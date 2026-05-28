@@ -191,9 +191,19 @@ function trackCompletionForAutoAdd(match) {
   }
 }
 
-// Infinite Tab-cycle: once local matches run out, pull more from the 7TV
-// search API (same source the picker uses) and append. Aborts stale fetches
-// so rapid re-triggering never merges results from an old search term.
+// Infinite Tab-cycle: once local matches run out, pull more from the cross-provider
+// search APIs and append. Aborts stale fetches so rapid re-triggering never
+// merges results from an old search term.
+//
+// Provider quality for prefix expansion (verified empirically on 'sad'):
+//  - FFZ: prefix-relevance search, sorted by usage_count. Best signal.
+//  - BTTV: prefix-relevance, ordered by internal popularity. Solid.
+//  - 7TV: exact-text-match flood — `query:"sad"` returns 150 emotes literally
+//    named "sad" from different creators. Useless for prefix expansion of
+//    common stems; kept for unique uploads on less common terms.
+// Quality order at merge: FFZ → BTTV → 7TV.
+// Prefix-only on purpose: catalog substring hits (NotSad, KekSadge) are noise.
+// Local substring matches still surface via findEmoteMatches.
 let _acRemoteAbort = null
 let _acRemoteToken = 0
 async function fetchRemoteEmoteMatches(search) {
@@ -205,41 +215,40 @@ async function fetchRemoteEmoteMatches(search) {
   if (_acRemoteAbort) { try { _acRemoteAbort.abort() } catch (_) {} }
   const ac = new AbortController()
   _acRemoteAbort = ac
-  // Query 7TV + BTTV + FFZ in parallel — same sources the picker uses — so Tab
-  // surfaces the full cross-provider set, not just the channel's loaded emotes.
   const calls = []
-  if (typeof mcSearch7tvApi === 'function') calls.push(mcSearch7tvApi(search, ac.signal))
-  if (typeof mcSearchBttvApi === 'function') calls.push(mcSearchBttvApi(search, ac.signal))
   if (typeof mcSearchFfzApi === 'function') calls.push(mcSearchFfzApi(search, ac.signal))
-  if (!calls.length) return
+  else calls.push(Promise.resolve([]))
+  if (typeof mcSearchBttvApi === 'function') calls.push(mcSearchBttvApi(search, ac.signal))
+  else calls.push(Promise.resolve([]))
+  if (typeof mcSearch7tvApi === 'function') calls.push(mcSearch7tvApi(search, ac.signal, { perPage: 60 }))
+  else calls.push(Promise.resolve([]))
   const settled = await Promise.allSettled(calls)
   if (ac.signal.aborted || token !== _acRemoteToken) return
   // Cycling must still be on the same search the fetch was issued for.
   if (!acState.active || acState.search !== search) return
   acState.remoteDone = true
-  const items = []
-  for (const s of settled) if (s.status === 'fulfilled' && Array.isArray(s.value)) items.push(...s.value)
-  // 7TV popularity rank by name — the v4 search returns TOP_ALL_TIME order, so the
-  // item's index IS its rank. Built from the full 7TV result set so channel/owned
-  // 7TV emotes (which dedupe out of `add`) still inherit a popularity rank below.
-  const popRank = new Map()
-  let _rk = 0
-  for (const it of items) {
-    if ((it.provider || '7tv') !== '7tv' || !it.name) continue
-    const k = it.name.toLowerCase()
-    if (!popRank.has(k)) popRank.set(k, _rk++)
-  }
-  // Dedupe by EXACT name (casing distinguishes emotes — NODDERS vs Nodders are
-  // different uploads), matching the picker. Avoids collapsing the cycle to one.
-  const have = new Set(acState.matches.map(m => m.name))
+  const rf = settled[0]?.status === 'fulfilled' && Array.isArray(settled[0].value) ? settled[0].value : []
+  const rb = settled[1]?.status === 'fulfilled' && Array.isArray(settled[1].value) ? settled[1].value : []
+  const r7 = settled[2]?.status === 'fulfilled' && Array.isArray(settled[2].value) ? settled[2].value : []
+  // FFZ's `uses` is real popularity — sort descending so the merged stream
+  // leads with highest-use FFZ emotes first.
+  rf.sort((a, b) => (b.uses || 0) - (a.uses || 0))
+  const items = [...rf, ...rb, ...r7]
+  // Lowercase dedupe (collapses 10x "Sadge" uploads to one — emote names are
+  // case-insensitive in practice; first-seen wins so FFZ's top result holds).
+  // Also dedupes against existing locals (already lowercased below).
+  const have = new Set(acState.matches.map(m => (m.name || '').toLowerCase()))
   const searchLower = search.toLowerCase()
   const add = []
   for (const it of items) {
-    if (!it.name || have.has(it.name)) continue
-    if (!it.name.toLowerCase().includes(searchLower)) continue // drop API noise
-    have.add(it.name)
+    if (!it.name) continue
+    const lower = it.name.toLowerCase()
+    if (have.has(lower)) continue
+    // Prefix-only: catalog substring matches are noise.
+    if (!lower.startsWith(searchLower)) continue
+    have.add(lower)
     const src = it.provider || '7tv'
-    add.push({ name: it.name, url: it.url, source: src, priority: it.name.toLowerCase().startsWith(searchLower) ? 0 : 1, type: 'emote', remote: true, zeroWidth: !!it.zeroWidth, _ai: add.length })
+    add.push({ name: it.name, url: it.url, source: src, priority: 0, type: 'emote', remote: true, zeroWidth: !!it.zeroWidth, _ai: add.length })
     // Remember for auto-add-on-send (only matters if the user actually sends it).
     recentRemoteCompletions.delete(it.name)
     recentRemoteCompletions.set(it.name, { url: it.url, source: src, zeroWidth: !!it.zeroWidth })
@@ -250,19 +259,18 @@ async function fetchRemoteEmoteMatches(search) {
   if (!add.length) return
   const wasEmpty = acState.matches.length === 0
   const prev = acState.matches[acState.index]
-  acState.matches.push(...add.slice(0, 60))
-  // Merged sort: same rules as the local-only sort plus a popularity tier for
-  // remote 7TV catalog. Order:
-  //   1. prefix > substring
-  //   2. local > remote                       (own set / channel / globals beat catalog)
-  //   3. local tier (own > channel > global)
-  //   4. sub > non-sub
-  //   5. MRU recent > never-used
-  //   6. 7TV pop rank                         (catalog ordering; local 7TV inherits)
-  //   7. remote provider order (`_ai`)
-  //   8. shorter prefix-match wins
-  //   9. alpha (skipped for remote-vs-remote)
-  const rankOf = (m) => { const r = popRank.get((m.name || '').toLowerCase()); return r === undefined ? Infinity : r }
+  acState.matches.push(...add.slice(0, 80))
+  // Merged sort. Remote items keep their pre-merge order via `_ai`
+  // (FFZ-by-uses → BTTV → 7TV), so cycling through remotes hits the highest
+  // quality first regardless of provider.
+  // Order:
+  //   1. local > remote                       (own set / channel / globals beat catalog)
+  //   2. local tier (own > channel > global)
+  //   3. sub > non-sub
+  //   4. MRU recent > never-used
+  //   5. remote: _ai order (FFZ-by-uses → BTTV → 7TV)
+  //   6. shorter prefix-match wins
+  //   7. alpha
   const _recentList = (typeof loadRecentEmotes === 'function') ? loadRecentEmotes() : []
   const _recentRank = new Map()
   for (let i = 0; i < _recentList.length; i++) _recentRank.set(_recentList[i], i)
@@ -278,8 +286,6 @@ async function fetchRemoteEmoteMatches(search) {
     const ar = _recentRank.get(a.name) ?? Infinity
     const br = _recentRank.get(b.name) ?? Infinity
     if (ar !== br) return ar - br
-    const apop = rankOf(a), bpop = rankOf(b)
-    if (apop !== bpop) return apop - bpop
     if (a.remote && b.remote) return (a._ai || 0) - (b._ai || 0)
     if (a.priority === 0 && a.name.length !== b.name.length) return a.name.length - b.name.length
     return (a.name || '').localeCompare(b.name || '')

@@ -85,8 +85,9 @@
     markPickerDirty()
   }
 
-  // 7TV v4 GraphQL \u2014 TOP_ALL_TIME popularity. perPage 200 captures substring
-  // matches that 7TV's prefix-ranked algorithm pushes deep in the result list.
+  // 7TV v4 GraphQL \u2014 TOP_ALL_TIME popularity. perPage 60 for the picker
+  // (mcTriggerProviderSearches); Tab-complete passes a smaller perPage for
+  // prefix-only quality.
   const MC_SEVEN_TV_V4_GQL = `query SearchEmotes($query: String!, $page: Int!, $perPage: Int!) {
     emotes {
       search(query: $query, sort: { sortBy: TOP_ALL_TIME, order: DESCENDING }, page: $page, perPage: $perPage) {
@@ -96,7 +97,8 @@
     }
   }`
 
-  async function mcSearch7tvApi(q, signal) {
+  async function mcSearch7tvApi(q, signal, opts) {
+    const perPage = (opts && Number.isFinite(opts.perPage)) ? opts.perPage : 60
     const resp = await fetch('https://api.7tv.app/v4/gql', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -104,7 +106,7 @@
       body: JSON.stringify({
         operationName: 'SearchEmotes',
         query: MC_SEVEN_TV_V4_GQL,
-        variables: { query: q, page: 1, perPage: 60 }
+        variables: { query: q, page: 1, perPage }
       })
     })
     if (!resp.ok) throw new Error(`7tv ${resp.status}`)

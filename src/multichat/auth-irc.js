@@ -113,8 +113,15 @@ function handleAuthIrcMessage(event) {
     if (partMatch) { authState.joined.delete(partMatch[2].toLowerCase()); continue; }
     if (line.includes(' NOTICE ')) {
       const msgId = parseNoticeMsgId(line)
-      if (msgId && TWITCH_SEND_REJECT_NOTICES.has(msgId) && typeof showToast === 'function') {
-        showToast(TWITCH_SEND_REJECT_NOTICES.get(msgId), 'error')
+      if (msgId && TWITCH_SEND_REJECT_NOTICES.has(msgId)) {
+        if (typeof showToast === 'function') showToast(TWITCH_SEND_REJECT_NOTICES.get(msgId), 'error')
+        // Drop pending-send tracker entries for the rejected channel so the
+        // user doesn't get a second "no echo from platform" toast 20s later
+        // on top of the specific reason toast above.
+        const chMatch = line.match(/ NOTICE #(\w+)/)
+        if (chMatch) {
+          try { globalThis.__hsClearPendingByChannel?.(chMatch[1]) } catch (_) {}
+        }
       }
       if (MC_DEBUG) console.warn('[HS] Auth IRC NOTICE:', line.slice(0, 200))
       continue

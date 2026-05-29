@@ -168,11 +168,13 @@ function peekSentHost(msgText) {
 // fails, mid-rejoin races leave no NOTICE, no error, just gone — and that
 // guarantee only holds if we wait for every platform we sent to.
 const pendingSends = new Map()
-// 12s (was 7s): safeSendMessage retries ~2.6s on BG-restart + sendKickMessage's
-// outer ~2.25s + 5s echo latency + slack. Echoes from a healthy WS arrive in
-// <1s, so the bump only delays the "no echo" notif during real BG-restart
-// windows — exactly when delaying it is correct.
-const PENDING_ECHO_TIMEOUT_MS = 12000
+// 20s: 12s was firing false positives when SW briefly suspended/restarted
+// during the echo window. Real BG-restart cycles can take 5-15s before the
+// anon socket rejoins and starts receiving PRIVMSGs again. 20s catches those
+// while still flagging genuine silent drops (shadow-mute, AutoMod). Worst-
+// case the user sees the toast 8s later than before — but doesn't see false
+// alarms when their message actually went through.
+const PENDING_ECHO_TIMEOUT_MS = 20000
 // Expose for devtools
 try { globalThis.__hsPendingSends = pendingSends } catch (_) {}
 
@@ -230,6 +232,12 @@ function markPendingFailed(synthId, reason) {
   if (entry.timer) cleanup.clearTimeout(entry.timer)
   entry.state = 'failed'
   entry.reason = reason
+  if (reason === 'no_echo' && MC_DEBUG) {
+    console.warn('[heatsync-ext] send no_echo:', {
+      text: entry.text, channel: entry.channel,
+      awaiting: [...entry.awaiting], elapsed: Date.now() - entry.sentAt
+    })
+  }
   // Surface the persistent retry notif. dedupeKey=synthId so retry-then-fail-
   // again replaces in place rather than stacking.
   try {
@@ -241,6 +249,28 @@ function markPendingFailed(synthId, reason) {
     })
   } catch (_) {}
 }
+
+// Clear pending sends to a channel WITHOUT firing the no_echo toast — used
+// when auth-irc's NOTICE handler already showed a specific rejection toast
+// (followers-only/slow-mode/banned/etc). Without this, the user got two toasts
+// for the same failure: the specific reason immediately, then "no echo from
+// platform" 12-20s later. Now the rejection toast is the only signal.
+function clearPendingByChannel(channel) {
+  if (!channel) return 0
+  const target = String(channel).toLowerCase().replace(/^#/, '')
+  let cleared = 0
+  for (const [id, entry] of pendingSends) {
+    if (entry.state !== 'pending') continue
+    if (String(entry.channel).toLowerCase() === target) {
+      if (entry.timer) cleanup.clearTimeout(entry.timer)
+      pendingSends.delete(id)
+      try { HsNotifs.dismissByKey('send-pending', id) } catch (_) {}
+      cleared++
+    }
+  }
+  return cleared
+}
+try { globalThis.__hsClearPendingByChannel = clearPendingByChannel } catch (_) {}
 
 function retryPendingSend(synthId) {
   const entry = pendingSends.get(synthId)

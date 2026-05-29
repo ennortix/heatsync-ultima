@@ -585,7 +585,7 @@ const HsNotifs = (() => {
       const el = document.createElement('span')
       el.className = 'hs-notif-toast-text hs-notif-toast-warn'
       const reasonMap = {
-        no_echo: 'no echo from platform',
+        no_echo: 'twitch did not confirm — may not have posted',
         auth_failed: 'twitch auth failed',
         no_user: 'no twitch username',
         connect_failed: 'connection failed',
@@ -595,7 +595,7 @@ const HsNotifs = (() => {
       }
       const why = reasonMap[data.reason] || data.reason || 'send may have failed'
       const snippet = String(data.text || '').slice(0, 60)
-      el.textContent = `send unconfirmed (${why}): "${snippet}${data.text?.length > 60 ? '…' : ''}"`
+      el.textContent = `${why}: "${snippet}${data.text?.length > 60 ? '…' : ''}"`
       return el
     },
     actions: {

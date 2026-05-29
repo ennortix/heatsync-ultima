@@ -11577,13 +11577,19 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // Echo confirmation for the pending-send tracker (input.js). MUST run
       // before isSentEcho — that call mutates the dedup counter and on dual-
       // send second-echo it would consume the entry before we could confirm.
-      // Match on text+state only (mirrors isSentEcho's text-only contract).
-      // The user-equality gate the first pass had broke when display_name
-      // case-flipped or currentUsername hadn't bootstrapped yet.
       // Pass 'twitch' platform so per-platform awaiting set drains; entry only
       // dismisses when every awaited platform has echoed (dual-send safety).
+      // Fallback: if text-match misses but msg is from our own user on a
+      // channel with pending sends, drain the oldest FIFO. Twitch echoes own
+      // PRIVMSGs via global broadcast, so an own-name PRIVMSG on a pending
+      // channel proves SOMETHING posted — catches the wysiwyg-chip/NBSP/
+      // serializer-divergence false-positive class.
       {
-        const _pendId = findPendingByEchoText(msg.text)
+        let _pendId = findPendingByEchoText(msg.text)
+        if (!_pendId && msg.user && currentUsername &&
+            msg.user.toLowerCase() === currentUsername.toLowerCase()) {
+          _pendId = findPendingByChannelFifo(msg.channel)
+        }
         if (_pendId) confirmPending(_pendId, 'twitch')
       }
       // Suppress echo of own sent messages (dedup dual-send). Pass 'twitch'
@@ -11651,10 +11657,15 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // backfilled into the rendered DOM so paints/badges paint in place.
       if (msg.user && !msg.userId) queueKickNameToCosmetics(msg.user)
       // Echo confirmation for pending-send tracker. Runs before isSentEcho
-      // for the same reason as the IRC handler above. Text+state only.
+      // for the same reason as the IRC handler above.
       // Pass 'kick' platform so per-platform awaiting set drains correctly.
+      // FIFO-by-channel fallback applies for same reason as twitch handler.
       {
-        const _pendId = findPendingByEchoText(msg.text)
+        let _pendId = findPendingByEchoText(msg.text)
+        if (!_pendId && msg.user && currentUsername &&
+            msg.user.toLowerCase() === currentUsername.toLowerCase()) {
+          _pendId = findPendingByChannelFifo(msg.channel)
+        }
         if (_pendId) confirmPending(_pendId, 'kick')
       }
       // Suppress echo of own sent messages (dedup dual-send) — pass 'kick'

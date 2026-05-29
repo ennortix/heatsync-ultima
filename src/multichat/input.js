@@ -216,15 +216,45 @@ function confirmPending(synthId, platform) {
 }
 
 // Find a pending entry matching this echo text. Called from main.js's
-// own-echo handlers. We use exact text match like isSentEcho — convertEmoji
-// happened pre-send so the tracked text is the same shape that comes back.
+// own-echo handlers. Tries exact match first; falls back to whitespace-
+// normalized match (collapses NBSP/tabs/runs of spaces) which catches cases
+// where the input serializer added/stripped a space the echo didn't, e.g.
+// wysiwyg-chip + trailing text-node combinations.
 function findPendingByEchoText(text) {
   if (!text || !pendingSends.size) return null
   for (const [id, entry] of pendingSends) {
-    if (entry.text === text && entry.state === 'pending') return id
+    if (entry.state !== 'pending') continue
+    if (entry.text === text) return id
+  }
+  const norm = (s) => String(s).replace(/[ \s]+/g, ' ').trim()
+  const wantN = norm(text)
+  if (!wantN) return null
+  for (const [id, entry] of pendingSends) {
+    if (entry.state !== 'pending') continue
+    if (norm(entry.text) === wantN) return id
   }
   return null
 }
+
+// Channel+username fallback. Called when text-match misses. Drains the
+// oldest pending send for the given channel — Twitch echoes own PRIVMSGs
+// back via the BG anon socket as broadcast-to-all, so a PRIVMSG with our
+// own display-name arriving for a channel we have pending sends to means
+// SOMETHING posted. Resolves the dominant false-positive class where text
+// shape diverged between registration and echo (NBSP/serializer ordering).
+function findPendingByChannelFifo(channel) {
+  if (!channel || !pendingSends.size) return null
+  const target = String(channel).toLowerCase().replace(/^#/, '')
+  let bestId = null
+  let bestSentAt = Infinity
+  for (const [id, entry] of pendingSends) {
+    if (entry.state !== 'pending') continue
+    if (String(entry.channel).toLowerCase() !== target) continue
+    if (entry.sentAt < bestSentAt) { bestId = id; bestSentAt = entry.sentAt }
+  }
+  return bestId
+}
+try { globalThis.__hsFindPendingByChannelFifo = findPendingByChannelFifo } catch (_) {}
 
 function markPendingFailed(synthId, reason) {
   const entry = pendingSends.get(synthId)

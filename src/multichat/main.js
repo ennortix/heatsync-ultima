@@ -7428,6 +7428,35 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       replyBtn.textContent = '↩'
       replyBtn.title = 'Reply'
       div.appendChild(replyBtn)
+      // Permalink ¶ — copies public heatsync.org/logs/<platform>/<channel>/<date>?m=<id>
+      // URL to clipboard. Skipped on YT for the same reason as reply (no native
+      // message id); skipped if channel/origin can't be resolved. Twitch+Kick only.
+      // Chat-origin platform via m.badgePlatform per [[heatsync_badge_platform_origin]].
+      const linkPlatform = m.badgePlatform || m.platform
+      if (m.channel && (linkPlatform === 'twitch' || linkPlatform === 'kick')) {
+        const linkBtn = document.createElement('button')
+        linkBtn.className = 'hs-mc-permalink-btn'
+        linkBtn.textContent = '¶'
+        linkBtn.title = 'copy permalink'
+        linkBtn.addEventListener('click', async (e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          const ts = typeof m.time === 'number' ? m.time : Date.now()
+          const ymd = new Date(ts).toISOString().slice(0, 10)
+          let url = `https://heatsync.org/logs/${encodeURIComponent(linkPlatform)}/${encodeURIComponent(m.channel)}/${ymd}`
+          if (m.id) url += `?m=${encodeURIComponent(m.id)}`
+          try {
+            await navigator.clipboard.writeText(url)
+            linkBtn.textContent = '✓'
+            linkBtn.classList.add('hs-mc-permalink-copied')
+            setTimeout(() => {
+              linkBtn.textContent = '¶'
+              linkBtn.classList.remove('hs-mc-permalink-copied')
+            }, 1200)
+          } catch {}
+        })
+        div.appendChild(linkBtn)
+      }
     }
     // Reply-thread linkage for hover highlight
     if (m.replyTo) {

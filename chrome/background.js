@@ -4540,7 +4540,7 @@ async function addToInventory(emoteName, emoteHash, emoteUrl, zeroWidth = false)
       })
     });
 
-    const data = await response.json().catch(() => ({ error: 'Invalid response' }));
+    const data = await response.json().catch(() => ({ error: `HTTP ${response.status} (non-JSON body)` }));
 
     if (!response.ok) {
       broadcastToTabs({

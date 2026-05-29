@@ -1394,7 +1394,7 @@
   // lookup across mcRemoteEmoteIndex + zeroWidthFromAnyCache so all callers
   // (picker, chat-row click, auto-add-on-send, chip-paste) inherit the flag
   // without each having to plumb it through their own state.
-  async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, targetEl, zeroWidth) {
+  async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, targetEl, zeroWidth, silent) {
     if (!emoteName) return;
     if (zeroWidth == null) {
       const remote = mcRemoteEmoteIndex.get(emoteName)
@@ -1405,7 +1405,7 @@
     // it would store a blank emote that renders empty forever (and the server
     // rejects non-https anyway). Reject early with a clear toast.
     if (!emoteUrl || !/^https?:\/\//i.test(emoteUrl)) {
-      showToast(`can't add ${emoteName} — image unavailable`, 'error');
+      if (!silent) showToast(`can't add ${emoteName} — image unavailable`, 'error');
       return;
     }
     pendingEmoteOps.add(emoteName);
@@ -1454,14 +1454,18 @@
         });
 
         refreshEmoteTooltip(emoteName, 'owned');
-        showToast(`added: ${emoteName}`, 'success');
-        flashAllEmotes(emoteName, 'hs-flash-add');
-      } else {
+        if (!silent) {
+          showToast(`added: ${emoteName}`, 'success');
+          flashAllEmotes(emoteName, 'hs-flash-add');
+        }
+      } else if (!silent) {
         showToast(response?.error || `failed to add: ${emoteName}`, 'error');
+      } else {
+        log('Auto-add failed silently:', emoteName, response?.error || '(no error)')
       }
     } catch (e) {
       log('Add emote error:', e);
-      showToast(`error adding: ${emoteName}`, 'error');
+      if (!silent) showToast(`error adding: ${emoteName}`, 'error');
     } finally {
       pendingEmoteOps.delete(emoteName);
     }

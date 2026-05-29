@@ -4574,7 +4574,7 @@ function autoAddInputEmotes(text) {
     if (typeof viewerPersonalEmotes !== 'undefined' && !viewerPersonalEmotes.has(word)) {
       viewerPersonalEmotes.set(word, { url: rec.url, source: rec.source, state: 'owned', zeroWidth: !!rec.zeroWidth })
     }
-    if (typeof addEmoteToInventory === 'function') addEmoteToInventory(word, rec.url, rec.source, undefined, !!rec.zeroWidth)
+    if (typeof addEmoteToInventory === 'function') addEmoteToInventory(word, rec.url, rec.source, undefined, !!rec.zeroWidth, /* silent */ true)
   }
 }
 

@@ -11,18 +11,13 @@ your emote set in any twitch/kick/youtube chat. no streamer approval, no subscri
 
 ## install
 
-> chrome web store + firefox add-ons listings are in review — install manually below in 60 seconds
-
 ### chrome / edge / brave / arc / opera
 
-1. download **[heatsync-chrome.zip](https://github.com/mellen9999/heatsync-extension/releases/latest/download/heatsync-chrome.zip)**
-2. unzip it (double-click the file)
-3. paste `chrome://extensions` into the address bar
-4. flip on **developer mode** (top-right toggle)
-5. click **load unpacked** → pick the unzipped folder
-6. open twitch, kick, or a youtube live stream — done
+**[install from the chrome web store](https://chromewebstore.google.com/detail/heatsync/afadollcanjpemaonbgnkhjddaebjeja)** — one click, auto-updates.
 
 ### firefox
+
+firefox add-ons listing is in review — install manually in 60 seconds:
 
 1. download **[heatsync-firefox.xpi](https://github.com/mellen9999/heatsync-extension/releases/latest/download/heatsync-firefox.xpi)**
 2. paste `about:debugging#/runtime/this-firefox` into the address bar

@@ -4718,10 +4718,6 @@ async function sendMessage() {
       // success — without this the input clears and the user thinks the
       // message went through.
       const twitchQueued = twitchResult === 'queued'
-      // Kick "not logged in" is benign in dual-send if Twitch succeeded — user
-      // never intended to send to Kick. Suppress that specific toast.
-      const kickBenign = kickResult === 'kick_not_logged_in'
-
       if (twitchQueued && !kickOk) {
         // Most common: not logged into Twitch IRC (no auth-token cookie) AND
         // not on Kick. Persistent notif (markPendingFailed) replaces the
@@ -4734,10 +4730,19 @@ async function sendMessage() {
       }
 
       if (kickOk || twitchOk) {
-        // Partial failure toasts for dual-send. Pending tracker still alive —
-        // confirmPending() fires when the working platform's echo loops back.
-        if (isDualSend && !twitchOk) showToast('sent to kick only — twitch failed', 'error')
-        if (isDualSend && !kickOk && !kickBenign) showToast('sent to twitch only — kick failed', 'error')
+        // Dual-send partial success: at least one platform delivered. Drain
+        // the failed platform from the pending tracker's awaiting set so the
+        // no_echo toast doesn't fire 20s later for the side that locally
+        // failed (no echo can ever arrive — the send never made it out).
+        // Silent: no partial-failure toast — the user got the message into
+        // the channel they're viewing, that's what matters for the dominant
+        // use-case (one platform open at a time, kick/yt mirror as bonus).
+        if (isDualSend && !twitchOk) {
+          try { confirmPending(_synthId, 'twitch') } catch (_) {}
+        }
+        if (isDualSend && !kickOk) {
+          try { confirmPending(_synthId, 'kick') } catch (_) {}
+        }
       } else {
         // Both failed (or single Kick failed). Surface via persistent notif —
         // input.placeholder flash was too fast to read. Reason carries the

@@ -573,6 +573,69 @@ const HsNotifs = (() => {
     actions: { dismiss: { label: '✕' } },
   })
 
+  // Send-pending — fires when an outgoing chat message hasn't echoed back from
+  // the platform within PENDING_ECHO_TIMEOUT_MS (input.js). Persistent: stays
+  // until the user clicks retry/dismiss, or until confirmPending() arrives
+  // late and dismisses by synthId. dedupeKey=synthId keeps each failed send
+  // independent so multiple stalled sends can stack without overwriting.
+  registerType('send-pending', {
+    layer: 'toast-stack',
+    dedupeKey: ({ synthId }) => `send-pending:${synthId}`,
+    render: ({ data }) => {
+      const el = document.createElement('span')
+      el.className = 'hs-notif-toast-text hs-notif-toast-warn'
+      const reasonMap = {
+        no_echo: 'no echo from platform',
+        auth_failed: 'twitch auth failed',
+        no_user: 'no twitch username',
+        connect_failed: 'connection failed',
+        kick_not_logged_in: 'kick not logged in',
+        no_kick_tab: 'no kick tab open',
+        no_channel: 'kick channel not found',
+      }
+      const why = reasonMap[data.reason] || data.reason || 'send may have failed'
+      const snippet = String(data.text || '').slice(0, 60)
+      el.textContent = `send unconfirmed (${why}): "${snippet}${data.text?.length > 60 ? '…' : ''}"`
+      return el
+    },
+    actions: {
+      primary: {
+        label: 'retry',
+        onClick: (data) => {
+          try { globalThis.__hsRetryPendingSend?.(data.synthId) } catch (_) {}
+          return true
+        },
+      },
+      dismiss: { label: '✕' },
+    },
+  })
+
+  // Twitch auth required — fires from cross-platform tabs (kick.com/youtube.com)
+  // when the user attempts to send to a Twitch channel without a valid
+  // twitch.tv auth-token cookie. Replaces the 2s placeholder-flash that users
+  // physically can't read in time. dedupeKey is fixed so repeated send
+  // attempts collapse to one notif.
+  registerType('twitch-auth-required', {
+    layer: 'toast-stack',
+    dedupeKey: () => 'twitch-auth-required',
+    render: ({ data }) => {
+      const el = document.createElement('span')
+      el.className = 'hs-notif-toast-text hs-notif-toast-error'
+      el.textContent = data.text || 'log into twitch.tv to chat'
+      return el
+    },
+    actions: {
+      primary: {
+        label: 'open twitch',
+        onClick: () => {
+          try { window.open('https://www.twitch.tv/', '_blank', 'noopener') } catch (_) {}
+          return true
+        },
+      },
+      dismiss: { label: '✕' },
+    },
+  })
+
   // Server-evaluated mention rule match — heatsync.org evaluated the user's
   // saved mention rules on the server and found a match in a channel message.
   // Shows as a toast; tap/click to dismiss. Deduplicated per channel+snippet

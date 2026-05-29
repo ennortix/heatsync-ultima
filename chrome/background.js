@@ -3470,64 +3470,67 @@ async function connectWebSocket() {
         // the 2min idle threshold and immediately kill the fresh socket.
         lastWsDataReceived = Date.now();
 
-        // Heartbeat + zombie detection moved to chrome.alarms 'hs-ws-watchdog'
-        // (registered at SW boot). Alarms survive SW eviction; setInterval did
-        // not — when Chrome killed the SW the heartbeat stopped, the server's
-        // 2min idle timer fired, the socket dropped, and we'd only notice on
-        // the next runtime event. The alarm wakes the SW every 30s regardless.
-        // Send one immediate heartbeat so the server sees us right after auth
-        // instead of waiting up to the next alarm tick.
+        // Two-layer heartbeat:
+        //   1) chrome.alarms 'hs-ws-watchdog' (30s) survives SW eviction — wakes
+        //      SW from idle to verify socket health + send heartbeat. Recovery.
+        //   2) setInterval below (20s) KEEPS SW ALIVE via Chrome 116+'s
+        //      WS-activity rule (any frame in/out within 30s window extends SW
+        //      lifetime indefinitely). With this, SW never idle-dies while WS
+        //      is connected. Server tolerates duplicate heartbeats.
+        // Immediate heartbeat so server sees us right after auth.
         try { socket.send(JSON.stringify({ type: 'presence:heartbeat' })) } catch {}
+        if (heartbeatInterval) { untrackInterval(heartbeatInterval); heartbeatInterval = null }
+        heartbeatInterval = trackInterval(setInterval(() => {
+          if (!isSocketOpen()) return
+          try { socket.send(JSON.stringify({ type: 'presence:heartbeat' })) } catch {}
+        }, 20000))
 
-        // Rejoin all tracked tab channels
+        // Build the connect-time burst as a single queue, then drain it with
+        // 80ms spacing. Server enforces a 60-token global WS rate limit per
+        // socket (refill 1/sec); a user with 10+ channels was burning the
+        // entire budget in <100ms, tripping the 5-violations-close threshold
+        // and triggering IP-level fetch backoffs. 80ms cadence (≈12 msg/s) is
+        // well under refill rate, full drain still completes in ~2s.
+        const burst = []
+        if (authToken) burst.push({ type: 'authenticate', token: authToken })
         const rejoinedChannels = new Set()
         for (const entry of tabChannels.values()) {
           if (entry.channel && !rejoinedChannels.has(entry.channel)) {
             const [platform, channel] = entry.channel.split('/')
-            log(' 📺 Rejoining channel:', { platform, channel })
-            wsSendDirect({ type: 'channel:join', platform, channel })
+            burst.push({ type: 'channel:join', platform, channel })
             rejoinedChannels.add(entry.channel)
           }
         }
-        // Replay multichat-added channels (kick chats added via ws_send)
         for (const key of joinedExtraChannels) {
           if (rejoinedChannels.has(key)) continue
           const [platform, channel] = key.split('/')
           if (!platform || !channel) continue
-          log(' 📺 Rejoining extra channel:', { platform, channel })
-          wsSendDirect({ type: 'channel:join', platform, channel })
+          burst.push({ type: 'channel:join', platform, channel })
           rejoinedChannels.add(key)
         }
-
-        // Re-subscribe to heatsync's server-side Twitch IRC ring for every
-        // channel we have locally. since=lastTime gap-fills msgs that arrived
-        // while the SW was asleep / WS was disconnected; first connect with
-        // empty buffers passes since=0 to pull the full 500-msg ring.
         try {
           for (const ch of BG_IRC.channels.keys()) {
             const buf = BG_IRC.channels.get(ch)
             const all = buf?.getAll() || []
             const lastTs = all.length > 0 ? (all[all.length - 1].time || 0) : 0
-            wsSendDirect({ type: 'irc:join', channel: ch })
-            wsSendDirect({ type: 'irc:resume', channel: ch, since: lastTs })
+            burst.push({ type: 'irc:join', channel: ch })
+            burst.push({ type: 'irc:resume', channel: ch, since: lastTs })
           }
         } catch (e) { log('irc:resume replay err:', e?.message) }
+        burst.push({ type: 'feed:join', feed: 'new' })
 
-        // Authenticate if we have a token
-        if (authToken) {
-          log(' 🔐 Authenticating...');
-          wsSendDirect({ type: 'authenticate', token: authToken });
-        } else {
+        log(` 🌊 Connect burst queued: ${burst.length} msgs over ~${burst.length * 80}ms`)
+        burst.forEach((msg, i) => {
+          setTimeout(() => {
+            if (!isSocketOpen()) return
+            wsSendDirect(msg)
+          }, i * 80)
+        })
+
+        if (!authToken) {
           log(' ℹ️ No auth token - viewer mode');
-          // Flush queue even without auth (for channel joins etc)
           flushMessageQueue();
         }
-
-        // Subscribe to global feed firehose. Replaces the legacy global broadcast
-        // path — server now emits new-message only to topic subscribers.
-        // Extension always wants the full feed for home-tab updates, mention
-        // detection, and OP/reply badge counts. Anon viewers welcome.
-        wsSendDirect({ type: 'feed:join', feed: 'new' });
 
         // Re-subscribe to YouTube channels (global + per-channel)
         log('[hs-bg] WS connected, re-subscribing YouTube channels...')
@@ -7170,7 +7173,9 @@ function bgIrcStartHeartbeat() {
         return
       }
     }
-  }, 30000))
+    // 20s interval (was 30s) — Chrome 116+ extends SW lifetime as long as any
+    // WS frame in/out happens within a 30s window. 20s gives 10s safety margin.
+  }, 20000))
 }
 
 function bgIrcStopHeartbeat() {
@@ -7641,6 +7646,18 @@ chrome.tabs.onRemoved.addListener((tabId) => {
     if (tabSet) { tabSet.delete(tabId); if (tabSet.size === 0) BG_IRC.channelTabs.delete(ch) }
   }
   BG_IRC.tabInterest.delete(tabId)
+})
+
+// Ctx-death detector port (companion to content.js + multichat bootstrap).
+// Each content script opens this port at startup; BG just accepts and holds
+// it. When the ext is invalidated, the content side gets a SYNCHRONOUS
+// onDisconnect — fires before chrome.runtime becomes undefined or Chrome
+// suspends the orphaned script's setInterval, giving a reliable recovery
+// signal that the 2s interval detector misses. No messaging on this port.
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== 'heatsync-ctx-death') return
+  // SW idle-suspension disconnects the port; content side re-opens (which
+  // also wakes the SW). No-op handler on our end.
 })
 
 // Listener — handles bg_irc_join / bg_irc_part / bg_irc_history

@@ -61,8 +61,8 @@ function _pruneRecent(arr) {
   return arr.filter(e => e && e.time >= cutoff)
 }
 
-function trackSentMessage(text, hostOverride) {
-  _recentSentMessages.push({ text, time: Date.now(), host: hostOverride || hostPlatform })
+function trackSentMessage(text, hostOverride, synthId) {
+  _recentSentMessages.push({ text, time: Date.now(), host: hostOverride || hostPlatform, synthId })
   _recentSentMessages = _pruneRecent(_recentSentMessages)
   // Cross-tab sync: kick.com tab and twitch.tv tab live in different
   // content-script contexts, so they each have their own array. Storage
@@ -151,6 +151,118 @@ function peekSentHost(msgText) {
   }
   return null
 }
+
+// ============================================
+// PENDING-SEND TRACKER — round-trip confirmation
+// ============================================
+// Every send registers an entry keyed by synthId with a per-platform awaiting
+// set. Echo arrival via the IRC/Kick read socket calls confirmPending(id,
+// platform) which removes that platform from awaiting; the entry is only
+// dismissed when the set drains. If the 7s timeout fires with anything still
+// awaiting, the user sees a persistent notif with a one-click [retry].
+//
+// Per-platform tracking matters for dual-send: if twitch echoes but kick
+// silently drops (or vice versa), the legacy "any echo = all good" logic
+// would mask the dropped platform and the user would never know. The
+// tracker exists precisely to catch silent drops — shadow-mute, integrity
+// fails, mid-rejoin races leave no NOTICE, no error, just gone — and that
+// guarantee only holds if we wait for every platform we sent to.
+const pendingSends = new Map()
+// 12s (was 7s): safeSendMessage retries ~2.6s on BG-restart + sendKickMessage's
+// outer ~2.25s + 5s echo latency + slack. Echoes from a healthy WS arrive in
+// <1s, so the bump only delays the "no echo" notif during real BG-restart
+// windows — exactly when delaying it is correct.
+const PENDING_ECHO_TIMEOUT_MS = 12000
+// Expose for devtools
+try { globalThis.__hsPendingSends = pendingSends } catch (_) {}
+
+function makeSynthId() {
+  return `hs-pend-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`
+}
+
+function registerPendingSend({ text, channel, platforms, replyParentId }) {
+  const synthId = makeSynthId()
+  const entry = {
+    synthId, text, channel, platforms,
+    // Per-platform confirmation gate. Drains as echoes arrive; entry is only
+    // dismissed when empty. Catches dual-send silent-drop of one platform.
+    awaiting: new Set(platforms),
+    replyParentId,
+    sentAt: Date.now(), state: 'pending',
+    timer: null,
+  }
+  entry.timer = cleanup.setTimeout(() => {
+    if (pendingSends.get(synthId)?.state === 'pending') {
+      markPendingFailed(synthId, 'no_echo')
+    }
+  }, PENDING_ECHO_TIMEOUT_MS)
+  pendingSends.set(synthId, entry)
+  return synthId
+}
+
+function confirmPending(synthId, platform) {
+  const entry = pendingSends.get(synthId)
+  if (!entry) return false
+  if (platform) entry.awaiting.delete(platform)
+  // Only dismiss once every awaited platform has echoed. Calls without a
+  // platform arg (legacy/manual confirm paths) collapse the gate immediately.
+  if (platform && entry.awaiting.size > 0) return true
+  if (entry.timer) cleanup.clearTimeout(entry.timer)
+  pendingSends.delete(synthId)
+  try { HsNotifs.dismissByKey('send-pending', synthId) } catch (_) {}
+  return true
+}
+
+// Find a pending entry matching this echo text. Called from main.js's
+// own-echo handlers. We use exact text match like isSentEcho — convertEmoji
+// happened pre-send so the tracked text is the same shape that comes back.
+function findPendingByEchoText(text) {
+  if (!text || !pendingSends.size) return null
+  for (const [id, entry] of pendingSends) {
+    if (entry.text === text && entry.state === 'pending') return id
+  }
+  return null
+}
+
+function markPendingFailed(synthId, reason) {
+  const entry = pendingSends.get(synthId)
+  if (!entry) return
+  if (entry.timer) cleanup.clearTimeout(entry.timer)
+  entry.state = 'failed'
+  entry.reason = reason
+  // Surface the persistent retry notif. dedupeKey=synthId so retry-then-fail-
+  // again replaces in place rather than stacking.
+  try {
+    HsNotifs.emit('send-pending', {
+      synthId,
+      text: entry.text,
+      channel: entry.channel,
+      reason,
+    })
+  } catch (_) {}
+}
+
+function retryPendingSend(synthId) {
+  const entry = pendingSends.get(synthId)
+  if (!entry) return
+  // Drop the failed entry; sendMessage will register a fresh one.
+  pendingSends.delete(synthId)
+  try { HsNotifs.dismissByKey('send-pending', synthId) } catch (_) {}
+  const input = document.getElementById('hs-mc-input')
+  if (!input) return
+  // Restore text into input. wysiwygEnabled is the same flag sendMessage uses.
+  if (wysiwygEnabled) input.textContent = entry.text
+  else input.value = entry.text
+  // Restore reply state if the original was a reply
+  if (entry.replyParentId) {
+    try { replyState = { msgId: entry.replyParentId } } catch (_) {}
+  }
+  sendMessage()
+}
+
+// Expose for the notif action handler
+try { globalThis.__hsRetryPendingSend = retryPendingSend } catch (_) {}
+
 
 // Autocomplete state (Tab-only cycling, no dropdown)
 let acState = {
@@ -4479,12 +4591,28 @@ async function sendMessage() {
   const sendToYoutube = !!ytUrl || isLiveYt
   const isDualSend = sendToKick && sendToTwitch
 
+  // Register pending-send tracker — echo confirmation is our ground truth
+  // for "did the platform deliver?", separate from sendIrc/Kick's "did we
+  // write to the socket?" return value. See pendingSends in this file.
+  const _pendingPlatforms = []
+  if (sendToTwitch) _pendingPlatforms.push('twitch')
+  if (sendToKick) _pendingPlatforms.push('kick')
+  // YT echoes don't loop back through chat-message handlers — only the
+  // pure-YT send path explicitly confirms via confirmPending(id, 'yt').
+  // For dual/triple sends including YT, YT side-fires as best-effort and
+  // we don't await its echo (tracking would always fire no_echo on YT).
+  if (sendToYoutube && !sendToKick && !sendToTwitch) _pendingPlatforms.push('yt')
+  const _synthId = registerPendingSend({
+    text, channel: targetChannel, platforms: _pendingPlatforms,
+    replyParentId: replyState?.msgId || null,
+  })
+
   // Track every send (not just dual-send). The host platform stored on each
   // entry powers two things: (1) dedup of dual-send second echoes, (2) badge
   // attribution via peekSentHost so own messages render with the platform
   // the user is viewing FROM (extension input on kick.com → [K]) regardless
   // of which relay platform actually echoed back.
-  trackSentMessage(text)
+  trackSentMessage(text, undefined, _synthId)
 
   // Push to message history (dedup consecutive, cap at max)
   if (mcMessageHistory[0] !== text) {
@@ -4536,41 +4664,37 @@ async function sendMessage() {
 
       if (twitchQueued && !kickOk) {
         // Most common: not logged into Twitch IRC (no auth-token cookie) AND
-        // not on Kick. Surface as a real error — the message did NOT go out.
+        // not on Kick. Persistent notif (markPendingFailed) replaces the
+        // 2.5s placeholder flash users physically couldn't read in time.
         input.style.borderColor = '#f44'
-        const msg = t('mc_input_auth_failed') || 'log in to twitch first'
-        if (wysiwygEnabled) input.dataset.placeholder = msg
-        else input.placeholder = msg
-        setTimeout(() => { input.style.borderColor = ''; updateInputPlaceholder() }, 2500)
+        setTimeout(() => { input.style.borderColor = ''; updateInputPlaceholder() }, 1500)
+        markPendingFailed(_synthId, 'auth_failed')
+        try { HsNotifs.emit('twitch-auth-required', { text: t('mc_input_auth_failed') || 'log into twitch.tv to chat' }) } catch (_) {}
         return
       }
 
       if (kickOk || twitchOk) {
-        // Partial failure toasts for dual-send
+        // Partial failure toasts for dual-send. Pending tracker still alive —
+        // confirmPending() fires when the working platform's echo loops back.
         if (isDualSend && !twitchOk) showToast('sent to kick only — twitch failed', 'error')
         if (isDualSend && !kickOk && !kickBenign) showToast('sent to twitch only — kick failed', 'error')
       } else {
-        // Both failed (or single Kick failed). Surface Twitch's error first
-        // when sendToTwitch was requested — that's the platform the user is
-        // actually on; reporting "log in to kick" while masking a Twitch auth
-        // failure was the misleading message that sent users chasing the
-        // wrong platform.
+        // Both failed (or single Kick failed). Surface via persistent notif —
+        // input.placeholder flash was too fast to read. Reason carries the
+        // dominant platform's error so the retry notif tells the user what
+        // actually went wrong (auth/connect/queue/kick-login).
         input.style.borderColor = '#f44'
-        let msg
+        setTimeout(() => { input.style.borderColor = ''; updateInputPlaceholder() }, 1500)
+        let reason
         if (sendToTwitch && twitchResult && twitchResult !== true && twitchResult !== null) {
-          msg = twitchResult === 'no_user' ? t('mc_input_no_username')
-            : twitchResult === 'auth_failed' ? t('mc_input_auth_failed')
-            : twitchResult === 'connect_failed' ? t('mc_input_connection_failed')
-            : t('mc_input_send_failed_retry')
+          reason = twitchResult
         } else {
-          msg = kickResult === 'kick_not_logged_in' ? t('mc_input_login_kick')
-            : kickResult === 'no_kick_tab' ? t('mc_input_open_kick')
-            : kickResult === 'no_channel' ? t('mc_input_kick_not_found')
-            : t('mc_input_send_failed')
+          reason = kickResult || 'send_failed'
         }
-        if (wysiwygEnabled) input.dataset.placeholder = msg
-        else input.placeholder = msg
-        setTimeout(() => { input.style.borderColor = ''; updateInputPlaceholder() }, 2500)
+        markPendingFailed(_synthId, reason)
+        if (reason === 'auth_failed' || reason === 'no_user') {
+          try { HsNotifs.emit('twitch-auth-required', { text: t('mc_input_auth_failed') || 'log into twitch.tv to chat' }) } catch (_) {}
+        }
       }
     })
     return
@@ -4579,10 +4703,14 @@ async function sendMessage() {
   // --- YouTube-only send path (no Twitch, no Kick) ---
   if (sendToYoutube && !sendToKick && !sendToTwitch) {
     sendYoutubeMessage(text).then(result => {
-      if (result !== true) {
-        const errorMsg = result === 'no_youtube_tab' ? 'open youtube live chat first'
-          : 'youtube send failed'
-        showToast(errorMsg, 'error')
+      if (result === true) {
+        // YT echoes don't loop back through our IRC handlers, so the timer
+        // would always fire "no_echo" for pure-YT sends. Confirm here, with
+        // explicit 'yt' platform so the per-platform awaiting set drains.
+        confirmPending(_synthId, 'yt')
+      } else {
+        const reason = result === 'no_youtube_tab' ? 'no_youtube_tab' : 'send_failed'
+        markPendingFailed(_synthId, reason)
       }
     })
     return
@@ -4600,9 +4728,8 @@ async function sendMessage() {
   // --- Twitch-only send path (existing behavior) ---
   const { token, username: twitchNick } = await getTwitchAuthTokenAsync()
   if (!token) {
-    if (wysiwygEnabled) input.dataset.placeholder = t('mc_input_not_logged_in')
-    else input.placeholder = t('mc_input_not_logged_in')
-    setTimeout(() => updateInputPlaceholder(), 2000)
+    markPendingFailed(_synthId, 'auth_failed')
+    try { HsNotifs.emit('twitch-auth-required', { text: t('mc_input_not_logged_in') || 'log into twitch.tv to chat' }) } catch (_) {}
     return
   }
 
@@ -4614,15 +4741,14 @@ async function sendMessage() {
         input.style.borderColor = '#ff0'
         setTimeout(() => { input.style.borderColor = '' }, 1500)
       }
+      // success-from-socket only; echo confirmation handled by pending tracker
     } else {
       input.style.borderColor = '#f44'
-      const msg = result === 'no_user' ? t('mc_input_no_username')
-        : result === 'auth_failed' ? t('mc_input_auth_failed')
-        : result === 'connect_failed' ? t('mc_input_connection_failed')
-        : t('mc_input_send_failed_retry')
-      if (wysiwygEnabled) input.dataset.placeholder = msg
-      else input.placeholder = msg
-      setTimeout(() => { input.style.borderColor = ''; updateInputPlaceholder() }, 2500)
+      setTimeout(() => { input.style.borderColor = ''; updateInputPlaceholder() }, 1500)
+      markPendingFailed(_synthId, result || 'send_failed')
+      if (result === 'auth_failed' || result === 'no_user') {
+        try { HsNotifs.emit('twitch-auth-required', { text: t('mc_input_auth_failed') || 'log into twitch.tv to chat' }) } catch (_) {}
+      }
     }
   })
 }

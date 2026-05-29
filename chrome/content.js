@@ -97,7 +97,12 @@ window.__heatsyncContentLifecycle = {
 // mount herd that crashes Chrome when many Twitch tabs reload at once.
 // If a NEW content.js instance arrives before reload fires, skip the reload.
 const _hsCtxDeathTimer = setInterval(() => {
-  if (chrome.runtime?.id) return
+  // chrome.runtime?.id access can throw "Extension context invalidated" on
+  // orphaned content scripts — without try/catch the detector silently dies
+  // each tick and reload never arms.
+  let alive = false
+  try { alive = !!chrome.runtime?.id } catch (_) { alive = false }
+  if (alive) return
   clearInterval(_hsCtxDeathTimer)
   extensionContextValid = false
   try { lifecycle.abort() } catch (_) {}
@@ -115,6 +120,46 @@ const _hsCtxDeathTimer = setInterval(() => {
   }
 }, 2000)
 _timers.intervals.push(_hsCtxDeathTimer)
+
+// Port-based ctx-death detector. chrome.runtime.connect() opens a long-lived
+// port to BG. When the extension is invalidated, port.onDisconnect fires
+// SYNCHRONOUSLY before chrome.runtime becomes undefined and before Chrome
+// can suspend the orphaned script's setInterval — catches the cases the 2s
+// interval misses. The port also distinguishes "ext gone" from "SW just
+// idle-suspended": on disconnect, if chrome.runtime?.id still resolves, the
+// ext is alive (SW restarting), so we re-open the port and don't reload.
+function _hsOpenCtxDeathPort() {
+  let port
+  try {
+    if (!chrome?.runtime?.connect) return
+    port = chrome.runtime.connect({ name: 'heatsync-ctx-death' })
+  } catch (_) { return }
+  port.onDisconnect.addListener(() => {
+    let alive = false
+    try { alive = !!chrome.runtime?.id } catch (_) { alive = false }
+    if (alive) {
+      // SW idle-suspended (ext alive). Re-open after a beat — that wakes SW.
+      setTimeout(_hsOpenCtxDeathPort, 500)
+      return
+    }
+    // Ext truly gone — arm reload via the same dedupe flag.
+    extensionContextValid = false
+    try { lifecycle.abort() } catch (_) {}
+    if (window.__heatsyncReloadScheduled) return
+    window.__heatsyncReloadScheduled = true
+    const doReload = () => { if (_hsTakenOver) return; try { location.reload() } catch (_) {} }
+    if (document.visibilityState === 'visible') {
+      setTimeout(doReload, 1000 + Math.random() * 4000)
+    } else {
+      document.addEventListener('visibilitychange', function once() {
+        if (document.visibilityState !== 'visible') return
+        document.removeEventListener('visibilitychange', once)
+        setTimeout(doReload, 500 + Math.random() * 2000)
+      })
+    }
+  })
+}
+_hsOpenCtxDeathPort()
 
 // WeakMap for emote overlay references — avoids DOM property leaks
 const overlayMap = new WeakMap()

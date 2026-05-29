@@ -27,6 +27,12 @@ function _warnStorageMissing() {
   if (_storageMissingLogged) return
   _storageMissingLogged = true
   console.warn('[heatsync] Storage API not available (extension context likely invalidated — page reload needed)')
+  // NOTE: do NOT arm a reload here. This warning ALSO fires on MAIN-world
+  // injection (autocomplete-hook, etc.) where chrome.* APIs simply don't
+  // exist by design — that's not ctx-death, that's the world model. The
+  // canonical "ctx is actually dead" signal is the "Extension context
+  // invalidated" error thrown by runtime.sendMessage; reload-arming lives
+  // there instead.
 }
 
 /**
@@ -139,6 +145,26 @@ const runtime = {
         if (!_ctxInvalidatedLogged) {
           _ctxInvalidatedLogged = true
           console.warn('[heatsync] Extension context invalidated')
+          // Canonical ctx-death signal: runtime.sendMessage threw this exact
+          // error. Unambiguous (unlike storage-missing which fires in MAIN
+          // world too). Arm a deferred-to-visibility reload, dedupe via the
+          // global flag content/bootstrap/main use.
+          try {
+            if (typeof window !== 'undefined' && typeof document !== 'undefined' &&
+                !window.__heatsyncReloadScheduled) {
+              window.__heatsyncReloadScheduled = true
+              const doReload = () => { try { location.reload() } catch (_) {} }
+              if (document.visibilityState === 'visible') {
+                setTimeout(doReload, 1000 + Math.random() * 4000)
+              } else {
+                document.addEventListener('visibilitychange', function once() {
+                  if (document.visibilityState !== 'visible') return
+                  document.removeEventListener('visibilitychange', once)
+                  setTimeout(doReload, 500 + Math.random() * 2000)
+                })
+              }
+            }
+          } catch (_) {}
         }
         return null
       }

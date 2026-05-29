@@ -484,7 +484,12 @@ document.addEventListener('hs-dbg-twitch-sample', (e) => {
 // focuses them. Avoids the N-tab thundering React mount herd that crashes
 // Chrome. content.js sets __heatsyncReloadScheduled — dedupe across scripts.
 const _hsMcCtxDeathTimer = setInterval(() => {
-  if (chrome.runtime?.id) return
+  // chrome.runtime?.id access can throw "Extension context invalidated" on
+  // orphaned content scripts — without try/catch the detector silently dies
+  // each tick and reload never arms.
+  let alive = false
+  try { alive = !!chrome.runtime?.id } catch (_) { alive = false }
+  if (alive) return
   clearInterval(_hsMcCtxDeathTimer)
   try { lifecycle.abort() } catch (_) {}
   if (window.__heatsyncReloadScheduled) return
@@ -501,6 +506,42 @@ const _hsMcCtxDeathTimer = setInterval(() => {
   }
 }, 2000)
 _timers.intervals.push(_hsMcCtxDeathTimer)
+
+// Port-based ctx-death detector (mirrors content.js). chrome.runtime.connect()
+// opens a long-lived port to BG; onDisconnect fires synchronously on ext
+// invalidation, before chrome.runtime becomes undefined and before Chrome
+// can suspend the orphaned setInterval. Catches the cases the 2s interval
+// misses. Distinguishes "ext gone" from "SW idle-suspended" via the post-
+// disconnect chrome.runtime?.id probe.
+function _hsMcOpenCtxDeathPort() {
+  let port
+  try {
+    if (!chrome?.runtime?.connect) return
+    port = chrome.runtime.connect({ name: 'heatsync-ctx-death' })
+  } catch (_) { return }
+  port.onDisconnect.addListener(() => {
+    let alive = false
+    try { alive = !!chrome.runtime?.id } catch (_) { alive = false }
+    if (alive) {
+      setTimeout(_hsMcOpenCtxDeathPort, 500)
+      return
+    }
+    try { lifecycle.abort() } catch (_) {}
+    if (window.__heatsyncReloadScheduled) return
+    window.__heatsyncReloadScheduled = true
+    const doReload = () => { if (_hsMcTakenOver) return; try { location.reload() } catch (_) {} }
+    if (document.visibilityState === 'visible') {
+      setTimeout(doReload, 1000 + Math.random() * 4000)
+    } else {
+      document.addEventListener('visibilitychange', function once() {
+        if (document.visibilityState !== 'visible') return
+        document.removeEventListener('visibilitychange', once)
+        setTimeout(doReload, 500 + Math.random() * 2000)
+      })
+    }
+  })
+}
+_hsMcOpenCtxDeathPort()
 
 // Optional perf tracer. window.__hsPerfTrace = true at runtime to log
 // callbacks exceeding 50ms into window.__hsPerfLog. Source captured at

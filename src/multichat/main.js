@@ -44,10 +44,13 @@
   }
 
   // Safe runtime.sendMessage wrapper (context invalidation guard, Firefox-compatible).
-  // Retries once on cold SW wake — MV3 service workers sleep after ~30s idle and the
-  // first message after sleep can fail with "Could not establish connection" before
-  // the SW finishes waking. Without this retry, the first user action after idle
-  // (channel switch, send message, mute) silently no-ops.
+  // Retries on BG-unreachable — MV3 service workers sleep after ~30s idle, and a
+  // full SW restart (crash, alarm-wake from longer idle) can take >2s. Backoffs
+  // [100, 500, 2000]ms give ~2.6s total — catches cold-wake AND mid-restart.
+  // Without this the first user action after BG-restart silently no-ops.
+  // Context-invalidated still bails fast — _warnStorageMissing / the 2s
+  // content-script detector triggers location.reload() within ~5s.
+  const _SAFE_SEND_BACKOFFS_MS = [100, 500, 2000]
   function safeSendMessage(message) {
     return _trySendMessageOnce(message, 0)
   }
@@ -56,15 +59,13 @@
       return await api.runtime.sendMessage(message)
     } catch (e) {
       const err = e?.message || ''
-      // Context invalidated = extension reloaded. The 30s health-ping at
-      // ~line 7289 will trigger location.reload() on next tick; just bail.
       if (err.includes('Extension context invalidated')) {
         return { ok: false, error: 'context invalidated' }
       }
-      // Cold-wake retry: SW was asleep, port not yet attached on first try.
-      if (attempt === 0 && (err.includes('Could not establish connection') || err.includes('Receiving end does not exist'))) {
-        await new Promise(r => setTimeout(r, 80))
-        return _trySendMessageOnce(message, 1)
+      if (attempt < _SAFE_SEND_BACKOFFS_MS.length &&
+          (err.includes('Could not establish connection') || err.includes('Receiving end does not exist'))) {
+        await new Promise(r => setTimeout(r, _SAFE_SEND_BACKOFFS_MS[attempt]))
+        return _trySendMessageOnce(message, attempt + 1)
       }
       log('sendMessage failed:', err)
       return { ok: false, error: err }
@@ -11573,6 +11574,18 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         _ownBadges = msg.badges
         if (msg.channel) _ownBadgesByChannel.set(String(msg.channel).toLowerCase(), msg.badges)
       }
+      // Echo confirmation for the pending-send tracker (input.js). MUST run
+      // before isSentEcho — that call mutates the dedup counter and on dual-
+      // send second-echo it would consume the entry before we could confirm.
+      // Match on text+state only (mirrors isSentEcho's text-only contract).
+      // The user-equality gate the first pass had broke when display_name
+      // case-flipped or currentUsername hadn't bootstrapped yet.
+      // Pass 'twitch' platform so per-platform awaiting set drains; entry only
+      // dismisses when every awaited platform has echoed (dual-send safety).
+      {
+        const _pendId = findPendingByEchoText(msg.text)
+        if (_pendId) confirmPending(_pendId, 'twitch')
+      }
       // Suppress echo of own sent messages (dedup dual-send). Pass 'twitch'
       // explicitly — IRC msgs leave m.platform unset so the host-platform
       // preference in isSentEcho can compare against it.
@@ -11637,6 +11650,13 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // session triggers one /users/kick/{name} fetch; result is cached and
       // backfilled into the rendered DOM so paints/badges paint in place.
       if (msg.user && !msg.userId) queueKickNameToCosmetics(msg.user)
+      // Echo confirmation for pending-send tracker. Runs before isSentEcho
+      // for the same reason as the IRC handler above. Text+state only.
+      // Pass 'kick' platform so per-platform awaiting set drains correctly.
+      {
+        const _pendId = findPendingByEchoText(msg.text)
+        if (_pendId) confirmPending(_pendId, 'kick')
+      }
       // Suppress echo of own sent messages (dedup dual-send) — pass 'kick'
       // so host-platform preference can favor this echo when on kick.com.
       if (isSentEcho(msg.text, 'kick')) return

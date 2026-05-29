@@ -8091,6 +8091,28 @@ function injectStyles() {
     .hs-cl-loader {
       color: #555; text-align: center; padding: 12px 8px;
     }
+    .hs-cl-public-archive {
+      color: #ff8700; text-decoration: none;
+      font-size: 13px; padding: 1px 6px;
+      border: 1px solid #333;
+      height: 22px; line-height: 18px;
+      display: inline-flex; align-items: center;
+      flex-shrink: 0;
+    }
+    .hs-cl-public-archive:hover { background: #fff; color: #000; border-color: #fff; }
+    .hs-cl-permalink {
+      margin-left: auto;
+      background: transparent; color: #444;
+      border: none; padding: 0 4px; cursor: pointer;
+      font-family: inherit; font-size: 13px; line-height: 1;
+      opacity: 0; transition: opacity 0.08s;
+      flex-shrink: 0;
+    }
+    .hs-cl-row:hover .hs-cl-permalink { opacity: 1; }
+    .hs-cl-permalink:hover { color: #fff; }
+    .hs-cl-permalink.hs-cl-permalink-copied {
+      opacity: 1; color: #ff8700;
+    }
 
   `;
   const cozetteUrl = (typeof chrome !== 'undefined' && chrome.runtime?.getURL)

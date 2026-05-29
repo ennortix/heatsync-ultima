@@ -15,6 +15,39 @@ let activeChatLogs = null
 // }
 
 const HS_CL_PAGE = 100
+const HS_CL_PUBLIC_ORIGIN = 'https://heatsync.org'
+
+// Build a public /logs/ permalink for a row. Returns null when fields missing.
+// URL shape mirrors server/routes/chat-log-permalinks.ts:
+//   /logs/<platform>/<channel>/<yyyy-mm-dd>?m=<message_id>
+// Anchoring is best-effort; channel-day URL still resolves when message_id absent.
+function buildChatLogPermalink(r) {
+  if (!activeChatLogs) return null
+  const platform = activeChatLogs.platform
+  const channel = r.channel || activeChatLogs.channel
+  if (!platform || !channel || !r.timestamp) return null
+  const d = new Date(r.timestamp)
+  if (isNaN(d.getTime())) return null
+  const ymd = d.toISOString().slice(0, 10)
+  let url = `${HS_CL_PUBLIC_ORIGIN}/logs/${encodeURIComponent(platform)}/${encodeURIComponent(channel)}/${ymd}`
+  if (r.message_id) url += `?m=${encodeURIComponent(r.message_id)}`
+  return url
+}
+
+async function copyChatLogPermalink(btn, r) {
+  const url = buildChatLogPermalink(r)
+  if (!url) return
+  try {
+    await navigator.clipboard.writeText(url)
+    const prev = btn.textContent
+    btn.textContent = '✓'
+    btn.classList.add('hs-cl-permalink-copied')
+    setTimeout(() => {
+      btn.textContent = prev
+      btn.classList.remove('hs-cl-permalink-copied')
+    }, 1200)
+  } catch {}
+}
 
 async function openChatLogsView(username, opts = {}) {
   if (!username) return
@@ -239,6 +272,19 @@ function renderChatLogsView() {
   exportJson.addEventListener('click', () => exportChatLogs('json'))
   ctrls.appendChild(exportJson)
 
+  // Public archive link — only meaningful when scoped to a channel (the
+  // public surface is /logs/<platform>/<channel>/<date>, channel-keyed).
+  if (channel) {
+    const pub = document.createElement('a')
+    pub.className = 'hs-cl-public-archive'
+    pub.href = `${HS_CL_PUBLIC_ORIGIN}/logs/${encodeURIComponent(activeChatLogs.platform)}/${encodeURIComponent(channel)}`
+    pub.target = '_blank'
+    pub.rel = 'noopener noreferrer'
+    pub.textContent = 'public archive ↗'
+    pub.title = `open #${channel}'s public chat log on heatsync.org`
+    ctrls.appendChild(pub)
+  }
+
   wrap.appendChild(ctrls)
 
   // Body — message list
@@ -341,6 +387,22 @@ function renderChatLogRow(r) {
   body.className = 'hs-cl-body'
   appendChatLogBody(body, r)
   row.appendChild(body)
+
+  // Permalink copy — hover-revealed ¶ that puts the public /logs/ URL on
+  // the clipboard. Matches server's chat-log-permalinks.ts pattern; every
+  // copied permalink is a backlink into the SEO acquisition surface.
+  if (buildChatLogPermalink(r)) {
+    const link = document.createElement('button')
+    link.className = 'hs-cl-permalink'
+    link.type = 'button'
+    link.textContent = '¶'
+    link.title = 'copy permalink'
+    link.addEventListener('click', (e) => {
+      e.stopPropagation()
+      copyChatLogPermalink(link, r)
+    })
+    row.appendChild(link)
+  }
 
   return row
 }

@@ -11586,9 +11586,19 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // serializer-divergence false-positive class.
       {
         let _pendId = findPendingByEchoText(msg.text)
-        if (!_pendId && msg.user && currentUsername &&
-            msg.user.toLowerCase() === currentUsername.toLowerCase()) {
-          _pendId = findPendingByChannelFifo(msg.channel)
+        if (!_pendId && msg.user) {
+          const u = msg.user.toLowerCase()
+          // currentUsername works on-host (twitch.tv) but is null on cross-
+          // origin tabs (kick.com/youtube.com where twitch storage isn't
+          // reachable). authState.nick (from auth-irc handshake) is the
+          // user's TWITCH nick once auth-irc has connected — works cross-
+          // origin too. Also accept a peekSentHost text hit (cross-tab-
+          // synced via storage) as a final own-msg signal.
+          const isOwnUser =
+            (currentUsername && u === currentUsername.toLowerCase()) ||
+            (typeof authState !== 'undefined' && authState?.nick && u === authState.nick.toLowerCase()) ||
+            (typeof peekSentHost === 'function' && !!peekSentHost(msg.text))
+          if (isOwnUser) _pendId = findPendingByChannelFifo(msg.channel)
         }
         if (_pendId) confirmPending(_pendId, 'twitch')
       }
@@ -11662,9 +11672,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // FIFO-by-channel fallback applies for same reason as twitch handler.
       {
         let _pendId = findPendingByEchoText(msg.text)
-        if (!_pendId && msg.user && currentUsername &&
-            msg.user.toLowerCase() === currentUsername.toLowerCase()) {
-          _pendId = findPendingByChannelFifo(msg.channel)
+        if (!_pendId && msg.user) {
+          const u = msg.user.toLowerCase()
+          const isOwnUser =
+            (currentUsername && u === currentUsername.toLowerCase()) ||
+            (typeof peekSentHost === 'function' && !!peekSentHost(msg.text))
+          if (isOwnUser) _pendId = findPendingByChannelFifo(msg.channel)
         }
         if (_pendId) confirmPending(_pendId, 'kick')
       }

@@ -199,6 +199,12 @@ function registerPendingSend({ text, channel, platforms, replyParentId }) {
     }
   }, PENDING_ECHO_TIMEOUT_MS)
   pendingSends.set(synthId, entry)
+  try {
+    console.log('[heatsync-ext] pending registered:', JSON.stringify({
+      text, channel, platforms, len: text.length,
+      codes: [...text].slice(0, 30).map(c => c.charCodeAt(0))
+    }))
+  } catch (_) {}
   return synthId
 }
 
@@ -233,6 +239,23 @@ function findPendingByEchoText(text) {
     if (entry.state !== 'pending') continue
     if (norm(entry.text) === wantN) return id
   }
+  try {
+    const dump = []
+    for (const [, entry] of pendingSends) {
+      if (entry.state !== 'pending') continue
+      dump.push({
+        pendingText: entry.text,
+        pendingLen: entry.text.length,
+        pendingCodes: [...entry.text].slice(0, 30).map(c => c.charCodeAt(0)),
+        pendingChannel: entry.channel,
+      })
+    }
+    console.log('[heatsync-ext] echo text-miss:', JSON.stringify({
+      echoText: text, echoLen: text.length,
+      echoCodes: [...text].slice(0, 30).map(c => c.charCodeAt(0)),
+      pending: dump
+    }))
+  } catch (_) {}
   return null
 }
 

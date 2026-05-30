@@ -7396,11 +7396,14 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // walk on the >95% of msgs that don't contain heatsync emotes — the gate
     // is a single substring scan, the QSA was iterating div subtree.
     if (processedText.includes('data-source="heatsync"')) {
+      // 2-state reconcile: blocked vs anything-pasteable. The pre-existing
+      // owned/unadded split is irrelevant for rendering now (white hover bg
+      // either way); only blocked needs its own class for the dashed-rect.
       for (const w of div.querySelectorAll('.hs-mc-emote-wrapper[data-source="heatsync"]')) {
         const name = w.dataset.emoteName;
         const newState = blockedEmoteNames.has(name) ? 'blocked'
           : inventoryEmotes.has(name) ? 'owned'
-          : 'unadded';
+          : 'global';
         if (w.dataset.state !== newState) {
           w.classList.remove('hs-state-owned', 'hs-state-unadded', 'hs-state-blocked', 'hs-state-global', 'hs-state-channel');
           w.classList.add(`hs-state-${newState}`);

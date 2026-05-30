@@ -772,14 +772,13 @@
         outline-offset: -2px;
       }
 
-      /* Unadded = slightly dimmed */
-      .heatsync-emote-wrap.unadded img {
-        opacity: 0.7;
-      }
-
-      /* Hover: hide image, show background color */
-      .heatsync-emote-wrap:hover img {
-        visibility: hidden;
+      /* 2-state model: no per-state opacity dimming. Every pasteable emote
+         renders at full opacity; only blocked uses the dashed outline below.
+         Hover keeps the img visible (z-index: 1) on top of the white wrap
+         bg — matches the multichat overlay convention. */
+      .heatsync-emote-wrap img {
+        position: relative;
+        z-index: 1;
       }
 
       /* background-color cross-fades 0.25s so block↔unblock under cursor
@@ -789,14 +788,12 @@
         transition: background-color 0.25s ease-out;
       }
 
-      /* Usable = green (inventory + global + channel) */
+      /* 2-state model: every pasteable emote hovers white (project convention,
+         matches the multichat overlay picker). Blocked has its own dashed
+         outline rule below. The old green/orange tiers (owned vs unadded) are
+         gone — slot membership is no longer a render-time distinction. */
       .heatsync-emote-wrap:hover {
-        background: #00ff00;
-      }
-
-      /* Available but not added = orange */
-      .heatsync-emote-wrap.unadded:hover {
-        background: #ff8700;
+        background: #fff;
       }
 
       /* Blocked emotes: dashed outline on the wrap (so the image's opacity
@@ -2741,9 +2738,9 @@
       wrap.style.minHeight = '32px'
       wrap.dataset.index = index
 
-      if (!isGlobal && !inInventory && currentTab !== 'mine') {
-        wrap.classList.add('unadded')
-      }
+      // 2-state model: no `unadded` class. Every pasteable emote looks the
+       // same; the inventory/non-inventory split is no longer a render
+       // distinction (auto-add-on-send fills slots silently anyway).
 
       // Mark blocked: keeps the emote in its slot with the dashed-outline style
       // (CSS at .heatsync-emote-wrap.blocked img). Without this, blockEmote

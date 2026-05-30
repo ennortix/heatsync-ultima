@@ -6191,10 +6191,11 @@ async function handleMessage(message, sender, sendResponse) {
           collected[name] = {
             url: u,
             source: src,
-            // 'unadded' (not 'global') so a viewer who doesn't own it sees the
-            // orange "click to add" affordance — they can grab a shared emote.
-            // processEmotes upgrades to 'owned' if they already have it.
-            state: 'unadded',
+            // 2-state model: every pasteable shared emote is just 'global'.
+            // processEmotes still upgrades to 'owned' if the viewer has the
+            // name in their inventory; otherwise it renders identically to
+            // any other global (white hover, click pastes, auto-add at send).
+            state: 'global',
             zeroWidth: !!(e.zero_width ?? e.zeroWidth ?? prevZW),
             hash: e.hash || '',
             nsfw: !!e.nsfw  // v1.6 — cyan dashed border in chat + picker

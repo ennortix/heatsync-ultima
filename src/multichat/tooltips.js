@@ -201,12 +201,12 @@
       nameEl.textContent = emoteName;
     }
 
-    // Show state with source for globals
+    // Show state with source for globals. 2-state model: 'unadded' is no
+    // longer a user-facing tier (click pastes, doesn't add — auto-add fires
+    // at send time silently), so fall it through to the source-label branch.
     let label;
     if (state === 'owned') {
       label = t('mc_emote_in_set');
-    } else if (state === 'unadded') {
-      label = t('mc_emote_click_add');
     } else if (state === 'blocked') {
       label = t('mc_emote_blocked');
     } else {
@@ -297,10 +297,11 @@
     const labels = { owned: t('mc_emote_in_set'), unadded: t('mc_emote_click_add'), blocked: t('mc_emote_blocked') };
     stateEl.textContent = labels[newState] || newState;
     stateEl.className = 'tooltip-source ' + (newState || 'global');
-    // The cross-highlight color is set once on mouseover; if the state flips while
-    // you're still hovering (click-to-add: unadded→owned), the orange outline goes
-    // stale against the now-green tooltip. Re-sync it to match the new state.
-    const hl = newState === 'blocked' ? '#ff0000' : newState === 'unadded' ? '#ff8700' : '#00ff00';
+    // 2-state model: cross-highlight is white for everything except blocked
+    // (red). No orange middle tier exists anymore, so the live-resync that
+    // used to chase unadded→owned ladder transitions collapses to a single
+    // blocked-vs-not check.
+    const hl = newState === 'blocked' ? '#ff0000' : '#fff';
     document.body.style.setProperty('--hs-highlight-color', hl);
   }
 
@@ -382,16 +383,15 @@
       // For wrappers in collapsed stacks, derive color from the stack's worst
       // state (blocked > unadded > normal) so the same nest always shows the
       // same hover color regardless of which emote inside you happen to land on.
+      // 2-state cross-highlight: stack tints red iff ANY emote inside is
+      // blocked, else white. Dropped the unadded/orange middle tier with
+      // the ladder.
       const stack = wrapper?.closest?.('.hs-mc-emote-stack:not(.expanded)')
       let effectiveState = state
       if (stack) {
-        if (stack.querySelector('.hs-mc-emote-wrapper.hs-state-blocked')) effectiveState = 'blocked'
-        else if (stack.querySelector('.hs-mc-emote-wrapper.hs-state-unadded')) effectiveState = 'unadded'
-        else effectiveState = 'normal'
+        effectiveState = stack.querySelector('.hs-mc-emote-wrapper.hs-state-blocked') ? 'blocked' : 'normal'
       }
-      const sourceColor = effectiveState === 'blocked' ? '#ff0000'
-        : effectiveState === 'unadded' ? '#ff8700'
-        : '#00ff00'
+      const sourceColor = effectiveState === 'blocked' ? '#ff0000' : '#fff'
       document.body.style.setProperty('--hs-highlight-color', sourceColor)
       queryEmoteWrappers(emoteName).forEach(w => {
         w.classList.add('hs-emote-highlight');

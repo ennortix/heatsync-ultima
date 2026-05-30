@@ -2009,9 +2009,13 @@ style.textContent = `
   .heatsync-emote-wrapper:hover > img {
     visibility: hidden !important;
   }
-  .heatsync-emote-wrapper.emote-overlay-owned::before { background: #00ff00 !important; }
-  .heatsync-emote-wrapper.emote-overlay-global::before { background: #808080 !important; }
-  .heatsync-emote-wrapper.emote-overlay-unadded::before { background: #ff8700 !important; }
+  /* 2-state model: every pasteable overlay tier (owned/global/unadded) hovers
+     white per project convention; only blocked has its own fill. The classes
+     themselves still differentiate functionally (isGlobalEmote checks etc.)
+     but the visual collapses. */
+  .heatsync-emote-wrapper.emote-overlay-owned::before,
+  .heatsync-emote-wrapper.emote-overlay-global::before,
+  .heatsync-emote-wrapper.emote-overlay-unadded::before { background: #fff !important; }
   .heatsync-emote-wrapper.emote-overlay-blocked::before { background: #ff0000 !important; }
 
   /* Collapsed stack: suppress per-wrapper hover overlays — show one unified
@@ -2555,23 +2559,16 @@ function isEmoteImage(el) {
 }
 
 function getEmoteColor(img) {
-  // Three-state palette mirroring the website's wrapper hover bg:
-  //   in-set / default → green   #00ff00  (click pastes)
-  //   available        → orange  #ff8700  (click adds, then pastes)
-  //   blocked          → red     #ff0000  (you've blocked it)
+  // 2-state palette: blocked = red, else white (project hover convention).
+  // The old owned/unadded green/orange split mirrored the 3-state ladder
+  // and is gone; auto-add-on-send fills slots silently, so "available, not
+  // in your set" is no longer a distinct user-facing state.
   const state = img.dataset?.heatsyncState;
   if (state === 'blocked') return '#ff0000';
-  if (state === 'unadded') return '#ff8700';
-  // Multichat input chip — markInputEmoteBlocked tags the IMG with both
-  // dataset.state='blocked' and the hs-state-blocked class. The dataset
-  // check above is heatsyncState (legacy chat path); read either.
   if (img.classList?.contains('hs-state-blocked') || img.dataset?.state === 'blocked') return '#ff0000';
-  // Fallback: read wrapper class from website. .available is the current
-  // name for "not in your set yet"; .neutral kept for older surfaces.
   const wrapper = img.closest?.('.emote-hover-wrapper');
   if (wrapper?.classList.contains('blocked')) return '#ff0000';
-  if (wrapper?.classList.contains('available') || wrapper?.classList.contains('neutral')) return '#ff8700';
-  return '#00ff00';
+  return '#fff';
 }
 
 function showEmoteOverlay(img) {
@@ -6367,47 +6364,14 @@ function setupEmoteClickHandlers() {
     } else {
       // Progressive tier degradation: if the active variant is from the user's
       // inventory AND there's a lower-tier sibling still available (channel or
-      // global), remove from set so the wrapper falls back to that sibling.
-      // Going straight to block here would leave the chat without a renderable
-      // variant when one was right there. Only block when there's nowhere to fall.
-      const activeImg = wrapper.firstElementChild?.tagName === 'IMG' ? wrapper.firstElementChild : wrapper.querySelector('img.heatsync-emote')
-      const activeIsInventory = (activeImg?.dataset.variantClass === 'inventory') || (!wrapper.dataset.hasVariants && inInventory)
-      let hasFallback = false
-      if (activeIsInventory && wrapper.dataset.hasVariants === '1') {
-        const sibs = wrapper.querySelectorAll(':scope > img.heatsync-emote')
-        for (const s of sibs) {
-          if (s === activeImg) continue
-          if (s.dataset.variantClass === 'inventory') continue
-          if (blockedEmotes.has(s.dataset.emoteHash)) continue
-          hasFallback = true; break
-        }
-      }
-
-      if (activeIsInventory && hasFallback && !inStack) {
-        // INVENTORY (with lower tier) → drop tier via remove_from_inventory.
-        // Skipped inside stacks: stack right-click semantics still go to block.
-        pendingOperations.add(operationKey);
-        try {
-          const result = await safeSendMessage({ type: 'remove_from_inventory', emoteHash: hash, emoteName });
-          if (result?.success) {
-            log(' ⬇ Removed from set (tier drop):', emoteName);
-            showToast(t('content_toast_removed', [emoteName]), 'info');
-            // emote_removed broadcast will arrive and trigger updateEmoteState → pickActiveVariant
-          } else {
-            showToast(t('content_toast_failed_remove', [emoteName, String(result?.error || 'Unknown error')]), 'error');
-          }
-        } catch (err) {
-          if (!extensionContextValid) return;
-          showToast(t('content_toast_failed_remove', [emoteName, String(err.message)]), 'error');
-        } finally {
-          pendingOperations.delete(operationKey);
-          if (parentStack) {
-            parentStack.classList.add('expanded');
-            requestAnimationFrame(() => parentStack.classList.add('expanded'));
-          }
-        }
-        return;
-      }
+      // 2-state model: chat-row right-click only toggles block↔unblock.
+      // The old "tier-drop on right-click" (DELETE the inventory variant so
+      // the wrapper falls to its lower-tier sibling) was the same accidental-
+      // remove footgun the overlay picker had — destructive intent inferred
+      // from a casual right-click, no way to recover without a manual re-add.
+      // Block is the right operation: hides the inventory variant, the
+      // existing lower-tier sibling (channel/global) renders in its place,
+      // and an unblock restores the inventory pick. No DELETE round-trip.
 
       // NEUTRAL/LAST-TIER → BLOCKED
       pendingOperations.add(operationKey);

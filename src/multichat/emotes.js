@@ -68,10 +68,9 @@
       if (mcProviderLastQuery[p] !== query) continue
       for (const r of mcProviderResults[p]) {
         if (!r.name || filtered.has(r.name)) continue
-        // state='unadded' aligns with the existing emote-click handler
-        // (input.js:740) which knows that branch — 'remote' fell through
-        // every branch, leaving stopPropagation alive and the click dead.
-        filtered.set(r.name, { source: p, state: 'unadded', url: r.url, provider: r.provider })
+        // state='global' under the 2-state model — pasteable like any
+        // other source entry. Auto-add-on-send commits the slot at send.
+        filtered.set(r.name, { source: p, state: 'global', url: r.url, provider: r.provider })
         mcRemoteEmoteIndex.set(r.name, { url: r.url, provider: r.provider, id: r.id, zeroWidth: !!r.zeroWidth })
       }
     }

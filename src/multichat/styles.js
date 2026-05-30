@@ -2687,23 +2687,27 @@ function injectStyles() {
       position: absolute;
       /* Match img content-box, not its padding-box. .hs-mc-picker-emote
          carries padding:4px, so the wrap is 8px wider/taller than the
-         visible emote — inset:0 here would paint orange/green 4px past
-         the emote on every side ("rect bigger than emote" / "two stacked
-         rects" perception). Inset by the picker-emote padding so the
-         hover rect tracks the visible image instead. box-sizing keeps the
-         dashed border (blocked state) from inflating the rect. */
+         visible emote — inset:0 here would paint the highlight 4px past
+         the emote on every side. Inset by the picker-emote padding so
+         the rect tracks the visible image instead. box-sizing keeps the
+         dashed border (blocked state) from inflating the rect. z-index 0
+         puts the rect BEHIND the img so the emote stays visible against
+         the white hover bg — matches the project hover convention
+         (#fff bg + emote on top) instead of the old green-rect-image-
+         hidden pattern from the 3-state ladder era. */
       inset: 4px;
       box-sizing: border-box;
       opacity: 0;
       pointer-events: none;
-      z-index: 1;
-      background: #00ff00;
+      z-index: 0;
+      background: #fff;
     }
     .hs-mc-picker-emote-wrap:not(.blocked):hover::before {
       opacity: 1;
     }
-    .hs-mc-picker-emote-wrap:not(.blocked):hover > img {
-      visibility: hidden !important;
+    .hs-mc-picker-emote-wrap > img {
+      position: relative;
+      z-index: 1;
     }
     /* Blocked: persistent dashed rect via ::before (not outline on the
        wrap) so it tracks emote content size like the green/orange hover
@@ -2848,24 +2852,24 @@ function injectStyles() {
       opacity: 0;
       /* Opacity stays untransitioned (kept snappy on cross-highlight class
          toggles); background-color fades 0.25s so block↔unblock during
-         hover smoothly cross-fades between legend colors instead of snapping. */
+         hover smoothly cross-fades. z-index 0 + img positioned above
+         (rule below) means the rect sits BEHIND the emote — white hover
+         bg with the emote on top, matching project hover convention. */
       transition: background-color 0.25s ease-out;
-      z-index: 1;
+      z-index: 0;
       pointer-events: none;
     }
-    /* Hover: show solid color rect, hide image. Color from --hs-highlight-color
-       (set by hover source) so cross-highlighted instances all match.
-       transition:none snaps to the highlight color on class-apply — without
-       it, moving between sibling instances briefly removes+re-adds the class
-       and the base 0.25s background-color transition flashes the sibling's
-       state color (e.g. green) before settling back to highlight orange. */
+    .hs-mc-emote-wrapper > img {
+      position: relative;
+      z-index: 1;
+    }
+    /* Cross-highlight: white rect lights up behind every instance of the same
+       emote when one is hovered. Color from --hs-highlight-color so blocked
+       instances can still tint red (set per-emote by tooltips.js). */
     .hs-mc-emote-wrapper.hs-emote-highlight::before {
       opacity: 1;
-      background: var(--hs-highlight-color, #00ff00) !important;
+      background: var(--hs-highlight-color, #fff) !important;
       transition: none;
-    }
-    .hs-mc-emote-wrapper.hs-emote-highlight > img {
-      visibility: hidden;
     }
     /* Tab cycling: suppress emote hover highlight while user is cycling Tab
        matches in chat input. Mouse stuck over an emote keeps the green rect
@@ -2880,17 +2884,10 @@ function injectStyles() {
       opacity: 0 !important;
     }
 
-    /* State colors via ::before — 2-state model: cross-highlight green for
-       anything that pastes (global/owned/channel/unadded all equivalent), red
-       for blocked. hs-state-unadded kept as a green alias so any legacy code
-       still tagging chat-row wrappers with that class renders consistently
-       instead of falling through to no background and showing the underlying
-       img on cross-highlight. */
-    .hs-mc-emote-wrapper.hs-state-global::before,
-    .hs-mc-emote-wrapper.hs-state-owned::before,
-    .hs-mc-emote-wrapper.hs-state-channel::before,
-    .hs-mc-emote-wrapper.hs-state-unadded::before { background: #00ff00; }
-    .hs-mc-emote-wrapper.hs-state-blocked::before { background: #ff0000; }
+    /* State colors via ::before — 2-state model: all pasteable states
+       (global/owned/channel/unadded) inherit the default white hover bg.
+       Blocked + stale have their own override rules below — no per-state
+       fill needed here. */
 
     /* v1.6 NSFW — 2px dashed teal (#008080, xterm-256 #30) border on
        flagged emotes in DECISION surfaces (picker, input chip). Chat
@@ -3068,10 +3065,14 @@ function injectStyles() {
       width: calc(100% + 16px);
       text-align: center;
     }
-    #hs-emote-tooltip .tooltip-source.owned { background: #00ff00; color: #000; }
-    #hs-emote-tooltip .tooltip-source.unadded { background: #ff8700; color: #000; }
-    #hs-emote-tooltip .tooltip-source.global { background: #00ff00; color: #000; }
-    #hs-emote-tooltip .tooltip-source.channel { background: #00ff00; color: #000; }
+    /* 2-state tooltip source chip: pasteable states use the project's
+       hover convention (white bg + black text). Per-provider chips below
+       (src-7tv, src-bttv, etc.) still carry their brand colors as the
+       primary visual since users identify emotes by source platform. */
+    #hs-emote-tooltip .tooltip-source.owned,
+    #hs-emote-tooltip .tooltip-source.unadded,
+    #hs-emote-tooltip .tooltip-source.global,
+    #hs-emote-tooltip .tooltip-source.channel { background: #fff; color: #000; }
     #hs-emote-tooltip .tooltip-source.sub { background: #9146ff; color: #fff; }
     #hs-emote-tooltip .tooltip-source.blocked { background: #ff0000; color: #fff; }
     /* Per-provider source label colors (override .global/.channel) */

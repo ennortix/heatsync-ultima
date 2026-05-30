@@ -4109,7 +4109,13 @@
     }
 
     // Add / remove from inventory
-    if (tab === 'mine' || inInv) {
+    // Gate remove on real heatsync inventory membership (slot exists). The
+    // 'mine' tab also surfaces sub entitlements + globals that aren't heatsync
+    // slots — DELETE /api/user/emotes/:slot has nothing to target on those,
+    // and the unconditional toast made it look like it "removed" while the
+    // emote stayed visible. Subs/defaults get block only; reach for unsub on
+    // Twitch if you actually want them out.
+    if (inInv && !emote.subscription) {
       const removeBtn = document.createElement('button');
       removeBtn.className = 'hs-emote-ctx-item';
       removeBtn.textContent = t('btn_ctx_remove_inventory');
@@ -4137,7 +4143,7 @@
         }
       });
       menu.appendChild(removeBtn);
-    } else if (cachedAuthToken) {
+    } else if (cachedAuthToken && !emote.subscription) {
       const addBtn = document.createElement('button');
       addBtn.className = 'hs-emote-ctx-item';
       addBtn.textContent = t('btn_ctx_add_inventory');

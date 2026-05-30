@@ -1469,10 +1469,17 @@ function fireLiveNotificationFromStream(stream, username, platform) {
     const oldest = _liveNotificationUrls.keys().next().value
     _liveNotificationUrls.delete(oldest)
   }
+  // Streamer pfp > heatsync logo: the notification is about a specific person,
+  // showing their face/avatar is the recognizable signal ("oh, shroud is up").
+  // Falls back to the extension icon if no pfp resolved (rare — resolveIdentity
+  // usually fills this in; coldest cold-starts may lack it).
+  const pfp = stream.profileImageUrl || stream.profile_image_url
+    || stream.heatsyncAvatar || stream.avatar_url || stream.avatar || ''
+  const iconUrl = pfp || browser.runtime.getURL('icon-128.png')
   try {
     browser.notifications.create(id, {
       type: 'basic',
-      iconUrl: browser.runtime.getURL('icon-128.png'),
+      iconUrl,
       title: `${display} is live`,
       message: `${platName}${viewerStr}`,
       contextMessage: 'heatsync',
@@ -4635,8 +4642,11 @@ async function _removeFromInventoryImpl(emoteHash, emoteName) {
     // Find slot number by hash or name
     let emote = emoteInventory.find(e => e.hash === emoteHash || e.name === emoteName);
     if (!emote) {
-      // Refetch in case local state is stale, then retry
+      // Refetch in case local state is stale. fetchEmoteInventory has a 10s
+      // throttle — bypass it here so we don't return a spurious "not in set"
+      // error during the throttle window.
       log(' Emote not in local inventory, refetching...', emoteName, emoteHash?.substring(0, 8));
+      lastInventoryFetch = 0;
       await fetchEmoteInventory();
       emote = emoteInventory.find(e => e.hash === emoteHash || e.name === emoteName);
       if (!emote) {
@@ -4651,9 +4661,9 @@ async function _removeFromInventoryImpl(emoteHash, emoteName) {
     }
 
     if (emote.slot == null) {
-      // Refetch to get correct slot numbers
+      // Bypass throttle here too — same reason.
+      lastInventoryFetch = 0;
       await fetchEmoteInventory();
-      // Try again after refetch
       const refreshedEmote = emoteInventory.find(e => e.hash === emoteHash || e.name === emoteName);
       if (refreshedEmote?.slot == null) {
         broadcastToTabs({ type: 'emote_removing_cancel', emoteName });
@@ -4667,18 +4677,69 @@ async function _removeFromInventoryImpl(emoteHash, emoteName) {
       emote.slot = refreshedEmote.slot;
     }
 
-    // Call server API to remove emote
-    const response = await fetchWithTimeout(`${API_URL}/api/user/emotes/${emote.slot}`, {
-      method: 'DELETE',
-      credentials: 'omit', // Bearer-only → CSRF-exempt (cookie would trigger CSRF)
-      headers: {
-        'Authorization': `Bearer ${authToken}`
-      }
-    });
+    const doDelete = async (slot) => {
+      const resp = await fetchWithTimeout(`${API_URL}/api/user/emotes/${slot}`, {
+        method: 'DELETE',
+        credentials: 'omit', // Bearer-only → CSRF-exempt (cookie would trigger CSRF)
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      // `.catch()` covers a thrown SyntaxError, but JSON.parse('null') resolves
+      // to literal null — coerce so `data.error` access can't throw a TypeError
+      // and bubble up as the user-facing message.
+      const d = (await resp.json().catch(() => null)) || {};
+      return { resp, d };
+    };
 
-    const data = await response.json().catch(() => ({ error: 'Invalid response' }));
+    let { resp: response, d: data } = await doDelete(emote.slot);
+
+    // 404 here is ambiguous. The slot we read from local `emoteInventory` is
+    // throttled (10s) and another tab / the move endpoint may have shifted
+    // slots since — so the slot we just hit might be empty while the emote
+    // is alive and well at a different slot. Without this retry path:
+    //   - silent-reconcile-and-broadcast assumes "goal state already true"
+    //     and drops the local row. The next 1-min inventory poll pulls the
+    //     live row back from the server, the picker re-renders green, the
+    //     user right-clicks again, gets 404, repeats. Whack-a-mole.
+    //   - failing loud surfaces a confusing "not in set" error on an emote
+    //     that visibly IS in the set.
+    // So: on 404, force-bypass the inventory throttle and refetch. If the
+    // emote moved, retry DELETE with the new slot (the actual destructive
+    // operation the user asked for). Only treat as already-gone if the
+    // fresh server view confirms the emote is genuinely absent.
+    if (response.status === 404) {
+      log(' DELETE 404 at slot', emote.slot, '— forcing inventory refetch to verify');
+      lastInventoryFetch = 0;
+      await fetchEmoteInventory();
+      const fresh = emoteInventory.find(e => e.hash === emoteHash || e.name === emoteName);
+      if (fresh && fresh.slot != null && fresh.slot !== emote.slot) {
+        log(' Slot moved:', emote.slot, '→', fresh.slot, '— retrying DELETE');
+        emote = fresh;
+        ({ resp: response, d: data } = await doDelete(emote.slot));
+      } else if (!fresh) {
+        // Server's current view: emote isn't in user's set. Local was stale
+        // (optimistic add that never reconciled, missed emote_removed event,
+        // another tab beat us to it). Drop the local row + broadcast so all
+        // tabs flip to unadded; same end state as a successful DELETE.
+        log(' Server confirms emote not in set — reconciling local state');
+        emoteInventory = emoteInventory.filter(e => emoteHash ? e.hash !== emoteHash : e.name !== emoteName);
+        await browser.storage.local.set({ emote_inventory: emoteInventory });
+        broadcastToTabs({ type: 'emote_removed', emoteName, hash: emoteHash, slot: emote.slot });
+        return { success: true, slot: emote.slot, reconciled: true };
+      }
+      // else: fresh view still maps it to the same slot the server just 404'd
+      // on. That's a server-side inconsistency we can't fix from here; fall
+      // through to the loud-error branch below.
+    }
 
     if (!response.ok) {
+      // Server-reported "not found in your set" after fresh refetch above
+      // means truly already-gone; treat as reconcile.
+      if (data.error && /not found in your set/i.test(data.error)) {
+        emoteInventory = emoteInventory.filter(e => emoteHash ? e.hash !== emoteHash : e.name !== emoteName);
+        await browser.storage.local.set({ emote_inventory: emoteInventory });
+        broadcastToTabs({ type: 'emote_removed', emoteName, hash: emoteHash, slot: emote.slot });
+        return { success: true, slot: emote.slot, reconciled: true };
+      }
       broadcastToTabs({ type: 'emote_removing_cancel', emoteName });
       broadcastToTabs({
         type: 'emote_remove_failed',

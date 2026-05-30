@@ -394,14 +394,16 @@
 
   function emoteImgHtml([name, emote]) {
     const isBlocked = blockedEmoteNames.has(name)
-    // state must reflect 'blocked' on the img too — findEmoteTarget reads
-    // img.dataset.state; without this update right-click on a blocked picker
-    // emote returns state='global' and re-blocks instead of unblocking.
+    // 2-state picker: normal or blocked. `state` is still tracked on the img
+    // dataset so findEmoteTarget can route blocked→unblock and the chat-row /
+    // cross-user rendering pipelines that inspect it (lookupEmote, processEmotes)
+    // keep working; visually the picker only renders the blocked dashed-rect or
+    // nothing. The old green/orange "owned vs unadded" tier was confusing now
+    // that 7TV discovery lives in tab-complete and slot fill happens silently
+    // via auto-add-on-send — every emote in the picker is equally pasteable.
     const state = isBlocked ? 'blocked' : (emote.state || 'global')
     const nsfwTag = emote.nsfw ? ' hs-state-nsfw' : ''
-    const wrapCls = (isBlocked
-      ? 'hs-mc-picker-emote-wrap blocked'
-      : (state === 'unadded' ? 'hs-mc-picker-emote-wrap unadded' : 'hs-mc-picker-emote-wrap')) + nsfwTag
+    const wrapCls = (isBlocked ? 'hs-mc-picker-emote-wrap blocked' : 'hs-mc-picker-emote-wrap') + nsfwTag
     const safeName = escapeHtml(name)
     return `<span class="${wrapCls}" data-name="${safeName}"><img src="${escapeHtml(emote.url)}" alt="${safeName}" title="${safeName} (${escapeHtml(emote.source)})" class="hs-mc-picker-emote hs-emote-${escapeHtml(emote.source)}" data-name="${safeName}" data-source="${escapeHtml(emote.source)}" data-state="${state}" loading="lazy"></span>`
   }
@@ -1158,7 +1160,15 @@
         });
       });
       if (response?.success) handleRemoveSuccess(emoteName, targetEl);
-      else showToast(response?.error || `failed to remove: ${emoteName}`, 'error');
+      else if (response?.error && /not found in your set/i.test(response.error)) {
+        // Server is authoritative: emote isn't in inventory there. Local
+        // viewerPersonalEmotes / picker img.dataset.state still says 'owned'
+        // (stale from an optimistic add that never reconciled, or a missed
+        // emote_removed broadcast). Without this branch the picker keeps
+        // routing right-click to remove forever, the wrap stays green, and
+        // the user just sees a misleading error toast. Reconcile silently.
+        handleRemoveSuccess(emoteName, targetEl);
+      } else showToast(response?.error || `failed to remove: ${emoteName}`, 'error');
     } catch (e) {
       showToast(`error removing: ${emoteName}`, 'error');
     }
@@ -1211,6 +1221,34 @@
         w.dataset.emoteUrl = fallbackUrl;
       }
     });
+    // Vanish the picker thumbnail entirely and let the CSS grid reflow so the
+    // adjacent emotes snap into the empty slot. Mental model: "I removed it
+    // from my set, get it out of my picker." channelEmoteCaches were also
+    // cleared above so no sibling section is still rendering the same name,
+    // and markPickerDirty below means a close+reopen rebuild stays consistent
+    // with this view (no flip-flop back to green if a stale inventory_update
+    // beats us — the dropped grid item won't get re-inserted mid-session).
+    try {
+      const wraps = document.querySelectorAll(`.hs-mc-picker-emote-wrap[data-name="${CSS.escape(emoteName)}"]`);
+      const sectionsTouched = new Set();
+      wraps.forEach(w => {
+        const sec = w.closest('.hs-mc-picker-section');
+        if (sec) sectionsTouched.add(sec);
+        w.remove();
+      });
+      // Decrement the visible section count so it stays truthful instead of
+      // showing "Set 42" when the user just removed one and now sees 41.
+      for (const sec of sectionsTouched) {
+        const count = sec.querySelector('.hs-mc-picker-section-count');
+        if (count) {
+          const n = parseInt(count.textContent, 10);
+          if (!isNaN(n) && n > 0) count.textContent = String(n - 1);
+        }
+      }
+    } catch {}
+    // Picker grouping (set/heatsync/7tv) is cached by _pickerBuiltKey — drop it
+    // so the next open rebuilds with the emote out of the 'set' section.
+    markPickerDirty();
     // Refresh tooltip if visible (state text needs to update instantly)
     refreshEmoteTooltip(emoteName, newState);
     showToast(`removed: ${emoteName}`, 'success');
@@ -1340,19 +1378,15 @@
     // cache, so lookupEmote misses — fall back to the persisted block url.
     const emote = lookupEmote(emoteName);
     const realUrl = emote?.url || _bfEmote?.url || '';
-    // Blocking removes the emote from the set (server-side too — background.js
-    // drops it from emoteInventory on block). So unblock must land on the
-    // "available, not in set" tier — orange/unadded — never straight
-    // back to owned/green. Ladder is bidirectional:
-    //   owned ⇄ (remove/add) ⇄ unadded ⇄ (block/unblock) ⇄ blocked
-    // Force out of inventory so a stale membership flag can't snap green back.
-    // Applies to BOTH heatsync and third-party sources — earlier code
-    // special-cased third-party to getEmoteState (which returns 'global' for
-    // 7tv/bttv/ffz with empty inventory). That made unblock → 'global' → next
-    // right-click → block (else branch), trapping the user in green↔red with
-    // no orange middle state.
-    inventoryEmotes.delete(emoteName);
-    const newState = 'unadded';
+    // 2-state model: unblock returns the emote to whatever its natural state is
+    // now (owned if it's in the viewer's inventory, channel if scoped to the
+    // current channel, global otherwise). The old code forced 'unadded' (orange)
+    // as a middle tier on the ladder; with the ladder gone, unblock is simply
+    // "stop hiding this," and the natural state restores green-equivalent
+    // highlight color across chat-row + picker.
+    const newState = (typeof getEmoteState === 'function')
+      ? getEmoteState(emoteName, emote?.source)
+      : (emote?.state || 'global');
     queryEmoteWrappers(emoteName).forEach(w => {
       w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-blocked', 'hs-state-unadded', 'hs-emote-highlight');
       w.classList.add(`hs-state-${newState}`);
@@ -1369,9 +1403,8 @@
       }
     });
 
-    // Also drop the dashed outline on any picker thumbnails for this emote and
-    // restore the img's state so future right-clicks route through the normal
-    // (non-blocked) branch (which is no-op since picker emotes don't own state).
+    // Also drop the dashed outline on any picker thumbnails for this emote so
+    // they go back to looking like normal pasteable emotes.
     try {
       document.querySelectorAll(`.hs-mc-picker-emote-wrap[data-name="${CSS.escape(emoteName)}"]`).forEach(w => {
         w.classList.remove('blocked')

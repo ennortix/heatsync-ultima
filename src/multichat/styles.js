@@ -2699,9 +2699,6 @@ function injectStyles() {
       z-index: 1;
       background: #00ff00;
     }
-    .hs-mc-picker-emote-wrap.unadded::before {
-      background: #ff8700;
-    }
     .hs-mc-picker-emote-wrap:not(.blocked):hover::before {
       opacity: 1;
     }
@@ -2883,12 +2880,16 @@ function injectStyles() {
       opacity: 0 !important;
     }
 
-    /* State colors via ::before — match heatsync.org + native chat convention:
-       owned/global/channel = green, unadded = orange (#ff8700), blocked = red. */
-    .hs-mc-emote-wrapper.hs-state-global::before { background: #00ff00; }
-    .hs-mc-emote-wrapper.hs-state-owned::before { background: #00ff00; }
-    .hs-mc-emote-wrapper.hs-state-unadded::before { background: #ff8700; }
-    .hs-mc-emote-wrapper.hs-state-channel::before { background: #00ff00; }
+    /* State colors via ::before — 2-state model: cross-highlight green for
+       anything that pastes (global/owned/channel/unadded all equivalent), red
+       for blocked. hs-state-unadded kept as a green alias so any legacy code
+       still tagging chat-row wrappers with that class renders consistently
+       instead of falling through to no background and showing the underlying
+       img on cross-highlight. */
+    .hs-mc-emote-wrapper.hs-state-global::before,
+    .hs-mc-emote-wrapper.hs-state-owned::before,
+    .hs-mc-emote-wrapper.hs-state-channel::before,
+    .hs-mc-emote-wrapper.hs-state-unadded::before { background: #00ff00; }
     .hs-mc-emote-wrapper.hs-state-blocked::before { background: #ff0000; }
 
     /* v1.6 NSFW — 2px dashed teal (#008080, xterm-256 #30) border on

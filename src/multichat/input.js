@@ -1035,15 +1035,15 @@ function initInput() {
       // skipped the orange-unadded state users expect after right-click remove.
       if (state === 'blocked') {
         unblockEmote(emoteName);
-      } else if (state === 'owned') {
-        const cached = (typeof lookupEmote === 'function') ? lookupEmote(emoteName) : null;
-        if (cached?.subscription) {
-          // Sub emotes can't be DELETEd via /api/user/emotes/:slot — block only.
-          blockEmote(emoteName, emoteUrl, source);
-        } else {
-          removeEmoteFromInventory(emoteName, e.target);
-        }
       } else {
+        // 2-state model: every non-blocked emote right-click toggles to blocked.
+        // No remove path here — destructive slot cleanup lives on the heatsync.org
+        // panel picker (explicit menu item) where the user knows they're managing
+        // inventory rather than mid-chat triaging what they want to see. The old
+        // owned→remove ladder was the source of the accidental-vanish class of
+        // bugs that hit Twitch subs, channel emotes, follower/bits, and slotted
+        // copies of third-party emotes — all of which feel undeletable from a
+        // chat-flow surface.
         blockEmote(emoteName, emoteUrl, source);
       }
     }, { capture: true, signal: mcSignal });
@@ -1169,42 +1169,29 @@ function initInput() {
         showToast(`🔒 ${emoteName} — you're not subbed to this channel`, 'error');
         return;
       }
-      if (state === 'owned' || state === 'global' || state === 'channel') {
-        // Paste to input (no lock needed — instant, no async).
-        // modWords (w!/h!/c!) round-trip from the source chip so paste→send
-        // reproduces identical sizing — matches the nest-click behavior.
+      if (state === 'owned' || state === 'global' || state === 'channel' || state === 'unadded') {
+        // 2-state model: every non-blocked, non-remote picker emote is equally
+        // pasteable. The old "first click adds, second click pastes" anti-misfire
+        // was an artefact of the orange `unadded` tier — without that tier there's
+        // no slot to "burn" prematurely, since auto-add-on-send commits the slot
+        // only at the moment the user actually sends a message containing the
+        // emote. Picker click = paste; if you send it, it lands in your set
+        // automatically. Optimistically populate viewerPersonalEmotes so the
+        // own-message echo can render the image before the server add resolves
+        // (emote name in raw text has no <img> wrapper for a late add to fill in).
+        if (state === 'unadded' && !viewerPersonalEmotes.has(emoteName)) {
+          viewerPersonalEmotes.set(emoteName, {
+            url: emoteUrl,
+            source: source || 'heatsync',
+            state: 'owned',
+          });
+        }
         showInputBar();
         pasteEmoteToInput(emoteName, modWords);
         const input = document.getElementById('hs-mc-input');
         if (input) input.focus();
         flashAllEmotes(emoteName, 'hs-flash-paste');
         return;
-      }
-      if (state === 'unadded') {
-        if (pendingEmoteOps.has(emoteName)) return;
-        // Picker unadded → first click adds (orange→owned), second click pastes
-        // via the owned/global/channel branch above. Splitting prevents a
-        // mis-click from silently burning a slot in the user's 5000-cap set.
-        const inPicker = !!e.target.closest('#hs-mc-emote-picker');
-        if (inPicker) {
-          if (!viewerPersonalEmotes.has(emoteName)) {
-            viewerPersonalEmotes.set(emoteName, {
-              url: emoteUrl,
-              source: source || 'heatsync',
-              state: 'owned',
-            });
-          }
-          const pickerWrap = e.target.closest('.hs-mc-picker-emote-wrap');
-          if (pickerWrap) {
-            pickerWrap.classList.remove('unadded');
-            const pImg = pickerWrap.querySelector('img');
-            if (pImg) pImg.dataset.state = 'owned';
-          }
-          // addEmoteToInventory flashes on success — don't double-flash here.
-          addEmoteToInventory(emoteName, emoteUrl, source, e.target);
-          return;
-        }
-        addEmoteToInventory(emoteName, emoteUrl, source, e.target);
       }
     }, { capture: true, signal: mcSignal });
   }

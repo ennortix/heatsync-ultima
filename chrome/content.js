@@ -2563,14 +2563,16 @@ function isEmoteImage(el) {
 
 function getEmoteColor(img) {
   // 2-state palette: blocked = red, else white (project hover convention).
-  // The old owned/unadded green/orange split mirrored the 3-state ladder
-  // and is gone; auto-add-on-send fills slots silently, so "available, not
-  // in your set" is no longer a distinct user-facing state.
+  // Input chips are an exception — solid-white overlay blends into the
+  // multichat input chrome and the emote becomes invisible mid-hover. Use
+  // #808080 there so the hover state is visually distinct without obscuring
+  // the chip image underneath.
   const state = img.dataset?.heatsyncState;
   if (state === 'blocked') return '#ff0000';
   if (img.classList?.contains('hs-state-blocked') || img.dataset?.state === 'blocked') return '#ff0000';
   const wrapper = img.closest?.('.emote-hover-wrapper');
   if (wrapper?.classList.contains('blocked')) return '#ff0000';
+  if (img.classList?.contains('hs-input-emote')) return '#808080';
   return '#fff';
 }
 

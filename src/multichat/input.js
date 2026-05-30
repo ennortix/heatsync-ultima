@@ -1027,12 +1027,7 @@ function initInput() {
       // Race-guard against rapid clicking
       if (pendingEmoteOps.has(emoteName)) return;
 
-      // Instant: right-click is the destructive partner to left-click.
-      // blocked → unblock, owned (non-sub) → drop from set (renders as unadded
-      // orange), sub or non-owned → block.
-      // Note: slot==null is NOT a short-circuit to block — bg.removeFromInventory
-      // refetches the inventory to recover the slot. Short-circuiting here
-      // skipped the orange-unadded state users expect after right-click remove.
+      // 2-state right-click toggle. blocked → unblock, else → block.
       if (state === 'blocked') {
         unblockEmote(emoteName);
       } else {

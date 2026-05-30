@@ -6528,7 +6528,9 @@ function updateEmoteState(hash, emoteName, state) {
                             emoteUrl.includes('cdn.frankerfacez.com') ||
                             emoteUrl.includes('static-cdn.jtvnw.net');
 
-    // Third-party emotes can only be blocked or global (gray) - never unadded (purple)
+    // Third-party emotes have no inventory state — collapse neutral/unadded
+    // legacy state tags down to 'global' so the rest of this function reads
+    // the same path as a Twitch native global.
     let effectiveState = state;
     if (isThirdPartyCdn && (state === 'neutral' || state === 'unadded')) {
       effectiveState = 'global';

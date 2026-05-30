@@ -1221,9 +1221,10 @@
   }
 
   // Re-apply current state to all rendered wrappers for `emoteName`. Use after
-  // inventory changes so already-posted messages flip the green 'owned' marker
-  // to the orange 'unadded' marker (or back) without a full re-render. Never
-  // overrides hs-state-blocked — that branch is owned by block/unblock.
+  // inventory changes to keep the wrapper's hs-state-* class in sync with the
+  // current owned/global/channel resolution (visually identical under 2-state,
+  // but the dataset.state attr drives auto-add-on-send gating downstream).
+  // Never overrides hs-state-blocked — that branch is owned by block/unblock.
   function refreshEmoteWrappersState(emoteName) {
     if (!emoteName) return
     const emote = lookupEmote(emoteName)
@@ -2218,9 +2219,9 @@
       if (emote) {
         const isBlocked = blockedEmoteNames.has(word);
         let state = isBlocked ? 'blocked' : (emote.state || 'global');
-        // A sender's shared (or a removed) emote arrives as 'unadded'; if the
-        // viewer actually owns it, show owned (green) instead of the orange
-        // click-to-add affordance.
+        // Upgrade 'unadded' → 'owned' when the viewer actually has this name
+        // in their inventory. Visually identical under 2-state, but downstream
+        // auto-add-on-send + cross-user rendering gates read dataset.state.
         if (state === 'unadded' && inventoryEmotes.has(word)) state = 'owned';
         const source = escapeHtml(emote.source || 'unknown');
         const imgSrc = escapeHtml(getChatResUrl(emote.url));

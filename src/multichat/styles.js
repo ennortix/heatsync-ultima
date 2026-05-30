@@ -1993,7 +1993,7 @@ function injectStyles() {
        red(9)=ban/blocked/error, green(10)=owned/untimeout/safe,
        yellow(11)=first-seen/announcement/bits/DM/kw-match/warn (attention),
        magenta(13)=raid/gift/mention/first-msg-ever (special event),
-       cyan(14)=unadded/stream-hype/milestone (action-needed).
+       cyan(14)=stream-hype/milestone (action-needed).
        #ff8700 reserved for brand chrome only (buttons, frames, drag bars). */
     .hs-mc-msg.hs-mc-notice-ban       { border-left-color: #ff0000 !important; background: rgba(255, 0, 0, 0.12) !important; }
     .hs-mc-msg.hs-mc-notice-ban       .hs-mc-system-text { color: #ff4040; font-weight: 600; }
@@ -2669,12 +2669,11 @@ function injectStyles() {
       box-sizing: content-box;
       object-fit: contain;
     }
-    /* Picker emote wrap — three hover states:
-       - default (owned/global/channel) → green rectangle on hover
-       - .unadded → orange rectangle on hover (click adds to set)
-       - .blocked → persistent 2px dashed grey rectangle (no hover color)
-       Rectangle paints via ::before on the wrap (not the img) so visibility:
-       hidden on the img during hover/blocked keeps the slot's layout intact. */
+    /* Picker emote wrap — 2 states:
+       - normal → white ::before rect on hover (emote stays visible on top
+         via z-index, matching project hover convention).
+       - .blocked → persistent 2px dashed grey rectangle, img hidden.
+       Rectangle paints via ::before so the slot's layout stays intact. */
     .hs-mc-picker-emote-wrap {
       display: inline-flex;
       align-items: center;
@@ -2904,7 +2903,7 @@ function injectStyles() {
 
     /* Stale ghost: emote was in the channel set when the message posted but
        has since been removed. Dim + desaturate the cached IMG; muted-orange
-       marker distinguishes from active orange unadded state. */
+       marker on the wrap ::before signals "stale, channel removed it". */
     .hs-mc-emote-wrapper.hs-state-stale > img {
       opacity: 0.55;
       filter: saturate(0.45);
@@ -4242,11 +4241,9 @@ function injectStyles() {
       visibility: visible !important;
     }
     /* Hover state lives on the wrap (.hs-mc-picker-emote-wrap ::before) —
-       solid green/orange/dashed-grey rects there. Old img-level translucent
-       bg-fills (green for owned, cyan for unadded, red for blocked) were
-       fighting the new wrap rect: img sat on top of ::before in the stacking
-       order, so the user saw green/cyan rect-with-orange-outline instead of
-       a clean orange rect. Removed; wrap ::before is now the single source. */
+       white rect (default) or dashed-grey (blocked). Img-level fills were
+       removed when the 3-state ladder was collapsed; wrap ::before is the
+       single source of hover styling now. */
     .hs-mc-picker-empty {
       padding: 32px !important;
       text-align: center !important;

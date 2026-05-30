@@ -334,17 +334,6 @@
       }
     }
   },
-  "content_toast_failed_remove": {
-    "message": "nie udało się usunąć $NAME$: $ERROR$",
-    "placeholders": {
-      "name": {
-        "content": "$1"
-      },
-      "error": {
-        "content": "$2"
-      }
-    }
-  },
   "content_toast_unblocked": {
     "message": "$NAME$ odblokowany",
     "placeholders": {
@@ -357,14 +346,6 @@
     "message": "odblokowanie nie powiodło się: $ERROR$",
     "placeholders": {
       "error": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_toast_removed": {
-    "message": "$NAME$ usunięty z twojego zestawu",
-    "placeholders": {
-      "name": {
         "content": "$1"
       }
     }
@@ -508,9 +489,6 @@
   },
   "content_in_your_set": {
     "message": "w twoim secie"
-  },
-  "content_click_to_add": {
-    "message": "kliknij aby dodać"
   },
   "content_blocked_click_unblock": {
     "message": "zablokowane (kliknij aby odblokować)"
@@ -1205,9 +1183,6 @@
   },
   "mc_emote_in_set": {
     "message": "w twoim secie"
-  },
-  "mc_emote_click_add": {
-    "message": "kliknij aby dodać"
   },
   "mc_emote_blocked": {
     "message": "zablokowane (kliknij aby odblokować)"

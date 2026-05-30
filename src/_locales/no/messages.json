@@ -334,17 +334,6 @@
       }
     }
   },
-  "content_toast_failed_remove": {
-    "message": "klarte ikke fjerne $NAME$: $ERROR$",
-    "placeholders": {
-      "name": {
-        "content": "$1"
-      },
-      "error": {
-        "content": "$2"
-      }
-    }
-  },
   "content_toast_unblocked": {
     "message": "$NAME$ avblokkert",
     "placeholders": {
@@ -357,14 +346,6 @@
     "message": "avblokking mislyktes: $ERROR$",
     "placeholders": {
       "error": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_toast_removed": {
-    "message": "$NAME$ fjernet fra settet ditt",
-    "placeholders": {
-      "name": {
         "content": "$1"
       }
     }
@@ -508,9 +489,6 @@
   },
   "content_in_your_set": {
     "message": "i settet ditt"
-  },
-  "content_click_to_add": {
-    "message": "klikk for å legge til"
   },
   "content_blocked_click_unblock": {
     "message": "blokkert (klikk for å fjerne blokkering)"
@@ -1205,9 +1183,6 @@
   },
   "mc_emote_in_set": {
     "message": "i settet ditt"
-  },
-  "mc_emote_click_add": {
-    "message": "klikk for å legge til"
   },
   "mc_emote_blocked": {
     "message": "blokkert (klikk for å fjerne blokkering)"

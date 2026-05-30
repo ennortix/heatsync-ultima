@@ -334,17 +334,6 @@
       }
     }
   },
-  "content_toast_failed_remove": {
-    "message": "gagal membuang $NAME$: $ERROR$",
-    "placeholders": {
-      "name": {
-        "content": "$1"
-      },
-      "error": {
-        "content": "$2"
-      }
-    }
-  },
   "content_toast_unblocked": {
     "message": "$NAME$ dinyahsekat",
     "placeholders": {
@@ -357,14 +346,6 @@
     "message": "gagal nyahsekat: $ERROR$",
     "placeholders": {
       "error": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_toast_removed": {
-    "message": "$NAME$ dibuang dari set anda",
-    "placeholders": {
-      "name": {
         "content": "$1"
       }
     }
@@ -508,9 +489,6 @@
   },
   "content_in_your_set": {
     "message": "dalam set anda"
-  },
-  "content_click_to_add": {
-    "message": "klik untuk tambah"
   },
   "content_blocked_click_unblock": {
     "message": "disekat (klik untuk buka)"
@@ -1205,9 +1183,6 @@
   },
   "mc_emote_in_set": {
     "message": "dalam set anda"
-  },
-  "mc_emote_click_add": {
-    "message": "klik untuk tambah"
   },
   "mc_emote_blocked": {
     "message": "disekat (klik untuk buka)"

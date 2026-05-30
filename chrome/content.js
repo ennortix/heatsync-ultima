@@ -2030,7 +2030,10 @@ style.textContent = `
     content: '' !important;
     position: absolute !important;
     inset: 0 !important;
-    background: #ff8700 !important;
+    /* 2-state hover: white per project convention, matches the multichat
+       overlay stack ::before. The old brand-orange was a 3-state ladder
+       leftover that signalled "addable tier" — no longer meaningful. */
+    background: #fff !important;
     opacity: 0 !important;
     pointer-events: none !important;
     z-index: 3 !important;
@@ -3511,16 +3514,10 @@ function _onMessageMain(message) {
     case 'emote_add_failed':
       log(' ❌ Failed to add emote:', message.emoteName, message.error);
       showToast(t('content_toast_failed_add', [message.emoteName, String(message.error)]), 'error');
-      // Clear pending operation
-      pendingOperations.delete(`add:${message.emoteName}`);
-      break;
-
-    case 'emote_remove_failed':
-      log(' ❌ Failed to remove emote:', message.emoteName, message.error);
-      showToast(t('content_toast_failed_remove', [message.emoteName, String(message.error)]), 'error');
-      // Rollback optimistic removal - re-add to local inventory
-      // (actual rollback happens on next inventory sync)
-      pendingOperations.delete(`remove:${message.emoteName}`);
+      // 2-state model: no `add:` pendingOperations keys exist anymore;
+      // stack-click + auto-add-on-send register under different keys.
+      // No emote_remove_failed handler — chat-row right-click is block-only
+      // now, so the background never emits emote_remove_failed to content.js.
       break;
 
     case 'user_muted':

@@ -334,17 +334,6 @@
       }
     }
   },
-  "content_toast_failed_remove": {
-    "message": "error al eliminar $NAME$: $ERROR$",
-    "placeholders": {
-      "name": {
-        "content": "$1"
-      },
-      "error": {
-        "content": "$2"
-      }
-    }
-  },
   "content_toast_unblocked": {
     "message": "$NAME$ desbloqueado",
     "placeholders": {
@@ -357,14 +346,6 @@
     "message": "error al desbloquear: $ERROR$",
     "placeholders": {
       "error": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_toast_removed": {
-    "message": "$NAME$ eliminado de tu colección",
-    "placeholders": {
-      "name": {
         "content": "$1"
       }
     }
@@ -508,9 +489,6 @@
   },
   "content_in_your_set": {
     "message": "en tu set"
-  },
-  "content_click_to_add": {
-    "message": "clic para añadir"
   },
   "content_blocked_click_unblock": {
     "message": "bloqueado (clic para desbloquear)"
@@ -1205,9 +1183,6 @@
   },
   "mc_emote_in_set": {
     "message": "en tu set"
-  },
-  "mc_emote_click_add": {
-    "message": "clic para añadir"
   },
   "mc_emote_blocked": {
     "message": "bloqueado (clic para desbloquear)"

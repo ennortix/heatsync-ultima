@@ -334,17 +334,6 @@
       }
     }
   },
-  "content_toast_failed_remove": {
-    "message": "$NAME$ 제거 실패: $ERROR$",
-    "placeholders": {
-      "name": {
-        "content": "$1"
-      },
-      "error": {
-        "content": "$2"
-      }
-    }
-  },
   "content_toast_unblocked": {
     "message": "$NAME$ 차단 해제됨",
     "placeholders": {
@@ -357,14 +346,6 @@
     "message": "차단 해제 실패: $ERROR$",
     "placeholders": {
       "error": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_toast_removed": {
-    "message": "$NAME$ 이(가) 세트에서 제거됨",
-    "placeholders": {
-      "name": {
         "content": "$1"
       }
     }
@@ -508,9 +489,6 @@
   },
   "content_in_your_set": {
     "message": "내 세트에 있음"
-  },
-  "content_click_to_add": {
-    "message": "클릭하여 추가"
   },
   "content_blocked_click_unblock": {
     "message": "차단됨 (클릭하여 해제)"
@@ -1205,9 +1183,6 @@
   },
   "mc_emote_in_set": {
     "message": "내 세트에 있음"
-  },
-  "mc_emote_click_add": {
-    "message": "클릭하여 추가"
   },
   "mc_emote_blocked": {
     "message": "차단됨 (클릭하여 해제)"

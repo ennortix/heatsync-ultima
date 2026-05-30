@@ -334,17 +334,6 @@
       }
     }
   },
-  "content_toast_failed_remove": {
-    "message": "αποτυχία αφαίρεσης $NAME$: $ERROR$",
-    "placeholders": {
-      "name": {
-        "content": "$1"
-      },
-      "error": {
-        "content": "$2"
-      }
-    }
-  },
   "content_toast_unblocked": {
     "message": "$NAME$ ξεμπλοκαρίστηκε",
     "placeholders": {
@@ -357,14 +346,6 @@
     "message": "αποτυχία ξεμπλοκαρίσματος: $ERROR$",
     "placeholders": {
       "error": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_toast_removed": {
-    "message": "$NAME$ αφαιρέθηκε από τη συλλογή σου",
-    "placeholders": {
-      "name": {
         "content": "$1"
       }
     }
@@ -508,9 +489,6 @@
   },
   "content_in_your_set": {
     "message": "στο set σου"
-  },
-  "content_click_to_add": {
-    "message": "πάτα για προσθήκη"
   },
   "content_blocked_click_unblock": {
     "message": "μπλοκαρισμένο (πάτα για ξεμπλοκάρισμα)"
@@ -1205,9 +1183,6 @@
   },
   "mc_emote_in_set": {
     "message": "στο set σου"
-  },
-  "mc_emote_click_add": {
-    "message": "πάτα για προσθήκη"
   },
   "mc_emote_blocked": {
     "message": "μπλοκαρισμένο (πάτα για ξεμπλοκάρισμα)"

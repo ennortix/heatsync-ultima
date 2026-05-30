@@ -334,17 +334,6 @@
       }
     }
   },
-  "content_toast_failed_remove": {
-    "message": "не удалось удалить $NAME$: $ERROR$",
-    "placeholders": {
-      "name": {
-        "content": "$1"
-      },
-      "error": {
-        "content": "$2"
-      }
-    }
-  },
   "content_toast_unblocked": {
     "message": "$NAME$ разблокирован",
     "placeholders": {
@@ -357,14 +346,6 @@
     "message": "разблокировка не удалась: $ERROR$",
     "placeholders": {
       "error": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_toast_removed": {
-    "message": "$NAME$ удалён из вашей коллекции",
-    "placeholders": {
-      "name": {
         "content": "$1"
       }
     }
@@ -508,9 +489,6 @@
   },
   "content_in_your_set": {
     "message": "в вашем наборе"
-  },
-  "content_click_to_add": {
-    "message": "нажмите чтобы добавить"
   },
   "content_blocked_click_unblock": {
     "message": "заблокирован (нажмите чтобы разблокировать)"
@@ -1205,9 +1183,6 @@
   },
   "mc_emote_in_set": {
     "message": "в вашем наборе"
-  },
-  "mc_emote_click_add": {
-    "message": "нажмите чтобы добавить"
   },
   "mc_emote_blocked": {
     "message": "заблокирован (нажмите чтобы разблокировать)"

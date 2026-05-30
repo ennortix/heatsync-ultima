@@ -334,17 +334,6 @@
       }
     }
   },
-  "content_toast_failed_remove": {
-    "message": "misslyckades ta bort $NAME$: $ERROR$",
-    "placeholders": {
-      "name": {
-        "content": "$1"
-      },
-      "error": {
-        "content": "$2"
-      }
-    }
-  },
   "content_toast_unblocked": {
     "message": "$NAME$ avblockerad",
     "placeholders": {
@@ -357,14 +346,6 @@
     "message": "avblockering misslyckades: $ERROR$",
     "placeholders": {
       "error": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_toast_removed": {
-    "message": "$NAME$ borttagen från din samling",
-    "placeholders": {
-      "name": {
         "content": "$1"
       }
     }
@@ -508,9 +489,6 @@
   },
   "content_in_your_set": {
     "message": "i ditt set"
-  },
-  "content_click_to_add": {
-    "message": "klicka för att lägga till"
   },
   "content_blocked_click_unblock": {
     "message": "blockerad (klicka för att avblockera)"
@@ -1205,9 +1183,6 @@
   },
   "mc_emote_in_set": {
     "message": "i ditt set"
-  },
-  "mc_emote_click_add": {
-    "message": "klicka för att lägga till"
   },
   "mc_emote_blocked": {
     "message": "blockerad (klicka för att avblockera)"

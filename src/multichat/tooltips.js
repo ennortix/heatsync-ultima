@@ -294,7 +294,7 @@
     if (nameEl?.textContent !== emoteName) return;
     const stateEl = emoteTooltip.querySelector('.tooltip-source');
     if (!stateEl) return;
-    const labels = { owned: t('mc_emote_in_set'), unadded: t('mc_emote_click_add'), blocked: t('mc_emote_blocked') };
+    const labels = { owned: t('mc_emote_in_set'), blocked: t('mc_emote_blocked') };
     stateEl.textContent = labels[newState] || newState;
     stateEl.className = 'tooltip-source ' + (newState || 'global');
     // 2-state model: cross-highlight is white for everything except blocked

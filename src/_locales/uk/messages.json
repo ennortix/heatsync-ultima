@@ -334,17 +334,6 @@
       }
     }
   },
-  "content_toast_failed_remove": {
-    "message": "не вдалося видалити $NAME$: $ERROR$",
-    "placeholders": {
-      "name": {
-        "content": "$1"
-      },
-      "error": {
-        "content": "$2"
-      }
-    }
-  },
   "content_toast_unblocked": {
     "message": "$NAME$ розблоковано",
     "placeholders": {
@@ -357,14 +346,6 @@
     "message": "розблокування не вдалося: $ERROR$",
     "placeholders": {
       "error": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_toast_removed": {
-    "message": "$NAME$ видалено з вашої колекції",
-    "placeholders": {
-      "name": {
         "content": "$1"
       }
     }
@@ -508,9 +489,6 @@
   },
   "content_in_your_set": {
     "message": "у твоєму сеті"
-  },
-  "content_click_to_add": {
-    "message": "натисни, щоб додати"
   },
   "content_blocked_click_unblock": {
     "message": "заблоковано (натисни, щоб розблокувати)"
@@ -1205,9 +1183,6 @@
   },
   "mc_emote_in_set": {
     "message": "у твоєму сеті"
-  },
-  "mc_emote_click_add": {
-    "message": "натисни для додавання"
   },
   "mc_emote_blocked": {
     "message": "заблоковано (натисни для розблокування)"

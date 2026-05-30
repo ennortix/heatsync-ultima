@@ -3,7 +3,7 @@
 your emote set in any twitch/kick/youtube chat. no streamer approval, no subscription.
 
 - **5000 personal emote slots, free** — upload at [heatsync.org](https://heatsync.org), use them in any twitch/kick/youtube chat. real-time sync, no channel approval queue
-- **see an emote you like? click to add it** — left-click any emote in any chat message and it joins your set; tab-complete + send auto-adds 7TV results too
+- **send it once, it's yours** — every emote you actually post auto-fills a slot. tab-complete 7TV, paste any chat emote, hit enter — it lands in your set silently
 - **other heatsync users see your emotes** — your set renders in their chat automatically; no copy-paste, no "subscribe to use"
 - **multichat** — twitch, kick, and youtube in one tabbed panel: live chat, mentions, whispers, social feed
 - **7tv, bttv, ffz** — emotes, paints, badges render automatically. works without an account

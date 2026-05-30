@@ -334,17 +334,6 @@
       }
     }
   },
-  "content_toast_failed_remove": {
-    "message": "$NAME$ の削除に失敗: $ERROR$",
-    "placeholders": {
-      "name": {
-        "content": "$1"
-      },
-      "error": {
-        "content": "$2"
-      }
-    }
-  },
   "content_toast_unblocked": {
     "message": "$NAME$ のブロックを解除",
     "placeholders": {
@@ -357,14 +346,6 @@
     "message": "ブロック解除に失敗: $ERROR$",
     "placeholders": {
       "error": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_toast_removed": {
-    "message": "セットから $NAME$ を削除",
-    "placeholders": {
-      "name": {
         "content": "$1"
       }
     }
@@ -508,9 +489,6 @@
   },
   "content_in_your_set": {
     "message": "セットに追加済み"
-  },
-  "content_click_to_add": {
-    "message": "クリックして追加"
   },
   "content_blocked_click_unblock": {
     "message": "ブロック済み (クリックで解除)"
@@ -1205,9 +1183,6 @@
   },
   "mc_emote_in_set": {
     "message": "セットに追加済み"
-  },
-  "mc_emote_click_add": {
-    "message": "クリックして追加"
   },
   "mc_emote_blocked": {
     "message": "ブロック済み (クリックで解除)"

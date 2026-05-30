@@ -334,17 +334,6 @@
       }
     }
   },
-  "content_toast_failed_remove": {
-    "message": "falha ao remover $NAME$: $ERROR$",
-    "placeholders": {
-      "name": {
-        "content": "$1"
-      },
-      "error": {
-        "content": "$2"
-      }
-    }
-  },
   "content_toast_unblocked": {
     "message": "$NAME$ desbloqueado",
     "placeholders": {
@@ -357,14 +346,6 @@
     "message": "falha ao desbloquear: $ERROR$",
     "placeholders": {
       "error": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_toast_removed": {
-    "message": "$NAME$ removido do teu set",
-    "placeholders": {
-      "name": {
         "content": "$1"
       }
     }
@@ -508,9 +489,6 @@
   },
   "content_in_your_set": {
     "message": "no teu set"
-  },
-  "content_click_to_add": {
-    "message": "carrega para adicionar"
   },
   "content_blocked_click_unblock": {
     "message": "bloqueado (carrega para desbloquear)"
@@ -1205,9 +1183,6 @@
   },
   "mc_emote_in_set": {
     "message": "no teu set"
-  },
-  "mc_emote_click_add": {
-    "message": "carrega para adicionar"
   },
   "mc_emote_blocked": {
     "message": "bloqueado (carrega para desbloquear)"

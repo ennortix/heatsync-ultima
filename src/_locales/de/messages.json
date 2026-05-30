@@ -334,17 +334,6 @@
       }
     }
   },
-  "content_toast_failed_remove": {
-    "message": "$NAME$ entfernen fehlgeschlagen: $ERROR$",
-    "placeholders": {
-      "name": {
-        "content": "$1"
-      },
-      "error": {
-        "content": "$2"
-      }
-    }
-  },
   "content_toast_unblocked": {
     "message": "$NAME$ entsperrt",
     "placeholders": {
@@ -357,14 +346,6 @@
     "message": "Entsperren fehlgeschlagen: $ERROR$",
     "placeholders": {
       "error": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_toast_removed": {
-    "message": "$NAME$ aus deinem Set entfernt",
-    "placeholders": {
-      "name": {
         "content": "$1"
       }
     }
@@ -508,9 +489,6 @@
   },
   "content_in_your_set": {
     "message": "in deinem Set"
-  },
-  "content_click_to_add": {
-    "message": "klicken zum Hinzufügen"
   },
   "content_blocked_click_unblock": {
     "message": "blockiert (klicken zum Entsperren)"
@@ -1205,9 +1183,6 @@
   },
   "mc_emote_in_set": {
     "message": "in deinem Set"
-  },
-  "mc_emote_click_add": {
-    "message": "klicken zum Hinzufügen"
   },
   "mc_emote_blocked": {
     "message": "blockiert (klicken zum Entsperren)"

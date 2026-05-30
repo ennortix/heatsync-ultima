@@ -334,17 +334,6 @@
       }
     }
   },
-  "content_toast_failed_remove": {
-    "message": "$NAME$ verwijderen mislukt: $ERROR$",
-    "placeholders": {
-      "name": {
-        "content": "$1"
-      },
-      "error": {
-        "content": "$2"
-      }
-    }
-  },
   "content_toast_unblocked": {
     "message": "$NAME$ gedeblokkeerd",
     "placeholders": {
@@ -357,14 +346,6 @@
     "message": "deblokkeren mislukt: $ERROR$",
     "placeholders": {
       "error": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_toast_removed": {
-    "message": "$NAME$ verwijderd uit je set",
-    "placeholders": {
-      "name": {
         "content": "$1"
       }
     }
@@ -508,9 +489,6 @@
   },
   "content_in_your_set": {
     "message": "in je set"
-  },
-  "content_click_to_add": {
-    "message": "klik om toe te voegen"
   },
   "content_blocked_click_unblock": {
     "message": "geblokkeerd (klik om te deblokkeren)"
@@ -1205,9 +1183,6 @@
   },
   "mc_emote_in_set": {
     "message": "in je set"
-  },
-  "mc_emote_click_add": {
-    "message": "klik om toe te voegen"
   },
   "mc_emote_blocked": {
     "message": "geblokkeerd (klik om te deblokkeren)"

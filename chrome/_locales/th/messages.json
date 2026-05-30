@@ -334,17 +334,6 @@
       }
     }
   },
-  "content_toast_failed_remove": {
-    "message": "ลบ $NAME$ ไม่สำเร็จ: $ERROR$",
-    "placeholders": {
-      "name": {
-        "content": "$1"
-      },
-      "error": {
-        "content": "$2"
-      }
-    }
-  },
   "content_toast_unblocked": {
     "message": "ยกเลิกการบล็อก $NAME$ แล้ว",
     "placeholders": {
@@ -357,14 +346,6 @@
     "message": "ยกเลิกการบล็อกไม่สำเร็จ: $ERROR$",
     "placeholders": {
       "error": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_toast_removed": {
-    "message": "ลบ $NAME$ ออกจากชุดแล้ว",
-    "placeholders": {
-      "name": {
         "content": "$1"
       }
     }
@@ -508,9 +489,6 @@
   },
   "content_in_your_set": {
     "message": "ในเซ็ตของคุณ"
-  },
-  "content_click_to_add": {
-    "message": "คลิกเพื่อเพิ่ม"
   },
   "content_blocked_click_unblock": {
     "message": "ถูกบล็อก (คลิกเพื่อปลดบล็อก)"
@@ -1205,9 +1183,6 @@
   },
   "mc_emote_in_set": {
     "message": "ในเซ็ตของคุณ"
-  },
-  "mc_emote_click_add": {
-    "message": "คลิกเพื่อเพิ่ม"
   },
   "mc_emote_blocked": {
     "message": "ถูกบล็อก (คลิกเพื่อปลดบล็อก)"

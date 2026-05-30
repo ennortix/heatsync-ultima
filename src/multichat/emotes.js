@@ -802,12 +802,12 @@
       changedNames.push(name);
       const emote = lookupEmote(name);
       const realUrl = emote?.url || '';
-      // Mirror unblockEmote: block dropped this from the set, so restore to the
-      // not-in-set tier (orange/unadded for heatsync) — never owned/green.
+      // 2-state model: block never dropped this from the set (server preserves
+      // user_emotes through block now), so restore to the natural state per
+      // current inventory membership — owned if still in the slot map, channel/
+      // global otherwise. No special-cased "heatsync→unadded" branch.
       const src = emote?.source || 'heatsync';
-      const isThirdParty = ['7tv', 'bttv', 'ffz', 'twitch', 'kick'].includes(src);
-      if (!isThirdParty) inventoryEmotes.delete(name);
-      const newState = isThirdParty ? getEmoteState(name, src) : 'unadded';
+      const newState = getEmoteState(name, src);
       queryEmoteWrappers(name).forEach(w => {
         if (w.classList.contains(`hs-state-${newState}`)) return;
         w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-blocked', 'hs-state-unadded', 'hs-emote-highlight');
@@ -1284,12 +1284,12 @@
     const capturedUrl = _httpOk(_be?.url) ? _be.url : (_httpOk(clickedUrl) ? clickedUrl : '');
     rememberBlockedEmote(emoteName, capturedUrl, _be?.source || clickedSource, _be?.zeroWidth);
 
-    // Blocking and owning are mutually exclusive
-    inventoryEmotes.delete(emoteName);
-    inventoryHashes.delete(emoteName);
-    viewerPersonalEmotes.delete(emoteName);
-
-    // Update local name-based tracking
+    // 2-state model: block is a render-preference, not an inventory mutation.
+    // Preserve inventoryEmotes / inventoryHashes / viewerPersonalEmotes so an
+    // immediate unblock returns the emote to "set" instead of falling through
+    // to global. Server-side matches (blocking.ts no longer DELETEs the
+    // user_emotes row), so this local preservation stays consistent across
+    // tab restarts + inventory refetches.
     blockedEmoteNames.add(emoteName);
 
     // Get hash for API - prefer known hash, then url-derived (capturedUrl covers

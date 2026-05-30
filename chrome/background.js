@@ -3031,12 +3031,10 @@ async function blockEmote(hash) {
       return { success: false, error: error.error || `HTTP ${response.status}` };
     }
 
-    // Also remove from local inventory if present (server does this too)
-    const removedEmote = emoteInventory.find(e => e.hash === hash);
-    if (removedEmote) {
-      emoteInventory = emoteInventory.filter(e => e.hash !== hash);
-      log(' Removed blocked emote from local inventory:', removedEmote.name);
-    }
+    // 2-state model: block is a render-preference, not an inventory mutation.
+    // Server preserves the user_emotes row now; local emoteInventory stays in
+    // lockstep so an immediate unblock restores the slot membership without a
+    // round-trip refetch.
 
     // Persist server-only set under `blocked_emotes`. Local blocks live in
     // `local_blocked_emotes`. Mixing them under the same key poisons the
@@ -3767,11 +3765,9 @@ function handleWSMessage(msg) {
       if (msg.hash && !blockedEmotes.has(msg.hash)) {
         blockedEmotes.add(msg.hash)
         browser.storage.local.set({ blocked_emotes: Array.from(blockedEmotes) }).catch(() => {})
-        const blockedEmote = emoteInventory.find(e => e.hash === msg.hash)
-        if (blockedEmote) {
-          emoteInventory = emoteInventory.filter(e => e.hash !== msg.hash)
-          broadcastToTabs({ type: 'inventory_update', emotes: emoteInventory })
-        }
+        // 2-state model: block preserves inventory. No emoteInventory filter,
+        // no inventory_update broadcast — only the blocked_update + emote_blocked
+        // events that tell tabs to start painting the dashed-rect overlay.
         broadcastToTabs({ type: 'blocked_update', blocked: [...blockedEmotes, ...localBlockedEmotes] })
         broadcastToTabs({ type: 'emote_blocked', hash: msg.hash })
       }

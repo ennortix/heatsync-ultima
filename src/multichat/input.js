@@ -1154,10 +1154,9 @@ function initInput() {
       const { emoteName, state, emoteUrl, source, modWords } = emoteInfo;
 
       if (state === 'blocked') {
-        // One rung up the ladder per click: unblock → unadded (orange). A second
-        // click (now in the unadded branch below) adds it to the set → owned/green.
-        // unblockEmote lands on the unadded rung and restores the image from the
-        // block fallback, matching right-click unblock.
+        // 2-state model: left-click on a blocked emote unblocks it (returns
+        // straight to whatever its natural state is — owned if still in your
+        // inventory, channel/global otherwise). Mirrors right-click on blocked.
         if (pendingEmoteOps.has(emoteName)) return;
         unblockEmote(emoteName);
         return;

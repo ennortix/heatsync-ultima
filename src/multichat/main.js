@@ -7433,10 +7433,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       div.appendChild(replyBtn)
       // Permalink ¶ — copies public heatsync.org/logs/<platform>/<channel>/<date>?m=<id>
       // URL to clipboard. Skipped on YT for the same reason as reply (no native
-      // message id); skipped if channel/origin can't be resolved. Twitch+Kick only.
-      // Chat-origin platform via m.badgePlatform per [[heatsync_badge_platform_origin]].
-      const linkPlatform = m.badgePlatform || m.platform
-      if (m.channel && (linkPlatform === 'twitch' || linkPlatform === 'kick')) {
+      // message id); twitch is the default fallback when neither m.platform nor
+      // m.badgePlatform is set (most multichat overlay messages on twitch.tv tabs
+      // don't stamp m.platform — only the auth-irc resub-share synth path does).
+      // Kick messages reliably stamp m.badgePlatform per heatsync_badge_platform_origin.
+      const linkPlatform = m.badgePlatform || m.platform || 'twitch'
+      if (m.channel && linkPlatform !== 'youtube') {
         const linkBtn = document.createElement('button')
         linkBtn.className = 'hs-mc-permalink-btn'
         linkBtn.textContent = '¶'

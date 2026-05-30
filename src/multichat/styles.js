@@ -1856,38 +1856,6 @@ function injectStyles() {
     .hs-mc-msg[data-msg-id]:hover .hs-mc-reply-btn {
       display: block;
     }
-    /* Permalink ¶ — same hover pattern as reply, sits flush to its left.
-       Click copies public /logs/ URL to clipboard. See main.js buildMessageDiv
-       and [[project_chat_log_seo_acquisition_loop]]. */
-    .hs-mc-permalink-btn {
-      display: none;
-      position: absolute;
-      top: 1px;
-      right: 22px;
-      background: #000;
-      border: 1px solid #808080;
-      color: #fff;
-      font-size: 13px;
-      padding: 0 4px;
-      cursor: pointer;
-      line-height: 18px;
-      z-index: 10;
-    }
-    .hs-mc-permalink-btn:hover {
-      color: #000;
-      background: #fff;
-    }
-    .hs-mc-permalink-btn.hs-mc-permalink-copied {
-      color: #ff8700;
-      background: #000;
-    }
-    .hs-mc-msg[data-msg-id]:hover .hs-mc-permalink-btn {
-      display: block;
-    }
-    /* Shift mod-toolbar left when permalink present so they don't overlap. */
-    .hs-mc-msg[data-msg-id]:has(.hs-mc-permalink-btn) .hs-mod-toolbar {
-      right: 44px;
-    }
     /* Mod toolbar — singleton bar inserted into the hovered row as a sibling
        of .hs-mc-reply-btn. Pure CSS positioning: absolute, flush against the
        left edge of the reply button. Shared 1px #808080 dividers between

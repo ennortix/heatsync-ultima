@@ -4165,11 +4165,11 @@
     ban:            { label: '⛔',title: 'permanent ban',    action: 'ban',     durationSec: null,   needsMsgId: false, hotkey: 'b' },
     unban:          { label: '✓',title: 'unban user',       action: 'unban',   durationSec: null,   needsMsgId: false, hotkey: null },
   }
-  // Hover toolbar is opt-in heavy: only the X (delete-this-message) ships on by
-  // default. Timeouts/bans live on the profile-card mod row instead — left-click
-  // username surfaces the full set at the top of the card. Users can re-enable
-  // hover buttons in settings → mod toolbar.
-  const DEFAULT_MOD_BUTTONS = ['delete_message']
+  // Hover toolbar is fully opt-in: NO buttons default-on. Even the X
+  // (delete-this-message) is hidden until the user enables it in settings →
+  // mod toolbar. Timeouts/bans live on the profile-card mod row instead —
+  // left-click username surfaces the full set at the top of the card.
+  const DEFAULT_MOD_BUTTONS = []
   let modToolbarButtons = [...DEFAULT_MOD_BUTTONS]
   async function loadModToolbarButtons() {
     try {
@@ -7431,37 +7431,6 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       replyBtn.textContent = '↩'
       replyBtn.title = 'Reply'
       div.appendChild(replyBtn)
-      // Permalink ¶ — copies public heatsync.org/logs/<platform>/<channel>/<date>?m=<id>
-      // URL to clipboard. Skipped on YT for the same reason as reply (no native
-      // message id); twitch is the default fallback when neither m.platform nor
-      // m.badgePlatform is set (most multichat overlay messages on twitch.tv tabs
-      // don't stamp m.platform — only the auth-irc resub-share synth path does).
-      // Kick messages reliably stamp m.badgePlatform per heatsync_badge_platform_origin.
-      const linkPlatform = m.badgePlatform || m.platform || 'twitch'
-      if (m.channel && linkPlatform !== 'youtube') {
-        const linkBtn = document.createElement('button')
-        linkBtn.className = 'hs-mc-permalink-btn'
-        linkBtn.textContent = '¶'
-        linkBtn.title = 'copy permalink'
-        linkBtn.addEventListener('click', async (e) => {
-          e.preventDefault()
-          e.stopPropagation()
-          const ts = typeof m.time === 'number' ? m.time : Date.now()
-          const ymd = new Date(ts).toISOString().slice(0, 10)
-          let url = `https://heatsync.org/logs/${encodeURIComponent(linkPlatform)}/${encodeURIComponent(m.channel)}/${ymd}`
-          if (m.id) url += `?m=${encodeURIComponent(m.id)}`
-          try {
-            await navigator.clipboard.writeText(url)
-            linkBtn.textContent = '✓'
-            linkBtn.classList.add('hs-mc-permalink-copied')
-            setTimeout(() => {
-              linkBtn.textContent = '¶'
-              linkBtn.classList.remove('hs-mc-permalink-copied')
-            }, 1200)
-          } catch {}
-        })
-        div.appendChild(linkBtn)
-      }
     }
     // Reply-thread linkage for hover highlight
     if (m.replyTo) {

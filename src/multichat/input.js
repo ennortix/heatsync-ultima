@@ -1091,7 +1091,7 @@ function initInput() {
           }
         }
         if (items.length === 0) {
-          if (hadUnpostableEmote) showToast(`🔒 stack has nothing postable`, 'error');
+          if (hadUnpostableEmote) showToast(`nothing postable in stack`, 'error');
           return;
         }
         // Fire add-to-inventory for each unowned emote (don't block paste on the
@@ -1160,7 +1160,7 @@ function initInput() {
         // Foreign Twitch sub emote — viewer not subbed to this channel, can't
         // post it. Toast instead of paste (matches website post-b6f23bc8:
         // visually identical to other emotes, only click is gated).
-        showToast(`🔒 ${emoteName} — you're not subbed to this channel`, 'error');
+        showToast(`${emoteName} — not subbed to this channel`, 'error');
         return;
       }
       if (state === 'owned' || state === 'global' || state === 'channel' || state === 'unadded') {

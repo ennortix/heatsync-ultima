@@ -124,7 +124,7 @@
     "message": "emote settings in picker panel on chat"
   },
   "welcome_title": {
-    "message": "welcome to heatsync"
+    "message": "heatsync"
   },
   "welcome_step1_title": {
     "message": "log in at heatsync.org"
@@ -145,7 +145,7 @@
     "message": "click the heatsync button in twitch/kick chat to access your emotes"
   },
   "welcome_cta": {
-    "message": "get started"
+    "message": "open heatsync.org"
   },
   "welcome_privacy": {
     "message": "privacy"
@@ -243,7 +243,7 @@
     "message": "added"
   },
   "btn_toast_copied": {
-    "message": "copied!"
+    "message": "copied"
   },
   "btn_settings_tab_completion": {
     "message": "tab completion"

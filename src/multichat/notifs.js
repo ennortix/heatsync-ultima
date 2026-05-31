@@ -553,7 +553,7 @@ const HsNotifs = (() => {
       el.className = 'hs-notif-toast-text hs-notif-toast-warn'
       const body = data.msg
         ? String(data.msg).slice(0, 200)
-        : `Update available — running ${data.current}, latest is ${data.min}+`
+        : `update available — running ${data.current}, latest is ${data.min}+`
       el.textContent = body
       return el
     },

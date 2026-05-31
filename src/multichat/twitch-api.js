@@ -1706,7 +1706,7 @@ function renderBitsSubtab(parent, channel) {
       showToast('popup blocked — allow popups for twitch.tv to cheer', 'error')
       return
     }
-    showToast(`cheer popup opened — click the gem icon there`, 'success')
+    showToast(`cheer window opened`, 'success')
   })
   panel.appendChild(launchBtn)
 

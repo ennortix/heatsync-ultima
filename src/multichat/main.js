@@ -1619,9 +1619,21 @@
 
       if (Object.keys(syncPatch).length) {
         invalidateUiSettingsCache()
-        chrome.storage.sync.get(['ui_settings']).then(s => {
+        chrome.storage.sync.get(['ui_settings']).then(async s => {
           const merged = sanitizeUiSettings({ ...s.ui_settings, ...syncPatch })
-          chrome.storage.sync.set({ ui_settings: merged }).catch(() => {})
+          // Quota guard: chrome.storage.sync caps each key at 8192 bytes.
+          // Check usage before writing — warn + toast if near the ceiling.
+          try {
+            const used = await chrome.storage.sync.getBytesInUse('ui_settings')
+            if (used > 7000) {
+              warn('ui_settings quota near limit:', used, '/ 8192 bytes')
+              showToast('settings storage near limit — some preferences may not save across devices', 'error')
+            }
+          } catch (_) { /* getBytesInUse unavailable (Firefox MV2) — skip check */ }
+          chrome.storage.sync.set({ ui_settings: merged }).catch(err => {
+            warn('ui_settings write failed:', err?.message)
+            showToast('settings failed to save — storage quota exceeded', 'error')
+          })
         })
         // Cross-surface insta-sync: server merges + fans out to every other
         // client of this user (other tabs, ext on Twitch/Kick/YT, heatsync.org).

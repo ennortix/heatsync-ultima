@@ -476,10 +476,10 @@
     }
   },
   "content_card_twitch_verified": {
-    "message": "Twitch Verified"
+    "message": "twitch verified"
   },
   "content_card_kick_verified": {
-    "message": "Kick Verified"
+    "message": "kick verified"
   },
   "content_view_on_heatsync": {
     "message": "view on heatsync"

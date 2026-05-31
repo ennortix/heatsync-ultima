@@ -1509,7 +1509,7 @@ function fireLiveCoalescedNotification(transitions) {
     browser.notifications.create(id, {
       type: 'basic',
       iconUrl: browser.runtime.getURL('icon-128.png'),
-      title: `${uniqNames.length} followed creators are live`,
+      title: `${uniqNames.length} following are live`,
       message: `${head}${more}`,
       contextMessage: 'heatsync',
       priority: 1,

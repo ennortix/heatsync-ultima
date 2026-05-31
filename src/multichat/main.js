@@ -6397,7 +6397,7 @@
     claim.customText = customText || ''
     const synth = {
       type: 'usernotice', msgId: 'watchstreak', user, text: customText || '',
-      systemMsg: `${user} just watched ${streakCount} streams in a row! They're on a watch streak!`,
+      systemMsg: `${user} watched ${streakCount} streams in a row — watch streak`,
       color: '#ff8700', badges: ownBadgesFor(claim.channel) || '', channel: claim.channel,
       time: Date.now(), subTier: '', subMonths: 0, giftCount: 0,
       recipient: '', raidViewers: 0, raidFrom: '', announceColor: '',

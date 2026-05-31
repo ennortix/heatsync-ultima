@@ -114,7 +114,7 @@ let _titleFlashOriginal = null
 let _titleFlashTimer = null
 let _titleFlashFrom = ''
 function _titleFlashStop() {
-  if (_titleFlashTimer) { clearInterval(_titleFlashTimer); _titleFlashTimer = null }
+  if (_titleFlashTimer) { cleanup.clearInterval(_titleFlashTimer); _titleFlashTimer = null }
   if (_titleFlashOriginal != null) {
     try { document.title = _titleFlashOriginal } catch {}
     _titleFlashOriginal = null
@@ -126,7 +126,7 @@ function _titleFlashStart(fromUser) {
   if (_titleFlashTimer) return // already flashing — let it pick up the new name on next tick
   try { _titleFlashOriginal = document.title } catch { return }
   let on = false
-  _titleFlashTimer = setInterval(() => {
+  _titleFlashTimer = cleanup.setInterval(() => {
     if (document.hasFocus()) { _titleFlashStop(); return }
     on = !on
     try { document.title = on ? `@${_titleFlashFrom} ← ${_titleFlashOriginal}` : _titleFlashOriginal } catch {}

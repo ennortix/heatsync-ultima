@@ -174,13 +174,14 @@ function injectStyles() {
       background: #fff !important;
       color: #000 !important;
     }
-    /* Mentions — red when unseen */
+    /* Mentions — red when unseen. #ff3333 reads brighter on dark bg + matches
+       heatsync.org chat-tile so the surfaces are visually identical. */
     .hs-mc-tab.has-mentions {
-      color: #ff0000 !important;
+      color: #ff3333 !important;
     }
     .hs-mc-tab.has-mentions:not(.active):hover {
       background: #fff !important;
-      color: #ff0000 !important;
+      color: #ff3333 !important;
     }
     /* Active — focused tab. Weight stays at 400: Cozette ships only the
        regular face, and font-synthesis:none in the bitmap block tells the
@@ -2006,6 +2007,10 @@ function injectStyles() {
     /* Watch-streak = brand orange — engagement heat, distinct from raid magenta */
     .hs-mc-msg.hs-mc-notice-watchstreak { border-left-color: #ff7f00 !important; background: rgba(255, 127, 0, 0.12) !important; }
     .hs-mc-msg.hs-mc-notice-watchstreak .hs-mc-system-text { color: #ffa040; font-weight: 600; }
+    /* Mod-anniversary = bright sky-blue (mod-family palette, brighter than
+       grant-mod #4080ff so it reads as a celebration, not a routine grant) */
+    .hs-mc-msg.hs-mc-notice-mod-anniversary { border-left-color: #1ec5ff !important; background: rgba(30, 197, 255, 0.14) !important; }
+    .hs-mc-msg.hs-mc-notice-mod-anniversary .hs-mc-system-text { color: #5fd3ff; font-weight: 700; }
     /* Errors / rejections = dim maroon */
     .hs-mc-msg.hs-mc-notice-error     { border-left-color: #800000 !important; background: rgba(128, 0, 0, 0.06) !important; }
     .hs-mc-msg.hs-mc-notice-error     .hs-mc-system-text { color: #ff8080; }
@@ -2607,6 +2612,20 @@ function injectStyles() {
       transition: none;
       cursor: pointer;
       box-sizing: content-box;
+    }
+    /* Gigantify — single-emote chat messages render the emote at 4x for that
+       big-mood FFZ vibe. Toggle gated by .hs-mc-gigantify on the row; check
+       lives in _isGigantifiable(). Overlay stacks inherit since the parent
+       wrapper is scaled. */
+    .hs-mc-msg.hs-mc-gigantify .hs-mc-emote,
+    .hs-mc-msg.hs-mc-gigantify .hs-mc-emote-wrapper > img,
+    .hs-mc-msg.hs-mc-gigantify .hs-mc-emote-stack img {
+      max-height: 96px !important;
+      padding: 4px;
+    }
+    .hs-mc-msg.hs-mc-gigantify {
+      padding-top: 4px;
+      padding-bottom: 4px;
     }
     /* Feed content is rendered in CozetteVector (a pixel font). A bare inline
        emote with vertical-align:middle recenters the line box and lands adjacent

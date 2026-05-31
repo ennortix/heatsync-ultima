@@ -4945,16 +4945,70 @@
 
   // ─── settings sub-tab helpers ────────────────────────────────────────────
 
-  // SVG icons for the six settings sub-tabs (16x16 stroke, no fill)
+  // SVG icons for the settings sub-tabs (16x16 stroke, no fill)
   const _SET_SUBTAB_ICONS = {
     display: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="2" width="14" height="10" rx="1"/><line x1="5" y1="14" x2="11" y2="14"/><line x1="8" y1="12" x2="8" y2="14"/></svg>',
     chat:    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H6l-3 2v-2H3a1 1 0 0 1-1-1V3z"/></svg>',
     notifs:  '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2a5 5 0 0 1 5 5v3l1 1H2l1-1V7a5 5 0 0 1 5-5z"/><line x1="6.5" y1="13" x2="9.5" y2="13"/></svg>',
     mod:     '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1.5l5 2.5v4c0 3-2.5 5.5-5 6.5C5.5 13.5 3 11 3 8V4l5-2.5z"/></svg>',
     filters: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M4 8h8M6 12h4"/></svg>',
+    tweaks:  '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h3l1-2h4l1 2h3M2 8h12M2 12h3l1 2h4l1-2h3"/></svg>',
     system:  '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.42 1.42M11.53 11.53l1.42 1.42M3.05 12.95l1.42-1.42M11.53 4.47l1.42-1.42"/></svg>',
   };
-  const _SET_SUBTAB_ORDER = ['display', 'chat', 'notifs', 'mod', 'filters', 'system'];
+  const _SET_SUBTAB_ORDER = ['display', 'chat', 'notifs', 'mod', 'filters', 'tweaks', 'system'];
+
+  // ─── anti-features pack — Twitch UI noise toggles ─────────────────────────
+  // Each flag lives in ui_settings.<key>, gates a CSS rule in content.js
+  // applyUiSettings(). The applyUiSettings handler is reactive to
+  // chrome.storage.onChanged so toggle → instant rebuild of hide rules.
+  // Order matters: groups define section ordering in the tweaks subtab.
+  const TWEAK_GROUPS = [
+    { title: 'channel points / hype', items: [
+      ['hideChannelPoints',   'channel points button',     'hides the points/claim button beside chat input'],
+      ['hideHypeTrain',       'hype train banner',         'banner above chat showing hype train progress'],
+      ['hideHypeChat',        'hype chat button',          'paid pinned-message button in chat input row'],
+      ['hidePinnedHypeChats', 'pinned hype chats',         'pinned paid-message stack at top of chat'],
+      ['hideCombos',          'combos / power-ups',        'one-tap streak buttons in chat input'],
+      ['hideBitsBtns',        'bits / cheer buttons',      'bits balance + cheer button'],
+    ]},
+    { title: 'callouts / banners', items: [
+      ['hideCharity',         'charity callout',           'fundraiser banners above chat'],
+      ['hideDrops',           'drops banner',              'drops/quest progress callouts'],
+      ['hidePolls',           'active poll',               'poll widget above chat'],
+      ['hidePredictions',     'active prediction',         'prediction widget above chat'],
+      ['hideGiftBanner',      'gift sub mass banner',      'banner when many subs gifted at once'],
+      ['hideCommunityHighlights', 'community highlights',  'pinned-message stack at top of chat'],
+      ['hideSharedChatBanner','shared chat banner',        'cross-platform shared-chat indicator'],
+    ]},
+    { title: 'sidebar / chrome', items: [
+      ['hideRecommendedChannels','recommended channels',   'sidebar "Recommended Channels" section'],
+      ['hideStories',         'stories shelf',             'sidebar / top stories rail'],
+      ['hidePrimeLoot',       'prime gaming loot upsell',  'crown-icon prime loot button'],
+      ['hideTwitchTurbo',     'twitch turbo upsell',       'turbo cta links'],
+      ['hideSubtember',       'subtember / seasonal banners','seasonal subscription gradient banners'],
+      ['hideDiscoverLuna',    'discover luna promo',       'external app promo link'],
+      ['hideLiveNotifBtn',    'live notification toggle',  'subscribe-to-notifications bell button'],
+      ['hideUnfollowBtn',     'unfollow button',           'unfollow button (prevents misclicks)'],
+      ['hideSubscribeBtn',    'subscribe button',          'channel subscribe button'],
+    ]},
+    { title: 'player overlay', items: [
+      ['hideOnscreenCelebrations','onscreen celebrations', 'confetti / celebration overlays on video'],
+      ['hidePlayerExtensions',   'player extensions',      'overlay extensions covering the video'],
+    ]},
+  ];
+  const TWEAK_KEYS = TWEAK_GROUPS.flatMap(function(g) { return g.items.map(function(i) { return i[0]; }); });
+
+  // Hydrated from chrome.storage.sync.ui_settings on init + onChanged.
+  // _renderTweaksSubtab reads from this; toggle handler mutates + saves.
+  const _tweakFlags = {};
+  for (const k of TWEAK_KEYS) _tweakFlags[k] = false;
+  async function loadTweakFlags() {
+    try {
+      const stored = await chrome.storage.sync.get(['ui_settings']);
+      const ui = stored.ui_settings || {};
+      for (const k of TWEAK_KEYS) _tweakFlags[k] = !!ui[k];
+    } catch (_) {}
+  }
 
   function _renderSetSubtabBar() {
     return '<div class="hs-mc-set-subtabs">' +
@@ -4986,7 +5040,7 @@
           '<option value="CozetteVector">CozetteVector (13px)</option>' +
           '<option value="GohuFont">GohuFont (14px)</option>' +
           '<option value="monospace">system monospace</option>' +
-          '<option value="twitch">Twitch default (Inter)</option>' +
+          '<option value="twitch">platform default (Inter — twitch + kick)</option>' +
           '<option value="custom">custom...</option>' +
         '</select>' +
       '</div>' +
@@ -5072,10 +5126,18 @@
       }).join('') +
     '</div>' +
     '<div class="hs-mc-settings-group">' +
-      '<div class="hs-mc-settings-group-title">browser</div>' +
+      '<div class="hs-mc-settings-group-title">on @mention (tab unfocused)</div>' +
       '<div class="hs-mc-setting-row">' +
         '<button class="hs-mc-toggle-pill" data-storage-key="hs_notifications"><span class="hs-mc-toggle-knob"></span></button>' +
-        '<span class="hs-mc-setting-label" data-tip="show a desktop notification when someone @s you">browser notification on mention</span>' +
+        '<span class="hs-mc-setting-label" data-tip="show a desktop notification when someone @s you">browser notification</span>' +
+      '</div>' +
+      '<div class="hs-mc-setting-row">' +
+        '<button class="hs-mc-toggle-pill" data-uisetting="mentionTitleFlash"><span class="hs-mc-toggle-knob"></span></button>' +
+        '<span class="hs-mc-setting-label" data-tip="pulse the browser tab title with the mentioner\'s name until you focus the tab">tab title flash</span>' +
+      '</div>' +
+      '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
+        '<span class="hs-mc-setting-label" data-tip="audio ping volume on mention. 0 = silent. uses pure WebAudio tones, no asset shipped.">mention sound volume</span>' +
+        '<input class="hs-mc-set-text-input" type="range" min="0" max="100" step="5" data-setting="mentionsoundvolume" style="width:120px">' +
       '</div>' +
     '</div>' +
     '<div class="hs-mc-settings-group">' +
@@ -5110,6 +5172,28 @@
         '<textarea class="hs-mc-setting-textarea" data-setting="automodregex" placeholder="bit\\.ly\nfree\\s+v[\\-]?bucks" rows="3"></textarea>' +
       '</div>' +
     '</div>';
+  }
+
+  function _renderTweaksSubtab() {
+    // Top: search input filters visible rows by label substring (client-only).
+    // Subtitle: explain scope so users don't expect kick/yt parity.
+    return '<div class="hs-mc-settings-group hs-mc-tweaks-search-group">' +
+      '<input class="hs-mc-set-text-input hs-mc-tweaks-search" type="search" placeholder="filter tweaks..." style="width:100%;font-size:13px">' +
+      '<div style="color:#808080;font-size:11px;margin-top:6px">hides twitch.tv chrome — kick/youtube unaffected</div>' +
+    '</div>' +
+    TWEAK_GROUPS.map(function(group) {
+      return '<div class="hs-mc-settings-group hs-mc-tweaks-group">' +
+        '<div class="hs-mc-settings-group-title">' + escapeHtml(group.title) + '</div>' +
+        group.items.map(function(item) {
+          var key = item[0], label = item[1], tip = item[2];
+          var on = !!_tweakFlags[key];
+          return '<div class="hs-mc-setting-row hs-mc-tweak-row" data-tweak-label="' + escapeHtml(label.toLowerCase()) + '">' +
+            '<button class="hs-mc-toggle-pill' + (on ? ' active' : '') + '" data-uisetting="' + key + '"><span class="hs-mc-toggle-knob"></span></button>' +
+            '<span class="hs-mc-setting-label" data-tip="' + escapeHtml(tip) + '">' + escapeHtml(label) + '</span>' +
+          '</div>';
+        }).join('') +
+      '</div>';
+    }).join('');
   }
 
   function _renderFiltersSubtab() {
@@ -5182,10 +5266,105 @@
       '</div>' : '') +
     '</div>' +
     '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title">backup / restore</div>' +
+      '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
+        '<span class="hs-mc-setting-label" data-tip="dump ui_settings + all hs_* keys to a JSON file. portable across devices and browsers.">export settings</span>' +
+        '<button class="hs-mc-settings-btn" data-action="export-settings" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:\'Liberation Mono\',monospace">download .json</button>' +
+      '</div>' +
+      '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
+        '<span class="hs-mc-setting-label" data-tip="restore from a previously-exported JSON file. merges into existing settings.">import settings</span>' +
+        '<button class="hs-mc-settings-btn" data-action="import-settings" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:\'Liberation Mono\',monospace">load .json</button>' +
+      '</div>' +
+    '</div>' +
+    '<div class="hs-mc-settings-group">' +
       '<div class="hs-mc-setting-row" style="justify-content:flex-end">' +
         '<button class="hs-mc-defaults-btn" style="background:#808080;border:2px outset #fff;padding:2px 10px;font-size:13px;font-weight:bold;cursor:pointer;font-family:\'Liberation Mono\',monospace;color:#000;box-shadow:1px 1px 0 #000">default</button>' +
       '</div>' +
     '</div>';
+  }
+
+  // ─── settings export / import ────────────────────────────────────────────
+  // Export: dumps ui_settings (sync) + all hs_* keys (local) into a single
+  // JSON. Import: file picker → JSON parse → schema-validate → merge into
+  // storage. Both areas restored. Errors toast, don't throw.
+  async function _exportAllSettings() {
+    try {
+      var syncObj = await chrome.storage.sync.get(null);
+      var localObj = await chrome.storage.local.get(null);
+      var hsLocal = {};
+      Object.keys(localObj).forEach(function(k) { if (k.indexOf('hs_') === 0 || k.indexOf('viewer_') === 0) hsLocal[k] = localObj[k]; });
+      var bundle = {
+        kind: 'heatsync-settings',
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        sync: { ui_settings: syncObj.ui_settings || {} },
+        local: hsLocal,
+      };
+      var blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'heatsync-settings-' + new Date().toISOString().slice(0, 10) + '.json';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+      showToast('settings exported', 'info');
+    } catch (err) {
+      showToast('export failed: ' + (err && err.message ? err.message : 'unknown'), 'error');
+    }
+  }
+
+  async function _importAllSettings() {
+    return new Promise(function(resolve) {
+      var input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'application/json,.json';
+      input.style.display = 'none';
+      input.onchange = async function() {
+        var file = input.files && input.files[0];
+        input.remove();
+        if (!file) { resolve(false); return; }
+        if (file.size > 2 * 1024 * 1024) {
+          showToast('file too large (>2MB)', 'error');
+          resolve(false); return;
+        }
+        try {
+          var txt = await file.text();
+          var data = JSON.parse(txt);
+          if (!data || data.kind !== 'heatsync-settings') {
+            showToast('not a heatsync settings file', 'error');
+            resolve(false); return;
+          }
+          var writes = [];
+          if (data.sync && data.sync.ui_settings && typeof data.sync.ui_settings === 'object') {
+            // Merge — preserve any keys absent from the import. sanitize via
+            // existing util so corrupt fields don't leak in.
+            var stored = await chrome.storage.sync.get(['ui_settings']);
+            var merged = sanitizeUiSettings(Object.assign({}, stored.ui_settings || {}, data.sync.ui_settings));
+            writes.push(chrome.storage.sync.set({ ui_settings: merged }));
+          }
+          if (data.local && typeof data.local === 'object') {
+            var safeLocal = {};
+            Object.keys(data.local).forEach(function(k) {
+              if (k.length < 1 || k.length > 128) return;
+              if (k.indexOf('hs_') !== 0 && k.indexOf('viewer_') !== 0) return;
+              safeLocal[k] = data.local[k];
+            });
+            if (Object.keys(safeLocal).length) writes.push(chrome.storage.local.set(safeLocal));
+          }
+          await Promise.all(writes);
+          showToast('settings imported — reloading…', 'info');
+          setTimeout(function() { try { location.reload(); } catch (_) {} }, 800);
+          resolve(true);
+        } catch (err) {
+          showToast('import failed: ' + (err && err.message ? err.message : 'parse error'), 'error');
+          resolve(false);
+        }
+      };
+      document.body.appendChild(input);
+      input.click();
+    });
   }
 
   // _loadServerFilters removed in v1.6 audit pass — fetched /api/user/settings
@@ -5243,6 +5422,8 @@
       subtabContent = _renderModSubtab();
     } else if (_settingsSubtab === 'filters') {
       subtabContent = _renderFiltersSubtab();
+    } else if (_settingsSubtab === 'tweaks') {
+      subtabContent = _renderTweaksSubtab();
     } else if (_settingsSubtab === 'system') {
       subtabContent = _renderSystemSubtab(null);
     }
@@ -5282,6 +5463,15 @@
         // crossFollowKick defaults on — only inactive when explicitly false
         var xfkPill = msgsEl.querySelector('.hs-mc-toggle-pill[data-uisetting="crossFollowKick"]');
         if (xfkPill) xfkPill.classList.toggle('active', ui.crossFollowKick !== false);
+        // mentionTitleFlash defaults on (silent + non-disruptive)
+        var flashPill = msgsEl.querySelector('.hs-mc-toggle-pill[data-uisetting="mentionTitleFlash"]');
+        if (flashPill) flashPill.classList.toggle('active', ui.mentionTitleFlash !== false);
+        // mentionSoundVolume range slider hydrate
+        var volRange = msgsEl.querySelector('input[data-setting="mentionsoundvolume"]');
+        if (volRange) {
+          var v = typeof ui.mentionSoundVolume === 'number' ? ui.mentionSoundVolume : 0;
+          volRange.value = String(Math.round(v * 100));
+        }
       }
     }).catch(function() {});
 
@@ -5298,6 +5488,15 @@
           _settingsSubtab = next;
           renderSettingsTab();
         }
+        return;
+      }
+
+      // Settings export / import buttons
+      var settingsActionBtn = e.target.closest('.hs-mc-settings-btn[data-action]');
+      if (settingsActionBtn) {
+        var action = settingsActionBtn.dataset.action;
+        if (action === 'export-settings') { _exportAllSettings(); }
+        else if (action === 'import-settings') { _importAllSettings(); }
         return;
       }
 
@@ -5379,6 +5578,11 @@
         var uiNext = !uiPill.classList.contains('active');
         uiPill.classList.toggle('active', uiNext);
         saveUiSetting(uiKey, uiNext);
+        // Tweak flags mirror locally so re-render keeps the active state without
+        // a fresh chrome.storage round-trip.
+        if (Object.prototype.hasOwnProperty.call(_tweakFlags, uiKey)) {
+          _tweakFlags[uiKey] = uiNext;
+        }
         if (uiKey === 'crashTelemetry' && uiNext) {
           renderSettingsTab(); // re-render to show crash log block
         }
@@ -5577,6 +5781,37 @@
             applyFontSettings(fam, fsz, name);
           }).catch(function() {});
         }, 400);
+        return;
+      }
+      // Mention sound volume range slider — save normalized 0..1 on each
+      // input event. Plays a sample ping on user adjustment so you can
+      // preview the volume without waiting for an @-mention.
+      var volRange = e.target.closest('input[data-setting="mentionsoundvolume"]');
+      if (volRange) {
+        var pct = parseInt(volRange.value, 10) || 0;
+        var norm = Math.max(0, Math.min(1, pct / 100));
+        saveUiSetting('mentionSoundVolume', norm);
+        if (typeof playMentionPing === 'function' && norm > 0) {
+          try { playMentionPing(norm); } catch (_) {}
+        }
+        return;
+      }
+      // Tweaks subtab — live filter rows by label substring (no debounce).
+      var tweaksSearch = e.target.closest('input.hs-mc-tweaks-search');
+      if (tweaksSearch) {
+        var q = tweaksSearch.value.trim().toLowerCase();
+        var rows = msgsEl.querySelectorAll('.hs-mc-tweak-row');
+        var groupHits = new Map(); // group element → matched row count
+        rows.forEach(function(row) {
+          var lbl = row.getAttribute('data-tweak-label') || '';
+          var hit = !q || lbl.indexOf(q) !== -1;
+          row.style.display = hit ? '' : 'none';
+          var grp = row.closest('.hs-mc-tweaks-group');
+          if (grp) groupHits.set(grp, (groupHits.get(grp) || 0) + (hit ? 1 : 0));
+        });
+        groupHits.forEach(function(count, grp) {
+          grp.style.display = count > 0 ? '' : 'none';
+        });
         return;
       }
     };
@@ -7148,6 +7383,11 @@
       if (id === 'bitsbadgetier') return 'hs-mc-notice-bits'
       if (id === 'watchstreak') return 'hs-mc-notice-watchstreak'
       if (id === 'viewermilestone') return 'hs-mc-notice-milestone'
+      // mod-anniversary — Twitch ships USERNOTICE every 6 months a user
+      // moderates a channel (announced TwitchCon Rotterdam 2026). Same payload
+      // shape as sub anniversary; render with mod-add's blue family so the
+      // moderator-celebration thread reads consistently.
+      if (id === 'mod-anniversary' || id === 'mod_anniversary') return 'hs-mc-notice-mod-anniversary'
       if (id === 'msg_banned' || id === 'msg_timedout' || id === 'no_permission' ||
           id.startsWith('bad_') || id.startsWith('usage_')) return 'hs-mc-notice-error'
       return ''
@@ -7437,7 +7677,25 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (m.replyTo.id) div.dataset.replyId = m.replyTo.id
       if (m.replyTo.threadId) div.dataset.replyThreadId = m.replyTo.threadId
     }
+    // Gigantify — single-emote message renders the emote at 4x. FFZ-style.
+    // Detect: exactly one .hs-mc-emote-wrapper AND no other meaningful body
+    // content (after stripping username/badges/buttons). Cheap DOM clone.
+    if (_isGigantifiable(div)) div.classList.add('hs-mc-gigantify')
     return div;
+  }
+
+  function _isGigantifiable(div) {
+    const wrappers = div.querySelectorAll('.hs-mc-emote-wrapper')
+    if (wrappers.length !== 1) return false
+    const clone = div.cloneNode(true)
+    clone.querySelectorAll(
+      '.hs-mc-user, .hs-mc-platform-badge, .hs-mc-badge-img, ' +
+      '.hs-mc-reply-ctx, .hs-mc-reply-btn, .hs-mc-permalink-btn, ' +
+      'time, .hs-mc-emote-wrapper, .hs-mc-timestamp, .hs-mc-system-text, ' +
+      '.hs-mc-mod-toolbar, .hs-mc-emote-stack'
+    ).forEach(el => el.remove())
+    const txt = (clone.textContent || '').replace(/[\s:>@]+/g, '')
+    return txt.length === 0
   }
 
   // LRU cache for processYtEmotes' combined regex. Pattern key is the joined
@@ -11037,6 +11295,13 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           }
         }
       }
+      // Tweak flags — cross-tab sync. ui_settings lives in sync storage;
+      // when one tab flips a hide toggle, mirror into the local cache so the
+      // settings panel re-renders with the right active state next open.
+      if (area === 'sync' && changes.ui_settings?.newValue && typeof changes.ui_settings.newValue === 'object') {
+        const remoteUi = changes.ui_settings.newValue
+        for (const k of TWEAK_KEYS) _tweakFlags[k] = !!remoteUi[k]
+      }
     }
     chrome.storage.onChanged.addListener(_mcStorageListener)
   }
@@ -11276,6 +11541,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       loadDimTimeoutsSetting(),
       loadReadableNamesSetting(),
       loadFirstChatterGlowSetting(),
+      loadTweakFlags(),
       loadKeywordHighlightsSetting(),
       loadOfflineEventsSetting(),
       loadBlockedEmotes(),

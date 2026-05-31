@@ -72,9 +72,108 @@ function fireNotification(title, body, tag) {
   } catch {}
 }
 
+// Mention audio cue — pure Web Audio synth (no asset shipped, can't fail to
+// load). Two-tone 880→1175 Hz ping with quick decay envelope. Volume gated by
+// ui_settings.mentionSoundVolume (0..1, default 0). 0 = silent (default off
+// so we don't bait permission denials on first install).
+let _mentionAudioCtx = null
+function _getMentionAudioCtx() {
+  if (_mentionAudioCtx) return _mentionAudioCtx
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext
+    if (!AC) return null
+    _mentionAudioCtx = new AC()
+    return _mentionAudioCtx
+  } catch { return null }
+}
+function playMentionPing(volume) {
+  if (!(volume > 0)) return
+  const ctx = _getMentionAudioCtx()
+  if (!ctx) return
+  try {
+    if (ctx.state === 'suspended') { try { ctx.resume() } catch {} }
+    const now = ctx.currentTime
+    const gain = ctx.createGain()
+    gain.gain.setValueAtTime(0, now)
+    gain.gain.linearRampToValueAtTime(Math.min(1, volume) * 0.35, now + 0.01)
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.30)
+    gain.connect(ctx.destination)
+    const o1 = ctx.createOscillator()
+    o1.type = 'sine'; o1.frequency.setValueAtTime(880, now); o1.connect(gain)
+    o1.start(now); o1.stop(now + 0.32)
+    const o2 = ctx.createOscillator()
+    o2.type = 'sine'; o2.frequency.setValueAtTime(1175, now + 0.08); o2.connect(gain)
+    o2.start(now + 0.08); o2.stop(now + 0.32)
+  } catch {}
+}
+
+// Tab title flash — when an @mention arrives while the tab is unfocused,
+// flip document.title between "@you ← original" and the original on a 1.2s
+// timer until the tab regains focus. Persists across many mentions (queue
+// the latest sender's name). Restores original on visibilitychange.
+let _titleFlashOriginal = null
+let _titleFlashTimer = null
+let _titleFlashFrom = ''
+function _titleFlashStop() {
+  if (_titleFlashTimer) { clearInterval(_titleFlashTimer); _titleFlashTimer = null }
+  if (_titleFlashOriginal != null) {
+    try { document.title = _titleFlashOriginal } catch {}
+    _titleFlashOriginal = null
+  }
+  _titleFlashFrom = ''
+}
+function _titleFlashStart(fromUser) {
+  _titleFlashFrom = fromUser || 'mention'
+  if (_titleFlashTimer) return // already flashing — let it pick up the new name on next tick
+  try { _titleFlashOriginal = document.title } catch { return }
+  let on = false
+  _titleFlashTimer = setInterval(() => {
+    if (document.hasFocus()) { _titleFlashStop(); return }
+    on = !on
+    try { document.title = on ? `@${_titleFlashFrom} ← ${_titleFlashOriginal}` : _titleFlashOriginal } catch {}
+  }, 1200)
+}
+// Restore title the moment the tab regains focus
+if (!window._hsMcTitleFlashFocusWired) {
+  window._hsMcTitleFlashFocusWired = true
+  window.addEventListener('focus', _titleFlashStop)
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) _titleFlashStop()
+  })
+}
+
+// User-tunable settings — volume + flash toggle. Hydrated from sync
+// ui_settings; sync onChanged keeps them current cross-tab. Defaults: sound
+// off, flash on (silent flash isn't disruptive).
+let mentionSoundVolume = 0
+let mentionTitleFlash = true
+api.storage.sync.get(['ui_settings']).then(stored => {
+  const ui = stored?.ui_settings || {}
+  if (typeof ui.mentionSoundVolume === 'number') mentionSoundVolume = Math.max(0, Math.min(1, ui.mentionSoundVolume))
+  if (typeof ui.mentionTitleFlash === 'boolean') mentionTitleFlash = ui.mentionTitleFlash
+}).catch(() => {})
+if (!window._hsMcMentionAudioStorageListener) {
+  window._hsMcMentionAudioStorageListener = true
+  api.storage.onChanged.addListener((changes, area) => {
+    if (area === 'sync' && changes.ui_settings?.newValue) {
+      const ui = changes.ui_settings.newValue
+      if (typeof ui.mentionSoundVolume === 'number') mentionSoundVolume = Math.max(0, Math.min(1, ui.mentionSoundVolume))
+      if (typeof ui.mentionTitleFlash === 'boolean') mentionTitleFlash = ui.mentionTitleFlash
+    }
+  })
+}
+
 function notifyMention(msg) {
-  if (!notificationsEnabled) return
-  if (document.hasFocus()) return
+  // Always evaluate audio + title-flash even when system notif disabled — they
+  // have their own gates. The original "return if notifs off" check killed the
+  // tab-title flash for users who didn't want OS popups but did want a visual
+  // cue. Each cue is independently configurable.
+  const unfocused = !document.hasFocus()
+  if (unfocused) {
+    playMentionPing(mentionSoundVolume)
+    if (mentionTitleFlash) _titleFlashStart(msg.user || '')
+  }
+  if (!notificationsEnabled || !unfocused) return
   const channel = msg.channel ? ` in #${msg.channel}` : ''
   const title = `${msg.user}${channel}`
   const body = msg.text.length > 200 ? msg.text.slice(0, 200) + '...' : msg.text

@@ -92,6 +92,7 @@ let feedLoading = false;
 let feedPage = 1;
 let feedHasMore = true;
 let feedLastFetch = 0; // Timestamp of last feed fetch
+let feedFromHotFallback = false; // true when /following was empty + we showed /hot instead
 const FEED_STALE_MS = 120000; // 2 minutes
 
 // Feed scroll state — handler ref for teardown only, infinite-scroll trigger
@@ -869,17 +870,39 @@ async function fetchFeed(append = false) {
     }
     return;
   }
-  const msgs = (resp.data?.messages || []).filter(m => m.username !== 'Anonymous')
+  let msgs = (resp.data?.messages || []).filter(m => m.username !== 'Anonymous')
+  let usedHotFallback = false;
+
+  // Following empty → fallback to /api/messages/hot (heat-sorted, last 30d) so
+  // the tab shows SOMETHING discoverable instead of an empty wall. Only on the
+  // initial page (append=false) — paginating shouldn't trigger fallback. Auth
+  // gate stays the same since the empty-card has the login CTA.
+  if (!append && msgs.length === 0 && hsAuthToken) {
+    try {
+      const hotResp = await apiFetch('/api/messages/hot?limit=30&hours=720', { auth: true });
+      if (hotResp.ok) {
+        const hotMsgs = (hotResp.data?.messages || []).filter(m => m.username !== 'Anonymous');
+        if (hotMsgs.length > 0) {
+          msgs = hotMsgs.map(m => Object.assign({}, m, { _fromHotFallback: true }));
+          usedHotFallback = true;
+        }
+      }
+    } catch (_) {}
+  }
+
   if (append) {
     feedMessages.push(...msgs);
     feedPage = page;
   } else {
     feedMessages = msgs;
     feedPage = 1;
+    feedFromHotFallback = usedHotFallback;
   }
   // Clamp after bulk load — push-path uses .pop() cap but server can return >150 in one fetch.
   if (feedMessages.length > 150) feedMessages.length = 150;
-  feedHasMore = resp.data?.pagination?.hasMore ?? msgs.length >= 30;
+  // Hot fallback returns sorted-by-heat from past 30d — never paginate that;
+  // would conflict with the heat ranking on subsequent pages.
+  feedHasMore = usedHotFallback ? false : (resp.data?.pagination?.hasMore ?? msgs.length >= 30);
   feedLoaded = true;
   feedLastFetch = Date.now();
   // Seed latestAt.live from the newest post we just got. Without this, the
@@ -1048,6 +1071,24 @@ function renderFeed() {
   msgsEl.style.position = ''
 
   const frag = document.createDocumentFragment()
+  // Hot-fallback banner — set when following=true returned 0 and we filled the
+  // tab with /api/messages/hot. Says "no follows yet" + invites action. Pure
+  // DOM construction (no innerHTML) — both strings are static, the hook flags
+  // any innerHTML anyway.
+  if (feedFromHotFallback) {
+    const banner = document.createElement('div')
+    banner.className = 'hs-mc-feed-fallback-banner'
+    banner.style.cssText = 'padding:8px 10px;background:#1a1408;border-left:2px solid #ff8700;color:#e6e6e6;font-size:12px;margin-bottom:4px;line-height:1.5'
+    const head = document.createElement('div')
+    head.style.cssText = 'color:#ff8700;font-weight:600;margin-bottom:2px'
+    head.textContent = 'no posts from your follows'
+    const sub = document.createElement('div')
+    sub.style.cssText = 'color:#bbb'
+    sub.textContent = 'showing what is hot from the past 30 days — follow people to fill this with their posts'
+    banner.appendChild(head)
+    banner.appendChild(sub)
+    frag.appendChild(banner)
+  }
   let zebraCount = 0
   for (let i = 0; i < items.length; i++) {
     const div = buildFeedMessageDiv(items[i])

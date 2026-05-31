@@ -2775,6 +2775,85 @@ function applyUiSettings(settings) {
     rules.push('.viewer-count { display: none !important; }');
   }
 
+  // ─── anti-features pack — Twitch UI noise toggles ─────────────────────────
+  // Each toggle adds one or more selectors to the hide rules block. Pure CSS,
+  // no JS observer — Twitch DOM regenerates and our display:none re-matches.
+  // Selectors target both data-a-target attrs (stable) and class substrings.
+  if (settings.hideChannelPoints) {
+    rules.push('[data-test-selector="community-points-summary"] { display: none !important; }')
+    rules.push('.community-points-summary { display: none !important; }')
+    rules.push('button[aria-label*="Channel Points"i] { display: none !important; }')
+  }
+  if (settings.hideHypeTrain) {
+    rules.push('[class*="hype-train-banner"], [class*="hype-train-rewards"], [class*="hype-train-progress"] { display: none !important; }')
+  }
+  if (settings.hideHypeChat) {
+    rules.push('[data-a-target="hype-chat-button"], [aria-label*="Hype Chat"i] { display: none !important; }')
+  }
+  if (settings.hidePinnedHypeChats) {
+    rules.push('[class*="pinned-paid-chat"], [class*="paid-pinned-chat"] { display: none !important; }')
+  }
+  if (settings.hideCharity) {
+    rules.push('[data-test-selector*="charity"i], [class*="charity-callout"], [class*="charity-banner"] { display: none !important; }')
+  }
+  if (settings.hideDrops) {
+    rules.push('[data-test-selector*="drops"i], [class*="drops-callout"], [class*="drops-banner"], [aria-label*="Drops"i] { display: none !important; }')
+  }
+  if (settings.hidePolls) {
+    rules.push('[data-test-selector*="poll"i]:not([data-test-selector*="settings"i]), [class*="poll-banner"], [class*="active-poll"] { display: none !important; }')
+  }
+  if (settings.hidePredictions) {
+    rules.push('[data-test-selector*="prediction"i], [class*="prediction-banner"], [class*="active-prediction"], [aria-label*="Prediction"i] { display: none !important; }')
+  }
+  if (settings.hideGiftBanner) {
+    rules.push('[class*="gift-sub-banner"], [class*="mass-gift-sub"], [class*="community-gift"] { display: none !important; }')
+  }
+  if (settings.hideCommunityHighlights) {
+    rules.push('.community-highlight-stack__top, .community-highlight-stack__backlog, [class*="community-highlight"] { display: none !important; }')
+  }
+  if (settings.hidePrimeLoot) {
+    rules.push('[class*="prime-offers"], [aria-label*="Prime Gaming"i], [aria-label*="Prime Loot"i] { display: none !important; }')
+  }
+  if (settings.hideRecommendedChannels) {
+    rules.push('[aria-label*="Recommended Channels"i], [data-a-target="recommended-channels"], [data-test-selector="recommended-channels"] { display: none !important; }')
+  }
+  if (settings.hideStories) {
+    rules.push('[aria-label*="Stories"i], [class*="stories-rail"], [class*="story-rail"] { display: none !important; }')
+  }
+  if (settings.hideLiveNotifBtn) {
+    rules.push('[data-a-target="live-notifications-toggle"], button[aria-label*="Subscribe to notifications"i] { display: none !important; }')
+  }
+  if (settings.hideUnfollowBtn) {
+    rules.push('[data-a-target="unfollow-button"], button[aria-label*="Unfollow"i] { display: none !important; }')
+  }
+  if (settings.hideSubscribeBtn) {
+    rules.push('[data-a-target="subscribe-button"], [data-test-selector="subscribe-button"] { display: none !important; }')
+  }
+  if (settings.hideSharedChatBanner) {
+    rules.push('[class*="shared-chat-banner"], [data-test-selector*="shared-chat"i] { display: none !important; }')
+  }
+  if (settings.hideSubtember) {
+    rules.push('[class*="subtember"], [aria-label*="Subtember"i] { display: none !important; }')
+  }
+  if (settings.hideTwitchTurbo) {
+    rules.push('[class*="turbo-upsell"], [class*="turbo-cta"], [aria-label*="Twitch Turbo"i] { display: none !important; }')
+  }
+  if (settings.hideDiscoverLuna) {
+    rules.push('a[href*="discoverluna"i], [class*="discover-luna"] { display: none !important; }')
+  }
+  if (settings.hideCombos) {
+    rules.push('[data-a-target="combo-button"], [class*="combo-button"], [class*="combos-bar"] { display: none !important; }')
+  }
+  if (settings.hideBitsBtns) {
+    rules.push('[data-a-target="bits-button"], [aria-label*="Cheer with Bits"i], [aria-label*="Get Bits"i] { display: none !important; }')
+  }
+  if (settings.hideOnscreenCelebrations) {
+    rules.push('[class*="celebration-pane"], [class*="celebration-stack"], [class*="onscreen-celebration"], [class*="celebration-overlay"] { pointer-events: none !important; display: none !important; }')
+  }
+  if (settings.hidePlayerExtensions) {
+    rules.push('.extension-taskbar, [class*="extension-overlay"], [class*="extensions-dock"], .video-player__overlay [class*="extension"] { display: none !important; }')
+  }
+
   if (rules.length > 0) {
     uiHidingStyle = document.createElement('style');
     uiHidingStyle.id = 'heatsync-ui-hiding';

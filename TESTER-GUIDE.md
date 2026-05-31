@@ -92,10 +92,10 @@ open twitch.tv, kick.com, or a youtube live stream and try these:
 - [ ] unmuting the player manually should not get overridden
 
 ### cross-platform
-- [ ] test on twitch.tv
-- [ ] test on kick.com
-- [ ] test on youtube live chat
-- [ ] emotes work on all three
+- [ ] test on twitch.tv — heatsync emotes render in native chat
+- [ ] test on kick.com — heatsync emotes render via the multichat overlay panel
+- [ ] test on youtube live chat — heatsync emotes render via the multichat overlay panel
+- [ ] 7TV/BTTV/FFZ emotes render on all three
 
 ### multichat
 - [ ] click the heatsync chat-toggle button — multichat panel opens

@@ -6075,13 +6075,14 @@ async function handleMessage(message, sender, sendResponse) {
       // request. Per-id /api/users/:id calls fired ~15-parallel per flush tripped
       // Cloudflare's 429; one batched call keeps it well under. credentials:'omit' so
       // the *-CORS response isn't rejected (credentialed + ACAO:* is invalid).
-      const _missIds = [...new Set(senderKeys
+      const _missKeys = [...new Set(senderKeys
         .filter(k => { const h = cache.get(k); return !(h && Date.now() - h.ts < SENDER_EMOTE_CACHE_TTL) })
-        .map(k => { const c = k.indexOf(':'); return c >= 0 ? k.slice(c + 1) : '' })
-        .filter(id => /^\d+$/.test(id)))]
+        .filter(k => { const c = k.indexOf(':'); return c >= 0 && k.slice(c + 1).length > 0 }))]
       let hsBatch = {}
-      if (_missIds.length) {
-        const hb = await fetchWithTimeout(withNsfwParam(`${API_URL}/api/users/emotes/batch?ids=${_missIds.join(',')}`), { credentials: 'omit', noBackoff: true }).then(r => r.ok ? r.json() : null).catch(() => null)
+      if (_missKeys.length) {
+        // Send platform-prefixed keys (e.g. twitch:12345, kick:username) so the server
+        // can resolve all platforms. Response is keyed by the same prefixed strings.
+        const hb = await fetchWithTimeout(withNsfwParam(`${API_URL}/api/users/emotes/batch?ids=${_missKeys.map(encodeURIComponent).join(',')}`), { credentials: 'omit', noBackoff: true }).then(r => r.ok ? r.json() : null).catch(() => null)
         hsBatch = hb?.sets || {}
       }
       await Promise.all(senderKeys.map(async (key) => {
@@ -6135,8 +6136,9 @@ async function handleMessage(message, sender, sendResponse) {
         // CREDENTIALED request (the heatsync.org default in fetchWithTimeout) makes
         // the browser reject `*`+credentials — Firefox then drops the response and
         // the sender's heatsync emotes never load. No cookie is needed here anyway.
-        // HeatSync set comes from the single batched fetch above (hsBatch), keyed by id.
-        const hs = { emotes: hsBatch[id] || [] }
+        // HeatSync set comes from the single batched fetch above (hsBatch), keyed by
+        // platform-prefixed key (e.g. twitch:12345, kick:username).
+        const hs = { emotes: hsBatch[key] || [] }
         const [stv, bttv] = await Promise.all([stvP, bttvP])
         // 7TV personal emote_set
         const stvEmotes = stv?.emote_set?.emotes || []

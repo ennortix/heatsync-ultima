@@ -957,8 +957,8 @@ function _renderFeedEmptyCard() {
     return card;
   }
 
-  title.textContent = 'your home is quiet';
-  sub.textContent = 'follow people to see their posts here, or share something yourself';
+  title.textContent = 'no posts';
+  sub.textContent = 'follow people or post something to populate this tab';
 
   const importBtn = document.createElement('button');
   importBtn.className = 'hs-mc-empty-btn primary';

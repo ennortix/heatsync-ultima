@@ -126,9 +126,6 @@
   "welcome_title": {
     "message": "tervetuloa heatsynciin"
   },
-  "welcome_tagline": {
-    "message": "twitch + kick + youtube, yksi chat"
-  },
   "welcome_step1_title": {
     "message": "kirjaudu sivulle heatsync.org"
   },

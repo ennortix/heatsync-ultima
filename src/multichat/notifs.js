@@ -541,19 +541,6 @@ const HsNotifs = (() => {
     },
   })
 
-  // Twitch raid (worked example — not yet emitted; ready when needed).
-  registerType('twitch-raid', {
-    layer: 'chat-docked-top',
-    dedupeKey: ({ raidFrom }) => `raid:${raidFrom}`,
-    timeout: 30000,
-    render: ({ data }) => {
-      const el = document.createElement('span')
-      el.textContent = `${data.raidFrom} raided with ${data.viewers || 0}!`
-      return el
-    },
-    actions: { dismiss: { label: '✕' } },
-  })
-
   // Server-driven "please update" prompt — fires when the version-floor in
   // /api/extension/health is above current manifest version. dedupeKey keeps
   // it to one prompt per (current, min) pair so re-fetching health doesn't

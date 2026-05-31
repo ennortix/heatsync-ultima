@@ -126,9 +126,6 @@
   "welcome_title": {
     "message": "heatsync에 오신 걸 환영합니다"
   },
-  "welcome_tagline": {
-    "message": "twitch + kick + youtube, 하나의 채팅"
-  },
   "welcome_step1_title": {
     "message": "heatsync.org에서 로그인"
   },

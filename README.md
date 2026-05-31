@@ -1,13 +1,13 @@
 # heatsync
 
-your emote set in twitch chat + the multichat overlay. no streamer approval, no subscription.
+Personal emote inventory + multichat overlay for Twitch, Kick, and YouTube.
 
-- **5000 personal emote slots, free** — upload at [heatsync.org](https://heatsync.org), use them in twitch native chat and the multichat overlay (kick + youtube via the overlay). real-time sync, no channel approval queue
-- **send it once, it's yours** — every emote you actually post auto-fills a slot. tab-complete 7TV, paste any chat emote, hit enter — it lands in your set silently
-- **other heatsync users see your emotes** — your set renders in their chat automatically on twitch + via the multichat overlay; no copy-paste, no "subscribe to use"
-- **multichat** — twitch, kick, and youtube in one tabbed panel: live chat, mentions, whispers, social feed
-- **7tv, bttv, ffz** — emotes, paints, badges render automatically. works without an account
-- tab completion, emote picker with recent row, zero-width overlay (type `emote0` → tab), user muting, emote blocking, profile cards, unified right-click menu, twitch clip creation
+- **5000-slot personal emote inventory** — upload at [heatsync.org](https://heatsync.org), use them in Twitch native chat and the multichat overlay (Kick + YouTube via the overlay)
+- **auto-fill on send** — tab-complete a 7TV name or paste any chat emote, hit enter; the slot lands silently
+- **cross-user rendering** — other heatsync users see your emotes in their chat on Twitch + via the multichat overlay
+- **multichat** — Twitch + Kick + YouTube in one tabbed panel: live chat, mentions, whispers, social feed
+- **7TV, BTTV, FFZ** — emotes, paints, badges render automatically; no account required
+- tab completion, emote picker with recent row, zero-width overlay (type `emote0` → tab), user muting, emote blocking, profile cards, unified right-click menu, Twitch clip creation
 
 ## install
 

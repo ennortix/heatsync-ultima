@@ -5209,7 +5209,7 @@
       '<div class="hs-mc-settings-group-title">content</div>' +
       '<div class="hs-mc-setting-row">' +
         '<button class="hs-mc-toggle-pill' + (nsfwOn ? ' active' : '') + '" data-nsfw-pill><span class="hs-mc-toggle-knob"></span></button>' +
-        '<span class="hs-mc-setting-label" data-tip="NSFW emotes (sexual / gore content above 70% confidence) are hidden by default. Toggle on to see them with a dashed cyan border.">show NSFW-flagged emotes</span>' +
+        '<span class="hs-mc-setting-label" data-tip="nsfw-flagged emotes (sexual / gore ≥ 70%) are hidden by default. shown with a dashed border when on.">show nsfw-flagged emotes</span>' +
       '</div>' +
     '</div>';
   }
@@ -5469,7 +5469,7 @@
         // mentionSoundVolume range slider hydrate
         var volRange = msgsEl.querySelector('input[data-setting="mentionsoundvolume"]');
         if (volRange) {
-          var v = typeof ui.mentionSoundVolume === 'number' ? ui.mentionSoundVolume : 0;
+          var v = typeof ui.mentionSoundVolume === 'number' ? ui.mentionSoundVolume : 0.3;
           volRange.value = String(Math.round(v * 100));
         }
       }
@@ -6254,7 +6254,7 @@
     if (input.dataset.hsOrigDataPlaceholder === undefined) {
       input.dataset.hsOrigDataPlaceholder = input.getAttribute('data-placeholder') || ''
     }
-    const placeholder = `🎉 Resub message (${months}mo) — Enter to share`
+    const placeholder = `resub message (${months}mo) — enter to share`
     input.setAttribute('placeholder', placeholder)
     input.setAttribute('data-placeholder', placeholder)
     try { input.focus() } catch (_) {}
@@ -6424,7 +6424,7 @@
     if (input.dataset.hsOrigDataPlaceholder === undefined) {
       input.dataset.hsOrigDataPlaceholder = input.getAttribute('data-placeholder') || ''
     }
-    const placeholder = `🔥 Watch streak (${streakCount}) — Enter to share`
+    const placeholder = `watch streak (${streakCount}) — enter to share`
     input.setAttribute('placeholder', placeholder)
     input.setAttribute('data-placeholder', placeholder)
     try { input.focus() } catch (_) {}

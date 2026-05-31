@@ -126,9 +126,6 @@
   "welcome_title": {
     "message": "welcome to heatsync"
   },
-  "welcome_tagline": {
-    "message": "twitch + kick + youtube, one chat"
-  },
   "welcome_step1_title": {
     "message": "log in at heatsync.org"
   },

@@ -126,9 +126,6 @@
   "welcome_title": {
     "message": "欢迎使用 heatsync"
   },
-  "welcome_tagline": {
-    "message": "twitch + kick + youtube, 一个聊天"
-  },
   "welcome_step1_title": {
     "message": "在 heatsync.org 登录"
   },

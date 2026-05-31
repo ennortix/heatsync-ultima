@@ -74,8 +74,7 @@ function fireNotification(title, body, tag) {
 
 // Mention audio cue — pure Web Audio synth (no asset shipped, can't fail to
 // load). Two-tone 880→1175 Hz ping with quick decay envelope. Volume gated by
-// ui_settings.mentionSoundVolume (0..1, default 0). 0 = silent (default off
-// so we don't bait permission denials on first install).
+// ui_settings.mentionSoundVolume (0..1, default 0.3). 0 = silent.
 let _mentionAudioCtx = null
 function _getMentionAudioCtx() {
   if (_mentionAudioCtx) return _mentionAudioCtx
@@ -144,8 +143,8 @@ if (!window._hsMcTitleFlashFocusWired) {
 
 // User-tunable settings — volume + flash toggle. Hydrated from sync
 // ui_settings; sync onChanged keeps them current cross-tab. Defaults: sound
-// off, flash on (silent flash isn't disruptive).
-let mentionSoundVolume = 0
+// 0.3, flash on.
+let mentionSoundVolume = 0.3
 let mentionTitleFlash = true
 api.storage.sync.get(['ui_settings']).then(stored => {
   const ui = stored?.ui_settings || {}

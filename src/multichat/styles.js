@@ -851,6 +851,10 @@ function injectStyles() {
       flex: 1;
       width: 100%;
       min-height: 0;
+      /* Guard against edge-case layout collapse at very narrow/short viewports
+         where opening the picker caused height to expand to scroll-height and
+         position to revert to static, pushing the panel off-screen. */
+      max-height: 100vh;
       overflow: hidden;
       background: #000;
       /* 'Noto Color Emoji' belongs in the body stack so color-emoji codepoints

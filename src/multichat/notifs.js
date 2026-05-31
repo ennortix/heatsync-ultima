@@ -461,7 +461,7 @@ const HsNotifs = (() => {
       const text = document.createElement('span')
       text.className = 'hs-notif-resub-text'
       const parts = [
-        ['hs-rt-prefix', 'Celebrating '],
+        ['hs-rt-prefix', 'celebrating '],
         ['hs-rt-num',    String(months)],
         ['hs-rt-mo',     'mo'],
         ['hs-rt-months', ' months'],
@@ -479,7 +479,7 @@ const HsNotifs = (() => {
     },
     actions: {
       primary: {
-        label: 'Share',
+        label: 'share',
         onClick: (data) => {
           // Bypass the native Twitch share button — its native onClick auto-
           // sends a default "<user> is celebrating Nmo as a subscriber!"
@@ -496,7 +496,7 @@ const HsNotifs = (() => {
   })
 
   // Twitch watch-streak share — user's own daily watch-streak callout.
-  // Mirrors resub-share UI but uses 🔥 + orange tone. Once-per-day rate-limit
+  // Mirrors resub-share UI but uses ▲ icon + orange tone. Once-per-day rate-limit
   // is enforced upstream in main.js's surface() via localStorage.
   registerType('twitch-watchstreak-share', {
     layer: 'chat-docked-bottom',
@@ -508,11 +508,11 @@ const HsNotifs = (() => {
       el.className = 'hs-notif-watchstreak-body'
       const icon = document.createElement('span')
       icon.className = 'hs-notif-watchstreak-icon'
-      icon.textContent = '🔥'
+      icon.textContent = '▲'
       const text = document.createElement('span')
       text.className = 'hs-notif-watchstreak-text'
       const parts = [
-        ['hs-wt-prefix', 'On a '],
+        ['hs-wt-prefix', 'on a '],
         ['hs-wt-num',    String(n)],
         ['hs-wt-stream', ' stream'],
         ['hs-wt-suffix', ' watch streak'],
@@ -529,7 +529,7 @@ const HsNotifs = (() => {
     },
     actions: {
       primary: {
-        label: 'Share',
+        label: 'share',
         onClick: (data) => {
           try {
             window.__hsWatchstreakShare?.enter?.(data.streakCount, data.user, data.channel)

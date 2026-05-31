@@ -302,7 +302,7 @@
       if (e) out.push([name, e])
       if (out.length >= RECENT_CAP) break
     }
-    return out.length ? { key: 'recent', label: 'Recent', emotes: out } : null
+    return out.length ? { key: 'recent', label: 'recent', emotes: out } : null
   }
 
   function groupEmotes(allEmotes) {

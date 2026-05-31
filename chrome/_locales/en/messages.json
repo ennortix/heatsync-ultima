@@ -145,7 +145,7 @@
     "message": "use them in chat"
   },
   "welcome_step3_desc": {
-    "message": "click the heatsync button in twitch/kick chat to access your emotes"
+    "message": "twitch renders your emotes automatically. kick + youtube: open the multichat overlay panel"
   },
   "welcome_cta": {
     "message": "get started"

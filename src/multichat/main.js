@@ -4371,7 +4371,7 @@
         return
       }
     }
-  })
+  }, { signal: mcSignal })
 
   // Inline notification settings
   async function loadInlineNotifSettings() {

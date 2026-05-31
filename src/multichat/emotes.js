@@ -68,9 +68,9 @@
       if (mcProviderLastQuery[p] !== query) continue
       for (const r of mcProviderResults[p]) {
         if (!r.name || filtered.has(r.name)) continue
-        // state='global' under the 2-state model — pasteable like any
-        // other source entry. Auto-add-on-send commits the slot at send.
-        filtered.set(r.name, { source: p, state: 'global', url: r.url, provider: r.provider })
+        // state='remote' — unowned picker result, click handler routes through
+        // addEmoteToInventory to persist. Auto-add-on-send also commits the slot.
+        filtered.set(r.name, { source: p, state: 'remote', url: r.url, provider: r.provider })
         mcRemoteEmoteIndex.set(r.name, { url: r.url, provider: r.provider, id: r.id, zeroWidth: !!r.zeroWidth })
       }
     }

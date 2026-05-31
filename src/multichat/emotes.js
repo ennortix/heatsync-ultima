@@ -554,8 +554,12 @@
     }
 
     // Source chip click handler — toggle, persist, re-search.
+    // stopPropagation prevents the document-level outside-click handler from
+    // firing when chips are clicked at narrow viewports where they overflow
+    // the picker's visible bounds and land outside picker.contains(target).
     picker.querySelectorAll('.hs-mc-src-chip').forEach(chip => {
-      chip.addEventListener('click', () => {
+      chip.addEventListener('click', (e) => {
+        e.stopPropagation();
         const src = chip.dataset.src;
         if (mcPickerSources.has(src)) mcPickerSources.delete(src);
         else mcPickerSources.add(src);

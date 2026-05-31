@@ -4019,6 +4019,12 @@ function injectStyles() {
       right: 0;
       bottom: 0;
       height: min(400px, 60vh);
+      /* Minimum width to fit all three provider chips (7tv/bttv/ffz) side by
+         side without overflow. ~34+40+34px chips + 2×3px gap + 16px padding
+         + some search input = 210px floor. Without this the chips at ~115px
+         container width extend past picker.getBoundingClientRect().right and
+         land outside picker.contains(target), firing the dismiss handler. */
+      min-width: 210px;
       background: #000;
       border-top: 1px solid #808080;
       z-index: 1003;

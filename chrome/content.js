@@ -1038,6 +1038,8 @@ cleanup.addEventListener(window, 'message', async (event) => {
   }
 
   if (event.data?.type === 'heatsync-settings-changed' && event.data.settings) {
+    const expected = window.HS?.getMainWorldNonce?.()
+    if (!expected || event.data.nonce !== expected) return
     log(' Settings changed via postMessage:', event.data.settings)
     applyUiSettings(event.data.settings)
   }

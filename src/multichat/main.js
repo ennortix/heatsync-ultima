@@ -4529,7 +4529,7 @@
       localStorage.setItem('heatsync-extension-settings', JSON.stringify(ls))
     } catch (_) {}
     // Notify vi-mode.js
-    window.postMessage({ type: 'heatsync-settings-changed', settings: { viMode: viModeEnabled } }, location.origin)
+    window.postMessage({ type: 'heatsync-settings-changed', nonce: window.HS?.getMainWorldNonce?.() || null, settings: { viMode: viModeEnabled } }, location.origin)
   }
 
   // Font family + size — mirrors heatsync.org's appearance picker.
@@ -11099,7 +11099,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
             ls.viMode = viModeEnabled
             localStorage.setItem('heatsync-extension-settings', JSON.stringify(ls))
           } catch (_) {}
-          window.postMessage({ type: 'heatsync-settings-changed', settings: { viMode: viModeEnabled } }, location.origin)
+          window.postMessage({ type: 'heatsync-settings-changed', nonce: window.HS?.getMainWorldNonce?.() || null, settings: { viMode: viModeEnabled } }, location.origin)
         }
         if (ns.zebra !== undefined && ns.zebra !== zebraEnabled) {
           zebraEnabled = ns.zebra

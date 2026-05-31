@@ -701,8 +701,10 @@
     attachPickerCloseHandler(picker);
   }
 
+  let _pickerEscHandler = null;
   function attachPickerCloseHandler(picker) {
     if (_pickerCloseHandler) document.removeEventListener('click', _pickerCloseHandler);
+    if (_pickerEscHandler) document.removeEventListener('keydown', _pickerEscHandler);
     cleanup.setTimeout(() => {
       _pickerCloseHandler = (e) => {
         if (mcSignal?.aborted) { document.removeEventListener('click', _pickerCloseHandler); _pickerCloseHandler = null; return; }
@@ -713,9 +715,24 @@
           stopPredictionPoll();
           document.removeEventListener('click', _pickerCloseHandler);
           _pickerCloseHandler = null;
+          document.removeEventListener('keydown', _pickerEscHandler);
+          _pickerEscHandler = null;
         }
       };
+      _pickerEscHandler = (e) => {
+        if (e.key !== 'Escape') return;
+        if (mcSignal?.aborted) { document.removeEventListener('keydown', _pickerEscHandler); _pickerEscHandler = null; return; }
+        picker.classList.remove('visible');
+        adjustOverlayForPicker(false);
+        hideInputBar();
+        stopPredictionPoll();
+        document.removeEventListener('keydown', _pickerEscHandler);
+        _pickerEscHandler = null;
+        document.removeEventListener('click', _pickerCloseHandler);
+        _pickerCloseHandler = null;
+      };
       cleanup.addEventListener(document, 'click', _pickerCloseHandler, 'mc-picker-close');
+      cleanup.addEventListener(document, 'keydown', _pickerEscHandler, 'mc-picker-esc');
     }, 0);
   }
 

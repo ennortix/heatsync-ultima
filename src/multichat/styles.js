@@ -2690,7 +2690,12 @@ function injectStyles() {
       opacity: 0;
       pointer-events: none;
       z-index: 0;
-      background: #fff;
+      /* Mid-gray backing plate (NOT white): an emote keeps its own colors on
+         hover, and #808080 is the maximin-contrast neutral — ~4:1 vs a white
+         emote, ~5:1 vs a black one, so neither extreme vanishes. White-behind-
+         white was the same trap as #ff8700 behind 🔥. The rare mid-gray emote
+         that muddies here is fully legible in the 4x hover preview. */
+      background: #808080;
     }
     .hs-mc-picker-emote-wrap:not(.blocked):hover::before {
       opacity: 1;
@@ -2698,13 +2703,6 @@ function injectStyles() {
     .hs-mc-picker-emote-wrap > img {
       position: relative;
       z-index: 1;
-    }
-    /* On hover the ::before paints a white square behind the emote; a
-       white/light emote would vanish into it. brightness(0) blacks the
-       emote to a pure silhouette (alpha preserved) so it always reads
-       against the white bg — matches the #fff/#000 hover convention. */
-    .hs-mc-picker-emote-wrap:not(.blocked):hover img {
-      filter: brightness(0);
     }
     /* Blocked: persistent dashed rect via ::before (not outline on the
        wrap) so it tracks emote content size like the green/orange hover
@@ -2863,9 +2861,12 @@ function injectStyles() {
     /* Cross-highlight: white rect lights up behind every instance of the same
        emote when one is hovered. Color from --hs-highlight-color so blocked
        instances can still tint red (set per-emote by tooltips.js). */
+    /* Mid-gray backing (not white) so light emotes stay visible on the
+       highlight rect while keeping their colors — see picker ::before note.
+       --hs-highlight-color still overrides to red for blocked instances. */
     .hs-mc-emote-wrapper.hs-emote-highlight::before {
       opacity: 1;
-      background: var(--hs-highlight-color, #fff) !important;
+      background: var(--hs-highlight-color, #808080) !important;
       transition: none;
     }
     /* Tab cycling: suppress emote hover highlight while user is cycling Tab
@@ -3242,6 +3243,11 @@ function injectStyles() {
       margin: 0 2px;
       object-fit: contain;
       cursor: pointer;
+      /* The input is white (#hs-mc-input bg:#fff), so a white/light emote would
+         vanish inline. A tight dark drop-shadow halo traces the emote's alpha
+         edges — light emotes pop on white with NO box (unlike a fill plate),
+         full color kept, barely visible on already-dark/colored emotes. */
+      filter: drop-shadow(0 0 0.5px rgba(0,0,0,0.65)) drop-shadow(0 0 0.5px rgba(0,0,0,0.65));
     }
     /* WYSIWYG zero-width / overlay emote stacking in input.
        Fixed height keeps line layout stable when overlays render larger than

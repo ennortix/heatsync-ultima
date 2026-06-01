@@ -1103,6 +1103,10 @@ style.textContent = `
     height: auto !important;
     max-width: none !important;
     max-height: none !important;
+    /* Lift the emote above the hover ::before plate (wrapper z1, stack z3) so
+       it shows in full color on the gray hover bg instead of being hidden. */
+    position: relative !important;
+    z-index: 4 !important;
   }
   .heatsync-emote-wrapper.heatsync-own-emote > img {
     height: var(--hs-emote-height, 28px) !important;
@@ -2008,16 +2012,13 @@ style.textContent = `
   .heatsync-emote-wrapper:hover::before {
     opacity: 1 !important;
   }
-  .heatsync-emote-wrapper:hover > img {
-    visibility: hidden !important;
-  }
-  /* 2-state model: every pasteable overlay tier (owned/global/unadded) hovers
-     white per project convention; only blocked has its own fill. The classes
-     themselves still differentiate functionally (isGlobalEmote checks etc.)
-     but the visual collapses. */
+  /* 2-state model: every pasteable overlay tier (owned/global/unadded) gets a
+     mid-gray #808080 plate BEHIND the emote (img lifted via z-index) so it
+     keeps its colors and a light emote stays visible — matches the multichat
+     overlay + picker. Only blocked has its own fill. */
   .heatsync-emote-wrapper.emote-overlay-owned::before,
   .heatsync-emote-wrapper.emote-overlay-global::before,
-  .heatsync-emote-wrapper.emote-overlay-unadded::before { background: #fff !important; }
+  .heatsync-emote-wrapper.emote-overlay-unadded::before { background: #808080 !important; }
   .heatsync-emote-wrapper.emote-overlay-blocked::before { background: #ff0000 !important; }
 
   /* Collapsed stack: suppress per-wrapper hover overlays — show one unified
@@ -2032,10 +2033,10 @@ style.textContent = `
     content: '' !important;
     position: absolute !important;
     inset: 0 !important;
-    /* 2-state hover: white per project convention, matches the multichat
-       overlay stack ::before. The old brand-orange was a 3-state ladder
-       leftover that signalled "addable tier" — no longer meaningful. */
-    background: #fff !important;
+    /* Mid-gray #808080 hover plate behind the stack, matching the multichat
+       overlay stack ::before. img is lifted above (z-index:4) so the emote
+       keeps its colors on the gray bg instead of being hidden. */
+    background: #808080 !important;
     opacity: 0 !important;
     pointer-events: none !important;
     z-index: 3 !important;
@@ -2043,9 +2044,6 @@ style.textContent = `
   }
   .heatsync-emote-stack:not(.expanded):hover::before {
     opacity: 1 !important;
-  }
-  .heatsync-emote-stack:not(.expanded):hover > .heatsync-emote-wrapper > img {
-    visibility: hidden !important;
   }
 
   /* ============================================ */

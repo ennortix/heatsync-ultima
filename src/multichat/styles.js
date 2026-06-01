@@ -2690,12 +2690,12 @@ function injectStyles() {
       opacity: 0;
       pointer-events: none;
       z-index: 0;
-      /* Mid-gray backing plate (NOT white): an emote keeps its own colors on
-         hover, and #808080 is the maximin-contrast neutral — ~4:1 vs a white
-         emote, ~5:1 vs a black one, so neither extreme vanishes. White-behind-
-         white was the same trap as #ff8700 behind 🔥. The rare mid-gray emote
-         that muddies here is fully legible in the 4x hover preview. */
-      background: #808080;
+      /* White hover plate, matching the site's clickable convention (white bg +
+         dark content = "selected"). The emote on top is darkened to brightness
+         0.2 (see hover rule below) so it reads as a dark shape on white without
+         a fully-inverted silhouette; full-color identity is carried by the 4x
+         hover preview that fires alongside. Uniform across every emote surface. */
+      background: #fff;
     }
     .hs-mc-picker-emote-wrap:not(.blocked):hover::before {
       opacity: 1;
@@ -2703,6 +2703,11 @@ function injectStyles() {
     .hs-mc-picker-emote-wrap > img {
       position: relative;
       z-index: 1;
+    }
+    /* Darken the emote on the white hover plate — not brightness(0)/silhouette,
+       0.2 keeps a hint of form. Tune this one value to taste. */
+    .hs-mc-picker-emote-wrap:not(.blocked):hover > img {
+      filter: brightness(0.2);
     }
     /* Blocked: persistent dashed rect via ::before (not outline on the
        wrap) so it tracks emote content size like the green/orange hover
@@ -2861,13 +2866,17 @@ function injectStyles() {
     /* Cross-highlight: white rect lights up behind every instance of the same
        emote when one is hovered. Color from --hs-highlight-color so blocked
        instances can still tint red (set per-emote by tooltips.js). */
-    /* Mid-gray backing (not white) so light emotes stay visible on the
-       highlight rect while keeping their colors — see picker ::before note.
-       --hs-highlight-color still overrides to red for blocked instances. */
+    /* White highlight plate (clickable convention); the emote on top darkens to
+       brightness 0.2 so it reads on white — see picker ::before note. The 4x
+       preview carries full-color identity. --hs-highlight-color stays the hook
+       for the red blocked tint (set per-emote by tooltips.js). */
     .hs-mc-emote-wrapper.hs-emote-highlight::before {
       opacity: 1;
-      background: var(--hs-highlight-color, #808080) !important;
+      background: var(--hs-highlight-color, #fff) !important;
       transition: none;
+    }
+    .hs-mc-emote-wrapper.hs-emote-highlight:not(.hs-state-blocked):not(.hs-state-stale) > img {
+      filter: brightness(0.2);
     }
     /* Tab cycling: suppress emote hover highlight while user is cycling Tab
        matches in chat input. Mouse stuck over an emote keeps the green rect
@@ -2877,6 +2886,7 @@ function injectStyles() {
     }
     body.hs-tab-cycling .hs-mc-emote-wrapper.hs-emote-highlight > img {
       visibility: visible !important;
+      filter: none !important;
     }
     body.hs-tab-cycling .hs-mc-emote-stack:not(.expanded):has(.hs-mc-emote-wrapper.hs-emote-highlight)::before {
       opacity: 0 !important;

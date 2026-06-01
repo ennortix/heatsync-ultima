@@ -2012,13 +2012,18 @@ style.textContent = `
   .heatsync-emote-wrapper:hover::before {
     opacity: 1 !important;
   }
+  /* Darken the emote on the white hover plate (brightness 0.2 — dark shape on
+     white, not a pure silhouette). Uniform with the overlay/picker/site. */
+  .heatsync-emote-wrapper:hover > img {
+    filter: brightness(0.2) !important;
+  }
   /* 2-state model: every pasteable overlay tier (owned/global/unadded) gets a
-     mid-gray #808080 plate BEHIND the emote (img lifted via z-index) so it
-     keeps its colors and a light emote stays visible — matches the multichat
-     overlay + picker. Only blocked has its own fill. */
+     WHITE plate behind the emote (img lifted via z-index, darkened on top) —
+     matches the multichat overlay + picker + site clickable convention. Only
+     blocked has its own fill. */
   .heatsync-emote-wrapper.emote-overlay-owned::before,
   .heatsync-emote-wrapper.emote-overlay-global::before,
-  .heatsync-emote-wrapper.emote-overlay-unadded::before { background: #808080 !important; }
+  .heatsync-emote-wrapper.emote-overlay-unadded::before { background: #fff !important; }
   .heatsync-emote-wrapper.emote-overlay-blocked::before { background: #ff0000 !important; }
 
   /* Collapsed stack: suppress per-wrapper hover overlays — show one unified
@@ -2033,10 +2038,10 @@ style.textContent = `
     content: '' !important;
     position: absolute !important;
     inset: 0 !important;
-    /* Mid-gray #808080 hover plate behind the stack, matching the multichat
-       overlay stack ::before. img is lifted above (z-index:4) so the emote
-       keeps its colors on the gray bg instead of being hidden. */
-    background: #808080 !important;
+    /* White hover plate behind the stack, matching the multichat overlay stack
+       ::before. img is lifted above (z-index:4) and darkened (brightness 0.2 via
+       the wrapper:hover rule) so it reads as a dark shape on white. */
+    background: #fff !important;
     opacity: 0 !important;
     pointer-events: none !important;
     z-index: 3 !important;
@@ -2572,7 +2577,6 @@ function getEmoteColor(img) {
   if (img.classList?.contains('hs-state-blocked') || img.dataset?.state === 'blocked') return '#ff0000';
   const wrapper = img.closest?.('.emote-hover-wrapper');
   if (wrapper?.classList.contains('blocked')) return '#ff0000';
-  if (img.classList?.contains('hs-input-emote')) return '#808080';
   return '#fff';
 }
 
@@ -2609,6 +2613,17 @@ function showEmoteOverlay(img) {
     pointer-events: none;
     z-index: 4999;
   `;
+  // White (non-blocked) hover: a fixed overlay sits OVER the emote, so we can't
+  // put white *behind* it — instead paint white and lay a DARKENED copy of the
+  // emote on top (brightness 0.2 = dark shape on white, not a silhouette). Same
+  // white-bg + dark-emote look as the multichat overlay / picker / site. Blocked
+  // stays a solid red cover.
+  if (color === '#fff') {
+    const di = document.createElement('img');
+    di.src = img.currentSrc || img.src;
+    di.style.cssText = 'width:100%;height:100%;object-fit:contain;filter:brightness(0.2);';
+    overlay.appendChild(di);
+  }
 
   document.body.appendChild(overlay);
   activeOverlay = overlay;

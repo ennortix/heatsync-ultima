@@ -301,7 +301,7 @@
     // (red). No orange middle tier exists anymore, so the live-resync that
     // used to chase unadded→owned ladder transitions collapses to a single
     // blocked-vs-not check.
-    const hl = newState === 'blocked' ? '#ff0000' : '#808080';
+    const hl = newState === 'blocked' ? '#ff0000' : '#fff';
     document.body.style.setProperty('--hs-highlight-color', hl);
   }
 
@@ -391,7 +391,7 @@
       if (stack) {
         effectiveState = stack.querySelector('.hs-mc-emote-wrapper.hs-state-blocked') ? 'blocked' : 'normal'
       }
-      const sourceColor = effectiveState === 'blocked' ? '#ff0000' : '#808080'
+      const sourceColor = effectiveState === 'blocked' ? '#ff0000' : '#fff'
       document.body.style.setProperty('--hs-highlight-color', sourceColor)
       queryEmoteWrappers(emoteName).forEach(w => {
         w.classList.add('hs-emote-highlight');

@@ -2699,6 +2699,13 @@ function injectStyles() {
       position: relative;
       z-index: 1;
     }
+    /* On hover the ::before paints a white square behind the emote; a
+       white/light emote would vanish into it. brightness(0) blacks the
+       emote to a pure silhouette (alpha preserved) so it always reads
+       against the white bg — matches the #fff/#000 hover convention. */
+    .hs-mc-picker-emote-wrap:not(.blocked):hover img {
+      filter: brightness(0);
+    }
     /* Blocked: persistent dashed rect via ::before (not outline on the
        wrap) so it tracks emote content size like the green/orange hover
        does, instead of sitting 4px outside on the wrap's padding-box. */

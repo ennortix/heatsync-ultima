@@ -1001,13 +1001,34 @@ function initInput() {
     return null;
   }
 
+  function openEmoteCtxMenu(x, y, { emoteName, emoteUrl }) {
+    const hi = getHighResUrl(emoteUrl)
+    const items = []
+    let m
+    if ((m = emoteUrl.match(/cdn\.7tv\.app\/emote\/([^/]+)/))) {
+      items.push({ label: 'open on 7TV', fn: () => window.open(`https://7tv.app/emotes/${m[1]}`, '_blank', 'noopener,noreferrer') })
+    } else if ((m = emoteUrl.match(/cdn\.betterttv\.net\/emote\/([^/]+)/))) {
+      items.push({ label: 'open on BTTV', fn: () => window.open(`https://betterttv.com/emotes/${m[1]}`, '_blank', 'noopener,noreferrer') })
+    } else if ((m = emoteUrl.match(/cdn\.frankerfacez\.com\/emote\/(\d+)/))) {
+      items.push({ label: 'open on FFZ', fn: () => window.open(`https://www.frankerfacez.com/emoticon/${m[1]}`, '_blank', 'noopener,noreferrer') })
+    }
+    items.push(
+      { label: 'view image', fn: () => window.open(hi, '_blank', 'noopener,noreferrer') },
+      'sep',
+      { label: 'copy :name:', fn: () => { try { navigator.clipboard.writeText(`:${emoteName}:`).then(() => showToast('name copied', 'success')).catch(() => {}) } catch {} } },
+      { label: 'copy image url', fn: () => { try { navigator.clipboard.writeText(hi).then(() => showToast('url copied', 'success')).catch(() => {}) } catch {} } },
+    )
+    showHsCtxMenu(x, y, `:${emoteName}:`, items)
+  }
+
   // Global right-click handler for ALL emotes
   if (!window._hsMcEmoteContextHandler) {
     window._hsMcEmoteContextHandler = true;
     document.addEventListener('contextmenu', (e) => {
-      // Stack expand on right-click
+      // Stack expand on right-click (plain, no modifier — shift falls through
+      // to the per-emote menu on whichever stack child the cursor's on).
       const collapsedStack = e.target.closest('.hs-mc-emote-stack:not(.expanded)');
-      if (collapsedStack) {
+      if (collapsedStack && !e.shiftKey) {
         e.preventDefault();
         e.stopPropagation();
         collapsedStack.classList.add('expanded');
@@ -1021,6 +1042,11 @@ function initInput() {
 
       e.preventDefault();
       e.stopPropagation();
+
+      if (e.shiftKey) {
+        openEmoteCtxMenu(e.clientX, e.clientY, emoteInfo);
+        return;
+      }
 
       const { emoteName, state, emoteUrl, source } = emoteInfo;
 

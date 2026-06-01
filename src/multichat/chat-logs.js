@@ -407,26 +407,69 @@ function renderChatLogRow(r) {
   return row
 }
 
+const CL_SAFE_EMOTE_ID = /^[A-Za-z0-9_-]{1,64}$/
+
+function clEmoteCdnUrl(platform, id) {
+  if (!CL_SAFE_EMOTE_ID.test(id)) return null
+  if (platform === 'twitch') return `https://static-cdn.jtvnw.net/emoticons/v2/${id}/default/dark/1.0`
+  if (platform === 'kick') return `https://files.kick.com/emotes/${id}/fullsize`
+  return null
+}
+
+function clEmoteImg(host, src, alt) {
+  const img = document.createElement('img')
+  img.className = 'hs-cl-emote'
+  img.src = src
+  img.alt = alt
+  img.loading = 'lazy'
+  host.appendChild(img)
+}
+
 function appendChatLogBody(host, r) {
   const text = String(r.message || '')
-  const twitchEmotes = r.emote_refs?.twitch || null
+  const refs = r.emote_refs || null
+
+  // Shape A — position-based (Kick webhooks, IVR backfill). Mirrors the site +
+  // server renderers so Kick rows show emotes instead of plain text.
+  const list = refs && Array.isArray(refs.emotes) ? refs.emotes : []
+  if (list.length > 0) {
+    const spans = []
+    for (const entry of list) {
+      if (!entry || !CL_SAFE_EMOTE_ID.test(entry.emote_id || '') || !Array.isArray(entry.positions)) continue
+      for (const p of entry.positions) {
+        if (typeof p?.s !== 'number' || typeof p?.e !== 'number') continue
+        if (p.s < 0 || p.e < p.s || p.e >= text.length) continue
+        spans.push({ s: p.s, e: p.e, emote_id: entry.emote_id })
+      }
+    }
+    if (spans.length > 0) {
+      spans.sort((a, b) => a.s - b.s)
+      let cursor = 0
+      for (const span of spans) {
+        if (span.s < cursor) continue
+        if (span.s > cursor) host.appendChild(document.createTextNode(text.slice(cursor, span.s)))
+        const slice = text.slice(span.s, span.e + 1)
+        const src = clEmoteCdnUrl(r.platform, span.emote_id)
+        const altMatch = slice.match(/^\[emote:[^:]+:([^\]]+)\]$/)
+        if (src) clEmoteImg(host, src, altMatch ? altMatch[1] : slice)
+        else host.appendChild(document.createTextNode(slice))
+        cursor = span.e + 1
+      }
+      if (cursor < text.length) host.appendChild(document.createTextNode(text.slice(cursor)))
+      return
+    }
+  }
+
+  // Shape B — twitch name→url map (ext relay)
+  const twitchEmotes = refs?.twitch || null
   if (!twitchEmotes) {
     host.textContent = text
     return
   }
-  // Walk tokens, swap any token that exactly matches a twitch-emote name
   const parts = text.split(/(\s+)/)
   for (const part of parts) {
-    if (twitchEmotes[part]) {
-      const img = document.createElement('img')
-      img.className = 'hs-cl-emote'
-      img.src = twitchEmotes[part]
-      img.alt = part
-      img.loading = 'lazy'
-      host.appendChild(img)
-    } else {
-      host.appendChild(document.createTextNode(part))
-    }
+    if (twitchEmotes[part]) clEmoteImg(host, twitchEmotes[part], part)
+    else host.appendChild(document.createTextNode(part))
   }
 }
 

@@ -368,8 +368,11 @@ let globalEmotes = []; // BTTV, FFZ, 7TV global emotes
 // fire before fetchViewerSettings() resolves still use the right flag.
 // onChanged listener below keeps in-memory state in sync when settings UI
 // or other tabs flip the toggle.
-browser.storage.local.get('viewer_show_nsfw').then(d => {
+browser.storage.local.get(['viewer_show_nsfw', 'viewer_show_weapon', 'viewer_show_drug', 'viewer_show_hate']).then(d => {
   if (typeof d?.viewer_show_nsfw === 'boolean') viewerShowNsfw = d.viewer_show_nsfw
+  if (typeof d?.viewer_show_weapon === 'boolean') viewerShowWeapon = d.viewer_show_weapon
+  if (typeof d?.viewer_show_drug === 'boolean') viewerShowDrug = d.viewer_show_drug
+  if (typeof d?.viewer_show_hate === 'boolean') viewerShowHate = d.viewer_show_hate
 }).catch(() => {})
 browser.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return
@@ -377,6 +380,21 @@ browser.storage.onChanged.addListener((changes, area) => {
   if (c && typeof c.newValue === 'boolean' && c.newValue !== viewerShowNsfw) {
     viewerShowNsfw = c.newValue
     log(' viewer_show_nsfw changed →', viewerShowNsfw)
+  }
+  const cw = changes.viewer_show_weapon
+  if (cw && typeof cw.newValue === 'boolean' && cw.newValue !== viewerShowWeapon) {
+    viewerShowWeapon = cw.newValue
+    log(' viewer_show_weapon changed →', viewerShowWeapon)
+  }
+  const cd = changes.viewer_show_drug
+  if (cd && typeof cd.newValue === 'boolean' && cd.newValue !== viewerShowDrug) {
+    viewerShowDrug = cd.newValue
+    log(' viewer_show_drug changed →', viewerShowDrug)
+  }
+  const ch = changes.viewer_show_hate
+  if (ch && typeof ch.newValue === 'boolean' && ch.newValue !== viewerShowHate) {
+    viewerShowHate = ch.newValue
+    log(' viewer_show_hate changed →', viewerShowHate)
   }
 })
 
@@ -516,6 +534,10 @@ let currentUsername = null; // Logged-in user's username
 // Every emote-fetch BG call appends `?include_nsfw=${viewerShowNsfw}` so
 // the server filter decision tracks each viewer's per-account preference.
 let viewerShowNsfw = false;
+// Per-category content filters. Default ON (show); server hides only when =false.
+let viewerShowWeapon = true;
+let viewerShowDrug = true;
+let viewerShowHate = true;
 let socket = null;
 let lastBroadcastWasEmpty = false // Track to prevent spamming 0-emote broadcasts
 // Tracks the last user-initiated block/unblock per hash so late-arriving WS
@@ -639,7 +661,10 @@ browser.cookies.onChanged.addListener((changeInfo) => {
       blockedEmotes = new Set()
       followedUsers = []
       viewerShowNsfw = false
-      browser.storage.local.remove(['emote_inventory', 'blocked_emotes', 'auth_token_encrypted', 'auth_token', 'user_info', 'viewer_show_nsfw']).catch(err => log(' storage remove failed:', err?.message))
+      viewerShowWeapon = true
+      viewerShowDrug = true
+      viewerShowHate = true
+      browser.storage.local.remove(['emote_inventory', 'blocked_emotes', 'auth_token_encrypted', 'auth_token', 'user_info', 'viewer_show_nsfw', 'viewer_show_weapon', 'viewer_show_drug', 'viewer_show_hate']).catch(err => log(' storage remove failed:', err?.message))
       broadcastToTabs({ type: 'auth_changed', loggedIn: false })
     } else {
       log(' Auth cookie set — logging in')
@@ -1605,15 +1630,28 @@ async function fetchViewerSettings() {
       viewerShowNsfw = data.show_nsfw_emotes
       browser.storage.local.set({ viewer_show_nsfw: viewerShowNsfw })
     }
+    if (data && typeof data.show_weapon_emotes === 'boolean') {
+      viewerShowWeapon = data.show_weapon_emotes
+      browser.storage.local.set({ viewer_show_weapon: viewerShowWeapon })
+    }
+    if (data && typeof data.show_drug_emotes === 'boolean') {
+      viewerShowDrug = data.show_drug_emotes
+      browser.storage.local.set({ viewer_show_drug: viewerShowDrug })
+    }
+    if (data && typeof data.show_hate_emotes === 'boolean') {
+      viewerShowHate = data.show_hate_emotes
+      browser.storage.local.set({ viewer_show_hate: viewerShowHate })
+    }
   } catch (error) {
     log(' fetchViewerSettings failed:', error?.message)
   }
 }
 
-// Append include_nsfw= to an emote-fetch URL. URL may already have a query.
+// Append content-filter params to an emote-fetch URL. URL may already have a query.
+// Covers include_nsfw (default hide) + include_weapons/drugs/hate (default show).
 function withNsfwParam(url) {
   const sep = url.includes('?') ? '&' : '?'
-  return `${url}${sep}include_nsfw=${viewerShowNsfw ? 'true' : 'false'}`
+  return `${url}${sep}include_nsfw=${viewerShowNsfw ? 'true' : 'false'}&include_weapons=${viewerShowWeapon ? 'true' : 'false'}&include_drugs=${viewerShowDrug ? 'true' : 'false'}&include_hate=${viewerShowHate ? 'true' : 'false'}`
 }
 
 // Validate emote objects from third-party APIs to bound string sizes and URL patterns
@@ -4320,10 +4358,32 @@ function handleWSMessage(msg) {
     // tab (its own click handler already updated the value before the WS
     // round-trip), so we only do the heavy work on receiving devices.
     case 'user_settings:update': {
+      let settingsChanged = false
       if (typeof msg.show_nsfw_emotes === 'boolean' && msg.show_nsfw_emotes !== viewerShowNsfw) {
         log(' user_settings:update received: show_nsfw_emotes →', msg.show_nsfw_emotes)
         viewerShowNsfw = msg.show_nsfw_emotes
         browser.storage.local.set({ viewer_show_nsfw: viewerShowNsfw }).catch(() => {})
+        settingsChanged = true
+      }
+      if (typeof msg.show_weapon_emotes === 'boolean' && msg.show_weapon_emotes !== viewerShowWeapon) {
+        log(' user_settings:update received: show_weapon_emotes →', msg.show_weapon_emotes)
+        viewerShowWeapon = msg.show_weapon_emotes
+        browser.storage.local.set({ viewer_show_weapon: viewerShowWeapon }).catch(() => {})
+        settingsChanged = true
+      }
+      if (typeof msg.show_drug_emotes === 'boolean' && msg.show_drug_emotes !== viewerShowDrug) {
+        log(' user_settings:update received: show_drug_emotes →', msg.show_drug_emotes)
+        viewerShowDrug = msg.show_drug_emotes
+        browser.storage.local.set({ viewer_show_drug: viewerShowDrug }).catch(() => {})
+        settingsChanged = true
+      }
+      if (typeof msg.show_hate_emotes === 'boolean' && msg.show_hate_emotes !== viewerShowHate) {
+        log(' user_settings:update received: show_hate_emotes →', msg.show_hate_emotes)
+        viewerShowHate = msg.show_hate_emotes
+        browser.storage.local.set({ viewer_show_hate: viewerShowHate }).catch(() => {})
+        settingsChanged = true
+      }
+      if (settingsChanged) {
         // Invalidate cross-user batch caches + refetch own inventory so the
         // chat repaints with the new filter immediately, not at the next
         // channel switch. Mirrors what the originating tab's click handler
@@ -4333,7 +4393,7 @@ function handleWSMessage(msg) {
           fetchBlockedEmotes(),
         ]).catch(() => {})
         // Drop sender-emote LRU so next message render re-fetches with the
-        // new include_nsfw param. Same cache the inventory-block path uses
+        // new filter params. Same cache the inventory-block path uses
         // (globalThis.__senderEmoteCache), guarded for lazy init order.
         try {
           if (globalThis.__senderEmoteCache?.clear) globalThis.__senderEmoteCache.clear()

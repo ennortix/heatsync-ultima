@@ -7730,7 +7730,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     }
     // First-time chatter highlight (this session, per channel)
     if (firstChatterGlow && m.user && m.channel && !isMembership && !isKicksEvent && m.type !== 'usernotice' && m.type !== 'notice') {
-      if (markChatterSeen(m.channel, m.user)) {
+      // Mark seen regardless so the user's NEXT message isn't mis-flagged yellow,
+      // but channel-first (purple hs-mc-first-msg) outranks session-first — don't glow yellow over it.
+      const sessionFirst = markChatterSeen(m.channel, m.user)
+      if (sessionFirst && !m.isFirstMsg) {
         div.classList.add('hs-first-msg')
       }
     }

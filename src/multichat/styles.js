@@ -2961,15 +2961,23 @@ function injectStyles() {
       inset: 4px;
       opacity: 0;
       pointer-events: none;
-      z-index: 3;
+      /* Behind the stacked emotes (children sit at z-index 1/2) so the composite
+         reads as a dark shape on the white plate — same as a single emote — not
+         a flat filled rectangle covering the art. */
+      z-index: 0;
     }
     .hs-mc-emote-stack:not(.expanded):has(.hs-mc-emote-wrapper.hs-emote-highlight)::before {
       opacity: 1;
-      background: var(--hs-highlight-color, #00ff00);
+      /* White plate (clickable convention), matching the single-emote default;
+         --hs-highlight-color stays the hook for the red blocked tint. */
+      background: var(--hs-highlight-color, #fff);
       border: none;
     }
-    .hs-mc-emote-stack:not(.expanded):has(.hs-mc-emote-wrapper.hs-emote-highlight) > .hs-mc-emote-stack-emotes > .hs-mc-emote-wrapper > img {
-      visibility: hidden;
+    /* Darken the whole stacked composite to brightness 0.2 (base + overlays)
+       instead of hiding it — dark-on-white, mirroring the single-emote hover.
+       Full-color identity is carried by the 4x preview that fires alongside. */
+    .hs-mc-emote-stack:not(.expanded):has(.hs-mc-emote-wrapper.hs-emote-highlight) > .hs-mc-emote-stack-emotes > .hs-mc-emote-wrapper:not(.hs-state-blocked) > img {
+      filter: brightness(0.2);
     }
 
     /* Flash animations */

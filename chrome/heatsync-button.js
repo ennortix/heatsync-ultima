@@ -1789,7 +1789,6 @@
     hideViewerCount: false,
     compactChatInput: true,
     highlightMentions: true,
-    emotePlaceholderMode: false, // Show colored rectangles instead of emote images
     viMode: false,               // Vim keybindings for chat input
     showPlatformBadges: true,    // Show [T]/[K]/[YT] badges on messages
     // 'menu'=rich context menu (default — open-on-provider, copy, block, +add),
@@ -1903,14 +1902,6 @@
               <div class="heatsync-setting-label">${t('btn_settings_space_after')}</div>
             </div>
             <div class="heatsync-toggle ${settings.emoteSpaceAfter ? 'active' : ''}" data-setting="emoteSpaceAfter"></div>
-          </div>
-
-          <div class="heatsync-setting-row">
-            <div>
-              <div class="heatsync-setting-label">${t('btn_settings_placeholder_mode')}</div>
-              <div class="heatsync-setting-desc">${t('btn_settings_placeholder_desc')}</div>
-            </div>
-            <div class="heatsync-toggle ${settings.emotePlaceholderMode ? 'active' : ''}" data-setting="emotePlaceholderMode"></div>
           </div>
 
           <div class="heatsync-setting-row">

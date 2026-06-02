@@ -559,6 +559,7 @@ class KickChat {
     this._PERSIST_DEBOUNCE_MS = 1500
     this._SYNC_BACKUP_MAX = 200
     this._pendingChannels = new Set()
+    this._recentLiveIds = new Set() // Kick message-id dedup across server-relay + Pusher-tap sources
     // Per-channel watchdog. Kick traffic flows BG → runtime.sendMessage →
     // this._listener; if anything between us and the heatsync server drops
     // a sub silently (BG WS reconnected before our ws_send made it through,
@@ -664,6 +665,14 @@ class KickChat {
         const channel = d.channel?.toLowerCase()
         this._touchChannel(channel)
         if (!channel || !this.channels.has(channel)) return
+        // Dedup by Kick message id — the same message can arrive from BOTH the
+        // server webhook relay and the client-side Pusher tap; keep only the
+        // first. (touchChannel above still ran so the watchdog sees liveness.)
+        if (d.id) {
+          if (this._recentLiveIds.has(d.id)) return
+          this._recentLiveIds.add(d.id)
+          if (this._recentLiveIds.size > 800) this._recentLiveIds.delete(this._recentLiveIds.values().next().value)
+        }
         // Convert Kick badge objects to Twitch-style "name/version" string.
         // Kick WS payload uses {type, text, count} per badge; some pass-through
         // paths re-shape to {name, version}. Accept BOTH so type-shape payloads
@@ -672,6 +681,7 @@ class KickChat {
           ? d.badges.map(b => `${b.type || b.name || 'badge'}/${b.version || b.count || '1'}`).join(',')
           : ''
         const msg = {
+          id: d.id || '',
           user: d.username || 'unknown',
           text: d.content || '',
           color: d.color || '#53fc18',

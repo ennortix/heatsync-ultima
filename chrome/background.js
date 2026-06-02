@@ -5363,10 +5363,14 @@ async function handleMessage(message, sender, sendResponse) {
         // rapid switches.
         if (message.data.platform.toLowerCase() === 'kick') {
           try { bgKickFetchArchive(message.data.channel.toLowerCase()).catch(() => {}) } catch {}
+          try { kickPusherJoin(message.data.channel.toLowerCase()) } catch {}
         }
       } else if (message.data.type === 'channel:leave' && message.data.platform && message.data.channel) {
         const key = `${message.data.platform}/${message.data.channel.toLowerCase()}`
         if (joinedExtraChannels.delete(key)) saveJoinedExtraChannels()
+        if (message.data.platform.toLowerCase() === 'kick') {
+          try { kickPusherLeave(message.data.channel.toLowerCase()) } catch {}
+        }
       }
       wsSend(message.data)
     }
@@ -8106,6 +8110,113 @@ async function bgKickFetchArchive(ch, beforeIso) {
   } catch (e) {
     log('BG KICK archive fetch failed for', ch, ':', e?.message)
   }
+}
+
+// ─── Kick chat Pusher tap (client-side, anonymous) ──────────────────────────
+// Reads Kick chat straight from Kick's own Pusher stream instead of waiting on
+// the server webhook relay — lower latency, no per-app subscription cap, and it
+// survives server hiccups. Each message carries the Kick message_id, so the
+// overlay's KickChat id-dedup silently drops the duplicate from the (still
+// running) server relay. If this tap can't connect/resolve a channel, that
+// channel simply keeps flowing through the server relay — automatic fallback.
+// Flag-gated OFF until verified live on a real channel.
+const KICK_PUSHER_TAP = false
+const KICK_PUSHER_APP_KEY = '32cbd69e4b950bf97679' // rotates rarely — re-check the live Pusher URL if chat ever stops
+let _kpWs = null
+let _kpConnected = false
+let _kpReconnectMs = 1000
+let _kpReconnectTimer = null
+const _kpChannels = new Map()       // slug -> chatroomId (currently subscribed)
+const _kpChatroomCache = new Map()  // slug -> chatroomId (resolved)
+
+async function _kpResolveChatroomId(slug) {
+  if (_kpChatroomCache.has(slug)) return _kpChatroomCache.get(slug)
+  try {
+    const r = await fetch(`https://kick.com/api/v2/channels/${encodeURIComponent(slug)}`, { credentials: 'include' })
+    if (!r.ok) return null
+    const j = await r.json()
+    const id = j?.chatroom?.id
+    if (id) { _kpChatroomCache.set(slug, id); return id }
+  } catch {}
+  return null
+}
+
+function _kpSubscribe(chatroomId) {
+  if (_kpConnected && _kpWs) {
+    try { _kpWs.send(JSON.stringify({ event: 'pusher:subscribe', data: { auth: '', channel: `chatrooms.${chatroomId}.v2` } })) } catch {}
+  }
+}
+function _kpUnsubscribe(chatroomId) {
+  if (_kpConnected && _kpWs) {
+    try { _kpWs.send(JSON.stringify({ event: 'pusher:unsubscribe', data: { channel: `chatrooms.${chatroomId}.v2` } })) } catch {}
+  }
+}
+function _kpScheduleReconnect() {
+  if (_kpReconnectTimer || !KICK_PUSHER_TAP || !_kpChannels.size) return
+  _kpReconnectTimer = setTimeout(() => { _kpReconnectTimer = null; _kpConnect() }, _kpReconnectMs)
+  _kpReconnectMs = Math.min(_kpReconnectMs * 2, 30000)
+}
+function _kpConnect() {
+  if (_kpWs || !KICK_PUSHER_TAP) return
+  try {
+    _kpWs = new WebSocket(`wss://ws-us2.pusher.com/app/${KICK_PUSHER_APP_KEY}?protocol=7&client=js&version=8.4.0&flash=false`)
+  } catch { _kpScheduleReconnect(); return }
+  _kpWs.onopen = () => { _kpReconnectMs = 1000 }
+  _kpWs.onmessage = (e) => {
+    let d; try { d = JSON.parse(e.data) } catch { return }
+    if (d.event === 'pusher:connection_established') {
+      _kpConnected = true
+      for (const id of _kpChannels.values()) _kpSubscribe(id)   // (re)assert all subs
+    } else if (typeof d.event === 'string' && d.event.includes('ChatMessageEvent')) {
+      _kpHandleChatEvent(d)
+    }
+  }
+  _kpWs.onclose = () => { _kpWs = null; _kpConnected = false; if (_kpChannels.size) _kpScheduleReconnect() }
+  _kpWs.onerror = () => { try { _kpWs?.close() } catch {} }
+}
+function _kpSlugForChatroom(chatroomId) {
+  for (const [slug, id] of _kpChannels) if (id === chatroomId) return slug
+  return null
+}
+function _kpHandleChatEvent(d) {
+  let ev; try { ev = typeof d.data === 'string' ? JSON.parse(d.data) : d.data } catch { return }
+  if (!ev) return
+  const m = /chatrooms\.(\d+)\.v2/.exec(d.channel || '')
+  const slug = m ? _kpSlugForChatroom(Number(m[1])) : null
+  if (!slug) return
+  // Match the server webhook relay's data shape exactly (see kick-chat-webhooks
+  // handleChatMessage) so the overlay renders identically + dedups by id.
+  broadcastToTabs({ type: 'kick_chat_message', data: {
+    platform: 'kick',
+    channel: slug,
+    username: ev.sender?.username || 'unknown',
+    displayName: ev.sender?.username || 'Unknown',
+    content: ev.content || '',
+    color: ev.sender?.identity?.color || '#53fc18',
+    badges: ev.sender?.identity?.badges || [],
+    timestamp: ev.created_at ? (Date.parse(ev.created_at) || Date.now()) : Date.now(),
+    id: ev.id || '',
+    replyTo: null
+  } })
+}
+async function kickPusherJoin(slug) {
+  if (!KICK_PUSHER_TAP) return
+  slug = (slug || '').toLowerCase()
+  if (!slug || _kpChannels.has(slug)) return
+  const chatroomId = await _kpResolveChatroomId(slug)
+  if (!chatroomId) return // couldn't resolve -> leave this channel to the server relay
+  _kpChannels.set(slug, chatroomId)
+  _kpConnect()
+  _kpSubscribe(chatroomId)
+}
+function kickPusherLeave(slug) {
+  if (!KICK_PUSHER_TAP) return
+  slug = (slug || '').toLowerCase()
+  const chatroomId = _kpChannels.get(slug)
+  if (chatroomId == null) return
+  _kpUnsubscribe(chatroomId)
+  _kpChannels.delete(slug)
+  if (!_kpChannels.size && _kpWs) { try { _kpWs.close() } catch {}; _kpWs = null; _kpConnected = false }
 }
 
 function bgYtIngest(payload) {

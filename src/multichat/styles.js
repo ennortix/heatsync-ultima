@@ -710,6 +710,9 @@ function injectStyles() {
       background: #fff;
       color: #000;
     }
+    .hs-mc-chat-banner-item:hover * {
+      color: #000 !important;
+    }
     .hs-mc-chat-banner-pred {
       background: #0e0e10;
       border-bottom: 1px solid rgba(56,122,255,0.3);
@@ -5289,7 +5292,7 @@ function injectStyles() {
       color: #000;
     }
     .hs-mc-setting-row:hover * {
-      color: #000;
+      color: #000 !important;
     }
     .hs-mc-setting-label {
       color: #fff !important;

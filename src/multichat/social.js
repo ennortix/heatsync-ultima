@@ -708,10 +708,14 @@ function listenForSocialEvents() {
       if (!u) return
       const msgsEl = document.getElementById('hs-mc-messages')
       if (msgsEl) {
-        msgsEl.querySelectorAll('.hs-mc-msg[data-platform="yt"], .hs-mc-msg[data-platform="youtube"]').forEach(div => {
-          const a = div.querySelector('.hs-mc-user')
-          if (a && a.dataset.username === u) div.classList.add('hs-mc-msg-cleared')
-        })
+        api.storage.local.get(['hs_dim_timeouts']).then(stored => {
+          const dim = stored.hs_dim_timeouts !== undefined ? stored.hs_dim_timeouts : true
+          if (!dim) return
+          msgsEl.querySelectorAll('.hs-mc-msg[data-platform="yt"], .hs-mc-msg[data-platform="youtube"]').forEach(div => {
+            const a = div.querySelector('.hs-mc-user')
+            if (a && a.dataset.username === u) div.classList.add('hs-mc-msg-cleared')
+          })
+        }).catch(() => {})
       }
       // Also flag in buffers so re-renders preserve the dim state
       const flagBuf = (buf) => {

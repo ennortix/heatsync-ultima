@@ -1244,7 +1244,6 @@ function attachPredictionHandlers() {
 let _bannerTimers = []
 let _lastPredResult = null
 let _lastPollData = null
-let _lastPinnedMsg = null
 let _hypeTrainActive = null // { level, startedAt }
 let _bannerFingerprint = '' // avoid rebuilding if nothing changed
 const _seenPredChannels = new Set()        // channels we've fetched at least once
@@ -1301,7 +1300,6 @@ function updateChatBanners(predResult, pollData) {
   const pred = predResult?.prediction
   const hasPred = t.pred !== false && pred && (pred.status === 'ACTIVE' || pred.status === 'LOCKED')
   const hasPoll = t.poll !== false && pollData && pollData.status === 'ACTIVE'
-  const hasPin = t.pin !== false && _lastPinnedMsg
   const hasHype = t.hype !== false && _hypeTrainActive
 
   // Fingerprint to avoid unnecessary rebuilds (prevents flash on bet/refresh)
@@ -1309,7 +1307,6 @@ function updateChatBanners(predResult, pollData) {
   const fp = [
     hasPred ? pred.id + ':' + pred.status + ':' + (userBet?.points || 0) : '',
     hasPoll ? pollData.id + ':' + pollData.status : '',
-    hasPin ? (_lastPinnedMsg.id || _lastPinnedMsg.message) : '',
     hasHype ? 'hype:' + _hypeTrainActive.level : ''
   ].join('|')
 
@@ -1319,7 +1316,7 @@ function updateChatBanners(predResult, pollData) {
   const old = msgsEl.querySelector('.hs-mc-chat-banner')
   clearBannerTimers()
 
-  if (!hasPred && !hasPoll && !hasPin && !hasHype) {
+  if (!hasPred && !hasPoll && !hasHype) {
     if (old) old.remove()
     return
   }
@@ -1331,25 +1328,6 @@ function updateChatBanners(predResult, pollData) {
   const goToTwitch = (e) => {
     const twitchTab = document.querySelector('[data-tab="live"]')
     if (twitchTab) twitchTab.click()
-  }
-
-  // Pinned message
-  if (hasPin) {
-    const row = document.createElement('div')
-    row.className = 'hs-mc-chat-banner-item hs-mc-chat-banner-pin'
-    row.innerHTML = '<span class="hs-mc-chat-banner-icon">\u{1F4CC}</span>'
-    const title = document.createElement('span')
-    title.className = 'hs-mc-chat-banner-title'
-    title.textContent = _lastPinnedMsg.message || ''
-    row.appendChild(title)
-    if (_lastPinnedMsg.sender) {
-      const sender = document.createElement('span')
-      sender.className = 'hs-mc-chat-banner-badge'
-      sender.textContent = _lastPinnedMsg.sender
-      sender.style.color = '#bf94ff'
-      row.appendChild(sender)
-    }
-    banner.appendChild(row)
   }
 
   // Prediction with vital info
@@ -1450,15 +1428,6 @@ function onHypeTrainEnd() {
   _hypeTrainActive = null
   updateChatBanners(_lastPredResult, _lastPollData)
 }
-function onPinnedMessage(msg) {
-  _lastPinnedMsg = msg
-  updateChatBanners(_lastPredResult, _lastPollData)
-}
-function clearPinnedMessage() {
-  _lastPinnedMsg = null
-  updateChatBanners(_lastPredResult, _lastPollData)
-}
-
 // Get Twitch channel for the active multichat tab (channel tab → twitch name, live → URL channel)
 function getActiveTwitchChannel() {
   if (currentTab === 'live' || currentTab === 'feed' || currentTab === 'mentions' || currentTab === 'whispers') {

@@ -2173,7 +2173,6 @@
     redeem: { color: '#00bfff', defaultOn: true,  label: t('mc_settings_redeems'),            desc: t('mc_settings_redeems_desc') },
     pred:   { color: '#387aff', defaultOn: true,  label: t('mc_settings_prediction_banner'),  desc: t('mc_settings_prediction_banner_desc') },
     poll:   { color: '#00c853', defaultOn: true,  label: t('mc_settings_poll_banner'),        desc: t('mc_settings_poll_banner_desc') },
-    pin:    { color: '#bf94ff', defaultOn: true,  label: t('mc_settings_pinned_messages'),    desc: t('mc_settings_pinned_messages_desc') },
   }
   const hermesToggles = {}
   for (const [k, v] of Object.entries(HERMES_EVENT_TYPES)) hermesToggles[k] = v.defaultOn
@@ -4354,7 +4353,7 @@
     } catch (e) { resp = { error: e.message } }
     if (row) row.style.opacity = wasOp || ''
     if (resp?.ok) {
-      if (def.action === 'delete' && row) row.classList.add('hs-mc-msg-cleared')
+      if (def.action === 'delete' && row && dimTimeouts) row.classList.add('hs-mc-msg-cleared')
       const verb = def.action === 'timeout' ? `timed out ${user} ${def.durationSec}s`
                  : def.action === 'ban'     ? `banned ${user}`
                  : def.action === 'unban'   ? `unbanned ${user}`
@@ -5319,7 +5318,7 @@
         '<button class="hs-mc-toggle-pill' + (crash ? ' active' : '') + '" data-uisetting="crashTelemetry"><span class="hs-mc-toggle-knob"></span></button>' +
         '<span class="hs-mc-setting-label" data-tip="show the diagnostic errors panel below. errors are always captured locally to chrome.storage and never uploaded; this toggle only controls the panel\'s visibility.">show diagnostic errors</span>' +
       '</div>' +
-      (crash ? '<div class="hs-mc-setting-row hs-mc-setting-row-block" id="hs-set-crashlog-row">' +
+      '<div class="hs-mc-setting-row hs-mc-setting-row-block" id="hs-set-crashlog-row"' + (!crash ? ' style="display:none"' : '') + '>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;width:100%">' +
           '<span class="hs-mc-setting-label">recent errors</span>' +
           '<div style="display:flex;gap:4px">' +
@@ -5328,7 +5327,7 @@
           '</div>' +
         '</div>' +
         '<pre id="hs-set-crash-pre" class="hs-mc-set-crash-pre">(loading...)</pre>' +
-      '</div>' : '') +
+      '</div>' +
     '</div>' +
     '<div class="hs-mc-settings-group">' +
       '<div class="hs-mc-settings-group-title">backup / restore</div>' +
@@ -5522,6 +5521,8 @@
       if (_settingsSubtab === 'system') {
         var crashPill = msgsEl.querySelector('.hs-mc-toggle-pill[data-uisetting="crashTelemetry"]');
         if (crashPill) crashPill.classList.toggle('active', !!ui.crashTelemetry);
+        var crashRow = msgsEl.querySelector('#hs-set-crashlog-row');
+        if (crashRow) crashRow.style.display = ui.crashTelemetry ? '' : 'none';
         if (ui.crashTelemetry) _loadCrashLog();
       }
       if (_settingsSubtab === 'notifs') {
@@ -5914,6 +5915,7 @@
           firstChatterGlow: true, keywordHighlights: '',
           hiddenTabs: Array.from(DEFAULT_HIDDEN_TABS),
           inlineNotifs: Object.assign({}, inlineNotifs), hermesEvents: Object.assign({}, hermesToggles),
+          crashTelemetry: false,
         };
         try {
           Object.entries(defSettings).forEach(function(kv) { saveUiSetting(kv[0], kv[1]); });
@@ -7395,7 +7397,8 @@
         'event-raid':    'raid',
         'event-hype':    'hype',
         'event-sub':     'sub',
-        'event-redeem':  'redeem'
+        'event-redeem':  'redeem',
+        'event-pred':    'pred'
       }
       const hkey = evtMap[last]
       if (hkey && hermesToggles?.[hkey] === false) return null
@@ -7779,7 +7782,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       div.classList.add('hs-mc-first-msg')
     }
     // Cleared by mod (timeout/ban/delete) — Twitch-native dim + strikethrough on offending content
-    if (m.cleared) {
+    if (m.cleared && dimTimeouts) {
       div.classList.add('hs-mc-msg-cleared')
       if (m.clearedReason) div.title = m.clearedReason
     }
@@ -12005,7 +12008,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         const rows = msgsEl?.querySelectorAll(`.hs-mc-msg[data-msg-user]`) || []
         for (const row of rows) {
           if ((row.dataset.msgUser || '').toLowerCase() === targetLc) {
-            row.classList.add('hs-mc-msg-cleared')
+            if (dimTimeouts) row.classList.add('hs-mc-msg-cleared')
             row.title = msg.banDuration ? `timed out (${msg.banDuration}s)` : 'banned'
           }
         }
@@ -12014,7 +12017,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         const safe = (CSS.escape ? CSS.escape(msg.targetMsgId) : msg.targetMsgId.replace(/"/g, '\\"'))
         const msgsEl = document.getElementById('hs-mc-messages')
         const row = msgsEl?.querySelector(`.hs-mc-msg[data-msg-id="${safe}"]`)
-        if (row) { row.classList.add('hs-mc-msg-cleared'); row.title = 'deleted' }
+        if (row) { if (dimTimeouts) row.classList.add('hs-mc-msg-cleared'); row.title = 'deleted' }
       }
       // Track sub tenure from IRC badge-info
       if (msg.subMonths && msg.channel) {
@@ -12395,12 +12398,6 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         eventClass = 'event-pred'
         const title = data?.title ? ' — ' + escapeHtml(data.title) : ''
         text = `[${escapeHtml(channel)}] ◆ new prediction up${title}`
-      } else if (eventType === 'pin') {
-        if (typeof onPinnedMessage === 'function') onPinnedMessage({ message: data.message, sender: data.sender, id: data.id, channel })
-        return
-      } else if (eventType === 'unpin') {
-        if (typeof clearPinnedMessage === 'function') clearPinnedMessage()
-        return
       } else return
 
       if (!hermesToggles[toggleKey]) return

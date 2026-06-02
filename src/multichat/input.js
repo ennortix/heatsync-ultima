@@ -4732,6 +4732,18 @@ async function sendMessage() {
   const sendToYoutube = !!ytUrl || isLiveYt
   const isDualSend = sendToKick && sendToTwitch
 
+  // /me action — give each platform the right wire form for an action message.
+  // Twitch IRC carries actions as a CTCP ACTION (\x01ACTION text\x01) — the same
+  // primitive Twitch echoes back and irc.js already parses — so we send that
+  // directly instead of relying on Twitch's "/me" chat-command parser (which is
+  // a deprecation-exempt special case we'd rather not depend on). Kick and
+  // YouTube send over REST, which has no action concept: a "/me ..." literal
+  // would post verbatim on Kick and is dropped on YouTube, so they get the bare
+  // body. A bare "/me" with no body falls through as ordinary text.
+  const meMatch = text.match(/^\/me\s+(\S[\s\S]*)$/i)
+  const restText = meMatch ? meMatch[1].trim() : text
+  const twitchText = meMatch ? `\x01ACTION ${restText}\x01` : text
+
   // Register pending-send tracker — echo confirmation is our ground truth
   // for "did the platform deliver?", separate from sendIrc/Kick's "did we
   // write to the socket?" return value. See pendingSends in this file.
@@ -4743,8 +4755,13 @@ async function sendMessage() {
   // For dual/triple sends including YT, YT side-fires as best-effort and
   // we don't await its echo (tracking would always fire no_echo on YT).
   if (sendToYoutube && !sendToKick && !sendToTwitch) _pendingPlatforms.push('yt')
+  // Track by restText, not text: for a /me action every platform's echo carries
+  // the bare body (Twitch strips the CTCP wrapper, Kick/YT never saw the /me),
+  // so the pending tracker and peekSentHost/isSentEcho must key on the body or
+  // the echo never matches — firing a false "did not confirm" warning and
+  // losing badge attribution + dual-send dedup. Identical to text when not /me.
   const _synthId = registerPendingSend({
-    text, channel: targetChannel, platforms: _pendingPlatforms,
+    text: restText, channel: targetChannel, platforms: _pendingPlatforms,
     replyParentId: replyState?.msgId || null,
   })
 
@@ -4753,7 +4770,7 @@ async function sendMessage() {
   // attribution via peekSentHost so own messages render with the platform
   // the user is viewing FROM (extension input on kick.com → [K]) regardless
   // of which relay platform actually echoed back.
-  trackSentMessage(text, undefined, _synthId)
+  trackSentMessage(restText, undefined, _synthId)
 
   // Push to message history (dedup consecutive, cap at max)
   if (mcMessageHistory[0] !== text) {
@@ -4775,16 +4792,16 @@ async function sendMessage() {
   // --- Kick send path (single, dual, or triple including YT) ---
   if (sendToKick) {
     const slug = kickSlug || targetChannel
-    const kickPromise = sendKickMessage(slug, text)
+    const kickPromise = sendKickMessage(slug, restText)
     const twitchPromise = sendToTwitch
       ? getTwitchAuthTokenAsync().then(({ token: tok, username: twitchNick }) =>
-          sendIrcMessage(twitchName, text, tok, replyParentId, twitchNick))
+          sendIrcMessage(twitchName, twitchText, tok, replyParentId, twitchNick))
       : Promise.resolve(null)
 
     // Best-effort YouTube — fire alongside Kick/Twitch so a triple-link
     // channel (twitch+kick+youtube) actually mirrors to all three.
     if (sendToYoutube) {
-      sendYoutubeMessage(text).then(result => {
+      sendYoutubeMessage(restText).then(result => {
         if (result !== true && result !== 'no_youtube_tab') {
           showToast('youtube send failed', 'error')
         }
@@ -4848,7 +4865,7 @@ async function sendMessage() {
 
   // --- YouTube-only send path (no Twitch, no Kick) ---
   if (sendToYoutube && !sendToKick && !sendToTwitch) {
-    sendYoutubeMessage(text).then(result => {
+    sendYoutubeMessage(restText).then(result => {
       if (result === true) {
         // YT echoes don't loop back through our IRC handlers, so the timer
         // would always fire "no_echo" for pure-YT sends. Confirm here, with
@@ -4863,7 +4880,7 @@ async function sendMessage() {
   }
   // Twitch + YouTube (and no Kick) — fire YouTube as best-effort alongside Twitch send below
   if (sendToYoutube && sendToTwitch && !sendToKick) {
-    sendYoutubeMessage(text).then(result => {
+    sendYoutubeMessage(restText).then(result => {
       if (result !== true && result !== 'no_youtube_tab') {
         showToast('youtube send failed', 'error')
       }
@@ -4881,7 +4898,7 @@ async function sendMessage() {
 
   const wsState = authState.ws ? ['CONNECTING','OPEN','CLOSING','CLOSED'][authState.ws.readyState] : 'null'
   log(`IRC SEND → #${targetChannel} ws=${wsState} ready=${authState.ready} queue=${authState.sendQueue.length}`)
-  sendIrcMessage(targetChannel, text, token, replyParentId, twitchNick).then(result => {
+  sendIrcMessage(targetChannel, twitchText, token, replyParentId, twitchNick).then(result => {
     if (result === true) {
       if (wsState !== 'OPEN') {
         input.style.borderColor = '#ff0'

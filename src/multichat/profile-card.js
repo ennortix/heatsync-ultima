@@ -1038,6 +1038,18 @@ async function pcToggleBlock(profileId, username, currentlyBlocked) {
       }
     }
     if (typeof showToast === 'function') showToast(targetBlocked ? `blocked ${username}` : `unblocked ${username}`, 'success')
+    // Hide/restore the user's live messages immediately. block_user → bg →
+    // user_blocked broadcast → main.js updates blockedUsers + re-renders. Mirrors
+    // the chat right-click path; without it a profile-card block only took
+    // effect on next reload. Fans out across linked twitch/kick aliases.
+    try {
+      const platform = activeProfileCard?.platform
+      const aliases = (typeof expandUserAliases === 'function')
+        ? await expandUserAliases(String(username).toLowerCase(), platform)
+        : [String(username).toLowerCase()]
+      const blockMsg = targetBlocked ? 'block_user' : 'unblock_user'
+      for (const a of aliases) safeSendMessage({ type: blockMsg, username: a })
+    } catch (_) { /* best-effort live hide */ }
     // Block side-effects unfollow on server — re-fetch followedUsers in background
     safeSendMessage({ type: 'refresh_followed_users' })
     // Block always implies platform-unfollow (server auto-unfollowed heatsync).

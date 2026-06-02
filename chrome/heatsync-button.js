@@ -509,8 +509,8 @@
 
       .heatsync-header-btn.active {
         background: rgba(255, 107, 53, 0.2);
-        border-color: #ff6b35;
-        color: #ff6b35;
+        border-color: #ff8700;
+        color: #ff8700;
       }
 
       /* Bottom section with search + footer */
@@ -590,8 +590,8 @@
       }
 
       .heatsync-size-btn.active {
-        background: #ff6b35;
-        border-color: #ff6b35;
+        background: #ff8700;
+        border-color: #ff8700;
         color: #fff;
       }
 
@@ -620,7 +620,7 @@
       }
 
       .heatsync-search input:focus {
-        border-color: #ff6b35;
+        border-color: #ff8700;
       }
 
       .heatsync-search input::placeholder {
@@ -709,7 +709,7 @@
 
       .heatsync-tab.active {
         color: #fff;
-        border-bottom-color: #ff6b35;
+        border-bottom-color: #ff8700;
       }
 
       .heatsync-tab-count {
@@ -1111,7 +1111,7 @@
       .heatsync-import-btn {
         width: 100%;
         padding: 10px 16px;
-        background: linear-gradient(135deg, #ff6b35 0%, #f7931a 100%);
+        background: #ff8700;
         border: none;
         border-radius: 0;
         color: #fff;
@@ -1298,7 +1298,7 @@
       }
 
       .heatsync-toggle.active {
-        background: #ff6b35;
+        background: #ff8700;
       }
 
       .heatsync-toggle::after {
@@ -1323,7 +1323,7 @@
         z-index: 5000;
         pointer-events: none;
         background: #000;
-        border: 2px solid #ff6b35;
+        border: 2px solid #ff8700;
         border-radius: 0;
         padding: 8px;
       }
@@ -1350,7 +1350,7 @@
       }
 
       .heatsync-settings-section-title {
-        color: #ff6b35;
+        color: #ff8700;
         font-size: 11px;
         font-weight: 600;
         text-transform: uppercase;

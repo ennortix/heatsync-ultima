@@ -414,7 +414,8 @@ function injectStyles() {
       font-size: 14px;
     }
     .hs-whisper-back:hover {
-      color: #ff8700;
+      background: #fff;
+      color: #000;
     }
     .hs-whisper-self {
       opacity: 0.7;
@@ -706,25 +707,26 @@ function injectStyles() {
       transition: background 0.15s;
     }
     .hs-mc-chat-banner-item:hover {
-      filter: brightness(1.2);
+      background: #fff;
+      color: #000;
     }
     .hs-mc-chat-banner-pred {
-      background: linear-gradient(90deg, rgba(56,122,255,0.2), rgba(245,0,155,0.15));
+      background: #0e0e10;
       border-bottom: 1px solid rgba(56,122,255,0.3);
       color: #a8c8ff;
     }
     .hs-mc-chat-banner-poll {
-      background: linear-gradient(90deg, rgba(0,200,100,0.15), rgba(0,188,212,0.1));
+      background: #0e0e10;
       border-bottom: 1px solid rgba(0,200,100,0.25);
       color: #80e0a0;
     }
     .hs-mc-chat-banner-pin {
-      background: linear-gradient(90deg, rgba(191,148,255,0.12), rgba(145,70,255,0.08));
+      background: #0e0e10;
       border-bottom: 1px solid rgba(191,148,255,0.2);
       color: #d4bfff;
     }
     .hs-mc-chat-banner-hype {
-      background: linear-gradient(90deg, rgba(255,135,0,0.15), rgba(255,60,60,0.1));
+      background: #0e0e10;
       border-bottom: 1px solid rgba(255,135,0,0.3);
       color: #ffb060;
     }
@@ -2020,7 +2022,7 @@ function injectStyles() {
     .hs-mc-msg.hs-mc-notice-error     .hs-mc-system-text { color: #ff8080; }
     /* First-time chatter (Twitch first-msg=1) = Twitch magenta-purple */
     .hs-mc-msg.hs-mc-first-msg { border-left: 3px solid #bd5fff; padding-left: 8px; background: rgba(189, 95, 255, 0.12); }
-    .hs-mc-first-tag { display: inline-block; font-size: 13px; font-weight: 700; color: #fff; background: #bd5fff; padding: 0 4px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+    .hs-mc-first-tag { display: inline-block; font-size: 13px; font-weight: 700; color: #fff; background: #bd5fff; padding: 0 4px; border-radius: 0; margin-right: 4px; vertical-align: middle; }
     /* Cleared (timed out / banned / msg deleted) — Twitch-native dim + strikethrough.
        Username and badges stay visible so the reader can see who got hit; the body
        text and emotes get faded with a strikethrough. */
@@ -2557,7 +2559,7 @@ function injectStyles() {
     }
     .hs-mc-empty-sub {
       font-size: 13px;
-      color: #a0a0a0;
+      color: #999;
       margin-bottom: 14px;
       line-height: 18px;
     }
@@ -2601,7 +2603,7 @@ function injectStyles() {
     }
     .hs-mc-empty-note {
       font-size: 13px;
-      color: #555;
+      color: #808080;
       margin-top: 12px;
       line-height: 18px;
     }
@@ -2995,14 +2997,13 @@ function injectStyles() {
       z-index: 2147483647;
       pointer-events: none;
       background: #000;
-      border: 2px solid #808080;
       border-radius: 0;
       padding: 8px;
       display: none;
       flex-direction: column;
       align-items: center;
       gap: 4px;
-      border: 1px solid #333;
+      border: 1px solid #808080;
     }
     #hs-badge-tooltip.visible {
       display: flex;
@@ -3036,14 +3037,13 @@ function injectStyles() {
       z-index: 2147483647;
       pointer-events: none;
       background: #000;
-      border: 2px solid #808080;
       border-radius: 0;
       padding: 8px;
       display: none;
       flex-direction: column;
       align-items: center;
       gap: 6px;
-      border: 1px solid #333;
+      border: 1px solid #808080;
     }
     #hs-emote-tooltip.visible {
       display: flex;
@@ -3097,14 +3097,13 @@ function injectStyles() {
       z-index: 2147483647;
       pointer-events: none;
       background: #000;
-      border: 2px solid #808080;
       border-radius: 0;
       padding: 8px;
       display: none;
       flex-direction: row;
       gap: 8px;
       max-width: 350px;
-      border: 1px solid #333;
+      border: 1px solid #808080;
     }
     #hs-link-tooltip.visible { display: flex; }
     #hs-link-tooltip img {
@@ -3408,8 +3407,8 @@ function injectStyles() {
       color: #000;
     }
     .hs-mc-toggle-btn.active {
-      background: #9147ff;
-      color: #fff;
+      background: #fff;
+      color: #000;
     }
     #hs-mc-input.over-limit {
       /* text color handled by highlight overlay */
@@ -3494,7 +3493,8 @@ function injectStyles() {
     }
     .hs-mc-tw-subtab:hover,
     .hs-mc-tw-subtab:focus-visible {
-      background: rgba(255,255,255,0.12);
+      background: #fff;
+      color: #000;
       border-color: #fff;
       outline: none;
     }
@@ -3743,14 +3743,12 @@ function injectStyles() {
       background: rgba(0, 0, 0, 0.55);
       color: #fff;
       border: 1px solid rgba(255, 255, 255, 0.25);
-      -webkit-backdrop-filter: blur(6px);
-      backdrop-filter: blur(6px);
       cursor: pointer; padding: 0;
       z-index: 10;
-      transition: background 80ms, color 80ms, border-color 80ms, transform 80ms;
+      transition: background 80ms, color 80ms, border-color 80ms;
     }
-    .hs-pcard-close:hover { background: #fff; color: #000; border-color: #fff; transform: scale(1.08); }
-    .hs-pcard-close:active { transform: scale(0.96); }
+    .hs-pcard-close:hover { background: #fff; color: #000; border-color: #fff; }
+    .hs-pcard-close:active { }
     .hs-pcard-close:focus-visible { outline: 1px solid #ff8700; outline-offset: 1px; }
     /* Close button overlays the hero — no need to reserve right space on the id row.
        Kept rule absent so the row sits flush; the absolute-positioned close has its own footprint. */
@@ -4103,7 +4101,7 @@ function injectStyles() {
       color: #000 !important;
     }
     #hs-mc-emote-picker .hs-mc-picker-tab.active {
-      color: #ff6b35 !important;
+      color: #ff8700 !important;
       background: transparent !important;
     }
     #hs-mc-emote-picker .hs-mc-picker-tab.active:hover {
@@ -4117,7 +4115,7 @@ function injectStyles() {
       left: 0;
       right: 0;
       height: 2px;
-      background: #ff6b35;
+      background: #ff8700;
     }
     .hs-mc-tab-content {
       flex: 1 1 0 !important;
@@ -4208,7 +4206,7 @@ function injectStyles() {
       transition: none;
     }
     #hs-mc-emote-search:focus {
-      border-color: #ff6b35;
+      border-color: #ff8700;
     }
     .hs-mc-src-chips {
       display: flex;
@@ -4308,16 +4306,15 @@ function injectStyles() {
       display: flex;
       align-items: center;
       justify-content: center;
-      background: rgba(255,107,53,0.12);
-      background: color-mix(in srgb, var(--menu-accent, #ff6b35) 12%, transparent);
-      color: var(--menu-accent, #ff6b35);
+      background: rgba(255,135,0,0.12);
+      background: color-mix(in srgb, var(--menu-accent, #ff8700) 12%, transparent);
+      color: var(--menu-accent, #ff8700);
       flex-shrink: 0;
       transition: none;
     }
     .hs-mc-menu-item:hover .hs-mc-menu-icon {
       background: #000;
       color: #fff;
-      transform: scale(1.08);
     }
     .hs-mc-menu-text {
       flex: 1;
@@ -4348,7 +4345,6 @@ function injectStyles() {
     }
     .hs-mc-menu-item:hover .hs-mc-menu-arrow {
       color: #000;
-      transform: translateX(2px);
     }
     .hs-mc-menu-divider {
       height: 1px;
@@ -4405,7 +4401,7 @@ function injectStyles() {
     }
     .hs-mc-pred-timer {
       font-size: 13px;
-      color: #ff6b35;
+      color: #ff8700;
       font-weight: 600;
       font-variant-numeric: tabular-nums;
       white-space: nowrap;
@@ -5173,7 +5169,7 @@ function injectStyles() {
       display: inline-block;
       width: 14px;
       height: 14px;
-      border-radius: 2px;
+      border-radius: 0;
       vertical-align: -2px;
       margin-left: 6px;
       border: 1px solid rgba(255,255,255,0.2);
@@ -5187,14 +5183,14 @@ function injectStyles() {
     .hs-mc-color-swatch {
       width: 20px;
       height: 20px;
-      border-radius: 2px;
+      border-radius: 0;
       cursor: pointer;
       border: 1px solid transparent;
       transition: none;
     }
     .hs-mc-color-swatch:hover {
-      border-color: #fff;
-      transform: scale(1.2);
+      outline: 2px solid #fff;
+      outline-offset: 1px;
     }
     .hs-mc-color-custom {
       display: flex;
@@ -5256,9 +5252,9 @@ function injectStyles() {
       border-color: #fff;
     }
     .hs-mc-mode-btn.active {
-      background: rgba(0,200,175,0.15);
-      color: #00c8af;
-      border-color: rgba(0,200,175,0.3);
+      background: #fff;
+      color: #000;
+      border-color: #fff;
     }
 
     /* ═══ Settings tab ═══ */
@@ -5292,7 +5288,11 @@ function injectStyles() {
       background: #1a1a1a;
     }
     .hs-mc-setting-row:hover {
-      background: #2a2a2a;
+      background: #fff;
+      color: #000;
+    }
+    .hs-mc-setting-row:hover * {
+      color: #000;
     }
     .hs-mc-setting-label {
       color: #fff !important;
@@ -5312,7 +5312,7 @@ function injectStyles() {
       max-width: 260px;
       pointer-events: none;
       display: none;
-      font-family: 'Liberation Mono', monospace;
+      font-family: inherit;
     }
     #hs-settings-tip.visible { display: block; }
     .hs-mc-setting-row.hs-mc-setting-row-block {
@@ -5324,7 +5324,7 @@ function injectStyles() {
       background: #000;
       color: #fff;
       border: 1px solid #808080;
-      font-family: 'Liberation Mono', monospace;
+      font-family: inherit;
       font-size: 13px;
       padding: 4px 6px;
       resize: vertical;
@@ -5340,7 +5340,7 @@ function injectStyles() {
       background: #000;
       color: #fff;
       border: 1px solid #808080;
-      font-family: 'Liberation Mono', monospace;
+      font-family: inherit;
       font-size: 13px;
       padding: 3px 6px;
       cursor: pointer;
@@ -5380,7 +5380,7 @@ function injectStyles() {
       color: #000 !important;
     }
     .hs-mc-size-btn.active {
-      background: #ff6b35 !important;
+      background: #ff8700 !important;
       color: #fff !important;
     }
     .hs-mc-size-btn.active:hover {
@@ -5453,7 +5453,7 @@ function injectStyles() {
       background: #000;
       color: #fff;
       border: 1px solid #808080;
-      font-family: "Liberation Mono", monospace;
+      font-family: inherit;
       font-size: 13px;
       padding: 3px 6px;
       flex-shrink: 0;
@@ -5483,7 +5483,7 @@ function injectStyles() {
       white-space: pre-wrap;
       word-break: break-all;
       margin: 0;
-      font-family: "Liberation Mono", monospace;
+      font-family: inherit;
     }
 
     /* Ensure parent has relative positioning for overlay */
@@ -6246,7 +6246,7 @@ function injectStyles() {
       background: #808080;
       color: transparent;
       cursor: pointer;
-      border-radius: 2px;
+      border-radius: 0;
       padding: 0 2px;
       transition: none;
     }
@@ -6260,7 +6260,7 @@ function injectStyles() {
     .hs-inline-code {
       background: #000;
       padding: 1px 4px;
-      border-radius: 2px;
+      border-radius: 0;
       font-family: monospace;
       font-size: 13px;
     }
@@ -6276,7 +6276,7 @@ function injectStyles() {
       background: #800000;
       color: #fff;
       padding: 0 2px;
-      border-radius: 2px;
+      border-radius: 0;
     }
     .hs-hashtag {
       color: #ff00ff;
@@ -6296,9 +6296,9 @@ function injectStyles() {
 
     /* ---- TAB BADGE ---- */
     .hs-mc-tab .hs-badge {
-      background: #ff6b35;
+      background: #ff8700;
       color: #fff;
-      border-radius: 2px;
+      border-radius: 0;
       font-size: 13px;
       min-width: 14px;
       height: 14px;

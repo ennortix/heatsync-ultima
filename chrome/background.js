@@ -3194,7 +3194,7 @@ function recomputeBadge() {
     badgeApi.setBadgeBackgroundColor({ color: '#ff3030' }).catch(() => {})
   } else if (notifs > 0) {
     badgeApi.setBadgeText({ text: String(notifs) }).catch(() => {})
-    badgeApi.setBadgeBackgroundColor({ color: '#ff6b35' }).catch(() => {})
+    badgeApi.setBadgeBackgroundColor({ color: '#ff8700' }).catch(() => {})
   } else {
     badgeApi.setBadgeText({ text: '' }).catch(() => {})
   }

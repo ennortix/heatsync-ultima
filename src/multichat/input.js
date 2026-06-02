@@ -3097,7 +3097,12 @@ function findEmoteMatches(search) {
     // → type 0 → Tab) finds nothing and the chip collapses back to plain text.
     // The insert path resolves the overlay flag via lookupEmoteWithOverlay and
     // stacks it onto the preceding emote.
-    if (searchLower.length > 2 && searchLower.endsWith('0')) {
+    // Skip synthesis entirely when the literal "name0" is itself a real emote —
+    // a channel emote actually named "lerolero0" is standalone and already
+    // surfaced as a direct hit above; the strip-0 overlay must not shadow it
+    // (and the prefix branch below would otherwise emit bogus "name00" doubles).
+    const _literalIsReal = matches.some(m => m.type === 'emote' && m.name.toLowerCase() === searchLower)
+    if (!_literalIsReal && searchLower.length > 2 && searchLower.endsWith('0')) {
       const baseLower = searchLower.slice(0, -1);
       const seen = new Set(matches.filter(m => m.type === 'emote').map(m => m.name.toLowerCase()));
       for (const [name, emote] of acEmotes) {

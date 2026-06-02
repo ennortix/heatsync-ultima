@@ -1706,24 +1706,25 @@
   function lookupEmoteWithOverlay(name, { ownedOnly = false } = {}) {
     const resolve = ownedOnly ? lookupOwnedEmote : lookupEmote
     const endsWithZero = name.length > 1 && name.endsWith('0')
-    let emote = resolve(name)
-    // Mirror processEmotes (chat render): a direct hit ending in "0" is an
-    // overlay even without the zeroWidth flag (7TV "name0" convention). Without
-    // this, an emote literally named "fog0" rendered inline in the input box
-    // while chat stacked it.
-    let isOverlay = !!emote?.zeroWidth || (!!emote && endsWithZero)
-    // Owned/personal cache shadows the flagged channel/global copy without the
-    // 7TV zeroWidth flag — recover it so an overlay emote you own still stacks.
-    if (emote && !isOverlay && zeroWidthFromAnyCache(name)) isOverlay = true
-    if (!emote && endsWithZero) {
-      const baseName = name.slice(0, -1)
-      const baseEmote = resolve(baseName)
-      if (baseEmote) {
-        emote = baseEmote
-        isOverlay = true
-      }
+    // A literal full-name hit ALWAYS wins — an emote actually named "lerolero0"
+    // is a standalone emote, NOT the "lerolero" overlay. It only stacks if it
+    // carries a real zeroWidth flag (recoverable from any cache for owned
+    // copies that shadow the flagged channel/global entry). The trailing-0
+    // heuristic must never shadow a real "name0" emote. See processEmotes for
+    // the matching chat-render order.
+    const emote = resolve(name)
+    if (emote) {
+      let isOverlay = !!emote.zeroWidth
+      if (!isOverlay && zeroWidthFromAnyCache(name)) isOverlay = true
+      return { emote, isOverlay, displayName: name }
     }
-    return emote ? { emote, isOverlay, displayName: name } : null
+    // No literal hit — apply the 7TV-style "name0" overlay convention: strip the
+    // trailing 0 and overlay the base emote (e.g. "TriHard0" → overlay TriHard).
+    if (endsWithZero) {
+      const baseEmote = resolve(name.slice(0, -1))
+      if (baseEmote) return { emote: baseEmote, isOverlay: true, displayName: name }
+    }
+    return null
   }
   let inventoryHashes = new Map(); // name → hash for remove_from_inventory
   let emoteHashes = new Map(); // name → hash for ALL emotes (block/unblock API)
@@ -2177,31 +2178,35 @@
         continue
       }
 
-      // Try name0 overlay convention: "fire0" -> look up "fire" as overlay
+      // Resolve the emote. A literal full-name hit ALWAYS wins — an emote
+      // actually named "lerolero0" is a standalone emote, NOT the "lerolero"
+      // overlay. Only when the literal name doesn't exist do we apply the
+      // 7TV-style "name0" convention (strip the trailing 0 and overlay the
+      // base). This MUST match lookupEmoteWithOverlay (input preview) so the
+      // input chip and the rendered message agree.
       // Priority: senderEmotes > channel > extraCache (twitch IRC native) > emoteCache (globals)
       let emote = null
       let isOverlayEmote = false
       const endsWithZero = word.endsWith('0') && word.length > 1
-      if (endsWithZero) {
+      emote = senderEmotes?.get(word) || (channel && channelEmoteCaches[channel]?.get(word)) || extraCache?.get(word) || emoteCache.get(word) || _rfGate(_rf?.get(word))
+      // blockedEmoteFallback last + ungated (block is viewer-wide, all senders):
+      // resolves a blocked emote to its real url+dims so it renders the dashed box
+      // at the emote's true rectangle via the normal path, instead of the square
+      // 1×1-placeholder branch below. Only when a real url is stored (url-less
+      // blocks — name-as-hash — still fall through to the square box).
+      if (!emote) { const _bf = blockedEmoteFallback.get(word); if (_bf?.url) emote = _bf }
+      if (emote) {
+        // Real literal hit: overlay ONLY via the zeroWidth flag, never the
+        // trailing-0 heuristic. Own outgoing messages resolve via senderEmotes
+        // (viewerPersonalEmotes), which lacks the 7TV flag — recover it from
+        // channel/global caches so an overlay emote you own still stacks.
+        isOverlayEmote = !!emote.zeroWidth
+        if (!isOverlayEmote && zeroWidthFromAnyCache(word)) isOverlayEmote = true
+      } else if (endsWithZero) {
+        // No literal "name0" emote — strip the 0 and overlay the base.
         const baseName = word.slice(0, -1)
         emote = senderEmotes?.get(baseName) || (channel && channelEmoteCaches[channel]?.get(baseName)) || extraCache?.get(baseName) || emoteCache.get(baseName) || _rfGate(_rf?.get(baseName))
         if (emote) isOverlayEmote = true
-      }
-      if (!emote) {
-        emote = senderEmotes?.get(word) || (channel && channelEmoteCaches[channel]?.get(word)) || extraCache?.get(word) || emoteCache.get(word) || _rfGate(_rf?.get(word))
-        // blockedEmoteFallback last + ungated (block is viewer-wide, all senders):
-        // resolves a blocked emote to its real url+dims so it renders the dashed box
-        // at the emote's true rectangle via the normal path, instead of the square
-        // 1×1-placeholder branch below. Only when a real url is stored (url-less
-        // blocks — name-as-hash — still fall through to the square box).
-        if (!emote) { const _bf = blockedEmoteFallback.get(word); if (_bf?.url) emote = _bf }
-        // Honor zero-width flag, OR fall back to the "name0" naming convention
-        // when an uploader didn't set the flag despite naming the emote for overlay use.
-        if (emote) isOverlayEmote = !!emote.zeroWidth || endsWithZero
-        // Own outgoing messages resolve via senderEmotes (viewerPersonalEmotes),
-        // which lacks the 7TV zeroWidth flag — recover it from channel/global
-        // caches so an overlay emote you own stacks in rendered chat too.
-        if (emote && !isOverlayEmote && zeroWidthFromAnyCache(word)) isOverlayEmote = true
       }
       // FFZ-style fallback: token like "Kappaw!" or "KappaffzX" — when the
       // upstream send pipeline strips the space between emote and modifier,

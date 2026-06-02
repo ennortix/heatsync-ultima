@@ -858,7 +858,12 @@ const HS_KNOWN_OVERLAY_NAMES = new Set([
 function _hsIsLikelyOverlayName(name) {
   if (!name) return false
   if (HS_KNOWN_OVERLAY_NAMES.has(name)) return true
-  // ends-with-0 convention: "rain0" → "rain" is the base, this is overlay
+  // A real emote literally named "lerolero0" is standalone — honor only its
+  // own zero-width flag, never the trailing-0 heuristic. Defer to the shared
+  // detector when we have a direct cache hit.
+  const direct = cachedAllEmotes?.get(name)
+  if (direct) return isZeroWidthEmote(name, direct, cachedAllEmotes)
+  // ends-with-0 convention: "rain0" → "rain" is the base, this is overlay.
   if (name.endsWith('0') && name.length > 1) return true
   return false
 }
@@ -5357,8 +5362,10 @@ function isZeroWidthEmote(emoteName, emoteData, allEmotes) {
   if (typeof emoteData?.flags === 'number' && (emoteData.flags & 257)) return true;
 
   // Method 3: "0" suffix convention (channel overlay emotes)
-  // If emote name ends with "0" and the base name (without "0") exists as an emote
-  if (emoteName.endsWith('0') && emoteName.length > 1) {
+  // If emote name ends with "0" and the base name (without "0") exists as an
+  // emote. ONLY when the literal "name0" is NOT itself a real emote — a channel
+  // emote actually named "lerolero0" is standalone, not the "lerolero" overlay.
+  if (emoteName.endsWith('0') && emoteName.length > 1 && !(allEmotes && allEmotes.has(emoteName))) {
     const baseName = emoteName.slice(0, -1);
     if (allEmotes && allEmotes.has(baseName)) {
       return true;
@@ -5836,30 +5843,25 @@ function replaceEmotesWithStacking(element, allEmotes) {
       continue
     }
 
-    // Check if word ends with 0 - potential overlay (e.g., "TriHard0" → use "TriHard")
+    // Resolve the emote. A literal full-name hit ALWAYS wins — an emote
+    // actually named "lerolero0" is standalone, NOT the "lerolero" overlay.
+    // Only when the literal name has no emote do we strip the trailing 0 and
+    // overlay the base ("TriHard0" → overlay TriHard). Mirrors processEmotes
+    // and lookupEmoteWithOverlay so the multichat and native renders agree.
     const endsWithZero = trimmed.endsWith('0') && trimmed.length > 1;
-    const strippedName = endsWithZero ? trimmed.slice(0, -1) : trimmed;
-
-    // Try stripped name first (for overlay), then full name
     let emote = null;
     let isOverlay = false;
 
-    if (endsWithZero) {
-      emote = allEmotes.get(strippedName);
+    emote = allEmotes.get(trimmed);
+    if (emote) {
+      // Real literal hit — overlay detection via zeroWidth flag / bitmask only.
+      // isZeroWidthEmote's "name0" branch self-skips here (trimmed is in
+      // allEmotes), so a real "lerolero0" stays standalone.
+      isOverlay = isZeroWidthEmote(trimmed, emote, allEmotes)
+    } else if (endsWithZero) {
+      // No literal "name0" emote — strip the 0 and overlay the base.
+      emote = allEmotes.get(trimmed.slice(0, -1));
       if (emote) isOverlay = true;
-    }
-
-    // Fallback to full word if no overlay match
-    if (!emote) {
-      emote = allEmotes.get(trimmed);
-      // Use isZeroWidthEmote() for comprehensive overlay detection:
-      // - zeroWidth property from 7TV API
-      // - flags bitmask (7TV uses flag 1 for zero-width)
-      // - KNOWN_OVERLAY_EMOTES list (withcoffee, rain, fog, etc.)
-      // - name ends with '0' and base exists
-      if (emote) {
-        isOverlay = isZeroWidthEmote(trimmed, emote, allEmotes)
-      }
     }
 
     if (emote && isOverlay && currentStack.length > 0) {

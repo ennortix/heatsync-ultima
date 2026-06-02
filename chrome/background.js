@@ -8119,8 +8119,10 @@ async function bgKickFetchArchive(ch, beforeIso) {
 // overlay's KickChat id-dedup silently drops the duplicate from the (still
 // running) server relay. If this tap can't connect/resolve a channel, that
 // channel simply keeps flowing through the server relay — automatic fallback.
-// Flag-gated OFF until verified live on a real channel.
-const KICK_PUSHER_TAP = false
+// Verified live 2026-06-02 (kick.com/westcol): tap fills + renders, dedup by
+// Kick message id drops relay duplicates (KickChat._recentLiveIds). On = kick
+// chat works on channels the server relay doesn't already track.
+const KICK_PUSHER_TAP = true
 const KICK_PUSHER_APP_KEY = '32cbd69e4b950bf97679' // rotates rarely — re-check the live Pusher URL if chat ever stops
 let _kpWs = null
 let _kpConnected = false

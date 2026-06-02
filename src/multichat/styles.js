@@ -986,22 +986,22 @@ function injectStyles() {
       right: var(--hs-layer-chat-docked-top-right, 0px);
     }
 
-    /* Animations — slide in from the layer's edge, fade out on dismiss. */
+    /* Animations — opacity-only appear, fade out on dismiss. */
     @keyframes hs-notif-slide-in-right {
-      from { transform: translateX(calc(100% + 12px)); opacity: 0; }
-      to   { transform: translateX(0); opacity: 1; }
+      from { opacity: 0; }
+      to   { opacity: 1; }
     }
     @keyframes hs-notif-slide-in-up {
-      from { transform: translateY(calc(100% + 12px)); opacity: 0; }
-      to   { transform: translateY(0); opacity: 1; }
+      from { opacity: 0; }
+      to   { opacity: 1; }
     }
     @keyframes hs-notif-slide-in-down {
-      from { transform: translateY(calc(-100% - 12px)); opacity: 0; }
-      to   { transform: translateY(0); opacity: 1; }
+      from { opacity: 0; }
+      to   { opacity: 1; }
     }
     @keyframes hs-notif-fade-out {
-      from { transform: translateX(0); opacity: 1; }
-      to   { transform: translateX(24%); opacity: 0; }
+      from { opacity: 1; }
+      to   { opacity: 0; }
     }
 
     /* Base notif — flex row, accent strip on the left edge (set per level
@@ -1022,24 +1022,13 @@ function injectStyles() {
       border: 1px solid #2a2a2e;
       border-left: 3px solid var(--hs-notif-accent, #555);
       box-shadow: 0 6px 16px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.03) inset;
-      animation: hs-notif-slide-in-right 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
-      transform-origin: right center;
-      will-change: transform, opacity;
-    }
-    /* Docked-bottom uses opacity-only fade-in so transform never offsets the
-       flex child relative to its natural stacking position. The slide-in-up
-       keyframe was getting stuck in its translateY pre-start state on
-       simultaneous double-emit, visually pushing both banners below the input
-       bar. Plain opacity fade always lands in the right spot. */
-    .hs-notif-layer-chat-docked-bottom .hs-notif {
-      animation-name: hs-notif-fade-in;
-      transform-origin: bottom center;
+      animation: hs-notif-slide-in-right 120ms ease both;
+      will-change: opacity;
     }
     @keyframes hs-notif-fade-in {
       from { opacity: 0; }
       to   { opacity: 1; }
     }
-    .hs-notif-layer-chat-docked-top    .hs-notif { animation-name: hs-notif-slide-in-down; transform-origin: top center; }
     .hs-notif-exiting { animation: hs-notif-fade-out 160ms ease-in forwards !important; pointer-events: none; }
     @media (prefers-reduced-motion: reduce) {
       .hs-notif, .hs-notif-exiting { animation: none !important; }
@@ -1081,7 +1070,7 @@ function injectStyles() {
     .hs-notif-action:hover { background: #fff; color: #000; }
     .hs-notif-action:focus-visible { outline: 1px solid #ff8700; outline-offset: -2px; }
     .hs-notif-action-primary { color: #ff8700; font-weight: 700; }
-    .hs-notif-action-primary:hover { background: #ff8700; color: #000; }
+    .hs-notif-action-primary:hover { background: #fff; color: #000; }
     .hs-notif-action-dismiss { padding: 0 10px; font-size: 14px; color: #848494; }
     .hs-notif-action-dismiss:hover { background: #ff4040; color: #000; }
 
@@ -2220,7 +2209,7 @@ function injectStyles() {
     .hs-mc-ctx .hs-mc-em-item.hs-mc-em-danger { color: #ff5959; }
     .hs-mc-ctx .hs-mc-em-item.hs-mc-em-danger:hover { background: #ff2020; color: #fff; }
     .hs-mc-ctx .hs-mc-em-item.hs-mc-em-good { color: #59ff8a; }
-    .hs-mc-ctx .hs-mc-em-item.hs-mc-em-good:hover { background: #1faf48; color: #fff; }
+    .hs-mc-ctx .hs-mc-em-item.hs-mc-em-good:hover { background: #fff; color: #000; }
     .hs-mc-ctx .hs-mc-em-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .hs-mc-ctx .hs-mc-em-kbd {
       display: inline-block; min-width: 14px; padding: 0 4px;

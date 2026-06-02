@@ -1898,7 +1898,7 @@ async function hsSendCheerViaGQL(channelLogin, amount, message) {
   }
 }
 
-// God-tier send path: dispatch beforeinput into twitch's Lexical chat input
+// Native send path: dispatch beforeinput into twitch's Lexical chat input
 // (text lands in the editor + React state syncs), then trigger the native send
 // button (mouseup/mousedown/click → React onClick fallback). This routes
 // through twitch's OWN send pipeline (GQL sendChatMessage), which is the only

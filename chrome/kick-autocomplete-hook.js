@@ -166,7 +166,7 @@
         z-index: 99999;
         background: #1a1a1a;
         border: 1px solid #333;
-        border-radius: 6px;
+        border-radius: 0;
         padding: 4px 0;
         max-height: 280px;
         overflow-y: auto;
@@ -215,7 +215,7 @@
         width: 28px;
         height: 28px;
         background: #333;
-        border-radius: 3px;
+        border-radius: 0;
         flex-shrink: 0;
       }
     `

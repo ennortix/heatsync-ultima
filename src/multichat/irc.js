@@ -298,7 +298,7 @@ class CircularBuffer {
 // TWITCH IRC CLIENT (READ-ONLY)
 // ============================================
 class IRC {
-  // god-tier mode: BG SW owns the WebSocket. This class is a thin client —
+  // SW-owned mode: BG SW owns the WebSocket. This class is a thin client —
   // it joins/parts via runtime messages, mirrors per-channel buffers locally
   // so existing main.js code can keep using `irc.channels.get(ch).getAll()`
   // synchronously, and forwards live events from BG to local listeners.
@@ -916,7 +916,7 @@ class KickChat {
     // races finish before the populate). No render side-effects in the
     // helper — natural re-render picks up the new entries.
     setTimeout(() => { try { fetchKickChannelBadges(kickUsername) } catch {} }, 1500)
-    // god-tier: ask BG for in-memory buffer first (always fresher than the
+    // ask BG for in-memory buffer first (always fresher than the
     // chrome.storage.local debounced write). Fall back to local persisted
     // history if BG is cold.
     let hydrated = false

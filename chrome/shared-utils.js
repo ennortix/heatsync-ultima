@@ -135,7 +135,7 @@
     if (!document.getElementById('heatsync-toast-styles')) {
       const style = document.createElement('style')
       style.id = 'heatsync-toast-styles'
-      style.textContent = `@keyframes heatsync-toast-in{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}@keyframes heatsync-toast-out{from{opacity:1;transform:translateX(-50%) translateY(0)}to{opacity:0;transform:translateX(-50%) translateY(-10px)}}`
+      style.textContent = `@keyframes heatsync-toast-in{from{opacity:0}to{opacity:1}}@keyframes heatsync-toast-out{from{opacity:1}to{opacity:0}}`
       document.head.appendChild(style)
     }
 

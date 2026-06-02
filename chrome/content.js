@@ -1230,8 +1230,8 @@ style.textContent = `
   /* HEAT MESSAGE BORDERS (by heat tier)          */
   /* ============================================ */
   @keyframes hs-heat-breathe {
-    0%, 100% { transform: scale(1); opacity: 1; }
-    50% { transform: scale(1.04); opacity: 0.9; }
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.85; }
   }
   /* Pause our infinite heat-breathe animation when the host page is
      hidden. Scoped to chat-line messages that we've decorated, not
@@ -1255,7 +1255,7 @@ style.textContent = `
     align-items: flex-start !important;
     gap: 6px !important;
     font-family: 'Courier New', Courier, monospace !important;
-    font-size: 12px !important;
+    font-size: 13px !important;
     color: #fff !important;
     max-width: 400px !important;
     min-width: 200px !important;
@@ -1607,7 +1607,7 @@ style.textContent = `
     background: #000 !important;
     color: #fff !important;
     font-family: Inter, -apple-system, sans-serif !important;
-    font-size: 12px !important;
+    font-size: 13px !important;
     display: flex !important;
     flex-direction: column !important;
     overflow: hidden !important;
@@ -1637,8 +1637,8 @@ style.textContent = `
     cursor: pointer !important;
   }
   .hs-pc-panel-header .hs-pc-panel-close:hover {
-    background: #ff8700 !important;
-    border-color: #ff8700 !important;
+    background: #fff !important;
+    border-color: #fff !important;
     color: #000 !important;
   }
   .hs-pc-panel-header .hs-pc-panel-title {
@@ -1725,7 +1725,7 @@ style.textContent = `
     border: 1px solid #808080 !important;
     padding: 4px 10px !important;
     font: inherit !important;
-    font-size: 11px !important;
+    font-size: 13px !important;
     font-weight: 600 !important;
     cursor: pointer !important;
     border-radius: 0 !important;
@@ -1756,18 +1756,18 @@ style.textContent = `
     color: #808080 !important;
   }
   .hs-pc-follow-btn:hover:not(:disabled) {
-    background: #ff8700 !important;
+    background: #fff !important;
     color: #000 !important;
-    border-color: #ff8700 !important;
+    border-color: #fff !important;
   }
   .hs-pc-follow-btn.hs-pc-following {
     border-color: #ff8700 !important;
     color: #ff8700 !important;
   }
   .hs-pc-follow-btn.hs-pc-following:hover:not(:disabled) {
-    background: #ff8700 !important;
+    background: #fff !important;
     color: #000 !important;
-    border-color: #ff8700 !important;
+    border-color: #fff !important;
   }
   .hs-pc-follow-btn:disabled {
     opacity: 0.5 !important;
@@ -1782,7 +1782,7 @@ style.textContent = `
     overscroll-behavior: contain !important;
     padding: 4px 12px 12px !important;
     font-family: 'Courier New', Courier, monospace !important;
-    font-size: 11px !important;
+    font-size: 13px !important;
     line-height: 1.4 !important;
   }
   .hs-pc-history .hs-pc-history-empty {
@@ -2368,8 +2368,8 @@ style.textContent = `
     transform-origin: top left;
   }
   @keyframes hs-em-in {
-    from { opacity: 0; transform: scale(0.96); }
-    to   { opacity: 1; transform: scale(1); }
+    from { opacity: 0; }
+    to   { opacity: 1; }
   }
   .hs-ctx-menu.hs-em-flip-x { transform-origin: top right; }
   .hs-ctx-menu.hs-em-flip-y { transform-origin: bottom left; }
@@ -2387,9 +2387,9 @@ style.textContent = `
   .hs-ctx-menu .hs-em-item:hover { background: #fff; color: #000; }
   .hs-ctx-menu .hs-em-item:hover .hs-em-kbd { background: #000; color: #fff; border-color: #000; }
   .hs-ctx-menu .hs-em-item.hs-em-danger { color: #ff5959; }
-  .hs-ctx-menu .hs-em-item.hs-em-danger:hover { background: #ff2020; color: #fff; }
+  .hs-ctx-menu .hs-em-item.hs-em-danger:hover { background: #fff; color: #000; }
   .hs-ctx-menu .hs-em-item.hs-em-good { color: #59ff8a; }
-  .hs-ctx-menu .hs-em-item.hs-em-good:hover { background: #1faf48; color: #fff; }
+  .hs-ctx-menu .hs-em-item.hs-em-good:hover { background: #fff; color: #000; }
   .hs-ctx-menu .hs-em-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .hs-ctx-menu .hs-em-kbd {
     display: inline-block; min-width: 14px; padding: 0 4px;
@@ -2405,7 +2405,7 @@ style.textContent = `
     background: #000; color: #fff;
     border: 1px solid #ff8700;
     padding: 6px 10px;
-    font-family: ui-monospace, Menlo, monospace; font-size: 11px;
+    font-family: ui-monospace, Menlo, monospace; font-size: 13px;
     max-width: 280px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.6);
   }

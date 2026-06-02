@@ -401,7 +401,7 @@
         margin: 0;
         background: var(--color-background-button-text-default, transparent);
         border: none;
-        border-radius: var(--border-radius-rounded, 9000px);
+        border-radius: 0;
         color: var(--color-fill-button-icon, #fff);
         cursor: pointer;
         user-select: none;
@@ -417,7 +417,8 @@
       }
 
       .heatsync-chat-btn:active {
-        background-color: var(--color-background-button-text-active, rgba(128, 128, 128, 0.55));
+        background-color: #fff;
+        color: #000;
       }
 
       .heatsync-chat-btn img {
@@ -497,7 +498,7 @@
         cursor: pointer;
         padding: 4px 8px;
         border-radius: 0;
-        font-size: 12px;
+        font-size: 13px;
         transition: none;
       }
 
@@ -508,9 +509,9 @@
       }
 
       .heatsync-header-btn.active {
-        background: rgba(255, 107, 53, 0.2);
-        border-color: #ff8700;
-        color: #ff8700;
+        background: #fff;
+        border-color: #fff;
+        color: #000;
       }
 
       /* Bottom section with search + footer */
@@ -578,7 +579,7 @@
         cursor: pointer;
         padding: 6px 10px;
         border-radius: 0;
-        font-size: 12px;
+        font-size: 13px;
         min-width: 32px;
         transition: none;
       }
@@ -590,9 +591,9 @@
       }
 
       .heatsync-size-btn.active {
-        background: #ff8700;
-        border-color: #ff8700;
-        color: #fff;
+        background: #fff;
+        border-color: #fff;
+        color: #000;
       }
 
       .heatsync-panel-content {
@@ -664,7 +665,7 @@
         background: none;
         border: 1px solid rgba(255,255,255,0.18);
         color: #808080;
-        font-size: 10px;
+        font-size: 13px;
         font-weight: 600;
         padding: 3px 6px;
         cursor: pointer;
@@ -696,7 +697,7 @@
         background: none;
         border: none;
         color: #808080;
-        font-size: 12px;
+        font-size: 13px;
         cursor: pointer;
         border-bottom: 2px solid transparent;
         transition: none;
@@ -708,8 +709,8 @@
       }
 
       .heatsync-tab.active {
-        color: #fff;
-        border-bottom-color: #ff8700;
+        background: #fff;
+        color: #000;
       }
 
       .heatsync-tab-count {
@@ -853,7 +854,7 @@
         border: 1px solid #808080;
         border-radius: 0;
         color: #808080;
-        font-size: 10px;
+        font-size: 13px;
         cursor: pointer;
         transition: none;
       }
@@ -954,7 +955,7 @@
         flex: 1;
       }
       .heatsync-set-name {
-        font-size: 11px;
+        font-size: 13px;
         font-weight: 600;
         color: #fff;
         overflow: hidden;
@@ -974,7 +975,7 @@
         border: 1px solid #ff8700;
         padding: 0 6px;
         font: inherit;
-        font-size: 10px;
+        font-size: 13px;
         font-weight: 600;
         cursor: pointer;
         text-transform: lowercase;
@@ -1042,7 +1043,7 @@
         flex: 1;
       }
       .heatsync-history-name {
-        font-size: 11px;
+        font-size: 13px;
         font-weight: 600;
         color: #fff;
         overflow: hidden;
@@ -1062,7 +1063,7 @@
         border: 1px solid #ff8700;
         padding: 0 6px;
         font: inherit;
-        font-size: 10px;
+        font-size: 13px;
         font-weight: 600;
         cursor: pointer;
         text-transform: lowercase;
@@ -1476,7 +1477,7 @@
         display: flex; align-items: center; gap: 10px;
         padding: 8px 10px; margin-bottom: 4px;
         border-bottom: 1px solid #222;
-        background: linear-gradient(180deg, #0a0a0a, #000);
+        background: #0a0a0a;
       }
       .hs-emote-ctx-thumb {
         width: 56px; height: 56px; flex-shrink: 0;
@@ -1572,7 +1573,7 @@
         background: none;
         border: 1px solid #ff8700;
         color: #ff8700;
-        font-size: 11px;
+        font-size: 13px;
         font-weight: 600;
         cursor: pointer;
         text-align: center;
@@ -1623,7 +1624,7 @@
       }
       .hs-discover-name {
         flex: 1;
-        font-size: 11px;
+        font-size: 13px;
         color: #fff;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -1633,7 +1634,7 @@
         background: none;
         border: 1px solid #ff8700;
         color: #ff8700;
-        font-size: 10px;
+        font-size: 13px;
         font-weight: 600;
         padding: 0 6px;
         cursor: pointer;
@@ -1668,7 +1669,7 @@
       }
       .hs-search-all-cta:hover { background: #fff; color: #000; border-color: #fff; }
       .hs-discover-prov {
-        font-size: 9px;
+        font-size: 11px;
         font-weight: 700;
         text-transform: uppercase;
         padding: 0 4px;
@@ -3910,7 +3911,7 @@
       if (err.message?.includes('Extension context invalidated')) {
         const toast = document.createElement('div');
         toast.textContent = t('common_extension_updated');
-        toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#f44;color:#fff;padding:8px 16px;border-radius:4px;z-index:99999;font-size:14px;';
+        toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#f44;color:#fff;padding:8px 16px;border-radius:0;z-index:99999;font-size:14px;';
         document.body.appendChild(toast);
         setTimeout(() => toast.remove(), 5000);
       }
@@ -3956,7 +3957,7 @@
     if (!toast) {
       toast = document.createElement('div');
       toast.className = 'heatsync-floating-toast';
-      toast.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#000;color:#fff;border:1px solid #ff8700;padding:8px 14px;font-size:12px;z-index:99999;pointer-events:none;opacity:0;transition:opacity 0.15s';
+      toast.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#000;color:#fff;border:1px solid #ff8700;padding:8px 14px;font-size:13px;z-index:99999;pointer-events:none;opacity:0;transition:opacity 0.15s';
       document.body.appendChild(toast);
     }
     toast.textContent = msg;
@@ -4081,7 +4082,7 @@
             if (err.message?.includes('Extension context invalidated')) {
               const toast = document.createElement('div');
               toast.textContent = t('common_extension_updated');
-              toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#f44;color:#fff;padding:8px 16px;border-radius:4px;z-index:99999;font-size:14px;';
+              toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#f44;color:#fff;padding:8px 16px;border-radius:0;z-index:99999;font-size:14px;';
               document.body.appendChild(toast);
               setTimeout(() => toast.remove(), 5000);
             }
@@ -4123,7 +4124,7 @@
           if (err.message?.includes('Extension context invalidated')) {
             const toast = document.createElement('div');
             toast.textContent = t('common_extension_updated');
-            toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#f44;color:#fff;padding:8px 16px;border-radius:4px;z-index:99999;font-size:14px;';
+            toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#f44;color:#fff;padding:8px 16px;border-radius:0;z-index:99999;font-size:14px;';
             document.body.appendChild(toast);
             setTimeout(() => toast.remove(), 5000);
           }

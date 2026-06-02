@@ -2099,9 +2099,6 @@
   window._hsTimestampsEnabled = false;
   let avatarsEnabled = false;
 
-  // Show offline stream events (default on — multichat is built for awareness)
-  let showOfflineEvents = true;
-
   // Auto-claim Twitch channel points bonus chests across every twitch
   // channel in your multichat. Uses the official ClaimCommunityPoints GQL
   // call (same one Twitch's own UI fires) — pure user benefit, ToS-clean.
@@ -4827,25 +4824,6 @@
     renderMessages(currentTab);
   }
 
-  // Offline events setting
-  async function loadOfflineEventsSetting() {
-    try {
-      const stored = await cachedUiSettings();
-      if (stored.ui_settings?.showOfflineEvents !== undefined) {
-        showOfflineEvents = stored.ui_settings.showOfflineEvents;
-      }
-    } catch {}
-  }
-
-  function saveOfflineEventsSetting() {
-    saveUiSetting('showOfflineEvents', showOfflineEvents)
-  }
-
-  function toggleOfflineEvents() {
-    showOfflineEvents = !showOfflineEvents;
-    saveOfflineEventsSetting();
-  }
-
   // Avatars setting
   async function loadAvatarsSetting() {
     try {
@@ -5897,7 +5875,6 @@
         timestampsEnabled = false;
         avatarsEnabled = false;
         platformBadgesEnabled = true;
-        showOfflineEvents = true;
         autoClaimPoints = true;
         startAutoClaimPoller();
         dimTimeouts = true;
@@ -5911,7 +5888,7 @@
         var defSettings = {
           wysiwygEnabled: true, linksEnabled: true, linkPreviewsEnabled: true, viMode: false,
           zebra: true, autoHideEmpty: false, timestamps: false,
-          avatars: false, showPlatformBadges: true, showOfflineEvents: true,
+          avatars: false, showPlatformBadges: true,
           firstChatterGlow: true, keywordHighlights: '',
           hiddenTabs: Array.from(DEFAULT_HIDDEN_TABS),
           inlineNotifs: Object.assign({}, inlineNotifs), hermesEvents: Object.assign({}, hermesToggles),
@@ -8504,7 +8481,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     const toRender = msgs.slice(-DOM_RENDER_CAP).filter(m => !m?.hidden)
     isProgrammaticScroll = true;
 
-    // GOD-TIER STABLE-ORDER RENDER:
+    // STABLE-ORDER RENDER:
     // mellen's bulletproof rules: (1) once a msg is in DOM, it never changes
     // position; (2) order is correct BEFORE showing; (3) zebra never flickers.
     //
@@ -11302,9 +11279,6 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           avatarsEnabled = ns.avatars
           needsRender = true
         }
-        if (ns.showOfflineEvents !== undefined && ns.showOfflineEvents !== showOfflineEvents) {
-          showOfflineEvents = ns.showOfflineEvents
-        }
         if (Array.isArray(ns.hiddenTabs)) {
           const incoming = new Set(ns.hiddenTabs.filter(id => HIDABLE_TABS.includes(id)));
           const same = incoming.size === hiddenTabs.size && [...incoming].every(id => hiddenTabs.has(id));
@@ -11730,7 +11704,6 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       loadFirstChatterGlowSetting(),
       loadTweakFlags(),
       loadKeywordHighlightsSetting(),
-      loadOfflineEventsSetting(),
       loadBlockedEmotes(),
       loadEmotes(),
       loadSenderEmoteSets(),

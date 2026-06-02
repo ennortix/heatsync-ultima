@@ -3,19 +3,6 @@
 /* Base injected message styles */
 .heatsync-injected-message {
   position: relative !important;
-  animation: heatsync-slide-in 0.3s ease-out !important;
-}
-
-/* Slide-in animation for new OP messages */
-@keyframes heatsync-slide-in {
-  from {
-    opacity: 0;
-    transform: translateX(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
 }
 
 /* Hover effect */

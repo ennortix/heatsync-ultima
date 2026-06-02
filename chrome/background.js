@@ -3959,7 +3959,7 @@ function handleWSMessage(msg) {
         if (msg.channelId && msg.videoId) setYtVideoChannel(msg.videoId, msg.channelId)
 
         // Use real ytMsg.timestamp for both replay and live. Mellen's
-        // god-tier rule: every msg lands at its true chronological position
+        // ordering rule: every msg lands at its true chronological position
         // via fairMerge's full sort. live YT msgs may appear slightly above
         // the most-recent twitch msg if YT's timestamp is older — that's
         // chronologically correct, not a bug. Backfill ensures hard-refresh
@@ -5388,7 +5388,7 @@ async function handleMessage(message, sender, sendResponse) {
     followedUsers = [];
     browser.storage.local.remove(['emote_inventory', 'blocked_emotes']);
     // Persist new token to encrypted storage
-    storeToken(message.token).catch(() => {});
+    storeToken(message.token).catch(err => log('storeToken failed, token not persisted:', err?.message));
     // Fetch inventory now that we have token
     fetchEmoteInventory().catch(() => {});
     fetchBlockedEmotes().catch(() => {});
@@ -6813,7 +6813,7 @@ self.addEventListener('notificationclick', (ev) => {
 })
 
 // ============================================================================
-// BG TWITCH IRC READER — god-tier reload bulletproofing
+// BG TWITCH IRC READER — reload-safe connection
 // ============================================================================
 // Owns the read-only Twitch IRC connection. Survives content tab reloads —
 // the WebSocket lives in the SW, persists across page navigations, and
@@ -7868,7 +7868,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 })()
 
 // ============================================================================
-// BG KICK + YT BUFFER MIRROR — same god-tier guarantee
+// BG KICK + YT BUFFER MIRROR — same reload-safe guarantee
 // ============================================================================
 // Kick + YouTube messages already flow through this SW (heatsync server WS).
 // We tee them into per-channel buffers so content tabs hydrate instantly on

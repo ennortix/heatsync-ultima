@@ -729,7 +729,7 @@
             window.__hsModifierToastSeen.add(search)
             const toast = document.createElement('div')
             toast.textContent = 'type modifier after an emote name: LUL w! h! c!#ff0000'
-            toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1a1a1a;color:#ccc;font:13px/1.4 monospace;padding:7px 14px;border-radius:6px;z-index:2147483647;pointer-events:none;white-space:nowrap;box-shadow:0 2px 8px #0008'
+            toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1a1a1a;color:#ccc;font:13px/1.4 monospace;padding:7px 14px;border-radius:0;z-index:2147483647;pointer-events:none;white-space:nowrap;box-shadow:0 2px 8px #0008'
             document.body.appendChild(toast)
             setTimeout(() => toast.remove(), 2000)
           }

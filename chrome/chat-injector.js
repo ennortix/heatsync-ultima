@@ -80,7 +80,8 @@ function injectHoverBlockCSS() {
       cursor: pointer !important;
     }
     .heatsync-injected-message .heatsync-clickable:hover:not(.emote-hovered) {
-      background: rgba(255, 135, 0, 0.15) !important;
+      background: #fff !important;
+      color: #000 !important;
     }
     .heatsync-injected-message .heatsync-emote {
       cursor: pointer !important;

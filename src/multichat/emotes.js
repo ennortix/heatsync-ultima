@@ -423,10 +423,7 @@
     // (emotes ↔ twitch) just toggles display, no rebuild needed.
     const ch = currentTab || getCurrentChannel() || '_';
     const chSize = channelEmoteCaches[ch]?.size || channelEmoteCaches[getCurrentChannel()]?.size || 0;
-    // viewerPersonalEmotes.size is part of the key: an inventory add/remove or an
-    // emotes:refresh bulk update changes what the picker should show, and without
-    // it the cached DOM goes stale (shows emotes the live caches no longer hold).
-    return `${ch}|${emoteSize}|${emoteCache.size}|${chSize}|${viewerPersonalEmotes.size}`;
+    return `${ch}|${emoteSize}|${emoteCache.size}|${chSize}`;
   }
 
   function markPickerDirty() {

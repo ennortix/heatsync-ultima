@@ -1061,6 +1061,7 @@ function initInput() {
       if (emojiSpan) {
         e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation();
         openEmojiCtxMenu(e.clientX, e.clientY, emojiSpan);
         return;
       }
@@ -1292,7 +1293,11 @@ function initInput() {
   if (!window._hsMcMsgContextHandler) {
     window._hsMcMsgContextHandler = true;
     document.addEventListener('contextmenu', (e) => {
-      if (findEmoteTarget(e.target)) return;
+      // Emote AND emoji right-clicks own their own menus (emote block / emoji
+      // copy) in the handler above — bail so the user/message menu doesn't
+      // also fire on the same event and overwrite them (both are capture-phase
+      // document listeners, so stopPropagation alone wouldn't stop this one).
+      if (findEmoteTarget(e.target) || e.target.closest('.hs-mc-emoji')) return;
       const userEl = e.target.closest('.hs-mc-user:not(.hs-mc-reply-user)');
       const feedDiv = e.target.closest('.hs-feed-msg');
       const msg = e.target.closest('.hs-mc-msg');

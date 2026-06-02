@@ -1201,11 +1201,23 @@ function initInput() {
         // automatically. Optimistically populate viewerPersonalEmotes so the
         // own-message echo can render the image before the server add resolves
         // (emote name in raw text has no <img> wrapper for a late add to fill in).
-        if (state === 'unadded' && !viewerPersonalEmotes.has(emoteName)) {
+        // Seed viewerPersonalEmotes when the clicked emote can't currently be
+        // resolved by lookupEmote — covers the 'unadded' slot (optimistic add so
+        // the own-message echo renders before the server add lands) AND the case
+        // where the picker outlived its live resolver cache: 7TV channel/owned
+        // emotes are still shown in the cached picker DOM during the post-load
+        // sub-ack window (~15s) and after a channel re-key, but
+        // lookupEmoteWithOverlay returns null for them, so createInputEmoteImg
+        // builds no chip and the click silently pastes nothing. The clicked
+        // element carries the real url+source, so seed from it (state preserved;
+        // 'unadded' normalizes to 'owned'). Guard on a real http(s) url so a
+        // blocked emote's transparent px never seeds garbage.
+        if (!viewerPersonalEmotes.has(emoteName) && emoteUrl && /^https?:/i.test(emoteUrl) &&
+            (typeof lookupEmoteWithOverlay !== 'function' || !lookupEmoteWithOverlay(emoteName))) {
           viewerPersonalEmotes.set(emoteName, {
             url: emoteUrl,
             source: source || 'heatsync',
-            state: 'owned',
+            state: state === 'unadded' ? 'owned' : state,
           });
         }
         showInputBar();

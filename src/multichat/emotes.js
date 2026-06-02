@@ -658,26 +658,6 @@
             }
             addEmoteToInventory(name, remote.url, remote.provider, img, !!remote.zeroWidth).catch(() => {});
           }
-        } else if (!lookupEmoteWithOverlay(name)) {
-          // Resilience: the picker DOM can outlive the live caches it was built
-          // from — a channel switch re-keys channelEmoteCaches, an emotes:refresh
-          // rebuilds viewerPersonalEmotes, and pickerCacheKey doesn't track every
-          // such change. A still-visible emote may then no longer resolve via
-          // lookupEmote, so createInputEmoteImg returns null and the click
-          // silently no-ops (the symptom: "clicking emotes doesn't paste"). The
-          // clicked element still carries everything we need, so seed the viewer
-          // set from it. src is already getChatResUrl-mapped — re-mapping is
-          // idempotent. Guard on a real http(s) url so blocked emotes (transparent
-          // data: px) don't seed garbage.
-          const url = img.dataset.hsOrigSrc || img.src;
-          if (url && /^https?:/i.test(url)) {
-            viewerPersonalEmotes.set(name, {
-              url,
-              source: img.dataset.source || detectEmoteSource(url),
-              state: img.dataset.state || 'owned',
-              zeroWidth: img.dataset.zeroWidth === '1' || zeroWidthFromAnyCache(name),
-            });
-          }
         }
 
         if (wysiwygEnabled || !('value' in input)) {

@@ -1023,6 +1023,23 @@ function initInput() {
     showHsCtxMenu(x, y, `:${emoteName}:`, items)
   }
 
+  // Right-click menu for emoji. Emoji aren't blockable (unicode glyphs, not
+  // provider images — no name/hash/url to key the block registry on), so the
+  // menu is copy-only: the :shortcode: when known, plus the raw glyph. Chat
+  // emoji carry the shortcode in title=":name:"; input chips in data-emoji-name;
+  // raw unicode has neither (copy-glyph only).
+  function openEmojiCtxMenu(x, y, span) {
+    const title = span.getAttribute('title') || ''
+    const m = title.match(/^:([a-z0-9_+-]+):$/i)
+    const name = span.dataset?.emojiName || (m ? m[1] : '')
+    const char = (span.textContent || '').trim()
+    const items = []
+    if (name) items.push({ label: 'copy :name:', fn: () => { try { navigator.clipboard.writeText(`:${name}:`).then(() => showToast('name copied', 'success')).catch(() => {}) } catch {} } })
+    if (char) items.push({ label: 'copy emoji', fn: () => { try { navigator.clipboard.writeText(char).then(() => showToast('emoji copied', 'success')).catch(() => {}) } catch {} } })
+    if (!items.length) return
+    showHsCtxMenu(x, y, name ? `:${name}:` : char, items)
+  }
+
   // Global right-click handler for ALL emotes
   if (!window._hsMcEmoteContextHandler) {
     window._hsMcEmoteContextHandler = true;
@@ -1035,6 +1052,16 @@ function initInput() {
         e.stopPropagation();
         collapsedStack.classList.add('expanded');
         collapsedStack.removeAttribute('title');
+        return;
+      }
+
+      // Emoji: copy-only menu (not blockable — see openEmojiCtxMenu). Checked
+      // before findEmoteTarget, which doesn't match emoji spans.
+      const emojiSpan = e.target.closest('.hs-mc-emoji');
+      if (emojiSpan) {
+        e.preventDefault();
+        e.stopPropagation();
+        openEmojiCtxMenu(e.clientX, e.clientY, emojiSpan);
         return;
       }
 

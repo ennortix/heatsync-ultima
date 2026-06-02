@@ -364,22 +364,28 @@ browser.storage.local.get(['channel_emotes', 'channel_emotes_owner']).then(async
 let emoteInventory = [];
 let globalEmotes = []; // BTTV, FFZ, 7TV global emotes
 
-// Hydrate viewerShowNsfw from storage on SW wake-up so emote fetches that
-// fire before fetchViewerSettings() resolves still use the right flag.
-// onChanged listener below keeps in-memory state in sync when settings UI
-// or other tabs flip the toggle.
-browser.storage.local.get(['viewer_show_nsfw', 'viewer_show_weapon', 'viewer_show_drug', 'viewer_show_hate']).then(d => {
-  if (typeof d?.viewer_show_nsfw === 'boolean') viewerShowNsfw = d.viewer_show_nsfw
+// Hydrate content-filter flags from storage on SW wake-up so emote fetches
+// that fire before fetchViewerSettings() resolves still use the right flags.
+// onChanged listener below keeps in-memory state in sync when the settings
+// UI or other tabs flip a toggle.
+browser.storage.local.get(['viewer_show_sexual', 'viewer_show_gore', 'viewer_show_weapon', 'viewer_show_drug', 'viewer_show_hate']).then(d => {
+  if (typeof d?.viewer_show_sexual === 'boolean') viewerShowSexual = d.viewer_show_sexual
+  if (typeof d?.viewer_show_gore === 'boolean') viewerShowGore = d.viewer_show_gore
   if (typeof d?.viewer_show_weapon === 'boolean') viewerShowWeapon = d.viewer_show_weapon
   if (typeof d?.viewer_show_drug === 'boolean') viewerShowDrug = d.viewer_show_drug
   if (typeof d?.viewer_show_hate === 'boolean') viewerShowHate = d.viewer_show_hate
 }).catch(() => {})
 browser.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return
-  const c = changes.viewer_show_nsfw
-  if (c && typeof c.newValue === 'boolean' && c.newValue !== viewerShowNsfw) {
-    viewerShowNsfw = c.newValue
-    log(' viewer_show_nsfw changed →', viewerShowNsfw)
+  const cs = changes.viewer_show_sexual
+  if (cs && typeof cs.newValue === 'boolean' && cs.newValue !== viewerShowSexual) {
+    viewerShowSexual = cs.newValue
+    log(' viewer_show_sexual changed →', viewerShowSexual)
+  }
+  const cg = changes.viewer_show_gore
+  if (cg && typeof cg.newValue === 'boolean' && cg.newValue !== viewerShowGore) {
+    viewerShowGore = cg.newValue
+    log(' viewer_show_gore changed →', viewerShowGore)
   }
   const cw = changes.viewer_show_weapon
   if (cw && typeof cw.newValue === 'boolean' && cw.newValue !== viewerShowWeapon) {
@@ -528,12 +534,12 @@ const CHANNEL_BANNER_TTL = 12 * 60 * 60 * 1000
 const CHANNEL_BANNER_MAX = 800
 let followedUsers = []; // Users the current user follows
 let currentUsername = null; // Logged-in user's username
-// v1.6 NSFW per-viewer state. Default OFF (hide flagged emotes); flipped
-// via the multichat panel ⚙ → Content → "show NSFW-flagged emotes" toggle,
-// which PATCHes /api/user/settings and writes viewer_show_nsfw to storage.
-// Every emote-fetch BG call appends `?include_nsfw=${viewerShowNsfw}` so
-// the server filter decision tracks each viewer's per-account preference.
-let viewerShowNsfw = false;
+// v1.6 content filters. sexual + gore default OFF (hidden); weapons/drugs/hate
+// default ON. Flipped via the multichat panel ⚙ → Content toggles, which
+// PATCH /api/user/settings and write to storage. Every emote-fetch BG call
+// appends include_sexual/gore/weapons/drugs/hate params via withNsfwParam().
+let viewerShowSexual = false;
+let viewerShowGore = false;
 // Per-category content filters. Default ON (show); server hides only when =false.
 let viewerShowWeapon = true;
 let viewerShowDrug = true;
@@ -660,11 +666,12 @@ browser.cookies.onChanged.addListener((changeInfo) => {
       emoteInventory = []
       blockedEmotes = new Set()
       followedUsers = []
-      viewerShowNsfw = false
+      viewerShowSexual = false
+      viewerShowGore = false
       viewerShowWeapon = true
       viewerShowDrug = true
       viewerShowHate = true
-      browser.storage.local.remove(['emote_inventory', 'blocked_emotes', 'auth_token_encrypted', 'auth_token', 'user_info', 'viewer_show_nsfw', 'viewer_show_weapon', 'viewer_show_drug', 'viewer_show_hate']).catch(err => log(' storage remove failed:', err?.message))
+      browser.storage.local.remove(['emote_inventory', 'blocked_emotes', 'auth_token_encrypted', 'auth_token', 'user_info', 'viewer_show_sexual', 'viewer_show_gore', 'viewer_show_weapon', 'viewer_show_drug', 'viewer_show_hate']).catch(err => log(' storage remove failed:', err?.message))
       broadcastToTabs({ type: 'auth_changed', loggedIn: false })
     } else {
       log(' Auth cookie set — logging in')
@@ -1609,15 +1616,16 @@ async function fetchUserInfo() {
   }
 }
 
-// v1.6 NSFW — load the viewer's show_nsfw_emotes setting. Falls back to
-// stored value if the network call fails, then to OFF. The flag flows into
-// every emote-fetch via withNsfwParam() below.
+// v1.6 — load the viewer's content filter settings. Falls back to stored
+// value if the network call fails, then to defaults. Flags flow into every
+// emote-fetch via withNsfwParam() below.
 async function fetchViewerSettings() {
   try {
     const authToken = await getAuthCookie()
     if (!authToken) {
-      viewerShowNsfw = false
-      browser.storage.local.set({ viewer_show_nsfw: false })
+      viewerShowSexual = false
+      viewerShowGore = false
+      browser.storage.local.set({ viewer_show_sexual: false, viewer_show_gore: false })
       return
     }
     const resp = await fetchWithTimeout(`${API_URL}/api/user/settings`, {
@@ -1626,9 +1634,13 @@ async function fetchViewerSettings() {
     })
     if (!resp.ok) { resp.body?.cancel(); return }
     const data = await resp.json().catch(() => null)
-    if (data && typeof data.show_nsfw_emotes === 'boolean') {
-      viewerShowNsfw = data.show_nsfw_emotes
-      browser.storage.local.set({ viewer_show_nsfw: viewerShowNsfw })
+    if (data && typeof data.show_sexual_emotes === 'boolean') {
+      viewerShowSexual = data.show_sexual_emotes
+      browser.storage.local.set({ viewer_show_sexual: viewerShowSexual })
+    }
+    if (data && typeof data.show_gore_emotes === 'boolean') {
+      viewerShowGore = data.show_gore_emotes
+      browser.storage.local.set({ viewer_show_gore: viewerShowGore })
     }
     if (data && typeof data.show_weapon_emotes === 'boolean') {
       viewerShowWeapon = data.show_weapon_emotes
@@ -1648,10 +1660,10 @@ async function fetchViewerSettings() {
 }
 
 // Append content-filter params to an emote-fetch URL. URL may already have a query.
-// Covers include_nsfw (default hide) + include_weapons/drugs/hate (default show).
+// Covers include_sexual + include_gore (default hide) + include_weapons/drugs/hate (default show).
 function withNsfwParam(url) {
   const sep = url.includes('?') ? '&' : '?'
-  return `${url}${sep}include_nsfw=${viewerShowNsfw ? 'true' : 'false'}&include_weapons=${viewerShowWeapon ? 'true' : 'false'}&include_drugs=${viewerShowDrug ? 'true' : 'false'}&include_hate=${viewerShowHate ? 'true' : 'false'}`
+  return `${url}${sep}include_sexual=${viewerShowSexual ? 'true' : 'false'}&include_gore=${viewerShowGore ? 'true' : 'false'}&include_weapons=${viewerShowWeapon ? 'true' : 'false'}&include_drugs=${viewerShowDrug ? 'true' : 'false'}&include_hate=${viewerShowHate ? 'true' : 'false'}`
 }
 
 // Validate emote objects from third-party APIs to bound string sizes and URL patterns
@@ -4349,20 +4361,23 @@ function handleWSMessage(msg) {
 
     // v1.6 cross-device sync for column-stored prefs (PATCH /api/user/settings).
     // Server broadcasts this to every WS-connected device for the user, so a
-    // NSFW toggle flipped in tab A mirrors instantly in tab B / desktop 2 /
-    // phone, without polling. The chrome.storage.local write triggers the
-    // existing onChanged listener which updates BG's viewerShowNsfw global +
-    // every content-script tab's _viewerShowNsfwLocal mirror.
-    //
-    // The gate (!== viewerShowNsfw) makes this a no-op for the originating
-    // tab (its own click handler already updated the value before the WS
-    // round-trip), so we only do the heavy work on receiving devices.
+    // toggle flipped in tab A mirrors instantly in tab B / desktop 2 / phone,
+    // without polling. The chrome.storage.local write triggers the existing
+    // onChanged listener which updates BG globals + every content-script tab's
+    // local mirrors. The gate (!== current) makes this a no-op for the
+    // originating tab (click handler already updated before WS round-trip).
     case 'user_settings:update': {
       let settingsChanged = false
-      if (typeof msg.show_nsfw_emotes === 'boolean' && msg.show_nsfw_emotes !== viewerShowNsfw) {
-        log(' user_settings:update received: show_nsfw_emotes →', msg.show_nsfw_emotes)
-        viewerShowNsfw = msg.show_nsfw_emotes
-        browser.storage.local.set({ viewer_show_nsfw: viewerShowNsfw }).catch(() => {})
+      if (typeof msg.show_sexual_emotes === 'boolean' && msg.show_sexual_emotes !== viewerShowSexual) {
+        log(' user_settings:update received: show_sexual_emotes →', msg.show_sexual_emotes)
+        viewerShowSexual = msg.show_sexual_emotes
+        browser.storage.local.set({ viewer_show_sexual: viewerShowSexual }).catch(() => {})
+        settingsChanged = true
+      }
+      if (typeof msg.show_gore_emotes === 'boolean' && msg.show_gore_emotes !== viewerShowGore) {
+        log(' user_settings:update received: show_gore_emotes →', msg.show_gore_emotes)
+        viewerShowGore = msg.show_gore_emotes
+        browser.storage.local.set({ viewer_show_gore: viewerShowGore }).catch(() => {})
         settingsChanged = true
       }
       if (typeof msg.show_weapon_emotes === 'boolean' && msg.show_weapon_emotes !== viewerShowWeapon) {

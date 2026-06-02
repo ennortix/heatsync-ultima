@@ -185,33 +185,41 @@
 
   // Active settings sub-tab — persisted across re-renders
   let _settingsSubtab = 'display';
-  // v1.6 NSFW — local mirror of users.show_nsfw_emotes. BG owns the
-  // authoritative state in chrome.storage.viewer_show_nsfw; this is hydrated
-  // when the settings tab renders so the pill paints with the right state.
+  // v1.6 content filters — local mirrors of user settings. BG owns the
+  // authoritative state in chrome.storage; these are hydrated when the
+  // settings tab renders so pills paint with the right state.
   //
-  // onChanged listener also live-syncs the visible toggle pill — when the
+  // onChanged listener also live-syncs the visible toggle pills — when the
   // server broadcasts a user_settings:update WS event (toggle flipped from
   // another tab / device), BG writes storage → onChanged fires here →
   // every open settings panel updates the pill class in-place without a
   // re-render. Same listener fires from local writes too; idempotent.
-  let _viewerShowNsfwLocal = false;
+  let _viewerShowSexualLocal = false;
+  let _viewerShowGoreLocal = false;
   let _viewerShowWeaponLocal = true;
   let _viewerShowDrugLocal = true;
   let _viewerShowHateLocal = true;
   try {
-    chrome.storage.local.get(['viewer_show_nsfw', 'viewer_show_weapon', 'viewer_show_drug', 'viewer_show_hate'], function(d) {
-      if (typeof d?.viewer_show_nsfw === 'boolean') _viewerShowNsfwLocal = d.viewer_show_nsfw;
+    chrome.storage.local.get(['viewer_show_sexual', 'viewer_show_gore', 'viewer_show_weapon', 'viewer_show_drug', 'viewer_show_hate'], function(d) {
+      if (typeof d?.viewer_show_sexual === 'boolean') _viewerShowSexualLocal = d.viewer_show_sexual;
+      if (typeof d?.viewer_show_gore === 'boolean') _viewerShowGoreLocal = d.viewer_show_gore;
       if (typeof d?.viewer_show_weapon === 'boolean') _viewerShowWeaponLocal = d.viewer_show_weapon;
       if (typeof d?.viewer_show_drug === 'boolean') _viewerShowDrugLocal = d.viewer_show_drug;
       if (typeof d?.viewer_show_hate === 'boolean') _viewerShowHateLocal = d.viewer_show_hate;
     });
     chrome.storage.onChanged.addListener(function(changes, area) {
       if (area !== 'local') return;
-      if (changes.viewer_show_nsfw && typeof changes.viewer_show_nsfw.newValue === 'boolean') {
-        const next = changes.viewer_show_nsfw.newValue;
-        _viewerShowNsfwLocal = next;
-        // Update any visible pill — live cross-tab sync without re-render
-        document.querySelectorAll('.hs-mc-toggle-pill[data-nsfw-pill]').forEach(function(pill) {
+      if (changes.viewer_show_sexual && typeof changes.viewer_show_sexual.newValue === 'boolean') {
+        const next = changes.viewer_show_sexual.newValue;
+        _viewerShowSexualLocal = next;
+        document.querySelectorAll('.hs-mc-toggle-pill[data-sexual-pill]').forEach(function(pill) {
+          pill.classList.toggle('active', next);
+        });
+      }
+      if (changes.viewer_show_gore && typeof changes.viewer_show_gore.newValue === 'boolean') {
+        const next = changes.viewer_show_gore.newValue;
+        _viewerShowGoreLocal = next;
+        document.querySelectorAll('.hs-mc-toggle-pill[data-gore-pill]').forEach(function(pill) {
           pill.classList.toggle('active', next);
         });
       }
@@ -5236,22 +5244,25 @@
   }
 
   function _renderFiltersSubtab() {
-    // v1.6 — Content section: per-viewer NSFW emote opt-in. Default OFF
-    // hides flagged emotes server-side; toggle on to receive them with the
-    // 2px dashed cyan border. Initial state hydrates from chrome.storage
-    // (BG side keeps it in sync via onChanged) so the pill renders correctly
-    // before the GET round-trips. The prior 11-toggle "server-synced
-    // filters" block was unwired — server never read those keys, the
-    // subtab silently failed to load. Removed in the v1.6 audit pass.
-    var nsfwOn = !!_viewerShowNsfwLocal;
+    // v1.6 — Content section: per-viewer content filter opt-ins. sexual +
+    // gore default OFF (hidden server-side); toggle on to receive them with
+    // the 2px dashed cyan border. weapons/drugs/hate default ON. Initial
+    // state hydrates from chrome.storage (BG side keeps in sync via
+    // onChanged) so pills render correctly before the GET round-trips.
+    var sexualOn = !!_viewerShowSexualLocal;
+    var goreOn = !!_viewerShowGoreLocal;
     var weaponOn = !!_viewerShowWeaponLocal;
     var drugOn = !!_viewerShowDrugLocal;
     var hateOn = !!_viewerShowHateLocal;
     return '<div class="hs-mc-settings-group">' +
       '<div class="hs-mc-settings-group-title">content</div>' +
       '<div class="hs-mc-setting-row">' +
-        '<button class="hs-mc-toggle-pill' + (nsfwOn ? ' active' : '') + '" data-nsfw-pill><span class="hs-mc-toggle-knob"></span></button>' +
-        '<span class="hs-mc-setting-label" data-tip="nsfw-flagged emotes (sexual / gore ≥ 70%) are hidden by default. shown with a dashed border when on.">show nsfw-flagged emotes</span>' +
+        '<button class="hs-mc-toggle-pill' + (sexualOn ? ' active' : '') + '" data-sexual-pill><span class="hs-mc-toggle-knob"></span></button>' +
+        '<span class="hs-mc-setting-label" data-tip="emotes flagged for sexual content (≥ 70%) are hidden by default. shown with a dashed border when on.">show sexual emotes</span>' +
+      '</div>' +
+      '<div class="hs-mc-setting-row">' +
+        '<button class="hs-mc-toggle-pill' + (goreOn ? ' active' : '') + '" data-gore-pill><span class="hs-mc-toggle-knob"></span></button>' +
+        '<span class="hs-mc-setting-label" data-tip="emotes flagged for violence/gore (≥ 70%) are hidden by default. shown with a dashed border when on.">show gore emotes</span>' +
       '</div>' +
       '<div class="hs-mc-setting-row">' +
         '<button class="hs-mc-toggle-pill' + (weaponOn ? ' active' : '') + '" data-weapon-pill><span class="hs-mc-toggle-knob"></span></button>' +
@@ -5574,40 +5585,66 @@
       // _SERVER_FILTER_DEFS deletion above. PATCH'd /api/user/settings with
       // unwired keys; server never read them.
 
-      // v1.6 NSFW per-viewer toggle — PATCH /api/user/settings, mirror to
-      // chrome.storage so the BG (which appends include_nsfw= to emote
-      // fetches) and other tabs pick up the new state via onChanged. Inline
-      // emote caches get flushed by triggering refresh_all so cross-user
-      // sets re-fetch with the new filter.
-      var nsfwPill = e.target.closest('.hs-mc-toggle-pill[data-nsfw-pill]');
-      if (nsfwPill) {
-        var nsfwNext = !nsfwPill.classList.contains('active');
-        nsfwPill.classList.toggle('active', nsfwNext);
-        _viewerShowNsfwLocal = nsfwNext;
-        chrome.storage.local.set({ viewer_show_nsfw: nsfwNext });
+      // v1.6 per-viewer content filter toggles — PATCH /api/user/settings,
+      // mirror to chrome.storage so the BG (which appends include_sexual= /
+      // include_gore= to emote fetches) and other tabs pick up the new state
+      // via onChanged. Inline emote caches get flushed via refresh_all.
+      var sexualPill = e.target.closest('.hs-mc-toggle-pill[data-sexual-pill]');
+      if (sexualPill) {
+        var sexualNext = !sexualPill.classList.contains('active');
+        sexualPill.classList.toggle('active', sexualNext);
+        _viewerShowSexualLocal = sexualNext;
+        chrome.storage.local.set({ viewer_show_sexual: sexualNext });
         safeSendMessage({
           type: 'api_fetch',
           path: '/api/user/settings',
           method: 'PATCH',
           auth: true,
-          body: { show_nsfw_emotes: nsfwNext }
+          body: { show_sexual_emotes: sexualNext }
         }).then(function(resp) {
           if (!resp || !resp.ok) {
-            // Rollback the local + storage state so the pill matches reality.
-            nsfwPill.classList.toggle('active', !nsfwNext);
-            _viewerShowNsfwLocal = !nsfwNext;
-            chrome.storage.local.set({ viewer_show_nsfw: !nsfwNext });
-            showToast('failed to save NSFW setting — try again', 'error');
+            sexualPill.classList.toggle('active', !sexualNext);
+            _viewerShowSexualLocal = !sexualNext;
+            chrome.storage.local.set({ viewer_show_sexual: !sexualNext });
+            showToast('failed to save sexual emotes setting — try again', 'error');
             return;
           }
-          // Re-fetch emote sets with the new filter so the chat repaints
-          // immediately instead of waiting for the next channel switch.
           safeSendMessage({ type: 'refresh_all' }).catch(function() {});
         }).catch(function() {
-          nsfwPill.classList.toggle('active', !nsfwNext);
-          _viewerShowNsfwLocal = !nsfwNext;
-          chrome.storage.local.set({ viewer_show_nsfw: !nsfwNext });
-          showToast('failed to save NSFW setting — try again', 'error');
+          sexualPill.classList.toggle('active', !sexualNext);
+          _viewerShowSexualLocal = !sexualNext;
+          chrome.storage.local.set({ viewer_show_sexual: !sexualNext });
+          showToast('failed to save sexual emotes setting — try again', 'error');
+        });
+        return;
+      }
+
+      var gorePill = e.target.closest('.hs-mc-toggle-pill[data-gore-pill]');
+      if (gorePill) {
+        var goreNext = !gorePill.classList.contains('active');
+        gorePill.classList.toggle('active', goreNext);
+        _viewerShowGoreLocal = goreNext;
+        chrome.storage.local.set({ viewer_show_gore: goreNext });
+        safeSendMessage({
+          type: 'api_fetch',
+          path: '/api/user/settings',
+          method: 'PATCH',
+          auth: true,
+          body: { show_gore_emotes: goreNext }
+        }).then(function(resp) {
+          if (!resp || !resp.ok) {
+            gorePill.classList.toggle('active', !goreNext);
+            _viewerShowGoreLocal = !goreNext;
+            chrome.storage.local.set({ viewer_show_gore: !goreNext });
+            showToast('failed to save gore emotes setting — try again', 'error');
+            return;
+          }
+          safeSendMessage({ type: 'refresh_all' }).catch(function() {});
+        }).catch(function() {
+          gorePill.classList.toggle('active', !goreNext);
+          _viewerShowGoreLocal = !goreNext;
+          chrome.storage.local.set({ viewer_show_gore: !goreNext });
+          showToast('failed to save gore emotes setting — try again', 'error');
         });
         return;
       }

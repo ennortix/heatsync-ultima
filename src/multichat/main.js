@@ -7841,25 +7841,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (m.replyTo.id) div.dataset.replyId = m.replyTo.id
       if (m.replyTo.threadId) div.dataset.replyThreadId = m.replyTo.threadId
     }
-    // Gigantify — single-emote message renders the emote at 4x. FFZ-style.
-    // Detect: exactly one .hs-mc-emote-wrapper AND no other meaningful body
-    // content (after stripping username/badges/buttons). Cheap DOM clone.
-    if (_isGigantifiable(div)) div.classList.add('hs-mc-gigantify')
     return div;
-  }
-
-  function _isGigantifiable(div) {
-    const wrappers = div.querySelectorAll('.hs-mc-emote-wrapper')
-    if (wrappers.length !== 1) return false
-    const clone = div.cloneNode(true)
-    clone.querySelectorAll(
-      '.hs-mc-user, .hs-mc-platform-badge, .hs-mc-badge-img, ' +
-      '.hs-mc-reply-ctx, .hs-mc-reply-btn, .hs-mc-permalink-btn, ' +
-      'time, .hs-mc-emote-wrapper, .hs-mc-timestamp, .hs-mc-system-text, ' +
-      '.hs-mc-mod-toolbar, .hs-mc-emote-stack'
-    ).forEach(el => el.remove())
-    const txt = (clone.textContent || '').replace(/[\s:>@]+/g, '')
-    return txt.length === 0
   }
 
   // LRU cache for processYtEmotes' combined regex. Pattern key is the joined

@@ -2611,20 +2611,6 @@ function injectStyles() {
       cursor: pointer;
       box-sizing: content-box;
     }
-    /* Gigantify — single-emote chat messages render the emote at 4x for that
-       big-mood FFZ vibe. Toggle gated by .hs-mc-gigantify on the row; check
-       lives in _isGigantifiable(). Overlay stacks inherit since the parent
-       wrapper is scaled. */
-    .hs-mc-msg.hs-mc-gigantify .hs-mc-emote,
-    .hs-mc-msg.hs-mc-gigantify .hs-mc-emote-wrapper > img,
-    .hs-mc-msg.hs-mc-gigantify .hs-mc-emote-stack img {
-      max-height: 96px !important;
-      padding: 4px;
-    }
-    .hs-mc-msg.hs-mc-gigantify {
-      padding-top: 4px;
-      padding-bottom: 4px;
-    }
     /* Feed content is rendered in CozetteVector (a pixel font). A bare inline
        emote with vertical-align:middle recenters the line box and lands adjacent
        text on a half-pixel Y, blurring the glyphs. bottom keeps text on an

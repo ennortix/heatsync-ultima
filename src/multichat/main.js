@@ -8428,7 +8428,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // Channel tab — merge IRC + Kick + per-channel YouTube messages
       const ch = getChannelById(id);
       const twitchName = ch?.twitch;
-      const kickName = ch.kick;
+      const kickName = ch?.kick;
       const ircMsgs = twitchName ? (irc?.getMessages(twitchName) || []) : [];
       const kickMsgs = kickName ? (kickChat?.getMessages(kickName) || []) : [];
       let ytMsgs = channelYtMessages.get(id) || [];
@@ -8930,7 +8930,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     const twitchName = ch?.twitch;
     if (twitchName) irc?.part(twitchName);
 
-    const kickName = ch.kick;
+    const kickName = ch?.kick;
     if (kickName) kickChat?.part(kickName);
 
     // Clean up per-channel sub tenure data to prevent stale map growth

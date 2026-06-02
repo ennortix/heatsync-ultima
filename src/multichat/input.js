@@ -116,7 +116,9 @@ function isSentEcho(msgText, _msgPlatform) {
   const cutoff = Date.now() - SENT_DEDUP_WINDOW
   for (let i = _recentSentMessages.length - 1; i >= 0; i--) {
     const entry = _recentSentMessages[i]
-    if (entry.time < cutoff) break
+    // continue (not break): a cross-tab merge can briefly leave the array out
+    // of time order, so an old entry early doesn't mean all earlier are old.
+    if (entry.time < cutoff) continue
     if (entry.text === msgText) {
       // First echo displays; second (dual-send duplicate) is suppressed.
       // Host-platform badge attribution happens separately via peekSentHost,

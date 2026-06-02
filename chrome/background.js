@@ -3809,6 +3809,15 @@ function handleWSMessage(msg) {
       }
       break
 
+    case 'emotes:refresh':
+      // Bulk inventory change from the site (apply saved set, channel-import,
+      // shared-set import, undo/redo). Without this case the event fell through
+      // and the inventory stayed stale until the 60s poll — the applied/imported
+      // emotes silently didn't render.
+      log(' 🔄 EMOTES REFRESH (bulk inventory change)')
+      scheduleInventoryRefresh()
+      break
+
     case 'emote:blocked':
       // Skip if user just unblocked locally — late WS echo would otherwise re-add.
       if (recentBlockToggleState(msg.hash) === 'unblocked') break;

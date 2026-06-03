@@ -2234,8 +2234,8 @@ function injectStyles() {
       border-radius: 0;
       padding: 0;
       display: none;
-      min-width: 240px;
-      max-width: 400px;
+      min-width: 210px;
+      max-width: 360px;
       overflow: hidden;
       isolation: isolate;
       --hs-pc-accent: #ff8700;
@@ -2243,51 +2243,55 @@ function injectStyles() {
     #hs-user-tooltip.visible {
       display: block;
     }
-    /* Hero band — wide channel banner image up top, accent-tinted gradient
-       placeholder until the GQL response lands. Image is decoded off-DOM
-       (Image() probe) and committed in one go so there's no flash. */
+    /* Hero band — channel banner fills the WHOLE card as an ambient background;
+       content layers on top over a scrim. Accent-tinted gradient placeholder
+       until the GQL response lands. Image is decoded off-DOM (Image() probe)
+       and committed in one go so there's no flash. */
     #hs-user-tooltip .hs-pc-hero {
-      position: relative;
-      height: 56px;
+      position: absolute; inset: 0;
+      z-index: 0;
       background: linear-gradient(135deg, var(--hs-pc-accent, #1a1a1a) 0%, #0a0a0a 90%);
-      border-bottom: 1px solid var(--hs-pc-accent, #2a2a2a);
       overflow: hidden;
     }
     #hs-user-tooltip .hs-pc-hero-img {
-      position: absolute; inset: 0;
+      position: absolute; inset: -8px; /* over-bleed so blur doesn't feather edges */
       background-position: center; background-size: cover; background-repeat: no-repeat;
       opacity: 0; transition: opacity 240ms ease-out, transform 600ms ease-out;
-      transform: scale(1.06);
-      filter: saturate(1.1);
+      transform: scale(1.04);
+      /* Blurred + dimmed so the banner whispers as ambient texture behind the
+         identity row — mirrors the site's .profile-card-pro hero treatment. */
+      filter: saturate(1.15) blur(3px);
     }
     #hs-user-tooltip .hs-pc-hero.hs-pc-hero-loaded .hs-pc-hero-img {
-      opacity: 0.85; transform: scale(1);
+      opacity: 0.55; transform: scale(1);
     }
-    /* Scrim — bottom-weighted dark gradient so name/badges below the hero
-       remain crisp regardless of banner color. */
+    /* Scrim — covers the whole card so the banner reads as ambient texture
+       while name/badges/sheet stay crisp over any banner color. */
     #hs-user-tooltip .hs-pc-hero-scrim {
       position: absolute; inset: 0;
-      background: linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.55) 60%, rgba(0,0,0,0.92) 100%);
+      background: linear-gradient(135deg, rgba(0,0,0,0.20) 0%, rgba(0,0,0,0.45) 60%, rgba(0,0,0,0.70) 100%);
       pointer-events: none;
     }
-    /* Body wraps everything below the banner; padding lives here now so the
-       hero can run flush to the tooltip edge. */
+    /* Body layers on top of the full-card banner background. */
     #hs-user-tooltip .hs-pc-body {
+      position: relative;
+      z-index: 1;
       display: flex;
       padding: 8px;
     }
     #hs-user-tooltip .hs-pc-avatar {
-      width: 48px;
-      height: 48px;
-      min-width: 48px;
+      /* content.js's bare .hs-pc-avatar {!important} (native chat-tile card)
+         pins this to 32px; keep these in sync so the rule isn't misleading. */
+      width: 32px;
+      height: 32px;
+      min-width: 32px;
       border: 2px solid var(--hs-pc-accent, #2a2a2a);
       object-fit: cover;
       flex-shrink: 0;
       align-self: flex-start;
-      /* Lifts avatar so it bridges the hero banner and the body, the same
-         move every modern social profile uses to anchor identity. Margin-top
-         is negative to overlap the hero by ~half the avatar height. */
-      margin-top: -32px;
+      /* Sits inline in the body over the banner — no overlap lift needed now
+         that the banner is the full-card background. */
+      margin-top: 0;
       margin-right: 10px;
       box-shadow:
         0 0 0 1px #000,
@@ -2302,8 +2306,7 @@ function injectStyles() {
       min-width: 0;
       display: flex;
       flex-direction: column;
-      gap: 6px;
-      margin-left: 8px;
+      gap: 5px;
     }
     #hs-user-tooltip .hs-pc-header {
       display: flex;

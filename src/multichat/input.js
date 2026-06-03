@@ -473,6 +473,12 @@ async function fetchRemoteEmoteMatches(search) {
   for (let i = 0; i < _recentList.length; i++) _recentRank.set(_recentList[i], i)
   acState.matches.sort((a, b) => {
     if (a.priority !== b.priority) return a.priority - b.priority
+    // Exact full-name match wins outright — typing the complete name means you want THAT
+    // emote, even when a longer-named local emote shares the prefix ("Birdge" over local
+    // "BirdgeHmm"). Must rank above the local>remote split below.
+    const ae = a.name.toLowerCase() === searchLower ? 0 : 1
+    const be = b.name.toLowerCase() === searchLower ? 0 : 1
+    if (ae !== be) return ae - be
     const al = a.remote ? 1 : 0, bl = b.remote ? 1 : 0
     if (al !== bl) return al - bl
     if (!a.remote && !b.remote) {
@@ -488,9 +494,16 @@ async function fetchRemoteEmoteMatches(search) {
     return (a.name || '').localeCompare(b.name || '')
   })
   // No local match existed when Tab was pressed — insert the first remote hit now.
+  const exactIdx = acState.matches.findIndex(m => (m.name || '').toLowerCase() === searchLower)
   if (wasEmpty && acState.matches.length > 0) {
     acState.index = 0
     insertCompletionKeepOpen(acState.matches[0])
+  } else if (exactIdx >= 0 && (!prev || (prev.name || '').toLowerCase() !== searchLower)) {
+    // A remote-loaded exact full-name match outranks the local prefix match the
+    // user is sitting on ("Birdge" over local "BirdgeHmm"). Snap to it — typing the
+    // complete name wants THAT emote, not a longer one the channel happens to own.
+    acState.index = exactIdx
+    insertCompletionKeepOpen(acState.matches[exactIdx])
   } else if (prev) {
     const ni = acState.matches.indexOf(prev)
     if (ni >= 0) acState.index = ni
@@ -3210,6 +3223,12 @@ function findEmoteMatches(search) {
   for (let i = 0; i < _recentList.length; i++) _recentRank.set(_recentList[i], i)
   matches.sort((a, b) => {
     if (a.priority !== b.priority) return a.priority - b.priority
+    // Exact full-name match wins outright — typing the complete name means you want
+    // THAT emote, even over one in your own set that's a longer prefix ("Birdge" over
+    // own-set "BirdgeHmm"). Must rank above the tier (own > channel > global) check.
+    const ae = (a.name || '').toLowerCase() === searchLower ? 0 : 1
+    const be = (b.name || '').toLowerCase() === searchLower ? 0 : 1
+    if (ae !== be) return ae - be
     const at = a.tier ?? 9, bt = b.tier ?? 9
     if (at !== bt) return at - bt
     if (!!a.sub !== !!b.sub) return a.sub ? -1 : 1

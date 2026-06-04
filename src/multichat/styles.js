@@ -1276,8 +1276,7 @@ function injectStyles() {
       box-sizing: border-box !important;
     }
     /* Hide Twitch's native Pin toggle on the callout — it pins the resub to
-       the hidden native chat, which looks like the callout just disappeared.
-       Our injected .hs-mc-callout-close X button replaces it. */
+       the hidden native chat, which looks like the callout just disappeared. */
     [data-test-selector="chat-private-callout-queue__callout-container"] button[aria-label="pinned"] {
       display: none !important;
     }
@@ -1369,24 +1368,6 @@ function injectStyles() {
         display: none !important;
       }
     }
-    .hs-mc-callout-close {
-      background: transparent;
-      border: none;
-      color: #fff;
-      cursor: pointer;
-      font-size: 13px;
-      font-weight: 600;
-      padding: 2px 6px;
-      margin-left: 0;
-      line-height: 1;
-      border-radius: 2px;
-      flex: 0 0 auto;
-    }
-    .hs-mc-callout-close:hover {
-      background: #fff;
-      color: #000;
-    }
-
     /* Permanent black backdrop on every Twitch/Kick chat-region ancestor.
        Twitch's right-column wrappers paint rgb(14,14,16) and rgb(24,24,27)
        (their dark-grey theme) — when chat-shell dimensions blip during SPA
@@ -1960,7 +1941,6 @@ function injectStyles() {
     .hs-mc-msg.hs-mc-notice-error     .hs-mc-system-text { color: #ff8080; }
     /* First-time chatter (Twitch first-msg=1) = Twitch magenta-purple */
     .hs-mc-msg.hs-mc-first-msg { border-left: 3px solid #bd5fff; padding-left: 8px; background: rgba(189, 95, 255, 0.12); }
-    .hs-mc-first-tag { display: inline-block; font-size: 13px; font-weight: 700; color: #fff; background: #bd5fff; padding: 0 4px; border-radius: 0; margin-right: 4px; vertical-align: middle; }
     /* Cleared (timed out / banned / msg deleted) — Twitch-native dim + strikethrough.
        Username and badges stay visible so the reader can see who got hit; the body
        text and emotes get faded with a strikethrough. */
@@ -2440,11 +2420,6 @@ function injectStyles() {
       letter-spacing: 0.3px;
       background: #00aa00;
       color: #fff;
-    }
-    #hs-user-tooltip .hs-pc-followage.hs-pc-nofollow {
-      background: transparent;
-      color: #808080;
-      border: 1px solid #808080;
     }
     #hs-user-tooltip .hs-pc-channel-follows {
       padding: 2px 3px;
@@ -3326,25 +3301,6 @@ function injectStyles() {
     .hs-mc-slash-row.selected .hs-mc-slash-desc { color: #000; }
     .hs-mc-slash-row:hover .hs-mc-slash-name,
     .hs-mc-slash-row.selected .hs-mc-slash-name { color: #000; }
-    /* Toggle button */
-    .hs-mc-toggle-btn {
-      padding: 4px 10px;
-      background: #000;
-      color: #808080;
-      border: none;
-      border-radius: 0;
-      font-size: 13px;
-      cursor: pointer;
-      transition: none;
-    }
-    .hs-mc-toggle-btn:hover {
-      background: #fff;
-      color: #000;
-    }
-    .hs-mc-toggle-btn.active {
-      background: #fff;
-      color: #000;
-    }
     #hs-mc-input.over-limit {
       /* text color handled by highlight overlay */
     }
@@ -3585,12 +3541,6 @@ function injectStyles() {
       padding: 12px;
       font-size: 1.05em;
       font-weight: 700;
-    }
-    .hs-mc-cheer-panel .hs-mc-cheer-note {
-      font-size: 0.85em;
-      opacity: 0.7;
-      padding: 4px 2px;
-      line-height: 1.4;
     }
 
     /* Cheermote rendering inside chat messages — universal Cheer tier image
@@ -4261,16 +4211,7 @@ function injectStyles() {
       color: #fff;
       line-height: 17px;
     }
-    .hs-mc-menu-desc {
-      font-size: 13px;
-      color: #808080;
-      line-height: 17px;
-      margin-top: 1px;
-    }
     .hs-mc-menu-item:hover .hs-mc-menu-title {
-      color: #000;
-    }
-    .hs-mc-menu-item:hover .hs-mc-menu-desc {
       color: #000;
     }
     .hs-mc-menu-arrow {
@@ -5397,15 +5338,6 @@ function injectStyles() {
       outline: none;
       border-color: #ff8700;
     }
-    /* Server filter status line */
-    .hs-mc-set-status {
-      font-size: 11px;
-      color: #808080;
-      min-height: 14px;
-      padding: 2px 14px;
-    }
-    .hs-mc-set-status.ok { color: #4caf50; }
-    .hs-mc-set-status.err { color: #f44336; }
     /* Crash log pre block */
     .hs-mc-set-crash-pre {
       background: #0a0a0a;

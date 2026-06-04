@@ -1455,16 +1455,21 @@ function formatTimeFromTs(ts) {
 async function openThread(msgId, highlightId) {
   // Find OP in feed or fetch it
   let op = feedMessages.find(m => m.base36_id === msgId);
-  activeThread = { id: msgId, op: op || null, replies: [], loading: true, highlightId: highlightId || null };
+  const thread = { id: msgId, op: op || null, replies: [], loading: true, highlightId: highlightId || null };
+  activeThread = thread;
   renderFeed();
-  _renderFeedReplyChip(activeThread);
+  _renderFeedReplyChip(thread);
   if (typeof showInputBar === 'function') showInputBar();
 
   const resp = await apiFetch(`/api/messages/${msgId}/replies`);
+  // Bail if the user closed this thread or opened another during the fetch —
+  // otherwise the unconditional writes below throw on null (closeThread /
+  // remote-delete) or paint thread A's replies under thread B's header.
+  if (activeThread !== thread) return;
   if (resp.ok) {
-    activeThread.replies = resp.data?.replies || [];
+    thread.replies = resp.data?.replies || [];
   }
-  activeThread.loading = false;
+  thread.loading = false;
 
   renderFeed();
 

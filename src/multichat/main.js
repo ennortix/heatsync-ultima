@@ -139,7 +139,13 @@
     ]) document.getElementById(id)?.remove()
   }
   cleanup.addEventListener(window, 'blur', _hsAbortAllResizes)
-  cleanup.addEventListener(document, 'visibilitychange', () => { if (document.hidden) _hsAbortAllResizes() })
+  cleanup.addEventListener(document, 'visibilitychange', () => {
+    if (document.hidden) _hsAbortAllResizes()
+    // Pause our infinite breathe/livedot CSS animations while the tab is
+    // hidden — no paint happens, so running them is pure wasted style recalc on
+    // low-end hardware. The matching rules live in styles.js (body.hs-ext-hidden).
+    try { document.body.classList.toggle('hs-ext-hidden', document.hidden) } catch (_) {}
+  })
 
   // Muted users (right-click to hide) — loaded async from chrome.storage.local
   let mutedUsers = new Set();

@@ -855,6 +855,12 @@ async function fetchFeed(append = false) {
   if (feedLoading) return;
   feedLoading = true;
   const page = append ? feedPage + 1 : 1;
+  // Snapshot ids before the await so we can keep posts that arrive via the WS
+  // new-message handler (which unshifts onto feedMessages) while this fetch is
+  // in flight — otherwise the full replace below silently drops them. Only on a
+  // refresh (feedLoaded already true); first load can't race (handler bails
+  // when !feedLoaded), and append doesn't replace.
+  const preIds = (feedLoaded && !append) ? new Set(feedMessages.map(m => m.base36_id)) : null;
   const resp = await apiFetch(`/api/messages?sort=time&limit=30&page=${page}&following=true`, { auth: true });
   feedLoading = false;
   if (!resp.ok) {
@@ -898,7 +904,15 @@ async function fetchFeed(append = false) {
     feedMessages.push(...msgs);
     feedPage = page;
   } else {
-    feedMessages = msgs;
+    if (preIds) {
+      // Posts unshifted during the await that aren't in the server snapshot —
+      // keep them newest-first on top so a live post isn't lost to the replace.
+      const seen = new Set(msgs.map(m => m.base36_id));
+      const liveDelta = feedMessages.filter(m => !preIds.has(m.base36_id) && !seen.has(m.base36_id));
+      feedMessages = liveDelta.length ? [...liveDelta, ...msgs] : msgs;
+    } else {
+      feedMessages = msgs;
+    }
     feedPage = 1;
     feedFromHotFallback = usedHotFallback;
   }

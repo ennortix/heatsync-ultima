@@ -37,23 +37,25 @@
 
   function rebuildEmoteMap(inventory, globals) {
     const map = new Map()
-    // Globals first (lower priority)
+    // tier rides on each emote (0=own/1=channel/2=global) so findEmoteMatches ranks
+    // own > channel > global — a channel emote beats a global on a closer name match.
+    // Globals first (lower priority) — tier 2
     if (globals) {
       for (const e of globals) {
-        if (e?.name && !blockedEmotes.has(e.hash || e.name)) map.set(e.name, e)
+        if (e?.name && !blockedEmotes.has(e.hash || e.name)) { e._ytTier = 2; map.set(e.name, e) }
       }
     }
-    // Channel emotes (BTTV/FFZ/7TV/Twitch sub) — between globals and inventory
+    // Channel emotes (BTTV/FFZ/7TV/Twitch sub) — tier 1
     for (const ownerEmotes of Object.values(channelEmotesByOwner)) {
       if (!Array.isArray(ownerEmotes)) continue
       for (const e of ownerEmotes) {
-        if (e?.name && !blockedEmotes.has(e.hash || e.name)) map.set(e.name, e)
+        if (e?.name && !blockedEmotes.has(e.hash || e.name)) { e._ytTier = 1; map.set(e.name, e) }
       }
     }
-    // Inventory overrides everything
+    // Inventory overrides everything — tier 0
     if (inventory) {
       for (const e of inventory) {
-        if (e?.name && !blockedEmotes.has(e.hash || e.name)) map.set(e.name, e)
+        if (e?.name && !blockedEmotes.has(e.hash || e.name)) { e._ytTier = 0; map.set(e.name, e) }
       }
     }
     emoteMap = map
@@ -776,22 +778,27 @@
 
   function findEmoteMatches(prefix, limit) {
     const lower = prefix.toLowerCase()
-    const results = []
+    // Full scan (no early break): inventory (tier 0) sits at the map's tail, so an
+    // early cap would hide own emotes. Rank tier (own>channel>global) > exact >
+    // prefix>substring > alpha, then slice — a channel emote beats a global on a
+    // closer match ("hug" → channel peepoHug over global "HuG").
+    const matches = []
     for (const [name, emote] of emoteMap) {
-      if (name.toLowerCase().startsWith(lower)) {
-        results.push(emote)
-        if (results.length >= limit) break
+      const nl = name.toLowerCase()
+      const isExact = nl === lower
+      const isPrefix = !isExact && nl.startsWith(lower)
+      const isSubstring = !isPrefix && !isExact && nl.includes(lower)
+      if (isExact || isPrefix || isSubstring) {
+        matches.push({ emote, name, tier: emote._ytTier ?? 2, isExact, priority: isPrefix || isExact ? 0 : 1 })
       }
     }
-    if (results.length < limit) {
-      for (const [name, emote] of emoteMap) {
-        if (!name.toLowerCase().startsWith(lower) && name.toLowerCase().includes(lower)) {
-          results.push(emote)
-          if (results.length >= limit) break
-        }
-      }
-    }
-    return results
+    matches.sort((a, b) => {
+      if (a.tier !== b.tier) return a.tier - b.tier
+      if (a.isExact !== b.isExact) return a.isExact ? -1 : 1
+      if (a.priority !== b.priority) return a.priority - b.priority
+      return a.name.localeCompare(b.name)
+    })
+    return matches.slice(0, limit).map(m => m.emote)
   }
 
   function showAutocomplete(matches, input) {

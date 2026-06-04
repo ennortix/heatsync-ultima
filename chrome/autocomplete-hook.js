@@ -308,6 +308,9 @@
     for (const e of getNativeTwitchEmotes()) {
       if (seen.has(e.name)) continue;
       seen.add(e.name);
+      // sub emotes are channel-tier (1), the rest global (2); bridge emotes already
+      // carry their real tier (0=own/1=channel/2=global) from content.js.
+      if (e.tier == null) e.tier = e.sub ? 1 : 2;
       all.push(e);
     }
     return all;
@@ -382,6 +385,12 @@
     cycleState.matches.sort((a, b) => {
       const al = a.remote ? 1 : 0, bl = b.remote ? 1 : 0
       if (al !== bl) return al - bl
+      // Local block: own > channel > global outranks prefix/popularity, so a channel
+      // substring match beats a global prefix match. Remotes have no tier (catalog).
+      if (!a.remote && !b.remote) {
+        const at = a.tier ?? 2, bt = b.tier ?? 2
+        if (at !== bt) return at - bt
+      }
       const ap = prefixOf(a), bp = prefixOf(b)
       if (ap !== bp) return ap - bp
       const ar = rankOf(a), br = rankOf(b)
@@ -765,6 +774,9 @@
           const score = fuzzyMatch(searchLower, emote.nameLower)
           if (score <= 0) continue;
           emote._score = score
+          // Native Twitch: sub emotes are channel-tier (1), the rest are global (2).
+          // Heatsync bridge emotes already carry their real tier (0/1/2) from content.js.
+          emote.tier = emote.sub ? 1 : 2;
           hsMatches.push(emote);
         }
 
@@ -824,7 +836,8 @@
               token: emote.name,
               srcSet: srcSet
             },
-            _heatsyncSub: !!emote.sub
+            _heatsyncSub: !!emote.sub,
+            _tier: emote.tier
           });
         }
 
@@ -846,6 +859,9 @@
           r._sortKey = name.toLowerCase()
           r._sortType = r.emote ? 0 : 1 // 0=emote, 1=username
           r._isSub = r._heatsyncSub || nativeSubNames.has(name);
+          // own(0) > channel(1) > global(2). Pushed heatsync/native emotes carry _tier;
+          // anything else (Twitch's own dropdown results) falls back via sub status.
+          r._tier = r._tier ?? (r._isSub ? 1 : 2);
         }
         results.sort((a, b) => {
           // Category sort: emotes < usernames
@@ -853,6 +869,10 @@
 
           // Usernames: alphabetical only
           if (a._sortType === 2) return a._sortKey.localeCompare(b._sortKey);
+
+          // Tier outranks match-type (user call): a channel emote beats a global even
+          // when the global is an exact/prefix match (e.g. "hug" → peepoHug over "HuG").
+          if (a._tier !== b._tier) return a._tier - b._tier;
 
           // Emotes/emojis: exact > prefix > contains > sub > shorter > alpha
           const aExact = a._sortKey === searchLower;
@@ -870,7 +890,7 @@
           return a._sortKey.localeCompare(b._sortKey);
         });
         // Clean up sort keys
-        for (const r of results) { delete r._sortKey; delete r._sortType; delete r._isSub; delete r._heatsyncSub; }
+        for (const r of results) { delete r._sortKey; delete r._sortType; delete r._isSub; delete r._heatsyncSub; delete r._tier; }
 
         if (results.length > 0) {
           log(' getMatches returning:', results.length, 'total, first:', results[0]?.replacement || results[0]?.emote?.token);
@@ -1374,8 +1394,7 @@
           log(' 🔄 Current input "' + currentSearch + '" doesn\'t match stored "' + cycleState.searchTerm + '" - rebuilding matches');
           // Build fresh matches for current input (bridge + native Twitch sub emotes)
           const hsEmotes = getAllEmotesForCycling();
-          const prefixMatches = [];
-          const substringMatches = [];
+          const matches = [];
           // Strip leading colon for emoji shortcode search
           const emojiSearch = currentSearch.startsWith(':') ? currentSearch.slice(1) : null;
           const emoteSearch = emojiSearch || currentSearch;
@@ -1384,42 +1403,38 @@
           // Substring-scanning ~5k names is sub-millisecond; correctness > micro-perf.
           for (const em of hsEmotes) {
             if (em.nameLower?.startsWith(emoteSearch)) {
-              prefixMatches.push(em);
+              em._isPrefix = true; matches.push(em);
             } else if (em.nameLower?.includes(emoteSearch)) {
-              substringMatches.push(em);
+              em._isPrefix = false; matches.push(em);
             }
           }
-          // Add emoji shortcode matches when searching with :prefix
+          // Add emoji shortcode matches when searching with :prefix. tier 9 keeps emoji
+          // below all emotes (own/channel/global), preserving "emotes first, then emoji".
           if (emojiSearch && emojiSearch.length >= 2) {
-            const emojiPrefix = [];
-            const emojiSubstring = [];
+            let n = 0;
             for (const [name, emoji] of EMOJI_ENTRIES) {
               if (name.startsWith(emojiSearch)) {
-                emojiPrefix.push({ name: ':' + name + ':', nameLower: name, isEmoji: true, emoji });
+                matches.push({ name: ':' + name + ':', nameLower: name, isEmoji: true, emoji, tier: 9, _isPrefix: true }); n++;
               } else if (name.includes(emojiSearch)) {
-                emojiSubstring.push({ name: ':' + name + ':', nameLower: name, isEmoji: true, emoji });
+                matches.push({ name: ':' + name + ':', nameLower: name, isEmoji: true, emoji, tier: 9, _isPrefix: false }); n++;
               }
-              if (emojiPrefix.length + emojiSubstring.length >= 20) break;
+              if (n >= 20) break;
             }
-            emojiPrefix.sort((a, b) => a.nameLower.length - b.nameLower.length);
-            emojiSubstring.sort((a, b) => a.nameLower.length - b.nameLower.length);
-            // Emotes first, then emojis (prefix before substring for each)
-            substringMatches.push(...emojiPrefix, ...emojiSubstring);
           }
-          // Within each tier: native sub emotes first (rare + entitlement-scarce),
-          // then heatsync custom emotes by shortest-first, then alpha.
-          const tierSort = (a, b) => {
-            const aSub = a.sub ? 0 : 1;
-            const bSub = b.sub ? 0 : 1;
+          // Rank: tier (own>channel>global, emoji last) > prefix>substring > sub emote >
+          // shorter > alpha. Tier outranks match-type so a channel substring match beats
+          // a global prefix match ("hug" → channel peepoHug over global "HuG").
+          matches.sort((a, b) => {
+            const at = a.tier ?? 2, bt = b.tier ?? 2;
+            if (at !== bt) return at - bt;
+            if (a._isPrefix !== b._isPrefix) return a._isPrefix ? -1 : 1;
+            const aSub = a.sub ? 0 : 1, bSub = b.sub ? 0 : 1;
             if (aSub !== bSub) return aSub - bSub;
-            const la = (a.name || '').length;
-            const lb = (b.name || '').length;
+            const la = (a.name || '').length, lb = (b.name || '').length;
             if (la !== lb) return la - lb;
             return (a.name || '').localeCompare(b.name || '');
-          };
-          prefixMatches.sort(tierSort);
-          substringMatches.sort(tierSort);
-          cycleState.matches = [...prefixMatches, ...substringMatches];
+          });
+          cycleState.matches = matches;
           cycleState.searchTerm = currentSearch;
           cycleState.index = 0;
           cycleState.lastCycledEmote = null;

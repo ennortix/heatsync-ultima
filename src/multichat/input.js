@@ -463,28 +463,29 @@ async function fetchRemoteEmoteMatches(search) {
   // Order:
   //   1. local > remote                       (own set / channel / globals beat catalog)
   //   2. local tier (own > channel > global)
-  //   3. sub > non-sub
-  //   4. MRU recent > never-used
-  //   5. remote: _ai order (FFZ-by-uses → BTTV → 7TV)
-  //   6. shorter prefix-match wins
-  //   7. alpha
+  //   3. exact full-name match                (within tier)
+  //   4. prefix > substring
+  //   5. sub > non-sub
+  //   6. MRU recent > never-used
+  //   7. remote: _ai order (FFZ-by-uses → BTTV → 7TV)
+  //   8. shorter prefix-match wins
+  //   9. alpha
+  // Tier outranks exact-match (user call) — a channel emote beats a coincidental
+  // exact-cased global ("hug" → peepoHug, not "HuG"). Exact still wins within a tier.
   const _recentList = (typeof loadRecentEmotes === 'function') ? loadRecentEmotes() : []
   const _recentRank = new Map()
   for (let i = 0; i < _recentList.length; i++) _recentRank.set(_recentList[i], i)
   acState.matches.sort((a, b) => {
-    if (a.priority !== b.priority) return a.priority - b.priority
-    // Exact full-name match wins outright — typing the complete name means you want THAT
-    // emote, even when a longer-named local emote shares the prefix ("Birdge" over local
-    // "BirdgeHmm"). Must rank above the local>remote split below.
-    const ae = a.name.toLowerCase() === searchLower ? 0 : 1
-    const be = b.name.toLowerCase() === searchLower ? 0 : 1
-    if (ae !== be) return ae - be
     const al = a.remote ? 1 : 0, bl = b.remote ? 1 : 0
     if (al !== bl) return al - bl
     if (!a.remote && !b.remote) {
       const at = a.tier ?? 9, bt = b.tier ?? 9
       if (at !== bt) return at - bt
     }
+    const ae = a.name.toLowerCase() === searchLower ? 0 : 1
+    const be = b.name.toLowerCase() === searchLower ? 0 : 1
+    if (ae !== be) return ae - be
+    if (a.priority !== b.priority) return a.priority - b.priority
     if (!!a.sub !== !!b.sub) return a.sub ? -1 : 1
     const ar = _recentRank.get(a.name) ?? Infinity
     const br = _recentRank.get(b.name) ?? Infinity
@@ -494,16 +495,16 @@ async function fetchRemoteEmoteMatches(search) {
     return (a.name || '').localeCompare(b.name || '')
   })
   // No local match existed when Tab was pressed — insert the first remote hit now.
-  const exactIdx = acState.matches.findIndex(m => (m.name || '').toLowerCase() === searchLower)
+  // Snap to an exact full-name match ONLY when it also sorts to #1 — i.e. nothing
+  // higher-tier beat it. Channel-first means a channel/own match that outranks the
+  // exact (e.g. peepoHug over global "HuG") must NOT be overridden by the snap.
+  const topIsExact = acState.matches.length > 0 && (acState.matches[0].name || '').toLowerCase() === searchLower
   if (wasEmpty && acState.matches.length > 0) {
     acState.index = 0
     insertCompletionKeepOpen(acState.matches[0])
-  } else if (exactIdx >= 0 && (!prev || (prev.name || '').toLowerCase() !== searchLower)) {
-    // A remote-loaded exact full-name match outranks the local prefix match the
-    // user is sitting on ("Birdge" over local "BirdgeHmm"). Snap to it — typing the
-    // complete name wants THAT emote, not a longer one the channel happens to own.
-    acState.index = exactIdx
-    insertCompletionKeepOpen(acState.matches[exactIdx])
+  } else if (topIsExact && (!prev || (prev.name || '').toLowerCase() !== searchLower)) {
+    acState.index = 0
+    insertCompletionKeepOpen(acState.matches[0])
   } else if (prev) {
     const ni = acState.matches.indexOf(prev)
     if (ni >= 0) acState.index = ni
@@ -3200,11 +3201,11 @@ function findEmoteMatches(search) {
     if (emojiPrefix.length > 0) {
       for (const entry of EMOJI_DATA) {
         if (matches.length >= 50) break;
-        const emojiMatch = { name: `:${entry.name}:`, url: null, priority: entry.name.startsWith(emojiPrefix) ? 1 : 2, type: 'emoji', emoji: entry.emoji };
+        const emojiMatch = { name: `:${entry.name}:`, url: null, priority: entry.name.startsWith(emojiPrefix) ? 0 : 1, type: 'emoji', emoji: entry.emoji };
         if (entry.name.startsWith(emojiPrefix)) {
           matches.push(emojiMatch);
         } else if (entry.name.includes(emojiPrefix)) {
-          emojiMatch.priority = 2;
+          emojiMatch.priority = 1;
           matches.push(emojiMatch);
         }
       }
@@ -3212,25 +3213,26 @@ function findEmoteMatches(search) {
   }
 
   // Sort order (most-correct first):
-  //   1. prefix > substring                  (priority)
-  //   2. own set > channel > globals         (tier; emoji/non-emote have no tier)
-  //   3. sub emote > non-sub                 (entitlement-scarce)
-  //   4. recently-used > never-used          (local MRU, fills as you insert)
-  //   5. shorter prefix-match > longer       (Kap → Kappa before KappaPride)
-  //   6. alpha
+  //   1. own set > channel > globals         (tier; emoji/non-emote have no tier)
+  //   2. exact full-name match               (within tier)
+  //   3. prefix > substring                  (priority)
+  //   4. sub emote > non-sub                 (entitlement-scarce)
+  //   5. recently-used > never-used          (local MRU, fills as you insert)
+  //   6. shorter prefix-match > longer       (Kap → Kappa before KappaPride)
+  //   7. alpha
+  // Tier outranks exact-match (user call): typing "hug" surfaces the channel's
+  // peepoHug over a coincidental global "HuG" (whose name only case-matches
+  // "hug"). Exact-name still wins WITHIN a tier (own "Birdge" over own "BirdgeHmm").
   const _recentList = (typeof loadRecentEmotes === 'function') ? loadRecentEmotes() : []
   const _recentRank = new Map()
   for (let i = 0; i < _recentList.length; i++) _recentRank.set(_recentList[i], i)
   matches.sort((a, b) => {
-    if (a.priority !== b.priority) return a.priority - b.priority
-    // Exact full-name match wins outright — typing the complete name means you want
-    // THAT emote, even over one in your own set that's a longer prefix ("Birdge" over
-    // own-set "BirdgeHmm"). Must rank above the tier (own > channel > global) check.
+    const at = a.tier ?? 9, bt = b.tier ?? 9
+    if (at !== bt) return at - bt
     const ae = (a.name || '').toLowerCase() === searchLower ? 0 : 1
     const be = (b.name || '').toLowerCase() === searchLower ? 0 : 1
     if (ae !== be) return ae - be
-    const at = a.tier ?? 9, bt = b.tier ?? 9
-    if (at !== bt) return at - bt
+    if (a.priority !== b.priority) return a.priority - b.priority
     if (!!a.sub !== !!b.sub) return a.sub ? -1 : 1
     const ar = _recentRank.get(a.name) ?? Infinity
     const br = _recentRank.get(b.name) ?? Infinity

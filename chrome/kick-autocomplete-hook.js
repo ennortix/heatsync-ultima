@@ -67,19 +67,22 @@
     const blocked = new Set(data.blocked || [])
     const seen = new Set()
     const list = []
+    // Tier rides on each emote so searchEmotes can rank own > channel > global —
+    // a channel emote then beats a global even when the global is a closer match
+    // (exact/prefix), e.g. "hug" → channel peepoHug over global "HuG".
     const sources = [
-      ...(data.inventoryEmotes || []),
-      ...(data.channelEmotes || []),
-      ...(data.globalEmotes || []),
+      ...(data.inventoryEmotes || []).map(e => ({ e, tier: 0 })),
+      ...(data.channelEmotes || []).map(e => ({ e, tier: 1 })),
+      ...(data.globalEmotes || []).map(e => ({ e, tier: 2 })),
     ]
-    for (const e of sources) {
+    for (const { e, tier } of sources) {
       if (!e || !e.name) continue
       if (blocked.has(e.hash)) continue
       if (seen.has(e.name)) continue
       seen.add(e.name)
       // Cache lowercase once at build time — searchEmotes runs per keystroke,
       // so per-call toLowerCase on 50k emotes is what we're avoiding here.
-      list.push({ name: e.name, url: e.url || e.cdnUrl || '', lower: e.name.toLowerCase() })
+      list.push({ name: e.name, url: e.url || e.cdnUrl || '', lower: e.name.toLowerCase(), tier })
     }
     list.sort((a, b) => a.lower < b.lower ? -1 : a.lower > b.lower ? 1 : 0)
     return list
@@ -141,7 +144,13 @@
       }
     }
 
-    return [...exact, ...prefix, ...contains]
+    // Tier outranks match-type: a channel substring match beats a global prefix
+    // match. The array is grouped exact→prefix→contains, and Array.sort is stable,
+    // so a tier-only key preserves that match-type order WITHIN each tier.
+    return [...exact, ...prefix, ...contains].sort((a, b) => {
+      const at = a.tier ?? 2, bt = b.tier ?? 2
+      return at !== bt ? at - bt : 0
+    })
   }
 
   // ---- shared state ----

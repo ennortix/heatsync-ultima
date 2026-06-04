@@ -9677,11 +9677,14 @@ function updateEmoteBridgeImmediate() {
   const allEmotes = [];
   const seen = new Set();
 
+  // tier rides on each emote (0=own inventory, 1=channel, 2=global) so the MAIN-world
+  // Twitch autocomplete hook can rank own > channel > global — a channel emote then
+  // beats a global even on a closer name match (e.g. "hug" → peepoHug over global "HuG").
   // Personal inventory first (highest priority)
   for (const e of emoteInventory) {
     if (!seen.has(e.name)) {
       seen.add(e.name);
-      allEmotes.push({ name: e.name, hash: e.hash, url: e.url, zeroWidth: e.zeroWidth });
+      allEmotes.push({ name: e.name, hash: e.hash, url: e.url, zeroWidth: e.zeroWidth, tier: 0 });
     }
   }
 
@@ -9689,7 +9692,7 @@ function updateEmoteBridgeImmediate() {
   for (const e of channelEmotes) {
     if (!seen.has(e.name)) {
       seen.add(e.name);
-      allEmotes.push({ name: e.name, hash: e.hash, url: e.url, zeroWidth: e.zeroWidth });
+      allEmotes.push({ name: e.name, hash: e.hash, url: e.url, zeroWidth: e.zeroWidth, tier: 1 });
     }
   }
 
@@ -9697,7 +9700,7 @@ function updateEmoteBridgeImmediate() {
   for (const e of globalEmotes) {
     if (!seen.has(e.name)) {
       seen.add(e.name);
-      allEmotes.push({ name: e.name, hash: e.hash, url: e.url, zeroWidth: e.zeroWidth });
+      allEmotes.push({ name: e.name, hash: e.hash, url: e.url, zeroWidth: e.zeroWidth, tier: 2 });
     }
   }
 

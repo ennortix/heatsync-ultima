@@ -2986,6 +2986,7 @@
     const searchSpinner = overlay.querySelector('#hs-mc-search-spinner')
     let _searchTimer = null
     let _searchActive = false
+    let _searchToken = 0
 
     if (searchInput && searchSpinner) {
       searchInput.addEventListener('input', () => {
@@ -2993,6 +2994,7 @@
         const q = searchInput.value.trim()
         if (!q) {
           _searchActive = false
+          _searchToken++
           searchSpinner.classList.remove('visible')
           if (currentTab === 'mentions') renderMessages('mentions')
           return
@@ -3002,11 +3004,14 @@
         _searchTimer = cleanup.setTimeout(async () => {
           _searchTimer = null
           if (!_searchActive) return
+          const token = ++_searchToken
           const msgsEl = document.getElementById('hs-mc-messages')
           if (!msgsEl || currentTab !== 'mentions') return
           try {
             const resp = await apiFetch(`/api/search?q=${encodeURIComponent(q)}&mode=messages&limit=50`)
-            if (!_searchActive || currentTab !== 'mentions') return
+            // Bail if a newer query superseded this one mid-flight, else slow
+            // responses can paint stale results out of order.
+            if (token !== _searchToken || !_searchActive || currentTab !== 'mentions') return
             searchSpinner.classList.remove('visible')
             const results = resp?.data?.results || resp?.results || []
             renderSearchResults(msgsEl, results, q)
@@ -3091,6 +3096,9 @@
    * reconciles, no mutations). On release we commit the real width once,
    * giving the player and Twitch's React tree exactly one reflow.
    */
+  // Shared drag-ghost style — identical across the twitch/kick/yt resize
+  // handles. One spec to keep in sync (orange tint, 3px left edge, z 99998).
+  const buildGhostCss = (rect, w0) => `position:fixed;top:${rect.top}px;right:0;height:${rect.height}px;width:${w0}px;background:rgba(255,135,0,0.06);border-left:3px solid #ff8700;pointer-events:none;z-index:99998;will-change:width;`
   function setupResizeHandle() {
     const rightCol = document.querySelector('.right-column.right-column--beside')
     if (!rightCol || document.getElementById('hs-mc-resize-handle')) return
@@ -3139,7 +3147,7 @@
       // for the compositor. Visual: subtle orange tint with a 3px left edge.
       ghost = document.createElement('div')
       ghost.id = 'hs-resize-ghost'
-      ghost.style.cssText = `position:fixed;top:${rect.top}px;right:0;height:${rect.height}px;width:${w0}px;background:rgba(255,135,0,0.06);border-left:3px solid #ff8700;pointer-events:none;z-index:99998;will-change:width;`
+      ghost.style.cssText = buildGhostCss(rect, w0)
       document.body.appendChild(ghost)
 
       overlay = document.createElement('div')
@@ -3672,7 +3680,7 @@
 
       ghost = document.createElement('div')
       ghost.id = 'hs-resize-ghost'
-      ghost.style.cssText = `position:fixed;top:${rect.top}px;right:0;height:${rect.height}px;width:${w0}px;background:rgba(255,135,0,0.06);border-left:3px solid #ff8700;pointer-events:none;z-index:99998;will-change:width;`
+      ghost.style.cssText = buildGhostCss(rect, w0)
       document.body.appendChild(ghost)
 
       overlay = document.createElement('div')
@@ -4058,7 +4066,7 @@
 
       ghost = document.createElement('div')
       ghost.id = 'hs-resize-ghost'
-      ghost.style.cssText = `position:fixed;top:${rect.top}px;right:0;height:${rect.height}px;width:${w0}px;background:rgba(255,135,0,0.06);border-left:3px solid #ff8700;pointer-events:none;z-index:99998;will-change:width;`
+      ghost.style.cssText = buildGhostCss(rect, w0)
       document.body.appendChild(ghost)
 
       overlay = document.createElement('div')
@@ -12654,7 +12662,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         ytChanRejoinAttempts.set(channelId, attempts + 1)
         ytChanLastSeen.set(channelId, now) // disarm one cycle
       }
-    }, 30000, 'yt-watchdog')
+    }, 30000)
 
     // 1. Detect extension context invalidation → defer reload to visibility.
     // When Chrome restarts the service worker or updates the extension, content
@@ -12686,7 +12694,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         log('Extension context invalidated, deferring reload to visibility...');
         scheduleReload()
       }
-    }, 30000, 'context-health');
+    }, 30000)
 
     // 2. Reconnect auth IRC on tab focus (for sending messages)
     document.addEventListener('visibilitychange', () => {
@@ -12972,7 +12980,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         cleanup.trackObserver(reHide);
       }
       cleanup.setTimeout(() => {
-        try { reHide.disconnect() } catch (_) {}
+        cleanup.untrackObserver(reHide);
         document.body.classList.remove('hs-mc-navigating');
         // Bar tracks container.getBoundingClientRect — re-anchor now that the
         // container has moved out of its nav-guard fixed slot into chat-shell.
@@ -13000,13 +13008,13 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       return false;
     };
     if (tryReparent()) return;
-    const obs = new MutationObserver(() => { if (tryReparent()) obs.disconnect() });
+    const obs = new MutationObserver(() => { if (tryReparent()) cleanup.untrackObserver(obs) });
     obs.observe(document.documentElement, { childList: true, subtree: true });
     cleanup.trackObserver(obs);
     cleanup.setTimeout(() => {
       if (!done) {
         done = true;
-        obs.disconnect();
+        cleanup.untrackObserver(obs);
         try { updateTwitchNoChannelClass() } catch (_) {}
         finish();
       }
@@ -13044,7 +13052,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         cleanup.trackObserver(reHide);
       }
       cleanup.setTimeout(() => {
-        try { reHide.disconnect() } catch (_) {}
+        cleanup.untrackObserver(reHide);
         document.body.classList.remove('hs-mc-navigating');
       }, 300, 'kick-soft-nav-release');
     };
@@ -13062,13 +13070,13 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       return false;
     };
     if (tryReparent()) return;
-    const obs = new MutationObserver(() => { if (tryReparent()) obs.disconnect() });
+    const obs = new MutationObserver(() => { if (tryReparent()) cleanup.untrackObserver(obs) });
     obs.observe(document.documentElement, { childList: true, subtree: true });
     cleanup.trackObserver(obs);
     cleanup.setTimeout(() => {
       if (!done) {
         done = true;
-        obs.disconnect();
+        cleanup.untrackObserver(obs);
         try { updateKickNoChannelClass() } catch (_) {}
         finish();
       }

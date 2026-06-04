@@ -1286,10 +1286,11 @@ function _startBannerTimer(el, endsAt) {
     el.textContent = m > 0 ? m + ':' + String(s).padStart(2, '0') : s + 's'
   }
   update()
-  _bannerTimers.push(cleanup.setIntervalIfVisible(() => {
-    if (!el.isConnected) return
+  const iv = cleanup.setIntervalIfVisible(() => {
+    if (!el.isConnected) { cleanup.clearInterval(iv); return }
     update()
-  }, 1000))
+  }, 1000)
+  _bannerTimers.push(iv)
 }
 
 function updateChatBanners(predResult, pollData) {

@@ -4,6 +4,10 @@
 // /api/archive/user/:platform/:username/messages?channel=...
 
 let activeChatLogs = null
+// Load-more observer — module-scoped so each re-render disconnects the prior
+// one. Otherwise every loading/search/scope re-render orphans an observer still
+// pinning a detached sentinel node.
+let _clLoadMoreObs = null
 // Shape: {
 //   username, platform, channel,        // channel = null → all-channels view
 //   rows: [],                            // newest-first as returned
@@ -71,6 +75,7 @@ async function openChatLogsView(username, opts = {}) {
 function closeChatLogsView() {
   if (!activeChatLogs) return
   activeChatLogs = null
+  if (_clLoadMoreObs) { _clLoadMoreObs.disconnect(); _clLoadMoreObs = null }
   const inputBar = document.getElementById('hs-mc-inputbar')
   if (inputBar) {
     const hideOnTabs = ['add', 'settings', 'discover', 'pinned']
@@ -159,7 +164,8 @@ function exportChatLogs(format) {
     ext = 'json'
   } else {
     body = rows.slice().reverse().map(r => {
-      const ts = r.timestamp ? new Date(r.timestamp).toISOString().replace('T', ' ').slice(0, 19) : ''
+      const d = r.timestamp ? new Date(r.timestamp) : null
+      const ts = d && !isNaN(d.getTime()) ? d.toISOString().replace('T', ' ').slice(0, 19) : ''
       const ch = r.channel ? `#${r.channel}` : ''
       return `[${ts}] ${ch} <${r.display_name || r.username}> ${r.message}`
     }).join('\n')
@@ -316,13 +322,14 @@ function renderChatLogsView() {
     list.appendChild(sentinel)
     // IntersectionObserver auto-fires when sentinel scrolls into view
     if (!loading && 'IntersectionObserver' in window) {
-      const io = new IntersectionObserver((entries) => {
+      if (_clLoadMoreObs) { _clLoadMoreObs.disconnect(); _clLoadMoreObs = null }
+      _clLoadMoreObs = new IntersectionObserver((entries) => {
         if (entries.some(e => e.isIntersecting)) {
-          io.disconnect()
+          if (_clLoadMoreObs) { _clLoadMoreObs.disconnect(); _clLoadMoreObs = null }
           fetchChatLogsPage()
         }
       }, { root: list, rootMargin: '200px' })
-      io.observe(sentinel)
+      _clLoadMoreObs.observe(sentinel)
     }
   }
 
@@ -339,8 +346,10 @@ function renderChatLogRow(r) {
   ts.className = 'hs-cl-ts'
   if (r.timestamp) {
     const d = new Date(r.timestamp)
-    ts.textContent = d.toISOString().replace('T', ' ').slice(5, 16)
-    ts.title = d.toLocaleString()
+    if (!isNaN(d.getTime())) {
+      ts.textContent = d.toISOString().replace('T', ' ').slice(5, 16)
+      ts.title = d.toLocaleString()
+    }
   }
   row.appendChild(ts)
 

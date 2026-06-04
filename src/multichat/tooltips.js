@@ -622,6 +622,7 @@
 
   let _userTooltipTarget = null;
   let _userTooltipResizeObs = null;
+  let _userTooltipMutObs = null;
 
   // CozetteVector's OTF advance widths aren't integer multiples at 13px
   // (~5.984px per glyph), so any flex row of badges accumulates fractional
@@ -657,6 +658,12 @@
 
   function ensureUserTooltip() {
     if (!userTooltip || !document.contains(userTooltip)) {
+      // Disconnect observers bound to the prior (now-detached) tooltip before
+      // recreating, or each SPA reparent leaks a live ResizeObserver +
+      // MutationObserver still firing against the stale node. untrackObserver
+      // null-guards, so this is a no-op on first run.
+      cleanup.untrackObserver(_userTooltipResizeObs); _userTooltipResizeObs = null;
+      cleanup.untrackObserver(_userTooltipMutObs); _userTooltipMutObs = null;
       userTooltip = document.createElement('div');
       userTooltip.id = 'hs-user-tooltip';
       document.body.appendChild(cleanup.trackNode(userTooltip));
@@ -675,9 +682,9 @@
       // changes (sync renderProfileCard + async sub-tenure + followage adds
       // children at different times; this catches all paths).
       if (typeof MutationObserver !== 'undefined') {
-        const mo = new MutationObserver(() => roundTooltipBadgeWidths(userTooltip));
-        cleanup.trackObserver(mo);
-        mo.observe(userTooltip, { childList: true, subtree: true });
+        _userTooltipMutObs = new MutationObserver(() => roundTooltipBadgeWidths(userTooltip));
+        cleanup.trackObserver(_userTooltipMutObs);
+        _userTooltipMutObs.observe(userTooltip, { childList: true, subtree: true });
       }
     }
     return userTooltip;

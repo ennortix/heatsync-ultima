@@ -363,60 +363,6 @@ function injectStyles() {
       color: #000 !important;
       border-color: #fff !important;
     }
-    /* Whisper conversation list */
-    .hs-whisper-conv {
-      padding: 6px 8px;
-      cursor: pointer;
-      border-bottom: 1px solid #000;
-    }
-    .hs-whisper-conv:hover {
-      background: #fff;
-      color: #000;
-    }
-    .hs-whisper-conv:hover .hs-whisper-preview,
-    .hs-whisper-conv:hover .hs-whisper-time {
-      color: #000;
-    }
-    .hs-whisper-preview {
-      color: #808080;
-      font-size: 13px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      margin-top: 2px;
-    }
-    .hs-whisper-time {
-      color: #808080;
-      font-size: 13px;
-      float: right;
-    }
-    .hs-whisper-unread {
-      background: #ff8700;
-      color: #000;
-      font-size: 13px;
-      font-weight: 700;
-      padding: 0 4px;
-      border-radius: 0;
-      margin-left: 4px;
-    }
-    .hs-whisper-header {
-      padding: 6px 8px;
-      border-bottom: 1px solid #808080;
-      font-size: 13px;
-      position: sticky;
-      top: 0;
-      background: #000;
-      z-index: 1;
-    }
-    .hs-whisper-back {
-      cursor: pointer;
-      margin-right: 6px;
-      font-size: 14px;
-    }
-    .hs-whisper-back:hover {
-      background: #fff;
-      color: #000;
-    }
     .hs-whisper-self {
       opacity: 0.7;
     }

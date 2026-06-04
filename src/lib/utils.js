@@ -59,7 +59,7 @@ function createElement(tag, text, className) {
 // ============================================
 
 /**
- * Query selector with caching
+ * Query selector (first match)
  * @param {string} selector
  * @param {Element} [parent=document]
  * @returns {Element|null}
@@ -267,7 +267,7 @@ const UI_SYNC_BLOCKLIST = new Set(['platformFilters', 'keywordHighlights'])
 /**
  * Sanitize a ui_settings-shaped object before merging into chrome.storage.sync
  * or echoing into localStorage. Strips:
- *   - numeric-string keys (corruption marker — once seen, always copy through)
+ *   - numeric-string keys (corruption marker)
  *   - prototype pollution keys
  *   - blocklist keys (platformFilters, keywordHighlights — too big for sync)
  *   - oversized strings (>4 KB) and oversized values (JSON >6 KB)

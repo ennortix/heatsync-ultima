@@ -201,7 +201,7 @@ function registerPendingSend({ text, channel, platforms, replyParentId }) {
     }
   }, PENDING_ECHO_TIMEOUT_MS)
   pendingSends.set(synthId, entry)
-  try {
+  if (MC_DEBUG) try {
     console.log('[heatsync-ext] pending registered:', JSON.stringify({
       text, channel, platforms, len: text.length,
       codes: [...text].slice(0, 30).map(c => c.charCodeAt(0))
@@ -241,7 +241,7 @@ function findPendingByEchoText(text) {
     if (entry.state !== 'pending') continue
     if (norm(entry.text) === wantN) return id
   }
-  try {
+  if (MC_DEBUG) try {
     const dump = []
     for (const [, entry] of pendingSends) {
       if (entry.state !== 'pending') continue

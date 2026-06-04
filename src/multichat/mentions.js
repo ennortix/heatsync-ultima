@@ -46,16 +46,16 @@ api.storage.local.get('hs_notifications').then(data => {
   notificationsEnabled = data.hs_notifications === true
   // Request permission on Firefox (Chrome extensions get it automatically)
   if (notificationsEnabled && notificationPermission === 'default' && typeof Notification !== 'undefined') {
-    Notification.requestPermission().then(p => { notificationPermission = p })
+    Notification.requestPermission().then(p => { notificationPermission = p }).catch(() => {})
   }
-})
+}).catch(() => {})
 if (!window._hsMcNotifStorageListener) {
   window._hsMcNotifStorageListener = true
   api.storage.onChanged.addListener((changes) => {
     if (changes.hs_notifications) {
       notificationsEnabled = changes.hs_notifications.newValue === true
       if (notificationsEnabled && notificationPermission === 'default' && typeof Notification !== 'undefined') {
-        Notification.requestPermission().then(p => { notificationPermission = p })
+        Notification.requestPermission().then(p => { notificationPermission = p }).catch(() => {})
       }
     }
   })

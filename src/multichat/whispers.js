@@ -286,7 +286,7 @@ async function sendTwitchWhisperDirect(toUserId, message) {
 // user's heatsync-linked Twitch account differs from the active twitch.tv
 // session and they want to whisper-from the active session.
 async function sendTwitchWhisper(toUserId, message) {
-  const onTwitch = typeof _isOnTwitchPage === 'function' ? _isOnTwitchPage() : /(^|\.)twitch\.tv$/i.test(location.hostname || '')
+  const onTwitch = _isOnTwitchPage()
 
   let serverResp = null
   let serverThrew = false

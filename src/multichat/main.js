@@ -200,55 +200,33 @@
   // another tab / device), BG writes storage → onChanged fires here →
   // every open settings panel updates the pill class in-place without a
   // re-render. Same listener fires from local writes too; idempotent.
-  let _viewerShowSexualLocal = false;
-  let _viewerShowGoreLocal = false;
-  let _viewerShowWeaponLocal = true;
-  let _viewerShowDrugLocal = true;
-  let _viewerShowHateLocal = true;
+  // Content-warning categories — five per-viewer emote filters. One table drives
+  // hydration, cross-tab live-sync, the settings render, and the click handlers,
+  // so adding a category is a single entry instead of edits in four places.
+  // sexual/gore default OFF (hidden); weapon/drug/hate default ON.
+  const CW_CATS = [
+    { key: 'sexual', storage: 'viewer_show_sexual', body: 'show_sexual_emotes', noun: 'sexual emotes setting', label: 'show sexual emotes', tip: 'emotes flagged for sexual content (≥ 70%) are hidden by default. shown with a dashed border when on.', def: false },
+    { key: 'gore', storage: 'viewer_show_gore', body: 'show_gore_emotes', noun: 'gore emotes setting', label: 'show gore emotes', tip: 'emotes flagged for violence/gore (≥ 70%) are hidden by default. shown with a dashed border when on.', def: false },
+    { key: 'weapon', storage: 'viewer_show_weapon', body: 'show_weapon_emotes', noun: 'weapons setting', label: 'show weapons emotes', tip: 'emotes flagged for weapons imagery. on by default.', def: true },
+    { key: 'drug', storage: 'viewer_show_drug', body: 'show_drug_emotes', noun: 'drugs setting', label: 'show drugs emotes', tip: 'emotes flagged for drug imagery. on by default.', def: true },
+    { key: 'hate', storage: 'viewer_show_hate', body: 'show_hate_emotes', noun: 'hate setting', label: 'show hate emotes', tip: 'emotes flagged for hate imagery. on by default.', def: true },
+  ];
+  const cwLocal = {};
+  for (const c of CW_CATS) cwLocal[c.key] = c.def;
   try {
-    chrome.storage.local.get(['viewer_show_sexual', 'viewer_show_gore', 'viewer_show_weapon', 'viewer_show_drug', 'viewer_show_hate'], function(d) {
-      if (typeof d?.viewer_show_sexual === 'boolean') _viewerShowSexualLocal = d.viewer_show_sexual;
-      if (typeof d?.viewer_show_gore === 'boolean') _viewerShowGoreLocal = d.viewer_show_gore;
-      if (typeof d?.viewer_show_weapon === 'boolean') _viewerShowWeaponLocal = d.viewer_show_weapon;
-      if (typeof d?.viewer_show_drug === 'boolean') _viewerShowDrugLocal = d.viewer_show_drug;
-      if (typeof d?.viewer_show_hate === 'boolean') _viewerShowHateLocal = d.viewer_show_hate;
+    chrome.storage.local.get(CW_CATS.map(function(c) { return c.storage; }), function(d) {
+      for (const c of CW_CATS) if (typeof d?.[c.storage] === 'boolean') cwLocal[c.key] = d[c.storage];
     });
     chrome.storage.onChanged.addListener(function(changes, area) {
       if (area !== 'local') return;
-      if (changes.viewer_show_sexual && typeof changes.viewer_show_sexual.newValue === 'boolean') {
-        const next = changes.viewer_show_sexual.newValue;
-        _viewerShowSexualLocal = next;
-        document.querySelectorAll('.hs-mc-toggle-pill[data-sexual-pill]').forEach(function(pill) {
-          pill.classList.toggle('active', next);
-        });
-      }
-      if (changes.viewer_show_gore && typeof changes.viewer_show_gore.newValue === 'boolean') {
-        const next = changes.viewer_show_gore.newValue;
-        _viewerShowGoreLocal = next;
-        document.querySelectorAll('.hs-mc-toggle-pill[data-gore-pill]').forEach(function(pill) {
-          pill.classList.toggle('active', next);
-        });
-      }
-      if (changes.viewer_show_weapon && typeof changes.viewer_show_weapon.newValue === 'boolean') {
-        const next = changes.viewer_show_weapon.newValue;
-        _viewerShowWeaponLocal = next;
-        document.querySelectorAll('.hs-mc-toggle-pill[data-weapon-pill]').forEach(function(pill) {
-          pill.classList.toggle('active', next);
-        });
-      }
-      if (changes.viewer_show_drug && typeof changes.viewer_show_drug.newValue === 'boolean') {
-        const next = changes.viewer_show_drug.newValue;
-        _viewerShowDrugLocal = next;
-        document.querySelectorAll('.hs-mc-toggle-pill[data-drug-pill]').forEach(function(pill) {
-          pill.classList.toggle('active', next);
-        });
-      }
-      if (changes.viewer_show_hate && typeof changes.viewer_show_hate.newValue === 'boolean') {
-        const next = changes.viewer_show_hate.newValue;
-        _viewerShowHateLocal = next;
-        document.querySelectorAll('.hs-mc-toggle-pill[data-hate-pill]').forEach(function(pill) {
-          pill.classList.toggle('active', next);
-        });
+      for (const c of CW_CATS) {
+        if (changes[c.storage] && typeof changes[c.storage].newValue === 'boolean') {
+          const next = changes[c.storage].newValue;
+          cwLocal[c.key] = next;
+          document.querySelectorAll('.hs-mc-toggle-pill[data-' + c.key + '-pill]').forEach(function(pill) {
+            pill.classList.toggle('active', next);
+          });
+        }
       }
     });
   } catch {}
@@ -5240,33 +5218,14 @@
     // the 2px dashed cyan border. weapons/drugs/hate default ON. Initial
     // state hydrates from chrome.storage (BG side keeps in sync via
     // onChanged) so pills render correctly before the GET round-trips.
-    var sexualOn = !!_viewerShowSexualLocal;
-    var goreOn = !!_viewerShowGoreLocal;
-    var weaponOn = !!_viewerShowWeaponLocal;
-    var drugOn = !!_viewerShowDrugLocal;
-    var hateOn = !!_viewerShowHateLocal;
     return '<div class="hs-mc-settings-group">' +
       '<div class="hs-mc-settings-group-title">content</div>' +
-      '<div class="hs-mc-setting-row">' +
-        '<button class="hs-mc-toggle-pill' + (sexualOn ? ' active' : '') + '" data-sexual-pill><span class="hs-mc-toggle-knob"></span></button>' +
-        '<span class="hs-mc-setting-label" data-tip="emotes flagged for sexual content (≥ 70%) are hidden by default. shown with a dashed border when on.">show sexual emotes</span>' +
-      '</div>' +
-      '<div class="hs-mc-setting-row">' +
-        '<button class="hs-mc-toggle-pill' + (goreOn ? ' active' : '') + '" data-gore-pill><span class="hs-mc-toggle-knob"></span></button>' +
-        '<span class="hs-mc-setting-label" data-tip="emotes flagged for violence/gore (≥ 70%) are hidden by default. shown with a dashed border when on.">show gore emotes</span>' +
-      '</div>' +
-      '<div class="hs-mc-setting-row">' +
-        '<button class="hs-mc-toggle-pill' + (weaponOn ? ' active' : '') + '" data-weapon-pill><span class="hs-mc-toggle-knob"></span></button>' +
-        '<span class="hs-mc-setting-label" data-tip="emotes flagged for weapons imagery. on by default.">show weapons emotes</span>' +
-      '</div>' +
-      '<div class="hs-mc-setting-row">' +
-        '<button class="hs-mc-toggle-pill' + (drugOn ? ' active' : '') + '" data-drug-pill><span class="hs-mc-toggle-knob"></span></button>' +
-        '<span class="hs-mc-setting-label" data-tip="emotes flagged for drug imagery. on by default.">show drugs emotes</span>' +
-      '</div>' +
-      '<div class="hs-mc-setting-row">' +
-        '<button class="hs-mc-toggle-pill' + (hateOn ? ' active' : '') + '" data-hate-pill><span class="hs-mc-toggle-knob"></span></button>' +
-        '<span class="hs-mc-setting-label" data-tip="emotes flagged for hate imagery. on by default.">show hate emotes</span>' +
-      '</div>' +
+      CW_CATS.map(function(c) {
+        return '<div class="hs-mc-setting-row">' +
+          '<button class="hs-mc-toggle-pill' + (cwLocal[c.key] ? ' active' : '') + '" data-' + c.key + '-pill><span class="hs-mc-toggle-knob"></span></button>' +
+          '<span class="hs-mc-setting-label" data-tip="' + c.tip + '">' + c.label + '</span>' +
+        '</div>';
+      }).join('') +
     '</div>';
   }
 
@@ -5582,153 +5541,32 @@
       // mirror to chrome.storage so the BG (which appends include_sexual= /
       // include_gore= to emote fetches) and other tabs pick up the new state
       // via onChanged. Inline emote caches get flushed via refresh_all.
-      var sexualPill = e.target.closest('.hs-mc-toggle-pill[data-sexual-pill]');
-      if (sexualPill) {
-        var sexualNext = !sexualPill.classList.contains('active');
-        sexualPill.classList.toggle('active', sexualNext);
-        _viewerShowSexualLocal = sexualNext;
-        chrome.storage.local.set({ viewer_show_sexual: sexualNext });
+      for (const cw of CW_CATS) {
+        const cwPill = e.target.closest('.hs-mc-toggle-pill[data-' + cw.key + '-pill]');
+        if (!cwPill) continue;
+        // data-*-pill attrs are mutually exclusive, so exactly one category
+        // matches per click; block-scoped const keeps the closures below bound
+        // to this iteration regardless.
+        const cwNext = !cwPill.classList.contains('active');
+        const cwRollback = function() {
+          cwPill.classList.toggle('active', !cwNext);
+          cwLocal[cw.key] = !cwNext;
+          chrome.storage.local.set({ [cw.storage]: !cwNext });
+          showToast('failed to save ' + cw.noun + ' — try again', 'error');
+        };
+        cwPill.classList.toggle('active', cwNext);
+        cwLocal[cw.key] = cwNext;
+        chrome.storage.local.set({ [cw.storage]: cwNext });
         safeSendMessage({
           type: 'api_fetch',
           path: '/api/user/settings',
           method: 'PATCH',
           auth: true,
-          body: { show_sexual_emotes: sexualNext }
+          body: { [cw.body]: cwNext }
         }).then(function(resp) {
-          if (!resp || !resp.ok) {
-            sexualPill.classList.toggle('active', !sexualNext);
-            _viewerShowSexualLocal = !sexualNext;
-            chrome.storage.local.set({ viewer_show_sexual: !sexualNext });
-            showToast('failed to save sexual emotes setting — try again', 'error');
-            return;
-          }
+          if (!resp || !resp.ok) { cwRollback(); return; }
           safeSendMessage({ type: 'refresh_all' }).catch(function() {});
-        }).catch(function() {
-          sexualPill.classList.toggle('active', !sexualNext);
-          _viewerShowSexualLocal = !sexualNext;
-          chrome.storage.local.set({ viewer_show_sexual: !sexualNext });
-          showToast('failed to save sexual emotes setting — try again', 'error');
-        });
-        return;
-      }
-
-      var gorePill = e.target.closest('.hs-mc-toggle-pill[data-gore-pill]');
-      if (gorePill) {
-        var goreNext = !gorePill.classList.contains('active');
-        gorePill.classList.toggle('active', goreNext);
-        _viewerShowGoreLocal = goreNext;
-        chrome.storage.local.set({ viewer_show_gore: goreNext });
-        safeSendMessage({
-          type: 'api_fetch',
-          path: '/api/user/settings',
-          method: 'PATCH',
-          auth: true,
-          body: { show_gore_emotes: goreNext }
-        }).then(function(resp) {
-          if (!resp || !resp.ok) {
-            gorePill.classList.toggle('active', !goreNext);
-            _viewerShowGoreLocal = !goreNext;
-            chrome.storage.local.set({ viewer_show_gore: !goreNext });
-            showToast('failed to save gore emotes setting — try again', 'error');
-            return;
-          }
-          safeSendMessage({ type: 'refresh_all' }).catch(function() {});
-        }).catch(function() {
-          gorePill.classList.toggle('active', !goreNext);
-          _viewerShowGoreLocal = !goreNext;
-          chrome.storage.local.set({ viewer_show_gore: !goreNext });
-          showToast('failed to save gore emotes setting — try again', 'error');
-        });
-        return;
-      }
-
-      var weaponPill = e.target.closest('.hs-mc-toggle-pill[data-weapon-pill]');
-      if (weaponPill) {
-        var weaponNext = !weaponPill.classList.contains('active');
-        weaponPill.classList.toggle('active', weaponNext);
-        _viewerShowWeaponLocal = weaponNext;
-        chrome.storage.local.set({ viewer_show_weapon: weaponNext });
-        safeSendMessage({
-          type: 'api_fetch',
-          path: '/api/user/settings',
-          method: 'PATCH',
-          auth: true,
-          body: { show_weapon_emotes: weaponNext }
-        }).then(function(resp) {
-          if (!resp || !resp.ok) {
-            weaponPill.classList.toggle('active', !weaponNext);
-            _viewerShowWeaponLocal = !weaponNext;
-            chrome.storage.local.set({ viewer_show_weapon: !weaponNext });
-            showToast('failed to save weapons setting — try again', 'error');
-            return;
-          }
-          safeSendMessage({ type: 'refresh_all' }).catch(function() {});
-        }).catch(function() {
-          weaponPill.classList.toggle('active', !weaponNext);
-          _viewerShowWeaponLocal = !weaponNext;
-          chrome.storage.local.set({ viewer_show_weapon: !weaponNext });
-          showToast('failed to save weapons setting — try again', 'error');
-        });
-        return;
-      }
-
-      var drugPill = e.target.closest('.hs-mc-toggle-pill[data-drug-pill]');
-      if (drugPill) {
-        var drugNext = !drugPill.classList.contains('active');
-        drugPill.classList.toggle('active', drugNext);
-        _viewerShowDrugLocal = drugNext;
-        chrome.storage.local.set({ viewer_show_drug: drugNext });
-        safeSendMessage({
-          type: 'api_fetch',
-          path: '/api/user/settings',
-          method: 'PATCH',
-          auth: true,
-          body: { show_drug_emotes: drugNext }
-        }).then(function(resp) {
-          if (!resp || !resp.ok) {
-            drugPill.classList.toggle('active', !drugNext);
-            _viewerShowDrugLocal = !drugNext;
-            chrome.storage.local.set({ viewer_show_drug: !drugNext });
-            showToast('failed to save drugs setting — try again', 'error');
-            return;
-          }
-          safeSendMessage({ type: 'refresh_all' }).catch(function() {});
-        }).catch(function() {
-          drugPill.classList.toggle('active', !drugNext);
-          _viewerShowDrugLocal = !drugNext;
-          chrome.storage.local.set({ viewer_show_drug: !drugNext });
-          showToast('failed to save drugs setting — try again', 'error');
-        });
-        return;
-      }
-
-      var hatePill = e.target.closest('.hs-mc-toggle-pill[data-hate-pill]');
-      if (hatePill) {
-        var hateNext = !hatePill.classList.contains('active');
-        hatePill.classList.toggle('active', hateNext);
-        _viewerShowHateLocal = hateNext;
-        chrome.storage.local.set({ viewer_show_hate: hateNext });
-        safeSendMessage({
-          type: 'api_fetch',
-          path: '/api/user/settings',
-          method: 'PATCH',
-          auth: true,
-          body: { show_hate_emotes: hateNext }
-        }).then(function(resp) {
-          if (!resp || !resp.ok) {
-            hatePill.classList.toggle('active', !hateNext);
-            _viewerShowHateLocal = !hateNext;
-            chrome.storage.local.set({ viewer_show_hate: !hateNext });
-            showToast('failed to save hate setting — try again', 'error');
-            return;
-          }
-          safeSendMessage({ type: 'refresh_all' }).catch(function() {});
-        }).catch(function() {
-          hatePill.classList.toggle('active', !hateNext);
-          _viewerShowHateLocal = !hateNext;
-          chrome.storage.local.set({ viewer_show_hate: !hateNext });
-          showToast('failed to save hate setting — try again', 'error');
-        });
+        }).catch(function() { cwRollback(); });
         return;
       }
 

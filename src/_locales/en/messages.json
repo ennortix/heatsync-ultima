@@ -769,6 +769,45 @@
   "mc_pred_title_placeholder": {
     "message": "prediction title"
   },
+  "mc_pred_pick_winner_bet": {
+    "message": "pick winner"
+  },
+  "mc_pred_cancel_form": {
+    "message": "cancel"
+  },
+  "mc_pred_load_failed": {
+    "message": "failed to load predictions"
+  },
+  "mc_poll_ended": {
+    "message": "ended"
+  },
+  "mc_poll_optional": {
+    "message": "optional"
+  },
+  "mc_chat_mode_emote_only": {
+    "message": "emote-only"
+  },
+  "mc_chat_mode_follower": {
+    "message": "followers-only"
+  },
+  "mc_chat_mode_slow": {
+    "message": "slow mode"
+  },
+  "mc_chat_mode_sub_only": {
+    "message": "subscribers-only"
+  },
+  "mc_chat_mode_unique": {
+    "message": "unique chat"
+  },
+  "mc_error_no_permission": {
+    "message": "no permission"
+  },
+  "mc_error_not_logged_in": {
+    "message": "not logged in"
+  },
+  "mc_error_poll_active": {
+    "message": "a poll is already active"
+  },
   "mc_pred_option1": {
     "message": "option 1 (blue)"
   },

@@ -669,7 +669,7 @@ function renderNoPrediction(balance, channelId, isMod, cpImage, cpName) {
 
   const titleInput = document.createElement('input')
   titleInput.className = 'hs-mc-pred-create-input'
-  titleInput.placeholder = t('mc_pred_title')
+  titleInput.placeholder = t('mc_pred_title_placeholder')
   titleInput.maxLength = 45
   form.appendChild(titleInput)
 
@@ -744,7 +744,7 @@ function renderRewards(rewards, balance, channelId) {
   if (!rewards.length) {
     const empty = document.createElement('div')
     empty.className = 'hs-mc-rewards-empty'
-    empty.textContent = t('mc_reward_no_rewards')
+    empty.textContent = t('mc_reward_none')
     section.appendChild(empty)
     return section
   }

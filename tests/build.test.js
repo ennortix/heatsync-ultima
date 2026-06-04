@@ -25,7 +25,6 @@ const coreFiles = [
   'shared-utils.js',
   'popup.html',
   'popup.js',
-  'options.html',
   'injected-message.css',
 ]
 

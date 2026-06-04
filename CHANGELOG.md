@@ -1,5 +1,50 @@
 # changelog
 
+## [1.6.7] — 2026-06-03
+
+### added
+- **kick chat pusher tap** — full chat capture + render on kick channels the relay doesn't cover yet. Off without it; on, you get the whole channel's chat plus heatsync rendering. Now enabled by default.
+- **per-category nsfw emote filter** — the single nsfw pill split into five independent toggles: sexual, gore, weapons, drugs, hate. Filter exactly what you want, default-on stays per-viewer.
+- **right-click emoji → copy `:shortcode:`** and **shift+right-click emote → context menu** with provider link + view/copy.
+- **settings import/export, mention cues, mod-anniversary callout, anti-features pack.**
+- **full-card ambient banner** on the hover profile tooltip.
+- **`emotes:refresh` WS event** — bulk inventory changes (mass add/remove) now render live instead of needing a reload.
+
+### changed
+- **design-system consistency pass** — square corners everywhere, hover and active states invert to white-on-black, 13px text floor, dropped trendy motion. Matches the terminal-density house style.
+- **2-state picker** — right-click toggles block ↔ unblock only; dropped the owned/orange/remove ladder (~150 lines removed). Slot management lives on the panel picker + inventory page.
+- **uniform emote hover** — white plate + darkened emote across picker, chat, native, and site; input chips use a drop-shadow halo so light emotes stay visible.
+- **removed single-emote gigantify** — emote/emoji size is manual (1x/2x/4x) only; no content-based auto-enlarging.
+
+### fixed
+- **`/me` now sends a real action** on every platform (was plain text off twitch).
+- **`heatsync-settings-changed` postMessage was attacker-callable** — now nonce-gated. (security)
+- **`storage.sync` quota for `ui_settings`** was a silent failure — now handled.
+- **exact emote name wins tab-complete** over a longer prefix match.
+- **emoji context menu** was overwritten by the user/message menu.
+- **white-on-white text** on settings + stream-banner hover.
+- **picker click no-op** when an emote outlived its live cache; unresolvable picker emotes now seed from emote info.
+- **kick position-based emotes** render in the chat-log viewer.
+- **channel-first-message (purple)** outranks session-first-seen (yellow); **profile-card block** hides live messages immediately.
+- **`ch?.kick` null-deref** that could freeze chat; hardened sent-echo dedup.
+- **`minimum_chrome_version` set to 116** for reliable MV3 service-worker keepalive.
+
+## [1.6.5] — 2026-05-29
+
+### fixed
+- **send reliability — fort knox v1**: WS keepalive, context-death detector, send retry with backoff, burst throttle, dual-send echo gating. Messages no longer silently drop after the service worker sleeps or the channel is auto-paired.
+- **echo detection** broadened — own-name FIFO fallback when the send-echo text-match misses; silenced false-positive "no echo" and dual-send partial-failure toasts on auto-paired channels.
+- **real status code on http errors** instead of a generic failure; silent auto-add on send.
+- **duplicate twitch timeout/ban notice** — mods saw the line twice; deduped NOTICE + pending double-toast.
+- **usernotice/sub emotes not rendering** — `tags.emotes` now extracted in both irc parsers.
+- **reply stack** stayed open while the row scrolled off (was dismissing early); click the reply-pill to open a thread instead of auto-opening on hover.
+- **expanded non-channel deny-list** — prod was subscribing to garbage paths.
+- **tab-complete catalog quality** — ffz/bttv first, lowercase dedupe, prefix-only.
+- **hide broken link-preview images** on load error; emoji-from-nest paste/stack round-trips back into the input.
+
+### removed
+- **15 dead settings toggles** + `debugLogging` (did nothing); restored `crossFollowKick`. Renamed misleading "anonymous chat" → "incognito".
+
 ## [1.6.4] — 2026-05-27
 
 ### changed

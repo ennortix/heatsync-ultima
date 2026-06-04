@@ -41,7 +41,6 @@ const COPY_FILES = [
   'background.js',
   'popup.js',
   'popup.html',
-  'options.html',
   'early-inject-main.js',
   'kick-nav-watcher.js',
   'youtube-keyboard-guard.js',

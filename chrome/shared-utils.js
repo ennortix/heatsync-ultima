@@ -123,6 +123,16 @@
   }
 
   function showToast(message, type = 'info') {
+    // Prefer the overlay statusbar slot (the `>` line) when the multichat
+    // overlay is mounted — one toast surface, deduped (×N) instead of a fresh
+    // floating box per attempt. Float bottom-center only when no overlay exists.
+    try {
+      if (window.HsNotifs && document.getElementById('hs-notif-layer-statusbar')) {
+        window.HsNotifs.emit('toast', { text: message, level: type })
+        return
+      }
+    } catch (_) {}
+
     const existing = document.getElementById('heatsync-toast')
     if (existing) existing.remove()
 

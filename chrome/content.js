@@ -3162,7 +3162,13 @@ function rebuildEmoteMapIfDirty() {
 }
 
 // Toast — use shared-utils if available, inline fallback
-const showToast = window.HS?.showToast || function(msg) {
+const showToast = window.HS?.showToast || function(msg, type) {
+  try {
+    if (window.HsNotifs && document.getElementById('hs-notif-layer-statusbar')) {
+      window.HsNotifs.emit('toast', { text: msg, level: type })
+      return
+    }
+  } catch (_) {}
   const el = document.getElementById('heatsync-toast')
   if (el) el.remove()
   const t = document.createElement('div')
@@ -3612,14 +3618,23 @@ function _onMessageMain(message) {
       log(' Followed users updated:', followedByCurrentUser.size);
       break;
 
-    case 'emote_add_failed':
+    case 'emote_add_failed': {
       log(' ❌ Failed to add emote:', message.emoteName, message.error);
-      showToast(t('content_toast_failed_add', [message.emoteName, String(message.error)]), 'error');
+      // Logged-out is the common case, not a failure — collapse the per-emote
+      // red errors into one gentle deduped nudge (statusbar dedupes identical
+      // text to ×N). Real failures still surface the actual error.
+      const addErr = String(message.error || '');
+      if (/not logged in/i.test(addErr)) {
+        showToast('log in to heatsync.org to add emotes', 'info');
+      } else {
+        showToast(t('content_toast_failed_add', [message.emoteName, addErr]), 'error');
+      }
       // 2-state model: no `add:` pendingOperations keys exist anymore;
       // stack-click + auto-add-on-send register under different keys.
       // No emote_remove_failed handler — chat-row right-click is block-only
       // now, so the background never emits emote_remove_failed to content.js.
       break;
+    }
 
     case 'user_muted':
       mutedUsers.add(message.username);

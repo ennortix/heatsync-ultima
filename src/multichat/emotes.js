@@ -1398,7 +1398,14 @@
           flashAllEmotes(emoteName, 'hs-flash-add');
         }
       } else if (!silent) {
-        showToast(response?.error || `failed to add: ${emoteName}`, 'error');
+        // Logged-out is the common case, not a failure — one gentle nudge
+        // (statusbar dedupes to ×N) instead of a red per-emote error.
+        const addErr = String(response?.error || '');
+        if (/not logged in/i.test(addErr)) {
+          showToast('log in to heatsync.org to add emotes', 'info');
+        } else {
+          showToast(addErr || `failed to add: ${emoteName}`, 'error');
+        }
       } else {
         log('Auto-add failed silently:', emoteName, response?.error || '(no error)')
       }

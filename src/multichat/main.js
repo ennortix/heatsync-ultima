@@ -7382,7 +7382,7 @@
       const div = document.createElement('div')
       div.className = `hs-mc-stream-event ${m.eventClass || ''}`
       const tsVal = timestampsEnabled && m.time ? formatTimeFromTs(m.time) : ''
-      const tsSpan = tsVal ? `<span class="hs-mc-ts" data-ts="${m.time}">${tsVal}</span>` : ''
+      const tsSpan = tsVal ? `<span class="hs-mc-ts">${tsVal}</span>` : ''
       // For redeems, the actor is the redeemer (m.actor). For other events the channel is the actor.
       const ch = m.actor || m.channel || ''
       const chLc = ch.toLowerCase()
@@ -7441,7 +7441,7 @@
       const borderColor = m.inlineNotifBorderColor || typeDef?.borderColor || '#ff8700'
       div.style.borderLeftColor = borderColor
       const tsVal = timestampsEnabled ? formatTimeFromTs(m.time) : ''
-      const tsSpan = tsVal ? `<span class="hs-mc-ts" data-ts="${m.time}">${tsVal}</span>` : ''
+      const tsSpan = tsVal ? `<span class="hs-mc-ts">${tsVal}</span>` : ''
       const tagColor = typeDef?.color || '#ff0000'
       const tagLabel = isThreadOp || isOp ? '[OP]' : '[RE]'
       const typeTag = `<span class="hs-feed-tag" style="color:${tagColor};font-size:13px;margin-right:3px">${tagLabel}</span>`
@@ -7471,7 +7471,7 @@
       const borderColor = m.inlineNotifBorderColor || INLINE_NOTIF_TYPES.dm.borderColor
       div.style.borderLeftColor = borderColor
       const tsVal = timestampsEnabled ? formatTimeFromTs(m.time) : ''
-      const tsSpan = tsVal ? `<span class="hs-mc-ts" data-ts="${m.time}">${tsVal}</span>` : ''
+      const tsSpan = tsVal ? `<span class="hs-mc-ts">${tsVal}</span>` : ''
       const labelColor = m.inlineNotifColor || INLINE_NOTIF_TYPES.dm.color
       const label = `<span style="color:${labelColor};font-size:13px;font-weight:700;margin-right:3px">[DM]</span>`
       const platBadge = m.platform === 'twitch'
@@ -7782,11 +7782,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // USERNOTICE system line (all values go through escapeHtml — same pattern as existing innerHTML above)
     const systemLine = (m.systemMsg ? `<span class="hs-mc-system-text">${escapeHtml(m.systemMsg)}</span>` : '') + redeemLabel
     // Skip the date-format work entirely when the timestamp won't render —
-    // formatTimeFromTs builds a Date and runs Intl, ~1µs each, but at 100msg/s
-    // that's free CPU we can give back when timestamps are off.
+    // formatTimeFromTs builds a Date per call, and at 100msg/s that's free CPU
+    // we can give back when timestamps are off.
     const showTs = timestampsEnabled || tabId === 'mentions';
     const ts = showTs ? formatTimeFromTs(m.time) : '';
-    const tsHtml = ts ? `<span class="hs-mc-ts" data-ts="${m.time}">${ts}</span>` : '';
+    const tsHtml = ts ? `<span class="hs-mc-ts">${ts}</span>` : '';
     const msgBody = (m.type === 'usernotice' || m.type === 'notice') && !m.text
       ? `${tsHtml}${systemLine}`
       : m.type === 'notice'

@@ -502,7 +502,7 @@ function renderWhispersTab() {
     if (zebraEnabled && ++zebraCount % 2 === 0) div.classList.add('hs-mc-zebra')
 
     const ts = formatTimeFromTs(m.time)
-    const tsHtml = ts ? `<span class="hs-mc-ts" data-ts="${m.time}">${ts}</span>` : ''
+    const tsHtml = ts ? `<span class="hs-mc-ts">${ts}</span>` : ''
     const platColor = m.platform === 'twitch' ? '#9146ff' : '#ff8700'
     const platTag = m.platform === 'twitch' ? 'T' : 'HS'
     const arrow = m.self ? '\u2192' : '\u2190'

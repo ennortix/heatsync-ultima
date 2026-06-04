@@ -1442,24 +1442,14 @@ function formatRelativeMs(diff) {
   return `${days}d`;
 }
 
+// Chat-row timestamp = wall-clock HH:MM (24h, local). The "timestamps" toggle
+// promises "timestamp on each message" — a clock time, not a relative age. A
+// past message's clock time never changes, so no periodic refresh is needed.
 function formatTimeFromTs(ts) {
   if (!ts) return '';
-  return formatRelativeMs(Date.now() - ts);
+  const d = new Date(ts);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
-
-// Refresh timestamps every 30s — lightweight DOM-only update, no rebuild
-cleanup.setIntervalIfVisible(() => {
-  const msgsEl = document.getElementById('hs-mc-messages');
-  if (!msgsEl) return;
-  const now = Date.now();
-  for (const el of msgsEl.querySelectorAll('.hs-mc-ts[data-ts]')) {
-    const ts = parseInt(el.dataset.ts);
-    if (ts) {
-      const newText = formatRelativeMs(now - ts);
-      if (el.textContent !== newText) el.textContent = newText;
-    }
-  }
-}, 30000);
 
 // Open thread view — replaces feed with OP + replies + reply input
 async function openThread(msgId, highlightId) {

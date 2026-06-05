@@ -2922,24 +2922,36 @@ function mergeChipIntoWordForRecompletion(input) {
   return true
 }
 
+// "Recently active" = talked within RECENCY_WINDOW_MS, capped at RECENCY_MAX
+// unique users. A count-only cap ages people out in seconds on ultra-fast chats
+// (xQc churns 50 unique users in a blink), so a chatter you just saw talk would
+// vanish from tab-complete; the time window keeps "recent" matching what a human
+// sees, the count cap bounds walk cost + how aggressively chatters beat emotes.
+const RECENCY_MAX = 150
+const RECENCY_WINDOW_MS = 10 * 60 * 1000
 function getRecencyMap() {
   // Returns Map<usernameLower, recencyRank> from current tab's chat buffer.
-  // Lower rank = more recent. Caps at 50 unique users for sub-ms cost.
-  // Merges Twitch/Kick irc buffer + YouTube buffer (channelYtMessages) so
-  // YT-only chatters tab-complete on YT-only channels.
+  // Lower rank = more recent. Merges Twitch/Kick irc buffer + YouTube buffer
+  // (channelYtMessages) so YT-only chatters tab-complete on YT-only channels.
   const out = new Map()
   let ch = currentTab
   if (currentTab === 'live' && typeof getLiveChannel === 'function') ch = getLiveChannel()
   const ircMsgs = (ch && typeof irc !== 'undefined' && irc?.channels?.get(ch.toLowerCase())?.getAll?.()) || []
   const ytMsgs = (typeof channelYtMessages !== 'undefined' && channelYtMessages.get(currentTab)) || []
+  // Time floor relative to the newest message (robust to relay/clock skew), not
+  // wall-clock now. Anything older than the window is stale → stop walking.
+  const newest = Math.max(ircMsgs[ircMsgs.length - 1]?.time || 0, ytMsgs[ytMsgs.length - 1]?.time || 0)
+  const floor = newest ? newest - RECENCY_WINDOW_MS : 0
   // Walk both buffers from newest tail, picking whichever has the later time.
   let i = ircMsgs.length - 1
   let j = ytMsgs.length - 1
   let rank = 0
-  while (rank < 50 && (i >= 0 || j >= 0)) {
+  while (rank < RECENCY_MAX && (i >= 0 || j >= 0)) {
     const a = i >= 0 ? (ircMsgs[i]?.time || 0) : -1
     const b = j >= 0 ? (ytMsgs[j]?.time || 0) : -1
     const pickIrc = a >= b
+    const t = pickIrc ? a : b
+    if (t > 0 && t < floor) break
     const msg = pickIrc ? ircMsgs[i--] : ytMsgs[j--]
     const u = (msg?.user || '').toLowerCase()
     if (!u || out.has(u)) continue

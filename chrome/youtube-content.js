@@ -647,6 +647,7 @@
 
     // 7TV cosmetics via heatsync profile linkage
     if (msg.user) {
+      recordYtChatter(msg.user)
       node.dataset.hsYtUser = msg.user
       const cached = ytCosmeticsCache.get(msg.user)
       if (cached !== undefined) {
@@ -700,6 +701,32 @@
   let acSelectedIndex = -1
   let acVisible = false
 
+  // Recently-active YouTube chatters → lead bare-word Tab autocomplete above
+  // emotes (parity with overlay/twitch/kick). Time-windowed (10 min, cap-pruned)
+  // so "recent" matches what the user sees. Inserted as an @mention.
+  const ytRecentChatters = new Map() // lower -> { dn, t }
+  function recordYtChatter(display) {
+    if (!display) return
+    const lower = display.toLowerCase()
+    ytRecentChatters.delete(lower)
+    ytRecentChatters.set(lower, { dn: display, t: Date.now() })
+    while (ytRecentChatters.size > 600) ytRecentChatters.delete(ytRecentChatters.keys().next().value)
+  }
+  function ytRecentChatterMatches(prefix) {
+    const ql = prefix.toLowerCase()
+    if (!ql || ql.startsWith('@')) return []
+    const entries = [...ytRecentChatters.entries()]
+    const newest = entries.length ? entries[entries.length - 1][1].t : 0
+    const floor = newest ? newest - 10 * 60 * 1000 : 0
+    const out = []
+    for (let k = entries.length - 1; k >= 0; k--) {
+      const [l, v] = entries[k]
+      if (v.t && v.t < floor) break
+      if (l.startsWith(ql)) out.push({ name: '@' + v.dn, isChatter: true })
+    }
+    return out
+  }
+
   let _setupAutocompleteRetryTimer = null
   function setupAutocomplete() {
     if (signal.aborted) return
@@ -729,8 +756,12 @@
 
     input.addEventListener('input', () => {
       const word = getWordAtCaret(input)
-      if (word && word.length >= 2 && emoteMap.size > 0) {
-        const matches = findEmoteMatches(word, 8)
+      if (word && word.length >= 2) {
+        // Recent chatters lead, then emotes. Shows even when no emotes are
+        // loaded yet, so a name prefix still completes.
+        const chatters = ytRecentChatterMatches(word)
+        const emoteMatches = emoteMap.size > 0 ? findEmoteMatches(word, 8) : []
+        const matches = chatters.length ? chatters.concat(emoteMatches) : emoteMatches
         if (matches.length > 0) {
           showAutocomplete(matches, input)
           return
@@ -813,11 +844,13 @@
       item.className = 'hs-yt-ac-item' + (i === 0 ? ' selected' : '')
       item.dataset.index = String(i)
 
-      const img = document.createElement('img')
-      img.src = emote.url
-      img.alt = emote.name
-      img.loading = 'lazy'
-      item.appendChild(img)
+      if (!emote.isChatter) {
+        const img = document.createElement('img')
+        img.src = emote.url
+        img.alt = emote.name
+        img.loading = 'lazy'
+        item.appendChild(img)
+      }
 
       const span = document.createElement('span')
       span.textContent = emote.name

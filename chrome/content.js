@@ -4385,6 +4385,48 @@ const knownChatters = new class extends Map {
   }
 }()
 
+// Recently-active chatters — feeds the native autocomplete hooks so a chatter
+// you just saw talk leads bare-word Tab completion above emotes (parity with the
+// overlay's getRecencyMap). Time-windowed (last 10 min, cap 150 unique) so
+// "recent" matches what the user sees, not a flat count that ages out in seconds
+// on fast chat. Newest kept at the Map tail via delete-then-set.
+const RECENT_CHATTER_MAX = 150
+const RECENT_CHATTER_WINDOW_MS = 10 * 60 * 1000
+const recentChatterTimes = new Map() // lower -> { dn, t }
+function recordRecentChatter(lower, display) {
+  if (!lower) return
+  recentChatterTimes.delete(lower)
+  recentChatterTimes.set(lower, { dn: display || lower, t: Date.now() })
+  while (recentChatterTimes.size > 600) recentChatterTimes.delete(recentChatterTimes.keys().next().value)
+  scheduleRecentChatterBridge()
+}
+function buildRecentChatterList() {
+  // newest-first, within the time window, capped — { name: display, l: lower }
+  const entries = [...recentChatterTimes.entries()]
+  const newest = entries.length ? entries[entries.length - 1][1].t : 0
+  const floor = newest ? newest - RECENT_CHATTER_WINDOW_MS : 0
+  const out = []
+  for (let k = entries.length - 1; k >= 0 && out.length < RECENT_CHATTER_MAX; k--) {
+    const [l, v] = entries[k]
+    if (v.t && v.t < floor) break
+    out.push({ name: v.dn, l })
+  }
+  return out
+}
+let _recentChatterBridgeTimer = null
+function scheduleRecentChatterBridge() {
+  // Twitch's hook is MAIN-world — push the serialized list onto the DOM bridge,
+  // throttled (recency changes every message; autocomplete reads the cache).
+  if (_recentChatterBridgeTimer) return
+  _recentChatterBridgeTimer = cleanup.setTimeout(() => {
+    _recentChatterBridgeTimer = null
+    try {
+      const bridge = document.getElementById('heatsync-emote-bridge')
+      if (bridge) bridge.dataset.recentChatters = JSON.stringify(buildRecentChatterList())
+    } catch (_) {}
+  }, 1500)
+}
+
 // Sub tenure tracking — extracted from Twitch badge alt text (subscriber badge)
 const subTenureMap = new Map() // usernameLC -> months
 
@@ -5186,6 +5228,8 @@ function processMessage(messageElement) {
       knownChatters.set(lowerUser, color)
       while (knownChatters.size > 500) knownChatters.delete(knownChatters.keys().next().value)
     }
+    // Stamp recency for native tab-complete (preserves canonical display case).
+    recordRecentChatter(lowerUser, username)
 
     // Extract sub tenure from Twitch subscriber badge alt text
     if (!subTenureMap.has(lowerUser)) {
@@ -10249,7 +10293,8 @@ cleanup.setTimeout(() => {
   cleanup.setTimeout(() => backfillChatHistory(), 500);
 }, 1000);
 
-// Expose knownChatters for autocomplete-hook.js username completion
-window.heatsyncKnownChatters = knownChatters;
+// Expose the recency list for the Kick autocomplete hook (ISOLATED, shares this
+// window). Twitch's hook is MAIN-world and reads the DOM bridge instead.
+window.heatsyncGetRecentChatters = buildRecentChatterList;
 
 })();

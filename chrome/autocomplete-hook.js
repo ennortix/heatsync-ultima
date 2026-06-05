@@ -202,6 +202,23 @@
     } catch { return []; }
   }
 
+  // Recently-active chatters from content.js (ISOLATED), published on the same
+  // DOM bridge (dataset.recentChatters): [{ name: display, l: lower }], newest
+  // first, time-windowed. Cached by raw-string compare like getEmotesForFix.
+  let _rcRaw = ''
+  let _rcCache = []
+  function getRecentChattersFromBridge() {
+    const bridge = document.getElementById('heatsync-emote-bridge');
+    if (!bridge) return [];
+    try {
+      const raw = bridge.dataset.recentChatters || '[]';
+      if (raw === _rcRaw) return _rcCache;
+      _rcRaw = raw;
+      _rcCache = JSON.parse(raw);
+      return _rcCache;
+    } catch { return []; }
+  }
+
   function fixHeatsyncUrl(value) {
     if (!value || typeof value !== 'string' || !value.includes(HEATSYNC_PREFIX)) return null;
     const match = value.match(/__FFZ__999999::(.+?)__FFZ__/);
@@ -1434,7 +1451,21 @@
             if (la !== lb) return la - lb;
             return (a.name || '').localeCompare(b.name || '');
           });
-          cycleState.matches = matches;
+          // Recent-chatter lead: a chatter who just talked and whose name
+          // prefix-matches leads the cycle above all emotes (parity with the
+          // overlay). Bare word only; inserted as an @mention. Source: content.js
+          // via the DOM bridge, already newest-first + time-windowed.
+          let cycleFinal = matches;
+          if (!emojiSearch && !currentSearch.startsWith('@')) {
+            const recentChatters = [];
+            for (const c of getRecentChattersFromBridge()) {
+              if (c.l && c.l.startsWith(emoteSearch)) {
+                recentChatters.push({ name: '@' + c.name, nameLower: c.l, isUser: true });
+              }
+            }
+            if (recentChatters.length) cycleFinal = recentChatters.concat(matches);
+          }
+          cycleState.matches = cycleFinal;
           cycleState.searchTerm = currentSearch;
           cycleState.index = 0;
           cycleState.lastCycledEmote = null;
@@ -1486,8 +1517,11 @@
             return;
           }
 
-          // Emoji shortcode cycling: insert emoji character as text
-          if (nextEmote.isEmoji) {
+          // Text cycling — emoji shortcode (insert the emoji char) or a recent
+          // chatter (insert the @mention). Both are plain text, same delete/
+          // insert path; emotes (void Slate nodes) go through insertEmoteViaSlate.
+          if (nextEmote.isEmoji || nextEmote.isUser) {
+            const insertStr = nextEmote.isEmoji ? nextEmote.emoji : nextEmote.name;
             const slateEditor = inst?.chatInputRef?.state?.slateEditor;
             const settings = getExtensionSettings();
             const addSpace = settings.emoteSpaceAfter !== false;
@@ -1511,8 +1545,8 @@
                   slateEditor.deleteBackward('character');
                 }
               }
-              slateEditor.insertText(nextEmote.emoji + (addSpace ? ' ' : ''));
-              cycleState.lastCycledEmote = nextEmote.emoji;
+              slateEditor.insertText(insertStr + (addSpace ? ' ' : ''));
+              cycleState.lastCycledEmote = insertStr;
               const focusEl = getInputElement();
               if (focusEl) focusEl.focus();
               log(' ✅ Emoji cycle complete:', nextEmote.name, '→', nextEmote.emoji);
@@ -1531,8 +1565,8 @@
                   const partialLen = matchResult ? matchResult[0].length : 0;
                   for (let i = 0; i < partialLen; i++) document.execCommand('delete', false);
                 }
-                document.execCommand('insertText', false, nextEmote.emoji + (addSpace ? ' ' : ''));
-                cycleState.lastCycledEmote = nextEmote.emoji;
+                document.execCommand('insertText', false, insertStr + (addSpace ? ' ' : ''));
+                cycleState.lastCycledEmote = insertStr;
                 log(' ✅ Emoji cycle via execCommand:', nextEmote.name, '→', nextEmote.emoji);
               }
             }

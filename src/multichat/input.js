@@ -3193,17 +3193,16 @@ function findEmoteMatches(search) {
   // Recent-chatter completion — bare word (no @ / :): a chatter who JUST talked
   // and whose name PREFIX-matches outranks every emote. Typing a name prefix is
   // almost always addressing that person, so these jump above emotes (e.g.
-  // "ashr" → ashrubberyboi over HahaShrugLeft), most-recent-first. Inserted bare
-  // (no @), matching the typed form and the username fallback below. These are
-  // collected separately and prepended after the emote sort so the emote
-  // ordering stays untouched.
+  // "ashr" → @ashrubberyboi over HahaShrugLeft), most-recent-first. Inserted as
+  // an @mention (consistent with the native hooks + site). Collected separately
+  // and prepended after the emote sort so the emote ordering stays untouched.
   const recentChatters = []
   if (!isUserSearch && !search.startsWith(':') && searchLower.length > 0 && typeof getRecencyMap === 'function') {
     const _ucDisplay = new Map()
     if (typeof usernameCache !== 'undefined') for (const u of usernameCache) if (u) _ucDisplay.set(u.toLowerCase(), u)
     for (const [userLower, rank] of getRecencyMap()) {
       if (!userLower.startsWith(searchLower)) continue
-      recentChatters.push({ name: _ucDisplay.get(userLower) || userLower, url: null, priority: 0, type: 'user', recencyRank: rank })
+      recentChatters.push({ name: '@' + (_ucDisplay.get(userLower) || userLower), url: null, priority: 0, type: 'user', recencyRank: rank })
     }
     recentChatters.sort((a, b) => a.recencyRank - b.recencyRank)
   }

@@ -314,7 +314,7 @@
         img.alt = r.name
         img.loading = 'lazy'
         item.appendChild(img)
-      } else {
+      } else if (!r.isChatter) {
         const ph = document.createElement('span')
         ph.className = 'hs-ac-placeholder'
         item.appendChild(ph)
@@ -498,7 +498,22 @@
       emoteDebounceTimer = setTimeout(() => {
         if (sig.aborted) return
         refreshEmotes(getCurrentChannel())
-        const results = searchEmotes(query)
+        let results = searchEmotes(query)
+        // Recent-chatter lead (parity with overlay + twitch): a chatter who just
+        // talked and whose name prefix-matches leads above all emotes. Source:
+        // content.js (ISOLATED, same world) via window.heatsyncGetRecentChatters,
+        // newest-first + time-windowed. Inserted as an @mention.
+        if (!query.startsWith('@')) {
+          try {
+            const ql = query.toLowerCase()
+            const rc = (typeof window.heatsyncGetRecentChatters === 'function') ? window.heatsyncGetRecentChatters() : []
+            const chatters = []
+            for (const c of rc) {
+              if (c.l && c.l.startsWith(ql)) chatters.push({ name: '@' + c.name, url: null, isChatter: true })
+            }
+            if (chatters.length) results = chatters.concat(results)
+          } catch (_) {}
+        }
         if (activeInput) showEmoteDropdown(activeInput, results)
       }, 60)
     } else {

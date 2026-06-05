@@ -5,14 +5,26 @@
   <meta name="viewport" content="width=300">
   <title>heatsync</title>
   <style>
+    @font-face {
+      font-family: 'CozetteVector';
+      src: url('fonts/CozetteVector.woff2') format('woff2');
+      font-weight: 400;
+      font-style: normal;
+      font-display: block;
+    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { background: #0a0a0a; }
+    html, body { background: #000; }
     body {
       width: 300px;
-      color: #f0f0f0;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace, 'Noto Color Emoji';
-      font-size: 14px;
-      line-height: 1.4;
+      color: #fff;
+      font-family: 'CozetteVector', monospace, 'Noto Color Emoji';
+      font-size: 13px;
+      line-height: 1.5;
+      -webkit-font-smoothing: none;
+      font-smooth: never;
+      text-rendering: optimizeSpeed;
+      font-kerning: normal;
+      font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
     }
 
     .header {
@@ -20,12 +32,12 @@
       align-items: center;
       gap: 10px;
       padding: 14px 16px;
-      border-bottom: 1px solid rgba(255,255,255,0.06);
+      border-bottom: 1px solid rgba(255,255,255,0.12);
     }
     .header img { width: 22px; height: 22px; }
     .brand {
       font-size: 14px;
-      font-weight: 600;
+      font-weight: 400;
       letter-spacing: 0.2px;
     }
 
@@ -52,7 +64,7 @@
       color: #000;
       border: none;
       font-size: 14px;
-      font-weight: 600;
+      font-weight: 400;
       font-family: inherit;
       cursor: pointer;
       letter-spacing: 0.3px;
@@ -62,28 +74,28 @@
 
     .detected {
       margin-top: 12px;
-      font-size: 12px;
+      font-size: 13px;
       color: #888;
       text-align: center;
       min-height: 16px;
     }
-    .detected b { color: #ff8700; font-weight: 600; }
+    .detected b { color: #ff8700; font-weight: 400; }
 
     .footer {
       display: flex;
       gap: 0;
-      border-top: 1px solid rgba(255,255,255,0.06);
+      border-top: 1px solid rgba(255,255,255,0.12);
     }
     .footer a {
       flex: 1;
       padding: 10px 12px;
       color: #888;
-      font-size: 12px;
+      font-size: 13px;
       text-decoration: none;
       text-align: center;
       cursor: pointer;
     }
-    .footer a + a { border-left: 1px solid rgba(255,255,255,0.06); }
+    .footer a + a { border-left: 1px solid rgba(255,255,255,0.12); }
     .footer a:hover { background: #fff; color: #000; }
   </style>
 </head>

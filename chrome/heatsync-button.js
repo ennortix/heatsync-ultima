@@ -1169,6 +1169,7 @@
       }
 
       .heatsync-import-preview img:hover {
+        background: #fff;
       }
 
       /* Status messages */

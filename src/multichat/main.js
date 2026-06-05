@@ -7505,9 +7505,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         // Kick/YouTube without a cached avatar — render a neutral initials
         // placeholder so the avatar column doesn't have an empty gap.
         const initial = (m.user || '?').charAt(0).toUpperCase()
-        const palette = ['#5d3ad6','#1a8cff','#ff6b35','#10b981','#e11d48','#7c3aed','#f59e0b']
-        const hue = palette[(userKey.charCodeAt(0) + (userKey.charCodeAt(1) || 0)) % palette.length]
-        avatarHtml = `<span class="hs-mc-avatar hs-mc-avatar-fallback" style="background:${hue}">${escapeHtml(initial)}</span>`
+        const _ansiPalette = ['#ff8700','#5f87ff','#00d65a','#ffff00','#ff4f4d','#af87ff']
+        let _nameHash = 0
+        for (let _i = 0; _i < userKey.length; _i++) _nameHash = (_nameHash * 31 + userKey.charCodeAt(_i)) >>> 0
+        const hue = _ansiPalette[_nameHash % _ansiPalette.length]
+        avatarHtml = `<span class="hs-mc-avatar hs-mc-avatar-fallback" style="background:${hue};color:#000">${escapeHtml(initial)}</span>`
       }
     }
 

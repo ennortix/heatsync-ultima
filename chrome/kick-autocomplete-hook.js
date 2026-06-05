@@ -197,8 +197,8 @@
       #${DROPDOWN_ID} .hs-ac-item:hover,
       #${EMOTE_DROPDOWN_ID} .hs-ac-item.selected,
       #${EMOTE_DROPDOWN_ID} .hs-ac-item:hover {
-        background: #ff870033;
-        color: #fff;
+        background: #fff;
+        color: #000;
       }
       #${DROPDOWN_ID} .hs-ac-emoji {
         font-size: 18px;
@@ -212,7 +212,7 @@
       }
       #${EMOTE_DROPDOWN_ID} .hs-ac-item.selected .hs-ac-name,
       #${EMOTE_DROPDOWN_ID} .hs-ac-item:hover .hs-ac-name {
-        color: #ff8700;
+        color: #000;
       }
       #${EMOTE_DROPDOWN_ID} .hs-ac-img {
         width: 28px;

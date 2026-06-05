@@ -448,7 +448,11 @@
         color: #ddd;
       }
       .hs-yt-ac-item:hover, .hs-yt-ac-item.selected {
-        background: #333;
+        background: #fff;
+        color: #000;
+      }
+      .hs-yt-ac-item:hover *, .hs-yt-ac-item.selected * {
+        color: #000;
       }
       .hs-yt-ac-item img {
         height: 24px;

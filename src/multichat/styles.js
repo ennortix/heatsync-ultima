@@ -16,6 +16,7 @@ function injectStyles() {
     :root {
       --hs-resize-thickness: 4px;
       --hs-resize-grab: 4px;
+      --hs-link: #5f87ff;
     }
     /* Bundled bitmap fonts — URLs replaced via chrome.runtime.getURL after
        template evaluation (woff2 lives in chrome/fonts/, exposed via
@@ -2036,7 +2037,7 @@ function injectStyles() {
       cursor: pointer;
     }
     .hs-mc-link {
-      color: #8080ff;
+      color: var(--hs-link);
       text-decoration: none;
       word-break: break-all;
       position: relative;
@@ -2113,12 +2114,11 @@ function injectStyles() {
       padding: 0; min-width: 220px; max-width: 280px;
       box-shadow: 0 6px 32px rgba(0,0,0,0.75);
       animation: hs-mc-em-in 80ms ease-out;
-      transform-origin: top left;
       user-select: none;
     }
     @keyframes hs-mc-em-in {
-      from { opacity: 0; transform: scale(0.96); }
-      to   { opacity: 1; transform: scale(1); }
+      from { opacity: 0; }
+      to   { opacity: 1; }
     }
     .hs-mc-ctx.hs-mc-em-flip-x { transform-origin: top right; }
     .hs-mc-ctx.hs-mc-em-flip-y { transform-origin: bottom left; }
@@ -2176,26 +2176,25 @@ function injectStyles() {
     #hs-user-tooltip .hs-pc-hero {
       position: absolute; inset: 0;
       z-index: 0;
-      background: linear-gradient(135deg, var(--hs-pc-accent, #1a1a1a) 0%, #0a0a0a 90%);
+      background: #0a0a0a;
       overflow: hidden;
     }
     #hs-user-tooltip .hs-pc-hero-img {
       position: absolute; inset: -8px; /* over-bleed so blur doesn't feather edges */
       background-position: center; background-size: cover; background-repeat: no-repeat;
-      opacity: 0; transition: opacity 240ms ease-out, transform 600ms ease-out;
-      transform: scale(1.04);
+      opacity: 0; transition: opacity 0.15s ease-out;
       /* Blurred + dimmed so the banner whispers as ambient texture behind the
          identity row — mirrors the site's .profile-card-pro hero treatment. */
       filter: saturate(1.15) blur(3px);
     }
     #hs-user-tooltip .hs-pc-hero.hs-pc-hero-loaded .hs-pc-hero-img {
-      opacity: 0.55; transform: scale(1);
+      opacity: 0.55;
     }
     /* Scrim — covers the whole card so the banner reads as ambient texture
        while name/badges/sheet stay crisp over any banner color. */
     #hs-user-tooltip .hs-pc-hero-scrim {
       position: absolute; inset: 0;
-      background: linear-gradient(135deg, rgba(0,0,0,0.20) 0%, rgba(0,0,0,0.45) 60%, rgba(0,0,0,0.70) 100%);
+      background: rgba(0,0,0,0.50);
       pointer-events: none;
     }
     /* Body layers on top of the full-card banner background. */
@@ -3050,7 +3049,7 @@ function injectStyles() {
       -webkit-box-orient: vertical;
     }
     #hs-link-tooltip .link-domain {
-      color: #8080ff;
+      color: var(--hs-link);
       font-size: 13px;
     }
     #hs-link-tooltip .link-loading {
@@ -3585,7 +3584,7 @@ function injectStyles() {
       position: relative;
       height: 76px;
       margin: -10px -10px 0 -10px;
-      background: linear-gradient(135deg, var(--hs-pcard-accent, #1a1a1a) 0%, #0a0a0a 70%, #000 100%);
+      background: #0a0a0a;
       overflow: hidden;
       border-bottom: 1px solid var(--hs-pcard-accent, #2a2a2a);
     }
@@ -3593,19 +3592,15 @@ function injectStyles() {
       position: absolute; inset: 0;
       background-position: center; background-size: cover; background-repeat: no-repeat;
       opacity: 0;
-      transform: scale(1.04);
-      transition: opacity 320ms ease-out, transform 1200ms ease-out;
+      transition: opacity 0.15s ease-out;
       filter: saturate(1.1) contrast(1.04);
     }
     .hs-pcard-hero.hs-pcard-hero-loaded .hs-pcard-hero-img {
       opacity: 0.9;
-      transform: scale(1);
     }
     .hs-pcard-hero-scrim {
       position: absolute; inset: 0;
-      background:
-        linear-gradient(180deg, rgba(0,0,0,0.0) 0%, rgba(0,0,0,0.35) 55%, rgba(0,0,0,0.95) 100%),
-        linear-gradient(90deg, rgba(0,0,0,0.35) 0%, transparent 30%, transparent 70%, rgba(0,0,0,0.35) 100%);
+      background: rgba(0,0,0,0.55);
       pointer-events: none;
     }
     /* Identity row sits flush below the hero; only the avatar lifts upward
@@ -5256,8 +5251,8 @@ function injectStyles() {
       color: #000 !important;
     }
     .hs-mc-size-btn.active {
-      background: #ff8700 !important;
-      color: #fff !important;
+      background: #fff !important;
+      color: #000 !important;
     }
     .hs-mc-size-btn.active:hover {
       background: #fff !important;
@@ -6132,7 +6127,7 @@ function injectStyles() {
       font-size: 13px;
     }
     .hs-mention {
-      color: #8080ff;
+      color: var(--hs-link);
       text-decoration: none;
       cursor: pointer;
     }

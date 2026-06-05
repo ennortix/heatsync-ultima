@@ -2418,7 +2418,7 @@ style.textContent = `
     position: absolute; top: 2px; right: 4px;
     cursor: pointer; opacity: 0.5;
   }
-  .hs-event-chip .hs-event-close:hover { opacity: 1; color: #ff8700; }
+  .hs-event-chip .hs-event-close:hover { opacity: 1; background: #fff; color: #000; }
 `;
 document.head.appendChild(style);
 log(' 🎨 CSS injected for emote hover effects');

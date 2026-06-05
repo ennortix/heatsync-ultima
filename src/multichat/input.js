@@ -3178,15 +3178,36 @@ function findEmoteMatches(search) {
     }
   }
 
+  // Recent-chatter completion — bare word (no @ / :): a chatter who JUST talked
+  // and whose name PREFIX-matches outranks every emote. Typing a name prefix is
+  // almost always addressing that person, so these jump above emotes (e.g.
+  // "ashr" → ashrubberyboi over HahaShrugLeft), most-recent-first. Inserted bare
+  // (no @), matching the typed form and the username fallback below. These are
+  // collected separately and prepended after the emote sort so the emote
+  // ordering stays untouched.
+  const recentChatters = []
+  if (!isUserSearch && !search.startsWith(':') && searchLower.length > 0 && typeof getRecencyMap === 'function') {
+    const _ucDisplay = new Map()
+    if (typeof usernameCache !== 'undefined') for (const u of usernameCache) if (u) _ucDisplay.set(u.toLowerCase(), u)
+    for (const [userLower, rank] of getRecencyMap()) {
+      if (!userLower.startsWith(searchLower)) continue
+      recentChatters.push({ name: _ucDisplay.get(userLower) || userLower, url: null, priority: 0, type: 'user', recencyRank: rank })
+    }
+    recentChatters.sort((a, b) => a.recencyRank - b.recencyRank)
+  }
+  const _recentSeen = new Set(recentChatters.map(m => m.name.toLowerCase()))
+
   // Bare-word username fallback — when nothing emote-y matched, scan
-  // usernameCache. Only kicks in for searches that didn't start with @ / :
-  // so the explicit-@ path keeps its dedicated behavior (recency + color
-  // prefetch). Inserted WITHOUT the @ prefix so the user gets the same
-  // bare-name they typed (e.g. typing "lichen" + Tab → "licheness").
+  // usernameCache for everyone NOT already surfaced as a recent chatter. Only
+  // kicks in for searches that didn't start with @ / : so the explicit-@ path
+  // keeps its dedicated behavior (recency + color prefetch). Inserted WITHOUT
+  // the @ prefix so the user gets the same bare-name they typed (e.g. typing
+  // "lichen" + Tab → "licheness").
   if (!isUserSearch && !search.startsWith(':') && matches.length === 0 && typeof usernameCache !== 'undefined') {
     for (const username of usernameCache) {
       if (!username) continue
       const userLower = username.toLowerCase()
+      if (_recentSeen.has(userLower)) continue
       if (userLower.startsWith(searchLower)) {
         matches.push({ name: username, url: null, priority: 0, type: 'user' })
       } else if (userLower.includes(searchLower)) {
@@ -3241,7 +3262,9 @@ function findEmoteMatches(search) {
     return a.name.localeCompare(b.name)
   });
 
-  return matches;
+  // Recent chatters (prefix, most-recent-first) lead the cycle, above all
+  // emotes — see comment at recentChatters above.
+  return recentChatters.length ? recentChatters.concat(matches) : matches;
 }
 
 // Insert completion and keep cycling state

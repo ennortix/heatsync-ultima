@@ -4402,9 +4402,11 @@ function recordRecentChatter(lower, display) {
 }
 function buildRecentChatterList() {
   // newest-first, within the time window, capped — { name: display, l: lower }
+  // Absolute floor (last 10 REAL minutes), not relative to the newest entry —
+  // otherwise a channel that went quiet would still lead with whoever talked in
+  // its final pre-quiet 10 min. Stamps are Date.now(), so this is exact.
   const entries = [...recentChatterTimes.entries()]
-  const newest = entries.length ? entries[entries.length - 1][1].t : 0
-  const floor = newest ? newest - RECENT_CHATTER_WINDOW_MS : 0
+  const floor = Date.now() - RECENT_CHATTER_WINDOW_MS
   const out = []
   for (let k = entries.length - 1; k >= 0 && out.length < RECENT_CHATTER_MAX; k--) {
     const [l, v] = entries[k]

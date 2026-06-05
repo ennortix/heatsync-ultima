@@ -720,8 +720,7 @@
     const ql = prefix.toLowerCase()
     if (!ql || ql.startsWith('@')) return []
     const entries = [...ytRecentChatters.entries()]
-    const newest = entries.length ? entries[entries.length - 1][1].t : 0
-    const floor = newest ? newest - 10 * 60 * 1000 : 0
+    const floor = Date.now() - 10 * 60 * 1000 // last 10 REAL minutes, not relative to newest
     const out = []
     for (let k = entries.length - 1; k >= 0; k--) {
       const [l, v] = entries[k]

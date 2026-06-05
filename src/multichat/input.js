@@ -2938,10 +2938,10 @@ function getRecencyMap() {
   if (currentTab === 'live' && typeof getLiveChannel === 'function') ch = getLiveChannel()
   const ircMsgs = (ch && typeof irc !== 'undefined' && irc?.channels?.get(ch.toLowerCase())?.getAll?.()) || []
   const ytMsgs = (typeof channelYtMessages !== 'undefined' && channelYtMessages.get(currentTab)) || []
-  // Time floor relative to the newest message (robust to relay/clock skew), not
-  // wall-clock now. Anything older than the window is stale → stop walking.
-  const newest = Math.max(ircMsgs[ircMsgs.length - 1]?.time || 0, ytMsgs[ytMsgs.length - 1]?.time || 0)
-  const floor = newest ? newest - RECENCY_WINDOW_MS : 0
+  // Absolute floor: chatters active in the last 10 REAL minutes. tmi-sent-ts is
+  // Twitch server time (≈ real time), so a quiet/just-opened channel correctly
+  // surfaces nobody instead of leading with whoever talked before it went quiet.
+  const floor = Date.now() - RECENCY_WINDOW_MS
   // Walk both buffers from newest tail, picking whichever has the later time.
   let i = ircMsgs.length - 1
   let j = ytMsgs.length - 1

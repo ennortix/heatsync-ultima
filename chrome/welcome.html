@@ -30,20 +30,20 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 32px 16px;
+      padding: 40px 16px;
     }
     main {
       width: 100%;
       max-width: 720px;
       display: flex;
       flex-direction: column;
-      gap: 32px;
+      gap: 28px;
     }
     header {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
       text-align: center;
     }
     header img { width: 48px; height: 48px; }
@@ -57,6 +57,29 @@
       font-size: 13px;
       letter-spacing: 0.2px;
     }
+    .block {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .label {
+      color: #ff8700;
+      font-size: 12px;
+      letter-spacing: 1px;
+    }
+    .lead {
+      color: #ccc;
+      font-size: 14px;
+    }
+    .feats {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .feats li { color: #bbb; }
+    .feats .plus { color: #ff8700; margin-right: 8px; }
+    .feats .ref { color: #ffff00; }
     .steps {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
@@ -68,22 +91,11 @@
       display: flex;
       flex-direction: column;
       gap: 8px;
-      min-height: 120px;
+      min-height: 110px;
     }
-    .step .num {
-      color: #ff8700;
-      font-size: 16px;
-      font-weight: 400;
-    }
-    .step h2 {
-      font-size: 13px;
-      font-weight: 400;
-      letter-spacing: 0.2px;
-    }
-    .step p {
-      color: #999;
-      font-size: 13px;
-    }
+    .step .num { color: #ff8700; font-size: 16px; font-weight: 400; }
+    .step h2 { font-size: 13px; font-weight: 400; letter-spacing: 0.2px; }
+    .step p { color: #999; }
     .cta {
       align-self: center;
       padding: 12px 24px;
@@ -105,12 +117,8 @@
       gap: 12px;
       justify-content: center;
       color: #666;
-      font-size: 13px;
     }
-    footer a {
-      color: #999;
-      text-decoration: underline;
-    }
+    footer a { color: #999; text-decoration: underline; }
     footer a:hover, footer a:focus-visible {
       background: #fff;
       color: #000;
@@ -129,22 +137,36 @@
       <p class="tagline">your emotes, every stream</p>
     </header>
 
-    <section class="steps">
-      <article class="step">
-        <span class="num">1</span>
-        <h2 data-i18n="welcome_step1_title">log in at heatsync.org</h2>
-        <p data-i18n="welcome_step1_desc">sign in with twitch or kick to create your account</p>
-      </article>
-      <article class="step">
-        <span class="num">2</span>
-        <h2 data-i18n="welcome_step2_title">upload your emotes</h2>
-        <p>drag any image — 5000 slots</p>
-      </article>
-      <article class="step">
-        <span class="num">3</span>
-        <h2>use them in chat</h2>
-        <p>twitch native chat renders your emotes automatically. kick + youtube: use the multichat overlay panel. tab-complete to send, or click any emote in chat to add it to your set.</p>
-      </article>
+    <section class="block">
+      <span class="label">what you get</span>
+      <p class="lead">a personal emote inventory and multichat overlay that follows you to every stream.</p>
+      <ul class="feats">
+        <li><span class="plus">+</span>5000 emote slots — drag any image, use them in any chat, no channel sub</li>
+        <li><span class="plus">+</span>multichat overlay — every stream in one resizable panel: twitch, kick, youtube</li>
+        <li><span class="plus">+</span>threaded board — reply to any post with <span class="ref">&gt;&gt;postId</span> and follow the thread</li>
+        <li><span class="plus">+</span>live heat scores — the best moment rises to the top</li>
+      </ul>
+    </section>
+
+    <section class="block">
+      <span class="label">get started</span>
+      <div class="steps">
+        <article class="step">
+          <span class="num">1</span>
+          <h2 data-i18n="welcome_step1_title">log in at heatsync.org</h2>
+          <p data-i18n="welcome_step1_desc">sign in with twitch or kick to create your account</p>
+        </article>
+        <article class="step">
+          <span class="num">2</span>
+          <h2 data-i18n="welcome_step2_title">upload your emotes</h2>
+          <p>drag any image — 5000 slots</p>
+        </article>
+        <article class="step">
+          <span class="num">3</span>
+          <h2>use them in chat</h2>
+          <p>twitch chat renders them automatically. on kick + youtube, use the overlay. tab-complete to send.</p>
+        </article>
+      </div>
     </section>
 
     <a class="cta" href="https://heatsync.org" target="_blank" rel="noopener" data-i18n="welcome_cta">open heatsync.org</a>

@@ -753,7 +753,31 @@ function fakeBackoffResponse() {
     arrayBuffer: () => Promise.resolve(new ArrayBuffer(0))
   }
 }
+// 7TV's Cloudflare 403s (or, behind a misrouted VPN/tunnel, times out) requests
+// from datacenter/VPN exit IPs, so 7tv.io is unreachable for some users. When a
+// direct GET to 7tv.io fails, retry through heatsync's server (clean IP) which
+// returns 7TV's native JSON unchanged. Once a failure is seen, skip the doomed
+// direct hit entirely so channel-emote loads never hang behind it.
+let sevenTVApiBlocked = false
 async function fetchWithTimeout(url, opts = {}, ms = 10000) {
+  const is7tvGet = typeof url === 'string'
+    && url.startsWith('https://7tv.io/')
+    && (opts.method || 'GET').toUpperCase() === 'GET'
+  if (is7tvGet && !opts.__no7tvFallback) {
+    const proxyUrl = url.replace('https://7tv.io/', 'https://heatsync.org/api/7tv/')
+    if (sevenTVApiBlocked) return fetchWithTimeout(proxyUrl, opts, ms)
+    try {
+      const r = await fetchWithTimeout(url, { ...opts, __no7tvFallback: true }, ms)
+      // 403 = this IP is blocked by 7TV's WAF; it's instant + permanent for the
+      // session, so flip to the proxy for every subsequent 7TV call.
+      if (r.status === 403) { sevenTVApiBlocked = true; return fetchWithTimeout(proxyUrl, opts, ms) }
+      return r
+    } catch (_) {
+      // Timeout/network error — could be a slow large channel, not a block.
+      // Try the proxy for THIS call only; don't permanently flip.
+      return fetchWithTimeout(proxyUrl, opts, ms)
+    }
+  }
   const isHeatsync = typeof url === 'string' && /^https?:\/\/(www\.)?heatsync\.org/.test(url)
   // noBackoff: opt a non-critical, high-volume call (sender-emote batch) OUT of the
   // shared heatsync backoff. Otherwise a 429 from ANY heatsync call (colors, inventory,

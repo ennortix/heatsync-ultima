@@ -1453,14 +1453,15 @@
           });
           // Recent-chatter lead: a chatter who just talked and whose name
           // prefix-matches leads the cycle above all emotes (parity with the
-          // overlay). Bare word only; inserted as an @mention. Source: content.js
-          // via the DOM bridge, already newest-first + time-windowed.
+          // overlay). Bare word only; inserted as the plain name. Source: content.js
+          // via the DOM bridge, already newest-first + time-windowed. Inserted PLAIN
+          // (no @) — respect what the user typed; they didn't type @.
           let cycleFinal = matches;
           if (!emojiSearch && !currentSearch.startsWith('@')) {
             const recentChatters = [];
             for (const c of getRecentChattersFromBridge()) {
               if (c.l && c.l.startsWith(emoteSearch)) {
-                recentChatters.push({ name: '@' + c.name, nameLower: c.l, isUser: true });
+                recentChatters.push({ name: c.name, nameLower: c.l, isUser: true });
               }
             }
             if (recentChatters.length) cycleFinal = recentChatters.concat(matches);

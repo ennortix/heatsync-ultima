@@ -502,14 +502,15 @@
         // Recent-chatter lead (parity with overlay + twitch): a chatter who just
         // talked and whose name prefix-matches leads above all emotes. Source:
         // content.js (ISOLATED, same world) via window.heatsyncGetRecentChatters,
-        // newest-first + time-windowed. Inserted as an @mention.
+        // newest-first + time-windowed. Inserted as the plain name (no @) — respect
+        // what the user typed.
         if (!query.startsWith('@')) {
           try {
             const ql = query.toLowerCase()
             const rc = (typeof window.heatsyncGetRecentChatters === 'function') ? window.heatsyncGetRecentChatters() : []
             const chatters = []
             for (const c of rc) {
-              if (c.l && c.l.startsWith(ql)) chatters.push({ name: '@' + c.name, url: null, isChatter: true })
+              if (c.l && c.l.startsWith(ql)) chatters.push({ name: c.name, url: null, isChatter: true })
             }
             if (chatters.length) results = chatters.concat(results)
           } catch (_) {}

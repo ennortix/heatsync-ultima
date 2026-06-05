@@ -707,7 +707,7 @@
 
   // Recently-active YouTube chatters → lead bare-word Tab autocomplete above
   // emotes (parity with overlay/twitch/kick). Time-windowed (10 min, cap-pruned)
-  // so "recent" matches what the user sees. Inserted as an @mention.
+  // so "recent" matches what the user sees. Inserted as the plain name (no @).
   const ytRecentChatters = new Map() // lower -> { dn, t }
   function recordYtChatter(display) {
     if (!display) return
@@ -725,7 +725,7 @@
     for (let k = entries.length - 1; k >= 0; k--) {
       const [l, v] = entries[k]
       if (v.t && v.t < floor) break
-      if (l.startsWith(ql)) out.push({ name: '@' + v.dn, isChatter: true })
+      if (l.startsWith(ql)) out.push({ name: v.dn, isChatter: true })
     }
     return out
   }

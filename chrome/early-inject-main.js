@@ -589,6 +589,10 @@
         // integrity check" — Apollo links are what Twitch's anti-bot trusts.
         'FollowUser',
         'UnfollowUser',
+        // Whispers: same story as follow — a direct gql.twitch.tv POST gets
+        // "failed integrity check", so the send must ride Twitch's own Apollo
+        // link chain. SendWhisper Document is loaded from webpack by searchTerm.
+        'SendWhisper',
       ]
       if (e.data.searchTerm && !ALLOWED_MUTATIONS.some(m => e.data.searchTerm.includes(m))) {
         log('heatsync-apollo-mutate: rejected — searchTerm not in allowlist:', e.data.searchTerm)

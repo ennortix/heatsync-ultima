@@ -250,25 +250,23 @@ function handleIncomingDm(data) {
   whisperSaveDebounced()
 }
 
-// Direct GQL whisper using the page's twitch.tv auth-token cookie. Sends from
-// whichever Twitch acct is logged in on twitch.tv, independent of any HS JWT.
-// Must route through gqlMutation — Twitch rejects mutations without
-// Client-Integrity, which only the MAIN-world proxy can attach.
+// Direct whisper using the page's twitch.tv session. Sends from whichever
+// Twitch acct is logged in on twitch.tv, independent of any HS JWT.
+//
+// Must ride Twitch's OWN Apollo client (MAIN-world apolloMutate). A direct
+// gql.twitch.tv POST — even with a freshly-minted Client-Integrity JWT — gets
+// rejected as "failed integrity check"; the token only validates when attached
+// via Apollo's link chain (fingerprint + session correlation). The SendWhisper
+// Document is loaded from Twitch's webpack by searchTerm. Mirrors _followMutation.
 async function sendTwitchWhisperDirect(toUserId, message) {
   const { token } = await getTwitchAuthTokenAsync()
   if (!token) return { ok: false, noToken: true }
-  const query = 'mutation sendWhisper($input: SendWhisperInput!) { sendWhisper(input: $input) { error { code } } }'
   const nonce = (crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2, 12)}`)
   const variables = { input: { recipientUserID: String(toUserId), message: String(message), nonce } }
-  const data = await gqlMutation(query, variables)
-  if (data?.errors?.length) {
-    const errMsg = data.errors[0]?.message || 'gql error'
-    const integrity = /integrity/i.test(errMsg)
-    return { ok: false, error: errMsg, integrity }
-  }
-  const code = data?.data?.sendWhisper?.error?.code
-  if (code) return { ok: false, error: code }
-  return { ok: true }
+  const result = await apolloMutate({ searchTerm: 'SendWhisper', variables, resultField: 'sendWhisper' })
+  if (result?.ok) return { ok: true }
+  const errMsg = String(result?.error || 'whisper failed')
+  return { ok: false, error: errMsg, integrity: /integrity/i.test(errMsg) }
 }
 
 // Whisper send: heatsync server proxy (Helix /helix/whispers with the user's

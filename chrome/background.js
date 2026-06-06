@@ -771,6 +771,9 @@ async function fetchWithTimeout(url, opts = {}, ms = 10000) {
       // 403 = this IP is blocked by 7TV's WAF; it's instant + permanent for the
       // session, so flip to the proxy for every subsequent 7TV call.
       if (r.status === 403) { sevenTVApiBlocked = true; return fetchWithTimeout(proxyUrl, opts, ms) }
+      // 5xx/429 = 7TV outage or rate-limit (not an IP block) — the proxy may
+      // hold a cached set, so render keeps working through 7TV downtime.
+      if (r.status >= 500 || r.status === 429) return fetchWithTimeout(proxyUrl, opts, ms)
       return r
     } catch (_) {
       // Timeout/network error — could be a slow large channel, not a block.

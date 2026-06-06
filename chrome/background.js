@@ -1756,7 +1756,10 @@ async function fetchFFZChannelEmotes(channelName) {
     for (const setId in data.sets) {
       const set = data.sets[setId];
       for (const emote of (set.emoticons || [])) {
-        const rawUrl = emote.urls['1'] || emote.urls['2'] || emote.urls['4']
+        // FFZ exposes animated emotes under emote.animated (animated webp);
+        // emote.urls is the static PNG first-frame. Prefer animated when present.
+        const srcs = emote.animated || emote.urls
+        const rawUrl = srcs['1'] || srcs['2'] || srcs['4']
         emotes.push({
           name: emote.name,
           url: rawUrl.startsWith('https:') ? rawUrl : `https:${rawUrl}`,
@@ -2350,7 +2353,10 @@ async function fetchFFZEmotes() {
     for (const set of Object.values(data?.sets || {})) {
       if (data.default_sets.includes(set.id)) {
         for (const emote of (set.emoticons || [])) {
-          const rawUrl = emote.urls['1'] || emote.urls['2'] || emote.urls['4']
+          // FFZ exposes animated emotes under emote.animated (animated webp);
+          // emote.urls is the static PNG first-frame. Prefer animated when present.
+          const srcs = emote.animated || emote.urls
+          const rawUrl = srcs['1'] || srcs['2'] || srcs['4']
           emotes.push({
             name: emote.name,
             url: rawUrl.startsWith('https:') ? rawUrl : `https:${rawUrl}`,

@@ -141,7 +141,9 @@
     const data = await r.json()
     const items = Array.isArray(data?.emoticons) ? data.emoticons : []
     return items.map(e => {
-      const u = e.urls || {}
+      // FFZ animated emotes live under e.animated (animated webp); e.urls is the
+      // static PNG first-frame. Prefer animated so added/picked emotes don't freeze.
+      const u = e.animated || e.urls || {}
       return {
         name: e.name,
         url: u['1'] || u['2'] || u['4'] || '',

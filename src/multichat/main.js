@@ -7622,7 +7622,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       div.classList.add('hs-kw-match')
     }
     // Reply context bar (Chatterino-style) — all values escaped via escapeHtml
-    const replyBar = m.replyTo ? `<div class="hs-mc-reply-ctx" title="${escapeHtml(m.replyTo.user)}: ${escapeHtml(m.replyTo.text || '')}">&#8618; Replying to <a href="https://heatsync.org/user/${encodeURIComponent(m.replyTo.user)}" target="_blank" class="hs-mc-user hs-mc-reply-user" data-username="${escapeHtml(m.replyTo.user.toLowerCase())}">@${escapeHtml(m.replyTo.user)}</a>${m.replyTo.text ? ': ' + escapeHtml(m.replyTo.text.length > 80 ? m.replyTo.text.slice(0, 80) + '...' : m.replyTo.text) : ''}</div>` : ''
+    const replyLower = m.replyTo ? m.replyTo.user.toLowerCase() : ''
+    const replyBar = m.replyTo ? `<div class="hs-mc-reply-ctx" title="${escapeHtml(m.replyTo.user)}: ${escapeHtml(m.replyTo.text || '')}">&#8618; Replying to <a href="https://heatsync.org/user/${encodeURIComponent(m.replyTo.user)}" target="_blank" class="hs-mc-user hs-mc-reply-user" data-username="${escapeHtml(replyLower)}" style="color:${mentionColor(replyLower)}">@${escapeHtml(m.replyTo.user)}</a>${m.replyTo.text ? ': ' + escapeHtml(m.replyTo.text.length > 80 ? m.replyTo.text.slice(0, 80) + '...' : m.replyTo.text) : ''}</div>` : ''
     // Redeem label — look up reward title from Hermes cache
     let redeemLabel = ''
     if (m.redeemed && m.rewardId) {
@@ -7762,6 +7763,41 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     return result
   }
 
+  // A mentioned user who hasn't spoken in this channel yet has no entry in
+  // knownColors, so their @mention / reply link would render flat white. Resolve
+  // their color asynchronously (heatsync → twitch → hash palette, same as input
+  // chips) and repaint every visible mention/reply anchor for them in place.
+  const _mentionColorPending = new Set()
+  function resolveMentionColor(lower) {
+    if (!lower || _mentionColorPending.has(lower)) return
+    if (typeof hsResolveUserColor !== 'function') return
+    _mentionColorPending.add(lower)
+    hsResolveUserColor(lower).then(c => {
+      if (!c) return
+      const safe = sanitizeColor(c)
+      let esc
+      try { esc = CSS.escape(lower) } catch { esc = lower }
+      document.querySelectorAll(
+        `a.hs-mc-mention[data-username="${esc}"], a.hs-mc-reply-user[data-username="${esc}"]`
+      ).forEach(a => {
+        // a 7TV paint cosmetic outranks a flat color — never overwrite it
+        const uid = a.dataset.uid
+        if (uid && getMcPaintStyle(uid)) return
+        a.style.color = safe
+      })
+    }).catch(() => {})
+  }
+  // Sanitized color for a mentioned user. Returns a known color synchronously
+  // (seen this session, or cached from a prior lookup); otherwise queues the
+  // async resolve+repaint and falls back to white until it lands.
+  function mentionColor(lower) {
+    let c = knownColors.get(lower)
+    if (!c && typeof _hsUserColorCache !== 'undefined') c = _hsUserColorCache.get(lower) || null
+    if (c) return sanitizeColor(c)
+    resolveMentionColor(lower)
+    return '#fff'
+  }
+
   // Highlight @mentions and bare known usernames in rendered chat HTML.
   // Splits on tags so substitution only happens in text segments.
   // Applies 7TV paint cosmetics if the mentioned user's userId + paint are cached.
@@ -7777,7 +7813,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           const lower = name.toLowerCase()
           const known = knownColors.has(lower)
           if (!at && !known) return m
-          const color = sanitizeColor(knownColors.get(lower) || '#fff')
+          // @mentions resolve a color even for users we haven't seen (async);
+          // bare known names already have one in knownColors.
+          const color = at ? mentionColor(lower) : sanitizeColor(knownColors.get(lower) || '#fff')
           const safeName = escapeHtml(name)
           const safeLower = escapeHtml(lower)
           const uid = knownUserIds.get(lower) || ''

@@ -3410,15 +3410,15 @@ function hsPrefetchUserColors(usernames) {
   for (const u of needed) _hsUserColorInflight.set(u, batchPromise)
   batchPromise.finally(() => { for (const u of needed) _hsUserColorInflight.delete(u) })
 }
-function hsFetchUserColorAndApply(lower, span) {
-  if (_hsUserColorCache.has(lower)) {
-    const cached = _hsUserColorCache.get(lower)
-    if (cached) {
-      span.style.color = (typeof sanitizeColor === 'function' ? sanitizeColor(cached) : cached)
-      try { setKnownColor(lower, cached) } catch {}
-    }
-    return
-  }
+// Resolve a username's chat color, caching the result. Resolution order:
+//   1. heatsync custom color (set on heatsync.org)
+//   2. twitch chat color via unauthed GQL (no scope needed)
+//   3. twitch's 15 auto-assigned colors (deterministic hash of username)
+// So every user resolves to SOME color — never flat white — matching twitch.
+// Deduped via _hsUserColorInflight; persisted via _hsUserColorCache. Shared by
+// input chips (hsFetchUserColorAndApply) and message @mentions/reply links.
+function hsResolveUserColor(lower) {
+  if (_hsUserColorCache.has(lower)) return Promise.resolve(_hsUserColorCache.get(lower) || null)
   let p = _hsUserColorInflight.get(lower)
   if (!p) {
     p = (async () => {
@@ -3457,6 +3457,7 @@ function hsFetchUserColorAndApply(lower, span) {
           c = palette[Math.abs(h) % palette.length]
         }
         _hsUserColorCache.set(lower, c || null)
+        _hsPersistUserColorCache()
         if (c) { try { setKnownColor(lower, c) } catch {} }
         return c
       } catch { return null }
@@ -3464,7 +3465,11 @@ function hsFetchUserColorAndApply(lower, span) {
     _hsUserColorInflight.set(lower, p)
     p.finally(() => _hsUserColorInflight.delete(lower))
   }
-  p.then(c => {
+  return p
+}
+
+function hsFetchUserColorAndApply(lower, span) {
+  hsResolveUserColor(lower).then(c => {
     if (c && span.isConnected) {
       span.style.color = (typeof sanitizeColor === 'function' ? sanitizeColor(c) : c)
     }

@@ -2367,11 +2367,12 @@
           result.push(pendingWhitespace);
           pendingWhitespace = '';
         }
-        // Color @mentions — always hoverable for profile cards
+        // Color @mentions — always hoverable for profile cards. Unknown users
+        // resolve a color asynchronously (mentionColor) instead of flat white.
         if (word.startsWith('@') && word.length > 1) {
           const name = word.slice(1).replace(/[,.:!?]+$/, '').toLowerCase();
-          const color = knownColors.get(name) || '#fff';
-          result.push(`<a href="https://heatsync.org/user/${encodeURIComponent(name)}" target="_blank" class="hs-mc-user" data-username="${name}" style="color:${sanitizeColor(color)};font-weight:bold">${word}</a>`);
+          const color = typeof mentionColor === 'function' ? mentionColor(name) : sanitizeColor(knownColors.get(name) || '#fff');
+          result.push(`<a href="https://heatsync.org/user/${encodeURIComponent(name)}" target="_blank" class="hs-mc-user hs-mc-mention" data-username="${name}" style="color:${color};font-weight:bold">${word}</a>`);
         } else if (linksEnabled && LINK_RE.test(word)) {
           // Validate URL protocol before creating link (block javascript:, data:, etc.)
           const hasProtocol = /^https?:\/\//i.test(word);

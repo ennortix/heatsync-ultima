@@ -765,20 +765,26 @@ async function fetchWithTimeout(url, opts = {}, ms = 10000) {
     && (opts.method || 'GET').toUpperCase() === 'GET'
   if (is7tvGet && !opts.__no7tvFallback) {
     const proxyUrl = url.replace('https://7tv.io/', 'https://heatsync.org/api/7tv/')
-    if (sevenTVApiBlocked) return fetchWithTimeout(proxyUrl, opts, ms)
+    // noBackoff: the proxy is heatsync.org, so without this the shared heatsync
+    // backoff (tripped by an unrelated 429 from colors/inventory/cosmetics) would
+    // fake-429 these 7TV proxy calls and silently kill channel emotes for ~60s —
+    // fatal for IP-blocked users, whose ONLY 7TV path is the proxy. It's a cached,
+    // read-only GET, so exempting it from the write-protection backoff is safe.
+    const proxyOpts = { ...opts, noBackoff: true }
+    if (sevenTVApiBlocked) return fetchWithTimeout(proxyUrl, proxyOpts, ms)
     try {
       const r = await fetchWithTimeout(url, { ...opts, __no7tvFallback: true }, ms)
       // 403 = this IP is blocked by 7TV's WAF; it's instant + permanent for the
       // session, so flip to the proxy for every subsequent 7TV call.
-      if (r.status === 403) { sevenTVApiBlocked = true; return fetchWithTimeout(proxyUrl, opts, ms) }
+      if (r.status === 403) { sevenTVApiBlocked = true; return fetchWithTimeout(proxyUrl, proxyOpts, ms) }
       // 5xx/429 = 7TV outage or rate-limit (not an IP block) — the proxy may
       // hold a cached set, so render keeps working through 7TV downtime.
-      if (r.status >= 500 || r.status === 429) return fetchWithTimeout(proxyUrl, opts, ms)
+      if (r.status >= 500 || r.status === 429) return fetchWithTimeout(proxyUrl, proxyOpts, ms)
       return r
     } catch (_) {
       // Timeout/network error — could be a slow large channel, not a block.
       // Try the proxy for THIS call only; don't permanently flip.
-      return fetchWithTimeout(proxyUrl, opts, ms)
+      return fetchWithTimeout(proxyUrl, proxyOpts, ms)
     }
   }
   const isHeatsync = typeof url === 'string' && /^https?:\/\/(www\.)?heatsync\.org/.test(url)

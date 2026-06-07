@@ -7622,8 +7622,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       div.classList.add('hs-kw-match')
     }
     // Reply context bar (Chatterino-style) — all values escaped via escapeHtml
-    const replyLower = m.replyTo ? m.replyTo.user.toLowerCase() : ''
-    const replyBar = m.replyTo ? `<div class="hs-mc-reply-ctx" title="${escapeHtml(m.replyTo.user)}: ${escapeHtml(m.replyTo.text || '')}">&#8618; Replying to <a href="https://heatsync.org/user/${encodeURIComponent(m.replyTo.user)}" target="_blank" class="hs-mc-user hs-mc-reply-user" data-username="${escapeHtml(replyLower)}" style="color:${mentionColor(replyLower)}">@${escapeHtml(m.replyTo.user)}</a>${m.replyTo.text ? ': ' + escapeHtml(m.replyTo.text.length > 80 ? m.replyTo.text.slice(0, 80) + '...' : m.replyTo.text) : ''}</div>` : ''
+    const replyLower = (m.replyTo && m.replyTo.user) ? m.replyTo.user.toLowerCase() : ''
+    const replyBar = (m.replyTo && m.replyTo.user) ? `<div class="hs-mc-reply-ctx" title="${escapeHtml(m.replyTo.user)}: ${escapeHtml(m.replyTo.text || '')}">&#8618; Replying to <a href="https://heatsync.org/user/${encodeURIComponent(m.replyTo.user)}" target="_blank" class="hs-mc-user hs-mc-reply-user" data-username="${escapeHtml(replyLower)}" style="color:${mentionColor(replyLower)}">@${escapeHtml(m.replyTo.user)}</a>${m.replyTo.text ? ': ' + escapeHtml(m.replyTo.text.length > 80 ? m.replyTo.text.slice(0, 80) + '...' : m.replyTo.text) : ''}</div>` : ''
     // Redeem label — look up reward title from Hermes cache
     let redeemLabel = ''
     if (m.redeemed && m.rewardId) {

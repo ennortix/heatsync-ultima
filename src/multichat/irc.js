@@ -62,6 +62,7 @@ function parseIrcLine(raw, channel) {
           user: decodeURIComponent(tags['reply-parent-display-name']),
           text: tags['reply-parent-msg-body'] ? decodeURIComponent(tags['reply-parent-msg-body'].replace(/\\s/g, ' ')) : '',
           id: tags['reply-parent-msg-id'] || '',
+          userId: tags['reply-parent-user-id'] || '',
           threadId: tags['reply-thread-parent-msg-id'] || tags['reply-parent-msg-id'] || ''
         } : null
       }

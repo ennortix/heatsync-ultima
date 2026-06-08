@@ -462,6 +462,12 @@ function renderProfileCardView() {
   // === Identity section ===
   const idSec = pcMakeSection(data?.display_name || username)
   idSec.classList.add('hs-pcard-id')
+  // Paint the identity title with the user's 7TV cosmetic when known.
+  const idPaint = userPaintStyle(String(data?.twitch_user_id || data?.twitch_id || ''), (username || '').toLowerCase())
+  if (idPaint) {
+    const titleEl = idSec.querySelector('.hs-pcard-section-title')
+    if (titleEl) titleEl.style.cssText += ';' + idPaint
+  }
 
   // Hero banner — wide channel banner image as background, with a gradient
   // scrim so text/avatar always read clearly. Filled async by pcApplyBanner

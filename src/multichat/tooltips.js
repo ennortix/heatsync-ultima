@@ -853,6 +853,9 @@
 
     const sheetHtml = sheetRows.length ? `<dl class="hs-pc-sheet">${sheetRows.join('')}</dl>` : '';
 
+    // Paint the header name with the user's 7TV cosmetic when known.
+    const namePaint = userPaintStyle(String(p.twitch_user_id || p.twitch_id || ''), (p.username || p.twitch_username || '').toLowerCase());
+
     // Hero banner placeholder — wraps the whole card so the banner sits behind
     // the avatar/info row. Filled async by pcApplyBanner once the Twitch GQL
     // response lands; until then the gradient placeholder (from CSS) carries
@@ -862,7 +865,7 @@
       <div class="hs-pc-body">
         ${pfp ? `<img class="hs-pc-avatar" src="${escapeHtml(pfp)}" alt="${escapeHtml(displayName)}">` : ''}
         <div class="hs-pc-info">
-          <div class="hs-pc-header">${nativeBadges || `<span class="hs-pc-name">${escapeHtml(displayName)}</span>`}</div>
+          <div class="hs-pc-header">${nativeBadges || `<span class="hs-pc-name" style="${namePaint}">${escapeHtml(displayName)}</span>`}</div>
           ${bio}
           ${sheetHtml}
         </div>
@@ -1013,7 +1016,8 @@
       const platRow = platform === 'kick' ? `<dt>kick</dt><dd class="val-kick" data-k="kick">${safeName}</dd>`
         : (platform === 'youtube' || platform === 'yt') ? `<dt>yt</dt><dd class="val-yt" data-k="yt">${safeName}</dd>`
         : `<dt>ttv</dt><dd class="val-ttv" data-k="ttv">${safeName}</dd>`
-      const header = nativeBadges || `<span class="hs-pc-name" style="color:${safeColor}">${safeName}</span>`
+      const namePaint = platform === 'twitch' ? userPaintStyle('', username.toLowerCase()) : ''
+      const header = nativeBadges || `<span class="hs-pc-name" style="${namePaint || `color:${safeColor}`}">${safeName}</span>`
       // NOTE: innerHTML XSS-safe — username via escapeHtml, color via sanitizeColor (hex-only),
       // nativeBadges from renderBadges which emits escaped <img> markup
       tooltip.innerHTML = `<div class="hs-pc-hero"><div class="hs-pc-hero-img"></div><div class="hs-pc-hero-scrim"></div></div><div class="hs-pc-body"><img class="hs-pc-avatar" src="https://heatsync.org/anon.webp" alt=""><div class="hs-pc-info"><div class="hs-pc-header">${header}</div><dl class="hs-pc-sheet">${platRow}</dl></div></div>`

@@ -219,6 +219,7 @@ function handleIncomingWhisper(msg) {
     injectInlineNotif('dm', {
       type: 'inline-dm',
       user: msg.user,
+      userId: msg.userId,
       text: msg.text,
       color: msg.color,
       time: msg.time,
@@ -533,18 +534,24 @@ function renderWhispersTab() {
     const theirColor = target ? sanitizeColor(target.color) : sanitizeColor(m.color)
     const theirUsername = (target?.displayName || m.user || '').toLowerCase()
 
-    // Build username links with hs-mc-user class for tooltip + click
-    function userLink(name, color, username) {
+    // Build username links with hs-mc-user class for tooltip + click.
+    // Paint the name with the user's 7TV cosmetic when known (Twitch only —
+    // heatsync ids aren't 7TV-keyed); falls back to their plain color.
+    function userLink(name, color, username, uid) {
       const safe = escapeHtml(name)
-      const safeUser = escapeHtml(username.toLowerCase())
+      const lower = username.toLowerCase()
+      const safeUser = escapeHtml(lower)
       const href = m.platform === 'heatsync'
         ? `https://heatsync.org/user/${encodeURIComponent(username)}`
         : `https://heatsync.org/twitch/${encodeURIComponent(username)}`
-      return `<a href="${href}" target="_blank" class="hs-mc-user" data-username="${safeUser}" style="color:${color};font-weight:600">${safe}</a>`
+      const paint = m.platform === 'heatsync' ? '' : userPaintStyle(uid, lower)
+      const style = paint || `color:${color};font-weight:600`
+      return `<a href="${href}" target="_blank" class="hs-mc-user" data-username="${safeUser}" style="${style}">${safe}</a>`
     }
 
-    const senderLink = m.self ? userLink(me, myColor, me) : userLink(them, theirColor, theirUsername)
-    const recipientLink = m.self ? userLink(them, theirColor, theirUsername) : userLink(me, myColor, me)
+    const themUid = target?.userId || ''
+    const senderLink = m.self ? userLink(me, myColor, me, '') : userLink(them, theirColor, theirUsername, themUid)
+    const recipientLink = m.self ? userLink(them, theirColor, theirUsername, themUid) : userLink(me, myColor, me, '')
 
     let statusHtml = ''
     if (m.status === 'pending') {

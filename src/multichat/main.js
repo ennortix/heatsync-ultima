@@ -311,7 +311,7 @@
     // Inline mentions inside this msg — cache on div for O(1) unindex on trim.
     let mentions = div._hsMentionEls
     if (!mentions) {
-      mentions = [...div.querySelectorAll('a.hs-mc-mention[data-uid]')]
+      mentions = [...div.querySelectorAll('a.hs-mc-mention[data-uid], a.hs-mc-reply-user[data-uid]')]
       div._hsMentionEls = mentions
     }
     for (const m of mentions) {
@@ -332,7 +332,7 @@
       const s = _uidIndex.get(uid)
       if (s) { s.delete(div); if (!s.size) _uidIndex.delete(uid) }
     }
-    const mentions = div._hsMentionEls || div.querySelectorAll('a.hs-mc-mention[data-uid]')
+    const mentions = div._hsMentionEls || div.querySelectorAll('a.hs-mc-mention[data-uid], a.hs-mc-reply-user[data-uid]')
     for (const m of mentions) {
       const muid = m.dataset.uid
       if (!muid) continue
@@ -551,7 +551,7 @@
     }
     let mentions = div._hsMentionEls
     if (!mentions) {
-      mentions = [...div.querySelectorAll('a.hs-mc-mention[data-uid]')]
+      mentions = [...div.querySelectorAll('a.hs-mc-mention[data-uid], a.hs-mc-reply-user[data-uid]')]
       div._hsMentionEls = mentions
     }
     for (const m of mentions) {
@@ -571,7 +571,7 @@
         const s = cache.uidIndex.get(oldUid)
         if (s) { s.delete(old); if (!s.size) cache.uidIndex.delete(oldUid) }
       }
-      const oldMentions = old._hsMentionEls || old.querySelectorAll('a.hs-mc-mention[data-uid]')
+      const oldMentions = old._hsMentionEls || old.querySelectorAll('a.hs-mc-mention[data-uid], a.hs-mc-reply-user[data-uid]')
       for (const m of oldMentions) {
         const muid = m.dataset.uid
         if (!muid) continue
@@ -1457,6 +1457,19 @@
       return `color:rgba(${r},${g},${b},${a.toFixed(2)})`
     }
     return ''
+  }
+
+  // Resolve a 7TV paint CSS string for any username surface (reply context,
+  // whispers, DMs, profile cards). Prefers an explicit Twitch userId; falls
+  // back to the lowercase-name → uid map (same path as inline @mentions).
+  // Queues a cosmetics lookup when the uid is known but not yet cached, so the
+  // paint lands on the next render/in-place repaint. Returns '' when no paint
+  // is available — callers fall back to their plain color.
+  function userPaintStyle(uid, lower) {
+    if (!uid && lower) uid = knownUserIds.get(lower) || ''
+    if (!uid) return ''
+    if (!mcUserCosmetics.has(uid)) queueMcCosmeticsLookup(uid)
+    return getMcPaintStyle(uid)
   }
 
   // Stream event user colors — login → color (populated from server on connect)
@@ -7323,7 +7336,8 @@
       const platBadge = m.platform === 'twitch'
         ? '<span style="color:#9146ff;font-size:13px;font-weight:700;margin-right:3px">[T]</span>'
         : '<span style="color:#ff8700;font-size:13px;font-weight:700;margin-right:3px">[HS]</span>'
-      const userName = `<span style="color:${sanitizeColor(m.color)};font-weight:600">${escapeHtml(m.user)}</span>`
+      const dmPaint = m.platform === 'twitch' ? userPaintStyle(m.userId, (m.user || '').toLowerCase()) : ''
+      const userName = `<span style="${dmPaint || `color:${sanitizeColor(m.color)};font-weight:600`}">${escapeHtml(m.user)}</span>`
       // All values sanitized — safe innerHTML
       if (m._renderedHtml == null) m._renderedHtml = processEmotes(escapeHtml(m.text), null)
       // All values already sanitized via escapeHtml/processEmotes — safe innerHTML (existing pattern)
@@ -7617,7 +7631,15 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     }
     // Reply context bar (Chatterino-style) — all values escaped via escapeHtml
     const replyLower = (m.replyTo && m.replyTo.user) ? m.replyTo.user.toLowerCase() : ''
-    const replyBar = (m.replyTo && m.replyTo.user) ? `<div class="hs-mc-reply-ctx" title="${escapeHtml(m.replyTo.user)}: ${escapeHtml(m.replyTo.text || '')}">&#8618; Replying to <a href="https://heatsync.org/user/${encodeURIComponent(m.replyTo.user)}" target="_blank" class="hs-mc-user hs-mc-reply-user" data-username="${escapeHtml(replyLower)}" style="color:${mentionColor(replyLower)}">@${escapeHtml(m.replyTo.user)}</a>${m.replyTo.text ? ': ' + escapeHtml(m.replyTo.text.length > 80 ? m.replyTo.text.slice(0, 80) + '...' : m.replyTo.text) : ''}</div>` : ''
+    // Paint the reply target's name with their 7TV cosmetic — same person, same
+    // paint as their own messages. Twitch carries reply-parent-user-id; Kick
+    // (no parent id) falls back to the name→uid map. data-uid lets
+    // updateCosmeticsInPlace repaint it once the cosmetic batch lands.
+    const replyUid = (m.replyTo && (m.replyTo.userId || knownUserIds.get(replyLower))) || ''
+    const replyPaint = replyUid ? userPaintStyle(replyUid, replyLower) : ''
+    const replyStyle = replyPaint || `color:${mentionColor(replyLower)}`
+    const replyUidAttr = replyUid ? ` data-uid="${escapeHtml(replyUid)}"` : ''
+    const replyBar = (m.replyTo && m.replyTo.user) ? `<div class="hs-mc-reply-ctx" title="${escapeHtml(m.replyTo.user)}: ${escapeHtml(m.replyTo.text || '')}">&#8618; Replying to <a href="https://heatsync.org/user/${encodeURIComponent(m.replyTo.user)}" target="_blank" class="hs-mc-user hs-mc-reply-user" data-username="${escapeHtml(replyLower)}"${replyUidAttr} style="${replyStyle}">@${escapeHtml(m.replyTo.user)}</a>${m.replyTo.text ? ': ' + escapeHtml(m.replyTo.text.length > 80 ? m.replyTo.text.slice(0, 80) + '...' : m.replyTo.text) : ''}</div>` : ''
     // Redeem label — look up reward title from Hermes cache
     let redeemLabel = ''
     if (m.redeemed && m.rewardId) {

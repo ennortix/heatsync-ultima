@@ -8103,9 +8103,13 @@ function updateEmoteState(hash, emoteName, state) {
       if (profile && (profile.twitch_is_live || profile.kick_is_live)) {
         cardPollInterval = cleanup.setInterval(async () => {
           if (!cardEl) { cleanup.clearInterval(cardPollInterval); cardPollInterval = null; return }
+          // Snapshot the card element — a fast close+reopen for another user can
+          // reassign cardEl during the await, writing user A's viewer count into
+          // user B's card (mirrors the followage guard above).
+          const cardElForPoll = cardEl
           try {
             const fresh = await HS.apiFetch(`/api/profile/${encodeURIComponent(username)}/live`)
-            if (!fresh || !cardEl) return
+            if (!fresh || !cardEl || cardEl !== cardElForPoll || cardEl.style.display === 'none') return
             // Update twitch live span
             const twitchLive = cardEl.querySelector('.hs-pc-live:not(.hs-pc-live-kick)')
             if (twitchLive && fresh.twitch_is_live) {

@@ -2356,13 +2356,16 @@ async function fetchFFZEmotes() {
     const data = await response.json();
     const emotes = [];
 
+    const defaultSets = data?.default_sets || []
     for (const set of Object.values(data?.sets || {})) {
-      if (data.default_sets.includes(set.id)) {
+      if (defaultSets.includes(set.id)) {
         for (const emote of (set.emoticons || [])) {
           // FFZ exposes animated emotes under emote.animated (animated webp);
           // emote.urls is the static PNG first-frame. Prefer animated when present.
           const srcs = emote.animated || emote.urls
+          if (!srcs) continue
           const rawUrl = srcs['1'] || srcs['2'] || srcs['4']
+          if (!rawUrl) continue
           emotes.push({
             name: emote.name,
             url: rawUrl.startsWith('https:') ? rawUrl : `https:${rawUrl}`,
@@ -2611,6 +2614,7 @@ function ensure7TVConnection() {
         if (message.op === 0) {
           // Dispatch event
           const eventData = message.d;
+          if (!eventData) return;
           log(' 7TV EventAPI: Received event:', eventData.type);
           if (eventData.type === 'emote_set.update') {
             handle7TVEmoteSetUpdate(eventData.body);
@@ -2829,6 +2833,7 @@ function handle7TVEmoteSetUpdate(updateData) {
     let removedCount = 0;
     for (const item of updateData.pulled) {
       const emote = item.old_value;
+      if (!emote || typeof emote.id !== 'string') continue;
       const chEmotes = channelEmotesMap[channelName] || [];
       const index = chEmotes.findIndex(e => e.hash === emote.id);
 

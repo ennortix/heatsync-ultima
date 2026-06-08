@@ -10114,6 +10114,11 @@ function handleNavigation() {
 // Primary: instant notification from MAIN world history hooks
 window.addEventListener('message', (event) => {
   if (event.origin !== location.origin) return
+  // Same-frame only: legit senders are our MAIN-world hooks in THIS window.
+  // The origin check alone lets same-origin child frames (popout/clip embeds)
+  // trigger destructive handlers (clear_history, extension_reload) — require
+  // the message to come from our own window, not a sub-frame.
+  if (event.source !== window) return
   if (event.data?.type === 'heatsync-nav') handleNavigation()
   if (event.data?.type === 'heatsync-clear-history') {
     safeSendMessage({ type: 'clear_history' }).then(r => {

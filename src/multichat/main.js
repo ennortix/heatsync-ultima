@@ -1411,7 +1411,7 @@
     const fn = paint.function.toLowerCase()
     if (fn === 'url' && paint.image_url) {
       if (!/^https:\/\//.test(paint.image_url)) return ''
-      const safeCssUrl = paint.image_url.replace(/[()'"\\]/g, encodeURIComponent)
+      const safeCssUrl = paint.image_url.replace(/[()'"\\;{}]/g, encodeURIComponent)
       let style = `background-image:url(${safeCssUrl});background-size:cover;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text`
       if (paint.shadows?.length) {
         style += ';filter:' + paint.shadows.map(s => {

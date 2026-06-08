@@ -3565,7 +3565,10 @@ async function fetchChannelBadges(channelLogin) {
       // this channel that already rendered with the text-fallback star get
       // rebuilt with the channel-specific image.
       if (typeof bumpRenderEpoch === 'function') bumpRenderEpoch()
-      renderMessages(currentTab)
+      // Coalesce: channel-badge + global-badge + cosmetics rebuilds land in a
+      // rapid burst on cold load (strobe); debounce them into one rebuild.
+      if (typeof scheduleCoalescedRender === 'function') scheduleCoalescedRender()
+      else renderMessages(currentTab)
     } else {
       // No data populated — schedule retry after backoff
       if (badgesFailedAt.size >= BADGES_FAILED_MAX) {

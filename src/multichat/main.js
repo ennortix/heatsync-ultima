@@ -7997,6 +7997,21 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     _dropAllTabCaches();
   }
 
+  // Coalesce the late-data rebuild renders. On cold load, channel badges + the
+  // BTTV/FFZ/Chatterino bulk badge maps + cosmetics arrive in rapid bursts, each
+  // doing bumpRenderEpoch()+renderMessages() = a full rebuild = an image-reload
+  // flash; 3 landed within 23ms on a busy channel (a visible strobe). Debounce so
+  // a burst collapses to ONE rebuild. The epoch still increments per bump, so the
+  // single coalesced render rebuilds with ALL the newly-arrived data.
+  let _coalescedRenderTimer = null
+  function scheduleCoalescedRender() {
+    if (_coalescedRenderTimer !== null) return
+    _coalescedRenderTimer = cleanup.setTimeout(() => {
+      _coalescedRenderTimer = null
+      try { renderMessages(currentTab) } catch {}
+    }, 120)
+  }
+
   // Surgical invalidation for a block/unblock of specific emote(s). The full
   // clearRenderedHtmlCache() bumps _renderEpoch, which re-keys EVERY message so
   // the next render (constant on live chat) tears down and rebuilds the whole
@@ -10719,7 +10734,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           mcFfzBadgeMap = new Map(ffz)
           mcChatterinoBadgeMap = new Map(chat)
           bumpRenderEpoch()
-          renderMessages(currentTab)
+          scheduleCoalescedRender()
         }
       }
       // SW pushes its `/api/live/following` snapshot every ~60s. Consume it
@@ -10766,7 +10781,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
             }
             if (firstLoad) {
               clearRenderedHtmlCache();
-              renderMessages(currentTab);
+              scheduleCoalescedRender();
             }
           });
         }, 300);
@@ -11243,7 +11258,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
               if (!_emoteFirstLoad.has(s)) { _emoteFirstLoad.add(s); firstLoad = true }
             }
             if (firstLoad) clearRenderedHtmlCache();
-            if (!isScrolledUp) renderMessages(currentTab);
+            if (!isScrolledUp) {
+              // firstLoad rebuilds (late 7TV channel set) coalesce with the
+              // badge/cosmetic burst; non-firstLoad emote edits render now.
+              if (firstLoad) scheduleCoalescedRender();
+              else renderMessages(currentTab);
+            }
           });
         }, 300);
       }
@@ -11636,7 +11656,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         mcFfzBadgeMap = new Map(ffz)
         mcChatterinoBadgeMap = new Map(chat)
         bumpRenderEpoch()
-        renderMessages(currentTab)
+        scheduleCoalescedRender()
       }).catch(() => {
         if (attempt < 8) cleanup.setTimeout(() => loadBulkBadges(attempt + 1), Math.min(500 * (attempt + 1), 3000))
       })

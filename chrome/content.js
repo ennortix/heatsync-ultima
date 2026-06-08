@@ -619,7 +619,7 @@ let _eventChipEl = null
 let _eventChipDismissTimer = null
 function closeEventChip() {
   if (_eventChipEl) { _eventChipEl.remove(); _eventChipEl = null }
-  clearTimeout(_eventChipDismissTimer); _eventChipDismissTimer = null
+  cleanup.clearTimeout(_eventChipDismissTimer); _eventChipDismissTimer = null
 }
 function renderEventChip({ kind, title, rows }) {
   closeEventChip()
@@ -650,7 +650,7 @@ function renderEventChip({ kind, title, rows }) {
 
   document.body.appendChild(el)
   _eventChipEl = el
-  _eventChipDismissTimer = setTimeout(closeEventChip, 5 * 60 * 1000)
+  _eventChipDismissTimer = cleanup.setTimeout(closeEventChip, 5 * 60 * 1000)
 }
 function renderEventChipFromGql(op, data) {
   if (!data || typeof data !== 'object') return
@@ -940,7 +940,7 @@ function attachInputModifierObserver() {
     _hsInputObserver.observe(ed, { childList: true, subtree: true, characterData: true })
   })
 }
-setTimeout(attachInputModifierObserver, 1500)
+cleanup.setTimeout(attachInputModifierObserver, 1500)
 cleanup.setInterval(attachInputModifierObserver, 5000)
 
 // Shared right-click menu state + placement/dismiss (used by the username menu).
@@ -3356,15 +3356,14 @@ if (window.location.hostname.includes('twitch.tv')) {
   // follow propagation (gql.twitch.tv/integrity wants the localStorage device
   // id, not unique_id cookie). Without this, off-twitch follows get
   // "failed integrity check" from twitch.
-  const _pollDeviceId = setInterval(() => {
+  const _pollDeviceId = cleanup.setInterval(() => {
     try {
       const id = document.documentElement.dataset.hsTwitchDeviceId
       if (!id) return
-      clearInterval(_pollDeviceId)
+      cleanup.clearInterval(_pollDeviceId)
       chrome.storage?.local?.set?.({ hs_twitch_device_id: id })
     } catch {}
   }, 500)
-  cleanup.setTimeout(() => clearInterval(_pollDeviceId), 30000)
 }
 
 loadInventory();
@@ -3922,12 +3921,14 @@ function debouncedProcessExistingMessages() {
 
 // Collect chatters from a message without full processing (for two-pass approach)
 function collectChatterFromMessage(messageElement) {
+  if (messageElement.dataset.hsChattersCollected) return
   const usernameElement = messageElement.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"], button.inline.font-bold');
   if (!usernameElement) return;
 
   const username = usernameElement.textContent?.trim().toLowerCase();
   if (!username || username.length === 0 || username.length > 30) return;
 
+  messageElement.dataset.hsChattersCollected = '1'
   // Skip if already known (don't override with potentially different computed color)
   if (knownChatters.has(username)) return;
 
@@ -9062,6 +9063,7 @@ function watchForNewMessages() {
 
   // Disconnect and untrack existing observer if any
   if (messageObserver) {
+    messageObserver.disconnect()
     cleanup.untrackObserver(messageObserver)
     messageObserver = null
     log(' 🔌 Disconnected previous message observer');
@@ -9249,17 +9251,19 @@ function watchForNewMessages() {
 
     // Username-coloring rAF batch (was usernameColoringObserver's main path).
     if (newColoringMessages.length > 0) {
-      if (messageObserver._coloringPending) {
-        const q = messageObserver._coloringQueued || []
+      const thisObserver = messageObserver
+      if (!thisObserver) return
+      if (thisObserver._coloringPending) {
+        const q = thisObserver._coloringQueued || []
         q.push(...newColoringMessages)
-        messageObserver._coloringQueued = q
+        thisObserver._coloringQueued = q
       } else {
-        messageObserver._coloringPending = true
-        messageObserver._coloringQueued = newColoringMessages.slice()
+        thisObserver._coloringPending = true
+        thisObserver._coloringQueued = newColoringMessages.slice()
         requestAnimationFrame(() => {
-          messageObserver._coloringPending = false
-          const batch = messageObserver._coloringQueued || []
-          messageObserver._coloringQueued = null
+          thisObserver._coloringPending = false
+          const batch = thisObserver._coloringQueued || []
+          thisObserver._coloringQueued = null
           const allEmotes = cachedAllEmotes || new Map()
           const vh = window.innerHeight
           const visible = []
@@ -10093,6 +10097,8 @@ function handleNavigation() {
   allEmotesDirty = true
   rebuildEmoteMapIfDirty()
   detectAndJoinChannel();
+  watchRetryCount = 0
+  interceptRetryCount = 0
   cleanup.setTimeout(() => {
     watchForNewMessages();
     setupUsernameColoringObserver();
@@ -10159,7 +10165,7 @@ cleanup.setIntervalIfVisible(() => {
     watchForNewMessages();
   } else if (!freshContainer && observedContainer && !observedContainer.isConnected) {
     log(' ⚠️ Chat container removed from DOM, clearing observer');
-    if (messageObserver) { cleanup.untrackObserver(messageObserver); messageObserver = null; }
+    if (messageObserver) { messageObserver.disconnect(); cleanup.untrackObserver(messageObserver); messageObserver = null; }
     observedContainer = null;
   }
 }, 2000);
@@ -10193,7 +10199,7 @@ let autoClaimObserver = null
 let autoClaimEnabled = true
 
 function setupAutoClaimPoints() {
-  if (autoClaimObserver) { cleanup.untrackObserver(autoClaimObserver); autoClaimObserver = null }
+  if (autoClaimObserver) { autoClaimObserver.disconnect(); cleanup.untrackObserver(autoClaimObserver); autoClaimObserver = null }
   if (!autoClaimEnabled || !location.hostname.includes('twitch.tv')) return
 
   function tryClaimBonus(container) {
@@ -10220,6 +10226,7 @@ function setupAutoClaimPoints() {
 
   let attachAttempts = 0
   function attachObserver() {
+    if (!autoClaimEnabled) return
     const container = document.querySelector('[data-test-selector="community-points-summary"]')
     if (!container) {
       if (++attachAttempts >= 20) {

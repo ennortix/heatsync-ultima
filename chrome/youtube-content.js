@@ -90,7 +90,9 @@
   // Listen for inventory updates from background
   const ytInventoryListener = (msg, _sender, sendResponse) => {
     if (msg.type === 'inventory_update' && msg.emotes) {
-      rebuildEmoteMap(msg.emotes, Array.from(emoteMap.values()))
+      chrome.storage.local.get(['global_emotes']).then(stored => {
+        rebuildEmoteMap(msg.emotes, stored.global_emotes || [])
+      }).catch(e => log('storage read failed (inventory_update):', e?.message))
     } else if (msg.type === 'global_emotes_update' && msg.emotes) {
       chrome.storage.local.get(['emote_inventory']).then(stored => {
         rebuildEmoteMap(stored.emote_inventory || [], msg.emotes)
@@ -396,9 +398,7 @@
       const username = node.dataset.hsYtUser
       if (userSet.has(username)) {
         applyYtCosmeticsToMessage(node, username)
-        if (ytCosmeticsCache.get(username)?.paint || ytCosmeticsCache.get(username)?.badge) {
-          node.dataset.hs7tvYtDone = '1'
-        }
+        node.dataset.hs7tvYtDone = '1'
       }
     })
   }

@@ -603,10 +603,7 @@
         }
         const profile = resp.data.profile;
         _profileCache.set(cacheKey, { profile, ts: Date.now() });
-        if (_profileCache.size > PROFILE_CACHE_MAX) {
-          const oldest = [..._profileCache.entries()].sort((a, b) => a[1].ts - b[1].ts).slice(0, Math.floor(PROFILE_CACHE_MAX / 2));
-          for (const [k] of oldest) _profileCache.delete(k);
-        }
+        while (_profileCache.size > PROFILE_CACHE_MAX) _profileCache.delete(_profileCache.keys().next().value);
         return shapeIdentity(profile);
       } catch (e) {
         const stale = _profileCache.get(cacheKey);
@@ -991,10 +988,7 @@
 
     if (profile) {
       _profileCache.set(cacheKey, { profile, ts: Date.now() });
-      if (_profileCache.size > PROFILE_CACHE_MAX) {
-        const oldest = [..._profileCache.entries()].sort((a, b) => a[1].ts - b[1].ts).slice(0, Math.floor(PROFILE_CACHE_MAX / 2));
-        for (const [k] of oldest) _profileCache.delete(k);
-      }
+      while (_profileCache.size > PROFILE_CACHE_MAX) _profileCache.delete(_profileCache.keys().next().value);
       // NOTE: innerHTML XSS-safe — renderProfileCard escapes everything
       tooltip.innerHTML = renderProfileCard(profile);
       appendSubTenureBadge(tooltip, username, msgChannel);

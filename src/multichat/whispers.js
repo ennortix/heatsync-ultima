@@ -3,7 +3,8 @@
 const whisperTimeline = [] // { user, text, color, time, self, platform, key, status?, id? }
 const whisperUsers = new Map() // key → { platform, userId, displayName, color }
 const WHISPER_USERS_MAX = 200
-const WHISPER_TIMELINE_MAX_READ = 500 // hard cap on READ messages; unread are NEVER evicted
+const WHISPER_TIMELINE_MAX_READ = 500 // hard cap on READ messages
+const WHISPER_TIMELINE_MAX_UNREAD = 500 // hard cap on UNREAD messages
 // O(1) dedup. Composite key = id when present, else user|time|text-prefix so IRC↔EventSub
 // dual delivery still collapses even when one side lacks an ID.
 const _whisperSeen = new Set()
@@ -31,22 +32,40 @@ function _whisperMarkSeen(key) {
   return false
 }
 
-// Trim oldest READ messages once read-count exceeds cap. Unread (incoming
-// msgs with time > seenAt.whispers) survive forever — that's the whole point.
-// Self-sent messages count as read (we wrote them).
+// Trim oldest READ messages once read-count exceeds cap, and oldest UNREAD
+// messages once unread-count exceeds its own cap. Self-sent messages count
+// as read (we wrote them).
 function trimWhisperTimeline() {
   const lastViewed = seenAt.whispers
+  // --- read eviction ---
   let readCount = 0
   for (const m of whisperTimeline) {
     if (m.self || m.time <= lastViewed) readCount++
   }
   let toRemove = readCount - WHISPER_TIMELINE_MAX_READ
-  if (toRemove <= 0) return
-  for (let i = 0; i < whisperTimeline.length && toRemove > 0; ) {
+  if (toRemove > 0) {
+    for (let i = 0; i < whisperTimeline.length && toRemove > 0; ) {
+      const m = whisperTimeline[i]
+      if (m.self || m.time <= lastViewed) {
+        whisperTimeline.splice(i, 1)
+        toRemove--
+      } else {
+        i++
+      }
+    }
+  }
+  // --- unread eviction ---
+  let unreadCount = 0
+  for (const m of whisperTimeline) {
+    if (!m.self && m.time > lastViewed) unreadCount++
+  }
+  let toRemoveUnread = unreadCount - WHISPER_TIMELINE_MAX_UNREAD
+  if (toRemoveUnread <= 0) return
+  for (let i = 0; i < whisperTimeline.length && toRemoveUnread > 0; ) {
     const m = whisperTimeline[i]
-    if (m.self || m.time <= lastViewed) {
+    if (!m.self && m.time > lastViewed) {
       whisperTimeline.splice(i, 1)
-      toRemove--
+      toRemoveUnread--
     } else {
       i++
     }
@@ -438,7 +457,7 @@ function renderWhispersTab() {
           let added = false
           for (const m of resp2.data) {
             const t = new Date(m.created_at).getTime()
-            if (whisperTimeline.some(e => Math.abs(e.time - t) < 1000 && e.text === m.content && e.platform === 'heatsync')) continue
+            if (_whisperMarkSeen(_whisperDedupKey('heatsync', m.id, m.from_display_name, t, m.content))) continue
             const isSelf = m.from_user_id !== dm.other_user_id
             whisperTimeline.push({
               user: isSelf ? 'you' : dm.other_display_name,
@@ -447,7 +466,8 @@ function renderWhispersTab() {
               time: t,
               self: isSelf,
               platform: 'heatsync',
-              key
+              key,
+              id: m.id || ''
             })
             added = true
           }

@@ -422,6 +422,10 @@ class IRC {
       if (!resp?.ok) return
       const buf = this.channels.get(ch)
       const wasSize = buf.size
+      // Snapshot live messages before clearing — any non-history message that
+      // arrived during the sendMessage await above would otherwise be buried
+      // behind history after the replay loop below.
+      const liveSnap = buf.getAll().filter(m => !m.isHistory)
       buf.clear()
       try { if (typeof _recentSentHydrated !== 'undefined') await _recentSentHydrated } catch {}
       for (const m of resp.msgs || []) {
@@ -438,6 +442,8 @@ class IRC {
         } catch {}
         buf.push(m)
       }
+      // Re-append live messages after history so they appear newest (correct order).
+      for (const m of liveSnap) buf.push(m)
       try { _dropAllTabCaches() } catch {}
       // Rebuild when empty OR when a real backfill landed (delta ≥ 5). Small
       // incremental merges skip to avoid streamer-switch flash; large history
@@ -785,6 +791,8 @@ class KickChat {
       if (!resp?.ok || !Array.isArray(resp.msgs)) return
       const buf = this.channels.get(ch)
       const wasSize = buf.size
+      // Snapshot live messages before clearing — mirrors IRC._refreshFromBg.
+      const liveSnap = buf.getAll().filter(m => !m.isHistory)
       buf.clear()
       try { if (typeof _recentSentHydrated !== 'undefined') await _recentSentHydrated } catch {}
       for (const m of resp.msgs) {
@@ -799,6 +807,8 @@ class KickChat {
         } catch {}
         buf.push(m)
       }
+      // Re-append live messages after history so they appear newest (correct order).
+      for (const m of liveSnap) buf.push(m)
       try { _dropAllTabCaches() } catch {}
       const isCurrent = (currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch))
       const delta = buf.size - wasSize
@@ -904,6 +914,7 @@ class KickChat {
     }
     this.channels.clear()
     this._chanLastSeen.clear()
+    this._chanRejoinAttempts.clear()
   }
 
   async join(kickUsername) {
@@ -964,6 +975,7 @@ class KickChat {
     safeSendMessage({ type: 'ws_send', data: { type: 'channel:leave', platform: 'kick', channel: kickUsername } })
     this.channels.delete(kickUsername)
     this._chanLastSeen.delete(kickUsername)
+    this._chanRejoinAttempts.delete(kickUsername)
     log('Kick parted', kickUsername)
   }
 
@@ -977,6 +989,8 @@ class KickChat {
   }
 
   emit(e, d) {
-    this.handlers.get(e)?.forEach(fn => fn(d))
+    this.handlers.get(e)?.forEach(fn => {
+      try { fn(d) } catch (err) { console.error('[heatsync-kick] handler err:', err) }
+    })
   }
 }

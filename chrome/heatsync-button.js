@@ -4872,6 +4872,7 @@
       buttonInjected = false;
       emotesPreloaded = false;
       closePanel();
+      _virtualGridDelegated = false;
       cleanup.setTimeout(injectButton, 500);
     }
     window.addEventListener('message', (event) => {
@@ -4900,7 +4901,7 @@
     // every emote add/remove/sub. Listen directly — content script's isolated
     // world has chrome.runtime access, no postMessage bridge needed.
     if (chrome?.runtime?.onMessage) {
-      chrome.runtime.onMessage.addListener((msg) => {
+      const _onBgMessage = (msg) => {
         if (!msg?.type) return
         // preserveScroll prevents background-driven re-renders from teleporting
         // a mid-scroll user back to the top of the grid.
@@ -4936,7 +4937,9 @@
           _blockedHashSet = new Set(msg.blocked)
           if (panelOpen) renderEmoteGrid(opts)
         }
-      })
+      }
+      chrome.runtime.onMessage.addListener(_onBgMessage)
+      btnSignal.addEventListener('abort', () => chrome.runtime.onMessage.removeListener(_onBgMessage))
     }
 
     log(' 🔥 Button module initialized');

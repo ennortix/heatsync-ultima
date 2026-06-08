@@ -105,6 +105,8 @@ async function fetchChatLogsPage() {
   const incoming = resp.data.results || []
   // results are newest-first; append to bottom of list since we're loading older
   state.rows.push(...incoming)
+  // Cap accumulated rows so full-repaint cost stays bounded (matches DOM_RENDER_CAP elsewhere)
+  if (state.rows.length > 500) state.rows.splice(0, state.rows.length - 500)
   state.cursor = resp.data.next_cursor || null
   if (!state.cursor || incoming.length === 0) state.exhausted = true
   // Server kicked off ivr.fi historical backfill — flag so the UI shows a
@@ -488,4 +490,4 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault()
     closeChatLogsView()
   }
-}, true)
+}, { signal: mcSignal, capture: true })

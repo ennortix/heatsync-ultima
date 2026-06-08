@@ -4116,13 +4116,62 @@ function handleWSMessage(msg) {
         const ch = (msg.channel || '').toLowerCase()
         const list = Array.isArray(msg.messages) ? msg.messages : []
         if (ch && list.length > 0) {
-          let added = 0
-          for (const m of list) {
-            try { if (bgKickIngestBackfill(ch, m)) added++ } catch {}
+          if (!BG_KICK.channels.has(ch)) {
+            BG_KICK.channels.set(ch, new BGCircularBuffer(BG_KICK_PERSIST_MAX))
+            if (BG_KICK.channels.size > MAX_BG_KICK_CHANNELS) {
+              const oldest = BG_KICK.channels.keys().next().value
+              BG_KICK.channels.delete(oldest)
+              chrome.storage.local.remove(`hs_kick_${oldest}`).catch(() => {})
+            }
+            bgKickFetchArchive(ch).catch(() => {})
           }
-          if (added > 0) {
-            broadcastToTabs({ type: 'bg_kick_history_merged', channel: ch, count: added })
-            log('BG KICK backfill merged', added, 'msgs for', ch)
+          const buf = BG_KICK.channels.get(ch)
+          const existing = buf.getAll()
+          // Build Sets once for O(1) per-message dedup — avoids O(n²) scan.
+          const existingIds = new Set(existing.filter(m => m.id).map(m => m.id))
+          const fpOf = (m) => `${m.user}|${m.time}|${(m.text || '').slice(0, 60)}`
+          const existingFp = new Set(existing.filter(m => !m.id).map(fpOf))
+          const toAdd = []
+          for (const data of list) {
+            try {
+              const badgeStr = Array.isArray(data.badges)
+                ? data.badges.map(b => `${b.type || b.name || 'badge'}/${b.version || b.count || '1'}`).join(',')
+                : ''
+              const m = {
+                user: data.username || data.displayName || data.user || 'unknown',
+                text: data.content || data.message || data.text || '',
+                color: data.color || '#53fc18',
+                badges: badgeStr,
+                channel: ch,
+                time: data.timestamp || data.time || Date.now(),
+                platform: 'kick',
+                id: data.id || '',
+                isHistory: true,
+                replyTo: data.replyTo ? {
+                  user: data.replyTo.username || 'unknown',
+                  text: data.replyTo.content || '',
+                  id: data.replyTo.id || data.replyTo.message_id || '',
+                  threadId: data.replyTo.thread_id || data.replyTo.id || data.replyTo.message_id || ''
+                } : null
+              }
+              if (m.id) {
+                if (existingIds.has(m.id)) continue
+                existingIds.add(m.id)
+              } else {
+                const fp = fpOf(m)
+                if (existingFp.has(fp)) continue
+                existingFp.add(fp)
+              }
+              toAdd.push(m)
+            } catch {}
+          }
+          if (toAdd.length > 0) {
+            const all = [...existing, ...toAdd].sort((a, b) => (a.time || 0) - (b.time || 0))
+            buf.clear()
+            for (const m of all) buf.push(m)
+            bgKickPersistChannel(ch)
+            broadcastToTabs({ type: 'bg_kick_history_merged', channel: ch, count: toAdd.length })
+            log('BG KICK backfill merged', toAdd.length, 'msgs for', ch)
           }
         }
       } catch {}
@@ -7204,6 +7253,17 @@ async function bgIrcRestoreFromStorage() {
 
 const ROBOTTY_PERSIST_DEBOUNCE_MS = 2000
 const ROBOTTY_TS_MAX_CHANNELS = 200
+const COOLDOWN_TS_MAX_CHANNELS = 200
+const MAX_BG_IRC_CHANNELS = 100
+const MAX_BG_KICK_CHANNELS = 50
+const MAX_BG_YT_CHANNELS = 30
+
+function pruneMap(map, max) {
+  if (map.size <= max) return
+  const excess = map.size - max
+  const it = map.keys()
+  for (let i = 0; i < excess; i++) map.delete(it.next().value)
+}
 let _robottyPersistTimer = null
 function bgIrcPersistRobottyTs() {
   if (_robottyPersistTimer) return
@@ -7485,6 +7545,9 @@ function bgIrcReconcileCleared(buf) {
     if (m.type === 'notice' || m.type === 'usernotice') continue
     byId.set(m.id, m)
   }
+  // First pass: handle delete_message_success (O(1) per via byId) and build a
+  // banMap of userLc -> {reason, eventTime} for ban/timeout notices (O(n)).
+  const banMap = new Map()
   for (const m of all) {
     if (m.type !== 'notice') continue
     if (m.noticeType === 'delete_message_success' && m.targetMsgId) {
@@ -7497,13 +7560,21 @@ function bgIrcReconcileCleared(buf) {
     if (!targetLc) continue
     const eventTime = m.time || 0
     const reason = m.banDuration ? `timed out (${m.banDuration}s)` : 'banned'
+    // Keep latest eventTime — last ban/timeout wins, clearing all prior msgs
+    const existing = banMap.get(targetLc)
+    if (!existing || eventTime > existing.eventTime) {
+      banMap.set(targetLc, { reason, eventTime })
+    }
+  }
+  // Second pass: single linear scan to apply ban/timeout clearings (O(n)).
+  if (banMap.size > 0) {
     for (const v of all) {
-      if (v.cleared) continue
-      if (v.type === 'notice' || v.type === 'usernotice') continue
-      if (!v.user || v.user.toLowerCase() !== targetLc) continue
-      if ((v.time || 0) > eventTime) continue
-      v.cleared = true
-      v.clearedReason = reason
+      if (v.cleared || v.type === 'notice' || v.type === 'usernotice' || !v.user) continue
+      const entry = banMap.get(v.user.toLowerCase())
+      if (entry && (v.time || 0) <= entry.eventTime) {
+        v.cleared = true
+        v.clearedReason = entry.reason
+      }
     }
   }
 }
@@ -7589,6 +7660,7 @@ function bgIrcFetchJustlog(ch) {
   if (Date.now() - last < BG_IRC_JUSTLOG_COOLDOWN_MS) return Promise.resolve()
   if (!BG_IRC.lastJustlogAt) BG_IRC.lastJustlogAt = new Map()
   BG_IRC.lastJustlogAt.set(ch, Date.now())
+  pruneMap(BG_IRC.lastJustlogAt, COOLDOWN_TS_MAX_CHANNELS)
   return (async () => {
     for (const base of JUSTLOG_INSTANCES) {
       try {
@@ -7802,6 +7874,14 @@ function bgIrcEnsureChannel(ch) {
   if (isNew) {
     BG_IRC.channels.set(ch, new BGCircularBuffer(BG_IRC_PERSIST_MAX))
     BG_IRC.chanLastSeen.set(ch, Date.now())
+    if (BG_IRC.channels.size > MAX_BG_IRC_CHANNELS) {
+      const oldest = BG_IRC.channels.keys().next().value
+      BG_IRC.channels.delete(oldest)
+      BG_IRC.chanLastSeen.delete(oldest)
+      BG_IRC.lastJustlogAt?.delete?.(oldest)
+      BG_IRC.chanRejoinAttempts.delete(oldest)
+      chrome.storage.local.remove(`hs_irc_${oldest}`).catch(() => {})
+    }
     if (BG_IRC.ws?.readyState === WebSocket.OPEN) {
       try { BG_IRC.ws.send(`JOIN #${ch}\r\n`) } catch {}
     }
@@ -7998,6 +8078,11 @@ function bgKickIngest(data) {
   const isFirstSightOfChannel = !BG_KICK.channels.has(ch)
   if (isFirstSightOfChannel) {
     BG_KICK.channels.set(ch, new BGCircularBuffer(BG_KICK_PERSIST_MAX))
+    if (BG_KICK.channels.size > MAX_BG_KICK_CHANNELS) {
+      const oldest = BG_KICK.channels.keys().next().value
+      BG_KICK.channels.delete(oldest)
+      chrome.storage.local.remove(`hs_kick_${oldest}`).catch(() => {})
+    }
     // First time we see this Kick channel — pull deep history from postgres
     // archive in addition to the 200-msg server ring (which came via
     // kick-chat-backfill on the WS).
@@ -8033,6 +8118,11 @@ function bgKickIngestBackfill(ch, data) {
   const isFirstSightOfChannel = !BG_KICK.channels.has(ch)
   if (isFirstSightOfChannel) {
     BG_KICK.channels.set(ch, new BGCircularBuffer(BG_KICK_PERSIST_MAX))
+    if (BG_KICK.channels.size > MAX_BG_KICK_CHANNELS) {
+      const oldest = BG_KICK.channels.keys().next().value
+      BG_KICK.channels.delete(oldest)
+      chrome.storage.local.remove(`hs_kick_${oldest}`).catch(() => {})
+    }
     bgKickFetchArchive(ch).catch(() => {})
   }
   const buf = BG_KICK.channels.get(ch)
@@ -8093,6 +8183,7 @@ async function bgKickFetchArchive(ch, beforeIso) {
     const last = BG_KICK_lastArchiveAt.get(ch) || 0
     if (Date.now() - last < BG_KICK_ARCHIVE_COOLDOWN_MS) return
     BG_KICK_lastArchiveAt.set(ch, Date.now())
+    pruneMap(BG_KICK_lastArchiveAt, COOLDOWN_TS_MAX_CHANNELS)
   }
   try {
     const ctrl = new AbortController()
@@ -8177,7 +8268,11 @@ async function _kpResolveChatroomId(slug) {
     if (!r.ok) return null
     const j = await r.json()
     const id = j?.chatroom?.id
-    if (id) { _kpChatroomCache.set(slug, id); return id }
+    if (id) {
+      if (_kpChatroomCache.size >= 200) _kpChatroomCache.delete(_kpChatroomCache.keys().next().value)
+      _kpChatroomCache.set(slug, id)
+      return id
+    }
   } catch {}
   return null
 }
@@ -8264,7 +8359,14 @@ function bgYtIngest(payload) {
   // payload is the youtube_chat_message we'd broadcast — store it under channelId
   if (!payload || !payload.channelId || payload.channelId === 'global') return
   const channelId = payload.channelId
-  if (!BG_YT.channels.has(channelId)) BG_YT.channels.set(channelId, new BGCircularBuffer(BG_YT_PERSIST_MAX))
+  if (!BG_YT.channels.has(channelId)) {
+    BG_YT.channels.set(channelId, new BGCircularBuffer(BG_YT_PERSIST_MAX))
+    if (BG_YT.channels.size > MAX_BG_YT_CHANNELS) {
+      const oldest = BG_YT.channels.keys().next().value
+      BG_YT.channels.delete(oldest)
+      chrome.storage.local.remove(`hs_yt_${oldest}`).catch(() => {})
+    }
+  }
   // Strip transient flags before storing
   const msg = {
     user: payload.user,

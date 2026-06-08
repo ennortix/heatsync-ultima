@@ -6277,7 +6277,7 @@
     if (claim && _resubShareCtx?.claim !== claim) return
     const wasCtx = _resubShareCtx
     _resubShareCtx = null
-    if (_resubShareModeTimer) { clearTimeout(_resubShareModeTimer); _resubShareModeTimer = null }
+    if (_resubShareModeTimer) { cleanup.clearTimeout(_resubShareModeTimer); _resubShareModeTimer = null }
     // Dismiss the HsNotifs banner only on VOLUNTARY exit (consume, timeout,
     // dismiss-click). On a forced exit (another share-mode took the input),
     // silent=true keeps the banner visible so the user can come back to it.
@@ -6324,7 +6324,6 @@
     consume: (text) => {
       if (!_resubShareCtx) return false
       const { claim, user, months } = _resubShareCtx
-      if (claim.preTimer) { clearTimeout(claim.preTimer); claim.preTimer = null }
       // 1. Local synthetic — instant styled celebration in OUR view with the
       //    user's custom text. Doesn't go anywhere else; viewer-only.
       try { _injectShareSynthetic(claim, user, months, text || '') } catch (_) {}
@@ -6385,10 +6384,9 @@
     enter: (months, user, channel, resubToken) => {
       try {
         if (_pendingShareClaim) {
-          clearTimeout(_pendingShareClaim.preTimer)
-          clearTimeout(_pendingShareClaim.postTimer)
+          cleanup.clearTimeout(_pendingShareClaim.postTimer)
         }
-        const claim = { channel, userLc: (user || '').toLowerCase(), months, synthId: null, preTimer: null, postTimer: null, customText: '', _nativeShareBtn: _lastSurfacedShareBtn, resubToken: resubToken || null }
+        const claim = { channel, userLc: (user || '').toLowerCase(), months, synthId: null, postTimer: null, customText: '', _nativeShareBtn: _lastSurfacedShareBtn, resubToken: resubToken || null }
         _pendingShareClaim = claim
         _enterResubShareMode(claim, user, months)
       } catch (_) {}
@@ -6447,7 +6445,7 @@
     if (claim && _watchstreakShareCtx?.claim !== claim) return
     const wasCtx = _watchstreakShareCtx
     _watchstreakShareCtx = null
-    if (_watchstreakShareModeTimer) { clearTimeout(_watchstreakShareModeTimer); _watchstreakShareModeTimer = null }
+    if (_watchstreakShareModeTimer) { cleanup.clearTimeout(_watchstreakShareModeTimer); _watchstreakShareModeTimer = null }
     if (wasCtx && !silent) {
       try {
         window.HsNotifs?.dismissByKey?.('twitch-watchstreak-share', `watchstreak:${wasCtx.claim.channel}:${wasCtx.streakCount}`)
@@ -6478,7 +6476,6 @@
     consume: (text) => {
       if (!_watchstreakShareCtx) return false
       const { claim, user, streakCount } = _watchstreakShareCtx
-      if (claim.preTimer) { clearTimeout(claim.preTimer); claim.preTimer = null }
       try { _injectWatchstreakSynthetic(claim, user, streakCount, text || '') } catch (_) {}
       const broadcastShare = () => {
         const QUEUE_SEL = '[data-test-selector="chat-private-callout-queue__callout-container"]'
@@ -6544,10 +6541,9 @@
     enter: (streakCount, user, channel) => {
       try {
         if (_pendingShareClaim) {
-          clearTimeout(_pendingShareClaim.preTimer)
-          clearTimeout(_pendingShareClaim.postTimer)
+          cleanup.clearTimeout(_pendingShareClaim.postTimer)
         }
-        const claim = { kind: 'watchstreak', channel, userLc: (user || '').toLowerCase(), streakCount, synthId: null, preTimer: null, postTimer: null, customText: '', _nativeShareBtn: _lastSurfacedShareBtn }
+        const claim = { kind: 'watchstreak', channel, userLc: (user || '').toLowerCase(), streakCount, synthId: null, postTimer: null, customText: '', _nativeShareBtn: _lastSurfacedShareBtn }
         _pendingShareClaim = claim
         _enterWatchstreakShareMode(claim, user, streakCount)
       } catch (_) {}
@@ -6644,10 +6640,9 @@
             e.preventDefault()
             try {
               if (_pendingShareClaim) {
-                clearTimeout(_pendingShareClaim.preTimer)
-                clearTimeout(_pendingShareClaim.postTimer)
+                cleanup.clearTimeout(_pendingShareClaim.postTimer)
               }
-              const claim = { kind: 'watchstreak', channel: ch, userLc: user.toLowerCase(), streakCount, synthId: null, preTimer: null, postTimer: null, customText: '', _nativeShareBtn: shareBtn }
+              const claim = { kind: 'watchstreak', channel: ch, userLc: user.toLowerCase(), streakCount, synthId: null, postTimer: null, customText: '', _nativeShareBtn: shareBtn }
               _pendingShareClaim = claim
               _enterWatchstreakShareMode(claim, user, streakCount)
             } catch (_) {}
@@ -6676,10 +6671,9 @@
           e.preventDefault()
           try {
             if (_pendingShareClaim) {
-              clearTimeout(_pendingShareClaim.preTimer)
-              clearTimeout(_pendingShareClaim.postTimer)
+              cleanup.clearTimeout(_pendingShareClaim.postTimer)
             }
-            const claim = { kind: 'resub', channel: ch, userLc: user.toLowerCase(), months, synthId: null, preTimer: null, postTimer: null, customText: '', _nativeShareBtn: shareBtn, resubToken }
+            const claim = { kind: 'resub', channel: ch, userLc: user.toLowerCase(), months, synthId: null, postTimer: null, customText: '', _nativeShareBtn: shareBtn, resubToken }
             _pendingShareClaim = claim
             _enterResubShareMode(claim, user, months)
           } catch (_) {}
@@ -7773,6 +7767,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (typeof hsResolveUserColor !== 'function') return
     _mentionColorPending.add(lower)
     hsResolveUserColor(lower).then(c => {
+      _mentionColorPending.delete(lower)
       if (!c) return
       const safe = sanitizeColor(c)
       let esc
@@ -7785,7 +7780,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         if (uid && getMcPaintStyle(uid)) return
         a.style.color = safe
       })
-    }).catch(() => {})
+    }).catch(() => { _mentionColorPending.delete(lower) })
   }
   // Sanitized color for a mentioned user. Returns a known color synchronously
   // (seen this session, or cached from a prior lookup); otherwise queues the
@@ -8116,9 +8111,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     }
     _multistreamLastChecked = key
     const dismissed = await loadMultistreamDismissed()
+    if (_multistreamLastChecked !== key) return
     if (dismissed.has(key)) { _multistreamLastResult = 'hidden'; hideMultistreamBanner(); return }
     if (typeof resolveIdentity !== 'function') { _multistreamLastResult = 'hidden'; hideMultistreamBanner(); return }
     const res = await resolveIdentity(channelName, platform ? { platform } : {})
+    if (_multistreamLastChecked !== key) return
     if (!res?.ok || !res.identity) { _multistreamLastResult = 'hidden'; hideMultistreamBanner(); return }
     const id = res.identity
     const liveOn = res.liveOn || []
@@ -8174,7 +8171,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       hideMultistreamBanner()
     }
     dismissBtn.addEventListener('click', dismissNow)
-    el.addEventListener('contextmenu', (e) => { e.preventDefault(); dismissNow() }, { once: true })
+    if (el._hsCtxDismiss) el.removeEventListener('contextmenu', el._hsCtxDismiss)
+    const ctxHandler = (e) => { e.preventDefault(); dismissNow() }
+    el._hsCtxDismiss = ctxHandler
+    el.addEventListener('contextmenu', ctxHandler)
     el.append(text, linkBtn, dismissBtn)
   }
 
@@ -8421,6 +8421,22 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }
       if (msgsEl.children.length > toRender.length) trimMessagesEl(msgsEl, toRender.length)
       applyMcMutes()
+      // Re-apply cleared (ban/timeout/delete) state to cached nodes that were
+      // in a DocumentFragment while the mod action fired — buildMessageDiv was
+      // skipped for these, so patch the class directly now.
+      if (dimTimeouts) {
+        const keyToMsg = new Map()
+        for (let j = 0; j < toRender.length; j++) keyToMsg.set(desiredKeys[j], toRender[j])
+        for (const child of msgsEl.children) {
+          const k = child.dataset?.msgKey
+          if (!k) continue
+          const cm = keyToMsg.get(k)
+          if (cm?.cleared) {
+            child.classList.add('hs-mc-msg-cleared')
+            if (cm.clearedReason && !child.title) child.title = cm.clearedReason
+          }
+        }
+      }
       // Cached fragment was mounted as-is — restored messages bypassed
       // buildMessageDiv, so their 7TV paint/badge was never queued or applied
       // (cached HTML is paint-less). Re-apply for already-resolved users and
@@ -11828,8 +11844,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           msg.hidden = true
           return
         }
-        clearTimeout(claim.preTimer)
-        clearTimeout(claim.postTimer)
+        cleanup.clearTimeout(claim.postTimer)
         _pendingShareClaim = null
         if (claim.synthId) {
           const buf = irc?.channels?.get(claim.channel)

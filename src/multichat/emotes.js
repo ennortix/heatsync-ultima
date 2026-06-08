@@ -2113,24 +2113,7 @@
         continue
       }
       // Peel chained modifier word (e.g. "w!h!ffzX" or "w!c!#ff8700h!")
-      const _hsPeel = (() => {
-        if (!word) return null
-        const sortedKeys = Object.keys(HS_MC_MODS).sort((a, b) => b.length - a.length)
-        const mods = []
-        let hue = null
-        let rem = word
-        while (rem.length > 0) {
-          let matched = false
-          for (const k of sortedKeys) {
-            if (rem.startsWith(k)) { mods.push(HS_MC_MODS[k]); rem = rem.slice(k.length); matched = true; break }
-          }
-          if (matched) continue
-          const cm = rem.match(/^c!#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})/)
-          if (cm) { hue = _hsMcHexToHue(cm[1]); rem = rem.slice(cm[0].length); continue }
-          return null
-        }
-        return (mods.length || hue != null) ? { mods, hue } : null
-      })()
+      const _hsPeel = hsModPeelChain(word)
       if (_hsPeel) {
         const last = _lastItem()
         if (last) {

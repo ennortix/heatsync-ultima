@@ -221,7 +221,7 @@
         if (changes[c.storage] && typeof changes[c.storage].newValue === 'boolean') {
           const next = changes[c.storage].newValue;
           cwLocal[c.key] = next;
-          document.querySelectorAll('.hs-mc-toggle-pill[data-' + c.key + '-pill]').forEach(function(pill) {
+          document.querySelectorAll('.hs-mc-toggle-pill[data-set-key="' + c.storage + '"]').forEach(function(pill) {
             pill.classList.toggle('active', next);
           });
         }
@@ -1804,9 +1804,8 @@
 
   function _cwRollback(def, attempted) {
     setSetting(def.key, !attempted, { silent: true })
-    document.querySelectorAll(
-      '.hs-mc-toggle-pill[data-' + def.cw.stateKey + '-pill], .hs-mc-toggle-pill[data-set-key="' + def.key + '"]'
-    ).forEach(function(pill) { pill.classList.toggle('active', !attempted) })
+    document.querySelectorAll('.hs-mc-toggle-pill[data-set-key="' + def.key + '"]')
+      .forEach(function(pill) { pill.classList.toggle('active', !attempted) })
     showToast('failed to save ' + def.cw.noun + ' — try again', 'error')
   }
 
@@ -1858,10 +1857,13 @@
       const applier = def.apply && _APPLIERS[def.apply]
       if (applier) { try { applier(v, def, false) } catch (e) { warn('applier failed:', def.apply, e) } }
       if (def.rerender) renderMessages(currentTab)
-      if (def.rerenderSettings && currentTab === 'settings') renderSettingsTab()
+      // re-render the panel when the entry asks for it OR when another
+      // entry's dependsOn watches this key (progressive disclosure)
+      if ((def.rerenderSettings || _DEPENDS_PARENTS.has(key)) && currentTab === 'settings') renderSettingsTab()
     }
     return true
   }
+  const _DEPENDS_PARENTS = new Set(SETTINGS.filter(function(d) { return d.dependsOn }).map(function(d) { return d.dependsOn.key }))
 
   // One hydration pass over the whole registry — replaces the per-setting
   // loadXSetting() functions. Reads the shared init caches, fills
@@ -1954,12 +1956,44 @@
       (_SETTINGS_BY_ALIAS.get(ds.setting) || {}).key
     const def = key && _SETTINGS_BY_KEY.get(key)
     if (!def) return false
+    // boolmap subkey pill — flip one subkey, persist the whole map
+    if (def.type === 'boolmap' && ds.setSub !== undefined) {
+      const map = Object.assign({}, getSetting(def.key))
+      map[ds.setSub] = !map[ds.setSub]
+      if (setSetting(def.key, map)) el.classList.toggle('active', map[ds.setSub])
+      return true
+    }
+    // multiselect member pill — toggle membership (invertDisplay = stored
+    // set is "hidden" but pills show "visible")
+    if (def.type === 'multiselect' && ds.setValue !== undefined) {
+      const cur = getSetting(def.key)
+      const val = ds.setValue
+      const next = cur.includes(val) ? cur.filter(function(x) { return x !== val }) : cur.concat(val)
+      if (setSetting(def.key, next)) {
+        const member = next.includes(val)
+        el.classList.toggle('active', def.invertDisplay ? !member : member)
+      }
+      return true
+    }
+    // segmented enum button — value carried on the button
+    if (def.type === 'enum' && ds.setValue !== undefined) {
+      if (setSetting(def.key, ds.setValue)) {
+        const row = el.closest('.hs-mc-setting-row')
+        if (row) {
+          const cur2 = String(getSetting(def.key))
+          row.querySelectorAll('[data-set-value]').forEach(function(b) {
+            b.classList.toggle('active', b.dataset.setValue === cur2)
+          })
+        }
+      }
+      return true
+    }
     if (def.type === 'bool') {
       const next = !getSetting(def.key)
       if (setSetting(def.key, next)) el.classList.toggle('active', next)
       return true
     }
-    return setSetting(def.key, rawValue)
+    return setSetting(def.key, rawValue !== undefined ? rawValue : el.value)
   }
 
   // Stream events persistence — survives tab switches AND page refresh
@@ -4918,137 +4952,209 @@
     '</div>';
   }
 
-  function _renderUiToggleRow(settingKey, label, tip, currentVal) {
-    var tipAttr = tip ? ' data-tip="' + escapeHtml(tip) + '"' : '';
-    return '<div class="hs-mc-setting-row">' +
-      '<button class="hs-mc-toggle-pill' + (currentVal ? ' active' : '') + '" data-setting="' + settingKey + '"><span class="hs-mc-toggle-knob"></span></button>' +
-      '<span class="hs-mc-setting-label"' + tipAttr + '>' + escapeHtml(label) + '</span>' +
-    '</div>';
+  // ─── registry-driven settings renderer ───────────────────────────────
+  // Every registry entry renders through one emitter per control type,
+  // reusing the existing DOM/CSS vocabulary (setting-row, toggle-pill,
+  // size-btns, locale-select, textarea). Categories compose registry
+  // sections with the few hand-rendered islands (mod toolbar, language,
+  // muted users, crash log, backup, defaults).
+
+  let _setQuery = ''
+  const _setCollapsed = new Set()        // '<category>|<section title>'
+  let _setFocusRow = null                // data-set-row id of keyboard focus
+  ;(function _loadCollapsedSections() {
+    try {
+      chrome.storage.local.get('hs_set_collapsed', function(d) {
+        if (Array.isArray(d?.hs_set_collapsed)) {
+          for (const id of d.hs_set_collapsed) _setCollapsed.add(String(id))
+        }
+      })
+    } catch (_) {}
+  })()
+  function _saveCollapsedSections() {
+    try { chrome.storage.local.set({ hs_set_collapsed: [..._setCollapsed] }) } catch (_) {}
   }
 
-  function _renderDisplaySubtab(ui) {
-    var fam = (ui && ui.fontFamily) || 'CozetteVector';
-    var fsz = (ui && ui.fontSize) || '13';
-    var fcust = (ui && ui.customFontName) || '';
-    var showCustom = fam === 'custom';
-    return '<div class="hs-mc-settings-group">' +
-      '<div class="hs-mc-settings-group-title">font</div>' +
-      '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
-        '<span class="hs-mc-setting-label" data-tip="multichat font family">font family</span>' +
-        '<select class="hs-mc-locale-select" data-setting="fontfamily" style="max-width:55%">' +
-          '<option value="CozetteVector">CozetteVector (13px)</option>' +
-          '<option value="GohuFont">GohuFont (14px)</option>' +
-          '<option value="monospace">system monospace</option>' +
-          '<option value="twitch">platform default (Inter — twitch + kick)</option>' +
-          '<option value="custom">custom...</option>' +
-        '</select>' +
-      '</div>' +
-      (showCustom ? '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
-        '<span class="hs-mc-setting-label">custom font name</span>' +
-        '<input class="hs-mc-set-text-input" data-setting="customfontname" type="text" placeholder="font name" value="' + escapeHtml(fcust) + '" style="width:140px">' +
-      '</div>' : '') +
-      '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
-        '<span class="hs-mc-setting-label" data-tip="base font size for multichat panel">font size</span>' +
-        '<select class="hs-mc-locale-select" data-setting="fontsize" style="max-width:35%">' +
-          '<option value="13">13px</option>' +
-          '<option value="14">14px</option>' +
-          '<option value="16">16px</option>' +
-        '</select>' +
-      '</div>' +
-    '</div>' +
-    '<div class="hs-mc-settings-group">' +
-      '<div class="hs-mc-settings-group-title">' + t('mc_settings_display') + '</div>' +
-      '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
-        '<span class="hs-mc-setting-label" data-tip="' + t('mc_settings_emote_size_desc') + '">' + t('mc_settings_emote_size') + '</span>' +
+  function _setLabel(def) { return def.labelKey ? t(def.labelKey) : (def.label || def.key) }
+  function _setTip(def) { return def.tipKey ? t(def.tipKey) : (def.tip || '') }
+  function _setSectionTitle(def) { return def.sectionKey ? t(def.sectionKey) : (def.section || '') }
+  function _optLabel(o) { return o.labelKey ? t(o.labelKey) : (o.label !== undefined ? o.label : String(o.value)) }
+
+  function _setLabelSpan(def, extraHtml) {
+    var tip = _setTip(def)
+    var tipAttr = tip ? ' data-tip="' + escapeHtml(tip) + '"' : ''
+    return '<span class="hs-mc-setting-label"' + tipAttr + '>' + (extraHtml || '') + escapeHtml(_setLabel(def)) + '</span>'
+  }
+
+  function _depSatisfied(def) {
+    if (!def.dependsOn) return true
+    var v = getSetting(def.dependsOn.key)
+    return 'equals' in def.dependsOn ? v === def.dependsOn.equals : !!v
+  }
+
+  // One renderable row = {id, html, hay}. boolmap/multiselect entries
+  // expand to one row per option so search and keyboard nav see each.
+  function _rowsForDef(def, ctx) {
+    var rows = []
+    var base = (_setLabel(def) + ' ' + _setTip(def) + ' ' + _setSectionTitle(def) + ' ' +
+      def.category + ' ' + def.key + ' ' + (def.alias || '')).toLowerCase()
+    var child = def.dependsOn ? ' hs-mc-set-child' : ''
+    var glyph = def.dependsOn ? '<span class="hs-mc-set-child-glyph">└ </span>' : ''
+    var chip = ctx && ctx.chip ? '<span class="hs-mc-set-catchip">' + escapeHtml(def.category) + '</span>' : ''
+
+    if (def.type === 'boolmap') {
+      for (const o of def.options) {
+        var on = !!getSetting(def.key)[o.value]
+        var prefix = '<span style="color:' + o.color + '">' + (o.tag || '◆') + '</span> '
+        var lbl = _optLabel(o)
+        if (o.tag) lbl = lbl.replace(o.tag, '').trim()
+        var oTip = o.tipKey ? t(o.tipKey) : (o.tip || '')
+        rows.push({
+          id: def.key + ':' + o.value,
+          hay: (base + ' ' + lbl + ' ' + oTip + ' ' + o.value).toLowerCase(),
+          html: '<div class="hs-mc-setting-row' + child + '" data-set-row="' + def.key + ':' + o.value + '">' +
+            glyph +
+            '<button class="hs-mc-toggle-pill' + (on ? ' active' : '') + '" data-set-key="' + def.key + '" data-set-sub="' + o.value + '"><span class="hs-mc-toggle-knob"></span></button>' +
+            '<span class="hs-mc-setting-label"' + (oTip ? ' data-tip="' + escapeHtml(oTip) + '"' : '') + '>' + prefix + escapeHtml(lbl) + '</span>' + chip +
+          '</div>',
+        })
+      }
+      return rows
+    }
+
+    if (def.type === 'multiselect') {
+      for (const o of def.options) {
+        var member = getSetting(def.key).includes(o.value)
+        var active = def.invertDisplay ? !member : member
+        rows.push({
+          id: def.key + ':' + o.value,
+          hay: (base + ' ' + _optLabel(o) + ' ' + o.value).toLowerCase(),
+          html: '<div class="hs-mc-setting-row' + child + '" data-set-row="' + def.key + ':' + o.value + '">' +
+            glyph +
+            '<button class="hs-mc-toggle-pill' + (active ? ' active' : '') + '" data-set-key="' + def.key + '" data-set-value="' + escapeHtml(String(o.value)) + '"><span class="hs-mc-toggle-knob"></span></button>' +
+            '<span class="hs-mc-setting-label">' + escapeHtml(_optLabel(o)) + '</span>' + chip +
+          '</div>',
+        })
+      }
+      return rows
+    }
+
+    var inner = ''
+    var split = true
+    var block = false
+    var val = getSetting(def.key)
+
+    if (def.type === 'bool') {
+      split = false
+      inner = '<button class="hs-mc-toggle-pill' + (val ? ' active' : '') + '" data-set-key="' + def.key + '"><span class="hs-mc-toggle-knob"></span></button>' +
+        _setLabelSpan(def)
+    } else if (def.type === 'enum' && (def.control === 'sizebtns' || def.options.length <= 3)) {
+      inner = _setLabelSpan(def) +
         '<div class="hs-mc-size-btns">' +
-          '<button class="hs-mc-size-btn ' + (emoteSize === 1 ? 'active' : '') + '" data-size="1">1x</button>' +
-          '<button class="hs-mc-size-btn ' + (emoteSize === 2 ? 'active' : '') + '" data-size="2">2x</button>' +
-          '<button class="hs-mc-size-btn ' + (emoteSize === 4 ? 'active' : '') + '" data-size="4">4x</button>' +
-        '</div>' +
-      '</div>' +
-      '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
-        '<span class="hs-mc-setting-label" data-tip="emoji size -- 1x native, 2x (default)/4x scale unicode emoji">emoji size</span>' +
-        '<div class="hs-mc-size-btns">' +
-          '<button class="hs-mc-size-btn ' + (emojiSize === 1 ? 'active' : '') + '" data-emoji-size="1">1x</button>' +
-          '<button class="hs-mc-size-btn ' + (emojiSize === 2 ? 'active' : '') + '" data-emoji-size="2">2x</button>' +
-          '<button class="hs-mc-size-btn ' + (emojiSize === 4 ? 'active' : '') + '" data-emoji-size="4">4x</button>' +
-        '</div>' +
-      '</div>' +
-      _renderUiToggleRow('timestamps', t('mc_settings_timestamps'), t('mc_settings_timestamps_desc'), timestampsEnabled) +
-      _renderUiToggleRow('avatars', 'pfps', t('mc_settings_avatars_desc'), avatarsEnabled) +
-      _renderUiToggleRow('zebra', t('mc_settings_zebra'), t('mc_settings_zebra_desc'), zebraEnabled) +
-      _renderUiToggleRow('readablenames', 'readable names', "brighten dim username colors so they're readable on the black bg", readableNamesEnabled) +
-      _renderUiToggleRow('firstchatter', t('mc_settings_first_chatter'), t('mc_settings_first_chatter_desc'), firstChatterGlow) +
-      _renderUiToggleRow('autohide', t('mc_settings_auto_hide'), t('mc_settings_auto_hide_desc'), autoHideInput) +
-      _renderUiToggleRow('showplatformbadges', 'platform badges', '[T] [K] [Y] labels on messages', platformBadgesEnabled) +
-    '</div>';
+        def.options.map(function(o) {
+          return '<button class="hs-mc-size-btn' + (o.value === val ? ' active' : '') + '" data-set-key="' + def.key + '" data-set-value="' + escapeHtml(String(o.value)) + '">' + escapeHtml(_optLabel(o)) + '</button>'
+        }).join('') +
+        '</div>'
+    } else if (def.type === 'enum') {
+      inner = _setLabelSpan(def) +
+        '<select class="hs-mc-locale-select" data-set-key="' + def.key + '" style="max-width:55%">' +
+        def.options.map(function(o) {
+          return '<option value="' + escapeHtml(String(o.value)) + '"' + (o.value === val ? ' selected' : '') + '>' + escapeHtml(_optLabel(o)) + '</option>'
+        }).join('') +
+        '</select>'
+    } else if (def.type === 'range') {
+      var scale = def.displayScale || 1
+      inner = _setLabelSpan(def) +
+        '<div style="display:flex;align-items:center;gap:6px">' +
+        '<input class="hs-mc-set-range" type="range" min="' + (def.options.min * scale) + '" max="' + (def.options.max * scale) + '" step="' + (def.options.step * scale) + '" value="' + Math.round(val * scale) + '" data-set-key="' + def.key + '">' +
+        '<span class="hs-mc-set-range-val">' + Math.round(val * scale) + '</span>' +
+        '</div>'
+    } else if (def.control === 'textarea') {
+      block = true
+      split = false
+      var ph = def.placeholderKey ? t(def.placeholderKey) : (def.placeholder || '')
+      inner = _setLabelSpan(def) +
+        '<textarea class="hs-mc-setting-textarea" data-set-key="' + def.key + '" placeholder="' + escapeHtml(ph) + '" rows="3">' + escapeHtml(val) + '</textarea>'
+    } else { // text
+      inner = _setLabelSpan(def) +
+        '<input class="hs-mc-set-text-input" data-set-key="' + def.key + '" type="text" value="' + escapeHtml(val) + '" style="width:140px">'
+    }
+
+    rows.push({
+      id: def.key,
+      hay: base,
+      html: '<div class="hs-mc-setting-row' +
+        (split ? ' hs-mc-setting-row-split' : '') +
+        (block ? ' hs-mc-setting-row-block' : '') + child + '" data-set-row="' + def.key + '">' +
+        glyph + inner + chip +
+      '</div>',
+    })
+    return rows
   }
 
-  function _renderChatSubtab(ui) {
-    return '<div class="hs-mc-settings-group">' +
-      '<div class="hs-mc-settings-group-title">input</div>' +
-      _renderUiToggleRow('wysiwyg', t('mc_settings_input_preview'), t('mc_settings_input_preview_desc'), wysiwygEnabled) +
-      _renderUiToggleRow('vi', t('mc_settings_vi_mode'), t('mc_settings_vi_mode_desc'), viModeEnabled) +
-    '</div>' +
-    '<div class="hs-mc-settings-group">' +
-      '<div class="hs-mc-settings-group-title">messages</div>' +
-      _renderUiToggleRow('links', t('mc_settings_clickable_links'), t('mc_settings_clickable_links_desc'), linksEnabled) +
-      _renderUiToggleRow('linkpreviews', t('mc_settings_link_previews'), t('mc_settings_link_previews_desc'), linkPreviewsEnabled) +
-      _renderUiToggleRow('autoclaim', t('mc_settings_auto_claim'), t('mc_settings_auto_claim_desc'), autoClaimPoints) +
-      _renderUiToggleRow('dimtimeouts', t('mc_settings_dim_timeouts'), t('mc_settings_dim_timeouts_desc'), dimTimeouts) +
-      '<div class="hs-mc-setting-row hs-mc-setting-row-block">' +
-        '<span class="hs-mc-setting-label" data-tip="' + t('mc_settings_keyword_highlights_desc') + '">' + t('mc_settings_keyword_highlights') + '</span>' +
-        '<textarea class="hs-mc-setting-textarea" data-setting="keywordhighlights" placeholder="' + t('mc_settings_keyword_highlights_placeholder') + '" rows="3">' + escapeHtml(keywordHighlights) + '</textarea>' +
-      '</div>' +
-    '</div>';
+  function _setQueryTokens() {
+    return _setQuery.toLowerCase().split(/\s+/).filter(Boolean)
+  }
+  function _rowMatches(hay, tokens) {
+    return tokens.every(function(tk) { return hay.indexOf(tk) !== -1 })
   }
 
-  function _renderNotifsSubtab() {
-    return '<div class="hs-mc-settings-group">' +
-      '<div class="hs-mc-settings-group-title">' + t('mc_settings_inline_notifs') + '</div>' +
-      Object.entries(INLINE_NOTIF_TYPES).map(function(entry) {
-        var key = entry[0]; var def = entry[1];
-        return '<div class="hs-mc-setting-row">' +
-          '<button class="hs-mc-toggle-pill' + (inlineNotifs[key] ? ' active' : '') + '" data-setting="notif_' + key + '"><span class="hs-mc-toggle-knob"></span></button>' +
-          '<span class="hs-mc-setting-label" data-tip="' + escapeHtml(def.desc) + '"><span style="color:' + def.color + '">' + def.tag + '</span> ' + escapeHtml(def.label.replace(def.tag, '').trim()) + '</span>' +
-        '</div>';
-      }).join('') +
-    '</div>' +
-    '<div class="hs-mc-settings-group">' +
-      '<div class="hs-mc-settings-group-title">' + t('mc_settings_twitch_events') + '</div>' +
-      Object.entries(HERMES_EVENT_TYPES).map(function(entry) {
-        var key = entry[0]; var def = entry[1];
-        return '<div class="hs-mc-setting-row">' +
-          '<button class="hs-mc-toggle-pill' + (hermesToggles[key] ? ' active' : '') + '" data-setting="hermes_' + key + '"><span class="hs-mc-toggle-knob"></span></button>' +
-          '<span class="hs-mc-setting-label" data-tip="' + escapeHtml(def.desc) + '"><span style="color:' + def.color + '">◆</span> ' + escapeHtml(def.label) + '</span>' +
-        '</div>';
-      }).join('') +
-    '</div>' +
-    '<div class="hs-mc-settings-group">' +
-      '<div class="hs-mc-settings-group-title">on @mention (tab unfocused)</div>' +
-      '<div class="hs-mc-setting-row">' +
-        '<button class="hs-mc-toggle-pill" data-storage-key="hs_notifications"><span class="hs-mc-toggle-knob"></span></button>' +
-        '<span class="hs-mc-setting-label" data-tip="show a desktop notification when someone @s you">browser notification</span>' +
-      '</div>' +
-      '<div class="hs-mc-setting-row">' +
-        '<button class="hs-mc-toggle-pill" data-uisetting="mentionTitleFlash"><span class="hs-mc-toggle-knob"></span></button>' +
-        '<span class="hs-mc-setting-label" data-tip="pulse the browser tab title with the mentioner\'s name until you focus the tab">tab title flash</span>' +
-      '</div>' +
-      '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
-        '<span class="hs-mc-setting-label" data-tip="audio ping volume on mention. 0 = silent. uses pure WebAudio tones, no asset shipped.">mention sound volume</span>' +
-        '<input class="hs-mc-set-text-input" type="range" min="0" max="100" step="5" data-setting="mentionsoundvolume" style="width:120px">' +
-      '</div>' +
-    '</div>' +
-    '<div class="hs-mc-settings-group">' +
-      '<div class="hs-mc-settings-group-title">cross-platform follow</div>' +
-      '<div class="hs-mc-setting-row">' +
-        '<button class="hs-mc-toggle-pill" data-uisetting="crossFollowKick"><span class="hs-mc-toggle-knob"></span></button>' +
-        '<span class="hs-mc-setting-label" data-tip="when you follow on heatsync, also follow on kick if they have a linked kick account. needs a kick.com login; queues otherwise">also follow on kick</span>' +
-      '</div>' +
-    '</div>';
+  // Render the registry sections of one category. opts.only limits to the
+  // named sections (lets system interleave hand-rendered islands).
+  function _regSections(cat, only) {
+    var sections = []
+    var byTitle = new Map()
+    for (const def of SETTINGS) {
+      if (def.category !== cat || !_depSatisfied(def)) continue
+      var title = _setSectionTitle(def)
+      if (only && only.indexOf(def.section) === -1) continue
+      var s = byTitle.get(title)
+      if (!s) { s = { title: title, rows: [] }; byTitle.set(title, s); sections.push(s) }
+      s.rows.push.apply(s.rows, _rowsForDef(def))
+    }
+    return sections.map(function(s) {
+      var fold = _setCollapsed.has(_settingsSubtab + '|' + s.title)
+      return '<div class="hs-mc-settings-group">' +
+        '<div class="hs-mc-settings-group-title" data-set-fold="' + escapeHtml(s.title) + '">' + (fold ? '▸ ' : '▾ ') + escapeHtml(s.title) + '</div>' +
+        (fold ? '' : s.rows.map(function(r) { return r.html }).join('')) +
+      '</div>'
+    }).join('')
   }
 
-  function _renderModSubtab() {
+  // Search across ALL categories — current-category matches grouped first,
+  // other-category matches under a divider with a category chip.
+  function _renderSearchResults() {
+    var tokens = _setQueryTokens()
+    var here = []
+    var elsewhere = []
+    var total = 0
+    for (const def of SETTINGS) {
+      if (!_depSatisfied(def)) continue
+      var rows = _rowsForDef(def, { chip: def.category !== _settingsSubtab })
+      total += rows.length
+      for (const r of rows) {
+        if (!_rowMatches(r.hay, tokens)) continue
+        if (def.category === _settingsSubtab) here.push(r)
+        else elsewhere.push(r)
+      }
+    }
+    var html = ''
+    if (here.length) {
+      html += '<div class="hs-mc-settings-group">' + here.map(function(r) { return r.html }).join('') + '</div>'
+    }
+    if (elsewhere.length) {
+      html += '<div class="hs-mc-set-divider">─── other categories ───</div>' +
+        '<div class="hs-mc-settings-group">' + elsewhere.map(function(r) { return r.html }).join('') + '</div>'
+    }
+    if (!here.length && !elsewhere.length) {
+      html = '<div class="hs-mc-setting-row" style="color:#808080">no matches</div>'
+    }
+    return { html: html, count: here.length + elsewhere.length, total: total }
+  }
+
+  // ── hand-rendered islands ────────────────────────────────────────────
+
+  function _renderModToolbarGroup() {
     return '<div class="hs-mc-settings-group">' +
       '<div class="hs-mc-settings-group-title">mod toolbar -- hover actions on chat rows when you mod the channel</div>' +
       Object.entries(MOD_BUTTON_CATALOG).map(function(entry) {
@@ -5059,71 +5165,11 @@
           '<span class="hs-mc-setting-label"><span style="font-family:monospace;color:#ff8700;margin-right:6px;min-width:34px;display:inline-block">' + def.label + '</span>' + escapeHtml(def.title) + '</span>' +
         '</div>';
       }).join('') +
-    '</div>' +
-    '<div class="hs-mc-settings-group">' +
-      '<div class="hs-mc-settings-group-title">automod</div>' +
-      '<div class="hs-mc-setting-row">' +
-        '<button class="hs-mc-toggle-pill" data-uisetting="automodAllCaps"><span class="hs-mc-toggle-knob"></span></button>' +
-        '<span class="hs-mc-setting-label" data-tip="hide messages over 10 chars that are mostly uppercase">hide all-caps spam</span>' +
-      '</div>' +
-      '<div class="hs-mc-setting-row hs-mc-setting-row-block">' +
-        '<span class="hs-mc-setting-label" data-tip="one pattern per line, case-insensitive -- matching messages get hidden">filter regex</span>' +
-        '<textarea class="hs-mc-setting-textarea" data-setting="automodregex" placeholder="bit\\.ly\nfree\\s+v[\\-]?bucks" rows="3"></textarea>' +
-      '</div>' +
     '</div>';
   }
 
-  function _renderTweaksSubtab() {
-    // Top: search input filters visible rows by label substring (client-only).
-    // Subtitle: explain scope so users don't expect kick/yt parity.
-    return '<div class="hs-mc-settings-group hs-mc-tweaks-search-group">' +
-      '<input class="hs-mc-set-text-input hs-mc-tweaks-search" type="search" placeholder="filter tweaks..." style="width:100%;font-size:13px">' +
-      '<div style="color:#808080;font-size:11px;margin-top:6px">hides twitch.tv chrome — kick/youtube unaffected</div>' +
-    '</div>' +
-    TWEAK_GROUPS.map(function(group) {
-      return '<div class="hs-mc-settings-group hs-mc-tweaks-group">' +
-        '<div class="hs-mc-settings-group-title">' + escapeHtml(group.title) + '</div>' +
-        group.items.map(function(item) {
-          var key = item[0], label = item[1], tip = item[2];
-          var on = !!_tweakFlags[key];
-          return '<div class="hs-mc-setting-row hs-mc-tweak-row" data-tweak-label="' + escapeHtml(label.toLowerCase()) + '">' +
-            '<button class="hs-mc-toggle-pill' + (on ? ' active' : '') + '" data-uisetting="' + key + '"><span class="hs-mc-toggle-knob"></span></button>' +
-            '<span class="hs-mc-setting-label" data-tip="' + escapeHtml(tip) + '">' + escapeHtml(label) + '</span>' +
-          '</div>';
-        }).join('') +
-      '</div>';
-    }).join('');
-  }
-
-  function _renderFiltersSubtab() {
-    // v1.6 — Content section: per-viewer content filter opt-ins. sexual +
-    // gore default OFF (hidden server-side); toggle on to receive them with
-    // the 2px dashed cyan border. weapons/drugs/hate default ON. Initial
-    // state hydrates from chrome.storage (BG side keeps in sync via
-    // onChanged) so pills render correctly before the GET round-trips.
+  function _renderLanguageGroup() {
     return '<div class="hs-mc-settings-group">' +
-      '<div class="hs-mc-settings-group-title">content</div>' +
-      CW_CATS.map(function(c) {
-        return '<div class="hs-mc-setting-row">' +
-          '<button class="hs-mc-toggle-pill' + (cwLocal[c.key] ? ' active' : '') + '" data-' + c.key + '-pill><span class="hs-mc-toggle-knob"></span></button>' +
-          '<span class="hs-mc-setting-label" data-tip="' + c.tip + '">' + c.label + '</span>' +
-        '</div>';
-      }).join('') +
-    '</div>';
-  }
-
-  function _renderSystemSubtab(ui) {
-    var crash = !!(ui && ui.crashTelemetry);
-    return '<div class="hs-mc-settings-group">' +
-      '<div class="hs-mc-settings-group-title">tabs</div>' +
-      HIDABLE_TABS.map(function(id) {
-        return '<div class="hs-mc-setting-row">' +
-          '<button class="hs-mc-toggle-pill' + (!hiddenTabs.has(id) ? ' active' : '') + '" data-setting="hidetab_' + id + '"><span class="hs-mc-toggle-knob"></span></button>' +
-          '<span class="hs-mc-setting-label">' + t('mc_tab_' + id) + '</span>' +
-        '</div>';
-      }).join('') +
-    '</div>' +
-    '<div class="hs-mc-settings-group">' +
       '<div class="hs-mc-settings-group-title">language</div>' +
       '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
         '<span class="hs-mc-setting-label">interface language</span>' +
@@ -5133,8 +5179,11 @@
           }).join('') +
         '</select>' +
       '</div>' +
-    '</div>' +
-    '<div class="hs-mc-settings-group">' +
+    '</div>';
+  }
+
+  function _renderMutedGroup() {
+    return '<div class="hs-mc-settings-group">' +
       '<div class="hs-mc-settings-group-title">' + t('mc_settings_muted_users') + '</div>' +
       (mutedUsers.size === 0
         ? '<div class="hs-mc-setting-row" style="color:#808080;font-size:13px">' + t('mc_settings_no_muted') + '</div>'
@@ -5145,25 +5194,25 @@
           '</div>';
         }).join('')
       ) +
-    '</div>' +
-    '<div class="hs-mc-settings-group">' +
-      '<div class="hs-mc-settings-group-title">advanced</div>' +
-      '<div class="hs-mc-setting-row">' +
-        '<button class="hs-mc-toggle-pill' + (crash ? ' active' : '') + '" data-uisetting="crashTelemetry"><span class="hs-mc-toggle-knob"></span></button>' +
-        '<span class="hs-mc-setting-label" data-tip="show the diagnostic errors panel below. errors are always captured locally to chrome.storage and never uploaded; this toggle only controls the panel\'s visibility.">show diagnostic errors</span>' +
-      '</div>' +
-      '<div class="hs-mc-setting-row hs-mc-setting-row-block" id="hs-set-crashlog-row"' + (!crash ? ' style="display:none"' : '') + '>' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;width:100%">' +
-          '<span class="hs-mc-setting-label">recent errors</span>' +
-          '<div style="display:flex;gap:4px">' +
-            '<button id="hs-set-crash-copy" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 8px;font-size:11px;cursor:pointer;font-family:\'Liberation Mono\',monospace">copy</button>' +
-            '<button id="hs-set-crash-clear" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 8px;font-size:11px;cursor:pointer;font-family:\'Liberation Mono\',monospace">clear</button>' +
-          '</div>' +
+    '</div>';
+  }
+
+  function _renderCrashLogBlock() {
+    var crash = !!getSetting('crashTelemetry');
+    return '<div class="hs-mc-setting-row hs-mc-setting-row-block" id="hs-set-crashlog-row"' + (!crash ? ' style="display:none"' : '') + '>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;width:100%">' +
+        '<span class="hs-mc-setting-label">recent errors</span>' +
+        '<div style="display:flex;gap:4px">' +
+          '<button id="hs-set-crash-copy" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 8px;font-size:11px;cursor:pointer;font-family:\'Liberation Mono\',monospace">copy</button>' +
+          '<button id="hs-set-crash-clear" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 8px;font-size:11px;cursor:pointer;font-family:\'Liberation Mono\',monospace">clear</button>' +
         '</div>' +
-        '<pre id="hs-set-crash-pre" class="hs-mc-set-crash-pre">(loading...)</pre>' +
       '</div>' +
-    '</div>' +
-    '<div class="hs-mc-settings-group">' +
+      '<pre id="hs-set-crash-pre" class="hs-mc-set-crash-pre">(loading...)</pre>' +
+    '</div>';
+  }
+
+  function _renderBackupGroup() {
+    return '<div class="hs-mc-settings-group">' +
       '<div class="hs-mc-settings-group-title">backup / restore</div>' +
       '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
         '<span class="hs-mc-setting-label" data-tip="dump ui_settings + all hs_* keys to a JSON file. portable across devices and browsers.">export settings</span>' +
@@ -5179,6 +5228,24 @@
         '<button class="hs-mc-defaults-btn" style="background:#808080;border:2px outset #fff;padding:2px 10px;font-size:13px;font-weight:bold;cursor:pointer;font-family:\'Liberation Mono\',monospace;color:#000;box-shadow:1px 1px 0 #000">default</button>' +
       '</div>' +
     '</div>';
+  }
+
+  // Compose one category pane: registry sections + that category's islands.
+  function _renderCategoryPane(cat) {
+    if (cat === 'mod') return _renderModToolbarGroup() + _regSections(cat)
+    if (cat === 'tweaks') {
+      return '<div class="hs-mc-set-keyhint" style="padding-top:8px">hides twitch.tv chrome — kick/youtube unaffected</div>' + _regSections(cat)
+    }
+    if (cat === 'system') {
+      // crash log block nests inside the advanced section, after its pill
+      var adv = _regSections(cat, ['advanced'])
+      var advFolded = _setCollapsed.has(cat + '|advanced')
+      if (!advFolded && adv.endsWith('</div>')) {
+        adv = adv.slice(0, -6) + _renderCrashLogBlock() + '</div>'
+      }
+      return _regSections(cat, ['tabs']) + _renderLanguageGroup() + _renderMutedGroup() + adv + _renderBackupGroup()
+    }
+    return _regSections(cat)
   }
 
   // ─── settings export / import ────────────────────────────────────────────
@@ -5294,71 +5361,164 @@
     }
   }
 
+  // ─── settings keyboard nav — roving focus, vim-first ────────────────
+  // One document-level listener (bound once). Bare-letter motions
+  // (j/k/h/l/g/G/d/z) gate on viModeEnabled; arrows, Enter, /, Esc and
+  // Backspace always work. Letters typed into the search box stay there.
+  let _setKeysBound = false
+  let _setPendingKey = ''
+  function _setVisibleRows() {
+    const msgsEl = document.getElementById('hs-mc-messages')
+    return msgsEl ? [...msgsEl.querySelectorAll('[data-set-row]')] : []
+  }
+  function _setFocusMove(rows, i) {
+    if (!rows.length) return
+    const next = Math.max(0, Math.min(rows.length - 1, i))
+    rows.forEach(function(r) { r.classList.remove('hs-mc-set-row-focus') })
+    rows[next].classList.add('hs-mc-set-row-focus')
+    _setFocusRow = rows[next].dataset.setRow
+    rows[next].scrollIntoView({ block: 'nearest' })
+  }
+  function _setRowDef(row) {
+    const key = (row.dataset.setRow || '').split(':')[0]
+    return _SETTINGS_BY_KEY.get(key)
+  }
+  function _setRowActivate(row) {
+    const pill = row.querySelector('button.hs-mc-toggle-pill[data-set-key]')
+    if (pill) { pill.click(); return }
+    const seg = row.querySelector('.hs-mc-size-btn[data-set-key]')
+    if (seg) { _setRowAdjust(row, 1); return }
+    const ctl = row.querySelector('select[data-set-key], input[data-set-key], textarea[data-set-key]')
+    if (ctl) ctl.focus()
+  }
+  function _setRowAdjust(row, dir) {
+    const def = _setRowDef(row)
+    if (!def) return
+    if (def.type === 'enum') {
+      const i = def.options.findIndex(function(o) { return o.value === getSetting(def.key) })
+      const o = def.options[(i + dir + def.options.length) % def.options.length]
+      setSetting(def.key, o.value)
+      renderSettingsTab()
+    } else if (def.type === 'range') {
+      const v = getSetting(def.key) + dir * def.options.step
+      setSetting(def.key, v)
+      renderSettingsTab()
+    }
+  }
+  function _setRowReset(row) {
+    const def = _setRowDef(row)
+    if (!def || def.noReset) return
+    setSetting(def.key, def.default)
+    renderSettingsTab()
+  }
+  function _bindSettingsKeyboard() {
+    if (_setKeysBound) return
+    _setKeysBound = true
+    document.addEventListener('keydown', function(e) {
+      if (currentTab !== 'settings') return
+      const msgsEl = document.getElementById('hs-mc-messages')
+      if (!msgsEl || !msgsEl.querySelector('.hs-mc-settings-panel')) return
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      const searchEl = msgsEl.querySelector('input.hs-mc-set-search')
+      const t = e.target
+      const inSearch = t === searchEl
+      const typing = t && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))
+      const rows = _setVisibleRows()
+      const idx = rows.findIndex(function(r) { return r.dataset.setRow === _setFocusRow })
+
+      if (inSearch) {
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          _setQuery = ''
+          renderSettingsTab()
+        } else if (e.key === 'Enter' || e.key === 'ArrowDown') {
+          e.preventDefault()
+          searchEl.blur()
+          _setFocusMove(rows, 0)
+        }
+        return // everything else is query text
+      }
+      if (typing) return // free typing in textareas / inputs / selects
+
+      const vim = viModeEnabled
+      const k = e.key
+      if (k === '/') { e.preventDefault(); if (searchEl) searchEl.focus(); return }
+      if (k === 'Escape') {
+        if (_setQuery) { _setQuery = ''; renderSettingsTab(); return }
+        rows.forEach(function(r) { r.classList.remove('hs-mc-set-row-focus') })
+        _setFocusRow = null
+        return
+      }
+      if (k === 'ArrowDown' || (vim && k === 'j')) { e.preventDefault(); _setFocusMove(rows, idx + 1); _setPendingKey = ''; return }
+      if (k === 'ArrowUp' || (vim && k === 'k')) { e.preventDefault(); _setFocusMove(rows, idx - 1); _setPendingKey = ''; return }
+      if ((k === 'Enter' || k === ' ') && idx >= 0) { e.preventDefault(); _setRowActivate(rows[idx]); return }
+      if (k === 'Backspace' && idx >= 0) { e.preventDefault(); _setRowReset(rows[idx]); return }
+      if (!vim) return
+      if (k === 'g') {
+        if (_setPendingKey === 'g') { _setPendingKey = ''; e.preventDefault(); _setFocusMove(rows, 0) }
+        else _setPendingKey = 'g'
+        return
+      }
+      if (k === 'G') { e.preventDefault(); _setPendingKey = ''; _setFocusMove(rows, rows.length - 1); return }
+      if (k === 'h' && idx >= 0) { e.preventDefault(); _setRowAdjust(rows[idx], -1); return }
+      if (k === 'l' && idx >= 0) { e.preventDefault(); _setRowAdjust(rows[idx], 1); return }
+      if (k === 'd' && idx >= 0) { e.preventDefault(); _setRowReset(rows[idx]); return }
+      if (k === 'z') { _setPendingKey = 'z'; return }
+      if (k === 'a' && _setPendingKey === 'z') {
+        _setPendingKey = ''
+        if (idx >= 0) {
+          const fold = rows[idx].closest('.hs-mc-settings-group')
+          const title = fold && fold.querySelector('[data-set-fold]')
+          if (title) { e.preventDefault(); title.click() }
+        }
+        return
+      }
+      _setPendingKey = ''
+    }, { signal: mcSignal })
+  }
+
   function renderSettingsTab() {
     var msgsEl = document.getElementById('hs-mc-messages');
     if (!msgsEl) return;
 
     _clearMessageIndices();
 
-    var subtabContent = '';
-    if (_settingsSubtab === 'display') {
-      subtabContent = _renderDisplaySubtab(null);
-    } else if (_settingsSubtab === 'chat') {
-      subtabContent = _renderChatSubtab(null);
-    } else if (_settingsSubtab === 'notifs') {
-      subtabContent = _renderNotifsSubtab();
-    } else if (_settingsSubtab === 'mod') {
-      subtabContent = _renderModSubtab();
-    } else if (_settingsSubtab === 'filters') {
-      subtabContent = _renderFiltersSubtab();
-    } else if (_settingsSubtab === 'tweaks') {
-      subtabContent = _renderTweaksSubtab();
-    } else if (_settingsSubtab === 'system') {
-      subtabContent = _renderSystemSubtab(null);
+    var searchActive = _setQueryTokens().length > 0
+    var bodyContent
+    var countLabel = ''
+    if (searchActive) {
+      var res = _renderSearchResults()
+      bodyContent = res.html
+      countLabel = res.count + '/' + res.total
+    } else {
+      bodyContent = _renderCategoryPane(_settingsSubtab)
     }
+
+    var keyhint = viModeEnabled
+      ? 'j/k move · enter toggle · h/l adjust · / search · za fold · d default'
+      : '↑/↓ move · enter toggle · / search · ⌫ default'
 
     // All values in the template are from module state or escapeHtml'd -- no raw user input
     msgsEl.innerHTML =
       '<div class="hs-mc-settings-panel">' +
         _renderSetSubtabBar() +
+        '<div class="hs-mc-set-searchbar">' +
+          '<input class="hs-mc-set-search" type="search" placeholder="/ search settings..." value="' + escapeHtml(_setQuery) + '">' +
+          '<span class="hs-mc-set-search-count">' + countLabel + '</span>' +
+        '</div>' +
         '<div class="hs-mc-set-subtab-body">' +
-          subtabContent +
+          bodyContent +
+          '<div class="hs-mc-set-keyhint">' + keyhint + '</div>' +
         '</div>' +
       '</div>';
 
-    // Populate controls the subtab templates render without live state —
-    // synchronous registry reads (loadAllSettings hydrated the cache at init)
-    if (_settingsSubtab === 'display') {
-      var famSel = msgsEl.querySelector('select[data-setting="fontfamily"]');
-      if (famSel) famSel.value = getSetting('fontFamily');
-      var fszSel = msgsEl.querySelector('select[data-setting="fontsize"]');
-      if (fszSel) fszSel.value = getSetting('fontSize');
-      var pill = msgsEl.querySelector('.hs-mc-toggle-pill[data-setting="showplatformbadges"]');
-      if (pill) pill.classList.toggle('active', !!getSetting('showPlatformBadges'));
-    }
-    if (_settingsSubtab === 'mod') {
-      var capsPill = msgsEl.querySelector('.hs-mc-toggle-pill[data-uisetting="automodAllCaps"]');
-      if (capsPill) capsPill.classList.toggle('active', !!getSetting('automodAllCaps'));
-      var reTa = msgsEl.querySelector('textarea[data-setting="automodregex"]');
-      if (reTa) reTa.value = getSetting('automodRegex');
-    }
-    if (_settingsSubtab === 'system') {
-      var crashOn = !!getSetting('crashTelemetry');
-      var crashPill = msgsEl.querySelector('.hs-mc-toggle-pill[data-uisetting="crashTelemetry"]');
-      if (crashPill) crashPill.classList.toggle('active', crashOn);
-      var crashRow = msgsEl.querySelector('#hs-set-crashlog-row');
-      if (crashRow) crashRow.style.display = crashOn ? '' : 'none';
-      if (crashOn) _loadCrashLog();
-    }
-    if (_settingsSubtab === 'notifs') {
-      var xfkPill = msgsEl.querySelector('.hs-mc-toggle-pill[data-uisetting="crossFollowKick"]');
-      if (xfkPill) xfkPill.classList.toggle('active', !!getSetting('crossFollowKick'));
-      var flashPill = msgsEl.querySelector('.hs-mc-toggle-pill[data-uisetting="mentionTitleFlash"]');
-      if (flashPill) flashPill.classList.toggle('active', !!getSetting('mentionTitleFlash'));
-      var volRange = msgsEl.querySelector('input[data-setting="mentionsoundvolume"]');
-      if (volRange) volRange.value = String(Math.round(getSetting('mentionSoundVolume') * 100));
-      var notifPill = msgsEl.querySelector('.hs-mc-toggle-pill[data-storage-key="hs_notifications"]');
-      if (notifPill) notifPill.classList.toggle('active', !!getSetting('hs_notifications'));
+    // Controls render with live values inline (getSetting); only the crash
+    // log pre needs an async fill, and keyboard focus needs restoring.
+    if (_settingsSubtab === 'system' && !searchActive && getSetting('crashTelemetry')) _loadCrashLog();
+    if (_setFocusRow) {
+      var fr = msgsEl.querySelector('[data-set-row="' + CSS.escape(_setFocusRow) + '"]');
+      if (fr) fr.classList.add('hs-mc-set-row-focus');
+      else _setFocusRow = null;
     }
 
     // Wire up toggles via event delegation
@@ -5400,88 +5560,23 @@
         return;
       }
 
-      // [data-server-setting] handler removed in v1.6 audit pass — see
-      // _SERVER_FILTER_DEFS deletion above. PATCH'd /api/user/settings with
-      // unwired keys; server never read them.
-
-      // v1.6 per-viewer content filter toggles — registry entries with the
-      // cwServerPatch applier: optimistic local write, server PATCH, rollback
-      // + toast on failure, refresh_all flush on success.
-      for (const cw of CW_CATS) {
-        const cwPill = e.target.closest('.hs-mc-toggle-pill[data-' + cw.key + '-pill]');
-        if (!cwPill) continue;
-        const cwNext = !cwPill.classList.contains('active');
-        cwPill.classList.toggle('active', cwNext);
-        setSetting(cw.storage, cwNext);
+      // Section fold/unfold
+      var foldTitle = e.target.closest('.hs-mc-settings-group-title[data-set-fold]');
+      if (foldTitle) {
+        var foldId = _settingsSubtab + '|' + foldTitle.dataset.setFold;
+        if (_setCollapsed.has(foldId)) _setCollapsed.delete(foldId);
+        else _setCollapsed.add(foldId);
+        _saveCollapsedSections();
+        renderSettingsTab();
         return;
       }
 
-      // registry-managed pills — data-uisetting (tweaks, crashTelemetry,
-      // mentionTitleFlash, crossFollowKick, automodAllCaps) and
-      // data-storage-key (hs_notifications) both resolve through the registry
-      var registryPill = e.target.closest('.hs-mc-toggle-pill[data-uisetting], .hs-mc-toggle-pill[data-storage-key], [data-set-key]');
-      if (registryPill) {
-        handleRegistryControl(registryPill);
-        return;
-      }
-
-      var toggle = e.target.closest('.hs-mc-toggle-pill[data-setting]');
-      if (toggle) {
-        var setting = toggle.dataset.setting;
-        // boolmap subkey toggles (inline notifs / hermes events) — flip one
-        // subkey, persist the whole map through the registry
-        if (setting.startsWith('notif_')) {
-          var notifKey = setting.slice(6);
-          if (INLINE_NOTIF_TYPES[notifKey] !== undefined) {
-            var notifMap = Object.assign({}, getSetting('inlineNotifs'));
-            notifMap[notifKey] = !notifMap[notifKey];
-            setSetting('inlineNotifs', notifMap);
-            toggle.classList.toggle('active');
-          }
-          return;
-        }
-        if (setting.startsWith('hermes_')) {
-          var hermKey = setting.slice(7);
-          if (HERMES_EVENT_TYPES[hermKey] !== undefined) {
-            var hermMap = Object.assign({}, getSetting('hermesEvents'));
-            hermMap[hermKey] = !hermMap[hermKey];
-            setSetting('hermesEvents', hermMap);
-            toggle.classList.toggle('active');
-          }
-          return;
-        }
-        // Tab visibility toggles — hiddenTabs multiselect (stored = hidden ids)
-        if (setting.startsWith('hidetab_')) {
-          var tabId = setting.slice(8);
-          if (HIDABLE_TABS.includes(tabId)) {
-            var hidden = getSetting('hiddenTabs');
-            setSetting('hiddenTabs', hidden.includes(tabId)
-              ? hidden.filter(function(x) { return x !== tabId })
-              : hidden.concat(tabId));
-            toggle.classList.toggle('active');
-          }
-          return;
-        }
-        // Everything else resolves through the registry alias table
-        handleRegistryControl(toggle);
-        return;
-      }
-
-      var sizeBtn = e.target.closest('.hs-mc-size-btn[data-size]');
-      if (sizeBtn) {
-        var emSize = parseInt(sizeBtn.dataset.size);
-        if (emSize && setSetting('hs_emote_size', emSize)) {
-          msgsEl.querySelectorAll('.hs-mc-size-btn[data-size]').forEach(function(b) { b.classList.toggle('active', parseInt(b.dataset.size) === emSize); });
-        }
-        return;
-      }
-
-      var emojiSizeBtn = e.target.closest('.hs-mc-size-btn[data-emoji-size]');
-      if (emojiSizeBtn) {
-        var ejSize = parseInt(emojiSizeBtn.dataset.emojiSize);
-        if (ejSize && setSetting('hs_emoji_size', ejSize)) {
-          msgsEl.querySelectorAll('.hs-mc-size-btn[data-emoji-size]').forEach(function(b) { b.classList.toggle('active', parseInt(b.dataset.emojiSize) === ejSize); });
-        }
+      // Registry controls — data-set-key (registry-rendered) covers every
+      // pill, size button, and multiselect chip; selects/inputs/textareas
+      // are handled by the change/input listeners below.
+      var regCtl = e.target.closest('[data-set-key]');
+      if (regCtl && !/^(SELECT|INPUT|TEXTAREA)$/.test(regCtl.tagName)) {
+        handleRegistryControl(regCtl);
         return;
       }
 
@@ -5523,68 +5618,49 @@
     };
     msgsEl.addEventListener('click', msgsEl._hsSettingsClick);
 
-    // Input handler — keyword highlights, automod regex, custom font name (all debounced)
+    // Input handler — search box, registry text/textarea (debounced) + range
     if (msgsEl._hsSettingsInput) msgsEl.removeEventListener('input', msgsEl._hsSettingsInput);
-    var kwDebounce = null;
-    var automodDebounce = null;
-    var customFontDebounce = null;
+    var _setInputDebounce = {};
+    var _setSearchDebounce = null;
     msgsEl._hsSettingsInput = function settingsInput(e) {
-      // text/textarea registry controls — debounced setSetting (the
-      // applier handles regex rebuild / automod recompile / font apply)
-      var ta = e.target.closest('textarea[data-setting="keywordhighlights"]');
-      if (ta) {
-        if (kwDebounce) cleanup.clearTimeout(kwDebounce);
-        kwDebounce = cleanup.setTimeout(function() {
-          setSetting('keywordHighlights', ta.value);
-        }, 400);
+      var search = e.target.closest('input.hs-mc-set-search');
+      if (search) {
+        if (_setSearchDebounce) cleanup.clearTimeout(_setSearchDebounce);
+        _setSearchDebounce = cleanup.setTimeout(function() {
+          _setQuery = search.value;
+          renderSettingsTab();
+          // re-render replaced the input — restore focus + caret
+          var fresh = msgsEl.querySelector('input.hs-mc-set-search');
+          if (fresh) {
+            fresh.focus();
+            fresh.setSelectionRange(fresh.value.length, fresh.value.length);
+          }
+        }, 150);
         return;
       }
-      var automodTa = e.target.closest('textarea[data-setting="automodregex"]');
-      if (automodTa) {
-        if (automodDebounce) cleanup.clearTimeout(automodDebounce);
-        automodDebounce = cleanup.setTimeout(function() {
-          setSetting('automodRegex', automodTa.value);
-        }, 400);
-        return;
-      }
-      var customFontInput = e.target.closest('input[data-setting="customfontname"]');
-      if (customFontInput) {
-        if (customFontDebounce) cleanup.clearTimeout(customFontDebounce);
-        customFontDebounce = cleanup.setTimeout(function() {
-          setSetting('customFontName', customFontInput.value);
-        }, 400);
-        return;
-      }
-      // Mention sound volume range slider — save normalized 0..1 on each
-      // input event; the mentionPing applier plays a preview at the new volume.
-      var volRange = e.target.closest('input[data-setting="mentionsoundvolume"]');
-      if (volRange) {
-        var pct = parseInt(volRange.value, 10) || 0;
-        setSetting('mentionSoundVolume', pct / 100);
-        return;
-      }
-      // Tweaks subtab — live filter rows by label substring (no debounce).
-      var tweaksSearch = e.target.closest('input.hs-mc-tweaks-search');
-      if (tweaksSearch) {
-        var q = tweaksSearch.value.trim().toLowerCase();
-        var rows = msgsEl.querySelectorAll('.hs-mc-tweak-row');
-        var groupHits = new Map(); // group element → matched row count
-        rows.forEach(function(row) {
-          var lbl = row.getAttribute('data-tweak-label') || '';
-          var hit = !q || lbl.indexOf(q) !== -1;
-          row.style.display = hit ? '' : 'none';
-          var grp = row.closest('.hs-mc-tweaks-group');
-          if (grp) groupHits.set(grp, (groupHits.get(grp) || 0) + (hit ? 1 : 0));
-        });
-        groupHits.forEach(function(count, grp) {
-          grp.style.display = count > 0 ? '' : 'none';
-        });
-        return;
+      var regInput = e.target.closest('[data-set-key]');
+      if (regInput) {
+        var def = _SETTINGS_BY_KEY.get(regInput.dataset.setKey);
+        if (!def) return;
+        if (def.type === 'range') {
+          var scale = def.displayScale || 1;
+          setSetting(def.key, parseFloat(regInput.value) / scale);
+          var valEl = regInput.parentElement.querySelector('.hs-mc-set-range-val');
+          if (valEl) valEl.textContent = regInput.value;
+          return;
+        }
+        if (def.type === 'text') {
+          if (_setInputDebounce[def.key]) cleanup.clearTimeout(_setInputDebounce[def.key]);
+          _setInputDebounce[def.key] = cleanup.setTimeout(function() {
+            setSetting(def.key, regInput.value);
+          }, 400);
+          return;
+        }
       }
     };
     msgsEl.addEventListener('input', msgsEl._hsSettingsInput);
 
-    // Change handler — locale, font family, font size selects
+    // Change handler — locale (island) + registry selects
     if (msgsEl._hsSettingsChange) msgsEl.removeEventListener('change', msgsEl._hsSettingsChange);
     msgsEl._hsSettingsChange = function settingsChange(e) {
       var localeSel = e.target.closest('select[data-setting="locale"]');
@@ -5593,24 +5669,26 @@
         try { location.reload(); } catch (_e) {}
         return;
       }
-      var famSel = e.target.closest('select[data-setting="fontfamily"]');
-      if (famSel) {
-        var fam = famSel.value;
-        // Bitmap fonts render crisp at their native size only — snap the
-        // size to the font's design size. silent: the fontFamily write
-        // below runs the (shared) fonts applier once with both values.
-        var nativeSize = fam === 'GohuFont' ? '14' : (fam === 'CozetteVector' || fam === 'twitch') ? '13' : null;
-        if (nativeSize) setSetting('fontSize', nativeSize, { silent: true });
-        setSetting('fontFamily', fam); // fonts applier + settings re-render
-        return;
-      }
-      var fszSel = e.target.closest('select[data-setting="fontsize"]');
-      if (fszSel) {
-        setSetting('fontSize', fszSel.value);
+      var regSel = e.target.closest('select[data-set-key]');
+      if (regSel) {
+        var selKey = regSel.dataset.setKey;
+        if (selKey === 'fontFamily') {
+          // Bitmap fonts render crisp at their native size only — snap the
+          // size to the font's design size. silent: the fontFamily write
+          // below runs the (shared) fonts applier once with both values.
+          var fam = regSel.value;
+          var nativeSize = fam === 'GohuFont' ? '14' : (fam === 'CozetteVector' || fam === 'twitch') ? '13' : null;
+          if (nativeSize) setSetting('fontSize', nativeSize, { silent: true });
+          setSetting('fontFamily', fam); // fonts applier + settings re-render
+          return;
+        }
+        setSetting(selKey, regSel.value);
         return;
       }
     };
     msgsEl.addEventListener('change', msgsEl._hsSettingsChange);
+
+    _bindSettingsKeyboard();
 
     // Custom tooltip for settings labels (native title attribute blocked in content scripts)
     var tip = document.getElementById('hs-settings-tip');

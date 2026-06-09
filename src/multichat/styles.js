@@ -5276,6 +5276,105 @@ function injectStyles() {
       display: none;
     }
 
+    /* == Settings registry UI — search bar, focus row, sections ============ */
+    .hs-mc-set-searchbar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      border-bottom: 1px solid rgba(255,255,255,0.2);
+      position: sticky;
+      top: 46px; /* below the subtab rail */
+      background: #000;
+      z-index: 2;
+      flex-shrink: 0;
+    }
+    .hs-mc-set-search {
+      flex: 1;
+      background: #000;
+      color: #fff;
+      border: 1px solid #808080;
+      font-family: inherit;
+      font-size: 13px;
+      padding: 3px 6px;
+      min-width: 0;
+    }
+    .hs-mc-set-search:focus {
+      outline: none;
+      border-color: #ff8700;
+    }
+    .hs-mc-set-search-count {
+      color: #808080;
+      font-size: 11px;
+      flex-shrink: 0;
+    }
+    .hs-mc-setting-row.hs-mc-set-row-focus,
+    .hs-mc-setting-row.hs-mc-set-row-focus * {
+      background: #fff !important;
+      color: #000 !important;
+    }
+    .hs-mc-set-child {
+      padding-left: 28px !important;
+    }
+    .hs-mc-set-child-glyph {
+      color: #808080;
+      flex-shrink: 0;
+    }
+    .hs-mc-settings-group-title {
+      cursor: pointer;
+      user-select: none;
+    }
+    .hs-mc-settings-group-title:hover {
+      background: #fff;
+      color: #000;
+    }
+    .hs-mc-set-divider {
+      color: #808080;
+      font-size: 11px;
+      text-align: center;
+      padding: 8px 14px 2px;
+      letter-spacing: 0.5px;
+    }
+    .hs-mc-set-catchip {
+      color: #808080;
+      font-size: 11px;
+      border: 1px solid #333;
+      padding: 0 4px;
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+    .hs-mc-set-keyhint {
+      color: #808080;
+      font-size: 11px;
+      padding: 6px 14px 10px;
+    }
+    .hs-mc-set-range {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 120px;
+      height: 4px;
+      background: #333;
+      outline: none;
+      flex-shrink: 0;
+    }
+    .hs-mc-set-range::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 10px;
+      height: 14px;
+      background: #ff8700;
+      border: none;
+      border-radius: 0;
+      cursor: pointer;
+    }
+    .hs-mc-set-range-val {
+      color: #808080;
+      font-size: 11px;
+      min-width: 28px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+
     /* == Settings sub-tab bar =============================================== */
     .hs-mc-set-subtabs {
       display: flex;

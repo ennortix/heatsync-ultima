@@ -191,43 +191,9 @@
 
   // Active settings sub-tab — persisted across re-renders
   let _settingsSubtab = 'display';
-  // v1.6 content filters — local mirrors of user settings. BG owns the
-  // authoritative state in chrome.storage; these are hydrated when the
-  // settings tab renders so pills paint with the right state.
-  //
-  // onChanged listener also live-syncs the visible toggle pills — when the
-  // server broadcasts a user_settings:update WS event (toggle flipped from
-  // another tab / device), BG writes storage → onChanged fires here →
-  // every open settings panel updates the pill class in-place without a
-  // re-render. Same listener fires from local writes too; idempotent.
-  // Content-warning categories — five per-viewer emote filters. One table drives
-  // hydration, cross-tab live-sync, the settings render, and the click handlers,
-  // so adding a category is a single entry instead of edits in four places.
-  // sexual/gore default OFF (hidden); weapon/drug/hate default ON.
-  // Derived from the settings registry (src/lib/settings-schema.js entries
-  // carrying a `cw` sub-shape) — adding a category is one schema entry.
-  const CW_CATS = SETTINGS.filter(function(d) { return d.cw }).map(function(d) {
-    return { key: d.cw.stateKey, storage: d.key, body: d.cw.serverBody, noun: d.cw.noun, label: d.label, tip: d.tip, def: d.default }
-  });
-  const cwLocal = {};
-  for (const c of CW_CATS) cwLocal[c.key] = c.def;
-  try {
-    chrome.storage.local.get(CW_CATS.map(function(c) { return c.storage; }), function(d) {
-      for (const c of CW_CATS) if (typeof d?.[c.storage] === 'boolean') cwLocal[c.key] = d[c.storage];
-    });
-    chrome.storage.onChanged.addListener(function(changes, area) {
-      if (area !== 'local') return;
-      for (const c of CW_CATS) {
-        if (changes[c.storage] && typeof changes[c.storage].newValue === 'boolean') {
-          const next = changes[c.storage].newValue;
-          cwLocal[c.key] = next;
-          document.querySelectorAll('.hs-mc-toggle-pill[data-set-key="' + c.storage + '"]').forEach(function(pill) {
-            pill.classList.toggle('active', next);
-          });
-        }
-      }
-    });
-  } catch {}
+  // Content-warning filters live entirely in the settings registry (schema
+  // entries with a `cw` sub-shape); _mcStorageListener's generic local-key
+  // loop keeps the cache + visible pills coherent cross-tab.
 
   // Per-tab platform filters: { [tabId]: { twitch, kick, youtube } }, defaults all true
   let platformFilters = {};
@@ -1585,7 +1551,7 @@
   // Layout-critical keys mirror to localStorage so early-layout.js can
   // read them sync at document_start (before chrome.storage is available
   // to content scripts). Eliminates the cold-boot flash on hard refresh.
-  const _LAYOUT_MIRROR_KEYS = new Set(['tabPosition', 'chatPosition', 'chatCollapsed'])
+  const _LAYOUT_MIRROR_KEYS = new Set(['tabPosition', 'chatPosition'])
   function _mirrorLayoutToLS(key, value) {
     try { localStorage.setItem('hs_layout_' + key, JSON.stringify(value)) } catch {}
   }
@@ -1692,7 +1658,6 @@
   // _RUNTIME_BRIDGE until every reader moves to getSetting(); the bridge
   // keeps both views of a value identical during the migration.
   const _SETTINGS_BY_KEY = new Map(SETTINGS.map(function(d) { return [d.key, d] }))
-  const _SETTINGS_BY_ALIAS = new Map(SETTINGS.filter(function(d) { return d.alias }).map(function(d) { return [d.alias, d] }))
   const _settingsCache = {}
 
   // runtimeVar name → {get,set} over the legacy module-level binding.
@@ -1722,15 +1687,6 @@
     inlineNotifs: { get: function() { return { ...inlineNotifs } }, set: function(v) { for (const k in v) inlineNotifs[k] = !!v[k] } },
     hermesToggles: { get: function() { return { ...hermesToggles } }, set: function(v) { for (const k in v) hermesToggles[k] = !!v[k] } },
   }
-  // content-warning entries bridge into the shared cwLocal map (declared at
-  // top of file; its storage.onChanged listener keeps cross-tab pills live)
-  for (const _cwDef of SETTINGS) {
-    if (!_cwDef.cw) continue
-    _RUNTIME_BRIDGE[_cwDef.runtimeVar] = (function(sk) {
-      return { get: function() { return cwLocal[sk] }, set: function(v) { cwLocal[sk] = v } }
-    })(_cwDef.cw.stateKey)
-  }
-
   // apply id → side-effect runner. Each mirrors the legacy toggle/save
   // function's effects exactly. onLoad=true on the single init pass —
   // skips work that only makes sense on an interactive change.
@@ -1842,18 +1798,10 @@
     showToast('failed to save ' + def.cw.noun + ' — try again', 'error')
   }
 
-  // Resolve the legacy runtime binding for an entry. Tweak entries share
-  // the _tweakFlags map (declared near the tweaks renderer) instead of
-  // having 24 individual runtimeVar closures.
+  // Resolve the legacy runtime binding for an entry (entries without one
+  // are served from _settingsCache after hydration).
   function _bridgeFor(def) {
-    if (def.runtimeVar) return _RUNTIME_BRIDGE[def.runtimeVar]
-    if (def.tweak) {
-      return {
-        get: function() { return !!_tweakFlags[def.key] },
-        set: function(v) { _tweakFlags[def.key] = v },
-      }
-    }
-    return null
+    return def.runtimeVar ? _RUNTIME_BRIDGE[def.runtimeVar] : null
   }
 
   function getSetting(key) {
@@ -2004,14 +1952,10 @@
   }
 
   // Generic control dispatch — resolves a clicked/changed element to its
-  // registry entry via data-set-key (registry-rendered controls), the
-  // legacy data-setting alias, data-uisetting, or data-storage-key.
-  // Returns true when handled.
+  // registry entry via data-set-key. Returns true when handled.
   function handleRegistryControl(el, rawValue) {
     const ds = el.dataset
-    const key = ds.setKey || ds.uisetting || ds.storageKey ||
-      (_SETTINGS_BY_ALIAS.get(ds.setting) || {}).key
-    const def = key && _SETTINGS_BY_KEY.get(key)
+    const def = ds.setKey && _SETTINGS_BY_KEY.get(ds.setKey)
     if (!def) return false
     // boolmap subkey pill — flip one subkey, persist the whole map
     if (def.type === 'boolmap' && ds.setSub !== undefined) {
@@ -4978,32 +4922,8 @@
   };
   const _SET_SUBTAB_ORDER = ['display', 'chat', 'notifs', 'mod', 'filters', 'tweaks', 'system'];
 
-  // ─── anti-features pack — Twitch UI noise toggles ─────────────────────────
-  // Each flag lives in ui_settings.<key>, gates a CSS rule in content.js
-  // applyUiSettings(). The applyUiSettings handler is reactive to
-  // chrome.storage.onChanged so toggle → instant rebuild of hide rules.
-  // Order matters: groups define section ordering in the tweaks subtab.
-  // Derived from the settings registry (`tweak: true` entries) — schema
-  // array order defines section + row ordering. Adding a tweak is one
-  // schema entry; the CSS hide rule lives in content.js applyUiSettings().
-  const TWEAK_GROUPS = (function() {
-    const groups = [];
-    const byTitle = new Map();
-    for (const d of SETTINGS) {
-      if (!d.tweak) continue;
-      let g = byTitle.get(d.section);
-      if (!g) { g = { title: d.section, items: [] }; byTitle.set(d.section, g); groups.push(g); }
-      g.items.push([d.key, d.label, d.tip]);
-    }
-    return groups;
-  })();
-  const TWEAK_KEYS = TWEAK_GROUPS.flatMap(function(g) { return g.items.map(function(i) { return i[0]; }); });
-
-  // Hydrated from chrome.storage.sync.ui_settings on init + onChanged.
-  // _renderTweaksSubtab reads from this; toggle handler mutates + saves.
-  const _tweakFlags = {};
-  for (const k of TWEAK_KEYS) _tweakFlags[k] = false;
-
+  // Tweaks (twitch ui noise toggles) render straight from the registry
+  // (`tweak: true` entries); content.js applyUiSettings owns the CSS rules.
   function _renderSetSubtabBar() {
     return '<div class="hs-mc-set-subtabs">' +
       _SET_SUBTAB_ORDER.map(function(id) {
@@ -5286,7 +5206,7 @@
     '</div>' +
     '<div class="hs-mc-settings-group">' +
       '<div class="hs-mc-setting-row" style="justify-content:flex-end">' +
-        '<button class="hs-mc-defaults-btn" style="background:#808080;border:2px outset #fff;padding:2px 10px;font-size:13px;font-weight:bold;cursor:pointer;font-family:\'Liberation Mono\',monospace;color:#000;box-shadow:1px 1px 0 #000">default</button>' +
+        '<button class="hs-mc-defaults-btn" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">default</button>' +
       '</div>' +
     '</div>';
   }
@@ -11473,14 +11393,6 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           }
         }
       }
-      // Tweak flags — cross-tab sync. ui_settings lives in sync storage;
-      // when one tab flips a hide toggle, mirror into the local cache so the
-      // settings panel re-renders with the right active state next open.
-      if (area === 'sync' && changes.ui_settings?.newValue && typeof changes.ui_settings.newValue === 'object') {
-        const remoteUi = changes.ui_settings.newValue
-        for (const k of TWEAK_KEYS) _tweakFlags[k] = !!remoteUi[k]
-      }
-
       // Registry cache + bridge coherence for local-scoped keys (cw filters,
       // hs_notifications, dim/readable/auto-claim, sizes, overflow mirrors).
       // Runs AFTER the specific handlers above — some gate their re-render on
@@ -11494,6 +11406,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         _settingsCache[def.key] = v
         const b = _bridgeFor(def)
         if (b) b.set(v)
+        // content-warning pills flip live cross-tab (BG also writes these
+        // keys when the server broadcasts a settings update)
+        if (def.cw && typeof v === 'boolean') {
+          document.querySelectorAll('.hs-mc-toggle-pill[data-set-key="' + def.key + '"]')
+            .forEach(function(pill) { pill.classList.toggle('active', v) })
+        }
       }
     }
     chrome.storage.onChanged.addListener(_mcStorageListener)

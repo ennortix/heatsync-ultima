@@ -24,8 +24,8 @@
 //   control    'pill' | 'select' | 'sizebtns' | 'range' | 'text' | 'textarea'
 //   options    [{value,label|labelKey}] for enum/multiselect;
 //              {min,max,step} for range
-//   alias      legacy data-setting attribute value emitted by the current
-//              renderers — click/input handlers resolve it to this entry
+//   alias      extra search keywords (originally the legacy data-setting
+//              attribute names) — fed into the settings search haystack
 //   dependsOn  {key, equals?} — row hidden unless the named setting matches
 //              (equals omitted = truthy)
 //   runtimeVar legacy module-level var name bridged by main.js _RUNTIME_BRIDGE
@@ -352,35 +352,35 @@ const SETTINGS = [
     key: 'viewer_show_sexual', type: 'bool', default: false, scope: 'local',
     category: 'filters', section: 'content',
     label: 'show sexual emotes', tip: 'emotes flagged for sexual content (≥ 70%) are hidden by default. shown with a dashed border when on.',
-    control: 'pill', runtimeVar: 'cw_sexual', apply: 'cwServerPatch', noReset: true,
+    control: 'pill', apply: 'cwServerPatch', noReset: true,
     cw: { stateKey: 'sexual', serverBody: 'show_sexual_emotes', noun: 'sexual emotes setting' },
   },
   {
     key: 'viewer_show_gore', type: 'bool', default: false, scope: 'local',
     category: 'filters', section: 'content',
     label: 'show gore emotes', tip: 'emotes flagged for violence/gore (≥ 70%) are hidden by default. shown with a dashed border when on.',
-    control: 'pill', runtimeVar: 'cw_gore', apply: 'cwServerPatch', noReset: true,
+    control: 'pill', apply: 'cwServerPatch', noReset: true,
     cw: { stateKey: 'gore', serverBody: 'show_gore_emotes', noun: 'gore emotes setting' },
   },
   {
     key: 'viewer_show_weapon', type: 'bool', default: true, scope: 'local',
     category: 'filters', section: 'content',
     label: 'show weapons emotes', tip: 'emotes flagged for weapons imagery. on by default.',
-    control: 'pill', runtimeVar: 'cw_weapon', apply: 'cwServerPatch', noReset: true,
+    control: 'pill', apply: 'cwServerPatch', noReset: true,
     cw: { stateKey: 'weapon', serverBody: 'show_weapon_emotes', noun: 'weapons setting' },
   },
   {
     key: 'viewer_show_drug', type: 'bool', default: true, scope: 'local',
     category: 'filters', section: 'content',
     label: 'show drugs emotes', tip: 'emotes flagged for drug imagery. on by default.',
-    control: 'pill', runtimeVar: 'cw_drug', apply: 'cwServerPatch', noReset: true,
+    control: 'pill', apply: 'cwServerPatch', noReset: true,
     cw: { stateKey: 'drug', serverBody: 'show_drug_emotes', noun: 'drugs setting' },
   },
   {
     key: 'viewer_show_hate', type: 'bool', default: true, scope: 'local',
     category: 'filters', section: 'content',
     label: 'show hate emotes', tip: 'emotes flagged for hate imagery. on by default.',
-    control: 'pill', runtimeVar: 'cw_hate', apply: 'cwServerPatch', noReset: true,
+    control: 'pill', apply: 'cwServerPatch', noReset: true,
     cw: { stateKey: 'hate', serverBody: 'show_hate_emotes', noun: 'hate setting' },
   },
 

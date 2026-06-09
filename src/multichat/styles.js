@@ -5325,9 +5325,27 @@ function injectStyles() {
       color: #000;
       border-color: #fff;
     }
-    .hs-mc-setting-row.hs-mc-set-row-focus,
-    .hs-mc-setting-row.hs-mc-set-row-focus * {
+    /* Keyboard focus inverts the row like hover — white bg, black text —
+       but children keep their own backgrounds (pills stay green/red, the
+       size-btn group stays a black chip strip, range thumb stays orange). */
+    .hs-mc-setting-row.hs-mc-set-row-focus {
       background: #fff !important;
+    }
+    .hs-mc-setting-row.hs-mc-set-row-focus * {
+      color: #000 !important;
+    }
+    /* Size buttons sit on their own black strip — when the row inverts
+       (hover OR focus), keep inactive labels gray-on-black and the active
+       chip white-with-black-text, instead of the row's forced black text
+       vanishing into the strip. */
+    .hs-mc-setting-row:hover .hs-mc-size-btn,
+    .hs-mc-setting-row.hs-mc-set-row-focus .hs-mc-size-btn {
+      color: #808080 !important;
+    }
+    .hs-mc-setting-row:hover .hs-mc-size-btn.active,
+    .hs-mc-setting-row.hs-mc-set-row-focus .hs-mc-size-btn.active,
+    .hs-mc-setting-row:hover .hs-mc-size-btn:hover,
+    .hs-mc-setting-row.hs-mc-set-row-focus .hs-mc-size-btn:hover {
       color: #000 !important;
     }
     .hs-mc-set-child {

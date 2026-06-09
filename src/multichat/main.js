@@ -1810,11 +1810,25 @@
     showToast('failed to save ' + def.cw.noun + ' — try again', 'error')
   }
 
+  // Resolve the legacy runtime binding for an entry. Tweak entries share
+  // the _tweakFlags map (declared near the tweaks renderer) instead of
+  // having 24 individual runtimeVar closures.
+  function _bridgeFor(def) {
+    if (def.runtimeVar) return _RUNTIME_BRIDGE[def.runtimeVar]
+    if (def.tweak) {
+      return {
+        get: function() { return !!_tweakFlags[def.key] },
+        set: function(v) { _tweakFlags[def.key] = v },
+      }
+    }
+    return null
+  }
+
   function getSetting(key) {
     const def = _SETTINGS_BY_KEY.get(key)
     if (!def) { warn('getSetting: unknown key', key); return undefined }
     if (key in _settingsCache) return _settingsCache[key]
-    const bridge = def.runtimeVar && _RUNTIME_BRIDGE[def.runtimeVar]
+    const bridge = _bridgeFor(def)
     return bridge ? bridge.get() : def.default
   }
 
@@ -1831,7 +1845,7 @@
       return false
     }
     _settingsCache[key] = v
-    const bridge = def.runtimeVar && _RUNTIME_BRIDGE[def.runtimeVar]
+    const bridge = _bridgeFor(def)
     if (bridge) bridge.set(v)
     if (def.scope === 'local') {
       chrome.storage.local.set({ [key]: v }).catch(function() {})
@@ -1872,7 +1886,7 @@
       // until the guard key is stamped, force the new default and persist both
       if (def.migrate && !ui[def.migrate]) {
         _settingsCache[def.key] = def.default
-        const b = def.runtimeVar && _RUNTIME_BRIDGE[def.runtimeVar]
+        const b = _bridgeFor(def)
         if (b) b.set(def.default)
         saveUiSetting(def.key, def.default)
         saveUiSetting(def.migrate, true)
@@ -1904,7 +1918,7 @@
       const v = raw === undefined ? def.default : coerceSettingValue(def, raw)
       const value = (v !== undefined && validateSettingValue(def, v)) ? v : def.default
       _settingsCache[def.key] = value
-      const bridge = def.runtimeVar && _RUNTIME_BRIDGE[def.runtimeVar]
+      const bridge = _bridgeFor(def)
       if (bridge) bridge.set(value)
       if (def.apply && def.applyOnLoad) appliersToRun.set(def.apply, def)
     }
@@ -1919,17 +1933,25 @@
   }
 
   // Registry-derived reset — every entry returns to its default through the
-  // normal setSetting path (storage write + bridge + applier).
+  // normal setSetting path (storage write + bridge + applier). noReset
+  // entries (server-coupled content-warning prefs) are left untouched.
+  // Sync writes coalesce into one debounced ui_settings patch.
   function resetSettingsToDefaults() {
-    for (const def of SETTINGS) setSetting(def.key, def.default)
+    for (const def of SETTINGS) {
+      if (def.noReset) continue
+      setSetting(def.key, def.default)
+    }
     renderSettingsTab()
   }
 
   // Generic control dispatch — resolves a clicked/changed element to its
-  // registry entry via data-set-key (registry-rendered controls) or the
-  // legacy data-setting alias. Returns true when handled.
+  // registry entry via data-set-key (registry-rendered controls), the
+  // legacy data-setting alias, data-uisetting, or data-storage-key.
+  // Returns true when handled.
   function handleRegistryControl(el, rawValue) {
-    const key = el.dataset.setKey || (_SETTINGS_BY_ALIAS.get(el.dataset.setting) || {}).key
+    const ds = el.dataset
+    const key = ds.setKey || ds.uisetting || ds.storageKey ||
+      (_SETTINGS_BY_ALIAS.get(ds.setting) || {}).key
     const def = key && _SETTINGS_BY_KEY.get(key)
     if (!def) return false
     if (def.type === 'bool') {
@@ -4366,37 +4388,11 @@
     watchYtFlexyMount()
   }
 
-  // Emote size functions
+  // Emote size — registry-managed (hs_emote_size); the emoteSize applier
+  // runs applyEmoteSize + picker invalidation. Kept as a named function for
+  // the picker's size buttons (emotes.js).
   function setEmoteSize(size) {
-    if ([1, 2, 4].includes(size)) {
-      emoteSize = size;
-      saveEmoteSize();
-      applyEmoteSize();
-      // URLs encode size — picker DOM is now stale.
-      markPickerDirty();
-      prebuildPickerIdle();
-    }
-  }
-
-  let _saveEmoteSizeTimer = null;
-  function saveEmoteSize() {
-    if (_saveEmoteSizeTimer) cleanup.clearTimeout(_saveEmoteSizeTimer);
-    _saveEmoteSizeTimer = cleanup.setTimeout(() => {
-      _saveEmoteSizeTimer = null;
-      chrome.storage.local.set({ hs_emote_size: emoteSize });
-    }, 250);
-  }
-
-  async function loadEmoteSize() {
-    try {
-      const data = await chrome.storage.local.get(['hs_emote_size']);
-      if (data.hs_emote_size) {
-        emoteSize = data.hs_emote_size;
-        applyEmoteSize();
-      }
-    } catch (e) {
-      log('Error loading emote size:', e);
-    }
+    setSetting('hs_emote_size', size)
   }
 
   function applyEmoteSize() {
@@ -4418,40 +4414,12 @@
     renderMessages(currentTab);
   }
 
-  // Emoji scale — separate var, default 2x. Mirrors emoteSize storage/lifecycle.
+  // Emoji scale — separate var, default 2x. Registry-managed (hs_emoji_size,
+  // incl. the legacy bigEmoji=false → 1x migration).
   let emojiSize = 2;
-  let _saveEmojiSizeTimer = null;
-  function saveEmojiSize() {
-    if (_saveEmojiSizeTimer) cleanup.clearTimeout(_saveEmojiSizeTimer);
-    _saveEmojiSizeTimer = cleanup.setTimeout(() => {
-      _saveEmojiSizeTimer = null;
-      chrome.storage.local.set({ hs_emoji_size: emojiSize });
-    }, 250);
-  }
-  async function loadEmojiSize() {
-    try {
-      const data = await chrome.storage.local.get(['hs_emoji_size']);
-      if (data.hs_emoji_size === 1 || data.hs_emoji_size === 2 || data.hs_emoji_size === 4) {
-        emojiSize = data.hs_emoji_size;
-      } else {
-        // Migrate legacy bigEmoji toggle: explicit false → 1x; otherwise default 2x.
-        const stored = await cachedUiSettings();
-        if (stored.ui_settings?.bigEmoji === false) emojiSize = 1;
-      }
-      applyEmojiSize();
-    } catch (e) {
-      log('Error loading emoji size:', e);
-    }
-  }
   function applyEmojiSize() {
     const targets = [document.documentElement, document.getElementById('hs-mc-messages')].filter(Boolean);
     for (const el of targets) el.style.setProperty('--hs-emoji-scale', String(emojiSize));
-  }
-  function setEmojiSize(size) {
-    if (size !== 1 && size !== 2 && size !== 4) return;
-    emojiSize = size;
-    applyEmojiSize();
-    saveEmojiSize();
   }
 
   // =====================================================================
@@ -4678,40 +4646,7 @@
     }
   }, { signal: mcSignal })
 
-  // Inline notification settings
-  async function loadInlineNotifSettings() {
-    try {
-      const stored = await cachedUiSettings();
-      const saved = stored.ui_settings?.inlineNotifs
-      if (saved) {
-        for (const k of Object.keys(INLINE_NOTIF_TYPES)) {
-          if (saved[k] !== undefined) inlineNotifs[k] = saved[k]
-        }
-      }
-    } catch {}
-  }
-
-  function saveInlineNotifSettings() {
-    saveUiSetting('inlineNotifs', { ...inlineNotifs })
-  }
-
-  async function loadHermesSettings() {
-    try {
-      const stored = await cachedUiSettings();
-      const saved = stored.ui_settings?.hermesEvents
-      if (saved) {
-        for (const k of Object.keys(HERMES_EVENT_TYPES)) {
-          if (saved[k] !== undefined) hermesToggles[k] = saved[k]
-        }
-      }
-    } catch {}
-  }
-
   // (automod moved to automod.js)
-
-  function saveHermesSettings() {
-    saveUiSetting('hermesEvents', { ...hermesToggles })
-  }
 
   // Inject an inline notification into active chat tabs
   function injectInlineNotif(notifType, msg) {
@@ -4742,87 +4677,6 @@
     const isChatTab = active === 'live' || active === 'mentions' ||
       config.channels.some(ch => ch.id === active)
     if (isChatTab) appendMessage(msg, active)
-  }
-
-  // WYSIWYG setting
-  async function loadWysiwygSetting() {
-    try {
-      const stored = await cachedUiSettings();
-      const ui = stored.ui_settings || {};
-      // One-shot migration: default flipped from false→true; retire stale false
-      // saved when default was off, so existing users land on the new default.
-      if (!ui.wysiwygDefaultOn_v1) {
-        wysiwygEnabled = true;
-        saveUiSetting('wysiwygEnabled', true);
-        saveUiSetting('wysiwygDefaultOn_v1', true);
-        return;
-      }
-      if (ui.wysiwygEnabled !== undefined) {
-        wysiwygEnabled = ui.wysiwygEnabled;
-      }
-    } catch (e) {
-      log('Error loading WYSIWYG setting:', e);
-    }
-  }
-
-  function saveWysiwygSetting() {
-    saveUiSetting('wysiwygEnabled', wysiwygEnabled)
-  }
-
-  // Clickable links setting
-  async function loadLinksSetting() {
-    try {
-      const stored = await cachedUiSettings();
-      if (stored.ui_settings?.linksEnabled !== undefined) {
-        linksEnabled = stored.ui_settings.linksEnabled;
-      }
-    } catch (e) {
-      log('Error loading links setting:', e);
-    }
-  }
-
-  function saveLinksSetting() {
-    saveUiSetting('linksEnabled', linksEnabled)
-  }
-
-  // Link preview tooltip
-  async function loadLinkPreviewsSetting() {
-    try {
-      const stored = await cachedUiSettings();
-      if (stored.ui_settings?.linkPreviewsEnabled !== undefined) {
-        linkPreviewsEnabled = stored.ui_settings.linkPreviewsEnabled;
-      }
-    } catch (e) {
-      log('Error loading link previews setting:', e);
-    }
-  }
-
-  function saveLinkPreviewsSetting() {
-    saveUiSetting('linkPreviewsEnabled', linkPreviewsEnabled)
-  }
-
-  // Vi mode setting
-  async function loadViModeSetting() {
-    try {
-      const stored = await cachedUiSettings();
-      if (stored.ui_settings?.viMode !== undefined) {
-        viModeEnabled = stored.ui_settings.viMode;
-      }
-    } catch (e) {
-      log('Error loading vi mode setting:', e);
-    }
-  }
-
-  function saveViModeSetting() {
-    saveUiSetting('viMode', viModeEnabled)
-    // Sync to localStorage for vi-mode.js
-    try {
-      const ls = JSON.parse(localStorage.getItem('heatsync-extension-settings') || '{}')
-      ls.viMode = viModeEnabled
-      localStorage.setItem('heatsync-extension-settings', JSON.stringify(ls))
-    } catch (_) {}
-    // Notify vi-mode.js
-    window.postMessage({ type: 'heatsync-settings-changed', nonce: window.HS?.getMainWorldNonce?.() || null, settings: { viMode: viModeEnabled } }, location.origin)
   }
 
   // Font family + size — mirrors heatsync.org's appearance picker.
@@ -4875,49 +4729,7 @@
       if (msgsEl) msgsEl.style.setProperty('--hs-chat-font', msgsSize + 'px');
     }
   }
-  async function loadFontSettings() {
-    try {
-      const stored = await cachedUiSettings();
-      const s = stored.ui_settings || {};
-      applyFontSettings(s.fontFamily || 'CozetteVector', s.fontSize || '13', s.customFontName || '');
-    } catch (e) {
-      log('Error loading font settings:', e);
-    }
-  }
 
-  // Platform badges setting
-  async function loadPlatformBadgesSetting() {
-    try {
-      const stored = await cachedUiSettings();
-      if (stored.ui_settings?.showPlatformBadges !== undefined) {
-        platformBadgesEnabled = stored.ui_settings.showPlatformBadges;
-      }
-    } catch (e) {
-      log('Error loading platform badges setting:', e);
-    }
-  }
-
-
-  // Zebra striping setting
-  async function loadZebraSetting() {
-    try {
-      const stored = await cachedUiSettings();
-      if (stored.ui_settings?.zebra !== undefined) {
-        zebraEnabled = stored.ui_settings.zebra;
-      }
-    } catch {}
-  }
-
-  function saveZebraSetting() {
-    saveUiSetting('zebra', zebraEnabled)
-  }
-
-  function toggleZebra() {
-    zebraEnabled = !zebraEnabled;
-    saveZebraSetting();
-    // Re-render current tab to apply
-    renderMessages(currentTab);
-  }
 
   // Platform filters — per-tab toggle to mute Twitch/Kick/YT messages.
   // Persisted to chrome.storage.local (overflow bucket); never enters sync.
@@ -5007,47 +4819,6 @@
   }
 
 
-  // Auto-hide input setting
-  async function loadAutoHideSetting() {
-    try {
-      const stored = await cachedUiSettings();
-      if (stored.ui_settings?.autoHideEmpty !== undefined) {
-        autoHideInput = stored.ui_settings.autoHideEmpty;
-      }
-    } catch {}
-  }
-
-  function saveAutoHideSetting() {
-    saveUiSetting('autoHideEmpty', autoHideInput)
-  }
-
-  function toggleAutoHide() {
-    autoHideInput = !autoHideInput;
-    saveAutoHideSetting();
-    const bar = document.getElementById('hs-mc-inputbar');
-    const picker = document.getElementById('hs-mc-emote-picker');
-    const pickerOpen = picker?.classList.contains('visible') || false;
-    if (autoHideInput) {
-      // Force-hide bar (bypass picker check)
-      if (bar) bar.classList.add('hs-hidden');
-      inputBarVisible = false;
-    } else {
-      if (bar) bar.classList.remove('hs-hidden');
-      inputBarVisible = true;
-    }
-    adjustOverlayForPicker(pickerOpen);
-  }
-
-  async function loadHiddenTabsSetting() {
-    try {
-      const stored = await cachedUiSettings();
-      const arr = stored.ui_settings?.hiddenTabs;
-      if (Array.isArray(arr)) {
-        hiddenTabs = new Set(arr.filter(id => HIDABLE_TABS.includes(id)));
-      }
-    } catch {}
-  }
-
   function applyHiddenTabs() {
     if (!tabBarElement) return;
     for (const id of HIDABLE_TABS) {
@@ -5055,69 +4826,6 @@
       if (btn) btn.style.display = hiddenTabs.has(id) ? 'none' : '';
     }
     if (hiddenTabs.has(currentTab)) switchTab('live');
-  }
-
-  function toggleHiddenTab(id) {
-    if (!HIDABLE_TABS.includes(id)) return;
-    if (hiddenTabs.has(id)) hiddenTabs.delete(id);
-    else hiddenTabs.add(id);
-    saveUiSetting('hiddenTabs', [...hiddenTabs]);
-    applyHiddenTabs();
-  }
-
-  async function loadTimestampsSetting() {
-    try {
-      const stored = await cachedUiSettings();
-      if (stored.ui_settings?.timestamps !== undefined) {
-        timestampsEnabled = stored.ui_settings.timestamps;
-      }
-      window._hsTimestampsEnabled = timestampsEnabled;
-    } catch {}
-  }
-
-  function saveTimestampsSetting() {
-    saveUiSetting('timestamps', timestampsEnabled)
-  }
-
-  function toggleTimestamps() {
-    timestampsEnabled = !timestampsEnabled;
-    window._hsTimestampsEnabled = timestampsEnabled;
-    saveTimestampsSetting();
-    renderMessages(currentTab);
-  }
-
-  // Avatars setting
-  async function loadAvatarsSetting() {
-    try {
-      const stored = await cachedUiSettings();
-      if (stored.ui_settings?.avatars !== undefined) {
-        avatarsEnabled = stored.ui_settings.avatars;
-      }
-    } catch {}
-  }
-
-  function saveAvatarsSetting() {
-    saveUiSetting('avatars', avatarsEnabled)
-  }
-
-  function toggleAvatars() {
-    avatarsEnabled = !avatarsEnabled;
-    saveAvatarsSetting();
-    renderMessages(currentTab);
-  }
-
-  async function loadAutoClaimSetting() {
-    try {
-      const stored = await chrome.storage.local.get(['hs_auto_claim_points']);
-      if (stored.hs_auto_claim_points === undefined) {
-        // First run — runtime default is ON; persist so the options page
-        // toggle reflects reality instead of rendering OFF.
-        chrome.storage.local.set({ hs_auto_claim_points: true });
-      } else {
-        autoClaimPoints = stored.hs_auto_claim_points;
-      }
-    } catch {}
-    if (autoClaimPoints) startAutoClaimPoller()
   }
 
   // Background chest-claim sweeper. Chests spawn every ~15min during active
@@ -5161,74 +4869,6 @@
     _autoClaimPoller = null
   }
 
-  async function loadDimTimeoutsSetting() {
-    try {
-      const stored = await chrome.storage.local.get(['hs_dim_timeouts']);
-      if (stored.hs_dim_timeouts !== undefined) {
-        dimTimeouts = stored.hs_dim_timeouts;
-      }
-    } catch {}
-  }
-
-  function toggleDimTimeouts() {
-    dimTimeouts = !dimTimeouts;
-    chrome.storage.local.set({ hs_dim_timeouts: dimTimeouts });
-  }
-
-  async function loadReadableNamesSetting() {
-    try {
-      const stored = await chrome.storage.local.get(['hs_readable_names']);
-      if (stored.hs_readable_names !== undefined) {
-        readableNamesEnabled = stored.hs_readable_names;
-      }
-    } catch {}
-  }
-
-  function toggleReadableNames() {
-    readableNamesEnabled = !readableNamesEnabled;
-    chrome.storage.local.set({ hs_readable_names: readableNamesEnabled });
-  }
-
-  function toggleAutoClaim() {
-    autoClaimPoints = !autoClaimPoints;
-    chrome.storage.local.set({ hs_auto_claim_points: autoClaimPoints });
-    if (autoClaimPoints) startAutoClaimPoller()
-    else stopAutoClaimPoller()
-  }
-
-  async function loadFirstChatterGlowSetting() {
-    try {
-      const stored = await cachedUiSettings();
-      if (stored.ui_settings?.firstChatterGlow !== undefined) firstChatterGlow = !!stored.ui_settings.firstChatterGlow;
-    } catch {}
-  }
-  function toggleFirstChatterGlow() {
-    firstChatterGlow = !firstChatterGlow;
-    saveUiSetting('firstChatterGlow', firstChatterGlow);
-    renderMessages(currentTab);
-  }
-
-  async function loadKeywordHighlightsSetting() {
-    try {
-      const overflow = await cachedUiOverflow();
-      if (typeof overflow.keyword_highlights === 'string') {
-        keywordHighlights = overflow.keyword_highlights
-      } else {
-        // One-shot migration: pull from sync if a legacy install still has it.
-        const legacy = await cachedUiSettings();
-        if (typeof legacy.ui_settings?.keywordHighlights === 'string') {
-          keywordHighlights = legacy.ui_settings.keywordHighlights
-          chrome.storage.local.set({ keyword_highlights: keywordHighlights }).catch(() => {})
-        }
-      }
-    } catch {}
-    rebuildKeywordRegex();
-  }
-  function saveKeywordHighlightsSetting() {
-    saveUiSetting('keywordHighlights', keywordHighlights);
-    rebuildKeywordRegex();
-  }
-
   // ─── settings sub-tab helpers ────────────────────────────────────────────
 
   // SVG icons for the settings sub-tabs (16x16 stroke, no fill)
@@ -5268,13 +4908,6 @@
   // _renderTweaksSubtab reads from this; toggle handler mutates + saves.
   const _tweakFlags = {};
   for (const k of TWEAK_KEYS) _tweakFlags[k] = false;
-  async function loadTweakFlags() {
-    try {
-      const stored = await chrome.storage.sync.get(['ui_settings']);
-      const ui = stored.ui_settings || {};
-      for (const k of TWEAK_KEYS) _tweakFlags[k] = !!ui[k];
-    } catch (_) {}
-  }
 
   function _renderSetSubtabBar() {
     return '<div class="hs-mc-set-subtabs">' +
@@ -5661,15 +5294,6 @@
     }
   }
 
-  // Populate hs_notifications toggle state (async storage read)
-  async function _populateNotifStorageToggle() {
-    try {
-      var stored = await chrome.storage.local.get(['hs_notifications']);
-      var pill = document.querySelector('.hs-mc-toggle-pill[data-storage-key="hs_notifications"]');
-      if (pill) pill.classList.toggle('active', !!stored.hs_notifications);
-    } catch (_e) {}
-  }
-
   function renderSettingsTab() {
     var msgsEl = document.getElementById('hs-mc-messages');
     if (!msgsEl) return;
@@ -5702,47 +5326,40 @@
         '</div>' +
       '</div>';
 
-    // Async-populate settings that live in storage (options-only keys not already as module vars)
-    cachedUiSettings().then(function(stored) {
-      var ui = (stored && stored.ui_settings) || {};
-      if (_settingsSubtab === 'display') {
-        var famSel = msgsEl.querySelector('select[data-setting="fontfamily"]');
-        if (famSel) famSel.value = ui.fontFamily || 'CozetteVector';
-        var fszSel = msgsEl.querySelector('select[data-setting="fontsize"]');
-        if (fszSel) fszSel.value = ui.fontSize || '13';
-        var pill = msgsEl.querySelector('.hs-mc-toggle-pill[data-setting="showplatformbadges"]');
-        if (pill) pill.classList.toggle('active', !!platformBadgesEnabled);
-      }
-      if (_settingsSubtab === 'mod') {
-        var capsPill = msgsEl.querySelector('.hs-mc-toggle-pill[data-uisetting="automodAllCaps"]');
-        if (capsPill) capsPill.classList.toggle('active', !!ui.automodAllCaps);
-        var reTa = msgsEl.querySelector('textarea[data-setting="automodregex"]');
-        if (reTa) reTa.value = typeof ui.automodRegex === 'string' ? ui.automodRegex : '';
-      }
-      if (_settingsSubtab === 'system') {
-        var crashPill = msgsEl.querySelector('.hs-mc-toggle-pill[data-uisetting="crashTelemetry"]');
-        if (crashPill) crashPill.classList.toggle('active', !!ui.crashTelemetry);
-        var crashRow = msgsEl.querySelector('#hs-set-crashlog-row');
-        if (crashRow) crashRow.style.display = ui.crashTelemetry ? '' : 'none';
-        if (ui.crashTelemetry) _loadCrashLog();
-      }
-      if (_settingsSubtab === 'notifs') {
-        // crossFollowKick defaults on — only inactive when explicitly false
-        var xfkPill = msgsEl.querySelector('.hs-mc-toggle-pill[data-uisetting="crossFollowKick"]');
-        if (xfkPill) xfkPill.classList.toggle('active', ui.crossFollowKick !== false);
-        // mentionTitleFlash defaults on (silent + non-disruptive)
-        var flashPill = msgsEl.querySelector('.hs-mc-toggle-pill[data-uisetting="mentionTitleFlash"]');
-        if (flashPill) flashPill.classList.toggle('active', ui.mentionTitleFlash !== false);
-        // mentionSoundVolume range slider hydrate
-        var volRange = msgsEl.querySelector('input[data-setting="mentionsoundvolume"]');
-        if (volRange) {
-          var v = typeof ui.mentionSoundVolume === 'number' ? ui.mentionSoundVolume : 0.3;
-          volRange.value = String(Math.round(v * 100));
-        }
-      }
-    }).catch(function() {});
-
-    if (_settingsSubtab === 'notifs') _populateNotifStorageToggle();
+    // Populate controls the subtab templates render without live state —
+    // synchronous registry reads (loadAllSettings hydrated the cache at init)
+    if (_settingsSubtab === 'display') {
+      var famSel = msgsEl.querySelector('select[data-setting="fontfamily"]');
+      if (famSel) famSel.value = getSetting('fontFamily');
+      var fszSel = msgsEl.querySelector('select[data-setting="fontsize"]');
+      if (fszSel) fszSel.value = getSetting('fontSize');
+      var pill = msgsEl.querySelector('.hs-mc-toggle-pill[data-setting="showplatformbadges"]');
+      if (pill) pill.classList.toggle('active', !!getSetting('showPlatformBadges'));
+    }
+    if (_settingsSubtab === 'mod') {
+      var capsPill = msgsEl.querySelector('.hs-mc-toggle-pill[data-uisetting="automodAllCaps"]');
+      if (capsPill) capsPill.classList.toggle('active', !!getSetting('automodAllCaps'));
+      var reTa = msgsEl.querySelector('textarea[data-setting="automodregex"]');
+      if (reTa) reTa.value = getSetting('automodRegex');
+    }
+    if (_settingsSubtab === 'system') {
+      var crashOn = !!getSetting('crashTelemetry');
+      var crashPill = msgsEl.querySelector('.hs-mc-toggle-pill[data-uisetting="crashTelemetry"]');
+      if (crashPill) crashPill.classList.toggle('active', crashOn);
+      var crashRow = msgsEl.querySelector('#hs-set-crashlog-row');
+      if (crashRow) crashRow.style.display = crashOn ? '' : 'none';
+      if (crashOn) _loadCrashLog();
+    }
+    if (_settingsSubtab === 'notifs') {
+      var xfkPill = msgsEl.querySelector('.hs-mc-toggle-pill[data-uisetting="crossFollowKick"]');
+      if (xfkPill) xfkPill.classList.toggle('active', !!getSetting('crossFollowKick'));
+      var flashPill = msgsEl.querySelector('.hs-mc-toggle-pill[data-uisetting="mentionTitleFlash"]');
+      if (flashPill) flashPill.classList.toggle('active', !!getSetting('mentionTitleFlash'));
+      var volRange = msgsEl.querySelector('input[data-setting="mentionsoundvolume"]');
+      if (volRange) volRange.value = String(Math.round(getSetting('mentionSoundVolume') * 100));
+      var notifPill = msgsEl.querySelector('.hs-mc-toggle-pill[data-storage-key="hs_notifications"]');
+      if (notifPill) notifPill.classList.toggle('active', !!getSetting('hs_notifications'));
+    }
 
     // Wire up toggles via event delegation
     if (msgsEl._hsSettingsClick) msgsEl.removeEventListener('click', msgsEl._hsSettingsClick);
@@ -5787,140 +5404,73 @@
       // _SERVER_FILTER_DEFS deletion above. PATCH'd /api/user/settings with
       // unwired keys; server never read them.
 
-      // v1.6 per-viewer content filter toggles — PATCH /api/user/settings,
-      // mirror to chrome.storage so the BG (which appends include_sexual= /
-      // include_gore= to emote fetches) and other tabs pick up the new state
-      // via onChanged. Inline emote caches get flushed via refresh_all.
+      // v1.6 per-viewer content filter toggles — registry entries with the
+      // cwServerPatch applier: optimistic local write, server PATCH, rollback
+      // + toast on failure, refresh_all flush on success.
       for (const cw of CW_CATS) {
         const cwPill = e.target.closest('.hs-mc-toggle-pill[data-' + cw.key + '-pill]');
         if (!cwPill) continue;
-        // data-*-pill attrs are mutually exclusive, so exactly one category
-        // matches per click; block-scoped const keeps the closures below bound
-        // to this iteration regardless.
         const cwNext = !cwPill.classList.contains('active');
-        const cwRollback = function() {
-          cwPill.classList.toggle('active', !cwNext);
-          cwLocal[cw.key] = !cwNext;
-          chrome.storage.local.set({ [cw.storage]: !cwNext });
-          showToast('failed to save ' + cw.noun + ' — try again', 'error');
-        };
         cwPill.classList.toggle('active', cwNext);
-        cwLocal[cw.key] = cwNext;
-        chrome.storage.local.set({ [cw.storage]: cwNext });
-        safeSendMessage({
-          type: 'api_fetch',
-          path: '/api/user/settings',
-          method: 'PATCH',
-          auth: true,
-          body: { [cw.body]: cwNext }
-        }).then(function(resp) {
-          if (!resp || !resp.ok) { cwRollback(); return; }
-          safeSendMessage({ type: 'refresh_all' }).catch(function() {});
-        }).catch(function() { cwRollback(); });
+        setSetting(cw.storage, cwNext);
         return;
       }
 
-      // chrome.storage.local toggles (hs_notifications)
-      var storageKeyPill = e.target.closest('.hs-mc-toggle-pill[data-storage-key]');
-      if (storageKeyPill) {
-        var storKey = storageKeyPill.dataset.storageKey;
-        var storNext = !storageKeyPill.classList.contains('active');
-        storageKeyPill.classList.toggle('active', storNext);
-        chrome.storage.local.set({ [storKey]: storNext });
-        if (storNext && storKey === 'hs_notifications' && typeof Notification !== 'undefined' && Notification.permission === 'default') {
-          Notification.requestPermission().catch(function() {});
-        }
-        return;
-      }
-
-      // ui_settings generic boolean toggles (data-uisetting attribute)
-      var uiPill = e.target.closest('.hs-mc-toggle-pill[data-uisetting]');
-      if (uiPill) {
-        var uiKey = uiPill.dataset.uisetting;
-        var uiNext = !uiPill.classList.contains('active');
-        uiPill.classList.toggle('active', uiNext);
-        saveUiSetting(uiKey, uiNext);
-        // Tweak flags mirror locally so re-render keeps the active state without
-        // a fresh chrome.storage round-trip.
-        if (Object.prototype.hasOwnProperty.call(_tweakFlags, uiKey)) {
-          _tweakFlags[uiKey] = uiNext;
-        }
-        if (uiKey === 'crashTelemetry' && uiNext) {
-          renderSettingsTab(); // re-render to show crash log block
-        }
+      // registry-managed pills — data-uisetting (tweaks, crashTelemetry,
+      // mentionTitleFlash, crossFollowKick, automodAllCaps) and
+      // data-storage-key (hs_notifications) both resolve through the registry
+      var registryPill = e.target.closest('.hs-mc-toggle-pill[data-uisetting], .hs-mc-toggle-pill[data-storage-key], [data-set-key]');
+      if (registryPill) {
+        handleRegistryControl(registryPill);
         return;
       }
 
       var toggle = e.target.closest('.hs-mc-toggle-pill[data-setting]');
       if (toggle) {
         var setting = toggle.dataset.setting;
-        // Inline notification toggles
+        // boolmap subkey toggles (inline notifs / hermes events) — flip one
+        // subkey, persist the whole map through the registry
         if (setting.startsWith('notif_')) {
           var notifKey = setting.slice(6);
           if (INLINE_NOTIF_TYPES[notifKey] !== undefined) {
-            inlineNotifs[notifKey] = !inlineNotifs[notifKey];
-            saveInlineNotifSettings();
+            var notifMap = Object.assign({}, getSetting('inlineNotifs'));
+            notifMap[notifKey] = !notifMap[notifKey];
+            setSetting('inlineNotifs', notifMap);
             toggle.classList.toggle('active');
           }
           return;
         }
-        // Tab visibility toggles
-        if (setting.startsWith('hidetab_')) {
-          var tabId = setting.slice(8);
-          if (HIDABLE_TABS.includes(tabId)) {
-            toggleHiddenTab(tabId);
-            toggle.classList.toggle('active');
-          }
-          return;
-        }
-        // Hermes event toggles
         if (setting.startsWith('hermes_')) {
           var hermKey = setting.slice(7);
           if (HERMES_EVENT_TYPES[hermKey] !== undefined) {
-            hermesToggles[hermKey] = !hermesToggles[hermKey];
-            saveHermesSettings();
+            var hermMap = Object.assign({}, getSetting('hermesEvents'));
+            hermMap[hermKey] = !hermMap[hermKey];
+            setSetting('hermesEvents', hermMap);
             toggle.classList.toggle('active');
           }
           return;
         }
-        // Options-only ui_settings boolean toggles (map data-setting kebab -> camelCase)
-        var uiSettingKeyMap = {
-          showplatformbadges:   'showPlatformBadges',
-        };
-        if (uiSettingKeyMap[setting]) {
-          var camelKey = uiSettingKeyMap[setting];
-          var optNext = !toggle.classList.contains('active');
-          toggle.classList.toggle('active', optNext);
-          if (setting === 'showplatformbadges') platformBadgesEnabled = optNext;
-          saveUiSetting(camelKey, optNext);
+        // Tab visibility toggles — hiddenTabs multiselect (stored = hidden ids)
+        if (setting.startsWith('hidetab_')) {
+          var tabId = setting.slice(8);
+          if (HIDABLE_TABS.includes(tabId)) {
+            var hidden = getSetting('hiddenTabs');
+            setSetting('hiddenTabs', hidden.includes(tabId)
+              ? hidden.filter(function(x) { return x !== tabId })
+              : hidden.concat(tabId));
+            toggle.classList.toggle('active');
+          }
           return;
         }
-        var toggleMap = {
-          wysiwyg:      function() { wysiwygEnabled = !wysiwygEnabled; saveWysiwygSetting(); rebuildInput(); },
-          links:        function() { linksEnabled = !linksEnabled; saveLinksSetting(); },
-          linkpreviews: function() { linkPreviewsEnabled = !linkPreviewsEnabled; saveLinkPreviewsSetting(); },
-          vi:           function() { viModeEnabled = !viModeEnabled; saveViModeSetting(); },
-          zebra:        function() { toggleZebra(); },
-          autohide:     function() { toggleAutoHide(); },
-          timestamps:   function() { toggleTimestamps(); },
-          avatars:      function() { toggleAvatars(); },
-          autoclaim:    function() { toggleAutoClaim(); },
-          dimtimeouts:  function() { toggleDimTimeouts(); },
-          readablenames: function() { toggleReadableNames(); },
-          firstchatter: function() { toggleFirstChatterGlow(); },
-        };
-        if (toggleMap[setting]) {
-          toggleMap[setting]();
-          toggle.classList.toggle('active');
-        }
+        // Everything else resolves through the registry alias table
+        handleRegistryControl(toggle);
         return;
       }
 
       var sizeBtn = e.target.closest('.hs-mc-size-btn[data-size]');
       if (sizeBtn) {
         var emSize = parseInt(sizeBtn.dataset.size);
-        if (emSize) {
-          setEmoteSize(emSize);
+        if (emSize && setSetting('hs_emote_size', emSize)) {
           msgsEl.querySelectorAll('.hs-mc-size-btn[data-size]').forEach(function(b) { b.classList.toggle('active', parseInt(b.dataset.size) === emSize); });
         }
         return;
@@ -5929,8 +5479,7 @@
       var emojiSizeBtn = e.target.closest('.hs-mc-size-btn[data-emoji-size]');
       if (emojiSizeBtn) {
         var ejSize = parseInt(emojiSizeBtn.dataset.emojiSize);
-        if (ejSize) {
-          setEmojiSize(ejSize);
+        if (ejSize && setSetting('hs_emoji_size', ejSize)) {
           msgsEl.querySelectorAll('.hs-mc-size-btn[data-emoji-size]').forEach(function(b) { b.classList.toggle('active', parseInt(b.dataset.emojiSize) === ejSize); });
         }
         return;
@@ -5968,39 +5517,7 @@
 
       var defaultsBtn = e.target.closest('.hs-mc-defaults-btn');
       if (defaultsBtn) {
-        wysiwygEnabled = true;
-        linksEnabled = true;
-        linkPreviewsEnabled = true;
-        viModeEnabled = false;
-        zebraEnabled = true;
-        autoHideInput = false;
-        timestampsEnabled = false;
-        avatarsEnabled = false;
-        platformBadgesEnabled = true;
-        autoClaimPoints = true;
-        startAutoClaimPoller();
-        dimTimeouts = true;
-        firstChatterGlow = true;
-        keywordHighlights = '';
-        rebuildKeywordRegex();
-        hiddenTabs = new Set(DEFAULT_HIDDEN_TABS);
-        applyHiddenTabs();
-        for (var k in INLINE_NOTIF_TYPES) inlineNotifs[k] = INLINE_NOTIF_TYPES[k].defaultOn;
-        for (var k2 in HERMES_EVENT_TYPES) hermesToggles[k2] = HERMES_EVENT_TYPES[k2].defaultOn;
-        var defSettings = {
-          wysiwygEnabled: true, linksEnabled: true, linkPreviewsEnabled: true, viMode: false,
-          zebra: true, autoHideEmpty: false, timestamps: false,
-          avatars: false, showPlatformBadges: true,
-          firstChatterGlow: true, keywordHighlights: '',
-          hiddenTabs: Array.from(DEFAULT_HIDDEN_TABS),
-          inlineNotifs: Object.assign({}, inlineNotifs), hermesEvents: Object.assign({}, hermesToggles),
-          crashTelemetry: false,
-        };
-        try {
-          Object.entries(defSettings).forEach(function(kv) { saveUiSetting(kv[0], kv[1]); });
-          chrome.storage.local.set({ hs_auto_claim_points: true });
-        } catch (_e) {}
-        renderSettingsTab();
+        resetSettingsToDefaults();
         return;
       }
     };
@@ -6012,13 +5529,13 @@
     var automodDebounce = null;
     var customFontDebounce = null;
     msgsEl._hsSettingsInput = function settingsInput(e) {
+      // text/textarea registry controls — debounced setSetting (the
+      // applier handles regex rebuild / automod recompile / font apply)
       var ta = e.target.closest('textarea[data-setting="keywordhighlights"]');
       if (ta) {
         if (kwDebounce) cleanup.clearTimeout(kwDebounce);
         kwDebounce = cleanup.setTimeout(function() {
-          keywordHighlights = ta.value;
-          saveKeywordHighlightsSetting();
-          renderMessages(currentTab);
+          setSetting('keywordHighlights', ta.value);
         }, 400);
         return;
       }
@@ -6026,7 +5543,7 @@
       if (automodTa) {
         if (automodDebounce) cleanup.clearTimeout(automodDebounce);
         automodDebounce = cleanup.setTimeout(function() {
-          saveUiSetting('automodRegex', automodTa.value);
+          setSetting('automodRegex', automodTa.value);
         }, 400);
         return;
       }
@@ -6034,28 +5551,16 @@
       if (customFontInput) {
         if (customFontDebounce) cleanup.clearTimeout(customFontDebounce);
         customFontDebounce = cleanup.setTimeout(function() {
-          cachedUiSettings().then(function(stored) {
-            var ui = (stored && stored.ui_settings) || {};
-            var fam = ui.fontFamily || 'CozetteVector';
-            var fsz = ui.fontSize || '13';
-            var name = customFontInput.value;
-            saveUiSetting('customFontName', name);
-            applyFontSettings(fam, fsz, name);
-          }).catch(function() {});
+          setSetting('customFontName', customFontInput.value);
         }, 400);
         return;
       }
       // Mention sound volume range slider — save normalized 0..1 on each
-      // input event. Plays a sample ping on user adjustment so you can
-      // preview the volume without waiting for an @-mention.
+      // input event; the mentionPing applier plays a preview at the new volume.
       var volRange = e.target.closest('input[data-setting="mentionsoundvolume"]');
       if (volRange) {
         var pct = parseInt(volRange.value, 10) || 0;
-        var norm = Math.max(0, Math.min(1, pct / 100));
-        saveUiSetting('mentionSoundVolume', norm);
-        if (typeof playMentionPing === 'function' && norm > 0) {
-          try { playMentionPing(norm); } catch (_) {}
-        }
+        setSetting('mentionSoundVolume', pct / 100);
         return;
       }
       // Tweaks subtab — live filter rows by label substring (no debounce).
@@ -6091,30 +5596,17 @@
       var famSel = e.target.closest('select[data-setting="fontfamily"]');
       if (famSel) {
         var fam = famSel.value;
-        saveUiSetting('fontFamily', fam);
+        // Bitmap fonts render crisp at their native size only — snap the
+        // size to the font's design size. silent: the fontFamily write
+        // below runs the (shared) fonts applier once with both values.
         var nativeSize = fam === 'GohuFont' ? '14' : (fam === 'CozetteVector' || fam === 'twitch') ? '13' : null;
-        if (nativeSize) {
-          saveUiSetting('fontSize', nativeSize);
-          var fszSel2 = msgsEl.querySelector('select[data-setting="fontsize"]');
-          if (fszSel2) fszSel2.value = nativeSize;
-        }
-        cachedUiSettings().then(function(stored) {
-          var ui = (stored && stored.ui_settings) || {};
-          var fsz = nativeSize || ui.fontSize || '13';
-          var fcust = ui.customFontName || '';
-          applyFontSettings(fam, fsz, fcust);
-        }).catch(function() { applyFontSettings(fam, nativeSize || '13', ''); });
-        renderSettingsTab();
+        if (nativeSize) setSetting('fontSize', nativeSize, { silent: true });
+        setSetting('fontFamily', fam); // fonts applier + settings re-render
         return;
       }
       var fszSel = e.target.closest('select[data-setting="fontsize"]');
       if (fszSel) {
-        var fsz = fszSel.value;
-        saveUiSetting('fontSize', fsz);
-        cachedUiSettings().then(function(stored) {
-          var ui = (stored && stored.ui_settings) || {};
-          applyFontSettings(ui.fontFamily || 'CozetteVector', fsz, ui.customFontName || '');
-        }).catch(function() { applyFontSettings('CozetteVector', fsz, ''); });
+        setSetting('fontSize', fszSel.value);
         return;
       }
     };
@@ -11380,6 +10872,15 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         log('Settings synced:', Object.keys(ns).join(', '))
         let needsRender = false
 
+        // Keep the registry cache coherent with cross-tab/device writes —
+        // the per-var blocks below update legacy bindings; this covers
+        // getSetting() readers (incl. keys with no runtime var).
+        for (const def of SETTINGS) {
+          if (def.scope !== 'sync' || ns[def.key] === undefined) continue
+          const v = coerceSettingValue(def, ns[def.key])
+          if (v !== undefined && validateSettingValue(def, v)) _settingsCache[def.key] = v
+        }
+
         if (ns.automodAllCaps !== undefined || ns.automodRegex !== undefined) {
           compileAutomod(ns)
         }
@@ -11632,6 +11133,21 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         const remoteUi = changes.ui_settings.newValue
         for (const k of TWEAK_KEYS) _tweakFlags[k] = !!remoteUi[k]
       }
+
+      // Registry cache + bridge coherence for local-scoped keys (cw filters,
+      // hs_notifications, dim/readable/auto-claim, sizes, overflow mirrors).
+      // Runs AFTER the specific handlers above — some gate their re-render on
+      // var inequality, which an early bridge write would defeat.
+      for (const def of SETTINGS) {
+        const change = def.scope === 'local' ? changes[def.key]
+          : def.scope === 'local-mirror' ? changes[def.mirrorKey] : null
+        if (!change) continue
+        const v = coerceSettingValue(def, change.newValue)
+        if (v === undefined || !validateSettingValue(def, v)) continue
+        _settingsCache[def.key] = v
+        const b = _bridgeFor(def)
+        if (b) b.set(v)
+      }
     }
     chrome.storage.onChanged.addListener(_mcStorageListener)
   }
@@ -11849,30 +11365,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       loadTabsPosition(),
       loadChatPosition(),
       loadLivePlatformMap(),
-      loadEmoteSize(),
-      loadEmojiSize(),
       loadModToolbarButtons(),
-      loadWysiwygSetting(),
-      loadLinksSetting(),
-      loadLinkPreviewsSetting(),
-      loadViModeSetting(),
-      loadInlineNotifSettings(),
-      loadHermesSettings(),
-      loadAutomodSettings(),
-      loadPlatformBadgesSetting(),
-      loadFontSettings(),
-      loadZebraSetting(),
+      loadAllSettings(),
       loadPlatformFilters(),
-      loadAutoHideSetting(),
-      loadTimestampsSetting(),
-      loadAvatarsSetting(),
-      loadHiddenTabsSetting(),
-      loadAutoClaimSetting(),
-      loadDimTimeoutsSetting(),
-      loadReadableNamesSetting(),
-      loadFirstChatterGlowSetting(),
-      loadTweakFlags(),
-      loadKeywordHighlightsSetting(),
       loadBlockedEmotes(),
       loadEmotes(),
       loadSenderEmoteSets(),

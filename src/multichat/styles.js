@@ -8039,7 +8039,7 @@ function injectStyles() {
   // Default to bitmap-mode on style inject — Cozette is the default font.
   // applyFontSettings() flips this off if the user picked a non-bitmap font.
   // Set here so tabs render crisp even before the async settings load fires
-  // (loadFontSettings races with container mount; bare default prevents
+  // (settings hydration races with container mount; bare default prevents
   // the brief AA-on flash).
   document.body.classList.add('hs-font-bitmap');
   document.documentElement.classList.add('hs-font-bitmap');

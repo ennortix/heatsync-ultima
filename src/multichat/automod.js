@@ -17,13 +17,6 @@ function compileAutomod(rawSettings) {
   }
 }
 
-async function loadAutomodSettings() {
-  try {
-    const stored = await cachedUiSettings()
-    compileAutomod(stored.ui_settings || {})
-  } catch {}
-}
-
 function shouldAutomod(text) {
   if (!text) return false
   if (automodCompiled && automodCompiled.test(text)) return true

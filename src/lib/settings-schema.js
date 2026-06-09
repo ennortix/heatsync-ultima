@@ -45,6 +45,7 @@
 //   placeholder/placeholderKey  textarea placeholder
 //   tweak      true → twitch-ui-noise CSS-hide flag; content.js
 //              applyUiSettings() owns the actual hide rules
+//   noReset    excluded from resetSettingsToDefaults (server-coupled prefs)
 //   cw         {stateKey, serverBody, noun} — per-viewer content-warning
 //              filter: local bool + server PATCH /api/user/settings with
 //              rollback; main.js derives CW_CATS from these
@@ -267,14 +268,14 @@ const SETTINGS = [
     key: 'automodAllCaps', type: 'bool', default: false, scope: 'sync',
     category: 'mod', section: 'automod',
     label: 'hide all-caps spam', tip: 'hide messages over 10 chars that are mostly uppercase',
-    control: 'pill', apply: 'automod',
+    control: 'pill', apply: 'automod', applyOnLoad: true,
   },
   {
     key: 'automodRegex', type: 'text', default: '', scope: 'sync',
     category: 'mod', section: 'automod',
     label: 'filter regex', tip: 'one pattern per line, case-insensitive -- matching messages get hidden',
     placeholder: 'bit\\.ly\nfree\\s+v[\\-]?bucks',
-    control: 'textarea', alias: 'automodregex', apply: 'automod', maxLen: 4096,
+    control: 'textarea', alias: 'automodregex', apply: 'automod', applyOnLoad: true, maxLen: 4096,
   },
 
   // ── filters / content — per-viewer content-warning emote filters ──────
@@ -284,35 +285,35 @@ const SETTINGS = [
     key: 'viewer_show_sexual', type: 'bool', default: false, scope: 'local',
     category: 'filters', section: 'content',
     label: 'show sexual emotes', tip: 'emotes flagged for sexual content (≥ 70%) are hidden by default. shown with a dashed border when on.',
-    control: 'pill', runtimeVar: 'cw_sexual', apply: 'cwServerPatch',
+    control: 'pill', runtimeVar: 'cw_sexual', apply: 'cwServerPatch', noReset: true,
     cw: { stateKey: 'sexual', serverBody: 'show_sexual_emotes', noun: 'sexual emotes setting' },
   },
   {
     key: 'viewer_show_gore', type: 'bool', default: false, scope: 'local',
     category: 'filters', section: 'content',
     label: 'show gore emotes', tip: 'emotes flagged for violence/gore (≥ 70%) are hidden by default. shown with a dashed border when on.',
-    control: 'pill', runtimeVar: 'cw_gore', apply: 'cwServerPatch',
+    control: 'pill', runtimeVar: 'cw_gore', apply: 'cwServerPatch', noReset: true,
     cw: { stateKey: 'gore', serverBody: 'show_gore_emotes', noun: 'gore emotes setting' },
   },
   {
     key: 'viewer_show_weapon', type: 'bool', default: true, scope: 'local',
     category: 'filters', section: 'content',
     label: 'show weapons emotes', tip: 'emotes flagged for weapons imagery. on by default.',
-    control: 'pill', runtimeVar: 'cw_weapon', apply: 'cwServerPatch',
+    control: 'pill', runtimeVar: 'cw_weapon', apply: 'cwServerPatch', noReset: true,
     cw: { stateKey: 'weapon', serverBody: 'show_weapon_emotes', noun: 'weapons setting' },
   },
   {
     key: 'viewer_show_drug', type: 'bool', default: true, scope: 'local',
     category: 'filters', section: 'content',
     label: 'show drugs emotes', tip: 'emotes flagged for drug imagery. on by default.',
-    control: 'pill', runtimeVar: 'cw_drug', apply: 'cwServerPatch',
+    control: 'pill', runtimeVar: 'cw_drug', apply: 'cwServerPatch', noReset: true,
     cw: { stateKey: 'drug', serverBody: 'show_drug_emotes', noun: 'drugs setting' },
   },
   {
     key: 'viewer_show_hate', type: 'bool', default: true, scope: 'local',
     category: 'filters', section: 'content',
     label: 'show hate emotes', tip: 'emotes flagged for hate imagery. on by default.',
-    control: 'pill', runtimeVar: 'cw_hate', apply: 'cwServerPatch',
+    control: 'pill', runtimeVar: 'cw_hate', apply: 'cwServerPatch', noReset: true,
     cw: { stateKey: 'hate', serverBody: 'show_hate_emotes', noun: 'hate setting' },
   },
 

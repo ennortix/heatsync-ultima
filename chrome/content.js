@@ -5187,6 +5187,26 @@ function setupUsernameColoringObserver() {
   // This function now only installs click handlers above.
 }
 
+// Mixed-content emote replacement for text leaves that also hold native platform
+// emote <img> inline (Kick renders message text in `span.font-normal` with native
+// emotes interleaved as <img>). replaceEmotesWithStacking() reads textContent +
+// replaceChildren(), which would WIPE those native <img>. So for mixed leaves we
+// wrap each bare text-node child in its own span and run the existing emote
+// machinery on the span only — native <img> are siblings outside the spans and
+// are never touched. Pure-text leaves (all of Twitch) never hit this path.
+// Idempotent: re-entry finds spans (not bare text nodes) and no-ops.
+function replaceEmotesPreservingImgs(leaf, allEmotes) {
+  // Snapshot — replaceWith mutates the live childNodes list mid-iteration.
+  for (const node of Array.from(leaf.childNodes)) {
+    if (node.nodeType !== 3 || !node.nodeValue || !node.nodeValue.trim()) continue
+    const span = document.createElement('span')
+    span.className = 'hs-textfrag'
+    span.textContent = node.nodeValue
+    node.replaceWith(span)
+    replaceEmotesWithStacking(span, allEmotes)
+  }
+}
+
 // Process individual message for emote replacement
 function processMessage(messageElement) {
   if (!messageElement || !document.contains(messageElement)) return
@@ -5383,7 +5403,14 @@ function processMessage(messageElement) {
   for (const textElement of textElements) {
     if (textElement.querySelector('.heatsync-emote-wrapper')) continue
 
-    replaceEmotesWithStacking(textElement, allEmotes)
+    // Mixed leaf (native platform emote <img> inline with text, e.g. Kick) —
+    // replace per text-node so native <img> survive. Pure-text leaves take the
+    // fast path. querySelector('img') is the cheap discriminator.
+    if (textElement.querySelector('img')) {
+      replaceEmotesPreservingImgs(textElement, allEmotes)
+    } else {
+      replaceEmotesWithStacking(textElement, allEmotes)
+    }
   }
 
   // Also wrap any existing heatsync emote images (from tab completion)

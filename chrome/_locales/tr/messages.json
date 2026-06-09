@@ -126,27 +126,6 @@
   "welcome_title": {
     "message": "heatsync'e hoş geldin"
   },
-  "welcome_step1_title": {
-    "message": "heatsync.org'da giriş yap"
-  },
-  "welcome_step1_desc": {
-    "message": "hesap oluşturmak için Twitch veya Kick ile giriş yap"
-  },
-  "welcome_step2_title": {
-    "message": "emote'larını yükle"
-  },
-  "welcome_step2_desc": {
-    "message": "istediğin görselleri ekle — tüm formatlar destekleniyor"
-  },
-  "welcome_step3_title": {
-    "message": "sohbette kullan"
-  },
-  "welcome_step3_desc": {
-    "message": "emote'larına erişmek için Twitch/Kick sohbetindeki heatsync butonuna tıkla"
-  },
-  "welcome_cta": {
-    "message": "başla"
-  },
   "welcome_privacy": {
     "message": "gizlilik"
   },

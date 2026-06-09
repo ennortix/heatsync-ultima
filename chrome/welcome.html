@@ -34,10 +34,10 @@
     }
     main {
       width: 100%;
-      max-width: 720px;
+      max-width: 420px;
       display: flex;
       flex-direction: column;
-      gap: 28px;
+      gap: 18px;
     }
     header {
       display: flex;
@@ -57,52 +57,21 @@
       font-size: 13px;
       letter-spacing: 0.2px;
     }
-    .block {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
     .label {
       color: #ff8700;
-      font-size: 12px;
+      font-size: 13px;
       letter-spacing: 1px;
     }
-    .lead {
-      color: #ccc;
-      font-size: 14px;
-    }
-    .feats {
-      list-style: none;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-    .feats li { color: #bbb; }
-    .feats .plus { color: #ff8700; margin-right: 8px; }
-    .feats .ref { color: #ffff00; }
-    .steps {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 12px;
-    }
-    .step {
-      border: 1px solid rgba(255,255,255,0.12);
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      min-height: 110px;
-    }
-    .step .num { color: #ff8700; font-size: 16px; font-weight: 400; }
-    .step h2 { font-size: 13px; font-weight: 400; letter-spacing: 0.2px; }
-    .step p { color: #999; }
     .cta {
+      width: 100%;
+      max-width: 340px;
       align-self: center;
-      padding: 12px 24px;
+      padding: 14px 24px;
       background: #ff8700;
       color: #000;
       text-decoration: none;
-      font-size: 14px;
+      text-align: center;
+      font-size: 15px;
       letter-spacing: 0.3px;
       border: 1px solid #ff8700;
     }
@@ -112,20 +81,54 @@
       border-color: #fff;
       outline: none;
     }
+    .next {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      align-items: center;
+      text-align: center;
+      margin-top: -10px;
+    }
+    .next .arrow { color: #ff8700; }
+    .next p { color: #bbb; }
+    .cta-kick {
+      color: #999;
+      text-decoration: underline;
+      align-self: center;
+      font-size: 13px;
+    }
+    .cta-kick:hover, .cta-kick:focus-visible {
+      background: #fff;
+      color: #000;
+      outline: none;
+    }
+    .trust {
+      color: #999;
+      font-size: 13px;
+      text-align: center;
+    }
+    .trust .dot { color: #888; }
+    .done {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: center;
+      text-align: center;
+    }
+    .done .ok { color: #5fd700; font-size: 15px; }
+    .done p { color: #bbb; }
+    [hidden] { display: none !important; }
     footer {
       display: flex;
       gap: 12px;
       justify-content: center;
-      color: #666;
+      color: #888;
     }
     footer a { color: #999; text-decoration: underline; }
     footer a:hover, footer a:focus-visible {
       background: #fff;
       color: #000;
       outline: none;
-    }
-    @media (max-width: 600px) {
-      .steps { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -134,42 +137,28 @@
     <header>
       <img src="icon-48.png" alt="">
       <h1 data-i18n="welcome_title">heatsync</h1>
-      <p class="tagline">your emotes, every stream</p>
+      <p class="tagline" data-i18n="welcome_tagline">your emotes in every chat — no sub</p>
     </header>
 
-    <section class="block">
-      <span class="label">what you get</span>
-      <p class="lead">a personal emote inventory and multichat overlay that follows you to every stream.</p>
-      <ul class="feats">
-        <li><span class="plus">+</span>5000 emote slots — drag any image, use them in any chat, no channel sub</li>
-        <li><span class="plus">+</span>multichat overlay — every stream in one resizable panel: twitch, kick, youtube</li>
-        <li><span class="plus">+</span>threaded board — reply to any post with <span class="ref">&gt;&gt;postId</span> and follow the thread</li>
-        <li><span class="plus">+</span>live heat scores — the best moment rises to the top</li>
-      </ul>
+    <a class="cta" data-when="out" href="https://heatsync.org/api/auth/login?return_to=%2F"
+       target="_blank" rel="noopener" data-i18n="welcome_cta">sign in with twitch</a>
+
+    <section class="next" data-when="out">
+      <span class="label" data-i18n="welcome_next_label">after you click</span>
+      <p><span class="arrow">→</span> <span data-i18n="welcome_next_1">twitch asks you to approve heatsync</span></p>
+      <p><span class="arrow">→</span> <span data-i18n="welcome_next_2">done — your emotes light up in chat</span></p>
     </section>
 
-    <section class="block">
-      <span class="label">get started</span>
-      <div class="steps">
-        <article class="step">
-          <span class="num">1</span>
-          <h2 data-i18n="welcome_step1_title">log in at heatsync.org</h2>
-          <p data-i18n="welcome_step1_desc">sign in with twitch or kick to create your account</p>
-        </article>
-        <article class="step">
-          <span class="num">2</span>
-          <h2 data-i18n="welcome_step2_title">upload your emotes</h2>
-          <p>drag any image — 5000 slots</p>
-        </article>
-        <article class="step">
-          <span class="num">3</span>
-          <h2>use them in chat</h2>
-          <p>twitch chat renders them automatically. on kick + youtube, use the overlay. tab-complete to send.</p>
-        </article>
-      </div>
+    <a class="cta-kick" data-when="out" href="https://heatsync.org/api/auth/kick/login?return_to=%2F"
+       target="_blank" rel="noopener" data-i18n="welcome_cta_kick">or sign in with kick</a>
+
+    <section class="done" data-when="in" hidden>
+      <p class="ok"><span class="check">✓</span> <span data-i18n="welcome_done_title">you're in</span></p>
+      <p><span data-i18n="welcome_done_1">open any twitch, kick, or youtube stream — your emotes render right in chat</span></p>
+      <p><span data-i18n="welcome_done_2">click the heatsync button in the chat box for multichat + your emote inventory</span></p>
     </section>
 
-    <a class="cta" href="https://heatsync.org" target="_blank" rel="noopener" data-i18n="welcome_cta">open heatsync.org</a>
+    <p class="trust" data-i18n="welcome_trust">open source · no trackers · your emotes stay yours</p>
 
     <footer>
       <a href="https://heatsync.org/legal/privacy" target="_blank" rel="noopener" data-i18n="welcome_privacy">privacy</a>

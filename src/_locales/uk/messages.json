@@ -126,27 +126,6 @@
   "welcome_title": {
     "message": "ласкаво просимо в heatsync"
   },
-  "welcome_step1_title": {
-    "message": "увійди на heatsync.org"
-  },
-  "welcome_step1_desc": {
-    "message": "увійди через Twitch або Kick для створення акаунту"
-  },
-  "welcome_step2_title": {
-    "message": "завантаж свої emotes"
-  },
-  "welcome_step2_desc": {
-    "message": "додай будь-які зображення — усі формати"
-  },
-  "welcome_step3_title": {
-    "message": "використовуй у чаті"
-  },
-  "welcome_step3_desc": {
-    "message": "натисни кнопку heatsync у чаті Twitch/Kick для доступу до своїх emotes"
-  },
-  "welcome_cta": {
-    "message": "почати"
-  },
   "welcome_privacy": {
     "message": "приватність"
   },

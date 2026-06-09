@@ -126,27 +126,6 @@
   "welcome_title": {
     "message": "ברוך הבא ל-heatsync"
   },
-  "welcome_step1_title": {
-    "message": "התחבר ב-heatsync.org"
-  },
-  "welcome_step1_desc": {
-    "message": "התחבר עם Twitch או Kick כדי ליצור חשבון"
-  },
-  "welcome_step2_title": {
-    "message": "העלה את האימוג'ים שלך"
-  },
-  "welcome_step2_desc": {
-    "message": "הוסף תמונות כלשהן — כל הפורמטים נתמכים"
-  },
-  "welcome_step3_title": {
-    "message": "השתמש בהם בצ'אט"
-  },
-  "welcome_step3_desc": {
-    "message": "לחץ על כפתור heatsync בצ'אט Twitch/Kick כדי לגשת לאימוג'ים שלך"
-  },
-  "welcome_cta": {
-    "message": "התחל"
-  },
   "welcome_privacy": {
     "message": "פרטיות"
   },

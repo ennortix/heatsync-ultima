@@ -126,27 +126,6 @@
   "welcome_title": {
     "message": "chào mừng đến với heatsync"
   },
-  "welcome_step1_title": {
-    "message": "đăng nhập tại heatsync.org"
-  },
-  "welcome_step1_desc": {
-    "message": "đăng nhập bằng Twitch hoặc Kick để tạo tài khoản"
-  },
-  "welcome_step2_title": {
-    "message": "tải emote lên"
-  },
-  "welcome_step2_desc": {
-    "message": "thêm bất kỳ ảnh nào — hỗ trợ mọi định dạng"
-  },
-  "welcome_step3_title": {
-    "message": "dùng trong chat"
-  },
-  "welcome_step3_desc": {
-    "message": "bấm nút heatsync trong chat Twitch/Kick để mở emote của bạn"
-  },
-  "welcome_cta": {
-    "message": "bắt đầu"
-  },
   "welcome_privacy": {
     "message": "quyền riêng tư"
   },

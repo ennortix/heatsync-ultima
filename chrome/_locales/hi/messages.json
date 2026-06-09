@@ -126,27 +126,6 @@
   "welcome_title": {
     "message": "heatsync में आपका स्वागत है"
   },
-  "welcome_step1_title": {
-    "message": "heatsync.org पर लॉगिन करें"
-  },
-  "welcome_step1_desc": {
-    "message": "अकाउंट बनाने के लिए Twitch या Kick से लॉगिन करें"
-  },
-  "welcome_step2_title": {
-    "message": "अपने इमोट अपलोड करें"
-  },
-  "welcome_step2_desc": {
-    "message": "कोई भी छवि जोड़ें — सभी फॉर्मेट समर्थित"
-  },
-  "welcome_step3_title": {
-    "message": "उन्हें चैट में उपयोग करें"
-  },
-  "welcome_step3_desc": {
-    "message": "अपने इमोट तक पहुंचने के लिए Twitch/Kick चैट में heatsync बटन पर क्लिक करें"
-  },
-  "welcome_cta": {
-    "message": "शुरू करें"
-  },
   "welcome_privacy": {
     "message": "गोपनीयता"
   },

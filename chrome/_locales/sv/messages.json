@@ -126,27 +126,6 @@
   "welcome_title": {
     "message": "välkommen till heatsync"
   },
-  "welcome_step1_title": {
-    "message": "logga in på heatsync.org"
-  },
-  "welcome_step1_desc": {
-    "message": "logga in med Twitch eller Kick för att skapa konto"
-  },
-  "welcome_step2_title": {
-    "message": "ladda upp dina emotes"
-  },
-  "welcome_step2_desc": {
-    "message": "lägg till valfria bilder — alla format stöds"
-  },
-  "welcome_step3_title": {
-    "message": "använd dem i chatten"
-  },
-  "welcome_step3_desc": {
-    "message": "klicka på heatsync-knappen i Twitch/Kick-chatten för att nå dina emotes"
-  },
-  "welcome_cta": {
-    "message": "kom igång"
-  },
   "welcome_privacy": {
     "message": "integritet"
   },

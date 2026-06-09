@@ -13,3 +13,22 @@ function t(k) {
   }
   document.title = t('welcome_title')
 })()
+
+// Live success state: the moment oauth completes (in the tab we open), the
+// background script writes auth_token_encrypted to storage.local. Swap the
+// sign-in elements for the "you're in + next action" block so this tab closes
+// the loop instead of sitting stale. Fail-safe: if storage is unavailable we
+// never hide the CTA, so the logged-out path always works.
+;(() => {
+  const KEY = 'auth_token_encrypted'
+  const api = (typeof browser !== 'undefined' && browser.storage) ? browser : chrome
+  if (!api?.storage?.local) return
+  const render = (loggedIn) => {
+    for (const el of document.querySelectorAll('[data-when]'))
+      el.hidden = (el.dataset.when === 'in') !== !!loggedIn
+  }
+  api.storage.local.get(KEY).then((o) => render(!!o[KEY])).catch(() => {})
+  api.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && KEY in changes) render(!!changes[KEY].newValue)
+  })
+})()

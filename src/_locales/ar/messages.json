@@ -126,27 +126,6 @@
   "welcome_title": {
     "message": "مرحبًا بك في heatsync"
   },
-  "welcome_step1_title": {
-    "message": "سجّل دخول على heatsync.org"
-  },
-  "welcome_step1_desc": {
-    "message": "سجّل عبر Twitch أو Kick لإنشاء حسابك"
-  },
-  "welcome_step2_title": {
-    "message": "ارفع إيموتسك"
-  },
-  "welcome_step2_desc": {
-    "message": "أضف أي صور — جميع الصيغ مدعومة"
-  },
-  "welcome_step3_title": {
-    "message": "استخدمها في الدردشة"
-  },
-  "welcome_step3_desc": {
-    "message": "اضغط زر heatsync في دردشة Twitch/Kick لفتح إيموتسك"
-  },
-  "welcome_cta": {
-    "message": "ابدأ"
-  },
   "welcome_privacy": {
     "message": "الخصوصية"
   },

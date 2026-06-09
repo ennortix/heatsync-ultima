@@ -126,27 +126,6 @@
   "welcome_title": {
     "message": "heatsyncへようこそ"
   },
-  "welcome_step1_title": {
-    "message": "heatsync.orgでログイン"
-  },
-  "welcome_step1_desc": {
-    "message": "twitchまたはkickでサインインしてアカウント作成"
-  },
-  "welcome_step2_title": {
-    "message": "エモートをアップロード"
-  },
-  "welcome_step2_desc": {
-    "message": "画像を追加 — 全フォーマット対応"
-  },
-  "welcome_step3_title": {
-    "message": "チャットで使う"
-  },
-  "welcome_step3_desc": {
-    "message": "twitch/kickチャットのheatsyncボタンをクリックしてエモートを使用"
-  },
-  "welcome_cta": {
-    "message": "はじめる"
-  },
   "welcome_privacy": {
     "message": "プライバシー"
   },

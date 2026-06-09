@@ -126,27 +126,6 @@
   "welcome_title": {
     "message": "selamat datang ke heatsync"
   },
-  "welcome_step1_title": {
-    "message": "log masuk di heatsync.org"
-  },
-  "welcome_step1_desc": {
-    "message": "log masuk dengan Twitch atau Kick untuk buat akaun"
-  },
-  "welcome_step2_title": {
-    "message": "muat naik emote anda"
-  },
-  "welcome_step2_desc": {
-    "message": "tambah apa-apa imej — semua format disokong"
-  },
-  "welcome_step3_title": {
-    "message": "guna dalam chat"
-  },
-  "welcome_step3_desc": {
-    "message": "klik butang heatsync di chat Twitch/Kick untuk akses emote anda"
-  },
-  "welcome_cta": {
-    "message": "mula"
-  },
   "welcome_privacy": {
     "message": "privasi"
   },

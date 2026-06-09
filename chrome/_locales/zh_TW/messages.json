@@ -126,27 +126,6 @@
   "welcome_title": {
     "message": "歡迎來到 heatsync"
   },
-  "welcome_step1_title": {
-    "message": "在 heatsync.org 登入"
-  },
-  "welcome_step1_desc": {
-    "message": "用 Twitch 或 Kick 登入以建立帳號"
-  },
-  "welcome_step2_title": {
-    "message": "上傳你的表情"
-  },
-  "welcome_step2_desc": {
-    "message": "新增任何圖片 — 支援所有格式"
-  },
-  "welcome_step3_title": {
-    "message": "在聊天室使用"
-  },
-  "welcome_step3_desc": {
-    "message": "在 Twitch/Kick 聊天室點擊 heatsync 按鈕來存取你的表情"
-  },
-  "welcome_cta": {
-    "message": "開始"
-  },
   "welcome_privacy": {
     "message": "隱私"
   },

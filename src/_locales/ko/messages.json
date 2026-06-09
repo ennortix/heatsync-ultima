@@ -126,27 +126,6 @@
   "welcome_title": {
     "message": "heatsync에 오신 걸 환영합니다"
   },
-  "welcome_step1_title": {
-    "message": "heatsync.org에서 로그인"
-  },
-  "welcome_step1_desc": {
-    "message": "twitch 또는 kick으로 로그인하여 계정 생성"
-  },
-  "welcome_step2_title": {
-    "message": "이모트 업로드"
-  },
-  "welcome_step2_desc": {
-    "message": "이미지를 추가하세요 — 모든 형식 지원"
-  },
-  "welcome_step3_title": {
-    "message": "채팅에서 사용"
-  },
-  "welcome_step3_desc": {
-    "message": "twitch/kick 채팅에서 heatsync 버튼을 클릭하여 이모트 사용"
-  },
-  "welcome_cta": {
-    "message": "시작하기"
-  },
   "welcome_privacy": {
     "message": "개인정보처리방침"
   },

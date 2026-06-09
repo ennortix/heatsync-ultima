@@ -126,26 +126,35 @@
   "welcome_title": {
     "message": "heatsync"
   },
-  "welcome_step1_title": {
-    "message": "log in at heatsync.org"
-  },
-  "welcome_step1_desc": {
-    "message": "sign in with twitch or kick to create your account"
-  },
-  "welcome_step2_title": {
-    "message": "upload your emotes"
-  },
-  "welcome_step2_desc": {
-    "message": "add any images — all formats supported"
-  },
-  "welcome_step3_title": {
-    "message": "use them in chat"
-  },
-  "welcome_step3_desc": {
-    "message": "click the heatsync button in twitch/kick chat to access your emotes"
+  "welcome_tagline": {
+    "message": "your emotes in every chat — no sub"
   },
   "welcome_cta": {
-    "message": "open heatsync.org"
+    "message": "sign in with twitch"
+  },
+  "welcome_next_label": {
+    "message": "after you click"
+  },
+  "welcome_next_1": {
+    "message": "twitch asks you to approve heatsync"
+  },
+  "welcome_next_2": {
+    "message": "done — your emotes light up in chat"
+  },
+  "welcome_cta_kick": {
+    "message": "or sign in with kick"
+  },
+  "welcome_done_title": {
+    "message": "you're in"
+  },
+  "welcome_done_1": {
+    "message": "open any twitch, kick, or youtube stream — your emotes render right in chat"
+  },
+  "welcome_done_2": {
+    "message": "click the heatsync button in the chat box for multichat + your emote inventory"
+  },
+  "welcome_trust": {
+    "message": "open source · no trackers · your emotes stay yours"
   },
   "welcome_privacy": {
     "message": "privacy"

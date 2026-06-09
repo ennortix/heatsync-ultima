@@ -126,27 +126,6 @@
   "welcome_title": {
     "message": "bun venit la heatsync"
   },
-  "welcome_step1_title": {
-    "message": "autentifică-te pe heatsync.org"
-  },
-  "welcome_step1_desc": {
-    "message": "intră cu Twitch sau Kick pentru a-ți crea contul"
-  },
-  "welcome_step2_title": {
-    "message": "încarcă-ți emote-urile"
-  },
-  "welcome_step2_desc": {
-    "message": "adaugă orice imagine — toate formatele acceptate"
-  },
-  "welcome_step3_title": {
-    "message": "folosește-le în chat"
-  },
-  "welcome_step3_desc": {
-    "message": "apasă butonul heatsync din chat-ul Twitch/Kick pentru a-ți accesa emote-urile"
-  },
-  "welcome_cta": {
-    "message": "începe"
-  },
   "welcome_privacy": {
     "message": "confidențialitate"
   },

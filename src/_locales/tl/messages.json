@@ -126,27 +126,6 @@
   "welcome_title": {
     "message": "welcome sa heatsync"
   },
-  "welcome_step1_title": {
-    "message": "mag-login sa heatsync.org"
-  },
-  "welcome_step1_desc": {
-    "message": "mag-sign in gamit ang Twitch o Kick para gumawa ng account"
-  },
-  "welcome_step2_title": {
-    "message": "mag-upload ng emotes"
-  },
-  "welcome_step2_desc": {
-    "message": "magdagdag ng anumang larawan — lahat ng format suportado"
-  },
-  "welcome_step3_title": {
-    "message": "gamitin sa chat"
-  },
-  "welcome_step3_desc": {
-    "message": "i-click ang heatsync button sa Twitch/Kick chat para makita ang iyong emotes"
-  },
-  "welcome_cta": {
-    "message": "magsimula"
-  },
   "welcome_privacy": {
     "message": "privacy"
   },

@@ -126,27 +126,6 @@
   "welcome_title": {
     "message": "tervetuloa heatsynciin"
   },
-  "welcome_step1_title": {
-    "message": "kirjaudu sivulle heatsync.org"
-  },
-  "welcome_step1_desc": {
-    "message": "kirjaudu Twitchillä tai Kickillä luodaksesi tilin"
-  },
-  "welcome_step2_title": {
-    "message": "lataa emotesi"
-  },
-  "welcome_step2_desc": {
-    "message": "lisää mitä tahansa kuvia — kaikki formaatit tuettu"
-  },
-  "welcome_step3_title": {
-    "message": "käytä niitä chatissä"
-  },
-  "welcome_step3_desc": {
-    "message": "klikkaa heatsync-painiketta Twitchin/Kickin chatissä päästäksesi emoteihisi"
-  },
-  "welcome_cta": {
-    "message": "aloita"
-  },
   "welcome_privacy": {
     "message": "yksityisyys"
   },

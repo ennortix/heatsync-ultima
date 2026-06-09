@@ -126,27 +126,6 @@
   "welcome_title": {
     "message": "vítej v heatsync"
   },
-  "welcome_step1_title": {
-    "message": "přihlas se na heatsync.org"
-  },
-  "welcome_step1_desc": {
-    "message": "přihlas se přes Twitch nebo Kick a vytvoř si účet"
-  },
-  "welcome_step2_title": {
-    "message": "nahraj své emotky"
-  },
-  "welcome_step2_desc": {
-    "message": "přidej jakékoli obrázky — všechny formáty"
-  },
-  "welcome_step3_title": {
-    "message": "používej je v chatu"
-  },
-  "welcome_step3_desc": {
-    "message": "klikni na tlačítko heatsync v chatu Twitche/Kicku a otevři si své emotky"
-  },
-  "welcome_cta": {
-    "message": "začít"
-  },
   "welcome_privacy": {
     "message": "soukromí"
   },

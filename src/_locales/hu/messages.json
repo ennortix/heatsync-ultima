@@ -126,27 +126,6 @@
   "welcome_title": {
     "message": "üdv a heatsync-en"
   },
-  "welcome_step1_title": {
-    "message": "jelentkezz be a heatsync.org oldalon"
-  },
-  "welcome_step1_desc": {
-    "message": "lépj be Twitch vagy Kick fiókkal a regisztrációhoz"
-  },
-  "welcome_step2_title": {
-    "message": "töltsd fel az emote-jaidat"
-  },
-  "welcome_step2_desc": {
-    "message": "tölts fel bármilyen képet — minden formátum támogatott"
-  },
-  "welcome_step3_title": {
-    "message": "használd a chatben"
-  },
-  "welcome_step3_desc": {
-    "message": "kattints a heatsync gombra a Twitch/Kick chatben az emote-jaidhoz"
-  },
-  "welcome_cta": {
-    "message": "kezdjük"
-  },
   "welcome_privacy": {
     "message": "adatvédelem"
   },

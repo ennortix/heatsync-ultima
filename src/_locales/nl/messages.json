@@ -126,27 +126,6 @@
   "welcome_title": {
     "message": "welkom bij heatsync"
   },
-  "welcome_step1_title": {
-    "message": "log in op heatsync.org"
-  },
-  "welcome_step1_desc": {
-    "message": "log in met Twitch of Kick om je account aan te maken"
-  },
-  "welcome_step2_title": {
-    "message": "upload je emotes"
-  },
-  "welcome_step2_desc": {
-    "message": "voeg willekeurige afbeeldingen toe — alle formaten ondersteund"
-  },
-  "welcome_step3_title": {
-    "message": "gebruik ze in de chat"
-  },
-  "welcome_step3_desc": {
-    "message": "klik op de heatsync-knop in de Twitch/Kick-chat om je emotes te openen"
-  },
-  "welcome_cta": {
-    "message": "beginnen"
-  },
   "welcome_privacy": {
     "message": "privacy"
   },

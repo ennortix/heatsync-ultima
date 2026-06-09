@@ -38,12 +38,32 @@ jobs:
           echo "version=$v" >> "$GITHUB_OUTPUT"
           echo "tag=v$v" >> "$GITHUB_OUTPUT"
 
-      - name: stage versionless aliases for README links
+      - name: stage versionless chrome alias for README links
         env:
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
           cp "dist/heatsync-chrome-${VERSION}.zip" dist/heatsync-chrome.zip
-          cp "dist/heatsync-firefox-${VERSION}.zip" dist/heatsync-firefox.xpi
+
+      - name: sign firefox xpi (AMO self-distribution)
+        env:
+          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+        run: |
+          # Upload dist/firefox to AMO, wait for automated unlisted signing, then
+          # publish the signed .xpi as the versionless alias. Fails loud if signing
+          # fails — release Firefox refuses to install an unsigned xpi, so we never
+          # ship the bare zip renamed to .xpi (the old bug).
+          bunx web-ext@10 sign \
+            --source-dir dist/firefox \
+            --channel unlisted \
+            --api-key "$AMO_JWT_ISSUER" \
+            --api-secret "$AMO_JWT_SECRET" \
+            --artifacts-dir dist/signed \
+            --timeout 900000 \
+            --no-input
+          signed=$(ls dist/signed/*.xpi 2>/dev/null | head -1)
+          if [ -z "$signed" ]; then echo "::error::no signed xpi produced"; exit 1; fi
+          cp "$signed" dist/heatsync-firefox.xpi
 
       - name: create release + attach assets
         env:

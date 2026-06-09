@@ -1,5 +1,10 @@
 # changelog
 
+## [1.6.9] — 2026-06-08
+
+### fixed
+- **firefox install** — the github `.xpi` is now amo-signed, so it installs in normal release firefox. previous builds shipped an unsigned zip renamed to `.xpi`, which firefox refuses to install.
+
 ## [1.6.7] — 2026-06-03
 
 ### added

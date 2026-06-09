@@ -87,6 +87,7 @@ const SETTINGS = [
     category: 'display', section: 'display',
     labelKey: 'mc_settings_emote_size', tipKey: 'mc_settings_emote_size_desc',
     control: 'sizebtns', runtimeVar: 'emoteSize', apply: 'emoteSize', applyOnLoad: true,
+    alias: 'native chat emote scale',
     options: [
       { value: 1, label: '1x' },
       { value: 2, label: '2x' },
@@ -264,6 +265,14 @@ const SETTINGS = [
     placeholderKey: 'mc_settings_keyword_highlights_placeholder',
     control: 'textarea', alias: 'keywordhighlights', runtimeVar: 'keywordHighlights',
     apply: 'keywordRegex', applyOnLoad: true, rerender: true, maxLen: 65536,
+  },
+
+  // ── chat / privacy ────────────────────────────────────────────────────
+  {
+    key: 'anonChat', type: 'bool', default: false, scope: 'sync',
+    category: 'chat', section: 'privacy',
+    label: 'anonymous presence', tip: "don't broadcast typing/presence signals to the platform",
+    control: 'pill',
   },
 
   // ── notifs / inline notifications ─────────────────────────────────────
@@ -536,6 +545,14 @@ const SETTINGS = [
     label: 'player extensions', tip: 'overlay extensions covering the video',
   },
 
+  // ── mod / native chat ─────────────────────────────────────────────────
+  {
+    key: 'showClearedMessages', type: 'bool', default: false, scope: 'sync',
+    category: 'mod', section: 'native chat',
+    label: 'show deleted messages', tip: 'keep deleted/timed-out messages visible (struck through) in native twitch chat',
+    control: 'pill',
+  },
+
   // ── system / tabs ─────────────────────────────────────────────────────
   {
     key: 'hiddenTabs', type: 'multiselect', default: ['pinned'], scope: 'sync',
@@ -591,6 +608,12 @@ const SETTINGS = [
     category: 'system', section: 'advanced',
     label: 'show diagnostic errors', tip: "show the diagnostic errors panel below. errors are always captured locally to chrome.storage and never uploaded; this toggle only controls the panel's visibility.",
     control: 'pill', rerenderSettings: true,
+  },
+  {
+    key: 'debugLogging', type: 'bool', default: false, scope: 'sync',
+    category: 'system', section: 'advanced',
+    label: 'debug logging', tip: 'verbose console logging from all heatsync scripts — applies on next page load',
+    control: 'pill',
   },
 ]
 

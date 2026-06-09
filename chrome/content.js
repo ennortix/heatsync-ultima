@@ -381,38 +381,13 @@ async function safeSendMessage(message, _retry = 0) {
   }
 }
 
-// Auth token exchange: DOM-based (no postMessage token leak)
-// Content script writes token to a hidden DOM element only it controls.
-// MAIN-world scripts read the data attribute. No token broadcast on the wire.
-const AUTH_ELEMENT_ID = '__heatsync_auth_bridge'
-function getOrCreateAuthBridge() {
-  let el = document.getElementById(AUTH_ELEMENT_ID)
-  if (!el) {
-    el = document.createElement('div')
-    el.id = AUTH_ELEMENT_ID
-    el.style.display = 'none'
-    ;(document.documentElement || document.body).appendChild(el)
-  }
-  return el
-}
+// Auth bridge removed — it wrote the raw heatsync token into a
+// page-readable DOM dataset (host-page JS could exfiltrate it). The only
+// consumer (heatsync-button.js, ISOLATED world) now reads chrome.storage
+// directly. Remove any bridge node a previous version left in the DOM.
+try { document.getElementById('__heatsync_auth_bridge')?.remove() } catch {}
 
-async function updateAuthBridge() {
-  try {
-    const stored = await chrome.storage.local.get(['auth_token', 'auth_token_encrypted'])
-    const bridge = getOrCreateAuthBridge()
-    bridge.dataset.token = stored.auth_token || (stored.auth_token_encrypted ? 'encrypted' : '')
-    bridge.dataset.ready = '1'
-  } catch {
-    const bridge = getOrCreateAuthBridge()
-    bridge.dataset.token = ''
-    bridge.dataset.ready = '1'
-  }
-}
-updateAuthBridge()
-
-// Keep bridge in sync when token changes
 function _onStorageChanged(changes, areaName) {
-  if (changes.auth_token || changes.auth_token_encrypted) updateAuthBridge()
   if (changes.hs_emote_size != null) {
     hsEmoteSize = parseFloat(changes.hs_emote_size.newValue) || 1
     applyEmoteSize()

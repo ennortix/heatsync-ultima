@@ -268,31 +268,30 @@
   pruneExpiredCache()
   cleanup.setInterval(pruneExpiredCache, 300000)
 
-  // Read auth token from DOM bridge (set by content script, no postMessage leak)
+  // Logged-in probe — read chrome.storage directly (this script is
+  // ISOLATED world). The value only ever gates UI ("log in to add
+  // emotes"); real API calls go through HS.apiFetch auth:true, where the
+  // background attaches the token. Never lands in page-readable DOM.
   function getAuthToken() {
     return new Promise((resolve) => {
-      const readBridge = () => {
-        const bridge = document.getElementById('__heatsync_auth_bridge')
-        if (bridge?.dataset.ready === '1') {
-          cachedAuthToken = bridge.dataset.token || null
+      try {
+        chrome.storage.local.get(['auth_token', 'auth_token_encrypted'], (d) => {
+          cachedAuthToken = d?.auth_token || (d?.auth_token_encrypted ? 'encrypted' : null) || null
           resolve(cachedAuthToken)
-          return true
-        }
-        return false
+        })
+      } catch {
+        resolve(cachedAuthToken)
       }
-      // Bridge may already be ready
-      if (readBridge()) return
-      // Poll briefly — content script creates it on load
-      let attempts = 0
-      const interval = setInterval(() => {
-        if (readBridge() || ++attempts >= 20) {
-          clearInterval(interval)
-          if (attempts >= 20) resolve(cachedAuthToken)
-        }
-      }, 50)
-      btnSignal?.addEventListener('abort', () => clearInterval(interval), { once: true })
     })
   }
+  // Keep the cached logged-in state fresh across login/logout
+  try {
+    const _onAuthChange = (ch, area) => {
+      if (area === 'local' && (ch.auth_token || ch.auth_token_encrypted)) getAuthToken()
+    }
+    chrome.storage.onChanged.addListener(_onAuthChange)
+    btnSignal?.addEventListener('abort', () => chrome.storage.onChanged.removeListener(_onAuthChange), { once: true })
+  } catch {}
 
   // Get extension icon URL (works in content script context)
   const getIconUrl = () => {

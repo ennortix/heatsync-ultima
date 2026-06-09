@@ -204,13 +204,11 @@
   // hydration, cross-tab live-sync, the settings render, and the click handlers,
   // so adding a category is a single entry instead of edits in four places.
   // sexual/gore default OFF (hidden); weapon/drug/hate default ON.
-  const CW_CATS = [
-    { key: 'sexual', storage: 'viewer_show_sexual', body: 'show_sexual_emotes', noun: 'sexual emotes setting', label: 'show sexual emotes', tip: 'emotes flagged for sexual content (≥ 70%) are hidden by default. shown with a dashed border when on.', def: false },
-    { key: 'gore', storage: 'viewer_show_gore', body: 'show_gore_emotes', noun: 'gore emotes setting', label: 'show gore emotes', tip: 'emotes flagged for violence/gore (≥ 70%) are hidden by default. shown with a dashed border when on.', def: false },
-    { key: 'weapon', storage: 'viewer_show_weapon', body: 'show_weapon_emotes', noun: 'weapons setting', label: 'show weapons emotes', tip: 'emotes flagged for weapons imagery. on by default.', def: true },
-    { key: 'drug', storage: 'viewer_show_drug', body: 'show_drug_emotes', noun: 'drugs setting', label: 'show drugs emotes', tip: 'emotes flagged for drug imagery. on by default.', def: true },
-    { key: 'hate', storage: 'viewer_show_hate', body: 'show_hate_emotes', noun: 'hate setting', label: 'show hate emotes', tip: 'emotes flagged for hate imagery. on by default.', def: true },
-  ];
+  // Derived from the settings registry (src/lib/settings-schema.js entries
+  // carrying a `cw` sub-shape) — adding a category is one schema entry.
+  const CW_CATS = SETTINGS.filter(function(d) { return d.cw }).map(function(d) {
+    return { key: d.cw.stateKey, storage: d.key, body: d.cw.serverBody, noun: d.cw.noun, label: d.label, tip: d.tip, def: d.default }
+  });
   const cwLocal = {};
   for (const c of CW_CATS) cwLocal[c.key] = c.def;
   try {
@@ -1718,6 +1716,17 @@
     emoteSize: { get: function() { return emoteSize }, set: function(v) { emoteSize = v } },
     emojiSize: { get: function() { return emojiSize }, set: function(v) { emojiSize = v } },
     hiddenTabs: { get: function() { return [...hiddenTabs] }, set: function(v) { hiddenTabs = new Set(v) } },
+    // boolmap runtime objects — coercion already filtered to known subkeys
+    inlineNotifs: { get: function() { return { ...inlineNotifs } }, set: function(v) { for (const k in v) inlineNotifs[k] = !!v[k] } },
+    hermesToggles: { get: function() { return { ...hermesToggles } }, set: function(v) { for (const k in v) hermesToggles[k] = !!v[k] } },
+  }
+  // content-warning entries bridge into the shared cwLocal map (declared at
+  // top of file; its storage.onChanged listener keeps cross-tab pills live)
+  for (const _cwDef of SETTINGS) {
+    if (!_cwDef.cw) continue
+    _RUNTIME_BRIDGE[_cwDef.runtimeVar] = (function(sk) {
+      return { get: function() { return cwLocal[sk] }, set: function(v) { cwLocal[sk] = v } }
+    })(_cwDef.cw.stateKey)
   }
 
   // apply id → side-effect runner. Each mirrors the legacy toggle/save
@@ -1775,6 +1784,30 @@
         try { playMentionPing(v) } catch (_) {}
       }
     },
+    // content-warning toggles PATCH the server; the local write is already
+    // optimistic (setSetting persisted it) — roll back on failure. BG picks
+    // up the storage change via onChanged and re-appends include_* params;
+    // refresh_all flushes inline emote caches on success.
+    cwServerPatch: function(v, def) {
+      safeSendMessage({
+        type: 'api_fetch',
+        path: '/api/user/settings',
+        method: 'PATCH',
+        auth: true,
+        body: { [def.cw.serverBody]: v }
+      }).then(function(resp) {
+        if (!resp || !resp.ok) { _cwRollback(def, v); return }
+        safeSendMessage({ type: 'refresh_all' }).catch(function() {})
+      }).catch(function() { _cwRollback(def, v) })
+    },
+  }
+
+  function _cwRollback(def, attempted) {
+    setSetting(def.key, !attempted, { silent: true })
+    document.querySelectorAll(
+      '.hs-mc-toggle-pill[data-' + def.cw.stateKey + '-pill], .hs-mc-toggle-pill[data-set-key="' + def.key + '"]'
+    ).forEach(function(pill) { pill.classList.toggle('active', !attempted) })
+    showToast('failed to save ' + def.cw.noun + ' — try again', 'error')
   }
 
   function getSetting(key) {
@@ -2370,27 +2403,27 @@
   // ═══ Inline notification routing ═══
   // Modular registry: each type can be toggled independently
   // Colors match website conventions
-  const INLINE_NOTIF_TYPES = {
-    op:      { tag: '[OP]', color: '#ff0000', borderColor: '#ff0000', defaultOn: true,  label: t('mc_settings_notif_op'),       desc: t('mc_settings_notif_op_desc') },
-    mop:     { tag: '[OP]', color: '#ff00ff', borderColor: '#ff00ff', defaultOn: true,  label: t('mc_settings_notif_op_reply'), desc: t('mc_settings_notif_op_reply_desc') },
-    re:      { tag: '[RE]', color: '#00ffff', borderColor: '#00ffff', defaultOn: true,  label: t('mc_settings_notif_re'),       desc: t('mc_settings_notif_re_desc') },
-    dm:      { tag: '[DM]', color: '#ffff00', borderColor: '#ffff00', defaultOn: false, label: t('mc_settings_notif_dm'),       desc: t('mc_settings_notif_dm_desc') },
+  // Derived from the settings registry boolmap entry — option rows carry
+  // tag/color/label keys; i18n resolves here (t() unavailable in lib scope).
+  const INLINE_NOTIF_TYPES = {}
+  for (const o of _SETTINGS_BY_KEY.get('inlineNotifs').options) {
+    INLINE_NOTIF_TYPES[o.value] = {
+      tag: o.tag, color: o.color, borderColor: o.borderColor, defaultOn: o.default,
+      label: o.labelKey ? t(o.labelKey) : o.label, desc: o.tipKey ? t(o.tipKey) : o.tip,
+    }
   }
   // Runtime state: { op: true, re: false, dm: false, mention: true }
   const inlineNotifs = {}
   for (const [k, v] of Object.entries(INLINE_NOTIF_TYPES)) inlineNotifs[k] = v.defaultOn
 
-  // Hermes event toggles (Twitch-native events: raids, hype trains, etc.)
-  const HERMES_EVENT_TYPES = {
-    online:     { color: '#00ff7f', defaultOn: true,  label: 'went live',      desc: 'banner when a channel goes live' },
-    offline:    { color: '#808080', defaultOn: false, label: 'went offline',   desc: 'banner when a channel goes offline (off by default — noisy)' },
-    gameSwitch: { color: '#ff00ff', defaultOn: true,  label: 'game switches',  desc: 'banner when a streamer changes the game' },
-    raid:   { color: '#9146ff', defaultOn: true,  label: t('mc_settings_raids'),              desc: t('mc_settings_raids_desc') },
-    hype:   { color: '#ff8700', defaultOn: false, label: t('mc_settings_hype_trains'),        desc: t('mc_settings_hype_trains_desc') },
-    sub:    { color: '#00ff7f', defaultOn: true,  label: t('mc_settings_gift_subs'),          desc: t('mc_settings_gift_subs_desc') },
-    redeem: { color: '#00bfff', defaultOn: true,  label: t('mc_settings_redeems'),            desc: t('mc_settings_redeems_desc') },
-    pred:   { color: '#387aff', defaultOn: true,  label: t('mc_settings_prediction_banner'),  desc: t('mc_settings_prediction_banner_desc') },
-    poll:   { color: '#00c853', defaultOn: true,  label: t('mc_settings_poll_banner'),        desc: t('mc_settings_poll_banner_desc') },
+  // Hermes event toggles (Twitch-native events: raids, hype trains, etc.) —
+  // same registry derivation as INLINE_NOTIF_TYPES above.
+  const HERMES_EVENT_TYPES = {}
+  for (const o of _SETTINGS_BY_KEY.get('hermesEvents').options) {
+    HERMES_EVENT_TYPES[o.value] = {
+      color: o.color, defaultOn: o.default,
+      label: o.labelKey ? t(o.labelKey) : o.label, desc: o.tipKey ? t(o.tipKey) : o.tip,
+    }
   }
   const hermesToggles = {}
   for (const [k, v] of Object.entries(HERMES_EVENT_TYPES)) hermesToggles[k] = v.defaultOn
@@ -5215,40 +5248,20 @@
   // applyUiSettings(). The applyUiSettings handler is reactive to
   // chrome.storage.onChanged so toggle → instant rebuild of hide rules.
   // Order matters: groups define section ordering in the tweaks subtab.
-  const TWEAK_GROUPS = [
-    { title: 'channel points / hype', items: [
-      ['hideChannelPoints',   'channel points button',     'hides the points/claim button beside chat input'],
-      ['hideHypeTrain',       'hype train banner',         'banner above chat showing hype train progress'],
-      ['hideHypeChat',        'hype chat button',          'paid pinned-message button in chat input row'],
-      ['hidePinnedHypeChats', 'pinned hype chats',         'pinned paid-message stack at top of chat'],
-      ['hideCombos',          'combos / power-ups',        'one-tap streak buttons in chat input'],
-      ['hideBitsBtns',        'bits / cheer buttons',      'bits balance + cheer button'],
-    ]},
-    { title: 'callouts / banners', items: [
-      ['hideCharity',         'charity callout',           'fundraiser banners above chat'],
-      ['hideDrops',           'drops banner',              'drops/quest progress callouts'],
-      ['hidePolls',           'active poll',               'poll widget above chat'],
-      ['hidePredictions',     'active prediction',         'prediction widget above chat'],
-      ['hideGiftBanner',      'gift sub mass banner',      'banner when many subs gifted at once'],
-      ['hideCommunityHighlights', 'community highlights',  'pinned-message stack at top of chat'],
-      ['hideSharedChatBanner','shared chat banner',        'cross-platform shared-chat indicator'],
-    ]},
-    { title: 'sidebar / chrome', items: [
-      ['hideRecommendedChannels','recommended channels',   'sidebar "Recommended Channels" section'],
-      ['hideStories',         'stories shelf',             'sidebar / top stories rail'],
-      ['hidePrimeLoot',       'prime gaming loot upsell',  'crown-icon prime loot button'],
-      ['hideTwitchTurbo',     'twitch turbo upsell',       'turbo cta links'],
-      ['hideSubtember',       'subtember / seasonal banners','seasonal subscription gradient banners'],
-      ['hideDiscoverLuna',    'discover luna promo',       'external app promo link'],
-      ['hideLiveNotifBtn',    'live notification toggle',  'subscribe-to-notifications bell button'],
-      ['hideUnfollowBtn',     'unfollow button',           'unfollow button (prevents misclicks)'],
-      ['hideSubscribeBtn',    'subscribe button',          'channel subscribe button'],
-    ]},
-    { title: 'player overlay', items: [
-      ['hideOnscreenCelebrations','onscreen celebrations', 'confetti / celebration overlays on video'],
-      ['hidePlayerExtensions',   'player extensions',      'overlay extensions covering the video'],
-    ]},
-  ];
+  // Derived from the settings registry (`tweak: true` entries) — schema
+  // array order defines section + row ordering. Adding a tweak is one
+  // schema entry; the CSS hide rule lives in content.js applyUiSettings().
+  const TWEAK_GROUPS = (function() {
+    const groups = [];
+    const byTitle = new Map();
+    for (const d of SETTINGS) {
+      if (!d.tweak) continue;
+      let g = byTitle.get(d.section);
+      if (!g) { g = { title: d.section, items: [] }; byTitle.set(d.section, g); groups.push(g); }
+      g.items.push([d.key, d.label, d.tip]);
+    }
+    return groups;
+  })();
   const TWEAK_KEYS = TWEAK_GROUPS.flatMap(function(g) { return g.items.map(function(i) { return i[0]; }); });
 
   // Hydrated from chrome.storage.sync.ui_settings on init + onChanged.

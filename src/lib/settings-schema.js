@@ -6,7 +6,11 @@
 // entry fields:
 //   key        EXACT storage key — never rename, existing users' synced
 //              data lives under these names
-//   type       'bool' | 'enum' | 'range' | 'text' | 'multiselect'
+//   type       'bool' | 'enum' | 'range' | 'text' | 'multiselect' | 'boolmap'
+//              boolmap = one storage key holding {subkey: bool} (the
+//              inlineNotifs / hermesEvents nested savers); options list the
+//              subkeys, each with {value, default, color, tag?, label(/Key)?,
+//              tip(/Key)?}; coercion merges partial stored maps over default
 //   default    value assumed when storage is empty; written by reset
 //   scope      'sync'         → ui_settings.<key> in chrome.storage.sync
 //              'local'        → chrome.storage.local.<key> (per-device)
@@ -14,7 +18,7 @@
 //                               UI_SYNC_BLOCKLIST; mirrorKey names the
 //                               actual local storage key
 //   category   settings subtab id (display|chat|notifs|mod|filters|tweaks|system)
-//   section    group title within the subtab
+//   section    group title within the subtab (sectionKey when i18n'd)
 //   label/tip  literal lowercase strings — or labelKey/tipKey when the
 //              string is i18n'd (renderer resolves via t(); not available here)
 //   control    'pill' | 'select' | 'sizebtns' | 'range' | 'text' | 'textarea'
@@ -39,6 +43,11 @@
 //   invertDisplay    multiselect of hidden ids rendered as "visible" pills
 //   maxLen     string cap for text/textarea
 //   placeholder/placeholderKey  textarea placeholder
+//   tweak      true → twitch-ui-noise CSS-hide flag; content.js
+//              applyUiSettings() owns the actual hide rules
+//   cw         {stateKey, serverBody, noun} — per-viewer content-warning
+//              filter: local bool + server PATCH /api/user/settings with
+//              rollback; main.js derives CW_CATS from these
 
 const SETTINGS = [
   // ── display / font ────────────────────────────────────────────────────
@@ -189,6 +198,41 @@ const SETTINGS = [
     apply: 'keywordRegex', applyOnLoad: true, rerender: true, maxLen: 65536,
   },
 
+  // ── notifs / inline notifications ─────────────────────────────────────
+  {
+    key: 'inlineNotifs', type: 'boolmap', scope: 'sync',
+    category: 'notifs', sectionKey: 'mc_settings_inline_notifs',
+    label: 'inline notifications',
+    control: 'pill', runtimeVar: 'inlineNotifs',
+    default: { op: true, mop: true, re: true, dm: false },
+    options: [
+      { value: 'op', default: true, tag: '[OP]', color: '#ff0000', borderColor: '#ff0000', labelKey: 'mc_settings_notif_op', tipKey: 'mc_settings_notif_op_desc' },
+      { value: 'mop', default: true, tag: '[OP]', color: '#ff00ff', borderColor: '#ff00ff', labelKey: 'mc_settings_notif_op_reply', tipKey: 'mc_settings_notif_op_reply_desc' },
+      { value: 're', default: true, tag: '[RE]', color: '#00ffff', borderColor: '#00ffff', labelKey: 'mc_settings_notif_re', tipKey: 'mc_settings_notif_re_desc' },
+      { value: 'dm', default: false, tag: '[DM]', color: '#ffff00', borderColor: '#ffff00', labelKey: 'mc_settings_notif_dm', tipKey: 'mc_settings_notif_dm_desc' },
+    ],
+  },
+
+  // ── notifs / twitch events ────────────────────────────────────────────
+  {
+    key: 'hermesEvents', type: 'boolmap', scope: 'sync',
+    category: 'notifs', sectionKey: 'mc_settings_twitch_events',
+    label: 'twitch events',
+    control: 'pill', runtimeVar: 'hermesToggles',
+    default: { online: true, offline: false, gameSwitch: true, raid: true, hype: false, sub: true, redeem: true, pred: true, poll: true },
+    options: [
+      { value: 'online', default: true, color: '#00ff7f', label: 'went live', tip: 'banner when a channel goes live' },
+      { value: 'offline', default: false, color: '#808080', label: 'went offline', tip: 'banner when a channel goes offline (off by default — noisy)' },
+      { value: 'gameSwitch', default: true, color: '#ff00ff', label: 'game switches', tip: 'banner when a streamer changes the game' },
+      { value: 'raid', default: true, color: '#9146ff', labelKey: 'mc_settings_raids', tipKey: 'mc_settings_raids_desc' },
+      { value: 'hype', default: false, color: '#ff8700', labelKey: 'mc_settings_hype_trains', tipKey: 'mc_settings_hype_trains_desc' },
+      { value: 'sub', default: true, color: '#00ff7f', labelKey: 'mc_settings_gift_subs', tipKey: 'mc_settings_gift_subs_desc' },
+      { value: 'redeem', default: true, color: '#00bfff', labelKey: 'mc_settings_redeems', tipKey: 'mc_settings_redeems_desc' },
+      { value: 'pred', default: true, color: '#387aff', labelKey: 'mc_settings_prediction_banner', tipKey: 'mc_settings_prediction_banner_desc' },
+      { value: 'poll', default: true, color: '#00c853', labelKey: 'mc_settings_poll_banner', tipKey: 'mc_settings_poll_banner_desc' },
+    ],
+  },
+
   // ── notifs / on @mention ──────────────────────────────────────────────
   {
     key: 'hs_notifications', type: 'bool', default: false, scope: 'local',
@@ -233,6 +277,168 @@ const SETTINGS = [
     control: 'textarea', alias: 'automodregex', apply: 'automod', maxLen: 4096,
   },
 
+  // ── filters / content — per-viewer content-warning emote filters ──────
+  // local bool + server PATCH with rollback; sexual + gore hidden by
+  // default server-side, weapons/drugs/hate shown by default
+  {
+    key: 'viewer_show_sexual', type: 'bool', default: false, scope: 'local',
+    category: 'filters', section: 'content',
+    label: 'show sexual emotes', tip: 'emotes flagged for sexual content (≥ 70%) are hidden by default. shown with a dashed border when on.',
+    control: 'pill', runtimeVar: 'cw_sexual', apply: 'cwServerPatch',
+    cw: { stateKey: 'sexual', serverBody: 'show_sexual_emotes', noun: 'sexual emotes setting' },
+  },
+  {
+    key: 'viewer_show_gore', type: 'bool', default: false, scope: 'local',
+    category: 'filters', section: 'content',
+    label: 'show gore emotes', tip: 'emotes flagged for violence/gore (≥ 70%) are hidden by default. shown with a dashed border when on.',
+    control: 'pill', runtimeVar: 'cw_gore', apply: 'cwServerPatch',
+    cw: { stateKey: 'gore', serverBody: 'show_gore_emotes', noun: 'gore emotes setting' },
+  },
+  {
+    key: 'viewer_show_weapon', type: 'bool', default: true, scope: 'local',
+    category: 'filters', section: 'content',
+    label: 'show weapons emotes', tip: 'emotes flagged for weapons imagery. on by default.',
+    control: 'pill', runtimeVar: 'cw_weapon', apply: 'cwServerPatch',
+    cw: { stateKey: 'weapon', serverBody: 'show_weapon_emotes', noun: 'weapons setting' },
+  },
+  {
+    key: 'viewer_show_drug', type: 'bool', default: true, scope: 'local',
+    category: 'filters', section: 'content',
+    label: 'show drugs emotes', tip: 'emotes flagged for drug imagery. on by default.',
+    control: 'pill', runtimeVar: 'cw_drug', apply: 'cwServerPatch',
+    cw: { stateKey: 'drug', serverBody: 'show_drug_emotes', noun: 'drugs setting' },
+  },
+  {
+    key: 'viewer_show_hate', type: 'bool', default: true, scope: 'local',
+    category: 'filters', section: 'content',
+    label: 'show hate emotes', tip: 'emotes flagged for hate imagery. on by default.',
+    control: 'pill', runtimeVar: 'cw_hate', apply: 'cwServerPatch',
+    cw: { stateKey: 'hate', serverBody: 'show_hate_emotes', noun: 'hate setting' },
+  },
+
+  // ── tweaks — twitch ui noise toggles (content.js CSS-hide flags) ──────
+  // order defines section ordering in the tweaks subtab
+  {
+    key: 'hideChannelPoints', type: 'bool', default: false, scope: 'sync',
+    category: 'tweaks', section: 'channel points / hype', tweak: true, control: 'pill',
+    label: 'channel points button', tip: 'hides the points/claim button beside chat input',
+  },
+  {
+    key: 'hideHypeTrain', type: 'bool', default: false, scope: 'sync',
+    category: 'tweaks', section: 'channel points / hype', tweak: true, control: 'pill',
+    label: 'hype train banner', tip: 'banner above chat showing hype train progress',
+  },
+  {
+    key: 'hideHypeChat', type: 'bool', default: false, scope: 'sync',
+    category: 'tweaks', section: 'channel points / hype', tweak: true, control: 'pill',
+    label: 'hype chat button', tip: 'paid pinned-message button in chat input row',
+  },
+  {
+    key: 'hidePinnedHypeChats', type: 'bool', default: false, scope: 'sync',
+    category: 'tweaks', section: 'channel points / hype', tweak: true, control: 'pill',
+    label: 'pinned hype chats', tip: 'pinned paid-message stack at top of chat',
+  },
+  {
+    key: 'hideCombos', type: 'bool', default: false, scope: 'sync',
+    category: 'tweaks', section: 'channel points / hype', tweak: true, control: 'pill',
+    label: 'combos / power-ups', tip: 'one-tap streak buttons in chat input',
+  },
+  {
+    key: 'hideBitsBtns', type: 'bool', default: false, scope: 'sync',
+    category: 'tweaks', section: 'channel points / hype', tweak: true, control: 'pill',
+    label: 'bits / cheer buttons', tip: 'bits balance + cheer button',
+  },
+  {
+    key: 'hideCharity', type: 'bool', default: false, scope: 'sync',
+    category: 'tweaks', section: 'callouts / banners', tweak: true, control: 'pill',
+    label: 'charity callout', tip: 'fundraiser banners above chat',
+  },
+  {
+    key: 'hideDrops', type: 'bool', default: false, scope: 'sync',
+    category: 'tweaks', section: 'callouts / banners', tweak: true, control: 'pill',
+    label: 'drops banner', tip: 'drops/quest progress callouts',
+  },
+  {
+    key: 'hidePolls', type: 'bool', default: false, scope: 'sync',
+    category: 'tweaks', section: 'callouts / banners', tweak: true, control: 'pill',
+    label: 'active poll', tip: 'poll widget above chat',
+  },
+  {
+    key: 'hidePredictions', type: 'bool', default: false, scope: 'sync',
+    category: 'tweaks', section: 'callouts / banners', tweak: true, control: 'pill',
+    label: 'active prediction', tip: 'prediction widget above chat',
+  },
+  {
+    key: 'hideGiftBanner', type: 'bool', default: false, scope: 'sync',
+    category: 'tweaks', section: 'callouts / banners', tweak: true, control: 'pill',
+    label: 'gift sub mass banner', tip: 'banner when many subs gifted at once',
+  },
+  {
+    key: 'hideCommunityHighlights', type: 'bool', default: false, scope: 'sync',
+    category: 'tweaks', section: 'callouts / banners', tweak: true, control: 'pill',
+    label: 'community highlights', tip: 'pinned-message stack at top of chat',
+  },
+  {
+    key: 'hideSharedChatBanner', type: 'bool', default: false, scope: 'sync',
+    category: 'tweaks', section: 'callouts / banners', tweak: true, control: 'pill',
+    label: 'shared chat banner', tip: 'cross-platform shared-chat indicator',
+  },
+  {
+    key: 'hideRecommendedChannels', type: 'bool', default: false, scope: 'sync',
+    category: 'tweaks', section: 'sidebar / chrome', tweak: true, control: 'pill',
+    label: 'recommended channels', tip: 'sidebar "Recommended Channels" section',
+  },
+  {
+    key: 'hideStories', type: 'bool', default: false, scope: 'sync',
+    category: 'tweaks', section: 'sidebar / chrome', tweak: true, control: 'pill',
+    label: 'stories shelf', tip: 'sidebar / top stories rail',
+  },
+  {
+    key: 'hidePrimeLoot', type: 'bool', default: false, scope: 'sync',
+    category: 'tweaks', section: 'sidebar / chrome', tweak: true, control: 'pill',
+    label: 'prime gaming loot upsell', tip: 'crown-icon prime loot button',
+  },
+  {
+    key: 'hideTwitchTurbo', type: 'bool', default: false, scope: 'sync',
+    category: 'tweaks', section: 'sidebar / chrome', tweak: true, control: 'pill',
+    label: 'twitch turbo upsell', tip: 'turbo cta links',
+  },
+  {
+    key: 'hideSubtember', type: 'bool', default: false, scope: 'sync',
+    category: 'tweaks', section: 'sidebar / chrome', tweak: true, control: 'pill',
+    label: 'subtember / seasonal banners', tip: 'seasonal subscription gradient banners',
+  },
+  {
+    key: 'hideDiscoverLuna', type: 'bool', default: false, scope: 'sync',
+    category: 'tweaks', section: 'sidebar / chrome', tweak: true, control: 'pill',
+    label: 'discover luna promo', tip: 'external app promo link',
+  },
+  {
+    key: 'hideLiveNotifBtn', type: 'bool', default: false, scope: 'sync',
+    category: 'tweaks', section: 'sidebar / chrome', tweak: true, control: 'pill',
+    label: 'live notification toggle', tip: 'subscribe-to-notifications bell button',
+  },
+  {
+    key: 'hideUnfollowBtn', type: 'bool', default: false, scope: 'sync',
+    category: 'tweaks', section: 'sidebar / chrome', tweak: true, control: 'pill',
+    label: 'unfollow button', tip: 'unfollow button (prevents misclicks)',
+  },
+  {
+    key: 'hideSubscribeBtn', type: 'bool', default: false, scope: 'sync',
+    category: 'tweaks', section: 'sidebar / chrome', tweak: true, control: 'pill',
+    label: 'subscribe button', tip: 'channel subscribe button',
+  },
+  {
+    key: 'hideOnscreenCelebrations', type: 'bool', default: false, scope: 'sync',
+    category: 'tweaks', section: 'player overlay', tweak: true, control: 'pill',
+    label: 'onscreen celebrations', tip: 'confetti / celebration overlays on video',
+  },
+  {
+    key: 'hidePlayerExtensions', type: 'bool', default: false, scope: 'sync',
+    category: 'tweaks', section: 'player overlay', tweak: true, control: 'pill',
+    label: 'player extensions', tip: 'overlay extensions covering the video',
+  },
+
   // ── system / tabs ─────────────────────────────────────────────────────
   {
     key: 'hiddenTabs', type: 'multiselect', default: ['pinned'], scope: 'sync',
@@ -269,6 +475,10 @@ function validateSettingValue(def, v) {
     case 'text': return typeof v === 'string' && v.length <= (def.maxLen || 4096)
     case 'multiselect': return Array.isArray(v) &&
       v.every(function(x) { return def.options.some(function(o) { return o.value === x }) })
+    case 'boolmap': return !!v && typeof v === 'object' && !Array.isArray(v) &&
+      Object.keys(v).every(function(k) {
+        return typeof v[k] === 'boolean' && def.options.some(function(o) { return o.value === k })
+      })
     default: return false
   }
 }
@@ -296,6 +506,17 @@ function coerceSettingValue(def, v) {
     case 'multiselect': {
       if (!Array.isArray(v)) return undefined
       return v.filter(function(x) { return def.options.some(function(o) { return o.value === x }) })
+    }
+    case 'boolmap': {
+      if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined
+      // merge known stored subkeys over the full default map — legacy
+      // installs persisted partial maps and expect default-fill semantics
+      var merged = {}
+      for (var dk in def.default) merged[dk] = def.default[dk]
+      for (var sk in v) {
+        if (def.options.some(function(o) { return o.value === sk })) merged[sk] = !!v[sk]
+      }
+      return merged
     }
     default: return undefined
   }
@@ -331,6 +552,19 @@ function lintSettings(syncBlocklist) {
       problems.push('local key outside hs_/viewer_ namespace (breaks export/import): ' + def.key)
     }
     if (!def.label && !def.labelKey) problems.push('no label: ' + def.key)
+    if (def.type === 'boolmap') {
+      var optVals = def.options.map(function(o) { return o.value })
+      var defKeys = Object.keys(def.default)
+      if (optVals.length !== defKeys.length || !optVals.every(function(k) { return defKeys.indexOf(k) !== -1 })) {
+        problems.push('boolmap default/options key mismatch: ' + def.key)
+      }
+      def.options.forEach(function(o) {
+        if (def.default[o.value] !== o.default) problems.push('boolmap per-option default disagrees with default map: ' + def.key + '.' + o.value)
+      })
+    }
+    if (def.cw && (!def.cw.stateKey || !def.cw.serverBody || !def.cw.noun)) {
+      problems.push('cw sub-shape incomplete: ' + def.key)
+    }
     if (def.dependsOn && !SETTINGS.some(function(d) { return d.key === def.dependsOn.key })) {
       problems.push('dependsOn unknown key: ' + def.key)
     }

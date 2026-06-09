@@ -108,6 +108,44 @@ test('coerce: rejects unknown def and nullish values', () => {
   expect(coerceSettingValue(boolDef, undefined)).toBe(undefined)
 })
 
+// ── boolmap (inlineNotifs / hermesEvents nested savers) ──────────────────────
+
+const mapDef = SETTINGS.find(d => d.key === 'inlineNotifs')
+
+test('validate: boolmap accepts partial maps of known subkeys', () => {
+  expect(validateSettingValue(mapDef, { op: false })).toBe(true)
+  expect(validateSettingValue(mapDef, { op: true, dm: true })).toBe(true)
+  expect(validateSettingValue(mapDef, { bogus: true })).toBe(false)
+  expect(validateSettingValue(mapDef, { op: 'yes' })).toBe(false)
+  expect(validateSettingValue(mapDef, [])).toBe(false)
+})
+
+test('coerce: boolmap merges partial stored map over full defaults', () => {
+  expect(coerceSettingValue(mapDef, { dm: true })).toEqual({ op: true, mop: true, re: true, dm: true })
+  expect(coerceSettingValue(mapDef, { bogus: true })).toEqual(mapDef.default)
+  expect(coerceSettingValue(mapDef, 'nope')).toBe(undefined)
+})
+
+test('cw entries carry complete server-patch sub-shapes', () => {
+  const cw = SETTINGS.filter(d => d.cw)
+  expect(cw.length).toBe(5)
+  for (const def of cw) {
+    expect(def.scope).toBe('local')
+    expect(def.key.startsWith('viewer_show_')).toBe(true)
+    expect(def.cw.serverBody.startsWith('show_')).toBe(true)
+  }
+})
+
+test('tweak entries: all 24 sync bools, default off', () => {
+  const tweaks = SETTINGS.filter(d => d.tweak)
+  expect(tweaks.length).toBe(24)
+  for (const def of tweaks) {
+    expect(def.type).toBe('bool')
+    expect(def.scope).toBe('sync')
+    expect(def.default).toBe(false)
+  }
+})
+
 // ── lint catches real mistakes ───────────────────────────────────────────────
 
 test('lint: flags a duplicate key', () => {

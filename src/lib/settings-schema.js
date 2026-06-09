@@ -498,6 +498,67 @@ const SETTINGS = [
   },
 ]
 
+// ── presets ("builds") — sparse diffs over registry defaults ──────────────
+// Composite keys (boolmap/multiselect) carry whole values. Anything not in
+// a diff stays untouched, so presets compose with user tweaks and survive
+// new settings. A preset reads "active" only when ALL its diff keys match.
+const SETTINGS_PRESETS = [
+  {
+    id: 'minimal', label: 'minimal',
+    tip: 'just chat — no cosmetics, feed, stats or extra chrome',
+    diff: {
+      avatars: false, zebra: false, firstChatterGlow: false,
+      showPlatformBadges: false, linkPreviewsEnabled: false,
+      hiddenTabs: ['feed', 'whispers', 'mentions', 'discover', 'pinned'],
+      subsystems: {
+        'overlay': true, 'irc-twitch': true, 'chat-kick': true, 'chat-youtube': true,
+        'cosmetics': false, 'feed': false, 'whispers': false, 'mentions': false,
+        'stream-stats': false, 'profile-cards': true,
+        'emote-render': true, 'tab-complete': true, 'picker-button': true, 'right-click-block': true,
+      },
+    },
+  },
+  {
+    id: 'power-user', label: 'power user',
+    tip: 'every tab on, timestamps, vi keys',
+    diff: {
+      viMode: true, timestamps: true, hiddenTabs: [],
+    },
+  },
+  {
+    id: 'emotes-only', label: 'emotes only (lite)',
+    tip: 'overlay off — emotes, tab-complete and picker in native chat only. reload to apply.',
+    diff: {
+      subsystems: {
+        'overlay': false, 'irc-twitch': true, 'chat-kick': true, 'chat-youtube': true,
+        'cosmetics': true, 'feed': true, 'whispers': true, 'mentions': true,
+        'stream-stats': true, 'profile-cards': true,
+        'emote-render': true, 'tab-complete': true, 'picker-button': true, 'right-click-block': true,
+      },
+    },
+  },
+  {
+    id: 'moderator', label: 'moderator',
+    tip: 'timestamps + readable names + all-caps automod',
+    diff: {
+      timestamps: true, automodAllCaps: true, hs_readable_names: true,
+    },
+  },
+  {
+    id: 'low-ram', label: 'low ram',
+    tip: 'cosmetics, feed, whispers, stats and previews off; 1x emotes',
+    diff: {
+      hs_emote_size: 1, hs_emoji_size: 1, avatars: false, linkPreviewsEnabled: false,
+      subsystems: {
+        'overlay': true, 'irc-twitch': true, 'chat-kick': true, 'chat-youtube': true,
+        'cosmetics': false, 'feed': false, 'whispers': false, 'mentions': true,
+        'stream-stats': false, 'profile-cards': false,
+        'emote-render': true, 'tab-complete': true, 'picker-button': true, 'right-click-block': true,
+      },
+    },
+  },
+]
+
 // ── pure validators / helpers ─────────────────────────────────────────────
 
 function validateSettingValue(def, v) {
@@ -608,12 +669,26 @@ function lintSettings(syncBlocklist) {
   // 8 KB sync quota headroom — defaults must leave room for user values
   var size = JSON.stringify(syncDefaults).length
   if (size > 7000) problems.push('sync defaults too large: ' + size + ' bytes')
+  // preset diffs must reference real keys with valid values
+  var presetIds = new Set()
+  for (var p = 0; p < SETTINGS_PRESETS.length; p++) {
+    var preset = SETTINGS_PRESETS[p]
+    if (presetIds.has(preset.id)) problems.push('duplicate preset id: ' + preset.id)
+    presetIds.add(preset.id)
+    for (var dk in preset.diff) {
+      var target = SETTINGS.find(function(d) { return d.key === dk })
+      if (!target) { problems.push('preset ' + preset.id + ' references unknown key: ' + dk); continue }
+      if (!validateSettingValue(target, preset.diff[dk])) {
+        problems.push('preset ' + preset.id + ' has invalid value for: ' + dk)
+      }
+    }
+  }
   return problems
 }
 
 // Global export (IIFE bundle path — mirrors utils.js)
 if (typeof window !== 'undefined') {
-  window.heatsyncSettingsSchema = { SETTINGS, validateSettingValue, coerceSettingValue, lintSettings }
+  window.heatsyncSettingsSchema = { SETTINGS, SETTINGS_PRESETS, validateSettingValue, coerceSettingValue, lintSettings }
 }
 
-export { SETTINGS, validateSettingValue, coerceSettingValue, lintSettings }
+export { SETTINGS, SETTINGS_PRESETS, validateSettingValue, coerceSettingValue, lintSettings }

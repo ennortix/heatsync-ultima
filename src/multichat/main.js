@@ -1908,6 +1908,11 @@
       cachedUiOverflow().catch(function() { return {} }),
     ])
     const ui = (synced && synced.ui_settings) || {}
+    // custom presets ride along in ui_settings (not a registry entry —
+    // they're user data, not a setting)
+    _customPresets = Array.isArray(ui.customPresets)
+      ? ui.customPresets.filter(function(p) { return p && typeof p === 'object' && p.id && p.name && p.diff && typeof p.diff === 'object' })
+      : []
     // applier id → def; dedupes shared ids (the three font keys all map to
     // 'fonts'). Only applyOnLoad entries run here — set-time-only effects
     // (rebuildInput, notification permission, ping preview) never fire on init.
@@ -5396,6 +5401,148 @@
     }
   }
 
+  // ─── presets ("builds") — sparse diffs over defaults ─────────────────
+  // Built-ins live in settings-schema.js (SETTINGS_PRESETS); customs are
+  // diff-vs-defaults snapshots in ui_settings.customPresets (synced, and
+  // sharable via the existing settings export/import). Applying always
+  // goes through a diff-confirm panel; one-shot undo restores the prior
+  // values of exactly the keys the preset touched.
+  let _customPresets = []
+  let _lastPresetUndo = null
+  let _presetPending = null // {label, diff} or {savePrompt:true}
+
+  function _presetIsActive(p) {
+    return Object.keys(p.diff).every(function(k) {
+      return JSON.stringify(getSetting(k)) === JSON.stringify(p.diff[k])
+    })
+  }
+  function _presetChanges(diff) {
+    const out = []
+    for (const k in diff) {
+      const def = _SETTINGS_BY_KEY.get(k)
+      if (!def) continue
+      const from = getSetting(k)
+      if (JSON.stringify(from) !== JSON.stringify(diff[k])) out.push({ key: k, def: def, from: from, to: diff[k] })
+    }
+    return out
+  }
+  function _fmtPresetVal(def, v) {
+    if (def.type === 'bool') return v ? 'on' : 'off'
+    if (def.type === 'boolmap') {
+      const offs = Object.keys(v).filter(function(k) { return v[k] === false })
+      return offs.length ? 'off: ' + offs.join(', ') : 'all on'
+    }
+    if (def.type === 'multiselect') return v.length ? v.join(', ') : 'none'
+    return String(v)
+  }
+  function _applyPresetDiff(label, diff) {
+    const changes = _presetChanges(diff)
+    _presetPending = null
+    if (!changes.length) { showToast('already matching ' + label, 'info'); renderSettingsTab(); return }
+    const undo = {}
+    for (const c of changes) undo[c.key] = c.from
+    _lastPresetUndo = { label: label, diff: undo }
+    for (const c of changes) setSetting(c.key, c.to)
+    showToast('applied ' + label + ' — ' + changes.length + ' change' + (changes.length === 1 ? '' : 's'), 'info')
+    renderSettingsTab()
+  }
+  function _saveCustomPreset(name) {
+    name = (name || '').trim().slice(0, 24)
+    if (!name) { showToast('preset needs a name', 'error'); return }
+    const diff = {}
+    for (const def of SETTINGS) {
+      if (def.noReset) continue
+      const cur = getSetting(def.key)
+      if (JSON.stringify(cur) !== JSON.stringify(def.default)) diff[def.key] = cur
+    }
+    const entry = { id: 'c_' + Date.now().toString(36), name: name, diff: diff, createdAt: Date.now() }
+    const next = _customPresets.filter(function(p) { return p.name !== name }).concat(entry).slice(-8)
+    if (JSON.stringify(next).length > 5000) { showToast('presets storage full — delete one first', 'error'); return }
+    _customPresets = next
+    saveUiSetting('customPresets', next)
+    _presetPending = null
+    showToast('saved preset: ' + name, 'info')
+    renderSettingsTab()
+  }
+  function _deleteCustomPreset(id) {
+    _customPresets = _customPresets.filter(function(p) { return p.id !== id })
+    saveUiSetting('customPresets', _customPresets)
+    showToast('preset deleted', 'info')
+  }
+  function _openPresetMenu(anchorEl) {
+    const r = anchorEl.getBoundingClientRect()
+    const items = []
+    for (const p of SETTINGS_PRESETS) {
+      items.push({
+        label: (_presetIsActive(p) ? '■ ' : '□ ') + p.label,
+        fn: (function(preset) { return function() { _presetPending = { label: preset.label, diff: preset.diff }; renderSettingsTab() } })(p),
+      })
+    }
+    if (_customPresets.length) {
+      items.push('sep')
+      for (const p of _customPresets) {
+        items.push({
+          label: (_presetIsActive(p) ? '■ ' : '□ ') + p.name,
+          fn: (function(preset) { return function() { _presetPending = { label: preset.name, diff: preset.diff }; renderSettingsTab() } })(p),
+        })
+      }
+      items.push({
+        label: 'delete a preset…',
+        danger: true,
+        fn: function() {
+          const delItems = _customPresets.map(function(p) {
+            return { label: '✕ ' + p.name, danger: true, fn: function() { _deleteCustomPreset(p.id) } }
+          })
+          showHsCtxMenu(r.left, r.bottom + 4, 'delete preset', delItems)
+        },
+      })
+    }
+    items.push('sep')
+    items.push({ label: 'save current as…', fn: function() { _presetPending = { savePrompt: true }; renderSettingsTab() } })
+    if (_lastPresetUndo) {
+      items.push({
+        label: 'undo: ' + _lastPresetUndo.label,
+        fn: function() { const u = _lastPresetUndo; _lastPresetUndo = null; _applyPresetDiff('undo ' + u.label, u.diff) },
+      })
+    }
+    showHsCtxMenu(r.left, r.bottom + 4, 'presets', items)
+  }
+  function _renderPresetPanel() {
+    if (_presetPending.savePrompt) {
+      return '<div class="hs-mc-settings-group">' +
+        '<div class="hs-mc-settings-group-title">save current as preset</div>' +
+        '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
+          '<input class="hs-mc-set-text-input" id="hs-preset-name" type="text" placeholder="preset name" maxlength="24" style="flex:1">' +
+          '<div style="display:flex;gap:4px">' +
+            '<button class="hs-mc-settings-btn" data-preset-action="save-custom" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">save</button>' +
+            '<button class="hs-mc-settings-btn" data-preset-action="cancel" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">cancel</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="hs-mc-set-keyhint">snapshots every setting that differs from defaults — sharable via export settings</div>' +
+      '</div>'
+    }
+    const changes = _presetChanges(_presetPending.diff)
+    let rows = ''
+    if (!changes.length) {
+      rows = '<div class="hs-mc-setting-row" style="color:#808080">already matching — nothing to change</div>'
+    }
+    for (const c of changes) {
+      rows += '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
+        '<span class="hs-mc-setting-label">' + escapeHtml(_setLabel(c.def)) + '</span>' +
+        '<span style="font-size:13px;flex-shrink:0"><span style="color:#808080">' + escapeHtml(_fmtPresetVal(c.def, c.from)) + '</span>' +
+        ' → <span style="color:#ff8700">' + escapeHtml(_fmtPresetVal(c.def, c.to)) + '</span></span>' +
+      '</div>'
+    }
+    return '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title">apply preset: ' + escapeHtml(_presetPending.label) + '</div>' +
+      rows +
+      '<div class="hs-mc-setting-row" style="justify-content:flex-end;gap:4px">' +
+        (changes.length ? '<button class="hs-mc-settings-btn" data-preset-action="apply" style="background:#ff8700;color:#000;border:none;padding:2px 12px;font-size:13px;cursor:pointer;font-family:inherit">apply</button>' : '') +
+        '<button class="hs-mc-settings-btn" data-preset-action="cancel" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">cancel</button>' +
+      '</div>' +
+    '</div>'
+  }
+
   // ─── settings keyboard nav — roving focus, vim-first ────────────────
   // One document-level listener (bound once). Bare-letter motions
   // (j/k/h/l/g/G/d/z) gate on viModeEnabled; arrows, Enter, /, Esc and
@@ -5498,6 +5645,11 @@
       if (k === 'h' && idx >= 0) { e.preventDefault(); _setRowAdjust(rows[idx], -1); return }
       if (k === 'l' && idx >= 0) { e.preventDefault(); _setRowAdjust(rows[idx], 1); return }
       if (k === 'd' && idx >= 0) { e.preventDefault(); _setRowReset(rows[idx]); return }
+      if (k === 'p') {
+        const btn = msgsEl.querySelector('.hs-mc-set-presets-btn')
+        if (btn) { e.preventDefault(); _openPresetMenu(btn) }
+        return
+      }
       if (k === 'z') { _setPendingKey = 'z'; return }
       if (k === 'a' && _setPendingKey === 'z') {
         _setPendingKey = ''
@@ -5521,7 +5673,9 @@
     var searchActive = _setQueryTokens().length > 0
     var bodyContent
     var countLabel = ''
-    if (searchActive) {
+    if (_presetPending) {
+      bodyContent = _renderPresetPanel()
+    } else if (searchActive) {
       var res = _renderSearchResults()
       bodyContent = res.html
       countLabel = res.count + '/' + res.total
@@ -5540,6 +5694,7 @@
         '<div class="hs-mc-set-searchbar">' +
           '<input class="hs-mc-set-search" type="search" placeholder="/ search settings..." value="' + escapeHtml(_setQuery) + '">' +
           '<span class="hs-mc-set-search-count">' + countLabel + '</span>' +
+          '<button class="hs-mc-set-presets-btn">presets</button>' +
         '</div>' +
         '<div class="hs-mc-set-subtab-body">' +
           bodyContent +
@@ -5592,6 +5747,21 @@
           modToolbarButtons = modToolbarButtons.filter(function(x) { return x !== id; });
         }
         saveModToolbarButtons();
+        return;
+      }
+
+      // Presets dropdown + diff-confirm actions
+      var presetsBtn = e.target.closest('.hs-mc-set-presets-btn');
+      if (presetsBtn) {
+        _openPresetMenu(presetsBtn);
+        return;
+      }
+      var presetAction = e.target.closest('[data-preset-action]');
+      if (presetAction) {
+        var pAct = presetAction.dataset.presetAction;
+        if (pAct === 'apply' && _presetPending) _applyPresetDiff(_presetPending.label, _presetPending.diff);
+        else if (pAct === 'save-custom') _saveCustomPreset(msgsEl.querySelector('#hs-preset-name')?.value);
+        else if (pAct === 'cancel') { _presetPending = null; renderSettingsTab(); }
         return;
       }
 
@@ -10993,6 +11163,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           const v = coerceSettingValue(def, ns[def.key])
           if (v !== undefined && validateSettingValue(def, v)) _settingsCache[def.key] = v
         }
+        if (Array.isArray(ns.customPresets)) _customPresets = ns.customPresets
 
         if (ns.automodAllCaps !== undefined || ns.automodRegex !== undefined) {
           compileAutomod(ns)

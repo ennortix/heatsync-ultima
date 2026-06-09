@@ -5308,6 +5308,21 @@ function injectStyles() {
       font-size: 11px;
       flex-shrink: 0;
     }
+    .hs-mc-set-presets-btn {
+      background: #000;
+      color: #fff;
+      border: 1px solid #808080;
+      font-family: inherit;
+      font-size: 13px;
+      padding: 3px 8px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .hs-mc-set-presets-btn:hover {
+      background: #fff;
+      color: #000;
+      border-color: #fff;
+    }
     .hs-mc-setting-row.hs-mc-set-row-focus,
     .hs-mc-setting-row.hs-mc-set-row-focus * {
       background: #fff !important;

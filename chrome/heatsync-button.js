@@ -4835,6 +4835,14 @@
 
   // Initialize
   async function init() {
+    // picker-button subsystem gate — off = no button, no preload, no panel
+    try {
+      const d = await chrome.storage.sync.get('ui_settings')
+      if (d?.ui_settings?.subsystems?.['picker-button'] === false) {
+        log(' picker-button subsystem off — skipping button module');
+        return;
+      }
+    } catch (_) {}
     log(' 🔥 Initializing button module on:', window.location.href);
     cleanupOrphanedElements();
     injectPreconnectHints();

@@ -176,6 +176,30 @@
   linkErrors.addEventListener('contextmenu', (e) => { e.preventDefault(); clearErrors(); });
   refreshErrorCount();
 
+  // Lite mode (emotes only) — flips the overlay subsystem gate. Lives here
+  // because you can't re-enable a disabled overlay from inside the overlay.
+  // Emote layer gates (render/tab-complete/picker/right-click) are separate
+  // and stay as the user set them — default on.
+  const litePill = document.getElementById('lite-pill');
+  const liteRow = document.getElementById('lite-row');
+  const liteHint = document.getElementById('lite-hint');
+  function paintLite(on) { litePill.classList.toggle('active', on); }
+  chrome.storage.sync.get('ui_settings', (d) => {
+    paintLite(d?.ui_settings?.subsystems?.overlay === false);
+  });
+  liteRow.addEventListener('click', () => {
+    chrome.storage.sync.get('ui_settings', (d) => {
+      const ui = d?.ui_settings || {};
+      const subs = (ui.subsystems && typeof ui.subsystems === 'object') ? { ...ui.subsystems } : {};
+      const liteOn = subs.overlay !== false; // toggling INTO lite
+      subs.overlay = !liteOn ? true : false;
+      chrome.storage.sync.set({ ui_settings: { ...ui, subsystems: subs } }, () => {
+        paintLite(subs.overlay === false);
+        liteHint.classList.add('visible');
+      });
+    });
+  });
+
   autofillFromActiveTab();
   input.focus();
 })();

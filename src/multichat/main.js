@@ -1788,6 +1788,18 @@
     // optimistic (setSetting persisted it) — roll back on failure. BG picks
     // up the storage change via onChanged and re-appends include_* params;
     // refresh_all flushes inline emote caches on success.
+    // Subsystem pills — live gates apply immediately (their code paths
+    // check isEnabled at use time); reload-tagged flips get a toast. Tab
+    // affordances of gated subsystems hide/show right away.
+    subsystemToggle: function(v, def) {
+      if (_gatesAtBoot) {
+        const reloadChanged = def.options.some(function(o) {
+          return o.applies === 'reload' && (v[o.value] !== false) !== (_gatesAtBoot[o.value] !== false)
+        })
+        if (reloadChanged) showToast('reload the page to apply subsystem changes', 'info')
+      }
+      applyHiddenTabs()
+    },
     cwServerPatch: function(v, def) {
       safeSendMessage({
         type: 'api_fetch',
@@ -1864,6 +1876,25 @@
     return true
   }
   const _DEPENDS_PARENTS = new Set(SETTINGS.filter(function(d) { return d.dependsOn }).map(function(d) { return d.dependsOn.key }))
+
+  // ─── subsystem gates ────────────────────────────────────────────────────
+  // isEnabled(id): live read — server health kill-list wins, then the
+  // user's ui_settings.subsystems map (default ON). Live-tagged code paths
+  // (mentions, stream-stats, right-click-block) call this at use time.
+  // gateAtBoot(id): the init()-time snapshot — every init guard reads this
+  // so a mid-init storage write can't half-apply a subsystem.
+  let _gatesAtBoot = null
+  function isEnabled(id) {
+    try { if (window.__hsHealth?.disabled?.includes(id)) return false } catch (_) {}
+    return getSetting('subsystems')[id] !== false
+  }
+  function snapshotGates() {
+    _gatesAtBoot = Object.assign({}, getSetting('subsystems'))
+  }
+  function gateAtBoot(id) {
+    try { if (window.__hsHealth?.disabled?.includes(id)) return false } catch (_) {}
+    return !_gatesAtBoot || _gatesAtBoot[id] !== false
+  }
 
   // One hydration pass over the whole registry — replaces the per-setting
   // loadXSetting() functions. Reads the shared init caches, fills
@@ -4853,13 +4884,17 @@
   }
 
 
+  // Tab subsystems — a disabled subsystem hides its tab affordance too
+  const _TAB_SUBSYSTEM = { feed: 'feed', whispers: 'whispers', mentions: 'mentions' }
   function applyHiddenTabs() {
     if (!tabBarElement) return;
     for (const id of HIDABLE_TABS) {
       const btn = tabBarElement.querySelector(`.hs-mc-tab[data-tab="${id}"]`);
-      if (btn) btn.style.display = hiddenTabs.has(id) ? 'none' : '';
+      const subOff = _TAB_SUBSYSTEM[id] && !isEnabled(_TAB_SUBSYSTEM[id]);
+      if (btn) btn.style.display = (hiddenTabs.has(id) || subOff) ? 'none' : '';
     }
-    if (hiddenTabs.has(currentTab)) switchTab('live');
+    const curOff = _TAB_SUBSYSTEM[currentTab] && !isEnabled(_TAB_SUBSYSTEM[currentTab]);
+    if (hiddenTabs.has(currentTab) || curOff) switchTab('live');
   }
 
   // Background chest-claim sweeper. Chests spawn every ~15min during active
@@ -5243,7 +5278,7 @@
       if (!advFolded && adv.endsWith('</div>')) {
         adv = adv.slice(0, -6) + _renderCrashLogBlock() + '</div>'
       }
-      return _regSections(cat, ['tabs']) + _renderLanguageGroup() + _renderMutedGroup() + adv + _renderBackupGroup()
+      return _regSections(cat, ['tabs', 'subsystems']) + _renderLanguageGroup() + _renderMutedGroup() + adv + _renderBackupGroup()
     }
     return _regSections(cat)
   }
@@ -11141,18 +11176,19 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
             }
           }
 
-          // Join added channels
+          // Join added channels (subsystem gates: a disabled platform feed
+          // never joins)
           for (const ch of newChannels) {
             const id = ch.id
             if (!oldIds.has(id)) {
               const twitchName = ch.twitch
-              if (twitchName) {
+              if (twitchName && isEnabled('irc-twitch')) {
                 irc?.join(twitchName)
                 try { chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchName }) } catch (e) {}
               }
               const kickName = ch.kick
-              if (kickName) kickChat?.join(kickName)
-              if (ch.youtube) {
+              if (kickName && isEnabled('chat-kick')) kickChat?.join(kickName)
+              if (ch.youtube && isEnabled('chat-youtube')) {
                 youtubeLinks.set(id, { url: ch.youtube, videoId: '', channelName: '' })
                 chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ch.youtube, channelId: id }).catch(() => {})
               }
@@ -11406,6 +11442,16 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     const _localPrime = chrome.storage.local.get([STORAGE_KEY, 'user_info', 'muted_users'])
     await loadConfig();
     if (!config.enabled) return;
+    // Lite / emotes-only mode — overlay subsystem off kills the whole panel
+    // before any DOM or sockets exist. The emote layer (content.js, separate
+    // script) keeps running. Re-enable lives in the extension popup.
+    try {
+      const _pre = await _uiPrime
+      if (_pre?.ui_settings?.subsystems?.overlay === false) {
+        log('overlay subsystem off — lite mode, skipping multichat init')
+        return
+      }
+    } catch {}
     log('Initializing...');
 
     // ── PHASE 2: hydrate username + muted users from prefetched local ─────
@@ -11456,6 +11502,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     ])));
     // Init done — drop the cache so subsequent reads see fresh data.
     invalidateUiSettingsCache()
+    // Freeze the subsystem gates for the rest of init — a mid-init storage
+    // write can't half-apply a subsystem. Live reads still use isEnabled().
+    snapshotGates()
 
     // Request background to re-send channel emotes (may have been fetched before we loaded)
     try {
@@ -11465,7 +11514,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     setupEmoteTooltipHandlers();
     setupUserTooltipHandlers();
     setupLinkTooltipHandlers();
-    setupProfileCardHandlers();
+    if (gateAtBoot('profile-cards')) setupProfileCardHandlers();
     listenForSettingsChanges();
 
     // Request initial BTTV/FFZ/Chatterino badge maps from background.
@@ -11493,7 +11542,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         if (attempt < 8) cleanup.setTimeout(() => loadBulkBadges(attempt + 1), Math.min(500 * (attempt + 1), 3000))
       })
     }
-    loadBulkBadges()
+    if (gateAtBoot('cosmetics')) loadBulkBadges()
 
     // Load heatsync auth state
     loadHsAuth();
@@ -11509,10 +11558,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     } catch {}
 
     // Listen for social tab events from background
-    listenForSocialEvents();
+    if (gateAtBoot('feed')) listenForSocialEvents();
 
     // Load whisper conversations from storage
-    loadWhispers();
+    if (gateAtBoot('whispers')) loadWhispers();
 
     // Seed cross-device unread state from server (mentions/whispers/home).
     // Independent of auth — anonymous users skip the network hit and use
@@ -11549,11 +11598,16 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // mentions tab on reload would otherwise paint empty for a beat.
     await restorePersistedBuffers();
     const startNetwork = () => {
-      irc.connect();
-      kickChat.connect();
+      // Subsystem gates — a disabled platform feed never opens its socket
+      // or joins channels (gating at the registration call = no orphans).
+      const gTwitch = gateAtBoot('irc-twitch')
+      const gKick = gateAtBoot('chat-kick')
+      const gYt = gateAtBoot('chat-youtube')
+      if (gTwitch) irc.connect();
+      if (gKick) kickChat.connect();
 
       // Connect auth IRC eagerly so first send is instant (whispers no longer arrive over IRC)
-      if (hostPlatform === 'twitch') {
+      if (gTwitch && hostPlatform === 'twitch') {
         const token = getTwitchAuthToken()
         const nick = currentUsername || getCurrentUsername()
         if (token && nick) {
@@ -11565,7 +11619,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
       // Twitch deprecated WHISPER over IRC in Feb 2023 — receive via EventSub instead.
       // Works on any host (the ESW socket is independent of the chat IRC).
-      startEventSubWhispers()
+      if (gateAtBoot('whispers')) startEventSubWhispers()
 
       // Auto-join current channel on all platforms (using overrides if set)
       const currentChannel = getCurrentChannel();
@@ -11575,11 +11629,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         const kickCh = platNames.kick || currentChannel
         const ytUrl = platNames.youtube || `https://youtube.com/@${currentChannel}/live`
 
-        irc.join(twitchCh)
-        kickChat.join(kickCh)
+        if (gTwitch) irc.join(twitchCh)
+        if (gKick) kickChat.join(kickCh)
         // Also join the URL channel name if different (for native platform messages)
-        if (twitchCh !== currentChannel) irc.join(currentChannel)
-        if (kickCh !== currentChannel) kickChat.join(currentChannel)
+        if (gTwitch && twitchCh !== currentChannel) irc.join(currentChannel)
+        if (gKick && kickCh !== currentChannel) kickChat.join(currentChannel)
 
         // Subscribe YouTube. On a YT watch/live URL getCurrentChannel returns the
         // 11-char videoId — feeding that to `@${id}/live` produces a bogus
@@ -11591,19 +11645,21 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         const autoYtUrl = onYtVideoPage
           ? `https://youtube.com/watch?v=${currentChannel}`
           : ytUrl
-        ytSubscribedUrls.set('__live_yt_auto__', autoYtUrl)
-        ytChanLastSeen.set('__live_yt_auto__', Date.now())
-        chrome.runtime.sendMessage({
-          type: 'youtube_ws_subscribe', url: autoYtUrl, channelId: '__live_yt_auto__'
-        }).catch(() => {})
+        if (gYt) {
+          ytSubscribedUrls.set('__live_yt_auto__', autoYtUrl)
+          ytChanLastSeen.set('__live_yt_auto__', Date.now())
+          chrome.runtime.sendMessage({
+            type: 'youtube_ws_subscribe', url: autoYtUrl, channelId: '__live_yt_auto__'
+          }).catch(() => {})
+        }
         log('Auto-joined current channel:', currentChannel, 'platforms:', twitchCh, kickCh, ytUrl);
       }
 
       // Ensure live channel override is also joined on all platforms
       const liveCh = getLiveChannel();
       if (liveCh && liveCh !== currentChannel) {
-        irc?.join(liveCh);
-        kickChat?.join(liveCh);
+        if (gTwitch) irc?.join(liveCh);
+        if (gKick) kickChat?.join(liveCh);
         log('Auto-joined live channel override:', liveCh);
       }
 
@@ -11619,7 +11675,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       hsSched.chunk(bgChannels, async (ch) => {
         const twitchName = ch.twitch;
         const kickName = ch.kick;
-        if (twitchName) {
+        if (gTwitch && twitchName) {
           // Don't gate the join_channel sendMessage on irc.join — irc.join
           // awaits bg_irc_history (up to 4s) and a stalled history fetch would
           // delay the BG channel-emotes fetch indefinitely. Kick off both
@@ -11629,7 +11685,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
             chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchName })
           } catch (e) {}
         }
-        if (kickName) {
+        if (gKick && kickName) {
           kickChat.join(kickName);
         }
         // YouTube subscription is owned by loadConfig() (line ~6071) so this
@@ -11671,7 +11727,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     }, 300);
 
     // Scan existing chat for mentions (before IRC catches new ones)
-    cleanup.setTimeout(() => scanExistingMentions(), 2000);
+    cleanup.setTimeout(() => { if (isEnabled('mentions')) scanExistingMentions() }, 2000);
 
     // Handle incoming IRC messages
     irc.on('message', (msg) => {
@@ -12454,6 +12510,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // Auth IRC is dead — reconnect if we have credentials
       const token = getTwitchAuthToken();
       const nick = currentUsername || getCurrentUsername();
+      if (!isEnabled('irc-twitch')) return;
       if (token && nick && !authState.connecting) {
         log('Tab visible, auth IRC dead — reconnecting');
         const prev = [...authState.joined];
@@ -12469,6 +12526,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // 3. Reconnect Kick chat on tab focus
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState !== 'visible') return;
+      if (!isEnabled('chat-kick')) return;
       if (kickChat && (!kickChat.ws || kickChat.ws.readyState !== WebSocket.OPEN)) {
         log('Tab visible, Kick chat dead — reconnecting');
         kickChat.connect();
@@ -12478,6 +12536,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // 4. Reconnect EventSub whispers on tab focus
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState !== 'visible') return;
+      if (!isEnabled('whispers')) return;
       reconnectEventSubIfDead();
     }, { signal: mcSignal });
 

@@ -20,6 +20,7 @@ function getMentionTargets() {
 }
 
 function isMention(msg) {
+  if (!isEnabled('mentions')) return false // live subsystem gate
   const targets = getMentionTargets()
   if (!targets.length) return false
   const sender = msg.user?.toLowerCase()

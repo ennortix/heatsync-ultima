@@ -455,6 +455,40 @@ const SETTINGS = [
     ],
   },
 
+  // ── system / subsystems — compose your own chat ───────────────────────
+  // Whole features OFF for real: gated at init so a disabled subsystem
+  // never creates its sockets/listeners/DOM (RAM + CPU reclaim). Most
+  // need a reload to apply (applies:'reload'); live ones tear down in
+  // place. Server health kill-switch (__hsHealth.disabled) overrides.
+  {
+    key: 'subsystems', type: 'boolmap', scope: 'sync',
+    category: 'system', section: 'subsystems',
+    label: 'subsystems', apply: 'subsystemToggle',
+    control: 'pill',
+    default: {
+      'overlay': true, 'irc-twitch': true, 'chat-kick': true, 'chat-youtube': true,
+      'cosmetics': true, 'feed': true, 'whispers': true, 'mentions': true,
+      'stream-stats': true, 'profile-cards': true,
+      'emote-render': true, 'tab-complete': true, 'picker-button': true, 'right-click-block': true,
+    },
+    options: [
+      { value: 'overlay', default: true, color: '#ff8700', applies: 'reload', label: 'multichat overlay', tip: 'the whole chat panel. off = lite mode: emotes, tab-complete and picker keep working in native chat. re-enable here or from the extension icon popup.' },
+      { value: 'irc-twitch', default: true, color: '#9146ff', applies: 'reload', label: 'twitch chat feed', tip: 'twitch irc connection + channel joins inside the overlay' },
+      { value: 'chat-kick', default: true, color: '#53fc18', applies: 'reload', label: 'kick chat feed', tip: 'kick websocket connection + channel joins inside the overlay' },
+      { value: 'chat-youtube', default: true, color: '#ff0000', applies: 'reload', label: 'youtube chat feed', tip: 'youtube live chat subscriptions inside the overlay' },
+      { value: 'cosmetics', default: true, color: '#00ffff', applies: 'reload', label: 'third-party cosmetics', tip: '7tv paints + bttv/ffz/chatterino badges. off saves ram on busy channels.' },
+      { value: 'feed', default: true, color: '#00ff7f', applies: 'reload', label: 'feed', tip: 'heatsync social feed tab + its event stream' },
+      { value: 'whispers', default: true, color: '#ffff00', applies: 'reload', label: 'whispers', tip: 'twitch whisper eventsub socket + whispers tab' },
+      { value: 'mentions', default: true, color: '#ff00ff', applies: 'live', label: 'mentions', tip: 'mention detection, mentions tab and pings' },
+      { value: 'stream-stats', default: true, color: '#387aff', applies: 'live', label: 'stream stats', tip: 'per-channel message-rate stats powering heat ranking' },
+      { value: 'profile-cards', default: true, color: '#00c853', applies: 'reload', label: 'profile cards', tip: 'click a username for the profile card popup' },
+      { value: 'emote-render', default: true, color: '#ff8700', applies: 'reload', label: 'emotes in native chat', tip: 'render heatsync emotes inside the platform’s own chat' },
+      { value: 'tab-complete', default: true, color: '#ff8700', applies: 'reload', label: 'tab-complete in native chat', tip: 'emote + username completion in the platform’s own input' },
+      { value: 'picker-button', default: true, color: '#ff8700', applies: 'reload', label: 'emote picker button', tip: 'the heatsync picker button beside the native chat input' },
+      { value: 'right-click-block', default: true, color: '#ff8700', applies: 'live', label: 'right-click emote block', tip: 'right-click any emote to instantly block it' },
+    ],
+  },
+
   // ── system / advanced ─────────────────────────────────────────────────
   {
     key: 'crashTelemetry', type: 'bool', default: false, scope: 'sync',

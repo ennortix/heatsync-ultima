@@ -2882,8 +2882,8 @@ function applyUiSettings(settings) {
     log(' Applied UI hiding CSS:', rules.length, 'rules');
   }
 
-  // Cosmetics toggle
-  if (settings.showCosmetics === false) {
+  // Cosmetics toggle — legacy showCosmetics key OR the cosmetics subsystem gate
+  if (settings.showCosmetics === false || settings.subsystems?.cosmetics === false) {
     cosmeticsEnabled = false
     // Remove existing cosmetic badges from DOM
     document.querySelectorAll('.hs-cosmetic-badge').forEach(b => b.remove())
@@ -5132,6 +5132,7 @@ function setupUsernameColoringObserver() {
     // handlers. Instant block/unblock toggle on the wrapper under the cursor;
     // stack auto-expands (lockStack) so siblings stay visible during the op.
     document.addEventListener('contextmenu', (e) => {
+      if (!hsGateOn('right-click-block')) return; // live subsystem gate
       const stack = e.target.closest('.heatsync-emote-stack');
       if (!stack) return;
       e.preventDefault();
@@ -10308,35 +10309,66 @@ chrome.storage.onChanged.addListener(_onAutoClaimStorageChanged)
 
 // Initialize
 if (window.HS?.initMainWorldNonce) window.HS.initMainWorldNonce() // secure MAIN world GQL/Helix handlers
-setupEmoteClickHandlers();
-detectAndJoinChannel();
-setupMessageContextMenu();
-watchForNewMessages();
-interceptMessageSending();
-setupTabCompletion();
-log(' Extension loaded');
 
-// Process any chat history that's already loaded in the DOM
-// (Twitch loads recent messages on page load, but we need to process them with emotes)
-cleanup.setTimeout(() => {
-  log(' Processing chat history from page load...');
-  const channel = getPageChannel()
+// Emote-layer subsystem gates — ui_settings.subsystems (set in multichat
+// settings → system → subsystems; default ON). A gated-off subsystem never
+// registers its observers/handlers. right-click-block is the only live one;
+// the rest apply on reload.
+const HS_GATES = { 'emote-render': true, 'tab-complete': true, 'right-click-block': true }
+function hsGateOn(id) { return HS_GATES[id] !== false }
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'sync' || !changes.ui_settings) return
+  const subs = changes.ui_settings.newValue?.subsystems
+  if (subs) HS_GATES['right-click-block'] = subs['right-click-block'] !== false
+})
 
-  // Restore cached messages FIRST for instant render (before robotty backfill)
-  if (channel) {
-    initMsgCache(channel)
-    const chatContainer = findChatContainer()
-    if (chatContainer) {
-      const restored = restoreMsgCache(channel, chatContainer)
-      if (restored > 0) processExistingMessages()
-    }
+function bootEmoteLayer() {
+  setupEmoteClickHandlers();
+  detectAndJoinChannel();
+  setupMessageContextMenu();
+  if (hsGateOn('emote-render')) watchForNewMessages();
+  interceptMessageSending();
+  if (hsGateOn('tab-complete')) {
+    setupTabCompletion();
+  } else {
+    // Kick hook shares this ISOLATED window; Twitch hook is MAIN-world and
+    // listens for the gate message. Both tear down via their lifecycles.
+    try { window.__heatsyncKickAcLifecycle?.abort() } catch (_) {}
+    try { window.postMessage({ type: 'heatsync-gate-tab-complete-off' }, location.origin) } catch (_) {}
   }
+  log(' Extension loaded');
 
-  processExistingMessages();
-  setupUsernameColoringObserver(); // Start persistent username coloring
-  // Backfill after a short delay so native Twitch messages are loaded for dedup
-  cleanup.setTimeout(() => backfillChatHistory(), 500);
-}, 1000);
+  if (!hsGateOn('emote-render')) return
+  // Process any chat history that's already loaded in the DOM
+  // (Twitch loads recent messages on page load, but we need to process them with emotes)
+  cleanup.setTimeout(() => {
+    log(' Processing chat history from page load...');
+    const channel = getPageChannel()
+
+    // Restore cached messages FIRST for instant render (before robotty backfill)
+    if (channel) {
+      initMsgCache(channel)
+      const chatContainer = findChatContainer()
+      if (chatContainer) {
+        const restored = restoreMsgCache(channel, chatContainer)
+        if (restored > 0) processExistingMessages()
+      }
+    }
+
+    processExistingMessages();
+    setupUsernameColoringObserver(); // Start persistent username coloring
+    // Backfill after a short delay so native Twitch messages are loaded for dedup
+    cleanup.setTimeout(() => backfillChatHistory(), 500);
+  }, 1000);
+}
+
+chrome.storage.sync.get('ui_settings', (d) => {
+  try {
+    const subs = d?.ui_settings?.subsystems || {}
+    for (const k in HS_GATES) if (subs[k] === false) HS_GATES[k] = false
+  } catch (_) {}
+  bootEmoteLayer()
+});
 
 // Expose the recency list for the Kick autocomplete hook (ISOLATED, shares this
 // window). Twitch's hook is MAIN-world and reads the DOM bridge instead.

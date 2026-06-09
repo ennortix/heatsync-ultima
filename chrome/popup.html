@@ -81,6 +81,34 @@
     }
     .detected b { color: #ff8700; font-weight: 400; }
 
+    .lite-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 16px;
+      border-top: 1px solid rgba(255,255,255,0.12);
+      cursor: pointer;
+      user-select: none;
+    }
+    .lite-row:hover { background: #fff; color: #000; }
+    .lite-pill {
+      width: 16px;
+      height: 16px;
+      background: #cc0000;
+      border: none;
+      flex-shrink: 0;
+      cursor: pointer;
+      padding: 0;
+    }
+    .lite-pill.active { background: #00dd00; }
+    .lite-hint {
+      padding: 0 16px 10px;
+      font-size: 11px;
+      color: #888;
+      display: none;
+    }
+    .lite-hint.visible { display: block; }
+
     .footer {
       display: flex;
       gap: 0;
@@ -110,6 +138,12 @@
     <button class="btn" id="popout-btn">popout chat</button>
     <div class="detected" id="detected"></div>
   </div>
+
+  <div class="lite-row" id="lite-row" title="overlay off — emotes, tab-complete and picker keep working in native chat">
+    <button class="lite-pill" id="lite-pill"></button>
+    <span>lite mode (emotes only)</span>
+  </div>
+  <div class="lite-hint" id="lite-hint">reload open twitch/kick/youtube tabs to apply</div>
 
   <div class="footer">
     <a id="link-site" href="https://heatsync.org" target="_blank" rel="noopener noreferrer">heatsync.org</a>

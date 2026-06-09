@@ -58,6 +58,7 @@ function _scheduleStatsScan() {
 }
 
 function bumpStreamStats(channel, msg, isMent) {
+  if (!isEnabled('stream-stats')) return // live subsystem gate
   const s = getStats(channel)
   if (!s || !msg) return
   s.msgCount++

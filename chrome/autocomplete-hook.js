@@ -30,6 +30,15 @@
   acSignal.addEventListener('abort', () => cleanup.destroyAll())
   window.__heatsyncAcLifecycle = { abort: () => ac.abort() }
 
+  // tab-complete subsystem gate — content.js (ISOLATED) reads
+  // ui_settings.subsystems and posts this when the user turned it off.
+  window.addEventListener('message', (e) => {
+    if (e.source !== window) return
+    if (e.data && e.data.type === 'heatsync-gate-tab-complete-off') {
+      try { ac.abort() } catch (_) {}
+    }
+  }, { signal: acSignal })
+
   // Inject CSS to make chat input emote spans auto-size to their content
   // BULLETPROOF: Wide emotes must expand span to fit, never clip
   if (!document.getElementById('heatsync-autocomplete-styles')) {

@@ -129,9 +129,43 @@
       || /^Connection timeout$/.test(msg) // bg WS reconnect — scheduleReconnect handles recovery
   }
 
+  // Context death recovery. When the extension reloads/updates, content scripts
+  // in already-open tabs are orphaned. Firefox then throws cross-compartment
+  // "Permission denied to access property 'then'" the moment any storage/api
+  // promise is touched (the ~120 raw chrome.storage.*.get().then()/await sites);
+  // chrome/firefox also surface "Extension context invalidated" / dead-object.
+  // The runtime.sendMessage path already auto-reloads, but storage-only paths
+  // never did, so they stayed broken until a manual reload. Catch the signature
+  // here and fire the SAME deduped, visibility-aware reload — gated on the
+  // context being provably dead so a page's own cross-compartment error can
+  // never trigger a spurious reload.
+  function _ctxDead() {
+    try { return !(chrome && chrome.runtime && chrome.runtime.id) } catch (_) { return true }
+  }
+  function _isCtxDeathMsg(msg) {
+    return /Extension context (was )?invalidated|Permission denied to access property|access dead object/i.test(msg || '')
+  }
+  function _scheduleCtxReload() {
+    try {
+      if (typeof document === 'undefined' || window.__heatsyncReloadScheduled) return
+      window.__heatsyncReloadScheduled = true
+      const doReload = () => { try { location.reload() } catch (_) {} }
+      if (document.visibilityState === 'visible') {
+        setTimeout(doReload, 1000 + Math.random() * 4000)
+      } else {
+        document.addEventListener('visibilitychange', function once() {
+          if (document.visibilityState !== 'visible') return
+          document.removeEventListener('visibilitychange', once)
+          setTimeout(doReload, 500 + Math.random() * 2000)
+        })
+      }
+    } catch (_) {}
+  }
+
   function _onError(e) {
     try {
       const f = _fmtErr(e.error != null ? e.error : e.message)
+      if (_isCtxDeathMsg(f.msg) && _ctxDead()) { _scheduleCtxReload(); return }
       if (_isNoise(f.msg)) return
       if (!_isOurs(f.stack, e.filename)) return
       _capture({
@@ -147,6 +181,7 @@
   function _onRejection(e) {
     try {
       const f = _fmtErr(e.reason)
+      if (_isCtxDeathMsg(f.msg) && _ctxDead()) { _scheduleCtxReload(); return }
       const stack = f.stack || _synthStack(2)
       if (_isNoise(f.msg)) return
       if (!_isOurs(stack, '')) return

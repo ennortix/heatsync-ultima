@@ -78,7 +78,7 @@ function stripExports(content) {
 // Read lib files
 function readLib() {
   const libDir = join(SRC_DIR, 'lib')
-  const files = ['error-reporter.js', 'config.js', 'cleanup.js', 'utils.js', 'browser-api.js', 'modifiers.js', 'undo-manager.js']
+  const files = ['error-reporter.js', 'config.js', 'cleanup.js', 'utils.js', 'settings-schema.js', 'browser-api.js', 'modifiers.js', 'undo-manager.js']
   let combined = '// === HEATSYNC LIB (auto-bundled) ===\n'
 
   for (const file of files) {
@@ -402,6 +402,19 @@ const shouldMinify = flags.has('--minify') || shouldPackage || shouldDeploy
 const shouldSource = flags.has('--source') || shouldPackage
 
 console.log('Building heatsync extension...\n')
+
+// Settings-registry lint — duplicate keys, invalid defaults, sync-quota
+// budget, UI_SYNC_BLOCKLIST mismatches. Hard-fails before any bundling.
+{
+  const { SETTINGS, lintSettings } = await import('./src/lib/settings-schema.js')
+  const { UI_SYNC_BLOCKLIST } = await import('./src/lib/utils.js')
+  const problems = lintSettings(UI_SYNC_BLOCKLIST)
+  if (problems.length) {
+    for (const p of problems) console.error(`  x settings-schema: ${p}`)
+    throw new Error(`settings-schema lint: ${problems.length} problem(s)`)
+  }
+  console.log(`Settings registry: ${SETTINGS.length} entries clean`)
+}
 
 if (!target || target === 'chrome') {
   console.log('Chrome:')

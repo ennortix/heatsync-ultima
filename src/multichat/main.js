@@ -1683,6 +1683,230 @@
     }, 100)
   }
 
+  // ─── settings registry engine ─────────────────────────────────────────
+  // SETTINGS (src/lib/settings-schema.js) is the declarative catalog; this
+  // engine is the single runtime around it: hydrate (loadAllSettings), read
+  // (getSetting), write (setSetting → existing saveUiSetting/local storage
+  // paths, preserving the debounce, sync/local split, quota guard, and ws
+  // ui-state:sync fanout), reset (resetSettingsToDefaults). Legacy
+  // module-level `let` vars stay the in-render source of truth via
+  // _RUNTIME_BRIDGE until every reader moves to getSetting(); the bridge
+  // keeps both views of a value identical during the migration.
+  const _SETTINGS_BY_KEY = new Map(SETTINGS.map(function(d) { return [d.key, d] }))
+  const _SETTINGS_BY_ALIAS = new Map(SETTINGS.filter(function(d) { return d.alias }).map(function(d) { return [d.alias, d] }))
+  const _settingsCache = {}
+
+  // runtimeVar name → {get,set} over the legacy module-level binding.
+  // Closures only execute post-init, so referencing `let`s declared further
+  // down the file (or in modules) is TDZ-safe here.
+  const _RUNTIME_BRIDGE = {
+    wysiwygEnabled: { get: function() { return wysiwygEnabled }, set: function(v) { wysiwygEnabled = v } },
+    linksEnabled: { get: function() { return linksEnabled }, set: function(v) { linksEnabled = v } },
+    linkPreviewsEnabled: { get: function() { return linkPreviewsEnabled }, set: function(v) { linkPreviewsEnabled = v } },
+    viModeEnabled: { get: function() { return viModeEnabled }, set: function(v) { viModeEnabled = v } },
+    platformBadgesEnabled: { get: function() { return platformBadgesEnabled }, set: function(v) { platformBadgesEnabled = v } },
+    zebraEnabled: { get: function() { return zebraEnabled }, set: function(v) { zebraEnabled = v } },
+    // setter also feeds the window flag content.js reads for timestamp paint
+    timestampsEnabled: { get: function() { return timestampsEnabled }, set: function(v) { timestampsEnabled = v; window._hsTimestampsEnabled = v } },
+    avatarsEnabled: { get: function() { return avatarsEnabled }, set: function(v) { avatarsEnabled = v } },
+    autoClaimPoints: { get: function() { return autoClaimPoints }, set: function(v) { autoClaimPoints = v } },
+    dimTimeouts: { get: function() { return dimTimeouts }, set: function(v) { dimTimeouts = v } },
+    readableNamesEnabled: { get: function() { return readableNamesEnabled }, set: function(v) { readableNamesEnabled = v } },
+    autoHideInput: { get: function() { return autoHideInput }, set: function(v) { autoHideInput = v } },
+    firstChatterGlow: { get: function() { return firstChatterGlow }, set: function(v) { firstChatterGlow = v } },
+    keywordHighlights: { get: function() { return keywordHighlights }, set: function(v) { keywordHighlights = v } },
+    emoteSize: { get: function() { return emoteSize }, set: function(v) { emoteSize = v } },
+    emojiSize: { get: function() { return emojiSize }, set: function(v) { emojiSize = v } },
+    hiddenTabs: { get: function() { return [...hiddenTabs] }, set: function(v) { hiddenTabs = new Set(v) } },
+  }
+
+  // apply id → side-effect runner. Each mirrors the legacy toggle/save
+  // function's effects exactly. onLoad=true on the single init pass —
+  // skips work that only makes sense on an interactive change.
+  const _APPLIERS = {
+    rebuildInput: function() { rebuildInput() },
+    viMode: function(v) {
+      // mirror to localStorage + notify MAIN-world vi-mode.js
+      try {
+        const ls = JSON.parse(localStorage.getItem('heatsync-extension-settings') || '{}')
+        ls.viMode = v
+        localStorage.setItem('heatsync-extension-settings', JSON.stringify(ls))
+      } catch (_) {}
+      window.postMessage({ type: 'heatsync-settings-changed', nonce: window.HS?.getMainWorldNonce?.() || null, settings: { viMode: v } }, location.origin)
+    },
+    autoHide: function(v) {
+      const bar = document.getElementById('hs-mc-inputbar')
+      const pickerOpen = document.getElementById('hs-mc-emote-picker')?.classList.contains('visible') || false
+      if (v) {
+        if (bar) bar.classList.add('hs-hidden')
+        inputBarVisible = false
+      } else {
+        if (bar) bar.classList.remove('hs-hidden')
+        inputBarVisible = true
+      }
+      adjustOverlayForPicker(pickerOpen)
+    },
+    autoClaim: function(v) { if (v) startAutoClaimPoller(); else stopAutoClaimPoller() },
+    keywordRegex: function() { rebuildKeywordRegex() },
+    fonts: function() {
+      applyFontSettings(getSetting('fontFamily'), getSetting('fontSize'), getSetting('customFontName'))
+    },
+    emoteSize: function(v, def, onLoad) {
+      applyEmoteSize()
+      if (onLoad) return
+      // URLs encode size — picker DOM is now stale
+      markPickerDirty()
+      prebuildPickerIdle()
+    },
+    emojiSize: function() { applyEmojiSize() },
+    hiddenTabs: function() { applyHiddenTabs() },
+    automod: function() {
+      compileAutomod({ automodAllCaps: getSetting('automodAllCaps'), automodRegex: getSetting('automodRegex') })
+    },
+    notifPermission: function(v) {
+      if (!v) return
+      if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+        Notification.requestPermission().catch(function() {})
+      }
+    },
+    mentionPing: function(v) {
+      if (!(v > 0)) return
+      if (typeof playMentionPing === 'function') {
+        try { playMentionPing(v) } catch (_) {}
+      }
+    },
+  }
+
+  function getSetting(key) {
+    const def = _SETTINGS_BY_KEY.get(key)
+    if (!def) { warn('getSetting: unknown key', key); return undefined }
+    if (key in _settingsCache) return _settingsCache[key]
+    const bridge = def.runtimeVar && _RUNTIME_BRIDGE[def.runtimeVar]
+    return bridge ? bridge.get() : def.default
+  }
+
+  // Single write path: coerce + validate, update cache + legacy binding,
+  // persist through the existing storage routes, run the applier.
+  // opts.silent skips applier + rerender (storage-change rehydration uses it
+  // to avoid re-applying a value the local write just set).
+  function setSetting(key, value, opts) {
+    const def = _SETTINGS_BY_KEY.get(key)
+    if (!def) { warn('setSetting: unknown key', key); return false }
+    const v = coerceSettingValue(def, value)
+    if (v === undefined || !validateSettingValue(def, v)) {
+      warn('setSetting: invalid value for', key, value)
+      return false
+    }
+    _settingsCache[key] = v
+    const bridge = def.runtimeVar && _RUNTIME_BRIDGE[def.runtimeVar]
+    if (bridge) bridge.set(v)
+    if (def.scope === 'local') {
+      chrome.storage.local.set({ [key]: v }).catch(function() {})
+    } else {
+      // sync + local-mirror both route through saveUiSetting — it owns the
+      // debounce, UI_SYNC_BLOCKLIST split, quota guard, and ws sync patch
+      saveUiSetting(key, v)
+    }
+    if (!opts || !opts.silent) {
+      const applier = def.apply && _APPLIERS[def.apply]
+      if (applier) { try { applier(v, def, false) } catch (e) { warn('applier failed:', def.apply, e) } }
+      if (def.rerender) renderMessages(currentTab)
+      if (def.rerenderSettings && currentTab === 'settings') renderSettingsTab()
+    }
+    return true
+  }
+
+  // One hydration pass over the whole registry — replaces the per-setting
+  // loadXSetting() functions. Reads the shared init caches, fills
+  // cache + bridge, runs one-shot migrations, then runs each distinct
+  // applier once (onLoad=true).
+  async function loadAllSettings() {
+    const localKeys = SETTINGS.filter(function(d) { return d.scope === 'local' }).map(function(d) { return d.key })
+    const [synced, local, overflow] = await Promise.all([
+      cachedUiSettings().catch(function() { return {} }),
+      localKeys.length ? chrome.storage.local.get(localKeys).catch(function() { return {} }) : {},
+      cachedUiOverflow().catch(function() { return {} }),
+    ])
+    const ui = (synced && synced.ui_settings) || {}
+    // applier id → def; dedupes shared ids (the three font keys all map to
+    // 'fonts'). Only applyOnLoad entries run here — set-time-only effects
+    // (rebuildInput, notification permission, ping preview) never fire on init.
+    const appliersToRun = new Map()
+    const firstRunLocal = {}
+
+    for (const def of SETTINGS) {
+      // one-shot default-flip migration (e.g. wysiwyg false→true retirement):
+      // until the guard key is stamped, force the new default and persist both
+      if (def.migrate && !ui[def.migrate]) {
+        _settingsCache[def.key] = def.default
+        const b = def.runtimeVar && _RUNTIME_BRIDGE[def.runtimeVar]
+        if (b) b.set(def.default)
+        saveUiSetting(def.key, def.default)
+        saveUiSetting(def.migrate, true)
+        if (def.apply && def.applyOnLoad) appliersToRun.set(def.apply, def)
+        continue
+      }
+
+      let raw
+      if (def.scope === 'sync') raw = ui[def.key]
+      else if (def.scope === 'local') raw = local[def.key]
+      else raw = overflow[def.mirrorKey]
+
+      // local-mirror one-shot migration: legacy installs still hold the
+      // value in sync — adopt it and persist to the local overflow bucket
+      if (raw === undefined && def.legacySyncFallback && ui[def.key] !== undefined) {
+        raw = ui[def.key]
+        if (validateSettingValue(def, coerceSettingValue(def, raw))) {
+          chrome.storage.local.set({ [def.mirrorKey]: coerceSettingValue(def, raw) }).catch(function() {})
+        }
+      }
+      // retired-key migration (e.g. bigEmoji false → emoji size 1x)
+      if (raw === undefined && def.legacy) {
+        try { raw = def.legacy(ui, local) } catch (_) {}
+      }
+      // first run for self-announcing local keys: persist the default so
+      // other surfaces (options page) render the real state
+      if (raw === undefined && def.firstRunPersist) firstRunLocal[def.key] = def.default
+
+      const v = raw === undefined ? def.default : coerceSettingValue(def, raw)
+      const value = (v !== undefined && validateSettingValue(def, v)) ? v : def.default
+      _settingsCache[def.key] = value
+      const bridge = def.runtimeVar && _RUNTIME_BRIDGE[def.runtimeVar]
+      if (bridge) bridge.set(value)
+      if (def.apply && def.applyOnLoad) appliersToRun.set(def.apply, def)
+    }
+
+    if (Object.keys(firstRunLocal).length) {
+      chrome.storage.local.set(firstRunLocal).catch(function() {})
+    }
+    for (const [id, def] of appliersToRun) {
+      const applier = _APPLIERS[id]
+      if (applier) { try { applier(getSetting(def.key), def, true) } catch (e) { warn('load applier failed:', id, e) } }
+    }
+  }
+
+  // Registry-derived reset — every entry returns to its default through the
+  // normal setSetting path (storage write + bridge + applier).
+  function resetSettingsToDefaults() {
+    for (const def of SETTINGS) setSetting(def.key, def.default)
+    renderSettingsTab()
+  }
+
+  // Generic control dispatch — resolves a clicked/changed element to its
+  // registry entry via data-set-key (registry-rendered controls) or the
+  // legacy data-setting alias. Returns true when handled.
+  function handleRegistryControl(el, rawValue) {
+    const key = el.dataset.setKey || (_SETTINGS_BY_ALIAS.get(el.dataset.setting) || {}).key
+    const def = key && _SETTINGS_BY_KEY.get(key)
+    if (!def) return false
+    if (def.type === 'bool') {
+      const next = !getSetting(def.key)
+      if (setSetting(def.key, next)) el.classList.toggle('active', next)
+      return true
+    }
+    return setSetting(def.key, rawValue)
+  }
+
   // Stream events persistence — survives tab switches AND page refresh
   const STREAM_EVENTS_KEY = 'hs_stream_events';
   const STREAM_EVENTS_MAX = 200;

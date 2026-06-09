@@ -112,6 +112,17 @@ const SETTINGS = [
     control: 'pill', alias: 'timestamps', runtimeVar: 'timestampsEnabled', rerender: true,
   },
   {
+    key: 'timestampFormat', type: 'enum', default: '24h', scope: 'sync',
+    category: 'display', section: 'display',
+    label: 'timestamp format', tip: 'clock format for chat row timestamps',
+    control: 'sizebtns', rerender: true,
+    dependsOn: { key: 'timestamps' },
+    options: [
+      { value: '24h', label: '24h' },
+      { value: '12h', label: '12h' },
+    ],
+  },
+  {
     key: 'avatars', type: 'bool', default: false, scope: 'sync',
     category: 'display', section: 'display',
     label: 'pfps', tipKey: 'mc_settings_avatars_desc',
@@ -146,6 +157,62 @@ const SETTINGS = [
     category: 'display', section: 'display',
     label: 'platform badges', tip: '[T] [K] [Y] labels on messages',
     control: 'pill', alias: 'showplatformbadges', runtimeVar: 'platformBadgesEnabled', rerender: true,
+  },
+
+  // ── display / density ─────────────────────────────────────────────────
+  {
+    key: 'messageDensity', type: 'enum', default: 'compact', scope: 'sync',
+    category: 'display', section: 'density',
+    label: 'message density', tip: 'row padding — compact is the classic tight look',
+    control: 'sizebtns', apply: 'density', applyOnLoad: true,
+    options: [
+      { value: 'compact', label: 'compact' },
+      { value: 'cozy', label: 'cozy' },
+    ],
+  },
+  {
+    key: 'lineHeight', type: 'enum', default: '18', scope: 'sync',
+    category: 'display', section: 'density',
+    label: 'line height', tip: 'chat row line height in px — 18 keeps bitmap fonts on the pixel grid',
+    control: 'sizebtns', apply: 'density', applyOnLoad: true,
+    options: [
+      { value: '18', label: '18' },
+      { value: '22', label: '22' },
+      { value: '26', label: '26' },
+    ],
+  },
+  {
+    key: 'hs_dom_render_cap', type: 'range', default: 500, scope: 'local',
+    category: 'display', section: 'density',
+    label: 'rendered rows', tip: 'max chat rows kept as live DOM (data buffer stays 1500). lower = less ram on busy channels.',
+    control: 'range', runtimeVar: 'domRenderCap', apply: 'renderCap',
+    options: { min: 100, max: 1500, step: 100 },
+  },
+
+  // ── display / cosmetics (per-provider) ────────────────────────────────
+  {
+    key: 'sevenTvPaints', type: 'bool', default: true, scope: 'sync',
+    category: 'display', section: 'cosmetics',
+    label: '7tv paints + badges', tip: 'name paints and 7tv badges on chatters',
+    control: 'pill', rerender: true,
+  },
+  {
+    key: 'bttvBadges', type: 'bool', default: true, scope: 'sync',
+    category: 'display', section: 'cosmetics',
+    label: 'bttv badges', tip: 'betterttv badges on chatters',
+    control: 'pill', rerender: true,
+  },
+  {
+    key: 'ffzBadges', type: 'bool', default: true, scope: 'sync',
+    category: 'display', section: 'cosmetics',
+    label: 'ffz badges', tip: 'frankerfacez badges on chatters',
+    control: 'pill', rerender: true,
+  },
+  {
+    key: 'chatterinoBadges', type: 'bool', default: true, scope: 'sync',
+    category: 'display', section: 'cosmetics',
+    label: 'chatterino badges', tip: 'chatterino badges on chatters',
+    control: 'pill', rerender: true,
   },
 
   // ── chat / input ──────────────────────────────────────────────────────
@@ -315,6 +382,35 @@ const SETTINGS = [
     label: 'show hate emotes', tip: 'emotes flagged for hate imagery. on by default.',
     control: 'pill', runtimeVar: 'cw_hate', apply: 'cwServerPatch', noReset: true,
     cw: { stateKey: 'hate', serverBody: 'show_hate_emotes', noun: 'hate setting' },
+  },
+
+  // ── filters / messages — render-time content filters ──────────────────
+  // Hidden at render, not dropped from buffers — toggling off un-hides
+  // retroactively. Mentions/unread state still counts hidden messages.
+  {
+    key: 'hideBots', type: 'bool', default: false, scope: 'sync',
+    category: 'filters', section: 'messages',
+    label: 'hide bots', tip: 'hide messages from known chat bots (nightbot, streamelements, fossabot…)',
+    control: 'pill', rerender: true,
+  },
+  {
+    key: 'hideCommands', type: 'bool', default: false, scope: 'sync',
+    category: 'filters', section: 'messages',
+    label: 'hide !commands', tip: 'hide messages that start with !',
+    control: 'pill', rerender: true,
+  },
+  {
+    key: 'hideDuplicates', type: 'bool', default: false, scope: 'sync',
+    category: 'filters', section: 'messages',
+    label: 'hide duplicates', tip: 'collapse identical consecutive messages (spam waves) to the first one',
+    control: 'pill', rerender: true,
+  },
+  {
+    key: 'hs_mute_keywords', type: 'text', default: '', scope: 'local',
+    category: 'filters', section: 'messages',
+    label: 'mute keywords', tip: 'one term per line — messages containing any get hidden. distinct from keyword highlights.',
+    placeholder: 'spoiler\n!drops',
+    control: 'textarea', apply: 'muteKeywords', applyOnLoad: true, rerender: true, maxLen: 65536,
   },
 
   // ── tweaks — twitch ui noise toggles (content.js CSS-hide flags) ──────

@@ -1577,13 +1577,15 @@ function injectStyles() {
       user-select: none;
     }
     .hs-mc-msg {
-      padding: 2px 4px;
+      /* density vars set by the registry density applier; defaults keep the
+         classic compact look */
+      padding: var(--hs-mc-row-pad, 2px 4px);
       border-radius: 0;
       font-size: var(--hs-chat-font, 13px) !important;
       /* 18px integer (mirrors heatsync.org main.css:629) — keep baseline on
          the pixel grid. 1.4 × 13px = 18.2px fractional half-leading makes
          every bitmap glyph render off-grid. */
-      line-height: 18px !important;
+      line-height: var(--hs-mc-row-lh, 18px) !important;
       word-wrap: break-word;
       word-break: break-word;
       overflow-wrap: anywhere;

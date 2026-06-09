@@ -249,7 +249,7 @@
   // 500 unifies the whole system (MAX_BUFFER, TAB_CACHE_DOM_CAP) on one number
   // and matches the per-platform buffer, so a restored cached tab never exceeds
   // the cap. ~3.3x Twitch native scrollback.
-  const DOM_RENDER_CAP = 500;
+  let DOM_RENDER_CAP = 500; // registry-managed (hs_dom_render_cap)
 
   let isKick = location.hostname.includes('kick.com');
   const hostPlatform = isKick ? 'kick' : location.hostname.includes('youtube.com') ? 'yt' : 'twitch';
@@ -1403,6 +1403,7 @@
 
   // 7TV paint → CSS style string
   function getMcPaintStyle(userId) {
+    if (!getSetting('sevenTvPaints')) return ''
     const cosmetic = mcUserCosmetics.get(userId)
     const paint = cosmetic?.paint
     if (!paint || !paint.function) return ''
@@ -1715,6 +1716,7 @@
     keywordHighlights: { get: function() { return keywordHighlights }, set: function(v) { keywordHighlights = v } },
     emoteSize: { get: function() { return emoteSize }, set: function(v) { emoteSize = v } },
     emojiSize: { get: function() { return emojiSize }, set: function(v) { emojiSize = v } },
+    domRenderCap: { get: function() { return DOM_RENDER_CAP }, set: function(v) { DOM_RENDER_CAP = v } },
     hiddenTabs: { get: function() { return [...hiddenTabs] }, set: function(v) { hiddenTabs = new Set(v) } },
     // boolmap runtime objects — coercion already filtered to known subkeys
     inlineNotifs: { get: function() { return { ...inlineNotifs } }, set: function(v) { for (const k in v) inlineNotifs[k] = !!v[k] } },
@@ -1769,6 +1771,25 @@
     },
     emojiSize: function() { applyEmojiSize() },
     hiddenTabs: function() { applyHiddenTabs() },
+    // density — pure CSS vars, no re-render needed
+    density: function() {
+      const pad = getSetting('messageDensity') === 'cozy' ? '5px 8px' : '2px 4px'
+      const root = document.documentElement
+      root.style.setProperty('--hs-mc-row-pad', pad)
+      root.style.setProperty('--hs-mc-row-lh', getSetting('lineHeight') + 'px')
+    },
+    // render cap — debounced re-render (range fires per step)
+    renderCap: (function() {
+      let t = null
+      return function() {
+        if (t) cleanup.clearTimeout(t)
+        t = cleanup.setTimeout(function() {
+          t = null
+          if (currentTab !== 'settings') renderMessages(currentTab)
+        }, 300)
+      }
+    })(),
+    muteKeywords: function() { rebuildMuteKeywordsRegex() },
     automod: function() {
       compileAutomod({ automodAllCaps: getSetting('automodAllCaps'), automodRegex: getSetting('automodRegex') })
     },
@@ -7923,6 +7944,28 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     return count > 1
   }
 
+  // ─── render-time content filters ──────────────────────────────────────
+  // Hidden at render, kept in buffers — toggling off un-hides retroactively.
+  const _BOT_NAMES = new Set(['nightbot', 'streamelements', 'moobot', 'fossabot', 'streamlabs', 'wizebot', 'botrix', 'sery_bot', 'soundalerts', 'pokemoncommunitygame', 'kofistreambot', 'blerp'])
+  let _muteKeywordsRegex = null
+  function rebuildMuteKeywordsRegex() {
+    const terms = getSetting('hs_mute_keywords').split(/\n/).map(function(t) { return t.trim() }).filter(Boolean)
+    if (!terms.length) { _muteKeywordsRegex = null; return }
+    const escaped = terms.map(function(t) { return t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') })
+    try { _muteKeywordsRegex = new RegExp(escaped.join('|'), 'i') } catch { _muteKeywordsRegex = null }
+  }
+  function isMsgFiltered(m) {
+    if (!m || m.type === 'stream-event' || m.inlineNotifType) return false
+    const u = m.user ? m.user.toLowerCase() : ''
+    if (u && u === currentUsername) return false // never hide own messages
+    if (u && _BOT_NAMES.has(u) && getSetting('hideBots')) return true
+    if (typeof m.text !== 'string') return false
+    if (m.text.charCodeAt(0) === 33 && getSetting('hideCommands')) return true
+    if (_muteKeywordsRegex && _muteKeywordsRegex.test(m.text)) return true
+    return false
+  }
+  const _lastMsgTextByTab = new Map()
+
   function appendMessage(msg, tabId) {
     if (editingChannel) return false;
     // Hidden by share-dedupe (real USERNOTICE replaced our synthetic)
@@ -7935,6 +7978,13 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (msg.platform && isPlatformFilterTab(tabId)) {
       const k = msg.platform === 'youtube' ? 'youtube' : msg.platform;
       if (getPlatformFilter(tabId)[k] === false) return true;
+    }
+
+    // Content filters — hidden at render, buffers keep the message
+    if (isMsgFiltered(msg)) return true;
+    if (typeof msg.text === 'string' && getSetting('hideDuplicates')) {
+      if (_lastMsgTextByTab.get(tabId) === msg.text) return true;
+      _lastMsgTextByTab.set(tabId, msg.text);
     }
 
     // Multi-platform tabs: skip appendMessage (trimChildren is platform-blind
@@ -8401,7 +8451,19 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }
     }
 
-    const toRender = msgs.slice(-DOM_RENDER_CAP).filter(m => !m?.hidden)
+    let toRender = msgs.filter(m => !m?.hidden && !isMsgFiltered(m))
+    if (getSetting('hideDuplicates')) {
+      const out = []
+      let prevText = null
+      for (const m of toRender) {
+        const txt = typeof m.text === 'string' ? m.text : null
+        if (txt !== null && txt === prevText) continue
+        if (txt !== null) prevText = txt
+        out.push(m)
+      }
+      toRender = out
+    }
+    toRender = toRender.slice(-DOM_RENDER_CAP)
     isProgrammaticScroll = true;
 
     // STABLE-ORDER RENDER:

@@ -1462,6 +1462,11 @@ function formatRelativeMs(diff) {
 function formatTimeFromTs(ts) {
   if (!ts) return '';
   const d = new Date(ts);
+  if (getSetting('timestampFormat') === '12h') {
+    let h = d.getHours() % 12;
+    if (h === 0) h = 12;
+    return `${h}:${String(d.getMinutes()).padStart(2, '0')}`;
+  }
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 

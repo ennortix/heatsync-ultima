@@ -3715,22 +3715,22 @@ function renderBadges(badgesStr, channel, platform) {
 function renderThirdPartyBadges(userId) {
   if (!userId) return ''
   let html = ''
-  const bttv = mcBttvBadgeMap.get(userId)
+  const bttv = getSetting('bttvBadges') ? mcBttvBadgeMap.get(userId) : null
   if (bttv) {
     html += `<img class="hs-mc-badge-img" src="${escapeHtml(bttv.url)}" alt="${escapeHtml(bttv.description)}" title="${escapeHtml(bttv.description)}" loading="lazy" decoding="async" width="18" height="18" style="width:18px;height:18px;">`
   }
-  const ffzList = mcFfzBadgeMap.get(userId)
+  const ffzList = getSetting('ffzBadges') ? mcFfzBadgeMap.get(userId) : null
   if (ffzList) {
     for (const b of ffzList) {
       const safeColor = /^#[0-9a-fA-F]{3,8}$/.test(b.color) ? b.color : ''
       html += `<img class="hs-mc-badge-img" src="${escapeHtml(b.url)}" alt="${escapeHtml(b.title)}" title="${escapeHtml(b.title)}" loading="lazy" decoding="async" width="18" height="18" style="width:18px;height:18px;${safeColor ? 'background:' + safeColor + ';border-radius:2px;' : ''}">`
     }
   }
-  const chat = mcChatterinoBadgeMap.get(userId)
+  const chat = getSetting('chatterinoBadges') ? mcChatterinoBadgeMap.get(userId) : null
   if (chat) {
     html += `<img class="hs-mc-badge-img" src="${escapeHtml(chat.url)}" alt="Chatterino" title="${escapeHtml(chat.tooltip || 'Chatterino')}" loading="lazy" decoding="async" width="18" height="18" style="width:18px;height:18px;">`
   }
-  const cosmetic = mcUserCosmetics.get(userId)
+  const cosmetic = getSetting('sevenTvPaints') ? mcUserCosmetics.get(userId) : null
   if (cosmetic?.badge) {
     const files = cosmetic.badge.host?.files || []
     const file = files.find(f => f.name?.endsWith('.webp')) || files.find(f => f.name?.endsWith('.avif')) || files[0]

@@ -5363,20 +5363,98 @@ function injectStyles() {
       background: #fff;
       color: #000;
     }
-    .hs-mc-set-divider {
-      color: #808080;
-      font-size: 11px;
-      text-align: center;
-      padding: 8px 14px 2px;
-      letter-spacing: 0.5px;
+    /* Modified-from-default — 3px orange inset edge, zero layout shift,
+       survives zebra/hover/focus backgrounds */
+    .hs-mc-setting-row.hs-mc-set-mod {
+      box-shadow: inset 3px 0 0 #ff8700;
     }
-    .hs-mc-set-catchip {
+    .hs-mc-set-cnt {
       color: #808080;
+      font-weight: 400;
+    }
+    .hs-mc-set-modcnt {
+      color: #ff8700;
+      font-weight: 400;
+    }
+    .hs-mc-settings-group-title:hover .hs-mc-set-cnt,
+    .hs-mc-settings-group-title:hover .hs-mc-set-modcnt {
+      color: #000;
+    }
+    /* [reload] chip — setting applied only after a page reload */
+    .hs-mc-set-reload {
+      background: #000;
+      color: #ff8700;
+      border: 1px solid #808080;
+      font-family: inherit;
       font-size: 11px;
-      border: 1px solid #333;
-      padding: 0 4px;
+      padding: 0 6px;
+      cursor: pointer;
       margin-left: auto;
       flex-shrink: 0;
+    }
+    .hs-mc-set-reload:hover {
+      background: #fff;
+      color: #000;
+      border-color: #000;
+    }
+    /* search result group headers — click jumps to that pane + section */
+    .hs-mc-set-search-hdr {
+      color: #808080;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 8px 14px 2px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .hs-mc-set-search-hdr:hover {
+      background: #fff;
+      color: #000;
+    }
+    /* '?' keybinding overlay */
+    .hs-mc-settings-panel {
+      position: relative;
+    }
+    .hs-mc-set-help-btn {
+      background: #000;
+      color: #fff;
+      border: 1px solid #808080;
+      font-family: inherit;
+      font-size: 13px;
+      padding: 3px 8px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .hs-mc-set-help-btn:hover {
+      background: #fff;
+      color: #000;
+      border-color: #fff;
+    }
+    .hs-mc-set-help {
+      position: absolute;
+      top: 84px;
+      right: 8px;
+      z-index: 3;
+      background: #000;
+      border: 1px solid #808080;
+      padding: 8px 10px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .hs-mc-set-help-grid {
+      display: grid;
+      grid-template-columns: auto 1fr auto 1fr;
+      gap: 2px 10px;
+    }
+    .hs-mc-set-help-key {
+      color: #ff8700;
+    }
+    .hs-mc-set-help-title {
+      color: #808080;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 6px 0 2px;
     }
     .hs-mc-set-keyhint {
       color: #808080;

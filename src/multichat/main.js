@@ -1780,14 +1780,11 @@
     // Subsystem pills — live gates apply immediately (their code paths
     // check isEnabled at use time); reload-tagged flips get a toast. Tab
     // affordances of gated subsystems hide/show right away.
-    subsystemToggle: function(v, def) {
-      if (_gatesAtBoot) {
-        const reloadChanged = def.options.some(function(o) {
-          return o.applies === 'reload' && (v[o.value] !== false) !== (_gatesAtBoot[o.value] !== false)
-        })
-        if (reloadChanged) showToast('reload the page to apply subsystem changes', 'info')
-      }
+    subsystemToggle: function() {
       applyHiddenTabs()
+      // persistent [reload] chips (rendered per-row from _gatesAtBoot)
+      // replace the old one-shot toast
+      if (currentTab === 'settings') renderSettingsTab()
     },
     cwServerPatch: function(v, def) {
       safeSendMessage({
@@ -1945,6 +1942,10 @@
     if (Object.keys(firstRunLocal).length) {
       chrome.storage.local.set(firstRunLocal).catch(function() {})
     }
+    // boot snapshot for reload-applied entries — drives the [reload] chip
+    for (const def of SETTINGS) {
+      if (def.reloadApply) _bootVals[def.key] = getSetting(def.key)
+    }
     for (const [id, def] of appliersToRun) {
       const applier = _APPLIERS[id]
       if (applier) { try { applier(getSetting(def.key), def, true) } catch (e) { warn('load applier failed:', id, e) } }
@@ -1973,7 +1974,10 @@
     if (def.type === 'boolmap' && ds.setSub !== undefined) {
       const map = Object.assign({}, getSetting(def.key))
       map[ds.setSub] = !map[ds.setSub]
-      if (setSetting(def.key, map)) el.classList.toggle('active', map[ds.setSub])
+      if (setSetting(def.key, map)) {
+        el.classList.toggle('active', map[ds.setSub])
+        _syncRowModEdge(el, def, def.options.find(function(o) { return String(o.value) === ds.setSub }))
+      }
       return true
     }
     // multiselect member pill — toggle membership (invertDisplay = stored
@@ -1985,6 +1989,7 @@
       if (setSetting(def.key, next)) {
         const member = next.includes(val)
         el.classList.toggle('active', def.invertDisplay ? !member : member)
+        _syncRowModEdge(el, def, def.options.find(function(o) { return String(o.value) === val }))
       }
       return true
     }
@@ -1998,15 +2003,23 @@
             b.classList.toggle('active', b.dataset.setValue === cur2)
           })
         }
+        _syncRowModEdge(el, def)
       }
       return true
     }
     if (def.type === 'bool') {
       const next = !getSetting(def.key)
-      if (setSetting(def.key, next)) el.classList.toggle('active', next)
+      if (setSetting(def.key, next)) {
+        el.classList.toggle('active', next)
+        _syncRowModEdge(el, def)
+      }
       return true
     }
-    return setSetting(def.key, rawValue !== undefined ? rawValue : el.value)
+    if (setSetting(def.key, rawValue !== undefined ? rawValue : el.value)) {
+      _syncRowModEdge(el, def)
+      return true
+    }
+    return false
   }
 
   // Stream events persistence — survives tab switches AND page refresh
@@ -4955,6 +4968,8 @@
   let _setQuery = ''
   const _setCollapsed = new Set()        // '<category>|<section title>'
   let _setFocusRow = null                // data-set-row id of keyboard focus
+  let _setPaneCtx = ''                   // pane identity for scroll preservation
+  let _setHelpOpen = false               // '?' keybinding overlay
   ;(function _loadCollapsedSections() {
     try {
       chrome.storage.local.get('hs_set_collapsed', function(d) {
@@ -4987,13 +5002,58 @@
 
   // One renderable row = {id, html, hay}. boolmap/multiselect entries
   // expand to one row per option so search and keyboard nav see each.
-  function _rowsForDef(def, ctx) {
+  // Boot-time values for entries that need a reload to apply (reloadApply
+  // schema field) — snapshot in loadAllSettings, drives the [reload] chip.
+  const _bootVals = {}
+
+  // Does this row's current value differ from its default? (noReset entries
+  // never show modified — they have no working reset.)
+  function _rowModified(def, opt) {
+    if (def.noReset) return false
+    const cur = getSetting(def.key)
+    if (def.type === 'boolmap' && opt) return (cur[opt.value] !== false) !== (opt.default !== false)
+    if (def.type === 'multiselect' && opt) return cur.includes(opt.value) !== def.default.includes(opt.value)
+    return JSON.stringify(cur) !== JSON.stringify(def.default)
+  }
+
+  // Does this row need a page reload before its current value takes effect?
+  function _reloadPending(def, opt) {
+    if (def.key === 'subsystems' && opt && opt.applies === 'reload' && _gatesAtBoot) {
+      return (getSetting('subsystems')[opt.value] !== false) !== (_gatesAtBoot[opt.value] !== false)
+    }
+    if (def.reloadApply && def.key in _bootVals) {
+      return JSON.stringify(getSetting(def.key)) !== JSON.stringify(_bootVals[def.key])
+    }
+    return false
+  }
+
+  // In-place update of the modified edge + the section's orange counter
+  // after a control change (no full re-render needed for plain pills).
+  function _syncRowModEdge(el, def, opt) {
+    const row = el.closest('.hs-mc-setting-row')
+    if (!row) return
+    row.classList.toggle('hs-mc-set-mod', _rowModified(def, opt))
+    const group = row.closest('.hs-mc-settings-group')
+    const title = group && group.querySelector('[data-set-fold]')
+    if (!title) return
+    const count = group.querySelectorAll('.hs-mc-setting-row.hs-mc-set-mod').length
+    let cnt = title.querySelector('.hs-mc-set-modcnt')
+    if (!count) { if (cnt) cnt.remove(); return }
+    if (!cnt) {
+      cnt = document.createElement('span')
+      cnt.className = 'hs-mc-set-modcnt'
+      title.appendChild(document.createTextNode(' '))
+      title.appendChild(cnt)
+    }
+    cnt.textContent = count + '*'
+  }
+
+  function _rowsForDef(def) {
     var rows = []
     var base = (_setLabel(def) + ' ' + _setTip(def) + ' ' + _setSectionTitle(def) + ' ' +
       def.category + ' ' + def.key + ' ' + (def.alias || '')).toLowerCase()
     var child = def.dependsOn ? ' hs-mc-set-child' : ''
     var glyph = def.dependsOn ? '<span class="hs-mc-set-child-glyph">└ </span>' : ''
-    var chip = ctx && ctx.chip ? '<span class="hs-mc-set-catchip">' + escapeHtml(def.category) + '</span>' : ''
 
     if (def.type === 'boolmap') {
       for (const o of def.options) {
@@ -5002,13 +5062,16 @@
         var lbl = _optLabel(o)
         if (o.tag) lbl = lbl.replace(o.tag, '').trim()
         var oTip = o.tipKey ? t(o.tipKey) : (o.tip || '')
+        var oMod = _rowModified(def, o)
+        var oChip = _reloadPending(def, o) ? '<button class="hs-mc-set-reload" data-set-reload>reload</button>' : ''
         rows.push({
           id: def.key + ':' + o.value,
+          mod: oMod,
           hay: (base + ' ' + lbl + ' ' + oTip + ' ' + o.value).toLowerCase(),
-          html: '<div class="hs-mc-setting-row' + child + '" data-set-row="' + def.key + ':' + o.value + '">' +
+          html: '<div class="hs-mc-setting-row' + child + (oMod ? ' hs-mc-set-mod' : '') + '" data-set-row="' + def.key + ':' + o.value + '">' +
             glyph +
             '<button class="hs-mc-toggle-pill' + (on ? ' active' : '') + '" data-set-key="' + def.key + '" data-set-sub="' + o.value + '"><span class="hs-mc-toggle-knob"></span></button>' +
-            '<span class="hs-mc-setting-label"' + (oTip ? ' data-tip="' + escapeHtml(oTip) + '"' : '') + '>' + prefix + escapeHtml(lbl) + '</span>' + chip +
+            '<span class="hs-mc-setting-label"' + (oTip ? ' data-tip="' + escapeHtml(oTip) + '"' : '') + '>' + prefix + escapeHtml(lbl) + '</span>' + oChip +
           '</div>',
         })
       }
@@ -5019,13 +5082,15 @@
       for (const o of def.options) {
         var member = getSetting(def.key).includes(o.value)
         var active = def.invertDisplay ? !member : member
+        var mMod = _rowModified(def, o)
         rows.push({
           id: def.key + ':' + o.value,
+          mod: mMod,
           hay: (base + ' ' + _optLabel(o) + ' ' + o.value).toLowerCase(),
-          html: '<div class="hs-mc-setting-row' + child + '" data-set-row="' + def.key + ':' + o.value + '">' +
+          html: '<div class="hs-mc-setting-row' + child + (mMod ? ' hs-mc-set-mod' : '') + '" data-set-row="' + def.key + ':' + o.value + '">' +
             glyph +
             '<button class="hs-mc-toggle-pill' + (active ? ' active' : '') + '" data-set-key="' + def.key + '" data-set-value="' + escapeHtml(String(o.value)) + '"><span class="hs-mc-toggle-knob"></span></button>' +
-            '<span class="hs-mc-setting-label">' + escapeHtml(_optLabel(o)) + '</span>' + chip +
+            '<span class="hs-mc-setting-label">' + escapeHtml(_optLabel(o)) + '</span>' +
           '</div>',
         })
       }
@@ -5073,13 +5138,16 @@
         '<input class="hs-mc-set-text-input" data-set-key="' + def.key + '" type="text" value="' + escapeHtml(val) + '" style="width:140px">'
     }
 
+    var sMod = _rowModified(def)
+    var sChip = _reloadPending(def) ? '<button class="hs-mc-set-reload" data-set-reload>reload</button>' : ''
     rows.push({
       id: def.key,
-      hay: base,
+      mod: sMod,
+      hay: base + ' ' + (def.type === 'enum' ? def.options.map(function(o) { return _optLabel(o) + ' ' + o.value }).join(' ').toLowerCase() : ''),
       html: '<div class="hs-mc-setting-row' +
         (split ? ' hs-mc-setting-row-split' : '') +
-        (block ? ' hs-mc-setting-row-block' : '') + child + '" data-set-row="' + def.key + '">' +
-        glyph + inner + chip +
+        (block ? ' hs-mc-setting-row-block' : '') + child + (sMod ? ' hs-mc-set-mod' : '') + '" data-set-row="' + def.key + '">' +
+        glyph + inner + sChip +
       '</div>',
     })
     return rows
@@ -5107,42 +5175,50 @@
     }
     return sections.map(function(s) {
       var fold = _setCollapsed.has(_settingsSubtab + '|' + s.title)
+      var modCount = s.rows.filter(function(r) { return r.mod }).length
+      var counts = fold
+        ? ' <span class="hs-mc-set-cnt">(' + s.rows.length + (modCount ? ' · <span class="hs-mc-set-modcnt">' + modCount + '*</span>' : '') + ')</span>'
+        : (modCount ? ' <span class="hs-mc-set-modcnt">' + modCount + '*</span>' : '')
       return '<div class="hs-mc-settings-group">' +
-        '<div class="hs-mc-settings-group-title" data-set-fold="' + escapeHtml(s.title) + '">' + (fold ? '▸ ' : '▾ ') + escapeHtml(s.title) + '</div>' +
+        '<div class="hs-mc-settings-group-title" data-set-fold="' + escapeHtml(s.title) + '">' + (fold ? '▸ ' : '▾ ') + escapeHtml(s.title) + counts + '</div>' +
         (fold ? '' : s.rows.map(function(r) { return r.html }).join('')) +
       '</div>'
     }).join('')
   }
 
-  // Search across ALL categories — current-category matches grouped first,
-  // other-category matches under a divider with a category chip.
+  // Search across ALL categories — matched rows grouped under clickable
+  // "category · section" headers (click = jump to that pane + section).
+  // Current-category groups list first.
   function _renderSearchResults() {
     var tokens = _setQueryTokens()
-    var here = []
-    var elsewhere = []
+    var groups = []
+    var byKey = new Map()
     var total = 0
+    var count = 0
     for (const def of SETTINGS) {
       if (!_depSatisfied(def)) continue
-      var rows = _rowsForDef(def, { chip: def.category !== _settingsSubtab })
+      var rows = _rowsForDef(def)
       total += rows.length
-      for (const r of rows) {
-        if (!_rowMatches(r.hay, tokens)) continue
-        if (def.category === _settingsSubtab) here.push(r)
-        else elsewhere.push(r)
-      }
+      var matched = rows.filter(function(r) { return _rowMatches(r.hay, tokens) })
+      if (!matched.length) continue
+      count += matched.length
+      var section = _setSectionTitle(def)
+      var gk = def.category + '|' + section
+      var g = byKey.get(gk)
+      if (!g) { g = { cat: def.category, section: section, rows: [] }; byKey.set(gk, g); groups.push(g) }
+      g.rows.push.apply(g.rows, matched)
     }
-    var html = ''
-    if (here.length) {
-      html += '<div class="hs-mc-settings-group">' + here.map(function(r) { return r.html }).join('') + '</div>'
-    }
-    if (elsewhere.length) {
-      html += '<div class="hs-mc-set-divider">─── other categories ───</div>' +
-        '<div class="hs-mc-settings-group">' + elsewhere.map(function(r) { return r.html }).join('') + '</div>'
-    }
-    if (!here.length && !elsewhere.length) {
-      html = '<div class="hs-mc-setting-row" style="color:#808080">no matches</div>'
-    }
-    return { html: html, count: here.length + elsewhere.length, total: total }
+    groups.sort(function(a, b) {
+      return (a.cat === _settingsSubtab ? 0 : 1) - (b.cat === _settingsSubtab ? 0 : 1)
+    })
+    var html = groups.map(function(g) {
+      return '<div class="hs-mc-settings-group">' +
+        '<div class="hs-mc-set-search-hdr" data-set-jump="' + escapeHtml(g.cat + '|' + g.section) + '">' + escapeHtml(g.cat + ' · ' + g.section) + '</div>' +
+        g.rows.map(function(r) { return r.html }).join('') +
+      '</div>'
+    }).join('')
+    if (!count) html = '<div class="hs-mc-setting-row" style="color:#808080">no matches</div>'
+    return { html: html, count: count, total: total }
   }
 
   // ── hand-rendered islands ────────────────────────────────────────────
@@ -5227,7 +5303,7 @@
   function _renderCategoryPane(cat) {
     if (cat === 'mod') return _renderModToolbarGroup() + _regSections(cat)
     if (cat === 'tweaks') {
-      return '<div class="hs-mc-set-keyhint" style="padding-top:8px">hides twitch.tv chrome — kick/youtube unaffected</div>' + _regSections(cat)
+      return '<div class="hs-mc-set-keyhint" style="padding-top:8px">twitch.tv only — kick/youtube unaffected</div>' + _regSections(cat)
     }
     if (cat === 'system') {
       // crash log block nests inside the advanced section, after its pill
@@ -5496,6 +5572,32 @@
     '</div>'
   }
 
+  // '?' keybinding overlay — square, two-column key grid; vim block only
+  // when vi mode is on. Click anywhere on it (or Esc / ?) closes.
+  function _renderHelpOverlay() {
+    var always = [
+      ['/', 'search'], ['1-7', 'category'],
+      ['↑ ↓', 'move'], ['← →', 'adjust'],
+      ['enter', 'toggle'], ['bksp', 'reset row'],
+      ['esc', 'close / clear'], ['?', 'this help'],
+    ]
+    var vim = [
+      ['j k', 'move'], ['h l', 'adjust'],
+      ['gg G', 'first / last'], ['za', 'fold section'],
+      ['d', 'reset row'], ['p', 'presets'],
+      ['H L', 'prev / next category'],
+    ]
+    function grid(pairs) {
+      return pairs.map(function(kv) {
+        return '<span class="hs-mc-set-help-key">' + escapeHtml(kv[0]) + '</span><span>' + escapeHtml(kv[1]) + '</span>'
+      }).join('')
+    }
+    return '<div class="hs-mc-set-help">' +
+      '<div class="hs-mc-set-help-grid">' + grid(always) + '</div>' +
+      (viModeEnabled ? '<div class="hs-mc-set-help-title">vi</div><div class="hs-mc-set-help-grid">' + grid(vim) + '</div>' : '') +
+    '</div>'
+  }
+
   // ─── settings keyboard nav — roving focus, vim-first ────────────────
   // One document-level listener (bound once). Bare-letter motions
   // (j/k/h/l/g/G/d/z) gate on viModeEnabled; arrows, Enter, /, Esc and
@@ -5543,7 +5645,25 @@
   function _setRowReset(row) {
     const def = _setRowDef(row)
     if (!def || def.noReset) return
-    setSetting(def.key, def.default)
+    // sub-rows (boolmap/multiselect options) reset exactly that option,
+    // not the whole map
+    const sub = (row.dataset.setRow || '').split(':')[1]
+    if (def.type === 'boolmap' && sub !== undefined) {
+      const opt = def.options.find(function(o) { return String(o.value) === sub })
+      if (opt) {
+        const map = Object.assign({}, getSetting(def.key))
+        map[opt.value] = opt.default
+        setSetting(def.key, map)
+      }
+    } else if (def.type === 'multiselect' && sub !== undefined) {
+      const cur = getSetting(def.key)
+      const inDefault = def.default.includes(sub)
+      setSetting(def.key, inDefault
+        ? (cur.includes(sub) ? cur : cur.concat(sub))
+        : cur.filter(function(x) { return x !== sub }))
+    } else {
+      setSetting(def.key, def.default)
+    }
     renderSettingsTab()
   }
   function _bindSettingsKeyboard() {
@@ -5578,12 +5698,24 @@
       const vim = viModeEnabled
       const k = e.key
       if (k === '/') { e.preventDefault(); if (searchEl) searchEl.focus(); return }
+      if (k === '?') { e.preventDefault(); _setHelpOpen = !_setHelpOpen; renderSettingsTab(); return }
       if (k === 'Escape') {
+        if (_setHelpOpen) { _setHelpOpen = false; renderSettingsTab(); return }
         if (_setQuery) { _setQuery = ''; renderSettingsTab(); return }
         rows.forEach(function(r) { r.classList.remove('hs-mc-set-row-focus') })
         _setFocusRow = null
         return
       }
+      // 1-7 jump straight to a category
+      if (k.length === 1 && k >= '1' && k <= '7') {
+        e.preventDefault()
+        _settingsSubtab = _SET_SUBTAB_ORDER[+k - 1]
+        _setFocusRow = null
+        renderSettingsTab()
+        return
+      }
+      if (k === 'ArrowLeft' && idx >= 0) { e.preventDefault(); _setRowAdjust(rows[idx], -1); return }
+      if (k === 'ArrowRight' && idx >= 0) { e.preventDefault(); _setRowAdjust(rows[idx], 1); return }
       if (k === 'ArrowDown' || (vim && k === 'j')) { e.preventDefault(); _setFocusMove(rows, idx + 1); _setPendingKey = ''; return }
       if (k === 'ArrowUp' || (vim && k === 'k')) { e.preventDefault(); _setFocusMove(rows, idx - 1); _setPendingKey = ''; return }
       if ((k === 'Enter' || k === ' ') && idx >= 0) { e.preventDefault(); _setRowActivate(rows[idx]); return }
@@ -5597,6 +5729,15 @@
       if (k === 'G') { e.preventDefault(); _setPendingKey = ''; _setFocusMove(rows, rows.length - 1); return }
       if (k === 'h' && idx >= 0) { e.preventDefault(); _setRowAdjust(rows[idx], -1); return }
       if (k === 'l' && idx >= 0) { e.preventDefault(); _setRowAdjust(rows[idx], 1); return }
+      if (k === 'H' || k === 'L') {
+        e.preventDefault()
+        const cur = _SET_SUBTAB_ORDER.indexOf(_settingsSubtab)
+        const len = _SET_SUBTAB_ORDER.length
+        _settingsSubtab = _SET_SUBTAB_ORDER[(cur + (k === 'L' ? 1 : len - 1)) % len]
+        _setFocusRow = null
+        renderSettingsTab()
+        return
+      }
       if (k === 'd' && idx >= 0) { e.preventDefault(); _setRowReset(rows[idx]); return }
       if (k === 'p') {
         const btn = msgsEl.querySelector('.hs-mc-set-presets-btn')
@@ -5623,6 +5764,13 @@
 
     _clearMessageIndices();
 
+    // Scroll preservation — #hs-mc-messages is the actual scroll parent
+    // (the panel grows inside it); keep its scroll across re-renders of
+    // the same logical pane (toggle/applier-triggered rebuilds)
+    var hadPanel = !!msgsEl.querySelector('.hs-mc-settings-panel')
+    var paneCtx = _settingsSubtab + '|' + _setQuery + '|' + !!_presetPending
+    var keepScroll = (hadPanel && paneCtx === _setPaneCtx) ? msgsEl.scrollTop : 0
+
     var searchActive = _setQueryTokens().length > 0
     var bodyContent
     var countLabel = ''
@@ -5636,10 +5784,6 @@
       bodyContent = _renderCategoryPane(_settingsSubtab)
     }
 
-    var keyhint = viModeEnabled
-      ? 'j/k move · enter toggle · h/l adjust · / search · za fold · d default'
-      : '↑/↓ move · enter toggle · / search · ⌫ default'
-
     // All values in the template are from module state or escapeHtml'd -- no raw user input
     msgsEl.innerHTML =
       '<div class="hs-mc-settings-panel">' +
@@ -5648,11 +5792,12 @@
           '<input class="hs-mc-set-search" type="search" placeholder="/ search settings..." value="' + escapeHtml(_setQuery) + '">' +
           '<span class="hs-mc-set-search-count">' + countLabel + '</span>' +
           '<button class="hs-mc-set-presets-btn">presets</button>' +
+          '<button class="hs-mc-set-help-btn" title="keybindings">?</button>' +
         '</div>' +
         '<div class="hs-mc-set-subtab-body">' +
           bodyContent +
-          '<div class="hs-mc-set-keyhint">' + keyhint + '</div>' +
         '</div>' +
+        (_setHelpOpen ? _renderHelpOverlay() : '') +
       '</div>';
 
     // Controls render with live values inline (getSetting); only the crash
@@ -5663,6 +5808,8 @@
       if (fr) fr.classList.add('hs-mc-set-row-focus');
       else _setFocusRow = null;
     }
+    _setPaneCtx = paneCtx;
+    if (keepScroll) msgsEl.scrollTop = keepScroll;
 
     // Wire up toggles via event delegation
     if (msgsEl._hsSettingsClick) msgsEl.removeEventListener('click', msgsEl._hsSettingsClick);
@@ -5700,6 +5847,37 @@
           modToolbarButtons = modToolbarButtons.filter(function(x) { return x !== id; });
         }
         saveModToolbarButtons();
+        return;
+      }
+
+      // '?' help — button toggles, clicking the overlay closes
+      if (e.target.closest('.hs-mc-set-help-btn')) {
+        _setHelpOpen = !_setHelpOpen;
+        renderSettingsTab();
+        return;
+      }
+      if (e.target.closest('.hs-mc-set-help')) {
+        _setHelpOpen = false;
+        renderSettingsTab();
+        return;
+      }
+
+      // [reload] chip — value differs from the boot snapshot; apply it now
+      if (e.target.closest('[data-set-reload]')) {
+        location.reload();
+        return;
+      }
+
+      // search result header — jump to that category + section
+      var jumpHdr = e.target.closest('[data-set-jump]');
+      if (jumpHdr) {
+        var jump = jumpHdr.dataset.setJump.split('|');
+        _settingsSubtab = jump[0];
+        _setQuery = '';
+        _setFocusRow = null;
+        renderSettingsTab();
+        var tgt = [...msgsEl.querySelectorAll('[data-set-fold]')].find(function(el2) { return el2.dataset.setFold === jump[1] });
+        if (tgt) tgt.scrollIntoView({ block: 'start' });
         return;
       }
 
@@ -5805,12 +5983,14 @@
           setSetting(def.key, parseFloat(regInput.value) / scale);
           var valEl = regInput.parentElement.querySelector('.hs-mc-set-range-val');
           if (valEl) valEl.textContent = regInput.value;
+          _syncRowModEdge(regInput, def);
           return;
         }
         if (def.type === 'text') {
           if (_setInputDebounce[def.key]) cleanup.clearTimeout(_setInputDebounce[def.key]);
           _setInputDebounce[def.key] = cleanup.setTimeout(function() {
             setSetting(def.key, regInput.value);
+            _syncRowModEdge(regInput, def);
           }, 400);
           return;
         }

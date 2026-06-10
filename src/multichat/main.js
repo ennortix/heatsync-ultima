@@ -2321,10 +2321,21 @@
       const next = Math.max(10, Math.min(22, current + dir));
       msgsEl.style.setProperty('--hs-chat-font', next + 'px');
       localStorage.setItem('heatsync-chat-font-size', next);
+      showToast('chat font ' + next + 'px' + (next === 10 || next === 22 ? ' (limit)' : ''), 'info');
     });
 
     // Right-click tabs → mark as read + channel context menu
     container.addEventListener('contextmenu', (e) => {
+      // Right-click F-/F+ clears the per-device font override — the quick
+      // buttons silently win over the fontSize setting otherwise
+      const fontBtn = e.target.closest('.hs-mc-font-btn');
+      if (fontBtn) {
+        e.preventDefault();
+        localStorage.removeItem('heatsync-chat-font-size');
+        applyFontSettings(getSetting('fontFamily'), getSetting('fontSize'), getSetting('customFontName'));
+        showToast('chat font reset to settings (' + getSetting('fontSize') + 'px)', 'info');
+        return;
+      }
       const tab = e.target.closest('.hs-mc-tab');
       if (!tab) return;
       const tabId = tab.dataset.tab;

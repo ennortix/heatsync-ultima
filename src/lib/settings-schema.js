@@ -111,7 +111,7 @@ const SETTINGS = [
   },
   {
     key: 'fontSize', type: 'enum', default: '13', scope: 'sync',
-    category: 'display', section: 'font', label: 'font size', tip: 'base font size for multichat panel',
+    category: 'display', section: 'font', label: 'font size', tip: 'base font size for multichat panel — the F-/F+ tab-bar buttons override this per device (right-click them to reset)',
     control: 'select', alias: 'fontsize', apply: 'fonts', applyOnLoad: true,
     options: [
       { value: '13', label: '13px' },

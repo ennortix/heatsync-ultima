@@ -484,9 +484,6 @@
   "mc_tab_live": {
     "message": "ไลฟ์"
   },
-  "mc_tab_discover": {
-    "message": "สำรวจ"
-  },
   "mc_tab_pinned": {
     "message": "บันทึก"
   },
@@ -497,12 +494,6 @@
         "content": "$1"
       }
     }
-  },
-  "mc_btn_rotate_tabs": {
-    "message": "หมุนแท็บ (T)"
-  },
-  "mc_btn_rotate_chat": {
-    "message": "หมุนแผงแชท (C)"
   },
   "mc_btn_smaller_text": {
     "message": "ตัวอักษรเล็กลง"

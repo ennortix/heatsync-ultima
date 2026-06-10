@@ -484,9 +484,6 @@
   "mc_tab_live": {
     "message": "live"
   },
-  "mc_tab_discover": {
-    "message": "upptäck"
-  },
   "mc_tab_pinned": {
     "message": "sparade"
   },
@@ -497,12 +494,6 @@
         "content": "$1"
       }
     }
-  },
-  "mc_btn_rotate_tabs": {
-    "message": "rotera flikar (T)"
-  },
-  "mc_btn_rotate_chat": {
-    "message": "rotera chattpanel (C)"
   },
   "mc_btn_smaller_text": {
     "message": "mindre text"

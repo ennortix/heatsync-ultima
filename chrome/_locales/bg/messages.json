@@ -484,9 +484,6 @@
   "mc_tab_live": {
     "message": "живо"
   },
-  "mc_tab_discover": {
-    "message": "открий"
-  },
   "mc_tab_pinned": {
     "message": "запазени"
   },
@@ -497,12 +494,6 @@
         "content": "$1"
       }
     }
-  },
-  "mc_btn_rotate_tabs": {
-    "message": "завърти табове (T)"
-  },
-  "mc_btn_rotate_chat": {
-    "message": "завърти панел чат (C)"
   },
   "mc_btn_smaller_text": {
     "message": "по-малък текст"

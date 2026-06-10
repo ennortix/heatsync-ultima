@@ -514,9 +514,6 @@
   "mc_tab_live": {
     "message": "live"
   },
-  "mc_tab_discover": {
-    "message": "discover"
-  },
   "mc_tab_pinned": {
     "message": "saved"
   },
@@ -527,12 +524,6 @@
         "content": "$1"
       }
     }
-  },
-  "mc_btn_rotate_tabs": {
-    "message": "rotate tabs (T)"
-  },
-  "mc_btn_rotate_chat": {
-    "message": "rotate chat panel (C)"
   },
   "mc_btn_smaller_text": {
     "message": "smaller text"

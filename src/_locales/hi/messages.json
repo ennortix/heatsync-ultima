@@ -484,9 +484,6 @@
   "mc_tab_live": {
     "message": "लाइव"
   },
-  "mc_tab_discover": {
-    "message": "खोजें"
-  },
   "mc_tab_pinned": {
     "message": "सहेजे"
   },
@@ -497,12 +494,6 @@
         "content": "$1"
       }
     }
-  },
-  "mc_btn_rotate_tabs": {
-    "message": "टैब घुमाएं (T)"
-  },
-  "mc_btn_rotate_chat": {
-    "message": "चैट पैनल घुमाएं (C)"
   },
   "mc_btn_smaller_text": {
     "message": "छोटा टेक्स्ट"

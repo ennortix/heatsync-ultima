@@ -484,9 +484,6 @@
   "mc_tab_live": {
     "message": "živě"
   },
-  "mc_tab_discover": {
-    "message": "objevuj"
-  },
   "mc_tab_pinned": {
     "message": "uložené"
   },
@@ -497,12 +494,6 @@
         "content": "$1"
       }
     }
-  },
-  "mc_btn_rotate_tabs": {
-    "message": "otočit záložky (T)"
-  },
-  "mc_btn_rotate_chat": {
-    "message": "otočit panel chatu (C)"
   },
   "mc_btn_smaller_text": {
     "message": "menší text"

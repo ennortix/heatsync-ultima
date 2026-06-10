@@ -484,9 +484,6 @@
   "mc_tab_live": {
     "message": "live"
   },
-  "mc_tab_discover": {
-    "message": "descoperă"
-  },
   "mc_tab_pinned": {
     "message": "salvate"
   },
@@ -497,12 +494,6 @@
         "content": "$1"
       }
     }
-  },
-  "mc_btn_rotate_tabs": {
-    "message": "rotește tab-urile (T)"
-  },
-  "mc_btn_rotate_chat": {
-    "message": "rotește panoul chat (C)"
   },
   "mc_btn_smaller_text": {
     "message": "text mai mic"

@@ -484,9 +484,6 @@
   "mc_tab_live": {
     "message": "שידור"
   },
-  "mc_tab_discover": {
-    "message": "גלה"
-  },
   "mc_tab_pinned": {
     "message": "שמור"
   },
@@ -497,12 +494,6 @@
         "content": "$1"
       }
     }
-  },
-  "mc_btn_rotate_tabs": {
-    "message": "סובב לשוניות (T)"
-  },
-  "mc_btn_rotate_chat": {
-    "message": "סובב את לוח הצ'אט (C)"
   },
   "mc_btn_smaller_text": {
     "message": "טקסט קטן יותר"

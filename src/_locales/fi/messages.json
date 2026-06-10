@@ -484,9 +484,6 @@
   "mc_tab_live": {
     "message": "live"
   },
-  "mc_tab_discover": {
-    "message": "tutki"
-  },
   "mc_tab_pinned": {
     "message": "tallennetut"
   },
@@ -497,12 +494,6 @@
         "content": "$1"
       }
     }
-  },
-  "mc_btn_rotate_tabs": {
-    "message": "käännä välilehdet (T)"
-  },
-  "mc_btn_rotate_chat": {
-    "message": "käännä chat-paneeli (C)"
   },
   "mc_btn_smaller_text": {
     "message": "pienempi teksti"

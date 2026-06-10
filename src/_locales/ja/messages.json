@@ -484,9 +484,6 @@
   "mc_tab_live": {
     "message": "ライブ"
   },
-  "mc_tab_discover": {
-    "message": "見つける"
-  },
   "mc_tab_pinned": {
     "message": "保存済み"
   },
@@ -497,12 +494,6 @@
         "content": "$1"
       }
     }
-  },
-  "mc_btn_rotate_tabs": {
-    "message": "タブ切り替え (T)"
-  },
-  "mc_btn_rotate_chat": {
-    "message": "チャットパネルを回転 (C)"
   },
   "mc_btn_smaller_text": {
     "message": "テキストを小さく"

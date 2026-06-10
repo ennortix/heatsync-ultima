@@ -767,7 +767,7 @@
     if (!tabBarElement) return
     const tabs = tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]')
     const SPECIAL = new Set(['mentions', 'whispers', 'feed', 'discover', 'pinned',
-                             'add', 'rotate', 'rotate-chat', 'settings', 'live'])
+                             'add', 'settings', 'live'])
     for (const tabEl of tabs) {
       const tabId = tabEl.dataset.tab
       if (!tabId || tabId === currentTab) continue
@@ -2286,8 +2286,6 @@
       </div>
       <div class="hs-mc-right-cluster">
         <div class="hs-mc-util-row">
-          <button class="hs-mc-tab hs-mc-util-btn hs-mc-rotate-chat" data-tab="rotate-chat" title="${t('mc_btn_rotate_chat')}">C</button>
-          <button class="hs-mc-tab hs-mc-util-btn hs-mc-rotate" data-tab="rotate" title="${t('mc_btn_rotate_tabs')}">T</button>
           <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="-1" title="${t('mc_btn_smaller_text')}">F-</button>
           <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="1" title="${t('mc_btn_larger_text')}">F+</button>
           <button class="hs-mc-tab hs-mc-util-btn" data-tab="settings" title="${t('mc_btn_settings')}">\u2699</button>
@@ -2313,10 +2311,6 @@
       else if (tabId === 'feed') bumpSeen('live');
       if (tabId === 'add') {
         switchTab('add');
-      } else if (tabId === 'rotate') {
-        rotateTabPosition();
-      } else if (tabId === 'rotate-chat') {
-        rotateChatPosition();
       } else if (tabId === 'popout') {
         openPopoutForCurrentTab();
       } else if (tabId === 'live') {
@@ -2393,7 +2387,7 @@
       }
 
       // Channel tabs get edit/remove context menu
-      const reserved = ['feed', 'mentions', 'whispers', 'discover', 'pinned', 'add', 'rotate', 'settings'];
+      const reserved = ['feed', 'mentions', 'whispers', 'discover', 'pinned', 'add', 'settings'];
       if (reserved.includes(tabId)) return;
       e.preventDefault();
 
@@ -2476,7 +2470,7 @@
   // Util row collapsed — hides C/T/F-/F+/⚙ for clean single-line tabs
 
   // User-hidable tabs — persisted in ui_settings.hiddenTabs (auto-syncs cross-device)
-  const HIDABLE_TABS = ['feed', 'whispers', 'mentions', 'discover', 'pinned'];
+  const HIDABLE_TABS = ['feed', 'whispers', 'mentions', 'pinned'];
   // Default hidden — empty for new users until they enable in settings (saved/pinned tab)
   const DEFAULT_HIDDEN_TABS = ['pinned'];
   let hiddenTabs = new Set(DEFAULT_HIDDEN_TABS);
@@ -4889,6 +4883,10 @@
       }
     }
 
+    // Single-platform tab — filter is degenerate, leave container empty
+    const activePlatforms = [hasTwitch, hasKick, hasYt].filter(Boolean).length;
+    if (activePlatforms < 2) return;
+
     const filt = getPlatformFilter(tab);
     const meta = [
       { key: 'twitch', label: 'T', show: hasTwitch },
@@ -6076,7 +6074,7 @@
     if (!tabBarElement) return;
 
     // Clear existing channel tabs (keep built-in tabs)
-    const existingChannelTabs = tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="mentions"]):not([data-tab="whispers"]):not([data-tab="discover"]):not([data-tab="pinned"]):not([data-tab="add"]):not([data-tab="rotate"]):not([data-tab="rotate-chat"]):not([data-tab="settings"]):not([data-tab="popout"])');
+    const existingChannelTabs = tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="mentions"]):not([data-tab="whispers"]):not([data-tab="discover"]):not([data-tab="pinned"]):not([data-tab="add"]):not([data-tab="settings"]):not([data-tab="popout"])');
     existingChannelTabs.forEach(t => t.remove());
 
     // Add channel tabs before the + button in the scroll section
@@ -8923,7 +8921,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }
 
       const id = twitchVal || kickVal || ('yt-' + Date.now())
-      const reserved = ['live', 'feed', 'mentions', 'whispers', 'discover', 'pinned', 'add', 'rotate', 'settings']
+      const reserved = ['live', 'feed', 'mentions', 'whispers', 'discover', 'pinned', 'add', 'settings']
       if (reserved.includes(id)) {
         showErr(t('mc_reserved_name'))
         return
@@ -9717,7 +9715,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
    */
   async function resolveLiveCandidateToTab({ name, platform, youtubeUrl }) {
     const lower = name.toLowerCase();
-    const reserved = ['live', 'feed', 'mentions', 'whispers', 'discover', 'pinned', 'add', 'rotate', 'settings'];
+    const reserved = ['live', 'feed', 'mentions', 'whispers', 'discover', 'pinned', 'add', 'settings'];
 
     // Resolve all 3 platform identities up-front via /api/profile so the resulting
     // tab pulls Twitch + Kick + YouTube together — not just the platform we

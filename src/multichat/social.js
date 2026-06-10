@@ -1006,8 +1006,7 @@ function _renderFeedEmptyCard() {
   discoverBtn.className = 'hs-mc-empty-btn';
   discoverBtn.textContent = 'discover people →';
   discoverBtn.addEventListener('click', () => {
-    const tabBtn = tabBarElement?.querySelector('[data-tab="discover"]');
-    if (tabBtn) tabBtn.click();
+    if (typeof switchTab === 'function') switchTab('discover');
   });
   actions.appendChild(discoverBtn);
 

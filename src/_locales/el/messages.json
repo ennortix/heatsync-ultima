@@ -484,9 +484,6 @@
   "mc_tab_live": {
     "message": "live"
   },
-  "mc_tab_discover": {
-    "message": "ανακάλυψε"
-  },
   "mc_tab_pinned": {
     "message": "αποθηκευμένα"
   },
@@ -497,12 +494,6 @@
         "content": "$1"
       }
     }
-  },
-  "mc_btn_rotate_tabs": {
-    "message": "περιστροφή καρτελών (T)"
-  },
-  "mc_btn_rotate_chat": {
-    "message": "περιστροφή πάνελ chat (C)"
   },
   "mc_btn_smaller_text": {
     "message": "μικρότερο κείμενο"

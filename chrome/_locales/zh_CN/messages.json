@@ -484,9 +484,6 @@
   "mc_tab_live": {
     "message": "直播"
   },
-  "mc_tab_discover": {
-    "message": "发现"
-  },
   "mc_tab_pinned": {
     "message": "已保存"
   },
@@ -497,12 +494,6 @@
         "content": "$1"
       }
     }
-  },
-  "mc_btn_rotate_tabs": {
-    "message": "切换标签位置 (T)"
-  },
-  "mc_btn_rotate_chat": {
-    "message": "旋转聊天面板 (C)"
   },
   "mc_btn_smaller_text": {
     "message": "缩小文字"

@@ -484,9 +484,6 @@
   "mc_tab_live": {
     "message": "en direct"
   },
-  "mc_tab_discover": {
-    "message": "découvrir"
-  },
   "mc_tab_pinned": {
     "message": "enregistrés"
   },
@@ -497,12 +494,6 @@
         "content": "$1"
       }
     }
-  },
-  "mc_btn_rotate_tabs": {
-    "message": "faire pivoter les onglets (T)"
-  },
-  "mc_btn_rotate_chat": {
-    "message": "pivoter panneau chat (C)"
   },
   "mc_btn_smaller_text": {
     "message": "texte plus petit"

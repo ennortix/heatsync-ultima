@@ -484,9 +484,6 @@
   "mc_tab_live": {
     "message": "라이브"
   },
-  "mc_tab_discover": {
-    "message": "발견"
-  },
   "mc_tab_pinned": {
     "message": "저장됨"
   },
@@ -497,12 +494,6 @@
         "content": "$1"
       }
     }
-  },
-  "mc_btn_rotate_tabs": {
-    "message": "탭 전환 (T)"
-  },
-  "mc_btn_rotate_chat": {
-    "message": "채팅 패널 회전 (C)"
   },
   "mc_btn_smaller_text": {
     "message": "텍스트 작게"

@@ -3874,7 +3874,7 @@ function injectStyles() {
       width: auto !important;
       min-width: 0 !important;
       max-width: none !important;
-      height: 22px !important;
+      height: 18px !important;
       font-size: 13px !important;
     }
     .hs-mc-pf-btn {
@@ -5590,8 +5590,6 @@ function injectStyles() {
       display: none !important;
     }
 
-    /* Rotation button — inherits from .hs-mc-util-btn */
-
     /* When input bar is hidden, overlay fills the gap */
     .hs-tabs-top:has(#hs-mc-inputbar.hs-hidden) #hs-mc-overlay,
     .hs-tabs-right:has(#hs-mc-inputbar.hs-hidden) #hs-mc-overlay,
@@ -5799,10 +5797,6 @@ function injectStyles() {
       scrollbar-width: none;
     }
     .hs-tabs-left .hs-mc-tabs-scroll::-webkit-scrollbar { display: none; }
-    .hs-tabs-left .hs-mc-rotate {
-      margin-left: 0;
-      margin-top: auto;
-    }
     .hs-tabs-left #hs-mc-overlay {
       top: 0;
       left: 90px;
@@ -5831,11 +5825,6 @@ function injectStyles() {
       width: auto !important;
     }
     .hs-popout #hs-mc-resize-handle {
-      display: none !important;
-    }
-    /* Popout chat = full window, no video. Rotating the panel into a
-       quadrant only leaves a blank area where the player would be. */
-    .hs-popout .hs-mc-rotate-chat {
       display: none !important;
     }
     /* Popout chat fills the window — there's no host video next to it to

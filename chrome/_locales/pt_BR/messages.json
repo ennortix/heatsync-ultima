@@ -484,9 +484,6 @@
   "mc_tab_live": {
     "message": "ao vivo"
   },
-  "mc_tab_discover": {
-    "message": "descobrir"
-  },
   "mc_tab_pinned": {
     "message": "salvos"
   },
@@ -497,12 +494,6 @@
         "content": "$1"
       }
     }
-  },
-  "mc_btn_rotate_tabs": {
-    "message": "girar abas (T)"
-  },
-  "mc_btn_rotate_chat": {
-    "message": "girar painel do chat (C)"
   },
   "mc_btn_smaller_text": {
     "message": "texto menor"

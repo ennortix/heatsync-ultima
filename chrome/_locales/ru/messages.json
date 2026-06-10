@@ -484,9 +484,6 @@
   "mc_tab_live": {
     "message": "эфир"
   },
-  "mc_tab_discover": {
-    "message": "обзор"
-  },
   "mc_tab_pinned": {
     "message": "сохранённые"
   },
@@ -497,12 +494,6 @@
         "content": "$1"
       }
     }
-  },
-  "mc_btn_rotate_tabs": {
-    "message": "повернуть вкладки (T)"
-  },
-  "mc_btn_rotate_chat": {
-    "message": "повернуть панель чата (C)"
   },
   "mc_btn_smaller_text": {
     "message": "уменьшить текст"

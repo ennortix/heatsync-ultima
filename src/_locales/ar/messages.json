@@ -484,9 +484,6 @@
   "mc_tab_live": {
     "message": "مباشر"
   },
-  "mc_tab_discover": {
-    "message": "استكشف"
-  },
   "mc_tab_pinned": {
     "message": "محفوظ"
   },
@@ -497,12 +494,6 @@
         "content": "$1"
       }
     }
-  },
-  "mc_btn_rotate_tabs": {
-    "message": "تدوير التبويبات (T)"
-  },
-  "mc_btn_rotate_chat": {
-    "message": "تدوير لوحة الدردشة (C)"
   },
   "mc_btn_smaller_text": {
     "message": "نص أصغر"

@@ -484,9 +484,6 @@
   "mc_tab_live": {
     "message": "trực tiếp"
   },
-  "mc_tab_discover": {
-    "message": "khám phá"
-  },
   "mc_tab_pinned": {
     "message": "đã lưu"
   },
@@ -497,12 +494,6 @@
         "content": "$1"
       }
     }
-  },
-  "mc_btn_rotate_tabs": {
-    "message": "xoay tab (T)"
-  },
-  "mc_btn_rotate_chat": {
-    "message": "xoay panel chat (C)"
   },
   "mc_btn_smaller_text": {
     "message": "chữ nhỏ hơn"

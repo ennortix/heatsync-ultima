@@ -716,7 +716,6 @@ const SETTINGS = [
       { value: 'feed', labelKey: 'mc_tab_feed' },
       { value: 'whispers', labelKey: 'mc_tab_whispers' },
       { value: 'mentions', labelKey: 'mc_tab_mentions' },
-      { value: 'discover', labelKey: 'mc_tab_discover' },
       { value: 'pinned', labelKey: 'mc_tab_pinned' },
     ],
   },
@@ -829,7 +828,7 @@ const SETTINGS_PRESETS = [
     diff: {
       avatars: false, zebra: false, firstChatterGlow: false,
       showPlatformBadges: false, linkPreviewsEnabled: false,
-      hiddenTabs: ['feed', 'whispers', 'mentions', 'discover', 'pinned'],
+      hiddenTabs: ['feed', 'whispers', 'mentions', 'pinned'],
       subsystems: {
         'overlay': true, 'irc-twitch': true, 'chat-kick': true, 'chat-youtube': true,
         'cosmetics': false, 'feed': false, 'whispers': false, 'mentions': false,

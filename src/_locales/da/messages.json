@@ -484,9 +484,6 @@
   "mc_tab_live": {
     "message": "live"
   },
-  "mc_tab_discover": {
-    "message": "opdag"
-  },
   "mc_tab_pinned": {
     "message": "gemt"
   },
@@ -497,12 +494,6 @@
         "content": "$1"
       }
     }
-  },
-  "mc_btn_rotate_tabs": {
-    "message": "rotér faner (T)"
-  },
-  "mc_btn_rotate_chat": {
-    "message": "rotér chat-panel (C)"
   },
   "mc_btn_smaller_text": {
     "message": "mindre tekst"

@@ -43,6 +43,7 @@
 //   invertDisplay    multiselect of hidden ids rendered as "visible" pills
 //   maxLen     string cap for text/textarea
 //   placeholder/placeholderKey  textarea placeholder
+//   displayScale  range only: UI shows value × scale (storage stays raw)
 //   tweak      true → twitch-ui-noise CSS-hide flag; content.js
 //              applyUiSettings() owns the actual hide rules
 //   noReset    excluded from resetSettingsToDefaults (server-coupled prefs)
@@ -52,6 +53,42 @@
 //              filter: local bool + server PATCH /api/user/settings with
 //              rollback; main.js derives CW_CATS from these
 
+/**
+ * @typedef {Object} SettingDef
+ * @property {string} key EXACT storage key — never rename
+ * @property {'bool'|'enum'|'range'|'text'|'multiselect'|'boolmap'} type
+ * @property {*} default
+ * @property {'sync'|'local'|'local-mirror'} scope
+ * @property {string} category settings subtab id
+ * @property {string} [section] group title ([sectionKey] when i18n'd)
+ * @property {string} [label] lowercase literal ([labelKey] for i18n)
+ * @property {string} [tip] hover tooltip ([tipKey] for i18n)
+ * @property {'pill'|'select'|'sizebtns'|'range'|'text'|'textarea'} [control]
+ * @property {Array<{value:*,label?:string,labelKey?:string,tip?:string,tipKey?:string,default?:boolean,tag?:string,color?:string,applies?:'live'|'reload'}>|{min:number,max:number,step:number}} [options]
+ * @property {string} [alias] extra search keywords
+ * @property {{key:string,equals?:*}} [dependsOn]
+ * @property {string} [runtimeVar] legacy module var bridged in main.js
+ * @property {string} [apply] id into main.js _APPLIERS
+ * @property {boolean} [applyOnLoad]
+ * @property {boolean} [rerender]
+ * @property {boolean} [rerenderSettings]
+ * @property {string} [migrate] one-shot default-flip guard key
+ * @property {function(Object,Object):*} [legacy] retired-key migration
+ * @property {boolean} [legacySyncFallback]
+ * @property {boolean} [firstRunPersist]
+ * @property {boolean} [invertDisplay]
+ * @property {number} [maxLen]
+ * @property {string} [placeholder]
+ * @property {string} [placeholderKey]
+ * @property {string} [mirrorKey] local-mirror storage key
+ * @property {boolean} [tweak]
+ * @property {boolean} [noReset]
+ * @property {boolean} [reloadApply]
+ * @property {number} [displayScale]
+ * @property {{stateKey:string,serverBody:string,noun:string}} [cw]
+ */
+
+/** @type {SettingDef[]} */
 const SETTINGS = [
   // ── display / font ────────────────────────────────────────────────────
   {
@@ -398,7 +435,7 @@ const SETTINGS = [
     key: 'mentionSoundVolume', type: 'range', default: 0.3, scope: 'sync',
     category: 'notifs', section: 'on @mention (tab unfocused)',
     label: 'mention sound volume', tip: 'audio ping volume on mention. 0 = silent. uses pure WebAudio tones, no asset shipped.',
-    control: 'range', alias: 'mentionsoundvolume', apply: 'mentionPing',
+    control: 'range', alias: 'mentionsoundvolume', apply: 'mentionPing', displayScale: 100,
     options: { min: 0, max: 1, step: 0.05 },
   },
 
@@ -838,6 +875,11 @@ const SETTINGS_PRESETS = [
 
 // ── pure validators / helpers ─────────────────────────────────────────────
 
+/**
+ * @param {SettingDef} def
+ * @param {*} v
+ * @returns {boolean}
+ */
 function validateSettingValue(def, v) {
   if (!def) return false
   switch (def.type) {
@@ -857,6 +899,11 @@ function validateSettingValue(def, v) {
 }
 
 // normalize a raw value toward validity; returns undefined when unsalvageable
+/**
+ * @param {SettingDef} def
+ * @param {*} v
+ * @returns {*} normalized value, or undefined
+ */
 function coerceSettingValue(def, v) {
   if (!def || v === undefined || v === null) return undefined
   switch (def.type) {

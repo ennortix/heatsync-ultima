@@ -1821,6 +1821,10 @@
     return def.runtimeVar ? _RUNTIME_BRIDGE[def.runtimeVar] : null
   }
 
+  /**
+   * @param {string} key registry storage key
+   * @returns {*} current value (cache → runtime bridge → default)
+   */
   function getSetting(key) {
     const def = _SETTINGS_BY_KEY.get(key)
     if (!def) { warn('getSetting: unknown key', key); return undefined }
@@ -1833,6 +1837,12 @@
   // persist through the existing storage routes, run the applier.
   // opts.silent skips applier + rerender (storage-change rehydration uses it
   // to avoid re-applying a value the local write just set).
+  /**
+   * @param {string} key registry storage key
+   * @param {*} value coerced + validated before write
+   * @param {{silent?: boolean}} [opts] silent skips appliers + re-renders
+   * @returns {boolean} false when the key is unknown or the value invalid
+   */
   function setSetting(key, value, opts) {
     const def = _SETTINGS_BY_KEY.get(key)
     if (!def) { warn('setSetting: unknown key', key); return false }
@@ -8039,13 +8049,22 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     const escaped = terms.map(function(t) { return t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') })
     try { _muteKeywordsRegex = new RegExp(escaped.join('|'), 'i') } catch { _muteKeywordsRegex = null }
   }
-  function isMsgFiltered(m) {
+  // Read the content-filter settings once per render pass — isMsgFiltered
+  // runs per message in the render hot path (up to 1500 msgs per render).
+  function _filterFlags() {
+    return {
+      bots: getSetting('hideBots'),
+      cmds: getSetting('hideCommands'),
+      dups: getSetting('hideDuplicates'),
+    }
+  }
+  function isMsgFiltered(m, f) {
     if (!m || m.type === 'stream-event' || m.inlineNotifType) return false
     const u = m.user ? m.user.toLowerCase() : ''
     if (u && u === currentUsername) return false // never hide own messages
-    if (u && _BOT_NAMES.has(u) && getSetting('hideBots')) return true
+    if (u && f.bots && _BOT_NAMES.has(u)) return true
     if (typeof m.text !== 'string') return false
-    if (m.text.charCodeAt(0) === 33 && getSetting('hideCommands')) return true
+    if (f.cmds && m.text.charCodeAt(0) === 33) return true
     if (_muteKeywordsRegex && _muteKeywordsRegex.test(m.text)) return true
     return false
   }
@@ -8066,8 +8085,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     }
 
     // Content filters — hidden at render, buffers keep the message
-    if (isMsgFiltered(msg)) return true;
-    if (typeof msg.text === 'string' && getSetting('hideDuplicates')) {
+    const _ff = _filterFlags();
+    if (isMsgFiltered(msg, _ff)) return true;
+    if (typeof msg.text === 'string' && _ff.dups) {
       if (_lastMsgTextByTab.get(tabId) === msg.text) return true;
       _lastMsgTextByTab.set(tabId, msg.text);
     }
@@ -8536,8 +8556,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }
     }
 
-    let toRender = msgs.filter(m => !m?.hidden && !isMsgFiltered(m))
-    if (getSetting('hideDuplicates')) {
+    const _ff = _filterFlags()
+    let toRender = msgs.filter(m => !m?.hidden && !isMsgFiltered(m, _ff))
+    if (_ff.dups) {
       const out = []
       let prevText = null
       for (const m of toRender) {

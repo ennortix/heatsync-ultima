@@ -10392,6 +10392,14 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (next !== theatreMode) {
       theatreMode = next;
       applyChatPosition();
+      // Theatre flips collapse/restore the right column — re-evaluate the
+      // no-channel body-mount AFTER the 500ms column animation settles, same
+      // contract as the soft-nav path. Without this, exiting theatre strands
+      // the panel in fixed body-mount until the next SPA nav.
+      cleanup.setTimeout(() => {
+        try { updateTwitchNoChannelClass() } catch (_) {}
+        try { positionChatResizeHandle() } catch (_) {}
+      }, 700, 'theatre-flip-nochannel-recheck');
     }
     return next;
   }

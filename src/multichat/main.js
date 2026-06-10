@@ -1682,6 +1682,8 @@
     emoteSize: { get: function() { return emoteSize }, set: function(v) { emoteSize = v } },
     emojiSize: { get: function() { return emojiSize }, set: function(v) { emojiSize = v } },
     domRenderCap: { get: function() { return DOM_RENDER_CAP }, set: function(v) { DOM_RENDER_CAP = v } },
+    tabPosition: { get: function() { return tabPosition }, set: function(v) { tabPosition = v } },
+    chatPosition: { get: function() { return chatPosition }, set: function(v) { chatPosition = v } },
     hiddenTabs: { get: function() { return [...hiddenTabs] }, set: function(v) { hiddenTabs = new Set(v) } },
     // boolmap runtime objects — coercion already filtered to known subkeys
     inlineNotifs: { get: function() { return { ...inlineNotifs } }, set: function(v) { for (const k in v) inlineNotifs[k] = !!v[k] } },
@@ -1746,6 +1748,16 @@
       }
     })(),
     muteKeywords: function() { rebuildMuteKeywordsRegex() },
+    tabPosition: function() { applyTabsPosition() },
+    chatPosition: function(v) {
+      applyChatPosition()
+      // visible positions become the hide-toggle restore point (mirrors
+      // toggleChatHidden's previous-tracking)
+      if (v && v !== 'hidden' && v !== chatPositionPrevious) {
+        chatPositionPrevious = v
+        saveUiSetting('chatPositionPrevious', v)
+      }
+    },
     automod: function() {
       compileAutomod({ automodAllCaps: getSetting('automodAllCaps'), automodRegex: getSetting('automodRegex') })
     },
@@ -9890,13 +9902,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     tabPosition = positions[(currentIndex + 1) % positions.length];
     log('rotate:', prev, '→', tabPosition)
 
-    applyTabsPosition();
-    saveTabPosition();
-    renderMessages(currentTab);
-  }
-
-  function saveTabPosition() {
-    saveUiSetting('tabPosition', tabPosition)
+    setSetting('tabPosition', tabPosition); // applier applies + rerender
   }
 
   // ============================================
@@ -10540,8 +10546,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       chatPosition = positions[(idx + 1) % positions.length];
     }
     log('rotate-chat:', prev, '→', chatPosition);
-    applyChatPosition();
-    saveUiSetting('chatPosition', chatPosition);
+    setSetting('chatPosition', chatPosition); // applier applies + tracks previous
   }
 
   // ============================================
@@ -10560,9 +10565,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (visible.includes(chatPosition)) chatPositionPrevious = chatPosition;
       chatPosition = 'hidden';
     }
-    applyChatPosition();
-    saveUiSetting('chatPosition', chatPosition);
     saveUiSetting('chatPositionPrevious', chatPositionPrevious);
+    setSetting('chatPosition', chatPosition);
     log('[chat-toggle] →', chatPosition, 'prev:', chatPositionPrevious);
   }
 

@@ -160,6 +160,36 @@ const SETTINGS = [
     control: 'pill', alias: 'showplatformbadges', runtimeVar: 'platformBadgesEnabled', rerender: true,
   },
 
+  // ── display / layout ──────────────────────────────────────────────────
+  // Written by the rotate buttons too — registry + buttons share one
+  // setSetting write path. chatPosition includes 'hidden' (the \\ toggle
+  // stores it) so hydration never un-hides a deliberately hidden chat.
+  {
+    key: 'tabPosition', type: 'enum', default: 'top', scope: 'sync',
+    category: 'display', section: 'layout',
+    label: 'tab bar position', tip: 'which edge the multichat tab bar docks to',
+    control: 'sizebtns', runtimeVar: 'tabPosition', apply: 'tabPosition', rerender: true,
+    options: [
+      { value: 'top', label: 'top' },
+      { value: 'right', label: 'right' },
+      { value: 'bottom', label: 'bottom' },
+      { value: 'left', label: 'left' },
+    ],
+  },
+  {
+    key: 'chatPosition', type: 'enum', default: 'right', scope: 'sync',
+    category: 'display', section: 'layout',
+    label: 'chat dock side', tip: 'which side of the player the chat panel docks to — hidden tucks it away (\\ key toggles)',
+    control: 'sizebtns', runtimeVar: 'chatPosition', apply: 'chatPosition',
+    options: [
+      { value: 'right', label: 'right' },
+      { value: 'bottom', label: 'bottom' },
+      { value: 'left', label: 'left' },
+      { value: 'top', label: 'top' },
+      { value: 'hidden', label: 'hidden' },
+    ],
+  },
+
   // ── display / density ─────────────────────────────────────────────────
   {
     key: 'messageDensity', type: 'enum', default: 'compact', scope: 'sync',

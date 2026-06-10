@@ -1688,6 +1688,7 @@
     emoteSize: { get: function() { return emoteSize }, set: function(v) { emoteSize = v } },
     emojiSize: { get: function() { return emojiSize }, set: function(v) { emojiSize = v } },
     domRenderCap: { get: function() { return DOM_RENDER_CAP }, set: function(v) { DOM_RENDER_CAP = v } },
+    emoteAnimationEnabled: { get: function() { return emoteAnimationEnabled }, set: function(v) { emoteAnimationEnabled = v } },
     tabPosition: { get: function() { return tabPosition }, set: function(v) { tabPosition = v } },
     chatPosition: { get: function() { return chatPosition }, set: function(v) { chatPosition = v } },
     modToolbarButtons: { get: function() { return [...modToolbarButtons] }, set: function(v) { modToolbarButtons = v.filter(function(id) { return MOD_BUTTON_CATALOG[id] }) } },
@@ -1755,6 +1756,13 @@
       }
     })(),
     muteKeywords: function() { rebuildMuteKeywordsRegex() },
+    // rendered html is cached per message — a src change needs a cache
+    // flush before the re-render or old animated imgs survive the toggle
+    emoteAnimation: function(v, def, onLoad) {
+      if (onLoad) return
+      clearRenderedHtmlCache()
+      renderMessages(currentTab)
+    },
     locale: function(v) { setI18nLocale(v).catch(function() {}) },
     modToolbar: function() { if (typeof _modToolbar !== 'undefined' && _modToolbar) rebuildModToolbarButtons() },
     tabPosition: function() { applyTabsPosition() },

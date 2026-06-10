@@ -199,6 +199,18 @@
   // Emote size (1, 2, or 4)
   let emoteSize = 1;
 
+  // Animate-emotes toggle (registry: animateEmotes). When off, animated
+  // gif/webp srcs route through heatsync's emote proxy with static=1 —
+  // the server extracts the first frame (sharp, 30-day immutable cache).
+  // data-emote-url keeps the ORIGINAL url for tooltips/copy/re-add.
+  let emoteAnimationEnabled = true;
+  function staticEmoteSrc(url) {
+    if (emoteAnimationEnabled || !url) return url
+    if (!/\.(gif|webp)(\?|$)/i.test(url)) return url
+    if (url.indexOf('/api/emote-proxy') !== -1) return url
+    return 'https://heatsync.org/api/emote-proxy?url=' + encodeURIComponent(url) + '&static=1'
+  }
+
   // Upgrade emote URL to match current emote size setting.
   // Memoized: input URLs are bounded by emote count (~few thousand). Cache
   // resets when emoteSize changes — same input → same output otherwise.
@@ -2148,13 +2160,15 @@
         let state = isBlocked ? 'blocked' : (cached?.state || 'channel')
         if (state === 'unadded' && inventoryEmotes.has(emoteName)) state = 'owned'
         const safeName = escapeHtml(emoteName)
-        const safeUrl = escapeHtml(getChatResUrl(finalUrl))
+        const chatUrl = getChatResUrl(finalUrl)
+        const safeUrl = escapeHtml(chatUrl)
+        const safeSrc = escapeHtml(staticEmoteSrc(chatUrl))
         const safeProvider = escapeHtml(provider)
         const safeHash = cached?.hash ? escapeHtml(cached.hash) : ''
         const ownerAttr = cached?.ownerDisplay ? ` data-owner="${escapeHtml(cached.ownerDisplay)}"` : ''
         const titleAttr = useCachedUrl ? safeName : `${safeName} (${safeProvider} via kick)`
         const nsfwClass = cached?.nsfw ? ' hs-state-nsfw' : ''
-        const imgHtmlRaw = `<span class="hs-mc-emote-wrapper hs-state-${state}${nsfwClass}" data-emote-name="${safeName}" data-emote-url="${safeUrl}" data-state="${state}" data-source="${safeProvider}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}><img src="${safeUrl}" alt="${safeName}" title="${titleAttr}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${safeName}" data-state="${state}" data-source="${safeProvider}"${ownerAttr} loading="lazy" decoding="async"></span>`
+        const imgHtmlRaw = `<span class="hs-mc-emote-wrapper hs-state-${state}${nsfwClass}" data-emote-name="${safeName}" data-emote-url="${safeUrl}" data-state="${state}" data-source="${safeProvider}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}><img src="${safeSrc}" alt="${safeName}" title="${titleAttr}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${safeName}" data-state="${state}" data-source="${safeProvider}"${ownerAttr} loading="lazy" decoding="async"></span>`
         if (isOverlay && pendingStack) {
           const itemMods = pendingMods.slice()
           const itemHue = pendingHue
@@ -2242,7 +2256,9 @@
         // auto-add-on-send + cross-user rendering gates read dataset.state.
         if (state === 'unadded' && inventoryEmotes.has(word)) state = 'owned';
         const source = escapeHtml(emote.source || 'unknown');
-        const imgSrc = escapeHtml(getChatResUrl(emote.url));
+        const rawChatUrl = getChatResUrl(emote.url);
+        const imgSrc = escapeHtml(rawChatUrl);
+        const staticSrc = escapeHtml(staticEmoteSrc(rawChatUrl));
         const safeHash = emote.hash ? escapeHtml(emote.hash) : '';
         const displayName = escapeHtml(word)
         const ownerAttr = emote.ownerDisplay ? ` data-owner="${escapeHtml(emote.ownerDisplay)}"` : ''
@@ -2265,7 +2281,7 @@
           }
         } catch (e) {}
         const nsfwClass = emote.nsfw ? ' hs-state-nsfw' : ''
-        const imgHtmlRaw = `<span class="hs-mc-emote-wrapper hs-state-${state}${staleClass}${nsfwClass}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}${staleAttr}><img src="${imgSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${displayName}" data-state="${state}" data-source="${source}"${ownerAttr} loading="lazy" decoding="async"></span>`;
+        const imgHtmlRaw = `<span class="hs-mc-emote-wrapper hs-state-${state}${staleClass}${nsfwClass}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}${staleAttr}><img src="${staticSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${displayName}" data-state="${state}" data-source="${source}"${ownerAttr} loading="lazy" decoding="async"></span>`;
 
         // Build the new item — inline-glued suffix mod attaches to THIS emote
         // (e.g. "RainTimew!" → wide RainTime, not wide whatever-was-base).

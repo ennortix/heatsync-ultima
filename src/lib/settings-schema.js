@@ -288,6 +288,12 @@ const SETTINGS = [
     control: 'pill', rerender: true,
   },
   {
+    key: 'animateEmotes', type: 'bool', default: true, scope: 'sync',
+    category: 'display', section: 'cosmetics',
+    label: 'animate emotes', tip: 'play animated emotes (gifs/webp). off shows static first frames — saves cpu on busy channels. multichat messages; picker stays animated.',
+    control: 'pill', runtimeVar: 'emoteAnimationEnabled', apply: 'emoteAnimation',
+  },
+  {
     key: 'chatterinoBadges', type: 'bool', default: true, scope: 'sync',
     category: 'display', section: 'cosmetics',
     label: 'chatterino badges', tip: 'chatterino badges on chatters',

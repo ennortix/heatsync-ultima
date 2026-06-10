@@ -7667,8 +7667,11 @@ function injectStyles() {
        drops 'right' in LTR, so width must be auto for the inset to bite. */
     body.hs-platform-twitch.hs-mode-theatre.hs-chat-right .persistent-player,
     body.hs-platform-twitch.hs-mode-theatre.hs-chat-right .video-player--theatre {
-      right: var(--hs-chat-w, 340px) !important;
-      inset-inline-end: var(--hs-chat-w, 340px) !important;
+      /* --hs-panel-w = measured container width (chat + side tab strip),
+         published from JS on theatre flips and resize commits — --hs-chat-w
+         alone is 35px short when the tab strip docks beside the chat. */
+      right: var(--hs-panel-w, var(--hs-chat-w, 340px)) !important;
+      inset-inline-end: var(--hs-panel-w, var(--hs-chat-w, 340px)) !important;
       left: 0 !important;
       inset-inline-start: 0 !important;
       width: auto !important;

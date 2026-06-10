@@ -3887,6 +3887,7 @@
       document.documentElement.style.setProperty('--hs-chat-w', chatWidth + 'px');
       document.documentElement.style.setProperty('--hs-chat-h', chatHeight + 'px');
       applyChatPosition();
+      requestAnimationFrame(() => { try { publishPanelWidth() } catch (_) {} });
       // applyChatPosition strips inline width on #secondary for YT chat-right
       // and relies on "next reflow" to repopulate it — force it now.
       if (hostPlatform === 'yt') {
@@ -10379,6 +10380,15 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   // Twitch:  .right-column--theatre OR .video-player--theatre
   // Kick:    main[data-theatre="true"]
   // YouTube: ytd-watch-flexy[theater]
+  // Publish the container's MEASURED width (chat column + side tab strip)
+  // for CSS that must reserve the full panel footprint (theatre player inset).
+  function publishPanelWidth() {
+    const c = document.getElementById('hs-mc-container');
+    if (c && c.offsetWidth > 0) {
+      document.documentElement.style.setProperty('--hs-panel-w', c.offsetWidth + 'px');
+    }
+  }
+
   function detectTheatreMode() {
     let next = false;
     if (hostPlatform === 'yt') {
@@ -10399,6 +10409,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       cleanup.setTimeout(() => {
         try { updateTwitchNoChannelClass() } catch (_) {}
         try { positionChatResizeHandle() } catch (_) {}
+        try { publishPanelWidth() } catch (_) {}
       }, 700, 'theatre-flip-nochannel-recheck');
     }
     return next;

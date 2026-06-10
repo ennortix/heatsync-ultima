@@ -31,6 +31,8 @@
 //   runtimeVar legacy module-level var name bridged by main.js _RUNTIME_BRIDGE
 //   apply      id into main.js _APPLIERS — side-effect run on set
 //   applyOnLoad  also run the applier once during loadAllSettings hydration
+//   syncSilent   skip the applier on REMOTE (cross-tab/device) changes —
+//              for set-time-only effects like the volume preview ping
 //   rerender   true → re-render chat messages after a change
 //   rerenderSettings  true → re-render the settings panel after a change
 //   migrate    one-shot guard key in ui_settings (default-flip migrations)
@@ -450,7 +452,7 @@ const SETTINGS = [
     key: 'mentionSoundVolume', type: 'range', default: 0.3, scope: 'sync',
     category: 'notifs', section: 'when you get @mentioned',
     label: 'mention sound volume', tip: 'audio ping volume on mention. 0 = silent. uses pure WebAudio tones, no asset shipped.',
-    control: 'range', alias: 'mentionsoundvolume', apply: 'mentionPing', displayScale: 100,
+    control: 'range', alias: 'mentionsoundvolume', apply: 'mentionPing', displayScale: 100, syncSilent: true,
     options: { min: 0, max: 1, step: 0.05 },
   },
 

@@ -1909,7 +1909,13 @@
     if (!opts || !opts.silent) {
       const applier = def.apply && _APPLIERS[def.apply]
       if (applier) { try { applier(v, def, false) } catch (e) { warn('applier failed:', def.apply, e) } }
-      if (def.rerender) renderMessages(currentTab)
+      if (def.rerender) {
+        // rows render through an insert-only DOM diff — existing rows are
+        // never rebuilt without an epoch bump, so a visual toggle would
+        // only affect newly arriving messages
+        bumpRenderEpoch()
+        renderMessages(currentTab)
+      }
       // re-render the panel when the entry asks for it OR when another
       // entry's dependsOn watches this key (progressive disclosure)
       if ((def.rerenderSettings || _DEPENDS_PARENTS.has(key)) && currentTab === 'settings') renderSettingsTab()
@@ -11404,119 +11410,35 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (area === 'sync' && changes.ui_settings) {
         const ns = changes.ui_settings.newValue || {}
         log('Settings synced:', Object.keys(ns).join(', '))
-        let needsRender = false
 
-        // Keep the registry cache coherent with cross-tab/device writes —
-        // the per-var blocks below update legacy bindings; this covers
-        // getSetting() readers (incl. keys with no runtime var).
+        // Registry-driven rehydration — one loop replaces the old per-key
+        // blocks: cache, runtime bridge, applier, and render flags all come
+        // from the schema. Same-tab echoes no-op via the changed-compare
+        // (our own setSetting updated the cache before the storage write
+        // landed). syncSilent entries skip their applier on remote changes
+        // (e.g. a synced volume change must not play the preview ping).
+        let needsRender = false
         for (const def of SETTINGS) {
           if (def.scope !== 'sync' || ns[def.key] === undefined) continue
           const v = coerceSettingValue(def, ns[def.key])
-          if (v !== undefined && validateSettingValue(def, v)) _settingsCache[def.key] = v
+          if (v === undefined || !validateSettingValue(def, v)) continue
+          const changed = JSON.stringify(v) !== JSON.stringify(getSetting(def.key))
+          _settingsCache[def.key] = v
+          if (!changed) continue
+          const bridge = _bridgeFor(def)
+          if (bridge) bridge.set(v)
+          if (def.apply && !def.syncSilent) {
+            const applier = _APPLIERS[def.apply]
+            if (applier) { try { applier(v, def, false) } catch (e) { warn('sync applier failed:', def.apply, e) } }
+          }
+          if (def.rerender) needsRender = true
         }
         if (Array.isArray(ns.customPresets)) _customPresets = ns.customPresets
 
-        if (ns.automodAllCaps !== undefined || ns.automodRegex !== undefined) {
-          compileAutomod(ns)
+        if (needsRender) {
+          bumpRenderEpoch() // insert-only diff: existing rows need the epoch
+          renderMessages(currentTab)
         }
-
-        if (ns.tabPosition !== undefined && ns.tabPosition !== tabPosition) {
-          tabPosition = ns.tabPosition
-          applyTabsPosition()
-          needsRender = true
-        }
-        if (ns.chatPosition !== undefined && ns.chatPosition !== chatPosition) {
-          chatPosition = ns.chatPosition
-          applyChatPosition()
-        }
-        if (ns.showPlatformBadges !== undefined && ns.showPlatformBadges !== platformBadgesEnabled) {
-          platformBadgesEnabled = ns.showPlatformBadges
-          needsRender = true
-        }
-        if (ns.wysiwygEnabled !== undefined && ns.wysiwygEnabled !== wysiwygEnabled) {
-          wysiwygEnabled = ns.wysiwygEnabled
-          rebuildInput()
-        }
-        if (ns.linksEnabled !== undefined && ns.linksEnabled !== linksEnabled) {
-          linksEnabled = ns.linksEnabled
-          needsRender = true
-        }
-        if (ns.linkPreviewsEnabled !== undefined && ns.linkPreviewsEnabled !== linkPreviewsEnabled) {
-          linkPreviewsEnabled = ns.linkPreviewsEnabled
-        }
-        if (ns.viMode !== undefined && ns.viMode !== viModeEnabled) {
-          viModeEnabled = ns.viMode
-          try {
-            const ls = JSON.parse(localStorage.getItem('heatsync-extension-settings') || '{}')
-            ls.viMode = viModeEnabled
-            localStorage.setItem('heatsync-extension-settings', JSON.stringify(ls))
-          } catch (_) {}
-          window.postMessage({ type: 'heatsync-settings-changed', nonce: window.HS?.getMainWorldNonce?.() || null, settings: { viMode: viModeEnabled } }, location.origin)
-        }
-        if (ns.zebra !== undefined && ns.zebra !== zebraEnabled) {
-          zebraEnabled = ns.zebra
-          needsRender = true
-        }
-        if (ns.autoHideEmpty !== undefined && ns.autoHideEmpty !== autoHideInput) {
-          autoHideInput = ns.autoHideEmpty
-          const bar = document.getElementById('hs-mc-inputbar')
-          const pickerOpen = document.getElementById('hs-mc-emote-picker')?.classList.contains('visible') || false
-          if (autoHideInput) {
-            if (bar) bar.classList.add('hs-hidden')
-            inputBarVisible = false
-          } else {
-            if (bar) bar.classList.remove('hs-hidden')
-            inputBarVisible = true
-          }
-          adjustOverlayForPicker(pickerOpen)
-        }
-        if (ns.timestamps !== undefined && ns.timestamps !== timestampsEnabled) {
-          timestampsEnabled = ns.timestamps
-          window._hsTimestampsEnabled = timestampsEnabled
-          needsRender = true
-        }
-        if (ns.avatars !== undefined && ns.avatars !== avatarsEnabled) {
-          avatarsEnabled = ns.avatars
-          needsRender = true
-        }
-        if (Array.isArray(ns.hiddenTabs)) {
-          const incoming = new Set(ns.hiddenTabs.filter(id => HIDABLE_TABS.includes(id)));
-          const same = incoming.size === hiddenTabs.size && [...incoming].every(id => hiddenTabs.has(id));
-          if (!same) {
-            hiddenTabs = incoming;
-            applyHiddenTabs();
-          }
-        }
-        if (ns.fontFamily !== undefined || ns.fontSize !== undefined || ns.customFontName !== undefined) {
-          applyFontSettings(
-            ns.fontFamily || 'CozetteVector',
-            ns.fontSize || '13',
-            ns.customFontName || ''
-          )
-        }
-        if (ns.firstChatterGlow !== undefined && ns.firstChatterGlow !== firstChatterGlow) {
-          firstChatterGlow = !!ns.firstChatterGlow
-          needsRender = true
-        }
-        if (ns.inlineNotifs) {
-          for (const k of Object.keys(INLINE_NOTIF_TYPES)) {
-            if (ns.inlineNotifs[k] !== undefined) inlineNotifs[k] = ns.inlineNotifs[k]
-          }
-        }
-        if (ns.hermesEvents) {
-          for (const k of Object.keys(HERMES_EVENT_TYPES)) {
-            if (ns.hermesEvents[k] !== undefined) hermesToggles[k] = ns.hermesEvents[k]
-          }
-        }
-        if (ns.multichatOverlayEnabled !== undefined && ns.multichatOverlayEnabled !== multichatOverlayEnabled) {
-          multichatOverlayEnabled = !!ns.multichatOverlayEnabled
-          // overlay mode flipped on another tab/device — partial live
-          // teardown/remount can't restore the native chat column or boot
-          // a lite-booted tab; clean reload instead (deferred when hidden)
-          _liteReload()
-        }
-
-        if (needsRender) renderMessages(currentTab)
         // Update settings panel toggles if visible
         if (currentTab === 'settings') renderSettingsTab()
       }

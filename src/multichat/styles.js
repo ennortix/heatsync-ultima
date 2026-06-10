@@ -528,6 +528,12 @@ function injectStyles() {
     /* YT: position:fixed children already stop at clientWidth (left edge of
        the body scrollbar), so no extra gutter is needed — keep tabs flush to
        the scrollbar edge to match Twitch/Kick. */
+    /* When we've hidden the native yt chat frame (data-hs-hidden marker),
+       also hide yt's "Live chat — open panel" teaser card: clicking it
+       re-expands the frame underneath the overlay and fights us. */
+    body.hs-platform-yt:has(ytd-live-chat-frame#chat[data-hs-hidden]) #teaser-carousel {
+      display: none !important;
+    }
     body.hs-platform-yt.hs-tabs-right.hs-chat-right #hs-mc-overlay,
     body.hs-platform-yt.hs-tabs-right.hs-chat-top #hs-mc-overlay,
     body.hs-platform-yt.hs-tabs-right.hs-chat-bottom #hs-mc-overlay,

@@ -4107,6 +4107,24 @@ function handleWSMessage(msg) {
       })
       break
 
+    case 'irc:message': {
+      // Live twitch from the heatsync server (EventSub-fed consumer fanout).
+      // Heals channels whose direct IRC delivery twitch is starving —
+      // including background channels no native tap can cover.
+      try {
+        const ch = (msg.channel || '').toLowerCase()
+        const ext = msg.message ? bgIrcRecordToExt(msg.message, ch) : null
+        if (ch && ext) {
+          if (!(ext.id && bgIrcSeenLiveId(ext.id))) {
+            const buf = BG_IRC.channels.get(ch)
+            if (buf) { buf.push(ext); bgIrcPersistChannel(ch) }
+            bgIrcBroadcast({ type: 'bg_irc_msg', msg: ext })
+          }
+        }
+      } catch (e) { log('irc:message err:', e?.message) }
+      break
+    }
+
     case 'irc:backlog':
       // Heatsync server-side Twitch IRC ring buffer (500 msgs / 24h Redis).
       // Way deeper than robotty's instant fetch; merge it in.
@@ -7549,7 +7567,10 @@ function bgIrcHandleLine(line) {
     }
   }
 
-  // PRIVMSG, USERNOTICE, NOTICE → store + broadcast
+  // PRIVMSG, USERNOTICE, NOTICE → store + broadcast.
+  // Plain chat with an id marks the cross-source dedupe set (server
+  // irc:message fanout may deliver the same message).
+  if (!msg.type && msg.id && bgIrcSeenLiveId(msg.id)) return
   if (buf && (!msg.type || msg.type === 'usernotice' || msg.type === 'notice')) {
     buf.push(msg)
     bgIrcPersistChannel(msg.channel)
@@ -7870,6 +7891,22 @@ function bgIrcMergeServerBacklog(ch, records) {
   bgIrcPersistChannel(ch)
   bgIrcBroadcast({ type: 'bg_irc_history_merged', channel: ch, count: toAdd.length })
   log('BG IRC heatsync backlog merged', toAdd.length, 'msgs for', ch)
+}
+
+// Cross-source live dedupe — the same PRIVMSG can arrive from our own IRC
+// socket AND the heatsync server's EventSub-fed fanout (irc:message). FIFO.
+const _bgLiveIds = new Set()
+const _bgLiveIdOrder = []
+function bgIrcSeenLiveId(id) {
+  if (!id) return false
+  if (_bgLiveIds.has(id)) return true
+  _bgLiveIds.add(id)
+  _bgLiveIdOrder.push(id)
+  if (_bgLiveIdOrder.length > 6000) {
+    for (let i = 0; i < 1000; i++) _bgLiveIds.delete(_bgLiveIdOrder[i])
+    _bgLiveIdOrder.splice(0, 1000)
+  }
+  return false
 }
 
 async function bgIrcBroadcast(payload) {

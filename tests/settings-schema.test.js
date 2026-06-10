@@ -136,13 +136,13 @@ test('cw entries carry complete server-patch sub-shapes', () => {
   }
 })
 
-test('tweak entries: all 24 sync bools, default off', () => {
+test('tweak entries: 27 sync bools (hideChatHeader is the only default-on)', () => {
   const tweaks = SETTINGS.filter(d => d.tweak)
-  expect(tweaks.length).toBe(24)
+  expect(tweaks.length).toBe(27)
   for (const def of tweaks) {
     expect(def.type).toBe('bool')
     expect(def.scope).toBe('sync')
-    expect(def.default).toBe(false)
+    expect(def.default).toBe(def.key === 'hideChatHeader')
   }
 })
 

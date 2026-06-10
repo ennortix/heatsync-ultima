@@ -6499,6 +6499,21 @@
       _injectShareSynthetic(wasCtx.claim, wasCtx.user, wasCtx.months, '')
     }
   }
+  // Celebration failed AFTER the text was consumed — never let the user's
+  // message vanish: surface the failure and send the text as plain chat.
+  async function _resubShareTextRescue(channel, text) {
+    showToast('celebration share failed — sending your message to chat', 'error')
+    if (!text) return
+    try {
+      const token = getTwitchAuthToken()
+      if (token) {
+        const res = await sendIrcMessage(channel, text, token)
+        if (res === true || res === 'queued') return
+      }
+    } catch (_) {}
+    showToast('message could not be sent — it is still shown in your celebration row', 'error')
+  }
+
   // Programmatic-click escape hatch so consume() can fire the native Twitch
   // Share button without our own surface() hook re-entering share-mode.
   let _allowNativeShare = false
@@ -6544,12 +6559,28 @@
         } catch (_) {}
         return false
       }
+      // No token → the native click can only post Twitch's DEFAULT
+      // celebration (no body). Return false so sendMessage continues and
+      // the typed text still lands as a normal chat message — celebration
+      // + message, nothing swallowed. (This was the documented contract;
+      // an unconditional `return true` here used to eat the text.)
+      if (!claim.resubToken) {
+        console.warn('[heatsync-ext] resub-share: no token — native btn fallback')
+        _exitResubShareMode(claim, false)
+        let clicked = false
+        try { clicked = nativeClickFallback() } catch (_) {}
+        showToast(clicked
+          ? 'no share token — celebration sent without text, your message goes to chat'
+          : 'share unavailable — sending your message to chat', 'error')
+        return false
+      }
+
+      // Token path: optimistic synthetic + instant exit, GQL in the
+      // background. Any failure rescues the typed text into plain chat —
+      // the user's words must never silently vanish.
+      try { _injectShareSynthetic(claim, user, months, text || '') } catch (_) {}
+      _exitResubShareMode(claim, false)
       ;(async () => {
-        if (!claim.resubToken) {
-          console.warn('[heatsync-ext] resub-share: no token — fallback to native btn click')
-          try { nativeClickFallback() } catch (_) {}
-          return
-        }
         try {
           const data = await gqlProxy('Chat_ShareResub_UseResubToken', {
             input: {
@@ -6560,16 +6591,16 @@
             }
           })
           const errs = data?.errors || data?.data?.shareResub?.error
-          if (errs) console.warn('[heatsync-ext] resub-share GQL error:', JSON.stringify(errs).slice(0, 200))
-          else log('resub-share: GQL fired ok')
+          if (!errs) { log('resub-share: GQL fired ok'); return }
+          console.warn('[heatsync-ext] resub-share GQL error:', JSON.stringify(errs).slice(0, 200))
+          await _resubShareTextRescue(claim.channel, text)
         } catch (e) {
           console.warn('[heatsync-ext] resub-share GQL threw:', e?.message || e)
+          await _resubShareTextRescue(claim.channel, text)
         }
       })()
-      _exitResubShareMode(claim, false)
-      // true = sendMessage stops here. The typed text becomes the celebration
-      // BODY (via the GQL mutation above) — sending it again as a plain IRC
-      // PRIVMSG would duplicate it in chat.
+      // true = sendMessage stops here; the typed text is the celebration
+      // body (or gets rescued above on failure).
       return true
     },
     enter: (months, user, channel, resubToken) => {

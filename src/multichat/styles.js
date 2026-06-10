@@ -5156,6 +5156,9 @@ function injectStyles() {
     }
     .hs-mc-setting-row.hs-mc-setting-row-split {
       justify-content: space-between !important;
+      /* thin panels: control drops to its own full-width line instead of
+         letter-stacking inside a squeezed flex item */
+      flex-wrap: wrap;
     }
     .hs-mc-setting-row:nth-child(even) {
       background: #1a1a1a;
@@ -5237,6 +5240,7 @@ function injectStyles() {
       padding: 2px;
     }
     .hs-mc-size-btn {
+      white-space: nowrap !important;
       padding: 4px 10px !important;
       background: transparent !important;
       color: #808080 !important;

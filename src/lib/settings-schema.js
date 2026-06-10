@@ -177,8 +177,9 @@ const SETTINGS = [
   {
     key: 'multichatOverlayEnabled', type: 'bool', default: true, scope: 'sync',
     category: 'display', section: 'display',
-    label: 'multichat overlay', tip: 'off = emotes only — native chat keeps your emotes, no overlay',
-    control: 'pill', alias: 'multichatoverlay', runtimeVar: 'multichatOverlayEnabled', apply: 'multichatOverlay',
+    label: 'multichat overlay', tip: 'off = emotes only (lite mode) — native chat keeps your emotes, tab-complete and picker; the panel disappears. flip it back here, from the extension icon popup, or on heatsync.org.',
+    control: 'pill', alias: 'multichatoverlay lite emotes only disable hide panel off', runtimeVar: 'multichatOverlayEnabled', apply: 'multichatOverlay',
+    legacy: function(ui) { return ui.subsystems && ui.subsystems.overlay === false ? false : undefined },
   },
   {
     key: 'hs_readable_names', type: 'bool', default: true, scope: 'local',
@@ -779,13 +780,12 @@ const SETTINGS = [
     label: 'subsystems', apply: 'subsystemToggle',
     control: 'pill',
     default: {
-      'overlay': true, 'irc-twitch': true, 'chat-kick': true, 'chat-youtube': true,
+      'irc-twitch': true, 'chat-kick': true, 'chat-youtube': true,
       'cosmetics': true, 'feed': true, 'whispers': true, 'mentions': true,
       'stream-stats': true, 'profile-cards': true,
       'emote-render': true, 'tab-complete': true, 'picker-button': true, 'right-click-block': true,
     },
     options: [
-      { value: 'overlay', default: true, color: '#ff8700', applies: 'reload', label: 'multichat overlay', tip: 'the whole chat panel. off = lite mode: emotes, tab-complete and picker keep working in native chat. re-enable here or from the extension icon popup.' },
       { value: 'irc-twitch', default: true, color: '#9146ff', applies: 'reload', label: 'twitch chat feed', tip: 'twitch irc connection + channel joins inside the overlay' },
       { value: 'chat-kick', default: true, color: '#53fc18', applies: 'reload', label: 'kick chat feed', tip: 'kick websocket connection + channel joins inside the overlay' },
       { value: 'chat-youtube', default: true, color: '#ff0000', applies: 'reload', label: 'youtube chat feed', tip: 'youtube live chat subscriptions inside the overlay' },
@@ -830,7 +830,7 @@ const SETTINGS_PRESETS = [
       showPlatformBadges: false, linkPreviewsEnabled: false,
       hiddenTabs: ['feed', 'whispers', 'mentions', 'pinned'],
       subsystems: {
-        'overlay': true, 'irc-twitch': true, 'chat-kick': true, 'chat-youtube': true,
+        'irc-twitch': true, 'chat-kick': true, 'chat-youtube': true,
         'cosmetics': false, 'feed': false, 'whispers': false, 'mentions': false,
         'stream-stats': false, 'profile-cards': true,
         'emote-render': true, 'tab-complete': true, 'picker-button': true, 'right-click-block': true,
@@ -846,14 +846,9 @@ const SETTINGS_PRESETS = [
   },
   {
     id: 'emotes-only', label: 'emotes only (lite)',
-    tip: 'overlay off — emotes, tab-complete and picker in native chat only. reload to apply.',
+    tip: 'overlay off — emotes, tab-complete and picker in native chat only. applies live.',
     diff: {
-      subsystems: {
-        'overlay': false, 'irc-twitch': true, 'chat-kick': true, 'chat-youtube': true,
-        'cosmetics': true, 'feed': true, 'whispers': true, 'mentions': true,
-        'stream-stats': true, 'profile-cards': true,
-        'emote-render': true, 'tab-complete': true, 'picker-button': true, 'right-click-block': true,
-      },
+      multichatOverlayEnabled: false,
     },
   },
   {
@@ -869,7 +864,7 @@ const SETTINGS_PRESETS = [
     diff: {
       hs_emote_size: 1, hs_emoji_size: 1, avatars: false, linkPreviewsEnabled: false,
       subsystems: {
-        'overlay': true, 'irc-twitch': true, 'chat-kick': true, 'chat-youtube': true,
+        'irc-twitch': true, 'chat-kick': true, 'chat-youtube': true,
         'cosmetics': false, 'feed': false, 'whispers': false, 'mentions': true,
         'stream-stats': false, 'profile-cards': false,
         'emote-render': true, 'tab-complete': true, 'picker-button': true, 'right-click-block': true,

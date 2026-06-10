@@ -11823,13 +11823,16 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     const _localPrime = chrome.storage.local.get([STORAGE_KEY, 'user_info', 'muted_users'])
     await loadConfig();
     if (!config.enabled) return;
-    // Lite / emotes-only mode — overlay subsystem off kills the whole panel
-    // before any DOM or sockets exist. The emote layer (content.js, separate
-    // script) keeps running. Re-enable lives in the extension popup.
+    // Lite / emotes-only mode — multichatOverlayEnabled off kills the whole
+    // panel before any DOM or sockets exist. The emote layer (content.js,
+    // separate script) keeps running. Re-enable: settings pill (live),
+    // extension popup, or heatsync.org. The retired subsystems.overlay key
+    // is honored here too until the loadAllSettings legacy hook migrates it.
     try {
       const _pre = await _uiPrime
-      if (_pre?.ui_settings?.subsystems?.overlay === false) {
-        log('overlay subsystem off — lite mode, skipping multichat init')
+      const _ui = _pre?.ui_settings
+      if (_ui?.multichatOverlayEnabled === false || _ui?.subsystems?.overlay === false) {
+        log('overlay off — lite mode, skipping multichat init')
         return
       }
     } catch {}

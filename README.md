@@ -17,7 +17,14 @@ Personal emote inventory + multichat overlay for Twitch, Kick, and YouTube.
 
 ### firefox
 
-**[install from firefox add-ons](https://addons.mozilla.org/en-US/firefox/addon/heatsync-chat/)** — one click, auto-updates.
+firefox add-ons listing is in review — install manually in 60 seconds:
+
+1. download **[heatsync-firefox.xpi](https://github.com/mellen9999/heatsync-extension/releases/latest/download/heatsync-firefox.xpi)**
+2. paste `about:debugging#/runtime/this-firefox` into the address bar
+3. click **load temporary add-on…** → pick the `.xpi` file
+4. open twitch, kick, or a youtube live stream — done
+
+firefox unloads temporary add-ons on restart — will become one-click once approved on addons.mozilla.org
 
 ## build from source
 

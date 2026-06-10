@@ -7188,6 +7188,14 @@ const BG_IRC = {
   ws: null,
   partial: '',
   nick: `justinfan${Math.floor(Math.random() * 99999)}`,
+  // Authed-reader upgrade: twitch periodically starves anonymous (justinfan)
+  // IRC connections (ecosystem-wide anti-scrape throttling — history loads
+  // via robotty but live delivery trickles). When a twitch tab hands us the
+  // user's chat token we reconnect the reader authenticated; auth failure
+  // falls straight back to anonymous, never worse than today.
+  authToken: null,
+  authNick: null,
+  authFailed: false,
   channels: new Map(),       // ch -> BGCircularBuffer
   tabInterest: new Map(),    // tabId -> Set<channel>
   channelTabs: new Map(),    // channel -> Set<tabId>
@@ -7332,7 +7340,13 @@ function bgIrcConnect() {
     const now = Date.now()
     for (const ch of BG_IRC.channels.keys()) BG_IRC.chanLastSeen.set(ch, now)
     BG_IRC.chanRejoinAttempts.clear()
-    BG_IRC.ws.send(`NICK ${BG_IRC.nick}\r\n`)
+    if (BG_IRC.authToken && BG_IRC.authNick && !BG_IRC.authFailed) {
+      BG_IRC.ws.send(`PASS oauth:${BG_IRC.authToken}\r\n`)
+      BG_IRC.ws.send(`NICK ${BG_IRC.authNick}\r\n`)
+      log('BG IRC: authed as', BG_IRC.authNick)
+    } else {
+      BG_IRC.ws.send(`NICK ${BG_IRC.nick}\r\n`)
+    }
     BG_IRC.ws.send('CAP REQ :twitch.tv/tags twitch.tv/commands\r\n')
     for (const ch of BG_IRC.channels.keys()) {
       if (BG_IRC.ws.readyState !== WebSocket.OPEN) return
@@ -7447,6 +7461,14 @@ function bgIrcOnData(data) {
     if (!line) continue
     if (line.startsWith('PING')) {
       try { BG_IRC.ws.send('PONG :tmi.twitch.tv\r\n') } catch {}
+      continue
+    }
+    // Authed-reader login rejected (expired/revoked token) — flag and fall
+    // back to anonymous so the reader is never worse than the old default.
+    if (line.includes('Login authentication failed') || line.includes('Improperly formatted auth')) {
+      log('BG IRC: auth login failed — falling back to anonymous reader')
+      BG_IRC.authFailed = true
+      bgIrcConnect()
       continue
     }
     if (line.startsWith(':tmi.twitch.tv PONG') || line.startsWith('PONG')) continue
@@ -7936,6 +7958,25 @@ chrome.runtime.onConnect.addListener((port) => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || typeof message !== 'object') return false
   const tabId = sender?.tab?.id
+  if (message.type === 'bg_irc_auth') {
+    // Twitch chat token from a twitch tab (same internal channel the GQL
+    // relay uses). Reconnect the reader authed when creds arrive/change.
+    const token = typeof message.token === 'string' ? message.token : ''
+    const nick = (message.nick || '').toLowerCase()
+    if (token && nick && /^[a-z0-9_]{1,30}$/.test(nick)) {
+      const changed = token !== BG_IRC.authToken || nick !== BG_IRC.authNick
+      BG_IRC.authToken = token
+      BG_IRC.authNick = nick
+      if (changed) BG_IRC.authFailed = false
+      const anonOrStale = changed || !BG_IRC.ws || BG_IRC.ws.readyState !== WebSocket.OPEN
+      if (anonOrStale && !BG_IRC.authFailed) {
+        log('BG IRC: upgrading reader to authed connection')
+        bgIrcConnect()
+      }
+    }
+    sendResponse({ ok: true })
+    return true
+  }
   if (message.type === 'bg_irc_join') {
     const ch = (message.channel || '').toLowerCase()
     if (!ch) { sendResponse({ ok: false, error: 'no channel' }); return true }

@@ -12021,6 +12021,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           connectAuthIrc(token, nick).then(ok => {
             if (ok === true) log('Auth IRC ready')
           })
+          // Upgrade the BG reader connection to authed — twitch starves
+          // anonymous readers (live messages trickle while history loads);
+          // an authenticated reader receives normally.
+          try { safeSendMessage({ type: 'bg_irc_auth', token, nick: nick.toLowerCase() }).catch(() => {}) } catch (_) {}
         }
       }
 

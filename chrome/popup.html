@@ -81,6 +81,23 @@
     }
     .detected b { color: #ff8700; font-weight: 400; }
 
+    .not-signed-in {
+      margin-bottom: 12px;
+      padding: 10px 12px;
+      background: rgba(255, 135, 0, 0.1);
+      border: 1px solid rgba(255, 135, 0, 0.3);
+      font-size: 13px;
+      color: #bbb;
+      text-align: center;
+    }
+    .not-signed-in a {
+      color: #ff8700;
+      text-decoration: underline;
+    }
+    .not-signed-in a:hover {
+      color: #fff;
+    }
+
     .lite-row {
       display: flex;
       align-items: center;
@@ -134,6 +151,9 @@
   </div>
 
   <div class="body">
+    <div class="not-signed-in" id="not-signed-in" hidden>
+      not signed in — <a href="#" id="setup-link">set up heatsync →</a>
+    </div>
     <input type="text" class="input" id="popout-input" placeholder="channel or url" spellcheck="false" autocomplete="off">
     <button class="btn" id="popout-btn">popout chat</button>
     <div class="detected" id="detected"></div>

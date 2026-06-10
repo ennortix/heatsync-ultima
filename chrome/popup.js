@@ -176,6 +176,27 @@
   linkErrors.addEventListener('contextmenu', (e) => { e.preventDefault(); clearErrors(); });
   refreshErrorCount();
 
+  // Auth state indicator: show note if not signed in
+  const notSignedIn = document.getElementById('not-signed-in');
+  const setupLink = document.getElementById('setup-link');
+  const api = (typeof browser !== 'undefined' && browser.storage) ? browser : chrome;
+  function updateAuthUI() {
+    if (!api?.storage?.local) { notSignedIn.hidden = true; return }
+    api.storage.local.get('auth_token_encrypted').then((o) => {
+      notSignedIn.hidden = !!o.auth_token_encrypted;
+    }).catch(() => { notSignedIn.hidden = true });
+  }
+  if (api?.storage?.onChanged) {
+    api.storage.onChanged.addListener((changes, area) => {
+      if (area === 'local' && 'auth_token_encrypted' in changes) updateAuthUI();
+    });
+  }
+  setupLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    chrome.tabs.create({ url: chrome.runtime.getURL('welcome.html') });
+  });
+  updateAuthUI();
+
   // Lite mode (emotes only) — flips the overlay subsystem gate. Lives here
   // because you can't re-enable a disabled overlay from inside the overlay.
   // Emote layer gates (render/tab-complete/picker/right-click) are separate

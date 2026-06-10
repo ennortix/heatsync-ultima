@@ -117,6 +117,21 @@
     }
     .done .ok { color: #5fd700; font-size: 15px; }
     .done p { color: #bbb; }
+    .done a {
+      color: #ff8700;
+      text-decoration: none;
+      margin-top: 6px;
+      display: inline-block;
+      border: 1px solid #ff8700;
+      padding: 8px 16px;
+      font-size: 13px;
+      letter-spacing: 0.3px;
+    }
+    .done a:hover, .done a:focus-visible {
+      background: #ff8700;
+      color: #000;
+      outline: none;
+    }
     [hidden] { display: none !important; }
     footer {
       display: flex;
@@ -156,6 +171,7 @@
       <p class="ok"><span class="check">✓</span> <span data-i18n="welcome_done_title">you're in</span></p>
       <p><span data-i18n="welcome_done_1">open any twitch, kick, or youtube stream — your emotes render right in chat</span></p>
       <p><span data-i18n="welcome_done_2">click the heatsync button in the chat box for multichat + your emote inventory</span></p>
+      <a href="https://www.twitch.tv/" target="_blank" rel="noopener">open twitch →</a>
     </section>
 
     <p class="trust" data-i18n="welcome_trust">open source · no trackers · your emotes stay yours</p>

@@ -2124,7 +2124,7 @@
       ${!isLoggedIn ? `
       <div class="heatsync-auth-banner">
         <span>🔑</span>
-        <span><a href="https://heatsync.org" target="_blank">${t('btn_auth_login')}</a> ${t('btn_auth_save_emotes')}</span>
+        <span><a href="https://heatsync.org/api/auth/login?return_to=%2F" target="_blank">${t('btn_auth_login')}</a> ${t('btn_auth_save_emotes')}</span>
       </div>
       ` : ''}
       <div class="hs-top-search">

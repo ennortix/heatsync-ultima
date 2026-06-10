@@ -175,6 +175,12 @@ const SETTINGS = [
     control: 'pill', alias: 'zebra', runtimeVar: 'zebraEnabled', rerender: true,
   },
   {
+    key: 'multichatOverlayEnabled', type: 'bool', default: true, scope: 'sync',
+    category: 'display', section: 'display',
+    label: 'multichat overlay', tip: 'off = emotes only — native chat keeps your emotes, no overlay',
+    control: 'pill', alias: 'multichatoverlay', runtimeVar: 'multichatOverlayEnabled', apply: 'multichatOverlay',
+  },
+  {
     key: 'hs_readable_names', type: 'bool', default: true, scope: 'local',
     category: 'display', section: 'display',
     label: 'readable names', tip: "brighten dim username colors so they're readable on the black bg",

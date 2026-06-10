@@ -1675,6 +1675,7 @@
     viModeEnabled: { get: function() { return viModeEnabled }, set: function(v) { viModeEnabled = v } },
     platformBadgesEnabled: { get: function() { return platformBadgesEnabled }, set: function(v) { platformBadgesEnabled = v } },
     zebraEnabled: { get: function() { return zebraEnabled }, set: function(v) { zebraEnabled = v } },
+    multichatOverlayEnabled: { get: function() { return multichatOverlayEnabled }, set: function(v) { multichatOverlayEnabled = v } },
     // setter also feeds the window flag content.js reads for timestamp paint
     timestampsEnabled: { get: function() { return timestampsEnabled }, set: function(v) { timestampsEnabled = v; window._hsTimestampsEnabled = v } },
     avatarsEnabled: { get: function() { return avatarsEnabled }, set: function(v) { avatarsEnabled = v } },
@@ -1805,6 +1806,23 @@
         if (!resp || !resp.ok) { _cwRollback(def, v); return }
         safeSendMessage({ type: 'refresh_all' }).catch(function() {})
       }).catch(function() { _cwRollback(def, v) })
+    },
+    multichatOverlay: function(v) {
+      if (!v) {
+        // tear down overlay — leave native chat + emote injection untouched
+        try { document.getElementById('hs-mc-container')?.remove() } catch (_) {}
+        try { document.getElementById('hs-mc-tabbar')?.remove() } catch (_) {}
+        try { document.getElementById('hs-mc-overlay')?.remove() } catch (_) {}
+        try { document.getElementById('hs-mc-emote-picker')?.remove() } catch (_) {}
+        try { document.getElementById('hs-mc-inputbar')?.remove() } catch (_) {}
+        // restore youtube native live-chat iframe if we hid it
+        try {
+          const ytFrame = document.querySelector('ytd-live-chat-frame#chat')
+          if (ytFrame) ytFrame.style.display = ''
+        } catch (_) {}
+      } else {
+        ensureUIElements()
+      }
     },
   }
 
@@ -2450,6 +2468,10 @@
 
   // Zebra striping — alternate row backgrounds (default on)
   let zebraEnabled = true;
+
+  // Emotes-only mode — when false, suppresses the multichat overlay entirely;
+  // native-chat emotes and the picker button keep working normally (default on)
+  let multichatOverlayEnabled = true;
 
   // Util row collapsed — hides C/T/F-/F+/⚙ for clean single-line tabs
 
@@ -6892,6 +6914,8 @@
   }
 
   function ensureUIElements() {
+    if (!multichatOverlayEnabled) return
+
     // Always watch for collapse/expand class changes so we can clean up
     // inline styles when the user clicks the expand arrow
     if (hostPlatform !== 'yt') startColumnClassWatcher();
@@ -11427,6 +11451,25 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           for (const k of Object.keys(HERMES_EVENT_TYPES)) {
             if (ns.hermesEvents[k] !== undefined) hermesToggles[k] = ns.hermesEvents[k]
           }
+        }
+        if (ns.multichatOverlayEnabled !== undefined && ns.multichatOverlayEnabled !== multichatOverlayEnabled) {
+          multichatOverlayEnabled = !!ns.multichatOverlayEnabled
+          if (!multichatOverlayEnabled) {
+            // tear down overlay — leave native chat + emote injection untouched
+            try { document.getElementById('hs-mc-container')?.remove() } catch (_) {}
+            try { document.getElementById('hs-mc-tabbar')?.remove() } catch (_) {}
+            try { document.getElementById('hs-mc-overlay')?.remove() } catch (_) {}
+            try { document.getElementById('hs-mc-emote-picker')?.remove() } catch (_) {}
+            try { document.getElementById('hs-mc-inputbar')?.remove() } catch (_) {}
+            // restore youtube native live-chat iframe if we hid it
+            try {
+              const ytFrame = document.querySelector('ytd-live-chat-frame#chat')
+              if (ytFrame) ytFrame.style.display = ''
+            } catch (_) {}
+          } else {
+            ensureUIElements()
+          }
+          if (currentTab === 'settings') renderSettingsTab()
         }
 
         if (needsRender) renderMessages(currentTab)

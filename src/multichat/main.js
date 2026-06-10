@@ -1659,6 +1659,11 @@
   // keeps both views of a value identical during the migration.
   const _SETTINGS_BY_KEY = new Map(SETTINGS.map(function(d) { return [d.key, d] }))
   const _settingsCache = {}
+  // locale option labels live in browser-api.js (single source of locale
+  // display names) — hydrate the schema's value-only options once
+  for (const _locOpt of _SETTINGS_BY_KEY.get('hs_ui_locale').options) {
+    _locOpt.label = I18N_LOCALE_NAMES[_locOpt.value] || _locOpt.value
+  }
 
   // runtimeVar name → {get,set} over the legacy module-level binding.
   // Closures only execute post-init, so referencing `let`s declared further
@@ -1684,6 +1689,7 @@
     domRenderCap: { get: function() { return DOM_RENDER_CAP }, set: function(v) { DOM_RENDER_CAP = v } },
     tabPosition: { get: function() { return tabPosition }, set: function(v) { tabPosition = v } },
     chatPosition: { get: function() { return chatPosition }, set: function(v) { chatPosition = v } },
+    modToolbarButtons: { get: function() { return [...modToolbarButtons] }, set: function(v) { modToolbarButtons = v.filter(function(id) { return MOD_BUTTON_CATALOG[id] }) } },
     hiddenTabs: { get: function() { return [...hiddenTabs] }, set: function(v) { hiddenTabs = new Set(v) } },
     // boolmap runtime objects — coercion already filtered to known subkeys
     inlineNotifs: { get: function() { return { ...inlineNotifs } }, set: function(v) { for (const k in v) inlineNotifs[k] = !!v[k] } },
@@ -1748,6 +1754,8 @@
       }
     })(),
     muteKeywords: function() { rebuildMuteKeywordsRegex() },
+    locale: function(v) { setI18nLocale(v).catch(function() {}) },
+    modToolbar: function() { if (typeof _modToolbar !== 'undefined' && _modToolbar) rebuildModToolbarButtons() },
     tabPosition: function() { applyTabsPosition() },
     chatPosition: function(v) {
       applyChatPosition()
@@ -4504,20 +4512,6 @@
   // left-click username surfaces the full set at the top of the card.
   const DEFAULT_MOD_BUTTONS = []
   let modToolbarButtons = [...DEFAULT_MOD_BUTTONS]
-  async function loadModToolbarButtons() {
-    try {
-      const data = await chrome.storage.local.get(['hs_mod_toolbar_buttons'])
-      if (Array.isArray(data.hs_mod_toolbar_buttons)) {
-        const filtered = data.hs_mod_toolbar_buttons.filter(id => MOD_BUTTON_CATALOG[id])
-        if (filtered.length) modToolbarButtons = filtered
-      }
-    } catch (_) {}
-    if (_modToolbar) rebuildModToolbarButtons()
-  }
-  function saveModToolbarButtons() {
-    try { chrome.storage.local.set({ hs_mod_toolbar_buttons: modToolbarButtons }) } catch (_) {}
-    if (_modToolbar) rebuildModToolbarButtons()
-  }
 
   // Per-channel mod state. Pre-fetch on tab/render so first hover doesn't lag.
   const _modStateCache = new Map()
@@ -5083,6 +5077,7 @@
         var member = getSetting(def.key).includes(o.value)
         var active = def.invertDisplay ? !member : member
         var mMod = _rowModified(def, o)
+        var mTag = o.tag ? '<span style="font-family:monospace;color:#ff8700;margin-right:6px;min-width:34px;display:inline-block">' + escapeHtml(o.tag) + '</span>' : ''
         rows.push({
           id: def.key + ':' + o.value,
           mod: mMod,
@@ -5090,7 +5085,7 @@
           html: '<div class="hs-mc-setting-row' + child + (mMod ? ' hs-mc-set-mod' : '') + '" data-set-row="' + def.key + ':' + o.value + '">' +
             glyph +
             '<button class="hs-mc-toggle-pill' + (active ? ' active' : '') + '" data-set-key="' + def.key + '" data-set-value="' + escapeHtml(String(o.value)) + '"><span class="hs-mc-toggle-knob"></span></button>' +
-            '<span class="hs-mc-setting-label">' + escapeHtml(_optLabel(o)) + '</span>' +
+            '<span class="hs-mc-setting-label">' + mTag + escapeHtml(_optLabel(o)) + '</span>' +
           '</div>',
         })
       }
@@ -5217,39 +5212,23 @@
         g.rows.map(function(r) { return r.html }).join('') +
       '</div>'
     }).join('')
+    // action rows (export/import/defaults) — searchable buttons
+    var actions = _SET_ACTION_ROWS.filter(function(a) { return _rowMatches(a.hay, tokens) })
+    total += _SET_ACTION_ROWS.length
+    if (actions.length) {
+      count += actions.length
+      html += '<div class="hs-mc-settings-group">' +
+        '<div class="hs-mc-set-search-hdr" data-set-jump="system|backup / restore">system · backup / restore</div>' +
+        actions.map(function(a) { return a.html }).join('') +
+      '</div>'
+    }
     if (!count) html = '<div class="hs-mc-setting-row" style="color:#808080">no matches</div>'
     return { html: html, count: count, total: total }
   }
 
   // ── hand-rendered islands ────────────────────────────────────────────
 
-  function _renderModToolbarGroup() {
-    return '<div class="hs-mc-settings-group">' +
-      '<div class="hs-mc-settings-group-title">mod toolbar -- hover actions on chat rows when you mod the channel</div>' +
-      Object.entries(MOD_BUTTON_CATALOG).map(function(entry) {
-        var id = entry[0]; var def = entry[1];
-        var enabled = modToolbarButtons.includes(id);
-        return '<div class="hs-mc-setting-row">' +
-          '<button class="hs-mc-toggle-pill' + (enabled ? ' active' : '') + '" data-mod-btn="' + id + '"><span class="hs-mc-toggle-knob"></span></button>' +
-          '<span class="hs-mc-setting-label"><span style="font-family:monospace;color:#ff8700;margin-right:6px;min-width:34px;display:inline-block">' + def.label + '</span>' + escapeHtml(def.title) + '</span>' +
-        '</div>';
-      }).join('') +
-    '</div>';
-  }
 
-  function _renderLanguageGroup() {
-    return '<div class="hs-mc-settings-group">' +
-      '<div class="hs-mc-settings-group-title">language</div>' +
-      '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
-        '<span class="hs-mc-setting-label">interface language</span>' +
-        '<select class="hs-mc-locale-select" data-setting="locale">' +
-          Object.entries(I18N_LOCALE_NAMES).map(function(e2) {
-            return '<option value="' + escapeHtml(e2[0]) + '"' + (e2[0] === getI18nLocale() ? ' selected' : '') + '>' + escapeHtml(e2[1]) + '</option>';
-          }).join('') +
-        '</select>' +
-      '</div>' +
-    '</div>';
-  }
 
   function _renderMutedGroup() {
     return '<div class="hs-mc-settings-group">' +
@@ -5280,28 +5259,44 @@
     '</div>';
   }
 
+  // Action rows — buttons, not settings, but people search for them.
+  // Shared between the system pane (_renderBackupGroup) and search results.
+  const _SET_ACTION_ROWS = [
+    {
+      hay: 'export settings backup download json save system',
+      html: '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
+        '<span class="hs-mc-setting-label" data-tip="dump ui_settings + all hs_* keys to a JSON file. portable across devices and browsers.">export settings</span>' +
+        '<button class="hs-mc-settings-btn" data-action="export-settings" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">download .json</button>' +
+      '</div>',
+    },
+    {
+      hay: 'import settings restore load json system',
+      html: '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
+        '<span class="hs-mc-setting-label" data-tip="restore from a previously-exported JSON file. merges into existing settings.">import settings</span>' +
+        '<button class="hs-mc-settings-btn" data-action="import-settings" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">load .json</button>' +
+      '</div>',
+    },
+    {
+      hay: 'default reset all settings factory system',
+      html: '<div class="hs-mc-setting-row" style="justify-content:flex-end">' +
+        '<button class="hs-mc-defaults-btn" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">default</button>' +
+      '</div>',
+    },
+  ]
+
   function _renderBackupGroup() {
     return '<div class="hs-mc-settings-group">' +
       '<div class="hs-mc-settings-group-title">backup / restore</div>' +
-      '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
-        '<span class="hs-mc-setting-label" data-tip="dump ui_settings + all hs_* keys to a JSON file. portable across devices and browsers.">export settings</span>' +
-        '<button class="hs-mc-settings-btn" data-action="export-settings" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:\'Liberation Mono\',monospace">download .json</button>' +
-      '</div>' +
-      '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
-        '<span class="hs-mc-setting-label" data-tip="restore from a previously-exported JSON file. merges into existing settings.">import settings</span>' +
-        '<button class="hs-mc-settings-btn" data-action="import-settings" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:\'Liberation Mono\',monospace">load .json</button>' +
-      '</div>' +
+      _SET_ACTION_ROWS[0].html + _SET_ACTION_ROWS[1].html +
     '</div>' +
     '<div class="hs-mc-settings-group">' +
-      '<div class="hs-mc-setting-row" style="justify-content:flex-end">' +
-        '<button class="hs-mc-defaults-btn" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">default</button>' +
-      '</div>' +
+      _SET_ACTION_ROWS[2].html +
     '</div>';
   }
 
   // Compose one category pane: registry sections + that category's islands.
   function _renderCategoryPane(cat) {
-    if (cat === 'mod') return _renderModToolbarGroup() + _regSections(cat)
+    if (cat === 'mod') return _regSections(cat)
     if (cat === 'tweaks') {
       return '<div class="hs-mc-set-keyhint" style="padding-top:8px">twitch.tv only — kick/youtube unaffected</div>' + _regSections(cat)
     }
@@ -5312,7 +5307,7 @@
       if (!advFolded && adv.endsWith('</div>')) {
         adv = adv.slice(0, -6) + _renderCrashLogBlock() + '</div>'
       }
-      return _regSections(cat, ['tabs', 'subsystems']) + _renderLanguageGroup() + _renderMutedGroup() + adv + _renderBackupGroup()
+      return _regSections(cat, ['tabs', 'subsystems', 'language']) + _renderMutedGroup() + adv + _renderBackupGroup()
     }
     return _regSections(cat)
   }
@@ -5834,22 +5829,6 @@
         return;
       }
 
-      // Mod toolbar button toggle
-      var modBtnPill = e.target.closest('.hs-mc-toggle-pill[data-mod-btn]');
-      if (modBtnPill) {
-        var id = modBtnPill.dataset.modBtn;
-        if (!MOD_BUTTON_CATALOG[id]) return;
-        var enabling = !modBtnPill.classList.contains('active');
-        modBtnPill.classList.toggle('active', enabling);
-        if (enabling) {
-          if (!modToolbarButtons.includes(id)) modToolbarButtons.push(id);
-        } else {
-          modToolbarButtons = modToolbarButtons.filter(function(x) { return x !== id; });
-        }
-        saveModToolbarButtons();
-        return;
-      }
-
       // '?' help — button toggles, clicking the overlay closes
       if (e.target.closest('.hs-mc-set-help-btn')) {
         _setHelpOpen = !_setHelpOpen;
@@ -5998,15 +5977,9 @@
     };
     msgsEl.addEventListener('input', msgsEl._hsSettingsInput);
 
-    // Change handler — locale (island) + registry selects
+    // Change handler — registry selects
     if (msgsEl._hsSettingsChange) msgsEl.removeEventListener('change', msgsEl._hsSettingsChange);
     msgsEl._hsSettingsChange = function settingsChange(e) {
-      var localeSel = e.target.closest('select[data-setting="locale"]');
-      if (localeSel) {
-        setI18nLocale(localeSel.value).catch(function() {});
-        try { location.reload(); } catch (_e) {}
-        return;
-      }
       var regSel = e.target.closest('select[data-set-key]');
       if (regSel) {
         var selKey = regSel.dataset.setKey;
@@ -11824,7 +11797,6 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       loadTabsPosition(),
       loadChatPosition(),
       loadLivePlatformMap(),
-      loadModToolbarButtons(),
       loadAllSettings(),
       loadPlatformFilters(),
       loadBlockedEmotes(),

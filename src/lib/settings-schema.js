@@ -46,6 +46,8 @@
 //   tweak      true → twitch-ui-noise CSS-hide flag; content.js
 //              applyUiSettings() owns the actual hide rules
 //   noReset    excluded from resetSettingsToDefaults (server-coupled prefs)
+//   reloadApply  value fully applies only after a page reload — renderer
+//              shows a [reload] chip when current differs from boot
 //   cw         {stateKey, serverBody, noun} — per-viewer content-warning
 //              filter: local bool + server PATCH /api/user/settings with
 //              rollback; main.js derives CW_CATS from these
@@ -369,6 +371,28 @@ const SETTINGS = [
     control: 'pill',
   },
 
+  // ── mod / mod toolbar ─────────────────────────────────────────────────
+  // Hover actions on chat rows when you mod the channel. Option tags are
+  // the button glyphs (rendered orange, matching the toolbar itself);
+  // MOD_BUTTON_CATALOG in main.js keeps the action wiring — ids are the
+  // contract between the two.
+  {
+    key: 'hs_mod_toolbar_buttons', type: 'multiselect', default: [], scope: 'local',
+    category: 'mod', section: 'mod toolbar',
+    label: 'mod toolbar buttons', tip: 'hover actions on chat rows when you mod the channel — all off by default',
+    control: 'pill', runtimeVar: 'modToolbarButtons', apply: 'modToolbar', applyOnLoad: true,
+    options: [
+      { value: 'delete_message', tag: 'x', label: 'delete this message' },
+      { value: 'timeout_1m', tag: '1m', label: 'timeout 1 minute' },
+      { value: 'timeout_10m', tag: '10m', label: 'timeout 10 minutes' },
+      { value: 'timeout_1h', tag: '1h', label: 'timeout 1 hour' },
+      { value: 'timeout_24h', tag: '24h', label: 'timeout 24 hours' },
+      { value: 'timeout_7d', tag: '7d', label: 'timeout 7 days' },
+      { value: 'ban', tag: '⛔', label: 'permanent ban' },
+      { value: 'unban', tag: '✓', label: 'unban user' },
+    ],
+  },
+
   // ── mod / automod ─────────────────────────────────────────────────────
   {
     key: 'automodAllCaps', type: 'bool', default: false, scope: 'sync',
@@ -595,6 +619,54 @@ const SETTINGS = [
       { value: 'mentions', labelKey: 'mc_tab_mentions' },
       { value: 'discover', labelKey: 'mc_tab_discover' },
       { value: 'pinned', labelKey: 'mc_tab_pinned' },
+    ],
+  },
+
+  // ── system / language ─────────────────────────────────────────────────
+  // Option labels hydrate at runtime from I18N_LOCALE_NAMES (browser-api.js
+  // stays the single source of locale display names). The locale applier
+  // re-inits i18n live; full UI re-labels on reload (reloadApply chip).
+  {
+    key: 'hs_ui_locale', type: 'enum', default: '', scope: 'local',
+    category: 'system', section: 'language',
+    label: 'interface language', tip: 'multichat ui language — relabels fully on reload',
+    control: 'select', apply: 'locale', reloadApply: true,
+    options: [
+      { value: '' },
+      { value: 'ar' },
+      { value: 'bg' },
+      { value: 'cs' },
+      { value: 'da' },
+      { value: 'de' },
+      { value: 'el' },
+      { value: 'en' },
+      { value: 'es' },
+      { value: 'fi' },
+      { value: 'fr' },
+      { value: 'he' },
+      { value: 'hi' },
+      { value: 'hu' },
+      { value: 'id' },
+      { value: 'it' },
+      { value: 'ja' },
+      { value: 'ko' },
+      { value: 'ms' },
+      { value: 'nl' },
+      { value: 'no' },
+      { value: 'pl' },
+      { value: 'pt_BR' },
+      { value: 'pt_PT' },
+      { value: 'ro' },
+      { value: 'ru' },
+      { value: 'sk' },
+      { value: 'sv' },
+      { value: 'th' },
+      { value: 'tl' },
+      { value: 'tr' },
+      { value: 'uk' },
+      { value: 'vi' },
+      { value: 'zh_CN' },
+      { value: 'zh_TW' },
     ],
   },
 

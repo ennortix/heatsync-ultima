@@ -1807,23 +1807,42 @@
         safeSendMessage({ type: 'refresh_all' }).catch(function() {})
       }).catch(function() { _cwRollback(def, v) })
     },
-    multichatOverlay: function(v) {
-      if (!v) {
-        // tear down overlay — leave native chat + emote injection untouched
-        try { document.getElementById('hs-mc-container')?.remove() } catch (_) {}
-        try { document.getElementById('hs-mc-tabbar')?.remove() } catch (_) {}
-        try { document.getElementById('hs-mc-overlay')?.remove() } catch (_) {}
-        try { document.getElementById('hs-mc-emote-picker')?.remove() } catch (_) {}
-        try { document.getElementById('hs-mc-inputbar')?.remove() } catch (_) {}
-        // restore youtube native live-chat iframe if we hid it
-        try {
-          const ytFrame = document.querySelector('ytd-live-chat-frame#chat')
-          if (ytFrame) ytFrame.style.display = ''
-        } catch (_) {}
-      } else {
-        ensureUIElements()
-      }
+    // Overlay on/off needs a clean boot either way: the live teardown left
+    // the native chat column blank (the overlay hides it at init and only
+    // youtube's iframe was restored), and turning it ON in a lite-booted
+    // tab would mount UI with no init behind it. Flush the setting
+    // explicitly (the debounced writer wouldn't survive the reload), then
+    // reload — visible tab immediately, background tabs when next visible.
+    multichatOverlay: function(v, def, onLoad) {
+      if (onLoad) return
+      showToast(v ? 'multichat back on — reloading' : 'emotes-only mode — reloading', 'info')
+      try {
+        chrome.storage.sync.get('ui_settings', function(d) {
+          const ui = (d && d.ui_settings) || {}
+          chrome.storage.sync.set({ ui_settings: { ...ui, multichatOverlayEnabled: !!v } }, function() {
+            _liteReload()
+          })
+        })
+      } catch (_) { _liteReload() }
     },
+  }
+
+  // Reload for overlay-mode flips — visible tab reloads now, hidden tabs
+  // defer to visibilitychange (same anti-thundering-herd shape as the
+  // ext-reload path). Deduped per page.
+  function _liteReload() {
+    if (window.__hsLiteReloadScheduled) return
+    window.__hsLiteReloadScheduled = true
+    const doReload = () => { try { location.reload() } catch (_) {} }
+    if (document.visibilityState === 'visible') {
+      setTimeout(doReload, 150)
+    } else {
+      document.addEventListener('visibilitychange', function once() {
+        if (document.visibilityState !== 'visible') return
+        document.removeEventListener('visibilitychange', once)
+        setTimeout(doReload, 300 + Math.random() * 1500)
+      })
+    }
   }
 
   function _cwRollback(def, attempted) {
@@ -11452,22 +11471,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         }
         if (ns.multichatOverlayEnabled !== undefined && ns.multichatOverlayEnabled !== multichatOverlayEnabled) {
           multichatOverlayEnabled = !!ns.multichatOverlayEnabled
-          if (!multichatOverlayEnabled) {
-            // tear down overlay — leave native chat + emote injection untouched
-            try { document.getElementById('hs-mc-container')?.remove() } catch (_) {}
-            try { document.getElementById('hs-mc-tabbar')?.remove() } catch (_) {}
-            try { document.getElementById('hs-mc-overlay')?.remove() } catch (_) {}
-            try { document.getElementById('hs-mc-emote-picker')?.remove() } catch (_) {}
-            try { document.getElementById('hs-mc-inputbar')?.remove() } catch (_) {}
-            // restore youtube native live-chat iframe if we hid it
-            try {
-              const ytFrame = document.querySelector('ytd-live-chat-frame#chat')
-              if (ytFrame) ytFrame.style.display = ''
-            } catch (_) {}
-          } else {
-            ensureUIElements()
-          }
-          if (currentTab === 'settings') renderSettingsTab()
+          // overlay mode flipped on another tab/device — partial live
+          // teardown/remount can't restore the native chat column or boot
+          // a lite-booted tab; clean reload instead (deferred when hidden)
+          _liteReload()
         }
 
         if (needsRender) renderMessages(currentTab)

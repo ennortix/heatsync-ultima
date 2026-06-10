@@ -4876,6 +4876,7 @@
     function handleButtonNav() {
       if (location.href === lastUrl) return
       lastUrl = location.href;
+      injectStyles(); // SPA nav can sweep the style tag — idempotent re-assert
       buttonInjected = false;
       emotesPreloaded = false;
       closePanel();

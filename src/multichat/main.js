@@ -4905,15 +4905,16 @@
     const tab = currentTab;
     if (!isPlatformFilterTab(tab)) return; // empty container hides via :empty CSS
 
-    // Determine which platforms apply to this tab
+    // Determine which platforms apply to this tab. Read config.channels
+    // directly (cached lookup can lag a beat behind mutations) and treat an
+    // unknown tab as no-platforms — never offer filters a tab can't use.
     let hasTwitch = true, hasKick = true, hasYt = true;
     if (tab !== 'live') {
-      const ch = getChannelById(tab);
-      if (ch) {
-        hasTwitch = !!ch.twitch;
-        hasKick = !!ch.kick;
-        hasYt = !!ch.youtube;
-      }
+      const ch = config.channels.find(c => c.id === tab);
+      if (!ch) return;
+      hasTwitch = !!ch.twitch;
+      hasKick = !!ch.kick;
+      hasYt = !!ch.youtube;
     }
 
     // Single-platform tab — filter is degenerate, leave container empty
@@ -6337,14 +6338,28 @@
     // On YouTube: insert after the live chat frame in #chat-container or #secondary
     let parent
     if (hostPlatform === 'yt') {
-      // Hide native YouTube chat iframe wherever it is in the tree.
-      const ytChatFrame = document.querySelector('ytd-live-chat-frame#chat')
-      const prevDisplay = ytChatFrame?.style.display ?? ''
-      if (ytChatFrame) {
-        const frameHeight = ytChatFrame.offsetHeight || 500
-        ytChatFrame.style.display = 'none'
-        container.style.cssText = `height:${frameHeight}px;overflow:hidden;`
-        window._hsYtChatFrameHeight = frameHeight
+      // Hide native YouTube chat iframe wherever it is in the tree. YT loads
+      // the frame LATE on slow streams — if it isn't there yet, watch for it,
+      // or the user sees the native "Live chat / open panel" card fighting
+      // the overlay. data-hs-hidden marks frames we hid so teardown only
+      // restores our own work.
+      const hideYtFrame = () => {
+        const f = document.querySelector('ytd-live-chat-frame#chat')
+        if (!f) return false
+        if (f.style.display !== 'none') {
+          const frameHeight = f.offsetHeight || 500
+          f.dataset.hsPrevDisplay = f.style.display ?? ''
+          f.dataset.hsHidden = '1'
+          f.style.display = 'none'
+          window._hsYtChatFrameHeight = frameHeight
+          container.style.cssText = `height:${frameHeight}px;overflow:hidden;`
+        }
+        return true
+      }
+      if (!hideYtFrame()) {
+        const frameWatch = new MutationObserver(() => { if (hideYtFrame()) frameWatch.disconnect() })
+        frameWatch.observe(document.documentElement, { childList: true, subtree: true })
+        mcSignal.addEventListener('abort', () => frameWatch.disconnect(), { once: true })
       }
       // Append to <body> instead of nesting inside #chat-container. On
       // narrow / single-column viewports YT collapses the right sidebar and
@@ -6358,8 +6373,11 @@
       // chat permanently hidden. mcSignal aborts on pagehide and on full
       // lifecycle teardown.
       mcSignal.addEventListener('abort', () => {
-        if (ytChatFrame && ytChatFrame.isConnected) {
-          ytChatFrame.style.display = prevDisplay
+        const f = document.querySelector('ytd-live-chat-frame#chat[data-hs-hidden]')
+        if (f) {
+          f.style.display = f.dataset.hsPrevDisplay || ''
+          delete f.dataset.hsHidden
+          delete f.dataset.hsPrevDisplay
         }
         if (container && container.parentElement === document.body) {
           container.remove()
@@ -6977,6 +6995,12 @@
 
   function ensureUIElements() {
     if (!multichatOverlayEnabled) return
+
+    // Re-assert the stylesheet — twitch SPA navigations can sweep injected
+    // <style> tags from <head>, leaving a remounted overlay fully unstyled
+    // (raw text flow). injectStyles is idempotent (id check), so this is a
+    // getElementById per call when healthy.
+    try { injectStyles() } catch (_) {}
 
     // Always watch for collapse/expand class changes so we can clean up
     // inline styles when the user clicks the expand arrow

@@ -2395,7 +2395,14 @@ style.textContent = `
   }
   .hs-event-chip .hs-event-close:hover { opacity: 1; background: #fff; color: #000; }
 `;
-document.head.appendChild(style);
+// Twitch SPA navigations can sweep injected <style> tags from <head>.
+// Keep the node referenced and re-append whenever it goes missing — the
+// message observer calls this per batch (getElementById when healthy).
+function ensureEmoteStyles() {
+  if (document.getElementById('heatsync-emote-styles')) return
+  try { document.head.appendChild(style) } catch (_) {}
+}
+ensureEmoteStyles();
 log(' 🎨 CSS injected for emote hover effects');
 
 // Badge hover tooltip for cosmetic badges (BTTV/FFZ/7TV/Chatterino)
@@ -9102,6 +9109,7 @@ function watchForNewMessages() {
   const newColoringMessages = []
   const cosmeticRefresh = []
   messageObserver = cleanup.trackObserver(new MutationObserver((mutations) => {
+    ensureEmoteStyles()
     newColoringMessages.length = 0
     cosmeticRefresh.length = 0
     mutations.forEach(mutation => {

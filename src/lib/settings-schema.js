@@ -90,6 +90,15 @@
 
 /** @type {SettingDef[]} */
 const SETTINGS = [
+  // ── display — the headline toggle first ──────────────────────────────
+  {
+    key: 'multichatOverlayEnabled', type: 'bool', default: true, scope: 'sync',
+    category: 'display', section: 'chat messages',
+    label: 'multichat overlay', tip: 'off = emotes only (lite mode) — native chat keeps your emotes, tab-complete and picker; the panel disappears. flip it back here, from the extension icon popup, or on heatsync.org.',
+    control: 'pill', alias: 'multichatoverlay lite emotes only disable hide panel off', runtimeVar: 'multichatOverlayEnabled', apply: 'multichatOverlay',
+    legacy: function(ui) { return ui.subsystems && ui.subsystems.overlay === false ? false : undefined },
+  },
+
   // ── display / font ────────────────────────────────────────────────────
   {
     key: 'fontFamily', type: 'enum', default: 'CozetteVector', scope: 'sync',
@@ -123,7 +132,7 @@ const SETTINGS = [
   // ── display / display ─────────────────────────────────────────────────
   {
     key: 'hs_emote_size', type: 'enum', default: 1, scope: 'local',
-    category: 'display', section: 'display',
+    category: 'display', section: 'chat messages',
     labelKey: 'mc_settings_emote_size', tipKey: 'mc_settings_emote_size_desc',
     control: 'sizebtns', runtimeVar: 'emoteSize', apply: 'emoteSize', applyOnLoad: true,
     alias: 'native chat emote scale',
@@ -135,7 +144,7 @@ const SETTINGS = [
   },
   {
     key: 'hs_emoji_size', type: 'enum', default: 2, scope: 'local',
-    category: 'display', section: 'display',
+    category: 'display', section: 'chat messages',
     label: 'emoji size', tip: 'emoji size -- 1x native, 2x (default)/4x scale unicode emoji',
     control: 'sizebtns', runtimeVar: 'emojiSize', apply: 'emojiSize', applyOnLoad: true,
     legacy: function(ui) { return ui.bigEmoji === false ? 1 : undefined },
@@ -147,13 +156,13 @@ const SETTINGS = [
   },
   {
     key: 'timestamps', type: 'bool', default: false, scope: 'sync',
-    category: 'display', section: 'display',
+    category: 'display', section: 'chat messages',
     labelKey: 'mc_settings_timestamps', tipKey: 'mc_settings_timestamps_desc',
     control: 'pill', alias: 'timestamps', runtimeVar: 'timestampsEnabled', rerender: true,
   },
   {
     key: 'timestampFormat', type: 'enum', default: '24h', scope: 'sync',
-    category: 'display', section: 'display',
+    category: 'display', section: 'chat messages',
     label: 'timestamp format', tip: 'clock format for chat row timestamps',
     control: 'sizebtns', rerender: true,
     dependsOn: { key: 'timestamps' },
@@ -164,44 +173,37 @@ const SETTINGS = [
   },
   {
     key: 'avatars', type: 'bool', default: false, scope: 'sync',
-    category: 'display', section: 'display',
+    category: 'display', section: 'chat messages',
     label: 'pfps', tipKey: 'mc_settings_avatars_desc',
     control: 'pill', alias: 'avatars', runtimeVar: 'avatarsEnabled', rerender: true,
   },
   {
     key: 'zebra', type: 'bool', default: true, scope: 'sync',
-    category: 'display', section: 'display',
+    category: 'display', section: 'chat messages',
     labelKey: 'mc_settings_zebra', tipKey: 'mc_settings_zebra_desc',
     control: 'pill', alias: 'zebra', runtimeVar: 'zebraEnabled', rerender: true,
   },
   {
-    key: 'multichatOverlayEnabled', type: 'bool', default: true, scope: 'sync',
-    category: 'display', section: 'display',
-    label: 'multichat overlay', tip: 'off = emotes only (lite mode) — native chat keeps your emotes, tab-complete and picker; the panel disappears. flip it back here, from the extension icon popup, or on heatsync.org.',
-    control: 'pill', alias: 'multichatoverlay lite emotes only disable hide panel off', runtimeVar: 'multichatOverlayEnabled', apply: 'multichatOverlay',
-    legacy: function(ui) { return ui.subsystems && ui.subsystems.overlay === false ? false : undefined },
-  },
-  {
     key: 'hs_readable_names', type: 'bool', default: true, scope: 'local',
-    category: 'display', section: 'display',
-    label: 'readable names', tip: "brighten dim username colors so they're readable on the black bg",
+    category: 'display', section: 'chat messages',
+    label: 'fix dim usernames', tip: "brighten dim username colors so they're readable on the black bg",
     control: 'pill', alias: 'readablenames', runtimeVar: 'readableNamesEnabled',
   },
   {
     key: 'firstChatterGlow', type: 'bool', default: true, scope: 'sync',
-    category: 'display', section: 'display',
+    category: 'display', section: 'chat messages',
     labelKey: 'mc_settings_first_chatter', tipKey: 'mc_settings_first_chatter_desc',
     control: 'pill', alias: 'firstchatter', runtimeVar: 'firstChatterGlow', rerender: true,
   },
   {
     key: 'autoHideEmpty', type: 'bool', default: false, scope: 'sync',
-    category: 'display', section: 'display',
+    category: 'display', section: 'chat messages',
     labelKey: 'mc_settings_auto_hide', tipKey: 'mc_settings_auto_hide_desc',
     control: 'pill', alias: 'autohide', runtimeVar: 'autoHideInput', apply: 'autoHide',
   },
   {
     key: 'showPlatformBadges', type: 'bool', default: true, scope: 'sync',
-    category: 'display', section: 'display',
+    category: 'display', section: 'chat messages',
     label: 'platform badges', tip: '[T] [K] [Y] labels on messages',
     control: 'pill', alias: 'showplatformbadges', runtimeVar: 'platformBadgesEnabled', rerender: true,
   },
@@ -261,7 +263,7 @@ const SETTINGS = [
   {
     key: 'hs_dom_render_cap', type: 'range', default: 500, scope: 'local',
     category: 'display', section: 'density',
-    label: 'rendered rows', tip: 'max chat rows kept as live DOM (data buffer stays 1500). lower = less ram on busy channels.',
+    label: 'max visible messages', tip: 'max chat rows kept as live DOM (data buffer stays 1500). lower = less ram on busy channels.',
     control: 'range', runtimeVar: 'domRenderCap', apply: 'renderCap',
     options: { min: 100, max: 1500, step: 100 },
   },
@@ -357,7 +359,7 @@ const SETTINGS = [
   {
     key: 'emoteWysiwyg', type: 'bool', default: true, scope: 'sync',
     category: 'chat', section: 'native chat',
-    label: 'inline emote images in input', tip: 'render emotes as images inside the native chat input (wysiwyg)',
+    label: 'show emotes as images while typing', tip: 'render emotes as images inside the native chat input (wysiwyg)',
     control: 'pill',
   },
   {
@@ -428,19 +430,19 @@ const SETTINGS = [
   // ── notifs / on @mention ──────────────────────────────────────────────
   {
     key: 'hs_notifications', type: 'bool', default: false, scope: 'local',
-    category: 'notifs', section: 'on @mention (tab unfocused)',
+    category: 'notifs', section: 'when you get @mentioned',
     label: 'browser notification', tip: 'show a desktop notification when someone @s you',
     control: 'pill', apply: 'notifPermission',
   },
   {
     key: 'mentionTitleFlash', type: 'bool', default: true, scope: 'sync',
-    category: 'notifs', section: 'on @mention (tab unfocused)',
+    category: 'notifs', section: 'when you get @mentioned',
     label: 'tab title flash', tip: "pulse the browser tab title with the mentioner's name until you focus the tab",
     control: 'pill',
   },
   {
     key: 'mentionSoundVolume', type: 'range', default: 0.3, scope: 'sync',
-    category: 'notifs', section: 'on @mention (tab unfocused)',
+    category: 'notifs', section: 'when you get @mentioned',
     label: 'mention sound volume', tip: 'audio ping volume on mention. 0 = silent. uses pure WebAudio tones, no asset shipped.',
     control: 'range', alias: 'mentionsoundvolume', apply: 'mentionPing', displayScale: 100,
     options: { min: 0, max: 1, step: 0.05 },
@@ -806,14 +808,14 @@ const SETTINGS = [
   {
     key: 'crashTelemetry', type: 'bool', default: false, scope: 'sync',
     category: 'system', section: 'advanced',
-    label: 'show diagnostic errors', tip: "show the diagnostic errors panel below. errors are always captured locally to chrome.storage and never uploaded; this toggle only controls the panel's visibility.",
+    label: 'show diagnostic errors', tip: "errors are captured locally only — never uploaded. this toggle just shows the diagnostic panel below.",
     control: 'pill', rerenderSettings: true,
   },
   {
     key: 'debugLogging', type: 'bool', default: false, scope: 'sync',
     category: 'system', section: 'advanced',
     label: 'debug logging', tip: 'verbose console logging from all heatsync scripts — applies on next page load',
-    control: 'pill',
+    control: 'pill', reloadApply: true,
   },
 ]
 

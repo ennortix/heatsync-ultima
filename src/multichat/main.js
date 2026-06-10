@@ -5292,8 +5292,8 @@
       '<div style="display:flex;justify-content:space-between;align-items:center;width:100%">' +
         '<span class="hs-mc-setting-label">recent errors</span>' +
         '<div style="display:flex;gap:4px">' +
-          '<button id="hs-set-crash-copy" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 8px;font-size:11px;cursor:pointer;font-family:\'Liberation Mono\',monospace">copy</button>' +
-          '<button id="hs-set-crash-clear" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 8px;font-size:11px;cursor:pointer;font-family:\'Liberation Mono\',monospace">clear</button>' +
+          '<button id="hs-set-crash-copy" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 8px;font-size:11px;cursor:pointer;font-family:inherit">copy</button>' +
+          '<button id="hs-set-crash-clear" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 8px;font-size:11px;cursor:pointer;font-family:inherit">clear</button>' +
         '</div>' +
       '</div>' +
       '<pre id="hs-set-crash-pre" class="hs-mc-set-crash-pre">(loading...)</pre>' +

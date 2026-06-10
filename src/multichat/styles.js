@@ -7661,6 +7661,19 @@ function injectStyles() {
     body.hs-platform-twitch.hs-mode-theatre.hs-chat-bottom .video-player--theatre {
       bottom: var(--hs-chat-h, 35vh) !important;
     }
+    /* chat-right (default dock) was missing here — theatre player filled the
+       full viewport and ran UNDER the panel. Twitch writes explicit pixel
+       width inline; with both insets set that over-constrains and the spec
+       drops 'right' in LTR, so width must be auto for the inset to bite. */
+    body.hs-platform-twitch.hs-mode-theatre.hs-chat-right .persistent-player,
+    body.hs-platform-twitch.hs-mode-theatre.hs-chat-right .video-player--theatre {
+      right: var(--hs-chat-w, 340px) !important;
+      inset-inline-end: var(--hs-chat-w, 340px) !important;
+      left: 0 !important;
+      inset-inline-start: 0 !important;
+      width: auto !important;
+      max-width: none !important;
+    }
 
     /* Twitch sizes .persistent-player by writing explicit pixel width/height
        inline via React. With position:absolute and our inline insets set

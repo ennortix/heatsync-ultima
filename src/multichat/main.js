@@ -10287,6 +10287,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   // constraint. Re-checked on every SPA nav.
   function updateTwitchNoChannelClass() {
     if (hostPlatform !== 'twitch') return;
+    // Chokepoint that runs on every soft nav (reparent + 700ms + 4s timers)
+    // and theatre flip — re-assert the stylesheet here, since twitch SPA
+    // transitions can sweep injected <style> tags. Idempotent (id check).
+    try { injectStyles() } catch (_) {}
     const onChannel = !!document.querySelector('.channel-root, [class*="channel-root"]');
     const popout = document.body.classList.contains('hs-popout');
     let noChannel = !onChannel && !popout;
@@ -10320,6 +10324,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   // panel to position:fixed overlay and squeezes <main> width/height.
   function updateKickNoChannelClass() {
     if (!isKick) return;
+    try { injectStyles() } catch (_) {} // kick SPA navs — same sweep guard
+
     const onChannel = !!document.getElementById('channel-chatroom');
     const popout = document.body.classList.contains('hs-popout');
     document.body.classList.toggle('hs-kick-no-channel', !onChannel && !popout);

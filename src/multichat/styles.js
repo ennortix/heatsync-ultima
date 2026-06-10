@@ -7667,6 +7667,13 @@ function injectStyles() {
     body.hs-platform-twitch.hs-mode-theatre.hs-chat-bottom .video-player--theatre {
       bottom: var(--hs-chat-h, 35vh) !important;
     }
+    /* The root scroller must never h-scroll while we reserve right-side
+       space — transient overflow during theatre/width transitions otherwise
+       sticks as a 200px+ leftward page shift. Twitch never h-scrolls this
+       element by design. */
+    body.hs-platform-twitch.hs-chat-right .root-scrollable {
+      overflow-x: hidden !important;
+    }
     /* chat-right (default dock) was missing here — theatre player filled the
        full viewport and ran UNDER the panel. Twitch writes explicit pixel
        width inline; with both insets set that over-constrains and the spec

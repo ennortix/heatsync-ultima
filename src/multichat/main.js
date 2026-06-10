@@ -10416,6 +10416,13 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         try { updateTwitchNoChannelClass() } catch (_) {}
         try { positionChatResizeHandle() } catch (_) {}
         try { publishPanelWidth() } catch (_) {}
+        // Theatre transitions can transiently overflow the root scroller
+        // horizontally; if a scroll sticks, the whole page renders shifted
+        // left with a dead zone before the panel. Reset it.
+        try {
+          const sa = document.querySelector('.root-scrollable');
+          if (sa && sa.scrollLeft > 0) sa.scrollLeft = 0;
+        } catch (_) {}
       }, 700, 'theatre-flip-nochannel-recheck');
     }
     return next;

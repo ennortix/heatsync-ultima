@@ -12027,6 +12027,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           try { safeSendMessage({ type: 'bg_irc_auth', token, nick: nick.toLowerCase() }).catch(() => {}) } catch (_) {}
         }
       }
+      // Native-chat tap — current channel's live messages mined from the
+      // rows twitch's own (unthrottled) delivery renders; id-deduped against
+      // IRC. See native-tap.js for the why.
+      if (gTwitch && hostPlatform === 'twitch') {
+        try { startNativeTap(getCurrentChannel()) } catch (_) {}
+      }
 
       // Twitch deprecated WHISPER over IRC in Feb 2023 — receive via EventSub instead.
       // Works on any host (the ESW socket is independent of the chat IRC).

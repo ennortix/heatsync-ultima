@@ -305,6 +305,11 @@ class IRC {
   // synchronously, and forwards live events from BG to local listeners.
   // Authenticated send still flows through auth-irc.js (per-tab, OAuth).
   constructor() {
+    // Message-id dedupe — live messages can now arrive from BOTH the BG IRC
+    // relay and the native-chat tap; history merges seed it so replays never
+    // double-render. FIFO-capped.
+    this._seenIds = new Set()
+    this._seenIdOrder = []
     this.channels = new Map()  // ch -> CircularBuffer (local mirror)
     this.handlers = new Map()
     this._destroyed = false
@@ -323,8 +328,22 @@ class IRC {
     try { fetchGlobalBadges() } catch {}
   }
 
+  _seenId(id) {
+    if (!id) return false
+    if (this._seenIds.has(id)) return true
+    this._seenIds.add(id)
+    this._seenIdOrder.push(id)
+    if (this._seenIdOrder.length > 6000) {
+      for (let i = 0; i < 1000; i++) this._seenIds.delete(this._seenIdOrder[i])
+      this._seenIdOrder.splice(0, 1000)
+    }
+    return false
+  }
+
   _handleMsg(msg) {
     if (!msg) return
+    // dedupe plain chat by twitch message id (BG IRC vs native tap)
+    if (!msg.type && msg.id && this._seenId(msg.id)) return
     // USERSTATE: viewer's per-channel badges (used to gate sub-emote rendering)
     if (msg.type === 'userstate') {
       if (typeof viewerBadgesPerChannel !== 'undefined') {
@@ -441,6 +460,7 @@ class IRC {
           const sentHost = peekSentHost(m.text)
           if (sentHost) { m.badgePlatform = 'twitch'; m.platform = sentHost === 'yt' ? 'youtube' : sentHost }
         } catch {}
+        if (m.id) this._seenId(m.id)
         buf.push(m)
       }
       // Re-append live messages after history so they appear newest (correct order).

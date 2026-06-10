@@ -100,6 +100,7 @@ const MULTICHAT_MODULES = [
   'stream-stats.js',
   'mentions.js',
   'irc.js',
+  'native-tap.js',
   'auth-irc.js',
   'kick-send.js',
   'emotes.js',

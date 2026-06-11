@@ -349,7 +349,13 @@ class IRC {
     // in shared-chat sessions; BG IRC vs native tap is the real dupe source
     if (!msg.type && msg.id && this._seenId(`${msg.channel}:${msg.id}`)) return
     if (!msg.type && !msg.fromNativeTap && !msg.isHistory && msg.channel) {
-      this._lastLiveAt.set(msg.channel, Date.now())
+      // rolling window of recent non-tap deliveries — the tap defers only to
+      // HEALTHY flow (3+ msgs in 10s), not to a starved trickle where a
+      // single message would otherwise carve 10s holes in coverage
+      let ts = this._lastLiveAt.get(msg.channel)
+      if (!Array.isArray(ts)) { ts = []; this._lastLiveAt.set(msg.channel, ts) }
+      ts.push(Date.now())
+      if (ts.length > 5) ts.splice(0, ts.length - 5)
       if (this._lastLiveAt.size > 300) { const k0 = this._lastLiveAt.keys().next().value; this._lastLiveAt.delete(k0) }
     }
     // USERSTATE: viewer's per-channel badges (used to gate sub-emote rendering)

@@ -111,11 +111,12 @@ function _tapHandleRow(rowEl) {
   try { ch = (getCurrentChannel() || _tapChannel || '').toLowerCase() } catch (_) {}
   if (!ch) return
   if (ch !== _tapChannel) _tapChannel = ch
-  // richness guard: when IRC is delivering for this channel, its copies are
-  // richer (replies/bits/highlights) — only feed the tap when IRC is stale
+  // richness guard: when IRC flow is HEALTHY for this channel (3+ msgs in
+  // the last 10s) its copies are richer (replies/bits/highlights) — defer.
+  // a starved trickle (1 msg/20s) must NOT suppress the tap.
   try {
-    const last = irc?._lastLiveAt?.get?.(ch) || 0
-    if (Date.now() - last < 10_000) return
+    const ts = irc?._lastLiveAt?.get?.(ch)
+    if (Array.isArray(ts) && ts.length >= 3 && Date.now() - ts[ts.length - 3] < 10_000) return
   } catch (_) {}
   const mined = _tapMineMessage(rowEl)
   if (!mined) { _tapStats.fiberMiss++; return }

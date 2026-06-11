@@ -4789,6 +4789,16 @@
   const _momentSeen = new Map()
   function handleMomentSpike(d) {
     if (!d?.channel) return
+    // relevance filter — the server broadcasts spikes for EVERY tracked
+    // channel (the site's rail/hot page want that breadth); the inline 🔥
+    // alert is personal: only channels in YOUR tabs or the one you're
+    // watching. without this, 199-channel coverage = spam about strangers.
+    const chLc = String(d.channel).toLowerCase()
+    const relevant = (config?.channels || []).some(c =>
+      (c?.twitch && c.twitch.toLowerCase() === chLc) ||
+      (c?.kick && c.kick.toLowerCase() === chLc)
+    ) || (typeof getCurrentChannel === 'function' && (getCurrentChannel() || '').toLowerCase() === chLc)
+    if (!relevant) return
     const key = `${d.platform}:${d.channel}`
     const now = Date.now()
     if (now - (_momentSeen.get(key) || 0) < 10 * 60_000) return

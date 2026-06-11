@@ -2771,6 +2771,18 @@ function injectStyles() {
     .hs-mc-msg .hs-mc-emote-wrapper {
       vertical-align: text-bottom;
     }
+    /* same bitmap-smear math for the badge family — any middle-aligned
+       inline box taller than the strut grows the row's line box by a
+       fractional amount and lands every glyph (the reported blurry
+       "mellen") on a half-pixel baseline. row-scoped: cards/pickers
+       keep middle. */
+    .hs-mc-msg .hs-mc-platform-badge,
+    .hs-mc-msg .hs-mc-badge,
+    .hs-mc-msg .hs-mc-bits-badge,
+    .hs-mc-msg .hs-mc-badge-img,
+    .hs-mc-msg .hs-mc-avatar {
+      vertical-align: text-bottom;
+    }
     .hs-mc-emote-wrapper > img {
       display: block;
     }

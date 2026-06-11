@@ -2624,6 +2624,8 @@ function ensure7TVConnection() {
             // User's cosmetics changed (badge/paint granted/revoked).
             // Bust the cache for that user so next lookup refetches fresh.
             handle7TVUserUpdate(eventData.body);
+            // EMOTE_SET entitlements carry the chatter's PERSONAL set
+            if (eventData.type === 'entitlement.create') capture7TVPersonalEntitlement(eventData.body)
           }
         } else if (message.op === 1) {
           log(' 7TV EventAPI: Hello received, session:', message.d.session_id);
@@ -2744,6 +2746,51 @@ async function ensureSelfCosmeticSub(twitchId) {
     ensure7TVConnection()
     send7TVUserSubscribe(seventvId)
   } catch {}
+}
+
+// 7TV PERSONAL emote sets — paid-sub emotes usable in any chat. They are
+// NOT in /v3/users/<platform>/<id> (that's the channel set); the EventAPI
+// pushes an EMOTE_SET entitlement per active chatter. Capture → fetch the
+// set once → merge into get_sender_emotes results so DonkMonk-class emotes
+// render for other people's messages.
+const seventvPersonalSets = new Map()   // twitch uid -> { name: emoteData }
+const _stvSetFetchAt = new Map()        // set id -> ts (6h TTL)
+async function capture7TVPersonalEntitlement(body) {
+  try {
+    const obj = body?.object || body
+    const kind = obj?.kind || body?.kind
+    if (String(kind).toUpperCase() !== 'EMOTE_SET') return
+    const setId = obj?.ref_id || obj?.refId || obj?.id
+    const conns = obj?.user?.connections || body?.user?.connections || []
+    const twitchId = conns.find?.(c => String(c?.platform).toUpperCase() === 'TWITCH')?.id
+    if (!setId || !twitchId) return
+    const last = _stvSetFetchAt.get(setId) || 0
+    const cached = seventvPersonalSets.get(String(twitchId))
+    if (cached && Date.now() - last < 6 * 3600_000) return
+    _stvSetFetchAt.set(setId, Date.now())
+    const res = await fetchWithTimeout(`https://7tv.io/v3/emote-sets/${setId}`)
+    if (!res.ok) return
+    const data = await res.json()
+    const out = {}
+    for (const e of (data?.emotes || [])) {
+      if (!e?.name || !e?.id) continue
+      const flags = (e.flags || 0) | (e.data?.flags || 0)
+      out[e.name] = {
+        url: `https://cdn.7tv.app/emote/${e.id}/1x.webp`,
+        source: '7tv', state: 'global',
+        zeroWidth: !!(flags & 257), hash: e.id,
+        animated: !!e.data?.animated,
+      }
+    }
+    if (Object.keys(out).length) {
+      seventvPersonalSets.set(String(twitchId), out)
+      if (seventvPersonalSets.size > 2000) {
+        const k0 = seventvPersonalSets.keys().next().value
+        seventvPersonalSets.delete(k0)
+      }
+      log(' 7TV: personal set captured for', twitchId, '—', Object.keys(out).length, 'emotes')
+    }
+  } catch (e) { log('7TV personal-set capture err:', e?.message) }
 }
 
 function handle7TVUserUpdate(body) {
@@ -6344,7 +6391,7 @@ async function handleMessage(message, sender, sendResponse) {
         // platform-prefixed key (e.g. twitch:12345, kick:username).
         const hs = { emotes: hsBatch[key] || [] }
         const [stv, bttv] = await Promise.all([stvP, bttvP])
-        // 7TV personal emote_set
+        // 7TV active channel set (a useful proxy; TRUE personal sets merge below)
         const stvEmotes = stv?.emote_set?.emotes || []
         for (const e of stvEmotes) {
           if (!e?.name || !e?.id) continue
@@ -6358,6 +6405,10 @@ async function handleMessage(message, sender, sendResponse) {
             animated: !!e.data?.animated
           }
         }
+        // 7TV TRUE personal set — captured live from EventAPI entitlements
+        const uid = key.startsWith('twitch:') ? key.slice(7) : null
+        const personal = uid ? seventvPersonalSets.get(uid) : null
+        if (personal) Object.assign(collected, personal)
         // BTTV personal — channelEmotes + sharedEmotes
         if (bttv) {
           const all = [...(bttv.channelEmotes || []), ...(bttv.sharedEmotes || [])]

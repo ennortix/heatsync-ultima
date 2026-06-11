@@ -18,7 +18,8 @@
 let _tapObserver = null
 let _tapContainer = null
 let _tapChannel = ''
-let _tapRetryTimer = null
+let _tapRetryTimer = null  // bind-retry while container missing
+let _tapPollTimer = null   // permanent remount watcher
 let _tapStats = { mined: 0, fiberMiss: 0 }
 
 function _tapFindContainer() {
@@ -63,6 +64,9 @@ function _tapToMsg(m, channel) {
         }
         if (typeof c.text === 'string') { text += c.text; continue }
         if (typeof c.url === 'string') { text += c.url; continue }
+        if (typeof c.displayName === 'string') { text += '@' + c.displayName; continue }
+        if (typeof c.recipient === 'string') { text += '@' + c.recipient; continue }
+        if (typeof p.text === 'string') { text += p.text; continue }
       }
     }
   }
@@ -100,9 +104,22 @@ function _tapToMsg(m, channel) {
 function _tapHandleRow(rowEl) {
   if (!rowEl || rowEl.nodeType !== 1) return
   if (!rowEl.classList?.contains('chat-line__message')) return
+  // channel resolved at MINE time — twitch SPA navs change the page channel
+  // without re-running init; a stale _tapChannel would file (and archive!)
+  // messages under the previous channel
+  let ch = _tapChannel
+  try { ch = (getCurrentChannel() || _tapChannel || '').toLowerCase() } catch (_) {}
+  if (!ch) return
+  if (ch !== _tapChannel) _tapChannel = ch
+  // richness guard: when IRC is delivering for this channel, its copies are
+  // richer (replies/bits/highlights) — only feed the tap when IRC is stale
+  try {
+    const last = irc?._lastLiveAt?.get?.(ch) || 0
+    if (Date.now() - last < 10_000) return
+  } catch (_) {}
   const mined = _tapMineMessage(rowEl)
   if (!mined) { _tapStats.fiberMiss++; return }
-  const msg = _tapToMsg(mined, _tapChannel)
+  const msg = _tapToMsg(mined, ch)
   if (!msg) return
   _tapStats.mined++
   try { irc?._handleMsg?.(msg) } catch (_) {}
@@ -117,6 +134,7 @@ function _tapBind() {
     }, 3000)
     return
   }
+  if (_tapRetryTimer) { cleanup.clearInterval(_tapRetryTimer); _tapRetryTimer = null }
   if (container === _tapContainer && _tapObserver) return
   if (_tapObserver) { try { _tapObserver.disconnect() } catch (_) {} }
   _tapContainer = container
@@ -135,8 +153,10 @@ function startNativeTap(channel) {
   _tapChannel = (channel || '').toLowerCase()
   if (!_tapChannel) return
   _tapBind()
-  // container re-mounts on theatre toggles / SPA settles — cheap re-bind poll
-  if (!_tapRetryTimer) _tapRetryTimer = cleanup.setInterval(function() {
+  // container re-mounts on theatre toggles / SPA settles — own timer slot so
+  // the bind-retry can't shadow it (shared slot = poll never installed when
+  // the container is missing at startup → tap dies on first remount)
+  if (!_tapPollTimer) _tapPollTimer = cleanup.setInterval(function() {
     const c = _tapFindContainer()
     if (c && c !== _tapContainer) _tapBind()
   }, 5000)

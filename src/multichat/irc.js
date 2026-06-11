@@ -310,6 +310,9 @@ class IRC {
     // double-render. FIFO-capped.
     this._seenIds = new Set()
     this._seenIdOrder = []
+    // per-channel last NON-TAP live delivery — the native tap defers to IRC
+    // when this is fresh (IRC copies carry replies/bits/highlight richness)
+    this._lastLiveAt = new Map()
     this.channels = new Map()  // ch -> CircularBuffer (local mirror)
     this.handlers = new Map()
     this._destroyed = false
@@ -345,6 +348,10 @@ class IRC {
     // dedupe plain chat by (channel, id) — same id is legit across channels
     // in shared-chat sessions; BG IRC vs native tap is the real dupe source
     if (!msg.type && msg.id && this._seenId(`${msg.channel}:${msg.id}`)) return
+    if (!msg.type && !msg.fromNativeTap && !msg.isHistory && msg.channel) {
+      this._lastLiveAt.set(msg.channel, Date.now())
+      if (this._lastLiveAt.size > 300) { const k0 = this._lastLiveAt.keys().next().value; this._lastLiveAt.delete(k0) }
+    }
     // USERSTATE: viewer's per-channel badges (used to gate sub-emote rendering)
     if (msg.type === 'userstate') {
       if (typeof viewerBadgesPerChannel !== 'undefined') {
@@ -603,6 +610,7 @@ class KickChat {
   }
 
   _serializeMsg(m) {
+    if (m?.type === 'moment') return null // ephemeral alert — broken after restore (loses click target)
     return {
       user: m.user, text: m.text, color: m.color, badges: m.badges,
       channel: m.channel, time: m.time, platform: 'kick',
@@ -616,7 +624,7 @@ class KickChat {
       try {
         const buffer = this.channels.get(ch)
         if (!buffer) continue
-        const msgs = buffer.getAll().slice(-this._SYNC_BACKUP_MAX).map(m => this._serializeMsg(m))
+        const msgs = buffer.getAll().slice(-this._SYNC_BACKUP_MAX).map(m => this._serializeMsg(m)).filter(Boolean)
         localStorage.setItem(`hs_kick_sync_${ch}`, JSON.stringify({ msgs, ts: Date.now() }))
       } catch {}
     }
@@ -795,7 +803,7 @@ class KickChat {
         if (!chrome?.runtime?.id) return
         const buffer = this.channels.get(ch)
         if (!buffer) return
-        const msgs = buffer.getAll().slice(-this._PERSIST_MAX).map(m => this._serializeMsg(m))
+        const msgs = buffer.getAll().slice(-this._PERSIST_MAX).map(m => this._serializeMsg(m)).filter(Boolean)
         const p = chrome.storage.local.set({ [`hs_kick_${ch}`]: { msgs, ts: Date.now() } })
         if (p && typeof p.catch === 'function') p.catch(() => {})
       } catch {}

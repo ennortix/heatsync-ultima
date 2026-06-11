@@ -1766,13 +1766,14 @@
     locale: function(v) { setI18nLocale(v).catch(function() {}) },
     modToolbar: function() { if (typeof _modToolbar !== 'undefined' && _modToolbar) rebuildModToolbarButtons() },
     tabPosition: function() { applyTabsPosition() },
-    chatPosition: function(v) {
+    chatPosition: function(v, def, onLoad, isRemote) {
       applyChatPosition()
       // visible positions become the hide-toggle restore point (mirrors
-      // toggleChatHidden's previous-tracking)
+      // toggleChatHidden's previous-tracking). remote changes update the
+      // local var but skip the write-back — the originating tab persisted it
       if (v && v !== 'hidden' && v !== chatPositionPrevious) {
         chatPositionPrevious = v
-        saveUiSetting('chatPositionPrevious', v)
+        if (!isRemote) saveUiSetting('chatPositionPrevious', v)
       }
     },
     automod: function() {
@@ -1821,8 +1822,9 @@
     // tab would mount UI with no init behind it. Flush the setting
     // explicitly (the debounced writer wouldn't survive the reload), then
     // reload — visible tab immediately, background tabs when next visible.
-    multichatOverlay: function(v, def, onLoad) {
+    multichatOverlay: function(v, def, onLoad, isRemote) {
       if (onLoad) return
+      if (isRemote) { _liteReload(); return } // already persisted remotely — just reload
       showToast(v ? 'multichat back on — reloading' : 'emotes-only mode — reloading', 'info')
       try {
         chrome.storage.sync.get('ui_settings', function(d) {
@@ -2901,6 +2903,14 @@
             retryOrHideBadgeImg(t)
           if (t instanceof HTMLImageElement && t.classList.contains('hs-mc-avatar'))
             t.style.display = 'none'
+          // static-emote proxy failure (heatsync.org unreachable / 429) —
+          // swap back to the original CDN url once instead of a broken icon
+          if (t instanceof HTMLImageElement && t.classList.contains('hs-mc-emote')
+              && (t.src || '').includes('/api/emote-proxy') && !t.dataset.hsProxyFell) {
+            t.dataset.hsProxyFell = '1'
+            const orig = t.closest('.hs-mc-emote-wrapper')?.dataset?.emoteUrl
+            if (orig) t.src = orig
+          }
         }
         if (isScrolledUp) return
         if (isStaticTab()) return
@@ -11530,7 +11540,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           if (bridge) bridge.set(v)
           if (def.apply && !def.syncSilent) {
             const applier = _APPLIERS[def.apply]
-            if (applier) { try { applier(v, def, false) } catch (e) { warn('sync applier failed:', def.apply, e) } }
+            // 4th arg isRemote — appliers with persist side-effects must not
+            // write back (N receiving tabs would each rewrite ui_settings)
+            if (applier) { try { applier(v, def, false, true) } catch (e) { warn('sync applier failed:', def.apply, e) } }
           }
           if (def.rerender) needsRender = true
         }

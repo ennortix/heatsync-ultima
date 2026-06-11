@@ -7219,6 +7219,7 @@ const BG_IRC = {
   authToken: null,
   authNick: null,
   authFailed: false,
+  authFailedAt: 0,
   channels: new Map(),       // ch -> BGCircularBuffer
   tabInterest: new Map(),    // tabId -> Set<channel>
   channelTabs: new Map(),    // channel -> Set<tabId>
@@ -7244,6 +7245,16 @@ const BG_IRC = {
 async function bgIrcRestoreFromStorage() {
   if (BG_IRC.storageRestored) return
   BG_IRC.storageRestored = true
+  // authed-reader creds survive SW restarts (session storage; cleared when
+  // the browser closes — the next twitch tab re-supplies them)
+  try {
+    const sess = await chrome.storage.session?.get?.('hs_irc_auth')
+    const a = sess?.hs_irc_auth
+    if (a?.token && a?.nick && !BG_IRC.authToken) {
+      BG_IRC.authToken = a.token
+      BG_IRC.authNick = a.nick
+    }
+  } catch {}
   try {
     const all = await chrome.storage.local.get(null)
     const storedVer = all.hs_irc_parser_version | 0
@@ -7363,6 +7374,8 @@ function bgIrcConnect() {
     const now = Date.now()
     for (const ch of BG_IRC.channels.keys()) BG_IRC.chanLastSeen.set(ch, now)
     BG_IRC.chanRejoinAttempts.clear()
+    // transient login failures un-stick after 30min (token may have healed)
+    if (BG_IRC.authFailed && Date.now() - (BG_IRC.authFailedAt || 0) > 30 * 60_000) BG_IRC.authFailed = false
     if (BG_IRC.authToken && BG_IRC.authNick && !BG_IRC.authFailed) {
       BG_IRC.ws.send(`PASS oauth:${BG_IRC.authToken}\r\n`)
       BG_IRC.ws.send(`NICK ${BG_IRC.authNick}\r\n`)
@@ -7491,6 +7504,7 @@ function bgIrcOnData(data) {
     if (line.includes('Login authentication failed') || line.includes('Improperly formatted auth')) {
       log('BG IRC: auth login failed — falling back to anonymous reader')
       BG_IRC.authFailed = true
+      BG_IRC.authFailedAt = Date.now()
       bgIrcConnect()
       continue
     }
@@ -7575,7 +7589,7 @@ function bgIrcHandleLine(line) {
   // PRIVMSG, USERNOTICE, NOTICE → store + broadcast.
   // Plain chat with an id marks the cross-source dedupe set (server
   // irc:message fanout may deliver the same message).
-  if (!msg.type && msg.id && bgIrcSeenLiveId(`${msg.channel}:${msg.id}`)) return
+  if ((!msg.type || msg.type === 'usernotice') && msg.id && bgIrcSeenLiveId(`${msg.channel}:${msg.id}`)) return
   if (buf && (!msg.type || msg.type === 'usernotice' || msg.type === 'notice')) {
     buf.push(msg)
     bgIrcPersistChannel(msg.channel)
@@ -8009,6 +8023,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const changed = token !== BG_IRC.authToken || nick !== BG_IRC.authNick
       BG_IRC.authToken = token
       BG_IRC.authNick = nick
+      // survive SW restarts within the browser session — otherwise the
+      // reader silently reverts to starved-anonymous until a twitch tab
+      // happens to re-init
+      try { chrome.storage.session?.set?.({ hs_irc_auth: { token, nick } }) } catch {}
       if (changed) BG_IRC.authFailed = false
       const anonOrStale = changed || !BG_IRC.ws || BG_IRC.ws.readyState !== WebSocket.OPEN
       if (anonOrStale && !BG_IRC.authFailed) {

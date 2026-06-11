@@ -5454,7 +5454,15 @@ function injectStyles() {
     }
     /* '?' keybinding overlay */
     .hs-mc-settings-panel {
-      position: relative;
+      /* Fill the #hs-mc-messages scroll box and own the scrolling internally:
+         a flex column where ONLY the body scrolls, so the category bar +
+         search bar are real headers above the scroll area and rows can never
+         bleed behind them. #hs-mc-messages has `contain: layout paint`, which
+         makes it the containing block, so inset:0 sizes us to it reliably. */
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
       background: #000;
     }
     .hs-mc-set-help-btn {
@@ -5571,6 +5579,7 @@ function injectStyles() {
     .hs-mc-set-subtab svg { display: block; }
     .hs-mc-set-subtab-body {
       flex: 1;
+      min-height: 0; /* let the flex item shrink so overflow-y actually scrolls */
       overflow-y: auto;
       background: #000;
     }

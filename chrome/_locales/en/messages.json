@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "your 5000-slot emote inventory — works on any twitch, kick, or youtube chat. no sub needed. multichat + 7tv/bttv/ffz."
+    "message": "twitch + kick + youtube chat in one panel. multichat across platforms, no account needed. 7tv/bttv/ffz + your own emotes everywhere."
   },
   "common_loading": {
     "message": "loading..."
@@ -127,22 +127,22 @@
     "message": "heatsync"
   },
   "welcome_tagline": {
-    "message": "your emotes in every chat — no sub"
+    "message": "every stream's chat in one panel — twitch, kick + youtube"
   },
   "welcome_cta": {
-    "message": "sign in with twitch"
+    "message": "open a stream → try multichat"
   },
   "welcome_next_label": {
-    "message": "after you click"
+    "message": "no account needed"
   },
   "welcome_next_1": {
-    "message": "twitch asks you to approve heatsync"
+    "message": "open twitch, kick, or youtube live — the panel's already there"
   },
   "welcome_next_2": {
-    "message": "done — your emotes light up in chat"
+    "message": "click the heatsync button in chat to add streams across platforms"
   },
   "welcome_cta_kick": {
-    "message": "or sign in with kick"
+    "message": "optional — sign in to save your own emotes"
   },
   "welcome_done_title": {
     "message": "you're in"

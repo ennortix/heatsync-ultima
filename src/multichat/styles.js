@@ -5457,7 +5457,7 @@ function injectStyles() {
       /* Fill the #hs-mc-messages scroll box and own the scrolling internally:
          a flex column where ONLY the body scrolls, so the category bar +
          search bar are real headers above the scroll area and rows can never
-         bleed behind them. #hs-mc-messages has `contain: layout paint`, which
+         bleed behind them. #hs-mc-messages has contain:layout paint, which
          makes it the containing block, so inset:0 sizes us to it reliably. */
       position: absolute;
       inset: 0;

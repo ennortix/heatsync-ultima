@@ -12144,6 +12144,14 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (gTwitch && hostPlatform === 'twitch') {
         try { startNativeTap(getCurrentChannel()) } catch (_) {}
       }
+      // Auto-tabs: pull the current open-stream set once at boot — the bg
+      // broadcast only fires on CHANGES, so a fresh tab would otherwise not
+      // see streams that were already open before it loaded.
+      try {
+        safeSendMessage({ type: 'bg_get_open_channels' }).then(r => {
+          if (r?.channels) reconcileAutoTabs(r.channels)
+        }).catch(() => {})
+      } catch (_) {}
 
       // Twitch deprecated WHISPER over IRC in Feb 2023 — receive via EventSub instead.
       // Works on any host (the ESW socket is independent of the chat IRC).

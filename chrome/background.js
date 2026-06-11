@@ -8054,6 +8054,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({ ok: true })
     return true
   }
+  if (message.type === 'bg_get_open_channels') {
+    sendResponse({ channels: [...BG_IRC.channelTabs.keys()] })
+    return true
+  }
   if (message.type === 'bg_irc_join') {
     const ch = (message.channel || '').toLowerCase()
     if (!ch) { sendResponse({ ok: false, error: 'no channel' }); return true }

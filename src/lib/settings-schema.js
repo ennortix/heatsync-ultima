@@ -705,17 +705,17 @@ const SETTINGS = [
   {
     key: 'hideChatHeader', type: 'bool', default: true, scope: 'sync',
     category: 'tweaks', section: 'native chat', tweak: true, control: 'pill',
-    label: 'hide chat header', tip: "hide the native chat header bar (default on — heatsync's chrome replaces it)",
+    label: 'chat header', tip: "hide the native chat header bar (default on — heatsync's chrome replaces it)",
   },
   {
     key: 'hideStreamTitle', type: 'bool', default: false, scope: 'sync',
     category: 'tweaks', section: 'native chat', tweak: true, control: 'pill',
-    label: 'hide stream title', tip: 'hide the stream title block under the player',
+    label: 'stream title', tip: 'hide the stream title block under the player',
   },
   {
     key: 'hideViewerCount', type: 'bool', default: false, scope: 'sync',
     category: 'tweaks', section: 'native chat', tweak: true, control: 'pill',
-    label: 'hide viewer count', tip: 'hide the live viewer counter',
+    label: 'viewer count', tip: 'hide the live viewer counter',
   },
 
   // ── system / tabs ─────────────────────────────────────────────────────

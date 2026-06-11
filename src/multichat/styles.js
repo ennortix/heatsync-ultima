@@ -5329,7 +5329,7 @@ function injectStyles() {
       position: sticky;
       top: 46px; /* below the subtab rail */
       background: #000;
-      z-index: 2;
+      z-index: 5;
       flex-shrink: 0;
     }
     .hs-mc-set-search {
@@ -5455,6 +5455,7 @@ function injectStyles() {
     /* '?' keybinding overlay */
     .hs-mc-settings-panel {
       position: relative;
+      background: #000;
     }
     .hs-mc-set-help-btn {
       background: #000;
@@ -5540,7 +5541,7 @@ function injectStyles() {
       position: sticky;
       top: 0;
       background: #000;
-      z-index: 2;
+      z-index: 5;
     }
     .hs-mc-set-subtab {
       width: 34px;
@@ -5571,6 +5572,7 @@ function injectStyles() {
     .hs-mc-set-subtab-body {
       flex: 1;
       overflow-y: auto;
+      background: #000;
     }
     /* Settings text inputs (custom font name, etc.) */
     .hs-mc-set-text-input {

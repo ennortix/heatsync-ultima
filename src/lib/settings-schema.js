@@ -406,12 +406,13 @@ const SETTINGS = [
     category: 'notifs', sectionKey: 'mc_settings_inline_notifs',
     label: 'inline notifications',
     control: 'pill', runtimeVar: 'inlineNotifs',
-    default: { op: true, mop: true, re: true, dm: false },
+    default: { op: true, mop: true, re: true, dm: false, moment: true },
     options: [
       { value: 'op', default: true, tag: '[OP]', color: '#ff0000', borderColor: '#ff0000', labelKey: 'mc_settings_notif_op', tipKey: 'mc_settings_notif_op_desc' },
       { value: 'mop', default: true, tag: '[OP]', color: '#ff00ff', borderColor: '#ff00ff', labelKey: 'mc_settings_notif_op_reply', tipKey: 'mc_settings_notif_op_reply_desc' },
       { value: 're', default: true, tag: '[RE]', color: '#00ffff', borderColor: '#00ffff', labelKey: 'mc_settings_notif_re', tipKey: 'mc_settings_notif_re_desc' },
       { value: 'dm', default: false, tag: '[DM]', color: '#ffff00', borderColor: '#ffff00', labelKey: 'mc_settings_notif_dm', tipKey: 'mc_settings_notif_dm_desc' },
+      { value: 'moment', default: true, tag: '[🔥]', color: '#ff8700', borderColor: '#ff8700', label: 'moment alerts', tip: 'a channel\'s chat suddenly explodes — heat spike detected server-side; click the row to open the stream' },
     ],
   },
 

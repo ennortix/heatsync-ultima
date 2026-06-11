@@ -500,7 +500,7 @@
     try { div = buildMessageDiv(msg, tabId) } catch { return false }
     if (!div) return false
     div.dataset.msgKey = msgKeyStr
-    if (zebraEnabled && msg.type !== 'stream-event' && msg.type !== 'feed-post' && msg.type !== 'inline-dm') {
+    if (zebraEnabled && msg.type !== 'stream-event' && msg.type !== 'feed-post' && msg.type !== 'inline-dm' && msg.type !== 'moment') {
       const prev = cache.frag.lastElementChild
       const prevZ = prev?.classList.contains('hs-mc-zebra') === true
       if (!prevZ) div.classList.add('hs-mc-zebra')
@@ -4773,6 +4773,27 @@
 
   // (automod moved to automod.js)
 
+  // Server-side heat spike (moment detector) → inline 🔥 row in all chats.
+  // Dedupe per channel per 10min mirrors the server cooldown so multi-source
+  // delivery (reconnects) can't double-post.
+  const _momentSeen = new Map()
+  function handleMomentSpike(d) {
+    if (!d?.channel) return
+    const key = `${d.platform}:${d.channel}`
+    const now = Date.now()
+    if (now - (_momentSeen.get(key) || 0) < 10 * 60_000) return
+    _momentSeen.set(key, now)
+    if (_momentSeen.size > 200) { const k0 = _momentSeen.keys().next().value; _momentSeen.delete(k0) }
+    injectInlineNotif('moment', {
+      type: 'moment',
+      momentChannel: d.channel,
+      momentPlatform: d.platform || 'twitch',
+      text: `${d.channel} chat is exploding — ${d.rate} msgs/30s (usually ~${Math.max(1, Math.round(d.baseline))})`,
+      color: '#ff8700',
+      time: now,
+    })
+  }
+
   // Inject an inline notification into active chat tabs
   function injectInlineNotif(notifType, msg) {
     if (!inlineNotifs[notifType]) return
@@ -7600,6 +7621,26 @@
       return div
     }
 
+    if (m.type === 'moment') {
+      const div = document.createElement('div')
+      div.className = 'hs-mc-feed-inline hs-mc-moment-inline'
+      div.style.borderLeftColor = m.inlineNotifBorderColor || '#ff8700'
+      const tsVal = timestampsEnabled ? formatTimeFromTs(m.time) : ''
+      const tsSpan = tsVal ? `<span class="hs-mc-ts">${tsVal}</span>` : ''
+      const label = `<span style="color:${m.inlineNotifColor || '#ff8700'};font-size:13px;font-weight:700;margin-right:3px">[🔥]</span>`
+      div.innerHTML = `${tsSpan}${label}<span style="color:#c0c0c0">${escapeHtml(m.text || '')}</span>`
+      div.style.cursor = 'pointer'
+      const ch = m.momentChannel
+      const plat = m.momentPlatform || 'twitch'
+      div.title = `open ${plat}/${ch}`
+      div.addEventListener('click', (e) => {
+        if (e.target.closest('a')) return
+        const url = plat === 'kick' ? `https://kick.com/${ch}` : `https://www.twitch.tv/${ch}`
+        try { window.open(url, '_blank', 'noopener') } catch (_) {}
+      })
+      return div
+    }
+
     // Guard against messages with no user (malformed IRC / system messages)
     if (!m.user) {
       if (m.text || m.systemMsg) {
@@ -8251,7 +8292,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     div.dataset.msgKey = msgKeyStr
     // Strict alternation: append flips from last sibling's zebra. Append-only path
     // always alternates cleanly. Bigger-tier than hash (which only ~50% alternates).
-    if (zebraEnabled && msg.type !== 'stream-event' && msg.type !== 'feed-post' && msg.type !== 'inline-dm') {
+    if (zebraEnabled && msg.type !== 'stream-event' && msg.type !== 'feed-post' && msg.type !== 'inline-dm' && msg.type !== 'moment') {
       const prev = msgsEl.lastElementChild
       const prevZ = prev?.classList.contains('hs-mc-zebra') === true
       if (!prevZ) div.classList.add('hs-mc-zebra')
@@ -8719,7 +8760,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // the boundary but won't ripple to other msgs.
     const zebraOfInsert = (m, prevDiv) => {
       if (!zebraEnabled) return false
-      if (m.type === 'stream-event' || m.type === 'feed-post' || m.type === 'inline-dm') return false
+      if (m.type === 'stream-event' || m.type === 'feed-post' || m.type === 'inline-dm' || m.type === 'moment') return false
       if (!prevDiv) return false
       return !prevDiv.classList.contains('hs-mc-zebra')
     }
@@ -11143,6 +11184,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // completion / picker use lookupEmote() which checks viewerPersonalEmotes
       // first. emoteCache only needs the state flipped when the same name is
       // ALSO a heatsync global.
+      if (msg.type === 'hs_moment') {
+        try { handleMomentSpike(msg.data) } catch (_) {}
+        return
+      }
       if (msg.type === 'inventory_update') {
         const prevInventory = new Set(inventoryEmotes)
         inventoryEmotes.clear();

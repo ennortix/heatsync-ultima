@@ -4107,6 +4107,11 @@ function handleWSMessage(msg) {
       })
       break
 
+    case 'moment:spike':
+      // server-side heat spike — forward to tabs for the inline 🔥 notif
+      broadcastToTabs({ type: 'hs_moment', data: { platform: msg.platform, channel: msg.channel, rate: msg.rate, baseline: msg.baseline } })
+      break
+
     case 'irc:message': {
       // Live twitch from the heatsync server (EventSub-fed consumer fanout).
       // Heals channels whose direct IRC delivery twitch is starving —

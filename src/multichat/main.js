@@ -4783,6 +4783,38 @@
 
   // (automod moved to automod.js)
 
+  // Ephemeral auto-tabs — every stream open ANYWHERE in the browser shows
+  // up as a tab here (dimmed, unsaved, vanishes when its window closes).
+  // BG broadcasts the open-channel set; entries are runtime-only:
+  // saveConfig/server-sync filter `ephemeral`, so nothing persists.
+  function reconcileAutoTabs(openChannels) {
+    const openSet = new Set(openChannels.map(c => String(c).toLowerCase()))
+    const here = (getCurrentChannel() || '').toLowerCase()
+    openSet.delete(here) // this tab's own channel is already the live tab
+    let changed = false
+    // drop ephemerals whose browser tab closed
+    for (let i = config.channels.length - 1; i >= 0; i--) {
+      const c = config.channels[i]
+      if (c?.ephemeral && !openSet.has((c.twitch || '').toLowerCase())) {
+        config.channels.splice(i, 1)
+        changed = true
+      }
+    }
+    // add ephemerals for newly opened streams not already configured
+    for (const ch of openSet) {
+      const exists = config.channels.some(c =>
+        (c?.twitch && c.twitch.toLowerCase() === ch))
+      if (exists) continue
+      config.channels.push({ id: `auto_${ch}`, twitch: ch, ephemeral: true })
+      try { irc?.join?.(ch) } catch (_) {}
+      changed = true
+    }
+    if (changed) {
+      _channelLookup = null
+      try { updateTabBar() } catch (_) {}
+    }
+  }
+
   // Server-side heat spike (moment detector) → inline 🔥 row in all chats.
   // Dedupe per channel per 10min mirrors the server cooldown so multi-source
   // delivery (reconnects) can't double-post.
@@ -6158,7 +6190,8 @@
     const addBtn = scrollSection.querySelector('[data-tab="add"]');
     config.channels.forEach(ch => {
       const tab = document.createElement('button');
-      tab.className = 'hs-mc-tab';
+      tab.className = ch?.ephemeral ? 'hs-mc-tab hs-mc-tab-auto' : 'hs-mc-tab';
+      if (ch?.ephemeral) tab.title = 'open in another window — tab disappears when that window closes'
       const id = ch.id;
       tab.dataset.tab = id;
       // Show best human-readable name. Order:
@@ -7340,7 +7373,9 @@
     if (id !== 'add') {
       try {
         saveUiSetting('activeTab', id)
-        saveUiSetting('liveChannel', liveChannel)
+        // liveChannel override is popout-scoped — persisting it from regular
+        // pages was how a stale pick haunted every future boot
+        if (document.body.classList.contains('hs-popout')) saveUiSetting('liveChannel', liveChannel)
       } catch (e) { /* context invalidated */ }
     }
 
@@ -10178,10 +10213,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     try { document.dispatchEvent(new CustomEvent('hs-channels-changed')) } catch {}
     try {
       _skipNextConfigSync = true
-      await chrome.storage.local.set({ [STORAGE_KEY]: config });
+      // ephemeral auto-tabs (open browser streams) never persist
+      const persistable = { ...config, channels: (config.channels || []).filter(c => !c?.ephemeral) }
+      await chrome.storage.local.set({ [STORAGE_KEY]: persistable });
       // Sync to server for cross-device sync
       try {
-        chrome.runtime.sendMessage({ type: 'ws_send', data: { type: 'multichat:sync', channels: config.channels } })
+        chrome.runtime.sendMessage({ type: 'ws_send', data: { type: 'multichat:sync', channels: (config.channels || []).filter(c => !c?.ephemeral) } })
       } catch (e) { /* context invalidated */ }
     } catch (e) { console.warn('saveConfig failed:', e) }
   }
@@ -10214,8 +10251,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       const channelIds = config.channels.map(c => c.id);
       _savedActiveTab = (saved !== 'add' && (BUILTIN_TABS.includes(saved) || channelIds.includes(saved)))
         ? saved : 'live';
-      // Restore live channel override
-      if (stored.ui_settings?.liveChannel) {
+      // Restore live channel override — POPOUT ONLY. The override exists so
+      // the popout picker survives its navigation hop; restoring it on
+      // regular pages pinned the live tab to a long-dead pick (the
+      // "live tab always opens quin69" bug) instead of the page's channel.
+      if (stored.ui_settings?.liveChannel && document.body.classList.contains('hs-popout')) {
         liveChannel = stored.ui_settings.liveChannel;
       }
       // Popout window is locked to one channel by URL — ignore the parent
@@ -11204,6 +11244,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // completion / picker use lookupEmote() which checks viewerPersonalEmotes
       // first. emoteCache only needs the state flipped when the same name is
       // ALSO a heatsync global.
+      if (msg.type === 'open_channels') {
+        try { reconcileAutoTabs(Array.isArray(msg.channels) ? msg.channels : []) } catch (_) {}
+        return
+      }
       if (msg.type === 'hs_moment') {
         try { handleMomentSpike(msg.data) } catch (_) {}
         return

@@ -7937,11 +7937,26 @@ async function bgIrcBroadcast(payload) {
   } catch {}
 }
 
+// Every multichat instance learns which channels are open across the whole
+// browser — feeds the ephemeral auto-tabs (5 streams open = 5 tabs, no
+// manual adds). Debounced: interest churns in bursts during navigation.
+let _openChBroadcastTimer = null
+function bgBroadcastOpenChannels() {
+  if (_openChBroadcastTimer) return
+  _openChBroadcastTimer = setTimeout(() => {
+    _openChBroadcastTimer = null
+    try {
+      bgIrcBroadcast({ type: 'open_channels', channels: [...BG_IRC.channelTabs.keys()] })
+    } catch {}
+  }, 500)
+}
+
 function bgIrcRegisterTabInterest(tabId, ch) {
   if (!BG_IRC.tabInterest.has(tabId)) BG_IRC.tabInterest.set(tabId, new Set())
   BG_IRC.tabInterest.get(tabId).add(ch)
   if (!BG_IRC.channelTabs.has(ch)) BG_IRC.channelTabs.set(ch, new Set())
   BG_IRC.channelTabs.get(ch).add(tabId)
+  bgBroadcastOpenChannels()
 }
 
 function bgIrcUnregisterTabInterest(tabId, ch) {
@@ -7949,6 +7964,7 @@ function bgIrcUnregisterTabInterest(tabId, ch) {
   if (tabSet) { tabSet.delete(tabId); if (tabSet.size === 0) BG_IRC.channelTabs.delete(ch) }
   const interest = BG_IRC.tabInterest.get(tabId)
   if (interest) interest.delete(ch)
+  bgBroadcastOpenChannels()
 }
 
 function bgIrcEnsureChannel(ch) {
@@ -7996,6 +8012,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
     if (tabSet) { tabSet.delete(tabId); if (tabSet.size === 0) BG_IRC.channelTabs.delete(ch) }
   }
   BG_IRC.tabInterest.delete(tabId)
+  bgBroadcastOpenChannels()
 })
 
 // Ctx-death detector port (companion to content.js + multichat bootstrap).

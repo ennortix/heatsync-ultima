@@ -189,7 +189,9 @@ function injectStyles() {
        browser not to fake-bold — but requesting 600 against a single-weight
        bitmap font still nudges Chrome's text path off the crisp bitmap
        route in practice. White-on-black background already conveys focus. */
-    .hs-mc-tab.active {
+    .hs-mc-tab-auto { color: #777; }
+.hs-mc-tab-auto::before { content: '·'; color: #ff8700; margin-right: 3px; }
+.hs-mc-tab.active {
       background: #fff !important;
       color: #000 !important;
       border-color: #fff !important;

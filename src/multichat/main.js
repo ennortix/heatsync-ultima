@@ -9258,6 +9258,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }).catch(() => {});
       youtubeLinks.delete(tabId);
       channelYtMessages.delete(tabId);
+      // Clear YT watchdog state too — otherwise the 180s rejoin loop resurrects
+      // a removed channel forever and periodically force-reconnects the shared
+      // WS that every channel rides on.
+      ytChanLastSeen.delete(tabId);
+      ytChanRejoinAttempts.delete(tabId);
+      ytSubscribedUrls.delete(tabId);
     }
 
     // Drop per-tab platform filter state so it can't leak across channel adds/removes
@@ -9810,7 +9816,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     }
 
     // Match /username or /popout/username/chat or /embed/username/chat
-    const match = location.pathname.match(/^\/(?:popout\/|embed\/)?([a-zA-Z0-9_]+)/);
+    const match = location.pathname.match(/^\/(?:popout\/|embed\/)?([a-zA-Z0-9_-]+)/);
     if (match && match[1]) {
       const channel = match[1].toLowerCase();
       // Skip non-channel pages (shared module-scope Set above).
@@ -10269,7 +10275,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // session's saved tab (which often points to a different channel and
       // produces a blank panel because that channel's pane was never built).
       if (document.body.classList.contains('hs-popout')) {
-        const urlCh = location.pathname.match(/^\/(?:popout|embed)\/([a-zA-Z0-9_]+)/)?.[1]
+        const urlCh = location.pathname.match(/^\/(?:popout|embed)\/([a-zA-Z0-9_-]+)/)?.[1]
         if (urlCh) {
           _savedActiveTab = 'live'
           liveChannel = urlCh
@@ -11903,7 +11909,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // Twitch: persistent overlay across every URL — directory, settings,
       // videos, etc. all keep the panel mounted. getOrCreateHsContainer
       // body-mounts when no .chat-shell exists; CSS squeezes twitch content.
-      isPopout = !!location.pathname.match(/^\/(popout|embed)\/[a-zA-Z0-9_]+\/chat/);
+      isPopout = !!location.pathname.match(/^\/(popout|embed)\/[a-zA-Z0-9_-]+\/chat/);
     }
     if (mcInitialized) return;
     mcInitialized = true;
@@ -13325,6 +13331,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // behind a "N new" pause indicator the user never asked for.
       isScrolledUp = false;
       newMessageCount = 0;
+      // SPA nav changed the URL channel — re-join + repaint the live tab so the
+      // new channel actually connects and renders. Without this the panel froze
+      // on the previous channel until an unrelated render fired — a deadlock on
+      // a quiet/offline target, the classic "broken or just needs a refresh?"
+      // symptom. renderMessages('live') performs the lazy join itself.
+      if (currentTab === 'live') { try { renderMessages('live') } catch (_) {} }
       const newBtn = document.getElementById('hs-mc-new-msgs');
       if (newBtn) newBtn.style.display = 'none';
       const msgsEl = document.getElementById('hs-mc-messages');
@@ -13431,6 +13443,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       try { setNativeChatHidden(true) } catch (_) {}
       isScrolledUp = false;
       newMessageCount = 0;
+      // SPA nav changed the URL channel — re-join + repaint the live tab so the
+      // new Kick channel connects and renders (otherwise the panel freezes on
+      // the previous channel until an unrelated render fires).
+      if (currentTab === 'live') { try { renderMessages('live') } catch (_) {} }
       const newBtn = document.getElementById('hs-mc-new-msgs');
       if (newBtn) newBtn.style.display = 'none';
       const msgsEl = document.getElementById('hs-mc-messages');

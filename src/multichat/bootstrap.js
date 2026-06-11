@@ -43,6 +43,10 @@ mcSignal.addEventListener('abort', () => {
   if (irc) { irc.destroy(); }
   if (kickChat) { kickChat.destroy(); }
   cleanupAuthIrc(true)
+  // Mirror auth-irc teardown for the EventSub whisper socket — without this its
+  // WS stays open with a live reconnect timer after an extension reload, leaking
+  // the whole prior IIFE per update cycle.
+  try { eswCleanup(true) } catch {}
   // Wildcard reset of every _hsMc*/_hsEmote* install-once flag so reinit
   // (SPA nav, hot-reload) re-attaches handlers to the fresh IIFE state.
   // Without this, reinit gates re-bind on `!window._hsMcXxx` and silently

@@ -10223,6 +10223,28 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         needsSave = true;
       }
       if (needsSave) saveConfig();
+      // First-run seed: no channels yet AND we're on a real Twitch/Kick channel
+      // page → add the current channel so the panel opens with working chat
+      // instead of a blank list. getCurrentChannel() returns null on home/
+      // directory/reserved pages, so this can never seed a garbage slug. YouTube
+      // is skipped (it needs a URL form, not a bare slug); the empty-state CTA
+      // covers that case.
+      if (!config.channels.length) {
+        try {
+          const host = location.hostname;
+          const onTwitch = host.includes('twitch.tv');
+          const onKick = host.includes('kick.com');
+          if (onTwitch || onKick) {
+            const cur = getCurrentChannel();
+            if (cur) {
+              config.channels = [onKick
+                ? { id: cur, twitch: '', kick: cur, youtube: '' }
+                : { id: cur, twitch: cur, kick: '', youtube: '' }];
+              saveConfig();
+            }
+          }
+        } catch (_) {}
+      }
       // Subscribe per-channel YouTube links
       for (const ch of config.channels) {
         if (ch.youtube) {

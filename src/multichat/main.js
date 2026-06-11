@@ -4807,6 +4807,11 @@
       if (exists) continue
       config.channels.push({ id: `auto_${ch}`, twitch: ch, ephemeral: true })
       try { irc?.join?.(ch) } catch (_) {}
+      // load the channel's third-party emote sets (bttv/ffz/7tv) — without
+      // this, everyone else's channel emotes render as raw text on auto-tabs
+      // (own emotes still worked: inventory is global). same call the
+      // manual add-channel path makes; bg caches+TTLs duplicates.
+      try { chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: ch }) } catch (_) {}
       changed = true
     }
     if (changed) {

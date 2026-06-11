@@ -2649,7 +2649,14 @@ function injectStyles() {
          and below the glyph, matches emote-row visual height, keeps mixed
          emoji+text rows visually consistent with emote+text rows. */
       line-height: var(--hs-emote-size, 32px);
-      vertical-align: middle;
+      /* text-bottom, NOT middle/bottom: middle anchors the box at baseline +
+         xHeight/2, and Cozette's 13px x-height is fractional (3.546875px
+         half) — the grown line-box lands every adjacent glyph on a half-pixel
+         baseline (= bitmap smear). Plain bottom anchors to the LINE-BOX
+         bottom, which middle-aligned badge imgs also place fractionally.
+         text-bottom anchors to the parent font's strut — integer growth,
+         immune to sibling boxes. */
+      vertical-align: text-bottom;
       display: inline-block;
     }
     /* 7TV ZERO-WIDTH OVERLAY EMOTE STACKING */
@@ -2657,7 +2664,10 @@ function injectStyles() {
       display: inline-flex;
       align-items: center;
       position: relative;
-      vertical-align: middle;
+      /* text-bottom for integer line-box growth — same bitmap-smear rationale
+         as .hs-mc-emoji above. middle shifted every mixed emote+text row's
+         glyphs onto a .546875px baseline. */
+      vertical-align: text-bottom;
       /* Lock height so collapsed↔expanded toggle doesn't shift line height
          (expanded adds 2px vertical padding via pseudo-element). */
       height: 36px;
@@ -2751,6 +2761,13 @@ function injectStyles() {
       cursor: pointer;
       line-height: 0;
       font-size: 0;
+    }
+    /* In message rows, single emotes render as BARE wrappers (renderEmoteStack
+       only wraps real overlay groups) — middle re-introduces the half-pixel
+       baseline smear on adjacent text (same math as .hs-mc-emote-stack above).
+       Scoped to .hs-mc-msg so picker/tooltip layouts keep middle. */
+    .hs-mc-msg .hs-mc-emote-wrapper {
+      vertical-align: text-bottom;
     }
     .hs-mc-emote-wrapper > img {
       display: block;

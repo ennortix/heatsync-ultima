@@ -342,8 +342,9 @@ class IRC {
 
   _handleMsg(msg) {
     if (!msg) return
-    // dedupe plain chat by twitch message id (BG IRC vs native tap)
-    if (!msg.type && msg.id && this._seenId(msg.id)) return
+    // dedupe plain chat by (channel, id) — same id is legit across channels
+    // in shared-chat sessions; BG IRC vs native tap is the real dupe source
+    if (!msg.type && msg.id && this._seenId(`${msg.channel}:${msg.id}`)) return
     // USERSTATE: viewer's per-channel badges (used to gate sub-emote rendering)
     if (msg.type === 'userstate') {
       if (typeof viewerBadgesPerChannel !== 'undefined') {
@@ -460,7 +461,7 @@ class IRC {
           const sentHost = peekSentHost(m.text)
           if (sentHost) { m.badgePlatform = 'twitch'; m.platform = sentHost === 'yt' ? 'youtube' : sentHost }
         } catch {}
-        if (m.id) this._seenId(m.id)
+        if (m.id) this._seenId(`${ch}:${m.id}`)
         buf.push(m)
       }
       // Re-append live messages after history so they appear newest (correct order).

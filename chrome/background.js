@@ -4120,7 +4120,7 @@ function handleWSMessage(msg) {
         const ch = (msg.channel || '').toLowerCase()
         const ext = msg.message ? bgIrcRecordToExt(msg.message, ch) : null
         if (ch && ext) {
-          if (!(ext.id && bgIrcSeenLiveId(ext.id))) {
+          if (!(ext.id && bgIrcSeenLiveId(`${ch}:${ext.id}`))) {
             const buf = BG_IRC.channels.get(ch)
             if (buf) { buf.push(ext); bgIrcPersistChannel(ch) }
             bgIrcBroadcast({ type: 'bg_irc_msg', msg: ext })
@@ -7575,7 +7575,7 @@ function bgIrcHandleLine(line) {
   // PRIVMSG, USERNOTICE, NOTICE → store + broadcast.
   // Plain chat with an id marks the cross-source dedupe set (server
   // irc:message fanout may deliver the same message).
-  if (!msg.type && msg.id && bgIrcSeenLiveId(msg.id)) return
+  if (!msg.type && msg.id && bgIrcSeenLiveId(`${msg.channel}:${msg.id}`)) return
   if (buf && (!msg.type || msg.type === 'usernotice' || msg.type === 'notice')) {
     buf.push(msg)
     bgIrcPersistChannel(msg.channel)

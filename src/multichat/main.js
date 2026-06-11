@@ -8756,7 +8756,24 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       msgsEl.textContent = ''
       const empty = document.createElement('div')
       empty.className = 'hs-mc-empty'
-      empty.textContent = t('mc_no_messages')
+      // First-run: a blank "no messages" panel teaches a new user nothing. When
+      // no channels are configured, show an actionable CTA pointing at the core
+      // multichat value (add streams across platforms) instead of a dead end.
+      if (id === 'live' && !(config.channels && config.channels.length)) {
+        const title = document.createElement('div')
+        title.style.cssText = 'font-weight:600;margin-bottom:4px'
+        title.textContent = 'add your streams'
+        const sub = document.createElement('div')
+        sub.style.cssText = 'opacity:.7;margin-bottom:10px'
+        sub.textContent = 'merge twitch, kick + youtube chat in one panel'
+        const btn = document.createElement('button')
+        btn.style.cssText = 'cursor:pointer;padding:6px 12px;border:1px solid currentColor;background:transparent;color:inherit;font:inherit'
+        btn.textContent = '+ add a channel'
+        try { cleanup.addEventListener(btn, 'click', () => { try { switchTab('add') } catch (_) {} }) } catch (_) {}
+        empty.appendChild(title); empty.appendChild(sub); empty.appendChild(btn)
+      } else {
+        empty.textContent = t('mc_no_messages')
+      }
       msgsEl.appendChild(empty)
       return
     }

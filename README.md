@@ -1,13 +1,13 @@
 # heatsync
 
-Personal emote inventory + multichat overlay for Twitch, Kick, and YouTube.
+Cross-platform multichat overlay for Twitch, Kick, and YouTube — every stream's chat in one panel.
 
-- **5000-slot personal emote inventory** — upload at [heatsync.org](https://heatsync.org), use them in Twitch native chat and the multichat overlay (Kick + YouTube via the overlay)
-- **auto-fill on send** — tab-complete a 7TV name or paste any chat emote, hit enter; the slot lands silently
-- **cross-user rendering** — other heatsync users see your emotes in their chat on Twitch + via the multichat overlay
-- **multichat** — Twitch + Kick + YouTube in one tabbed panel: live chat, mentions, whispers, social feed
+- **multichat** — Twitch + Kick + YouTube live chat in one tabbed panel: per-channel tabs, per-platform filters, mentions, whispers. **no account required.**
 - **7TV, BTTV, FFZ** — emotes, paints, badges render automatically; no account required
-- tab completion, emote picker with recent row, zero-width overlay (type `emote0` → tab), user muting, emote blocking, profile cards, unified right-click menu, Twitch clip creation
+- **5000-slot personal emote inventory** — optional, free: upload at [heatsync.org](https://heatsync.org) and your emotes render in Twitch native chat and across the overlay, in any channel
+- **auto-fill on send** — tab-complete a 7TV name or paste any chat emote, hit enter; the slot lands silently
+- **one-click channel import** — pull every emote from any Twitch/Kick channel into your set
+- profile cards, user muting, emote blocking, unified right-click menu, Twitch clip + mod commands from the input
 
 ## install
 

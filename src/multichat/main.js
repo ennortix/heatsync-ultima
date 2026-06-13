@@ -12586,10 +12586,13 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         }
         if (!text) return;
 
-        // Dedup: skip if same text was shown in last 60s
+        // Dedup: skip if same event was shown in last 60s. Key by channel too —
+        // redeem text carries no channel, so a global text key would drop an
+        // identical reward redeemed in a different channel as a false duplicate.
         const now = Date.now()
-        if (streamEventDedup.has(text) && now - streamEventDedup.get(text) < 60000) return
-        streamEventDedup.set(text, now)
+        const dedupKey = channel + ' ' + text
+        if (streamEventDedup.has(dedupKey) && now - streamEventDedup.get(dedupKey) < 60000) return
+        streamEventDedup.set(dedupKey, now)
         // Prune old entries
         if (streamEventDedup.size > 100) {
           for (const [k, t] of streamEventDedup) { if (now - t > 60000) streamEventDedup.delete(k) }
@@ -12600,9 +12603,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         const actor = msg.eventType === 'stream:redeem' ? msg.user : null;
         const evt = { type: 'stream-event', eventClass, text, channel, actor, time: Date.now() };
 
-        // Push into the live channel buffer (dedup by text to prevent doubles on reload)
+        // Push into the live channel buffer (dedup by text to prevent doubles on reload).
+        // Gate on isLiveChannelMessage: without it, a redeem/raid from ANY other
+        // subscribed channel lands in the live buffer — and since redeem text has no
+        // [channel] prefix, it reads like it happened on the channel you're watching.
         const liveChannel = getLiveChannel();
-        const liveBuffer = liveChannel ? (irc?.channels?.get(liveChannel) || kickChat?.channels?.get(liveChannel)) : null;
+        const liveBuffer = (liveChannel && isLiveChannelMessage({ channel })) ? (irc?.channels?.get(liveChannel) || kickChat?.channels?.get(liveChannel)) : null;
         if (liveBuffer) {
           const existing = liveBuffer.getAll();
           if (!existing.some(m => m.type === 'stream-event' && m.text === evt.text)) {

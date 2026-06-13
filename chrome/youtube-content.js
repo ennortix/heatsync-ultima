@@ -1130,7 +1130,10 @@
         attributeFilter: ['is-deleted']
       })
 
-      window.addEventListener('pagehide', () => ac.abort(), { signal })
+      // bfcache: only abort on real unloads — a persisted page may be
+      // restored with this same closure, and the AbortController is
+      // single-use (mirrors content.js/bootstrap.js pagehide handling).
+      window.addEventListener('pagehide', (ev) => { if (!ev.persisted) ac.abort() }, { signal })
 
       log('observer active, videoId:', videoId)
 

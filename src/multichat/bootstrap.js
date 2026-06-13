@@ -55,7 +55,37 @@ mcSignal.addEventListener('abort', () => {
     }
   }
 })
-window.addEventListener('pagehide', () => lifecycle.abort())
+// Bug #4 (bfcache): only abort on REAL unloads. For bfcache-bound pagehide
+// (ev.persisted) the page is frozen intact and may be restored — the
+// AbortController is single-use, so aborting here would leave every
+// { signal: mcSignal } listener permanently unattachable on restore and
+// init() couldn't rewire the panel. Keeping the lifecycle alive means the
+// restored page resumes with panel, observers and timers intact. If the
+// page is instead evicted from bfcache, it's destroyed wholesale — nothing
+// leaks. Non-persisted pagehide (real navigation/unload) aborts as before.
+window.addEventListener('pagehide', (ev) => { if (!ev.persisted) lifecycle.abort() })
+// On bfcache restore, the panel survived the freeze but BG SW state may have
+// moved (subs dropped, SW restarted) while we were suspended. Re-assert
+// channel joins (idempotent server-side) + repaint — silent self-heal, no
+// host-page reload. References main.js state: same bundled block scope,
+// all defined long before a restore can fire.
+window.addEventListener('pageshow', (ev) => {
+  if (!ev.persisted) return
+  try {
+    if (typeof irc !== 'undefined' && irc?.channels) {
+      for (const ch of irc.channels.keys()) {
+        try { chrome.runtime.sendMessage({ type: 'bg_irc_join', channel: ch }).catch(() => {}) } catch (_) {}
+      }
+    }
+    if (typeof kickChat !== 'undefined' && kickChat?.channels) {
+      for (const ch of kickChat.channels.keys()) {
+        try { chrome.runtime.sendMessage({ type: 'ws_send', data: { type: 'channel:join', platform: 'kick', channel: ch } }).catch(() => {}) } catch (_) {}
+      }
+    }
+    if (typeof _dropAllTabCaches === 'function') _dropAllTabCaches()
+    if (typeof renderMessages === 'function' && typeof currentTab !== 'undefined') renderMessages(currentTab)
+  } catch (_) {}
+})
 
 // Export abort handle so a future re-injection of this script can tear us down.
 // _hsMcTakenOver flips iff someone outside this closure called our abort —

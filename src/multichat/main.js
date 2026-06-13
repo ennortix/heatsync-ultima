@@ -9777,6 +9777,23 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   // USERNAME & MENTIONS
   // ============================================
 
+  // Non-channel URL slugs shared by getCurrentChannel + the soft-nav
+  // prevLiveCh extractor. Prod logs showed the server subscribing to
+  // 'browse', 'u', 'mellen9' as Kick channels — covers both twitch + kick
+  // reserved paths so we don't burn API quota (kick rate-limits subscribe;
+  // each garbage slug eats budget).
+  const NON_CHANNEL_PATHS = new Set([
+    // shared
+    'directory', 'settings', 'videos', 'moderator', 'subscriptions',
+    'search', 'help', 'about', 'jobs', 'contact', 'wallet', 'inventory',
+    'friends', 'admin', 'broadcast', 'drops', 'store', 'popout', 'embed',
+    // twitch-specific
+    'partners', 'turbo', 'prime', 'p', 'subs', 'turbo-faq', 'bits',
+    // kick-specific
+    'browse', 'category', 'categories', 'community', 'clips', 'leaderboards',
+    'dashboard', 'vods', 'u', 'auth', 'authorize',
+  ]);
+
   /**
    * Get current channel from URL
    */
@@ -9796,22 +9813,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     const match = location.pathname.match(/^\/(?:popout\/|embed\/)?([a-zA-Z0-9_]+)/);
     if (match && match[1]) {
       const channel = match[1].toLowerCase();
-      // Skip non-channel pages. Prod logs showed the server subscribing to
-      // 'browse', 'u', 'mellen9' as Kick channels — the old 5-entry list
-      // missed most of both platforms' reserved paths. expanded to cover
-      // both twitch + kick reserved paths so we don't burn API quota
-      // (kick rate-limits subscribe; each garbage slug eats budget).
-      const NON_CHANNEL_PATHS = new Set([
-        // shared
-        'directory', 'settings', 'videos', 'moderator', 'subscriptions',
-        'search', 'help', 'about', 'jobs', 'contact', 'wallet', 'inventory',
-        'friends', 'admin', 'broadcast', 'drops', 'store', 'popout', 'embed',
-        // twitch-specific
-        'partners', 'turbo', 'prime', 'p', 'subs', 'turbo-faq', 'bits',
-        // kick-specific
-        'browse', 'category', 'categories', 'community', 'clips', 'leaderboards',
-        'dashboard', 'vods', 'u', 'auth', 'authorize',
-      ]);
+      // Skip non-channel pages (shared module-scope Set above).
       if (NON_CHANNEL_PATHS.has(channel)) {
         return null;
       }
@@ -13275,6 +13277,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
   // SPA navigation handler — event-driven via early-inject-main.js history hooks
   let lastPath = location.pathname;
+  // For YT: /watch?v=A → /watch?v=B keeps the same pathname so we also track
+  // the full search string to catch video-to-video hops.
+  let lastSearch = location.search;
   let spaReinitializing = false;
   // Twitch SPA nav: zero-flicker soft refresh. Pre-emptively migrate the
   // panel to <body> so twitch's chat-shell teardown doesn't take it down,
@@ -13283,7 +13288,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   // appears. IRC, kickChat, observers, feed state — none of it gets
   // destroyed, so the visible panel keeps showing live messages without
   // a single empty frame.
-  function softTwitchNav() {
+  function softTwitchNav(prevLiveCh) {
     const container = document.getElementById('hs-mc-container');
     // SPA nav changes the URL channel — only the LIVE tab cache becomes
     // stale (it follows getLiveChannel()). Per-channel tab caches stay
@@ -13318,6 +13323,26 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (newBtn) newBtn.style.display = 'none';
       const msgsEl = document.getElementById('hs-mc-messages');
       if (msgsEl) try { scrollMsgsToBottom(msgsEl) } catch (_) {}
+      // Join the new live channel so IRC delivers messages for it.
+      // Without this the live tab shows nothing (and deadlocks on quiet
+      // channels) because irc never subscribes to the new channel name.
+      // Part the previous live channel first (Bug #3) so we don't accumulate
+      // a 3000-msg CircularBuffer per visited channel over a long session.
+      // Only part if it is not also a config-managed channel tab.
+      try {
+        const newCh = getCurrentChannel()?.toLowerCase()
+        if (prevLiveCh && prevLiveCh !== newCh) {
+          const isConfigCh = config.channels.some(ch =>
+            ch.twitch?.toLowerCase() === prevLiveCh || ch.kick?.toLowerCase() === prevLiveCh)
+          if (!isConfigCh) {
+            irc?.part(prevLiveCh)
+            kickChat?.part(prevLiveCh)
+          }
+        }
+        if (newCh && irc && !irc.channels.has(newCh)) irc.join(newCh)
+        if (newCh && kickChat && !kickChat.channels.has(newCh)) kickChat.join(newCh)
+        renderMessages('live')
+      } catch (_) {}
       // Hold the nav guard for ~300ms so Twitch's render cycle + width
       // transitions on chat-shell ancestors complete entirely behind it.
       // Two rAFs (~32ms) was too short — the grey theme wrappers re-bled in
@@ -13377,13 +13402,21 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   // #channel-chatroom region doesn't take it down, refresh the no-channel
   // class for the new URL, and reparent into a freshly-mounted #channel-
   // chatroom once it appears (channel pages).
-  function softKickNav() {
+  function softKickNav(prevLiveCh) {
     const container = document.getElementById('hs-mc-container');
+    // Bug #5: if the container is gone (e.g. back-button landed on a page
+    // before our script had mounted it, or a prior nav already removed it),
+    // run the full destroy+rebuild path rather than spinning a useless
+    // MutationObserver that can never recover a null reference.
+    if (!container) {
+      fullSpaReinit();
+      return;
+    }
     // Only invalidate live cache — per-channel tabs stay valid (their
     // buffers are keyed by channel name, unchanged by URL).
     try { _dropTabCache('live') } catch {}
     document.body.classList.add('hs-mc-navigating');
-    if (container && container.parentElement && container.parentElement !== document.body) {
+    if (container.parentElement && container.parentElement !== document.body) {
       document.body.appendChild(container);
     }
     try { updateKickNoChannelClass() } catch (_) {}
@@ -13396,6 +13429,22 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (newBtn) newBtn.style.display = 'none';
       const msgsEl = document.getElementById('hs-mc-messages');
       if (msgsEl) try { scrollMsgsToBottom(msgsEl) } catch (_) {}
+      // Join the new live channel (Bug #1 for Kick path).
+      // Part the previous live channel (Bug #3) to avoid buffer accumulation.
+      try {
+        const newCh = getCurrentChannel()?.toLowerCase()
+        if (prevLiveCh && prevLiveCh !== newCh) {
+          const isConfigCh = config.channels.some(ch =>
+            ch.twitch?.toLowerCase() === prevLiveCh || ch.kick?.toLowerCase() === prevLiveCh)
+          if (!isConfigCh) {
+            irc?.part(prevLiveCh)
+            kickChat?.part(prevLiveCh)
+          }
+        }
+        if (newCh && irc && !irc.channels.has(newCh)) irc.join(newCh)
+        if (newCh && kickChat && !kickChat.channels.has(newCh)) kickChat.join(newCh)
+        renderMessages('live')
+      } catch (_) {}
       const reHide = new MutationObserver(() => { try { setNativeChatHidden(true) } catch (_) {} });
       const target = document.getElementById('channel-chatroom');
       if (target) {
@@ -13435,8 +13484,27 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   }
 
   function handleMcNav() {
-    if (location.pathname === lastPath) return
+    // On YouTube, /watch?v=A → /watch?v=B keeps the same pathname — detect
+    // the video change via the full search string so the YT soft-nav block
+    // runs and swaps the WS subscription to the new video. YT-only: Twitch
+    // (?t=, clip params) and Kick (?category=) churn search via replaceState
+    // without a channel change — comparing search there would fire spurious
+    // soft-navs (part+join on the live channel) on every param flip.
+    const newSearch = location.search
+    if (location.pathname === lastPath && (hostPlatform !== 'yt' || newSearch === lastSearch)) return
+    // Bug #3: capture the old live channel before updating lastPath so
+    // soft-nav can part it and avoid an unbounded irc.channels accumulation.
+    // NON_CHANNEL_PATHS filter mirrors getCurrentChannel — without it a nav
+    // away from /settings would call irc.part('settings').
+    const prevLiveCh = (() => {
+      try {
+        const m = lastPath.match(/^\/(?:popout\/|embed\/)?([a-zA-Z0-9_]+)/)
+        const slug = m?.[1]?.toLowerCase() || null
+        return (slug && !NON_CHANNEL_PATHS.has(slug)) ? slug : null
+      } catch { return null }
+    })()
     lastPath = location.pathname;
+    lastSearch = newSearch;
     log('Navigation detected, reinitializing...');
     // Re-evaluate body-mount overlay state for the new URL before teardown so
     // CSS rules flip ahead of the panel reappearing on the new page.
@@ -13447,14 +13515,14 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // (and IRC, and feed state) all survive intact — see softTwitchNav.
     // Popout chat is exempt since it never SPA-navigates between URLs.
     if (hostPlatform === 'twitch' && !document.body.classList.contains('hs-popout')) {
-      softTwitchNav();
+      softTwitchNav(prevLiveCh);
       return;
     }
 
     // Kick SPA nav: same soft path as Twitch. Panel + kickChat persist;
     // body class refreshes for the new URL.
     if (isKick && !document.body.classList.contains('hs-popout')) {
-      softKickNav();
+      softKickNav(prevLiveCh);
       return;
     }
 
@@ -13475,6 +13543,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         type: 'youtube_ws_unsubscribe', channelId: '__live_yt_auto__'
       }).catch(() => {})
       channelYtMessages.delete('__live_yt_auto__')
+      // Bug #2: clear the watchdog entry for the old video so the 30s
+      // interval does not keep force-reconnecting a subscription that no
+      // longer exists (ended stream re-subscribe loop).
+      ytChanLastSeen.delete('__live_yt_auto__')
+      ytChanRejoinAttempts.delete('__live_yt_auto__')
+      ytSubscribedUrls.delete('__live_yt_auto__')
       _autoYtVideoId = null;
       // Re-apply layout so destructive overrides re-evaluate against the
       // new pathname (watch ↔ home).
@@ -13499,6 +13573,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       return;
     }
 
+    fullSpaReinit();
+  }
+
+  // Full destroy+rebuild SPA path — shared by handleMcNav's fallback branch
+  // and softKickNav's null-container recovery so both tear down identically.
+  function fullSpaReinit() {
     // Flag prevents layout watcher from re-injecting elements we're about to remove
     spaReinitializing = true;
     _layoutWatcherStarted = false;
@@ -13511,6 +13591,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       type: 'youtube_ws_unsubscribe', channelId: '__live_yt_auto__'
     }).catch(() => {})
     channelYtMessages.delete('__live_yt_auto__')
+    // Bug #2: clear watchdog entries for all unsubscribed YT channels so
+    // the 30s watchdog doesn't keep force-reconnecting dead subscriptions.
+    ytChanLastSeen.delete('__live_yt_auto__')
+    ytChanRejoinAttempts.delete('__live_yt_auto__')
+    ytSubscribedUrls.delete('__live_yt_auto__')
     for (const ch of config.channels) {
       if (!ch.youtube) continue
       const link = youtubeLinks.get(ch.id)
@@ -13521,6 +13606,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         videoId: link?.videoId || ''
       }).catch(() => {})
       youtubeLinks.delete(ch.id)
+      ytChanLastSeen.delete(ch.id)
+      ytChanRejoinAttempts.delete(ch.id)
+      ytSubscribedUrls.delete(ch.id)
     }
 
     // Close old read-only IRC to prevent zombie WebSocket reconnect loops

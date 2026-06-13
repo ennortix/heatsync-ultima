@@ -121,7 +121,7 @@ test('validate: boolmap accepts partial maps of known subkeys', () => {
 })
 
 test('coerce: boolmap merges partial stored map over full defaults', () => {
-  expect(coerceSettingValue(mapDef, { dm: true })).toEqual({ op: true, mop: true, re: true, dm: true })
+  expect(coerceSettingValue(mapDef, { dm: true })).toEqual({ op: true, mop: true, re: true, dm: true, moment: true })
   expect(coerceSettingValue(mapDef, { bogus: true })).toEqual(mapDef.default)
   expect(coerceSettingValue(mapDef, 'nope')).toBe(undefined)
 })

@@ -80,7 +80,22 @@ signal.addEventListener('abort', () => {
   try { chrome.storage.onChanged.removeListener(_onStorageChanged) } catch (_) {}
   try { chrome.storage.onChanged.removeListener(_onAutoClaimStorageChanged) } catch (_) {}
 })
-window.addEventListener('pagehide', () => lifecycle.abort())
+// Bug #4 (bfcache): only abort on REAL unloads. For bfcache-bound pagehide
+// (ev.persisted) the page is frozen intact and may be restored — the
+// AbortController is single-use, so aborting would leave every { signal }
+// listener permanently unattachable on restore. Keeping the lifecycle alive
+// means the restored page resumes with observers/timers intact; if the page
+// is evicted instead, it's destroyed wholesale — nothing leaks.
+window.addEventListener('pagehide', (ev) => { if (!ev.persisted) lifecycle.abort() })
+// On bfcache restore, re-hook the chat observer + rescan — the restored DOM
+// is the pre-nav snapshot and may have missed messages / a swapped container.
+window.addEventListener('pageshow', (ev) => {
+  if (!ev.persisted) return
+  try { watchForNewMessages() } catch (_) {}
+  try {
+    if (emoteInventory.length > 0 || globalEmotes.length > 0) processExistingMessages()
+  } catch (_) {}
+})
 // Export abort handle so a future re-injection of this script can tear us down.
 // _hsTakenOver flips iff someone outside this closure called our abort — i.e.
 // a NEW content.js instance took over. Internal abort() calls go via

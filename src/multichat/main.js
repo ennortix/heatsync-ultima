@@ -8478,8 +8478,23 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
     const pool = []
     if (coLive) {
-      const perSource = Math.ceil(limit / active.length)
-      for (const s of active) pool.push(...s.slice(-perSource))
+      // Anti-drown WITHOUT retroactive eviction. The old proportional cap
+      // (ceil(limit/active.length)) re-sliced every source whenever active
+      // count changed — so the moment a quiet platform (e.g. YouTube) started
+      // trickling in, active went 2→3, twitch's share dropped 250→167, and
+      // ~80 already-visible rows vanished mid-stream. Instead: guarantee each
+      // source a small recency FLOOR (so a firehose can't fully bury a
+      // trickle), then fill the rest of the budget by pure global recency.
+      // A new source going live now only costs its own floor (~40), filled by
+      // its own fresh messages — no chunk of another platform disappears.
+      const seen = new Set()
+      const FLOOR = Math.min(40, Math.floor(limit / (active.length + 1)))
+      for (const s of active) for (const m of s.slice(-FLOOR)) { if (!seen.has(m)) { seen.add(m); pool.push(m) } }
+      const rest = []
+      for (const s of active) for (const m of s) if (!seen.has(m)) rest.push(m)
+      rest.sort(byTimeStable)
+      const room = Math.max(0, limit - pool.length)
+      for (const m of rest.slice(-room)) { seen.add(m); pool.push(m) }
     } else {
       for (const s of active) pool.push(...s.slice(-limit))
     }

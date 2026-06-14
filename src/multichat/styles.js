@@ -614,9 +614,10 @@ function injectStyles() {
       flex: 1;
       overflow-y: auto;
       overflow-x: hidden;
-      /* Bottom gets extra room so the last message clears the inputbar's top
-         border and message descenders aren't clipped against it. */
-      padding: 8px 8px 12px 8px;
+      /* Bottom keeps a little extra so the last message clears the inputbar's
+         top border and descenders aren't clipped against it. Sides/top tight
+         for density — banner margin below must mirror these or it misaligns. */
+      padding: 6px 6px 6px 6px;
       font-size: var(--hs-chat-font, 13px) !important;
       line-height: 18px !important;
       word-wrap: break-word;
@@ -649,7 +650,9 @@ function injectStyles() {
       display: flex;
       flex-direction: column;
       gap: 2px;
-      margin: -8px -8px 6px -8px;
+      /* mirrors #hs-mc-messages top/side padding (6px) so the banner bleeds
+         flush to the scroll-box edges; bottom keeps a 6px gap to first msg. */
+      margin: -6px -6px 6px -6px;
       padding: 0;
     }
     .hs-mc-chat-banner-item {
@@ -757,8 +760,12 @@ function injectStyles() {
       bottom: 0;
       display: flex;
       flex-wrap: wrap;
-      gap: 6px;
-      padding: 8px;
+      gap: 5px;
+      /* 3px black gutter framing the input — the input's own 1px border +
+         this bar's 1px top border already separate it from chat + panel
+         edges, so the gutter only needs to read as intentional, not breathe.
+         Row height is set by the tallest child (input ~29px), NOT this pad. */
+      padding: 3px;
       background: #000;
       border-top: 1px solid #808080;
       z-index: 1002;
@@ -2770,6 +2777,16 @@ function injectStyles() {
        Scoped to .hs-mc-msg so picker/tooltip layouts keep middle. */
     .hs-mc-msg .hs-mc-emote-wrapper {
       vertical-align: text-bottom;
+      /* Reserve the emote's full box height from first paint so a lazy-loading
+         emote can't grow its row on arrival and shove every row below it down
+         (the measured layout-shift jank). A bare wrapper holds a 0-height img
+         until load, collapsing the line to text height (~19px) then snapping to
+         ~36px — a per-row vertical jolt on scroll / slow load / cache miss.
+         min-height (not a fixed img height) keeps aspect intact and never
+         upscales a small emote, so bitmap crispness is untouched. +4px covers
+         the img's 2px content-box padding (matches .hs-mc-emote-stack's 36px
+         lock). Width stays auto — width-pop is within-row and negligible. */
+      min-height: calc(var(--hs-emote-size, 32px) + 4px);
     }
     /* same bitmap-smear math for the badge family — any middle-aligned
        inline box taller than the strut grows the row's line box by a
@@ -3106,8 +3123,11 @@ function injectStyles() {
          right because Tailwind's *{box-sizing:border-box} happened to bleed
          in. Pin both so all platforms render one full line. */
       box-sizing: border-box;
-      min-height: 35px;
-      padding: 8px 12px;
+      /* floor is the empty/text-only height — emote chips grow the box past
+         this, so it only needs to clear one 13px line, not an emote. 28px =
+         17px line + 5px*2 pad + 1px*2 border, tight but never clips a line. */
+      min-height: 28px;
+      padding: 5px 12px;
       background: #fff;
       color: #000;
       border: 1px solid #808080;
@@ -3353,7 +3373,10 @@ function injectStyles() {
     #hs-mc-input-highlight {
       position: absolute;
       top: 0; left: 0; right: 0; bottom: 0;
-      padding: 8px 12px;
+      /* MUST match #hs-mc-input padding exactly — this overlay mirrors the
+         typed text glyph-for-glyph for over-limit red coloring; any mismatch
+         offsets the red text from what's actually typed. */
+      padding: 5px 12px;
       font-size: 13px;
       font-family: inherit;
       white-space: pre;
@@ -3377,9 +3400,11 @@ function injectStyles() {
       color: #000;
     }
 
-    /* Heatsync button */
+    /* Heatsync button — 2px pad keeps the 24px icon crisp while holding the
+       button to 28px so it never outgrows the input and inflates the bar
+       (align-items:center means the tallest child sets bar height). */
     #hs-mc-emote-btn {
-      padding: 4px;
+      padding: 2px;
       background: #000;
       border: none;
       cursor: pointer;

@@ -2812,6 +2812,15 @@ async function ensureSelfCosmeticSub(twitchId) {
     if (!seventvId) return
     twitchToSeventvId.set(String(twitchId), seventvId)
     seventvToTwitchId.set(seventvId, String(twitchId))
+    // LRU cap — these grew unbounded (one entry per distinct 7TV chatter) over
+    // an 8h session. Evict the oldest pair together so the two stay in sync;
+    // the next message from an evicted user just re-fetches their 7TV id.
+    if (twitchToSeventvId.size > 2000) {
+      const oldT = twitchToSeventvId.keys().next().value
+      const oldS = twitchToSeventvId.get(oldT)
+      twitchToSeventvId.delete(oldT)
+      if (oldS) seventvToTwitchId.delete(oldS)
+    }
     ensure7TVConnection()
     send7TVUserSubscribe(seventvId)
   } catch {}
@@ -2837,6 +2846,7 @@ async function capture7TVPersonalEntitlement(body) {
     const cached = seventvPersonalSets.get(String(twitchId))
     if (cached && Date.now() - last < 6 * 3600_000) return
     _stvSetFetchAt.set(setId, Date.now())
+    if (_stvSetFetchAt.size > 2000) _stvSetFetchAt.delete(_stvSetFetchAt.keys().next().value)
     const res = await fetchWithTimeout(`https://7tv.io/v3/emote-sets/${setId}`)
     if (!res.ok) return
     const data = await res.json()

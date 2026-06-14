@@ -4937,7 +4937,7 @@ async function sendMessage() {
         if (result !== true && result !== 'no_youtube_tab') {
           showToast('youtube send failed', 'error')
         }
-      })
+      }).catch(() => showToast('youtube send failed', 'error'))
     }
 
     Promise.all([kickPromise, twitchPromise]).then(([kickResult, twitchResult]) => {
@@ -4992,6 +4992,14 @@ async function sendMessage() {
         }
       }
     })
+    .catch((err) => {
+      // A leg rejected (context invalidation, throw) rather than returning an
+      // error string — without this the pending '•' hangs forever.
+      log('dual-send rejected: ' + ((err && err.message) || err))
+      input.style.borderColor = '#f44'
+      setTimeout(() => { input.style.borderColor = ''; updateInputPlaceholder() }, 1500)
+      markPendingFailed(_synthId, 'send_failed')
+    })
     return
   }
 
@@ -5008,6 +5016,10 @@ async function sendMessage() {
         markPendingFailed(_synthId, reason)
       }
     })
+    .catch((err) => {
+      log('yt-only send rejected: ' + ((err && err.message) || err))
+      markPendingFailed(_synthId, 'send_failed')
+    })
     return
   }
   // Twitch + YouTube (and no Kick) — fire YouTube as best-effort alongside Twitch send below
@@ -5016,7 +5028,7 @@ async function sendMessage() {
       if (result !== true && result !== 'no_youtube_tab') {
         showToast('youtube send failed', 'error')
       }
-    })
+    }).catch(() => showToast('youtube send failed', 'error'))
     // fall through to Twitch path
   }
 
@@ -5045,6 +5057,12 @@ async function sendMessage() {
         try { HsNotifs.emit('twitch-auth-required', { text: t('mc_input_auth_failed') || 'log into twitch.tv to chat' }) } catch (_) {}
       }
     }
+  })
+  .catch((err) => {
+    log('twitch send rejected: ' + ((err && err.message) || err))
+    input.style.borderColor = '#f44'
+    setTimeout(() => { input.style.borderColor = ''; updateInputPlaceholder() }, 1500)
+    markPendingFailed(_synthId, 'send_failed')
   })
 }
 

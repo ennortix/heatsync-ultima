@@ -122,7 +122,7 @@ function saveWhispers() {
         users,
         lastKey: lastWhisperKey
       }
-    })
+    }).catch(e => warn('whispers save failed:', e?.message))
   } catch (e) { warn('whispers save failed:', e?.message) }
 }
 

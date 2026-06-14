@@ -1,0 +1,324 @@
+    /* Per-tab platform filter toggles (T/K/Y). Sits AFTER the util cluster
+       (DOM order). Horizontal mode: tight content-sized strip on far right.
+       Vertical mode: full column width row below util. */
+    #hs-mc-platfilter {
+      display: flex;
+      flex: 0 0 auto;
+      gap: 0;
+      align-items: stretch;
+      margin-left: -1px;
+    }
+    #hs-mc-platfilter:empty { display: none; margin: 0; }
+    /* Inside platfilter: T/K/Y buttons each share the cluster width */
+    #hs-mc-platfilter .hs-mc-pf-btn {
+      flex: 1 1 0 !important;
+      width: auto !important;
+      min-width: 18px !important;
+      max-width: none !important;
+    }
+    /* Vertical mode: platfilter spans full column width, buttons share row */
+    .hs-tabs-right #hs-mc-platfilter,
+    .hs-tabs-left #hs-mc-platfilter {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      gap: 0;
+      width: 100%;
+      box-sizing: border-box;
+      margin-left: 0;
+      flex: 0 0 auto;
+    }
+    .hs-tabs-right #hs-mc-platfilter .hs-mc-pf-btn,
+    .hs-tabs-left #hs-mc-platfilter .hs-mc-pf-btn {
+      flex: 1 1 0 !important;
+      width: auto !important;
+      min-width: 0 !important;
+      max-width: none !important;
+      height: 18px !important;
+      font-size: 13px !important;
+    }
+    .hs-mc-pf-btn {
+      background: transparent;
+      border: 1px solid;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 0;
+      cursor: pointer;
+      font-family: inherit;
+      line-height: 1;
+      box-sizing: border-box;
+      min-width: 0;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    /* ON state — saturated platform color, matches platform identity */
+    .hs-mc-pf-btn.hs-mc-pf-twitch { border-color: #9146ff !important; background: #9146ff !important; color: #fff !important; }
+    .hs-mc-pf-btn.hs-mc-pf-kick { border-color: #53fc18 !important; background: #53fc18 !important; color: #000 !important; }
+    .hs-mc-pf-btn.hs-mc-pf-youtube {
+      border-color: #ff0000 !important;
+      background: #ff0000 !important;
+      color: #fff !important;
+    }
+    /* OFF state — black bg with white text + dim border. The disabled
+       cue is the loss of the saturated brand bg (purple/green/red),
+       not text dimming — keeping the letter at #fff makes it readable
+       against any dark backdrop bleeding through. */
+    .hs-mc-pf-btn.off {
+      background: #000 !important;
+      color: #fff !important;
+      border-color: #333 !important;
+    }
+    .hs-mc-pf-btn:hover { background: #fff !important; color: #000 !important; border-color: #fff !important; }
+    .hs-mc-pf-btn.off:hover {
+      background: #fff !important;
+      color: #000 !important;
+      border-color: #fff !important;
+    }
+
+    /* Emote picker panel — full-width section above inputbar */
+    #hs-mc-emote-picker {
+      display: none;
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: min(400px, 60vh);
+      /* Minimum width to fit all three provider chips (7tv/bttv/ffz) side by
+         side without overflow. ~34+40+34px chips + 2×3px gap + 16px padding
+         + some search input = 210px floor. Without this the chips at ~115px
+         container width extend past picker.getBoundingClientRect().right and
+         land outside picker.contains(target), firing the dismiss handler. */
+      min-width: 210px;
+      background: #000;
+      border-top: 1px solid #808080;
+      z-index: 1003;
+      overflow: hidden;
+      flex-direction: column;
+      font-family: inherit;
+      box-sizing: border-box;
+    }
+    #hs-mc-emote-picker.visible {
+      display: flex;
+    }
+
+    /* Picker tabs — pinned to bottom */
+    #hs-mc-emote-picker .hs-mc-picker-tabs {
+      display: flex !important;
+      border-top: 1px solid #808080;
+      flex-shrink: 0 !important;
+      min-height: 0 !important;
+      margin-top: auto !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      background: #000 !important;
+    }
+    #hs-mc-emote-picker .hs-mc-picker-tab {
+      flex: 1 !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      gap: 5px !important;
+      padding: 6px 4px !important;
+      background: transparent !important;
+      color: #808080 !important;
+      border: none !important;
+      cursor: pointer;
+      font-size: 13px !important;
+      font-weight: 600 !important;
+      line-height: 1 !important;
+      text-align: center;
+      visibility: visible !important;
+      opacity: 1 !important;
+      height: auto !important;
+      width: auto !important;
+      overflow: visible !important;
+      position: relative !important;
+      transition: none;
+    }
+    #hs-mc-emote-picker .hs-mc-picker-tab:hover {
+      background: #fff !important;
+      color: #000 !important;
+    }
+    #hs-mc-emote-picker .hs-mc-picker-tab.active {
+      color: #ff8700 !important;
+      background: transparent !important;
+    }
+    #hs-mc-emote-picker .hs-mc-picker-tab.active:hover {
+      background: #fff !important;
+      color: #000 !important;
+    }
+    #hs-mc-emote-picker .hs-mc-picker-tab.active::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: #ff8700;
+    }
+    .hs-mc-tab-content {
+      flex: 1 1 0 !important;
+      min-height: 0 !important;
+      overflow-y: auto !important;
+    }
+    /* Custom scrollbar — Chrome + Firefox */
+    .hs-mc-tab-content,
+    .hs-mc-picker-scroll {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255,255,255,0.12) transparent;
+    }
+    .hs-mc-tab-content::-webkit-scrollbar,
+    .hs-mc-picker-scroll::-webkit-scrollbar {
+      width: 4px;
+    }
+    .hs-mc-tab-content::-webkit-scrollbar-track,
+    .hs-mc-picker-scroll::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .hs-mc-tab-content::-webkit-scrollbar-thumb,
+    .hs-mc-picker-scroll::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.12);
+      border-radius: 0;
+    }
+    .hs-mc-tab-content::-webkit-scrollbar-thumb:hover,
+    .hs-mc-picker-scroll::-webkit-scrollbar-thumb:hover {
+      background: rgba(255,255,255,0.2);
+    }
+    .hs-mc-picker-scroll {
+      flex: 1;
+      overflow-y: auto;
+      min-height: 0;
+    }
+    .hs-mc-picker-section-header {
+      display: none;
+    }
+    .hs-mc-picker-section-count {
+      color: #808080;
+      font-size: 13px;
+      background: rgba(255,255,255,0.06);
+      padding: 1px 5px;
+      border-radius: 0;
+    }
+    .hs-mc-picker-section-grid {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 2px;
+      padding: 6px;
+    }
+    .hs-mc-picker-header {
+      padding: 8px !important;
+      border-bottom: 1px solid rgba(255,255,255,0.08) !important;
+      display: block !important;
+      visibility: visible !important;
+      background: #000 !important;
+    }
+    /* Search-wrap hosts BOTH the input (flex:1) and the chip bar (right
+       edge), so providers chips visibly anchor to the search input — not
+       to the emote grid below. Z-index 2 on the icon keeps it above the
+       input's white bg without intercepting clicks. */
+    .hs-mc-search-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .hs-mc-search-icon {
+      position: absolute;
+      left: 10px;
+      pointer-events: none;
+      opacity: 0.4;
+      z-index: 2;
+    }
+    #hs-mc-emote-search {
+      flex: 1;
+      min-width: 0;
+      width: auto;
+      padding: 4px 8px 4px 28px;
+      background: #fff;
+      color: #000;
+      border: 1px solid #808080;
+      border-radius: 0;
+      font-size: 13px;
+      outline: none;
+      box-sizing: border-box;
+      transition: none;
+    }
+    #hs-mc-emote-search:focus {
+      border-color: #ff8700;
+    }
+    .hs-mc-src-chips {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      flex-shrink: 0;
+    }
+    /* Provider chips wear each network's brand color (7TV cyan, BTTV red,
+       FFZ blue) — matches src-* tooltip colors and keeps orange reserved
+       for HeatSync brand chrome. Inactive = ghost (brand text, half-strength
+       border, no fill); active = full brand fill with contrasting text;
+       hover = white (snappy override across both states). */
+    .hs-mc-src-chip {
+      background: transparent;
+      border: 1px solid;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 3px 7px;
+      cursor: pointer;
+      font-family: inherit;
+      border-radius: 0;
+      line-height: 15px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      transition: background 60ms, color 60ms, border-color 60ms;
+    }
+    .hs-mc-src-chip[data-src="7tv"]  { color: #29d8f6; border-color: rgba(41,216,246,0.5); }
+    .hs-mc-src-chip[data-src="bttv"] { color: #d50014; border-color: rgba(213,0,20,0.5); }
+    .hs-mc-src-chip[data-src="ffz"]  { color: #0086c8; border-color: rgba(0,134,200,0.5); }
+    .hs-mc-src-chip.active[data-src="7tv"]  { background: #29d8f6; color: #000; border-color: #29d8f6; }
+    .hs-mc-src-chip.active[data-src="bttv"] { background: #d50014; color: #fff; border-color: #d50014; }
+    .hs-mc-src-chip.active[data-src="ffz"]  { background: #0086c8; color: #fff; border-color: #0086c8; }
+    .hs-mc-src-chip:hover { background: #fff !important; color: #000 !important; border-color: #fff !important; }
+    #hs-mc-emote-search::placeholder {
+      color: #808080;
+    }
+    .hs-mc-picker-emote {
+      width: auto !important;
+      height: auto !important;
+      min-width: 28px !important;
+      min-height: 28px !important;
+      max-width: 96px !important;
+      max-height: 32px !important;
+      object-fit: contain !important;
+      cursor: pointer !important;
+      border-radius: 0 !important;
+      padding: 4px !important;
+      transition: none;
+      display: inline-block !important;
+      visibility: visible !important;
+    }
+    /* Hover state lives on the wrap (.hs-mc-picker-emote-wrap ::before) —
+       white rect (default) or dashed-grey (blocked). Img-level fills were
+       removed when the 3-state ladder was collapsed; wrap ::before is the
+       single source of hover styling now. */
+    .hs-mc-picker-empty {
+      padding: 32px !important;
+      text-align: center !important;
+      color: #808080 !important;
+      font-size: 13px !important;
+      visibility: visible !important;
+    }
+    .hs-mc-picker-divider {
+      height: 1px;
+      background: rgba(255,255,255,0.06);
+      margin: 4px 0;
+    }
+
+    /* Emote sizing default */
+    :root {
+      --hs-emote-size: 32px;
+    }
+

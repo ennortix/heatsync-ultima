@@ -1,0 +1,307 @@
+    /* === Statusbar — thin always-present strip at the top of the overlay.
+       Holds the whole-chat collapse button + the inline toast status line, so
+       status messages stop covering the read zone. ~20px, btop/dwl density. */
+    #hs-mc-statusbar {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: stretch;
+      height: 20px;
+      min-height: 20px;
+      background: #0a0a0d;
+      border-bottom: 1px solid #2a2a2e;
+      overflow: hidden;
+    }
+    #hs-mc-collapse-btn {
+      flex: 0 0 auto;
+      width: 26px;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255,255,255,0.06);
+      color: #fff;
+      border: none;
+      border-right: 1px solid #2a2a2e;
+      border-radius: 0;
+      cursor: pointer;
+      font: 700 16px/1 ui-monospace, 'JetBrains Mono', 'Cascadia Mono', 'SF Mono', Menlo, Consolas, monospace;
+      transition: background 80ms linear, color 80ms linear;
+    }
+    /* Arrow points toward the dock edge it collapses to (chat docks right by
+       default → '>'). Position-aware so it always reads as "push away". */
+    #hs-mc-collapse-btn::before { content: '>'; }
+    body.hs-chat-left   #hs-mc-collapse-btn::before { content: '<'; }
+    body.hs-chat-top    #hs-mc-collapse-btn::before { content: '\\2303'; }
+    body.hs-chat-bottom #hs-mc-collapse-btn::before { content: '\\2304'; }
+    /* Hover convention: invert to white bg / black text. */
+    #hs-mc-collapse-btn:hover { background: #fff; color: #000; }
+    #hs-mc-collapse-btn:focus-visible { outline: 1px solid #ff8700; outline-offset: -2px; }
+
+    /* The toast slot lives in the bar's normal flex flow (not fixed). Override
+       the floating-layer base so notifs render inline, single-line, no box. */
+    .hs-notif-layer-statusbar {
+      position: static;
+      z-index: auto;
+      flex: 1 1 0;
+      min-width: 0;
+      flex-direction: row;
+      align-items: center;
+      gap: 0;
+      overflow: hidden;
+      pointer-events: auto;
+    }
+    .hs-notif-layer-statusbar:empty { display: flex; } /* keep slot occupying bar width */
+    .hs-notif-layer-statusbar > .hs-notif {
+      flex: 1 1 0;
+      min-width: 0;
+      background: transparent;
+      border: none;
+      box-shadow: none;
+      animation: hs-notif-fade-in 140ms ease both;
+      transform-origin: center;
+      cursor: pointer;
+    }
+    .hs-notif-layer-statusbar .hs-notif-body {
+      display: block;
+      padding: 0 8px;
+      line-height: 20px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .hs-notif-layer-statusbar .hs-notif-toast-text { display: inline; white-space: nowrap; }
+    .hs-notif-layer-statusbar > .hs-notif:hover .hs-notif-toast-text,
+    .hs-notif-layer-statusbar > .hs-notif:hover .hs-notif-toast-text::before { color: #fff; }
+    .hs-notif-layer-statusbar .hs-notif-exiting {
+      animation: hs-notif-fade-out 120ms ease-in forwards !important;
+    }
+    /* Error/warn briefly flash the whole bar so a status-line error still
+       grabs the eye despite being inline. */
+    #hs-mc-statusbar:has(.hs-notif-toast-error) { animation: hs-statusbar-flash-err 700ms ease-out; }
+    #hs-mc-statusbar:has(.hs-notif-toast-warn)  { animation: hs-statusbar-flash-warn 700ms ease-out; }
+    @keyframes hs-statusbar-flash-err  { 0% { background: #3a0f0f; } 100% { background: #0a0a0d; } }
+    @keyframes hs-statusbar-flash-warn { 0% { background: #38330d; } 100% { background: #0a0a0d; } }
+    @media (prefers-reduced-motion: reduce) {
+      #hs-mc-statusbar { animation: none !important; }
+    }
+    /* Channel-scope filter — HsNotifs flags any per-channel notif (e.g.
+       twitch-resub-share, twitch-watchstreak-share) with this class when the
+       active multichat tab doesn't match the notif's data.channel. Toggled
+       on/off without remounting so re-entry to the matching tab restores
+       the same notif instance with its timer + dismiss handlers intact. */
+    .hs-notif.hs-notif-out-of-scope {
+      display: none !important;
+    }
+
+    /* Chat-docked-bottom callouts (resub-share, sub-anniversary, raid alert)
+       use a full-width band — reset the toast accent strip and edge borders
+       in favor of an orange top edge that visually anchors the bar to the
+       inputbar below. */
+    .hs-notif-layer-chat-docked-bottom > .hs-notif {
+      border: none;
+      border-top: 1px solid #ff8700;
+      border-bottom: 1px solid #808080;
+      box-shadow: 0 -2px 8px rgba(0,0,0,0.5);
+      background: #0a0a0d;
+    }
+    .hs-notif-resub-body {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex: 1 1 0;
+      min-width: 0;
+      overflow: hidden;
+    }
+    .hs-notif-resub-icon {
+      flex: 0 0 auto;
+      font-size: 14px;
+      color: #ff8700;
+    }
+    .hs-notif-resub-text {
+      flex: 1 1 0;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    /* Progressive shortening — fires off .hs-notif's own width. The Share +
+       ✕ buttons are ALWAYS visible; the message gives up parts of itself
+       (prefix → suffix → " months" abbreviation → icon) to make room.
+       Worst case: just "104mo" + buttons. Never just buttons-only.   */
+    .hs-rt-mo { display: none; }
+    @container (max-width: 280px) {
+      .hs-notif-resub-body { font-size: 13px; }
+      .hs-notif-action { padding: 2px 6px; font-size: 13px; }
+      .hs-rt-prefix { display: none; }
+    }
+    @container (max-width: 220px) {
+      .hs-rt-suffix { display: none; }
+    }
+    @container (max-width: 180px) {
+      .hs-notif-resub-icon { display: none; }
+    }
+    @container (max-width: 140px) {
+      .hs-rt-months { display: none; }
+      .hs-rt-mo { display: inline; }
+    }
+    /* Watch-streak notif — same skeleton as resub, orange-themed, shorter text. */
+    .hs-notif-watchstreak-body {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex: 1 1 0;
+      min-width: 0;
+      overflow: hidden;
+    }
+    .hs-notif-watchstreak-icon {
+      flex: 0 0 auto;
+      font-size: 14px;
+    }
+    .hs-notif-watchstreak-text {
+      flex: 1 1 0;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #ffa040;
+      font-weight: 600;
+    }
+    @container (max-width: 240px) {
+      .hs-wt-prefix { display: none; }
+    }
+    @container (max-width: 180px) {
+      .hs-wt-suffix { display: none; }
+    }
+    @container (max-width: 140px) {
+      .hs-wt-stream { display: none; }
+      .hs-notif-watchstreak-icon { display: none; }
+    }
+    /* Hide native Twitch resub-share callout queue — HsNotifs renders our own
+       version in the chat-docked-bottom layer with controlled actions. */
+    [data-test-selector="chat-private-callout-queue__callout-container"] {
+      display: none !important;
+    }
+
+    /* Twitch private-callout queue (resub-share / sub-anniversary "Share" +
+       "Pin to chat" prompt) lives inside .chat-input, which our overlay nukes.
+       The :not(:has(...)) exclusions on the hide rules above keep the callout
+       path visible. Dock the queue as a full-width bar locked directly above
+       #hs-mc-inputbar — when the reply-indicator is added inside the inputbar
+       it grows in height, the ResizeObserver in main.js fires _updateMcLayout,
+       and the callout naturally floats above BOTH the reply-chip and input. */
+    [data-test-selector="chat-private-callout-queue__callout-container"]:has(*) {
+      /* Native callout stays hidden — our HsNotifs version (twitch-resub-share)
+         renders the controlled UI from extracted data. The position-fixed bits
+         below are inert as long as display:none from the base rule stands; kept
+         as a safety net in case the base rule is overridden upstream. */
+      position: fixed !important;
+      top: auto !important;
+      bottom: var(--hs-layer-chat-docked-bottom-bottom, 0px) !important;
+      left: var(--hs-layer-chat-docked-bottom-left, 0px) !important;
+      right: var(--hs-layer-chat-docked-bottom-right, 0px) !important;
+      width: auto !important;
+      max-width: 100vw !important;
+      overflow: hidden !important;
+      z-index: 100000 !important;
+      pointer-events: auto !important;
+      background: #18181b !important;
+      border: none !important;
+      border-top: 1px solid #ff8700 !important;
+      border-bottom: 1px solid #808080 !important;
+      border-radius: 0 !important;
+      box-shadow: 0 -2px 8px rgba(0,0,0,0.5) !important;
+      box-sizing: border-box !important;
+    }
+    /* Hide Twitch's native Pin toggle on the callout — it pins the resub to
+       the hidden native chat, which looks like the callout just disappeared. */
+    [data-test-selector="chat-private-callout-queue__callout-container"] button[aria-label="pinned"] {
+      display: none !important;
+    }
+    /* Flatten the callout to a single tight row — minimal vertical footprint.
+       container-type makes .pinned-callout queryable so we can drop the icon /
+       hide text entirely when chat gets too thin to fit the celebration line. */
+    [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout {
+      display: flex !important;
+      flex-direction: row !important;
+      align-items: center !important;
+      gap: 8px !important;
+      padding: 4px 8px !important;
+      min-height: 0 !important;
+      line-height: 15px !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+      overflow: hidden !important;
+      container-type: inline-size !important;
+    }
+    [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout > * {
+      margin: 0 !important;
+      min-width: 0 !important;
+    }
+    /* Inline so multiple text spans concatenate; the wrapper handles ellipsis. */
+    [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout :is(div, span, p):not(:has(button)) {
+      display: inline !important;
+      font-size: 13px !important;
+      line-height: 15px !important;
+    }
+    /* Text wrapper — single block that ellipsifies when chat narrows.
+       flex: 1 1 0 + min-width: 0 lets it shrink past content width, which is
+       required for text-overflow:ellipsis inside a flex parent. */
+    [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout > div:has(div, span, p) {
+      display: block !important;
+      flex: 1 1 0 !important;
+      min-width: 0 !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      white-space: nowrap !important;
+    }
+    /* Icon — fixed small size, drop when chat is too thin. */
+    [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout__icon {
+      flex: 0 0 auto !important;
+      width: 16px !important;
+      height: 16px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+    }
+    [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout__icon * {
+      width: 16px !important;
+      height: 16px !important;
+      font-size: 14px !important;
+    }
+    /* Share button — shrinkable, with internal ellipsis. flex:0 1 auto +
+       min-width:0 lets it compress instead of overflowing when chat narrows. */
+    [data-test-selector="chat-private-callout-queue__callout-container"] [data-a-target="chat-private-callout__primary-button"] {
+      padding: 2px 10px !important;
+      font-size: 13px !important;
+      min-height: 0 !important;
+      height: auto !important;
+      line-height: 18px !important;
+      flex: 0 1 auto !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      white-space: nowrap !important;
+    }
+    /* Progressive shrink as the chat panel narrows. Container queries fire
+       against .pinned-callout's own width — independent of viewport, so it
+       degrades correctly for narrow chat in any tab-position layout. */
+    @container (max-width: 280px) {
+      [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout :is(div, span, p):not(:has(button)) {
+        font-size: 13px !important;
+      }
+      [data-test-selector="chat-private-callout-queue__callout-container"] [data-a-target="chat-private-callout__primary-button"] {
+        padding: 2px 6px !important;
+        font-size: 13px !important;
+      }
+    }
+    @container (max-width: 220px) {
+      [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout__icon {
+        display: none !important;
+      }
+    }
+    @container (max-width: 160px) {
+      [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout > div:has(div, span, p) {
+        display: none !important;
+      }
+    }

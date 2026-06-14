@@ -1,0 +1,204 @@
+    /* Overlay - fills chat container (below tab bar, above input bar) */
+    #hs-mc-overlay {
+      position: absolute;
+      top: 38px; /* Default; dynamically adjusted by ResizeObserver */
+      left: 0;
+      right: 0;
+      bottom: 52px; /* Leave room for input bar */
+      background: #000;
+      z-index: 1000;
+      display: none;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #hs-mc-overlay.visible {
+      display: flex;
+    }
+
+    /* Unified resize-bar styling — 2px visible #ff8700 line + invisible
+       ::before grab-zone (--hs-resize-grab per side). Mirrors heatsync.org's
+       .hs-resizer. Each id below sets only position/size/cursor/z-index. */
+    #hs-mc-resize-handle,
+    #hs-yt-resize-handle,
+    #hs-kick-resize-handle,
+    #hs-c-resize-handle {
+      background: #ff8700;
+      opacity: 0.55;
+      transition: opacity 0.12s;
+    }
+    #hs-mc-resize-handle::before,
+    #hs-yt-resize-handle::before,
+    #hs-kick-resize-handle::before,
+    #hs-c-resize-handle::before {
+      content: '';
+      position: absolute;
+      inset: calc(-1 * var(--hs-resize-grab));
+    }
+    #hs-mc-resize-handle:hover, #hs-mc-resize-handle:active,
+    #hs-yt-resize-handle:hover, #hs-yt-resize-handle:active,
+    #hs-kick-resize-handle:hover, #hs-kick-resize-handle:active,
+    body:has(#hs-resize-overlay) #hs-kick-resize-handle {
+      opacity: 1;
+    }
+    #hs-mc-resize-handle {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: var(--hs-resize-thickness);
+      height: 100%;
+      cursor: ew-resize;
+      z-index: 2000;
+    }
+    /* YouTube resize handle — left edge of #secondary sidebar */
+    #hs-yt-resize-handle {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: var(--hs-resize-thickness);
+      height: 100%;
+      cursor: ew-resize;
+      z-index: 2000;
+    }
+
+    #hs-mc-messages {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      /* Bottom keeps a little extra so the last message clears the inputbar's
+         top border and descenders aren't clipped against it. Sides/top tight
+         for density — banner margin below must mirror these or it misaligns. */
+      padding: 6px 6px 6px 6px;
+      font-size: var(--hs-chat-font, 13px) !important;
+      line-height: 18px !important;
+      word-wrap: break-word;
+      word-break: break-word;
+      max-width: 100%;
+      box-sizing: border-box;
+      /* Isolate paint/layout from the host Twitch column. Without this,
+         every panel mutation forced a style recalc walk up through the
+         2500-node React layout tree. paint clips repaints to this box,
+         style blocks inherited cascade leakage, layout blocks the host
+         from re-flowing through us. */
+      contain: layout style paint;
+    }
+    /* Per-message rows: cheap containment + content-visibility:auto so the
+       browser can skip layout/paint for rows that aren't in (or near) the
+       viewport. The intrinsic-size keeps the scrollbar honest while rows
+       are skipped. ~22-26px tall typical; 32px is conservative so we
+       don't undercount and snap on scroll. */
+    #hs-mc-messages > .hs-mc-msg {
+      contain: layout style paint;
+      content-visibility: auto;
+      contain-intrinsic-size: auto 32px;
+    }
+
+    /* Chat overlay banners (predictions + polls at top of messages) */
+    .hs-mc-chat-banner {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      /* mirrors #hs-mc-messages top/side padding (6px) so the banner bleeds
+         flush to the scroll-box edges; bottom keeps a 6px gap to first msg. */
+      margin: -6px -6px 6px -6px;
+      padding: 0;
+    }
+    .hs-mc-chat-banner-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px;
+      font-size: 13px;
+      font-weight: 600;
+      transition: background 0.15s;
+    }
+    .hs-mc-chat-banner-item:hover {
+      background: #fff;
+      color: #000;
+    }
+    .hs-mc-chat-banner-item:hover * {
+      color: #000 !important;
+    }
+    .hs-mc-chat-banner-pred {
+      background: #0e0e10;
+      border-bottom: 1px solid rgba(56,122,255,0.3);
+      color: #a8c8ff;
+    }
+    .hs-mc-chat-banner-poll {
+      background: #0e0e10;
+      border-bottom: 1px solid rgba(0,200,100,0.25);
+      color: #80e0a0;
+    }
+    .hs-mc-chat-banner-pin {
+      background: #0e0e10;
+      border-bottom: 1px solid rgba(191,148,255,0.2);
+      color: #d4bfff;
+    }
+    .hs-mc-chat-banner-hype {
+      background: #0e0e10;
+      border-bottom: 1px solid rgba(255,135,0,0.3);
+      color: #ffb060;
+    }
+    .hs-mc-chat-banner-icon {
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+    .hs-mc-chat-banner-title {
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: #fff;
+    }
+    .hs-mc-chat-banner-timer {
+      font-family: 'SF Mono', 'Consolas', monospace;
+      font-size: 13px;
+      font-weight: 700;
+      color: #ff8700;
+      background: rgba(0,0,0,0.4);
+      padding: 1px 5px;
+      border-radius: 0;
+      flex-shrink: 0;
+    }
+    .hs-mc-chat-banner-badge {
+      font-size: 13px;
+      font-weight: 700;
+      color: #ff5050;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      flex-shrink: 0;
+    }
+
+    /* New messages button - floats above messages */
+    #hs-mc-new-msgs {
+      position: absolute;
+      bottom: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: none;
+      align-items: center;
+      gap: 4px;
+      background: #ff0;
+      color: #000;
+      border: none;
+      border-radius: 0;
+      padding: 4px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      z-index: 1005;
+      transition: none;
+    }
+    #hs-mc-new-msgs:hover {
+      background: #fff;
+      color: #000;
+    }
+    .hs-arrow-down {
+      font-size: 13px;
+      line-height: 0;
+      position: relative;
+      top: -1px;
+    }
+

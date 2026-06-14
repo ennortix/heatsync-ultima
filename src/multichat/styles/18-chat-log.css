@@ -1,0 +1,121 @@
+    /* === Chat-log viewer (chat-logs.js) === */
+    /* All children inherit 13px var(--hs-mc-font) to match the rest of the
+       overlay — Cozette is a bitmap font keyed to 13px; smaller sizes look
+       blurry. Explicit overrides only where information density demands a
+       lighter weight (timestamp on its own line vs inline). */
+    .hs-cl-wrap {
+      display: flex; flex-direction: column;
+      height: 100%; width: 100%;
+      background: #000; color: #fff;
+      font-family: var(--hs-mc-font);
+      font-size: 13px; line-height: 17px;
+      box-sizing: border-box;
+    }
+    .hs-cl-hdr {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 4px 6px;
+      background: #0a0a0a;
+      border-bottom: 1px solid #222;
+      flex-shrink: 0;
+      gap: 6px;
+    }
+    .hs-cl-title { display: flex; align-items: baseline; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .hs-cl-title-name { font-weight: 700; color: #fff; }
+    .hs-cl-title-sub { color: #999; overflow: hidden; text-overflow: ellipsis; }
+    .hs-cl-close {
+      width: 22px; height: 22px; padding: 0;
+      background: transparent; color: #999;
+      border: 1px solid #333; cursor: pointer;
+      font-family: inherit; font-size: 13px; line-height: 1;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .hs-cl-close:hover { background: #fff; color: #000; border-color: #fff; }
+    .hs-cl-ctrls {
+      display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 6px;
+      background: #0a0a0a;
+      border-bottom: 1px solid #222;
+      flex-shrink: 0;
+      align-items: center;
+    }
+    .hs-cl-search {
+      flex: 1 1 100px; min-width: 80px;
+      background: #000; color: #fff;
+      border: 1px solid #333; padding: 2px 6px;
+      font-family: inherit; font-size: 13px; line-height: 17px;
+      outline: none; height: 22px;
+      box-sizing: border-box;
+    }
+    .hs-cl-search:focus { border-color: #ff8700; }
+    .hs-cl-scope, .hs-cl-export {
+      background: #111; color: #ccc;
+      border: 1px solid #333; padding: 1px 6px;
+      cursor: pointer; font-family: inherit; font-size: 13px;
+      height: 22px; line-height: 18px;
+      box-sizing: border-box;
+      flex-shrink: 0;
+    }
+    .hs-cl-scope:hover, .hs-cl-export:hover {
+      background: #fff; color: #000; border-color: #fff;
+    }
+    .hs-cl-list {
+      flex: 1; overflow-y: auto; overflow-x: hidden;
+      padding: 4px 8px;
+    }
+    .hs-cl-row {
+      padding: 1px 0;
+      display: flex; flex-wrap: wrap; align-items: baseline;
+      gap: 6px;
+      border-bottom: 1px solid #0a0a0a;
+    }
+    .hs-cl-row.hs-cl-deleted {
+      opacity: 0.5;
+      text-decoration: line-through;
+    }
+    .hs-cl-ts {
+      color: #555;
+      font-variant-numeric: tabular-nums;
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+    .hs-cl-ch {
+      color: #ff8700; flex-shrink: 0;
+    }
+    .hs-cl-user {
+      color: #fff; font-weight: 700; flex-shrink: 0;
+    }
+    .hs-cl-body { color: #ddd; min-width: 0; word-break: break-word; }
+    .hs-cl-emote {
+      height: 18px; width: auto; vertical-align: middle;
+      display: inline-block;
+    }
+    .hs-cl-empty {
+      color: #666; text-align: center; padding: 40px 8px;
+    }
+    .hs-cl-loader {
+      color: #555; text-align: center; padding: 12px 8px;
+    }
+    .hs-cl-public-archive {
+      color: #ff8700; text-decoration: none;
+      font-size: 13px; padding: 1px 6px;
+      border: 1px solid #333;
+      height: 22px; line-height: 18px;
+      display: inline-flex; align-items: center;
+      flex-shrink: 0;
+    }
+    .hs-cl-public-archive:hover { background: #fff; color: #000; border-color: #fff; }
+    .hs-cl-permalink {
+      margin-left: auto;
+      background: transparent; color: #444;
+      border: none; padding: 0 4px; cursor: pointer;
+      font-family: inherit; font-size: 13px; line-height: 1;
+      opacity: 0; transition: opacity 0.08s;
+      flex-shrink: 0;
+    }
+    .hs-cl-row:hover .hs-cl-permalink { opacity: 1; }
+    .hs-cl-permalink:hover { color: #fff; }
+    .hs-cl-permalink.hs-cl-permalink-copied {
+      opacity: 1; color: #ff8700;
+    }
+
+  

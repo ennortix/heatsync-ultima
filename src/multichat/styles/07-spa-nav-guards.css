@@ -1,0 +1,171 @@
+    /* Permanent black backdrop on every Twitch/Kick chat-region ancestor.
+       Twitch's right-column wrappers paint rgb(14,14,16) and rgb(24,24,27)
+       (their dark-grey theme) — when chat-shell dimensions blip during SPA
+       nav reflow, the grey bleeds through as a visible flash. Painting all
+       ancestors solid black makes every blip imperceptible: black-on-black
+       reveals nothing. Always-on, not gated to nav, since the user already
+       sees pure-black chat in steady state. */
+    .channel-root__right-column,
+    .channel-root__right-column--expanded,
+    aside#live-page-chat,
+    .right-column .chat-shell,
+    .right-column [class*="chat-shell"],
+    .right-column [class*="stream-chat"] {
+      background: #000 !important;
+    }
+    /* Twitch sets transition:all on chat-shell + its Layout-sc wrappers.
+       During SPA nav these animate width/height changes, dragging the dark-
+       grey theme through frames as the new chat-shell snaps in. Killing the
+       transition removes the motion blur entirely — content swaps instantly
+       behind our overlay instead of crossfading the grey through. Scoped to
+       chat-region only so we don't disrupt Twitch's other animations. */
+    .right-column .chat-shell,
+    .right-column [class*="chat-shell"],
+    .right-column [class*="stream-chat"],
+    .channel-root__right-column,
+    .channel-root__right-column > *,
+    aside#live-page-chat,
+    aside#live-page-chat > * {
+      transition: none !important;
+    }
+
+    /* SPA-nav transition guard. While body.hs-mc-navigating is set we paint
+       black on every chat-shell variant and force-hide all of its children
+       except our overlay + profile card. Held from soft-nav entry until the
+       new chat-shell is settled (≈300ms after reparent — enough to absorb
+       Twitch's full render cycle, not so long that user notices a stall). */
+    body.hs-mc-navigating .chat-shell,
+    body.hs-mc-navigating [class*="chat-shell"],
+    body.hs-mc-navigating [class*="stream-chat"],
+    body.hs-mc-navigating #channel-chatroom,
+    body.hs-mc-navigating .channel-root__right-column,
+    body.hs-mc-navigating aside#live-page-chat {
+      background: #000 !important;
+    }
+    body.hs-mc-navigating .chat-shell > *:not(#hs-mc-container):not(.hs-pc-panel):not(.hs-profile-card),
+    body.hs-mc-navigating [class*="chat-shell"] > *:not(#hs-mc-container):not(.hs-pc-panel):not(.hs-profile-card),
+    body.hs-mc-navigating [class*="stream-chat"] > *:not(#hs-mc-container):not(.hs-pc-panel):not(.hs-profile-card),
+    body.hs-mc-navigating #channel-chatroom > *:not(#hs-mc-container):not(.hs-pc-panel):not(.hs-profile-card) {
+      visibility: hidden !important;
+    }
+
+    /* During SPA nav on Kick, the panel pre-migrates to <body> so React's
+       teardown of chat-layout doesn't take it down. Pin it in the eventual
+       chat-layout slot via fixed positioning so it doesn't reflow into a
+       weird body-default position mid-transition (visible quick flash).
+       The post-reparent CSS in chat-layout swaps back to flex-relative. */
+    body.hs-mc-navigating.hs-platform-kick.hs-chat-right > #hs-mc-container {
+      position: fixed !important;
+      top: 0 !important;
+      bottom: 0 !important;
+      right: 0 !important;
+      left: auto !important;
+      width: var(--hs-kick-chat-width, 340px) !important;
+      height: 100vh !important;
+      z-index: 9999 !important;
+      margin: 0 !important;
+    }
+    body.hs-mc-navigating.hs-platform-kick.hs-chat-left > #hs-mc-container {
+      position: fixed !important;
+      top: 0 !important;
+      bottom: 0 !important;
+      left: 0 !important;
+      right: auto !important;
+      width: var(--hs-kick-chat-width, 340px) !important;
+      height: 100vh !important;
+      z-index: 9999 !important;
+      margin: 0 !important;
+    }
+    body.hs-mc-navigating.hs-platform-kick.hs-chat-top > #hs-mc-container {
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: auto !important;
+      width: 100vw !important;
+      height: var(--hs-kick-chat-height, 35vh) !important;
+      z-index: 9999 !important;
+      margin: 0 !important;
+    }
+    body.hs-mc-navigating.hs-platform-kick.hs-chat-bottom > #hs-mc-container {
+      position: fixed !important;
+      bottom: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      top: auto !important;
+      width: 100vw !important;
+      height: var(--hs-kick-chat-height, 35vh) !important;
+      z-index: 9999 !important;
+      margin: 0 !important;
+    }
+
+    /* Twitch mirror: panel pinned fixed-overlay across the entire SPA-nav
+       window. Covers the gap between .channel-root mounting (which strips
+       hs-twitch-no-channel) and .chat-shell mounting (which gives the panel
+       its real flex slot). Without this, mid-transition the body-mounted
+       container has no positioning rules and collapses to default block flow
+       — orange bar stays anchored, chat disappears until reparent finishes
+       (the miniplayer→fullscreen bug). */
+    body.hs-mc-navigating.hs-platform-twitch.hs-chat-right > #hs-mc-container {
+      position: fixed !important;
+      top: var(--hs-twitch-topnav-h, 50px) !important;
+      bottom: 0 !important;
+      right: 0 !important;
+      left: auto !important;
+      width: var(--hs-chat-w, 340px) !important;
+      height: auto !important;
+      z-index: 9999 !important;
+      margin: 0 !important;
+    }
+    body.hs-mc-navigating.hs-platform-twitch.hs-chat-left > #hs-mc-container {
+      position: fixed !important;
+      top: var(--hs-twitch-topnav-h, 50px) !important;
+      bottom: 0 !important;
+      left: 0 !important;
+      right: auto !important;
+      width: var(--hs-chat-w, 340px) !important;
+      height: auto !important;
+      z-index: 9999 !important;
+      margin: 0 !important;
+    }
+    body.hs-mc-navigating.hs-platform-twitch.hs-chat-top > #hs-mc-container {
+      position: fixed !important;
+      top: var(--hs-twitch-topnav-h, 50px) !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: auto !important;
+      width: 100vw !important;
+      height: var(--hs-chat-h, 35vh) !important;
+      z-index: 9999 !important;
+      margin: 0 !important;
+    }
+    body.hs-mc-navigating.hs-platform-twitch.hs-chat-bottom > #hs-mc-container {
+      position: fixed !important;
+      bottom: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      top: auto !important;
+      width: 100vw !important;
+      height: var(--hs-chat-h, 35vh) !important;
+      z-index: 9999 !important;
+      margin: 0 !important;
+    }
+
+    /* We provide our own collapse control (the '>' button in #hs-mc-statusbar),
+       so Twitch's native collapse/expand arrow is redundant — hide it bulletproof.
+       Pure CSS survives React re-renders (a one-shot JS removal wouldn't), and
+       display:none !important beats Twitch's inline non-important display. Restore
+       when hidden is handled by our orange #hs-chat-restore-pill + the \ key. */
+    body.hs-platform-twitch .right-column__toggle-visibility { display: none !important; }
+    /* If the right column still ends up collapsed (Twitch auto-collapses on
+       narrow viewports), keep our container hidden and zero the column width.
+       Arrow no longer needs to overflow out, so clip cleanly. */
+    .right-column--collapsed #hs-mc-container { display: none !important; }
+    .right-column--collapsed,
+    .right-column--collapsed > *,
+    div:has(> .right-column--collapsed) {
+      width: 0px !important;
+      min-width: 0px !important;
+      overflow: hidden !important;
+    }
+

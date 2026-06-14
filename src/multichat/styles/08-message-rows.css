@@ -1,0 +1,549 @@
+    /* Ensure our elements are visible */
+    #hs-mc-tabbar {
+      display: flex !important;
+    }
+    #hs-mc-inputbar {
+      display: flex !important;
+    }
+    #hs-mc-inputbar.hs-hidden {
+      display: none !important;
+    }
+
+    .hs-mc-ts {
+      color: #808080;
+      font-size: 13px;
+      margin-right: 4px;
+      font-variant-numeric: tabular-nums;
+    }
+    .hs-mc-avatar {
+      width: 18px;
+      height: 18px;
+      border-radius: 0;
+      vertical-align: middle;
+      margin-right: 3px;
+      object-fit: cover;
+    }
+    span.hs-mc-avatar.hs-mc-avatar-fallback {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      line-height: 1;
+      user-select: none;
+    }
+    .hs-mc-msg {
+      /* density vars set by the registry density applier; defaults keep the
+         classic compact look */
+      padding: var(--hs-mc-row-pad, 2px 4px);
+      border-radius: 0;
+      font-size: var(--hs-chat-font, 13px) !important;
+      /* 18px integer (mirrors heatsync.org main.css:629) — keep baseline on
+         the pixel grid. 1.4 × 13px = 18.2px fractional half-leading makes
+         every bitmap glyph render off-grid. */
+      line-height: var(--hs-mc-row-lh, 18px) !important;
+      word-wrap: break-word;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      overflow: hidden;
+      max-width: 100%;
+      box-sizing: border-box;
+      color: #ffffff;
+      content-visibility: auto;
+      contain-intrinsic-size: auto 28px;
+      unicode-bidi: plaintext;
+    }
+    .hs-feed-msg, .hs-mc-search-content, .hs-mc-post-body {
+      unicode-bidi: plaintext;
+    }
+    .hs-mc-msg.hs-mc-zebra, .hs-feed-msg.hs-mc-zebra {
+      background: #1f1f1f;
+    }
+    /* Hovered-row tint while the reply stack is shown — same dark olive as stack rows.
+       Critical: ONLY change the background. Changing padding/line-height shrinks the
+       row, which triggers chat auto-scroll-to-bottom adjustment AFTER showStack has
+       already anchored the overlay → 8-15px visible gap. Pure visual change only. */
+    .hs-mc-msg.hs-mc-reply-stack-active {
+      background: #2e2e08 !important;
+    }
+    /* Dark olive bg lets full-color inline usernames through. Row base color is
+       white for non-colored text (timestamps, plain message body) — inline
+       user colors override naturally. No star-cascade so colored names breathe. */
+    .hs-mc-msg.hs-mc-reply-stack-active,
+    #hs-mc-reply-stack .hs-mc-reply-stack-row,
+    #hs-mc-reply-stack-down .hs-mc-reply-stack-row {
+      color: #fff;
+    }
+    /* Reply-chain stack overlay — viewport-bounded vertical stack of parent messages.
+       Bottom edge butts directly against the hovered row (no border, no shadow below). */
+    #hs-mc-reply-stack {
+      box-sizing: border-box;
+      background: #000;
+      border: 1px solid #808000;
+      border-bottom: none;
+      z-index: 2147483647;
+      pointer-events: auto;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      /* Overlay lives on <body>, outside #hs-mc-container — pull font from
+         :root vars so rows render in Cozette at the panel size, not the
+         host page's font (Inter/Roobert on Twitch). */
+      font-family: var(--hs-mc-font, 'CozetteVector', 'Courier New', monospace);
+      font-size: var(--hs-mc-base-size, 13px);
+    }
+    /* Down overlay — descendants stacked BELOW the hovered row. No top border so
+       it butts snug against the row (top edge meets row's content bottom). */
+    #hs-mc-reply-stack-down {
+      box-sizing: border-box;
+      background: #000;
+      border: 1px solid #808000;
+      border-top: none;
+      z-index: 2147483647;
+      pointer-events: auto;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      font-family: var(--hs-mc-font, 'CozetteVector', 'Courier New', monospace);
+      font-size: var(--hs-mc-base-size, 13px);
+    }
+    /* Overlay rows must match native .hs-mc-msg height EXACTLY — same padding,
+       same line-height. Mismatched heights make the olive stack look like a
+       broken copy of the active row sitting above/below it. */
+    #hs-mc-reply-stack-down .hs-mc-reply-stack-row,
+    #hs-mc-reply-stack .hs-mc-reply-stack-row {
+      background: #2e2e08 !important;
+      box-shadow: none !important;
+      margin: 0 !important;
+      /* override .hs-mc-msg's content-visibility:auto — we render at hover time
+         and rows must paint immediately, not be replaced by a 28px placeholder */
+      content-visibility: visible !important;
+      contain-intrinsic-size: auto !important;
+      /* The olive overlays sit above the active row in fixed position. Letting
+         text selection span overlay→chat created a two-plane multi-range
+         clipboard mess ("copies both planes"). Right-click → copy thread is
+         the canonical path now; selection on overlay rows is disabled so a
+         chat-row drag-select stays clean even when the cursor crosses the
+         overlay region. */
+      user-select: none;
+      -webkit-user-select: none;
+      cursor: default;
+    }
+    #hs-mc-reply-stack-down .hs-mc-reply-stack-row .hs-mc-reply-btn,
+    #hs-mc-reply-stack .hs-mc-reply-stack-row .hs-mc-reply-btn {
+      display: none !important;
+    }
+    /* Zebra striping across the entire reply chain. Anchored to the active row
+       (always #2e2e08): up-stack rows count from BOTTOM, down-stack rows count
+       from TOP. Banded muted rows amplify the timeout/cleared opacity effect
+       — visually rich rather than a wall of olive. */
+    #hs-mc-reply-stack .hs-mc-reply-stack-row:nth-last-child(odd),
+    #hs-mc-reply-stack-down .hs-mc-reply-stack-row:nth-child(odd) {
+      background: #1a1a04 !important;
+    }
+    /* Reply-context chip on dark olive rows — dim gray reads as skip-me
+       metadata against the dark bg (was black against bright olive). */
+    .hs-mc-msg.hs-mc-reply-stack-active .hs-mc-reply-ctx,
+    .hs-mc-msg.hs-mc-reply-stack-active .hs-mc-reply-ctx *,
+    #hs-mc-reply-stack .hs-mc-reply-stack-row .hs-mc-reply-ctx,
+    #hs-mc-reply-stack .hs-mc-reply-stack-row .hs-mc-reply-ctx *,
+    #hs-mc-reply-stack-down .hs-mc-reply-stack-row .hs-mc-reply-ctx,
+    #hs-mc-reply-stack-down .hs-mc-reply-stack-row .hs-mc-reply-ctx * {
+      color: #999 !important;
+      -webkit-text-fill-color: #999 !important;
+      border-left-color: #999 !important;
+    }
+    .hs-mc-reply-stack-chip {
+      flex: 0 0 auto;
+      padding: 2px 6px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #fff;
+      background: #000;
+      border-bottom: 1px solid #808000;
+      cursor: pointer;
+      text-align: center;
+      user-select: none;
+    }
+    .hs-mc-reply-stack-chip:hover {
+      color: #000;
+      background: #fff;
+    }
+    /* Feed post-link hover preview stack */
+    #hs-feed-postlink-preview {
+      position: fixed;
+      z-index: 2147483647;
+      background: #000;
+      border: 1px solid #808000;
+      border-bottom: none;
+      box-sizing: border-box;
+      max-width: 600px;
+      min-width: 280px;
+      overflow: hidden;
+      display: none;
+      pointer-events: auto;
+      font-family: var(--hs-mc-font, 'CozetteVector', 'Courier New', monospace);
+      font-size: var(--hs-mc-base-size, 13px);
+    }
+    .hs-feed-postlink-preview-row {
+      background: #2e2e08 !important;
+      box-shadow: none !important;
+      margin: 0 !important;
+      border-bottom: 1px solid #555500;
+      color: #fff;
+    }
+    .hs-feed-postlink-preview-row:last-child {
+      border-bottom: none;
+    }
+    .hs-feed-postlink-preview-row:nth-child(even) {
+      background: #1a1a04 !important;
+    }
+    /* Two classes (row + linked) to out-specify the :nth-child(even) zebra rule
+       so the referenced post keeps its brighter highlight instead of blending
+       into a zebra band. */
+    .hs-feed-postlink-preview-row.hs-feed-postlink-preview-linked {
+      background: #3a3a00 !important;
+      border-left: 2px solid #ffff00 !important;
+    }
+    /* Brief flash on the message that the overflow chip scrolled to */
+    .hs-mc-msg.hs-mc-thread-flash {
+      animation: hs-mc-thread-flash 1.2s ease-out;
+    }
+    @keyframes hs-mc-thread-flash {
+      0% { background: #2e2e08; }
+      100% { background: transparent; }
+    }
+    .hs-mc-feed-inline, .hs-mc-stream-event {
+      content-visibility: auto;
+      contain-intrinsic-size: auto 32px;
+    }
+    .hs-mc-msg[data-msg-id] {
+      position: relative;
+    }
+    .hs-mc-reply-btn {
+      display: none;
+      position: absolute;
+      top: 1px;
+      right: 2px;
+      background: #000;
+      border: 1px solid #808080;
+      color: #fff;
+      font-size: 13px;
+      padding: 0 4px;
+      cursor: pointer;
+      line-height: 18px;
+      z-index: 10;
+    }
+    .hs-mc-reply-btn:hover {
+      color: #000;
+      background: #fff;
+    }
+    .hs-mc-msg[data-msg-id]:hover .hs-mc-reply-btn {
+      display: block;
+    }
+    /* Mod toolbar — singleton bar inserted into the hovered row as a sibling
+       of .hs-mc-reply-btn. Pure CSS positioning: absolute, flush against the
+       left edge of the reply button. Shared 1px #808080 dividers between
+       buttons; last button's right border drops out to merge with the reply
+       button's left border. Matches heatsync.org spec exactly. */
+    .hs-mc-msg[data-msg-id] {
+      position: relative;
+    }
+    .hs-mod-toolbar {
+      position: absolute;
+      top: 1px;
+      right: 22px;
+      z-index: 11;
+      display: inline-flex;
+      align-items: stretch;
+      background: #000;
+      color: #fff;
+      border: 1px solid #808080;
+      border-right: 0;
+      font: 13px/18px 'CozetteVector', monospace;
+      user-select: none;
+      height: 20px;
+    }
+    .hs-mod-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 22px;
+      padding: 0 5px;
+      background: #000;
+      color: #fff;
+      border: 0;
+      border-right: 1px solid #808080;
+      font: inherit;
+      cursor: pointer;
+      line-height: 1;
+    }
+    .hs-mod-btn:last-child { border-right: 0; }
+    .hs-mod-btn:hover { background: #fff; color: #000; }
+    #hs-mc-reply-indicator {
+      flex: 1 0 100%;
+      order: -1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #000;
+      padding: 2px 6px;
+      font-size: 13px;
+      color: #fff;
+      box-sizing: border-box;
+    }
+    #hs-mc-reply-indicator span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #hs-mc-reply-cancel {
+      background: none;
+      border: none;
+      color: #808080;
+      cursor: pointer;
+      font-size: 13px;
+      padding: 0 2px;
+      line-height: 1;
+    }
+    #hs-mc-reply-cancel:hover {
+      color: #000;
+      background: #fff;
+    }
+    .hs-mc-muted {
+      user-select: none;
+    }
+    .hs-mc-muted .hs-mc-user {
+      color: #808080 !important;
+      animation: none !important;
+      background: none !important;
+      -webkit-text-fill-color: #808080 !important;
+    }
+    .hs-mc-muted > :not(.hs-mc-user):not(.hs-mc-badge-img):not(.hs-mc-timestamp) {
+      display: none !important;
+    }
+    .hs-mc-msg.hs-mc-system {
+      border-left: 3px solid #9147ff;
+      padding-left: 8px;
+      background: rgba(145, 71, 255, 0.08);
+    }
+    .hs-mc-msg.hs-mc-kicks {
+      border-left: 3px solid #ffd600;
+      padding-left: 8px;
+      background: rgba(255, 214, 0, 0.1);
+    }
+    .hs-mc-kicks .hs-mc-system-text {
+      color: #ffd600;
+      font-weight: 700;
+    }
+    .hs-mc-system-text {
+      color: #b0b0b0;
+      font-size: 13px;
+      font-style: italic;
+      display: block;
+    }
+    /* ANSI 0-15 semantic palette:
+       red(9)=ban/blocked/error, green(10)=owned/untimeout/safe,
+       yellow(11)=first-seen/announcement/bits/DM/kw-match/warn (attention),
+       magenta(13)=raid/gift/mention/first-msg-ever (special event),
+       cyan(14)=stream-hype/milestone (action-needed).
+       #ff8700 reserved for brand chrome only (buttons, frames, drag bars). */
+    .hs-mc-msg.hs-mc-notice-ban       { border-left-color: #ff0000 !important; background: rgba(255, 0, 0, 0.12) !important; }
+    .hs-mc-msg.hs-mc-notice-ban       .hs-mc-system-text { color: #ff4040; font-weight: 600; }
+    .hs-mc-msg.hs-mc-notice-timeout   { border-left-color: #008000 !important; background: rgba(0, 128, 0, 0.10) !important; }
+    .hs-mc-msg.hs-mc-notice-timeout   .hs-mc-system-text { color: #00cc44; }
+    .hs-mc-msg.hs-mc-notice-unban     { border-left-color: #00ff00 !important; background: rgba(0, 255, 0, 0.12) !important; }
+    .hs-mc-msg.hs-mc-notice-unban     .hs-mc-system-text { color: #00ff00; font-weight: 600; }
+    .hs-mc-msg.hs-mc-notice-untimeout { border-left-color: #008000 !important; background: rgba(0, 128, 0, 0.10) !important; }
+    .hs-mc-msg.hs-mc-notice-untimeout .hs-mc-system-text { color: #00cc44; }
+    /* Role grants (blue mod / pink VIP) */
+    .hs-mc-msg.hs-mc-notice-mod-add     { border-left-color: #4080ff !important; background: rgba(64, 128, 255, 0.12) !important; }
+    .hs-mc-msg.hs-mc-notice-mod-add     .hs-mc-system-text { color: #4080ff; font-weight: 600; }
+    .hs-mc-msg.hs-mc-notice-mod-remove  { border-left-color: #c0c0c0 !important; background: rgba(192, 192, 192, 0.06) !important; }
+    .hs-mc-msg.hs-mc-notice-mod-remove  .hs-mc-system-text { color: #c0c0c0; }
+    .hs-mc-msg.hs-mc-notice-vip-add     { border-left-color: #ff00ff !important; background: rgba(255, 0, 255, 0.12) !important; }
+    .hs-mc-msg.hs-mc-notice-vip-add     .hs-mc-system-text { color: #ff44ff; font-weight: 600; }
+    .hs-mc-msg.hs-mc-notice-vip-remove  { border-left-color: #c0c0c0 !important; background: rgba(192, 192, 192, 0.06) !important; }
+    .hs-mc-msg.hs-mc-notice-vip-remove  .hs-mc-system-text { color: #c0c0c0; }
+    /* Single message delete = dark red (less severe than ban) */
+    .hs-mc-msg.hs-mc-notice-delete    { border-left-color: #800000 !important; background: rgba(128, 0, 0, 0.10) !important; }
+    .hs-mc-msg.hs-mc-notice-delete    .hs-mc-system-text { color: #ff8080; }
+    /* Room mode change = aqua */
+    .hs-mc-msg.hs-mc-notice-mode      { border-left-color: #00ffff !important; background: rgba(0, 255, 255, 0.10) !important; }
+    .hs-mc-msg.hs-mc-notice-mode      .hs-mc-system-text { color: #00ffff; font-weight: 600; }
+    /* Sub events (Twitch convention = purple, gifts = brighter magenta variant) */
+    .hs-mc-msg.hs-mc-notice-sub       { border-left-color: #9146ff !important; background: rgba(145, 70, 255, 0.12) !important; }
+    .hs-mc-msg.hs-mc-notice-sub       .hs-mc-system-text { color: #b87aff; font-weight: 600; }
+    .hs-mc-msg.hs-mc-notice-gift      { border-left-color: #cc44ff !important; background: rgba(204, 68, 255, 0.16) !important; }
+    .hs-mc-msg.hs-mc-notice-gift      .hs-mc-system-text { color: #cc44ff; font-weight: 600; }
+    /* Raid = magenta (ANSI 13) — special event family */
+    .hs-mc-msg.hs-mc-notice-raid      { border-left-color: #ff00ff !important; background: rgba(255, 0, 255, 0.14) !important; }
+    .hs-mc-msg.hs-mc-notice-raid      .hs-mc-system-text { color: #ff00ff; font-weight: 700; }
+    /* Announcement = pure yellow (broadcaster speaking) */
+    .hs-mc-msg.hs-mc-notice-announce  { border-left-color: #ffff00 !important; background: rgba(255, 255, 0, 0.10) !important; }
+    .hs-mc-msg.hs-mc-notice-announce  .hs-mc-system-text { color: #ffff00; font-weight: 600; }
+    /* Bits = gold/amber (distinct from raid orange and announce yellow) */
+    .hs-mc-msg.hs-mc-notice-bits      { border-left-color: #ffaa00 !important; background: rgba(255, 170, 0, 0.10) !important; }
+    .hs-mc-msg.hs-mc-notice-bits      .hs-mc-system-text { color: #ffd700; font-weight: 600; }
+    /* viewermilestone (sub anniversary, etc.) = teal */
+    .hs-mc-msg.hs-mc-notice-milestone { border-left-color: #008080 !important; background: rgba(0, 128, 128, 0.12) !important; }
+    .hs-mc-msg.hs-mc-notice-milestone .hs-mc-system-text { color: #00ffff; font-weight: 600; }
+    /* Watch-streak = brand orange — engagement heat, distinct from raid magenta */
+    .hs-mc-msg.hs-mc-notice-watchstreak { border-left-color: #ff7f00 !important; background: rgba(255, 127, 0, 0.12) !important; }
+    .hs-mc-msg.hs-mc-notice-watchstreak .hs-mc-system-text { color: #ffa040; font-weight: 600; }
+    /* Mod-anniversary = bright sky-blue (mod-family palette, brighter than
+       grant-mod #4080ff so it reads as a celebration, not a routine grant) */
+    .hs-mc-msg.hs-mc-notice-mod-anniversary { border-left-color: #1ec5ff !important; background: rgba(30, 197, 255, 0.14) !important; }
+    .hs-mc-msg.hs-mc-notice-mod-anniversary .hs-mc-system-text { color: #5fd3ff; font-weight: 700; }
+    /* Errors / rejections = dim maroon */
+    .hs-mc-msg.hs-mc-notice-error     { border-left-color: #800000 !important; background: rgba(128, 0, 0, 0.06) !important; }
+    .hs-mc-msg.hs-mc-notice-error     .hs-mc-system-text { color: #ff8080; }
+    /* First-time chatter (Twitch first-msg=1) = Twitch magenta-purple */
+    .hs-mc-msg.hs-mc-first-msg { border-left: 3px solid #bd5fff; padding-left: 8px; background: rgba(189, 95, 255, 0.12); }
+    /* Cleared (timed out / banned / msg deleted) — Twitch-native dim + strikethrough.
+       Username and badges stay visible so the reader can see who got hit; the body
+       text and emotes get faded with a strikethrough. */
+    .hs-mc-msg.hs-mc-msg-cleared { opacity: 0.45; }
+    .hs-mc-msg.hs-mc-msg-cleared .hs-mc-emote,
+    .hs-mc-msg.hs-mc-msg-cleared .hs-mc-emote-wrapper > img,
+    .hs-mc-msg.hs-mc-msg-cleared .hs-mc-emote-stack img { filter: grayscale(1) brightness(0.7); }
+    /* Strikethrough only the message body, not the user/badges/timestamp */
+    .hs-mc-msg.hs-mc-msg-cleared > *:not(.hs-mc-ts):not(.hs-mc-user):not(.hs-mc-badge-img):not(.hs-mc-badge):not(.hs-mc-channel):not(.hs-mc-platform-badge):not(.hs-mc-reply-btn):not(.hs-mc-reply-ctx) { text-decoration: line-through; }
+    .hs-mc-msg.hs-mc-redeemed {
+      background: rgba(145, 71, 255, 0.15);
+      border-left: 3px solid #9147ff;
+      padding-left: 8px;
+    }
+    .hs-mc-msg.hs-mc-highlighted {
+      background: rgba(255, 215, 0, 0.1);
+      border-left: 3px solid #ffd700;
+      padding-left: 8px;
+    }
+    .hs-mc-redeem-label {
+      color: #9147ff;
+      font-size: 13px;
+      font-style: normal;
+      font-weight: 600;
+    }
+    .hs-mc-highlight-label {
+      color: #ffd700;
+      font-size: 13px;
+      font-style: normal;
+      font-weight: 600;
+    }
+    .hs-mc-reply-ctx {
+      font-size: 13px;
+      color: #808080;
+      padding: 1px 0 1px 8px;
+      border-left: 2px solid #808080;
+      margin-bottom: 1px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      cursor: pointer;
+      user-select: none;
+    }
+    .hs-mc-msg:not(.hs-mc-reply-stack-active) .hs-mc-reply-ctx:hover {
+      background: #fff;
+      color: #000;
+    }
+    .hs-mc-msg:not(.hs-mc-reply-stack-active) .hs-mc-reply-ctx:hover .hs-mc-reply-user {
+      color: #000;
+    }
+    .hs-mc-reply-user {
+      color: #808080;
+      font-weight: 600;
+    }
+    /* Dark blood-red — saturated enough to read as "you got mentioned" but
+       dark enough to let full-color Twitch usernames render on top without
+       the bg drowning them. Mirrors heatsync.org messages.css. */
+    .hs-mc-msg.mention {
+      background: #330808;
+    }
+    /* Zebra striping for consecutive mentions — leverages the existing
+       neighbor-flip .hs-mc-zebra cadence so adjacent mention rows alternate
+       without looking like a wall of identical red. Darker red maintains
+       the mention semantic while distinguishing rows. */
+    .hs-mc-msg.mention.hs-mc-zebra {
+      background: #1a0404;
+    }
+    /* Row base color white for non-colored text (gray timestamps, plain
+       message body) — inline user colors override naturally. No star-cascade
+       so colored names breathe. */
+    .hs-mc-msg.mention {
+      color: #fff;
+    }
+    /* Channel tag — dim gray reads as skip-me metadata against the dark bg. */
+    .hs-mc-msg.mention .hs-mc-channel,
+    .hs-mc-msg.mention .hs-mc-channel * {
+      color: #999 !important;
+      -webkit-text-fill-color: #999 !important;
+    }
+    .hs-mc-msg.hs-first-msg {
+      box-shadow: inset 2px 0 0 #ffff00;
+    }
+    .hs-mc-msg.hs-kw-match {
+      background: rgba(255, 255, 0, 0.14);
+      box-shadow: inset 0 0 0 1px #ffff00;
+    }
+    .hs-mc-msg.tweet {
+      background: rgba(212, 73, 73, 0.3);
+    }
+    .hs-mc-user {
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .hs-mc-link {
+      color: var(--hs-link);
+      text-decoration: none;
+      word-break: break-all;
+      position: relative;
+    }
+    .hs-mc-link:hover {
+      text-decoration: underline;
+    }
+    .hs-mc-user.hs-user-highlight {
+      background: #fff !important;
+      color: #000 !important;
+      -webkit-text-fill-color: #000 !important;
+      border-radius: 0;
+    }
+    .hs-mc-platform-badge {
+      /* Text badges follow the single font setting (family + size), not the
+         emote-size scale — one appearance control drives every badge glyph.
+         Crispness on Cozette/Gohu comes from the .hs-font-bitmap block. */
+      font-family: var(--hs-mc-font, 'CozetteVector', 'Courier New', monospace);
+      font-size: 13px;
+      margin-right: 3px;
+      font-weight: 700;
+      vertical-align: middle;
+    }
+    .hs-mc-platform-badge.hs-mc-pb-twitch { color: #9146ff; }
+    .hs-mc-platform-badge.hs-mc-pb-kick { color: #53fc18; }
+    .hs-mc-platform-badge.hs-mc-pb-yt { color: #ff0000; }
+    .hs-mc-badge {
+      display: inline-block;
+      /* Single font setting drives family + size (see .hs-mc-platform-badge). */
+      font-family: var(--hs-mc-font, 'CozetteVector', 'Courier New', monospace);
+      font-size: 13px;
+      padding: 0 3px;
+      border-radius: 0;
+      margin-right: 2px;
+      font-weight: 700;
+      vertical-align: middle;
+      line-height: var(--hs-stat-badge-line, 16px);
+      letter-spacing: 0.3px;
+      cursor: default;
+    }
+    .hs-mc-badge-img {
+      display: inline !important;
+      width: var(--hs-badge-img, 18px);
+      height: var(--hs-badge-img, 18px);
+      vertical-align: middle;
+      margin-right: 2px;
+      cursor: default;
+    }
+

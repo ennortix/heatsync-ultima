@@ -1,0 +1,574 @@
+    .hs-mc-emote {
+      width: auto;
+      height: auto;
+      max-height: var(--hs-emote-size, 32px);
+      vertical-align: middle;
+      margin: 0;
+      padding: 2px;
+      border-radius: 0;
+      transition: none;
+      cursor: pointer;
+      box-sizing: content-box;
+    }
+    /* Feed content is rendered in CozetteVector (a pixel font). A bare inline
+       emote with vertical-align:middle recenters the line box and lands adjacent
+       text on a half-pixel Y, blurring the glyphs. bottom keeps text on an
+       integer baseline. Chat uses .hs-mc-emote-wrapper, so this is feed-only. */
+    .hs-feed-body .hs-mc-emote { vertical-align: bottom; }
+    /* Tighten gap between consecutive emotes so "eel1 eel2 eel3"
+       reads as one continuous run instead of three spaced-out images.
+       Negative margin pulls the second wrapper over the whitespace
+       text node that separates them in the DOM. */
+    .hs-mc-emote-wrapper + .hs-mc-emote-wrapper,
+    .hs-mc-emote-wrapper + .hs-mc-emote-stack,
+    .hs-mc-emote-stack + .hs-mc-emote-wrapper,
+    .hs-mc-emote-stack + .hs-mc-emote-stack {
+      margin-left: -4px;
+    }
+    .hs-mc-picker-emote {
+      height: auto;
+      max-height: 32px;
+      max-width: 96px;
+      width: auto;
+      vertical-align: middle;
+      margin: 0;
+      padding: 4px;
+      border-radius: 0;
+      transition: none;
+      cursor: pointer;
+      box-sizing: content-box;
+      object-fit: contain;
+    }
+    /* Picker emote wrap — 2 states:
+       - normal → white ::before rect on hover (emote stays visible on top
+         via z-index, matching project hover convention).
+       - .blocked → persistent 2px dashed grey rectangle, img hidden.
+       Rectangle paints via ::before so the slot's layout stays intact. */
+    .hs-mc-picker-emote-wrap {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      position: relative;
+    }
+    .hs-mc-picker-emote-wrap::before {
+      content: '';
+      position: absolute;
+      /* Match img content-box, not its padding-box. .hs-mc-picker-emote
+         carries padding:4px, so the wrap is 8px wider/taller than the
+         visible emote — inset:0 here would paint the highlight 4px past
+         the emote on every side. Inset by the picker-emote padding so
+         the rect tracks the visible image instead. box-sizing keeps the
+         dashed border (blocked state) from inflating the rect. z-index 0
+         puts the rect BEHIND the img so the emote stays visible against
+         the white hover bg — matches the project hover convention
+         (#fff bg + emote on top) instead of the old green-rect-image-
+         hidden pattern from the 3-state ladder era. */
+      inset: 4px;
+      box-sizing: border-box;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 0;
+      /* White hover plate, matching the site's clickable convention (white bg +
+         dark content = "selected"). The emote on top is darkened to brightness
+         0.2 (see hover rule below) so it reads as a dark shape on white without
+         a fully-inverted silhouette; full-color identity is carried by the 4x
+         hover preview that fires alongside. Uniform across every emote surface. */
+      background: #fff;
+    }
+    .hs-mc-picker-emote-wrap:not(.blocked):hover::before {
+      opacity: 1;
+    }
+    .hs-mc-picker-emote-wrap > img {
+      position: relative;
+      z-index: 1;
+    }
+    /* Darken the emote on the white hover plate — not brightness(0)/silhouette,
+       0.2 keeps a hint of form. Tune this one value to taste. */
+    .hs-mc-picker-emote-wrap:not(.blocked):hover > img {
+      filter: brightness(0.2);
+    }
+    /* Blocked: persistent dashed rect via ::before (not outline on the
+       wrap) so it tracks emote content size like the green/orange hover
+       does, instead of sitting 4px outside on the wrap's padding-box. */
+    .hs-mc-picker-emote-wrap.blocked::before {
+      opacity: 1;
+      background: none;
+      border: 2px dashed #808080;
+    }
+    .hs-mc-picker-emote-wrap.blocked img {
+      visibility: hidden !important;
+    }
+
+    /* Emojis — scale driven by --hs-emoji-scale (1|2|4). Default 2x.
+       line-height MUST match the parent message's integer line-height
+       (18px) so a tall color-emoji glyph does NOT grow the inline line-box.
+       If the line-box grows from emoji metrics, half-leading for 13px text
+       becomes fractional and every character that follows the emoji on
+       the same row renders at a sub-integer baseline (= bitmap smear).
+       Emoji visual overflows the 18px box vertically — intentional. */
+    .hs-mc-emoji {
+      font-size: calc(1em * var(--hs-emoji-scale, 2));
+      /* line-height matches --hs-emote-size so the inline-block reports the
+         same height as emote imgs. line-height: 1 (= font-size = ~26px) left
+         the glyph filling the box edge-to-edge; some emoji glyphs (Noto)
+         bleed 1-2px past their em-box → clipped by .hs-mc-msg's
+         overflow:hidden. Pinning to emote size gives ~3px headroom above
+         and below the glyph, matches emote-row visual height, keeps mixed
+         emoji+text rows visually consistent with emote+text rows. */
+      line-height: var(--hs-emote-size, 32px);
+      /* text-bottom, NOT middle/bottom: middle anchors the box at baseline +
+         xHeight/2, and Cozette's 13px x-height is fractional (3.546875px
+         half) — the grown line-box lands every adjacent glyph on a half-pixel
+         baseline (= bitmap smear). Plain bottom anchors to the LINE-BOX
+         bottom, which middle-aligned badge imgs also place fractionally.
+         text-bottom anchors to the parent font's strut — integer growth,
+         immune to sibling boxes. */
+      vertical-align: text-bottom;
+      display: inline-block;
+    }
+    /* 7TV ZERO-WIDTH OVERLAY EMOTE STACKING */
+    .hs-mc-emote-stack {
+      display: inline-flex;
+      align-items: center;
+      position: relative;
+      /* text-bottom for integer line-box growth — same bitmap-smear rationale
+         as .hs-mc-emoji above. middle shifted every mixed emote+text row's
+         glyphs onto a .546875px baseline. */
+      vertical-align: text-bottom;
+      /* Lock height so collapsed↔expanded toggle doesn't shift line height
+         (expanded adds 2px vertical padding via pseudo-element). */
+      height: 36px;
+      box-sizing: border-box;
+    }
+    .hs-mc-emote-stack-emotes {
+      display: inline-grid;
+      place-items: center;
+      position: relative;
+    }
+    .hs-mc-emote-stack-emotes > .hs-mc-emote-wrapper,
+    .hs-mc-emote-stack-emotes > .hs-mc-emoji {
+      grid-area: 1 / 1;
+    }
+    .hs-mc-emote-stack-emotes > :first-child {
+      z-index: 1;
+    }
+    .hs-mc-emote-stack-emotes > :not(:first-child) {
+      z-index: 2;
+      pointer-events: auto;
+    }
+    /* Overlay emote at native size, not constrained to base */
+    .hs-mc-overlay-emote {
+      height: auto !important;
+      margin: 0 !important;
+      pointer-events: auto;
+    }
+
+    /* EMOTE STACK EXPAND/COLLAPSE */
+    .hs-mc-stack-collapse,
+    .hs-mc-stack-block-all {
+      display: none;
+      cursor: pointer;
+      font-size: 14px;
+      line-height: 1;
+      padding: 0 2px;
+      user-select: none;
+    }
+    .hs-mc-emote-stack.expanded {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      /* Drop the collapsed 36px lock so a multi-row wrap can grow vertically. */
+      height: auto;
+    }
+    /* Expanded inner: gray bg via pseudo-element bleeding outward so the box
+       layout doesn't grow vs collapsed (no line-height shift, no off-center).
+       wrap + non-shrinking children so a 50-emote nest reflows onto multiple
+       rows at native size instead of squishing to a 4px-wide single line. */
+    .hs-mc-emote-stack.expanded .hs-mc-emote-stack-emotes {
+      border-radius: 0;
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      align-items: center;
+    }
+    .hs-mc-emote-stack.expanded .hs-mc-emote-stack-emotes > .hs-mc-emote-wrapper,
+    .hs-mc-emote-stack.expanded .hs-mc-emote-stack-emotes > .hs-mc-emoji {
+      flex: 0 0 auto;
+    }
+    .hs-mc-emote-stack.expanded .hs-mc-emote-stack-emotes::after {
+      content: '';
+      position: absolute;
+      inset: -2px -6px;
+      background: #808080;
+      z-index: -1;
+      pointer-events: none;
+    }
+    .hs-mc-emote-stack.expanded > .hs-mc-emote-stack-emotes > .hs-mc-emote-wrapper {
+      grid-area: auto;
+    }
+    .hs-mc-emote-stack.expanded .hs-mc-stack-collapse,
+    .hs-mc-emote-stack.expanded .hs-mc-stack-block-all {
+      display: inline-block;
+    }
+    .hs-mc-stack-collapse:hover {
+      background: #fff;
+      color: #000;
+    }
+    .hs-mc-stack-block-all:hover {
+      background: #fff;
+      color: #000;
+    }
+
+    /* STATE-BASED EMOTE COLORS (website parity) */
+    /* Wrapper spans for solid color hover rectangles */
+    .hs-mc-emote-wrapper {
+      display: inline-block;
+      position: relative;
+      vertical-align: middle;
+      cursor: pointer;
+      line-height: 0;
+      font-size: 0;
+    }
+    /* In message rows, single emotes render as BARE wrappers (renderEmoteStack
+       only wraps real overlay groups) — middle re-introduces the half-pixel
+       baseline smear on adjacent text (same math as .hs-mc-emote-stack above).
+       Scoped to .hs-mc-msg so picker/tooltip layouts keep middle. */
+    .hs-mc-msg .hs-mc-emote-wrapper {
+      vertical-align: text-bottom;
+      /* Reserve the emote's full box height from first paint so a lazy-loading
+         emote can't grow its row on arrival and shove every row below it down
+         (the measured layout-shift jank). A bare wrapper holds a 0-height img
+         until load, collapsing the line to text height (~19px) then snapping to
+         ~36px — a per-row vertical jolt on scroll / slow load / cache miss.
+         min-height (not a fixed img height) keeps aspect intact and never
+         upscales a small emote, so bitmap crispness is untouched. +4px covers
+         the img's 2px content-box padding (matches .hs-mc-emote-stack's 36px
+         lock). Width stays auto — width-pop is within-row and negligible. */
+      min-height: calc(var(--hs-emote-size, 32px) + 4px);
+    }
+    /* same bitmap-smear math for the badge family — any middle-aligned
+       inline box taller than the strut grows the row's line box by a
+       fractional amount and lands every glyph (the reported blurry
+       "mellen") on a half-pixel baseline. row-scoped: cards/pickers
+       keep middle. */
+    .hs-mc-msg .hs-mc-platform-badge,
+    .hs-mc-msg .hs-mc-badge,
+    .hs-mc-msg .hs-mc-bits-badge,
+    .hs-mc-msg .hs-mc-badge-img,
+    .hs-mc-msg .hs-mc-avatar {
+      vertical-align: text-bottom;
+    }
+    .hs-mc-emote-wrapper > img {
+      display: block;
+    }
+    .hs-mc-emote-wrapper::before {
+      content: '';
+      position: absolute;
+      inset: 4px;
+      border-radius: 0;
+      opacity: 0;
+      /* Opacity stays untransitioned (kept snappy on cross-highlight class
+         toggles); background-color fades 0.25s so block↔unblock during
+         hover smoothly cross-fades. z-index 0 + img positioned above
+         (rule below) means the rect sits BEHIND the emote — white hover
+         bg with the emote on top, matching project hover convention. */
+      transition: background-color 0.25s ease-out;
+      z-index: 0;
+      pointer-events: none;
+    }
+    .hs-mc-emote-wrapper > img {
+      position: relative;
+      z-index: 1;
+    }
+    /* Cross-highlight: white rect lights up behind every instance of the same
+       emote when one is hovered. Color from --hs-highlight-color so blocked
+       instances can still tint red (set per-emote by tooltips.js). */
+    /* White highlight plate (clickable convention); the emote on top darkens to
+       brightness 0.2 so it reads on white — see picker ::before note. The 4x
+       preview carries full-color identity. --hs-highlight-color stays the hook
+       for the red blocked tint (set per-emote by tooltips.js). */
+    .hs-mc-emote-wrapper.hs-emote-highlight::before {
+      opacity: 1;
+      background: var(--hs-highlight-color, #fff) !important;
+      transition: none;
+    }
+    .hs-mc-emote-wrapper.hs-emote-highlight:not(.hs-state-blocked):not(.hs-state-stale) > img {
+      filter: brightness(0.2);
+    }
+    /* Tab cycling: suppress emote hover highlight while user is cycling Tab
+       matches in chat input. Mouse stuck over an emote keeps the green rect
+       lit otherwise. Cleared on the next mousemove. */
+    body.hs-tab-cycling .hs-mc-emote-wrapper.hs-emote-highlight::before {
+      opacity: 0 !important;
+    }
+    body.hs-tab-cycling .hs-mc-emote-wrapper.hs-emote-highlight > img {
+      visibility: visible !important;
+      filter: none !important;
+    }
+    body.hs-tab-cycling .hs-mc-emote-stack:not(.expanded):has(.hs-mc-emote-wrapper.hs-emote-highlight)::before {
+      opacity: 0 !important;
+    }
+
+    /* State colors via ::before — 2-state model: all pasteable states
+       (global/owned/channel/unadded) inherit the default white hover bg.
+       Blocked + stale have their own override rules below — no per-state
+       fill needed here. */
+
+    /* v1.6 NSFW — 2px dashed teal (#008080, xterm-256 #30) border on
+       flagged emotes in DECISION surfaces (picker, input chip). Chat
+       rows do NOT paint a border — when a viewer opts in to see flagged
+       content, the cyan-on-every-flagged-emote was visual noise. The
+       wrapper still carries hs-state-nsfw class for tooltip hooks
+       ("·NSFW" suffix still works on hover) — just no painted border
+       on the chat side. */
+    .hs-mc-picker-emote-wrap.hs-state-nsfw > img,
+    img.hs-input-emote.hs-state-nsfw {
+      border: 2px dashed #008080 !important;
+      box-sizing: border-box !important;
+    }
+
+    /* Stale ghost: emote was in the channel set when the message posted but
+       has since been removed. Dim + desaturate the cached IMG; muted-orange
+       marker on the wrap ::before signals "stale, channel removed it". */
+    .hs-mc-emote-wrapper.hs-state-stale > img {
+      opacity: 0.55;
+      filter: saturate(0.45);
+      transition: opacity 0.2s ease-out, filter 0.2s ease-out;
+    }
+    .hs-mc-emote-wrapper.hs-state-stale:hover > img {
+      opacity: 1;
+      filter: none;
+    }
+    .hs-mc-emote-wrapper.hs-state-stale::before {
+      background: #7a4400;
+    }
+
+    /* Blocked emotes: hide img (keeps natural dimensions), dashed line via ::before */
+    .hs-mc-emote-wrapper.hs-state-blocked > img {
+      visibility: hidden;
+    }
+    .hs-mc-emote-wrapper.hs-state-blocked::before {
+      opacity: 1;
+      background: none;
+      border: 2px dashed #808080;
+    }
+    .hs-mc-emote-stack.expanded .hs-mc-emote-wrapper.hs-state-blocked::before {
+      border-color: #fff;
+    }
+    .hs-mc-emote-wrapper.hs-state-blocked.hs-emote-highlight::before {
+      background: #ff0000;
+      border: none;
+    }
+
+    /* Collapsed stack: unified hover ::before on the stack itself.
+       Per-wrapper hover (cross-highlight) is suppressed — stack-level ::before
+       paints one solid rectangle. Persistent blocked-dash per emote is kept
+       as-is so users can see which specific emotes in the nest are blocked. */
+    /* When the stack is hovered, hide ALL per-wrapper ::before indicators
+       (incl. persistent blocked-dash on emotes that aren't the cross-highlight
+       target) so only the unified stack rect shows. */
+    .hs-mc-emote-stack:not(.expanded):has(.hs-mc-emote-wrapper.hs-emote-highlight) .hs-mc-emote-wrapper::before {
+      display: none !important;
+    }
+    .hs-mc-emote-stack:not(.expanded)::before {
+      content: '';
+      position: absolute;
+      inset: 4px;
+      opacity: 0;
+      pointer-events: none;
+      /* Behind the stacked emotes (children sit at z-index 1/2) so the composite
+         reads as a dark shape on the white plate — same as a single emote — not
+         a flat filled rectangle covering the art. */
+      z-index: 0;
+    }
+    .hs-mc-emote-stack:not(.expanded):has(.hs-mc-emote-wrapper.hs-emote-highlight)::before {
+      opacity: 1;
+      /* White plate (clickable convention), matching the single-emote default;
+         --hs-highlight-color stays the hook for the red blocked tint. */
+      background: var(--hs-highlight-color, #fff);
+      border: none;
+    }
+    /* Darken the whole stacked composite to brightness 0.2 (base + overlays)
+       instead of hiding it — dark-on-white, mirroring the single-emote hover.
+       Full-color identity is carried by the 4x preview that fires alongside. */
+    .hs-mc-emote-stack:not(.expanded):has(.hs-mc-emote-wrapper.hs-emote-highlight) > .hs-mc-emote-stack-emotes > .hs-mc-emote-wrapper:not(.hs-state-blocked) > img {
+      filter: brightness(0.2);
+    }
+
+    /* Flash animations */
+    @keyframes hs-flash-paste { 0% { box-shadow: 0 0 12px 4px #fff; } 100% { box-shadow: none; } }
+    @keyframes hs-flash-add { 0% { box-shadow: 0 0 12px 4px #00ff00; } 100% { box-shadow: none; } }
+    @keyframes hs-flash-block { 0% { box-shadow: 0 0 12px 4px #ff0000; } 100% { box-shadow: none; } }
+    @keyframes hs-flash-unblock { 0% { box-shadow: 0 0 12px 4px #ffff00; } 100% { box-shadow: none; } }
+    @keyframes hs-flash-remove { 0% { box-shadow: 0 0 12px 4px #fff; } 100% { box-shadow: none; } }
+    .hs-flash-paste { animation: hs-flash-paste 0.4s ease-out; }
+    .hs-flash-add { animation: hs-flash-add 0.4s ease-out; }
+    .hs-flash-block { animation: hs-flash-block 0.4s ease-out; }
+    .hs-flash-unblock { animation: hs-flash-unblock 0.4s ease-out; }
+    .hs-flash-remove { animation: hs-flash-remove 0.4s ease-out; }
+
+    /* Legacy img classes (for picker, tooltips) */
+    .hs-mc-emote, .hs-mc-picker-emote {
+      position: relative;
+    }
+
+    /* Badge hover tooltip - 4x preview */
+    /* Max z-index so it beats the reply-stack overlay (also at max int);
+       showBadgeTooltip re-appends to body so DOM order tiebreaks in our favor. */
+    #hs-badge-tooltip {
+      position: fixed;
+      z-index: 2147483647;
+      pointer-events: none;
+      background: #000;
+      border-radius: 0;
+      padding: 8px;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      border: 1px solid #808080;
+    }
+    #hs-badge-tooltip.visible {
+      display: flex;
+    }
+    #hs-badge-tooltip img {
+      object-fit: contain;
+      image-rendering: pixelated;
+      image-rendering: -moz-crisp-edges;
+    }
+    #hs-badge-tooltip .tooltip-name {
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    #hs-badge-tooltip .tooltip-source {
+      font-size: 13px;
+      padding: 2px 6px;
+      margin: 2px -8px -8px;
+      border-radius: 0;
+      color: #fff;
+      width: calc(100% + 16px);
+      text-align: center;
+      background: #808080;
+    }
+
+    /* Emote hover tooltip - 4x preview */
+    /* Max z-index so it beats the reply-stack overlay (also at max int);
+       showEmoteTooltip re-appends to body so DOM order tiebreaks in our favor. */
+    #hs-emote-tooltip {
+      position: fixed;
+      z-index: 2147483647;
+      pointer-events: none;
+      background: #000;
+      border-radius: 0;
+      padding: 8px;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid #808080;
+    }
+    #hs-emote-tooltip.visible {
+      display: flex;
+    }
+    #hs-emote-tooltip img {
+      object-fit: contain;
+      image-rendering: pixelated;
+    }
+    /* Emote-nest composite preview: sized box, scaled stack pinned top-left */
+    #hs-emote-tooltip .tooltip-stack {
+      display: none;
+      position: relative;
+      overflow: visible;
+    }
+    #hs-emote-tooltip .tooltip-stack .hs-mc-emote-stack-emotes::before { content: none !important; }
+    #hs-emote-tooltip .tooltip-name {
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    #hs-emote-tooltip .tooltip-source {
+      font-size: 13px;
+      padding: 2px 6px;
+      margin: 2px -8px -8px;
+      border-radius: 0;
+      color: #fff;
+      width: calc(100% + 16px);
+      text-align: center;
+    }
+    /* 2-state tooltip source chip: pasteable states use the project's
+       hover convention (white bg + black text). Per-provider chips below
+       (src-7tv, src-bttv, etc.) still carry their brand colors as the
+       primary visual since users identify emotes by source platform. */
+    #hs-emote-tooltip .tooltip-source.owned,
+    #hs-emote-tooltip .tooltip-source.unadded,
+    #hs-emote-tooltip .tooltip-source.global,
+    #hs-emote-tooltip .tooltip-source.channel { background: #fff; color: #000; }
+    #hs-emote-tooltip .tooltip-source.sub { background: #9146ff; color: #fff; }
+    #hs-emote-tooltip .tooltip-source.blocked { background: #ff0000; color: #fff; }
+    /* Per-provider source label colors (override .global/.channel) */
+    #hs-emote-tooltip .tooltip-source.src-7tv { background: #29d8f6; color: #000; }
+    #hs-emote-tooltip .tooltip-source.src-bttv { background: #d50014; color: #fff; }
+    #hs-emote-tooltip .tooltip-source.src-ffz { background: #0086c8; color: #fff; }
+    #hs-emote-tooltip .tooltip-source.src-twitch { background: #9146ff; color: #fff; }
+    #hs-emote-tooltip .tooltip-source.src-kick { background: #53fc18; color: #000; }
+    #hs-emote-tooltip .tooltip-source.src-heatsync { background: #ff8700; color: #000; }
+
+    /* Max z-index + showLinkTooltip re-appends to body — beats reply-stack overlay. */
+    #hs-link-tooltip {
+      position: fixed;
+      z-index: 2147483647;
+      pointer-events: none;
+      background: #000;
+      border-radius: 0;
+      padding: 8px;
+      display: none;
+      flex-direction: row;
+      gap: 8px;
+      max-width: 350px;
+      border: 1px solid #808080;
+    }
+    #hs-link-tooltip.visible { display: flex; }
+    #hs-link-tooltip img {
+      width: 80px;
+      height: 80px;
+      object-fit: cover;
+      border-radius: 0;
+      flex-shrink: 0;
+    }
+    #hs-link-tooltip .link-text {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      min-width: 0;
+      justify-content: center;
+    }
+    #hs-link-tooltip .link-title {
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+    #hs-link-tooltip .link-desc {
+      color: #fff;
+      font-size: 13px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+    #hs-link-tooltip .link-domain {
+      color: var(--hs-link);
+      font-size: 13px;
+    }
+    #hs-link-tooltip .link-loading {
+      color: #808080;
+      font-size: 13px;
+    }
+

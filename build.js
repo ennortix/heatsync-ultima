@@ -130,16 +130,24 @@ function readMultichatModules() {
   for (const file of MULTICHAT_MODULES) {
     const filePath = join(mcDir, file)
     if (!existsSync(filePath)) continue
-    const content = readFileSync(filePath, 'utf8')
-    // styles.js wraps CSS in one template literal — stray backticks
-    // (even in CSS comments) terminate it early. Sister files like
-    // chrome/content.js have the same shape; comprehensive syntax check
-    // runs over every output bundle in syntaxCheck() below.
+    let content = readFileSync(filePath, 'utf8')
+    // styles.js holds no CSS — it's split into src/multichat/styles/*.css
+    // fragments (so a stray backtick in a CSS comment can't silently terminate
+    // the literal and break the bundle, as it killed v1.3.7). Concatenate the
+    // fragments in filename order and re-embed as the css template literal here.
     if (file === 'styles.js') {
-      const tickCount = (content.match(/`/g) || []).length
-      if (tickCount !== 2) {
-        throw new Error(`build: styles.js must have exactly 2 backticks (template-literal delimiters); found ${tickCount}. CSS comments cannot contain backticks.`)
+      const stylesDir = join(mcDir, 'styles')
+      const cssFrags = readdirSync(stylesDir).filter(f => f.endsWith('.css')).sort()
+      if (!cssFrags.length) throw new Error('build: src/multichat/styles/ has no .css fragments')
+      const cssBody = cssFrags.map(f => readFileSync(join(stylesDir, f), 'utf8')).join('')
+      if (cssBody.includes('`') || cssBody.includes('${')) {
+        throw new Error('build: a styles/*.css fragment contains a backtick or ${ — unsafe to embed in the css template literal')
       }
+      if (!content.includes("'__HS_STYLES_BUNDLE__'")) {
+        throw new Error('build: styles.js missing __HS_STYLES_BUNDLE__ placeholder')
+      }
+      // function replacement avoids $-pattern interpretation in the CSS
+      content = content.replace("'__HS_STYLES_BUNDLE__'", () => '`' + cssBody + '`')
     }
     combined += `\n// --- multichat/${file} ---\n${stripExports(content)}\n`
   }

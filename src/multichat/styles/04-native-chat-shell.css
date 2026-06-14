@@ -1,0 +1,159 @@
+    /* UNIFIED INPUT BAR - always visible at bottom */
+    #hs-mc-inputbar {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      /* 3px black gutter framing the input — the input's own 1px border +
+         this bar's 1px top border already separate it from chat + panel
+         edges, so the gutter only needs to read as intentional, not breathe.
+         Row height is set by the tallest child (input ~29px), NOT this pad. */
+      padding: 3px;
+      background: #000;
+      border-top: 1px solid #808080;
+      z-index: 1002;
+      box-sizing: border-box;
+    }
+
+    /* NUKE native Twitch chat when our overlay is active (FFZ-style class toggle) */
+    /* Hide native chat messages container */
+    .hs-native-hidden [class*="chat-scrollable-area__message-container"],
+    .hs-native-hidden [class*="chat-list--default"],
+    .hs-native-hidden [class*="chat-list--other"],
+    .hs-native-hidden [data-a-target="chat-scroller"] {
+      display: none !important;
+    }
+    /* Hide native chat input area.
+       Exception: keep the .chat-input wrapper visible when it contains the
+       resub-share / sub-anniversary callout queue, so our floating-banner CSS
+       below can surface it. */
+    .hs-native-hidden [class*="chat-input-container"]:not(:has([data-test-selector="chat-private-callout-queue__callout-container"] *)),
+    .hs-native-hidden [data-a-target="chat-input"]:not(:has([data-test-selector="chat-private-callout-queue__callout-container"] *)) {
+      display: none !important;
+    }
+    /* Hide native chat header/room content — our elements are in #hs-mc-container (sibling) */
+    .hs-native-hidden [class*="chat-room__content"] > *:not(.hs-pc-panel):not(.hs-profile-card):not(:has([data-test-selector="chat-private-callout-queue__callout-container"] *)) {
+      display: none !important;
+    }
+    /* Collapse the native chat container itself so #hs-mc-container gets flex space.
+       Exception: when the resub-share callout queue is present, keep this
+       container in flow (zero box) so the fixed-positioned callout can render
+       — position:fixed descendants still don't render under display:none. */
+    [class*="chat-room__content"].hs-native-hidden:not(:has([data-test-selector="chat-private-callout-queue__callout-container"] *)) {
+      display: none !important;
+    }
+    [class*="chat-room__content"].hs-native-hidden:has([data-test-selector="chat-private-callout-queue__callout-container"] *) {
+      display: block !important;
+      position: absolute !important;
+      width: 0 !important;
+      height: 0 !important;
+      overflow: visible !important;
+      pointer-events: none !important;
+    }
+    /* HeatSync container — sibling of React's chat-room__content, outside React's tree.
+       font-family + size driven by ui_settings.fontFamily / ui_settings.fontSize
+       via CSS vars set on the container element in applyFontSettings() (main.js).
+       Defaults: CozetteVector @ 13px to match heatsync.org's bitmap aesthetic. */
+    #hs-mc-container {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      width: 100%;
+      min-height: 0;
+      /* Guard against edge-case layout collapse at very narrow/short viewports
+         where opening the picker caused height to expand to scroll-height and
+         position to revert to static, pushing the panel off-screen. */
+      max-height: 100vh;
+      overflow: hidden;
+      background: #000;
+      /* 'Noto Color Emoji' belongs in the body stack so color-emoji codepoints
+         resolve to a known font with stable metrics — matching heatsync.org's
+         --font-family-mono. Without it the browser picks an unpredictable
+         system emoji font and the per-glyph advance can be fractional. */
+      font-family: var(--hs-mc-font, 'CozetteVector'), 'Courier New', monospace, 'Noto Color Emoji';
+      font-size: var(--hs-mc-base-size, 13px);
+      /* Integer line-height (mirrors heatsync.org body 17px). Unitless lh
+         multiplied by 13px = 18.2px = fractional baseline = bitmap blur on
+         every line. Anything that inherits this stays on the pixel grid. */
+      line-height: 17px;
+      /* Cross-fade with the document_start prepaint pseudo-element. Container
+         starts invisible; main.js sets opacity:1 after the overlay mounts +
+         renders, so prepaint (fading out) and container (fading in) overlap
+         and the user never sees a black gap or a tab-bar pop. */
+      opacity: 0;
+      transition: opacity 200ms ease-out;
+    }
+    #hs-mc-container.hs-mc-shown {
+      opacity: 1;
+    }
+
+    /* CHAT HIDDEN STATE — chatPosition='hidden' collapses overlay; edge-pill restores */
+    body.hs-chat-hidden #hs-mc-container { display: none !important; }
+    body.hs-chat-hidden #hs-c-resize-handle,
+    body.hs-chat-hidden #hs-mc-resize-handle,
+    body.hs-chat-hidden #hs-kick-resize-handle,
+    body.hs-chat-hidden #hs-yt-resize-handle { display: none !important; }
+    body.hs-chat-hidden .chat-shell.hs-native-hidden,
+    body.hs-chat-hidden [class*="chat-shell"].hs-native-hidden { display: none !important; }
+    #hs-chat-restore-pill {
+      position: fixed !important;
+      background: #ff8700 !important;
+      z-index: 2147483647 !important;
+      cursor: pointer !important;
+      transition: opacity 120ms ease-out !important;
+      opacity: 0.85 !important;
+      box-shadow: 0 0 4px rgba(255,135,0,0.5) !important;
+    }
+    #hs-chat-restore-pill:hover { opacity: 1 !important; }
+    #hs-chat-restore-pill[data-edge="right"] { top: 25% !important; right: 0 !important; width: 6px !important; height: 50% !important; }
+    #hs-chat-restore-pill[data-edge="left"] { top: 25% !important; left: 0 !important; width: 6px !important; height: 50% !important; }
+    #hs-chat-restore-pill[data-edge="top"] { top: 0 !important; left: 25% !important; height: 6px !important; width: 50% !important; }
+    #hs-chat-restore-pill[data-edge="bottom"] { bottom: 0 !important; left: 25% !important; height: 6px !important; width: 50% !important; }
+
+    /* Vertical tabs: container gets row direction */
+    .hs-tabs-left #hs-mc-container,
+    .hs-tabs-right #hs-mc-container {
+      flex-direction: row;
+    }
+    /* Keep chat-shell visible (our #hs-mc-container lives inside it) but hide native children */
+    .chat-shell.hs-native-hidden,
+    [class*="chat-shell"].hs-native-hidden {
+      display: flex !important;
+      flex-direction: column !important;
+      height: 100% !important;
+      min-width: 0 !important;
+      background: #000 !important;
+    }
+    .chat-shell.hs-native-hidden > *:not(#hs-mc-container):not(.hs-pc-panel):not(.hs-profile-card):not(:has([data-test-selector="chat-private-callout-queue__callout-container"] *)),
+    [class*="chat-shell"].hs-native-hidden > *:not(#hs-mc-container):not(.hs-pc-panel):not(.hs-profile-card):not(:has([data-test-selector="chat-private-callout-queue__callout-container"] *)) {
+      display: none !important;
+    }
+    /* When the callout queue is present, the wrapper holding it (a Twitch
+       Layout-sc-* div between chat-shell and chat-room__content) is excluded
+       from the hide rule above and naturally expands to fill all flex space —
+       starving #hs-mc-container down to h:0 so the overlay disappears. Collapse
+       the wrapper to absolute 0×0; the callout is position:fixed so it still
+       renders, and hs-mc-container reclaims its flex:1 height. */
+    .chat-shell.hs-native-hidden > *:has([data-test-selector="chat-private-callout-queue__callout-container"] *):not(#hs-mc-container):not(.hs-pc-panel):not(.hs-profile-card),
+    [class*="chat-shell"].hs-native-hidden > *:has([data-test-selector="chat-private-callout-queue__callout-container"] *):not(#hs-mc-container):not(.hs-pc-panel):not(.hs-profile-card) {
+      display: block !important;
+      position: absolute !important;
+      width: 0 !important;
+      height: 0 !important;
+      overflow: visible !important;
+      pointer-events: none !important;
+    }
+    /* Ensure stream-chat ancestor also stays sized */
+    [class*="stream-chat"].hs-native-hidden {
+      display: flex !important;
+      flex-direction: column !important;
+      height: 100% !important;
+    }
+    .hs-native-hidden {
+      background: #000 !important;
+    }
+

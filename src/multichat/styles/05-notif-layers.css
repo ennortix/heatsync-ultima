@@ -1,0 +1,166 @@
+    /* === NOTIF LAYERS (HsNotifs) ===
+       Layer containers are positioned via CSS vars set by HsNotifs.updateLayout.
+       Adding a new layer = registerLayer(name, ...) + matching CSS rule below.
+       Empty layers collapse to 0×0 (overflow:hidden + no children) so they
+       never leave a stray rectangle on the page. */
+    .hs-notif-layer {
+      position: fixed;
+      z-index: 100000;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      overflow: visible;
+      min-width: 0;
+    }
+    .hs-notif-layer:empty { display: none; }
+    .hs-notif-layer > .hs-notif {
+      pointer-events: auto;
+      box-sizing: border-box;
+      max-width: 100%;
+      min-width: 0;
+    }
+    .hs-notif-layer-toast-stack {
+      top: var(--hs-layer-toast-stack-top, 12px);
+      right: var(--hs-layer-toast-stack-right, 20px);
+      bottom: auto;
+      align-items: flex-end;
+      max-width: min(380px, calc(100vw - 40px));
+    }
+    .hs-notif-layer-chat-docked-bottom {
+      bottom: var(--hs-layer-chat-docked-bottom-bottom, 0px);
+      left: var(--hs-layer-chat-docked-bottom-left, 0px);
+      right: var(--hs-layer-chat-docked-bottom-right, 0px);
+    }
+    .hs-notif-layer-chat-docked-top {
+      top: var(--hs-layer-chat-docked-top-top, 0px);
+      left: var(--hs-layer-chat-docked-top-left, 0px);
+      right: var(--hs-layer-chat-docked-top-right, 0px);
+    }
+
+    /* Animations — opacity-only appear, fade out on dismiss. */
+    @keyframes hs-notif-slide-in-right {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+    @keyframes hs-notif-slide-in-up {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+    @keyframes hs-notif-slide-in-down {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+    @keyframes hs-notif-fade-out {
+      from { opacity: 1; }
+      to   { opacity: 0; }
+    }
+
+    /* Base notif — flex row, accent strip on the left edge (set per level
+       via --hs-notif-accent), tight padding, mono font for info-per-pixel
+       density. container-type makes the notif queryable so internal types
+       (resub-share, raid) can progressively collapse based on their own
+       rendered width rather than the viewport. */
+    .hs-notif {
+      display: flex;
+      flex-direction: row;
+      align-items: stretch;
+      gap: 0;
+      padding: 0;
+      background: #0a0a0d;
+      color: #efeff1;
+      font: 12px/1.35 ui-monospace, 'JetBrains Mono', 'Cascadia Mono', 'SF Mono', Menlo, Consolas, 'Courier New', monospace;
+      container-type: inline-size;
+      border: 1px solid #2a2a2e;
+      border-left: 3px solid var(--hs-notif-accent, #555);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.03) inset;
+      animation: hs-notif-slide-in-right 120ms ease both;
+      will-change: opacity;
+    }
+    @keyframes hs-notif-fade-in {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+    .hs-notif-exiting { animation: hs-notif-fade-out 160ms ease-in forwards !important; pointer-events: none; }
+    @media (prefers-reduced-motion: reduce) {
+      .hs-notif, .hs-notif-exiting { animation: none !important; }
+    }
+
+    /* Body — sole shrinkable child. flex-basis:0 lets actions render at
+       their natural width first; body absorbs the rest, wrapping if long
+       (not ellipsifying — chat status messages are short, error reasons
+       can be long, both benefit from full readability). */
+    .hs-notif-body {
+      flex: 1 1 0;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      word-break: break-word;
+    }
+    .hs-notif-body-fallback { opacity: 0.55; font-style: italic; }
+    .hs-notif-actions {
+      display: inline-flex;
+      gap: 0;
+      flex: 0 0 auto;
+      align-items: stretch;
+      margin-left: auto;
+    }
+    .hs-notif-action {
+      background: transparent;
+      color: #efeff1;
+      border: none;
+      border-left: 1px solid #2a2a2e;
+      padding: 0 12px;
+      font: 600 11px/1 inherit;
+      cursor: pointer;
+      border-radius: 0;
+      white-space: nowrap;
+      transition: background 80ms linear, color 80ms linear;
+    }
+    .hs-notif-action:hover { background: #fff; color: #000; }
+    .hs-notif-action:focus-visible { outline: 1px solid #ff8700; outline-offset: -2px; }
+    .hs-notif-action-primary { color: #ff8700; font-weight: 700; }
+    .hs-notif-action-primary:hover { background: #fff; color: #000; }
+    .hs-notif-action-dismiss { padding: 0 10px; font-size: 14px; color: #848494; }
+    .hs-notif-action-dismiss:hover { background: #ff4040; color: #000; }
+
+    /* Toast-stack — every notif on this layer gets the toast aesthetic:
+       icon prefix, level accent, click-to-dismiss cursor. Applies to the
+       'toast' type AND any other type that opts in to the layer (e.g.
+       server-mention-rule). */
+    .hs-notif-layer-toast-stack > .hs-notif {
+      min-width: 180px;
+      max-width: 100%;
+      cursor: pointer;
+    }
+    .hs-notif-toast-text { color: #efeff1; display: inline; }
+    .hs-notif-toast-text::before {
+      content: var(--hs-notif-icon, '·');
+      color: var(--hs-notif-accent, #888);
+      display: inline-block;
+      width: 14px;
+      margin-right: 8px;
+      font-weight: 700;
+      text-align: center;
+      flex: 0 0 auto;
+    }
+    .hs-notif-toast-text.hs-notif-toast-success { --hs-notif-icon: '✓'; --hs-notif-accent: #00d65a; color: #c0f5d4; }
+    .hs-notif-toast-text.hs-notif-toast-error   { --hs-notif-icon: '✕'; --hs-notif-accent: #ff4f4d; color: #ffd0cf; }
+    .hs-notif-toast-text.hs-notif-toast-warn    { --hs-notif-icon: '!'; --hs-notif-accent: #ffff00; color: #ffffb8; }
+    .hs-notif-toast-text.hs-notif-toast-info    { --hs-notif-icon: 'i'; --hs-notif-accent: #6aa0ff; color: #d0ddff; }
+    .hs-notif-toast-text.hs-notif-toast-mention { --hs-notif-icon: '@'; --hs-notif-accent: #ff00ff; color: #ffd0ff; }
+    /* Wrapper accent strip mirrors the text level (CSS custom property
+       cascades from the inner span up via :has). */
+    .hs-notif:has(.hs-notif-toast-success) { --hs-notif-accent: #00d65a; }
+    .hs-notif:has(.hs-notif-toast-error)   { --hs-notif-accent: #ff4f4d; }
+    .hs-notif:has(.hs-notif-toast-warn)    { --hs-notif-accent: #ffff00; }
+    .hs-notif:has(.hs-notif-toast-info)    { --hs-notif-accent: #6aa0ff; }
+    .hs-notif:has(.hs-notif-toast-mention) { --hs-notif-accent: #ff00ff; }
+    .hs-notif-layer-toast-stack > .hs-notif:hover { background: #fff; }
+    .hs-notif-layer-toast-stack > .hs-notif:hover .hs-notif-toast-text,
+    .hs-notif-layer-toast-stack > .hs-notif:hover .hs-notif-toast-text::before {
+      color: #000 !important;
+    }
+

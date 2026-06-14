@@ -1,0 +1,1413 @@
+    /* ═══ Twitch menu ═══ */
+    .hs-mc-menu-item {
+      display: flex !important;
+      align-items: center !important;
+      gap: 12px !important;
+      padding: 10px 14px !important;
+      cursor: pointer !important;
+      color: #fff !important;
+      transition: none;
+      visibility: visible !important;
+      border-left: 3px solid transparent;
+      margin: 0 6px;
+    }
+    .hs-mc-menu-item:hover {
+      background: #fff !important;
+      border-left-color: #000;
+    }
+    .hs-mc-menu-item:active {
+      background: #fff !important;
+    }
+    .hs-mc-menu-icon {
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255,135,0,0.12);
+      background: color-mix(in srgb, var(--menu-accent, #ff8700) 12%, transparent);
+      color: var(--menu-accent, #ff8700);
+      flex-shrink: 0;
+      transition: none;
+    }
+    .hs-mc-menu-item:hover .hs-mc-menu-icon {
+      background: #000;
+      color: #fff;
+    }
+    .hs-mc-menu-text {
+      flex: 1;
+      min-width: 0;
+    }
+    .hs-mc-menu-title {
+      font-size: 13px;
+      font-weight: 500;
+      color: #fff;
+      line-height: 17px;
+    }
+    .hs-mc-menu-item:hover .hs-mc-menu-title {
+      color: #000;
+    }
+    .hs-mc-menu-arrow {
+      color: #808080;
+      flex-shrink: 0;
+      transition: none;
+    }
+    .hs-mc-menu-item:hover .hs-mc-menu-arrow {
+      color: #000;
+    }
+    .hs-mc-menu-divider {
+      height: 1px;
+      background: rgba(255,255,255,0.06);
+      margin: 4px 20px;
+    }
+
+    /* ═══ Predictions ═══ */
+    .hs-mc-pred-loading {
+      padding: 20px;
+      text-align: center;
+      color: #808080;
+      font-size: 13px;
+    }
+    .hs-mc-pred-empty {
+      padding: 20px;
+      text-align: center;
+    }
+    .hs-mc-pred-empty-text {
+      color: #808080;
+      font-size: 13px;
+    }
+    .hs-mc-prediction {
+      padding: 10px 12px;
+    }
+    .hs-mc-pred-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .hs-mc-pred-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #fff;
+      line-height: 17px;
+      flex: 1;
+    }
+    .hs-mc-pred-title img,
+    .hs-mc-pred-outcome-title img {
+      height: 1.2em;
+      vertical-align: -0.2em;
+      margin: 0 1px;
+    }
+    .hs-mc-pred-locked {
+      font-size: 13px;
+      padding: 2px 6px;
+      border-radius: 0;
+      background: rgba(255,255,255,0.1);
+      color: #808080;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .hs-mc-pred-timer {
+      font-size: 13px;
+      color: #ff8700;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .hs-mc-pred-balance {
+      font-size: 13px;
+      color: #808080;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .hs-mc-pred-outcomes {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .hs-mc-pred-outcome {
+      background: rgba(255,255,255,0.04);
+      border-radius: 0;
+      padding: 8px 10px;
+      border-left: 3px solid var(--oc, #387aff);
+    }
+    .hs-mc-pred-outcome-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+    .hs-mc-pred-outcome-title {
+      font-size: 13px;
+      color: #fff;
+      font-weight: 500;
+    }
+    .hs-mc-pred-outcome-pct {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--oc, #387aff);
+      font-variant-numeric: tabular-nums;
+    }
+    .hs-mc-pred-bar-track {
+      height: 4px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 0;
+      overflow: hidden;
+      margin-bottom: 4px;
+    }
+    .hs-mc-pred-bar-fill {
+      height: 100%;
+      background: var(--oc, #387aff);
+      border-radius: 0;
+    }
+    .hs-mc-pred-outcome-stats {
+      font-size: 13px;
+      color: #808080;
+      margin-bottom: 6px;
+    }
+    .hs-mc-pred-bet-row {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .hs-mc-pred-bet-btn {
+      background: rgba(0,0,0,0.7);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: #fff;
+      font-size: 13px;
+      padding: 3px 8px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .hs-mc-pred-bet-btn:hover {
+      background: #fff;
+      color: #000;
+    }
+    .hs-mc-pred-bet-btn:disabled {
+      opacity: 0.3;
+      cursor: default;
+    }
+    .hs-mc-pred-bet-btn:disabled:hover {
+      background: rgba(0,0,0,0.7);
+      color: #fff;
+    }
+    .hs-mc-pred-bet-custom {
+      width: 52px;
+      background: #fff;
+      border: 1px solid rgba(255,255,255,0.2);
+      color: #000;
+      font-size: 13px;
+      padding: 2px 6px;
+      outline: none;
+      font-family: inherit;
+    }
+    .hs-mc-pred-bet-custom:focus {
+      border-color: #ff8700;
+    }
+    .hs-mc-pred-bet-custom:disabled {
+      background: rgba(255,255,255,0.08);
+      color: #808080;
+      opacity: 0.3;
+    }
+    .hs-mc-pred-bet-custom::-webkit-inner-spin-button,
+    .hs-mc-pred-bet-custom::-webkit-outer-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    .hs-mc-pred-bet-go {
+      background: rgba(0,0,0,0.7);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 3px 10px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .hs-mc-pred-bet-go:hover {
+      background: #fff;
+      color: #000;
+    }
+    .hs-mc-pred-bet-go:disabled {
+      opacity: 0.3;
+      cursor: default;
+    }
+    .hs-mc-pred-bet-go:disabled:hover {
+      background: rgba(0,0,0,0.7);
+      color: #fff;
+    }
+    .hs-mc-pred-bet-max {
+      font-weight: 600;
+      color: #ff8700;
+    }
+    .hs-mc-pred-bet-max:hover {
+      background: #fff;
+      color: #000;
+    }
+
+    /* Prediction states */
+    .hs-mc-pred-status {
+      font-size: 13px;
+      padding: 2px 6px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .hs-mc-pred-status-resolved {
+      background: rgba(0,200,100,0.15);
+      color: #00c864;
+    }
+    .hs-mc-pred-status-canceled {
+      background: rgba(255,255,255,0.08);
+      color: #808080;
+    }
+
+    /* Result banners */
+    .hs-mc-pred-result {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      padding: 8px 12px;
+      margin-bottom: 8px;
+      border-radius: 0;
+      text-align: center;
+    }
+    .hs-mc-pred-result-amount {
+      font-size: 18px;
+      font-weight: 900;
+      font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+      letter-spacing: -0.5px;
+    }
+    .hs-mc-pred-result-label {
+      font-size: 13px;
+      font-weight: 600;
+      opacity: 0.7;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-left: 4px;
+    }
+    .hs-mc-pred-result-won {
+      background: rgba(0,200,100,0.12);
+      color: #00e070;
+      border: 1px solid rgba(0,200,100,0.3);
+    }
+    .hs-mc-pred-result-lost {
+      background: rgba(255,60,60,0.08);
+      color: #ff5050;
+      border: 1px solid rgba(255,60,60,0.2);
+    }
+    .hs-mc-pred-result-refund {
+      background: rgba(255,135,0,0.1);
+      color: #ff8700;
+      border: 1px solid rgba(255,135,0,0.25);
+    }
+    .hs-mc-pred-result-neutral {
+      font-size: 13px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.5);
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    /* Outcome states */
+    .hs-mc-pred-outcome-won {
+      border-left-color: #00c864;
+      background: rgba(0,200,100,0.08);
+    }
+    .hs-mc-pred-outcome-lost {
+      opacity: 0.45;
+    }
+    .hs-mc-pred-outcome-yours {
+      box-shadow: inset 0 0 0 1px rgba(255,135,0,0.3);
+    }
+    .hs-mc-pred-winner-badge {
+      font-size: 9px;
+      padding: 1px 5px;
+      background: #00c864;
+      color: #000;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      vertical-align: middle;
+      margin-left: 4px;
+    }
+
+    /* ═══ Mod controls ═══ */
+    .hs-mc-pred-mod-notice {
+      font-size: 13px;
+      color: #ff8700;
+      background: rgba(255,135,0,0.08);
+      border: 1px solid rgba(255,135,0,0.2);
+      border-radius: 0;
+      padding: 5px 8px;
+      margin-top: 6px;
+      text-align: center;
+    }
+    .hs-mc-pred-resolve-yours {
+      border-color: #ff8700 !important;
+      color: #ff8700 !important;
+    }
+    .hs-mc-pred-resolve-yours:hover {
+      background: #fff !important;
+      color: #000 !important;
+    }
+    .hs-mc-pred-mod-row {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .hs-mc-pred-mod-btn {
+      font-size: 13px;
+      padding: 4px 10px;
+      background: rgba(0,0,0,0.7);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.2);
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .hs-mc-pred-mod-btn:hover {
+      background: #fff;
+      color: #000;
+    }
+    .hs-mc-pred-mod-btn:disabled {
+      opacity: 0.3;
+      cursor: default;
+    }
+    .hs-mc-pred-mod-btn:disabled:hover {
+      background: rgba(0,0,0,0.7);
+      color: #fff;
+    }
+    .hs-mc-pred-lock-btn:hover,
+    .hs-mc-pred-cancel-btn:hover {
+      background: #fff;
+      color: #000;
+    }
+    .hs-mc-pred-resolve-btn {
+      margin-top: 6px;
+      width: 100%;
+      color: var(--oc);
+      border-color: var(--oc);
+    }
+    .hs-mc-pred-resolve-btn:hover {
+      background: #fff;
+      color: #000;
+      border-color: #fff;
+    }
+
+    /* ═══ Create prediction form ═══ */
+    .hs-mc-pred-create {
+      margin-top: 10px;
+    }
+    .hs-mc-pred-create-toggle {
+      width: 100%;
+      text-align: center;
+    }
+    .hs-mc-pred-create-form {
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .hs-mc-pred-create-input {
+      font-size: 13px;
+      padding: 2px 8px;
+      background: #fff;
+      color: #000;
+      border: none;
+      font-family: inherit;
+      outline: none;
+    }
+    .hs-mc-pred-create-input:focus {
+      outline: 1px solid #ff8700;
+    }
+    .hs-mc-pred-create-dur-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+    .hs-mc-pred-create-dur-label {
+      font-size: 13px;
+      color: #808080;
+      margin-right: 2px;
+    }
+    .hs-mc-pred-create-dur {
+      font-size: 13px;
+      padding: 2px 6px;
+      background: rgba(0,0,0,0.7);
+      color: #aaa;
+      border: 1px solid rgba(255,255,255,0.2);
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .hs-mc-pred-create-dur:hover {
+      background: #fff;
+      color: #000;
+    }
+    .hs-mc-pred-create-dur-active {
+      background: #ff8700;
+      color: #000;
+      border-color: #ff8700;
+    }
+    .hs-mc-pred-create-submit {
+      background: rgba(0,0,0,0.7);
+      color: #ff8700;
+      border-color: #ff8700;
+      font-weight: 600;
+    }
+    .hs-mc-pred-create-submit:hover {
+      background: #fff;
+      color: #000;
+      border-color: #fff;
+    }
+
+    /* ═══ Polls ═══ */
+    .hs-mc-poll {
+      padding: 10px 12px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+    .hs-mc-poll-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .hs-mc-poll-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #fff;
+      line-height: 17px;
+      flex: 1;
+    }
+    .hs-mc-poll-status {
+      font-size: 13px;
+      padding: 2px 6px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .hs-mc-poll-status-ended {
+      background: rgba(255,255,255,0.08);
+      color: #808080;
+    }
+    .hs-mc-poll-timer {
+      font-size: 13px;
+      color: #ff8700;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .hs-mc-poll-meta {
+      font-size: 13px;
+      color: #808080;
+      margin-bottom: 8px;
+    }
+    .hs-mc-poll-choices {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .hs-mc-poll-choice {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .hs-mc-poll-choice-track {
+      flex: 1;
+      height: 28px;
+      background: rgba(255,255,255,0.06);
+      position: relative;
+      overflow: hidden;
+    }
+    .hs-mc-poll-choice-fill {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      background: rgba(145,71,255,0.35);
+    }
+    .hs-mc-poll-choice-top .hs-mc-poll-choice-fill {
+      background: rgba(145,71,255,0.6);
+    }
+    .hs-mc-poll-choice-voted .hs-mc-poll-choice-track {
+      box-shadow: inset 0 0 0 1px rgba(255,135,0,0.3);
+    }
+    .hs-mc-poll-choice-label {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 8px;
+      height: 28px;
+    }
+    .hs-mc-poll-choice-name {
+      font-size: 13px;
+      color: #fff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .hs-mc-poll-choice-pct {
+      font-size: 13px;
+      font-weight: 700;
+      color: #9147ff;
+      font-variant-numeric: tabular-nums;
+      flex-shrink: 0;
+      margin-left: 8px;
+    }
+    .hs-mc-poll-choice-top .hs-mc-poll-choice-pct {
+      color: #bf8fff;
+    }
+    .hs-mc-poll-voted-check {
+      color: #ff8700;
+      font-weight: 700;
+    }
+    .hs-mc-poll-vote-btn {
+      background: rgba(145,71,255,0.3);
+      border: none;
+      color: #bf8fff;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 4px 10px;
+      cursor: pointer;
+      white-space: nowrap;
+      font-family: inherit;
+    }
+    .hs-mc-poll-vote-btn:hover {
+      background: #fff;
+      color: #000;
+    }
+    .hs-mc-poll-vote-btn:disabled {
+      opacity: 0.3;
+      cursor: default;
+    }
+    .hs-mc-poll-mod-row {
+      display: flex;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    .hs-mc-poll-mod-btn {
+      font-size: 13px;
+      padding: 4px 10px;
+      background: rgba(0,0,0,0.7);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.2);
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .hs-mc-poll-mod-btn:hover {
+      background: #fff;
+      color: #000;
+    }
+    .hs-mc-poll-mod-btn:disabled {
+      opacity: 0.3;
+      cursor: default;
+    }
+    .hs-mc-poll-mod-btn:disabled:hover {
+      background: rgba(0,0,0,0.7);
+      color: #fff;
+    }
+    .hs-mc-poll-empty {
+      padding: 0 12px;
+    }
+    .hs-mc-poll-create {
+      border-top: 1px solid rgba(255,255,255,0.06);
+      padding-top: 8px;
+      margin-top: 4px;
+    }
+    .hs-mc-poll-create-toggle {
+      width: 100%;
+      text-align: center;
+    }
+    .hs-mc-poll-create-form {
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .hs-mc-poll-create-input {
+      font-size: 13px;
+      padding: 2px 8px;
+      background: #fff;
+      color: #000;
+      border: none;
+      font-family: inherit;
+      outline: none;
+    }
+    .hs-mc-poll-create-input:focus {
+      outline: 1px solid #ff8700;
+    }
+    .hs-mc-poll-create-dur-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+    .hs-mc-poll-create-dur-label {
+      font-size: 13px;
+      color: #808080;
+      margin-right: 2px;
+    }
+    .hs-mc-poll-create-dur {
+      font-size: 13px;
+      padding: 2px 6px;
+      background: rgba(0,0,0,0.7);
+      color: #808080;
+      border: 1px solid rgba(255,255,255,0.2);
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .hs-mc-poll-create-dur:hover {
+      background: #fff;
+      color: #000;
+    }
+    .hs-mc-poll-create-dur-active {
+      background: #ff8700;
+      color: #000;
+      border-color: #ff8700;
+    }
+    .hs-mc-poll-create-submit {
+      width: 100%;
+      text-align: center;
+      background: rgba(0,0,0,0.7);
+      color: #ff8700;
+      border-color: #ff8700;
+      font-weight: 600;
+    }
+    .hs-mc-poll-create-submit:hover {
+      background: #fff;
+      color: #000;
+      border-color: #fff;
+    }
+
+    .hs-mc-pred-links {
+      border-top: 1px solid rgba(255,255,255,0.06);
+      margin-top: 8px;
+      padding-top: 4px;
+    }
+    .hs-mc-pred-links .hs-mc-menu-item {
+      padding: 6px 14px !important;
+    }
+    .hs-mc-pred-links .hs-mc-menu-icon {
+      width: 28px;
+      height: 28px;
+    }
+    .hs-mc-pred-links .hs-mc-quicklink-section {
+      padding: 10px 14px 4px;
+      font-size: 10px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .hs-mc-pred-links .hs-mc-quicklink-section:first-child {
+      padding-top: 4px;
+    }
+
+    /* ═══ /status panel ═══
+       All text 13px CozetteVector — anything else looks jank in Chrome's
+       renderer (see memory: feedback_browser_text_cozette_13). The crisp
+       block on body.hs-font-bitmap covers descendants so we don't repeat
+       it here; just lock the family + size. */
+    .hs-mc-status-overlay {
+      position: fixed; bottom: 60px; right: 20px; z-index: 99999;
+      background: #000; border: 2px solid #ff8700;
+      padding: 12px 16px; min-width: 280px; max-width: 420px;
+      font: 13px/1.4 'CozetteVector', 'Courier New', monospace;
+      color: #fff;
+      box-shadow: 0 0 12px rgba(255,135,0,0.5);
+      cursor: pointer;
+    }
+    .hs-mc-status-loading { font-size: 13px; color: #999; }
+    .hs-mc-status-title { font-size: 13px; font-weight: 600; color: #ff8700; }
+    .hs-mc-status-sub { font-size: 13px; margin-top: 2px; }
+    .hs-mc-status-sub.live { color: #59ff8a; }
+    .hs-mc-status-sub.off  { color: #999; }
+    .hs-mc-status-streamtitle { font-size: 13px; color: #fff; margin-top: 6px; }
+    .hs-mc-status-meta { font-size: 13px; color: #999; margin-top: 2px; }
+    .hs-mc-status-section {
+      margin-top: 10px; padding-bottom: 4px;
+      font-size: 13px; color: #666;
+      text-transform: uppercase;
+      border-bottom: 1px solid #222;
+    }
+    .hs-mc-status-modes { margin-top: 4px; }
+    .hs-mc-status-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 13px; }
+    .hs-mc-status-key { color: #ccc; }
+    .hs-mc-status-val.on  { color: #59ff8a; }
+    .hs-mc-status-val.off { color: #666; }
+    .hs-mc-status-note { font-size: 13px; color: #555; margin-top: 4px; }
+
+    /* ═══ Rewards ═══ */
+    .hs-mc-rewards {
+      border-top: 1px solid rgba(255,255,255,0.06);
+      margin-top: 8px;
+      padding-top: 8px;
+    }
+    .hs-mc-rewards-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 14px 6px;
+    }
+    .hs-mc-rewards-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #808080;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .hs-mc-rewards-balance {
+      font-size: 13px;
+      color: #808080;
+    }
+    .hs-mc-rewards-empty {
+      font-size: 13px;
+      color: #808080;
+      padding: 8px 14px;
+    }
+    .hs-mc-rewards-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      padding: 0 14px;
+    }
+    .hs-mc-reward-card {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      background: rgba(255,255,255,0.04);
+      border-left: 2px solid var(--rc, #9147ff);
+      cursor: pointer;
+      transition: none;
+    }
+    .hs-mc-reward-card:not(.hs-mc-reward-unavailable):hover {
+      background: #fff;
+    }
+    .hs-mc-reward-card:not(.hs-mc-reward-unavailable):hover .hs-mc-reward-title,
+    .hs-mc-reward-card:not(.hs-mc-reward-unavailable):hover .hs-mc-reward-cost,
+    .hs-mc-reward-card:not(.hs-mc-reward-unavailable):hover .hs-mc-reward-reason {
+      color: #000;
+    }
+    .hs-mc-reward-unavailable {
+      opacity: 0.4;
+      cursor: default;
+    }
+    .hs-mc-reward-unavailable:hover {
+      background: rgba(255,255,255,0.04);
+    }
+    .hs-mc-reward-img {
+      flex-shrink: 0;
+      object-fit: contain;
+    }
+    .hs-mc-reward-info {
+      min-width: 0;
+      overflow: hidden;
+    }
+    .hs-mc-reward-title {
+      font-size: 13px;
+      color: #fff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .hs-mc-reward-cost {
+      font-size: 13px;
+      color: #808080;
+    }
+    .hs-mc-reward-reason {
+      font-size: 9px;
+      color: #f5009b;
+      margin-top: 1px;
+    }
+    .hs-mc-reward-input-row {
+      grid-column: 1 / -1;
+      display: flex;
+      gap: 4px;
+      padding: 4px 0;
+    }
+    .hs-mc-reward-input {
+      flex: 1;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.1);
+      color: #fff;
+      font-size: 13px;
+      padding: 4px 6px;
+      border-radius: 0;
+      outline: none;
+    }
+    .hs-mc-reward-input:focus {
+      border-color: #9147ff;
+    }
+    .hs-mc-reward-submit {
+      background: #9147ff;
+      border: none;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 0;
+      cursor: pointer;
+      transition: none;
+    }
+    .hs-mc-reward-submit:hover {
+      background: #fff;
+      color: #000;
+    }
+    .hs-mc-reward-submit:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+
+    /* ═══ Chat Color Picker ═══ */
+    .hs-mc-color-picker {
+      margin-top: 4px;
+    }
+    .hs-mc-color-current {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border-radius: 0;
+      vertical-align: -2px;
+      margin-left: 6px;
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+    .hs-mc-color-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 3px;
+      padding: 4px 14px;
+    }
+    .hs-mc-color-swatch {
+      width: 20px;
+      height: 20px;
+      border-radius: 0;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: none;
+    }
+    .hs-mc-color-swatch:hover {
+      outline: 2px solid #fff;
+      outline-offset: 1px;
+    }
+    .hs-mc-color-custom {
+      display: flex;
+      gap: 4px;
+      padding: 4px 14px;
+    }
+    .hs-mc-color-hex {
+      flex: 1;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.1);
+      color: #fff;
+      font-size: 13px;
+      padding: 3px 6px;
+      font-family: inherit;
+      border-radius: 0;
+    }
+    .hs-mc-color-hex:focus {
+      border-color: #9147ff;
+      outline: none;
+    }
+    .hs-mc-color-apply {
+      background: #9147ff;
+      border: none;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 3px 10px;
+      cursor: pointer;
+    }
+    .hs-mc-color-apply:hover {
+      background: #fff;
+      color: #000;
+    }
+
+    /* ═══ Chat Modes ═══ */
+    .hs-mc-chat-modes {
+      margin-top: 4px;
+    }
+    .hs-mc-modes-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      padding: 4px 14px;
+    }
+    .hs-mc-mode-btn {
+      font-size: 13px;
+      padding: 3px 8px;
+      background: rgba(255,255,255,0.06);
+      color: #808080;
+      cursor: pointer;
+      border: 1px solid rgba(255,255,255,0.08);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .hs-mc-mode-btn:hover {
+      background: #fff;
+      color: #000;
+      border-color: #fff;
+    }
+    .hs-mc-mode-btn.active {
+      background: #fff;
+      color: #000;
+      border-color: #fff;
+    }
+
+    /* ═══ Settings tab ═══ */
+    .hs-mc-settings-group {
+      padding: 4px 0;
+    }
+    .hs-mc-settings-group + .hs-mc-settings-group {
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+    .hs-mc-settings-group-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #808080;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 10px 14px 4px;
+    }
+    .hs-mc-setting-row {
+      display: flex !important;
+      align-items: center !important;
+      gap: 8px !important;
+      padding: 6px 14px !important;
+      font-size: 13px !important;
+      color: #fff !important;
+      visibility: visible !important;
+    }
+    .hs-mc-setting-row.hs-mc-setting-row-split {
+      justify-content: space-between !important;
+      /* thin panels: control drops to its own full-width line instead of
+         letter-stacking inside a squeezed flex item */
+      flex-wrap: wrap;
+    }
+    .hs-mc-setting-row:nth-child(even) {
+      background: #1a1a1a;
+    }
+    .hs-mc-setting-row:hover {
+      background: #fff;
+      color: #000;
+    }
+    .hs-mc-setting-row:hover * {
+      color: #000 !important;
+    }
+    .hs-mc-setting-label {
+      color: #fff !important;
+      font-size: 13px !important;
+      cursor: help;
+      border-bottom: 1px dotted #808080;
+    }
+    #hs-settings-tip {
+      position: fixed;
+      z-index: 99999;
+      background: #000;
+      color: #fff;
+      border: 1px solid #808080;
+      padding: 6px 8px;
+      font-size: 13px;
+      line-height: 18px;
+      max-width: 260px;
+      pointer-events: none;
+      display: none;
+      font-family: inherit;
+    }
+    #hs-settings-tip.visible { display: block; }
+    .hs-mc-setting-row.hs-mc-setting-row-block {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 4px;
+    }
+    .hs-mc-setting-textarea {
+      background: #000;
+      color: #fff;
+      border: 1px solid #808080;
+      font-family: inherit;
+      font-size: 13px;
+      padding: 4px 6px;
+      resize: vertical;
+      min-height: 48px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .hs-mc-setting-textarea:focus {
+      outline: none;
+      border-color: #ff8700;
+    }
+    .hs-mc-locale-select {
+      background: #000;
+      color: #fff;
+      border: 1px solid #808080;
+      font-family: inherit;
+      font-size: 13px;
+      padding: 3px 6px;
+      cursor: pointer;
+      flex-shrink: 0;
+      max-width: 60%;
+    }
+    .hs-mc-locale-select:hover, .hs-mc-locale-select:focus {
+      background: #fff;
+      color: #000;
+      outline: none;
+      border-color: #fff;
+    }
+    .hs-mc-setting-row .hs-mc-toggle-pill,
+    .hs-mc-setting-row .hs-mc-size-btns {
+      flex-shrink: 0;
+    }
+    .hs-mc-size-btns {
+      display: flex;
+      gap: 2px;
+      background: #000;
+      padding: 2px;
+    }
+    .hs-mc-size-btn {
+      white-space: nowrap !important;
+      padding: 4px 10px !important;
+      background: transparent !important;
+      color: #808080 !important;
+      border: none !important;
+      border-radius: 0 !important;
+      font-size: 13px !important;
+      cursor: pointer !important;
+      display: inline-block !important;
+      visibility: visible !important;
+      transition: none;
+    }
+    .hs-mc-size-btn:hover {
+      background: #fff !important;
+      color: #000 !important;
+    }
+    .hs-mc-size-btn.active {
+      background: #fff !important;
+      color: #000 !important;
+    }
+    .hs-mc-size-btn.active:hover {
+      background: #fff !important;
+      color: #000 !important;
+    }
+    .hs-mc-toggle-pill {
+      width: 16px;
+      height: 16px;
+      background: #cc0000;
+      border: none;
+      border-radius: 0;
+      cursor: pointer;
+      padding: 0;
+      transition: none;
+      flex-shrink: 0;
+    }
+    .hs-mc-toggle-pill.active {
+      background: #00dd00;
+    }
+    .hs-mc-toggle-knob {
+      display: none;
+    }
+
+    /* == Settings registry UI — search bar, focus row, sections ============ */
+    .hs-mc-set-searchbar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      border-bottom: 1px solid rgba(255,255,255,0.2);
+      position: sticky;
+      top: 46px; /* below the subtab rail */
+      background: #000;
+      z-index: 5;
+      flex-shrink: 0;
+    }
+    .hs-mc-set-search {
+      flex: 1;
+      background: #000;
+      color: #fff;
+      border: 1px solid #808080;
+      font-family: inherit;
+      font-size: 13px;
+      padding: 3px 6px;
+      min-width: 0;
+    }
+    .hs-mc-set-search:focus {
+      outline: none;
+      border-color: #ff8700;
+    }
+    .hs-mc-set-search-count {
+      color: #808080;
+      font-size: 11px;
+      flex-shrink: 0;
+    }
+    .hs-mc-set-presets-btn {
+      background: #000;
+      color: #fff;
+      border: 1px solid #808080;
+      font-family: inherit;
+      font-size: 13px;
+      padding: 3px 8px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .hs-mc-set-presets-btn:hover {
+      background: #fff;
+      color: #000;
+      border-color: #fff;
+    }
+    /* Keyboard focus inverts the row like hover — white bg, black text —
+       but children keep their own backgrounds (pills stay green/red, the
+       size-btn group stays a black chip strip, range thumb stays orange). */
+    .hs-mc-setting-row.hs-mc-set-row-focus {
+      background: #fff !important;
+    }
+    .hs-mc-setting-row.hs-mc-set-row-focus * {
+      color: #000 !important;
+    }
+    /* Size buttons sit on their own black strip — when the row inverts
+       (hover OR focus), keep inactive labels gray-on-black and the active
+       chip white-with-black-text, instead of the row's forced black text
+       vanishing into the strip. */
+    .hs-mc-setting-row:hover .hs-mc-size-btn,
+    .hs-mc-setting-row.hs-mc-set-row-focus .hs-mc-size-btn {
+      color: #808080 !important;
+    }
+    .hs-mc-setting-row:hover .hs-mc-size-btn.active,
+    .hs-mc-setting-row.hs-mc-set-row-focus .hs-mc-size-btn.active,
+    .hs-mc-setting-row:hover .hs-mc-size-btn:hover,
+    .hs-mc-setting-row.hs-mc-set-row-focus .hs-mc-size-btn:hover {
+      color: #000 !important;
+    }
+    .hs-mc-set-child {
+      padding-left: 28px !important;
+    }
+    .hs-mc-set-child-glyph {
+      color: #808080;
+      flex-shrink: 0;
+    }
+    .hs-mc-settings-group-title {
+      cursor: pointer;
+      user-select: none;
+    }
+    .hs-mc-settings-group-title:hover {
+      background: #fff;
+      color: #000;
+    }
+    /* Modified-from-default — 3px orange inset edge, zero layout shift,
+       survives zebra/hover/focus backgrounds */
+    .hs-mc-setting-row.hs-mc-set-mod {
+      box-shadow: inset 3px 0 0 #ff8700;
+    }
+    .hs-mc-set-cnt {
+      color: #808080;
+      font-weight: 400;
+    }
+    .hs-mc-set-modcnt {
+      color: #ff8700;
+      font-weight: 400;
+    }
+    .hs-mc-settings-group-title:hover .hs-mc-set-cnt,
+    .hs-mc-settings-group-title:hover .hs-mc-set-modcnt {
+      color: #000;
+    }
+    /* [reload] chip — setting applied only after a page reload */
+    .hs-mc-set-reload {
+      background: #000;
+      color: #ff8700;
+      border: 1px solid #808080;
+      font-family: inherit;
+      font-size: 11px;
+      padding: 0 6px;
+      cursor: pointer;
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+    .hs-mc-set-reload:hover {
+      background: #fff;
+      color: #000;
+      border-color: #000;
+    }
+    /* search result group headers — click jumps to that pane + section */
+    .hs-mc-set-search-hdr {
+      color: #808080;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 8px 14px 2px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .hs-mc-set-search-hdr:hover {
+      background: #fff;
+      color: #000;
+    }
+    /* '?' keybinding overlay */
+    .hs-mc-settings-panel {
+      /* Fill the #hs-mc-messages scroll box and own the scrolling internally:
+         a flex column where ONLY the body scrolls, so the category bar +
+         search bar are real headers above the scroll area and rows can never
+         bleed behind them. #hs-mc-messages has contain:layout paint, which
+         makes it the containing block, so inset:0 sizes us to it reliably. */
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      background: #000;
+    }
+    .hs-mc-set-help-btn {
+      background: #000;
+      color: #fff;
+      border: 1px solid #808080;
+      font-family: inherit;
+      font-size: 13px;
+      padding: 3px 8px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .hs-mc-set-help-btn:hover {
+      background: #fff;
+      color: #000;
+      border-color: #fff;
+    }
+    .hs-mc-set-help {
+      position: absolute;
+      top: 84px;
+      right: 8px;
+      z-index: 3;
+      background: #000;
+      border: 1px solid #808080;
+      padding: 8px 10px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .hs-mc-set-help-grid {
+      display: grid;
+      grid-template-columns: auto 1fr auto 1fr;
+      gap: 2px 10px;
+    }
+    .hs-mc-set-help-key {
+      color: #ff8700;
+    }
+    .hs-mc-set-help-title {
+      color: #808080;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 6px 0 2px;
+    }
+    .hs-mc-set-keyhint {
+      color: #808080;
+      font-size: 11px;
+      padding: 6px 14px 10px;
+    }
+    .hs-mc-set-range {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 120px;
+      height: 4px;
+      background: #333;
+      outline: none;
+      flex-shrink: 0;
+    }
+    .hs-mc-set-range::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 10px;
+      height: 14px;
+      background: #ff8700;
+      border: none;
+      border-radius: 0;
+      cursor: pointer;
+    }
+    .hs-mc-set-range-val {
+      color: #808080;
+      font-size: 11px;
+      min-width: 28px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    /* == Settings sub-tab bar =============================================== */
+    .hs-mc-set-subtabs {
+      display: flex;
+      gap: 4px;
+      padding: 6px 8px 4px 8px;
+      border-bottom: 1px solid rgba(255,255,255,0.2);
+      flex-shrink: 0;
+      overflow-x: auto;
+      position: sticky;
+      top: 0;
+      background: #000;
+      z-index: 5;
+    }
+    .hs-mc-set-subtab {
+      width: 34px;
+      height: 34px;
+      padding: 0;
+      background: #000;
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.3);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: none;
+    }
+    .hs-mc-set-subtab:hover {
+      background: #fff;
+      color: #000;
+      border-color: #fff;
+      outline: none;
+    }
+    .hs-mc-set-subtab.active {
+      background: #fff;
+      color: #000;
+      border-color: #fff;
+    }
+    .hs-mc-set-subtab svg { display: block; }
+    .hs-mc-set-subtab-body {
+      flex: 1;
+      min-height: 0; /* let the flex item shrink so overflow-y actually scrolls */
+      overflow-y: auto;
+      background: #000;
+    }
+    /* Settings text inputs (custom font name, etc.) */
+    .hs-mc-set-text-input {
+      background: #000;
+      color: #fff;
+      border: 1px solid #808080;
+      font-family: inherit;
+      font-size: 13px;
+      padding: 3px 6px;
+      flex-shrink: 0;
+    }
+    .hs-mc-set-text-input:focus {
+      outline: none;
+      border-color: #ff8700;
+    }
+    /* Crash log pre block */
+    .hs-mc-set-crash-pre {
+      background: #0a0a0a;
+      color: #c0c0c0;
+      border: 1px solid #333;
+      padding: 6px 8px;
+      font-size: 10px;
+      max-height: 180px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      margin: 0;
+      font-family: inherit;
+    }
+

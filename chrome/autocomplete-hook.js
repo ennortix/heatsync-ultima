@@ -809,9 +809,9 @@
           const score = fuzzyMatch(searchLower, emote.nameLower)
           if (score <= 0) continue;
           emote._score = score
-          // Native Twitch: sub emotes are channel-tier (1), the rest are global (2).
+          // Native Twitch: sub emotes are channel-tier (0), the rest are global (2).
           // Heatsync bridge emotes already carry their real tier (0/1/2) from content.js.
-          emote.tier = emote.sub ? 1 : 2;
+          emote.tier = emote.sub ? 0 : 2;
           hsMatches.push(emote);
         }
 
@@ -894,9 +894,10 @@
           r._sortKey = name.toLowerCase()
           r._sortType = r.emote ? 0 : 1 // 0=emote, 1=username
           r._isSub = r._heatsyncSub || nativeSubNames.has(name);
-          // own(0) > channel(1) > global(2). Pushed heatsync/native emotes carry _tier;
-          // anything else (Twitch's own dropdown results) falls back via sub status.
-          r._tier = r._tier ?? (r._isSub ? 1 : 2);
+          // channel(0) > own(1) > global(2). Pushed heatsync/native emotes carry _tier;
+          // anything else (Twitch's own dropdown results) falls back via sub status —
+          // sub emotes are channel-tier (0).
+          r._tier = r._tier ?? (r._isSub ? 0 : 2);
         }
         results.sort((a, b) => {
           // Category sort: emotes < usernames

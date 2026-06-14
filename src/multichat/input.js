@@ -422,11 +422,14 @@ async function fetchRemoteEmoteMatches(search) {
   if (typeof mcSearch7tvApi === 'function') calls.push(mcSearch7tvApi(search, ac.signal, { perPage: 60 }))
   else calls.push(Promise.resolve([]))
   const settled = await Promise.allSettled(calls)
+  // Clear the in-flight flag on every exit path so a bailed fetch can't leave
+  // "searching 7tv…" stuck on — but only if a newer fetch hasn't taken over
+  // (token bumped), in which case that fetch now owns the flag.
+  if (token === _acRemoteToken) acState.remotePending = false
   if (ac.signal.aborted || token !== _acRemoteToken) return
   // Cycling must still be on the same search the fetch was issued for.
   if (!acState.active || acState.search !== search) return
   acState.remoteDone = true
-  acState.remotePending = false
   const rf = settled[0]?.status === 'fulfilled' && Array.isArray(settled[0].value) ? settled[0].value : []
   const rb = settled[1]?.status === 'fulfilled' && Array.isArray(settled[1].value) ? settled[1].value : []
   const r7 = settled[2]?.status === 'fulfilled' && Array.isArray(settled[2].value) ? settled[2].value : []
@@ -2030,12 +2033,13 @@ function handleInputKeydown(e) {
       const len = acState.matches.length;
       acState.index = (acState.index + (e.shiftKey ? len - 1 : 1)) % len;
       insertCompletionKeepOpen(acState.matches[acState.index]);
-      // Lazy 7TV/BTTV/FFZ search: only when you forward-cycle to the LAST local
-      // match do we hit the catalog APIs, so the next Tab keeps cycling into
-      // remote hits. The common case (your channel/own/global emote is right
-      // there) never touches the network. Fires once per search. Triggered before
-      // the tooltip so it can show the live "searching 7tv…" state immediately.
-      if (!e.shiftKey && !acState.remoteDone && !acState.remotePending
+      // Lazy 7TV/BTTV/FFZ search: when you LAND on the last local match (cycling
+      // either direction — forward-Tab through, or Shift+Tab back to it), pull the
+      // catalog so the next forward Tab keeps cycling into remote hits. The common
+      // case (your channel/own/global emote is right there) never touches the
+      // network. Fires once per search. Triggered before the tooltip so it can show
+      // the live "searching 7tv…" state immediately.
+      if (!acState.remoteDone && !acState.remotePending
           && acState.index === len - 1 && acState.search) {
         fetchRemoteEmoteMatches(acState.search);
       }

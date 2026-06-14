@@ -2957,7 +2957,8 @@ async function claimCommunityPoints(claimId, channelId, channelLogin) {
             claimCommunityPoints(input: $input) { claim { id } }
           }`,
           variables: { input: { claimID: claimId, channelID: channelId } }
-        })
+        }),
+        signal: AbortSignal.timeout(8000)
       })
       if (!resp.ok) throw new Error('HTTP ' + resp.status)
     })
@@ -3064,7 +3065,8 @@ async function votePoll(pollId, choiceId) {
         body: JSON.stringify({
           query: 'mutation($input: VotePollInput!) { votePoll(input: $input) { error { code } } }',
           variables: { input: { pollID: pollId, choiceID: choiceId } }
-        })
+        }),
+        signal: AbortSignal.timeout(8000)
       })
       if (!resp.ok) return { error: 'HTTP ' + resp.status }
       const data = await resp.json()

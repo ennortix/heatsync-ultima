@@ -10,11 +10,11 @@ Each entry: what it is, why, request/response, scope/auth, edge cases, schema no
 
 Mirrors `/api/follow/{userId}` (already implemented). Lets users block other heatsync users so their content doesn't reach you.
 
-**Endpoints:**
+**Endpoints:** (paths match what the shipped client already calls — `profile-card.js` POST/DELETE `/api/user/block/{userId}`)
 ```
-POST   /api/block/{userId}    → 200 { ok: true }
-DELETE /api/block/{userId}    → 200 { ok: true }
-GET    /api/user/blocked      → 200 { blocked: [{ user_id, username, display_name, blocked_at }] }
+POST   /api/user/block/{userId}    → 200 { ok: true }
+DELETE /api/user/block/{userId}    → 200 { ok: true }   (client may append ?sync_twitch=0)
+GET    /api/user/blocked           → 200 { blocked: [{ user_id, username, display_name, blocked_at }] }
 ```
 
 **Auth:** `Authorization: Bearer {hs_token}`
@@ -57,10 +57,10 @@ CREATE INDEX ON user_blocks (blocked_id);  -- for "who blocks me" reverse lookup
 
 Solves the cold-start problem: user installs extension, has zero heatsync follows, gets zero live notifications. Most users have 50-500 Twitch follows already. One-click import bridges them.
 
-**Endpoint:**
+**Endpoint:** (path matches the shipped client — `social.js` POST `/api/sync-twitch-follows`)
 ```
-POST /api/import/twitch-follows
-  → 200 { imported: N, skipped: M, total_twitch: T, total_matched_on_hs: H }
+POST /api/sync-twitch-follows
+  → 200 { synced: N, imported: N, skipped: M, total_twitch: T, total_matched_on_hs: H }
   → 403 { error: 'twitch_scope_missing', reauth_url: '...' }
 ```
 

@@ -460,6 +460,11 @@
         height: 24px;
         width: auto;
       }
+      .hs-yt-ac-vis { margin-left: auto; flex-shrink: 0; padding-left: 8px; }
+      .hs-yt-ac-vis.v-all { color: #5fd75f; }
+      .hs-yt-ac-vis.v-ext { color: #ffd75f; }
+      .hs-yt-ac-vis.v-hs  { color: #ff8700; }
+      .hs-yt-ac-vis.v-dim { color: #9e9e9e; }
       .hs-yt-toast {
         position: fixed;
         bottom: 80px;
@@ -837,6 +842,20 @@
     return matches.slice(0, limit).map(m => m.emote)
   }
 
+  // Per-row visibility tag — same wedge signal as the cycle readout on the other
+  // surfaces: who sees this emote if you send it. green everyone → yellow {provider}
+  // (needs that ext) → orange heatsync only. Unknown source falls back to the
+  // neutral category so it never asserts a wrong visibility.
+  function hsVisTag(e) {
+    if (e.isChatter) return { t: 'everyone', cls: 'v-all' }
+    const tier = e._ytTier ?? 2
+    const src = (e.source || '').toLowerCase()
+    if (src === 'twitch' || src === 'youtube') return { t: src, cls: 'v-all' }
+    if (tier === 1 || src === 'heatsync' || src === 'inventory') return { t: 'heatsync', cls: 'v-hs' }
+    if (src === '7tv' || src === 'bttv' || src === 'ffz') return { t: src, cls: 'v-ext' }
+    return { t: tier === 0 ? 'channel' : tier === 1 ? 'mine' : 'global', cls: 'v-dim' }
+  }
+
   function showAutocomplete(matches, input) {
     acItems = matches
     acSelectedIndex = 0
@@ -860,6 +879,12 @@
       const span = document.createElement('span')
       span.textContent = emote.name
       item.appendChild(span)
+
+      const vis = hsVisTag(emote)
+      const visSpan = document.createElement('span')
+      visSpan.className = 'hs-yt-ac-vis ' + vis.cls
+      visSpan.textContent = vis.t
+      item.appendChild(visSpan)
 
       item.addEventListener('mousedown', (ev) => {
         ev.preventDefault()

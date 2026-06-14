@@ -84,7 +84,7 @@
       seen.add(e.name)
       // Cache lowercase once at build time — searchEmotes runs per keystroke,
       // so per-call toLowerCase on 50k emotes is what we're avoiding here.
-      list.push({ name: e.name, url: e.url || e.cdnUrl || '', lower: e.name.toLowerCase(), tier })
+      list.push({ name: e.name, url: e.url || e.cdnUrl || '', lower: e.name.toLowerCase(), tier, source: e.source })
     }
     list.sort((a, b) => a.lower < b.lower ? -1 : a.lower > b.lower ? 1 : 0)
     return list
@@ -216,6 +216,16 @@
       #${EMOTE_DROPDOWN_ID} .hs-ac-item:hover .hs-ac-name {
         color: #000;
       }
+      #${EMOTE_DROPDOWN_ID} .hs-ac-vis {
+        flex-shrink: 0;
+        margin-left: 8px;
+      }
+      #${EMOTE_DROPDOWN_ID} .hs-ac-vis.v-all { color: #5fd75f; }
+      #${EMOTE_DROPDOWN_ID} .hs-ac-vis.v-ext { color: #ffd75f; }
+      #${EMOTE_DROPDOWN_ID} .hs-ac-vis.v-hs  { color: #ff8700; }
+      #${EMOTE_DROPDOWN_ID} .hs-ac-vis.v-dim { color: #9e9e9e; }
+      #${EMOTE_DROPDOWN_ID} .hs-ac-item.selected .hs-ac-vis,
+      #${EMOTE_DROPDOWN_ID} .hs-ac-item:hover .hs-ac-vis { color: #000; }
       #${EMOTE_DROPDOWN_ID} .hs-ac-img {
         width: 28px;
         height: 28px;
@@ -302,6 +312,21 @@
     })
   }
 
+  // Per-row visibility tag — same wedge signal as the cycle readout on the other
+  // surfaces: who actually sees this emote if you send it. Color grades by reach:
+  // green everyone/native → yellow {provider} (needs that ext) → orange heatsync
+  // only (your set; non-heatsync viewers get plain text). Unknown source falls back
+  // to the neutral category so it never asserts a wrong visibility.
+  function hsVisTag(r) {
+    if (r.isChatter) return { t: 'everyone', cls: 'v-all' }
+    const tier = r.tier ?? 2
+    const src = (r.source || '').toLowerCase()
+    if (src === 'twitch' || src === 'kick') return { t: src, cls: 'v-all' }
+    if (tier === 1 || src === 'heatsync' || src === 'inventory') return { t: 'heatsync', cls: 'v-hs' }
+    if (src === '7tv' || src === 'bttv' || src === 'ffz') return { t: src, cls: 'v-ext' }
+    return { t: tier === 0 ? 'channel' : tier === 1 ? 'mine' : 'global', cls: 'v-dim' }
+  }
+
   function renderEmoteItems(container, results) {
     container.textContent = ''
     results.forEach((r, i) => {
@@ -328,6 +353,12 @@
       nameSpan.textContent = r.name
 
       item.appendChild(nameSpan)
+
+      const vis = hsVisTag(r)
+      const visSpan = document.createElement('span')
+      visSpan.className = 'hs-ac-vis ' + vis.cls
+      visSpan.textContent = vis.t
+      item.appendChild(visSpan)
 
       item.addEventListener('mousedown', (e) => {
         e.preventDefault()

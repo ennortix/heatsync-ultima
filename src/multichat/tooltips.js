@@ -75,7 +75,8 @@
     img.alt = badgeName
     img.style.width = '72px'
     img.style.height = '72px'
-    tooltip.querySelector('.tooltip-name').textContent = badgeName
+    const nameEl = tooltip.querySelector('.tooltip-name')
+    if (nameEl) nameEl.textContent = badgeName
     // Detect source from URL
     const src = badgeImg.src
     const sourceLabel = src.includes('betterttv') ? 'BTTV'
@@ -86,8 +87,10 @@
       : (src.includes('googleusercontent') || src.includes('ggpht')) ? 'YouTube'
       : ''
     const sourceEl = tooltip.querySelector('.tooltip-source')
-    sourceEl.textContent = sourceLabel
-    sourceEl.className = 'tooltip-source'
+    if (sourceEl) {
+      sourceEl.textContent = sourceLabel
+      sourceEl.className = 'tooltip-source'
+    }
 
     tooltip.style.left = '-9999px'
     tooltip.style.top = '-9999px'
@@ -886,17 +889,19 @@
     const hero = tooltip.querySelector('.hs-pc-hero')
     if (!hero) return
     const heroImg = hero.querySelector('.hs-pc-hero-img')
-    const url = banner.bannerUrl || banner.offlineUrl
-    if (url && heroImg) {
+    // safeUrl gates protocol + escape quote/backslash so a crafted banner URL
+    // can't break out of url("…") and inject CSS.
+    const safe = safeUrl(banner.bannerUrl || banner.offlineUrl)
+    if (safe && heroImg) {
       const probe = new Image()
       probe.onload = () => {
         if (gen !== _profileGen) return
-        heroImg.style.backgroundImage = `url("${url}")`
+        heroImg.style.backgroundImage = `url("${safe.replace(/\\/g, '%5C').replace(/"/g, '%22')}")`
         hero.classList.add('hs-pc-hero-loaded')
         if (_userTooltipTarget) positionTooltipAtElement(tooltip, _userTooltipTarget)
       }
       probe.referrerPolicy = 'no-referrer'
-      probe.src = url
+      probe.src = safe
     }
     // Fallback path leaves the avatar as anon.webp — fill it from the banner
     // fetch's profile_pic (kick api hands this back next to the banner URL).

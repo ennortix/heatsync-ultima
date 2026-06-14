@@ -875,17 +875,20 @@ async function pcApplyBanner(card, chain) {
   if (!hero) return
   const heroImg = hero.querySelector('.hs-pcard-hero-img')
   if (!heroImg) return
-  const url = banner.bannerUrl || banner.offlineUrl
-  if (url) {
+  // safeUrl gates protocol (http/https only); escape quote+backslash so a
+  // crafted banner URL (kick/yt-sourced) can't break out of url("…") and
+  // inject CSS.
+  const safe = safeUrl(banner.bannerUrl || banner.offlineUrl)
+  if (safe) {
     // Preload, then commit — so the fade-in starts on a decoded image,
     // not on a flash of nothing → cached image.
     const probe = new Image()
     probe.onload = () => {
-      heroImg.style.backgroundImage = `url("${url}")`
+      heroImg.style.backgroundImage = `url("${safe.replace(/\\/g, '%5C').replace(/"/g, '%22')}")`
       hero.classList.add('hs-pcard-hero-loaded')
     }
     probe.referrerPolicy = 'no-referrer'
-    probe.src = url
+    probe.src = safe
   }
   // Fill avatar from banner fetch's profile_pic when the card landed on the
   // anon placeholder (no heatsync profile pic). Kick API returns profile_pic

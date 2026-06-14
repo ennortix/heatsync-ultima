@@ -67,12 +67,14 @@
     const blocked = new Set(data.blocked || [])
     const seen = new Set()
     const list = []
-    // Tier rides on each emote so searchEmotes can rank own > channel > global —
-    // a channel emote then beats a global even when the global is a closer match
-    // (exact/prefix), e.g. "hug" → channel peepoHug over global "HuG".
+    // Tier rides on each emote so searchEmotes can rank channel > own > global —
+    // a channel emote beats own/global even when the latter is a closer match
+    // (exact/prefix), e.g. "hug" → channel peepoHug over global "HuG". Channel
+    // emotes are listed FIRST so first-seen dedup keeps the CHANNEL image for a
+    // name you also own (the channel emote is what renders in this channel).
     const sources = [
-      ...(data.inventoryEmotes || []).map(e => ({ e, tier: 0 })),
-      ...(data.channelEmotes || []).map(e => ({ e, tier: 1 })),
+      ...(data.channelEmotes || []).map(e => ({ e, tier: 0 })),
+      ...(data.inventoryEmotes || []).map(e => ({ e, tier: 1 })),
       ...(data.globalEmotes || []).map(e => ({ e, tier: 2 })),
     ]
     for (const { e, tier } of sources) {

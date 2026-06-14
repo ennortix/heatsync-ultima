@@ -312,6 +312,7 @@
           hash: e.id,
           url: `https://static-cdn.jtvnw.net/emoticons/v2/${e.id}/default/dark/1.0`,
           native: true,
+          source: 'twitch',
           sub: isSub,
           owner: ownerLogin
         });
@@ -334,9 +335,9 @@
     for (const e of getNativeTwitchEmotes()) {
       if (seen.has(e.name)) continue;
       seen.add(e.name);
-      // sub emotes are channel-tier (1), the rest global (2); bridge emotes already
-      // carry their real tier (0=own/1=channel/2=global) from content.js.
-      if (e.tier == null) e.tier = e.sub ? 1 : 2;
+      // sub emotes are channel-tier (0), the rest global (2); bridge emotes already
+      // carry their real tier (0=channel/1=own/2=global) from content.js.
+      if (e.tier == null) e.tier = e.sub ? 0 : 2;
       all.push(e);
     }
     return all;
@@ -359,6 +360,17 @@
     // Emote-only: skip :emoji, @user, and short fragments.
     if (!search || search.length < 2 || search.startsWith(':') || search.startsWith('@')) return
     const token = ++_hsRemoteToken
+    cycleState.remotePending = true
+    // Clear the "searching…" flag and refresh the tooltip — but only if a newer
+    // fetch hasn't superseded this one (then it owns the flag).
+    const _doneRemote = () => {
+      if (token !== _hsRemoteToken) return
+      cycleState.remotePending = false
+      if (cycleState.lastCycledEmote != null) {
+        const cur = cycleState.matches[cycleState.index]
+        if (cur) showCycleTooltip(cycleState.index + 1, cycleState.matches.length, cur)
+      }
+    }
     if (_hsRemoteAbort) { try { _hsRemoteAbort.abort() } catch (_) {} }
     const ac = new AbortController()
     _hsRemoteAbort = ac
@@ -370,13 +382,13 @@
         signal: ac.signal,
         body: JSON.stringify({ operationName: 'SearchEmotes', query: SEVEN_TV_GQL, variables: { query: search, page: 1, perPage: 200 } })
       })
-      if (!resp.ok) return
+      if (!resp.ok) { _doneRemote(); return }
       const data = await resp.json()
       items = data?.data?.emotes?.search?.items || []
-    } catch (_) { return }
-    if (ac.signal.aborted || token !== _hsRemoteToken) return
+    } catch (_) { _doneRemote(); return }
+    if (ac.signal.aborted || token !== _hsRemoteToken) { _doneRemote(); return }
     // Cycle must still be on the search this fetch was issued for.
-    if (cycleState.searchTerm !== search) return
+    if (cycleState.searchTerm !== search) { _doneRemote(); return }
     // Dedupe by EXACT name (casing distinguishes emotes), matching the picker.
     const have = new Set(cycleState.matches.map(m => m.name))
     const searchLower = search.toLowerCase()
@@ -386,9 +398,9 @@
       if (!name || have.has(name)) continue
       have.add(name)
       const nl = name.toLowerCase()
-      add.push({ name, nameLower: nl, url: `https://cdn.7tv.app/emote/${it.id}/1x.webp`, remote: true })
+      add.push({ name, nameLower: nl, url: `https://cdn.7tv.app/emote/${it.id}/1x.webp`, remote: true, source: '7tv' })
     }
-    if (!add.length) return
+    if (!add.length) { _doneRemote(); return }
     add.forEach((m, i) => { m._ai = i })
     // 7TV popularity rank by name — the search returns TOP_ALL_TIME order, so the
     // item's index IS its rank. Built from the full result set so channel/owned 7TV
@@ -411,7 +423,7 @@
     cycleState.matches.sort((a, b) => {
       const al = a.remote ? 1 : 0, bl = b.remote ? 1 : 0
       if (al !== bl) return al - bl
-      // Local block: own > channel > global outranks prefix/popularity, so a channel
+      // Local block: channel > own > global outranks prefix/popularity, so a channel
       // substring match beats a global prefix match. Remotes have no tier (catalog).
       if (!a.remote && !b.remote) {
         const at = a.tier ?? 2, bt = b.tier ?? 2
@@ -429,11 +441,8 @@
       return (a.name || '').localeCompare(b.name || '')
     })
     if (prev) { const ni = cycleState.matches.indexOf(prev); if (ni >= 0) cycleState.index = ni }
-    // Refresh the N/M denominator if the user is mid-cycle.
-    if (cycleState.lastCycledEmote != null) {
-      const cur = cycleState.matches[cycleState.index]
-      if (cur) showCycleTooltip(cycleState.index + 1, cycleState.matches.length, cur.isEmoji ? cur.emoji + ' ' + cur.name : cur.name)
-    }
+    // Clear the "searching…" flag and refresh the N/M denominator + readout.
+    _doneRemote()
   }
 
   // Cached emotes to avoid repeated JSON parsing
@@ -996,7 +1005,24 @@
   let cycleTooltipTimeout = null;
   acSignal.addEventListener('abort', () => { cycleTooltip?.remove(); cycleTooltip = null })
 
-  function showCycleTooltip(index, total, emoteName) {
+  // Cycle-depth + visibility readout — same model as the multichat overlay:
+  // "cat" = where in the cycle you are (channel → your set → global → 7tv search);
+  // "vis" = who actually sees the image if you send it. Colors form a breadth
+  // gradient: green (everyone) → yellow (needs a provider ext) → orange (heatsync
+  // only — non-heatsync viewers get plain text).
+  function emoteCycleMeta(m) {
+    if (!m) return { cat: '', vis: null }
+    if (m.isUser || m.type === 'user') return { cat: 'chatter', vis: { t: 'everyone', c: '#5fd75f' } }
+    if (m.isEmoji || m.type === 'emoji') return { cat: 'emoji', vis: { t: 'everyone', c: '#5fd75f' } }
+    if (m.remote) return { cat: '7tv search', vis: { t: 'heatsync only', c: '#ff8700' } }
+    const tier = m.tier ?? 2
+    const cat = tier === 0 ? 'channel' : tier === 1 ? 'your set' : 'global'
+    if (m.source === 'twitch' || m.native) return { cat, vis: { t: 'all twitch', c: '#5fd75f' } }
+    if (tier === 1 || m.source === 'heatsync') return { cat, vis: { t: 'heatsync only', c: '#ff8700' } }
+    return { cat, vis: { t: `${m.source || 'ext'} users`, c: '#ffd75f' } }
+  }
+
+  function showCycleTooltip(index, total, m) {
     // Create tooltip if needed
     if (!cycleTooltip) {
       cycleTooltip = document.createElement('div');
@@ -1015,6 +1041,7 @@
         border: 1px solid rgba(255,255,255,0.1);
         opacity: 0;
         transition: opacity 0.15s;
+        white-space: nowrap;
       `;
       document.body.appendChild(cycleTooltip);
     }
@@ -1022,8 +1049,17 @@
     // Hide Twitch's native dropdown while cycling via body class
     document.body.classList.add('heatsync-cycling');
 
-    // Update content
-    cycleTooltip.textContent = `${index}/${total} ${emoteName}`;
+    // Update content — name + category + who-sees-it, built as nodes (no innerHTML).
+    const label = m && (m.isEmoji ? `${m.emoji} ${m.name}` : m.name) || '';
+    const meta = emoteCycleMeta(m);
+    const mk = (text, css) => { const s = document.createElement('span'); s.textContent = text; if (css) s.style.cssText = css; return s; };
+    const dot = () => mk(' · ', 'color:#555;');
+    cycleTooltip.replaceChildren();
+    cycleTooltip.appendChild(mk(`${index}/${total}`, 'color:#888;'));
+    cycleTooltip.appendChild(mk(' ' + label, 'color:#fff;'));
+    if (meta.cat) { cycleTooltip.appendChild(dot()); cycleTooltip.appendChild(mk(meta.cat, 'color:#9e9e9e;')); }
+    if (meta.vis) { cycleTooltip.appendChild(dot()); cycleTooltip.appendChild(mk(meta.vis.t, `color:${meta.vis.c};`)); }
+    if (cycleState.remotePending) { cycleTooltip.appendChild(dot()); cycleTooltip.appendChild(mk('searching 7tv…', 'color:#ffd75f;')); }
 
     // Position above input
     const input = document.querySelector('[data-slate-editor="true"]');
@@ -1479,10 +1515,19 @@
           cycleState.searchTerm = currentSearch;
           cycleState.index = 0;
           cycleState.lastCycledEmote = null;
+          cycleState.localCount = cycleFinal.length;
+          cycleState.remoteFetched = false;
+          cycleState.remotePending = false;
           hasMultipleMatches = cycleState.matches.length > 1;
-          // Pull deeper matches from 7TV so cycling never dead-ends at the
-          // local set; results append asynchronously to the live cycle.
-          if (!emojiSearch) fetch7tvCycleMatches(currentSearch);
+          // Lazy 7TV: with ≥2 local matches, DON'T hit the catalog yet — it fires
+          // once you cycle to the last local match (see the advance branch). A word
+          // with ≤1 local match still searches immediately: it's the only way to
+          // complete a non-owned emote, and native cycling needs ≥2 entries to even
+          // engage (so a lone local could otherwise never reach the catalog).
+          if (!emojiSearch && cycleFinal.length <= 1) {
+            cycleState.remoteFetched = true;
+            fetch7tvCycleMatches(currentSearch);
+          }
           log(' 🔄 Rebuilt', cycleState.matches.length, 'matches for "' + currentSearch + '"');
         }
 
@@ -1517,9 +1562,16 @@
           const nextEmote = cycleState.matches[cycleState.index];
           cycleState.lastTime = now;
 
-          const tooltipLabel = nextEmote.isEmoji ? nextEmote.emoji + ' ' + nextEmote.name : nextEmote.name;
           log(' ⌨️ Manual Tab cycling:', cycleState.index + 1, '/', cycleState.matches.length, '→', nextEmote.name, justCycled ? '(cycling)' : '(first)');
-          showCycleTooltip(cycleState.index + 1, cycleState.matches.length, tooltipLabel);
+          showCycleTooltip(cycleState.index + 1, cycleState.matches.length, nextEmote);
+          // Lazy 7TV: once you forward-cycle to the last LOCAL match, pull catalog
+          // hits so the next Tab keeps cycling into 7tv — local matches never hit
+          // the network. Fires once; zero-local words fetch eagerly on rebuild.
+          if (justCycled && !cycleState.remoteFetched && cycleState.localCount > 0
+              && cycleState.index >= cycleState.localCount - 1) {
+            cycleState.remoteFetched = true;
+            fetch7tvCycleMatches(cycleState.searchTerm);
+          }
 
           const inst = chatInputInst || findChatInput();
           if (!inst) {
@@ -1619,9 +1671,8 @@
           const prevEmote = cycleState.matches[cycleState.index];
           cycleState.lastTime = Date.now();
 
-          const shiftLabel = prevEmote.isEmoji ? prevEmote.emoji + ' ' + prevEmote.name : prevEmote.name;
           log(' ⌨️ Shift+Tab cycling backwards:', cycleState.index + 1, '/', cycleState.matches.length, '→', prevEmote.name);
-          showCycleTooltip(cycleState.index + 1, cycleState.matches.length, shiftLabel);
+          showCycleTooltip(cycleState.index + 1, cycleState.matches.length, prevEmote);
 
           const inst = chatInputInst || findChatInput();
           if (!inst) {

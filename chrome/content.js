@@ -9757,22 +9757,25 @@ function updateEmoteBridgeImmediate() {
   const allEmotes = [];
   const seen = new Set();
 
-  // tier rides on each emote (0=own inventory, 1=channel, 2=global) so the MAIN-world
-  // Twitch autocomplete hook can rank own > channel > global — a channel emote then
-  // beats a global even on a closer name match (e.g. "hug" → peepoHug over global "HuG").
-  // Personal inventory first (highest priority)
-  for (const e of emoteInventory) {
-    if (!seen.has(e.name)) {
-      seen.add(e.name);
-      allEmotes.push({ name: e.name, hash: e.hash, url: e.url, zeroWidth: e.zeroWidth, tier: 0 });
-    }
-  }
-
-  // Channel emotes
+  // tier rides on each emote (0=channel, 1=own inventory, 2=global) so the MAIN-world
+  // Twitch autocomplete hook can rank channel > own > global. Channel emotes are
+  // emitted FIRST so first-seen dedup keeps the CHANNEL image for a name you also
+  // own (e.g. nl_kripp's BTTV "SoupTime" over an owned same-named 7TV emote) — the
+  // channel emote is what actually renders in this channel.
+  // Channel emotes (highest priority). source rides along so the autocomplete
+  // hook can show WHO sees each emote (7tv/bttv users vs heatsync-only).
   for (const e of channelEmotes) {
     if (!seen.has(e.name)) {
       seen.add(e.name);
-      allEmotes.push({ name: e.name, hash: e.hash, url: e.url, zeroWidth: e.zeroWidth, tier: 1 });
+      allEmotes.push({ name: e.name, hash: e.hash, url: e.url, zeroWidth: e.zeroWidth, tier: 0, source: e.source });
+    }
+  }
+
+  // Personal inventory
+  for (const e of emoteInventory) {
+    if (!seen.has(e.name)) {
+      seen.add(e.name);
+      allEmotes.push({ name: e.name, hash: e.hash, url: e.url, zeroWidth: e.zeroWidth, tier: 1, source: e.source });
     }
   }
 
@@ -9780,7 +9783,7 @@ function updateEmoteBridgeImmediate() {
   for (const e of globalEmotes) {
     if (!seen.has(e.name)) {
       seen.add(e.name);
-      allEmotes.push({ name: e.name, hash: e.hash, url: e.url, zeroWidth: e.zeroWidth, tier: 2 });
+      allEmotes.push({ name: e.name, hash: e.hash, url: e.url, zeroWidth: e.zeroWidth, tier: 2, source: e.source });
     }
   }
 

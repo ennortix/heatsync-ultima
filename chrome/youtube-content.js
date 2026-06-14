@@ -37,24 +37,26 @@
 
   function rebuildEmoteMap(inventory, globals) {
     const map = new Map()
-    // tier rides on each emote (0=own/1=channel/2=global) so findEmoteMatches ranks
-    // own > channel > global — a channel emote beats a global on a closer name match.
-    // Globals first (lower priority) — tier 2
+    // tier rides on each emote (0=channel/1=own/2=global) so findEmoteMatches ranks
+    // channel > own > global — a channel emote beats own/global on a closer name match.
+    // Channel emotes are written LAST so the map keeps the CHANNEL image for a name
+    // you also own (the channel emote is what renders in this channel).
+    // Globals first (lowest priority) — tier 2
     if (globals) {
       for (const e of globals) {
         if (e?.name && !blockedEmotes.has(e.hash || e.name)) { e._ytTier = 2; map.set(e.name, e) }
       }
     }
-    // Channel emotes (BTTV/FFZ/7TV/Twitch sub) — tier 1
-    for (const ownerEmotes of Object.values(channelEmotesByOwner)) {
-      if (!Array.isArray(ownerEmotes)) continue
-      for (const e of ownerEmotes) {
+    // Inventory — tier 1
+    if (inventory) {
+      for (const e of inventory) {
         if (e?.name && !blockedEmotes.has(e.hash || e.name)) { e._ytTier = 1; map.set(e.name, e) }
       }
     }
-    // Inventory overrides everything — tier 0
-    if (inventory) {
-      for (const e of inventory) {
+    // Channel emotes (BTTV/FFZ/7TV/Twitch sub) override — tier 0
+    for (const ownerEmotes of Object.values(channelEmotesByOwner)) {
+      if (!Array.isArray(ownerEmotes)) continue
+      for (const e of ownerEmotes) {
         if (e?.name && !blockedEmotes.has(e.hash || e.name)) { e._ytTier = 0; map.set(e.name, e) }
       }
     }
@@ -812,9 +814,9 @@
 
   function findEmoteMatches(prefix, limit) {
     const lower = prefix.toLowerCase()
-    // Full scan (no early break): inventory (tier 0) sits at the map's tail, so an
-    // early cap would hide own emotes. Rank tier (own>channel>global) > exact >
-    // prefix>substring > alpha, then slice — a channel emote beats a global on a
+    // Full scan (no early break): channel emotes (tier 0) sit at the map's tail, so
+    // an early cap would hide them. Rank tier (channel>own>global) > exact >
+    // prefix>substring > alpha, then slice — a channel emote beats own/global on a
     // closer match ("hug" → channel peepoHug over global "HuG").
     const matches = []
     for (const [name, emote] of emoteMap) {

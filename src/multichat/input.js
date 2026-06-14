@@ -357,7 +357,8 @@ active: false,  // true when cycling through matches
 wordStart: 0,   // Position where the completion word starts
 afterText: '',  // Text after the completion
 search: '',     // search term that produced these matches (remote-fetch guard)
-remoteDone: false // 7tv fallback already merged for this search
+remoteDone: false, // 7tv fallback already merged for this search
+remotePending: false // a lazy remote fetch is in flight for this search
 };
 
 // Emotes surfaced via remote (7TV/BTTV/FFZ) Tab-search this session: name → {url,
@@ -409,6 +410,7 @@ async function fetchRemoteEmoteMatches(search) {
   if (search.startsWith('@') || search.startsWith(':')) return
   if (hsModClassify(search, { allowPrefix: false }).kind === 'modifier') return
   const token = ++_acRemoteToken
+  acState.remotePending = true
   if (_acRemoteAbort) { try { _acRemoteAbort.abort() } catch (_) {} }
   const ac = new AbortController()
   _acRemoteAbort = ac
@@ -424,6 +426,7 @@ async function fetchRemoteEmoteMatches(search) {
   // Cycling must still be on the same search the fetch was issued for.
   if (!acState.active || acState.search !== search) return
   acState.remoteDone = true
+  acState.remotePending = false
   const rf = settled[0]?.status === 'fulfilled' && Array.isArray(settled[0].value) ? settled[0].value : []
   const rb = settled[1]?.status === 'fulfilled' && Array.isArray(settled[1].value) ? settled[1].value : []
   const r7 = settled[2]?.status === 'fulfilled' && Array.isArray(settled[2].value) ? settled[2].value : []
@@ -461,8 +464,8 @@ async function fetchRemoteEmoteMatches(search) {
   // (FFZ-by-uses → BTTV → 7TV), so cycling through remotes hits the highest
   // quality first regardless of provider.
   // Order:
-  //   1. local > remote                       (own set / channel / globals beat catalog)
-  //   2. local tier (own > channel > global)
+  //   1. local > remote                       (channel / own set / globals beat catalog)
+  //   2. local tier (channel > own > global)
   //   3. exact full-name match                (within tier)
   //   4. prefix > substring
   //   5. sub > non-sub
@@ -494,15 +497,14 @@ async function fetchRemoteEmoteMatches(search) {
     if (a.priority === 0 && a.name.length !== b.name.length) return a.name.length - b.name.length
     return (a.name || '').localeCompare(b.name || '')
   })
-  // No local match existed when Tab was pressed — insert the first remote hit now.
-  // Snap to an exact full-name match ONLY when it also sorts to #1 — i.e. nothing
-  // higher-tier beat it. Channel-first means a channel/own match that outranks the
-  // exact (e.g. peepoHug over global "HuG") must NOT be overridden by the snap.
-  const topIsExact = acState.matches.length > 0 && (acState.matches[0].name || '').toLowerCase() === searchLower
+  // Two cases land here:
+  //   • wasEmpty — no local match existed when Tab was pressed, so this remote
+  //     fetch fired immediately; insert the first remote hit now.
+  //   • lazy — local matches existed and the user cycled to the end, triggering
+  //     this fetch; keep their committed chip pinned and only re-point the index.
+  //     Never async-swap a chip the user already cycled to (see
+  //     heatsync_tabcomplete_exact_locality: async re-insert sent the wrong emote).
   if (wasEmpty && acState.matches.length > 0) {
-    acState.index = 0
-    insertCompletionKeepOpen(acState.matches[0])
-  } else if (topIsExact && (!prev || (prev.name || '').toLowerCase() !== searchLower)) {
     acState.index = 0
     insertCompletionKeepOpen(acState.matches[0])
   } else if (prev) {
@@ -2017,6 +2019,15 @@ function handleInputKeydown(e) {
       const len = acState.matches.length;
       acState.index = (acState.index + (e.shiftKey ? len - 1 : 1)) % len;
       insertCompletionKeepOpen(acState.matches[acState.index]);
+      // Lazy 7TV/BTTV/FFZ search: only when you forward-cycle to the LAST local
+      // match do we hit the catalog APIs, so the next Tab keeps cycling into
+      // remote hits. The common case (your channel/own/global emote is right
+      // there) never touches the network. Fires once per search. Triggered before
+      // the tooltip so it can show the live "searching 7tv…" state immediately.
+      if (!e.shiftKey && !acState.remoteDone && !acState.remotePending
+          && acState.index === len - 1 && acState.search) {
+        fetchRemoteEmoteMatches(acState.search);
+      }
       showCycleTooltip();
     } else {
       // First Tab - find matches. WYSIWYG: if the typed word touches a preceding
@@ -2034,6 +2045,7 @@ function handleInputKeydown(e) {
         acState.active = true;
         acState.search = word;
         acState.remoteDone = false;
+        acState.remotePending = false;
 
         if (!wysiwygEnabled && input.value !== undefined) {
           // Calculate positions for text input cycling (textarea only)
@@ -2048,13 +2060,17 @@ function handleInputKeydown(e) {
           acState.afterText = text.slice(wordEnd);
         }
 
-        // Cross-provider remote search. With local matches it appends deeper hits;
-        // with none it inserts the first remote hit when the fetch resolves.
-        fetchRemoteEmoteMatches(word);
-
         if (matches.length > 0) {
           insertCompletionKeepOpen(matches[0]);
           showCycleTooltip();
+          // Local matches satisfy the common case — do NOT hit 7TV/BTTV/FFZ yet.
+          // The catalog search fires lazily, only once you cycle past the last
+          // local match (see Tab-cycle branch above).
+        } else {
+          // No local hit at all — the cross-provider catalog search is the only
+          // way to complete this word, so fire it now; it inserts the first
+          // remote hit when the fetch resolves.
+          fetchRemoteEmoteMatches(word);
         }
       }
     }
@@ -3138,17 +3154,21 @@ function findEmoteMatches(search) {
   }
 
   // Search emote cache (unless explicitly searching users with @).
-  // Three tiers, in order: 0 = viewer's own set (heatsync inventory + native sub
-  // emotes), 1 = current channel BTTV/FFZ/7TV, 2 = globals. Tier rides on each
-  // pushed match so the sort can rank "own > channel > global" without
+  // Three tiers, in order: 0 = current channel BTTV/FFZ/7TV, 1 = viewer's own set
+  // (heatsync inventory + native sub emotes), 2 = globals. Tier rides on each
+  // pushed match so the sort can rank "channel > own > global" without
   // re-walking the source maps.
+  // Channel emotes are written into the merge map LAST so a name you own AND that
+  // the channel also defines (e.g. nl_kripp's BTTV "SoupTime") resolves to the
+  // CHANNEL image — that's what actually renders in this channel. Channel-first is
+  // the user-chosen order (reverses the older own-first call).
   if (!isUserSearch) {
     const tierByName = new Map()
     const acEmotes = new Map()
     for (const [k, v] of emoteCache) { acEmotes.set(k, v); tierByName.set(k, 2) }
+    for (const [k, v] of viewerPersonalEmotes) { acEmotes.set(k, v); tierByName.set(k, 1) }
     const acChCache = channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()]
-    if (acChCache) for (const [k, v] of acChCache) { acEmotes.set(k, v); tierByName.set(k, 1) }
-    for (const [k, v] of viewerPersonalEmotes) { acEmotes.set(k, v); tierByName.set(k, 0) }
+    if (acChCache) for (const [k, v] of acChCache) { acEmotes.set(k, v); tierByName.set(k, 0) }
     for (const [name, emote] of acEmotes) {
       // Only tab-complete heatsync emotes you own (can't send emotes not in your set)
       if (emote.source === 'heatsync' && emote.state !== 'owned') continue;
@@ -3247,7 +3267,7 @@ function findEmoteMatches(search) {
   }
 
   // Sort order (most-correct first):
-  //   1. own set > channel > globals         (tier; emoji/non-emote have no tier)
+  //   1. channel > own set > globals         (tier; emoji/non-emote have no tier)
   //   2. exact full-name match               (within tier)
   //   3. prefix > substring                  (priority)
   //   4. sub emote > non-sub                 (entitlement-scarce)
@@ -3870,17 +3890,51 @@ function placeCaretAfter(node, offset = 0) {
 }
 
 
+// Cycle-depth + visibility readout for the current Tab match. "cat" tells you
+// WHERE in the cycle you are (channel → your set → global → 7tv search, getting
+// rarer as you go); "vis" tells you WHO actually sees the image if you send it:
+//   everyone   — text/unicode or native Twitch emotes, no extension needed
+//   {prov} users — bttv/ffz/7tv emote active in this channel/globally: anyone
+//                  running that provider's extension sees it (heatsync too)
+//   heatsync only — your personal set + 7tv catalog-search hits: only viewers
+//                   running heatsync render these; everyone else sees plain text
+// Colors form a breadth gradient: green (all) → yellow (needs an ext) → orange
+// (heatsync only), so you can feel how deep / how niche the current pick is.
+function emoteCycleMeta(m) {
+  if (!m) return { cat: '', vis: null }
+  if (m.type === 'user' || m.type === 'user-bare') return { cat: 'chatter', vis: { t: 'everyone', c: '#5fd75f' } }
+  if (m.type === 'emoji') return { cat: 'emoji', vis: { t: 'everyone', c: '#5fd75f' } }
+  if (m.remote) return { cat: '7tv search', vis: { t: 'heatsync only', c: '#ff8700' } }
+  const tier = m.tier ?? 2
+  const cat = tier === 0 ? 'channel' : tier === 1 ? 'your set' : 'global'
+  if (m.source === 'twitch') return { cat, vis: { t: 'all twitch', c: '#5fd75f' } }
+  // Your personal set (tier 1) or a heatsync-hosted emote: others only see it via
+  // heatsync's sender-set merge — non-heatsync viewers get plain text.
+  if (tier === 1 || m.source === 'heatsync') return { cat, vis: { t: 'heatsync only', c: '#ff8700' } }
+  // Third-party emote active in the channel/global set — provider-ext users see it.
+  return { cat, vis: { t: `${m.source || 'ext'} users`, c: '#ffd75f' } }
+}
+
 function showCycleTooltip() {
   let tt = document.getElementById('hs-mc-cycle-tooltip');
   if (!tt) {
     tt = document.createElement('div');
     tt.id = 'hs-mc-cycle-tooltip';
-    tt.style.cssText = 'position:absolute;bottom:100%;left:8px;background:#000;color:#fff;padding:4px 8px;font-size:13px;border-radius: 0;z-index:1003;margin-bottom:4px;';
+    tt.style.cssText = 'position:absolute;bottom:100%;left:8px;background:#000;color:#fff;padding:4px 8px;font-size:13px;border-radius:0;z-index:1003;margin-bottom:4px;white-space:nowrap;';
     document.getElementById('hs-mc-inputbar')?.appendChild(tt);
   }
   const m = acState.matches[acState.index];
-  const label = m.type === 'emoji' ? `${m.emoji} ${m.name}` : m.name;
-  tt.textContent = `${acState.index + 1}/${acState.matches.length} ${label}`;
+  if (!m) { tt.style.display = 'none'; return; }
+  const meta = emoteCycleMeta(m);
+  const mkSpan = (text, css) => { const s = document.createElement('span'); s.textContent = text; if (css) s.style.cssText = css; return s; };
+  const dot = () => mkSpan(' · ', 'color:#555;');
+  tt.replaceChildren();
+  tt.appendChild(mkSpan(`${acState.index + 1}/${acState.matches.length}`, 'color:#888;'));
+  tt.appendChild(mkSpan(' ' + (m.type === 'emoji' ? `${m.emoji} ${m.name}` : m.name), 'color:#fff;'));
+  if (meta.cat) { tt.appendChild(dot()); tt.appendChild(mkSpan(meta.cat, 'color:#9e9e9e;')); }
+  if (meta.vis) { tt.appendChild(dot()); tt.appendChild(mkSpan(meta.vis.t, `color:${meta.vis.c};`)); }
+  // Surface the live catalog fetch so you know when a 7tv search is firing.
+  if (acState.remotePending) { tt.appendChild(dot()); tt.appendChild(mkSpan('searching 7tv…', 'color:#ffd75f;')); }
   tt.style.display = 'block';
 }
 
@@ -3897,6 +3951,7 @@ function hideAutocomplete() {
   acState.afterText = '';
   acState.search = '';
   acState.remoteDone = false;
+  acState.remotePending = false;
   _acRemoteToken++; // invalidate any in-flight 7TV fetch
   if (_acRemoteAbort) { try { _acRemoteAbort.abort() } catch (_) {} }
   hideCycleTooltip();

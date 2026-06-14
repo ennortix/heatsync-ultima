@@ -1,14 +1,15 @@
 # heatsync
 
-Cross-platform multichat overlay for Twitch, Kick, and YouTube — every stream's chat in one panel.
+twitch + kick + youtube chat in one panel — plus your own emotes on every stream, no streamer approval, no sub.
 
-- **multichat** — Twitch + Kick + YouTube live chat in one tabbed panel: per-channel tabs, per-platform filters, mentions, whispers. **no account required.**
-- **7TV, BTTV, FFZ** — emotes, paints, badges render automatically; no account required
-- **5000-slot personal emote inventory** — optional, free: upload at [heatsync.org](https://heatsync.org) and your emotes render in twitch + kick native chat and across the overlay, in any channel
-- **auto-fill on send** — tab-complete a 7TV name or paste any chat emote, hit enter; the slot lands silently
-- **one-click channel import** — pull every emote from any Twitch/Kick channel into your set
-- profile cards, user muting, emote blocking, unified right-click menu, Twitch clip + mod commands from the input
-- **light on your machine** — vanilla JS, zero runtime deps; capped chat buffer + DOM render cap hold memory steady across 8+ hour sessions. one-click low-RAM preset for weak or passively-cooled hardware
+## features
+
+- **multichat overlay** — twitch + kick + youtube live chat in one tabbed panel: per-channel tabs, per-platform filters, mentions, whispers, resizable + dockable to any edge. **no account required.**
+- **emote sovereignty** — a free 5000-slot inventory you upload at [heatsync.org](https://heatsync.org) renders in twitch + kick native chat and across the overlay, in any channel — whether or not the streamer enabled anything. tab-complete a 7TV name or paste any emote, hit enter; the slot lands silently. one click imports every emote from a channel.
+- **7TV / BTTV / FFZ** — emotes, paints, and badges render automatically. coexists with those extensions — keep 7TV, add heatsync for the cross-platform chat and portable emotes it doesn't do.
+- **power-user input** — vim keybindings on every chat input (normal/insert, motions, operators, `.` repeat), wysiwyg emote composer, message history, reply threading, and instant `/`-filter of the live buffer by text or user.
+- **moderation + profiles** — hover mod toolbar (`/ban` `/timeout` `/unban` `/delete`), client-side automod, user mute/block synced across twitch↔kick, btop-style profile cards with a paginated chat-log archive, one-click twitch clips.
+- **light on your machine** — vanilla js, zero runtime deps; capped chat buffer + dom render cap hold memory steady across 8+ hour sessions. one-click low-RAM preset for weak or passively-cooled hardware.
 
 ## install
 

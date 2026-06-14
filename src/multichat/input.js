@@ -1406,6 +1406,17 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
     { label: 'mention', fn: () => _mentionInMcInput(username) },
     { label: 'view profile', fn: () => openProfileCard(username, platform) },
   )
+  // Filter the live buffer to just this user — sets the search bar to @name.
+  // Only on a live/channel tab (where local filtering applies) and a real row.
+  if (msg && typeof isLiveSearchTab === 'function' && isLiveSearchTab(currentTab)) {
+    items.push({ label: `filter to ${username}`, fn: () => {
+      const input = document.getElementById('hs-mc-search-input')
+      if (!input) return
+      input.value = '@' + String(username).toLowerCase()
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+      input.focus()
+    } })
+  }
   // Chat-log items — twitch + kick (yt has no relay)
   const logPlatform = (platform || 'twitch')
   if (logPlatform === 'twitch' || logPlatform === 'kick') {

@@ -3414,6 +3414,13 @@
 
     if (searchInput && searchSpinner) {
       searchInput.addEventListener('input', () => {
+        // Live/channel tabs: instant local buffer filter — no server call, no spinner.
+        if (isLiveSearchTab(currentTab)) {
+          if (_searchTimer) { cleanup.clearTimeout(_searchTimer); _searchTimer = null }
+          searchSpinner.classList.remove('visible')
+          renderMessages(currentTab)
+          return
+        }
         if (_searchTimer) { cleanup.clearTimeout(_searchTimer); _searchTimer = null }
         const q = searchInput.value.trim()
         if (!q) {
@@ -3452,7 +3459,8 @@
           _searchActive = false
           searchSpinner.classList.remove('visible')
           if (_searchTimer) { cleanup.clearTimeout(_searchTimer); _searchTimer = null }
-          if (currentTab === 'mentions') renderMessages('mentions')
+          renderMessages(currentTab)
+          searchInput.blur()
         }
       })
     }
@@ -4779,6 +4787,22 @@
         return
       }
     }
+  }, { signal: mcSignal })
+
+  // '/' focuses the live-tab chat filter (vim-style) — only when not already
+  // typing, no modifier held, and the filter bar is actually showing.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return
+    const t = e.target
+    if (t && (t.isContentEditable || ['INPUT', 'TEXTAREA'].includes(t.tagName))) return
+    if (!isLiveSearchTab(currentTab)) return
+    const bar = document.getElementById('hs-mc-search-bar')
+    if (!bar || !bar.classList.contains('visible')) return
+    const input = document.getElementById('hs-mc-search-input')
+    if (!input) return
+    e.preventDefault()
+    input.focus()
+    input.select()
   }, { signal: mcSignal })
 
   // (automod moved to automod.js)
@@ -7362,9 +7386,16 @@
     }
     if (id === 'feed') bumpSeen('live');
 
-    // Show/hide search bar on mentions tab
+    // Search bar: server search on mentions, instant local filter on live/channel tabs.
     const searchBar = document.getElementById('hs-mc-search-bar')
-    if (searchBar) searchBar.classList.toggle('visible', id === 'mentions')
+    if (searchBar) searchBar.classList.toggle('visible', id === 'mentions' || isLiveSearchTab(id))
+    // Reset the query on tab switch so a live filter doesn't bleed across
+    // channels; placeholder reflects the active mode.
+    const _searchInputEl = document.getElementById('hs-mc-search-input')
+    if (_searchInputEl) {
+      _searchInputEl.value = ''
+      _searchInputEl.placeholder = isLiveSearchTab(id) ? 'filter chat — @user for one person' : 'search messages…'
+    }
 
     // Discover/pinned refresh bars removed — auto-poll handles freshness
 
@@ -8620,6 +8651,27 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     el.append(text, linkBtn, dismissBtn)
   }
 
+  // ── live-tab chat search / filter-by-user ─────────────────────────────────
+  // Server-search + social tabs render their own content; every other tab (live
+  // + per-channel) is an in-memory buffer the search bar filters locally and
+  // instantly — no network round-trip.
+  const _SERVER_TABS = new Set(['mentions', 'feed', 'whispers', 'discover', 'pinned', 'settings', 'add'])
+  function isLiveSearchTab(id) { return typeof id === 'string' && !_SERVER_TABS.has(id) }
+  // Active local-filter query for a live tab (trimmed, lowercased), else ''.
+  function liveSearchQuery(id) {
+    if (!isLiveSearchTab(id)) return ''
+    const el = document.getElementById('hs-mc-search-input')
+    return el ? el.value.trim().toLowerCase() : ''
+  }
+  // '@name' scopes to one user (name prefix); bare text matches username OR
+  // message body. Substring, case-insensitive.
+  function matchesLiveSearch(m, q) {
+    if (!q) return true
+    const user = String(m.user || m.display_name || '').toLowerCase()
+    if (q[0] === '@') return user.startsWith(q.slice(1))
+    return user.includes(q) || String(m.text || '').toLowerCase().includes(q)
+  }
+
   function renderMessages(id) {
     if (editingChannel) return;
     // Idempotent — ensures mod toolbar hover works even when extension reloads
@@ -8823,6 +8875,21 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         out.push(m)
       }
       toRender = out
+    }
+    // Live-tab local filter: keep only matches (applied before the cap so the
+    // cap bounds matches, not pre-filter rows). Empty result shows its own state.
+    const _liveQ = liveSearchQuery(id)
+    if (_liveQ) {
+      toRender = toRender.filter(m => matchesLiveSearch(m, _liveQ))
+      if (toRender.length === 0) {
+        _clearMessageIndices()
+        msgsEl.textContent = ''
+        const empty = document.createElement('div')
+        empty.className = 'hs-mc-empty'
+        empty.textContent = 'no matches'
+        msgsEl.appendChild(empty)
+        return
+      }
     }
     toRender = toRender.slice(-DOM_RENDER_CAP)
     isProgrammaticScroll = true;

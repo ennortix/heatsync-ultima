@@ -62,15 +62,34 @@ if (!window._hsMcNotifStorageListener) {
   })
 }
 
-function fireNotification(title, body, tag) {
+function fireNotification(title, body, tag, icon) {
   if (!notificationsEnabled) return
   if (notificationPermission === 'denied') return
   try {
-    const iconUrl = api.runtime.getURL('icon-48.png')
+    const iconUrl = icon || api.runtime.getURL('icon-48.png')
     const n = new Notification(title, { body, icon: iconUrl, tag, silent: false })
     n.onclick = () => { window.focus(); n.close() }
     cleanup.setTimeout(() => n.close(), 8000)
   } catch {}
+}
+
+// Resolve a person's pfp for a toast — a face beats the logo. Uses the avatar
+// already on the message (YouTube author photo) when present; otherwise asks
+// the background to look it up (Twitch GQL / Kick API, cached). Returns '' on
+// any failure so the caller falls back to the extension icon.
+async function resolveNotifIcon(name, platform, knownAvatar) {
+  // YouTube messages carry the author photo inline; the page-context Web
+  // Notification renders that remote URL fine (and it lives on a CDN the SW
+  // can't fetch), so use it directly.
+  if (knownAvatar) return knownAvatar
+  if (!name) return ''
+  try {
+    // Background resolves (twitch GQL / kick API) and inlines the image as a
+    // data URL — remote icons render unreliably on some notification daemons
+    // (mako); data URLs always do.
+    const r = await api.runtime.sendMessage({ type: 'resolve_avatar', username: name, platform })
+    return r?.url || ''
+  } catch { return '' }
 }
 
 // Mention audio cue — pure Web Audio synth (no asset shipped, can't fail to
@@ -177,10 +196,11 @@ function notifyMention(msg) {
   const channel = msg.channel ? ` in #${msg.channel}` : ''
   const title = `${msg.user}${channel}`
   const body = msg.text.length > 200 ? msg.text.slice(0, 200) + '...' : msg.text
-  fireNotification(title, body, 'hs-mention-' + Date.now())
+  resolveNotifIcon(msg.user, msg.platform, msg.avatar)
+    .then(icon => fireNotification(title, body, 'hs-mention-' + Date.now(), icon))
 }
 
-function notifyStreamEvent(channel, eventType, game) {
+function notifyStreamEvent(channel, eventType, game, platform) {
   if (!notificationsEnabled) return
   if (document.hasFocus()) return
   let title, body
@@ -193,7 +213,9 @@ function notifyStreamEvent(channel, eventType, game) {
   } else {
     return
   }
-  fireNotification(title, body, `hs-stream-${channel}-${Date.now()}`)
+  // The event is about the streamer — show their pfp, not the logo.
+  resolveNotifIcon(channel, platform, null)
+    .then(icon => fireNotification(title, body, `hs-stream-${channel}-${Date.now()}`, icon))
 }
 
 /**

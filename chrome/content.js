@@ -4845,7 +4845,8 @@ function highlightUserMentions(messageElement, authorElement, preQueriedTextElem
     safeSendMessage({
       type: 'mention_detected',
       username: messageAuthor || '',
-      text: msgText.slice(0, 200)
+      text: msgText.slice(0, 200),
+      platform: isKick ? 'kick' : 'twitch'
     }).catch(() => {})
   }
 }

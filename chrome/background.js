@@ -1508,7 +1508,7 @@ function updateLiveBadgeTooltip() {
   try { badgeApi.setTitle({ title }) } catch {}
 }
 
-function fireLiveNotificationFromStream(stream, username, platform) {
+async function fireLiveNotificationFromStream(stream, username, platform) {
   if (!browser.notifications?.create) return
   const display = stream.heatsyncDisplayName || stream.displayName || stream.display_name || username
   const viewers = Number(stream.viewerCount || stream.viewer_count || 0) || 0
@@ -1538,9 +1538,12 @@ function fireLiveNotificationFromStream(stream, username, platform) {
   // showing their face/avatar is the recognizable signal ("oh, shroud is up").
   // Falls back to the extension icon if no pfp resolved (rare — resolveIdentity
   // usually fills this in; coldest cold-starts may lack it).
-  const pfp = stream.profileImageUrl || stream.profile_image_url
+  let pfp = stream.profileImageUrl || stream.profile_image_url
     || stream.heatsyncAvatar || stream.avatar_url || stream.avatar || ''
-  const iconUrl = pfp || browser.runtime.getURL('icon-128.png')
+  // /api/live/following may not carry a pfp — resolve it directly so the toast
+  // still shows a face instead of the logo.
+  if (!pfp) pfp = await resolveAvatarUrl(username, platform)
+  const iconUrl = (await toNotifIconDataUrl(pfp)) || browser.runtime.getURL('icon-128.png')
   try {
     browser.notifications.create(id, {
       type: 'basic',
@@ -1555,7 +1558,7 @@ function fireLiveNotificationFromStream(stream, username, platform) {
   }
 }
 
-function fireLiveCoalescedNotification(transitions) {
+async function fireLiveCoalescedNotification(transitions) {
   if (!browser.notifications?.create) return
   const names = transitions.map(t => {
     const s = t.stream
@@ -1570,10 +1573,17 @@ function fireLiveCoalescedNotification(transitions) {
     const oldest = _liveNotificationUrls.keys().next().value
     _liveNotificationUrls.delete(oldest)
   }
+  // Lead with the top streamer's pfp (matches the first name in the list) —
+  // a face reads faster than the logo. Falls back to the icon if unresolved.
+  const lead = transitions[0]?.stream || {}
+  let pfp = lead.profileImageUrl || lead.profile_image_url
+    || lead.heatsyncAvatar || lead.avatar_url || lead.avatar || ''
+  if (!pfp) pfp = await resolveAvatarUrl(transitions[0]?.username, transitions[0]?.platform)
+  const iconUrl = (await toNotifIconDataUrl(pfp)) || browser.runtime.getURL('icon-128.png')
   try {
     browser.notifications.create(id, {
       type: 'basic',
-      iconUrl: browser.runtime.getURL('icon-128.png'),
+      iconUrl,
       title: `${uniqNames.length} following are live`,
       message: `${head}${more}`,
       contextMessage: 'heatsync',
@@ -1844,6 +1854,65 @@ async function lookupTwitchUserId(username) {
     log(' Failed to lookup Twitch user ID:', e);
     return null;
   }
+}
+
+// Resolve a user's avatar (pfp) for notification toasts. A toast is about a
+// specific person — their face is the recognizable signal, not the heatsync
+// logo. Cached LRU (success only — never poison the cache on a transient
+// failure, so a later mention can retry). Returns '' when unresolved; callers
+// fall back to the extension icon.
+const avatarCache = new Map();
+const AVATAR_CACHE_MAX = 500;
+async function resolveAvatarUrl(username, platform) {
+  if (!username) return '';
+  const name = String(username).trim();
+  if (!name) return '';
+  const key = `${platform || 'twitch'}|${name.toLowerCase()}`;
+  const hit = avatarCache.get(key);
+  if (hit !== undefined) { avatarCache.delete(key); avatarCache.set(key, hit); return hit; }
+  let url = '';
+  try {
+    if (platform === 'kick') {
+      // Kick public v2 — channel slug (= username) → user.profile_pic.
+      const r = await fetchWithTimeout(`https://kick.com/api/v2/channels/${encodeURIComponent(name)}`, {}, 3000);
+      if (r.ok) { const j = await r.json(); url = j?.user?.profile_pic || ''; }
+      else r.body?.cancel?.();
+    } else {
+      // Twitch GQL — same client-id as the website, unauthenticated, no rate limit.
+      const r = await fetchWithTimeout('https://gql.twitch.tv/gql', {
+        method: 'POST',
+        headers: { 'Client-Id': 'kimne78kx3ncx6brgo4mv6wki5h1ko', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: `{ user(login: "${name.replace(/[^a-z0-9_]/gi, '')}") { profileImageURL(width: 70) } }` })
+      }, 3000);
+      if (r.ok) { const j = await r.json(); url = j?.data?.user?.profileImageURL || ''; }
+      else r.body?.cancel?.();
+    }
+  } catch {}
+  if (url) {
+    if (avatarCache.size >= AVATAR_CACHE_MAX) avatarCache.delete(avatarCache.keys().next().value);
+    avatarCache.set(key, url);
+  }
+  return url;
+}
+
+// chrome.notifications renders data: URLs reliably; remote https icons are
+// flaky when Chrome hands the toast to a native daemon (mako on wlroots). Fetch
+// the pfp in the SW and inline it as base64 so the face always shows. No
+// FileReader in MV3 service workers — use arrayBuffer + btoa. Returns '' on any
+// failure so the caller falls back to the extension icon.
+async function toNotifIconDataUrl(url) {
+  if (!url) return '';
+  if (url.startsWith('data:')) return url;
+  try {
+    const r = await fetchWithTimeout(url, {}, 4000);
+    if (!r.ok) { r.body?.cancel?.(); return ''; }
+    const blob = await r.blob();
+    if (blob.size > 512 * 1024) return ''; // sanity cap — pfps are tiny
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    let bin = '';
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return `data:${blob.type || 'image/png'};base64,${btoa(bin)}`;
+  } catch { return ''; }
 }
 
 // Fetch 7TV channel emotes
@@ -6483,20 +6552,33 @@ async function handleMessage(message, sender, sendResponse) {
     sendResponse({ bttvBadges: bttvObj, ffzBadges: ffzObj, chatterinoBadges: chatterinoObj })
     return
   } else if (message.type === 'mention_detected') {
-    // Fire a browser notification if the user has hs_notifications enabled
-    browser.storage.local.get('hs_notifications').then(data => {
+    // Fire a browser notification if the user has hs_notifications enabled.
+    // Show the mention author's pfp (their face), falling back to the logo.
+    browser.storage.local.get('hs_notifications').then(async data => {
       if (!data.hs_notifications) return
       if (!browser.notifications) return
+      const pfp = await resolveAvatarUrl(message.username, message.platform)
+      const iconUrl = (await toNotifIconDataUrl(pfp)) || browser.runtime.getURL('icon-128.png')
       const notifId = 'hs-mention-' + Date.now()
       browser.notifications.create(notifId, {
         type: 'basic',
-        iconUrl: browser.runtime.getURL('icon-128.png'),
+        iconUrl,
         title: message.username || 'mention',
         message: message.text || ''
       }).catch(() => {})
     }).catch(() => {})
     sendResponse({ ok: true })
     return
+  } else if (message.type === 'resolve_avatar') {
+    // Avatar lookup for the multichat panel's own Web Notification toasts.
+    // Returns a data URL (resolve → inline) so panel toasts render reliably too.
+    ;(async () => {
+      try {
+        const raw = await resolveAvatarUrl(message.username, message.platform)
+        sendResponse({ url: (await toNotifIconDataUrl(raw)) || '' })
+      } catch { sendResponse({ url: '' }) }
+    })()
+    return true // async response
   }
 }
 

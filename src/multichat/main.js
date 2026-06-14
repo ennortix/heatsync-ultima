@@ -12726,7 +12726,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         }
 
         log('[Stream]', channel, text);
-        notifyStreamEvent(channel, msg.eventType, msg.game);
+        notifyStreamEvent(channel, msg.eventType, msg.game, msg.platform);
         const actor = msg.eventType === 'stream:redeem' ? msg.user : null;
         const evt = { type: 'stream-event', eventClass, text, channel, actor, time: Date.now() };
 
@@ -12960,7 +12960,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         streamEventDedup.set(text, now)
 
         log('[FollowStream]', channel, text);
-        notifyStreamEvent(channel, msg.eventType, msg.game);
+        notifyStreamEvent(channel, msg.eventType, msg.game, msg.platform);
         const evt = { type: 'stream-event', eventClass, text, channel, time: Date.now(), color: msg.color || '' };
 
         // Push into the live channel buffer (dedup by text)

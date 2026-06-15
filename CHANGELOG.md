@@ -1,5 +1,11 @@
 # changelog
 
+## [1.7.1] — 2026-06-15
+
+### fixed
+- **ffz modifier emotes** — `ffzW` now works as a wide modifier, and ffz modifier emotes (ffzW/ffzX/ffzY/ffzCursed…) no longer leak into the emote pool as broken placeholder images (they polluted the picker and broke overlay stacks).
+- live channel dot is a quiet static dot again — dropped the pulse.
+
 ## [1.7.0] — 2026-06-15
 
 ### fixed

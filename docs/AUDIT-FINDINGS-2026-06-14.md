@@ -12,6 +12,18 @@ false positives are listed at the bottom so they don't get re-flagged).
 | whisper `storage.local.set` async reject uncaught → silent DM loss | whispers.js:119 | 97c7345 |
 | 7tv id maps unbounded (8h leak) | background.js twitchToSeventvId/seventvToTwitchId/_stvSetFetchAt | ce98dd0 |
 | banner url css-injection via `url("…")` | profile-card.js, tooltips.js | 71b1c7b |
+| **channel-emote twitch/kick collision** (CRITICAL) | background.js + content.js + emotes.js | cbdaeb2 |
+| **kick 7tv emote-drift poll used slug not numeric id** (404 every cycle) | background.js poll7TVEmoteSet | 6251852 |
+
+## verified NON-ACTIONABLE on review (2026-06-15) — do NOT re-chase
+
+The perf "hot-path" findings and the logout-stale finding were re-read against
+real code and are false positives / already-optimal — fixing them would add risk
+or bloat for no/negative gain:
+- content.js `querySelector('img')` per fragment — NOT always-null on twitch (native twitch emotes ARE inline imgs); it's the load-bearing mixed-leaf discriminator. Branching on platform would route img-bearing twitch msgs through the text-clobber path.
+- content.js `.hs-username-colored` per-fragment probe — scoped to a tiny span (cheap); a dataset flag desyncs on React re-wrap (double-coloring). Marginal gain, real risk.
+- content.js `getBoundingClientRect` in the coloring rAF — already batched reads-then-writes = ONE layout flush per frame, not per message. Correct as-is.
+- background.js logout warm-cache `if (stored.x?.length)` — runs at SW init with fresh-empty in-memory (empty stays empty = correct). The guard is protective against clobbering fresh memory with a transient `[]`. Not a bug.
 
 ## verified real — needs a tested follow-up (do NOT rush)
 

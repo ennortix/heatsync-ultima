@@ -15,7 +15,8 @@ false positives are listed at the bottom so they don't get re-flagged).
 
 ## verified real — needs a tested follow-up (do NOT rush)
 
-- **CRITICAL — channel-emote platform collision** (deep-dived 2026-06-14, NOT yet fixed — deliberately).
+- **✅ FIXED 2026-06-15 (cbdaeb2)** — channel-emote platform collision. Keyed `platform/channel` via `chKey()` across background.js (4 maps + storage + split broadcasts) + content.js (platform filter + composite storage read) + emotes.js (strip prefix). Native overlay + background fully per-platform. **Residual (deferred):** the multichat PANEL's LIVE same-name behavior is still last-wins because its broadcast consumer is `main.js:11368` (mid-edit, untouched); finish that when main.js is free. Original analysis kept below for that follow-up.
+- **CRITICAL — channel-emote platform collision** (deep-dived 2026-06-14).
   `fetchChannelOwnerEmotes(channelName, channelId, platform)` (background.js:2254) keys `channelEmotesMap[channelName]` by **bare** name despite having `platform`. Same username on twitch+kick (simulcaster, both tabs open) → second platform overwrites the first's emotes. Real, but rare + cosmetic (wrong emotes render; no crash/data-loss).
   **Why it's not a mechanical re-key** — bare-keying is load-bearing across THREE consumers, each with its own small LRU that assumes few channels:
   1. background.js `channelEmotesMap` + `seventvEmoteSetIds` (both bare; ~25 sites: 2256/2272/2349/2354-2357/2385-2397/2904/2922/2953/2992/3071-3102/3135/5806/6640/6646) — **and these persist to storage**, so the in-memory key must survive SW-restart restore (storage can't stay bare or restore loses the platform).

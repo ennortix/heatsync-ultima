@@ -27,10 +27,13 @@ const HS_PENDING_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
 // each call so toggling in settings UI applies without a reload.
 async function _crossFollowSettings() {
   try {
-    // api.storage.local.get returns a Promise directly — don't wrap it with a
-    // callback shim or it hangs forever. (Earlier version wrapped it; the
-    // callback never fired because api.storage's get is promise-based.)
-    const stored = await api.storage.local.get(['ui_settings'])
+    // ui_settings is the SYNC blob (settings-schema scope:'sync' → it; every
+    // ui_settings write in main.js targets storage.sync). Reading it from
+    // storage.local returned {} every time, so crossFollowKick was pinned to
+    // its default (true) and the toggle did nothing. Read from sync to match.
+    // api.storage.sync.get returns a Promise directly — don't wrap in a
+    // callback shim (it's promise-based; a callback never fires).
+    const stored = await api.storage.sync.get(['ui_settings'])
     const ui = stored?.ui_settings || {}
     return {
       twitch: ui.crossFollowTwitch !== false,

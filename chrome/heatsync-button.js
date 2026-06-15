@@ -1911,7 +1911,7 @@
               <div class="heatsync-setting-desc">instant blocks immediately · menu shows block/cancel · off disables it</div>
             </div>
             <div class="heatsync-rcb-segmented" style="display:inline-flex;border:1px solid #808080;font-family:'CozetteVector',monospace;font-size:13px;-webkit-font-smoothing:none;font-smooth:never;font-synthesis:none;text-rendering:optimizeSpeed">
-              ${['instant','menu','off'].map(v => `<button type="button" class="heatsync-rcb-opt" data-rcb="${v}" style="background:${(settings.rightClickBlockMode||'instant')===v?'#fff':'transparent'};color:${(settings.rightClickBlockMode||'instant')===v?'#000':'#fff'};border:none;cursor:pointer;padding:4px 10px;font-family:inherit;font-size:13px">${v}</button>`).join('')}
+              ${['instant','menu','off'].map(v => `<button type="button" class="heatsync-rcb-opt" data-rcb="${v}" style="background:${(settings.rightClickBlockMode||'menu')===v?'#fff':'transparent'};color:${(settings.rightClickBlockMode||'menu')===v?'#000':'#fff'};border:none;cursor:pointer;padding:4px 10px;font-family:inherit;font-size:13px">${v}</button>`).join('')}
             </div>
           </div>
         </div>
@@ -2306,6 +2306,13 @@
     rotateChatBtn?.addEventListener('click', () => {
       window.postMessage({ type: 'heatsync-rotate-chat' }, location.origin);
     });
+
+    // Lite mode (overlay off) has no tab bar or chat panel to rotate — these two
+    // controls are dead there, so hide them when the multichat overlay is disabled.
+    if (cachedSettings.multichatOverlayEnabled === false) {
+      rotateBtn?.style.setProperty('display', 'none', 'important');
+      rotateChatBtn?.style.setProperty('display', 'none', 'important');
+    }
 
     // Tab handlers
     panel.querySelectorAll('.heatsync-tab').forEach(tab => {

@@ -452,6 +452,36 @@ document.addEventListener('hs-dbg-emotes', (e) => {
     document.documentElement.dataset.hsDbgEmotes = 'err:' + (err?.message || 'unknown')
   }
 }, true)
+document.addEventListener('hs-dbg-yt', () => {
+  try {
+    const out = {}
+    out.channels = (typeof config !== 'undefined' && Array.isArray(config?.channels))
+      ? config.channels.map(c => ({ id: c.id, twitch: c.twitch, kick: c.kick, youtube: c.youtube, ephemeral: c.ephemeral })) : 'no config'
+    out.autoYtVideoId = (typeof _autoYtVideoId !== 'undefined') ? _autoYtVideoId : 'undef'
+    if (typeof channelYtMessages !== 'undefined') {
+      out.ytBuckets = {}
+      for (const [key, buf] of channelYtMessages) {
+        const arr = buf || []
+        const vids = {}
+        const authors = new Set()
+        for (const m of arr) { if (m.videoId) vids[m.videoId] = (vids[m.videoId] || 0) + 1; if (m.user) authors.add(m.user) }
+        out.ytBuckets[key] = { size: arr.length, videoIds: vids, sampleAuthors: [...authors].slice(0, 8), last: arr.slice(-2).map(m => ({ user: m.user, videoId: m.videoId, channelId: m.channelId, text: (m.text || '').slice(0, 30) })) }
+      }
+    } else out.ytBuckets = 'undef'
+    out.ytSubscribedUrls = (typeof ytSubscribedUrls !== 'undefined') ? [...ytSubscribedUrls.entries()] : 'undef'
+    out.youtubeLinks = (typeof youtubeLinks !== 'undefined') ? [...youtubeLinks.entries()].map(([k, v]) => [k, v]) : 'undef'
+    // also dump persisted storage routing poison (async)
+    chrome.storage.local.get(['yt_video_to_channel', 'youtube_channel_urls', 'hs_live_platform_map', 'heatsync_multichat'], (s) => {
+      out.storage_yt_video_to_channel = s.yt_video_to_channel || null
+      out.storage_youtube_channel_urls = s.youtube_channel_urls || null
+      out.storage_hs_live_platform_map = s.hs_live_platform_map || null
+      out.storage_configChannels = s.heatsync_multichat?.channels?.map(c => ({ id: c.id, twitch: c.twitch, youtube: c.youtube })) || null
+      document.documentElement.dataset.hsDbgYt = JSON.stringify(out)
+    })
+  } catch (err) {
+    document.documentElement.dataset.hsDbgYt = 'err:' + (err?.message || 'unknown')
+  }
+}, true)
 document.addEventListener('hs-dbg-render-deep', (e) => {
   try {
     const id = (e?.detail?.id || '').toLowerCase()

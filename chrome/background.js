@@ -5560,7 +5560,14 @@ async function handleMessage(message, sender, sendResponse) {
         if (ytUrlKeys.length > 50) {
           delete youtubeChannelUrls[ytUrlKeys[0]]
         }
-        browser.storage.local.set({ youtube_channel_urls: { ...youtubeChannelUrls } })
+        // __live_yt_auto__ is an EPHEMERAL binding to whatever stream is open
+        // right now. Persisting it resurrects a stale stream's YT chat on the
+        // next SW wake — e.g. an @<name>/live guess for a focused tab bleeds
+        // into an unrelated channel forever. Keep it in memory for mid-session
+        // reconnects, but never write it to storage; the content script re-binds
+        // it per page from the current channel's explicit YT link.
+        const { __live_yt_auto__: _omitAuto, ...persistUrls } = youtubeChannelUrls
+        browser.storage.local.set({ youtube_channel_urls: persistUrls })
       }
       log(' YouTube subscribe:', url, 'channel:', channelId, isSocketOpen() ? '' : '(queued for reconnect)')
     }
@@ -6721,7 +6728,16 @@ async function initialize() {
       log(' ✓ Warm cache:', localBlockedEmotes.size, 'local blocked emotes from storage');
     }
     if (stored.youtube_channel_urls && typeof stored.youtube_channel_urls === 'object') {
+      // Purge any persisted __live_yt_auto__ — it's an ephemeral per-page binding
+      // and must be re-bound from the current channel's explicit YT link, never
+      // resurrected from storage. Older builds wrote a guessed @<name>/live here,
+      // which is why a stranger's YT chat kept reappearing across reloads.
+      if (stored.youtube_channel_urls.__live_yt_auto__) {
+        delete stored.youtube_channel_urls.__live_yt_auto__
+        browser.storage.local.set({ youtube_channel_urls: { ...stored.youtube_channel_urls } })
+      }
       Object.assign(youtubeChannelUrls, stored.youtube_channel_urls);
+      delete youtubeChannelUrls.__live_yt_auto__
       log(' ✓ Restored youtubeChannelUrls for', Object.keys(youtubeChannelUrls).length, 'channels');
       // Race fix: connectWebSocket() was kicked off at the top of init() and
       // may have already opened, iterating an empty youtubeChannelUrls in its
@@ -6746,7 +6762,16 @@ async function initialize() {
       // Restore videoId→channelId routing so chat msgs from existing pollers
       // (server already broadcasting) land on the right tab even when the
       // server doesn't re-echo youtube:status connected on SW wake.
-      for (const [vid, cid] of Object.entries(stored.yt_video_to_channel)) ytVideoToChannel.set(vid, cid);
+      // Skip __live_yt_auto__ targets — that binding is no longer restored, so
+      // routing a video to it would orphan (or resurrect) a stale stream's chat.
+      let _ytMapPoisoned = false
+      for (const [vid, cid] of Object.entries(stored.yt_video_to_channel)) {
+        if (cid === '__live_yt_auto__') { _ytMapPoisoned = true; continue }
+        ytVideoToChannel.set(vid, cid)
+      }
+      if (_ytMapPoisoned) {
+        browser.storage.local.set({ yt_video_to_channel: Object.fromEntries(ytVideoToChannel) })
+      }
       log(' ✓ Restored ytVideoToChannel for', ytVideoToChannel.size, 'videos');
     }
     if (Array.isArray(stored.joined_extra_channels)) {

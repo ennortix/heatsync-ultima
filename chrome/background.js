@@ -404,8 +404,12 @@ browser.storage.onChanged.addListener((changes, area) => {
   }
 })
 
-let channelEmotesMap = {}; // Per-channel emotes: { channelName: emotes[] }
-let channelEmotesFetchedAt = {}; // channelName → timestamp of last successful fetch
+let channelEmotesMap = {}; // Per-channel emotes: { "platform/channel": emotes[] }
+let channelEmotesFetchedAt = {}; // "platform/channel" → timestamp of last successful fetch
+
+// Composite key helpers — keep all channelEmotesMap access platform-scoped
+function chKey(platform, ch) { return (platform || 'twitch') + '/' + String(ch || '').toLowerCase() }
+function splitChKey(key) { const i = String(key).indexOf('/'); return i < 0 ? { platform: 'twitch', channel: String(key) } : { platform: key.slice(0, i), channel: key.slice(i + 1) } }
 
 function getStorableChannelEmotes() {
   const map = {}
@@ -2252,24 +2256,25 @@ function broadcastBadgeMaps() {
 
 // Fetch channel owner's emotes (public API) + third-party channel emotes
 async function fetchChannelOwnerEmotes(channelName, channelId = null, platform = 'twitch') {
+  const key = chKey(platform, channelName)
   // Skip if already fetched, or currently loading (sentinel prevents race)
-  const cached = channelEmotesMap[channelName]
+  const cached = channelEmotesMap[key]
   if (cached === 'loading') {
     log(' Channel emotes currently loading for', channelName, '- skipping')
     return
   }
   if (Array.isArray(cached)) {
-    const age = Date.now() - (channelEmotesFetchedAt[channelName] || 0)
+    const age = Date.now() - (channelEmotesFetchedAt[key] || 0)
     const ttl = cached.length > 0 ? CHANNEL_EMOTES_TTL : CHANNEL_EMOTES_EMPTY_TTL
     // Always broadcast cached data immediately — content script needs emotes NOW
-    broadcastToTabs({ type: 'channel_emotes_update', emotes: cached, channelOwner: channelName });
+    broadcastToTabs({ type: 'channel_emotes_update', emotes: cached, channelOwner: channelName, platform });
     if (age < ttl) {
       log(' Channel emotes already fetched for', channelName, '- skipping (', cached.length, 'emotes,', Math.round(age / 1000) + 's old)')
       return
     }
     log(' Channel emotes stale for', channelName, '(', Math.round(age / 1000) + 's) - refetching in background')
   }
-  channelEmotesMap[channelName] = 'loading';
+  channelEmotesMap[key] = 'loading';
 
   try {
     log(' 📺 Fetching channel emotes for:', channelName, 'id:', channelId, 'platform:', platform);
@@ -2316,7 +2321,7 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
       coalesceTimer = setTimeout(() => {
         coalesceTimer = null
         const partial = [...heatsyncEmotes, ...slots.bttv, ...slots.ffz, ...slots.sevenTV, ...slots.twitch]
-        broadcastToTabs({ type: 'channel_emotes_update', emotes: partial, channelOwner: channelName })
+        broadcastToTabs({ type: 'channel_emotes_update', emotes: partial, channelOwner: channelName, platform })
       }, 40)
     }
 
@@ -2346,15 +2351,15 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
     // Store emotes for this specific channel (prune old entries to bound memory)
     const emotes = [...heatsyncEmotes, ...bttvEmotes, ...ffzEmotes, ...sevenTVEmotes, ...twitchChannelEmotes];
     const anyFailed = failed.bttv || failed.ffz || failed.sevenTV || failed.twitch
-    channelEmotesMap[channelName] = emotes;
+    channelEmotesMap[key] = emotes;
     // If any provider had a transient failure, backdate fetchedAt so the next
     // channel join refetches within ~60s (regardless of empty/non-empty TTL).
-    channelEmotesFetchedAt[channelName] = anyFailed ? (Date.now() - CHANNEL_EMOTES_TTL + 60000) : Date.now();
+    channelEmotesFetchedAt[key] = anyFailed ? (Date.now() - CHANNEL_EMOTES_TTL + 60000) : Date.now();
     if (anyFailed) log(' ⚠️ Channel emotes fetched with failures', failed, '— will retry in ~60s')
     const channelKeys = Object.keys(channelEmotesMap).filter(k => channelEmotesMap[k] !== 'loading');
     if (channelKeys.length > 20) {
       for (const old of channelKeys.slice(0, channelKeys.length - 20)) {
-        if (old !== channelName) { delete channelEmotesMap[old]; delete channelEmotesFetchedAt[old]; seventvEmoteSetIds.delete(old); seventvPolledChannels.delete(old); }
+        if (old !== key) { delete channelEmotesMap[old]; delete channelEmotesFetchedAt[old]; seventvEmoteSetIds.delete(old); seventvPolledChannels.delete(old); }
       }
     }
     updateEmoteUrlMap();
@@ -2375,14 +2380,14 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
     broadcastToTabs({ type: 'loading_status', done: true });
 
     // Broadcast to content scripts (include channel owner name for filtering)
-    broadcastToTabs({ type: 'channel_emotes_update', emotes, channelOwner: channelName });
+    broadcastToTabs({ type: 'channel_emotes_update', emotes, channelOwner: channelName, platform });
 
     // Save per-channel map to storage for persistence (filter out 'loading' sentinels)
     await browser.storage.local.set({ channel_emotes_map: getStorableChannelEmotes(), channel_emotes_fetched_at: channelEmotesFetchedAt });
 
     // Store 7TV set ID per channel and subscribe on shared EventAPI connection
     if (sevenTVSetId) {
-      seventvEmoteSetIds.set(channelName, sevenTVSetId)
+      seventvEmoteSetIds.set(key, sevenTVSetId)
       current7TVEmoteSetId = sevenTVSetId
       subscribe7TVEmoteSet(sevenTVSetId)
       start7TVPolling()
@@ -2393,8 +2398,8 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
     log(' ❌ Channel emotes fetch failed:', error.message || error);
     broadcastToTabs({ type: 'loading_status', done: true });
     // Clear sentinel so retry works on next join_channel
-    delete channelEmotesMap[channelName];
-    seventvEmoteSetIds.delete(channelName);
+    delete channelEmotesMap[key];
+    seventvEmoteSetIds.delete(key);
   }
 }
 
@@ -2900,16 +2905,17 @@ function subscribe7TVEmoteSet(setId) {
 function handle7TVEmoteSetUpdate(updateData) {
   // updateData.id is the emote set ID — look up which channel it belongs to
   const setId = updateData.id;
-  let channelName = null;
-  for (const [ch, id] of seventvEmoteSetIds) {
-    if (id === setId) { channelName = ch; break; }
+  let key = null;
+  for (const [k, id] of seventvEmoteSetIds) {
+    if (id === setId) { key = k; break; }
   }
-  if (!channelName) {
+  if (!key) {
     log(' 7TV: Received update for unknown set:', setId);
     return;
   }
 
-  log(' 7TV: Emote set update for', channelName);
+  const { platform, channel: channelName } = splitChKey(key)
+  log(' 7TV: Emote set update for', channelName, '(', platform, ')');
 
   let updated = false;
   const actor = updateData.actor?.display_name || updateData.actor?.username || '';
@@ -2929,10 +2935,10 @@ function handle7TVEmoteSetUpdate(updateData) {
         animated: !!emote.data?.animated
       };
 
-      const chEmotes = Array.isArray(channelEmotesMap[channelName]) ? channelEmotesMap[channelName] : [];
+      const chEmotes = Array.isArray(channelEmotesMap[key]) ? channelEmotesMap[key] : [];
       if (!chEmotes.some(e => e.hash === emote.id)) {
         chEmotes.push(newEmote);
-        channelEmotesMap[channelName] = chEmotes;
+        channelEmotesMap[key] = chEmotes;
         updated = true;
 
         if (!isBulkSync) {
@@ -2942,6 +2948,7 @@ function handle7TVEmoteSetUpdate(updateData) {
             type: 'channel_emote_added',
             emote: newEmote,
             channel: channelName,
+            platform,
             actor: actor || null,
             message: msg
           });
@@ -2960,12 +2967,12 @@ function handle7TVEmoteSetUpdate(updateData) {
     for (const item of updateData.pulled) {
       const emote = item.old_value;
       if (!emote || typeof emote.id !== 'string') continue;
-      const chEmotes = channelEmotesMap[channelName] || [];
+      const chEmotes = channelEmotesMap[key] || [];
       const index = chEmotes.findIndex(e => e.hash === emote.id);
 
       if (index !== -1) {
         chEmotes.splice(index, 1);
-        channelEmotesMap[channelName] = chEmotes;
+        channelEmotesMap[key] = chEmotes;
         updated = true;
         removedCount++;
 
@@ -2977,6 +2984,7 @@ function handle7TVEmoteSetUpdate(updateData) {
             emoteName: emote.name,
             emoteHash: emote.id,
             channel: channelName,
+            platform,
             actor: actor || null,
             message: msg
           });
@@ -2990,6 +2998,7 @@ function handle7TVEmoteSetUpdate(updateData) {
         emoteName: null,
         emoteHash: null,
         channel: channelName,
+        platform,
         actor: actor || null,
         message: `${removedCount} 7TV emotes removed from channel (set changed)`
       });
@@ -2999,11 +3008,12 @@ function handle7TVEmoteSetUpdate(updateData) {
   if (updated) {
     updateEmoteUrlMap();
 
-    const updatedEmotes = Array.isArray(channelEmotesMap[channelName]) ? channelEmotesMap[channelName] : [];
+    const updatedEmotes = Array.isArray(channelEmotesMap[key]) ? channelEmotesMap[key] : [];
     broadcastToTabs({
       type: 'channel_emotes_update',
       emotes: updatedEmotes,
-      channelOwner: channelName
+      channelOwner: channelName,
+      platform
     });
 
     browser.storage.local.set({ channel_emotes_map: getStorableChannelEmotes(), channel_emotes_fetched_at: channelEmotesFetchedAt }).catch(() => {});
@@ -3064,21 +3074,14 @@ async function poll7TVEmoteSet() {
     if (Date.now() - seventvUnhealthySince < SEVENTV_UNHEALTHY_GRACE_MS) return
   }
 
-  for (const channelName of channels) {
+  for (const key of channels) {
     // Skip channels whose emote set is actively subscribed via EventAPI —
     // pushes from the WS supersede polling. Falls back to poll only when
     // EventAPI is degraded or this set isn't subscribed yet.
-    const setId = seventvEmoteSetIds.get(channelName)
+    const setId = seventvEmoteSetIds.get(key)
     if (eventApiHealthy && setId && seventvSubscribedSets.has(setId)) continue
 
-    // Find the platform from any tab tracking this channel owner
-    let platform = 'twitch'
-    for (const entry of tabChannels.values()) {
-      if (entry.channelOwner === channelName && entry.channel) {
-        platform = entry.channel.split('/')[0] || 'twitch'
-        break
-      }
-    }
+    const { platform, channel: channelName } = splitChKey(key)
 
     try {
       let response
@@ -3096,10 +3099,10 @@ async function poll7TVEmoteSet() {
       if (!emoteSet?.emotes) continue
 
       // Check if emote set ID changed (user recreated their set)
-      const knownSetId = seventvEmoteSetIds.get(channelName)
+      const knownSetId = seventvEmoteSetIds.get(key)
       if (emoteSet.id !== knownSetId) {
         log(' 7TV Poll: Emote set ID changed for', channelName, ':', knownSetId, '→', emoteSet.id)
-        seventvEmoteSetIds.set(channelName, emoteSet.id)
+        seventvEmoteSetIds.set(key, emoteSet.id)
         if (channelName === getActiveChannelOwner()) current7TVEmoteSetId = emoteSet.id
         subscribe7TVEmoteSet(emoteSet.id)
       }
@@ -3119,7 +3122,7 @@ async function poll7TVEmoteSet() {
       }
 
       // Get existing 7TV emotes for this channel
-      const chEmotes = Array.isArray(channelEmotesMap[channelName]) ? channelEmotesMap[channelName] : []
+      const chEmotes = Array.isArray(channelEmotesMap[key]) ? channelEmotesMap[key] : []
       const existing7TV = new Map()
       for (const e of chEmotes) {
         if (e.source === '7tv') existing7TV.set(e.hash, e)
@@ -3142,12 +3145,12 @@ async function poll7TVEmoteSet() {
       // Apply changes to channelEmotesMap
       let updatedEmotes = chEmotes.filter(e => e.source !== '7tv' || fetchedEmotes.has(e.hash))
       updatedEmotes.push(...added)
-      channelEmotesMap[channelName] = updatedEmotes
+      channelEmotesMap[key] = updatedEmotes
       updateEmoteUrlMap()
 
       // Only broadcast individual notifications after first successful poll this session
       // Prevents spammy "removed" notifications when diffing stale cache on startup
-      if (seventvPolledChannels.has(channelName)) {
+      if (seventvPolledChannels.has(key)) {
         const isBulk = added.length > 3 || removed.length > 3
         if (isBulk) {
           log(' 7TV Poll: Bulk set change for', channelName, '—', added.length, 'added,', removed.length, 'removed (notifications suppressed)')
@@ -3156,6 +3159,7 @@ async function poll7TVEmoteSet() {
               type: 'channel_emote_added',
               emote: null,
               channel: channelName,
+              platform,
               message: `${added.length} 7TV emotes added to channel (set changed)`
             })
           }
@@ -3165,6 +3169,7 @@ async function poll7TVEmoteSet() {
               emoteName: null,
               emoteHash: null,
               channel: channelName,
+              platform,
               message: `${removed.length} 7TV emotes removed from channel (set changed)`
             })
           }
@@ -3175,6 +3180,7 @@ async function poll7TVEmoteSet() {
               type: 'channel_emote_added',
               emote,
               channel: channelName,
+              platform,
               message: `${emote.name} added to channel (7TV)`
             })
           }
@@ -3185,20 +3191,22 @@ async function poll7TVEmoteSet() {
               emoteName: emote.name,
               emoteHash: emote.hash,
               channel: channelName,
+              platform,
               message: `${emote.name} removed from channel (7TV)`
             })
           }
         }
       } else {
         log(' 7TV Poll: Skipping notifications for initial load of', channelName, '(' + added.length + ' added,', removed.length, 'removed)')
-        seventvPolledChannels.add(channelName)
+        seventvPolledChannels.add(key)
       }
 
       // Broadcast full update
       broadcastToTabs({
         type: 'channel_emotes_update',
         emotes: updatedEmotes,
-        channelOwner: channelName
+        channelOwner: channelName,
+        platform
       })
 
       browser.storage.local.set({ channel_emotes_map: getStorableChannelEmotes(), channel_emotes_fetched_at: channelEmotesFetchedAt }).catch(() => {})
@@ -5798,8 +5806,11 @@ async function handleMessage(message, sender, sendResponse) {
     const totalEmotes = Object.values(channelEmotesMap).reduce((sum, e) => sum + (Array.isArray(e) ? e.length : 0), 0);
     if (totalEmotes > 0) {
       browser.storage.local.set({ channel_emotes_map: getStorableChannelEmotes(), channel_emotes_fetched_at: channelEmotesFetchedAt });
-      for (const [ch, emotes] of Object.entries(channelEmotesMap)) {
-        if (Array.isArray(emotes)) broadcastToTabs({ type: 'channel_emotes_update', emotes, channelOwner: ch });
+      for (const [k, emotes] of Object.entries(channelEmotesMap)) {
+        if (Array.isArray(emotes)) {
+          const { platform, channel } = splitChKey(k)
+          broadcastToTabs({ type: 'channel_emotes_update', emotes, channelOwner: channel, platform });
+        }
       }
     }
     sendResponse({ count: totalEmotes });
@@ -5813,11 +5824,12 @@ async function handleMessage(message, sender, sendResponse) {
     ;(async () => {
       if (initPromise) await initPromise
       const channel = message.channel?.toLowerCase()
-      const chState = channel ? channelEmotesMap[channel] : null
+      const pickerPlatform = message.platform || (sender?.url?.includes('kick.com') ? 'kick' : 'twitch')
+      const chState = channel ? channelEmotesMap[chKey(pickerPlatform, channel)] : null
       const chEmotes = Array.isArray(chState) ? chState : null
       if (channel && !chEmotes && chState !== 'loading') {
         // Fire-and-forget: result will arrive via channel_emotes_update broadcast
-        fetchChannelOwnerEmotes(channel, null, message.platform || (sender?.url?.includes('kick.com') ? 'kick' : 'twitch'))
+        fetchChannelOwnerEmotes(channel, null, pickerPlatform)
       }
       // channelLoading lets the picker keep showing "loading…" instead of
       // "no emotes" while the third-party fetch is still in flight.

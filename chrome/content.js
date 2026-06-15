@@ -3226,7 +3226,10 @@ async function loadInventory() {
       if (stored.blocked_users) blockedUsers = new Set(stored.blocked_users);
       // Load only THIS channel's emotes from the per-channel map
       const myChannel = getPageChannel();
-      const myEmotes = myChannel && stored.channel_emotes_map ? (stored.channel_emotes_map[myChannel] || []) : [];
+      const myPlatform = window.location.hostname.includes('kick.com') ? 'kick' : 'twitch';
+      const myEmotes = myChannel && stored.channel_emotes_map
+        ? (stored.channel_emotes_map[myPlatform + '/' + myChannel] || stored.channel_emotes_map[myChannel] || [])
+        : [];
       channelEmotes = myEmotes.map(e => ({
         ...e,
         url: normalizeEmoteUrl(e.url)
@@ -3562,12 +3565,19 @@ function _onMessageMain(message) {
       break;
 
     case 'channel_emotes_update': {
-      // Only accept emotes for THIS tab's channel
+      // Only accept emotes for THIS tab's channel and platform
       const myChannel = getPageChannel();
       const emoteOwner = (message.channelOwner || '').toLowerCase();
       if (myChannel && emoteOwner && emoteOwner !== myChannel) {
         log(' Ignoring channel emotes for', emoteOwner, '(this tab is', myChannel + ')');
         break;
+      }
+      if (message.platform) {
+        const myPlatform = window.location.hostname.includes('kick.com') ? 'kick' : 'twitch';
+        if (message.platform !== myPlatform) {
+          log(' Ignoring channel emotes for platform', message.platform, '(this tab is', myPlatform + ')');
+          break;
+        }
       }
       const newEmotes = (message.emotes || []).map(e => ({
         ...e,

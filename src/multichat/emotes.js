@@ -1889,9 +1889,11 @@
 
       // Load per-channel emotes into separate caches (prevents cross-channel leaking)
       const map = stored.channel_emotes_map || {};
-      for (const [ch, emotes] of Object.entries(map)) {
+      for (const [k, emotes] of Object.entries(map)) {
         if (!Array.isArray(emotes)) continue; // skip 'loading' sentinels
-        _buildChannelEmoteCache(ch, emotes)
+        // Keys are now "platform/channel" — strip the prefix; cache is keyed by bare channel name
+        const bare = k.includes('/') ? k.slice(k.indexOf('/') + 1) : k;
+        _buildChannelEmoteCache(bare, emotes)
       }
 
       // Native Twitch emotes — sub emotes carry e.owner (broadcaster login),

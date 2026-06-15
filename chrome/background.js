@@ -1803,6 +1803,9 @@ const TWITCH_ID_CACHE_MAX = 1000;
 const kickChannelIdCache = new Map();
 const kickChatroomIdCache = new Map();
 const kickUsernameToIdCache = new Map();
+// kick channel slug (lowercased) → numeric kick user id. 7TV's /v3/users/kick/{id}
+// needs the numeric id; the initial fetch resolves it via GQL, the poll reuses it.
+const channelOwnerKickId = new Map();
 let twitchIdPersistTimer = null;
 function persistTwitchIdCache() {
   if (twitchIdPersistTimer) return;
@@ -1953,6 +1956,10 @@ async function fetch7TVChannelEmotes(channelName, channelId = null, platform = '
         return null // transient: ID lookup failed
       }
       identifier = kickId;
+      // Cache the resolved numeric id so the 7TV poll can reuse it (the poll
+      // only has the channel slug, and the kick endpoint rejects slugs).
+      channelOwnerKickId.set(channelName.toLowerCase(), kickId)
+      if (channelOwnerKickId.size > 500) channelOwnerKickId.delete(channelOwnerKickId.keys().next().value)
       response = await fetchWithTimeout(`https://7tv.io/v3/users/kick/${kickId}`);
       if (response.status === 404) { response.body?.cancel(); return [] } // genuine: user has no 7TV
       if (!response.ok) {
@@ -3086,7 +3093,11 @@ async function poll7TVEmoteSet() {
     try {
       let response
       if (platform === 'kick') {
-        response = await fetchWithTimeout(`https://7tv.io/v3/users/kick/${channelName}`)
+        // 7TV's kick endpoint needs the numeric id, not the slug. Reuse the id
+        // the initial fetch resolved; skip this cycle if it's not cached yet.
+        const kid = channelOwnerKickId.get(channelName)
+        if (!kid) continue
+        response = await fetchWithTimeout(`https://7tv.io/v3/users/kick/${kid}`)
       } else {
         const channelId = await lookupTwitchUserId(channelName)
         if (!channelId) continue

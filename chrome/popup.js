@@ -52,17 +52,19 @@
     if (!url) return;
     const winApi = (typeof browser !== 'undefined' ? browser : chrome).windows;
     const tabsApi = (typeof browser !== 'undefined' ? browser : chrome).tabs;
+    // Match the multichat panel's popout (openPopoutForCurrentTab): a plain
+    // window.open popup tiles under wlroots/dwl, whereas
+    // chrome.windows.create({type:'popup'}) opens an app-popup window that
+    // tiling compositors float. Same feature string so both paths behave alike.
+    try {
+      const win = window.open(url, '_blank', 'width=400,height=600,menubar=no,toolbar=no,location=no,status=no');
+      if (win) { window.close(); return; }
+    } catch {}
+    // Fallback (popup blocked from the action popup): a NORMAL window — never
+    // type:'popup' — so it still tiles instead of floating.
     if (winApi?.create) {
       try {
-        await winApi.create({
-          url,
-          type: 'popup',
-          width: 400,
-          height: 600,
-          focused: true,
-          left: Math.max(0, (screen.availWidth || 1280) - 420),
-          top: 80,
-        });
+        await winApi.create({ url, type: 'normal', width: 400, height: 600, focused: true });
         window.close();
         return;
       } catch {}

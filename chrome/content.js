@@ -316,6 +316,13 @@ let cachedAllEmotes = null
 // the emote. cachedAllEmotes (with inventory) is still used for own renders
 // + picker + autocomplete + tab-complete suggestions.
 let cachedNonInventoryEmotes = null
+// Own-message render map: channel > inventory > global. Channel emotes are
+// authoritative in their own channel for EVERYONE — so the viewer's own messages
+// render a channel emote identically to how other chatters see it. Inventory still
+// fills every name the channel doesn't carry (emote sovereignty preserved). Without
+// this, a personal-inventory emote sharing a name with a (different) channel emote
+// made the viewer's own messages diverge from the rest of chat.
+let cachedOwnEmotes = null
 // name → emote[] in priority order (inventory[0], channel[1..], global[N..]).
 // Same-named emotes from different sources are kept as siblings so right-click
 // block on the active one swaps to the next non-blocked variant in DOM.
@@ -3140,6 +3147,15 @@ function rebuildEmoteMapIfDirty() {
     const v = variants.find(x => !x.inInventory)
     if (v) cachedNonInventoryEmotes.set(name, v)
   }
+  // cachedOwnEmotes: channel-first for own renders. Prefer a channel variant
+  // (non-inventory, non-global) so channel emotes win in their own channel just
+  // as they do for other chatters; fall back to variants[0] (inventory > global)
+  // for names the channel doesn't provide.
+  cachedOwnEmotes = new Map()
+  for (const [name, variants] of cachedAllEmoteVariants) {
+    const channelV = variants.find(x => !x.inInventory && !x.isGlobal)
+    cachedOwnEmotes.set(name, channelV || variants[0])
+  }
 
   // Rebuild O(1) lookup sets
   inventoryHashSet = new Set()
@@ -5386,7 +5402,7 @@ function processMessage(messageElement) {
   // their own sender_emote_set + live broadcasts. Without this split, mellen
   // adding "Catge" to inventory would have made every chatter's "Catge" render
   // as the image even when they don't have the emote in any of their sets.
-  const baseMap = isOwnMessage ? cachedAllEmotes : cachedNonInventoryEmotes
+  const baseMap = isOwnMessage ? cachedOwnEmotes : cachedNonInventoryEmotes
   if (!userBroadcasts && (!senderSet || senderSet.size === 0)) {
     // Fast path — no overlays, no Map alloc.
     allEmotes = baseMap

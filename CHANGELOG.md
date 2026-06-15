@@ -1,5 +1,24 @@
 # changelog
 
+## [1.7.0] — 2026-06-15
+
+### fixed
+- **cross-platform emote collision** — a streamer simulcasting under the same name on twitch and kick no longer has one platform's channel emotes overwrite the other's. each platform keeps its own set; the multichat panel merges both.
+- **kick live emote updates** — adding or removing a 7tv emote on a kick channel now shows up live (the drift poll was hitting the wrong endpoint and 404ing every cycle).
+- **cross-platform follow toggle** — the follow-on-kick toggle did nothing (it read the wrong storage). it works now.
+- **stuck send indicator** — a send that fails (e.g. mid extension-update) no longer leaves the pending dot hanging forever.
+- **whisper persistence** — dms no longer silently fail to save when storage is full.
+- **popout chat** — the toolbar popout opens a normal window that tiles in tiling window managers, instead of a forced floating popup.
+
+### added
+- **live channel dot** — channel tabs now show a clear pulsing dot when that channel is live.
+- **jankless avatars** — an initials placeholder reserves the avatar box immediately; the real picture swaps in with zero layout shift.
+
+### changed
+- **denser layout** — tighter input bar, popup, and welcome spacing; honors small windows.
+- am/pm on 12-hour timestamps; the "fix dim usernames" toggle now applies without a reload.
+- hardened banner-url handling; capped a 7tv id cache that grew over long sessions.
+
 ## [1.6.9] — 2026-06-08
 
 ### fixed

@@ -1776,6 +1776,12 @@ async function fetchFFZChannelEmotes(channelName) {
     for (const setId in data.sets) {
       const set = data.sets[setId];
       for (const emote of (set.emoticons || [])) {
+        // FFZ modifier emotes (ffzW/ffzX/ffzY/ffzCursed/ffzHyper…) aren't real
+        // images — they transform the preceding emote. Handled as typed tokens
+        // via src/lib/modifiers.js, so keep them out of the pool: otherwise they
+        // resolve as base emotes (the FFZ arrow placeholder), pollute the picker,
+        // and break overlay stacks (e.g. "LICK ffzW ALERT0").
+        if (emote.modifier) continue
         // FFZ exposes animated emotes under emote.animated (animated webp);
         // emote.urls is the static PNG first-frame. Prefer animated when present.
         const srcs = emote.animated || emote.urls
@@ -2441,6 +2447,9 @@ async function fetchFFZEmotes() {
     for (const set of Object.values(data?.sets || {})) {
       if (defaultSets.includes(set.id)) {
         for (const emote of (set.emoticons || [])) {
+          // Skip FFZ modifier emotes — see fetchFFZChannelEmotes. They're typed
+          // tokens (modifiers.js), not pool images.
+          if (emote.modifier) continue
           // FFZ exposes animated emotes under emote.animated (animated webp);
           // emote.urls is the static PNG first-frame. Prefer animated when present.
           const srcs = emote.animated || emote.urls

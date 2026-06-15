@@ -25,6 +25,7 @@ const HS_MOD_TOKENS = Object.freeze({
   'y!': 'vmirror',
   'ffzX': 'hflip',
   'ffzY': 'vmirror',
+  'ffzW': 'wide',
   'ffzWide': 'wide',
   'ffzTall': 'tall',
   'ffzCursed': 'cursed'

@@ -1777,21 +1777,30 @@
   // in main.js so a channel_emotes_update lands directly in channelEmoteCaches
   // — no waiting on the BG storage.set, no race where a partial broadcast
   // triggers loadEmotes against still-stale storage.
-  function _buildChannelEmoteCache(ch, emotes) {
+  function _buildChannelEmoteCache(ch, emotes, platform) {
     if (!ch || !Array.isArray(emotes)) return
-    const chCache = new Map()
+    platform = platform || 'twitch'
+    // Merge per-platform, keyed by the BARE channel name (every consumer —
+    // render/picker/autocomplete — reads bare). A same-name twitch+kick
+    // simulcast linked in one panel channel must keep BOTH sets: we replace
+    // only THIS platform's prior contribution (tagged via _plat) so an update
+    // refreshes without accumulating stale, and the other platform's emotes
+    // survive instead of being overwritten. Same-name/different-image across
+    // platforms falls to last-writer-wins (rare + cosmetic).
+    let chCache = channelEmoteCaches[ch]
+    if (!(chCache instanceof Map)) { chCache = new Map(); channelEmoteCaches[ch] = chCache }
+    for (const [name, e] of chCache) { if (e._plat === platform) chCache.delete(name) }
     for (const e of emotes) {
       if (!e.name || !e.url) continue
       if (e.source === 'twitch' && (e.tier || e.emote_type === 'subscriptions' || e.emote_type === 'follower' || e.emote_type === 'bitstier')) continue
       const source = e.source || detectEmoteSource(e.url, '7tv')
       const state = inventoryEmotes.has(e.name) ? 'owned' : 'channel'
-      chCache.set(e.name, { url: e.url, source, state, zeroWidth: !!e.zeroWidth })
+      chCache.set(e.name, { url: e.url, source, state, zeroWidth: !!e.zeroWidth, _plat: platform })
       if (e.hash) {
         emoteHashes.set(e.name, e.hash)
         hashToName.set(e.hash, e.name)
       }
     }
-    channelEmoteCaches[ch] = chCache
     const keys = Object.keys(channelEmoteCaches)
     if (keys.length > 20) {
       for (const old of keys.slice(0, keys.length - 20)) {
@@ -1891,9 +1900,12 @@
       const map = stored.channel_emotes_map || {};
       for (const [k, emotes] of Object.entries(map)) {
         if (!Array.isArray(emotes)) continue; // skip 'loading' sentinels
-        // Keys are now "platform/channel" — strip the prefix; cache is keyed by bare channel name
-        const bare = k.includes('/') ? k.slice(k.indexOf('/') + 1) : k;
-        _buildChannelEmoteCache(bare, emotes)
+        // Keys are "platform/channel" — split so the cache merges both platforms'
+        // sets under the bare channel name (per-platform tagged, no overwrite).
+        const slash = k.indexOf('/');
+        const platform = slash >= 0 ? k.slice(0, slash) : 'twitch';
+        const bare = slash >= 0 ? k.slice(slash + 1) : k;
+        _buildChannelEmoteCache(bare, emotes, platform)
       }
 
       // Native Twitch emotes — sub emotes carry e.owner (broadcaster login),

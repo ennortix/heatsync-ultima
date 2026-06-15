@@ -11365,7 +11365,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         // and could leave the cache empty for a channel whose fetch completed
         // mid-debounce. Direct populate sidesteps the race entirely.
         if (msg.type === 'channel_emotes_update' && msg.channelOwner && Array.isArray(msg.emotes)) {
-          _buildChannelEmoteCache(msg.channelOwner.toLowerCase(), msg.emotes)
+          // platform tag lets the panel keep both sets for a same-name twitch+kick
+          // simulcast instead of one overwriting the other (merge-per-platform).
+          _buildChannelEmoteCache(msg.channelOwner.toLowerCase(), msg.emotes, msg.platform)
           markPickerDirty()
         }
         // Cold-start (first emote payload for this scope) needs clear+rerender

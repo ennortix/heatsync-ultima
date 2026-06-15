@@ -189,7 +189,7 @@ const SETTINGS = [
     key: 'hs_readable_names', type: 'bool', default: true, scope: 'local',
     category: 'display', section: 'chat messages',
     label: 'fix dim usernames', tip: "brighten dim username colors so they're readable on the black bg",
-    control: 'pill', alias: 'readablenames', runtimeVar: 'readableNamesEnabled',
+    control: 'pill', alias: 'readablenames', runtimeVar: 'readableNamesEnabled', rerender: true,
   },
   {
     key: 'firstChatterGlow', type: 'bool', default: true, scope: 'sync',

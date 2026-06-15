@@ -723,10 +723,22 @@
 
       try {
         const all = await chrome.storage.local.get(null)
+        // Self-heal: only YT-linked channels keep persisted YT history. Buffers
+        // left behind by the old @<name>/live bleed (see
+        // [[heatsync_yt_handle_guess_bleed]]) live under channels that carry NO
+        // youtube link — restoring them resurfaces a stranger's chat on every
+        // reload. Collect those and purge their storage so they stop coming back.
+        // Gate the purge on config having loaded channels, so a transient
+        // loadConfig failure can't mass-delete legit YT history.
+        const configLoaded = Array.isArray(config?.channels) && config.channels.length > 0
+        const staleYtIds = []
         for (const [k, v] of Object.entries(all)) {
           if (!k.startsWith('hs_yt_') || k.startsWith('hs_yt_sync_')) continue
           const channelId = k.slice('hs_yt_'.length)
           if (!channelId) continue
+          const hasYtLink = configLoaded &&
+            config.channels.some(c => c && c.id === channelId && c.youtube)
+          if (!hasYtLink) { if (configLoaded) staleYtIds.push(channelId); continue }
           if (!v?.msgs?.length || Date.now() - v.ts >= 86400000) continue
           if (!channelYtMessages.has(channelId)) channelYtMessages.set(channelId, [])
           const buf = channelYtMessages.get(channelId)
@@ -752,6 +764,14 @@
           ingest(v.msgs); ingest(syncMsgs)
           buf.sort((a, b) => (a.time || 0) - (b.time || 0))
           if (buf.length > PERSIST_MAX_YT) buf.splice(0, buf.length - PERSIST_MAX_YT)
+        }
+        if (staleYtIds.length) {
+          try { await chrome.storage.local.remove(staleYtIds.map(id => `hs_yt_${id}`)) } catch {}
+          for (const id of staleYtIds) {
+            try { localStorage.removeItem(`hs_yt_sync_${id}`) } catch {}
+            try { channelYtMessages.delete(id) } catch {}
+          }
+          log('Purged stale YT buffers (channel has no YT link):', staleYtIds.join(','))
         }
       } catch {}
     } catch (e) {
@@ -8311,7 +8331,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     let count = 0
     if (ch.twitch && irc?.getMessages(ch.twitch)?.length) count++
     if (ch.kick && kickChat?.getMessages(ch.kick)?.length) count++
-    const ytMsgs = channelYtMessages.get(tabId)?.length || channelYtMessages.get('__live_yt_auto__')?.length || 0
+    // own linked YT only — __live_yt_auto__ no longer merges into per-channel
+    // tabs (mirrors renderMessages bleed fix)
+    const ytMsgs = channelYtMessages.get(tabId)?.length || 0
     if (ytMsgs) count++
     return count > 1
   }
@@ -8802,19 +8824,14 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       const kickName = ch?.kick;
       const ircMsgs = twitchName ? (irc?.getMessages(twitchName) || []) : [];
       const kickMsgs = kickName ? (kickChat?.getMessages(kickName) || []) : [];
-      let ytMsgs = channelYtMessages.get(id) || [];
-      // Also include auto-discovered YouTube messages if this channel matches live
-      const autoYt = channelYtMessages.get('__live_yt_auto__') || []
-      if (autoYt.length > 0 && isLiveChannelMessage({ channel: twitchName || kickName || id })) {
-        if (ytMsgs.length > 0) {
-          // Merge + dedup by user+text+time
-          const seen = new Set(ytMsgs.map(m => `${m.user}:${m.text?.slice(0, 50)}:${m.time}`))
-          const extra = autoYt.filter(m => !seen.has(`${m.user}:${m.text?.slice(0, 50)}:${m.time}`))
-          if (extra.length > 0) ytMsgs = [...ytMsgs, ...extra]
-        } else {
-          ytMsgs = autoYt
-        }
-      }
+      // YouTube ONLY from this channel's own explicit link. The global
+      // __live_yt_auto__ bucket (the host page's auto-discovered YT, bound to
+      // whatever stream is focused) must NOT merge into a per-channel tab — that
+      // bleeds an unrelated stream's YT chat into this channel (e.g. a focused
+      // jynxzi tab leaking into nl_kripp). __live_yt_auto__ is the live tab's
+      // alone. Explicitly-linked channels already get their YT via
+      // channelYtMessages[id]. See [[heatsync_yt_handle_guess_bleed]].
+      const ytMsgs = channelYtMessages.get(id) || [];
       const filt = getPlatformFilter(id)
       msgs = fairMerge([
         filt.twitch ? ircMsgs : [],
@@ -10070,9 +10087,15 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
      // use one handle everywhere; the user can edit the tab if the guess is wrong.
     const twitchName = (identity?.twitch || lower).toLowerCase()
     const kickName = (identity?.kick || lower).toLowerCase()
+    // Twitch/Kick same-name guessing is safe (handles match across those platforms).
+    // YouTube is NOT: a fabricated youtube.com/@<name>/live resolves to whoever owns
+    // that handle — usually a STRANGER who happens to be live — and bleeds their chat
+    // into this tab (see ac4892c + [[heatsync_yt_handle_guess_bleed]]). Bind YT ONLY
+    // from an explicit youtubeUrl (user navigated to a YT page) or a real resolved
+    // identity (buildYtUrl uses heatsync profile/identity linkage). Never from a name.
     const ytUrl = platform === 'youtube'
-      ? (youtubeUrl || buildYtUrl() || `https://www.youtube.com/@${name}/live`)
-      : (buildYtUrl() || `https://www.youtube.com/@${lower}/live`)
+      ? (youtubeUrl || buildYtUrl() || '')
+      : (buildYtUrl() || '')
     const ytLower = ytUrl.toLowerCase()
 
     // Find existing channel tab matching any resolved platform.

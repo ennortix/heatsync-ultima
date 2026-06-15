@@ -460,10 +460,10 @@ document.addEventListener('hs-dbg-render-deep', (e) => {
     const kk = ch?.kick
     const ircMsgs = tw && typeof irc !== 'undefined' ? (irc?.getMessages(tw) || []) : []
     const kickMsgs = kk && typeof kickChat !== 'undefined' ? (kickChat?.getMessages(kk) || []) : []
-    let ytMsgs = (typeof channelYtMessages !== 'undefined') ? (channelYtMessages.get(id) || []) : []
+    const ytMsgs = (typeof channelYtMessages !== 'undefined') ? (channelYtMessages.get(id) || []) : []
     const autoYt = (typeof channelYtMessages !== 'undefined') ? (channelYtMessages.get('__live_yt_auto__') || []) : []
-    const ytAutoMerged = autoYt.length > 0 && typeof isLiveChannelMessage === 'function' && isLiveChannelMessage({ channel: tw || kk || id })
-    if (ytAutoMerged) ytMsgs = ytMsgs.length ? [...ytMsgs, ...autoYt] : autoYt
+    // per-channel tabs no longer merge __live_yt_auto__ (mirrors renderMessages — bleed fix)
+    const ytAutoMerged = false
     const filt = (typeof getPlatformFilter === 'function') ? getPlatformFilter(id) : null
     const fmInput = [filt?.twitch ? ircMsgs : [], filt?.kick ? kickMsgs : [], filt?.youtube ? ytMsgs : []]
     const merged = (typeof fairMerge === 'function') ? fairMerge(fmInput) : []

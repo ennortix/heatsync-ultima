@@ -2954,6 +2954,12 @@
             if (orig) t.src = orig
           }
         }
+        // Snap the emote box to an integer width so the text after it stays on
+        // the pixel grid (see hsSnapEmoteBox — fixes blurry post-emote text).
+        if (e?.type === 'load') {
+          const t = e.target
+          if (t instanceof HTMLImageElement && t.classList.contains('hs-mc-emote')) hsSnapEmoteBox(t)
+        }
         if (isScrolledUp) return
         if (isStaticTab()) return
         if (_imgLoadPinScheduled) return

@@ -2049,6 +2049,51 @@
     return out
   }
 
+  // ── Bitmap crispness: snap each emote box to an integer outer width ──────
+  // A non-integer-width inline emote shifts every following glyph on the row
+  // onto a fractional x. On Linux (where -webkit-font-smoothing:none is a
+  // no-op) Chrome grayscale-AAs text at sub-pixel origins, so the text AFTER
+  // an emote renders blurry while text before it stays crisp — the reported
+  // "emote at start / after punctuation blurs the rest of the line" (position
+  // is a perception artifact: any emote blurs the text that follows it).
+  // Rounding the emote box's outer width UP to the next pixel puts the
+  // post-emote pen back on the same integer-phase grid as ordinary text, so
+  // the run renders crisp again (measured: post-emote text returns to the
+  // native text phase in every position). Width is cached by url and
+  // re-emitted inline by the HTML builders below, so re-sightings paint
+  // snapped from the first frame — no reflow, no flash. Lazy emojis carry the
+  // same fractional-advance issue but have no load event to hook — separate.
+  const _hsEmoteBoxW = new Map()   // chat url -> integer px (ceil of natural box width)
+  const _hsSnapQueue = new Set()
+  let _hsSnapScheduled = false
+  function hsSnapEmoteBox(img) {
+    if (!img || !img.classList || !img.classList.contains('hs-mc-emote')) return
+    _hsSnapQueue.add(img)
+    if (_hsSnapScheduled) return
+    _hsSnapScheduled = true
+    cleanup.raf(() => {
+      _hsSnapScheduled = false
+      const items = []
+      for (const im of _hsSnapQueue) {
+        // Round the OUTERMOST emote box — the overlay stack when present, else
+        // the bare wrapper. That box contributes the inline advance the
+        // following text starts after.
+        const box = im.closest('.hs-mc-emote-stack') || im.closest('.hs-mc-emote-wrapper')
+        if (box && box.isConnected) items.push({ box, im })
+      }
+      _hsSnapQueue.clear()
+      // Read every width first, then write — one layout pass per frame.
+      for (const it of items) it.w = Math.ceil(it.box.getBoundingClientRect().width)
+      for (const it of items) {
+        if (!it.w) continue
+        const px = it.w + 'px'
+        if (it.box.style.width !== px) it.box.style.width = px
+        const url = it.im.closest('.hs-mc-emote-wrapper')?.dataset?.emoteUrl || it.im.getAttribute('src')
+        if (url) _hsEmoteBoxW.set(url, it.w)
+      }
+    })
+  }
+
   function processEmotes(text, channel, extraCache, senderEmotes, msgTime) {
     if (emoteCache.size === 0 && !channelEmoteCaches[channel] && !extraCache?.size && !senderEmotes?.size) return text;
     // Removed-emote render fallback applies ONLY to the viewer's own messages
@@ -2182,7 +2227,9 @@
         const ownerAttr = cached?.ownerDisplay ? ` data-owner="${escapeHtml(cached.ownerDisplay)}"` : ''
         const titleAttr = useCachedUrl ? safeName : `${safeName} (${safeProvider} via kick)`
         const nsfwClass = cached?.nsfw ? ' hs-state-nsfw' : ''
-        const imgHtmlRaw = `<span class="hs-mc-emote-wrapper hs-state-${state}${nsfwClass}" data-emote-name="${safeName}" data-emote-url="${safeUrl}" data-state="${state}" data-source="${safeProvider}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}><img src="${safeSrc}" alt="${safeName}" title="${titleAttr}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${safeName}" data-state="${state}" data-source="${safeProvider}"${ownerAttr} loading="lazy" decoding="async"></span>`
+        const _boxW = _hsEmoteBoxW.get(chatUrl)
+        const wAttr = _boxW ? ` style="width:${_boxW}px"` : ''
+        const imgHtmlRaw = `<span class="hs-mc-emote-wrapper hs-state-${state}${nsfwClass}" data-emote-name="${safeName}" data-emote-url="${safeUrl}" data-state="${state}" data-source="${safeProvider}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}${wAttr}><img src="${safeSrc}" alt="${safeName}" title="${titleAttr}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${safeName}" data-state="${state}" data-source="${safeProvider}"${ownerAttr} loading="lazy" decoding="async"></span>`
         if (isOverlay && pendingStack) {
           const itemMods = pendingMods.slice()
           const itemHue = pendingHue
@@ -2295,7 +2342,9 @@
           }
         } catch (e) {}
         const nsfwClass = emote.nsfw ? ' hs-state-nsfw' : ''
-        const imgHtmlRaw = `<span class="hs-mc-emote-wrapper hs-state-${state}${staleClass}${nsfwClass}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}${staleAttr}><img src="${staticSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${displayName}" data-state="${state}" data-source="${source}"${ownerAttr} loading="lazy" decoding="async"></span>`;
+        const _boxW = _hsEmoteBoxW.get(rawChatUrl)
+        const wAttr = _boxW ? ` style="width:${_boxW}px"` : ''
+        const imgHtmlRaw = `<span class="hs-mc-emote-wrapper hs-state-${state}${staleClass}${nsfwClass}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}${staleAttr}${wAttr}><img src="${staticSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${displayName}" data-state="${state}" data-source="${source}"${ownerAttr} loading="lazy" decoding="async"></span>`;
 
         // Build the new item — inline-glued suffix mod attaches to THIS emote
         // (e.g. "RainTimew!" → wide RainTime, not wide whatever-was-base).

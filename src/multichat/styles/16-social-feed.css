@@ -141,6 +141,7 @@
        than universal selectors — those caused selector-match thrash on
        every state change in heatsync.org. */
     body.hs-ext-hidden .hs-pcard-livedot,
+    body.hs-ext-hidden .hs-mc-tab[data-live="true"]::after,
     body.hs-ext-hidden [style*="hs-heat-breathe"],
     body.hs-ext-hidden [style*="hs-feed-heat-breathe"] {
       animation-play-state: paused !important;

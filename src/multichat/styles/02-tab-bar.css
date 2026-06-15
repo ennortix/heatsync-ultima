@@ -173,6 +173,16 @@
     body.hs-tabs-top #hs-mc-tabbar,
     body.hs-tabs-bottom #hs-mc-tabbar {
       flex-wrap: wrap;
+      /* Bulletproof floor for chat + input: a narrow column makes every tab
+         wrap to its own row, so 11 tabs can stack to ~235px and starve the
+         message area down to a few px while crushing the input bar at the
+         panel's bottom edge (the reported "input disappears on small window").
+         Cap the wrapped stack at a third of the viewport and scroll the
+         overflow — _updateMcLayout reads this clamped height for overlay.top,
+         so messages + input always keep the remaining two-thirds. */
+      max-height: 33vh;
+      overflow-y: auto;
+      overflow-x: hidden;
     }
     body.hs-tabs-top .hs-mc-tabs-scroll,
     body.hs-tabs-bottom .hs-mc-tabs-scroll,

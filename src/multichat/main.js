@@ -9406,7 +9406,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     return {
       twitch: overrides?.twitch ?? urlCh,
       kick: overrides?.kick ?? urlCh,
-      youtube: overrides?.youtube ?? `https://youtube.com/@${urlCh}/live`
+      // No YT fallback: a guessed youtube.com/@<urlCh>/live resolves to whoever
+      // owns that handle (often a different person) and bleeds their live chat
+      // into this channel. YouTube must be linked explicitly — same-name across
+      // platforms is a safe assumption for Twitch/Kick, NOT for YouTube handles.
+      youtube: overrides?.youtube ?? ''
     }
   }
 
@@ -12322,7 +12326,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         const platNames = getLivePlatformNames()
         const twitchCh = platNames.twitch || currentChannel
         const kickCh = platNames.kick || currentChannel
-        const ytUrl = platNames.youtube || `https://youtube.com/@${currentChannel}/live`
+        // Only bind YouTube when we KNOW this channel's YT identity (an explicit
+        // cross-platform link). Guessing youtube.com/@<twitchname>/live resolves
+        // to whoever owns that handle — usually a DIFFERENT person — and bleeds a
+        // stranger's live chat into this channel's tabs. No cross-platform
+        // identity guessing.
+        const ytUrl = platNames.youtube || null
 
         if (gTwitch) irc.join(twitchCh)
         if (gKick) kickChat.join(kickCh)
@@ -12340,14 +12349,14 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         const autoYtUrl = onYtVideoPage
           ? `https://youtube.com/watch?v=${currentChannel}`
           : ytUrl
-        if (gYt) {
+        if (gYt && autoYtUrl) {
           ytSubscribedUrls.set('__live_yt_auto__', autoYtUrl)
           ytChanLastSeen.set('__live_yt_auto__', Date.now())
           chrome.runtime.sendMessage({
             type: 'youtube_ws_subscribe', url: autoYtUrl, channelId: '__live_yt_auto__'
           }).catch(() => {})
         }
-        log('Auto-joined current channel:', currentChannel, 'platforms:', twitchCh, kickCh, ytUrl);
+        log('Auto-joined current channel:', currentChannel, 'platforms:', twitchCh, kickCh, ytUrl || '(no yt link)');
       }
 
       // Ensure live channel override is also joined on all platforms

@@ -2190,7 +2190,7 @@
     panelOpen = true;
 
     // Close button handler
-    panel.querySelector('.heatsync-panel-close').addEventListener('click', closePanel);
+    panel.querySelector('.heatsync-panel-close')?.addEventListener('click', closePanel);
 
     // Size buttons handler
     const grid = document.getElementById('heatsync-emote-grid');
@@ -2219,19 +2219,19 @@
 
     // Settings button handler (in header)
     const settingsBtn = panel.querySelector('#heatsync-settings-btn');
-    settingsBtn.addEventListener('click', () => {
+    settingsBtn?.addEventListener('click', () => {
       // Toggle settings view
       if (currentTab === 'settings') {
         // Go back to previous tab (default to channel)
         currentTab = 'channel';
         panel.querySelectorAll('.heatsync-tab').forEach(t => t.classList.remove('active'));
-        panel.querySelector('.heatsync-tab[data-tab="channel"]').classList.add('active');
-        settingsBtn.classList.remove('active');
+        panel.querySelector('.heatsync-tab[data-tab="channel"]')?.classList.add('active');
+        settingsBtn?.classList.remove('active');
         renderEmoteGrid();
       } else {
         currentTab = 'settings';
         panel.querySelectorAll('.heatsync-tab').forEach(t => t.classList.remove('active'));
-        settingsBtn.classList.add('active');
+        settingsBtn?.classList.add('active');
         renderSettings();
       }
     });
@@ -2250,8 +2250,8 @@
         })
         if (!resp || resp.ok === false) return
         const data = resp.data || resp
-        undoBtn.disabled = !data.canUndo
-        redoBtn.disabled = !data.canRedo
+        if (undoBtn) undoBtn.disabled = !data.canUndo
+        if (redoBtn) redoBtn.disabled = !data.canRedo
       } catch (_) {}
     }
 
@@ -2288,8 +2288,8 @@
       }
     }
 
-    undoBtn.addEventListener('click', () => doUndoRedo('/api/user/emotes/undo', undoBtn))
-    redoBtn.addEventListener('click', () => doUndoRedo('/api/user/emotes/redo', redoBtn))
+    undoBtn?.addEventListener('click', () => doUndoRedo('/api/user/emotes/undo', undoBtn))
+    redoBtn?.addEventListener('click', () => doUndoRedo('/api/user/emotes/redo', redoBtn))
 
     // Fetch initial history state
     fetchHistoryStatus()
@@ -2297,7 +2297,7 @@
     // Rotate tab position button (T) — fallback path that works even when
     // the chat-tabbar is not reachable (extreme drag, weird layout state).
     const rotateBtn = panel.querySelector('#heatsync-rotate-btn');
-    rotateBtn.addEventListener('click', () => {
+    rotateBtn?.addEventListener('click', () => {
       window.postMessage({ type: 'heatsync-rotate-tabs' }, location.origin);
     });
 
@@ -2333,11 +2333,11 @@
     const chipsBar = panel.querySelector('#hs-src-chips');
     function updateChipsVisibility() {
       const focused = document.activeElement === searchInput
-      const hasValue = searchInput.value.length > 0
+      const hasValue = searchInput?.value.length > 0
       chipsBar?.classList.toggle('visible', focused || hasValue)
     }
-    searchInput.addEventListener('focus', updateChipsVisibility);
-    searchInput.addEventListener('blur', () => {
+    searchInput?.addEventListener('focus', updateChipsVisibility);
+    searchInput?.addEventListener('blur', () => {
       // Defer so a chip click (which blurs the input) keeps the bar visible
       // long enough to process. updateChipsVisibility re-evaluates: if value
       // is non-empty the bar stays.
@@ -2347,7 +2347,7 @@
     chipsBar?.addEventListener('mousedown', (e) => {
       if (e.target.closest('.hs-src-chip')) e.preventDefault()
     });
-    searchInput.addEventListener('input', (e) => {
+    searchInput?.addEventListener('input', (e) => {
       searchQuery = e.target.value.toLowerCase();
       focusedEmoteIndex = -1;
       updateChipsVisibility();

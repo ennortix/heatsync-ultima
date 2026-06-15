@@ -432,7 +432,7 @@
         bottom: 100%;
         right: 0;
         width: 420px;
-        max-height: 500px;
+        max-height: min(500px, calc(100vh - 24px));
         height: auto;
         margin-bottom: 8px;
         background: #000;
@@ -448,6 +448,7 @@
 
       .heatsync-panel-header {
         display: flex;
+        flex-shrink: 0;
         align-items: center;
         justify-content: space-between;
         padding: 12px 16px;
@@ -686,6 +687,7 @@
       /* Tabs */
       .heatsync-tabs {
         display: flex;
+        flex-shrink: 0;
         border-bottom: 1px solid rgba(255,255,255,0.12);
         background: #000;
       }
@@ -724,7 +726,10 @@
         overflow-y: auto;
         padding: 8px;
         contain: strict;
-        min-height: 300px;
+        /* No floor — the grid is the ONLY element that shrinks when the panel
+           is clamped to a small viewport, so the tabs/search/footer chrome
+           always stays visible (smart sizing: fewer emotes, full UI). */
+        min-height: 0;
       }
 
       /* Settings view - no min height, compact */
@@ -2021,6 +2026,27 @@
   }
 
   // Open the panel
+  // Flip the picker above/below the button based on available space, then clamp
+  // its max-height to the space actually on that side. The emote grid (flex:1,
+  // min-height:0) is the only element that shrinks/scrolls, so the tabs/search/
+  // footer chrome stays fully visible even on small windows — fewer emotes, full UI.
+  function _sizePickerPanel(panel, btn) {
+    const r = btn.getBoundingClientRect();
+    const spaceAbove = r.top;
+    const spaceBelow = window.innerHeight - r.bottom;
+    const GAP = 8, MARGIN = 12;
+    const showBelow = spaceAbove < 500 && spaceBelow > spaceAbove;
+    if (showBelow) {
+      panel.style.bottom = 'auto'; panel.style.top = '100%';
+      panel.style.marginBottom = '0'; panel.style.marginTop = GAP + 'px';
+    } else {
+      panel.style.bottom = '100%'; panel.style.top = 'auto';
+      panel.style.marginBottom = GAP + 'px'; panel.style.marginTop = '0';
+    }
+    const avail = (showBelow ? spaceBelow : spaceAbove) - GAP - MARGIN;
+    panel.style.maxHeight = Math.max(160, Math.min(500, avail)) + 'px';
+  }
+
   async function openPanel() {
     const btn = document.getElementById(BUTTON_ID);
     if (!btn) return;
@@ -2047,25 +2073,8 @@
       panel.style.display = 'flex';
       panelOpen = true;
 
-      // Smart positioning: flip to bottom if button is too high
-      const btnRect = btn.getBoundingClientRect();
-      const spaceAbove = btnRect.top;
-      const spaceBelow = window.innerHeight - btnRect.bottom;
-      const panelHeight = 500; // max-height from CSS
-
-      if (spaceAbove < panelHeight && spaceBelow > spaceAbove) {
-        // Not enough space above, show below instead
-        panel.style.bottom = 'auto';
-        panel.style.top = '100%';
-        panel.style.marginBottom = '0';
-        panel.style.marginTop = '8px';
-      } else {
-        // Reset to default (above)
-        panel.style.bottom = '100%';
-        panel.style.top = 'auto';
-        panel.style.marginBottom = '8px';
-        panel.style.marginTop = '0';
-      }
+      // Smart positioning + viewport-aware sizing (grid shrinks, chrome stays)
+      _sizePickerPanel(panel, btn);
 
       // Only reload if channel changed
       if (channel !== currentChannel) {
@@ -2092,19 +2101,8 @@
     panel.className = 'heatsync-panel';
     panel.dir = HS_BTN_DIR();
 
-    // Smart positioning: flip to bottom if button is too high
-    const btnRect = btn.getBoundingClientRect();
-    const spaceAbove = btnRect.top;
-    const spaceBelow = window.innerHeight - btnRect.bottom;
-    const panelHeight = 500; // max-height from CSS
-
-    if (spaceAbove < panelHeight && spaceBelow > spaceAbove) {
-      // Not enough space above, show below instead
-      panel.style.bottom = 'auto';
-      panel.style.top = '100%';
-      panel.style.marginBottom = '0';
-      panel.style.marginTop = '8px';
-    }
+    // Smart positioning + viewport-aware sizing (grid shrinks, chrome stays)
+    _sizePickerPanel(panel, btn);
 
     currentChannel = channel;
     searchQuery = '';

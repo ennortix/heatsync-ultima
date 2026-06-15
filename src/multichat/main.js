@@ -863,6 +863,20 @@
   const avatarFetching = new Set() // prevent duplicate fetches
   let _activeAvatarFetches = 0
   const MAX_AVATAR_FETCHES = 5
+  // Neutral initials avatar. Renders immediately so the fixed 18px avatar box
+  // is reserved from first paint — the real pfp (fetched async via decapi for
+  // twitch, carried inline for yt, absent for kick) then swaps in IN PLACE with
+  // zero layout shift instead of popping the row sideways on arrival. A failed
+  // or absent fetch simply stays as the initial — no blank gap. `withDataUser`
+  // tags the twitch placeholder so fetchAvatar can find and replace it.
+  function avatarFallbackHtml(user, key, withDataUser) {
+    const initial = (user || '?').charAt(0).toUpperCase()
+    const palette = ['#ff8700', '#5f87ff', '#00d65a', '#ffff00', '#ff4f4d', '#af87ff']
+    let h = 0
+    for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0
+    const du = withDataUser ? ` data-user="${escapeHtml(key)}"` : ''
+    return `<span class="hs-mc-avatar hs-mc-avatar-fallback"${du} style="background:${palette[h % palette.length]};color:#000">${escapeHtml(initial)}</span>`
+  }
   function fetchAvatar(username) {
     const key = username.toLowerCase()
     if (avatarCache.has(key) || avatarFetching.has(key)) return
@@ -880,11 +894,19 @@
         if (avatarCache.size > 500) {
           avatarCache.delete(avatarCache.keys().next().value)
         }
-        // Update any visible avatar placeholders
+        // Swap each initials placeholder for the real avatar img IN PLACE. The
+        // placeholder span already holds the 18px box, so replacing it with an
+        // equally-sized img produces zero layout shift (no pop).
         if (avatarsEnabled) {
-          document.querySelectorAll(`.hs-mc-avatar[data-user="${CSS.escape(key)}"]`).forEach(img => {
-            img.src = avatarCache.get(key)
-            img.style.display = ''
+          const safeSrc = avatarCache.get(key)
+          document.querySelectorAll(`.hs-mc-avatar[data-user="${CSS.escape(key)}"]`).forEach(el => {
+            const img = document.createElement('img')
+            img.className = 'hs-mc-avatar'
+            img.src = safeSrc
+            img.alt = ''
+            img.loading = 'lazy'
+            img.decoding = 'async'
+            el.replaceWith(img)
           })
         }
       })
@@ -3418,7 +3440,11 @@
         if (isLiveSearchTab(currentTab)) {
           if (_searchTimer) { cleanup.clearTimeout(_searchTimer); _searchTimer = null }
           searchSpinner.classList.remove('visible')
-          renderMessages(currentTab)
+          // Debounce: renderMessages → fairMerge sorts up to ~4500 items + a
+          // full DOM diff. Running that synchronously on every keystroke stalls
+          // the frame on low-RAM hardware. 80ms coalesces a fast typist's burst
+          // into a single render; currentTab is re-read at fire time.
+          _searchTimer = cleanup.setTimeout(() => { _searchTimer = null; renderMessages(currentTab) }, 80)
           return
         }
         if (_searchTimer) { cleanup.clearTimeout(_searchTimer); _searchTimer = null }
@@ -3781,8 +3807,8 @@
     let _resizeReflowTimer = null
     window.addEventListener('resize', () => {
       if (_isResizingC) return
-      if (_resizeReflowTimer) clearTimeout(_resizeReflowTimer)
-      _resizeReflowTimer = setTimeout(() => {
+      if (_resizeReflowTimer) cleanup.clearTimeout(_resizeReflowTimer)
+      _resizeReflowTimer = cleanup.setTimeout(() => {
         _resizeReflowTimer = null
         try { positionChatResizeHandle() } catch {}
         try { _updateMcLayout() } catch {}
@@ -7888,18 +7914,15 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (cachedUrl) {
         avatarHtml = `<img class="hs-mc-avatar" src="${escapeHtml(cachedUrl)}" alt="" loading="lazy" decoding="async">`
       } else if (!m.platform || m.platform === 'twitch') {
-        // Only fetch from decapi for Twitch users (Kick/YouTube don't have decapi endpoints)
-        avatarHtml = `<img class="hs-mc-avatar" data-user="${escapeHtml(userKey)}" src="" alt="" style="display:none" loading="lazy" decoding="async">`
+        // Initials reserve the box immediately; decapi fetch swaps the real pfp
+        // in place on success (zero shift) or it stays as the initial on a
+        // miss/failure (no blank gap). Unifies with the kick/yt path below.
+        avatarHtml = avatarFallbackHtml(m.user, userKey, true)
         fetchAvatar(userKey)
       } else {
-        // Kick/YouTube without a cached avatar — render a neutral initials
-        // placeholder so the avatar column doesn't have an empty gap.
-        const initial = (m.user || '?').charAt(0).toUpperCase()
-        const _ansiPalette = ['#ff8700','#5f87ff','#00d65a','#ffff00','#ff4f4d','#af87ff']
-        let _nameHash = 0
-        for (let _i = 0; _i < userKey.length; _i++) _nameHash = (_nameHash * 31 + userKey.charCodeAt(_i)) >>> 0
-        const hue = _ansiPalette[_nameHash % _ansiPalette.length]
-        avatarHtml = `<span class="hs-mc-avatar hs-mc-avatar-fallback" style="background:${hue};color:#000">${escapeHtml(initial)}</span>`
+        // Kick/YouTube without a cached avatar — neutral initials placeholder so
+        // the avatar column doesn't have an empty gap (no decapi for these).
+        avatarHtml = avatarFallbackHtml(m.user, userKey, false)
       }
     }
 
@@ -13480,6 +13503,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         }
         if (newCh && irc && !irc.channels.has(newCh)) irc.join(newCh)
         if (newCh && kickChat && !kickChat.channels.has(newCh)) kickChat.join(newCh)
+        // Re-arm the native-chat tap on the new channel. Twitch tears down and
+        // remounts the message container across SPA nav; without an eager
+        // re-bind the tap stays dark until the 5s remount poll fires, leaving a
+        // hole in live coverage on every channel switch (worst on starved IPs
+        // where the tap IS the live source). startNativeTap is idempotent.
+        if (newCh) try { startNativeTap(newCh) } catch (_) {}
         renderMessages('live')
       } catch (_) {}
       // Hold the nav guard for ~300ms so Twitch's render cycle + width
@@ -13641,7 +13670,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // away from /settings would call irc.part('settings').
     const prevLiveCh = (() => {
       try {
-        const m = lastPath.match(/^\/(?:popout\/|embed\/)?([a-zA-Z0-9_]+)/)
+        const m = lastPath.match(/^\/(?:popout\/|embed\/)?([a-zA-Z0-9_-]+)/)
         const slug = m?.[1]?.toLowerCase() || null
         return (slug && !NON_CHANNEL_PATHS.has(slug)) ? slug : null
       } catch { return null }

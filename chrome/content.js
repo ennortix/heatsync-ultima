@@ -2584,8 +2584,13 @@ function getEmoteColor(img) {
   const state = img.dataset?.heatsyncState;
   if (state === 'blocked') return '#ff0000';
   if (img.classList?.contains('hs-state-blocked') || img.dataset?.state === 'blocked') return '#ff0000';
-  const wrapper = img.closest?.('.emote-hover-wrapper');
-  if (wrapper?.classList.contains('blocked')) return '#ff0000';
+  // Blocked heatsync emotes live in .heatsync-emote-wrapper.emote-overlay-blocked
+  // (the prior .emote-hover-wrapper/.blocked names matched nothing, so this always
+  // fell through to white — and the white hover overlay then covered the red block
+  // plate, hiding the indicator entirely in native chat / lite mode). Paint red so
+  // the hover state matches the ::before block plate and stays visible on any bg.
+  const wrapper = img.closest?.('.heatsync-emote-wrapper');
+  if (wrapper?.classList.contains('emote-overlay-blocked')) return '#ff0000';
   return '#fff';
 }
 

@@ -1894,6 +1894,17 @@
     grid.innerHTML = `
       <div class="heatsync-settings">
         <div class="heatsync-settings-section">
+          <div class="heatsync-settings-section-title">mode</div>
+          <div class="heatsync-setting-row">
+            <div>
+              <div class="heatsync-setting-label">multichat overlay</div>
+              <div class="heatsync-setting-desc">off = lite mode — emotes in native chat, no panel</div>
+            </div>
+            <div class="heatsync-toggle ${cachedSettings.multichatOverlayEnabled !== false ? 'active' : ''}" data-overlay-toggle></div>
+          </div>
+        </div>
+
+        <div class="heatsync-settings-section">
           <div class="heatsync-settings-section-title">${t('btn_settings_tab_completion')}</div>
 
           <div class="heatsync-setting-row">
@@ -1981,6 +1992,7 @@
     toggles.forEach(toggle => {
       toggle.addEventListener('click', () => {
         const settingKey = toggle.dataset.setting;
+        if (!settingKey) return; // e.g. the overlay toggle below has its own handler
         const currentSettings = getExtensionSettings();
         currentSettings[settingKey] = !currentSettings[settingKey];
         saveExtensionSettings(currentSettings);
@@ -2004,6 +2016,25 @@
         });
         log(' rightClickBlockMode →', value);
       });
+    });
+
+    // Multichat-overlay (lite mode) toggle — lives in ui_settings (chrome.storage.sync),
+    // NOT the local extension settings, so it needs its own read/write path. Active =
+    // overlay on; off = lite mode. Mirrors the popup's toggle so they stay in lockstep.
+    const overlayToggle = grid.querySelector('[data-overlay-toggle]');
+    overlayToggle?.addEventListener('click', async () => {
+      try {
+        const d = await chrome.storage.sync.get('ui_settings');
+        const ui = d.ui_settings || {};
+        const turningOn = ui.multichatOverlayEnabled === false; // currently lite → turn overlay on
+        await chrome.storage.sync.set({ ui_settings: { ...ui, multichatOverlayEnabled: turningOn } });
+        overlayToggle.classList.toggle('active', turningOn);
+        // Overlay mode needs a reload to inject/remove the panel (matches main.js's
+        // own applier). In lite mode the engine's storage listener is skipped, so
+        // reload here to guarantee the flip applies. (If the engine listener IS
+        // active it'll reload first — idempotent, page just reloads once.)
+        setTimeout(() => { try { location.reload() } catch (_) {} }, 150);
+      } catch (e) { log(' overlay toggle failed:', e); }
     });
   }
 

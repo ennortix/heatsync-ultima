@@ -419,12 +419,7 @@
       border-radius: 50%;
       pointer-events: none;
       z-index: 1;
-      /* Subtle opacity breathe so a live channel reads as live at a glance — a
-         6px static dot was too easy to miss. Opacity only (no scale/slide),
-         mirrors .hs-pcard-livedot; paused under body.hs-ext-hidden for perf. */
-      animation: hs-live-pulse 1.6s ease-in-out infinite;
     }
-    @keyframes hs-live-pulse { 50% { opacity: 0.4; } }
     .hs-mc-tab.active[data-live="true"]::after {
       background: #cc0000;
     }

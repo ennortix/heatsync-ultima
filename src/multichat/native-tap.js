@@ -137,7 +137,7 @@ function _tapBind() {
   }
   if (_tapRetryTimer) { cleanup.clearInterval(_tapRetryTimer); _tapRetryTimer = null }
   if (container === _tapContainer && _tapObserver) return
-  if (_tapObserver) { try { _tapObserver.disconnect() } catch (_) {} }
+  if (_tapObserver) { cleanup.untrackObserver(_tapObserver); _tapObserver = null }
   _tapContainer = container
   _tapObserver = new MutationObserver(function(muts) {
     for (const mu of muts) {

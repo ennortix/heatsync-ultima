@@ -1,5 +1,10 @@
 # changelog
 
+## [1.7.2] — 2026-06-15
+
+### changed
+- refined the extension's store description/summary copy (no code changes).
+
 ## [1.7.1] — 2026-06-15
 
 ### fixed

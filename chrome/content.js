@@ -2206,9 +2206,14 @@ style.textContent = `
 
   /* Third-party cosmetic badges (BTTV/FFZ/7TV) */
   .hs-cosmetic-badge {
-    display: inline-block;
-    width: 18px;
-    height: 18px;
+    /* !important + max-* so the site's native chat image CSS can't balloon
+       these in lite mode (native chat has no competing CSS in the overlay,
+       so the bug only showed with the panel off). */
+    display: inline-block !important;
+    width: 18px !important;
+    height: 18px !important;
+    max-width: 18px !important;
+    max-height: 18px !important;
     vertical-align: middle;
     margin-right: 2px;
     cursor: default;

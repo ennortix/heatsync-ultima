@@ -35,7 +35,7 @@
     .hs-mc-ctx.hs-mc-em-flip-y { transform-origin: bottom left; }
     .hs-mc-ctx.hs-mc-em-flip-x.hs-mc-em-flip-y { transform-origin: bottom right; }
     .hs-mc-ctx .hs-mc-em-header {
-      padding: 4px 10px; font-size: 10px; color: #666;
+      padding: 4px 10px; font-size: 10px; color: #aaa;
       text-transform: uppercase; letter-spacing: 0.5px;
       background: #050505;
     }
@@ -354,17 +354,17 @@
       font-size: 13px;
     }
     .hs-mc-channel {
-      color: #808080;
+      color: #aaa;
       font-size: 13px;
       margin-left: 4px;
     }
     .hs-mc-time {
-      color: #808080;
+      color: #aaa;
       font-size: var(--hs-time-font, 10px);
       margin-right: 4px;
     }
     .hs-mc-empty {
-      color: #808080;
+      color: #aaa;
       padding: 20px;
       text-align: center;
     }
@@ -429,7 +429,7 @@
     }
     .hs-mc-empty-note {
       font-size: 13px;
-      color: #808080;
+      color: #aaa;
       margin-top: 12px;
       line-height: 18px;
     }

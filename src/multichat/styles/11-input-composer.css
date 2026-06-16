@@ -31,7 +31,7 @@
       border-color: #9147ff;
     }
     #hs-mc-input::placeholder {
-      color: #808080;
+      color: #aaa;
     }
     /* Resub-share mode — purple border on the whole inputbar so the user
        knows their next message becomes the resub celebration body. */
@@ -73,7 +73,7 @@
     #hs-mc-input[contenteditable]:empty::before,
     #hs-mc-input[contenteditable]:has(br:only-child)::before {
       content: attr(data-placeholder);
-      color: #808080;
+      color: #aaa;
       pointer-events: none;
       position: absolute;
       left: 12px;
@@ -201,7 +201,7 @@
       font-variant-emoji: emoji;
     }
     .hs-mc-emoji-name {
-      color: #808080;
+      color: #aaa;
       font-size: 13px;
     }
     .hs-mc-emoji-row.selected .hs-mc-emoji-name,
@@ -237,7 +237,7 @@
     }
     .hs-mc-slash-name { color: #ff8700; font-weight: 700; }
     .hs-mc-slash-args { color: #aaa; flex-shrink: 0; }
-    .hs-mc-slash-desc { color: #808080; font-size: 13px; margin-left: auto; }
+    .hs-mc-slash-desc { color: #aaa; font-size: 13px; margin-left: auto; }
     .hs-mc-slash-row:hover .hs-mc-slash-args,
     .hs-mc-slash-row.selected .hs-mc-slash-args,
     .hs-mc-slash-row:hover .hs-mc-slash-desc,

@@ -48,7 +48,7 @@
       color: #000;
     }
     .hs-mc-menu-arrow {
-      color: #808080;
+      color: #aaa;
       flex-shrink: 0;
       transition: none;
     }
@@ -65,7 +65,7 @@
     .hs-mc-pred-loading {
       padding: 20px;
       text-align: center;
-      color: #808080;
+      color: #aaa;
       font-size: 13px;
     }
     .hs-mc-pred-empty {
@@ -73,7 +73,7 @@
       text-align: center;
     }
     .hs-mc-pred-empty-text {
-      color: #808080;
+      color: #aaa;
       font-size: 13px;
     }
     .hs-mc-prediction {
@@ -104,7 +104,7 @@
       padding: 2px 6px;
       border-radius: 0;
       background: rgba(255,255,255,0.1);
-      color: #808080;
+      color: #aaa;
       white-space: nowrap;
       flex-shrink: 0;
     }
@@ -118,7 +118,7 @@
     }
     .hs-mc-pred-balance {
       font-size: 13px;
-      color: #808080;
+      color: #aaa;
       margin-bottom: 8px;
       display: flex;
       align-items: center;
@@ -166,7 +166,7 @@
     }
     .hs-mc-pred-outcome-stats {
       font-size: 13px;
-      color: #808080;
+      color: #aaa;
       margin-bottom: 6px;
     }
     .hs-mc-pred-bet-row {
@@ -211,7 +211,7 @@
     }
     .hs-mc-pred-bet-custom:disabled {
       background: rgba(255,255,255,0.08);
-      color: #808080;
+      color: #aaa;
       opacity: 0.3;
     }
     .hs-mc-pred-bet-custom::-webkit-inner-spin-button,
@@ -266,7 +266,7 @@
     }
     .hs-mc-pred-status-canceled {
       background: rgba(255,255,255,0.08);
-      color: #808080;
+      color: #aaa;
     }
 
     /* Result banners */
@@ -435,7 +435,7 @@
     }
     .hs-mc-pred-create-dur-label {
       font-size: 13px;
-      color: #808080;
+      color: #aaa;
       margin-right: 2px;
     }
     .hs-mc-pred-create-dur {
@@ -498,7 +498,7 @@
     }
     .hs-mc-poll-status-ended {
       background: rgba(255,255,255,0.08);
-      color: #808080;
+      color: #aaa;
     }
     .hs-mc-poll-timer {
       font-size: 13px;
@@ -510,7 +510,7 @@
     }
     .hs-mc-poll-meta {
       font-size: 13px;
-      color: #808080;
+      color: #aaa;
       margin-bottom: 8px;
     }
     .hs-mc-poll-choices {
@@ -656,14 +656,14 @@
     }
     .hs-mc-poll-create-dur-label {
       font-size: 13px;
-      color: #808080;
+      color: #aaa;
       margin-right: 2px;
     }
     .hs-mc-poll-create-dur {
       font-size: 13px;
       padding: 2px 6px;
       background: rgba(0,0,0,0.7);
-      color: #808080;
+      color: #aaa;
       border: 1px solid rgba(255,255,255,0.2);
       cursor: pointer;
       font-family: inherit;
@@ -706,7 +706,7 @@
     .hs-mc-pred-links .hs-mc-quicklink-section {
       padding: 10px 14px 4px;
       font-size: 10px;
-      color: #666;
+      color: #aaa;
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
@@ -737,7 +737,7 @@
     .hs-mc-status-meta { font-size: 13px; color: #999; margin-top: 2px; }
     .hs-mc-status-section {
       margin-top: 10px; padding-bottom: 4px;
-      font-size: 13px; color: #666;
+      font-size: 13px; color: #aaa;
       text-transform: uppercase;
       border-bottom: 1px solid #222;
     }
@@ -745,8 +745,8 @@
     .hs-mc-status-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 13px; }
     .hs-mc-status-key { color: #ccc; }
     .hs-mc-status-val.on  { color: #59ff8a; }
-    .hs-mc-status-val.off { color: #666; }
-    .hs-mc-status-note { font-size: 13px; color: #555; margin-top: 4px; }
+    .hs-mc-status-val.off { color: #aaa; }
+    .hs-mc-status-note { font-size: 13px; color: #aaa; margin-top: 4px; }
 
     /* ═══ Rewards ═══ */
     .hs-mc-rewards {
@@ -763,17 +763,17 @@
     .hs-mc-rewards-label {
       font-size: 13px;
       font-weight: 600;
-      color: #808080;
+      color: #aaa;
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
     .hs-mc-rewards-balance {
       font-size: 13px;
-      color: #808080;
+      color: #aaa;
     }
     .hs-mc-rewards-empty {
       font-size: 13px;
-      color: #808080;
+      color: #aaa;
       padding: 8px 14px;
     }
     .hs-mc-rewards-grid {
@@ -824,7 +824,7 @@
     }
     .hs-mc-reward-cost {
       font-size: 13px;
-      color: #808080;
+      color: #aaa;
     }
     .hs-mc-reward-reason {
       font-size: 9px;
@@ -948,7 +948,7 @@
       font-size: 13px;
       padding: 3px 8px;
       background: rgba(255,255,255,0.06);
-      color: #808080;
+      color: #aaa;
       cursor: pointer;
       border: 1px solid rgba(255,255,255,0.08);
       font-weight: 600;
@@ -976,7 +976,7 @@
     .hs-mc-settings-group-title {
       font-size: 13px;
       font-weight: 600;
-      color: #808080;
+      color: #aaa;
       text-transform: uppercase;
       letter-spacing: 0.5px;
       padding: 10px 14px 4px;
@@ -1079,7 +1079,7 @@
       white-space: nowrap !important;
       padding: 4px 10px !important;
       background: transparent !important;
-      color: #808080 !important;
+      color: #aaa !important;
       border: none !important;
       border-radius: 0 !important;
       font-size: 13px !important;
@@ -1146,7 +1146,7 @@
       border-color: #ff8700;
     }
     .hs-mc-set-search-count {
-      color: #808080;
+      color: #aaa;
       font-size: 11px;
       flex-shrink: 0;
     }
@@ -1180,7 +1180,7 @@
        vanishing into the strip. */
     .hs-mc-setting-row:hover .hs-mc-size-btn,
     .hs-mc-setting-row.hs-mc-set-row-focus .hs-mc-size-btn {
-      color: #808080 !important;
+      color: #aaa !important;
     }
     .hs-mc-setting-row:hover .hs-mc-size-btn.active,
     .hs-mc-setting-row.hs-mc-set-row-focus .hs-mc-size-btn.active,
@@ -1192,7 +1192,7 @@
       padding-left: 28px !important;
     }
     .hs-mc-set-child-glyph {
-      color: #808080;
+      color: #aaa;
       flex-shrink: 0;
     }
     .hs-mc-settings-group-title {
@@ -1209,7 +1209,7 @@
       box-shadow: inset 3px 0 0 #ff8700;
     }
     .hs-mc-set-cnt {
-      color: #808080;
+      color: #aaa;
       font-weight: 400;
     }
     .hs-mc-set-modcnt {
@@ -1239,7 +1239,7 @@
     }
     /* search result group headers — click jumps to that pane + section */
     .hs-mc-set-search-hdr {
-      color: #808080;
+      color: #aaa;
       font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.5px;
@@ -1299,14 +1299,14 @@
       color: #ff8700;
     }
     .hs-mc-set-help-title {
-      color: #808080;
+      color: #aaa;
       font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.5px;
       padding: 6px 0 2px;
     }
     .hs-mc-set-keyhint {
-      color: #808080;
+      color: #aaa;
       font-size: 11px;
       padding: 6px 14px 10px;
     }
@@ -1330,7 +1330,7 @@
       cursor: pointer;
     }
     .hs-mc-set-range-val {
-      color: #808080;
+      color: #aaa;
       font-size: 11px;
       min-width: 28px;
       text-align: right;

@@ -123,7 +123,7 @@
       gap: 5px !important;
       padding: 6px 4px !important;
       background: transparent !important;
-      color: #808080 !important;
+      color: #aaa !important;
       border: none !important;
       cursor: pointer;
       font-size: 13px !important;
@@ -196,7 +196,7 @@
       display: none;
     }
     .hs-mc-picker-section-count {
-      color: #808080;
+      color: #aaa;
       font-size: 13px;
       background: rgba(255,255,255,0.06);
       padding: 1px 5px;
@@ -283,7 +283,7 @@
     .hs-mc-src-chip.active[data-src="ffz"]  { background: #0086c8; color: #fff; border-color: #0086c8; }
     .hs-mc-src-chip:hover { background: #fff !important; color: #000 !important; border-color: #fff !important; }
     #hs-mc-emote-search::placeholder {
-      color: #808080;
+      color: #aaa;
     }
     .hs-mc-picker-emote {
       width: auto !important;
@@ -307,7 +307,7 @@
     .hs-mc-picker-empty {
       padding: 32px !important;
       text-align: center !important;
-      color: #808080 !important;
+      color: #aaa !important;
       font-size: 13px !important;
       visibility: visible !important;
     }

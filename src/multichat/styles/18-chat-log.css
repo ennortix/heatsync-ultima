@@ -73,7 +73,7 @@
       text-decoration: line-through;
     }
     .hs-cl-ts {
-      color: #555;
+      color: #aaa;
       font-variant-numeric: tabular-nums;
       flex-shrink: 0;
       white-space: nowrap;
@@ -90,10 +90,10 @@
       display: inline-block;
     }
     .hs-cl-empty {
-      color: #666; text-align: center; padding: 40px 8px;
+      color: #aaa; text-align: center; padding: 40px 8px;
     }
     .hs-cl-loader {
-      color: #555; text-align: center; padding: 12px 8px;
+      color: #aaa; text-align: center; padding: 12px 8px;
     }
     .hs-cl-public-archive {
       color: #ff8700; text-decoration: none;

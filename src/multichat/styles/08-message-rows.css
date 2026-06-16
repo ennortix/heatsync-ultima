@@ -10,7 +10,7 @@
     }
 
     .hs-mc-ts {
-      color: #808080;
+      color: #aaa;
       font-size: 13px;
       margin-right: 4px;
       font-variant-numeric: tabular-nums;
@@ -302,7 +302,7 @@
     #hs-mc-reply-cancel {
       background: none;
       border: none;
-      color: #808080;
+      color: #aaa;
       cursor: pointer;
       font-size: 13px;
       padding: 0 2px;
@@ -316,7 +316,7 @@
       user-select: none;
     }
     .hs-mc-muted .hs-mc-user {
-      color: #808080 !important;
+      color: #aaa !important;
       animation: none !important;
       background: none !important;
       -webkit-text-fill-color: #808080 !important;
@@ -435,7 +435,7 @@
     }
     .hs-mc-reply-ctx {
       font-size: 13px;
-      color: #808080;
+      color: #aaa;
       padding: 1px 0 1px 8px;
       border-left: 2px solid #808080;
       margin-bottom: 1px;
@@ -453,7 +453,7 @@
       color: #000;
     }
     .hs-mc-reply-user {
-      color: #808080;
+      color: #aaa;
       font-weight: 600;
     }
     /* Dark blood-red — saturated enough to read as "you got mentioned" but

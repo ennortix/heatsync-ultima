@@ -26,7 +26,7 @@
     }
     .hs-feed-time {
       font-size: 13px;
-      color: #808080;
+      color: #aaa;
       margin: 0 3px;
     }
     .hs-feed-body {
@@ -99,7 +99,7 @@
     .hs-mc-feed-reply-cancel {
       background: none;
       border: none;
-      color: #808080;
+      color: #aaa;
       cursor: pointer;
       font-size: 13px;
       padding: 0 4px;
@@ -664,7 +664,7 @@
       border-color: #ff8700;
     }
     #hs-mc-search-input::placeholder {
-      color: #808080;
+      color: #aaa;
     }
     #hs-mc-search-spinner {
       display: none;
@@ -702,7 +702,7 @@
       display: flex;
       align-items: center;
       gap: 6px;
-      color: #666;
+      color: #aaa;
       font-size: 13px;
     }
     .hs-mc-search-user {
@@ -716,7 +716,7 @@
     .hs-mc-search-empty {
       padding: 16px;
       text-align: center;
-      color: #808080;
+      color: #aaa;
       font-size: 13px;
     }
     /* btop-style discover: bordered widgets, distinct accents per section */
@@ -771,7 +771,7 @@
     }
     .hs-discover-section-empty {
       padding: 8px;
-      color: #555;
+      color: #aaa;
       font-size: 13px;
     }
     .hs-discover-meta {
@@ -819,7 +819,7 @@
     .hs-discover-profile-row:hover * { color: #000 !important; }
     .hs-discover-profile-row.hs-discover-row-live { border-left-color: #ff3030; }
     .hs-discover-rank {
-      color: #666;
+      color: #aaa;
       font-size: 13px;
       font-variant-numeric: tabular-nums;
       width: 18px;
@@ -923,7 +923,7 @@
       font-family: ui-monospace, SFMono-Regular, monospace;
     }
     .hs-discover-chips-label {
-      color: #666;
+      color: #aaa;
       font-size: 13px;
       font-weight: 700;
       margin-right: -2px;
@@ -1048,7 +1048,7 @@
     }
     .hs-discover-post-spacer { flex: 1; }
     .hs-discover-post-time {
-      color: #666;
+      color: #aaa;
       font-size: 13px;
       font-variant-numeric: tabular-nums;
       font-family: ui-monospace, SFMono-Regular, monospace;
@@ -1083,7 +1083,7 @@
     }
     .hs-discover-post-replies {
       font-size: 13px;
-      color: #808080;
+      color: #aaa;
       font-variant-numeric: tabular-nums;
       font-family: ui-monospace, SFMono-Regular, monospace;
       flex-shrink: 0;
@@ -1115,7 +1115,7 @@
     }
     .hs-pinned-channel { font-size: 13px; color: #ff8700; font-weight: 600; }
     .hs-pinned-user { font-size: 13px; color: #bbb; }
-    .hs-pinned-time { font-size: 13px; color: #808080; margin-left: auto; }
+    .hs-pinned-time { font-size: 13px; color: #aaa; margin-left: auto; }
     .hs-pinned-body {
       font-size: 13px;
       color: #ddd;

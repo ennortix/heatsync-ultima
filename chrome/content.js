@@ -2214,9 +2214,9 @@ style.textContent = `
     height: 18px !important;
     max-width: 18px !important;
     max-height: 18px !important;
-    vertical-align: middle;
-    margin-right: 2px;
-    cursor: default;
+    vertical-align: middle !important;
+    margin-right: 2px !important;
+    cursor: default !important;
   }
 
   /* Badge hover tooltip — 4x preview with name */
@@ -2238,9 +2238,9 @@ style.textContent = `
     display: flex;
   }
   #hs-badge-tooltip img {
-    display: block;
-    width: 72px;
-    height: 72px;
+    display: block !important;
+    width: 72px !important;
+    height: 72px !important;
     object-fit: contain;
     image-rendering: pixelated;
     image-rendering: -moz-crisp-edges;
@@ -2263,8 +2263,8 @@ style.textContent = `
   }
 
   /* FFZ-style emote modifiers (w! h! ffzX ffzY c!#hex etc.) */
-  .heatsync-emote-wrapper.heatsync-mod-wide { padding-right: 1ch; }
-  .heatsync-emote-wrapper.heatsync-mod-tall { vertical-align: top; }
+  .heatsync-emote-wrapper.heatsync-mod-wide { padding-right: 1ch !important; }
+  .heatsync-emote-wrapper.heatsync-mod-tall { vertical-align: top !important; }
 
   /* Modifier text in chat input — fully hidden (transparent + zero-size).
      The modifier still exists in the Slate model so backspace/edit work,
@@ -2282,8 +2282,8 @@ style.textContent = `
     padding: 0 !important;
     overflow: hidden !important;
     vertical-align: middle !important;
-    user-select: text;
-    pointer-events: none;
+    user-select: text !important;
+    pointer-events: none !important;
   }
   /* Zero-width overlay emotes in input — pull the next emote back over
      the previous one so it visually stacks (raintime sits over Kappa). */
@@ -2755,7 +2755,8 @@ const _uiPrefs = {
   userColors: true,
   showClearedMessages: false,
   showPredictionsChip: true,
-  anonChat: false
+  anonChat: false,
+  highlightMentions: true
 }
 
 function applyUiSettings(settings) {
@@ -5363,7 +5364,7 @@ function processMessage(messageElement) {
   }
 
   // Highlight mentions of current user (FFZ-style red background on entire line)
-  highlightUserMentions(messageElement, usernameElement, textElements);
+  if (_uiPrefs.highlightMentions) highlightUserMentions(messageElement, usernameElement, textElements);
 
   // Highlight custom keywords (BTTV/FFZ-style custom highlight list)
   highlightKeywords(messageElement);

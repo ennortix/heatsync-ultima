@@ -1766,6 +1766,12 @@
       adjustOverlayForPicker(pickerOpen)
     },
     autoClaim: function(v) { if (v) startAutoClaimPoller(); else stopAutoClaimPoller() },
+    ytSuggestions: function(v) {
+      // YT-only body class; CSS un-collapses #secondary into a vertical strip
+      // beside the title column (left/right dock). Harmless off-YT (no match).
+      try { document.body.classList.toggle('hs-yt-suggestions', !!v) } catch (_) {}
+      try { applyPlatformPositionOverrides() } catch (_) {}
+    },
     keywordRegex: function() { rebuildKeywordRegex() },
     fonts: function() {
       applyFontSettings(getSetting('fontFamily'), getSetting('fontSize'), getSetting('customFontName'))

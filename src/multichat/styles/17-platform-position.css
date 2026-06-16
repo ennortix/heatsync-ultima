@@ -1095,6 +1095,55 @@
     }
 
     /* ============================================
+       SUGGESTIONS STRIP — opt-in (ytShowSuggestions → body.hs-yt-suggestions)
+       Un-collapse #secondary into a vertical strip beside the title column so
+       users who miss "up next" can keep it. Left/right dock, non-theater/
+       fullscreen. DEFAULT OFF (chat reclaims this space) — these rules only
+       fire when the toggle is on. Pinned at --hs-yt-below-top (under the video)
+       like #below; #below shrinks to leave the strip room. The extra
+       .hs-yt-suggestions class out-specifies the collapse/hide rules above.
+       ============================================ */
+    body.hs-yt-suggestions.hs-platform-yt.hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #below {
+      right: calc(var(--hs-chat-w, 340px) + var(--hs-yt-sugg-w, 300px)) !important;
+    }
+    body.hs-yt-suggestions.hs-platform-yt.hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #below {
+      right: var(--hs-yt-sugg-w, 300px) !important;
+    }
+    body.hs-yt-suggestions.hs-platform-yt.hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #secondary,
+    body.hs-yt-suggestions.hs-platform-yt.hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #secondary {
+      position: fixed !important;
+      top: var(--hs-yt-below-top, 56px) !important;
+      bottom: 0 !important;
+      width: var(--hs-yt-sugg-w, 300px) !important;
+      min-width: var(--hs-yt-sugg-w, 300px) !important;
+      max-width: var(--hs-yt-sugg-w, 300px) !important;
+      flex: 0 0 auto !important;
+      overflow-y: auto !important;
+      overflow-x: hidden !important;
+      background: #0a0a0a !important;
+      padding: 8px !important;
+      box-sizing: border-box !important;
+      z-index: 1 !important;
+    }
+    body.hs-yt-suggestions.hs-platform-yt.hs-chat-right ytd-watch-flexy #secondary { right: var(--hs-chat-w, 340px) !important; left: auto !important; }
+    body.hs-yt-suggestions.hs-platform-yt.hs-chat-left ytd-watch-flexy #secondary { right: 0 !important; left: auto !important; }
+    /* reveal the related list + children the base rules display:none */
+    body.hs-yt-suggestions.hs-platform-yt ytd-watch-flexy #secondary,
+    body.hs-yt-suggestions.hs-platform-yt ytd-watch-flexy #secondary-inner,
+    body.hs-yt-suggestions.hs-platform-yt ytd-watch-flexy #secondary-inner > *,
+    body.hs-yt-suggestions.hs-platform-yt ytd-watch-flexy #related,
+    body.hs-yt-suggestions.hs-platform-yt ytd-watch-flexy ytd-watch-next-secondary-results-renderer {
+      display: block !important;
+    }
+    body.hs-yt-suggestions.hs-platform-yt ytd-watch-flexy #secondary-inner {
+      width: 100% !important; max-width: 100% !important; height: auto !important; max-height: none !important;
+    }
+    /* high-contrast text in the strip */
+    body.hs-yt-suggestions.hs-platform-yt ytd-watch-flexy #secondary,
+    body.hs-yt-suggestions.hs-platform-yt ytd-watch-flexy #secondary * { color: #e6e6e6 !important; }
+    body.hs-yt-suggestions.hs-platform-yt ytd-watch-flexy #secondary a { color: #ffffff !important; }
+
+    /* ============================================
        SINGLE-COLUMN RESCUE
        Below YT's ~1016px two-column breakpoint (which our 340px panel trips
        at almost every window size) ytd-watch-flexy flips to is-single-column:

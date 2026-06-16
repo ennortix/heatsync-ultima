@@ -239,6 +239,13 @@ const SETTINGS = [
       { value: 'hidden', label: 'hidden' },
     ],
   },
+  {
+    key: 'ytShowSuggestions', type: 'bool', default: false, scope: 'sync',
+    category: 'display', section: 'layout',
+    label: 'youtube: suggestions strip',
+    tip: 'show suggested videos in a vertical strip beside the title (youtube, left/right dock only) — off by default since the chat reclaims that space',
+    control: 'pill', apply: 'ytSuggestions', applyOnLoad: true,
+  },
 
   // ── display / density ─────────────────────────────────────────────────
   {

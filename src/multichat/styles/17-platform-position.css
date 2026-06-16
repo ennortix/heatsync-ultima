@@ -1076,11 +1076,13 @@
       background: #0a0a0a !important;
       z-index: 1 !important;
     }
-    /* high-contrast metadata text (theme-independent) */
+    /* high-contrast metadata text (theme-independent). Exclude svg/yt-icon and
+       their descendants — the bare star selector was setting currentColor on
+       YT's icons (like/share/subscribe), greying them and wiping active-liked. */
     body.hs-platform-yt.hs-chat-left ytd-watch-flexy #below,
-    body.hs-platform-yt.hs-chat-left ytd-watch-flexy #below *,
+    body.hs-platform-yt.hs-chat-left ytd-watch-flexy #below *:not(svg):not(svg *):not(yt-icon):not(yt-icon *),
     body.hs-platform-yt.hs-chat-right ytd-watch-flexy #below,
-    body.hs-platform-yt.hs-chat-right ytd-watch-flexy #below * {
+    body.hs-platform-yt.hs-chat-right ytd-watch-flexy #below *:not(svg):not(svg *):not(yt-icon):not(yt-icon *) {
       color: #e6e6e6 !important;
     }
     body.hs-platform-yt.hs-chat-left ytd-watch-flexy #below h1,

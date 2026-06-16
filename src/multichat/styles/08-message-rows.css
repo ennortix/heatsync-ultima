@@ -319,7 +319,7 @@
       color: #aaa !important;
       animation: none !important;
       background: none !important;
-      -webkit-text-fill-color: #808080 !important;
+      -webkit-text-fill-color: #aaa !important;
     }
     .hs-mc-muted > :not(.hs-mc-user):not(.hs-mc-badge-img):not(.hs-mc-timestamp) {
       display: none !important;

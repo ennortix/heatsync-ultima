@@ -11003,6 +11003,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
             } else {
               document.documentElement.style.removeProperty('--hs-yt-below-top')
             }
+          } else {
+            // top/bottom (or any non-left/right that still reached here): the
+            // pin is left/right-only, so clear any stale value from a prior dock.
+            document.documentElement.style.removeProperty('--hs-yt-below-top')
           }
         });
       } else {

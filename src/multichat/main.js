@@ -10980,6 +10980,24 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
             el.style.setProperty('max-width', wPx, 'important');
             el.style.setProperty('max-height', hPx, 'important');
           }
+          // Left/right: publish the REAL video bottom so the CSS can pin the
+          // metadata column (#below) directly under it. On live/single-column
+          // YT renders the player in #full-bleed-container and reserves more
+          // flow height than the shrunk 16:9 video uses — that reserved-but-
+          // empty band is the black gap. Reading #movie_player's rendered rect
+          // (we never resize it ourselves) works for both single- and two-
+          // column layouts. Skip in theater/fullscreen (no metadata column).
+          if (chatPosition === 'left' || chatPosition === 'right') {
+            const flexy = document.querySelector('ytd-watch-flexy')
+            const special = flexy && (flexy.hasAttribute('theater') || flexy.hasAttribute('fullscreen'))
+            const mp = document.querySelector('#movie_player') || document.querySelector('.html5-video-player')
+            const b = mp && mp.getBoundingClientRect()
+            if (!special && b && b.height > 0) {
+              document.documentElement.style.setProperty('--hs-yt-below-top', Math.round(b.bottom) + 'px')
+            } else {
+              document.documentElement.style.removeProperty('--hs-yt-below-top')
+            }
+          }
         });
       } else {
         for (const el of ytSizedEls) {
@@ -10988,6 +11006,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
             PLAYER_GEOM.forEach(p => el.style.removeProperty(p));
           }
         }
+        document.documentElement.style.removeProperty('--hs-yt-below-top')
       }
     } else if (isKick) {
       // Keep --hs-kick-sidebar-w in sync — Kick drops the sidebar from the

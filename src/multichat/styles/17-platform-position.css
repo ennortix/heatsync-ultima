@@ -1036,6 +1036,65 @@
     }
 
     /* ============================================
+       LEFT/RIGHT REFLOW — kill the black gap under the video
+       YT (esp. live/single-column) pins the player in #full-bleed-container and
+       reserves MORE vertical flow than the shrunk 16:9 video occupies, leaving a
+       black band between the video and the metadata. CSS can't know the real
+       video bottom (it depends on the chosen player width), so applyPlatform-
+       PositionOverrides publishes it as --hs-yt-below-top. Pin #below directly
+       under the video and let it fill the column. Force high-contrast text so the
+       metadata stays readable regardless of YT's light/dark theme (light theme
+       = dark text on our dark column = unreadable otherwise).
+       ============================================ */
+    body.hs-platform-yt.hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #below {
+      position: fixed !important;
+      top: var(--hs-yt-below-top, 56px) !important;
+      left: 0 !important;
+      right: var(--hs-chat-w, 340px) !important;
+      bottom: 0 !important;
+      width: auto !important;
+      max-width: none !important;
+      margin: 0 !important;
+      padding: 10px 18px !important;
+      overflow-y: auto !important;
+      box-sizing: border-box !important;
+      background: #0a0a0a !important;
+      z-index: 1 !important;
+    }
+    body.hs-platform-yt.hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #below {
+      position: fixed !important;
+      top: var(--hs-yt-below-top, 56px) !important;
+      left: var(--hs-chat-w, 340px) !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      width: auto !important;
+      max-width: none !important;
+      margin: 0 !important;
+      padding: 10px 18px !important;
+      overflow-y: auto !important;
+      box-sizing: border-box !important;
+      background: #0a0a0a !important;
+      z-index: 1 !important;
+    }
+    /* high-contrast metadata text (theme-independent) */
+    body.hs-platform-yt.hs-chat-left ytd-watch-flexy #below,
+    body.hs-platform-yt.hs-chat-left ytd-watch-flexy #below *,
+    body.hs-platform-yt.hs-chat-right ytd-watch-flexy #below,
+    body.hs-platform-yt.hs-chat-right ytd-watch-flexy #below * {
+      color: #e6e6e6 !important;
+    }
+    body.hs-platform-yt.hs-chat-left ytd-watch-flexy #below h1,
+    body.hs-platform-yt.hs-chat-left ytd-watch-flexy #below #title,
+    body.hs-platform-yt.hs-chat-right ytd-watch-flexy #below h1,
+    body.hs-platform-yt.hs-chat-right ytd-watch-flexy #below #title {
+      color: #ffffff !important;
+    }
+    body.hs-platform-yt.hs-chat-left ytd-watch-flexy #below a,
+    body.hs-platform-yt.hs-chat-right ytd-watch-flexy #below a {
+      color: #ff8700 !important;
+    }
+
+    /* ============================================
        SINGLE-COLUMN RESCUE
        Below YT's ~1016px two-column breakpoint (which our 340px panel trips
        at almost every window size) ytd-watch-flexy flips to is-single-column:

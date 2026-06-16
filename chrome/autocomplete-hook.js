@@ -189,10 +189,17 @@
   let _fixEmotesData = '';
   // URL lookup cache - maps ID (hash or name) to resolved URL
   const _urlCache = new Map()
+  // URLs of emotes WE inserted via Slate, keyed by the inner FFZ id. Survives
+  // bridge changes (unlike _urlCache) so the img.src interceptor can restore the
+  // real image after Twitch rebuilds the <img> from our fake id — even for emotes
+  // that never made it into the heatsync-emote-bridge (remote 7TV search results,
+  // unsynced channel emotes). This was the "tab-complete = broken image" bug.
+  const _insertedUrls = new Map()
 
   // Clean up caches on page teardown
   acSignal.addEventListener('abort', () => {
     _urlCache.clear()
+    _insertedUrls.clear()
     _fixEmotesCache = []
     _fixEmotesData = ''
   })
@@ -234,6 +241,10 @@
     if (!match) return null;
     const id = match[1];
 
+    // Inserted-emote URLs first — covers emotes not in the bridge (remote 7TV
+    // search, unsynced channel emotes) that the bridge-only lookup missed.
+    if (_insertedUrls.has(id)) return _insertedUrls.get(id);
+
     // Check URL cache first (instant lookup)
     if (_urlCache.has(id)) {
       return _urlCache.get(id);
@@ -250,6 +261,26 @@
     }
     log(' ⚠️ ID not found:', id.substring(0, 20), 'emotes:', emotes.length);
     return null;
+  }
+
+  // Same fix for a srcset value: Twitch sets BOTH src and srcset on the emote
+  // <img>, and the browser renders from srcset — so fixing only src left the
+  // broken __FFZ__/jtvnw srcset winning (currentSrc = 404). Rewrite every URL in
+  // the comma-separated srcset; descriptors (1x/2x/…) are preserved.
+  function fixHeatsyncSrcset(value) {
+    if (!value || typeof value !== 'string' || !value.includes(HEATSYNC_PREFIX)) return null;
+    let changed = false;
+    const out = value.split(',').map(part => {
+      const t = part.trim();
+      if (!t) return part;
+      const sp = t.indexOf(' ');
+      const url = sp === -1 ? t : t.slice(0, sp);
+      const desc = sp === -1 ? '' : t.slice(sp);
+      const f = fixHeatsyncUrl(url);
+      if (f) { changed = true; return f + desc; }
+      return t;
+    }).join(', ');
+    return changed ? out : null;
   }
 
   // Override img.src property setter and setAttribute
@@ -273,10 +304,29 @@
       });
     }
 
+    // srcset setter — the browser renders from srcset over src, so this is the
+    // one that actually fixes the broken emote image.
+    const origSrcsetDesc = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'srcset');
+    if (origSrcsetDesc) {
+      Object.defineProperty(HTMLImageElement.prototype, 'srcset', {
+        get: function() { return origSrcsetDesc.get.call(this); },
+        set: function(value) {
+          const fixed = fixHeatsyncSrcset(value);
+          if (fixed) {
+            this.dataset.heatsyncFixed = 'true';
+            return origSrcsetDesc.set.call(this, fixed);
+          }
+          return origSrcsetDesc.set.call(this, value);
+        },
+        configurable: true,
+        enumerable: true
+      });
+    }
+
     const origSetAttribute = Element.prototype.setAttribute;
     Element.prototype.setAttribute = function(name, value) {
-      if (this.tagName === 'IMG' && name === 'src') {
-        const fixed = fixHeatsyncUrl(value);
+      if (this.tagName === 'IMG' && (name === 'src' || name === 'srcset')) {
+        const fixed = name === 'src' ? fixHeatsyncUrl(value) : fixHeatsyncSrcset(value);
         if (fixed) {
           this.dataset.heatsyncFixed = 'true';
           return origSetAttribute.call(this, name, fixed);
@@ -285,12 +335,53 @@
       return origSetAttribute.call(this, name, value);
     };
 
-    log(' ✅ Image src interceptors installed');
+    log(' ✅ Image src + srcset interceptors installed');
   } catch (e) {
     // Firefox MV2: prototype overrides fail on Xray wrappers — emote URL fixing
     // relies on early-inject-main.js in MAIN world instead (Chrome-only feature)
     log(' ⚠️ Image src interceptors skipped (isolated world)');
   }
+
+  // ── Catch-all backstop for the broken tab-complete emote image ────────────
+  // Twitch renders an inserted emote across several <img> elements and sets their
+  // src/srcset via parsed/cloned markup that BYPASSES the property + setAttribute
+  // hooks above (verified live: the hooks fire for normal sets, but the rendered
+  // img's __FFZ__ srcset slips through and wins over the fixed src → broken emote).
+  // A MutationObserver scoped to the chat input fixes any __FFZ__ src/srcset on
+  // whatever element appears, whenever it appears (verified: once fixed it sticks).
+  function fixEmoteImgEl(img) {
+    if (!img || img.tagName !== 'IMG') return;
+    const ss = img.getAttribute('srcset');
+    if (ss && ss.includes(HEATSYNC_PREFIX)) img.setAttribute('srcset', fixHeatsyncSrcset(ss) || '');
+    const sc = img.getAttribute('src');
+    if (sc && sc.includes(HEATSYNC_PREFIX)) { const f = fixHeatsyncUrl(sc); if (f) img.setAttribute('src', f); }
+  }
+  let _inputImgObserver = null;
+  let _observedArea = null;
+  function ensureInputImgObserver() {
+    const editor = document.querySelector('[data-slate-editor="true"]');
+    const area = editor?.closest('.chat-input') || editor?.parentElement?.parentElement || editor;
+    if (!area || (_observedArea === area && _inputImgObserver)) return;
+    try { _inputImgObserver?.disconnect() } catch {}
+    _observedArea = area;
+    area.querySelectorAll('img').forEach(fixEmoteImgEl);
+    _inputImgObserver = new MutationObserver((muts) => {
+      for (const m of muts) {
+        if (m.type === 'attributes') { fixEmoteImgEl(m.target); continue; }
+        for (const n of m.addedNodes) {
+          if (n.nodeType !== 1) continue;
+          if (n.tagName === 'IMG') fixEmoteImgEl(n);
+          else if (n.querySelectorAll) n.querySelectorAll('img').forEach(fixEmoteImgEl);
+        }
+      }
+    });
+    _inputImgObserver.observe(area, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'srcset'] });
+    log(' ✅ Chat-input emote-img observer installed');
+  }
+  // Input mounts after load + remounts on channel change — poll to install /
+  // re-acquire it.
+  const _obsPoll = setInterval(() => { try { ensureInputImgObserver() } catch {} }, 1500);
+  acSignal.addEventListener('abort', () => { clearInterval(_obsPoll); try { _inputImgObserver?.disconnect() } catch {} });
 
   let chatInputInst = null;
 
@@ -1107,8 +1198,16 @@
       img2x = `${base}/default/dark/2.0`;
       img4x = `${base}/default/dark/3.0`;
     } else {
-      emoteID = HEATSYNC_PREFIX + (matchedEmote.hash || matchedEmote.name) + HEATSYNC_SUFFIX;
+      const innerId = matchedEmote.hash || matchedEmote.name;
+      emoteID = HEATSYNC_PREFIX + innerId + HEATSYNC_SUFFIX;
       img1x = emoteUrl; img2x = emoteUrl; img4x = emoteUrl;
+      // Register the real URL so the img.src interceptor restores it after Twitch
+      // rebuilds the <img> from this fake id — bridge-independent, so it fixes
+      // broken tab-complete images for remote-search / unsynced emotes too.
+      if (emoteUrl) {
+        _insertedUrls.set(innerId, emoteUrl);
+        if (_insertedUrls.size > 800) _insertedUrls.delete(_insertedUrls.keys().next().value);
+      }
     }
 
     const emoteNode = {

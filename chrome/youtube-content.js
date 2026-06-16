@@ -27,6 +27,17 @@
     }
   }
 
+  // ─── Emote display size ──────────────────────────────────────────────────────
+  // Mirrors content.js: the `hs_emote_size` setting ("native chat emote scale",
+  // 1x/2x/4x) drives `--hs-emote-height`, which .heatsync-emote-yt reads. content.js
+  // only runs on twitch/kick, so YT must set the var itself or emotes would ignore
+  // the user's size choice and stay locked at 28px.
+  const HS_EMOTE_BASE_PX = 28
+  function applyEmoteSize(size) {
+    const n = parseFloat(size) || 1
+    document.documentElement.style.setProperty('--hs-emote-height', (HS_EMOTE_BASE_PX * n) + 'px')
+  }
+
   // ─── Emote Inventory ─────────────────────────────────────────────────────────
 
   let emoteMap = new Map()          // name → { name, url, hash, ... }
@@ -135,8 +146,14 @@
     }
   }
   chrome.runtime.onMessage.addListener(ytInventoryListener)
+  // Live-apply the emote-size choice (hs_emote_size, local) from the picker / options.
+  const ytStorageListener = (changes, area) => {
+    if (area === 'local' && changes.hs_emote_size) applyEmoteSize(changes.hs_emote_size.newValue)
+  }
+  chrome.storage.onChanged.addListener(ytStorageListener)
   window.addEventListener('pagehide', () => {
     try { chrome.runtime.onMessage.removeListener(ytInventoryListener) } catch {}
+    try { chrome.storage.onChanged.removeListener(ytStorageListener) } catch {}
   }, { once: true })
 
   // ─── Emote Replacement ────────────────────────────────────────────────────────
@@ -413,17 +430,20 @@
     style.id = 'heatsync-yt-styles'
     style.textContent = `
       .heatsync-emote-yt {
-        height: 28px;
-        vertical-align: middle;
-        margin: -2px 1px;
-        display: inline;
+        height: var(--hs-emote-height, 28px) !important;
+        width: auto !important;
+        max-width: none !important;
+        max-height: none !important;
+        vertical-align: middle !important;
+        margin: -2px 1px !important;
+        display: inline !important;
       }
       .hs-yt-cosmetic-badge {
-        height: 18px;
-        width: auto;
-        vertical-align: middle;
-        margin-right: 3px;
-        display: inline-block;
+        height: 18px !important;
+        width: auto !important;
+        vertical-align: middle !important;
+        margin-right: 3px !important;
+        display: inline-block !important;
         cursor: default;
       }
       .hs-yt-autocomplete {
@@ -433,7 +453,7 @@
         right: 0;
         background: #1a1a1a;
         border: 1px solid #333;
-        border-radius: 4px;
+        border-radius: 0;
         max-height: 200px;
         overflow-y: auto;
         z-index: 10000;
@@ -474,7 +494,7 @@
         color: #eee;
         font-size: 12px;
         padding: 5px 10px;
-        border-radius: 4px;
+        border-radius: 0;
         pointer-events: none;
         z-index: 99999;
         opacity: 1;
@@ -1106,6 +1126,12 @@
   // ─── Init ─────────────────────────────────────────────────────────────────────
 
   async function init() {
+    // Apply the user's emote-size choice before styles so the first paint is correct.
+    try {
+      const { hs_emote_size } = await chrome.storage.local.get(['hs_emote_size'])
+      applyEmoteSize(hs_emote_size)
+    } catch (e) { log('emote-size read failed:', e?.message) }
+
     injectStyles()
 
     // Load emotes first, then start processing

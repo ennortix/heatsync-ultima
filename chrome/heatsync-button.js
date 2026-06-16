@@ -1956,13 +1956,13 @@
             <div class="heatsync-toggle ${settings.highlightMentions ? 'active' : ''}" data-setting="highlightMentions"></div>
           </div>
 
-          <div class="heatsync-setting-row">
+          ${cachedSettings.multichatOverlayEnabled === false ? '' : `<div class="heatsync-setting-row">
             <div>
               <div class="heatsync-setting-label">${t('btn_settings_platform_badges')}</div>
               <div class="heatsync-setting-desc">${t('btn_settings_platform_badges_desc')}</div>
             </div>
             <div class="heatsync-toggle ${settings.showPlatformBadges ? 'active' : ''}" data-setting="showPlatformBadges"></div>
-          </div>
+          </div>`}
 
           <div class="heatsync-setting-row">
             <div>

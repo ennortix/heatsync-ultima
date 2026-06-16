@@ -432,7 +432,7 @@
         bottom: 100%;
         right: 0;
         width: 420px;
-        max-height: min(500px, calc(100vh - 24px));
+        max-height: calc(100vh - 10px);
         height: auto;
         margin-bottom: 8px;
         background: #000;
@@ -694,7 +694,12 @@
 
       .heatsync-tab {
         flex: 1;
-        padding: 10px 8px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        line-height: 1.1;
+        padding: 3px 4px;
         background: none;
         border: none;
         color: #808080;
@@ -715,9 +720,10 @@
       }
 
       .heatsync-tab-count {
+        display: block;
         font-size: 10px;
         color: #808080;
-        margin-left: 4px;
+        margin-left: 0;
       }
 
       /* Emote grid - virtual scrolling container */
@@ -1292,35 +1298,23 @@
         font-size: 13px;
       }
 
+      /* Square red/green toggle — identical to the overlay's .hs-mc-toggle-pill
+         so toggles look the same in both modes. Square, ANSI red=off/green=on,
+         no sliding knob (the slider was the only trendy-motion control left). */
       .heatsync-toggle {
-        position: relative;
-        width: 40px;
-        height: 22px;
-        background: rgba(255,255,255,0.06);
+        width: 16px;
+        height: 16px;
+        background: #cc0000;
+        border: none;
         border-radius: 0;
         cursor: pointer;
+        padding: 0;
         transition: none;
         flex-shrink: 0;
       }
 
       .heatsync-toggle.active {
-        background: #ff8700;
-      }
-
-      .heatsync-toggle::after {
-        content: '';
-        position: absolute;
-        top: 2px;
-        left: 2px;
-        width: 18px;
-        height: 18px;
-        background: #fff;
-        border-radius: 0;
-        transition: none;
-      }
-
-      .heatsync-toggle.active::after {
-        transform: translateX(18px);
+        background: #00dd00;
       }
 
       /* Emote hover preview tooltip */
@@ -2065,7 +2059,7 @@
     const r = btn.getBoundingClientRect();
     const spaceAbove = r.top;
     const spaceBelow = window.innerHeight - r.bottom;
-    const GAP = 8, MARGIN = 12;
+    const GAP = 6, MARGIN = 6;
     const showBelow = spaceAbove < 500 && spaceBelow > spaceAbove;
     if (showBelow) {
       panel.style.bottom = 'auto'; panel.style.top = '100%';
@@ -2074,8 +2068,11 @@
       panel.style.bottom = '100%'; panel.style.top = 'auto';
       panel.style.marginBottom = GAP + 'px'; panel.style.marginTop = '0';
     }
+    // Fill the available vertical space — no fixed cap, so a tall window gets a
+    // tall picker that reaches (near) the top instead of wasting space above a
+    // 500px panel. The grid (flex:1) expands to show more emotes.
     const avail = (showBelow ? spaceBelow : spaceAbove) - GAP - MARGIN;
-    panel.style.maxHeight = Math.max(160, Math.min(500, avail)) + 'px';
+    panel.style.maxHeight = Math.max(220, avail) + 'px';
   }
 
   async function openPanel() {

@@ -1074,7 +1074,9 @@
   const viApi = (typeof browser !== 'undefined' && browser) || (typeof chrome !== 'undefined' && chrome)
   if (viApi?.storage?.onChanged) {
     const storageListener = (changes, area) => {
-      if (area === 'local' && changes.ui_settings?.newValue) {
+      // ui_settings lives in chrome.storage.sync, not local — watching 'local'
+      // meant popup/other-tab viMode flips never reached vi-mode until reload.
+      if (area === 'sync' && changes.ui_settings?.newValue) {
         const wasEnabled = enabled
         enabled = !!changes.ui_settings.newValue.viMode
         if (enabled && !wasEnabled) onEnable()

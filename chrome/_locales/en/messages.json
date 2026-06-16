@@ -180,6 +180,12 @@
   "btn_tab_emoji": {
     "message": "emoji"
   },
+  "btn_tab_sets": {
+    "message": "sets"
+  },
+  "btn_tab_history": {
+    "message": "recent"
+  },
   "btn_search_placeholder": {
     "message": "search emotes..."
   },

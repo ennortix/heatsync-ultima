@@ -3397,6 +3397,7 @@ try {
     const obj = d?.hs_user_color_cache
     if (obj && typeof obj === 'object') {
       for (const k in obj) _hsUserColorCache.set(k, obj[k])
+      while (_hsUserColorCache.size > 5000) _hsUserColorCache.delete(_hsUserColorCache.keys().next().value)
     }
   }).catch(() => {})
 } catch {}
@@ -3445,6 +3446,7 @@ function hsPrefetchUserColors(usernames) {
         const u = needed[i]
         const c = data[`u${i}`]?.chatColor || null
         _hsUserColorCache.set(u, c)
+        if (_hsUserColorCache.size > 5000) _hsUserColorCache.delete(_hsUserColorCache.keys().next().value)
         if (c) { try { setKnownColor(u, c) } catch {} }
       }
       _hsPersistUserColorCache()
@@ -3500,6 +3502,7 @@ function hsResolveUserColor(lower) {
           c = palette[Math.abs(h) % palette.length]
         }
         _hsUserColorCache.set(lower, c || null)
+        if (_hsUserColorCache.size > 5000) _hsUserColorCache.delete(_hsUserColorCache.keys().next().value)
         _hsPersistUserColorCache()
         if (c) { try { setKnownColor(lower, c) } catch {} }
         return c

@@ -1330,11 +1330,11 @@ function renderFeedEmote(name, url, source, hash) {
   if (typeof blockedEmoteNames !== 'undefined' && blockedEmoteNames.has(name)) {
     return `<span class="hs-mc-emote-wrapper hs-state-blocked" data-emote-name="${dn}" data-state="blocked" data-source="heatsync"><img src="${HS_TRANSPARENT_PX}" alt="${dn}" title="${dn}" class="hs-mc-emote hs-emote-blocked" style="width:var(--hs-emote-size,32px);height:var(--hs-emote-size,32px)" data-emote-name="${dn}" data-state="blocked" data-source="heatsync"></span>`
   }
-  const safeUrl = escapeHtml(url)
+  const sanitizedUrl = escapeHtml(safeUrl(url))
   const src = escapeHtml(source || 'unknown')
   const state = (typeof getEmoteState === 'function') ? getEmoteState(name, source) : 'global'
   const hashAttr = hash ? ` data-emote-hash="${escapeHtml(hash)}"` : ''
-  return `<span class="hs-mc-emote-wrapper hs-state-${state}" data-emote-name="${dn}" data-emote-url="${safeUrl}" data-state="${state}" data-source="${src}"${hashAttr}><img src="${safeUrl}" alt="${dn}" title="${dn}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${dn}" data-state="${state}" data-source="${src}" loading="lazy" decoding="async"></span>`
+  return `<span class="hs-mc-emote-wrapper hs-state-${state}" data-emote-name="${dn}" data-emote-url="${sanitizedUrl}" data-state="${state}" data-source="${src}"${hashAttr}><img src="${sanitizedUrl}" alt="${dn}" title="${dn}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${dn}" data-state="${state}" data-source="${src}" loading="lazy" decoding="async"></span>`
 }
 
 function renderFeedContent(content, emoteRefs) {
@@ -1400,8 +1400,8 @@ function renderFeedContent(content, emoteRefs) {
   // emote_refs can be { name: url } or { name: { url, hash, name, provider } }
   if (emoteRefs && typeof emoteRefs === 'object') {
     for (const [name, val] of Object.entries(emoteRefs)) {
-      const url = typeof val === 'string' ? val : val?.url
-      if (!url || !/^https:\/\//.test(url)) continue
+      const url = safeUrl(typeof val === 'string' ? val : val?.url)
+      if (!url) continue
       const source = typeof val === 'object' ? (val?.provider || 'heatsync') : 'heatsync'
       const hash = typeof val === 'object' ? val?.hash : ''
       const escaped = escapeHtml(name);

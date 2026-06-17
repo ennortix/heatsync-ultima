@@ -148,6 +148,7 @@ function scheduleReconnect(prevChannels) {
   if (authState.reconnectTimer) return;
   const delay = authState.reconnectDelay;
   authState.reconnectDelay = Math.min(delay * 2, 30000);
+  const jitteredDelay = delay + Math.random() * 500;
   log(`Auth IRC reconnect in ${delay}ms...`);
   authState.reconnectTimer = cleanup.setTimeout(async () => {
     authState.reconnectTimer = null;
@@ -160,7 +161,7 @@ function scheduleReconnect(prevChannels) {
     } else if (ok !== 'auth_failed') {
       scheduleReconnect(prevChannels);
     }
-  }, delay);
+  }, jitteredDelay);
 }
 
 async function connectAuthIrc(token, nick) {

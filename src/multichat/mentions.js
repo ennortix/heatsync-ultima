@@ -155,10 +155,12 @@ function _titleFlashStart(fromUser) {
 // Restore title the moment the tab regains focus
 if (!window._hsMcTitleFlashFocusWired) {
   window._hsMcTitleFlashFocusWired = true
-  window.addEventListener('focus', _titleFlashStop)
+  window.addEventListener('focus', _titleFlashStop, { signal: mcSignal })
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) _titleFlashStop()
-  })
+  }, { signal: mcSignal })
+  // Clear install-once flag on lifecycle abort so next reinit can re-wire.
+  mcSignal.addEventListener('abort', () => { window._hsMcTitleFlashFocusWired = false }, { once: true })
 }
 
 // User-tunable settings — volume + flash toggle. Hydrated from sync

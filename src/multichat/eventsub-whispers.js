@@ -112,13 +112,14 @@ function eswScheduleReconnect(token) {
   if (eswState.reconnectTimer) return
   const delay = eswState.reconnectDelay
   eswState.reconnectDelay = Math.min(delay * 2, 30000)
+  const jitteredDelay = delay + Math.random() * delay * 0.5
   log(`EventSub reconnect in ${delay}ms`)
   eswState.reconnectTimer = cleanup.setTimeout(() => {
     eswState.reconnectTimer = null
     if (eswState.destroyed) return
     if (eswState.ws?.readyState === WebSocket.OPEN) return
     eswConnect(token)
-  }, delay)
+  }, jitteredDelay)
 }
 
 // Pull a known color for a userId from anywhere we've seen them (whisper history, IRC buffers).

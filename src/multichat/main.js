@@ -1884,6 +1884,9 @@
         chrome.storage.sync.get('ui_settings', function(d) {
           const ui = (d && d.ui_settings) || {}
           chrome.storage.sync.set({ ui_settings: { ...ui, multichatOverlayEnabled: !!v } }, function() {
+            if (chrome.runtime.lastError) {
+              console.warn('[heatsync-ext] overlay mode save failed:', chrome.runtime.lastError.message)
+            }
             _liteReload()
           })
         })

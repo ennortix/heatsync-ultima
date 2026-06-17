@@ -151,7 +151,7 @@ document.addEventListener('hs-dbg-probe', () => {
   } catch (e) {
     document.documentElement.dataset.hsDbg = 'err:' + (e?.message || 'unknown')
   }
-}, true)
+}, { capture: true, signal: mcSignal })
 // hs-dbg-test-token → tests getTwitchAuthTokenAsync without exposing the
 // token value. Surfaces whether the BG cookie fetch is returning a token.
 // hs-dbg-test-send → invoke sendMessage() from isolated world with the test
@@ -189,7 +189,7 @@ document.addEventListener('hs-dbg-twitch-badges-lookup', (e) => {
   } catch (err) {
     document.documentElement.dataset.hsDbgTwitchBadgesLookup = 'err:' + (err?.message || 'unknown')
   }
-}, true)
+}, { capture: true, signal: mcSignal })
 // hs-dbg-twitch-badges → returns twitchBadgeUrls Map stats so we can see if
 // global + channel badges have populated. Helps diagnose "MOD/SUB as text"
 // regressions when running off-twitch.
@@ -210,7 +210,7 @@ document.addEventListener('hs-dbg-twitch-badges', () => {
   } catch (e) {
     document.documentElement.dataset.hsDbgTwitchBadges = 'err:' + (e?.message || 'unknown')
   }
-}, true)
+}, { capture: true, signal: mcSignal })
 // hs-dbg-test-irc-connect → invoke connectAuthIrc directly to test if the
 // IRC WebSocket can open from this origin. No PRIVMSG sent — just connect.
 document.addEventListener('hs-dbg-test-irc-connect', () => {
@@ -250,7 +250,7 @@ document.addEventListener('hs-dbg-test-irc-connect', () => {
       document.documentElement.dataset.hsDbgTestIrcConnect = JSON.stringify({ err: e?.message })
     }
   })()
-}, true)
+}, { capture: true, signal: mcSignal })
 document.addEventListener('hs-dbg-test-send', (e) => {
   document.documentElement.dataset.hsDbgTestSendStart = String(Date.now())
   ;(async () => {
@@ -290,7 +290,7 @@ document.addEventListener('hs-dbg-test-send', (e) => {
       document.documentElement.dataset.hsDbgTestSend = JSON.stringify({ err: err?.message })
     }
   })()
-}, true)
+}, { capture: true, signal: mcSignal })
 document.addEventListener('hs-dbg-test-token', () => {
   ;(async () => {
     try {
@@ -322,7 +322,7 @@ document.addEventListener('hs-dbg-test-token', () => {
       document.documentElement.dataset.hsDbgTestToken = JSON.stringify({ err: e?.message })
     }
   })()
-}, true)
+}, { capture: true, signal: mcSignal })
 // hs-dbg-auth-irc → returns Twitch IRC auth/WS state. Diagnoses cross-origin
 // send failures (kick.com viewer trying to send to a Twitch channel tab).
 document.addEventListener('hs-dbg-auth-irc', () => {
@@ -343,7 +343,7 @@ document.addEventListener('hs-dbg-auth-irc', () => {
   } catch (e) {
     document.documentElement.dataset.hsDbgAuthIrc = 'err:' + (e?.message || 'unknown')
   }
-}, true)
+}, { capture: true, signal: mcSignal })
 // hs-dbg-kick-badge-urls → returns kickBadgeUrls Map state so we can verify
 // fetchKickChannelBadges populated entries for the current Kick channel(s).
 document.addEventListener('hs-dbg-kick-badge-urls', () => {
@@ -360,7 +360,7 @@ document.addEventListener('hs-dbg-kick-badge-urls', () => {
   } catch (e) {
     document.documentElement.dataset.hsDbgKickBadgeUrls = 'err:' + (e?.message || 'unknown')
   }
-}, true)
+}, { capture: true, signal: mcSignal })
 // hs-dbg-kick-badges → returns a sample of recent kick msgs with their .badges
 // string so we can see whether the WS payload actually carries badge types.
 document.addEventListener('hs-dbg-kick-badges', () => {
@@ -382,7 +382,7 @@ document.addEventListener('hs-dbg-kick-badges', () => {
   } catch (e) {
     document.documentElement.dataset.hsDbgKickBadges = 'err:' + (e?.message || 'unknown')
   }
-}, true)
+}, { capture: true, signal: mcSignal })
 // hs-dbg-alias-probe → returns getUserAliases() + mute/block state for a test
 // user. Lets MAIN-world verify the cross-platform alias resolution end-to-end.
 document.addEventListener('hs-dbg-alias-probe', (e) => {
@@ -404,7 +404,7 @@ document.addEventListener('hs-dbg-alias-probe', (e) => {
   } catch (err) {
     document.documentElement.dataset.hsDbgAlias = 'err:' + (err?.message || 'unknown')
   }
-}, true)
+}, { capture: true, signal: mcSignal })
 document.addEventListener('hs-dbg-render-trace', (e) => {
   try {
     const id = (e?.detail?.id || '').toLowerCase()
@@ -429,7 +429,7 @@ document.addEventListener('hs-dbg-render-trace', (e) => {
   } catch (err) {
     document.documentElement.dataset.hsDbg3 = 'err:' + (err?.message || 'unknown')
   }
-}, true)
+}, { capture: true, signal: mcSignal })
 document.addEventListener('hs-dbg-emotes', (e) => {
   try {
     const ch = (e?.detail?.ch || '').toLowerCase()
@@ -451,7 +451,7 @@ document.addEventListener('hs-dbg-emotes', (e) => {
   } catch (err) {
     document.documentElement.dataset.hsDbgEmotes = 'err:' + (err?.message || 'unknown')
   }
-}, true)
+}, { capture: true, signal: mcSignal })
 document.addEventListener('hs-dbg-render-deep', (e) => {
   try {
     const id = (e?.detail?.id || '').toLowerCase()
@@ -488,7 +488,7 @@ document.addEventListener('hs-dbg-render-deep', (e) => {
   } catch (err) {
     document.documentElement.dataset.hsDbgDeep = 'err:' + (err?.message || 'unknown')
   }
-}, true)
+}, { capture: true, signal: mcSignal })
 document.addEventListener('hs-dbg-twitch-sample', (e) => {
   try {
     const ch = (e?.detail?.ch || '').toLowerCase()
@@ -510,7 +510,7 @@ document.addEventListener('hs-dbg-twitch-sample', (e) => {
   } catch (err) {
     document.documentElement.dataset.hsDbg2 = 'err:' + (err?.message || 'unknown')
   }
-}, true)
+}, { capture: true, signal: mcSignal })
 
 // Fast context-death detector. chrome.runtime.id becomes undefined sync on
 // extension reload. Tear down lifecycle immediately, then defer reload to

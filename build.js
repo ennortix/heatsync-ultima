@@ -20,6 +20,169 @@ import { fileURLToPath } from 'url'
 import { execSync, execFileSync } from 'child_process'
 import { transformSync } from 'esbuild'
 
+// ── Pre-build guards ──────────────────────────────────────────────────────────
+// All four checks run before any bundling and fail the build loudly on violation.
+
+// Guard 1: version must match across package.json, chrome manifest, firefox manifest.
+function checkVersionSync() {
+  const pkg = JSON.parse(readFileSync(join(__dirname, 'package.json'), 'utf8'))
+  const chrome = JSON.parse(readFileSync(join(__dirname, 'src', 'manifests', 'chrome.json'), 'utf8'))
+  const firefox = JSON.parse(readFileSync(join(__dirname, 'src', 'manifests', 'firefox.json'), 'utf8'))
+  const [pv, cv, fv] = [pkg.version, chrome.version, firefox.version]
+  if (pv !== cv || pv !== fv) {
+    throw new Error(`version mismatch: package.json=${pv} chrome=${cv} firefox=${fv}`)
+  }
+  console.log(`  Version sync: ${pv} ✓`)
+}
+
+// Guard 2: host permissions and content_scripts coverage must match between manifests.
+// Intentional MV2/MV3 structural differences allowed: background service_worker vs scripts,
+// action vs browser_action, web_accessible_resources format, and firefox-only
+// webRequest/webRequestBlocking.
+function checkManifestParity() {
+  const chrome = JSON.parse(readFileSync(join(__dirname, 'src', 'manifests', 'chrome.json'), 'utf8'))
+  const firefox = JSON.parse(readFileSync(join(__dirname, 'src', 'manifests', 'firefox.json'), 'utf8'))
+
+  // --- host permissions ---
+  // Chrome MV3: split into host_permissions[]. Firefox MV2: folded into permissions[].
+  // Firefox-only non-host perms (webRequest/webRequestBlocking) are intentional — allow them.
+  const FIREFOX_ONLY_PERMS = new Set(['webRequest', 'webRequestBlocking'])
+  const URL_PATTERN = /^https?:\/\//
+
+  const chromeHosts = new Set([
+    ...(chrome.host_permissions || []),
+    ...(chrome.permissions || []).filter(p => URL_PATTERN.test(p)),
+  ])
+  const firefoxHosts = new Set(
+    (firefox.permissions || []).filter(p => URL_PATTERN.test(p) && !FIREFOX_ONLY_PERMS.has(p))
+  )
+
+  const onlyInChrome = [...chromeHosts].filter(h => !firefoxHosts.has(h))
+  const onlyInFirefox = [...firefoxHosts].filter(h => !chromeHosts.has(h))
+  if (onlyInChrome.length || onlyInFirefox.length) {
+    const lines = []
+    if (onlyInChrome.length) lines.push(`  chrome-only: ${onlyInChrome.join(', ')}`)
+    if (onlyInFirefox.length) lines.push(`  firefox-only: ${onlyInFirefox.join(', ')}`)
+    throw new Error(`manifest host_permissions diverge:\n${lines.join('\n')}`)
+  }
+
+  // --- content_scripts coverage ---
+  // Canonicalize: sort each entry by sorted(matches)+sorted(js) key, then compare.
+  // Order-independent set comparison — only js+matches coverage matters, not ordering.
+  function csKey(entry) {
+    const matches = [...(entry.matches || [])].sort().join('|')
+    const js = [...(entry.js || [])].sort().join('|')
+    return `${matches}::${js}`
+  }
+
+  const chromeKeys = new Set((chrome.content_scripts || []).map(csKey))
+  const firefoxKeys = new Set((firefox.content_scripts || []).map(csKey))
+
+  const onlyInChromeCS = [...chromeKeys].filter(k => !firefoxKeys.has(k))
+  const onlyInFirefoxCS = [...firefoxKeys].filter(k => !chromeKeys.has(k))
+  if (onlyInChromeCS.length || onlyInFirefoxCS.length) {
+    const lines = []
+    if (onlyInChromeCS.length) lines.push(`  chrome-only entries:\n    ${onlyInChromeCS.join('\n    ')}`)
+    if (onlyInFirefoxCS.length) lines.push(`  firefox-only entries:\n    ${onlyInFirefoxCS.join('\n    ')}`)
+    throw new Error(`manifest content_scripts diverge:\n${lines.join('\n')}`)
+  }
+
+  console.log(`  Manifest parity: ${chromeHosts.size} host perms, ${chromeKeys.size} content_script entries ✓`)
+}
+
+// Guard 3: catch top-level name collisions between src/lib (outer IIFE scope)
+// and src/multichat (nested block scope). const/let collisions are hard JS errors;
+// function/var collisions shadow silently — warn loudly.
+//
+// NOTE: this is a regex-based parser. It only matches column-0 declarations so
+// it works correctly for this codebase's flat style, but would miss declarations
+// inside nested blocks, object literals, or continuation lines. It's a fast
+// sanity check, not a full AST parse.
+//
+// Intentional shadows:
+//   'log' — utils.js (lib, outer IIFE) declares `function log` for lib-internal use;
+//            bootstrap.js (multichat, inner block) redeclares `function log` as the
+//            multichat-specific logger. The inner block scope means no JS SyntaxError,
+//            and the inner one takes precedence inside the block — intentional.
+const SCOPE_COLLISION_ALLOWLIST = new Set(['log'])
+
+function checkScopeCollisions() {
+  const DECL_RE = /^(?:export\s+)?(?:async\s+)?(?:function|const|let|var|class)\s+([A-Za-z0-9_$]+)/
+  const LIB_FILES = ['error-reporter.js', 'config.js', 'cleanup.js', 'utils.js', 'settings-schema.js', 'browser-api.js', 'modifiers.js', 'undo-manager.js']
+  const libDir = join(__dirname, 'src', 'lib')
+  const mcDir = join(__dirname, 'src', 'multichat')
+
+  // Map name → declaration kind ('const'|'let'|'var'|'function'|'class') for each layer
+  function extractDecls(dir, files) {
+    const map = new Map() // name → kind
+    const KIND_RE = /^(?:export\s+)?(?:(async)\s+)?(function|const|let|var|class)\s+([A-Za-z0-9_$]+)/
+    for (const file of files) {
+      const p = join(dir, file)
+      if (!existsSync(p)) continue
+      for (const line of readFileSync(p, 'utf8').split('\n')) {
+        const m = KIND_RE.exec(line)
+        if (!m) continue
+        const kind = m[1] === 'async' ? 'function' : m[2]
+        const name = m[3]
+        if (!map.has(name)) map.set(name, kind)
+      }
+    }
+    return map
+  }
+
+  // multichat layer: all MULTICHAT_MODULES + main.js
+  const mcFiles = [...MULTICHAT_MODULES, 'main.js']
+  const libDecls = extractDecls(libDir, LIB_FILES)
+  const mcDecls = extractDecls(mcDir, mcFiles)
+
+  let hardErrors = 0
+  for (const [name, mcKind] of mcDecls) {
+    if (!libDecls.has(name)) continue
+    if (SCOPE_COLLISION_ALLOWLIST.has(name)) continue
+    const libKind = libDecls.get(name)
+    const isHard = (mcKind === 'const' || mcKind === 'let') && (libKind === 'const' || libKind === 'let')
+    if (isHard) {
+      console.error(`  x scope collision (SyntaxError): '${name}' is ${libKind} in lib and ${mcKind} in multichat`)
+      hardErrors++
+    } else {
+      console.warn(`  warn: scope shadow: '${name}' is ${libKind} in lib, ${mcKind} in multichat (function/var — JS allows, but check intent)`)
+    }
+  }
+  if (hardErrors > 0) {
+    throw new Error(`checkScopeCollisions: ${hardErrors} const/let collision(s) would cause SyntaxError at runtime`)
+  }
+  console.log(`  Scope collisions: none (allowlist: ${[...SCOPE_COLLISION_ALLOWLIST].join(', ')}) ✓`)
+}
+
+// Guard 4: run the test suite before bundling.
+// Skippable with --no-test for fast iterative rebuilds.
+// Always forced on --package and --deploy.
+//
+// Circularity note: tests/build.test.js spawns `bun run build.js` in beforeAll,
+// but only when dist/chrome/manifest.json is absent. By the time runTests() is
+// called the guards have already run (not a full build yet), but the dist from a
+// prior build may exist and satisfy the check. Either way, build.test.js uses
+// Bun.spawn (not execFileSync) so it does not inherit our stdio and will not
+// re-trigger this guard in a way that deadlocks. The risk is a full re-build
+// inside the test run on a cold dist — acceptable since tests/*.test.js are all
+// unit-level and fast.
+function runTests(args) {
+  const flags = new Set(args.filter(a => a.startsWith('--')))
+  const forceRun = flags.has('--package') || flags.has('--deploy')
+  const skipTest = flags.has('--no-test') && !forceRun
+  if (skipTest) {
+    console.log('  Tests: skipped (--no-test)')
+    return
+  }
+  console.log('  Running tests...')
+  try {
+    execFileSync('bun', ['test'], { stdio: 'inherit', cwd: __dirname })
+  } catch (e) {
+    throw new Error('runTests: test suite failed — fix before building')
+  }
+  console.log('  Tests: passed ✓')
+}
+
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
 const SRC_DIR = join(__dirname, 'src')
@@ -411,6 +574,14 @@ const shouldMinify = flags.has('--minify') || shouldPackage || shouldDeploy
 const shouldSource = flags.has('--source') || shouldPackage
 
 console.log('Building heatsync extension...\n')
+
+// ── Pre-build gate ────────────────────────────────────────────────────────────
+console.log('Pre-build checks:')
+checkVersionSync()
+checkManifestParity()
+checkScopeCollisions()
+runTests(args)
+console.log()
 
 // Settings-registry lint — duplicate keys, invalid defaults, sync-quota
 // budget, UI_SYNC_BLOCKLIST mismatches. Hard-fails before any bundling.

@@ -10850,6 +10850,30 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   // inline. When chatPosition flips back to 'right' we restore the native
   // values (Twitch's chat-width JS will re-apply them on next tick).
   let _overrideObserver = null;
+  // YT reflow: a ResizeObserver on #movie_player keeps --hs-yt-below-top in sync
+  // with the real video bottom. The rAF-based set in applyPlatformPositionOverrides
+  // is racy on fresh load (the player gets its size after our last run), leaving
+  // #below pinned at the fallback top over the video. The observer fires whenever
+  // the player sizes/resizes, so the var is always correct. Re-observes on SPA nav.
+  let _hsYtBelowRO = null, _hsYtBelowEl = null;
+  function _hsSetYtBelowTop() {
+    if (chatPosition !== 'left' && chatPosition !== 'right') { document.documentElement.style.removeProperty('--hs-yt-below-top'); return }
+    const flexy = document.querySelector('ytd-watch-flexy');
+    if (flexy && (flexy.hasAttribute('theater') || flexy.hasAttribute('fullscreen'))) { document.documentElement.style.removeProperty('--hs-yt-below-top'); return }
+    const mp = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');
+    const b = mp && mp.getBoundingClientRect();
+    if (b && b.height > 0) document.documentElement.style.setProperty('--hs-yt-below-top', Math.round(b.bottom) + 'px');
+  }
+  function _hsEnsureYtBelowObserver() {
+    const mp = document.querySelector('#movie_player');
+    if (!mp || _hsYtBelowEl === mp) return;
+    if (_hsYtBelowRO) _hsYtBelowRO.disconnect();
+    _hsYtBelowEl = mp;
+    _hsYtBelowRO = new ResizeObserver(_hsSetYtBelowTop);
+    _hsYtBelowRO.observe(mp);
+    cleanup.trackObserver(_hsYtBelowRO);
+    _hsSetYtBelowTop();
+  }
   function applyPlatformPositionOverrides() {
     const isRight = chatPosition === 'right';
     const w = `${chatWidth}px`;
@@ -10928,6 +10952,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           sec.style.setProperty('flex', '0 0 0', 'important');
         }
       }
+      // Keep --hs-yt-below-top synced to the real video bottom via a
+      // ResizeObserver (robust against fresh-load timing). Retries each run
+      // until #movie_player exists; re-observes the new player on SPA nav.
+      _hsEnsureYtBelowObserver();
       // Force aspect-preserved player size inline on the player WRAPPER chain.
       // We deliberately omit #movie_player itself — YT's controls (volume,
       // play, settings) compute hit-targets from #movie_player's intrinsic

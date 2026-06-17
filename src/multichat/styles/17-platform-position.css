@@ -1076,24 +1076,33 @@
       background: #0a0a0a !important;
       z-index: 1 !important;
     }
-    /* high-contrast metadata text (theme-independent). Exclude svg/yt-icon and
-       their descendants — the bare star selector was setting currentColor on
-       YT's icons (like/share/subscribe), greying them and wiping active-liked. */
-    body.hs-platform-yt.hs-chat-left ytd-watch-flexy #below,
-    body.hs-platform-yt.hs-chat-left ytd-watch-flexy #below *:not(svg):not(svg *):not(yt-icon):not(yt-icon *),
-    body.hs-platform-yt.hs-chat-right ytd-watch-flexy #below,
-    body.hs-platform-yt.hs-chat-right ytd-watch-flexy #below *:not(svg):not(svg *):not(yt-icon):not(yt-icon *) {
-      color: #e6e6e6 !important;
-    }
-    body.hs-platform-yt.hs-chat-left ytd-watch-flexy #below h1,
-    body.hs-platform-yt.hs-chat-left ytd-watch-flexy #below #title,
-    body.hs-platform-yt.hs-chat-right ytd-watch-flexy #below h1,
-    body.hs-platform-yt.hs-chat-right ytd-watch-flexy #below #title {
+    /* high-contrast metadata text (theme-independent). Target the TEXT containers
+       only — never #below or a wildcard. the color property inherits, so a broad rule tints
+       YT's action-bar icons (like/share/subscribe) grey via currentColor; scoping
+       to title/channel/description/info leaves the icon subtree untouched. */
+    body.hs-platform-yt.hs-chat-left ytd-watch-flexy #below #title, body.hs-platform-yt.hs-chat-left ytd-watch-flexy #below #title *,
+    body.hs-platform-yt.hs-chat-left ytd-watch-flexy #below h1, body.hs-platform-yt.hs-chat-left ytd-watch-flexy #below h1 *,
+    body.hs-platform-yt.hs-chat-right ytd-watch-flexy #below #title, body.hs-platform-yt.hs-chat-right ytd-watch-flexy #below #title *,
+    body.hs-platform-yt.hs-chat-right ytd-watch-flexy #below h1, body.hs-platform-yt.hs-chat-right ytd-watch-flexy #below h1 * {
       color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
     }
+    body.hs-platform-yt.hs-chat-left ytd-watch-flexy #below #description, body.hs-platform-yt.hs-chat-left ytd-watch-flexy #below #description *,
+    body.hs-platform-yt.hs-chat-left ytd-watch-flexy #below ytd-channel-name, body.hs-platform-yt.hs-chat-left ytd-watch-flexy #below ytd-channel-name *,
+    body.hs-platform-yt.hs-chat-left ytd-watch-flexy #below #info, body.hs-platform-yt.hs-chat-left ytd-watch-flexy #below #info *,
+    body.hs-platform-yt.hs-chat-right ytd-watch-flexy #below #description, body.hs-platform-yt.hs-chat-right ytd-watch-flexy #below #description *,
+    body.hs-platform-yt.hs-chat-right ytd-watch-flexy #below ytd-channel-name, body.hs-platform-yt.hs-chat-right ytd-watch-flexy #below ytd-channel-name *,
+    body.hs-platform-yt.hs-chat-right ytd-watch-flexy #below #info, body.hs-platform-yt.hs-chat-right ytd-watch-flexy #below #info * {
+      color: #e6e6e6 !important;
+      -webkit-text-fill-color: #e6e6e6 !important;
+    }
+    /* links stay heatsync-orange — out-specify the #description * rule above */
     body.hs-platform-yt.hs-chat-left ytd-watch-flexy #below a,
-    body.hs-platform-yt.hs-chat-right ytd-watch-flexy #below a {
+    body.hs-platform-yt.hs-chat-left ytd-watch-flexy #below #description a,
+    body.hs-platform-yt.hs-chat-right ytd-watch-flexy #below a,
+    body.hs-platform-yt.hs-chat-right ytd-watch-flexy #below #description a {
       color: #ff8700 !important;
+      -webkit-text-fill-color: #ff8700 !important;
     }
 
     /* ============================================

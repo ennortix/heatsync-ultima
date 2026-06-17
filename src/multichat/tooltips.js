@@ -135,21 +135,34 @@
   const STACK_PREVIEW_SCALE = 4;
   function buildStackPreview(box, stackEmotes) {
     const clone = stackEmotes.cloneNode(true);
-    clone.querySelectorAll('img').forEach(im => {
+    const imgs = [...clone.querySelectorAll('img')];
+    imgs.forEach(im => {
       // Blocked overlays render a transparent px with the real url in dataset.
       const orig = im.dataset.hsOrigSrc || im.src;
       const hi = getHighResUrl(orig);
       if (hi) im.src = hi;
-      im.removeAttribute('loading');
+      im.removeAttribute('loading'); // force eager — see sizeBox note below
       im.style.filter = '';
     });
     clone.style.transform = `scale(${STACK_PREVIEW_SCALE})`;
     clone.style.transformOrigin = 'top left';
-    const r = stackEmotes.getBoundingClientRect();
-    box.style.width = (r.width * STACK_PREVIEW_SCALE) + 'px';
-    box.style.height = (r.height * STACK_PREVIEW_SCALE) + 'px';
     box.style.display = 'block';
     box.replaceChildren(clone);
+    // Size the box to the clone's OWN footprint, never the live in-chat rect: a
+    // stacked emote in a scrolled-off row is a loading="lazy" img that never
+    // entered the viewport (naturalWidth 0, the grid collapses it to ~4px), so
+    // the old rect was a sliver — the box came out tiny while the now-eager
+    // clone loaded full-size and spilled out past it (.tooltip-stack is
+    // overflow:visible). offsetWidth/Height ignore the transform, giving the
+    // unscaled layout box. Measure in rAF (the tooltip is display:none until
+    // .visible is added right after this returns) and re-measure as each lazy /
+    // hi-res image finishes loading so the box grows to the real composite.
+    const sizeBox = () => {
+      box.style.width = (clone.offsetWidth * STACK_PREVIEW_SCALE) + 'px';
+      box.style.height = (clone.offsetHeight * STACK_PREVIEW_SCALE) + 'px';
+    };
+    requestAnimationFrame(sizeBox);
+    imgs.forEach(im => { if (!im.complete) im.addEventListener('load', sizeBox, { once: true }); });
   }
 
   function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg, owner) {

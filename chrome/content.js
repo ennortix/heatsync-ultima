@@ -316,6 +316,12 @@ let cachedAllEmotes = null
 // the emote. cachedAllEmotes (with inventory) is still used for own renders
 // + picker + autocomplete + tab-complete suggestions.
 let cachedNonInventoryEmotes = null
+// Channel-only render map (non-inventory, non-global). Channel emotes are
+// authoritative in their own channel for EVERY sender, so they must beat a
+// sender's colliding personal set — but only for names the channel carries;
+// names it doesn't fall through to the sender's set, then global. Mirrors the
+// multichat panel's channel > senderEmotes > global order.
+let cachedChannelEmotes = null
 // Own-message render map: channel > inventory > global. Channel emotes are
 // authoritative in their own channel for EVERYONE — so the viewer's own messages
 // render a channel emote identically to how other chatters see it. Inventory still
@@ -3163,9 +3169,11 @@ function rebuildEmoteMapIfDirty() {
   // as they do for other chatters; fall back to variants[0] (inventory > global)
   // for names the channel doesn't provide.
   cachedOwnEmotes = new Map()
+  cachedChannelEmotes = new Map()
   for (const [name, variants] of cachedAllEmoteVariants) {
     const channelV = variants.find(x => !x.inInventory && !x.isGlobal)
     cachedOwnEmotes.set(name, channelV || variants[0])
+    if (channelV) cachedChannelEmotes.set(name, channelV)
   }
 
   // Rebuild O(1) lookup sets
@@ -5418,19 +5426,27 @@ function processMessage(messageElement) {
     // Fast path — no overlays, no Map alloc.
     allEmotes = baseMap
   } else {
-    // Precedence: live broadcast > sender's persistent set > channel/global cache.
+    // Precedence: live broadcast > channel (authoritative in its own channel) >
+    // sender's persistent set > global. cachedChannelEmotes sits ABOVE senderSet
+    // so a channel emote isn't shadowed by a sender's colliding personal emote —
+    // without it, others' messages diverged from the viewer's own (own renders
+    // via cachedOwnEmotes, channel-first). baseMap still backstops with globals +
+    // any name the channel doesn't carry. Own messages never reach this branch
+    // (no broadcast/senderSet) → fast path, cachedOwnEmotes.
     allEmotes = {
       get(name) {
         return (userBroadcasts && userBroadcasts.get(name))
+            || (cachedChannelEmotes && cachedChannelEmotes.get(name))
             || (senderSet && senderSet.get(name))
             || baseMap.get(name)
       },
       has(name) {
         return !!(userBroadcasts && userBroadcasts.has(name))
+            || !!(cachedChannelEmotes && cachedChannelEmotes.has(name))
             || !!(senderSet && senderSet.has(name))
             || baseMap.has(name)
       },
-      get size() { return baseMap.size + (userBroadcasts ? userBroadcasts.size : 0) + (senderSet ? senderSet.size : 0) }
+      get size() { return baseMap.size + (userBroadcasts ? userBroadcasts.size : 0) + (cachedChannelEmotes ? cachedChannelEmotes.size : 0) + (senderSet ? senderSet.size : 0) }
     }
   }
 

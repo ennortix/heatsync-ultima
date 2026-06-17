@@ -1704,6 +1704,21 @@
   function lookupOwnedEmote(name) {
     return viewerPersonalEmotes.get(name)
   }
+  // Render-order resolution for the INPUT PREVIEW: channel > inventory > global,
+  // mirroring processEmotes (channel emotes authoritative in their own channel).
+  // lookupEmote stays inventory-first — it drives block/add/state/tooltip, which
+  // are viewer-centric. The input chip must match what gets RENDERED on send, so
+  // it resolves channel-first here. Removed/blocked fallbacks stay last so a
+  // blocked emote still resolves its real url for the dashed-box preview.
+  function lookupEmoteRenderOrder(name) {
+    return channelEmoteCaches[currentTab]?.get(name)
+      || channelEmoteCaches[getLiveChannel()]?.get(name)
+      || channelEmoteCaches[getCurrentChannel()]?.get(name)
+      || viewerPersonalEmotes.get(name)
+      || emoteCache.get(name)
+      || removedEmoteFallback.get(name)
+      || blockedEmoteFallback.get(name);
+  }
   // True if ANY cache knows this emote name is 7TV zero-width. The owned set
   // (viewerPersonalEmotes) and the heatsync server cache don't carry 7TV's
   // zeroWidth flag, and viewerPersonalEmotes is resolved FIRST — so an overlay
@@ -1725,7 +1740,7 @@
   // type-word-then-space auto-convert so only your emotes imagify as you type.
   // Channel/global emotes still render via Tab-complete (which omits the flag).
   function lookupEmoteWithOverlay(name, { ownedOnly = false } = {}) {
-    const resolve = ownedOnly ? lookupOwnedEmote : lookupEmote
+    const resolve = ownedOnly ? lookupOwnedEmote : lookupEmoteRenderOrder
     const endsWithZero = name.length > 1 && name.endsWith('0')
     // A literal full-name hit ALWAYS wins — an emote actually named "lerolero0"
     // is a standalone emote, NOT the "lerolero" overlay. It only stacks if it
@@ -2206,8 +2221,8 @@
       if (kickEmoteMatch) {
         const [, emoteId, emoteName] = kickEmoteMatch
         const kickUrl = `https://files.kick.com/emotes/${emoteId}/fullsize`
-        const cached = senderEmotes?.get(emoteName)
-          || (channel && channelEmoteCaches[channel]?.get(emoteName))
+        const cached = (channel && channelEmoteCaches[channel]?.get(emoteName))
+          || senderEmotes?.get(emoteName)
           || extraCache?.get(emoteName)
           || emoteCache.get(emoteName)
           || _rfGate(_rf?.get(emoteName))
@@ -2251,11 +2266,18 @@
       // 7TV-style "name0" convention (strip the trailing 0 and overlay the
       // base). This MUST match lookupEmoteWithOverlay (input preview) so the
       // input chip and the rendered message agree.
-      // Priority: senderEmotes > channel > extraCache (twitch IRC native) > emoteCache (globals)
+      // Priority: channel > senderEmotes > extraCache (twitch IRC native) > emoteCache (globals).
+      // Channel emotes are AUTHORITATIVE in their own channel for every sender
+      // (mirrors chrome/content.js cachedOwnEmotes): nl_kripp's channel "Cabge"
+      // must win over a sender's colliding personal 7TV "Cabge", so the viewer
+      // sees the same image whether they or someone else posts the name. The
+      // per-sender set (viewer inventory on own msgs, sender's personal 7TV on
+      // others') still fills every name the channel doesn't carry — sovereignty
+      // intact. Without this, others' messages diverged from the viewer's own.
       let emote = null
       let isOverlayEmote = false
       const endsWithZero = word.endsWith('0') && word.length > 1
-      emote = senderEmotes?.get(word) || (channel && channelEmoteCaches[channel]?.get(word)) || extraCache?.get(word) || emoteCache.get(word) || _rfGate(_rf?.get(word))
+      emote = (channel && channelEmoteCaches[channel]?.get(word)) || senderEmotes?.get(word) || extraCache?.get(word) || emoteCache.get(word) || _rfGate(_rf?.get(word))
       // blockedEmoteFallback last + ungated (block is viewer-wide, all senders):
       // resolves a blocked emote to its real url+dims so it renders the dashed box
       // at the emote's true rectangle via the normal path, instead of the square
@@ -2272,7 +2294,7 @@
       } else if (endsWithZero) {
         // No literal "name0" emote — strip the 0 and overlay the base.
         const baseName = word.slice(0, -1)
-        emote = senderEmotes?.get(baseName) || (channel && channelEmoteCaches[channel]?.get(baseName)) || extraCache?.get(baseName) || emoteCache.get(baseName) || _rfGate(_rf?.get(baseName))
+        emote = (channel && channelEmoteCaches[channel]?.get(baseName)) || senderEmotes?.get(baseName) || extraCache?.get(baseName) || emoteCache.get(baseName) || _rfGate(_rf?.get(baseName))
         if (emote) isOverlayEmote = true
       }
       // FFZ-style fallback: token like "Kappaw!" or "KappaffzX" — when the
@@ -2285,7 +2307,7 @@
         for (const suf of suffixCandidates) {
           if (word.endsWith(suf) && word.length > suf.length + 1) {
             const baseGuess = word.slice(0, word.length - suf.length)
-            const candidate = senderEmotes?.get(baseGuess) || (channel && channelEmoteCaches[channel]?.get(baseGuess)) || extraCache?.get(baseGuess) || emoteCache.get(baseGuess)
+            const candidate = (channel && channelEmoteCaches[channel]?.get(baseGuess)) || senderEmotes?.get(baseGuess) || extraCache?.get(baseGuess) || emoteCache.get(baseGuess)
             if (candidate) {
               emote = candidate
               isOverlayEmote = !!candidate.zeroWidth
@@ -2299,7 +2321,7 @@
           const inlineColor = word.match(/^(.+?)(c!#?[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?)$/)
           if (inlineColor) {
             const baseGuess = inlineColor[1]
-            const candidate = senderEmotes?.get(baseGuess) || (channel && channelEmoteCaches[channel]?.get(baseGuess)) || extraCache?.get(baseGuess) || emoteCache.get(baseGuess)
+            const candidate = (channel && channelEmoteCaches[channel]?.get(baseGuess)) || senderEmotes?.get(baseGuess) || extraCache?.get(baseGuess) || emoteCache.get(baseGuess)
             if (candidate) {
               emote = candidate
               isOverlayEmote = !!candidate.zeroWidth

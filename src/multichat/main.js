@@ -10864,14 +10864,19 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     const b = mp && mp.getBoundingClientRect();
     if (b && b.height > 0) document.documentElement.style.setProperty('--hs-yt-below-top', Math.round(b.bottom) + 'px');
   }
-  function _hsEnsureYtBelowObserver() {
+  function _hsEnsureYtBelowObserver(_tries) {
     const mp = document.querySelector('#movie_player');
-    if (!mp || _hsYtBelowEl === mp) return;
-    if (_hsYtBelowRO) _hsYtBelowRO.disconnect();
-    _hsYtBelowEl = mp;
-    _hsYtBelowRO = new ResizeObserver(_hsSetYtBelowTop);
-    _hsYtBelowRO.observe(mp);
-    cleanup.trackObserver(_hsYtBelowRO);
+    // On fresh load applyPlatformPositionOverrides often runs before #movie_player
+    // exists; self-retry so the observer attaches once the player mounts (instead
+    // of depending on the function happening to re-run after). ~12s ceiling.
+    if (!mp) { if ((_tries || 0) < 30) cleanup.setTimeout(() => _hsEnsureYtBelowObserver((_tries || 0) + 1), 400); return; }
+    if (_hsYtBelowEl !== mp) {
+      if (_hsYtBelowRO) _hsYtBelowRO.disconnect();
+      _hsYtBelowEl = mp;
+      _hsYtBelowRO = new ResizeObserver(_hsSetYtBelowTop);
+      _hsYtBelowRO.observe(mp);
+      cleanup.trackObserver(_hsYtBelowRO);
+    }
     _hsSetYtBelowTop();
   }
   function applyPlatformPositionOverrides() {

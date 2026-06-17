@@ -8929,7 +8929,7 @@ function _toggleUserMute(username) {
 // Readable message body: walk fragments + emote alts, skip badges/timestamps.
 function _extractMessageText(msgEl) {
   const frags = msgEl.querySelectorAll(
-    '[data-a-target="chat-message-text"], .text-fragment, .message [class*="text-fragment"], #chatroom-messages .chat-entry-content'
+    '[data-a-target="chat-message-text"], .text-fragment, .message [class*="text-fragment"]'
   );
   if (frags.length) {
     return Array.from(frags).map(f => {

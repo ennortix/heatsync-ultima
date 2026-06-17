@@ -37,9 +37,37 @@
 
   const isPopout = platform === 'twitch' && /^\/(popout|embed)\/[a-zA-Z0-9_]+\/chat/.test(location.pathname)
 
-  // Mark documentElement so the pseudo-element rule applies. <html> always
-  // exists at document_start so this paints before anything else.
-  document.documentElement.classList.add('hs-prepaint-active')
+  // Only prepaint where chat will actually mount — otherwise the black bar
+  // shows for up to 4s on home/directory/browse/search/shorts/etc. while the
+  // user is just browsing (no chat to smooth in). Pathname-only (document_start),
+  // single-segment channel paths minus the known non-channel roots. A miss here
+  // costs at most a brief cold-boot flash on a real channel page (the thing
+  // prepaint prevents) — never breakage — so err toward NOT painting.
+  function isChatPage() {
+    const p = location.pathname
+    if (platform === 'twitch') {
+      if (isPopout) return true
+      const m = p.match(/^\/([a-zA-Z0-9_]{1,40})\/?$/)
+      if (!m) return false
+      return !['directory','following','videos','settings','search','wallet','subscriptions','friends','drops','downloads','turbo','prime','store','jobs','clips','collections','about','schedule','team','teams','u','popout','embed','moderator'].includes(m[1].toLowerCase())
+    }
+    if (platform === 'kick') {
+      const m = p.match(/^\/([a-zA-Z0-9_-]{1,40})\/?$/)
+      if (!m) return false
+      return !['browse','following','categories','category','search','messages','settings','clips','subscriptions','help','about'].includes(m[1].toLowerCase())
+    }
+    if (platform === 'yt') {
+      return p === '/watch' || p.startsWith('/live_chat')
+    }
+    return false
+  }
+  const doPrepaint = isChatPage()
+
+  // Mark documentElement so the pseudo-element rule applies — ONLY on chat
+  // pages. <html> always exists at document_start so this paints before
+  // anything else. Body classes below still apply on every page (the
+  // body-mounted launcher on non-channel pages needs them).
+  if (doPrepaint) document.documentElement.classList.add('hs-prepaint-active')
 
   // Pre-paint via pseudo-element on <html>: paints from the moment this
   // <style> hits the DOM, no DOM-mount gap. The overlay will cross-fade

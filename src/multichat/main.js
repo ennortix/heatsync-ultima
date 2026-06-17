@@ -1772,6 +1772,12 @@
       try { document.body.classList.toggle('hs-yt-suggestions', !!v) } catch (_) {}
       try { applyPlatformPositionOverrides() } catch (_) {}
     },
+    ytNonLiveChat: function(v) {
+      // YT-only opt-in: when ON, show the panel on non-live pages too (VOD/home);
+      // default OFF hides it everywhere except livestreams (gated in CSS against
+      // hs-yt-has-livechat). Harmless off-YT (no match).
+      try { document.body.classList.toggle('hs-yt-nonlive-chat', !!v) } catch (_) {}
+    },
     keywordRegex: function() { rebuildKeywordRegex() },
     fonts: function() {
       applyFontSettings(getSetting('fontFamily'), getSetting('fontSize'), getSetting('customFontName'))
@@ -4226,8 +4232,11 @@
     // `:not([hidden])` matters: ytd-watch-flexy stays in the DOM with
     // `hidden` attr on non-watch pages — bare `ytd-watch-flexy` selector
     // returns true on home and we'd clamp #secondary anyway.
+    // hs-offline = panel hidden on this YT page (non-live, no opt-in). Restore
+    // #secondary (related videos) to its natural width — don't reserve the chat
+    // strip for a hidden panel. Same clearing as the non-watch-page path.
     const onWatchPage = !!document.querySelector('ytd-watch-flexy:not([hidden])')
-    if (!onWatchPage) {
+    if (!onWatchPage || document.body.classList.contains('hs-offline')) {
       secondary.style.removeProperty('width')
       secondary.style.removeProperty('min-width')
       secondary.style.removeProperty('max-width')
@@ -10863,6 +10872,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   // the player sizes/resizes, so the var is always correct. Re-observes on SPA nav.
   let _hsYtBelowRO = null, _hsYtBelowEl = null, _hsYtBelowPoll = null;
   function _hsSetYtBelowTop() {
+    // Panel hidden (non-live, no opt-in) → don't pin #below; the CSS reflow rule
+    // is gated on :not(.hs-offline) anyway, but clear the var to be tidy.
+    if (document.body.classList.contains('hs-offline')) { document.documentElement.style.removeProperty('--hs-yt-below-top'); return }
     if (chatPosition !== 'left' && chatPosition !== 'right') { document.documentElement.style.removeProperty('--hs-yt-below-top'); return }
     const flexy = document.querySelector('ytd-watch-flexy');
     if (flexy && (flexy.hasAttribute('theater') || flexy.hasAttribute('fullscreen'))) { document.documentElement.style.removeProperty('--hs-yt-below-top'); return }
@@ -10952,6 +10964,20 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     }
 
     if (hostPlatform === 'yt') {
+      // Panel hidden on this YT page (non-live + no opt-in → hs-offline): don't
+      // reshape the page for a chat that isn't showing. Revert any inline player
+      // sizing + the reflow var so it's normal YT (full player, related videos).
+      if (document.body.classList.contains('hs-offline')) {
+        ['#player-container-outer', '#player-container-inner', '#player-container', '#player', 'ytd-player#ytd-player'].forEach(s => {
+          const e = document.querySelector(s);
+          if (e && e.dataset._hsCYtSized === '1') {
+            delete e.dataset._hsCYtSized;
+            ['width', 'height', 'max-width', 'max-height', 'min-height'].forEach(p => e.style.removeProperty(p));
+          }
+        });
+        document.documentElement.style.removeProperty('--hs-yt-below-top');
+        return;
+      }
       const sec = document.querySelector('#secondary');
       if (sec) {
         if (isRight) {
@@ -12074,27 +12100,45 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // the InnerTube API.
     if (hostPlatform === 'yt') {
       function checkYtLive() {
-        const cf = document.getElementById('chatframe')
-        const hasChatFrame = !!cf && (() => { try { return !!cf.contentDocument } catch { return false } })()
+        // "This page has live chat" = the ytd-live-chat-frame WRAPPER exists.
+        // It's present only on livestreams-with-chat (absent on VODs/home), and
+        // appears with the page layout — far faster than waiting for the inner
+        // iframe's contentDocument to load (which left the panel hidden for
+        // seconds). This is the signal that gates the default panel visibility.
+        const frameEl = document.querySelector('ytd-live-chat-frame#chat')
+        const hasChatFrame = !!frameEl
         const isLive = hasChatFrame || !!_autoYtVideoId
         const liveTab = tabBarElement?.querySelector('[data-tab="live"]')
         if (liveTab) liveTab.dataset.live = String(isLive)
-        document.body.classList.toggle('hs-offline', !isLive)
+        // Show the multichat panel on YT only when THIS page has its own live
+        // chat (a livestream), OR the user opted into chat on non-live pages
+        // (ytChatOnNonLive → body.hs-yt-nonlive-chat). hs-offline drives both the
+        // existing :not(.hs-offline) layout gating AND the panel-hide rule below,
+        // so this single signal hides the panel on VODs/home/search by default.
+        // Use hasChatFrame (THIS page) — NOT isLive, which is true whenever any
+        // tracked YT channel is live and would wrongly surface the panel on a VOD.
+        const showYtChat = hasChatFrame || document.body.classList.contains('hs-yt-nonlive-chat')
+        document.body.classList.toggle('hs-offline', !showYtChat)
         // Watch-page detection: ytd-watch-flexy stays in DOM with `hidden`
         // attr off-watch — only count it as a watch page when visible.
         const onWatch = !!document.querySelector('ytd-watch-flexy:not([hidden])')
         document.body.classList.toggle('hs-yt-watch', onWatch)
-        // Hide native YT live chat once it mounts — our multichat panel
-        // takes its place. Container creation runs before the chatframe
-        // exists now (body-mount on every YT page), so the hide must be
-        // re-attempted as the iframe lazy-loads.
-        const frameEl = document.querySelector('ytd-live-chat-frame#chat')
+        // Hide native YT live chat once it mounts — our multichat panel takes
+        // its place. (frameEl computed above.) Re-attempt as the iframe loads.
         if (frameEl && frameEl.style.display !== 'none') {
           frameEl.style.display = 'none'
         }
       }
       checkYtLive()
-      cleanup.setIntervalIfVisible(checkYtLive, 4000)
+      // 1.5s steady poll (was 4s): catches live→offline transitions + (only
+      // while visible) keeps the panel state honest.
+      cleanup.setIntervalIfVisible(checkYtLive, 1500)
+      // Fast initial detection: the live_chat iframe lazy-loads after first
+      // paint, and the panel now defaults HIDDEN until detected — without this
+      // burst the panel would pop in up to 1.5s late on every livestream. Plain
+      // timeouts (not IfVisible) so a freshly-opened/focused livestream resolves
+      // in ~300ms. Cheap (a few DOM checks); they no-op once steady-state holds.
+      ;[250, 600, 1100, 2000, 3500].forEach(ms => cleanup.setTimeout(checkYtLive, ms))
       return
     }
     // Popout chat has no video — don't mark as offline

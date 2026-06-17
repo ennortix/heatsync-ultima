@@ -57,7 +57,12 @@
       return !['browse','following','categories','category','search','messages','settings','clips','subscriptions','help','about'].includes(m[1].toLowerCase())
     }
     if (platform === 'yt') {
-      return p === '/watch' || p.startsWith('/live_chat')
+      // No YT prepaint: at document_start we can't tell a livestream from a VOD
+      // (the live_chat iframe loads later), and the panel now defaults to hidden
+      // on non-live pages — prepainting a black bar there would flash for ~4s on
+      // every VOD. The overlay docks into #secondary post-mount; the cold-boot
+      // flash YT prepaint saved is minor vs a wrong VOD black bar.
+      return false
     }
     return false
   }

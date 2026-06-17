@@ -246,6 +246,13 @@ const SETTINGS = [
     tip: 'show suggested videos in a vertical strip beside the title (youtube, left/right dock only) — off by default since the chat reclaims that space',
     control: 'pill', apply: 'ytSuggestions', applyOnLoad: true,
   },
+  {
+    key: 'ytChatOnNonLive', type: 'bool', default: false, scope: 'sync',
+    category: 'display', section: 'layout',
+    label: 'youtube: chat on non-live pages',
+    tip: 'show the multichat panel on youtube VODs, home and search too — off by default, so the panel only appears on livestreams (where there is live chat)',
+    control: 'pill', apply: 'ytNonLiveChat', applyOnLoad: true,
+  },
 
   // ── display / density ─────────────────────────────────────────────────
   {

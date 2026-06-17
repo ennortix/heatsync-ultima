@@ -4236,6 +4236,12 @@
       if (handle) handle.style.display = 'none'
       return
     }
+    // Reflow var: attach the below-top observer from here too — applyYouTube-
+    // ChatWidth reliably runs on every YT watch render (it sizes #secondary),
+    // whereas applyPlatformPositionOverrides' YT branch can be skipped on a
+    // fresh single-column load, leaving --hs-yt-below-top unset (#below pinned
+    // over the video). Self-retry inside handles the player not existing yet.
+    try { _hsEnsureYtBelowObserver() } catch (_) {}
     // C button took chat off the right edge — collapse #secondary to 0 so
     // the freed width goes back to the player; don't run the native width
     // sizer which would re-claim the sidebar.

@@ -1603,9 +1603,17 @@ function _extractMcMsgText(msg) {
       } else if (node.tagName === 'IMG' && node.alt) {
         parts.push(node.alt)
       } else {
-        const innerImg = node.querySelector?.('img[alt]')
-        if (innerImg) parts.push(innerImg.alt)
-        else parts.push(node.textContent || '')
+        // Gather EVERY emote name in this node, not just the first. An overlay
+        // stack (.hs-mc-emote-stack) holds a base + N overlays; querySelector
+        // stopped at the base, so a stacked emote like a wide "rave0" silently
+        // dropped out of the copied text. querySelectorAll keeps base+overlays
+        // (and emoji spans) in DOM order = reading order.
+        const inner = node.querySelectorAll?.('img[alt], .hs-mc-emoji')
+        if (inner && inner.length) {
+          for (const el of inner) parts.push(el.tagName === 'IMG' ? el.alt : el.textContent)
+        } else {
+          parts.push(node.textContent || '')
+        }
       }
     }
     node = node.nextSibling

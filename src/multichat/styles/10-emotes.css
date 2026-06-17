@@ -157,9 +157,25 @@
       z-index: 2;
       pointer-events: auto;
     }
-    /* Overlay emote at native size, not constrained to base */
+    /* Overlay emote at native size, not constrained to base. max-height:none
+       is REQUIRED — without it the overlay inherits .hs-mc-emote's
+       max-height:var(--hs-emote-size) and a wide/tall overlay (e.g. rave0)
+       renders clamped + downscaled ("small/squished") instead of native.
+       Mirrors the input bar's .hs-input-overlay, which already does this.
+       The stack's fixed 36px height keeps line layout stable while a larger
+       native overlay bleeds above/below — the 7TV overlay look. */
     .hs-mc-overlay-emote {
+      width: auto !important;
       height: auto !important;
+      /* BOTH caps must be cleared. max-height:none alone lets the host site's
+         global img{max-width:100%} (Twitch sets this) become the binding
+         constraint, collapsing a wide overlay to its container width (renders
+         ~12px, looks off-center). Mirror native chat's content.js overlay rule
+         (width/height auto + max-width/height none + object-fit none) so the
+         overlay draws at true intrinsic size on every host. */
+      max-width: none !important;
+      max-height: none !important;
+      object-fit: none !important;
       margin: 0 !important;
       pointer-events: auto;
     }

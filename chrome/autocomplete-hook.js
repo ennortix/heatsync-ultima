@@ -2224,8 +2224,13 @@
           if (match) {
             const emote = emoteByHash.get(match[1]);
             if (emote) {
-              el.style.backgroundImage = `url("${emote.url}")`;
-              el.dataset.heatsyncBgFixed = 'true';
+              const safeEmoteUrl = typeof emote.url === 'string' && emote.url.startsWith('https://')
+                ? emote.url.replace(/["'()\\]/g, '')
+                : ''
+              if (safeEmoteUrl) {
+                el.style.backgroundImage = `url("${safeEmoteUrl}")`;
+                el.dataset.heatsyncBgFixed = 'true';
+              }
             }
           }
         }

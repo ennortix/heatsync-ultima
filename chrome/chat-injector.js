@@ -421,6 +421,7 @@ function createMessageElement(message, platform) {
 
 /**
  * Escape HTML to prevent XSS
+ * mirrors src/lib/utils.js escapeHtml — the two must remain identical
  * @param {string} text - Text to escape
  * @returns {string} Escaped text
  */

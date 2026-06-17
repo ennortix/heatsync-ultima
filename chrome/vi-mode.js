@@ -1061,7 +1061,7 @@
 
   // Listen for settings changes via postMessage (from heatsync-button.js)
   window.addEventListener('message', (e) => {
-    if (e.origin !== location.origin) return
+    if (e.source !== window || e.origin !== location.origin) return
     if (e.data?.type === 'heatsync-settings-changed' && e.data.settings) {
       const wasEnabled = enabled
       enabled = !!e.data.settings.viMode

@@ -26,17 +26,21 @@ function escapeHtml(str) {
  * Validate URL — only http/https protocols allowed.
  * Returns the URL string if safe, empty string otherwise.
  * Use before assigning user/third-party data to img.src or a.href.
+ *
+ * Defense-in-depth: explicit deny-list before URL() parsing to guard against
+ * browser quirks where new URL('javascript:...') returns that protocol cleanly.
  * @param {string} url
  * @returns {string}
  */
 function safeUrl(url) {
   if (typeof url !== 'string' || !url) return ''
-  const trimmed = url.trim()
-  if (!/^https?:\/\//i.test(trimmed)) return ''
+  const head = url.trim().slice(0, 32).toLowerCase()
+  if (head.startsWith('javascript:') || head.startsWith('data:') ||
+      head.startsWith('vbscript:') || head.startsWith('blob:') ||
+      head.startsWith('file:') || head.startsWith('about:')) return ''
   try {
-    const u = new URL(trimmed)
-    if (u.protocol !== 'http:' && u.protocol !== 'https:') return ''
-    return trimmed
+    const u = new URL(url.trim())
+    return (u.protocol === 'https:' || u.protocol === 'http:') ? u.href : ''
   } catch { return '' }
 }
 

@@ -4899,6 +4899,7 @@ function highlightUserMentions(messageElement, authorElement, preQueriedTextElem
 // Color @username mentions AND any username from known chatters (Chatterino-style)
 // Uses inline span injection - called repeatedly by MutationObserver
 function colorUsernameMentions(messageElement, preQueriedFragments) {
+  if (!knownChatters.size) return
   // Use pre-queried fragments when available (avoids redundant DOM query from processMessage)
   const textFragments = preQueriedFragments || messageElement.querySelectorAll('.text-fragment, [data-a-target="chat-message-text"], span.font-normal');
 
@@ -5253,7 +5254,7 @@ function replaceEmotesPreservingImgs(leaf, allEmotes) {
 
 // Process individual message for emote replacement
 function processMessage(messageElement) {
-  if (!messageElement || !document.contains(messageElement)) return
+  if (!messageElement || !messageElement.isConnected) return
   if (messageElement.dataset.heatsyncGeneration == emoteGeneration) return
 
   messageElement.dataset.heatsyncGeneration = emoteGeneration
@@ -5451,7 +5452,7 @@ function processMessage(messageElement) {
   }
 
   // Process ALL text fragments with overlay stacking support
-  if (!document.contains(messageElement)) return
+  if (!messageElement.isConnected) return
   for (const textElement of textElements) {
     if (textElement.querySelector('.heatsync-emote-wrapper')) continue
 
@@ -5944,6 +5945,8 @@ function replaceEmotesWithStacking(element, allEmotes) {
     if (_uiPrefs.emoteModifiers && !HS_MODIFIER_CLASSES[trimmed] && !HS_C_HEX_RE.test(trimmed)) {
       const _hsPeel = (() => {
         if (!trimmed || trimmed.length < 2) return null
+        // All modifier tokens contain '!' — fast reject before the loop
+        if (!trimmed.includes('!')) return null
         const mods = []
         let hue = null
         let rem = trimmed
@@ -9587,6 +9590,8 @@ let tabCompleteState = {
 };
 
 // Build combined emote map for searching (inventory + globals)
+// Tier order matches input.js: channel (0) > inventory/own (1) > global (2)
+// Channel emotes are inserted first so they win dedup on name collision.
 let _tabEmoteMap = null
 let _tabEmoteMapDirty = true
 function buildEmoteMap() {
@@ -9594,39 +9599,40 @@ function buildEmoteMap() {
   _tabEmoteMapDirty = false
   const map = new Map();
 
-  // Add inventory emotes first (higher priority)
-  emoteInventory.forEach(emote => {
-    map.set(emote.name.toLowerCase(), {
+  // Tier 0 — channel emotes win dedup (inserted first, highest priority)
+  channelEmotes.forEach(emote => {
+    if (!emote.source) return
+    const key = emote.name.toLowerCase();
+    map.set(key, {
       name: emote.name,
       url: emote.url?.startsWith('http') ? emote.url : `${API_URL}${emote.url}`,
       hash: emote.hash,
-      provider: 'inventory'
+      provider: 'channel'
     });
   });
 
-  // Add global emotes (BTTV, FFZ, 7TV)
-  globalEmotes.forEach(emote => {
-    const key = emote.name.toLowerCase();
-    if (!map.has(key)) { // Don't override inventory emotes
-      map.set(key, {
-        name: emote.name,
-        url: emote.url,
-        hash: emote.hash || btoa(emote.url),
-        provider: emote.source || 'global'
-      });
-    }
-  });
-
-  // Add channel emotes (third-party only — HeatSync emotes come from inventory)
-  channelEmotes.forEach(emote => {
-    if (!emote.source) return
+  // Tier 1 — viewer's own inventory (doesn't override channel)
+  emoteInventory.forEach(emote => {
     const key = emote.name.toLowerCase();
     if (!map.has(key)) {
       map.set(key, {
         name: emote.name,
         url: emote.url?.startsWith('http') ? emote.url : `${API_URL}${emote.url}`,
         hash: emote.hash,
-        provider: 'channel'
+        provider: 'inventory'
+      });
+    }
+  });
+
+  // Tier 2 — global emotes (BTTV, FFZ, 7TV) — lowest priority
+  globalEmotes.forEach(emote => {
+    const key = emote.name.toLowerCase();
+    if (!map.has(key)) {
+      map.set(key, {
+        name: emote.name,
+        url: emote.url,
+        hash: emote.hash || btoa(emote.url),
+        provider: emote.source || 'global'
       });
     }
   });
@@ -9702,12 +9708,12 @@ function findEmoteMatches(partialWord) {
     }
   }
 
-  // Sort: inventory first, then emotes, then emoji, then alphabetically
+  // Sort: channel (tier 0) > inventory (tier 1) > global/other (tier 2) > emoji
+  // Matches input.js tier ordering (channel-first — reversed 2026-06-13)
+  const _tier = p => p === 'channel' ? 0 : p === 'inventory' ? 1 : p === 'emoji' ? 3 : 2
   matches.sort((a, b) => {
-    if (a.provider === 'inventory' && b.provider !== 'inventory') return -1;
-    if (a.provider !== 'inventory' && b.provider === 'inventory') return 1;
-    if (a.provider === 'emoji' && b.provider !== 'emoji') return 1;
-    if (a.provider !== 'emoji' && b.provider === 'emoji') return -1;
+    const at = _tier(a.provider), bt = _tier(b.provider)
+    if (at !== bt) return at - bt
     return (a.emojiName || a.name).localeCompare(b.emojiName || b.name);
   });
 

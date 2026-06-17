@@ -10861,7 +10861,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   // is racy on fresh load (the player gets its size after our last run), leaving
   // #below pinned at the fallback top over the video. The observer fires whenever
   // the player sizes/resizes, so the var is always correct. Re-observes on SPA nav.
-  let _hsYtBelowRO = null, _hsYtBelowEl = null;
+  let _hsYtBelowRO = null, _hsYtBelowEl = null, _hsYtBelowPoll = null;
   function _hsSetYtBelowTop() {
     if (chatPosition !== 'left' && chatPosition !== 'right') { document.documentElement.style.removeProperty('--hs-yt-below-top'); return }
     const flexy = document.querySelector('ytd-watch-flexy');
@@ -10883,6 +10883,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       _hsYtBelowRO.observe(mp);
       cleanup.trackObserver(_hsYtBelowRO);
     }
+    // ResizeObserver only fires on SIZE changes — but YT shifts the player's
+    // POSITION during load (same height, different top), so the observed bottom
+    // goes stale. A light poll catches position shifts + keeps the var honest.
+    if (!_hsYtBelowPoll) _hsYtBelowPoll = cleanup.setInterval(_hsSetYtBelowTop, 500);
     _hsSetYtBelowTop();
   }
   function applyPlatformPositionOverrides() {

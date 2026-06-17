@@ -142,6 +142,20 @@ function sanitizeUiSettings(obj) {
   return out;
 }
 
+// Serialized read-modify-write for ui_settings in sync storage.
+// Three message handlers (ui-state:sync/update, settings:patch, settings:delete)
+// can race on concurrent WS events. Chain all writes through this so each sees
+// the previous write's result before merging.
+let _uiSettingsRmwChain = Promise.resolve()
+function uiSettingsRmw(mergeFn) {
+  _uiSettingsRmwChain = _uiSettingsRmwChain.then(async () => {
+    const s = await browser.storage.sync.get(['ui_settings'])
+    const merged = mergeFn(s.ui_settings || {})
+    await browser.storage.sync.set({ ui_settings: merged })
+  }).catch(() => {})
+  return _uiSettingsRmwChain
+}
+
 // Debug logging - set to false for production
 const DEBUG = false;
 const log = DEBUG ? console.log.bind(console, '[heatsync]') : () => {};
@@ -182,10 +196,10 @@ browser.alarms?.onAlarm?.addListener((alarm) => {
   if (alarm.name === 'keepalive') {
     // Just existing is enough to keep the worker alive
   } else if (alarm.name === 'refresh-global-emotes') {
-    fetchGlobalEmotes().catch(() => {})
+    fetchGlobalEmotes().catch(err => console.warn('[heatsync-ext] fetchGlobalEmotes fetch failed:', err && err.message))
   } else if (alarm.name === 'refresh-emote-inventory') {
     if (typeof fetchEmoteInventory === 'function') {
-      try { const p = fetchEmoteInventory(); if (p?.catch) p.catch(() => {}) } catch (e) {}
+      try { const p = fetchEmoteInventory(); if (p?.catch) p.catch(err => console.warn('[heatsync-ext] fetchEmoteInventory fetch failed:', err && err.message)) } catch (e) {}
     }
   } else if (alarm.name === 'prune-expired-mutes') {
     if (typeof pruneExpiredMutes === 'function') {
@@ -4057,12 +4071,7 @@ function handleWSMessage(msg) {
         const cleanKeys = Object.keys(cleanState)
         if (cleanKeys.length === 0) break
         log(' 🎛️  ui-state sync received:', cleanKeys.length, 'keys')
-        try {
-          browser.storage.sync.get(['ui_settings']).then(s => {
-            const merged = sanitizeUiSettings({ ...(s.ui_settings || {}), ...cleanState })
-            browser.storage.sync.set({ ui_settings: merged }).catch(() => {})
-          }).catch(() => {})
-        } catch (e) { log(' ui-state apply failed:', e?.message) }
+        uiSettingsRmw(ui => sanitizeUiSettings({ ...ui, ...cleanState }))
         broadcastToTabs({ type: 'ui_state_update', state: cleanState })
       }
       break
@@ -4614,10 +4623,7 @@ function handleWSMessage(msg) {
         const cleanPatch = sanitizeUiSettings(msg.patches)
         if (Object.keys(cleanPatch).length > 0) {
           log(' settings:patch received:', Object.keys(cleanPatch))
-          browser.storage.sync.get(['ui_settings']).then(s => {
-            const merged = sanitizeUiSettings({ ...(s.ui_settings || {}), ...cleanPatch })
-            browser.storage.sync.set({ ui_settings: merged }).catch(() => {})
-          }).catch(() => {})
+          uiSettingsRmw(ui => sanitizeUiSettings({ ...ui, ...cleanPatch }))
           broadcastToTabs({ type: 'ui_state_update', state: cleanPatch })
         }
       }
@@ -4628,11 +4634,7 @@ function handleWSMessage(msg) {
       const delKey = typeof msg.key === 'string' ? msg.key : null
       if (delKey && delKey.length > 0 && delKey.length <= 64) {
         log(' settings:delete received:', delKey)
-        browser.storage.sync.get(['ui_settings']).then(s => {
-          const copy = sanitizeUiSettings(s.ui_settings || {})
-          delete copy[delKey]
-          browser.storage.sync.set({ ui_settings: copy }).catch(() => {})
-        }).catch(() => {})
+        uiSettingsRmw(ui => { const copy = sanitizeUiSettings(ui); delete copy[delKey]; return copy })
         broadcastToTabs({ type: 'settings_key_deleted', key: delKey })
       }
       break
@@ -4819,7 +4821,7 @@ async function joinChannel(platform, channelName, channelId = null, senderTabId 
   log(' 🚪 Setting channel:', channelKey, 'id:', channelId, 'tab:', senderTabId)
 
   // Fetch channel owner's emotes (7TV EventAPI subscription happens inside)
-  fetchChannelOwnerEmotes(channelName, channelId, platform).catch(() => {})
+  fetchChannelOwnerEmotes(channelName, channelId, platform).catch(err => console.warn('[heatsync-ext] fetchChannelOwnerEmotes fetch failed:', err && err.message))
 
   // Ensure we're connected first
   if (!isSocketOpen()) {
@@ -5196,7 +5198,10 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   ;(async () => {
     if (initPromise) await initPromise
     handleMessage(message, sender, sendResponse)
-  })()
+  })().catch(err => {
+    console.error('[heatsync-ext] onMessage dispatch error:', err)
+    try { sendResponse({ ok: false, error: String(err && err.message || err) }) } catch {}
+  })
   return true
 })
 
@@ -5618,6 +5623,7 @@ async function handleMessage(message, sender, sendResponse) {
     isAuthenticated = false
     reconnectAttempts = 0
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
+    if (heartbeatInterval) { untrackInterval(heartbeatInterval); heartbeatInterval = null }
     connectWebSocket().catch(err => log(' force-reconnect failed:', err?.message))
     sendResponse({ ok: true })
     return
@@ -7544,6 +7550,7 @@ function bgIrcPersistChannel(ch) {
 
 function bgIrcConnect() {
   if (BG_IRC.destroyed) return
+  if (BG_IRC.ws && BG_IRC.ws.readyState === WebSocket.CONNECTING) return
   bgIrcStopHeartbeat()
   if (BG_IRC.reconnectTimer) { clearTimeout(BG_IRC.reconnectTimer); BG_IRC.reconnectTimer = null }
   if (BG_IRC.ws) {
@@ -8261,10 +8268,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'bg_irc_join') {
     const ch = (message.channel || '').toLowerCase()
     if (!ch) { sendResponse({ ok: false, error: 'no channel' }); return true }
-    bgIrcEnsureChannel(ch)
-    if (tabId) bgIrcRegisterTabInterest(tabId, ch)
-    BG_IRC.liveTabs.add(tabId)
-    sendResponse({ ok: true })
+    ;(async () => {
+      if (!BG_IRC.storageRestored) await bgIrcRestoreFromStorage()
+      bgIrcEnsureChannel(ch)
+      if (tabId) bgIrcRegisterTabInterest(tabId, ch)
+      BG_IRC.liveTabs.add(tabId)
+      sendResponse({ ok: true })
+    })()
     return true
   }
   if (message.type === 'bg_irc_part') {

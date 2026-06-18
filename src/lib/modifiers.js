@@ -44,7 +44,7 @@ const HS_MOD_CLASS_TO_TOKEN = Object.freeze({
 })
 
 const HS_MOD_C_HEX_RE = /^c!#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
-const HS_MOD_C_HEX_PEEL_RE = /^c!#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})/
+const HS_MOD_C_HEX_PEEL_RE = /^c!#?([0-9a-fA-F]{6}|[0-9a-fA-F]{3})/
 const HS_MOD_MAX_SCALE = 4
 
 // Convert hex (3 or 6 chars, with or without #) to hue degrees [0, 359]
@@ -87,6 +87,14 @@ function hsModPeelChain(word) {
   let hue = null
   let rem = word
   while (rem.length > 0) {
+    // try color form first — c!#hex must win over bare c! (cursed) token
+    const cm = rem.match(HS_MOD_C_HEX_PEEL_RE)
+    if (cm) {
+      hue = hsModHexToHue(cm[1])
+      words.push(cm[0])
+      rem = rem.slice(cm[0].length)
+      continue
+    }
     let matched = false
     for (const k of HS_MOD_KEYS_BY_LEN) {
       if (rem.startsWith(k)) {
@@ -98,13 +106,6 @@ function hsModPeelChain(word) {
       }
     }
     if (matched) continue
-    const cm = rem.match(HS_MOD_C_HEX_PEEL_RE)
-    if (cm) {
-      hue = hsModHexToHue(cm[1])
-      words.push(cm[0])
-      rem = rem.slice(cm[0].length)
-      continue
-    }
     return null
   }
   return (mods.length || hue != null) ? { mods, hue, words } : null

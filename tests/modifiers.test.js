@@ -122,21 +122,68 @@ describe('hsModPeelChain', () => {
     expect(r.words).toContain('ffzX')
   })
 
-  test('c!#ff8700 → null from peel (c! token consumed first, #ff8700 remainder fails)', () => {
-    // peel loop hits the 'c!' token key first, consuming it and leaving '#ff8700'
-    // which is neither a token nor a color peel → returns null.
-    // Use hsModClassify (which hits HS_MOD_C_HEX_RE full-match) to handle c!#hex.
-    expect(hsModPeelChain('c!#ff8700')).toBeNull()
+  test('c!#ff8700 → color modifier (not null)', () => {
+    const r = hsModPeelChain('c!#ff8700')
+    expect(r).not.toBeNull()
+    expect(r.mods).toEqual([])
+    expect(r.hue).not.toBeNull()
+    expect(typeof r.hue).toBe('number')
+    expect(r.words).toEqual(['c!#ff8700'])
   })
 
-  test('c!ff8700 (no #) peels and sets hue', () => {
-    // without '#', peel regex /^c!#?.../ still matches; c! token is consumed first
-    // and leaves 'ff8700' remainder which also fails → same null result
-    expect(hsModPeelChain('c!ff8700')).toBeNull()
+  test('c!ff8700 (no #) → color modifier, hue set', () => {
+    const r = hsModPeelChain('c!ff8700')
+    expect(r).not.toBeNull()
+    expect(r.mods).toEqual([])
+    expect(r.hue).not.toBeNull()
+    expect(r.words).toEqual(['c!ff8700'])
   })
 
-  test('mixed: w!c!h! → wide, cursed, tall (c! is the cursed token in peel)', () => {
-    // w! → wide, c! → cursed, h! → tall — all exact tokens
+  test('c!#ff8700 hue matches hsModHexToHue(ff8700)', () => {
+    const r = hsModPeelChain('c!#ff8700')
+    expect(r.hue).toBe(hsModHexToHue('ff8700'))
+  })
+
+  test('w!c!#ff8700 → wide + color hue, no cursed', () => {
+    const r = hsModPeelChain('w!c!#ff8700')
+    expect(r).not.toBeNull()
+    expect(r.mods).toContain('wide')
+    expect(r.mods).not.toContain('cursed')
+    expect(r.hue).not.toBeNull()
+    expect(r.words).toEqual(['w!', 'c!#ff8700'])
+  })
+
+  test('c!#ff8700h! → color hue + tall', () => {
+    const r = hsModPeelChain('c!#ff8700h!')
+    expect(r).not.toBeNull()
+    expect(r.mods).toContain('tall')
+    expect(r.mods).not.toContain('cursed')
+    expect(r.hue).not.toBeNull()
+    expect(r.words).toEqual(['c!#ff8700', 'h!'])
+  })
+
+  test('c!#ff8700w!l! → color hue + wide + hflip', () => {
+    const r = hsModPeelChain('c!#ff8700w!l!')
+    expect(r).not.toBeNull()
+    expect(r.mods).toContain('wide')
+    expect(r.mods).toContain('hflip')
+    expect(r.mods).not.toContain('cursed')
+    expect(r.hue).not.toBeNull()
+    expect(r.words).toEqual(['c!#ff8700', 'w!', 'l!'])
+  })
+
+  test('bare c! (no hex) still peels as cursed, hue null', () => {
+    const r = hsModPeelChain('c!')
+    expect(r).not.toBeNull()
+    expect(r.mods).toContain('cursed')
+    expect(r.hue).toBeNull()
+  })
+
+  test('c! followed by non-hex (c!xyz) → null (not color, not valid token)', () => {
+    expect(hsModPeelChain('c!xyz')).toBeNull()
+  })
+
+  test('mixed: w!c!h! → wide, cursed, tall (bare c! still works mid-chain)', () => {
     const r = hsModPeelChain('w!c!h!')
     expect(r).not.toBeNull()
     expect(r.mods).toContain('wide')

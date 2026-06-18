@@ -1409,6 +1409,65 @@
     }
   }
 
+  // In-place third-party badge injection (BTTV/FFZ/Chatterino). Mirrors
+  // updateCosmeticsInPlace's 7TV-badge path: when the bulk badge maps arrive
+  // late (cold service worker, or the ~24h cosmetics_update broadcast), patch
+  // the badges into already-rendered rows via _uidIndex (keyed by twitch uid,
+  // same key renderThirdPartyBadges uses) instead of bumpRenderEpoch()+full
+  // rebuild — that rebuild tore down every row and reloaded every avatar/emote
+  // image = the "loads then shifts" flash on channel switch. Per-provider class
+  // dedups so a warm row (built after the maps populated) isn't double-badged.
+  // Anchor = before the avatar (or username when avatars are off) so injected
+  // badges land exactly where buildMessageDiv's ${badges} sits: after native
+  // badges, before ${avatarHtml}${userLink}.
+  function updateThirdPartyBadgesInPlace() {
+    if (!document.getElementById('hs-mc-messages')) return
+    const wantBttv = getSetting('bttvBadges')
+    const wantFfz = getSetting('ffzBadges')
+    const wantChat = getSetting('chatterinoBadges')
+    if (!wantBttv && !wantFfz && !wantChat) return
+    const mkBadge = (cls, url, title, bg) => {
+      const safe = safeUrl(url)
+      if (!safe) return null
+      const img = document.createElement('img')
+      img.className = 'hs-mc-badge-img ' + cls
+      img.alt = title || ''
+      img.title = title || ''
+      img.loading = 'lazy'; img.decoding = 'async'
+      img.width = 18; img.height = 18
+      img.style.cssText = 'width:18px;height:18px;' + (bg ? `background:${bg};border-radius:2px;` : '')
+      // Insert FIRST, then set src (caller) — so an immediate QUIC-drop error
+      // fires while the img is already under msgsEl and the capture-phase error
+      // handler (retryOrHideBadgeImg) catches it. Mirrors updateCosmeticsInPlace.
+      img.dataset.hsSrc = safe
+      return img
+    }
+    for (const [uid, divSet] of _uidIndex) {
+      const bttv = wantBttv ? mcBttvBadgeMap.get(uid) : null
+      const ffzList = wantFfz ? mcFfzBadgeMap.get(uid) : null
+      const chat = wantChat ? mcChatterinoBadgeMap.get(uid) : null
+      if (!bttv && !ffzList && !chat) continue
+      for (const div of divSet) {
+        const anchor = div.querySelector('.hs-mc-avatar')
+          || div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
+        if (!anchor) continue
+        const insert = (img) => { if (img) { anchor.parentNode.insertBefore(img, anchor); img.src = img.dataset.hsSrc } }
+        if (bttv && !div.querySelector('.hs-mc-bttv-badge')) {
+          insert(mkBadge('hs-mc-bttv-badge', bttv.url, bttv.description))
+        }
+        if (ffzList && !div.querySelector('.hs-mc-ffz-badge')) {
+          for (const b of ffzList) {
+            const safeColor = /^#[0-9a-fA-F]{3,8}$/.test(b.color) ? b.color : ''
+            insert(mkBadge('hs-mc-ffz-badge', b.url, b.title, safeColor))
+          }
+        }
+        if (chat && !div.querySelector('.hs-mc-chatterino-badge')) {
+          insert(mkBadge('hs-mc-chatterino-badge', chat.url, chat.tooltip || 'Chatterino'))
+        }
+      }
+    }
+  }
+
   // 7TV paint → CSS style string
   function getMcPaintStyle(userId) {
     if (!getSetting('sevenTvPaints')) return ''
@@ -11475,8 +11534,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           mcBttvBadgeMap = new Map(bttv)
           mcFfzBadgeMap = new Map(ffz)
           mcChatterinoBadgeMap = new Map(chat)
-          bumpRenderEpoch()
-          scheduleCoalescedRender()
+          // In-place patch instead of bumpRenderEpoch()+rebuild (the flash).
+          // Current tab's live rows get badges injected now; other tabs drop
+          // their snapshot caches so they rebuild fresh on switch (mirrors
+          // invalidateRenderedForEmotes — no epoch bump, current tab untouched).
+          updateThirdPartyBadgesInPlace()
+          _dropAllTabCaches()
         }
       }
       // SW pushes its `/api/live/following` snapshot every ~60s. Consume it
@@ -12368,8 +12431,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         mcBttvBadgeMap = new Map(bttv)
         mcFfzBadgeMap = new Map(ffz)
         mcChatterinoBadgeMap = new Map(chat)
-        bumpRenderEpoch()
-        scheduleCoalescedRender()
+        // In-place patch instead of bumpRenderEpoch()+rebuild (the flash) —
+        // see the cosmetics_update handler for the rationale.
+        updateThirdPartyBadgesInPlace()
+        _dropAllTabCaches()
       }).catch(() => {
         if (attempt < 8) cleanup.setTimeout(() => loadBulkBadges(attempt + 1), Math.min(500 * (attempt + 1), 3000))
       })

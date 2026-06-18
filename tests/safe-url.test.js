@@ -199,16 +199,49 @@ describe('block: whitespace/encoding evasion', () => {
     expect(safeUrl('javascript\x00:alert(1)')).toBe(EMPTY)
   })
 
-  test('zero-width space before javascript: — \\u200b not stripped by trim()', () => {
-    // deny-list misses it (head[0] is U+200B, not 'j') but URL() throws → still safe
-    // POTENTIAL GAP: if a future URL parser normalizes U+200B away, deny-list would need
-    // to strip non-ASCII whitespace before the startsWith checks.
+  test('zero-width space before javascript: — \\u200b stripped, deny-list catches', () => {
+    // _INVISIBLE_RE strips U+200B before deny-list check, so head starts with 'javascript:'
     expect(safeUrl('​javascript:alert(1)')).toBe(EMPTY)
   })
 
-  test('soft-hyphen before javascript: — \\u00ad not stripped by trim()', () => {
-    // same defense-in-depth note as zero-width space above
+  test('soft-hyphen before javascript: — \\u00ad stripped, deny-list catches', () => {
+    // _INVISIBLE_RE strips U+00AD before deny-list check
     expect(safeUrl('­javascript:alert(1)')).toBe(EMPTY)
+  })
+
+  test('zero-width non-joiner inside scheme — java\\u200cscript:', () => {
+    // U+200C mid-scheme stripped → 'javascript:' caught by deny-list
+    expect(safeUrl('java‌script:alert(1)')).toBe(EMPTY)
+  })
+
+  test('zero-width joiner inside scheme — java\\u200dscript:', () => {
+    // U+200D mid-scheme stripped → 'javascript:' caught by deny-list
+    expect(safeUrl('java‍script:alert(1)')).toBe(EMPTY)
+  })
+
+  test('word joiner before data: — \\u2060data:', () => {
+    // U+2060 word joiner before data: stripped → deny-list catches
+    expect(safeUrl('⁠data:text/html,<h1>xss</h1>')).toBe(EMPTY)
+  })
+
+  test('BOM before javascript: — \\ufeffjavascript:', () => {
+    // U+FEFF BOM stripped → deny-list catches
+    expect(safeUrl('﻿javascript:alert(1)')).toBe(EMPTY)
+  })
+
+  test('null byte inside data: — dat\\x00a:', () => {
+    // null stripped → 'data:' caught by deny-list
+    expect(safeUrl('dat\x00a:text/html,xss')).toBe(EMPTY)
+  })
+
+  test('multiple invisible chars before vbscript: — deny-list catches after strip', () => {
+    // chain of invisible chars all stripped before deny-list check
+    expect(safeUrl('​­﻿vbscript:msgbox(1)')).toBe(EMPTY)
+  })
+
+  test('invisible chars between scheme letters AND prefix — file:', () => {
+    // fi​le: → after strip: 'file:' → deny-list catches
+    expect(safeUrl('fi​le:///etc/passwd')).toBe(EMPTY)
   })
 })
 

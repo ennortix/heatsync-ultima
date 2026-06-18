@@ -32,14 +32,22 @@ function escapeHtml(str) {
  * @param {string} url
  * @returns {string}
  */
+// Invisible/zero-width chars that trim() misses but can prefix a dangerous scheme:
+// U+200B zero-width space, U+200C zero-width non-joiner, U+200D zero-width joiner,
+// U+2060 word joiner, U+FEFF BOM/zero-width no-break space, U+00AD soft hyphen.
+// ASCII controls (0x00–0x1F and 0x7F) are also stripped — trim() only removes
+// whitespace (0x09–0x0D, 0x20), leaving null bytes and other controls intact.
+const _INVISIBLE_RE = /[\x00-\x1F\x7F­​‌‍⁠﻿]/g
+
 function safeUrl(url) {
   if (typeof url !== 'string' || !url) return ''
-  const head = url.trim().slice(0, 32).toLowerCase()
+  const clean = url.replace(_INVISIBLE_RE, '')
+  const head = clean.trim().slice(0, 32).toLowerCase()
   if (head.startsWith('javascript:') || head.startsWith('data:') ||
       head.startsWith('vbscript:') || head.startsWith('blob:') ||
       head.startsWith('file:') || head.startsWith('about:')) return ''
   try {
-    const u = new URL(url.trim())
+    const u = new URL(clean.trim())
     return (u.protocol === 'https:' || u.protocol === 'http:') ? u.href : ''
   } catch { return '' }
 }

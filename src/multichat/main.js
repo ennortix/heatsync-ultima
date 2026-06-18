@@ -9212,8 +9212,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       lbl.style.cssText = 'font-size:13px;font-weight:600;min-width:56px;color:#949494;text-transform:lowercase;'
       const input = document.createElement('input')
       input.type = 'text'
+      input.className = 'hs-mc-ch-input'
       input.placeholder = placeholder
-      input.style.cssText = 'flex:1;background:#ffffff;color:#000000;border:1px solid #808080;padding:6px 10px;border-radius:0;font-size:14px;outline:none;font-family:inherit;'
+      input.style.cssText = 'flex:1;background:#000;color:#fff;border:1px solid #808080;padding:6px 10px;border-radius:0;font-size:14px;outline:none;font-family:inherit;'
       // Stop YouTube/Kick keyboard shortcuts from stealing keystrokes
       input.addEventListener('keydown', (e) => e.stopPropagation())
       row.appendChild(lbl)
@@ -9514,9 +9515,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       lbl.style.cssText = 'font-size:13px;font-weight:600;min-width:56px;color:#949494;text-transform:lowercase;'
       const input = document.createElement('input')
       input.type = 'text'
+      input.className = 'hs-mc-ch-input'
       input.placeholder = placeholder
       input.value = value || ''
-      input.style.cssText = 'flex:1;background:#ffffff;color:#000000;border:1px solid #808080;padding:6px 10px;border-radius:0;font-size:14px;outline:none;font-family:inherit;'
+      input.style.cssText = 'flex:1;background:#000;color:#fff;border:1px solid #808080;padding:6px 10px;border-radius:0;font-size:14px;outline:none;font-family:inherit;'
       input.addEventListener('keydown', (e) => e.stopPropagation())
       row.appendChild(lbl)
       row.appendChild(input)
@@ -9612,9 +9614,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       lbl.style.cssText = 'font-size:13px;font-weight:600;min-width:56px;color:#949494;text-transform:lowercase;';
       const input = document.createElement('input');
       input.type = 'text';
+      input.className = 'hs-mc-ch-input';
       input.placeholder = placeholder;
       input.value = value || '';
-      input.style.cssText = 'flex:1;background:#ffffff;color:#000000;border:1px solid #808080;padding:6px 10px;border-radius:0;font-size:14px;outline:none;font-family:inherit;';
+      input.style.cssText = 'flex:1;background:#000;color:#fff;border:1px solid #808080;padding:6px 10px;border-radius:0;font-size:14px;outline:none;font-family:inherit;';
       // Stop YouTube/Kick keyboard shortcuts from stealing keystrokes
       input.addEventListener('keydown', (e) => e.stopPropagation())
       row.appendChild(lbl);

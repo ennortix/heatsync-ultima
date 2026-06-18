@@ -198,19 +198,20 @@
     }
     .hs-mc-pred-bet-custom {
       width: 52px;
-      background: #fff;
-      border: 1px solid rgba(255,255,255,0.2);
-      color: #000;
+      background: #000;
+      border: 1px solid #808080;
+      color: #fff;
       font-size: 13px;
       padding: 2px 6px;
       outline: none;
       font-family: inherit;
     }
+    .hs-mc-pred-bet-custom::placeholder { color: #aaa; }
     .hs-mc-pred-bet-custom:focus {
       border-color: #ff8700;
     }
     .hs-mc-pred-bet-custom:disabled {
-      background: rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.04);
       color: #aaa;
       opacity: 0.3;
     }
@@ -418,14 +419,17 @@
     .hs-mc-pred-create-input {
       font-size: 13px;
       padding: 2px 8px;
-      background: #fff;
-      color: #000;
-      border: none;
+      background: #000;
+      color: #fff;
+      border: 1px solid #808080;
+      border-radius: 0;
       font-family: inherit;
       outline: none;
     }
+    .hs-mc-pred-create-input::placeholder { color: #aaa; }
     .hs-mc-pred-create-input:focus {
-      outline: 1px solid #ff8700;
+      border-color: #ff8700;
+      outline: none;
     }
     .hs-mc-pred-create-dur-row {
       display: flex;
@@ -639,14 +643,17 @@
     .hs-mc-poll-create-input {
       font-size: 13px;
       padding: 2px 8px;
-      background: #fff;
-      color: #000;
-      border: none;
+      background: #000;
+      color: #fff;
+      border: 1px solid #808080;
+      border-radius: 0;
       font-family: inherit;
       outline: none;
     }
+    .hs-mc-poll-create-input::placeholder { color: #aaa; }
     .hs-mc-poll-create-input:focus {
-      outline: 1px solid #ff8700;
+      border-color: #ff8700;
+      outline: none;
     }
     .hs-mc-poll-create-dur-row {
       display: flex;
@@ -1410,4 +1417,10 @@
       margin: 0;
       font-family: inherit;
     }
+
+    /* Channel-management modal text inputs (add/edit channel dialogs in main.js).
+       Sizing/layout comes from inline cssText; this class provides the parts that
+       can't be set inline: focus border swap and placeholder color. */
+    .hs-mc-ch-input::placeholder { color: #aaa; }
+    .hs-mc-ch-input:focus { border-color: #ff8700; }
 

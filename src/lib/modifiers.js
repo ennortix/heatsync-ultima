@@ -224,6 +224,21 @@ function hsModInjectWrapperStyle(html, styleStr) {
   })
 }
 
+export {
+  HS_MOD_TOKENS,
+  HS_MOD_CLASS_TO_TOKEN,
+  HS_MOD_MAX_SCALE,
+  hsModHexToHue,
+  hsModResolvePrefix,
+  hsModPeelChain,
+  hsModClassify,
+  hsModComposeTransform,
+  hsModComposeFilter,
+  hsModBuildStyleAttr,
+  hsModInjectWrapperStyle,
+  hsModWordsFromState,
+}
+
 // Convert mod-class array back to wire tokens for sending. Hue lossy → c!#hex
 // can't recover original hex (we only stored degrees). Recipient still tints.
 function hsModWordsFromState(mods, hue) {

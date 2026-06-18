@@ -12,15 +12,11 @@
  *   - IIFE guard: second load is a no-op (window.__hsErrorReporter already set)
  *   - Writes are debounced 500ms via setTimeout
  *
- * Privacy notes:
- *   - url field is truncated to 200 chars but NOT otherwise redacted
- *   - msg/stack fields are truncated but NOT scrubbed of tokens/credentials
- *   PRIVACY GAP: a URL with a token query param (e.g. ?token=abc&...) is stored verbatim
- *     up to 200 chars — the first 200 chars of the URL are persisted including any token
- *     that appears early in the query string.
- *   PRIVACY GAP: console.error() args are joined and stored verbatim as msg (up to 500 chars).
- *     Any string arg containing a password, auth token, or user content is stored as-is.
- *   These are documented for awareness; source is NOT modified.
+ * Privacy:
+ *   - url field: sensitive query param values redacted to REDACTED before 200-char truncation
+ *   - msg/stack fields: Bearer tokens, JWTs, oauth: prefixes, and long opaque secrets
+ *     (24+ chars of token charset) redacted to [REDACTED] before truncation
+ *   - Normal prose and stack frame text is NOT over-redacted
  */
 
 import { test, expect, describe, beforeEach, afterEach } from 'bun:test'
@@ -420,36 +416,100 @@ describe('privacy: URL handling', () => {
     expect(stored[0].url.length).toBe(200)
   })
 
-  test('token in URL query string within 200 chars is stored verbatim — PRIVACY GAP', () => {
-    // PRIVACY GAP: location.href is stored up to 200 chars with NO token scrubbing.
-    // A URL like https://www.twitch.tv/page?token=secret123 will have the token
-    // param persisted in chrome.storage.local if it falls within the first 200 chars.
-    const sensitiveHref = 'https://www.twitch.tv/page?token=SECRET_TOKEN_abc123'
+  test('access_token in URL query string is redacted to REDACTED', () => {
+    const sensitiveHref = 'https://www.twitch.tv/page?access_token=SECRET_TOKEN_abc123&foo=bar'
     const { win, runTimers, chrome } = loadReporter({ href: sensitiveHref })
     const err = new Error('boom')
     err.stack = 'Error: boom\n    at chrome-extension://abc/content.js:1:1'
     win._fireError({ error: err, filename: 'chrome-extension://abc/content.js', lineno: 1 })
     runTimers()
     const stored = chrome.storage.local._store['hs_errors']
-    // Document: the implementation stores this verbatim — no scrubbing occurs
-    expect(stored[0].url).toContain('SECRET_TOKEN_abc123')
+    expect(stored[0].url).not.toContain('SECRET_TOKEN_abc123')
+    expect(stored[0].url).toContain('access_token=REDACTED')
+    // non-sensitive param preserved
+    expect(stored[0].url).toContain('foo=bar')
   })
 
-  test('msg from console.error with credential is stored verbatim — PRIVACY GAP', () => {
-    // PRIVACY GAP: console.error args are joined and stored verbatim (up to 500 chars).
-    // If code does console.error('auth failed, token:', authToken) the token lands in storage.
-    // We exercise this via direct capture() since the console wrapper is harder to hook
-    // in the test harness (it wraps the console stub at IIFE load time).
-    // _capture stores whatever rec.msg it receives — no scrubbing applied.
-    const { reporter, runTimers, chrome } = loadReporter()
-    const sensitiveMsg = 'auth failed token=BEARER_TOKEN_xyz789'
-    // Pass a short msg (no truncation) with a stack so it's not dropped
-    reporter.capture({ ts: Date.now(), type: 'console', plat: 'twitch', ver: '1.7.3',
-      url: 'https://www.twitch.tv/', msg: sensitiveMsg, stack: 'at content.js:1' })
+  test('token= param in URL is redacted, other params kept', () => {
+    const href = 'https://www.twitch.tv/cb?code=AUTHCODE999&state=STATEVAL&redirect_uri=https://example.com'
+    const { win, runTimers, chrome } = loadReporter({ href })
+    const err = new Error('x')
+    err.stack = 'at chrome-extension://abc/content.js:1:1'
+    win._fireError({ error: err, filename: 'chrome-extension://abc/content.js', lineno: 1 })
     runTimers()
     const stored = chrome.storage.local._store['hs_errors']
-    // Document: stored verbatim — implementation does not scrub
-    expect(stored[0].msg).toContain('BEARER_TOKEN_xyz789')
+    expect(stored[0].url).not.toContain('AUTHCODE999')
+    expect(stored[0].url).not.toContain('STATEVAL')
+    expect(stored[0].url).toContain('code=REDACTED')
+    expect(stored[0].url).toContain('state=REDACTED')
+    // non-sensitive param preserved
+    expect(stored[0].url).toContain('redirect_uri=https://example.com')
+  })
+
+  test('URL with no query params is stored unchanged', () => {
+    const href = 'https://www.twitch.tv/channel'
+    const { win, runTimers, chrome } = loadReporter({ href })
+    const err = new Error('x')
+    err.stack = 'at chrome-extension://abc/content.js:1:1'
+    win._fireError({ error: err, filename: 'chrome-extension://abc/content.js', lineno: 1 })
+    runTimers()
+    const stored = chrome.storage.local._store['hs_errors']
+    expect(stored[0].url).toBe('https://www.twitch.tv/channel')
+  })
+
+  test('Bearer token in msg is redacted to [REDACTED]', () => {
+    const { reporter, runTimers, chrome } = loadReporter()
+    reporter.capture({ ts: Date.now(), type: 'console', plat: 'twitch', ver: '1.7.3',
+      url: 'https://www.twitch.tv/', msg: 'auth failed Bearer eyABCDEFtokenXYZ', stack: 'at content.js:1' })
+    runTimers()
+    const stored = chrome.storage.local._store['hs_errors']
+    expect(stored[0].msg).not.toContain('eyABCDEFtokenXYZ')
+    expect(stored[0].msg).toContain('[REDACTED]')
+  })
+
+  test('JWT in msg is redacted to [REDACTED]', () => {
+    const jwt = 'eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c2VyMTIzIn0.SflKxwRJSMeKKF2QT4fwpMeJf36P'
+    const { reporter, runTimers, chrome } = loadReporter()
+    reporter.capture({ ts: Date.now(), type: 'console', plat: 'twitch', ver: '1.7.3',
+      url: 'https://www.twitch.tv/', msg: 'token: ' + jwt, stack: 'at content.js:1' })
+    runTimers()
+    const stored = chrome.storage.local._store['hs_errors']
+    expect(stored[0].msg).not.toContain(jwt)
+    expect(stored[0].msg).toContain('[REDACTED]')
+  })
+
+  test('long opaque secret (24+ chars) in msg is redacted', () => {
+    const secret = 'A1B2C3D4E5F6G7H8I9J0K1L2M3'  // 26 chars, token charset
+    const { reporter, runTimers, chrome } = loadReporter()
+    reporter.capture({ ts: Date.now(), type: 'console', plat: 'twitch', ver: '1.7.3',
+      url: 'https://www.twitch.tv/', msg: 'api_key=' + secret, stack: 'at content.js:1' })
+    runTimers()
+    const stored = chrome.storage.local._store['hs_errors']
+    expect(stored[0].msg).not.toContain(secret)
+    expect(stored[0].msg).toContain('[REDACTED]')
+  })
+
+  test('normal prose message is NOT over-redacted', () => {
+    const safeMsg = 'failed to load emotes for channel xqc after 3 retries'
+    const { reporter, runTimers, chrome } = loadReporter()
+    reporter.capture({ ts: Date.now(), type: 'console', plat: 'twitch', ver: '1.7.3',
+      url: 'https://www.twitch.tv/', msg: safeMsg, stack: 'at content.js:1' })
+    runTimers()
+    const stored = chrome.storage.local._store['hs_errors']
+    expect(stored[0].msg).toBe(safeMsg)
+  })
+
+  test('normal stack frame text is NOT over-redacted', () => {
+    const safeStack = 'Error: boom\n    at chrome-extension://abcdefghij/content.js:42:10\n    at processMessage (content.js:100:5)'
+    const { reporter, runTimers, chrome } = loadReporter()
+    reporter.capture({ ts: Date.now(), type: 'error', plat: 'twitch', ver: '1.7.3',
+      url: 'https://www.twitch.tv/', msg: 'boom', stack: safeStack })
+    runTimers()
+    const stored = chrome.storage.local._store['hs_errors']
+    // stack frames must survive — they are the primary debug value
+    expect(stored[0].stack).toContain('chrome-extension://')
+    expect(stored[0].stack).toContain('content.js:42:10')
+    expect(stored[0].stack).not.toContain('[REDACTED]')
   })
 })
 

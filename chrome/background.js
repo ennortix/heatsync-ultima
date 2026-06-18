@@ -19,6 +19,41 @@ const browser = globalThis.browser || chrome;
     if (typeof s !== 'string') { try { s = String(s) } catch { return '' } }
     return s.length > n ? s.slice(0, n) : s
   }
+  const SENSITIVE_PARAMS = /^(access_token|refresh_token|id_token|token|auth|authorization|key|apikey|api_key|password|passwd|secret|code|state|session|sig|signature)$/i
+  function scrubUrl(url) {
+    if (typeof url !== 'string') return url
+    try {
+      const qIdx = url.indexOf('?')
+      const hIdx = url.indexOf('#')
+      if (qIdx === -1 && hIdx === -1) return url
+      const base = qIdx !== -1 ? url.slice(0, qIdx) : (hIdx !== -1 ? url.slice(0, hIdx) : url)
+      const qPart = qIdx !== -1 ? url.slice(qIdx + 1, hIdx !== -1 ? hIdx : undefined) : ''
+      const hPart = hIdx !== -1 ? url.slice(hIdx + 1) : ''
+      function scrubPairs(str) {
+        if (!str) return str
+        return str.replace(/([^&=]+)=([^&]*)/g, (_, k, v) => {
+          return SENSITIVE_PARAMS.test(decodeURIComponent(k).trim()) ? k + '=REDACTED' : k + '=' + v
+        })
+      }
+      let result = base
+      if (qPart) result += '?' + scrubPairs(qPart)
+      if (hPart) result += '#' + scrubPairs(hPart)
+      return result
+    } catch (_) { return url }
+  }
+  const TEXT_SCRUB = [
+    /Bearer\s+[\w.\-]+/gi,
+    /oauth:[\w.\-]+/gi,
+    /eyJ[\w\-]+\.[\w\-]+\.[\w\-]+/g,
+    /(?<=[=\s"'])[A-Za-z0-9_\-+/=]{24,}/g,
+  ]
+  function scrubText(s) {
+    if (typeof s !== 'string') return s
+    for (const re of TEXT_SCRUB) {
+      s = s.replace(re, '[REDACTED]')
+    }
+    return s
+  }
   function fmt(e) {
     if (e == null) return { msg: '' }
     if (e instanceof Error || (typeof e === 'object' && e && 'stack' in e)) {
@@ -28,16 +63,16 @@ const browser = globalThis.browser || chrome;
       try { stack = String(e.stack || '') } catch (_) {}
       if (!msg) { try { msg = String(e) } catch (_) { msg = '[unreadable]' } }
       if (msg === '[object Object]') msg = ''
-      return { msg: trunc(msg, MSG_CAP), stack: trunc(stack, STACK_CAP) }
+      return { msg: trunc(scrubText(msg), MSG_CAP), stack: trunc(scrubText(stack), STACK_CAP) }
     }
     if (typeof e === 'object') {
       try {
         const s = JSON.stringify(e)
-        if (s && s !== '{}' && s !== '[]') return { msg: trunc(s, MSG_CAP) }
+        if (s && s !== '{}' && s !== '[]') return { msg: trunc(scrubText(s), MSG_CAP) }
       } catch (_) {}
-      try { return { msg: trunc(String(e), MSG_CAP) } } catch { return { msg: '[unserializable]' } }
+      try { return { msg: trunc(scrubText(String(e)), MSG_CAP) } } catch { return { msg: '[unserializable]' } }
     }
-    return { msg: trunc(String(e), MSG_CAP) }
+    return { msg: trunc(scrubText(String(e)), MSG_CAP) }
   }
   function synthStack(skip) {
     try {
@@ -49,6 +84,9 @@ const browser = globalThis.browser || chrome;
     if (reentry) return
     if (!rec.msg && !rec.stack) return
     if (rec.msg === 'Script error.' && !rec.stack) return
+    if (rec.url && rec.url !== 'background') rec = { ...rec, url: scrubUrl(rec.url) }
+    if (rec.msg) rec = { ...rec, msg: scrubText(rec.msg) }
+    if (rec.stack) rec = { ...rec, stack: scrubText(rec.stack) }
     reentry = true
     try {
       pending.push(rec)
@@ -103,7 +141,7 @@ const browser = globalThis.browser || chrome;
           })
           const msg = parts.filter(p => p && p !== '[object Object]').join(' ')
           if (!derivedStack) derivedStack = synthStack(2)
-          capture({ ts: Date.now(), type: 'console', plat: 'sw', ver, url: 'background', msg: trunc(msg, MSG_CAP), stack: trunc(derivedStack, STACK_CAP) })
+          capture({ ts: Date.now(), type: 'console', plat: 'sw', ver, url: 'background', msg: trunc(scrubText(msg), MSG_CAP), stack: trunc(scrubText(derivedStack), STACK_CAP) })
         } catch (_) {}
         return origErr.apply(this, args)
       }

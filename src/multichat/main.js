@@ -7714,7 +7714,9 @@
   // highlights + cheermotes), cached on m._renderedHtml. Extracted from
   // buildMessageDiv so the in-place emote reload (reprocessEmoteTextInPlace)
   // produces BYTE-IDENTICAL output to a fresh rebuild — one source of truth,
-  // no drift. Returns the HTML string; caller injects it into the row.
+  // no drift.
+  // @param {object} m  message object (m.text, m.channel, m.twitchEmotes, …)
+  // @returns {string}  sanitized HTML for the message text span
   function computeMessageText(m) {
     if (m._renderedHtml != null) return m._renderedHtml
     // Pass Twitch native emotes (per-message IRC tags) into processEmotes so
@@ -8150,7 +8152,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // Process text (emotes + YT emoji + mentions + cheermotes), cached on
     // m._renderedHtml. Shared with reprocessEmoteTextInPlace via this helper so
     // an in-place emote reload produces byte-identical HTML to a full rebuild.
-    const processedText = computeMessageText(m)
+    // Skip text-less rows (system/usernotice with only a systemMsg) — they
+    // render via ${systemLine}, never ${processedText}, so computing would just
+    // cache a spurious '' (and pointlessly queue a sender-emote fetch).
+    const processedText = m.text ? computeMessageText(m) : ''
 
     // Sticker for super stickers
     let stickerHtml = ''

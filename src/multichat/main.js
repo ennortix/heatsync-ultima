@@ -7710,6 +7710,118 @@
   // Build a message div element (shared by full rebuild and incremental append)
   // Note: innerHTML here is safe — badges/emotes are from extension data, user text
   // goes through escapeHtml() and processEmotes() which sanitize content
+  // Compute a message's rendered text HTML (emotes + YT emoji + mention
+  // highlights + cheermotes), cached on m._renderedHtml. Extracted from
+  // buildMessageDiv so the in-place emote reload (reprocessEmoteTextInPlace)
+  // produces BYTE-IDENTICAL output to a fresh rebuild — one source of truth,
+  // no drift. Returns the HTML string; caller injects it into the row.
+  function computeMessageText(m) {
+    if (m._renderedHtml != null) return m._renderedHtml
+    // Pass Twitch native emotes (per-message IRC tags) into processEmotes so
+    // they participate in the overlay-stack pipeline alongside 7TV emotes.
+    const isOwn = m.user && currentUsername && m.user.toLowerCase() === currentUsername.toLowerCase()
+    let twitchExtra = null
+    if (m.twitchEmotes) {
+      twitchExtra = new Map()
+      // Lock detection: viewer can post a Twitch native sub emote only with a
+      // subscriber/founder badge in this channel. Own outgoing msgs bypass.
+      const viewerBadges = viewerBadgesPerChannel.get(m.channel)
+      const viewerCanPostSub = isOwn || (viewerBadges && (viewerBadges.has('subscriber') || viewerBadges.has('founder')))
+      for (const [name, url] of Object.entries(m.twitchEmotes)) {
+        let state = 'locked'
+        if (viewerCanPostSub) state = 'global'
+        else {
+          const alt = (typeof lookupEmote === 'function') ? lookupEmote(name) : null
+          if (alt && (alt.state === 'owned' || alt.state === 'global' || alt.state === 'channel')) state = 'global'
+        }
+        twitchExtra.set(name, { url, source: 'twitch', state, zeroWidth: false })
+      }
+    }
+    // Sender-perma emote resolution: own → viewerPersonalEmotes, others →
+    // senderEmoteSets["plat:uid"] (lazy-fetched, perma cached).
+    let senderEmotes = null
+    const senderKey = resolveSenderEmoteKey(m)
+    if (isOwn) {
+      senderEmotes = viewerPersonalEmotes
+    } else if (senderKey) {
+      senderEmotes = getSenderEmotes(senderKey)
+      queueSenderEmoteFetch(senderKey, m)
+    }
+    let processedText = processEmotes(escapeHtml(m.text), m.channel, twitchExtra, senderEmotes, m.time)
+    if (m.emotes && m.emotes.length > 0) {
+      processedText = processYtEmotes(processedText, m.emotes, true)
+    }
+    // Safety net: strip any remaining escaped HTML img tag fragments that leaked through.
+    if (processedText.includes('&lt;img')) {
+      processedText = processedText.replace(/&lt;img\b[^<]*/g, '')
+    }
+    // Highlight mentions AFTER emote processing so emote-name <img> tags aren't touched.
+    processedText = highlightMentionsInHtml(processedText)
+    // Cheermotes — only when twitch IRC tagged bits=N (server-confirmed cheer).
+    if (m.bits) processedText = renderCheermotesInText(processedText, m.bits)
+    m._renderedHtml = processedText
+    return processedText
+  }
+
+  // Shared post-render reconcile of heatsync emote states (blocked vs pasteable)
+  // against current inventory/blocked. Used by buildMessageDiv (root=div) and the
+  // in-place emote reload (root=swapped text span).
+  function reconcileHeatsyncEmoteStates(root) {
+    for (const w of root.querySelectorAll('.hs-mc-emote-wrapper[data-source="heatsync"]')) {
+      const name = w.dataset.emoteName
+      const newState = blockedEmoteNames.has(name) ? 'blocked'
+        : inventoryEmotes.has(name) ? 'owned'
+        : 'global'
+      if (w.dataset.state !== newState) {
+        w.classList.remove('hs-state-owned', 'hs-state-unadded', 'hs-state-blocked', 'hs-state-global', 'hs-state-channel')
+        w.classList.add(`hs-state-${newState}`)
+        w.dataset.state = newState
+      }
+    }
+  }
+
+  // In-place emote reload. When a channel/global emote set FIRST loads, plain-text
+  // history rows must pick up the now-renderable emotes. The old path called
+  // clearRenderedHtmlCache() → _renderEpoch++ → renderMessages tore down + rebuilt
+  // every row → every avatar/emote/badge img reloaded = the "loads then shifts"
+  // flash. Instead, swap ONLY each rendered row's text span (.hs-mc-text), computed
+  // by the SAME computeMessageText helper buildMessageDiv uses (byte-identical to a
+  // rebuild), so the row/avatar/badges keep their identity and never reload.
+  function reprocessEmoteTextInPlace() {
+    const msgsEl = document.getElementById('hs-mc-messages')
+    if (!msgsEl) return
+    for (const div of msgsEl.querySelectorAll('.hs-mc-msg[data-msg-key]')) {
+      const span = div.querySelector(':scope > .hs-mc-text')
+      const m = div._hsMsg
+      if (!span || !m) continue
+      const html = computeMessageText(m) // m._renderedHtml cleared by caller → recomputes
+      span.innerHTML = html
+      if (html.includes('data-source="heatsync"')) reconcileHeatsyncEmoteStates(span)
+      // The swap recreated mention anchors — re-index so updateCosmeticsInPlace
+      // still finds them (stale refs would silently fail to repaint paints).
+      _unindexMessageDiv(div)
+      div._hsMentionEls = null
+      _indexMessageDiv(div, div.dataset.msgKey)
+    }
+  }
+
+  // First-emote-load handler: clear cached HTML everywhere so every tab recomputes
+  // with the new emotes, repaint the CURRENT tab in place (no flash), and drop
+  // other tabs' snapshot caches so they rebuild fresh on switch. NO _renderEpoch
+  // bump → no full teardown (mirrors invalidateRenderedForEmotes' tab handling).
+  function reloadEmotesInPlace(reprocess = true) {
+    const clearBuf = (msgs) => { for (const m of msgs) delete m._renderedHtml }
+    if (irc?.channels) for (const [, buf] of irc.channels) clearBuf(buf.getAll())
+    if (kickChat?.channels) for (const [, buf] of kickChat.channels) clearBuf(buf.getAll())
+    clearBuf(mentionsBuffer)
+    for (const msgs of channelYtMessages.values()) clearBuf(msgs)
+    // Skip the visible-row swap when scrolled up (caller passes reprocess=false) —
+    // the cleared cache means those rows recompute with emotes on the next natural
+    // render, without disturbing the user's scroll position now.
+    if (reprocess) reprocessEmoteTextInPlace()
+    _dropAllTabCaches()
+  }
+
   function buildMessageDiv(m, tabId) {
     // Blocked user — fully hide (skip render entirely). Both the append and the
     // full-rebuild path go through buildMessageDiv, so returning null here hides
@@ -8035,76 +8147,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }
     }
 
-    // Process text: heatsync/7TV/BTTV/FFZ emotes first, then YouTube native emoji
-    // Cache rendered HTML on message object so re-renders preserve emote state at post time
-    let processedText
-    if (m._renderedHtml != null) {
-      processedText = m._renderedHtml
-    } else {
-      // Pass Twitch native emotes (per-message IRC tags) into processEmotes so
-      // they participate in the overlay-stack pipeline alongside 7TV emotes —
-      // without this a 7TV zero-width emote following a Twitch sub emote would
-      // render with whitespace between them instead of overlaying.
-      const isOwn = m.user && currentUsername && m.user.toLowerCase() === currentUsername.toLowerCase()
-      let twitchExtra = null
-      if (m.twitchEmotes) {
-        twitchExtra = new Map()
-        // Lock detection: viewer can post a Twitch native sub emote only if
-        // they have `subscriber` or `founder` badge in this channel. Own
-        // outgoing messages bypass — viewer's own posts always render
-        // accessible (Twitch wouldn't have echoed otherwise).
-        const viewerBadges = viewerBadgesPerChannel.get(m.channel)
-        const viewerCanPostSub = isOwn || (viewerBadges && (viewerBadges.has('subscriber') || viewerBadges.has('founder')))
-        for (const [name, url] of Object.entries(m.twitchEmotes)) {
-          // Twitch IRC tags BOTH sub emotes and globals (and any name a streamer
-          // collides with, e.g. a "pewpewpew" sub emote sharing a BTTV global's
-          // name). Don't blanket-lock — if the viewer has the name available
-          // via any postable route (own set, channel cache, BTTV/FFZ/7TV global,
-          // twitch global), they can still send it. Render keeps the twitch
-          // CDN url for visual parity; only the click-state changes.
-          let state = 'locked'
-          if (viewerCanPostSub) state = 'global'
-          else {
-            const alt = (typeof lookupEmote === 'function') ? lookupEmote(name) : null
-            if (alt && (alt.state === 'owned' || alt.state === 'global' || alt.state === 'channel')) state = 'global'
-          }
-          twitchExtra.set(name, { url, source: 'twitch', state, zeroWidth: false })
-        }
-      }
-      // Sender-perma emote resolution: pick the right per-sender map.
-      // - Viewer's own outgoing → viewerPersonalEmotes (their heatsync inventory wins)
-      // - Other senders → senderEmoteSets["plat:uid"] (lazy-fetched 7TV/BTTV personal set, perma cached)
-      let senderEmotes = null
-      const senderKey = resolveSenderEmoteKey(m)
-      if (isOwn) {
-        senderEmotes = viewerPersonalEmotes
-      } else if (senderKey) {
-        senderEmotes = getSenderEmotes(senderKey)
-        // Always offer for fetch — queueSenderEmoteFetch gates on freshness, so a
-        // cached-but-stale set still gets re-validated (picks up the sender's
-        // newly-added emotes) while the existing set keeps rendering meanwhile.
-        queueSenderEmoteFetch(senderKey, m)
-      }
-      processedText = processEmotes(escapeHtml(m.text), m.channel, twitchExtra, senderEmotes, m.time)
-      if (m.emotes && m.emotes.length > 0) {
-        processedText = processYtEmotes(processedText, m.emotes, true)
-      }
-      // Safety net: strip any remaining escaped HTML img tag fragments that leaked through
-      // Matches &lt;img followed by escaped attributes, with or without closing &gt;
-      if (processedText.includes('&lt;img')) {
-        processedText = processedText.replace(/&lt;img\b[^<]*/g, '')
-      }
-      // Highlight @mentions and bare-name mentions for known chatters.
-      // Run AFTER emote processing so emote names already replaced into <img> tags
-      // (and thus inside HTML) won't be touched by the mention regex.
-      processedText = highlightMentionsInHtml(processedText)
-      // Cheermote rendering — BULLETPROOF: only fires when twitch's IRC
-      // tagged the message with bits=N (server-confirmed real cheer).
-      // Anything else stays as text. No heuristics, no caps, no false
-      // positives possible.
-      if (m.bits) processedText = renderCheermotesInText(processedText, m.bits)
-      m._renderedHtml = processedText
-    }
+    // Process text (emotes + YT emoji + mentions + cheermotes), cached on
+    // m._renderedHtml. Shared with reprocessEmoteTextInPlace via this helper so
+    // an in-place emote reload produces byte-identical HTML to a full rebuild.
+    const processedText = computeMessageText(m)
 
     // Sticker for super stickers
     let stickerHtml = ''
@@ -8114,6 +8160,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
     const div = document.createElement('div');
     div.className = cls;
+    div._hsMsg = m // back-ref for reprocessEmoteTextInPlace (GC'd with the row)
     if (m.userId) div.dataset.uid = m.userId
     if (isSuperChat && m.scColor) {
       const safeBg = sanitizeColor(m.scColor)
@@ -8175,31 +8222,16 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     const msgBody = (m.type === 'usernotice' || m.type === 'notice') && !m.text
       ? `${tsHtml}${systemLine}`
       : m.type === 'notice'
-      ? `${tsHtml}${processedText}`
+      ? `${tsHtml}<span class="hs-mc-text">${processedText}</span>`
       : m.isAction
-      ? `${tsHtml}${systemLine}${platformBadge}${scBadge}${bitsBadge}${badges}${avatarHtml}${userLink}${channelSpan} <span style="color:${sanitizeColor(m.color || '#fff')};font-style:italic">${processedText}</span>${stickerHtml}`
-      : `${tsHtml}${systemLine}${platformBadge}${scBadge}${bitsBadge}${badges}${avatarHtml}${userLink}${channelSpan}: ${processedText}${stickerHtml}`
+      ? `${tsHtml}${systemLine}${platformBadge}${scBadge}${bitsBadge}${badges}${avatarHtml}${userLink}${channelSpan} <span class="hs-mc-text" style="color:${sanitizeColor(m.color || '#fff')};font-style:italic">${processedText}</span>${stickerHtml}`
+      : `${tsHtml}${systemLine}${platformBadge}${scBadge}${bitsBadge}${badges}${avatarHtml}${userLink}${channelSpan}: <span class="hs-mc-text">${processedText}</span>${stickerHtml}`
     div.innerHTML = `${replyBar}${msgBody}`;
     // Correct emote states based on current inventory + blocked (cached HTML
     // may have stale states). String-includes gate skips the querySelectorAll
     // walk on the >95% of msgs that don't contain heatsync emotes — the gate
     // is a single substring scan, the QSA was iterating div subtree.
-    if (processedText.includes('data-source="heatsync"')) {
-      // 2-state reconcile: blocked vs anything-pasteable. The pre-existing
-      // owned/unadded split is irrelevant for rendering now (white hover bg
-      // either way); only blocked needs its own class for the dashed-rect.
-      for (const w of div.querySelectorAll('.hs-mc-emote-wrapper[data-source="heatsync"]')) {
-        const name = w.dataset.emoteName;
-        const newState = blockedEmoteNames.has(name) ? 'blocked'
-          : inventoryEmotes.has(name) ? 'owned'
-          : 'global';
-        if (w.dataset.state !== newState) {
-          w.classList.remove('hs-state-owned', 'hs-state-unadded', 'hs-state-blocked', 'hs-state-global', 'hs-state-channel');
-          w.classList.add(`hs-state-${newState}`);
-          w.dataset.state = newState;
-        }
-      }
-    }
+    if (processedText.includes('data-source="heatsync"')) reconcileHeatsyncEmoteStates(div)
     // Reply button for threading (Twitch/Kick — YT has no native thread id,
     // so we'd render an @-mention reply, but the YT message renderer reuses
     // videoId as id which collides across messages; suppress on YT for now).
@@ -11586,10 +11618,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
             for (const s of pending) {
               if (!_emoteFirstLoad.has(s)) { _emoteFirstLoad.add(s); firstLoad = true }
             }
-            if (firstLoad) {
-              clearRenderedHtmlCache();
-              scheduleCoalescedRender();
-            }
+            // First emote payload for this scope: plain-text history rows need to
+            // pick up the now-renderable emotes. In-place text swap instead of
+            // clearRenderedHtmlCache()→epoch bump→full rebuild (the flash).
+            if (firstLoad) reloadEmotesInPlace();
           });
         }, 300);
       }
@@ -12007,13 +12039,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
             for (const s of pending) {
               if (!_emoteFirstLoad.has(s)) { _emoteFirstLoad.add(s); firstLoad = true }
             }
-            if (firstLoad) clearRenderedHtmlCache();
-            if (!isScrolledUp) {
-              // firstLoad rebuilds (late 7TV channel set) coalesce with the
-              // badge/cosmetic burst; non-firstLoad emote edits render now.
-              if (firstLoad) scheduleCoalescedRender();
-              else renderMessages(currentTab);
-            }
+            // firstLoad: in-place text swap (no rebuild flash), skipping the
+            // visible-row swap when scrolled up. non-firstLoad emote edits render
+            // now (only when at/near bottom, to not yank a scrolled-up reader).
+            if (firstLoad) reloadEmotesInPlace(!isScrolledUp);
+            else if (!isScrolledUp) renderMessages(currentTab);
           });
         }, 300);
       }

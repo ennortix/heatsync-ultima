@@ -2103,6 +2103,12 @@
         if (!it.w) continue
         const px = it.w + 'px'
         if (it.box.style.width !== px) it.box.style.width = px
+        // Don't cache overlay emote URLs — the measured box is the outer stack
+        // (not the overlay wrapper), so the cached value is the stack/base width,
+        // not the overlay's own width. Using it as wAttr in renderEmoteStack would
+        // pin the wrapper too narrow and cause the overlay img to bleed left past
+        // the base emote. Overlays always render inline-unconstrained via renderEmoteStack.
+        if (it.im.classList.contains('hs-mc-overlay-emote')) continue
         const url = it.im.closest('.hs-mc-emote-wrapper')?.dataset?.emoteUrl || it.im.getAttribute('src')
         if (url) _hsEmoteBoxW.set(url, it.w)
       }
@@ -2489,7 +2495,14 @@
       return stack.base;
     }
     const overlayHtml = stack.overlays.map(o =>
-      o.replace('class="hs-mc-emote ', 'class="hs-mc-emote hs-mc-overlay-emote ')
+      // Strip any stale cached inline width from the overlay wrapper. The snap
+      // measures the outer stack element (not the wrapper) and caches that against
+      // the overlay URL — applying it as wAttr constrains the wrapper to the base
+      // emote's width. With place-items:center the oversized img then bleeds left,
+      // making the overlay visually appear before the base. Strip it so the wrapper
+      // always sizes to the img's intrinsic width naturally.
+      o.replace(/ style="width:\d+(?:\.\d+)?px"/, '')
+       .replace('class="hs-mc-emote ', 'class="hs-mc-emote hs-mc-overlay-emote ')
     ).join('');
     const count = stack.overlays.length + 1;
     return `<span class="hs-mc-emote-stack" data-stack-count="${count}" title="expand"><span class="hs-mc-emote-stack-emotes">${stack.base}${overlayHtml}</span><span class="hs-mc-stack-collapse" title="collapse">\u00d7</span><span class="hs-mc-stack-block-all" title="block all">\u2298</span></span>`;

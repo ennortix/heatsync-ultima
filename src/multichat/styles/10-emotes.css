@@ -179,7 +179,6 @@
       margin: 0 !important;
       pointer-events: auto;
     }
-
     /* EMOTE STACK EXPAND/COLLAPSE */
     .hs-mc-stack-collapse,
     .hs-mc-stack-block-all {
@@ -260,8 +259,15 @@
          min-height (not a fixed img height) keeps aspect intact and never
          upscales a small emote, so bitmap crispness is untouched. +4px covers
          the img's 2px content-box padding (matches .hs-mc-emote-stack's 36px
-         lock). Width stays auto — width-pop is within-row and negligible. */
+         lock). Width stays auto — width-pop is within-row and negligible.
+         Excluded from stacked overlays: overlay wrappers live inside the
+         stack's fixed-height grid, so the reservation is redundant and the
+         min-height inflates the grid row to 36px, stretching the overlay img
+         beyond its natural size and pushing it off-center over the base. */
       min-height: calc(var(--hs-emote-size, 32px) + 4px);
+    }
+    .hs-mc-emote-stack-emotes > .hs-mc-emote-wrapper:not(:first-child) {
+      min-height: 0;
     }
     /* same bitmap-smear math for the badge family — any middle-aligned
        inline box taller than the strut grows the row's line box by a

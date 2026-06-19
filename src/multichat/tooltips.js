@@ -134,11 +134,26 @@
   // box is sized to the scaled footprint so the tooltip lays out around it.
   const STACK_PREVIEW_SCALE = 4;
   function buildStackPreview(box, stackEmotes) {
+    const liveImgs = [...stackEmotes.querySelectorAll('img')];
     const clone = stackEmotes.cloneNode(true);
     const imgs = [...clone.querySelectorAll('img')];
-    imgs.forEach(im => {
+    imgs.forEach((im, i) => {
       // Blocked overlays render a transparent px with the real url in dataset.
       const orig = im.dataset.hsOrigSrc || im.src;
+      // Overlay emotes render at native intrinsic size (width:auto +
+      // object-fit:none), so swapping their src to the 4x hi-res asset balloons
+      // that box 4x — and the stack's own scale(4) below then multiplies it to
+      // 16x (the giant tooltip). Pin each overlay to the size it renders at in
+      // chat and switch to object-fit:contain so the hi-res asset scales DOWN
+      // into that box (sharp, not huge); scale(4) supplies the 4x preview.
+      if (im.classList.contains('hs-mc-overlay-emote')) {
+        const lw = liveImgs[i]?.offsetWidth, lh = liveImgs[i]?.offsetHeight;
+        if (lw && lh) {
+          im.style.setProperty('width', lw + 'px', 'important');
+          im.style.setProperty('height', lh + 'px', 'important');
+          im.style.setProperty('object-fit', 'contain', 'important');
+        }
+      }
       const hi = getHighResUrl(orig);
       if (hi) im.src = hi;
       im.removeAttribute('loading'); // force eager — see sizeBox note below

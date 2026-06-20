@@ -183,7 +183,14 @@
       max-height: 33vh;
       overflow-y: auto;
       overflow-x: hidden;
+      /* Wrapped flex + border-box + the 1px bottom border round to a 1px
+         content overflow even when the stack sits well under 33vh, surfacing
+         a phantom scrollbar. Hide the scrollbar chrome (wheel still scrolls
+         the genuine 33vh-overflow case) — mirrors the left/right layouts. */
+      scrollbar-width: none;
     }
+    body.hs-tabs-top #hs-mc-tabbar::-webkit-scrollbar,
+    body.hs-tabs-bottom #hs-mc-tabbar::-webkit-scrollbar { display: none; }
     body.hs-tabs-top .hs-mc-tabs-scroll,
     body.hs-tabs-bottom .hs-mc-tabs-scroll,
     body.hs-tabs-top .hs-mc-right-cluster,

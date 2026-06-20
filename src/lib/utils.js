@@ -134,8 +134,17 @@ function findComponent(startEl, predicate, maxDepth = 50) {
 // LOGGING
 // ============================================
 
-const DEBUG = typeof window !== 'undefined' &&
-  (window.HEATSYNC_DEBUG || localStorage.getItem('heatsync_debug') === 'true')
+// localStorage can be absent (service worker) or throw on access (sandboxed
+// iframe, privacy mode → SecurityError). Guard the global independently of
+// `window` so a debug-flag read never crashes module init.
+function safeLocalStorageGet(key) {
+  try {
+    return typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null
+  } catch { return null }
+}
+
+const DEBUG = (typeof window !== 'undefined' && !!window.HEATSYNC_DEBUG) ||
+  safeLocalStorageGet('heatsync_debug') === 'true'
 
 // ============================================
 // READABLE NAME COLOR (luminance boost)

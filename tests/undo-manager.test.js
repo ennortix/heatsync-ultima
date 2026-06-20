@@ -18,7 +18,15 @@
  * The pure stack logic (push, undo, redo, cap, dedup) is tested thoroughly.
  */
 
-import { test, describe, expect, beforeEach } from 'bun:test'
+import { test, describe, expect, beforeEach, afterAll } from 'bun:test'
+
+// installDomStubs() sets globalThis.window = globalThis to simulate a browser.
+// Restore the original so this file doesn't pollute later test files.
+const ORIGINAL_WINDOW = Object.getOwnPropertyDescriptor(globalThis, 'window')
+afterAll(() => {
+  if (ORIGINAL_WINDOW) Object.defineProperty(globalThis, 'window', ORIGINAL_WINDOW)
+  else delete globalThis.window
+})
 
 // ── minimal DOM stubs ────────────────────────────────────────────────────────
 

@@ -11,8 +11,17 @@
  * the public API surface through window.heatsyncCleanup.
  */
 
-import { test, describe, expect, beforeEach } from 'bun:test'
+import { test, describe, expect, beforeEach, afterAll } from 'bun:test'
 import { readFileSync } from 'fs'
+
+// loadCleanup() sets globalThis.window = globalThis to simulate a browser.
+// Restore the original so this file doesn't pollute later test files (utils.js
+// reads globals at import; a stray window would change their behavior).
+const ORIGINAL_WINDOW = Object.getOwnPropertyDescriptor(globalThis, 'window')
+afterAll(() => {
+  if (ORIGINAL_WINDOW) Object.defineProperty(globalThis, 'window', ORIGINAL_WINDOW)
+  else delete globalThis.window
+})
 
 // ── stub infrastructure ──────────────────────────────────────────────────────
 

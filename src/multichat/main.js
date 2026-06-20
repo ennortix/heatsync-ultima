@@ -217,6 +217,17 @@
   // the cap. ~3.3x Twitch native scrollback.
   let DOM_RENDER_CAP = 500; // registry-managed (hs_dom_render_cap)
 
+  // Upward scrollback: extra rows beyond DOM_RENDER_CAP to paint when the user
+  // reaches the top. 0 = live tail only (DEFAULT — behaviour is byte-identical
+  // to a plain cap; the feature is inert until the user scrolls up). Grows in
+  // SCROLLBACK_STEP chunks up to SCROLLBACK_MAX total rendered rows, drawn from
+  // the existing 3000-deep ring buffer (no network — just paint more of what's
+  // already buffered). Reset to 0 on tab switch / channel nav / jump-to-bottom
+  // so the DOM never stays bloated past the live tail.
+  let _scrollbackWindow = 0;
+  const SCROLLBACK_STEP = 250;
+  const SCROLLBACK_MAX = 1500; // hard ceiling on rendered rows (3x the live cap)
+
   let isKick = location.hostname.includes('kick.com');
   const hostPlatform = isKick ? 'kick' : location.hostname.includes('youtube.com') ? 'yt' : 'twitch';
 
@@ -2913,7 +2924,19 @@
           isScrolledUp = false
           newMessageCount = 0
           newBtn.style.display = 'none'
+          _scrollbackWindow = 0 // back at the live tail — drop scrollback DOM
         }
+      }
+
+      // Near the top while paused → paint the next chunk of older history.
+      const SCROLLBACK_TRIGGER_PX = 200
+      const maybeLoadOlder = () => {
+        if (isProgrammaticScroll) return
+        if (!_userInputScroll) return
+        if (!isScrolledUp) return
+        if (isStaticTab()) return
+        if (msgsEl.scrollTop > SCROLLBACK_TRIGGER_PX) return
+        loadOlderScrollback()
       }
 
       msgsEl.addEventListener('scroll', () => {
@@ -2921,6 +2944,7 @@
         _scrollFrame = requestAnimationFrame(() => {
           _scrollFrame = null
           onScrollMaybeResume()
+          maybeLoadOlder()
         })
       }, { passive: true, signal: mcSignal })
 
@@ -2975,6 +2999,7 @@
         isScrolledUp = false;
         newMessageCount = 0;
         newBtn.style.display = 'none';
+        _scrollbackWindow = 0; // jumping to live tail — drop scrollback DOM
         if (isStaticTab()) {
           // Static tabs: re-render then scroll to top (newest content)
           renderMessages(currentTab);
@@ -7501,6 +7526,7 @@
     // their own DOM. Must run BEFORE currentTab flips.
     snapshotTabState(currentTab);
     currentTab = id;
+    _scrollbackWindow = 0; // new tab starts at the live tail, not prior scrollback depth
     markTabSeen(id);
 
     // Update settings button icon: X when settings open, cog otherwise
@@ -8844,7 +8870,39 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     return user.includes(q) || String(m.text || '').toLowerCase().includes(q)
   }
 
-  function renderMessages(id) {
+  // Upward infinite-scroll: when the user reaches the top, paint the next chunk
+  // of OLDER buffered messages (already in the 3000-deep ring) by growing the
+  // render window and re-running the SAME diff renderer — so indexing, zebra,
+  // mutes, cosmetics and epoch-keying all stay correct by construction. Anchors
+  // scroll so the viewport doesn't jump when rows prepend above it.
+  function loadOlderScrollback() {
+    if (!isScrolledUp) return; // only while the user is paused (scrolled up)
+    if (currentTab === 'feed' || currentTab === 'settings' || currentTab === 'discover' || currentTab === 'pinned') return;
+    if (_scrollbackWindow >= SCROLLBACK_MAX - DOM_RENDER_CAP) return; // at the depth ceiling
+    const msgsEl = document.getElementById('hs-mc-messages');
+    if (!msgsEl) return;
+    // Try to grow the window, then check whether older rows actually appeared.
+    // We don't pre-guard on a row count — rendered rows can sit just under the
+    // cap (content filters, fair-merge) so a "< cap" test would false-bail one
+    // short. Instead: bump, render, and revert if nothing older was available.
+    const before = msgsEl.children.length;
+    const prevWindow = _scrollbackWindow;
+    const oldH = msgsEl.scrollHeight;
+    const oldTop = msgsEl.scrollTop;
+    _scrollbackWindow = Math.min(_scrollbackWindow + SCROLLBACK_STEP, SCROLLBACK_MAX - DOM_RENDER_CAP);
+    isProgrammaticScroll = true;
+    try { renderMessages(currentTab, { bypassScrollPause: true }); } catch (_) {}
+    if (msgsEl.children.length > before) {
+      // Anchor: keep the previously-visible content under the same viewport
+      // offset (rows added above shift everything down by the height delta).
+      msgsEl.scrollTop = oldTop + (msgsEl.scrollHeight - oldH);
+    } else {
+      _scrollbackWindow = prevWindow; // buffer exhausted — don't inflate uselessly
+    }
+    cleanup.raf(() => { isProgrammaticScroll = false });
+  }
+
+  function renderMessages(id, opts) {
     if (editingChannel) return;
     // Idempotent — ensures mod toolbar hover works even when extension reloads
     // mid-session (the overlay-init setTimeout doesn't re-fire).
@@ -8894,7 +8952,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
     const newBtn = document.getElementById('hs-mc-new-msgs');
 
-    if (isScrolledUp) {
+    // Scrolled-up readers normally don't re-render (live msgs just bump the
+    // "N new" counter). loadOlderScrollback passes bypassScrollPause so it CAN
+    // re-render while paused — to paint older rows — without yanking the view
+    // (it anchors scroll itself afterward).
+    if (isScrolledUp && !(opts && opts.bypassScrollPause)) {
       newMessageCount++;
       if (newBtn) {
         newBtn.innerHTML = `<span class="hs-arrow-down">▼</span> ${newMessageCount} new`;
@@ -9058,7 +9120,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         return
       }
     }
-    toRender = toRender.slice(-DOM_RENDER_CAP)
+    // Live tail is always DOM_RENDER_CAP; _scrollbackWindow adds older rows
+    // when the user has scrolled to the top (loadOlderScrollback). Capped at
+    // SCROLLBACK_MAX so the DOM stays bounded on low-RAM hardware.
+    const _renderCap = Math.min(DOM_RENDER_CAP + _scrollbackWindow, SCROLLBACK_MAX)
+    toRender = toRender.slice(-_renderCap)
     isProgrammaticScroll = true;
 
     // STABLE-ORDER RENDER:
@@ -13745,6 +13811,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // behind a "N new" pause indicator the user never asked for.
       isScrolledUp = false;
       newMessageCount = 0;
+      _scrollbackWindow = 0; // new channel starts at the live tail
       // SPA nav changed the URL channel — re-join + repaint the live tab so the
       // new channel actually connects and renders. Without this the panel froze
       // on the previous channel until an unrelated render fired — a deadlock on
@@ -13863,6 +13930,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       try { setNativeChatHidden(true) } catch (_) {}
       isScrolledUp = false;
       newMessageCount = 0;
+      _scrollbackWindow = 0; // new channel starts at the live tail
       // SPA nav changed the URL channel — re-join + repaint the live tab so the
       // new Kick channel connects and renders (otherwise the panel freezes on
       // the previous channel until an unrelated render fires).

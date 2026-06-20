@@ -2483,7 +2483,7 @@
       const current = parseInt(getComputedStyle(msgsEl).fontSize) || 13;
       const next = Math.max(10, Math.min(22, current + dir));
       msgsEl.style.setProperty('--hs-chat-font', next + 'px');
-      localStorage.setItem('heatsync-chat-font-size', next);
+      try { localStorage.setItem('heatsync-chat-font-size', next); } catch {}
       showToast('chat font ' + next + 'px' + (next === 10 || next === 22 ? ' (limit)' : ''), 'info');
     });
 
@@ -2494,7 +2494,7 @@
       const fontBtn = e.target.closest('.hs-mc-font-btn');
       if (fontBtn) {
         e.preventDefault();
-        localStorage.removeItem('heatsync-chat-font-size');
+        try { localStorage.removeItem('heatsync-chat-font-size'); } catch {}
         applyFontSettings(getSetting('fontFamily'), getSetting('fontSize'), getSetting('customFontName'));
         showToast('chat font reset to settings (' + getSetting('fontSize') + 'px)', 'info');
         return;
@@ -5083,7 +5083,8 @@
       container.style.setProperty('--hs-mc-base-size', sizeNum + 'px');
       // Also drive the messages-area var. F+/F- localStorage override below
       // wins if present (per-channel/per-tab quick adjust).
-      const fOverride = parseInt(localStorage.getItem('heatsync-chat-font-size'), 10);
+      let fOverride = NaN;
+      try { fOverride = parseInt(localStorage.getItem('heatsync-chat-font-size'), 10); } catch {}
       const msgsSize = (fOverride >= 10 && fOverride <= 22) ? fOverride : sizeNum;
       root.style.setProperty('--hs-chat-font', msgsSize + 'px');
       container.style.setProperty('--hs-chat-font', msgsSize + 'px');

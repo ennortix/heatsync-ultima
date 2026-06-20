@@ -11867,25 +11867,32 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         }
         const _patchDom = (emoteName, mode, meta) => {
           try {
-            const sel = `img[data-name="${CSS.escape(emoteName)}"], .hs-mc-emote-wrapper[data-name="${CSS.escape(emoteName)}"]`
-            for (const node of document.querySelectorAll(sel)) {
-              const w = node.classList.contains('hs-mc-emote-wrapper') ? node : node.closest('.hs-mc-emote-wrapper')
-              if (!w) continue
-              if (mode === 'mark') {
-                w.classList.add('hs-state-stale')
-                if (meta?.actor) w.dataset.staleActor = meta.actor
-                if (meta?.at) w.dataset.staleAt = String(meta.at)
-              } else {
-                w.classList.remove('hs-state-stale')
-                delete w.dataset.staleActor
-                delete w.dataset.staleAt
+            // Merged stream: only touch rows from THIS channel. Row keeps the
+            // original casing, registry key is lowercased — match case-insensitively.
+            const rows = document.querySelectorAll(`#hs-mc-messages [data-msg-channel="${CSS.escape(channel)}" i]`)
+            const nameSel = `[data-emote-name="${CSS.escape(emoteName)}"]`
+            for (const row of rows) {
+              for (const node of row.querySelectorAll(nameSel)) {
+                const w = node.classList.contains('hs-mc-emote-wrapper') ? node : node.closest('.hs-mc-emote-wrapper')
+                if (!w) continue
+                // Identity guard: don't ghost a same-name emote of different art.
+                if (mode === 'mark' && meta?.hash && w.dataset.emoteHash && w.dataset.emoteHash !== meta.hash) continue
+                if (mode === 'mark') {
+                  w.classList.add('hs-state-stale')
+                  if (meta?.actor) w.dataset.staleActor = meta.actor
+                  if (meta?.at) w.dataset.staleAt = String(meta.at)
+                } else {
+                  w.classList.remove('hs-state-stale')
+                  delete w.dataset.staleActor
+                  delete w.dataset.staleAt
+                }
               }
             }
           } catch (e) {}
         }
         if (msg.type === 'channel_emote_removed' && msg.emoteName) {
           _ensureChannel(channel).set(msg.emoteName, { at: Date.now(), actor, hash: msg.emoteHash || '', provider: '7tv' })
-          _patchDom(msg.emoteName, 'mark', { actor, at: Date.now() })
+          _patchDom(msg.emoteName, 'mark', { actor, at: Date.now(), hash: msg.emoteHash || '' })
           _persistStale()
         } else if (msg.type === 'channel_emote_added' && msg.emote?.name) {
           const m = _staleReg.get(channel)

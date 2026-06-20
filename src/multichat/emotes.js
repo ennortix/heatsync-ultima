@@ -1816,6 +1816,18 @@
         hashToName.set(e.hash, e.name)
       }
     }
+    // Self-heal the stale-emote ghost registry: any name back in this channel's
+    // live set was re-added (perhaps while we missed the event) — drop it so old
+    // messages stop rendering ghosted. The render path also guards on the live
+    // set, so this is housekeeping, but it keeps the registry honest.
+    try {
+      const sreg = window._hsStaleEmotes
+      const sm = sreg && sreg.get((ch || '').toLowerCase())
+      if (sm) {
+        for (const name of [...sm.keys()]) { if (chCache.has(name)) sm.delete(name) }
+        if (sm.size === 0) sreg.delete((ch || '').toLowerCase())
+      }
+    } catch (e) {}
     const keys = Object.keys(channelEmoteCaches)
     if (keys.length > 20) {
       for (const old of keys.slice(0, keys.length - 20)) {
@@ -2351,21 +2363,30 @@
         const safeHash = emote.hash ? escapeHtml(emote.hash) : '';
         const displayName = escapeHtml(word)
         const ownerAttr = emote.ownerDisplay ? ` data-owner="${escapeHtml(emote.ownerDisplay)}"` : ''
-        // Stale-emote ghost: if any channel's stale registry has this name, mark
-        // the wrapper so dim/desaturate CSS applies. Iterating all channels is
-        // O(small) and avoids passing channel context through the render path.
+        // Stale-emote ghost: an emote is stale only if THIS message's channel
+        // removed it AND it isn't in the channel's current set. The live set is
+        // the source of truth — a name present in channelEmoteCaches[channel]
+        // can never be stale. That self-heals re-adds whose event we missed and
+        // stops a removal in one channel from ghosting the same name in another
+        // (the stream is merged, so every channel shares one render path).
         let staleClass = '', staleAttr = ''
         try {
-          const reg = window._hsStaleEmotes
-          if (reg) {
-            for (const m of reg.values()) {
-              if (m.has(word)) {
-                const meta = m.get(word)
-                staleClass = ' hs-state-stale'
-                if (meta?.actor) staleAttr += ` data-stale-actor="${escapeHtml(meta.actor)}"`
-                if (meta?.at) staleAttr += ` data-stale-at="${meta.at}"`
-                break
-              }
+          const chKey = (channel || '').toLowerCase()
+          const meta = chKey && window._hsStaleEmotes ? window._hsStaleEmotes.get(chKey)?.get(word) : null
+          if (meta) {
+            const liveSet = channelEmoteCaches[chKey] || channelEmoteCaches[channel]
+            const liveNow = !!(liveSet && liveSet.has(word))
+            // Identity: only ghost the emote that was actually removed. Trust the
+            // hash when both sides have one; else require the same provider —
+            // removal events only cover 7TV channel emotes, so a same-name global
+            // or BTTV emote of different art stays normal.
+            const sameEmote = meta.hash && emote.hash
+              ? meta.hash === emote.hash
+              : (emote.source || '7tv') === (meta.provider || '7tv')
+            if (!liveNow && sameEmote) {
+              staleClass = ' hs-state-stale'
+              if (meta.actor) staleAttr += ` data-stale-actor="${escapeHtml(meta.actor)}"`
+              if (meta.at) staleAttr += ` data-stale-at="${meta.at}"`
             }
           }
         } catch (e) {}

@@ -158,14 +158,10 @@ function checkScopeCollisions() {
 // Skippable with --no-test for fast iterative rebuilds.
 // Always forced on --package and --deploy.
 //
-// Circularity note: tests/build.test.js spawns `bun run build.js` in beforeAll,
-// but only when dist/chrome/manifest.json is absent. By the time runTests() is
-// called the guards have already run (not a full build yet), but the dist from a
-// prior build may exist and satisfy the check. Either way, build.test.js uses
-// Bun.spawn (not execFileSync) so it does not inherit our stdio and will not
-// re-trigger this guard in a way that deadlocks. The risk is a full re-build
-// inside the test run on a cold dist — acceptable since tests/*.test.js are all
-// unit-level and fast.
+// Pre-build gate: runs the unit suite (logic). tests/build.test.js validates
+// dist OUTPUT and self-skips here (gated on HS_VERIFY_DIST) — it runs only in
+// the post-build verification step below, against freshly built dist. That
+// keeps this gate free of recursion and of stale-dist false failures.
 function runTests(args) {
   const flags = new Set(args.filter(a => a.startsWith('--')))
   const forceRun = flags.has('--package') || flags.has('--deploy')
@@ -619,6 +615,25 @@ if (shouldPackage) {
 if (shouldSource) {
   console.log('\nSource zip:')
   buildSourceZip()
+}
+
+// ── Post-build verification ────────────────────────────────────────────────
+// Validate the freshly built dist/ (required files, manifest fields, version
+// sync, CSP). Runs only on a full both-target build and when tests aren't
+// skipped — single-target builds leave the other dist stale, which would fail
+// the cross-target assertions. Gated env var ensures tests/build.test.js runs
+// ONLY here, against fresh output (never recursive, never on stale dist).
+if (!target && !(flags.has('--no-test') && !shouldPackage)) {
+  console.log('\nPost-build verification:')
+  try {
+    execFileSync('bun', ['test', 'tests/build.test.js'], {
+      stdio: 'inherit',
+      cwd: __dirname,
+      env: { ...process.env, HS_VERIFY_DIST: '1' },
+    })
+  } catch (e) {
+    throw new Error('post-build verification failed — dist output invalid')
+  }
 }
 
 if (shouldDeploy) deploy()

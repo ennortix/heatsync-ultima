@@ -7,21 +7,21 @@
  * trace only — not structurally needed), performance.now (via _wrap, only
  * when window.__hsPerfTrace is set).
  *
- * Strategy: set up globalThis stubs before eval'ing the source, then test
- * the public API surface through window.heatsyncCleanup.
+ * Strategy: declare local stubs in setupCleanup(), eval the source in that
+ * scope (so its bare globals bind to the stubs, not the shared realm), then
+ * test the public API surface through window.heatsyncCleanup.
  */
 
-import { test, describe, expect, beforeEach, afterAll } from 'bun:test'
+import { test, describe, expect, beforeEach } from 'bun:test'
 import { readFileSync } from 'fs'
 
-// loadCleanup() sets globalThis.window = globalThis to simulate a browser.
-// Restore the original so this file doesn't pollute later test files (utils.js
-// reads globals at import; a stray window would change their behavior).
-const ORIGINAL_WINDOW = Object.getOwnPropertyDescriptor(globalThis, 'window')
-afterAll(() => {
-  if (ORIGINAL_WINDOW) Object.defineProperty(globalThis, 'window', ORIGINAL_WINDOW)
-  else delete globalThis.window
-})
+// IMPORTANT: this file must NOT mutate globalThis (setTimeout, window, etc).
+// bun runs every test file in one shared realm, concurrently — a stubbed
+// non-firing setTimeout left on globalThis would race the debounce/throttle
+// tests in utils-extra and hang them to a 5s timeout. Instead, setupCleanup()
+// declares the stubs as LOCAL consts and eval()s cleanup.js in that scope:
+// direct eval resolves cleanup.js's bare `setTimeout`/`window`/`document`
+// references to these locals via the lexical scope chain, so nothing leaks.
 
 // ── stub infrastructure ──────────────────────────────────────────────────────
 
@@ -41,8 +41,20 @@ function spy(returnFn) {
   return fn
 }
 
-/** Install fresh stubs on globalThis and return them for assertions. */
-function installStubs() {
+// Read once — cleanup.js is a trusted in-repo source file. It is an IIFE that
+// installs window.heatsyncCleanup, so it can't be imported as a module; eval in
+// a controlled lexical scope is how we load it. Test-only.
+const CLEANUP_SRC = readFileSync(new URL('../src/lib/cleanup.js', import.meta.url), 'utf8')
+
+/**
+ * Load a fresh cleanup instance against local stubs and return { c, stubs }.
+ *
+ * The timer/raf globals, `window`, `document` and `performance` are declared as
+ * LOCAL consts below; the direct eval() of cleanup.js resolves its bare-global
+ * references to them through the lexical scope chain, so we never touch the
+ * shared globalThis (see header note re: concurrent test files).
+ */
+function setupCleanup({ document: documentStub } = {}) {
   nextId = 1
 
   const intervalIds = new Map()  // id → fn
@@ -56,21 +68,25 @@ function installStubs() {
   const requestAnimationFrameSpy = spy(fn => { const id = nextId++; rafIds.set(id, fn); return id })
   const cancelAnimationFrameSpy  = spy(id => rafIds.delete(id))
 
-  Object.assign(globalThis, {
-    setInterval:           setIntervalSpy,
-    clearInterval:         clearIntervalSpy,
-    setTimeout:            setTimeoutSpy,
-    clearTimeout:          clearTimeoutSpy,
-    requestAnimationFrame: requestAnimationFrameSpy,
-    cancelAnimationFrame:  cancelAnimationFrameSpy,
-    // _wrap inspects window.__hsPerfTrace; leave falsy so the perf path is inert
-    __hsPerfTrace: false,
-    // performance stub (only used inside perf-trace path, which is off)
-    performance: { now: () => 0 },
-  })
+  // Lexical stubs captured by eval(CLEANUP_SRC). eslint-disable consts are
+  // "unused" only to a static linter — the eval'd code references them.
+  /* eslint-disable no-unused-vars */
+  const setInterval           = setIntervalSpy
+  const clearInterval         = clearIntervalSpy
+  const setTimeout            = setTimeoutSpy
+  const clearTimeout          = clearTimeoutSpy
+  const requestAnimationFrame = requestAnimationFrameSpy
+  const cancelAnimationFrame  = cancelAnimationFrameSpy
+  const performance           = { now: () => 0 }            // perf-trace path is off
+  const document              = documentStub || { hidden: false }
+  // fresh fake window each load → heatsyncCleanup guard never short-circuits
+  const window                = { __hsPerfTrace: false }
+  /* eslint-enable no-unused-vars */
 
-  // expose fire helpers so tests can simulate timers completing
-  return {
+  // eslint-disable-next-line no-eval
+  eval(CLEANUP_SRC)  // assigns window.heatsyncCleanup using the locals above
+
+  const stubs = {
     setIntervalSpy, clearIntervalSpy,
     setTimeoutSpy, clearTimeoutSpy,
     requestAnimationFrameSpy, cancelAnimationFrameSpy,
@@ -88,17 +104,7 @@ function installStubs() {
       fn()
     },
   }
-}
-
-/** Load a fresh copy of cleanup.js (delete window.heatsyncCleanup guard first). */
-function loadCleanup() {
-  delete globalThis.window
-  // cleanup.js checks window.heatsyncCleanup; expose globalThis as window
-  globalThis.window = globalThis
-  const src = readFileSync(new URL('../src/lib/cleanup.js', import.meta.url), 'utf8')
-  // eslint-disable-next-line no-eval
-  eval(src)
-  return globalThis.heatsyncCleanup
+  return { c: window.heatsyncCleanup, stubs }
 }
 
 /** Create a minimal fake EventTarget with spy methods. */
@@ -125,8 +131,7 @@ describe('cleanup — setInterval / clearInterval', () => {
   let stubs, c
 
   beforeEach(() => {
-    stubs = installStubs()
-    c = loadCleanup()
+    ;({ c, stubs } = setupCleanup())
   })
 
   test('setInterval calls global setInterval and returns the id', () => {
@@ -175,10 +180,8 @@ describe('cleanup — setIntervalIfVisible', () => {
   let stubs, c
 
   beforeEach(() => {
-    stubs = installStubs()
     // setIntervalIfVisible checks document.hidden
-    globalThis.document = { hidden: false }
-    c = loadCleanup()
+    ;({ c, stubs } = setupCleanup({ document: { hidden: false } }))
   })
 
   test('setIntervalIfVisible registers a tracked interval', () => {
@@ -198,8 +201,7 @@ describe('cleanup — setTimeout / clearTimeout', () => {
   let stubs, c
 
   beforeEach(() => {
-    stubs = installStubs()
-    c = loadCleanup()
+    ;({ c, stubs } = setupCleanup())
   })
 
   test('setTimeout calls global setTimeout and returns the id', () => {
@@ -253,8 +255,7 @@ describe('cleanup — MutationObserver (trackObserver / untrackObserver)', () =>
   let stubs, c
 
   beforeEach(() => {
-    stubs = installStubs()
-    c = loadCleanup()
+    ;({ c, stubs } = setupCleanup())
   })
 
   test('trackObserver returns the observer and does not call disconnect', () => {
@@ -320,8 +321,7 @@ describe('cleanup — addEventListener (trackListener / untrackListener)', () =>
   let stubs, c
 
   beforeEach(() => {
-    stubs = installStubs()
-    c = loadCleanup()
+    ;({ c, stubs } = setupCleanup())
   })
 
   test('trackListener calls target.addEventListener with the right args', () => {
@@ -417,8 +417,7 @@ describe('cleanup — raf / cancelRaf', () => {
   let stubs, c
 
   beforeEach(() => {
-    stubs = installStubs()
-    c = loadCleanup()
+    ;({ c, stubs } = setupCleanup())
   })
 
   test('raf calls requestAnimationFrame and returns an id', () => {
@@ -462,9 +461,7 @@ describe('cleanup — destroyAll bulk + idempotency', () => {
   let stubs, c
 
   beforeEach(() => {
-    stubs = installStubs()
-    globalThis.document = { hidden: false }
-    c = loadCleanup()
+    ;({ c, stubs } = setupCleanup({ document: { hidden: false } }))
   })
 
   test('destroyAll with no tracked resources is safe (no throw)', () => {

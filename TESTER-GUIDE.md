@@ -1,4 +1,4 @@
-# heatsync extension beta test guide
+# heatsync extension test guide
 
 thanks for helping test! here's what to do.
 

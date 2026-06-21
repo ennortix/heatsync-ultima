@@ -156,7 +156,7 @@ function scheduleReconnect(prevChannels) {
     const ok = await connectAuthIrc(authState.token, authState.nick);
     if (ok === true) {
       for (const ch of (prevChannels || [])) await joinChannel(ch);
-      drainSendQueue();
+      await drainSendQueue();
       log('Auth IRC reconnected, rejoined:', (prevChannels || []).join(', ') || '(none)');
     } else if (ok !== 'auth_failed') {
       scheduleReconnect(prevChannels);
@@ -263,15 +263,28 @@ function joinChannel(channel) {
   });
 }
 
-function drainSendQueue() {
+async function drainSendQueue() {
+  // Join-gate every drain. A PRIVMSG to a channel we never JOINed is silently
+  // dropped by tmi.twitch.tv (no NOTICE). scheduleReconnect() can lose a queued
+  // channel from its rejoin list — it early-returns when a reconnect is already
+  // pending (authState.reconnectTimer), discarding the prevChannels passed in —
+  // so the queued message would otherwise drain into an unjoined channel. This
+  // is the authoritative guard regardless of what got rejoined.
   while (authState.sendQueue.length && authIrcAlive()) {
-    const { channel, text } = authState.sendQueue.shift();
+    const { channel, text } = authState.sendQueue[0]; // peek; shift only on success
+    if (!authState.joined.has(channel)) {
+      const joined = await joinChannel(channel);
+      // joinChannel awaits the JOIN ack (or 2s timeout). Bail if the socket died
+      // mid-join or the join didn't land — leave this + the rest queued for the
+      // next drain (reconnect / tab-focus / keepalive) rather than drop them.
+      if (!authIrcAlive() || !joined) break;
+    }
     try {
       authState.ws.send(`PRIVMSG #${channel} :${text}\r\n`);
+      authState.sendQueue.shift();
       log('Drained queued msg to #' + channel);
     } catch {
-      authState.sendQueue.unshift({ channel, text });
-      break;
+      break; // leave at queue head, retry next drain
     }
   }
 }

@@ -17,7 +17,11 @@ try {
 // Lifecycle controller — abort() tears down ALL listeners, timers, observers
 const lifecycle = new AbortController()
 const mcSignal = lifecycle.signal
-const _timers = { intervals: [], timeouts: [], observers: [] }
+// `persistent` holds interval ids that must survive an SPA channel reinit
+// (e.g. the module-load context-death detector below). fullSpaReinit() drains
+// every other per-channel timer so they don't stack one set per navigation,
+// but skips these. lifecycle.abort() (full teardown) still clears everything.
+const _timers = { intervals: [], timeouts: [], observers: [], persistent: new Set() }
 const _pendingRafs = new Set()
 // Singleton DOM nodes appended to <body> (tooltips, toasts, overlays). On
 // SPA reinit / pagehide, lifecycle.abort() removes them so they don't pile up
@@ -540,6 +544,8 @@ const _hsMcCtxDeathTimer = setInterval(() => {
   }
 }, 2000)
 _timers.intervals.push(_hsMcCtxDeathTimer)
+// Registered once at module load, NOT inside init() — must outlive SPA reinit.
+_timers.persistent.add(_hsMcCtxDeathTimer)
 
 // Port-based ctx-death detector (mirrors content.js). chrome.runtime.connect()
 // opens a long-lived port to BG; onDisconnect fires synchronously on ext

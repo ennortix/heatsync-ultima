@@ -8950,6 +8950,15 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     const msgsEl = document.getElementById('hs-mc-messages');
     if (!msgsEl) return;
 
+    // Consume the cache-restored flag exactly once per render, here — BEFORE the
+    // scrolled-up early-return below. If we only reset it at the fast-path site
+    // (further down), a scrolled-up render returns early and strands the flag
+    // true; the NEXT render — for a different, uncached tab — then wrongly takes
+    // the append-only "trust mounted DOM" path and bleeds the prior channel's
+    // messages into the new view. Capturing it now scopes it to this one render.
+    const justRestored = _cacheJustRestored;
+    _cacheJustRestored = false;
+
     const newBtn = document.getElementById('hs-mc-new-msgs');
 
     // Scrolled-up readers normally don't re-render (live msgs just bump the
@@ -9174,8 +9183,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // msgs the user didn't see yet (those whose key isn't in DOM). This
     // eliminates the brief "reorder shimmer" from fairMerge proportions
     // shifting after new msgs arrived during the user's absence.
-    if (_cacheJustRestored) {
-      _cacheJustRestored = false
+    if (justRestored) {
       const insertedKeys = new Set()
       for (let j = 0; j < toRender.length; j++) {
         const key = desiredKeys[j]
@@ -14143,6 +14151,23 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // Disconnect all tracked observers from previous channel to prevent accumulation
     _timers.observers.forEach(o => { try { o.disconnect() } catch {} })
     _timers.observers.length = 0
+    // Drain per-channel intervals/timeouts too. init() unconditionally re-registers
+    // its pollers (offline 5s/1s, YT-live 1.5s, kick 10s, YT watchdog 30s, ctx-death
+    // 1s, layout reinject 500ms) on every reinit; without this they stack one full
+    // live set per channel hop and never stop firing (unbounded leak). Persistent
+    // ids (bootstrap's module-load ctx-death detector) are kept — they're not
+    // re-registered by init(). The spa-reinit setTimeout below is registered AFTER
+    // this drain, so it survives.
+    _timers.intervals = _timers.intervals.filter(id => {
+      if (_timers.persistent.has(id)) return true
+      try { clearInterval(id) } catch {}
+      return false
+    })
+    _timers.timeouts = _timers.timeouts.filter(id => {
+      if (_timers.persistent.has(id)) return true
+      try { clearTimeout(id) } catch {}
+      return false
+    })
     mcInitialized = false; // Allow init() to run again
 
     // Reset social tab state (stale on nav)

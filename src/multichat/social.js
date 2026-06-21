@@ -93,7 +93,20 @@ let feedPage = 1;
 let feedHasMore = true;
 let feedLastFetch = 0; // Timestamp of last feed fetch
 let feedFromHotFallback = false; // true when /following was empty + we showed /hot instead
+let feedMoments = []; // recent chat-velocity spikes (server /api/moments) — the zero-user discovery band
 const FEED_STALE_MS = 120000; // 2 minutes
+
+// Decayed-intensity score for ranking moments. MUST stay identical to the
+// server's /api/moments ORDER BY and the site's port — single source of truth so
+// the band can't reorder/flicker between a live-insert and the next refetch.
+// rate/baseline normalises for channel size (a 50-chatter at 6× beats an
+// 800-chatter at 2×); ÷12 on minutes = ~8min half-life keeps the band fresh.
+function momentScore(mo) {
+  const rate = mo.rate || 0;
+  const baseline = Math.max(mo.baseline || 0, 1);
+  const ageMin = mo.created_at ? (Date.now() - new Date(mo.created_at).getTime()) / 60000 : 0;
+  return (rate / baseline) * Math.exp(-ageMin / 12);
+}
 
 // Feed scroll state — handler ref for teardown only, infinite-scroll trigger
 let _feedVirtualScrollHandler = null
@@ -534,6 +547,28 @@ function listenForSocialEvents() {
         }
       }
     }
+    if (msg.type === 'hs_moment' && msg.data) {
+      // A chat-velocity spike fired live. Insert it into the moments band at its
+      // ranked slot — a fresh spike appearing IS the retention hook. The WS
+      // payload has no sample[] (it renders the empty-state line); the next
+      // /api/moments refresh backfills the real chat lines.
+      const mo = msg.data
+      // Backstop the server's cooldown+floor: never surface a weak spike.
+      const mult = (mo.rate || 0) / Math.max(mo.baseline || 0, 1)
+      if (mult < 3) return
+      if (!feedLoaded) return
+      // Dedup by moment id, then collapse to one card per channel (keep this one).
+      if (mo.id != null && feedMoments.some(m => m.id != null && m.id === mo.id)) return
+      feedMoments = feedMoments.filter(m => !(m.platform === mo.platform && m.channel === mo.channel))
+      mo._isNew = true
+      feedMoments.unshift(mo)
+      // Re-rank by decayed intensity, cap 8 (drop the lowest, not the oldest).
+      feedMoments.sort((a, b) => momentScore(b) - momentScore(a))
+      if (feedMoments.length > 8) feedMoments.length = 8
+      if (currentTab === 'feed') renderFeed()
+      else updateTabIndicator('feed')
+      return
+    }
     if (msg.type === 'dm_new' && msg.data) {
       // Server-pushed Twitch whispers must route through handleIncomingWhisper
       // so the dedup key (whisper_id) matches the EventSub path. Using
@@ -935,6 +970,15 @@ async function fetchFeed(append = false) {
     }, 0)
     if (newestTs > 0) noteSeenEvent('live', newestTs)
   }
+  // Moments band — recent chat-velocity spikes off the native firehose. The
+  // discovery feed's zero-user content engine, so it loads regardless of auth
+  // or follow graph. Best-effort: a failure just hides the band, never the feed.
+  if (!append) {
+    try {
+      const moResp = await apiFetch('/api/moments?limit=8&hours=24', { auth: false });
+      feedMoments = moResp.ok ? (moResp.data?.moments || []) : [];
+    } catch (_) { feedMoments = []; }
+  }
   if (currentTab === 'feed') renderFeed();
 }
 
@@ -1071,6 +1115,13 @@ function renderFeed() {
   if (feedMessages.length === 0) {
     _feedVirtualTeardown(msgsEl)
     msgsEl.textContent = '';
+    // Moments first — a brand-new user with no posts still gets live, browsable
+    // "what's popping off right now" content instead of a dead empty wall.
+    if (feedMoments.length) {
+      const moFrag = document.createDocumentFragment()
+      _renderMomentsBand(moFrag)
+      msgsEl.appendChild(moFrag)
+    }
     msgsEl.appendChild(_renderFeedEmptyCard());
     return;
   }
@@ -1106,6 +1157,8 @@ function renderFeed() {
     banner.appendChild(sub)
     frag.appendChild(banner)
   }
+  // Moments band — live heat-spikes pinned above the post list (discovery hook).
+  _renderMomentsBand(frag)
   let zebraCount = 0
   for (let i = 0; i < items.length; i++) {
     const div = buildFeedMessageDiv(items[i])
@@ -1141,6 +1194,72 @@ function renderFeed() {
     }, 200)
   }
   msgsEl.addEventListener('scroll', _feedVirtualScrollHandler, { signal: mcSignal, passive: true })
+}
+
+// Moments band — render the top-N live spikes as a header + cards. Capped so it
+// stays a teaser, not a second feed. No-op when empty.
+function _renderMomentsBand(frag) {
+  const moments = Array.isArray(feedMoments) ? feedMoments.slice(0, 8) : []
+  if (!moments.length) return
+  const head = document.createElement('div')
+  head.className = 'hs-moment-band-head'
+  head.textContent = '🔥 popping off right now'
+  frag.appendChild(head)
+  for (const mo of moments) frag.appendChild(buildMomentDiv(mo))
+}
+
+// A single spike card: 🔥 header (platform + channel + velocity), stream context,
+// and a small native-chat sample. Click opens the stream. All dynamic values are
+// sanitized (escapeHtml / renderFeedContent) — mirrors buildFeedMessageDiv.
+function buildMomentDiv(mo) {
+  const div = document.createElement('div')
+  div.className = 'hs-feed-msg hs-feed-moment'
+  // Stale = aged past the freshness window; dims the velocity so the band reads
+  // newest-hottest at a glance. New = just live-inserted via WS; one-shot bg flip.
+  const _ageMin = mo.created_at ? (Date.now() - new Date(mo.created_at).getTime()) / 60000 : 0
+  if (_ageMin > 20) div.classList.add('hs-moment-stale')
+  if (mo._isNew) {
+    div.classList.add('hs-moment-new')
+    delete mo._isNew
+    cleanup.setTimeout(() => div.classList.remove('hs-moment-new'), 1200)
+  }
+  const plat = mo.platform === 'kick' ? 'kick' : mo.platform === 'youtube' ? 'youtube' : 'twitch'
+  const platLabel = plat === 'kick' ? '[K]' : plat === 'youtube' ? '[Y]' : '[T]'
+  const platColors = { twitch: '#9146ff', kick: '#53fc18', youtube: '#ff0000' }
+  const ch = (mo.channel || '').toString()
+  const time = formatRelativeTime(mo.created_at)
+  const timeHtml = window._hsTimestampsEnabled !== false ? `<span class="hs-feed-time">${escapeHtml(time)}</span>` : ''
+  const head = `<span class="hs-feed-tag hs-feed-tag-moment">🔥</span>`
+    + `<span class="hs-feed-tag" style="color:${platColors[plat]}">${platLabel}</span>`
+    + `<span class="hs-feed-user hs-moment-ch">${escapeHtml(ch)}</span>`
+    + `<span class="hs-feed-stat hs-moment-rate" title="chat velocity">${escapeHtml(String(mo.rate || 0))} msgs/30s</span>`
+    + `<span class="hs-feed-stat hs-moment-mult" title="vs baseline">${Math.round((mo.rate || 0) / Math.max(mo.baseline || 0, 1))}×</span>`
+  const ctx = mo.title
+    ? `<div class="hs-moment-ctx">${escapeHtml(mo.title)}${mo.game ? ` <span class="hs-moment-game">· ${escapeHtml(mo.game)}</span>` : ''}</div>`
+    : ''
+  let sampleHtml = ''
+  const sample = Array.isArray(mo.sample) ? mo.sample : []
+  for (const s of sample) {
+    const name = escapeHtml((s.display_name || s.username || '?').toString())
+    const body = renderFeedContent(s.message || '', s.emote_refs)
+    sampleHtml += `<div class="hs-moment-line"><span class="hs-moment-name">${name}</span> <span class="hs-feed-body">${body}</span></div>`
+  }
+  if (!sampleHtml) sampleHtml = `<div class="hs-moment-line hs-moment-empty">chat is exploding — click to jump in</div>`
+  div.innerHTML = `<div class="hs-moment-head">${timeHtml}${head}</div>${ctx}<div class="hs-moment-sample">${sampleHtml}</div>`
+  attachFeedFallbacks(div)
+  // Click → open the stream (twitch/kick only; never fabricate a YouTube /live URL).
+  const url = plat === 'kick' ? `https://kick.com/${encodeURIComponent(ch)}`
+    : plat === 'twitch' ? `https://www.twitch.tv/${encodeURIComponent(ch)}`
+    : null
+  if (url) {
+    div.style.cursor = 'pointer'
+    div.addEventListener('click', (e) => {
+      // let inner links (emote → 7tv etc.) handle their own clicks
+      if (e.target.closest('a')) return
+      try { window.open(url, '_blank', 'noopener') } catch (_) {}
+    })
+  }
+  return div
 }
 
 function buildFeedMessageDiv(m, opUsername) {

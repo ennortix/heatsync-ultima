@@ -4309,8 +4309,10 @@ function handleWSMessage(msg) {
       break
 
     case 'moment:spike':
-      // server-side heat spike — forward to tabs for the inline 🔥 notif
-      broadcastToTabs({ type: 'hs_moment', data: { platform: msg.platform, channel: msg.channel, rate: msg.rate, baseline: msg.baseline } })
+      // server-side heat spike — forward to tabs for the moments band + 🔥 notif.
+      // Carry id (dedup key for live-insert) + title/game (card context); dropping
+      // them silently broke dedup-by-id and the card title.
+      broadcastToTabs({ type: 'hs_moment', data: { id: msg.id, platform: msg.platform, channel: msg.channel, rate: msg.rate, baseline: msg.baseline, title: msg.title, game: msg.game } })
       break
 
     case 'irc:message': {

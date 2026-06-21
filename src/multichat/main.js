@@ -174,7 +174,10 @@
   }
 
   function isUserMuted(username, platform) {
-    if (!username) return false
+    // Called per-message in the append/build hot path. The common case is an
+    // empty mute set — short-circuit before getUserAliases allocates an array
+    // and lowercases for a guaranteed-false result.
+    if (!username || mutedUsers.size === 0) return false
     for (const a of getUserAliases(username, platform)) {
       if (mutedUsers.has(a)) return true
     }
@@ -182,7 +185,7 @@
   }
 
   function isUserBlocked(username, platform) {
-    if (!username) return false
+    if (!username || blockedUsers.size === 0) return false
     for (const a of getUserAliases(username, platform)) {
       if (blockedUsers.has(a)) return true
     }
@@ -1480,11 +1483,24 @@
   }
 
   // 7TV paint → CSS style string
+  // 7TV paint → CSS is static per paint object but getMcPaintStyle runs per
+  // sender + per @mention + inside updateCosmeticsInPlace, re-deriving the same
+  // gradient/shadow string (map/join/toFixed churn) every render. Memoize on the
+  // paint object: a WeakMap auto-evicts when the cosmetic is dropped, and keying
+  // on identity means a replaced paint recomputes with no manual invalidation.
+  const _mcPaintStyleCache = new WeakMap()
   function getMcPaintStyle(userId) {
     if (!getSetting('sevenTvPaints')) return ''
     const cosmetic = mcUserCosmetics.get(userId)
     const paint = cosmetic?.paint
     if (!paint || !paint.function) return ''
+    const cached = _mcPaintStyleCache.get(paint)
+    if (cached !== undefined) return cached
+    const style = _computeMcPaintStyle(paint)
+    _mcPaintStyleCache.set(paint, style)
+    return style
+  }
+  function _computeMcPaintStyle(paint) {
     const fn = paint.function.toLowerCase()
     if (fn === 'url' && paint.image_url) {
       if (!/^https:\/\//.test(paint.image_url)) return ''
@@ -8601,7 +8617,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       stripMcMutedMessage(div);
     }
 
-    updateTabBadges();
+    // No updateTabBadges() here: it only refreshes the mentions/whispers/feed
+    // "unseen" badges, whose state changes solely via noteSeenEvent/bumpSeen
+    // (both already call refreshSeenBadges). A plain incoming chat message can't
+    // change it, so calling it per-append was 3 querySelectors/msg of pure waste.
     scrollMsgsToBottom(msgsEl);
     return true;
   }

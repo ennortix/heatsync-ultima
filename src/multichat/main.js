@@ -1221,6 +1221,18 @@
   // sender is re-validated once per session (picks up adds made since last visit).
   const senderEmoteFetchedAt = new Map() // senderKey -> ts
   const SENDER_EMOTE_REFETCH_MS = 5 * 60 * 1000
+  // Keep this freshness map bounded to the SAME cap as the backing emote store
+  // (emotes.js senderEmoteSets / SENDER_EMOTE_LRU_MAX — shared multichat block
+  // scope). Otherwise it grows unbounded AND diverges: once the store LRU-evicts
+  // a sender, a stale "fresh" entry here would wrongly suppress the re-fetch that
+  // would reload their emotes. delete-then-set bumps LRU recency on each write.
+  function markSenderEmoteFetched(senderKey, ts) {
+    senderEmoteFetchedAt.delete(senderKey)
+    senderEmoteFetchedAt.set(senderKey, ts)
+    if (senderEmoteFetchedAt.size > SENDER_EMOTE_LRU_MAX) {
+      senderEmoteFetchedAt.delete(senderEmoteFetchedAt.keys().next().value)
+    }
+  }
 
   function resolveSenderEmoteKey(m) {
     if (!m) return null
@@ -1278,7 +1290,7 @@
         // also disappear here; merge was the bleed: removed emotes lingered
         // forever and rendered for other viewers until the cache was nuked.
         const changed = replaceSenderEmotes(key, emotes[key] || {})
-        senderEmoteFetchedAt.set(key, now)
+        markSenderEmoteFetched(key, now)
         if (changed) changedKeys.push(key)
       }
       if (changedKeys.length) upgradeMessagesForSenders(changedKeys)
@@ -1286,7 +1298,7 @@
       // Network/IPC failure — seed empty sentinel + freshness so the next render
       // doesn't re-queue immediately (retries after the TTL).
       const now = Date.now()
-      for (const key of batch) { mergeSenderEmotes(key, {}); senderEmoteFetchedAt.set(key, now) }
+      for (const key of batch) { mergeSenderEmotes(key, {}); markSenderEmoteFetched(key, now) }
     })
     if (senderEmotePending.size > 0) {
       senderEmoteTimer = cleanup.setTimeout(() => { senderEmoteTimer = null; flushSenderEmoteBatch() }, 500)
@@ -2683,7 +2695,16 @@
     const ch = channel.toLowerCase()
     const u = username.toLowerCase()
     let set = seenChattersByChannel.get(ch)
-    if (!set) { set = new Set(); seenChattersByChannel.set(ch, set) }
+    if (!set) {
+      set = new Set(); seenChattersByChannel.set(ch, set)
+      // Bound the OUTER map too: each unique channel ever visited (config +
+      // every SPA-nav target) otherwise keeps its ~5000-name Set for the whole
+      // session. Evict the oldest channel past a generous cap — mirrors the
+      // LRU on knownColors/knownUserIds/mcUserCosmetics.
+      if (seenChattersByChannel.size > 64) {
+        seenChattersByChannel.delete(seenChattersByChannel.keys().next().value)
+      }
+    }
     if (set.has(u)) return false
     set.add(u)
     // LRU cap to 5000 per channel

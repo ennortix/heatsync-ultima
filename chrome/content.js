@@ -7076,19 +7076,10 @@ function updateEmoteState(hash, emoteName, state) {
     return d.innerHTML
   }
 
-  function safeUrl(url) {
-    if (!url || typeof url !== 'string') return ''
-    // Defense-in-depth: explicit deny before parsing — guards against URL() oddities
-    // (lone strings like "javascript:alert(1)" do parse and return that protocol)
-    const head = url.trim().slice(0, 32).toLowerCase()
-    if (head.startsWith('javascript:') || head.startsWith('data:') ||
-        head.startsWith('vbscript:') || head.startsWith('blob:') ||
-        head.startsWith('file:') || head.startsWith('about:')) return ''
-    try {
-      const u = new URL(url)
-      return (u.protocol === 'https:' || u.protocol === 'http:') ? u.href : ''
-    } catch { return '' }
-  }
+  // safeUrl is provided by the auto-bundled lib (src/lib/utils.js) at an
+  // enclosing scope — it adds zero-width/control-char stripping (_INVISIBLE_RE)
+  // this file's old local copy lacked. Do NOT re-add a local one: it would
+  // shadow the hardened version and silently miss future lib hardening.
 
   function formatNum(n) {
     if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M'

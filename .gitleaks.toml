@@ -1,0 +1,17 @@
+# gitleaks config — extends default ruleset, allowlists known-public / test values.
+# all entries below are NOT secrets: twitch's public web client id, public graphql
+# persisted-query hashes, and redaction-test fixtures.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "twitch's public web client id (hardcoded in twitch's own site, public knowledge)"
+regexes = ['''kimne78kx3ncx6brgo4mv6wki5h1ko''']
+
+[[allowlists]]
+description = "public twitch graphql persisted-query hashes (captured from twitch's own client)"
+paths = ['''chrome/early-inject-main\.js''']
+
+[[allowlists]]
+description = "redaction-test fixtures — fake jwt/secret strings used to test the redactor"
+paths = ['''tests/error-reporter\.test\.js''']

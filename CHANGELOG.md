@@ -1,5 +1,23 @@
 # changelog
 
+## [1.7.4] — 2026-06-21
+
+### fixed
+- **youtube suggestions strip** — the opt-in "up next" strip showed an empty box with no thumbnails; the related videos load now. it also no longer floats on its own over normal (non-live) youtube where there's no chat, and the video no longer overshoots/clips or covers the strip after you resize the window.
+- **collapse button** — switching channels no longer eats the collapse (`>`) button; it lives in the tab bar.
+- **duplicate mod notices** — timeout/ban messages no longer repeat across the different chat connections.
+- **copy message** — copying a chat message keeps the text around emotes intact and interleaved instead of dropping it.
+- **chat reliability** — queued messages can't be sent to a channel you haven't joined yet; per-channel timers and caches are cleaned up on navigation so long sessions stay light.
+
+### added
+- **font size slider** — chat font size is a 10–22 slider in settings (replacing the F-/F+ buttons) and applies on first paint.
+- **one-click channel import** — an empty inventory offers to pull in the current channel's emotes in one click.
+- **moments band** — a live heat-spike band in the multichat feed surfaces what people are reacting to.
+
+### changed
+- status, loading, and error banners moved below the search/filter bar so they don't shove the input around on reload.
+- performance: trimmed per-message render work (badges, paint, mute/block checks).
+
 ## [1.7.1] — 2026-06-15
 
 ### fixed

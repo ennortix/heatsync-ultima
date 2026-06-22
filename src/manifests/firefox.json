@@ -2,11 +2,10 @@
   "manifest_version": 2,
   "default_locale": "en",
   "name": "__MSG_manifest_name__",
-  "version": "1.7.3",
+  "version": "1.7.4",
   "description": "__MSG_manifest_description__",
   "author": "heatsync.org",
   "homepage_url": "https://heatsync.org",
-
   "permissions": [
     "storage",
     "unlimitedStorage",
@@ -37,51 +36,88 @@
     "https://www.youtube.com/*",
     "https://api.chatterino.com/badges"
   ],
-
   "content_security_policy": "script-src 'self'; object-src 'none'",
-
   "background": {
-    "scripts": ["background.js"]
+    "scripts": [
+      "background.js"
+    ]
   },
-
   "content_scripts": [
     {
-      "matches": ["https://*.twitch.tv/*"],
-      "js": ["early-inject-main.js"],
+      "matches": [
+        "https://*.twitch.tv/*"
+      ],
+      "js": [
+        "early-inject-main.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN"
     },
     {
-      "matches": ["https://kick.com/*", "https://*.kick.com/*"],
-      "js": ["kick-nav-watcher.js"],
+      "matches": [
+        "https://kick.com/*",
+        "https://*.kick.com/*"
+      ],
+      "js": [
+        "kick-nav-watcher.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN"
     },
     {
-      "matches": ["https://www.youtube.com/*"],
-      "js": ["youtube-keyboard-guard.js"],
+      "matches": [
+        "https://www.youtube.com/*"
+      ],
+      "js": [
+        "youtube-keyboard-guard.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN"
     },
     {
-      "matches": ["https://*.twitch.tv/*", "https://kick.com/*", "https://*.kick.com/*", "https://www.youtube.com/*"],
-      "js": ["early-layout.js", "pcard-early.js"],
+      "matches": [
+        "https://*.twitch.tv/*",
+        "https://kick.com/*",
+        "https://*.kick.com/*",
+        "https://www.youtube.com/*"
+      ],
+      "js": [
+        "early-layout.js",
+        "pcard-early.js"
+      ],
       "run_at": "document_start"
     },
     {
-      "matches": ["https://*.twitch.tv/*", "https://kick.com/*", "https://*.kick.com/*", "https://www.youtube.com/*"],
-      "js": ["vi-mode.js"],
+      "matches": [
+        "https://*.twitch.tv/*",
+        "https://kick.com/*",
+        "https://*.kick.com/*",
+        "https://www.youtube.com/*"
+      ],
+      "js": [
+        "vi-mode.js"
+      ],
       "run_at": "document_end"
     },
     {
-      "matches": ["https://*.twitch.tv/*"],
-      "js": ["emoji-data.js", "autocomplete-hook.js"],
+      "matches": [
+        "https://*.twitch.tv/*"
+      ],
+      "js": [
+        "emoji-data.js",
+        "autocomplete-hook.js"
+      ],
       "run_at": "document_end",
       "world": "MAIN"
     },
     {
-      "matches": ["https://kick.com/*", "https://*.kick.com/*"],
-      "js": ["kick-autocomplete-hook.js"],
+      "matches": [
+        "https://kick.com/*",
+        "https://*.kick.com/*"
+      ],
+      "js": [
+        "kick-autocomplete-hook.js"
+      ],
       "run_at": "document_end"
     },
     {
@@ -91,40 +127,76 @@
         "https://*.kick.com/*",
         "https://heatsync.org/*"
       ],
-      "js": ["emoji-data.js", "shared-utils.js", "platform-detector.js", "chat-injector.js", "content.js"],
-      "css": ["injected-message.css"],
+      "js": [
+        "emoji-data.js",
+        "shared-utils.js",
+        "platform-detector.js",
+        "chat-injector.js",
+        "content.js"
+      ],
+      "css": [
+        "injected-message.css"
+      ],
       "run_at": "document_end"
     },
     {
-      "matches": ["https://*.twitch.tv/*", "https://kick.com/*", "https://*.kick.com/*"],
-      "js": ["heatsync-button.js"],
+      "matches": [
+        "https://*.twitch.tv/*",
+        "https://kick.com/*",
+        "https://*.kick.com/*"
+      ],
+      "js": [
+        "heatsync-button.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://*.twitch.tv/*", "https://kick.com/*", "https://*.kick.com/*", "https://www.youtube.com/*"],
-      "js": ["emoji-data.js", "shared-utils.js", "multichat.js"],
+      "matches": [
+        "https://*.twitch.tv/*",
+        "https://kick.com/*",
+        "https://*.kick.com/*",
+        "https://www.youtube.com/*"
+      ],
+      "js": [
+        "emoji-data.js",
+        "shared-utils.js",
+        "multichat.js"
+      ],
       "run_at": "document_end"
     },
     {
-      "matches": ["https://www.youtube.com/live_chat*"],
-      "js": ["emoji-data.js", "shared-utils.js", "platform-detector.js"],
+      "matches": [
+        "https://www.youtube.com/live_chat*"
+      ],
+      "js": [
+        "emoji-data.js",
+        "shared-utils.js",
+        "platform-detector.js"
+      ],
       "run_at": "document_end",
       "all_frames": true
     },
     {
-      "matches": ["https://www.youtube.com/live_chat*"],
-      "js": ["heatsync-button.js"],
+      "matches": [
+        "https://www.youtube.com/live_chat*"
+      ],
+      "js": [
+        "heatsync-button.js"
+      ],
       "run_at": "document_idle",
       "all_frames": true
     },
     {
-      "matches": ["https://www.youtube.com/live_chat*"],
-      "js": ["youtube-content.js"],
+      "matches": [
+        "https://www.youtube.com/live_chat*"
+      ],
+      "js": [
+        "youtube-content.js"
+      ],
       "run_at": "document_end",
       "all_frames": true
     }
   ],
-
   "browser_action": {
     "default_popup": "popup.html",
     "default_icon": {
@@ -133,15 +205,12 @@
     },
     "default_title": "__MSG_manifest_name__"
   },
-
-
   "icons": {
     "16": "icon-16.png",
     "48": "icon-48.png",
     "96": "icon-96.png",
     "128": "icon-128.png"
   },
-
   "web_accessible_resources": [
     "icon-16.png",
     "icon-48.png",
@@ -150,13 +219,14 @@
     "fonts/CozetteVector.woff2",
     "fonts/GohuFont-14.woff2"
   ],
-
   "browser_specific_settings": {
     "gecko": {
       "id": "heatsync@heatsync.org",
       "strict_min_version": "128.0",
       "data_collection_permissions": {
-        "required": ["authenticationInfo"]
+        "required": [
+          "authenticationInfo"
+        ]
       }
     }
   }

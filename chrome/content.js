@@ -8953,6 +8953,10 @@ function _extractMessageText(msgEl) {
     const walk = (node) => {
       if (node.nodeType === 3) { parts.push(node.textContent); return; }
       if (node.nodeType !== 1) return;
+      // Skip emote-stack control glyphs (× collapse, ⊘ block-all) — they're UI
+      // affordances, not message content, and would leak into the clipboard.
+      const cls = node.classList;
+      if (cls && (cls.contains('heatsync-stack-collapse') || cls.contains('heatsync-stack-block-all'))) return;
       if (node.tagName === 'IMG') { if (node.alt) parts.push(node.alt); return; }
       for (const child of node.childNodes) walk(child);
     };

@@ -1601,7 +1601,7 @@ function _extractMcMsgText(msg) {
     if (node.nodeType === 3) { parts.push(node.textContent); return }
     if (node.nodeType !== 1) return
     const cls = node.classList
-    if (cls?.contains('hs-mc-platform-badge') || cls?.contains('hs-mc-badge') || cls?.contains('hs-mc-time') || cls?.contains('hs-mc-reply-ctx') || cls?.contains('hs-mc-reply-btn') || cls?.contains('hs-mod-toolbar')) return
+    if (cls?.contains('hs-mc-platform-badge') || cls?.contains('hs-mc-badge') || cls?.contains('hs-mc-time') || cls?.contains('hs-mc-reply-ctx') || cls?.contains('hs-mc-reply-btn') || cls?.contains('hs-mod-toolbar') || cls?.contains('hs-mc-stack-collapse') || cls?.contains('hs-mc-stack-block-all')) return
     if (node.tagName === 'IMG') { if (node.alt) parts.push(node.alt); return }
     if (cls?.contains('hs-mc-emoji')) { parts.push(node.textContent || ''); return }
     for (const child of node.childNodes) walk(child)

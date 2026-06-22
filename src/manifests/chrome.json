@@ -3,6 +3,7 @@
   "minimum_chrome_version": "116",
   "default_locale": "en",
   "name": "__MSG_manifest_name__",
+  "short_name": "heatsync",
   "version": "1.7.4",
   "description": "__MSG_manifest_description__",
   "author": "heatsync.org",
@@ -204,7 +205,7 @@
       "16": "icon-16.png",
       "48": "icon-48.png"
     },
-    "default_title": "__MSG_manifest_name__"
+    "default_title": "heatsync"
   },
   "icons": {
     "16": "icon-16.png",

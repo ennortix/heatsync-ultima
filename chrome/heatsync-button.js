@@ -937,6 +937,19 @@
         font-size: 13px;
       }
 
+      /* Empty-inventory cold-start CTA */
+      .hs-coldstart {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        padding: 28px 20px;
+        text-align: center;
+      }
+      .hs-coldstart-title { color: #fff; font-size: 14px; font-weight: 600; }
+      .hs-coldstart-sub { color: #a0a0a0; font-size: 13px; max-width: 260px; line-height: 1.4; }
+      .hs-coldstart .hs-import-channel-btn { flex: none; padding: 6px 14px; }
+
       /* Saved emote sets list */
       .heatsync-sets-list {
         display: flex;
@@ -2530,6 +2543,66 @@
     return 'provider-unknown';
   }
 
+  // One-click "import all of a channel's 7TV/BTTV/FFZ emotes into your set".
+  // Shared by the channel-tab bar and the empty-inventory cold-start CTA.
+  async function hsImportChannel(btn, channel, label, onSuccess) {
+    btn.disabled = true
+    btn.textContent = 'importing…'
+    const reset = () => { btn.textContent = label; btn.style.borderColor = ''; btn.style.color = ''; btn.disabled = false }
+    const fail = (msg) => { btn.textContent = msg || 'failed'; btn.style.borderColor = '#ff4444'; btn.style.color = '#ff4444'; setTimeout(reset, 2000) }
+    try {
+      const platform = window.heatsyncPlatform?.detectPlatform() || 'twitch'
+      const resp = await chrome.runtime.sendMessage({
+        type: 'api_fetch',
+        path: '/api/user/emotes/import-channel',
+        method: 'POST',
+        auth: true,
+        body: { channel, platform }
+      })
+      if (resp && resp.ok !== false) {
+        const n = resp.data?.imported ?? resp.imported ?? resp.data?.count ?? '?'
+        btn.textContent = `imported ${n}`
+        btn.style.borderColor = '#00cc66'
+        btn.style.color = '#00cc66'
+        await loadInventoryEmotes()
+        fetchHistoryStatus()
+        if (onSuccess) onSuccess(n)
+        else setTimeout(reset, 2000)
+      } else {
+        fail(resp?.error)
+      }
+    } catch (err) {
+      fail()
+    }
+  }
+
+  // Empty-inventory cold-start: the moment a logged-in user's set is empty, point
+  // them straight at the one-click channel import (the feature already exists, it
+  // was just unsurfaced) instead of a dead-end "no emotes" message.
+  function renderInventoryColdStart(grid) {
+    grid.innerHTML = ''
+    const wrap = document.createElement('div')
+    wrap.className = 'hs-coldstart'
+    wrap.innerHTML = `<div class="hs-coldstart-title">your emote set is empty</div>`
+    const sub = document.createElement('div')
+    sub.className = 'hs-coldstart-sub'
+    if (!currentChannel) {
+      sub.textContent = 'open any twitch, kick or youtube stream, then import its emotes from the channel tab — one click, works in every chat.'
+      wrap.appendChild(sub)
+      grid.appendChild(wrap)
+      return
+    }
+    sub.textContent = `pull every 7tv, bttv & ffz emote from ${currentChannel} into your set — one click, renders in every chat.`
+    const btn = document.createElement('button')
+    btn.className = 'hs-import-channel-btn'
+    const label = `import all of ${currentChannel}'s emotes`
+    btn.textContent = label
+    btn.addEventListener('click', () => hsImportChannel(btn, currentChannel, label, () => renderEmoteGrid()))
+    wrap.appendChild(sub)
+    wrap.appendChild(btn)
+    grid.appendChild(wrap)
+  }
+
   function renderEmoteGrid(opts) {
     const grid = document.getElementById('heatsync-emote-grid');
     if (!grid) return;
@@ -2632,6 +2705,9 @@
       _virtualRecentCount = 0
       if (currentTab === 'mine' && !isLoggedIn) {
         grid.innerHTML = `<div class="heatsync-login-msg">${t('btn_login_save_emotes')}</div>`;
+      } else if (currentTab === 'mine' && isLoggedIn && !searchQuery) {
+        // genuinely-empty inventory (not a no-match search) → cold-start CTA
+        renderInventoryColdStart(grid)
       } else {
         grid.innerHTML = `<div class="heatsync-empty">${t('btn_no_emotes')}</div>`;
       }
@@ -2668,55 +2744,7 @@
       const importBtn = document.createElement('button')
       importBtn.className = 'hs-import-channel-btn'
       importBtn.textContent = 'import all channel emotes'
-      importBtn.addEventListener('click', async () => {
-        importBtn.disabled = true
-        importBtn.textContent = 'importing…'
-        try {
-          const platform = window.heatsyncPlatform?.detectPlatform() || 'twitch'
-          const resp = await chrome.runtime.sendMessage({
-            type: 'api_fetch',
-            path: '/api/user/emotes/import-channel',
-            method: 'POST',
-            auth: true,
-            body: { channel: currentChannel, platform }
-          })
-          if (resp && resp.ok !== false) {
-            const n = resp.data?.imported ?? resp.imported ?? resp.data?.count ?? '?'
-            importBtn.textContent = `imported ${n}`
-            importBtn.style.borderColor = '#00cc66'
-            importBtn.style.color = '#00cc66'
-            await loadInventoryEmotes()
-            fetchHistoryStatus()
-            // Re-enable so the user can import again (e.g. after broadcaster adds emotes)
-            setTimeout(() => {
-              importBtn.textContent = 'import all channel emotes'
-              importBtn.style.borderColor = ''
-              importBtn.style.color = ''
-              importBtn.disabled = false
-            }, 2000)
-          } else {
-            importBtn.textContent = resp?.error || 'failed'
-            importBtn.style.borderColor = '#ff4444'
-            importBtn.style.color = '#ff4444'
-            setTimeout(() => {
-              importBtn.textContent = 'import all channel emotes'
-              importBtn.style.borderColor = ''
-              importBtn.style.color = ''
-              importBtn.disabled = false
-            }, 2000)
-          }
-        } catch (err) {
-          importBtn.textContent = 'failed'
-          importBtn.style.borderColor = '#ff4444'
-          importBtn.style.color = '#ff4444'
-          setTimeout(() => {
-            importBtn.textContent = 'import all channel emotes'
-            importBtn.style.borderColor = ''
-            importBtn.style.color = ''
-            importBtn.disabled = false
-          }, 2000)
-        }
-      })
+      importBtn.addEventListener('click', () => hsImportChannel(importBtn, currentChannel, 'import all channel emotes'))
       bar.appendChild(importBtn)
       grid.appendChild(bar)
     }

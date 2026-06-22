@@ -1,5 +1,10 @@
 # changelog
 
+## [1.7.5] — 2026-06-21
+
+### changed
+- **wedge-first naming + copy** — the extension name, store listing, welcome screen, and logged-out prompts now lead with what heatsync does for you: your own emotes in any twitch, kick, or youtube chat. the short name stays "heatsync" for the toolbar.
+
 ## [1.7.4] — 2026-06-21
 
 ### fixed

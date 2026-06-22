@@ -773,6 +773,21 @@ function listenForSocialEvents() {
       if (msg.status === 'connected') {
         try { touchYtChannel(targetChannelId) } catch {}
       }
+      // Stream genuinely ended → disarm the YT watchdog for this channel.
+      // The watchdog never gives up on its own (after a force-reconnect it
+      // resets attempts and loops forever), so without this an ended stream
+      // re-subscribes every ~3min and periodically force-reconnects the shared
+      // BG WS that every channel rides — the "everything dropped, refresh fixed
+      // it" symptom (Bug #2). A transient 'error' may still recover, so only a
+      // terminal 'ended' disarms; the next 'connected' re-arms via touchYtChannel.
+      // Mirrors the removeChannel watchdog cleanup.
+      if (msg.status === 'ended' && targetChannelId && targetChannelId !== 'global') {
+        try {
+          ytChanLastSeen.delete(targetChannelId)
+          ytChanRejoinAttempts.delete(targetChannelId)
+          ytSubscribedUrls.delete(targetChannelId)
+        } catch {}
+      }
       // Track auto-YouTube videoId for cross-tab filtering
       if (targetChannelId === '__live_yt_auto__' && msg.status === 'connected' && msg.videoId) {
         _autoYtVideoId = msg.videoId

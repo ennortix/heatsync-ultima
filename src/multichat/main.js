@@ -2851,8 +2851,8 @@
     // Static hardcoded layout — only static strings, no user input, safe innerHTML
     const searchPlaceholder = 'search messages…'
     overlay.innerHTML = `
+      <button id="hs-mc-collapse-btn" type="button" title="hide chat (\\)" aria-label="hide chat"></button>
       <div id="hs-mc-statusbar">
-        <button id="hs-mc-collapse-btn" type="button" title="hide chat (\\)" aria-label="hide chat"></button>
         <div id="hs-notif-layer-statusbar" class="hs-notif-layer hs-notif-layer-statusbar"></div>
       </div>
       <div id="hs-mc-search-bar">

@@ -402,7 +402,7 @@ const HsNotifs = (() => {
   // with an undefined/missing error code produced an unclickable square).
   registerType('toast', {
     layer: 'statusbar',
-    timeout: 4000,
+    timeout: 2000,
     clickToDismiss: true,
     // Dedupe identical text — repeated kick/twitch send failures used to
     // stack one toast per attempt, crowding the chat. Same text+level now

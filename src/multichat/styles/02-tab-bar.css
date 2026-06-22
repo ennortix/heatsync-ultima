@@ -16,7 +16,15 @@
       z-index: 10;
       align-items: flex-start;
       box-sizing: border-box;
+      /* Mode-agnostic scrollbar hide: any tab state that ends up scrollable
+         (top/bottom 33vh cap, vertical column, or an unclassed popout) keeps
+         wheel-scroll but never paints chrome. Per-mode rules below are now a
+         redundant backstop. Covers Firefox (scrollbar-width) + Chrome (webkit). */
+      scrollbar-width: none;
     }
+    #hs-mc-tabbar::-webkit-scrollbar,
+    .hs-mc-tabs-scroll::-webkit-scrollbar { width: 0; height: 0; display: none; }
+    .hs-mc-tabs-scroll { scrollbar-width: none; }
 
     /* Chatterino-style composable tab states: idle → has-new → active.
        Channel tabs default to fluid (flex:1 1 auto) — adjacent tabs share

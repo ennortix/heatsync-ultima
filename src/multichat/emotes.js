@@ -1645,6 +1645,16 @@
     }
     // Add/update fresh names
     for (const [name, data] of Object.entries(fresh)) {
+      // Validate cross-user emote urls before caching. These come from other
+      // viewers' sets (public /api/users/emotes/batch) and are otherwise only
+      // escapeHtml'd at render — never scheme-checked. Reject non-http(s) so a
+      // crafted javascript:/data:/blob: url can't become an <img src> beacon or
+      // feed the data-emote-url window.open sink on every viewer who renders it.
+      if (data && data.url) {
+        let u = String(data.url)
+        if (u.startsWith('//')) u = 'https:' + u
+        if (!safeUrl(u)) { if (inner.delete(name)) changed = true; continue }
+      }
       const prev = inner.get(name)
       if (!prev || prev.url !== data.url || prev.state !== data.state || prev.source !== data.source) {
         inner.set(name, data); changed = true

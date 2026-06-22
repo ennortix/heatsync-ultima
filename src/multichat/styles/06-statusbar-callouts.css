@@ -1,57 +1,30 @@
-    /* === Statusbar — transient toast overlay pinned at chat-top. ZERO footprint
-       when idle (absolute, no reserved row); paints a single-line dropdown only
-       while a toast is showing, then auto-dismisses. btop/dwl density. */
+    /* === Statusbar — a status/toast line that sits just under the tabs. ZERO
+       footprint when idle (collapses out of flow entirely); becomes a single
+       1-line bar only while a toast is showing, then auto-dismisses (~2s).
+       In-flow (not absolute) so it can never overlap the tab bar. */
     #hs-mc-statusbar {
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      z-index: 6;
+      flex: 0 0 auto;
       display: flex;
       align-items: stretch;
       min-height: 0;
-      pointer-events: none; /* idle bar never blocks clicks into chat */
-    }
-    /* Only paint (and right-pad clear of the floating collapse btn) when populated. */
-    #hs-mc-statusbar:has(.hs-notif) {
       background: #0a0a0d;
       border-bottom: 1px solid #2a2a2e;
-      padding-right: 26px;
-      pointer-events: auto;
+      overflow: hidden;
     }
-    /* Floating collapse control — top corner, no reserved row. Drops the chat
-       column (restore via the orange pill + the \ key). Hidden in popout (the
-       window IS the chat — nothing to collapse). */
-    #hs-mc-collapse-btn {
-      position: absolute;
-      top: 2px;
-      right: 2px;
-      z-index: 7;
-      width: 22px;
-      height: 18px;
-      padding: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: rgba(10,10,13,0.7);
-      color: #fff;
-      border: 1px solid #2a2a2e;
-      border-radius: 0;
-      cursor: pointer;
-      font: 700 14px/1 ui-monospace, 'JetBrains Mono', 'Cascadia Mono', 'SF Mono', Menlo, Consolas, monospace;
-      transition: background 80ms linear, color 80ms linear;
-    }
-    /* Anchor to the dock edge it collapses toward; glyph reads as "push away". */
-    body.hs-chat-left #hs-mc-collapse-btn { right: auto; left: 2px; }
+    /* No toast → no bar at all. Reclaims the row; never a reserved gap. */
+    #hs-mc-statusbar:not(:has(.hs-notif)) { display: none; }
+
+    /* The collapse '>' now lives in the tab bar's util cluster (flush square,
+       styled by .hs-mc-util-btn). Here we only set its position-aware glyph
+       (points toward the dock edge it collapses to) + hide it in popout, where
+       the window IS the chat so there's nothing to collapse. */
     #hs-mc-collapse-btn::before { content: '>'; }
     body.hs-chat-left   #hs-mc-collapse-btn::before { content: '<'; }
     body.hs-chat-top    #hs-mc-collapse-btn::before { content: '\\2303'; }
     body.hs-chat-bottom #hs-mc-collapse-btn::before { content: '\\2304'; }
-    #hs-mc-collapse-btn:hover { background: #fff; color: #000; }
-    #hs-mc-collapse-btn:focus-visible { outline: 1px solid #ff8700; outline-offset: -2px; }
     body.hs-popout #hs-mc-collapse-btn { display: none; }
 
-    /* Toast slot — single-line dropdown inside the transient overlay; gone when empty. */
+    /* Toast slot — single-line status text; gone when empty. */
     .hs-notif-layer-statusbar {
       position: static;
       z-index: auto;

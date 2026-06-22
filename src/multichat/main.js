@@ -2479,6 +2479,7 @@
           <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="-1" title="${t('mc_btn_smaller_text')}">F-</button>
           <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="1" title="${t('mc_btn_larger_text')}">F+</button>
           <button class="hs-mc-tab hs-mc-util-btn" data-tab="settings" title="${t('mc_btn_settings')}">\u2699</button>
+          <button class="hs-mc-tab hs-mc-util-btn hs-mc-collapse-btn" id="hs-mc-collapse-btn" data-tab="collapse" title="hide chat (\\)" aria-label="hide chat"></button>
           <button class="hs-mc-tab hs-mc-util-btn hs-mc-popout-btn" data-tab="popout" title="pop out chat to standalone window" style="display:none">\u26f6</button>
         </div>
         <div id="hs-mc-platfilter"></div>
@@ -2505,6 +2506,8 @@
         openPopoutForCurrentTab();
       } else if (tabId === 'live') {
         showLiveChannelPicker(tab);
+      } else if (tabId === 'collapse') {
+        toggleChatHidden();
       } else if (tabId === 'settings' && currentTab === 'settings') {
         switchTab(prevTab || 'feed');
       } else {
@@ -2851,7 +2854,6 @@
     // Static hardcoded layout — only static strings, no user input, safe innerHTML
     const searchPlaceholder = 'search messages…'
     overlay.innerHTML = `
-      <button id="hs-mc-collapse-btn" type="button" title="hide chat (\\)" aria-label="hide chat"></button>
       <div id="hs-mc-statusbar">
         <div id="hs-notif-layer-statusbar" class="hs-notif-layer hs-notif-layer-statusbar"></div>
       </div>
@@ -2872,12 +2874,6 @@
       const msgsDiv = overlay.querySelector('#hs-mc-messages');
       if (msgsDiv) msgsDiv.style.setProperty('--hs-chat-font', savedFontSize + 'px');
     }
-
-    // Statusbar collapse button → hide the whole chat (same as the \ key /
-    // restore pill). Right-click clears any unread indicators site-wide, but
-    // here it just hides too — the button has one job.
-    const collapseBtn = overlay.querySelector('#hs-mc-collapse-btn');
-    if (collapseBtn) cleanup.addEventListener(collapseBtn, 'click', () => toggleChatHidden());
 
     // Setup scroll detection after DOM insertion
     cleanup.setTimeout(() => {

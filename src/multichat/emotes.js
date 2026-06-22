@@ -2272,7 +2272,7 @@
         if (state === 'unadded' && inventoryEmotes.has(emoteName)) state = 'owned'
         const safeName = escapeHtml(emoteName)
         const chatUrl = getChatResUrl(finalUrl)
-        const safeUrl = escapeHtml(chatUrl)
+        const safeUrlAttr = escapeHtml(chatUrl)
         const safeSrc = escapeHtml(staticEmoteSrc(chatUrl))
         const safeProvider = escapeHtml(provider)
         const safeHash = cached?.hash ? escapeHtml(cached.hash) : ''
@@ -2281,7 +2281,7 @@
         const nsfwClass = cached?.nsfw ? ' hs-state-nsfw' : ''
         const _boxW = _hsEmoteBoxW.get(chatUrl)
         const wAttr = _boxW ? ` style="width:${_boxW}px"` : ''
-        const imgHtmlRaw = `<span class="hs-mc-emote-wrapper hs-state-${state}${nsfwClass}" data-emote-name="${safeName}" data-emote-url="${safeUrl}" data-state="${state}" data-source="${safeProvider}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}${wAttr}><img src="${safeSrc}" alt="${safeName}" title="${titleAttr}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${safeName}" data-state="${state}" data-source="${safeProvider}"${ownerAttr} loading="lazy" decoding="async"></span>`
+        const imgHtmlRaw = `<span class="hs-mc-emote-wrapper hs-state-${state}${nsfwClass}" data-emote-name="${safeName}" data-emote-url="${safeUrlAttr}" data-state="${state}" data-source="${safeProvider}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}${wAttr}><img src="${safeSrc}" alt="${safeName}" title="${titleAttr}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${safeName}" data-state="${state}" data-source="${safeProvider}"${ownerAttr} loading="lazy" decoding="async"></span>`
         if (isOverlay && pendingStack) {
           const itemMods = pendingMods.slice()
           const itemHue = pendingHue

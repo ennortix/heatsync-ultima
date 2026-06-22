@@ -10066,23 +10066,37 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
   async function updateLiveStatus() {
     if (!tabBarElement) return;
-    const allChannels = config.channels
-      .map(ch => ch.twitch || ch.id)
-      .filter(Boolean);
-    const urlCh = getCurrentChannel();
-    if (urlCh && !allChannels.some(c => c.toLowerCase() === urlCh.toLowerCase())) {
-      allChannels.push(urlCh);
+    // Split config channels by platform — the live-status API takes twitch
+    // names in `channels` and kick slugs in `kickChannels`. Bug #7: the poll
+    // used to send every channel as a twitch name, so Kick-only tabs queried
+    // helix with their kick slug and always came back not-live (their dots
+    // flickered off every 90s). Mirror the picker — query each platform's API.
+    const twitchAll = [];
+    const kickAll = [];
+    for (const ch of config.channels) {
+      if (ch.twitch) twitchAll.push(ch.twitch);
+      else if (ch.kick) kickAll.push(ch.kick);
+      else if (ch.id && !ch.youtube) twitchAll.push(ch.id); // legacy twitch-id-only entries
     }
-    if (allChannels.length === 0) return;
+    const urlCh = getCurrentChannel();
+    if (urlCh) {
+      const u = urlCh.toLowerCase();
+      if (hostPlatform === 'kick') {
+        if (!kickAll.some(c => c.toLowerCase() === u)) kickAll.push(urlCh);
+      } else if (!twitchAll.some(c => c.toLowerCase() === u)) {
+        twitchAll.push(urlCh);
+      }
+    }
+    if (twitchAll.length === 0 && kickAll.length === 0) return;
 
-    // Skip /api/platform/live-status for channels the SW snapshot already
-    // covers — common case at 100k users since most multichat channels are
-    // followed. Empty `channels` after filter means skip the fetch entirely.
-    const channels = _swLiveSet
-      ? allChannels.filter(c => !_swLiveSet.has(c.toLowerCase()))
-      : allChannels;
+    // Skip the twitch fetch for names the SW live snapshot already covers
+    // (most followed channels at scale). The SW snapshot is twitch-only, so
+    // kick slugs are always queried fresh.
+    const twitchNames = _swLiveSet
+      ? twitchAll.filter(c => !_swLiveSet.has(c.toLowerCase()))
+      : twitchAll;
 
-    if (channels.length === 0) {
+    if (twitchNames.length === 0 && kickAll.length === 0) {
       applyLiveDotsFromCache();
       _lastLiveStatusPoll = Date.now();
       return;
@@ -10091,33 +10105,23 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     _liveStatusInFlight = true;
     _lastLiveStatusPoll = Date.now();
     try {
-      const data = await chrome.runtime.sendMessage({ type: 'fetch_live_status', channels });
-      // data.live MUST be an array even when zero channels are live —
-      // a `null` / `undefined` here means the network call failed and we
-      // shouldn't clobber the last good snapshot. But we ALSO shouldn't
-      // leave stale `data-live="true"` attributes lingering, so re-apply
-      // the existing liveChannelSet to all tabs as a self-heal.
-      if (!Array.isArray(data?.live)) {
+      const data = await chrome.runtime.sendMessage({ type: 'fetch_live_status', channels: twitchNames, kickChannels: kickAll });
+      // If we asked for twitch names but got no twitch array back, the call
+      // failed — keep the last good snapshot rather than clobbering dots.
+      if (twitchNames.length > 0 && !Array.isArray(data?.live)) {
         applyLiveDotsFromCache();
         return;
       }
-      const fetchedSet = new Set(data.live.map(c => c.toLowerCase()));
-      // Merge with SW snapshot — we only fetched channels the SW didn't cover.
-      const liveSet = _swLiveSet
-        ? new Set([..._swLiveSet, ...fetchedSet])
-        : fetchedSet;
+      // Merge SW snapshot + fresh twitch + fresh kick into one live set, then
+      // stamp every tab (both platforms) via the shared cache-applier so
+      // Kick-only tabs light up from kickLive, not the twitch set.
+      const liveSet = new Set([
+        ...(_swLiveSet || []),
+        ...(Array.isArray(data?.live) ? data.live.map(c => c.toLowerCase()) : []),
+        ...(Array.isArray(data?.kickLive) ? data.kickLive.map(c => c.toLowerCase()) : []),
+      ]);
       liveChannelSet = liveSet;
-
-      config.channels.forEach(ch => {
-        const id = ch.id;
-        const twitch = ch.twitch || ch.id;
-        const tab = tabBarElement?.querySelector(`[data-tab="${id}"]`);
-        // Twitch helix is the source of truth for Twitch channels. For
-        // YT-only channels there's no twitch handle to query, so we leave
-        // the dot alone — youtube_status / message-flow handlers own it.
-        const isYtOnly = !ch.twitch && !ch.kick && ch.youtube
-        if (tab && !isYtOnly) tab.dataset.live = String(liveSet.has(twitch.toLowerCase()));
-      });
+      applyLiveDotsFromCache();
 
       // Update live tab's own red dot based on selected channel. On a YT
       // host page the "selected channel" is a videoId (e.g. jfKfPfyJRdk),

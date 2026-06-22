@@ -495,12 +495,6 @@
       }
     }
   },
-  "mc_btn_smaller_text": {
-    "message": "texte plus petit"
-  },
-  "mc_btn_larger_text": {
-    "message": "texte plus grand"
-  },
   "mc_btn_settings": {
     "message": "paramètres"
   },

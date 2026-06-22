@@ -495,12 +495,6 @@
       }
     }
   },
-  "mc_btn_smaller_text": {
-    "message": "pienempi teksti"
-  },
-  "mc_btn_larger_text": {
-    "message": "suurempi teksti"
-  },
   "mc_btn_settings": {
     "message": "asetukset"
   },

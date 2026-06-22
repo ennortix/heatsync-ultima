@@ -121,14 +121,10 @@ const SETTINGS = [
     dependsOn: { key: 'fontFamily', equals: 'custom' },
   },
   {
-    key: 'fontSize', type: 'enum', default: '13', scope: 'sync',
-    category: 'display', section: 'font', label: 'font size', tip: 'base font size for multichat panel — the F-/F+ tab-bar buttons override this per device (right-click them to reset)',
-    control: 'select', alias: 'fontsize', apply: 'fonts', applyOnLoad: true,
-    options: [
-      { value: '13', label: '13px' },
-      { value: '14', label: '14px' },
-      { value: '16', label: '16px' },
-    ],
+    key: 'fontSize', type: 'range', default: 13, scope: 'sync',
+    category: 'display', section: 'font', label: 'font size', tip: 'chat font size in px — drag to taste (replaces the old F-/F+ buttons)',
+    control: 'range', alias: 'fontsize', apply: 'fonts', applyOnLoad: true,
+    options: { min: 10, max: 22, step: 1 },
   },
 
   // ── display / display ─────────────────────────────────────────────────

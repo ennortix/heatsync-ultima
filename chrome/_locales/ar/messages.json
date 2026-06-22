@@ -495,12 +495,6 @@
       }
     }
   },
-  "mc_btn_smaller_text": {
-    "message": "نص أصغر"
-  },
-  "mc_btn_larger_text": {
-    "message": "نص أكبر"
-  },
   "mc_btn_settings": {
     "message": "الإعدادات"
   },

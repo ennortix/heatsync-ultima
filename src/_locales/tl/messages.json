@@ -495,12 +495,6 @@
       }
     }
   },
-  "mc_btn_smaller_text": {
-    "message": "mas maliit na text"
-  },
-  "mc_btn_larger_text": {
-    "message": "mas malaki na text"
-  },
   "mc_btn_settings": {
     "message": "settings"
   },

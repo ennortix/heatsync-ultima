@@ -495,12 +495,6 @@
       }
     }
   },
-  "mc_btn_smaller_text": {
-    "message": "chữ nhỏ hơn"
-  },
-  "mc_btn_larger_text": {
-    "message": "chữ lớn hơn"
-  },
   "mc_btn_settings": {
     "message": "cài đặt"
   },

@@ -2168,6 +2168,17 @@
     if (Object.keys(firstRunLocal).length) {
       chrome.storage.local.set(firstRunLocal).catch(function() {})
     }
+    // one-shot: the retired F-/F+ buttons stored a per-device size override in
+    // localStorage that quietly beat the fontSize setting. Fold the user's last
+    // size into fontSize (the slider now owns it), then drop the legacy key so
+    // this runs only once. Done before appliers so the fonts applier paints it.
+    try {
+      const ov = parseInt(localStorage.getItem('heatsync-chat-font-size'), 10)
+      if (ov >= 10 && ov <= 22) {
+        if (ov !== _settingsCache.fontSize) { _settingsCache.fontSize = ov; saveUiSetting('fontSize', ov) }
+        localStorage.removeItem('heatsync-chat-font-size')
+      }
+    } catch (_) {}
     // boot snapshot for reload-applied entries — drives the [reload] chip
     for (const def of SETTINGS) {
       if (def.reloadApply) _bootVals[def.key] = getSetting(def.key)
@@ -2476,8 +2487,6 @@
       </div>
       <div class="hs-mc-right-cluster">
         <div class="hs-mc-util-row">
-          <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="-1" title="${t('mc_btn_smaller_text')}">F-</button>
-          <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="1" title="${t('mc_btn_larger_text')}">F+</button>
           <button class="hs-mc-tab hs-mc-util-btn" data-tab="settings" title="${t('mc_btn_settings')}">\u2699</button>
           <button class="hs-mc-tab hs-mc-util-btn hs-mc-collapse-btn" id="hs-mc-collapse-btn" data-tab="collapse" title="hide chat (\\)" aria-label="hide chat"></button>
           <button class="hs-mc-tab hs-mc-util-btn hs-mc-popout-btn" data-tab="popout" title="pop out chat to standalone window" style="display:none">\u26f6</button>
@@ -2489,7 +2498,7 @@
     // Event delegation for tab clicks
     container.addEventListener('click', (e) => {
       const tab = e.target.closest('.hs-mc-tab');
-      if (!tab || tab.classList.contains('hs-mc-font-btn')) return;
+      if (!tab) return;
 
       const tabId = tab.dataset.tab;
       log('Tab clicked:', tabId);
@@ -2515,32 +2524,8 @@
       }
     });
 
-    // Font size controls
-    container.addEventListener('click', (e) => {
-      const fontBtn = e.target.closest('.hs-mc-font-btn');
-      if (!fontBtn) return;
-      const dir = parseInt(fontBtn.dataset.fontDir);
-      const msgsEl = document.getElementById('hs-mc-messages');
-      if (!msgsEl) return;
-      const current = parseInt(getComputedStyle(msgsEl).fontSize) || 13;
-      const next = Math.max(10, Math.min(22, current + dir));
-      msgsEl.style.setProperty('--hs-chat-font', next + 'px');
-      try { localStorage.setItem('heatsync-chat-font-size', next); } catch {}
-      showToast('chat font ' + next + 'px' + (next === 10 || next === 22 ? ' (limit)' : ''), 'info');
-    });
-
     // Right-click tabs → mark as read + channel context menu
     container.addEventListener('contextmenu', (e) => {
-      // Right-click F-/F+ clears the per-device font override — the quick
-      // buttons silently win over the fontSize setting otherwise
-      const fontBtn = e.target.closest('.hs-mc-font-btn');
-      if (fontBtn) {
-        e.preventDefault();
-        try { localStorage.removeItem('heatsync-chat-font-size'); } catch {}
-        applyFontSettings(getSetting('fontFamily'), getSetting('fontSize'), getSetting('customFontName'));
-        showToast('chat font reset to settings (' + getSetting('fontSize') + 'px)', 'info');
-        return;
-      }
       const tab = e.target.closest('.hs-mc-tab');
       if (!tab) return;
       const tabId = tab.dataset.tab;
@@ -2854,12 +2839,12 @@
     // Static hardcoded layout — only static strings, no user input, safe innerHTML
     const searchPlaceholder = 'search messages…'
     overlay.innerHTML = `
-      <div id="hs-mc-statusbar">
-        <div id="hs-notif-layer-statusbar" class="hs-notif-layer hs-notif-layer-statusbar"></div>
-      </div>
       <div id="hs-mc-search-bar">
         <input id="hs-mc-search-input" type="text" placeholder="${searchPlaceholder}" autocomplete="off" spellcheck="false" />
         <div id="hs-mc-search-spinner"></div>
+      </div>
+      <div id="hs-mc-statusbar">
+        <div id="hs-notif-layer-statusbar" class="hs-notif-layer hs-notif-layer-statusbar"></div>
       </div>
       <div id="hs-mc-multistream-banner" hidden></div>
       <div id="hs-mc-messages">
@@ -2867,13 +2852,6 @@
       </div>
       <button id="hs-mc-new-msgs" style="display:none"></button>
     `;
-
-    // Apply saved font size
-    const savedFontSize = localStorage.getItem('heatsync-chat-font-size');
-    if (savedFontSize) {
-      const msgsDiv = overlay.querySelector('#hs-mc-messages');
-      if (msgsDiv) msgsDiv.style.setProperty('--hs-chat-font', savedFontSize + 'px');
-    }
 
     // Setup scroll detection after DOM insertion
     cleanup.setTimeout(() => {
@@ -5125,29 +5103,30 @@
     const isBitmap = fontFamily === 'CozetteVector' || fontFamily === 'GohuFont' || !fontFamily;
     document.body.classList.toggle('hs-font-bitmap', isBitmap);
     document.documentElement.classList.toggle('hs-font-bitmap', isBitmap);
-    const container = document.getElementById('hs-mc-container');
-    if (!container) return;
+    // Set the vars on :root FIRST, unconditionally — the panel often mounts
+    // AFTER settings load (the load-time applier ran with no container), so a
+    // non-default size used to silently fall back to 13px until the user poked
+    // a setting. :root always exists and the panel inherits from it, so the
+    // size lands on the first paint. Container writes below are belt-and-braces.
     const stack = resolveFontStack(fontFamily, customFontName);
-    // Root + container both: reply-stack overlays are appended to <body>
-    // (outside the container's subtree), so they need the vars on :root to
-    // inherit. Container copy keeps the existing fallback path intact.
     const root = document.documentElement;
     root.style.setProperty('--hs-mc-font', stack);
-    container.style.setProperty('--hs-mc-font', stack);
-    container.classList.toggle('hs-font-bitmap', isBitmap);
     const sizeNum = parseInt(fontSize, 10);
     if (sizeNum >= 10 && sizeNum <= 22) {
+      // One synced size drives both the panel chrome and the message area —
+      // the old per-device override (F+/F-) folded into this setting.
       root.style.setProperty('--hs-mc-base-size', sizeNum + 'px');
+      root.style.setProperty('--hs-chat-font', sizeNum + 'px');
+    }
+    const container = document.getElementById('hs-mc-container');
+    if (!container) return;
+    container.style.setProperty('--hs-mc-font', stack);
+    container.classList.toggle('hs-font-bitmap', isBitmap);
+    if (sizeNum >= 10 && sizeNum <= 22) {
       container.style.setProperty('--hs-mc-base-size', sizeNum + 'px');
-      // Also drive the messages-area var. F+/F- localStorage override below
-      // wins if present (per-channel/per-tab quick adjust).
-      let fOverride = NaN;
-      try { fOverride = parseInt(localStorage.getItem('heatsync-chat-font-size'), 10); } catch {}
-      const msgsSize = (fOverride >= 10 && fOverride <= 22) ? fOverride : sizeNum;
-      root.style.setProperty('--hs-chat-font', msgsSize + 'px');
-      container.style.setProperty('--hs-chat-font', msgsSize + 'px');
+      container.style.setProperty('--hs-chat-font', sizeNum + 'px');
       const msgsEl = document.getElementById('hs-mc-messages');
-      if (msgsEl) msgsEl.style.setProperty('--hs-chat-font', msgsSize + 'px');
+      if (msgsEl) msgsEl.style.setProperty('--hs-chat-font', sizeNum + 'px');
     }
   }
 
@@ -6360,7 +6339,7 @@
           // size to the font's design size. silent: the fontFamily write
           // below runs the (shared) fonts applier once with both values.
           var fam = regSel.value;
-          var nativeSize = fam === 'GohuFont' ? '14' : (fam === 'CozetteVector' || fam === 'twitch') ? '13' : null;
+          var nativeSize = fam === 'GohuFont' ? 14 : (fam === 'CozetteVector' || fam === 'twitch') ? 13 : null;
           if (nativeSize) setSetting('fontSize', nativeSize, { silent: true });
           setSetting('fontFamily', fam); // fonts applier + settings re-render
           return;
@@ -11592,6 +11571,16 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     btn.style.display = resolvePopoutContext() ? '' : 'none'
   }
 
+  // Drop a panel callout (status/error banner) directly below the search/filter
+  // bar — never above it, where it would shove the filter input down on reload.
+  // Falls back to the container top only if the overlay isn't mounted yet.
+  function _insertPanelCallout(el) {
+    const searchBar = document.getElementById('hs-mc-search-bar')
+    if (searchBar && searchBar.parentNode) { searchBar.parentNode.insertBefore(el, searchBar.nextSibling); return }
+    const container = document.getElementById('hs-mc-container')
+    if (container) container.insertBefore(el, container.firstChild)
+  }
+
   // Render a small banner inside the multichat panel when an upstream API is unreachable.
   // Auto-removes when state flips back to 'up'. Only renders when our panel is mounted.
   function showApiStatusBanner(source, state) {
@@ -11613,7 +11602,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     dismiss.style.cssText = 'cursor:pointer;font-weight:700;padding:0 4px;'
     dismiss.addEventListener('click', () => banner.remove())
     banner.append(text, dismiss)
-    container.insertBefore(banner, container.firstChild)
+    _insertPanelCallout(banner)
   }
 
   // Auth banner: shown when bg signals loggedIn=false AND the user has at least
@@ -11645,7 +11634,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     dismiss.style.cssText = 'cursor:pointer;font-weight:700;padding:0 4px;margin-left:4px;'
     dismiss.addEventListener('click', () => banner.remove())
     banner.append(text, link, dismiss)
-    container.insertBefore(banner, container.firstChild)
+    _insertPanelCallout(banner)
   }
 
   function listenForSettingsChanges() {

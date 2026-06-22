@@ -1,7 +1,8 @@
-    /* === Statusbar — a status/toast line that sits just under the tabs. ZERO
-       footprint when idle (collapses out of flow entirely); becomes a single
-       1-line bar only while a toast is showing, then auto-dismisses (~2s).
-       In-flow (not absolute) so it can never overlap the tab bar. */
+    /* === Statusbar — a status/toast line that sits just under the search/filter
+       bar (status, errors + loading belong below the filter input, never above
+       it where they'd shove it down on reload). ZERO footprint when idle
+       (collapses out of flow entirely); becomes a single 1-line bar only while a
+       toast is showing, then auto-dismisses (~2s). In-flow (not absolute). */
     #hs-mc-statusbar {
       flex: 0 0 auto;
       display: flex;

@@ -495,12 +495,6 @@
       }
     }
   },
-  "mc_btn_smaller_text": {
-    "message": "менший текст"
-  },
-  "mc_btn_larger_text": {
-    "message": "більший текст"
-  },
   "mc_btn_settings": {
     "message": "налаштування"
   },

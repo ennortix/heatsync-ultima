@@ -495,12 +495,6 @@
       }
     }
   },
-  "mc_btn_smaller_text": {
-    "message": "teks lebih kecil"
-  },
-  "mc_btn_larger_text": {
-    "message": "teks lebih besar"
-  },
   "mc_btn_settings": {
     "message": "tetapan"
   },

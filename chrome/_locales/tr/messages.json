@@ -495,12 +495,6 @@
       }
     }
   },
-  "mc_btn_smaller_text": {
-    "message": "daha küçük metin"
-  },
-  "mc_btn_larger_text": {
-    "message": "daha büyük metin"
-  },
   "mc_btn_settings": {
     "message": "ayarlar"
   },

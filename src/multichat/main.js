@@ -3448,6 +3448,11 @@
       // gate for "should this overlay be visible if room allows?" is whether
       // it has children — showStack populates children, dismissStack clears.
       const repositionStack = () => {
+        // No open reply stack → nothing to follow. Bail before scheduling so a
+        // busy chat's continuous scroll doesn't queue a rAF per frame just to
+        // no-op. (The inner guard stays: a dismiss can land between schedule and
+        // frame.)
+        if (!_stackActiveRow) return
         if (_repositionRaf) return
         _repositionRaf = requestAnimationFrame(() => {
           _repositionRaf = 0
@@ -7875,6 +7880,9 @@
     _dropAllTabCaches()
   }
 
+  // Static platform→accent map — hoisted out of buildMessageDiv so it isn't
+  // reallocated for every chat row rendered.
+  const PLAT_COLORS = { twitch: '#9146ff', kick: '#53fc18', yt: '#ff0000', heatsync: '#ff8700' }
   function buildMessageDiv(m, tabId) {
     // Blocked user — fully hide (skip render entirely). Both the append and the
     // full-rebuild path go through buildMessageDiv, so returning null here hides
@@ -8150,8 +8158,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     }
     const plat = m.platform === 'youtube' ? 'yt' : m.platform === 'kick' ? 'kick' : m.platform === 'heatsync' ? 'heatsync' : 'twitch'
     const platLabel = plat === 'yt' ? '[Y]' : plat === 'kick' ? '[K]' : plat === 'heatsync' ? '[H]' : '[T]'
-    const platColors = { twitch: '#9146ff', kick: '#53fc18', yt: '#ff0000', heatsync: '#ff8700' }
-    const platformBadge = (platformBadgesEnabled || plat !== hostPlatform) ? `<span class="hs-mc-platform-badge hs-mc-pb-${plat}" style="font-size:13px;margin-right:3px;font-weight:700;vertical-align:middle;color:${platColors[plat]}">${platLabel}</span>` : ''
+    const platformBadge = (platformBadgesEnabled || plat !== hostPlatform) ? `<span class="hs-mc-platform-badge hs-mc-pb-${plat}" style="font-size:13px;margin-right:3px;font-weight:700;vertical-align:middle;color:${PLAT_COLORS[plat]}">${platLabel}</span>` : ''
     const safeScColor = sanitizeColor(m.scColor || '#ffd600')
     const scBadge = isSuperChat && m.amount ? `<span class="hs-mc-sc-badge" style="background:${safeScColor};color:#000;padding:0 4px;border-radius:0;font-size:13px;font-weight:700;margin-right:3px;">${escapeHtml(m.amount)}</span>` : ''
     const bitsBadge = m.bits ? `<span class="hs-mc-bits-badge" title="${m.bits} bits">${m.bits} bits</span>` : ''
@@ -8762,7 +8769,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     return pool.slice(-limit)
   }
   function stableMsgId(m) {
-    return m.id || m.base36_id || `${m.user || ''}:${m.time || ''}:${(m.text || '').slice(0, 32)}`
+    // Memoize on the message object — id/base36_id/user/time/text are immutable
+    // once a chat object is buffered (the only .text rewrite is in irc.js history
+    // ingest, before push). The render diff (msgKey, below) + fairMerge sort +
+    // appendMessage all rebuild this same fallback string; on a 500-row co-live
+    // tab that was tens of thousands of concats per render.
+    return m._sid ?? (m._sid = m.id || m.base36_id || `${m.user || ''}:${m.time || ''}:${(m.text || '').slice(0, 32)}`)
   }
   function byTimeStable(a, b) {
     const dt = (a.time || 0) - (b.time || 0)
@@ -9177,8 +9189,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // existing DOM nodes stay put. new msgs slot in at chronologically
     // correct positions (because `toRender` is already chrono-sorted by
     // fairMerge below). no shuffling. no rebuild-from-prefix flash.
-    const msgKey = (m) =>
-      `${_renderEpoch}:${m.id || m.base36_id || `${m.user || ''}:${m.time || ''}:${(m.text || '').slice(0, 32)}`}`
+    // Shares stableMsgId's per-object memo — byte-identical to the old inline
+    // fallback, only the _renderEpoch prefix is re-applied each render.
+    const msgKey = (m) => `${_renderEpoch}:${stableMsgId(m)}`
     const desiredKeys = toRender.map(msgKey)
     const desiredSet = new Set(desiredKeys)
 
@@ -9195,13 +9208,20 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
     // PASS 0: capture expanded emote stacks (mostly relevant for full rebuilds
     // when _renderEpoch increments — stacks would otherwise reset to collapsed).
+    // Short-circuit the per-child scan: an expanded stack is rare (user has to
+    // click one open), so one querySelector that stops at the first match beats
+    // up to DOM_RENDER_CAP querySelectorAll walks every render. When none is
+    // expanded, expandedStacks stays empty and the reapply below no-ops — same
+    // result as scanning all children and finding nothing.
     const expandedStacks = []
-    for (const msgDiv of msgsEl.children) {
-      const mid = msgDiv.dataset?.msgId
-      if (!mid) continue
-      const stacks = msgDiv.querySelectorAll('.hs-mc-emote-stack')
-      for (let s = 0; s < stacks.length; s++) {
-        if (stacks[s].classList.contains('expanded')) expandedStacks.push([mid, s])
+    if (msgsEl.querySelector('.hs-mc-emote-stack.expanded')) {
+      for (const msgDiv of msgsEl.children) {
+        const mid = msgDiv.dataset?.msgId
+        if (!mid) continue
+        const stacks = msgDiv.querySelectorAll('.hs-mc-emote-stack')
+        for (let s = 0; s < stacks.length; s++) {
+          if (stacks[s].classList.contains('expanded')) expandedStacks.push([mid, s])
+        }
       }
     }
 

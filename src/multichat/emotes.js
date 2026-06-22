@@ -2061,6 +2061,9 @@
   // hsModComposeFilter, hsModHexToHue) are bundled by build.js.
   const HS_MC_MODS = HS_MOD_TOKENS
   const HS_MC_C_RE = HS_MOD_C_HEX_RE
+  // Static list — hoisted out of the per-word inline-suffix peel so it isn't
+  // reallocated for every non-resolved word on the message hot path.
+  const HS_INLINE_MOD_SUFFIXES = ['ffzCursed', 'ffzWide', 'ffzTall', 'ffzX', 'ffzY', 'w!', 'h!', 'v!', 'l!', 'c!', 'z!', 'x!', 'y!']
   function _hsMcHexToHue(h) { return hsModHexToHue(h) }
   function _hsMcApplyMods(html, mods, hue) {
     if ((!mods || !mods.length) && hue == null) return html
@@ -2156,7 +2159,13 @@
     // Unicode emoji split always applies: separate emoji from adjacent non-emoji.
     // Multi-codepoint sequences (skin tone, ZWJ, VS16) stay intact.
     let pre = text
-    if (pre.indexOf('[emote:') !== -1) {
+    // Kick wraps native emotes as [emote:ID:name]; the per-word match below is
+    // gated on this flag so Twitch/YT traffic (~95% of volume, zero [emote:
+    // tokens) skips the regex on every word. The space-inserting replaces only
+    // add/remove whitespace around an existing [emote: literal, never the literal
+    // itself, so the flag stays valid for the tokenized `pre`.
+    const hasKickEmote = pre.indexOf('[emote:') !== -1
+    if (hasKickEmote) {
       pre = pre
         .replace(/\]\[emote:/g, '] [emote:')
         .replace(/([^\s\[])\[emote:/g, '$1 [emote:')
@@ -2245,7 +2254,7 @@
       // When the name matches a known 7TV/BTTV/FFZ/heatsync entry, prefer that
       // entry's URL (animated/full-quality), carry its hash (for block/add),
       // and honor zero-width so overlay stacking matches Twitch parity.
-      const kickEmoteMatch = word.match(/^\[emote:(\d+):([^\]]+)\]$/)
+      const kickEmoteMatch = hasKickEmote ? word.match(/^\[emote:(\d+):([^\]]+)\]$/) : null
       if (kickEmoteMatch) {
         const [, emoteId, emoteName] = kickEmoteMatch
         const kickUrl = `https://files.kick.com/emotes/${emoteId}/fullsize`
@@ -2331,8 +2340,7 @@
       // Only consider modifier suffixes (not random emote-name endings).
       let _hsInlineModSuffix = null
       if (!emote && word.length > 2) {
-        const suffixCandidates = ['ffzCursed', 'ffzWide', 'ffzTall', 'ffzX', 'ffzY', 'w!', 'h!', 'v!', 'l!', 'c!', 'z!', 'x!', 'y!']
-        for (const suf of suffixCandidates) {
+        for (const suf of HS_INLINE_MOD_SUFFIXES) {
           if (word.endsWith(suf) && word.length > suf.length + 1) {
             const baseGuess = word.slice(0, word.length - suf.length)
             const candidate = (channel && channelEmoteCaches[channel]?.get(baseGuess)) || senderEmotes?.get(baseGuess) || extraCache?.get(baseGuess) || emoteCache.get(baseGuess)

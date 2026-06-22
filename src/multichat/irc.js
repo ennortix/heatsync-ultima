@@ -385,20 +385,21 @@ class IRC {
     try { fetchChannelBadges(ch) } catch {}
     if (!msg.type || msg.type === 'usernotice' || msg.type === 'notice') {
       const buf = this.channels.get(ch)
-      // Twitch sends BOTH a CLEARCHAT (everyone) and a timeout_success/ban_success
-      // NOTICE (mod-only feedback) for the same event. CLEARCHAT path produces a
-      // canonical notice with targetUser+banDuration; the mod-feedback NOTICE is
-      // redundant. Dedup by (noticeType, target, time window).
-      if (msg.type === 'notice' && !msg.targetUser &&
+      // A single timeout/ban reaches us many ways: the CLEARCHAT (everyone), the
+      // mod-only timeout_success/ban_success NOTICE, the direct-IRC vs server
+      // EventSub fanout, and the native tap. EventSub can even drop the timeout
+      // duration, surfacing a bogus "permanently banned" beside the real "timed
+      // out for Ns". Collapse them all: the first mod notice for a target wins
+      // within the window (matched across timeout/ban since they're the same act).
+      if (msg.type === 'notice' &&
           (msg.noticeType === 'timeout_success' || msg.noticeType === 'ban_success')) {
         const tm = (msg.text || '').match(/^(\S+) has been/)
-        const targetLc = tm ? tm[1].toLowerCase() : ''
+        const targetLc = (msg.targetUser || '').toLowerCase() || (tm ? tm[1].toLowerCase() : '')
         if (targetLc) {
           for (const existing of buf.getAll()) {
             if (existing.type !== 'notice') continue
-            if (existing.noticeType !== msg.noticeType) continue
-            if (!existing.targetUser) continue
-            if (existing.targetUser.toLowerCase() !== targetLc) continue
+            if (existing.noticeType !== 'timeout_success' && existing.noticeType !== 'ban_success') continue
+            if ((existing.targetUser || '').toLowerCase() !== targetLc) continue
             if (Math.abs((existing.time || 0) - (msg.time || 0)) > 10000) continue
             return
           }

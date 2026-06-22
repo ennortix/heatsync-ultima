@@ -4322,7 +4322,7 @@ function handleWSMessage(msg) {
       try {
         const ch = (msg.channel || '').toLowerCase()
         const ext = msg.message ? bgIrcRecordToExt(msg.message, ch) : null
-        if (ch && ext) {
+        if (ch && ext && !bgIrcDupModNotice(BG_IRC.channels.get(ch), ext)) {
           if (!(ext.id && bgIrcSeenLiveId(`${ch}:${ext.id}`))) {
             const buf = BG_IRC.channels.get(ch)
             if (buf) { buf.push(ext); bgIrcPersistChannel(ch) }
@@ -7765,6 +7765,29 @@ function bgIrcOnData(data) {
   }
 }
 
+// Collapse duplicate moderation notices (timeout/ban) for the same target that
+// arrive across transports. A single `!vanish`/timeout reaches us from BOTH the
+// direct IRC CLEARCHAT and the server EventSub fanout; the EventSub channel.ban
+// path can also drop the timeout duration, surfacing a bogus "permanently
+// banned" line next to the real "timed out for Ns". Each transport mints a
+// different id, so id-dedupe misses these — match on (target, type, window)
+// instead. First notice for a target wins within the window.
+function bgIrcDupModNotice(buf, msg) {
+  if (!buf || !msg || msg.type !== 'notice') return false
+  if (msg.noticeType !== 'timeout_success' && msg.noticeType !== 'ban_success') return false
+  const targetLc = (msg.targetUser || '').toLowerCase()
+  if (!targetLc) return false
+  const t = msg.time || 0
+  for (const m of buf.getAll()) {
+    if (m.type !== 'notice') continue
+    if (m.noticeType !== 'timeout_success' && m.noticeType !== 'ban_success') continue
+    if ((m.targetUser || '').toLowerCase() !== targetLc) continue
+    if (Math.abs((m.time || 0) - t) > 10000) continue
+    return true
+  }
+  return false
+}
+
 function bgIrcHandleLine(line) {
   const msg = bgIrcParseLine(line)
   if (!msg) return
@@ -7815,6 +7838,9 @@ function bgIrcHandleLine(line) {
 
   // Apply CLEARCHAT/CLEARMSG annotations to existing buffer entries
   const buf = msg.channel ? BG_IRC.channels.get(msg.channel) : null
+  // Drop a mod notice already delivered by another transport (the first wins +
+  // ran the annotation/persist/broadcast below).
+  if (bgIrcDupModNotice(buf, msg)) return
   if (buf && msg.type === 'notice' && (msg.noticeType === 'ban_success' || msg.noticeType === 'timeout_success')) {
     const targetLc = (msg.targetUser || '').toLowerCase()
     if (targetLc) {

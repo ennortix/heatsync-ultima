@@ -493,6 +493,13 @@
       const target = e.target
       requestAnimationFrame(() => {
         _tooltipRafPending = false
+        // This handler only ever HIDES tooltips (show/reposition lives in the
+        // mouseover handlers). When nothing is visible — the common state while
+        // the cursor sweeps over chat — skip the closest() ancestor walks below.
+        if (!(emoteTooltip?.classList.contains('visible') ||
+              badgeTooltip?.classList.contains('visible') ||
+              userTooltip?.classList.contains('visible') ||
+              linkTooltip?.classList.contains('visible'))) return
         const onEmote = target?.closest?.('.hs-mc-emote-wrapper') ||
           target?.closest?.('.hs-mc-picker-emote-wrap') ||
           target?.closest?.('.hs-discover-item') ||

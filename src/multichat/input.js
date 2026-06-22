@@ -2202,12 +2202,12 @@ function deflectAdjacentChip(node, wordStart) {
 // definition of "no content" to include whitespace-only nodes — used on
 // deletion events so a single backspace can collapse a 2-char nbsp+space
 // gap (which Tab insertion + user-typed space leaves between chips).
-function buildInputEmoteImg(emote, isOverlay) {
+function buildInputEmoteImg(emote) {
   const img = document.createElement('img')
   img.src = emote.url
   img.alt = emote.name
   img.dataset.emoteName = emote.name
-  img.className = 'hs-input-emote' + (isOverlay ? ' input-emote-overlay' : '')
+  img.className = 'hs-input-emote'
   img.draggable = false
   if (typeof attachInputEmoteErrorRecovery === 'function') attachInputEmoteErrorRecovery(img)
   return img
@@ -2240,7 +2240,7 @@ function imagifyValidWordsInTextNode(textNode) {
       replacements.push(document.createTextNode(part))
       continue
     }
-    replacements.push(buildInputEmoteImg(resolved.emote, !!resolved.isOverlay))
+    replacements.push(buildInputEmoteImg(resolved.emote))
     didChange = true
   }
   if (!didChange) return false
@@ -2989,13 +2989,6 @@ function getRecencyMap() {
   return out
 }
 
-// Modifier constants/helpers live in src/lib/modifiers.js (bundled into IIFE
-// scope by build.js). Aliases for backward-compat usage inside this file:
-const HS_MODS_MAP = HS_MOD_TOKENS
-const HS_C_HEX_RE = HS_MOD_C_HEX_RE
-function peelModifierChain(w) { return hsModPeelChain(w) }
-function resolveModifierPrefix(w) { return hsModResolvePrefix(w) }
-function _hsHexToHueDeg(h) { return hsModHexToHue(h) }
 
 // Resolve the element a modifier should attach to. Valid anchors: an emote
 // IMG, the last unit (img OR emoji span) of a stack, or a standalone emoji
@@ -3049,84 +3042,6 @@ function scanAndApplyModifiersInInput(input) {
   }
   if (appliedAny && typeof pendingMessage !== 'undefined') pendingMessage = getInputText()
   return appliedAny
-}
-
-// Apply modifier word at cursor (Tab/space-trigger paths). Walks back from
-// cursor's text node to find the previous emote element, applies via lib.
-function applyModifierAtCursor(modWord, _ignoredModKey, _ignoredCMatch) {
-  const cls = hsModClassify(modWord, { allowPrefix: true })
-  if (cls.kind !== 'modifier') return false
-  const input = document.getElementById('hs-mc-input')
-  if (!input?.isContentEditable) return false
-  const sel = window.getSelection()
-  if (!sel?.rangeCount) return false
-  const range = sel.getRangeAt(0)
-  let textNode = range.startContainer
-  let cursor = range.startOffset
-  if (textNode.nodeType === Node.ELEMENT_NODE && cursor > 0) {
-    const child = textNode.childNodes[cursor - 1]
-    if (child?.nodeType === Node.TEXT_NODE) { textNode = child; cursor = child.textContent.length }
-  }
-  if (textNode.nodeType !== Node.TEXT_NODE) return false
-  const text = textNode.textContent
-  const before = text.slice(0, cursor)
-  const after = text.slice(cursor)
-  const bm = before.match(/(\s*)(\S+)$/)
-  const am = after.match(/^(\S*)/)
-  if (!bm) return false
-  const fullWord = bm[2] + (am ? am[1] : '')
-  // Accept exact match, OR a resolved-prefix match (typed "w", target "w!")
-  const expected = cls.resolvedFrom || modWord
-  if (fullWord !== expected && fullWord !== modWord) return false
-  const wsStart = cursor - bm[0].length
-  const wordEnd = cursor + (am ? am[1].length : 0)
-  // Need previous text in this node to be only whitespace before the word
-  if (text.slice(0, wsStart).trim().length > 0) return false
-  let prev = textNode.previousSibling
-  while (prev && prev.nodeType === Node.TEXT_NODE && prev.textContent.trim() === '') prev = prev.previousSibling
-  const targetImg = hsModAnchorEl(prev)
-  if (!targetImg) return false
-  hsModApplyToImg(targetImg, cls.mods, cls.hue, cls.words)
-  // Remove the modifier text + leading whitespace
-  textNode.textContent = (text.slice(0, wsStart) + text.slice(wordEnd)) || ' '
-  const nr = document.createRange()
-  nr.setStart(textNode, Math.min(wsStart, textNode.textContent.length))
-  nr.collapse(true)
-  sel.removeAllRanges()
-  sel.addRange(nr)
-  if (typeof pendingMessage !== 'undefined') pendingMessage = getInputText()
-  return true
-}
-
-// Replace the word at cursor in a contenteditable input with newWord. Used
-// when Tab expands a modifier shorthand (typed "w" → replace with "w!").
-function replaceWordAtCursor(input, oldWord, newWord) {
-  const sel = window.getSelection()
-  if (!sel?.rangeCount) return
-  const range = sel.getRangeAt(0)
-  let node = range.startContainer
-  let offset = range.startOffset
-  if (node.nodeType === Node.ELEMENT_NODE && offset > 0) {
-    const child = node.childNodes[offset - 1]
-    if (child?.nodeType === Node.TEXT_NODE) { node = child; offset = child.textContent.length }
-  }
-  if (node.nodeType !== Node.TEXT_NODE) return
-  const text = node.textContent
-  const before = text.slice(0, offset)
-  const after = text.slice(offset)
-  const m = before.match(/(\S+)$/)
-  const am = after.match(/^(\S*)/)
-  if (!m) return
-  const fullCurrent = m[1] + (am ? am[1] : '')
-  if (fullCurrent !== oldWord) return
-  const wordStart = offset - m[1].length
-  const wordEnd = offset + (am ? am[1].length : 0)
-  node.textContent = text.slice(0, wordStart) + newWord + text.slice(wordEnd)
-  const nr = document.createRange()
-  nr.setStart(node, wordStart + newWord.length)
-  nr.collapse(true)
-  sel.removeAllRanges()
-  sel.addRange(nr)
 }
 
 

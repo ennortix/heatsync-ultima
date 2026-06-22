@@ -911,10 +911,6 @@ async function pcApplyBanner(card, chain) {
   }
 }
 
-function pcOpenExt(url) {
-  window.open(url, '_blank', 'noopener,noreferrer')
-}
-
 async function pcToggleMute(username) {
   username = username.toLowerCase()
   const platform = activeProfileCard?.platform

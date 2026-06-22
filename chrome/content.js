@@ -290,12 +290,6 @@ const hsSched = (() => {
   return { yield: _yield, idle, chunk, untilIdle, get scrollIdle() { return _scrollIdle } }
 })()
 
-// HTML escaping for safe interpolation into innerHTML templates
-function escapeHtml(str) {
-  if (typeof str !== 'string') return '';
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-
 // React fiber walking — use shared-utils if available, inline fallback
 const getFiber = window.HS?.getFiber || function(el) {
   if (!el) return null
@@ -687,39 +681,6 @@ function renderEventChipFromGql(op, data) {
 // inside `.wysiwig-chat-input-emote` previews wide+tall+flipped+tinted live.
 const HS_INPUT_EMOTE_SELECTOR = '.wysiwig-chat-input-emote, span[data-slate-node="element"][data-slate-void]'
 const HS_INPUT_EDITOR_SELECTOR = '[data-slate-editor="true"], .chat-wysiwyg-input__editor, [data-testid="chat-input"]'
-function _hsParseModifierTokens(text) {
-  if (!text) return { mods: [], hue: null }
-  const tokens = String(text).trim().split(/\s+/).filter(Boolean)
-  const mods = []
-  let hue = null
-  for (const tok of tokens) {
-    if (HS_MODIFIER_CLASSES[tok]) { mods.push(HS_MODIFIER_CLASSES[tok]); continue }
-    const m = tok.match(HS_C_HEX_RE)
-    if (m) { hue = hsHexToHueDeg(m[1]); continue }
-    break
-  }
-  return { mods, hue }
-}
-function _hsTextAfterEmoteSpan(emoteSpan, maxChars = 80) {
-  const block = emoteSpan.closest('p, [data-slate-node="element"]:not([data-slate-void])') || emoteSpan.parentElement
-  if (!block) return ''
-  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT)
-  let txt = ''
-  let found = false
-  let n = walker.nextNode()
-  while (n) {
-    if (n === emoteSpan) { found = true }
-    else if (found) {
-      if (n.nodeType === 1 && n !== emoteSpan && n.matches?.(HS_INPUT_EMOTE_SELECTOR)) break
-      if (n.nodeType === 3) {
-        txt += n.textContent
-        if (txt.length > maxChars) break
-      }
-    }
-    n = walker.nextNode()
-  }
-  return txt
-}
 // Walk forward from emoteSpan and collect modifier text nodes (until the next emote).
 // Returns { mods, hue, modTextElements } — elements are the parent spans we need to chip-style.
 function _hsCollectModsAfterSpan(emoteSpan) {
@@ -953,37 +914,6 @@ function closeEmoteMenu() {
   if (_emoteMenuEl) { _emoteMenuEl.remove(); _emoteMenuEl = null }
   if (_emoteMenuCleanup) { try { _emoteMenuCleanup() } catch {} ; _emoteMenuCleanup = null }
 }
-function detectEmoteProvider(url) {
-  if (!url) return null
-  if (url.includes('cdn.7tv.app')) return '7TV'
-  if (url.includes('cdn.betterttv.net')) return 'BTTV'
-  if (url.includes('cdn.frankerfacez.com')) return 'FFZ'
-  if (url.includes('static-cdn.jtvnw.net')) return 'Twitch'
-  return 'heatsync'
-}
-function providerEmoteUrl(provider, url, name) {
-  if (!provider || !url) return null
-  try {
-    if (provider === '7TV') {
-      const m = url.match(/cdn\.7tv\.app\/emote\/([^/]+)/)
-      if (m) return 'https://7tv.app/emotes/' + m[1]
-    }
-    if (provider === 'BTTV') {
-      const m = url.match(/cdn\.betterttv\.net\/emote\/([^/]+)/)
-      if (m) return 'https://betterttv.com/emotes/' + m[1]
-    }
-    if (provider === 'FFZ') {
-      const m = url.match(/cdn\.frankerfacez\.com\/emote\/(\d+)/)
-      if (m) return 'https://www.frankerfacez.com/emoticon/' + m[1]
-    }
-    if (provider === 'Twitch') {
-      const m = url.match(/emoticons\/v2\/(\d+)/)
-      if (m) return 'https://www.twitch.tv/popout/global/emote/' + m[1]
-    }
-  } catch {}
-  return null
-}
-
 // Shared placement + dismiss wiring for right-click menus (emote + message).
 // Measures off-screen, edge-flips, then wires mousedown/key/blur/scroll dismiss.
 function placeAndWireMenu(el, x, y, kbdHandlers = {}) {

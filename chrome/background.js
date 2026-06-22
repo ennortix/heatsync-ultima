@@ -8512,67 +8512,6 @@ function bgKickIngest(data) {
   bgKickPersistChannel(ch)
 }
 
-// Ingest a single backfill entry (server ring buffer replay on channel:join).
-// Dedupes against existing buffer by id, falling back to user|time|text
-// fingerprint when id is absent. After a batch, caller should re-sort.
-// Returns true when a new msg was actually pushed.
-function bgKickIngestBackfill(ch, data) {
-  if (!ch || !data) return false
-  const isFirstSightOfChannel = !BG_KICK.channels.has(ch)
-  if (isFirstSightOfChannel) {
-    BG_KICK.channels.set(ch, new BGCircularBuffer(BG_KICK_PERSIST_MAX))
-    if (BG_KICK.channels.size > MAX_BG_KICK_CHANNELS) {
-      const oldest = BG_KICK.channels.keys().next().value
-      BG_KICK.channels.delete(oldest)
-      chrome.storage.local.remove(`hs_kick_${oldest}`).catch(() => {})
-    }
-    bgKickFetchArchive(ch).catch(() => {})
-  }
-  const buf = BG_KICK.channels.get(ch)
-  // Normalize Kick badge array → "name/version,name/version" string
-  const badgeStr = Array.isArray(data.badges)
-    ? data.badges.map(b => `${b.type || b.name || 'badge'}/${b.version || b.count || '1'}`).join(',')
-    : ''
-  const msg = {
-    user: data.username || data.displayName || data.user || 'unknown',
-    text: data.content || data.message || data.text || '',
-    color: data.color || '#53fc18',
-    badges: badgeStr,
-    channel: ch,
-    time: data.timestamp || data.time || Date.now(),
-    platform: 'kick',
-    id: data.id || '',
-    isHistory: true,
-    replyTo: data.replyTo ? {
-      user: data.replyTo.username || 'unknown',
-      text: data.replyTo.content || '',
-      id: data.replyTo.id || data.replyTo.message_id || '',
-      threadId: data.replyTo.thread_id || data.replyTo.id || data.replyTo.message_id || ''
-    } : null
-  }
-  const existing = buf.getAll()
-  if (msg.id) {
-    for (const e of existing) if (e.id && e.id === msg.id) return false
-  } else {
-    const fp = `${msg.user}|${msg.time}|${(msg.text || '').slice(0, 60)}`
-    for (const e of existing) {
-      if (e.id) continue
-      if (`${e.user}|${e.time}|${(e.text || '').slice(0, 60)}` === fp) return false
-    }
-  }
-  // Time-ordered insert: if newer than tail, push; otherwise re-sort the buffer
-  // so live + backfill interleave correctly.
-  const tailTime = existing.length > 0 ? (existing[existing.length - 1].time || 0) : 0
-  buf.push(msg)
-  if (msg.time && msg.time < tailTime) {
-    const all = buf.getAll().slice().sort((a, b) => (a.time || 0) - (b.time || 0))
-    buf.clear()
-    for (const m of all) buf.push(m)
-  }
-  bgKickPersistChannel(ch)
-  return true
-}
-
 // chat_archive postgres pull for Kick — heatsync persists every Kick msg
 // permanently. /api/archive/search returns up to 100 newest msgs DESC, with
 // cursor for older pages. Used to seed the BG buffer beyond the 200-msg ring.

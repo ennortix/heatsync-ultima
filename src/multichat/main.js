@@ -2790,6 +2790,11 @@
   // on the video player. The +20px fudge covers column-gap and scrollbar
   // gutter so we don't trip a 1px viewport overflow at the boundary.
   const YT_MIN_PRIMARY_WIDTH = 660;
+  // YT suggestions strip (opt-in ytShowSuggestions → body.hs-yt-suggestions):
+  // a fixed column beside the player on left/right dock. Single source of truth
+  // for both the player-sizing arithmetic below AND the stylesheet — published
+  // as --hs-yt-sugg-w so the CSS fallback (300px) is only a pre-JS placeholder.
+  const YT_SUGG_STRIP_W = 300;
   // Twitch: when .channel-root__main shrinks below this, Twitch flips to its
   // narrow-stack layout — .persistent-player gets re-positioned absolute at
   // the bottom of the about section (y > 2000px), so the video falls below
@@ -4568,6 +4573,13 @@
       _ytViewportClampTimer = cleanup.setTimeout(() => {
         _ytViewportClampTimer = null
         applyYouTubeChatWidth()
+        // Recompute the player's inline size for the new viewport. Without this
+        // the player keeps the px size computed at the LAST chat-position change
+        // — resize the window and the video overshoots its column (huge, clips
+        // off both edges) while the metadata column is crushed into a sliver.
+        // applyYouTubeChatWidth (above) re-clamps chatWidth first, so the player
+        // sizes off the corrected width. Mirrors the Kick resize handler.
+        try { applyPlatformPositionOverrides() } catch {}
         // Re-run full layout reflow — viewport change (WM fullscreen, devtools
         // toggle, browser zoom) needs every position-dependent piece updated.
         // The orange resize bar uses inline px from container.getBoundingClientRect
@@ -11217,7 +11229,16 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         const usableW = document.documentElement.clientWidth;
         let availH, availW;
         if (chatPosition === 'left' || chatPosition === 'right') {
-          availW = Math.max(200, usableW - chatWidth);
+          // Opt-in suggestions strip eats a fixed column beside the player on
+          // left/right dock — subtract it or the player renders UNDER the strip
+          // (overshoots its column, clips off-edge). Publish the width so the
+          // stylesheet (#below inset + strip geometry) and this arithmetic stay
+          // in lockstep. Off → drop the var so CSS sees 0 contribution.
+          const suggOn = document.body.classList.contains('hs-yt-suggestions');
+          const suggW = suggOn ? YT_SUGG_STRIP_W : 0;
+          if (suggOn) document.documentElement.style.setProperty('--hs-yt-sugg-w', suggW + 'px');
+          else document.documentElement.style.removeProperty('--hs-yt-sugg-w');
+          availW = Math.max(200, usableW - chatWidth - suggW);
           availH = innerHeight;
         } else {
           availH = Math.max(200, innerHeight - chatHeight);

@@ -1125,14 +1125,26 @@
        like #below; #below shrinks to leave the strip room. The extra
        .hs-yt-suggestions class out-specifies the collapse/hide rules above.
        ============================================ */
-    body.hs-yt-suggestions.hs-platform-yt.hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #below {
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #below {
       right: calc(var(--hs-chat-w, 340px) + var(--hs-yt-sugg-w, 300px)) !important;
     }
-    body.hs-yt-suggestions.hs-platform-yt.hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #below {
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #below {
       right: var(--hs-yt-sugg-w, 300px) !important;
     }
-    body.hs-yt-suggestions.hs-platform-yt.hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #secondary,
-    body.hs-yt-suggestions.hs-platform-yt.hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #secondary {
+    /* Inset #primary-inner (the player's column) by the strip too. The JS sizes
+       the player to clientW-chatW-suggW, but #primary-inner is align-items:center
+       and only inset by chatW — so the narrowed player centers in the too-wide
+       column and drifts right UNDER the strip. Insetting the column by +suggW
+       (mirroring #below above) makes the centered player sit flush against it.
+       (1,6,1) out-specifies the base #primary-inner rule (1,3,1). */
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #primary-inner {
+      right: calc(var(--hs-chat-w, 340px) + var(--hs-yt-sugg-w, 300px)) !important;
+    }
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #primary-inner {
+      left: calc(var(--hs-chat-w, 340px) + var(--hs-yt-sugg-w, 300px)) !important;
+    }
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #secondary,
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #secondary {
       position: fixed !important;
       top: var(--hs-yt-below-top, 56px) !important;
       bottom: 0 !important;
@@ -1147,23 +1159,34 @@
       box-sizing: border-box !important;
       z-index: 1 !important;
     }
-    body.hs-yt-suggestions.hs-platform-yt.hs-chat-right ytd-watch-flexy #secondary { right: var(--hs-chat-w, 340px) !important; left: auto !important; }
-    body.hs-yt-suggestions.hs-platform-yt.hs-chat-left ytd-watch-flexy #secondary { right: 0 !important; left: auto !important; }
-    /* reveal the related list + children the base rules display:none */
-    body.hs-yt-suggestions.hs-platform-yt ytd-watch-flexy #secondary,
-    body.hs-yt-suggestions.hs-platform-yt ytd-watch-flexy #secondary-inner,
-    body.hs-yt-suggestions.hs-platform-yt ytd-watch-flexy #secondary-inner > *,
-    body.hs-yt-suggestions.hs-platform-yt ytd-watch-flexy #related,
-    body.hs-yt-suggestions.hs-platform-yt ytd-watch-flexy ytd-watch-next-secondary-results-renderer {
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #secondary { right: var(--hs-chat-w, 340px) !important; left: auto !important; }
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #secondary { right: 0 !important; left: auto !important; }
+    /* reveal the related list the base "nuke suggestions sidebar" rule above
+       sets display:none. that hide uses the full dock-class chain
+       (body.hs-platform-yt:not(.hs-offline).hs-chat-{right,left} … #related and
+       … #secondary-inner > *, specificity (1,3,1)); a bare
+       .hs-yt-suggestions.hs-platform-yt prefix (1,2,1) LOSES to it even with
+       !important, so the strip box shows but stays blank. Mirror the full chain
+       and add .hs-yt-suggestions → (1,4,1) wins. #related ONLY — never
+       #secondary-inner > * (that would un-hide the native chat frame, playlist
+       and donation shelf back into the strip). */
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #secondary,
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #secondary,
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #secondary-inner,
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #secondary-inner,
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #related,
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #related,
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy ytd-watch-next-secondary-results-renderer,
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy ytd-watch-next-secondary-results-renderer {
       display: block !important;
     }
-    body.hs-yt-suggestions.hs-platform-yt ytd-watch-flexy #secondary-inner {
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline) ytd-watch-flexy #secondary-inner {
       width: 100% !important; max-width: 100% !important; height: auto !important; max-height: none !important;
     }
     /* high-contrast text in the strip */
-    body.hs-yt-suggestions.hs-platform-yt ytd-watch-flexy #secondary,
-    body.hs-yt-suggestions.hs-platform-yt ytd-watch-flexy #secondary * { color: #e6e6e6 !important; }
-    body.hs-yt-suggestions.hs-platform-yt ytd-watch-flexy #secondary a { color: #ffffff !important; }
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline) ytd-watch-flexy #secondary,
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline) ytd-watch-flexy #secondary * { color: #e6e6e6 !important; }
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline) ytd-watch-flexy #secondary a { color: #ffffff !important; }
 
     /* ============================================
        SINGLE-COLUMN RESCUE

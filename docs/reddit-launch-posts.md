@@ -1,6 +1,6 @@
 # reddit launch — posts + sequence (jun 2026)
 
-positioning: lead with **cross-platform multichat** (twitch+kick+youtube in one panel, no account needed). emotes are the retention layer, not the hook.
+positioning: lead with **viewer emote sovereignty** — your free 5000-slot inventory renders in any twitch/kick/youtube chat, in any channel. cross-platform multichat (no account needed to watch) is the share-hook for /m/ permalinks + the multi-stream crowd, not the lead for the store listing. (reddit drafts below can stay multichat-led — r/Twitch is the multi-stream audience — but the store/manifest/README lead with the wedge.)
 
 ## go/no-go gates
 - **first-contact reliability** — GREEN (multichat/irc/emote rendering/8h memory all intact). one live smoke test before posting.

@@ -1,11 +1,11 @@
 # heatsync
 
-twitch + kick + youtube chat in one panel — plus your own emotes on every stream, no streamer approval, no sub.
+your own emotes on every twitch, kick + youtube chat — no streamer approval, no sub. plus a multichat panel for all three.
 
 ## features
 
-- **multichat overlay** — twitch + kick + youtube live chat in one tabbed panel: per-channel tabs, per-platform filters, mentions, whispers, resizable + dockable to any edge. **no account required.**
-- **emote sovereignty** — a free 5000-slot inventory you upload at [heatsync.org](https://heatsync.org) renders in twitch + kick native chat and across the overlay, in any channel — whether or not the streamer enabled anything. tab-complete a 7TV name or paste any emote, hit enter; the slot lands silently. one click imports every emote from a channel.
+- **emote sovereignty** — a free 5000-slot inventory (one free account at [heatsync.org](https://heatsync.org)) renders in twitch + kick native chat and across the overlay, in any channel — whether or not the streamer enabled anything. tab-complete a 7TV name or paste any emote, hit enter; the slot lands silently. one click imports every emote from a channel.
+- **multichat overlay** — twitch + kick + youtube live chat in one tabbed panel: per-channel tabs, per-platform filters, mentions, whispers, resizable + dockable to any edge. no account required to watch.
 - **7TV / BTTV / FFZ** — emotes, paints, and badges render automatically. coexists with those extensions — keep 7TV, add heatsync for the cross-platform chat and portable emotes it doesn't do.
 - **power-user input** — vim keybindings on every chat input (normal/insert, motions, operators, `.` repeat), wysiwyg emote composer, message history, reply threading, and instant `/`-filter of the live buffer by text or user.
 - **moderation + profiles** — hover mod toolbar (`/ban` `/timeout` `/unban` `/delete`), client-side automod, user mute/block synced across twitch↔kick, btop-style profile cards with a paginated chat-log archive, one-click twitch clips.

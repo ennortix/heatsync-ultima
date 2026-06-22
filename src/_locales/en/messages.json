@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "twitch + kick + youtube chat in one panel. multichat across platforms, no account needed. 7tv/bttv/ffz + your own emotes everywhere."
+    "message": "your emotes in any twitch, kick or youtube chat — free, up to 5000 slots. plus 7tv/bttv/ffz + cross-platform multichat"
   },
   "common_loading": {
     "message": "loading..."
@@ -127,31 +127,31 @@
     "message": "heatsync"
   },
   "welcome_tagline": {
-    "message": "every stream's chat in one panel — twitch, kick + youtube"
+    "message": "your emotes in every chat — twitch, kick + youtube"
   },
   "welcome_cta": {
-    "message": "open a stream → try multichat"
+    "message": "open a stream → try it"
   },
   "welcome_next_label": {
-    "message": "no account needed"
+    "message": "2 steps to your emotes everywhere"
   },
   "welcome_next_1": {
-    "message": "open twitch, kick, or youtube live — the panel's already there"
+    "message": "sign in to claim your emote inventory"
   },
   "welcome_next_2": {
-    "message": "click the heatsync button in chat to add streams across platforms"
+    "message": "import any channel's emotes — yours in every chat"
   },
   "welcome_cta_kick": {
-    "message": "optional — sign in to save your own emotes"
+    "message": "sign in → save your emote inventory"
   },
   "welcome_done_title": {
     "message": "you're in"
   },
   "welcome_done_1": {
-    "message": "open any twitch, kick, or youtube stream — your emotes render right in chat"
+    "message": "open a stream and click the heatsync button → import all channel emotes"
   },
   "welcome_done_2": {
-    "message": "click the heatsync button in the chat box for multichat + your emote inventory"
+    "message": "your set starts empty — import a channel you watch to fill it"
   },
   "welcome_trust": {
     "message": "open source · no trackers · your emotes stay yours"
@@ -166,7 +166,7 @@
     "message": "log in"
   },
   "btn_auth_save_emotes": {
-    "message": "to save emotes to your set"
+    "message": "to use your emotes in every chat"
   },
   "btn_tab_channel": {
     "message": "channel"
@@ -199,7 +199,7 @@
     "message": "no emotes"
   },
   "btn_login_save_emotes": {
-    "message": "log in at heatsync.org to save emotes"
+    "message": "log in to use your emotes in every chat"
   },
   "btn_cached": {
     "message": "cached"

@@ -2583,7 +2583,7 @@
     grid.innerHTML = ''
     const wrap = document.createElement('div')
     wrap.className = 'hs-coldstart'
-    wrap.innerHTML = `<div class="hs-coldstart-title">your emote set is empty</div>`
+    wrap.innerHTML = `<div class="hs-coldstart-title">your emotes, in every chat</div>`
     const sub = document.createElement('div')
     sub.className = 'hs-coldstart-sub'
     if (!currentChannel) {

@@ -1981,7 +1981,7 @@
       try {
         chrome.storage.sync.get('ui_settings', function(d) {
           const ui = (d && d.ui_settings) || {}
-          chrome.storage.sync.set({ ui_settings: { ...ui, multichatOverlayEnabled: !!v } }, function() {
+          chrome.storage.sync.set({ ui_settings: sanitizeUiSettings({ ...ui, multichatOverlayEnabled: !!v }) }, function() {
             if (chrome.runtime.lastError) {
               console.warn('[heatsync-ext] overlay mode save failed:', chrome.runtime.lastError.message)
             }
@@ -10488,7 +10488,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         if (document.body.classList.contains('hs-popout') && ch.name.toLowerCase() !== urlCh) {
           try {
             const s = await chrome.storage.sync.get(['ui_settings'])
-            await chrome.storage.sync.set({ ui_settings: { ...s.ui_settings, activeTab: 'live', liveChannel: ch.name } })
+            await chrome.storage.sync.set({ ui_settings: sanitizeUiSettings({ ...s.ui_settings, activeTab: 'live', liveChannel: ch.name }) })
           } catch {}
           if (ch.platform === 'twitch' || hostPlatform === 'twitch') {
             location.href = `/popout/${ch.name}/chat?popout=`;
@@ -12639,7 +12639,14 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         const remote = resp.data.state
         if (!remote || typeof remote !== 'object' || Object.keys(remote).length === 0) return
         const stored = await chrome.storage.sync.get(['ui_settings'])
-        const merged = { ...(stored.ui_settings || {}), ...remote }
+        // Sanitize the merged blob before persisting — `remote` is server-fanned
+        // state (accumulated across every client/version that ever PATCHed this
+        // account) and must NOT be trusted into the cross-device sync key raw.
+        // Every sibling write sanitizes (main.js:1760/5736, bg ui-state:update);
+        // this seed was the lone bypass. Skipping it let numeric-key/oversized/
+        // __proto__ garbage replicate to all devices + push the record past the
+        // 8KB quota, after which all future pref writes silently fail.
+        const merged = sanitizeUiSettings({ ...(stored.ui_settings || {}), ...remote })
         await chrome.storage.sync.set({ ui_settings: merged })
       } catch (e) { log('ui-state seed failed:', e?.message) }
     })();

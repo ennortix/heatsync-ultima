@@ -1592,32 +1592,22 @@ function _extractMcMsgText(msg) {
   const userEl = msg.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
   if (!userEl) return (msg.textContent || '').trim()
   const parts = []
-  let node = userEl.nextSibling
-  while (node) {
-    if (node.nodeType === 3) {
-      parts.push(node.textContent)
-    } else if (node.nodeType === 1) {
-      const cls = node.classList
-      if (cls?.contains('hs-mc-platform-badge') || cls?.contains('hs-mc-badge') || cls?.contains('hs-mc-time') || cls?.contains('hs-mc-reply-ctx') || cls?.contains('hs-mc-reply-btn') || cls?.contains('hs-mod-toolbar')) {
-        // skip
-      } else if (node.tagName === 'IMG' && node.alt) {
-        parts.push(node.alt)
-      } else {
-        // Gather EVERY emote name in this node, not just the first. An overlay
-        // stack (.hs-mc-emote-stack) holds a base + N overlays; querySelector
-        // stopped at the base, so a stacked emote like a wide "rave0" silently
-        // dropped out of the copied text. querySelectorAll keeps base+overlays
-        // (and emoji spans) in DOM order = reading order.
-        const inner = node.querySelectorAll?.('img[alt], .hs-mc-emoji')
-        if (inner && inner.length) {
-          for (const el of inner) parts.push(el.tagName === 'IMG' ? el.alt : el.textContent)
-        } else {
-          parts.push(node.textContent || '')
-        }
-      }
-    }
-    node = node.nextSibling
+  // Recursive walk: a node may interleave emotes and text (e.g.
+  // "<emote> Kripp, when...") inside .hs-mc-text. querySelectorAll grabbed
+  // only the emotes and dropped every text node between/after them, so a
+  // message that started with an emote copied as just the emote name. Walk
+  // every child in DOM order, emitting text nodes AND emote alts.
+  const walk = (node) => {
+    if (node.nodeType === 3) { parts.push(node.textContent); return }
+    if (node.nodeType !== 1) return
+    const cls = node.classList
+    if (cls?.contains('hs-mc-platform-badge') || cls?.contains('hs-mc-badge') || cls?.contains('hs-mc-time') || cls?.contains('hs-mc-reply-ctx') || cls?.contains('hs-mc-reply-btn') || cls?.contains('hs-mod-toolbar')) return
+    if (node.tagName === 'IMG') { if (node.alt) parts.push(node.alt); return }
+    if (cls?.contains('hs-mc-emoji')) { parts.push(node.textContent || ''); return }
+    for (const child of node.childNodes) walk(child)
   }
+  let node = userEl.nextSibling
+  while (node) { walk(node); node = node.nextSibling }
   return parts.join(' ').replace(/\s+/g, ' ').replace(/^\s*:\s*/, '').trim()
 }
 

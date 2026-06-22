@@ -150,22 +150,22 @@
 
   <div class="body">
     <div class="not-signed-in" id="not-signed-in" hidden>
-      not signed in — <a href="#" id="setup-link">set up heatsync →</a>
+      <span data-i18n="popup_not_signed_in">not signed in — </span><a href="#" id="setup-link" data-i18n="popup_setup_link">set up heatsync →</a>
     </div>
-    <input type="text" class="input" id="popout-input" placeholder="channel or url" spellcheck="false" autocomplete="off">
-    <button class="btn" id="popout-btn">popout chat</button>
+    <input type="text" class="input" id="popout-input" placeholder="channel or url" data-i18n-ph="popup_channel_placeholder" spellcheck="false" autocomplete="off">
+    <button class="btn" id="popout-btn" data-i18n="popup_btn_popout">popout chat</button>
     <div class="detected" id="detected"></div>
   </div>
 
-  <div class="lite-row" id="lite-row" title="overlay off — emotes, tab-complete and picker keep working in native chat">
+  <div class="lite-row" id="lite-row" title="overlay off — emotes, tab-complete and picker keep working in native chat" data-i18n-title="popup_lite_title">
     <button class="lite-pill" id="lite-pill"></button>
-    <span>lite mode (emotes only)</span>
+    <span data-i18n="popup_lite_label">lite mode (emotes only)</span>
   </div>
-  <div class="lite-hint" id="lite-hint">reload open twitch/kick/youtube tabs to apply</div>
+  <div class="lite-hint" id="lite-hint" data-i18n="popup_lite_hint">reload open twitch/kick/youtube tabs to apply</div>
 
   <div class="footer">
     <a id="link-site" href="https://heatsync.org" target="_blank" rel="noopener noreferrer">heatsync.org</a>
-    <a id="link-errors" href="#" title="left-click: copy last 50 errors / right-click: clear">errors (0)</a>
+    <a id="link-errors" href="#" title="left-click: copy last 50 errors / right-click: clear" data-i18n-title="popup_errors_title">errors (0)</a>
   </div>
 
   <script src="popup.js"></script>

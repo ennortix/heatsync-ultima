@@ -2,6 +2,15 @@
 (function() {
   'use strict';
 
+  // i18n: localize static [data-i18n*] strings from _locales, with the inline
+  // HTML text as the en fallback (a missing key never blanks the UI). Dynamic
+  // strings (errors/detected) use t() with the same || english guard below.
+  const i18n = (typeof browser !== 'undefined' && browser.i18n) ? browser.i18n : chrome.i18n;
+  const t = (k, subs) => (i18n && i18n.getMessage ? i18n.getMessage(k, subs) : '') || '';
+  for (const el of document.querySelectorAll('[data-i18n]')) { const m = t(el.dataset.i18n); if (m) el.textContent = m; }
+  for (const el of document.querySelectorAll('[data-i18n-ph]')) { const m = t(el.dataset.i18nPh); if (m) el.placeholder = m; }
+  for (const el of document.querySelectorAll('[data-i18n-title]')) { const m = t(el.dataset.i18nTitle); if (m) el.title = m; }
+
   const input = document.getElementById('popout-input');
   const btn = document.getElementById('popout-btn');
   const detected = document.getElementById('detected');
@@ -77,7 +86,7 @@
   function setDetected(p, channel) {
     while (detected.firstChild) detected.removeChild(detected.firstChild);
     if (!p || !channel) return;
-    detected.appendChild(document.createTextNode('on '));
+    detected.appendChild(document.createTextNode(t('popup_detected_prefix') || 'on '));
     const b = document.createElement('b');
     b.textContent = p + '/' + channel;
     detected.appendChild(b);
@@ -139,7 +148,7 @@
   function refreshErrorCount() {
     chrome.storage.local.get('hs_errors', (cur) => {
       const arr = Array.isArray(cur?.hs_errors) ? cur.hs_errors : [];
-      linkErrors.textContent = 'errors (' + arr.length + ')';
+      linkErrors.textContent = t('popup_errors_count', [String(arr.length)]) || ('errors (' + arr.length + ')');
     });
   }
   async function copyErrors() {
@@ -148,7 +157,7 @@
     let diag = null;
     try { diag = (await chrome.runtime.sendMessage({ type: 'get_diag' }))?.diag || null; } catch {}
     if (arr.length === 0 && !diag) {
-      linkErrors.textContent = 'no errors';
+      linkErrors.textContent = t('popup_no_errors') || 'no errors';
       setTimeout(refreshErrorCount, 1200);
       return;
     }
@@ -157,15 +166,15 @@
     const payload = { ver, ua, diag, count: arr.length, errors: arr };
     try {
       await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
-      linkErrors.textContent = 'copied ' + arr.length;
+      linkErrors.textContent = t('popup_copied', [String(arr.length)]) || ('copied ' + arr.length);
     } catch {
-      linkErrors.textContent = 'copy failed';
+      linkErrors.textContent = t('popup_copy_failed') || 'copy failed';
     }
     setTimeout(refreshErrorCount, 1200);
   }
   function clearErrors() {
     chrome.storage.local.remove('hs_errors', () => {
-      linkErrors.textContent = 'cleared';
+      linkErrors.textContent = t('popup_cleared') || 'cleared';
       setTimeout(refreshErrorCount, 800);
     });
   }

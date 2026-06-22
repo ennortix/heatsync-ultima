@@ -115,13 +115,51 @@
     "message": "log in to sync emotes"
   },
   "popup_channel_placeholder": {
-    "message": "channel"
+    "message": "channel or url"
   },
   "popup_btn_popout": {
-    "message": "popout"
+    "message": "popout chat"
   },
   "popup_hint": {
     "message": "emote settings in picker panel on chat"
+  },
+  "popup_not_signed_in": {
+    "message": "not signed in — "
+  },
+  "popup_setup_link": {
+    "message": "set up heatsync →"
+  },
+  "popup_lite_label": {
+    "message": "lite mode (emotes only)"
+  },
+  "popup_lite_title": {
+    "message": "overlay off — emotes, tab-complete and picker keep working in native chat"
+  },
+  "popup_lite_hint": {
+    "message": "reload open twitch/kick/youtube tabs to apply"
+  },
+  "popup_errors_title": {
+    "message": "left-click: copy last 50 errors / right-click: clear"
+  },
+  "popup_errors_count": {
+    "message": "errors ($COUNT$)",
+    "placeholders": { "count": { "content": "$1" } }
+  },
+  "popup_no_errors": {
+    "message": "no errors"
+  },
+  "popup_copied": {
+    "message": "copied $COUNT$",
+    "placeholders": { "count": { "content": "$1" } }
+  },
+  "popup_copy_failed": {
+    "message": "copy failed"
+  },
+  "popup_cleared": {
+    "message": "cleared"
+  },
+  "popup_detected_prefix": {
+    "message": "on "
   },
   "welcome_title": {
     "message": "heatsync"

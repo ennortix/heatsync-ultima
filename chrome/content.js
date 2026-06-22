@@ -8942,10 +8942,22 @@ function _extractMessageText(msgEl) {
     '[data-a-target="chat-message-text"], .text-fragment, .message [class*="text-fragment"]'
   );
   if (frags.length) {
-    return Array.from(frags).map(f => {
-      const img = f.querySelector?.('img[alt]');
-      return img ? img.alt : (f.textContent || '');
-    }).join(' ').replace(/\s+/g, ' ').trim();
+    // Drop fragments nested inside another matched fragment so a container +
+    // its children don't double-emit the same text.
+    const top = Array.from(frags).filter(f => !Array.from(frags).some(o => o !== f && o.contains(f)));
+    const parts = [];
+    // Recursive walk: a fragment can interleave an inline-imagified emote and
+    // text (e.g. "<emote> Kripp, when..."). The old img-or-textContent map kept
+    // only the emote alt and dropped the trailing text. Walk every node so both
+    // land in reading order.
+    const walk = (node) => {
+      if (node.nodeType === 3) { parts.push(node.textContent); return; }
+      if (node.nodeType !== 1) return;
+      if (node.tagName === 'IMG') { if (node.alt) parts.push(node.alt); return; }
+      for (const child of node.childNodes) walk(child);
+    };
+    for (const f of top) walk(f);
+    return parts.join(' ').replace(/\s+/g, ' ').trim();
   }
   const body = msgEl.querySelector('.chat-line__message-body, [data-test-selector="chat-line-message-body"], .chat-entry');
   return ((body || msgEl).textContent || '').replace(/\s+/g, ' ').trim();

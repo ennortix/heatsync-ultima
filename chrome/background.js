@@ -654,13 +654,26 @@ const youtubeChannelUrls = {} // channelId → url (in-memory source of truth, p
 // channelId='global' and every chat message that follows gets dropped by the receiving tab.
 const pendingYtSubscribes = []  // [{ channelId, url, ts }] LIFO, capped, ts for staleness
 const ytChannelHandleCache = new Map() // videoId → channel handle (oEmbed lookup, session-scoped)
+function cacheYtHandle(videoId, handle) {
+  ytChannelHandleCache.set(videoId, handle)
+  // LRU cap — long sessions watching many YT channels would otherwise grow unbounded.
+  if (ytChannelHandleCache.size > 100) {
+    ytChannelHandleCache.delete(ytChannelHandleCache.keys().next().value)
+  }
+}
 async function getYtChannelHandle(videoId) {
   if (!videoId) return null
   if (ytChannelHandleCache.has(videoId)) return ytChannelHandleCache.get(videoId)
   try {
     const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent('https://www.youtube.com/watch?v=' + videoId)}&format=json`
     const r = await fetch(oembedUrl, { signal: AbortSignal.timeout(4000) })
-    if (!r.ok) return null
+    if (!r.ok) {
+      // Cache a definitive miss for private/deleted/blocked videos (won't resolve
+      // this session) so repeat callers stop re-hitting oEmbed. Leave transient
+      // statuses (429 rate-limit, 5xx) uncached so they can recover on retry.
+      if (r.status === 404 || r.status === 401 || r.status === 403) cacheYtHandle(videoId, null)
+      return null
+    }
     const data = await r.json()
     let handle = null
     if (data.author_url) {
@@ -668,13 +681,9 @@ async function getYtChannelHandle(videoId) {
       if (m) handle = m[1]
     }
     if (!handle && data.author_name) handle = data.author_name.replace(/\s+/g, '')
-    if (handle) {
-      ytChannelHandleCache.set(videoId, handle)
-      // LRU cap — long sessions watching many YT channels would otherwise grow unbounded.
-      if (ytChannelHandleCache.size > 100) {
-        ytChannelHandleCache.delete(ytChannelHandleCache.keys().next().value)
-      }
-    }
+    // Cache either outcome: a successful oEmbed that simply carries no author is
+    // a stable null, so caching it spares the repeat fetch too.
+    cacheYtHandle(videoId, handle)
     return handle
   } catch (e) { return null }
 }

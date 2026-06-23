@@ -595,6 +595,9 @@
   "mc_enter_platform": {
     "message": "enter at least one platform"
   },
+  "mc_invalid_name": {
+    "message": "invalid channel name — check for typos or spaces"
+  },
   "mc_username_placeholder": {
     "message": "username"
   },

@@ -9432,6 +9432,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       input.type = 'text'
       input.className = 'hs-mc-ch-input'
       input.placeholder = placeholder
+      // The visible label is a separate <span>, so the input itself is unlabeled
+      // to assistive tech — name it explicitly (label is 'twitch'/'kick'/'youtube').
+      input.setAttribute('aria-label', label)
       input.style.cssText = 'flex:1;background:#000;color:#fff;border:1px solid #808080;padding:6px 10px;border-radius:0;font-size:14px;outline:none;font-family:inherit;'
       // Stop YouTube/Kick keyboard shortcuts from stealing keystrokes
       input.addEventListener('keydown', (e) => e.stopPropagation())

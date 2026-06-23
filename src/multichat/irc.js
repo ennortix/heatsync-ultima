@@ -547,7 +547,7 @@ class IRC {
     // OR broadcast was lost, re-pull at 3s + 8s + 20s. Cheap (single message,
     // no fetch) and idempotent — _refreshFromBg only mutates when SW has data.
     for (const delay of [3000, 8000, 20000]) {
-      setTimeout(() => {
+      cleanup.setTimeout(() => {
         if (this._destroyed || !this.channels.has(ch)) return
         if ((this.channels.get(ch)?.size || 0) >= 200) return
         this._refreshFromBg(ch)
@@ -998,7 +998,7 @@ class KickChat {
     safeSendMessage({ type: 'ws_send', data: { type: 'channel:join', platform: 'kick', channel: kickUsername } })
     log('Kick joined', kickUsername, '(webhook mode)')
     for (const delay of [3000, 8000, 20000]) {
-      setTimeout(() => {
+      cleanup.setTimeout(() => {
         if (this._destroyed || !this.channels.has(kickUsername)) return
         if ((this.channels.get(kickUsername)?.size || 0) >= 200) return
         this._refreshFromBg(kickUsername)

@@ -13286,7 +13286,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
     // Handle Hermes events (raids, hype trains, redeems, sub gifts) from MAIN world
     window.addEventListener('message', (e) => {
-      if (e.origin !== location.origin || e.data?.type !== 'heatsync-hermes-event') return
+      // e.source === window: legit events come from our same-window MAIN-world
+      // inject (early-inject-main.js postMessage). Reject other frames so a
+      // same-origin iframe can't spoof raid/hype/sub banners. Mirrors the guard
+      // used across twitch-api.js / autocomplete-hook.js.
+      if (e.source !== window || e.origin !== location.origin || e.data?.type !== 'heatsync-hermes-event') return
       const { eventType, channel, data } = e.data
       if (!eventType || !channel) return
 

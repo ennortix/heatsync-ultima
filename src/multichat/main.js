@@ -13390,7 +13390,7 @@
             // pick up the now-renderable emotes. In-place text swap instead of
             // clearRenderedHtmlCache()→epoch bump→full rebuild (the flash).
             if (firstLoad) reloadEmotesInPlace()
-          })
+          }).catch((e) => log('[heatsync-mc] loadEmotes error:', e))
         }, 300)
       }
       // Inventory changes: update membership + viewer's personal set.
@@ -13898,7 +13898,7 @@
             // now (only when at/near bottom, to not yank a scrolled-up reader).
             if (firstLoad) reloadEmotesInPlace(!isScrolledUp)
             else if (!isScrolledUp) renderMessages(currentTab)
-          })
+          }).catch((e) => log('[heatsync-mc] loadEmotes error:', e))
         }, 300)
       }
 
@@ -14612,7 +14612,7 @@
             renderMessages(active)
           }
         }
-      })
+      }).catch((e) => log('[heatsync-mc] loadStreamEvents error:', e))
     }, 300)
 
     // Scan existing chat for mentions (before IRC catches new ones)
@@ -15359,10 +15359,12 @@
     }
 
     // Request cached follow history from background (handles race condition on load)
-    safeSendMessage({ type: 'get_follow_history' }).then((resp) => {
-      if (resp?.colors) processFollowColors(resp.colors)
-      if (resp?.history) processFollowHistory(resp.history)
-    })
+    safeSendMessage({ type: 'get_follow_history' })
+      .then((resp) => {
+        if (resp?.colors) processFollowColors(resp.colors)
+        if (resp?.history) processFollowHistory(resp.history)
+      })
+      .catch(() => {})
 
     // === BULLETPROOF CONNECTION MAINTENANCE ===
 

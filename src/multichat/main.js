@@ -9487,14 +9487,46 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
     const showErr = (msg) => { errEl.textContent = msg; errEl.style.display = 'block'; }
 
+    // Parse a typed/pasted value into a clean platform slug: strip a leading
+    // @, and if the user pasted a platform URL (twitch.tv/xqc, kick.com/xqc,
+    // popout/mod links) reduce it to just the slug. Without this, pasting a URL
+    // or a name with trailing junk created a permanent dead tab that forever
+    // showed nothing (Bug #9). A malformed remainder is rejected by the charset
+    // check below — a name with spaces/slashes can never be a real channel.
+    const parseTwitchLogin = (raw) => {
+      let v = (raw || '').trim().replace(/^@/, '')
+      const m = v.match(/twitch\.tv\/(?:popout\/|moderator\/)?([^/?#\s]+)/i)
+      if (m) v = m[1]
+      return v.toLowerCase()
+    }
+    const parseKickSlug = (raw) => {
+      let v = (raw || '').trim().replace(/^@/, '')
+      const m = v.match(/kick\.com\/([^/?#\s]+)/i)
+      if (m) v = m[1]
+      return v.toLowerCase()
+    }
+
     const doAdd = () => {
       errEl.style.display = 'none'
-      const twitchVal = twitch.input.value.trim().toLowerCase().replace(/^@/, '')
-      const kickVal = kick.input.value.trim().toLowerCase().replace(/^@/, '')
+      const twitchVal = parseTwitchLogin(twitch.input.value)
+      const kickVal = parseKickSlug(kick.input.value)
       const ytVal = yt.input.value.trim() ? normalizeYtUrl(yt.input.value.trim()) : ''
 
       if (!twitchVal && !kickVal && !ytVal) {
         showErr(t('mc_enter_platform'))
+        return
+      }
+
+      // Charset gate — a slug outside the platform's allowed character set can
+      // never resolve to a real channel (twitch [a-z0-9_], kick adds '-'), so a
+      // typo with spaces or a half-parsed URL is rejected here instead of
+      // becoming a silent dead tab. Real channel names always pass.
+      if (twitchVal && !/^[a-z0-9_]{1,25}$/.test(twitchVal)) {
+        showErr(t('mc_invalid_name'))
+        return
+      }
+      if (kickVal && !/^[a-z0-9_-]{1,25}$/.test(kickVal)) {
+        showErr(t('mc_invalid_name'))
         return
       }
 

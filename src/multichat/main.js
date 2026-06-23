@@ -11811,7 +11811,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
             // pick up the now-renderable emotes. In-place text swap instead of
             // clearRenderedHtmlCache()→epoch bump→full rebuild (the flash).
             if (firstLoad) reloadEmotesInPlace();
-          });
+          }).catch(e => log('[heatsync-mc] loadEmotes error:', e));
         }, 300);
       }
       // Inventory changes: update membership + viewer's personal set.
@@ -12240,7 +12240,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
             // now (only when at/near bottom, to not yank a scrolled-up reader).
             if (firstLoad) reloadEmotesInPlace(!isScrolledUp);
             else if (!isScrolledUp) renderMessages(currentTab);
-          });
+          }).catch(e => log('[heatsync-mc] loadEmotes error:', e));
         }, 300);
       }
 
@@ -12876,7 +12876,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
             renderMessages(active);
           }
         }
-      });
+      }).catch(e => log('[heatsync-mc] loadStreamEvents error:', e));
     }, 300);
 
     // Scan existing chat for mentions (before IRC catches new ones)
@@ -13590,7 +13590,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     safeSendMessage({ type: 'get_follow_history' }).then(resp => {
       if (resp?.colors) processFollowColors(resp.colors);
       if (resp?.history) processFollowHistory(resp.history);
-    });
+    }).catch(() => {});
 
     // === BULLETPROOF CONNECTION MAINTENANCE ===
 

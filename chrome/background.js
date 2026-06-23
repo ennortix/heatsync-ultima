@@ -1998,14 +1998,16 @@ async function fetch7TVChannelEmotes(channelName, channelId = null, platform = '
     if (platform === 'kick') {
       // Kick: 7TV requires numeric user ID, not slug — resolve via GQL search
       log(' 7TV: Fetching Kick channel emotes for:', channelName);
-      let kickId = channelId // may already be numeric from content script
+      // Accept channelId only when it looks like a numeric Kick user id — a slug
+      // passed here would be cached and then cause 404s on every poll cycle.
+      let kickId = (channelId && /^\d+$/.test(String(channelId))) ? channelId : null
       if (!kickId) {
         try {
           const gqlResp = await fetchWithTimeout('https://7tv.io/v3/gql', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              query: `query { users(query: "${channelName.replace(/[^a-z0-9_]/gi, '')}") { connections { platform id username } } }`
+              query: `query { users(query: "${channelName.replace(/[^a-z0-9_-]/gi, '')}") { connections { platform id username } } }`
             })
           })
           if (gqlResp.ok) {
@@ -2013,7 +2015,9 @@ async function fetch7TVChannelEmotes(channelName, channelId = null, platform = '
             const users = gqlData?.data?.users || []
             for (const u of users) {
               const conn = u.connections?.find(c => c.platform === 'KICK' && c.username?.toLowerCase() === channelName.toLowerCase())
-              if (conn) { kickId = conn.id; break }
+              // Validate that id is numeric — 7TV GQL id field is a string but must be
+              // the Kick numeric user id; a slug here would cause 404s on every poll.
+              if (conn && /^\d+$/.test(String(conn.id || ''))) { kickId = conn.id; break }
             }
           }
         } catch (e) { log(' 7TV: GQL Kick lookup failed:', e.message) }

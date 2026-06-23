@@ -6766,15 +6766,15 @@ async function initialize() {
       log(' ✓ Restored twitchIdCache for', twitchIdCache.size, 'usernames');
     }
     // Warm emote arrays from storage cache (instant availability while API fetches run)
-    if (stored.global_emotes?.length) {
+    if (Array.isArray(stored.global_emotes)) {
       globalEmotes = stored.global_emotes;
       log(' ✓ Warm cache:', globalEmotes.length, 'global emotes from storage');
     }
-    if (stored.emote_inventory?.length) {
+    if (Array.isArray(stored.emote_inventory)) {
       emoteInventory = stored.emote_inventory;
       log(' ✓ Warm cache:', emoteInventory.length, 'inventory emotes from storage');
     }
-    if (stored.blocked_emotes?.length) {
+    if (Array.isArray(stored.blocked_emotes)) {
       blockedEmotes = new Set(stored.blocked_emotes);
       log(' ✓ Warm cache:', blockedEmotes.size, 'blocked emotes from storage');
     }

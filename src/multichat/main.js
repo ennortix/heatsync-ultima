@@ -12139,7 +12139,11 @@
   async function loadConfig() {
     try {
       const s = await chrome.storage.local.get([STORAGE_KEY])
-      config = { channels: [], enabled: true, ...s[STORAGE_KEY] }
+      const _raw = s[STORAGE_KEY]
+      config = { channels: [], enabled: true, ...(_raw && typeof _raw === 'object' ? _raw : {}) }
+      // Guard: a persisted null channels field (corrupted storage) would propagate
+      // through the spread and cause config.channels.some() to throw below.
+      if (!Array.isArray(config.channels)) config.channels = []
       _channelLookup = null
       // Migrate old string channels to object format
       let needsSave = false

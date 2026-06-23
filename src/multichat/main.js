@@ -589,7 +589,7 @@
   // to close the debounce gap that survives a reload mid-burst.
   // ============================================
   const PERSIST_DEBOUNCE_MS = 1500
-  const PERSIST_MAX_MENTIONS = 200
+  const PERSIST_MAX_MENTIONS = 500 // matches MAX_BUFFER so restore fills the live buffer
   const PERSIST_MAX_YT = 500
   const PERSIST_SYNC_MAX = 100
   const _persistMentionsState = { timer: null, dirty: false }

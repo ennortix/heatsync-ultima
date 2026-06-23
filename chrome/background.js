@@ -7874,8 +7874,14 @@ async function initialize() {
       // 401 the logout path already cleaned storage. Either way, never let a
       // post-init persist overwrite a healthy warm cache with [].
       const persist = {
-        global_emotes: globalEmotes,
         blocked_emotes: Array.from(blockedEmotes),
+      }
+      // Only persist a non-empty global set. globalEmotes is [] when every provider
+      // (BTTV/FFZ/7TV/twitch) failed this fetch (network/VPN blip) — like the
+      // emote_inventory gate below, never overwrite a healthy warm cache with [].
+      // Global sets are platform-wide and never legitimately empty, so [] == failure.
+      if (globalEmotes.length > 0) {
+        persist.global_emotes = globalEmotes
       }
       if (inventoryFetchOK) {
         persist.emote_inventory = emoteInventory

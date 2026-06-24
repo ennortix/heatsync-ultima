@@ -51,12 +51,12 @@ chat, streaming, twitch, kick, youtube, emotes, 7tv
 ```
 
 ## Known issues / decisions
-- **Locale drift (open):** `manifest_description` is wedge-first ("your emotes...") in **en only**.
-  All ~32 other locales still carry the pre-1.7.5 multichat-first line
-  ("[platform] chat in one panel. custom emotes, 7tv/bttv/ffz paints + badges built-in").
-  Not wrong, but the 1.7.5 repositioning only landed for English. Decide: realign all
-  locales to the emote-first framing, or leave non-en as-is. `manifest_name` may have the
-  same split — check before realigning.
+- **Locale drift (RESOLVED 2026-06-23):** all 33 non-en `manifest_description` strings
+  realigned to the wedge-first (emote-first) framing, matching en. Each verified ≤132 chars,
+  valid JSON, brand tokens present (Twitch/Kick/YouTube/7TV/BTTV/FFZ/5000), build passes.
+  Machine-authored from each locale's existing vocabulary — a native spot-check on the
+  non-Latin scripts (ar, he, hi, th) before the tag is prudent but not blocking.
+  `manifest_name` is intentionally bare "heatsync" in non-en (toolbar name) — left as-is.
 - AMO listed version is behind: submit **1.7.5** (listing was on 1.6.8).
 
 ## Pre-release / pre-submit checklist

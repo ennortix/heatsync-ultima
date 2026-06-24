@@ -1130,9 +1130,6 @@
       }
     }
   },
-  "mc_yt_ended": {
-    "message": "natapos ang youtube stream"
-  },
   "mc_yt_error": {
     "message": "may error sa youtube connection"
   },

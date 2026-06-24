@@ -1130,9 +1130,6 @@
       }
     }
   },
-  "mc_yt_ended": {
-    "message": "stream youtube zakończony"
-  },
   "mc_yt_error": {
     "message": "błąd połączenia z youtube"
   },

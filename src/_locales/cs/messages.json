@@ -1130,9 +1130,6 @@
       }
     }
   },
-  "mc_yt_ended": {
-    "message": "youtube stream ukončen"
-  },
   "mc_yt_error": {
     "message": "chyba spojení youtube"
   },

@@ -1130,9 +1130,6 @@
       }
     }
   },
-  "mc_yt_ended": {
-    "message": "YouTubeストリーム終了"
-  },
   "mc_yt_error": {
     "message": "YouTube接続エラー"
   },

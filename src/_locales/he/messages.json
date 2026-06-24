@@ -1130,9 +1130,6 @@
       }
     }
   },
-  "mc_yt_ended": {
-    "message": "שידור youtube הסתיים"
-  },
   "mc_yt_error": {
     "message": "שגיאת חיבור youtube"
   },

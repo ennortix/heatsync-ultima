@@ -1130,9 +1130,6 @@
       }
     }
   },
-  "mc_yt_ended": {
-    "message": "YouTube 스트림 종료됨"
-  },
   "mc_yt_error": {
     "message": "YouTube 연결 오류"
   },

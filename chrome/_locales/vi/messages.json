@@ -1130,9 +1130,6 @@
       }
     }
   },
-  "mc_yt_ended": {
-    "message": "stream youtube đã kết thúc"
-  },
   "mc_yt_error": {
     "message": "lỗi kết nối youtube"
   },

@@ -1130,9 +1130,6 @@
       }
     }
   },
-  "mc_yt_ended": {
-    "message": "youtube स्ट्रीम समाप्त"
-  },
   "mc_yt_error": {
     "message": "youtube कनेक्शन त्रुटि"
   },

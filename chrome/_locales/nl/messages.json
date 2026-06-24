@@ -1130,9 +1130,6 @@
       }
     }
   },
-  "mc_yt_ended": {
-    "message": "youtube-stream beëindigd"
-  },
   "mc_yt_error": {
     "message": "youtube-verbindingsfout"
   },

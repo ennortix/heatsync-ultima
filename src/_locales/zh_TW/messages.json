@@ -1130,9 +1130,6 @@
       }
     }
   },
-  "mc_yt_ended": {
-    "message": "youtube 直播已結束"
-  },
   "mc_yt_error": {
     "message": "youtube 連線錯誤"
   },

@@ -1130,9 +1130,6 @@
       }
     }
   },
-  "mc_yt_ended": {
-    "message": "YouTube yayını sona erdi"
-  },
   "mc_yt_error": {
     "message": "YouTube bağlantı hatası"
   },

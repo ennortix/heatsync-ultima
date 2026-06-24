@@ -1130,9 +1130,6 @@
       }
     }
   },
-  "mc_yt_ended": {
-    "message": "สตรีม youtube จบแล้ว"
-  },
   "mc_yt_error": {
     "message": "ข้อผิดพลาดการเชื่อมต่อ youtube"
   },

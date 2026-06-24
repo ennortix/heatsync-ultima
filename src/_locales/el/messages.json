@@ -1130,9 +1130,6 @@
       }
     }
   },
-  "mc_yt_ended": {
-    "message": "η μετάδοση στο youtube τελείωσε"
-  },
   "mc_yt_error": {
     "message": "σφάλμα σύνδεσης youtube"
   },

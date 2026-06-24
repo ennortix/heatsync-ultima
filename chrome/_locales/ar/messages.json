@@ -1130,9 +1130,6 @@
       }
     }
   },
-  "mc_yt_ended": {
-    "message": "انتهى بث youtube"
-  },
   "mc_yt_error": {
     "message": "خطأ اتصال youtube"
   },

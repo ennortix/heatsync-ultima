@@ -853,22 +853,23 @@ function listenForSocialEvents() {
             msgsEl.appendChild(el)
             trimChildren(msgsEl, 150)
           }
-          if (msg.status === 'connected') {
-            // Drop any stale ended/error notice now that we're live. No
-            // "waiting for messages" placeholder — the live-dot on the tab
-            // (data-live="true") already signals YT is connected, and the
-            // placeholder lingers awkwardly on slow chats. End/error notices
-            // below stay because they're actionable.
+          if (msg.status === 'connected' || msg.status === 'ended') {
+            // Live or ended → drop any stale yt-status notice. No "stream
+            // ended" pin: it's not actionable (the stream's just over) and it
+            // never auto-cleared (the clearing 'connected' event never arrives
+            // for an ended stream), so it lingered until trimmed by volume or a
+            // tab switch — read as a bug. The live-dot going dark already
+            // signals the stream ended; error notices below stay (actionable).
             if (msgsEl) {
               for (const el of msgsEl.querySelectorAll('.hs-mc-empty[data-hs-yt-status]')) el.remove()
             }
-          } else if (msg.status === 'ended' || msg.status === 'error') {
+          } else if (msg.status === 'error') {
             // Drop noise: rate-limit, "not currently live / chat disabled",
             // AND "could not resolve youtube url" (the expected outcome when
             // a tab's YT URL is auto-guessed from the twitch handle but the
             // streamer doesn't have a matching YT — actionable to nobody).
             const errText = msg.error || ''
-            const isNoise = msg.status === 'error' && (
+            const isNoise = (
               /too many requests/i.test(errText) ||
               /not currently live/i.test(errText) ||
               /chat is disabled/i.test(errText) ||
@@ -879,10 +880,7 @@ function listenForSocialEvents() {
               // Always prefix with "youtube:" — without it, error text looks
               // like it's about whatever stream the user is watching, not
               // the YouTube subscription that actually failed.
-              upsertNotice(
-                msg.status === 'ended' ? 'youtube: stream ended' : `youtube: ${errText || 'connection error'}`,
-                '#ff4444'
-              )
+              upsertNotice(`youtube: ${errText || 'connection error'}`, '#ff4444')
             }
           }
         }

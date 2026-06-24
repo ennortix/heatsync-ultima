@@ -1130,9 +1130,6 @@
       }
     }
   },
-  "mc_yt_ended": {
-    "message": "youtube-трансляция завершена"
-  },
   "mc_yt_error": {
     "message": "ошибка подключения к youtube"
   },

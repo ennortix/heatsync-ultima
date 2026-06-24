@@ -1130,9 +1130,6 @@
       }
     }
   },
-  "mc_yt_ended": {
-    "message": "siaran youtube tamat"
-  },
   "mc_yt_error": {
     "message": "ralat sambungan youtube"
   },

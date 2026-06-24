@@ -1130,9 +1130,6 @@
       }
     }
   },
-  "mc_yt_ended": {
-    "message": "youtube stream véget ért"
-  },
   "mc_yt_error": {
     "message": "youtube kapcsolódási hiba"
   },

@@ -1130,9 +1130,6 @@
       }
     }
   },
-  "mc_yt_ended": {
-    "message": "youtube стрийм приключи"
-  },
   "mc_yt_error": {
     "message": "грешка при youtube връзка"
   },

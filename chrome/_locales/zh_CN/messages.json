@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Twitch、Kick 和 YouTube 聊天集于一个面板。自定义表情，内置 7TV/BTTV/FFZ 涂装 + 徽章。"
+    "message": "在任意 Twitch、Kick、YouTube 聊天中使用你的表情 — 免费，最多 5000 个槽位。还有 7TV/BTTV/FFZ + 跨平台多路聊天"
   },
   "common_loading": {
     "message": "加载中..."

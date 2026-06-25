@@ -157,3 +157,31 @@
       background: #000 !important;
     }
 
+    /* ── NATIVE VISIBLE MODE ─────────────────────────────────────────────────
+       body.hs-native-visible: user has toggled native chat back on. The HS
+       panel shrinks to its configured width and native chat takes the remaining
+       flex space beside it. On Kick the hs-mc-container is already a sibling
+       of #channel-chatroom (both children of the chatroom flex parent), so
+       plain flex:0 0 auto is enough to stop them fighting. On Twitch the panel
+       sits inside .chat-shell which already flex-columns; the sibling nodes
+       that were hidden via .hs-native-hidden now become visible. */
+    body.hs-native-visible #channel-chatroom.hs-native-hidden,
+    body.hs-native-visible .chat-shell.hs-native-hidden,
+    body.hs-native-visible [class*="chat-shell"].hs-native-hidden {
+      /* Override the hs-native-hidden display:none rules — restore flex layout */
+      display: flex !important;
+    }
+    body.hs-native-visible #channel-chatroom.hs-native-hidden > *,
+    body.hs-native-visible .chat-shell.hs-native-hidden > *:not(#hs-mc-container):not(.hs-pc-panel):not(.hs-profile-card) {
+      display: revert !important;
+    }
+    /* HS panel: fixed width, let native chat take the rest via flex:1 */
+    body.hs-native-visible #hs-mc-container {
+      flex: 0 0 var(--hs-chat-w, 340px) !important;
+      max-height: 100% !important;
+    }
+    /* highlight the native-btn when active */
+    #hs-mc-native-btn.active {
+      color: #ff8700 !important;
+    }
+

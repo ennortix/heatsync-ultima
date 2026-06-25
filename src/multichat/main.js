@@ -234,6 +234,11 @@
   let isKick = location.hostname.includes('kick.com');
   const hostPlatform = isKick ? 'kick' : location.hostname.includes('youtube.com') ? 'yt' : 'twitch';
 
+  // Whether the user has chosen to show native platform chat alongside HS.
+  // Persisted via settings registry (key: nativeVisible). Default false = same
+  // behaviour as before this feature existed.
+  let nativeVisible = false;
+
   // Scoped emote wrapper query (avoids full-document scan).
   // Includes the reply-stack overlays — they're appended to <body>, not inside
   // #hs-mc-overlay, so without these roots the hover-highlight never lands on
@@ -1836,6 +1841,7 @@
     // boolmap runtime objects — coercion already filtered to known subkeys
     inlineNotifs: { get: function() { return { ...inlineNotifs } }, set: function(v) { for (const k in v) inlineNotifs[k] = !!v[k] } },
     hermesToggles: { get: function() { return { ...hermesToggles } }, set: function(v) { for (const k in v) hermesToggles[k] = !!v[k] } },
+    nativeVisible: { get: function() { return nativeVisible }, set: function(v) { nativeVisible = !!v } },
   }
   // apply id → side-effect runner. Each mirrors the legacy toggle/save
   // function's effects exactly. onLoad=true on the single init pass —
@@ -1877,6 +1883,16 @@
       try { document.body.classList.toggle('hs-yt-nonlive-chat', !!v) } catch (_) {}
     },
     keywordRegex: function() { rebuildKeywordRegex() },
+    nativeVisible: function(v) {
+      document.body.classList.toggle('hs-native-visible', !!v);
+      try { setNativeChatHidden(!v); } catch (_) {}
+      const btn = document.getElementById('hs-mc-native-btn');
+      if (btn) {
+        btn.title = v ? 'hide native chat' : 'show native chat';
+        btn.setAttribute('aria-label', v ? 'hide native chat' : 'show native chat');
+        btn.classList.toggle('active', !!v);
+      }
+    },
     fonts: function() {
       applyFontSettings(getSetting('fontFamily'), getSetting('fontSize'), getSetting('customFontName'))
     },
@@ -2488,12 +2504,28 @@
       <div class="hs-mc-right-cluster">
         <div class="hs-mc-util-row">
           <button class="hs-mc-tab hs-mc-util-btn" data-tab="settings" title="${t('mc_btn_settings')}">\u2699</button>
+          <button class="hs-mc-tab hs-mc-util-btn" id="hs-mc-native-btn" data-tab="native" title="show native chat" aria-label="show native chat" style="${hostPlatform === 'yt' ? 'display:none' : ''}">\u21c4</button>
+          <button class="hs-mc-tab hs-mc-util-btn" id="hs-mc-actions-btn" data-tab="actions" title="stream actions" aria-label="stream actions" style="${hostPlatform === 'twitch' ? '' : 'display:none'}">\u26a1</button>
           <button class="hs-mc-tab hs-mc-util-btn hs-mc-collapse-btn" id="hs-mc-collapse-btn" data-tab="collapse" title="hide chat (\\)" aria-label="hide chat"></button>
           <button class="hs-mc-tab hs-mc-util-btn hs-mc-popout-btn" data-tab="popout" title="pop out chat to standalone window" style="display:none">\u26f6</button>
         </div>
         <div id="hs-mc-platfilter"></div>
       </div>
     `;
+
+    // Reflect persisted nativeVisible (escape-hatch) state on the freshly
+    // rendered button — the applyOnLoad applier runs before this button exists,
+    // so without this the button shows the wrong tooltip/highlight on load.
+    try {
+      if (getSetting('nativeVisible')) {
+        const _nb = container.querySelector('#hs-mc-native-btn');
+        if (_nb) {
+          _nb.classList.add('active');
+          _nb.title = 'hide native chat';
+          _nb.setAttribute('aria-label', 'hide native chat');
+        }
+      }
+    } catch (_) {}
 
     // Event delegation for tab clicks
     container.addEventListener('click', (e) => {
@@ -2517,6 +2549,47 @@
         showLiveChannelPicker(tab);
       } else if (tabId === 'collapse') {
         toggleChatHidden();
+      } else if (tabId === 'native') {
+        setSetting('nativeVisible', !getSetting('nativeVisible'));
+      } else if (tabId === 'actions') {
+        const btn = document.getElementById('hs-mc-actions-btn');
+        const r = btn ? btn.getBoundingClientRect() : { left: e.clientX, bottom: e.clientY };
+        const items = [
+          {
+            label: 'channel points', key: 'cp',
+            fn: function() {
+              const el = document.querySelector('[data-test-selector="community-points-summary"] button, button[aria-label*="Channel Points"i]');
+              if (el) el.click();
+            },
+            disabled: !document.querySelector('[data-test-selector="community-points-summary"] button, button[aria-label*="Channel Points"i]'),
+          },
+          {
+            label: 'bits', key: 'bits',
+            fn: function() {
+              const el = document.querySelector('[data-a-target="bits-button"], [aria-label*="Cheer with Bits"i], [aria-label*="Get Bits"i]');
+              if (el) el.click();
+            },
+            disabled: !document.querySelector('[data-a-target="bits-button"], [aria-label*="Cheer with Bits"i], [aria-label*="Get Bits"i]'),
+          },
+          {
+            label: 'predictions', key: 'pred',
+            fn: function() {
+              const el = document.querySelector('[data-test-selector*="prediction"i] button, [aria-label*="Prediction"i]');
+              if (el) el.click();
+            },
+            disabled: !document.querySelector('[data-test-selector*="prediction"i] button, [aria-label*="Prediction"i]'),
+          },
+          {
+            label: 'hype chat', key: 'hype',
+            fn: function() {
+              const el = document.querySelector('[data-a-target="hype-chat-button"], [aria-label*="Hype Chat"i]');
+              if (el) el.click();
+            },
+            disabled: !document.querySelector('[data-a-target="hype-chat-button"], [aria-label*="Hype Chat"i]'),
+          },
+          // TODO(native-bridge): live-DOM selectors needed for: kick gift/sub/rewards, twitch sub/gift, youtube superchat
+        ];
+        try { showHsCtxMenu(r.left, r.bottom + 4, 'stream actions', items); } catch (_) {}
       } else if (tabId === 'settings' && currentTab === 'settings') {
         switchTab(prevTab || 'feed');
       } else {
@@ -2551,8 +2624,8 @@
         const item = document.createElement('div');
         item.textContent = 'edit platforms';
         item.style.cssText = 'padding:6px 12px;cursor:pointer;color:#fff;';
-        item.addEventListener('mouseenter', () => item.style.background = 'rgba(255,255,255,0.06)');
-        item.addEventListener('mouseleave', () => item.style.background = '');
+        item.addEventListener('mouseenter', () => item.style.background = 'rgba(255,255,255,0.06)', { signal: mcSignal });
+        item.addEventListener('mouseleave', () => item.style.background = '', { signal: mcSignal });
         item.addEventListener('click', () => { menu.remove(); showEditLivePlatforms(); });
         menu.appendChild(item);
         document.body.appendChild(menu);
@@ -2581,8 +2654,8 @@
         const item = document.createElement('div');
         item.textContent = label;
         item.style.cssText = `padding:6px 12px;cursor:pointer;color:${color};`;
-        item.addEventListener('mouseenter', () => item.style.background = 'rgba(255,255,255,0.06)');
-        item.addEventListener('mouseleave', () => item.style.background = '');
+        item.addEventListener('mouseenter', () => item.style.background = 'rgba(255,255,255,0.06)', { signal: mcSignal });
+        item.addEventListener('mouseleave', () => item.style.background = '', { signal: mcSignal });
         item.addEventListener('click', () => { menu.remove(); fn(); });
         menu.appendChild(item);
       };
@@ -7516,8 +7589,9 @@
     // of chat-bottom). Re-apply now with the freshly-created handles in DOM.
     if (chatPosition && chatPosition !== 'right') hidePlatformResizeHandles(true)
 
-    // Always ensure native chat is hidden when our UI is active
-    setNativeChatHidden(true);
+    // Ensure native chat is hidden when our UI is active — unless the user
+    // toggled the escape-hatch (nativeVisible), in which case keep it shown.
+    if (!nativeVisible) setNativeChatHidden(true);
   }
 
   // ============================================
@@ -7703,8 +7777,8 @@
     // Update input placeholder for new tab
     updateInputPlaceholder();
 
-    // Hide native chat when our overlay is active
-    setNativeChatHidden(true);
+    // Hide native chat when our overlay is active (unless user chose nativeVisible)
+    if (!nativeVisible) setNativeChatHidden(true);
 
     // Refresh HsNotifs channel scope so per-channel callouts (resub-share,
     // watchstreak) hide when leaving their channel's tab and reappear when
@@ -10804,6 +10878,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   let _twitchSideNavW = TWITCH_SIDE_NAV_WIDTH;
   let _twitchTopNavObs = null;
   let _twitchTopNavH = TWITCH_TOP_NAV_HEIGHT;
+  let _kickTopNavObs = null;
+  let _kickTopNavH = 60; // matches --hs-kick-topnav-h CSS fallback
 
   // Twitch's left side-nav is 50px when collapsed, ~240px when expanded.
   // It auto-expands on wide viewports (>~1200px), and the user can also
@@ -10860,6 +10936,37 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       cleanup.trackObserver(_twitchTopNavObs);
     }
     updateTwitchTopNavHeight();
+  }
+
+  // Kick's top nav is position:fixed, ~60px tall (matches the CSS fallback).
+  // Mirrors the twitch pattern: measure once, track via ResizeObserver, push
+  // --hs-kick-topnav-h so CSS rules that offset the panel don't need to
+  // hard-code the height. Selector matches the <nav> used elsewhere in the
+  // codebase for kick nav height measurement.
+  function updateKickTopNavHeight() {
+    if (!isKick) return;
+    const nav = document.querySelector('nav, [class*="navbar"]');
+    let h = 60; // CSS fallback default
+    if (nav) {
+      const r = nav.getBoundingClientRect();
+      h = (r.height > 0 && getComputedStyle(nav).display !== 'none') ? Math.round(r.height) : 60;
+    }
+    if (h === _kickTopNavH) return;
+    _kickTopNavH = h;
+    document.documentElement.style.setProperty('--hs-kick-topnav-h', h + 'px');
+  }
+
+  function setupKickTopNavObserver() {
+    if (!isKick) return;
+    document.documentElement.style.setProperty('--hs-kick-topnav-h', _kickTopNavH + 'px');
+    if (_kickTopNavObs) { try { _kickTopNavObs.disconnect() } catch (_) {} _kickTopNavObs = null; }
+    const nav = document.querySelector('nav, [class*="navbar"]');
+    if (nav && typeof ResizeObserver !== 'undefined') {
+      _kickTopNavObs = new ResizeObserver(() => updateKickTopNavHeight());
+      _kickTopNavObs.observe(nav);
+      cleanup.trackObserver(_kickTopNavObs);
+    }
+    updateKickTopNavHeight();
   }
 
   // Persistent-overlay mode toggle. Sets `hs-twitch-no-channel` on body when
@@ -10956,6 +11063,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       setupTheatreObserver();
       setupTwitchSideNavObserver();
       setupTwitchTopNavObserver();
+      setupKickTopNavObserver();
       updateTwitchNoChannelClass();
       updateKickNoChannelClass();
       applyChatPosition();
@@ -13943,7 +14051,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // Re-apply hs-native-hidden to the new chat-shell + chat-room + stream-
       // chat. Without this the body.hs-mc-navigating guard would be the only
       // thing hiding native chat — once we drop that class native chat blooms.
-      try { setNativeChatHidden(true) } catch (_) {}
+      // Gated: skip re-hide when the user has chosen nativeVisible so they
+      // keep native chat visible across SPA navigations.
+      if (!nativeVisible) try { setNativeChatHidden(true) } catch (_) {}
       // Resume sticky-bottom on every channel switch — the panel persists
       // across SPA nav, so without this reset the new channel inherits the
       // previous channel's mid-scroll position and live messages stack
@@ -13993,7 +14103,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // mid-transition. 300ms covers Twitch's full reflow on every machine
       // tested. Plus a chat-shell mutation observer continuously re-applies
       // hs-native-hidden in case React swaps the chat-room__content node.
-      const reHide = new MutationObserver(() => { try { setNativeChatHidden(true) } catch (_) {} });
+      const reHide = new MutationObserver(() => { if (!nativeVisible) try { setNativeChatHidden(true) } catch (_) {} });
       const target = document.querySelector('.chat-shell, ' + CONFIG.SELECTORS.TWITCH_CHAT_SHELL);
       if (target) {
         reHide.observe(target, { childList: true });
@@ -14066,7 +14176,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     try { updateKickNoChannelClass() } catch (_) {}
     let done = false;
     const finish = () => {
-      try { setNativeChatHidden(true) } catch (_) {}
+      // Gated: skip re-hide when the user has chosen nativeVisible.
+      if (!nativeVisible) try { setNativeChatHidden(true) } catch (_) {}
       isScrolledUp = false;
       newMessageCount = 0;
       _scrollbackWindow = 0; // new channel starts at the live tail
@@ -14094,7 +14205,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         if (newCh && kickChat && !kickChat.channels.has(newCh)) kickChat.join(newCh)
         renderMessages('live')
       } catch (_) {}
-      const reHide = new MutationObserver(() => { try { setNativeChatHidden(true) } catch (_) {} });
+      const reHide = new MutationObserver(() => { if (!nativeVisible) try { setNativeChatHidden(true) } catch (_) {} });
       const target = document.getElementById('channel-chatroom');
       if (target) {
         reHide.observe(target, { childList: true });

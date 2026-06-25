@@ -1240,8 +1240,11 @@ function buildMomentDiv(mo) {
   const platLabel = plat === 'kick' ? '[K]' : plat === 'youtube' ? '[Y]' : '[T]'
   const platColors = { twitch: '#9146ff', kick: '#53fc18', youtube: '#ff0000' }
   const ch = (mo.channel || '').toString()
+  // Always show age on moments — "when did this peak" is core context for a
+  // discovery card (a frozen-at-spike rate reads as live without it), so it's
+  // never gated on the global timestamp toggle the way feed rows are.
   const time = formatRelativeTime(mo.created_at)
-  const timeHtml = window._hsTimestampsEnabled !== false ? `<span class="hs-feed-time">${escapeHtml(time)}</span>` : ''
+  const timeHtml = `<span class="hs-feed-time">${escapeHtml(time)}</span>`
   const head = `<span class="hs-feed-tag hs-feed-tag-moment">🔥</span>`
     + `<span class="hs-feed-tag" style="color:${platColors[plat]}">${platLabel}</span>`
     + `<span class="hs-feed-user hs-moment-ch">${escapeHtml(ch)}</span>`

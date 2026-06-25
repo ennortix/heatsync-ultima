@@ -509,6 +509,11 @@
       color: #fff;
       font-size: 13px;
       font-weight: 600;
+      /* Cap + wrap so a deep-nest name list never forces the tooltip wider than
+         the viewport (the preview image carries the full composite anyway). */
+      max-width: 480px;
+      text-align: center;
+      overflow-wrap: anywhere;
     }
     #hs-emote-tooltip .tooltip-source {
       font-size: 13px;

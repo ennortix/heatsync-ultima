@@ -133,6 +133,20 @@
   // SCALE×. transform: scale keeps base+overlay grid alignment intact; the outer
   // box is sized to the scaled footprint so the tooltip lays out around it.
   const STACK_PREVIEW_SCALE = 4;
+  // Largest scale ≤ 4× whose footprint still fits the viewport, so a wide/tall
+  // composite (a 384×128 overlay → 1536×512 at 4×, or a 50-deep nest) is shown
+  // WHOLE instead of clipping off-screen — positioning only clamps placement,
+  // never size. 4× when it fits; auto-fits down when it doesn't. baseW/H are the
+  // UNSCALED footprint; reserve room for the name + source chip rendered below.
+  const PREVIEW_VIEWPORT_MARGIN = 12;  // edge breathing room
+  const PREVIEW_RESERVE_V = 96;        // tooltip padding + name + source chip
+  const PREVIEW_RESERVE_H = 16;        // tooltip L/R padding
+  function fitPreviewScale(baseW, baseH) {
+    if (!baseW || !baseH) return STACK_PREVIEW_SCALE;
+    const availW = window.innerWidth - PREVIEW_VIEWPORT_MARGIN * 2 - PREVIEW_RESERVE_H;
+    const availH = window.innerHeight - PREVIEW_VIEWPORT_MARGIN * 2 - PREVIEW_RESERVE_V;
+    return Math.min(STACK_PREVIEW_SCALE, availW / baseW, availH / baseH);
+  }
   function buildStackPreview(box, stackEmotes) {
     const liveImgs = [...stackEmotes.querySelectorAll('img')];
     const clone = stackEmotes.cloneNode(true);
@@ -159,8 +173,10 @@
       im.removeAttribute('loading'); // force eager — see sizeBox note below
       im.style.filter = '';
     });
-    clone.style.transform = `scale(${STACK_PREVIEW_SCALE})`;
     clone.style.transformOrigin = 'top left';
+    // Initial 4× guess for first-paint positioning; sizeBox (rAF, below) recomputes
+    // the viewport-fit scale once the clone's real footprint is measurable.
+    clone.style.transform = `scale(${STACK_PREVIEW_SCALE})`;
     box.style.display = 'block';
     box.replaceChildren(clone);
     // Size the box to the clone's OWN footprint, never the live in-chat rect: a
@@ -173,8 +189,11 @@
     // .visible is added right after this returns) and re-measure as each lazy /
     // hi-res image finishes loading so the box grows to the real composite.
     const sizeBox = () => {
-      box.style.width = (clone.offsetWidth * STACK_PREVIEW_SCALE) + 'px';
-      box.style.height = (clone.offsetHeight * STACK_PREVIEW_SCALE) + 'px';
+      const baseW = clone.offsetWidth, baseH = clone.offsetHeight;
+      const scale = fitPreviewScale(baseW, baseH);
+      clone.style.transform = `scale(${scale})`;
+      box.style.width = (baseW * scale) + 'px';
+      box.style.height = (baseH * scale) + 'px';
     };
     requestAnimationFrame(sizeBox);
     imgs.forEach(im => { if (!im.complete) im.addEventListener('load', sizeBox, { once: true }); });
@@ -198,18 +217,27 @@
     if (stackEmotes && stackEmotes.children.length > 1) {
       img.style.display = 'none';
       buildStackPreview(stackBox, stackEmotes);
-      // Name lists all emotes in the nest, base first.
+      // Name lists the emotes in the nest, base first. A deep nest (50 overlays)
+      // would otherwise join into a 500-char label that blows the tooltip past the
+      // viewport — the composite IMAGE already shows every overlay, so the label
+      // only needs to identify them: cap to the first few + a "+N more" tail.
       const names = [...stackEmotes.children].map(w =>
         w.dataset?.emoteName || w.querySelector('img')?.alt || '').filter(Boolean);
-      nameEl.textContent = names.join(' + ') || emoteName;
+      const MAX_TOOLTIP_NAMES = 8;
+      nameEl.textContent = names.length > MAX_TOOLTIP_NAMES
+        ? names.slice(0, MAX_TOOLTIP_NAMES).join(' + ') + ` +${names.length - MAX_TOOLTIP_NAMES} more`
+        : (names.join(' + ') || emoteName);
     } else {
       stackBox.style.display = 'none';
       stackBox.replaceChildren();
       img.style.display = '';
-      const w4 = (hoveredImg?.offsetWidth || 28) * 4;
-      const h4 = (hoveredImg?.offsetHeight || 28) * 4;
-      img.style.width = w4 + 'px';
-      img.style.height = h4 + 'px';
+      // Same fit-to-viewport cap as the composite path: a lone wide/tall emote
+      // (up to 384×128) blown to 4× is 1536×512 — scale down if it would clip.
+      const baseW = hoveredImg?.offsetWidth || 28;
+      const baseH = hoveredImg?.offsetHeight || 28;
+      const scale = fitPreviewScale(baseW, baseH);
+      img.style.width = (baseW * scale) + 'px';
+      img.style.height = (baseH * scale) + 'px';
       img.alt = emoteName;
       const hiResUrl = getHighResUrl(emoteUrl);
       if (hiResUrl !== emoteUrl && _hiResLoaded.has(hiResUrl)) {

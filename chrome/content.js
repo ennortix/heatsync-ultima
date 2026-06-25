@@ -6781,6 +6781,17 @@ function updateEmoteState(hash, emoteName, state) {
   let currentWrapper = null;
   let hideTimeout = null;
 
+  // Largest scale <= 4x whose footprint still fits the viewport, so a wide
+  // (up to 384x128) emote is shown WHOLE instead of clipping off-screen.
+  // Per-item here (native stack preview lays emotes out as separate labeled
+  // items, not a composite) — mirrors the multichat fitPreviewScale.
+  function fitPreviewScale(baseW, baseH) {
+    if (!baseW || !baseH) return 4;
+    const availW = window.innerWidth - 24 - 16;
+    const availH = window.innerHeight - 24 - 60; // label + padding below each item
+    return Math.min(4, availW / baseW, availH / baseH);
+  }
+
   function showPreview(wrapper) {
     if (currentWrapper === wrapper) return;
     currentWrapper = wrapper;
@@ -6812,9 +6823,9 @@ function updateEmoteState(hash, emoteName, state) {
         const wName = w.dataset.emoteName || (wImg && wImg.alt) || '';
         const wSrc = wImg ? wImg.src : '';
         if (wSrc) {
-          const w4 = (wImg?.offsetWidth || 28) * 4;
-          const h4 = (wImg?.offsetHeight || 28) * 4;
-          emotesToShow.push({ name: wName, src: wSrc, hiRes: upgradeUrl(wSrc), w: w4, h: h4 });
+          const bw = wImg?.offsetWidth || 28, bh = wImg?.offsetHeight || 28;
+          const s = fitPreviewScale(bw, bh);
+          emotesToShow.push({ name: wName, src: wSrc, hiRes: upgradeUrl(wSrc), w: bw * s, h: bh * s });
         }
       });
     } else {
@@ -6822,9 +6833,9 @@ function updateEmoteState(hash, emoteName, state) {
       const emoteName = wrapper.dataset.emoteName || (img && img.alt) || '';
       const src = img ? img.src : '';
       if (src) {
-        const w4 = (img?.offsetWidth || 28) * 4;
-        const h4 = (img?.offsetHeight || 28) * 4;
-        emotesToShow.push({ name: emoteName, src: src, hiRes: upgradeUrl(src), w: w4, h: h4 });
+        const bw = img?.offsetWidth || 28, bh = img?.offsetHeight || 28;
+        const s = fitPreviewScale(bw, bh);
+        emotesToShow.push({ name: emoteName, src: src, hiRes: upgradeUrl(src), w: bw * s, h: bh * s });
       }
     }
 

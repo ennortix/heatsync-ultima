@@ -538,6 +538,10 @@
     /* Keep tabbar visible over native chat — fixed panel, respects tab position */
     #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container {
       position: fixed !important;
+      /* clear Kick's fixed 60px top nav — same as the native-hidden panel above.
+         without this the fixed container defaults to top:0 and the collapsed HS
+         tab-strip lands over Kick's search + login/profile bar. */
+      top: var(--hs-kick-topnav-h, 60px) !important;
       z-index: 10000 !important;
       background: transparent !important;
       pointer-events: none;
@@ -553,7 +557,7 @@
     }
     /* Top tabs (default) — horizontal bar at top of chat */
     .hs-tabs-top #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container {
-      top: 0 !important; right: 0 !important;
+      top: var(--hs-kick-topnav-h, 60px) !important; right: 0 !important;
       width: var(--hs-kick-chat-width, 340px) !important;
       height: auto !important;
       flex-direction: column !important;
@@ -577,7 +581,7 @@
     }
     /* Right tabs — vertical bar on right edge */
     .hs-tabs-right #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container {
-      top: 0 !important; right: 0 !important; bottom: 0 !important;
+      top: var(--hs-kick-topnav-h, 60px) !important; right: 0 !important; bottom: 0 !important;
       width: auto !important;
       height: 100% !important;
       flex-direction: row !important;
@@ -593,7 +597,7 @@
     }
     /* Left tabs — vertical bar on left edge of chat area */
     .hs-tabs-left #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container {
-      top: 0 !important; right: auto !important; bottom: 0 !important;
+      top: var(--hs-kick-topnav-h, 60px) !important; right: auto !important; bottom: 0 !important;
       left: calc(100vw - var(--hs-kick-chat-width, 340px)) !important;
       width: auto !important;
       height: 100% !important;

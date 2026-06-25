@@ -120,7 +120,12 @@
        modes that hide the nav). --- */
     body.hs-platform-twitch.hs-twitch-no-channel.hs-chat-right #hs-mc-container {
       position: fixed !important;
-      z-index: 9999 !important;
+      /* Below Twitch's popup layers (balloon 2000 / overlay 3000 / modal 5000)
+         so nav-anchored dropdowns — user menu, notifications, bits, whispers —
+         render ABOVE the panel instead of being buried under it. Safe to sit
+         this low: the body squeeze below gutters ALL twitch content out of the
+         panel's x-band, so nothing but transient popups ever overlaps it. */
+      z-index: 1500 !important;
       background: #000 !important;
       box-sizing: border-box !important;
       margin: 0 !important;
@@ -131,6 +136,22 @@
       width: var(--hs-chat-w, 340px) !important;
       height: auto !important;
     }
+    /* Left/top/bottom no-channel reuse the generic container rules (z 9999).
+       On fresh load they're stylesheet-owned (the JS inline override only
+       re-applies on rotate), so the lowered z + nav-clearing top MUST live in
+       CSS here or a freshly-loaded left/top/bottom dock buries popups (and top
+       overlaps the lifted nav). Same popup-layer rationale as right above. */
+    body.hs-platform-twitch.hs-twitch-no-channel.hs-chat-left #hs-mc-container,
+    body.hs-platform-twitch.hs-twitch-no-channel.hs-chat-bottom #hs-mc-container {
+      z-index: 1500 !important;
+    }
+    /* Top: drop the z AND push the strip below the now-fixed nav (generic rule
+       pins it to top:0, which would tuck under the nav). Body's margin-top
+       (navH + chatH) already reserves the row, so content still clears it. */
+    body.hs-platform-twitch.hs-twitch-no-channel.hs-chat-top #hs-mc-container {
+      z-index: 1500 !important;
+      top: var(--hs-twitch-topnav-h, 50px) !important;
+    }
     body.hs-platform-twitch.hs-twitch-no-channel.hs-chat-right {
       width: calc(100vw - var(--hs-chat-w, 340px)) !important;
       overflow-x: hidden !important;
@@ -139,6 +160,36 @@
       width: calc(100vw - var(--hs-chat-w, 340px)) !important;
       margin-left: var(--hs-chat-w, 340px) !important;
       overflow-x: hidden !important;
+    }
+    /* The body shrink above squeezes the top-nav too, leaving a blank gap in
+       the corner above the right/left chat panel (the panel sits BELOW the nav
+       at y=navH, so that strip is free). Lift the nav out of the squeezed body
+       to span the full viewport — fixed escapes both the width clamp and the
+       overflow-x clip. Stable selector — Twitch tags its top nav with
+       data-a-target on every page. Right/left shrink width so the nav was cut;
+       top shoves the nav down with body's margin-top — both need the lift.
+       Bottom leaves the nav at y0 untouched, so it's excluded. nav stays above
+       the panel so its in-DOM dropdowns (search) clear the chat; portaled popups
+       clear it via the lowered panel z above. */
+    body.hs-platform-twitch.hs-twitch-no-channel.hs-chat-right [data-a-target="top-nav-container"],
+    body.hs-platform-twitch.hs-twitch-no-channel.hs-chat-left [data-a-target="top-nav-container"],
+    body.hs-platform-twitch.hs-twitch-no-channel.hs-chat-top [data-a-target="top-nav-container"] {
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      width: 100vw !important;
+      max-width: 100vw !important;
+      z-index: 9998 !important;
+    }
+    /* Backfill the row the now-fixed nav vacated so content still starts at
+       y=navH — but ONLY when the standard nav is actually present (and thus
+       lifted). Pages with a non-standard header (e.g. creator dashboard) have
+       no top-nav-container; without this :has() gate they'd get an orphan
+       navH-tall gap at the top. */
+    body.hs-platform-twitch.hs-twitch-no-channel.hs-chat-right:has([data-a-target="top-nav-container"]),
+    body.hs-platform-twitch.hs-twitch-no-channel.hs-chat-left:has([data-a-target="top-nav-container"]) {
+      padding-top: var(--hs-twitch-topnav-h, 50px) !important;
     }
     /* chat-top: panel slots under top-nav at y=navH and extends chatH down.
        Body must clear (navH + chatH) AND shrink to fit the remaining viewport,

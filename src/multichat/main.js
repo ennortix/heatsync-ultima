@@ -11194,7 +11194,15 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         container.dataset._hsChatOverride = '1';
         GEOM_PROPS.forEach(p => container.style.removeProperty(p));
         container.style.setProperty('position', 'fixed', 'important');
-        container.style.setProperty('z-index', '9999', 'important');
+        // On twitch no-channel pages (directory/settings/…) the panel mounts in
+        // a gutter with no host content beneath it, so it can sit BELOW twitch's
+        // popup layers (balloon 2000 / overlay 3000 / modal 5000) — otherwise a
+        // full-width top-nav's dropdowns (user menu, browse, search) open over
+        // the panel and get buried under z 9999. Mirrors the CSS z for the
+        // right dock (which is stylesheet-owned). Channel pages keep 9999 — there
+        // the panel overlaps host chat and must outrank twitch's React layout.
+        const twitchNoChannel = hostPlatform === 'twitch' && document.body.classList.contains('hs-twitch-no-channel')
+        container.style.setProperty('z-index', twitchNoChannel ? '1500' : '9999', 'important');
         container.style.setProperty('background', '#000', 'important');
         // Twitch-only: offset by .top-nav height for left/top so the rotate
         // buttons aren't trapped under Following/Browse (HS lives inside

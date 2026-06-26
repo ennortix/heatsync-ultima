@@ -2504,8 +2504,8 @@
       <div class="hs-mc-right-cluster">
         <div class="hs-mc-util-row">
           <button class="hs-mc-tab hs-mc-util-btn" data-tab="settings" title="${t('mc_btn_settings')}">\u2699</button>
-          <button class="hs-mc-tab hs-mc-util-btn" id="hs-mc-native-btn" data-tab="native" title="show native chat" aria-label="show native chat" style="${hostPlatform === 'yt' ? 'display:none' : ''}">\u21c4</button>
-          <button class="hs-mc-tab hs-mc-util-btn" id="hs-mc-actions-btn" data-tab="actions" title="stream actions" aria-label="stream actions" style="${hostPlatform === 'twitch' ? '' : 'display:none'}">\u26a1</button>
+          ${hostPlatform !== 'yt' ? `<button class="hs-mc-tab hs-mc-util-btn" id="hs-mc-native-btn" data-tab="native" title="show native chat" aria-label="show native chat">\u21c4</button>` : ''}
+          ${hostPlatform === 'twitch' ? `<button class="hs-mc-tab hs-mc-util-btn" id="hs-mc-actions-btn" data-tab="actions" title="stream actions" aria-label="stream actions">\u26a1</button>` : ''}
           <button class="hs-mc-tab hs-mc-util-btn hs-mc-collapse-btn" id="hs-mc-collapse-btn" data-tab="collapse" title="hide chat (\\)" aria-label="hide chat"></button>
           <button class="hs-mc-tab hs-mc-util-btn hs-mc-popout-btn" data-tab="popout" title="pop out chat to standalone window" style="display:none">\u26f6</button>
         </div>
@@ -6480,8 +6480,12 @@
   function updateTabBar() {
     if (!tabBarElement) return;
 
-    // Clear existing channel tabs (keep built-in tabs)
-    const existingChannelTabs = tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="mentions"]):not([data-tab="whispers"]):not([data-tab="discover"]):not([data-tab="pinned"]):not([data-tab="add"]):not([data-tab="settings"]):not([data-tab="popout"]):not([data-tab="collapse"])');
+    // Clear existing channel tabs (keep built-in tabs). NOTE: the exclusion list
+    // must cover EVERY util button or this strips it — native + actions live in
+    // the util-row (createTabBar) with their own data-tab, so without excluding
+    // them updateTabBar (runs on every channel load) silently removes the ⇄ / ⚡
+    // buttons right after they render. That was "BUG 1: ⇄ missing on kick".
+    const existingChannelTabs = tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="mentions"]):not([data-tab="whispers"]):not([data-tab="discover"]):not([data-tab="pinned"]):not([data-tab="add"]):not([data-tab="settings"]):not([data-tab="popout"]):not([data-tab="collapse"]):not([data-tab="native"]):not([data-tab="actions"])');
     existingChannelTabs.forEach(t => t.remove());
 
     // Add channel tabs before the + button in the scroll section

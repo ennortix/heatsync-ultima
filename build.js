@@ -257,7 +257,9 @@ const FIREFOX_OUT = join(__dirname, 'dist', 'firefox')
 // Files that need lib bundled in (content scripts)
 const CONTENT_SCRIPTS = [
   'content.js',
-  'multichat.js',
+  'multichat-twitch.js',
+  'multichat-kick.js',
+  'multichat-youtube.js',
   'heatsync-button.js',
   'autocomplete-hook.js',
   'chat-injector.js',
@@ -320,7 +322,7 @@ function readLib() {
   return combined
 }
 
-// Read multichat module files (only bundled into multichat.js)
+// Read multichat module files (only bundled into multichat-<platform>.js)
 const MULTICHAT_MODULES = [
   'bootstrap.js',
   'notifs.js',
@@ -346,9 +348,21 @@ const MULTICHAT_MODULES = [
   'chat-logs.js',
 ]
 
-function readMultichatModules() {
+// native-tap.js reads Twitch's React fiber tree — twitch-only, exclude on kick/youtube
+const PLATFORM_MODULES = {
+  twitch: MULTICHAT_MODULES,
+  kick: MULTICHAT_MODULES.filter((f) => f !== 'native-tap.js'),
+  youtube: MULTICHAT_MODULES.filter((f) => f !== 'native-tap.js'),
+}
+
+function readMultichatModules(platform) {
   const mcDir = join(SRC_DIR, 'multichat')
   const chromeDir = join(__dirname, 'chrome')
+  // Note: __HS_HOST__ is intentionally NOT declared here as a const.
+  // It is a free (global-scope) reference so esbuild's define option can
+  // substitute it at minification time and constant-fold platform branches.
+  // At dev/unminified runtime, typeof __HS_HOST__ !== 'undefined' → false,
+  // so main.js falls back to location.hostname detection — correct for dev.
   let combined = '// === MULTICHAT MODULES (auto-bundled) ===\n'
 
   // Bundle emoji-data inside IIFE so it's always available regardless of content script load order
@@ -357,7 +371,8 @@ function readMultichatModules() {
     combined += `\n// --- emoji-data.js ---\n${readFileSync(emojiDataPath, 'utf8')}\n`
   }
 
-  for (const file of MULTICHAT_MODULES) {
+  const modules = PLATFORM_MODULES[platform] ?? MULTICHAT_MODULES
+  for (const file of modules) {
     const filePath = join(mcDir, file)
     if (!existsSync(filePath)) continue
     let content = readFileSync(filePath, 'utf8')
@@ -445,23 +460,36 @@ function build(browser) {
 
   // Read lib
   const lib = readLib()
-  const mcModules = readMultichatModules()
+  const mcSrcPath = join(SRC_DIR, 'multichat', 'main.js')
 
-  // Bundle content scripts
+  // Emit per-platform multichat bundles
+  const PLATFORMS = ['twitch', 'kick', 'youtube']
+  for (const platform of PLATFORMS) {
+    const outFile = `multichat-${platform}.js`
+    const mcModules = readMultichatModules(platform)
+    const bundled = bundleContentScript(mcSrcPath, lib, mcModules)
+    writeFileSync(join(outDir, outFile), bundled)
+    // Write to chrome/ so unpacked extension loads the bundled version
+    if (browser === 'chrome') {
+      writeFileSync(join(chromeDir, outFile), bundled)
+      // Back-compat: keep chrome/multichat.js pointing at twitch bundle for dev
+      if (platform === 'twitch') {
+        writeFileSync(join(chromeDir, 'multichat.js'), bundled)
+      }
+    }
+    console.log(`  Bundled multichat-${platform}.js`)
+  }
+
+  // Bundle remaining content scripts (non-multichat)
   for (const file of CONTENT_SCRIPTS) {
-    // multichat.js source lives in src/multichat/main.js (chrome/multichat.js is build output)
-    const srcPath = file === 'multichat.js' ? join(SRC_DIR, 'multichat', 'main.js') : join(chromeDir, file)
+    if (file.startsWith('multichat-')) continue // already handled above
+    const srcPath = join(chromeDir, file)
     if (!existsSync(srcPath)) {
       console.log(`  Skip ${file} (not found)`)
       continue
     }
-    const modules = file === 'multichat.js' ? mcModules : null
-    const bundled = bundleContentScript(srcPath, lib, modules)
+    const bundled = bundleContentScript(srcPath, lib, null)
     writeFileSync(join(outDir, file), bundled)
-    // Also write to chrome/ so unpacked extension loads the bundled version
-    if (file === 'multichat.js') {
-      writeFileSync(join(chromeDir, file), bundled)
-    }
     console.log(`  Bundled ${file}`)
   }
 
@@ -608,7 +636,9 @@ function deploy() {
 
 // Minify a content script in place inside its dist dir.
 // Preserves the IIFE wrapper; safe-mode flags so we don't break runtime semantics.
-function minifyDistFile(outDir, file) {
+// extraDefines: passed for per-platform multichat bundles so esbuild can constant-fold
+// __HS_HOST__ and dead-code-eliminate cross-platform branches at minification time.
+function minifyDistFile(outDir, file, extraDefines) {
   const path = join(outDir, file)
   if (!existsSync(path)) return
   const src = readFileSync(path, 'utf8')
@@ -619,11 +649,19 @@ function minifyDistFile(outDir, file) {
       target: 'es2020',
       legalComments: 'none',
       keepNames: true, // helps stack traces in prod
+      ...(extraDefines ? { define: extraDefines } : {}),
     })
     writeFileSync(path, result.code)
   } catch (e) {
     console.warn(`  ⚠ minify ${file} skipped: ${e.message?.split('\n')[0]}`)
   }
+}
+
+// Map multichat-<platform>.js filenames to their platform string for define injection
+const MULTICHAT_PLATFORM_DEFINE = {
+  'multichat-twitch.js': 'twitch',
+  'multichat-kick.js': 'kick',
+  'multichat-youtube.js': 'youtube',
 }
 
 function minifyDist(outDir) {
@@ -634,7 +672,9 @@ function minifyDist(outDir) {
     const p = join(outDir, f)
     if (!existsSync(p)) continue
     bytesBefore += readFileSync(p).length
-    minifyDistFile(outDir, f)
+    const platform = MULTICHAT_PLATFORM_DEFINE[f]
+    const extraDefines = platform ? { __HS_HOST__: JSON.stringify(platform) } : undefined
+    minifyDistFile(outDir, f, extraDefines)
     bytesAfter += readFileSync(p).length
   }
   if (bytesBefore > 0) {

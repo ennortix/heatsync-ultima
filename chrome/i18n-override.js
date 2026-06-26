@@ -2,9 +2,7 @@
 // Loads a manually-picked locale on top of chrome.i18n, exposes window.hsI18n.
 // Used by extension pages: popup, options, welcome.
 // Content scripts use src/lib/browser-api.js which mirrors this.
-;(function() {
-  'use strict'
-
+;(() => {
   const STORAGE_KEY = 'hs_ui_locale'
 
   const LOCALE_NAMES = {
@@ -42,7 +40,7 @@
     uk: 'Українська',
     vi: 'Tiếng Việt',
     zh_CN: '简体中文',
-    zh_TW: '繁體中文'
+    zh_TW: '繁體中文',
   }
 
   let override = null
@@ -52,20 +50,24 @@
   const api = (typeof chrome !== 'undefined' && chrome) || (typeof browser !== 'undefined' && browser) || null
 
   function getStoredLocale() {
-    return new Promise(resolve => {
+    return new Promise((resolve) => {
       try {
         api.storage.local.get(STORAGE_KEY, (data) => {
           resolve(data?.[STORAGE_KEY] || '')
         })
-      } catch { resolve('') }
+      } catch {
+        resolve('')
+      }
     })
   }
 
   function setStoredLocale(loc) {
-    return new Promise(resolve => {
+    return new Promise((resolve) => {
       try {
         api.storage.local.set({ [STORAGE_KEY]: loc || '' }, () => resolve())
-      } catch { resolve() }
+      } catch {
+        resolve()
+      }
     })
   }
 
@@ -76,7 +78,9 @@
       const res = await fetch(url)
       if (!res.ok) return null
       return await res.json()
-    } catch { return null }
+    } catch {
+      return null
+    }
   }
 
   // Replicates chrome.i18n placeholder substitution: $NAME$ -> placeholders[name].content
@@ -109,7 +113,11 @@
   }
 
   function tBrowser(key, subs) {
-    try { return api?.i18n?.getMessage(key, subs) || key } catch { return key }
+    try {
+      return api?.i18n?.getMessage(key, subs) || key
+    } catch {
+      return key
+    }
   }
 
   function t(key, subs) {
@@ -125,12 +133,10 @@
 
   function hydrate(root) {
     root = root || document
-    for (const el of root.querySelectorAll('[data-i18n]'))
-      el.textContent = t(el.dataset.i18n) || el.textContent
+    for (const el of root.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n) || el.textContent
     for (const el of root.querySelectorAll('[data-i18n-placeholder]'))
       el.placeholder = t(el.dataset.i18nPlaceholder) || el.placeholder
-    for (const el of root.querySelectorAll('[data-i18n-title]'))
-      el.title = t(el.dataset.i18nTitle) || el.title
+    for (const el of root.querySelectorAll('[data-i18n-title]')) el.title = t(el.dataset.i18nTitle) || el.title
   }
 
   function bidiDir() {
@@ -146,7 +152,10 @@
     if (initPromise) return initPromise
     initPromise = (async () => {
       overrideLocale = await getStoredLocale()
-      if (!overrideLocale) { override = null; return }
+      if (!overrideLocale) {
+        override = null
+        return
+      }
       const data = await fetchLocale(overrideLocale)
       if (data) override = data
       else overrideLocale = ''
@@ -160,18 +169,33 @@
     override = null
     overrideLocale = ''
     await init()
-    try { document.documentElement.dir = bidiDir() } catch {}
-    try { window.dispatchEvent(new CustomEvent('hs:i18n-changed', { detail: { locale: loc } })) } catch {}
+    try {
+      document.documentElement.dir = bidiDir()
+    } catch {}
+    try {
+      window.dispatchEvent(new CustomEvent('hs:i18n-changed', { detail: { locale: loc } }))
+    } catch {}
   }
 
-  function getLocale() { return overrideLocale }
-  function listLocales() { return Object.keys(LOCALE_NAMES) }
-  function localeName(loc) { return LOCALE_NAMES[loc] ?? loc }
+  function getLocale() {
+    return overrideLocale
+  }
+  function listLocales() {
+    return Object.keys(LOCALE_NAMES)
+  }
+  function localeName(loc) {
+    return LOCALE_NAMES[loc] ?? loc
+  }
 
   window.hsI18n = {
-    t, hydrate, init, bidiDir,
-    setLocale, getLocale,
-    listLocales, localeName,
-    LOCALE_NAMES
+    t,
+    hydrate,
+    init,
+    bidiDir,
+    setLocale,
+    getLocale,
+    listLocales,
+    localeName,
+    LOCALE_NAMES,
   }
 })()

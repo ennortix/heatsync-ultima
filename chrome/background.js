@@ -1,32 +1,43 @@
 // Background script - Fetch emote inventory and manage WebSocket
 
 // Chrome compatibility - Firefox uses 'browser', Chrome uses 'chrome'
-const browser = globalThis.browser || chrome;
-
+const browser = globalThis.browser || chrome
 // --- error reporter (service worker) ---
 // Inlined here because lib/ is bundled into content scripts only. Same shape
 // as src/lib/error-reporter.js: ring-buffer 50 in chrome.storage.local key
 // 'hs_errors', popup reads + clears.
-;(function() {
+;(() => {
   if (globalThis.__hsErrorReporterSw) return
-  const MAX = 50, KEY = 'hs_errors', MSG_CAP = 500, STACK_CAP = 2000
+  const MAX = 50,
+    KEY = 'hs_errors',
+    MSG_CAP = 500,
+    STACK_CAP = 2000
   let ver = 'unknown'
-  try { ver = browser.runtime.getManifest().version || ver } catch (_) {}
+  try {
+    ver = browser.runtime.getManifest().version || ver
+  } catch (_) {}
   const pending = []
   let timer = null
   let reentry = false
   function trunc(s, n) {
-    if (typeof s !== 'string') { try { s = String(s) } catch { return '' } }
+    if (typeof s !== 'string') {
+      try {
+        s = String(s)
+      } catch {
+        return ''
+      }
+    }
     return s.length > n ? s.slice(0, n) : s
   }
-  const SENSITIVE_PARAMS = /^(access_token|refresh_token|id_token|token|auth|authorization|key|apikey|api_key|password|passwd|secret|code|state|session|sig|signature)$/i
+  const SENSITIVE_PARAMS =
+    /^(access_token|refresh_token|id_token|token|auth|authorization|key|apikey|api_key|password|passwd|secret|code|state|session|sig|signature)$/i
   function scrubUrl(url) {
     if (typeof url !== 'string') return url
     try {
       const qIdx = url.indexOf('?')
       const hIdx = url.indexOf('#')
       if (qIdx === -1 && hIdx === -1) return url
-      const base = qIdx !== -1 ? url.slice(0, qIdx) : (hIdx !== -1 ? url.slice(0, hIdx) : url)
+      const base = qIdx !== -1 ? url.slice(0, qIdx) : hIdx !== -1 ? url.slice(0, hIdx) : url
       const qPart = qIdx !== -1 ? url.slice(qIdx + 1, hIdx !== -1 ? hIdx : undefined) : ''
       const hPart = hIdx !== -1 ? url.slice(hIdx + 1) : ''
       function scrubPairs(str) {
@@ -39,12 +50,14 @@ const browser = globalThis.browser || chrome;
       if (qPart) result += '?' + scrubPairs(qPart)
       if (hPart) result += '#' + scrubPairs(hPart)
       return result
-    } catch (_) { return url }
+    } catch (_) {
+      return url
+    }
   }
   const TEXT_SCRUB = [
-    /Bearer\s+[\w.\-]+/gi,
-    /oauth:[\w.\-]+/gi,
-    /eyJ[\w\-]+\.[\w\-]+\.[\w\-]+/g,
+    /Bearer\s+[\w.-]+/gi,
+    /oauth:[\w.-]+/gi,
+    /eyJ[\w-]+\.[\w-]+\.[\w-]+/g,
     /(?<=[=\s"'])[A-Za-z0-9_\-+/=]{24,}/g,
   ]
   function scrubText(s) {
@@ -59,9 +72,19 @@ const browser = globalThis.browser || chrome;
     if (e instanceof Error || (typeof e === 'object' && e && 'stack' in e)) {
       let msg = ''
       let stack = ''
-      try { msg = String(e.message || '') } catch (_) {}
-      try { stack = String(e.stack || '') } catch (_) {}
-      if (!msg) { try { msg = String(e) } catch (_) { msg = '[unreadable]' } }
+      try {
+        msg = String(e.message || '')
+      } catch (_) {}
+      try {
+        stack = String(e.stack || '')
+      } catch (_) {}
+      if (!msg) {
+        try {
+          msg = String(e)
+        } catch (_) {
+          msg = '[unreadable]'
+        }
+      }
       if (msg === '[object Object]') msg = ''
       return { msg: trunc(scrubText(msg), MSG_CAP), stack: trunc(scrubText(stack), STACK_CAP) }
     }
@@ -70,15 +93,24 @@ const browser = globalThis.browser || chrome;
         const s = JSON.stringify(e)
         if (s && s !== '{}' && s !== '[]') return { msg: trunc(scrubText(s), MSG_CAP) }
       } catch (_) {}
-      try { return { msg: trunc(scrubText(String(e)), MSG_CAP) } } catch { return { msg: '[unserializable]' } }
+      try {
+        return { msg: trunc(scrubText(String(e)), MSG_CAP) }
+      } catch {
+        return { msg: '[unserializable]' }
+      }
     }
     return { msg: trunc(scrubText(String(e)), MSG_CAP) }
   }
   function synthStack(skip) {
     try {
       const s = String(new Error().stack || '')
-      return s.split('\n').slice((skip || 0) + 1).join('\n')
-    } catch (_) { return '' }
+      return s
+        .split('\n')
+        .slice((skip || 0) + 1)
+        .join('\n')
+    } catch (_) {
+      return ''
+    }
   }
   function capture(rec) {
     if (reentry) return
@@ -92,7 +124,9 @@ const browser = globalThis.browser || chrome;
       pending.push(rec)
       if (pending.length > MAX) pending.splice(0, pending.length - MAX)
       if (!timer) timer = setTimeout(flush, 500)
-    } finally { reentry = false }
+    } finally {
+      reentry = false
+    }
   }
   function flush() {
     timer = null
@@ -104,7 +138,9 @@ const browser = globalThis.browser || chrome;
           if (browser.runtime.lastError) return
           const existing = Array.isArray(cur?.[KEY]) ? cur[KEY] : []
           const next = existing.concat(batch).slice(-MAX)
-          browser.storage.local.set({ [KEY]: next }, () => { void browser.runtime.lastError })
+          browser.storage.local.set({ [KEY]: next }, () => {
+            void browser.runtime.lastError
+          })
         } catch (_) {}
       })
     } catch (_) {}
@@ -112,36 +148,72 @@ const browser = globalThis.browser || chrome;
   try {
     self.addEventListener('error', (e) => {
       const f = fmt(e.error != null ? e.error : e.message)
-      capture({ ts: Date.now(), type: 'error', plat: 'sw', ver, url: 'background', msg: f.msg, stack: f.stack, file: trunc(e.filename || '', 200), line: e.lineno || 0 })
+      capture({
+        ts: Date.now(),
+        type: 'error',
+        plat: 'sw',
+        ver,
+        url: 'background',
+        msg: f.msg,
+        stack: f.stack,
+        file: trunc(e.filename || '', 200),
+        line: e.lineno || 0,
+      })
     })
   } catch (_) {}
   try {
     self.addEventListener('unhandledrejection', (e) => {
       const f = fmt(e.reason)
       const stack = f.stack || synthStack(2)
-      capture({ ts: Date.now(), type: 'rejection', plat: 'sw', ver, url: 'background', msg: f.msg || '(promise rejection with no reason)', stack })
+      capture({
+        ts: Date.now(),
+        type: 'rejection',
+        plat: 'sw',
+        ver,
+        url: 'background',
+        msg: f.msg || '(promise rejection with no reason)',
+        stack,
+      })
     })
   } catch (_) {}
   try {
     const origErr = console.error
     if (origErr && !origErr.__hsWrapped) {
-      const wrapped = function(...args) {
+      const wrapped = function (...args) {
         try {
           let derivedStack = ''
-          const parts = args.map(a => {
+          const parts = args.map((a) => {
             if (a instanceof Error || (typeof a === 'object' && a && 'stack' in a)) {
-              if (!derivedStack && a.stack) { try { derivedStack = String(a.stack) } catch (_) {} }
-              try { return String(a.message || a) } catch (_) { return '[unreadable]' }
+              if (!derivedStack && a.stack) {
+                try {
+                  derivedStack = String(a.stack)
+                } catch (_) {}
+              }
+              try {
+                return String(a.message || a)
+              } catch (_) {
+                return '[unreadable]'
+              }
             }
             if (typeof a === 'string') return a
             try {
               const s = JSON.stringify(a)
               return s && s !== '{}' ? s : String(a)
-            } catch { return String(a) }
+            } catch {
+              return String(a)
+            }
           })
-          const msg = parts.filter(p => p && p !== '[object Object]').join(' ')
+          const msg = parts.filter((p) => p && p !== '[object Object]').join(' ')
           if (!derivedStack) derivedStack = synthStack(2)
-          capture({ ts: Date.now(), type: 'console', plat: 'sw', ver, url: 'background', msg: trunc(scrubText(msg), MSG_CAP), stack: trunc(scrubText(derivedStack), STACK_CAP) })
+          capture({
+            ts: Date.now(),
+            type: 'console',
+            plat: 'sw',
+            ver,
+            url: 'background',
+            msg: trunc(scrubText(msg), MSG_CAP),
+            stack: trunc(scrubText(derivedStack), STACK_CAP),
+          })
         } catch (_) {}
         return origErr.apply(this, args)
       }
@@ -150,7 +222,7 @@ const browser = globalThis.browser || chrome;
     }
   } catch (_) {}
   globalThis.__hsErrorReporterSw = { capture, flush, ver }
-})();
+})()
 
 // Storage hygiene — sanitize ui_settings before merging into chrome.storage
 // .sync. Strips numeric-string keys (corruption marker), prototype-pollution
@@ -158,26 +230,30 @@ const browser = globalThis.browser || chrome;
 // oversized strings (>4 KB) and oversized values (JSON >6 KB). Mirrors the
 // canonical implementation in src/lib/utils.js — duplicated here because the
 // service worker is not bundled with the lib.
-const UI_SYNC_BLOCKLIST = new Set(['platformFilters', 'keywordHighlights']);
+const UI_SYNC_BLOCKLIST = new Set(['platformFilters', 'keywordHighlights'])
 function sanitizeUiSettings(obj) {
-  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return {};
-  const out = {};
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return {}
+  const out = {}
   for (const key in obj) {
-    if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
-    if (/^\d+$/.test(key)) continue;
-    if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
-    if (key.length === 0 || key.length > 64) continue;
-    if (UI_SYNC_BLOCKLIST.has(key)) continue;
-    const v = obj[key];
-    const t = typeof v;
-    if (t === 'function' || t === 'symbol') continue;
-    if (t === 'string' && v.length > 4096) continue;
+    if (!Object.hasOwn(obj, key)) continue
+    if (/^\d+$/.test(key)) continue
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue
+    if (key.length === 0 || key.length > 64) continue
+    if (UI_SYNC_BLOCKLIST.has(key)) continue
+    const v = obj[key]
+    const t = typeof v
+    if (t === 'function' || t === 'symbol') continue
+    if (t === 'string' && v.length > 4096) continue
     if (t === 'object' && v !== null) {
-      try { if (JSON.stringify(v).length > 6144) continue; } catch { continue; }
+      try {
+        if (JSON.stringify(v).length > 6144) continue
+      } catch {
+        continue
+      }
     }
-    out[key] = v;
+    out[key] = v
   }
-  return out;
+  return out
 }
 
 // Serialized read-modify-write for ui_settings in sync storage.
@@ -186,19 +262,21 @@ function sanitizeUiSettings(obj) {
 // the previous write's result before merging.
 let _uiSettingsRmwChain = Promise.resolve()
 function uiSettingsRmw(mergeFn) {
-  _uiSettingsRmwChain = _uiSettingsRmwChain.then(async () => {
-    const s = await browser.storage.sync.get(['ui_settings'])
-    const merged = mergeFn(s.ui_settings || {})
-    await browser.storage.sync.set({ ui_settings: merged })
-  }).catch(() => {})
+  _uiSettingsRmwChain = _uiSettingsRmwChain
+    .then(async () => {
+      const s = await browser.storage.sync.get(['ui_settings'])
+      const merged = mergeFn(s.ui_settings || {})
+      await browser.storage.sync.set({ ui_settings: merged })
+    })
+    .catch(() => {})
   return _uiSettingsRmwChain
 }
 
 // Debug logging - set to false for production
-const DEBUG = false;
-const log = DEBUG ? console.log.bind(console, '[heatsync]') : () => {};
+const DEBUG = false
+const log = DEBUG ? console.log.bind(console, '[heatsync]') : () => {}
 
-log('🔥 BACKGROUND SCRIPT LOADING...');
+log('🔥 BACKGROUND SCRIPT LOADING...')
 
 // Keepalive alarm — prevent Chrome from killing the service worker.
 // Chrome minimum alarm period is 0.5 minutes (30s), which resets the inactivity timer.
@@ -209,43 +287,55 @@ async function ensureAlarm(name, opts) {
   try {
     const existing = await browser.alarms?.get?.(name)
     if (!existing) browser.alarms?.create?.(name, opts)
-  } catch { browser.alarms?.create?.(name, opts) }
+  } catch {
+    browser.alarms?.create?.(name, opts)
+  }
 }
-ensureAlarm('keepalive', { periodInMinutes: 0.5 });
+ensureAlarm('keepalive', { periodInMinutes: 0.5 })
 // Random delayInMinutes is set once per client when the alarm is created and
 // persists for the alarm's lifetime — this offsets the *phase* of every
 // subsequent fire, so 30k clients don't all hit /api/* at the minute boundary.
-ensureAlarm('refresh-global-emotes', { delayInMinutes: 1440 + Math.random() * 60, periodInMinutes: 1440 });
-ensureAlarm('refresh-emote-inventory', { delayInMinutes: 1 + Math.random(), periodInMinutes: 1 });
-ensureAlarm('prune-expired-mutes', { periodInMinutes: 1 });
-ensureAlarm('live-poll', { delayInMinutes: 1 + Math.random(), periodInMinutes: 1 });
+ensureAlarm('refresh-global-emotes', { delayInMinutes: 1440 + Math.random() * 60, periodInMinutes: 1440 })
+ensureAlarm('refresh-emote-inventory', { delayInMinutes: 1 + Math.random(), periodInMinutes: 1 })
+ensureAlarm('prune-expired-mutes', { periodInMinutes: 1 })
+ensureAlarm('live-poll', { delayInMinutes: 1 + Math.random(), periodInMinutes: 1 })
 // WS watchdog — survives SW eviction. setInterval timers inside onopen die
 // when the SW is terminated; this alarm wakes the SW and either reconnects,
 // kills a zombie, or sends a heartbeat. Each fire is 30s (chrome.alarms min).
-ensureAlarm('hs-ws-watchdog', { periodInMinutes: 0.5 });
+ensureAlarm('hs-ws-watchdog', { periodInMinutes: 0.5 })
 // 7TV reconnect watchdog — the in-flight setTimeout backoff dies if the SW
 // is evicted mid-disconnect. This alarm wakes the SW every 2 min to resurrect
 // the 7TV WS if there are emote sets that should be subscribed.
-ensureAlarm('hs-7tv-watchdog', { periodInMinutes: 2 });
+ensureAlarm('hs-7tv-watchdog', { periodInMinutes: 2 })
 // Server kill-switch poll — recovers from a broken release without forcing a
 // CWS update push. delayInMinutes jitter spreads 30k clients' first hit.
-ensureAlarm('hs-health-poll', { delayInMinutes: 0.25 + Math.random() * 0.5, periodInMinutes: 5 });
+ensureAlarm('hs-health-poll', { delayInMinutes: 0.25 + Math.random() * 0.5, periodInMinutes: 5 })
 browser.alarms?.onAlarm?.addListener((alarm) => {
   if (alarm.name === 'keepalive') {
     // Just existing is enough to keep the worker alive
   } else if (alarm.name === 'refresh-global-emotes') {
-    fetchGlobalEmotes().catch(err => console.warn('[heatsync-ext] fetchGlobalEmotes fetch failed:', err && err.message))
+    fetchGlobalEmotes().catch((err) =>
+      console.warn('[heatsync-ext] fetchGlobalEmotes fetch failed:', err && err.message),
+    )
   } else if (alarm.name === 'refresh-emote-inventory') {
     if (typeof fetchEmoteInventory === 'function') {
-      try { const p = fetchEmoteInventory(); if (p?.catch) p.catch(err => console.warn('[heatsync-ext] fetchEmoteInventory fetch failed:', err && err.message)) } catch (e) {}
+      try {
+        const p = fetchEmoteInventory()
+        if (p?.catch)
+          p.catch((err) => console.warn('[heatsync-ext] fetchEmoteInventory fetch failed:', err && err.message))
+      } catch (e) {}
     }
   } else if (alarm.name === 'prune-expired-mutes') {
     if (typeof pruneExpiredMutes === 'function') {
-      try { pruneExpiredMutes() } catch (e) {}
+      try {
+        pruneExpiredMutes()
+      } catch (e) {}
     }
   } else if (alarm.name === 'live-poll') {
     if (typeof pollFollowedLive === 'function') {
-      try { pollFollowedLive().catch(() => {}) } catch {}
+      try {
+        pollFollowedLive().catch(() => {})
+      } catch {}
     }
   } else if (alarm.name === 'hs-ws-watchdog') {
     // Three states to handle:
@@ -259,14 +349,19 @@ browser.alarms?.onAlarm?.addListener((alarm) => {
         if (typeof connectWebSocket === 'function') connectWebSocket().catch(() => {})
         return
       }
-      if (typeof lastWsDataReceived !== 'undefined' && lastWsDataReceived
-          && Date.now() - lastWsDataReceived > 45000) {
+      if (typeof lastWsDataReceived !== 'undefined' && lastWsDataReceived && Date.now() - lastWsDataReceived > 45000) {
         log('WS zombie detected (alarm path), reconnecting')
-        try { socket.close() } catch {}
+        try {
+          socket.close()
+        } catch {}
         return
       }
-      try { socket.send(JSON.stringify({ type: 'presence:heartbeat' })) } catch {}
-    } catch (e) { log('hs-ws-watchdog error:', e?.message) }
+      try {
+        socket.send(JSON.stringify({ type: 'presence:heartbeat' }))
+      } catch {}
+    } catch (e) {
+      log('hs-ws-watchdog error:', e?.message)
+    }
   } else if (alarm.name === 'hs-health-poll') {
     fetchHealth().catch(() => {})
   } else if (alarm.name === 'hs-7tv-watchdog') {
@@ -280,12 +375,16 @@ browser.alarms?.onAlarm?.addListener((alarm) => {
       if (dead) {
         log('7TV reconnect alarm: WS dead, reviving')
         // Reset backoff cap so we keep trying after an SW restart.
-        try { seventvReconnectAttempts = 0 } catch {}
+        try {
+          seventvReconnectAttempts = 0
+        } catch {}
         ensure7TVConnection()
       }
-    } catch (e) { log('hs-7tv-watchdog error:', e?.message) }
+    } catch (e) {
+      log('hs-7tv-watchdog error:', e?.message)
+    }
   }
-});
+})
 
 // Link preview via heatsync.org server proxy (avoids CORS)
 const LINK_PREVIEW_API = 'https://heatsync.org/api/link-preview'
@@ -306,8 +405,12 @@ const LINK_PREVIEW_API = 'https://heatsync.org/api/link-preview'
 //   msg          — optional banner text shown next to update prompt
 const HEALTH_URL = 'https://heatsync.org/api/extension/health'
 const HEALTH_DEFAULT = Object.freeze({
-  v: 1, ext_min: '0.0.0', ext_hard_min: null,
-  kill: false, disabled: [], msg: null
+  v: 1,
+  ext_min: '0.0.0',
+  ext_hard_min: null,
+  kill: false,
+  disabled: [],
+  msg: null,
 })
 async function fetchHealth() {
   try {
@@ -320,10 +423,8 @@ async function fetchHealth() {
       ext_min: typeof j.ext_min === 'string' ? j.ext_min : HEALTH_DEFAULT.ext_min,
       ext_hard_min: typeof j.ext_hard_min === 'string' ? j.ext_hard_min : null,
       kill: j.kill === true,
-      disabled: Array.isArray(j.disabled)
-        ? j.disabled.filter(x => typeof x === 'string').slice(0, 32)
-        : [],
-      msg: typeof j.msg === 'string' ? j.msg.slice(0, 200) : null
+      disabled: Array.isArray(j.disabled) ? j.disabled.filter((x) => typeof x === 'string').slice(0, 32) : [],
+      msg: typeof j.msg === 'string' ? j.msg.slice(0, 200) : null,
     }
     await browser.storage.local.set({ hs_health: sane, hs_health_at: Date.now() })
   } catch {}
@@ -332,29 +433,31 @@ async function getCachedHealth() {
   try {
     const { hs_health } = await browser.storage.local.get('hs_health')
     return hs_health || HEALTH_DEFAULT
-  } catch { return HEALTH_DEFAULT }
+  } catch {
+    return HEALTH_DEFAULT
+  }
 }
 // First fetch is non-blocking — SW init must not stall on a slow heatsync.org.
 fetchHealth().catch(() => {})
 
 // Show welcome page on first install, clear stale intervals on update
 browser.runtime.onInstalled.addListener((details) => {
-  log(' 📦 onInstalled - extension installed/updated', details.reason);
+  log(' 📦 onInstalled - extension installed/updated', details.reason)
   // Spread the herd: when 30k Chrome clients auto-update around the same
   // hour, every SW will wake and try to connect /ws at once. Delay each
   // client's first connect by a random 0–60s.
-  pendingStartupJitterMs = Math.random() * 60000;
+  pendingStartupJitterMs = Math.random() * 60000
   browser.storage.session?.set({ startup_jitter_at: Date.now() + pendingStartupJitterMs }).catch(() => {})
   // Clear any stale intervals from previous version
-  activeIntervals.forEach(id => clearInterval(id));
-  activeIntervals.clear();
+  activeIntervals.forEach((id) => clearInterval(id))
+  activeIntervals.clear()
   // Only nuke channel emotes on first install — on 'update' or 'chrome_update'
   // wiping the cache means every tracked multichat channel renders raw text
   // until the user clicks each tab (channel emotes are "half the emote pool").
   // CHANNEL_EMOTES_TTL + per-fetch failure backdating already cover staleness.
   if (details.reason === 'install') {
-    channelEmotesMap = {};
-    channelEmotesFetchedAt = {};
+    channelEmotesMap = {}
+    channelEmotesFetchedAt = {}
     browser.storage.local.remove('channel_emotes_map').catch(() => {})
     browser.storage.local.remove('channel_emotes_fetched_at').catch(() => {})
   }
@@ -366,26 +469,29 @@ browser.runtime.onInstalled.addListener((details) => {
   // Trade-off: lose scroll position vs. reliable recovery. Scroll loses.
   if (details.reason === 'install') {
     browser.tabs.create({
-      url: browser.runtime.getURL('welcome.html')
-    });
+      url: browser.runtime.getURL('welcome.html'),
+    })
   }
-});
+})
 
 // Browser cold-start herd: people open Chrome around the same time of day.
 // Only set jitter if not already set by onInstalled in this session.
 browser.runtime.onStartup?.addListener(() => {
-  if (pendingStartupJitterMs > 0) return;
-  pendingStartupJitterMs = Math.random() * 30000;
+  if (pendingStartupJitterMs > 0) return
+  pendingStartupJitterMs = Math.random() * 30000
   browser.storage.session?.set({ startup_jitter_at: Date.now() + pendingStartupJitterMs }).catch(() => {})
-});
+})
 
 // One-time migration: ensure clean state
-browser.storage.local.get('migrated_to_prod_v2').then(async (data) => {
-  if (!data.migrated_to_prod_v2) {
-    await browser.storage.local.set({ migrated_to_prod_v2: true });
-    log(' Migration v2 complete');
-  }
-}).catch(err => log(' Migration check failed:', err?.message));
+browser.storage.local
+  .get('migrated_to_prod_v2')
+  .then(async (data) => {
+    if (!data.migrated_to_prod_v2) {
+      await browser.storage.local.set({ migrated_to_prod_v2: true })
+      log(' Migration v2 complete')
+    }
+  })
+  .catch((err) => log(' Migration check failed:', err?.message))
 
 // v1.5.4 one-time wipe of channel_emotes_map cache. v1.5.3 stopped wiping
 // the cache on every ext reload (good for warm state across upgrades) but
@@ -393,40 +499,49 @@ browser.storage.local.get('migrated_to_prod_v2').then(async (data) => {
 // row leaked into channelEmotesMap[xqc] over a year ago; never got pruned
 // because no clean re-fetch ever ran). Run once on v1.5.4 boot: clear,
 // then let fetchChannelOwnerEmotes repopulate per channel as visited.
-browser.storage.local.get('migrated_emote_cache_v154').then(async (data) => {
-  if (!data.migrated_emote_cache_v154) {
-    channelEmotesMap = {};
-    channelEmotesFetchedAt = {};
-    await browser.storage.local.remove(['channel_emotes_map', 'channel_emotes_fetched_at']);
-    await browser.storage.local.set({ migrated_emote_cache_v154: true });
-    log(' v1.5.4 channel_emotes_map migration: cleared stale cache');
-  }
-}).catch(err => log(' v1.5.4 migration check failed:', err?.message));
+browser.storage.local
+  .get('migrated_emote_cache_v154')
+  .then(async (data) => {
+    if (!data.migrated_emote_cache_v154) {
+      channelEmotesMap = {}
+      channelEmotesFetchedAt = {}
+      await browser.storage.local.remove(['channel_emotes_map', 'channel_emotes_fetched_at'])
+      await browser.storage.local.set({ migrated_emote_cache_v154: true })
+      log(' v1.5.4 channel_emotes_map migration: cleared stale cache')
+    }
+  })
+  .catch((err) => log(' v1.5.4 migration check failed:', err?.message))
 
 // Migrate old single channel_emotes to per-channel map
-browser.storage.local.get(['channel_emotes', 'channel_emotes_owner']).then(async (data) => {
-  if (data.channel_emotes && data.channel_emotes_owner) {
-    const map = { [data.channel_emotes_owner]: data.channel_emotes };
-    await browser.storage.local.set({ channel_emotes_map: map });
-    await browser.storage.local.remove(['channel_emotes', 'channel_emotes_owner']);
-    log(' Migrated channel_emotes to per-channel map');
-  }
-}).catch(err => log(' Channel emotes migration failed:', err?.message));
+browser.storage.local
+  .get(['channel_emotes', 'channel_emotes_owner'])
+  .then(async (data) => {
+    if (data.channel_emotes && data.channel_emotes_owner) {
+      const map = { [data.channel_emotes_owner]: data.channel_emotes }
+      await browser.storage.local.set({ channel_emotes_map: map })
+      await browser.storage.local.remove(['channel_emotes', 'channel_emotes_owner'])
+      log(' Migrated channel_emotes to per-channel map')
+    }
+  })
+  .catch((err) => log(' Channel emotes migration failed:', err?.message))
 
-let emoteInventory = [];
-let globalEmotes = []; // BTTV, FFZ, 7TV global emotes
+let emoteInventory = []
+let globalEmotes = [] // BTTV, FFZ, 7TV global emotes
 
 // Hydrate content-filter flags from storage on SW wake-up so emote fetches
 // that fire before fetchViewerSettings() resolves still use the right flags.
 // onChanged listener below keeps in-memory state in sync when the settings
 // UI or other tabs flip a toggle.
-browser.storage.local.get(['viewer_show_sexual', 'viewer_show_gore', 'viewer_show_weapon', 'viewer_show_drug', 'viewer_show_hate']).then(d => {
-  if (typeof d?.viewer_show_sexual === 'boolean') viewerShowSexual = d.viewer_show_sexual
-  if (typeof d?.viewer_show_gore === 'boolean') viewerShowGore = d.viewer_show_gore
-  if (typeof d?.viewer_show_weapon === 'boolean') viewerShowWeapon = d.viewer_show_weapon
-  if (typeof d?.viewer_show_drug === 'boolean') viewerShowDrug = d.viewer_show_drug
-  if (typeof d?.viewer_show_hate === 'boolean') viewerShowHate = d.viewer_show_hate
-}).catch(() => {})
+browser.storage.local
+  .get(['viewer_show_sexual', 'viewer_show_gore', 'viewer_show_weapon', 'viewer_show_drug', 'viewer_show_hate'])
+  .then((d) => {
+    if (typeof d?.viewer_show_sexual === 'boolean') viewerShowSexual = d.viewer_show_sexual
+    if (typeof d?.viewer_show_gore === 'boolean') viewerShowGore = d.viewer_show_gore
+    if (typeof d?.viewer_show_weapon === 'boolean') viewerShowWeapon = d.viewer_show_weapon
+    if (typeof d?.viewer_show_drug === 'boolean') viewerShowDrug = d.viewer_show_drug
+    if (typeof d?.viewer_show_hate === 'boolean') viewerShowHate = d.viewer_show_hate
+  })
+  .catch(() => {})
 browser.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return
   const cs = changes.viewer_show_sexual
@@ -456,12 +571,17 @@ browser.storage.onChanged.addListener((changes, area) => {
   }
 })
 
-let channelEmotesMap = {}; // Per-channel emotes: { "platform/channel": emotes[] }
-let channelEmotesFetchedAt = {}; // "platform/channel" → timestamp of last successful fetch
+let channelEmotesMap = {} // Per-channel emotes: { "platform/channel": emotes[] }
+let channelEmotesFetchedAt = {} // "platform/channel" → timestamp of last successful fetch
 
 // Composite key helpers — keep all channelEmotesMap access platform-scoped
-function chKey(platform, ch) { return (platform || 'twitch') + '/' + String(ch || '').toLowerCase() }
-function splitChKey(key) { const i = String(key).indexOf('/'); return i < 0 ? { platform: 'twitch', channel: String(key) } : { platform: key.slice(0, i), channel: key.slice(i + 1) } }
+function chKey(platform, ch) {
+  return (platform || 'twitch') + '/' + String(ch || '').toLowerCase()
+}
+function splitChKey(key) {
+  const i = String(key).indexOf('/')
+  return i < 0 ? { platform: 'twitch', channel: String(key) } : { platform: key.slice(0, i), channel: key.slice(i + 1) }
+}
 
 function getStorableChannelEmotes() {
   const map = {}
@@ -539,10 +659,14 @@ browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
 const _drainAttempted = new Map() // tabId → Set<platform>
 async function _maybeTriggerCrossFollowDrain(tabId) {
   let tab
-  try { tab = await browser.tabs.get(tabId) } catch { return }
+  try {
+    tab = await browser.tabs.get(tabId)
+  } catch {
+    return
+  }
   if (!tab?.url) return
   let platform = null
-  if (/twitch\.tv/.test(tab.url))    platform = 'twitch'
+  if (/twitch\.tv/.test(tab.url)) platform = 'twitch'
   else if (/kick\.com/.test(tab.url)) platform = 'kick'
   if (!platform) return
   if (!_drainAttempted.has(tabId)) _drainAttempted.set(tabId, new Set())
@@ -555,18 +679,20 @@ async function _maybeTriggerCrossFollowDrain(tabId) {
     browser.tabs.sendMessage(tabId, { type: 'cross_follow_drain', platform }).catch(() => {})
   }, 2500)
 }
-browser.tabs.onRemoved.addListener((tabId) => { _drainAttempted.delete(tabId) })
-let current7TVEmoteSetId = null; // Track current 7TV emote set ID for EventAPI
-let seventvEmoteSetIds = new Map(); // channelName → 7TV emote set ID
-let blockedEmotes = new Set();
-let localBlockedEmotes = new Set(); // Local blocks for anonymous users
-let mutedUsers = new Map(); // username -> expiresAt (null = permanent)
-let blockedUsers = new Set();
+browser.tabs.onRemoved.addListener((tabId) => {
+  _drainAttempted.delete(tabId)
+})
+let current7TVEmoteSetId = null // Track current 7TV emote set ID for EventAPI
+const seventvEmoteSetIds = new Map() // channelName → 7TV emote set ID
+let blockedEmotes = new Set()
+let localBlockedEmotes = new Set() // Local blocks for anonymous users
+let mutedUsers = new Map() // username -> expiresAt (null = permanent)
+let blockedUsers = new Set()
 
 // Third-party cosmetics (BTTV/FFZ badges, 7TV paints+badges)
-let bttvBadgeMap = new Map()    // twitchUserId → { description, url }
-let ffzBadgeMap = new Map()     // twitchUserId → [{ title, color, url }]
-let chatterinoBadgeMap = new Map()  // twitchUserId → { tooltip, url }
+let bttvBadgeMap = new Map() // twitchUserId → { description, url }
+let ffzBadgeMap = new Map() // twitchUserId → [{ title, color, url }]
+let chatterinoBadgeMap = new Map() // twitchUserId → { tooltip, url }
 const userCosmeticsCache = new Map() // twitchUserId → { paint, badge, fetchedAt }
 let badgesFetchedAt = 0 // persisted to storage in fetchBulkBadges, restored in initialize()
 const BADGES_TTL = 24 * 60 * 60 * 1000
@@ -579,7 +705,7 @@ const USER_COSMETICS_MAX = 500
 // switch, scrollback) reuse cached embed metadata instead of re-fetching
 // the heatsync server every time.
 const _embedResolveCache = new Map()
-const EMBED_RESOLVE_TTL = 60 * 60 * 1000  // 1 hour
+const EMBED_RESOLVE_TTL = 60 * 60 * 1000 // 1 hour
 // Channel banner / accent across platforms — Twitch GQL (public client id),
 // Kick public API, YouTube HTML scrape via ytInitialData. All sources return
 // the same shape: { bannerUrl, offlineUrl, accent, profileUrl }. Cache keyed
@@ -588,43 +714,43 @@ const EMBED_RESOLVE_TTL = 60 * 60 * 1000  // 1 hour
 const _channelBannerCache = new Map()
 const CHANNEL_BANNER_TTL = 12 * 60 * 60 * 1000
 const CHANNEL_BANNER_MAX = 800
-let followedUsers = []; // Users the current user follows
-let currentUsername = null; // Logged-in user's username
+let followedUsers = [] // Users the current user follows
+let currentUsername = null // Logged-in user's username
 // v1.6 content filters. sexual + gore default OFF (hidden); weapons/drugs/hate
 // default ON. Flipped via the multichat panel ⚙ → Content toggles, which
 // PATCH /api/user/settings and write to storage. Every emote-fetch BG call
 // appends include_sexual/gore/weapons/drugs/hate params via withNsfwParam().
-let viewerShowSexual = false;
-let viewerShowGore = false;
+let viewerShowSexual = false
+let viewerShowGore = false
 // Per-category content filters. Default ON (show); server hides only when =false.
-let viewerShowWeapon = true;
-let viewerShowDrug = true;
-let viewerShowHate = true;
-let socket = null;
+let viewerShowWeapon = true
+let viewerShowDrug = true
+let viewerShowHate = true
+let socket = null
 let lastBroadcastWasEmpty = false // Track to prevent spamming 0-emote broadcasts
 // Tracks the last user-initiated block/unblock per hash so late-arriving WS
 // echoes can't reverse a recent toggle. Server broadcasts our own actions back
 // to us; if HTTP completes faster than the WS echo, the WS handler sees stale
 // state and "re-blocks" what we just unblocked (or vice versa). 5s window is
 // enough for any realistic broadcast delay.
-const recentBlockToggle = new Map(); // hash -> { state: 'blocked'|'unblocked', at: ms }
-const BLOCK_TOGGLE_GRACE_MS = 5000;
+const recentBlockToggle = new Map() // hash -> { state: 'blocked'|'unblocked', at: ms }
+const BLOCK_TOGGLE_GRACE_MS = 5000
 function markBlockToggle(hash, state) {
-  if (!hash) return;
-  recentBlockToggle.set(hash, { state, at: Date.now() });
+  if (!hash) return
+  recentBlockToggle.set(hash, { state, at: Date.now() })
   if (recentBlockToggle.size > 200) {
-    const cutoff = Date.now() - BLOCK_TOGGLE_GRACE_MS;
-    for (const [h, e] of recentBlockToggle) if (e.at < cutoff) recentBlockToggle.delete(h);
+    const cutoff = Date.now() - BLOCK_TOGGLE_GRACE_MS
+    for (const [h, e] of recentBlockToggle) if (e.at < cutoff) recentBlockToggle.delete(h)
   }
 }
 function recentBlockToggleState(hash) {
-  const e = recentBlockToggle.get(hash);
-  if (!e) return null;
+  const e = recentBlockToggle.get(hash)
+  if (!e) return null
   if (Date.now() - e.at > BLOCK_TOGGLE_GRACE_MS) {
-    recentBlockToggle.delete(hash);
-    return null;
+    recentBlockToggle.delete(hash)
+    return null
   }
-  return e.state;
+  return e.state
 }
 let lastInventoryFetch = 0 // Timestamp of last successful inventory fetch
 let inventoryRefreshTimer = null // Debounce WS-triggered inventory refreshes
@@ -640,19 +766,19 @@ function scheduleInventoryRefresh() {
     fetchEmoteInventory()
   }, 2000)
 }
-let unreadNotifCount = 0; // Unread notification count for extension badge
-let cachedFollowHistory = null; // Cache follow:history for late-loading content scripts
-const wsStreamEventDedup = new Map(); // Dedup stream events across stream:* and follow:stream:*
-let cachedFollowColors = null; // Cache follow:colors for late-loading content scripts
-let activeYoutubeVideoId = null; // Currently subscribed YouTube videoId (for WS reconnect)
-const ytVideoToChannel = new Map(); // videoId → channelId (for per-channel YouTube routing)
+let unreadNotifCount = 0 // Unread notification count for extension badge
+let cachedFollowHistory = null // Cache follow:history for late-loading content scripts
+const wsStreamEventDedup = new Map() // Dedup stream events across stream:* and follow:stream:*
+let cachedFollowColors = null // Cache follow:colors for late-loading content scripts
+let activeYoutubeVideoId = null // Currently subscribed YouTube videoId (for WS reconnect)
+const ytVideoToChannel = new Map() // videoId → channelId (for per-channel YouTube routing)
 const youtubeChannelUrls = {} // channelId → url (in-memory source of truth, persisted to storage)
 // Pending subscriptions whose URL doesn't carry a videoId (e.g. https://youtube.com/@user/live).
 // We can't pre-populate ytVideoToChannel for these, so we track them here. When the WS server
 // echoes back a youtube:status connected event without a channelId field, we attribute the
 // videoId to the most-recent pending entry — without this fallback the status broadcasts as
 // channelId='global' and every chat message that follows gets dropped by the receiving tab.
-const pendingYtSubscribes = []  // [{ channelId, url, ts }] LIFO, capped, ts for staleness
+const pendingYtSubscribes = [] // [{ channelId, url, ts }] LIFO, capped, ts for staleness
 const ytChannelHandleCache = new Map() // videoId → channel handle (oEmbed lookup, session-scoped)
 function cacheYtHandle(videoId, handle) {
   ytChannelHandleCache.set(videoId, handle)
@@ -685,9 +811,11 @@ async function getYtChannelHandle(videoId) {
     // a stable null, so caching it spares the repeat fetch too.
     cacheYtHandle(videoId, handle)
     return handle
-  } catch (e) { return null }
+  } catch (e) {
+    return null
+  }
 }
-const MAX_YT_VIDEO_ENTRIES = 100; // LRU cap — evict oldest when full
+const MAX_YT_VIDEO_ENTRIES = 100 // LRU cap — evict oldest when full
 let _ytVideoMapPersistTimer = null
 function persistYtVideoMap() {
   // Debounce burst writes (re-subscribe loops fire many sets in <50ms)
@@ -710,9 +838,9 @@ function deleteYtVideoChannel(videoId) {
   if (ytVideoToChannel.delete(videoId)) persistYtVideoMap()
 }
 
-let authToken = null; // Will be set by content script or loaded from storage
-let initPromise = null; // Track init completion for message handlers
-let authFailedBlock = false; // Prevent reconnect loop after authentication_failed
+let authToken = null // Will be set by content script or loaded from storage
+let initPromise = null // Track init completion for message handlers
+let authFailedBlock = false // Prevent reconnect loop after authentication_failed
 
 // Auto-detect login/logout via httpOnly cookie changes
 browser.cookies.onChanged.addListener((changeInfo) => {
@@ -726,7 +854,7 @@ browser.cookies.onChanged.addListener((changeInfo) => {
     // 'set' event that re-establishes auth.
     if (changeInfo.removed && changeInfo.cause !== 'overwrite') {
       log(' Auth cookie removed — logging out')
-      unsubscribeFromPush(authToken).catch(err => log(' unsubscribeFromPush failed:', err?.message))
+      unsubscribeFromPush(authToken).catch((err) => log(' unsubscribeFromPush failed:', err?.message))
       authToken = null
       emoteInventory = []
       blockedEmotes = new Set()
@@ -736,28 +864,41 @@ browser.cookies.onChanged.addListener((changeInfo) => {
       viewerShowWeapon = true
       viewerShowDrug = true
       viewerShowHate = true
-      browser.storage.local.remove(['emote_inventory', 'blocked_emotes', 'auth_token_encrypted', 'auth_token', 'user_info', 'viewer_show_sexual', 'viewer_show_gore', 'viewer_show_weapon', 'viewer_show_drug', 'viewer_show_hate']).catch(err => log(' storage remove failed:', err?.message))
+      browser.storage.local
+        .remove([
+          'emote_inventory',
+          'blocked_emotes',
+          'auth_token_encrypted',
+          'auth_token',
+          'user_info',
+          'viewer_show_sexual',
+          'viewer_show_gore',
+          'viewer_show_weapon',
+          'viewer_show_drug',
+          'viewer_show_hate',
+        ])
+        .catch((err) => log(' storage remove failed:', err?.message))
       broadcastToTabs({ type: 'auth_changed', loggedIn: false })
     } else {
       log(' Auth cookie set — logging in')
       authToken = c.value
       authFailedBlock = false
-      storeToken(c.value).catch(err => log(' storeToken failed:', err?.message))
-      fetchEmoteInventory().catch(err => log(' fetchEmoteInventory failed:', err?.message))
-      fetchBlockedEmotes().catch(err => log(' fetchBlockedEmotes failed:', err?.message))
-      fetchFollowedUsers().catch(err => log(' fetchFollowedUsers failed:', err?.message))
-      fetchUserInfo().catch(err => log(' fetchUserInfo failed:', err?.message))
-      fetchViewerSettings().catch(err => log(' fetchViewerSettings failed:', err?.message))
-      connectWebSocket().catch(err => log(' connectWebSocket failed:', err?.message))
-      subscribeToPush(c.value).catch(err => log(' subscribeToPush failed:', err?.message))
+      storeToken(c.value).catch((err) => log(' storeToken failed:', err?.message))
+      fetchEmoteInventory().catch((err) => log(' fetchEmoteInventory failed:', err?.message))
+      fetchBlockedEmotes().catch((err) => log(' fetchBlockedEmotes failed:', err?.message))
+      fetchFollowedUsers().catch((err) => log(' fetchFollowedUsers failed:', err?.message))
+      fetchUserInfo().catch((err) => log(' fetchUserInfo failed:', err?.message))
+      fetchViewerSettings().catch((err) => log(' fetchViewerSettings failed:', err?.message))
+      connectWebSocket().catch((err) => log(' connectWebSocket failed:', err?.message))
+      subscribeToPush(c.value).catch((err) => log(' subscribeToPush failed:', err?.message))
       broadcastToTabs({ type: 'auth_changed', loggedIn: true })
     }
   } catch (err) {
     log(' cookies.onChanged error:', err?.message)
   }
 })
-const API_URL = 'https://heatsync.org'; // Production
-const WS_URL = 'wss://heatsync.org'; // Production WebSocket
+const API_URL = 'https://heatsync.org' // Production
+const WS_URL = 'wss://heatsync.org' // Production WebSocket
 
 // Network online/offline — react instantly to transitions instead of waiting
 // for backoff timers. Service workers have `self` (global), and these events
@@ -765,15 +906,21 @@ const WS_URL = 'wss://heatsync.org'; // Production WebSocket
 // it'll re-evaluate on next wake anyway.
 try {
   self.addEventListener('online', () => {
-    log(' 🌐 Network online — kicking fresh WS connect');
-    reconnectAttempts = 0;
-    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
-    if (!isSocketOpen()) connectWebSocket().catch(err => log(' onlineConnect failed:', err?.message));
-  });
+    log(' 🌐 Network online — kicking fresh WS connect')
+    reconnectAttempts = 0
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
+    if (!isSocketOpen()) connectWebSocket().catch((err) => log(' onlineConnect failed:', err?.message))
+  })
   self.addEventListener('offline', () => {
-    log(' 🚫 Network offline — pausing reconnect attempts');
-    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
-  });
+    log(' 🚫 Network offline — pausing reconnect attempts')
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
+  })
 } catch {}
 
 // Normalize relative emote URLs to absolute (API returns /uploads/... paths)
@@ -783,14 +930,14 @@ function absUrl(url) {
 }
 
 // Track intervals for cleanup (memory leak prevention)
-const activeIntervals = new Set();
+const activeIntervals = new Set()
 function trackInterval(id) {
-  activeIntervals.add(id);
-  return id;
+  activeIntervals.add(id)
+  return id
 }
 function untrackInterval(id) {
-  clearInterval(id);
-  activeIntervals.delete(id);
+  clearInterval(id)
+  activeIntervals.delete(id)
 }
 
 // Fetch with 10s timeout to prevent hung requests
@@ -810,12 +957,14 @@ let _heatsyncBackoffWarnAt = 0
 function fakeBackoffResponse() {
   // Match the Response interface enough that callers checking .status / .ok / .json() / .body work.
   return {
-    ok: false, status: 429, statusText: 'Too Many Requests (client-side backoff)',
+    ok: false,
+    status: 429,
+    statusText: 'Too Many Requests (client-side backoff)',
     headers: new Headers(),
     body: null,
     json: () => Promise.resolve(null),
     text: () => Promise.resolve(''),
-    arrayBuffer: () => Promise.resolve(new ArrayBuffer(0))
+    arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
   }
 }
 // 7TV's Cloudflare 403s (or, behind a misrouted VPN/tunnel, times out) requests
@@ -825,9 +974,8 @@ function fakeBackoffResponse() {
 // direct hit entirely so channel-emote loads never hang behind it.
 let sevenTVApiBlocked = false
 async function fetchWithTimeout(url, opts = {}, ms = 10000) {
-  const is7tvGet = typeof url === 'string'
-    && url.startsWith('https://7tv.io/')
-    && (opts.method || 'GET').toUpperCase() === 'GET'
+  const is7tvGet =
+    typeof url === 'string' && url.startsWith('https://7tv.io/') && (opts.method || 'GET').toUpperCase() === 'GET'
   if (is7tvGet && !opts.__no7tvFallback) {
     const proxyUrl = url.replace('https://7tv.io/', 'https://heatsync.org/api/7tv/')
     // noBackoff: the proxy is heatsync.org, so without this the shared heatsync
@@ -841,7 +989,10 @@ async function fetchWithTimeout(url, opts = {}, ms = 10000) {
       const r = await fetchWithTimeout(url, { ...opts, __no7tvFallback: true }, ms)
       // 403 = this IP is blocked by 7TV's WAF; it's instant + permanent for the
       // session, so flip to the proxy for every subsequent 7TV call.
-      if (r.status === 403) { sevenTVApiBlocked = true; return fetchWithTimeout(proxyUrl, proxyOpts, ms) }
+      if (r.status === 403) {
+        sevenTVApiBlocked = true
+        return fetchWithTimeout(proxyUrl, proxyOpts, ms)
+      }
       // 5xx/429 = 7TV outage or rate-limit (not an IP block) — the proxy may
       // hold a cached set, so render keeps working through 7TV downtime.
       if (r.status >= 500 || r.status === 429) return fetchWithTimeout(proxyUrl, proxyOpts, ms)
@@ -889,7 +1040,13 @@ async function fetchWithTimeout(url, opts = {}, ms = 10000) {
     if (firstHit) {
       // Cancel every other in-flight heatsync request — they were issued before
       // we knew about the rate-limit and would each get 429'd individually.
-      for (const a of heatsyncInflightAborts) { if (a !== ctrl) { try { a.abort() } catch {} } }
+      for (const a of heatsyncInflightAborts) {
+        if (a !== ctrl) {
+          try {
+            a.abort()
+          } catch {}
+        }
+      }
     }
     // Dedupe the warn — one per backoff window. Include URL so future storms
     // can be traced back to the noisy endpoint.
@@ -923,7 +1080,9 @@ async function fetchWithEtag(url, opts = {}, ms = 10000) {
   if (resp.ok) {
     const newEtag = resp.headers.get('etag')
     if (newEtag && newEtag !== storedEtag) {
-      try { await browser.storage.local.set({ [ETAG_KEY_PREFIX + url]: newEtag }) } catch {}
+      try {
+        await browser.storage.local.set({ [ETAG_KEY_PREFIX + url]: newEtag })
+      } catch {}
     }
   }
   return resp
@@ -945,7 +1104,9 @@ async function getOrCreateEncryptionSalt() {
     return arr
   }
   const salt = crypto.getRandomValues(new Uint8Array(32))
-  const hex = Array.from(salt).map(b => b.toString(16).padStart(2, '0')).join('')
+  const hex = Array.from(salt)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
   await browser.storage.local.set({ encryption_salt: hex })
   return salt
 }
@@ -958,14 +1119,14 @@ async function getEncryptionKey(salt) {
     encoder.encode(extensionId + '-heatsync-token-key'),
     'PBKDF2',
     false,
-    ['deriveKey']
+    ['deriveKey'],
   )
   return crypto.subtle.deriveKey(
     { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
     keyMaterial,
     { name: 'AES-GCM', length: 256 },
     false,
-    ['encrypt', 'decrypt']
+    ['encrypt', 'decrypt'],
   )
 }
 
@@ -976,11 +1137,7 @@ async function encryptToken(token) {
     const key = await getEncryptionKey(salt)
     const iv = crypto.getRandomValues(new Uint8Array(12))
     const encoder = new TextEncoder()
-    const encrypted = await crypto.subtle.encrypt(
-      { name: 'AES-GCM', iv },
-      key,
-      encoder.encode(token)
-    )
+    const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoder.encode(token))
     // Store as base64: iv + encrypted data
     const combined = new Uint8Array(iv.length + encrypted.byteLength)
     combined.set(iv)
@@ -994,7 +1151,7 @@ async function encryptToken(token) {
 
 async function decryptToken(encryptedBase64) {
   if (!encryptedBase64) return null
-  const combined = Uint8Array.from(atob(encryptedBase64), c => c.charCodeAt(0))
+  const combined = Uint8Array.from(atob(encryptedBase64), (c) => c.charCodeAt(0))
   const iv = combined.slice(0, 12)
   const encrypted = combined.slice(12)
 
@@ -1025,32 +1182,32 @@ async function decryptToken(encryptedBase64) {
 
 // Secure token storage helpers
 async function storeToken(token) {
-  const encrypted = await encryptToken(token);
+  const encrypted = await encryptToken(token)
   if (encrypted) {
-    await browser.storage.local.set({ auth_token_encrypted: encrypted });
+    await browser.storage.local.set({ auth_token_encrypted: encrypted })
     // Remove old unencrypted token if exists
-    await browser.storage.local.remove('auth_token');
+    await browser.storage.local.remove('auth_token')
   }
 }
 
 async function retrieveToken() {
-  const data = await browser.storage.local.get(['auth_token_encrypted', 'auth_token']);
+  const data = await browser.storage.local.get(['auth_token_encrypted', 'auth_token'])
   // Try encrypted first
   if (data.auth_token_encrypted) {
-    const token = await decryptToken(data.auth_token_encrypted);
-    if (token) return token;
+    const token = await decryptToken(data.auth_token_encrypted)
+    if (token) return token
   }
   // Fallback to unencrypted (migration) and re-encrypt
   if (data.auth_token) {
-    log(' Migrating unencrypted token to encrypted storage');
-    await storeToken(data.auth_token);
-    return data.auth_token;
+    log(' Migrating unencrypted token to encrypted storage')
+    await storeToken(data.auth_token)
+    return data.auth_token
   }
-  return null;
+  return null
 }
 
 // Map of hash -> real emote URL (populated when emotes are loaded)
-const emoteUrlMap = new Map();
+const emoteUrlMap = new Map()
 
 // Intercept requests to Twitch CDN with our FFZ-style IDs and redirect to real URLs
 // Format: __FFZ__999999::HASH__FFZ__ (numeric set ID for Twitch validation)
@@ -1059,33 +1216,33 @@ try {
   if (browser.webRequest?.onBeforeRequest) {
     browser.webRequest.onBeforeRequest.addListener(
       (details) => {
-        const url = details.url;
-        const match = url.match(/__FFZ__999999::([a-f0-9]+)__FFZ__/);
-        if (!match) return;
+        const url = details.url
+        const match = url.match(/__FFZ__999999::([a-f0-9]+)__FFZ__/)
+        if (!match) return
 
-        const hash = match[1];
-        const realUrl = emoteUrlMap.get(hash);
-        log(' 🎯 webRequest intercepted:', hash.substring(0, 12), '-> found:', !!realUrl);
+        const hash = match[1]
+        const realUrl = emoteUrlMap.get(hash)
+        log(' 🎯 webRequest intercepted:', hash.substring(0, 12), '-> found:', !!realUrl)
 
         if (realUrl) {
-          return { redirectUrl: realUrl };
+          return { redirectUrl: realUrl }
         }
-        return {};
+        return {}
       },
       { urls: ['*://static-cdn.jtvnw.net/emoticons/v2/__FFZ__999999*'] },
-      ['blocking']
-    );
-    log(' 🔄 WebRequest interceptor installed (Firefox)');
+      ['blocking'],
+    )
+    log(' 🔄 WebRequest interceptor installed (Firefox)')
   }
 } catch (e) {
   // Chrome MV3 doesn't support blocking webRequest - that's OK
-  log('[heatsync] webRequest not available (Chrome MV3) - using direct URLs');
+  log('[heatsync] webRequest not available (Chrome MV3) - using direct URLs')
 }
 
 // Update the emote URL map (capped at 10K entries to prevent memory growth)
 const MAX_EMOTE_URL_ENTRIES = 10000
 function updateEmoteUrlMap() {
-  emoteUrlMap.clear();
+  emoteUrlMap.clear()
   // Inventory + globals first (always kept)
   for (const emote of emoteInventory) {
     if (emote.hash && emote.url) emoteUrlMap.set(emote.hash, emote.url)
@@ -1102,7 +1259,7 @@ function updateEmoteUrlMap() {
     }
     if (emoteUrlMap.size >= MAX_EMOTE_URL_ENTRIES) break
   }
-  log(' 📍 Updated emoteUrlMap:', emoteUrlMap.size, 'entries');
+  log(' 📍 Updated emoteUrlMap:', emoteUrlMap.size, 'entries')
 }
 
 // Get auth token (read from memory, storage, or httpOnly cookie via cookies API)
@@ -1155,105 +1312,108 @@ function fetchEmoteInventory() {
   }
   if (inventoryFetchPromise) return inventoryFetchPromise
   inventoryFetchPromise = (async () => {
-  try {
-    const authToken = await getAuthCookie()
-    if (!authToken) {
-      log(' No auth token for inventory fetch');
-      emoteInventory = [];
-      inventoryFetchOK = false;
-      // Only broadcast empty once to prevent spam (every 60s poll was flooding console)
-      if (!lastBroadcastWasEmpty) {
-        broadcastToTabs({ type: 'inventory_update', emotes: emoteInventory });
-        lastBroadcastWasEmpty = true;
-      }
-      return;
-    }
-
-    log(' Fetching user inventory from API');
-    const response = await fetchWithTimeout(withNsfwParam(`${API_URL}/api/user/emotes`), {
-      headers: {
-        'Authorization': `Bearer ${authToken}`
-      }
-    });
-
-    if (!response.ok) {
-      response.body?.cancel()
-      // Only clobber on auth failure (token revoked/expired). Transient errors
-      // (5xx, 429 backoff, server warm-up) must preserve the warm cache —
-      // otherwise a single cold-start hiccup broadcasts an empty inventory and
-      // strips every rendered emote on every open Twitch/Kick tab.
-      if (response.status === 401 || response.status === 403) {
-        emoteInventory = [];
-        inventoryFetchOK = false;
+    try {
+      const authToken = await getAuthCookie()
+      if (!authToken) {
+        log(' No auth token for inventory fetch')
+        emoteInventory = []
+        inventoryFetchOK = false
+        // Only broadcast empty once to prevent spam (every 60s poll was flooding console)
         if (!lastBroadcastWasEmpty) {
-          broadcastToTabs({ type: 'inventory_update', emotes: emoteInventory });
-          lastBroadcastWasEmpty = true;
+          broadcastToTabs({ type: 'inventory_update', emotes: emoteInventory })
+          lastBroadcastWasEmpty = true
         }
-      } else {
-        log(' Inventory fetch ' + response.status + ' — keeping warm cache');
-        inventoryFetchOK = false;
+        return
       }
-      return;
+
+      log(' Fetching user inventory from API')
+      const response = await fetchWithTimeout(withNsfwParam(`${API_URL}/api/user/emotes`), {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      })
+
+      if (!response.ok) {
+        response.body?.cancel()
+        // Only clobber on auth failure (token revoked/expired). Transient errors
+        // (5xx, 429 backoff, server warm-up) must preserve the warm cache —
+        // otherwise a single cold-start hiccup broadcasts an empty inventory and
+        // strips every rendered emote on every open Twitch/Kick tab.
+        if (response.status === 401 || response.status === 403) {
+          emoteInventory = []
+          inventoryFetchOK = false
+          if (!lastBroadcastWasEmpty) {
+            broadcastToTabs({ type: 'inventory_update', emotes: emoteInventory })
+            lastBroadcastWasEmpty = true
+          }
+        } else {
+          log(' Inventory fetch ' + response.status + ' — keeping warm cache')
+          inventoryFetchOK = false
+        }
+        return
+      }
+
+      const data = await response.json()
+      log(' API response:', data)
+      log(' 🔍 API emotes array length:', data.emotes ? data.emotes.length : 'undefined')
+      log(' 🔍 First emote from API:', data.emotes ? data.emotes[0] : 'none')
+
+      // Transform the API response to match extension format
+      // Backend returns 'custom_name', extension expects 'name'
+      const inventoryEmotes = (data.emotes || []).map((emote) => ({
+        name: emote.custom_name, // Map custom_name to name
+        url: absUrl(emote.url),
+        hash: emote.hash,
+        width: emote.width,
+        height: emote.height,
+        slot: emote.slot_number,
+        usage_count: emote.usage_count,
+        zero_width: !!emote.zero_width, // 7TV overlay flag — drives stacking in chat
+        nsfw: !!emote.nsfw, // v1.6 — cyan-dashed border + tooltip suffix
+      }))
+      log(' 🔍 Transformed inventory length:', inventoryEmotes.length)
+      log(' 🔍 First transformed emote:', inventoryEmotes[0])
+
+      // Transform subscription emotes
+      const subEmotes = (data.subscriptionEmotes || []).map((emote) => ({
+        name: emote.custom_name,
+        url: absUrl(emote.url),
+        hash: emote.hash,
+        width: emote.width || 28,
+        height: emote.height || 28,
+        tier: emote.tier,
+        broadcaster: emote.broadcaster_name,
+        subscription: true,
+      }))
+
+      // Combine inventory + subscription emotes
+      emoteInventory = sanitizeEmoteList([...inventoryEmotes, ...subEmotes])
+      updateEmoteUrlMap()
+
+      log(' Loaded', inventoryEmotes.length, 'inventory emotes')
+      log(' Loaded', subEmotes.length, 'subscription emotes')
+      if (emoteInventory.length > 0) {
+        log(
+          ' Sample emotes:',
+          emoteInventory.slice(0, 3).map((e) => e.name),
+        )
+      }
+      lastBroadcastWasEmpty = false // Reset - we have real emotes now
+      lastInventoryFetch = Date.now()
+      inventoryFetchOK = true
+      broadcastToTabs({ type: 'inventory_update', emotes: emoteInventory })
+    } catch (error) {
+      // AbortError = SW reinit / ext-reload cancelled an in-flight fetch.
+      // Expected, not a real failure — keep the noise out of the error log.
+      const isAbort = error?.name === 'AbortError' || /aborted/i.test(error?.message || '')
+      if (!isAbort) console.error('[heatsync] fetchEmoteInventory failed:', error.message || error)
+      // Network/timeout — preserve warm cache. Broadcasting [] here was the
+      // source of the cold-start "no emotes" symptom: a single transient
+      // failure nuked the in-memory inventory AND every tab's rendered emotes.
+      inventoryFetchOK = false
+    } finally {
+      inventoryFetchPromise = null
     }
-
-    const data = await response.json();
-    log(' API response:', data);
-    log(' 🔍 API emotes array length:', data.emotes ? data.emotes.length : 'undefined');
-    log(' 🔍 First emote from API:', data.emotes ? data.emotes[0] : 'none');
-
-    // Transform the API response to match extension format
-    // Backend returns 'custom_name', extension expects 'name'
-    const inventoryEmotes = (data.emotes || []).map(emote => ({
-      name: emote.custom_name,  // Map custom_name to name
-      url: absUrl(emote.url),
-      hash: emote.hash,
-      width: emote.width,
-      height: emote.height,
-      slot: emote.slot_number,
-      usage_count: emote.usage_count,
-      zero_width: !!emote.zero_width,  // 7TV overlay flag — drives stacking in chat
-      nsfw: !!emote.nsfw  // v1.6 — cyan-dashed border + tooltip suffix
-    }));
-    log(' 🔍 Transformed inventory length:', inventoryEmotes.length);
-    log(' 🔍 First transformed emote:', inventoryEmotes[0]);
-
-    // Transform subscription emotes
-    const subEmotes = (data.subscriptionEmotes || []).map(emote => ({
-      name: emote.custom_name,
-      url: absUrl(emote.url),
-      hash: emote.hash,
-      width: emote.width || 28,
-      height: emote.height || 28,
-      tier: emote.tier,
-      broadcaster: emote.broadcaster_name,
-      subscription: true
-    }));
-
-    // Combine inventory + subscription emotes
-    emoteInventory = sanitizeEmoteList([...inventoryEmotes, ...subEmotes]);
-    updateEmoteUrlMap();
-
-    log(' Loaded', inventoryEmotes.length, 'inventory emotes');
-    log(' Loaded', subEmotes.length, 'subscription emotes');
-    if (emoteInventory.length > 0) {
-      log(' Sample emotes:', emoteInventory.slice(0, 3).map(e => e.name));
-    }
-    lastBroadcastWasEmpty = false // Reset - we have real emotes now
-    lastInventoryFetch = Date.now()
-    inventoryFetchOK = true
-    broadcastToTabs({ type: 'inventory_update', emotes: emoteInventory })
-  } catch (error) {
-    // AbortError = SW reinit / ext-reload cancelled an in-flight fetch.
-    // Expected, not a real failure — keep the noise out of the error log.
-    const isAbort = error?.name === 'AbortError' || /aborted/i.test(error?.message || '')
-    if (!isAbort) console.error('[heatsync] fetchEmoteInventory failed:', error.message || error)
-    // Network/timeout — preserve warm cache. Broadcasting [] here was the
-    // source of the cold-start "no emotes" symptom: a single transient
-    // failure nuked the in-memory inventory AND every tab's rendered emotes.
-    inventoryFetchOK = false
-  } finally {
-    inventoryFetchPromise = null
-  }
   })()
   return inventoryFetchPromise
 }
@@ -1261,30 +1421,33 @@ function fetchEmoteInventory() {
 // Fetch blocked emotes
 async function fetchBlockedEmotes() {
   try {
-    const authToken = await getAuthCookie();
+    const authToken = await getAuthCookie()
     if (!authToken) {
       // Not logged in - load local blocks only
-      await loadLocalBlockedEmotes();
-      return;
+      await loadLocalBlockedEmotes()
+      return
     }
 
     const response = await fetchWithTimeout(`${API_URL}/api/user/emotes/blocked`, {
       headers: {
-        'Authorization': `Bearer ${authToken}`
-      }
-    });
+        Authorization: `Bearer ${authToken}`,
+      },
+    })
 
-    if (!response.ok) { response.body?.cancel(); return; }
+    if (!response.ok) {
+      response.body?.cancel()
+      return
+    }
 
-    const data = await response.json();
+    const data = await response.json()
     // Server returns blocked_emotes array with hash property
-    blockedEmotes = new Set((data.blocked_emotes || []).map(b => b.hash));
+    blockedEmotes = new Set((data.blocked_emotes || []).map((b) => b.hash))
 
     // Also load local blocks and merge them
-    await loadLocalBlockedEmotes();
-    const allBlocked = new Set([...blockedEmotes, ...localBlockedEmotes]);
+    await loadLocalBlockedEmotes()
+    const allBlocked = new Set([...blockedEmotes, ...localBlockedEmotes])
 
-    broadcastToTabs({ type: 'blocked_update', blocked: Array.from(allBlocked) });
+    broadcastToTabs({ type: 'blocked_update', blocked: Array.from(allBlocked) })
   } catch (error) {
     console.error('[heatsync] fetchBlockedEmotes failed:', error.message || error)
   }
@@ -1293,13 +1456,13 @@ async function fetchBlockedEmotes() {
 // Load local blocked emotes from storage (for anonymous users)
 async function loadLocalBlockedEmotes() {
   try {
-    const stored = await browser.storage.local.get('local_blocked_emotes');
+    const stored = await browser.storage.local.get('local_blocked_emotes')
     if (stored.local_blocked_emotes && Array.isArray(stored.local_blocked_emotes)) {
-      localBlockedEmotes = new Set(stored.local_blocked_emotes);
-      log(' Loaded', localBlockedEmotes.size, 'local blocked emotes');
+      localBlockedEmotes = new Set(stored.local_blocked_emotes)
+      log(' Loaded', localBlockedEmotes.size, 'local blocked emotes')
     }
   } catch (error) {
-    log(' Failed to load local blocked emotes:', error.message);
+    log(' Failed to load local blocked emotes:', error.message)
   }
 }
 
@@ -1307,45 +1470,45 @@ async function loadLocalBlockedEmotes() {
 async function saveLocalBlockedEmotes() {
   try {
     await browser.storage.local.set({
-      local_blocked_emotes: Array.from(localBlockedEmotes)
-    });
-    log(' Saved', localBlockedEmotes.size, 'local blocked emotes');
+      local_blocked_emotes: Array.from(localBlockedEmotes),
+    })
+    log(' Saved', localBlockedEmotes.size, 'local blocked emotes')
   } catch (error) {
-    log(' Failed to save local blocked emotes:', error.message);
+    log(' Failed to save local blocked emotes:', error.message)
   }
 }
 
 // Fetch followed users
 async function fetchFollowedUsers() {
   try {
-    const authToken = await getAuthCookie();
+    const authToken = await getAuthCookie()
     if (!authToken) {
-      followedUsers = [];
-      return;
+      followedUsers = []
+      return
     }
 
     const response = await fetchWithTimeout(`${API_URL}/api/user/following`, {
       headers: {
-        'Authorization': `Bearer ${authToken}`
-      }
-    });
+        Authorization: `Bearer ${authToken}`,
+      },
+    })
 
     if (!response.ok) {
       response.body?.cancel()
-      followedUsers = [];
-      return;
+      followedUsers = []
+      return
     }
 
-    const data = await response.json();
-    followedUsers = (data.following || []).map(f => f.username);
-    log(' Followed users loaded:', followedUsers.length);
-    broadcastToTabs({ type: 'followed_users_updated', users: followedUsers });
+    const data = await response.json()
+    followedUsers = (data.following || []).map((f) => f.username)
+    log(' Followed users loaded:', followedUsers.length)
+    broadcastToTabs({ type: 'followed_users_updated', users: followedUsers })
     // Refresh live status immediately so the badge populates without waiting
     // for the next 1-min alarm tick.
     if (typeof pollFollowedLive === 'function') pollFollowedLive().catch(() => {})
   } catch (error) {
     console.error('[heatsync] fetchFollowedUsers failed:', error.message || error)
-    followedUsers = [];
+    followedUsers = []
   }
 }
 
@@ -1387,7 +1550,7 @@ async function saveLiveStatusState() {
   _liveStatusInitialized = true
   try {
     await browser.storage.local.set({
-      [LIVE_STATE_KEY]: { ..._liveStatusState, initialized: true }
+      [LIVE_STATE_KEY]: { ..._liveStatusState, initialized: true },
     })
   } catch {}
 }
@@ -1420,8 +1583,8 @@ async function pollFollowedLive() {
     try {
       const resp = await fetchWithTimeout(
         `${API_URL}/api/live/following`,
-        { headers: { 'Authorization': `Bearer ${authToken}` } },
-        LIVE_FETCH_TIMEOUT_MS
+        { headers: { Authorization: `Bearer ${authToken}` } },
+        LIVE_FETCH_TIMEOUT_MS,
       )
       if (resp.ok) {
         const body = await resp.json()
@@ -1486,7 +1649,7 @@ async function pollFollowedLive() {
     await saveLiveStatusState()
 
     // Dedupe live count by username (a creator on twitch+kick = 1 person live)
-    const uniqueLiveUsers = new Set(snapshot.map(s => s.username))
+    const uniqueLiveUsers = new Set(snapshot.map((s) => s.username))
     _liveFollowedCount = uniqueLiveUsers.size
     _liveFollowedSnapshot = snapshot.sort((a, b) => b.viewers - a.viewers)
 
@@ -1515,7 +1678,9 @@ function handleFollowStreamEvent(msg) {
   if (wsStreamEventDedup.has(dedupKey) && now - wsStreamEventDedup.get(dedupKey) < 60000) return
   wsStreamEventDedup.set(dedupKey, now)
   if (wsStreamEventDedup.size > 100) {
-    for (const [k, t] of wsStreamEventDedup) { if (now - t > 60000) wsStreamEventDedup.delete(k) }
+    for (const [k, t] of wsStreamEventDedup) {
+      if (now - t > 60000) wsStreamEventDedup.delete(k)
+    }
   }
 
   const platform = String(msg.platform || '').toLowerCase()
@@ -1543,7 +1708,7 @@ function handleFollowStreamEvent(msg) {
     prevGame: msg.prevGame || '',
     prevTitle: msg.prevTitle || '',
     color: msg.color || '',
-    time: now
+    time: now,
   })
   if (cachedFollowHistory.length > 200) cachedFollowHistory.splice(0, cachedFollowHistory.length - 200)
   broadcastToTabs({
@@ -1567,29 +1732,37 @@ function updateLiveBadgeTooltip() {
     badgeApi.setTitle?.({ title: 'heatsync' })?.catch?.(() => {})
     return
   }
-  const top = live.slice(0, 5).map(s => s.displayName || s.username).join(', ')
+  const top = live
+    .slice(0, 5)
+    .map((s) => s.displayName || s.username)
+    .join(', ')
   const more = live.length > 5 ? ` +${live.length - 5} more` : ''
   const title = `heatsync · ${live.length} live: ${top}${more}`
-  try { badgeApi.setTitle({ title }) } catch {}
+  try {
+    badgeApi.setTitle({ title })
+  } catch {}
 }
 
 async function fireLiveNotificationFromStream(stream, username, platform) {
   if (!browser.notifications?.create) return
   const display = stream.heatsyncDisplayName || stream.displayName || stream.display_name || username
   const viewers = Number(stream.viewerCount || stream.viewer_count || 0) || 0
-  const platName = platform === 'twitch' ? 'Twitch' : platform === 'kick' ? 'Kick' : platform === 'youtube' ? 'YouTube' : platform
-  const slug = (platform === 'twitch'
-    ? (stream.twitch_username || username)
-    : platform === 'kick'
-      ? (stream.kick_username || username)
-      : (stream.youtube_username || stream.youtube_channel_id || username))
-  const url = platform === 'twitch'
-    ? `https://www.twitch.tv/${slug}`
-    : platform === 'kick'
-      ? `https://kick.com/${slug}`
-      : platform === 'youtube'
-        ? `https://www.youtube.com/${slug?.startsWith('UC') ? 'channel/' + slug : '@' + slug}`
-        : null
+  const platName =
+    platform === 'twitch' ? 'Twitch' : platform === 'kick' ? 'Kick' : platform === 'youtube' ? 'YouTube' : platform
+  const slug =
+    platform === 'twitch'
+      ? stream.twitch_username || username
+      : platform === 'kick'
+        ? stream.kick_username || username
+        : stream.youtube_username || stream.youtube_channel_id || username
+  const url =
+    platform === 'twitch'
+      ? `https://www.twitch.tv/${slug}`
+      : platform === 'kick'
+        ? `https://kick.com/${slug}`
+        : platform === 'youtube'
+          ? `https://www.youtube.com/${slug?.startsWith('UC') ? 'channel/' + slug : '@' + slug}`
+          : null
   if (!url) return
 
   const viewerStr = viewers > 0 ? ` · ${viewers.toLocaleString()} viewers` : ''
@@ -1603,8 +1776,13 @@ async function fireLiveNotificationFromStream(stream, username, platform) {
   // showing their face/avatar is the recognizable signal ("oh, shroud is up").
   // Falls back to the extension icon if no pfp resolved (rare — resolveIdentity
   // usually fills this in; coldest cold-starts may lack it).
-  let pfp = stream.profileImageUrl || stream.profile_image_url
-    || stream.heatsyncAvatar || stream.avatar_url || stream.avatar || ''
+  let pfp =
+    stream.profileImageUrl ||
+    stream.profile_image_url ||
+    stream.heatsyncAvatar ||
+    stream.avatar_url ||
+    stream.avatar ||
+    ''
   // /api/live/following may not carry a pfp — resolve it directly so the toast
   // still shows a face instead of the logo.
   if (!pfp) pfp = await resolveAvatarUrl(username, platform)
@@ -1625,7 +1803,7 @@ async function fireLiveNotificationFromStream(stream, username, platform) {
 
 async function fireLiveCoalescedNotification(transitions) {
   if (!browser.notifications?.create) return
-  const names = transitions.map(t => {
+  const names = transitions.map((t) => {
     const s = t.stream
     return s.heatsyncDisplayName || s.displayName || s.display_name || t.username
   })
@@ -1641,8 +1819,8 @@ async function fireLiveCoalescedNotification(transitions) {
   // Lead with the top streamer's pfp (matches the first name in the list) —
   // a face reads faster than the logo. Falls back to the icon if unresolved.
   const lead = transitions[0]?.stream || {}
-  let pfp = lead.profileImageUrl || lead.profile_image_url
-    || lead.heatsyncAvatar || lead.avatar_url || lead.avatar || ''
+  let pfp =
+    lead.profileImageUrl || lead.profile_image_url || lead.heatsyncAvatar || lead.avatar_url || lead.avatar || ''
   if (!pfp) pfp = await resolveAvatarUrl(transitions[0]?.username, transitions[0]?.platform)
   const iconUrl = (await toNotifIconDataUrl(pfp)) || browser.runtime.getURL('icon-128.png')
   try {
@@ -1665,7 +1843,9 @@ if (browser.notifications?.onClicked) {
     if (url) {
       browser.tabs.create({ url }).catch(() => {})
       _liveNotificationUrls.delete(id)
-      try { browser.notifications.clear(id) } catch {}
+      try {
+        browser.notifications.clear(id)
+      } catch {}
     }
   })
 }
@@ -1681,7 +1861,7 @@ async function fetchUserInfo() {
 
     const response = await fetchWithTimeout(`${API_URL}/api/auth/me`, {
       credentials: 'include',
-      headers: { 'Authorization': `Bearer ${authToken}` }
+      headers: { Authorization: `Bearer ${authToken}` },
     })
 
     if (!response.ok) {
@@ -1696,7 +1876,9 @@ async function fetchUserInfo() {
       return
     }
     let user
-    try { user = JSON.parse(bodyText) } catch {
+    try {
+      user = JSON.parse(bodyText)
+    } catch {
       browser.storage.local.remove('user_info')
       return
     }
@@ -1714,7 +1896,7 @@ async function fetchUserInfo() {
       youtube_channel_id: user.youtube_channel_id || '',
       avatar_url: user.twitch_profile_pic || user.kick_profile_pic || user.profile_image_url || '',
       heat: user.heat || 0,
-      color: user.color || ''
+      color: user.color || '',
     }
     pendingUserInfoToPersist = userInfo
     currentUsername = userInfo.username
@@ -1738,9 +1920,12 @@ async function fetchViewerSettings() {
     }
     const resp = await fetchWithTimeout(`${API_URL}/api/user/settings`, {
       credentials: 'include',
-      headers: { 'Authorization': `Bearer ${authToken}` }
+      headers: { Authorization: `Bearer ${authToken}` },
     })
-    if (!resp.ok) { resp.body?.cancel(); return }
+    if (!resp.ok) {
+      resp.body?.cancel()
+      return
+    }
     const data = await resp.json().catch(() => null)
     if (data && typeof data.show_sexual_emotes === 'boolean') {
       viewerShowSexual = data.show_sexual_emotes
@@ -1780,7 +1965,8 @@ function withNsfwParam(url) {
 // to cdn.heatsync.org (CDN-cached subdomain), so leaving it off the
 // allowlist silently dropped every self-hosted emote (including v1.6
 // flagged emotes the user uploaded) from the ext inventory.
-const EMOTE_CDN_PATTERN = /^https:\/\/(cdn\.(betterttv\.net|7tv\.app|frankerfacez\.com|heatsync\.org)|static-cdn\.jtvnw\.net|heatsync\.org|files\.kick\.com)\//
+const EMOTE_CDN_PATTERN =
+  /^https:\/\/(cdn\.(betterttv\.net|7tv\.app|frankerfacez\.com|heatsync\.org)|static-cdn\.jtvnw\.net|heatsync\.org|files\.kick\.com)\//
 const MAX_EMOTE_NAME_LEN = 100
 const MAX_EMOTES_PER_SOURCE = 5000
 function sanitizeEmote(e) {
@@ -1805,21 +1991,29 @@ async function fetchBTTVChannelEmotes(channelName, channelId = null) {
         return null // transient: ID lookup failed, retry next time
       }
     }
-    const userResponse = await fetchWithTimeout(`https://api.betterttv.net/3/cached/users/twitch/${twitchId}`);
-    if (userResponse.status === 404) { userResponse.body?.cancel(); return [] } // genuine: user has no BTTV
-    if (!userResponse.ok) { userResponse.body?.cancel(); return null } // transient: 5xx etc.
+    const userResponse = await fetchWithTimeout(`https://api.betterttv.net/3/cached/users/twitch/${twitchId}`)
+    if (userResponse.status === 404) {
+      userResponse.body?.cancel()
+      return []
+    } // genuine: user has no BTTV
+    if (!userResponse.ok) {
+      userResponse.body?.cancel()
+      return null
+    } // transient: 5xx etc.
 
-    const userData = await userResponse.json();
-    const emotes = [...(userData.channelEmotes || []), ...(userData.sharedEmotes || [])];
+    const userData = await userResponse.json()
+    const emotes = [...(userData.channelEmotes || []), ...(userData.sharedEmotes || [])]
 
-    return sanitizeEmoteList(emotes.map(e => ({
-      name: e.code,
-      url: `https://cdn.betterttv.net/emote/${e.id}/1x.webp`,
-      source: 'bttv',
-      hash: e.id
-    })));
+    return sanitizeEmoteList(
+      emotes.map((e) => ({
+        name: e.code,
+        url: `https://cdn.betterttv.net/emote/${e.id}/1x.webp`,
+        source: 'bttv',
+        hash: e.id,
+      })),
+    )
   } catch (error) {
-    log(' BTTV channel emotes error for:', channelName, error?.message);
+    log(' BTTV channel emotes error for:', channelName, error?.message)
     return null // transient: network/timeout
   }
 }
@@ -1827,16 +2021,22 @@ async function fetchBTTVChannelEmotes(channelName, channelId = null) {
 // Fetch FFZ channel emotes
 async function fetchFFZChannelEmotes(channelName) {
   try {
-    const response = await fetchWithTimeout(`https://api.frankerfacez.com/v1/room/${channelName}`);
-    if (response.status === 404) { response.body?.cancel(); return [] } // genuine: channel has no FFZ
-    if (!response.ok) { response.body?.cancel(); return null } // transient: 5xx etc.
+    const response = await fetchWithTimeout(`https://api.frankerfacez.com/v1/room/${channelName}`)
+    if (response.status === 404) {
+      response.body?.cancel()
+      return []
+    } // genuine: channel has no FFZ
+    if (!response.ok) {
+      response.body?.cancel()
+      return null
+    } // transient: 5xx etc.
 
-    const data = await response.json();
-    const emotes = [];
+    const data = await response.json()
+    const emotes = []
 
     for (const setId in data.sets) {
-      const set = data.sets[setId];
-      for (const emote of (set.emoticons || [])) {
+      const set = data.sets[setId]
+      for (const emote of set.emoticons || []) {
         // FFZ modifier emotes (ffzW/ffzX/ffzY/ffzCursed/ffzHyper…) aren't real
         // images — they transform the preceding emote. Handled as typed tokens
         // via src/lib/modifiers.js, so keep them out of the pool: otherwise they
@@ -1851,13 +2051,13 @@ async function fetchFFZChannelEmotes(channelName) {
           name: emote.name,
           url: rawUrl.startsWith('https:') ? rawUrl : `https:${rawUrl}`,
           source: 'ffz',
-          hash: `ffz-${emote.id}`
-        });
+          hash: `ffz-${emote.id}`,
+        })
       }
     }
-    return sanitizeEmoteList(emotes);
+    return sanitizeEmoteList(emotes)
   } catch (error) {
-    log(' FFZ channel emotes error for:', channelName, error?.message);
+    log(' FFZ channel emotes error for:', channelName, error?.message)
     return null // transient
   }
 }
@@ -1865,68 +2065,75 @@ async function fetchFFZChannelEmotes(channelName) {
 // Cache Twitch user IDs to avoid repeated decapi lookups (especially for polling).
 // Persisted to chrome.storage.local — IDs never change, so cross-SW survival
 // eliminates the decapi/GQL cascade on every SW wake (critical at 30k users).
-const twitchIdCache = new Map();
-const TWITCH_ID_CACHE_MAX = 1000;
-const kickChannelIdCache = new Map();
-const kickChatroomIdCache = new Map();
-const kickUsernameToIdCache = new Map();
+const twitchIdCache = new Map()
+const TWITCH_ID_CACHE_MAX = 1000
+const kickChannelIdCache = new Map()
+const kickChatroomIdCache = new Map()
+const kickUsernameToIdCache = new Map()
 // kick channel slug (lowercased) → numeric kick user id. 7TV's /v3/users/kick/{id}
 // needs the numeric id; the initial fetch resolves it via GQL, the poll reuses it.
-const channelOwnerKickId = new Map();
-let twitchIdPersistTimer = null;
+const channelOwnerKickId = new Map()
+let twitchIdPersistTimer = null
 function persistTwitchIdCache() {
-  if (twitchIdPersistTimer) return;
+  if (twitchIdPersistTimer) return
   twitchIdPersistTimer = setTimeout(() => {
-    twitchIdPersistTimer = null;
+    twitchIdPersistTimer = null
     browser.storage.local.set({ twitch_id_cache: Object.fromEntries(twitchIdCache) }).catch(() => {})
-  }, 5000);
+  }, 5000)
 }
 
 // Lookup Twitch user ID from username — try Twitch GQL first (fast, no rate limit), decapi fallback
 async function lookupTwitchUserId(username) {
-  const cached = twitchIdCache.get(username);
-  if (cached) { twitchIdCache.delete(username); twitchIdCache.set(username, cached); return cached; }
+  const cached = twitchIdCache.get(username)
+  if (cached) {
+    twitchIdCache.delete(username)
+    twitchIdCache.set(username, cached)
+    return cached
+  }
   try {
     // Twitch GQL — same client ID used by the website, no auth needed
     const gqlResp = await fetchWithTimeout('https://gql.twitch.tv/gql', {
       method: 'POST',
       headers: { 'Client-Id': 'kimne78kx3ncx6brgo4mv6wki5h1ko', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: `{ user(login: "${username.replace(/[^a-z0-9_]/gi, '')}") { id } }` })
-    });
+      body: JSON.stringify({ query: `{ user(login: "${username.replace(/[^a-z0-9_]/gi, '')}") { id } }` }),
+    })
     if (gqlResp.ok) {
-      const gqlData = await gqlResp.json();
-      const id = gqlData?.data?.user?.id;
+      const gqlData = await gqlResp.json()
+      const id = gqlData?.data?.user?.id
       if (id) {
         if (twitchIdCache.size >= TWITCH_ID_CACHE_MAX) {
-          twitchIdCache.delete(twitchIdCache.keys().next().value);
+          twitchIdCache.delete(twitchIdCache.keys().next().value)
         }
-        twitchIdCache.set(username, id);
-        persistTwitchIdCache();
+        twitchIdCache.set(username, id)
+        persistTwitchIdCache()
         log('[hs-bg] GQL lookup', username, '→', id)
-        return id;
+        return id
       }
     }
   } catch (e) {
-    log(' GQL user lookup failed, trying decapi:', e.message);
+    log(' GQL user lookup failed, trying decapi:', e.message)
   }
   // Fallback to decapi.me
   try {
-    const response = await fetchWithTimeout(`https://decapi.me/twitch/id/${encodeURIComponent(username)}`, {}, 2000);
-    if (!response.ok) { response.body?.cancel(); return null; }
-    const text = await response.text();
-    if (/^\d+$/.test(text.trim())) {
-      const id = text.trim();
-      if (twitchIdCache.size >= TWITCH_ID_CACHE_MAX) {
-        twitchIdCache.delete(twitchIdCache.keys().next().value);
-      }
-      twitchIdCache.set(username, id);
-      persistTwitchIdCache();
-      return id;
+    const response = await fetchWithTimeout(`https://decapi.me/twitch/id/${encodeURIComponent(username)}`, {}, 2000)
+    if (!response.ok) {
+      response.body?.cancel()
+      return null
     }
-    return null;
+    const text = await response.text()
+    if (/^\d+$/.test(text.trim())) {
+      const id = text.trim()
+      if (twitchIdCache.size >= TWITCH_ID_CACHE_MAX) {
+        twitchIdCache.delete(twitchIdCache.keys().next().value)
+      }
+      twitchIdCache.set(username, id)
+      persistTwitchIdCache()
+      return id
+    }
+    return null
   } catch (e) {
-    log(' Failed to lookup Twitch user ID:', e);
-    return null;
+    log(' Failed to lookup Twitch user ID:', e)
+    return null
   }
 }
 
@@ -1935,38 +2142,52 @@ async function lookupTwitchUserId(username) {
 // logo. Cached LRU (success only — never poison the cache on a transient
 // failure, so a later mention can retry). Returns '' when unresolved; callers
 // fall back to the extension icon.
-const avatarCache = new Map();
-const AVATAR_CACHE_MAX = 500;
+const avatarCache = new Map()
+const AVATAR_CACHE_MAX = 500
 async function resolveAvatarUrl(username, platform) {
-  if (!username) return '';
-  const name = String(username).trim();
-  if (!name) return '';
-  const key = `${platform || 'twitch'}|${name.toLowerCase()}`;
-  const hit = avatarCache.get(key);
-  if (hit !== undefined) { avatarCache.delete(key); avatarCache.set(key, hit); return hit; }
-  let url = '';
+  if (!username) return ''
+  const name = String(username).trim()
+  if (!name) return ''
+  const key = `${platform || 'twitch'}|${name.toLowerCase()}`
+  const hit = avatarCache.get(key)
+  if (hit !== undefined) {
+    avatarCache.delete(key)
+    avatarCache.set(key, hit)
+    return hit
+  }
+  let url = ''
   try {
     if (platform === 'kick') {
       // Kick public v2 — channel slug (= username) → user.profile_pic.
-      const r = await fetchWithTimeout(`https://kick.com/api/v2/channels/${encodeURIComponent(name)}`, {}, 3000);
-      if (r.ok) { const j = await r.json(); url = j?.user?.profile_pic || ''; }
-      else r.body?.cancel?.();
+      const r = await fetchWithTimeout(`https://kick.com/api/v2/channels/${encodeURIComponent(name)}`, {}, 3000)
+      if (r.ok) {
+        const j = await r.json()
+        url = j?.user?.profile_pic || ''
+      } else r.body?.cancel?.()
     } else {
       // Twitch GQL — same client-id as the website, unauthenticated, no rate limit.
-      const r = await fetchWithTimeout('https://gql.twitch.tv/gql', {
-        method: 'POST',
-        headers: { 'Client-Id': 'kimne78kx3ncx6brgo4mv6wki5h1ko', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: `{ user(login: "${name.replace(/[^a-z0-9_]/gi, '')}") { profileImageURL(width: 70) } }` })
-      }, 3000);
-      if (r.ok) { const j = await r.json(); url = j?.data?.user?.profileImageURL || ''; }
-      else r.body?.cancel?.();
+      const r = await fetchWithTimeout(
+        'https://gql.twitch.tv/gql',
+        {
+          method: 'POST',
+          headers: { 'Client-Id': 'kimne78kx3ncx6brgo4mv6wki5h1ko', 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: `{ user(login: "${name.replace(/[^a-z0-9_]/gi, '')}") { profileImageURL(width: 70) } }`,
+          }),
+        },
+        3000,
+      )
+      if (r.ok) {
+        const j = await r.json()
+        url = j?.data?.user?.profileImageURL || ''
+      } else r.body?.cancel?.()
     }
   } catch {}
   if (url) {
-    if (avatarCache.size >= AVATAR_CACHE_MAX) avatarCache.delete(avatarCache.keys().next().value);
-    avatarCache.set(key, url);
+    if (avatarCache.size >= AVATAR_CACHE_MAX) avatarCache.delete(avatarCache.keys().next().value)
+    avatarCache.set(key, url)
   }
-  return url;
+  return url
 }
 
 // chrome.notifications renders data: URLs reliably; remote https icons are
@@ -1975,29 +2196,34 @@ async function resolveAvatarUrl(username, platform) {
 // FileReader in MV3 service workers — use arrayBuffer + btoa. Returns '' on any
 // failure so the caller falls back to the extension icon.
 async function toNotifIconDataUrl(url) {
-  if (!url) return '';
-  if (url.startsWith('data:')) return url;
+  if (!url) return ''
+  if (url.startsWith('data:')) return url
   try {
-    const r = await fetchWithTimeout(url, {}, 4000);
-    if (!r.ok) { r.body?.cancel?.(); return ''; }
-    const blob = await r.blob();
-    if (blob.size > 512 * 1024) return ''; // sanity cap — pfps are tiny
-    const bytes = new Uint8Array(await blob.arrayBuffer());
-    let bin = '';
-    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-    return `data:${blob.type || 'image/png'};base64,${btoa(bin)}`;
-  } catch { return ''; }
+    const r = await fetchWithTimeout(url, {}, 4000)
+    if (!r.ok) {
+      r.body?.cancel?.()
+      return ''
+    }
+    const blob = await r.blob()
+    if (blob.size > 512 * 1024) return '' // sanity cap — pfps are tiny
+    const bytes = new Uint8Array(await blob.arrayBuffer())
+    let bin = ''
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
+    return `data:${blob.type || 'image/png'};base64,${btoa(bin)}`
+  } catch {
+    return ''
+  }
 }
 
 // Fetch 7TV channel emotes
 // Supports Twitch (user ID or username) and Kick (username) lookups
 async function fetch7TVChannelEmotes(channelName, channelId = null, platform = 'twitch') {
   try {
-    let response, data, identifier;
+    let response, data, identifier
 
     if (platform === 'kick') {
       // Kick: 7TV requires numeric user ID, not slug — resolve via GQL search
-      log(' 7TV: Fetching Kick channel emotes for:', channelName);
+      log(' 7TV: Fetching Kick channel emotes for:', channelName)
       let kickId = channelId // may already be numeric from content script
       if (!kickId) {
         try {
@@ -2005,68 +2231,79 @@ async function fetch7TVChannelEmotes(channelName, channelId = null, platform = '
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              query: `query { users(query: "${channelName.replace(/[^a-z0-9_]/gi, '')}") { connections { platform id username } } }`
-            })
+              query: `query { users(query: "${channelName.replace(/[^a-z0-9_]/gi, '')}") { connections { platform id username } } }`,
+            }),
           })
           if (gqlResp.ok) {
             const gqlData = await gqlResp.json()
             const users = gqlData?.data?.users || []
             for (const u of users) {
-              const conn = u.connections?.find(c => c.platform === 'KICK' && c.username?.toLowerCase() === channelName.toLowerCase())
-              if (conn) { kickId = conn.id; break }
+              const conn = u.connections?.find(
+                (c) => c.platform === 'KICK' && c.username?.toLowerCase() === channelName.toLowerCase(),
+              )
+              if (conn) {
+                kickId = conn.id
+                break
+              }
             }
           }
-        } catch (e) { log(' 7TV: GQL Kick lookup failed:', e.message) }
+        } catch (e) {
+          log(' 7TV: GQL Kick lookup failed:', e.message)
+        }
       }
       if (!kickId) {
-        log(' 7TV: Could not resolve Kick user ID for', channelName);
+        log(' 7TV: Could not resolve Kick user ID for', channelName)
         return null // transient: ID lookup failed
       }
-      identifier = kickId;
+      identifier = kickId
       // Cache the resolved numeric id so the 7TV poll can reuse it (the poll
       // only has the channel slug, and the kick endpoint rejects slugs).
       channelOwnerKickId.set(channelName.toLowerCase(), kickId)
       if (channelOwnerKickId.size > 500) channelOwnerKickId.delete(channelOwnerKickId.keys().next().value)
-      response = await fetchWithTimeout(`https://7tv.io/v3/users/kick/${kickId}`);
-      if (response.status === 404) { response.body?.cancel(); return [] } // genuine: user has no 7TV
+      response = await fetchWithTimeout(`https://7tv.io/v3/users/kick/${kickId}`)
+      if (response.status === 404) {
+        response.body?.cancel()
+        return []
+      } // genuine: user has no 7TV
       if (!response.ok) {
         response.body?.cancel()
-        log(' 7TV: Kick lookup failed (' + response.status + ')');
+        log(' 7TV: Kick lookup failed (' + response.status + ')')
         return null // transient: 5xx etc.
       }
-      data = await response.json();
-      log(' ✅ 7TV: Kick lookup succeeded (id:', kickId + ')');
+      data = await response.json()
+      log(' ✅ 7TV: Kick lookup succeeded (id:', kickId + ')')
     } else {
       // Twitch: use channelId if available, otherwise lookup via decapi.me
-      identifier = channelId;
+      identifier = channelId
       if (!identifier) {
-        log(' 7TV: No channelId provided, looking up via decapi.me...');
-        identifier = await lookupTwitchUserId(channelName);
+        log(' 7TV: No channelId provided, looking up via decapi.me...')
+        identifier = await lookupTwitchUserId(channelName)
         if (identifier) {
-          log(' 7TV: Got user ID from decapi:', identifier);
+          log(' 7TV: Got user ID from decapi:', identifier)
         }
       }
 
       // Final fallback to username (rarely works but try anyway)
       if (!identifier) {
-        identifier = channelName;
+        identifier = channelName
       }
 
-      log(' 7TV: Fetching with identifier:', identifier, '(channelId:', channelId, ')');
+      log(' 7TV: Fetching with identifier:', identifier, '(channelId:', channelId, ')')
 
       // Try Twitch ID lookup first — large channels (kripp, xqc) can be slow,
       // give 7TV 15s before timing out.
-      const sevenTvUrl = `https://7tv.io/v3/users/twitch/${identifier}`;
-      response = await fetchWithTimeout(sevenTvUrl, {}, 15000);
-      if (DEBUG) broadcastToTabs({ type: 'debug_log', msg: `7TV fetch ${channelName}: ${sevenTvUrl} → ${response.status}` })
+      const sevenTvUrl = `https://7tv.io/v3/users/twitch/${identifier}`
+      response = await fetchWithTimeout(sevenTvUrl, {}, 15000)
+      if (DEBUG)
+        broadcastToTabs({ type: 'debug_log', msg: `7TV fetch ${channelName}: ${sevenTvUrl} → ${response.status}` })
 
       if (!response.ok) {
         const firstStatus = response.status
         response.body?.cancel()
-        log(' 7TV: Twitch ID lookup failed (' + firstStatus + '), trying username fallback...');
+        log(' 7TV: Twitch ID lookup failed (' + firstStatus + '), trying username fallback...')
 
         // Fallback to username-based lookup
-        response = await fetchWithTimeout(`https://7tv.io/v3/users/${channelName}`, {}, 15000);
+        response = await fetchWithTimeout(`https://7tv.io/v3/users/${channelName}`, {}, 15000)
         if (response.status === 404) {
           response.body?.cancel()
           // Both Twitch ID and username 404 = user genuinely has no 7TV account
@@ -2075,42 +2312,46 @@ async function fetch7TVChannelEmotes(channelName, channelId = null, platform = '
         }
         if (!response.ok) {
           response.body?.cancel()
-          log(' 7TV: Username lookup also failed (' + response.status + ')');
+          log(' 7TV: Username lookup also failed (' + response.status + ')')
           return null // transient: 5xx etc.
         }
 
-        data = await response.json();
-        log(' ✅ 7TV: Username fallback succeeded!');
+        data = await response.json()
+        log(' ✅ 7TV: Username fallback succeeded!')
       } else {
-        data = await response.json();
-        log(' ✅ 7TV: Twitch ID lookup succeeded');
+        data = await response.json()
+        log(' ✅ 7TV: Twitch ID lookup succeeded')
       }
     }
 
-    const emoteSet = data.emote_set;
+    const emoteSet = data.emote_set
     if (!emoteSet) {
-      log(' 7TV: No emote set found for', identifier);
+      log(' 7TV: No emote set found for', identifier)
       return [] // genuine: user has no emote set
     }
 
-    const emoteList = emoteSet.emotes || [];
-    log(' 7TV: Found', emoteList.length, 'emotes for', identifier, '(set ID:', emoteSet.id + ')');
+    const emoteList = emoteSet.emotes || []
+    log(' 7TV: Found', emoteList.length, 'emotes for', identifier, '(set ID:', emoteSet.id + ')')
 
-    const emotes = sanitizeEmoteList(emoteList.map(e => ({
-      name: e.name,
-      url: `https://cdn.7tv.app/emote/${e.id}/1x.webp`,
-      source: '7tv',
-      hash: e.id,
-      flags: e.flags || e.data?.flags || 0,
-      zeroWidth: !!((e.flags & 257) || (e.data?.flags & 257)),
-      animated: !!e.data?.animated
-    })));
+    const emotes = sanitizeEmoteList(
+      emoteList.map((e) => ({
+        name: e.name,
+        url: `https://cdn.7tv.app/emote/${e.id}/1x.webp`,
+        source: '7tv',
+        hash: e.id,
+        flags: e.flags || e.data?.flags || 0,
+        zeroWidth: !!(e.flags & 257 || e.data?.flags & 257),
+        animated: !!e.data?.animated,
+      })),
+    )
     const cosmeticIds = extract7TVCosmeticIds(data)
     // Resolve cosmetics async — dont block emote return
     if (cosmeticIds && channelId) {
-      resolve7TVCosmeticIds(cosmeticIds).then(cosmetic => {
-        if (cosmetic) setUserCosmetic(String(channelId), cosmetic)
-      }).catch(() => {})
+      resolve7TVCosmeticIds(cosmeticIds)
+        .then((cosmetic) => {
+          if (cosmetic) setUserCosmetic(String(channelId), cosmetic)
+        })
+        .catch(() => {})
     }
     return { emotes, setId: emoteSet.id }
   } catch (error) {
@@ -2120,7 +2361,7 @@ async function fetch7TVChannelEmotes(channelName, channelId = null, platform = '
     if (isAbort) {
       log(' 7TV: timeout for', channelName, '(will retry on next fetch)')
     } else {
-      console.error('[hs-bg] 7TV FETCH ERROR for', channelName, ':', error?.message || error);
+      console.error('[hs-bg] 7TV FETCH ERROR for', channelName, ':', error?.message || error)
     }
     if (DEBUG) broadcastToTabs({ type: 'debug_log', msg: `7TV ERROR ${channelName}: ${error?.message || error}` })
     return null // transient: network/timeout
@@ -2157,7 +2398,9 @@ async function resolve7TVCosmeticIds(ids) {
       cosmeticObjectCache.delete(ids.paintId)
       cosmeticObjectCache.set(ids.paintId, cached)
       result.paint = cached
-    } else { toFetch.push(ids.paintId) }
+    } else {
+      toFetch.push(ids.paintId)
+    }
   }
   if (ids.badgeId) {
     const cached = cosmeticObjectCache.get(ids.badgeId)
@@ -2166,7 +2409,9 @@ async function resolve7TVCosmeticIds(ids) {
       cosmeticObjectCache.delete(ids.badgeId)
       cosmeticObjectCache.set(ids.badgeId, cached)
       result.badge = cached
-    } else { toFetch.push(ids.badgeId) }
+    } else {
+      toFetch.push(ids.badgeId)
+    }
   }
   if (toFetch.length === 0) return result
 
@@ -2175,14 +2420,20 @@ async function resolve7TVCosmeticIds(ids) {
     const resp = await fetchWithTimeout('https://7tv.io/v3/gql', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, variables: { list: toFetch } })
+      body: JSON.stringify({ query, variables: { list: toFetch } }),
     })
     if (!resp.ok) return result
     const data = await resp.json()
     const paints = data?.data?.cosmetics?.paints || []
     const badges = data?.data?.cosmetics?.badges || []
-    for (const p of paints) { cosmeticObjectCache.set(p.id, p); if (p.id === ids.paintId) result.paint = p }
-    for (const b of badges) { cosmeticObjectCache.set(b.id, b); if (b.id === ids.badgeId) result.badge = b }
+    for (const p of paints) {
+      cosmeticObjectCache.set(p.id, p)
+      if (p.id === ids.paintId) result.paint = p
+    }
+    for (const b of badges) {
+      cosmeticObjectCache.set(b.id, b)
+      if (b.id === ids.badgeId) result.badge = b
+    }
     // Cap cache
     if (cosmeticObjectCache.size > 200) {
       let count = 0
@@ -2210,12 +2461,17 @@ function flushCosmeticsToStorage() {
     // them; they're cheap to recheck, so let restart re-resolve them fresh.
     .filter(([, v]) => (v.paint || v.badge) && Date.now() - v.fetchedAt < USER_COSMETICS_TTL)
     .slice(-COSMETICS_STORAGE_MAX)
-  browser.storage.local.set({
-    // Persist twitchId so Kick→Twitch ID linkage survives SW restart;
-    // otherwise BTTV/FFZ badge lookup falls back to no-op until the 30min
-    // TTL forces a refetch from 7TV.
-    user_cosmetics_cache: entries.map(([k, v]) => [k, { paint: v.paint, badge: v.badge, twitchId: v.twitchId, fetchedAt: v.fetchedAt }])
-  }).catch(() => {})
+  browser.storage.local
+    .set({
+      // Persist twitchId so Kick→Twitch ID linkage survives SW restart;
+      // otherwise BTTV/FFZ badge lookup falls back to no-op until the 30min
+      // TTL forces a refetch from 7TV.
+      user_cosmetics_cache: entries.map(([k, v]) => [
+        k,
+        { paint: v.paint, badge: v.badge, twitchId: v.twitchId, fetchedAt: v.fetchedAt },
+      ]),
+    })
+    .catch(() => {})
 }
 
 function debounceSaveCosmetics() {
@@ -2232,7 +2488,10 @@ function setUserCosmetic(twitchId, cosmetic) {
     // At-cap path: flush immediately (rate-limited) so eviction can't lose data
     // before the 5s debounce fires.
     if (Date.now() - cosmeticsLastFlushAt > COSMETICS_FORCE_FLUSH_INTERVAL) {
-      if (cosmeticsSaveTimer) { clearTimeout(cosmeticsSaveTimer); cosmeticsSaveTimer = null }
+      if (cosmeticsSaveTimer) {
+        clearTimeout(cosmeticsSaveTimer)
+        cosmeticsSaveTimer = null
+      }
       userCosmeticsCache.set(twitchId, { ...(cosmetic || { paint: null, badge: null }), fetchedAt: Date.now() })
       flushCosmeticsToStorage()
       return
@@ -2250,7 +2509,7 @@ async function fetchBulkBadges() {
     const [bttvResp, ffzResp, chatterinoResp] = await Promise.allSettled([
       fetchWithTimeout('https://api.betterttv.net/3/cached/badges'),
       fetchWithTimeout('https://api.frankerfacez.com/v1/badges/ids'),
-      fetchWithTimeout('https://api.chatterino.com/badges')
+      fetchWithTimeout('https://api.chatterino.com/badges'),
     ])
     if (bttvResp.status === 'fulfilled' && bttvResp.value.ok) {
       const data = await bttvResp.value.json()
@@ -2268,7 +2527,7 @@ async function fetchBulkBadges() {
       const data = await ffzResp.value.json()
       ffzBadgeMap.clear()
       const badgeById = {}
-      for (const b of (data.badges || [])) badgeById[b.id] = b
+      for (const b of data.badges || []) badgeById[b.id] = b
       const users = data.users || {}
       for (const [badgeId, userIds] of Object.entries(users)) {
         const badge = badgeById[badgeId]
@@ -2289,7 +2548,7 @@ async function fetchBulkBadges() {
     if (chatterinoResp.status === 'fulfilled' && chatterinoResp.value.ok) {
       const data = await chatterinoResp.value.json()
       chatterinoBadgeMap.clear()
-      for (const badge of (data.badges || [])) {
+      for (const badge of data.badges || []) {
         const url = badge.image2 || badge.image1
         if (!url || !badge.users || !/^https:\/\//.test(url)) continue
         for (const uid of badge.users) {
@@ -2306,12 +2565,14 @@ async function fetchBulkBadges() {
     for (const [k, v] of ffzBadgeMap) ffzObj[k] = v
     const chatterinoObj = {}
     for (const [k, v] of chatterinoBadgeMap) chatterinoObj[k] = v
-    browser.storage.local.set({
-      badges_fetched_at: badgesFetchedAt,
-      bttv_badge_map: bttvObj,
-      ffz_badge_map: ffzObj,
-      chatterino_badge_map: chatterinoObj
-    }).catch(() => {})
+    browser.storage.local
+      .set({
+        badges_fetched_at: badgesFetchedAt,
+        bttv_badge_map: bttvObj,
+        ffz_badge_map: ffzObj,
+        chatterino_badge_map: chatterinoObj,
+      })
+      .catch(() => {})
   } catch (e) {
     log(' fetchBulkBadges failed:', e.message)
     badgesFetchedAt = 0
@@ -2341,51 +2602,64 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
     const age = Date.now() - (channelEmotesFetchedAt[key] || 0)
     const ttl = cached.length > 0 ? CHANNEL_EMOTES_TTL : CHANNEL_EMOTES_EMPTY_TTL
     // Always broadcast cached data immediately — content script needs emotes NOW
-    broadcastToTabs({ type: 'channel_emotes_update', emotes: cached, channelOwner: channelName, platform });
+    broadcastToTabs({ type: 'channel_emotes_update', emotes: cached, channelOwner: channelName, platform })
     if (age < ttl) {
-      log(' Channel emotes already fetched for', channelName, '- skipping (', cached.length, 'emotes,', Math.round(age / 1000) + 's old)')
+      log(
+        ' Channel emotes already fetched for',
+        channelName,
+        '- skipping (',
+        cached.length,
+        'emotes,',
+        Math.round(age / 1000) + 's old)',
+      )
       return
     }
     log(' Channel emotes stale for', channelName, '(', Math.round(age / 1000) + 's) - refetching in background')
   }
-  channelEmotesMap[key] = 'loading';
+  channelEmotesMap[key] = 'loading'
 
   try {
-    log(' 📺 Fetching channel emotes for:', channelName, 'id:', channelId, 'platform:', platform);
+    log(' 📺 Fetching channel emotes for:', channelName, 'id:', channelId, 'platform:', platform)
 
     // Show loading indicator
-    broadcastToTabs({ type: 'loading_status', text: 'loading channel emotes...' });
+    broadcastToTabs({ type: 'loading_status', text: 'loading channel emotes...' })
 
     // Fetch heatsync emotes + resolve Twitch ID in PARALLEL (both needed before third-party fetch)
     const [heatsyncResult, resolvedChannelId] = await Promise.all([
-      fetchWithTimeout(withNsfwParam(`${API_URL}/api/emotes/user/${encodeURIComponent(channelName)}`)).catch(() => null),
-      (platform !== 'kick' && !channelId) ? lookupTwitchUserId(channelName) : Promise.resolve(channelId)
-    ]);
-    let heatsyncEmotes = [];
+      fetchWithTimeout(withNsfwParam(`${API_URL}/api/emotes/user/${encodeURIComponent(channelName)}`)).catch(
+        () => null,
+      ),
+      platform !== 'kick' && !channelId ? lookupTwitchUserId(channelName) : Promise.resolve(channelId),
+    ])
+    let heatsyncEmotes = []
     if (heatsyncResult?.status === 429) {
       // Heatsync API rate-limited — skip the heatsync emote slot but DO NOT
       // bail the whole fetch. BTTV/FFZ/7TV/Twitch are independent providers;
       // a heatsync 429 should never starve the channel of its third-party
       // emote set. (Pre-fix this returned, leaving the cache empty until next
       // manual join — channels would silently lose all 7TV emotes.)
-      console.warn('[heatsync] fetchChannelOwnerEmotes: heatsync 429 for', channelName, '— continuing third-party fetch')
+      console.warn(
+        '[heatsync] fetchChannelOwnerEmotes: heatsync 429 for',
+        channelName,
+        '— continuing third-party fetch',
+      )
       heatsyncResult.body?.cancel()
       // heatsyncEmotes stays [] (default); flow continues to third-party tasks
     } else if (heatsyncResult?.ok) {
-      const data = await heatsyncResult.json();
-      heatsyncEmotes = (data.emotes || []).map(e => ({
+      const data = await heatsyncResult.json()
+      heatsyncEmotes = (data.emotes || []).map((e) => ({
         name: e.name,
         url: absUrl(e.url),
         hash: e.hash || e.name,
-        provider: e.provider || 'upload'
-      }));
+        provider: e.provider || 'upload',
+      }))
     }
-    channelId = resolvedChannelId;
+    channelId = resolvedChannelId
 
     // Fetch third-party emotes in PARALLEL — broadcast progressively as each provider
     // returns so the user sees BTTV/FFZ instantly while 7TV resolves (avoids "no emotes
     // until everything's done"). Keep slots fixed so priority order is stable.
-    broadcastToTabs({ type: 'loading_status', text: 'fetching third-party emotes...' });
+    broadcastToTabs({ type: 'loading_status', text: 'fetching third-party emotes...' })
     const slots = { bttv: [], ffz: [], sevenTV: [], twitch: [] }
     const failed = { bttv: false, ffz: false, sevenTV: false, twitch: false }
     let sevenTVResult = null
@@ -2401,42 +2675,95 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
 
     const tasks = []
     if (platform !== 'kick') {
-      tasks.push(fetchBTTVChannelEmotes(channelName, channelId).then(e => { if (e === null) failed.bttv = true; slots.bttv = e || []; broadcastCurrent() }).catch(() => { failed.bttv = true }))
-      tasks.push(fetchFFZChannelEmotes(channelName).then(e => { if (e === null) failed.ffz = true; slots.ffz = e || []; broadcastCurrent() }).catch(() => { failed.ffz = true }))
-      tasks.push(fetchTwitchChannelEmotes(channelName).then(e => { if (e === null) failed.twitch = true; slots.twitch = e || []; broadcastCurrent() }).catch(() => { failed.twitch = true }))
+      tasks.push(
+        fetchBTTVChannelEmotes(channelName, channelId)
+          .then((e) => {
+            if (e === null) failed.bttv = true
+            slots.bttv = e || []
+            broadcastCurrent()
+          })
+          .catch(() => {
+            failed.bttv = true
+          }),
+      )
+      tasks.push(
+        fetchFFZChannelEmotes(channelName)
+          .then((e) => {
+            if (e === null) failed.ffz = true
+            slots.ffz = e || []
+            broadcastCurrent()
+          })
+          .catch(() => {
+            failed.ffz = true
+          }),
+      )
+      tasks.push(
+        fetchTwitchChannelEmotes(channelName)
+          .then((e) => {
+            if (e === null) failed.twitch = true
+            slots.twitch = e || []
+            broadcastCurrent()
+          })
+          .catch(() => {
+            failed.twitch = true
+          }),
+      )
     }
-    tasks.push(fetch7TVChannelEmotes(channelName, channelId, platform).then(r => {
-      if (r === null) { failed.sevenTV = true; slots.sevenTV = []; broadcastCurrent(); return }
-      sevenTVResult = r
-      slots.sevenTV = r?.emotes || (Array.isArray(r) ? r : []) || []
-      broadcastCurrent()
-    }).catch(() => { failed.sevenTV = true }))
+    tasks.push(
+      fetch7TVChannelEmotes(channelName, channelId, platform)
+        .then((r) => {
+          if (r === null) {
+            failed.sevenTV = true
+            slots.sevenTV = []
+            broadcastCurrent()
+            return
+          }
+          sevenTVResult = r
+          slots.sevenTV = r?.emotes || (Array.isArray(r) ? r : []) || []
+          broadcastCurrent()
+        })
+        .catch(() => {
+          failed.sevenTV = true
+        }),
+    )
 
-    await Promise.all(tasks);
+    await Promise.all(tasks)
     // Final consolidated broadcast (force-flush any pending coalesce)
-    if (coalesceTimer) { clearTimeout(coalesceTimer); coalesceTimer = null }
+    if (coalesceTimer) {
+      clearTimeout(coalesceTimer)
+      coalesceTimer = null
+    }
     const sevenTVEmotes = slots.sevenTV
     const sevenTVSetId = sevenTVResult?.setId || null
     const bttvEmotes = slots.bttv
     const ffzEmotes = slots.ffz
     const twitchChannelEmotes = slots.twitch
-    if (DEBUG) broadcastToTabs({ type: 'debug_log', msg: `${channelName} BTTV:${bttvEmotes.length} FFZ:${ffzEmotes.length} 7TV:${sevenTVEmotes.length} Twitch:${twitchChannelEmotes.length} HS:${heatsyncEmotes.length}` })
+    if (DEBUG)
+      broadcastToTabs({
+        type: 'debug_log',
+        msg: `${channelName} BTTV:${bttvEmotes.length} FFZ:${ffzEmotes.length} 7TV:${sevenTVEmotes.length} Twitch:${twitchChannelEmotes.length} HS:${heatsyncEmotes.length}`,
+      })
 
     // Store emotes for this specific channel (prune old entries to bound memory)
-    const emotes = [...heatsyncEmotes, ...bttvEmotes, ...ffzEmotes, ...sevenTVEmotes, ...twitchChannelEmotes];
+    const emotes = [...heatsyncEmotes, ...bttvEmotes, ...ffzEmotes, ...sevenTVEmotes, ...twitchChannelEmotes]
     const anyFailed = failed.bttv || failed.ffz || failed.sevenTV || failed.twitch
-    channelEmotesMap[key] = emotes;
+    channelEmotesMap[key] = emotes
     // If any provider had a transient failure, backdate fetchedAt so the next
     // channel join refetches within ~60s (regardless of empty/non-empty TTL).
-    channelEmotesFetchedAt[key] = anyFailed ? (Date.now() - CHANNEL_EMOTES_TTL + 60000) : Date.now();
+    channelEmotesFetchedAt[key] = anyFailed ? Date.now() - CHANNEL_EMOTES_TTL + 60000 : Date.now()
     if (anyFailed) log(' ⚠️ Channel emotes fetched with failures', failed, '— will retry in ~60s')
-    const channelKeys = Object.keys(channelEmotesMap).filter(k => channelEmotesMap[k] !== 'loading');
+    const channelKeys = Object.keys(channelEmotesMap).filter((k) => channelEmotesMap[k] !== 'loading')
     if (channelKeys.length > 20) {
       for (const old of channelKeys.slice(0, channelKeys.length - 20)) {
-        if (old !== key) { delete channelEmotesMap[old]; delete channelEmotesFetchedAt[old]; seventvEmoteSetIds.delete(old); seventvPolledChannels.delete(old); }
+        if (old !== key) {
+          delete channelEmotesMap[old]
+          delete channelEmotesFetchedAt[old]
+          seventvEmoteSetIds.delete(old)
+          seventvPolledChannels.delete(old)
+        }
       }
     }
-    updateEmoteUrlMap();
+    updateEmoteUrlMap()
 
     // Update channelOwner in all tab entries that match this channel
     let ownerUpdated = false
@@ -2447,17 +2774,24 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
       }
     }
     if (ownerUpdated) saveTabChannels()
-    log(' ✅ Channel emotes loaded for', channelName + ':', emotes.length,
-      `(heatsync: ${heatsyncEmotes.length}, bttv: ${bttvEmotes.length}, ffz: ${ffzEmotes.length}, 7tv: ${sevenTVEmotes.length})`);
+    log(
+      ' ✅ Channel emotes loaded for',
+      channelName + ':',
+      emotes.length,
+      `(heatsync: ${heatsyncEmotes.length}, bttv: ${bttvEmotes.length}, ffz: ${ffzEmotes.length}, 7tv: ${sevenTVEmotes.length})`,
+    )
 
     // Hide loading indicator
-    broadcastToTabs({ type: 'loading_status', done: true });
+    broadcastToTabs({ type: 'loading_status', done: true })
 
     // Broadcast to content scripts (include channel owner name for filtering)
-    broadcastToTabs({ type: 'channel_emotes_update', emotes, channelOwner: channelName, platform });
+    broadcastToTabs({ type: 'channel_emotes_update', emotes, channelOwner: channelName, platform })
 
     // Save per-channel map to storage for persistence (filter out 'loading' sentinels)
-    await browser.storage.local.set({ channel_emotes_map: getStorableChannelEmotes(), channel_emotes_fetched_at: channelEmotesFetchedAt });
+    await browser.storage.local.set({
+      channel_emotes_map: getStorableChannelEmotes(),
+      channel_emotes_fetched_at: channelEmotesFetchedAt,
+    })
 
     // Store 7TV set ID per channel and subscribe on shared EventAPI connection
     if (sevenTVSetId) {
@@ -2469,45 +2803,53 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
       browser.storage.local.set({ seventv_emote_set_ids: Object.fromEntries(seventvEmoteSetIds) }).catch(() => {})
     }
   } catch (error) {
-    log(' ❌ Channel emotes fetch failed:', error.message || error);
-    broadcastToTabs({ type: 'loading_status', done: true });
+    log(' ❌ Channel emotes fetch failed:', error.message || error)
+    broadcastToTabs({ type: 'loading_status', done: true })
     // Clear sentinel so retry works on next join_channel
-    delete channelEmotesMap[key];
-    seventvEmoteSetIds.delete(key);
+    delete channelEmotesMap[key]
+    seventvEmoteSetIds.delete(key)
   }
 }
 
 // Fetch BTTV global emotes
 async function fetchBTTVEmotes() {
   try {
-    const response = await fetchWithTimeout('https://api.betterttv.net/3/cached/emotes/global');
-    if (!response.ok) { response.body?.cancel(); return []; }
+    const response = await fetchWithTimeout('https://api.betterttv.net/3/cached/emotes/global')
+    if (!response.ok) {
+      response.body?.cancel()
+      return []
+    }
 
-    const emotes = await response.json();
-    return sanitizeEmoteList(emotes.map(e => ({
-      name: e.code,
-      url: `https://cdn.betterttv.net/emote/${e.id}/1x.webp`,
-      source: 'bttv',
-      hash: e.id
-    })));
+    const emotes = await response.json()
+    return sanitizeEmoteList(
+      emotes.map((e) => ({
+        name: e.code,
+        url: `https://cdn.betterttv.net/emote/${e.id}/1x.webp`,
+        source: 'bttv',
+        hash: e.id,
+      })),
+    )
   } catch (error) {
-    return [];
+    return []
   }
 }
 
 // Fetch FFZ global emotes
 async function fetchFFZEmotes() {
   try {
-    const response = await fetchWithTimeout('https://api.frankerfacez.com/v1/set/global');
-    if (!response.ok) { response.body?.cancel(); return []; }
+    const response = await fetchWithTimeout('https://api.frankerfacez.com/v1/set/global')
+    if (!response.ok) {
+      response.body?.cancel()
+      return []
+    }
 
-    const data = await response.json();
-    const emotes = [];
+    const data = await response.json()
+    const emotes = []
 
     const defaultSets = data?.default_sets || []
     for (const set of Object.values(data?.sets || {})) {
       if (defaultSets.includes(set.id)) {
-        for (const emote of (set.emoticons || [])) {
+        for (const emote of set.emoticons || []) {
           // Skip FFZ modifier emotes — see fetchFFZChannelEmotes. They're typed
           // tokens (modifiers.js), not pool images.
           if (emote.modifier) continue
@@ -2521,15 +2863,15 @@ async function fetchFFZEmotes() {
             name: emote.name,
             url: rawUrl.startsWith('https:') ? rawUrl : `https:${rawUrl}`,
             source: 'ffz',
-            hash: `ffz-${emote.id}`
-          });
+            hash: `ffz-${emote.id}`,
+          })
         }
       }
     }
 
-    return sanitizeEmoteList(emotes);
+    return sanitizeEmoteList(emotes)
   } catch (error) {
-    return [];
+    return []
   }
 }
 
@@ -2539,85 +2881,97 @@ async function fetchFFZEmotes() {
 const GLOBAL_7TV_CACHE_KEY = 'hs_7tv_global_cache'
 async function fetch7TVEmotes() {
   try {
-    const response = await fetchWithEtag('https://7tv.io/v3/emote-sets/global');
+    const response = await fetchWithEtag('https://7tv.io/v3/emote-sets/global')
     if (response.notModified) {
       const got = await browser.storage.local.get(GLOBAL_7TV_CACHE_KEY)
-      return Array.isArray(got[GLOBAL_7TV_CACHE_KEY]) ? got[GLOBAL_7TV_CACHE_KEY] : [];
+      return Array.isArray(got[GLOBAL_7TV_CACHE_KEY]) ? got[GLOBAL_7TV_CACHE_KEY] : []
     }
-    if (!response.ok) { response.body?.cancel?.(); return []; }
+    if (!response.ok) {
+      response.body?.cancel?.()
+      return []
+    }
 
-    const data = await response.json();
-    const emotes = sanitizeEmoteList((data?.emotes || []).map(e => ({
-      name: e.name,
-      url: `https://cdn.7tv.app/emote/${e.id}/1x.webp`,
-      source: '7tv',
-      hash: e.id,
-      animated: !!e.data?.animated,
-      flags: e.flags || e.data?.flags || 0,
-      zeroWidth: !!((e.flags & 257) || (e.data?.flags & 257))
-    })));
-    try { await browser.storage.local.set({ [GLOBAL_7TV_CACHE_KEY]: emotes }) } catch {}
-    return emotes;
+    const data = await response.json()
+    const emotes = sanitizeEmoteList(
+      (data?.emotes || []).map((e) => ({
+        name: e.name,
+        url: `https://cdn.7tv.app/emote/${e.id}/1x.webp`,
+        source: '7tv',
+        hash: e.id,
+        animated: !!e.data?.animated,
+        flags: e.flags || e.data?.flags || 0,
+        zeroWidth: !!(e.flags & 257 || e.data?.flags & 257),
+      })),
+    )
+    try {
+      await browser.storage.local.set({ [GLOBAL_7TV_CACHE_KEY]: emotes })
+    } catch {}
+    return emotes
   } catch (error) {
-    return [];
+    return []
   }
 }
 
 // Fetch Twitch native global emotes (Kappa, PogChamp, etc.)
 async function fetchTwitchGlobalEmotes() {
   try {
-    const response = await fetchWithTimeout(`${API_URL}/api/emotes/twitch/global`);
+    const response = await fetchWithTimeout(`${API_URL}/api/emotes/twitch/global`)
     if (!response.ok) {
       response.body?.cancel()
-      log('⚠️ Twitch global emotes failed:', response.status);
-      return [];
+      log('⚠️ Twitch global emotes failed:', response.status)
+      return []
     }
 
-    const data = await response.json();
-    const emotes = (data?.emotes || []).map(e => ({
+    const data = await response.json()
+    const emotes = (data?.emotes || []).map((e) => ({
       name: e.name,
       url: e.url,
       url_2x: e.url_2x,
       url_4x: e.url_4x,
       source: 'twitch',
-      hash: e.id
-    }));
+      hash: e.id,
+    }))
 
     const validated = sanitizeEmoteList(emotes)
-    log('✅ Loaded', validated.length, 'Twitch global emotes from server');
-    return validated;
+    log('✅ Loaded', validated.length, 'Twitch global emotes from server')
+    return validated
   } catch (error) {
-    log('❌ Twitch global emotes error:', error);
-    return [];
+    log('❌ Twitch global emotes error:', error)
+    return []
   }
 }
 
 // Fetch Twitch channel emotes (subscriber, follower, bits tier)
 async function fetchTwitchChannelEmotes(channelName) {
   try {
-    const response = await fetchWithTimeout(`${API_URL}/api/emotes/twitch/channel/${channelName}`);
-    if (response.status === 404) { response.body?.cancel(); return [] } // genuine: channel has no twitch emotes
+    const response = await fetchWithTimeout(`${API_URL}/api/emotes/twitch/channel/${channelName}`)
+    if (response.status === 404) {
+      response.body?.cancel()
+      return []
+    } // genuine: channel has no twitch emotes
     if (!response.ok) {
       response.body?.cancel()
-      log(' Twitch channel emotes failed for', channelName, ':', response.status);
+      log(' Twitch channel emotes failed for', channelName, ':', response.status)
       return null // transient: 5xx etc.
     }
 
-    const data = await response.json();
-    log(' Loaded', data.count, 'Twitch channel emotes for', channelName);
+    const data = await response.json()
+    log(' Loaded', data.count, 'Twitch channel emotes for', channelName)
 
-    return sanitizeEmoteList((data?.emotes || []).map(e => ({
-      name: e.name,
-      url: e.url,
-      source: 'twitch',
-      hash: e.id,
-      url_2x: e.url_2x,
-      url_4x: e.url_4x,
-      tier: e.tier,
-      emote_type: e.emote_type
-    })));
+    return sanitizeEmoteList(
+      (data?.emotes || []).map((e) => ({
+        name: e.name,
+        url: e.url,
+        source: 'twitch',
+        hash: e.id,
+        url_2x: e.url_2x,
+        url_4x: e.url_4x,
+        tier: e.tier,
+        emote_type: e.emote_type,
+      })),
+    )
   } catch (error) {
-    log(' Twitch channel emotes error for', channelName, ':', error?.message);
+    log(' Twitch channel emotes error for', channelName, ':', error?.message)
     return null // transient
   }
 }
@@ -2625,67 +2979,92 @@ async function fetchTwitchChannelEmotes(channelName) {
 function fetchGlobalEmotes() {
   if (globalEmotesFetchPromise) return globalEmotesFetchPromise
   globalEmotesFetchPromise = (async () => {
-  try {
-    log(' Fetching global emotes from', `${API_URL}/api/emotes`);
-    // Try server API first (has all providers cached)
-    const response = await fetchWithTimeout(`${API_URL}/api/emotes`);
-    log(' Global emotes response:', response.status, response.ok);
-    if (response.ok) {
-      const data = await response.json();
-      globalEmotes = sanitizeEmoteList((data?.emotes || []).map(e => ({
-        name: e.name,
-        url: e.url,
-        source: e.provider,
-        hash: e.hash,
-        zeroWidth: !!e.zeroWidth
-      })));
-      updateEmoteUrlMap();
-      log(' Loaded', globalEmotes.length, 'global emotes from server');
-      log(' Sample global emotes:', globalEmotes.slice(0, 5).map(e => e.name));
+    try {
+      log(' Fetching global emotes from', `${API_URL}/api/emotes`)
+      // Try server API first (has all providers cached)
+      const response = await fetchWithTimeout(`${API_URL}/api/emotes`)
+      log(' Global emotes response:', response.status, response.ok)
+      if (response.ok) {
+        const data = await response.json()
+        globalEmotes = sanitizeEmoteList(
+          (data?.emotes || []).map((e) => ({
+            name: e.name,
+            url: e.url,
+            source: e.provider,
+            hash: e.hash,
+            zeroWidth: !!e.zeroWidth,
+          })),
+        )
+        updateEmoteUrlMap()
+        log(' Loaded', globalEmotes.length, 'global emotes from server')
+        log(
+          ' Sample global emotes:',
+          globalEmotes.slice(0, 5).map((e) => e.name),
+        )
 
-      // ALWAYS fetch Twitch + 7TV global emotes separately (server cache may be stale)
-      log('📥 Fetching Twitch + 7TV globals separately...');
-      const [twitchGlobals, seventvGlobals] = await Promise.all([
+        // ALWAYS fetch Twitch + 7TV global emotes separately (server cache may be stale)
+        log('📥 Fetching Twitch + 7TV globals separately...')
+        const [twitchGlobals, seventvGlobals] = await Promise.all([fetchTwitchGlobalEmotes(), fetch7TVEmotes()])
+
+        // Rebuild merged array (prevents duplicate accumulation on reconnects)
+        // 7TV globals override server emotes (server cache lacks zeroWidth flags)
+        const seen = new Set()
+        const merged = []
+        // 7TV first (has authoritative zeroWidth flags), then Twitch, then server emotes
+        for (const e of seventvGlobals) {
+          if (!seen.has(e.name)) {
+            seen.add(e.name)
+            merged.push(e)
+          }
+        }
+        for (const e of twitchGlobals) {
+          if (!seen.has(e.name)) {
+            seen.add(e.name)
+            merged.push(e)
+          }
+        }
+        for (const e of globalEmotes) {
+          if (!seen.has(e.name)) {
+            seen.add(e.name)
+            merged.push(e)
+          }
+        }
+        globalEmotes = merged
+        log(
+          '✅ Merged globals:',
+          globalEmotes.length,
+          '(twitch:',
+          twitchGlobals.length,
+          '7tv:',
+          seventvGlobals.length,
+          ')',
+        )
+
+        updateEmoteUrlMap()
+        log('📊 Total global emotes:', globalEmotes.length)
+
+        broadcastToTabs({ type: 'global_emotes_update', emotes: globalEmotes })
+        return
+      }
+      log(' Server API failed, trying fallback')
+
+      // Fallback: fetch directly from APIs
+      const [bttv, ffz, sevenTV, twitchGlobal] = await Promise.all([
+        fetchBTTVEmotes(),
+        fetchFFZEmotes(),
+        fetch7TVEmotes(),
         fetchTwitchGlobalEmotes(),
-        fetch7TVEmotes()
-      ]);
+      ])
 
-      // Rebuild merged array (prevents duplicate accumulation on reconnects)
-      // 7TV globals override server emotes (server cache lacks zeroWidth flags)
-      const seen = new Set()
-      const merged = []
-      // 7TV first (has authoritative zeroWidth flags), then Twitch, then server emotes
-      for (const e of seventvGlobals) { if (!seen.has(e.name)) { seen.add(e.name); merged.push(e) } }
-      for (const e of twitchGlobals) { if (!seen.has(e.name)) { seen.add(e.name); merged.push(e) } }
-      for (const e of globalEmotes) { if (!seen.has(e.name)) { seen.add(e.name); merged.push(e) } }
-      globalEmotes = merged
-      log('✅ Merged globals:', globalEmotes.length, '(twitch:', twitchGlobals.length, '7tv:', seventvGlobals.length, ')')
-
-      updateEmoteUrlMap();
-      log('📊 Total global emotes:', globalEmotes.length);
-
-      broadcastToTabs({ type: 'global_emotes_update', emotes: globalEmotes });
-      return;
+      globalEmotes = [...bttv, ...ffz, ...sevenTV, ...twitchGlobal]
+      updateEmoteUrlMap()
+      log(' Loaded', globalEmotes.length, 'global emotes (fallback)')
+      broadcastToTabs({ type: 'global_emotes_update', emotes: globalEmotes })
+    } catch (error) {
+      console.error('[heatsync] fetchGlobalEmotes failed:', error.message || error)
+    } finally {
+      globalEmotesFetchPromise = null
     }
-    log(' Server API failed, trying fallback');
-
-    // Fallback: fetch directly from APIs
-    const [bttv, ffz, sevenTV, twitchGlobal] = await Promise.all([
-      fetchBTTVEmotes(),
-      fetchFFZEmotes(),
-      fetch7TVEmotes(),
-      fetchTwitchGlobalEmotes()
-    ]);
-
-    globalEmotes = [...bttv, ...ffz, ...sevenTV, ...twitchGlobal];
-    updateEmoteUrlMap();
-    log(' Loaded', globalEmotes.length, 'global emotes (fallback)');
-    broadcastToTabs({ type: 'global_emotes_update', emotes: globalEmotes });
-  } catch (error) {
-    console.error('[heatsync] fetchGlobalEmotes failed:', error.message || error)
-  } finally {
-    globalEmotesFetchPromise = null
-  }
   })()
   return globalEmotesFetchPromise
 }
@@ -2693,23 +3072,23 @@ function fetchGlobalEmotes() {
 // ========== 7TV EventAPI WebSocket for Real-Time Emote Updates ==========
 // Single shared connection, multiple subscriptions (one per channel's emote set).
 // 7TV allows up to 500 subs per connection.
-let seventvWebSocket = null;
-let seventvReconnectAttempts = 0;
-let seventvReconnectTimer = null;
+let seventvWebSocket = null
+let seventvReconnectAttempts = 0
+let seventvReconnectTimer = null
 let seventvLastData = 0
 let seventvZombieTimer = null
-let seventvSubscribedSets = new Set(); // Track which set IDs we've subscribed to
-let seventvPendingSubs = new Set(); // Queued while connection is opening
-const SEVENTV_MAX_RECONNECT_ATTEMPTS = 5;
+const seventvSubscribedSets = new Set() // Track which set IDs we've subscribed to
+const seventvPendingSubs = new Set() // Queued while connection is opening
+const SEVENTV_MAX_RECONNECT_ATTEMPTS = 5
 
 function ensure7TVConnection() {
   if (seventvWebSocket && seventvWebSocket.readyState !== WebSocket.CLOSED) {
-    return; // Already connected, connecting, or closing
+    return // Already connected, connecting, or closing
   }
 
-  clearTimeout(seventvReconnectTimer);
-  seventvReconnectTimer = null;
-  seventvSubscribedSets.clear();
+  clearTimeout(seventvReconnectTimer)
+  seventvReconnectTimer = null
+  seventvSubscribedSets.clear()
   // Drop any stale handler refs from a prior socket before creating a new one
   if (seventvWebSocket) {
     try {
@@ -2720,32 +3099,47 @@ function ensure7TVConnection() {
     } catch {}
     seventvWebSocket = null
   }
-  if (seventvZombieTimer) { untrackInterval(seventvZombieTimer); seventvZombieTimer = null }
+  if (seventvZombieTimer) {
+    untrackInterval(seventvZombieTimer)
+    seventvZombieTimer = null
+  }
 
-  log(' 7TV EventAPI: Connecting...');
+  log(' 7TV EventAPI: Connecting...')
 
   try {
-    seventvWebSocket = new WebSocket('wss://events.7tv.io/v3');
+    seventvWebSocket = new WebSocket('wss://events.7tv.io/v3')
 
     seventvWebSocket.onopen = () => {
-      log(' 7TV EventAPI: Connected');
-      seventvReconnectAttempts = 0;
+      log(' 7TV EventAPI: Connected')
+      seventvReconnectAttempts = 0
       seventvLastData = Date.now()
       // Zombie detection: force close if no data for 3 minutes
-      if (seventvZombieTimer) { untrackInterval(seventvZombieTimer); seventvZombieTimer = null }
-      seventvZombieTimer = trackInterval(setInterval(() => {
-        if (seventvLastData && Date.now() - seventvLastData > 180000) {
-          log(' 7TV EventAPI: Zombie detected, forcing reconnect')
-          if (seventvWebSocket) { try { seventvWebSocket.close() } catch {} }
-          if (seventvZombieTimer) { untrackInterval(seventvZombieTimer); seventvZombieTimer = null }
-        }
-      }, 60000))
+      if (seventvZombieTimer) {
+        untrackInterval(seventvZombieTimer)
+        seventvZombieTimer = null
+      }
+      seventvZombieTimer = trackInterval(
+        setInterval(() => {
+          if (seventvLastData && Date.now() - seventvLastData > 180000) {
+            log(' 7TV EventAPI: Zombie detected, forcing reconnect')
+            if (seventvWebSocket) {
+              try {
+                seventvWebSocket.close()
+              } catch {}
+            }
+            if (seventvZombieTimer) {
+              untrackInterval(seventvZombieTimer)
+              seventvZombieTimer = null
+            }
+          }
+        }, 60000),
+      )
 
       // Subscribe all pending emote sets
       for (const setId of seventvPendingSubs) {
-        send7TVSubscribe(setId);
+        send7TVSubscribe(setId)
       }
-      seventvPendingSubs.clear();
+      seventvPendingSubs.clear()
       // Re-subscribe all known user cosmetic subs on (re)connect
       seventvUserSubs.clear()
       for (const userId of pendingUserSubs) {
@@ -2755,101 +3149,117 @@ function ensure7TVConnection() {
       for (const userId of seventvToTwitchId.keys()) {
         send7TVUserSubscribe(userId)
       }
-    };
+    }
 
     seventvWebSocket.onmessage = (event) => {
       seventvLastData = Date.now()
       try {
-        const message = JSON.parse(event.data);
+        const message = JSON.parse(event.data)
 
         if (message.op === 0) {
           // Dispatch event
-          const eventData = message.d;
-          if (!eventData) return;
-          log(' 7TV EventAPI: Received event:', eventData.type);
+          const eventData = message.d
+          if (!eventData) return
+          log(' 7TV EventAPI: Received event:', eventData.type)
           if (eventData.type === 'emote_set.update') {
-            handle7TVEmoteSetUpdate(eventData.body);
-          } else if (eventData.type === 'user.update' || eventData.type === 'user.create' ||
-                     eventData.type === 'cosmetic.create' || eventData.type === 'entitlement.create' ||
-                     eventData.type === 'entitlement.delete') {
+            handle7TVEmoteSetUpdate(eventData.body)
+          } else if (
+            eventData.type === 'user.update' ||
+            eventData.type === 'user.create' ||
+            eventData.type === 'cosmetic.create' ||
+            eventData.type === 'entitlement.create' ||
+            eventData.type === 'entitlement.delete'
+          ) {
             // User's cosmetics changed (badge/paint granted/revoked).
             // Bust the cache for that user so next lookup refetches fresh.
-            handle7TVUserUpdate(eventData.body);
+            handle7TVUserUpdate(eventData.body)
             // EMOTE_SET entitlements carry the chatter's PERSONAL set
             if (eventData.type === 'entitlement.create') capture7TVPersonalEntitlement(eventData.body)
           }
         } else if (message.op === 1) {
-          log(' 7TV EventAPI: Hello received, session:', message.d.session_id);
+          log(' 7TV EventAPI: Hello received, session:', message.d.session_id)
         } else if (message.op === 2) {
           // Server heartbeat — no response needed
         } else if (message.op === 5) {
-          const subType = message.d?.data?.type;
-          const subId = message.d?.data?.condition?.object_id;
-          log(' 7TV EventAPI: Subscription acknowledged for', subId?.slice(0, 12));
+          const subType = message.d?.data?.type
+          const subId = message.d?.data?.condition?.object_id
+          log(' 7TV EventAPI: Subscription acknowledged for', subId?.slice(0, 12))
         }
       } catch (err) {
-        console.error('[heatsync] 7TV EventAPI: Parse error:', err);
+        console.error('[heatsync] 7TV EventAPI: Parse error:', err)
       }
-    };
+    }
 
     seventvWebSocket.onerror = () => {
-      log(' 7TV EventAPI: WebSocket error (will reconnect)');
-    };
+      log(' 7TV EventAPI: WebSocket error (will reconnect)')
+    }
 
     seventvWebSocket.onclose = (closeEvent) => {
-      log(' 7TV EventAPI: Connection closed');
-      const closing = closeEvent?.target;
+      log(' 7TV EventAPI: Connection closed')
+      const closing = closeEvent?.target
       if (closing) {
-        try { closing.onopen = null; closing.onmessage = null; closing.onerror = null; closing.onclose = null } catch {}
+        try {
+          closing.onopen = null
+          closing.onmessage = null
+          closing.onerror = null
+          closing.onclose = null
+        } catch {}
       }
-      seventvWebSocket = null;
-      seventvSubscribedSets.clear();
-      seventvUserSubs.clear();
-      if (seventvZombieTimer) { untrackInterval(seventvZombieTimer); seventvZombieTimer = null }
+      seventvWebSocket = null
+      seventvSubscribedSets.clear()
+      seventvUserSubs.clear()
+      if (seventvZombieTimer) {
+        untrackInterval(seventvZombieTimer)
+        seventvZombieTimer = null
+      }
 
       if (seventvReconnectAttempts < SEVENTV_MAX_RECONNECT_ATTEMPTS && seventvEmoteSetIds.size > 0) {
         // Jitter scales with the base delay (capped at 30s). At 100k clients
         // a shared 7TV outage hits a wide spread, not a 1s synchronization
         // window — prevents thundering-herd reconnects against 7TV.
-        const baseDelay = Math.min(1000 * Math.pow(2, seventvReconnectAttempts), 30000);
-        const jitter7tv = Math.random() * baseDelay;
-        const delay = baseDelay + jitter7tv;
-        seventvReconnectAttempts++;
-        log(` 7TV EventAPI: Reconnecting in ${Math.round(delay)}ms (attempt ${seventvReconnectAttempts}/${SEVENTV_MAX_RECONNECT_ATTEMPTS})`);
-        clearTimeout(seventvReconnectTimer);
+        const baseDelay = Math.min(1000 * 2 ** seventvReconnectAttempts, 30000)
+        const jitter7tv = Math.random() * baseDelay
+        const delay = baseDelay + jitter7tv
+        seventvReconnectAttempts++
+        log(
+          ` 7TV EventAPI: Reconnecting in ${Math.round(delay)}ms (attempt ${seventvReconnectAttempts}/${SEVENTV_MAX_RECONNECT_ATTEMPTS})`,
+        )
+        clearTimeout(seventvReconnectTimer)
         seventvReconnectTimer = setTimeout(() => {
-          seventvReconnectTimer = null;
+          seventvReconnectTimer = null
           // Re-subscribe all known sets on reconnect
           for (const setId of seventvEmoteSetIds.values()) {
-            subscribe7TVEmoteSet(setId);
+            subscribe7TVEmoteSet(setId)
           }
-        }, delay);
+        }, delay)
       } else if (seventvReconnectAttempts >= SEVENTV_MAX_RECONNECT_ATTEMPTS) {
-        log(' 7TV EventAPI: Max reconnect attempts reached, giving up. Will retry in 10 minutes.');
-        clearTimeout(seventvReconnectTimer);
-        seventvReconnectAttempts = 0;
-        seventvWebSocket = null;
+        log(' 7TV EventAPI: Max reconnect attempts reached, giving up. Will retry in 10 minutes.')
+        clearTimeout(seventvReconnectTimer)
+        seventvReconnectAttempts = 0
+        seventvWebSocket = null
         seventvReconnectTimer = setTimeout(() => {
-          seventvReconnectTimer = null;
-          ensure7TVConnection();
-        }, 600000);
+          seventvReconnectTimer = null
+          ensure7TVConnection()
+        }, 600000)
       }
-    };
+    }
   } catch (err) {
-    console.error('[heatsync] 7TV EventAPI: Connection failed:', err);
+    console.error('[heatsync] 7TV EventAPI: Connection failed:', err)
   }
 }
 
 function send7TVSubscribe(setId) {
-  if (!seventvWebSocket || seventvWebSocket.readyState !== WebSocket.OPEN) return;
-  if (seventvSubscribedSets.has(setId)) return;
+  if (!seventvWebSocket || seventvWebSocket.readyState !== WebSocket.OPEN) return
+  if (seventvSubscribedSets.has(setId)) return
 
-  seventvWebSocket.send(JSON.stringify({
-    op: 35,
-    d: { type: 'emote_set.*', condition: { object_id: setId } }
-  }));
-  seventvSubscribedSets.add(setId);
-  log(' 7TV EventAPI: Subscribed to', setId.slice(0, 12));
+  seventvWebSocket.send(
+    JSON.stringify({
+      op: 35,
+      d: { type: 'emote_set.*', condition: { object_id: setId } },
+    }),
+  )
+  seventvSubscribedSets.add(setId)
+  log(' 7TV EventAPI: Subscribed to', setId.slice(0, 12))
 }
 
 // Track per-user 7TV subscriptions so we get real-time badge/paint changes
@@ -2863,10 +3273,12 @@ function send7TVUserSubscribe(seventvUserId) {
     return
   }
   if (seventvUserSubs.has(seventvUserId)) return
-  seventvWebSocket.send(JSON.stringify({
-    op: 35,
-    d: { type: 'user.*', condition: { object_id: seventvUserId } }
-  }))
+  seventvWebSocket.send(
+    JSON.stringify({
+      op: 35,
+      d: { type: 'user.*', condition: { object_id: seventvUserId } },
+    }),
+  )
   seventvUserSubs.add(seventvUserId)
   log(' 7TV EventAPI: Subscribed to user', seventvUserId.slice(0, 12))
 }
@@ -2888,7 +3300,10 @@ async function ensureSelfCosmeticSub(twitchId) {
   }
   try {
     const resp = await fetchWithTimeout(`https://7tv.io/v3/users/twitch/${twitchId}`)
-    if (!resp.ok) { resp.body?.cancel?.(); return }
+    if (!resp.ok) {
+      resp.body?.cancel?.()
+      return
+    }
     const data = await resp.json()
     const seventvId = data?.user?.id
     if (!seventvId) return
@@ -2913,8 +3328,8 @@ async function ensureSelfCosmeticSub(twitchId) {
 // pushes an EMOTE_SET entitlement per active chatter. Capture → fetch the
 // set once → merge into get_sender_emotes results so DonkMonk-class emotes
 // render for other people's messages.
-const seventvPersonalSets = new Map()   // twitch uid -> { name: emoteData }
-const _stvSetFetchAt = new Map()        // set id -> ts (6h TTL)
+const seventvPersonalSets = new Map() // twitch uid -> { name: emoteData }
+const _stvSetFetchAt = new Map() // set id -> ts (6h TTL)
 async function capture7TVPersonalEntitlement(body) {
   try {
     const obj = body?.object || body
@@ -2922,7 +3337,7 @@ async function capture7TVPersonalEntitlement(body) {
     if (String(kind).toUpperCase() !== 'EMOTE_SET') return
     const setId = obj?.ref_id || obj?.refId || obj?.id
     const conns = obj?.user?.connections || body?.user?.connections || []
-    const twitchId = conns.find?.(c => String(c?.platform).toUpperCase() === 'TWITCH')?.id
+    const twitchId = conns.find?.((c) => String(c?.platform).toUpperCase() === 'TWITCH')?.id
     if (!setId || !twitchId) return
     const last = _stvSetFetchAt.get(setId) || 0
     const cached = seventvPersonalSets.get(String(twitchId))
@@ -2933,13 +3348,15 @@ async function capture7TVPersonalEntitlement(body) {
     if (!res.ok) return
     const data = await res.json()
     const out = {}
-    for (const e of (data?.emotes || [])) {
+    for (const e of data?.emotes || []) {
       if (!e?.name || !e?.id) continue
       const flags = (e.flags || 0) | (e.data?.flags || 0)
       out[e.name] = {
         url: `https://cdn.7tv.app/emote/${e.id}/1x.webp`,
-        source: '7tv', state: 'global',
-        zeroWidth: !!(flags & 257), hash: e.id,
+        source: '7tv',
+        state: 'global',
+        zeroWidth: !!(flags & 257),
+        hash: e.id,
         animated: !!e.data?.animated,
       }
     }
@@ -2951,7 +3368,9 @@ async function capture7TVPersonalEntitlement(body) {
       }
       log(' 7TV: personal set captured for', twitchId, '—', Object.keys(out).length, 'emotes')
     }
-  } catch (e) { log('7TV personal-set capture err:', e?.message) }
+  } catch (e) {
+    log('7TV personal-set capture err:', e?.message)
+  }
 }
 
 function handle7TVUserUpdate(body) {
@@ -2967,7 +3386,7 @@ function handle7TVUserUpdate(body) {
 }
 
 function subscribe7TVEmoteSet(setId) {
-  if (!setId) return;
+  if (!setId) return
 
   ensure7TVConnection()
 
@@ -2981,81 +3400,84 @@ function subscribe7TVEmoteSet(setId) {
 
 function handle7TVEmoteSetUpdate(updateData) {
   // updateData.id is the emote set ID — look up which channel it belongs to
-  const setId = updateData.id;
-  let key = null;
+  const setId = updateData.id
+  let key = null
   for (const [k, id] of seventvEmoteSetIds) {
-    if (id === setId) { key = k; break; }
+    if (id === setId) {
+      key = k
+      break
+    }
   }
   if (!key) {
-    log(' 7TV: Received update for unknown set:', setId);
-    return;
+    log(' 7TV: Received update for unknown set:', setId)
+    return
   }
 
   const { platform, channel: channelName } = splitChKey(key)
-  log(' 7TV: Emote set update for', channelName, '(', platform, ')');
+  log(' 7TV: Emote set update for', channelName, '(', platform, ')')
 
-  let updated = false;
-  const actor = updateData.actor?.display_name || updateData.actor?.username || '';
+  let updated = false
+  const actor = updateData.actor?.display_name || updateData.actor?.username || ''
 
   // Handle added emotes
   if (updateData.pushed && updateData.pushed.length > 0) {
     // Large batch = likely initial sync on subscription, not real additions — suppress per-emote spam
-    const isBulkSync = updateData.pushed.length > 3;
+    const isBulkSync = updateData.pushed.length > 3
     for (const item of updateData.pushed) {
-      const emote = item.value;
+      const emote = item.value
       if (!emote || typeof emote.id !== 'string' || !/^[0-9A-HJKMNP-TV-Z]{26}$/.test(emote.id)) continue
       const newEmote = {
         name: String(emote.name || '').slice(0, 100),
         url: `https://cdn.7tv.app/emote/${emote.id}/1x.webp`,
         source: '7tv',
         hash: emote.id,
-        animated: !!emote.data?.animated
-      };
+        animated: !!emote.data?.animated,
+      }
 
-      const chEmotes = Array.isArray(channelEmotesMap[key]) ? channelEmotesMap[key] : [];
-      if (!chEmotes.some(e => e.hash === emote.id)) {
-        chEmotes.push(newEmote);
-        channelEmotesMap[key] = chEmotes;
-        updated = true;
+      const chEmotes = Array.isArray(channelEmotesMap[key]) ? channelEmotesMap[key] : []
+      if (!chEmotes.some((e) => e.hash === emote.id)) {
+        chEmotes.push(newEmote)
+        channelEmotesMap[key] = chEmotes
+        updated = true
 
         if (!isBulkSync) {
-          log(' 7TV: Added emote:', emote.name, 'to', channelName);
-          const msg = actor ? `${actor} added 7TV emote ${emote.name}` : `${emote.name} added to channel`;
+          log(' 7TV: Added emote:', emote.name, 'to', channelName)
+          const msg = actor ? `${actor} added 7TV emote ${emote.name}` : `${emote.name} added to channel`
           broadcastToTabs({
             type: 'channel_emote_added',
             emote: newEmote,
             channel: channelName,
             platform,
             actor: actor || null,
-            message: msg
-          });
+            message: msg,
+          })
         }
       }
     }
     if (isBulkSync) {
-      log(' 7TV: Bulk sync — added', updateData.pushed.length, 'emotes to', channelName, '(notifications suppressed)');
+      log(' 7TV: Bulk sync — added', updateData.pushed.length, 'emotes to', channelName, '(notifications suppressed)')
     }
   }
 
   // Handle removed emotes
   if (updateData.pulled && updateData.pulled.length > 0) {
-    const isBulkRemoval = updateData.pulled.length > 3;
-    let removedCount = 0;
+    const isBulkRemoval = updateData.pulled.length > 3
+    let removedCount = 0
     for (const item of updateData.pulled) {
-      const emote = item.old_value;
-      if (!emote || typeof emote.id !== 'string') continue;
-      const chEmotes = channelEmotesMap[key] || [];
-      const index = chEmotes.findIndex(e => e.hash === emote.id);
+      const emote = item.old_value
+      if (!emote || typeof emote.id !== 'string') continue
+      const chEmotes = channelEmotesMap[key] || []
+      const index = chEmotes.findIndex((e) => e.hash === emote.id)
 
       if (index !== -1) {
-        chEmotes.splice(index, 1);
-        channelEmotesMap[key] = chEmotes;
-        updated = true;
-        removedCount++;
+        chEmotes.splice(index, 1)
+        channelEmotesMap[key] = chEmotes
+        updated = true
+        removedCount++
 
         if (!isBulkRemoval) {
-          log(' 7TV: Removed emote:', emote.name, 'from', channelName);
-          const msg = actor ? `${actor} removed 7TV emote ${emote.name}` : `${emote.name} removed from channel`;
+          log(' 7TV: Removed emote:', emote.name, 'from', channelName)
+          const msg = actor ? `${actor} removed 7TV emote ${emote.name}` : `${emote.name} removed from channel`
           broadcastToTabs({
             type: 'channel_emote_removed',
             emoteName: emote.name,
@@ -3063,13 +3485,13 @@ function handle7TVEmoteSetUpdate(updateData) {
             channel: channelName,
             platform,
             actor: actor || null,
-            message: msg
-          });
+            message: msg,
+          })
         }
       }
     }
     if (isBulkRemoval && removedCount > 0) {
-      log(' 7TV: Bulk removal —', removedCount, 'emotes removed from', channelName, '(notifications suppressed)');
+      log(' 7TV: Bulk removal —', removedCount, 'emotes removed from', channelName, '(notifications suppressed)')
       broadcastToTabs({
         type: 'channel_emote_removed',
         emoteName: null,
@@ -3077,35 +3499,37 @@ function handle7TVEmoteSetUpdate(updateData) {
         channel: channelName,
         platform,
         actor: actor || null,
-        message: `${removedCount} 7TV emotes removed from channel (set changed)`
-      });
+        message: `${removedCount} 7TV emotes removed from channel (set changed)`,
+      })
     }
   }
 
   if (updated) {
-    updateEmoteUrlMap();
+    updateEmoteUrlMap()
 
-    const updatedEmotes = Array.isArray(channelEmotesMap[key]) ? channelEmotesMap[key] : [];
+    const updatedEmotes = Array.isArray(channelEmotesMap[key]) ? channelEmotesMap[key] : []
     broadcastToTabs({
       type: 'channel_emotes_update',
       emotes: updatedEmotes,
       channelOwner: channelName,
-      platform
-    });
+      platform,
+    })
 
-    browser.storage.local.set({ channel_emotes_map: getStorableChannelEmotes(), channel_emotes_fetched_at: channelEmotesFetchedAt }).catch(() => {});
-    log(' 7TV: Channel emotes updated for', channelName, '(now', updatedEmotes.length, 'total)');
+    browser.storage.local
+      .set({ channel_emotes_map: getStorableChannelEmotes(), channel_emotes_fetched_at: channelEmotesFetchedAt })
+      .catch(() => {})
+    log(' 7TV: Channel emotes updated for', channelName, '(now', updatedEmotes.length, 'total)')
   }
 }
 
 // ========== 7TV Polling Fallback ==========
 // EventAPI works but can be unreliable. Poll as backup — both paths diff against
 // channelEmotesMap so they naturally deduplicate (no double-fire).
-let seventvPollTimer = null;
-const SEVENTV_POLL_INTERVAL = 30000;
+let seventvPollTimer = null
+const SEVENTV_POLL_INTERVAL = 30000
 // Track channels that have completed their first poll in this session
 // Prevents spammy "removed" notifications when diffing stale cache on startup
-const seventvPolledChannels = new Set();
+const seventvPolledChannels = new Set()
 
 function start7TVPolling() {
   stop7TVPolling()
@@ -3120,16 +3544,18 @@ function start7TVPolling() {
 // EventAPI is healthy when the WS is OPEN and we received data in the last 3min.
 // When healthy + the channel's set is subscribed, the poll is redundant.
 function isSeventvEventApiHealthy() {
-  return seventvWebSocket
-      && seventvWebSocket.readyState === WebSocket.OPEN
-      && seventvLastData
-      && (Date.now() - seventvLastData) < 180000
+  return (
+    seventvWebSocket &&
+    seventvWebSocket.readyState === WebSocket.OPEN &&
+    seventvLastData &&
+    Date.now() - seventvLastData < 180000
+  )
 }
 
 function stop7TVPolling() {
   if (seventvPollTimer) {
-    untrackInterval(seventvPollTimer);
-    seventvPollTimer = null;
+    untrackInterval(seventvPollTimer)
+    seventvPollTimer = null
   }
 }
 
@@ -3197,8 +3623,8 @@ async function poll7TVEmoteSet() {
           source: '7tv',
           hash: e.id,
           flags: e.flags || e.data?.flags || 0,
-          zeroWidth: !!((e.flags & 257) || (e.data?.flags & 257)),
-          animated: !!e.data?.animated
+          zeroWidth: !!(e.flags & 257 || e.data?.flags & 257),
+          animated: !!e.data?.animated,
         })
       }
 
@@ -3224,7 +3650,7 @@ async function poll7TVEmoteSet() {
       log(' 7TV Poll: Detected changes for', channelName, '— added:', added.length, 'removed:', removed.length)
 
       // Apply changes to channelEmotesMap
-      let updatedEmotes = chEmotes.filter(e => e.source !== '7tv' || fetchedEmotes.has(e.hash))
+      const updatedEmotes = chEmotes.filter((e) => e.source !== '7tv' || fetchedEmotes.has(e.hash))
       updatedEmotes.push(...added)
       channelEmotesMap[key] = updatedEmotes
       updateEmoteUrlMap()
@@ -3234,14 +3660,22 @@ async function poll7TVEmoteSet() {
       if (seventvPolledChannels.has(key)) {
         const isBulk = added.length > 3 || removed.length > 3
         if (isBulk) {
-          log(' 7TV Poll: Bulk set change for', channelName, '—', added.length, 'added,', removed.length, 'removed (notifications suppressed)')
+          log(
+            ' 7TV Poll: Bulk set change for',
+            channelName,
+            '—',
+            added.length,
+            'added,',
+            removed.length,
+            'removed (notifications suppressed)',
+          )
           if (added.length > 0) {
             broadcastToTabs({
               type: 'channel_emote_added',
               emote: null,
               channel: channelName,
               platform,
-              message: `${added.length} 7TV emotes added to channel (set changed)`
+              message: `${added.length} 7TV emotes added to channel (set changed)`,
             })
           }
           if (removed.length > 0) {
@@ -3251,7 +3685,7 @@ async function poll7TVEmoteSet() {
               emoteHash: null,
               channel: channelName,
               platform,
-              message: `${removed.length} 7TV emotes removed from channel (set changed)`
+              message: `${removed.length} 7TV emotes removed from channel (set changed)`,
             })
           }
         } else {
@@ -3262,7 +3696,7 @@ async function poll7TVEmoteSet() {
               emote,
               channel: channelName,
               platform,
-              message: `${emote.name} added to channel (7TV)`
+              message: `${emote.name} added to channel (7TV)`,
             })
           }
           for (const emote of removed) {
@@ -3273,12 +3707,18 @@ async function poll7TVEmoteSet() {
               emoteHash: emote.hash,
               channel: channelName,
               platform,
-              message: `${emote.name} removed from channel (7TV)`
+              message: `${emote.name} removed from channel (7TV)`,
             })
           }
         }
       } else {
-        log(' 7TV Poll: Skipping notifications for initial load of', channelName, '(' + added.length + ' added,', removed.length, 'removed)')
+        log(
+          ' 7TV Poll: Skipping notifications for initial load of',
+          channelName,
+          '(' + added.length + ' added,',
+          removed.length,
+          'removed)',
+        )
         seventvPolledChannels.add(key)
       }
 
@@ -3287,10 +3727,12 @@ async function poll7TVEmoteSet() {
         type: 'channel_emotes_update',
         emotes: updatedEmotes,
         channelOwner: channelName,
-        platform
+        platform,
       })
 
-      browser.storage.local.set({ channel_emotes_map: getStorableChannelEmotes(), channel_emotes_fetched_at: channelEmotesFetchedAt }).catch(() => {})
+      browser.storage.local
+        .set({ channel_emotes_map: getStorableChannelEmotes(), channel_emotes_fetched_at: channelEmotesFetchedAt })
+        .catch(() => {})
       log(' 7TV Poll: Channel emotes updated for', channelName, '(now', updatedEmotes.length, 'total)')
     } catch (err) {
       // Silent fail — poll will retry next interval
@@ -3302,42 +3744,42 @@ async function poll7TVEmoteSet() {
 async function blockEmote(hash) {
   // Server stores blocks by hash only — silently 404s for empty/null hashes.
   // Reject early to prevent corrupting blockedEmotes Set with undefined entries.
-  if (!hash || typeof hash !== 'string') return { success: false, error: 'no hash' };
+  if (!hash || typeof hash !== 'string') return { success: false, error: 'no hash' }
   try {
-    const authToken = await getAuthCookie();
+    const authToken = await getAuthCookie()
     if (!authToken) {
       // Not logged in - use local storage
-      localBlockedEmotes.add(hash);
-      markBlockToggle(hash, 'blocked');
-      await saveLocalBlockedEmotes();
+      localBlockedEmotes.add(hash)
+      markBlockToggle(hash, 'blocked')
+      await saveLocalBlockedEmotes()
 
-      const allBlocked = new Set([...blockedEmotes, ...localBlockedEmotes]);
-      broadcastToTabs({ type: 'blocked_update', blocked: Array.from(allBlocked) });
-      broadcastToTabs({ type: 'emote_blocked', hash });
-      return { success: true, local: true };
+      const allBlocked = new Set([...blockedEmotes, ...localBlockedEmotes])
+      broadcastToTabs({ type: 'blocked_update', blocked: Array.from(allBlocked) })
+      broadcastToTabs({ type: 'emote_blocked', hash })
+      return { success: true, local: true }
     }
 
     // Optimistically add to blockedEmotes BEFORE HTTP request
     // Prevents race where WS emote:blocked arrives before HTTP response
     // and triggers inventory_update → emoteGeneration++ → stack rebuild
-    blockedEmotes.add(hash);
-    markBlockToggle(hash, 'blocked');
+    blockedEmotes.add(hash)
+    markBlockToggle(hash, 'blocked')
 
     const response = await fetchWithTimeout(`${API_URL}/api/user/emotes/block`, {
       method: 'POST',
       credentials: 'omit', // Bearer-only → CSRF-exempt (cookie would trigger CSRF)
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authToken}`
+        Authorization: `Bearer ${authToken}`,
       },
-      body: JSON.stringify({ emote_hash: hash })
-    });
+      body: JSON.stringify({ emote_hash: hash }),
+    })
 
     if (!response.ok) {
       // Rollback optimistic add
-      blockedEmotes.delete(hash);
-      const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-      return { success: false, error: error.error || `HTTP ${response.status}` };
+      blockedEmotes.delete(hash)
+      const error = await response.json().catch(() => ({ error: 'Unknown error' }))
+      return { success: false, error: error.error || `HTTP ${response.status}` }
     }
 
     // 2-state model: block is a render-preference, not an inventory mutation.
@@ -3350,62 +3792,62 @@ async function blockEmote(hash) {
     // warm-boot rehydrate (line ~5211) — local-era hashes leak into the
     // server-truth Set and get re-broadcast as fake server blocks.
     persistServerBlockedEmotes()
-    broadcastToTabs({ type: 'blocked_update', blocked: Array.from(new Set([...blockedEmotes, ...localBlockedEmotes])) });
-    broadcastToTabs({ type: 'emote_blocked', hash });
-    return { success: true };
+    broadcastToTabs({ type: 'blocked_update', blocked: Array.from(new Set([...blockedEmotes, ...localBlockedEmotes])) })
+    broadcastToTabs({ type: 'emote_blocked', hash })
+    return { success: true }
   } catch (error) {
-    return { success: false, error: error.message || 'Network error' };
+    return { success: false, error: error.message || 'Network error' }
   }
 }
 
 // Unblock emote via HTTP - returns success/failure
 async function unblockEmote(hash) {
   // Same hash-validity guard as blockEmote — silent 404 corrupts state otherwise.
-  if (!hash || typeof hash !== 'string') return { success: false, error: 'no hash' };
+  if (!hash || typeof hash !== 'string') return { success: false, error: 'no hash' }
   try {
     // Always strip local block too — covers the anon→login transition where a
     // hash sits in localBlockedEmotes and the user expects "unblock" to clear
     // both layers. Without this, the picker (which reads merged via blocked_update)
     // shows the emote as blocked forever even after the server-side unblock.
-    const hadLocal = localBlockedEmotes.delete(hash);
-    if (hadLocal) await saveLocalBlockedEmotes();
+    const hadLocal = localBlockedEmotes.delete(hash)
+    if (hadLocal) await saveLocalBlockedEmotes()
 
-    const authToken = await getAuthCookie();
+    const authToken = await getAuthCookie()
     if (!authToken) {
-      markBlockToggle(hash, 'unblocked');
+      markBlockToggle(hash, 'unblocked')
 
-      const allBlocked = new Set([...blockedEmotes, ...localBlockedEmotes]);
-      broadcastToTabs({ type: 'blocked_update', blocked: Array.from(allBlocked) });
-      broadcastToTabs({ type: 'emote_unblocked', hash });
+      const allBlocked = new Set([...blockedEmotes, ...localBlockedEmotes])
+      broadcastToTabs({ type: 'blocked_update', blocked: Array.from(allBlocked) })
+      broadcastToTabs({ type: 'emote_unblocked', hash })
 
-      log(' 🔓 Unblocked emote locally (not logged in):', hash);
-      return { success: true, local: true };
+      log(' 🔓 Unblocked emote locally (not logged in):', hash)
+      return { success: true, local: true }
     }
 
     // If the hash was only ever a local block (anon-era), there's nothing to
     // delete on the server. Skip the HTTP call so a 404 doesn't surface as a
     // false failure to the picker.
-    const hadServer = blockedEmotes.has(hash);
+    const hadServer = blockedEmotes.has(hash)
     if (!hadServer && hadLocal) {
-      markBlockToggle(hash, 'unblocked');
-      const allBlocked = new Set([...blockedEmotes, ...localBlockedEmotes]);
-      broadcastToTabs({ type: 'blocked_update', blocked: Array.from(allBlocked) });
-      broadcastToTabs({ type: 'emote_unblocked', hash });
-      return { success: true, local: true };
+      markBlockToggle(hash, 'unblocked')
+      const allBlocked = new Set([...blockedEmotes, ...localBlockedEmotes])
+      broadcastToTabs({ type: 'blocked_update', blocked: Array.from(allBlocked) })
+      broadcastToTabs({ type: 'emote_unblocked', hash })
+      return { success: true, local: true }
     }
 
     // Optimistically remove from blockedEmotes BEFORE HTTP request
     // Prevents race where WS emote:unblocked arrives before HTTP response
-    blockedEmotes.delete(hash);
-    markBlockToggle(hash, 'unblocked');
+    blockedEmotes.delete(hash)
+    markBlockToggle(hash, 'unblocked')
 
     const response = await fetchWithTimeout(`${API_URL}/api/user/emotes/blocked/${hash}`, {
       method: 'DELETE',
       credentials: 'omit', // Bearer-only → CSRF-exempt (cookie would trigger CSRF)
       headers: {
-        'Authorization': `Bearer ${authToken}`
-      }
-    });
+        Authorization: `Bearer ${authToken}`,
+      },
+    })
 
     // Treat 404 as success — the hash isn't on the server, so "unblock" is a no-op.
     // Without this, hash-formula mismatches between block/unblock surfaces (24-slice
@@ -3413,20 +3855,20 @@ async function unblockEmote(hash) {
     // a network failure and the UI rolls back the optimistic local clear.
     if (!response.ok && response.status !== 404) {
       // Rollback optimistic delete
-      blockedEmotes.add(hash);
-      const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-      return { success: false, error: error.error || `HTTP ${response.status}` };
+      blockedEmotes.add(hash)
+      const error = await response.json().catch(() => ({ error: 'Unknown error' }))
+      return { success: false, error: error.error || `HTTP ${response.status}` }
     }
 
     persistServerBlockedEmotes()
     // Picker subscribes to `blocked_update` (merged set) only — without this
     // broadcast the open picker keeps showing the just-unblocked emote as
     // blocked until its next `get_inventory` round-trip.
-    broadcastToTabs({ type: 'blocked_update', blocked: Array.from(new Set([...blockedEmotes, ...localBlockedEmotes])) });
-    broadcastToTabs({ type: 'emote_unblocked', hash });
-    return { success: true };
+    broadcastToTabs({ type: 'blocked_update', blocked: Array.from(new Set([...blockedEmotes, ...localBlockedEmotes])) })
+    broadcastToTabs({ type: 'emote_unblocked', hash })
+    return { success: true }
   } catch (error) {
-    return { success: false, error: error.message || 'Network error' };
+    return { success: false, error: error.message || 'Network error' }
   }
 }
 
@@ -3458,11 +3900,13 @@ function recomputeBadge() {
     badgeApi.setBadgeText({ text: '' }).catch(() => {})
   }
 }
-function updateExtensionBadge() { recomputeBadge() }
+function updateExtensionBadge() {
+  recomputeBadge()
+}
 
 // Persist muted users to storage as { username, expiresAt } objects
 function persistMutedUsers() {
-  const arr = Array.from(mutedUsers.entries()).map(([username, expiresAt]) => ({ username, expiresAt }));
+  const arr = Array.from(mutedUsers.entries()).map(([username, expiresAt]) => ({ username, expiresAt }))
   browser.storage.local.set({ muted_users: arr }).catch(() => {})
 }
 
@@ -3480,7 +3924,7 @@ async function fetchServerMutes() {
     })
     if (!res.ok) return // 401 = not logged in, skip silently
     const data = await res.json()
-    const list = Array.isArray(data) ? data : (Array.isArray(data?.mutes) ? data.mutes : null)
+    const list = Array.isArray(data) ? data : Array.isArray(data?.mutes) ? data.mutes : null
     if (!list) return
     const now = Date.now()
     let changed = false
@@ -3518,7 +3962,7 @@ async function syncMuteToServer(username, expiresAtMs) {
   }
   const res = await fetch('https://heatsync.org/api/mutes', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(8000),
   })
@@ -3530,7 +3974,7 @@ async function syncUnmuteToServer(username) {
   if (!token) return
   const res = await fetch(`https://heatsync.org/api/mutes/${encodeURIComponent(username.toLowerCase())}`, {
     method: 'DELETE',
-    headers: { 'Authorization': `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}` },
     signal: AbortSignal.timeout(8000),
   })
   if (!res.ok) log(' /api/mutes DELETE', res.status)
@@ -3538,20 +3982,20 @@ async function syncUnmuteToServer(username) {
 
 // Remove expired mutes and broadcast unmutes
 function pruneExpiredMutes() {
-  const now = Date.now();
-  const expired = [];
+  const now = Date.now()
+  const expired = []
   for (const [username, expiresAt] of mutedUsers) {
     if (expiresAt !== null && expiresAt <= now) {
-      expired.push(username);
+      expired.push(username)
     }
   }
   if (expired.length > 0) {
-    expired.forEach(u => {
-      mutedUsers.delete(u);
-      broadcastToTabs({ type: 'user_unmuted', username: u });
-    });
-    persistMutedUsers();
-    log(' Pruned', expired.length, 'expired mutes');
+    expired.forEach((u) => {
+      mutedUsers.delete(u)
+      broadcastToTabs({ type: 'user_unmuted', username: u })
+    })
+    persistMutedUsers()
+    log(' Pruned', expired.length, 'expired mutes')
   }
 }
 
@@ -3565,7 +4009,9 @@ const TAB_CACHE_TTL = 2000 // 2 seconds
 async function getMatchingTabs() {
   const now = Date.now()
   if (_cachedTabs && now - _cachedTabsAt < TAB_CACHE_TTL) return _cachedTabs
-  _cachedTabs = await browser.tabs.query({ url: ['*://*.twitch.tv/*', '*://*.kick.com/*', '*://*.youtube.com/*', '*://*.heatsync.org/*', '*://heatsync.org/*'] })
+  _cachedTabs = await browser.tabs.query({
+    url: ['*://*.twitch.tv/*', '*://*.kick.com/*', '*://*.youtube.com/*', '*://*.heatsync.org/*', '*://heatsync.org/*'],
+  })
   _cachedTabsAt = now
   return _cachedTabs
 }
@@ -3628,58 +4074,58 @@ const WS_STATE = {
   DISCONNECTED: 0,
   CONNECTING: 1,
   CONNECTED: 2,
-  AUTHENTICATED: 3
-};
+  AUTHENTICATED: 3,
+}
 
-let wsState = WS_STATE.DISCONNECTED;
-let isAuthenticated = false;
-let socketAuthToken = null;
-let reconnectAttempts = 0;
-let heartbeatInterval = null; // Keep connection alive
-let reconnectTimer = null;
-let pendingReconnectSpreadMs = 0; // Set by server:shutdown — consumed once on next scheduleReconnect to spread the herd
+let wsState = WS_STATE.DISCONNECTED
+let isAuthenticated = false
+let socketAuthToken = null
+let reconnectAttempts = 0
+let heartbeatInterval = null // Keep connection alive
+let reconnectTimer = null
+let pendingReconnectSpreadMs = 0 // Set by server:shutdown — consumed once on next scheduleReconnect to spread the herd
 // Set on extension install/update or browser startup. Consumed once by the
 // first connectWebSocket() to delay 0–60s, so 30k clients auto-updating in
 // the same window don't slam /ws simultaneously.
-let pendingStartupJitterMs = 0;
-let messageQueue = []; // Queue messages when socket not ready
-let connectionPromise = null; // Track ongoing connection attempt
-let lastWsDataReceived = 0; // Timestamp of last received WS message (zombie detection)
+let pendingStartupJitterMs = 0
+const messageQueue = [] // Queue messages when socket not ready
+let connectionPromise = null // Track ongoing connection attempt
+let lastWsDataReceived = 0 // Timestamp of last received WS message (zombie detection)
 
 function isSocketOpen() {
-  return socket && socket.readyState === WebSocket.OPEN;
+  return socket && socket.readyState === WebSocket.OPEN
 }
 
-const MESSAGE_QUEUE_TTL = 60000; // 60 seconds — matches max reconnect backoff + jitter
+const MESSAGE_QUEUE_TTL = 60000 // 60 seconds — matches max reconnect backoff + jitter
 
 // Flush queued messages when socket becomes ready
 function flushMessageQueue() {
-  if (!isSocketOpen()) return;
+  if (!isSocketOpen()) return
 
-  const now = Date.now();
+  const now = Date.now()
   // Drop messages older than TTL before counting
   while (messageQueue.length > 0 && now - messageQueue[0]._queuedAt > MESSAGE_QUEUE_TTL) {
-    log(` 🗑 Dropping stale queued message: ${messageQueue[0].type}`);
-    messageQueue.shift();
+    log(` 🗑 Dropping stale queued message: ${messageQueue[0].type}`)
+    messageQueue.shift()
   }
 
-  const queued = messageQueue.length;
+  const queued = messageQueue.length
   if (queued > 0) {
-    log(` 📤 Flushing ${queued} queued messages`);
+    log(` 📤 Flushing ${queued} queued messages`)
   }
 
   while (messageQueue.length > 0 && isSocketOpen()) {
-    const msg = messageQueue.shift();
+    const msg = messageQueue.shift()
     if (now - msg._queuedAt > MESSAGE_QUEUE_TTL) {
-      log(` 🗑 Dropping stale queued message: ${msg.type}`);
-      continue;
+      log(` 🗑 Dropping stale queued message: ${msg.type}`)
+      continue
     }
     try {
-      socket.send(JSON.stringify(msg));
-      log(` 📤 Sent queued: ${msg.type}`);
+      socket.send(JSON.stringify(msg))
+      log(` 📤 Sent queued: ${msg.type}`)
     } catch (err) {
-      messageQueue.unshift(msg); // Put it back
-      break;
+      messageQueue.unshift(msg) // Put it back
+      break
     }
   }
 }
@@ -3687,55 +4133,55 @@ function flushMessageQueue() {
 async function connectWebSocket() {
   // If already connecting, wait for that attempt
   if (wsState === WS_STATE.CONNECTING && connectionPromise) {
-    log(' Connection in progress, waiting...');
-    return connectionPromise;
+    log(' Connection in progress, waiting...')
+    return connectionPromise
   }
 
   // Consume startup jitter once. SW evictions during the wait are fine —
   // storage.session preserves the deadline so the next wake honors what's left.
   if (pendingStartupJitterMs > 0) {
-    const ms = pendingStartupJitterMs;
-    pendingStartupJitterMs = 0;
+    const ms = pendingStartupJitterMs
+    pendingStartupJitterMs = 0
     browser.storage.session?.remove('startup_jitter_at').catch(() => {})
-    log(` ⏱ Startup jitter: delaying first connect by ${Math.round(ms)}ms`);
-    await new Promise(r => setTimeout(r, ms));
+    log(` ⏱ Startup jitter: delaying first connect by ${Math.round(ms)}ms`)
+    await new Promise((r) => setTimeout(r, ms))
   }
 
   // If already connected with SAME token, skip
   if (isSocketOpen() && socketAuthToken === authToken && wsState >= WS_STATE.CONNECTED) {
-    log(' Already connected with same token');
-    return Promise.resolve();
+    log(' Already connected with same token')
+    return Promise.resolve()
   }
 
   // If connected with DIFFERENT token, disconnect first
   if (isSocketOpen() && socketAuthToken !== authToken) {
-    log(' 🔄 Token changed, reconnecting...');
-    clearTimeout(reconnectTimer);
-    reconnectTimer = null;
-    socket.onclose = null; // prevent scheduleReconnect on intentional close
-    socket.onmessage = null;
-    socket.onopen = null;
-    socket.onerror = null;
-    socket.close();
-    wsState = WS_STATE.DISCONNECTED;
-    isAuthenticated = false;
+    log(' 🔄 Token changed, reconnecting...')
+    clearTimeout(reconnectTimer)
+    reconnectTimer = null
+    socket.onclose = null // prevent scheduleReconnect on intentional close
+    socket.onmessage = null
+    socket.onopen = null
+    socket.onerror = null
+    socket.close()
+    wsState = WS_STATE.DISCONNECTED
+    isAuthenticated = false
   }
 
   // Claim CONNECTING state BEFORE any await to block concurrent callers
-  wsState = WS_STATE.CONNECTING;
+  wsState = WS_STATE.CONNECTING
   connectionPromise = new Promise((resolve, reject) => {
     // Run async work inside the promise executor so the lock is held before any yield
     ;(async () => {
       // Load auth token if needed (async — but lock is already held above)
       if (!authToken) {
-        log(' Loading auth token before connecting...');
-        await getAuthCookie();
+        log(' Loading auth token before connecting...')
+        await getAuthCookie()
       }
 
-      socketAuthToken = authToken;
+      socketAuthToken = authToken
 
-      const wsEndpoint = `${WS_URL.replace('https://', 'wss://').replace('http://', 'ws://')}/ws`;
-      log(' 🔌 Connecting to WebSocket:', wsEndpoint, 'with auth:', !!authToken);
+      const wsEndpoint = `${WS_URL.replace('https://', 'wss://').replace('http://', 'ws://')}/ws`
+      log(' 🔌 Connecting to WebSocket:', wsEndpoint, 'with auth:', !!authToken)
 
       // Defensive: detach handlers from any prior closed/closing socket before reassigning
       if (socket) {
@@ -3750,39 +4196,39 @@ async function connectWebSocket() {
       }
 
       try {
-        socket = new WebSocket(wsEndpoint);
+        socket = new WebSocket(wsEndpoint)
       } catch (err) {
-        wsState = WS_STATE.DISCONNECTED;
-        connectionPromise = null;
-        scheduleReconnect();
-        reject(err);
-        return;
+        wsState = WS_STATE.DISCONNECTED
+        connectionPromise = null
+        scheduleReconnect()
+        reject(err)
+        return
       }
 
       // Connection timeout (10 seconds)
       const connectTimeout = setTimeout(() => {
         if (wsState === WS_STATE.CONNECTING) {
-          socket.close();
-          wsState = WS_STATE.DISCONNECTED;
-          connectionPromise = null;
-          scheduleReconnect();
-          reject(new Error('Connection timeout'));
+          socket.close()
+          wsState = WS_STATE.DISCONNECTED
+          connectionPromise = null
+          scheduleReconnect()
+          reject(new Error('Connection timeout'))
         }
-      }, 10000);
+      }, 10000)
 
       socket.onopen = () => {
-        clearTimeout(connectTimeout);
-        log(' ✅ WebSocket connected');
+        clearTimeout(connectTimeout)
+        log(' ✅ WebSocket connected')
         // Clear "down" banner once we reconnect
         if (reconnectAttempts >= 3) {
           broadcastToTabs({ type: 'api_status', source: 'heatsync', state: 'up' })
         }
-        reconnectAttempts = 0;
-        wsState = WS_STATE.CONNECTED;
+        reconnectAttempts = 0
+        wsState = WS_STATE.CONNECTED
         // Reset zombie-detection timestamp; otherwise a stale lastWsDataReceived
         // from before the disconnect makes the first heartbeat (90s later) trip
         // the 2min idle threshold and immediately kill the fresh socket.
-        lastWsDataReceived = Date.now();
+        lastWsDataReceived = Date.now()
 
         // Two-layer heartbeat:
         //   1) chrome.alarms 'hs-ws-watchdog' (30s) survives SW eviction — wakes
@@ -3792,12 +4238,21 @@ async function connectWebSocket() {
         //      lifetime indefinitely). With this, SW never idle-dies while WS
         //      is connected. Server tolerates duplicate heartbeats.
         // Immediate heartbeat so server sees us right after auth.
-        try { socket.send(JSON.stringify({ type: 'presence:heartbeat' })) } catch {}
-        if (heartbeatInterval) { untrackInterval(heartbeatInterval); heartbeatInterval = null }
-        heartbeatInterval = trackInterval(setInterval(() => {
-          if (!isSocketOpen()) return
-          try { socket.send(JSON.stringify({ type: 'presence:heartbeat' })) } catch {}
-        }, 20000))
+        try {
+          socket.send(JSON.stringify({ type: 'presence:heartbeat' }))
+        } catch {}
+        if (heartbeatInterval) {
+          untrackInterval(heartbeatInterval)
+          heartbeatInterval = null
+        }
+        heartbeatInterval = trackInterval(
+          setInterval(() => {
+            if (!isSocketOpen()) return
+            try {
+              socket.send(JSON.stringify({ type: 'presence:heartbeat' }))
+            } catch {}
+          }, 20000),
+        )
 
         // Build the connect-time burst as a single queue, then drain it with
         // 80ms spacing. Server enforces a 60-token global WS rate limit per
@@ -3826,11 +4281,13 @@ async function connectWebSocket() {
           for (const ch of BG_IRC.channels.keys()) {
             const buf = BG_IRC.channels.get(ch)
             const all = buf?.getAll() || []
-            const lastTs = all.length > 0 ? (all[all.length - 1].time || 0) : 0
+            const lastTs = all.length > 0 ? all[all.length - 1].time || 0 : 0
             burst.push({ type: 'irc:join', channel: ch })
             burst.push({ type: 'irc:resume', channel: ch, since: lastTs })
           }
-        } catch (e) { log('irc:resume replay err:', e?.message) }
+        } catch (e) {
+          log('irc:resume replay err:', e?.message)
+        }
         burst.push({ type: 'feed:join', feed: 'new' })
 
         log(` 🌊 Connect burst queued: ${burst.length} msgs over ~${burst.length * 80}ms`)
@@ -3842,85 +4299,97 @@ async function connectWebSocket() {
         })
 
         if (!authToken) {
-          log(' ℹ️ No auth token - viewer mode');
-          flushMessageQueue();
+          log(' ℹ️ No auth token - viewer mode')
+          flushMessageQueue()
         }
 
         // Re-subscribe to YouTube channels (global + per-channel)
         log('[hs-bg] WS connected, re-subscribing YouTube channels...')
-        browser.storage.local.get(['youtube_url']).then(data => {
-          log('[hs-bg] stored youtube data:', JSON.stringify(data))
-          // Global YouTube (live tab)
-          if (data.youtube_url) {
-            const vidMatch = data.youtube_url.match(/[?&]v=([^&]+)/) || data.youtube_url.match(/\/live\/([^?&\/]+)/) || data.youtube_url.match(/youtu\.be\/([^?&]+)/)
-            if (vidMatch) setYtVideoChannel(vidMatch[1], 'global')
-            wsSend({ type: 'youtube:subscribe', url: data.youtube_url })
-          }
-          // Per-channel YouTube URLs from in-memory map
-          for (const [channelId, url] of Object.entries(youtubeChannelUrls)) {
-            const vidMatch = url.match(/[?&]v=([^&]+)/) || url.match(/\/live\/([^?&\/]+)/) || url.match(/youtu\.be\/([^?&]+)/)
-            if (vidMatch) setYtVideoChannel(vidMatch[1], channelId)
-            wsSend({ type: 'youtube:subscribe', url, channelId })
-          }
-        }).catch(() => {})
+        browser.storage.local
+          .get(['youtube_url'])
+          .then((data) => {
+            log('[hs-bg] stored youtube data:', JSON.stringify(data))
+            // Global YouTube (live tab)
+            if (data.youtube_url) {
+              const vidMatch =
+                data.youtube_url.match(/[?&]v=([^&]+)/) ||
+                data.youtube_url.match(/\/live\/([^?&/]+)/) ||
+                data.youtube_url.match(/youtu\.be\/([^?&]+)/)
+              if (vidMatch) setYtVideoChannel(vidMatch[1], 'global')
+              wsSend({ type: 'youtube:subscribe', url: data.youtube_url })
+            }
+            // Per-channel YouTube URLs from in-memory map
+            for (const [channelId, url] of Object.entries(youtubeChannelUrls)) {
+              const vidMatch =
+                url.match(/[?&]v=([^&]+)/) || url.match(/\/live\/([^?&/]+)/) || url.match(/youtu\.be\/([^?&]+)/)
+              if (vidMatch) setYtVideoChannel(vidMatch[1], channelId)
+              wsSend({ type: 'youtube:subscribe', url, channelId })
+            }
+          })
+          .catch(() => {})
 
-        connectionPromise = null;
-        resolve();
-      };
+        connectionPromise = null
+        resolve()
+      }
 
       socket.onmessage = (event) => {
-        lastWsDataReceived = Date.now();
+        lastWsDataReceived = Date.now()
         try {
-          const msg = JSON.parse(event.data);
-          handleWSMessage(msg);
+          const msg = JSON.parse(event.data)
+          handleWSMessage(msg)
         } catch (err) {
-          log(' WS message parse error:', err?.message);
+          log(' WS message parse error:', err?.message)
         }
-      };
+      }
 
       socket.onclose = (event) => {
-        clearTimeout(connectTimeout);
+        clearTimeout(connectTimeout)
         if (heartbeatInterval) {
-          untrackInterval(heartbeatInterval);
-          heartbeatInterval = null;
+          untrackInterval(heartbeatInterval)
+          heartbeatInterval = null
         }
-        log(' ⚠️ WebSocket disconnected:', event.code, event.reason);
+        log(' ⚠️ WebSocket disconnected:', event.code, event.reason)
         // Detach handlers from the closing socket so its closure releases
-        const closing = event?.target;
+        const closing = event?.target
         if (closing) {
-          try { closing.onopen = null; closing.onmessage = null; closing.onerror = null; closing.onclose = null } catch {}
+          try {
+            closing.onopen = null
+            closing.onmessage = null
+            closing.onerror = null
+            closing.onclose = null
+          } catch {}
         }
-        wsState = WS_STATE.DISCONNECTED;
-        isAuthenticated = false;
-        connectionPromise = null;
-        scheduleReconnect();
-      };
+        wsState = WS_STATE.DISCONNECTED
+        isAuthenticated = false
+        connectionPromise = null
+        scheduleReconnect()
+      }
 
       socket.onerror = (err) => {
         log(' WebSocket error:', err?.message || 'unknown')
-      };
-    })().catch(err => {
-      wsState = WS_STATE.DISCONNECTED;
-      connectionPromise = null;
-      scheduleReconnect();
-      reject(err);
-    });
-  });
+      }
+    })().catch((err) => {
+      wsState = WS_STATE.DISCONNECTED
+      connectionPromise = null
+      scheduleReconnect()
+      reject(err)
+    })
+  })
 
-  return connectionPromise;
+  return connectionPromise
 }
 
 // Direct send (bypasses queue) - used internally
 function wsSendDirect(msg) {
   if (!isSocketOpen()) {
-    log(' Cannot send direct - socket not open');
-    return false;
+    log(' Cannot send direct - socket not open')
+    return false
   }
   try {
-    socket.send(JSON.stringify(msg));
-    return true;
+    socket.send(JSON.stringify(msg))
+    return true
   } catch (err) {
-    return false;
+    return false
   }
 }
 
@@ -3929,924 +4398,976 @@ function wsSend(msg) {
   // If socket is open and ready, send immediately
   if (isSocketOpen()) {
     try {
-      socket.send(JSON.stringify(msg));
-      return true;
+      socket.send(JSON.stringify(msg))
+      return true
     } catch (err) {
-      return false;
+      return false
     }
   }
 
   // Queue the message and ensure we're connecting
-  log(` 📥 Queueing message: ${msg.type}`);
-  msg._queuedAt = Date.now();
-  messageQueue.push(msg);
+  log(` 📥 Queueing message: ${msg.type}`)
+  msg._queuedAt = Date.now()
+  messageQueue.push(msg)
 
   // Limit queue size to prevent memory issues
   if (messageQueue.length > 50) {
-    messageQueue.shift(); // Remove oldest
+    messageQueue.shift() // Remove oldest
   }
 
   // Trigger connection if not already connecting
   if (wsState === WS_STATE.DISCONNECTED) {
-    connectWebSocket().catch(err => log(' WS connect failed:', err?.message));
+    connectWebSocket().catch((err) => log(' WS connect failed:', err?.message))
   }
 
-  return false;
+  return false
 }
 
 // Handle incoming WebSocket messages
 function handleWSMessage(msg) {
   try {
-  log(' 📨 WS message received:', msg.type, msg);
+    log(' 📨 WS message received:', msg.type, msg)
 
-  switch (msg.type) {
-    case 'authenticated':
-      log(' ✅ Authenticated, userId:', msg.userId);
-      isAuthenticated = true;
-      wsState = WS_STATE.AUTHENTICATED;
-      // Flush any queued messages now that we're authenticated
-      flushMessageQueue();
-      // Pull server mute list once per session so heatsync.org mutes are
-      // reflected immediately (WS events only arrive for changes while connected)
-      fetchServerMutes().catch(() => {})
-      break;
+    switch (msg.type) {
+      case 'authenticated':
+        log(' ✅ Authenticated, userId:', msg.userId)
+        isAuthenticated = true
+        wsState = WS_STATE.AUTHENTICATED
+        // Flush any queued messages now that we're authenticated
+        flushMessageQueue()
+        // Pull server mute list once per session so heatsync.org mutes are
+        // reflected immediately (WS events only arrive for changes while connected)
+        fetchServerMutes().catch(() => {})
+        break
 
-    case 'server:shutdown':
-      // Server is restarting and asking clients to spread reconnects across a
-      // window so 10k+ extensions don't dogpile the freshly-restarted box.
-      // Honors `reconnectSpreadMs` from the server's payload.
-      if (typeof msg.reconnectSpreadMs === 'number' && msg.reconnectSpreadMs > 0) {
-        pendingReconnectSpreadMs = Math.min(60000, msg.reconnectSpreadMs);
-        log(` 🌊 Server shutdown — will spread reconnect over ${pendingReconnectSpreadMs}ms`);
-      }
-      break;
+      case 'server:shutdown':
+        // Server is restarting and asking clients to spread reconnects across a
+        // window so 10k+ extensions don't dogpile the freshly-restarted box.
+        // Honors `reconnectSpreadMs` from the server's payload.
+        if (typeof msg.reconnectSpreadMs === 'number' && msg.reconnectSpreadMs > 0) {
+          pendingReconnectSpreadMs = Math.min(60000, msg.reconnectSpreadMs)
+          log(` 🌊 Server shutdown — will spread reconnect over ${pendingReconnectSpreadMs}ms`)
+        }
+        break
 
-    case 'authentication_failed':
-      isAuthenticated = false;
-      authToken = null;
-      authFailedBlock = true;
-      _serverMutesFetched = false // reset so re-login triggers a fresh sync
-      // Drop the stored token so the next reconnect (after a fresh login)
-      // doesn't keep replaying the dead one and looping us back to here.
-      browser.storage.local.remove(['auth_token_encrypted', 'auth_token']).catch(() => {})
-      if (socket) { socket.close(); }
-      // Tell content scripts so the multichat panel can prompt the user to
-      // log in — without this signal YT chat (which depends on the server
-      // scraping for us) silently produces zero messages.
-      broadcastToTabs({ type: 'auth_changed', loggedIn: false, reason: 'authentication_failed' })
-      break;
+      case 'authentication_failed':
+        isAuthenticated = false
+        authToken = null
+        authFailedBlock = true
+        _serverMutesFetched = false // reset so re-login triggers a fresh sync
+        // Drop the stored token so the next reconnect (after a fresh login)
+        // doesn't keep replaying the dead one and looping us back to here.
+        browser.storage.local.remove(['auth_token_encrypted', 'auth_token']).catch(() => {})
+        if (socket) {
+          socket.close()
+        }
+        // Tell content scripts so the multichat panel can prompt the user to
+        // log in — without this signal YT chat (which depends on the server
+        // scraping for us) silently produces zero messages.
+        broadcastToTabs({ type: 'auth_changed', loggedIn: false, reason: 'authentication_failed' })
+        break
 
-    case 'emote:broadcast':
-      if (msg.emoteData?.url) {
-        msg.emoteData.url = absUrl(msg.emoteData.url)
-        if (!/^https:\/\//.test(msg.emoteData.url)) break
-      }
-      if (msg.emoteName) msg.emoteName = String(msg.emoteName).slice(0, 100)
-      log(' 📢 EMOTE BROADCAST RECEIVED:', {
-        username: msg.username,
-        emoteName: msg.emoteName,
-        emoteUrl: msg.emoteData?.url
-      })
-      broadcastToTabs({
-        type: 'emote_broadcast',
-        username: msg.username,
-        emoteName: msg.emoteName,
-        emoteData: msg.emoteData
-      });
-      break;
+      case 'emote:broadcast':
+        if (msg.emoteData?.url) {
+          msg.emoteData.url = absUrl(msg.emoteData.url)
+          if (!/^https:\/\//.test(msg.emoteData.url)) break
+        }
+        if (msg.emoteName) msg.emoteName = String(msg.emoteName).slice(0, 100)
+        log(' 📢 EMOTE BROADCAST RECEIVED:', {
+          username: msg.username,
+          emoteName: msg.emoteName,
+          emoteUrl: msg.emoteData?.url,
+        })
+        broadcastToTabs({
+          type: 'emote_broadcast',
+          username: msg.username,
+          emoteName: msg.emoteName,
+          emoteData: msg.emoteData,
+        })
+        break
 
-    case 'emote:removed':
-      // Could be broadcast (other users) OR personal inventory removal
-      if (msg.slot !== undefined) {
-        // Personal inventory removal (has slot number)
-        log(' 🗑️ EMOTE REMOVED FROM YOUR INVENTORY:', msg.name, 'slot:', msg.slot)
-        scheduleInventoryRefresh()
-      } else if (msg.username) {
-        // Broadcast from other user. Invalidate the cached sender_emote_set
-        // for that user — without this, their /api/users/emotes/batch entry
-        // stays cached (5min TTL) and OTHER tabs keep rendering the removed
-        // emote in their messages.
-        log(' 🗑️ EMOTE REMOVED BROADCAST:', msg);
-        if (globalThis.__senderEmoteCache && msg.emoteName) {
-          for (const [k, hit] of globalThis.__senderEmoteCache) {
-            if (hit?.emotes && msg.emoteName in hit.emotes) {
-              delete hit.emotes[msg.emoteName]
+      case 'emote:removed':
+        // Could be broadcast (other users) OR personal inventory removal
+        if (msg.slot !== undefined) {
+          // Personal inventory removal (has slot number)
+          log(' 🗑️ EMOTE REMOVED FROM YOUR INVENTORY:', msg.name, 'slot:', msg.slot)
+          scheduleInventoryRefresh()
+        } else if (msg.username) {
+          // Broadcast from other user. Invalidate the cached sender_emote_set
+          // for that user — without this, their /api/users/emotes/batch entry
+          // stays cached (5min TTL) and OTHER tabs keep rendering the removed
+          // emote in their messages.
+          log(' 🗑️ EMOTE REMOVED BROADCAST:', msg)
+          if (globalThis.__senderEmoteCache && msg.emoteName) {
+            for (const [k, hit] of globalThis.__senderEmoteCache) {
+              if (hit?.emotes && msg.emoteName in hit.emotes) {
+                delete hit.emotes[msg.emoteName]
+              }
             }
           }
+          broadcastToTabs({
+            type: 'emote_removed_broadcast',
+            username: msg.username,
+            emoteName: msg.emoteName,
+          })
+        }
+        break
+
+      case 'emote:added':
+        // Two shapes:
+        //  - Personal add (msg.slot present): server saved YOUR own add, refresh
+        //    inventory. (User-side broadcast on own add via website upload.)
+        //  - Broadcast (msg.username present): a DIFFERENT user added an emote.
+        //    Mirror of emote:removed broadcast. Invalidate cached sender sets so
+        //    other viewers' panels refetch and pick up the new emote without
+        //    waiting for the 5-min senderEmoteFetchedAt TTL.
+        if (msg.slot !== undefined) {
+          log(' ✅ EMOTE ADDED TO INVENTORY:', msg.name, 'slot:', msg.slot)
+          scheduleInventoryRefresh()
+        } else if (msg.username) {
+          log(' ➕ EMOTE ADDED BROADCAST:', msg)
+          // Drop any cached entries so the next get_sender_emotes returns fresh
+          // server data (which will now include the new emote).
+          if (globalThis.__senderEmoteCache) {
+            globalThis.__senderEmoteCache.clear()
+          }
+          broadcastToTabs({
+            type: 'emote_added_broadcast',
+            username: msg.username,
+            emoteName: msg.emoteName,
+          })
+        }
+        break
+
+      case 'emotes:refresh':
+        // Bulk inventory change from the site (apply saved set, channel-import,
+        // shared-set import, undo/redo). Without this case the event fell through
+        // and the inventory stayed stale until the 60s poll — the applied/imported
+        // emotes silently didn't render.
+        log(' 🔄 EMOTES REFRESH (bulk inventory change)')
+        scheduleInventoryRefresh()
+        break
+
+      case 'emote:blocked':
+        // Skip if user just unblocked locally — late WS echo would otherwise re-add.
+        if (recentBlockToggleState(msg.hash) === 'unblocked') break
+        if (msg.hash && !blockedEmotes.has(msg.hash)) {
+          blockedEmotes.add(msg.hash)
+          browser.storage.local.set({ blocked_emotes: Array.from(blockedEmotes) }).catch(() => {})
+          // 2-state model: block preserves inventory. No emoteInventory filter,
+          // no inventory_update broadcast — only the blocked_update + emote_blocked
+          // events that tell tabs to start painting the dashed-rect overlay.
+          broadcastToTabs({ type: 'blocked_update', blocked: [...blockedEmotes, ...localBlockedEmotes] })
+          broadcastToTabs({ type: 'emote_blocked', hash: msg.hash })
+        }
+        break
+
+      case 'emote:unblocked':
+        // Skip if user just blocked locally — late WS echo would otherwise re-remove.
+        if (recentBlockToggleState(msg.hash) === 'blocked') break
+        if (msg.hash && blockedEmotes.has(msg.hash)) {
+          blockedEmotes.delete(msg.hash)
+          browser.storage.local.set({ blocked_emotes: Array.from(blockedEmotes) }).catch(() => {})
+          // Refresh inventory in case the unblocked emote should be restored
+          scheduleInventoryRefresh()
+          broadcastToTabs({ type: 'blocked_update', blocked: [...blockedEmotes, ...localBlockedEmotes] })
+          broadcastToTabs({ type: 'emote_unblocked', hash: msg.hash })
+        }
+        break
+
+      case 'ui-state:update':
+        // Cross-surface UI prefs sync — server merged a patch from another
+        // client and is fanning out the full state. Mirror into chrome.storage
+        // .sync.ui_settings so the existing storage.onChanged listener applies
+        // every key live (zebra/timestamps/avatars/active tab/etc).
+        // Sanitize the patch first — never trust server-fanned-out state. A
+        // single malformed payload here will otherwise corrupt every client of
+        // this user permanently (sync replicates everywhere; once bad data is
+        // in, every tab and the heatsync.org chat-tile inherit it).
+        if (msg.state && typeof msg.state === 'object') {
+          const cleanState = sanitizeUiSettings(msg.state)
+          const cleanKeys = Object.keys(cleanState)
+          if (cleanKeys.length === 0) break
+          log(' 🎛️  ui-state sync received:', cleanKeys.length, 'keys')
+          uiSettingsRmw((ui) => sanitizeUiSettings({ ...ui, ...cleanState }))
+          broadcastToTabs({ type: 'ui_state_update', state: cleanState })
+        }
+        break
+
+      case 'multichat:config':
+        // Cross-device sync: server sent updated multichat config
+        if (Array.isArray(msg.channels)) {
+          // Validate channel objects — reject malformed data to prevent CRLF injection in IRC.
+          // twitch is sent to IRC so it must be username-shaped. kick allows hyphens.
+          // youtube is a full https URL we resolve later; reject anything else.
+          const validChannels = msg.channels.filter((ch) => {
+            if (!ch || typeof ch !== 'object') return false
+            if (ch.twitch && (typeof ch.twitch !== 'string' || !/^[a-zA-Z0-9_]{1,25}$/.test(ch.twitch))) return false
+            if (ch.kick && (typeof ch.kick !== 'string' || !/^[a-zA-Z0-9_-]{1,25}$/.test(ch.kick))) return false
+            if (
+              ch.youtube &&
+              (typeof ch.youtube !== 'string' ||
+                !/^https:\/\/(www\.)?youtube\.com\//i.test(ch.youtube) ||
+                /[\r\n]/.test(ch.youtube))
+            )
+              return false
+            return true
+          })
+          log(' 📋 Multichat config sync received:', validChannels.length, 'channels')
+          browser.storage.local
+            .get(['heatsync_multichat'])
+            .then((data) => {
+              const current = data.heatsync_multichat || { channels: [], enabled: true }
+              const currentJson = JSON.stringify(current.channels)
+              const newJson = JSON.stringify(validChannels)
+              if (currentJson !== newJson) {
+                browser.storage.local.set({ heatsync_multichat: { ...current, channels: validChannels } })
+              }
+            })
+            .catch(() => {})
+        }
+        break
+
+      case 'new-message': {
+        log(' New message received:', msg)
+        // Only show posts from followed users, exclude anonymous
+        const msgUser = (msg.username || '').toLowerCase()
+        if (msg.username === 'Anonymous') {
+          log(' Skipping feed post — anonymous')
+          break
+        }
+        if (currentUsername && msgUser === currentUsername.toLowerCase()) {
+          // Always show own posts
+        } else if (!followedUsers.some((u) => u.toLowerCase() === msgUser)) {
+          log(' Skipping feed post — not followed')
+          break
         }
         broadcastToTabs({
-          type: 'emote_removed_broadcast',
-          username: msg.username,
-          emoteName: msg.emoteName
-        });
+          type: 'new-message',
+          data: msg,
+        })
+        break
       }
-      break;
 
-    case 'emote:added':
-      // Two shapes:
-      //  - Personal add (msg.slot present): server saved YOUR own add, refresh
-      //    inventory. (User-side broadcast on own add via website upload.)
-      //  - Broadcast (msg.username present): a DIFFERENT user added an emote.
-      //    Mirror of emote:removed broadcast. Invalidate cached sender sets so
-      //    other viewers' panels refetch and pick up the new emote without
-      //    waiting for the 5-min senderEmoteFetchedAt TTL.
-      if (msg.slot !== undefined) {
-        log(' ✅ EMOTE ADDED TO INVENTORY:', msg.name, 'slot:', msg.slot)
-        scheduleInventoryRefresh()
-      } else if (msg.username) {
-        log(' ➕ EMOTE ADDED BROADCAST:', msg)
-        // Drop any cached entries so the next get_sender_emotes returns fresh
-        // server data (which will now include the new emote).
-        if (globalThis.__senderEmoteCache) {
-          globalThis.__senderEmoteCache.clear()
-        }
+      case 'message-updated':
+        broadcastToTabs({ type: 'message-updated', data: msg })
+        break
+
+      case 'message-edited':
+        broadcastToTabs({ type: 'message-edited', data: msg })
+        break
+
+      case 'message-deleted':
+        broadcastToTabs({ type: 'message-deleted', data: msg })
+        break
+
+      case 'notification:new':
+        log(' Notification received:', msg)
+        unreadNotifCount++
+        updateExtensionBadge()
         broadcastToTabs({
-          type: 'emote_added_broadcast',
-          username: msg.username,
-          emoteName: msg.emoteName
+          type: 'notification:new',
+          data: msg.data,
         })
-      }
-      break
+        break
 
-    case 'emotes:refresh':
-      // Bulk inventory change from the site (apply saved set, channel-import,
-      // shared-set import, undo/redo). Without this case the event fell through
-      // and the inventory stayed stale until the 60s poll — the applied/imported
-      // emotes silently didn't render.
-      log(' 🔄 EMOTES REFRESH (bulk inventory change)')
-      scheduleInventoryRefresh()
-      break
-
-    case 'emote:blocked':
-      // Skip if user just unblocked locally — late WS echo would otherwise re-add.
-      if (recentBlockToggleState(msg.hash) === 'unblocked') break;
-      if (msg.hash && !blockedEmotes.has(msg.hash)) {
-        blockedEmotes.add(msg.hash)
-        browser.storage.local.set({ blocked_emotes: Array.from(blockedEmotes) }).catch(() => {})
-        // 2-state model: block preserves inventory. No emoteInventory filter,
-        // no inventory_update broadcast — only the blocked_update + emote_blocked
-        // events that tell tabs to start painting the dashed-rect overlay.
-        broadcastToTabs({ type: 'blocked_update', blocked: [...blockedEmotes, ...localBlockedEmotes] })
-        broadcastToTabs({ type: 'emote_blocked', hash: msg.hash })
-      }
-      break
-
-    case 'emote:unblocked':
-      // Skip if user just blocked locally — late WS echo would otherwise re-remove.
-      if (recentBlockToggleState(msg.hash) === 'blocked') break;
-      if (msg.hash && blockedEmotes.has(msg.hash)) {
-        blockedEmotes.delete(msg.hash)
-        browser.storage.local.set({ blocked_emotes: Array.from(blockedEmotes) }).catch(() => {})
-        // Refresh inventory in case the unblocked emote should be restored
-        scheduleInventoryRefresh()
-        broadcastToTabs({ type: 'blocked_update', blocked: [...blockedEmotes, ...localBlockedEmotes] })
-        broadcastToTabs({ type: 'emote_unblocked', hash: msg.hash })
-      }
-      break
-
-    case 'ui-state:update':
-      // Cross-surface UI prefs sync — server merged a patch from another
-      // client and is fanning out the full state. Mirror into chrome.storage
-      // .sync.ui_settings so the existing storage.onChanged listener applies
-      // every key live (zebra/timestamps/avatars/active tab/etc).
-      // Sanitize the patch first — never trust server-fanned-out state. A
-      // single malformed payload here will otherwise corrupt every client of
-      // this user permanently (sync replicates everywhere; once bad data is
-      // in, every tab and the heatsync.org chat-tile inherit it).
-      if (msg.state && typeof msg.state === 'object') {
-        const cleanState = sanitizeUiSettings(msg.state)
-        const cleanKeys = Object.keys(cleanState)
-        if (cleanKeys.length === 0) break
-        log(' 🎛️  ui-state sync received:', cleanKeys.length, 'keys')
-        uiSettingsRmw(ui => sanitizeUiSettings({ ...ui, ...cleanState }))
-        broadcastToTabs({ type: 'ui_state_update', state: cleanState })
-      }
-      break
-
-    case 'multichat:config':
-      // Cross-device sync: server sent updated multichat config
-      if (Array.isArray(msg.channels)) {
-        // Validate channel objects — reject malformed data to prevent CRLF injection in IRC.
-        // twitch is sent to IRC so it must be username-shaped. kick allows hyphens.
-        // youtube is a full https URL we resolve later; reject anything else.
-        const validChannels = msg.channels.filter(ch => {
-          if (!ch || typeof ch !== 'object') return false
-          if (ch.twitch && (typeof ch.twitch !== 'string' || !/^[a-zA-Z0-9_]{1,25}$/.test(ch.twitch))) return false
-          if (ch.kick && (typeof ch.kick !== 'string' || !/^[a-zA-Z0-9_-]{1,25}$/.test(ch.kick))) return false
-          if (ch.youtube && (typeof ch.youtube !== 'string' || !/^https:\/\/(www\.)?youtube\.com\//i.test(ch.youtube) || /[\r\n]/.test(ch.youtube))) return false
-          return true
-        })
-        log(' 📋 Multichat config sync received:', validChannels.length, 'channels')
-        browser.storage.local.get(['heatsync_multichat']).then(data => {
-          const current = data.heatsync_multichat || { channels: [], enabled: true }
-          const currentJson = JSON.stringify(current.channels)
-          const newJson = JSON.stringify(validChannels)
-          if (currentJson !== newJson) {
-            browser.storage.local.set({ heatsync_multichat: { ...current, channels: validChannels } })
+      case 'youtube:chat':
+        // Relay YouTube chat messages to all Twitch/Kick tabs
+        if (msg.messages && Array.isArray(msg.messages) && msg.messages.length > 0) {
+          // Use server-echoed channelId, fall back to local map.
+          // Same pending-subscribe fallback as youtube:status — covers the case
+          // where the first chat batch races ahead of the status event.
+          let channelId = msg.channelId || ytVideoToChannel.get(msg.videoId)
+          // Pending-subscribe attribution is ambiguous when multiple subscribes are
+          // in flight (server may resolve them in any order). Only attribute when
+          // exactly one is pending — otherwise fall through to 'global' and let
+          // the eventual youtube:status event correct the mapping. This trades a
+          // brief routing miss for the much worse cross-channel chat leak that
+          // happens when LIFO pop guesses wrong.
+          if (!channelId && msg.videoId && pendingYtSubscribes.length === 1) {
+            const pend = pendingYtSubscribes.shift()
+            channelId = pend.channelId
+            setYtVideoChannel(msg.videoId, channelId)
           }
-        }).catch(() => {})
-      }
-      break
+          if (!channelId) channelId = 'global'
+          // Update local map if server provided channelId
+          if (msg.channelId && msg.videoId) setYtVideoChannel(msg.videoId, msg.channelId)
 
-    case 'new-message':
-      log(' New message received:', msg);
-      // Only show posts from followed users, exclude anonymous
-      const msgUser = (msg.username || '').toLowerCase()
-      if (msg.username === 'Anonymous') {
-        log(' Skipping feed post — anonymous');
-        break;
-      }
-      if (currentUsername && msgUser === currentUsername.toLowerCase()) {
-        // Always show own posts
-      } else if (!followedUsers.some(u => u.toLowerCase() === msgUser)) {
-        log(' Skipping feed post — not followed');
-        break;
-      }
-      broadcastToTabs({
-        type: 'new-message',
-        data: msg
-      });
-      break;
-
-    case 'message-updated':
-      broadcastToTabs({ type: 'message-updated', data: msg });
-      break;
-
-    case 'message-edited':
-      broadcastToTabs({ type: 'message-edited', data: msg });
-      break;
-
-    case 'message-deleted':
-      broadcastToTabs({ type: 'message-deleted', data: msg });
-      break;
-
-    case 'notification:new':
-      log(' Notification received:', msg);
-      unreadNotifCount++;
-      updateExtensionBadge();
-      broadcastToTabs({
-        type: 'notification:new',
-        data: msg.data
-      });
-      break;
-
-    case 'youtube:chat':
-      // Relay YouTube chat messages to all Twitch/Kick tabs
-      if (msg.messages && Array.isArray(msg.messages) && msg.messages.length > 0) {
-        // Use server-echoed channelId, fall back to local map.
-        // Same pending-subscribe fallback as youtube:status — covers the case
-        // where the first chat batch races ahead of the status event.
-        let channelId = msg.channelId || ytVideoToChannel.get(msg.videoId)
-        // Pending-subscribe attribution is ambiguous when multiple subscribes are
-        // in flight (server may resolve them in any order). Only attribute when
-        // exactly one is pending — otherwise fall through to 'global' and let
-        // the eventual youtube:status event correct the mapping. This trades a
-        // brief routing miss for the much worse cross-channel chat leak that
-        // happens when LIFO pop guesses wrong.
-        if (!channelId && msg.videoId && pendingYtSubscribes.length === 1) {
-          const pend = pendingYtSubscribes.shift()
-          channelId = pend.channelId
-          setYtVideoChannel(msg.videoId, channelId)
-        }
-        if (!channelId) channelId = 'global'
-        // Update local map if server provided channelId
-        if (msg.channelId && msg.videoId) setYtVideoChannel(msg.videoId, msg.channelId)
-
-        // Use real ytMsg.timestamp for both replay and live. Mellen's
-        // ordering rule: every msg lands at its true chronological position
-        // via fairMerge's full sort. live YT msgs may appear slightly above
-        // the most-recent twitch msg if YT's timestamp is older — that's
-        // chronologically correct, not a bug. Backfill ensures hard-refresh
-        // accuracy: msgs from 30 min ago slot into the chat at 30 min ago.
-        const sorted = msg.messages.slice().sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0))
-        const isReplay = !!msg.replay
-        const buildPayload = (ytMsg) => ({
-          type: 'youtube_chat_message',
-          videoId: msg.videoId,
-          channelId,
-          user: ytMsg.user,
-          text: ytMsg.text,
-          color: ytMsg.color || '#ff0000',
-          time: ytMsg.timestamp || Date.now(),
-          platform: 'youtube',
-          emotes: ytMsg.emotes || [],
-          msgType: ytMsg.type,
-          amount: ytMsg.amount || '',
-          scColor: ytMsg.scColor || '',
-          sticker: ytMsg.sticker || null,
-          avatar: ytMsg.avatar || undefined,
-          badges: ytMsg.badges || undefined,
-          systemMsg: ytMsg.systemMsg || undefined,
-          source: 'server',
-          replay: isReplay,
-        })
-        // Bulk dispatch. content-script's social.js routes:
-        //   replay → ingestReplayYtMsg (bulk-buffer + 1 microtask render)
-        //   live   → enqueueYtForPacing (per-channel 60-400ms cadence)
-        for (const ytMsg of sorted) {
-          const payload = buildPayload(ytMsg)
-          try { bgYtIngest(payload) } catch {}
-          broadcastToTabs(payload)
-        }
-      }
-      break
-
-    case 'youtube:status': {
-      // Resolve channelId BEFORE potentially deleting the videoId mapping —
-      // otherwise an `ended` event broadcasts with channelId='global' and the
-      // multichat panel can't update the right channel tab.
-      // Fallback: server may not echo channelId for @user/live subscribes,
-      // so attribute via pending-subscribe LIFO when status carries a fresh
-      // videoId we haven't seen yet.
-      let resolvedChannelId = msg.channelId || ytVideoToChannel.get(msg.videoId)
-      // Same ambiguity as youtube:chat — only fall back when exactly one pending.
-      if (!resolvedChannelId && msg.status === 'connected' && msg.videoId && pendingYtSubscribes.length === 1) {
-        const pend = pendingYtSubscribes.shift()
-        resolvedChannelId = pend.channelId
-        setYtVideoChannel(msg.videoId, resolvedChannelId)
-      }
-      if (!resolvedChannelId) resolvedChannelId = 'global'
-      if (msg.status === 'connected') {
-        activeYoutubeVideoId = msg.videoId
-        if (msg.videoId) setYtVideoChannel(msg.videoId, resolvedChannelId)
-      } else if (msg.status === 'ended') {
-        if (activeYoutubeVideoId === msg.videoId) activeYoutubeVideoId = null
-        deleteYtVideoChannel(msg.videoId)
-      } else if (msg.status === 'error') {
-        // Transient errors (rate limit, single failed fetch) shouldn't kill routing —
-        // the poller usually recovers and resumes broadcasting. Keeping the mapping
-        // means resumed chat lands on the right tab instead of falling to 'global'.
-        if (activeYoutubeVideoId === msg.videoId) activeYoutubeVideoId = null
-      }
-      broadcastToTabs({
-        type: 'youtube_status',
-        videoId: msg.videoId,
-        channelId: resolvedChannelId,
-        status: msg.status,
-        channelName: msg.channelName || '',
-        title: msg.title || '',
-        error: msg.error || '',
-      })
-      break
-    }
-
-    case 'dm:new':
-      broadcastToTabs({
-        type: 'dm_new',
-        data: msg
-      })
-      break
-
-    case 'seen:update':
-      // Cross-surface unread sync: another client (web, other ext) bumped a
-      // tab's seen-at. Forward to all multichat tabs so they clear the dot.
-      broadcastToTabs({
-        type: 'seen_update',
-        surface: msg.surface,
-        at: msg.at
-      })
-      break
-
-    case 'kick-chat-message':
-      // Tee into BG buffer first so reload-history is instant
-      try { bgKickIngest(msg.data) } catch {}
-      // Relay Kick chat messages (via server webhook) to content scripts
-      broadcastToTabs({
-        type: 'kick_chat_message',
-        data: msg.data
-      })
-      break
-
-    case 'moment:spike':
-      // server-side heat spike — forward to tabs for the moments band + 🔥 notif.
-      // Carry id (dedup key for live-insert) + title/game (card context); dropping
-      // them silently broke dedup-by-id and the card title.
-      broadcastToTabs({ type: 'hs_moment', data: { id: msg.id, platform: msg.platform, channel: msg.channel, rate: msg.rate, baseline: msg.baseline, title: msg.title, game: msg.game } })
-      break
-
-    case 'irc:message': {
-      // Live twitch from the heatsync server (EventSub-fed consumer fanout).
-      // Heals channels whose direct IRC delivery twitch is starving —
-      // including background channels no native tap can cover.
-      try {
-        const ch = (msg.channel || '').toLowerCase()
-        const ext = msg.message ? bgIrcRecordToExt(msg.message, ch) : null
-        if (ch && ext && !bgIrcDupModNotice(BG_IRC.channels.get(ch), ext)) {
-          if (!(ext.id && bgIrcSeenLiveId(`${ch}:${ext.id}`))) {
-            const buf = BG_IRC.channels.get(ch)
-            if (buf) { buf.push(ext); bgIrcPersistChannel(ch) }
-            bgIrcBroadcast({ type: 'bg_irc_msg', msg: ext })
-          }
-        }
-      } catch (e) { log('irc:message err:', e?.message) }
-      break
-    }
-
-    case 'irc:backlog':
-      // Heatsync server-side Twitch IRC ring buffer (500 msgs / 24h Redis).
-      // Way deeper than robotty's instant fetch; merge it in.
-      try { bgIrcMergeServerBacklog(msg.channel, msg.messages) } catch (e) { log('irc:backlog merge err:', e?.message) }
-      break
-
-    case 'kick-chat-backfill':
-      // Server-side Kick ring buffer (200 msgs) replayed on channel:join.
-      // Ingest into BG buffer for instant history on future tab joins, then
-      // broadcast a merge notice so already-open tabs refresh.
-      try {
-        const ch = (msg.channel || '').toLowerCase()
-        const list = Array.isArray(msg.messages) ? msg.messages : []
-        if (ch && list.length > 0) {
-          if (!BG_KICK.channels.has(ch)) {
-            BG_KICK.channels.set(ch, new BGCircularBuffer(BG_KICK_PERSIST_MAX))
-            if (BG_KICK.channels.size > MAX_BG_KICK_CHANNELS) {
-              const oldest = BG_KICK.channels.keys().next().value
-              BG_KICK.channels.delete(oldest)
-              chrome.storage.local.remove(`hs_kick_${oldest}`).catch(() => {})
-            }
-            bgKickFetchArchive(ch).catch(() => {})
-          }
-          const buf = BG_KICK.channels.get(ch)
-          const existing = buf.getAll()
-          // Build Sets once for O(1) per-message dedup — avoids O(n²) scan.
-          const existingIds = new Set(existing.filter(m => m.id).map(m => m.id))
-          const fpOf = (m) => `${m.user}|${m.time}|${(m.text || '').slice(0, 60)}`
-          const existingFp = new Set(existing.filter(m => !m.id).map(fpOf))
-          const toAdd = []
-          for (const data of list) {
+          // Use real ytMsg.timestamp for both replay and live. Mellen's
+          // ordering rule: every msg lands at its true chronological position
+          // via fairMerge's full sort. live YT msgs may appear slightly above
+          // the most-recent twitch msg if YT's timestamp is older — that's
+          // chronologically correct, not a bug. Backfill ensures hard-refresh
+          // accuracy: msgs from 30 min ago slot into the chat at 30 min ago.
+          const sorted = msg.messages.slice().sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0))
+          const isReplay = !!msg.replay
+          const buildPayload = (ytMsg) => ({
+            type: 'youtube_chat_message',
+            videoId: msg.videoId,
+            channelId,
+            user: ytMsg.user,
+            text: ytMsg.text,
+            color: ytMsg.color || '#ff0000',
+            time: ytMsg.timestamp || Date.now(),
+            platform: 'youtube',
+            emotes: ytMsg.emotes || [],
+            msgType: ytMsg.type,
+            amount: ytMsg.amount || '',
+            scColor: ytMsg.scColor || '',
+            sticker: ytMsg.sticker || null,
+            avatar: ytMsg.avatar || undefined,
+            badges: ytMsg.badges || undefined,
+            systemMsg: ytMsg.systemMsg || undefined,
+            source: 'server',
+            replay: isReplay,
+          })
+          // Bulk dispatch. content-script's social.js routes:
+          //   replay → ingestReplayYtMsg (bulk-buffer + 1 microtask render)
+          //   live   → enqueueYtForPacing (per-channel 60-400ms cadence)
+          for (const ytMsg of sorted) {
+            const payload = buildPayload(ytMsg)
             try {
-              const badgeStr = Array.isArray(data.badges)
-                ? data.badges.map(b => `${b.type || b.name || 'badge'}/${b.version || b.count || '1'}`).join(',')
-                : ''
-              const m = {
-                user: data.username || data.displayName || data.user || 'unknown',
-                text: data.content || data.message || data.text || '',
-                color: data.color || '#53fc18',
-                badges: badgeStr,
-                channel: ch,
-                time: data.timestamp || data.time || Date.now(),
-                platform: 'kick',
-                id: data.id || '',
-                isHistory: true,
-                replyTo: data.replyTo ? {
-                  user: data.replyTo.username || 'unknown',
-                  text: data.replyTo.content || '',
-                  id: data.replyTo.id || data.replyTo.message_id || '',
-                  threadId: data.replyTo.thread_id || data.replyTo.id || data.replyTo.message_id || ''
-                } : null
-              }
-              if (m.id) {
-                if (existingIds.has(m.id)) continue
-                existingIds.add(m.id)
-              } else {
-                const fp = fpOf(m)
-                if (existingFp.has(fp)) continue
-                existingFp.add(fp)
-              }
-              toAdd.push(m)
+              bgYtIngest(payload)
             } catch {}
-          }
-          if (toAdd.length > 0) {
-            const all = [...existing, ...toAdd].sort((a, b) => (a.time || 0) - (b.time || 0))
-            buf.clear()
-            for (const m of all) buf.push(m)
-            bgKickPersistChannel(ch)
-            broadcastToTabs({ type: 'bg_kick_history_merged', channel: ch, count: toAdd.length })
-            log('BG KICK backfill merged', toAdd.length, 'msgs for', ch)
+            broadcastToTabs(payload)
           }
         }
-      } catch {}
-      break
+        break
 
-    case 'chat:origin_broadcast':
-      // User sent a chat message from the heatsync.org chat-tile on a
-      // different device — fan out to all tabs so multichat can tag the
-      // upcoming platform-relay echo with [H] instead of [T]/[K].
-      broadcastToTabs({
-        type: 'chat_origin_broadcast',
-        text: msg.text,
-        channel: msg.channel,
-        origin: msg.origin || 'heatsync',
-        ts: msg.ts || Date.now()
-      })
-      break
+      case 'youtube:status': {
+        // Resolve channelId BEFORE potentially deleting the videoId mapping —
+        // otherwise an `ended` event broadcasts with channelId='global' and the
+        // multichat panel can't update the right channel tab.
+        // Fallback: server may not echo channelId for @user/live subscribes,
+        // so attribute via pending-subscribe LIFO when status carries a fresh
+        // videoId we haven't seen yet.
+        let resolvedChannelId = msg.channelId || ytVideoToChannel.get(msg.videoId)
+        // Same ambiguity as youtube:chat — only fall back when exactly one pending.
+        if (!resolvedChannelId && msg.status === 'connected' && msg.videoId && pendingYtSubscribes.length === 1) {
+          const pend = pendingYtSubscribes.shift()
+          resolvedChannelId = pend.channelId
+          setYtVideoChannel(msg.videoId, resolvedChannelId)
+        }
+        if (!resolvedChannelId) resolvedChannelId = 'global'
+        if (msg.status === 'connected') {
+          activeYoutubeVideoId = msg.videoId
+          if (msg.videoId) setYtVideoChannel(msg.videoId, resolvedChannelId)
+        } else if (msg.status === 'ended') {
+          if (activeYoutubeVideoId === msg.videoId) activeYoutubeVideoId = null
+          deleteYtVideoChannel(msg.videoId)
+        } else if (msg.status === 'error') {
+          // Transient errors (rate limit, single failed fetch) shouldn't kill routing —
+          // the poller usually recovers and resumes broadcasting. Keeping the mapping
+          // means resumed chat lands on the right tab instead of falling to 'global'.
+          if (activeYoutubeVideoId === msg.videoId) activeYoutubeVideoId = null
+        }
+        broadcastToTabs({
+          type: 'youtube_status',
+          videoId: msg.videoId,
+          channelId: resolvedChannelId,
+          status: msg.status,
+          channelName: msg.channelName || '',
+          title: msg.title || '',
+          error: msg.error || '',
+        })
+        break
+      }
 
-    case 'yt:relay_send':
-      // Server is asking us to DOM-inject text into youtube.com's live chat.
-      // Find a tab on this videoId, hand off to youtube-content's existing
-      // youtube_send_relay path, ack back over the WS so the originating
-      // website socket knows whether it landed.
-      ;(async () => {
-        const reqId = msg.reqId
-        const videoId = msg.videoId
-        const text = msg.text
-        let ok = false
-        let error
-        let ytUsername
+      case 'dm:new':
+        broadcastToTabs({
+          type: 'dm_new',
+          data: msg,
+        })
+        break
+
+      case 'seen:update':
+        // Cross-surface unread sync: another client (web, other ext) bumped a
+        // tab's seen-at. Forward to all multichat tabs so they clear the dot.
+        broadcastToTabs({
+          type: 'seen_update',
+          surface: msg.surface,
+          at: msg.at,
+        })
+        break
+
+      case 'kick-chat-message':
+        // Tee into BG buffer first so reload-history is instant
         try {
-          if (!videoId || typeof videoId !== 'string') { error = 'invalid_video_id' }
-          else if (!text || typeof text !== 'string' || text.length === 0 || text.length > 200) { error = 'invalid_text' }
-          else {
-            // Prefer a tab whose URL carries this videoId — works for both
-            // /watch?v= and /live_chat?v= (live_chat is the chat iframe URL).
-            const tabs = await browser.tabs.query({ url: '*://*.youtube.com/*' }).catch(() => [])
-            const matching = tabs.find(t => (t.url || '').includes(`v=${videoId}`)) || tabs[0]
-            if (!matching) { error = 'no_youtube_tab' }
-            else {
-              const result = await browser.tabs.sendMessage(matching.id, {
-                type: 'youtube_send_relay',
-                text,
-                awaitConfirm: true
-              }).catch(e => ({ ok: false, error: e?.message || 'tab_send_failed' }))
-              ok = !!result?.ok
-              error = result?.error
-              ytUsername = result?.ytUsername
+          bgKickIngest(msg.data)
+        } catch {}
+        // Relay Kick chat messages (via server webhook) to content scripts
+        broadcastToTabs({
+          type: 'kick_chat_message',
+          data: msg.data,
+        })
+        break
+
+      case 'moment:spike':
+        // server-side heat spike — forward to tabs for the moments band + 🔥 notif.
+        // Carry id (dedup key for live-insert) + title/game (card context); dropping
+        // them silently broke dedup-by-id and the card title.
+        broadcastToTabs({
+          type: 'hs_moment',
+          data: {
+            id: msg.id,
+            platform: msg.platform,
+            channel: msg.channel,
+            rate: msg.rate,
+            baseline: msg.baseline,
+            title: msg.title,
+            game: msg.game,
+          },
+        })
+        break
+
+      case 'irc:message': {
+        // Live twitch from the heatsync server (EventSub-fed consumer fanout).
+        // Heals channels whose direct IRC delivery twitch is starving —
+        // including background channels no native tap can cover.
+        try {
+          const ch = (msg.channel || '').toLowerCase()
+          const ext = msg.message ? bgIrcRecordToExt(msg.message, ch) : null
+          if (ch && ext && !bgIrcDupModNotice(BG_IRC.channels.get(ch), ext)) {
+            if (!(ext.id && bgIrcSeenLiveId(`${ch}:${ext.id}`))) {
+              const buf = BG_IRC.channels.get(ch)
+              if (buf) {
+                buf.push(ext)
+                bgIrcPersistChannel(ch)
+              }
+              bgIrcBroadcast({ type: 'bg_irc_msg', msg: ext })
             }
           }
         } catch (e) {
-          error = e?.message || 'unknown'
-        } finally {
-          wsSendDirect({ type: 'yt:relay_ack', reqId, ok, ytUsername, error })
+          log('irc:message err:', e?.message)
         }
-      })()
-      break
-
-    case 'kick-sub-event':
-      // Relay Kick subscription events to content scripts
-      broadcastToTabs({
-        type: 'kick_sub_event',
-        channel: msg.channel,
-        eventType: msg.eventType,
-        username: msg.username,
-        months: msg.months,
-        gifter: msg.gifter,
-        giftees: msg.giftees,
-        message: msg.message
-      })
-      break
-
-    case 'kick-kicks-event':
-      // Relay KICKs gifted events to content scripts
-      broadcastToTabs({
-        type: 'kick_kicks_event',
-        channel: msg.channel,
-        username: msg.username,
-        amount: msg.amount,
-        giftName: msg.giftName,
-        message: msg.message
-      })
-      break
-
-    case 'stream:update':
-    case 'stream:online':
-    case 'stream:offline': {
-      // Dedup: same channel+event within 60s (prevents dupes from stream:* and follow:stream:*)
-      const streamKey = `${msg.channel}:${msg.type}:${msg.game || ''}`
-      const streamNow = Date.now()
-      if (wsStreamEventDedup.has(streamKey) && streamNow - wsStreamEventDedup.get(streamKey) < 60000) break
-      wsStreamEventDedup.set(streamKey, streamNow)
-      if (wsStreamEventDedup.size > 100) {
-        for (const [k, t] of wsStreamEventDedup) { if (streamNow - t > 60000) wsStreamEventDedup.delete(k) }
+        break
       }
-      broadcastToTabs({
-        type: 'stream_event',
-        eventType: msg.type,
-        platform: msg.platform,
-        channel: msg.channel,
-        game: msg.game || '',
-        title: msg.title || '',
-        prevGame: msg.prevGame || '',
-        prevTitle: msg.prevTitle || '',
-        isLive: msg.isLive
-      })
-      break
-    }
 
-    case 'stream:redeem':
-      broadcastToTabs({
-        type: 'stream_event',
-        eventType: 'stream:redeem',
-        platform: msg.platform,
-        channel: msg.channel,
-        user: msg.user || '',
-        title: msg.title || '',
-        cost: msg.cost || 0
-      })
-      break
-
-    case 'stream:raid':
-      broadcastToTabs({
-        type: 'stream_event',
-        eventType: 'stream:raid',
-        platform: msg.platform,
-        channel: msg.channel,
-        target: msg.target || '',
-        viewers: msg.viewers || 0
-      })
-      break
-
-    case 'stream:hype-start':
-    case 'stream:hype-end':
-      broadcastToTabs({
-        type: 'stream_event',
-        eventType: msg.type,
-        platform: msg.platform,
-        channel: msg.channel,
-        level: msg.level || 0
-      })
-      break
-
-    case 'stream:sub-gift':
-      broadcastToTabs({
-        type: 'stream_event',
-        eventType: 'stream:sub-gift',
-        platform: msg.platform,
-        channel: msg.channel,
-        user: msg.user || '',
-        count: msg.count || 0
-      })
-      break
-
-    case 'follow:stream:update':
-    case 'follow:stream:online':
-    case 'follow:stream:offline':
-      handleFollowStreamEvent(msg)
-      break
-
-    case 'follow:colors':
-      cachedFollowColors = msg.colors || {}
-      broadcastToTabs({
-        type: 'follow_colors',
-        colors: cachedFollowColors
-      })
-      break
-
-    case 'follow:history':
-      cachedFollowHistory = msg.events || []
-      broadcastToTabs({
-        type: 'follow_history',
-        events: cachedFollowHistory
-      })
-      break
-
-    case 'user:heat_batch_update': {
-      // Server pushes heat updates every 60s for users whose heat changed.
-      // Forward to tabs so content.js can update its username-keyed heat cache
-      // without polling /api/users/heat. Drops the polled endpoint volume to
-      // near-zero in steady state.
-      const updates = Array.isArray(msg.updates) ? msg.updates : []
-      if (updates.length > 0) {
-        broadcastToTabs({ type: 'heat_batch_update', updates })
-      }
-      break
-    }
-
-    case 'user:muted': {
-      // Server confirmed mute — update local state and broadcast to all tabs
-      const muteUser = msg.username?.toLowerCase()
-      if (muteUser) {
-        const rawExp = msg.expiresAt || msg.expires_at
-        const expiresAt = rawExp ? new Date(rawExp).getTime() : null
-        mutedUsers.set(muteUser, expiresAt)
-        persistMutedUsers()
-        broadcastToTabs({ type: 'user_muted', username: muteUser, expiresAt })
-        log(' Server muted user:', muteUser, expiresAt ? `(expires ${new Date(expiresAt).toISOString()})` : '(permanent)')
-      }
-      break
-    }
-
-    case 'user:unmuted': {
-      const unmuteUser = msg.username?.toLowerCase()
-      if (unmuteUser) {
-        mutedUsers.delete(unmuteUser)
-        persistMutedUsers()
-        broadcastToTabs({ type: 'user_unmuted', username: unmuteUser })
-        log(' Server unmuted user:', unmuteUser)
-      }
-      break
-    }
-
-    // Server-synced mute list — fired when the user mutes/unmutes on heatsync.org
-    // (REST /api/mutes) which broadcasts these WS events to all of the user's sockets.
-    case 'mute:added': {
-      const u = msg.username?.toLowerCase()
-      if (u) {
-        const rawExp = msg.expires_at
-        const expiresAt = rawExp ? new Date(rawExp).getTime() : null
-        if (!mutedUsers.has(u)) {
-          mutedUsers.set(u, expiresAt)
-          persistMutedUsers()
-          broadcastToTabs({ type: 'user_muted', username: u, expiresAt })
-          log(' mute:added from server:', u)
-        }
-      }
-      break
-    }
-
-    case 'mute:removed':
-    case 'mute:expired': {
-      const u = msg.username?.toLowerCase()
-      if (u && mutedUsers.has(u)) {
-        mutedUsers.delete(u)
-        persistMutedUsers()
-        broadcastToTabs({ type: 'user_unmuted', username: u })
-        log(' mute:removed/expired from server:', u)
-      }
-      break
-    }
-
-    case 'mute:cleared': {
-      if (mutedUsers.size > 0) {
-        mutedUsers.clear()
-        persistMutedUsers()
-        broadcastToTabs({ type: 'mutes_cleared' })
-        log(' mute:cleared from server')
-      }
-      break
-    }
-
-    // Cross-device settings sync (partial patch variant).
-    // ui-state:update covers the full-state fanout; settings:patch/delete
-    // cover incremental edits from /api/settings on heatsync.org.
-    case 'settings:patch': {
-      if (msg.patches && typeof msg.patches === 'object') {
-        const cleanPatch = sanitizeUiSettings(msg.patches)
-        if (Object.keys(cleanPatch).length > 0) {
-          log(' settings:patch received:', Object.keys(cleanPatch))
-          uiSettingsRmw(ui => sanitizeUiSettings({ ...ui, ...cleanPatch }))
-          broadcastToTabs({ type: 'ui_state_update', state: cleanPatch })
-        }
-      }
-      break
-    }
-
-    case 'settings:delete': {
-      const delKey = typeof msg.key === 'string' ? msg.key : null
-      if (delKey && delKey.length > 0 && delKey.length <= 64) {
-        log(' settings:delete received:', delKey)
-        uiSettingsRmw(ui => { const copy = sanitizeUiSettings(ui); delete copy[delKey]; return copy })
-        broadcastToTabs({ type: 'settings_key_deleted', key: delKey })
-      }
-      break
-    }
-
-    // v1.6 cross-device sync for column-stored prefs (PATCH /api/user/settings).
-    // Server broadcasts this to every WS-connected device for the user, so a
-    // toggle flipped in tab A mirrors instantly in tab B / desktop 2 / phone,
-    // without polling. The chrome.storage.local write triggers the existing
-    // onChanged listener which updates BG globals + every content-script tab's
-    // local mirrors. The gate (!== current) makes this a no-op for the
-    // originating tab (click handler already updated before WS round-trip).
-    case 'user_settings:update': {
-      let settingsChanged = false
-      if (typeof msg.show_sexual_emotes === 'boolean' && msg.show_sexual_emotes !== viewerShowSexual) {
-        log(' user_settings:update received: show_sexual_emotes →', msg.show_sexual_emotes)
-        viewerShowSexual = msg.show_sexual_emotes
-        browser.storage.local.set({ viewer_show_sexual: viewerShowSexual }).catch(() => {})
-        settingsChanged = true
-      }
-      if (typeof msg.show_gore_emotes === 'boolean' && msg.show_gore_emotes !== viewerShowGore) {
-        log(' user_settings:update received: show_gore_emotes →', msg.show_gore_emotes)
-        viewerShowGore = msg.show_gore_emotes
-        browser.storage.local.set({ viewer_show_gore: viewerShowGore }).catch(() => {})
-        settingsChanged = true
-      }
-      if (typeof msg.show_weapon_emotes === 'boolean' && msg.show_weapon_emotes !== viewerShowWeapon) {
-        log(' user_settings:update received: show_weapon_emotes →', msg.show_weapon_emotes)
-        viewerShowWeapon = msg.show_weapon_emotes
-        browser.storage.local.set({ viewer_show_weapon: viewerShowWeapon }).catch(() => {})
-        settingsChanged = true
-      }
-      if (typeof msg.show_drug_emotes === 'boolean' && msg.show_drug_emotes !== viewerShowDrug) {
-        log(' user_settings:update received: show_drug_emotes →', msg.show_drug_emotes)
-        viewerShowDrug = msg.show_drug_emotes
-        browser.storage.local.set({ viewer_show_drug: viewerShowDrug }).catch(() => {})
-        settingsChanged = true
-      }
-      if (typeof msg.show_hate_emotes === 'boolean' && msg.show_hate_emotes !== viewerShowHate) {
-        log(' user_settings:update received: show_hate_emotes →', msg.show_hate_emotes)
-        viewerShowHate = msg.show_hate_emotes
-        browser.storage.local.set({ viewer_show_hate: viewerShowHate }).catch(() => {})
-        settingsChanged = true
-      }
-      if (settingsChanged) {
-        // Invalidate cross-user batch caches + refetch own inventory so the
-        // chat repaints with the new filter immediately, not at the next
-        // channel switch. Mirrors what the originating tab's click handler
-        // does after PATCH success.
-        Promise.all([
-          fetchEmoteInventory(),
-          fetchBlockedEmotes(),
-        ]).catch(() => {})
-        // Drop sender-emote LRU so next message render re-fetches with the
-        // new filter params. Same cache the inventory-block path uses
-        // (globalThis.__senderEmoteCache), guarded for lazy init order.
+      case 'irc:backlog':
+        // Heatsync server-side Twitch IRC ring buffer (500 msgs / 24h Redis).
+        // Way deeper than robotty's instant fetch; merge it in.
         try {
-          if (globalThis.__senderEmoteCache?.clear) globalThis.__senderEmoteCache.clear()
+          bgIrcMergeServerBacklog(msg.channel, msg.messages)
+        } catch (e) {
+          log('irc:backlog merge err:', e?.message)
+        }
+        break
+
+      case 'kick-chat-backfill':
+        // Server-side Kick ring buffer (200 msgs) replayed on channel:join.
+        // Ingest into BG buffer for instant history on future tab joins, then
+        // broadcast a merge notice so already-open tabs refresh.
+        try {
+          const ch = (msg.channel || '').toLowerCase()
+          const list = Array.isArray(msg.messages) ? msg.messages : []
+          if (ch && list.length > 0) {
+            if (!BG_KICK.channels.has(ch)) {
+              BG_KICK.channels.set(ch, new BGCircularBuffer(BG_KICK_PERSIST_MAX))
+              if (BG_KICK.channels.size > MAX_BG_KICK_CHANNELS) {
+                const oldest = BG_KICK.channels.keys().next().value
+                BG_KICK.channels.delete(oldest)
+                chrome.storage.local.remove(`hs_kick_${oldest}`).catch(() => {})
+              }
+              bgKickFetchArchive(ch).catch(() => {})
+            }
+            const buf = BG_KICK.channels.get(ch)
+            const existing = buf.getAll()
+            // Build Sets once for O(1) per-message dedup — avoids O(n²) scan.
+            const existingIds = new Set(existing.filter((m) => m.id).map((m) => m.id))
+            const fpOf = (m) => `${m.user}|${m.time}|${(m.text || '').slice(0, 60)}`
+            const existingFp = new Set(existing.filter((m) => !m.id).map(fpOf))
+            const toAdd = []
+            for (const data of list) {
+              try {
+                const badgeStr = Array.isArray(data.badges)
+                  ? data.badges.map((b) => `${b.type || b.name || 'badge'}/${b.version || b.count || '1'}`).join(',')
+                  : ''
+                const m = {
+                  user: data.username || data.displayName || data.user || 'unknown',
+                  text: data.content || data.message || data.text || '',
+                  color: data.color || '#53fc18',
+                  badges: badgeStr,
+                  channel: ch,
+                  time: data.timestamp || data.time || Date.now(),
+                  platform: 'kick',
+                  id: data.id || '',
+                  isHistory: true,
+                  replyTo: data.replyTo
+                    ? {
+                        user: data.replyTo.username || 'unknown',
+                        text: data.replyTo.content || '',
+                        id: data.replyTo.id || data.replyTo.message_id || '',
+                        threadId: data.replyTo.thread_id || data.replyTo.id || data.replyTo.message_id || '',
+                      }
+                    : null,
+                }
+                if (m.id) {
+                  if (existingIds.has(m.id)) continue
+                  existingIds.add(m.id)
+                } else {
+                  const fp = fpOf(m)
+                  if (existingFp.has(fp)) continue
+                  existingFp.add(fp)
+                }
+                toAdd.push(m)
+              } catch {}
+            }
+            if (toAdd.length > 0) {
+              const all = [...existing, ...toAdd].sort((a, b) => (a.time || 0) - (b.time || 0))
+              buf.clear()
+              for (const m of all) buf.push(m)
+              bgKickPersistChannel(ch)
+              broadcastToTabs({ type: 'bg_kick_history_merged', channel: ch, count: toAdd.length })
+              log('BG KICK backfill merged', toAdd.length, 'msgs for', ch)
+            }
+          }
         } catch {}
-      }
-      break
-    }
+        break
 
-    // Server-evaluated mention rule match — show inline notif in multichat overlay.
-    case 'mention:rule-match': {
-      const d = msg.data
-      if (d && typeof d === 'object') {
+      case 'chat:origin_broadcast':
+        // User sent a chat message from the heatsync.org chat-tile on a
+        // different device — fan out to all tabs so multichat can tag the
+        // upcoming platform-relay echo with [H] instead of [T]/[K].
         broadcastToTabs({
-          type: 'mention_rule_match',
-          ruleId: d.ruleId,
-          pattern: String(d.pattern || '').slice(0, 200),
-          channel: String(d.channel || '').slice(0, 50),
-          platform: String(d.platform || '').slice(0, 20),
-          username: String(d.username || '').slice(0, 50),
-          snippet: String(d.snippet || '').slice(0, 200),
+          type: 'chat_origin_broadcast',
+          text: msg.text,
+          channel: msg.channel,
+          origin: msg.origin || 'heatsync',
+          ts: msg.ts || Date.now(),
         })
-        log(' mention:rule-match:', d.pattern, 'in', d.channel)
+        break
+
+      case 'yt:relay_send':
+        // Server is asking us to DOM-inject text into youtube.com's live chat.
+        // Find a tab on this videoId, hand off to youtube-content's existing
+        // youtube_send_relay path, ack back over the WS so the originating
+        // website socket knows whether it landed.
+        ;(async () => {
+          const reqId = msg.reqId
+          const videoId = msg.videoId
+          const text = msg.text
+          let ok = false
+          let error
+          let ytUsername
+          try {
+            if (!videoId || typeof videoId !== 'string') {
+              error = 'invalid_video_id'
+            } else if (!text || typeof text !== 'string' || text.length === 0 || text.length > 200) {
+              error = 'invalid_text'
+            } else {
+              // Prefer a tab whose URL carries this videoId — works for both
+              // /watch?v= and /live_chat?v= (live_chat is the chat iframe URL).
+              const tabs = await browser.tabs.query({ url: '*://*.youtube.com/*' }).catch(() => [])
+              const matching = tabs.find((t) => (t.url || '').includes(`v=${videoId}`)) || tabs[0]
+              if (!matching) {
+                error = 'no_youtube_tab'
+              } else {
+                const result = await browser.tabs
+                  .sendMessage(matching.id, {
+                    type: 'youtube_send_relay',
+                    text,
+                    awaitConfirm: true,
+                  })
+                  .catch((e) => ({ ok: false, error: e?.message || 'tab_send_failed' }))
+                ok = !!result?.ok
+                error = result?.error
+                ytUsername = result?.ytUsername
+              }
+            }
+          } catch (e) {
+            error = e?.message || 'unknown'
+          } finally {
+            wsSendDirect({ type: 'yt:relay_ack', reqId, ok, ytUsername, error })
+          }
+        })()
+        break
+
+      case 'kick-sub-event':
+        // Relay Kick subscription events to content scripts
+        broadcastToTabs({
+          type: 'kick_sub_event',
+          channel: msg.channel,
+          eventType: msg.eventType,
+          username: msg.username,
+          months: msg.months,
+          gifter: msg.gifter,
+          giftees: msg.giftees,
+          message: msg.message,
+        })
+        break
+
+      case 'kick-kicks-event':
+        // Relay KICKs gifted events to content scripts
+        broadcastToTabs({
+          type: 'kick_kicks_event',
+          channel: msg.channel,
+          username: msg.username,
+          amount: msg.amount,
+          giftName: msg.giftName,
+          message: msg.message,
+        })
+        break
+
+      case 'stream:update':
+      case 'stream:online':
+      case 'stream:offline': {
+        // Dedup: same channel+event within 60s (prevents dupes from stream:* and follow:stream:*)
+        const streamKey = `${msg.channel}:${msg.type}:${msg.game || ''}`
+        const streamNow = Date.now()
+        if (wsStreamEventDedup.has(streamKey) && streamNow - wsStreamEventDedup.get(streamKey) < 60000) break
+        wsStreamEventDedup.set(streamKey, streamNow)
+        if (wsStreamEventDedup.size > 100) {
+          for (const [k, t] of wsStreamEventDedup) {
+            if (streamNow - t > 60000) wsStreamEventDedup.delete(k)
+          }
+        }
+        broadcastToTabs({
+          type: 'stream_event',
+          eventType: msg.type,
+          platform: msg.platform,
+          channel: msg.channel,
+          game: msg.game || '',
+          title: msg.title || '',
+          prevGame: msg.prevGame || '',
+          prevTitle: msg.prevTitle || '',
+          isLive: msg.isLive,
+        })
+        break
       }
-      break
+
+      case 'stream:redeem':
+        broadcastToTabs({
+          type: 'stream_event',
+          eventType: 'stream:redeem',
+          platform: msg.platform,
+          channel: msg.channel,
+          user: msg.user || '',
+          title: msg.title || '',
+          cost: msg.cost || 0,
+        })
+        break
+
+      case 'stream:raid':
+        broadcastToTabs({
+          type: 'stream_event',
+          eventType: 'stream:raid',
+          platform: msg.platform,
+          channel: msg.channel,
+          target: msg.target || '',
+          viewers: msg.viewers || 0,
+        })
+        break
+
+      case 'stream:hype-start':
+      case 'stream:hype-end':
+        broadcastToTabs({
+          type: 'stream_event',
+          eventType: msg.type,
+          platform: msg.platform,
+          channel: msg.channel,
+          level: msg.level || 0,
+        })
+        break
+
+      case 'stream:sub-gift':
+        broadcastToTabs({
+          type: 'stream_event',
+          eventType: 'stream:sub-gift',
+          platform: msg.platform,
+          channel: msg.channel,
+          user: msg.user || '',
+          count: msg.count || 0,
+        })
+        break
+
+      case 'follow:stream:update':
+      case 'follow:stream:online':
+      case 'follow:stream:offline':
+        handleFollowStreamEvent(msg)
+        break
+
+      case 'follow:colors':
+        cachedFollowColors = msg.colors || {}
+        broadcastToTabs({
+          type: 'follow_colors',
+          colors: cachedFollowColors,
+        })
+        break
+
+      case 'follow:history':
+        cachedFollowHistory = msg.events || []
+        broadcastToTabs({
+          type: 'follow_history',
+          events: cachedFollowHistory,
+        })
+        break
+
+      case 'user:heat_batch_update': {
+        // Server pushes heat updates every 60s for users whose heat changed.
+        // Forward to tabs so content.js can update its username-keyed heat cache
+        // without polling /api/users/heat. Drops the polled endpoint volume to
+        // near-zero in steady state.
+        const updates = Array.isArray(msg.updates) ? msg.updates : []
+        if (updates.length > 0) {
+          broadcastToTabs({ type: 'heat_batch_update', updates })
+        }
+        break
+      }
+
+      case 'user:muted': {
+        // Server confirmed mute — update local state and broadcast to all tabs
+        const muteUser = msg.username?.toLowerCase()
+        if (muteUser) {
+          const rawExp = msg.expiresAt || msg.expires_at
+          const expiresAt = rawExp ? new Date(rawExp).getTime() : null
+          mutedUsers.set(muteUser, expiresAt)
+          persistMutedUsers()
+          broadcastToTabs({ type: 'user_muted', username: muteUser, expiresAt })
+          log(
+            ' Server muted user:',
+            muteUser,
+            expiresAt ? `(expires ${new Date(expiresAt).toISOString()})` : '(permanent)',
+          )
+        }
+        break
+      }
+
+      case 'user:unmuted': {
+        const unmuteUser = msg.username?.toLowerCase()
+        if (unmuteUser) {
+          mutedUsers.delete(unmuteUser)
+          persistMutedUsers()
+          broadcastToTabs({ type: 'user_unmuted', username: unmuteUser })
+          log(' Server unmuted user:', unmuteUser)
+        }
+        break
+      }
+
+      // Server-synced mute list — fired when the user mutes/unmutes on heatsync.org
+      // (REST /api/mutes) which broadcasts these WS events to all of the user's sockets.
+      case 'mute:added': {
+        const u = msg.username?.toLowerCase()
+        if (u) {
+          const rawExp = msg.expires_at
+          const expiresAt = rawExp ? new Date(rawExp).getTime() : null
+          if (!mutedUsers.has(u)) {
+            mutedUsers.set(u, expiresAt)
+            persistMutedUsers()
+            broadcastToTabs({ type: 'user_muted', username: u, expiresAt })
+            log(' mute:added from server:', u)
+          }
+        }
+        break
+      }
+
+      case 'mute:removed':
+      case 'mute:expired': {
+        const u = msg.username?.toLowerCase()
+        if (u && mutedUsers.has(u)) {
+          mutedUsers.delete(u)
+          persistMutedUsers()
+          broadcastToTabs({ type: 'user_unmuted', username: u })
+          log(' mute:removed/expired from server:', u)
+        }
+        break
+      }
+
+      case 'mute:cleared': {
+        if (mutedUsers.size > 0) {
+          mutedUsers.clear()
+          persistMutedUsers()
+          broadcastToTabs({ type: 'mutes_cleared' })
+          log(' mute:cleared from server')
+        }
+        break
+      }
+
+      // Cross-device settings sync (partial patch variant).
+      // ui-state:update covers the full-state fanout; settings:patch/delete
+      // cover incremental edits from /api/settings on heatsync.org.
+      case 'settings:patch': {
+        if (msg.patches && typeof msg.patches === 'object') {
+          const cleanPatch = sanitizeUiSettings(msg.patches)
+          if (Object.keys(cleanPatch).length > 0) {
+            log(' settings:patch received:', Object.keys(cleanPatch))
+            uiSettingsRmw((ui) => sanitizeUiSettings({ ...ui, ...cleanPatch }))
+            broadcastToTabs({ type: 'ui_state_update', state: cleanPatch })
+          }
+        }
+        break
+      }
+
+      case 'settings:delete': {
+        const delKey = typeof msg.key === 'string' ? msg.key : null
+        if (delKey && delKey.length > 0 && delKey.length <= 64) {
+          log(' settings:delete received:', delKey)
+          uiSettingsRmw((ui) => {
+            const copy = sanitizeUiSettings(ui)
+            delete copy[delKey]
+            return copy
+          })
+          broadcastToTabs({ type: 'settings_key_deleted', key: delKey })
+        }
+        break
+      }
+
+      // v1.6 cross-device sync for column-stored prefs (PATCH /api/user/settings).
+      // Server broadcasts this to every WS-connected device for the user, so a
+      // toggle flipped in tab A mirrors instantly in tab B / desktop 2 / phone,
+      // without polling. The chrome.storage.local write triggers the existing
+      // onChanged listener which updates BG globals + every content-script tab's
+      // local mirrors. The gate (!== current) makes this a no-op for the
+      // originating tab (click handler already updated before WS round-trip).
+      case 'user_settings:update': {
+        let settingsChanged = false
+        if (typeof msg.show_sexual_emotes === 'boolean' && msg.show_sexual_emotes !== viewerShowSexual) {
+          log(' user_settings:update received: show_sexual_emotes →', msg.show_sexual_emotes)
+          viewerShowSexual = msg.show_sexual_emotes
+          browser.storage.local.set({ viewer_show_sexual: viewerShowSexual }).catch(() => {})
+          settingsChanged = true
+        }
+        if (typeof msg.show_gore_emotes === 'boolean' && msg.show_gore_emotes !== viewerShowGore) {
+          log(' user_settings:update received: show_gore_emotes →', msg.show_gore_emotes)
+          viewerShowGore = msg.show_gore_emotes
+          browser.storage.local.set({ viewer_show_gore: viewerShowGore }).catch(() => {})
+          settingsChanged = true
+        }
+        if (typeof msg.show_weapon_emotes === 'boolean' && msg.show_weapon_emotes !== viewerShowWeapon) {
+          log(' user_settings:update received: show_weapon_emotes →', msg.show_weapon_emotes)
+          viewerShowWeapon = msg.show_weapon_emotes
+          browser.storage.local.set({ viewer_show_weapon: viewerShowWeapon }).catch(() => {})
+          settingsChanged = true
+        }
+        if (typeof msg.show_drug_emotes === 'boolean' && msg.show_drug_emotes !== viewerShowDrug) {
+          log(' user_settings:update received: show_drug_emotes →', msg.show_drug_emotes)
+          viewerShowDrug = msg.show_drug_emotes
+          browser.storage.local.set({ viewer_show_drug: viewerShowDrug }).catch(() => {})
+          settingsChanged = true
+        }
+        if (typeof msg.show_hate_emotes === 'boolean' && msg.show_hate_emotes !== viewerShowHate) {
+          log(' user_settings:update received: show_hate_emotes →', msg.show_hate_emotes)
+          viewerShowHate = msg.show_hate_emotes
+          browser.storage.local.set({ viewer_show_hate: viewerShowHate }).catch(() => {})
+          settingsChanged = true
+        }
+        if (settingsChanged) {
+          // Invalidate cross-user batch caches + refetch own inventory so the
+          // chat repaints with the new filter immediately, not at the next
+          // channel switch. Mirrors what the originating tab's click handler
+          // does after PATCH success.
+          Promise.all([fetchEmoteInventory(), fetchBlockedEmotes()]).catch(() => {})
+          // Drop sender-emote LRU so next message render re-fetches with the
+          // new filter params. Same cache the inventory-block path uses
+          // (globalThis.__senderEmoteCache), guarded for lazy init order.
+          try {
+            if (globalThis.__senderEmoteCache?.clear) globalThis.__senderEmoteCache.clear()
+          } catch {}
+        }
+        break
+      }
+
+      // Server-evaluated mention rule match — show inline notif in multichat overlay.
+      case 'mention:rule-match': {
+        const d = msg.data
+        if (d && typeof d === 'object') {
+          broadcastToTabs({
+            type: 'mention_rule_match',
+            ruleId: d.ruleId,
+            pattern: String(d.pattern || '').slice(0, 200),
+            channel: String(d.channel || '').slice(0, 50),
+            platform: String(d.platform || '').slice(0, 20),
+            username: String(d.username || '').slice(0, 50),
+            snippet: String(d.snippet || '').slice(0, 200),
+          })
+          log(' mention:rule-match:', d.pattern, 'in', d.channel)
+        }
+        break
+      }
+
+      // EventSub fan-out — server pushes channel events subscribed via eventsub:subscribe.
+      // Translate into the same stream_event shape the existing renderers expect.
+      case 'eventsub:event': {
+        const evName = String(msg.eventName || '')
+        const channelId = String(msg.channelId || '')
+        const payload = msg.payload && typeof msg.payload === 'object' ? msg.payload : {}
+        // Map EventSub event names to the stream_event eventType strings used by main.js
+        const typeMap = {
+          'channel.update': 'stream:update',
+          'stream.online': 'stream:online',
+          'stream.offline': 'stream:offline',
+          'channel.channel_points_custom_reward_redemption.add': 'stream:redeem',
+          'channel.raid': 'stream:raid',
+          'channel.hype_train.begin': 'stream:hype-start',
+          'channel.hype_train.end': 'stream:hype-end',
+          'channel.subscription.gift': 'stream:sub-gift',
+          'channel.subscribe': 'stream:sub',
+          'channel.follow': 'stream:follow',
+        }
+        const eventType = typeMap[evName]
+        if (!eventType) break
+        // Build stream_event broadcast — mirrors what stream:raid etc. handlers do
+        const evt = {
+          type: 'stream_event',
+          eventType,
+          channel: String(
+            payload.broadcaster_user_login || payload.to_broadcaster_user_login || channelId || '',
+          ).toLowerCase(),
+          platform: 'twitch',
+          game: String(payload.category_name || payload.game_name || ''),
+          title: String(payload.title || ''),
+          prevGame: String(payload.category_name || ''),
+          prevTitle: String(payload.title || ''),
+          user: String(payload.user_login || payload.from_broadcaster_user_login || ''),
+          target: String(payload.to_broadcaster_user_login || ''),
+          viewers: Number(payload.viewers || 0) || 0,
+          level: Number(payload.level || 0) || 0,
+          count: Number(payload.total || 0) || 0,
+          title2: String(payload.reward?.title || ''),
+          cost: Number(payload.reward?.cost || 0) || 0,
+        }
+        if (eventType === 'stream:redeem') evt.title = evt.title2
+        broadcastToTabs(evt)
+        log(' eventsub:event dispatched:', eventType, evt.channel)
+        break
+      }
+
+      case 'error':
+        break
+
+      default:
+        log(' Unknown message type:', msg.type)
     }
-
-    // EventSub fan-out — server pushes channel events subscribed via eventsub:subscribe.
-    // Translate into the same stream_event shape the existing renderers expect.
-    case 'eventsub:event': {
-      const evName = String(msg.eventName || '')
-      const channelId = String(msg.channelId || '')
-      const payload = msg.payload && typeof msg.payload === 'object' ? msg.payload : {}
-      // Map EventSub event names to the stream_event eventType strings used by main.js
-      const typeMap = {
-        'channel.update':              'stream:update',
-        'stream.online':               'stream:online',
-        'stream.offline':              'stream:offline',
-        'channel.channel_points_custom_reward_redemption.add': 'stream:redeem',
-        'channel.raid':                'stream:raid',
-        'channel.hype_train.begin':    'stream:hype-start',
-        'channel.hype_train.end':      'stream:hype-end',
-        'channel.subscription.gift':   'stream:sub-gift',
-        'channel.subscribe':           'stream:sub',
-        'channel.follow':              'stream:follow',
-      }
-      const eventType = typeMap[evName]
-      if (!eventType) break
-      // Build stream_event broadcast — mirrors what stream:raid etc. handlers do
-      const evt = {
-        type: 'stream_event',
-        eventType,
-        channel: String(payload.broadcaster_user_login || payload.to_broadcaster_user_login || channelId || '').toLowerCase(),
-        platform: 'twitch',
-        game: String(payload.category_name || payload.game_name || ''),
-        title: String(payload.title || ''),
-        prevGame: String(payload.category_name || ''),
-        prevTitle: String(payload.title || ''),
-        user: String(payload.user_login || payload.from_broadcaster_user_login || ''),
-        target: String(payload.to_broadcaster_user_login || ''),
-        viewers: Number(payload.viewers || 0) || 0,
-        level: Number(payload.level || 0) || 0,
-        count: Number(payload.total || 0) || 0,
-        title2: String(payload.reward?.title || ''),
-        cost: Number(payload.reward?.cost || 0) || 0,
-      }
-      if (eventType === 'stream:redeem') evt.title = evt.title2
-      broadcastToTabs(evt)
-      log(' eventsub:event dispatched:', eventType, evt.channel)
-      break
-    }
-
-    case 'error':
-      break;
-
-    default:
-      log(' Unknown message type:', msg.type);
-  }
   } catch (err) {
-    console.error('[HS] handleWSMessage error:', err.message, 'type:', msg?.type);
+    console.error('[HS] handleWSMessage error:', err.message, 'type:', msg?.type)
   }
 }
 
 // Reconnect with exponential backoff
 function scheduleReconnect() {
-  if (authFailedBlock) return; // Auth failed — don't loop
-  if (reconnectTimer) return; // Already scheduled
+  if (authFailedBlock) return // Auth failed — don't loop
+  if (reconnectTimer) return // Already scheduled
   // Don't burn retries against a known-dead network — the online listener
   // will fire a fresh connect when connectivity comes back.
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-    log(' Skipping reconnect — navigator.onLine is false');
-    return;
+    log(' Skipping reconnect — navigator.onLine is false')
+    return
   }
 
   // If the server signalled a planned shutdown, spread reconnects across the
   // window it asked for. Consumed once — subsequent transient drops get the
   // normal exponential backoff.
-  let shutdownSpread = 0;
+  let shutdownSpread = 0
   if (pendingReconnectSpreadMs > 0) {
-    shutdownSpread = Math.random() * pendingReconnectSpreadMs;
-    pendingReconnectSpreadMs = 0;
+    shutdownSpread = Math.random() * pendingReconnectSpreadMs
+    pendingReconnectSpreadMs = 0
   }
 
-  const jitter = Math.random() * 1000;
+  const jitter = Math.random() * 1000
   // Capped at 15s (was 30s) — long-running stream sessions can't tolerate
   // half-minute gaps when recovering from a transient network blip.
-  const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 15000) + jitter + shutdownSpread;
-  reconnectAttempts++;
-  log(` Reconnecting in ${Math.round(delay)}ms (attempt ${reconnectAttempts})`);
+  const delay = Math.min(1000 * 2 ** reconnectAttempts, 15000) + jitter + shutdownSpread
+  reconnectAttempts++
+  log(` Reconnecting in ${Math.round(delay)}ms (attempt ${reconnectAttempts})`)
 
   // After 3 consecutive failures, surface a "down" banner to UIs.
   // Cleared in socket.onopen when we reconnect.
@@ -4855,9 +5376,9 @@ function scheduleReconnect() {
   }
 
   reconnectTimer = setTimeout(() => {
-    reconnectTimer = null;
-    connectWebSocket();
-  }, delay);
+    reconnectTimer = null
+    connectWebSocket()
+  }, delay)
 }
 
 // Join channel room for emote broadcasting
@@ -4870,7 +5391,9 @@ async function joinChannel(platform, channelName, channelId = null, senderTabId 
   log(' 🚪 Setting channel:', channelKey, 'id:', channelId, 'tab:', senderTabId)
 
   // Fetch channel owner's emotes (7TV EventAPI subscription happens inside)
-  fetchChannelOwnerEmotes(channelName, channelId, platform).catch(err => console.warn('[heatsync-ext] fetchChannelOwnerEmotes fetch failed:', err && err.message))
+  fetchChannelOwnerEmotes(channelName, channelId, platform).catch((err) =>
+    console.warn('[heatsync-ext] fetchChannelOwnerEmotes fetch failed:', err && err.message),
+  )
 
   // Ensure we're connected first
   if (!isSocketOpen()) {
@@ -4888,8 +5411,21 @@ function broadcastEmoteUsage(emoteName, emoteHash, senderTabId = null) {
   const channelStr = senderChannel || null
   if (!channelStr) return { success: false, reason: 'no_channel' }
   if (!isSocketOpen() || !isAuthenticated) {
-    log(' ⚠️ Cannot broadcast emote - socket open:', isSocketOpen(), 'authenticated:', isAuthenticated, 'channel:', channelStr)
-    return { success: false, reason: 'not_ready', socketOpen: isSocketOpen(), authenticated: isAuthenticated, channel: channelStr }
+    log(
+      ' ⚠️ Cannot broadcast emote - socket open:',
+      isSocketOpen(),
+      'authenticated:',
+      isAuthenticated,
+      'channel:',
+      channelStr,
+    )
+    return {
+      success: false,
+      reason: 'not_ready',
+      socketOpen: isSocketOpen(),
+      authenticated: isAuthenticated,
+      channel: channelStr,
+    }
   }
 
   // Parse platform and channel from combined format
@@ -4898,34 +5434,34 @@ function broadcastEmoteUsage(emoteName, emoteHash, senderTabId = null) {
   log(' 📤 BROADCASTING EMOTE USAGE:', {
     emoteName,
     platform,
-    channel
-  });
+    channel,
+  })
 
   wsSend({
     type: 'emote:used',
     platform,
     channel,
     emoteName,
-    emoteData: emoteHash ? { hash: emoteHash } : undefined
-  });
+    emoteData: emoteHash ? { hash: emoteHash } : undefined,
+  })
 
-  return { success: true };
+  return { success: true }
 }
 
 // Add emote to your set (for global emotes clicked in chat) - returns success/failure
 async function addToInventory(emoteName, emoteHash, emoteUrl, zeroWidth = false) {
   try {
-    const authToken = await getAuthCookie();
+    const authToken = await getAuthCookie()
     if (!authToken) {
       broadcastToTabs({
         type: 'emote_add_failed',
         emoteName,
-        error: 'Not logged in - visit heatsync.org to log in'
-      });
-      return { success: false, error: 'Not logged in' };
+        error: 'Not logged in - visit heatsync.org to log in',
+      })
+      return { success: false, error: 'Not logged in' }
     }
 
-    log(' Adding to your set via API:', emoteName);
+    log(' Adding to your set via API:', emoteName)
 
     // Call server API to add emote
     const response = await fetchWithTimeout(`${API_URL}/api/user/emotes`, {
@@ -4936,7 +5472,7 @@ async function addToInventory(emoteName, emoteHash, emoteUrl, zeroWidth = false)
       credentials: 'omit',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authToken}`
+        Authorization: `Bearer ${authToken}`,
       },
       body: JSON.stringify({
         emoteUrl,
@@ -4944,35 +5480,35 @@ async function addToInventory(emoteName, emoteHash, emoteUrl, zeroWidth = false)
         customName: emoteName,
         source: 'extension',
         sourceId: emoteHash,
-        zeroWidth: !!zeroWidth
-      })
-    });
+        zeroWidth: !!zeroWidth,
+      }),
+    })
 
-    const data = await response.json().catch(() => ({ error: `HTTP ${response.status} (non-JSON body)` }));
+    const data = await response.json().catch(() => ({ error: `HTTP ${response.status} (non-JSON body)` }))
 
     if (!response.ok) {
       broadcastToTabs({
         type: 'emote_add_failed',
         emoteName,
-        error: data.error || `Server error (${response.status})`
-      });
-      return { success: false, error: data.error || `HTTP ${response.status}` };
+        error: data.error || `Server error (${response.status})`,
+      })
+      return { success: false, error: data.error || `HTTP ${response.status}` }
     }
 
-    log(' ✅ Added to server inventory:', data);
+    log(' ✅ Added to server inventory:', data)
 
     // Update local inventory immediately
     const newEmote = {
       name: emoteName,
       hash: data.hash || emoteHash,
       url: emoteUrl,
-      slot: data.slot
-    };
+      slot: data.slot,
+    }
 
     // Check if already in your set (by hash) to avoid duplicates
     // Use snapshot to prevent race with concurrent filter/reassign
     const currentInventory = [...emoteInventory]
-    if (!currentInventory.some(e => e.hash === newEmote.hash)) {
+    if (!currentInventory.some((e) => e.hash === newEmote.hash)) {
       currentInventory.push(newEmote)
       emoteInventory = currentInventory
     }
@@ -4984,20 +5520,20 @@ async function addToInventory(emoteName, emoteHash, emoteUrl, zeroWidth = false)
       hash: data.hash || emoteHash,
       url: emoteUrl,
       slot: data.slot,
-      alreadyExists: data.alreadyExists
-    });
+      alreadyExists: data.alreadyExists,
+    })
 
     // Also update storage for persistence
-    await browser.storage.local.set({ emote_inventory: emoteInventory });
+    await browser.storage.local.set({ emote_inventory: emoteInventory })
 
-    return { success: true, slot: data.slot, hash: data.hash || emoteHash, alreadyExists: data.alreadyExists };
+    return { success: true, slot: data.slot, hash: data.hash || emoteHash, alreadyExists: data.alreadyExists }
   } catch (error) {
     broadcastToTabs({
       type: 'emote_add_failed',
       emoteName,
-      error: error.message || 'Network error'
-    });
-    return { success: false, error: error.message || 'Network error' };
+      error: error.message || 'Network error',
+    })
+    return { success: false, error: error.message || 'Network error' }
   }
 }
 
@@ -5022,76 +5558,76 @@ async function removeFromInventory(emoteHash, emoteName) {
 
 async function _removeFromInventoryImpl(emoteHash, emoteName) {
   try {
-    const authToken = await getAuthCookie();
+    const authToken = await getAuthCookie()
     if (!authToken) {
       broadcastToTabs({
         type: 'emote_remove_failed',
         emoteName,
-        error: 'Not logged in'
-      });
-      return { success: false, error: 'Not logged in' };
+        error: 'Not logged in',
+      })
+      return { success: false, error: 'Not logged in' }
     }
 
-    log(' Removing from your set via API:', emoteName, 'hash:', emoteHash?.substring(0, 8));
+    log(' Removing from your set via API:', emoteName, 'hash:', emoteHash?.substring(0, 8))
 
     // Tell content scripts early so they suppress this emote in new messages immediately
     // This must happen BEFORE any fetchEmoteInventory() which would broadcast inventory_update.
     // Hash is forwarded so content can optimistically tier-drop existing rendered wrappers
     // before the server roundtrip completes.
-    broadcastToTabs({ type: 'emote_removing', emoteName, hash: emoteHash });
+    broadcastToTabs({ type: 'emote_removing', emoteName, hash: emoteHash })
 
     // Find slot number by hash or name
-    let emote = emoteInventory.find(e => e.hash === emoteHash || e.name === emoteName);
+    let emote = emoteInventory.find((e) => e.hash === emoteHash || e.name === emoteName)
     if (!emote) {
       // Refetch in case local state is stale. fetchEmoteInventory has a 10s
       // throttle — bypass it here so we don't return a spurious "not in set"
       // error during the throttle window.
-      log(' Emote not in local inventory, refetching...', emoteName, emoteHash?.substring(0, 8));
-      lastInventoryFetch = 0;
-      await fetchEmoteInventory();
-      emote = emoteInventory.find(e => e.hash === emoteHash || e.name === emoteName);
+      log(' Emote not in local inventory, refetching...', emoteName, emoteHash?.substring(0, 8))
+      lastInventoryFetch = 0
+      await fetchEmoteInventory()
+      emote = emoteInventory.find((e) => e.hash === emoteHash || e.name === emoteName)
       if (!emote) {
-        broadcastToTabs({ type: 'emote_removing_cancel', emoteName });
+        broadcastToTabs({ type: 'emote_removing_cancel', emoteName })
         broadcastToTabs({
           type: 'emote_remove_failed',
           emoteName,
-          error: 'Emote not found in your set'
-        });
-        return { success: false, error: 'Emote not found in your set' };
+          error: 'Emote not found in your set',
+        })
+        return { success: false, error: 'Emote not found in your set' }
       }
     }
 
     if (emote.slot == null) {
       // Bypass throttle here too — same reason.
-      lastInventoryFetch = 0;
-      await fetchEmoteInventory();
-      const refreshedEmote = emoteInventory.find(e => e.hash === emoteHash || e.name === emoteName);
+      lastInventoryFetch = 0
+      await fetchEmoteInventory()
+      const refreshedEmote = emoteInventory.find((e) => e.hash === emoteHash || e.name === emoteName)
       if (refreshedEmote?.slot == null) {
-        broadcastToTabs({ type: 'emote_removing_cancel', emoteName });
+        broadcastToTabs({ type: 'emote_removing_cancel', emoteName })
         broadcastToTabs({
           type: 'emote_remove_failed',
           emoteName,
-          error: 'Could not determine emote slot'
-        });
-        return { success: false, error: 'Could not determine emote slot' };
+          error: 'Could not determine emote slot',
+        })
+        return { success: false, error: 'Could not determine emote slot' }
       }
-      emote.slot = refreshedEmote.slot;
+      emote.slot = refreshedEmote.slot
     }
 
     const doDelete = async (slot) => {
       const resp = await fetchWithTimeout(`${API_URL}/api/user/emotes/${slot}`, {
         method: 'DELETE',
         credentials: 'omit', // Bearer-only → CSRF-exempt (cookie would trigger CSRF)
-        headers: { 'Authorization': `Bearer ${authToken}` }
-      });
+        headers: { Authorization: `Bearer ${authToken}` },
+      })
       // `.catch()` covers a thrown SyntaxError, but JSON.parse('null') resolves
       // to literal null — coerce so `data.error` access can't throw a TypeError
       // and bubble up as the user-facing message.
-      const d = (await resp.json().catch(() => null)) || {};
-      return { resp, d };
-    };
+      const d = (await resp.json().catch(() => null)) || {}
+      return { resp, d }
+    }
 
-    let { resp: response, d: data } = await doDelete(emote.slot);
+    let { resp: response, d: data } = await doDelete(emote.slot)
 
     // 404 here is ambiguous. The slot we read from local `emoteInventory` is
     // throttled (10s) and another tab / the move endpoint may have shifted
@@ -5108,24 +5644,24 @@ async function _removeFromInventoryImpl(emoteHash, emoteName) {
     // operation the user asked for). Only treat as already-gone if the
     // fresh server view confirms the emote is genuinely absent.
     if (response.status === 404) {
-      log(' DELETE 404 at slot', emote.slot, '— forcing inventory refetch to verify');
-      lastInventoryFetch = 0;
-      await fetchEmoteInventory();
-      const fresh = emoteInventory.find(e => e.hash === emoteHash || e.name === emoteName);
+      log(' DELETE 404 at slot', emote.slot, '— forcing inventory refetch to verify')
+      lastInventoryFetch = 0
+      await fetchEmoteInventory()
+      const fresh = emoteInventory.find((e) => e.hash === emoteHash || e.name === emoteName)
       if (fresh && fresh.slot != null && fresh.slot !== emote.slot) {
-        log(' Slot moved:', emote.slot, '→', fresh.slot, '— retrying DELETE');
-        emote = fresh;
-        ({ resp: response, d: data } = await doDelete(emote.slot));
+        log(' Slot moved:', emote.slot, '→', fresh.slot, '— retrying DELETE')
+        emote = fresh
+        ;({ resp: response, d: data } = await doDelete(emote.slot))
       } else if (!fresh) {
         // Server's current view: emote isn't in user's set. Local was stale
         // (optimistic add that never reconciled, missed emote_removed event,
         // another tab beat us to it). Drop the local row + broadcast so all
         // tabs flip to unadded; same end state as a successful DELETE.
-        log(' Server confirms emote not in set — reconciling local state');
-        emoteInventory = emoteInventory.filter(e => emoteHash ? e.hash !== emoteHash : e.name !== emoteName);
-        await browser.storage.local.set({ emote_inventory: emoteInventory });
-        broadcastToTabs({ type: 'emote_removed', emoteName, hash: emoteHash, slot: emote.slot });
-        return { success: true, slot: emote.slot, reconciled: true };
+        log(' Server confirms emote not in set — reconciling local state')
+        emoteInventory = emoteInventory.filter((e) => (emoteHash ? e.hash !== emoteHash : e.name !== emoteName))
+        await browser.storage.local.set({ emote_inventory: emoteInventory })
+        broadcastToTabs({ type: 'emote_removed', emoteName, hash: emoteHash, slot: emote.slot })
+        return { success: true, slot: emote.slot, reconciled: true }
       }
       // else: fresh view still maps it to the same slot the server just 404'd
       // on. That's a server-side inconsistency we can't fix from here; fall
@@ -5136,33 +5672,33 @@ async function _removeFromInventoryImpl(emoteHash, emoteName) {
       // Server-reported "not found in your set" after fresh refetch above
       // means truly already-gone; treat as reconcile.
       if (data.error && /not found in your set/i.test(data.error)) {
-        emoteInventory = emoteInventory.filter(e => emoteHash ? e.hash !== emoteHash : e.name !== emoteName);
-        await browser.storage.local.set({ emote_inventory: emoteInventory });
-        broadcastToTabs({ type: 'emote_removed', emoteName, hash: emoteHash, slot: emote.slot });
-        return { success: true, slot: emote.slot, reconciled: true };
+        emoteInventory = emoteInventory.filter((e) => (emoteHash ? e.hash !== emoteHash : e.name !== emoteName))
+        await browser.storage.local.set({ emote_inventory: emoteInventory })
+        broadcastToTabs({ type: 'emote_removed', emoteName, hash: emoteHash, slot: emote.slot })
+        return { success: true, slot: emote.slot, reconciled: true }
       }
-      broadcastToTabs({ type: 'emote_removing_cancel', emoteName });
+      broadcastToTabs({ type: 'emote_removing_cancel', emoteName })
       broadcastToTabs({
         type: 'emote_remove_failed',
         emoteName,
-        error: data.error || `Server error (${response.status})`
-      });
-      return { success: false, error: data.error || `HTTP ${response.status}` };
+        error: data.error || `Server error (${response.status})`,
+      })
+      return { success: false, error: data.error || `HTTP ${response.status}` }
     }
 
-    log(' ✅ Removed from server inventory:', data);
+    log(' ✅ Removed from server inventory:', data)
 
     // Update local inventory
-    emoteInventory = emoteInventory.filter(e => emoteHash ? e.hash !== emoteHash : e.name !== emoteName);
-    await browser.storage.local.set({ emote_inventory: emoteInventory });
+    emoteInventory = emoteInventory.filter((e) => (emoteHash ? e.hash !== emoteHash : e.name !== emoteName))
+    await browser.storage.local.set({ emote_inventory: emoteInventory })
 
     // Broadcast success to tabs
     broadcastToTabs({
       type: 'emote_removed',
       emoteName,
       hash: emoteHash,
-      slot: emote.slot
-    });
+      slot: emote.slot,
+    })
 
     // Broadcast removal to other clients so they clear pending broadcasts
     // Send to all active channels
@@ -5174,7 +5710,7 @@ async function _removeFromInventoryImpl(emoteHash, emoteName) {
           type: 'emote:removed',
           platform,
           channel,
-          emoteName: emoteName
+          emoteName: emoteName,
         })
         sentChannels.add(entry.channel)
       }
@@ -5183,15 +5719,15 @@ async function _removeFromInventoryImpl(emoteHash, emoteName) {
       log(' 📤 Broadcasted emote removal:', emoteName)
     }
 
-    return { success: true, slot: emote.slot };
+    return { success: true, slot: emote.slot }
   } catch (error) {
-    broadcastToTabs({ type: 'emote_removing_cancel', emoteName });
+    broadcastToTabs({ type: 'emote_removing_cancel', emoteName })
     broadcastToTabs({
       type: 'emote_remove_failed',
       emoteName,
-      error: error.message || 'Network error'
-    });
-    return { success: false, error: error.message || 'Network error' };
+      error: error.message || 'Network error',
+    })
+    return { success: false, error: error.message || 'Network error' }
   }
 }
 
@@ -5204,7 +5740,8 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Reject messages from other extensions — must originate from this extension's
   // content scripts (sender.id matches) or our own popup/options (no tab).
   const isOwnExtension = !sender?.id || sender.id === browser.runtime.id
-  const isValidOrigin = isFromPopup || /^https:\/\/([a-z0-9-]+\.)*(twitch\.tv|kick\.com|heatsync\.org|youtube\.com)(\/|$)/.test(senderUrl)
+  const isValidOrigin =
+    isFromPopup || /^https:\/\/([a-z0-9-]+\.)*(twitch\.tv|kick\.com|heatsync\.org|youtube\.com)(\/|$)/.test(senderUrl)
   const isValidSender = isOwnExtension && isValidOrigin
 
   if (!isValidSender) {
@@ -5218,8 +5755,16 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // chrome://extensions clicking. Fired by content.js on receipt of
     // window.postMessage({type:'heatsync-reload-extension'}).
     log(' 🔁 extension_reload requested via page message')
-    try { sendResponse({ ok: true }) } catch {}
-    setTimeout(() => { try { chrome.runtime.reload() } catch (e) { console.error('[heatsync] reload failed:', e) } }, 50)
+    try {
+      sendResponse({ ok: true })
+    } catch {}
+    setTimeout(() => {
+      try {
+        chrome.runtime.reload()
+      } catch (e) {
+        console.error('[heatsync] reload failed:', e)
+      }
+    }, 50)
     return true
   }
   if (message.type === 'ping') {
@@ -5231,25 +5776,28 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // we've never successfully fetched. Synchronous content-script callers use
   // this to early-bail before painting any UI.
   if (message.type === 'get_health') {
-    getCachedHealth().then(h => sendResponse({ ok: true, health: h }))
+    getCachedHealth()
+      .then((h) => sendResponse({ ok: true, health: h }))
       .catch(() => sendResponse({ ok: true, health: HEALTH_DEFAULT }))
     return true
   }
 
   // Diag snapshot for bug reports — bundled with errors on copy.
   if (message.type === 'get_diag') {
-    buildDiagSnapshot().then(d => sendResponse({ ok: true, diag: d }))
+    buildDiagSnapshot()
+      .then((d) => sendResponse({ ok: true, diag: d }))
       .catch(() => sendResponse({ ok: false, diag: null }))
     return true
   }
-
   // Ensure in-memory state is populated before any handler reads it (MV3 SW restart race)
   ;(async () => {
     if (initPromise) await initPromise
     handleMessage(message, sender, sendResponse)
-  })().catch(err => {
+  })().catch((err) => {
     console.error('[heatsync-ext] onMessage dispatch error:', err)
-    try { sendResponse({ ok: false, error: String(err && err.message || err) }) } catch {}
+    try {
+      sendResponse({ ok: false, error: String((err && err.message) || err) })
+    } catch {}
   })
   return true
 })
@@ -5257,17 +5805,23 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 async function handleMessage(message, sender, sendResponse) {
   // Clear all heatsync message history and stream events
   if (message.type === 'clear_history') {
-    browser.storage.local.get(null).then(all => {
-      const keys = Object.keys(all).filter(k => k === 'hs_stream_events' || k.startsWith('hs_irc_'))
-      if (keys.length > 0) {
-        browser.storage.local.remove(keys).then(() => {
-          log('Cleared', keys.length, 'history keys')
-          sendResponse({ ok: true, cleared: keys.length })
-        }).catch(e => sendResponse({ ok: false, error: e.message }))
-      } else {
-        sendResponse({ ok: true, cleared: 0 })
-      }
-    }).catch(e => sendResponse({ ok: false, error: e.message }))
+    browser.storage.local
+      .get(null)
+      .then((all) => {
+        const keys = Object.keys(all).filter((k) => k === 'hs_stream_events' || k.startsWith('hs_irc_'))
+        if (keys.length > 0) {
+          browser.storage.local
+            .remove(keys)
+            .then(() => {
+              log('Cleared', keys.length, 'history keys')
+              sendResponse({ ok: true, cleared: keys.length })
+            })
+            .catch((e) => sendResponse({ ok: false, error: e.message }))
+        } else {
+          sendResponse({ ok: true, cleared: 0 })
+        }
+      })
+      .catch((e) => sendResponse({ ok: false, error: e.message }))
     return true
   }
 
@@ -5277,16 +5831,16 @@ async function handleMessage(message, sender, sendResponse) {
   // messages bucket under a videoId key that no tab is listening on.
   if (message.type === 'youtube_chat_message' && !message.source) {
     const vId = message.videoId
-    const mapped = ytVideoToChannel.get(vId)
-      || (vId && vId === activeYoutubeVideoId ? '__live_yt_auto__' : null)
-    const relay = mapped && mapped !== message.channelId
-      ? { ...message, channelId: mapped }
-      : message
-    browser.tabs.query({ url: ['*://*.twitch.tv/*', '*://*.kick.com/*'] }).then(tabs => {
-      for (const tab of tabs) {
-        browser.tabs.sendMessage(tab.id, relay).catch(() => {})
-      }
-    }).catch(() => {})
+    const mapped = ytVideoToChannel.get(vId) || (vId && vId === activeYoutubeVideoId ? '__live_yt_auto__' : null)
+    const relay = mapped && mapped !== message.channelId ? { ...message, channelId: mapped } : message
+    browser.tabs
+      .query({ url: ['*://*.twitch.tv/*', '*://*.kick.com/*'] })
+      .then((tabs) => {
+        for (const tab of tabs) {
+          browser.tabs.sendMessage(tab.id, relay).catch(() => {})
+        }
+      })
+      .catch(() => {})
     sendResponse({ ok: true })
     return true
   }
@@ -5299,7 +5853,7 @@ async function handleMessage(message, sender, sendResponse) {
       videoId: message.videoId,
       channelId,
       user: message.user,
-      reason: message.reason || ''
+      reason: message.reason || '',
     })
     sendResponse({ ok: true })
     return true
@@ -5308,18 +5862,28 @@ async function handleMessage(message, sender, sendResponse) {
   // Link preview — proxy through heatsync.org server (avoids CORS)
   if (message.type === 'fetch_link_preview') {
     const url = message.url
-    if (!url || !/^https?:\/\//i.test(url)) { sendResponse(null); return true }
+    if (!url || !/^https?:\/\//i.test(url)) {
+      sendResponse(null)
+      return true
+    }
     // Block internal/private URLs from being proxied through the server
     try {
       const parsed = new URL(url)
-      if (/^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(parsed.hostname) ||
-          parsed.hostname === '0.0.0.0' || parsed.hostname === '::1') {
-        sendResponse(null); return true
+      if (
+        /^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(parsed.hostname) ||
+        parsed.hostname === '0.0.0.0' ||
+        parsed.hostname === '::1'
+      ) {
+        sendResponse(null)
+        return true
       }
-    } catch { sendResponse(null); return true }
+    } catch {
+      sendResponse(null)
+      return true
+    }
     fetch(`${LINK_PREVIEW_API}?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(6000) })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => sendResponse(data))
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => sendResponse(data))
       .catch(() => sendResponse(null))
     return true
   }
@@ -5331,15 +5895,20 @@ async function handleMessage(message, sender, sendResponse) {
   // fine — this is a UX cache, not correctness.
   if (message.type === 'fetch_embed_resolve') {
     const url = message.url
-    if (!url || !/^https?:\/\//i.test(url)) { sendResponse(null); return true }
+    if (!url || !/^https?:\/\//i.test(url)) {
+      sendResponse(null)
+      return true
+    }
     const cached = _embedResolveCache.get(url)
     if (cached && Date.now() - cached.ts < EMBED_RESOLVE_TTL) {
       sendResponse(cached.data)
       return true
     }
-    fetch(`https://heatsync.org/api/embed/resolve?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(6000) })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
+    fetch(`https://heatsync.org/api/embed/resolve?url=${encodeURIComponent(url)}`, {
+      signal: AbortSignal.timeout(6000),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
         if (data) {
           _embedResolveCache.set(url, { data, ts: Date.now() })
           // LRU trim — Map iteration order is insertion order
@@ -5362,7 +5931,10 @@ async function handleMessage(message, sender, sendResponse) {
   if (message.type === 'fetch_channel_banner') {
     const platform = String(message.platform || '').toLowerCase()
     let username = String(message.username || '').toLowerCase()
-    if (!platform || !username) { sendResponse(null); return true }
+    if (!platform || !username) {
+      sendResponse(null)
+      return true
+    }
     // Sanitization differs per platform — Twitch is the strictest (a–z, 0–9,
     // underscore); Kick allows hyphens; YouTube handles and channel IDs allow
     // a-z, 0-9, dot, dash, underscore. Be conservative but permissive enough
@@ -5370,8 +5942,14 @@ async function handleMessage(message, sender, sendResponse) {
     if (platform === 'twitch') username = username.replace(/[^a-z0-9_]/g, '')
     else if (platform === 'kick') username = username.replace(/[^a-z0-9_-]/g, '')
     else if (platform === 'youtube') username = username.replace(/[^a-z0-9._-]/g, '')
-    else { sendResponse(null); return true }
-    if (!username) { sendResponse(null); return true }
+    else {
+      sendResponse(null)
+      return true
+    }
+    if (!username) {
+      sendResponse(null)
+      return true
+    }
     const cacheKey = `${platform}:${username}`
     const cached = _channelBannerCache.get(cacheKey)
     if (cached && Date.now() - cached.ts < CHANNEL_BANNER_TTL) {
@@ -5388,21 +5966,28 @@ async function handleMessage(message, sender, sendResponse) {
     if (platform === 'twitch') {
       // Public GQL — kimne client id is the same one twitch.tv uses, no token
       // required for read-only profile fields.
-      fetchWithTimeout('https://gql.twitch.tv/gql', {
-        method: 'POST',
-        headers: { 'Client-Id': 'kimne78kx3ncx6brgo4mv6wki5h1ko', 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: `{ user(login: "${username}") { bannerImageURL offlineImageURL primaryColorHex profileImageURL(width: 600) } }`
-        })
-      }, 5000)
-        .then(r => r.ok ? r.json() : null)
-        .then(json => {
+      fetchWithTimeout(
+        'https://gql.twitch.tv/gql',
+        {
+          method: 'POST',
+          headers: { 'Client-Id': 'kimne78kx3ncx6brgo4mv6wki5h1ko', 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: `{ user(login: "${username}") { bannerImageURL offlineImageURL primaryColorHex profileImageURL(width: 600) } }`,
+          }),
+        },
+        5000,
+      )
+        .then((r) => (r.ok ? r.json() : null))
+        .then((json) => {
           const u = json?.data?.user
-          if (!u) { handle(null); return }
+          if (!u) {
+            handle(null)
+            return
+          }
           handle({
             bannerUrl: u.bannerImageURL || null,
             offlineUrl: u.offlineImageURL || null,
-            accent: u.primaryColorHex ? ('#' + u.primaryColorHex.replace(/^#/, '')) : null,
+            accent: u.primaryColorHex ? '#' + u.primaryColorHex.replace(/^#/, '') : null,
             profileUrl: u.profileImageURL || null,
             sourcePlatform: 'twitch',
           })
@@ -5413,12 +5998,19 @@ async function handleMessage(message, sender, sendResponse) {
     if (platform === 'kick') {
       // Kick public v2 — channel slug → banner_image.url and user.profile_pic.
       // Kick provides no accent so we default to the platform brand green.
-      fetchWithTimeout(`https://kick.com/api/v2/channels/${encodeURIComponent(username)}`, {
-        headers: { 'Accept': 'application/json' }
-      }, 5000)
-        .then(r => r.ok ? r.json() : null)
-        .then(j => {
-          if (!j) { handle(null); return }
+      fetchWithTimeout(
+        `https://kick.com/api/v2/channels/${encodeURIComponent(username)}`,
+        {
+          headers: { Accept: 'application/json' },
+        },
+        5000,
+      )
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          if (!j) {
+            handle(null)
+            return
+          }
           const banner = j.banner_image?.url || j.banner_image?.responsive?.split(' ')[0] || null
           const offline = j.offline_banner_image?.src || j.offline_banner_image?.url || null
           handle({
@@ -5438,12 +6030,19 @@ async function handleMessage(message, sender, sendResponse) {
       // embedded ytInitialData JSON. Works for both @handles and UC* channel
       // IDs because youtube.com routes both to the same page shape.
       const path = /^uc[a-z0-9_-]{20,}$/i.test(username) ? `/channel/${username}` : `/@${username}`
-      fetchWithTimeout(`https://www.youtube.com${path}`, {
-        headers: { 'Accept': 'text/html', 'Accept-Language': 'en' }
-      }, 8000)
-        .then(r => r.ok ? r.text() : null)
-        .then(html => {
-          if (!html) { handle(null); return }
+      fetchWithTimeout(
+        `https://www.youtube.com${path}`,
+        {
+          headers: { Accept: 'text/html', 'Accept-Language': 'en' },
+        },
+        8000,
+      )
+        .then((r) => (r.ok ? r.text() : null))
+        .then((html) => {
+          if (!html) {
+            handle(null)
+            return
+          }
           let banner = null
           // First match wins — bannerExternalUrl is the desktop hero banner;
           // banner.thumbnails[] (last entry = highest res) is the mobile path.
@@ -5453,7 +6052,10 @@ async function handleMessage(message, sender, sendResponse) {
             const all = [...html.matchAll(/"banner":\s*\{\s*"thumbnails":\s*\[([^\]]+)\]/g)]
             for (const m of all) {
               const last = [...m[1].matchAll(/"url":"([^"]+)"/g)].pop()
-              if (last) { banner = last[1].replace(/\\u002F/g, '/').replace(/\\\//g, '/'); break }
+              if (last) {
+                banner = last[1].replace(/\\u002F/g, '/').replace(/\\\//g, '/')
+                break
+              }
             }
           }
           let avatar = null
@@ -5478,77 +6080,98 @@ async function handleMessage(message, sender, sendResponse) {
     return true
   }
 
-
   // Query all open Twitch/Kick tabs to find channels the user is watching
   if (message.type === 'get_watching_channels') {
-    const skip = new Set(['directory', 'settings', 'videos', 'moderator', 'subscriptions', 'downloads', 'search', 'categories', 'following'])
-    browser.tabs.query({ url: ['*://*.twitch.tv/*', '*://kick.com/*', '*://*.kick.com/*', '*://*.youtube.com/*'] }).then(async tabs => {
-      const channels = []
-      const seen = new Set()
-      const ytPending = [] // {idx, videoId} — needs oEmbed lookup to resolve handle
-      for (const tab of tabs) {
-        try {
-          const url = new URL(tab.url)
-          let match
-          if (url.hostname.includes('twitch.tv')) {
-            match = url.pathname.match(/^\/(?:popout\/)?([a-zA-Z0-9_]+)/)
-          } else if (url.hostname.includes('kick.com')) {
-            match = url.pathname.match(/^\/(popout|embed)\/([a-zA-Z0-9_-]+)/)
-            if (match) match = [null, match[2]] // normalize to [_, channel]
-            else match = url.pathname.match(/^\/([a-zA-Z0-9_-]+)/)
-          } else if (url.hostname.includes('youtube.com')) {
-            // Only count tabs on a live stream URL — handle, /live/<id>, or /watch?v=<id>.
-            const v = url.searchParams.get('v')
-            const liveHandleMatch = url.pathname.match(/^\/@([^/]+)\/live/)
-            const liveIdMatch = url.pathname.match(/^\/live\/([^/?]+)/)
-            if (liveHandleMatch) {
-              const handle = liveHandleMatch[1]
-              const key = 'yt:' + handle.toLowerCase()
-              if (!seen.has(key)) {
-                seen.add(key)
-                channels.push({ name: handle, platform: 'youtube', youtubeUrl: `https://www.youtube.com/@${handle}/live` })
+    const skip = new Set([
+      'directory',
+      'settings',
+      'videos',
+      'moderator',
+      'subscriptions',
+      'downloads',
+      'search',
+      'categories',
+      'following',
+    ])
+    browser.tabs
+      .query({ url: ['*://*.twitch.tv/*', '*://kick.com/*', '*://*.kick.com/*', '*://*.youtube.com/*'] })
+      .then(async (tabs) => {
+        const channels = []
+        const seen = new Set()
+        const ytPending = [] // {idx, videoId} — needs oEmbed lookup to resolve handle
+        for (const tab of tabs) {
+          try {
+            const url = new URL(tab.url)
+            let match
+            if (url.hostname.includes('twitch.tv')) {
+              match = url.pathname.match(/^\/(?:popout\/)?([a-zA-Z0-9_]+)/)
+            } else if (url.hostname.includes('kick.com')) {
+              match = url.pathname.match(/^\/(popout|embed)\/([a-zA-Z0-9_-]+)/)
+              if (match)
+                match = [null, match[2]] // normalize to [_, channel]
+              else match = url.pathname.match(/^\/([a-zA-Z0-9_-]+)/)
+            } else if (url.hostname.includes('youtube.com')) {
+              // Only count tabs on a live stream URL — handle, /live/<id>, or /watch?v=<id>.
+              const v = url.searchParams.get('v')
+              const liveHandleMatch = url.pathname.match(/^\/@([^/]+)\/live/)
+              const liveIdMatch = url.pathname.match(/^\/live\/([^/?]+)/)
+              if (liveHandleMatch) {
+                const handle = liveHandleMatch[1]
+                const key = 'yt:' + handle.toLowerCase()
+                if (!seen.has(key)) {
+                  seen.add(key)
+                  channels.push({
+                    name: handle,
+                    platform: 'youtube',
+                    youtubeUrl: `https://www.youtube.com/@${handle}/live`,
+                  })
+                }
+              } else if (liveIdMatch || (v && url.pathname === '/watch')) {
+                const videoId = liveIdMatch ? liveIdMatch[1] : v
+                const ytUrl = liveIdMatch
+                  ? `https://www.youtube.com/live/${videoId}`
+                  : `https://www.youtube.com/watch?v=${videoId}`
+                const idx = channels.length
+                // Placeholder — name will be resolved to channel handle via oEmbed below.
+                channels.push({ name: videoId, platform: 'youtube', youtubeUrl: ytUrl, _videoId: videoId })
+                ytPending.push({ idx, videoId })
               }
-            } else if (liveIdMatch || (v && url.pathname === '/watch')) {
-              const videoId = liveIdMatch ? liveIdMatch[1] : v
-              const ytUrl = liveIdMatch ? `https://www.youtube.com/live/${videoId}` : `https://www.youtube.com/watch?v=${videoId}`
-              const idx = channels.length
-              // Placeholder — name will be resolved to channel handle via oEmbed below.
-              channels.push({ name: videoId, platform: 'youtube', youtubeUrl: ytUrl, _videoId: videoId })
-              ytPending.push({ idx, videoId })
+              continue
             }
-            continue
-          }
-          if (match?.[1]) {
-            const ch = match[1].toLowerCase()
-            if (!skip.has(ch) && ch !== 'popout' && ch !== 'embed' && !seen.has(ch)) {
-              seen.add(ch)
-              channels.push({ name: ch, platform: url.hostname.includes('kick') ? 'kick' : 'twitch' })
+            if (match?.[1]) {
+              const ch = match[1].toLowerCase()
+              if (!skip.has(ch) && ch !== 'popout' && ch !== 'embed' && !seen.has(ch)) {
+                seen.add(ch)
+                channels.push({ name: ch, platform: url.hostname.includes('kick') ? 'kick' : 'twitch' })
+              }
             }
-          }
-        } catch (e) {}
-      }
-
-      // Resolve YT handles via oEmbed — public, no auth, CORS-friendly.
-      if (ytPending.length) {
-        await Promise.all(ytPending.map(async p => {
-          const handle = await getYtChannelHandle(p.videoId)
-          if (!handle) return
-          const key = 'yt:' + handle.toLowerCase()
-          if (seen.has(key)) {
-            channels[p.idx] = null // duplicate — prefer the existing entry
-          } else {
-            seen.add(key)
-            channels[p.idx].name = handle
-            delete channels[p.idx]._videoId
-          }
-        }))
-        for (let i = channels.length - 1; i >= 0; i--) {
-          if (channels[i] === null) channels.splice(i, 1)
+          } catch (e) {}
         }
-      }
 
-      sendResponse({ channels })
-    }).catch(() => sendResponse({ channels: [] }))
+        // Resolve YT handles via oEmbed — public, no auth, CORS-friendly.
+        if (ytPending.length) {
+          await Promise.all(
+            ytPending.map(async (p) => {
+              const handle = await getYtChannelHandle(p.videoId)
+              if (!handle) return
+              const key = 'yt:' + handle.toLowerCase()
+              if (seen.has(key)) {
+                channels[p.idx] = null // duplicate — prefer the existing entry
+              } else {
+                seen.add(key)
+                channels[p.idx].name = handle
+                delete channels[p.idx]._videoId
+              }
+            }),
+          )
+          for (let i = channels.length - 1; i >= 0; i--) {
+            if (channels[i] === null) channels.splice(i, 1)
+          }
+        }
+
+        sendResponse({ channels })
+      })
+      .catch(() => sendResponse({ channels: [] }))
     return true
   }
 
@@ -5556,13 +6179,16 @@ async function handleMessage(message, sender, sendResponse) {
   if (message.type === 'fetch_live_status') {
     const channels = message.channels || []
     const kickChannels = message.kickChannels || []
-    if (!channels.length && !kickChannels.length) { sendResponse(null); return true }
+    if (!channels.length && !kickChannels.length) {
+      sendResponse(null)
+      return true
+    }
     const params = []
     if (channels.length) params.push(`channels=${encodeURIComponent(channels.join(','))}`)
     if (kickChannels.length) params.push(`kick_channels=${encodeURIComponent(kickChannels.join(','))}`)
     fetch(`https://heatsync.org/api/platform/live-status?${params.join('&')}`, { signal: AbortSignal.timeout(6000) })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => sendResponse(data))
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => sendResponse(data))
       .catch(() => sendResponse(null))
     return true // async sendResponse
   }
@@ -5578,9 +6204,11 @@ async function handleMessage(message, sender, sendResponse) {
     // Multichat content scripts ask for auth state at startup; honor that by
     // proactively reading the cookie here and storing the token.
     if (!authToken && !authFailedBlock) {
-      getAuthCookie().then(t => {
-        sendResponse({ loggedIn: !!t && !authFailedBlock })
-      }).catch(() => sendResponse({ loggedIn: false }))
+      getAuthCookie()
+        .then((t) => {
+          sendResponse({ loggedIn: !!t && !authFailedBlock })
+        })
+        .catch(() => sendResponse({ loggedIn: false }))
       return true
     }
     sendResponse({ loggedIn: !!authToken && !authFailedBlock })
@@ -5594,7 +6222,7 @@ async function handleMessage(message, sender, sendResponse) {
     log('[hs-bg] youtube_ws_subscribe received:', { url, channelId, socketOpen: isSocketOpen() })
     if (url && /^https:\/\/(www\.)?youtube\.com\//i.test(url)) {
       // Extract videoId from URL for routing (always, even if socket is down)
-      const vidMatch = url.match(/[?&]v=([^&]+)/) || url.match(/\/live\/([^?&\/]+)/) || url.match(/youtu\.be\/([^?&]+)/)
+      const vidMatch = url.match(/[?&]v=([^&]+)/) || url.match(/\/live\/([^?&/]+)/) || url.match(/youtu\.be\/([^?&]+)/)
       if (vidMatch) setYtVideoChannel(vidMatch[1], channelId)
       else {
         // No videoId in URL — server resolves it. Track for status-fallback attribution.
@@ -5635,7 +6263,10 @@ async function handleMessage(message, sender, sendResponse) {
     // Try videoId from message first, then extract from stored URL
     let videoId = message.videoId
     if (!videoId && message.url) {
-      const vidMatch = message.url.match(/[?&]v=([^&]+)/) || message.url.match(/\/live\/([^?&\/]+)/) || message.url.match(/youtu\.be\/([^?&]+)/)
+      const vidMatch =
+        message.url.match(/[?&]v=([^&]+)/) ||
+        message.url.match(/\/live\/([^?&/]+)/) ||
+        message.url.match(/youtu\.be\/([^?&]+)/)
       if (vidMatch) videoId = vidMatch[1]
     }
     if (videoId && isSocketOpen()) {
@@ -5671,16 +6302,33 @@ async function handleMessage(message, sender, sendResponse) {
     wsState = WS_STATE.DISCONNECTED
     isAuthenticated = false
     reconnectAttempts = 0
-    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
-    if (heartbeatInterval) { untrackInterval(heartbeatInterval); heartbeatInterval = null }
-    connectWebSocket().catch(err => log(' force-reconnect failed:', err?.message))
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
+    if (heartbeatInterval) {
+      untrackInterval(heartbeatInterval)
+      heartbeatInterval = null
+    }
+    connectWebSocket().catch((err) => log(' force-reconnect failed:', err?.message))
     sendResponse({ ok: true })
     return
   }
 
   // Forward WS message from content scripts (used by multichat kick channels)
   if (message.type === 'ws_send') {
-    const allowedWsTypes = ['channel:join', 'channel:leave', 'emote:used', 'youtube:subscribe', 'youtube:unsubscribe', 'multichat:sync', 'user:mute', 'user:unmute', 'ui-state:sync', 'twitch:chat:relay']
+    const allowedWsTypes = [
+      'channel:join',
+      'channel:leave',
+      'emote:used',
+      'youtube:subscribe',
+      'youtube:unsubscribe',
+      'multichat:sync',
+      'user:mute',
+      'user:unmute',
+      'ui-state:sync',
+      'twitch:chat:relay',
+    ]
     if (message.data && allowedWsTypes.includes(message.data.type)) {
       // Track multichat-added channel joins so we can replay on WS reconnect
       // (server restarts, network blips, SW resume — any of these orphan the join).
@@ -5694,14 +6342,20 @@ async function handleMessage(message, sender, sendResponse) {
         // ring backfill. Internal cooldown prevents duplicate fetches on
         // rapid switches.
         if (message.data.platform.toLowerCase() === 'kick') {
-          try { bgKickFetchArchive(message.data.channel.toLowerCase()).catch(() => {}) } catch {}
-          try { kickPusherJoin(message.data.channel.toLowerCase()) } catch {}
+          try {
+            bgKickFetchArchive(message.data.channel.toLowerCase()).catch(() => {})
+          } catch {}
+          try {
+            kickPusherJoin(message.data.channel.toLowerCase())
+          } catch {}
         }
       } else if (message.data.type === 'channel:leave' && message.data.platform && message.data.channel) {
         const key = `${message.data.platform}/${message.data.channel.toLowerCase()}`
         if (joinedExtraChannels.delete(key)) saveJoinedExtraChannels()
         if (message.data.platform.toLowerCase() === 'kick') {
-          try { kickPusherLeave(message.data.channel.toLowerCase()) } catch {}
+          try {
+            kickPusherLeave(message.data.channel.toLowerCase())
+          } catch {}
         }
       }
       wsSend(message.data)
@@ -5711,160 +6365,175 @@ async function handleMessage(message, sender, sendResponse) {
   }
 
   if (message.type === 'set_auth_token') {
-    authToken = message.token;
-    authFailedBlock = false;
-    log(' Received auth token from content script');
+    authToken = message.token
+    authFailedBlock = false
+    log(' Received auth token from content script')
     // Clear old cached inventory before setting new token (prevents wrong user's emotes)
-    emoteInventory = [];
-    blockedEmotes = new Set();
-    followedUsers = [];
-    browser.storage.local.remove(['emote_inventory', 'blocked_emotes']);
+    emoteInventory = []
+    blockedEmotes = new Set()
+    followedUsers = []
+    browser.storage.local.remove(['emote_inventory', 'blocked_emotes'])
     // Persist new token to encrypted storage
-    storeToken(message.token).catch(err => log('storeToken failed, token not persisted:', err?.message));
+    storeToken(message.token).catch((err) => log('storeToken failed, token not persisted:', err?.message))
     // Fetch inventory now that we have token
-    fetchEmoteInventory().catch(() => {});
-    fetchBlockedEmotes().catch(() => {});
-    fetchFollowedUsers().catch(() => {});
+    fetchEmoteInventory().catch(() => {})
+    fetchBlockedEmotes().catch(() => {})
+    fetchFollowedUsers().catch(() => {})
     // IMPORTANT: Reconnect WebSocket with new token (fixes stale auth after login switch)
-    log(' 🔄 Reconnecting WebSocket with new auth token...');
-    connectWebSocket().catch(() => {});
-    sendResponse({ ok: true });
+    log(' 🔄 Reconnecting WebSocket with new auth token...')
+    connectWebSocket().catch(() => {})
+    sendResponse({ ok: true })
   } else if (message.type === 'block_emote') {
     // Async - send response when done
-    blockEmote(message.hash).then(result => {
-      sendResponse(result);
-    });
-    return true; // Keep channel open for async response
+    blockEmote(message.hash).then((result) => {
+      sendResponse(result)
+    })
+    return true // Keep channel open for async response
   } else if (message.type === 'unblock_emote') {
     // Async - send response when done
-    unblockEmote(message.hash).then(result => {
-      sendResponse(result);
-    });
-    return true; // Keep channel open for async response
+    unblockEmote(message.hash).then((result) => {
+      sendResponse(result)
+    })
+    return true // Keep channel open for async response
   } else if (message.type === 'add_to_inventory') {
     // Async - send response when done
-    addToInventory(message.emoteName, message.emoteHash, message.emoteUrl, message.zeroWidth).then(result => {
-      sendResponse(result);
-    });
-    return true; // Keep channel open for async response
+    addToInventory(message.emoteName, message.emoteHash, message.emoteUrl, message.zeroWidth).then((result) => {
+      sendResponse(result)
+    })
+    return true // Keep channel open for async response
   } else if (message.type === 'remove_from_inventory') {
     // Async - send response when done
-    removeFromInventory(message.emoteHash, message.emoteName).then(result => {
-      sendResponse(result);
-    });
-    return true; // Keep channel open for async response
+    removeFromInventory(message.emoteHash, message.emoteName).then((result) => {
+      sendResponse(result)
+    })
+    return true // Keep channel open for async response
   } else if (message.type === 'mute_user') {
-    const expiresAt = message.expiresAt || null;
-    mutedUsers.set(message.username, expiresAt);
-    persistMutedUsers();
-    broadcastToTabs({ type: 'user_muted', username: message.username, expiresAt });
+    const expiresAt = message.expiresAt || null
+    mutedUsers.set(message.username, expiresAt)
+    persistMutedUsers()
+    broadcastToTabs({ type: 'user_muted', username: message.username, expiresAt })
     // Sync to server via REST /api/mutes — writes to user_mutes table and
     // broadcasts mute:added WS event so heatsync.org tabs + other ext sockets
     // pick up the mute instantly. Replaces the old `user:mute` WS path which
     // wrote to user_blocks (different table, never read by chat-mute UI).
-    syncMuteToServer(message.username, expiresAt).catch(err => log(' syncMuteToServer failed:', err?.message))
-    log(' Muted user:', message.username, expiresAt ? `(expires ${new Date(expiresAt).toISOString()})` : '(permanent)');
-    sendResponse({ ok: true });
+    syncMuteToServer(message.username, expiresAt).catch((err) => log(' syncMuteToServer failed:', err?.message))
+    log(' Muted user:', message.username, expiresAt ? `(expires ${new Date(expiresAt).toISOString()})` : '(permanent)')
+    sendResponse({ ok: true })
   } else if (message.type === 'unmute_user') {
-    mutedUsers.delete(message.username);
-    persistMutedUsers();
-    broadcastToTabs({ type: 'user_unmuted', username: message.username });
+    mutedUsers.delete(message.username)
+    persistMutedUsers()
+    broadcastToTabs({ type: 'user_unmuted', username: message.username })
     // Sync to server via REST DELETE /api/mutes/:username — broadcasts
     // mute:removed WS event for cross-device + cross-surface unmute.
-    syncUnmuteToServer(message.username).catch(err => log(' syncUnmuteToServer failed:', err?.message))
-    log(' Unmuted user:', message.username);
-    sendResponse({ ok: true });
+    syncUnmuteToServer(message.username).catch((err) => log(' syncUnmuteToServer failed:', err?.message))
+    log(' Unmuted user:', message.username)
+    sendResponse({ ok: true })
   } else if (message.type === 'get_muted_users') {
-    sendResponse({ users: Array.from(mutedUsers.keys()) });
+    sendResponse({ users: Array.from(mutedUsers.keys()) })
   } else if (message.type === 'block_user') {
-    blockedUsers.add(message.username);
-    browser.storage.local.set({ blocked_users: Array.from(blockedUsers) });
-    broadcastToTabs({ type: 'user_blocked', username: message.username });
-    log(' Blocked user:', message.username);
-    sendResponse({ ok: true });
+    blockedUsers.add(message.username)
+    browser.storage.local.set({ blocked_users: Array.from(blockedUsers) })
+    broadcastToTabs({ type: 'user_blocked', username: message.username })
+    log(' Blocked user:', message.username)
+    sendResponse({ ok: true })
   } else if (message.type === 'unblock_user') {
-    blockedUsers.delete(message.username);
-    browser.storage.local.set({ blocked_users: Array.from(blockedUsers) });
-    broadcastToTabs({ type: 'user_unblocked', username: message.username });
-    log(' Unblocked user:', message.username);
-    sendResponse({ ok: true });
+    blockedUsers.delete(message.username)
+    browser.storage.local.set({ blocked_users: Array.from(blockedUsers) })
+    broadcastToTabs({ type: 'user_unblocked', username: message.username })
+    log(' Unblocked user:', message.username)
+    sendResponse({ ok: true })
   } else if (message.type === 'get_blocked_users') {
-    sendResponse({ users: Array.from(blockedUsers) });
+    sendResponse({ users: Array.from(blockedUsers) })
   } else if (message.type === 'get_twitch_auth_token') {
     // Cross-domain Twitch cookie access (for sending from Kick/YouTube pages)
     Promise.all([
       browser.cookies.get({ url: 'https://www.twitch.tv', name: 'auth-token' }),
-      browser.cookies.get({ url: 'https://www.twitch.tv', name: 'name' })
-    ]).then(([tokenCookie, nameCookie]) => {
-      sendResponse({
-        token: tokenCookie?.value || null,
-        username: nameCookie?.value ? decodeURIComponent(nameCookie.value).toLowerCase() : (userInfo?.twitch_username || null)
-      });
-    }).catch(() => sendResponse({ token: null, username: null }));
-    return true;
+      browser.cookies.get({ url: 'https://www.twitch.tv', name: 'name' }),
+    ])
+      .then(([tokenCookie, nameCookie]) => {
+        sendResponse({
+          token: tokenCookie?.value || null,
+          username: nameCookie?.value
+            ? decodeURIComponent(nameCookie.value).toLowerCase()
+            : userInfo?.twitch_username || null,
+        })
+      })
+      .catch(() => sendResponse({ token: null, username: null }))
+    return true
   } else if (message.type === 'get_inventory') {
     // Async - wait for init to complete first
-    (async () => {
+    ;(async () => {
       if (initPromise) {
-        await initPromise;
+        await initPromise
       }
-      log(' Background: get_inventory request - responding with', emoteInventory.length, 'personal,', globalEmotes.length, 'global');
+      log(
+        ' Background: get_inventory request - responding with',
+        emoteInventory.length,
+        'personal,',
+        globalEmotes.length,
+        'global',
+      )
       // Merged set — picker needs to surface BOTH server and local blocks so
       // anon-era hashes (now lingering in localBlockedEmotes after login) can
       // still be unblocked from the UI. unblockEmote handles either layer.
       sendResponse({
         emotes: emoteInventory,
         globalEmotes: globalEmotes,
-        blocked: Array.from(new Set([...blockedEmotes, ...localBlockedEmotes]))
-      });
-    })();
-    return true; // Keep channel open for async response
+        blocked: Array.from(new Set([...blockedEmotes, ...localBlockedEmotes])),
+      })
+    })()
+    return true // Keep channel open for async response
   } else if (message.type === 'get_followed_users') {
     sendResponse({
-      users: followedUsers
-    });
-    return true;
+      users: followedUsers,
+    })
+    return true
   } else if (message.type === 'get_live_followed') {
     // Cached snapshot from background poll — popup/content can read instantly
     sendResponse({
       snapshot: _liveFollowedSnapshot,
       count: _liveFollowedCount,
-    });
-    return true;
+    })
+    return true
   } else if (message.type === 'refresh_followed_users') {
     // Triggered after a follow/unfollow action elsewhere — re-fetches the
     // canonical list from server and re-runs live poll so badge/notifications
     // reflect the change immediately.
     fetchFollowedUsers().catch(() => {})
     sendResponse({ ok: true })
-    return true;
+    return true
   } else if (message.type === 'refresh_live_followed') {
     // Force a fresh poll (e.g., user manually pulls to refresh)
     if (typeof pollFollowedLive === 'function') {
-      pollFollowedLive().then(() => {
-        sendResponse({ snapshot: _liveFollowedSnapshot, count: _liveFollowedCount })
-      }).catch(() => sendResponse({ snapshot: [], count: 0 }))
+      pollFollowedLive()
+        .then(() => {
+          sendResponse({ snapshot: _liveFollowedSnapshot, count: _liveFollowedCount })
+        })
+        .catch(() => sendResponse({ snapshot: [], count: 0 }))
     } else {
       sendResponse({ snapshot: [], count: 0 })
     }
-    return true;
+    return true
   } else if (message.type === 'join_channel') {
     // Content script detected channel change — wait for init so cached channel emotes are available
     // Defence in depth: validate platform + channel before forwarding to WS server
     const VALID_PLATFORMS = new Set(['twitch', 'kick', 'youtube'])
     const safePlatform = VALID_PLATFORMS.has(message.platform) ? message.platform : null
-    const safeChannel = String(message.channel || '').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 50)
+    const safeChannel = String(message.channel || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, '')
+      .slice(0, 50)
     if (!safePlatform || !safeChannel) {
       sendResponse({ received: false, error: 'invalid platform/channel' })
       return true
     }
     log(' 📺 Content script requesting channel join:', safePlatform, '/', safeChannel, 'id:', message.channelId)
     ;(async () => {
-      if (initPromise) await initPromise;
+      if (initPromise) await initPromise
       joinChannel(safePlatform, safeChannel, message.channelId, sender.tab?.id)
       sendResponse({ received: true })
-    })();
-    return true; // Keep channel open for async response
+    })()
+    return true // Keep channel open for async response
   } else if (message.type === 'update_channel_id') {
     // Content script late-discovered the Twitch channel ID via early-inject MAIN-world.
     // Cache it so subsequent fetches skip the GQL roundtrip; if current fetch is in flight
@@ -5878,24 +6547,27 @@ async function handleMessage(message, sender, sendResponse) {
     return true
   } else if (message.type === 'emote_sent') {
     // Content script detected user sent emote
-    log(' 💬 Content script detected emote sent:', message.emoteName);
+    log(' 💬 Content script detected emote sent:', message.emoteName)
     const result = broadcastEmoteUsage(message.emoteName, message.emoteHash, sender.tab?.id)
     log(' 📤 Broadcast result:', result)
     sendResponse(result || { success: false, reason: 'unknown' })
-    return true; // Keep channel open for response
+    return true // Keep channel open for response
   } else if (message.type === 'get_channel_emotes') {
     // Multichat/content requesting channel emotes (may have missed the broadcast)
-    const totalEmotes = Object.values(channelEmotesMap).reduce((sum, e) => sum + (Array.isArray(e) ? e.length : 0), 0);
+    const totalEmotes = Object.values(channelEmotesMap).reduce((sum, e) => sum + (Array.isArray(e) ? e.length : 0), 0)
     if (totalEmotes > 0) {
-      browser.storage.local.set({ channel_emotes_map: getStorableChannelEmotes(), channel_emotes_fetched_at: channelEmotesFetchedAt });
+      browser.storage.local.set({
+        channel_emotes_map: getStorableChannelEmotes(),
+        channel_emotes_fetched_at: channelEmotesFetchedAt,
+      })
       for (const [k, emotes] of Object.entries(channelEmotesMap)) {
         if (Array.isArray(emotes)) {
           const { platform, channel } = splitChKey(k)
-          broadcastToTabs({ type: 'channel_emotes_update', emotes, channelOwner: channel, platform });
+          broadcastToTabs({ type: 'channel_emotes_update', emotes, channelOwner: channel, platform })
         }
       }
     }
-    sendResponse({ count: totalEmotes });
+    sendResponse({ count: totalEmotes })
   } else if (message.type === 'get_picker_emotes') {
     // Return immediately with whatever's cached. If channel emotes aren't
     // ready, trigger the fetch but DON'T poll-wait — fetchChannelOwnerEmotes
@@ -5921,7 +6593,7 @@ async function handleMessage(message, sender, sendResponse) {
         channelLoading,
         globalEmotes: globalEmotes,
         inventoryEmotes: emoteInventory,
-        blocked: Array.from(new Set([...blockedEmotes, ...localBlockedEmotes]))
+        blocked: Array.from(new Set([...blockedEmotes, ...localBlockedEmotes])),
       })
     })()
     return true
@@ -5933,17 +6605,17 @@ async function handleMessage(message, sender, sendResponse) {
     try {
       if (globalThis.__senderEmoteCache?.clear) globalThis.__senderEmoteCache.clear()
     } catch {}
-    (async () => {
+    ;(async () => {
       await Promise.all([
         fetchGlobalEmotes(),
         fetchEmoteInventory(),
         fetchBlockedEmotes(),
         fetchUserInfo(),
-        fetchViewerSettings()
-      ]);
-      sendResponse({ success: true });
-    })();
-    return true;
+        fetchViewerSettings(),
+      ])
+      sendResponse({ success: true })
+    })()
+    return true
   } else if (message.type === 'clear_blocked') {
     // Clear all blocked emotes (both server-synced and local)
     blockedEmotes.clear()
@@ -5956,32 +6628,36 @@ async function handleMessage(message, sender, sendResponse) {
         fetchWithTimeout(`${API_URL}/api/user/emotes/blocks/clear`, {
           method: 'POST',
           credentials: 'omit', // Bearer-only → CSRF-exempt (cookie would trigger CSRF)
-          headers: { 'Authorization': `Bearer ${token}` }
-        }).then(r => r.body?.cancel()).catch(err => log(' Clear blocked emotes failed:', err?.message))
+          headers: { Authorization: `Bearer ${token}` },
+        })
+          .then((r) => r.body?.cancel())
+          .catch((err) => log(' Clear blocked emotes failed:', err?.message))
       }
       sendResponse({ success: true })
     })()
     return true
   } else if (message.type === 'notifs_viewed') {
-    unreadNotifCount = 0;
-    updateExtensionBadge();
+    unreadNotifCount = 0
+    updateExtensionBadge()
   } else if (message.type === 'get_follow_history') {
     // Content scripts request cached follow history (handles race condition on load)
     sendResponse({
       history: cachedFollowHistory,
-      colors: cachedFollowColors
-    });
-    return true; // Required for Firefox — sendResponse ignored without this
+      colors: cachedFollowColors,
+    })
+    return true // Required for Firefox — sendResponse ignored without this
   } else if (message.type === 'get_roomstate') {
     // Return cached IRC ROOMSTATE for a channel (modes from the JOIN tag set).
     // Available as soon as the SW's IRC connection has joined the channel —
     // works from any host (Twitch/Kick/YT) because IRC is shared.
     const ch = (message.channel || '').toString().toLowerCase()
-    if (!ch) { sendResponse({ ok: false, error: 'no channel' }); return true }
+    if (!ch) {
+      sendResponse({ ok: false, error: 'no channel' })
+      return true
+    }
     const state = BG_IRC?.roomstates?.get(ch) || null
     sendResponse({ ok: true, state })
     return true
-
   } else if (message.type === 'twitch_gql_authed') {
     // Cross-platform Twitch GQL: queries authenticated with the twitch.tv
     // auth-token cookie, so content scripts on Kick/YouTube can read mod
@@ -5999,10 +6675,19 @@ async function handleMessage(message, sender, sendResponse) {
         const body = message.variables
           ? { query: message.query, variables: message.variables }
           : { query: message.query }
-        const resp = await fetchWithTimeout('https://gql.twitch.tv/gql', {
-          method: 'POST', headers: hdrs, body: JSON.stringify(body)
-        }, 8000)
-        if (!resp.ok) { sendResponse({ ok: false, error: 'GQL ' + resp.status }); return }
+        const resp = await fetchWithTimeout(
+          'https://gql.twitch.tv/gql',
+          {
+            method: 'POST',
+            headers: hdrs,
+            body: JSON.stringify(body),
+          },
+          8000,
+        )
+        if (!resp.ok) {
+          sendResponse({ ok: false, error: 'GQL ' + resp.status })
+          return
+        }
         const data = await resp.json()
         sendResponse({ ok: true, data })
       } catch (e) {
@@ -6010,7 +6695,6 @@ async function handleMessage(message, sender, sendResponse) {
       }
     })()
     return true
-
   } else if (message.type === 'twitch_relay') {
     // Relay a Twitch API call through an open twitch.tv tab. Used for
     // mutations (ban/timeout/delete/follow) that require a Client-Integrity
@@ -6025,16 +6709,19 @@ async function handleMessage(message, sender, sendResponse) {
         // Try every Twitch tab — after an extension reload, content scripts
         // in existing tabs become orphans (no listener for new message types)
         // until the page is refreshed.
-        const candidates = [...tabs.filter(t => t.active), ...tabs.filter(t => !t.active)]
+        const candidates = [...tabs.filter((t) => t.active), ...tabs.filter((t) => !t.active)]
         let lastErr = null
         for (const tab of candidates) {
           try {
             const result = await browser.tabs.sendMessage(tab.id, {
               type: 'twitch_relay_exec',
               op: message.op,
-              args: message.args || {}
+              args: message.args || {},
             })
-            if (result) { sendResponse(result); return }
+            if (result) {
+              sendResponse(result)
+              return
+            }
           } catch (e) {
             lastErr = e?.message || ''
             if (/Could not establish connection|Receiving end does not exist/i.test(lastErr)) continue
@@ -6048,7 +6735,6 @@ async function handleMessage(message, sender, sendResponse) {
       }
     })()
     return true
-
   } else if (message.type === 'kick_channel_badges') {
     // Fetch kick.com/api/v2/channels/{slug}.subscriber_badges → [{months, src}].
     // Run from BG so kick.com fetch isn't gated by the panel's cross-origin
@@ -6057,10 +6743,20 @@ async function handleMessage(message, sender, sendResponse) {
     // kickChannelIdCache pattern.
     ;(async () => {
       try {
-        const slug = String(message.slug || '').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 64)
-        if (!slug) { sendResponse({ ok: false, error: 'missing slug' }); return }
+        const slug = String(message.slug || '')
+          .toLowerCase()
+          .replace(/[^a-z0-9_-]/g, '')
+          .slice(0, 64)
+        if (!slug) {
+          sendResponse({ ok: false, error: 'missing slug' })
+          return
+        }
         const resp = await fetchWithTimeout(`https://kick.com/api/v2/channels/${encodeURIComponent(slug)}`)
-        if (!resp.ok) { resp.body?.cancel?.(); sendResponse({ ok: false, error: 'kick api ' + resp.status }); return }
+        if (!resp.ok) {
+          resp.body?.cancel?.()
+          sendResponse({ ok: false, error: 'kick api ' + resp.status })
+          return
+        }
         const data = await resp.json().catch(() => null)
         const sub = Array.isArray(data?.subscriber_badges) ? data.subscriber_badges : []
         const badges = []
@@ -6077,20 +6773,31 @@ async function handleMessage(message, sender, sendResponse) {
       }
     })()
     return true
-
   } else if (message.type === 'kick_resolve_channel') {
     // Resolve Kick channel slug → numeric channelId
-    (async () => {
+    ;(async () => {
       try {
         const slug = message.slug?.toLowerCase()
-        if (!slug) { sendResponse({ ok: false, error: 'no slug' }); return }
+        if (!slug) {
+          sendResponse({ ok: false, error: 'no slug' })
+          return
+        }
         const cached = kickChannelIdCache.get(slug)
-        if (cached) { sendResponse({ channelId: cached }); return }
+        if (cached) {
+          sendResponse({ channelId: cached })
+          return
+        }
         const resp = await fetchWithTimeout(`https://kick.com/api/v2/channels/${encodeURIComponent(slug)}`)
-        if (!resp.ok) { sendResponse({ ok: false, error: `kick api ${resp.status}` }); return }
+        if (!resp.ok) {
+          sendResponse({ ok: false, error: `kick api ${resp.status}` })
+          return
+        }
         const data = await resp.json()
         const channelId = data?.id
-        if (!channelId) { sendResponse({ ok: false, error: 'no channel id' }); return }
+        if (!channelId) {
+          sendResponse({ ok: false, error: 'no channel id' })
+          return
+        }
         // LRU cache (cap 100)
         if (kickChannelIdCache.size >= 100) {
           const oldest = kickChannelIdCache.keys().next().value
@@ -6103,25 +6810,33 @@ async function handleMessage(message, sender, sendResponse) {
       }
     })()
     return true
-
   } else if (message.type === 'kick_send_message') {
     // Route Kick chat send through a kick.com tab (same-origin cookies)
-    (async () => {
+    ;(async () => {
       try {
         const { channelId, content } = message
-        if (!channelId || !content) { sendResponse({ ok: false, error: 'missing params' }); return }
+        if (!channelId || !content) {
+          sendResponse({ ok: false, error: 'missing params' })
+          return
+        }
         // Get XSRF token from Kick cookies
         const cookie = await browser.cookies.get({ url: 'https://kick.com', name: 'XSRF-TOKEN' })
-        if (!cookie?.value) { sendResponse({ ok: false, error: 'kick_not_logged_in' }); return }
+        if (!cookie?.value) {
+          sendResponse({ ok: false, error: 'kick_not_logged_in' })
+          return
+        }
         // Find a kick.com tab to relay through
         const tabs = await browser.tabs.query({ url: '*://*.kick.com/*' })
-        if (!tabs || tabs.length === 0) { sendResponse({ ok: false, error: 'no_kick_tab' }); return }
+        if (!tabs || tabs.length === 0) {
+          sendResponse({ ok: false, error: 'no_kick_tab' })
+          return
+        }
         // Relay to first kick.com tab
         const result = await browser.tabs.sendMessage(tabs[0].id, {
           type: 'kick_send_relay',
           channelId,
           content,
-          xsrfToken: cookie.value
+          xsrfToken: cookie.value,
         })
         sendResponse(result || { ok: false, error: 'no response from tab' })
       } catch (e) {
@@ -6130,7 +6845,6 @@ async function handleMessage(message, sender, sendResponse) {
       }
     })()
     return true
-
   } else if (message.type === 'kick_follow') {
     // Kick has no public follow API. We POST/DELETE /api/v2/channels/{slug}/follow
     // with the user's own session cookies + XSRF token. SW direct fetch with
@@ -6140,28 +6854,45 @@ async function handleMessage(message, sender, sendResponse) {
     // endpoint doesn't enforce a same-origin Referer check.
     ;(async () => {
       try {
-        const slug = String(message.slug || '').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 64)
+        const slug = String(message.slug || '')
+          .toLowerCase()
+          .replace(/[^a-z0-9_-]/g, '')
+          .slice(0, 64)
         const follow = !!message.follow
-        if (!slug) { sendResponse({ ok: false, error: 'missing slug' }); return }
+        if (!slug) {
+          sendResponse({ ok: false, error: 'missing slug' })
+          return
+        }
         const cookie = await browser.cookies.get({ url: 'https://kick.com', name: 'XSRF-TOKEN' })
-        if (!cookie?.value) { sendResponse({ ok: false, error: 'kick_not_logged_in' }); return }
+        if (!cookie?.value) {
+          sendResponse({ ok: false, error: 'kick_not_logged_in' })
+          return
+        }
         const url = `https://kick.com/api/v2/channels/${encodeURIComponent(slug)}/follow`
         const resp = await fetchWithTimeout(url, {
           method: follow ? 'POST' : 'DELETE',
           credentials: 'include',
           headers: {
-            'Accept': 'application/json',
+            Accept: 'application/json',
             'Content-Type': 'application/json',
             'X-XSRF-TOKEN': decodeURIComponent(cookie.value),
           },
         })
         // Kick returns 200/204 on success; treat "already following" / "not following"
         // signals as idempotent success. Other 4xx/5xx surface as errors.
-        if (resp.ok || resp.status === 204) { sendResponse({ ok: true }); return }
+        if (resp.ok || resp.status === 204) {
+          sendResponse({ ok: true })
+          return
+        }
         // 422 with "already" in body → idempotent
         let bodyText = ''
-        try { bodyText = await resp.text() } catch {}
-        if (/already|not.*follow/i.test(bodyText)) { sendResponse({ ok: true, idempotent: true }); return }
+        try {
+          bodyText = await resp.text()
+        } catch {}
+        if (/already|not.*follow/i.test(bodyText)) {
+          sendResponse({ ok: true, idempotent: true })
+          return
+        }
         sendResponse({ ok: false, error: `kick ${resp.status}`, body: bodyText.slice(0, 200) })
       } catch (e) {
         log('kick_follow error:', e?.message)
@@ -6169,7 +6900,6 @@ async function handleMessage(message, sender, sendResponse) {
       }
     })()
     return true
-
   } else if (message.type === 'kick_mod_action') {
     // Kick moderation — ban / timeout / unban / delete-message.
     // Routed through a kick.com tab so same-origin XSRF + session cookies apply.
@@ -6177,12 +6907,24 @@ async function handleMessage(message, sender, sendResponse) {
     ;(async () => {
       try {
         const action = String(message.action || '')
-        const slug = String(message.slug || '').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 64)
-        if (!action || !slug) { sendResponse({ ok: false, error: 'missing params' }); return }
+        const slug = String(message.slug || '')
+          .toLowerCase()
+          .replace(/[^a-z0-9_-]/g, '')
+          .slice(0, 64)
+        if (!action || !slug) {
+          sendResponse({ ok: false, error: 'missing params' })
+          return
+        }
         const cookie = await browser.cookies.get({ url: 'https://kick.com', name: 'XSRF-TOKEN' })
-        if (!cookie?.value) { sendResponse({ ok: false, error: 'kick_not_logged_in' }); return }
+        if (!cookie?.value) {
+          sendResponse({ ok: false, error: 'kick_not_logged_in' })
+          return
+        }
         const tabs = await browser.tabs.query({ url: '*://*.kick.com/*' })
-        if (!tabs || tabs.length === 0) { sendResponse({ ok: false, error: 'no_kick_tab' }); return }
+        if (!tabs || tabs.length === 0) {
+          sendResponse({ ok: false, error: 'no_kick_tab' })
+          return
+        }
         // For delete we need the chatroomId — resolve once per slug, cached.
         let chatroomId = null
         if (action === 'delete') {
@@ -6199,7 +6941,10 @@ async function handleMessage(message, sender, sendResponse) {
                 kickChatroomIdCache.set(slug, chatroomId)
               }
             }
-            if (!chatroomId) { sendResponse({ ok: false, error: 'no_chatroom' }); return }
+            if (!chatroomId) {
+              sendResponse({ ok: false, error: 'no_chatroom' })
+              return
+            }
           }
         }
         const result = await browser.tabs.sendMessage(tabs[0].id, {
@@ -6211,7 +6956,7 @@ async function handleMessage(message, sender, sendResponse) {
           durationMin: message.durationMin || 0,
           reason: message.reason || '',
           messageId: message.messageId || '',
-          xsrfToken: cookie.value
+          xsrfToken: cookie.value,
         })
         sendResponse(result || { ok: false, error: 'no response from tab' })
       } catch (e) {
@@ -6220,12 +6965,14 @@ async function handleMessage(message, sender, sendResponse) {
       }
     })()
     return true
-
   } else if (message.type === 'youtube_send_message') {
-    (async () => {
+    ;(async () => {
       try {
         const { text } = message
-        if (!text) { sendResponse({ ok: false, error: 'missing params' }); return }
+        if (!text) {
+          sendResponse({ ok: false, error: 'missing params' })
+          return
+        }
         // Prefer the sender's own tab — multichat usually lives on the same
         // YouTube tab whose iframe owns the live_chat. Falls back to the
         // active YouTube tab in the focused window, then any YouTube tab.
@@ -6236,12 +6983,17 @@ async function handleMessage(message, sender, sendResponse) {
           if (t && /youtube\.com/.test(t.url || '')) targetTabId = senderTabId
         }
         if (!targetTabId) {
-          const active = await browser.tabs.query({ active: true, currentWindow: true, url: '*://www.youtube.com/*' }).catch(() => [])
+          const active = await browser.tabs
+            .query({ active: true, currentWindow: true, url: '*://www.youtube.com/*' })
+            .catch(() => [])
           if (active && active.length > 0) targetTabId = active[0].id
         }
         if (!targetTabId) {
           const tabs = await browser.tabs.query({ url: '*://www.youtube.com/*' })
-          if (!tabs || tabs.length === 0) { sendResponse({ ok: false, error: 'no_youtube_tab' }); return }
+          if (!tabs || tabs.length === 0) {
+            sendResponse({ ok: false, error: 'no_youtube_tab' })
+            return
+          }
           targetTabId = tabs[0].id
         }
         const result = await browser.tabs.sendMessage(targetTabId, {
@@ -6251,7 +7003,7 @@ async function handleMessage(message, sender, sendResponse) {
           // youtube-content.js (1024+) so we know whether YT actually
           // accepted the send (rate-limit / slow-mode / disabled button
           // would otherwise return ok:true after the click animation).
-          awaitConfirm: true
+          awaitConfirm: true,
         })
         sendResponse(result || { ok: false, error: 'no response from tab' })
       } catch (e) {
@@ -6260,18 +7012,21 @@ async function handleMessage(message, sender, sendResponse) {
       }
     })()
     return true
-
   } else if (message.type === 'api_fetch') {
     // Generic API proxy — content scripts route through here to bypass CORS
     // Strict path validation: catch literal `..` AND URL-encoded variants
     // (%2e%2e, %2E, etc) by decoding before the check
     let _decodedPath
-    try { _decodedPath = decodeURIComponent(message.path || '') } catch { _decodedPath = '' }
-    if (!message.path || !message.path.startsWith('/api/') || /\.\./.test(_decodedPath)) {
-      sendResponse({ ok: false, error: 'invalid path' });
-      return true;
+    try {
+      _decodedPath = decodeURIComponent(message.path || '')
+    } catch {
+      _decodedPath = ''
     }
-    const ALLOWED_METHODS = new Set(['GET','POST','PUT','PATCH','DELETE'])
+    if (!message.path || !message.path.startsWith('/api/') || /\.\./.test(_decodedPath)) {
+      sendResponse({ ok: false, error: 'invalid path' })
+      return true
+    }
+    const ALLOWED_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
     const reqMethod = String(message.method || 'GET').toUpperCase()
     if (!ALLOWED_METHODS.has(reqMethod)) {
       sendResponse({ ok: false, error: 'invalid method' })
@@ -6290,7 +7045,7 @@ async function handleMessage(message, sender, sendResponse) {
         return { resp, data }
       }
       try {
-        let token = message.auth ? (authToken || await getAuthCookie()) : null
+        const token = message.auth ? authToken || (await getAuthCookie()) : null
         let { resp, data } = await doFetch(token)
         // Self-heal: on 401 with auth, the in-memory/encrypted token may be
         // stale (e.g. JWT issued before user linked Twitch). Re-read directly
@@ -6364,16 +7119,24 @@ async function handleMessage(message, sender, sendResponse) {
           let proxied = null
           for (let attempt = 0; attempt < 2 && !proxied; attempt++) {
             try {
-              const resp = await fetchWithTimeout(`${API_URL}/api/cosmetics/batch`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ twitchIds: toFetch })
-              }, 10000)
+              const resp = await fetchWithTimeout(
+                `${API_URL}/api/cosmetics/batch`,
+                {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ twitchIds: toFetch }),
+                },
+                10000,
+              )
               if (resp.ok) {
                 const data = await resp.json()
                 if (data && data.cosmetics) proxied = data.cosmetics
-              } else { resp.body?.cancel?.() }
-            } catch (e) { /* retry, then fall through */ }
+              } else {
+                resp.body?.cancel?.()
+              }
+            } catch (e) {
+              /* retry, then fall through */
+            }
           }
           if (proxied) {
             const out = {}
@@ -6389,26 +7152,41 @@ async function handleMessage(message, sender, sendResponse) {
           // error must NOT be cached, or one transient blip blanks a user's
           // cosmetics for the whole negative-TTL window; leave it unset to retry.
           const out = {}
-          await Promise.all(toFetch.map(async (id) => {
-            try {
-              const resp = await fetchWithTimeout(`https://7tv.io/v3/users/twitch/${id}`)
-              if (resp.status === 404) { resp.body?.cancel?.(); setUserCosmetic(id, null); out[id] = null; return }
-              if (!resp.ok) { resp.body?.cancel?.(); out[id] = null; return }
-              const data = await resp.json()
-              const ids7tv = extract7TVCosmeticIds(data)
-              const cosmetic = await resolve7TVCosmeticIds(ids7tv)
-              setUserCosmetic(id, cosmetic)
-              out[id] = cosmetic
-            } catch (e) { out[id] = null }
-          }))
+          await Promise.all(
+            toFetch.map(async (id) => {
+              try {
+                const resp = await fetchWithTimeout(`https://7tv.io/v3/users/twitch/${id}`)
+                if (resp.status === 404) {
+                  resp.body?.cancel?.()
+                  setUserCosmetic(id, null)
+                  out[id] = null
+                  return
+                }
+                if (!resp.ok) {
+                  resp.body?.cancel?.()
+                  out[id] = null
+                  return
+                }
+                const data = await resp.json()
+                const ids7tv = extract7TVCosmeticIds(data)
+                const cosmetic = await resolve7TVCosmeticIds(ids7tv)
+                setUserCosmetic(id, cosmetic)
+                out[id] = cosmetic
+              } catch (e) {
+                out[id] = null
+              }
+            }),
+          )
           return out
         })()
         // Register each id as inflight before awaiting — overlapping concurrent
         // callers see the same promise and skip refiring.
         for (const id of toFetch) {
-          const idP = batchPromise.then(m => m[id] || null)
+          const idP = batchPromise.then((m) => m[id] || null)
           inflightMap.set(id, idP)
-          idP.finally(() => { if (inflightMap.get(id) === idP) inflightMap.delete(id) })
+          idP.finally(() => {
+            if (inflightMap.get(id) === idP) inflightMap.delete(id)
+          })
         }
         const batchResult = await batchPromise
         for (const id of toFetch) result[id] = batchResult[id] || null
@@ -6416,10 +7194,12 @@ async function handleMessage(message, sender, sendResponse) {
 
       // Collect from any other in-flight requests (started by sibling calls)
       if (pendingInflight.length > 0) {
-        await Promise.all(pendingInflight.map(async (id) => {
-          const p = inflightMap.get(id)
-          if (p) result[id] = (await p) || null
-        }))
+        await Promise.all(
+          pendingInflight.map(async (id) => {
+            const p = inflightMap.get(id)
+            if (p) result[id] = (await p) || null
+          }),
+        )
       }
 
       sendResponse({ cosmetics: result })
@@ -6434,50 +7214,64 @@ async function handleMessage(message, sender, sendResponse) {
     const usernames = (message.kickUsernames || []).slice(0, 10)
     ;(async () => {
       const result = {}
-      await Promise.all(usernames.map(async (username) => {
-        const cacheKey = `kick:${username}`
-        const cached = userCosmeticsCache.get(cacheKey)
-        const isNegative = cached && !cached.paint && !cached.badge
-        const ttl = isNegative ? COSMETICS_NEGATIVE_TTL : USER_COSMETICS_TTL
-        if (cached && Date.now() - cached.fetchedAt < ttl) {
-          result[username] = { paint: cached.paint, badge: cached.badge, twitchId: cached.twitchId || null }
-          return
-        }
-        try {
-          // Step 1 — username → kick user_id (cached separately)
-          let kickUserId = kickUsernameToIdCache.get(username)
-          if (!kickUserId) {
-            const userResp = await fetchWithTimeout(`https://kick.com/api/v1/users/${encodeURIComponent(username)}`)
-            if (!userResp.ok) {
-              userResp.body?.cancel?.()
+      await Promise.all(
+        usernames.map(async (username) => {
+          const cacheKey = `kick:${username}`
+          const cached = userCosmeticsCache.get(cacheKey)
+          const isNegative = cached && !cached.paint && !cached.badge
+          const ttl = isNegative ? COSMETICS_NEGATIVE_TTL : USER_COSMETICS_TTL
+          if (cached && Date.now() - cached.fetchedAt < ttl) {
+            result[username] = { paint: cached.paint, badge: cached.badge, twitchId: cached.twitchId || null }
+            return
+          }
+          try {
+            // Step 1 — username → kick user_id (cached separately)
+            let kickUserId = kickUsernameToIdCache.get(username)
+            if (!kickUserId) {
+              const userResp = await fetchWithTimeout(`https://kick.com/api/v1/users/${encodeURIComponent(username)}`)
+              if (!userResp.ok) {
+                userResp.body?.cancel?.()
+                setUserCosmetic(cacheKey, null)
+                result[username] = null
+                return
+              }
+              const userData = await userResp.json().catch(() => null)
+              kickUserId = userData?.id || null
+              if (!kickUserId) {
+                setUserCosmetic(cacheKey, null)
+                result[username] = null
+                return
+              }
+              if (kickUsernameToIdCache.size >= 1000) {
+                kickUsernameToIdCache.delete(kickUsernameToIdCache.keys().next().value)
+              }
+              kickUsernameToIdCache.set(username, kickUserId)
+            }
+            // Step 2 — kick user_id → 7TV cosmetics + twitch connection
+            const resp = await fetchWithTimeout(`https://7tv.io/v3/users/kick/${kickUserId}`)
+            if (!resp.ok) {
+              resp.body?.cancel?.()
               setUserCosmetic(cacheKey, null)
               result[username] = null
               return
             }
-            const userData = await userResp.json().catch(() => null)
-            kickUserId = userData?.id || null
-            if (!kickUserId) { setUserCosmetic(cacheKey, null); result[username] = null; return }
-            if (kickUsernameToIdCache.size >= 1000) {
-              kickUsernameToIdCache.delete(kickUsernameToIdCache.keys().next().value)
-            }
-            kickUsernameToIdCache.set(username, kickUserId)
+            const data = await resp.json()
+            const ids7tv = extract7TVCosmeticIds(data)
+            const cosmetic = await resolve7TVCosmeticIds(ids7tv)
+            const twitchConn = data?.user?.connections?.find((c) => c.platform === 'TWITCH')
+            const twitchId = twitchConn?.id || null
+            const twitchUsername = twitchConn?.username || null
+            const full = cosmetic
+              ? { ...cosmetic, twitchId, twitchUsername }
+              : { paint: null, badge: null, twitchId, twitchUsername }
+            setUserCosmetic(cacheKey, full)
+            result[username] = full
+          } catch (e) {
+            setUserCosmetic(cacheKey, null)
+            result[username] = null
           }
-          // Step 2 — kick user_id → 7TV cosmetics + twitch connection
-          const resp = await fetchWithTimeout(`https://7tv.io/v3/users/kick/${kickUserId}`)
-          if (!resp.ok) { resp.body?.cancel?.(); setUserCosmetic(cacheKey, null); result[username] = null; return }
-          const data = await resp.json()
-          const ids7tv = extract7TVCosmeticIds(data)
-          const cosmetic = await resolve7TVCosmeticIds(ids7tv)
-          const twitchConn = data?.user?.connections?.find(c => c.platform === 'TWITCH')
-          const twitchId = twitchConn?.id || null
-          const twitchUsername = twitchConn?.username || null
-          const full = cosmetic
-            ? { ...cosmetic, twitchId, twitchUsername }
-            : { paint: null, badge: null, twitchId, twitchUsername }
-          setUserCosmetic(cacheKey, full)
-          result[username] = full
-        } catch (e) { setUserCosmetic(cacheKey, null); result[username] = null }
-      }))
+        }),
+      )
       sendResponse({ cosmetics: result })
     })()
     return true
@@ -6499,145 +7293,177 @@ async function handleMessage(message, sender, sendResponse) {
       // request. Per-id /api/users/:id calls fired ~15-parallel per flush tripped
       // Cloudflare's 429; one batched call keeps it well under. credentials:'omit' so
       // the *-CORS response isn't rejected (credentialed + ACAO:* is invalid).
-      const _missKeys = [...new Set(senderKeys
-        .filter(k => { const h = cache.get(k); return !(h && Date.now() - h.ts < SENDER_EMOTE_CACHE_TTL) })
-        .filter(k => { const c = k.indexOf(':'); return c >= 0 && k.slice(c + 1).length > 0 }))]
+      const _missKeys = [
+        ...new Set(
+          senderKeys
+            .filter((k) => {
+              const h = cache.get(k)
+              return !(h && Date.now() - h.ts < SENDER_EMOTE_CACHE_TTL)
+            })
+            .filter((k) => {
+              const c = k.indexOf(':')
+              return c >= 0 && k.slice(c + 1).length > 0
+            }),
+        ),
+      ]
       let hsBatch = {}
       if (_missKeys.length) {
         // Send platform-prefixed keys (e.g. twitch:12345, kick:username) so the server
         // can resolve all platforms. Response is keyed by the same prefixed strings.
-        const hb = await fetchWithTimeout(withNsfwParam(`${API_URL}/api/users/emotes/batch?ids=${_missKeys.map(encodeURIComponent).join(',')}`), { credentials: 'omit', noBackoff: true }).then(r => r.ok ? r.json() : null).catch(() => null)
+        const hb = await fetchWithTimeout(
+          withNsfwParam(`${API_URL}/api/users/emotes/batch?ids=${_missKeys.map(encodeURIComponent).join(',')}`),
+          { credentials: 'omit', noBackoff: true },
+        )
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null)
         hsBatch = hb?.sets || {}
       }
-      await Promise.all(senderKeys.map(async (key) => {
-        const hit = cache.get(key)
-        if (hit && Date.now() - hit.ts < SENDER_EMOTE_CACHE_TTL) {
-          result[key] = hit.emotes
-          return
-        }
-        const colon = key.indexOf(':')
-        if (colon < 0) { result[key] = {}; return }
-        const platform = key.slice(0, colon)
-        const id = key.slice(colon + 1)
-        if (!id) { result[key] = {}; return }
-        const collected = {}
-        // 7TV — twitch + kick supported by /users/{platform}/{id}; "yt" key falls
-        // back to twitch-id which arrives once ytNameToTwitchId resolves.
-        const sevenTvPath = platform === 'kick' ? `kick/${encodeURIComponent(id)}` : `twitch/${encodeURIComponent(id)}`
-        const isNumericId = /^\d+$/.test(id)
-        // Per-id inflight dedup for 7TV/BTTV — chat rebuild can flush 30 keys in
-        // <1s; without this each one fires its own pair. Shared promise per
-        // (provider, path) collapses duplicate concurrent fetches into one. The
-        // 5min cache below handles the longer-window case.
-        const stv7tvInflight = (globalThis.__stv7tvInflight ??= new Map())
-        const bttvInflight = (globalThis.__bttvInflight ??= new Map())
-        let stvP = stv7tvInflight.get(sevenTvPath)
-        if (!stvP) {
-          stvP = fetchWithTimeout(`https://7tv.io/v3/users/${sevenTvPath}`).then(r => r.ok ? r.json() : null).catch(() => null)
-          stv7tvInflight.set(sevenTvPath, stvP)
-          stvP.finally(() => stv7tvInflight.delete(sevenTvPath))
-        }
-        // BTTV — only twitch-id endpoint. Skip for kick/yt.
-        let bttvP
-        if (platform === 'twitch' && isNumericId) {
-          bttvP = bttvInflight.get(id)
-          if (!bttvP) {
-            bttvP = fetchWithTimeout(`https://api.betterttv.net/3/cached/users/twitch/${id}`).then(r => r.ok ? r.json() : null).catch(() => null)
-            bttvInflight.set(id, bttvP)
-            bttvP.finally(() => bttvInflight.delete(id))
+      await Promise.all(
+        senderKeys.map(async (key) => {
+          const hit = cache.get(key)
+          if (hit && Date.now() - hit.ts < SENDER_EMOTE_CACHE_TTL) {
+            result[key] = hit.emotes
+            return
           }
-        } else {
-          bttvP = Promise.resolve(null)
-        }
-        // HeatSync personal set — the sender's added/custom emotes (public endpoint,
-        // users.id == platform id). This is the ONLY source for an emote a user
-        // added to heatsync that isn't in their 7TV/BTTV provider set (e.g. a 7TV
-        // catalog emote added via the picker, or a self-hosted upload). Without it,
-        // those emotes render only for the sender themselves and as raw text for
-        // everyone else. Numeric ids only (twitch/kick; yt once twitch-resolved).
-        // credentials:'omit' is REQUIRED: this public endpoint sends
-        // Access-Control-Allow-Origin:* (for cross-origin extension reads), and a
-        // CREDENTIALED request (the heatsync.org default in fetchWithTimeout) makes
-        // the browser reject `*`+credentials — Firefox then drops the response and
-        // the sender's heatsync emotes never load. No cookie is needed here anyway.
-        // HeatSync set comes from the single batched fetch above (hsBatch), keyed by
-        // platform-prefixed key (e.g. twitch:12345, kick:username).
-        const hs = { emotes: hsBatch[key] || [] }
-        const [stv, bttv] = await Promise.all([stvP, bttvP])
-        // 7TV active channel set (a useful proxy; TRUE personal sets merge below)
-        const stvEmotes = stv?.emote_set?.emotes || []
-        for (const e of stvEmotes) {
-          if (!e?.name || !e?.id) continue
-          const flags = (e.flags || 0) | (e.data?.flags || 0)
-          collected[e.name] = {
-            url: `https://cdn.7tv.app/emote/${e.id}/1x.webp`,
-            source: '7tv',
-            state: 'global',
-            zeroWidth: !!(flags & 257),
-            hash: e.id,
-            animated: !!e.data?.animated
+          const colon = key.indexOf(':')
+          if (colon < 0) {
+            result[key] = {}
+            return
           }
-        }
-        // 7TV TRUE personal set — captured live from EventAPI entitlements
-        const uid = key.startsWith('twitch:') ? key.slice(7) : null
-        const personal = uid ? seventvPersonalSets.get(uid) : null
-        if (personal) Object.assign(collected, personal)
-        // BTTV personal — channelEmotes + sharedEmotes
-        if (bttv) {
-          const all = [...(bttv.channelEmotes || []), ...(bttv.sharedEmotes || [])]
-          for (const e of all) {
-            if (!e?.code || !e?.id) continue
-            if (collected[e.code]) continue // 7TV wins on collision
-            collected[e.code] = {
-              url: `https://cdn.betterttv.net/emote/${e.id}/1x.webp`,
-              source: 'bttv',
+          const platform = key.slice(0, colon)
+          const id = key.slice(colon + 1)
+          if (!id) {
+            result[key] = {}
+            return
+          }
+          const collected = {}
+          // 7TV — twitch + kick supported by /users/{platform}/{id}; "yt" key falls
+          // back to twitch-id which arrives once ytNameToTwitchId resolves.
+          const sevenTvPath =
+            platform === 'kick' ? `kick/${encodeURIComponent(id)}` : `twitch/${encodeURIComponent(id)}`
+          const isNumericId = /^\d+$/.test(id)
+          // Per-id inflight dedup for 7TV/BTTV — chat rebuild can flush 30 keys in
+          // <1s; without this each one fires its own pair. Shared promise per
+          // (provider, path) collapses duplicate concurrent fetches into one. The
+          // 5min cache below handles the longer-window case.
+          const stv7tvInflight = (globalThis.__stv7tvInflight ??= new Map())
+          const bttvInflight = (globalThis.__bttvInflight ??= new Map())
+          let stvP = stv7tvInflight.get(sevenTvPath)
+          if (!stvP) {
+            stvP = fetchWithTimeout(`https://7tv.io/v3/users/${sevenTvPath}`)
+              .then((r) => (r.ok ? r.json() : null))
+              .catch(() => null)
+            stv7tvInflight.set(sevenTvPath, stvP)
+            stvP.finally(() => stv7tvInflight.delete(sevenTvPath))
+          }
+          // BTTV — only twitch-id endpoint. Skip for kick/yt.
+          let bttvP
+          if (platform === 'twitch' && isNumericId) {
+            bttvP = bttvInflight.get(id)
+            if (!bttvP) {
+              bttvP = fetchWithTimeout(`https://api.betterttv.net/3/cached/users/twitch/${id}`)
+                .then((r) => (r.ok ? r.json() : null))
+                .catch(() => null)
+              bttvInflight.set(id, bttvP)
+              bttvP.finally(() => bttvInflight.delete(id))
+            }
+          } else {
+            bttvP = Promise.resolve(null)
+          }
+          // HeatSync personal set — the sender's added/custom emotes (public endpoint,
+          // users.id == platform id). This is the ONLY source for an emote a user
+          // added to heatsync that isn't in their 7TV/BTTV provider set (e.g. a 7TV
+          // catalog emote added via the picker, or a self-hosted upload). Without it,
+          // those emotes render only for the sender themselves and as raw text for
+          // everyone else. Numeric ids only (twitch/kick; yt once twitch-resolved).
+          // credentials:'omit' is REQUIRED: this public endpoint sends
+          // Access-Control-Allow-Origin:* (for cross-origin extension reads), and a
+          // CREDENTIALED request (the heatsync.org default in fetchWithTimeout) makes
+          // the browser reject `*`+credentials — Firefox then drops the response and
+          // the sender's heatsync emotes never load. No cookie is needed here anyway.
+          // HeatSync set comes from the single batched fetch above (hsBatch), keyed by
+          // platform-prefixed key (e.g. twitch:12345, kick:username).
+          const hs = { emotes: hsBatch[key] || [] }
+          const [stv, bttv] = await Promise.all([stvP, bttvP])
+          // 7TV active channel set (a useful proxy; TRUE personal sets merge below)
+          const stvEmotes = stv?.emote_set?.emotes || []
+          for (const e of stvEmotes) {
+            if (!e?.name || !e?.id) continue
+            const flags = (e.flags || 0) | (e.data?.flags || 0)
+            collected[e.name] = {
+              url: `https://cdn.7tv.app/emote/${e.id}/1x.webp`,
+              source: '7tv',
               state: 'global',
-              zeroWidth: false,
-              hash: e.id
+              zeroWidth: !!(flags & 257),
+              hash: e.id,
+              animated: !!e.data?.animated,
             }
           }
-        }
-        // HeatSync personal set — overrides provider entries because it's the
-        // sender's curated set (and what they actually post via heatsync). URLs
-        // are already absolute (server normalizes /uploads/ → CDN). zero_width
-        // arrives from the emotes table (added 2026-05-23, migration 164) so
-        // cross-user overlay stacks ("wavE wavE wavE") render correctly. If the
-        // server flag is missing (old payload / unmigrated row) we fall back to
-        // any zeroWidth already collected via the 7TV personal-set loop above —
-        // never blindly overwriting an overlay flag with false.
-        const hsEmotes = hs?.emotes || []
-        for (const e of hsEmotes) {
-          const name = e?.custom_name || e?.name
-          if (!name || !e?.url) continue
-          const u = e.url
-          // Server stores source:'extension' for ext-added emotes — meaningless to
-          // the UI. Derive the real provider from the CDN url for an accurate label.
-          const src = /cdn\.7tv\.app/.test(u) ? '7tv'
-            : /cdn\.betterttv\.net/.test(u) ? 'bttv'
-            : /cdn\.frankerfacez\.com/.test(u) ? 'ffz'
-            : (e.source && e.source !== 'extension') ? e.source
-            : 'heatsync'
-          const prevZW = collected[name]?.zeroWidth
-          collected[name] = {
-            url: u,
-            source: src,
-            // 2-state model: every pasteable shared emote is just 'global'.
-            // processEmotes still upgrades to 'owned' if the viewer has the
-            // name in their inventory; otherwise it renders identically to
-            // any other global (white hover, click pastes, auto-add at send).
-            state: 'global',
-            zeroWidth: !!(e.zero_width ?? e.zeroWidth ?? prevZW),
-            hash: e.hash || '',
-            nsfw: !!e.nsfw  // v1.6 — cyan dashed border in chat + picker
+          // 7TV TRUE personal set — captured live from EventAPI entitlements
+          const uid = key.startsWith('twitch:') ? key.slice(7) : null
+          const personal = uid ? seventvPersonalSets.get(uid) : null
+          if (personal) Object.assign(collected, personal)
+          // BTTV personal — channelEmotes + sharedEmotes
+          if (bttv) {
+            const all = [...(bttv.channelEmotes || []), ...(bttv.sharedEmotes || [])]
+            for (const e of all) {
+              if (!e?.code || !e?.id) continue
+              if (collected[e.code]) continue // 7TV wins on collision
+              collected[e.code] = {
+                url: `https://cdn.betterttv.net/emote/${e.id}/1x.webp`,
+                source: 'bttv',
+                state: 'global',
+                zeroWidth: false,
+                hash: e.id,
+              }
+            }
           }
-        }
-        cache.set(key, { emotes: collected, ts: Date.now() })
-        // LRU evict: keep most-recent 500. Each entry holds a sender's full
-        // 7TV+BTTV personal set (potentially 100+ emote objects) — 5000 was
-        // overkill for any realistic chatroom and bloated the SW heap.
-        if (cache.size > 500) cache.delete(cache.keys().next().value)
-        result[key] = collected
-      }))
+          // HeatSync personal set — overrides provider entries because it's the
+          // sender's curated set (and what they actually post via heatsync). URLs
+          // are already absolute (server normalizes /uploads/ → CDN). zero_width
+          // arrives from the emotes table (added 2026-05-23, migration 164) so
+          // cross-user overlay stacks ("wavE wavE wavE") render correctly. If the
+          // server flag is missing (old payload / unmigrated row) we fall back to
+          // any zeroWidth already collected via the 7TV personal-set loop above —
+          // never blindly overwriting an overlay flag with false.
+          const hsEmotes = hs?.emotes || []
+          for (const e of hsEmotes) {
+            const name = e?.custom_name || e?.name
+            if (!name || !e?.url) continue
+            const u = e.url
+            // Server stores source:'extension' for ext-added emotes — meaningless to
+            // the UI. Derive the real provider from the CDN url for an accurate label.
+            const src = /cdn\.7tv\.app/.test(u)
+              ? '7tv'
+              : /cdn\.betterttv\.net/.test(u)
+                ? 'bttv'
+                : /cdn\.frankerfacez\.com/.test(u)
+                  ? 'ffz'
+                  : e.source && e.source !== 'extension'
+                    ? e.source
+                    : 'heatsync'
+            const prevZW = collected[name]?.zeroWidth
+            collected[name] = {
+              url: u,
+              source: src,
+              // 2-state model: every pasteable shared emote is just 'global'.
+              // processEmotes still upgrades to 'owned' if the viewer has the
+              // name in their inventory; otherwise it renders identically to
+              // any other global (white hover, click pastes, auto-add at send).
+              state: 'global',
+              zeroWidth: !!(e.zero_width ?? e.zeroWidth ?? prevZW),
+              hash: e.hash || '',
+              nsfw: !!e.nsfw, // v1.6 — cyan dashed border in chat + picker
+            }
+          }
+          cache.set(key, { emotes: collected, ts: Date.now() })
+          // LRU evict: keep most-recent 500. Each entry holds a sender's full
+          // 7TV+BTTV personal set (potentially 100+ emote objects) — 5000 was
+          // overkill for any realistic chatroom and bloated the SW heap.
+          if (cache.size > 500) cache.delete(cache.keys().next().value)
+          result[key] = collected
+        }),
+      )
       sendResponse({ emotes: result })
     })()
     return true
@@ -6658,19 +7484,24 @@ async function handleMessage(message, sender, sendResponse) {
   } else if (message.type === 'mention_detected') {
     // Fire a browser notification if the user has hs_notifications enabled.
     // Show the mention author's pfp (their face), falling back to the logo.
-    browser.storage.local.get('hs_notifications').then(async data => {
-      if (!data.hs_notifications) return
-      if (!browser.notifications) return
-      const pfp = await resolveAvatarUrl(message.username, message.platform)
-      const iconUrl = (await toNotifIconDataUrl(pfp)) || browser.runtime.getURL('icon-128.png')
-      const notifId = 'hs-mention-' + Date.now()
-      browser.notifications.create(notifId, {
-        type: 'basic',
-        iconUrl,
-        title: message.username || 'mention',
-        message: message.text || ''
-      }).catch(() => {})
-    }).catch(() => {})
+    browser.storage.local
+      .get('hs_notifications')
+      .then(async (data) => {
+        if (!data.hs_notifications) return
+        if (!browser.notifications) return
+        const pfp = await resolveAvatarUrl(message.username, message.platform)
+        const iconUrl = (await toNotifIconDataUrl(pfp)) || browser.runtime.getURL('icon-128.png')
+        const notifId = 'hs-mention-' + Date.now()
+        browser.notifications
+          .create(notifId, {
+            type: 'basic',
+            iconUrl,
+            title: message.username || 'mention',
+            message: message.text || '',
+          })
+          .catch(() => {})
+      })
+      .catch(() => {})
     sendResponse({ ok: true })
     return
   } else if (message.type === 'resolve_avatar') {
@@ -6680,7 +7511,9 @@ async function handleMessage(message, sender, sendResponse) {
       try {
         const raw = await resolveAvatarUrl(message.username, message.platform)
         sendResponse({ url: (await toNotifIconDataUrl(raw)) || '' })
-      } catch { sendResponse({ url: '' }) }
+      } catch {
+        sendResponse({ url: '' })
+      }
     })()
     return true // async response
   }
@@ -6688,7 +7521,7 @@ async function handleMessage(message, sender, sendResponse) {
 
 // Initialize on startup
 async function initialize() {
-  log(' 🚀 Starting background script...');
+  log(' 🚀 Starting background script...')
 
   // Restore startup jitter deadline if SW was evicted mid-wait.
   try {
@@ -6700,87 +7533,117 @@ async function initialize() {
 
   // Run auth load + storage batch reads + session restore in PARALLEL — all independent.
   // Saves ~60-90ms of serial waits vs. awaiting them sequentially.
-  const tokenP = getAuthCookie().catch(err => { log(' Could not load auth token:', err.message); return null })
-  const storedP = browser.storage.local.get([
-    'user_info', 'channel_emotes_fetched_at', 'channel_emotes_map', 'seventv_emote_set_ids',
-    'muted_users', 'blocked_users', 'global_emotes', 'emote_inventory', 'blocked_emotes',
-    'local_blocked_emotes', 'youtube_channel_urls', 'yt_video_to_channel', 'joined_extra_channels', 'heatsync_multichat', 'badges_fetched_at',
-    'bttv_badge_map', 'ffz_badge_map', 'chatterino_badge_map', 'user_cosmetics_cache', 'twitch_id_cache'
-  ]).catch(err => { log(' Storage restore failed:', err.message); return {} })
-  const sessionP = (browser.storage.session?.get(['tab_channels', 'joined_extra_channels']) ?? Promise.resolve(null))
-    .catch(e => { console.warn('session storage restore failed:', e); return null })
+  const tokenP = getAuthCookie().catch((err) => {
+    log(' Could not load auth token:', err.message)
+    return null
+  })
+  const storedP = browser.storage.local
+    .get([
+      'user_info',
+      'channel_emotes_fetched_at',
+      'channel_emotes_map',
+      'seventv_emote_set_ids',
+      'muted_users',
+      'blocked_users',
+      'global_emotes',
+      'emote_inventory',
+      'blocked_emotes',
+      'local_blocked_emotes',
+      'youtube_channel_urls',
+      'yt_video_to_channel',
+      'joined_extra_channels',
+      'heatsync_multichat',
+      'badges_fetched_at',
+      'bttv_badge_map',
+      'ffz_badge_map',
+      'chatterino_badge_map',
+      'user_cosmetics_cache',
+      'twitch_id_cache',
+    ])
+    .catch((err) => {
+      log(' Storage restore failed:', err.message)
+      return {}
+    })
+  const sessionP = (
+    browser.storage.session?.get(['tab_channels', 'joined_extra_channels']) ?? Promise.resolve(null)
+  ).catch((e) => {
+    console.warn('session storage restore failed:', e)
+    return null
+  })
 
   // Kick off WebSocket connect AS SOON AS auth resolves — don't wait for storage to finish.
   // If no auth token, surface that to content scripts so the multichat panel can prompt
   // the user. cookies.onChanged will broadcast loggedIn:true once they sign in.
-  tokenP.then(t => {
-    if (!t) broadcastToTabs({ type: 'auth_changed', loggedIn: false, reason: 'no_token' })
-    return connectWebSocket()
-  }).catch(() => {})
+  tokenP
+    .then((t) => {
+      if (!t) broadcastToTabs({ type: 'auth_changed', loggedIn: false, reason: 'no_token' })
+      return connectWebSocket()
+    })
+    .catch(() => {})
 
   // Batch-load all cached state from storage in ONE read
   try {
-    const stored = await storedP;
+    const stored = await storedP
 
     if (stored.user_info?.username) {
-      currentUsername = stored.user_info.username;
-      log(' ✓ Restored username:', currentUsername);
+      currentUsername = stored.user_info.username
+      log(' ✓ Restored username:', currentUsername)
     }
     if (stored.channel_emotes_fetched_at && typeof stored.channel_emotes_fetched_at === 'object') {
-      channelEmotesFetchedAt = stored.channel_emotes_fetched_at;
-      log(' ✓ Restored channelEmotesFetchedAt for', Object.keys(channelEmotesFetchedAt).length, 'channels');
+      channelEmotesFetchedAt = stored.channel_emotes_fetched_at
+      log(' ✓ Restored channelEmotesFetchedAt for', Object.keys(channelEmotesFetchedAt).length, 'channels')
     }
     if (stored.channel_emotes_map && typeof stored.channel_emotes_map === 'object') {
-      Object.assign(channelEmotesMap, stored.channel_emotes_map);
-      updateEmoteUrlMap();
-      log(' ✓ Restored channelEmotesMap for', Object.keys(stored.channel_emotes_map).length, 'channels');
+      Object.assign(channelEmotesMap, stored.channel_emotes_map)
+      updateEmoteUrlMap()
+      log(' ✓ Restored channelEmotesMap for', Object.keys(stored.channel_emotes_map).length, 'channels')
     }
     if (stored.seventv_emote_set_ids && typeof stored.seventv_emote_set_ids === 'object') {
       for (const [ch, id] of Object.entries(stored.seventv_emote_set_ids)) {
-        seventvEmoteSetIds.set(ch, id);
+        seventvEmoteSetIds.set(ch, id)
       }
       if (seventvEmoteSetIds.size > 0) {
-        log(' ✓ Restored seventvEmoteSetIds for', seventvEmoteSetIds.size, 'channels');
-        start7TVPolling();
-        for (const setId of seventvEmoteSetIds.values()) subscribe7TVEmoteSet(setId);
+        log(' ✓ Restored seventvEmoteSetIds for', seventvEmoteSetIds.size, 'channels')
+        start7TVPolling()
+        for (const setId of seventvEmoteSetIds.values()) subscribe7TVEmoteSet(setId)
       }
     }
     if (stored.muted_users && Array.isArray(stored.muted_users)) {
-      mutedUsers = new Map();
+      mutedUsers = new Map()
       for (const entry of stored.muted_users) {
-        if (typeof entry === 'string') mutedUsers.set(entry, null);
-        else if (entry?.username) mutedUsers.set(entry.username, entry.expiresAt || null);
+        if (typeof entry === 'string') mutedUsers.set(entry, null)
+        else if (entry?.username) mutedUsers.set(entry.username, entry.expiresAt || null)
       }
-      if (stored.muted_users.length > 0 && typeof stored.muted_users[0] === 'string') persistMutedUsers();
-      pruneExpiredMutes();
-      log(' ✓ Loaded', mutedUsers.size, 'muted users');
+      if (stored.muted_users.length > 0 && typeof stored.muted_users[0] === 'string') persistMutedUsers()
+      pruneExpiredMutes()
+      log(' ✓ Loaded', mutedUsers.size, 'muted users')
     }
     if (stored.blocked_users && Array.isArray(stored.blocked_users)) {
-      blockedUsers = new Set(stored.blocked_users);
-      log(' ✓ Loaded', blockedUsers.size, 'blocked users');
+      blockedUsers = new Set(stored.blocked_users)
+      log(' ✓ Loaded', blockedUsers.size, 'blocked users')
     }
     if (stored.twitch_id_cache && typeof stored.twitch_id_cache === 'object') {
       for (const [name, id] of Object.entries(stored.twitch_id_cache)) {
-        if (typeof id === 'string' && /^\d+$/.test(id)) twitchIdCache.set(name, id);
+        if (typeof id === 'string' && /^\d+$/.test(id)) twitchIdCache.set(name, id)
       }
-      log(' ✓ Restored twitchIdCache for', twitchIdCache.size, 'usernames');
+      log(' ✓ Restored twitchIdCache for', twitchIdCache.size, 'usernames')
     }
     // Warm emote arrays from storage cache (instant availability while API fetches run)
     if (stored.global_emotes?.length) {
-      globalEmotes = stored.global_emotes;
-      log(' ✓ Warm cache:', globalEmotes.length, 'global emotes from storage');
+      globalEmotes = stored.global_emotes
+      log(' ✓ Warm cache:', globalEmotes.length, 'global emotes from storage')
     }
     if (stored.emote_inventory?.length) {
-      emoteInventory = stored.emote_inventory;
-      log(' ✓ Warm cache:', emoteInventory.length, 'inventory emotes from storage');
+      emoteInventory = stored.emote_inventory
+      log(' ✓ Warm cache:', emoteInventory.length, 'inventory emotes from storage')
     }
     if (stored.blocked_emotes?.length) {
-      blockedEmotes = new Set(stored.blocked_emotes);
-      log(' ✓ Warm cache:', blockedEmotes.size, 'blocked emotes from storage');
+      blockedEmotes = new Set(stored.blocked_emotes)
+      log(' ✓ Warm cache:', blockedEmotes.size, 'blocked emotes from storage')
     }
     if (stored.local_blocked_emotes && Array.isArray(stored.local_blocked_emotes)) {
-      localBlockedEmotes = new Set(stored.local_blocked_emotes);
-      log(' ✓ Warm cache:', localBlockedEmotes.size, 'local blocked emotes from storage');
+      localBlockedEmotes = new Set(stored.local_blocked_emotes)
+      log(' ✓ Warm cache:', localBlockedEmotes.size, 'local blocked emotes from storage')
     }
     if (stored.youtube_channel_urls && typeof stored.youtube_channel_urls === 'object') {
       // Purge any persisted __live_yt_auto__ — it's an ephemeral per-page binding
@@ -6791,27 +7654,34 @@ async function initialize() {
         delete stored.youtube_channel_urls.__live_yt_auto__
         browser.storage.local.set({ youtube_channel_urls: { ...stored.youtube_channel_urls } })
       }
-      Object.assign(youtubeChannelUrls, stored.youtube_channel_urls);
+      Object.assign(youtubeChannelUrls, stored.youtube_channel_urls)
       delete youtubeChannelUrls.__live_yt_auto__
-      log(' ✓ Restored youtubeChannelUrls for', Object.keys(youtubeChannelUrls).length, 'channels');
+      log(' ✓ Restored youtubeChannelUrls for', Object.keys(youtubeChannelUrls).length, 'channels')
       // Race fix: connectWebSocket() was kicked off at the top of init() and
       // may have already opened, iterating an empty youtubeChannelUrls in its
       // onopen handler — losing every YT subscription on SW wake. Replay them
       // explicitly now (mirrors the joined_extra_channels pattern below).
       // wsSend queues if not yet open, sends if open.
       for (const [channelId, url] of Object.entries(youtubeChannelUrls)) {
-        const vidMatch = url.match(/[?&]v=([^&]+)/) || url.match(/\/live\/([^?&\/]+)/) || url.match(/youtu\.be\/([^?&]+)/)
+        const vidMatch =
+          url.match(/[?&]v=([^&]+)/) || url.match(/\/live\/([^?&/]+)/) || url.match(/youtu\.be\/([^?&]+)/)
         if (vidMatch) setYtVideoChannel(vidMatch[1], channelId)
         wsSend({ type: 'youtube:subscribe', url, channelId })
       }
       // Also replay the global YT subscription if one was set
-      browser.storage.local.get(['youtube_url']).then(d => {
-        if (d.youtube_url) {
-          const vidMatch = d.youtube_url.match(/[?&]v=([^&]+)/) || d.youtube_url.match(/\/live\/([^?&\/]+)/) || d.youtube_url.match(/youtu\.be\/([^?&]+)/)
-          if (vidMatch) setYtVideoChannel(vidMatch[1], 'global')
-          wsSend({ type: 'youtube:subscribe', url: d.youtube_url })
-        }
-      }).catch(() => {})
+      browser.storage.local
+        .get(['youtube_url'])
+        .then((d) => {
+          if (d.youtube_url) {
+            const vidMatch =
+              d.youtube_url.match(/[?&]v=([^&]+)/) ||
+              d.youtube_url.match(/\/live\/([^?&/]+)/) ||
+              d.youtube_url.match(/youtu\.be\/([^?&]+)/)
+            if (vidMatch) setYtVideoChannel(vidMatch[1], 'global')
+            wsSend({ type: 'youtube:subscribe', url: d.youtube_url })
+          }
+        })
+        .catch(() => {})
     }
     if (stored.yt_video_to_channel && typeof stored.yt_video_to_channel === 'object') {
       // Restore videoId→channelId routing so chat msgs from existing pollers
@@ -6821,13 +7691,16 @@ async function initialize() {
       // routing a video to it would orphan (or resurrect) a stale stream's chat.
       let _ytMapPoisoned = false
       for (const [vid, cid] of Object.entries(stored.yt_video_to_channel)) {
-        if (cid === '__live_yt_auto__') { _ytMapPoisoned = true; continue }
+        if (cid === '__live_yt_auto__') {
+          _ytMapPoisoned = true
+          continue
+        }
         ytVideoToChannel.set(vid, cid)
       }
       if (_ytMapPoisoned) {
         browser.storage.local.set({ yt_video_to_channel: Object.fromEntries(ytVideoToChannel) })
       }
-      log(' ✓ Restored ytVideoToChannel for', ytVideoToChannel.size, 'videos');
+      log(' ✓ Restored ytVideoToChannel for', ytVideoToChannel.size, 'videos')
     }
     if (Array.isArray(stored.joined_extra_channels)) {
       // Restore Kick channel joins so the WS-connect handler replays them.
@@ -6879,8 +7752,8 @@ async function initialize() {
       saveJoinedExtraChannels()
     }
     if (stored.badges_fetched_at && typeof stored.badges_fetched_at === 'number') {
-      badgesFetchedAt = stored.badges_fetched_at;
-      log(' ✓ Restored badgesFetchedAt:', new Date(badgesFetchedAt).toISOString());
+      badgesFetchedAt = stored.badges_fetched_at
+      log(' ✓ Restored badgesFetchedAt:', new Date(badgesFetchedAt).toISOString())
     }
     if (stored.user_cosmetics_cache && Array.isArray(stored.user_cosmetics_cache)) {
       const now = Date.now()
@@ -6922,7 +7795,7 @@ async function initialize() {
       broadcastBadgeMaps()
     }
   } catch (err) {
-    log(' Storage restore failed:', err.message);
+    log(' Storage restore failed:', err.message)
   }
 
   // Restore tabChannels from session storage (survives worker restarts) — already in flight from initialize()
@@ -6930,8 +7803,10 @@ async function initialize() {
     const session = await sessionP
     if (session?.tab_channels) {
       // Validate restored tab IDs still exist
-      const allTabs = await browser.tabs.query({ url: ['*://*.twitch.tv/*', '*://*.kick.com/*', '*://*.youtube.com/*'] })
-      const validIds = new Set(allTabs.map(t => t.id))
+      const allTabs = await browser.tabs.query({
+        url: ['*://*.twitch.tv/*', '*://*.kick.com/*', '*://*.youtube.com/*'],
+      })
+      const validIds = new Set(allTabs.map((t) => t.id))
       for (const [tabId, entry] of Object.entries(session.tab_channels)) {
         const id = Number(tabId)
         if (validIds.has(id)) tabChannels.set(id, entry)
@@ -6953,9 +7828,9 @@ async function initialize() {
   }
 
   // Start WebSocket immediately (don't wait for API fetches)
-  connectWebSocket().catch(() => {});
+  connectWebSocket().catch(() => {})
 
-  broadcastToTabs({ type: 'loading_status', text: 'loading emotes...' });
+  broadcastToTabs({ type: 'loading_status', text: 'loading emotes...' })
 
   // Fetch fresh data in parallel (updates warm cache)
   Promise.all([
@@ -6965,48 +7840,49 @@ async function initialize() {
     fetchBlockedEmotes(),
     fetchFollowedUsers(),
     fetchUserInfo(),
-    fetchViewerSettings()
-  ]).then(() => {
-    log(' ✓ All fetches complete - global:', globalEmotes.length, 'personal:', emoteInventory.length);
-    broadcastToTabs({ type: 'loading_status', done: true });
-    // Persist fresh data — single batched write (fire-and-forget, don't await).
-    // emote_inventory is gated on inventoryFetchOK: if the API call failed
-    // transiently, the in-memory array is the warm cache from storage and
-    // writing it back is a no-op; if the API call clobbered it to [] on a
-    // 401 the logout path already cleaned storage. Either way, never let a
-    // post-init persist overwrite a healthy warm cache with [].
-    const persist = {
-      global_emotes: globalEmotes,
-      blocked_emotes: Array.from(blockedEmotes)
-    }
-    if (inventoryFetchOK) {
-      persist.emote_inventory = emoteInventory
-    }
-    if (pendingUserInfoToPersist) {
-      persist.user_info = pendingUserInfoToPersist
-      pendingUserInfoToPersist = null
-    }
-    browser.storage.local.set(persist).catch(() => {});
-  }).catch(err => log(' Fetch error:', err.message));
+    fetchViewerSettings(),
+  ])
+    .then(() => {
+      log(' ✓ All fetches complete - global:', globalEmotes.length, 'personal:', emoteInventory.length)
+      broadcastToTabs({ type: 'loading_status', done: true })
+      // Persist fresh data — single batched write (fire-and-forget, don't await).
+      // emote_inventory is gated on inventoryFetchOK: if the API call failed
+      // transiently, the in-memory array is the warm cache from storage and
+      // writing it back is a no-op; if the API call clobbered it to [] on a
+      // 401 the logout path already cleaned storage. Either way, never let a
+      // post-init persist overwrite a healthy warm cache with [].
+      const persist = {
+        global_emotes: globalEmotes,
+        blocked_emotes: Array.from(blockedEmotes),
+      }
+      if (inventoryFetchOK) {
+        persist.emote_inventory = emoteInventory
+      }
+      if (pendingUserInfoToPersist) {
+        persist.user_info = pendingUserInfoToPersist
+        pendingUserInfoToPersist = null
+      }
+      browser.storage.local.set(persist).catch(() => {})
+    })
+    .catch((err) => log(' Fetch error:', err.message))
 
   // Re-register push subscription after MV3 service worker restart.
   // The cookie-onChanged path only fires on login/logout; on cold SW wake
   // with an existing valid token, push must be re-confirmed against the server
   // so the endpoint stays active.
   if (authToken) {
-    subscribeToPush(authToken).catch(err => log(' subscribeToPush retry failed:', err?.message))
+    subscribeToPush(authToken).catch((err) => log(' subscribeToPush retry failed:', err?.message))
   }
 
   // Inventory refresh driven by chrome.alarms 'refresh-emote-inventory' (MV3 setInterval dies with SW)
 
   // Global emotes refresh handled by chrome.alarms (MV3 setInterval unreliable for long durations)
-
 }
 
-log(' 🚀 Calling initialize()...');
-initPromise = initialize().catch(err => {
-  console.error('[heatsync] Initialize failed:', err);
-});
+log(' 🚀 Calling initialize()...')
+initPromise = initialize().catch((err) => {
+  console.error('[heatsync] Initialize failed:', err)
+})
 
 // Diag snapshot for bug reports — gathered on demand, never stored.
 // Combines SW-side runtime state with the most recently active tab's page-side
@@ -7019,7 +7895,9 @@ function _wsLabel(ws) {
 async function buildDiagSnapshot() {
   const now = Date.now()
   const out = { ts: now, ver: 'unknown', sw: {}, page: null }
-  try { out.ver = browser.runtime.getManifest().version } catch {}
+  try {
+    out.ver = browser.runtime.getManifest().version
+  } catch {}
   try {
     out.sw.irc = {
       state: _wsLabel(BG_IRC?.ws),
@@ -7029,17 +7907,30 @@ async function buildDiagSnapshot() {
       reconnectAttempts: BG_IRC?.reconnectAttempts || 0,
     }
   } catch {}
-  try { out.sw.ws7tv = _wsLabel(seventvWebSocket) } catch {}
-  try { out.sw.wsHs = _wsLabel(socket) } catch {}
-  try { out.sw.inventory = Array.isArray(emoteInventory) ? emoteInventory.length : 0 } catch {}
-  try { out.sw.blocked = blockedEmotes?.size || 0 } catch {}
-  try { out.sw.channelEmotes = Object.keys(channelEmotesMap || {}).length } catch {}
+  try {
+    out.sw.ws7tv = _wsLabel(seventvWebSocket)
+  } catch {}
+  try {
+    out.sw.wsHs = _wsLabel(socket)
+  } catch {}
+  try {
+    out.sw.inventory = Array.isArray(emoteInventory) ? emoteInventory.length : 0
+  } catch {}
+  try {
+    out.sw.blocked = blockedEmotes?.size || 0
+  } catch {}
+  try {
+    out.sw.channelEmotes = Object.keys(channelEmotesMap || {}).length
+  } catch {}
   try {
     const h = await getCachedHealth()
     const { hs_health_at } = await browser.storage.local.get('hs_health_at')
     out.sw.health = {
-      kill: !!h.kill, ext_min: h.ext_min || '', disabledN: (h.disabled || []).length,
-      msgPresent: !!h.msg, ageMs: hs_health_at ? now - hs_health_at : null,
+      kill: !!h.kill,
+      ext_min: h.ext_min || '',
+      disabledN: (h.disabled || []).length,
+      msgPresent: !!h.msg,
+      ageMs: hs_health_at ? now - hs_health_at : null,
     }
   } catch {}
   try {
@@ -7060,7 +7951,7 @@ async function buildDiagSnapshot() {
 // via the 'notifications' manifest permission.
 
 function urlB64ToUint8Array(base64String) {
-  const padding = '='.repeat((4 - base64String.length % 4) % 4)
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
   const rawData = atob(base64)
   const out = new Uint8Array(rawData.length)
@@ -7084,11 +7975,13 @@ async function subscribeToPush(token) {
     const existing = await self.registration.pushManager.getSubscription()
     if (existing) {
       log(' Push already subscribed:', existing.endpoint.slice(0, 40) + '...')
-      try { chrome.storage.session?.set?.({ hs_push_ok: 1 }) } catch {}
+      try {
+        chrome.storage.session?.set?.({ hs_push_ok: 1 })
+      } catch {}
       return
     }
     const keyRes = await fetchWithTimeout(`${API_URL}/api/push/vapid-key`, {
-      headers: { 'Authorization': `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${token}` },
     })
     if (!keyRes.ok) {
       log(' VAPID key fetch failed:', keyRes.status)
@@ -7102,26 +7995,28 @@ async function subscribeToPush(token) {
     }
     const sub = await self.registration.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlB64ToUint8Array(vapidKey)
+      applicationServerKey: urlB64ToUint8Array(vapidKey),
     })
     const subJson = sub.toJSON()
     const subRes = await fetchWithTimeout(`${API_URL}/api/push/subscribe`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
         endpoint: subJson.endpoint,
-        keys: { p256dh: subJson.keys.p256dh, auth: subJson.keys.auth }
-      })
+        keys: { p256dh: subJson.keys.p256dh, auth: subJson.keys.auth },
+      }),
     })
     if (!subRes.ok) {
       log(' Push subscribe POST failed:', subRes.status)
       return
     }
     log(' Push subscription registered')
-    try { chrome.storage.session?.set?.({ hs_push_ok: 1 }) } catch {}
+    try {
+      chrome.storage.session?.set?.({ hs_push_ok: 1 })
+    } catch {}
   } catch (err) {
     log(' subscribeToPush error:', err?.message)
   }
@@ -7130,7 +8025,9 @@ async function subscribeToPush(token) {
 async function unsubscribeFromPush(token) {
   try {
     if (!self.registration?.pushManager) return
-    try { chrome.storage.session?.remove?.('hs_push_ok') } catch {}
+    try {
+      chrome.storage.session?.remove?.('hs_push_ok')
+    } catch {}
     const sub = await self.registration.pushManager.getSubscription()
     if (!sub) return
     const endpoint = sub.endpoint
@@ -7140,10 +8037,10 @@ async function unsubscribeFromPush(token) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ endpoint })
-      }).catch(err => log(' push unsubscribe POST failed:', err?.message))
+        body: JSON.stringify({ endpoint }),
+      }).catch((err) => log(' push unsubscribe POST failed:', err?.message))
     }
     log(' Push subscription removed')
   } catch (err) {
@@ -7156,7 +8053,7 @@ self.addEventListener('push', (ev) => {
   let title = 'HeatSync'
   let body = ''
   // Use runtime.getURL so the icon resolves inside the extension package
-  let icon = browser.runtime.getURL('icon-48.png')
+  const icon = browser.runtime.getURL('icon-48.png')
   let data = {}
   try {
     if (ev.data) {
@@ -7169,9 +8066,7 @@ self.addEventListener('push', (ev) => {
   } catch (e) {
     body = ev.data?.text() || ''
   }
-  ev.waitUntil(
-    self.registration.showNotification(title, { body, icon, data })
-  )
+  ev.waitUntil(self.registration.showNotification(title, { body, icon, data }))
 })
 
 self.addEventListener('notificationclick', (ev) => {
@@ -7232,7 +8127,10 @@ function bgIrcParseTags(tagStr) {
   const tags = {}
   for (const part of tagStr.split(';')) {
     const eq = part.indexOf('=')
-    if (eq === -1) { tags[part] = ''; continue }
+    if (eq === -1) {
+      tags[part] = ''
+      continue
+    }
     tags[part.slice(0, eq)] = part.slice(eq + 1) || ''
   }
   return tags
@@ -7267,12 +8165,16 @@ function bgIrcParseLine(raw, channelHint) {
         channel: channelHint || privmsg[1].toLowerCase(),
         time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
         id: tags.id || '',
-        replyTo: tags['reply-parent-display-name'] ? {
-          user: decodeURIComponent(tags['reply-parent-display-name']),
-          text: tags['reply-parent-msg-body'] ? decodeURIComponent(tags['reply-parent-msg-body'].replace(/\\s/g, ' ')) : '',
-          id: tags['reply-parent-msg-id'] || '',
-          threadId: tags['reply-thread-parent-msg-id'] || tags['reply-parent-msg-id'] || ''
-        } : null
+        replyTo: tags['reply-parent-display-name']
+          ? {
+              user: decodeURIComponent(tags['reply-parent-display-name']),
+              text: tags['reply-parent-msg-body']
+                ? decodeURIComponent(tags['reply-parent-msg-body'].replace(/\\s/g, ' '))
+                : '',
+              id: tags['reply-parent-msg-id'] || '',
+              threadId: tags['reply-thread-parent-msg-id'] || tags['reply-parent-msg-id'] || '',
+            }
+          : null,
       }
       const twitchEmotes = bgIrcParseEmotesTag(tags.emotes, text)
       if (twitchEmotes) msg.twitchEmotes = twitchEmotes
@@ -7297,18 +8199,23 @@ function bgIrcParseLine(raw, channelHint) {
     if (usernotice) {
       const displayName = tags['display-name'] || 'system'
       const subPlan = tags['msg-param-sub-plan'] || ''
-      const tier = subPlan === '2000' ? '2' : subPlan === '3000' ? '3' : (subPlan === 'Prime' ? 'prime' : (subPlan ? '1' : ''))
+      const tier =
+        subPlan === '2000' ? '2' : subPlan === '3000' ? '3' : subPlan === 'Prime' ? 'prime' : subPlan ? '1' : ''
       const months = parseInt(tags['msg-param-cumulative-months']) || parseInt(tags['msg-param-months']) || 0
       const giftCount = parseInt(tags['msg-param-mass-gift-count']) || 0
-      const recipient = tags['msg-param-recipient-display-name'] ? decodeURIComponent(tags['msg-param-recipient-display-name'].replace(/\\s/g, ' ')) : ''
+      const recipient = tags['msg-param-recipient-display-name']
+        ? decodeURIComponent(tags['msg-param-recipient-display-name'].replace(/\\s/g, ' '))
+        : ''
       const raidViewers = parseInt(tags['msg-param-viewerCount']) || 0
-      const raidFrom = tags['msg-param-displayName'] ? decodeURIComponent(tags['msg-param-displayName'].replace(/\\s/g, ' ')) : ''
+      const raidFrom = tags['msg-param-displayName']
+        ? decodeURIComponent(tags['msg-param-displayName'].replace(/\\s/g, ' '))
+        : ''
       const announceColor = tags['msg-param-color'] || ''
       const bitsTier = parseInt(tags['msg-param-threshold']) || 0
       const category = tags['msg-param-category'] || ''
       const rawMsgId = tags['msg-id'] || ''
-      const msgId = (rawMsgId === 'viewermilestone' && category === 'watch-streak') ? 'watchstreak' : rawMsgId
-      const streakCount = (msgId === 'watchstreak') ? (parseInt(tags['msg-param-value'], 10) || 0) : 0
+      const msgId = rawMsgId === 'viewermilestone' && category === 'watch-streak' ? 'watchstreak' : rawMsgId
+      const streakCount = msgId === 'watchstreak' ? parseInt(tags['msg-param-value'], 10) || 0 : 0
       const userText = usernotice[2] || ''
       const twitchEmotes = bgIrcParseEmotesTag(tags.emotes, userText)
       return {
@@ -7331,7 +8238,7 @@ function bgIrcParseLine(raw, channelHint) {
         bitsTier,
         streakCount,
         twitchEmotes: twitchEmotes || undefined,
-        id: tags.id || ''
+        id: tags.id || '',
       }
     }
 
@@ -7351,7 +8258,7 @@ function bgIrcParseLine(raw, channelHint) {
         channel: ch,
         time,
         id: tags.id || detId,
-        systemMsg: notice[2]
+        systemMsg: notice[2],
       }
     }
 
@@ -7366,7 +8273,7 @@ function bgIrcParseLine(raw, channelHint) {
         subsOnly: tags['subs-only'] != null ? tags['subs-only'] === '1' : null,
         emoteOnly: tags['emote-only'] != null ? tags['emote-only'] === '1' : null,
         followersOnly: tags['followers-only'] != null ? parseInt(tags['followers-only']) : null,
-        r9k: tags['r9k'] != null ? tags['r9k'] === '1' : null
+        r9k: tags['r9k'] != null ? tags['r9k'] === '1' : null,
       }
     }
 
@@ -7390,7 +8297,9 @@ function bgIrcParseLine(raw, channelHint) {
       const target = clearchat[2] || ''
       const duration = tags['ban-duration']
       const text = target
-        ? (duration ? `${target} timed out for ${duration}s` : `${target} was permanently banned`)
+        ? duration
+          ? `${target} timed out for ${duration}s`
+          : `${target} was permanently banned`
         : 'chat cleared'
       const ch = channelHint || clearchat[1].toLowerCase()
       const time = parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now()
@@ -7408,7 +8317,7 @@ function bgIrcParseLine(raw, channelHint) {
         systemMsg: text,
         targetUser: target,
         targetUserId: tags['target-user-id'] || '',
-        banDuration: duration ? parseInt(duration) : 0
+        banDuration: duration ? parseInt(duration) : 0,
       }
     }
 
@@ -7428,7 +8337,7 @@ function bgIrcParseLine(raw, channelHint) {
         id: targetMsgId || `clearmsg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         systemMsg: text,
         targetUser: tags.login || '',
-        targetMsgId: targetMsgId || ''
+        targetMsgId: targetMsgId || '',
       }
     }
 
@@ -7475,9 +8384,9 @@ const BG_IRC = {
   authNick: null,
   authFailed: false,
   authFailedAt: 0,
-  channels: new Map(),       // ch -> BGCircularBuffer
-  tabInterest: new Map(),    // tabId -> Set<channel>
-  channelTabs: new Map(),    // channel -> Set<tabId>
+  channels: new Map(), // ch -> BGCircularBuffer
+  tabInterest: new Map(), // tabId -> Set<channel>
+  channelTabs: new Map(), // channel -> Set<tabId>
   lastData: 0,
   destroyed: false,
   reconnectTimer: null,
@@ -7488,7 +8397,7 @@ const BG_IRC = {
   chanRejoinAttempts: new Map(),
   roomstates: new Map(),
   historyInFlight: new Map(), // ch -> Promise<void> (awaitable in-flight robotty fetch)
-  lastRobottyAt: new Map(),  // ch -> ts (last successful/attempted robotty fetch)
+  lastRobottyAt: new Map(), // ch -> ts (last successful/attempted robotty fetch)
   persistTimers: new Map(),
   storageRestored: false,
   // Tabs that have requested live broadcasts. Empty initially — we don't
@@ -7514,11 +8423,21 @@ async function bgIrcRestoreFromStorage() {
     const all = await chrome.storage.local.get(null)
     const storedVer = all.hs_irc_parser_version | 0
     if (storedVer !== BG_IRC_PARSER_VERSION) {
-      const stale = Object.keys(all).filter(k => k.startsWith('hs_irc_') && !k.startsWith('hs_irc_sync_') && k !== 'hs_irc_parser_version')
+      const stale = Object.keys(all).filter(
+        (k) => k.startsWith('hs_irc_') && !k.startsWith('hs_irc_sync_') && k !== 'hs_irc_parser_version',
+      )
       if (stale.length) await chrome.storage.local.remove(stale).catch(() => {})
       await chrome.storage.local.set({ hs_irc_parser_version: BG_IRC_PARSER_VERSION }).catch(() => {})
       await chrome.storage.session?.remove?.('hs_irc_last_robotty').catch?.(() => {})
-      log('BG IRC parser version bump', storedVer, '→', BG_IRC_PARSER_VERSION, '— wiped', stale.length, 'cached channel buffers')
+      log(
+        'BG IRC parser version bump',
+        storedVer,
+        '→',
+        BG_IRC_PARSER_VERSION,
+        '— wiped',
+        stale.length,
+        'cached channel buffers',
+      )
       return
     }
     let n = 0
@@ -7538,7 +8457,9 @@ async function bgIrcRestoreFromStorage() {
       n++
     }
     log('BG IRC restored', n, 'channels from storage')
-  } catch (e) { log('BG IRC restore failed:', e.message) }
+  } catch (e) {
+    log('BG IRC restore failed:', e.message)
+  }
   // Restore lastRobottyAt from session storage — survives SW eviction within
   // the same browser session. Without this, every SW wake refetched robotty
   // for every joined channel, hammering a community-run free service.
@@ -7586,22 +8507,28 @@ function bgIrcPersistRobottyTs() {
 
 function bgIrcPersistChannel(ch) {
   if (BG_IRC.persistTimers.has(ch)) return
-  BG_IRC.persistTimers.set(ch, setTimeout(() => {
-    BG_IRC.persistTimers.delete(ch)
-    try {
-      const buf = BG_IRC.channels.get(ch)
-      if (!buf) return
-      const msgs = buf.getAll()
-      chrome.storage.local.set({ [`hs_irc_${ch}`]: { msgs, ts: Date.now() } }).catch(() => {})
-    } catch {}
-  }, BG_IRC_PERSIST_DEBOUNCE_MS))
+  BG_IRC.persistTimers.set(
+    ch,
+    setTimeout(() => {
+      BG_IRC.persistTimers.delete(ch)
+      try {
+        const buf = BG_IRC.channels.get(ch)
+        if (!buf) return
+        const msgs = buf.getAll()
+        chrome.storage.local.set({ [`hs_irc_${ch}`]: { msgs, ts: Date.now() } }).catch(() => {})
+      } catch {}
+    }, BG_IRC_PERSIST_DEBOUNCE_MS),
+  )
 }
 
 function bgIrcConnect() {
   if (BG_IRC.destroyed) return
   if (BG_IRC.ws && BG_IRC.ws.readyState === WebSocket.CONNECTING) return
   bgIrcStopHeartbeat()
-  if (BG_IRC.reconnectTimer) { clearTimeout(BG_IRC.reconnectTimer); BG_IRC.reconnectTimer = null }
+  if (BG_IRC.reconnectTimer) {
+    clearTimeout(BG_IRC.reconnectTimer)
+    BG_IRC.reconnectTimer = null
+  }
   if (BG_IRC.ws) {
     try {
       BG_IRC.ws.onopen = null
@@ -7617,7 +8544,9 @@ function bgIrcConnect() {
   BG_IRC.connectTimeout = setTimeout(() => {
     if (BG_IRC.ws?.readyState !== WebSocket.OPEN) {
       log('BG IRC: connect timeout')
-      try { BG_IRC.ws?.close() } catch {}
+      try {
+        BG_IRC.ws?.close()
+      } catch {}
     }
   }, 10000)
 
@@ -7658,7 +8587,9 @@ function bgIrcConnect() {
     }
   }
   BG_IRC.ws.onmessage = (e) => bgIrcOnData(e.data)
-  BG_IRC.ws.onerror = () => { clearTimeout(BG_IRC.connectTimeout) }
+  BG_IRC.ws.onerror = () => {
+    clearTimeout(BG_IRC.connectTimeout)
+  }
   BG_IRC.ws.onclose = () => {
     clearTimeout(BG_IRC.connectTimeout)
     bgIrcStopHeartbeat()
@@ -7670,7 +8601,7 @@ function bgIrcConnect() {
 function bgIrcScheduleReconnect() {
   if (BG_IRC.destroyed) return
   if (BG_IRC.reconnectTimer) clearTimeout(BG_IRC.reconnectTimer)
-  const base = Math.min(2000 * Math.pow(2, BG_IRC.reconnectAttempts), 15000)
+  const base = Math.min(2000 * 2 ** BG_IRC.reconnectAttempts, 15000)
   const delay = base + Math.random() * 2000
   BG_IRC.reconnectAttempts++
   log('BG IRC: reconnect in', Math.round(delay), 'ms (attempt', BG_IRC.reconnectAttempts, ')')
@@ -7682,7 +8613,10 @@ function bgIrcScheduleReconnect() {
 function bgIrcForceReconnect() {
   bgIrcStopHeartbeat()
   if (BG_IRC.ws) {
-    try { BG_IRC.ws.onclose = null; BG_IRC.ws.close() } catch {}
+    try {
+      BG_IRC.ws.onclose = null
+      BG_IRC.ws.close()
+    } catch {}
     BG_IRC.ws = null
   }
   if (!BG_IRC.destroyed) bgIrcConnect()
@@ -7690,50 +8624,54 @@ function bgIrcForceReconnect() {
 
 function bgIrcStartHeartbeat() {
   bgIrcStopHeartbeat()
-  BG_IRC.heartbeatTimer = trackInterval(setInterval(() => {
-    if (!BG_IRC.ws || BG_IRC.ws.readyState !== WebSocket.OPEN) {
-      bgIrcStopHeartbeat()
-      if (!BG_IRC.destroyed) bgIrcScheduleReconnect()
-      return
-    }
-    const now = Date.now()
-    const silence = now - BG_IRC.lastData
-    if (silence > 90000) {
-      log('BG IRC: zombie detected —', Math.round(silence / 1000), 's silence')
-      bgIrcForceReconnect()
-      return
-    }
-    try { BG_IRC.ws.send('PING :heatsync\r\n') } catch {
-      bgIrcForceReconnect()
-      return
-    }
-    // Per-channel watchdog
-    for (const ch of BG_IRC.channels.keys()) {
-      const last = BG_IRC.chanLastSeen.get(ch) || 0
-      if (!last) continue
-      const chSilence = now - last
-      if (chSilence < 120000) continue
-      const attempts = BG_IRC.chanRejoinAttempts.get(ch) || 0
-      if (attempts >= 2) {
-        log('BG IRC: channel', ch, 'unresponsive — full reconnect')
-        BG_IRC.chanRejoinAttempts.clear()
+  BG_IRC.heartbeatTimer = trackInterval(
+    setInterval(() => {
+      if (!BG_IRC.ws || BG_IRC.ws.readyState !== WebSocket.OPEN) {
+        bgIrcStopHeartbeat()
+        if (!BG_IRC.destroyed) bgIrcScheduleReconnect()
+        return
+      }
+      const now = Date.now()
+      const silence = now - BG_IRC.lastData
+      if (silence > 90000) {
+        log('BG IRC: zombie detected —', Math.round(silence / 1000), 's silence')
         bgIrcForceReconnect()
         return
       }
-      log('BG IRC: channel', ch, 'silent — PART+JOIN')
       try {
-        BG_IRC.ws.send(`PART #${ch}\r\n`)
-        BG_IRC.ws.send(`JOIN #${ch}\r\n`)
-        BG_IRC.chanLastSeen.set(ch, now)
-        BG_IRC.chanRejoinAttempts.set(ch, attempts + 1)
+        BG_IRC.ws.send('PING :heatsync\r\n')
       } catch {
         bgIrcForceReconnect()
         return
       }
-    }
-    // 20s interval (was 30s) — Chrome 116+ extends SW lifetime as long as any
-    // WS frame in/out happens within a 30s window. 20s gives 10s safety margin.
-  }, 20000))
+      // Per-channel watchdog
+      for (const ch of BG_IRC.channels.keys()) {
+        const last = BG_IRC.chanLastSeen.get(ch) || 0
+        if (!last) continue
+        const chSilence = now - last
+        if (chSilence < 120000) continue
+        const attempts = BG_IRC.chanRejoinAttempts.get(ch) || 0
+        if (attempts >= 2) {
+          log('BG IRC: channel', ch, 'unresponsive — full reconnect')
+          BG_IRC.chanRejoinAttempts.clear()
+          bgIrcForceReconnect()
+          return
+        }
+        log('BG IRC: channel', ch, 'silent — PART+JOIN')
+        try {
+          BG_IRC.ws.send(`PART #${ch}\r\n`)
+          BG_IRC.ws.send(`JOIN #${ch}\r\n`)
+          BG_IRC.chanLastSeen.set(ch, now)
+          BG_IRC.chanRejoinAttempts.set(ch, attempts + 1)
+        } catch {
+          bgIrcForceReconnect()
+          return
+        }
+      }
+      // 20s interval (was 30s) — Chrome 116+ extends SW lifetime as long as any
+      // WS frame in/out happens within a 30s window. 20s gives 10s safety margin.
+    }, 20000),
+  )
 }
 
 function bgIrcStopHeartbeat() {
@@ -7752,7 +8690,9 @@ function bgIrcOnData(data) {
   for (const line of lines) {
     if (!line) continue
     if (line.startsWith('PING')) {
-      try { BG_IRC.ws.send('PONG :tmi.twitch.tv\r\n') } catch {}
+      try {
+        BG_IRC.ws.send('PONG :tmi.twitch.tv\r\n')
+      } catch {}
       continue
     }
     // Authed-reader login rejected (expired/revoked token) — flag and fall
@@ -7805,9 +8745,12 @@ function bgIrcHandleLine(line) {
   if (msg.type === 'roomstate') {
     const prev = BG_IRC.roomstates.get(msg.channel) || {}
     const changes = []
-    if (msg.slow != null && msg.slow !== prev.slow) changes.push(msg.slow > 0 ? `slow mode on (${msg.slow}s)` : 'slow mode off')
-    if (msg.subsOnly != null && msg.subsOnly !== prev.subsOnly) changes.push(msg.subsOnly ? 'sub-only mode on' : 'sub-only mode off')
-    if (msg.emoteOnly != null && msg.emoteOnly !== prev.emoteOnly) changes.push(msg.emoteOnly ? 'emote-only mode on' : 'emote-only mode off')
+    if (msg.slow != null && msg.slow !== prev.slow)
+      changes.push(msg.slow > 0 ? `slow mode on (${msg.slow}s)` : 'slow mode off')
+    if (msg.subsOnly != null && msg.subsOnly !== prev.subsOnly)
+      changes.push(msg.subsOnly ? 'sub-only mode on' : 'sub-only mode off')
+    if (msg.emoteOnly != null && msg.emoteOnly !== prev.emoteOnly)
+      changes.push(msg.emoteOnly ? 'emote-only mode on' : 'emote-only mode off')
     if (msg.followersOnly != null && msg.followersOnly !== prev.followersOnly) {
       if (msg.followersOnly === -1) changes.push('follower-only mode off')
       else if (msg.followersOnly === 0) changes.push('follower-only mode on')
@@ -7823,13 +8766,16 @@ function bgIrcHandleLine(line) {
       const buf = BG_IRC.channels.get(msg.channel)
       for (const text of changes) {
         const evt = {
-          type: 'notice', noticeType: 'mode_change',
-          user: 'system', text,
-          color: '#808080', badges: '',
+          type: 'notice',
+          noticeType: 'mode_change',
+          user: 'system',
+          text,
+          color: '#808080',
+          badges: '',
           channel: msg.channel,
           time: Date.now(),
           id: `mode-${msg.channel}-${Date.now()}-${text.slice(0, 16)}`,
-          systemMsg: text
+          systemMsg: text,
         }
         if (buf) buf.push(evt)
         bgIrcPersistChannel(msg.channel)
@@ -7864,7 +8810,11 @@ function bgIrcHandleLine(line) {
   if (buf && msg.type === 'notice' && msg.noticeType === 'delete_message_success' && msg.targetMsgId) {
     const id = msg.targetMsgId
     for (const m of buf.getAll()) {
-      if (m.id === id) { m.cleared = true; m.clearedReason = 'deleted'; break }
+      if (m.id === id) {
+        m.cleared = true
+        m.clearedReason = 'deleted'
+        break
+      }
     }
   }
 
@@ -7901,7 +8851,10 @@ function bgIrcReconcileCleared(buf) {
     if (m.type !== 'notice') continue
     if (m.noticeType === 'delete_message_success' && m.targetMsgId) {
       const target = byId.get(m.targetMsgId)
-      if (target && !target.cleared) { target.cleared = true; target.clearedReason = 'deleted' }
+      if (target && !target.cleared) {
+        target.cleared = true
+        target.clearedReason = 'deleted'
+      }
       continue
     }
     if (m.noticeType !== 'timeout_success' && m.noticeType !== 'ban_success') continue
@@ -7944,7 +8897,7 @@ function bgIrcFetchRobotty(ch) {
       const timer = setTimeout(() => ctrl.abort(), 15000)
       const resp = await fetch(
         `https://recent-messages.robotty.de/api/v2/recent-messages/${ch}?limit=1000&hide_moderation_messages=false&hide_moderated_messages=false&clearchatToNotice=true`,
-        { signal: ctrl.signal, credentials: 'omit' }
+        { signal: ctrl.signal, credentials: 'omit' },
       )
       clearTimeout(timer)
       if (!resp.ok) return
@@ -7953,9 +8906,9 @@ function bgIrcFetchRobotty(ch) {
       const buf = BG_IRC.channels.get(ch)
       if (!buf) return
       const existing = buf.getAll()
-      const existingIds = new Set(existing.filter(m => m.id).map(m => m.id))
+      const existingIds = new Set(existing.filter((m) => m.id).map((m) => m.id))
       const fpKey = (m) => `${m.user}|${m.time}|${(m.text || '').slice(0, 60)}`
-      const existingFp = new Set(existing.filter(m => !m.id).map(fpKey))
+      const existingFp = new Set(existing.filter((m) => !m.id).map(fpKey))
       const toAdd = []
       for (const line of data.messages) {
         const msg = bgIrcParseLine(line, ch)
@@ -7996,11 +8949,7 @@ function bgIrcFetchRobotty(ch) {
 // opted-in channel. ~50k popular channels covered. Pulls a few hours of recent
 // msgs in raw IRC format (parseable by our existing parser). Caps at logs'
 // response size. Channels not in the archive 404 cleanly — non-fatal.
-const JUSTLOG_INSTANCES = [
-  'https://logs.ivr.fi',
-  'https://logs.zonian.dev',
-  'https://logs.spanix.team',
-]
+const JUSTLOG_INSTANCES = ['https://logs.ivr.fi', 'https://logs.zonian.dev', 'https://logs.spanix.team']
 const BG_IRC_JUSTLOG_COOLDOWN_MS = 5 * 60 * 1000
 function bgIrcFetchJustlog(ch) {
   ch = (ch || '').toLowerCase()
@@ -8020,10 +8969,10 @@ function bgIrcFetchJustlog(ch) {
         // the full IRC line (tags + PRIVMSG/USERNOTICE).
         // No &reverse — that flag truncates to ~tens of msgs on every fork
         // tested (ivr 41, spanix 7). Default returns hundreds-to-thousands.
-        const resp = await fetch(
-          `${base}/channel/${encodeURIComponent(ch)}?json=true`,
-          { signal: ctrl.signal, credentials: 'omit' }
-        )
+        const resp = await fetch(`${base}/channel/${encodeURIComponent(ch)}?json=true`, {
+          signal: ctrl.signal,
+          credentials: 'omit',
+        })
         clearTimeout(timer)
         if (!resp.ok) continue
         const data = await resp.json()
@@ -8032,12 +8981,12 @@ function bgIrcFetchJustlog(ch) {
         const buf = BG_IRC.channels.get(ch)
         if (!buf) return
         const existing = buf.getAll()
-        const existingIds = new Set(existing.filter(m => m.id).map(m => m.id))
+        const existingIds = new Set(existing.filter((m) => m.id).map((m) => m.id))
         const fpKey = (m) => `${m.user}|${m.time}|${(m.text || '').slice(0, 60)}`
-        const existingFp = new Set(existing.filter(m => !m.id).map(fpKey))
+        const existingFp = new Set(existing.filter((m) => !m.id).map(fpKey))
         const toAdd = []
         for (const item of list) {
-          const raw = typeof item === 'string' ? item : (item?.raw || '')
+          const raw = typeof item === 'string' ? item : item?.raw || ''
           if (!raw) continue
           const msg = bgIrcParseLine(raw, ch)
           if (!msg) continue
@@ -8086,12 +9035,14 @@ function bgIrcRecordToExt(rec, channelHint) {
       time: rec.timestamp || Date.now(),
       id: rec.id || '',
       isHistory: true,
-      replyTo: rec.replyTo ? {
-        user: rec.replyTo.username || '',
-        text: rec.replyTo.content || '',
-        id: rec.replyTo.messageId || '',
-        threadId: rec.replyTo.threadId || rec.replyTo.messageId || ''
-      } : null
+      replyTo: rec.replyTo
+        ? {
+            user: rec.replyTo.username || '',
+            text: rec.replyTo.content || '',
+            id: rec.replyTo.messageId || '',
+            threadId: rec.replyTo.threadId || rec.replyTo.messageId || '',
+          }
+        : null,
     }
     if (rec.emotes) {
       const twitchEmotes = {}
@@ -8136,14 +9087,16 @@ function bgIrcRecordToExt(rec, channelHint) {
       announceColor: '',
       bitsTier: 0,
       id: rec.id || '',
-      isHistory: true
+      isHistory: true,
     }
   }
   if (t === 'clearchat') {
     const target = rec.targetUsername || ''
     const duration = rec.banDuration
     const text = target
-      ? (duration ? `${target} timed out for ${duration}s` : `${target} was permanently banned`)
+      ? duration
+        ? `${target} timed out for ${duration}s`
+        : `${target} was permanently banned`
       : 'Chat was cleared'
     return {
       type: 'notice',
@@ -8159,7 +9112,7 @@ function bgIrcRecordToExt(rec, channelHint) {
       targetUser: target,
       targetUserId: rec.targetUserId || '',
       banDuration: duration || 0,
-      isHistory: true
+      isHistory: true,
     }
   }
   return null
@@ -8173,9 +9126,9 @@ function bgIrcMergeServerBacklog(ch, records) {
   if (!BG_IRC.channels.has(ch)) BG_IRC.channels.set(ch, new BGCircularBuffer(BG_IRC_PERSIST_MAX))
   const buf = BG_IRC.channels.get(ch)
   const existing = buf.getAll()
-  const existingIds = new Set(existing.filter(m => m.id).map(m => m.id))
+  const existingIds = new Set(existing.filter((m) => m.id).map((m) => m.id))
   const fpKey = (m) => `${m.user}|${m.time}|${(m.text || '').slice(0, 60)}`
-  const existingFp = new Set(existing.filter(m => !m.id).map(fpKey))
+  const existingFp = new Set(existing.filter((m) => !m.id).map(fpKey))
   const toAdd = []
   for (const rec of records) {
     const msg = bgIrcRecordToExt(rec, ch)
@@ -8243,7 +9196,10 @@ function bgIrcRegisterTabInterest(tabId, ch) {
 
 function bgIrcUnregisterTabInterest(tabId, ch) {
   const tabSet = BG_IRC.channelTabs.get(ch)
-  if (tabSet) { tabSet.delete(tabId); if (tabSet.size === 0) BG_IRC.channelTabs.delete(ch) }
+  if (tabSet) {
+    tabSet.delete(tabId)
+    if (tabSet.size === 0) BG_IRC.channelTabs.delete(ch)
+  }
   const interest = BG_IRC.tabInterest.get(tabId)
   if (interest) interest.delete(ch)
   bgBroadcastOpenChannels()
@@ -8264,7 +9220,9 @@ function bgIrcEnsureChannel(ch) {
       chrome.storage.local.remove(`hs_irc_${oldest}`).catch(() => {})
     }
     if (BG_IRC.ws?.readyState === WebSocket.OPEN) {
-      try { BG_IRC.ws.send(`JOIN #${ch}\r\n`) } catch {}
+      try {
+        BG_IRC.ws.send(`JOIN #${ch}\r\n`)
+      } catch {}
     }
   }
   // External history sources fire regardless of whether the channel already
@@ -8273,14 +9231,18 @@ function bgIrcEnsureChannel(ch) {
   // without firing them on every join, restored channels permanently miss
   // the deeper sources (justlog / heatsync irc:resume / fresh robotty).
   // All three have internal cooldowns to prevent hammering.
-  try { wsSend({ type: 'irc:join', channel: ch }) } catch {}
+  try {
+    wsSend({ type: 'irc:join', channel: ch })
+  } catch {}
   try {
     const buf = BG_IRC.channels.get(ch)
     const all = buf?.getAll() || []
-    const lastTs = all.length > 0 ? (all[all.length - 1].time || 0) : 0
+    const lastTs = all.length > 0 ? all[all.length - 1].time || 0 : 0
     wsSend({ type: 'irc:resume', channel: ch, since: lastTs })
   } catch {}
-  try { bgIrcFetchJustlog(ch) } catch {}
+  try {
+    bgIrcFetchJustlog(ch)
+  } catch {}
   bgIrcFetchRobotty(ch)
 }
 
@@ -8291,7 +9253,10 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   if (!interest) return
   for (const ch of interest) {
     const tabSet = BG_IRC.channelTabs.get(ch)
-    if (tabSet) { tabSet.delete(tabId); if (tabSet.size === 0) BG_IRC.channelTabs.delete(ch) }
+    if (tabSet) {
+      tabSet.delete(tabId)
+      if (tabSet.size === 0) BG_IRC.channelTabs.delete(ch)
+    }
   }
   BG_IRC.tabInterest.delete(tabId)
   bgBroadcastOpenChannels()
@@ -8325,7 +9290,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       // survive SW restarts within the browser session — otherwise the
       // reader silently reverts to starved-anonymous until a twitch tab
       // happens to re-init
-      try { chrome.storage.session?.set?.({ hs_irc_auth: { token, nick } }) } catch {}
+      try {
+        chrome.storage.session?.set?.({ hs_irc_auth: { token, nick } })
+      } catch {}
       if (changed) BG_IRC.authFailed = false
       const anonOrStale = changed || !BG_IRC.ws || BG_IRC.ws.readyState !== WebSocket.OPEN
       if (anonOrStale && !BG_IRC.authFailed) {
@@ -8342,7 +9309,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   if (message.type === 'bg_irc_join') {
     const ch = (message.channel || '').toLowerCase()
-    if (!ch) { sendResponse({ ok: false, error: 'no channel' }); return true }
+    if (!ch) {
+      sendResponse({ ok: false, error: 'no channel' })
+      return true
+    }
     ;(async () => {
       if (!BG_IRC.storageRestored) await bgIrcRestoreFromStorage()
       bgIrcEnsureChannel(ch)
@@ -8369,10 +9339,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const pending = BG_IRC.historyInFlight.get(ch)
       if (pending) {
         try {
-          await Promise.race([
-            pending,
-            new Promise(r => setTimeout(r, 4000))
-          ])
+          await Promise.race([pending, new Promise((r) => setTimeout(r, 4000))])
         } catch {}
       }
       const buf = BG_IRC.channels.get(ch)
@@ -8385,7 +9352,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       ok: true,
       connected: BG_IRC.ws?.readyState === WebSocket.OPEN,
       channels: Array.from(BG_IRC.channels.keys()),
-      bufferSizes: Object.fromEntries([...BG_IRC.channels].map(([k, v]) => [k, v.size]))
+      bufferSizes: Object.fromEntries([...BG_IRC.channels].map(([k, v]) => [k, v.size])),
     })
     return true
   }
@@ -8408,12 +9375,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 const BG_KICK_PERSIST_MAX = 3000
 const BG_YT_PERSIST_MAX = 500
 const BG_KICK = {
-  channels: new Map(),    // username -> BGCircularBuffer
+  channels: new Map(), // username -> BGCircularBuffer
   persistTimers: new Map(),
   storageRestored: false,
 }
 const BG_YT = {
-  channels: new Map(),    // channelId -> BGCircularBuffer
+  channels: new Map(), // channelId -> BGCircularBuffer
   persistTimers: new Map(),
   storageRestored: false,
 }
@@ -8434,7 +9401,9 @@ async function bgKickRestoreFromStorage() {
       n++
     }
     log('BG KICK restored', n, 'channels')
-  } catch (e) { log('BG KICK restore failed:', e.message) }
+  } catch (e) {
+    log('BG KICK restore failed:', e.message)
+  }
 }
 
 async function bgYtRestoreFromStorage() {
@@ -8453,33 +9422,41 @@ async function bgYtRestoreFromStorage() {
       n++
     }
     log('BG YT restored', n, 'channels')
-  } catch (e) { log('BG YT restore failed:', e.message) }
+  } catch (e) {
+    log('BG YT restore failed:', e.message)
+  }
 }
 
 function bgKickPersistChannel(ch) {
   if (BG_KICK.persistTimers.has(ch)) return
-  BG_KICK.persistTimers.set(ch, setTimeout(() => {
-    BG_KICK.persistTimers.delete(ch)
-    try {
-      const buf = BG_KICK.channels.get(ch)
-      if (!buf) return
-      const msgs = buf.getAll()
-      chrome.storage.local.set({ [`hs_kick_${ch}`]: { msgs, ts: Date.now() } }).catch(() => {})
-    } catch {}
-  }, 1500))
+  BG_KICK.persistTimers.set(
+    ch,
+    setTimeout(() => {
+      BG_KICK.persistTimers.delete(ch)
+      try {
+        const buf = BG_KICK.channels.get(ch)
+        if (!buf) return
+        const msgs = buf.getAll()
+        chrome.storage.local.set({ [`hs_kick_${ch}`]: { msgs, ts: Date.now() } }).catch(() => {})
+      } catch {}
+    }, 1500),
+  )
 }
 
 function bgYtPersistChannel(channelId) {
   if (BG_YT.persistTimers.has(channelId)) return
-  BG_YT.persistTimers.set(channelId, setTimeout(() => {
-    BG_YT.persistTimers.delete(channelId)
-    try {
-      const buf = BG_YT.channels.get(channelId)
-      if (!buf) return
-      const msgs = buf.getAll()
-      chrome.storage.local.set({ [`hs_yt_${channelId}`]: { msgs, ts: Date.now() } }).catch(() => {})
-    } catch {}
-  }, 1500))
+  BG_YT.persistTimers.set(
+    channelId,
+    setTimeout(() => {
+      BG_YT.persistTimers.delete(channelId)
+      try {
+        const buf = BG_YT.channels.get(channelId)
+        if (!buf) return
+        const msgs = buf.getAll()
+        chrome.storage.local.set({ [`hs_yt_${channelId}`]: { msgs, ts: Date.now() } }).catch(() => {})
+      } catch {}
+    }, 1500),
+  )
 }
 
 function bgKickIngest(data) {
@@ -8510,12 +9487,14 @@ function bgKickIngest(data) {
     time: data.timestamp || data.time || Date.now(),
     platform: 'kick',
     id: data.id || '',
-    replyTo: data.replyTo ? {
-      user: data.replyTo.username || 'unknown',
-      text: data.replyTo.content || '',
-      id: data.replyTo.id || data.replyTo.message_id || '',
-      threadId: data.replyTo.thread_id || data.replyTo.id || data.replyTo.message_id || ''
-    } : null
+    replyTo: data.replyTo
+      ? {
+          user: data.replyTo.username || 'unknown',
+          text: data.replyTo.content || '',
+          id: data.replyTo.id || data.replyTo.message_id || '',
+          threadId: data.replyTo.thread_id || data.replyTo.id || data.replyTo.message_id || '',
+        }
+      : null,
   }
   BG_KICK.channels.get(ch).push(msg)
   bgKickPersistChannel(ch)
@@ -8542,12 +9521,12 @@ async function bgKickFetchArchive(ch, beforeIso) {
     const params = new URLSearchParams({
       channel: ch,
       platform: 'kick',
-      limit: '100'
+      limit: '100',
     })
     if (beforeIso) params.set('cursor', beforeIso)
     const resp = await fetch(`${API_URL}/api/archive/search?${params}`, {
       signal: ctrl.signal,
-      credentials: 'omit'
+      credentials: 'omit',
     })
     clearTimeout(timer)
     if (!resp.ok) return
@@ -8557,9 +9536,9 @@ async function bgKickFetchArchive(ch, beforeIso) {
     if (!BG_KICK.channels.has(ch)) BG_KICK.channels.set(ch, new BGCircularBuffer(BG_KICK_PERSIST_MAX))
     const buf = BG_KICK.channels.get(ch)
     const existing = buf.getAll()
-    const existingIds = new Set(existing.filter(m => m.id).map(m => m.id))
+    const existingIds = new Set(existing.filter((m) => m.id).map((m) => m.id))
     const fpKey = (m) => `${m.user}|${m.time}|${(m.text || '').slice(0, 60)}`
-    const existingFp = new Set(existing.filter(m => !m.id).map(fpKey))
+    const existingFp = new Set(existing.filter((m) => !m.id).map(fpKey))
     const toAdd = []
     for (const r of rows) {
       const id = r.message_id || r.id || ''
@@ -8567,13 +9546,21 @@ async function bgKickFetchArchive(ch, beforeIso) {
       const user = r.display_name || r.username || 'unknown'
       const ts = r.timestamp ? new Date(r.timestamp).getTime() : Date.now()
       const badgeStr = Array.isArray(r.badges)
-        ? r.badges.map(b => `${b.type || b.name || 'badge'}/${b.version || b.count || '1'}`).join(',')
-        : (typeof r.badges === 'string' ? r.badges : '')
+        ? r.badges.map((b) => `${b.type || b.name || 'badge'}/${b.version || b.count || '1'}`).join(',')
+        : typeof r.badges === 'string'
+          ? r.badges
+          : ''
       const msg = {
-        user, text, color: '#53fc18', badges: badgeStr,
-        channel: ch, time: ts, platform: 'kick', id,
+        user,
+        text,
+        color: '#53fc18',
+        badges: badgeStr,
+        channel: ch,
+        time: ts,
+        platform: 'kick',
+        id,
         isHistory: true,
-        replyTo: r.reply_to_id ? { user: '', text: '', id: r.reply_to_id, threadId: r.reply_to_id } : null
+        replyTo: r.reply_to_id ? { user: '', text: '', id: r.reply_to_id, threadId: r.reply_to_id } : null,
       }
       if (msg.id && existingIds.has(msg.id)) continue
       if (!msg.id && existingFp.has(fpKey(msg))) continue
@@ -8609,8 +9596,8 @@ let _kpWs = null
 let _kpConnected = false
 let _kpReconnectMs = 1000
 let _kpReconnectTimer = null
-const _kpChannels = new Map()       // slug -> chatroomId (currently subscribed)
-const _kpChatroomCache = new Map()  // slug -> chatroomId (resolved)
+const _kpChannels = new Map() // slug -> chatroomId (currently subscribed)
+const _kpChatroomCache = new Map() // slug -> chatroomId (resolved)
 
 async function _kpResolveChatroomId(slug) {
   if (_kpChatroomCache.has(slug)) return _kpChatroomCache.get(slug)
@@ -8630,61 +9617,98 @@ async function _kpResolveChatroomId(slug) {
 
 function _kpSubscribe(chatroomId) {
   if (_kpConnected && _kpWs) {
-    try { _kpWs.send(JSON.stringify({ event: 'pusher:subscribe', data: { auth: '', channel: `chatrooms.${chatroomId}.v2` } })) } catch {}
+    try {
+      _kpWs.send(
+        JSON.stringify({ event: 'pusher:subscribe', data: { auth: '', channel: `chatrooms.${chatroomId}.v2` } }),
+      )
+    } catch {}
   }
 }
 function _kpUnsubscribe(chatroomId) {
   if (_kpConnected && _kpWs) {
-    try { _kpWs.send(JSON.stringify({ event: 'pusher:unsubscribe', data: { channel: `chatrooms.${chatroomId}.v2` } })) } catch {}
+    try {
+      _kpWs.send(JSON.stringify({ event: 'pusher:unsubscribe', data: { channel: `chatrooms.${chatroomId}.v2` } }))
+    } catch {}
   }
 }
 function _kpScheduleReconnect() {
   if (_kpReconnectTimer || !KICK_PUSHER_TAP || !_kpChannels.size) return
-  _kpReconnectTimer = setTimeout(() => { _kpReconnectTimer = null; _kpConnect() }, _kpReconnectMs)
+  _kpReconnectTimer = setTimeout(() => {
+    _kpReconnectTimer = null
+    _kpConnect()
+  }, _kpReconnectMs)
   _kpReconnectMs = Math.min(_kpReconnectMs * 2, 30000)
 }
 function _kpConnect() {
   if (_kpWs || !KICK_PUSHER_TAP) return
   try {
-    _kpWs = new WebSocket(`wss://ws-us2.pusher.com/app/${KICK_PUSHER_APP_KEY}?protocol=7&client=js&version=8.4.0&flash=false`)
-  } catch { _kpScheduleReconnect(); return }
-  _kpWs.onopen = () => { _kpReconnectMs = 1000 }
+    _kpWs = new WebSocket(
+      `wss://ws-us2.pusher.com/app/${KICK_PUSHER_APP_KEY}?protocol=7&client=js&version=8.4.0&flash=false`,
+    )
+  } catch {
+    _kpScheduleReconnect()
+    return
+  }
+  _kpWs.onopen = () => {
+    _kpReconnectMs = 1000
+  }
   _kpWs.onmessage = (e) => {
-    let d; try { d = JSON.parse(e.data) } catch { return }
+    let d
+    try {
+      d = JSON.parse(e.data)
+    } catch {
+      return
+    }
     if (d.event === 'pusher:connection_established') {
       _kpConnected = true
-      for (const id of _kpChannels.values()) _kpSubscribe(id)   // (re)assert all subs
+      for (const id of _kpChannels.values()) _kpSubscribe(id) // (re)assert all subs
     } else if (typeof d.event === 'string' && d.event.includes('ChatMessageEvent')) {
       _kpHandleChatEvent(d)
     }
   }
-  _kpWs.onclose = () => { _kpWs = null; _kpConnected = false; if (_kpChannels.size) _kpScheduleReconnect() }
-  _kpWs.onerror = () => { try { _kpWs?.close() } catch {} }
+  _kpWs.onclose = () => {
+    _kpWs = null
+    _kpConnected = false
+    if (_kpChannels.size) _kpScheduleReconnect()
+  }
+  _kpWs.onerror = () => {
+    try {
+      _kpWs?.close()
+    } catch {}
+  }
 }
 function _kpSlugForChatroom(chatroomId) {
   for (const [slug, id] of _kpChannels) if (id === chatroomId) return slug
   return null
 }
 function _kpHandleChatEvent(d) {
-  let ev; try { ev = typeof d.data === 'string' ? JSON.parse(d.data) : d.data } catch { return }
+  let ev
+  try {
+    ev = typeof d.data === 'string' ? JSON.parse(d.data) : d.data
+  } catch {
+    return
+  }
   if (!ev) return
   const m = /chatrooms\.(\d+)\.v2/.exec(d.channel || '')
   const slug = m ? _kpSlugForChatroom(Number(m[1])) : null
   if (!slug) return
   // Match the server webhook relay's data shape exactly (see kick-chat-webhooks
   // handleChatMessage) so the overlay renders identically + dedups by id.
-  broadcastToTabs({ type: 'kick_chat_message', data: {
-    platform: 'kick',
-    channel: slug,
-    username: ev.sender?.username || 'unknown',
-    displayName: ev.sender?.username || 'Unknown',
-    content: ev.content || '',
-    color: ev.sender?.identity?.color || '#53fc18',
-    badges: ev.sender?.identity?.badges || [],
-    timestamp: ev.created_at ? (Date.parse(ev.created_at) || Date.now()) : Date.now(),
-    id: ev.id || '',
-    replyTo: null
-  } })
+  broadcastToTabs({
+    type: 'kick_chat_message',
+    data: {
+      platform: 'kick',
+      channel: slug,
+      username: ev.sender?.username || 'unknown',
+      displayName: ev.sender?.username || 'Unknown',
+      content: ev.content || '',
+      color: ev.sender?.identity?.color || '#53fc18',
+      badges: ev.sender?.identity?.badges || [],
+      timestamp: ev.created_at ? Date.parse(ev.created_at) || Date.now() : Date.now(),
+      id: ev.id || '',
+      replyTo: null,
+    },
+  })
 }
 async function kickPusherJoin(slug) {
   if (!KICK_PUSHER_TAP) return
@@ -8703,7 +9727,13 @@ function kickPusherLeave(slug) {
   if (chatroomId == null) return
   _kpUnsubscribe(chatroomId)
   _kpChannels.delete(slug)
-  if (!_kpChannels.size && _kpWs) { try { _kpWs.close() } catch {}; _kpWs = null; _kpConnected = false }
+  if (!_kpChannels.size && _kpWs) {
+    try {
+      _kpWs.close()
+    } catch {}
+    _kpWs = null
+    _kpConnected = false
+  }
 }
 
 function bgYtIngest(payload) {

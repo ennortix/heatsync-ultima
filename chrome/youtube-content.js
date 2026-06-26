@@ -1,8 +1,6 @@
 // YouTube Live Chat content script — message extraction, emote overlay, autocomplete, send relay
 // Runs in the live_chat iframe. Lib-bundled at build time (CONFIG, cleanup, utils, browser-api available).
-(function() {
-  'use strict'
-
+;(() => {
   const DEBUG = false
   const log = DEBUG ? console.log.bind(console, '[hs-youtube]') : () => {}
 
@@ -35,12 +33,12 @@
   const HS_EMOTE_BASE_PX = 28
   function applyEmoteSize(size) {
     const n = parseFloat(size) || 1
-    document.documentElement.style.setProperty('--hs-emote-height', (HS_EMOTE_BASE_PX * n) + 'px')
+    document.documentElement.style.setProperty('--hs-emote-height', HS_EMOTE_BASE_PX * n + 'px')
   }
 
   // ─── Emote Inventory ─────────────────────────────────────────────────────────
 
-  let emoteMap = new Map()          // name → { name, url, hash, ... }
+  let emoteMap = new Map() // name → { name, url, hash, ... }
   let blockedEmotes = new Set()
   let inventoryLoaded = false
 
@@ -55,20 +53,29 @@
     // Globals first (lowest priority) — tier 2
     if (globals) {
       for (const e of globals) {
-        if (e?.name && !blockedEmotes.has(e.hash || e.name)) { e._ytTier = 2; map.set(e.name, e) }
+        if (e?.name && !blockedEmotes.has(e.hash || e.name)) {
+          e._ytTier = 2
+          map.set(e.name, e)
+        }
       }
     }
     // Inventory — tier 1
     if (inventory) {
       for (const e of inventory) {
-        if (e?.name && !blockedEmotes.has(e.hash || e.name)) { e._ytTier = 1; map.set(e.name, e) }
+        if (e?.name && !blockedEmotes.has(e.hash || e.name)) {
+          e._ytTier = 1
+          map.set(e.name, e)
+        }
       }
     }
     // Channel emotes (BTTV/FFZ/7TV/Twitch sub) override — tier 0
     for (const ownerEmotes of Object.values(channelEmotesByOwner)) {
       if (!Array.isArray(ownerEmotes)) continue
       for (const e of ownerEmotes) {
-        if (e?.name && !blockedEmotes.has(e.hash || e.name)) { e._ytTier = 0; map.set(e.name, e) }
+        if (e?.name && !blockedEmotes.has(e.hash || e.name)) {
+          e._ytTier = 0
+          map.set(e.name, e)
+        }
       }
     }
     emoteMap = map
@@ -78,7 +85,12 @@
   async function loadEmoteInventory() {
     try {
       // Fast path: storage
-      const stored = await chrome.storage.local.get(['emote_inventory', 'global_emotes', 'blocked_emotes', 'channel_emotes_map'])
+      const stored = await chrome.storage.local.get([
+        'emote_inventory',
+        'global_emotes',
+        'blocked_emotes',
+        'channel_emotes_map',
+      ])
       if (stored.blocked_emotes) blockedEmotes = new Set(stored.blocked_emotes)
       if (stored.channel_emotes_map && typeof stored.channel_emotes_map === 'object') {
         channelEmotesByOwner = stored.channel_emotes_map
@@ -103,18 +115,27 @@
   // Listen for inventory updates from background
   const ytInventoryListener = (msg, _sender, sendResponse) => {
     if (msg.type === 'inventory_update' && msg.emotes) {
-      chrome.storage.local.get(['global_emotes']).then(stored => {
-        rebuildEmoteMap(msg.emotes, stored.global_emotes || [])
-      }).catch(e => log('storage read failed (inventory_update):', e?.message))
+      chrome.storage.local
+        .get(['global_emotes'])
+        .then((stored) => {
+          rebuildEmoteMap(msg.emotes, stored.global_emotes || [])
+        })
+        .catch((e) => log('storage read failed (inventory_update):', e?.message))
     } else if (msg.type === 'global_emotes_update' && msg.emotes) {
-      chrome.storage.local.get(['emote_inventory']).then(stored => {
-        rebuildEmoteMap(stored.emote_inventory || [], msg.emotes)
-      }).catch(e => log('storage read failed (global_emotes_update):', e?.message))
+      chrome.storage.local
+        .get(['emote_inventory'])
+        .then((stored) => {
+          rebuildEmoteMap(stored.emote_inventory || [], msg.emotes)
+        })
+        .catch((e) => log('storage read failed (global_emotes_update):', e?.message))
     } else if (msg.type === 'blocked_update' && Array.isArray(msg.blocked)) {
       blockedEmotes = new Set(msg.blocked)
-      chrome.storage.local.get(['emote_inventory', 'global_emotes']).then(stored => {
-        rebuildEmoteMap(stored.emote_inventory || [], stored.global_emotes || [])
-      }).catch(e => log('storage read failed (blocked_update):', e?.message))
+      chrome.storage.local
+        .get(['emote_inventory', 'global_emotes'])
+        .then((stored) => {
+          rebuildEmoteMap(stored.emote_inventory || [], stored.global_emotes || [])
+        })
+        .catch((e) => log('storage read failed (blocked_update):', e?.message))
     } else if (msg.type === 'channel_emotes_update' && Array.isArray(msg.emotes) && msg.channelOwner) {
       channelEmotesByOwner[msg.channelOwner] = msg.emotes
       // Cap to most-recent 20 owners — long sessions with many channel switches
@@ -123,16 +144,21 @@
       if (keys.length > 20) {
         for (let i = 0; i < keys.length - 20; i++) delete channelEmotesByOwner[keys[i]]
       }
-      chrome.storage.local.get(['emote_inventory', 'global_emotes']).then(stored => {
-        rebuildEmoteMap(stored.emote_inventory || [], stored.global_emotes || [])
-      }).catch(e => log('storage read failed (channel_emotes_update):', e?.message))
+      chrome.storage.local
+        .get(['emote_inventory', 'global_emotes'])
+        .then((stored) => {
+          rebuildEmoteMap(stored.emote_inventory || [], stored.global_emotes || [])
+        })
+        .catch((e) => log('storage read failed (channel_emotes_update):', e?.message))
     } else if (msg.type === 'youtube_send_relay') {
       // When awaitConfirm is set (server-relay path), wait for the message to
       // appear in the chat list before acking. Without it, fire-and-forget for
       // backwards compat with the earlier multichat-internal caller.
       if (msg.awaitConfirm) {
-        handleSendRelay(msg).then(result => {
-          try { sendResponse(result || { ok: false, error: 'no_result' }) } catch {}
+        handleSendRelay(msg).then((result) => {
+          try {
+            sendResponse(result || { ok: false, error: 'no_result' })
+          } catch {}
         })
         return true
       }
@@ -151,17 +177,25 @@
     if (area === 'local' && changes.hs_emote_size) applyEmoteSize(changes.hs_emote_size.newValue)
   }
   chrome.storage.onChanged.addListener(ytStorageListener)
-  window.addEventListener('pagehide', () => {
-    try { chrome.runtime.onMessage.removeListener(ytInventoryListener) } catch {}
-    try { chrome.storage.onChanged.removeListener(ytStorageListener) } catch {}
-  }, { once: true })
+  window.addEventListener(
+    'pagehide',
+    () => {
+      try {
+        chrome.runtime.onMessage.removeListener(ytInventoryListener)
+      } catch {}
+      try {
+        chrome.storage.onChanged.removeListener(ytStorageListener)
+      } catch {}
+    },
+    { once: true },
+  )
 
   // ─── Emote Replacement ────────────────────────────────────────────────────────
 
   function isZeroWidth(emote) {
     if (!emote) return false
     if (emote.zeroWidth === true) return true
-    if (typeof emote.flags === 'number' && (emote.flags & 257)) return true
+    if (typeof emote.flags === 'number' && emote.flags & 257) return true
     return false
   }
 
@@ -179,12 +213,15 @@
       const words = text.split(/(\s+)/)
       let hasEmote = false
       for (const w of words) {
-        if (emoteMap.has(w)) { hasEmote = true; break }
+        if (emoteMap.has(w)) {
+          hasEmote = true
+          break
+        }
       }
       if (!hasEmote) continue
 
       const frag = document.createDocumentFragment()
-      let currentStack = null   // active <span class="heatsync-emote-stack"> or null
+      let currentStack = null // active <span class="heatsync-emote-stack"> or null
 
       for (const word of words) {
         const emote = emoteMap.get(word)
@@ -218,7 +255,7 @@
 
   // ─── 7TV Cosmetics (via heatsync profile linkage) ────────────────────────────
 
-  const YT_COSMETICS_TTL = 30 * 60 * 1000  // 30 minutes
+  const YT_COSMETICS_TTL = 30 * 60 * 1000 // 30 minutes
   const YT_COSMETICS_MAX = 500
   const YT_COSMETICS_PENDING_MAX = 8
 
@@ -230,8 +267,8 @@
   function get7TVBadgeUrl(badge) {
     if (!badge?.host) return ''
     const files = badge.host.files || []
-    const file = files.find(f => f.name?.endsWith('.webp')) ||
-                 files.find(f => f.name?.endsWith('.avif')) || files[0]
+    const file =
+      files.find((f) => f.name?.endsWith('.webp')) || files.find((f) => f.name?.endsWith('.avif')) || files[0]
     if (!file) return ''
     const base = badge.host.url || ''
     const fullBase = base.startsWith('//') ? 'https:' + base : base
@@ -247,13 +284,15 @@
       el.style.backgroundImage = `url(${safeCssUrl})`
       el.style.backgroundSize = 'cover'
     } else if ((fn === 'linear-gradient' || fn === 'radial-gradient') && paint.stops?.length) {
-      const stops = paint.stops.map(s => {
-        const r = (s.color >>> 24) & 0xff
-        const g = (s.color >>> 16) & 0xff
-        const b = (s.color >>> 8) & 0xff
-        const a = (s.color & 0xff) / 255
-        return `rgba(${r},${g},${b},${a.toFixed(2)}) ${Math.round(s.at * 100)}%`
-      }).join(', ')
+      const stops = paint.stops
+        .map((s) => {
+          const r = (s.color >>> 24) & 0xff
+          const g = (s.color >>> 16) & 0xff
+          const b = (s.color >>> 8) & 0xff
+          const a = (s.color & 0xff) / 255
+          return `rgba(${r},${g},${b},${a.toFixed(2)}) ${Math.round(s.at * 100)}%`
+        })
+        .join(', ')
       const safeAngle = Number.isFinite(Number(paint.angle)) ? Number(paint.angle) : 0
       const safeShape = /^(circle|ellipse)$/.test(paint.shape) ? paint.shape : 'circle'
       if (fn === 'linear-gradient') {
@@ -275,13 +314,15 @@
     el.style.webkitTextFillColor = 'transparent'
     el.style.backgroundClip = 'text'
     if (paint.shadows?.length) {
-      el.style.filter = paint.shadows.map(s => {
-        const r = (s.color >>> 24) & 0xff
-        const g = (s.color >>> 16) & 0xff
-        const b = (s.color >>> 8) & 0xff
-        const a = (s.color & 0xff) / 255
-        return `drop-shadow(${Number(s.x_offset) || 0}px ${Number(s.y_offset) || 0}px ${Number(s.radius) || 0}px rgba(${r},${g},${b},${a.toFixed(2)}))`
-      }).join(' ')
+      el.style.filter = paint.shadows
+        .map((s) => {
+          const r = (s.color >>> 24) & 0xff
+          const g = (s.color >>> 16) & 0xff
+          const b = (s.color >>> 8) & 0xff
+          const a = (s.color & 0xff) / 255
+          return `drop-shadow(${Number(s.x_offset) || 0}px ${Number(s.y_offset) || 0}px ${Number(s.radius) || 0}px rgba(${r},${g},${b},${a.toFixed(2)}))`
+        })
+        .join(' ')
     }
     el.dataset.hsPaintApplied = '1'
   }
@@ -325,7 +366,10 @@
     if (ytCosmeticsPending.has(username)) return
     ytCosmeticsPending.add(username)
     if (ytCosmeticsPending.size >= YT_COSMETICS_PENDING_MAX) {
-      if (ytCosmeticsBatchTimer) { clearTimeout(ytCosmeticsBatchTimer); ytCosmeticsBatchTimer = null }
+      if (ytCosmeticsBatchTimer) {
+        clearTimeout(ytCosmeticsBatchTimer)
+        ytCosmeticsBatchTimer = null
+      }
       flushYtCosmeticsBatch()
       return
     }
@@ -338,55 +382,67 @@
       }, 600)
     }
   }
-  signal.addEventListener('abort', () => {
-    if (ytCosmeticsBatchTimer) { cleanup.clearTimeout(ytCosmeticsBatchTimer); ytCosmeticsBatchTimer = null }
-    if (_setupAutocompleteRetryTimer) { cleanup.clearTimeout(_setupAutocompleteRetryTimer); _setupAutocompleteRetryTimer = null }
-    // Clear cosmetics caches so cross-video bleed can't happen on next mount
-    ytCosmeticsCache.clear()
-    ytCosmeticsPending.clear()
-  }, { once: true })
+  signal.addEventListener(
+    'abort',
+    () => {
+      if (ytCosmeticsBatchTimer) {
+        cleanup.clearTimeout(ytCosmeticsBatchTimer)
+        ytCosmeticsBatchTimer = null
+      }
+      if (_setupAutocompleteRetryTimer) {
+        cleanup.clearTimeout(_setupAutocompleteRetryTimer)
+        _setupAutocompleteRetryTimer = null
+      }
+      // Clear cosmetics caches so cross-video bleed can't happen on next mount
+      ytCosmeticsCache.clear()
+      ytCosmeticsPending.clear()
+    },
+    { once: true },
+  )
 
   async function flushYtCosmeticsBatch() {
     if (ytCosmeticsPending.size === 0) return
     const batch = [...ytCosmeticsPending].slice(0, YT_COSMETICS_PENDING_MAX)
-    batch.forEach(u => ytCosmeticsPending.delete(u))
+    batch.forEach((u) => ytCosmeticsPending.delete(u))
 
     const now = Date.now()
 
-    await Promise.all(batch.map(async (username) => {
-      try {
-        // Step 1: resolve heatsync profile → twitch_id
-        const profileResp = await safeSendMessage({
-          type: 'api_fetch',
-          path: `/api/profile/${encodeURIComponent(username)}`,
-          method: 'GET'
-        })
-        const twitchId = profileResp?.data?.twitch_id || profileResp?.twitch_id || null
-        if (!twitchId) {
-          // Cache null so we don't refetch for 30min
+    await Promise.all(
+      batch.map(async (username) => {
+        try {
+          // Step 1: resolve heatsync profile → twitch_id
+          const profileResp = await safeSendMessage({
+            type: 'api_fetch',
+            path: `/api/profile/${encodeURIComponent(username)}`,
+            method: 'GET',
+          })
+          const twitchId = profileResp?.data?.twitch_id || profileResp?.twitch_id || null
+          if (!twitchId) {
+            // Cache null so we don't refetch for 30min
+            evictYtCache()
+            ytCosmeticsCache.set(username, { paint: null, badge: null, fetchedAt: now })
+            return
+          }
+
+          // Step 2: fetch 7TV cosmetics via existing background handler
+          const cosmeticResp = await safeSendMessage({
+            type: 'get_user_cosmetics',
+            twitchIds: [twitchId],
+          })
+          const cosmetic = cosmeticResp?.cosmetics?.[twitchId] || null
+          evictYtCache()
+          ytCosmeticsCache.set(username, {
+            paint: cosmetic?.paint || null,
+            badge: cosmetic?.badge || null,
+            fetchedAt: now,
+          })
+        } catch (e) {
+          log('yt cosmetics fetch failed for', username, e?.message)
           evictYtCache()
           ytCosmeticsCache.set(username, { paint: null, badge: null, fetchedAt: now })
-          return
         }
-
-        // Step 2: fetch 7TV cosmetics via existing background handler
-        const cosmeticResp = await safeSendMessage({
-          type: 'get_user_cosmetics',
-          twitchIds: [twitchId]
-        })
-        const cosmetic = cosmeticResp?.cosmetics?.[twitchId] || null
-        evictYtCache()
-        ytCosmeticsCache.set(username, {
-          paint: cosmetic?.paint || null,
-          badge: cosmetic?.badge || null,
-          fetchedAt: now
-        })
-      } catch (e) {
-        log('yt cosmetics fetch failed for', username, e?.message)
-        evictYtCache()
-        ytCosmeticsCache.set(username, { paint: null, badge: null, fetchedAt: now })
-      }
-    }))
+      }),
+    )
 
     // Apply to any already-rendered messages waiting on cosmetics
     applyPendingYtCosmetics(batch)
@@ -412,7 +468,7 @@
     const container = document.querySelector('yt-live-chat-item-list-renderer #items')
     if (!container) return
     const userSet = new Set(usernames)
-    container.querySelectorAll('[data-hs-yt-user]').forEach(node => {
+    container.querySelectorAll('[data-hs-yt-user]').forEach((node) => {
       if (node.dataset.hs7tvYtDone === '1') return
       const username = node.dataset.hsYtUser
       if (userSet.has(username)) {
@@ -529,7 +585,9 @@
     if (!color || color === 'rgba(0, 0, 0, 0)') return '#ffffff'
     const m = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/)
     if (!m) return '#ffffff'
-    const r = parseInt(m[1]), g = parseInt(m[2]), b = parseInt(m[3])
+    const r = parseInt(m[1]),
+      g = parseInt(m[2]),
+      b = parseInt(m[3])
     if (r > 200 && g > 200 && b > 200) return '#ffffff'
     return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)
   }
@@ -551,8 +609,12 @@
       for (const br of badgeContainer.querySelectorAll('yt-live-chat-author-badge-renderer')) {
         const img = br.querySelector('img')
         if (img?.src) {
-          const tooltip = br.getAttribute('aria-label') || br.getAttribute('shared-tooltip-text') ||
-                          img.alt || img.getAttribute('shared-tooltip-text') || 'Member'
+          const tooltip =
+            br.getAttribute('aria-label') ||
+            br.getAttribute('shared-tooltip-text') ||
+            img.alt ||
+            img.getAttribute('shared-tooltip-text') ||
+            'Member'
           badges.push({ type: 'member', label: tooltip, url: img.src })
         }
       }
@@ -568,9 +630,14 @@
     let messageEl = null
     for (const sel of ['#message', '#header-subtext', '#header-primary-text', '#primary-text']) {
       const e = el.querySelector(sel)
-      if (e && e.textContent && e.textContent.trim()) { messageEl = e; break }
+      if (e && e.textContent && e.textContent.trim()) {
+        messageEl = e
+        break
+      }
     }
-    if (!messageEl) messageEl = el.querySelector('#message') || el.querySelector('#header-subtext') || el.querySelector('#header-primary-text')
+    if (!messageEl)
+      messageEl =
+        el.querySelector('#message') || el.querySelector('#header-subtext') || el.querySelector('#header-primary-text')
     if (!authorEl || !messageEl) return null
 
     const user = authorEl.textContent.trim()
@@ -610,7 +677,7 @@
     'YT-LIVE-CHAT-MEMBERSHIP-ITEM-RENDERER',
     'YT-LIVE-CHAT-SPONSORSHIPS-GIFT-PURCHASE-ANNOUNCEMENT-RENDERER',
     'YT-LIVE-CHAT-SPONSORSHIPS-GIFT-REDEMPTION-ANNOUNCEMENT-RENDERER',
-    'YT-LIVE-CHAT-SPONSORSHIPS-HEADER-RENDERER'
+    'YT-LIVE-CHAT-SPONSORSHIPS-HEADER-RENDERER',
   ])
 
   // Track recent message authors so we can announce moderator deletions
@@ -626,19 +693,26 @@
       type: 'youtube_msg_deleted',
       videoId,
       user,
-      reason: reason || ''
+      reason: reason || '',
     })
   }
 
   function getMsgType(tagName) {
     switch (tagName) {
-      case 'YT-LIVE-CHAT-PAID-MESSAGE-RENDERER': return 'superchat'
-      case 'YT-LIVE-CHAT-PAID-STICKER-RENDERER': return 'supersticker'
-      case 'YT-LIVE-CHAT-MEMBERSHIP-ITEM-RENDERER': return 'membership'
-      case 'YT-LIVE-CHAT-SPONSORSHIPS-GIFT-PURCHASE-ANNOUNCEMENT-RENDERER': return 'giftpurchase'
-      case 'YT-LIVE-CHAT-SPONSORSHIPS-GIFT-REDEMPTION-ANNOUNCEMENT-RENDERER': return 'giftredemption'
-      case 'YT-LIVE-CHAT-SPONSORSHIPS-HEADER-RENDERER': return 'giftheader'
-      default: return 'text'
+      case 'YT-LIVE-CHAT-PAID-MESSAGE-RENDERER':
+        return 'superchat'
+      case 'YT-LIVE-CHAT-PAID-STICKER-RENDERER':
+        return 'supersticker'
+      case 'YT-LIVE-CHAT-MEMBERSHIP-ITEM-RENDERER':
+        return 'membership'
+      case 'YT-LIVE-CHAT-SPONSORSHIPS-GIFT-PURCHASE-ANNOUNCEMENT-RENDERER':
+        return 'giftpurchase'
+      case 'YT-LIVE-CHAT-SPONSORSHIPS-GIFT-REDEMPTION-ANNOUNCEMENT-RENDERER':
+        return 'giftredemption'
+      case 'YT-LIVE-CHAT-SPONSORSHIPS-HEADER-RENDERER':
+        return 'giftheader'
+      default:
+        return 'text'
     }
   }
 
@@ -702,7 +776,7 @@
       platform: 'youtube',
       emotes: msg.emotes.length > 0 ? msg.emotes : undefined,
       avatar: msg.avatar || undefined,
-      badges: msg.badges
+      badges: msg.badges,
     }
 
     if (msgType === 'superchat') {
@@ -713,7 +787,12 @@
       const st = extractStickerData(node)
       payload.amount = st.amount
       payload.sticker = st.sticker
-    } else if (msgType === 'membership' || msgType === 'giftpurchase' || msgType === 'giftredemption' || msgType === 'giftheader') {
+    } else if (
+      msgType === 'membership' ||
+      msgType === 'giftpurchase' ||
+      msgType === 'giftredemption' ||
+      msgType === 'giftheader'
+    ) {
       // Pull the system text from whichever header slot YouTube populated for
       // this renderer variant — gift announcements tend to use #header-primary-text,
       // memberships use #header-subtext, but selectors overlap so we accept any.
@@ -776,7 +855,10 @@
       return
     }
     // Found — clear any pending retry
-    if (_setupAutocompleteRetryTimer) { cleanup.clearTimeout(_setupAutocompleteRetryTimer); _setupAutocompleteRetryTimer = null }
+    if (_setupAutocompleteRetryTimer) {
+      cleanup.clearTimeout(_setupAutocompleteRetryTimer)
+      _setupAutocompleteRetryTimer = null
+    }
 
     // Create autocomplete dropdown
     autocompleteEl = document.createElement('div')
@@ -784,42 +866,50 @@
     inputRenderer.style.position = 'relative'
     inputRenderer.appendChild(autocompleteEl)
 
-    input.addEventListener('input', () => {
-      const word = getWordAtCaret(input)
-      if (word && word.length >= 2) {
-        // Recent chatters lead, then emotes. Shows even when no emotes are
-        // loaded yet, so a name prefix still completes.
-        const chatters = ytRecentChatterMatches(word)
-        const emoteMatches = emoteMap.size > 0 ? findEmoteMatches(word, 8) : []
-        const matches = chatters.length ? chatters.concat(emoteMatches) : emoteMatches
-        if (matches.length > 0) {
-          showAutocomplete(matches, input)
-          return
+    input.addEventListener(
+      'input',
+      () => {
+        const word = getWordAtCaret(input)
+        if (word && word.length >= 2) {
+          // Recent chatters lead, then emotes. Shows even when no emotes are
+          // loaded yet, so a name prefix still completes.
+          const chatters = ytRecentChatterMatches(word)
+          const emoteMatches = emoteMap.size > 0 ? findEmoteMatches(word, 8) : []
+          const matches = chatters.length ? chatters.concat(emoteMatches) : emoteMatches
+          if (matches.length > 0) {
+            showAutocomplete(matches, input)
+            return
+          }
         }
-      }
-      hideAutocomplete()
-    }, { signal })
+        hideAutocomplete()
+      },
+      { signal },
+    )
 
-    input.addEventListener('keydown', (e) => {
-      if (!acVisible) return
-      if (e.key === 'Tab' || e.key === 'Enter') {
-        e.preventDefault()
-        e.stopPropagation()
-        const selected = acItems[acSelectedIndex >= 0 ? acSelectedIndex : 0]
-        if (selected) completeEmote(input, selected.name)
-        hideAutocomplete()
-      } else if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        acSelectedIndex = Math.min(acSelectedIndex + 1, acItems.length - 1)
-        updateAcSelection()
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        acSelectedIndex = Math.max(acSelectedIndex - 1, 0)
-        updateAcSelection()
-      } else if (e.key === 'Escape') {
-        hideAutocomplete()
-      }
-    }, { capture: true, signal })
+    input.addEventListener(
+      'keydown',
+      (e) => {
+        if (!acVisible) return
+        if (e.key === 'Tab' || e.key === 'Enter') {
+          e.preventDefault()
+          e.stopPropagation()
+          const selected = acItems[acSelectedIndex >= 0 ? acSelectedIndex : 0]
+          if (selected) completeEmote(input, selected.name)
+          hideAutocomplete()
+        } else if (e.key === 'ArrowDown') {
+          e.preventDefault()
+          acSelectedIndex = Math.min(acSelectedIndex + 1, acItems.length - 1)
+          updateAcSelection()
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault()
+          acSelectedIndex = Math.max(acSelectedIndex - 1, 0)
+          updateAcSelection()
+        } else if (e.key === 'Escape') {
+          hideAutocomplete()
+        }
+      },
+      { capture: true, signal },
+    )
 
     log('autocomplete ready')
   }
@@ -859,7 +949,7 @@
       if (a.priority !== b.priority) return a.priority - b.priority
       return a.name.localeCompare(b.name)
     })
-    return matches.slice(0, limit).map(m => m.emote)
+    return matches.slice(0, limit).map((m) => m.emote)
   }
 
   // Per-row visibility tag — same wedge signal as the cycle readout on the other
@@ -967,34 +1057,52 @@
     const timer = setTimeout(() => {
       el.classList.add('fade')
       const rmTimer = setTimeout(() => el.remove(), 350)
-      signal.addEventListener('abort', () => { clearTimeout(rmTimer); el.remove() }, { once: true })
+      signal.addEventListener(
+        'abort',
+        () => {
+          clearTimeout(rmTimer)
+          el.remove()
+        },
+        { once: true },
+      )
     }, 1800)
-    signal.addEventListener('abort', () => { clearTimeout(timer); el.remove() }, { once: true })
+    signal.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer)
+        el.remove()
+      },
+      { once: true },
+    )
   }
 
   // ─── Right-click block on YT emotes ───────────────────────────────────────────
 
-  document.addEventListener('contextmenu', (e) => {
-    const img = e.target
-    if (!img || img.nodeName !== 'IMG' || !img.classList.contains('heatsync-emote-yt')) return
-    e.preventDefault()
-    e.stopImmediatePropagation()
-    const emoteName = img.alt || img.title || ''
-    if (!emoteName) return
-    const emote = emoteMap.get(emoteName)
-    if (!emote?.hash) return
-    blockedEmotes.add(emote.hash)
-    img.style.opacity = '0.3'
-    safeSendMessage({ type: 'block_emote', emoteHash: emote.hash, emoteName: emote.name }).then(result => {
-      if (result?.success === false) {
-        blockedEmotes.delete(emote.hash)
-        img.style.opacity = ''
-        showYtToast('Block failed')
-      } else {
-        showYtToast('Blocked: ' + escapeHtml(emote.name))
-      }
-    })
-  }, { capture: true, signal })
+  document.addEventListener(
+    'contextmenu',
+    (e) => {
+      const img = e.target
+      if (!img || img.nodeName !== 'IMG' || !img.classList.contains('heatsync-emote-yt')) return
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      const emoteName = img.alt || img.title || ''
+      if (!emoteName) return
+      const emote = emoteMap.get(emoteName)
+      if (!emote?.hash) return
+      blockedEmotes.add(emote.hash)
+      img.style.opacity = '0.3'
+      safeSendMessage({ type: 'block_emote', emoteHash: emote.hash, emoteName: emote.name }).then((result) => {
+        if (result?.success === false) {
+          blockedEmotes.delete(emote.hash)
+          img.style.opacity = ''
+          showYtToast('Block failed')
+        } else {
+          showYtToast('Blocked: ' + escapeHtml(emote.name))
+        }
+      })
+    },
+    { capture: true, signal },
+  )
 
   // ─── Insert emote from picker ─────────────────────────────────────────────────
 
@@ -1055,11 +1163,14 @@
 
     // Pre-arm the chat-list observer BEFORE we click send — otherwise a fast
     // YT roundtrip can append the message before we start watching.
-    const itemList = document.querySelector('yt-live-chat-item-list-renderer #items')
-                  || document.querySelector('#items.yt-live-chat-item-list-renderer')
+    const itemList =
+      document.querySelector('yt-live-chat-item-list-renderer #items') ||
+      document.querySelector('#items.yt-live-chat-item-list-renderer')
     let observer = null
     let seenResolve
-    const seenPromise = new Promise(resolve => { seenResolve = resolve })
+    const seenPromise = new Promise((resolve) => {
+      seenResolve = resolve
+    })
     if (itemList) {
       observer = new MutationObserver((mutations) => {
         for (const mut of mutations) {
@@ -1101,10 +1212,10 @@
     input.dispatchEvent(new InputEvent('input', { bubbles: true, data: msg.text, inputType: 'insertText' }))
 
     // Brief delay so YouTube enables the send button after the input event.
-    await new Promise(r => setTimeout(r, 120))
+    await new Promise((r) => setTimeout(r, 120))
 
-    const sendBtn = document.querySelector('#send-button button') ||
-                    document.querySelector('yt-button-shape button[aria-label]')
+    const sendBtn =
+      document.querySelector('#send-button button') || document.querySelector('yt-button-shape button[aria-label]')
     if (!sendBtn || sendBtn.disabled) {
       observer?.disconnect()
       return { ok: false, error: 'send_disabled' }
@@ -1116,7 +1227,7 @@
       return { ok: true }
     }
 
-    const timeout = new Promise(resolve => setTimeout(() => resolve(null), 2500))
+    const timeout = new Promise((resolve) => setTimeout(() => resolve(null), 2500))
     const ytUsername = await Promise.race([seenPromise, timeout])
     observer?.disconnect()
     if (ytUsername === null) return { ok: false, error: 'send_not_confirmed' }
@@ -1130,7 +1241,9 @@
     try {
       const { hs_emote_size } = await chrome.storage.local.get(['hs_emote_size'])
       applyEmoteSize(hs_emote_size)
-    } catch (e) { log('emote-size read failed:', e?.message) }
+    } catch (e) {
+      log('emote-size read failed:', e?.message)
+    }
 
     injectStyles()
 
@@ -1180,19 +1293,24 @@
         childList: true,
         subtree: true,
         attributes: true,
-        attributeFilter: ['is-deleted']
+        attributeFilter: ['is-deleted'],
       })
 
       // bfcache: only abort on real unloads — a persisted page may be
       // restored with this same closure, and the AbortController is
       // single-use (mirrors content.js/bootstrap.js pagehide handling).
-      window.addEventListener('pagehide', (ev) => { if (!ev.persisted) ac.abort() }, { signal })
+      window.addEventListener(
+        'pagehide',
+        (ev) => {
+          if (!ev.persisted) ac.abort()
+        },
+        { signal },
+      )
 
       log('observer active, videoId:', videoId)
 
       // Setup autocomplete after a short delay (input may not be ready yet)
       if (!signal.aborted) cleanup.setTimeout(setupAutocomplete, 500)
-
     } catch (err) {
       log('init failed:', err.message)
     }

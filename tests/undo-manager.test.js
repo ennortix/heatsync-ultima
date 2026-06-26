@@ -18,7 +18,7 @@
  * The pure stack logic (push, undo, redo, cap, dedup) is tested thoroughly.
  */
 
-import { test, describe, expect, beforeEach, afterAll } from 'bun:test'
+import { afterAll, beforeEach, describe, expect, test } from 'bun:test'
 
 // installDomStubs() sets globalThis.window = globalThis to simulate a browser.
 // Restore the original so this file doesn't pollute later test files.
@@ -84,8 +84,12 @@ function makeEmptyWalker() {
 function fakeInput(childNodes = [fakeTextNode('')]) {
   const el = {
     _children: [...childNodes],
-    get childNodes() { return this._children },
-    replaceChildren(...nodes) { this._children = [...nodes] },
+    get childNodes() {
+      return this._children
+    },
+    replaceChildren(...nodes) {
+      this._children = [...nodes]
+    },
     querySelectorAll: () => [],
     contains: () => false,
     dispatchEvent: () => {},
@@ -111,7 +115,10 @@ function installDomStubs() {
   }
 
   globalThis.Event = class Event {
-    constructor(type, opts) { this.type = type; this.bubbles = opts?.bubbles || false }
+    constructor(type, opts) {
+      this.type = type
+      this.bubbles = opts?.bubbles || false
+    }
   }
 }
 
@@ -132,7 +139,9 @@ async function loadModule() {
 // ── suite ────────────────────────────────────────────────────────────────────
 
 describe('UndoManager — constructor', () => {
-  beforeEach(() => { installDomStubs() })
+  beforeEach(() => {
+    installDomStubs()
+  })
 
   test('constructs without throwing', async () => {
     await loadModule()
@@ -164,7 +173,9 @@ describe('UndoManager — constructor', () => {
 })
 
 describe('UndoManager — undo/redo basic sequence', () => {
-  beforeEach(() => { installDomStubs() })
+  beforeEach(() => {
+    installDomStubs()
+  })
 
   /**
    * Helper: push a new state by mutating input.childNodes and calling capture().
@@ -229,14 +240,18 @@ describe('UndoManager — undo/redo basic sequence', () => {
     pushState(m, input, 'c')
     pushState(m, input, 'd')
     expect(m.index).toBe(3)
-    m.undo(); m.undo(); m.undo()
+    m.undo()
+    m.undo()
+    m.undo()
     expect(m.index).toBe(0)
     expect(m.undo()).toBe(false) // already at bottom
   })
 })
 
 describe('UndoManager — redo invalidation after new push', () => {
-  beforeEach(() => { installDomStubs() })
+  beforeEach(() => {
+    installDomStubs()
+  })
 
   function pushState(m, input, text) {
     input._children = [fakeTextNode(text)]
@@ -251,9 +266,9 @@ describe('UndoManager — redo invalidation after new push', () => {
    * then the user's next keystroke triggers a second capture with new content.
    */
   function pushStateAfterUndo(m, input, text) {
-    m.capture()              // consume the _suppress flag set by _restore
+    m.capture() // consume the _suppress flag set by _restore
     input._children = [fakeTextNode(text)]
-    m.capture()              // actually push the new state
+    m.capture() // actually push the new state
   }
 
   test('new capture after undo truncates the redo stack', async () => {
@@ -275,7 +290,8 @@ describe('UndoManager — redo invalidation after new push', () => {
     pushState(m, input, 'b')
     pushState(m, input, 'c')
     pushState(m, input, 'd')
-    m.undo(); m.undo() // index → 1, _suppress = true
+    m.undo()
+    m.undo() // index → 1, _suppress = true
     pushStateAfterUndo(m, input, 'x')
     // stack is now ['a', 'b', 'x'] — length 3, index 2
     expect(m.stack.length).toBe(3)
@@ -284,7 +300,9 @@ describe('UndoManager — redo invalidation after new push', () => {
 })
 
 describe('UndoManager — stack cap', () => {
-  beforeEach(() => { installDomStubs() })
+  beforeEach(() => {
+    installDomStubs()
+  })
 
   test('stack never grows beyond max', async () => {
     await loadModule()
@@ -301,10 +319,14 @@ describe('UndoManager — stack cap', () => {
     await loadModule()
     const input = fakeInput([fakeTextNode('0')])
     const m = new UndoManager(input, { max: 3 })
-    input._children = [fakeTextNode('1')]; m.capture()
-    input._children = [fakeTextNode('2')]; m.capture()
-    input._children = [fakeTextNode('3')]; m.capture()
-    input._children = [fakeTextNode('4')]; m.capture()
+    input._children = [fakeTextNode('1')]
+    m.capture()
+    input._children = [fakeTextNode('2')]
+    m.capture()
+    input._children = [fakeTextNode('3')]
+    m.capture()
+    input._children = [fakeTextNode('4')]
+    m.capture()
     // stack capped at 3: contains ['2','3','4'] (oldest evicted)
     expect(m.stack.length).toBe(3)
     expect(m.undo()).toBe(true)
@@ -312,7 +334,9 @@ describe('UndoManager — stack cap', () => {
 })
 
 describe('UndoManager — deduplication (signature match)', () => {
-  beforeEach(() => { installDomStubs() })
+  beforeEach(() => {
+    installDomStubs()
+  })
 
   test('identical consecutive capture() does not grow the stack', async () => {
     await loadModule()
@@ -335,14 +359,18 @@ describe('UndoManager — deduplication (signature match)', () => {
 })
 
 describe('UndoManager — reset', () => {
-  beforeEach(() => { installDomStubs() })
+  beforeEach(() => {
+    installDomStubs()
+  })
 
   test('reset clears stack and re-captures initial state', async () => {
     await loadModule()
     const input = fakeInput([fakeTextNode('a')])
     const m = new UndoManager(input)
-    input._children = [fakeTextNode('b')]; m.capture()
-    input._children = [fakeTextNode('c')]; m.capture()
+    input._children = [fakeTextNode('b')]
+    m.capture()
+    input._children = [fakeTextNode('c')]
+    m.capture()
     m.reset()
     expect(m.stack.length).toBe(1)
     expect(m.index).toBe(0)
@@ -352,7 +380,9 @@ describe('UndoManager — reset', () => {
 })
 
 describe('UndoManager — _restore side-effects', () => {
-  beforeEach(() => { installDomStubs() })
+  beforeEach(() => {
+    installDomStubs()
+  })
 
   test('undo calls replaceChildren on the input element', async () => {
     await loadModule()
@@ -363,7 +393,8 @@ describe('UndoManager — _restore side-effects', () => {
       input._children = [...nodes]
     }
     const m = new UndoManager(input)
-    input._children = [fakeTextNode('b')]; m.capture()
+    input._children = [fakeTextNode('b')]
+    m.capture()
     m.undo()
     expect(replaceCalled).toBe(true)
   })
@@ -372,9 +403,12 @@ describe('UndoManager — _restore side-effects', () => {
     await loadModule()
     let eventDispatched = false
     const input = fakeInput([fakeTextNode('a')])
-    input.dispatchEvent = (e) => { if (e.type === 'input') eventDispatched = true }
+    input.dispatchEvent = (e) => {
+      if (e.type === 'input') eventDispatched = true
+    }
     const m = new UndoManager(input)
-    input._children = [fakeTextNode('b')]; m.capture()
+    input._children = [fakeTextNode('b')]
+    m.capture()
     m.undo()
     expect(eventDispatched).toBe(true)
   })
@@ -383,7 +417,8 @@ describe('UndoManager — _restore side-effects', () => {
     await loadModule()
     const input = fakeInput([fakeTextNode('a')])
     const m = new UndoManager(input)
-    input._children = [fakeTextNode('b')]; m.capture()
+    input._children = [fakeTextNode('b')]
+    m.capture()
     const stackLen = m.stack.length
     // _restore sets _suppress = true; a capture() call right after returns early
     m._suppress = true
@@ -394,7 +429,9 @@ describe('UndoManager — _restore side-effects', () => {
 })
 
 describe('installUndoManager', () => {
-  beforeEach(() => { installDomStubs() })
+  beforeEach(() => {
+    installDomStubs()
+  })
 
   test('returns a UndoManager instance', async () => {
     await loadModule()

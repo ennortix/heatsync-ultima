@@ -1,4 +1,4 @@
-import { test, expect } from 'bun:test'
+import { expect, test } from 'bun:test'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 
@@ -17,7 +17,13 @@ function loadBgIrcDupModNotice() {
   let end = -1
   for (; i < src.length; i++) {
     if (src[i] === '{') depth++
-    else if (src[i] === '}') { depth--; if (depth === 0) { end = i + 1; break } }
+    else if (src[i] === '}') {
+      depth--
+      if (depth === 0) {
+        end = i + 1
+        break
+      }
+    }
   }
   const body = src.slice(start, end)
   return new Function(`${body}; return bgIrcDupModNotice`)()
@@ -26,10 +32,18 @@ function loadBgIrcDupModNotice() {
 const dup = loadBgIrcDupModNotice()
 const buf = (...msgs) => ({ getAll: () => msgs })
 const timeout = (target, time, dur = 1) => ({
-  type: 'notice', noticeType: 'timeout_success', targetUser: target, time, banDuration: dur,
+  type: 'notice',
+  noticeType: 'timeout_success',
+  targetUser: target,
+  time,
+  banDuration: dur,
 })
 const ban = (target, time) => ({
-  type: 'notice', noticeType: 'ban_success', targetUser: target, time, banDuration: 0,
+  type: 'notice',
+  noticeType: 'ban_success',
+  targetUser: target,
+  time,
+  banDuration: 0,
 })
 
 test('mod-dedup: a second identical timeout for the same target is a dup', () => {
@@ -58,10 +72,16 @@ test('mod-dedup: outside the 10s window is not a dup', () => {
 })
 
 test('mod-dedup: a notice without a target is never a dup', () => {
-  expect(dup(buf(timeout('tshenk', 1000)), { type: 'notice', noticeType: 'ban_success', targetUser: '', time: 1000 })).toBe(false)
+  expect(
+    dup(buf(timeout('tshenk', 1000)), { type: 'notice', noticeType: 'ban_success', targetUser: '', time: 1000 }),
+  ).toBe(false)
 })
 
 test('mod-dedup: non-mod notices are ignored', () => {
-  expect(dup(buf(timeout('tshenk', 1000)), { type: 'notice', noticeType: 'mode_change', targetUser: 'tshenk', time: 1000 })).toBe(false)
-  expect(dup(buf({ type: 'notice', noticeType: 'mode_change', targetUser: 'tshenk', time: 1000 }), timeout('tshenk', 1000))).toBe(false)
+  expect(
+    dup(buf(timeout('tshenk', 1000)), { type: 'notice', noticeType: 'mode_change', targetUser: 'tshenk', time: 1000 }),
+  ).toBe(false)
+  expect(
+    dup(buf({ type: 'notice', noticeType: 'mode_change', targetUser: 'tshenk', time: 1000 }), timeout('tshenk', 1000)),
+  ).toBe(false)
 })

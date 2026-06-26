@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+
 /**
  * Heatsync Extension Build Script
  *
@@ -14,11 +15,11 @@
  *   bun run build.js --deploy           # Build + zip + rsync to server
  */
 
-import { readFileSync, writeFileSync, mkdirSync, cpSync, existsSync, rmSync, readdirSync } from 'fs'
-import { join, dirname } from 'path'
-import { fileURLToPath } from 'url'
-import { execSync, execFileSync } from 'child_process'
+import { execFileSync, execSync } from 'child_process'
 import { transformSync } from 'esbuild'
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { dirname, join } from 'path'
+import { fileURLToPath } from 'url'
 
 // ── Pre-build guards ──────────────────────────────────────────────────────────
 // All four checks run before any bundling and fail the build loudly on violation.
@@ -51,14 +52,14 @@ function checkManifestParity() {
 
   const chromeHosts = new Set([
     ...(chrome.host_permissions || []),
-    ...(chrome.permissions || []).filter(p => URL_PATTERN.test(p)),
+    ...(chrome.permissions || []).filter((p) => URL_PATTERN.test(p)),
   ])
   const firefoxHosts = new Set(
-    (firefox.permissions || []).filter(p => URL_PATTERN.test(p) && !FIREFOX_ONLY_PERMS.has(p))
+    (firefox.permissions || []).filter((p) => URL_PATTERN.test(p) && !FIREFOX_ONLY_PERMS.has(p)),
   )
 
-  const onlyInChrome = [...chromeHosts].filter(h => !firefoxHosts.has(h))
-  const onlyInFirefox = [...firefoxHosts].filter(h => !chromeHosts.has(h))
+  const onlyInChrome = [...chromeHosts].filter((h) => !firefoxHosts.has(h))
+  const onlyInFirefox = [...firefoxHosts].filter((h) => !chromeHosts.has(h))
   if (onlyInChrome.length || onlyInFirefox.length) {
     const lines = []
     if (onlyInChrome.length) lines.push(`  chrome-only: ${onlyInChrome.join(', ')}`)
@@ -78,8 +79,8 @@ function checkManifestParity() {
   const chromeKeys = new Set((chrome.content_scripts || []).map(csKey))
   const firefoxKeys = new Set((firefox.content_scripts || []).map(csKey))
 
-  const onlyInChromeCS = [...chromeKeys].filter(k => !firefoxKeys.has(k))
-  const onlyInFirefoxCS = [...firefoxKeys].filter(k => !chromeKeys.has(k))
+  const onlyInChromeCS = [...chromeKeys].filter((k) => !firefoxKeys.has(k))
+  const onlyInFirefoxCS = [...firefoxKeys].filter((k) => !chromeKeys.has(k))
   if (onlyInChromeCS.length || onlyInFirefoxCS.length) {
     const lines = []
     if (onlyInChromeCS.length) lines.push(`  chrome-only entries:\n    ${onlyInChromeCS.join('\n    ')}`)
@@ -108,7 +109,16 @@ const SCOPE_COLLISION_ALLOWLIST = new Set(['log'])
 
 function checkScopeCollisions() {
   const DECL_RE = /^(?:export\s+)?(?:async\s+)?(?:function|const|let|var|class)\s+([A-Za-z0-9_$]+)/
-  const LIB_FILES = ['error-reporter.js', 'config.js', 'cleanup.js', 'utils.js', 'settings-schema.js', 'browser-api.js', 'modifiers.js', 'undo-manager.js']
+  const LIB_FILES = [
+    'error-reporter.js',
+    'config.js',
+    'cleanup.js',
+    'utils.js',
+    'settings-schema.js',
+    'browser-api.js',
+    'modifiers.js',
+    'undo-manager.js',
+  ]
   const libDir = join(__dirname, 'src', 'lib')
   const mcDir = join(__dirname, 'src', 'multichat')
 
@@ -145,7 +155,9 @@ function checkScopeCollisions() {
       console.error(`  x scope collision (SyntaxError): '${name}' is ${libKind} in lib and ${mcKind} in multichat`)
       hardErrors++
     } else {
-      console.warn(`  warn: scope shadow: '${name}' is ${libKind} in lib, ${mcKind} in multichat (function/var — JS allows, but check intent)`)
+      console.warn(
+        `  warn: scope shadow: '${name}' is ${libKind} in lib, ${mcKind} in multichat (function/var — JS allows, but check intent)`,
+      )
     }
   }
   if (hardErrors > 0) {
@@ -163,7 +175,7 @@ function checkScopeCollisions() {
 // the post-build verification step below, against freshly built dist. That
 // keeps this gate free of recursion and of stale-dist false failures.
 function runTests(args) {
-  const flags = new Set(args.filter(a => a.startsWith('--')))
+  const flags = new Set(args.filter((a) => a.startsWith('--')))
   const forceRun = flags.has('--package') || flags.has('--deploy')
   const skipTest = flags.has('--no-test') && !forceRun
   if (skipTest) {
@@ -217,14 +229,7 @@ const COPY_FILES = [
 ]
 
 // Assets (images, etc)
-const ASSETS = [
-  'icon-16.png',
-  'icon-48.png',
-  'icon-96.png',
-  'icon-128.png',
-  'icon-48-black.png',
-  'COGGERS-1x.webp',
-]
+const ASSETS = ['icon-16.png', 'icon-48.png', 'icon-96.png', 'icon-128.png', 'icon-48-black.png', 'COGGERS-1x.webp']
 
 // Strip ES module syntax from bundled files
 function stripExports(content) {
@@ -237,7 +242,16 @@ function stripExports(content) {
 // Read lib files
 function readLib() {
   const libDir = join(SRC_DIR, 'lib')
-  const files = ['error-reporter.js', 'config.js', 'cleanup.js', 'utils.js', 'settings-schema.js', 'browser-api.js', 'modifiers.js', 'undo-manager.js']
+  const files = [
+    'error-reporter.js',
+    'config.js',
+    'cleanup.js',
+    'utils.js',
+    'settings-schema.js',
+    'browser-api.js',
+    'modifiers.js',
+    'undo-manager.js',
+  ]
   let combined = '// === HEATSYNC LIB (auto-bundled) ===\n'
 
   for (const file of files) {
@@ -296,11 +310,15 @@ function readMultichatModules() {
     // fragments in filename order and re-embed as the css template literal here.
     if (file === 'styles.js') {
       const stylesDir = join(mcDir, 'styles')
-      const cssFrags = readdirSync(stylesDir).filter(f => f.endsWith('.css')).sort()
+      const cssFrags = readdirSync(stylesDir)
+        .filter((f) => f.endsWith('.css'))
+        .sort()
       if (!cssFrags.length) throw new Error('build: src/multichat/styles/ has no .css fragments')
-      const cssBody = cssFrags.map(f => readFileSync(join(stylesDir, f), 'utf8')).join('')
+      const cssBody = cssFrags.map((f) => readFileSync(join(stylesDir, f), 'utf8')).join('')
       if (cssBody.includes('`') || cssBody.includes('${')) {
-        throw new Error('build: a styles/*.css fragment contains a backtick or ${ — unsafe to embed in the css template literal')
+        throw new Error(
+          'build: a styles/*.css fragment contains a backtick or ${ — unsafe to embed in the css template literal',
+        )
       }
       if (!content.includes("'__HS_STYLES_BUNDLE__'")) {
         throw new Error('build: styles.js missing __HS_STYLES_BUNDLE__ placeholder')
@@ -375,9 +393,7 @@ function build(browser) {
   // Bundle content scripts
   for (const file of CONTENT_SCRIPTS) {
     // multichat.js source lives in src/multichat/main.js (chrome/multichat.js is build output)
-    const srcPath = file === 'multichat.js'
-      ? join(SRC_DIR, 'multichat', 'main.js')
-      : join(chromeDir, file)
+    const srcPath = file === 'multichat.js' ? join(SRC_DIR, 'multichat', 'main.js') : join(chromeDir, file)
     if (!existsSync(srcPath)) {
       console.log(`  Skip ${file} (not found)`)
       continue
@@ -398,7 +414,7 @@ function build(browser) {
     if (!existsSync(srcPath)) continue
     cpSync(srcPath, join(outDir, file))
   }
-  console.log(`  Copied ${COPY_FILES.filter(f => existsSync(join(chromeDir, f))).length} files`)
+  console.log(`  Copied ${COPY_FILES.filter((f) => existsSync(join(chromeDir, f))).length} files`)
 
   // Copy assets
   for (const file of ASSETS) {
@@ -444,7 +460,7 @@ function getVersion() {
 // template-literal termination bugs (a CSS comment with a stray backtick
 // killed v1.3.7 content.js silently). Hard-fails the build on first error.
 function syntaxCheck(outDir, browser) {
-  const files = readdirSync(outDir).filter(f => f.endsWith('.js'))
+  const files = readdirSync(outDir).filter((f) => f.endsWith('.js'))
   let failed = 0
   for (const f of files) {
     const p = join(outDir, f)
@@ -473,15 +489,21 @@ function buildSourceZip() {
   if (existsSync(zipPath)) rmSync(zipPath)
 
   const include = [
-    'chrome', 'src', 'build.js', 'bun.lock', 'package.json',
-    'README.md', 'CHANGELOG.md', 'CONTRIBUTING.md', 'LICENSE',
-    'SECURITY.md', 'TESTER-GUIDE.md', 'BACKEND-ASKS.md',
-  ].filter(p => existsSync(join(__dirname, p)))
+    'chrome',
+    'src',
+    'build.js',
+    'bun.lock',
+    'package.json',
+    'README.md',
+    'CHANGELOG.md',
+    'CONTRIBUTING.md',
+    'LICENSE',
+    'SECURITY.md',
+    'TESTER-GUIDE.md',
+    'BACKEND-ASKS.md',
+  ].filter((p) => existsSync(join(__dirname, p)))
 
-  const excludes = [
-    'chrome/multichat.js',
-    'dist/*', 'node_modules/*', '.git/*', '*/.DS_Store',
-  ]
+  const excludes = ['chrome/multichat.js', 'dist/*', 'node_modules/*', '.git/*', '*/.DS_Store']
   const args = ['-rq', zipPath, ...include]
   for (const ex of excludes) args.push('-x', ex)
   execFileSync('zip', args, { cwd: __dirname, stdio: 'inherit' })
@@ -514,12 +536,16 @@ function packageBrowser(browser) {
 function deploy() {
   const distDir = join(__dirname, 'dist')
   console.log('\nDeploying to server...')
-  const zips = readdirSync(distDir).filter(f => f.startsWith('heatsync-') && f.endsWith('.zip')).map(f => join(distDir, f))
+  const zips = readdirSync(distDir)
+    .filter((f) => f.startsWith('heatsync-') && f.endsWith('.zip'))
+    .map((f) => join(distDir, f))
   if (zips.length === 0) {
     console.error('  no zips to deploy')
     return
   }
-  execFileSync('rsync', ['-avz', '--chmod=F644,D755', ...zips, 'heatsync:/opt/heatsync/dist/downloads/'], { stdio: 'inherit' })
+  execFileSync('rsync', ['-avz', '--chmod=F644,D755', ...zips, 'heatsync:/opt/heatsync/dist/downloads/'], {
+    stdio: 'inherit',
+  })
   console.log('Deployed')
 }
 
@@ -544,8 +570,9 @@ function minifyDistFile(outDir, file) {
 }
 
 function minifyDist(outDir) {
-  const targets = [...CONTENT_SCRIPTS, ...COPY_FILES.filter(f => f.endsWith('.js'))]
-  let bytesBefore = 0, bytesAfter = 0
+  const targets = [...CONTENT_SCRIPTS, ...COPY_FILES.filter((f) => f.endsWith('.js'))]
+  let bytesBefore = 0,
+    bytesAfter = 0
   for (const f of targets) {
     const p = join(outDir, f)
     if (!existsSync(p)) continue
@@ -555,14 +582,16 @@ function minifyDist(outDir) {
   }
   if (bytesBefore > 0) {
     const pct = ((1 - bytesAfter / bytesBefore) * 100).toFixed(1)
-    console.log(`  Minified ${targets.length} files: ${(bytesBefore/1024).toFixed(0)}KB → ${(bytesAfter/1024).toFixed(0)}KB (${pct}% smaller)`)
+    console.log(
+      `  Minified ${targets.length} files: ${(bytesBefore / 1024).toFixed(0)}KB → ${(bytesAfter / 1024).toFixed(0)}KB (${pct}% smaller)`,
+    )
   }
 }
 
 // Main
 const args = process.argv.slice(2)
-const flags = new Set(args.filter(a => a.startsWith('--')))
-const targets = args.filter(a => !a.startsWith('--'))
+const flags = new Set(args.filter((a) => a.startsWith('--')))
+const targets = args.filter((a) => !a.startsWith('--'))
 const target = targets[0] || null
 const shouldPackage = flags.has('--package') || flags.has('--deploy')
 const shouldDeploy = flags.has('--deploy')

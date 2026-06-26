@@ -1,3 +1,4 @@
+// @ts-check
 // FFZ/BTTV-style modifier system — single source of truth.
 // Bundled into every content script via build.js readLib(). No exports.
 //
@@ -23,12 +24,12 @@ const HS_MOD_TOKENS = Object.freeze({
   'z!': 'wide',
   'x!': 'hflip',
   'y!': 'vmirror',
-  'ffzX': 'hflip',
-  'ffzY': 'vmirror',
-  'ffzW': 'wide',
-  'ffzWide': 'wide',
-  'ffzTall': 'tall',
-  'ffzCursed': 'cursed'
+  ffzX: 'hflip',
+  ffzY: 'vmirror',
+  ffzW: 'wide',
+  ffzWide: 'wide',
+  ffzTall: 'tall',
+  ffzCursed: 'cursed',
 })
 
 const HS_MOD_TOKEN_KEYS = Object.keys(HS_MOD_TOKENS)
@@ -40,7 +41,7 @@ const HS_MOD_CLASS_TO_TOKEN = Object.freeze({
   tall: 'h!',
   hflip: 'ffzX',
   vmirror: 'ffzY',
-  cursed: 'c!'
+  cursed: 'c!',
 })
 
 const HS_MOD_C_HEX_RE = /^c!#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
@@ -49,11 +50,17 @@ const HS_MOD_MAX_SCALE = 4
 
 // Convert hex (3 or 6 chars, with or without #) to hue degrees [0, 359]
 function hsModHexToHue(hex) {
-  if (hex.length === 3) hex = hex.split('').map(c => c + c).join('')
+  if (hex.length === 3)
+    hex = hex
+      .split('')
+      .map((c) => c + c)
+      .join('')
   const r = parseInt(hex.slice(0, 2), 16) / 255
   const g = parseInt(hex.slice(2, 4), 16) / 255
   const b = parseInt(hex.slice(4, 6), 16) / 255
-  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min
+  const max = Math.max(r, g, b),
+    min = Math.min(r, g, b),
+    d = max - min
   let h = 0
   if (d) {
     if (max === r) h = ((g - b) / d) % 6
@@ -75,7 +82,7 @@ function hsModResolvePrefix(word) {
   for (const tok of HS_MOD_TOKEN_KEYS) {
     if (tok.toLowerCase() === lower) return tok
   }
-  const matches = HS_MOD_TOKEN_KEYS.filter(k => k.toLowerCase().startsWith(lower))
+  const matches = HS_MOD_TOKEN_KEYS.filter((k) => k.toLowerCase().startsWith(lower))
   return matches.length === 1 ? matches[0] : null
 }
 
@@ -108,7 +115,7 @@ function hsModPeelChain(word) {
     if (matched) continue
     return null
   }
-  return (mods.length || hue != null) ? { mods, hue, words } : null
+  return mods.length || hue != null ? { mods, hue, words } : null
 }
 
 // Universal classifier — combines exact, color, peel, optional prefix logic.
@@ -135,13 +142,15 @@ function hsModClassify(word, opts) {
 
 // Multiset compose → transform { sx, sy }, clamped to ±MAX_SCALE
 function hsModComposeTransform(mods) {
-  let sx = 1, sy = 1
-  if (mods) for (const m of mods) {
-    if (m === 'wide') sx *= 2
-    else if (m === 'tall') sy *= 2
-    else if (m === 'hflip') sx *= -1
-    else if (m === 'vmirror') sy *= -1
-  }
+  let sx = 1,
+    sy = 1
+  if (mods)
+    for (const m of mods) {
+      if (m === 'wide') sx *= 2
+      else if (m === 'tall') sy *= 2
+      else if (m === 'hflip') sx *= -1
+      else if (m === 'vmirror') sy *= -1
+    }
   sx = Math.min(Math.max(sx, -HS_MOD_MAX_SCALE), HS_MOD_MAX_SCALE)
   sy = Math.min(Math.max(sy, -HS_MOD_MAX_SCALE), HS_MOD_MAX_SCALE)
   return { sx, sy }
@@ -161,7 +170,7 @@ function hsModRead(el) {
   return {
     mods: el.dataset.hsMods ? el.dataset.hsMods.split(',').filter(Boolean) : [],
     hue: el.dataset.hsHue != null && el.dataset.hsHue !== '' ? Number(el.dataset.hsHue) : null,
-    words: el.dataset.hsWords ? el.dataset.hsWords.split(/\s+/).filter(Boolean) : []
+    words: el.dataset.hsWords ? el.dataset.hsWords.split(/\s+/).filter(Boolean) : [],
   }
 }
 
@@ -171,19 +180,21 @@ function hsModApplyToImg(img, addMods, addHue, addWords, opts) {
   if (!img) return
   const additive = !opts || opts.additive !== false
   const cur = hsModRead(img)
-  const finalMods = additive ? cur.mods.concat(addMods || []) : (addMods || [])
-  const finalWords = additive ? cur.words.concat(addWords || []) : (addWords || [])
+  const finalMods = additive ? cur.mods.concat(addMods || []) : addMods || []
+  const finalWords = additive ? cur.words.concat(addWords || []) : addWords || []
   let finalHue = addHue
   if (finalHue == null && additive) finalHue = cur.hue
   img.dataset.hsMods = finalMods.join(',')
   img.dataset.hsWords = finalWords.join(' ')
-  if (finalHue != null) img.dataset.hsHue = String(finalHue); else delete img.dataset.hsHue
+  if (finalHue != null) img.dataset.hsHue = String(finalHue)
+  else delete img.dataset.hsHue
   const { sx, sy } = hsModComposeTransform(finalMods)
   const filter = hsModComposeFilter(finalMods, finalHue)
   if (sx !== 1 || sy !== 1) {
     img.style.setProperty('transform', `scale(${sx}, ${sy})`, 'important')
     img.style.setProperty('transform-origin', 'center', 'important')
-    const fx = Math.abs(sx), fy = Math.abs(sy)
+    const fx = Math.abs(sx),
+      fy = Math.abs(sy)
     img.style.setProperty('margin', `0 calc(0.5em * ${Math.max(0, fx - 1)})`, 'important')
   } else {
     img.style.removeProperty('transform')
@@ -201,7 +212,8 @@ function hsModBuildStyleAttr(mods, hue) {
   let style = ''
   if (sx !== 1 || sy !== 1) {
     style += `transform:scale(${sx}, ${sy}) !important;transform-origin:center !important;`
-    const fx = Math.abs(sx), fy = Math.abs(sy)
+    const fx = Math.abs(sx),
+      fy = Math.abs(sy)
     if (fx > 1) {
       const halfX = `calc(var(--hs-emote-width,28px) * ${(fx - 1) / 2})`
       style += `margin-left:${halfX} !important;margin-right:${halfX} !important;`
@@ -226,17 +238,17 @@ function hsModInjectWrapperStyle(html, styleStr) {
 }
 
 export {
-  HS_MOD_TOKENS,
   HS_MOD_CLASS_TO_TOKEN,
   HS_MOD_MAX_SCALE,
-  hsModHexToHue,
-  hsModResolvePrefix,
-  hsModPeelChain,
-  hsModClassify,
-  hsModComposeTransform,
-  hsModComposeFilter,
+  HS_MOD_TOKENS,
   hsModBuildStyleAttr,
+  hsModClassify,
+  hsModComposeFilter,
+  hsModComposeTransform,
+  hsModHexToHue,
   hsModInjectWrapperStyle,
+  hsModPeelChain,
+  hsModResolvePrefix,
   hsModWordsFromState,
 }
 
@@ -244,22 +256,51 @@ export {
 // can't recover original hex (we only stored degrees). Recipient still tints.
 function hsModWordsFromState(mods, hue) {
   const out = []
-  for (const m of (mods || [])) {
-    out.push(HS_MOD_CLASS_TO_TOKEN[m] || ('?' + m))
+  for (const m of mods || []) {
+    out.push(HS_MOD_CLASS_TO_TOKEN[m] || '?' + m)
   }
   if (hue != null) {
     // Convert hue degrees back to a hex (saturation/lightness fixed) for transport
     const h = ((hue % 360) + 360) % 360
     const c = 1
     const x = 1 - Math.abs(((h / 60) % 2) - 1)
-    let r = 0, g = 0, b = 0
-    if (h < 60)       { r = c; g = x; b = 0 }
-    else if (h < 120) { r = x; g = c; b = 0 }
-    else if (h < 180) { r = 0; g = c; b = x }
-    else if (h < 240) { r = 0; g = x; b = c }
-    else if (h < 300) { r = x; g = 0; b = c }
-    else              { r = c; g = 0; b = x }
-    const hex = '#' + [r, g, b].map(v => Math.round(v * 255).toString(16).padStart(2, '0')).join('')
+    let r = 0,
+      g = 0,
+      b = 0
+    if (h < 60) {
+      r = c
+      g = x
+      b = 0
+    } else if (h < 120) {
+      r = x
+      g = c
+      b = 0
+    } else if (h < 180) {
+      r = 0
+      g = c
+      b = x
+    } else if (h < 240) {
+      r = 0
+      g = x
+      b = c
+    } else if (h < 300) {
+      r = x
+      g = 0
+      b = c
+    } else {
+      r = c
+      g = 0
+      b = x
+    }
+    const hex =
+      '#' +
+      [r, g, b]
+        .map((v) =>
+          Math.round(v * 255)
+            .toString(16)
+            .padStart(2, '0'),
+        )
+        .join('')
     out.push('c!' + hex)
   }
   return out

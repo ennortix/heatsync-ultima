@@ -19,7 +19,7 @@ const isFirefox = typeof browser !== 'undefined'
 const isChrome = typeof chrome !== 'undefined' && !isFirefox
 
 // Get the raw API object
-const rawApi = isFirefox ? browser : (typeof chrome !== 'undefined' ? chrome : null)
+const rawApi = isFirefox ? browser : typeof chrome !== 'undefined' ? chrome : null
 
 let _ctxInvalidatedLogged = false
 let _storageMissingLogged = false
@@ -42,8 +42,8 @@ function _warnStorageMissing() {
 function promisify(fn) {
   if (isFirefox) return fn // Already returns promises
 
-  return function(...args) {
-    return new Promise((resolve, reject) => {
+  return (...args) =>
+    new Promise((resolve, reject) => {
       fn(...args, (result) => {
         if (rawApi?.runtime?.lastError) {
           reject(new Error(rawApi.runtime.lastError.message))
@@ -52,7 +52,6 @@ function promisify(fn) {
         }
       })
     })
-  }
 }
 
 /**
@@ -93,7 +92,7 @@ const storage = {
         return rawApi.storage.local.clear()
       }
       return promisify(rawApi.storage.local.clear.bind(rawApi.storage.local))()
-    }
+    },
   },
   sync: {
     get: async (keys) => {
@@ -109,7 +108,7 @@ const storage = {
         return rawApi.storage.sync.set(items)
       }
       return promisify(rawApi.storage.sync.set.bind(rawApi.storage.sync))(items)
-    }
+    },
   },
   onChanged: {
     addListener: (callback) => {
@@ -121,8 +120,8 @@ const storage = {
       if (rawApi?.storage?.onChanged) {
         rawApi.storage.onChanged.removeListener(callback)
       }
-    }
-  }
+    },
+  },
 }
 
 /**
@@ -150,10 +149,13 @@ const runtime = {
           // world too). Arm a deferred-to-visibility reload, dedupe via the
           // global flag content/bootstrap/main use.
           try {
-            if (typeof window !== 'undefined' && typeof document !== 'undefined' &&
-                !window.__heatsyncReloadScheduled) {
+            if (typeof window !== 'undefined' && typeof document !== 'undefined' && !window.__heatsyncReloadScheduled) {
               window.__heatsyncReloadScheduled = true
-              const doReload = () => { try { location.reload() } catch (_) {} }
+              const doReload = () => {
+                try {
+                  location.reload()
+                } catch (_) {}
+              }
               if (document.visibilityState === 'visible') {
                 setTimeout(doReload, 1000 + Math.random() * 4000)
               } else {
@@ -181,7 +183,7 @@ const runtime = {
       if (rawApi?.runtime?.onMessage) {
         rawApi.runtime.onMessage.removeListener(callback)
       }
-    }
+    },
   },
   getURL: (path) => {
     if (rawApi?.runtime?.getURL) {
@@ -194,7 +196,7 @@ const runtime = {
   },
   get lastError() {
     return rawApi?.runtime?.lastError
-  }
+  },
 }
 
 /**
@@ -226,7 +228,7 @@ const tabs = {
       return rawApi.tabs.create(createProperties)
     }
     return promisify(rawApi.tabs.create.bind(rawApi.tabs))(createProperties)
-  }
+  },
 }
 
 /**
@@ -247,7 +249,7 @@ const platform = {
   isFirefox,
   isChrome,
   manifestVersion: isFirefox ? 2 : 3,
-  name: isFirefox ? 'firefox' : 'chrome'
+  name: isFirefox ? 'firefox' : 'chrome',
 }
 
 // Export unified API
@@ -257,7 +259,7 @@ const api = {
   tabs,
   platform,
   isContextValid,
-  raw: rawApi
+  raw: rawApi,
 }
 
 /**
@@ -298,13 +300,21 @@ function _i18nApplyPlaceholders(messageObj, substitutions) {
 function t(key, substitutions) {
   if (!key) return ''
   if (key.startsWith('@@')) {
-    try { return rawApi?.i18n?.getMessage(key, substitutions) || key } catch { return key }
+    try {
+      return rawApi?.i18n?.getMessage(key, substitutions) || key
+    } catch {
+      return key
+    }
   }
   if (_i18nOverride && _i18nOverride[key]) {
     const out = _i18nApplyPlaceholders(_i18nOverride[key], substitutions)
     if (out) return out
   }
-  try { return rawApi?.i18n?.getMessage(key, substitutions) || key } catch { return key }
+  try {
+    return rawApi?.i18n?.getMessage(key, substitutions) || key
+  } catch {
+    return key
+  }
 }
 
 async function initI18n() {
@@ -325,7 +335,9 @@ async function initI18n() {
   return _i18nInitPromise
 }
 
-function getI18nLocale() { return _i18nOverrideLocale }
+function getI18nLocale() {
+  return _i18nOverrideLocale
+}
 
 const I18N_LOCALE_NAMES = {
   '': 'Auto (browser language)',
@@ -362,7 +374,7 @@ const I18N_LOCALE_NAMES = {
   uk: 'Українська',
   vi: 'Tiếng Việt',
   zh_CN: '简体中文',
-  zh_TW: '繁體中文'
+  zh_TW: '繁體中文',
 }
 
 async function setI18nLocale(loc) {
@@ -377,19 +389,23 @@ function bidiDir() {
     const rtl = ['ar', 'he', 'fa', 'ur']
     return rtl.includes(_i18nOverrideLocale.toLowerCase().split('_')[0]) ? 'rtl' : 'ltr'
   }
-  try { return rawApi?.i18n?.getMessage('@@bidi_dir') || 'ltr' } catch { return 'ltr' }
+  try {
+    return rawApi?.i18n?.getMessage('@@bidi_dir') || 'ltr'
+  } catch {
+    return 'ltr'
+  }
 }
 
 // Kick off override load eagerly so content scripts pick it up before panel renders
-try { initI18n() } catch {}
+try {
+  initI18n()
+} catch {}
 
 function hydrateI18n(root = document) {
-  for (const el of root.querySelectorAll('[data-i18n]'))
-    el.textContent = t(el.dataset.i18n) || el.textContent
+  for (const el of root.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n) || el.textContent
   for (const el of root.querySelectorAll('[data-i18n-placeholder]'))
     el.placeholder = t(el.dataset.i18nPlaceholder) || el.placeholder
-  for (const el of root.querySelectorAll('[data-i18n-title]'))
-    el.title = t(el.dataset.i18nTitle) || el.title
+  for (const el of root.querySelectorAll('[data-i18n-title]')) el.title = t(el.dataset.i18nTitle) || el.title
 }
 
 // Global export for non-module scripts
@@ -397,5 +413,19 @@ if (typeof window !== 'undefined') {
   window.heatsyncApi = api
 }
 
-export { api, storage, runtime, tabs, platform, isContextValid, t, hydrateI18n, initI18n, getI18nLocale, setI18nLocale, bidiDir, I18N_LOCALE_NAMES }
+export {
+  api,
+  bidiDir,
+  getI18nLocale,
+  hydrateI18n,
+  I18N_LOCALE_NAMES,
+  initI18n,
+  isContextValid,
+  platform,
+  runtime,
+  setI18nLocale,
+  storage,
+  t,
+  tabs,
+}
 export default api

@@ -20,12 +20,21 @@
  * It is documented in POTENTIAL_NOTE below.
  */
 
-import { test, describe, expect, beforeEach } from 'bun:test'
+import { beforeEach, describe, expect, test } from 'bun:test'
 import api, {
+  bidiDir,
+  getI18nLocale,
+  hydrateI18n,
+  I18N_LOCALE_NAMES,
+  initI18n,
+  isContextValid,
   api as namedApi,
-  storage, runtime, tabs, platform, isContextValid,
-  t, hydrateI18n, initI18n, getI18nLocale, setI18nLocale,
-  bidiDir, I18N_LOCALE_NAMES,
+  platform,
+  runtime,
+  setI18nLocale,
+  storage,
+  t,
+  tabs,
 } from '../src/lib/browser-api.js'
 
 // ── export shape ─────────────────────────────────────────────────────────────

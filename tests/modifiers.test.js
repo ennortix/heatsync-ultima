@@ -1,16 +1,16 @@
-import { test, expect, describe } from 'bun:test'
+import { describe, expect, test } from 'bun:test'
 import {
-  HS_MOD_TOKENS,
   HS_MOD_CLASS_TO_TOKEN,
   HS_MOD_MAX_SCALE,
-  hsModHexToHue,
-  hsModResolvePrefix,
-  hsModPeelChain,
-  hsModClassify,
-  hsModComposeTransform,
-  hsModComposeFilter,
+  HS_MOD_TOKENS,
   hsModBuildStyleAttr,
+  hsModClassify,
+  hsModComposeFilter,
+  hsModComposeTransform,
+  hsModHexToHue,
   hsModInjectWrapperStyle,
+  hsModPeelChain,
+  hsModResolvePrefix,
   hsModWordsFromState,
 } from '../src/lib/modifiers.js'
 
@@ -541,7 +541,7 @@ describe('end-to-end modifier pipeline', () => {
     expect(r.kind).toBe('modifier')
     const { sx, sy } = hsModComposeTransform(r.mods)
     expect(sx).toBe(-2) // wide(2) × hflip(-1) = -2
-    expect(sy).toBe(2)  // tall(2) × 1 = 2
+    expect(sy).toBe(2) // tall(2) × 1 = 2
   })
 
   test('Kappa w! w!: multiset wide→4', () => {

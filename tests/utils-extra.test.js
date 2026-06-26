@@ -1,11 +1,11 @@
-import { test, expect, describe, beforeEach } from 'bun:test'
+import { beforeEach, describe, expect, test } from 'bun:test'
 import {
-  escapeHtml,
-  safeUrl,
   boostReadability,
   debounce,
-  throttle,
+  escapeHtml,
+  safeUrl,
   sanitizeUiSettings,
+  throttle,
   UI_SYNC_BLOCKLIST,
 } from '../src/lib/utils.js'
 
@@ -136,7 +136,7 @@ describe('boostReadability', () => {
   test('invalid hex format is returned unchanged', () => {
     expect(boostReadability('red')).toBe('red')
     expect(boostReadability('#gg0000')).toBe('#gg0000')
-    expect(boostReadability('#12345')).toBe('#12345')  // 5 chars — invalid
+    expect(boostReadability('#12345')).toBe('#12345') // 5 chars — invalid
   })
 
   test('bright white #ffffff is already readable, returned as-is', () => {
@@ -167,7 +167,7 @@ describe('boostReadability', () => {
   })
 
   test('3-char shorthand dark color gets boosted', () => {
-    const out = boostReadability('#00f')  // same as #0000ff
+    const out = boostReadability('#00f') // same as #0000ff
     expect(out).not.toBe('#00f')
     expect(out).toMatch(/^#[0-9a-f]{6}$/i)
   })
@@ -192,48 +192,66 @@ describe('boostReadability', () => {
 describe('debounce', () => {
   test('fn is not called immediately on first invoke', async () => {
     let calls = 0
-    const d = debounce(() => { calls++ }, 20)
+    const d = debounce(() => {
+      calls++
+    }, 20)
     d()
     expect(calls).toBe(0)
-    await new Promise(r => setTimeout(r, 30))
+    await new Promise((r) => setTimeout(r, 30))
     expect(calls).toBe(1)
   })
 
   test('burst of calls collapses to one invocation', async () => {
     let calls = 0
-    const d = debounce(() => { calls++ }, 30)
-    d(); d(); d(); d(); d()
+    const d = debounce(() => {
+      calls++
+    }, 30)
+    d()
+    d()
+    d()
+    d()
+    d()
     expect(calls).toBe(0)
-    await new Promise(r => setTimeout(r, 50))
+    await new Promise((r) => setTimeout(r, 50))
     expect(calls).toBe(1)
   })
 
   test('last arg wins after burst', async () => {
     let last = null
-    const d = debounce((v) => { last = v }, 30)
-    d('a'); d('b'); d('c')
-    await new Promise(r => setTimeout(r, 50))
+    const d = debounce((v) => {
+      last = v
+    }, 30)
+    d('a')
+    d('b')
+    d('c')
+    await new Promise((r) => setTimeout(r, 50))
     expect(last).toBe('c')
   })
 
   test('two distinct bursts each fire once', async () => {
     let calls = 0
-    const d = debounce(() => { calls++ }, 20)
-    d(); d()
-    await new Promise(r => setTimeout(r, 40))
-    d(); d()
-    await new Promise(r => setTimeout(r, 40))
+    const d = debounce(() => {
+      calls++
+    }, 20)
+    d()
+    d()
+    await new Promise((r) => setTimeout(r, 40))
+    d()
+    d()
+    await new Promise((r) => setTimeout(r, 40))
     expect(calls).toBe(2)
   })
 
   test('default delay is ~100ms', async () => {
     let calls = 0
-    const d = debounce(() => { calls++ })  // no ms arg
+    const d = debounce(() => {
+      calls++
+    }) // no ms arg
     d()
-    await new Promise(r => setTimeout(r, 50))
-    expect(calls).toBe(0)  // not fired yet at 50ms
-    await new Promise(r => setTimeout(r, 70))
-    expect(calls).toBe(1)  // fired by ~120ms total
+    await new Promise((r) => setTimeout(r, 50))
+    expect(calls).toBe(0) // not fired yet at 50ms
+    await new Promise((r) => setTimeout(r, 70))
+    expect(calls).toBe(1) // fired by ~120ms total
   })
 })
 
@@ -242,47 +260,61 @@ describe('debounce', () => {
 describe('throttle', () => {
   test('first call fires immediately', async () => {
     let calls = 0
-    const t = throttle(() => { calls++ }, 50)
+    const t = throttle(() => {
+      calls++
+    }, 50)
     t()
     expect(calls).toBe(1)
   })
 
   test('second call within window is suppressed (but trailing fires)', async () => {
     let calls = 0
-    const t = throttle(() => { calls++ }, 50)
-    t()           // fires immediately → calls=1
-    t()           // within window → queued as trailing
+    const t = throttle(() => {
+      calls++
+    }, 50)
+    t() // fires immediately → calls=1
+    t() // within window → queued as trailing
     expect(calls).toBe(1)
-    await new Promise(r => setTimeout(r, 70))
+    await new Promise((r) => setTimeout(r, 70))
     // trailing call should have fired
     expect(calls).toBe(2)
   })
 
   test('rapid burst fires leading + one trailing', async () => {
     let calls = 0
-    const t = throttle(() => { calls++ }, 40)
-    t(); t(); t(); t(); t()
-    await new Promise(r => setTimeout(r, 60))
+    const t = throttle(() => {
+      calls++
+    }, 40)
+    t()
+    t()
+    t()
+    t()
+    t()
+    await new Promise((r) => setTimeout(r, 60))
     // leading (1) + trailing (1) = 2
     expect(calls).toBe(2)
   })
 
   test('trailing call receives latest args', async () => {
     let last = null
-    const t = throttle((v) => { last = v }, 40)
-    t('a')   // leading
-    t('b')   // within window
-    t('c')   // overwrites pending trailing arg
-    await new Promise(r => setTimeout(r, 60))
+    const t = throttle((v) => {
+      last = v
+    }, 40)
+    t('a') // leading
+    t('b') // within window
+    t('c') // overwrites pending trailing arg
+    await new Promise((r) => setTimeout(r, 60))
     expect(last).toBe('c')
   })
 
   test('after window expires, next call fires immediately again', async () => {
     let calls = 0
-    const t = throttle(() => { calls++ }, 30)
+    const t = throttle(() => {
+      calls++
+    }, 30)
     t()
     expect(calls).toBe(1)
-    await new Promise(r => setTimeout(r, 50))
+    await new Promise((r) => setTimeout(r, 50))
     t()
     expect(calls).toBe(2)
   })
@@ -340,7 +372,7 @@ describe('sanitizeUiSettings', () => {
   })
 
   test('strips numeric-string keys (corruption marker)', () => {
-    const out = sanitizeUiSettings({ '0': 'bad', validKey: 'ok' })
+    const out = sanitizeUiSettings({ 0: 'bad', validKey: 'ok' })
     expect(out).not.toHaveProperty('0')
     expect(out.validKey).toBe('ok')
   })
@@ -350,7 +382,7 @@ describe('sanitizeUiSettings', () => {
     const obj = { safe: 'yes' }
     Object.defineProperty(obj, '__proto__', { value: 'bad', enumerable: true, configurable: true })
     const out = sanitizeUiSettings(obj)
-    expect(Object.prototype.hasOwnProperty.call(out, '__proto__')).toBe(false)
+    expect(Object.hasOwn(out, '__proto__')).toBe(false)
     expect(out.safe).toBe('yes')
   })
 
@@ -361,7 +393,7 @@ describe('sanitizeUiSettings', () => {
     const out = sanitizeUiSettings(input)
     // function values are stripped before the key-name guard fires,
     // so own 'constructor' must not appear in output
-    expect(Object.prototype.hasOwnProperty.call(out, 'constructor')).toBe(false)
+    expect(Object.hasOwn(out, 'constructor')).toBe(false)
   })
 
   test('strips function values', () => {

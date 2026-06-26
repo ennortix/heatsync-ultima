@@ -1,0 +1,56 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.1/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 120
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "semicolons": "asNeeded",
+      "trailingCommas": "all",
+      "arrowParentheses": "always"
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "suspicious": {
+        "noConsole": { "level": "off", "options": { "allow": ["log"] } },
+        "noControlCharactersInRegex": "off",
+        "noMisleadingCharacterClass": "off",
+        "noDoubleEquals": "warn",
+        "useIterableCallbackReturn": "warn",
+        "noAssignInExpressions": "warn"
+      },
+      "correctness": {
+        "noUnusedVariables": "warn",
+        "noUnusedFunctionParameters": "warn",
+        "noInnerDeclarations": "off"
+      },
+      "style": {
+        "useConst": "warn"
+      }
+    }
+  },
+  "files": {
+    "includes": [
+      "src/**/*.js",
+      "chrome/**/*.js",
+      "tests/**/*.js",
+      "tools/**/*.js",
+      "build.js",
+      "!dist/**",
+      "!node_modules/**",
+      "!chrome/emoji-data.js"
+    ]
+  }
+}

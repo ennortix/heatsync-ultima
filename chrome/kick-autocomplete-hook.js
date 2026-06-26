@@ -8,15 +8,15 @@
  *   emoji   — triggered by :prefix (existing behaviour)
  *   emote   — triggered by bare word >= 2 chars (heatsync/BTTV/FFZ/7TV)
  */
-;(function() {
-  'use strict'
-
+;(() => {
   const DEBUG = false
   const log = DEBUG ? console.log.bind(console, '[hs-kick-ac]') : () => {}
 
   // Kill previous instance on extension reload
   if (window.__heatsyncKickAcLifecycle) {
-    try { window.__heatsyncKickAcLifecycle.abort() } catch (_) {}
+    try {
+      window.__heatsyncKickAcLifecycle.abort()
+    } catch (_) {}
   }
 
   // Hoisted: abort handler may fire during init (bfcache pagehide race)
@@ -31,8 +31,18 @@
   window.addEventListener('pagehide', () => lifecycle.abort())
   sig.addEventListener('abort', () => {
     clearTimeout(emoteDebounceTimer)
-    if (dropdown) { try { dropdown.remove() } catch (_) {} dropdown = null }
-    if (emoteDropdown) { try { emoteDropdown.remove() } catch (_) {} emoteDropdown = null }
+    if (dropdown) {
+      try {
+        dropdown.remove()
+      } catch (_) {}
+      dropdown = null
+    }
+    if (emoteDropdown) {
+      try {
+        emoteDropdown.remove()
+      } catch (_) {}
+      emoteDropdown = null
+    }
     hsEmoteList = []
   })
 
@@ -73,9 +83,9 @@
     // emotes are listed FIRST so first-seen dedup keeps the CHANNEL image for a
     // name you also own (the channel emote is what renders in this channel).
     const sources = [
-      ...(data.channelEmotes || []).map(e => ({ e, tier: 0 })),
-      ...(data.inventoryEmotes || []).map(e => ({ e, tier: 1 })),
-      ...(data.globalEmotes || []).map(e => ({ e, tier: 2 })),
+      ...(data.channelEmotes || []).map((e) => ({ e, tier: 0 })),
+      ...(data.inventoryEmotes || []).map((e) => ({ e, tier: 1 })),
+      ...(data.globalEmotes || []).map((e) => ({ e, tier: 2 })),
     ]
     for (const { e, tier } of sources) {
       if (!e || !e.name) continue
@@ -86,7 +96,7 @@
       // so per-call toLowerCase on 50k emotes is what we're avoiding here.
       list.push({ name: e.name, url: e.url || e.cdnUrl || '', lower: e.name.toLowerCase(), tier, source: e.source })
     }
-    list.sort((a, b) => a.lower < b.lower ? -1 : a.lower > b.lower ? 1 : 0)
+    list.sort((a, b) => (a.lower < b.lower ? -1 : a.lower > b.lower ? 1 : 0))
     return list
   }
 
@@ -101,7 +111,7 @@
           if (chrome.runtime.lastError || !data) return
           hsEmoteList = buildEmoteList(data)
           log('emote list refreshed:', hsEmoteList.length)
-        }
+        },
       )
     } catch (_) {}
   }
@@ -114,14 +124,17 @@
     const len = hsEmoteList.length
     if (!len) return []
 
-    let lo = 0, hi = len
+    let lo = 0,
+      hi = len
     while (lo < hi) {
       const mid = (lo + hi) >> 1
       if (hsEmoteList[mid].lower < q) lo = mid + 1
       else hi = mid
     }
 
-    const exact = [], prefix = [], contains = []
+    const exact = [],
+      prefix = [],
+      contains = []
     const seen = new Set()
     for (let i = lo; i < len; i++) {
       const e = hsEmoteList[i]
@@ -150,7 +163,8 @@
     // match. The array is grouped exact→prefix→contains, and Array.sort is stable,
     // so a tier-only key preserves that match-type order WITHIN each tier.
     return [...exact, ...prefix, ...contains].sort((a, b) => {
-      const at = a.tier ?? 2, bt = b.tier ?? 2
+      const at = a.tier ?? 2,
+        bt = b.tier ?? 2
       return at !== bt ? at - bt : 0
     })
   }
@@ -372,13 +386,16 @@
   function positionAboveInput(el, input) {
     const rect = input.getBoundingClientRect()
     el.style.left = rect.left + 'px'
-    el.style.bottom = (window.innerHeight - rect.top + 4) + 'px'
+    el.style.bottom = window.innerHeight - rect.top + 4 + 'px'
     el.style.top = 'auto'
     el.style.minWidth = Math.min(rect.width, 280) + 'px'
   }
 
   function showDropdown(input, results) {
-    if (!results.length) { hideDropdown(); return }
+    if (!results.length) {
+      hideDropdown()
+      return
+    }
     if (emoteDropdown) emoteDropdown.style.display = 'none'
     createDropdown()
     matches = results
@@ -391,7 +408,10 @@
   }
 
   function showEmoteDropdown(input, results) {
-    if (!results.length) { hideEmoteDropdown(); return }
+    if (!results.length) {
+      hideEmoteDropdown()
+      return
+    }
     if (dropdown) dropdown.style.display = 'none'
     createEmoteDropdown()
     matches = results
@@ -429,7 +449,10 @@
   function insertEmoji(input, match) {
     const text = getTextBeforeCursor(input)
     const colonMatch = text.match(/:([a-z0-9_+-]*)$/)
-    if (!colonMatch) { hideDropdown(); return }
+    if (!colonMatch) {
+      hideDropdown()
+      return
+    }
 
     const deleteCount = colonMatch[0].length // :prefix
     input.focus()
@@ -450,10 +473,16 @@
     const text = getTextBeforeCursor(input)
     // Match the current word (non-space sequence) at end of text
     const wordMatch = text.match(/(\S+)$/)
-    if (!wordMatch) { hideEmoteDropdown(); return }
+    if (!wordMatch) {
+      hideEmoteDropdown()
+      return
+    }
     // Don't fire on emoji-shortcode words — that path is owned by the emoji
     // autocomplete handler. Prevents corrupting partial :foo: sequences.
-    if (wordMatch[0].startsWith(':')) { hideEmoteDropdown(); return }
+    if (wordMatch[0].startsWith(':')) {
+      hideEmoteDropdown()
+      return
+    }
 
     const deleteCount = wordMatch[0].length
     input.focus()
@@ -477,8 +506,14 @@
     const prefix = []
     const contains = []
     for (const e of EMOJI_ENTRIES) {
-      if (e.name === q) { exact.push(e); continue }
-      if (e.name.startsWith(q)) { prefix.push(e); continue }
+      if (e.name === q) {
+        exact.push(e)
+        continue
+      }
+      if (e.name.startsWith(q)) {
+        prefix.push(e)
+        continue
+      }
       if (e.name.includes(q)) contains.push(e)
     }
     return [...exact, ...prefix, ...contains].slice(0, MAX_RESULTS)
@@ -540,7 +575,7 @@
         if (!query.startsWith('@')) {
           try {
             const ql = query.toLowerCase()
-            const rc = (typeof window.heatsyncGetRecentChatters === 'function') ? window.heatsyncGetRecentChatters() : []
+            const rc = typeof window.heatsyncGetRecentChatters === 'function' ? window.heatsyncGetRecentChatters() : []
             const chatters = []
             for (const c of rc) {
               if (c.l && c.l.startsWith(ql)) chatters.push({ name: c.name, url: null, isChatter: true })
@@ -556,10 +591,9 @@
   }
 
   function handleKeydown(e) {
-    const anyOpen = (
+    const anyOpen =
       (dropdown && dropdown.style.display !== 'none' && activeMode === 'emoji') ||
       (emoteDropdown && emoteDropdown.style.display !== 'none' && activeMode === 'emote')
-    )
     if (!anyOpen || !matches.length) return
 
     if (e.key === 'Tab' || e.key === 'Enter') {
@@ -602,9 +636,13 @@
 
     input.addEventListener('input', handleInput, { signal: sig })
     input.addEventListener('keydown', handleKeydown, { capture: true, signal: sig })
-    input.addEventListener('blur', () => {
-      setTimeout(() => hideAll(), 150)
-    }, { signal: sig })
+    input.addEventListener(
+      'blur',
+      () => {
+        setTimeout(() => hideAll(), 150)
+      },
+      { signal: sig },
+    )
 
     // Trigger initial emote fetch for the current channel
     refreshEmotes(getCurrentChannel())

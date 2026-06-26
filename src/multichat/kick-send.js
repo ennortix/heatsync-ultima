@@ -4,9 +4,7 @@ const kickChannelIdCache = new Map()
 const KICK_CHANNEL_ID_CACHE_MAX = 200
 
 // Failures we never retry — they're user-actionable, not transient.
-const KICK_FATAL_SEND_ERRORS = new Set([
-  'no_channel', 'no_kick_tab', 'kick_not_logged_in', 'missing params'
-])
+const KICK_FATAL_SEND_ERRORS = new Set(['no_channel', 'no_kick_tab', 'kick_not_logged_in', 'missing params'])
 
 const KICK_SEND_TIMEOUT_MS = 5000
 const KICK_SEND_RETRY_BACKOFF_MS = [750, 1500]
@@ -25,7 +23,7 @@ async function resolveKickChannelId(slug) {
 }
 
 function _kickSendOnce(channelId, text) {
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     let settled = false
     const timer = setTimeout(() => {
       if (settled) return
@@ -33,13 +31,13 @@ function _kickSendOnce(channelId, text) {
       resolve({ ok: false, error: 'timeout' })
     }, KICK_SEND_TIMEOUT_MS)
     safeSendMessage({ type: 'kick_send_message', channelId, content: text })
-      .then(resp => {
+      .then((resp) => {
         if (settled) return
         settled = true
         clearTimeout(timer)
         resolve(resp || { ok: false, error: 'no_response' })
       })
-      .catch(e => {
+      .catch((e) => {
         if (settled) return
         settled = true
         clearTimeout(timer)
@@ -60,14 +58,14 @@ async function sendKickMessage(kickSlug, text) {
       lastErr = err
       if (KICK_FATAL_SEND_ERRORS.has(err)) return err
       if (attempt < KICK_SEND_RETRY_BACKOFF_MS.length) {
-        await new Promise(r => setTimeout(r, KICK_SEND_RETRY_BACKOFF_MS[attempt]))
+        await new Promise((r) => setTimeout(r, KICK_SEND_RETRY_BACKOFF_MS[attempt]))
         continue
       }
       return err
     } catch (e) {
       lastErr = e?.message || 'send_failed'
       if (attempt < KICK_SEND_RETRY_BACKOFF_MS.length) {
-        await new Promise(r => setTimeout(r, KICK_SEND_RETRY_BACKOFF_MS[attempt]))
+        await new Promise((r) => setTimeout(r, KICK_SEND_RETRY_BACKOFF_MS[attempt]))
         continue
       }
       log('Kick send error after retries:', lastErr)

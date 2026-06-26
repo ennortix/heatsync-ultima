@@ -44,60 +44,152 @@ function renderQuickLinks() {
   }
 
   const ICONS = {
-    sub:       '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2l2.39 4.84 5.34.78-3.86 3.77.91 5.31L10 14.27l-4.78 2.51.91-5.31L2.27 7.62l5.34-.78L10 2z"/></svg>',
-    clip:      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M18 7h-2V5a2 2 0 00-2-2H6a2 2 0 00-2 2v2H2v4l8 6 8-6V7zM6 5h8v2H6V5z"/></svg>',
-    popout:    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M4 4h6v2H6v8h8v-4h2v6H4V4zm8 0h4v4h-2V6.41l-4.3 4.3-1.4-1.42L12.58 6H11V4z"/></svg>',
-    shield:    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M10 2l6 2.7V9c0 4.4-2.5 8.3-6 10-3.5-1.7-6-5.6-6-10V4.7L10 2z"/></svg>',
-    dashboard: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M3 3h6v6H3V3zm8 0h6v6h-6V3zM3 11h6v6H3v-6zm8 4h6v2h-6v-2zm0-4h6v2h-6v-2z"/></svg>',
-    settings:  '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M10 6.5A3.5 3.5 0 1010 13.5 3.5 3.5 0 0010 6.5zm6.5 3.5a6.5 6.5 0 00-.1-1.1l2-1.5-1.5-2.6-2.3.8c-.6-.5-1.3-.9-2-1.2L12.2 2h-3l-.4 2.4c-.7.3-1.4.7-2 1.2l-2.3-.8L3 7.4l2 1.5a6.6 6.6 0 000 2.2L3 12.6l1.5 2.6 2.3-.8c.6.5 1.3.9 2 1.2l.4 2.4h3l.4-2.4c.7-.3 1.4-.7 2-1.2l2.3.8 1.5-2.6-2-1.5c.1-.4.1-.7.1-1.1z"/></svg>',
-    chart:     '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M3 17V3h2v14h12v2H3zm4-3V8h2v6H7zm4 0V5h2v9h-2zm4 0V10h2v4h-2z"/></svg>',
-    people:    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M7 8a3 3 0 100-6 3 3 0 000 6zm6 1a2 2 0 100-4 2 2 0 000 4zM1 17v-1c0-2.5 4-4 6-4s6 1.5 6 4v1H1zm12-1c0-1.2-.8-2.2-2-2.9.6-.1 1.3-.1 2-.1 2 0 5 1 5 3v1h-5v-1z"/></svg>',
-    cash:      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M10 2a8 8 0 100 16 8 8 0 000-16zm.5 12.5v1h-1v-1c-1.4-.2-2.5-1-2.7-2.5H8c.1.6.5 1 1.5 1 .8 0 1.5-.3 1.5-1 0-.5-.3-.8-1.5-1.1-1.5-.4-2.8-.9-2.8-2.4 0-1.1 1-1.9 2.3-2.1V5h1v1.4c1.2.2 2.2.8 2.5 2.1H11c-.1-.5-.5-1-1.5-1-.7 0-1.5.3-1.5.9 0 .6.4.9 1.5 1.2 1.7.5 2.8 1 2.8 2.4 0 1.2-1 2-2.3 2.4z"/></svg>',
-    video:     '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M2 5h12v10H2V5zm14 2l4-2v10l-4-2V7z"/></svg>',
-    calendar:  '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M4 4h2V2h2v2h4V2h2v2h2v14H4V4zm0 4v8h12V8H4z"/></svg>',
-    info:      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M10 2a8 8 0 100 16 8 8 0 000-16zm0 4a1 1 0 110 2 1 1 0 010-2zm-1 4h2v6H9v-6z"/></svg>',
-    user:      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M10 10a4 4 0 100-8 4 4 0 000 8zm0 2c-3 0-7 1.5-7 4.5V18h14v-1.5c0-3-4-4.5-7-4.5z"/></svg>',
-    gift:      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M3 8v10h14V8H3zm0-3h14v2H3V5zm5-3a2 2 0 012 2 2 2 0 012-2 2 2 0 010 4h-4a2 2 0 010-4z"/></svg>',
-    lock:      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M5 9V7a5 5 0 0110 0v2h1v9H4V9h1zm2 0h6V7a3 3 0 00-6 0v2z"/></svg>',
-    arrow:     '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
+    sub: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2l2.39 4.84 5.34.78-3.86 3.77.91 5.31L10 14.27l-4.78 2.51.91-5.31L2.27 7.62l5.34-.78L10 2z"/></svg>',
+    clip: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M18 7h-2V5a2 2 0 00-2-2H6a2 2 0 00-2 2v2H2v4l8 6 8-6V7zM6 5h8v2H6V5z"/></svg>',
+    popout:
+      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M4 4h6v2H6v8h8v-4h2v6H4V4zm8 0h4v4h-2V6.41l-4.3 4.3-1.4-1.42L12.58 6H11V4z"/></svg>',
+    shield:
+      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M10 2l6 2.7V9c0 4.4-2.5 8.3-6 10-3.5-1.7-6-5.6-6-10V4.7L10 2z"/></svg>',
+    dashboard:
+      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M3 3h6v6H3V3zm8 0h6v6h-6V3zM3 11h6v6H3v-6zm8 4h6v2h-6v-2zm0-4h6v2h-6v-2z"/></svg>',
+    settings:
+      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M10 6.5A3.5 3.5 0 1010 13.5 3.5 3.5 0 0010 6.5zm6.5 3.5a6.5 6.5 0 00-.1-1.1l2-1.5-1.5-2.6-2.3.8c-.6-.5-1.3-.9-2-1.2L12.2 2h-3l-.4 2.4c-.7.3-1.4.7-2 1.2l-2.3-.8L3 7.4l2 1.5a6.6 6.6 0 000 2.2L3 12.6l1.5 2.6 2.3-.8c.6.5 1.3.9 2 1.2l.4 2.4h3l.4-2.4c.7-.3 1.4-.7 2-1.2l2.3.8 1.5-2.6-2-1.5c.1-.4.1-.7.1-1.1z"/></svg>',
+    chart:
+      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M3 17V3h2v14h12v2H3zm4-3V8h2v6H7zm4 0V5h2v9h-2zm4 0V10h2v4h-2z"/></svg>',
+    people:
+      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M7 8a3 3 0 100-6 3 3 0 000 6zm6 1a2 2 0 100-4 2 2 0 000 4zM1 17v-1c0-2.5 4-4 6-4s6 1.5 6 4v1H1zm12-1c0-1.2-.8-2.2-2-2.9.6-.1 1.3-.1 2-.1 2 0 5 1 5 3v1h-5v-1z"/></svg>',
+    cash: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M10 2a8 8 0 100 16 8 8 0 000-16zm.5 12.5v1h-1v-1c-1.4-.2-2.5-1-2.7-2.5H8c.1.6.5 1 1.5 1 .8 0 1.5-.3 1.5-1 0-.5-.3-.8-1.5-1.1-1.5-.4-2.8-.9-2.8-2.4 0-1.1 1-1.9 2.3-2.1V5h1v1.4c1.2.2 2.2.8 2.5 2.1H11c-.1-.5-.5-1-1.5-1-.7 0-1.5.3-1.5.9 0 .6.4.9 1.5 1.2 1.7.5 2.8 1 2.8 2.4 0 1.2-1 2-2.3 2.4z"/></svg>',
+    video:
+      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M2 5h12v10H2V5zm14 2l4-2v10l-4-2V7z"/></svg>',
+    calendar:
+      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M4 4h2V2h2v2h4V2h2v2h2v14H4V4zm0 4v8h12V8H4z"/></svg>',
+    info: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M10 2a8 8 0 100 16 8 8 0 000-16zm0 4a1 1 0 110 2 1 1 0 010-2zm-1 4h2v6H9v-6z"/></svg>',
+    user: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M10 10a4 4 0 100-8 4 4 0 000 8zm0 2c-3 0-7 1.5-7 4.5V18h14v-1.5c0-3-4-4.5-7-4.5z"/></svg>',
+    gift: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M3 8v10h14V8H3zm0-3h14v2H3V5zm5-3a2 2 0 012 2 2 2 0 012-2 2 2 0 010 4h-4a2 2 0 010-4z"/></svg>',
+    lock: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M5 9V7a5 5 0 0110 0v2h1v9H4V9h1zm2 0h6V7a3 3 0 00-6 0v2z"/></svg>',
+    arrow:
+      '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
   }
 
   const SECTIONS = [
-    { label: null, show: true, items: [
-      { action: 'sub',    accent: '#e91916', icon: ICONS.sub,    label: 'subscribe',   direct: true },
-      { action: 'clip',   accent: '#bf94ff', icon: ICONS.clip,   label: 'create clip', direct: true, audience: 'mod' },
-      { action: 'popout', accent: '#4a90d9', icon: ICONS.popout, label: 'popout chat', direct: true },
-    ]},
-    { label: 'mod tools', show: isMod, items: [
-      { accent: '#00c8af', icon: ICONS.shield, label: 'mod view (chat, automod, blocked terms)', url: (c) => `https://www.twitch.tv/moderator/${c}`, opts: 'width=1200,height=800' },
-    ]},
-    { label: 'broadcaster', show: isBroadcaster, items: [
-      { accent: '#9147ff', icon: ICONS.dashboard, label: 'creator dashboard',  url: (c) => `https://dashboard.twitch.tv/u/${c}/home`,            opts: 'width=1200,height=800' },
-      { accent: '#9147ff', icon: ICONS.video,     label: 'stream manager',     url: (c) => `https://dashboard.twitch.tv/u/${c}/stream-manager`, opts: 'width=1200,height=800' },
-      { accent: '#9147ff', icon: ICONS.settings,  label: 'moderation settings (automod, blocked terms)', url: (c) => `https://dashboard.twitch.tv/u/${c}/settings/moderation`, opts: 'width=1000,height=750' },
-      { accent: '#9147ff', icon: ICONS.settings,  label: 'channel settings',   url: (c) => `https://dashboard.twitch.tv/u/${c}/settings/channel`,    opts: 'width=1000,height=750' },
-      { accent: '#9147ff', icon: ICONS.people,    label: 'community (mods, vips, follows)', url: (c) => `https://dashboard.twitch.tv/u/${c}/community`, opts: 'width=1000,height=750' },
-      { accent: '#9147ff', icon: ICONS.cash,      label: 'monetization',       url: (c) => `https://dashboard.twitch.tv/u/${c}/monetization`,        opts: 'width=1000,height=750' },
-      { accent: '#9147ff', icon: ICONS.chart,     label: 'analytics',          url: (c) => `https://dashboard.twitch.tv/u/${c}/analytics/stream-summary`, opts: 'width=1200,height=800' },
-    ]},
-    { label: 'channel pages', show: !!ch, items: [
-      { accent: '#888', icon: ICONS.info,     label: 'about page',  url: (c) => `https://www.twitch.tv/${c}/about` },
-      { accent: '#888', icon: ICONS.video,    label: 'videos',      url: (c) => `https://www.twitch.tv/${c}/videos` },
-      { accent: '#888', icon: ICONS.video,    label: 'clips',       url: (c) => `https://www.twitch.tv/${c}/clips` },
-      { accent: '#888', icon: ICONS.calendar, label: 'schedule',    url: (c) => `https://www.twitch.tv/${c}/schedule` },
-    ]},
-    { label: 'your account', show: true, items: [
-      { accent: '#888', icon: ICONS.gift,     label: 'drops / inventory',  url: () => 'https://www.twitch.tv/inventory' },
-      { accent: '#888', icon: ICONS.sub,      label: 'my subscriptions',   url: () => 'https://www.twitch.tv/subscriptions' },
-      { accent: '#888', icon: ICONS.user,     label: 'following directory',url: () => 'https://www.twitch.tv/directory/following' },
-      { accent: '#888', icon: ICONS.settings, label: 'twitch settings',    url: () => 'https://www.twitch.tv/settings' },
-      { accent: '#888', icon: ICONS.lock,     label: 'privacy + security', url: () => 'https://www.twitch.tv/settings/security' },
-    ]},
+    {
+      label: null,
+      show: true,
+      items: [
+        { action: 'sub', accent: '#e91916', icon: ICONS.sub, label: 'subscribe', direct: true },
+        { action: 'clip', accent: '#bf94ff', icon: ICONS.clip, label: 'create clip', direct: true, audience: 'mod' },
+        { action: 'popout', accent: '#4a90d9', icon: ICONS.popout, label: 'popout chat', direct: true },
+      ],
+    },
+    {
+      label: 'mod tools',
+      show: isMod,
+      items: [
+        {
+          accent: '#00c8af',
+          icon: ICONS.shield,
+          label: 'mod view (chat, automod, blocked terms)',
+          url: (c) => `https://www.twitch.tv/moderator/${c}`,
+          opts: 'width=1200,height=800',
+        },
+      ],
+    },
+    {
+      label: 'broadcaster',
+      show: isBroadcaster,
+      items: [
+        {
+          accent: '#9147ff',
+          icon: ICONS.dashboard,
+          label: 'creator dashboard',
+          url: (c) => `https://dashboard.twitch.tv/u/${c}/home`,
+          opts: 'width=1200,height=800',
+        },
+        {
+          accent: '#9147ff',
+          icon: ICONS.video,
+          label: 'stream manager',
+          url: (c) => `https://dashboard.twitch.tv/u/${c}/stream-manager`,
+          opts: 'width=1200,height=800',
+        },
+        {
+          accent: '#9147ff',
+          icon: ICONS.settings,
+          label: 'moderation settings (automod, blocked terms)',
+          url: (c) => `https://dashboard.twitch.tv/u/${c}/settings/moderation`,
+          opts: 'width=1000,height=750',
+        },
+        {
+          accent: '#9147ff',
+          icon: ICONS.settings,
+          label: 'channel settings',
+          url: (c) => `https://dashboard.twitch.tv/u/${c}/settings/channel`,
+          opts: 'width=1000,height=750',
+        },
+        {
+          accent: '#9147ff',
+          icon: ICONS.people,
+          label: 'community (mods, vips, follows)',
+          url: (c) => `https://dashboard.twitch.tv/u/${c}/community`,
+          opts: 'width=1000,height=750',
+        },
+        {
+          accent: '#9147ff',
+          icon: ICONS.cash,
+          label: 'monetization',
+          url: (c) => `https://dashboard.twitch.tv/u/${c}/monetization`,
+          opts: 'width=1000,height=750',
+        },
+        {
+          accent: '#9147ff',
+          icon: ICONS.chart,
+          label: 'analytics',
+          url: (c) => `https://dashboard.twitch.tv/u/${c}/analytics/stream-summary`,
+          opts: 'width=1200,height=800',
+        },
+      ],
+    },
+    {
+      label: 'channel pages',
+      show: !!ch,
+      items: [
+        { accent: '#888', icon: ICONS.info, label: 'about page', url: (c) => `https://www.twitch.tv/${c}/about` },
+        { accent: '#888', icon: ICONS.video, label: 'videos', url: (c) => `https://www.twitch.tv/${c}/videos` },
+        { accent: '#888', icon: ICONS.video, label: 'clips', url: (c) => `https://www.twitch.tv/${c}/clips` },
+        { accent: '#888', icon: ICONS.calendar, label: 'schedule', url: (c) => `https://www.twitch.tv/${c}/schedule` },
+      ],
+    },
+    {
+      label: 'your account',
+      show: true,
+      items: [
+        { accent: '#888', icon: ICONS.gift, label: 'drops / inventory', url: () => 'https://www.twitch.tv/inventory' },
+        {
+          accent: '#888',
+          icon: ICONS.sub,
+          label: 'my subscriptions',
+          url: () => 'https://www.twitch.tv/subscriptions',
+        },
+        {
+          accent: '#888',
+          icon: ICONS.user,
+          label: 'following directory',
+          url: () => 'https://www.twitch.tv/directory/following',
+        },
+        { accent: '#888', icon: ICONS.settings, label: 'twitch settings', url: () => 'https://www.twitch.tv/settings' },
+        {
+          accent: '#888',
+          icon: ICONS.lock,
+          label: 'privacy + security',
+          url: () => 'https://www.twitch.tv/settings/security',
+        },
+      ],
+    },
   ]
 
   for (const section of SECTIONS) {
     if (section.show === false) continue
-    const visible = section.items.filter(it => {
+    const visible = section.items.filter((it) => {
       if (it.audience === 'mod' && !isMod) return false
       if (it.audience === 'broadcaster' && !isBroadcaster) return false
       return true
@@ -134,9 +226,17 @@ function renderQuickLinks() {
 
       el.addEventListener('click', (e) => {
         e.stopPropagation()
-        if (item.direct) { triggerTwitchFeature(item.action); return }
-        if (!ch) { showToast('no twitch channel', 'error'); return }
-        try { window.open(item.url(ch), '_blank', item.opts || 'noopener') } catch {}
+        if (item.direct) {
+          triggerTwitchFeature(item.action)
+          return
+        }
+        if (!ch) {
+          showToast('no twitch channel', 'error')
+          return
+        }
+        try {
+          window.open(item.url(ch), '_blank', item.opts || 'noopener')
+        } catch {}
       })
       wrap.appendChild(el)
     }
@@ -219,7 +319,7 @@ function attachColorHandlers() {
   if (!container) return
 
   // Fetch current color
-  helixRequest('https://api.twitch.tv/helix/chat/color?user_id={me}').then(resp => {
+  helixRequest('https://api.twitch.tv/helix/chat/color?user_id={me}').then((resp) => {
     if (resp.ok && resp.data?.data?.[0]?.color) {
       const el = document.getElementById('hs-mc-current-color')
       if (el) {
@@ -230,14 +330,20 @@ function attachColorHandlers() {
   })
 
   // Preset swatches
-  container.querySelectorAll('.hs-mc-color-swatch').forEach(swatch => {
+  container.querySelectorAll('.hs-mc-color-swatch').forEach((swatch) => {
     swatch.addEventListener('click', async () => {
       const color = swatch.dataset.color
-      const resp = await helixRequest(`https://api.twitch.tv/helix/chat/color?user_id={me}&color=${encodeURIComponent(color)}`, 'PUT')
+      const resp = await helixRequest(
+        `https://api.twitch.tv/helix/chat/color?user_id={me}&color=${encodeURIComponent(color)}`,
+        'PUT',
+      )
       if (resp.ok) {
         showToast('color: ' + color, 'success')
         const el = document.getElementById('hs-mc-current-color')
-        if (el) { el.style.backgroundColor = swatch.style.backgroundColor; el.title = color }
+        if (el) {
+          el.style.backgroundColor = swatch.style.backgroundColor
+          el.title = color
+        }
       } else {
         showToast('color failed: ' + (resp.error || 'unknown'), 'error')
       }
@@ -250,12 +356,21 @@ function attachColorHandlers() {
   if (hexBtn && hexInput) {
     hexBtn.addEventListener('click', async () => {
       const color = hexInput.value.trim()
-      if (!/^#[0-9a-f]{6}$/i.test(color)) { showToast('invalid hex — use #RRGGBB', 'error'); return }
-      const resp = await helixRequest(`https://api.twitch.tv/helix/chat/color?user_id={me}&color=${encodeURIComponent(color)}`, 'PUT')
+      if (!/^#[0-9a-f]{6}$/i.test(color)) {
+        showToast('invalid hex — use #RRGGBB', 'error')
+        return
+      }
+      const resp = await helixRequest(
+        `https://api.twitch.tv/helix/chat/color?user_id={me}&color=${encodeURIComponent(color)}`,
+        'PUT',
+      )
       if (resp.ok) {
         showToast('color: ' + color, 'success')
         const el = document.getElementById('hs-mc-current-color')
-        if (el) { el.style.backgroundColor = color; el.title = color }
+        if (el) {
+          el.style.backgroundColor = color
+          el.title = color
+        }
       } else {
         showToast('color failed: ' + (resp.error || 'color change failed'), 'error')
       }
@@ -276,7 +391,9 @@ async function renderChatModes(channel) {
   const broadcasterId = userResp.data.data[0].id
 
   // Fetch current settings (fails with 403 if not mod — that's expected)
-  const settingsResp = await helixRequest(`https://api.twitch.tv/helix/chat/settings?broadcaster_id=${broadcasterId}&moderator_id={me}`)
+  const settingsResp = await helixRequest(
+    `https://api.twitch.tv/helix/chat/settings?broadcaster_id=${broadcasterId}&moderator_id={me}`,
+  )
   if (!settingsResp.ok || !settingsResp.data?.data?.[0]) return null
   const s = settingsResp.data.data[0]
 
@@ -317,7 +434,7 @@ function attachModeHandlers() {
   const container = document.getElementById('hs-mc-tab-twitch')
   if (!container) return
 
-  container.querySelectorAll('.hs-mc-mode-btn').forEach(btn => {
+  container.querySelectorAll('.hs-mc-mode-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const mode = btn.dataset.mode
       const broadcasterId = btn.dataset.broadcasterId
@@ -328,7 +445,8 @@ function attachModeHandlers() {
 
       const resp = await helixRequest(
         `https://api.twitch.tv/helix/chat/settings?broadcaster_id=${broadcasterId}&moderator_id={me}`,
-        'PATCH', body
+        'PATCH',
+        body,
       )
       if (resp.ok) {
         btn.dataset.active = newVal ? '1' : '0'
@@ -354,7 +472,18 @@ function makeCoinSvg(size) {
 }
 
 function outcomeColor(color) {
-  const map = { PINK: '#f5009b', BLUE: '#387aff', ORANGE: '#ff8700', GREEN: '#00c853', TEAL: '#00bcd4', PURPLE: '#9c27b0', YELLOW: '#fdd835', LIGHT_BLUE: '#4fc3f7', RED: '#e53935', BROWN: '#795548' }
+  const map = {
+    PINK: '#f5009b',
+    BLUE: '#387aff',
+    ORANGE: '#ff8700',
+    GREEN: '#00c853',
+    TEAL: '#00bcd4',
+    PURPLE: '#9c27b0',
+    YELLOW: '#fdd835',
+    LIGHT_BLUE: '#4fc3f7',
+    RED: '#e53935',
+    BROWN: '#795548',
+  }
   return map[color] || '#387aff'
 }
 
@@ -386,7 +515,8 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
   const winningId = pred.winningOutcome?.id || null
 
   const wrapper = document.createElement('div')
-  wrapper.className = 'hs-mc-prediction' + (isResolved ? ' hs-mc-pred-resolved' : '') + (isCanceled ? ' hs-mc-pred-canceled' : '')
+  wrapper.className =
+    'hs-mc-prediction' + (isResolved ? ' hs-mc-pred-resolved' : '') + (isCanceled ? ' hs-mc-pred-canceled' : '')
   wrapper.dataset.eventId = pred.id
   if (channelId) wrapper.dataset.channelId = channelId
 
@@ -397,7 +527,8 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
   title.className = 'hs-mc-pred-title'
   // Render emotes/emoji in prediction title — content sanitized via escapeHtml() then processEmotes()
   // This is the same pattern used for all chat messages in main.js (existing safe innerHTML pattern)
-  title.innerHTML = typeof processEmotes === 'function' ? processEmotes(escapeHtml(pred.title), null) : escapeHtml(pred.title)
+  title.innerHTML =
+    typeof processEmotes === 'function' ? processEmotes(escapeHtml(pred.title), null) : escapeHtml(pred.title)
   header.appendChild(title)
 
   if (isCanceled) {
@@ -438,8 +569,8 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
     const banner = document.createElement('div')
     banner.className = 'hs-mc-pred-result ' + (won ? 'hs-mc-pred-result-won' : 'hs-mc-pred-result-lost')
     if (won) {
-      const winOutcome = pred.outcomes.find(o => o.id === winningId)
-      const pct = totalPoints > 0 && winOutcome ? (winOutcome.totalPoints / totalPoints) : 1
+      const winOutcome = pred.outcomes.find((o) => o.id === winningId)
+      const pct = totalPoints > 0 && winOutcome ? winOutcome.totalPoints / totalPoints : 1
       const payout = pct > 0 ? Math.floor(userBet.points / pct) : userBet.points
       banner.appendChild(makePointIcon(18, cpImage))
       const amt = document.createElement('span')
@@ -477,7 +608,7 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
   } else if (isResolved && !userBet) {
     const banner = document.createElement('div')
     banner.className = 'hs-mc-pred-result hs-mc-pred-result-neutral'
-    const winOutcome = pred.outcomes.find(o => o.id === winningId)
+    const winOutcome = pred.outcomes.find((o) => o.id === winningId)
     banner.textContent = winOutcome ? '\u2713 ' + winOutcome.title : t('mc_pred_ended')
     wrapper.appendChild(banner)
   }
@@ -496,10 +627,11 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
     const isBetOn = userBet?.outcomeId === outcome.id
 
     const card = document.createElement('div')
-    card.className = 'hs-mc-pred-outcome'
-      + (isWinner ? ' hs-mc-pred-outcome-won' : '')
-      + (isLoser ? ' hs-mc-pred-outcome-lost' : '')
-      + (isBetOn ? ' hs-mc-pred-outcome-yours' : '')
+    card.className =
+      'hs-mc-pred-outcome' +
+      (isWinner ? ' hs-mc-pred-outcome-won' : '') +
+      (isLoser ? ' hs-mc-pred-outcome-lost' : '') +
+      (isBetOn ? ' hs-mc-pred-outcome-yours' : '')
     card.style.setProperty('--oc', color)
 
     const head = document.createElement('div')
@@ -507,7 +639,8 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
     const titleSpan = document.createElement('span')
     titleSpan.className = 'hs-mc-pred-outcome-title'
     // Render emotes/emoji in outcome title — sanitized via escapeHtml() + processEmotes() (same as chat messages)
-    titleSpan.innerHTML = typeof processEmotes === 'function' ? processEmotes(escapeHtml(outcome.title), null) : escapeHtml(outcome.title)
+    titleSpan.innerHTML =
+      typeof processEmotes === 'function' ? processEmotes(escapeHtml(outcome.title), null) : escapeHtml(outcome.title)
     if (isWinner) {
       const winBadge = document.createElement('span')
       winBadge.className = 'hs-mc-pred-winner-badge'
@@ -605,8 +738,9 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
   if (isLocked && isMod && userBet) {
     const notice = document.createElement('div')
     notice.className = 'hs-mc-pred-mod-notice'
-    const betOutcome = pred.outcomes.find(o => o.id === userBet.outcomeId)
-    notice.textContent = 'you bet ' + formatPoints(userBet.points) + ' on ' + (betOutcome?.title || '?') + ' \u2014 pick the actual winner'
+    const betOutcome = pred.outcomes.find((o) => o.id === userBet.outcomeId)
+    notice.textContent =
+      'you bet ' + formatPoints(userBet.points) + ' on ' + (betOutcome?.title || '?') + ' \u2014 pick the actual winner'
     wrapper.appendChild(notice)
   }
 
@@ -696,7 +830,7 @@ function renderNoPrediction(balance, channelId, isMod, cpImage, cpName) {
     btn.className = 'hs-mc-pred-create-dur' + (secs === 120 ? ' hs-mc-pred-create-dur-active' : '')
     btn.dataset.secs = secs
     btn.tabIndex = -1
-    btn.textContent = secs < 60 ? secs + 's' : (secs / 60) + 'm'
+    btn.textContent = secs < 60 ? secs + 's' : secs / 60 + 'm'
     durRow.appendChild(btn)
   }
   form.appendChild(durRow)
@@ -823,7 +957,7 @@ function attachRewardHandlers() {
   const container = document.getElementById('hs-mc-tab-twitch')
   if (!container) return
 
-  container.querySelectorAll('.hs-mc-reward-card:not(.hs-mc-reward-unavailable)').forEach(card => {
+  container.querySelectorAll('.hs-mc-reward-card:not(.hs-mc-reward-unavailable)').forEach((card) => {
     card.addEventListener('click', async (e) => {
       e.stopPropagation()
       if (card.querySelector('.hs-mc-reward-input-row')) return
@@ -851,11 +985,21 @@ function attachRewardHandlers() {
           if (!text) return
           btn.disabled = true
           btn.textContent = '...'
-          const result = await redeemChannelReward(card.dataset.channelId, card.dataset.rewardId, parseInt(card.dataset.cost), card.dataset.title, text)
+          const result = await redeemChannelReward(
+            card.dataset.channelId,
+            card.dataset.rewardId,
+            parseInt(card.dataset.cost),
+            card.dataset.title,
+            text,
+          )
           if (result.error) {
             btn.textContent = '!'
             btn.title = result.error
-            setTimeout(() => { btn.textContent = t('mc_reward_redeem'); btn.disabled = false; btn.title = '' }, 2000)
+            setTimeout(() => {
+              btn.textContent = t('mc_reward_redeem')
+              btn.disabled = false
+              btn.title = ''
+            }, 2000)
           } else {
             btn.textContent = '\u2713'
             _rewardsCache = null
@@ -869,11 +1013,20 @@ function attachRewardHandlers() {
       const origText = titleEl.textContent
       titleEl.textContent = '...'
       card.style.pointerEvents = 'none'
-      const result = await redeemChannelReward(card.dataset.channelId, card.dataset.rewardId, parseInt(card.dataset.cost), card.dataset.title)
+      const result = await redeemChannelReward(
+        card.dataset.channelId,
+        card.dataset.rewardId,
+        parseInt(card.dataset.cost),
+        card.dataset.title,
+      )
       if (result.error) {
         titleEl.textContent = '!'
         card.title = result.error
-        setTimeout(() => { titleEl.textContent = origText; card.style.pointerEvents = ''; card.title = '' }, 2000)
+        setTimeout(() => {
+          titleEl.textContent = origText
+          card.style.pointerEvents = ''
+          card.title = ''
+        }, 2000)
       } else {
         titleEl.textContent = '\u2713'
         _rewardsCache = null
@@ -883,10 +1036,13 @@ function attachRewardHandlers() {
   })
 
   // Cooldown timers
-  container.querySelectorAll('.hs-mc-reward-reason[data-cooldown-ends]').forEach(el => {
+  container.querySelectorAll('.hs-mc-reward-reason[data-cooldown-ends]').forEach((el) => {
     const endsAt = parseInt(el.dataset.cooldownEnds)
     const iv = cleanup.setIntervalIfVisible(() => {
-      if (!el.isConnected) { cleanup.clearInterval(iv); return }
+      if (!el.isConnected) {
+        cleanup.clearInterval(iv)
+        return
+      }
       const secs = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
       if (secs <= 0) {
         _rewardsCache = null
@@ -905,7 +1061,7 @@ function optimisticBetUpdate(container, outcomeId, points) {
   const allOutcomeEls = container.querySelectorAll('[data-outcome]')
   const targetCards = new Set()
   const otherCards = new Set()
-  allOutcomeEls.forEach(el => {
+  allOutcomeEls.forEach((el) => {
     const card = el.closest('.hs-mc-pred-outcome')
     if (!card) return
     if (el.dataset.outcome === outcomeId) targetCards.add(card)
@@ -913,7 +1069,7 @@ function optimisticBetUpdate(container, outcomeId, points) {
   })
 
   // Update target outcome stats
-  targetCards.forEach(card => {
+  targetCards.forEach((card) => {
     const statsEl = card.querySelector('.hs-mc-pred-outcome-stats')
     if (!statsEl) return
     const text = statsEl.textContent
@@ -935,7 +1091,7 @@ function optimisticBetUpdate(container, outcomeId, points) {
   })
 
   // Hide bet rows on other outcomes
-  otherCards.forEach(card => {
+  otherCards.forEach((card) => {
     if (targetCards.has(card)) return
     const betRow = card.querySelector('.hs-mc-pred-bet-row')
     if (betRow) betRow.style.display = 'none'
@@ -947,7 +1103,7 @@ function optimisticBetUpdate(container, outcomeId, points) {
   const outcomes = pred.querySelectorAll('.hs-mc-pred-outcome')
   let total = 0
   const ptsArr = []
-  outcomes.forEach(card => {
+  outcomes.forEach((card) => {
     const text = card.querySelector('.hs-mc-pred-outcome-stats')?.textContent || ''
     const m = text.match(/([\d,.]+[KMB]?)\s*pts/i)
     ptsArr.push(m ? parsePoints(m[1]) : 0)
@@ -988,7 +1144,7 @@ function attachPredictionHandlers() {
   }
 
   // Bet button handlers
-  container.querySelectorAll('.hs-mc-pred-bet-btn').forEach(btn => {
+  container.querySelectorAll('.hs-mc-pred-bet-btn').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation()
       const eventId = container.querySelector('.hs-mc-prediction')?.dataset.eventId
@@ -1000,17 +1156,23 @@ function attachPredictionHandlers() {
       if (result.error) {
         btn.textContent = predErrorMsg(result.error)
         btn.title = result.error
-        setTimeout(() => { btn.textContent = formatPoints(betPoints); btn.disabled = false; btn.title = '' }, 4000)
+        setTimeout(() => {
+          btn.textContent = formatPoints(betPoints)
+          btn.disabled = false
+          btn.title = ''
+        }, 4000)
       } else {
         btn.textContent = '\u2713'
-        try { optimisticBetUpdate(container, btn.dataset.outcome, betPoints) } catch {}
+        try {
+          optimisticBetUpdate(container, btn.dataset.outcome, betPoints)
+        } catch {}
         setTimeout(() => refreshPredictionSlot(), 3000)
       }
     })
   })
 
   // Custom bet "go" buttons
-  container.querySelectorAll('.hs-mc-pred-bet-go').forEach(btn => {
+  container.querySelectorAll('.hs-mc-pred-bet-go').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation()
       const eventId = container.querySelector('.hs-mc-prediction')?.dataset.eventId
@@ -1024,7 +1186,11 @@ function attachPredictionHandlers() {
       if (result.error) {
         btn.textContent = predErrorMsg(result.error)
         btn.title = result.error
-        setTimeout(() => { btn.textContent = 'bet'; btn.disabled = false; btn.title = '' }, 3000)
+        setTimeout(() => {
+          btn.textContent = 'bet'
+          btn.disabled = false
+          btn.title = ''
+        }, 3000)
       } else {
         btn.textContent = '\u2713'
         optimisticBetUpdate(container, btn.dataset.outcome, points)
@@ -1035,7 +1201,7 @@ function attachPredictionHandlers() {
   })
 
   // Enter key in custom input triggers bet
-  container.querySelectorAll('.hs-mc-pred-bet-custom').forEach(input => {
+  container.querySelectorAll('.hs-mc-pred-bet-custom').forEach((input) => {
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault()
@@ -1046,24 +1212,32 @@ function attachPredictionHandlers() {
   })
 
   // Mod: lock betting
-  container.querySelectorAll('.hs-mc-pred-lock-btn').forEach(btn => {
+  container.querySelectorAll('.hs-mc-pred-lock-btn').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation()
-      const eventId = btn.closest('.hs-mc-prediction')?.dataset.eventId
-        || container.querySelector('.hs-mc-prediction')?.dataset.eventId
-      if (!eventId) { btn.textContent = 'no event'; return }
+      const eventId =
+        btn.closest('.hs-mc-prediction')?.dataset.eventId ||
+        container.querySelector('.hs-mc-prediction')?.dataset.eventId
+      if (!eventId) {
+        btn.textContent = 'no event'
+        return
+      }
       btn.disabled = true
       btn.textContent = '...'
       const result = await lockPrediction(eventId)
       if (result.error) {
         btn.textContent = predErrorMsg(result.error)
         btn.title = result.error
-        setTimeout(() => { btn.textContent = t('mc_pred_lock_betting'); btn.disabled = false; btn.title = '' }, 3000)
+        setTimeout(() => {
+          btn.textContent = t('mc_pred_lock_betting')
+          btn.disabled = false
+          btn.title = ''
+        }, 3000)
       } else {
         // Hide bet rows + lock button immediately, keep resolve/cancel
         const pred = btn.closest('.hs-mc-prediction') || container.querySelector('.hs-mc-prediction')
         if (pred) {
-          pred.querySelectorAll('.hs-mc-pred-bet-row').forEach(el => el.remove())
+          pred.querySelectorAll('.hs-mc-pred-bet-row').forEach((el) => el.remove())
           pred.querySelector('.hs-mc-pred-lock-btn')?.remove()
         }
         btn.textContent = '\u2713 ' + t('mc_pred_locked')
@@ -1073,26 +1247,41 @@ function attachPredictionHandlers() {
   })
 
   // Mod: resolve (pick winner)
-  container.querySelectorAll('.hs-mc-pred-resolve-btn').forEach(btn => {
+  container.querySelectorAll('.hs-mc-pred-resolve-btn').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation()
-      const eventId = btn.closest('.hs-mc-prediction')?.dataset.eventId
-        || container.querySelector('.hs-mc-prediction')?.dataset.eventId
-      if (!eventId) { btn.textContent = 'no event'; return }
+      const eventId =
+        btn.closest('.hs-mc-prediction')?.dataset.eventId ||
+        container.querySelector('.hs-mc-prediction')?.dataset.eventId
+      if (!eventId) {
+        btn.textContent = 'no event'
+        return
+      }
       const outcomeId = btn.dataset.outcome
-      if (!outcomeId) { btn.textContent = 'no outcome'; return }
+      if (!outcomeId) {
+        btn.textContent = 'no outcome'
+        return
+      }
       btn.disabled = true
       btn.textContent = '...'
       const result = await resolvePrediction(eventId, outcomeId)
       if (result.error) {
         btn.textContent = predErrorMsg(result.error)
         btn.title = result.error
-        setTimeout(() => { btn.textContent = t('mc_pred_pick_winner'); btn.disabled = false; btn.title = '' }, 3000)
+        setTimeout(() => {
+          btn.textContent = t('mc_pred_pick_winner')
+          btn.disabled = false
+          btn.title = ''
+        }, 3000)
       } else {
         // Immediately clean up stale UI
         const pred = btn.closest('.hs-mc-prediction') || container.querySelector('.hs-mc-prediction')
         if (pred) {
-          pred.querySelectorAll('.hs-mc-pred-mod-row, .hs-mc-pred-mod-notice, .hs-mc-pred-bet-row, .hs-mc-pred-resolve-btn').forEach(el => el.remove())
+          pred
+            .querySelectorAll(
+              '.hs-mc-pred-mod-row, .hs-mc-pred-mod-notice, .hs-mc-pred-bet-row, .hs-mc-pred-resolve-btn',
+            )
+            .forEach((el) => el.remove())
           pred.classList.add('hs-mc-pred-resolved')
         }
         btn.textContent = '\u2713 ' + t('mc_pred_ended')
@@ -1102,23 +1291,35 @@ function attachPredictionHandlers() {
   })
 
   // Mod: cancel (refund)
-  container.querySelectorAll('.hs-mc-pred-cancel-btn').forEach(btn => {
+  container.querySelectorAll('.hs-mc-pred-cancel-btn').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation()
-      const eventId = btn.closest('.hs-mc-prediction')?.dataset.eventId
-        || container.querySelector('.hs-mc-prediction')?.dataset.eventId
-      if (!eventId) { btn.textContent = 'no event'; return }
+      const eventId =
+        btn.closest('.hs-mc-prediction')?.dataset.eventId ||
+        container.querySelector('.hs-mc-prediction')?.dataset.eventId
+      if (!eventId) {
+        btn.textContent = 'no event'
+        return
+      }
       btn.disabled = true
       btn.textContent = '...'
       const result = await cancelPrediction(eventId)
       if (result.error) {
         btn.textContent = predErrorMsg(result.error)
         btn.title = result.error
-        setTimeout(() => { btn.textContent = t('mc_pred_cancel_refund'); btn.disabled = false; btn.title = '' }, 3000)
+        setTimeout(() => {
+          btn.textContent = t('mc_pred_cancel_refund')
+          btn.disabled = false
+          btn.title = ''
+        }, 3000)
       } else {
         const pred = btn.closest('.hs-mc-prediction') || container.querySelector('.hs-mc-prediction')
         if (pred) {
-          pred.querySelectorAll('.hs-mc-pred-mod-row, .hs-mc-pred-mod-notice, .hs-mc-pred-bet-row, .hs-mc-pred-resolve-btn').forEach(el => el.remove())
+          pred
+            .querySelectorAll(
+              '.hs-mc-pred-mod-row, .hs-mc-pred-mod-notice, .hs-mc-pred-bet-row, .hs-mc-pred-resolve-btn',
+            )
+            .forEach((el) => el.remove())
           pred.classList.add('hs-mc-pred-canceled')
         }
         btn.textContent = '\u2713 ' + t('mc_pred_refunded')
@@ -1149,7 +1350,7 @@ function attachPredictionHandlers() {
   })
 
   // Create prediction form toggle + submit
-  container.querySelectorAll('.hs-mc-pred-create-toggle').forEach(btn => {
+  container.querySelectorAll('.hs-mc-pred-create-toggle').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation()
       const form = btn.parentElement.querySelector('.hs-mc-pred-create-form')
@@ -1162,26 +1363,39 @@ function attachPredictionHandlers() {
   })
 
   // Duration picker
-  container.querySelectorAll('.hs-mc-pred-create-dur').forEach(btn => {
+  container.querySelectorAll('.hs-mc-pred-create-dur').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation()
-      container.querySelectorAll('.hs-mc-pred-create-dur').forEach(b => b.classList.remove('hs-mc-pred-create-dur-active'))
+      container
+        .querySelectorAll('.hs-mc-pred-create-dur')
+        .forEach((b) => b.classList.remove('hs-mc-pred-create-dur-active'))
       btn.classList.add('hs-mc-pred-create-dur-active')
     })
   })
 
   // Create submit
-  container.querySelectorAll('.hs-mc-pred-create-submit').forEach(btn => {
+  container.querySelectorAll('.hs-mc-pred-create-submit').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation()
       const channelId = container.querySelector('[data-channel-id]')?.dataset.channelId
-      if (!channelId) { btn.textContent = 'no channel'; return }
+      if (!channelId) {
+        btn.textContent = 'no channel'
+        return
+      }
       const form = btn.closest('.hs-mc-pred-create-form')
       const inputs = form.querySelectorAll('.hs-mc-pred-create-input')
       const title = inputs[0]?.value?.trim()
-      const outcomes = [...form.querySelectorAll('.hs-mc-pred-create-outcome')].map(i => i.value.trim()).filter(Boolean)
-      if (!title) { inputs[0].focus(); return }
-      if (outcomes.length < 2) { form.querySelectorAll('.hs-mc-pred-create-outcome')[outcomes.length]?.focus(); return }
+      const outcomes = [...form.querySelectorAll('.hs-mc-pred-create-outcome')]
+        .map((i) => i.value.trim())
+        .filter(Boolean)
+      if (!title) {
+        inputs[0].focus()
+        return
+      }
+      if (outcomes.length < 2) {
+        form.querySelectorAll('.hs-mc-pred-create-outcome')[outcomes.length]?.focus()
+        return
+      }
       const durBtn = form.querySelector('.hs-mc-pred-create-dur-active')
       const secs = parseInt(durBtn?.dataset.secs || '120')
       btn.disabled = true
@@ -1190,7 +1404,11 @@ function attachPredictionHandlers() {
       if (result.error) {
         btn.textContent = '!'
         btn.title = result.error
-        setTimeout(() => { btn.textContent = t('mc_pred_create'); btn.disabled = false; btn.title = '' }, 2000)
+        setTimeout(() => {
+          btn.textContent = t('mc_pred_create')
+          btn.disabled = false
+          btn.title = ''
+        }, 2000)
       } else {
         form.style.display = 'none'
         refreshPredictionSlot()
@@ -1199,7 +1417,7 @@ function attachPredictionHandlers() {
   })
 
   // Create prediction keyboard nav
-  container.querySelectorAll('.hs-mc-pred-create-input').forEach(input => {
+  container.querySelectorAll('.hs-mc-pred-create-input').forEach((input) => {
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Tab') {
         e.preventDefault()
@@ -1218,7 +1436,7 @@ function attachPredictionHandlers() {
   })
 
   // Start countdown timers
-  container.querySelectorAll('.hs-mc-pred-timer').forEach(el => {
+  container.querySelectorAll('.hs-mc-pred-timer').forEach((el) => {
     const endsAt = parseInt(el.dataset.ends)
     const update = () => {
       const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
@@ -1233,7 +1451,10 @@ function attachPredictionHandlers() {
     }
     update()
     const iv = cleanup.setIntervalIfVisible(() => {
-      if (!el.isConnected) { cleanup.clearInterval(iv); return }
+      if (!el.isConnected) {
+        cleanup.clearInterval(iv)
+        return
+      }
       update()
     }, 1000)
   })
@@ -1246,8 +1467,8 @@ let _lastPredResult = null
 let _lastPollData = null
 let _hypeTrainActive = null // { level, startedAt }
 let _bannerFingerprint = '' // avoid rebuilding if nothing changed
-const _seenPredChannels = new Set()        // channels we've fetched at least once
-const _broadcastedPredIds = new Map()      // channel → last broadcast pred id
+const _seenPredChannels = new Set() // channels we've fetched at least once
+const _broadcastedPredIds = new Map() // channel → last broadcast pred id
 
 // Emit a chat line when a new prediction starts. Suppresses on first observation
 // per channel so opening a tab mid-prediction doesn't spam old events.
@@ -1263,31 +1484,40 @@ function maybeBroadcastNewPrediction(channel, pred) {
   if (!wasSeen) return
   if (!pred || pred.status !== 'ACTIVE') return
   try {
-    window.postMessage({
-      type: 'heatsync-hermes-event',
-      eventType: 'prediction-start',
-      channel: ch,
-      data: { title: pred.title || '', id: pred.id }
-    }, location.origin)
+    window.postMessage(
+      {
+        type: 'heatsync-hermes-event',
+        eventType: 'prediction-start',
+        channel: ch,
+        data: { title: pred.title || '', id: pred.id },
+      },
+      location.origin,
+    )
   } catch {}
 }
 
 function clearBannerTimers() {
-  _bannerTimers.forEach(id => cleanup.clearInterval(id))
+  _bannerTimers.forEach((id) => cleanup.clearInterval(id))
   _bannerTimers = []
 }
 
 function _startBannerTimer(el, endsAt) {
   const update = () => {
     const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
-    if (remaining <= 0) { el.textContent = 'closing'; return }
+    if (remaining <= 0) {
+      el.textContent = 'closing'
+      return
+    }
     const m = Math.floor(remaining / 60)
     const s = remaining % 60
     el.textContent = m > 0 ? m + ':' + String(s).padStart(2, '0') : s + 's'
   }
   update()
   const iv = cleanup.setIntervalIfVisible(() => {
-    if (!el.isConnected) { cleanup.clearInterval(iv); return }
+    if (!el.isConnected) {
+      cleanup.clearInterval(iv)
+      return
+    }
     update()
   }, 1000)
   _bannerTimers.push(iv)
@@ -1308,7 +1538,7 @@ function updateChatBanners(predResult, pollData) {
   const fp = [
     hasPred ? pred.id + ':' + pred.status + ':' + (userBet?.points || 0) : '',
     hasPoll ? pollData.id + ':' + pollData.status : '',
-    hasHype ? 'hype:' + _hypeTrainActive.level : ''
+    hasHype ? 'hype:' + _hypeTrainActive.level : '',
   ].join('|')
 
   if (fp === _bannerFingerprint) return
@@ -1344,13 +1574,13 @@ function updateChatBanners(predResult, pollData) {
     const info = document.createElement('span')
     info.className = 'hs-mc-chat-banner-title'
     const totalPts = pred.outcomes.reduce((s, o) => s + (o.totalPoints || 0), 0)
-    const parts = pred.outcomes.map(o => {
+    const parts = pred.outcomes.map((o) => {
       const pct = totalPts > 0 ? Math.round((o.totalPoints / totalPts) * 100) : 0
       return o.title + ' ' + pct + '%'
     })
     let text = pred.title + ' \u00b7 ' + parts.join(' vs ')
     if (userBet) {
-      const betOutcome = pred.outcomes.find(o => o.id === userBet.outcomeId)
+      const betOutcome = pred.outcomes.find((o) => o.id === userBet.outcomeId)
       text += ' \u00b7 bet: ' + formatPoints(userBet.points) + (betOutcome ? ' ' + betOutcome.title : '')
     }
     info.textContent = text
@@ -1385,11 +1615,12 @@ function updateChatBanners(predResult, pollData) {
     const info = document.createElement('span')
     info.className = 'hs-mc-chat-banner-title'
     const totalVotes = pollData.choices?.reduce((s, c) => s + (c.votes?.totalCount || c.totalVotes || 0), 0) || 0
-    const choiceParts = pollData.choices?.slice(0, 4).map(c => {
-      const votes = c.votes?.totalCount || c.totalVotes || 0
-      const pct = totalVotes > 0 ? Math.round((votes / totalVotes) * 100) : 0
-      return c.title + ' ' + pct + '%'
-    }) || []
+    const choiceParts =
+      pollData.choices?.slice(0, 4).map((c) => {
+        const votes = c.votes?.totalCount || c.totalVotes || 0
+        const pct = totalVotes > 0 ? Math.round((votes / totalVotes) * 100) : 0
+        return c.title + ' ' + pct + '%'
+      }) || []
     info.textContent = pollData.title + (choiceParts.length ? ' \u00b7 ' + choiceParts.join(' vs ') : '')
     row.appendChild(info)
 
@@ -1397,7 +1628,9 @@ function updateChatBanners(predResult, pollData) {
     timer.className = 'hs-mc-chat-banner-timer'
     const durMs = (pollData.durationSeconds || 60) * 1000
     const startTime = pollData.startedAt || pollData.createdAt
-    const pollEndTime = startTime ? (new Date(startTime).getTime() + durMs) : (Date.now() + (pollData.remainingDurationMilliseconds || durMs))
+    const pollEndTime = startTime
+      ? new Date(startTime).getTime() + durMs
+      : Date.now() + (pollData.remainingDurationMilliseconds || durMs)
     _startBannerTimer(timer, pollEndTime)
     row.appendChild(timer)
 
@@ -1434,7 +1667,7 @@ function getActiveTwitchChannel() {
   if (currentTab === 'live' || currentTab === 'feed' || currentTab === 'mentions' || currentTab === 'whispers') {
     return getLiveChannel()
   }
-  const ch = config.channels.find(c => c.id === currentTab)
+  const ch = config.channels.find((c) => c.id === currentTab)
   if (!ch) return getLiveChannel()
   return ch.twitch || ch.id
 }
@@ -1448,10 +1681,12 @@ let _hsTwSubtab = 'predictions'
 
 const HS_TW_ICON_BITS_PATHS = [
   'M15 2h2v2h-2V2Zm5 10h2v2h-2v-2Zm0-8v2a1 1 0 0 1-1 1h-2v2h2a3 3 0 0 0 3-3V4h-2Z',
-  'M13 9a1 1 0 0 0-1 1l7 7-14 5-3-3L7 5l3.438 3.438A2.998 2.998 0 0 1 13 7h2v2h-2Zm-5.18-.351-.725 2.03 3.762 7.106 2.572-.92-2.934-5.542L7.82 8.649Zm-2.976 8.334 1.235-3.458 2.67 5.012-2.592.926-1.313-2.48Z'
+  'M13 9a1 1 0 0 0-1 1l7 7-14 5-3-3L7 5l3.438 3.438A2.998 2.998 0 0 1 13 7h2v2h-2Zm-5.18-.351-.725 2.03 3.762 7.106 2.572-.92-2.934-5.542L7.82 8.649Zm-2.976 8.334 1.235-3.458 2.67 5.012-2.592.926-1.313-2.48Z',
 ]
-const HS_TW_ICON_PRED_PATHS  = ['M3 3h2v18H3V3Zm4 10h2v8H7v-8Zm4-6h2v14h-2V7Zm4 9h2v5h-2v-5Zm4-12h2v17h-2V4Z']
-const HS_TW_ICON_CHAT_PATHS  = ['M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z']
+const HS_TW_ICON_PRED_PATHS = ['M3 3h2v18H3V3Zm4 10h2v8H7v-8Zm4-6h2v14h-2V7Zm4 9h2v5h-2v-5Zm4-12h2v17h-2V4Z']
+const HS_TW_ICON_CHAT_PATHS = [
+  'M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z',
+]
 const HS_TW_ICON_LINKS_PATHS = ['M14 3h7v7h-2V6.41l-9.3 9.3-1.4-1.42L17.58 5H14V3Zm-4 3H4v14h14v-6h2v8H2V4h8v2Z']
 
 function hsTwBuildIconSvg(paths, size) {
@@ -1459,7 +1694,7 @@ function hsTwBuildIconSvg(paths, size) {
   const ns = 'http://www.w3.org/2000/svg'
   const svg = document.createElementNS(ns, 'svg')
   svg.setAttribute('viewBox', '0 0 24 24')
-  svg.setAttribute('width',  String(size || 20))
+  svg.setAttribute('width', String(size || 20))
   svg.setAttribute('height', String(size || 20))
   svg.setAttribute('fill', 'currentColor')
   for (const d of arr) {
@@ -1474,10 +1709,10 @@ function buildTwSubtabBar() {
   const bar = document.createElement('div')
   bar.className = 'hs-mc-tw-subtabs'
   const items = [
-    { id: 'predictions', label: 'events',                paths: HS_TW_ICON_PRED_PATHS  },
-    { id: 'bits',        label: 'bits',                  paths: HS_TW_ICON_BITS_PATHS  },
-    { id: 'chat',        label: 'chat tools',            paths: HS_TW_ICON_CHAT_PATHS  },
-    { id: 'links',       label: 'quick links',           paths: HS_TW_ICON_LINKS_PATHS },
+    { id: 'predictions', label: 'events', paths: HS_TW_ICON_PRED_PATHS },
+    { id: 'bits', label: 'bits', paths: HS_TW_ICON_BITS_PATHS },
+    { id: 'chat', label: 'chat tools', paths: HS_TW_ICON_CHAT_PATHS },
+    { id: 'links', label: 'quick links', paths: HS_TW_ICON_LINKS_PATHS },
   ]
   for (const it of items) {
     const btn = document.createElement('button')
@@ -1542,7 +1777,7 @@ async function renderTwitchTab() {
     const modesSlot = document.createElement('div')
     content.appendChild(modesSlot)
     attachColorHandlers()
-    renderChatModes(channel).then(modesEl => {
+    renderChatModes(channel).then((modesEl) => {
       if (modesEl) {
         modesSlot.appendChild(modesEl)
         attachModeHandlers()
@@ -1571,7 +1806,7 @@ async function renderTwitchTab() {
   content.appendChild(rewardsSlot)
 
   const modBefore = _twitchIsMod
-  fetchPrediction(channel).then(result => {
+  fetchPrediction(channel).then((result) => {
     _lastPredResult = result
     maybeBroadcastNewPrediction(channel, result?.prediction)
     updateChatBanners(_lastPredResult, _lastPollData)
@@ -1586,15 +1821,26 @@ async function renderTwitchTab() {
       empty.appendChild(msg)
       predSlot.appendChild(empty)
     } else if (result.prediction) {
-      predSlot.appendChild(renderPrediction(result.prediction, result.balance, result.channelId, result.isMod, result.cpImage, result.cpName))
+      predSlot.appendChild(
+        renderPrediction(
+          result.prediction,
+          result.balance,
+          result.channelId,
+          result.isMod,
+          result.cpImage,
+          result.cpName,
+        ),
+      )
     } else {
-      predSlot.appendChild(renderNoPrediction(result.balance, result.channelId, result.isMod, result.cpImage, result.cpName))
+      predSlot.appendChild(
+        renderNoPrediction(result.balance, result.channelId, result.isMod, result.cpImage, result.cpName),
+      )
     }
     attachPredictionHandlers()
     if (_twitchIsMod && !modBefore) refreshPollSlot()
   })
 
-  fetchPoll(channel).then(pollResult => {
+  fetchPoll(channel).then((pollResult) => {
     _lastPollData = pollResult?.poll || pollResult
     updateChatBanners(_lastPredResult, _lastPollData)
     if (pollResult?.poll) {
@@ -1606,7 +1852,7 @@ async function renderTwitchTab() {
     }
   })
 
-  fetchChannelRewards(channel).then(rewardsResult => {
+  fetchChannelRewards(channel).then((rewardsResult) => {
     if (rewardsResult?.availableClaim && rewardsResult.channelId) {
       claimCommunityPoints(rewardsResult.availableClaim, rewardsResult.channelId, channel)
     }
@@ -1665,7 +1911,9 @@ function renderBitsSubtab(parent, channel) {
     // - we can't make the bits-button visible without ripping heatsync's UI
     // - a separate window has its OWN twitch chat surface with its OWN bits UI
     // - no fiber invocation, no DOM hacking, no CSS overrides, no anti-bot fights
-    const safe = String(channel || '').toLowerCase().replace(/[^a-z0-9_]/g, '')
+    const safe = String(channel || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9_]/g, '')
     if (!safe) {
       showToast('invalid channel', 'error')
       return
@@ -1717,9 +1965,10 @@ async function refreshPredictionSlot() {
   let slot = container.querySelector('[data-pred-slot]')
   if (!slot) {
     // Fallback: find by class
-    slot = container.querySelector('.hs-mc-prediction')
-      || container.querySelector('.hs-mc-pred-empty')
-      || container.querySelector('.hs-mc-pred-loading')
+    slot =
+      container.querySelector('.hs-mc-prediction') ||
+      container.querySelector('.hs-mc-pred-empty') ||
+      container.querySelector('.hs-mc-pred-loading')
   }
   if (!slot) return
 
@@ -1732,9 +1981,20 @@ async function refreshPredictionSlot() {
     msg.textContent = t('mc_pred_load_failed')
     newSlot.appendChild(msg)
   } else if (result.prediction) {
-    newSlot.appendChild(renderPrediction(result.prediction, result.balance, result.channelId, result.isMod, result.cpImage, result.cpName))
+    newSlot.appendChild(
+      renderPrediction(
+        result.prediction,
+        result.balance,
+        result.channelId,
+        result.isMod,
+        result.cpImage,
+        result.cpName,
+      ),
+    )
   } else {
-    newSlot.appendChild(renderNoPrediction(result.balance, result.channelId, result.isMod, result.cpImage, result.cpName))
+    newSlot.appendChild(
+      renderNoPrediction(result.balance, result.channelId, result.isMod, result.cpImage, result.cpName),
+    )
   }
   slot.replaceWith(newSlot)
   attachPredictionHandlers()
@@ -1755,8 +2015,7 @@ async function refreshPollSlot() {
 
   let slot = container.querySelector('[data-poll-slot]')
   if (!slot) {
-    slot = container.querySelector('.hs-mc-poll')
-      || container.querySelector('.hs-mc-poll-empty')
+    slot = container.querySelector('.hs-mc-poll') || container.querySelector('.hs-mc-poll-empty')
   }
   if (!slot) return
 
@@ -1785,11 +2044,11 @@ function stopPredictionPoll() {
 // should render as the tier-appropriate cheermote + colored bits amount.
 const HS_CHEER_TIERS = [
   { min: 100000, tier: 100000, color: '#f43021' },
-  { min: 10000,  tier: 10000,  color: '#fa0d72' },
-  { min: 5000,   tier: 5000,   color: '#0099fe' },
-  { min: 1000,   tier: 1000,   color: '#1db2a5' },
-  { min: 100,    tier: 100,    color: '#9c3ee8' },
-  { min: 1,      tier: 1,      color: '#979797' },
+  { min: 10000, tier: 10000, color: '#fa0d72' },
+  { min: 5000, tier: 5000, color: '#0099fe' },
+  { min: 1000, tier: 1000, color: '#1db2a5' },
+  { min: 100, tier: 100, color: '#9c3ee8' },
+  { min: 1, tier: 1, color: '#979797' },
 ]
 function hsCheerTier(amount) {
   for (const t of HS_CHEER_TIERS) if (amount >= t.min) return t
@@ -1811,13 +2070,14 @@ function renderCheermotesInText(html, totalBits) {
     if (!amount || amount < 1) return match
     const t = hsCheerTier(amount)
     const url = `https://d3aqoihi2n8ty8.cloudfront.net/actions/cheer/dark/animated/${t.tier}/2.gif`
-    return `<img class="hs-mc-cheermote" src="${url}" alt="cheer${amount}" title="${amount} bits" loading="lazy">` +
-           `<span class="hs-mc-cheer-amt" style="color:${t.color}">${amount}</span>`
+    return (
+      `<img class="hs-mc-cheermote" src="${url}" alt="cheer${amount}" title="${amount} bits" loading="lazy">` +
+      `<span class="hs-mc-cheer-amt" style="color:${t.color}">${amount}</span>`
+    )
   })
 }
 
 let _hsCheerPanelEl = null
-
 
 function hsReadNativeBitsBalance() {
   const native = document.querySelector('[aria-label="Bits and Points Balances"]')
@@ -1833,10 +2093,9 @@ function closeCheerPanel() {
   }
 }
 
-
 function triggerTwitchFeature(action) {
-  const channel = getActiveTwitchChannel() || getCurrentChannel();
-  if (!channel) return false;
+  const channel = getActiveTwitchChannel() || getCurrentChannel()
+  if (!channel) return false
 
   // Subscribe — opens twitch's real subscription product page in a popup window.
   // The actual subscribe modal can't be opened programmatically (browsers block
@@ -1851,7 +2110,10 @@ function triggerTwitchFeature(action) {
     // Create clip via Helix API
     ;(async () => {
       const userResp = await helixRequest(`https://api.twitch.tv/helix/users?login=${encodeURIComponent(channel)}`)
-      if (!userResp.ok || !userResp.data?.data?.[0]) { showToast('could not resolve channel', 'error'); return }
+      if (!userResp.ok || !userResp.data?.data?.[0]) {
+        showToast('could not resolve channel', 'error')
+        return
+      }
       const broadcasterId = userResp.data.data[0].id
       const resp = await helixRequest(`https://api.twitch.tv/helix/clips?broadcaster_id=${broadcasterId}`, 'POST')
       if (resp.ok && resp.data?.data?.[0]) {
@@ -1859,7 +2121,9 @@ function triggerTwitchFeature(action) {
         const clipId = resp.data.data[0].id
         showToast('clip created ' + clipId, 'success')
         // Copy clip URL to clipboard
-        try { await navigator.clipboard.writeText(editUrl || `https://clips.twitch.tv/${clipId}`) } catch {}
+        try {
+          await navigator.clipboard.writeText(editUrl || `https://clips.twitch.tv/${clipId}`)
+        } catch {}
       } else {
         showToast('clip failed: ' + (resp.error || 'stream must be live'), 'error')
       }
@@ -1869,14 +2133,14 @@ function triggerTwitchFeature(action) {
 
   const actions = {
     popout: { url: `https://www.twitch.tv/popout/${channel}/chat?popout=`, opts: 'width=400,height=600' },
-    mod:    { url: `https://www.twitch.tv/moderator/${channel}`, opts: 'width=1200,height=800' },
-  };
+    mod: { url: `https://www.twitch.tv/moderator/${channel}`, opts: 'width=1200,height=800' },
+  }
 
-  const cfg = actions[action];
-  if (!cfg) return false;
+  const cfg = actions[action]
+  if (!cfg) return false
 
-  window.open(cfg.url, '_blank', cfg.opts || '');
-  return true;
+  window.open(cfg.url, '_blank', cfg.opts || '')
+  return true
 }
 
 // Fetch + render chat status (modes + stream info) for `channel`. Used by
@@ -1892,11 +2156,13 @@ async function buildChatStatusPanel(channel) {
 
   const [roomstateResp, gqlResp] = await Promise.all([
     safeSendMessage({ type: 'get_roomstate', channel: ch }).catch(() => null),
-    twitchGql(`{ user(login:"${ch}") { id displayName stream { id type viewersCount createdAt game { name } } broadcastSettings { title language } } }`).catch(() => null),
+    twitchGql(
+      `{ user(login:"${ch}") { id displayName stream { id type viewersCount createdAt game { name } } broadcastSettings { title language } } }`,
+    ).catch(() => null),
   ])
 
   const rs = roomstateResp?.ok ? roomstateResp.state : null
-  const u  = gqlResp?.data?.user || null
+  const u = gqlResp?.data?.user || null
   const stream = u?.stream || null
   const bs = u?.broadcastSettings || null
   if (!rs && !u) return null
@@ -1914,7 +2180,8 @@ async function buildChatStatusPanel(channel) {
   if (stream && stream.type === 'live') {
     const started = new Date(stream.createdAt).getTime()
     const mins = Math.max(0, Math.floor((Date.now() - started) / 60000))
-    const h = Math.floor(mins / 60), m = mins % 60
+    const h = Math.floor(mins / 60),
+      m = mins % 60
     const uptime = h ? `${h}h ${m}m` : `${m}m`
     const viewers = (stream.viewersCount || 0).toLocaleString('en-US')
     sub.textContent = `LIVE · ${uptime} · ${viewers} viewers`
@@ -1955,11 +2222,11 @@ async function buildChatStatusPanel(channel) {
     const followerDetail = followerOn && rs.followersOnly > 0 ? `${rs.followersOnly} min` : null
     const slowOn = rs.slow != null && rs.slow > 0
     const modes = [
-      ['emote-only',    rs.emoteOnly === true],
+      ['emote-only', rs.emoteOnly === true],
       ['follower-mode', followerOn, followerDetail],
-      ['sub-mode',      rs.subsOnly === true],
-      ['slow-mode',     slowOn, slowOn ? `${rs.slow}s` : null],
-      ['unique-chat',   rs.r9k === true],
+      ['sub-mode', rs.subsOnly === true],
+      ['slow-mode', slowOn, slowOn ? `${rs.slow}s` : null],
+      ['unique-chat', rs.r9k === true],
     ]
     for (const [label, on, detail] of modes) {
       const row = document.createElement('div')
@@ -1994,7 +2261,9 @@ function getOwnTwitchLogin() {
     const obj = JSON.parse(raw)
     const login = (obj?.login || obj?.userName || '').toString().toLowerCase()
     return login || null
-  } catch { return null }
+  } catch {
+    return null
+  }
 }
 
 // Twitch IRC badge rendering
@@ -2035,11 +2304,19 @@ function findNearestChannelBadgeVersion(channel, name, version) {
   if (!Number.isFinite(v)) return null
   // Subscriber versions encode tier in the thousands digit (2xxx = T2, 3xxx = T3).
   // Stay within the same tier when picking the nearest lower version.
-  let tierMin = -Infinity, tierMax = Infinity
+  let tierMin = -Infinity,
+    tierMax = Infinity
   if (name === 'subscriber') {
-    if (v >= 3000) { tierMin = 3000; tierMax = 3999 }
-    else if (v >= 2000) { tierMin = 2000; tierMax = 2999 }
-    else { tierMin = 0; tierMax = 1999 }
+    if (v >= 3000) {
+      tierMin = 3000
+      tierMax = 3999
+    } else if (v >= 2000) {
+      tierMin = 2000
+      tierMax = 2999
+    } else {
+      tierMin = 0
+      tierMax = 1999
+    }
   }
   let best = -1
   for (const vv of versions) {
@@ -2061,34 +2338,38 @@ const TWITCH_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko'
 const _gqlDataCache = {} // operationName → { data, ts }
 
 // Listen for passively intercepted GQL data from MAIN world
-window.addEventListener('message', (e) => {
-  // Same-origin frames (Twitch embeds) could otherwise poison the cache —
-  // restrict to the top window (where early-inject-main.js runs).
-  if (e.source !== window || e.origin !== location.origin) return
-  if (e.data?.type === 'heatsync-gql-data') {
-    const { operation, data, errors } = e.data
-    if (data && !errors?.length) {
-      _gqlDataCache[operation] = { data, ts: Date.now() }
-      if (Object.keys(_gqlDataCache).length > 50) {
-        const oldest = Object.entries(_gqlDataCache).reduce((a, b) => a[1].ts < b[1].ts ? a : b)[0]
-        delete _gqlDataCache[oldest]
-      }
-      // Auto-refresh individual slots when relevant GQL data arrives
-      const container = document.getElementById('hs-mc-tab-twitch')
-      if (container && container.style.display !== 'none') {
-        const pollOps = ['ActivePoll', 'CreatePoll', 'ChannelPollContext']
-        const predOps = ['ChannelPointsPredictionContext', 'MakePrediction']
-        if (pollOps.includes(operation)) {
-          refreshPollSlot()
-        } else if (predOps.includes(operation)) {
-          refreshPredictionSlot()
-        } else {
-          renderTwitchTab()
+window.addEventListener(
+  'message',
+  (e) => {
+    // Same-origin frames (Twitch embeds) could otherwise poison the cache —
+    // restrict to the top window (where early-inject-main.js runs).
+    if (e.source !== window || e.origin !== location.origin) return
+    if (e.data?.type === 'heatsync-gql-data') {
+      const { operation, data, errors } = e.data
+      if (data && !errors?.length) {
+        _gqlDataCache[operation] = { data, ts: Date.now() }
+        if (Object.keys(_gqlDataCache).length > 50) {
+          const oldest = Object.entries(_gqlDataCache).reduce((a, b) => (a[1].ts < b[1].ts ? a : b))[0]
+          delete _gqlDataCache[oldest]
+        }
+        // Auto-refresh individual slots when relevant GQL data arrives
+        const container = document.getElementById('hs-mc-tab-twitch')
+        if (container && container.style.display !== 'none') {
+          const pollOps = ['ActivePoll', 'CreatePoll', 'ChannelPollContext']
+          const predOps = ['ChannelPointsPredictionContext', 'MakePrediction']
+          if (pollOps.includes(operation)) {
+            refreshPollSlot()
+          } else if (predOps.includes(operation)) {
+            refreshPredictionSlot()
+          } else {
+            renderTwitchTab()
+          }
         }
       }
     }
-  }
-}, { signal: mcSignal })
+  },
+  { signal: mcSignal },
+)
 
 // Send Helix API request through MAIN world (uses captured OAuth token)
 // URL can contain {me} which resolves to the logged-in user's ID
@@ -2106,7 +2387,13 @@ function helixRequest(url, method, body) {
       }
     }
     window.addEventListener('message', handler, { signal })
-    const msg = { type: 'heatsync-helix', id, url, method: method || 'GET', nonce: window.HS?.getMainWorldNonce?.() || null }
+    const msg = {
+      type: 'heatsync-helix',
+      id,
+      url,
+      method: method || 'GET',
+      nonce: window.HS?.getMainWorldNonce?.() || null,
+    }
     if (body) msg.body = body
     window.postMessage(msg, location.origin)
     const timer = setTimeout(() => {
@@ -2132,7 +2419,13 @@ function gqlProxy(operation, variables, opts) {
       }
     }
     window.addEventListener('message', handler, { signal })
-    const msg = { type: 'heatsync-gql-request', id, operation, variables, nonce: window.HS?.getMainWorldNonce?.() || null }
+    const msg = {
+      type: 'heatsync-gql-request',
+      id,
+      operation,
+      variables,
+      nonce: window.HS?.getMainWorldNonce?.() || null,
+    }
     if (opts?.rawQuery) msg.rawQuery = opts.rawQuery
     if (opts?.batch) msg.batch = opts.batch
     window.postMessage(msg, location.origin)
@@ -2153,7 +2446,10 @@ async function fetchGlobalBadges() {
     // broadcaster/premium badges as text-only "MOD" / "VIP" / "LIVE" chips.
     const data = await twitchGql('{ badges { imageURL(size: NORMAL) setID version } }')
     const badges = data?.data?.badges
-    if (!badges) { globalBadgesFetched = false; return }
+    if (!badges) {
+      globalBadgesFetched = false
+      return
+    }
     for (const b of badges) {
       twitchBadgeUrls.set(`${b.setID}/${b.version}`, b.imageURL)
     }
@@ -2171,7 +2467,7 @@ async function fetchGlobalBadges() {
 // Prediction state
 let _predictionPollTimer = null
 let _predictionChannel = null
-let _twitchIsMod = false  // cached from fetchPrediction (most reliable isMod source)
+let _twitchIsMod = false // cached from fetchPrediction (most reliable isMod source)
 let _twitchChannelId = null
 const _userBets = new Map() // eventId → { outcomeId, points } (capped at 50)
 
@@ -2183,7 +2479,8 @@ let _rewardsCacheChannel = null
 let _predResultCache = null // { result, channel, ts }
 const PRED_CACHE_TTL = 5000 // 5s — fresh enough to feel instant, short enough to stay current
 
-const PRED_FIELDS = 'id title status createdAt endedAt predictionWindowSeconds winningOutcome { id } outcomes { id title totalPoints totalUsers color } self { prediction { outcome { id } points } }'
+const PRED_FIELDS =
+  'id title status createdAt endedAt predictionWindowSeconds winningOutcome { id } outcomes { id title totalPoints totalUsers color } self { prediction { outcome { id } points } }'
 
 // True when this content script is running on a twitch.tv page (cookies +
 // MAIN-world Apollo client + integrity are all directly available).
@@ -2210,8 +2507,10 @@ async function twitchGql(query, variables) {
     if (token) hdrs['Authorization'] = 'OAuth ' + token
     const body = variables ? { query, variables } : { query }
     const resp = await fetch('https://gql.twitch.tv/gql', {
-      method: 'POST', headers: hdrs, body: JSON.stringify(body),
-      signal: AbortSignal.timeout(8000)
+      method: 'POST',
+      headers: hdrs,
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(8000),
     })
     if (!resp.ok) throw new Error('GQL ' + resp.status)
     return resp.json()
@@ -2247,7 +2546,19 @@ async function fetchPrediction(channelLogin) {
 
     // Single combined GQL query — predictions + balance + channel points settings
     try {
-      const data = await twitchGql('{ user(login: "' + safe + '") { id self { isModerator } channel { activePredictionEvents { ' + PRED_FIELDS + ' } lockedPredictionEvents { ' + PRED_FIELDS + ' } resolvedPredictionEvents(first: 1) { edges { node { ' + PRED_FIELDS + ' } } } } } currentUser { id } channel(name: "' + safe + '") { communityPointsSettings { image { url url2x } name } self { communityPoints { balance } } } }')
+      const data = await twitchGql(
+        '{ user(login: "' +
+          safe +
+          '") { id self { isModerator } channel { activePredictionEvents { ' +
+          PRED_FIELDS +
+          ' } lockedPredictionEvents { ' +
+          PRED_FIELDS +
+          ' } resolvedPredictionEvents(first: 1) { edges { node { ' +
+          PRED_FIELDS +
+          ' } } } } } currentUser { id } channel(name: "' +
+          safe +
+          '") { communityPointsSettings { image { url url2x } name } self { communityPoints { balance } } } }',
+      )
       const ch = data?.data?.user?.channel
       const userId = data?.data?.user?.id
       const currentUserId = data?.data?.currentUser?.id
@@ -2260,7 +2571,7 @@ async function fetchPrediction(channelLogin) {
       const resolved = ch?.resolvedPredictionEvents?.edges?.[0]?.node
 
       if (Array.isArray(active) && active.length) {
-        predEvent = active.find(e => e.status === 'ACTIVE') || active[0]
+        predEvent = active.find((e) => e.status === 'ACTIVE') || active[0]
       } else if (Array.isArray(locked) && locked.length) {
         predEvent = locked[0]
       } else if (resolved) {
@@ -2292,7 +2603,7 @@ async function fetchPrediction(channelLogin) {
     if (balance === null) {
       try {
         const data = await gqlProxy('CommunityPointsContext', { channelLogin: safe })
-        const d = Array.isArray(data) ? data[0]?.data : (data?.data || data)
+        const d = Array.isArray(data) ? data[0]?.data : data?.data || data
         balance = d?.community?.channel?.self?.communityPoints?.balance ?? null
       } catch {}
     }
@@ -2322,39 +2633,52 @@ async function predictionMutation(searchTerm, resultField, rawQuery, variables) 
     const err = data?.data?.[resultField]?.error
     if (err) return { error: err.code || resultField + ' failed' }
     return { ok: true }
-  } catch (e) { return { error: apolloResult.error || e.message } }
+  } catch (e) {
+    return { error: apolloResult.error || e.message }
+  }
 }
 
 async function lockPrediction(eventId) {
   return predictionMutation(
-    'LockPredictionEvent', 'lockPredictionEvent',
+    'LockPredictionEvent',
+    'lockPredictionEvent',
     'mutation($input: LockPredictionEventInput!) { lockPredictionEvent(input: $input) { error { code } } }',
-    { input: { id: eventId } }
+    { input: { id: eventId } },
   )
 }
 
 async function resolvePrediction(eventId, outcomeId) {
   return predictionMutation(
-    'ResolvePredictionEvent', 'resolvePredictionEvent',
+    'ResolvePredictionEvent',
+    'resolvePredictionEvent',
     'mutation($input: ResolvePredictionEventInput!) { resolvePredictionEvent(input: $input) { error { code } } }',
-    { input: { eventID: eventId, outcomeID: outcomeId } }
+    { input: { eventID: eventId, outcomeID: outcomeId } },
   )
 }
 
 async function cancelPrediction(eventId) {
   return predictionMutation(
-    'CancelPredictionEvent', 'cancelPredictionEvent',
+    'CancelPredictionEvent',
+    'cancelPredictionEvent',
     'mutation($input: CancelPredictionEventInput!) { cancelPredictionEvent(input: $input) { error { code } } }',
-    { input: { id: eventId } }
+    { input: { id: eventId } },
   )
 }
 
 async function createPrediction(channelId, title, windowSeconds, outcomes) {
   const colors = ['BLUE', 'PINK', 'ORANGE', 'GREEN', 'TEAL', 'PURPLE', 'YELLOW', 'LIGHT_BLUE', 'RED', 'BROWN']
   return predictionMutation(
-    'CreatePredictionEvent', 'createPredictionEvent',
+    'CreatePredictionEvent',
+    'createPredictionEvent',
     'mutation($input: CreatePredictionEventInput!) { createPredictionEvent(input: $input) { error { code } } }',
-    { input: { channelID: channelId, title, predictionWindowSeconds: windowSeconds, outcomes: outcomes.map((t, i) => ({ title: t, color: colors[i] || colors[0] })) } }
+    {
+      input: {
+        channelID: channelId,
+        title,
+        predictionWindowSeconds: windowSeconds,
+        outcomes: outcomes.map((t, i) => ({ title: t, color: colors[i] || colors[0] })),
+      },
+    },
   )
 }
 
@@ -2381,8 +2705,12 @@ function apolloMutate({ searchTerm, variables, resultField, rawQuery }) {
     // gate rejects any message that has the rawQuery field set, even if empty
     // string. Apollo path loads Document from webpack so rawQuery is optional.
     const msg = {
-      type: 'heatsync-apollo-mutate', id, searchTerm, variables,
-      resultField, nonce: window.HS?.getMainWorldNonce?.() || null
+      type: 'heatsync-apollo-mutate',
+      id,
+      searchTerm,
+      variables,
+      resultField,
+      nonce: window.HS?.getMainWorldNonce?.() || null,
     }
     if (rawQuery) msg.rawQuery = rawQuery
     window.postMessage(msg, location.origin)
@@ -2398,7 +2726,8 @@ async function acceptPredictionTerms() {
     searchTerm: 'AcceptPredictionTerms',
     variables: { input: { hasAcceptedTOS: true } },
     resultField: 'updateUserPredictionSettings',
-    rawQuery: 'mutation($input: UpdateUserPredictionSettingsInput!) { updateUserPredictionSettings(input: $input) { error { code } settings { hasAcceptedTOS } } }'
+    rawQuery:
+      'mutation($input: UpdateUserPredictionSettingsInput!) { updateUserPredictionSettings(input: $input) { error { code } settings { hasAcceptedTOS } } }',
   })
   return !!result.ok
 }
@@ -2412,7 +2741,7 @@ const TWITCH_HASHES = {
   // Follow / unfollow — needed for cross-platform follow propagation. Twitch
   // killed the public follow REST API in Aug 2023, so this is the only path.
   FollowButton_FollowUser: '800e7346bdf7e5278a3c1d3f21b2b56e2639928f86815677a7126b093b2fdd08',
-  FollowButton_UnfollowUser: 'f7dae976ebf41c755ae2d758546bfd176b4eeb856656098bb40e0a672ca0d880'
+  FollowButton_UnfollowUser: 'f7dae976ebf41c755ae2d758546bfd176b4eeb856656098bb40e0a672ca0d880',
 }
 
 // Route mutation through MAIN world proxy (has integrity token) with direct fetch fallback
@@ -2429,19 +2758,30 @@ async function gqlMutation(query, variables) {
 // Use persisted query hash for MakePrediction — raw queries are dead for mutations
 async function gqlPersistedMutation(operationName, variables) {
   const hash = TWITCH_HASHES[operationName]
-  if (!hash) return gqlMutation('mutation ' + operationName + '($input: ' + operationName + 'Input!) { ' + operationName.replace(/^[A-Z]/, c => c.toLowerCase()) + '(input: $input) { error { code } } }', variables)
+  if (!hash)
+    return gqlMutation(
+      'mutation ' +
+        operationName +
+        '($input: ' +
+        operationName +
+        'Input!) { ' +
+        operationName.replace(/^[A-Z]/, (c) => c.toLowerCase()) +
+        '(input: $input) { error { code } } }',
+      variables,
+    )
   const token = getTwitchAuthToken()
   const hdrs = { 'Content-Type': 'application/json', 'Client-Id': 'kimne78kx3ncx6brgo4mv6wki5h1ko' }
   if (token) hdrs['Authorization'] = 'OAuth ' + token
   try {
     const resp = await fetch('https://gql.twitch.tv/gql', {
-      method: 'POST', headers: hdrs,
+      method: 'POST',
+      headers: hdrs,
       body: JSON.stringify({
         operationName,
         variables,
-        extensions: { persistedQuery: { version: 1, sha256Hash: hash } }
+        extensions: { persistedQuery: { version: 1, sha256Hash: hash } },
       }),
-      signal: AbortSignal.timeout(8000)
+      signal: AbortSignal.timeout(8000),
     })
     if (!resp.ok) throw new Error('GQL ' + resp.status)
     return resp.json()
@@ -2475,7 +2815,7 @@ async function placePredictionBet(eventId, outcomeId, points, transactionId) {
     if (isTosError(data)) {
       await acceptPredictionTerms()
       for (let attempt = 0; attempt < 3; attempt++) {
-        await new Promise(r => setTimeout(r, 500 * (attempt + 1)))
+        await new Promise((r) => setTimeout(r, 500 * (attempt + 1)))
         data = await tryBet()
         if (!isTosError(data)) break
       }
@@ -2514,7 +2854,7 @@ async function fetchChannelRewards(channelLogin) {
         headers: {
           'Client-Id': TWITCH_CLIENT_ID,
           'Content-Type': 'application/json',
-          'Authorization': `OAuth ${token}`
+          Authorization: `OAuth ${token}`,
         },
         signal: AbortSignal.timeout(5000),
         body: JSON.stringify({
@@ -2537,8 +2877,8 @@ async function fetchChannelRewards(channelLogin) {
                 }
               }
             }
-          }`
-        })
+          }`,
+        }),
       })
       if (resp.ok) {
         const raw = await resp.json()
@@ -2547,7 +2887,7 @@ async function fetchChannelRewards(channelLogin) {
     }
     if (!user) return null
     const settings = user.communityPointsSettings || user.communityPointsSetting || {}
-    const rewards = (settings.customRewards || []).filter(r => r.isEnabled)
+    const rewards = (settings.customRewards || []).filter((r) => r.isEnabled)
     const self = user.self || {}
     const cp = self.communityPoints || {}
     const balance = cp.balance ?? null
@@ -2570,7 +2910,7 @@ async function redeemChannelReward(channelId, rewardId, cost, title, textInput) 
       rewardID: rewardId,
       cost,
       title,
-      transactionID: crypto.randomUUID()
+      transactionID: crypto.randomUUID(),
     }
     if (textInput) input.textInput = textInput
     // Try proxy first (uses captured hash + integrity)
@@ -2581,14 +2921,14 @@ async function redeemChannelReward(channelId, rewardId, cost, title, textInput) 
       const err = d?.data?.redeemCommunityPointsCustomReward?.error
       if (err) return { error: err.code || 'redemption failed' }
       return { ok: true }
-    } catch(proxyErr) {
+    } catch (proxyErr) {
       // Fallback to raw GQL mutation
       const resp = await fetch(TWITCH_GQL, {
         method: 'POST',
         headers: {
           'Client-Id': TWITCH_CLIENT_ID,
           'Content-Type': 'application/json',
-          'Authorization': `OAuth ${token}`
+          Authorization: `OAuth ${token}`,
         },
         body: JSON.stringify({
           query: `mutation($input: RedeemCommunityPointsCustomRewardInput!) {
@@ -2597,8 +2937,8 @@ async function redeemChannelReward(channelId, rewardId, cost, title, textInput) 
               error { code }
             }
           }`,
-          variables: { input }
-        })
+          variables: { input },
+        }),
       })
       if (!resp.ok) return { error: `HTTP ${resp.status}` }
       const data = await resp.json()
@@ -2618,7 +2958,7 @@ async function claimCommunityPoints(claimId, channelId, channelLogin) {
   let claimed = false
   try {
     await gqlProxy('ClaimCommunityPoints', {
-      input: { claimID: claimId, channelID: channelId }
+      input: { claimID: claimId, channelID: channelId },
     }).catch(async () => {
       // Fallback to raw GQL
       const resp = await fetch(TWITCH_GQL, {
@@ -2626,15 +2966,15 @@ async function claimCommunityPoints(claimId, channelId, channelLogin) {
         headers: {
           'Client-Id': TWITCH_CLIENT_ID,
           'Content-Type': 'application/json',
-          'Authorization': `OAuth ${token}`
+          Authorization: `OAuth ${token}`,
         },
         body: JSON.stringify({
           query: `mutation($input: ClaimCommunityPointsInput!) {
             claimCommunityPoints(input: $input) { claim { id } }
           }`,
-          variables: { input: { claimID: claimId, channelID: channelId } }
+          variables: { input: { claimID: claimId, channelID: channelId } },
         }),
-        signal: AbortSignal.timeout(8000)
+        signal: AbortSignal.timeout(8000),
       })
       if (!resp.ok) throw new Error('HTTP ' + resp.status)
     })
@@ -2660,7 +3000,9 @@ function _savePollToStorage(poll, channelId) {
   } catch {}
 }
 function _clearPollFromStorage() {
-  try { chrome.storage.local.remove('hs_active_poll') } catch {}
+  try {
+    chrome.storage.local.remove('hs_active_poll')
+  } catch {}
 }
 
 // Recompute remainingDurationMilliseconds from startedAt + durationSeconds
@@ -2722,27 +3064,27 @@ async function votePoll(pollId, choiceId) {
     // Try proxy first
     try {
       const data = await gqlProxy('VotePoll', {
-        input: { pollID: pollId, choiceID: choiceId }
+        input: { pollID: pollId, choiceID: choiceId },
       })
       const d = Array.isArray(data) ? data[0] : data
       if (d?.errors?.length) return { error: d.errors[0].message }
       const err = d?.data?.votePoll?.error
       if (err) return { error: err.code || 'vote failed' }
       return { ok: true }
-    } catch(proxyErr) {
+    } catch (proxyErr) {
       // Fallback to raw GQL
       const resp = await fetch(TWITCH_GQL, {
         method: 'POST',
         headers: {
           'Client-Id': TWITCH_CLIENT_ID,
           'Content-Type': 'application/json',
-          'Authorization': 'OAuth ' + token
+          Authorization: 'OAuth ' + token,
         },
         body: JSON.stringify({
           query: 'mutation($input: VotePollInput!) { votePoll(input: $input) { error { code } } }',
-          variables: { input: { pollID: pollId, choiceID: choiceId } }
+          variables: { input: { pollID: pollId, choiceID: choiceId } },
         }),
-        signal: AbortSignal.timeout(8000)
+        signal: AbortSignal.timeout(8000),
       })
       if (!resp.ok) return { error: 'HTTP ' + resp.status }
       const data = await resp.json()
@@ -2756,11 +3098,15 @@ async function votePoll(pollId, choiceId) {
   }
 }
 
-const POLL_FIELDS = 'id title status durationSeconds remainingDurationMilliseconds startedAt choices { id title totalVoters } totalVoters'
+const POLL_FIELDS =
+  'id title status durationSeconds remainingDurationMilliseconds startedAt choices { id title totalVoters } totalVoters'
 
 async function createTwitchPoll(channelId, title, durationSeconds, choices) {
-  const rawQuery = 'mutation($input: CreatePollInput!) { createPoll(input: $input) { poll { ' + POLL_FIELDS + ' } error { code } } }'
-  const variables = { input: { ownedBy: channelId, title, choices: choices.map(t => ({ title: t })), durationSeconds } }
+  const rawQuery =
+    'mutation($input: CreatePollInput!) { createPoll(input: $input) { poll { ' + POLL_FIELDS + ' } error { code } } }'
+  const variables = {
+    input: { ownedBy: channelId, title, choices: choices.map((t) => ({ title: t })), durationSeconds },
+  }
   try {
     const data = await gqlMutation(rawQuery, variables)
     const result = data?.data?.createPoll
@@ -2778,7 +3124,8 @@ async function createTwitchPoll(channelId, title, durationSeconds, choices) {
 }
 
 async function endTwitchPoll(pollId) {
-  const rawQuery = 'mutation($input: TerminatePollInput!) { terminatePoll(input: $input) { poll { ' + POLL_FIELDS + ' } } }'
+  const rawQuery =
+    'mutation($input: TerminatePollInput!) { terminatePoll(input: $input) { poll { ' + POLL_FIELDS + ' } } }'
   const variables = { input: { pollID: pollId } }
   try {
     const data = await gqlMutation(rawQuery, variables)
@@ -2794,7 +3141,7 @@ async function endTwitchPoll(pollId) {
   }
 }
 
-let _userPollVotes = new Map() // pollId → choiceId
+const _userPollVotes = new Map() // pollId → choiceId
 
 function renderPoll(poll, channelId, isMod) {
   const section = document.createElement('div')
@@ -2850,7 +3197,8 @@ function renderPoll(poll, channelId, isMod) {
     const isVoted = userVote === choice.id
 
     const row = document.createElement('div')
-    row.className = 'hs-mc-poll-choice' + (isTop ? ' hs-mc-poll-choice-top' : '') + (isVoted ? ' hs-mc-poll-choice-voted' : '')
+    row.className =
+      'hs-mc-poll-choice' + (isTop ? ' hs-mc-poll-choice-top' : '') + (isVoted ? ' hs-mc-poll-choice-voted' : '')
 
     const track = document.createElement('div')
     track.className = 'hs-mc-poll-choice-track'
@@ -2953,7 +3301,7 @@ function renderNoPoll(channelId, isMod) {
     btn.className = 'hs-mc-poll-create-dur' + (secs === 60 ? ' hs-mc-poll-create-dur-active' : '')
     btn.dataset.secs = secs
     btn.tabIndex = -1
-    btn.textContent = secs < 60 ? secs + 's' : (secs / 60) + 'm'
+    btn.textContent = secs < 60 ? secs + 's' : secs / 60 + 'm'
     durRow.appendChild(btn)
   }
   form.appendChild(durRow)
@@ -3016,7 +3364,7 @@ function attachPollHandlers() {
   const container = document.getElementById('hs-mc-tab-twitch')
   if (!container) return
 
-  container.querySelectorAll('.hs-mc-poll-vote-btn').forEach(btn => {
+  container.querySelectorAll('.hs-mc-poll-vote-btn').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation()
       btn.disabled = true
@@ -3025,7 +3373,11 @@ function attachPollHandlers() {
       if (result.error) {
         btn.textContent = '!'
         btn.title = result.error
-        setTimeout(() => { btn.textContent = 'vote'; btn.disabled = false; btn.title = '' }, 2000)
+        setTimeout(() => {
+          btn.textContent = 'vote'
+          btn.disabled = false
+          btn.title = ''
+        }, 2000)
       } else {
         if (_userPollVotes.size > 50) _userPollVotes.delete(_userPollVotes.keys().next().value)
         _userPollVotes.set(btn.dataset.pollId, btn.dataset.choiceId)
@@ -3037,7 +3389,7 @@ function attachPollHandlers() {
   })
 
   // End poll (mod)
-  container.querySelectorAll('.hs-mc-poll-end-btn').forEach(btn => {
+  container.querySelectorAll('.hs-mc-poll-end-btn').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation()
       btn.disabled = true
@@ -3046,7 +3398,11 @@ function attachPollHandlers() {
       if (result.error) {
         btn.textContent = result.error
         btn.title = result.error
-        setTimeout(() => { btn.textContent = t('mc_poll_end'); btn.disabled = false; btn.title = '' }, 3000)
+        setTimeout(() => {
+          btn.textContent = t('mc_poll_end')
+          btn.disabled = false
+          btn.title = ''
+        }, 3000)
       } else {
         btn.textContent = '\u2713'
         refreshPollSlot()
@@ -3055,7 +3411,7 @@ function attachPollHandlers() {
   })
 
   // Create poll toggle
-  container.querySelectorAll('.hs-mc-poll-create-toggle').forEach(btn => {
+  container.querySelectorAll('.hs-mc-poll-create-toggle').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation()
       const form = btn.parentElement.querySelector('.hs-mc-poll-create-form')
@@ -3068,38 +3424,57 @@ function attachPollHandlers() {
   })
 
   // Create poll duration picker
-  container.querySelectorAll('.hs-mc-poll-create-dur').forEach(btn => {
+  container.querySelectorAll('.hs-mc-poll-create-dur').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation()
-      container.querySelectorAll('.hs-mc-poll-create-dur').forEach(b => b.classList.remove('hs-mc-poll-create-dur-active'))
+      container
+        .querySelectorAll('.hs-mc-poll-create-dur')
+        .forEach((b) => b.classList.remove('hs-mc-poll-create-dur-active'))
       btn.classList.add('hs-mc-poll-create-dur-active')
     })
   })
 
   // Create poll submit
-  container.querySelectorAll('.hs-mc-poll-create-submit').forEach(btn => {
+  container.querySelectorAll('.hs-mc-poll-create-submit').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation()
       const createWrap = btn.closest('.hs-mc-poll-create')
       const channelId = createWrap?.dataset.channelId
-      if (!channelId) { btn.textContent = 'no channel'; return }
+      if (!channelId) {
+        btn.textContent = 'no channel'
+        return
+      }
       const form = btn.closest('.hs-mc-poll-create-form')
       const inputs = form.querySelectorAll('.hs-mc-poll-create-input')
       const title = inputs[0]?.value?.trim()
-      const choices = [...form.querySelectorAll('.hs-mc-poll-create-choice')].map(i => i.value.trim()).filter(Boolean)
-      if (!title) { inputs[0].focus(); return }
-      if (choices.length < 2) { form.querySelectorAll('.hs-mc-poll-create-choice')[choices.length]?.focus(); return }
+      const choices = [...form.querySelectorAll('.hs-mc-poll-create-choice')].map((i) => i.value.trim()).filter(Boolean)
+      if (!title) {
+        inputs[0].focus()
+        return
+      }
+      if (choices.length < 2) {
+        form.querySelectorAll('.hs-mc-poll-create-choice')[choices.length]?.focus()
+        return
+      }
       const durBtn = form.querySelector('.hs-mc-poll-create-dur-active')
       const secs = parseInt(durBtn?.dataset.secs || '60')
       btn.disabled = true
       btn.textContent = '...'
       const result = await createTwitchPoll(channelId, title, secs, choices)
       if (result.error) {
-        const errMap = { POLL_ALREADY_ACTIVE: t('mc_error_poll_active'), FORBIDDEN: t('mc_error_no_permission'), UNAUTHORIZED: t('mc_error_not_logged_in') }
+        const errMap = {
+          POLL_ALREADY_ACTIVE: t('mc_error_poll_active'),
+          FORBIDDEN: t('mc_error_no_permission'),
+          UNAUTHORIZED: t('mc_error_not_logged_in'),
+        }
         const msg = errMap[result.error] || result.error
         btn.textContent = msg
         btn.title = result.error
-        setTimeout(() => { btn.textContent = t('mc_poll_create'); btn.disabled = false; btn.title = '' }, 3000)
+        setTimeout(() => {
+          btn.textContent = t('mc_poll_create')
+          btn.disabled = false
+          btn.title = ''
+        }, 3000)
       } else {
         // Close create form so refreshPollSlot's guard doesn't skip
         form.style.display = 'none'
@@ -3109,7 +3484,7 @@ function attachPollHandlers() {
   })
 
   // Create poll keyboard nav
-  container.querySelectorAll('.hs-mc-poll-create-input').forEach(input => {
+  container.querySelectorAll('.hs-mc-poll-create-input').forEach((input) => {
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Tab') {
         e.preventDefault()
@@ -3128,7 +3503,7 @@ function attachPollHandlers() {
   })
 
   // Poll timers
-  container.querySelectorAll('.hs-mc-poll-timer').forEach(el => {
+  container.querySelectorAll('.hs-mc-poll-timer').forEach((el) => {
     const endsAt = parseInt(el.dataset.ends)
     const update = () => {
       const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
@@ -3143,14 +3518,17 @@ function attachPollHandlers() {
     }
     update()
     const iv = cleanup.setIntervalIfVisible(() => {
-      if (!el.isConnected) { cleanup.clearInterval(iv); return }
+      if (!el.isConnected) {
+        cleanup.clearInterval(iv)
+        return
+      }
       update()
     }, 1000)
   })
 }
 
 const badgesInFlight = new Set()
-const badgesFailedAt = new Map()  // channelLogin -> ms (last failure) — LRU-capped at 100
+const badgesFailedAt = new Map() // channelLogin -> ms (last failure) — LRU-capped at 100
 const BADGE_FAILURE_BACKOFF_MS = 60000
 const BADGES_FAILED_MAX = 100
 
@@ -3172,7 +3550,7 @@ async function fetchChannelBadges(channelLogin) {
     // Fetch channel badges (GQL broadcastBadges) + FFZ in parallel
     const [gqlResp, ffzResp] = await Promise.allSettled([
       twitchGql(`{ user(login:"${safe}") { broadcastBadges { imageURL(size: NORMAL) setID version } } }`),
-      fetch(`https://api.frankerfacez.com/v1/room/${safe}`, { credentials: 'omit', signal: AbortSignal.timeout(5000) })
+      fetch(`https://api.frankerfacez.com/v1/room/${safe}`, { credentials: 'omit', signal: AbortSignal.timeout(5000) }),
     ])
 
     // Channel badges via GQL broadcastBadges (no Client-Integrity needed)
@@ -3188,7 +3566,10 @@ async function fetchChannelBadges(channelLogin) {
           const v = parseInt(b.version, 10)
           if (Number.isFinite(v)) {
             let arr = versionsBySet.get(b.setID)
-            if (!arr) { arr = []; versionsBySet.set(b.setID, arr) }
+            if (!arr) {
+              arr = []
+              versionsBySet.set(b.setID, arr)
+            }
             arr.push(v)
           }
         }
@@ -3348,46 +3729,48 @@ async function fetchKickChannelBadges(slug) {
 function renderBadges(badgesStr, channel, platform) {
   if (!badgesStr) return ''
   const isKick = platform === 'kick'
-  return badgesStr.split(',').map(badge => {
-    const [name, version] = badge.split('/')
-    let url = null
-    if (isKick && channel) {
-      // Kick-only lookup. Never fall through to Twitch URLs — Twitch sub badges
-      // are keyed by tier-encoded versions (1000/2000/3000) which mismatch
-      // Kick's linear month numbers (1/2/3/6/12); the Twitch findNearest would
-      // return e.g. "subscriber/0" for Kick's "subscriber/1" producing a wrong
-      // tier badge. Better to show the text-style chip when no Kick URL exists.
-      url = kickBadgeUrls.get(`${channel}:${name}/${version}`)
-      if (!url) {
-        const nearest = findNearestKickBadgeVersion(channel, name, version)
-        if (nearest != null) url = kickBadgeUrls.get(`${channel}:${name}/${nearest}`)
+  return badgesStr
+    .split(',')
+    .map((badge) => {
+      const [name, version] = badge.split('/')
+      let url = null
+      if (isKick && channel) {
+        // Kick-only lookup. Never fall through to Twitch URLs — Twitch sub badges
+        // are keyed by tier-encoded versions (1000/2000/3000) which mismatch
+        // Kick's linear month numbers (1/2/3/6/12); the Twitch findNearest would
+        // return e.g. "subscriber/0" for Kick's "subscriber/1" producing a wrong
+        // tier badge. Better to show the text-style chip when no Kick URL exists.
+        url = kickBadgeUrls.get(`${channel}:${name}/${version}`)
+        if (!url) {
+          const nearest = findNearestKickBadgeVersion(channel, name, version)
+          if (nearest != null) url = kickBadgeUrls.get(`${channel}:${name}/${nearest}`)
+        }
+      } else {
+        // Channel-specific exact match → channel-specific nearest-tier (e.g. 5mo
+        // sub on a channel that only defines 0/3/6 → use 3) → global exact →
+        // global "/1" generic-star fallback.
+        url = channel && twitchBadgeUrls.get(`${channel}:${name}/${version}`)
+        if (!url && channel) {
+          const nearest = findNearestChannelBadgeVersion(channel, name, version)
+          if (nearest != null) url = twitchBadgeUrls.get(`${channel}:${name}/${nearest}`)
+        }
+        url = url || twitchBadgeUrls.get(`${name}/${version}`) || twitchBadgeUrls.get(`${name}/1`)
       }
-    } else {
-      // Channel-specific exact match → channel-specific nearest-tier (e.g. 5mo
-      // sub on a channel that only defines 0/3/6 → use 3) → global exact →
-      // global "/1" generic-star fallback.
-      url = channel && twitchBadgeUrls.get(`${channel}:${name}/${version}`)
-      if (!url && channel) {
-        const nearest = findNearestChannelBadgeVersion(channel, name, version)
-        if (nearest != null) url = twitchBadgeUrls.get(`${channel}:${name}/${nearest}`)
+      if (url) {
+        // FFZ custom badges are white icons on transparent bg — add badge-type background
+        const ffzKey = channel && `${channel}:${name}/`
+        const isFFZ = ffzKey && ffzBadgeKeys.has(`${channel}:${name}`)
+        const bgStyle =
+          isFFZ && BADGE_STYLES[name] ? `background:${BADGE_STYLES[name].bg};padding:1px;border-radius:2px;` : ''
+        const label = BADGE_STYLES[name]?.label || name
+        return `<img class="hs-mc-badge-img" src="${escapeHtml(url)}" alt="${escapeHtml(name)}" title="${escapeHtml(label)}" loading="lazy" decoding="async" width="18" height="18" style="width:18px;height:18px;${bgStyle}">`
       }
-      url = url
-        || twitchBadgeUrls.get(`${name}/${version}`)
-        || twitchBadgeUrls.get(`${name}/1`)
-    }
-    if (url) {
-      // FFZ custom badges are white icons on transparent bg — add badge-type background
-      const ffzKey = channel && `${channel}:${name}/`
-      const isFFZ = ffzKey && ffzBadgeKeys.has(`${channel}:${name}`)
-      const bgStyle = isFFZ && BADGE_STYLES[name] ? `background:${BADGE_STYLES[name].bg};padding:1px;border-radius:2px;` : ''
-      const label = BADGE_STYLES[name]?.label || name
-      return `<img class="hs-mc-badge-img" src="${escapeHtml(url)}" alt="${escapeHtml(name)}" title="${escapeHtml(label)}" loading="lazy" decoding="async" width="18" height="18" style="width:18px;height:18px;${bgStyle}">`
-    }
-    // Text fallback
-    const style = BADGE_STYLES[name]
-    if (!style) return ''
-    return `<span class="hs-mc-badge" style="background:${style.bg};color:${style.fg}" title="${escapeHtml(style.label)}">${style.label}</span>`
-  }).join('')
+      // Text fallback
+      const style = BADGE_STYLES[name]
+      if (!style) return ''
+      return `<span class="hs-mc-badge" style="background:${style.bg};color:${style.fg}" title="${escapeHtml(style.label)}">${style.label}</span>`
+    })
+    .join('')
 }
 
 function renderThirdPartyBadges(userId) {
@@ -3415,7 +3798,8 @@ function renderThirdPartyBadges(userId) {
   const cosmetic = getSetting('sevenTvPaints') ? mcUserCosmetics.get(userId) : null
   if (cosmetic?.badge) {
     const files = cosmetic.badge.host?.files || []
-    const file = files.find(f => f.name?.endsWith('.webp')) || files.find(f => f.name?.endsWith('.avif')) || files[0]
+    const file =
+      files.find((f) => f.name?.endsWith('.webp')) || files.find((f) => f.name?.endsWith('.avif')) || files[0]
     if (file) {
       const base = cosmetic.badge.host?.url || ''
       // 7TV returns protocol-relative URLs (//cdn.7tv.app/...) — promote to https
@@ -3448,9 +3832,12 @@ async function lookupFollowage(username, channelLogin) {
 
   try {
     // Try server-side API first (works everywhere, including multichat on heatsync.org)
-    const resp = typeof apiFetch === 'function'
-      ? await apiFetch(`/api/twitch/followage?user=${encodeURIComponent(username)}&channel=${encodeURIComponent(channelLogin)}`)
-      : null
+    const resp =
+      typeof apiFetch === 'function'
+        ? await apiFetch(
+            `/api/twitch/followage?user=${encodeURIComponent(username)}&channel=${encodeURIComponent(channelLogin)}`,
+          )
+        : null
     if (resp?.ok && resp.data) {
       const d = resp.data
       const result = {
@@ -3469,7 +3856,7 @@ async function lookupFollowage(username, channelLogin) {
     const safeUser = username.replace(/[^a-z0-9_]/gi, '')
     const safeChan = channelLogin.replace(/[^a-z0-9_]/gi, '')
     const data = await gqlProxy(null, null, {
-      rawQuery: `{ user(login: "${safeUser}") { follow(targetLogin: "${safeChan}") { followedAt } followers { totalCount } } channel: user(login: "${safeChan}") { follow(targetLogin: "${safeUser}") { followedAt } } }`
+      rawQuery: `{ user(login: "${safeUser}") { follow(targetLogin: "${safeChan}") { followedAt } followers { totalCount } } channel: user(login: "${safeChan}") { follow(targetLogin: "${safeUser}") { followedAt } } }`,
     })
     const user = data?.data?.user
     const result = {
@@ -3498,7 +3885,10 @@ async function lookupFollowage(username, channelLogin) {
 const _twChannelIdCache = new Map() // login(lc) → { id, ts }
 
 async function resolveTwitchChannelId(channelLogin) {
-  const lc = (channelLogin || '').toLowerCase().replace(/^@/, '').replace(/[^a-z0-9_]/g, '')
+  const lc = (channelLogin || '')
+    .toLowerCase()
+    .replace(/^@/, '')
+    .replace(/[^a-z0-9_]/g, '')
   if (!lc) return null
   const cached = _twChannelIdCache.get(lc)
   if (cached && Date.now() - cached.ts < 3600000) return cached.id
@@ -3528,7 +3918,9 @@ function _isMutationsKilled() {
   try {
     const h = (typeof window !== 'undefined' && window.__hsHealth) || null
     return !!(h && (h.kill || (Array.isArray(h.disabled) && h.disabled.includes('mutations'))))
-  } catch { return false }
+  } catch {
+    return false
+  }
 }
 
 async function _modActionMutation(searchTerm, resultField, rawQuery, variables) {
@@ -3540,10 +3932,10 @@ async function _modActionMutation(searchTerm, resultField, rawQuery, variables) 
     const resp = await safeSendMessage({
       type: 'twitch_relay',
       op: 'mod_action',
-      args: { searchTerm, resultField, rawQuery, variables }
+      args: { searchTerm, resultField, rawQuery, variables },
     })
     if (resp?.ok && resp.result) return resp.result
-    if (resp?.error === 'no_twitch_tab')   return { error: 'open a twitch.tv tab to use mod actions' }
+    if (resp?.error === 'no_twitch_tab') return { error: 'open a twitch.tv tab to use mod actions' }
     if (resp?.error === 'stale_twitch_tab') return { error: 'refresh your twitch.tv tab (extension was updated)' }
     return { error: resp?.error || 'relay failed' }
   }
@@ -3611,11 +4003,12 @@ async function _followMutation(targetID, follow, disableNotifications) {
     const resp = await safeSendMessage({
       type: 'twitch_relay',
       op: 'follow_action',
-      args: { targetID, follow, disableNotifications }
+      args: { targetID, follow, disableNotifications },
     })
     if (resp?.ok && resp.result) return resp.result
-    if (resp?.error === 'no_twitch_tab')   return { error: 'no_twitch_tab', queueable: true }
-    if (resp?.error === 'stale_twitch_tab') return { error: 'stale_twitch_tab', queueable: true, reloaded: !!resp.reloaded }
+    if (resp?.error === 'no_twitch_tab') return { error: 'no_twitch_tab', queueable: true }
+    if (resp?.error === 'stale_twitch_tab')
+      return { error: 'stale_twitch_tab', queueable: true, reloaded: !!resp.reloaded }
     return { error: resp?.error || 'relay failed', queueable: true }
   }
 
@@ -3632,7 +4025,12 @@ async function _followMutation(targetID, follow, disableNotifications) {
   if (apolloResult?.ok) return { ok: true }
   if (apolloResult?.error) {
     const eMsg = String(apolloResult.error).toLowerCase()
-    if (eMsg.includes('already') || eMsg.includes('not following') || eMsg.includes('not_followed') || eMsg.includes('already_followed')) {
+    if (
+      eMsg.includes('already') ||
+      eMsg.includes('not following') ||
+      eMsg.includes('not_followed') ||
+      eMsg.includes('already_followed')
+    ) {
       return { ok: true, idempotent: true }
     }
     if (eMsg.includes('two_factor') || eMsg === '2fa_required') return { error: '2fa_required' }
@@ -3650,14 +4048,14 @@ async function _followMutation(targetID, follow, disableNotifications) {
       if (msg.includes('already') || msg.includes('not followed') || msg.includes('not following')) {
         return { ok: true, idempotent: true }
       }
-      return { error: d.errors[0].message || (resultField + ' failed') }
+      return { error: d.errors[0].message || resultField + ' failed' }
     }
     const err = d?.data?.[resultField]?.error
     if (err) {
       const code = String(err.code || '')
       if (code === 'TARGET_ALREADY_FOLLOWED' || code === 'TARGET_NOT_FOLLOWED') return { ok: true, idempotent: true }
       if (code === 'TARGET_TWO_FACTOR_REQUIRED') return { error: '2fa_required' }
-      return { error: code || (resultField + ' failed') }
+      return { error: code || resultField + ' failed' }
     }
     return { ok: true }
   } catch (e) {
@@ -3680,9 +4078,10 @@ async function banTwitchUser(channelLogin, targetLogin, reason) {
   const bannedUserLogin = (targetLogin || '').toLowerCase().replace(/^@/, '')
   if (!bannedUserLogin) return { error: 'no target user' }
   return _modActionMutation(
-    'Chat_BanUserFromChatRoom', 'banUserFromChatRoom',
+    'Chat_BanUserFromChatRoom',
+    'banUserFromChatRoom',
     'mutation($input: BanUserFromChatRoomInput!) { banUserFromChatRoom(input: $input) { error { code } } }',
-    { input: { channelID, bannedUserLogin, expiresIn: null, reason: reason || '' } }
+    { input: { channelID, bannedUserLogin, expiresIn: null, reason: reason || '' } },
   )
 }
 
@@ -3692,9 +4091,10 @@ async function timeoutTwitchUser(channelLogin, targetLogin, durationSec, reason)
   const bannedUserLogin = (targetLogin || '').toLowerCase().replace(/^@/, '')
   if (!bannedUserLogin) return { error: 'no target user' }
   return _modActionMutation(
-    'Chat_BanUserFromChatRoom', 'banUserFromChatRoom',
+    'Chat_BanUserFromChatRoom',
+    'banUserFromChatRoom',
     'mutation($input: BanUserFromChatRoomInput!) { banUserFromChatRoom(input: $input) { error { code } } }',
-    { input: { channelID, bannedUserLogin, expiresIn: Math.max(1, durationSec | 0), reason: reason || '' } }
+    { input: { channelID, bannedUserLogin, expiresIn: Math.max(1, durationSec | 0), reason: reason || '' } },
   )
 }
 
@@ -3704,9 +4104,10 @@ async function unbanTwitchUser(channelLogin, targetLogin) {
   const bannedUserLogin = (targetLogin || '').toLowerCase().replace(/^@/, '')
   if (!bannedUserLogin) return { error: 'no target user' }
   return _modActionMutation(
-    'Chat_UnbanUserFromChatRoom', 'unbanUserFromChatRoom',
+    'Chat_UnbanUserFromChatRoom',
+    'unbanUserFromChatRoom',
     'mutation($input: UnbanUserFromChatRoomInput!) { unbanUserFromChatRoom(input: $input) { error { code } } }',
-    { input: { channelID, bannedUserLogin } }
+    { input: { channelID, bannedUserLogin } },
   )
 }
 
@@ -3715,8 +4116,9 @@ async function deleteTwitchMessage(channelLogin, messageID) {
   if (!channelID) return { error: 'channel not found' }
   if (!messageID) return { error: 'no message id' }
   return _modActionMutation(
-    'Chat_DeleteChatMessage', 'deleteChatMessage',
+    'Chat_DeleteChatMessage',
+    'deleteChatMessage',
     'mutation($input: DeleteChatMessageInput!) { deleteChatMessage(input: $input) { error { code } } }',
-    { input: { channelID, messageID } }
+    { input: { channelID, messageID } },
   )
 }

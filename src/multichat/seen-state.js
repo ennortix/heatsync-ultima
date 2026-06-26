@@ -37,8 +37,11 @@ function _saveSeenLocal() {
     // users, the server skip in loadSeenState means seenAt would reset to 0
     // on every reload and undo their clears; persisting it locally is the
     // only way their bumps survive a refresh.
-    try { chrome.storage.local.set({ [SEEN_STORAGE_KEY]: { latestAt: { ...latestAt }, seenAt: { ...seenAt } } }) }
-    catch (e) { warn('seen-state save failed:', e?.message) }
+    try {
+      chrome.storage.local.set({ [SEEN_STORAGE_KEY]: { latestAt: { ...latestAt }, seenAt: { ...seenAt } } })
+    } catch (e) {
+      warn('seen-state save failed:', e?.message)
+    }
   }, 500)
 }
 
@@ -53,7 +56,9 @@ async function loadSeenState() {
         if (typeof data.latestAt[k] === 'number') latestAt[k] = data.latestAt[k]
       }
     }
-  } catch (e) { warn('seen-state local load failed:', e?.message) }
+  } catch (e) {
+    warn('seen-state local load failed:', e?.message)
+  }
 
   // Anonymous users have no server state — local-only is fine.
   if (typeof hsAuthToken !== 'undefined' && !hsAuthToken) {
@@ -69,7 +74,9 @@ async function loadSeenState() {
         if (typeof resp.data[k] === 'number') seenAt[k] = resp.data[k]
       }
     }
-  } catch (e) { warn('seen-state GET failed:', e?.message) }
+  } catch (e) {
+    warn('seen-state GET failed:', e?.message)
+  }
   _seenLoaded = true
   refreshSeenBadges()
 }
@@ -92,7 +99,7 @@ async function bumpSeen(surface, at) {
   try {
     const resp = await apiFetch('/api/user/seen-state', {
       method: 'POST',
-      body: { surface, at: ts }
+      body: { surface, at: ts },
     })
     if (resp?.ok && typeof resp.data?.at === 'number') {
       // Server may clamp to GREATEST() — accept its value.
@@ -176,7 +183,7 @@ function refreshSeenBadges() {
   const map = {
     mentions: { selector: '[data-tab="mentions"]', cls: 'has-mentions' },
     whispers: { selector: '[data-tab="whispers"]', cls: 'has-new' },
-    live:     { selector: '[data-tab="feed"]',     cls: 'has-new' },
+    live: { selector: '[data-tab="feed"]', cls: 'has-new' },
   }
   for (const surface of SEEN_SURFACES) {
     const { selector, cls } = map[surface]

@@ -1,4 +1,4 @@
-import { test, expect, describe } from 'bun:test'
+import { describe, expect, test } from 'bun:test'
 import { sanitizeUiSettings, UI_SYNC_BLOCKLIST } from '../src/lib/utils.js'
 
 // ── edge inputs: must not throw ───────────────────────────────────────────────
@@ -137,13 +137,13 @@ describe('prototype pollution keys', () => {
 
 describe('numeric-string keys', () => {
   test('key "0" is stripped', () => {
-    const out = sanitizeUiSettings({ '0': 'bad', zebra: true })
+    const out = sanitizeUiSettings({ 0: 'bad', zebra: true })
     expect(out).not.toHaveProperty('0')
     expect(out).toHaveProperty('zebra', true)
   })
 
   test('key "123" is stripped', () => {
-    const out = sanitizeUiSettings({ '123': 'corrupt', zebra: true })
+    const out = sanitizeUiSettings({ 123: 'corrupt', zebra: true })
     expect(out).not.toHaveProperty('123')
   })
 
@@ -281,13 +281,13 @@ describe('real-world sync blob', () => {
   test('blob with mixed good/bad keys: only bad stripped', () => {
     const blob = {
       zebra: true,
-      platformFilters: { twitch: true },    // blocklist
-      keywordHighlights: ['foo'],            // blocklist
-      '0': 'corrupt',                        // numeric key
-      constructor: 'evil',                   // prototype pollution
-      __proto__: { x: 1 },                  // prototype pollution
-      bigString: 'x'.repeat(5000),           // oversized string
-      fontFamily: 'CozetteVector',           // valid
+      platformFilters: { twitch: true }, // blocklist
+      keywordHighlights: ['foo'], // blocklist
+      0: 'corrupt', // numeric key
+      constructor: 'evil', // prototype pollution
+      __proto__: { x: 1 }, // prototype pollution
+      bigString: 'x'.repeat(5000), // oversized string
+      fontFamily: 'CozetteVector', // valid
     }
     const out = sanitizeUiSettings(blob)
     expect(out).toEqual({ zebra: true, fontFamily: 'CozetteVector' })

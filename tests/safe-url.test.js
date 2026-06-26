@@ -8,14 +8,14 @@
  *   - Non-string / falsy: returns '' without throwing
  */
 
-import { test, expect, describe } from 'bun:test'
+import { describe, expect, test } from 'bun:test'
 import { safeUrl } from '../src/lib/utils.js'
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 
 const EMPTY = ''
 const allow = (url, expected = url) => ({ url, expected, should: 'allow' })
-const block  = (url)               => ({ url, expected: EMPTY, should: 'block' })
+const block = (url) => ({ url, expected: EMPTY, should: 'block' })
 
 // ── ALLOW: http / https ────────────────────────────────────────────────────────
 
@@ -64,8 +64,9 @@ describe('allow: http and https URLs', () => {
   })
 
   test('twitch CDN URL', () => {
-    expect(safeUrl('https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/1.0'))
-      .toBe('https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/1.0')
+    expect(safeUrl('https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/1.0')).toBe(
+      'https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/1.0',
+    )
   })
 
   test('7tv CDN URL', () => {

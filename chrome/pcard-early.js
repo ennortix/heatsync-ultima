@@ -3,9 +3,7 @@
 // that the multichat content script picks up to open our btop profile card.
 // This is the only reliable way to prevent the platform's native user-card popup,
 // since registration order matters in capture phase and we must beat React.
-(function() {
-  'use strict'
-
+;(() => {
   if (window.__heatsyncPCardEarly) return
   window.__heatsyncPCardEarly = true
 
@@ -34,17 +32,23 @@
   document.addEventListener('pointerup', block, { capture: true })
   document.addEventListener('auxclick', block, { capture: true })
 
-  document.addEventListener('click', (e) => {
-    const userEl = shouldIntercept(e)
-    if (!userEl) return
-    e.preventDefault()
-    e.stopPropagation()
-    e.stopImmediatePropagation()
-    const username = (userEl.dataset.username || userEl.textContent.replace(/^@/, '')).trim()
-    const platform = userEl.dataset.platform || null
-    document.dispatchEvent(new CustomEvent('hs-pcard-open', {
-      detail: { username, platform },
-      bubbles: false
-    }))
-  }, { capture: true })
+  document.addEventListener(
+    'click',
+    (e) => {
+      const userEl = shouldIntercept(e)
+      if (!userEl) return
+      e.preventDefault()
+      e.stopPropagation()
+      e.stopImmediatePropagation()
+      const username = (userEl.dataset.username || userEl.textContent.replace(/^@/, '')).trim()
+      const platform = userEl.dataset.platform || null
+      document.dispatchEvent(
+        new CustomEvent('hs-pcard-open', {
+          detail: { username, platform },
+          bubbles: false,
+        }),
+      )
+    },
+    { capture: true },
+  )
 })()

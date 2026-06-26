@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * Centralized configuration for heatsync extension.
  * All URLs, timing constants, limits, selectors, CSS classes, and z-index values.
@@ -6,11 +7,10 @@
  */
 
 const CONFIG = {
-
   // ─── API / WebSocket ────────────────────────────────────────────────────────
 
   API_URL: 'https://heatsync.org',
-  WS_URL: 'wss://heatsync.org',      // /ws appended at connect time
+  WS_URL: 'wss://heatsync.org', // /ws appended at connect time
   LINK_PREVIEW_API: 'https://heatsync.org/api/link-preview',
   LIVE_STATUS_API: 'https://heatsync.org/api/platform/live-status',
 
@@ -31,58 +31,58 @@ const CONFIG = {
 
   TIMING: {
     // Inventory + global emote refresh
-    INVENTORY_REFRESH: 60000,             // 1 min — background.js setInterval
-    GLOBAL_EMOTES_REFRESH: 86400000,      // 24 hr
-    INVENTORY_REFRESH_DEBOUNCE: 2000,     // debounce WS-triggered inventory refresh
-    INVENTORY_SKIP_THRESHOLD: 10000,      // skip fetch if last one was <10s ago
+    INVENTORY_REFRESH: 60000, // 1 min — background.js setInterval
+    GLOBAL_EMOTES_REFRESH: 86400000, // 24 hr
+    INVENTORY_REFRESH_DEBOUNCE: 2000, // debounce WS-triggered inventory refresh
+    INVENTORY_SKIP_THRESHOLD: 10000, // skip fetch if last one was <10s ago
 
     // Cache TTLs (background.js)
-    CHANNEL_EMOTES_TTL: 30 * 60 * 1000,  // 30 min
+    CHANNEL_EMOTES_TTL: 30 * 60 * 1000, // 30 min
     CHANNEL_EMOTES_EMPTY_TTL: 5 * 60 * 1000, // 5 min for zero-result channels
-    BADGES_TTL: 24 * 60 * 60 * 1000,     // 24 hr
-    USER_COSMETICS_TTL: 30 * 60 * 1000,  // 30 min
+    BADGES_TTL: 24 * 60 * 60 * 1000, // 24 hr
+    USER_COSMETICS_TTL: 30 * 60 * 1000, // 30 min
 
     // WS / connection (background.js)
     WS_CONNECT_TIMEOUT: 10000,
-    WS_HEARTBEAT_INTERVAL: 90000,        // well within server's 2 min idle timeout
+    WS_HEARTBEAT_INTERVAL: 90000, // well within server's 2 min idle timeout
     WS_RECONNECT_MAX_DELAY: 30000,
     WS_7TV_RECONNECT_MAX_DELAY: 30000,
     WS_7TV_RECONNECT_JITTER: 1000,
-    WS_7TV_OFFLINE_TIMEOUT: 600000,      // stop reconnecting after 10 min offline
+    WS_7TV_OFFLINE_TIMEOUT: 600000, // stop reconnecting after 10 min offline
     SEVENTV_POLL_INTERVAL: 30000,
 
     // Message queue (background.js — value mirrored there too)
-    MESSAGE_QUEUE_TTL: 60000,            // matches max reconnect backoff + jitter
+    MESSAGE_QUEUE_TTL: 60000, // matches max reconnect backoff + jitter
 
     // Mute / prune
     MUTE_PRUNE_INTERVAL: 60000,
 
     // Content script timings (content.js)
-    HEAT_CACHE_TTL: 120000,              // 2 min
-    HEAT_BATCH_INTERVAL: 2000,           // debounce for heat batch fetches
-    HEAT_CACHE_PRUNE_INTERVAL: 300000,   // 5 min
-    COSMETICS_TTL: 30 * 60 * 1000,      // 30 min
+    HEAT_CACHE_TTL: 120000, // 2 min
+    HEAT_BATCH_INTERVAL: 2000, // debounce for heat batch fetches
+    HEAT_CACHE_PRUNE_INTERVAL: 300000, // 5 min
+    COSMETICS_TTL: 30 * 60 * 1000, // 30 min
     MSG_CACHE_TTL: 24 * 60 * 60 * 1000, // 24 hr
     MSG_CACHE_SAVE_DEBOUNCE: 5000,
-    BROADCAST_TTL: 30000,               // drop duplicate broadcasts after 30s
+    BROADCAST_TTL: 30000, // drop duplicate broadcasts after 30s
     BROADCAST_PRUNE_INTERVAL: 30000,
     REPROCESS_DEBOUNCE: 200,
     TOAST_DURATION: 2500,
-    USERNAME_RETRY_BASE_DELAY: 2000,    // backoff start for username detection
+    USERNAME_RETRY_BASE_DELAY: 2000, // backoff start for username detection
     USERNAME_RETRY_MAX_DELAY: 10000,
-    PROFILE_TTL: 300000,                // 5 min
-    PROFILE_CACHE_MAX_AGE: 60000,       // live channel profile TTL override: 60s
-    FOLLOWAGE_CACHE_TTL: 300000,        // 5 min
+    PROFILE_TTL: 300000, // 5 min
+    PROFILE_CACHE_MAX_AGE: 60000, // live channel profile TTL override: 60s
+    FOLLOWAGE_CACHE_TTL: 300000, // 5 min
 
     // Multichat (multichat.js)
     MC_CONNECT_TIMEOUT: 10000,
     MC_FETCH_TIMEOUT: 15000,
     MC_RETRY_DELAY_BASE: 1500,
     MC_IRC_HEARTBEAT: 30000,
-    MC_IRC_ZOMBIE_THRESHOLD: 90000,     // silence before reconnect
+    MC_IRC_ZOMBIE_THRESHOLD: 90000, // silence before reconnect
     MC_IRC_RECONNECT_MAX_DELAY: 30000,
     MC_IRC_RECONNECT_INITIAL: 2000,
-    MC_RECENT_MSGS_CACHE_TTL: 300000,   // 5 min
+    MC_RECENT_MSGS_CACHE_TTL: 300000, // 5 min
     MC_PROFILE_CACHE_TTL: 60000,
     MC_EMOTE_SCAN_INTERVAL: 10000,
     MC_AUTH_RECONNECT_INITIAL: 1000,
@@ -104,29 +104,29 @@ const CONFIG = {
     MAX_EMOTES_PER_SOURCE: 5000,
     USER_COSMETICS_MAX: 500,
     TWITCH_ID_CACHE_MAX: 200,
-    MAX_YT_VIDEO_ENTRIES: 100,            // LRU cap for ytVideoToChannel map
+    MAX_YT_VIDEO_ENTRIES: 100, // LRU cap for ytVideoToChannel map
     SEVENTV_MAX_RECONNECT_ATTEMPTS: 5,
 
     // Content script caches (content.js)
-    MSG_CACHE_MAX: 2000,                  // matches website behavior
+    MSG_CACHE_MAX: 2000, // matches website behavior
     HEAT_CACHE_MAX: 1000,
     COSMETICS_MAX: 500,
     PROFILE_CACHE_MAX: 50,
-    MAX_USERNAME_ATTEMPTS: 30,            // prevent console spam on slow page loads
+    MAX_USERNAME_ATTEMPTS: 30, // prevent console spam on slow page loads
 
     // Multichat (multichat.js)
-    MAX_SEND_QUEUE: 50,                   // IRC send queue cap
+    MAX_SEND_QUEUE: 50, // IRC send queue cap
     MC_EMOTE_CACHE_MAX: 2000,
     MC_GLOBAL_EMOTE_CACHE_MAX: 5000,
     ACTIVITY_EVENTS_MAX: 500,
     STREAM_EVENTS_MAX: 200,
     MC_AVATAR_FETCH_BATCH: 5,
     MC_CHANNEL_MSG_BUFFER: 500,
-    MC_RECENT_MSGS_LIMIT: 800,            // limit param for robotty recent-messages
+    MC_RECENT_MSGS_LIMIT: 800, // limit param for robotty recent-messages
     MC_FEED_PAGE_SIZE: 30,
     MC_MENTIONS_PAGE_SIZE: 20,
-    MC_EMOTE_RENDER_CHUNK: 80,            // emotes rendered per animation frame
-    HERMES_CHANNEL_ID_MAP_MAX: 200,       // early-inject-main.js
+    MC_EMOTE_RENDER_CHUNK: 80, // emotes rendered per animation frame
+    HERMES_CHANNEL_ID_MAP_MAX: 200, // early-inject-main.js
 
     // Chat width (multichat.js)
     MIN_CHAT_WIDTH: 300,
@@ -174,8 +174,10 @@ const CONFIG = {
     // Kick chat containers — querySelector accepts CSV; first match wins so
     // primary selector is canonical and rest are defensive fallbacks against
     // Kick redesigns. Adding alternates is cheaper than reactive hot-fixes.
-    KICK_CHAT_CONTAINER: '#chatroom-messages, #channel-chatroom [class*="messages"], [class*="chat-messages-container"]',
-    KICK_CHAT_CONTAINER_INNER: '#chatroom-messages .no-scrollbar, #chatroom-messages [class*="scroll"], [class*="chat-messages-container"] [class*="scroll"]',
+    KICK_CHAT_CONTAINER:
+      '#chatroom-messages, #channel-chatroom [class*="messages"], [class*="chat-messages-container"]',
+    KICK_CHAT_CONTAINER_INNER:
+      '#chatroom-messages .no-scrollbar, #chatroom-messages [class*="scroll"], [class*="chat-messages-container"] [class*="scroll"]',
     KICK_CHAT_ROOM: '#channel-chatroom, [class*="chat-room"], [class*="chatroom"]',
     KICK_CHAT_MESSAGES: '[data-index], [class*="chat-entry"]',
     KICK_IDENTITY: '.chat-identity-name, [class*="chat-identity"], [class*="chat-author"]',
@@ -223,7 +225,7 @@ const CONFIG = {
     PREVIEW_ACTIVE: 'heatsync-preview-active',
     USERNAME_COLORED: 'hs-username-colored',
     MENTION_COLORED: 'hs-mention-colored',
-    HEAT_BREATHE: 'hs-heat-breathe',     // animation class for tier 8+ emotes
+    HEAT_BREATHE: 'hs-heat-breathe', // animation class for tier 8+ emotes
 
     // Profile card
     PC_LOADING: 'hs-pc-loading',
@@ -272,15 +274,15 @@ const CONFIG = {
   // ─── Z-index layers ─────────────────────────────────────────────────────────
 
   Z_INDEX: {
-    EMOTE_PREVIEW: 5000,        // emote hover preview panel
-    TOAST: 5000,                // toast notifications
-    DEBUG_BADGE: 10001,         // dev-mode debug overlay badge
-    AUTOCOMPLETE: 10001,        // tab-completion dropdown
-    MC_TOOLTIP: 1003,           // multichat inline tooltip
-    MC_CONTEXT_MENU: 99999,     // right-click context menu
-    MC_RESIZE_OVERLAY: 99999,   // drag-resize capture overlay
-    MC_PANEL: 10000,            // multichat panel itself
-    MC_EMOTE_PICKER: 10001,     // emote picker flyout
+    EMOTE_PREVIEW: 5000, // emote hover preview panel
+    TOAST: 5000, // toast notifications
+    DEBUG_BADGE: 10001, // dev-mode debug overlay badge
+    AUTOCOMPLETE: 10001, // tab-completion dropdown
+    MC_TOOLTIP: 1003, // multichat inline tooltip
+    MC_CONTEXT_MENU: 99999, // right-click context menu
+    MC_RESIZE_OVERLAY: 99999, // drag-resize capture overlay
+    MC_PANEL: 10000, // multichat panel itself
+    MC_EMOTE_PICKER: 10001, // emote picker flyout
   },
 }
 

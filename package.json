@@ -14,10 +14,17 @@
     "build": "bun run build.js",
     "build:chrome": "bun run build.js chrome",
     "build:firefox": "bun run build.js firefox",
-    "package": "bun run build.js --package"
+    "package": "bun run build.js --package",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check src/ chrome/ tests/ build.js",
+    "lint:fix": "biome check --write src/ chrome/ tests/ build.js",
+    "format": "biome format --write src/ chrome/ tests/ build.js"
   },
   "type": "module",
   "devDependencies": {
-    "esbuild": "^0.28.0"
+    "@biomejs/biome": "^2.5.1",
+    "@types/chrome": "^0.2.0",
+    "esbuild": "^0.28.0",
+    "typescript": "^6.0.3"
   }
 }

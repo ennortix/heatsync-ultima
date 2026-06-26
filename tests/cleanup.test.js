@@ -12,7 +12,7 @@
  * test the public API surface through window.heatsyncCleanup.
  */
 
-import { test, describe, expect, beforeEach } from 'bun:test'
+import { beforeEach, describe, expect, test } from 'bun:test'
 import { readFileSync } from 'fs'
 
 // IMPORTANT: this file must NOT mutate globalThis (setTimeout, window, etc).
@@ -36,8 +36,10 @@ function spy(returnFn) {
   }
   fn.calls = calls
   fn.callCount = () => calls.length
-  fn.calledWith = (...args) => calls.some(c => c.every((a, i) => a === args[i]))
-  fn.reset = () => { calls.length = 0 }
+  fn.calledWith = (...args) => calls.some((c) => c.every((a, i) => a === args[i]))
+  fn.reset = () => {
+    calls.length = 0
+  }
   return fn
 }
 
@@ -57,40 +59,58 @@ const CLEANUP_SRC = readFileSync(new URL('../src/lib/cleanup.js', import.meta.ur
 function setupCleanup({ document: documentStub } = {}) {
   nextId = 1
 
-  const intervalIds = new Map()  // id → fn
-  const timeoutIds  = new Map()
-  const rafIds      = new Map()
+  const intervalIds = new Map() // id → fn
+  const timeoutIds = new Map()
+  const rafIds = new Map()
 
-  const setIntervalSpy    = spy(fn => { const id = nextId++; intervalIds.set(id, fn); return id })
-  const clearIntervalSpy  = spy(id => intervalIds.delete(id))
-  const setTimeoutSpy     = spy((fn, ms) => { const id = nextId++; timeoutIds.set(id, fn); return id })
-  const clearTimeoutSpy   = spy(id => timeoutIds.delete(id))
-  const requestAnimationFrameSpy = spy(fn => { const id = nextId++; rafIds.set(id, fn); return id })
-  const cancelAnimationFrameSpy  = spy(id => rafIds.delete(id))
+  const setIntervalSpy = spy((fn) => {
+    const id = nextId++
+    intervalIds.set(id, fn)
+    return id
+  })
+  const clearIntervalSpy = spy((id) => intervalIds.delete(id))
+  const setTimeoutSpy = spy((fn, ms) => {
+    const id = nextId++
+    timeoutIds.set(id, fn)
+    return id
+  })
+  const clearTimeoutSpy = spy((id) => timeoutIds.delete(id))
+  const requestAnimationFrameSpy = spy((fn) => {
+    const id = nextId++
+    rafIds.set(id, fn)
+    return id
+  })
+  const cancelAnimationFrameSpy = spy((id) => rafIds.delete(id))
 
   // Lexical stubs captured by eval(CLEANUP_SRC). eslint-disable consts are
   // "unused" only to a static linter — the eval'd code references them.
   /* eslint-disable no-unused-vars */
-  const setInterval           = setIntervalSpy
-  const clearInterval         = clearIntervalSpy
-  const setTimeout            = setTimeoutSpy
-  const clearTimeout          = clearTimeoutSpy
+  const setInterval = setIntervalSpy
+  const clearInterval = clearIntervalSpy
+  const setTimeout = setTimeoutSpy
+  const clearTimeout = clearTimeoutSpy
   const requestAnimationFrame = requestAnimationFrameSpy
-  const cancelAnimationFrame  = cancelAnimationFrameSpy
-  const performance           = { now: () => 0 }            // perf-trace path is off
-  const document              = documentStub || { hidden: false }
+  const cancelAnimationFrame = cancelAnimationFrameSpy
+  const performance = { now: () => 0 } // perf-trace path is off
+  const document = documentStub || { hidden: false }
   // fresh fake window each load → heatsyncCleanup guard never short-circuits
-  const window                = { __hsPerfTrace: false }
+  const window = { __hsPerfTrace: false }
   /* eslint-enable no-unused-vars */
 
   // eslint-disable-next-line no-eval
-  eval(CLEANUP_SRC)  // assigns window.heatsyncCleanup using the locals above
+  // biome-ignore lint/security/noGlobalEval: test harness evaluates the module source to assign window.heatsyncCleanup
+  eval(CLEANUP_SRC) // assigns window.heatsyncCleanup using the locals above
 
   const stubs = {
-    setIntervalSpy, clearIntervalSpy,
-    setTimeoutSpy, clearTimeoutSpy,
-    requestAnimationFrameSpy, cancelAnimationFrameSpy,
-    intervalIds, timeoutIds, rafIds,
+    setIntervalSpy,
+    clearIntervalSpy,
+    setTimeoutSpy,
+    clearTimeoutSpy,
+    requestAnimationFrameSpy,
+    cancelAnimationFrameSpy,
+    intervalIds,
+    timeoutIds,
+    rafIds,
     /** Fire a registered timeout by id (simulates the OS callback) */
     fireTimeout(id) {
       const fn = timeoutIds.get(id)
@@ -308,7 +328,11 @@ describe('cleanup — MutationObserver (trackObserver / untrackObserver)', () =>
   })
 
   test('observer with throwing disconnect does not abort destroyAll', () => {
-    const badObs = { disconnect() { throw new Error('boom') } }
+    const badObs = {
+      disconnect() {
+        throw new Error('boom')
+      },
+    }
     const goodObs = fakeObserver()
     c.trackObserver(badObs)
     c.trackObserver(goodObs)
@@ -522,7 +546,9 @@ describe('cleanup — destroyAll bulk + idempotency', () => {
   test('listener with throwing removeEventListener does not abort destroyAll', () => {
     const badTarget = {
       addEventListener: () => {},
-      removeEventListener() { throw new Error('DOM gone') },
+      removeEventListener() {
+        throw new Error('DOM gone')
+      },
     }
     const goodTarget = fakeTarget()
     c.trackListener(badTarget, 'click', () => {})

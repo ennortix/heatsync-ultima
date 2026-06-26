@@ -21,7 +21,7 @@ export class UndoManager {
       this._suppress = false
       return
     }
-    const children = [...this.input.childNodes].map(n => n.cloneNode(true))
+    const children = [...this.input.childNodes].map((n) => n.cloneNode(true))
     const cursorOffset = this._getCharOffset()
     if (this.index >= 0 && _signatureMatch(this.stack[this.index].children, children)) return
     if (this.index < this.stack.length - 1) {
@@ -56,7 +56,7 @@ export class UndoManager {
 
   _restore(snapshot) {
     this._suppress = true
-    const clones = snapshot.children.map(n => n.cloneNode(true))
+    const clones = snapshot.children.map((n) => n.cloneNode(true))
     this.input.replaceChildren(...clones)
     this._reattachImgHandlers()
     this._setCharOffset(snapshot.cursorOffset)
@@ -146,33 +146,38 @@ export function installUndoManager(input, opts) {
   const manager = new UndoManager(input, opts)
   input._undoManager = manager
   input.addEventListener('input', () => manager.capture())
-  input.addEventListener('keydown', (e) => {
-    const isCmd = e.ctrlKey || e.metaKey
-    if (!isCmd) return
-    if (e.repeat) {
-      e.preventDefault()
-      e.stopPropagation()
-      return
-    }
-    const k = e.key.toLowerCase()
-    if (k === 'z') {
-      e.preventDefault()
-      e.stopPropagation()
-      if (e.shiftKey) manager.redo()
-      else manager.undo()
-    } else if (k === 'y') {
-      e.preventDefault()
-      e.stopPropagation()
-      manager.redo()
-    }
-  }, true)
+  input.addEventListener(
+    'keydown',
+    (e) => {
+      const isCmd = e.ctrlKey || e.metaKey
+      if (!isCmd) return
+      if (e.repeat) {
+        e.preventDefault()
+        e.stopPropagation()
+        return
+      }
+      const k = e.key.toLowerCase()
+      if (k === 'z') {
+        e.preventDefault()
+        e.stopPropagation()
+        if (e.shiftKey) manager.redo()
+        else manager.undo()
+      } else if (k === 'y') {
+        e.preventDefault()
+        e.stopPropagation()
+        manager.redo()
+      }
+    },
+    true,
+  )
   return manager
 }
 
 function _signatureMatch(a, b) {
   if (a.length !== b.length) return false
   for (let i = 0; i < a.length; i++) {
-    const x = a[i], y = b[i]
+    const x = a[i],
+      y = b[i]
     if (x.nodeType !== y.nodeType) return false
     if (x.nodeType === Node.TEXT_NODE) {
       if (x.textContent !== y.textContent) return false

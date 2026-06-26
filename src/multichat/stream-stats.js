@@ -23,7 +23,10 @@ const _statsScanQueue = []
 let _statsScanScheduled = false
 function _flushStatsScanQueue() {
   _statsScanScheduled = false
-  if (typeof emoteCache === 'undefined') { _statsScanQueue.length = 0; return }
+  if (typeof emoteCache === 'undefined') {
+    _statsScanQueue.length = 0
+    return
+  }
   const start = performance.now()
   while (_statsScanQueue.length && performance.now() - start < 4) {
     const job = _statsScanQueue.shift()
@@ -98,7 +101,8 @@ function renderStreamSummary(channel) {
   const card = document.createElement('div')
   card.id = id
   card.className = 'hs-mc-stream-summary'
-  card.style.cssText = 'background:#0a0a0a;color:#fff;border:1px solid #ff8700;font:11px/1.5 monospace;padding:10px 12px;margin:6px;display:flex;flex-direction:column;gap:6px;'
+  card.style.cssText =
+    'background:#0a0a0a;color:#fff;border:1px solid #ff8700;font:11px/1.5 monospace;padding:10px 12px;margin:6px;display:flex;flex-direction:column;gap:6px;'
   const title = document.createElement('div')
   title.style.cssText = 'display:flex;justify-content:space-between;align-items:center;color:#ff8700;font-weight:700'
   const titleText = document.createElement('span')

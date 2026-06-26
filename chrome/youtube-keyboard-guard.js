@@ -13,7 +13,7 @@
 // `#hs-mc-input`. All other key events flow normally — clicking the player
 // then pressing space still pauses, custom hotkeys elsewhere still fire.
 // removeEventListener is mirrored so YT can still detach its own listeners.
-(() => {
+;(() => {
   if (window._hsMcKbdGuardPatched) return
   window._hsMcKbdGuardPatched = true
 

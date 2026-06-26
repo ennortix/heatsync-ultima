@@ -14,9 +14,7 @@
  *   cleanup.destroyAll()                → tear everything down (safe to call repeatedly)
  */
 
-;(function() {
-  'use strict'
-
+;(() => {
   if (window.heatsyncCleanup) return
 
   // --- internal state ---
@@ -36,29 +34,34 @@
   function _wrap(fn, ms, kind) {
     let src = ''
     try {
-      const stack = (new Error()).stack || ''
+      const stack = new Error().stack || ''
       const lines = stack.split('\n')
       // Skip frames inside this module
       for (const line of lines) {
         if (!line) continue
         if (line.includes('cleanup.js') || line.includes('multichat.js')) {
-          if (line.includes('multichat.js')) { src = line.trim().slice(0, 120); break }
+          if (line.includes('multichat.js')) {
+            src = line.trim().slice(0, 120)
+            break
+          }
           continue
         }
         if (line.includes('content.js') || line.includes('background.js') || line.includes('youtube-content.js')) {
-          src = line.trim().slice(0, 120); break
+          src = line.trim().slice(0, 120)
+          break
         }
       }
       if (!src) src = (lines[3] || lines[2] || '').trim().slice(0, 120)
     } catch {}
-    return function() {
+    return function () {
       if (!window.__hsPerfTrace) return fn.apply(this, arguments)
       const t = performance.now()
-      try { return fn.apply(this, arguments) }
-      finally {
+      try {
+        return fn.apply(this, arguments)
+      } finally {
         const d = performance.now() - t
         if (d > 50) {
-          (window.__hsPerfLog ||= []).push({ kind, ms, dur: Math.round(d), at: Math.round(t), src })
+          ;(window.__hsPerfLog ||= []).push({ kind, ms, dur: Math.round(d), at: Math.round(t), src })
           if (window.__hsPerfLog.length > 200) window.__hsPerfLog.shift()
         }
       }
@@ -73,7 +76,9 @@
 
   function _setIntervalIfVisible(fn, ms) {
     const wrapped = _wrap(fn, ms, 'intervalIfVisible')
-    const id = setInterval(() => { if (!document.hidden) wrapped() }, ms)
+    const id = setInterval(() => {
+      if (!document.hidden) wrapped()
+    }, ms)
     _intervals.add(id)
     return id
   }
@@ -110,7 +115,9 @@
 
   function _untrackObserver(observer) {
     if (!observer) return
-    try { observer.disconnect() } catch (e) {}
+    try {
+      observer.disconnect()
+    } catch (e) {}
     _observers.delete(observer)
   }
 
@@ -154,23 +161,27 @@
   // --- nuclear ---
 
   function _destroyAll() {
-    _intervals.forEach(id => clearInterval(id))
+    _intervals.forEach((id) => clearInterval(id))
     _intervals.clear()
 
-    _timeouts.forEach(id => clearTimeout(id))
+    _timeouts.forEach((id) => clearTimeout(id))
     _timeouts.clear()
 
-    _observers.forEach(obs => {
-      try { obs.disconnect() } catch (e) {}
+    _observers.forEach((obs) => {
+      try {
+        obs.disconnect()
+      } catch (e) {}
     })
     _observers.clear()
 
-    _rafs.forEach(id => cancelAnimationFrame(id))
+    _rafs.forEach((id) => cancelAnimationFrame(id))
     _rafs.clear()
 
     for (let i = _listeners.length - 1; i >= 0; i--) {
       const l = _listeners[i]
-      try { l.target.removeEventListener(l.event, l.handler, l.options) } catch (e) {}
+      try {
+        l.target.removeEventListener(l.event, l.handler, l.options)
+      } catch (e) {}
     }
     _listeners.length = 0
   }

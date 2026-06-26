@@ -43,13 +43,21 @@ function safeUrl(url) {
   if (typeof url !== 'string' || !url) return ''
   const clean = url.replace(_INVISIBLE_RE, '')
   const head = clean.trim().slice(0, 32).toLowerCase()
-  if (head.startsWith('javascript:') || head.startsWith('data:') ||
-      head.startsWith('vbscript:') || head.startsWith('blob:') ||
-      head.startsWith('file:') || head.startsWith('about:')) return ''
+  if (
+    head.startsWith('javascript:') ||
+    head.startsWith('data:') ||
+    head.startsWith('vbscript:') ||
+    head.startsWith('blob:') ||
+    head.startsWith('file:') ||
+    head.startsWith('about:')
+  )
+    return ''
   try {
     const u = new URL(clean.trim())
-    return (u.protocol === 'https:' || u.protocol === 'http:') ? u.href : ''
-  } catch { return '' }
+    return u.protocol === 'https:' || u.protocol === 'http:' ? u.href : ''
+  } catch {
+    return ''
+  }
 }
 
 /**
@@ -101,9 +109,7 @@ function $$(selector, parent = document) {
  */
 function getFiber(el) {
   if (!el) return null
-  const key = Object.keys(el).find(k =>
-    k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$')
-  )
+  const key = Object.keys(el).find((k) => k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$'))
   return key ? el[key] : null
 }
 
@@ -140,11 +146,13 @@ function findComponent(startEl, predicate, maxDepth = 50) {
 function safeLocalStorageGet(key) {
   try {
     return typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null
-  } catch { return null }
+  } catch {
+    return null
+  }
 }
 
-const DEBUG = (typeof window !== 'undefined' && !!window.HEATSYNC_DEBUG) ||
-  safeLocalStorageGet('heatsync_debug') === 'true'
+const DEBUG =
+  (typeof window !== 'undefined' && !!window.HEATSYNC_DEBUG) || safeLocalStorageGet('heatsync_debug') === 'true'
 
 // ============================================
 // READABLE NAME COLOR (luminance boost)
@@ -161,50 +169,63 @@ const DEBUG = (typeof window !== 'undefined' && !!window.HEATSYNC_DEBUG) ||
  */
 function boostReadability(hex, minRelL = 0.25) {
   if (typeof hex !== 'string') return hex
-  let m = hex.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)
+  const m = hex.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)
   if (!m) return hex
   let h6 = m[1]
-  if (h6.length === 3) h6 = h6[0]+h6[0]+h6[1]+h6[1]+h6[2]+h6[2]
-  const r = parseInt(h6.slice(0,2), 16) / 255
-  const g = parseInt(h6.slice(2,4), 16) / 255
-  const b = parseInt(h6.slice(4,6), 16) / 255
-  const relL = 0.2126*r + 0.7152*g + 0.0722*b
+  if (h6.length === 3) h6 = h6[0] + h6[0] + h6[1] + h6[1] + h6[2] + h6[2]
+  const r = parseInt(h6.slice(0, 2), 16) / 255
+  const g = parseInt(h6.slice(2, 4), 16) / 255
+  const b = parseInt(h6.slice(4, 6), 16) / 255
+  const relL = 0.2126 * r + 0.7152 * g + 0.0722 * b
   if (relL >= minRelL) return hex
-  const max = Math.max(r,g,b), min = Math.min(r,g,b)
-  let h, s, l = (max+min)/2
-  if (max === min) { h = 0; s = 0 }
-  else {
+  const max = Math.max(r, g, b),
+    min = Math.min(r, g, b)
+  let h,
+    s,
+    l = (max + min) / 2
+  if (max === min) {
+    h = 0
+    s = 0
+  } else {
     const d = max - min
-    s = l > 0.5 ? d / (2-max-min) : d / (max+min)
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
     switch (max) {
-      case r: h = (g-b)/d + (g<b ? 6 : 0); break
-      case g: h = (b-r)/d + 2; break
-      default: h = (r-g)/d + 4
+      case r:
+        h = (g - b) / d + (g < b ? 6 : 0)
+        break
+      case g:
+        h = (b - r) / d + 2
+        break
+      default:
+        h = (r - g) / d + 4
     }
     h /= 6
   }
   const hue2rgb = (p, q, t) => {
     if (t < 0) t += 1
     if (t > 1) t -= 1
-    if (t < 1/6) return p + (q-p)*6*t
-    if (t < 1/2) return q
-    if (t < 2/3) return p + (q-p)*(2/3-t)*6
+    if (t < 1 / 6) return p + (q - p) * 6 * t
+    if (t < 1 / 2) return q
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6
     return p
   }
   const rgbAt = (ll) => {
-    const q = ll < 0.5 ? ll*(1+s) : ll+s-ll*s
-    const p = 2*ll - q
-    return [hue2rgb(p,q,h+1/3), hue2rgb(p,q,h), hue2rgb(p,q,h-1/3)]
+    const q = ll < 0.5 ? ll * (1 + s) : ll + s - ll * s
+    const p = 2 * ll - q
+    return [hue2rgb(p, q, h + 1 / 3), hue2rgb(p, q, h), hue2rgb(p, q, h - 1 / 3)]
   }
   let lT = Math.max(l, 0.5)
   let rr, gg, bb
   for (let i = 0; i < 9; i++) {
-    [rr,gg,bb] = rgbAt(lT)
-    if (0.2126*rr + 0.7152*gg + 0.0722*bb >= minRelL) break
+    ;[rr, gg, bb] = rgbAt(lT)
+    if (0.2126 * rr + 0.7152 * gg + 0.0722 * bb >= minRelL) break
     if (lT >= 0.85) break
     lT = Math.min(0.85, lT + 0.05)
   }
-  const toByte = (x) => Math.round(x*255).toString(16).padStart(2,'0')
+  const toByte = (x) =>
+    Math.round(x * 255)
+      .toString(16)
+      .padStart(2, '0')
   return '#' + toByte(rr) + toByte(gg) + toByte(bb)
 }
 
@@ -242,7 +263,7 @@ function throttle(fn, ms = 16) {
   let last = 0
   let timer = null
   let lastArgs = null
-  return function(...args) {
+  return function (...args) {
     const now = Date.now()
     const remaining = ms - (now - last)
     lastArgs = args
@@ -268,7 +289,7 @@ function throttle(fn, ms = 16) {
  */
 function debounce(fn, ms = 100) {
   let timer = null
-  return function(...args) {
+  return function (...args) {
     clearTimeout(timer)
     timer = setTimeout(() => fn.apply(this, args), ms)
   }
@@ -301,7 +322,7 @@ function sanitizeUiSettings(obj) {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return {}
   const out = {}
   for (const key in obj) {
-    if (!Object.prototype.hasOwnProperty.call(obj, key)) continue
+    if (!Object.hasOwn(obj, key)) continue
     if (/^\d+$/.test(key)) continue
     if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue
     if (key.length === 0 || key.length > 64) continue
@@ -313,7 +334,9 @@ function sanitizeUiSettings(obj) {
     if (t === 'object' && v !== null) {
       try {
         if (JSON.stringify(v).length > 6144) continue
-      } catch { continue }
+      } catch {
+        continue
+      }
     }
     out[key] = v
   }
@@ -359,20 +382,20 @@ if (typeof window !== 'undefined') {
 }
 
 export {
-  escapeHtml,
-  safeUrl,
-  createElement,
   $,
   $$,
-  getFiber,
-  findComponent,
   boostReadability,
-  throttle,
+  createElement,
   debounce,
-  log,
-  warn,
   error,
+  escapeHtml,
+  findComponent,
+  getFiber,
+  log,
+  safeUrl,
   sanitizeUiSettings,
+  throttle,
   UI_SYNC_BLOCKLIST,
+  warn,
 }
 export default utils

@@ -8,8 +8,7 @@
 //   3. Pre-applying body classes once <body> exists
 // Without this script the user sees Twitch's natural full-width chat for
 // 100-500ms before our overlay mounts and shoves it.
-(function () {
-  'use strict'
+;(() => {
   if (window.__heatsyncEarlyLayout) return
   window.__heatsyncEarlyLayout = true
 
@@ -19,7 +18,7 @@
   if (host.includes('youtube.com')) platform = 'yt'
   else if (host.includes('kick.com')) platform = 'kick'
   else if (host.includes('twitch.tv')) platform = 'twitch'
-  else return  // not a host we inject into
+  else return // not a host we inject into
 
   // Pull layout state from localStorage (mirrored by main.js saveUiSetting +
   // saveChatWidth + saveChatHeight). All keys optional; fall back to defaults.
@@ -27,8 +26,14 @@
     try {
       const v = localStorage.getItem('hs_layout_' + key)
       if (v == null) return def
-      try { return JSON.parse(v) } catch { return v }
-    } catch { return def }
+      try {
+        return JSON.parse(v)
+      } catch {
+        return v
+      }
+    } catch {
+      return def
+    }
   }
   const tabPosition = readLS('tabPosition', 'top')
   const chatPosition = readLS('chatPosition', 'right')
@@ -49,12 +54,49 @@
       if (isPopout) return true
       const m = p.match(/^\/([a-zA-Z0-9_]{1,40})\/?$/)
       if (!m) return false
-      return !['directory','following','videos','settings','search','wallet','subscriptions','friends','drops','downloads','turbo','prime','store','jobs','clips','collections','about','schedule','team','teams','u','popout','embed','moderator'].includes(m[1].toLowerCase())
+      return ![
+        'directory',
+        'following',
+        'videos',
+        'settings',
+        'search',
+        'wallet',
+        'subscriptions',
+        'friends',
+        'drops',
+        'downloads',
+        'turbo',
+        'prime',
+        'store',
+        'jobs',
+        'clips',
+        'collections',
+        'about',
+        'schedule',
+        'team',
+        'teams',
+        'u',
+        'popout',
+        'embed',
+        'moderator',
+      ].includes(m[1].toLowerCase())
     }
     if (platform === 'kick') {
       const m = p.match(/^\/([a-zA-Z0-9_-]{1,40})\/?$/)
       if (!m) return false
-      return !['browse','following','categories','category','search','messages','settings','clips','subscriptions','help','about'].includes(m[1].toLowerCase())
+      return ![
+        'browse',
+        'following',
+        'categories',
+        'category',
+        'search',
+        'messages',
+        'settings',
+        'clips',
+        'subscriptions',
+        'help',
+        'about',
+      ].includes(m[1].toLowerCase())
     }
     if (platform === 'yt') {
       // No YT prepaint: at document_start we can't tell a livestream from a VOD
@@ -111,18 +153,26 @@
    roots specifically — NOT chat-shell itself, since our #hs-mc-container is
    a child of chat-shell and must stay visible for its own opacity-fade.
    visibility (vs display:none) keeps host layout stable. */
-${platform === 'twitch' && (chatPosition === 'right' || chatPosition === 'left') ? `
+${
+  platform === 'twitch' && (chatPosition === 'right' || chatPosition === 'left')
+    ? `
 :root.hs-prepaint-active .right-column [class*="chat-room__content"],
 :root.hs-prepaint-active .right-column [data-a-target="chat-room-component"],
 :root.hs-prepaint-active .right-column [class*="stream-chat"] [class*="chat-room__content"] {
   visibility: hidden !important;
 }
-` : ''}
-${platform === 'kick' && (chatPosition === 'right' || chatPosition === 'left') ? `
+`
+    : ''
+}
+${
+  platform === 'kick' && (chatPosition === 'right' || chatPosition === 'left')
+    ? `
 :root.hs-prepaint-active #channel-chatroom > *:not(#hs-mc-container) {
   visibility: hidden !important;
 }
-` : ''}
+`
+    : ''
+}
 `
   const style = document.createElement('style')
   style.id = 'hs-early-layout'

@@ -1,5 +1,5 @@
-import { test, expect } from 'bun:test'
-import { SETTINGS, validateSettingValue, coerceSettingValue, lintSettings } from '../src/lib/settings-schema.js'
+import { expect, test } from 'bun:test'
+import { coerceSettingValue, lintSettings, SETTINGS, validateSettingValue } from '../src/lib/settings-schema.js'
 import { UI_SYNC_BLOCKLIST } from '../src/lib/utils.js'
 
 // ── registry lint (same check the build runs) ────────────────────────────────
@@ -18,15 +18,35 @@ test('every default validates and coerces to itself (round-trip)', () => {
 test('storage keys are verbatim legacy keys (no renames)', () => {
   // spot-check the load-bearing ones — renaming any of these would orphan
   // existing users' synced settings
-  const keys = new Set(SETTINGS.map(d => d.key))
+  const keys = new Set(SETTINGS.map((d) => d.key))
   for (const k of [
-    'wysiwygEnabled', 'linksEnabled', 'linkPreviewsEnabled', 'viMode',
-    'zebra', 'autoHideEmpty', 'timestamps', 'avatars', 'showPlatformBadges',
-    'firstChatterGlow', 'keywordHighlights', 'hiddenTabs', 'crashTelemetry',
-    'fontFamily', 'fontSize', 'customFontName', 'mentionTitleFlash',
-    'mentionSoundVolume', 'crossFollowKick', 'automodAllCaps', 'automodRegex',
-    'hs_emote_size', 'hs_emoji_size', 'hs_auto_claim_points',
-    'hs_dim_timeouts', 'hs_readable_names', 'hs_notifications',
+    'wysiwygEnabled',
+    'linksEnabled',
+    'linkPreviewsEnabled',
+    'viMode',
+    'zebra',
+    'autoHideEmpty',
+    'timestamps',
+    'avatars',
+    'showPlatformBadges',
+    'firstChatterGlow',
+    'keywordHighlights',
+    'hiddenTabs',
+    'crashTelemetry',
+    'fontFamily',
+    'fontSize',
+    'customFontName',
+    'mentionTitleFlash',
+    'mentionSoundVolume',
+    'crossFollowKick',
+    'automodAllCaps',
+    'automodRegex',
+    'hs_emote_size',
+    'hs_emoji_size',
+    'hs_auto_claim_points',
+    'hs_dim_timeouts',
+    'hs_readable_names',
+    'hs_notifications',
   ]) {
     expect(keys.has(k)).toBe(true)
   }
@@ -34,11 +54,11 @@ test('storage keys are verbatim legacy keys (no renames)', () => {
 
 // ── validateSettingValue ──────────────────────────────────────────────────────
 
-const boolDef = SETTINGS.find(d => d.key === 'zebra')
-const enumDef = SETTINGS.find(d => d.key === 'hs_emote_size')
-const rangeDef = SETTINGS.find(d => d.key === 'mentionSoundVolume')
-const textDef = SETTINGS.find(d => d.key === 'customFontName')
-const multiDef = SETTINGS.find(d => d.key === 'hiddenTabs')
+const boolDef = SETTINGS.find((d) => d.key === 'zebra')
+const enumDef = SETTINGS.find((d) => d.key === 'hs_emote_size')
+const rangeDef = SETTINGS.find((d) => d.key === 'mentionSoundVolume')
+const textDef = SETTINGS.find((d) => d.key === 'customFontName')
+const multiDef = SETTINGS.find((d) => d.key === 'hiddenTabs')
 
 test('validate: bool rejects non-booleans', () => {
   expect(validateSettingValue(boolDef, true)).toBe(true)
@@ -110,7 +130,7 @@ test('coerce: rejects unknown def and nullish values', () => {
 
 // ── boolmap (inlineNotifs / hermesEvents nested savers) ──────────────────────
 
-const mapDef = SETTINGS.find(d => d.key === 'inlineNotifs')
+const mapDef = SETTINGS.find((d) => d.key === 'inlineNotifs')
 
 test('validate: boolmap accepts partial maps of known subkeys', () => {
   expect(validateSettingValue(mapDef, { op: false })).toBe(true)
@@ -127,7 +147,7 @@ test('coerce: boolmap merges partial stored map over full defaults', () => {
 })
 
 test('cw entries carry complete server-patch sub-shapes', () => {
-  const cw = SETTINGS.filter(d => d.cw)
+  const cw = SETTINGS.filter((d) => d.cw)
   expect(cw.length).toBe(5)
   for (const def of cw) {
     expect(def.scope).toBe('local')
@@ -137,7 +157,7 @@ test('cw entries carry complete server-patch sub-shapes', () => {
 })
 
 test('tweak entries: 27 sync bools (hideChatHeader is the only default-on)', () => {
-  const tweaks = SETTINGS.filter(d => d.tweak)
+  const tweaks = SETTINGS.filter((d) => d.tweak)
   expect(tweaks.length).toBe(27)
   for (const def of tweaks) {
     expect(def.type).toBe('bool')
@@ -152,7 +172,7 @@ test('lint: flags a duplicate key', () => {
   const dup = [...SETTINGS, SETTINGS[0]]
   const orig = SETTINGS.splice(0, SETTINGS.length, ...dup)
   try {
-    expect(lintSettings(UI_SYNC_BLOCKLIST).some(p => p.startsWith('duplicate key'))).toBe(true)
+    expect(lintSettings(UI_SYNC_BLOCKLIST).some((p) => p.startsWith('duplicate key'))).toBe(true)
   } finally {
     SETTINGS.splice(0, SETTINGS.length, ...orig)
   }
@@ -160,5 +180,5 @@ test('lint: flags a duplicate key', () => {
 
 test('lint: flags a sync key on the blocklist', () => {
   const bad = new Set([...UI_SYNC_BLOCKLIST, 'zebra'])
-  expect(lintSettings(bad).some(p => p.includes('UI_SYNC_BLOCKLIST'))).toBe(true)
+  expect(lintSettings(bad).some((p) => p.includes('UI_SYNC_BLOCKLIST'))).toBe(true)
 })

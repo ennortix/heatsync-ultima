@@ -1,8 +1,6 @@
 // Shared utilities for Heatsync browser extension
 // Loaded FIRST via manifest content_scripts — exposes window.HS
-;(function() {
-  'use strict'
-
+;(() => {
   // Guard against double-load
   if (window.HS) return
 
@@ -23,27 +21,45 @@
     signal.addEventListener('abort', () => {
       _timers.intervals.forEach(clearInterval)
       _timers.timeouts.forEach(clearTimeout)
-      _timers.observers.forEach(o => o.disconnect())
-      _pendingRafs.forEach(cancelAnimationFrame); _pendingRafs.clear()
+      _timers.observers.forEach((o) => o.disconnect())
+      _pendingRafs.forEach(cancelAnimationFrame)
+      _pendingRafs.clear()
       if (opts.onAbort) opts.onAbort()
     })
 
     window.addEventListener('pagehide', () => controller.abort(), { once: true })
 
     const cleanup = {
-      setInterval(fn, ms) { const id = setInterval(fn, ms); _timers.intervals.add(id); return id },
-      setTimeout(fn, ms) { const id = setTimeout(fn, ms); _timers.timeouts.add(id); return id },
+      setInterval(fn, ms) {
+        const id = setInterval(fn, ms)
+        _timers.intervals.add(id)
+        return id
+      },
+      setTimeout(fn, ms) {
+        const id = setTimeout(fn, ms)
+        _timers.timeouts.add(id)
+        return id
+      },
       addEventListener(target, event, handler, extra) {
         target.addEventListener(event, handler, { signal, ...extra })
       },
-      trackObserver(obs) { _timers.observers.push(obs); return obs },
+      trackObserver(obs) {
+        _timers.observers.push(obs)
+        return obs
+      },
       raf(fn) {
         let id
-        id = requestAnimationFrame(() => { _pendingRafs.delete(id); fn() })
+        id = requestAnimationFrame(() => {
+          _pendingRafs.delete(id)
+          fn()
+        })
         _pendingRafs.add(id)
         return id
       },
-      cancelRaf(id) { cancelAnimationFrame(id); _pendingRafs.delete(id) },
+      cancelRaf(id) {
+        cancelAnimationFrame(id)
+        _pendingRafs.delete(id)
+      },
     }
 
     return { signal, cleanup, abort: () => controller.abort() }
@@ -55,9 +71,7 @@
    */
   function getFiber(el) {
     if (!el) return null
-    const key = Object.keys(el).find(k =>
-      k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$')
-    )
+    const key = Object.keys(el).find((k) => k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$'))
     return key ? el[key] : null
   }
 
@@ -105,16 +119,16 @@
       try {
         return await chrome.runtime.sendMessage(message)
       } catch (err) {
-        if (err.message?.includes('Extension context invalidated') ||
-            err.message?.includes('context invalidated')) {
+        if (err.message?.includes('Extension context invalidated') || err.message?.includes('context invalidated')) {
           _contextValid = false
           if (opts.onInvalidated) opts.onInvalidated()
           throw err
         }
-        const isConnErr = err.message?.includes('Receiving end does not exist') ||
-            err.message?.includes('Could not establish connection')
+        const isConnErr =
+          err.message?.includes('Receiving end does not exist') ||
+          err.message?.includes('Could not establish connection')
         if (isConnErr && attempt < MAX_RETRIES) {
-          await new Promise(r => setTimeout(r, 200 * Math.pow(2, attempt)))
+          await new Promise((r) => setTimeout(r, 200 * 2 ** attempt))
           continue
         }
         throw err
@@ -150,10 +164,13 @@
     }
 
     document.body.appendChild(toast)
-    setTimeout(() => {
-      toast.style.animation = 'heatsync-toast-out .2s ease-in forwards'
-      setTimeout(() => toast.remove(), 200)
-    }, type === 'error' ? 3000 : 2000)
+    setTimeout(
+      () => {
+        toast.style.animation = 'heatsync-toast-out .2s ease-in forwards'
+        setTimeout(() => toast.remove(), 200)
+      },
+      type === 'error' ? 3000 : 2000,
+    )
   }
 
   /**
@@ -193,7 +210,8 @@
   // bar for any adversarial code that hasn't already hooked addEventListener.
   function generateNonce() {
     return Array.from(crypto.getRandomValues(new Uint8Array(16)))
-      .map(b => b.toString(16).padStart(2, '0')).join('')
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('')
   }
 
   let _mainWorldNonce = null
@@ -206,7 +224,9 @@
   }
 
   // Returns current nonce (call initMainWorldNonce first)
-  function getMainWorldNonce() { return _mainWorldNonce }
+  function getMainWorldNonce() {
+    return _mainWorldNonce
+  }
 
   window.HS = {
     createLifecycle,

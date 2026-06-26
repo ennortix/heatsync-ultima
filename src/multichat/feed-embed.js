@@ -8,7 +8,8 @@
 // preserves user-clickable share/popup flows. What this BLOCKS: top-level
 // nav, modals, pointer-lock, downloads — i.e. defang most providers if they
 // ship malicious payload.
-const EMBED_SANDBOX = 'allow-scripts allow-same-origin allow-presentation allow-popups allow-popups-to-escape-sandbox allow-forms'
+const EMBED_SANDBOX =
+  'allow-scripts allow-same-origin allow-presentation allow-popups allow-popups-to-escape-sandbox allow-forms'
 
 function sanitizeEmbedId(id) {
   if (!id || typeof id !== 'string') return ''
@@ -167,9 +168,7 @@ function redditEmbed(url) {
   if (m) {
     const sub = m[1]
     const slug = m[2] || ''
-    const title = slug
-      ? slug.replace(/[_-]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-      : `r/${sub}`
+    const title = slug ? slug.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : `r/${sub}`
     return `<div class="hs-feed-embed-pending hs-feed-embed-reddit"
       data-resolve-url="${attr(safe)}" data-resolve-platform="reddit"
       data-fb-title="${attr(title)}" data-fb-author="r/${attr(sub)}">
@@ -358,14 +357,17 @@ function buildFeedMediaHtml(m) {
 
   // Multi-item media (uploads)
   if (mediaArr.length > 1) {
-    const items = mediaArr.map(med => {
-      const url = safeUrl(med.url)
-      if (!url) return ''
-      if (med.type === 'video') {
-        return `<video controls muted preload="metadata" src="${attr(url)}" class="hs-feed-media-item"></video>`
-      }
-      return `<img src="${attr(url)}" alt="" class="hs-feed-media-item">`
-    }).filter(Boolean).join('')
+    const items = mediaArr
+      .map((med) => {
+        const url = safeUrl(med.url)
+        if (!url) return ''
+        if (med.type === 'video') {
+          return `<video controls muted preload="metadata" src="${attr(url)}" class="hs-feed-media-item"></video>`
+        }
+        return `<img src="${attr(url)}" alt="" class="hs-feed-media-item">`
+      })
+      .filter(Boolean)
+      .join('')
     if (items) return `<div class="hs-feed-media hs-feed-media-multi">${items}</div>`
   }
 
@@ -375,8 +377,11 @@ function buildFeedMediaHtml(m) {
     if (!safe) return ''
 
     const isVideo = mediaType === 'video' || (mediaType || '').startsWith('video/')
-    const isEmbedType = mediaType === 'embed' ||
-      /^https?:\/\/(?:(?:www\.)?(?:youtube\.com|youtu\.be|twitch\.tv|clips\.twitch\.tv|streamable\.com|vimeo\.com|twitter\.com|x\.com|kick\.com|tiktok\.com|open\.spotify\.com|soundcloud\.com|giphy\.com|tenor\.com|imgur\.com|instagram\.com)|(?:[\w-]+\.)?reddit\.com)/i.test(safe)
+    const isEmbedType =
+      mediaType === 'embed' ||
+      /^https?:\/\/(?:(?:www\.)?(?:youtube\.com|youtu\.be|twitch\.tv|clips\.twitch\.tv|streamable\.com|vimeo\.com|twitter\.com|x\.com|kick\.com|tiktok\.com|open\.spotify\.com|soundcloud\.com|giphy\.com|tenor\.com|imgur\.com|instagram\.com)|(?:[\w-]+\.)?reddit\.com)/i.test(
+        safe,
+      )
     const isImage = mediaType === 'image' || /\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i.test(safe)
 
     if (isEmbedType) {
@@ -419,7 +424,9 @@ function _fetchFeedResolve(url) {
       const data = await safeSendMessage({ type: 'fetch_embed_resolve', url })
       if (!data || data.error || data.ok === false) return null
       return data
-    } catch (_) { return null }
+    } catch (_) {
+      return null
+    }
   })()
   if (_feedResolveInflight.size >= FEED_RESOLVE_INFLIGHT_MAX) {
     _feedResolveInflight.delete(_feedResolveInflight.keys().next().value)
@@ -525,7 +532,7 @@ function resolvePendingFeedEmbeds(root) {
     ph.dataset.resolving = '1'
     const url = ph.dataset.resolveUrl
     if (!url) continue
-    _fetchFeedResolve(url).then(data => {
+    _fetchFeedResolve(url).then((data) => {
       if (data && !data.error) {
         const html = _buildFeedResolvedHtml(ph, data)
         if (html) _swapPlaceholder(ph, html, 'hs-feed-embed-resolved')
@@ -547,24 +554,32 @@ function resolvePendingFeedEmbeds(root) {
 function attachFeedFallbacks(root) {
   if (!root || !root.querySelectorAll) return
   root.querySelectorAll('img[data-fallback-anon]').forEach((img) => {
-    img.addEventListener('error', () => {
-      img.removeAttribute('data-fallback-anon')
-      img.src = 'https://heatsync.org/anon.webp'
-    }, { once: true })
+    img.addEventListener(
+      'error',
+      () => {
+        img.removeAttribute('data-fallback-anon')
+        img.src = 'https://heatsync.org/anon.webp'
+      },
+      { once: true },
+    )
   })
   root.querySelectorAll('img[data-fb]').forEach((img) => {
     const mode = img.dataset.fb
     img.removeAttribute('data-fb')
-    img.addEventListener('error', () => {
-      if (mode === 'hide') {
-        img.style.display = 'none'
-      } else if (mode === 'deleted' || mode === 'deleted-span') {
-        const tag = mode === 'deleted-span' ? 'span' : 'div'
-        const replacement = document.createElement(tag)
-        replacement.className = 'hs-feed-media-deleted'
-        replacement.textContent = 'image unavailable'
-        img.replaceWith(replacement)
-      }
-    }, { once: true })
+    img.addEventListener(
+      'error',
+      () => {
+        if (mode === 'hide') {
+          img.style.display = 'none'
+        } else if (mode === 'deleted' || mode === 'deleted-span') {
+          const tag = mode === 'deleted-span' ? 'span' : 'div'
+          const replacement = document.createElement(tag)
+          replacement.className = 'hs-feed-media-deleted'
+          replacement.textContent = 'image unavailable'
+          img.replaceWith(replacement)
+        }
+      },
+      { once: true },
+    )
   })
 }

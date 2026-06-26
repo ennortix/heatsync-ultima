@@ -7,7 +7,7 @@
  * (e.g. API_URL must be the heatsync origin, emote size limits must be sane).
  */
 
-import { test, describe, expect } from 'bun:test'
+import { describe, expect, test } from 'bun:test'
 import CONFIG, { CONFIG as namedConfig } from '../src/lib/config.js'
 
 // ── export shape ─────────────────────────────────────────────────────────────
@@ -44,16 +44,25 @@ describe('config: URL constants', () => {
 
   test('all CDN/API URLs are https or wss strings', () => {
     const urlKeys = [
-      'CDN_7TV', 'CDN_BTTV', 'API_7TV', 'WS_7TV',
-      'API_BTTV', 'API_FFZ', 'API_DECAPI',
-      'API_TWITCH_GQL', 'API_TWITCH_HELIX',
-      'API_RECENT_MSGS', 'WS_TWITCH_IRC',
+      'CDN_7TV',
+      'CDN_BTTV',
+      'API_7TV',
+      'WS_7TV',
+      'API_BTTV',
+      'API_FFZ',
+      'API_DECAPI',
+      'API_TWITCH_GQL',
+      'API_TWITCH_HELIX',
+      'API_RECENT_MSGS',
+      'WS_TWITCH_IRC',
     ]
     for (const key of urlKeys) {
       const val = CONFIG[key]
       expect(typeof val, `${key} should be a string`).toBe('string')
-      expect(val.startsWith('https://') || val.startsWith('wss://'),
-        `${key} should start with https:// or wss://, got: ${val}`).toBe(true)
+      expect(
+        val.startsWith('https://') || val.startsWith('wss://'),
+        `${key} should start with https:// or wss://, got: ${val}`,
+      ).toBe(true)
     }
   })
 })
@@ -189,9 +198,14 @@ describe('config: CLASSES', () => {
   })
 
   const requiredClassKeys = [
-    'EMOTE_WRAPPER', 'EMOTE_IMG', 'EMOTE_OVERLAY',
-    'MC_CONTAINER', 'MC_INPUT', 'MC_TABBAR',
-    'MENTIONED', 'CHAT_COLLAPSED',
+    'EMOTE_WRAPPER',
+    'EMOTE_IMG',
+    'EMOTE_OVERLAY',
+    'MC_CONTAINER',
+    'MC_INPUT',
+    'MC_TABBAR',
+    'MENTIONED',
+    'CHAT_COLLAPSED',
   ]
 
   for (const key of requiredClassKeys) {
@@ -217,8 +231,13 @@ describe('config: Z_INDEX', () => {
   })
 
   const requiredZKeys = [
-    'EMOTE_PREVIEW', 'TOAST', 'AUTOCOMPLETE',
-    'MC_PANEL', 'MC_EMOTE_PICKER', 'MC_CONTEXT_MENU', 'MC_RESIZE_OVERLAY',
+    'EMOTE_PREVIEW',
+    'TOAST',
+    'AUTOCOMPLETE',
+    'MC_PANEL',
+    'MC_EMOTE_PICKER',
+    'MC_CONTEXT_MENU',
+    'MC_RESIZE_OVERLAY',
   ]
 
   for (const key of requiredZKeys) {

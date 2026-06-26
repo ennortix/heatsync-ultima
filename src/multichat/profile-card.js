@@ -2,7 +2,7 @@
 // Triggered by clicking any username anywhere in the extension.
 // Replaces #hs-mc-messages content. ESC, tab switch, or close button restores chat.
 
-let activeProfileCard = null  // { username, platform, data, ts }
+let activeProfileCard = null // { username, platform, data, ts }
 
 // In-page LRU for fetched banners — survives card open/close within a session.
 // Background SW caches authoritatively (12h); this layer just avoids the SW
@@ -56,7 +56,8 @@ function pickBannerChain(data, contextPlatform, username) {
     if (!p || !l) return
     const k = `${p}:${String(l).toLowerCase()}`
     if (seen.has(k)) return
-    seen.add(k); out.push({ platform: p, login: l })
+    seen.add(k)
+    out.push({ platform: p, login: l })
   }
 
   // Step 1: the context platform — usually the only entry in the chain.
@@ -119,7 +120,7 @@ async function openProfileCard(username, platform) {
 
   // Try cache first (shared with tooltip via _profileCache)
   const cacheKey = `${platform || 'unknown'}:${username}`
-  const ttl = (typeof PROFILE_CACHE_TTL !== 'undefined') ? PROFILE_CACHE_TTL : 300000
+  const ttl = typeof PROFILE_CACHE_TTL !== 'undefined' ? PROFILE_CACHE_TTL : 300000
   if (typeof _profileCache !== 'undefined') {
     const cached = _profileCache.get(cacheKey)
     if (cached && Date.now() - cached.ts < ttl) {
@@ -134,12 +135,10 @@ async function openProfileCard(username, platform) {
     // Fire kick enrichment in parallel for kick-platform users — Kick API is
     // public/CORS-friendly and adds bio + socials + pfp + linked twitch even
     // when the user has no heatsync profile.
-    const kickEnrichP = (platform === 'kick')
-      ? pcFetchKickEnrich(username).catch(() => null)
-      : Promise.resolve(null)
+    const kickEnrichP = platform === 'kick' ? pcFetchKickEnrich(username).catch(() => null) : Promise.resolve(null)
     const resp = await apiFetch(`/api/profile/${encodeURIComponent(username)}${platParam}`)
     if (!activeProfileCard || activeProfileCard.username !== username) return
-    let profile = (resp?.ok && resp.data?.profile) ? resp.data.profile : null
+    let profile = resp?.ok && resp.data?.profile ? resp.data.profile : null
     // Cross-platform probe — kick chatters often share their handle on twitch;
     // a same-name twitch hit lands a full profile when the kick lookup misses.
     if (!profile && platform === 'kick') {
@@ -183,12 +182,12 @@ async function pcFetchKickEnrich(username) {
     // gives an S-tier profile-card.
     const [userRes, chanRes] = await Promise.allSettled([
       fetch(`https://kick.com/api/v1/users/${encodeURIComponent(u)}`, { credentials: 'omit' }),
-      fetch(`https://kick.com/api/v2/channels/${encodeURIComponent(u)}`, { credentials: 'omit' })
+      fetch(`https://kick.com/api/v2/channels/${encodeURIComponent(u)}`, { credentials: 'omit' }),
     ])
-    const data = (userRes.status === 'fulfilled' && userRes.value.ok)
-      ? await userRes.value.json().catch(() => null) : null
-    const chan = (chanRes.status === 'fulfilled' && chanRes.value.ok)
-      ? await chanRes.value.json().catch(() => null) : null
+    const data =
+      userRes.status === 'fulfilled' && userRes.value.ok ? await userRes.value.json().catch(() => null) : null
+    const chan =
+      chanRes.status === 'fulfilled' && chanRes.value.ok ? await chanRes.value.json().catch(() => null) : null
     if (!data?.id && !chan?.id) return null
     return {
       kick_user_id: data?.id || chan?.user_id || null,
@@ -208,12 +207,14 @@ async function pcFetchKickEnrich(username) {
       kick_live_viewers: chan?.livestream?.viewer_count || null,
       kick_live_title: chan?.livestream?.session_title || null,
       kick_recent_categories: Array.isArray(chan?.recent_categories)
-        ? chan.recent_categories.slice(0, 3).map(c => ({ name: c.name, slug: c.slug }))
+        ? chan.recent_categories.slice(0, 3).map((c) => ({ name: c.name, slug: c.slug }))
         : null,
       kick_verified: !!chan?.verified,
-      linked_twitch_username: (typeof getKickLinkedTwitch === 'function') ? getKickLinkedTwitch(u) : null,
+      linked_twitch_username: typeof getKickLinkedTwitch === 'function' ? getKickLinkedTwitch(u) : null,
     }
-  } catch { return null }
+  } catch {
+    return null
+  }
 }
 
 function pcMergeKickEnrich(profile, kickEnrich) {
@@ -222,8 +223,10 @@ function pcMergeKickEnrich(profile, kickEnrich) {
   if (!profile.kick_username && kickEnrich.kick_username) profile.kick_username = kickEnrich.kick_username
   // Merge to canonical Kick fields so the existing stats render picks them up
   if (kickEnrich.kick_followers && !profile.kick_followers) profile.kick_followers = kickEnrich.kick_followers
-  if (typeof kickEnrich.kick_is_live === 'boolean' && profile.kick_is_live == null) profile.kick_is_live = kickEnrich.kick_is_live
-  if (kickEnrich.kick_live_viewers && !profile.kick_viewer_count) profile.kick_viewer_count = kickEnrich.kick_live_viewers
+  if (typeof kickEnrich.kick_is_live === 'boolean' && profile.kick_is_live == null)
+    profile.kick_is_live = kickEnrich.kick_is_live
+  if (kickEnrich.kick_live_viewers && !profile.kick_viewer_count)
+    profile.kick_viewer_count = kickEnrich.kick_live_viewers
   if (kickEnrich.kick_verified && !profile.kick_verified) profile.kick_verified = true
   profile._kick_socials = kickEnrich.kick_socials
   profile._kick_live_title = kickEnrich.kick_live_title
@@ -375,8 +378,12 @@ function pcBuildModActions(username) {
   if (typeof getRecentMessagesFromUser !== 'function') return null
   if (!username) return null
   // Don't surface mod actions on your own profile — self-mod buttons are nonsense.
-  if (typeof currentUsername !== 'undefined' && currentUsername &&
-      username.toLowerCase() === currentUsername.toLowerCase()) return null
+  if (
+    typeof currentUsername !== 'undefined' &&
+    currentUsername &&
+    username.toLowerCase() === currentUsername.toLowerCase()
+  )
+    return null
   const recent = getRecentMessagesFromUser(username)
   if (!recent.length) return null
   // Group by twitch channel — find most recent msgId per channel where I mod.
@@ -402,13 +409,50 @@ function pcBuildModActions(username) {
     chLabel.textContent = '#' + channel
     row.appendChild(chLabel)
     const actions = [
-      { label: 'del msg', title: 'delete this user\'s latest message', need: 'msg', fn: () => deleteTwitchMessage(channel, msgId), verb: 'deleted' },
-      { label: '1m',  title: 'timeout 1 minute',   fn: () => timeoutTwitchUser(channel, username, 60, ''),     verb: `timed out ${username} 60s` },
-      { label: '10m', title: 'timeout 10 minutes', fn: () => timeoutTwitchUser(channel, username, 600, ''),    verb: `timed out ${username} 600s` },
-      { label: '1h',  title: 'timeout 1 hour',     fn: () => timeoutTwitchUser(channel, username, 3600, ''),   verb: `timed out ${username} 1h` },
-      { label: '24h', title: 'timeout 24 hours',   fn: () => timeoutTwitchUser(channel, username, 86400, ''),  verb: `timed out ${username} 24h` },
-      { label: 'ban', title: 'permanent ban',      fn: () => banTwitchUser(channel, username, ''),             verb: `banned ${username}`, danger: true },
-      { label: 'unban', title: 'unban user',       fn: () => unbanTwitchUser(channel, username),               verb: `unbanned ${username}` },
+      {
+        label: 'del msg',
+        title: "delete this user's latest message",
+        need: 'msg',
+        fn: () => deleteTwitchMessage(channel, msgId),
+        verb: 'deleted',
+      },
+      {
+        label: '1m',
+        title: 'timeout 1 minute',
+        fn: () => timeoutTwitchUser(channel, username, 60, ''),
+        verb: `timed out ${username} 60s`,
+      },
+      {
+        label: '10m',
+        title: 'timeout 10 minutes',
+        fn: () => timeoutTwitchUser(channel, username, 600, ''),
+        verb: `timed out ${username} 600s`,
+      },
+      {
+        label: '1h',
+        title: 'timeout 1 hour',
+        fn: () => timeoutTwitchUser(channel, username, 3600, ''),
+        verb: `timed out ${username} 1h`,
+      },
+      {
+        label: '24h',
+        title: 'timeout 24 hours',
+        fn: () => timeoutTwitchUser(channel, username, 86400, ''),
+        verb: `timed out ${username} 24h`,
+      },
+      {
+        label: 'ban',
+        title: 'permanent ban',
+        fn: () => banTwitchUser(channel, username, ''),
+        verb: `banned ${username}`,
+        danger: true,
+      },
+      {
+        label: 'unban',
+        title: 'unban user',
+        fn: () => unbanTwitchUser(channel, username),
+        verb: `unbanned ${username}`,
+      },
     ]
     for (const a of actions) {
       const b = document.createElement('button')
@@ -418,12 +462,17 @@ function pcBuildModActions(username) {
       b.title = a.title
       if (a.need === 'msg' && !msgId) b.disabled = true
       b.addEventListener('click', async (e) => {
-        e.preventDefault(); e.stopPropagation()
+        e.preventDefault()
+        e.stopPropagation()
         b.disabled = true
         const orig = b.textContent
         b.textContent = '…'
         let resp
-        try { resp = await a.fn() } catch (err) { resp = { error: err?.message || 'error' } }
+        try {
+          resp = await a.fn()
+        } catch (err) {
+          resp = { error: err?.message || 'error' }
+        }
         b.textContent = orig
         if (resp?.ok) {
           if (typeof showToast === 'function') showToast(a.verb, 'success')
@@ -496,11 +545,16 @@ function renderProfileCardView() {
   if (!data?.twitch_profile_pic && !data?.kick_profile_pic && !data?.profile_image_url) {
     try {
       const recent = getRecentMessagesFromUser(username)
-      const withAv = recent.find(m => m.avatar)
+      const withAv = recent.find((m) => m.avatar)
       if (withAv) ytAvatar = withAv.avatar
     } catch {}
   }
-  avatar.src = data?.twitch_profile_pic || data?.kick_profile_pic || data?.profile_image_url || ytAvatar || 'https://heatsync.org/anon.webp'
+  avatar.src =
+    data?.twitch_profile_pic ||
+    data?.kick_profile_pic ||
+    data?.profile_image_url ||
+    ytAvatar ||
+    'https://heatsync.org/anon.webp'
   avatar.alt = ''
   avatar.referrerPolicy = 'no-referrer'
   idRow.appendChild(avatar)
@@ -516,8 +570,8 @@ function renderProfileCardView() {
   chips.className = 'hs-pcard-id-chips'
   try {
     const userId = data?.twitch_user_id || data?.twitch_id || null
-    const recent = (typeof getRecentMessagesFromUser === 'function') ? getRecentMessagesFromUser(username) : []
-    const recentTwitch = recent.find(m => (m.platform || 'twitch') === 'twitch' && m.badges)
+    const recent = typeof getRecentMessagesFromUser === 'function' ? getRecentMessagesFromUser(username) : []
+    const recentTwitch = recent.find((m) => (m.platform || 'twitch') === 'twitch' && m.badges)
     let html = ''
     if (recentTwitch && typeof renderBadges === 'function') {
       html += renderBadges(recentTwitch.badges, recentTwitch.channel)
@@ -568,9 +622,17 @@ function renderProfileCardView() {
     const socEntries = []
     if (kickSocials.twitter) socEntries.push(['twitter', `https://twitter.com/${kickSocials.twitter}`])
     if (kickSocials.instagram) socEntries.push(['instagram', `https://instagram.com/${kickSocials.instagram}`])
-    if (kickSocials.youtube) socEntries.push(['youtube', kickSocials.youtube.startsWith('http') ? kickSocials.youtube : `https://youtube.com/${kickSocials.youtube}`])
+    if (kickSocials.youtube)
+      socEntries.push([
+        'youtube',
+        kickSocials.youtube.startsWith('http') ? kickSocials.youtube : `https://youtube.com/${kickSocials.youtube}`,
+      ])
     if (kickSocials.tiktok) socEntries.push(['tiktok', `https://tiktok.com/@${kickSocials.tiktok}`])
-    if (kickSocials.facebook) socEntries.push(['facebook', kickSocials.facebook.startsWith('http') ? kickSocials.facebook : `https://facebook.com/${kickSocials.facebook}`])
+    if (kickSocials.facebook)
+      socEntries.push([
+        'facebook',
+        kickSocials.facebook.startsWith('http') ? kickSocials.facebook : `https://facebook.com/${kickSocials.facebook}`,
+      ])
     if (kickSocials.discord) socEntries.push(['discord', kickSocials.discord])
     if (socEntries.length) {
       const soc = document.createElement('div')
@@ -613,8 +675,9 @@ function renderProfileCardView() {
     const grid = document.createElement('div')
     grid.className = 'hs-pcard-action-grid'
 
-    const isMuted = (typeof isUserMuted === 'function') ? isUserMuted(username, activeProfileCard.platform) : mutedUsers.has(username)
-    const inChannels = config.channels.some(c => {
+    const isMuted =
+      typeof isUserMuted === 'function' ? isUserMuted(username, activeProfileCard.platform) : mutedUsers.has(username)
+    const inChannels = config.channels.some((c) => {
       const id = c.id?.toLowerCase()
       const tw = c.twitch?.toLowerCase()
       const ki = c.kick?.toLowerCase()
@@ -629,12 +692,22 @@ function renderProfileCardView() {
     // + add channel. Letter shown as a leading [k] indicator. Platform
     // pills get t/k/y/h on the pcMakePill side.
     const actions = [
-      { label: youFollow ? 'unfollow' : 'follow', key: 'f', fn: () => pcToggleFollow(profileId, username, youFollow), disabled: !profileId },
+      {
+        label: youFollow ? 'unfollow' : 'follow',
+        key: 'f',
+        fn: () => pcToggleFollow(profileId, username, youFollow),
+        disabled: !profileId,
+      },
       { label: 'whisper', key: 'w', fn: () => pcDoWhisper(username, activeProfileCard?.platform) },
       { label: 'dm', key: 'd', fn: () => pcDoDm(username, activeProfileCard?.platform) },
       { label: 'mention', key: '@', fn: () => pcMention(data?.display_name || username) },
       { label: isMuted ? 'unmute' : 'mute', key: 'm', fn: () => pcToggleMute(username) },
-      { label: youBlock ? 'unblock' : 'block', key: 'b', fn: () => pcToggleBlock(profileId, username, youBlock), disabled: !profileId },
+      {
+        label: youBlock ? 'unblock' : 'block',
+        key: 'b',
+        fn: () => pcToggleBlock(profileId, username, youBlock),
+        disabled: !profileId,
+      },
     ]
     if (!inChannels) actions.push({ label: 'add channel', key: '+', fn: () => pcAddAsChannel(username) })
 
@@ -662,9 +735,13 @@ function renderProfileCardView() {
     const sheet = document.createElement('dl')
     sheet.className = 'hs-pcard-sheet'
     const addRow = (label, value, valueClass) => {
-      const dt = document.createElement('dt'); dt.textContent = label
-      const dd = document.createElement('dd'); if (valueClass) dd.className = valueClass; dd.textContent = value
-      sheet.appendChild(dt); sheet.appendChild(dd)
+      const dt = document.createElement('dt')
+      dt.textContent = label
+      const dd = document.createElement('dd')
+      if (valueClass) dd.className = valueClass
+      dd.textContent = value
+      sheet.appendChild(dt)
+      sheet.appendChild(dd)
     }
     if (plat === 'kick') addRow('kick', username, 'val-kick')
     else if (plat === 'youtube' || plat === 'yt') addRow('yt', username, 'val-yt')
@@ -719,24 +796,38 @@ function renderProfileCardView() {
       const a = document.createElement('a')
       a.href = href
       a.textContent = label
-      a.dataset.pcardPill = '1'  // bypasses overlay click interception
+      a.dataset.pcardPill = '1' // bypasses overlay click interception
       if (typeof liveVc === 'number') a.appendChild(liveDot(liveVc))
       return a
     }
     if (data.twitch_username) {
-      addRow('ttv', mkLink('https://twitch.tv/' + encodeURIComponent(data.twitch_username),
-        data.twitch_username, data.twitch_is_live ? (data.twitch_viewer_count || 0) : undefined), 'val-ttv')
+      addRow(
+        'ttv',
+        mkLink(
+          'https://twitch.tv/' + encodeURIComponent(data.twitch_username),
+          data.twitch_username,
+          data.twitch_is_live ? data.twitch_viewer_count || 0 : undefined,
+        ),
+        'val-ttv',
+      )
     }
     if (data.kick_username) {
-      addRow('kick', mkLink('https://kick.com/' + encodeURIComponent(data.kick_username),
-        data.kick_username, data.kick_is_live ? (data.kick_viewer_count || 0) : undefined), 'val-kick')
+      addRow(
+        'kick',
+        mkLink(
+          'https://kick.com/' + encodeURIComponent(data.kick_username),
+          data.kick_username,
+          data.kick_is_live ? data.kick_viewer_count || 0 : undefined,
+        ),
+        'val-kick',
+      )
     }
     if (data.youtube_username || data.youtube_channel_id) {
       const ytName = data.youtube_username || username
       const ytHref = data.youtube_username
         ? 'https://youtube.com/@' + encodeURIComponent(data.youtube_username)
         : 'https://youtube.com/channel/' + encodeURIComponent(data.youtube_channel_id)
-      addRow('yt', mkLink(ytHref, ytName, data.youtube_is_live ? (data.youtube_viewer_count || 0) : undefined), 'val-yt')
+      addRow('yt', mkLink(ytHref, ytName, data.youtube_is_live ? data.youtube_viewer_count || 0 : undefined), 'val-yt')
     } else if (activeProfileCard.platform === 'yt' || activeProfileCard.platform === 'youtube') {
       addRow('yt', mkLink('https://youtube.com/@' + encodeURIComponent(username), username), 'val-yt')
     }
@@ -744,9 +835,9 @@ function renderProfileCardView() {
     // acctage
     const dates = [data.twitch_created_at, data.kick_created_at]
       .filter(Boolean)
-      .filter(d => !isNaN(new Date(d).getTime()))
-    const oldest = dates.length ? dates.reduce((a, b) => new Date(b) < new Date(a) ? b : a) : null
-    const age = (typeof getAccountAge === 'function') ? getAccountAge(oldest) : null
+      .filter((d) => !isNaN(new Date(d).getTime()))
+    const oldest = dates.length ? dates.reduce((a, b) => (new Date(b) < new Date(a) ? b : a)) : null
+    const age = typeof getAccountAge === 'function' ? getAccountAge(oldest) : null
     if (age) addRow('acctage', age, 'val-age')
 
     // type (broadcaster status)
@@ -807,9 +898,11 @@ function renderProfileCardView() {
       plat = 'youtube'
       platName = data.youtube_username || data.youtube_channel_id
       vc = data.youtube_viewer_count || 0
-      url = data.youtube_username ? `https://youtube.com/@${data.youtube_username}/live`
-        : data.youtube_channel_id ? `https://youtube.com/channel/${data.youtube_channel_id}/live`
-        : 'https://youtube.com'
+      url = data.youtube_username
+        ? `https://youtube.com/@${data.youtube_username}/live`
+        : data.youtube_channel_id
+          ? `https://youtube.com/channel/${data.youtube_channel_id}/live`
+          : 'https://youtube.com'
     }
 
     const ssec = pcMakeSection(plat + ' · live')
@@ -914,10 +1007,13 @@ async function pcApplyBanner(card, chain) {
 async function pcToggleMute(username) {
   username = username.toLowerCase()
   const platform = activeProfileCard?.platform
-  const aliases = (typeof expandUserAliases === 'function')
-    ? await expandUserAliases(username, platform)
-    : ((typeof getUserAliases === 'function') ? getUserAliases(username, platform) : [username])
-  const wasMuted = (typeof isUserMuted === 'function') ? isUserMuted(username, platform) : mutedUsers.has(username)
+  const aliases =
+    typeof expandUserAliases === 'function'
+      ? await expandUserAliases(username, platform)
+      : typeof getUserAliases === 'function'
+        ? getUserAliases(username, platform)
+        : [username]
+  const wasMuted = typeof isUserMuted === 'function' ? isUserMuted(username, platform) : mutedUsers.has(username)
   if (wasMuted) {
     for (const a of aliases) mutedUsers.delete(a)
     for (const a of aliases) safeSendMessage({ type: 'unmute_user', username: a })
@@ -977,7 +1073,8 @@ async function pcToggleFollow(profileId, username, currentlyFollowing) {
         return
       }
     }
-    if (typeof showToast === 'function') showToast(targetFollowing ? `following ${username}` : `unfollowed ${username}`, 'success')
+    if (typeof showToast === 'function')
+      showToast(targetFollowing ? `following ${username}` : `unfollowed ${username}`, 'success')
     // Tell background to refetch followedUsers — pollFollowedLive runs after,
     // so live notifications + badge include the new follow within ~60s.
     safeSendMessage({ type: 'refresh_followed_users' })
@@ -1020,9 +1117,12 @@ async function pcToggleBlock(profileId, username, currentlyBlocked) {
     activeProfileCard.data.relationship = rel
     renderProfileCardView()
   }
-  _patchProfileCacheRel(username, targetBlocked
-    ? { youBlock: true, isBlocked: true, youFollow: false, isFollowing: false }
-    : { youBlock: false, isBlocked: false })
+  _patchProfileCacheRel(
+    username,
+    targetBlocked
+      ? { youBlock: true, isBlocked: true, youFollow: false, isFollowing: false }
+      : { youBlock: false, isBlocked: false },
+  )
   try {
     const path = `/api/user/block/${encodeURIComponent(profileId)}`
     const resp = targetBlocked
@@ -1042,19 +1142,23 @@ async function pcToggleBlock(profileId, username, currentlyBlocked) {
         return
       }
     }
-    if (typeof showToast === 'function') showToast(targetBlocked ? `blocked ${username}` : `unblocked ${username}`, 'success')
+    if (typeof showToast === 'function')
+      showToast(targetBlocked ? `blocked ${username}` : `unblocked ${username}`, 'success')
     // Hide/restore the user's live messages immediately. block_user → bg →
     // user_blocked broadcast → main.js updates blockedUsers + re-renders. Mirrors
     // the chat right-click path; without it a profile-card block only took
     // effect on next reload. Fans out across linked twitch/kick aliases.
     try {
       const platform = activeProfileCard?.platform
-      const aliases = (typeof expandUserAliases === 'function')
-        ? await expandUserAliases(String(username).toLowerCase(), platform)
-        : [String(username).toLowerCase()]
+      const aliases =
+        typeof expandUserAliases === 'function'
+          ? await expandUserAliases(String(username).toLowerCase(), platform)
+          : [String(username).toLowerCase()]
       const blockMsg = targetBlocked ? 'block_user' : 'unblock_user'
       for (const a of aliases) safeSendMessage({ type: blockMsg, username: a })
-    } catch (_) { /* best-effort live hide */ }
+    } catch (_) {
+      /* best-effort live hide */
+    }
     // Block side-effects unfollow on server — re-fetch followedUsers in background
     safeSendMessage({ type: 'refresh_followed_users' })
     // Block always implies platform-unfollow (server auto-unfollowed heatsync).
@@ -1090,74 +1194,107 @@ function setupProfileCardHandlers() {
 
   // Primary path — pcard-early.js (document_start) intercepts the click before
   // Twitch/Kick can react and dispatches this event.
-  cleanup.addEventListener(document, 'hs-pcard-open', (e) => {
-    const { username, platform } = e.detail || {}
-    if (username) openProfileCard(username, platform || null)
-  }, { signal: mcSignal })
+  cleanup.addEventListener(
+    document,
+    'hs-pcard-open',
+    (e) => {
+      const { username, platform } = e.detail || {}
+      if (username) openProfileCard(username, platform || null)
+    },
+    { signal: mcSignal },
+  )
 
   // Channel list changed (right-click remove, add via pill, server sync, etc.) —
   // re-render the open card so the [+] action reflects the new in-channels state.
-  cleanup.addEventListener(document, 'hs-channels-changed', () => {
-    if (activeProfileCard) renderProfileCardView()
-  }, { signal: mcSignal })
+  cleanup.addEventListener(
+    document,
+    'hs-channels-changed',
+    () => {
+      if (activeProfileCard) renderProfileCardView()
+    },
+    { signal: mcSignal },
+  )
 
   // Username click → open card. Capture phase so we beat Twitch/Kick native user-card handlers.
   // Allow ctrl/meta/shift/middle/alt to fall through to the <a target="_blank"> default nav.
-  cleanup.addEventListener(document, 'click', (e) => {
-    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return
-    const userEl = e.target.closest('.hs-mc-user')
-    if (!userEl) return
-    if (e.target.closest('[data-pcard-pill]')) return
-    if (userEl.classList.contains('hs-mc-reply-user')) return
-    e.preventDefault()
-    e.stopPropagation()
-    e.stopImmediatePropagation()
-    const username = (userEl.dataset.username || userEl.textContent.replace(/^@/, '')).trim()
-    const platform = userEl.dataset.platform || null
-    openProfileCard(username, platform)
-  }, { capture: true, signal: mcSignal })
+  cleanup.addEventListener(
+    document,
+    'click',
+    (e) => {
+      if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return
+      const userEl = e.target.closest('.hs-mc-user')
+      if (!userEl) return
+      if (e.target.closest('[data-pcard-pill]')) return
+      if (userEl.classList.contains('hs-mc-reply-user')) return
+      e.preventDefault()
+      e.stopPropagation()
+      e.stopImmediatePropagation()
+      const username = (userEl.dataset.username || userEl.textContent.replace(/^@/, '')).trim()
+      const platform = userEl.dataset.platform || null
+      openProfileCard(username, platform)
+    },
+    { capture: true, signal: mcSignal },
+  )
 
   // Twitch attaches mousedown handlers too — block those at capture so the native card never opens
-  cleanup.addEventListener(document, 'mousedown', (e) => {
-    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return
-    const userEl = e.target.closest('.hs-mc-user')
-    if (!userEl) return
-    if (e.target.closest('[data-pcard-pill]')) return
-    if (userEl.classList.contains('hs-mc-reply-user')) return
-    e.stopPropagation()
-    e.stopImmediatePropagation()
-  }, { capture: true, signal: mcSignal })
+  cleanup.addEventListener(
+    document,
+    'mousedown',
+    (e) => {
+      if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return
+      const userEl = e.target.closest('.hs-mc-user')
+      if (!userEl) return
+      if (e.target.closest('[data-pcard-pill]')) return
+      if (userEl.classList.contains('hs-mc-reply-user')) return
+      e.stopPropagation()
+      e.stopImmediatePropagation()
+    },
+    { capture: true, signal: mcSignal },
+  )
 
   // ESC closes the card; single-letter hotkeys trigger actions while open
-  cleanup.addEventListener(document, 'keydown', (e) => {
-    if (!activeProfileCard) return
-    // Ignore keys while typing in inputs/textareas
-    const t = e.target
-    const inEditable = t?.tagName === 'INPUT' || t?.tagName === 'TEXTAREA' || t?.isContentEditable
-    if (inEditable) {
-      if (e.key === 'Escape') { e.preventDefault(); closeProfileCard() }
-      return
-    }
-    if (e.key === 'Escape') { e.preventDefault(); closeProfileCard(); return }
-    // Keymap: t/k/y/h jump to platform pills (twitch/kick/youtube/heatsync),
-    // f follow, w whisper, d dm, @ mention, m mute, b block, + add channel.
-    // '=' aliases '+' (shifted on US keyboards) for one-handed access.
-    const key = e.key.toLowerCase()
-    const allowed = new Set(['t', 'k', 'y', 'h', 'f', 'w', 'd', '@', 'm', 'b', '+', '='])
-    if (!allowed.has(key)) return
-    const target = key === '=' ? '+' : key
-    const btn = document.querySelector(`.hs-pcard-action[data-pc-key="${target}"]`)
-    if (btn && !btn.disabled) {
-      e.preventDefault()
-      btn.click()
-    }
-  }, 'mc-pcard-keys')
+  cleanup.addEventListener(
+    document,
+    'keydown',
+    (e) => {
+      if (!activeProfileCard) return
+      // Ignore keys while typing in inputs/textareas
+      const t = e.target
+      const inEditable = t?.tagName === 'INPUT' || t?.tagName === 'TEXTAREA' || t?.isContentEditable
+      if (inEditable) {
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          closeProfileCard()
+        }
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        closeProfileCard()
+        return
+      }
+      // Keymap: t/k/y/h jump to platform pills (twitch/kick/youtube/heatsync),
+      // f follow, w whisper, d dm, @ mention, m mute, b block, + add channel.
+      // '=' aliases '+' (shifted on US keyboards) for one-handed access.
+      const key = e.key.toLowerCase()
+      const allowed = new Set(['t', 'k', 'y', 'h', 'f', 'w', 'd', '@', 'm', 'b', '+', '='])
+      if (!allowed.has(key)) return
+      const target = key === '=' ? '+' : key
+      const btn = document.querySelector(`.hs-pcard-action[data-pc-key="${target}"]`)
+      if (btn && !btn.disabled) {
+        e.preventDefault()
+        btn.click()
+      }
+    },
+    'mc-pcard-keys',
+  )
 }
 
 function pcMention(name) {
   closeProfileCard()
   // If on a non-chat tab, switch to live first
-  const isChatTab = currentTab === 'live' || (typeof config !== 'undefined' && config.channels?.some(c => c.id === currentTab))
+  const isChatTab =
+    currentTab === 'live' || (typeof config !== 'undefined' && config.channels?.some((c) => c.id === currentTab))
   if (!isChatTab) switchTab('live')
   cleanup.setTimeout(() => {
     const inputBar = document.getElementById('hs-mc-inputbar')
@@ -1196,7 +1333,7 @@ function pcDoDm(username, platform) {
 async function pcAddAsChannel(username) {
   if (!config?.channels) return
   const id = username.toLowerCase()
-  const exists = config.channels.some(c => {
+  const exists = config.channels.some((c) => {
     const cid = c.id?.toLowerCase()
     return cid === id
   })
@@ -1230,12 +1367,16 @@ async function pcAddAsChannel(username) {
   if (typeof updateTabBar === 'function') updateTabBar()
   if (channel.twitch) {
     irc?.join(channel.twitch)
-    try { chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: channel.twitch }) } catch {}
+    try {
+      chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: channel.twitch })
+    } catch {}
   }
   if (channel.kick) kickChat?.join(channel.kick)
   if (channel.youtube) {
     youtubeLinks.set(channel.id, { url: channel.youtube, videoId: '', channelName: '' })
-    try { chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: channel.youtube, channelId: channel.id }) } catch {}
+    try {
+      chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: channel.youtube, channelId: channel.id })
+    } catch {}
   }
   closeProfileCard()
   switchTab(channel.id)

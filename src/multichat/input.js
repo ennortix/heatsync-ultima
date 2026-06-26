@@ -35,13 +35,13 @@ function flashInputError(input) {
 }
 
 // Per-emote operation lock to prevent race conditions from rapid clicking
-const pendingEmoteOps = new Set();
+const pendingEmoteOps = new Set()
 
 // Cache own badge string from IRC messages for optimistic display.
 // Per-channel: sub badge tier differs by streamer, so a single global ref
 // stamped the wrong channel's sub badge onto synthetic celebrations.
-let _ownBadges = ''
-const _ownBadgesByChannel = new Map()  // channelLower -> badges string
+const _ownBadges = ''
+const _ownBadgesByChannel = new Map() // channelLower -> badges string
 function ownBadgesFor(channel) {
   if (!channel) return _ownBadges
   return _ownBadgesByChannel.get(String(channel).toLowerCase()) || _ownBadges
@@ -58,7 +58,7 @@ function _pruneRecent(arr) {
   // Prune to the LONGER window so peekSentHost can attribute badges across
   // refreshes. isSentEcho applies its own tighter cutoff at lookup time.
   const cutoff = Date.now() - SENT_HOST_WINDOW
-  return arr.filter(e => e && e.time >= cutoff)
+  return arr.filter((e) => e && e.time >= cutoff)
 }
 
 function trackSentMessage(text, hostOverride, synthId) {
@@ -70,7 +70,9 @@ function trackSentMessage(text, hostOverride, synthId) {
   // OTHER host tagged the IRC echo with the correct origin host. ~50ms
   // sync latency easily wins the race against the ~100-300ms platform
   // chat round-trip.
-  try { chrome.storage.local.set({ [RECENT_SENT_KEY]: _recentSentMessages }) } catch (_) {}
+  try {
+    chrome.storage.local.set({ [RECENT_SENT_KEY]: _recentSentMessages })
+  } catch (_) {}
 }
 
 // Hydrate from storage on load + listen for cross-tab updates.
@@ -82,13 +84,25 @@ function trackSentMessage(text, hostOverride, synthId) {
 let _recentSentHydrated = null
 {
   let _hydrateResolve = null
-  _recentSentHydrated = new Promise(r => { _hydrateResolve = r })
+  _recentSentHydrated = new Promise((r) => {
+    _hydrateResolve = r
+  })
   try {
-    chrome.storage.local.get(RECENT_SENT_KEY).then((data) => {
-      const incoming = data?.[RECENT_SENT_KEY]
-      if (Array.isArray(incoming)) _recentSentMessages = _pruneRecent(incoming)
-    }).catch(() => {}).finally(() => { try { _hydrateResolve() } catch {} })
-  } catch (_) { _hydrateResolve() }
+    chrome.storage.local
+      .get(RECENT_SENT_KEY)
+      .then((data) => {
+        const incoming = data?.[RECENT_SENT_KEY]
+        if (Array.isArray(incoming)) _recentSentMessages = _pruneRecent(incoming)
+      })
+      .catch(() => {})
+      .finally(() => {
+        try {
+          _hydrateResolve()
+        } catch {}
+      })
+  } catch (_) {
+    _hydrateResolve()
+  }
 }
 try {
   if (!window._hsMcInputStorageListener) {
@@ -178,7 +192,9 @@ const pendingSends = new Map()
 // alarms when their message actually went through.
 const PENDING_ECHO_TIMEOUT_MS = 20000
 // Expose for devtools
-try { globalThis.__hsPendingSends = pendingSends } catch (_) {}
+try {
+  globalThis.__hsPendingSends = pendingSends
+} catch (_) {}
 
 function makeSynthId() {
   return `hs-pend-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`
@@ -187,12 +203,16 @@ function makeSynthId() {
 function registerPendingSend({ text, channel, platforms, replyParentId }) {
   const synthId = makeSynthId()
   const entry = {
-    synthId, text, channel, platforms,
+    synthId,
+    text,
+    channel,
+    platforms,
     // Per-platform confirmation gate. Drains as echoes arrive; entry is only
     // dismissed when empty. Catches dual-send silent-drop of one platform.
     awaiting: new Set(platforms),
     replyParentId,
-    sentAt: Date.now(), state: 'pending',
+    sentAt: Date.now(),
+    state: 'pending',
     timer: null,
   }
   entry.timer = cleanup.setTimeout(() => {
@@ -201,12 +221,19 @@ function registerPendingSend({ text, channel, platforms, replyParentId }) {
     }
   }, PENDING_ECHO_TIMEOUT_MS)
   pendingSends.set(synthId, entry)
-  if (MC_DEBUG) try {
-    console.log('[heatsync-ext] pending registered:', JSON.stringify({
-      text, channel, platforms, len: text.length,
-      codes: [...text].slice(0, 30).map(c => c.charCodeAt(0))
-    }))
-  } catch (_) {}
+  if (MC_DEBUG)
+    try {
+      console.log(
+        '[heatsync-ext] pending registered:',
+        JSON.stringify({
+          text,
+          channel,
+          platforms,
+          len: text.length,
+          codes: [...text].slice(0, 30).map((c) => c.charCodeAt(0)),
+        }),
+      )
+    } catch (_) {}
   return synthId
 }
 
@@ -219,7 +246,9 @@ function confirmPending(synthId, platform) {
   if (platform && entry.awaiting.size > 0) return true
   if (entry.timer) cleanup.clearTimeout(entry.timer)
   pendingSends.delete(synthId)
-  try { HsNotifs.dismissByKey('send-pending', synthId) } catch (_) {}
+  try {
+    HsNotifs.dismissByKey('send-pending', synthId)
+  } catch (_) {}
   return true
 }
 
@@ -234,30 +263,38 @@ function findPendingByEchoText(text) {
     if (entry.state !== 'pending') continue
     if (entry.text === text) return id
   }
-  const norm = (s) => String(s).replace(/[ \s]+/g, ' ').trim()
+  const norm = (s) =>
+    String(s)
+      .replace(/[ \s]+/g, ' ')
+      .trim()
   const wantN = norm(text)
   if (!wantN) return null
   for (const [id, entry] of pendingSends) {
     if (entry.state !== 'pending') continue
     if (norm(entry.text) === wantN) return id
   }
-  if (MC_DEBUG) try {
-    const dump = []
-    for (const [, entry] of pendingSends) {
-      if (entry.state !== 'pending') continue
-      dump.push({
-        pendingText: entry.text,
-        pendingLen: entry.text.length,
-        pendingCodes: [...entry.text].slice(0, 30).map(c => c.charCodeAt(0)),
-        pendingChannel: entry.channel,
-      })
-    }
-    console.log('[heatsync-ext] echo text-miss:', JSON.stringify({
-      echoText: text, echoLen: text.length,
-      echoCodes: [...text].slice(0, 30).map(c => c.charCodeAt(0)),
-      pending: dump
-    }))
-  } catch (_) {}
+  if (MC_DEBUG)
+    try {
+      const dump = []
+      for (const [, entry] of pendingSends) {
+        if (entry.state !== 'pending') continue
+        dump.push({
+          pendingText: entry.text,
+          pendingLen: entry.text.length,
+          pendingCodes: [...entry.text].slice(0, 30).map((c) => c.charCodeAt(0)),
+          pendingChannel: entry.channel,
+        })
+      }
+      console.log(
+        '[heatsync-ext] echo text-miss:',
+        JSON.stringify({
+          echoText: text,
+          echoLen: text.length,
+          echoCodes: [...text].slice(0, 30).map((c) => c.charCodeAt(0)),
+          pending: dump,
+        }),
+      )
+    } catch (_) {}
   return null
 }
 
@@ -275,11 +312,16 @@ function findPendingByChannelFifo(channel) {
   for (const [id, entry] of pendingSends) {
     if (entry.state !== 'pending') continue
     if (String(entry.channel).toLowerCase() !== target) continue
-    if (entry.sentAt < bestSentAt) { bestId = id; bestSentAt = entry.sentAt }
+    if (entry.sentAt < bestSentAt) {
+      bestId = id
+      bestSentAt = entry.sentAt
+    }
   }
   return bestId
 }
-try { globalThis.__hsFindPendingByChannelFifo = findPendingByChannelFifo } catch (_) {}
+try {
+  globalThis.__hsFindPendingByChannelFifo = findPendingByChannelFifo
+} catch (_) {}
 
 function markPendingFailed(synthId, reason) {
   const entry = pendingSends.get(synthId)
@@ -289,8 +331,10 @@ function markPendingFailed(synthId, reason) {
   entry.reason = reason
   if (reason === 'no_echo' && MC_DEBUG) {
     console.warn('[heatsync-ext] send no_echo:', {
-      text: entry.text, channel: entry.channel,
-      awaiting: [...entry.awaiting], elapsed: Date.now() - entry.sentAt
+      text: entry.text,
+      channel: entry.channel,
+      awaiting: [...entry.awaiting],
+      elapsed: Date.now() - entry.sentAt,
     })
   }
   // Surface the persistent retry notif. dedupeKey=synthId so retry-then-fail-
@@ -319,20 +363,26 @@ function clearPendingByChannel(channel) {
     if (String(entry.channel).toLowerCase() === target) {
       if (entry.timer) cleanup.clearTimeout(entry.timer)
       pendingSends.delete(id)
-      try { HsNotifs.dismissByKey('send-pending', id) } catch (_) {}
+      try {
+        HsNotifs.dismissByKey('send-pending', id)
+      } catch (_) {}
       cleared++
     }
   }
   return cleared
 }
-try { globalThis.__hsClearPendingByChannel = clearPendingByChannel } catch (_) {}
+try {
+  globalThis.__hsClearPendingByChannel = clearPendingByChannel
+} catch (_) {}
 
 function retryPendingSend(synthId) {
   const entry = pendingSends.get(synthId)
   if (!entry) return
   // Drop the failed entry; sendMessage will register a fresh one.
   pendingSends.delete(synthId)
-  try { HsNotifs.dismissByKey('send-pending', synthId) } catch (_) {}
+  try {
+    HsNotifs.dismissByKey('send-pending', synthId)
+  } catch (_) {}
   const input = document.getElementById('hs-mc-input')
   if (!input) return
   // Restore text into input. wysiwygEnabled is the same flag sendMessage uses.
@@ -340,33 +390,36 @@ function retryPendingSend(synthId) {
   else input.value = entry.text
   // Restore reply state if the original was a reply
   if (entry.replyParentId) {
-    try { replyState = { msgId: entry.replyParentId } } catch (_) {}
+    try {
+      replyState = { msgId: entry.replyParentId }
+    } catch (_) {}
   }
   sendMessage()
 }
 
 // Expose for the notif action handler
-try { globalThis.__hsRetryPendingSend = retryPendingSend } catch (_) {}
-
+try {
+  globalThis.__hsRetryPendingSend = retryPendingSend
+} catch (_) {}
 
 // Autocomplete state (Tab-only cycling, no dropdown)
-let acState = {
-matches: [],
-index: 0,
-active: false,  // true when cycling through matches
-wordStart: 0,   // Position where the completion word starts
-afterText: '',  // Text after the completion
-search: '',     // search term that produced these matches (remote-fetch guard)
-remoteDone: false, // 7tv fallback already merged for this search
-remotePending: false // a lazy remote fetch is in flight for this search
-};
+const acState = {
+  matches: [],
+  index: 0,
+  active: false, // true when cycling through matches
+  wordStart: 0, // Position where the completion word starts
+  afterText: '', // Text after the completion
+  search: '', // search term that produced these matches (remote-fetch guard)
+  remoteDone: false, // 7tv fallback already merged for this search
+  remotePending: false, // a lazy remote fetch is in flight for this search
+}
 
 // Emotes surfaced via remote (7TV/BTTV/FFZ) Tab-search this session: name → {url,
 // source}. On send, any of these present in the outgoing message that aren't yet
 // in the viewer's set get auto-added — so a remote emote you searched and sent
 // becomes yours and renders next time. Bounded; explicit tracking beats sniffing
 // chips so it works in plain-text mode too.
-let recentRemoteCompletions = new Map()
+const recentRemoteCompletions = new Map()
 const REMOTE_COMPLETION_CAP = 300
 
 // Register a Tab-completed emote for auto-add-on-send. Covers the LOCAL-match
@@ -411,7 +464,11 @@ async function fetchRemoteEmoteMatches(search) {
   if (hsModClassify(search, { allowPrefix: false }).kind === 'modifier') return
   const token = ++_acRemoteToken
   acState.remotePending = true
-  if (_acRemoteAbort) { try { _acRemoteAbort.abort() } catch (_) {} }
+  if (_acRemoteAbort) {
+    try {
+      _acRemoteAbort.abort()
+    } catch (_) {}
+  }
   const ac = new AbortController()
   _acRemoteAbort = ac
   const calls = []
@@ -440,7 +497,7 @@ async function fetchRemoteEmoteMatches(search) {
   // Lowercase dedupe (collapses 10x "Sadge" uploads to one — emote names are
   // case-insensitive in practice; first-seen wins so FFZ's top result holds).
   // Also dedupes against existing locals (already lowercased below).
-  const have = new Set(acState.matches.map(m => (m.name || '').toLowerCase()))
+  const have = new Set(acState.matches.map((m) => (m.name || '').toLowerCase()))
   const searchLower = search.toLowerCase()
   const add = []
   for (const it of items) {
@@ -451,7 +508,16 @@ async function fetchRemoteEmoteMatches(search) {
     if (!lower.startsWith(searchLower)) continue
     have.add(lower)
     const src = it.provider || '7tv'
-    add.push({ name: it.name, url: it.url, source: src, priority: 0, type: 'emote', remote: true, zeroWidth: !!it.zeroWidth, _ai: add.length })
+    add.push({
+      name: it.name,
+      url: it.url,
+      source: src,
+      priority: 0,
+      type: 'emote',
+      remote: true,
+      zeroWidth: !!it.zeroWidth,
+      _ai: add.length,
+    })
     // Remember for auto-add-on-send (only matters if the user actually sends it).
     recentRemoteCompletions.delete(it.name)
     recentRemoteCompletions.set(it.name, { url: it.url, source: src, zeroWidth: !!it.zeroWidth })
@@ -478,14 +544,16 @@ async function fetchRemoteEmoteMatches(search) {
   //   9. alpha
   // Tier outranks exact-match (user call) — a channel emote beats a coincidental
   // exact-cased global ("hug" → peepoHug, not "HuG"). Exact still wins within a tier.
-  const _recentList = (typeof loadRecentEmotes === 'function') ? loadRecentEmotes() : []
+  const _recentList = typeof loadRecentEmotes === 'function' ? loadRecentEmotes() : []
   const _recentRank = new Map()
   for (let i = 0; i < _recentList.length; i++) _recentRank.set(_recentList[i], i)
   acState.matches.sort((a, b) => {
-    const al = a.remote ? 1 : 0, bl = b.remote ? 1 : 0
+    const al = a.remote ? 1 : 0,
+      bl = b.remote ? 1 : 0
     if (al !== bl) return al - bl
     if (!a.remote && !b.remote) {
-      const at = a.tier ?? 9, bt = b.tier ?? 9
+      const at = a.tier ?? 9,
+        bt = b.tier ?? 9
       if (at !== bt) return at - bt
     }
     const ae = a.name.toLowerCase() === searchLower ? 0 : 1
@@ -518,134 +586,138 @@ async function fetchRemoteEmoteMatches(search) {
 }
 
 // Emoji dropdown autocomplete state
-let emojiAcState = {
+const emojiAcState = {
   active: false,
   matches: [],
   index: 0,
   query: '',
-  colonPos: -1,    // position of the triggering ':'
+  colonPos: -1, // position of the triggering ':'
 }
 let _emojiAcDebounce = null
 
 // Slash command autocomplete dropdown — shows command list when input begins
 // with /<word>. Heatsync-owned + common pass-through Twitch/Kick mod commands.
 const SLASH_COMMANDS = [
-  { cmd: 'op',         args: '<text>',        desc: 'post to home feed' },
-  { cmd: 'w',          args: '<user> <msg>',  desc: 'twitch whisper' },
-  { cmd: 'dm',         args: '<user> <msg>',  desc: 'heatsync DM' },
-  { cmd: 'r',          args: '<msg>',         desc: 'reply to last whisper' },
-  { cmd: 'follow',     args: '<user>',        desc: 'follow on heatsync (+ twitch/kick mirror)' },
-  { cmd: 'unfollow',   args: '<user>',        desc: 'unfollow on heatsync (+ twitch/kick mirror)' },
-  { cmd: 'mute',       args: '<user>',        desc: 'local mute 24h' },
-  { cmd: 'unmute',     args: '<user>',        desc: 'local unmute' },
-  { cmd: 'shrug',      args: '[text]',        desc: 'append ¯\\_(ツ)_/¯' },
-  { cmd: 'tableflip',  args: '[text]',        desc: 'append (╯°□°)╯︵ ┻━┻' },
-  { cmd: 'unflip',     args: '[text]',        desc: 'append ┬─┬ノ( ゜-゜ノ)' },
-  { cmd: 'lclear',     args: '',              desc: 'clear current tab locally' },
-  { cmd: 'status',     args: '[channel]',     desc: 'show chat modes + stream info' },
-  { cmd: 'help',       args: '',              desc: 'list commands' },
-  { cmd: 'me',         args: '<action>',      desc: 'twitch/kick action message' },
-  { cmd: 'ban',        args: '<user>',        desc: 'twitch/kick ban (mod)' },
-  { cmd: 'timeout',    args: '<user> [secs]', desc: 'twitch/kick timeout (mod)' },
-  { cmd: 'unban',      args: '<user>',        desc: 'twitch/kick unban (mod)' },
-  { cmd: 'untimeout',  args: '<user>',        desc: 'twitch/kick untimeout (mod)' },
-  { cmd: 'color',      args: '<hex|name>',    desc: 'twitch chat color' },
-  { cmd: 'mod',        args: '<user>',        desc: 'promote mod (broadcaster)' },
-  { cmd: 'vip',        args: '<user>',        desc: 'add vip (broadcaster)' },
-  { cmd: 'raid',       args: '<channel>',     desc: 'twitch raid (broadcaster)' },
-  { cmd: 'slow',       args: '[secs]',        desc: 'slow mode (mod)' },
-  { cmd: 'clear',      args: '',              desc: 'clear chat (mod)' },
-  { cmd: 'followers',  args: '[mins]',        desc: 'followers-only (mod)' },
-  { cmd: 'emoteonly',  args: '',              desc: 'emote-only mode (mod)' },
+  { cmd: 'op', args: '<text>', desc: 'post to home feed' },
+  { cmd: 'w', args: '<user> <msg>', desc: 'twitch whisper' },
+  { cmd: 'dm', args: '<user> <msg>', desc: 'heatsync DM' },
+  { cmd: 'r', args: '<msg>', desc: 'reply to last whisper' },
+  { cmd: 'follow', args: '<user>', desc: 'follow on heatsync (+ twitch/kick mirror)' },
+  { cmd: 'unfollow', args: '<user>', desc: 'unfollow on heatsync (+ twitch/kick mirror)' },
+  { cmd: 'mute', args: '<user>', desc: 'local mute 24h' },
+  { cmd: 'unmute', args: '<user>', desc: 'local unmute' },
+  { cmd: 'shrug', args: '[text]', desc: 'append ¯\\_(ツ)_/¯' },
+  { cmd: 'tableflip', args: '[text]', desc: 'append (╯°□°)╯︵ ┻━┻' },
+  { cmd: 'unflip', args: '[text]', desc: 'append ┬─┬ノ( ゜-゜ノ)' },
+  { cmd: 'lclear', args: '', desc: 'clear current tab locally' },
+  { cmd: 'status', args: '[channel]', desc: 'show chat modes + stream info' },
+  { cmd: 'help', args: '', desc: 'list commands' },
+  { cmd: 'me', args: '<action>', desc: 'twitch/kick action message' },
+  { cmd: 'ban', args: '<user>', desc: 'twitch/kick ban (mod)' },
+  { cmd: 'timeout', args: '<user> [secs]', desc: 'twitch/kick timeout (mod)' },
+  { cmd: 'unban', args: '<user>', desc: 'twitch/kick unban (mod)' },
+  { cmd: 'untimeout', args: '<user>', desc: 'twitch/kick untimeout (mod)' },
+  { cmd: 'color', args: '<hex|name>', desc: 'twitch chat color' },
+  { cmd: 'mod', args: '<user>', desc: 'promote mod (broadcaster)' },
+  { cmd: 'vip', args: '<user>', desc: 'add vip (broadcaster)' },
+  { cmd: 'raid', args: '<channel>', desc: 'twitch raid (broadcaster)' },
+  { cmd: 'slow', args: '[secs]', desc: 'slow mode (mod)' },
+  { cmd: 'clear', args: '', desc: 'clear chat (mod)' },
+  { cmd: 'followers', args: '[mins]', desc: 'followers-only (mod)' },
+  { cmd: 'emoteonly', args: '', desc: 'emote-only mode (mod)' },
 ]
-let slashAcState = { active: false, matches: [], index: 0 }
+const slashAcState = { active: false, matches: [], index: 0 }
 function rebuildInput() {
-  const bar = document.getElementById('hs-mc-inputbar');
-  if (!bar) return;
+  const bar = document.getElementById('hs-mc-inputbar')
+  if (!bar) return
 
   // Save current text
-  const oldInput = document.getElementById('hs-mc-input');
-  const savedText = oldInput ? getInputText() : pendingMessage;
+  const oldInput = document.getElementById('hs-mc-input')
+  const savedText = oldInput ? getInputText() : pendingMessage
 
   // Remove old input and its wrap/highlight overlay (created by updateCharCount for plain <input>)
-  const oldWrap = document.getElementById('hs-mc-input-wrap');
-  if (oldWrap) oldWrap.remove();
-  const oldHighlight = document.getElementById('hs-mc-input-highlight');
-  if (oldHighlight) oldHighlight.remove();
-  if (oldInput) oldInput.remove();
+  const oldWrap = document.getElementById('hs-mc-input-wrap')
+  if (oldWrap) oldWrap.remove()
+  const oldHighlight = document.getElementById('hs-mc-input-highlight')
+  if (oldHighlight) oldHighlight.remove()
+  if (oldInput) oldInput.remove()
 
   // Create new input element
-  const emoteBtn = bar.querySelector('#hs-mc-emote-btn');
+  const emoteBtn = bar.querySelector('#hs-mc-emote-btn')
   if (wysiwygEnabled) {
-    const div = document.createElement('div');
-    div.id = 'hs-mc-input';
-    div.contentEditable = 'true';
-    div.setAttribute('data-placeholder', t('mc_input_send_message'));
-    div.spellcheck = false;
-    if (emoteBtn) bar.insertBefore(div, emoteBtn);
+    const div = document.createElement('div')
+    div.id = 'hs-mc-input'
+    div.contentEditable = 'true'
+    div.setAttribute('data-placeholder', t('mc_input_send_message'))
+    div.spellcheck = false
+    if (emoteBtn) bar.insertBefore(div, emoteBtn)
   } else {
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.id = 'hs-mc-input';
-    input.placeholder = t('mc_input_send_message');
-    input.autocomplete = 'off';
-    input.spellcheck = false;
-    if (emoteBtn) bar.insertBefore(input, emoteBtn);
+    const input = document.createElement('input')
+    input.type = 'text'
+    input.id = 'hs-mc-input'
+    input.placeholder = t('mc_input_send_message')
+    input.autocomplete = 'off'
+    input.spellcheck = false
+    if (emoteBtn) bar.insertBefore(input, emoteBtn)
   }
 
   // Restore text and reinit
-  const newInput = document.getElementById('hs-mc-input');
+  const newInput = document.getElementById('hs-mc-input')
   if (newInput && savedText) {
     if (wysiwygEnabled) {
-      newInput.textContent = savedText;
+      newInput.textContent = savedText
     } else {
-      newInput.value = savedText;
+      newInput.value = savedText
     }
   }
-  initInput();
-  updateCharCount();
+  initInput()
+  updateCharCount()
 }
 
 /**
  * Create unified input bar - ALWAYS visible, text persists across tabs
  */
 function createInputBar() {
-  const bar = document.createElement('div');
-  bar.id = 'hs-mc-inputbar';
-  const iconUrl = chrome.runtime.getURL('icon-48.png');
-  const iconBlackUrl = chrome.runtime.getURL('icon-48-black.png');
+  const bar = document.createElement('div')
+  bar.id = 'hs-mc-inputbar'
+  const iconUrl = chrome.runtime.getURL('icon-48.png')
+  const iconBlackUrl = chrome.runtime.getURL('icon-48-black.png')
 
   const inputHtml = wysiwygEnabled
     ? `<div id="hs-mc-input" contenteditable="true" data-placeholder="${t('mc_input_send_message')}" spellcheck="false"></div>`
-    : `<input type="text" id="hs-mc-input" placeholder="${t('mc_input_send_message')}" autocomplete="off" spellcheck="false">`;
+    : `<input type="text" id="hs-mc-input" placeholder="${t('mc_input_send_message')}" autocomplete="off" spellcheck="false">`
 
   bar.innerHTML = `
     ${inputHtml}
     <button id="hs-mc-emote-btn"><img src="${iconUrl}" data-src="${iconUrl}" data-src-black="${iconBlackUrl}" alt="hs"></button>
-  `;
+  `
 
   // Initialize input after DOM insertion
   setTimeout(() => {
-    initInput();
-    const btn = bar.querySelector('#hs-mc-emote-btn');
-    const img = btn?.querySelector('img');
+    initInput()
+    const btn = bar.querySelector('#hs-mc-emote-btn')
+    const img = btn?.querySelector('img')
     if (btn && img) {
-      btn.addEventListener('mouseenter', () => { img.src = img.dataset.srcBlack })
-      btn.addEventListener('mouseleave', () => { img.src = img.dataset.src })
+      btn.addEventListener('mouseenter', () => {
+        img.src = img.dataset.srcBlack
+      })
+      btn.addEventListener('mouseleave', () => {
+        img.src = img.dataset.src
+      })
     }
-  }, 0);
-  return bar;
+  }, 0)
+  return bar
 }
 
 // Get text from input (handles both input and contenteditable)
 function getInputText() {
-  const input = document.getElementById('hs-mc-input');
-  if (!input) return '';
+  const input = document.getElementById('hs-mc-input')
+  if (!input) return ''
   if (wysiwygEnabled) {
     // Convert emote images, stacks, and cycling spans back to text.
     // Modifiers stored in dataset.hsWords (canonical, set by hsModApplyToImg)
     // appended after the emote so recipients see "Kappa w! h!" not "Kappa".
-    let text = '';
+    let text = ''
     // Adjacency-safe serialization: chips (emote img / stack / emoji span /
     // mention) must stay whitespace-bounded on the wire — `parseEmotes` and
     // peer renderers tokenize on /\s+/, so two adjacent chips that serialize
@@ -656,7 +728,7 @@ function getInputText() {
     }
     const appendImg = (img) => {
       text += img.dataset.emoteName || img.alt || ''
-      const modWords = img.dataset.hsWords || img.dataset.hsModWords  // back-compat
+      const modWords = img.dataset.hsWords || img.dataset.hsModWords // back-compat
       if (modWords) {
         for (const w of modWords.split(/\s+/).filter(Boolean)) text += ' ' + w
       }
@@ -700,7 +772,7 @@ function getInputText() {
         // Bare-username Tab completion → serialize as @user so recipients
         // render it as a colored mention chip (processEmotes only colors @-prefixed).
         const u = node.dataset.username || node.textContent || ''
-        text += (node.dataset.completionType === 'user-bare') ? ('@' + u) : u
+        text += node.dataset.completionType === 'user-bare' ? '@' + u : u
         _lastWasChip = true
       } else if (node.nodeType === Node.ELEMENT_NODE && node.classList?.contains('hs-mc-emoji')) {
         sepBefore()
@@ -713,313 +785,358 @@ function getInputText() {
       }
     }
     for (const node of input.childNodes) extractNode(node)
-    return text.replace(/\u00A0/g, ' ');
+    return text.replace(/\u00A0/g, ' ')
   }
-  return input.value || '';
+  return input.value || ''
 }
 function initInput() {
-  const input = document.getElementById('hs-mc-input');
-  const sendBtn = document.getElementById('hs-mc-send');
-  log('🎯 initInput called, input found:', !!input);
+  const input = document.getElementById('hs-mc-input')
+  const sendBtn = document.getElementById('hs-mc-send')
+  log('🎯 initInput called, input found:', !!input)
   if (!input) {
-    log('❌ Input not found in DOM yet, retrying...');
-    setTimeout(initInput, 100);
-    return;
+    log('❌ Input not found in DOM yet, retrying...')
+    setTimeout(initInput, 100)
+    return
   }
   // Mark input as initialized to avoid duplicate handlers
   if (input._hsInitialized) {
-    log('⚠️ Input already initialized');
-    return;
+    log('⚠️ Input already initialized')
+    return
   }
-  input._hsInitialized = true;
-  log('✅ Initializing input handlers, WYSIWYG:', wysiwygEnabled);
+  input._hsInitialized = true
+  log('✅ Initializing input handlers, WYSIWYG:', wysiwygEnabled)
 
   // Restore pending message
   if (pendingMessage) {
     if (wysiwygEnabled) {
-      input.textContent = pendingMessage;
+      input.textContent = pendingMessage
     } else {
-      input.value = pendingMessage;
+      input.value = pendingMessage
     }
   }
 
-  input.addEventListener('keydown', handleInputKeydown);
-  input.addEventListener('input', handleInputChange);
-  input.addEventListener('input', updateCharCount);
+  input.addEventListener('keydown', handleInputKeydown)
+  input.addEventListener('input', handleInputChange)
+  input.addEventListener('input', updateCharCount)
   // Unified undo/redo — same module as the website. installUndoManager
   // attaches a manager to input._undoManager and wires Ctrl+Z hotkeys
   // (capture phase) + auto-capture on input events. Per-keystroke for
   // typing, one step per structural op (Tab autocomplete, smart unwrap, etc.).
-  try { installUndoManager(input, { max: 100 }) } catch (_) {}
+  try {
+    installUndoManager(input, { max: 100 })
+  } catch (_) {}
   // Tab clears emote :hover highlight in chat — mouse stuck over an emote
   // would otherwise hold the green rect lit while the user cycles autocomplete.
   // Body class restored on mousemove. Single global install via window flag.
   if (!window._hsMcTabHoverInstalled) {
     window._hsMcTabHoverInstalled = true
-    document.addEventListener('keydown', (e) => {
-      if (e.key !== 'Tab') return
-      const ae = document.activeElement
-      if (ae?.id !== 'hs-mc-input') return
-      document.body.classList.add('hs-tab-cycling')
-    }, { signal: mcSignal })
-    document.addEventListener('mousemove', () => {
-      if (document.body.classList.contains('hs-tab-cycling')) {
-        document.body.classList.remove('hs-tab-cycling')
-      }
-    }, { passive: true, signal: mcSignal })
+    document.addEventListener(
+      'keydown',
+      (e) => {
+        if (e.key !== 'Tab') return
+        const ae = document.activeElement
+        if (ae?.id !== 'hs-mc-input') return
+        document.body.classList.add('hs-tab-cycling')
+      },
+      { signal: mcSignal },
+    )
+    document.addEventListener(
+      'mousemove',
+      () => {
+        if (document.body.classList.contains('hs-tab-cycling')) {
+          document.body.classList.remove('hs-tab-cycling')
+        }
+      },
+      { passive: true, signal: mcSignal },
+    )
   }
   // Sync highlight overlay scroll with input scroll (RAF-throttled)
   let _inputScrollRaf = null
-  input.addEventListener('scroll', () => {
-    if (_inputScrollRaf) return
-    _inputScrollRaf = requestAnimationFrame(() => {
-      _inputScrollRaf = null
-      const hl = document.getElementById('hs-mc-input-highlight')
-      if (hl) hl.scrollLeft = input.scrollLeft
-    })
-  }, { passive: true })
+  input.addEventListener(
+    'scroll',
+    () => {
+      if (_inputScrollRaf) return
+      _inputScrollRaf = requestAnimationFrame(() => {
+        _inputScrollRaf = null
+        const hl = document.getElementById('hs-mc-input-highlight')
+        if (hl) hl.scrollLeft = input.scrollLeft
+      })
+    },
+    { passive: true },
+  )
   input.addEventListener('input', () => {
     const hasText = (input.value || input.textContent || '').trim().length > 0
     if (hasText) showInputBar()
     else hideInputBar()
-  });
+  })
   input.addEventListener('blur', () => {
     setTimeout(hideAutocomplete, 150)
     setTimeout(hideEmojiDropdown, 150)
     setTimeout(hideSlashDropdown, 150)
     // Hide input bar after blur if empty (delay to allow click-to-emote-picker)
     // Skip if window lost focus — prevents hiding when switching apps
-    setTimeout(() => { if (document.hasFocus()) hideInputBar() }, 200)
-  });
-  sendBtn?.addEventListener('click', sendMessage);
+    setTimeout(() => {
+      if (document.hasFocus()) hideInputBar()
+    }, 200)
+  })
+  sendBtn?.addEventListener('click', sendMessage)
 
   // Set up drag-drop handlers for media upload
-  setupMediaDropHandlers();
+  setupMediaDropHandlers()
 
   // Pasted image handler — applies in BOTH wysiwyg and plain modes
   input.addEventListener('paste', (e) => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
+    const items = e.clipboardData?.items
+    if (!items) return
     for (const item of items) {
       if (item.kind === 'file' && item.type.startsWith('image/')) {
-        const file = item.getAsFile();
+        const file = item.getAsFile()
         if (file) {
-          e.preventDefault();
-          handleMediaUpload(file);
-          return;
+          e.preventDefault()
+          handleMediaUpload(file)
+          return
         }
       }
     }
-  });
+  })
 
   // WYSIWYG: handle paste to strip formatting
   if (wysiwygEnabled) {
     input.addEventListener('paste', (e) => {
       // If a previous handler already prevented default (image upload), skip
-      if (e.defaultPrevented) return;
-      e.preventDefault();
-      const text = e.clipboardData.getData('text/plain');
-      if (!text) return;
+      if (e.defaultPrevented) return
+      e.preventDefault()
+      const text = e.clipboardData.getData('text/plain')
+      if (!text) return
       if (!document.execCommand('insertText', false, text)) {
         // Fallback: insert via Selection/Range API
-        const sel = window.getSelection();
+        const sel = window.getSelection()
         if (sel.rangeCount) {
-          const range = sel.getRangeAt(0);
-          range.deleteContents();
-          range.insertNode(document.createTextNode(text));
-          range.collapse(false);
-          sel.removeAllRanges();
-          sel.addRange(range);
-          input.dispatchEvent(new Event('input', { bubbles: true }));
+          const range = sel.getRangeAt(0)
+          range.deleteContents()
+          range.insertNode(document.createTextNode(text))
+          range.collapse(false)
+          sel.removeAllRanges()
+          sel.addRange(range)
+          input.dispatchEvent(new Event('input', { bubbles: true }))
         }
       }
-    });
+    })
   }
 
   // Initialize character counter
-  updateCharCount();
+  updateCharCount()
 
   // Emote picker button (includes twitch features in tabs)
-  const emoteBtn = document.getElementById('hs-mc-emote-btn');
+  const emoteBtn = document.getElementById('hs-mc-emote-btn')
   if (emoteBtn && !emoteBtn._hsInitialized) {
-    emoteBtn._hsInitialized = true;
+    emoteBtn._hsInitialized = true
     emoteBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const picker = document.getElementById('hs-mc-emote-picker');
+      e.preventDefault()
+      e.stopPropagation()
+      const picker = document.getElementById('hs-mc-emote-picker')
       if (picker?.classList.contains('visible')) {
-        picker.classList.remove('visible');
-        adjustOverlayForPicker(false);
-        hideInputBar();
+        picker.classList.remove('visible')
+        adjustOverlayForPicker(false)
+        hideInputBar()
         if (_pickerCloseHandler) {
-          document.removeEventListener('click', _pickerCloseHandler);
-          _pickerCloseHandler = null;
+          document.removeEventListener('click', _pickerCloseHandler)
+          _pickerCloseHandler = null
         }
       } else {
-        showEmotePicker();
+        showEmotePicker()
       }
-    });
+    })
   }
 
   // Update placeholder based on current tab
-  updateInputPlaceholder();
+  updateInputPlaceholder()
 
   // Global Tab key to focus input — only when multichat panel is active
   if (!window._hsMcTabHandler) {
-    window._hsMcTabHandler = true;
-    document.addEventListener('keydown', (e) => {
-      if (e.key !== 'Tab') return;
-      if (currentTab === 'add' || currentTab === 'settings') return;
-      const active = document.activeElement;
-      const input = document.getElementById('hs-mc-input');
-      if (!input) return;
-      // Don't steal Tab from other inputs (except Twitch's chat input)
-      if (active && active !== document.body && active.tagName === 'INPUT' && active.id !== 'hs-mc-input' && !active.dataset?.aTarget) return;
-      if (active && active !== document.body && active.tagName === 'TEXTAREA' && active.id !== 'hs-mc-input') return;
+    window._hsMcTabHandler = true
+    document.addEventListener(
+      'keydown',
+      (e) => {
+        if (e.key !== 'Tab') return
+        if (currentTab === 'add' || currentTab === 'settings') return
+        const active = document.activeElement
+        const input = document.getElementById('hs-mc-input')
+        if (!input) return
+        // Don't steal Tab from other inputs (except Twitch's chat input)
+        if (
+          active &&
+          active !== document.body &&
+          active.tagName === 'INPUT' &&
+          active.id !== 'hs-mc-input' &&
+          !active.dataset?.aTarget
+        )
+          return
+        if (active && active !== document.body && active.tagName === 'TEXTAREA' && active.id !== 'hs-mc-input') return
 
-      // If not already in our input, reveal bar and focus it
-      if (active !== input) {
-        e.preventDefault();
-        showInputBar();
-        input.focus();
-      }
-    }, { capture: true, signal: mcSignal });
+        // If not already in our input, reveal bar and focus it
+        if (active !== input) {
+          e.preventDefault()
+          showInputBar()
+          input.focus()
+        }
+      },
+      { capture: true, signal: mcSignal },
+    )
   }
 
   // Global `\` toggle → hide/show chat. Mirrors heatsync.org keyboard shortcut.
   // Skip when input is focused so users can type `\` into chat normally.
   if (!window._hsMcChatToggleHandler) {
     window._hsMcChatToggleHandler = true
-    document.addEventListener('keydown', (e) => {
-      if (e.key !== '\\') return
-      if (e.ctrlKey || e.altKey || e.metaKey) return
-      const active = document.activeElement
-      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return
-      e.preventDefault()
-      e.stopImmediatePropagation()
-      try { toggleChatHidden() } catch (err) { log('chat-toggle keydown:', err) }
-    }, { capture: true, signal: mcSignal })
+    document.addEventListener(
+      'keydown',
+      (e) => {
+        if (e.key !== '\\') return
+        if (e.ctrlKey || e.altKey || e.metaKey) return
+        const active = document.activeElement
+        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        try {
+          toggleChatHidden()
+        } catch (err) {
+          log('chat-toggle keydown:', err)
+        }
+      },
+      { capture: true, signal: mcSignal },
+    )
   }
 
   // Auto-reveal input bar when user starts typing anywhere
   if (!window._hsMcTypeRevealHandler) {
     window._hsMcTypeRevealHandler = true
-    document.addEventListener('keydown', (e) => {
-      if (inputBarVisible) return
-      if (currentTab === 'add' || currentTab === 'settings') return
-      const input = document.getElementById('hs-mc-input')
-      if (!input) return
-      // Don't steal focus from other inputs
-      const active = document.activeElement
-      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return
-      // Only printable chars — skip modifiers, nav, function keys
-      if (e.ctrlKey || e.altKey || e.metaKey) return
-      if (e.key.length !== 1) return
-      // Prevent platform shortcuts (Kick fullscreen "f", theater "t", etc.)
-      e.preventDefault()
-      e.stopImmediatePropagation()
-      showInputBar()
-      input.focus()
-      // Manually insert the character since we prevented default
-      if (input.isContentEditable) {
-        document.execCommand('insertText', false, e.key)
-      } else {
-        input.value += e.key
-        input.dispatchEvent(new Event('input', { bubbles: true }))
-      }
-    }, { capture: true, signal: mcSignal })
+    document.addEventListener(
+      'keydown',
+      (e) => {
+        if (inputBarVisible) return
+        if (currentTab === 'add' || currentTab === 'settings') return
+        const input = document.getElementById('hs-mc-input')
+        if (!input) return
+        // Don't steal focus from other inputs
+        const active = document.activeElement
+        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return
+        // Only printable chars — skip modifiers, nav, function keys
+        if (e.ctrlKey || e.altKey || e.metaKey) return
+        if (e.key.length !== 1) return
+        // Prevent platform shortcuts (Kick fullscreen "f", theater "t", etc.)
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        showInputBar()
+        input.focus()
+        // Manually insert the character since we prevented default
+        if (input.isContentEditable) {
+          document.execCommand('insertText', false, e.key)
+        } else {
+          input.value += e.key
+          input.dispatchEvent(new Event('input', { bubbles: true }))
+        }
+      },
+      { capture: true, signal: mcSignal },
+    )
 
     // Catch paste when input bar is hidden — reveal bar and insert text
-    document.addEventListener('paste', (e) => {
-      if (inputBarVisible) return
-      if (currentTab === 'add') return
-      const input = document.getElementById('hs-mc-input')
-      if (!input) return
-      // Don't steal paste from other inputs
-      const active = document.activeElement
-      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return
-      // Check for pasted image first
-      const items = e.clipboardData?.items
-      if (items) {
-        for (const item of items) {
-          if (item.kind === 'file' && item.type.startsWith('image/')) {
-            const file = item.getAsFile()
-            if (file) {
-              e.preventDefault()
-              handleMediaUpload(file)
-              return
+    document.addEventListener(
+      'paste',
+      (e) => {
+        if (inputBarVisible) return
+        if (currentTab === 'add') return
+        const input = document.getElementById('hs-mc-input')
+        if (!input) return
+        // Don't steal paste from other inputs
+        const active = document.activeElement
+        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return
+        // Check for pasted image first
+        const items = e.clipboardData?.items
+        if (items) {
+          for (const item of items) {
+            if (item.kind === 'file' && item.type.startsWith('image/')) {
+              const file = item.getAsFile()
+              if (file) {
+                e.preventDefault()
+                handleMediaUpload(file)
+                return
+              }
             }
           }
         }
-      }
-      const text = e.clipboardData?.getData('text/plain')
-      if (!text) return
-      e.preventDefault()
-      showInputBar()
-      input.focus()
-      // Insert pasted text into the input
-      if (input.tagName === 'INPUT' || input.tagName === 'TEXTAREA') {
-        input.value = text
-        input.dispatchEvent(new Event('input', { bubbles: true }))
-      } else {
-        document.execCommand('insertText', false, text)
-      }
-    }, { signal: mcSignal })
+        const text = e.clipboardData?.getData('text/plain')
+        if (!text) return
+        e.preventDefault()
+        showInputBar()
+        input.focus()
+        // Insert pasted text into the input
+        if (input.tagName === 'INPUT' || input.tagName === 'TEXTAREA') {
+          input.value = text
+          input.dispatchEvent(new Event('input', { bubbles: true }))
+        } else {
+          document.execCommand('insertText', false, text)
+        }
+      },
+      { signal: mcSignal },
+    )
   }
 
   // Helper: find emote wrapper or img from event target
   function findEmoteTarget(target) {
     // Check wrapper first (our emotes)
-    const wrapper = target.closest('.hs-mc-emote-wrapper');
+    const wrapper = target.closest('.hs-mc-emote-wrapper')
     if (wrapper) {
-      const wImg = wrapper.querySelector('img');
+      const wImg = wrapper.querySelector('img')
       return {
         wrapper,
         emoteName: wrapper.dataset.emoteName || wImg?.alt || 'emote',
         state: wrapper.dataset.state || 'global',
         emoteUrl: wrapper.dataset.emoteUrl || wImg?.src || '',
         source: wrapper.dataset.source || 'unknown',
-        modWords: wImg?.dataset?.hsWords || wrapper.dataset?.hsWords || ''
-      };
+        modWords: wImg?.dataset?.hsWords || wrapper.dataset?.hsWords || '',
+      }
     }
     // Picker emote wrap — when blocked, the inner img is visibility:hidden so
     // right-clicks land on the wrap span, not the img. Without this branch
     // findEmoteTarget returned null and unblock-on-right-click silently failed.
-    const pickerWrap = target.closest('.hs-mc-picker-emote-wrap');
+    const pickerWrap = target.closest('.hs-mc-picker-emote-wrap')
     if (pickerWrap) {
-      const img = pickerWrap.querySelector('img');
+      const img = pickerWrap.querySelector('img')
       return {
         wrapper: null,
         emoteName: pickerWrap.dataset.name || img?.alt || 'emote',
         state: img?.dataset.state || (pickerWrap.classList.contains('blocked') ? 'blocked' : 'global'),
         emoteUrl: img?.src || '',
-        source: img?.dataset.source || 'unknown'
-      };
+        source: img?.dataset.source || 'unknown',
+      }
     }
     // Fallback: direct IMG (Twitch/7TV/BTTV native emotes, picker emotes,
     // and multichat WYSIWYG input chips — class match catches blocked input
     // emotes whose src has been swapped to a transparent placeholder).
-    if (target.tagName === 'IMG' && !target.classList.contains('hs-mc-badge-img') && (
-      target.classList.contains('hs-mc-emote') ||
-      target.classList.contains('hs-mc-picker-emote') ||
-      target.classList.contains('hs-input-emote') ||
-      target.classList.contains('chat-line__message--emote') ||
-      target.classList.contains('chat-image') ||
-      target.src?.includes('7tv.app') ||
-      target.src?.includes('betterttv.net') ||
-      (target.src?.includes('frankerfacez') && !target.src?.includes('room-badge/')) ||
-      target.src?.includes('static-cdn.jtvnw.net/emoticons')
-    )) {
-      const isBlocked = target.classList.contains('hs-state-blocked') || target.dataset.state === 'blocked';
+    if (
+      target.tagName === 'IMG' &&
+      !target.classList.contains('hs-mc-badge-img') &&
+      (target.classList.contains('hs-mc-emote') ||
+        target.classList.contains('hs-mc-picker-emote') ||
+        target.classList.contains('hs-input-emote') ||
+        target.classList.contains('chat-line__message--emote') ||
+        target.classList.contains('chat-image') ||
+        target.src?.includes('7tv.app') ||
+        target.src?.includes('betterttv.net') ||
+        (target.src?.includes('frankerfacez') && !target.src?.includes('room-badge/')) ||
+        target.src?.includes('static-cdn.jtvnw.net/emoticons'))
+    ) {
+      const isBlocked = target.classList.contains('hs-state-blocked') || target.dataset.state === 'blocked'
       return {
         wrapper: null,
         emoteName: target.alt || target.dataset.emoteName || target.title?.split(' ')[0] || 'emote',
-        state: isBlocked ? 'blocked' : (target.dataset.state || 'global'),
+        state: isBlocked ? 'blocked' : target.dataset.state || 'global',
         emoteUrl: target.dataset.hsOrigSrc || target.src || '',
-        source: target.dataset.source || 'unknown'
-      };
+        source: target.dataset.source || 'unknown',
+      }
     }
-    return null;
+    return null
   }
 
   function openEmoteCtxMenu(x, y, { emoteName, emoteUrl }) {
@@ -1027,17 +1144,46 @@ function initInput() {
     const items = []
     let m
     if ((m = emoteUrl.match(/cdn\.7tv\.app\/emote\/([^/]+)/))) {
-      items.push({ label: 'open on 7TV', fn: () => window.open(`https://7tv.app/emotes/${m[1]}`, '_blank', 'noopener,noreferrer') })
+      items.push({
+        label: 'open on 7TV',
+        fn: () => window.open(`https://7tv.app/emotes/${m[1]}`, '_blank', 'noopener,noreferrer'),
+      })
     } else if ((m = emoteUrl.match(/cdn\.betterttv\.net\/emote\/([^/]+)/))) {
-      items.push({ label: 'open on BTTV', fn: () => window.open(`https://betterttv.com/emotes/${m[1]}`, '_blank', 'noopener,noreferrer') })
+      items.push({
+        label: 'open on BTTV',
+        fn: () => window.open(`https://betterttv.com/emotes/${m[1]}`, '_blank', 'noopener,noreferrer'),
+      })
     } else if ((m = emoteUrl.match(/cdn\.frankerfacez\.com\/emote\/(\d+)/))) {
-      items.push({ label: 'open on FFZ', fn: () => window.open(`https://www.frankerfacez.com/emoticon/${m[1]}`, '_blank', 'noopener,noreferrer') })
+      items.push({
+        label: 'open on FFZ',
+        fn: () => window.open(`https://www.frankerfacez.com/emoticon/${m[1]}`, '_blank', 'noopener,noreferrer'),
+      })
     }
     items.push(
       { label: 'view image', fn: () => window.open(hi, '_blank', 'noopener,noreferrer') },
       'sep',
-      { label: 'copy :name:', fn: () => { try { navigator.clipboard.writeText(`:${emoteName}:`).then(() => showToast('name copied', 'success')).catch(() => {}) } catch {} } },
-      { label: 'copy image url', fn: () => { try { navigator.clipboard.writeText(hi).then(() => showToast('url copied', 'success')).catch(() => {}) } catch {} } },
+      {
+        label: 'copy :name:',
+        fn: () => {
+          try {
+            navigator.clipboard
+              .writeText(`:${emoteName}:`)
+              .then(() => showToast('name copied', 'success'))
+              .catch(() => {})
+          } catch {}
+        },
+      },
+      {
+        label: 'copy image url',
+        fn: () => {
+          try {
+            navigator.clipboard
+              .writeText(hi)
+              .then(() => showToast('url copied', 'success'))
+              .catch(() => {})
+          } catch {}
+        },
+      },
     )
     showHsCtxMenu(x, y, `:${emoteName}:`, items)
   }
@@ -1053,255 +1199,300 @@ function initInput() {
     const name = span.dataset?.emojiName || (m ? m[1] : '')
     const char = (span.textContent || '').trim()
     const items = []
-    if (name) items.push({ label: 'copy :name:', fn: () => { try { navigator.clipboard.writeText(`:${name}:`).then(() => showToast('name copied', 'success')).catch(() => {}) } catch {} } })
-    if (char) items.push({ label: 'copy emoji', fn: () => { try { navigator.clipboard.writeText(char).then(() => showToast('emoji copied', 'success')).catch(() => {}) } catch {} } })
+    if (name)
+      items.push({
+        label: 'copy :name:',
+        fn: () => {
+          try {
+            navigator.clipboard
+              .writeText(`:${name}:`)
+              .then(() => showToast('name copied', 'success'))
+              .catch(() => {})
+          } catch {}
+        },
+      })
+    if (char)
+      items.push({
+        label: 'copy emoji',
+        fn: () => {
+          try {
+            navigator.clipboard
+              .writeText(char)
+              .then(() => showToast('emoji copied', 'success'))
+              .catch(() => {})
+          } catch {}
+        },
+      })
     if (!items.length) return
     showHsCtxMenu(x, y, name ? `:${name}:` : char, items)
   }
 
   // Global right-click handler for ALL emotes
   if (!window._hsMcEmoteContextHandler) {
-    window._hsMcEmoteContextHandler = true;
-    document.addEventListener('contextmenu', (e) => {
-      // Stack expand on right-click (plain, no modifier — shift falls through
-      // to the per-emote menu on whichever stack child the cursor's on).
-      const collapsedStack = e.target.closest('.hs-mc-emote-stack:not(.expanded)');
-      if (collapsedStack && !e.shiftKey) {
-        e.preventDefault();
-        e.stopPropagation();
-        collapsedStack.classList.add('expanded');
-        collapsedStack.removeAttribute('title');
-        return;
-      }
+    window._hsMcEmoteContextHandler = true
+    document.addEventListener(
+      'contextmenu',
+      (e) => {
+        // Stack expand on right-click (plain, no modifier — shift falls through
+        // to the per-emote menu on whichever stack child the cursor's on).
+        const collapsedStack = e.target.closest('.hs-mc-emote-stack:not(.expanded)')
+        if (collapsedStack && !e.shiftKey) {
+          e.preventDefault()
+          e.stopPropagation()
+          collapsedStack.classList.add('expanded')
+          collapsedStack.removeAttribute('title')
+          return
+        }
 
-      // Emoji: copy-only menu (not blockable — see openEmojiCtxMenu). Checked
-      // before findEmoteTarget, which doesn't match emoji spans.
-      const emojiSpan = e.target.closest('.hs-mc-emoji');
-      if (emojiSpan) {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        openEmojiCtxMenu(e.clientX, e.clientY, emojiSpan);
-        return;
-      }
+        // Emoji: copy-only menu (not blockable — see openEmojiCtxMenu). Checked
+        // before findEmoteTarget, which doesn't match emoji spans.
+        const emojiSpan = e.target.closest('.hs-mc-emoji')
+        if (emojiSpan) {
+          e.preventDefault()
+          e.stopPropagation()
+          e.stopImmediatePropagation()
+          openEmojiCtxMenu(e.clientX, e.clientY, emojiSpan)
+          return
+        }
 
-      const emoteInfo = findEmoteTarget(e.target);
-      if (!emoteInfo) return;
-      log('Emote right-click:', emoteInfo.emoteName, emoteInfo.state);
+        const emoteInfo = findEmoteTarget(e.target)
+        if (!emoteInfo) return
+        log('Emote right-click:', emoteInfo.emoteName, emoteInfo.state)
 
-      e.preventDefault();
-      e.stopPropagation();
+        e.preventDefault()
+        e.stopPropagation()
 
-      if (e.shiftKey) {
-        openEmoteCtxMenu(e.clientX, e.clientY, emoteInfo);
-        return;
-      }
+        if (e.shiftKey) {
+          openEmoteCtxMenu(e.clientX, e.clientY, emoteInfo)
+          return
+        }
 
-      const { emoteName, state, emoteUrl, source } = emoteInfo;
+        const { emoteName, state, emoteUrl, source } = emoteInfo
 
-      // Race-guard against rapid clicking
-      if (pendingEmoteOps.has(emoteName)) return;
+        // Race-guard against rapid clicking
+        if (pendingEmoteOps.has(emoteName)) return
 
-      // 2-state right-click toggle. blocked → unblock, else → block.
-      if (state === 'blocked') {
-        unblockEmote(emoteName);
-      } else {
-        // 2-state model: every non-blocked emote right-click toggles to blocked.
-        // No remove path here — destructive slot cleanup lives on the heatsync.org
-        // panel picker (explicit menu item) where the user knows they're managing
-        // inventory rather than mid-chat triaging what they want to see. The old
-        // owned→remove ladder was the source of the accidental-vanish class of
-        // bugs that hit Twitch subs, channel emotes, follower/bits, and slotted
-        // copies of third-party emotes — all of which feel undeletable from a
-        // chat-flow surface.
-        blockEmote(emoteName, emoteUrl, source);
-      }
-    }, { capture: true, signal: mcSignal });
+        // 2-state right-click toggle. blocked → unblock, else → block.
+        if (state === 'blocked') {
+          unblockEmote(emoteName)
+        } else {
+          // 2-state model: every non-blocked emote right-click toggles to blocked.
+          // No remove path here — destructive slot cleanup lives on the heatsync.org
+          // panel picker (explicit menu item) where the user knows they're managing
+          // inventory rather than mid-chat triaging what they want to see. The old
+          // owned→remove ladder was the source of the accidental-vanish class of
+          // bugs that hit Twitch subs, channel emotes, follower/bits, and slotted
+          // copies of third-party emotes — all of which feel undeletable from a
+          // chat-flow surface.
+          blockEmote(emoteName, emoteUrl, source)
+        }
+      },
+      { capture: true, signal: mcSignal },
+    )
   }
 
   // Global left-click handler for ALL emotes
   if (!window._hsMcEmoteClickHandler) {
-    window._hsMcEmoteClickHandler = true;
-    document.addEventListener('click', (e) => {
-      // Stack collapse button
-      if (e.target.closest('.hs-mc-stack-collapse')) {
-        e.preventDefault();
-        e.stopPropagation();
-        const stack = e.target.closest('.hs-mc-emote-stack');
-        if (stack) {
-          stack.classList.remove('expanded');
-          stack.setAttribute('title', 'expand');
-        }
-        return;
-      }
-      // Stack block-all button
-      if (e.target.closest('.hs-mc-stack-block-all')) {
-        e.preventDefault();
-        e.stopPropagation();
-        const stack = e.target.closest('.hs-mc-emote-stack');
-        if (stack) blockAllEmotesInStack(stack);
-        return;
-      }
-      // Collapsed stack left-click → add unowned emotes to inventory, then
-      // paste every postable item (emotes + emojis) to input in DOM order.
-      // Emojis in the nest are treated as first-class stack members so a
-      // composite like "emote + :smile:0 overlay" round-trips into the input
-      // intact instead of dropping the emoji.
-      // (skip locked/blocked emotes — viewer can't post them)
-      const collapsedStack = e.target.closest('.hs-mc-emote-stack:not(.expanded)');
-      if (collapsedStack) {
-        e.preventDefault();
-        e.stopPropagation();
-        const stackInner = collapsedStack.querySelector('.hs-mc-emote-stack-emotes');
-        const stackChildren = stackInner ? [...stackInner.children] : [];
-        const items = [];
-        let hadUnpostableEmote = false;
-        for (const c of stackChildren) {
-          if (c.classList?.contains('hs-mc-emote-wrapper') && c.dataset.emoteName) {
-            const s = c.dataset.state;
-            if (s === 'locked' || s === 'blocked') { hadUnpostableEmote = true; continue }
-            items.push({ kind: 'emote', el: c });
-          } else if (c.classList?.contains('hs-mc-emoji')) {
-            items.push({ kind: 'emoji', el: c });
+    window._hsMcEmoteClickHandler = true
+    document.addEventListener(
+      'click',
+      (e) => {
+        // Stack collapse button
+        if (e.target.closest('.hs-mc-stack-collapse')) {
+          e.preventDefault()
+          e.stopPropagation()
+          const stack = e.target.closest('.hs-mc-emote-stack')
+          if (stack) {
+            stack.classList.remove('expanded')
+            stack.setAttribute('title', 'expand')
           }
+          return
         }
-        if (items.length === 0) {
-          if (hadUnpostableEmote) showToast(`nothing postable in stack`, 'error');
-          return;
+        // Stack block-all button
+        if (e.target.closest('.hs-mc-stack-block-all')) {
+          e.preventDefault()
+          e.stopPropagation()
+          const stack = e.target.closest('.hs-mc-emote-stack')
+          if (stack) blockAllEmotesInStack(stack)
+          return
         }
-        // Fire add-to-inventory for each unowned emote (don't block paste on the
-        // server roundtrip; state flips green when each resolves).
-        for (const it of items) {
-          if (it.kind !== 'emote') continue;
-          const w = it.el;
-          if (w.dataset.state === 'unadded') {
-            const name = w.dataset.emoteName;
-            if (!name || pendingEmoteOps.has(name)) continue;
-            const url = w.dataset.emoteUrl || w.querySelector('img')?.src || '';
-            const source = w.dataset.source || 'heatsync';
-            addEmoteToInventory(name, url, source, w);
+        // Collapsed stack left-click → add unowned emotes to inventory, then
+        // paste every postable item (emotes + emojis) to input in DOM order.
+        // Emojis in the nest are treated as first-class stack members so a
+        // composite like "emote + :smile:0 overlay" round-trips into the input
+        // intact instead of dropping the emoji.
+        // (skip locked/blocked emotes — viewer can't post them)
+        const collapsedStack = e.target.closest('.hs-mc-emote-stack:not(.expanded)')
+        if (collapsedStack) {
+          e.preventDefault()
+          e.stopPropagation()
+          const stackInner = collapsedStack.querySelector('.hs-mc-emote-stack-emotes')
+          const stackChildren = stackInner ? [...stackInner.children] : []
+          const items = []
+          let hadUnpostableEmote = false
+          for (const c of stackChildren) {
+            if (c.classList?.contains('hs-mc-emote-wrapper') && c.dataset.emoteName) {
+              const s = c.dataset.state
+              if (s === 'locked' || s === 'blocked') {
+                hadUnpostableEmote = true
+                continue
+              }
+              items.push({ kind: 'emote', el: c })
+            } else if (c.classList?.contains('hs-mc-emoji')) {
+              items.push({ kind: 'emoji', el: c })
+            }
           }
-        }
-        showInputBar();
-        for (let i = 0; i < items.length; i++) {
-          const it = items[i];
-          if (it.kind === 'emote') {
-            const w = it.el;
-            const name = w.dataset.emoteName;
-            if (!name) continue;
-            // Wire words are stashed on the wrapper at render time by
-            // _hsMcApplyMods so paste preserves w!/h!/c! per emote, letting
-            // user click-paste-enter and reproduce the nest's exact dimensions.
-            const wImg = w.querySelector('img');
-            const modWords = wImg?.dataset?.hsWords || w.dataset?.hsWords || '';
-            pasteEmoteToInput(name, modWords);
-          } else {
-            // Non-first item is an overlay — stack onto the previous chip so
-            // getInputText emits ":name:0" (or unicode-stacked) on the wire.
-            pasteEmojiSpanFromNestToInput(it.el, i > 0);
+          if (items.length === 0) {
+            if (hadUnpostableEmote) showToast(`nothing postable in stack`, 'error')
+            return
           }
+          // Fire add-to-inventory for each unowned emote (don't block paste on the
+          // server roundtrip; state flips green when each resolves).
+          for (const it of items) {
+            if (it.kind !== 'emote') continue
+            const w = it.el
+            if (w.dataset.state === 'unadded') {
+              const name = w.dataset.emoteName
+              if (!name || pendingEmoteOps.has(name)) continue
+              const url = w.dataset.emoteUrl || w.querySelector('img')?.src || ''
+              const source = w.dataset.source || 'heatsync'
+              addEmoteToInventory(name, url, source, w)
+            }
+          }
+          showInputBar()
+          for (let i = 0; i < items.length; i++) {
+            const it = items[i]
+            if (it.kind === 'emote') {
+              const w = it.el
+              const name = w.dataset.emoteName
+              if (!name) continue
+              // Wire words are stashed on the wrapper at render time by
+              // _hsMcApplyMods so paste preserves w!/h!/c! per emote, letting
+              // user click-paste-enter and reproduce the nest's exact dimensions.
+              const wImg = w.querySelector('img')
+              const modWords = wImg?.dataset?.hsWords || w.dataset?.hsWords || ''
+              pasteEmoteToInput(name, modWords)
+            } else {
+              // Non-first item is an overlay — stack onto the previous chip so
+              // getInputText emits ":name:0" (or unicode-stacked) on the wire.
+              pasteEmojiSpanFromNestToInput(it.el, i > 0)
+            }
+          }
+          const input = document.getElementById('hs-mc-input')
+          if (input) input.focus()
+          const firstEmote = items.find((it) => it.kind === 'emote')
+          if (firstEmote) flashAllEmotes(firstEmote.el.dataset.emoteName, 'hs-flash-paste')
+          return
         }
-        const input = document.getElementById('hs-mc-input');
-        if (input) input.focus();
-        const firstEmote = items.find(it => it.kind === 'emote');
-        if (firstEmote) flashAllEmotes(firstEmote.el.dataset.emoteName, 'hs-flash-paste');
-        return;
-      }
 
-      const emoteInfo = findEmoteTarget(e.target);
-      if (!emoteInfo) return;
+        const emoteInfo = findEmoteTarget(e.target)
+        if (!emoteInfo) return
 
-      // Multichat input WYSIWYG chip — only intercept clicks for the blocked
-      // state (left-click unblocks). For any other state we let the
-      // contenteditable handle the click so the caret lands at the click
-      // position; intercepting would silently re-paste the same emote on
-      // every cursor placement, which is hostile.
-      if (e.target.closest('#hs-mc-input') && emoteInfo.state !== 'blocked') return;
+        // Multichat input WYSIWYG chip — only intercept clicks for the blocked
+        // state (left-click unblocks). For any other state we let the
+        // contenteditable handle the click so the caret lands at the click
+        // position; intercepting would silently re-paste the same emote on
+        // every cursor placement, which is hostile.
+        if (e.target.closest('#hs-mc-input') && emoteInfo.state !== 'blocked') return
 
-      e.preventDefault();
-      e.stopPropagation();
+        e.preventDefault()
+        e.stopPropagation()
 
-      const { emoteName, state, emoteUrl, source, modWords } = emoteInfo;
+        const { emoteName, state, emoteUrl, source, modWords } = emoteInfo
 
-      if (state === 'blocked') {
-        // 2-state model: left-click on a blocked emote unblocks it (returns
-        // straight to whatever its natural state is — owned if still in your
-        // inventory, channel/global otherwise). Mirrors right-click on blocked.
-        if (pendingEmoteOps.has(emoteName)) return;
-        unblockEmote(emoteName);
-        return;
-      }
-      if (state === 'locked') {
-        // Foreign Twitch sub emote — viewer not subbed to this channel, can't
-        // post it. Toast instead of paste (matches website post-b6f23bc8:
-        // visually identical to other emotes, only click is gated).
-        showToast(`${emoteName} — not subbed to this channel`, 'error');
-        return;
-      }
-      if (state === 'owned' || state === 'global' || state === 'channel' || state === 'unadded') {
-        // 2-state model: every non-blocked, non-remote picker emote is equally
-        // pasteable. The old "first click adds, second click pastes" anti-misfire
-        // was an artefact of the orange `unadded` tier — without that tier there's
-        // no slot to "burn" prematurely, since auto-add-on-send commits the slot
-        // only at the moment the user actually sends a message containing the
-        // emote. Picker click = paste; if you send it, it lands in your set
-        // automatically. Optimistically populate viewerPersonalEmotes so the
-        // own-message echo can render the image before the server add resolves
-        // (emote name in raw text has no <img> wrapper for a late add to fill in).
-        // Seed viewerPersonalEmotes when the clicked emote can't currently be
-        // resolved by lookupEmote — covers the 'unadded' slot (optimistic add so
-        // the own-message echo renders before the server add lands) AND the case
-        // where the picker outlived its live resolver cache: 7TV channel/owned
-        // emotes are still shown in the cached picker DOM during the post-load
-        // sub-ack window (~15s) and after a channel re-key, but
-        // lookupEmoteWithOverlay returns null for them, so createInputEmoteImg
-        // builds no chip and the click silently pastes nothing. The clicked
-        // element carries the real url+source, so seed from it (state preserved;
-        // 'unadded' normalizes to 'owned'). Guard on a real http(s) url so a
-        // blocked emote's transparent px never seeds garbage.
-        if (!viewerPersonalEmotes.has(emoteName) && emoteUrl && /^https?:/i.test(emoteUrl) &&
-            (typeof lookupEmoteWithOverlay !== 'function' || !lookupEmoteWithOverlay(emoteName))) {
-          viewerPersonalEmotes.set(emoteName, {
-            url: emoteUrl,
-            source: source || 'heatsync',
-            state: state === 'unadded' ? 'owned' : state,
-          });
+        if (state === 'blocked') {
+          // 2-state model: left-click on a blocked emote unblocks it (returns
+          // straight to whatever its natural state is — owned if still in your
+          // inventory, channel/global otherwise). Mirrors right-click on blocked.
+          if (pendingEmoteOps.has(emoteName)) return
+          unblockEmote(emoteName)
+          return
         }
-        showInputBar();
-        pasteEmoteToInput(emoteName, modWords);
-        const input = document.getElementById('hs-mc-input');
-        if (input) input.focus();
-        flashAllEmotes(emoteName, 'hs-flash-paste');
-        return;
-      }
-    }, { capture: true, signal: mcSignal });
+        if (state === 'locked') {
+          // Foreign Twitch sub emote — viewer not subbed to this channel, can't
+          // post it. Toast instead of paste (matches website post-b6f23bc8:
+          // visually identical to other emotes, only click is gated).
+          showToast(`${emoteName} — not subbed to this channel`, 'error')
+          return
+        }
+        if (state === 'owned' || state === 'global' || state === 'channel' || state === 'unadded') {
+          // 2-state model: every non-blocked, non-remote picker emote is equally
+          // pasteable. The old "first click adds, second click pastes" anti-misfire
+          // was an artefact of the orange `unadded` tier — without that tier there's
+          // no slot to "burn" prematurely, since auto-add-on-send commits the slot
+          // only at the moment the user actually sends a message containing the
+          // emote. Picker click = paste; if you send it, it lands in your set
+          // automatically. Optimistically populate viewerPersonalEmotes so the
+          // own-message echo can render the image before the server add resolves
+          // (emote name in raw text has no <img> wrapper for a late add to fill in).
+          // Seed viewerPersonalEmotes when the clicked emote can't currently be
+          // resolved by lookupEmote — covers the 'unadded' slot (optimistic add so
+          // the own-message echo renders before the server add lands) AND the case
+          // where the picker outlived its live resolver cache: 7TV channel/owned
+          // emotes are still shown in the cached picker DOM during the post-load
+          // sub-ack window (~15s) and after a channel re-key, but
+          // lookupEmoteWithOverlay returns null for them, so createInputEmoteImg
+          // builds no chip and the click silently pastes nothing. The clicked
+          // element carries the real url+source, so seed from it (state preserved;
+          // 'unadded' normalizes to 'owned'). Guard on a real http(s) url so a
+          // blocked emote's transparent px never seeds garbage.
+          if (
+            !viewerPersonalEmotes.has(emoteName) &&
+            emoteUrl &&
+            /^https?:/i.test(emoteUrl) &&
+            (typeof lookupEmoteWithOverlay !== 'function' || !lookupEmoteWithOverlay(emoteName))
+          ) {
+            viewerPersonalEmotes.set(emoteName, {
+              url: emoteUrl,
+              source: source || 'heatsync',
+              state: state === 'unadded' ? 'owned' : state,
+            })
+          }
+          showInputBar()
+          pasteEmoteToInput(emoteName, modWords)
+          const input = document.getElementById('hs-mc-input')
+          if (input) input.focus()
+          flashAllEmotes(emoteName, 'hs-flash-paste')
+          return
+        }
+      },
+      { capture: true, signal: mcSignal },
+    )
   }
 
   // Spoiler click → toggle revealed
   if (!window._hsMcSpoilerHandler) {
     window._hsMcSpoilerHandler = true
-    document.addEventListener('click', (e) => {
-      const spoiler = e.target.closest('.hs-spoiler')
-      if (!spoiler) return
-      e.stopPropagation()
-      spoiler.classList.toggle('revealed')
-    }, { signal: mcSignal })
+    document.addEventListener(
+      'click',
+      (e) => {
+        const spoiler = e.target.closest('.hs-spoiler')
+        if (!spoiler) return
+        e.stopPropagation()
+        spoiler.classList.toggle('revealed')
+      },
+      { signal: mcSignal },
+    )
   }
 
   // Reply button click → set reply state and focus input
   if (!window._hsMcReplyHandler) {
     window._hsMcReplyHandler = true
-    document.addEventListener('click', (e) => {
-      const btn = e.target.closest('.hs-mc-reply-btn')
-      if (!btn) return
-      const msg = btn.closest('.hs-mc-msg')
-      if (!msg?.dataset.msgId) return
-      setReplyState({
-        msgId: msg.dataset.msgId,
-        user: msg.dataset.msgUser,
-        channel: msg.dataset.msgChannel
-      })
-    }, { signal: mcSignal })
+    document.addEventListener(
+      'click',
+      (e) => {
+        const btn = e.target.closest('.hs-mc-reply-btn')
+        if (!btn) return
+        const msg = btn.closest('.hs-mc-msg')
+        if (!msg?.dataset.msgId) return
+        setReplyState({
+          msgId: msg.dataset.msgId,
+          user: msg.dataset.msgUser,
+          channel: msg.dataset.msgChannel,
+        })
+      },
+      { signal: mcSignal },
+    )
   }
 
   // Universal right-click → user/post action menu. Fires on ANY username
@@ -1310,36 +1501,55 @@ function initInput() {
   // The emote menu (capture handler above) owns emote right-clicks; real
   // links/media fall through to the native menu so "copy link" still works.
   if (!window._hsMcMsgContextHandler) {
-    window._hsMcMsgContextHandler = true;
-    document.addEventListener('contextmenu', (e) => {
-      // Emote AND emoji right-clicks own their own menus (emote block / emoji
-      // copy) in the handler above — bail so the user/message menu doesn't
-      // also fire on the same event and overwrite them (both are capture-phase
-      // document listeners, so stopPropagation alone wouldn't stop this one).
-      if (findEmoteTarget(e.target) || e.target.closest('.hs-mc-emoji')) return;
-      const userEl = e.target.closest('.hs-mc-user:not(.hs-mc-reply-user)');
-      const feedDiv = e.target.closest('.hs-feed-msg');
-      const msg = e.target.closest('.hs-mc-msg');
-      if (!userEl && !feedDiv && !msg) return;
-      // Right-clicking a real link/embed (not a username) → keep native menu.
-      if (!userEl && e.target.closest('a, img, video, iframe, .hs-feed-thread-link, .hs-quote-insert, .hs-post-link, .hs-feed-embed')) return;
-      const norm = (el) => (el.dataset.username || el.textContent || '').replace(/^@/, '').trim().toLowerCase();
-      let username = null, platform = null, feedMsg = null;
-      if (userEl) {
-        username = norm(userEl); platform = userEl.dataset.platform || null;
-      } else if (feedDiv) {
-        const a = feedDiv.querySelector('.hs-mc-user');
-        username = a ? norm(a) : null; platform = a?.dataset.platform || null;
-        feedMsg = feedDiv._hsFeedMsg || null;
-      } else {
-        const a = msg.querySelector('.hs-mc-user:not(.hs-mc-reply-user)');
-        username = a ? norm(a) : null; platform = a?.dataset.platform || null;
-      }
-      if (!username || username === 'anonymous') return;
-      e.preventDefault();
-      e.stopPropagation();
-      openUserCtxMenu(e.clientX, e.clientY, username, platform, { msg: msg || null, feedDiv: feedDiv || null, feedMsg });
-    }, { capture: true, signal: mcSignal });
+    window._hsMcMsgContextHandler = true
+    document.addEventListener(
+      'contextmenu',
+      (e) => {
+        // Emote AND emoji right-clicks own their own menus (emote block / emoji
+        // copy) in the handler above — bail so the user/message menu doesn't
+        // also fire on the same event and overwrite them (both are capture-phase
+        // document listeners, so stopPropagation alone wouldn't stop this one).
+        if (findEmoteTarget(e.target) || e.target.closest('.hs-mc-emoji')) return
+        const userEl = e.target.closest('.hs-mc-user:not(.hs-mc-reply-user)')
+        const feedDiv = e.target.closest('.hs-feed-msg')
+        const msg = e.target.closest('.hs-mc-msg')
+        if (!userEl && !feedDiv && !msg) return
+        // Right-clicking a real link/embed (not a username) → keep native menu.
+        if (
+          !userEl &&
+          e.target.closest(
+            'a, img, video, iframe, .hs-feed-thread-link, .hs-quote-insert, .hs-post-link, .hs-feed-embed',
+          )
+        )
+          return
+        const norm = (el) => (el.dataset.username || el.textContent || '').replace(/^@/, '').trim().toLowerCase()
+        let username = null,
+          platform = null,
+          feedMsg = null
+        if (userEl) {
+          username = norm(userEl)
+          platform = userEl.dataset.platform || null
+        } else if (feedDiv) {
+          const a = feedDiv.querySelector('.hs-mc-user')
+          username = a ? norm(a) : null
+          platform = a?.dataset.platform || null
+          feedMsg = feedDiv._hsFeedMsg || null
+        } else {
+          const a = msg.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
+          username = a ? norm(a) : null
+          platform = a?.dataset.platform || null
+        }
+        if (!username || username === 'anonymous') return
+        e.preventDefault()
+        e.stopPropagation()
+        openUserCtxMenu(e.clientX, e.clientY, username, platform, {
+          msg: msg || null,
+          feedDiv: feedDiv || null,
+          feedMsg,
+        })
+      },
+      { capture: true, signal: mcSignal },
+    )
   }
 }
 
@@ -1349,7 +1559,14 @@ function hsRelPeek(username, platform) {
   if (typeof _profileCache === 'undefined') return null
   const u = String(username).toLowerCase()
   let c = _profileCache.get(`${platform || 'unknown'}:${u}`)
-  if (!c) { for (const [k, v] of _profileCache) { if (k.endsWith(':' + u)) { c = v; break } } }
+  if (!c) {
+    for (const [k, v] of _profileCache) {
+      if (k.endsWith(':' + u)) {
+        c = v
+        break
+      }
+    }
+  }
   return c?.profile || null
 }
 
@@ -1360,7 +1577,9 @@ async function hsFollowFromMenu(username, platform) {
   const id = p?.id || p?.userId
   if (!id) {
     const msg = ri?.transient
-      ? (ri.status === 429 ? `rate limited — try in a sec` : `couldn't reach server (${ri.status || 'net'})`)
+      ? ri.status === 429
+        ? `rate limited — try in a sec`
+        : `couldn't reach server (${ri.status || 'net'})`
       : `${username} isn't on heatsync`
     showToast(msg, 'error')
     return
@@ -1384,11 +1603,20 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
   const { msg, feedDiv, feedMsg } = ctx
   const rel = hsRelPeek(username, platform)?.relationship || null
   const youFollow = !!(rel?.youFollow || rel?.isFollowing)
-  const youBlock = !!(rel?.youBlock || rel?.isBlocked) || (typeof isUserBlocked === 'function' ? isUserBlocked(username, platform) : blockedUsers.has(String(username).toLowerCase()))
-  const isMuted = (typeof isUserMuted === 'function') ? isUserMuted(username, platform) : mutedUsers.has(username)
+  const youBlock =
+    !!(rel?.youBlock || rel?.isBlocked) ||
+    (typeof isUserBlocked === 'function'
+      ? isUserBlocked(username, platform)
+      : blockedUsers.has(String(username).toLowerCase()))
+  const isMuted = typeof isUserMuted === 'function' ? isUserMuted(username, platform) : mutedUsers.has(username)
   const items = [
     { key: 'follow', label: youFollow ? 'unfollow' : 'follow', fn: () => hsFollowFromMenu(username, platform) },
-    { key: 'block', label: youBlock ? 'unblock' : 'block', danger: !youBlock, fn: () => hsBlockFromMenu(username, platform) },
+    {
+      key: 'block',
+      label: youBlock ? 'unblock' : 'block',
+      danger: !youBlock,
+      fn: () => hsBlockFromMenu(username, platform),
+    },
     { label: isMuted ? 'unmute' : 'mute (24h)', danger: !isMuted, fn: () => _toggleMcMute(username, platform) },
     'sep',
   ]
@@ -1396,11 +1624,13 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
   // IRC msg-id or Kick msg id). The same setReplyState the reply-button uses.
   if (msg?.dataset?.msgId) {
     items.push({
-      label: 'reply', fn: () => setReplyState({
-        msgId: msg.dataset.msgId,
-        user: msg.dataset.msgUser || username,
-        channel: msg.dataset.msgChannel || ''
-      })
+      label: 'reply',
+      fn: () =>
+        setReplyState({
+          msgId: msg.dataset.msgId,
+          user: msg.dataset.msgUser || username,
+          channel: msg.dataset.msgChannel || '',
+        }),
     })
   }
   items.push(
@@ -1412,67 +1642,127 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
   // Filter the live buffer to just this user — sets the search bar to @name.
   // Only on a live/channel tab (where local filtering applies) and a real row.
   if (msg && typeof isLiveSearchTab === 'function' && isLiveSearchTab(currentTab)) {
-    items.push({ label: `filter to ${username}`, fn: () => {
-      const input = document.getElementById('hs-mc-search-input')
-      if (!input) return
-      input.value = '@' + String(username).toLowerCase()
-      input.dispatchEvent(new Event('input', { bubbles: true }))
-      input.focus()
-    } })
+    items.push({
+      label: `filter to ${username}`,
+      fn: () => {
+        const input = document.getElementById('hs-mc-search-input')
+        if (!input) return
+        input.value = '@' + String(username).toLowerCase()
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        input.focus()
+      },
+    })
   }
   // Chat-log items — twitch + kick (yt has no relay)
-  const logPlatform = (platform || 'twitch')
+  const logPlatform = platform || 'twitch'
   if (logPlatform === 'twitch' || logPlatform === 'kick') {
     const msgChannel = msg?.dataset?.msgChannel || (typeof getLiveChannel === 'function' ? getLiveChannel() : null)
     if (msgChannel) {
-      items.push({ label: `chat logs in #${msgChannel}`, fn: () => openChatLogsView(username, { platform: logPlatform, channel: msgChannel }) })
+      items.push({
+        label: `chat logs in #${msgChannel}`,
+        fn: () => openChatLogsView(username, { platform: logPlatform, channel: msgChannel }),
+      })
     }
     items.push({ label: 'chat logs (all channels)', fn: () => openChatLogsView(username, { platform: logPlatform }) })
   }
-  items.push(
-    'sep',
-    { label: 'copy name', fn: () => { try { navigator.clipboard.writeText(username).catch(() => {}) } catch {} } },
-  )
-  if (msg) items.push({ label: 'copy message', fn: () => { try { navigator.clipboard.writeText(_extractMcMsgText(msg)).catch(() => {}) } catch {} } })
+  items.push('sep', {
+    label: 'copy name',
+    fn: () => {
+      try {
+        navigator.clipboard.writeText(username).catch(() => {})
+      } catch {}
+    },
+  })
+  if (msg)
+    items.push({
+      label: 'copy message',
+      fn: () => {
+        try {
+          navigator.clipboard.writeText(_extractMcMsgText(msg)).catch(() => {})
+        } catch {}
+      },
+    })
   if (feedDiv && typeof getActiveThreadCopyText === 'function') {
     const threadTxt = getActiveThreadCopyText()
-    if (threadTxt) items.push({ label: 'copy thread', fn: () => { try { navigator.clipboard.writeText(threadTxt).then(() => showToast('thread copied', 'success')).catch(() => {}) } catch {} } })
+    if (threadTxt)
+      items.push({
+        label: 'copy thread',
+        fn: () => {
+          try {
+            navigator.clipboard
+              .writeText(threadTxt)
+              .then(() => showToast('thread copied', 'success'))
+              .catch(() => {})
+          } catch {}
+        },
+      })
   }
   if (msg) {
     const chainTxt = _extractMcChainText(msg)
-    if (chainTxt) items.push({ label: 'copy thread', fn: () => { try { navigator.clipboard.writeText(chainTxt).then(() => showToast('thread copied', 'success')).catch(() => {}) } catch {} } })
+    if (chainTxt)
+      items.push({
+        label: 'copy thread',
+        fn: () => {
+          try {
+            navigator.clipboard
+              .writeText(chainTxt)
+              .then(() => showToast('thread copied', 'success'))
+              .catch(() => {})
+          } catch {}
+        },
+      })
   }
   if (feedMsg && typeof isOwnFeedPost === 'function' && isOwnFeedPost(feedMsg)) {
     items.push('sep')
-    const remaining = (typeof EDIT_WINDOW_MS !== 'undefined' ? EDIT_WINDOW_MS : 0) - (Date.now() - new Date(feedMsg.created_at).getTime())
+    const remaining =
+      (typeof EDIT_WINDOW_MS !== 'undefined' ? EDIT_WINDOW_MS : 0) -
+      (Date.now() - new Date(feedMsg.created_at).getTime())
     if (remaining > 0) {
-      const mins = Math.floor(remaining / 60000), secs = Math.floor((remaining % 60000) / 1000)
-      items.push({ label: `edit (${mins}:${String(secs).padStart(2, '0')})`, fn: () => { if (feedDiv && typeof showFeedEditUI === 'function') showFeedEditUI(feedDiv, feedMsg) } })
+      const mins = Math.floor(remaining / 60000),
+        secs = Math.floor((remaining % 60000) / 1000)
+      items.push({
+        label: `edit (${mins}:${String(secs).padStart(2, '0')})`,
+        fn: () => {
+          if (feedDiv && typeof showFeedEditUI === 'function') showFeedEditUI(feedDiv, feedMsg)
+        },
+      })
     } else {
       items.push({ label: 'edit (expired)', disabled: true })
     }
-    items.push({ label: 'delete', danger: true, fn: () => { if (typeof deleteFeedPost === 'function') deleteFeedPost(feedMsg) } })
+    items.push({
+      label: 'delete',
+      danger: true,
+      fn: () => {
+        if (typeof deleteFeedPost === 'function') deleteFeedPost(feedMsg)
+      },
+    })
   }
   showHsCtxMenu(x, y, username, items)
   // Async warm-up: cache miss or stale → fetch fresh and patch the menu's
   // follow/block labels in place. Survives the typical case where the user's
   // first interaction with a sender is a right-click (no hover-warmed cache).
   if (typeof resolveIdentity === 'function') {
-    resolveIdentity(username, { platform }).then(ri => {
-      const r = ri?.profile?.relationship
-      if (!r) return
-      const menu = document.getElementById('hs-mc-msg-ctx')
-      if (!menu) return
-      const yf = !!(r.youFollow || r.isFollowing)
-      const yb = !!(r.youBlock || r.isBlocked) || (typeof isUserBlocked === 'function' ? isUserBlocked(username, platform) : blockedUsers.has(String(username).toLowerCase()))
-      const followEl = menu.querySelector('[data-hs-key="follow"] .hs-mc-em-label')
-      if (followEl) followEl.textContent = yf ? 'unfollow' : 'follow'
-      const blockEl = menu.querySelector('[data-hs-key="block"] .hs-mc-em-label')
-      if (blockEl) {
-        blockEl.textContent = yb ? 'unblock' : 'block'
-        blockEl.parentElement.classList.toggle('hs-mc-em-danger', !yb)
-      }
-    }).catch(() => {})
+    resolveIdentity(username, { platform })
+      .then((ri) => {
+        const r = ri?.profile?.relationship
+        if (!r) return
+        const menu = document.getElementById('hs-mc-msg-ctx')
+        if (!menu) return
+        const yf = !!(r.youFollow || r.isFollowing)
+        const yb =
+          !!(r.youBlock || r.isBlocked) ||
+          (typeof isUserBlocked === 'function'
+            ? isUserBlocked(username, platform)
+            : blockedUsers.has(String(username).toLowerCase()))
+        const followEl = menu.querySelector('[data-hs-key="follow"] .hs-mc-em-label')
+        if (followEl) followEl.textContent = yf ? 'unfollow' : 'follow'
+        const blockEl = menu.querySelector('[data-hs-key="block"] .hs-mc-em-label')
+        if (blockEl) {
+          blockEl.textContent = yb ? 'unblock' : 'block'
+          blockEl.parentElement.classList.toggle('hs-mc-em-danger', !yb)
+        }
+      })
+      .catch(() => {})
   }
 }
 
@@ -1484,16 +1774,16 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
 async function expandUserAliases(username, platform) {
   const seen = new Set()
   const out = []
-  const push = v => {
+  const push = (v) => {
     if (!v) return
     const k = String(v).toLowerCase()
     if (seen.has(k)) return
-    seen.add(k); out.push(k)
+    seen.add(k)
+    out.push(k)
   }
   // Sync local aliases first — kick→twitch from 7TV cosmetics, etc.
-  const local = (typeof getUserAliases === 'function')
-    ? getUserAliases(username, platform)
-    : [String(username || '').toLowerCase()]
+  const local =
+    typeof getUserAliases === 'function' ? getUserAliases(username, platform) : [String(username || '').toLowerCase()]
   for (const a of local) push(a)
   // Heatsync profile lookup — registered users return both twitch_username
   // and kick_username. Non-registered users return error: we silently fall
@@ -1514,9 +1804,7 @@ async function expandUserAliases(username, platform) {
 async function _toggleMcMute(username, platform) {
   const aliases = await expandUserAliases(username, platform)
   const primary = aliases[0] || String(username).toLowerCase()
-  const wasMuted = (typeof isUserMuted === 'function')
-    ? isUserMuted(username, platform)
-    : mutedUsers.has(primary)
+  const wasMuted = typeof isUserMuted === 'function' ? isUserMuted(username, platform) : mutedUsers.has(primary)
   const wasUnmute = wasMuted
   if (wasMuted) {
     for (const a of aliases) mutedUsers.delete(a)
@@ -1524,7 +1812,7 @@ async function _toggleMcMute(username, platform) {
     for (const a of aliases) safeSendMessage({ type: 'unmute_user', username: a })
   } else {
     for (const a of aliases) mutedUsers.add(a)
-    const otherAlias = aliases.slice(1).filter(a => a !== primary)
+    const otherAlias = aliases.slice(1).filter((a) => a !== primary)
     const aliasNote = otherAlias.length ? ` (+linked @${otherAlias.join(' @')})` : ''
     showToast(`muted ${username}${aliasNote} (24h)`, 'success')
     const exp = Date.now() + 86400000
@@ -1539,9 +1827,8 @@ async function _toggleMcMute(username, platform) {
 
 async function _toggleMcBlock(username, platform) {
   const aliases = await expandUserAliases(username, platform)
-  const wasBlocked = (typeof isUserBlocked === 'function')
-    ? isUserBlocked(username, platform)
-    : blockedUsers.has(aliases[0])
+  const wasBlocked =
+    typeof isUserBlocked === 'function' ? isUserBlocked(username, platform) : blockedUsers.has(aliases[0])
   if (wasBlocked) {
     for (const a of aliases) blockedUsers.delete(a)
     showToast(`unblocked ${username}`, 'success')
@@ -1549,7 +1836,7 @@ async function _toggleMcBlock(username, platform) {
   } else {
     for (const a of aliases) blockedUsers.add(a)
     const primary = aliases[0] || String(username).toLowerCase()
-    const other = aliases.slice(1).filter(a => a !== primary)
+    const other = aliases.slice(1).filter((a) => a !== primary)
     const aliasNote = other.length ? ` (+linked @${other.join(' @')})` : ''
     showToast(`blocked ${username}${aliasNote}`, 'success')
     for (const a of aliases) safeSendMessage({ type: 'block_user', username: a })
@@ -1598,17 +1885,43 @@ function _extractMcMsgText(msg) {
   // message that started with an emote copied as just the emote name. Walk
   // every child in DOM order, emitting text nodes AND emote alts.
   const walk = (node) => {
-    if (node.nodeType === 3) { parts.push(node.textContent); return }
+    if (node.nodeType === 3) {
+      parts.push(node.textContent)
+      return
+    }
     if (node.nodeType !== 1) return
     const cls = node.classList
-    if (cls?.contains('hs-mc-platform-badge') || cls?.contains('hs-mc-badge') || cls?.contains('hs-mc-time') || cls?.contains('hs-mc-reply-ctx') || cls?.contains('hs-mc-reply-btn') || cls?.contains('hs-mod-toolbar') || cls?.contains('hs-mc-stack-collapse') || cls?.contains('hs-mc-stack-block-all')) return
-    if (node.tagName === 'IMG') { if (node.alt) parts.push(node.alt); return }
-    if (cls?.contains('hs-mc-emoji')) { parts.push(node.textContent || ''); return }
+    if (
+      cls?.contains('hs-mc-platform-badge') ||
+      cls?.contains('hs-mc-badge') ||
+      cls?.contains('hs-mc-time') ||
+      cls?.contains('hs-mc-reply-ctx') ||
+      cls?.contains('hs-mc-reply-btn') ||
+      cls?.contains('hs-mod-toolbar') ||
+      cls?.contains('hs-mc-stack-collapse') ||
+      cls?.contains('hs-mc-stack-block-all')
+    )
+      return
+    if (node.tagName === 'IMG') {
+      if (node.alt) parts.push(node.alt)
+      return
+    }
+    if (cls?.contains('hs-mc-emoji')) {
+      parts.push(node.textContent || '')
+      return
+    }
     for (const child of node.childNodes) walk(child)
   }
   let node = userEl.nextSibling
-  while (node) { walk(node); node = node.nextSibling }
-  return parts.join(' ').replace(/\s+/g, ' ').replace(/^\s*:\s*/, '').trim()
+  while (node) {
+    walk(node)
+    node = node.nextSibling
+  }
+  return parts
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .replace(/^\s*:\s*/, '')
+    .trim()
 }
 
 function _prefillMcInput(text) {
@@ -1617,7 +1930,9 @@ function _prefillMcInput(text) {
   if (input.tagName === 'INPUT' || input.tagName === 'TEXTAREA') {
     input.value = text
     input.focus()
-    try { input.setSelectionRange(text.length, text.length) } catch {}
+    try {
+      input.setSelectionRange(text.length, text.length)
+    } catch {}
   } else {
     input.textContent = text
     input.focus()
@@ -1633,7 +1948,9 @@ async function _openWhisperFor(username, platform) {
   let whisperName = username
   if (platform && platform !== 'twitch') {
     try {
-      const resp = await apiFetch(`/api/profile/${encodeURIComponent(username.toLowerCase())}?platform=${encodeURIComponent(platform)}`)
+      const resp = await apiFetch(
+        `/api/profile/${encodeURIComponent(username.toLowerCase())}?platform=${encodeURIComponent(platform)}`,
+      )
       const tw = resp?.data?.profile?.twitch_username || resp?.data?.profile?._linked_twitch_username
       if (tw) {
         whisperName = tw
@@ -1656,7 +1973,9 @@ async function _openDmFor(username, platform) {
   let hsName = username
   if (platform && platform !== 'heatsync') {
     try {
-      const resp = await apiFetch(`/api/profile/${encodeURIComponent(username.toLowerCase())}?platform=${encodeURIComponent(platform)}`)
+      const resp = await apiFetch(
+        `/api/profile/${encodeURIComponent(username.toLowerCase())}?platform=${encodeURIComponent(platform)}`,
+      )
       const u = resp?.data?.profile?.username
       if (u) {
         hsName = u
@@ -1680,7 +1999,9 @@ function _mentionInMcInput(username) {
     const cur = input.value
     input.value = (cur && !cur.endsWith(' ') ? cur + ' ' : cur) + mention
     input.focus()
-    try { input.setSelectionRange(input.value.length, input.value.length) } catch {}
+    try {
+      input.setSelectionRange(input.value.length, input.value.length)
+    } catch {}
   } else {
     input.textContent = (input.textContent || '') + mention
     input.focus()
@@ -1714,7 +2035,11 @@ function showHsCtxMenu(x, y, header, items) {
       continue
     }
     const it = document.createElement('div')
-    it.className = 'hs-mc-em-item' + (spec.danger ? ' hs-mc-em-danger' : '') + (spec.good ? ' hs-mc-em-good' : '') + (spec.disabled ? ' hs-mc-em-disabled' : '')
+    it.className =
+      'hs-mc-em-item' +
+      (spec.danger ? ' hs-mc-em-danger' : '') +
+      (spec.good ? ' hs-mc-em-good' : '') +
+      (spec.disabled ? ' hs-mc-em-disabled' : '')
     if (spec.key) it.dataset.hsKey = spec.key
     const lab = document.createElement('span')
     lab.className = 'hs-mc-em-label'
@@ -1722,7 +2047,12 @@ function showHsCtxMenu(x, y, header, items) {
     it.appendChild(lab)
     if (!spec.disabled && spec.fn) {
       kbdItems.push({ el: it, fn: spec.fn })
-      it.addEventListener('click', () => { dismiss(); try { spec.fn() } catch {} })
+      it.addEventListener('click', () => {
+        dismiss()
+        try {
+          spec.fn()
+        } catch {}
+      })
     }
     menu.appendChild(it)
   }
@@ -1741,16 +2071,20 @@ function showHsCtxMenu(x, y, header, items) {
   menu.style.visibility = 'hidden'
   menu.style.left = '0px'
   menu.style.top = '0px'
-  const mw = menu.offsetWidth, mh = menu.offsetHeight
-  const vw = window.innerWidth, vh = window.innerHeight
+  const mw = menu.offsetWidth,
+    mh = menu.offsetHeight
+  const vw = window.innerWidth,
+    vh = window.innerHeight
   const flipX = x + mw + 8 > vw
   const flipY = y + mh + 8 > vh
   menu.style.left = (flipX ? Math.max(4, x - mw) : Math.min(x, vw - mw - 4)) + 'px'
-  menu.style.top  = (flipY ? Math.max(4, y - mh) : Math.min(y, vh - mh - 4)) + 'px'
+  menu.style.top = (flipY ? Math.max(4, y - mh) : Math.min(y, vh - mh - 4)) + 'px'
   if (flipX) menu.classList.add('hs-mc-em-flip-x')
   if (flipY) menu.classList.add('hs-mc-em-flip-y')
   menu.style.visibility = ''
-  try { menu.focus({ preventScroll: true }) } catch {}
+  try {
+    menu.focus({ preventScroll: true })
+  } catch {}
 
   function dismiss() {
     menu.remove()
@@ -1758,11 +2092,23 @@ function showHsCtxMenu(x, y, header, items) {
     document.removeEventListener('keydown', keyHandler, true)
     document.removeEventListener('contextmenu', outside, true)
   }
-  function outside(ev) { if (!menu.contains(ev.target)) dismiss() }
+  function outside(ev) {
+    if (!menu.contains(ev.target)) dismiss()
+  }
   function keyHandler(ev) {
-    if (ev.key === 'Escape') { ev.preventDefault(); dismiss(); return }
+    if (ev.key === 'Escape') {
+      ev.preventDefault()
+      dismiss()
+      return
+    }
     const fn = kbdHandlers[ev.key]
-    if (fn) { ev.preventDefault(); dismiss(); try { fn() } catch {} }
+    if (fn) {
+      ev.preventDefault()
+      dismiss()
+      try {
+        fn()
+      } catch {}
+    }
   }
   setTimeout(() => {
     document.addEventListener('mousedown', outside, true)
@@ -1771,80 +2117,87 @@ function showHsCtxMenu(x, y, header, items) {
   }, 0)
 }
 function applyMcMutes() {
-  document.querySelectorAll('.hs-mc-msg').forEach(msg => {
-    const userEl = msg.querySelector('.hs-mc-user');
-    const username = userEl?.textContent?.trim()?.toLowerCase();
-    const platform = userEl?.dataset?.platform;
-    const muted = username && (typeof isUserMuted === 'function'
-      ? isUserMuted(username, platform)
-      : mutedUsers.has(username));
+  document.querySelectorAll('.hs-mc-msg').forEach((msg) => {
+    const userEl = msg.querySelector('.hs-mc-user')
+    const username = userEl?.textContent?.trim()?.toLowerCase()
+    const platform = userEl?.dataset?.platform
+    const muted =
+      username && (typeof isUserMuted === 'function' ? isUserMuted(username, platform) : mutedUsers.has(username))
     if (muted) {
-      stripMcMutedMessage(msg);
+      stripMcMutedMessage(msg)
     } else {
-      msg.classList.remove('hs-mc-muted');
+      msg.classList.remove('hs-mc-muted')
     }
-  });
+  })
 }
 function restoreMcUnmutedDom(username) {
   // stripMcMutedMessage destroys content irreversibly. Remove those rows so the
   // next renderMessages() call rebuilds them from the buffer's _renderedHtml cache.
   const target = username?.toLowerCase()
-  document.querySelectorAll('.hs-mc-msg.hs-mc-muted').forEach(msg => {
+  document.querySelectorAll('.hs-mc-msg.hs-mc-muted').forEach((msg) => {
     const userEl = msg.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
     const u = userEl?.textContent?.trim()?.toLowerCase()
     if (!target || u === target) msg.remove()
   })
 }
 function stripMcMutedMessage(msg) {
-  msg.classList.add('hs-mc-muted');
+  msg.classList.add('hs-mc-muted')
   // Message content is raw text nodes on the div — CSS can't hide those
-  [...msg.childNodes].forEach(node => {
-    if (node.nodeType === 3) node.textContent = '';
-  });
+  ;[...msg.childNodes].forEach((node) => {
+    if (node.nodeType === 3) node.textContent = ''
+  })
   // Mention links share .hs-mc-user (so they get color/hover) but live inside
   // the message body — strip them or they leak through the muted CSS.
-  msg.querySelectorAll('.hs-mc-mention, .hs-mc-reply-ctx').forEach(el => el.remove());
+  msg.querySelectorAll('.hs-mc-mention, .hs-mc-reply-ctx').forEach((el) => el.remove())
   // Remove emote images and other content (not user/badge/timestamp/platform)
-  msg.querySelectorAll('img:not(.hs-mc-badge-img), .heatsync-emote-wrapper, .hs-mc-emote').forEach(el => {
-    if (!el.closest('.hs-mc-user') && !el.classList.contains('hs-mc-badge-img') && !el.classList.contains('hs-mc-platform-badge')) {
-      el.remove();
+  msg.querySelectorAll('img:not(.hs-mc-badge-img), .heatsync-emote-wrapper, .hs-mc-emote').forEach((el) => {
+    if (
+      !el.closest('.hs-mc-user') &&
+      !el.classList.contains('hs-mc-badge-img') &&
+      !el.classList.contains('hs-mc-platform-badge')
+    ) {
+      el.remove()
     }
-  });
+  })
 }
 
 function updateInputPlaceholder() {
-  const input = document.getElementById('hs-mc-input');
-  if (!input) return;
+  const input = document.getElementById('hs-mc-input')
+  if (!input) return
 
-  let placeholder;
+  let placeholder
   if (currentTab === 'feed') {
-    placeholder = t('mc_input_post_heatsync');
+    placeholder = t('mc_input_post_heatsync')
   } else if (currentTab === 'live') {
-    const channel = getLiveChannel();
-    placeholder = channel ? t('mc_input_send_channel', [channel]) : t('mc_input_send_message');
+    const channel = getLiveChannel()
+    placeholder = channel ? t('mc_input_send_channel', [channel]) : t('mc_input_send_message')
   } else if (currentTab === 'mentions') {
-    const channel = getCurrentChannel();
-    placeholder = channel ? t('mc_input_send_channel', [channel]) : t('mc_input_send_message');
+    const channel = getCurrentChannel()
+    placeholder = channel ? t('mc_input_send_channel', [channel]) : t('mc_input_send_message')
   } else if (currentTab === 'whispers') {
     const lastUser = lastWhisperKey ? whisperUsers.get(lastWhisperKey) : null
     placeholder = lastUser ? `/r to reply to ${lastUser.displayName}` : t('mc_whisper_hint')
   } else if (currentTab === 'add') {
-    placeholder = '';
+    placeholder = ''
   } else {
     // Channel tab — resolve display name for placeholder
-    const ch = config.channels.find(c => c.id === currentTab);
-    const chanName = ch?.twitch || ch?.kick || ch?.youtube?.replace(/^https?:\/\/(www\.)?youtube\.com\/@?/, '').replace(/\/.*/, '') || ch?.id;
-    placeholder = t('mc_input_send_channel', [chanName]);
+    const ch = config.channels.find((c) => c.id === currentTab)
+    const chanName =
+      ch?.twitch ||
+      ch?.kick ||
+      ch?.youtube?.replace(/^https?:\/\/(www\.)?youtube\.com\/@?/, '').replace(/\/.*/, '') ||
+      ch?.id
+    placeholder = t('mc_input_send_channel', [chanName])
   }
 
   if (wysiwygEnabled) {
-    input.dataset.placeholder = placeholder;
+    input.dataset.placeholder = placeholder
   } else {
-    input.placeholder = placeholder;
+    input.placeholder = placeholder
   }
 }
 function handleInputKeydown(e) {
-  const input = e.target;
+  const input = e.target
 
   // Stop propagation so platform shortcuts (Kick theater "t", etc.) don't fire
   e.stopPropagation()
@@ -1900,7 +2253,7 @@ function handleInputKeydown(e) {
       if (e.key === 'Tab' && allMatches.length > 1) {
         acState.matches = allMatches
         // Find the inserted emoji's index in the full match list
-        acState.index = allMatches.findIndex(m => m.type === 'emoji' && m.emoji === emojiMatch.emoji)
+        acState.index = allMatches.findIndex((m) => m.type === 'emoji' && m.emoji === emojiMatch.emoji)
         if (acState.index === -1) acState.index = 0
         acState.active = true
         // For plain text input, set wordStart/afterText so cycling works
@@ -1938,7 +2291,11 @@ function handleInputKeydown(e) {
   // Message history navigation (ArrowUp/ArrowDown)
   if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.shiftKey && !e.ctrlKey && mcMessageHistory.length > 0) {
     const currentText = getInputText().trim()
-    if (mcHistoryIndex >= 0 || (e.key === 'ArrowUp' && currentText.length === 0) || (e.key === 'ArrowUp' && mcMessageHistory.includes(currentText))) {
+    if (
+      mcHistoryIndex >= 0 ||
+      (e.key === 'ArrowUp' && currentText.length === 0) ||
+      (e.key === 'ArrowUp' && mcMessageHistory.includes(currentText))
+    ) {
       e.preventDefault()
       if (e.key === 'ArrowUp') {
         if (mcHistoryIndex < 0) mcHistoryDraft = currentText
@@ -1967,10 +2324,8 @@ function handleInputKeydown(e) {
       const node = range.startContainer
       const offset = range.startOffset
       const isInputEmoteUnit = (el) =>
-        el?.nodeType === Node.ELEMENT_NODE && (
-          (el.tagName === 'IMG' && el.classList?.contains('hs-input-emote')) ||
-          el.classList?.contains('hs-input-stack')
-        )
+        el?.nodeType === Node.ELEMENT_NODE &&
+        ((el.tagName === 'IMG' && el.classList?.contains('hs-input-emote')) || el.classList?.contains('hs-input-stack'))
       let target = null
       if (node.nodeType === Node.TEXT_NODE) {
         // At start of text node → previous sibling
@@ -1979,9 +2334,11 @@ function handleInputKeydown(e) {
         }
         // After a single leading space following an emote → consume the space
         // first, then on the next backspace the unit deletes (no double-jump).
-        else if (offset === 1 &&
-                 (node.textContent[0] === ' ' || node.textContent[0] === ' ') &&
-                 isInputEmoteUnit(node.previousSibling)) {
+        else if (
+          offset === 1 &&
+          (node.textContent[0] === ' ' || node.textContent[0] === ' ') &&
+          isInputEmoteUnit(node.previousSibling)
+        ) {
           // Consume the auto-space on this Backspace; the next press will
           // land at offset 0 and pop the chip. Two presses total — matches
           // typed-space semantics so a Tab-inserted unit deletes as if the
@@ -1989,8 +2346,10 @@ function handleInputKeydown(e) {
           e.preventDefault()
           node.textContent = node.textContent.slice(1)
           const r = document.createRange()
-          r.setStart(node, 0); r.collapse(true)
-          sel.removeAllRanges(); sel.addRange(r)
+          r.setStart(node, 0)
+          r.collapse(true)
+          sel.removeAllRanges()
+          sel.addRange(r)
           pendingMessage = getInputText()
           return
         }
@@ -2014,7 +2373,7 @@ function handleInputKeydown(e) {
 
   // Tab - cycle through emote completions OR apply FFZ modifier to prev emote
   if (e.key === 'Tab') {
-    e.preventDefault();
+    e.preventDefault()
 
     // FFZ-style modifier on Tab — scans ENTIRE input (not just cursor) for any
     // modifier shorthand adjacent to an emote, applies them all in one shot.
@@ -2028,54 +2387,53 @@ function handleInputKeydown(e) {
 
     if (acState.active && acState.matches.length > 0) {
       // Already cycling - next (Tab) or previous (Shift+Tab)
-      const len = acState.matches.length;
-      acState.index = (acState.index + (e.shiftKey ? len - 1 : 1)) % len;
-      insertCompletionKeepOpen(acState.matches[acState.index]);
+      const len = acState.matches.length
+      acState.index = (acState.index + (e.shiftKey ? len - 1 : 1)) % len
+      insertCompletionKeepOpen(acState.matches[acState.index])
       // Lazy 7TV/BTTV/FFZ search: when you LAND on the last local match (cycling
       // either direction — forward-Tab through, or Shift+Tab back to it), pull the
       // catalog so the next forward Tab keeps cycling into remote hits. The common
       // case (your channel/own/global emote is right there) never touches the
       // network. Fires once per search. Triggered before the tooltip so it can show
       // the live "searching 7tv…" state immediately.
-      if (!acState.remoteDone && !acState.remotePending
-          && acState.index === len - 1 && acState.search) {
-        fetchRemoteEmoteMatches(acState.search);
+      if (!acState.remoteDone && !acState.remotePending && acState.index === len - 1 && acState.search) {
+        fetchRemoteEmoteMatches(acState.search)
       }
-      showCycleTooltip();
+      showCycleTooltip()
     } else {
       // First Tab - find matches. WYSIWYG: if the typed word touches a preceding
       // emote chip (auto-space backspaced, then chars typed), unwrap+merge first
       // so re-completion searches the full word (SupHomie + 3 → SupHomie3).
       if (wysiwygEnabled) mergeChipIntoWordForRecompletion(input)
-      const word = getCurrentWord(input);
+      const word = getCurrentWord(input)
       if (word.length >= 2) {
-        const matches = findEmoteMatches(word);
+        const matches = findEmoteMatches(word)
         // Set up cycling state even with zero local matches — the cross-provider
         // remote search (7TV/BTTV/FFZ) may still populate it (e.g. an emote that
         // isn't in the channel's loaded set), and it auto-inserts on arrival.
-        acState.matches = matches;
-        acState.index = 0;
-        acState.active = true;
-        acState.search = word;
-        acState.remoteDone = false;
-        acState.remotePending = false;
+        acState.matches = matches
+        acState.index = 0
+        acState.active = true
+        acState.search = word
+        acState.remoteDone = false
+        acState.remotePending = false
 
         if (!wysiwygEnabled && input.value !== undefined) {
           // Calculate positions for text input cycling (textarea only)
-          const text = input.value;
-          const pos = input.selectionStart;
-          const before = text.slice(0, pos);
-          const wordStart = before.search(/\S+$/);
-          acState.wordStart = wordStart >= 0 ? wordStart : pos;
+          const text = input.value
+          const pos = input.selectionStart
+          const before = text.slice(0, pos)
+          const wordStart = before.search(/\S+$/)
+          acState.wordStart = wordStart >= 0 ? wordStart : pos
           // Skip past rest of word after cursor
-          let wordEnd = pos;
-          while (wordEnd < text.length && !/\s/.test(text[wordEnd])) wordEnd++;
-          acState.afterText = text.slice(wordEnd);
+          let wordEnd = pos
+          while (wordEnd < text.length && !/\s/.test(text[wordEnd])) wordEnd++
+          acState.afterText = text.slice(wordEnd)
         }
 
         if (matches.length > 0) {
-          insertCompletionKeepOpen(matches[0]);
-          showCycleTooltip();
+          insertCompletionKeepOpen(matches[0])
+          showCycleTooltip()
           // Local matches satisfy the common case — do NOT hit 7TV/BTTV/FFZ yet.
           // The catalog search fires lazily, only once you cycle past the last
           // local match (see Tab-cycle branch above).
@@ -2083,40 +2441,42 @@ function handleInputKeydown(e) {
           // No local hit at all — the cross-provider catalog search is the only
           // way to complete this word, so fire it now; it inserts the first
           // remote hit when the fetch resolves.
-          fetchRemoteEmoteMatches(word);
+          fetchRemoteEmoteMatches(word)
         }
       }
     }
-    return;
+    return
   }
 
   // Any other key resets autocomplete cycling (ignore modifier keys)
   if (acState.active && !['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) {
-    hideAutocomplete();
+    hideAutocomplete()
   }
 
   // Enter - send message
   if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    sendMessage();
-    return;
+    e.preventDefault()
+    sendMessage()
+    return
   }
 
   // Escape - cancel reply state and hide autocomplete
   if (e.key === 'Escape') {
     if (replyState) clearReplyState()
-    hideAutocomplete();
-    return;
+    hideAutocomplete()
+    return
   }
 }
 
 // Inline chips = atomic input pieces (emote IMG, stack, mention, emoji span).
 function isInlineChip(el) {
   if (!el || el.nodeType !== Node.ELEMENT_NODE) return false
-  return (el.tagName === 'IMG' && el.classList?.contains('hs-input-emote')) ||
-         el.classList?.contains('hs-input-stack') ||
-         el.classList?.contains('hs-mc-user') ||
-         el.classList?.contains('hs-mc-emoji')
+  return (
+    (el.tagName === 'IMG' && el.classList?.contains('hs-input-emote')) ||
+    el.classList?.contains('hs-input-stack') ||
+    el.classList?.contains('hs-mc-user') ||
+    el.classList?.contains('hs-mc-emoji')
+  )
 }
 
 // Source-text representation of a chip (so unwrapping preserves what the
@@ -2140,7 +2500,7 @@ function chipToText(el) {
     for (const child of el.children) {
       if (child.classList?.contains('hs-mc-emoji')) {
         const name = child.dataset.emojiName || child.getAttribute('data-emoji-name')
-        parts.push(name ? ':' + name + ':' : (child.textContent || ''))
+        parts.push(name ? ':' + name + ':' : child.textContent || '')
         continue
       }
       if (child.tagName !== 'IMG') continue
@@ -2156,11 +2516,11 @@ function chipToText(el) {
   }
   if (el.classList?.contains('hs-mc-user')) {
     const u = el.dataset.username || el.textContent || ''
-    return (el.dataset.completionType === 'user-bare') ? ('@' + u) : u
+    return el.dataset.completionType === 'user-bare' ? '@' + u : u
   }
   if (el.classList?.contains('hs-mc-emoji')) {
     const name = el.dataset.emojiName || el.getAttribute('data-emoji-name')
-    return name ? ':' + name + ':' : (el.textContent || '')
+    return name ? ':' + name + ':' : el.textContent || ''
   }
   return null
 }
@@ -2173,8 +2533,12 @@ function chipToText(el) {
 function peelTrailingEmoji(s) {
   if (!s) return null
   let segmenter
-  try { segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' }) } catch (_) { return null }
-  const graphemes = [...segmenter.segment(s)].map(g => g.segment)
+  try {
+    segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+  } catch (_) {
+    return null
+  }
+  const graphemes = [...segmenter.segment(s)].map((g) => g.segment)
   if (!graphemes.length) return null
   const last = graphemes[graphemes.length - 1]
   if (typeof UNICODE_EMOJI_RE === 'undefined' || !UNICODE_EMOJI_RE.test(last)) return null
@@ -2235,7 +2599,9 @@ function imagifyValidWordsInTextNode(textNode) {
       continue
     }
     let resolved = null
-    try { resolved = lookupEmoteWithOverlay(part) } catch (_) {}
+    try {
+      resolved = lookupEmoteWithOverlay(part)
+    } catch (_) {}
     if (!resolved?.emote) {
       replacements.push(document.createTextNode(part))
       continue
@@ -2261,9 +2627,12 @@ function unwrapStuckChips(inputEl, acceptWhitespace) {
     // Skip imgs nested inside a stack — overlay children are LEGITIMATELY
     // touching (that's the whole point of stacking). Without this filter,
     // every stacked emote collapses to "KappaWave" text on the next input.
-    const chips = [...allChips].filter(c =>
-      !(c.parentElement?.classList?.contains('hs-input-stack') &&
-        (c.tagName === 'IMG' || c.classList?.contains('hs-mc-emoji')))
+    const chips = [...allChips].filter(
+      (c) =>
+        !(
+          c.parentElement?.classList?.contains('hs-input-stack') &&
+          (c.tagName === 'IMG' || c.classList?.contains('hs-mc-emoji'))
+        ),
     )
     let pair = null
     for (let i = 0; i < chips.length - 1; i++) {
@@ -2276,14 +2645,20 @@ function unwrapStuckChips(inputEl, acceptWhitespace) {
       while (n && n !== b) {
         if (n.nodeType === Node.TEXT_NODE && n.textContent.length > 0) {
           if (acceptWhitespace && /^\s+$/.test(n.textContent)) {
-            between.push(n); n = n.nextSibling; continue
+            between.push(n)
+            n = n.nextSibling
+            continue
           }
-          blocked = true; break
+          blocked = true
+          break
         }
         between.push(n)
         n = n.nextSibling
       }
-      if (!blocked) { pair = { a, b, between }; break }
+      if (!blocked) {
+        pair = { a, b, between }
+        break
+      }
     }
     if (!pair) break
     const aText = chipToText(pair.a)
@@ -2359,9 +2734,10 @@ function handleInputChange(e) {
         const next = n.nextSibling
         // Keep IMG (emote base/overlay) AND .hs-mc-emoji (emoji base/overlay) —
         // both are legitimate stack children. Evict only trapped text/other nodes.
-        if (n.nodeType === Node.TEXT_NODE ||
-            (n.nodeType === Node.ELEMENT_NODE && n.tagName !== 'IMG' &&
-             !n.classList?.contains('hs-mc-emoji'))) {
+        if (
+          n.nodeType === Node.TEXT_NODE ||
+          (n.nodeType === Node.ELEMENT_NODE && n.tagName !== 'IMG' && !n.classList?.contains('hs-mc-emoji'))
+        ) {
           stack.parentNode.insertBefore(n, stack.nextSibling)
         }
         n = next
@@ -2378,7 +2754,7 @@ function handleInputChange(e) {
       if (em.closest('.hs-input-stack')) continue
       if (em.getAttribute('contenteditable') !== 'false') em.setAttribute('contenteditable', 'false')
       const name = em.dataset.emojiName || em.getAttribute('data-emoji-name')
-      const want = (name && typeof _emojiMap !== 'undefined') ? _emojiMap.get(name) : null
+      const want = name && typeof _emojiMap !== 'undefined' ? _emojiMap.get(name) : null
       const full = em.textContent || ''
       if (want && full !== want && full.startsWith(want)) {
         const extra = full.slice(want.length)
@@ -2389,8 +2765,10 @@ function handleInputChange(e) {
           const sel = window.getSelection()
           if (sel) {
             const r = document.createRange()
-            r.setStart(t, t.textContent.length); r.collapse(true)
-            sel.removeAllRanges(); sel.addRange(r)
+            r.setStart(t, t.textContent.length)
+            r.collapse(true)
+            sel.removeAllRanges()
+            sel.addRange(r)
           }
         }
       }
@@ -2404,7 +2782,7 @@ function handleInputChange(e) {
   if (inputEl) unwrapStuckChips(inputEl, false)
 
   // Save pending message (persists across tab switches)
-  pendingMessage = getInputText();
+  pendingMessage = getInputText()
 
   // Slash command autocomplete — synchronous, only matches "/word" at start
   checkSlashAutocomplete()
@@ -2415,7 +2793,7 @@ function handleInputChange(e) {
 
   // Reset autocomplete cycling on any text change
   if (acState.active) {
-    hideAutocomplete();
+    hideAutocomplete()
   }
 
   // Live emoji conversion in contenteditable: :shortcode: → emoji span
@@ -2454,12 +2832,12 @@ function handleInputChange(e) {
           let leading = ''
           if (!head) {
             const prev = node.previousSibling
-            const prevIsChip = prev?.nodeType === Node.ELEMENT_NODE && (
-              (prev.tagName === 'IMG' && (prev.classList?.contains('hs-input-emote') || prev.dataset?.emoteName)) ||
-              prev.classList?.contains('hs-input-stack') ||
-              prev.classList?.contains('hs-mc-emoji') ||
-              prev.classList?.contains('hs-mc-user')
-            )
+            const prevIsChip =
+              prev?.nodeType === Node.ELEMENT_NODE &&
+              ((prev.tagName === 'IMG' && (prev.classList?.contains('hs-input-emote') || prev.dataset?.emoteName)) ||
+                prev.classList?.contains('hs-input-stack') ||
+                prev.classList?.contains('hs-mc-emoji') ||
+                prev.classList?.contains('hs-mc-user'))
             if (prevIsChip) leading = ' '
           }
           const beforeNode = document.createTextNode(leading + head)
@@ -2545,11 +2923,12 @@ function handleInputChange(e) {
                 if (bt.trim() === '') {
                   let p = node.previousSibling
                   while (p && p.nodeType === Node.TEXT_NODE && p.textContent.trim() === '') p = p.previousSibling
-                  stackable = !!(p && (
-                    (p.tagName === 'IMG' && p.classList.contains('hs-input-emote')) ||
-                    p.classList?.contains('hs-input-stack') ||
-                    p.classList?.contains('hs-mc-emoji')
-                  ))
+                  stackable = !!(
+                    p &&
+                    ((p.tagName === 'IMG' && p.classList.contains('hs-input-emote')) ||
+                      p.classList?.contains('hs-input-stack') ||
+                      p.classList?.contains('hs-mc-emoji'))
+                  )
                 } else {
                   stackable = !!peelTrailingEmoji(bt.replace(/\s+$/, ''))
                 }
@@ -2573,11 +2952,12 @@ function handleInputChange(e) {
                   while (prev && prev.nodeType === Node.TEXT_NODE && prev.textContent.trim() === '') {
                     prev = prev.previousSibling
                   }
-                  if (prev && (
-                    (prev.tagName === 'IMG' && prev.classList.contains('hs-input-emote')) ||
-                    prev.classList?.contains('hs-input-stack') ||
-                    prev.classList?.contains('hs-mc-emoji')
-                  )) {
+                  if (
+                    prev &&
+                    ((prev.tagName === 'IMG' && prev.classList.contains('hs-input-emote')) ||
+                      prev.classList?.contains('hs-input-stack') ||
+                      prev.classList?.contains('hs-mc-emoji'))
+                  ) {
                     // Remove whitespace text nodes between prev and current
                     let ws = prev.nextSibling
                     while (ws && ws !== node) {
@@ -2688,7 +3068,10 @@ function tryOverlayOnZero(input) {
   let cursor = range.startOffset
   if (node.nodeType === Node.ELEMENT_NODE && cursor > 0) {
     const child = node.childNodes[cursor - 1]
-    if (child?.nodeType === Node.TEXT_NODE) { node = child; cursor = child.textContent.length }
+    if (child?.nodeType === Node.TEXT_NODE) {
+      node = child
+      cursor = child.textContent.length
+    }
   }
   if (node.nodeType !== Node.TEXT_NODE) return false
   const text = node.textContent
@@ -2709,12 +3092,18 @@ function tryOverlayOnZero(input) {
   let relocateSpan = null
   let word = nodeWord
 
-  if (prevSib?.nodeType === Node.ELEMENT_NODE && prevSib.tagName === 'IMG' &&
-      prevSib.classList?.contains('hs-input-emote')) {
+  if (
+    prevSib?.nodeType === Node.ELEMENT_NODE &&
+    prevSib.tagName === 'IMG' &&
+    prevSib.classList?.contains('hs-input-emote')
+  ) {
     // (1) emote chip + typed "0" → merge the chip's name into the word.
     const ct = chipToText(prevSib)
     const clean = ct ? ct.trim() : ''
-    if (clean && !/\s/.test(clean)) { word = clean + nodeWord; mergedChip = prevSib }
+    if (clean && !/\s/.test(clean)) {
+      word = clean + nodeWord
+      mergedChip = prevSib
+    }
   } else if (prevSib?.classList?.contains('hs-mc-emoji') && nodeWord === '0') {
     // (2) emoji chip + typed "0" → relocate that emoji span as the overlay.
     relocateSpan = prevSib
@@ -2723,12 +3112,11 @@ function tryOverlayOnZero(input) {
   if (relocateSpan) {
     overlayEl = relocateSpan
   } else {
-    const resolved = (typeof lookupEmoteWithOverlay === 'function') ? lookupEmoteWithOverlay(word) : null
+    const resolved = typeof lookupEmoteWithOverlay === 'function' ? lookupEmoteWithOverlay(word) : null
     if (resolved?.isOverlay) {
       // (1)/(3) emote overlay
-      overlayEl = (typeof createInputEmoteImg === 'function') ? createInputEmoteImg(word) : null
-    } else if (word.startsWith(':') && word.endsWith(':0') && word.length > 3 &&
-               typeof _emojiMap !== 'undefined') {
+      overlayEl = typeof createInputEmoteImg === 'function' ? createInputEmoteImg(word) : null
+    } else if (word.startsWith(':') && word.endsWith(':0') && word.length > 3 && typeof _emojiMap !== 'undefined') {
       // (4) literal ":smile:0" that never span-converted → build emoji overlay
       const ename = word.slice(1, -2)
       const echar = _emojiMap.get(ename)
@@ -2759,23 +3147,34 @@ function tryOverlayOnZero(input) {
   if (relocateSpan || beforeText.trim() === '') {
     let prev = searchStart
     while (prev && prev.nodeType === Node.TEXT_NODE && prev.textContent.trim() === '') {
-      const rm = prev; prev = prev.previousSibling; rm.remove()
+      const rm = prev
+      prev = prev.previousSibling
+      rm.remove()
     }
-    if (prev && prev !== overlayEl && prev.nodeType === Node.ELEMENT_NODE && (
-      (prev.tagName === 'IMG' && prev.classList.contains('hs-input-emote')) ||
-      prev.classList?.contains('hs-input-stack') ||
-      prev.classList?.contains('hs-mc-emoji')
-    )) {
+    if (
+      prev &&
+      prev !== overlayEl &&
+      prev.nodeType === Node.ELEMENT_NODE &&
+      ((prev.tagName === 'IMG' && prev.classList.contains('hs-input-emote')) ||
+        prev.classList?.contains('hs-input-stack') ||
+        prev.classList?.contains('hs-mc-emoji'))
+    ) {
       const stopAt = relocateSpan || node
       let ws = prev.nextSibling
-      while (ws && ws !== stopAt) { const rm = ws; ws = ws.nextSibling; rm.remove() }
+      while (ws && ws !== stopAt) {
+        const rm = ws
+        ws = ws.nextSibling
+        rm.remove()
+      }
       stackInputEmote(prev, overlayEl) // appendChild moves overlayEl out of its old spot
       // Leave a trailing space the user can backspace; caret sits after it.
       const tail = afterText || ''
       node.textContent = (tail.startsWith(' ') ? '' : ' ') + tail
       const nr = document.createRange()
-      nr.setStart(node, 1); nr.collapse(true)
-      sel.removeAllRanges(); sel.addRange(nr)
+      nr.setStart(node, 1)
+      nr.collapse(true)
+      sel.removeAllRanges()
+      sel.addRange(nr)
       pendingMessage = getInputText()
       return true
     }
@@ -2794,8 +3193,10 @@ function tryOverlayOnZero(input) {
         const tail = afterText || ''
         node.textContent = (tail.startsWith(' ') ? '' : ' ') + tail
         const nr = document.createRange()
-        nr.setStart(node, 1); nr.collapse(true)
-        sel.removeAllRanges(); sel.addRange(nr)
+        nr.setStart(node, 1)
+        nr.collapse(true)
+        sel.removeAllRanges()
+        sel.addRange(nr)
         pendingMessage = getInputText()
         return true
       }
@@ -2814,58 +3215,60 @@ function tryOverlayOnZero(input) {
   parent.insertBefore(afterNode, node)
   parent.removeChild(node)
   const nr = document.createRange()
-  nr.setStart(afterNode, 1); nr.collapse(true)
-  sel.removeAllRanges(); sel.addRange(nr)
+  nr.setStart(afterNode, 1)
+  nr.collapse(true)
+  sel.removeAllRanges()
+  sel.addRange(nr)
   pendingMessage = getInputText()
   return true
 }
 
 function updateCharCount() {
-  const input = document.getElementById('hs-mc-input');
-  if (!input) return;
-  const text = getInputText();
-  const len = text.length;
-  const over = len > 500;
-  input.classList.toggle('over-limit', over);
+  const input = document.getElementById('hs-mc-input')
+  if (!input) return
+  const text = getInputText()
+  const len = text.length
+  const over = len > 500
+  input.classList.toggle('over-limit', over)
 
   // Highlight overflow chars for plain <input> using overlay div
   if (input.tagName === 'INPUT') {
-    let wrap = document.getElementById('hs-mc-input-wrap');
+    let wrap = document.getElementById('hs-mc-input-wrap')
     // Wrap input in container on first use
     if (!wrap && input.parentElement) {
-      wrap = document.createElement('div');
-      wrap.id = 'hs-mc-input-wrap';
-      input.parentElement.insertBefore(wrap, input);
-      wrap.appendChild(input);
+      wrap = document.createElement('div')
+      wrap.id = 'hs-mc-input-wrap'
+      input.parentElement.insertBefore(wrap, input)
+      wrap.appendChild(input)
     }
-    let hl = document.getElementById('hs-mc-input-highlight');
+    let hl = document.getElementById('hs-mc-input-highlight')
     if (over) {
       if (!hl && wrap) {
-        hl = document.createElement('div');
-        hl.id = 'hs-mc-input-highlight';
-        wrap.appendChild(hl);
+        hl = document.createElement('div')
+        hl.id = 'hs-mc-input-highlight'
+        wrap.appendChild(hl)
       }
       if (hl) {
         // Build overlay using safe DOM methods
-        hl.textContent = '';
-        const safeSpan = document.createElement('span');
-        safeSpan.className = 'hl-safe';
-        safeSpan.textContent = text.slice(0, 500);
-        const overSpan = document.createElement('span');
-        overSpan.className = 'hl-over';
-        overSpan.textContent = text.slice(500);
-        hl.appendChild(safeSpan);
-        hl.appendChild(overSpan);
-        hl.scrollLeft = input.scrollLeft;
-        hl.style.display = '';
+        hl.textContent = ''
+        const safeSpan = document.createElement('span')
+        safeSpan.className = 'hl-safe'
+        safeSpan.textContent = text.slice(0, 500)
+        const overSpan = document.createElement('span')
+        overSpan.className = 'hl-over'
+        overSpan.textContent = text.slice(500)
+        hl.appendChild(safeSpan)
+        hl.appendChild(overSpan)
+        hl.scrollLeft = input.scrollLeft
+        hl.style.display = ''
       }
       // Make real input text transparent so overlay shows through
-      input.style.color = 'transparent';
-      input.style.caretColor = '#000';
+      input.style.color = 'transparent'
+      input.style.caretColor = '#000'
     } else {
-      if (hl) hl.style.display = 'none';
-      input.style.color = '';
-      input.style.caretColor = '';
+      if (hl) hl.style.display = 'none'
+      input.style.color = ''
+      input.style.caretColor = ''
     }
   }
 }
@@ -2873,36 +3276,36 @@ function updateCharCount() {
 function getCurrentWord(input) {
   if (!input) return ''
   if (input.contentEditable === 'true') {
-    const sel = window.getSelection();
-    if (!sel.rangeCount) return '';
-    const range = sel.getRangeAt(0);
-    let container = range.startContainer;
-    let offset = range.startOffset;
+    const sel = window.getSelection()
+    if (!sel.rangeCount) return ''
+    const range = sel.getRangeAt(0)
+    let container = range.startContainer
+    let offset = range.startOffset
     if (container.nodeType === Node.ELEMENT_NODE && offset > 0) {
-      const child = container.childNodes[offset - 1];
+      const child = container.childNodes[offset - 1]
       if (child?.nodeType === Node.TEXT_NODE) {
-        container = child;
-        offset = child.textContent.length;
+        container = child
+        offset = child.textContent.length
       }
     }
     if (container.nodeType === Node.TEXT_NODE) {
-      const text = container.textContent;
-      const before = text.slice(0, offset);
-      const after = text.slice(offset);
-      const beforeMatch = before.match(/(\S+)$/);
-      const afterMatch = after.match(/^(\S+)/);
-      if (beforeMatch) return beforeMatch[1] + (afterMatch ? afterMatch[1] : '');
+      const text = container.textContent
+      const before = text.slice(0, offset)
+      const after = text.slice(offset)
+      const beforeMatch = before.match(/(\S+)$/)
+      const afterMatch = after.match(/^(\S+)/)
+      if (beforeMatch) return beforeMatch[1] + (afterMatch ? afterMatch[1] : '')
     }
-    return '';
+    return ''
   }
-  const text = input.value;
-  const pos = input.selectionStart;
-  const before = text.slice(0, pos);
-  const after = text.slice(pos);
-  const beforeMatch = before.match(/(\S+)$/);
-  const afterMatch = after.match(/^(\S+)/);
-  if (beforeMatch) return beforeMatch[1] + (afterMatch ? afterMatch[1] : '');
-  return '';
+  const text = input.value
+  const pos = input.selectionStart
+  const before = text.slice(0, pos)
+  const after = text.slice(pos)
+  const beforeMatch = before.match(/(\S+)$/)
+  const afterMatch = after.match(/^(\S+)/)
+  if (beforeMatch) return beforeMatch[1] + (afterMatch ? afterMatch[1] : '')
+  return ''
 }
 
 // WYSIWYG re-completion across a chip boundary. After Tab completes an emote it
@@ -2922,7 +3325,10 @@ function mergeChipIntoWordForRecompletion(input) {
   let offset = range.startOffset
   if (node.nodeType === Node.ELEMENT_NODE && offset > 0) {
     const child = node.childNodes[offset - 1]
-    if (child?.nodeType === Node.TEXT_NODE) { node = child; offset = child.textContent.length }
+    if (child?.nodeType === Node.TEXT_NODE) {
+      node = child
+      offset = child.textContent.length
+    }
   }
   if (node.nodeType !== Node.TEXT_NODE) return false
   const text = node.textContent
@@ -2931,11 +3337,11 @@ function mergeChipIntoWordForRecompletion(input) {
   const wm = before.match(/(\S+)$/)
   if (!wm || wm[1].length !== before.length) return false
   const prev = node.previousSibling
-  const isChip = prev?.nodeType === Node.ELEMENT_NODE && (
-    (prev.tagName === 'IMG' && prev.classList?.contains('hs-input-emote')) ||
-    prev.classList?.contains('hs-mc-user') ||
-    prev.classList?.contains('hs-mc-emoji')
-  )
+  const isChip =
+    prev?.nodeType === Node.ELEMENT_NODE &&
+    ((prev.tagName === 'IMG' && prev.classList?.contains('hs-input-emote')) ||
+      prev.classList?.contains('hs-mc-user') ||
+      prev.classList?.contains('hs-mc-emoji'))
   if (!isChip) return false
   const chipText = chipToText(prev)
   if (!chipText) return false
@@ -2946,7 +3352,8 @@ function mergeChipIntoWordForRecompletion(input) {
   const r = document.createRange()
   r.setStart(node, clean.length + offset)
   r.collapse(true)
-  sel.removeAllRanges(); sel.addRange(r)
+  sel.removeAllRanges()
+  sel.addRange(r)
   pendingMessage = getInputText()
   return true
 }
@@ -2976,8 +3383,8 @@ function getRecencyMap() {
   let j = ytMsgs.length - 1
   let rank = 0
   while (rank < RECENCY_MAX && (i >= 0 || j >= 0)) {
-    const a = i >= 0 ? (ircMsgs[i]?.time || 0) : -1
-    const b = j >= 0 ? (ytMsgs[j]?.time || 0) : -1
+    const a = i >= 0 ? ircMsgs[i]?.time || 0 : -1
+    const b = j >= 0 ? ytMsgs[j]?.time || 0 : -1
     const pickIrc = a >= b
     const t = pickIrc ? a : b
     if (t > 0 && t < floor) break
@@ -2989,7 +3396,6 @@ function getRecencyMap() {
   return out
 }
 
-
 // Resolve the element a modifier should attach to. Valid anchors: an emote
 // IMG, the last unit (img OR emoji span) of a stack, or a standalone emoji
 // span — so "😀 w!" widens the emoji just like "Kappa w!" widens the emote.
@@ -2998,8 +3404,7 @@ function hsModAnchorEl(prev) {
   if (prev.tagName === 'IMG' && (prev.classList.contains('hs-input-emote') || prev.dataset?.emoteName)) return prev
   if (prev.classList.contains('hs-mc-emoji')) return prev
   if (prev.classList.contains('hs-input-stack')) {
-    const units = [...prev.children].filter(c =>
-      c.tagName === 'IMG' || c.classList?.contains('hs-mc-emoji'))
+    const units = [...prev.children].filter((c) => c.tagName === 'IMG' || c.classList?.contains('hs-mc-emoji'))
     return units.length ? units[units.length - 1] : null
   }
   return null
@@ -3015,9 +3420,10 @@ function scanAndApplyModifiersInInput(input) {
   let prevEmote = null
   for (const child of [...input.childNodes]) {
     if (child.nodeType === Node.ELEMENT_NODE) {
-      const isAnchor = child.classList?.contains('hs-input-emote') ||
-                       child.classList?.contains('hs-input-stack') ||
-                       child.classList?.contains('hs-mc-emoji')
+      const isAnchor =
+        child.classList?.contains('hs-input-emote') ||
+        child.classList?.contains('hs-input-stack') ||
+        child.classList?.contains('hs-mc-emoji')
       if (isAnchor) prevEmote = child
       else if (child.tagName !== 'BR') prevEmote = null
       continue
@@ -3027,11 +3433,20 @@ function scanAndApplyModifiersInInput(input) {
     const remaining = []
     let consumedHere = false
     for (const tok of tokens) {
-      if (!tok || /^\s*$/.test(tok)) { remaining.push(tok); continue }
+      if (!tok || /^\s*$/.test(tok)) {
+        remaining.push(tok)
+        continue
+      }
       const cls = hsModClassify(tok, { allowPrefix: true })
-      if (cls.kind !== 'modifier') { remaining.push(tok); continue }
+      if (cls.kind !== 'modifier') {
+        remaining.push(tok)
+        continue
+      }
       const targetImg = hsModAnchorEl(prevEmote)
-      if (!targetImg) { remaining.push(tok); continue }
+      if (!targetImg) {
+        remaining.push(tok)
+        continue
+      }
       hsModApplyToImg(targetImg, cls.mods, cls.hue, cls.words)
       appliedAny = true
       consumedHere = true
@@ -3044,9 +3459,8 @@ function scanAndApplyModifiersInInput(input) {
   return appliedAny
 }
 
-
 function findEmoteMatches(search) {
-  const matches = [];
+  const matches = []
 
   // FFZ-style modifier tokens MUST NOT autocomplete — even if BTTV has an emote
   // literally named "w!". Use shared classifier; if it's a modifier, return [].
@@ -3055,9 +3469,9 @@ function findEmoteMatches(search) {
   }
 
   // Check if searching for username (starts with @)
-  const isUserSearch = search.startsWith('@');
-  const searchTerm = isUserSearch ? search.slice(1) : search;
-  const searchLower = searchTerm.toLowerCase();
+  const isUserSearch = search.startsWith('@')
+  const searchTerm = isUserSearch ? search.slice(1) : search
+  const searchLower = searchTerm.toLowerCase()
 
   // Username completion ONLY when explicit @prefix. Bare words never surface
   // usernames — they pollute emote results and the @ form is the supported way
@@ -3067,17 +3481,19 @@ function findEmoteMatches(search) {
     const _hsPrefetchList = []
     for (const username of usernameCache) {
       if (!username) continue
-      const userLower = username.toLowerCase();
+      const userLower = username.toLowerCase()
       let color = (typeof knownColors !== 'undefined' && knownColors.get(userLower)) || null
       if (!color && _hsUserColorCache.has(userLower)) color = _hsUserColorCache.get(userLower) || null
       if (!color) _hsPrefetchList.push(userLower)
       const recencyRank = recency.get(userLower)
       if (userLower.startsWith(searchLower)) {
-        matches.push({ name: '@' + username, url: null, priority: 0, type: 'user', recencyRank });
+        matches.push({ name: '@' + username, url: null, priority: 0, type: 'user', recencyRank })
       }
     }
     if (_hsPrefetchList.length) {
-      try { hsPrefetchUserColors(_hsPrefetchList.slice(0, 30)) } catch {}
+      try {
+        hsPrefetchUserColors(_hsPrefetchList.slice(0, 30))
+      } catch {}
     }
   }
 
@@ -3093,19 +3509,29 @@ function findEmoteMatches(search) {
   if (!isUserSearch) {
     const tierByName = new Map()
     const acEmotes = new Map()
-    for (const [k, v] of emoteCache) { acEmotes.set(k, v); tierByName.set(k, 2) }
-    for (const [k, v] of viewerPersonalEmotes) { acEmotes.set(k, v); tierByName.set(k, 1) }
+    for (const [k, v] of emoteCache) {
+      acEmotes.set(k, v)
+      tierByName.set(k, 2)
+    }
+    for (const [k, v] of viewerPersonalEmotes) {
+      acEmotes.set(k, v)
+      tierByName.set(k, 1)
+    }
     const acChCache = channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()]
-    if (acChCache) for (const [k, v] of acChCache) { acEmotes.set(k, v); tierByName.set(k, 0) }
+    if (acChCache)
+      for (const [k, v] of acChCache) {
+        acEmotes.set(k, v)
+        tierByName.set(k, 0)
+      }
     for (const [name, emote] of acEmotes) {
       // Only tab-complete heatsync emotes you own (can't send emotes not in your set)
-      if (emote.source === 'heatsync' && emote.state !== 'owned') continue;
-      const sub = !!emote.subscription;
+      if (emote.source === 'heatsync' && emote.state !== 'owned') continue
+      const sub = !!emote.subscription
       const tier = tierByName.get(name) ?? 2
       if (name.toLowerCase().startsWith(searchLower)) {
-        matches.push({ name, url: emote.url, source: emote.source, priority: 0, tier, type: 'emote', sub });
+        matches.push({ name, url: emote.url, source: emote.source, priority: 0, tier, type: 'emote', sub })
       } else if (name.toLowerCase().includes(searchLower)) {
-        matches.push({ name, url: emote.url, source: emote.source, priority: 1, tier, type: 'emote', sub });
+        matches.push({ name, url: emote.url, source: emote.source, priority: 1, tier, type: 'emote', sub })
       }
     }
     // 7TV "name0" overlay convention: a trailing "0" turns an emote into a
@@ -3119,20 +3545,36 @@ function findEmoteMatches(search) {
     // a channel emote actually named "lerolero0" is standalone and already
     // surfaced as a direct hit above; the strip-0 overlay must not shadow it
     // (and the prefix branch below would otherwise emit bogus "name00" doubles).
-    const _literalIsReal = matches.some(m => m.type === 'emote' && m.name.toLowerCase() === searchLower)
+    const _literalIsReal = matches.some((m) => m.type === 'emote' && m.name.toLowerCase() === searchLower)
     if (!_literalIsReal && searchLower.length > 2 && searchLower.endsWith('0')) {
-      const baseLower = searchLower.slice(0, -1);
-      const seen = new Set(matches.filter(m => m.type === 'emote').map(m => m.name.toLowerCase()));
+      const baseLower = searchLower.slice(0, -1)
+      const seen = new Set(matches.filter((m) => m.type === 'emote').map((m) => m.name.toLowerCase()))
       for (const [name, emote] of acEmotes) {
-        if (emote.source === 'heatsync' && emote.state !== 'owned') continue;
-        const nl = name.toLowerCase();
-        const overlayName = name + '0';
-        if (seen.has(overlayName.toLowerCase())) continue;
+        if (emote.source === 'heatsync' && emote.state !== 'owned') continue
+        const nl = name.toLowerCase()
+        const overlayName = name + '0'
+        if (seen.has(overlayName.toLowerCase())) continue
         const tier = tierByName.get(name) ?? 2
         if (nl === baseLower) {
-          matches.push({ name: overlayName, url: emote.url, source: emote.source, priority: 0, tier, type: 'emote', sub: !!emote.subscription });
+          matches.push({
+            name: overlayName,
+            url: emote.url,
+            source: emote.source,
+            priority: 0,
+            tier,
+            type: 'emote',
+            sub: !!emote.subscription,
+          })
         } else if (nl.startsWith(baseLower)) {
-          matches.push({ name: overlayName, url: emote.url, source: emote.source, priority: 1, tier, type: 'emote', sub: !!emote.subscription });
+          matches.push({
+            name: overlayName,
+            url: emote.url,
+            source: emote.source,
+            priority: 1,
+            tier,
+            type: 'emote',
+            sub: !!emote.subscription,
+          })
         }
       }
     }
@@ -3152,11 +3594,17 @@ function findEmoteMatches(search) {
     if (typeof usernameCache !== 'undefined') for (const u of usernameCache) if (u) _ucDisplay.set(u.toLowerCase(), u)
     for (const [userLower, rank] of getRecencyMap()) {
       if (!userLower.startsWith(searchLower)) continue
-      recentChatters.push({ name: (_ucDisplay.get(userLower) || userLower), url: null, priority: 0, type: 'user', recencyRank: rank })
+      recentChatters.push({
+        name: _ucDisplay.get(userLower) || userLower,
+        url: null,
+        priority: 0,
+        type: 'user',
+        recencyRank: rank,
+      })
     }
     recentChatters.sort((a, b) => a.recencyRank - b.recencyRank)
   }
-  const _recentSeen = new Set(recentChatters.map(m => m.name.toLowerCase()))
+  const _recentSeen = new Set(recentChatters.map((m) => m.name.toLowerCase()))
 
   // Bare-word username fallback — when nothing emote-y matched, scan
   // usernameCache for everyone NOT already surfaced as a recent chatter. Only
@@ -3179,16 +3627,22 @@ function findEmoteMatches(search) {
 
   // Emoji shortcodes when typing :prefix
   if (search.startsWith(':') && typeof EMOJI_DATA !== 'undefined') {
-    const emojiPrefix = search.slice(1).toLowerCase();
+    const emojiPrefix = search.slice(1).toLowerCase()
     if (emojiPrefix.length > 0) {
       for (const entry of EMOJI_DATA) {
-        if (matches.length >= 50) break;
-        const emojiMatch = { name: `:${entry.name}:`, url: null, priority: entry.name.startsWith(emojiPrefix) ? 0 : 1, type: 'emoji', emoji: entry.emoji };
+        if (matches.length >= 50) break
+        const emojiMatch = {
+          name: `:${entry.name}:`,
+          url: null,
+          priority: entry.name.startsWith(emojiPrefix) ? 0 : 1,
+          type: 'emoji',
+          emoji: entry.emoji,
+        }
         if (entry.name.startsWith(emojiPrefix)) {
-          matches.push(emojiMatch);
+          matches.push(emojiMatch)
         } else if (entry.name.includes(emojiPrefix)) {
-          emojiMatch.priority = 1;
-          matches.push(emojiMatch);
+          emojiMatch.priority = 1
+          matches.push(emojiMatch)
         }
       }
     }
@@ -3205,11 +3659,12 @@ function findEmoteMatches(search) {
   // Tier outranks exact-match (user call): typing "hug" surfaces the channel's
   // peepoHug over a coincidental global "HuG" (whose name only case-matches
   // "hug"). Exact-name still wins WITHIN a tier (own "Birdge" over own "BirdgeHmm").
-  const _recentList = (typeof loadRecentEmotes === 'function') ? loadRecentEmotes() : []
+  const _recentList = typeof loadRecentEmotes === 'function' ? loadRecentEmotes() : []
   const _recentRank = new Map()
   for (let i = 0; i < _recentList.length; i++) _recentRank.set(_recentList[i], i)
   matches.sort((a, b) => {
-    const at = a.tier ?? 9, bt = b.tier ?? 9
+    const at = a.tier ?? 9,
+      bt = b.tier ?? 9
     if (at !== bt) return at - bt
     const ae = (a.name || '').toLowerCase() === searchLower ? 0 : 1
     const be = (b.name || '').toLowerCase() === searchLower ? 0 : 1
@@ -3221,41 +3676,40 @@ function findEmoteMatches(search) {
     if (ar !== br) return ar - br
     if (a.priority === 0 && a.name.length !== b.name.length) return a.name.length - b.name.length
     return a.name.localeCompare(b.name)
-  });
+  })
 
   // Recent chatters (prefix, most-recent-first) lead the cycle, above all
   // emotes — see comment at recentChatters above.
-  return recentChatters.length ? recentChatters.concat(matches) : matches;
+  return recentChatters.length ? recentChatters.concat(matches) : matches
 }
 
 // Insert completion and keep cycling state
 function insertCompletionKeepOpen(match) {
-  const input = document.getElementById('hs-mc-input');
-  if (!input || !match) return;
+  const input = document.getElementById('hs-mc-input')
+  if (!input || !match) return
 
-  trackCompletionForAutoAdd(match);
-  if (match.type === 'emote' && match.name && typeof recordRecentEmote === 'function')
-    recordRecentEmote(match.name)
+  trackCompletionForAutoAdd(match)
+  if (match.type === 'emote' && match.name && typeof recordRecentEmote === 'function') recordRecentEmote(match.name)
 
   if (wysiwygEnabled) {
-    insertCompletionWysiwyg(match);
-    return;
+    insertCompletionWysiwyg(match)
+    return
   }
 
   // Use saved positions from acState for consistent cycling
-  const beforeWord = input.value.slice(0, acState.wordStart);
-  const insertText = match.type === 'emoji' ? match.emoji : match.name;
-  const newValue = beforeWord + insertText + ' ' + acState.afterText;
+  const beforeWord = input.value.slice(0, acState.wordStart)
+  const insertText = match.type === 'emoji' ? match.emoji : match.name
+  const newValue = beforeWord + insertText + ' ' + acState.afterText
 
-  input.value = newValue;
-  pendingMessage = input.value;
+  input.value = newValue
+  pendingMessage = input.value
 
   // Position cursor after the inserted word
-  const newPos = beforeWord.length + insertText.length + 1;
-  input.selectionStart = input.selectionEnd = newPos;
-  input.focus();
+  const newPos = beforeWord.length + insertText.length + 1
+  input.selectionStart = input.selectionEnd = newPos
+  input.focus()
 
-  updateCharCount();
+  updateCharCount()
 }
 
 // Build a styled mention chip span for bare-username completion.
@@ -3268,10 +3722,10 @@ function createUserMentionSpan(username, color) {
   span.dataset.username = lower
   span.dataset.completionType = 'user-bare'
   span.textContent = username
-  const sanitize = (c) => (typeof sanitizeColor === 'function' ? sanitizeColor(c || '#fff') : (c || '#fff'))
+  const sanitize = (c) => (typeof sanitizeColor === 'function' ? sanitizeColor(c || '#fff') : c || '#fff')
 
   // Sync cache resolution — instant for anyone we've already seen this session
-  let finalColor = (color && color !== '#fff') ? color : null
+  let finalColor = color && color !== '#fff' ? color : null
   if (!finalColor && _hsUserColorCache.has(lower)) finalColor = _hsUserColorCache.get(lower) || null
   if (!finalColor && typeof knownColors !== 'undefined') {
     const k = knownColors.get(lower)
@@ -3298,13 +3752,16 @@ const _hsUserColorInflight = new Map()
 
 // Persist cache across page reloads — colors don't change often. Loads at startup.
 try {
-  (typeof api !== 'undefined' ? api : chrome).storage.local.get('hs_user_color_cache').then(d => {
-    const obj = d?.hs_user_color_cache
-    if (obj && typeof obj === 'object') {
-      for (const k in obj) _hsUserColorCache.set(k, obj[k])
-      while (_hsUserColorCache.size > 5000) _hsUserColorCache.delete(_hsUserColorCache.keys().next().value)
-    }
-  }).catch(() => {})
+  ;(typeof api !== 'undefined' ? api : chrome).storage.local
+    .get('hs_user_color_cache')
+    .then((d) => {
+      const obj = d?.hs_user_color_cache
+      if (obj && typeof obj === 'object') {
+        for (const k in obj) _hsUserColorCache.set(k, obj[k])
+        while (_hsUserColorCache.size > 5000) _hsUserColorCache.delete(_hsUserColorCache.keys().next().value)
+      }
+    })
+    .catch(() => {})
 } catch {}
 
 let _hsUserColorCacheSaveTimer = null
@@ -3313,8 +3770,10 @@ function _hsPersistUserColorCache() {
   _hsUserColorCacheSaveTimer = setTimeout(() => {
     _hsUserColorCacheSaveTimer = null
     const obj = {}
-    for (const [k, v] of _hsUserColorCache) if (v) obj[k] = v  // skip nulls
-    try { (typeof api !== 'undefined' ? api : chrome).storage.local.set({ hs_user_color_cache: obj }) } catch {}
+    for (const [k, v] of _hsUserColorCache) if (v) obj[k] = v // skip nulls
+    try {
+      ;(typeof api !== 'undefined' ? api : chrome).storage.local.set({ hs_user_color_cache: obj })
+    } catch {}
   }, 2000)
 }
 
@@ -3342,7 +3801,7 @@ function hsPrefetchUserColors(usernames) {
         method: 'POST',
         credentials: 'omit',
         headers: { 'Content-Type': 'application/json', 'Client-Id': 'kimne78kx3ncx6brgo4mv6wki5h1ko' },
-        body: JSON.stringify({ query: `{ ${aliases} }` })
+        body: JSON.stringify({ query: `{ ${aliases} }` }),
       })
       if (!resp.ok) return
       const j = await resp.json()
@@ -3352,13 +3811,19 @@ function hsPrefetchUserColors(usernames) {
         const c = data[`u${i}`]?.chatColor || null
         _hsUserColorCache.set(u, c)
         if (_hsUserColorCache.size > 5000) _hsUserColorCache.delete(_hsUserColorCache.keys().next().value)
-        if (c) { try { setKnownColor(u, c) } catch {} }
+        if (c) {
+          try {
+            setKnownColor(u, c)
+          } catch {}
+        }
       }
       _hsPersistUserColorCache()
     } catch {}
   })()
   for (const u of needed) _hsUserColorInflight.set(u, batchPromise)
-  batchPromise.finally(() => { for (const u of needed) _hsUserColorInflight.delete(u) })
+  batchPromise.finally(() => {
+    for (const u of needed) _hsUserColorInflight.delete(u)
+  })
 }
 // Resolve a username's chat color, caching the result. Resolution order:
 //   1. heatsync custom color (set on heatsync.org)
@@ -3386,12 +3851,12 @@ function hsResolveUserColor(lower) {
               credentials: 'omit',
               headers: {
                 'Content-Type': 'application/json',
-                'Client-Id': 'kimne78kx3ncx6brgo4mv6wki5h1ko'
+                'Client-Id': 'kimne78kx3ncx6brgo4mv6wki5h1ko',
               },
               body: JSON.stringify({
                 query: 'query($login:String!){user(login:$login){chatColor}}',
-                variables: { login: profile.twitch_username }
-              })
+                variables: { login: profile.twitch_username },
+              }),
             })
             if (gqlResp.ok) {
               const j = await gqlResp.json()
@@ -3401,7 +3866,23 @@ function hsResolveUserColor(lower) {
         }
         // 3. fallback: Twitch's 15 auto-assigned colors (hash of username)
         if (!c) {
-          const palette = ['#FF0000','#0000FF','#008000','#B22222','#FF7F50','#9ACD32','#FF4500','#2E8B57','#DAA520','#D2691E','#5F9EA0','#1E90FF','#FF69B4','#8A2BE2','#00FF7F']
+          const palette = [
+            '#FF0000',
+            '#0000FF',
+            '#008000',
+            '#B22222',
+            '#FF7F50',
+            '#9ACD32',
+            '#FF4500',
+            '#2E8B57',
+            '#DAA520',
+            '#D2691E',
+            '#5F9EA0',
+            '#1E90FF',
+            '#FF69B4',
+            '#8A2BE2',
+            '#00FF7F',
+          ]
           let h = 0
           for (let i = 0; i < lower.length; i++) h = (h * 31 + lower.charCodeAt(i)) | 0
           c = palette[Math.abs(h) % palette.length]
@@ -3409,9 +3890,15 @@ function hsResolveUserColor(lower) {
         _hsUserColorCache.set(lower, c || null)
         if (_hsUserColorCache.size > 5000) _hsUserColorCache.delete(_hsUserColorCache.keys().next().value)
         _hsPersistUserColorCache()
-        if (c) { try { setKnownColor(lower, c) } catch {} }
+        if (c) {
+          try {
+            setKnownColor(lower, c)
+          } catch {}
+        }
         return c
-      } catch { return null }
+      } catch {
+        return null
+      }
     })()
     _hsUserColorInflight.set(lower, p)
     p.finally(() => _hsUserColorInflight.delete(lower))
@@ -3420,17 +3907,17 @@ function hsResolveUserColor(lower) {
 }
 
 function hsFetchUserColorAndApply(lower, span) {
-  hsResolveUserColor(lower).then(c => {
+  hsResolveUserColor(lower).then((c) => {
     if (c && span.isConnected) {
-      span.style.color = (typeof sanitizeColor === 'function' ? sanitizeColor(c) : c)
+      span.style.color = typeof sanitizeColor === 'function' ? sanitizeColor(c) : c
     }
   })
 }
 
 // WYSIWYG emote insertion
 function insertCompletionWysiwyg(match) {
-  const input = document.getElementById('hs-mc-input');
-  if (!input) return;
+  const input = document.getElementById('hs-mc-input')
+  if (!input) return
 
   // Reflect block state on the inserted/cycled emote chip: a blocked emote must
   // show the 2px dashed outline, not the image. Clears any prior block state
@@ -3442,29 +3929,34 @@ function insertCompletionWysiwyg(match) {
     delete img.dataset.hsOrigSrc
     img.classList.remove('hs-state-blocked')
     delete img.dataset.state
-    if (match.name && typeof blockedEmoteNames !== 'undefined' && blockedEmoteNames.has(match.name)
-        && typeof markInputEmoteBlocked === 'function') {
+    if (
+      match.name &&
+      typeof blockedEmoteNames !== 'undefined' &&
+      blockedEmoteNames.has(match.name) &&
+      typeof markInputEmoteBlocked === 'function'
+    ) {
       markInputEmoteBlocked(img, true)
     }
   }
 
   // Check if we're replacing an existing cycling element (emote img, text span, or user span)
-  const existingEmote = input.querySelector('img.hs-cycling-emote');
-  const existingText = input.querySelector('span.hs-cycling-text');
-  const existingUser = input.querySelector('span.hs-cycling-user');
+  const existingEmote = input.querySelector('img.hs-cycling-emote')
+  const existingText = input.querySelector('span.hs-cycling-text')
+  const existingUser = input.querySelector('span.hs-cycling-user')
   if (existingEmote) {
     if (match.url) {
       // Re-check overlay state: cycling through Tab matches can move between
       // overlay and non-overlay alternatives. Without this, the FIRST insert's
       // overlay state sticks — every cycle stays inside the stack span and
       // non-overlay matches appear to stack onto whatever's before them.
-      const resolved = (typeof lookupEmoteWithOverlay === 'function') ? lookupEmoteWithOverlay(match.name) : null
+      const resolved = typeof lookupEmoteWithOverlay === 'function' ? lookupEmoteWithOverlay(match.name) : null
       // Remote-only emotes (7TV cross-provider search hits) aren't in any local
       // cache, so lookupEmoteWithOverlay can't resolve their zero-width flag —
       // fall back to the flag carried on the match from the search result.
       const wantsOverlay = !!resolved?.isOverlay || !!match.zeroWidth
       const stack = existingEmote.parentElement?.classList?.contains('hs-input-stack')
-        ? existingEmote.parentElement : null
+        ? existingEmote.parentElement
+        : null
       if (stack && !wantsOverlay) {
         // Pull the cycling img out of the stack and place it after the stack
         // as a standalone unit. Strip the overlay class so its native sizing
@@ -3488,20 +3980,24 @@ function insertCompletionWysiwyg(match) {
         // Find a preceding emote/stack and move the img into a stack on top.
         let prev = existingEmote.previousSibling
         while (prev && prev.nodeType === Node.TEXT_NODE && prev.textContent.trim() === '') {
-          const rm = prev; prev = prev.previousSibling; rm.remove()
+          const rm = prev
+          prev = prev.previousSibling
+          rm.remove()
         }
-        if (prev && prev.nodeType === Node.ELEMENT_NODE && (
-          (prev.tagName === 'IMG' && prev.classList.contains('hs-input-emote')) ||
-          prev.classList?.contains('hs-input-stack') ||
-          prev.classList?.contains('hs-mc-emoji')
-        )) {
+        if (
+          prev &&
+          prev.nodeType === Node.ELEMENT_NODE &&
+          ((prev.tagName === 'IMG' && prev.classList.contains('hs-input-emote')) ||
+            prev.classList?.contains('hs-input-stack') ||
+            prev.classList?.contains('hs-mc-emoji'))
+        ) {
           stackInputEmote(prev, existingEmote)
         }
       }
-      existingEmote.src = match.url;
-      existingEmote.alt = match.name;
-      existingEmote.dataset.emoteName = match.name;
-      _applyInputBlock(existingEmote);
+      existingEmote.src = match.url
+      existingEmote.alt = match.name
+      existingEmote.dataset.emoteName = match.name
+      _applyInputBlock(existingEmote)
     } else if (match.type === 'emoji') {
       // Replace emote img with emoji span
       const span = document.createElement('span')
@@ -3531,13 +4027,13 @@ function insertCompletionWysiwyg(match) {
       if (space) placeCaretAfter(space, 1)
       else placeCaretAfter(span)
     } else {
-      const textNode = document.createTextNode(match.name + ' ');
-      existingEmote.replaceWith(textNode);
-      placeCaretAfter(textNode);
+      const textNode = document.createTextNode(match.name + ' ')
+      existingEmote.replaceWith(textNode)
+      placeCaretAfter(textNode)
     }
-    pendingMessage = getInputText();
-    updateCharCount();
-    return;
+    pendingMessage = getInputText()
+    updateCharCount()
+    return
   }
   if (existingText) {
     if (match.url) {
@@ -3610,7 +4106,8 @@ function insertCompletionWysiwyg(match) {
       // Update existing user span in place
       existingUser.textContent = match.name
       existingUser.dataset.username = match.name.toLowerCase()
-      const safeColor = (typeof sanitizeColor === 'function') ? sanitizeColor(match.color || '#fff') : (match.color || '#fff')
+      const safeColor =
+        typeof sanitizeColor === 'function' ? sanitizeColor(match.color || '#fff') : match.color || '#fff'
       existingUser.style.color = safeColor
       const space = existingUser.nextSibling
       if (space) placeCaretAfter(space, 1)
@@ -3636,40 +4133,40 @@ function insertCompletionWysiwyg(match) {
   }
 
   // First Tab: replace word with emote image
-  const sel = window.getSelection();
-  if (!sel.rangeCount) return;
+  const sel = window.getSelection()
+  if (!sel.rangeCount) return
 
-  const range = sel.getRangeAt(0);
-  let container = range.startContainer;
-  let rangeOffset = range.startOffset;
+  const range = sel.getRangeAt(0)
+  let container = range.startContainer
+  let rangeOffset = range.startOffset
   // Resolve element boundary to preceding text node
   if (container.nodeType === Node.ELEMENT_NODE && rangeOffset > 0) {
-    const child = container.childNodes[rangeOffset - 1];
+    const child = container.childNodes[rangeOffset - 1]
     if (child?.nodeType === Node.TEXT_NODE) {
-      container = child;
-      rangeOffset = child.textContent.length;
+      container = child
+      rangeOffset = child.textContent.length
     }
   }
-  if (container.nodeType !== Node.TEXT_NODE) return;
+  if (container.nodeType !== Node.TEXT_NODE) return
 
-  const textNode = container;
-  const offset = rangeOffset;
-  const text = textNode.textContent;
+  const textNode = container
+  const offset = rangeOffset
+  const text = textNode.textContent
 
   // Find word start
-  let wordStart = offset;
-  while (wordStart > 0 && !/\s/.test(text[wordStart - 1])) wordStart--;
+  let wordStart = offset
+  while (wordStart > 0 && !/\s/.test(text[wordStart - 1])) wordStart--
 
   // Find word end (skip past rest of word after cursor)
-  let wordEnd = offset;
-  while (wordEnd < text.length && !/\s/.test(text[wordEnd])) wordEnd++;
+  let wordEnd = offset
+  while (wordEnd < text.length && !/\s/.test(text[wordEnd])) wordEnd++
 
   // Split text: before | word | after
-  const before = text.slice(0, wordStart);
-  const after = text.slice(wordEnd);
+  const before = text.slice(0, wordStart)
+  const after = text.slice(wordEnd)
 
   // Save afterText for cycling
-  acState.afterText = after;
+  acState.afterText = after
 
   // Helper: insert element after textNode with before/after text
   const insertElement = (el) => {
@@ -3677,101 +4174,103 @@ function insertCompletionWysiwyg(match) {
     // offset 0 (so `before` is empty) and the previous sibling is a chip,
     // splice an nbsp into `before` so the new chip doesn't touch the prior
     // chip \u2014 otherwise unwrapStuckChips collapses both back to plain text.
-    let leadBefore = before;
+    let leadBefore = before
     if (!leadBefore) {
-      const prev = textNode.previousSibling;
-      const prevIsChip = prev?.nodeType === Node.ELEMENT_NODE && (
-        (prev.tagName === 'IMG' && (prev.classList?.contains('hs-input-emote') || prev.dataset?.emoteName)) ||
-        prev.classList?.contains('hs-input-stack') ||
-        prev.classList?.contains('hs-mc-emoji') ||
-        prev.classList?.contains('hs-mc-user') ||
-        prev.classList?.contains('hs-cycling-emote') ||
-        prev.classList?.contains('hs-cycling-text')
-      );
-      if (prevIsChip) leadBefore = '\u00A0';
+      const prev = textNode.previousSibling
+      const prevIsChip =
+        prev?.nodeType === Node.ELEMENT_NODE &&
+        ((prev.tagName === 'IMG' && (prev.classList?.contains('hs-input-emote') || prev.dataset?.emoteName)) ||
+          prev.classList?.contains('hs-input-stack') ||
+          prev.classList?.contains('hs-mc-emoji') ||
+          prev.classList?.contains('hs-mc-user') ||
+          prev.classList?.contains('hs-cycling-emote') ||
+          prev.classList?.contains('hs-cycling-text'))
+      if (prevIsChip) leadBefore = '\u00A0'
     }
-    textNode.textContent = leadBefore;
+    textNode.textContent = leadBefore
     // Auto-space after Tab uses nbsp \u2014 at end of contenteditable, regular
     // trailing spaces collapse to 0 width and look invisible. Backspace
     // handler still consumes this in one keystroke, so it behaves like a
     // typed space (1st press eats it, 2nd press deletes the chip).
-    const space = document.createTextNode(' ' + after);
-    const parent = textNode.parentNode;
-    const nextSibling = textNode.nextSibling;
+    const space = document.createTextNode(' ' + after)
+    const parent = textNode.parentNode
+    const nextSibling = textNode.nextSibling
     if (nextSibling) {
-      parent.insertBefore(el, nextSibling);
-      parent.insertBefore(space, nextSibling);
+      parent.insertBefore(el, nextSibling)
+      parent.insertBefore(space, nextSibling)
     } else {
-      parent.appendChild(el);
-      parent.appendChild(space);
+      parent.appendChild(el)
+      parent.appendChild(space)
     }
-    placeCaretAfter(space, 1);
+    placeCaretAfter(space, 1)
   }
 
   if (match.url) {
     // Create emote image
-    const img = document.createElement('img');
-    img.src = match.url;
-    img.alt = match.name;
-    img.dataset.emoteName = match.name;
-    img.className = 'hs-input-emote hs-cycling-emote';
-    img.draggable = false;
-    attachInputEmoteErrorRecovery(img);
-    _applyInputBlock(img);
+    const img = document.createElement('img')
+    img.src = match.url
+    img.alt = match.name
+    img.dataset.emoteName = match.name
+    img.className = 'hs-input-emote hs-cycling-emote'
+    img.draggable = false
+    attachInputEmoteErrorRecovery(img)
+    _applyInputBlock(img)
     // Zero-width / overlay: stack onto preceding emote so the input preview
     // matches how chat will render the same word sequence.
-    const resolved = (typeof lookupEmoteWithOverlay === 'function') ? lookupEmoteWithOverlay(match.name) : null;
+    const resolved = typeof lookupEmoteWithOverlay === 'function' ? lookupEmoteWithOverlay(match.name) : null
     // Remote-only emotes aren't in any local cache (lookup returns null), so
     // fall back to the zero-width flag the 7TV search carried on the match.
-    const wantsOverlay = !!resolved?.isOverlay || !!match.zeroWidth;
+    const wantsOverlay = !!resolved?.isOverlay || !!match.zeroWidth
     if (wantsOverlay && before.trim() === '') {
-      let prev = textNode.previousSibling;
+      let prev = textNode.previousSibling
       while (prev && prev.nodeType === Node.TEXT_NODE && prev.textContent.trim() === '') {
-        prev = prev.previousSibling;
+        prev = prev.previousSibling
       }
-      if (prev && prev.nodeType === Node.ELEMENT_NODE && (
-        (prev.tagName === 'IMG' && prev.classList.contains('hs-input-emote')) ||
-        prev.classList?.contains('hs-input-stack') ||
-        prev.classList?.contains('hs-mc-emoji')
-      )) {
+      if (
+        prev &&
+        prev.nodeType === Node.ELEMENT_NODE &&
+        ((prev.tagName === 'IMG' && prev.classList.contains('hs-input-emote')) ||
+          prev.classList?.contains('hs-input-stack') ||
+          prev.classList?.contains('hs-mc-emoji'))
+      ) {
         // Drop whitespace nodes between prev base and current text node
-        let ws = prev.nextSibling;
+        let ws = prev.nextSibling
         while (ws && ws !== textNode) {
-          const rm = ws;
-          ws = ws.nextSibling;
-          rm.remove();
+          const rm = ws
+          ws = ws.nextSibling
+          rm.remove()
         }
-        stackInputEmote(prev, img);
-        textNode.textContent = after || ' ';
-        placeCaretAfter(textNode, 1);
-        pendingMessage = getInputText();
-        updateCharCount();
-        input.focus();
-        return;
+        stackInputEmote(prev, img)
+        textNode.textContent = after || ' '
+        placeCaretAfter(textNode, 1)
+        pendingMessage = getInputText()
+        updateCharCount()
+        input.focus()
+        return
       }
     }
     // Overlay onto a raw unicode emoji typed/pasted as plain text in `before`
     // (parity with the typed live-replace path and chat render).
     if (wantsOverlay && typeof peelTrailingEmoji === 'function') {
-      const peeled = peelTrailingEmoji(before.replace(/\s+$/, ''));
+      const peeled = peelTrailingEmoji(before.replace(/\s+$/, ''))
       if (peeled) {
-        const parent = textNode.parentNode;
-        const restNode = peeled.rest ? document.createTextNode(peeled.rest) : null;
-        const emojiSpan = document.createElement('span');
-        emojiSpan.className = 'hs-mc-emoji';
-        emojiSpan.textContent = peeled.emoji;
-        if (restNode) parent.insertBefore(restNode, textNode);
-        parent.insertBefore(emojiSpan, textNode);
-        stackInputEmote(emojiSpan, img);
-        textNode.textContent = after || ' ';
-        placeCaretAfter(textNode, 1);
-        pendingMessage = getInputText();
-        updateCharCount();
-        input.focus();
-        return;
+        const parent = textNode.parentNode
+        const restNode = peeled.rest ? document.createTextNode(peeled.rest) : null
+        const emojiSpan = document.createElement('span')
+        emojiSpan.className = 'hs-mc-emoji'
+        emojiSpan.textContent = peeled.emoji
+        if (restNode) parent.insertBefore(restNode, textNode)
+        parent.insertBefore(emojiSpan, textNode)
+        stackInputEmote(emojiSpan, img)
+        textNode.textContent = after || ' '
+        placeCaretAfter(textNode, 1)
+        pendingMessage = getInputText()
+        updateCharCount()
+        input.focus()
+        return
       }
     }
-    insertElement(img);
+    insertElement(img)
   } else if (match.type === 'emoji') {
     // Create emoji tracking span
     const span = document.createElement('span')
@@ -3793,33 +4292,32 @@ function insertCompletionWysiwyg(match) {
     insertElement(span)
   } else {
     // Plain text completion (fallback)
-    const newText = before + match.name + ' ' + after;
-    textNode.textContent = newText;
-    const newPos = before.length + match.name.length + 1;
-    range.setStart(textNode, newPos);
-    range.collapse(true);
-    sel.removeAllRanges();
-    sel.addRange(range);
+    const newText = before + match.name + ' ' + after
+    textNode.textContent = newText
+    const newPos = before.length + match.name.length + 1
+    range.setStart(textNode, newPos)
+    range.collapse(true)
+    sel.removeAllRanges()
+    sel.addRange(range)
   }
 
-  pendingMessage = getInputText();
-  updateCharCount();
-  input.focus();
+  pendingMessage = getInputText()
+  updateCharCount()
+  input.focus()
 }
 
 function placeCaretAfter(node, offset = 0) {
-  const sel = window.getSelection();
-  const range = document.createRange();
+  const sel = window.getSelection()
+  const range = document.createRange()
   if (node.nodeType === Node.TEXT_NODE) {
-    range.setStart(node, Math.min(offset, node.length));
+    range.setStart(node, Math.min(offset, node.length))
   } else {
-    range.setStartAfter(node);
+    range.setStartAfter(node)
   }
-  range.collapse(true);
-  sel.removeAllRanges();
-  sel.addRange(range);
+  range.collapse(true)
+  sel.removeAllRanges()
+  sel.addRange(range)
 }
-
 
 // Cycle-depth + visibility readout for the current Tab match. "cat" tells you
 // WHERE in the cycle you are (channel → your set → global → 7tv search, getting
@@ -3847,70 +4345,92 @@ function emoteCycleMeta(m) {
 }
 
 function showCycleTooltip() {
-  let tt = document.getElementById('hs-mc-cycle-tooltip');
+  let tt = document.getElementById('hs-mc-cycle-tooltip')
   if (!tt) {
-    tt = document.createElement('div');
-    tt.id = 'hs-mc-cycle-tooltip';
-    tt.style.cssText = 'position:absolute;bottom:100%;left:8px;background:#000;color:#fff;padding:4px 8px;font-size:13px;border-radius:0;z-index:1003;margin-bottom:4px;white-space:nowrap;';
-    document.getElementById('hs-mc-inputbar')?.appendChild(tt);
+    tt = document.createElement('div')
+    tt.id = 'hs-mc-cycle-tooltip'
+    tt.style.cssText =
+      'position:absolute;bottom:100%;left:8px;background:#000;color:#fff;padding:4px 8px;font-size:13px;border-radius:0;z-index:1003;margin-bottom:4px;white-space:nowrap;'
+    document.getElementById('hs-mc-inputbar')?.appendChild(tt)
   }
-  const m = acState.matches[acState.index];
-  if (!m) { tt.style.display = 'none'; return; }
-  const meta = emoteCycleMeta(m);
-  const mkSpan = (text, css) => { const s = document.createElement('span'); s.textContent = text; if (css) s.style.cssText = css; return s; };
-  const dot = () => mkSpan(' · ', 'color:#555;');
-  tt.replaceChildren();
-  tt.appendChild(mkSpan(`${acState.index + 1}/${acState.matches.length}`, 'color:#888;'));
-  tt.appendChild(mkSpan(' ' + (m.type === 'emoji' ? `${m.emoji} ${m.name}` : m.name), 'color:#fff;'));
-  if (meta.cat) { tt.appendChild(dot()); tt.appendChild(mkSpan(meta.cat, 'color:#9e9e9e;')); }
-  if (meta.vis) { tt.appendChild(dot()); tt.appendChild(mkSpan(meta.vis.t, `color:${meta.vis.c};`)); }
+  const m = acState.matches[acState.index]
+  if (!m) {
+    tt.style.display = 'none'
+    return
+  }
+  const meta = emoteCycleMeta(m)
+  const mkSpan = (text, css) => {
+    const s = document.createElement('span')
+    s.textContent = text
+    if (css) s.style.cssText = css
+    return s
+  }
+  const dot = () => mkSpan(' · ', 'color:#555;')
+  tt.replaceChildren()
+  tt.appendChild(mkSpan(`${acState.index + 1}/${acState.matches.length}`, 'color:#888;'))
+  tt.appendChild(mkSpan(' ' + (m.type === 'emoji' ? `${m.emoji} ${m.name}` : m.name), 'color:#fff;'))
+  if (meta.cat) {
+    tt.appendChild(dot())
+    tt.appendChild(mkSpan(meta.cat, 'color:#9e9e9e;'))
+  }
+  if (meta.vis) {
+    tt.appendChild(dot())
+    tt.appendChild(mkSpan(meta.vis.t, `color:${meta.vis.c};`))
+  }
   // Surface the live catalog fetch so you know when a 7tv search is firing.
-  if (acState.remotePending) { tt.appendChild(dot()); tt.appendChild(mkSpan('searching 7tv…', 'color:#ffd75f;')); }
-  tt.style.display = 'block';
+  if (acState.remotePending) {
+    tt.appendChild(dot())
+    tt.appendChild(mkSpan('searching 7tv…', 'color:#ffd75f;'))
+  }
+  tt.style.display = 'block'
 }
 
 function hideCycleTooltip() {
-  const tt = document.getElementById('hs-mc-cycle-tooltip');
-  if (tt) tt.style.display = 'none';
+  const tt = document.getElementById('hs-mc-cycle-tooltip')
+  if (tt) tt.style.display = 'none'
 }
 
 function hideAutocomplete() {
-  acState.active = false;
-  acState.matches = [];
-  acState.index = 0;
-  acState.wordStart = 0;
-  acState.afterText = '';
-  acState.search = '';
-  acState.remoteDone = false;
-  acState.remotePending = false;
-  _acRemoteToken++; // invalidate any in-flight 7TV fetch
-  if (_acRemoteAbort) { try { _acRemoteAbort.abort() } catch (_) {} }
-  hideCycleTooltip();
+  acState.active = false
+  acState.matches = []
+  acState.index = 0
+  acState.wordStart = 0
+  acState.afterText = ''
+  acState.search = ''
+  acState.remoteDone = false
+  acState.remotePending = false
+  _acRemoteToken++ // invalidate any in-flight 7TV fetch
+  if (_acRemoteAbort) {
+    try {
+      _acRemoteAbort.abort()
+    } catch (_) {}
+  }
+  hideCycleTooltip()
 
   // WYSIWYG: finalize cycling elements (remove cycling class so they're permanent)
   if (wysiwygEnabled) {
-    const input = document.getElementById('hs-mc-input');
-    const cyclingEmote = input?.querySelector('.hs-cycling-emote');
+    const input = document.getElementById('hs-mc-input')
+    const cyclingEmote = input?.querySelector('.hs-cycling-emote')
     if (cyclingEmote) {
-      cyclingEmote.classList.remove('hs-cycling-emote');
+      cyclingEmote.classList.remove('hs-cycling-emote')
     }
-    const cyclingText = input?.querySelector('.hs-cycling-text');
+    const cyclingText = input?.querySelector('.hs-cycling-text')
     if (cyclingText) {
       // Emoji spans must stay wrapped (caret would otherwise snap mid-grapheme
       // around the U+FE0F variation selector). For non-emoji cycling text,
       // unwrap to a plain text node so it merges naturally with surrounding text.
       if (cyclingText.classList.contains('hs-mc-emoji')) {
-        cyclingText.classList.remove('hs-cycling-text');
-        delete cyclingText.dataset.completionName;
+        cyclingText.classList.remove('hs-cycling-text')
+        delete cyclingText.dataset.completionName
       } else {
-        const textNode = document.createTextNode(cyclingText.textContent);
-        cyclingText.replaceWith(textNode);
+        const textNode = document.createTextNode(cyclingText.textContent)
+        cyclingText.replaceWith(textNode)
       }
     }
-    const cyclingUser = input?.querySelector('.hs-cycling-user');
+    const cyclingUser = input?.querySelector('.hs-cycling-user')
     if (cyclingUser) {
       // Keep the styled mention span — just clear the cycling marker
-      cyclingUser.classList.remove('hs-cycling-user');
+      cyclingUser.classList.remove('hs-cycling-user')
     }
   }
 }
@@ -4018,15 +4538,24 @@ function insertEmojiFromDropdown(entry) {
   if (wysiwygEnabled) {
     // Find the text node with the :query and replace it
     const sel = window.getSelection()
-    if (!sel?.rangeCount) { hideEmojiDropdown(); return }
+    if (!sel?.rangeCount) {
+      hideEmojiDropdown()
+      return
+    }
     const range = sel.getRangeAt(0)
     const node = range.startContainer
-    if (node?.nodeType !== Node.TEXT_NODE) { hideEmojiDropdown(); return }
+    if (node?.nodeType !== Node.TEXT_NODE) {
+      hideEmojiDropdown()
+      return
+    }
     const text = node.textContent
     const cursor = range.startOffset
     const before = text.slice(0, cursor)
     const colonIdx = before.lastIndexOf(':')
-    if (colonIdx === -1) { hideEmojiDropdown(); return }
+    if (colonIdx === -1) {
+      hideEmojiDropdown()
+      return
+    }
 
     // Wrap emoji in a span so the caret has an unambiguous boundary. Setting
     // a caret offset past a U+FE0F variation selector inside a plain text
@@ -4048,12 +4577,12 @@ function insertEmojiFromDropdown(entry) {
     let leading = ''
     if (!head) {
       const prev = node.previousSibling
-      const prevIsChip = prev?.nodeType === Node.ELEMENT_NODE && (
-        (prev.tagName === 'IMG' && (prev.classList?.contains('hs-input-emote') || prev.dataset?.emoteName)) ||
-        prev.classList?.contains('hs-input-stack') ||
-        prev.classList?.contains('hs-mc-emoji') ||
-        prev.classList?.contains('hs-mc-user')
-      )
+      const prevIsChip =
+        prev?.nodeType === Node.ELEMENT_NODE &&
+        ((prev.tagName === 'IMG' && (prev.classList?.contains('hs-input-emote') || prev.dataset?.emoteName)) ||
+          prev.classList?.contains('hs-input-stack') ||
+          prev.classList?.contains('hs-mc-emoji') ||
+          prev.classList?.contains('hs-mc-user'))
       if (prevIsChip) leading = ' '
     }
     const beforeNode = document.createTextNode(leading + head)
@@ -4073,7 +4602,10 @@ function insertEmojiFromDropdown(entry) {
     const cursor = input.selectionStart
     const before = text.slice(0, cursor)
     const colonIdx = before.lastIndexOf(':')
-    if (colonIdx === -1) { hideEmojiDropdown(); return }
+    if (colonIdx === -1) {
+      hideEmojiDropdown()
+      return
+    }
     const tail = text.slice(cursor)
     const space = !/^\s/.test(tail) ? ' ' : ''
     input.value = text.slice(0, colonIdx) + entry.emoji + space + tail
@@ -4142,17 +4674,17 @@ function clearReplyState() {
 
 // Get Twitch auth token from cookie
 function getTwitchAuthToken() {
-  const cookies = document.cookie.split(';');
+  const cookies = document.cookie.split(';')
   for (const cookie of cookies) {
-    const eqIdx = cookie.indexOf('=');
-    if (eqIdx === -1) continue;
-    const key = cookie.slice(0, eqIdx).trim();
-    const value = cookie.slice(eqIdx + 1).trim();
+    const eqIdx = cookie.indexOf('=')
+    if (eqIdx === -1) continue
+    const key = cookie.slice(0, eqIdx).trim()
+    const value = cookie.slice(eqIdx + 1).trim()
     if (key === 'auth-token' && value) {
-      return decodeURIComponent(value);
+      return decodeURIComponent(value)
     }
   }
-  return null;
+  return null
 }
 
 // Async version — returns { token, username } for cross-platform Twitch posting
@@ -4193,10 +4725,16 @@ function clearInput(input) {
 function checkSlashAutocomplete() {
   const text = (typeof getInputText === 'function' ? getInputText() : '') || ''
   const m = text.match(/^\/([a-z?]*)$/i)
-  if (!m) { hideSlashDropdown(); return }
+  if (!m) {
+    hideSlashDropdown()
+    return
+  }
   const q = m[1].toLowerCase()
-  const matches = SLASH_COMMANDS.filter(c => c.cmd.startsWith(q)).slice(0, 8)
-  if (matches.length === 0) { hideSlashDropdown(); return }
+  const matches = SLASH_COMMANDS.filter((c) => c.cmd.startsWith(q)).slice(0, 8)
+  if (matches.length === 0) {
+    hideSlashDropdown()
+    return
+  }
   if (!slashAcState.active || slashAcState.index >= matches.length) slashAcState.index = 0
   slashAcState.active = true
   slashAcState.matches = matches
@@ -4254,7 +4792,10 @@ function insertSlashCommand(c) {
     range.selectNodeContents(input)
     range.collapse(false)
     const sel = window.getSelection()
-    if (sel) { sel.removeAllRanges(); sel.addRange(range) }
+    if (sel) {
+      sel.removeAllRanges()
+      sel.addRange(range)
+    }
   } else {
     input.value = inserted
     if (typeof input.setSelectionRange === 'function') {
@@ -4299,12 +4840,18 @@ async function handleSlashCommand(text, input) {
   if (!parts) return false
   let [, cmd, rest] = parts
   cmd = cmd.toLowerCase()
-  if (SLASH_ALIASES[cmd] === null) return false  // explicit pass-through
+  if (SLASH_ALIASES[cmd] === null) return false // explicit pass-through
   if (typeof SLASH_ALIASES[cmd] === 'string') cmd = SLASH_ALIASES[cmd]
 
   if (cmd === 'op') {
-    if (!rest.trim()) { showToast('usage: /op <text>'); return true }
-    if (!hsAuthToken) { showToast('log in at heatsync.org first to /op', 'error'); return true }
+    if (!rest.trim()) {
+      showToast('usage: /op <text>')
+      return true
+    }
+    if (!hsAuthToken) {
+      showToast('log in at heatsync.org first to /op', 'error')
+      return true
+    }
     const ok = await postFeedMessage(rest.trim(), { topLevel: true })
     showToast(ok ? 'success' : 'post failed', ok ? 'success' : 'error')
     clearInput(input)
@@ -4313,7 +4860,10 @@ async function handleSlashCommand(text, input) {
 
   if (cmd === 'w') {
     const match = rest.match(/^@?(\S+)\s+(.+)$/)
-    if (!match) { showToast('usage: /w <user> <message>'); return true }
+    if (!match) {
+      showToast('usage: /w <user> <message>')
+      return true
+    }
     const [, username, msg] = match
     await sendSlashWhisper('twitch', username, msg, input)
     return true
@@ -4321,15 +4871,24 @@ async function handleSlashCommand(text, input) {
 
   if (cmd === 'dm') {
     const match = rest.match(/^@?(\S+)\s+(.+)$/)
-    if (!match) { showToast('usage: /dm <user> <message>'); return true }
+    if (!match) {
+      showToast('usage: /dm <user> <message>')
+      return true
+    }
     const [, username, msg] = match
     await sendSlashWhisper('heatsync', username, msg, input)
     return true
   }
 
   if (cmd === 'r') {
-    if (!rest.trim()) { showToast('usage: /r <message>'); return true }
-    if (!lastWhisperKey) { showToast('no one to reply to', 'error'); return true }
+    if (!rest.trim()) {
+      showToast('usage: /r <message>')
+      return true
+    }
+    if (!lastWhisperKey) {
+      showToast('no one to reply to', 'error')
+      return true
+    }
     if (currentTab !== 'whispers') switchTab('whispers')
     await sendWhisperMessage(lastWhisperKey, rest.trim())
     clearInput(input)
@@ -4338,14 +4897,23 @@ async function handleSlashCommand(text, input) {
 
   if (cmd === 'follow' || cmd === 'unfollow') {
     const u = rest.trim().replace(/^@/, '').toLowerCase()
-    if (!u) { showToast('usage: /' + cmd + ' <user>'); return true }
-    if (typeof resolveIdentity !== 'function') { showToast('not ready', 'error'); return true }
+    if (!u) {
+      showToast('usage: /' + cmd + ' <user>')
+      return true
+    }
+    if (typeof resolveIdentity !== 'function') {
+      showToast('not ready', 'error')
+      return true
+    }
     const ri = await resolveIdentity(u, {})
     const p = ri?.profile
     const id = p?.id || p?.userId
     if (!id) {
       if (ri?.transient) {
-        showToast(ri.status === 429 ? 'rate limited — try in a sec' : `couldn't reach server (${ri.status || 'net'})`, 'error')
+        showToast(
+          ri.status === 429 ? 'rate limited — try in a sec' : `couldn't reach server (${ri.status || 'net'})`,
+          'error',
+        )
       } else {
         showToast(u + " isn't on heatsync", 'error')
       }
@@ -4353,8 +4921,14 @@ async function handleSlashCommand(text, input) {
     }
     const yf = !!(p.relationship?.youFollow || p.relationship?.isFollowing)
     const wantFollow = cmd === 'follow'
-    if (wantFollow && yf) { showToast('already following ' + u); return true }
-    if (!wantFollow && !yf) { showToast('not following ' + u); return true }
+    if (wantFollow && yf) {
+      showToast('already following ' + u)
+      return true
+    }
+    if (!wantFollow && !yf) {
+      showToast('not following ' + u)
+      return true
+    }
     // pcToggleFollow flips the current state — pass `yf` as currentlyFollowing
     pcToggleFollow(id, u, yf)
     return true
@@ -4362,12 +4936,18 @@ async function handleSlashCommand(text, input) {
 
   if (cmd === 'mute') {
     const u = rest.trim().replace(/^@/, '').toLowerCase()
-    if (!u) { showToast('usage: /mute <user>'); return true }
+    if (!u) {
+      showToast('usage: /mute <user>')
+      return true
+    }
     // platform unknown from slash command — try both kick→twitch aliasing and
     // raw username. getUserAliases handles unknown-platform gracefully.
-    const aliases = (typeof getUserAliases === 'function') ? getUserAliases(u, null) : [u]
-    const already = (typeof isUserMuted === 'function') ? isUserMuted(u, null) : mutedUsers.has(u)
-    if (already) { showToast(`${u} already muted`); return true }
+    const aliases = typeof getUserAliases === 'function' ? getUserAliases(u, null) : [u]
+    const already = typeof isUserMuted === 'function' ? isUserMuted(u, null) : mutedUsers.has(u)
+    if (already) {
+      showToast(`${u} already muted`)
+      return true
+    }
     for (const a of aliases) mutedUsers.add(a)
     chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] })
     const exp = Date.now() + 86400000
@@ -4380,10 +4960,16 @@ async function handleSlashCommand(text, input) {
 
   if (cmd === 'unmute') {
     const u = rest.trim().replace(/^@/, '').toLowerCase()
-    if (!u) { showToast('usage: /unmute <user>'); return true }
-    const aliases = (typeof getUserAliases === 'function') ? getUserAliases(u, null) : [u]
-    const wasMuted = (typeof isUserMuted === 'function') ? isUserMuted(u, null) : mutedUsers.has(u)
-    if (!wasMuted) { showToast(`${u} not muted`); return true }
+    if (!u) {
+      showToast('usage: /unmute <user>')
+      return true
+    }
+    const aliases = typeof getUserAliases === 'function' ? getUserAliases(u, null) : [u]
+    const wasMuted = typeof isUserMuted === 'function' ? isUserMuted(u, null) : mutedUsers.has(u)
+    if (!wasMuted) {
+      showToast(`${u} not muted`)
+      return true
+    }
     for (const a of aliases) mutedUsers.delete(a)
     chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] })
     for (const a of aliases) safeSendMessage({ type: 'unmute_user', username: a })
@@ -4406,8 +4992,14 @@ async function handleSlashCommand(text, input) {
 
   if (cmd === 'lclear') {
     let cleared = 0
-    if (irc?.channels?.has(currentTab)) { irc.channels.get(currentTab).clear?.(); cleared++ }
-    if (kickChat?.channels?.has(currentTab)) { kickChat.channels.get(currentTab).clear?.(); cleared++ }
+    if (irc?.channels?.has(currentTab)) {
+      irc.channels.get(currentTab).clear?.()
+      cleared++
+    }
+    if (kickChat?.channels?.has(currentTab)) {
+      kickChat.channels.get(currentTab).clear?.()
+      cleared++
+    }
     renderMessages(currentTab)
     showToast(cleared ? 'local buffer cleared' : 'nothing to clear here', cleared ? 'success' : undefined)
     clearInput(input)
@@ -4425,10 +5017,16 @@ async function handleSlashCommand(text, input) {
   // delay) light up automatically when the viewer mods the channel.
   if (cmd === 'status' || cmd === 'modes') {
     const arg = rest.trim().toLowerCase().replace(/^#/, '')
-    const ch = (arg && /^[a-z0-9_]{2,40}$/.test(arg))
-      ? arg
-      : (typeof currentTab === 'string' && /^[a-z0-9_]{2,40}$/.test(currentTab) ? currentTab : null)
-    if (!ch) { showToast('/status needs a channel tab (or /status <name>)', 'error'); return true }
+    const ch =
+      arg && /^[a-z0-9_]{2,40}$/.test(arg)
+        ? arg
+        : typeof currentTab === 'string' && /^[a-z0-9_]{2,40}$/.test(currentTab)
+          ? currentTab
+          : null
+    if (!ch) {
+      showToast('/status needs a channel tab (or /status <name>)', 'error')
+      return true
+    }
     clearInput(input)
     showChatStatusPanel(ch)
     return true
@@ -4439,9 +5037,8 @@ async function handleSlashCommand(text, input) {
   // so a mod can sanction a user everywhere with one command.
   // currentTab = channel login when on a per-channel tab; on aggregate tabs we
   // can't pick a single channel, so refuse with a useful toast.
-  const modChannel = (typeof currentTab === 'string' && /^[a-z0-9_]{2,40}$/i.test(currentTab))
-    ? currentTab : null
-  const _modCh = modChannel ? config.channels.find(c => c.id === modChannel) : null
+  const modChannel = typeof currentTab === 'string' && /^[a-z0-9_]{2,40}$/i.test(currentTab) ? currentTab : null
+  const _modCh = modChannel ? config.channels.find((c) => c.id === modChannel) : null
   const _twitchModName = _modCh?.twitch || (modChannel && !_modCh ? modChannel : null)
   const _kickModSlug = _modCh?.kick || null
 
@@ -4454,13 +5051,26 @@ async function handleSlashCommand(text, input) {
     const tOk = tResp?.ok
     const kOk = kResp?.ok
     if (tResp && kResp) {
-      if (tOk && kOk) { showToast(`${label} ${target} (twitch+kick)`, 'success'); return true }
-      if (tOk) { showToast(`${label} ${target} on twitch — kick failed: ${kResp.error || 'unknown'}`, 'error'); return true }
-      if (kOk) { showToast(`${label} ${target} on kick — twitch failed: ${tResp.error || 'unknown'}`, 'error'); return true }
-      showToast(`${label} failed: twitch ${tResp.error || '?'} / kick ${kResp.error || '?'}`, 'error'); return false
+      if (tOk && kOk) {
+        showToast(`${label} ${target} (twitch+kick)`, 'success')
+        return true
+      }
+      if (tOk) {
+        showToast(`${label} ${target} on twitch — kick failed: ${kResp.error || 'unknown'}`, 'error')
+        return true
+      }
+      if (kOk) {
+        showToast(`${label} ${target} on kick — twitch failed: ${tResp.error || 'unknown'}`, 'error')
+        return true
+      }
+      showToast(`${label} failed: twitch ${tResp.error || '?'} / kick ${kResp.error || '?'}`, 'error')
+      return false
     }
     const only = tResp || kResp
-    showToast(only?.ok ? `${label} ${target}` : `${label} failed: ${only?.error || 'unknown'}`, only?.ok ? 'success' : 'error')
+    showToast(
+      only?.ok ? `${label} ${target}` : `${label} failed: ${only?.error || 'unknown'}`,
+      only?.ok ? 'success' : 'error',
+    )
     return !!only?.ok
   }
 
@@ -4475,11 +5085,14 @@ async function handleSlashCommand(text, input) {
     }
     if (cmd === 'ban') {
       const m = rest.match(/^@?(\S+)(?:\s+(.+))?$/)
-      if (!m) { showToast('usage: /ban <user> [reason]', 'error'); return true }
+      if (!m) {
+        showToast('usage: /ban <user> [reason]', 'error')
+        return true
+      }
       const [, target, reason] = m
       const [tResp, kResp] = await Promise.all([
         _twitchModName ? banTwitchUser(_twitchModName, target, reason || '') : null,
-        _kickMod('ban', { username: target, reason: reason || '' })
+        _kickMod('ban', { username: target, reason: reason || '' }),
       ])
       const ok = _combinedToast('banned', target, tResp, kResp)
       if (ok) clearInput(input)
@@ -4487,12 +5100,15 @@ async function handleSlashCommand(text, input) {
     }
     if (cmd === 'timeout') {
       const m = rest.match(/^@?(\S+)(?:\s+(\d+))?(?:\s+(.+))?$/)
-      if (!m) { showToast('usage: /timeout <user> [seconds] [reason]', 'error'); return true }
+      if (!m) {
+        showToast('usage: /timeout <user> [seconds] [reason]', 'error')
+        return true
+      }
       const [, target, secStr, reason] = m
       const sec = secStr ? Math.max(1, parseInt(secStr)) : 600
       const [tResp, kResp] = await Promise.all([
         _twitchModName ? timeoutTwitchUser(_twitchModName, target, sec, reason || '') : null,
-        _kickMod('timeout', { username: target, durationMin: Math.max(1, Math.round(sec / 60)), reason: reason || '' })
+        _kickMod('timeout', { username: target, durationMin: Math.max(1, Math.round(sec / 60)), reason: reason || '' }),
       ])
       const ok = _combinedToast(`timed out ${sec}s`, target, tResp, kResp)
       if (ok) clearInput(input)
@@ -4500,10 +5116,13 @@ async function handleSlashCommand(text, input) {
     }
     if (cmd === 'unban') {
       const target = rest.trim().replace(/^@/, '')
-      if (!target) { showToast('usage: /unban <user>', 'error'); return true }
+      if (!target) {
+        showToast('usage: /unban <user>', 'error')
+        return true
+      }
       const [tResp, kResp] = await Promise.all([
         _twitchModName ? unbanTwitchUser(_twitchModName, target) : null,
-        _kickMod('unban', { username: target })
+        _kickMod('unban', { username: target }),
       ])
       const ok = _combinedToast('unbanned', target, tResp, kResp)
       if (ok) clearInput(input)
@@ -4512,9 +5131,15 @@ async function handleSlashCommand(text, input) {
   }
 
   if (cmd === 'delete') {
-    if (!modChannel) { showToast('/delete needs a channel tab', 'error'); return true }
+    if (!modChannel) {
+      showToast('/delete needs a channel tab', 'error')
+      return true
+    }
     const messageID = rest.trim()
-    if (!messageID) { showToast('usage: /delete <message-id> (right-click a message)', 'error'); return true }
+    if (!messageID) {
+      showToast('usage: /delete <message-id> (right-click a message)', 'error')
+      return true
+    }
     // Routing: prefer Twitch (UUID) vs Kick (snowflake-ish) by id shape.
     // Twitch msg ids are UUIDv4. Kick chat msg ids are also UUID. Without a
     // reliable shape distinguisher, try Twitch first when linked, else Kick.
@@ -4523,12 +5148,23 @@ async function handleSlashCommand(text, input) {
       resp = await deleteTwitchMessage(_twitchModName, messageID)
       if (!resp.ok && _kickModSlug) {
         // Twitch rejected — try Kick (the id was probably a Kick message)
-        resp = await safeSendMessage({ type: 'kick_mod_action', action: 'delete', slug: _kickModSlug, messageId: messageID })
+        resp = await safeSendMessage({
+          type: 'kick_mod_action',
+          action: 'delete',
+          slug: _kickModSlug,
+          messageId: messageID,
+        })
       }
     } else if (_kickModSlug) {
-      resp = await safeSendMessage({ type: 'kick_mod_action', action: 'delete', slug: _kickModSlug, messageId: messageID })
+      resp = await safeSendMessage({
+        type: 'kick_mod_action',
+        action: 'delete',
+        slug: _kickModSlug,
+        messageId: messageID,
+      })
     } else {
-      showToast('/delete needs a twitch or kick channel', 'error'); return true
+      showToast('/delete needs a twitch or kick channel', 'error')
+      return true
     }
     showToast(resp.ok ? 'deleted' : `delete failed: ${resp.error || 'unknown'}`, resp.ok ? 'success' : 'error')
     if (resp.ok) clearInput(input)
@@ -4568,10 +5204,14 @@ function showSlashHelp() {
   // Reuse toast for short feedback — but the help list is multi-line, so build a
   // lightweight inline overlay instead.
   let panel = document.getElementById('hs-mc-slash-help')
-  if (panel) { panel.remove(); return }
+  if (panel) {
+    panel.remove()
+    return
+  }
   panel = document.createElement('div')
   panel.id = 'hs-mc-slash-help'
-  panel.style.cssText = "position:fixed;bottom:60px;right:20px;z-index:99999;background:#000;border:2px solid #ff8700;padding:10px 14px;font:13px/1.4 'CozetteVector','Courier New',monospace;color:#fff;white-space:pre;max-width:420px;box-shadow:0 0 12px rgba(255,135,0,0.5)"
+  panel.style.cssText =
+    "position:fixed;bottom:60px;right:20px;z-index:99999;background:#000;border:2px solid #ff8700;padding:10px 14px;font:13px/1.4 'CozetteVector','Courier New',monospace;color:#fff;white-space:pre;max-width:420px;box-shadow:0 0 12px rgba(255,135,0,0.5)"
   panel.textContent = SLASH_HELP_LINES.join('\n')
   panel.addEventListener('click', () => panel.remove())
   document.body.appendChild(panel)
@@ -4593,8 +5233,11 @@ async function showChatStatusPanel(channel) {
   wrap.addEventListener('click', () => wrap.remove())
   document.body.appendChild(wrap)
   let panel
-  try { panel = await buildChatStatusPanel(channel) }
-  catch (e) { panel = null }
+  try {
+    panel = await buildChatStatusPanel(channel)
+  } catch (e) {
+    panel = null
+  }
   if (!document.body.contains(wrap)) return
   if (!panel) {
     loading.textContent = 'could not fetch #' + channel + ' (offline or not on twitch?)'
@@ -4615,7 +5258,9 @@ async function sendSlashWhisper(platform, username, text, input) {
     if (!whisperUsers.has(key)) {
       // Resolve username → Twitch ID via decapi
       try {
-        const resp = await fetch(`https://decapi.me/twitch/id/${encodeURIComponent(lowerUser)}`, { credentials: 'omit' })
+        const resp = await fetch(`https://decapi.me/twitch/id/${encodeURIComponent(lowerUser)}`, {
+          credentials: 'omit',
+        })
         const body = (await resp.text()).trim()
         if (!resp.ok || !/^\d+$/.test(body)) {
           showToast(t('mc_whisper_user_not_found', [username]), 'error')
@@ -4640,7 +5285,7 @@ async function sendSlashWhisper(platform, username, text, input) {
       platform: 'heatsync',
       userId,
       displayName: profileResp.data.profile.display_name || username,
-      color: profileResp.data.profile.user_color || '#fff'
+      color: profileResp.data.profile.user_color || '#fff',
     })
   }
 
@@ -4680,19 +5325,20 @@ function autoAddInputEmotes(text) {
     if (typeof viewerPersonalEmotes !== 'undefined' && !viewerPersonalEmotes.has(word)) {
       viewerPersonalEmotes.set(word, { url: rec.url, source: rec.source, state: 'owned', zeroWidth: !!rec.zeroWidth })
     }
-    if (typeof addEmoteToInventory === 'function') addEmoteToInventory(word, rec.url, rec.source, undefined, !!rec.zeroWidth, /* silent */ true)
+    if (typeof addEmoteToInventory === 'function')
+      addEmoteToInventory(word, rec.url, rec.source, undefined, !!rec.zeroWidth, /* silent */ true)
   }
 }
 
 async function sendMessage() {
-  const input = document.getElementById('hs-mc-input');
-  if (!input) return;
+  const input = document.getElementById('hs-mc-input')
+  if (!input) return
 
-  let text = convertEmojiShortcodes(getInputText().trim());
-  if (!text) return;
+  let text = convertEmojiShortcodes(getInputText().trim())
+  if (!text) return
 
   // Remote-searched emotes in the outgoing message get added to the set on send.
-  autoAddInputEmotes(text);
+  autoAddInputEmotes(text)
 
   // Resub-share mode — typed text becomes the celebration BODY via Twitch's
   // Chat_ShareResub_UseResubToken GQL mutation. consume() fires that mutation
@@ -4712,7 +5358,9 @@ async function sendMessage() {
   // the native broadcast + injects a local synth, then we fall through so the
   // user's typed body also lands as a normal PRIVMSG (visible to everyone).
   if (window.__hsWatchstreakShare?.active?.()) {
-    try { window.__hsWatchstreakShare.consume(text) } catch (_) {}
+    try {
+      window.__hsWatchstreakShare.consume(text)
+    } catch (_) {}
   }
 
   // Slash commands — work from any tab. Handler may return:
@@ -4750,13 +5398,13 @@ async function sendMessage() {
     // dual-link channel skipped Kick (kickSlug undefined → sendToKick=false).
     if (targetChannel) {
       const lower = targetChannel.toLowerCase()
-      ch = config.channels.find(c => c.twitch?.toLowerCase() === lower || c.kick?.toLowerCase() === lower) || null
+      ch = config.channels.find((c) => c.twitch?.toLowerCase() === lower || c.kick?.toLowerCase() === lower) || null
     }
   } else if (currentTab === 'add' || currentTab === 'settings') {
     flashInputError(input)
     return
   } else {
-    ch = config.channels.find(c => c.id === currentTab)
+    ch = config.channels.find((c) => c.id === currentTab)
     targetChannel = ch?.twitch || ch?.kick || currentTab
   }
 
@@ -4809,7 +5457,9 @@ async function sendMessage() {
   // the echo never matches — firing a false "did not confirm" warning and
   // losing badge attribution + dual-send dedup. Identical to text when not /me.
   const _synthId = registerPendingSend({
-    text: restText, channel: targetChannel, platforms: _pendingPlatforms,
+    text: restText,
+    channel: targetChannel,
+    platforms: _pendingPlatforms,
     replyParentId: replyState?.msgId || null,
   })
 
@@ -4843,108 +5493,132 @@ async function sendMessage() {
     const kickPromise = sendKickMessage(slug, restText)
     const twitchPromise = sendToTwitch
       ? getTwitchAuthTokenAsync().then(({ token: tok, username: twitchNick }) =>
-          sendIrcMessage(twitchName, twitchText, tok, replyParentId, twitchNick))
+          sendIrcMessage(twitchName, twitchText, tok, replyParentId, twitchNick),
+        )
       : Promise.resolve(null)
 
     // Best-effort YouTube — fire alongside Kick/Twitch so a triple-link
     // channel (twitch+kick+youtube) actually mirrors to all three.
     if (sendToYoutube) {
-      sendYoutubeMessage(restText).then(result => {
-        if (result !== true && result !== 'no_youtube_tab') {
-          showToast('youtube send failed', 'error')
-        }
-      }).catch(() => showToast('youtube send failed', 'error'))
+      sendYoutubeMessage(restText)
+        .then((result) => {
+          if (result !== true && result !== 'no_youtube_tab') {
+            showToast('youtube send failed', 'error')
+          }
+        })
+        .catch(() => showToast('youtube send failed', 'error'))
     }
 
-    Promise.all([kickPromise, twitchPromise]).then(([kickResult, twitchResult]) => {
-      const kickOk = kickResult === true
-      const twitchOk = twitchResult === true || twitchResult === null
-      // 'queued' = IRC was offline, message stuffed in send-queue for next
-      // reconnect (could be never). Treat as a visible yellow cue, not silent
-      // success — without this the input clears and the user thinks the
-      // message went through.
-      const twitchQueued = twitchResult === 'queued'
-      if (twitchQueued && !kickOk) {
-        // Most common: not logged into Twitch IRC (no auth-token cookie) AND
-        // not on Kick. Persistent notif (markPendingFailed) replaces the
-        // 2.5s placeholder flash users physically couldn't read in time.
-        input.style.borderColor = '#f44'
-        setTimeout(() => { input.style.borderColor = ''; updateInputPlaceholder() }, 1500)
-        markPendingFailed(_synthId, 'auth_failed')
-        try { HsNotifs.emit('twitch-auth-required', { text: t('mc_input_auth_failed') || 'log into twitch.tv to chat' }) } catch (_) {}
-        return
-      }
+    Promise.all([kickPromise, twitchPromise])
+      .then(([kickResult, twitchResult]) => {
+        const kickOk = kickResult === true
+        const twitchOk = twitchResult === true || twitchResult === null
+        // 'queued' = IRC was offline, message stuffed in send-queue for next
+        // reconnect (could be never). Treat as a visible yellow cue, not silent
+        // success — without this the input clears and the user thinks the
+        // message went through.
+        const twitchQueued = twitchResult === 'queued'
+        if (twitchQueued && !kickOk) {
+          // Most common: not logged into Twitch IRC (no auth-token cookie) AND
+          // not on Kick. Persistent notif (markPendingFailed) replaces the
+          // 2.5s placeholder flash users physically couldn't read in time.
+          input.style.borderColor = '#f44'
+          setTimeout(() => {
+            input.style.borderColor = ''
+            updateInputPlaceholder()
+          }, 1500)
+          markPendingFailed(_synthId, 'auth_failed')
+          try {
+            HsNotifs.emit('twitch-auth-required', { text: t('mc_input_auth_failed') || 'log into twitch.tv to chat' })
+          } catch (_) {}
+          return
+        }
 
-      if (kickOk || twitchOk) {
-        // Dual-send partial success: at least one platform delivered. Drain
-        // the failed platform from the pending tracker's awaiting set so the
-        // no_echo toast doesn't fire 20s later for the side that locally
-        // failed (no echo can ever arrive — the send never made it out).
-        // Silent: no partial-failure toast — the user got the message into
-        // the channel they're viewing, that's what matters for the dominant
-        // use-case (one platform open at a time, kick/yt mirror as bonus).
-        if (isDualSend && !twitchOk) {
-          try { confirmPending(_synthId, 'twitch') } catch (_) {}
-        }
-        if (isDualSend && !kickOk) {
-          try { confirmPending(_synthId, 'kick') } catch (_) {}
-        }
-      } else {
-        // Both failed (or single Kick failed). Surface via persistent notif —
-        // input.placeholder flash was too fast to read. Reason carries the
-        // dominant platform's error so the retry notif tells the user what
-        // actually went wrong (auth/connect/queue/kick-login).
-        input.style.borderColor = '#f44'
-        setTimeout(() => { input.style.borderColor = ''; updateInputPlaceholder() }, 1500)
-        let reason
-        if (sendToTwitch && twitchResult && twitchResult !== true && twitchResult !== null) {
-          reason = twitchResult
+        if (kickOk || twitchOk) {
+          // Dual-send partial success: at least one platform delivered. Drain
+          // the failed platform from the pending tracker's awaiting set so the
+          // no_echo toast doesn't fire 20s later for the side that locally
+          // failed (no echo can ever arrive — the send never made it out).
+          // Silent: no partial-failure toast — the user got the message into
+          // the channel they're viewing, that's what matters for the dominant
+          // use-case (one platform open at a time, kick/yt mirror as bonus).
+          if (isDualSend && !twitchOk) {
+            try {
+              confirmPending(_synthId, 'twitch')
+            } catch (_) {}
+          }
+          if (isDualSend && !kickOk) {
+            try {
+              confirmPending(_synthId, 'kick')
+            } catch (_) {}
+          }
         } else {
-          reason = kickResult || 'send_failed'
+          // Both failed (or single Kick failed). Surface via persistent notif —
+          // input.placeholder flash was too fast to read. Reason carries the
+          // dominant platform's error so the retry notif tells the user what
+          // actually went wrong (auth/connect/queue/kick-login).
+          input.style.borderColor = '#f44'
+          setTimeout(() => {
+            input.style.borderColor = ''
+            updateInputPlaceholder()
+          }, 1500)
+          let reason
+          if (sendToTwitch && twitchResult && twitchResult !== true && twitchResult !== null) {
+            reason = twitchResult
+          } else {
+            reason = kickResult || 'send_failed'
+          }
+          markPendingFailed(_synthId, reason)
+          if (reason === 'auth_failed' || reason === 'no_user') {
+            try {
+              HsNotifs.emit('twitch-auth-required', { text: t('mc_input_auth_failed') || 'log into twitch.tv to chat' })
+            } catch (_) {}
+          }
         }
-        markPendingFailed(_synthId, reason)
-        if (reason === 'auth_failed' || reason === 'no_user') {
-          try { HsNotifs.emit('twitch-auth-required', { text: t('mc_input_auth_failed') || 'log into twitch.tv to chat' }) } catch (_) {}
-        }
-      }
-    })
-    .catch((err) => {
-      // A leg rejected (context invalidation, throw) rather than returning an
-      // error string — without this the pending '•' hangs forever.
-      log('dual-send rejected: ' + ((err && err.message) || err))
-      input.style.borderColor = '#f44'
-      setTimeout(() => { input.style.borderColor = ''; updateInputPlaceholder() }, 1500)
-      markPendingFailed(_synthId, 'send_failed')
-    })
+      })
+      .catch((err) => {
+        // A leg rejected (context invalidation, throw) rather than returning an
+        // error string — without this the pending '•' hangs forever.
+        log('dual-send rejected: ' + ((err && err.message) || err))
+        input.style.borderColor = '#f44'
+        setTimeout(() => {
+          input.style.borderColor = ''
+          updateInputPlaceholder()
+        }, 1500)
+        markPendingFailed(_synthId, 'send_failed')
+      })
     return
   }
 
   // --- YouTube-only send path (no Twitch, no Kick) ---
   if (sendToYoutube && !sendToKick && !sendToTwitch) {
-    sendYoutubeMessage(restText).then(result => {
-      if (result === true) {
-        // YT echoes don't loop back through our IRC handlers, so the timer
-        // would always fire "no_echo" for pure-YT sends. Confirm here, with
-        // explicit 'yt' platform so the per-platform awaiting set drains.
-        confirmPending(_synthId, 'yt')
-      } else {
-        const reason = result === 'no_youtube_tab' ? 'no_youtube_tab' : 'send_failed'
-        markPendingFailed(_synthId, reason)
-      }
-    })
-    .catch((err) => {
-      log('yt-only send rejected: ' + ((err && err.message) || err))
-      markPendingFailed(_synthId, 'send_failed')
-    })
+    sendYoutubeMessage(restText)
+      .then((result) => {
+        if (result === true) {
+          // YT echoes don't loop back through our IRC handlers, so the timer
+          // would always fire "no_echo" for pure-YT sends. Confirm here, with
+          // explicit 'yt' platform so the per-platform awaiting set drains.
+          confirmPending(_synthId, 'yt')
+        } else {
+          const reason = result === 'no_youtube_tab' ? 'no_youtube_tab' : 'send_failed'
+          markPendingFailed(_synthId, reason)
+        }
+      })
+      .catch((err) => {
+        log('yt-only send rejected: ' + ((err && err.message) || err))
+        markPendingFailed(_synthId, 'send_failed')
+      })
     return
   }
   // Twitch + YouTube (and no Kick) — fire YouTube as best-effort alongside Twitch send below
   if (sendToYoutube && sendToTwitch && !sendToKick) {
-    sendYoutubeMessage(restText).then(result => {
-      if (result !== true && result !== 'no_youtube_tab') {
-        showToast('youtube send failed', 'error')
-      }
-    }).catch(() => showToast('youtube send failed', 'error'))
+    sendYoutubeMessage(restText)
+      .then((result) => {
+        if (result !== true && result !== 'no_youtube_tab') {
+          showToast('youtube send failed', 'error')
+        }
+      })
+      .catch(() => showToast('youtube send failed', 'error'))
     // fall through to Twitch path
   }
 
@@ -4952,34 +5626,47 @@ async function sendMessage() {
   const { token, username: twitchNick } = await getTwitchAuthTokenAsync()
   if (!token) {
     markPendingFailed(_synthId, 'auth_failed')
-    try { HsNotifs.emit('twitch-auth-required', { text: t('mc_input_not_logged_in') || 'log into twitch.tv to chat' }) } catch (_) {}
+    try {
+      HsNotifs.emit('twitch-auth-required', { text: t('mc_input_not_logged_in') || 'log into twitch.tv to chat' })
+    } catch (_) {}
     return
   }
 
-  const wsState = authState.ws ? ['CONNECTING','OPEN','CLOSING','CLOSED'][authState.ws.readyState] : 'null'
+  const wsState = authState.ws ? ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][authState.ws.readyState] : 'null'
   log(`IRC SEND → #${targetChannel} ws=${wsState} ready=${authState.ready} queue=${authState.sendQueue.length}`)
-  sendIrcMessage(targetChannel, twitchText, token, replyParentId, twitchNick).then(result => {
-    if (result === true) {
-      if (wsState !== 'OPEN') {
-        input.style.borderColor = '#ff0'
-        setTimeout(() => { input.style.borderColor = '' }, 1500)
+  sendIrcMessage(targetChannel, twitchText, token, replyParentId, twitchNick)
+    .then((result) => {
+      if (result === true) {
+        if (wsState !== 'OPEN') {
+          input.style.borderColor = '#ff0'
+          setTimeout(() => {
+            input.style.borderColor = ''
+          }, 1500)
+        }
+        // success-from-socket only; echo confirmation handled by pending tracker
+      } else {
+        input.style.borderColor = '#f44'
+        setTimeout(() => {
+          input.style.borderColor = ''
+          updateInputPlaceholder()
+        }, 1500)
+        markPendingFailed(_synthId, result || 'send_failed')
+        if (result === 'auth_failed' || result === 'no_user') {
+          try {
+            HsNotifs.emit('twitch-auth-required', { text: t('mc_input_auth_failed') || 'log into twitch.tv to chat' })
+          } catch (_) {}
+        }
       }
-      // success-from-socket only; echo confirmation handled by pending tracker
-    } else {
+    })
+    .catch((err) => {
+      log('twitch send rejected: ' + ((err && err.message) || err))
       input.style.borderColor = '#f44'
-      setTimeout(() => { input.style.borderColor = ''; updateInputPlaceholder() }, 1500)
-      markPendingFailed(_synthId, result || 'send_failed')
-      if (result === 'auth_failed' || result === 'no_user') {
-        try { HsNotifs.emit('twitch-auth-required', { text: t('mc_input_auth_failed') || 'log into twitch.tv to chat' }) } catch (_) {}
-      }
-    }
-  })
-  .catch((err) => {
-    log('twitch send rejected: ' + ((err && err.message) || err))
-    input.style.borderColor = '#f44'
-    setTimeout(() => { input.style.borderColor = ''; updateInputPlaceholder() }, 1500)
-    markPendingFailed(_synthId, 'send_failed')
-  })
+      setTimeout(() => {
+        input.style.borderColor = ''
+        updateInputPlaceholder()
+      }, 1500)
+      markPendingFailed(_synthId, 'send_failed')
+    })
 }
 
 async function sendYoutubeMessage(text) {
@@ -4997,8 +5684,8 @@ async function sendYoutubeMessage(text) {
 // MEDIA UPLOAD — paste image, drag-drop file
 // ============================================
 
-const MC_UPLOAD_MAX_IMG = 5 * 1024 * 1024   // 5MB
-const MC_UPLOAD_MAX_VID = 50 * 1024 * 1024  // 50MB
+const MC_UPLOAD_MAX_IMG = 5 * 1024 * 1024 // 5MB
+const MC_UPLOAD_MAX_VID = 50 * 1024 * 1024 // 50MB
 let _mcUploading = false
 
 function showUploadStatus(msg, isError) {
@@ -5060,12 +5747,16 @@ async function uploadMediaFile(file) {
             const data = JSON.parse(xhr.responseText)
             if (data.success && data.url) resolve(data.url)
             else reject(new Error(data.error || 'upload failed'))
-          } catch { reject(new Error('bad response')) }
+          } catch {
+            reject(new Error('bad response'))
+          }
         } else {
           try {
             const err = JSON.parse(xhr.responseText)
             reject(new Error(err.error || `http ${xhr.status}`))
-          } catch { reject(new Error(`http ${xhr.status}`)) }
+          } catch {
+            reject(new Error(`http ${xhr.status}`))
+          }
         }
       })
       xhr.addEventListener('error', () => reject(new Error('network error')))
@@ -5116,7 +5807,8 @@ function setupMediaDropHandlers() {
     if (!dz) {
       dz = document.createElement('div')
       dz.id = 'hs-mc-drop-zone'
-      dz.style.cssText = 'position:absolute;inset:0;background:rgba(255,135,0,0.15);border:2px dashed #ff8700;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;z-index:99998;pointer-events:none;'
+      dz.style.cssText =
+        'position:absolute;inset:0;background:rgba(255,135,0,0.15);border:2px dashed #ff8700;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;z-index:99998;pointer-events:none;'
       dz.textContent = 'drop image/video to upload'
       overlay.appendChild(dz)
     }
@@ -5126,27 +5818,43 @@ function setupMediaDropHandlers() {
     dragCounter = 0
   }
 
-  overlay.addEventListener('dragenter', (e) => {
-    if (!e.dataTransfer?.types?.includes('Files')) return
-    e.preventDefault()
-    dragCounter++
-    showDropZone()
-  }, { signal: mcSignal })
-  overlay.addEventListener('dragover', (e) => {
-    if (!e.dataTransfer?.types?.includes('Files')) return
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'copy'
-  }, { signal: mcSignal })
-  overlay.addEventListener('dragleave', (e) => {
-    if (!e.dataTransfer?.types?.includes('Files')) return
-    dragCounter--
-    if (dragCounter <= 0) hideDropZone()
-  }, { signal: mcSignal })
-  overlay.addEventListener('drop', (e) => {
-    if (!e.dataTransfer?.files?.length) return
-    e.preventDefault()
-    hideDropZone()
-    const file = e.dataTransfer.files[0]
-    handleMediaUpload(file)
-  }, { signal: mcSignal })
+  overlay.addEventListener(
+    'dragenter',
+    (e) => {
+      if (!e.dataTransfer?.types?.includes('Files')) return
+      e.preventDefault()
+      dragCounter++
+      showDropZone()
+    },
+    { signal: mcSignal },
+  )
+  overlay.addEventListener(
+    'dragover',
+    (e) => {
+      if (!e.dataTransfer?.types?.includes('Files')) return
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'copy'
+    },
+    { signal: mcSignal },
+  )
+  overlay.addEventListener(
+    'dragleave',
+    (e) => {
+      if (!e.dataTransfer?.types?.includes('Files')) return
+      dragCounter--
+      if (dragCounter <= 0) hideDropZone()
+    },
+    { signal: mcSignal },
+  )
+  overlay.addEventListener(
+    'drop',
+    (e) => {
+      if (!e.dataTransfer?.files?.length) return
+      e.preventDefault()
+      hideDropZone()
+      const file = e.dataTransfer.files[0]
+      handleMediaUpload(file)
+    },
+    { signal: mcSignal },
+  )
 }

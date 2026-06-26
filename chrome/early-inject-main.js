@@ -1,8 +1,6 @@
 // Runs in MAIN world at document_start BEFORE Twitch's JS
 // Intercepts image src/srcset setters to fix heatsync emote URLs
-(function() {
-  'use strict'
-
+;(() => {
   // Re-entry guard: if script already ran, remove old listeners before re-registering
   if (window.__heatsyncEarlyInject) {
     const prev = window.__heatsyncEarlyInject
@@ -15,7 +13,9 @@
 
   // Firefox marks some globals (WebSocket, fetch, Image) as read-only
   function safeOverride(obj, prop, value) {
-    try { obj[prop] = value } catch {
+    try {
+      obj[prop] = value
+    } catch {
       Object.defineProperty(obj, prop, { value, writable: true, configurable: true })
     }
   }
@@ -50,9 +50,8 @@
     try {
       const msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data
       if (msg.type !== 'notification' || !msg.notification?.pubsub) return
-      const pubsub = typeof msg.notification.pubsub === 'string'
-        ? JSON.parse(msg.notification.pubsub)
-        : msg.notification.pubsub
+      const pubsub =
+        typeof msg.notification.pubsub === 'string' ? JSON.parse(msg.notification.pubsub) : msg.notification.pubsub
       const evtType = pubsub.type
       if (!evtType) return
 
@@ -61,30 +60,62 @@
 
       if (evtType === 'raid_update_v5' && pubsub.raid) {
         const r = pubsub.raid
-        window.postMessage({ type: 'heatsync-hermes-event', eventType: 'raid', channel: resolveChannel(r.source_id), data: {
-          target: r.target_login || r.target_display_name || 'unknown',
-          viewers: r.viewer_count || 0
-        }}, location.origin)
+        window.postMessage(
+          {
+            type: 'heatsync-hermes-event',
+            eventType: 'raid',
+            channel: resolveChannel(r.source_id),
+            data: {
+              target: r.target_login || r.target_display_name || 'unknown',
+              viewers: r.viewer_count || 0,
+            },
+          },
+          location.origin,
+        )
       } else if (evtType === 'hype-train-start' && pubsub.data) {
         const d = pubsub.data
-        window.postMessage({ type: 'heatsync-hermes-event', eventType: 'hype-train-start', channel: resolveChannel(d.channel_id), data: {
-          level: d.progress?.level?.value || 1
-        }}, location.origin)
+        window.postMessage(
+          {
+            type: 'heatsync-hermes-event',
+            eventType: 'hype-train-start',
+            channel: resolveChannel(d.channel_id),
+            data: {
+              level: d.progress?.level?.value || 1,
+            },
+          },
+          location.origin,
+        )
       } else if (evtType === 'hype-train-progression' && pubsub.data) {
         // Skip progressions — too spammy, only show start/end
       } else if (evtType === 'hype-train-end' && pubsub.data) {
         const d = pubsub.data
-        window.postMessage({ type: 'heatsync-hermes-event', eventType: 'hype-train-end', channel: resolveChannel(d.channel_id), data: {
-          level: d.progress?.level?.value || 1
-        }}, location.origin)
+        window.postMessage(
+          {
+            type: 'heatsync-hermes-event',
+            eventType: 'hype-train-end',
+            channel: resolveChannel(d.channel_id),
+            data: {
+              level: d.progress?.level?.value || 1,
+            },
+          },
+          location.origin,
+        )
       } else if (evtType === 'reward-redeemed' && pubsub.data?.redemption) {
         const r = pubsub.data.redemption
-        window.postMessage({ type: 'heatsync-hermes-event', eventType: 'redeem', channel: resolveChannel(r.channel_id), data: {
-          user: r.user?.display_name || r.user?.login || 'unknown',
-          title: r.reward?.title || 'reward',
-          cost: r.reward?.cost || 0,
-          rewardId: r.reward?.id || ''
-        }}, location.origin)
+        window.postMessage(
+          {
+            type: 'heatsync-hermes-event',
+            eventType: 'redeem',
+            channel: resolveChannel(r.channel_id),
+            data: {
+              user: r.user?.display_name || r.user?.login || 'unknown',
+              title: r.reward?.title || 'reward',
+              cost: r.reward?.cost || 0,
+              rewardId: r.reward?.id || '',
+            },
+          },
+          location.origin,
+        )
       }
       // Pinned messages
       else if ((evtType === 'pin-message' || evtType === 'pinned-chat') && pubsub.data) {
@@ -92,12 +123,30 @@
         const text = d.message?.message?.text || d.message?.text || d.text || ''
         const sender = d.message?.sender?.displayName || d.message?.sender?.login || d.pinned_by?.display_name || ''
         if (text) {
-          window.postMessage({ type: 'heatsync-hermes-event', eventType: 'pin', channel: resolveChannel(d.channel_id || ''), data: {
-            message: text, sender, id: d.id || d.message?.id || ''
-          }}, location.origin)
+          window.postMessage(
+            {
+              type: 'heatsync-hermes-event',
+              eventType: 'pin',
+              channel: resolveChannel(d.channel_id || ''),
+              data: {
+                message: text,
+                sender,
+                id: d.id || d.message?.id || '',
+              },
+            },
+            location.origin,
+          )
         }
       } else if (evtType === 'unpin-message' || evtType === 'unpinned-chat') {
-        window.postMessage({ type: 'heatsync-hermes-event', eventType: 'unpin', channel: resolveChannel(pubsub.data?.channel_id || ''), data: {} }, location.origin)
+        window.postMessage(
+          {
+            type: 'heatsync-hermes-event',
+            eventType: 'unpin',
+            channel: resolveChannel(pubsub.data?.channel_id || ''),
+            data: {},
+          },
+          location.origin,
+        )
       }
       // Sub gifts — exact payload TBD, add when discovered
     } catch (err) {
@@ -105,10 +154,8 @@
     }
   }
 
-  const HsWebSocket = function(url, protocols) {
-    const ws = protocols !== undefined
-      ? new OrigWebSocket(url, protocols)
-      : new OrigWebSocket(url)
+  const HsWebSocket = (url, protocols) => {
+    const ws = protocols !== undefined ? new OrigWebSocket(url, protocols) : new OrigWebSocket(url)
     if (typeof url === 'string' && url.includes('hermes.twitch.tv')) {
       ws.addEventListener('message', handleHermesMessage)
       log('Hermes WebSocket intercepted')
@@ -150,7 +197,8 @@
       const nextData = document.getElementById('__NEXT_DATA__')
       if (nextData?.textContent) {
         const data = JSON.parse(nextData.textContent)
-        const ch = data?.props?.pageProps?.channelId || data?.props?.relayEnvironment?.store?.['client:root']?.channel?.id
+        const ch =
+          data?.props?.pageProps?.channelId || data?.props?.relayEnvironment?.store?.['client:root']?.channel?.id
         if (ch) setChannelId(String(ch), slug)
       }
     } catch {}
@@ -169,7 +217,8 @@
   // Captures persisted query hashes, integrity tokens, and response data
   // from Twitch's own GQL calls. Proxies GQL requests from content scripts.
   const gql = {
-    hashes: {         // operationName → sha256Hash (seeded with known working hashes)
+    hashes: {
+      // operationName → sha256Hash (seeded with known working hashes)
       MakePrediction: 'b44682ecc88358817009f20e69d75081b1e58825bb40aa53d5dbadcc17c881d8',
       ChannelPointsPredictionContext: 'beb846598256b75bd7c1fe54a80431335996153e358ca9c7837ce7bb83d7d383',
       // Resub/sub-anniversary "Share to chat" — fires the celebrated USERNOTICE
@@ -185,15 +234,15 @@
       // own follow button does. Hashes auto-update if rotated. Used by
       // cross-follow.js to propagate heatsync follows onto twitch.
       FollowButton_FollowUser: '800e7346bdf7e5278a3c1d3f21b2b56e2639928f86815677a7126b093b2fdd08',
-      FollowButton_UnfollowUser: 'f7dae976ebf41c755ae2d758546bfd176b4eeb856656098bb40e0a672ca0d880'
+      FollowButton_UnfollowUser: 'f7dae976ebf41c755ae2d758546bfd176b4eeb856656098bb40e0a672ca0d880',
     },
-    integrity: null,  // Client-Integrity token
-    clientId: null,   // Client-Id
-    authToken: null,  // OAuth token
-    userId: null,     // Logged-in user's twitch ID (resolved via currentUser GQL)
-    userLogin: null,  // Logged-in user's login
-    cache: {},        // operationName → { data, ts }
-    pendingRequests: new Map() // queued requests waiting for hashes
+    integrity: null, // Client-Integrity token
+    clientId: null, // Client-Id
+    authToken: null, // OAuth token
+    userId: null, // Logged-in user's twitch ID (resolved via currentUser GQL)
+    userLogin: null, // Logged-in user's login
+    cache: {}, // operationName → { data, ts }
+    pendingRequests: new Map(), // queued requests waiting for hashes
   }
 
   // One-time self-identification: as soon as we have an auth token, fetch
@@ -208,55 +257,79 @@
     origFetch('https://gql.twitch.tv/gql', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Client-Id': cid, Authorization: 'OAuth ' + gql.authToken },
-      body: JSON.stringify({ query: '{ currentUser { id login displayName } }' })
-    }).then(r => {
-      if (!r.ok) { console.warn('[heatsync-gql] self-auth http', r.status); return null }
-      return r.json()
-    }).then(d => {
-      _selfFetchInFlight = false
-      const cu = d?.data?.currentUser
-      if (!cu?.id) return
-      gql.userId = String(cu.id)
-      gql.userLogin = cu.login
-      try {
-        document.documentElement.dataset.hsSelfTwitchId = String(cu.id)
-        document.documentElement.dataset.hsSelfTwitchLogin = String(cu.login || '').toLowerCase()
-        window.postMessage({ type: 'heatsync-self-twitch-id', twitchId: String(cu.id), login: String(cu.login || '').toLowerCase() }, location.origin)
-      } catch {}
-    }).catch(e => {
-      _selfFetchInFlight = false
-      console.warn('[heatsync-gql] self-auth failed:', e?.message || e)
+      body: JSON.stringify({ query: '{ currentUser { id login displayName } }' }),
     })
+      .then((r) => {
+        if (!r.ok) {
+          console.warn('[heatsync-gql] self-auth http', r.status)
+          return null
+        }
+        return r.json()
+      })
+      .then((d) => {
+        _selfFetchInFlight = false
+        const cu = d?.data?.currentUser
+        if (!cu?.id) return
+        gql.userId = String(cu.id)
+        gql.userLogin = cu.login
+        try {
+          document.documentElement.dataset.hsSelfTwitchId = String(cu.id)
+          document.documentElement.dataset.hsSelfTwitchLogin = String(cu.login || '').toLowerCase()
+          window.postMessage(
+            { type: 'heatsync-self-twitch-id', twitchId: String(cu.id), login: String(cu.login || '').toLowerCase() },
+            location.origin,
+          )
+        } catch {}
+      })
+      .catch((e) => {
+        _selfFetchInFlight = false
+        console.warn('[heatsync-gql] self-auth failed:', e?.message || e)
+      })
   }
 
   const GQL_OPS_TO_CACHE = [
-    'ChannelPointsPredictionContext', 'CommunityPointsContext',
-    'ChannelPointsContext', 'ActivePoll', 'CreatePoll',
-    'MakePrediction', 'ChannelPointsRewardRedemption'
+    'ChannelPointsPredictionContext',
+    'CommunityPointsContext',
+    'ChannelPointsContext',
+    'ActivePoll',
+    'CreatePoll',
+    'MakePrediction',
+    'ChannelPointsRewardRedemption',
   ]
-
 
   // Anon-chat presence-blocklist (FFZ-style read-only mode)
   const HS_ANON_OPS = new Set([
-    'UpdateUserActivity', 'UseLive', 'PresenceMap', 'UpdateChatPresence',
-    'PresenceUpdate', 'ChatPresence', 'CurrentUserActiveChannel'
+    'UpdateUserActivity',
+    'UseLive',
+    'PresenceMap',
+    'UpdateChatPresence',
+    'PresenceUpdate',
+    'ChatPresence',
+    'CurrentUserActiveChannel',
   ])
 
   // Hook fetch to intercept Twitch GQL traffic
   const origFetch = window.fetch
-  const hsFetch = function(input, init) {
+  const hsFetch = function (input, init) {
     const url = typeof input === 'string' ? input : input?.url
     // Anon mode: drop presence/activity GQL calls so Twitch stops broadcasting "online"
-    if (url && url.includes('gql.twitch.tv') && init?.method === 'POST' &&
-        document.documentElement.classList.contains('hs-anon-chat')) {
+    if (
+      url &&
+      url.includes('gql.twitch.tv') &&
+      init?.method === 'POST' &&
+      document.documentElement.classList.contains('hs-anon-chat')
+    ) {
       try {
         const body = typeof init.body === 'string' ? JSON.parse(init.body) : null
-        const ops = Array.isArray(body) ? body : (body ? [body] : [])
-        if (ops.length && ops.every(op => HS_ANON_OPS.has(op?.operationName))) {
+        const ops = Array.isArray(body) ? body : body ? [body] : []
+        if (ops.length && ops.every((op) => HS_ANON_OPS.has(op?.operationName))) {
           // Pretend it succeeded; return empty data array
-          return Promise.resolve(new Response(JSON.stringify(ops.map(() => ({ data: null }))), {
-            status: 200, headers: { 'Content-Type': 'application/json' }
-          }))
+          return Promise.resolve(
+            new Response(JSON.stringify(ops.map(() => ({ data: null }))), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            }),
+          )
         }
       } catch {}
     }
@@ -281,7 +354,7 @@
             ensureSelfIdentified()
           }
         }
-      } catch(e) {}
+      } catch (e) {}
 
       // Capture operation hashes from request body
       try {
@@ -296,47 +369,57 @@
             }
           }
         }
-      } catch(e) {}
+      } catch (e) {}
 
       // Intercept response to cache data
       const promise = origFetch.apply(this, arguments)
-      promise.then(resp => {
-        if (!resp.ok) return
-        const clone = resp.clone()
-        clone.json().then(data => {
-          const items = Array.isArray(data) ? data : [data]
-          for (const item of items) {
-            const opName = item?.extensions?.operationName
-            if (!opName) continue
-            if (Object.keys(gql.cache).length > 50) {
-              const oldest = Object.entries(gql.cache).reduce((a, b) => a[1].ts < b[1].ts ? a : b)
-              delete gql.cache[oldest[0]]
-            }
-            gql.cache[opName] = { data: item.data, ts: Date.now() }
-            // Extract user ID → login mappings for Hermes channel resolution
-            try {
-              const u = item.data?.user || item.data?.channel?.owner
-              if (u?.id && u?.login) setChannelId(u.id, u.login.toLowerCase())
-            } catch {}
-            // Forward prediction/poll/points data to content script
-            if (GQL_OPS_TO_CACHE.some(n => opName.includes(n) || opName.toLowerCase().includes(n.toLowerCase()))) {
-              window.postMessage({
-                type: 'heatsync-gql-data',
-                operation: opName,
-                data: item.data,
-                errors: item.errors || null
-              }, location.origin)
-            }
-          }
-          // Flush any pending requests that now have hashes
-          for (const [id, req] of gql.pendingRequests) {
-            if (gql.hashes[req.operation]) {
-              gql.pendingRequests.delete(id)
-              executeGqlProxy(req)
-            }
-          }
-        }).catch(() => {})
-      }).catch(() => {})
+      promise
+        .then((resp) => {
+          if (!resp.ok) return
+          const clone = resp.clone()
+          clone
+            .json()
+            .then((data) => {
+              const items = Array.isArray(data) ? data : [data]
+              for (const item of items) {
+                const opName = item?.extensions?.operationName
+                if (!opName) continue
+                if (Object.keys(gql.cache).length > 50) {
+                  const oldest = Object.entries(gql.cache).reduce((a, b) => (a[1].ts < b[1].ts ? a : b))
+                  delete gql.cache[oldest[0]]
+                }
+                gql.cache[opName] = { data: item.data, ts: Date.now() }
+                // Extract user ID → login mappings for Hermes channel resolution
+                try {
+                  const u = item.data?.user || item.data?.channel?.owner
+                  if (u?.id && u?.login) setChannelId(u.id, u.login.toLowerCase())
+                } catch {}
+                // Forward prediction/poll/points data to content script
+                if (
+                  GQL_OPS_TO_CACHE.some((n) => opName.includes(n) || opName.toLowerCase().includes(n.toLowerCase()))
+                ) {
+                  window.postMessage(
+                    {
+                      type: 'heatsync-gql-data',
+                      operation: opName,
+                      data: item.data,
+                      errors: item.errors || null,
+                    },
+                    location.origin,
+                  )
+                }
+              }
+              // Flush any pending requests that now have hashes
+              for (const [id, req] of gql.pendingRequests) {
+                if (gql.hashes[req.operation]) {
+                  gql.pendingRequests.delete(id)
+                  executeGqlProxy(req)
+                }
+              }
+            })
+            .catch(() => {})
+        })
+        .catch(() => {})
 
       return promise
     }
@@ -344,15 +427,21 @@
     // Capture integrity token from Twitch's own /integrity calls
     if (url && url.includes('gql.twitch.tv/integrity')) {
       const promise = origFetch.apply(this, arguments)
-      promise.then(resp => {
-        if (!resp.ok) return
-        resp.clone().json().then(data => {
-          if (data.token) {
-            gql.integrity = data.token
-            gql.integrityTs = Date.now()
-          }
-        }).catch(() => {})
-      }).catch(() => {})
+      promise
+        .then((resp) => {
+          if (!resp.ok) return
+          resp
+            .clone()
+            .json()
+            .then((data) => {
+              if (data.token) {
+                gql.integrity = data.token
+                gql.integrityTs = Date.now()
+              }
+            })
+            .catch(() => {})
+        })
+        .catch(() => {})
       return promise
     }
 
@@ -365,7 +454,10 @@
     if (gql.authToken) return gql.authToken
     try {
       const m = document.cookie.match(/(?:^|;\s*)auth-token=([^;]+)/)
-      if (m) { gql.authToken = m[1]; return m[1] }
+      if (m) {
+        gql.authToken = m[1]
+        return m[1]
+      }
     } catch {}
     return null
   }
@@ -414,26 +506,29 @@
           headers: {
             'Content-Type': 'application/json',
             'Client-Id': cid,
-            'Authorization': 'OAuth ' + token,
+            Authorization: 'OAuth ' + token,
             'X-Device-Id': getDeviceId(),
           },
-          body: '{}'
+          body: '{}',
         })
         if (!r.ok) return null
         const d = await r.json()
         if (!d?.token) return null
         gql.integrity = d.token
         // Twitch returns expiration as ms-since-epoch; fall back to +5min if missing/bogus
-        gql.integrityExp = (typeof d.expiration === 'number' && d.expiration > Date.now())
-          ? d.expiration : (Date.now() + 5 * 60 * 1000)
+        gql.integrityExp =
+          typeof d.expiration === 'number' && d.expiration > Date.now() ? d.expiration : Date.now() + 5 * 60 * 1000
         gql.integrityTs = Date.now()
         return d.token
       } catch {
         return null
       }
     })()
-    try { return await _integrityRefreshPromise }
-    finally { _integrityRefreshPromise = null }
+    try {
+      return await _integrityRefreshPromise
+    } finally {
+      _integrityRefreshPromise = null
+    }
   }
 
   function buildGqlHeaders() {
@@ -450,10 +545,14 @@
   async function executeGqlProxy(req) {
     const hash = gql.hashes[req.operation]
     if (!hash && !req.rawQuery) {
-      window.postMessage({
-        type: 'heatsync-gql-response', id: req.id,
-        error: 'no hash for ' + req.operation
-      }, location.origin)
+      window.postMessage(
+        {
+          type: 'heatsync-gql-response',
+          id: req.id,
+          error: 'no hash for ' + req.operation,
+        },
+        location.origin,
+      )
       return
     }
 
@@ -462,48 +561,56 @@
       : {
           operationName: req.operation,
           extensions: { persistedQuery: { version: 1, sha256Hash: hash } },
-          variables: req.variables || {}
+          variables: req.variables || {},
         }
 
     // Support batched operations
-    const payload = req.batch ? req.batch.map(op => ({
-      operationName: op.operation,
-      extensions: { persistedQuery: { version: 1, sha256Hash: gql.hashes[op.operation] || hash } },
-      variables: op.variables || {}
-    })) : body
+    const payload = req.batch
+      ? req.batch.map((op) => ({
+          operationName: op.operation,
+          extensions: { persistedQuery: { version: 1, sha256Hash: gql.hashes[op.operation] || hash } },
+          variables: op.variables || {},
+        }))
+      : body
 
     if (!getAuthToken()) {
-      window.postMessage({
-        type: 'heatsync-gql-response', id: req.id,
-        error: 'no twitch auth token captured — refresh the page'
-      }, location.origin)
+      window.postMessage(
+        {
+          type: 'heatsync-gql-response',
+          id: req.id,
+          error: 'no twitch auth token captured — refresh the page',
+        },
+        location.origin,
+      )
       return
     }
 
     // Mutations need valid integrity — reads work without. Detect:
     //   rawQuery starting with "mutation", or non-cache GQL_OPS persisted query
-    const isMutation = req.rawQuery
-      ? /^\s*mutation\b/i.test(req.rawQuery)
-      : !GQL_OPS_TO_CACHE.includes(req.operation)
+    const isMutation = req.rawQuery ? /^\s*mutation\b/i.test(req.rawQuery) : !GQL_OPS_TO_CACHE.includes(req.operation)
     if (isMutation) {
-      try { await fetchIntegrity() } catch {}
+      try {
+        await fetchIntegrity()
+      } catch {}
     }
 
-    const doFetch = () => origFetch('https://gql.twitch.tv/gql', {
-      method: 'POST',
-      headers: buildGqlHeaders(),
-      body: JSON.stringify(payload)
-    }).then(r => {
-      if (DEBUG) console.log('[heatsync-gql] response status:', r.status)
-      return r.json()
-    })
+    const doFetch = () =>
+      origFetch('https://gql.twitch.tv/gql', {
+        method: 'POST',
+        headers: buildGqlHeaders(),
+        body: JSON.stringify(payload),
+      }).then((r) => {
+        if (DEBUG) console.log('[heatsync-gql] response status:', r.status)
+        return r.json()
+      })
 
     try {
       let data = await doFetch()
       // On integrity failure, force-refresh integrity and retry once
       const items = Array.isArray(data) ? data : [data]
-      const integrityFail = items.some(it => Array.isArray(it?.errors) &&
-        it.errors.some(e => /integrity/i.test(e?.message || '')))
+      const integrityFail = items.some(
+        (it) => Array.isArray(it?.errors) && it.errors.some((e) => /integrity/i.test(e?.message || '')),
+      )
       if (integrityFail) {
         gql.integrity = null
         gql.integrityExp = 0
@@ -514,7 +621,10 @@
       window.postMessage({ type: 'heatsync-gql-response', id: req.id, data }, location.origin)
     } catch (err) {
       console.error('[heatsync-gql] fetch error:', err?.message || err)
-      window.postMessage({ type: 'heatsync-gql-response', id: req.id, error: err?.message || String(err) }, location.origin)
+      window.postMessage(
+        { type: 'heatsync-gql-response', id: req.id, error: err?.message || String(err) },
+        location.origin,
+      )
     }
   }
 
@@ -551,12 +661,15 @@
       for (const op of ops) {
         if (gql.cache[op]) result[op] = gql.cache[op]
       }
-      window.postMessage({
-        type: 'heatsync-gql-cache-response',
-        id: e.data.id,
-        data: result,
-        hashes: Object.keys(gql.hashes)
-      }, location.origin)
+      window.postMessage(
+        {
+          type: 'heatsync-gql-cache-response',
+          id: e.data.id,
+          data: result,
+          hashes: Object.keys(gql.hashes),
+        },
+        location.origin,
+      )
       return
     }
 
@@ -570,7 +683,10 @@
         return
       }
       if (e.data.rawQuery) {
-        window.postMessage({ type: 'heatsync-apollo-mutate-error', error: 'raw queries not allowed', requestId: e.data.requestId }, location.origin)
+        window.postMessage(
+          { type: 'heatsync-apollo-mutate-error', error: 'raw queries not allowed', requestId: e.data.requestId },
+          location.origin,
+        )
         return
       }
       const ALLOWED_MUTATIONS = [
@@ -594,25 +710,35 @@
         // link chain. SendWhisper Document is loaded from webpack by searchTerm.
         'SendWhisper',
       ]
-      if (e.data.searchTerm && !ALLOWED_MUTATIONS.some(m => e.data.searchTerm.includes(m))) {
+      if (e.data.searchTerm && !ALLOWED_MUTATIONS.some((m) => e.data.searchTerm.includes(m))) {
         log('heatsync-apollo-mutate: rejected — searchTerm not in allowlist:', e.data.searchTerm)
-        window.postMessage({ type: 'heatsync-apollo-mutate-error', error: 'mutation not allowed', requestId: e.data.requestId }, location.origin)
+        window.postMessage(
+          { type: 'heatsync-apollo-mutate-error', error: 'mutation not allowed', requestId: e.data.requestId },
+          location.origin,
+        )
         return
       }
       const reqId = e.data.id
-      const searchTerm = e.data.searchTerm   // string to find in webpack module factory source
+      const searchTerm = e.data.searchTerm // string to find in webpack module factory source
       const variables = e.data.variables || {}
-      const resultField = e.data.resultField  // e.g. 'updateUserPredictionSettings'
+      const resultField = e.data.resultField // e.g. 'updateUserPredictionSettings'
       ;(async () => {
-        const respond = (data) => window.postMessage({
-          type: 'heatsync-apollo-mutate-response', id: reqId, data
-        }, location.origin)
+        const respond = (data) =>
+          window.postMessage(
+            {
+              type: 'heatsync-apollo-mutate-response',
+              id: reqId,
+              data,
+            },
+            location.origin,
+          )
         try {
           // Find Apollo client from React fiber tree
           // React 18 uses __reactContainer$, React 17 uses __reactFiber$
           // Apollo client lives in a context provider's props.value (BFS down from root)
           const root = document.getElementById('root')
-          const fiberKey = root && Object.keys(root).find(k => k.startsWith('__reactContainer$') || k.startsWith('__reactFiber$'))
+          const fiberKey =
+            root && Object.keys(root).find((k) => k.startsWith('__reactContainer$') || k.startsWith('__reactFiber$'))
           let apolloClient = null
           if (fiberKey) {
             const queue = [root[fiberKey]]
@@ -627,7 +753,10 @@
               let state = node.memoizedState
               while (state) {
                 const val = state.memoizedState
-                if (val?.client?.mutate && val?.client?.query) { apolloClient = val.client; break }
+                if (val?.client?.mutate && val?.client?.query) {
+                  apolloClient = val.client
+                  break
+                }
                 state = state.next
               }
               // Check context provider props
@@ -660,7 +789,7 @@
               return null
             }
             const proxyStub = () => {
-              const t = function () { return proxyStub() }
+              const t = () => proxyStub()
               return new Proxy(t, {
                 get(_, p) {
                   if (p === 'default') return t
@@ -668,7 +797,9 @@
                   if (p === 'length') return 0
                   return proxyStub()
                 },
-                apply() { return proxyStub() }
+                apply() {
+                  return proxyStub()
+                },
               })
             }
             const loadMod = (id) => {
@@ -681,7 +812,9 @@
                 if (typeof depId === 'number' || /^\d+$/.test(String(depId))) return loadMod(depId)
                 return proxyStub()
               }
-              try { factory(m, m.exports, req) } catch {}
+              try {
+                factory(m, m.exports, req)
+              } catch {}
               modCache[key] = m.exports
               return m.exports
             }
@@ -694,8 +827,17 @@
                 const src = factory.toString()
                 if (!src.includes(searchTerm)) continue
                 const exp = loadMod(id)
-                if (exp?.kind === 'Document' && exp.definitions?.some(d => d.name?.value === searchTerm)) { doc = exp; break }
-                if (exp?.default?.kind === 'Document' && exp.default.definitions?.some(d => d.name?.value === searchTerm)) { doc = exp.default; break }
+                if (exp?.kind === 'Document' && exp.definitions?.some((d) => d.name?.value === searchTerm)) {
+                  doc = exp
+                  break
+                }
+                if (
+                  exp?.default?.kind === 'Document' &&
+                  exp.default.definitions?.some((d) => d.name?.value === searchTerm)
+                ) {
+                  doc = exp.default
+                  break
+                }
               }
               if (doc) break
             }
@@ -735,12 +877,18 @@
       ;(async () => {
         try {
           const allowedPrefixes = ['https://api.twitch.tv/helix/', 'https://gql.twitch.tv/']
-          if (!req.url || !allowedPrefixes.some(p => req.url.startsWith(p))) {
-            window.postMessage({ type: e.data.type + '-error', error: 'URL not allowed', requestId: e.data.requestId }, location.origin)
+          if (!req.url || !allowedPrefixes.some((p) => req.url.startsWith(p))) {
+            window.postMessage(
+              { type: e.data.type + '-error', error: 'URL not allowed', requestId: e.data.requestId },
+              location.origin,
+            )
             return
           }
           if (!getAuthToken()) {
-            window.postMessage({ type: 'heatsync-helix-response', id: req.id, error: 'not logged into twitch' }, location.origin)
+            window.postMessage(
+              { type: 'heatsync-helix-response', id: req.id, error: 'not logged into twitch' },
+              location.origin,
+            )
             return
           }
           const cid = gql.clientId || 'kimne78kx3ncx6brgo4mv6wki5h1ko'
@@ -754,7 +902,7 @@
                 const gqlResp = await origFetch('https://gql.twitch.tv/gql', {
                   method: 'POST',
                   headers: buildGqlHeaders(),
-                  body: JSON.stringify({ query: '{ currentUser { id login } }' })
+                  body: JSON.stringify({ query: '{ currentUser { id login } }' }),
                 })
                 if (gqlResp.ok) {
                   const gqlData = await gqlResp.json()
@@ -768,18 +916,21 @@
               } catch {}
             }
             if (!gql.userId) {
-              window.postMessage({ type: 'heatsync-helix-response', id: req.id, error: 'could not resolve user ID' }, location.origin)
+              window.postMessage(
+                { type: 'heatsync-helix-response', id: req.id, error: 'could not resolve user ID' },
+                location.origin,
+              )
               return
             }
             url = url.replace(/\{me\}/g, gql.userId)
           }
 
-          const hdrs = { 'Authorization': 'Bearer ' + getAuthToken(), 'Client-Id': cid }
+          const hdrs = { Authorization: 'Bearer ' + getAuthToken(), 'Client-Id': cid }
           if (req.body) hdrs['Content-Type'] = 'application/json'
           const resp = await origFetch(url, {
             method: req.method || 'GET',
             headers: hdrs,
-            body: req.body ? JSON.stringify(req.body) : undefined
+            body: req.body ? JSON.stringify(req.body) : undefined,
           })
           if (resp.status === 204) {
             window.postMessage({ type: 'heatsync-helix-response', id: req.id, ok: true }, location.origin)
@@ -788,7 +939,14 @@
             if (resp.ok) {
               window.postMessage({ type: 'heatsync-helix-response', id: req.id, ok: true, data }, location.origin)
             } else {
-              window.postMessage({ type: 'heatsync-helix-response', id: req.id, error: `${resp.status}: ${data?.message || JSON.stringify(data)}` }, location.origin)
+              window.postMessage(
+                {
+                  type: 'heatsync-helix-response',
+                  id: req.id,
+                  error: `${resp.status}: ${data?.message || JSON.stringify(data)}`,
+                },
+                location.origin,
+              )
             }
           }
         } catch (err) {
@@ -803,23 +961,40 @@
     // approach in twitch-api.js — kept as no-op for backward compat if a
     // content script ever fires the old message.)
     if (e.data?.type === 'heatsync-open-bits-modal') {
-      window.postMessage({ type: 'heatsync-open-bits-modal-response', id: e.data.id, error: 'deprecated — bits now opens via popup window' }, location.origin)
+      window.postMessage(
+        {
+          type: 'heatsync-open-bits-modal-response',
+          id: e.data.id,
+          error: 'deprecated — bits now opens via popup window',
+        },
+        location.origin,
+      )
       return
     }
     // Content script requesting GQL proxy call
     if (e.data?.type === 'heatsync-gql-request') {
       if (!_hsNonce || e.data.nonce !== _hsNonce) {
         log('heatsync-gql-request: rejected — missing or invalid nonce')
-        window.postMessage({
-          type: 'heatsync-gql-response', id: e.data.id, error: 'invalid nonce'
-        }, location.origin)
+        window.postMessage(
+          {
+            type: 'heatsync-gql-response',
+            id: e.data.id,
+            error: 'invalid nonce',
+          },
+          location.origin,
+        )
         return
       }
       const req = e.data
       if (req.rawQuery) {
-        window.postMessage({
-          type: 'heatsync-gql-response', id: req.id, error: 'raw queries not allowed'
-        }, location.origin)
+        window.postMessage(
+          {
+            type: 'heatsync-gql-response',
+            id: req.id,
+            error: 'raw queries not allowed',
+          },
+          location.origin,
+        )
         return
       }
       if (gql.hashes[req.operation]) {
@@ -830,10 +1005,14 @@
         setTimeout(() => {
           if (gql.pendingRequests.has(req.id)) {
             gql.pendingRequests.delete(req.id)
-            window.postMessage({
-              type: 'heatsync-gql-response', id: req.id,
-              error: 'hash not available for ' + req.operation
-            }, location.origin)
+            window.postMessage(
+              {
+                type: 'heatsync-gql-response',
+                id: req.id,
+                error: 'hash not available for ' + req.operation,
+              },
+              location.origin,
+            )
           }
         }, 2000)
       }
@@ -862,7 +1041,7 @@
 
   function fixExistingImages() {
     const images = document.querySelectorAll('img[src*="__FFZ__999999"]')
-    images.forEach(img => {
+    images.forEach((img) => {
       if (img.dataset.heatsyncFixed) return
       const fixedUrl = fixUrl(img.src)
       if (fixedUrl) {
@@ -898,8 +1077,10 @@
   const srcDesc = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src')
   if (srcDesc) {
     Object.defineProperty(HTMLImageElement.prototype, 'src', {
-      get: function() { return srcDesc.get.call(this) },
-      set: function(value) {
+      get: function () {
+        return srcDesc.get.call(this)
+      },
+      set: function (value) {
         const fixed = fixUrl(value)
         if (fixed) {
           this.dataset.heatsyncFixed = 'true'
@@ -908,13 +1089,13 @@
         return srcDesc.set.call(this, value)
       },
       configurable: true,
-      enumerable: true
+      enumerable: true,
     })
   }
 
   // Override setAttribute for src and srcset
   const origSetAttr = Element.prototype.setAttribute
-  const hsSetAttribute = function(name, value) {
+  const hsSetAttribute = function (name, value) {
     if (this.tagName === 'IMG' && (name === 'src' || name === 'srcset')) {
       const fixed = fixUrl(value)
       if (fixed) {
@@ -931,8 +1112,10 @@
   const srcsetDesc = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'srcset')
   if (srcsetDesc) {
     Object.defineProperty(HTMLImageElement.prototype, 'srcset', {
-      get: function() { return srcsetDesc.get.call(this) },
-      set: function(value) {
+      get: function () {
+        return srcsetDesc.get.call(this)
+      },
+      set: function (value) {
         const fixed = fixUrl(value)
         if (fixed) {
           this.dataset.heatsyncFixed = 'true'
@@ -941,18 +1124,18 @@
         return srcsetDesc.set.call(this, value)
       },
       configurable: true,
-      enumerable: true
+      enumerable: true,
     })
   }
 
   // Override Image constructor
   const OrigImage = window.Image
-  const HsImage = function(width, height) {
+  const HsImage = (width, height) => {
     const img = new OrigImage(width, height)
     const instSrcDesc = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src')
     Object.defineProperty(img, 'src', {
-      get: function() { return instSrcDesc.get.call(img) },
-      set: function(value) {
+      get: () => instSrcDesc.get.call(img),
+      set: (value) => {
         const fixed = fixUrl(value)
         if (fixed) {
           img.dataset.heatsyncFixed = 'true'
@@ -961,7 +1144,7 @@
         return instSrcDesc.set.call(img, value)
       },
       configurable: true,
-      enumerable: true
+      enumerable: true,
     })
     return img
   }
@@ -970,13 +1153,13 @@
 
   // Override createElement for img tags
   const origCreateElement = document.createElement.bind(document)
-  const hsCreateElement = function(tag, options) {
+  const hsCreateElement = (tag, options) => {
     const el = origCreateElement(tag, options)
     if (tag.toLowerCase() === 'img') {
       const instSrcDesc = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src')
       Object.defineProperty(el, 'src', {
-        get: function() { return instSrcDesc.get.call(el) },
-        set: function(value) {
+        get: () => instSrcDesc.get.call(el),
+        set: (value) => {
           const fixed = fixUrl(value)
           if (fixed) {
             el.dataset.heatsyncFixed = 'true'
@@ -985,7 +1168,7 @@
           return instSrcDesc.set.call(el, value)
         },
         configurable: true,
-        enumerable: true
+        enumerable: true,
       })
     }
     return el
@@ -1003,12 +1186,12 @@
     window.postMessage({ type: 'heatsync-nav', url: location.href }, location.origin)
   }
 
-  history.pushState = function(...args) {
+  history.pushState = (...args) => {
     origPushState(...args)
     notifyNav()
   }
 
-  history.replaceState = function(...args) {
+  history.replaceState = (...args) => {
     origReplaceState(...args)
     notifyNav()
   }
@@ -1029,35 +1212,43 @@
   function stampUserIds(container) {
     const msgs = container.querySelectorAll('.chat-line__message:not([data-user-id])')
     for (const msg of msgs) {
-      const key = Object.keys(msg).find(k => k.startsWith('__reactFiber$'))
+      const key = Object.keys(msg).find((k) => k.startsWith('__reactFiber$'))
       if (!key) continue
       let fiber = msg[key]
       let depth = 0
       while (fiber && depth < 20) {
         const props = fiber.memoizedProps
-        const uid = props?.message?.user?.userID
-                 || props?.message?.user?.id
-                 || props?.message?.userID
-                 || props?.user?.userID
-                 || props?.user?.id
-        if (uid) { msg.setAttribute('data-user-id', String(uid)); break }
+        const uid =
+          props?.message?.user?.userID ||
+          props?.message?.user?.id ||
+          props?.message?.userID ||
+          props?.user?.userID ||
+          props?.user?.id
+        if (uid) {
+          msg.setAttribute('data-user-id', String(uid))
+          break
+        }
         fiber = fiber.return
         depth++
       }
     }
   }
 
-  const uidObserver = new MutationObserver(mutations => {
+  const uidObserver = new MutationObserver((mutations) => {
     for (const m of mutations) {
       for (const node of m.addedNodes) {
         if (node.nodeType !== 1) continue
         if (node.classList?.contains('chat-line__message')) {
-          const key = Object.keys(node).find(k => k.startsWith('__reactFiber$'))
+          const key = Object.keys(node).find((k) => k.startsWith('__reactFiber$'))
           if (key) {
-            let fiber = node[key], depth = 0
+            let fiber = node[key],
+              depth = 0
             while (fiber && depth < 20) {
               const uid = fiber.memoizedProps?.message?.user?.userID
-              if (uid) { node.setAttribute('data-user-id', uid); break }
+              if (uid) {
+                node.setAttribute('data-user-id', uid)
+                break
+              }
               fiber = fiber.return
               depth++
             }
@@ -1071,7 +1262,9 @@
 
   // Start observing once chat container appears
   function startUidObserver() {
-    const container = document.querySelector('[class*="chat-scrollable-area__message-container"], [data-test-selector="chat-scrollable-area__message-container"]')
+    const container = document.querySelector(
+      '[class*="chat-scrollable-area__message-container"], [data-test-selector="chat-scrollable-area__message-container"]',
+    )
     if (container) {
       stampUserIds(container)
       uidObserver.observe(container, { childList: true, subtree: true })
@@ -1117,5 +1310,4 @@
     uidObserver.disconnect()
     hsRemoveListeners()
   })
-
 })()

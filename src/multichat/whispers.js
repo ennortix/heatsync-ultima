@@ -101,8 +101,13 @@ function resolveSelfColor() {
   // Check DOM for our username color
   try {
     const el = document.querySelector(`.chat-author__display-name[data-a-user="${me}"]`)
-    if (el) { selfWhisperColor = el.style.color || getComputedStyle(el).color; return }
-  } catch (e) { warn('selfWhisperColor DOM probe failed:', e?.message) }
+    if (el) {
+      selfWhisperColor = el.style.color || getComputedStyle(el).color
+      return
+    }
+  } catch (e) {
+    warn('selfWhisperColor DOM probe failed:', e?.message)
+  }
 }
 
 let _whisperSaveTimer = null
@@ -116,74 +121,85 @@ function saveWhispers() {
   for (const [key, u] of whisperUsers) users[key] = u
   try {
     trimWhisperTimeline()
-    chrome.storage.local.set({
-      hs_whispers_v2: {
-        timeline: whisperTimeline.slice(),
-        users,
-        lastKey: lastWhisperKey
-      }
-    }).catch(e => warn('whispers save failed:', e?.message))
-  } catch (e) { warn('whispers save failed:', e?.message) }
+    chrome.storage.local
+      .set({
+        hs_whispers_v2: {
+          timeline: whisperTimeline.slice(),
+          users,
+          lastKey: lastWhisperKey,
+        },
+      })
+      .catch((e) => warn('whispers save failed:', e?.message))
+  } catch (e) {
+    warn('whispers save failed:', e?.message)
+  }
 }
 
 function loadWhispers() {
   try {
-    chrome.storage.local.get(['hs_whispers_v2', 'hs_whispers']).then(stored => {
-      // Load v2 format (timeline)
-      const data = stored.hs_whispers_v2
-      if (data) {
-        if (Array.isArray(data.timeline)) {
-          for (const msg of data.timeline) {
-            if (!whisperTimeline.some(m => m.time === msg.time && m.text === msg.text)) {
-              whisperTimeline.push(msg)
+    chrome.storage.local
+      .get(['hs_whispers_v2', 'hs_whispers'])
+      .then((stored) => {
+        // Load v2 format (timeline)
+        const data = stored.hs_whispers_v2
+        if (data) {
+          if (Array.isArray(data.timeline)) {
+            for (const msg of data.timeline) {
+              if (!whisperTimeline.some((m) => m.time === msg.time && m.text === msg.text)) {
+                whisperTimeline.push(msg)
+              }
             }
           }
-        }
-        if (data.users) {
-          for (const [key, u] of Object.entries(data.users)) {
-            if (!whisperUsers.has(key)) whisperUsers.set(key, u)
+          if (data.users) {
+            for (const [key, u] of Object.entries(data.users)) {
+              if (!whisperUsers.has(key)) whisperUsers.set(key, u)
+            }
           }
+          if (data.lastKey) lastWhisperKey = data.lastKey
         }
-        if (data.lastKey) lastWhisperKey = data.lastKey
-      }
 
-      // Migrate v1 format (per-conversation) into timeline
-      const v1 = stored.hs_whispers
-      if (v1 && typeof v1 === 'object' && !v1.timeline) {
-        for (const [key, conv] of Object.entries(v1)) {
-          if (!conv || !conv.msgs) continue
-          whisperUsersSet(key, {
-            platform: conv.platform || (key.startsWith('hs:') ? 'heatsync' : 'twitch'),
-            userId: conv.userId,
-            displayName: conv.displayName,
-            color: conv.color || '#fff'
-          })
-          for (const m of conv.msgs) {
-            if (whisperTimeline.some(e => e.time === m.time && e.text === m.text)) continue
-            whisperTimeline.push({
-              user: m.self ? 'you' : m.user,
-              text: m.text,
-              color: m.color || '#fff',
-              time: m.time,
-              self: !!m.self,
+        // Migrate v1 format (per-conversation) into timeline
+        const v1 = stored.hs_whispers
+        if (v1 && typeof v1 === 'object' && !v1.timeline) {
+          for (const [key, conv] of Object.entries(v1)) {
+            if (!conv || !conv.msgs) continue
+            whisperUsersSet(key, {
               platform: conv.platform || (key.startsWith('hs:') ? 'heatsync' : 'twitch'),
-              key
+              userId: conv.userId,
+              displayName: conv.displayName,
+              color: conv.color || '#fff',
             })
+            for (const m of conv.msgs) {
+              if (whisperTimeline.some((e) => e.time === m.time && e.text === m.text)) continue
+              whisperTimeline.push({
+                user: m.self ? 'you' : m.user,
+                text: m.text,
+                color: m.color || '#fff',
+                time: m.time,
+                self: !!m.self,
+                platform: conv.platform || (key.startsWith('hs:') ? 'heatsync' : 'twitch'),
+                key,
+              })
+            }
           }
+          whisperTimeline.sort((a, b) => a.time - b.time)
+          trimWhisperTimeline()
+          // Clean up v1
+          try {
+            chrome.storage.local.remove('hs_whispers')
+          } catch {}
+          whisperSaveDebounced()
         }
-        whisperTimeline.sort((a, b) => a.time - b.time)
-        trimWhisperTimeline()
-        // Clean up v1
-        try { chrome.storage.local.remove('hs_whispers') } catch {}
-        whisperSaveDebounced()
-      }
 
-      // Re-derive latestAt from any unread on disk so red-dot survives boot.
-      const newest = whisperTimeline.reduce((mx, m) => !m.self && m.time > mx ? m.time : mx, 0)
-      if (newest > 0) noteSeenEvent('whispers', newest)
-      refreshSeenBadges()
-    }).catch((e) => warn('whispers load (storage.get) failed:', e?.message))
-  } catch (e) { warn('whispers load failed:', e?.message) }
+        // Re-derive latestAt from any unread on disk so red-dot survives boot.
+        const newest = whisperTimeline.reduce((mx, m) => (!m.self && m.time > mx ? m.time : mx), 0)
+        if (newest > 0) noteSeenEvent('whispers', newest)
+        refreshSeenBadges()
+      })
+      .catch((e) => warn('whispers load (storage.get) failed:', e?.message))
+  } catch (e) {
+    warn('whispers load failed:', e?.message)
+  }
 }
 
 function handleIncomingWhisper(msg) {
@@ -195,7 +211,7 @@ function handleIncomingWhisper(msg) {
     platform: 'twitch',
     userId: msg.userId,
     displayName: msg.user,
-    color: msg.color
+    color: msg.color,
   })
 
   whisperTimeline.push({
@@ -206,7 +222,7 @@ function handleIncomingWhisper(msg) {
     self: false,
     platform: 'twitch',
     key,
-    id: msg.id || ''
+    id: msg.id || '',
   })
   trimWhisperTimeline()
   lastWhisperKey = key
@@ -223,7 +239,7 @@ function handleIncomingWhisper(msg) {
       text: msg.text,
       color: msg.color,
       time: msg.time,
-      platform: 'twitch'
+      platform: 'twitch',
     })
   }
   whisperSaveDebounced()
@@ -237,7 +253,7 @@ function handleIncomingDm(data) {
     platform: 'heatsync',
     userId: data.from_user_id,
     displayName: data.from_display_name,
-    color: data.from_color || '#ff8700'
+    color: data.from_color || '#ff8700',
   })
 
   whisperTimeline.push({
@@ -248,7 +264,7 @@ function handleIncomingDm(data) {
     self: false,
     platform: 'heatsync',
     key,
-    id: data.id || ''
+    id: data.id || '',
   })
   trimWhisperTimeline()
   lastWhisperKey = key
@@ -264,7 +280,7 @@ function handleIncomingDm(data) {
       text: data.content,
       color: data.from_color || '#ff8700',
       time,
-      platform: 'heatsync'
+      platform: 'heatsync',
     })
   }
   whisperSaveDebounced()
@@ -281,7 +297,7 @@ function handleIncomingDm(data) {
 async function sendTwitchWhisperDirect(toUserId, message) {
   const { token } = await getTwitchAuthTokenAsync()
   if (!token) return { ok: false, noToken: true }
-  const nonce = (crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2, 12)}`)
+  const nonce = crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2, 12)}`
   const variables = { input: { recipientUserID: String(toUserId), message: String(message), nonce } }
   const result = await apolloMutate({ searchTerm: 'SendWhisper', variables, resultField: 'sendWhisper' })
   if (result?.ok) return { ok: true }
@@ -311,7 +327,7 @@ async function sendTwitchWhisper(toUserId, message) {
   try {
     serverResp = await apiFetch('/api/twitch/whisper', {
       method: 'POST',
-      body: { toUserId, message }
+      body: { toUserId, message },
     })
     if (serverResp?.ok) return { ok: true }
   } catch (e) {
@@ -357,7 +373,10 @@ async function sendTwitchWhisper(toUserId, message) {
 
 async function sendWhisperMessage(key, text) {
   const userInfo = whisperUsers.get(key)
-  if (!userInfo) { showToast('unknown user — whisper someone first', 'error'); return }
+  if (!userInfo) {
+    showToast('unknown user — whisper someone first', 'error')
+    return
+  }
 
   // Optimistic: show message with pending status. Reference kept so we can
   // flip status to 'sent' or 'failed' once the network resolves.
@@ -371,7 +390,7 @@ async function sendWhisperMessage(key, text) {
     platform: userInfo.platform,
     key,
     status: 'pending',
-    sendId
+    sendId,
   }
   whisperTimeline.push(msg)
   trimWhisperTimeline()
@@ -414,7 +433,7 @@ async function sendWhisperMessage(key, text) {
 // Auto-retry queued auth-failed whispers when auth comes back online.
 // Bound to storage.onChanged on first call; safe to call repeatedly.
 function retryAuthFailedWhispers() {
-  const failed = whisperTimeline.filter(m => m.status === 'failed' && m.errorKind === 'auth' && m.sendId)
+  const failed = whisperTimeline.filter((m) => m.status === 'failed' && m.errorKind === 'auth' && m.sendId)
   if (!failed.length) return
   log(`[whispers] auth restored — retrying ${failed.length} queued send(s)`)
   // Stagger retries so we don't burst the helix endpoint.
@@ -424,7 +443,7 @@ function retryAuthFailedWhispers() {
 }
 
 async function retryWhisperSend(sendId) {
-  const idx = whisperTimeline.findIndex(m => m.sendId === sendId)
+  const idx = whisperTimeline.findIndex((m) => m.sendId === sendId)
   if (idx < 0) return
   const old = whisperTimeline[idx]
   if (old.status !== 'failed') return
@@ -442,48 +461,52 @@ function renderWhispersTab() {
   // Fetch HS DMs on first render to backfill timeline
   if (!whisperDmsLoaded && hsAuthToken) {
     whisperDmsLoaded = true
-    apiFetch('/api/dm').then(resp => {
-      if (!resp.ok || !Array.isArray(resp.data)) return
-      for (const dm of resp.data) {
-        const key = `hs:${dm.other_user_id}`
-        whisperUsersSet(key, {
-          platform: 'heatsync',
-          userId: dm.other_user_id,
-          displayName: dm.other_display_name,
-          color: dm.other_color || '#ff8700'
-        })
-        // Fetch recent messages for each conversation
-        apiFetch(`/api/dm/${dm.other_user_id}`).then(resp2 => {
-          if (!resp2.ok || !Array.isArray(resp2.data)) return
-          let added = false
-          for (const m of resp2.data) {
-            const t = new Date(m.created_at).getTime()
-            if (_whisperMarkSeen(_whisperDedupKey('heatsync', m.id, m.from_display_name, t, m.content))) continue
-            const isSelf = m.from_user_id !== dm.other_user_id
-            whisperTimeline.push({
-              user: isSelf ? 'you' : dm.other_display_name,
-              text: m.content,
-              color: isSelf ? '#808080' : (dm.other_color || '#ff8700'),
-              time: t,
-              self: isSelf,
-              platform: 'heatsync',
-              key,
-              id: m.id || ''
+    apiFetch('/api/dm')
+      .then((resp) => {
+        if (!resp.ok || !Array.isArray(resp.data)) return
+        for (const dm of resp.data) {
+          const key = `hs:${dm.other_user_id}`
+          whisperUsersSet(key, {
+            platform: 'heatsync',
+            userId: dm.other_user_id,
+            displayName: dm.other_display_name,
+            color: dm.other_color || '#ff8700',
+          })
+          // Fetch recent messages for each conversation
+          apiFetch(`/api/dm/${dm.other_user_id}`)
+            .then((resp2) => {
+              if (!resp2.ok || !Array.isArray(resp2.data)) return
+              let added = false
+              for (const m of resp2.data) {
+                const t = new Date(m.created_at).getTime()
+                if (_whisperMarkSeen(_whisperDedupKey('heatsync', m.id, m.from_display_name, t, m.content))) continue
+                const isSelf = m.from_user_id !== dm.other_user_id
+                whisperTimeline.push({
+                  user: isSelf ? 'you' : dm.other_display_name,
+                  text: m.content,
+                  color: isSelf ? '#808080' : dm.other_color || '#ff8700',
+                  time: t,
+                  self: isSelf,
+                  platform: 'heatsync',
+                  key,
+                  id: m.id || '',
+                })
+                added = true
+              }
+              if (added) {
+                whisperTimeline.sort((a, b) => a.time - b.time)
+                trimWhisperTimeline()
+                if (currentTab === 'whispers') renderWhispersTab()
+                whisperSaveDebounced()
+              }
             })
-            added = true
-          }
-          if (added) {
-            whisperTimeline.sort((a, b) => a.time - b.time)
-            trimWhisperTimeline()
-            if (currentTab === 'whispers') renderWhispersTab()
-            whisperSaveDebounced()
-          }
-        }).catch(e => log('[whispers] dm history fetch failed:', e?.message || e))
-      }
-    }).catch(e => {
-      whisperDmsLoaded = false
-      log('[whispers] dm list fetch failed:', e?.message || e)
-    })
+            .catch((e) => log('[whispers] dm history fetch failed:', e?.message || e))
+        }
+      })
+      .catch((e) => {
+        whisperDmsLoaded = false
+        log('[whispers] dm list fetch failed:', e?.message || e)
+      })
   }
 
   // Mark as read — server-backed, fans out to other clients via WS.
@@ -541,9 +564,10 @@ function renderWhispersTab() {
       const safe = escapeHtml(name)
       const lower = username.toLowerCase()
       const safeUser = escapeHtml(lower)
-      const href = m.platform === 'heatsync'
-        ? `https://heatsync.org/user/${encodeURIComponent(username)}`
-        : `https://heatsync.org/twitch/${encodeURIComponent(username)}`
+      const href =
+        m.platform === 'heatsync'
+          ? `https://heatsync.org/user/${encodeURIComponent(username)}`
+          : `https://heatsync.org/twitch/${encodeURIComponent(username)}`
       const paint = m.platform === 'heatsync' ? '' : userPaintStyle(uid, lower)
       const style = paint || `color:${color};font-weight:600`
       return `<a href="${href}" target="_blank" class="hs-mc-user" data-username="${safeUser}" style="${style}">${safe}</a>`
@@ -574,7 +598,7 @@ function renderWhispersTab() {
   msgsEl.appendChild(frag)
   msgsEl.scrollTop = msgsEl.scrollHeight
 
-  msgsEl.querySelectorAll('.hs-whisper-retry').forEach(el => {
+  msgsEl.querySelectorAll('.hs-whisper-retry').forEach((el) => {
     el.addEventListener('click', (e) => {
       e.preventDefault()
       e.stopPropagation()

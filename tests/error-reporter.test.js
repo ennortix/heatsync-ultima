@@ -19,15 +19,12 @@
  *   - Normal prose and stack frame text is NOT over-redacted
  */
 
-import { test, expect, describe, beforeEach, afterEach } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { readFileSync } from 'fs'
 
 // ── Harness: load the IIFE into a fresh isolated context each test ─────────────
 
-const SRC = readFileSync(
-  new URL('../src/lib/error-reporter.js', import.meta.url),
-  'utf8'
-)
+const SRC = readFileSync(new URL('../src/lib/error-reporter.js', import.meta.url), 'utf8')
 
 /**
  * Execute the error-reporter IIFE in a mock environment.
@@ -56,7 +53,10 @@ function loadReporter({
 
   // fetch spy — must never be called
   let fetchCallCount = 0
-  const fetchSpy = () => { fetchCallCount++; return Promise.resolve() }
+  const fetchSpy = () => {
+    fetchCallCount++
+    return Promise.resolve()
+  }
   fetchSpy.callCount = () => fetchCallCount
 
   // chrome stub
@@ -64,7 +64,9 @@ function loadReporter({
     runtime: {
       getManifest: () => ({ version: manifestVersion }),
       lastError: null,
-      get id() { return 'fakeid' },
+      get id() {
+        return 'fakeid'
+      },
     },
     storage: {
       local: {
@@ -93,10 +95,10 @@ function loadReporter({
     },
     _listeners: listeners,
     _fireError(eventObj) {
-      for (const fn of (listeners['error'] || [])) fn(eventObj)
+      for (const fn of listeners['error'] || []) fn(eventObj)
     },
     _fireRejection(eventObj) {
-      for (const fn of (listeners['unhandledrejection'] || [])) fn(eventObj)
+      for (const fn of listeners['unhandledrejection'] || []) fn(eventObj)
     },
   }
 
@@ -110,16 +112,25 @@ function loadReporter({
   // console stub
   const consoleErr = { _orig: null, _wrapped: null }
   const console_ = {
-    error: function(...args) { consoleErr._orig?.apply(this, args) },
+    error: function (...args) {
+      consoleErr._orig?.apply(this, args)
+    },
   }
   consoleErr._orig = console_.error
 
   // Run the IIFE with our stubs injected as globals
   // Use Function constructor to evaluate in a scope where we control globals
   const fn = new Function(
-    'window', 'globalThis', 'chrome', 'location', 'console',
-    'document', 'setTimeout', 'clearTimeout', 'fetch',
-    SRC + '\n//# sourceURL=error-reporter-test.js'
+    'window',
+    'globalThis',
+    'chrome',
+    'location',
+    'console',
+    'document',
+    'setTimeout',
+    'clearTimeout',
+    'fetch',
+    SRC + '\n//# sourceURL=error-reporter-test.js',
   )
 
   const setTimeoutShim = (cb, ms) => {
@@ -141,7 +152,10 @@ function loadReporter({
   // Flush helper: run all pending timers (simulates debounce firing)
   function runTimers() {
     for (const t of timers) {
-      if (!t.fired) { t.fired = true; t.cb() }
+      if (!t.fired) {
+        t.fired = true
+        t.cb()
+      }
     }
   }
 
@@ -192,11 +206,29 @@ describe('installation', () => {
       runtime: { getManifest: () => ({ version: '9.9.9' }), lastError: null, id: 'x' },
       storage: { local: { get() {}, set() {} } },
     }
-    const fn = new Function('window', 'globalThis', 'chrome', 'location', 'console', 'document', 'setTimeout', 'clearTimeout', 'fetch',
-      SRC)
-    fn(win, win, chrome, { hostname: 'twitch.tv', href: 'https://twitch.tv' },
-      { error() {} }, { visibilityState: 'visible', addEventListener() {} },
-      () => {}, () => {}, () => {})
+    const fn = new Function(
+      'window',
+      'globalThis',
+      'chrome',
+      'location',
+      'console',
+      'document',
+      'setTimeout',
+      'clearTimeout',
+      'fetch',
+      SRC,
+    )
+    fn(
+      win,
+      win,
+      chrome,
+      { hostname: 'twitch.tv', href: 'https://twitch.tv' },
+      { error() {} },
+      { visibilityState: 'visible', addEventListener() {} },
+      () => {},
+      () => {},
+      () => {},
+    )
     // Reporter is unchanged from the pre-set value
     expect(win.__hsErrorReporter.ver).toBe('old')
   })
@@ -210,8 +242,15 @@ describe('capture: entry shape', () => {
       href: 'https://www.twitch.tv/channel',
     })
     const err = new Error('test failure')
-    reporter.capture({ ts: Date.now(), type: 'error', plat: 'twitch', ver: '1.7.3',
-      url: 'https://www.twitch.tv/channel', msg: err.message, stack: err.stack })
+    reporter.capture({
+      ts: Date.now(),
+      type: 'error',
+      plat: 'twitch',
+      ver: '1.7.3',
+      url: 'https://www.twitch.tv/channel',
+      msg: err.message,
+      stack: err.stack,
+    })
     runTimers()
     const stored = chrome.storage.local._store['hs_errors']
     expect(stored).toHaveLength(1)
@@ -270,8 +309,15 @@ describe('capture: entry shape', () => {
 describe('capture: drop rules', () => {
   test('drops entry with empty msg AND empty stack', () => {
     const { reporter, runTimers, chrome } = loadReporter()
-    reporter.capture({ ts: Date.now(), type: 'error', plat: 'twitch', ver: '1.7.3',
-      url: 'https://www.twitch.tv/', msg: '', stack: '' })
+    reporter.capture({
+      ts: Date.now(),
+      type: 'error',
+      plat: 'twitch',
+      ver: '1.7.3',
+      url: 'https://www.twitch.tv/',
+      msg: '',
+      stack: '',
+    })
     runTimers()
     const stored = chrome.storage.local._store['hs_errors']
     expect(stored ?? []).toHaveLength(0)
@@ -279,8 +325,15 @@ describe('capture: drop rules', () => {
 
   test('does NOT drop entry with empty msg but non-empty stack', () => {
     const { reporter, runTimers, chrome } = loadReporter()
-    reporter.capture({ ts: Date.now(), type: 'error', plat: 'twitch', ver: '1.7.3',
-      url: 'https://www.twitch.tv/', msg: '', stack: 'at fn (content.js:1:1)' })
+    reporter.capture({
+      ts: Date.now(),
+      type: 'error',
+      plat: 'twitch',
+      ver: '1.7.3',
+      url: 'https://www.twitch.tv/',
+      msg: '',
+      stack: 'at fn (content.js:1:1)',
+    })
     runTimers()
     const stored = chrome.storage.local._store['hs_errors']
     expect(stored).toHaveLength(1)
@@ -288,8 +341,15 @@ describe('capture: drop rules', () => {
 
   test('does NOT drop entry with non-empty msg but empty stack', () => {
     const { reporter, runTimers, chrome } = loadReporter()
-    reporter.capture({ ts: Date.now(), type: 'console', plat: 'twitch', ver: '1.7.3',
-      url: 'https://www.twitch.tv/', msg: 'real error message', stack: '' })
+    reporter.capture({
+      ts: Date.now(),
+      type: 'console',
+      plat: 'twitch',
+      ver: '1.7.3',
+      url: 'https://www.twitch.tv/',
+      msg: 'real error message',
+      stack: '',
+    })
     runTimers()
     const stored = chrome.storage.local._store['hs_errors']
     expect(stored).toHaveLength(1)
@@ -297,8 +357,15 @@ describe('capture: drop rules', () => {
 
   test('drops "Script error." with no stack (cross-origin noise)', () => {
     const { reporter, runTimers, chrome } = loadReporter()
-    reporter.capture({ ts: Date.now(), type: 'error', plat: 'twitch', ver: '1.7.3',
-      url: 'https://www.twitch.tv/', msg: 'Script error.', stack: '' })
+    reporter.capture({
+      ts: Date.now(),
+      type: 'error',
+      plat: 'twitch',
+      ver: '1.7.3',
+      url: 'https://www.twitch.tv/',
+      msg: 'Script error.',
+      stack: '',
+    })
     runTimers()
     const stored = chrome.storage.local._store['hs_errors']
     expect(stored ?? []).toHaveLength(0)
@@ -306,9 +373,15 @@ describe('capture: drop rules', () => {
 
   test('does NOT drop "Script error." when stack is present', () => {
     const { reporter, runTimers, chrome } = loadReporter()
-    reporter.capture({ ts: Date.now(), type: 'error', plat: 'twitch', ver: '1.7.3',
-      url: 'https://www.twitch.tv/', msg: 'Script error.',
-      stack: 'at chrome-extension://abc/content.js:10:5' })
+    reporter.capture({
+      ts: Date.now(),
+      type: 'error',
+      plat: 'twitch',
+      ver: '1.7.3',
+      url: 'https://www.twitch.tv/',
+      msg: 'Script error.',
+      stack: 'at chrome-extension://abc/content.js:10:5',
+    })
     runTimers()
     const stored = chrome.storage.local._store['hs_errors']
     expect(stored).toHaveLength(1)
@@ -321,8 +394,15 @@ describe('ring buffer: in-memory cap at 50', () => {
   test('pushing 50 entries retains all 50', () => {
     const { reporter, runTimers, chrome } = loadReporter()
     for (let i = 0; i < 50; i++) {
-      reporter.capture({ ts: i, type: 'console', plat: 'twitch', ver: '1.7.3',
-        url: 'https://www.twitch.tv/', msg: `msg-${i}`, stack: 'at x' })
+      reporter.capture({
+        ts: i,
+        type: 'console',
+        plat: 'twitch',
+        ver: '1.7.3',
+        url: 'https://www.twitch.tv/',
+        msg: `msg-${i}`,
+        stack: 'at x',
+      })
     }
     runTimers()
     const stored = chrome.storage.local._store['hs_errors']
@@ -332,8 +412,15 @@ describe('ring buffer: in-memory cap at 50', () => {
   test('pushing 51 entries keeps only 50 — oldest evicted', () => {
     const { reporter, runTimers, chrome } = loadReporter()
     for (let i = 0; i < 51; i++) {
-      reporter.capture({ ts: i, type: 'console', plat: 'twitch', ver: '1.7.3',
-        url: 'https://www.twitch.tv/', msg: `msg-${i}`, stack: 'at x' })
+      reporter.capture({
+        ts: i,
+        type: 'console',
+        plat: 'twitch',
+        ver: '1.7.3',
+        url: 'https://www.twitch.tv/',
+        msg: `msg-${i}`,
+        stack: 'at x',
+      })
     }
     runTimers()
     const stored = chrome.storage.local._store['hs_errors']
@@ -343,12 +430,19 @@ describe('ring buffer: in-memory cap at 50', () => {
   test('pushing 51 entries evicts msg-0 (the oldest)', () => {
     const { reporter, runTimers, chrome } = loadReporter()
     for (let i = 0; i < 51; i++) {
-      reporter.capture({ ts: i, type: 'console', plat: 'twitch', ver: '1.7.3',
-        url: 'https://www.twitch.tv/', msg: `msg-${i}`, stack: 'at x' })
+      reporter.capture({
+        ts: i,
+        type: 'console',
+        plat: 'twitch',
+        ver: '1.7.3',
+        url: 'https://www.twitch.tv/',
+        msg: `msg-${i}`,
+        stack: 'at x',
+      })
     }
     runTimers()
     const stored = chrome.storage.local._store['hs_errors']
-    const msgs = stored.map(e => e.msg)
+    const msgs = stored.map((e) => e.msg)
     expect(msgs).not.toContain('msg-0')
     expect(msgs).toContain('msg-50')
   })
@@ -356,8 +450,15 @@ describe('ring buffer: in-memory cap at 50', () => {
   test('pushing 100 entries keeps only the most recent 50', () => {
     const { reporter, runTimers, chrome } = loadReporter()
     for (let i = 0; i < 100; i++) {
-      reporter.capture({ ts: i, type: 'console', plat: 'twitch', ver: '1.7.3',
-        url: 'https://www.twitch.tv/', msg: `msg-${i}`, stack: 'at x' })
+      reporter.capture({
+        ts: i,
+        type: 'console',
+        plat: 'twitch',
+        ver: '1.7.3',
+        url: 'https://www.twitch.tv/',
+        msg: `msg-${i}`,
+        stack: 'at x',
+      })
     }
     runTimers()
     const stored = chrome.storage.local._store['hs_errors']
@@ -369,20 +470,32 @@ describe('ring buffer: in-memory cap at 50', () => {
   test('ring buffer merges with existing entries from storage', () => {
     // Simulate 40 existing entries in storage, then add 20 new ones
     const existing = Array.from({ length: 40 }, (_, i) => ({
-      ts: i, type: 'console', plat: 'twitch', ver: '1.7.3',
-      url: 'https://www.twitch.tv/', msg: `old-${i}`, stack: 'at x',
+      ts: i,
+      type: 'console',
+      plat: 'twitch',
+      ver: '1.7.3',
+      url: 'https://www.twitch.tv/',
+      msg: `old-${i}`,
+      stack: 'at x',
     }))
     const { reporter, runTimers, chrome } = loadReporter({ existingEntries: existing })
     for (let i = 0; i < 20; i++) {
-      reporter.capture({ ts: 1000 + i, type: 'console', plat: 'twitch', ver: '1.7.3',
-        url: 'https://www.twitch.tv/', msg: `new-${i}`, stack: 'at x' })
+      reporter.capture({
+        ts: 1000 + i,
+        type: 'console',
+        plat: 'twitch',
+        ver: '1.7.3',
+        url: 'https://www.twitch.tv/',
+        msg: `new-${i}`,
+        stack: 'at x',
+      })
     }
     runTimers()
     const stored = chrome.storage.local._store['hs_errors']
     // 40 existing + 20 new = 60; slice(-50) keeps newest 50
     expect(stored).toHaveLength(50)
     // oldest 10 of the original 40 should be evicted
-    const msgs = stored.map(e => e.msg)
+    const msgs = stored.map((e) => e.msg)
     expect(msgs).not.toContain('old-0')
     expect(msgs).not.toContain('old-9')
     expect(msgs).toContain('old-10')
@@ -459,8 +572,15 @@ describe('privacy: URL handling', () => {
 
   test('Bearer token in msg is redacted to [REDACTED]', () => {
     const { reporter, runTimers, chrome } = loadReporter()
-    reporter.capture({ ts: Date.now(), type: 'console', plat: 'twitch', ver: '1.7.3',
-      url: 'https://www.twitch.tv/', msg: 'auth failed Bearer eyABCDEFtokenXYZ', stack: 'at content.js:1' })
+    reporter.capture({
+      ts: Date.now(),
+      type: 'console',
+      plat: 'twitch',
+      ver: '1.7.3',
+      url: 'https://www.twitch.tv/',
+      msg: 'auth failed Bearer eyABCDEFtokenXYZ',
+      stack: 'at content.js:1',
+    })
     runTimers()
     const stored = chrome.storage.local._store['hs_errors']
     expect(stored[0].msg).not.toContain('eyABCDEFtokenXYZ')
@@ -470,8 +590,15 @@ describe('privacy: URL handling', () => {
   test('JWT in msg is redacted to [REDACTED]', () => {
     const jwt = 'eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c2VyMTIzIn0.SflKxwRJSMeKKF2QT4fwpMeJf36P'
     const { reporter, runTimers, chrome } = loadReporter()
-    reporter.capture({ ts: Date.now(), type: 'console', plat: 'twitch', ver: '1.7.3',
-      url: 'https://www.twitch.tv/', msg: 'token: ' + jwt, stack: 'at content.js:1' })
+    reporter.capture({
+      ts: Date.now(),
+      type: 'console',
+      plat: 'twitch',
+      ver: '1.7.3',
+      url: 'https://www.twitch.tv/',
+      msg: 'token: ' + jwt,
+      stack: 'at content.js:1',
+    })
     runTimers()
     const stored = chrome.storage.local._store['hs_errors']
     expect(stored[0].msg).not.toContain(jwt)
@@ -479,10 +606,17 @@ describe('privacy: URL handling', () => {
   })
 
   test('long opaque secret (24+ chars) in msg is redacted', () => {
-    const secret = 'A1B2C3D4E5F6G7H8I9J0K1L2M3'  // 26 chars, token charset
+    const secret = 'A1B2C3D4E5F6G7H8I9J0K1L2M3' // 26 chars, token charset
     const { reporter, runTimers, chrome } = loadReporter()
-    reporter.capture({ ts: Date.now(), type: 'console', plat: 'twitch', ver: '1.7.3',
-      url: 'https://www.twitch.tv/', msg: 'api_key=' + secret, stack: 'at content.js:1' })
+    reporter.capture({
+      ts: Date.now(),
+      type: 'console',
+      plat: 'twitch',
+      ver: '1.7.3',
+      url: 'https://www.twitch.tv/',
+      msg: 'api_key=' + secret,
+      stack: 'at content.js:1',
+    })
     runTimers()
     const stored = chrome.storage.local._store['hs_errors']
     expect(stored[0].msg).not.toContain(secret)
@@ -492,18 +626,33 @@ describe('privacy: URL handling', () => {
   test('normal prose message is NOT over-redacted', () => {
     const safeMsg = 'failed to load emotes for channel xqc after 3 retries'
     const { reporter, runTimers, chrome } = loadReporter()
-    reporter.capture({ ts: Date.now(), type: 'console', plat: 'twitch', ver: '1.7.3',
-      url: 'https://www.twitch.tv/', msg: safeMsg, stack: 'at content.js:1' })
+    reporter.capture({
+      ts: Date.now(),
+      type: 'console',
+      plat: 'twitch',
+      ver: '1.7.3',
+      url: 'https://www.twitch.tv/',
+      msg: safeMsg,
+      stack: 'at content.js:1',
+    })
     runTimers()
     const stored = chrome.storage.local._store['hs_errors']
     expect(stored[0].msg).toBe(safeMsg)
   })
 
   test('normal stack frame text is NOT over-redacted', () => {
-    const safeStack = 'Error: boom\n    at chrome-extension://abcdefghij/content.js:42:10\n    at processMessage (content.js:100:5)'
+    const safeStack =
+      'Error: boom\n    at chrome-extension://abcdefghij/content.js:42:10\n    at processMessage (content.js:100:5)'
     const { reporter, runTimers, chrome } = loadReporter()
-    reporter.capture({ ts: Date.now(), type: 'error', plat: 'twitch', ver: '1.7.3',
-      url: 'https://www.twitch.tv/', msg: 'boom', stack: safeStack })
+    reporter.capture({
+      ts: Date.now(),
+      type: 'error',
+      plat: 'twitch',
+      ver: '1.7.3',
+      url: 'https://www.twitch.tv/',
+      msg: 'boom',
+      stack: safeStack,
+    })
     runTimers()
     const stored = chrome.storage.local._store['hs_errors']
     // stack frames must survive — they are the primary debug value
@@ -519,8 +668,15 @@ describe('privacy: no network calls', () => {
   test('fetch is never called after capturing errors', () => {
     const { reporter, runTimers, fetchSpy } = loadReporter()
     for (let i = 0; i < 10; i++) {
-      reporter.capture({ ts: i, type: 'console', plat: 'twitch', ver: '1.7.3',
-        url: 'https://www.twitch.tv/', msg: `msg-${i}`, stack: 'at x' })
+      reporter.capture({
+        ts: i,
+        type: 'console',
+        plat: 'twitch',
+        ver: '1.7.3',
+        url: 'https://www.twitch.tv/',
+        msg: `msg-${i}`,
+        stack: 'at x',
+      })
     }
     runTimers()
     expect(fetchSpy.callCount()).toBe(0)
@@ -528,8 +684,15 @@ describe('privacy: no network calls', () => {
 
   test('fetch is never called after flush()', () => {
     const { reporter, fetchSpy } = loadReporter()
-    reporter.capture({ ts: 1, type: 'error', plat: 'twitch', ver: '1.7.3',
-      url: 'https://www.twitch.tv/', msg: 'oops', stack: 'at x' })
+    reporter.capture({
+      ts: 1,
+      type: 'error',
+      plat: 'twitch',
+      ver: '1.7.3',
+      url: 'https://www.twitch.tv/',
+      msg: 'oops',
+      stack: 'at x',
+    })
     reporter.flush()
     expect(fetchSpy.callCount()).toBe(0)
   })
@@ -541,8 +704,17 @@ describe('edge cases: must not throw', () => {
   test('capture with null-like entry does not throw', () => {
     const { reporter } = loadReporter()
     // capture expects a rec object — pass minimal valid but empty payload
-    expect(() => reporter.capture({ ts: Date.now(), type: 'error', plat: 'twitch', ver: '1.7.3',
-      url: 'https://www.twitch.tv/', msg: 'x', stack: '' })).not.toThrow()
+    expect(() =>
+      reporter.capture({
+        ts: Date.now(),
+        type: 'error',
+        plat: 'twitch',
+        ver: '1.7.3',
+        url: 'https://www.twitch.tv/',
+        msg: 'x',
+        stack: '',
+      }),
+    ).not.toThrow()
   })
 
   test('flush with empty pending does not throw', () => {
@@ -565,13 +737,29 @@ describe('edge cases: must not throw', () => {
     // Verifies _reentry guard: a capture triggered during capture does not recurse
     const { reporter, runTimers, chrome } = loadReporter()
     // First capture normally
-    reporter.capture({ ts: 1, type: 'error', plat: 'twitch', ver: '1.7.3',
-      url: 'https://www.twitch.tv/', msg: 'first', stack: 'at x' })
+    reporter.capture({
+      ts: 1,
+      type: 'error',
+      plat: 'twitch',
+      ver: '1.7.3',
+      url: 'https://www.twitch.tv/',
+      msg: 'first',
+      stack: 'at x',
+    })
     runTimers()
     expect(chrome.storage.local._store['hs_errors']).toHaveLength(1)
     // No throw from normal usage
-    expect(() => reporter.capture({ ts: 2, type: 'error', plat: 'twitch', ver: '1.7.3',
-      url: 'https://www.twitch.tv/', msg: 'second', stack: 'at y' })).not.toThrow()
+    expect(() =>
+      reporter.capture({
+        ts: 2,
+        type: 'error',
+        plat: 'twitch',
+        ver: '1.7.3',
+        url: 'https://www.twitch.tv/',
+        msg: 'second',
+        stack: 'at y',
+      }),
+    ).not.toThrow()
   })
 })
 
@@ -580,12 +768,33 @@ describe('edge cases: must not throw', () => {
 describe('read-back: entry ordering', () => {
   test('entries are stored in insertion order (oldest first)', () => {
     const { reporter, runTimers, chrome } = loadReporter()
-    reporter.capture({ ts: 1, type: 'console', plat: 'twitch', ver: '1.7.3',
-      url: 'https://www.twitch.tv/', msg: 'first', stack: 'at x' })
-    reporter.capture({ ts: 2, type: 'console', plat: 'twitch', ver: '1.7.3',
-      url: 'https://www.twitch.tv/', msg: 'second', stack: 'at y' })
-    reporter.capture({ ts: 3, type: 'console', plat: 'twitch', ver: '1.7.3',
-      url: 'https://www.twitch.tv/', msg: 'third', stack: 'at z' })
+    reporter.capture({
+      ts: 1,
+      type: 'console',
+      plat: 'twitch',
+      ver: '1.7.3',
+      url: 'https://www.twitch.tv/',
+      msg: 'first',
+      stack: 'at x',
+    })
+    reporter.capture({
+      ts: 2,
+      type: 'console',
+      plat: 'twitch',
+      ver: '1.7.3',
+      url: 'https://www.twitch.tv/',
+      msg: 'second',
+      stack: 'at y',
+    })
+    reporter.capture({
+      ts: 3,
+      type: 'console',
+      plat: 'twitch',
+      ver: '1.7.3',
+      url: 'https://www.twitch.tv/',
+      msg: 'third',
+      stack: 'at z',
+    })
     runTimers()
     const stored = chrome.storage.local._store['hs_errors']
     expect(stored).toHaveLength(3)
@@ -596,11 +805,25 @@ describe('read-back: entry ordering', () => {
 
   test('entries appended across two flush cycles maintain order', () => {
     const { reporter, runTimers, chrome } = loadReporter()
-    reporter.capture({ ts: 1, type: 'console', plat: 'twitch', ver: '1.7.3',
-      url: 'https://www.twitch.tv/', msg: 'batch1-a', stack: 'at a' })
+    reporter.capture({
+      ts: 1,
+      type: 'console',
+      plat: 'twitch',
+      ver: '1.7.3',
+      url: 'https://www.twitch.tv/',
+      msg: 'batch1-a',
+      stack: 'at a',
+    })
     runTimers()
-    reporter.capture({ ts: 2, type: 'console', plat: 'twitch', ver: '1.7.3',
-      url: 'https://www.twitch.tv/', msg: 'batch2-a', stack: 'at b' })
+    reporter.capture({
+      ts: 2,
+      type: 'console',
+      plat: 'twitch',
+      ver: '1.7.3',
+      url: 'https://www.twitch.tv/',
+      msg: 'batch2-a',
+      stack: 'at b',
+    })
     runTimers()
     const stored = chrome.storage.local._store['hs_errors']
     expect(stored).toHaveLength(2)
@@ -616,14 +839,38 @@ describe('debounce: writes are deferred', () => {
     const { reporter, chrome, runTimers } = loadReporter()
     let setCount = 0
     const origSet = chrome.storage.local.set.bind(chrome.storage.local)
-    chrome.storage.local.set = function(obj, cb) { setCount++; origSet(obj, cb) }
+    chrome.storage.local.set = (obj, cb) => {
+      setCount++
+      origSet(obj, cb)
+    }
 
-    reporter.capture({ ts: 1, type: 'console', plat: 'twitch', ver: '1.7.3',
-      url: 'https://www.twitch.tv/', msg: 'a', stack: 'at a' })
-    reporter.capture({ ts: 2, type: 'console', plat: 'twitch', ver: '1.7.3',
-      url: 'https://www.twitch.tv/', msg: 'b', stack: 'at b' })
-    reporter.capture({ ts: 3, type: 'console', plat: 'twitch', ver: '1.7.3',
-      url: 'https://www.twitch.tv/', msg: 'c', stack: 'at c' })
+    reporter.capture({
+      ts: 1,
+      type: 'console',
+      plat: 'twitch',
+      ver: '1.7.3',
+      url: 'https://www.twitch.tv/',
+      msg: 'a',
+      stack: 'at a',
+    })
+    reporter.capture({
+      ts: 2,
+      type: 'console',
+      plat: 'twitch',
+      ver: '1.7.3',
+      url: 'https://www.twitch.tv/',
+      msg: 'b',
+      stack: 'at b',
+    })
+    reporter.capture({
+      ts: 3,
+      type: 'console',
+      plat: 'twitch',
+      ver: '1.7.3',
+      url: 'https://www.twitch.tv/',
+      msg: 'c',
+      stack: 'at c',
+    })
 
     expect(setCount).toBe(0) // timer not fired yet
     runTimers()
@@ -649,7 +896,10 @@ describe('global handlers registered', () => {
     // rather than using `new Error()` — the test runner's own stack frames include
     // 'heatsync' in the path, which would cause _isOurs to return true.
     const { win, runTimers, chrome } = loadReporter()
-    const err = { message: 'third party error', stack: 'Error: third party error\n    at eval (<anonymous>):1:1\n    at https://some-cdn.com/bundle.js:100:5' }
+    const err = {
+      message: 'third party error',
+      stack: 'Error: third party error\n    at eval (<anonymous>):1:1\n    at https://some-cdn.com/bundle.js:100:5',
+    }
     win._fireError({
       error: err,
       filename: 'https://some-cdn.com/bundle.js',

@@ -7,9 +7,7 @@
 // Bundled into every content script; install-gated via window.__hsErrorReporter.
 // Service worker has its own inline install in background.js (no window).
 
-;(function() {
-  'use strict'
-
+;(() => {
   if (typeof window === 'undefined' || window.__hsErrorReporter) return
 
   const MAX = 50
@@ -19,26 +17,38 @@
   const WRITE_DEBOUNCE_MS = 500
 
   let _ver = 'unknown'
-  try { _ver = chrome?.runtime?.getManifest?.()?.version || _ver } catch (_) {}
+  try {
+    _ver = chrome?.runtime?.getManifest?.()?.version || _ver
+  } catch (_) {}
 
   const _host = (typeof location !== 'undefined' && location.hostname) || ''
-  const _plat = _host.includes('kick.com') ? 'kick'
-    : _host.includes('youtube.com') ? 'yt'
-    : _host.includes('twitch.tv') ? 'twitch'
-    : 'other'
+  const _plat = _host.includes('kick.com')
+    ? 'kick'
+    : _host.includes('youtube.com')
+      ? 'yt'
+      : _host.includes('twitch.tv')
+        ? 'twitch'
+        : 'other'
 
   let _reentry = false
-  let _pending = []
+  const _pending = []
   let _writeTimer = null
 
   function _truncate(s, n) {
-    if (typeof s !== 'string') { try { s = String(s) } catch { return '' } }
+    if (typeof s !== 'string') {
+      try {
+        s = String(s)
+      } catch {
+        return ''
+      }
+    }
     return s.length > n ? s.slice(0, n) : s
   }
 
   // Redact sensitive values from a URL's query string and hash fragment.
   // Keeps origin + path + non-sensitive params intact.
-  const _SENSITIVE_PARAMS = /^(access_token|refresh_token|id_token|token|auth|authorization|key|apikey|api_key|password|passwd|secret|code|state|session|sig|signature)$/i
+  const _SENSITIVE_PARAMS =
+    /^(access_token|refresh_token|id_token|token|auth|authorization|key|apikey|api_key|password|passwd|secret|code|state|session|sig|signature)$/i
   function _scrubUrl(url) {
     if (typeof url !== 'string') return url
     try {
@@ -46,7 +56,7 @@
       const qIdx = url.indexOf('?')
       const hIdx = url.indexOf('#')
       if (qIdx === -1 && hIdx === -1) return url
-      const base = qIdx !== -1 ? url.slice(0, qIdx) : (hIdx !== -1 ? url.slice(0, hIdx) : url)
+      const base = qIdx !== -1 ? url.slice(0, qIdx) : hIdx !== -1 ? url.slice(0, hIdx) : url
       const qPart = qIdx !== -1 ? url.slice(qIdx + 1, hIdx !== -1 ? hIdx : undefined) : ''
       const hPart = hIdx !== -1 ? url.slice(hIdx + 1) : ''
       function scrubPairs(str) {
@@ -59,7 +69,9 @@
       if (qPart) result += '?' + scrubPairs(qPart)
       if (hPart) result += '#' + scrubPairs(hPart)
       return result
-    } catch (_) { return url }
+    } catch (_) {
+      return url
+    }
   }
 
   // Redact token-like substrings from text (msg, stack).
@@ -69,9 +81,9 @@
   // Long-secret rule: require the run to start after = or whitespace (value context)
   // so chrome-extension:// IDs and /-delimited file paths are left intact.
   const _TEXT_SCRUB = [
-    /Bearer\s+[\w.\-]+/gi,
-    /oauth:[\w.\-]+/gi,
-    /eyJ[\w\-]+\.[\w\-]+\.[\w\-]+/g,
+    /Bearer\s+[\w.-]+/gi,
+    /oauth:[\w.-]+/gi,
+    /eyJ[\w-]+\.[\w-]+\.[\w-]+/g,
     /(?<=[=\s"'])[A-Za-z0-9_\-+/=]{24,}/g,
   ]
   function _scrubText(s) {
@@ -87,10 +99,18 @@
     if (e instanceof Error || (typeof e === 'object' && e && 'stack' in e)) {
       let msg = ''
       let stack = ''
-      try { msg = String(e.message || '') } catch (_) {}
-      try { stack = String(e.stack || '') } catch (_) {}
+      try {
+        msg = String(e.message || '')
+      } catch (_) {}
+      try {
+        stack = String(e.stack || '')
+      } catch (_) {}
       if (!msg) {
-        try { msg = String(e) } catch (_) { msg = '[unreadable]' }
+        try {
+          msg = String(e)
+        } catch (_) {
+          msg = '[unreadable]'
+        }
         if (msg === '[object Object]') msg = ''
       }
       return { msg: _truncate(_scrubText(msg), MSG_CAP), stack: _truncate(_scrubText(stack), STACK_CAP) }
@@ -100,7 +120,11 @@
         const s = JSON.stringify(e)
         if (s && s !== '{}' && s !== '[]') return { msg: _truncate(_scrubText(s), MSG_CAP) }
       } catch (_) {}
-      try { return { msg: _truncate(_scrubText(String(e)), MSG_CAP) } } catch { return { msg: '[unserializable]' } }
+      try {
+        return { msg: _truncate(_scrubText(String(e)), MSG_CAP) }
+      } catch {
+        return { msg: '[unserializable]' }
+      }
     }
     return { msg: _truncate(_scrubText(String(e)), MSG_CAP) }
   }
@@ -113,7 +137,9 @@
       const s = String(new Error().stack || '')
       const lines = s.split('\n')
       return lines.slice((skip || 0) + 1).join('\n')
-    } catch (_) { return '' }
+    } catch (_) {
+      return ''
+    }
   }
 
   function _capture(rec) {
@@ -133,7 +159,10 @@
       _pending.push(rec)
       if (_pending.length > MAX) _pending.splice(0, _pending.length - MAX)
       _scheduleWrite()
-    } catch (_) {} finally { _reentry = false }
+    } catch (_) {
+    } finally {
+      _reentry = false
+    }
   }
 
   function _scheduleWrite() {
@@ -153,7 +182,9 @@
           if (chrome?.runtime?.lastError) return
           const existing = Array.isArray(cur?.[STORAGE_KEY]) ? cur[STORAGE_KEY] : []
           const next = existing.concat(batch).slice(-MAX)
-          storage.set({ [STORAGE_KEY]: next }, () => { void chrome?.runtime?.lastError })
+          storage.set({ [STORAGE_KEY]: next }, () => {
+            void chrome?.runtime?.lastError
+          })
         } catch (_) {}
       })
     } catch (_) {}
@@ -163,8 +194,11 @@
   // out of the buffer unless the stack or filename traces back to extension code.
   function _isOurs(stack, file) {
     const s = (stack || '') + ' ' + (file || '')
-    return s.includes('chrome-extension://') || s.includes('moz-extension://')
-      || /\b(heatsync|content\.js|multichat\.js|heatsync-button\.js|autocomplete-hook\.js|chat-injector\.js)\b/.test(s)
+    return (
+      s.includes('chrome-extension://') ||
+      s.includes('moz-extension://') ||
+      /\b(heatsync|content\.js|multichat\.js|heatsync-button\.js|autocomplete-hook\.js|chat-injector\.js)\b/.test(s)
+    )
   }
 
   // Known-noise patterns that the browser raises regardless of our code,
@@ -172,12 +206,14 @@
   // time so the buffer stays focused on real failures.
   function _isNoise(msg) {
     if (!msg) return false
-    return /^ResizeObserver loop/.test(msg)
-      || /Document is not focused/.test(msg) // Clipboard API when window unfocused
-      || /^signal is aborted/i.test(msg)     // AbortController teardown
-      || /Extension context invalidated/.test(msg) // ext reload mid-call
-      || /Could not establish connection.*Receiving end does not exist/.test(msg) // cold SW wake — handled with retry
-      || /^Connection timeout$/.test(msg) // bg WS reconnect — scheduleReconnect handles recovery
+    return (
+      /^ResizeObserver loop/.test(msg) ||
+      /Document is not focused/.test(msg) || // Clipboard API when window unfocused
+      /^signal is aborted/i.test(msg) || // AbortController teardown
+      /Extension context invalidated/.test(msg) || // ext reload mid-call
+      /Could not establish connection.*Receiving end does not exist/.test(msg) || // cold SW wake — handled with retry
+      /^Connection timeout$/.test(msg)
+    ) // bg WS reconnect — scheduleReconnect handles recovery
   }
 
   // Context death recovery. When the extension reloads/updates, content scripts
@@ -191,16 +227,26 @@
   // context being provably dead so a page's own cross-compartment error can
   // never trigger a spurious reload.
   function _ctxDead() {
-    try { return !(chrome && chrome.runtime && chrome.runtime.id) } catch (_) { return true }
+    try {
+      return !(chrome && chrome.runtime && chrome.runtime.id)
+    } catch (_) {
+      return true
+    }
   }
   function _isCtxDeathMsg(msg) {
-    return /Extension context (was )?invalidated|Permission denied to access property|access dead object/i.test(msg || '')
+    return /Extension context (was )?invalidated|Permission denied to access property|access dead object/i.test(
+      msg || '',
+    )
   }
   function _scheduleCtxReload() {
     try {
       if (typeof document === 'undefined' || window.__heatsyncReloadScheduled) return
       window.__heatsyncReloadScheduled = true
-      const doReload = () => { try { location.reload() } catch (_) {} }
+      const doReload = () => {
+        try {
+          location.reload()
+        } catch (_) {}
+      }
       if (document.visibilityState === 'visible') {
         setTimeout(doReload, 1000 + Math.random() * 4000)
       } else {
@@ -216,13 +262,20 @@
   function _onError(e) {
     try {
       const f = _fmtErr(e.error != null ? e.error : e.message)
-      if (_isCtxDeathMsg(f.msg) && _ctxDead()) { _scheduleCtxReload(); return }
+      if (_isCtxDeathMsg(f.msg) && _ctxDead()) {
+        _scheduleCtxReload()
+        return
+      }
       if (_isNoise(f.msg)) return
       if (!_isOurs(f.stack, e.filename)) return
       _capture({
-        ts: Date.now(), type: 'error', plat: _plat, ver: _ver,
+        ts: Date.now(),
+        type: 'error',
+        plat: _plat,
+        ver: _ver,
         url: _truncate(_scrubUrl(location.href), 200),
-        msg: f.msg, stack: f.stack,
+        msg: f.msg,
+        stack: f.stack,
         file: _truncate(e.filename || '', 200),
         line: e.lineno || 0,
       })
@@ -232,12 +285,18 @@
   function _onRejection(e) {
     try {
       const f = _fmtErr(e.reason)
-      if (_isCtxDeathMsg(f.msg) && _ctxDead()) { _scheduleCtxReload(); return }
+      if (_isCtxDeathMsg(f.msg) && _ctxDead()) {
+        _scheduleCtxReload()
+        return
+      }
       const stack = f.stack || _synthStack(2)
       if (_isNoise(f.msg)) return
       if (!_isOurs(stack, '')) return
       _capture({
-        ts: Date.now(), type: 'rejection', plat: _plat, ver: _ver,
+        ts: Date.now(),
+        type: 'rejection',
+        plat: _plat,
+        ver: _ver,
         url: _truncate(_scrubUrl(location.href), 200),
         msg: f.msg || '(promise rejection with no reason)',
         stack,
@@ -245,8 +304,12 @@
     } catch (_) {}
   }
 
-  try { window.addEventListener('error', _onError, true) } catch (_) {}
-  try { window.addEventListener('unhandledrejection', _onRejection, true) } catch (_) {}
+  try {
+    window.addEventListener('error', _onError, true)
+  } catch (_) {}
+  try {
+    window.addEventListener('unhandledrejection', _onRejection, true)
+  } catch (_) {}
 
   // Wrap console.error so explicit error logs land in the buffer too.
   // Skip console.warn/log — far too noisy. Pass-through to native so devtools
@@ -254,24 +317,37 @@
   try {
     const origErr = console.error
     if (origErr && !origErr.__hsWrapped) {
-      const wrapped = function(...args) {
+      const wrapped = function (...args) {
         try {
           let derivedStack = ''
-          const parts = args.map(a => {
+          const parts = args.map((a) => {
             if (a instanceof Error || (typeof a === 'object' && a && 'stack' in a)) {
-              if (!derivedStack && a.stack) { try { derivedStack = String(a.stack) } catch (_) {} }
-              try { return String(a.message || a) } catch (_) { return '[unreadable]' }
+              if (!derivedStack && a.stack) {
+                try {
+                  derivedStack = String(a.stack)
+                } catch (_) {}
+              }
+              try {
+                return String(a.message || a)
+              } catch (_) {
+                return '[unreadable]'
+              }
             }
             if (typeof a === 'string') return a
             try {
               const s = JSON.stringify(a)
               return s && s !== '{}' ? s : String(a)
-            } catch { return String(a) }
+            } catch {
+              return String(a)
+            }
           })
-          const msg = parts.filter(p => p && p !== '[object Object]').join(' ')
+          const msg = parts.filter((p) => p && p !== '[object Object]').join(' ')
           if (!derivedStack) derivedStack = _synthStack(2)
           _capture({
-            ts: Date.now(), type: 'console', plat: _plat, ver: _ver,
+            ts: Date.now(),
+            type: 'console',
+            plat: _plat,
+            ver: _ver,
             url: _truncate(_scrubUrl(location.href), 200),
             msg: _truncate(_scrubText(msg), MSG_CAP),
             stack: _truncate(_scrubText(derivedStack), STACK_CAP),

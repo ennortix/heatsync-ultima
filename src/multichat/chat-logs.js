@@ -64,9 +64,15 @@ async function openChatLogsView(username, opts = {}) {
   if (inputBar) inputBar.classList.add('hs-hidden')
 
   activeChatLogs = {
-    username, platform, channel,
-    rows: [], cursor: null, loading: false, exhausted: false,
-    query: '', scope: channel ? 'channel' : 'all',
+    username,
+    platform,
+    channel,
+    rows: [],
+    cursor: null,
+    loading: false,
+    exhausted: false,
+    query: '',
+    scope: channel ? 'channel' : 'all',
   }
   renderChatLogsView()
   await fetchChatLogsPage()
@@ -75,7 +81,10 @@ async function openChatLogsView(username, opts = {}) {
 function closeChatLogsView() {
   if (!activeChatLogs) return
   activeChatLogs = null
-  if (_clLoadMoreObs) { _clLoadMoreObs.disconnect(); _clLoadMoreObs = null }
+  if (_clLoadMoreObs) {
+    _clLoadMoreObs.disconnect()
+    _clLoadMoreObs = null
+  }
   const inputBar = document.getElementById('hs-mc-inputbar')
   if (inputBar) {
     const hideOnTabs = ['add', 'settings', 'discover', 'pinned']
@@ -94,7 +103,11 @@ async function fetchChatLogsPage() {
   if (state.cursor) params.set('cursor', state.cursor)
   const path = `/api/archive/user/${encodeURIComponent(state.platform)}/${encodeURIComponent(state.username)}/messages?${params.toString()}`
   let resp
-  try { resp = await apiFetch(path) } catch { resp = { ok: false } }
+  try {
+    resp = await apiFetch(path)
+  } catch {
+    resp = { ok: false }
+  }
   if (!activeChatLogs || activeChatLogs !== state) return
   state.loading = false
   if (!resp?.ok || !resp.data) {
@@ -146,10 +159,18 @@ async function searchChatLogs(query) {
   params.set('limit', String(HS_CL_PAGE))
   const path = `/api/archive/search?${params.toString()}`
   let resp
-  try { resp = await apiFetch(path) } catch { resp = { ok: false } }
+  try {
+    resp = await apiFetch(path)
+  } catch {
+    resp = { ok: false }
+  }
   if (!activeChatLogs || activeChatLogs !== state) return
   state.loading = false
-  if (!resp?.ok || !resp.data) { state.exhausted = true; renderChatLogsView(); return }
+  if (!resp?.ok || !resp.data) {
+    state.exhausted = true
+    renderChatLogsView()
+    return
+  }
   state.rows = resp.data.results || []
   state.cursor = null
   state.exhausted = true
@@ -165,12 +186,16 @@ function exportChatLogs(format) {
     mime = 'application/json'
     ext = 'json'
   } else {
-    body = rows.slice().reverse().map(r => {
-      const d = r.timestamp ? new Date(r.timestamp) : null
-      const ts = d && !isNaN(d.getTime()) ? d.toISOString().replace('T', ' ').slice(0, 19) : ''
-      const ch = r.channel ? `#${r.channel}` : ''
-      return `[${ts}] ${ch} <${r.display_name || r.username}> ${r.message}`
-    }).join('\n')
+    body = rows
+      .slice()
+      .reverse()
+      .map((r) => {
+        const d = r.timestamp ? new Date(r.timestamp) : null
+        const ts = d && !isNaN(d.getTime()) ? d.toISOString().replace('T', ' ').slice(0, 19) : ''
+        const ch = r.channel ? `#${r.channel}` : ''
+        return `[${ts}] ${ch} <${r.display_name || r.username}> ${r.message}`
+      })
+      .join('\n')
     mime = 'text/plain'
     ext = 'txt'
   }
@@ -207,7 +232,8 @@ function renderChatLogsView() {
   const tSub = document.createElement('span')
   tSub.className = 'hs-cl-title-sub'
   tSub.textContent = channel ? `#${channel}` : 'all channels'
-  title.appendChild(tName); title.appendChild(tSub)
+  title.appendChild(tName)
+  title.appendChild(tSub)
   hdr.appendChild(title)
 
   const closeBtn = document.createElement('button')
@@ -242,7 +268,10 @@ function renderChatLogsView() {
     scopeBtn.className = 'hs-cl-scope'
     scopeBtn.type = 'button'
     scopeBtn.textContent = scope === 'channel' ? `#${channel}` : 'all'
-    scopeBtn.title = scope === 'channel' ? `currently scoped to #${channel} — click to see all channels` : 'currently showing all channels — click to scope to #' + channel
+    scopeBtn.title =
+      scope === 'channel'
+        ? `currently scoped to #${channel} — click to see all channels`
+        : 'currently showing all channels — click to scope to #' + channel
     scopeBtn.addEventListener('click', async () => {
       const newScope = scope === 'channel' ? 'all' : 'channel'
       activeChatLogs.scope = newScope
@@ -324,13 +353,22 @@ function renderChatLogsView() {
     list.appendChild(sentinel)
     // IntersectionObserver auto-fires when sentinel scrolls into view
     if (!loading && 'IntersectionObserver' in window) {
-      if (_clLoadMoreObs) { _clLoadMoreObs.disconnect(); _clLoadMoreObs = null }
-      _clLoadMoreObs = new IntersectionObserver((entries) => {
-        if (entries.some(e => e.isIntersecting)) {
-          if (_clLoadMoreObs) { _clLoadMoreObs.disconnect(); _clLoadMoreObs = null }
-          fetchChatLogsPage()
-        }
-      }, { root: list, rootMargin: '200px' })
+      if (_clLoadMoreObs) {
+        _clLoadMoreObs.disconnect()
+        _clLoadMoreObs = null
+      }
+      _clLoadMoreObs = new IntersectionObserver(
+        (entries) => {
+          if (entries.some((e) => e.isIntersecting)) {
+            if (_clLoadMoreObs) {
+              _clLoadMoreObs.disconnect()
+              _clLoadMoreObs = null
+            }
+            fetchChatLogsPage()
+          }
+        },
+        { root: list, rootMargin: '200px' },
+      )
       _clLoadMoreObs.observe(sentinel)
     }
   }
@@ -379,8 +417,7 @@ function renderChatLogRow(r) {
       color = knownColors.get(ulow) || null
     }
     let paintApplied = false
-    if (typeof knownUserIds !== 'undefined' && knownUserIds instanceof Map &&
-        typeof getMcPaintStyle === 'function') {
+    if (typeof knownUserIds !== 'undefined' && knownUserIds instanceof Map && typeof getMcPaintStyle === 'function') {
       const uid = knownUserIds.get(ulow)
       if (uid) {
         const paintCss = getMcPaintStyle(String(uid))
@@ -485,9 +522,13 @@ function appendChatLogBody(host, r) {
 }
 
 // ESC closes the panel (matches profile-card convention)
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && activeChatLogs) {
-    e.preventDefault()
-    closeChatLogsView()
-  }
-}, { signal: mcSignal, capture: true })
+document.addEventListener(
+  'keydown',
+  (e) => {
+    if (e.key === 'Escape' && activeChatLogs) {
+      e.preventDefault()
+      closeChatLogsView()
+    }
+  },
+  { signal: mcSignal, capture: true },
+)

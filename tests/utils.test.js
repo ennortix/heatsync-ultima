@@ -1,4 +1,4 @@
-import { test, expect } from 'bun:test'
+import { expect, test } from 'bun:test'
 import { escapeHtml } from '../src/lib/utils.js'
 
 // ── escapeHtml ────────────────────────────────────────────────────────────────
@@ -20,7 +20,7 @@ test('escapeHtml: escapes double quote', () => {
 })
 
 test('escapeHtml: escapes single quote', () => {
-  expect(escapeHtml("it's")).toBe("it&#x27;s")
+  expect(escapeHtml("it's")).toBe('it&#x27;s')
 })
 
 test('escapeHtml: handles full xss payload', () => {
@@ -53,7 +53,7 @@ test('escapeHtml: coerces numbers to string', () => {
 
 function fuzzyScore(query, name) {
   const lower = name.toLowerCase()
-  if (lower.includes(query)) return 2 + (query.length / lower.length)
+  if (lower.includes(query)) return 2 + query.length / lower.length
   let qi = 0
   for (let i = 0; i < lower.length && qi < query.length; i++) {
     if (lower[i] === query[qi]) qi++

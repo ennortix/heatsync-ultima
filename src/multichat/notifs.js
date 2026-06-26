@@ -47,8 +47,8 @@
 // CSS vars. Animations are CSS, not JS.
 
 const HsNotifs = (() => {
-  const layers = new Map()  // name -> { def, current: [], _container }
-  const types = new Map()   // name -> def
+  const layers = new Map() // name -> { def, current: [], _container }
+  const types = new Map() // name -> def
   let _idCounter = 0
   // Active viewed channels. null = scope filter inactive (show everything).
   // A Set of lowercase channel names = only show `channelScoped` notifs whose
@@ -62,22 +62,33 @@ const HsNotifs = (() => {
   }
 
   function registerType(name, def) {
-    if (!def?.layer) { console.warn('[notifs] type', name, 'missing layer'); return }
-    if (!layers.has(def.layer)) { console.warn('[notifs] type', name, 'unknown layer', def.layer); return }
+    if (!def?.layer) {
+      console.warn('[notifs] type', name, 'missing layer')
+      return
+    }
+    if (!layers.has(def.layer)) {
+      console.warn('[notifs] type', name, 'unknown layer', def.layer)
+      return
+    }
     types.set(name, def)
   }
 
   function emit(typeName, data) {
     const t = types.get(typeName)
-    if (!t) { console.warn('[notifs] unknown type', typeName); return null }
+    if (!t) {
+      console.warn('[notifs] unknown type', typeName)
+      return null
+    }
     const l = layers.get(t.layer)
 
     const key = t.dedupeKey?.(data)
     if (key) {
-      const existing = l.current.find(n => n.key === key)
+      const existing = l.current.find((n) => n.key === key)
       if (existing) {
         if (t.onDedupe) {
-          try { t.onDedupe(existing.data, data) } catch (_) {}
+          try {
+            t.onDedupe(existing.data, data)
+          } catch (_) {}
           if (existing.el) _renderInto(existing)
           if (t.timeout) {
             if (existing._timer) cleanup.clearTimeout(existing._timer)
@@ -109,12 +120,17 @@ const HsNotifs = (() => {
 
   function dismiss(id) {
     for (const l of layers.values()) {
-      const idx = l.current.findIndex(n => n.id === id)
+      const idx = l.current.findIndex((n) => n.id === id)
       if (idx >= 0) {
         const n = l.current[idx]
         l.current.splice(idx, 1)
-        if (n._timer) { cleanup.clearTimeout(n._timer); n._timer = null }
-        try { n.type.onDismiss?.(n.data) } catch (_) {}
+        if (n._timer) {
+          cleanup.clearTimeout(n._timer)
+          n._timer = null
+        }
+        try {
+          n.type.onDismiss?.(n.data)
+        } catch (_) {}
         // Exit animation — flag wrapper for CSS to fade/slide out, then
         // remove on animation end. Falls back to immediate remove if the
         // animation event never fires (detached, reduced-motion, etc.).
@@ -122,11 +138,19 @@ const HsNotifs = (() => {
         if (el && el.isConnected) {
           el.classList.add('hs-notif-exiting')
           let removed = false
-          const finishExit = () => { if (removed) return; removed = true; try { el.remove() } catch (_) {} }
+          const finishExit = () => {
+            if (removed) return
+            removed = true
+            try {
+              el.remove()
+            } catch (_) {}
+          }
           el.addEventListener('animationend', finishExit, { once: true })
           cleanup.setTimeout(finishExit, 220)
         } else {
-          try { el?.remove() } catch (_) {}
+          try {
+            el?.remove()
+          } catch (_) {}
         }
         return true
       }
@@ -138,7 +162,7 @@ const HsNotifs = (() => {
     const t = types.get(typeName)
     if (!t) return false
     const l = layers.get(t.layer)
-    const found = l.current.find(n => n.typeName === typeName && n.key === key)
+    const found = l.current.find((n) => n.typeName === typeName && n.key === key)
     return found ? dismiss(found.id) : false
   }
 
@@ -168,10 +192,13 @@ const HsNotifs = (() => {
     // Right-click dismiss — global UX convention: every popup/indicator
     // accepts right-click to clear without firing any action.
     wrapper.addEventListener('contextmenu', (e) => {
-      e.preventDefault(); e.stopPropagation()
+      e.preventDefault()
+      e.stopPropagation()
       dismiss(notif.id)
     })
-    try { notif.type.onMount?.(notif.data, () => dismiss(notif.id), wrapper) } catch (_) {}
+    try {
+      notif.type.onMount?.(notif.data, () => dismiss(notif.id), wrapper)
+    } catch (_) {}
     if (notif.type.timeout) {
       // Pause-on-hover. Errors are easy to miss if they vanish mid-read.
       let remaining = notif.type.timeout
@@ -179,7 +206,8 @@ const HsNotifs = (() => {
       notif._timer = cleanup.setTimeout(() => dismiss(notif.id), remaining)
       wrapper.addEventListener('mouseenter', () => {
         if (notif._timer) {
-          cleanup.clearTimeout(notif._timer); notif._timer = null
+          cleanup.clearTimeout(notif._timer)
+          notif._timer = null
           remaining = Math.max(0, remaining - (Date.now() - startedAt))
         }
       })
@@ -198,8 +226,12 @@ const HsNotifs = (() => {
     wrapper.textContent = ''
     const dismissFn = () => dismiss(notif.id)
     let body
-    try { body = notif.type.render({ data: notif.data, dismiss: dismissFn }) }
-    catch (e) { console.warn('[notifs] render threw for', notif.typeName, e); body = '' }
+    try {
+      body = notif.type.render({ data: notif.data, dismiss: dismissFn })
+    } catch (e) {
+      console.warn('[notifs] render threw for', notif.typeName, e)
+      body = ''
+    }
     // Always render a body wrapper. If render returned nothing usable, fall
     // back to a placeholder so a notif can never be a blank rectangle.
     const bodyEl = document.createElement('span')
@@ -224,9 +256,12 @@ const HsNotifs = (() => {
         btn.textContent = def.label || kind
         if (def.title) btn.title = def.title
         btn.addEventListener('click', (e) => {
-          e.stopPropagation(); e.preventDefault()
+          e.stopPropagation()
+          e.preventDefault()
           let result
-          try { result = def.onClick?.(notif.data, dismissFn) } catch (_) {}
+          try {
+            result = def.onClick?.(notif.data, dismissFn)
+          } catch (_) {}
           if (kind === 'dismiss' || result === true) dismissFn()
         })
         actionsEl.appendChild(btn)
@@ -262,10 +297,17 @@ const HsNotifs = (() => {
       _activeChannels = null
     } else {
       const next = new Set()
-      for (const c of channels) { if (c) next.add(String(c).toLowerCase()) }
+      for (const c of channels) {
+        if (c) next.add(String(c).toLowerCase())
+      }
       if (_activeChannels && _activeChannels.size === next.size) {
         let same = true
-        for (const c of next) { if (!_activeChannels.has(c)) { same = false; break } }
+        for (const c of next) {
+          if (!_activeChannels.has(c)) {
+            same = false
+            break
+          }
+        }
         if (same) return
       }
       _activeChannels = next
@@ -291,7 +333,9 @@ const HsNotifs = (() => {
     for (const [name, l] of layers) {
       _ensureContainer(name, l)
       let geom = null
-      try { geom = l.def.geometry?.(ctx || {}) } catch (_) {}
+      try {
+        geom = l.def.geometry?.(ctx || {})
+      } catch (_) {}
       if (geom) {
         for (const [k, v] of Object.entries(geom)) {
           const cssName = `--hs-layer-${name}-${k}`
@@ -318,8 +362,7 @@ const HsNotifs = (() => {
       const tbVisible = tabBarElement && !tabBarElement.classList.contains('hs-hidden')
       const tbRect = tbVisible ? tabBarElement.getBoundingClientRect() : null
       if (!ovRect || ovRect.width <= 0) return { top: 12, right: 20, bottom: null }
-      const topY = (tabPosition === 'top' && tbRect && tbRect.height > 0)
-        ? tbRect.bottom + 6 : ovRect.top + 6
+      const topY = tabPosition === 'top' && tbRect && tbRect.height > 0 ? tbRect.bottom + 6 : ovRect.top + 6
       return {
         top: topY,
         right: window.innerWidth - (ovRect.left + ovRect.width) + 6,
@@ -349,7 +392,7 @@ const HsNotifs = (() => {
       if (tabPosition === 'bottom' && tbRect && tbRect.height > 0) {
         bottomY = bottomY !== null ? Math.min(bottomY, tbRect.top) : tbRect.top
       }
-      const horRect = (ovRect && ovRect.width > 0) ? ovRect : ibRect
+      const horRect = ovRect && ovRect.width > 0 ? ovRect : ibRect
       if (!horRect || bottomY === null) return null
       return {
         bottom: window.innerHeight - bottomY,
@@ -369,8 +412,7 @@ const HsNotifs = (() => {
       const ovRect = overlayElement.getBoundingClientRect()
       const tbVisible = tabBarElement && !tabBarElement.classList.contains('hs-hidden')
       const tbRect = tbVisible ? tabBarElement.getBoundingClientRect() : null
-      const topY = (tabPosition === 'top' && tbRect && tbRect.height > 0)
-        ? tbRect.bottom : ovRect.top
+      const topY = tabPosition === 'top' && tbRect && tbRect.height > 0 ? tbRect.bottom : ovRect.top
       return {
         top: topY,
         left: ovRect.left,
@@ -407,9 +449,10 @@ const HsNotifs = (() => {
     // Dedupe identical text — repeated kick/twitch send failures used to
     // stack one toast per attempt, crowding the chat. Same text+level now
     // collapses to a single toast with a "×N" counter and a refreshed timer.
-    dedupeKey: ({ text, level }) =>
-      `toast:${level || 'info'}:${String(text || '').slice(0, 200)}`,
-    onDedupe: (existing) => { existing._count = (existing._count || 1) + 1 },
+    dedupeKey: ({ text, level }) => `toast:${level || 'info'}:${String(text || '').slice(0, 200)}`,
+    onDedupe: (existing) => {
+      existing._count = (existing._count || 1) + 1
+    },
     render: ({ data }) => {
       const level = data.level || 'info'
       const base = (typeof data.text === 'string' ? data.text : '').trim() || `[${level}]`
@@ -462,8 +505,8 @@ const HsNotifs = (() => {
       text.className = 'hs-notif-resub-text'
       const parts = [
         ['hs-rt-prefix', 'celebrating '],
-        ['hs-rt-num',    String(months)],
-        ['hs-rt-mo',     'mo'],
+        ['hs-rt-num', String(months)],
+        ['hs-rt-mo', 'mo'],
         ['hs-rt-months', ' months'],
         ['hs-rt-suffix', ' as a subscriber'],
       ]
@@ -488,7 +531,7 @@ const HsNotifs = (() => {
           try {
             window.__hsResubShare?.enter?.(data.months, data.user, data.channel, data._resubToken)
           } catch (_) {}
-          return false  // resub-share mode controls dismissal
+          return false // resub-share mode controls dismissal
         },
       },
       dismiss: { label: '✕' },
@@ -513,7 +556,7 @@ const HsNotifs = (() => {
       text.className = 'hs-notif-watchstreak-text'
       const parts = [
         ['hs-wt-prefix', 'on a '],
-        ['hs-wt-num',    String(n)],
+        ['hs-wt-num', String(n)],
         ['hs-wt-stream', ' stream'],
         ['hs-wt-suffix', ' watch streak'],
       ]
@@ -589,7 +632,9 @@ const HsNotifs = (() => {
       primary: {
         label: 'retry',
         onClick: (data) => {
-          try { globalThis.__hsRetryPendingSend?.(data.synthId) } catch (_) {}
+          try {
+            globalThis.__hsRetryPendingSend?.(data.synthId)
+          } catch (_) {}
           return true
         },
       },
@@ -615,7 +660,9 @@ const HsNotifs = (() => {
       primary: {
         label: 'open twitch',
         onClick: () => {
-          try { window.open('https://www.twitch.tv/', '_blank', 'noopener') } catch (_) {}
+          try {
+            window.open('https://www.twitch.tv/', '_blank', 'noopener')
+          } catch (_) {}
           return true
         },
       },
@@ -643,12 +690,20 @@ const HsNotifs = (() => {
   })
 
   return {
-    registerLayer, registerType, emit, dismiss, dismissByKey, updateLayout,
+    registerLayer,
+    registerType,
+    emit,
+    dismiss,
+    dismissByKey,
+    updateLayout,
     setActiveChannels,
-    _layers: layers, _types: types,
+    _layers: layers,
+    _types: types,
   }
 })()
 
 // Expose for devtools / cross-script debug. Same singleton; mutating it from
 // the page will affect all multichat notifs, so use only for inspection.
-try { window.HsNotifs = HsNotifs } catch (_) {}
+try {
+  window.HsNotifs = HsNotifs
+} catch (_) {}

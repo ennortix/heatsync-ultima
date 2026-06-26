@@ -40,10 +40,13 @@ async function eswFetchSelfUserId(token) {
   if (eswState.selfUserId) return eswState.selfUserId
   try {
     const resp = await fetch(ESW_HELIX_USERS, {
-      headers: { 'Client-Id': ESW_CLIENT_ID, 'Authorization': 'Bearer ' + token },
+      headers: { 'Client-Id': ESW_CLIENT_ID, Authorization: 'Bearer ' + token },
       signal: AbortSignal.timeout(8000),
     })
-    if (!resp.ok) { log('EventSub: /helix/users failed', resp.status); return null }
+    if (!resp.ok) {
+      log('EventSub: /helix/users failed', resp.status)
+      return null
+    }
     const data = await resp.json()
     const id = data?.data?.[0]?.id
     if (id) eswState.selfUserId = id
@@ -61,7 +64,7 @@ async function eswSubscribeWhispers(token) {
       method: 'POST',
       headers: {
         'Client-Id': ESW_CLIENT_ID,
-        'Authorization': 'Bearer ' + token,
+        Authorization: 'Bearer ' + token,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -93,13 +96,32 @@ async function eswSubscribeWhispers(token) {
 
 function eswCleanup(destroy = false) {
   if (destroy) eswState.destroyed = true
-  if (eswState.keepaliveTimer) { cleanup.clearInterval(eswState.keepaliveTimer); eswState.keepaliveTimer = null }
-  if (eswState.reconnectTimer) { cleanup.clearTimeout(eswState.reconnectTimer); eswState.reconnectTimer = null }
-  if (eswState.oldWsCloseTimer) { cleanup.clearTimeout(eswState.oldWsCloseTimer); eswState.oldWsCloseTimer = null }
-  if (eswState.oldWs) { try { eswState.oldWs.close() } catch {} eswState.oldWs = null }
+  if (eswState.keepaliveTimer) {
+    cleanup.clearInterval(eswState.keepaliveTimer)
+    eswState.keepaliveTimer = null
+  }
+  if (eswState.reconnectTimer) {
+    cleanup.clearTimeout(eswState.reconnectTimer)
+    eswState.reconnectTimer = null
+  }
+  if (eswState.oldWsCloseTimer) {
+    cleanup.clearTimeout(eswState.oldWsCloseTimer)
+    eswState.oldWsCloseTimer = null
+  }
+  if (eswState.oldWs) {
+    try {
+      eswState.oldWs.close()
+    } catch {}
+    eswState.oldWs = null
+  }
   if (eswState.ws) {
-    eswState.ws.onopen = null; eswState.ws.onclose = null; eswState.ws.onerror = null; eswState.ws.onmessage = null
-    try { eswState.ws.close() } catch {}
+    eswState.ws.onopen = null
+    eswState.ws.onclose = null
+    eswState.ws.onerror = null
+    eswState.ws.onmessage = null
+    try {
+      eswState.ws.close()
+    } catch {}
   }
   eswState.ws = null
   eswState.sessionId = null
@@ -149,9 +171,7 @@ function eswHandleNotification(msg) {
     userId: event.from_user_id,
     text,
     color: eswResolveUserColor(event.from_user_id) || '#fff',
-    time: msg.metadata?.message_timestamp
-      ? new Date(msg.metadata.message_timestamp).getTime()
-      : Date.now(),
+    time: msg.metadata?.message_timestamp ? new Date(msg.metadata.message_timestamp).getTime() : Date.now(),
     id: event.whisper_id || msgId || '',
   })
 }
@@ -160,7 +180,11 @@ function eswHandleMessage(token) {
   return (event) => {
     eswState.lastMessageTime = Date.now()
     let msg
-    try { msg = JSON.parse(event.data) } catch { return }
+    try {
+      msg = JSON.parse(event.data)
+    } catch {
+      return
+    }
     const type = msg.metadata?.message_type
     if (!type) return
 
@@ -183,7 +207,10 @@ function eswHandleMessage(token) {
       return
     }
     if (type === 'session_keepalive') return
-    if (type === 'notification') { eswHandleNotification(msg); return }
+    if (type === 'notification') {
+      eswHandleNotification(msg)
+      return
+    }
     if (type === 'session_reconnect') {
       const newUrl = msg.payload?.session?.reconnect_url
       if (newUrl) {
@@ -207,7 +234,10 @@ async function eswConnect(token, urlOverride) {
   if (!token) return false
   if (!eswState.selfUserId) {
     const id = await eswFetchSelfUserId(token)
-    if (!id) { log('EventSub: no self user id, abort'); return false }
+    if (!id) {
+      log('EventSub: no self user id, abort')
+      return false
+    }
   }
   eswState.connecting = true
   eswState.destroyed = false
@@ -216,7 +246,10 @@ async function eswConnect(token, urlOverride) {
   // but stop the old keepalive timer so it can't fire against the stale lastMessageTime.
   const oldWs = urlOverride ? eswState.ws : null
   if (urlOverride) {
-    if (eswState.keepaliveTimer) { cleanup.clearInterval(eswState.keepaliveTimer); eswState.keepaliveTimer = null }
+    if (eswState.keepaliveTimer) {
+      cleanup.clearInterval(eswState.keepaliveTimer)
+      eswState.keepaliveTimer = null
+    }
   } else {
     eswCleanup()
   }
@@ -224,7 +257,9 @@ async function eswConnect(token, urlOverride) {
   try {
     const ws = new WebSocket(urlOverride || ESW_URL)
     eswState.ws = ws
-    ws.onopen = () => { eswState.lastMessageTime = Date.now() }
+    ws.onopen = () => {
+      eswState.lastMessageTime = Date.now()
+    }
     ws.onmessage = eswHandleMessage(token)
     ws.onclose = () => {
       log('EventSub: socket closed')
@@ -237,7 +272,12 @@ async function eswConnect(token, urlOverride) {
       eswState.oldWsCloseTimer = cleanup.setTimeout(() => {
         eswState.oldWsCloseTimer = null
         if (eswState.oldWs === oldWs) eswState.oldWs = null
-        try { oldWs.onmessage = null; oldWs.onclose = null; oldWs.onerror = null; oldWs.close() } catch {}
+        try {
+          oldWs.onmessage = null
+          oldWs.onclose = null
+          oldWs.onerror = null
+          oldWs.close()
+        } catch {}
       }, 5000)
     }
     eswState.connecting = false
@@ -253,7 +293,10 @@ async function eswConnect(token, urlOverride) {
 async function startEventSubWhispers() {
   // Async fetch reaches twitch cookies even on Kick/YouTube tabs (via background.js)
   const { token } = await getTwitchAuthTokenAsync()
-  if (!token) { log('EventSub: no Twitch token, skipping whispers'); return }
+  if (!token) {
+    log('EventSub: no Twitch token, skipping whispers')
+    return
+  }
   await eswConnect(token)
 }
 

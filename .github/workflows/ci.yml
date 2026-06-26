@@ -27,5 +27,11 @@ jobs:
       - name: test
         run: bun test
 
+      - name: lint
+        run: bunx @biomejs/biome check src/ chrome/ tests/ build.js
+
+      - name: typecheck
+        run: bun run typecheck
+
       - name: check version sync
         run: bun tests/check-versions.js

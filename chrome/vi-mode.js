@@ -5,9 +5,7 @@
  * Matches cmdchamp's vi mode: motions, operators, counts, f/F/t/T, undo, yank/paste.
  * Default off — toggled via heatsync settings panel.
  */
-;(function() {
-  'use strict'
-
+;(() => {
   const DEBUG = false
   const log = DEBUG ? console.log.bind(console, '[hs-vi]') : () => {}
 
@@ -18,10 +16,10 @@
 
   // Chat input selectors
   const INPUT_SELECTORS = [
-    '[data-a-target="chat-input"]',        // Twitch (contenteditable)
-    'div.editor-input',                     // Kick (contenteditable)
-    '.chat-input textarea',                 // Kick fallback
-    '#hs-mc-input',                         // Multichat
+    '[data-a-target="chat-input"]', // Twitch (contenteditable)
+    'div.editor-input', // Kick (contenteditable)
+    '.chat-input textarea', // Kick fallback
+    '#hs-mc-input', // Multichat
   ]
 
   // --- State ---
@@ -29,14 +27,14 @@
   let mode = 'insert'
   let cursor = 0
   let count = ''
-  let operator = null       // pending: 'd', 'c', 'y'
-  let pendingCmd = null     // pending: 'f', 'F', 't', 'T', 'r', 'g'
-  let lastFind = null       // { type, char }
+  let operator = null // pending: 'd', 'c', 'y'
+  let pendingCmd = null // pending: 'f', 'F', 't', 'T', 'r', 'g'
+  let lastFind = null // { type, char }
   let register = ''
   let undoStack = []
-  let redoStack = []
-  let lastEdit = null       // { keys: [], beforeText, beforeCursor } for . repeat
-  let recording = null      // in-progress edit recording
+  const redoStack = []
+  let lastEdit = null // { keys: [], beforeText, beforeCursor } for . repeat
+  let recording = null // in-progress edit recording
   let activeEl = null
 
   // --- DOM helpers ---
@@ -49,7 +47,7 @@
     const nodes = []
     const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
     let node
-    while (node = walker.nextNode()) nodes.push(node)
+    while ((node = walker.nextNode())) nodes.push(node)
     return nodes
   }
 
@@ -103,15 +101,19 @@
 
   function getVirtualText(el) {
     const nodes = getContentNodes(el)
-    return nodes.map(e => e.type === 'atom' ? '\uFFFC' : e.node.textContent).join('')
+    return nodes.map((e) => (e.type === 'atom' ? '\uFFFC' : e.node.textContent)).join('')
   }
 
   function getTextSlice(el, vStart, vEnd) {
     const cnodes = getContentNodes(el)
-    let result = '', vPos = 0
+    let result = '',
+      vPos = 0
     for (const e of cnodes) {
       const eEnd = vPos + e.length
-      if (eEnd <= vStart) { vPos = eEnd; continue }
+      if (eEnd <= vStart) {
+        vPos = eEnd
+        continue
+      }
       if (vPos >= vEnd) break
       if (e.type === 'text') {
         const s = Math.max(0, vStart - vPos)
@@ -124,7 +126,7 @@
         // back to a re-renderable text form ("TriHard ApuApustaja0").
         const imgs = e.node.querySelectorAll('img')
         const parts = []
-        imgs.forEach(img => parts.push(img.alt || ''))
+        imgs.forEach((img) => parts.push(img.alt || ''))
         result += parts.join(' ') || e.node.textContent || ''
       }
       vPos = eEnd
@@ -397,11 +399,17 @@
       let found = -1
       if (dir > 0) {
         for (let j = p + 1; j < text.length; j++) {
-          if (text[j] === char) { found = j; break }
+          if (text[j] === char) {
+            found = j
+            break
+          }
         }
       } else {
         for (let j = p - 1; j >= 0; j--) {
-          if (text[j] === char) { found = j; break }
+          if (text[j] === char) {
+            found = j
+            break
+          }
         }
       }
       if (found === -1) return pos
@@ -415,25 +423,40 @@
 
   function resolveMotion(text, pos, key, n, char) {
     switch (key) {
-      case 'h': return Math.max(0, pos - n)
-      case 'l': return Math.min(Math.max(0, text.length - 1), pos + n)
-      case 'w': return moveW(text, pos, n)
-      case 'W': return moveWW(text, pos, n)
-      case 'b': return moveB(text, pos, n)
-      case 'B': return moveBB(text, pos, n)
-      case 'e': return moveE(text, pos, n)
-      case 'E': return moveEE(text, pos, n)
-      case '0': return 0
-      case '$': return Math.max(0, text.length - 1)
+      case 'h':
+        return Math.max(0, pos - n)
+      case 'l':
+        return Math.min(Math.max(0, text.length - 1), pos + n)
+      case 'w':
+        return moveW(text, pos, n)
+      case 'W':
+        return moveWW(text, pos, n)
+      case 'b':
+        return moveB(text, pos, n)
+      case 'B':
+        return moveBB(text, pos, n)
+      case 'e':
+        return moveE(text, pos, n)
+      case 'E':
+        return moveEE(text, pos, n)
+      case '0':
+        return 0
+      case '$':
+        return Math.max(0, text.length - 1)
       case '^': {
         const m = text.match(/^\s*/)
         return m ? m[0].length : 0
       }
-      case 'f': return findCharMotion(text, pos, char, 1, false, n)
-      case 'F': return findCharMotion(text, pos, char, -1, false, n)
-      case 't': return findCharMotion(text, pos, char, 1, true, n)
-      case 'T': return findCharMotion(text, pos, char, -1, true, n)
-      default: return pos
+      case 'f':
+        return findCharMotion(text, pos, char, 1, false, n)
+      case 'F':
+        return findCharMotion(text, pos, char, -1, false, n)
+      case 't':
+        return findCharMotion(text, pos, char, 1, true, n)
+      case 'T':
+        return findCharMotion(text, pos, char, -1, true, n)
+      default:
+        return pos
     }
   }
 
@@ -442,7 +465,7 @@
   function syncCursor(el) {
     if (!el) return
     // Clear atom cursor highlights
-    if (isCE(el)) el.querySelectorAll('.hs-vi-cursor').forEach(n => n.classList.remove('hs-vi-cursor'))
+    if (isCE(el)) el.querySelectorAll('.hs-vi-cursor').forEach((n) => n.classList.remove('hs-vi-cursor'))
     const len = getLen(el)
     if (mode === 'normal') {
       cursor = Math.max(0, Math.min(cursor, Math.max(0, len - 1)))
@@ -470,7 +493,10 @@
   let cheatsheetEl = null
 
   function showCheatsheet(el) {
-    if (cheatsheetEl) { hideCheatsheet(); return }
+    if (cheatsheetEl) {
+      hideCheatsheet()
+      return
+    }
     cheatsheetEl = document.createElement('div')
     cheatsheetEl.id = 'hs-vi-cheatsheet'
     Object.assign(cheatsheetEl.style, {
@@ -499,12 +525,18 @@
       'i/a/I/A insert  u undo  Ctrl+R redo  . repeat  ? help'
     document.body.appendChild(cheatsheetEl)
     // Auto-dismiss on any key
-    const dismiss = () => { hideCheatsheet(); document.removeEventListener('keydown', dismiss, { capture: true }) }
+    const dismiss = () => {
+      hideCheatsheet()
+      document.removeEventListener('keydown', dismiss, { capture: true })
+    }
     setTimeout(() => document.addEventListener('keydown', dismiss, { capture: true }), 100)
   }
 
   function hideCheatsheet() {
-    if (cheatsheetEl) { cheatsheetEl.remove(); cheatsheetEl = null }
+    if (cheatsheetEl) {
+      cheatsheetEl.remove()
+      cheatsheetEl = null
+    }
   }
 
   // --- Normal mode visual: red border on input ---
@@ -585,7 +617,7 @@
     register = isCE(el) ? getTextSlice(el, start, end) : text.slice(start, end)
 
     switch (op) {
-      case 'd':
+      case 'd': {
         pushUndo(el)
         deleteText(el, start, end)
         cursor = start
@@ -595,6 +627,7 @@
         syncCursor(el)
         lastEdit = { beforeText, afterText: getText(el), beforeCursor, afterCursor: cursor }
         break
+      }
       case 'c':
         pushUndo(el)
         deleteText(el, start, end)
@@ -663,7 +696,7 @@
 
   function handleNormalMode(e) {
     const el = activeEl
-    const text = isCE(el) ? getVirtualText(el) : (el.value || '')
+    const text = isCE(el) ? getVirtualText(el) : el.value || ''
     const len = text.length
     const key = e.key
 
@@ -787,10 +820,18 @@
 
     // --- Mode switches ---
     switch (key) {
-      case 'i': enterInsert(el, cursor); return
-      case 'a': enterInsert(el, Math.min(cursor + 1, len)); return
-      case 'I': enterInsert(el, 0); return
-      case 'A': enterInsert(el, len); return
+      case 'i':
+        enterInsert(el, cursor)
+        return
+      case 'a':
+        enterInsert(el, Math.min(cursor + 1, len))
+        return
+      case 'I':
+        enterInsert(el, 0)
+        return
+      case 'A':
+        enterInsert(el, len)
+        return
       case 's':
         pushUndo(el)
         if (cursor < len) {
@@ -964,10 +1005,19 @@
         // Compute the inserted text (what was added in the edit)
         // Simple diff: find common prefix/suffix between before and after
         let prefixLen = 0
-        while (prefixLen < beforeText.length && prefixLen < afterText.length && beforeText[prefixLen] === afterText[prefixLen]) prefixLen++
+        while (
+          prefixLen < beforeText.length &&
+          prefixLen < afterText.length &&
+          beforeText[prefixLen] === afterText[prefixLen]
+        )
+          prefixLen++
         let suffixLen = 0
-        while (suffixLen < beforeText.length - prefixLen && suffixLen < afterText.length - prefixLen &&
-               beforeText[beforeText.length - 1 - suffixLen] === afterText[afterText.length - 1 - suffixLen]) suffixLen++
+        while (
+          suffixLen < beforeText.length - prefixLen &&
+          suffixLen < afterText.length - prefixLen &&
+          beforeText[beforeText.length - 1 - suffixLen] === afterText[afterText.length - 1 - suffixLen]
+        )
+          suffixLen++
         const deletedLen = beforeText.length - prefixLen - suffixLen
         const inserted = afterText.slice(prefixLen, afterText.length - suffixLen)
         // Apply at current cursor position
@@ -990,7 +1040,10 @@
       const evt = new KeyboardEvent('keydown', { key: arrowKey, code: arrowKey, bubbles: true })
       evt._hsVi = true
       el.dispatchEvent(evt)
-      setTimeout(() => { cursor = getCursorPos(el); syncCursor(el) }, 50)
+      setTimeout(() => {
+        cursor = getCursorPos(el)
+        syncCursor(el)
+      }, 50)
       return
     }
 
@@ -1016,7 +1069,10 @@
       const evt = new KeyboardEvent('keydown', { key, code: key, bubbles: true })
       evt._hsVi = true
       el.dispatchEvent(evt)
-      setTimeout(() => { cursor = getCursorPos(el); syncCursor(el) }, 50)
+      setTimeout(() => {
+        cursor = getCursorPos(el)
+        syncCursor(el)
+      }, 50)
       return
     }
   }
@@ -1027,15 +1083,17 @@
     // Try chrome.storage first (async), fallback to localStorage
     const api = (typeof browser !== 'undefined' && browser) || (typeof chrome !== 'undefined' && chrome)
     if (api?.storage?.sync) {
-      Promise.resolve(api.storage.sync.get('ui_settings')).then((result) => {
-        if (result?.ui_settings) {
-          const wasEnabled = enabled
-          enabled = !!result.ui_settings.viMode
-          if (enabled && !wasEnabled) onEnable()
-          else if (!enabled && wasEnabled) onDisable()
-          log('Settings loaded from storage, viMode:', enabled)
-        }
-      }).catch(() => {})
+      Promise.resolve(api.storage.sync.get('ui_settings'))
+        .then((result) => {
+          if (result?.ui_settings) {
+            const wasEnabled = enabled
+            enabled = !!result.ui_settings.viMode
+            if (enabled && !wasEnabled) onEnable()
+            else if (!enabled && wasEnabled) onDisable()
+            log('Settings loaded from storage, viMode:', enabled)
+          }
+        })
+        .catch(() => {})
     }
     // Also check localStorage (sync fallback)
     try {
@@ -1060,15 +1118,19 @@
   }
 
   // Listen for settings changes via postMessage (from heatsync-button.js)
-  window.addEventListener('message', (e) => {
-    if (e.source !== window || e.origin !== location.origin) return
-    if (e.data?.type === 'heatsync-settings-changed' && e.data.settings) {
-      const wasEnabled = enabled
-      enabled = !!e.data.settings.viMode
-      if (enabled && !wasEnabled) onEnable()
-      else if (!enabled && wasEnabled) onDisable()
-    }
-  }, { signal })
+  window.addEventListener(
+    'message',
+    (e) => {
+      if (e.source !== window || e.origin !== location.origin) return
+      if (e.data?.type === 'heatsync-settings-changed' && e.data.settings) {
+        const wasEnabled = enabled
+        enabled = !!e.data.settings.viMode
+        if (enabled && !wasEnabled) onEnable()
+        else if (!enabled && wasEnabled) onDisable()
+      }
+    },
+    { signal },
+  )
 
   // Listen for storage changes (Firefox + Chrome compatible)
   const viApi = (typeof browser !== 'undefined' && browser) || (typeof chrome !== 'undefined' && chrome)
@@ -1093,8 +1155,12 @@
 
   function matchesInput(el) {
     if (!el) return false
-    return INPUT_SELECTORS.some(sel => {
-      try { return el.matches(sel) } catch (_) { return false }
+    return INPUT_SELECTORS.some((sel) => {
+      try {
+        return el.matches(sel)
+      } catch (_) {
+        return false
+      }
     })
   }
 
@@ -1129,17 +1195,25 @@
     window.addEventListener('keydown', handleKeyDown, { capture: true, signal })
 
     // Track focus
-    document.addEventListener('focusin', (e) => {
-      if (matchesInput(e.target)) attach(e.target)
-    }, { signal })
+    document.addEventListener(
+      'focusin',
+      (e) => {
+        if (matchesInput(e.target)) attach(e.target)
+      },
+      { signal },
+    )
 
-    document.addEventListener('focusout', (e) => {
-      if (e.target === activeEl) {
-        setTimeout(() => {
-          if (document.activeElement !== activeEl) detach()
-        }, 150)
-      }
-    }, { signal })
+    document.addEventListener(
+      'focusout',
+      (e) => {
+        if (e.target === activeEl) {
+          setTimeout(() => {
+            if (document.activeElement !== activeEl) detach()
+          }, 150)
+        }
+      },
+      { signal },
+    )
 
     // Try to find existing focused input
     for (const sel of INPUT_SELECTORS) {

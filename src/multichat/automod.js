@@ -6,14 +6,27 @@ let automodCompiled = null
 function compileAutomod(rawSettings) {
   automodAllCaps = !!rawSettings?.automodAllCaps
   const raw = (rawSettings?.automodRegex || '').trim()
-  if (!raw) { automodCompiled = null; return }
-  const patterns = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean)
-  if (patterns.length === 0) { automodCompiled = null; return }
+  if (!raw) {
+    automodCompiled = null
+    return
+  }
+  const patterns = raw
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+  if (patterns.length === 0) {
+    automodCompiled = null
+    return
+  }
   try {
     automodCompiled = new RegExp(patterns.join('|'), 'i')
   } catch (e) {
-    const esc = patterns.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
-    try { automodCompiled = new RegExp(esc, 'i') } catch { automodCompiled = null }
+    const esc = patterns.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
+    try {
+      automodCompiled = new RegExp(esc, 'i')
+    } catch {
+      automodCompiled = null
+    }
   }
 }
 

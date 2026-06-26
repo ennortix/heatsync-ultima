@@ -10,9 +10,7 @@
 // exists separately because early-inject-main.js carries 800 lines of
 // Twitch-specific instrumentation (Hermes WS, GQL fetch, emote rewriting)
 // that has no business running on Kick.
-(function() {
-  'use strict'
-
+;(() => {
   if (window.__heatsyncKickNav) return
   window.__heatsyncKickNav = true
 
@@ -20,15 +18,17 @@
   const origReplaceState = history.replaceState.bind(history)
 
   function notifyNav() {
-    try { window.postMessage({ type: 'heatsync-nav', url: location.href }, location.origin) } catch {}
+    try {
+      window.postMessage({ type: 'heatsync-nav', url: location.href }, location.origin)
+    } catch {}
   }
 
-  history.pushState = function(...args) {
+  history.pushState = (...args) => {
     origPushState(...args)
     notifyNav()
   }
 
-  history.replaceState = function(...args) {
+  history.replaceState = (...args) => {
     origReplaceState(...args)
     notifyNav()
   }

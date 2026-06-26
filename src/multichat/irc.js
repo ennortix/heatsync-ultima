@@ -4,7 +4,10 @@ function parseTags(tagStr) {
   const tags = {}
   for (const part of tagStr.split(';')) {
     const eq = part.indexOf('=')
-    if (eq === -1) { tags[part] = ''; continue }
+    if (eq === -1) {
+      tags[part] = ''
+      continue
+    }
     tags[part.slice(0, eq)] = part.slice(eq + 1) || ''
   }
   return tags
@@ -58,13 +61,17 @@ function parseIrcLine(raw, channel) {
         channel: channel || privmsg[1].toLowerCase(),
         time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
         id: tags.id || '',
-        replyTo: tags['reply-parent-display-name'] ? {
-          user: decodeURIComponent(tags['reply-parent-display-name']),
-          text: tags['reply-parent-msg-body'] ? decodeURIComponent(tags['reply-parent-msg-body'].replace(/\\s/g, ' ')) : '',
-          id: tags['reply-parent-msg-id'] || '',
-          userId: tags['reply-parent-user-id'] || '',
-          threadId: tags['reply-thread-parent-msg-id'] || tags['reply-parent-msg-id'] || ''
-        } : null
+        replyTo: tags['reply-parent-display-name']
+          ? {
+              user: decodeURIComponent(tags['reply-parent-display-name']),
+              text: tags['reply-parent-msg-body']
+                ? decodeURIComponent(tags['reply-parent-msg-body'].replace(/\\s/g, ' '))
+                : '',
+              id: tags['reply-parent-msg-id'] || '',
+              userId: tags['reply-parent-user-id'] || '',
+              threadId: tags['reply-thread-parent-msg-id'] || tags['reply-parent-msg-id'] || '',
+            }
+          : null,
       }
       const twitchEmotes = parseTwitchEmotesTag(tags.emotes, text)
       if (twitchEmotes) msg.twitchEmotes = twitchEmotes
@@ -97,22 +104,25 @@ function parseIrcLine(raw, channel) {
     if (usernotice) {
       const displayName = tags['display-name'] || 'system'
       const subPlan = tags['msg-param-sub-plan'] || ''
-      const tier = subPlan === '2000' ? '2' : subPlan === '3000' ? '3' : (subPlan === 'Prime' ? 'prime' : (subPlan ? '1' : ''))
+      const tier =
+        subPlan === '2000' ? '2' : subPlan === '3000' ? '3' : subPlan === 'Prime' ? 'prime' : subPlan ? '1' : ''
       const months = parseInt(tags['msg-param-cumulative-months']) || parseInt(tags['msg-param-months']) || 0
       const giftCount = parseInt(tags['msg-param-mass-gift-count']) || 0
-      const recipient = tags['msg-param-recipient-display-name'] ? decodeURIComponent(tags['msg-param-recipient-display-name'].replace(/\\s/g, ' ')) : ''
+      const recipient = tags['msg-param-recipient-display-name']
+        ? decodeURIComponent(tags['msg-param-recipient-display-name'].replace(/\\s/g, ' '))
+        : ''
       const raidViewers = parseInt(tags['msg-param-viewerCount']) || 0
-      const raidFrom = tags['msg-param-displayName'] ? decodeURIComponent(tags['msg-param-displayName'].replace(/\\s/g, ' ')) : ''
+      const raidFrom = tags['msg-param-displayName']
+        ? decodeURIComponent(tags['msg-param-displayName'].replace(/\\s/g, ' '))
+        : ''
       const announceColor = tags['msg-param-color'] || ''
       const bitsTier = parseInt(tags['msg-param-threshold']) || 0
       const category = tags['msg-param-category'] || ''
       const rawMsgId = tags['msg-id'] || ''
       // Watch-streak: Twitch ships it under viewermilestone w/ category=watch-streak.
       // Promote to its own msgId so renderers + dedupe can distinguish.
-      const msgId = (rawMsgId === 'viewermilestone' && category === 'watch-streak')
-        ? 'watchstreak' : rawMsgId
-      const streakCount = (msgId === 'watchstreak')
-        ? (parseInt(tags['msg-param-value'], 10) || 0) : 0
+      const msgId = rawMsgId === 'viewermilestone' && category === 'watch-streak' ? 'watchstreak' : rawMsgId
+      const streakCount = msgId === 'watchstreak' ? parseInt(tags['msg-param-value'], 10) || 0 : 0
       const userText = usernotice[2] || ''
       const twitchEmotes = parseTwitchEmotesTag(tags.emotes, userText)
       return {
@@ -135,7 +145,7 @@ function parseIrcLine(raw, channel) {
         bitsTier,
         streakCount,
         twitchEmotes: twitchEmotes || undefined,
-        id: tags.id || ''
+        id: tags.id || '',
       }
     }
 
@@ -159,7 +169,7 @@ function parseIrcLine(raw, channel) {
         channel: ch,
         time,
         id: tags.id || detId,
-        systemMsg: notice[2]
+        systemMsg: notice[2],
       }
     }
 
@@ -176,7 +186,7 @@ function parseIrcLine(raw, channel) {
         subsOnly: tags['subs-only'] != null ? tags['subs-only'] === '1' : null,
         emoteOnly: tags['emote-only'] != null ? tags['emote-only'] === '1' : null,
         followersOnly: tags['followers-only'] != null ? parseInt(tags['followers-only']) : null,
-        r9k: tags['r9k'] != null ? tags['r9k'] === '1' : null
+        r9k: tags['r9k'] != null ? tags['r9k'] === '1' : null,
       }
     }
 
@@ -202,7 +212,9 @@ function parseIrcLine(raw, channel) {
       const target = clearchat[2] || ''
       const duration = tags['ban-duration']
       const text = target
-        ? (duration ? `${target} timed out for ${duration}s` : `${target} was permanently banned`)
+        ? duration
+          ? `${target} timed out for ${duration}s`
+          : `${target} was permanently banned`
         : t('mc_irc_chat_cleared')
       const ch = channel || clearchat[1].toLowerCase()
       const time = parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now()
@@ -221,7 +233,7 @@ function parseIrcLine(raw, channel) {
         systemMsg: text,
         targetUser: target,
         targetUserId: tags['target-user-id'] || '',
-        banDuration: duration ? parseInt(duration) : 0
+        banDuration: duration ? parseInt(duration) : 0,
       }
     }
 
@@ -242,7 +254,7 @@ function parseIrcLine(raw, channel) {
         id: targetMsgId || `clearmsg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         systemMsg: t('mc_irc_msg_deleted', [tags.login || 'unknown']),
         targetUser: tags.login || '',
-        targetMsgId: targetMsgId || ''
+        targetMsgId: targetMsgId || '',
       }
     }
 
@@ -257,7 +269,7 @@ function parseIrcLine(raw, channel) {
         color: sanitizeColor(tags.color || '#fff'),
         badges: tags.badges || '',
         time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
-        id: tags['message-id'] || ''
+        id: tags['message-id'] || '',
       }
     }
 
@@ -272,26 +284,26 @@ function parseIrcLine(raw, channel) {
 // ============================================
 class CircularBuffer {
   constructor(cap = 1500) {
-    this.buf = new Array(cap);
-    this.cap = cap;
-    this.head = 0;
-    this.size = 0;
+    this.buf = new Array(cap)
+    this.cap = cap
+    this.head = 0
+    this.size = 0
   }
   push(item) {
-    this.buf[this.head] = item;
-    this.head = (this.head + 1) % this.cap;
-    if (this.size < this.cap) this.size++;
+    this.buf[this.head] = item
+    this.head = (this.head + 1) % this.cap
+    if (this.size < this.cap) this.size++
   }
   getAll() {
-    if (this.size === 0) return [];
-    if (this.size < this.cap) return this.buf.slice(0, this.size);
+    if (this.size === 0) return []
+    if (this.size < this.cap) return this.buf.slice(0, this.size)
     // Concat instead of spread — avoids 2 temporary arrays
-    return this.buf.slice(this.head).concat(this.buf.slice(0, this.head));
+    return this.buf.slice(this.head).concat(this.buf.slice(0, this.head))
   }
   clear() {
-    this.buf = new Array(this.cap);
-    this.head = 0;
-    this.size = 0;
+    this.buf = new Array(this.cap)
+    this.head = 0
+    this.size = 0
   }
 }
 
@@ -313,7 +325,7 @@ class IRC {
     // per-channel last NON-TAP live delivery — the native tap defers to IRC
     // when this is fresh (IRC copies carry replies/bits/highlight richness)
     this._lastLiveAt = new Map()
-    this.channels = new Map()  // ch -> CircularBuffer (local mirror)
+    this.channels = new Map() // ch -> CircularBuffer (local mirror)
     this.handlers = new Map()
     this._destroyed = false
     this._listener = (message) => {
@@ -328,7 +340,9 @@ class IRC {
     // Global twitch badges (mod sword, vip diamond, subscriber/0 star, etc.)
     // were previously fetched in irc.ws.onopen — removed when WebSocket moved
     // to BG. Without this, mod/sub fall back to TEXT badges instead of images.
-    try { fetchGlobalBadges() } catch {}
+    try {
+      fetchGlobalBadges()
+    } catch {}
   }
 
   _seenId(id) {
@@ -353,10 +367,16 @@ class IRC {
       // HEALTHY flow (3+ msgs in 10s), not to a starved trickle where a
       // single message would otherwise carve 10s holes in coverage
       let ts = this._lastLiveAt.get(msg.channel)
-      if (!Array.isArray(ts)) { ts = []; this._lastLiveAt.set(msg.channel, ts) }
+      if (!Array.isArray(ts)) {
+        ts = []
+        this._lastLiveAt.set(msg.channel, ts)
+      }
       ts.push(Date.now())
       if (ts.length > 5) ts.splice(0, ts.length - 5)
-      if (this._lastLiveAt.size > 300) { const k0 = this._lastLiveAt.keys().next().value; this._lastLiveAt.delete(k0) }
+      if (this._lastLiveAt.size > 300) {
+        const k0 = this._lastLiveAt.keys().next().value
+        this._lastLiveAt.delete(k0)
+      }
     }
     // USERSTATE: viewer's per-channel badges (used to gate sub-emote rendering)
     if (msg.type === 'userstate') {
@@ -373,16 +393,26 @@ class IRC {
       }
       return
     }
-    if (msg.type === 'whisper') return  // whispers come via EventSub now
-    if (msg.type === 'roomstate') return  // BG already converted to mode_change notice
+    if (msg.type === 'whisper') return // whispers come via EventSub now
+    if (msg.type === 'roomstate') return // BG already converted to mode_change notice
     const ch = msg.channel
     if (!ch || !this.channels.has(ch)) return
     if (msg.user) {
-      try { addUsername(msg.user) } catch {}
-      try { setKnownColor(msg.user.toLowerCase(), msg.color, msg.userId) } catch {}
+      try {
+        addUsername(msg.user)
+      } catch {}
+      try {
+        setKnownColor(msg.user.toLowerCase(), msg.color, msg.userId)
+      } catch {}
     }
-    if (msg.subMonths) { try { trackSubTenure(ch, msg.user, msg.subMonths) } catch {} }
-    try { fetchChannelBadges(ch) } catch {}
+    if (msg.subMonths) {
+      try {
+        trackSubTenure(ch, msg.user, msg.subMonths)
+      } catch {}
+    }
+    try {
+      fetchChannelBadges(ch)
+    } catch {}
     if (!msg.type || msg.type === 'usernotice' || msg.type === 'notice') {
       const buf = this.channels.get(ch)
       // A single timeout/ban reaches us many ways: the CLEARCHAT (everyone), the
@@ -391,8 +421,7 @@ class IRC {
       // duration, surfacing a bogus "permanently banned" beside the real "timed
       // out for Ns". Collapse them all: the first mod notice for a target wins
       // within the window (matched across timeout/ban since they're the same act).
-      if (msg.type === 'notice' &&
-          (msg.noticeType === 'timeout_success' || msg.noticeType === 'ban_success')) {
+      if (msg.type === 'notice' && (msg.noticeType === 'timeout_success' || msg.noticeType === 'ban_success')) {
         const tm = (msg.text || '').match(/^(\S+) has been/)
         const targetLc = (msg.targetUser || '').toLowerCase() || (tm ? tm[1].toLowerCase() : '')
         if (targetLc) {
@@ -410,20 +439,22 @@ class IRC {
       // multiple viewers). Skip replays from BG history merge.
       if (!msg.type && !msg.isHistory && msg.user && msg.text && msg.id) {
         try {
-          chrome.runtime.sendMessage({
-            type: 'ws_send',
-            data: {
-              type: 'twitch:chat:relay',
-              channel: ch,
-              username: msg.login || String(msg.user).toLowerCase(),
-              display_name: msg.user,
-              message: msg.text,
-              message_id: msg.id,
-              timestamp: msg.time || Date.now(),
-              emote_refs: msg.twitchEmotes ? { twitch: msg.twitchEmotes } : null,
-              reply_to_id: msg.replyTo?.id || null,
-            }
-          }).catch(() => {})
+          chrome.runtime
+            .sendMessage({
+              type: 'ws_send',
+              data: {
+                type: 'twitch:chat:relay',
+                channel: ch,
+                username: msg.login || String(msg.user).toLowerCase(),
+                display_name: msg.user,
+                message: msg.text,
+                message_id: msg.id,
+                timestamp: msg.time || Date.now(),
+                emote_refs: msg.twitchEmotes ? { twitch: msg.twitchEmotes } : null,
+                reply_to_id: msg.replyTo?.id || null,
+              },
+            })
+            .catch(() => {})
         } catch {}
       }
       if (msg.type === 'notice') {
@@ -441,7 +472,11 @@ class IRC {
         if (msg.noticeType === 'delete_message_success' && msg.targetMsgId) {
           const id = msg.targetMsgId
           for (const m of buf.getAll()) {
-            if (m.id === id) { m.cleared = true; m.clearedReason = 'deleted'; break }
+            if (m.id === id) {
+              m.cleared = true
+              m.clearedReason = 'deleted'
+              break
+            }
           }
         }
       }
@@ -460,39 +495,58 @@ class IRC {
       // Snapshot live messages before clearing — any non-history message that
       // arrived during the sendMessage await above would otherwise be buried
       // behind history after the replay loop below.
-      const liveSnap = buf.getAll().filter(m => !m.isHistory)
+      const liveSnap = buf.getAll().filter((m) => !m.isHistory)
       buf.clear()
-      try { if (typeof _recentSentHydrated !== 'undefined') await _recentSentHydrated } catch {}
+      try {
+        if (typeof _recentSentHydrated !== 'undefined') await _recentSentHydrated
+      } catch {}
       for (const m of resp.msgs || []) {
         if (m?.type === 'roomstate' || m?.type === 'userstate' || m?.type === 'whisper') continue
         m.isHistory = true
         if (m.user) {
-          try { addUsername(m.user) } catch {}
-          try { setKnownColor(m.user.toLowerCase(), m.color, m.userId) } catch {}
+          try {
+            addUsername(m.user)
+          } catch {}
+          try {
+            setKnownColor(m.user.toLowerCase(), m.color, m.userId)
+          } catch {}
         }
-        if (m.subMonths) { try { trackSubTenure(ch, m.user, m.subMonths) } catch {} }
+        if (m.subMonths) {
+          try {
+            trackSubTenure(ch, m.user, m.subMonths)
+          } catch {}
+        }
         try {
           const sentHost = peekSentHost(m.text)
-          if (sentHost) { m.badgePlatform = 'twitch'; m.platform = sentHost === 'yt' ? 'youtube' : sentHost }
+          if (sentHost) {
+            m.badgePlatform = 'twitch'
+            m.platform = sentHost === 'yt' ? 'youtube' : sentHost
+          }
         } catch {}
         if (m.id) this._seenId(`${ch}:${m.id}`)
         buf.push(m)
       }
       // Re-append live messages after history so they appear newest (correct order).
       for (const m of liveSnap) buf.push(m)
-      try { _dropAllTabCaches() } catch {}
+      try {
+        _dropAllTabCaches()
+      } catch {}
       // Rebuild when empty OR when a real backfill landed (delta ≥ 5). Small
       // incremental merges skip to avoid streamer-switch flash; large history
       // hydrations always rebuild so the DOM matches the buffer.
-      const isCurrent = (currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch))
+      const isCurrent = currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)
       const delta = buf.size - wasSize
       if (isCurrent && (isMsgsElEmpty() || delta >= 5)) {
         renderMessages(currentTab)
       }
-    } catch (e) { log('BG history refresh failed:', e?.message) }
+    } catch (e) {
+      log('BG history refresh failed:', e?.message)
+    }
   }
 
-  connect() { /* BG owns the WebSocket */ }
+  connect() {
+    /* BG owns the WebSocket */
+  }
 
   async join(ch) {
     ch = ch.toLowerCase()
@@ -501,17 +555,23 @@ class IRC {
     log('Joined', ch)
     // Pre-warm channel badges (sub tiers, FFZ custom mod/vip overrides) so
     // restored history from BG renders with proper images on first paint.
-    try { fetchChannelBadges(ch) } catch {}
+    try {
+      fetchChannelBadges(ch)
+    } catch {}
     // Route through safeSendMessage so cold-SW wake retries — direct sendMessage
     // here silently lost the join on SW eviction, BG never joined the channel,
     // own PRIVMSG echoes never returned, user had to refresh to recover.
-    try { safeSendMessage({ type: 'bg_irc_join', channel: ch }).catch(() => {}) } catch {}
+    try {
+      safeSendMessage({ type: 'bg_irc_join', channel: ch }).catch(() => {})
+    } catch {}
     // Pull initial buffer from BG (in-memory; instant on warm SW). Await the
     // sent-message storage hydration first so own-message [K]/[H]/[Y] badges
     // survive page refresh — otherwise peekSentHost can race with this load
     // and miss the host override, reverting the badge to the echo's actual
     // origin (twitch).
-    try { if (typeof _recentSentHydrated !== 'undefined') await _recentSentHydrated } catch {}
+    try {
+      if (typeof _recentSentHydrated !== 'undefined') await _recentSentHydrated
+    } catch {}
     try {
       const resp = await chrome.runtime.sendMessage({ type: 'bg_irc_history', channel: ch })
       if (resp?.ok && Array.isArray(resp.msgs) && resp.msgs.length > 0) {
@@ -520,29 +580,44 @@ class IRC {
           if (m?.type === 'roomstate' || m?.type === 'userstate' || m?.type === 'whisper') continue
           m.isHistory = true
           if (m.user) {
-            try { addUsername(m.user) } catch {}
-            try { setKnownColor(m.user.toLowerCase(), m.color, m.userId) } catch {}
+            try {
+              addUsername(m.user)
+            } catch {}
+            try {
+              setKnownColor(m.user.toLowerCase(), m.color, m.userId)
+            } catch {}
           }
-          if (m.subMonths) { try { trackSubTenure(ch, m.user, m.subMonths) } catch {} }
+          if (m.subMonths) {
+            try {
+              trackSubTenure(ch, m.user, m.subMonths)
+            } catch {}
+          }
           // Host attribution override — IRC echo arrives as platform='twitch';
           // if we tracked this exact text as a kick/yt/heatsync send, retag.
           try {
             const sentHost = peekSentHost(m.text)
-            if (sentHost) { m.badgePlatform = 'twitch'; m.platform = sentHost === 'yt' ? 'youtube' : sentHost }
+            if (sentHost) {
+              m.badgePlatform = 'twitch'
+              m.platform = sentHost === 'yt' ? 'youtube' : sentHost
+            }
           } catch {}
           buf.push(m)
         }
         log('BG history hydrated:', resp.msgs.length, 'msgs for', ch)
-        try { _dropAllTabCaches() } catch {}
+        try {
+          _dropAllTabCaches()
+        } catch {}
         // Always render if we just hydrated any history and panel is current —
         // a few live msgs may have painted before this resolved, but the buf
         // now has more (history below them) and must be reflected in DOM.
-        const isCurrent = (currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch))
+        const isCurrent = currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)
         if (isCurrent && resp.msgs.length > 0) {
           renderMessages(currentTab)
         }
       }
-    } catch (e) { log('BG history fetch failed:', e?.message) }
+    } catch (e) {
+      log('BG history fetch failed:', e?.message)
+    }
     // Self-healing: if BG returned 0 msgs (cold SW / robotty still in flight)
     // OR broadcast was lost, re-pull at 3s + 8s + 20s. Cheap (single message,
     // no fetch) and idempotent — _refreshFromBg only mutates when SW has data.
@@ -560,7 +635,9 @@ class IRC {
     if (!this.channels.has(ch)) return
     this.channels.delete(ch)
     log('Parted', ch)
-    try { chrome.runtime.sendMessage({ type: 'bg_irc_part', channel: ch }).catch(() => {}) } catch {}
+    try {
+      chrome.runtime.sendMessage({ type: 'bg_irc_part', channel: ch }).catch(() => {})
+    } catch {}
   }
 
   getMessages(ch) {
@@ -573,15 +650,21 @@ class IRC {
   }
 
   emit(e, d) {
-    this.handlers.get(e)?.forEach(fn => {
-      try { fn(d) } catch (err) { console.error('[heatsync-irc] handler err:', err) }
+    this.handlers.get(e)?.forEach((fn) => {
+      try {
+        fn(d)
+      } catch (err) {
+        console.error('[heatsync-irc] handler err:', err)
+      }
     })
   }
 
   destroy() {
     this._destroyed = true
     if (this._listener) {
-      try { chrome.runtime?.onMessage?.removeListener(this._listener) } catch {}
+      try {
+        chrome.runtime?.onMessage?.removeListener(this._listener)
+      } catch {}
       this._listener = null
     }
   }
@@ -619,10 +702,17 @@ class KickChat {
   _serializeMsg(m) {
     if (m?.type === 'moment') return null // ephemeral alert — broken after restore (loses click target)
     return {
-      user: m.user, text: m.text, color: m.color, badges: m.badges,
-      channel: m.channel, time: m.time, platform: 'kick',
-      type: m.type || undefined, systemMsg: m.systemMsg || undefined,
-      replyTo: m.replyTo || undefined, kicksEvent: m.kicksEvent || undefined
+      user: m.user,
+      text: m.text,
+      color: m.color,
+      badges: m.badges,
+      channel: m.channel,
+      time: m.time,
+      platform: 'kick',
+      type: m.type || undefined,
+      systemMsg: m.systemMsg || undefined,
+      replyTo: m.replyTo || undefined,
+      kicksEvent: m.kicksEvent || undefined,
     }
   }
 
@@ -631,7 +721,11 @@ class KickChat {
       try {
         const buffer = this.channels.get(ch)
         if (!buffer) continue
-        const msgs = buffer.getAll().slice(-this._SYNC_BACKUP_MAX).map(m => this._serializeMsg(m)).filter(Boolean)
+        const msgs = buffer
+          .getAll()
+          .slice(-this._SYNC_BACKUP_MAX)
+          .map((m) => this._serializeMsg(m))
+          .filter(Boolean)
         localStorage.setItem(`hs_kick_sync_${ch}`, JSON.stringify({ msgs, ts: Date.now() }))
       } catch {}
     }
@@ -721,7 +815,7 @@ class KickChat {
         // paths re-shape to {name, version}. Accept BOTH so type-shape payloads
         // don't collapse to 'badge/1' (which has no BADGE_STYLES entry → blank).
         const badgeStr = Array.isArray(d.badges)
-          ? d.badges.map(b => `${b.type || b.name || 'badge'}/${b.version || b.count || '1'}`).join(',')
+          ? d.badges.map((b) => `${b.type || b.name || 'badge'}/${b.version || b.count || '1'}`).join(',')
           : ''
         const msg = {
           id: d.id || '',
@@ -732,12 +826,14 @@ class KickChat {
           channel,
           time: d.timestamp || Date.now(),
           platform: 'kick',
-          replyTo: d.replyTo ? {
-            user: d.replyTo.username || 'unknown',
-            text: d.replyTo.content || '',
-            id: d.replyTo.id || d.replyTo.message_id || '',
-            threadId: d.replyTo.thread_id || d.replyTo.id || d.replyTo.message_id || ''
-          } : null
+          replyTo: d.replyTo
+            ? {
+                user: d.replyTo.username || 'unknown',
+                text: d.replyTo.content || '',
+                id: d.replyTo.id || d.replyTo.message_id || '',
+                threadId: d.replyTo.thread_id || d.replyTo.id || d.replyTo.message_id || '',
+              }
+            : null,
         }
         this.channels.get(channel).push(msg)
         if (msg.user) {
@@ -765,7 +861,7 @@ class KickChat {
           msgId: 'kicks_gifted',
           platform: 'kick',
           kicksEvent: true,
-          id: ''
+          id: '',
         }
         this.channels.get(channel).push(msg)
         this.persistBuffer(channel)
@@ -788,7 +884,7 @@ class KickChat {
           type: 'usernotice',
           msgId: message.eventType || '',
           platform: 'kick',
-          id: ''
+          id: '',
         }
         this.channels.get(channel).push(msg)
         this.persistBuffer(channel)
@@ -810,7 +906,11 @@ class KickChat {
         if (!chrome?.runtime?.id) return
         const buffer = this.channels.get(ch)
         if (!buffer) return
-        const msgs = buffer.getAll().slice(-this._PERSIST_MAX).map(m => this._serializeMsg(m)).filter(Boolean)
+        const msgs = buffer
+          .getAll()
+          .slice(-this._PERSIST_MAX)
+          .map((m) => this._serializeMsg(m))
+          .filter(Boolean)
         const p = chrome.storage.local.set({ [`hs_kick_${ch}`]: { msgs, ts: Date.now() } })
         if (p && typeof p.catch === 'function') p.catch(() => {})
       } catch {}
@@ -829,30 +929,43 @@ class KickChat {
       const buf = this.channels.get(ch)
       const wasSize = buf.size
       // Snapshot live messages before clearing — mirrors IRC._refreshFromBg.
-      const liveSnap = buf.getAll().filter(m => !m.isHistory)
+      const liveSnap = buf.getAll().filter((m) => !m.isHistory)
       buf.clear()
-      try { if (typeof _recentSentHydrated !== 'undefined') await _recentSentHydrated } catch {}
+      try {
+        if (typeof _recentSentHydrated !== 'undefined') await _recentSentHydrated
+      } catch {}
       for (const m of resp.msgs) {
         m.isHistory = true
         if (m.user) {
-          try { addUsername(m.user) } catch {}
-          try { setKnownColor(m.user.toLowerCase(), m.color, m.userId) } catch {}
+          try {
+            addUsername(m.user)
+          } catch {}
+          try {
+            setKnownColor(m.user.toLowerCase(), m.color, m.userId)
+          } catch {}
         }
         try {
           const sentHost = peekSentHost(m.text)
-          if (sentHost) { m.badgePlatform = 'kick'; m.platform = sentHost === 'yt' ? 'youtube' : sentHost }
+          if (sentHost) {
+            m.badgePlatform = 'kick'
+            m.platform = sentHost === 'yt' ? 'youtube' : sentHost
+          }
         } catch {}
         buf.push(m)
       }
       // Re-append live messages after history so they appear newest (correct order).
       for (const m of liveSnap) buf.push(m)
-      try { _dropAllTabCaches() } catch {}
-      const isCurrent = (currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch))
+      try {
+        _dropAllTabCaches()
+      } catch {}
+      const isCurrent = currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)
       const delta = buf.size - wasSize
       if (isCurrent && (isMsgsElEmpty() || delta >= 5)) {
         renderMessages(currentTab)
       }
-    } catch (e) { log('Kick BG refresh failed:', e?.message) }
+    } catch (e) {
+      log('Kick BG refresh failed:', e?.message)
+    }
   }
 
   async loadHistory(ch) {
@@ -861,7 +974,8 @@ class KickChat {
     const storageKey = `hs_kick_${ch}`
     const syncKey = `hs_kick_sync_${ch}`
 
-    let chromeMsgs = null, syncMsgs = null
+    let chromeMsgs = null,
+      syncMsgs = null
     try {
       const stored = await chrome.storage.local.get(storageKey)
       const data = stored[storageKey]
@@ -880,7 +994,7 @@ class KickChat {
     // Kick messages have no global id; merge by user+time+text fingerprint.
     const seen = new Set()
     const all = []
-    const fp = (m) => `${m.user||''}|${m.time||0}|${(m.text||'').slice(0,80)}`
+    const fp = (m) => `${m.user || ''}|${m.time || 0}|${(m.text || '').slice(0, 80)}`
     const ingest = (arr) => {
       if (!arr) return
       for (const m of arr) {
@@ -896,10 +1010,15 @@ class KickChat {
 
     // Filter out 7TV emote change system messages and dedup stream events
     const seenEventTexts = new Set()
-    const filtered = all.filter(m => {
+    const filtered = all.filter((m) => {
       const t = m.text || m.systemMsg || ''
-      if (t.includes('removed from channel') || t.includes('added to channel') ||
-          t.includes('removed 7TV emote') || t.includes('added 7TV emote')) return false
+      if (
+        t.includes('removed from channel') ||
+        t.includes('added to channel') ||
+        t.includes('removed 7TV emote') ||
+        t.includes('added 7TV emote')
+      )
+        return false
       const isStreamEvent = m.type === 'stream-event' || (m.text && m.text.includes('◆') && !m.user)
       if (isStreamEvent && m.text) {
         if (!m.type) m.type = 'stream-event'
@@ -912,9 +1031,14 @@ class KickChat {
       }
       return true
     })
-    log('Kick storage hit:', filtered.length, 'msgs for', ch,
+    log(
+      'Kick storage hit:',
+      filtered.length,
+      'msgs for',
+      ch,
       'chrome:' + (chromeMsgs?.length || 0),
-      'sync:' + (syncMsgs?.length || 0))
+      'sync:' + (syncMsgs?.length || 0),
+    )
     for (const msg of filtered) {
       msg.isHistory = true
       if (msg.user) {
@@ -926,7 +1050,7 @@ class KickChat {
     // Always render when history hydrates and panel is current — even if a
     // couple live msgs already painted, the buffer just grew and the DOM
     // must reflect it.
-    const isCurrent = (currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch))
+    const isCurrent = currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)
     if (isCurrent && filtered.length > 0) {
       renderMessages(currentTab)
     }
@@ -943,8 +1067,8 @@ class KickChat {
       window.removeEventListener('pagehide', this._pagehideHandler)
       this._pagehideHandler = null
     }
-    for (const id of Object.values(this._persistTimers)) cleanup.clearTimeout(id);
-    this._persistTimers = {};
+    for (const id of Object.values(this._persistTimers)) cleanup.clearTimeout(id)
+    this._persistTimers = {}
     // Leave all channels
     for (const username of this.channels.keys()) {
       safeSendMessage({ type: 'ws_send', data: { type: 'channel:leave', platform: 'kick', channel: username } })
@@ -963,7 +1087,11 @@ class KickChat {
     // Pre-warm Kick subscriber badges (defer past init so any panel mount
     // races finish before the populate). No render side-effects in the
     // helper — natural re-render picks up the new entries.
-    setTimeout(() => { try { fetchKickChannelBadges(kickUsername) } catch {} }, 1500)
+    setTimeout(() => {
+      try {
+        fetchKickChannelBadges(kickUsername)
+      } catch {}
+    }, 1500)
     // ask BG for in-memory buffer first (always fresher than the
     // chrome.storage.local debounced write). Fall back to local persisted
     // history if BG is cold.
@@ -972,28 +1100,41 @@ class KickChat {
       const resp = await chrome.runtime.sendMessage({ type: 'bg_kick_history', channel: kickUsername })
       if (resp?.ok && Array.isArray(resp.msgs) && resp.msgs.length > 0) {
         const buf = this.channels.get(kickUsername)
-        try { if (typeof _recentSentHydrated !== 'undefined') await _recentSentHydrated } catch {}
+        try {
+          if (typeof _recentSentHydrated !== 'undefined') await _recentSentHydrated
+        } catch {}
         for (const m of resp.msgs) {
           m.isHistory = true
           if (m.user) {
-            try { addUsername(m.user) } catch {}
-            try { setKnownColor(m.user.toLowerCase(), m.color, m.userId) } catch {}
+            try {
+              addUsername(m.user)
+            } catch {}
+            try {
+              setKnownColor(m.user.toLowerCase(), m.color, m.userId)
+            } catch {}
           }
           try {
             const sentHost = peekSentHost(m.text)
-            if (sentHost) { m.badgePlatform = 'kick'; m.platform = sentHost === 'yt' ? 'youtube' : sentHost }
+            if (sentHost) {
+              m.badgePlatform = 'kick'
+              m.platform = sentHost === 'yt' ? 'youtube' : sentHost
+            }
           } catch {}
           buf.push(m)
         }
         hydrated = true
         log('Kick BG history hydrated:', resp.msgs.length, 'msgs for', kickUsername)
-        try { _dropAllTabCaches() } catch {}
-        const isCurrent = (currentTab === kickUsername || (currentTab === 'live' && getLiveChannel() === kickUsername))
+        try {
+          _dropAllTabCaches()
+        } catch {}
+        const isCurrent = currentTab === kickUsername || (currentTab === 'live' && getLiveChannel() === kickUsername)
         if (isCurrent && resp.msgs.length > 0) {
           renderMessages(currentTab)
         }
       }
-    } catch (e) { log('Kick BG history fetch failed:', e?.message) }
+    } catch (e) {
+      log('Kick BG history fetch failed:', e?.message)
+    }
     if (!hydrated) await this.loadHistory(kickUsername)
     safeSendMessage({ type: 'ws_send', data: { type: 'channel:join', platform: 'kick', channel: kickUsername } })
     log('Kick joined', kickUsername, '(webhook mode)')
@@ -1026,8 +1167,12 @@ class KickChat {
   }
 
   emit(e, d) {
-    this.handlers.get(e)?.forEach(fn => {
-      try { fn(d) } catch (err) { console.error('[heatsync-kick] handler err:', err) }
+    this.handlers.get(e)?.forEach((fn) => {
+      try {
+        fn(d)
+      } catch (err) {
+        console.error('[heatsync-kick] handler err:', err)
+      }
     })
   }
 }

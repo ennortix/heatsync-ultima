@@ -38,7 +38,7 @@ async function _crossFollowSettings() {
     return {
       twitch: ui.crossFollowTwitch !== false,
       kick: ui.crossFollowKick !== false,
-      twitchNotifyTarget: ui.crossFollowTwitchNotify !== false
+      twitchNotifyTarget: ui.crossFollowTwitchNotify !== false,
     }
   } catch {
     return { twitch: true, kick: true, twitchNotifyTarget: true }
@@ -52,7 +52,7 @@ async function _readQueue() {
     const stored = await api.storage.local.get([HS_PENDING_KEY])
     const arr = Array.isArray(stored?.[HS_PENDING_KEY]) ? stored[HS_PENDING_KEY] : []
     const cutoff = Date.now() - HS_PENDING_MAX_AGE_MS
-    const fresh = arr.filter(x => x && typeof x.ts === 'number' && x.ts >= cutoff)
+    const fresh = arr.filter((x) => x && typeof x.ts === 'number' && x.ts >= cutoff)
     return fresh.slice(-HS_PENDING_MAX)
   } catch {
     return []
@@ -71,14 +71,14 @@ async function _writeQueue(arr) {
 async function _enqueue(item) {
   if (!item?.platform || !item?.target) return
   const q = await _readQueue()
-  const filtered = q.filter(x => !(x.platform === item.platform && x.target === item.target))
+  const filtered = q.filter((x) => !(x.platform === item.platform && x.target === item.target))
   filtered.push({ ...item, ts: Date.now() })
   await _writeQueue(filtered.slice(-HS_PENDING_MAX))
 }
 
 async function _dequeueMatching(platform, target) {
   const q = await _readQueue()
-  const filtered = q.filter(x => !(x.platform === platform && x.target === target))
+  const filtered = q.filter((x) => !(x.platform === platform && x.target === target))
   if (filtered.length !== q.length) await _writeQueue(filtered)
 }
 
@@ -88,7 +88,7 @@ async function _dequeueMatching(platform, target) {
 async function drainPendingFollows(platform) {
   if (!platform) return { ok: false, drained: 0 }
   const q = await _readQueue()
-  const mine = q.filter(x => x.platform === platform)
+  const mine = q.filter((x) => x.platform === platform)
   if (!mine.length) return { ok: true, drained: 0 }
   let drained = 0
   const drainedItems = []
@@ -135,7 +135,9 @@ async function drainPendingFollows(platform) {
 if (typeof api !== 'undefined' && api?.runtime?.onMessage) {
   api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg?.type === 'cross_follow_drain' && typeof msg.platform === 'string') {
-      drainPendingFollows(msg.platform).then(sendResponse).catch(e => sendResponse({ ok: false, error: e?.message }))
+      drainPendingFollows(msg.platform)
+        .then(sendResponse)
+        .catch((e) => sendResponse({ ok: false, error: e?.message }))
       return true
     }
     return false
@@ -151,13 +153,16 @@ if (typeof api !== 'undefined' && api?.runtime?.onMessage) {
 
 async function _kickFollow(slug, follow) {
   if (!slug) return { error: 'no slug' }
-  const safeSlug = String(slug).toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 64)
+  const safeSlug = String(slug)
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, '')
+    .slice(0, 64)
   if (!safeSlug) return { error: 'invalid slug' }
   try {
     const resp = await safeSendMessage({
       type: 'kick_follow',
       slug: safeSlug,
-      follow: !!follow
+      follow: !!follow,
     })
     if (resp?.ok) return { ok: true, idempotent: !!resp.idempotent }
     if (resp?.error === 'kick_not_logged_in') return { error: 'kick_not_logged_in', queueable: true }
@@ -214,7 +219,7 @@ async function propagateFollow(follow, target) {
           target: String(target.twitch_id),
           username: target.twitch_username ? String(target.twitch_username).toLowerCase() : undefined,
           action: follow ? 'follow' : 'unfollow',
-          disableNotifications: false
+          disableNotifications: false,
         })
       }
       // Surface 2fa requirement — user has to satisfy it on twitch.tv
@@ -236,7 +241,7 @@ async function propagateFollow(follow, target) {
         await _enqueue({
           platform: 'kick',
           target: String(target.kick_username).toLowerCase(),
-          action: follow ? 'follow' : 'unfollow'
+          action: follow ? 'follow' : 'unfollow',
         })
       }
       // Surface only login-needed; treat other transient kick errors as silent

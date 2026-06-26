@@ -1,10 +1,8 @@
 // OP Message Injector - Inject followed users' red OP posts into Twitch/Kick chat
-(function() {
-  'use strict';
-
-  const DEBUG = false;
-  const log = DEBUG ? console.log.bind(console, '[heatsync-injector]') : () => {};
-  log(' Chat injector loaded');
+;(() => {
+  const DEBUG = false
+  const log = DEBUG ? console.log.bind(console, '[heatsync-injector]') : () => {}
+  log(' Chat injector loaded')
 
   function sanitizeColor(color) {
     if (!color) return '#ffffff'
@@ -21,53 +19,57 @@
     chrome.runtime.onMessage.removeListener(_onMessageInjector)
   })
 
-  let followedUsers = new Set(); // Users the current user follows
-  let injectedMessages = new Set(); // Track injected message IDs to prevent duplicates
-  let chatReady = false;
+  let followedUsers = new Set() // Users the current user follows
+  const injectedMessages = new Set() // Track injected message IDs to prevent duplicates
+  let chatReady = false
 
   // Set up message listener IMMEDIATELY (not inside async init)
   // Named reference so we can removeListener before re-adding on SPA navigation
   function _onMessageInjector(message) {
-    log(' 📬 Got runtime message:', message.type, message);
+    log(' 📬 Got runtime message:', message.type, message)
     if (message.type === 'new-message') {
-      log(' 📬 Calling handleNewMessage with:', message.data);
+      log(' 📬 Calling handleNewMessage with:', message.data)
       if (chatReady) {
-        handleNewMessage(message.data);
+        handleNewMessage(message.data)
       } else {
-        log(' Chat not ready, queueing message');
-        if (!window._queuedMessages) window._queuedMessages = [];
+        log(' Chat not ready, queueing message')
+        if (!window._queuedMessages) window._queuedMessages = []
         if (window._queuedMessages.length < 200) {
-          window._queuedMessages.push(message.data);
+          window._queuedMessages.push(message.data)
         }
       }
     } else if (message.type === 'followed_users_updated') {
-      followedUsers = new Set(message.users);
-      log(' Updated followed users:', followedUsers.size);
+      followedUsers = new Set(message.users)
+      log(' Updated followed users:', followedUsers.size)
     }
   }
   chrome.runtime.onMessage.removeListener(_onMessageInjector)
   chrome.runtime.onMessage.addListener(_onMessageInjector)
 
   // SPA navigation handler — reset stale state on channel switch
-  window.addEventListener('message', (event) => {
-    if (event.origin !== location.origin) return
-    if (event.data?.type === 'heatsync-nav') {
-      chatReady = false
-      injectedMessages.clear()
-      followedUsers = new Set()
-      initChatInjector()
-    }
-  }, { signal: injSignal })
+  window.addEventListener(
+    'message',
+    (event) => {
+      if (event.origin !== location.origin) return
+      if (event.data?.type === 'heatsync-nav') {
+        chatReady = false
+        injectedMessages.clear()
+        followedUsers = new Set()
+        initChatInjector()
+      }
+    },
+    { signal: injSignal },
+  )
 
-/**
- * Inject CSS to prevent hover effects on injected messages
- */
-function injectHoverBlockCSS() {
-  if (document.getElementById('heatsync-hover-block')) return; // Already injected
+  /**
+   * Inject CSS to prevent hover effects on injected messages
+   */
+  function injectHoverBlockCSS() {
+    if (document.getElementById('heatsync-hover-block')) return // Already injected
 
-  const style = document.createElement('style');
-  style.id = 'heatsync-hover-block';
-  style.textContent = `
+    const style = document.createElement('style')
+    style.id = 'heatsync-hover-block'
+    style.textContent = `
     .heatsync-injected-message,
     .heatsync-injected-message:hover,
     .heatsync-injected-message *,
@@ -118,246 +120,246 @@ function injectHoverBlockCSS() {
     .heatsync-injected-message .heatsync-op-badge:hover {
       background: #ff0000 !important;
     }
-  `;
-  document.head.appendChild(style);
-}
-
-/**
- * Get max quality URL for an emote based on its CDN
- */
-function getMaxQualityEmoteUrl(url) {
-  if (!url) return url;
-  // BTTV: /1x → /3x
-  if (url.includes('cdn.betterttv.net')) {
-    return url.replace(/\/[12]x(\.webp)?/, '/3x$1');
-  }
-  // FFZ: /1 or /2 → /4
-  if (url.includes('cdn.frankerfacez.com')) {
-    return url.replace(/\/[123]$/, '/4');
-  }
-  // 7TV: /1x or /2x → /4x
-  if (url.includes('cdn.7tv.app')) {
-    return url.replace(/\/[123]x(\.webp)?/, '/4x$1');
-  }
-  // Twitch: /1.0 or /2.0 → /3.0
-  if (url.includes('static-cdn.jtvnw.net')) {
-    return url.replace(/\/[12]\.0/, '/3.0');
-  }
-  return url;
-}
-
-/**
- * Show emote tooltip with high-res preview
- */
-function showEmoteTooltip(emote, event) {
-  let tooltip = document.getElementById('heatsync-emote-tooltip');
-  if (!tooltip) {
-    tooltip = document.createElement('div');
-    tooltip.id = 'heatsync-emote-tooltip';
-    const img = document.createElement('img');
-    tooltip.appendChild(img);
-    document.body.appendChild(tooltip);
+  `
+    document.head.appendChild(style)
   }
 
-  const highResUrl = getMaxQualityEmoteUrl(emote.src);
-  const img = tooltip.querySelector('img');
-  if (img.src !== highResUrl) {
-    img.src = highResUrl;
+  /**
+   * Get max quality URL for an emote based on its CDN
+   */
+  function getMaxQualityEmoteUrl(url) {
+    if (!url) return url
+    // BTTV: /1x → /3x
+    if (url.includes('cdn.betterttv.net')) {
+      return url.replace(/\/[12]x(\.webp)?/, '/3x$1')
+    }
+    // FFZ: /1 or /2 → /4
+    if (url.includes('cdn.frankerfacez.com')) {
+      return url.replace(/\/[123]$/, '/4')
+    }
+    // 7TV: /1x or /2x → /4x
+    if (url.includes('cdn.7tv.app')) {
+      return url.replace(/\/[123]x(\.webp)?/, '/4x$1')
+    }
+    // Twitch: /1.0 or /2.0 → /3.0
+    if (url.includes('static-cdn.jtvnw.net')) {
+      return url.replace(/\/[12]\.0/, '/3.0')
+    }
+    return url
   }
 
-  const rect = emote.getBoundingClientRect();
-  tooltip.style.left = (rect.left + rect.width / 2) + 'px';
-  tooltip.style.top = (rect.top - 8) + 'px';
-  tooltip.classList.add('active');
-}
-
-/**
- * Hide emote tooltip
- */
-function hideEmoteTooltip() {
-  const tooltip = document.getElementById('heatsync-emote-tooltip');
-  if (tooltip) {
-    tooltip.classList.remove('active');
-  }
-}
-
-/**
- * Setup emote hover listeners for injected messages
- */
-function setupEmoteHoverListeners(container) {
-  container.querySelectorAll('.heatsync-emote').forEach(emote => {
-    if (emote._tooltipSetup) return;
-    emote._tooltipSetup = true;
-    emote.addEventListener('mouseenter', (e) => showEmoteTooltip(emote, e), { signal: injSignal });
-    emote.addEventListener('mouseleave', hideEmoteTooltip, { signal: injSignal });
-  });
-}
-
-/**
- * Initialize chat injector - wait for platform detection and WebSocket
- */
-async function initChatInjector() {
-  try {
-    // Wait for platform detection
-    if (!window.heatsyncPlatform) {
-      log(' Waiting for platform detector...');
-      await new Promise((resolve) => {
-        const checkInterval = setInterval(() => {
-          if (window.heatsyncPlatform) {
-            clearInterval(checkInterval);
-            resolve();
-          }
-        }, 100);
-        injSignal.addEventListener('abort', () => clearInterval(checkInterval));
-      });
+  /**
+   * Show emote tooltip with high-res preview
+   */
+  function showEmoteTooltip(emote, event) {
+    let tooltip = document.getElementById('heatsync-emote-tooltip')
+    if (!tooltip) {
+      tooltip = document.createElement('div')
+      tooltip.id = 'heatsync-emote-tooltip'
+      const img = document.createElement('img')
+      tooltip.appendChild(img)
+      document.body.appendChild(tooltip)
     }
 
-    const platform = window.heatsyncPlatform.detectPlatform();
-    if (!platform) {
-      log(' Not on Twitch/Kick, skipping');
-      return;
+    const highResUrl = getMaxQualityEmoteUrl(emote.src)
+    const img = tooltip.querySelector('img')
+    if (img.src !== highResUrl) {
+      img.src = highResUrl
     }
 
-    log(' Initializing on platform:', platform);
-
-    // Wait for chat container
-    const chatContainer = await window.heatsyncPlatform.waitForChatContainer();
-    log(' Chat container ready:', chatContainer);
-
-    // Inject CSS to prevent hover effects
-    injectHoverBlockCSS();
-
-    // Load followed users list
-    await loadFollowedUsers();
-
-    chatReady = true;
-
-    // Process queued messages
-    if (window._queuedMessages?.length) {
-      log(' Processing', window._queuedMessages.length, 'queued messages');
-      window._queuedMessages.forEach(handleNewMessage);
-      window._queuedMessages = [];
-    }
-
-    log(' ✅ Initialized successfully');
-  } catch (error) {
-    // "Chat container not found" is expected on /directory, /settings, /inventory,
-    // /wallet, /videos, /search etc. — pages outside a channel context. Log
-    // quietly so the error buffer doesn't flood with non-actionable noise.
-    const msg = String(error?.message || error || '')
-    if (msg.startsWith('Chat container not found')) {
-      log(' chat-injector: no chat on this page, skipping');
-      return
-    }
-    console.error('[heatsync] chat-injector init failed:', error);
-  }
-}
-
-/**
- * Load followed users from background script
- */
-async function loadFollowedUsers() {
-  try {
-    const response = await chrome.runtime.sendMessage({ type: 'get_followed_users' });
-    if (response && response.users) {
-      followedUsers = new Set(response.users);
-      log(' Loaded followed users:', followedUsers.size);
-    }
-  } catch (error) {
-    // Extension context may be invalidated — non-fatal
-  }
-}
-
-/**
- * Handle new message from WebSocket
- * @param {object} message - Message data from WebSocket
- */
-function handleNewMessage(message) {
-  log(' 🔍 handleNewMessage called:', {
-    base36_id: message.base36_id,
-    is_op: message.is_op,
-    content: message.content?.substring(0, 30),
-    already_injected: injectedMessages.has(message.base36_id)
-  });
-
-  // Check if message qualifies for injection
-  if (!message.is_op) {
-    log(' ❌ Skipping: not an OP (is_op:', message.is_op, ')');
-    return; // Not an OP message
+    const rect = emote.getBoundingClientRect()
+    tooltip.style.left = rect.left + rect.width / 2 + 'px'
+    tooltip.style.top = rect.top - 8 + 'px'
+    tooltip.classList.add('active')
   }
 
-  if (injectedMessages.has(message.base36_id)) {
-    log(' ❌ Skipping: already injected');
-    return; // Already injected
-  }
-
-  log(' 🔥 Injecting OP message:', message.content);
-  injectMessage(message);
-  injectedMessages.add(message.base36_id);
-  if (injectedMessages.size > 500) {
-    const arr = [...injectedMessages]
-    injectedMessages.clear()
-    arr.slice(-250).forEach(id => injectedMessages.add(id))
-  }
-}
-
-/**
- * Inject OP message into native chat
- * @param {object} message - Message to inject
- */
-function injectMessage(message) {
-  const selectors = window.heatsyncPlatform.getPlatformSelectors();
-  if (!selectors) return;
-
-  const container = document.querySelector(selectors.container);
-  if (!container) {
-    return;
-  }
-
-  const platform = window.heatsyncPlatform.detectPlatform();
-  const messageElement = createMessageElement(message, platform);
-
-  // Inject at the bottom of chat (new messages appear at bottom)
-  container.appendChild(messageElement);
-
-  // Prune oldest injected messages to prevent unbounded DOM growth.
-  // Native chat keeps ~150 of its own; ours stack on top — keep small.
-  const injected = container.querySelectorAll('.heatsync-injected-message');
-  if (injected.length > 20) {
-    const toRemove = injected.length - 20;
-    for (let i = 0; i < toRemove; i++) {
-      injected[i].remove();
+  /**
+   * Hide emote tooltip
+   */
+  function hideEmoteTooltip() {
+    const tooltip = document.getElementById('heatsync-emote-tooltip')
+    if (tooltip) {
+      tooltip.classList.remove('active')
     }
   }
 
-  // Setup emote hover tooltips for this message
-  setupEmoteHoverListeners(messageElement);
-
-  // Scroll to bottom if user is near bottom
-  const scrollParent = container.parentElement || container;
-  const isNearBottom = scrollParent.scrollTop + scrollParent.clientHeight >= scrollParent.scrollHeight - 100;
-
-  if (isNearBottom) {
-    requestAnimationFrame(() => {
-      scrollParent.scrollTop = scrollParent.scrollHeight
+  /**
+   * Setup emote hover listeners for injected messages
+   */
+  function setupEmoteHoverListeners(container) {
+    container.querySelectorAll('.heatsync-emote').forEach((emote) => {
+      if (emote._tooltipSetup) return
+      emote._tooltipSetup = true
+      emote.addEventListener('mouseenter', (e) => showEmoteTooltip(emote, e), { signal: injSignal })
+      emote.addEventListener('mouseleave', hideEmoteTooltip, { signal: injSignal })
     })
   }
-}
 
-/**
- * Create fake message element matching platform style
- * @param {object} message - Message data
- * @param {string} platform - 'twitch' | 'kick'
- * @returns {HTMLElement} Message element
- */
-function createMessageElement(message, platform) {
-  const div = document.createElement('div');
-  div.className = 'heatsync-injected-message';
-  div.dataset.messageId = message.base36_id;
+  /**
+   * Initialize chat injector - wait for platform detection and WebSocket
+   */
+  async function initChatInjector() {
+    try {
+      // Wait for platform detection
+      if (!window.heatsyncPlatform) {
+        log(' Waiting for platform detector...')
+        await new Promise((resolve) => {
+          const checkInterval = setInterval(() => {
+            if (window.heatsyncPlatform) {
+              clearInterval(checkInterval)
+              resolve()
+            }
+          }, 100)
+          injSignal.addEventListener('abort', () => clearInterval(checkInterval))
+        })
+      }
 
-  if (platform === 'twitch') {
-    div.className += ' heatsync-twitch-message';
-    div.innerHTML = `
+      const platform = window.heatsyncPlatform.detectPlatform()
+      if (!platform) {
+        log(' Not on Twitch/Kick, skipping')
+        return
+      }
+
+      log(' Initializing on platform:', platform)
+
+      // Wait for chat container
+      const chatContainer = await window.heatsyncPlatform.waitForChatContainer()
+      log(' Chat container ready:', chatContainer)
+
+      // Inject CSS to prevent hover effects
+      injectHoverBlockCSS()
+
+      // Load followed users list
+      await loadFollowedUsers()
+
+      chatReady = true
+
+      // Process queued messages
+      if (window._queuedMessages?.length) {
+        log(' Processing', window._queuedMessages.length, 'queued messages')
+        window._queuedMessages.forEach(handleNewMessage)
+        window._queuedMessages = []
+      }
+
+      log(' ✅ Initialized successfully')
+    } catch (error) {
+      // "Chat container not found" is expected on /directory, /settings, /inventory,
+      // /wallet, /videos, /search etc. — pages outside a channel context. Log
+      // quietly so the error buffer doesn't flood with non-actionable noise.
+      const msg = String(error?.message || error || '')
+      if (msg.startsWith('Chat container not found')) {
+        log(' chat-injector: no chat on this page, skipping')
+        return
+      }
+      console.error('[heatsync] chat-injector init failed:', error)
+    }
+  }
+
+  /**
+   * Load followed users from background script
+   */
+  async function loadFollowedUsers() {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'get_followed_users' })
+      if (response && response.users) {
+        followedUsers = new Set(response.users)
+        log(' Loaded followed users:', followedUsers.size)
+      }
+    } catch (error) {
+      // Extension context may be invalidated — non-fatal
+    }
+  }
+
+  /**
+   * Handle new message from WebSocket
+   * @param {object} message - Message data from WebSocket
+   */
+  function handleNewMessage(message) {
+    log(' 🔍 handleNewMessage called:', {
+      base36_id: message.base36_id,
+      is_op: message.is_op,
+      content: message.content?.substring(0, 30),
+      already_injected: injectedMessages.has(message.base36_id),
+    })
+
+    // Check if message qualifies for injection
+    if (!message.is_op) {
+      log(' ❌ Skipping: not an OP (is_op:', message.is_op, ')')
+      return // Not an OP message
+    }
+
+    if (injectedMessages.has(message.base36_id)) {
+      log(' ❌ Skipping: already injected')
+      return // Already injected
+    }
+
+    log(' 🔥 Injecting OP message:', message.content)
+    injectMessage(message)
+    injectedMessages.add(message.base36_id)
+    if (injectedMessages.size > 500) {
+      const arr = [...injectedMessages]
+      injectedMessages.clear()
+      arr.slice(-250).forEach((id) => injectedMessages.add(id))
+    }
+  }
+
+  /**
+   * Inject OP message into native chat
+   * @param {object} message - Message to inject
+   */
+  function injectMessage(message) {
+    const selectors = window.heatsyncPlatform.getPlatformSelectors()
+    if (!selectors) return
+
+    const container = document.querySelector(selectors.container)
+    if (!container) {
+      return
+    }
+
+    const platform = window.heatsyncPlatform.detectPlatform()
+    const messageElement = createMessageElement(message, platform)
+
+    // Inject at the bottom of chat (new messages appear at bottom)
+    container.appendChild(messageElement)
+
+    // Prune oldest injected messages to prevent unbounded DOM growth.
+    // Native chat keeps ~150 of its own; ours stack on top — keep small.
+    const injected = container.querySelectorAll('.heatsync-injected-message')
+    if (injected.length > 20) {
+      const toRemove = injected.length - 20
+      for (let i = 0; i < toRemove; i++) {
+        injected[i].remove()
+      }
+    }
+
+    // Setup emote hover tooltips for this message
+    setupEmoteHoverListeners(messageElement)
+
+    // Scroll to bottom if user is near bottom
+    const scrollParent = container.parentElement || container
+    const isNearBottom = scrollParent.scrollTop + scrollParent.clientHeight >= scrollParent.scrollHeight - 100
+
+    if (isNearBottom) {
+      requestAnimationFrame(() => {
+        scrollParent.scrollTop = scrollParent.scrollHeight
+      })
+    }
+  }
+
+  /**
+   * Create fake message element matching platform style
+   * @param {object} message - Message data
+   * @param {string} platform - 'twitch' | 'kick'
+   * @returns {HTMLElement} Message element
+   */
+  function createMessageElement(message, platform) {
+    const div = document.createElement('div')
+    div.className = 'heatsync-injected-message'
+    div.dataset.messageId = message.base36_id
+
+    if (platform === 'twitch') {
+      div.className += ' heatsync-twitch-message'
+      div.innerHTML = `
       <div class="chat-line__no-background" style="padding: 0 8px; transition: none !important; opacity: 1 !important; filter: none !important; background: transparent !important; min-height: 32px;">
         <div class="chat-line__message" style="transition: none !important; background: transparent !important;">
           <span class="heatsync-op-badge" style="display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; background: #ff0000; color: #ffffff; border-radius: 0 !important; font-size: 10px; font-weight: 400; font-family: monospace; margin: 0 1px; margin-right: 6px; vertical-align: middle; padding: 0; white-space: nowrap; box-sizing: border-box; line-height: 1;">OP</span>
@@ -368,12 +370,12 @@ function createMessageElement(message, platform) {
           <span class="text-fragment heatsync-clickable" style="background: #ff0000; color: #ffffff; padding: 2px 4px; font-weight: bold; transition: none !important; cursor: pointer;">${parseTwitchEmotes(message.content)}</span>
         </div>
       </div>
-    `;
-  } else if (platform === 'kick') {
-    div.className += ' heatsync-kick-message';
-    div.setAttribute('data-index', 'hs-injected');
-    // Safe: sanitizeColor validates hex, escapeHtml escapes all HTML entities, parseTwitchEmotes only inserts img tags with known CDN URLs
-    div.innerHTML = `
+    `
+    } else if (platform === 'kick') {
+      div.className += ' heatsync-kick-message'
+      div.setAttribute('data-index', 'hs-injected')
+      // Safe: sanitizeColor validates hex, escapeHtml escapes all HTML entities, parseTwitchEmotes only inserts img tags with known CDN URLs
+      div.innerHTML = `
       <div style="padding: 8px; margin: 4px 0; min-height: 32px;">
         <span class="heatsync-op-badge" style="display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; background: #ff0000; color: #ffffff; border-radius: 0; font-size: 10px; font-weight: 400; font-family: monospace; margin-right: 6px;">OP</span>
         <button class="inline font-bold" style="font-weight: 700; color: ${sanitizeColor(message.user_color) || '#00ff00'}; background: none; border: none; cursor: pointer;">
@@ -382,129 +384,155 @@ function createMessageElement(message, platform) {
         <span style="margin: 0 4px;">:</span>
         <span class="font-normal heatsync-clickable" style="background: #ff0000; color: #ffffff; padding: 2px 4px; font-weight: bold; cursor: pointer;">${parseTwitchEmotes(message.content)}</span>
       </div>
-    `;
+    `
+    }
+
+    // Add click handler only to red text span
+    const clickableSpan = div.querySelector('.heatsync-clickable')
+    if (clickableSpan) {
+      clickableSpan.addEventListener(
+        'click',
+        (e) => {
+          // Don't open post if clicking on an emote
+          if (e.target.classList.contains('heatsync-emote')) {
+            return
+          }
+          const url = `https://heatsync.org/m/${message.base36_id}`
+          window.open(url, '_blank')
+        },
+        { signal: injSignal },
+      )
+    }
+
+    // Stop emote clicks from bubbling to parent (prevents opening post when clicking emote)
+    // Also handle hover state to prevent parent hover effect
+    div.querySelectorAll('.heatsync-emote').forEach((emote) => {
+      emote.addEventListener(
+        'click',
+        (e) => {
+          e.stopPropagation()
+          e.stopImmediatePropagation()
+          e.preventDefault()
+          log(' Emote clicked:', emote.alt)
+          return false
+        },
+        { capture: true, signal: injSignal },
+      )
+      emote.addEventListener(
+        'mouseenter',
+        () => {
+          clickableSpan?.classList.add('emote-hovered')
+        },
+        { signal: injSignal },
+      )
+      emote.addEventListener(
+        'mouseleave',
+        () => {
+          clickableSpan?.classList.remove('emote-hovered')
+        },
+        { signal: injSignal },
+      )
+    })
+
+    return div
   }
 
-  // Add click handler only to red text span
-  const clickableSpan = div.querySelector('.heatsync-clickable');
-  if (clickableSpan) {
-    clickableSpan.addEventListener('click', (e) => {
-      // Don't open post if clicking on an emote
-      if (e.target.classList.contains('heatsync-emote')) {
-        return;
+  /**
+   * Escape HTML to prevent XSS
+   * mirrors src/lib/utils.js escapeHtml — the two must remain identical
+   * @param {string} text - Text to escape
+   * @returns {string} Escaped text
+   */
+  function escapeHtml(text) {
+    if (text == null) return ''
+    return String(text).replace(
+      /[&<>"']/g,
+      (c) =>
+        ({
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;',
+        })[c],
+    )
+  }
+
+  // Twitch global emotes - map of text codes to emote IDs
+  const TWITCH_GLOBAL_EMOTES = {
+    '<3': '9', // Heart (escaped as &lt;3 from server)
+    ':)': '1',
+    ':(': '2',
+    ':o': '7',
+    ':O': '7',
+    ':z': '5',
+    ':Z': '5',
+    'B)': '3',
+    ':\\': '10',
+    ':/': '10',
+    ';)': '11',
+    ';p': '13',
+    ';P': '13',
+    ':p': '12',
+    ':P': '12',
+    'R)': '14',
+    o_O: '6',
+    O_o: '6',
+    '>(': '4',
+    '<]': '8',
+    Kappa: '25',
+    PogChamp: '305954156',
+    LUL: '425618',
+    '4Head': '354',
+    HeyGuys: '30259',
+    NotLikeThis: '58765',
+    BibleThump: '86',
+    ResidentSleeper: '245',
+    Kreygasm: '41',
+    PJSalt: '36',
+    TriHard: '120232',
+    CoolStoryBob: '123171',
+    SeemsGood: '64138',
+    VoHiYo: '81274',
+  }
+
+  /**
+   * Parse Twitch emotes in text and replace with img tags
+   * @param {string} text - Text content (already HTML escaped from server)
+   * @returns {string} Text with emote img tags
+   */
+  // Pre-compiled regex + replacement HTML for each emote (built once, reused per message)
+  const _emoteReplacements = Object.entries(TWITCH_GLOBAL_EMOTES)
+    .filter(([code]) => code !== '<3')
+    .map(([code, id]) => {
+      const escaped = code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      return {
+        regex: new RegExp(`(?<=^|\\s|>)${escaped}(?=$|\\s|<)`, 'g'),
+        html: `<img class="chat-image chat-line__message--emote heatsync-emote" src="https://static-cdn.jtvnw.net/emoticons/v2/${id}/default/dark/1.0" alt="${escapeHtml(code)}" style="height: 28px; vertical-align: middle;">`,
       }
-      const url = `https://heatsync.org/m/${message.base36_id}`;
-      window.open(url, '_blank');
-    }, { signal: injSignal });
+    })
+
+  function parseTwitchEmotes(text) {
+    let result = escapeHtml(text)
+
+    // Handle &lt;3 (escaped <3)
+    result = result.replace(
+      /&lt;3/g,
+      '<img class="chat-image chat-line__message--emote heatsync-emote" src="https://static-cdn.jtvnw.net/emoticons/v2/9/default/dark/1.0" alt="<3" style="height: 28px; vertical-align: middle;">',
+    )
+
+    // Use pre-compiled regexes
+    for (const { regex, html } of _emoteReplacements) {
+      result = result.replace(regex, html)
+    }
+
+    return result
   }
-
-  // Stop emote clicks from bubbling to parent (prevents opening post when clicking emote)
-  // Also handle hover state to prevent parent hover effect
-  div.querySelectorAll('.heatsync-emote').forEach(emote => {
-    emote.addEventListener('click', (e) => {
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-      e.preventDefault();
-      log(' Emote clicked:', emote.alt);
-      return false;
-    }, { capture: true, signal: injSignal });
-    emote.addEventListener('mouseenter', () => {
-      clickableSpan?.classList.add('emote-hovered');
-    }, { signal: injSignal });
-    emote.addEventListener('mouseleave', () => {
-      clickableSpan?.classList.remove('emote-hovered');
-    }, { signal: injSignal });
-  });
-
-  return div;
-}
-
-/**
- * Escape HTML to prevent XSS
- * mirrors src/lib/utils.js escapeHtml — the two must remain identical
- * @param {string} text - Text to escape
- * @returns {string} Escaped text
- */
-function escapeHtml(text) {
-  if (text == null) return ''
-  return String(text).replace(/[&<>"']/g, c => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-  })[c]);
-}
-
-// Twitch global emotes - map of text codes to emote IDs
-const TWITCH_GLOBAL_EMOTES = {
-  '<3': '9',           // Heart (escaped as &lt;3 from server)
-  ':)': '1',
-  ':(': '2',
-  ':o': '7',
-  ':O': '7',
-  ':z': '5',
-  ':Z': '5',
-  'B)': '3',
-  ':\\': '10',
-  ':/': '10',
-  ';)': '11',
-  ';p': '13',
-  ';P': '13',
-  ':p': '12',
-  ':P': '12',
-  'R)': '14',
-  'o_O': '6',
-  'O_o': '6',
-  '>(' : '4',
-  '<]': '8',
-  'Kappa': '25',
-  'PogChamp': '305954156',
-  'LUL': '425618',
-  '4Head': '354',
-  'HeyGuys': '30259',
-  'NotLikeThis': '58765',
-  'BibleThump': '86',
-  'ResidentSleeper': '245',
-  'Kreygasm': '41',
-  'PJSalt': '36',
-  'TriHard': '120232',
-  'CoolStoryBob': '123171',
-  'SeemsGood': '64138',
-  'VoHiYo': '81274'
-};
-
-/**
- * Parse Twitch emotes in text and replace with img tags
- * @param {string} text - Text content (already HTML escaped from server)
- * @returns {string} Text with emote img tags
- */
-// Pre-compiled regex + replacement HTML for each emote (built once, reused per message)
-const _emoteReplacements = Object.entries(TWITCH_GLOBAL_EMOTES)
-  .filter(([code]) => code !== '<3')
-  .map(([code, id]) => {
-    const escaped = code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return {
-      regex: new RegExp(`(?<=^|\\s|>)${escaped}(?=$|\\s|<)`, 'g'),
-      html: `<img class="chat-image chat-line__message--emote heatsync-emote" src="https://static-cdn.jtvnw.net/emoticons/v2/${id}/default/dark/1.0" alt="${escapeHtml(code)}" style="height: 28px; vertical-align: middle;">`
-    };
-  });
-
-function parseTwitchEmotes(text) {
-  let result = escapeHtml(text)
-
-  // Handle &lt;3 (escaped <3)
-  result = result.replace(/&lt;3/g,
-    '<img class="chat-image chat-line__message--emote heatsync-emote" src="https://static-cdn.jtvnw.net/emoticons/v2/9/default/dark/1.0" alt="<3" style="height: 28px; vertical-align: middle;">');
-
-  // Use pre-compiled regexes
-  for (const { regex, html } of _emoteReplacements) {
-    result = result.replace(regex, html);
-  }
-
-  return result;
-}
 
   // Initialize when DOM is ready
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initChatInjector, { signal: injSignal });
+    document.addEventListener('DOMContentLoaded', initChatInjector, { signal: injSignal })
   } else {
-    initChatInjector();
+    initChatInjector()
   }
-})();
+})()

@@ -405,6 +405,19 @@ class IRC {
           }
         }
       }
+      // Same first-wins collapse for deletes: our optimistic local inject and the
+      // real CLEARMSG carry the same target-msg-id. Keep whichever lands first
+      // (the actor-attributed local line, or the IRC line if it raced ahead) —
+      // never render both for one deletion.
+      if (msg.type === 'notice' && msg.noticeType === 'delete_message_success' && msg.targetMsgId) {
+        for (const existing of buf.getAll()) {
+          if (existing.type !== 'notice') continue
+          if (existing.noticeType !== 'delete_message_success') continue
+          if (existing.targetMsgId !== msg.targetMsgId) continue
+          if (Math.abs((existing.time || 0) - (msg.time || 0)) > 10000) continue
+          return
+        }
+      }
       buf.push(msg)
       // Relay PRIVMSGs to server archive (ON CONFLICT DO NOTHING dedupes across
       // multiple viewers). Skip replays from BG history merge.

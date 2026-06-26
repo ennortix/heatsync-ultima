@@ -184,7 +184,31 @@ function makeSynthId() {
   return `hs-pend-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`
 }
 
-function registerPendingSend({ text, channel, platforms, replyParentId }) {
+// Twitch/Kick chat commands the platform executes and acks via a NOTICE — they
+// never echo back as a PRIVMSG, so the round-trip tracker must not await one or
+// it fires a false "did not confirm" 20s after the command actually ran. These
+// fall through handleSlashCommand (unwired) and get sent raw; the NOTICE is the
+// real ack (success or rejection, surfaced by auth-irc). /me is NOT here — it
+// echoes as a CTCP ACTION.
+const NON_ECHOING_CHAT_COMMANDS = new Set([
+  'followers', 'followersoff',
+  'emoteonly', 'emoteonlyoff',
+  'subscribers', 'subscribersoff',
+  'slow', 'slowoff',
+  'uniquechat', 'uniquechatoff', 'r9kbeta', 'r9kbetaoff',
+  'clear', 'color',
+  'mod', 'unmod', 'vip', 'unvip',
+  'untimeout', 'unban',
+  'raid', 'unraid', 'commercial', 'marker',
+  'announce', 'announceblue', 'announcegreen', 'announceorange', 'announcepurple',
+])
+function isNonEchoingCommand(text) {
+  if (typeof text !== 'string' || text[0] !== '/') return false
+  const m = text.match(/^\/(\w+)/)
+  return !!m && NON_ECHOING_CHAT_COMMANDS.has(m[1].toLowerCase())
+}
+
+function registerPendingSend({ text, channel, platforms, replyParentId, noEcho }) {
   const synthId = makeSynthId()
   const entry = {
     synthId, text, channel, platforms,
@@ -193,12 +217,18 @@ function registerPendingSend({ text, channel, platforms, replyParentId }) {
     awaiting: new Set(platforms),
     replyParentId,
     sentAt: Date.now(), state: 'pending',
+    noEcho: !!noEcho,
     timer: null,
   }
   entry.timer = cleanup.setTimeout(() => {
-    if (pendingSends.get(synthId)?.state === 'pending') {
-      markPendingFailed(synthId, 'no_echo')
-    }
+    const e = pendingSends.get(synthId)
+    if (e?.state !== 'pending') return
+    // Non-echoing platform commands get no PRIVMSG echo — the write already
+    // succeeded, so retire silently rather than firing a false no_echo. Genuine
+    // write failures still surface via the explicit markPendingFailed calls in
+    // the send paths (auth_failed/send_failed).
+    if (e.noEcho) { pendingSends.delete(synthId); return }
+    markPendingFailed(synthId, 'no_echo')
   }, PENDING_ECHO_TIMEOUT_MS)
   pendingSends.set(synthId, entry)
   if (MC_DEBUG) try {
@@ -4481,6 +4511,7 @@ async function handleSlashCommand(text, input) {
         _twitchModName ? banTwitchUser(_twitchModName, target, reason || '') : null,
         _kickMod('ban', { username: target, reason: reason || '' })
       ])
+      if (tResp?.ok) globalThis.__hsInjectModNotice?.({ channel: _twitchModName, action: 'ban', target })
       const ok = _combinedToast('banned', target, tResp, kResp)
       if (ok) clearInput(input)
       return true
@@ -4494,6 +4525,7 @@ async function handleSlashCommand(text, input) {
         _twitchModName ? timeoutTwitchUser(_twitchModName, target, sec, reason || '') : null,
         _kickMod('timeout', { username: target, durationMin: Math.max(1, Math.round(sec / 60)), reason: reason || '' })
       ])
+      if (tResp?.ok) globalThis.__hsInjectModNotice?.({ channel: _twitchModName, action: 'timeout', target, durationSec: sec })
       const ok = _combinedToast(`timed out ${sec}s`, target, tResp, kResp)
       if (ok) clearInput(input)
       return true
@@ -4505,6 +4537,7 @@ async function handleSlashCommand(text, input) {
         _twitchModName ? unbanTwitchUser(_twitchModName, target) : null,
         _kickMod('unban', { username: target })
       ])
+      if (tResp?.ok) globalThis.__hsInjectModNotice?.({ channel: _twitchModName, action: 'unban', target })
       const ok = _combinedToast('unbanned', target, tResp, kResp)
       if (ok) clearInput(input)
       return true
@@ -4521,7 +4554,9 @@ async function handleSlashCommand(text, input) {
     let resp
     if (_twitchModName) {
       resp = await deleteTwitchMessage(_twitchModName, messageID)
-      if (!resp.ok && _kickModSlug) {
+      if (resp?.ok) {
+        globalThis.__hsInjectModNotice?.({ channel: _twitchModName, action: 'delete', target: '', msgId: messageID })
+      } else if (_kickModSlug) {
         // Twitch rejected — try Kick (the id was probably a Kick message)
         resp = await safeSendMessage({ type: 'kick_mod_action', action: 'delete', slug: _kickModSlug, messageId: messageID })
       }
@@ -4811,6 +4846,7 @@ async function sendMessage() {
   const _synthId = registerPendingSend({
     text: restText, channel: targetChannel, platforms: _pendingPlatforms,
     replyParentId: replyState?.msgId || null,
+    noEcho: isNonEchoingCommand(text),
   })
 
   // Track every send (not just dual-send). The host platform stored on each

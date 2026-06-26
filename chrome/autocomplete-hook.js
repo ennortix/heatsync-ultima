@@ -80,6 +80,7 @@
     'message',
     (e) => {
       if (e.source !== window) return
+      if (e.origin !== location.origin) return
       if (e.data && e.data.type === 'heatsync-gate-tab-complete-off') {
         try {
           ac.abort()

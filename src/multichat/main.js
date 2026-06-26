@@ -16910,6 +16910,7 @@
   window.addEventListener(
     'message',
     (event) => {
+      if (event.source !== window) return
       if (event.origin !== location.origin) return
       if (event.data?.type === 'heatsync-nav') handleMcNav()
       // Fallback rotate paths — heatsync-button.js settings panel posts these

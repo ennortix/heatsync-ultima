@@ -2827,7 +2827,10 @@
       if (isCached) {
         const countEl = document.getElementById(`count-${currentTab}`)
         if (countEl && !countEl.querySelector('.heatsync-cached-badge')) {
-          countEl.innerHTML += `<span class="heatsync-cached-badge">${t('btn_cached')}</span>`
+          const badge = document.createElement('span')
+          badge.className = 'heatsync-cached-badge'
+          badge.textContent = t('btn_cached')
+          countEl.appendChild(badge)
         }
       }
 

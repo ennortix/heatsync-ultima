@@ -191,6 +191,63 @@ function runTests(args) {
   console.log('  Tests: passed ✓')
 }
 
+// Guard 5: error reporter scrub-pattern parity.
+// background.js inlines a copy of the scrub logic from src/lib/error-reporter.js
+// (service workers can't import lib/ modules). This guard compares the two
+// canonical patterns — SENSITIVE_PARAMS and TEXT_SCRUB — so a token-format
+// change in error-reporter.js that isn't mirrored in background.js fails loud.
+function checkErrorReporterParity() {
+  const bgSrc = readFileSync(join(__dirname, 'chrome', 'background.js'), 'utf8')
+  const erSrc = readFileSync(join(__dirname, 'src', 'lib', 'error-reporter.js'), 'utf8')
+
+  // Extract the SENSITIVE_PARAMS regex body (between outer slashes, before /i)
+  function sensitiveParams(src) {
+    const m = src.match(/SENSITIVE_PARAMS\s*=\s*\n?\s*\/([\s\S]+?)\/i\b/)
+    return m ? m[1] : null
+  }
+
+  // Extract TEXT_SCRUB array body with bracket-depth tracking so nested
+  // character classes (e.g. [A-Za-z0-9_\-+/=]) don't prematurely end the match.
+  function textScrubBody(src) {
+    const idx = src.search(/TEXT_SCRUB\s*=\s*\[/)
+    if (idx === -1) return null
+    const open = src.indexOf('[', idx)
+    let depth = 0
+    for (let i = open; i < src.length; i++) {
+      if (src[i] === '[') depth++
+      else if (src[i] === ']') {
+        depth--
+        if (depth === 0) return src.slice(open + 1, i).replace(/\s+/g, ' ').trim()
+      }
+    }
+    return null
+  }
+
+  const bgSP = sensitiveParams(bgSrc)
+  const erSP = sensitiveParams(erSrc)
+  const bgTS = textScrubBody(bgSrc)
+  const erTS = textScrubBody(erSrc)
+
+  if (!bgSP || !erSP)
+    throw new Error(
+      'checkErrorReporterParity: could not extract SENSITIVE_PARAMS from background.js or error-reporter.js',
+    )
+  if (!bgTS || !erTS)
+    throw new Error(
+      'checkErrorReporterParity: could not extract TEXT_SCRUB from background.js or error-reporter.js',
+    )
+  if (bgSP !== erSP)
+    throw new Error(
+      `checkErrorReporterParity: SENSITIVE_PARAMS drift detected\n  background.js: ${bgSP.slice(0, 80)}\n  error-reporter.js: ${erSP.slice(0, 80)}`,
+    )
+  if (bgTS !== erTS)
+    throw new Error(
+      `checkErrorReporterParity: TEXT_SCRUB drift detected\n  background.js: ${bgTS.slice(0, 120)}\n  error-reporter.js: ${erTS.slice(0, 120)}`,
+    )
+
+  console.log('  Error reporter parity: scrub patterns match ✓')
+}
+
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
 const SRC_DIR = join(__dirname, 'src')
@@ -605,6 +662,7 @@ console.log('Pre-build checks:')
 checkVersionSync()
 checkManifestParity()
 checkScopeCollisions()
+checkErrorReporterParity()
 runTests(args)
 console.log()
 

@@ -5881,7 +5881,7 @@ async function handleMessage(message, sender, sendResponse) {
       sendResponse(null)
       return true
     }
-    fetch(`${LINK_PREVIEW_API}?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(6000) })
+    fetch(`${LINK_PREVIEW_API}?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(6000), credentials: 'include' })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => sendResponse(data))
       .catch(() => sendResponse(null))
@@ -5906,6 +5906,7 @@ async function handleMessage(message, sender, sendResponse) {
     }
     fetch(`https://heatsync.org/api/embed/resolve?url=${encodeURIComponent(url)}`, {
       signal: AbortSignal.timeout(6000),
+      credentials: 'include',
     })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {

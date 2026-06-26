@@ -3871,11 +3871,20 @@ function _onMessageKickModRelay(message, sender, sendResponse) {
     signal: AbortSignal.timeout(8000)
   }
   if (body) init.body = JSON.stringify(body)
+  // Translate the raw HTTP status into something a moderator can act on, instead
+  // of surfacing "403: {json blob}" in the toast.
+  const explain = (status, raw) => {
+    if (status === 401 || status === 403) return "you're not a mod on kick here (or your kick session expired)"
+    if (status === 404) return 'user or message not found on kick'
+    if (status === 429) return 'kick rate limited — wait a moment'
+    if (status >= 500) return `kick server error (${status})`
+    return `${status}: ${String(raw || '').slice(0, 160)}`
+  }
   fetch(url, init).then(r => {
     if (r.ok || r.status === 204) { sendResponse({ ok: true }); return }
-    r.text().then(t => sendResponse({ ok: false, error: `${r.status}: ${t.slice(0, 200)}` }))
-      .catch(() => sendResponse({ ok: false, error: `${r.status}` }))
-  }).catch(e => sendResponse({ ok: false, error: e.message }))
+    r.text().then(t => sendResponse({ ok: false, error: explain(r.status, t) }))
+      .catch(() => sendResponse({ ok: false, error: explain(r.status, '') }))
+  }).catch(e => sendResponse({ ok: false, error: e.name === 'TimeoutError' ? 'kick request timed out' : e.message }))
   return true
 }
 if (window.location.hostname.includes('kick.com')) {

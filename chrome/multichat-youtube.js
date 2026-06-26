@@ -56415,7 +56415,7 @@ document.addEventListener(
         // re-bind the tap stays dark until the 5s remount poll fires, leaving a
         // hole in live coverage on every channel switch (worst on starved IPs
         // where the tap IS the live source). startNativeTap is idempotent.
-        if (newCh)
+        if (newCh && hostPlatform === 'twitch')
           try {
             startNativeTap(newCh)
           } catch (_) {}

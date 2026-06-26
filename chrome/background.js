@@ -6963,17 +6963,27 @@ async function handleMessage(message, sender, sendResponse) {
             }
           }
         }
-        const result = await browser.tabs.sendMessage(tabs[0].id, {
-          type: 'kick_mod_relay',
-          action,
-          slug,
-          chatroomId,
-          username: message.username || '',
-          durationMin: message.durationMin || 0,
-          reason: message.reason || '',
-          messageId: message.messageId || '',
-          xsrfToken: cookie.value,
-        })
+        // Prefer a tab actually on the target channel (most likely live + the
+        // relevant session) over an arbitrary kick.com tab. The API call is
+        // slug-parameterized and cookie-authed so any logged-in kick tab CAN
+        // execute it, but a frozen/unrelated tab is a worse bet.
+        const relayTab = tabs.find(t => (t.url || '').toLowerCase().includes('/' + slug)) || tabs[0]
+        // Deadline: a hung renderer would otherwise leave tabs.sendMessage
+        // pending forever, hanging the mod command with no feedback. Fail loud.
+        const result = await Promise.race([
+          browser.tabs.sendMessage(relayTab.id, {
+            type: 'kick_mod_relay',
+            action,
+            slug,
+            chatroomId,
+            username: message.username || '',
+            durationMin: message.durationMin || 0,
+            reason: message.reason || '',
+            messageId: message.messageId || '',
+            xsrfToken: cookie.value,
+          }),
+          new Promise((res) => setTimeout(() => res({ ok: false, error: 'kick tab unresponsive — reload kick.com' }), 12000)),
+        ])
         sendResponse(result || { ok: false, error: 'no response from tab' })
       } catch (e) {
         log('kick_mod_action error:', e.message)

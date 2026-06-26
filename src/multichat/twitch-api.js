@@ -3909,11 +3909,23 @@ async function resolveTwitchChannelId(channelLogin) {
   if (!lc) return null
   const cached = _twChannelIdCache.get(lc)
   if (cached && Date.now() - cached.ts < 3600000) return cached.id
+  // Bound the cache — every distinct channel modded in a session adds an entry;
+  // without a cap it grows unbounded over a long-lived tab. Evict oldest-inserted.
+  const _cacheChannelId = (id) => {
+    if (_twChannelIdCache.size >= 200) {
+      const oldest = _twChannelIdCache.keys().next().value
+      if (oldest !== undefined) _twChannelIdCache.delete(oldest)
+    }
+    _twChannelIdCache.set(lc, { id, ts: Date.now() })
+  }
   try {
-    const r = await fetch(`https://decapi.me/twitch/id/${encodeURIComponent(lc)}`, { credentials: 'omit' })
+    // 4s ceiling: decapi is a third-party in the mod-action hot path; a hang here
+    // would stall every ban/timeout/unban behind the browser's default TCP
+    // timeout (60s+). Time out fast and fall through to the first-party GQL path.
+    const r = await fetch(`https://decapi.me/twitch/id/${encodeURIComponent(lc)}`, { credentials: 'omit', signal: AbortSignal.timeout(4000) })
     const body = (await r.text()).trim()
     if (r.ok && /^\d+$/.test(body)) {
-      _twChannelIdCache.set(lc, { id: body, ts: Date.now() })
+      _cacheChannelId(body)
       return body
     }
   } catch (_) {}
@@ -3921,7 +3933,7 @@ async function resolveTwitchChannelId(channelLogin) {
     const data = await gqlProxy(null, null, { rawQuery: `{ user(login: "${lc}") { id } }` })
     const id = data?.data?.user?.id || (Array.isArray(data) ? data[0]?.data?.user?.id : null)
     if (id) {
-      _twChannelIdCache.set(lc, { id, ts: Date.now() })
+      _cacheChannelId(id)
       return id
     }
   } catch (_) {}

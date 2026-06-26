@@ -415,30 +415,39 @@ function pcBuildModActions(username) {
         need: 'msg',
         fn: () => deleteTwitchMessage(channel, msgId),
         verb: 'deleted',
+        action: 'delete',
       },
       {
         label: '1m',
         title: 'timeout 1 minute',
         fn: () => timeoutTwitchUser(channel, username, 60, ''),
         verb: `timed out ${username} 60s`,
+        action: 'timeout',
+        durationSec: 60,
       },
       {
         label: '10m',
         title: 'timeout 10 minutes',
         fn: () => timeoutTwitchUser(channel, username, 600, ''),
         verb: `timed out ${username} 600s`,
+        action: 'timeout',
+        durationSec: 600,
       },
       {
         label: '1h',
         title: 'timeout 1 hour',
         fn: () => timeoutTwitchUser(channel, username, 3600, ''),
         verb: `timed out ${username} 1h`,
+        action: 'timeout',
+        durationSec: 3600,
       },
       {
         label: '24h',
         title: 'timeout 24 hours',
         fn: () => timeoutTwitchUser(channel, username, 86400, ''),
         verb: `timed out ${username} 24h`,
+        action: 'timeout',
+        durationSec: 86400,
       },
       {
         label: 'ban',
@@ -446,12 +455,14 @@ function pcBuildModActions(username) {
         fn: () => banTwitchUser(channel, username, ''),
         verb: `banned ${username}`,
         danger: true,
+        action: 'ban',
       },
       {
         label: 'unban',
         title: 'unban user',
         fn: () => unbanTwitchUser(channel, username),
         verb: `unbanned ${username}`,
+        action: 'unban',
       },
     ]
     for (const a of actions) {
@@ -475,6 +486,7 @@ function pcBuildModActions(username) {
         }
         b.textContent = orig
         if (resp?.ok) {
+          globalThis.__hsInjectModNotice?.({ channel, action: a.action, target: username, durationSec: a.durationSec, msgId })
           if (typeof showToast === 'function') showToast(a.verb, 'success')
         } else {
           if (typeof showToast === 'function') showToast(`${a.label} failed: ${resp?.error || 'unknown'}`, 'error')

@@ -5312,6 +5312,59 @@
     // or overlay row via the wiring in ensureStackOverlay*). 200ms felt laggy.
     _modHideTimer = setTimeout(detachModToolbar, 0)
   }
+  // Self-initiated mod actions on Twitch don't all echo back the same way:
+  // ban/timeout/delete arrive ~1-3s later as IRC CLEARCHAT/CLEARMSG — actor-less
+  // ("X was permanently banned") and, for unban/untimeout, NEVER (those go out
+  // via GQL, fire no IRC NOTICE, and we don't subscribe to channel.moderate).
+  // So without this, unban/untimeout produce only a toast and no gray chat line.
+  // Inject a local, actor-attributed notice the instant the action confirms.
+  //
+  // Dedup makes it bulletproof: ban_success/timeout_success collapse first-wins
+  // on (targetUser, ±10s) and delete_message_success on (targetMsgId, ±10s) in
+  // irc.js. Whichever copy lands first shows; the other is dropped — so the
+  // worst case is the old actor-less IRC line, never a duplicate. unban has no
+  // competing transport, so the local line is the only one. Twitch-only (writes
+  // the irc buffer); Kick mod notices are a separate follow-up.
+  function injectLocalModNotice({ channel, action, target, durationSec, msgId }) {
+    try {
+      const ch = String(channel || '').toLowerCase().replace(/^#/, '')
+      if (!ch || !irc?.channels?.has(ch)) return
+      const actor = (currentUsername
+        || (typeof authState !== 'undefined' && authState?.nick)
+        || '').toLowerCase()
+      const tgt = String(target || '').replace(/^@/, '')
+      const tgtLc = tgt.toLowerCase()
+      let noticeType, systemMsg
+      if (action === 'ban') {
+        noticeType = 'ban_success'
+        systemMsg = actor ? `${actor} banned ${tgt}` : `${tgt} was permanently banned`
+      } else if (action === 'timeout') {
+        const d = Math.max(1, durationSec | 0)
+        noticeType = 'timeout_success'
+        systemMsg = actor ? `${actor} timed out ${tgt} for ${d}s` : `${tgt} timed out for ${d}s`
+      } else if (action === 'unban' || action === 'untimeout') {
+        noticeType = 'unban_success'
+        systemMsg = actor ? `${actor} unbanned ${tgt}` : `${tgt} is no longer banned`
+      } else if (action === 'delete') {
+        noticeType = 'delete_message_success'
+        systemMsg = actor
+          ? `${actor} deleted a message${tgt ? ` from ${tgt}` : ''}`
+          : (tgt ? `${tgt}'s message deleted` : 'message deleted')
+      } else return
+      irc._handleMsg?.({
+        type: 'notice', noticeType, user: 'system',
+        text: systemMsg, systemMsg, color: '#808080', badges: '',
+        channel: ch, time: Date.now(),
+        id: `hs-synth-mod-${noticeType}-${ch}-${tgtLc || msgId || ''}-${Date.now()}`,
+        targetUser: tgtLc,
+        targetMsgId: action === 'delete' ? (msgId || '') : undefined,
+        banDuration: action === 'timeout' ? Math.max(1, durationSec | 0) : 0,
+        isSynthetic: true,
+      })
+    } catch (_) {}
+  }
+  try { globalThis.__hsInjectModNotice = injectLocalModNotice } catch (_) {}
+
   async function runModAction(id) {
     const def = MOD_BUTTON_CATALOG[id]
     if (!def || !_modCtx) return
@@ -5330,6 +5383,7 @@
     if (row) row.style.opacity = wasOp || ''
     if (resp?.ok) {
       if (def.action === 'delete' && row && dimTimeouts) row.classList.add('hs-mc-msg-cleared')
+      injectLocalModNotice({ channel, action: def.action, target: user, durationSec: def.durationSec, msgId })
       const verb =
         def.action === 'timeout'
           ? `timed out ${user} ${def.durationSec}s`

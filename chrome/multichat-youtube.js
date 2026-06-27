@@ -25460,16 +25460,28 @@ function hsCheermoteUrl(amount, scale) {
 // CAP twitch.tv/tags so bits tags ARE preserved end-to-end for real cheers.
 function renderCheermotesInText(html, totalBits) {
   if (!html || !totalBits || totalBits < 1) return html
-  return html.replace(/\bcheer(\d+)\b/gi, (match, n) => {
-    const amount = parseInt(n, 10)
-    if (!amount || amount < 1) return match
-    const t = hsCheerTier(amount)
-    const url = `https://d3aqoihi2n8ty8.cloudfront.net/actions/cheer/dark/animated/${t.tier}/2.gif`
-    return (
-      `<img class="hs-mc-cheermote" src="${url}" alt="cheer${amount}" title="${amount} bits" loading="lazy">` +
-      `<span class="hs-mc-cheer-amt" style="color:${t.color}">${amount}</span>`
-    )
-  })
+  // Tag-split like the mention/hashtag passes: a literal "cheerN" inside an
+  // earlier-emitted anchor (e.g. #cheer100 hashtag or @cheer100 mention) must
+  // NOT be replaced, or the injected <img> quote breaks out of the href attr.
+  // Only touch even-index text segments.
+  const parts = html.split(/(<[^>]+>)/)
+  for (let i = 0; i < parts.length; i += 2) {
+    const seg = parts[i]
+    if (!seg || !/cheer\d/i.test(seg)) continue
+    // (?<![#@]) so a cheerN that is hashtag (#cheer1) or mention (@cheer1) text
+    // stays as-is — only a bare cheer token becomes a cheermote.
+    parts[i] = seg.replace(/(?<![#@])\bcheer(\d+)\b/gi, (match, n) => {
+      const amount = parseInt(n, 10)
+      if (!amount || amount < 1) return match
+      const t = hsCheerTier(amount)
+      const url = `https://d3aqoihi2n8ty8.cloudfront.net/actions/cheer/dark/animated/${t.tier}/2.gif`
+      return (
+        `<img class="hs-mc-cheermote" src="${url}" alt="cheer${amount}" title="${amount} bits" loading="lazy">` +
+        `<span class="hs-mc-cheer-amt" style="color:${t.color}">${amount}</span>`
+      )
+    })
+  }
+  return parts.join('')
 }
 
 let _hsCheerPanelEl = null
@@ -29712,7 +29724,7 @@ function renderFeedContent(content, emoteRefs) {
       .map((part, i) => {
         if (i % 2 === 1) return part
         return part.replace(/#([a-zA-Z][a-zA-Z0-9_]{1,29})\b/g, (m, tag) => {
-          return `<a href="https://heatsync.org/tag/${encodeURIComponent(tag)}" target="_blank" rel="noopener noreferrer" class="hs-hashtag" data-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</a>`
+          return `<a href="https://heatsync.org/tags/${encodeURIComponent(tag)}" target="_blank" rel="noopener noreferrer" class="hs-hashtag" data-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</a>`
         })
       })
       .join('')
@@ -30855,7 +30867,7 @@ function renderPinnedTab() {
 
     const body = document.createElement('div')
     body.className = 'hs-pinned-body'
-    body.textContent = content
+    appendTextWithHashtags(body, content)
     row.appendChild(body)
 
     frag.appendChild(row)
@@ -40047,7 +40059,7 @@ function appendChatLogBody(host, r) {
       let cursor = 0
       for (const span of spans) {
         if (span.s < cursor) continue
-        if (span.s > cursor) host.appendChild(document.createTextNode(text.slice(cursor, span.s)))
+        if (span.s > cursor) appendTextWithHashtags(host, text.slice(cursor, span.s))
         const slice = text.slice(span.s, span.e + 1)
         const src = clEmoteCdnUrl(r.platform, span.emote_id)
         const altMatch = slice.match(/^\[emote:[^:]+:([^\]]+)\]$/)
@@ -40055,7 +40067,7 @@ function appendChatLogBody(host, r) {
         else host.appendChild(document.createTextNode(slice))
         cursor = span.e + 1
       }
-      if (cursor < text.length) host.appendChild(document.createTextNode(text.slice(cursor)))
+      if (cursor < text.length) appendTextWithHashtags(host, text.slice(cursor))
       return
     }
   }
@@ -40063,13 +40075,13 @@ function appendChatLogBody(host, r) {
   // Shape B — twitch name→url map (ext relay)
   const twitchEmotes = refs?.twitch || null
   if (!twitchEmotes) {
-    host.textContent = text
+    appendTextWithHashtags(host, text)
     return
   }
   const parts = text.split(/(\s+)/)
   for (const part of parts) {
     if (twitchEmotes[part]) clEmoteImg(host, twitchEmotes[part], part)
-    else host.appendChild(document.createTextNode(part))
+    else appendTextWithHashtags(host, part)
   }
 }
 
@@ -44700,7 +44712,7 @@ function _hsEnsureYtBelowObserver(_tries) {
 
       const body = document.createElement('div')
       body.className = 'hs-mc-search-content'
-      body.textContent = content
+      appendTextWithHashtags(body, content)
 
       div.appendChild(meta)
       div.appendChild(body)
@@ -49983,6 +49995,36 @@ function _hsEnsureYtBelowObserver(_tries) {
     return parts.join('')
   }
 
+  // DOM-node twin of highlightHashtagsInHtml for surfaces that build via text
+  // nodes instead of innerHTML (archive viewer, pinned tab, search results).
+  // Same regex/route/class so #tags read identically everywhere. stopPropagation
+  // keeps a tag click from also firing a row-level handler (search/pinned rows).
+  function appendTextWithHashtags(parent, text) {
+    const s = String(text == null ? '' : text)
+    if (!s.includes('#')) {
+      if (s) parent.appendChild(document.createTextNode(s))
+      return
+    }
+    const parts = s.split(/(#[a-zA-Z][a-zA-Z0-9_]{1,29})\b/g)
+    for (const p of parts) {
+      if (!p) continue
+      if (p[0] === '#' && /^#[a-zA-Z][a-zA-Z0-9_]{1,29}$/.test(p)) {
+        const tag = p.slice(1)
+        const a = document.createElement('a')
+        a.className = 'hs-hashtag'
+        a.href = `https://heatsync.org/tags/${encodeURIComponent(tag)}`
+        a.target = '_blank'
+        a.rel = 'noopener noreferrer'
+        a.dataset.tag = tag
+        a.textContent = `#${tag}`
+        a.addEventListener('click', (e) => e.stopPropagation())
+        parent.appendChild(a)
+      } else {
+        parent.appendChild(document.createTextNode(p))
+      }
+    }
+  }
+
   // Magenta #hashtags in chat — same pattern + link target as the feed so tags
   // are consistent on every surface. Splits on tags so attrs/img/<a> aren't touched.
   function highlightHashtagsInHtml(html) {
@@ -49992,7 +50034,7 @@ function _hsEnsureYtBelowObserver(_tries) {
       const seg = parts[i]
       if (!seg || !seg.includes('#')) continue
       parts[i] = seg.replace(/#([a-zA-Z][a-zA-Z0-9_]{1,29})\b/g, (m, tag) => {
-        return `<a href="https://heatsync.org/tag/${encodeURIComponent(tag)}" target="_blank" rel="noopener noreferrer" class="hs-hashtag" data-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</a>`
+        return `<a href="https://heatsync.org/tags/${encodeURIComponent(tag)}" target="_blank" rel="noopener noreferrer" class="hs-hashtag" data-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</a>`
       })
     }
     return parts.join('')

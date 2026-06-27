@@ -1602,7 +1602,7 @@ function renderFeedContent(content, emoteRefs) {
       .map((part, i) => {
         if (i % 2 === 1) return part
         return part.replace(/#([a-zA-Z][a-zA-Z0-9_]{1,29})\b/g, (m, tag) => {
-          return `<a href="https://heatsync.org/tag/${encodeURIComponent(tag)}" target="_blank" rel="noopener noreferrer" class="hs-hashtag" data-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</a>`
+          return `<a href="https://heatsync.org/tags/${encodeURIComponent(tag)}" target="_blank" rel="noopener noreferrer" class="hs-hashtag" data-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</a>`
         })
       })
       .join('')
@@ -2745,7 +2745,7 @@ function renderPinnedTab() {
 
     const body = document.createElement('div')
     body.className = 'hs-pinned-body'
-    body.textContent = content
+    appendTextWithHashtags(body, content)
     row.appendChild(body)
 
     frag.appendChild(row)

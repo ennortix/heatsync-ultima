@@ -4341,7 +4341,7 @@
 
       const body = document.createElement('div')
       body.className = 'hs-mc-search-content'
-      body.textContent = content
+      appendTextWithHashtags(body, content)
 
       div.appendChild(meta)
       div.appendChild(body)
@@ -9624,6 +9624,36 @@
     return parts.join('')
   }
 
+  // DOM-node twin of highlightHashtagsInHtml for surfaces that build via text
+  // nodes instead of innerHTML (archive viewer, pinned tab, search results).
+  // Same regex/route/class so #tags read identically everywhere. stopPropagation
+  // keeps a tag click from also firing a row-level handler (search/pinned rows).
+  function appendTextWithHashtags(parent, text) {
+    const s = String(text == null ? '' : text)
+    if (!s.includes('#')) {
+      if (s) parent.appendChild(document.createTextNode(s))
+      return
+    }
+    const parts = s.split(/(#[a-zA-Z][a-zA-Z0-9_]{1,29})\b/g)
+    for (const p of parts) {
+      if (!p) continue
+      if (p[0] === '#' && /^#[a-zA-Z][a-zA-Z0-9_]{1,29}$/.test(p)) {
+        const tag = p.slice(1)
+        const a = document.createElement('a')
+        a.className = 'hs-hashtag'
+        a.href = `https://heatsync.org/tags/${encodeURIComponent(tag)}`
+        a.target = '_blank'
+        a.rel = 'noopener noreferrer'
+        a.dataset.tag = tag
+        a.textContent = `#${tag}`
+        a.addEventListener('click', (e) => e.stopPropagation())
+        parent.appendChild(a)
+      } else {
+        parent.appendChild(document.createTextNode(p))
+      }
+    }
+  }
+
   // Magenta #hashtags in chat — same pattern + link target as the feed so tags
   // are consistent on every surface. Splits on tags so attrs/img/<a> aren't touched.
   function highlightHashtagsInHtml(html) {
@@ -9633,7 +9663,7 @@
       const seg = parts[i]
       if (!seg || !seg.includes('#')) continue
       parts[i] = seg.replace(/#([a-zA-Z][a-zA-Z0-9_]{1,29})\b/g, (m, tag) => {
-        return `<a href="https://heatsync.org/tag/${encodeURIComponent(tag)}" target="_blank" rel="noopener noreferrer" class="hs-hashtag" data-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</a>`
+        return `<a href="https://heatsync.org/tags/${encodeURIComponent(tag)}" target="_blank" rel="noopener noreferrer" class="hs-hashtag" data-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</a>`
       })
     }
     return parts.join('')

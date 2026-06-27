@@ -2065,16 +2065,28 @@ function hsCheermoteUrl(amount, scale) {
 // CAP twitch.tv/tags so bits tags ARE preserved end-to-end for real cheers.
 function renderCheermotesInText(html, totalBits) {
   if (!html || !totalBits || totalBits < 1) return html
-  return html.replace(/\bcheer(\d+)\b/gi, (match, n) => {
-    const amount = parseInt(n, 10)
-    if (!amount || amount < 1) return match
-    const t = hsCheerTier(amount)
-    const url = `https://d3aqoihi2n8ty8.cloudfront.net/actions/cheer/dark/animated/${t.tier}/2.gif`
-    return (
-      `<img class="hs-mc-cheermote" src="${url}" alt="cheer${amount}" title="${amount} bits" loading="lazy">` +
-      `<span class="hs-mc-cheer-amt" style="color:${t.color}">${amount}</span>`
-    )
-  })
+  // Tag-split like the mention/hashtag passes: a literal "cheerN" inside an
+  // earlier-emitted anchor (e.g. #cheer100 hashtag or @cheer100 mention) must
+  // NOT be replaced, or the injected <img> quote breaks out of the href attr.
+  // Only touch even-index text segments.
+  const parts = html.split(/(<[^>]+>)/)
+  for (let i = 0; i < parts.length; i += 2) {
+    const seg = parts[i]
+    if (!seg || !/cheer\d/i.test(seg)) continue
+    // (?<![#@]) so a cheerN that is hashtag (#cheer1) or mention (@cheer1) text
+    // stays as-is — only a bare cheer token becomes a cheermote.
+    parts[i] = seg.replace(/(?<![#@])\bcheer(\d+)\b/gi, (match, n) => {
+      const amount = parseInt(n, 10)
+      if (!amount || amount < 1) return match
+      const t = hsCheerTier(amount)
+      const url = `https://d3aqoihi2n8ty8.cloudfront.net/actions/cheer/dark/animated/${t.tier}/2.gif`
+      return (
+        `<img class="hs-mc-cheermote" src="${url}" alt="cheer${amount}" title="${amount} bits" loading="lazy">` +
+        `<span class="hs-mc-cheer-amt" style="color:${t.color}">${amount}</span>`
+      )
+    })
+  }
+  return parts.join('')
 }
 
 let _hsCheerPanelEl = null

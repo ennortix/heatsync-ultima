@@ -495,7 +495,7 @@ function appendChatLogBody(host, r) {
       let cursor = 0
       for (const span of spans) {
         if (span.s < cursor) continue
-        if (span.s > cursor) host.appendChild(document.createTextNode(text.slice(cursor, span.s)))
+        if (span.s > cursor) appendTextWithHashtags(host, text.slice(cursor, span.s))
         const slice = text.slice(span.s, span.e + 1)
         const src = clEmoteCdnUrl(r.platform, span.emote_id)
         const altMatch = slice.match(/^\[emote:[^:]+:([^\]]+)\]$/)
@@ -503,7 +503,7 @@ function appendChatLogBody(host, r) {
         else host.appendChild(document.createTextNode(slice))
         cursor = span.e + 1
       }
-      if (cursor < text.length) host.appendChild(document.createTextNode(text.slice(cursor)))
+      if (cursor < text.length) appendTextWithHashtags(host, text.slice(cursor))
       return
     }
   }
@@ -511,13 +511,13 @@ function appendChatLogBody(host, r) {
   // Shape B — twitch name→url map (ext relay)
   const twitchEmotes = refs?.twitch || null
   if (!twitchEmotes) {
-    host.textContent = text
+    appendTextWithHashtags(host, text)
     return
   }
   const parts = text.split(/(\s+)/)
   for (const part of parts) {
     if (twitchEmotes[part]) clEmoteImg(host, twitchEmotes[part], part)
-    else host.appendChild(document.createTextNode(part))
+    else appendTextWithHashtags(host, part)
   }
 }
 

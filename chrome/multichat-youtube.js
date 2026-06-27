@@ -31710,7 +31710,7 @@ function renderWhispersTab() {
     }
 
     // All dynamic values pass through escapeHtml/sanitizeColor — safe innerHTML (all values escaped above)
-    div.innerHTML = `${tsHtml}<span style="color:${platColor};font-size:13px;font-weight:700">[${platTag}]</span> ${senderLink} <span style="color:#808080">-&gt;</span> ${recipientLink}: ${processEmotes(escapeHtml(m.text), null)}${statusHtml}`
+    div.innerHTML = `${tsHtml}<span style="color:${platColor};font-size:13px;font-weight:700">[${platTag}]</span> ${senderLink} <span style="color:#808080">-&gt;</span> ${recipientLink}: ${highlightHashtagsInHtml(processEmotes(escapeHtml(m.text), null))}${statusHtml}`
     frag.appendChild(div)
   }
 
@@ -49231,6 +49231,8 @@ function _hsEnsureYtBelowObserver(_tries) {
     }
     // Highlight mentions AFTER emote processing so emote-name <img> tags aren't touched.
     processedText = highlightMentionsInHtml(processedText)
+    // Magenta #hashtags — mirrors the feed (renderFeedContent) so tags read the same everywhere.
+    processedText = highlightHashtagsInHtml(processedText)
     // Cheermotes — only when twitch IRC tagged bits=N (server-confirmed cheer).
     if (m.bits) processedText = renderCheermotesInText(processedText, m.bits)
     m._renderedHtml = processedText
@@ -49438,7 +49440,8 @@ function _hsEnsureYtBelowObserver(_tries) {
       const dmPaint = m.platform === 'twitch' ? userPaintStyle(m.userId, (m.user || '').toLowerCase()) : ''
       const userName = `<span style="${dmPaint || `color:${sanitizeColor(m.color)};font-weight:600`}">${escapeHtml(m.user)}</span>`
       // All values sanitized — safe innerHTML
-      if (m._renderedHtml == null) m._renderedHtml = processEmotes(escapeHtml(m.text), null)
+      if (m._renderedHtml == null)
+        m._renderedHtml = highlightHashtagsInHtml(processEmotes(escapeHtml(m.text), null))
       // All values already sanitized via escapeHtml/processEmotes — safe innerHTML (existing pattern)
       div.innerHTML = `${tsSpan}${label}${platBadge}${userName}: ${m._renderedHtml}`
       div.style.cursor = 'pointer'
@@ -49972,6 +49975,21 @@ function _hsEnsureYtBelowObserver(_tries) {
           return `${lead}<a href="https://heatsync.org/user/${encodeURIComponent(lower)}" target="_blank" rel="noopener noreferrer" class="hs-mc-user hs-mc-mention" data-username="${safeLower}"${uidAttr} style="${style}">${at}${safeName}</a>`
         },
       )
+    }
+    return parts.join('')
+  }
+
+  // Magenta #hashtags in chat — same pattern + link target as the feed so tags
+  // are consistent on every surface. Splits on tags so attrs/img/<a> aren't touched.
+  function highlightHashtagsInHtml(html) {
+    if (!html || !html.includes('#')) return html
+    const parts = html.split(/(<[^>]+>)/)
+    for (let i = 0; i < parts.length; i += 2) {
+      const seg = parts[i]
+      if (!seg || !seg.includes('#')) continue
+      parts[i] = seg.replace(/#([a-zA-Z][a-zA-Z0-9_]{1,29})\b/g, (m, tag) => {
+        return `<a href="https://heatsync.org/tag/${encodeURIComponent(tag)}" target="_blank" rel="noopener noreferrer" class="hs-hashtag" data-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</a>`
+      })
     }
     return parts.join('')
   }

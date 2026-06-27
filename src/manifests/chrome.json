@@ -17,7 +17,6 @@
     "notifications"
   ],
   "host_permissions": [
-    "https://static-cdn.jtvnw.net/*",
     "https://heatsync.org/*",
     "https://*.twitch.tv/*",
     "https://api.twitch.tv/*",
@@ -28,18 +27,16 @@
     "https://api.frankerfacez.com/*",
     "https://7tv.io/*",
     "https://events.7tv.io/*",
-    "https://cdn.betterttv.net/*",
-    "https://cdn.7tv.app/*",
     "https://api.7tv.app/*",
     "https://recent-messages.robotty.de/api/v2/recent-messages/*",
     "https://logs.ivr.fi/*",
     "https://logs.zonian.dev/*",
     "https://logs.spanix.team/*",
-    "https://decapi.me/*",
+    "https://decapi.me/twitch/*",
     "https://api.chatterino.com/badges"
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'none'"
+    "extension_pages": "default-src 'self'; script-src 'self'; object-src 'none'; require-trusted-types-for 'script'"
   },
   "background": {
     "service_worker": "background.js"
@@ -244,8 +241,7 @@
         "https://*.twitch.tv/*",
         "https://kick.com/*",
         "https://*.kick.com/*",
-        "https://www.youtube.com/*",
-        "https://heatsync.org/*"
+        "https://www.youtube.com/*"
       ]
     },
     {

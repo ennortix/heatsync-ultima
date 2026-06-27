@@ -48,6 +48,11 @@ function checkManifestParity() {
   // Chrome MV3: split into host_permissions[]. Firefox MV2: folded into permissions[].
   // Firefox-only non-host perms (webRequest/webRequestBlocking) are intentional — allow them.
   const FIREFOX_ONLY_PERMS = new Set(['webRequest', 'webRequestBlocking'])
+  // Firefox-only hosts: static-cdn.jtvnw.net is needed solely by the MV2 blocking
+  // webRequest redirect (fake FFZ emote id -> real Twitch CDN). Chrome MV3 has no
+  // blocking webRequest, never fetches it, and only uses it as an <img src> (no host
+  // permission required), so it's intentionally absent from chrome.json.
+  const FIREFOX_ONLY_HOSTS = new Set(['https://static-cdn.jtvnw.net/*'])
   const URL_PATTERN = /^https?:\/\//
 
   const chromeHosts = new Set([
@@ -55,7 +60,9 @@ function checkManifestParity() {
     ...(chrome.permissions || []).filter((p) => URL_PATTERN.test(p)),
   ])
   const firefoxHosts = new Set(
-    (firefox.permissions || []).filter((p) => URL_PATTERN.test(p) && !FIREFOX_ONLY_PERMS.has(p)),
+    (firefox.permissions || []).filter(
+      (p) => URL_PATTERN.test(p) && !FIREFOX_ONLY_PERMS.has(p) && !FIREFOX_ONLY_HOSTS.has(p),
+    ),
   )
 
   const onlyInChrome = [...chromeHosts].filter((h) => !firefoxHosts.has(h))

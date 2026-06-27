@@ -1421,6 +1421,8 @@ function buildFeedMessageDiv(m, opUsername) {
 
   // Media/embeds (img, video, iframe) — values inside are pre-sanitized via escapeHtml/safeUrl/sanitizeEmbedId
   const mediaHtml = buildFeedMediaHtml(m)
+  // NOTE: defense-in-depth gap — server-HTML trust: individual fields are escaped but the
+  // assembled template is set via innerHTML. Known R1 finding; pending structured-DOM rewrite.
   div.innerHTML = `${timeHtml}${threadLink}${typeTag}${platBadge}${userHtml}${statsHtml}: <span class="hs-feed-body">${content}</span>${mediaHtml}`
 
   // Wire host-CSP-safe fallbacks for avatar/media error handlers (no inline onerror=).

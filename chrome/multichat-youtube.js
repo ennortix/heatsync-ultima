@@ -91,7 +91,7 @@ if (typeof window !== 'undefined' && typeof window.name === 'string' && window.n
     /Bearer\s+[\w.-]+/gi,
     /oauth:[\w.-]+/gi,
     /eyJ[\w-]+\.[\w-]+\.[\w-]+/g,
-    /(?<=[=\s"'])[A-Za-z0-9_\-+/=]{24,}/g,
+    /(?<=[=\s"':])[A-Za-z0-9_\-+/=]{24,}/g,
   ]
   function _scrubText(s) {
     if (typeof s !== 'string') return s
@@ -29486,6 +29486,8 @@ function buildFeedMessageDiv(m, opUsername) {
 
   // Media/embeds (img, video, iframe) — values inside are pre-sanitized via escapeHtml/safeUrl/sanitizeEmbedId
   const mediaHtml = buildFeedMediaHtml(m)
+  // NOTE: defense-in-depth gap — server-HTML trust: individual fields are escaped but the
+  // assembled template is set via innerHTML. Known R1 finding; pending structured-DOM rewrite.
   div.innerHTML = `${timeHtml}${threadLink}${typeTag}${platBadge}${userHtml}${statsHtml}: <span class="hs-feed-body">${content}</span>${mediaHtml}`
 
   // Wire host-CSP-safe fallbacks for avatar/media error handlers (no inline onerror=).

@@ -84,7 +84,7 @@
     /Bearer\s+[\w.-]+/gi,
     /oauth:[\w.-]+/gi,
     /eyJ[\w-]+\.[\w-]+\.[\w-]+/g,
-    /(?<=[=\s"'])[A-Za-z0-9_\-+/=]{24,}/g,
+    /(?<=[=\s"':])[A-Za-z0-9_\-+/=]{24,}/g,
   ]
   function _scrubText(s) {
     if (typeof s !== 'string') return s

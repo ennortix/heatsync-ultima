@@ -633,14 +633,27 @@
   // heatsync-init-nonce. All subsequent heatsync-gql-request / heatsync-helix /
   // heatsync-apollo-mutate messages must carry a matching nonce field.
   //
-  // LIMITATION: postMessage and the DOM are both visible to page JS, so a determined
-  // attacker with code running on the Twitch page could intercept the init message.
-  // This raises the bar significantly against passive/static injection attacks but is
-  // not a cryptographic guarantee. Per-session rotation limits replay windows.
+  // ARCHITECTURAL CONSTRAINT: this script runs in MAIN world (shared with the page), so
+  // window.postMessage and the init-nonce message are observable by page JS. A nonce
+  // cannot be kept truly secret in MAIN world. Mitigations applied:
+  //   1. Rate-limiting on apollo-mutate and helix proxy handlers (below).
+  //   2. Allowlists restricting which mutations/URLs are reachable.
+  // Future direction: service-worker proxy could enforce auth without MAIN-world exposure.
   //
   // content.js MUST send on load:
   //   window.postMessage({ type: 'heatsync-init-nonce', nonce: <16-byte hex> }, location.origin)
   let _hsNonce = null
+
+  // Rate-limit state for privileged proxy handlers.
+  // Window: 10 s, cap: 10 calls per window (legit use is occasional, user-driven).
+  const _proxyRateLimit = { ts: [], windowMs: 10000, max: 10 }
+  function _proxyAllowed() {
+    const now = Date.now()
+    _proxyRateLimit.ts = _proxyRateLimit.ts.filter((t) => now - t < _proxyRateLimit.windowMs)
+    if (_proxyRateLimit.ts.length >= _proxyRateLimit.max) return false
+    _proxyRateLimit.ts.push(now)
+    return true
+  }
 
   // Handle GQL requests from content script
   // event.source === window: blocks cross-frame attacks; same-page scripts still pass (accepted MAIN-world limitation)
@@ -680,6 +693,14 @@
     if (e.data?.type === 'heatsync-apollo-mutate') {
       if (!_hsNonce || e.data.nonce !== _hsNonce) {
         log('heatsync-apollo-mutate: rejected — missing or invalid nonce')
+        return
+      }
+      if (!_proxyAllowed()) {
+        log('heatsync-apollo-mutate: rate limit exceeded')
+        window.postMessage(
+          { type: 'heatsync-apollo-mutate-error', error: 'rate limit exceeded', requestId: e.data.requestId },
+          location.origin,
+        )
         return
       }
       if (e.data.rawQuery) {
@@ -871,6 +892,11 @@
       if (!_hsNonce || e.data.nonce !== _hsNonce) {
         log('heatsync-helix: rejected — missing or invalid nonce')
         window.postMessage({ type: 'heatsync-helix-response', id: e.data.id, error: 'invalid nonce' }, location.origin)
+        return
+      }
+      if (!_proxyAllowed()) {
+        log('heatsync-helix: rate limit exceeded')
+        window.postMessage({ type: 'heatsync-helix-response', id: e.data.id, error: 'rate limit exceeded' }, location.origin)
         return
       }
       const req = e.data

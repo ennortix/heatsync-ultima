@@ -58,7 +58,7 @@ const browser = globalThis.browser || chrome
     /Bearer\s+[\w.-]+/gi,
     /oauth:[\w.-]+/gi,
     /eyJ[\w-]+\.[\w-]+\.[\w-]+/g,
-    /(?<=[=\s"'])[A-Za-z0-9_\-+/=]{24,}/g,
+    /(?<=[=\s"':])[A-Za-z0-9_\-+/=]{24,}/g,
   ]
   function scrubText(s) {
     if (typeof s !== 'string') return s
@@ -9278,6 +9278,16 @@ chrome.runtime.onConnect.addListener((port) => {
 // Listener — handles bg_irc_join / bg_irc_part / bg_irc_history
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || typeof message !== 'object') return false
+  // Reject messages from other extensions — must be this extension's own scripts.
+  const _senderUrl = sender?.tab?.url || sender?.url || ''
+  const _isFromPopup = !sender?.tab
+  const _isOwnExt = !sender?.id || sender.id === chrome.runtime.id
+  const _isValidOrigin =
+    _isFromPopup || /^https:\/\/([a-z0-9-]+\.)*(twitch\.tv|kick\.com|heatsync\.org|youtube\.com)(\/|$)/.test(_senderUrl)
+  if (!(_isOwnExt && _isValidOrigin)) {
+    sendResponse({ ok: false, error: 'unauthorized sender' })
+    return true
+  }
   const tabId = sender?.tab?.id
   if (message.type === 'bg_irc_auth') {
     // Twitch chat token from a twitch tab (same internal channel the GQL
@@ -9772,6 +9782,16 @@ function bgYtIngest(payload) {
 // History-pull endpoints
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || typeof message !== 'object') return false
+  // Reject messages from other extensions — must be this extension's own scripts.
+  const _senderUrl2 = sender?.tab?.url || sender?.url || ''
+  const _isFromPopup2 = !sender?.tab
+  const _isOwnExt2 = !sender?.id || sender.id === chrome.runtime.id
+  const _isValidOrigin2 =
+    _isFromPopup2 || /^https:\/\/([a-z0-9-]+\.)*(twitch\.tv|kick\.com|heatsync\.org|youtube\.com)(\/|$)/.test(_senderUrl2)
+  if (!(_isOwnExt2 && _isValidOrigin2)) {
+    sendResponse({ ok: false, error: 'unauthorized sender' })
+    return true
+  }
   if (message.type === 'bg_kick_history') {
     const ch = (message.channel || '').toLowerCase()
     ;(async () => {

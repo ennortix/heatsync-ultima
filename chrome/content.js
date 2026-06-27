@@ -5,6 +5,10 @@
   const log = HEATSYNC_DEBUG ? console.log.bind(console, '[heatsync]') : () => {}
   const warn = HEATSYNC_DEBUG ? console.warn.bind(console, '[heatsync]') : () => {}
 
+  // Cooldown for extension-reload postMessage handler — prevents page JS
+  // from hammering chrome.runtime.reload() in a tight loop.
+  let _lastExtReloadMs = 0
+
   log('🚀 Script loaded on:', window.location.href)
 
   const isKick = window.location.hostname.includes('kick.com')
@@ -1227,14 +1231,22 @@
         applyUiSettings(event.data.settings)
       }
 
-      // Native Twitch emotes from autocomplete-hook.js (MAIN world) — store for multichat
+      // Native Twitch emotes from autocomplete-hook.js (MAIN world) — store for multichat.
+      // Nonce not available here (autocomplete-hook.js has no nonce access); apply strict
+      // payload validation instead: safe name charset, CDN-only URLs, array cap.
       if (event.data?.type === 'heatsync-native-emotes' && Array.isArray(event.data.emotes)) {
-        const emotes = event.data.emotes.filter(
+        const EMOTE_CDN_RE =
+          /^https:\/\/(static-cdn\.jtvnw\.net\/emoticons|cdn\.7tv\.app|cdn\.betterttv\.net|cdn\.frankerfacez\.com)\//
+        const EMOTE_NAME_RE = /^[A-Za-z0-9_:\-()]+$/
+        const raw = event.data.emotes.slice(0, 2000) // cap array to 2000 entries
+        const emotes = raw.filter(
           (e) =>
             e &&
             typeof e.name === 'string' &&
-            e.name.length < 100 &&
-            (!e.url || (typeof e.url === 'string' && /^https:\/\//.test(e.url))),
+            e.name.length >= 1 &&
+            e.name.length <= 64 &&
+            EMOTE_NAME_RE.test(e.name) &&
+            (!e.url || (typeof e.url === 'string' && EMOTE_CDN_RE.test(e.url))),
         )
         log(' Received', emotes.length, 'native Twitch emotes from MAIN world')
         chrome.storage.local.set({ native_twitch_emotes: emotes })
@@ -11091,6 +11103,9 @@
       // worst this enables is the user reloading their own extension. Same-origin
       // gate (above) prevents cross-frame triggers from third-party scripts.
       if (event.data?.type === 'heatsync-reload-extension') {
+        const now = Date.now()
+        if (now - _lastExtReloadMs < 30000) return
+        _lastExtReloadMs = now
         safeSendMessage({ type: 'extension_reload' }).catch(() => {})
       }
       // Self twitch ID resolved by early-inject MAIN world via currentUser GQL —

@@ -248,6 +248,58 @@ function checkErrorReporterParity() {
   console.log('  Error reporter parity: scrub patterns match ✓')
 }
 
+// Guard 6: escapeHtml coverage parity.
+// Three local copies of escapeHtml exist (src/lib/utils.js, chrome/chat-injector.js,
+// chrome/heatsync-button.js). Each must escape all five dangerous HTML chars.
+// This guard fails the build if any copy drops an escape — preventing XSS regressions.
+function checkEscapeHtmlCoverage() {
+  const files = [
+    { label: 'src/lib/utils.js', path: join(__dirname, 'src', 'lib', 'utils.js') },
+    { label: 'chrome/chat-injector.js', path: join(__dirname, 'chrome', 'chat-injector.js') },
+    { label: 'chrome/heatsync-button.js', path: join(__dirname, 'chrome', 'heatsync-button.js') },
+  ]
+  // Five required escape mappings: input char → at least one of the accepted output forms
+  const REQUIRED = [
+    { char: '&', outputs: ['&amp;'] },
+    { char: '<', outputs: ['&lt;'] },
+    { char: '>', outputs: ['&gt;'] },
+    { char: '"', outputs: ['&quot;'] },
+    { char: "'", outputs: ['&#x27;', '&#39;'] },
+  ]
+
+  // Extract the escapeHtml function body from source text.
+  // Handles both multi-replace chain (utils.js) and single-regex map (injector/button).
+  function extractBody(src) {
+    const idx = src.search(/function escapeHtml\s*\(/)
+    if (idx === -1) return null
+    const open = src.indexOf('{', idx)
+    let depth = 0
+    for (let i = open; i < src.length; i++) {
+      if (src[i] === '{') depth++
+      else if (src[i] === '}') {
+        depth--
+        if (depth === 0) return src.slice(open + 1, i)
+      }
+    }
+    return null
+  }
+
+  for (const { label, path } of files) {
+    const src = readFileSync(path, 'utf8')
+    const body = extractBody(src)
+    if (!body) throw new Error(`checkEscapeHtmlCoverage: could not extract escapeHtml from ${label}`)
+    for (const { char, outputs } of REQUIRED) {
+      if (!outputs.some((out) => body.includes(out))) {
+        throw new Error(
+          `checkEscapeHtmlCoverage: ${label} escapeHtml does not escape '${char}' (expected one of: ${outputs.join(', ')})`,
+        )
+      }
+    }
+  }
+
+  console.log('  EscapeHtml coverage: all 3 copies escape all 5 chars ✓')
+}
+
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
 const SRC_DIR = join(__dirname, 'src')
@@ -703,6 +755,7 @@ checkVersionSync()
 checkManifestParity()
 checkScopeCollisions()
 checkErrorReporterParity()
+checkEscapeHtmlCoverage()
 runTests(args)
 console.log()
 

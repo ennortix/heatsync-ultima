@@ -9521,7 +9521,7 @@
       // Build structured HTML: [username] ◆ action game
       if (!userColor) userColor = '#fff'
       const colorStyle = `color:${sanitizeColor(userColor)}`
-      const userLink = `<a href="https://twitch.tv/${encodeURIComponent(ch)}" target="_blank" class="hs-mc-user hs-evt-user" data-username="${escapeHtml(ch)}" style="${colorStyle}">${escapeHtml(ch)}</a>`
+      const userLink = `<a href="https://twitch.tv/${encodeURIComponent(ch)}" target="_blank" rel="noopener noreferrer" class="hs-mc-user hs-evt-user" data-username="${escapeHtml(ch)}" style="${colorStyle}">${escapeHtml(ch)}</a>`
       const textAfterChannel = escapeHtml(m.text).replace(/^\[[^\]]+\]\s*/, '')
       const actionHtml = textAfterChannel.replace(
         /(switched to |now playing |went live \u2014 )(.+)$/,
@@ -9564,7 +9564,7 @@
       const shortId = (m.base36_id || '').replace(/^0+/, '') || '0'
       // Span (not <a>): falls through to the row click handler below → switchTab('feed') + openThread, in-ext. An anchor would open heatsync.org in a new tab.
       const threadLink = `<span class="hs-feed-thread-link" data-id="${escapeHtml(m.base36_id || '')}" style="cursor:pointer">&gt;&gt;${escapeHtml(shortId)}</span>`
-      const userLink = `<a href="https://heatsync.org/user/${encodeURIComponent(m.feedUser)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml((m.feedUser || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.color || '#fff')}">${escapeHtml(m.feedUser || 'anon')}</a>`
+      const userLink = `<a href="https://heatsync.org/user/${encodeURIComponent(m.feedUser)}" target="_blank" rel="noopener noreferrer" class="hs-mc-user" data-username="${escapeHtml((m.feedUser || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.color || '#fff')}">${escapeHtml(m.feedUser || 'anon')}</a>`
       const content = renderFeedContent(m.text, m.emote_refs)
       // Canonical heat: formatHeat + ° suffix (≥10) + tier color/glow/breathe via heatSpanHtml
       const heatHtml = (m.heat || 0) > 0 ? ' ' + heatSpanHtml(m.heat) : ''
@@ -9831,7 +9831,7 @@
     } else {
       userHref = `https://twitch.tv/${encodeURIComponent(m.user)}`
     }
-    const userLink = `<a href="${userHref}" target="_blank" class="hs-mc-user" data-username="${escapeHtml(m.user.toLowerCase())}" data-platform="${plat}" style="${paintStyle || 'color:' + sanitizeColor(m.color || '#fff')}">${escapeHtml(m.user)}</a>`
+    const userLink = `<a href="${userHref}" target="_blank" rel="noopener noreferrer" class="hs-mc-user" data-username="${escapeHtml(m.user.toLowerCase())}" data-platform="${plat}" style="${paintStyle || 'color:' + sanitizeColor(m.color || '#fff')}">${escapeHtml(m.user)}</a>`
     let avatarHtml = ''
     if (avatarsEnabled) {
       const userKey = m.user.toLowerCase()
@@ -9926,7 +9926,7 @@
     const replyUidAttr = replyUid ? ` data-uid="${escapeHtml(replyUid)}"` : ''
     const replyBar =
       m.replyTo && m.replyTo.user
-        ? `<div class="hs-mc-reply-ctx" title="${escapeHtml(m.replyTo.user)}: ${escapeHtml(m.replyTo.text || '')}">&#8618; Replying to <a href="https://heatsync.org/user/${encodeURIComponent(m.replyTo.user)}" target="_blank" class="hs-mc-user hs-mc-reply-user" data-username="${escapeHtml(replyLower)}"${replyUidAttr} style="${replyStyle}">@${escapeHtml(m.replyTo.user)}</a>${m.replyTo.text ? ': ' + escapeHtml(m.replyTo.text.length > 80 ? m.replyTo.text.slice(0, 80) + '...' : m.replyTo.text) : ''}</div>`
+        ? `<div class="hs-mc-reply-ctx" title="${escapeHtml(m.replyTo.user)}: ${escapeHtml(m.replyTo.text || '')}">&#8618; Replying to <a href="https://heatsync.org/user/${encodeURIComponent(m.replyTo.user)}" target="_blank" rel="noopener noreferrer" class="hs-mc-user hs-mc-reply-user" data-username="${escapeHtml(replyLower)}"${replyUidAttr} style="${replyStyle}">@${escapeHtml(m.replyTo.user)}</a>${m.replyTo.text ? ': ' + escapeHtml(m.replyTo.text.length > 80 ? m.replyTo.text.slice(0, 80) + '...' : m.replyTo.text) : ''}</div>`
         : ''
     // Redeem label — look up reward title from Hermes cache
     let redeemLabel = ''
@@ -10128,7 +10128,7 @@
             const paint = getMcPaintStyle(uid)
             if (paint) style = paint
           }
-          return `${lead}<a href="https://heatsync.org/user/${encodeURIComponent(lower)}" target="_blank" class="hs-mc-user hs-mc-mention" data-username="${safeLower}"${uidAttr} style="${style}">${at}${safeName}</a>`
+          return `${lead}<a href="https://heatsync.org/user/${encodeURIComponent(lower)}" target="_blank" rel="noopener noreferrer" class="hs-mc-user hs-mc-mention" data-username="${safeLower}"${uidAttr} style="${style}">${at}${safeName}</a>`
         },
       )
     }

@@ -13,6 +13,7 @@
   // mirrors src/lib/utils.js escapeHtml — kept local because this file may load
   // before lib bundling completes; the two must remain identical
   function escapeHtml(text) {
+    if (text == null) return ''
     return String(text).replace(
       /[&<>"']/g,
       (c) =>
@@ -2246,7 +2247,7 @@
           ? `
       <div class="heatsync-auth-banner">
         <span>🔑</span>
-        <span><a href="https://heatsync.org/api/auth/login?return_to=%2F" target="_blank">${t('btn_auth_login')}</a> ${t('btn_auth_save_emotes')}</span>
+        <span><a href="https://heatsync.org/api/auth/login?return_to=%2F" target="_blank" rel="noopener noreferrer">${t('btn_auth_login')}</a> ${t('btn_auth_save_emotes')}</span>
       </div>
       `
           : ''

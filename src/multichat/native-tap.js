@@ -187,7 +187,10 @@ function _tapBind() {
   _tapContainer = container
   _tapObserver = new MutationObserver((muts) => {
     for (const mu of muts) {
-      for (const node of mu.addedNodes) _tapHandleRow(node)
+      for (const node of mu.addedNodes) {
+        if (node.nodeType !== Node.ELEMENT_NODE) continue
+        _tapHandleRow(node)
+      }
     }
   })
   _tapObserver.observe(container, { childList: true })

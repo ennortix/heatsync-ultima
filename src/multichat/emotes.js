@@ -2799,7 +2799,7 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime) {
         const color =
           typeof mentionColor === 'function' ? mentionColor(name) : sanitizeColor(knownColors.get(name) || '#fff')
         result.push(
-          `<a href="https://heatsync.org/user/${encodeURIComponent(name)}" target="_blank" class="hs-mc-user hs-mc-mention" data-username="${name}" style="color:${color};font-weight:bold">${word}</a>`,
+          `<a href="https://heatsync.org/user/${encodeURIComponent(name)}" target="_blank" rel="noopener noreferrer" class="hs-mc-user hs-mc-mention" data-username="${name}" style="color:${color};font-weight:bold">${word}</a>`,
         )
       } else if (linksEnabled && LINK_RE.test(word)) {
         // Validate URL protocol before creating link (block javascript:, data:, etc.)

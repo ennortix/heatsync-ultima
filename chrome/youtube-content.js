@@ -1263,6 +1263,7 @@
       const observer = new MutationObserver((mutations) => {
         for (const mut of mutations) {
           for (const node of mut.addedNodes) {
+            if (node.nodeType !== Node.ELEMENT_NODE) continue
             cleanup.raf(() => processNode(node))
           }
         }

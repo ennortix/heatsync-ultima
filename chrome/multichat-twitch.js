@@ -18529,7 +18529,10 @@ function _tapBind() {
   _tapContainer = container
   _tapObserver = new MutationObserver((muts) => {
     for (const mu of muts) {
-      for (const node of mu.addedNodes) _tapHandleRow(node)
+      for (const node of mu.addedNodes) {
+        if (node.nodeType !== Node.ELEMENT_NODE) continue
+        _tapHandleRow(node)
+      }
     }
   })
   _tapObserver.observe(container, { childList: true })
@@ -21831,7 +21834,7 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime) {
         const color =
           typeof mentionColor === 'function' ? mentionColor(name) : sanitizeColor(knownColors.get(name) || '#fff')
         result.push(
-          `<a href="https://heatsync.org/user/${encodeURIComponent(name)}" target="_blank" class="hs-mc-user hs-mc-mention" data-username="${name}" style="color:${color};font-weight:bold">${word}</a>`,
+          `<a href="https://heatsync.org/user/${encodeURIComponent(name)}" target="_blank" rel="noopener noreferrer" class="hs-mc-user hs-mc-mention" data-username="${name}" style="color:${color};font-weight:bold">${word}</a>`,
         )
       } else if (linksEnabled && LINK_RE.test(word)) {
         // Validate URL protocol before creating link (block javascript:, data:, etc.)
@@ -29696,7 +29699,7 @@ function buildFeedMessageDiv(m, opUsername) {
   const tripcodeHtml = m.tripcode ? `<span class="hs-tripcode">${escapeHtml(m.tripcode)}</span>` : ''
   const userHtml = isAnon
     ? `${anonAvatar}<span class="hs-feed-user" style="color:#808080">Anonymous</span>${tripcodeHtml}`
-    : `${userAvatar}<a href="https://heatsync.org/user/${encodeURIComponent(m.username)}" target="_blank" class="hs-feed-user hs-mc-user" data-username="${escapeHtml((m.username || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.user_color || '#fff')}">${escapeHtml(m.username || 'anon')}</a>${tripcodeHtml}`
+    : `${userAvatar}<a href="https://heatsync.org/user/${encodeURIComponent(m.username)}" target="_blank" rel="noopener noreferrer" class="hs-feed-user hs-mc-user" data-username="${escapeHtml((m.username || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.user_color || '#fff')}">${escapeHtml(m.username || 'anon')}</a>${tripcodeHtml}`
 
   // Media/embeds (img, video, iframe) — values inside are pre-sanitized via escapeHtml/safeUrl/sanitizeEmbedId
   const mediaHtml = buildFeedMediaHtml(m)
@@ -31851,7 +31854,7 @@ function renderWhispersTab() {
           : `https://heatsync.org/twitch/${encodeURIComponent(username)}`
       const paint = m.platform === 'heatsync' ? '' : userPaintStyle(uid, lower)
       const style = paint || `color:${color};font-weight:600`
-      return `<a href="${href}" target="_blank" class="hs-mc-user" data-username="${safeUser}" style="${style}">${safe}</a>`
+      return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="hs-mc-user" data-username="${safeUser}" style="${style}">${safe}</a>`
     }
 
     const themUid = target?.userId || ''
@@ -49773,7 +49776,7 @@ document.addEventListener(
       // Build structured HTML: [username] ◆ action game
       if (!userColor) userColor = '#fff'
       const colorStyle = `color:${sanitizeColor(userColor)}`
-      const userLink = `<a href="https://twitch.tv/${encodeURIComponent(ch)}" target="_blank" class="hs-mc-user hs-evt-user" data-username="${escapeHtml(ch)}" style="${colorStyle}">${escapeHtml(ch)}</a>`
+      const userLink = `<a href="https://twitch.tv/${encodeURIComponent(ch)}" target="_blank" rel="noopener noreferrer" class="hs-mc-user hs-evt-user" data-username="${escapeHtml(ch)}" style="${colorStyle}">${escapeHtml(ch)}</a>`
       const textAfterChannel = escapeHtml(m.text).replace(/^\[[^\]]+\]\s*/, '')
       const actionHtml = textAfterChannel.replace(
         /(switched to |now playing |went live \u2014 )(.+)$/,
@@ -49816,7 +49819,7 @@ document.addEventListener(
       const shortId = (m.base36_id || '').replace(/^0+/, '') || '0'
       // Span (not <a>): falls through to the row click handler below → switchTab('feed') + openThread, in-ext. An anchor would open heatsync.org in a new tab.
       const threadLink = `<span class="hs-feed-thread-link" data-id="${escapeHtml(m.base36_id || '')}" style="cursor:pointer">&gt;&gt;${escapeHtml(shortId)}</span>`
-      const userLink = `<a href="https://heatsync.org/user/${encodeURIComponent(m.feedUser)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml((m.feedUser || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.color || '#fff')}">${escapeHtml(m.feedUser || 'anon')}</a>`
+      const userLink = `<a href="https://heatsync.org/user/${encodeURIComponent(m.feedUser)}" target="_blank" rel="noopener noreferrer" class="hs-mc-user" data-username="${escapeHtml((m.feedUser || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.color || '#fff')}">${escapeHtml(m.feedUser || 'anon')}</a>`
       const content = renderFeedContent(m.text, m.emote_refs)
       // Canonical heat: formatHeat + ° suffix (≥10) + tier color/glow/breathe via heatSpanHtml
       const heatHtml = (m.heat || 0) > 0 ? ' ' + heatSpanHtml(m.heat) : ''
@@ -50083,7 +50086,7 @@ document.addEventListener(
     } else {
       userHref = `https://twitch.tv/${encodeURIComponent(m.user)}`
     }
-    const userLink = `<a href="${userHref}" target="_blank" class="hs-mc-user" data-username="${escapeHtml(m.user.toLowerCase())}" data-platform="${plat}" style="${paintStyle || 'color:' + sanitizeColor(m.color || '#fff')}">${escapeHtml(m.user)}</a>`
+    const userLink = `<a href="${userHref}" target="_blank" rel="noopener noreferrer" class="hs-mc-user" data-username="${escapeHtml(m.user.toLowerCase())}" data-platform="${plat}" style="${paintStyle || 'color:' + sanitizeColor(m.color || '#fff')}">${escapeHtml(m.user)}</a>`
     let avatarHtml = ''
     if (avatarsEnabled) {
       const userKey = m.user.toLowerCase()
@@ -50178,7 +50181,7 @@ document.addEventListener(
     const replyUidAttr = replyUid ? ` data-uid="${escapeHtml(replyUid)}"` : ''
     const replyBar =
       m.replyTo && m.replyTo.user
-        ? `<div class="hs-mc-reply-ctx" title="${escapeHtml(m.replyTo.user)}: ${escapeHtml(m.replyTo.text || '')}">&#8618; Replying to <a href="https://heatsync.org/user/${encodeURIComponent(m.replyTo.user)}" target="_blank" class="hs-mc-user hs-mc-reply-user" data-username="${escapeHtml(replyLower)}"${replyUidAttr} style="${replyStyle}">@${escapeHtml(m.replyTo.user)}</a>${m.replyTo.text ? ': ' + escapeHtml(m.replyTo.text.length > 80 ? m.replyTo.text.slice(0, 80) + '...' : m.replyTo.text) : ''}</div>`
+        ? `<div class="hs-mc-reply-ctx" title="${escapeHtml(m.replyTo.user)}: ${escapeHtml(m.replyTo.text || '')}">&#8618; Replying to <a href="https://heatsync.org/user/${encodeURIComponent(m.replyTo.user)}" target="_blank" rel="noopener noreferrer" class="hs-mc-user hs-mc-reply-user" data-username="${escapeHtml(replyLower)}"${replyUidAttr} style="${replyStyle}">@${escapeHtml(m.replyTo.user)}</a>${m.replyTo.text ? ': ' + escapeHtml(m.replyTo.text.length > 80 ? m.replyTo.text.slice(0, 80) + '...' : m.replyTo.text) : ''}</div>`
         : ''
     // Redeem label — look up reward title from Hermes cache
     let redeemLabel = ''
@@ -50380,7 +50383,7 @@ document.addEventListener(
             const paint = getMcPaintStyle(uid)
             if (paint) style = paint
           }
-          return `${lead}<a href="https://heatsync.org/user/${encodeURIComponent(lower)}" target="_blank" class="hs-mc-user hs-mc-mention" data-username="${safeLower}"${uidAttr} style="${style}">${at}${safeName}</a>`
+          return `${lead}<a href="https://heatsync.org/user/${encodeURIComponent(lower)}" target="_blank" rel="noopener noreferrer" class="hs-mc-user hs-mc-mention" data-username="${safeLower}"${uidAttr} style="${style}">${at}${safeName}</a>`
         },
       )
     }

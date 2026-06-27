@@ -1725,7 +1725,9 @@ async function postFeedMessage(text, { topLevel = false } = {}) {
     // Insert own post immediately from response (fetchFeed unreliable — service worker gets killed)
     const posted = resp.data?.message
     if (posted) {
-      if (!feedMessages.some(f => f.base36_id === posted.base36_id)) {
+      // OPs only in the following timeline — a reply posted from thread view
+      // still lands in its thread (below), but must not leak into the feed.
+      if (isOpMsg(posted) && !feedMessages.some(f => f.base36_id === posted.base36_id)) {
         feedMessages.unshift(posted)
         if (feedMessages.length > 150) feedMessages.pop()
       }

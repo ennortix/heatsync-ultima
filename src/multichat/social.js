@@ -1421,8 +1421,9 @@ function buildFeedMessageDiv(m, opUsername) {
 
   // Media/embeds (img, video, iframe) — values inside are pre-sanitized via escapeHtml/safeUrl/sanitizeEmbedId
   const mediaHtml = buildFeedMediaHtml(m)
-  // NOTE: defense-in-depth gap — server-HTML trust: individual fields are escaped but the
-  // assembled template is set via innerHTML. Known R1 finding; pending structured-DOM rewrite.
+  // All interpolated parts are pre-sanitized: the meta fields via escapeHtml/safeUrl/
+  // sanitizeColor/sanitizeEmbedId, and `content` via renderFeedContent (which neutralizes
+  // literal '<' in the server payload, closing the server-HTML-trust vector).
   div.innerHTML = `${timeHtml}${threadLink}${typeTag}${platBadge}${userHtml}${statsHtml}: <span class="hs-feed-body">${content}</span>${mediaHtml}`
 
   // Wire host-CSP-safe fallbacks for avatar/media error handlers (no inline onerror=).
@@ -1545,11 +1546,15 @@ function renderFeedEmote(name, url, source, hash) {
 
 function renderFeedContent(content, emoteRefs) {
   if (!content) return ''
-  // Content is ALREADY HTML-escaped by the server (sanitizeUserInput on store),
-  // so we do NOT escape again — matches heatsync.org's message-element renderer,
-  // which feeds stored content straight into parsePostLinks. Escaping here
-  // double-escaped `>>id` quotes into literal `&gt;&gt;`.
-  let html = String(content)
+  // Content is ALREADY HTML-escaped by the server (sanitizeUserInput on store).
+  // We do NOT full-escape again — that would double-encode `&` and break the
+  // server's `&gt;&gt;id` post-link syntax. But the server is a trust boundary:
+  // a MITM or a server-side sanitizer bypass could deliver raw `<img onerror=…>`
+  // straight into innerHTML below. Defense in depth: neutralize any LITERAL `<`
+  // (legit escaped content has none — it uses `&lt;`), which makes a raw tag
+  // impossible to form while leaving entities and `>>id` untouched. No parser,
+  // so no mXSS/parser-differential bypass like a DOM sanitizer can have.
+  let html = String(content).replace(/</g, '&lt;')
   // Linkify URLs FIRST so text-formatting can't split them on '_' or eat path chars.
   // Single regex pass with alternation: full https:// URLs OR bare domains.
   // (?<![\/\w.]) on the bare-domain branch prevents matching inside an already-linkified URL path.

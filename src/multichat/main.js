@@ -9839,7 +9839,10 @@
       // Same 500-entry LRU as the decapi path so 30k unique YT chatters can't
       // grow the Map unbounded over an 8h stream.
       if (m.avatar && m.platform === 'youtube') {
-        avatarCache.set(userKey, m.avatar)
+        // Protocol-validate before caching — this URL later flows into img.src.
+        // Mirrors the decapi avatar path which already routes through safeUrl.
+        const safe = safeUrl(m.avatar)
+        if (safe) avatarCache.set(userKey, safe)
         if (avatarCache.size > 500) {
           avatarCache.delete(avatarCache.keys().next().value)
         }

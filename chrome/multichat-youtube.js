@@ -27113,7 +27113,7 @@ function renderBadges(badgesStr, channel, platform) {
         const bgStyle =
           isFFZ && BADGE_STYLES[name] ? `background:${BADGE_STYLES[name].bg};padding:1px;border-radius:2px;` : ''
         const label = BADGE_STYLES[name]?.label || name
-        return `<img class="hs-mc-badge-img" src="${escapeHtml(url)}" alt="${escapeHtml(name)}" title="${escapeHtml(label)}" loading="lazy" decoding="async" width="18" height="18" style="width:18px;height:18px;${bgStyle}">`
+        return `<img class="hs-mc-badge-img" src="${escapeHtml(safeUrl(url) || '')}" alt="${escapeHtml(name)}" title="${escapeHtml(label)}" loading="lazy" decoding="async" width="18" height="18" style="width:18px;height:18px;${bgStyle}">`
       }
       // Text fallback
       const style = BADGE_STYLES[name]
@@ -27132,18 +27132,18 @@ function renderThirdPartyBadges(userId) {
   // full rebuild (the "loads then shifts" flash on channel switch).
   const bttv = getSetting('bttvBadges') ? mcBttvBadgeMap.get(userId) : null
   if (bttv) {
-    html += `<img class="hs-mc-badge-img hs-mc-bttv-badge" src="${escapeHtml(bttv.url)}" alt="${escapeHtml(bttv.description)}" title="${escapeHtml(bttv.description)}" loading="lazy" decoding="async" width="18" height="18" style="width:18px;height:18px;">`
+    html += `<img class="hs-mc-badge-img hs-mc-bttv-badge" src="${escapeHtml(safeUrl(bttv.url) || '')}" alt="${escapeHtml(bttv.description)}" title="${escapeHtml(bttv.description)}" loading="lazy" decoding="async" width="18" height="18" style="width:18px;height:18px;">`
   }
   const ffzList = getSetting('ffzBadges') ? mcFfzBadgeMap.get(userId) : null
   if (ffzList) {
     for (const b of ffzList) {
       const safeColor = /^#[0-9a-fA-F]{3,8}$/.test(b.color) ? b.color : ''
-      html += `<img class="hs-mc-badge-img hs-mc-ffz-badge" src="${escapeHtml(b.url)}" alt="${escapeHtml(b.title)}" title="${escapeHtml(b.title)}" loading="lazy" decoding="async" width="18" height="18" style="width:18px;height:18px;${safeColor ? 'background:' + safeColor + ';border-radius:2px;' : ''}">`
+      html += `<img class="hs-mc-badge-img hs-mc-ffz-badge" src="${escapeHtml(safeUrl(b.url) || '')}" alt="${escapeHtml(b.title)}" title="${escapeHtml(b.title)}" loading="lazy" decoding="async" width="18" height="18" style="width:18px;height:18px;${safeColor ? 'background:' + safeColor + ';border-radius:2px;' : ''}">`
     }
   }
   const chat = getSetting('chatterinoBadges') ? mcChatterinoBadgeMap.get(userId) : null
   if (chat) {
-    html += `<img class="hs-mc-badge-img hs-mc-chatterino-badge" src="${escapeHtml(chat.url)}" alt="Chatterino" title="${escapeHtml(chat.tooltip || 'Chatterino')}" loading="lazy" decoding="async" width="18" height="18" style="width:18px;height:18px;">`
+    html += `<img class="hs-mc-badge-img hs-mc-chatterino-badge" src="${escapeHtml(safeUrl(chat.url) || '')}" alt="Chatterino" title="${escapeHtml(chat.tooltip || 'Chatterino')}" loading="lazy" decoding="async" width="18" height="18" style="width:18px;height:18px;">`
   }
   const cosmetic = getSetting('sevenTvPaints') ? mcUserCosmetics.get(userId) : null
   if (cosmetic?.badge) {
@@ -27161,7 +27161,7 @@ function renderThirdPartyBadges(userId) {
         // Class includes hs-mc-7tv-badge so updateCosmeticsInPlace's dedup
         // selector finds it and doesn't insert a duplicate when the async
         // cosmetic fetch resolves after the inline render.
-        html += `<img class="hs-mc-badge-img hs-mc-7tv-badge" src="${escapeHtml(url)}" alt="7TV" title="${escapeHtml(cosmetic.badge.tooltip || '7TV')}" loading="lazy" decoding="async" width="18" height="18" style="width:18px;height:18px;">`
+        html += `<img class="hs-mc-badge-img hs-mc-7tv-badge" src="${escapeHtml(safeUrl(url) || '')}" alt="7TV" title="${escapeHtml(cosmetic.badge.tooltip || '7TV')}" loading="lazy" decoding="async" width="18" height="18" style="width:18px;height:18px;">`
       }
     }
   }
@@ -29486,8 +29486,9 @@ function buildFeedMessageDiv(m, opUsername) {
 
   // Media/embeds (img, video, iframe) — values inside are pre-sanitized via escapeHtml/safeUrl/sanitizeEmbedId
   const mediaHtml = buildFeedMediaHtml(m)
-  // NOTE: defense-in-depth gap — server-HTML trust: individual fields are escaped but the
-  // assembled template is set via innerHTML. Known R1 finding; pending structured-DOM rewrite.
+  // All interpolated parts are pre-sanitized: the meta fields via escapeHtml/safeUrl/
+  // sanitizeColor/sanitizeEmbedId, and `content` via renderFeedContent (which neutralizes
+  // literal '<' in the server payload, closing the server-HTML-trust vector).
   div.innerHTML = `${timeHtml}${threadLink}${typeTag}${platBadge}${userHtml}${statsHtml}: <span class="hs-feed-body">${content}</span>${mediaHtml}`
 
   // Wire host-CSP-safe fallbacks for avatar/media error handlers (no inline onerror=).
@@ -29610,11 +29611,15 @@ function renderFeedEmote(name, url, source, hash) {
 
 function renderFeedContent(content, emoteRefs) {
   if (!content) return ''
-  // Content is ALREADY HTML-escaped by the server (sanitizeUserInput on store),
-  // so we do NOT escape again — matches heatsync.org's message-element renderer,
-  // which feeds stored content straight into parsePostLinks. Escaping here
-  // double-escaped `>>id` quotes into literal `&gt;&gt;`.
-  let html = String(content)
+  // Content is ALREADY HTML-escaped by the server (sanitizeUserInput on store).
+  // We do NOT full-escape again — that would double-encode `&` and break the
+  // server's `&gt;&gt;id` post-link syntax. But the server is a trust boundary:
+  // a MITM or a server-side sanitizer bypass could deliver raw `<img onerror=…>`
+  // straight into innerHTML below. Defense in depth: neutralize any LITERAL `<`
+  // (legit escaped content has none — it uses `&lt;`), which makes a raw tag
+  // impossible to form while leaving entities and `>>id` untouched. No parser,
+  // so no mXSS/parser-differential bypass like a DOM sanitizer can have.
+  let html = String(content).replace(/</g, '&lt;')
   // Linkify URLs FIRST so text-formatting can't split them on '_' or eat path chars.
   // Single regex pass with alternation: full https:// URLs OR bare domains.
   // (?<![\/\w.]) on the bare-domain branch prevents matching inside an already-linkified URL path.
@@ -49879,7 +49884,10 @@ document.addEventListener(
       // Same 500-entry LRU as the decapi path so 30k unique YT chatters can't
       // grow the Map unbounded over an 8h stream.
       if (m.avatar && m.platform === 'youtube') {
-        avatarCache.set(userKey, m.avatar)
+        // Protocol-validate before caching — this URL later flows into img.src.
+        // Mirrors the decapi avatar path which already routes through safeUrl.
+        const safe = safeUrl(m.avatar)
+        if (safe) avatarCache.set(userKey, safe)
         if (avatarCache.size > 500) {
           avatarCache.delete(avatarCache.keys().next().value)
         }

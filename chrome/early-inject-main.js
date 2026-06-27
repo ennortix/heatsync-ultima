@@ -646,12 +646,18 @@
 
   // Rate-limit state for privileged proxy handlers.
   // Window: 10 s, cap: 10 calls per window (legit use is occasional, user-driven).
-  const _proxyRateLimit = { ts: [], windowMs: 10000, max: 10 }
-  function _proxyAllowed() {
+  // Separate rate buckets per proxy op: helix reads burst during multi-channel
+  // boot (per-channel users/settings/color lookups — a 10+ channel multichat can
+  // fire dozens in the first seconds), so it gets generous headroom that only a
+  // runaway exfil loop would hit. Apollo mutations are user-driven (mod/prediction
+  // actions) and rare, so they keep a tight cap to blunt spoofed-nonce spam.
+  const _helixRate = { ts: [], windowMs: 10000, max: 120 }
+  const _mutateRate = { ts: [], windowMs: 10000, max: 10 }
+  function _proxyAllowed(bucket) {
     const now = Date.now()
-    _proxyRateLimit.ts = _proxyRateLimit.ts.filter((t) => now - t < _proxyRateLimit.windowMs)
-    if (_proxyRateLimit.ts.length >= _proxyRateLimit.max) return false
-    _proxyRateLimit.ts.push(now)
+    bucket.ts = bucket.ts.filter((t) => now - t < bucket.windowMs)
+    if (bucket.ts.length >= bucket.max) return false
+    bucket.ts.push(now)
     return true
   }
 
@@ -695,7 +701,7 @@
         log('heatsync-apollo-mutate: rejected — missing or invalid nonce')
         return
       }
-      if (!_proxyAllowed()) {
+      if (!_proxyAllowed(_mutateRate)) {
         log('heatsync-apollo-mutate: rate limit exceeded')
         window.postMessage(
           { type: 'heatsync-apollo-mutate-error', error: 'rate limit exceeded', requestId: e.data.requestId },
@@ -894,7 +900,7 @@
         window.postMessage({ type: 'heatsync-helix-response', id: e.data.id, error: 'invalid nonce' }, location.origin)
         return
       }
-      if (!_proxyAllowed()) {
+      if (!_proxyAllowed(_helixRate)) {
         log('heatsync-helix: rate limit exceeded')
         window.postMessage({ type: 'heatsync-helix-response', id: e.data.id, error: 'rate limit exceeded' }, location.origin)
         return
@@ -1055,7 +1061,15 @@
     if (e.origin !== location.origin) return
     if (e.data?.type === 'heatsync-url-map' && e.data.urlMap) {
       const wasEmpty = urlMapWasEmpty
-      Object.assign(window.__heatsyncEmoteUrls, e.data.urlMap)
+      // These values become img.src via the native-element setter intercept, so a
+      // spoofed url-map (page JS can post one — MAIN-world nonce is observable, see
+      // the init-nonce note) could plant tracking-pixel URLs. Allowlist emote CDNs
+      // only; drop anything else. Defends the sink regardless of nonce reachability.
+      const EMOTE_CDN_RE =
+        /^https:\/\/(static-cdn\.jtvnw\.net\/emoticons|cdn\.7tv\.app|cdn\.betterttv\.net|cdn\.frankerfacez\.com)\//
+      for (const [k, v] of Object.entries(e.data.urlMap)) {
+        if (typeof v === 'string' && EMOTE_CDN_RE.test(v)) window.__heatsyncEmoteUrls[k] = v
+      }
       urlMapWasEmpty = Object.keys(window.__heatsyncEmoteUrls).length === 0
 
       if (wasEmpty && !urlMapWasEmpty) {

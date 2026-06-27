@@ -52,8 +52,16 @@ function parseIrcLine(raw, channel) {
         text = text.slice(8, text.endsWith('\x01') ? -1 : undefined)
         isAction = true
       }
+      // True login from the IRC prefix (:login!login@login.tmi.twitch.tv).
+      // display-name ≠ login for non-Latin names; mod actions + notice dedup need
+      // the login, not the display name.
+      // Anchored at line start (optional @tags, then the IRC prefix) so a message
+      // body containing ":x!y@" can never be captured instead of the real prefix.
+      const _loginM = raw.match(/^(?:@[^ ]+ )?:([a-zA-Z0-9_]+)![a-zA-Z0-9_]+@/)
+      const login = _loginM ? _loginM[1].toLowerCase() : displayName.toLowerCase()
       const msg = {
         user: displayName,
+        login,
         userId: tags['user-id'] || '',
         text: text,
         color: sanitizeColor(tags.color || '#fff'),
@@ -429,7 +437,16 @@ class IRC {
             if (existing.type !== 'notice') continue
             if (existing.noticeType !== 'timeout_success' && existing.noticeType !== 'ban_success') continue
             if ((existing.targetUser || '').toLowerCase() !== targetLc) continue
-            if (Math.abs((existing.time || 0) - (msg.time || 0)) > 10000) continue
+            // A later unban for this target retired the prior ban — don't collapse
+            // a fresh re-ban against it (ban→unban→ban must show every step).
+            if (existing._supersededByUnban) continue
+            // A local synthetic carries client Date.now(); the real IRC copy
+            // carries Twitch's server tmi-sent-ts. Under clock skew those can
+            // differ by >10s, defeating the collapse and double-rendering. Widen
+            // to 30s whenever a synthetic is on either side; keep the tight 10s
+            // for real-vs-real (multi-transport fanout of one server event).
+            const win = (existing.isSynthetic || msg.isSynthetic) ? 30000 : 10000
+            if (Math.abs((existing.time || 0) - (msg.time || 0)) > win) continue
             return
           }
         }
@@ -437,13 +454,15 @@ class IRC {
       // Same first-wins collapse for deletes: our optimistic local inject and the
       // real CLEARMSG carry the same target-msg-id. Keep whichever lands first
       // (the actor-attributed local line, or the IRC line if it raced ahead) —
-      // never render both for one deletion.
+      // never render both for one deletion. target-msg-id is unique per message,
+      // so the window only separates a synthetic from its own real echo.
       if (msg.type === 'notice' && msg.noticeType === 'delete_message_success' && msg.targetMsgId) {
         for (const existing of buf.getAll()) {
           if (existing.type !== 'notice') continue
           if (existing.noticeType !== 'delete_message_success') continue
           if (existing.targetMsgId !== msg.targetMsgId) continue
-          if (Math.abs((existing.time || 0) - (msg.time || 0)) > 10000) continue
+          const win = (existing.isSynthetic || msg.isSynthetic) ? 30000 : 10000
+          if (Math.abs((existing.time || 0) - (msg.time || 0)) > win) continue
           return
         }
       }
@@ -471,6 +490,18 @@ class IRC {
         } catch {}
       }
       if (msg.type === 'notice') {
+        // An unban retires any prior ban/timeout notice for this target so the
+        // dedup above won't suppress a subsequent re-ban within the window.
+        if (msg.noticeType === 'unban_success' && msg.targetUser) {
+          const tlc = msg.targetUser.toLowerCase()
+          for (const m of buf.getAll()) {
+            if (m.type === 'notice' &&
+                (m.noticeType === 'ban_success' || m.noticeType === 'timeout_success') &&
+                (m.targetUser || '').toLowerCase() === tlc) {
+              m._supersededByUnban = true
+            }
+          }
+        }
         if (msg.noticeType === 'ban_success' || msg.noticeType === 'timeout_success') {
           const targetLc = (msg.targetUser || '').toLowerCase()
           if (targetLc) {

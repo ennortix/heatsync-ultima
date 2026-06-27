@@ -5312,50 +5312,41 @@
     // or overlay row via the wiring in ensureStackOverlay*). 200ms felt laggy.
     _modHideTimer = setTimeout(detachModToolbar, 0)
   }
-  // Self-initiated mod actions on Twitch don't all echo back the same way:
-  // ban/timeout/delete arrive ~1-3s later as IRC CLEARCHAT/CLEARMSG — actor-less
-  // ("X was permanently banned") and, for unban/untimeout, NEVER (those go out
-  // via GQL, fire no IRC NOTICE, and we don't subscribe to channel.moderate).
-  // So without this, unban/untimeout produce only a toast and no gray chat line.
-  // Inject a local, actor-attributed notice the instant the action confirms.
-  //
-  // Dedup makes it bulletproof: ban_success/timeout_success collapse first-wins
-  // on (targetUser, ±10s) and delete_message_success on (targetMsgId, ±10s) in
-  // irc.js. Whichever copy lands first shows; the other is dropped — so the
-  // worst case is the old actor-less IRC line, never a duplicate. unban has no
-  // competing transport, so the local line is the only one. Twitch-only (writes
-  // the irc buffer); Kick mod notices are a separate follow-up.
-  function injectLocalModNotice({ channel, action, target, durationSec, msgId }) {
+  // ===== Unified mod-action backbone =====
+  // Mod actions never echo back uniformly: Twitch ban/timeout/delete arrive
+  // ~1-3s later as actor-less IRC CLEARCHAT/CLEARMSG; unban/untimeout never echo
+  // (GQL, no channel.moderate sub); Kick echoes nothing at all. So every surface
+  // (slash, right-click, hover toolbar, profile card) routes through ONE
+  // dispatcher that fans a user-action out to the right platform(s) and injects
+  // an instant actor-attributed gray notice the moment each side confirms.
+  // Duplicate-proof: irc.js collapses the Twitch copy against the real IRC one
+  // (first-wins, synthetic-aware window); Kick has no competing transport so its
+  // line is the only one.
+  function _modActor() {
+    return (currentUsername || (typeof authState !== 'undefined' && authState?.nick) || '').toLowerCase()
+  }
+  function _modNoticeFields(action, actor, tgt, durationSec) {
+    const a = actor || tgt
+    if (action === 'ban')     return { noticeType: 'ban_success',     systemMsg: a ? `${a} banned ${tgt}` : `${tgt} was permanently banned` }
+    if (action === 'timeout') { const d = Math.max(1, durationSec | 0); return { noticeType: 'timeout_success', systemMsg: a ? `${a} timed out ${tgt} for ${d}s` : `${tgt} timed out for ${d}s` } }
+    if (action === 'unban' || action === 'untimeout') return { noticeType: 'unban_success', systemMsg: a ? `${a} unbanned ${tgt}` : `${tgt} is no longer banned` }
+    if (action === 'delete')  return { noticeType: 'delete_message_success', systemMsg: a ? `${a} deleted a message${tgt ? ` from ${tgt}` : ''}` : (tgt ? `${tgt}'s message deleted` : 'message deleted') }
+    return null
+  }
+  // Twitch — route through irc._handleMsg (dedup + buffer + render).
+  function _injectTwitchModNotice({ channel, action, target, durationSec, msgId }) {
     try {
       const ch = String(channel || '').toLowerCase().replace(/^#/, '')
       if (!ch || !irc?.channels?.has(ch)) return
-      const actor = (currentUsername
-        || (typeof authState !== 'undefined' && authState?.nick)
-        || '').toLowerCase()
       const tgt = String(target || '').replace(/^@/, '')
       const tgtLc = tgt.toLowerCase()
-      let noticeType, systemMsg
-      if (action === 'ban') {
-        noticeType = 'ban_success'
-        systemMsg = actor ? `${actor} banned ${tgt}` : `${tgt} was permanently banned`
-      } else if (action === 'timeout') {
-        const d = Math.max(1, durationSec | 0)
-        noticeType = 'timeout_success'
-        systemMsg = actor ? `${actor} timed out ${tgt} for ${d}s` : `${tgt} timed out for ${d}s`
-      } else if (action === 'unban' || action === 'untimeout') {
-        noticeType = 'unban_success'
-        systemMsg = actor ? `${actor} unbanned ${tgt}` : `${tgt} is no longer banned`
-      } else if (action === 'delete') {
-        noticeType = 'delete_message_success'
-        systemMsg = actor
-          ? `${actor} deleted a message${tgt ? ` from ${tgt}` : ''}`
-          : (tgt ? `${tgt}'s message deleted` : 'message deleted')
-      } else return
+      const f = _modNoticeFields(action, _modActor(), tgt, durationSec)
+      if (!f) return
       irc._handleMsg?.({
-        type: 'notice', noticeType, user: 'system',
-        text: systemMsg, systemMsg, color: '#808080', badges: '',
+        type: 'notice', noticeType: f.noticeType, user: 'system',
+        text: f.systemMsg, systemMsg: f.systemMsg, color: '#808080', badges: '',
         channel: ch, time: Date.now(),
-        id: `hs-synth-mod-${noticeType}-${ch}-${tgtLc || msgId || ''}-${Date.now()}`,
+        id: `hs-synth-mod-${f.noticeType}-${ch}-${tgtLc || msgId || ''}-${Date.now()}`,
         targetUser: tgtLc,
         targetMsgId: action === 'delete' ? (msgId || '') : undefined,
         banDuration: action === 'timeout' ? Math.max(1, durationSec | 0) : 0,
@@ -5363,43 +5354,146 @@
       })
     } catch (_) {}
   }
-  try { globalThis.__hsInjectModNotice = injectLocalModNotice } catch (_) {}
+  // Kick — KickChat has no _handleMsg; push to its buffer + emit directly. No
+  // competing Kick transport, so no dedup needed.
+  function _injectKickModNotice({ channel, action, target, durationSec, msgId }) {
+    try {
+      const slug = String(channel || '').toLowerCase().replace(/^#/, '')
+      const buf = kickChat?.channels?.get(slug)
+      if (!buf) return
+      const tgt = String(target || '').replace(/^@/, '')
+      const tgtLc = tgt.toLowerCase()
+      const f = _modNoticeFields(action, _modActor(), tgt, durationSec)
+      if (!f) return
+      const m = {
+        type: 'notice', noticeType: f.noticeType, user: 'system',
+        text: f.systemMsg, systemMsg: f.systemMsg, color: '#808080', badges: '',
+        channel: slug, time: Date.now(), platform: 'kick',
+        id: `hs-synth-kick-mod-${f.noticeType}-${slug}-${tgtLc || msgId || ''}-${Date.now()}`,
+        targetUser: tgtLc, isSynthetic: true,
+      }
+      buf.push(m)
+      try { kickChat.emit('message', m) } catch (_) {}
+    } catch (_) {}
+  }
+  try { globalThis.__hsInjectModNotice = _injectTwitchModNotice } catch (_) {}
+
+  // Resolve a channel descriptor (tab id, twitch login, or kick slug) to its
+  // linked twitch login + kick slug via the O(1) channel lookup.
+  function _resolveModTargets(channel, platform) {
+    const lookup = (typeof getChannelLookup === 'function') ? getChannelLookup() : null
+    const raw = String(channel || '').replace(/^#/, '')
+    const lc = raw.toLowerCase()
+    let entry = null
+    if (lookup && raw) {
+      entry = lookup.byId?.get(raw) || lookup.byId?.get(lc)
+        || lookup.twitch?.get(raw) || lookup.twitch?.get(lc)
+        || lookup.kick?.get(raw) || lookup.kick?.get(lc) || null
+    }
+    // Trust a found entry: if it's kick-only, twitchName stays null (don't fire a
+    // bogus Twitch call with the tab id). Only fall back to the raw channel
+    // string when NO entry exists at all (unregistered/anon channel).
+    const twitchName = entry ? (entry.twitch || null) : (platform !== 'kick' && lc ? lc : null)
+    const kickSlug = entry ? (entry.kick || null) : (platform === 'kick' && lc ? lc : null)
+    return { twitchName, kickSlug }
+  }
+
+  // THE unified dispatch. ban/timeout/unban target a user; delete targets one
+  // message (lives on one platform). `fanout` (slash /ban) hits every linked
+  // platform; without it (click surfaces) only the clicked platform is touched,
+  // so a twitch-only mod never sees "kick failed: not a mod" noise. Returns
+  // { tResp, kResp, twitchName, kickSlug, anyOk } for the caller's toast.
+  async function dispatchModAction({ channel, platform, action, target, durationSec, msgId, reason, fanout }) {
+    const { twitchName, kickSlug } = _resolveModTargets(channel, platform)
+    // No resolvable platform (aggregate tab, empty/garbage channel) — fail clean
+    // rather than firing a doomed API call with the tab id as a channel name.
+    if (!twitchName && !kickSlug) return { tResp: null, kResp: null, twitchName: null, kickSlug: null, anyOk: false }
+    const tgt = String(target || '').replace(/^@/, '')
+    const sec = Math.max(1, durationSec | 0)
+    const runTwitch = () => (
+      action === 'ban'     ? banTwitchUser(twitchName, tgt, reason || '') :
+      action === 'timeout' ? timeoutTwitchUser(twitchName, tgt, sec, reason || '') :
+      action === 'unban'   ? unbanTwitchUser(twitchName, tgt) :
+      action === 'delete'  ? deleteTwitchMessage(twitchName, msgId) :
+      Promise.resolve(null)
+    )
+    const runKick = () => safeSendMessage({
+      type: 'kick_mod_action', action, slug: kickSlug, username: tgt,
+      durationMin: action === 'timeout' ? Math.max(1, Math.round(sec / 60)) : 0,
+      reason: reason || '',
+      messageId: action === 'delete' ? (msgId || '') : '',
+    })
+
+    if (action === 'delete') {
+      // A message exists on exactly one platform. Known platform → only there;
+      // unknown (e.g. /delete <id>) → twitch-first then kick fallback.
+      let resp = null, plat = null
+      if (platform === 'kick' && kickSlug) { plat = 'kick'; resp = await runKick() }
+      else if (platform === 'twitch' && twitchName) { plat = 'twitch'; resp = await runTwitch() }
+      else if (twitchName) { plat = 'twitch'; resp = await runTwitch(); if (!resp?.ok && kickSlug) { plat = 'kick'; resp = await runKick() } }
+      else if (kickSlug) { plat = 'kick'; resp = await runKick() }
+      if (resp?.ok) {
+        if (plat === 'kick') _injectKickModNotice({ channel: kickSlug, action, target: tgt, msgId })
+        else _injectTwitchModNotice({ channel: twitchName, action, target: tgt, msgId })
+      }
+      return { tResp: plat === 'twitch' ? resp : null, kResp: plat === 'kick' ? resp : null, twitchName, kickSlug, anyOk: !!resp?.ok }
+    }
+
+    // ban / timeout / unban
+    let doTwitch, doKick
+    if (fanout) { doTwitch = !!twitchName; doKick = !!kickSlug }
+    else if (platform === 'kick') { doKick = !!kickSlug; doTwitch = !doKick && !!twitchName }
+    else { doTwitch = !!twitchName; doKick = !doTwitch && !!kickSlug }
+    const [tResp, kResp] = await Promise.all([
+      doTwitch ? runTwitch() : null,
+      doKick ? runKick() : null,
+    ])
+    if (tResp?.ok) _injectTwitchModNotice({ channel: twitchName, action, target: tgt, durationSec: sec })
+    if (kResp?.ok) _injectKickModNotice({ channel: kickSlug, action, target: tgt, durationSec: sec })
+    return { tResp, kResp, twitchName, kickSlug, anyOk: !!(tResp?.ok || kResp?.ok) }
+  }
+  try { globalThis.__hsDispatchMod = dispatchModAction } catch (_) {}
+
+  // One consistent result toast for every surface.
+  function showModResultToast(label, target, r) {
+    try {
+      const tResp = r?.tResp, kResp = r?.kResp
+      const tOk = tResp?.ok, kOk = kResp?.ok
+      if (tResp && kResp) {
+        if (tOk && kOk) { showToast(`${label} ${target} (twitch+kick)`, 'success'); return }
+        if (tOk) { showToast(`${label} ${target} on twitch — kick failed: ${kResp.error || 'unknown'}`, 'error'); return }
+        if (kOk) { showToast(`${label} ${target} on kick — twitch failed: ${tResp.error || 'unknown'}`, 'error'); return }
+        showToast(`${label} failed: twitch ${tResp.error || '?'} / kick ${kResp.error || '?'}`, 'error'); return
+      }
+      const only = tResp || kResp
+      showToast(only?.ok ? `${label} ${target}` : `${label} failed: ${only?.error || 'unknown'}`, only?.ok ? 'success' : 'error')
+    } catch (_) {}
+  }
+  try { globalThis.__hsModToast = showModResultToast } catch (_) {}
 
   async function runModAction(id) {
     const def = MOD_BUTTON_CATALOG[id]
     if (!def || !_modCtx) return
-    const { channel, user, msgId, row } = _modCtx
+    const { channel, user, login, msgId, row } = _modCtx
+    const target = login || user
     const wasOp = row?.style?.opacity
     if (row) row.style.opacity = '0.5'
-    let resp
-    try {
-      if (def.action === 'delete') resp = await deleteTwitchMessage(channel, msgId)
-      else if (def.action === 'timeout') resp = await timeoutTwitchUser(channel, user, def.durationSec, '')
-      else if (def.action === 'ban') resp = await banTwitchUser(channel, user, '')
-      else if (def.action === 'unban') resp = await unbanTwitchUser(channel, user)
-    } catch (e) {
-      resp = { error: e.message }
-    }
+    // Hover toolbar only attaches to Twitch rows — act on Twitch (single platform).
+    const r = await dispatchModAction({ channel, platform: 'twitch', action: def.action, target, durationSec: def.durationSec, msgId })
+      .catch((e) => ({ anyOk: false, tResp: { error: e?.message || 'error' } }))
     if (row) row.style.opacity = wasOp || ''
-    if (resp?.ok) {
-      if (def.action === 'delete' && row && dimTimeouts) row.classList.add('hs-mc-msg-cleared')
-      injectLocalModNotice({ channel, action: def.action, target: user, durationSec: def.durationSec, msgId })
-      const verb =
-        def.action === 'timeout'
-          ? `timed out ${user} ${def.durationSec}s`
-          : def.action === 'ban'
-            ? `banned ${user}`
-            : def.action === 'unban'
-              ? `unbanned ${user}`
-              : 'deleted'
-      try {
-        showToast(verb, 'success')
-      } catch (_) {}
-    } else {
-      try {
-        showToast(`${def.action} failed: ${resp?.error || 'unknown'}`, 'error')
-      } catch (_) {}
-    }
+    if (r?.anyOk && def.action === 'delete' && row && dimTimeouts) row.classList.add('hs-mc-msg-cleared')
+    const label =
+      def.action === 'timeout'
+        ? `timed out ${def.durationSec}s`
+        : def.action === 'ban'
+          ? 'banned'
+          : def.action === 'unban'
+            ? 'unbanned'
+            : def.action === 'delete'
+              ? 'deleted'
+              : def.action
+    showModResultToast(label, target, r)
     detachModToolbar()
   }
   function wireModToolbarHover(messagesEl) {
@@ -5418,6 +5512,7 @@
         if (plat === 'kick' || plat === 'youtube' || plat === 'yt') return
         const channel = row.dataset.msgChannel
         const user = row.dataset.msgUser
+        const login = row.dataset.msgLogin || row.dataset.msgUser
         const msgId = row.dataset.msgId
         if (!channel || !user) return
         // Skip own messages — mod actions on yourself are nonsense UX. Use the
@@ -5431,7 +5526,7 @@
           prefetchModFor(channel)
           return
         }
-        const ctx = { channel, user, msgId, row }
+        const ctx = { channel, user, login, msgId, row }
         _modCtx = ctx
         buildModToolbarOnce()
         if (!gateModButtons(ctx)) return
@@ -9536,6 +9631,11 @@
     if (m.id && m.platform !== 'youtube') {
       div.dataset.msgId = m.id
       div.dataset.msgUser = m.user
+      // True login for mod actions + notice dedup. Twitch display-name ≠ login
+      // for non-Latin names (display 田中 / login tanaka123); banning the display
+      // name would target a bogus login and silently fail. m.login is the IRC
+      // prefix login; kick has no separate display/login so it falls back to user.
+      div.dataset.msgLogin = (m.login || m.user || '')
       div.dataset.msgChannel = m.channel || ''
       div.dataset.msgPlatform = m.platform || ''
       // Mark self-messages so the mod hover toolbar can skip them without

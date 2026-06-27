@@ -1636,6 +1636,17 @@ async function hsBlockFromMenu(username, platform) {
 
 // Build the universal action menu. follow=1, block=2 always lead; whisper/
 // mention/profile/copy follow; own feed posts append edit/delete.
+// Right-click mod action — single platform (the clicked message's), targeting
+// the login. Delete gets a bespoke toast; the rest use the shared combined one.
+async function _ctxMod(action, channel, platform, target, msgId, durationSec, label) {
+  const r = await dispatchModAction({ channel, platform, action, target, durationSec, msgId })
+  if (action === 'delete') {
+    showToast(r?.anyOk ? 'deleted message' : `delete failed: ${(r?.tResp || r?.kResp)?.error || 'unknown'}`, r?.anyOk ? 'success' : 'error')
+  } else {
+    showModResultToast(label, target, r)
+  }
+}
+
 function openUserCtxMenu(x, y, username, platform, ctx = {}) {
   const { msg, feedDiv, feedMsg } = ctx
   const rel = hsRelPeek(username, platform)?.relationship || null
@@ -1657,6 +1668,40 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
     { label: isMuted ? 'unmute' : 'mute (24h)', danger: !isMuted, fn: () => _toggleMcMute(username, platform) },
     'sep',
   ]
+  // ─── Mod actions ─── only where we know we're a Twitch mod for this channel.
+  // Acts on the CLICKED platform (single — no cross-platform failure noise) and
+  // targets the LOGIN (display-name ≠ login for non-Latin users → ban would miss).
+  // Kick-only channels have no mod-status signal, so they're not surfaced here.
+  if (msg && typeof isModForSync === 'function') {
+    const msgCh = msg.dataset?.msgChannel || ''
+    const msgPlat = msg.dataset?.msgPlatform || 'twitch'
+    const msgLogin = (msg.dataset?.msgLogin || msg.dataset?.msgUser || username || '').toLowerCase()
+    const msgId = msg.dataset?.msgId || ''
+    const lookup = (typeof getChannelLookup === 'function') ? getChannelLookup() : null
+    const entry = (lookup && msgCh)
+      ? ((msgPlat === 'kick' ? lookup.kick.get(msgCh) : lookup.twitch.get(msgCh)) || lookup.byId.get(msgCh))
+      : null
+    const twName = entry?.twitch || (msgPlat !== 'kick' ? msgCh : null)
+    // currentUsername is a display name; compare against BOTH the login and the
+    // display name so a non-Latin-named mod can't be shown self-mod actions.
+    const _selfRef = (typeof currentUsername !== 'undefined' && currentUsername) ? currentUsername.toLowerCase() : null
+    const notSelf = !_selfRef || (msgLogin !== _selfRef && (msg.dataset?.msgUser || '').toLowerCase() !== _selfRef)
+    if (twName && notSelf) {
+      if (isModForSync(twName)) {
+        const mod = []
+        if (msgId) mod.push({ label: 'delete msg', danger: true, fn: () => _ctxMod('delete', msgCh, msgPlat, msgLogin, msgId, 0, 'deleted') })
+        mod.push(
+          { label: 'timeout 10m', fn: () => _ctxMod('timeout', msgCh, msgPlat, msgLogin, msgId, 600, 'timed out 600s') },
+          { label: 'ban', danger: true, fn: () => _ctxMod('ban', msgCh, msgPlat, msgLogin, msgId, 0, 'banned') },
+          { label: 'unban', fn: () => _ctxMod('unban', msgCh, msgPlat, msgLogin, msgId, 0, 'unbanned') },
+          'sep',
+        )
+        items.push(...mod)
+      } else if (typeof prefetchModFor === 'function') {
+        prefetchModFor(twName)  // warm the cache so the next right-click surfaces actions
+      }
+    }
+  }
   // Reply — only when right-clicked on a real chat message with an id (Twitch
   // IRC msg-id or Kick msg id). The same setReplyState the reply-button uses.
   if (msg?.dataset?.msgId) {
@@ -5133,38 +5178,8 @@ async function handleSlashCommand(text, input) {
   const _modCh = modChannel ? config.channels.find((c) => c.id === modChannel) : null
   const _twitchModName = _modCh?.twitch || (modChannel && !_modCh ? modChannel : null)
   const _kickModSlug = _modCh?.kick || null
-
-  async function _kickMod(action, params) {
-    if (!_kickModSlug) return null
-    return safeSendMessage({ type: 'kick_mod_action', action, slug: _kickModSlug, ...params })
-  }
-
-  function _combinedToast(label, target, tResp, kResp) {
-    const tOk = tResp?.ok
-    const kOk = kResp?.ok
-    if (tResp && kResp) {
-      if (tOk && kOk) {
-        showToast(`${label} ${target} (twitch+kick)`, 'success')
-        return true
-      }
-      if (tOk) {
-        showToast(`${label} ${target} on twitch — kick failed: ${kResp.error || 'unknown'}`, 'error')
-        return true
-      }
-      if (kOk) {
-        showToast(`${label} ${target} on kick — twitch failed: ${tResp.error || 'unknown'}`, 'error')
-        return true
-      }
-      showToast(`${label} failed: twitch ${tResp.error || '?'} / kick ${kResp.error || '?'}`, 'error')
-      return false
-    }
-    const only = tResp || kResp
-    showToast(
-      only?.ok ? `${label} ${target}` : `${label} failed: ${only?.error || 'unknown'}`,
-      only?.ok ? 'success' : 'error',
-    )
-    return !!only?.ok
-  }
+  // Dual-platform dispatch + per-platform notice injection + combined toast all
+  // live in the shared backbone (main.js dispatchModAction / showModResultToast).
 
   if (cmd === 'ban' || cmd === 'timeout' || cmd === 'unban') {
     if (!modChannel) {
@@ -5182,13 +5197,9 @@ async function handleSlashCommand(text, input) {
         return true
       }
       const [, target, reason] = m
-      const [tResp, kResp] = await Promise.all([
-        _twitchModName ? banTwitchUser(_twitchModName, target, reason || '') : null,
-        _kickMod('ban', { username: target, reason: reason || '' }),
-      ])
-      if (tResp?.ok) globalThis.__hsInjectModNotice?.({ channel: _twitchModName, action: 'ban', target })
-      const ok = _combinedToast('banned', target, tResp, kResp)
-      if (ok) clearInput(input)
+      const r = await dispatchModAction({ channel: modChannel, action: 'ban', target, reason, fanout: true })
+      showModResultToast('banned', target, r)
+      if (r?.anyOk) clearInput(input)
       return true
     }
     if (cmd === 'timeout') {
@@ -5199,13 +5210,9 @@ async function handleSlashCommand(text, input) {
       }
       const [, target, secStr, reason] = m
       const sec = secStr ? Math.max(1, parseInt(secStr)) : 600
-      const [tResp, kResp] = await Promise.all([
-        _twitchModName ? timeoutTwitchUser(_twitchModName, target, sec, reason || '') : null,
-        _kickMod('timeout', { username: target, durationMin: Math.max(1, Math.round(sec / 60)), reason: reason || '' }),
-      ])
-      if (tResp?.ok) globalThis.__hsInjectModNotice?.({ channel: _twitchModName, action: 'timeout', target, durationSec: sec })
-      const ok = _combinedToast(`timed out ${sec}s`, target, tResp, kResp)
-      if (ok) clearInput(input)
+      const r = await dispatchModAction({ channel: modChannel, action: 'timeout', target, durationSec: sec, reason, fanout: true })
+      showModResultToast(`timed out ${sec}s`, target, r)
+      if (r?.anyOk) clearInput(input)
       return true
     }
     if (cmd === 'unban') {
@@ -5214,13 +5221,9 @@ async function handleSlashCommand(text, input) {
         showToast('usage: /unban <user>', 'error')
         return true
       }
-      const [tResp, kResp] = await Promise.all([
-        _twitchModName ? unbanTwitchUser(_twitchModName, target) : null,
-        _kickMod('unban', { username: target }),
-      ])
-      if (tResp?.ok) globalThis.__hsInjectModNotice?.({ channel: _twitchModName, action: 'unban', target })
-      const ok = _combinedToast('unbanned', target, tResp, kResp)
-      if (ok) clearInput(input)
+      const r = await dispatchModAction({ channel: modChannel, action: 'unban', target, fanout: true })
+      showModResultToast('unbanned', target, r)
+      if (r?.anyOk) clearInput(input)
       return true
     }
   }
@@ -5235,36 +5238,15 @@ async function handleSlashCommand(text, input) {
       showToast('usage: /delete <message-id> (right-click a message)', 'error')
       return true
     }
-    // Routing: prefer Twitch (UUID) vs Kick (snowflake-ish) by id shape.
-    // Twitch msg ids are UUIDv4. Kick chat msg ids are also UUID. Without a
-    // reliable shape distinguisher, try Twitch first when linked, else Kick.
-    let resp
-    if (_twitchModName) {
-      resp = await deleteTwitchMessage(_twitchModName, messageID)
-      if (resp?.ok) {
-        globalThis.__hsInjectModNotice?.({ channel: _twitchModName, action: 'delete', target: '', msgId: messageID })
-      } else if (_kickModSlug) {
-        // Twitch rejected — try Kick (the id was probably a Kick message)
-        resp = await safeSendMessage({
-          type: 'kick_mod_action',
-          action: 'delete',
-          slug: _kickModSlug,
-          messageId: messageID,
-        })
-      }
-    } else if (_kickModSlug) {
-      resp = await safeSendMessage({
-        type: 'kick_mod_action',
-        action: 'delete',
-        slug: _kickModSlug,
-        messageId: messageID,
-      })
-    } else {
+    if (!_twitchModName && !_kickModSlug) {
       showToast('/delete needs a twitch or kick channel', 'error')
       return true
     }
-    showToast(resp.ok ? 'deleted' : `delete failed: ${resp.error || 'unknown'}`, resp.ok ? 'success' : 'error')
-    if (resp.ok) clearInput(input)
+    // Raw id → platform unknown; dispatcher tries Twitch first, then Kick.
+    const r = await dispatchModAction({ channel: modChannel, action: 'delete', msgId: messageID })
+    const err = (r?.tResp || r?.kResp)?.error || 'unknown'
+    showToast(r?.anyOk ? 'deleted' : `delete failed: ${err}`, r?.anyOk ? 'success' : 'error')
+    if (r?.anyOk) clearInput(input)
     return true
   }
 

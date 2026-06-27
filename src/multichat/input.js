@@ -2935,6 +2935,11 @@ function handleInputChange(e) {
                 if (stackable) resolved = ov
               }
             }
+            // Blocked emotes never auto-render in the composer. A common word
+            // that collides with a blocked owned emote name (e.g. "emote")
+            // must stay plain text, not convert to the blocked-placeholder
+            // chip (1×1 gif + dashed rect that reads as a broken emote).
+            if (resolved && blockedEmoteNames.has(word)) resolved = null
             if (resolved) {
               const wordStart = cursor - match[0].length
               if (deflectAdjacentChip(node, wordStart)) return
@@ -3025,7 +3030,7 @@ function handleInputChange(e) {
                   if (!cm) break
                   const cName = cm[1]
                   const cResolved = lookupEmoteWithOverlay(cName, { ownedOnly: true })
-                  if (!cResolved || cResolved.isOverlay) break
+                  if (!cResolved || cResolved.isOverlay || blockedEmoteNames.has(cName)) break
                   const cImg = createInputEmoteImg(cName)
                   if (!cImg) break
                   parent.insertBefore(document.createTextNode('\u00A0'), afterNode)

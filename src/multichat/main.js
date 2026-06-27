@@ -4900,6 +4900,44 @@
     if (!_modStateCache.has(c) && !_modStatePending.has(c)) isModFor(c)
   }
 
+  // Kick mod-status — same shape as the twitch trio, backed by the kick_mod_status
+  // background handler (credentialed GET on the kick channel → viewer's role).
+  // Gates the kick mod UI so kick-only channels surface right-click/hover/profile
+  // mod actions. Fails closed (false) on any error — UI just doesn't appear.
+  const _kickModStateCache = new Map()
+  const _kickModStatePending = new Map()
+  async function isKickModFor(slug) {
+    if (!slug) return false
+    slug = slug.toLowerCase()
+    if (_kickModStateCache.has(slug)) return _kickModStateCache.get(slug)
+    if (_kickModStatePending.has(slug)) return _kickModStatePending.get(slug)
+    const p = (async () => {
+      try {
+        const res = await safeSendMessage({ type: 'kick_mod_status', slug })
+        const isMod = !!(res?.ok && res?.isMod)
+        // Only cache a CONFIRMED answer. safeSendMessage returns {ok:false}
+        // (never throws) on a BG-restart/early-load race — caching that false
+        // would permanently kill kick mod actions for the session. Leave it
+        // uncached so the next interaction retries (mirrors the twitch side,
+        // which is immune only because twitchGql throws on error).
+        if (res?.ok) _kickModStateCache.set(slug, isMod)
+        return isMod
+      } catch (_) { return false }
+      finally { _kickModStatePending.delete(slug) }
+    })()
+    _kickModStatePending.set(slug, p)
+    return p
+  }
+  function isKickModForSync(slug) {
+    if (!slug) return false
+    return _kickModStateCache.get(slug.toLowerCase()) === true
+  }
+  function prefetchKickModFor(slug) {
+    if (!slug) return
+    const s = slug.toLowerCase()
+    if (!_kickModStateCache.has(s) && !_kickModStatePending.has(s)) isKickModFor(s)
+  }
+
   // Singleton toolbar — built once, moved between rows.
   let _modToolbar = null
   let _modRow = null
@@ -5139,8 +5177,8 @@
     const target = login || user
     const wasOp = row?.style?.opacity
     if (row) row.style.opacity = '0.5'
-    // Hover toolbar only attaches to Twitch rows — act on Twitch (single platform).
-    const r = await dispatchModAction({ channel, platform: 'twitch', action: def.action, target, durationSec: def.durationSec, msgId })
+    // Act on the row's own platform (twitch or kick), single-platform.
+    const r = await dispatchModAction({ channel, platform: _modCtx.platform || 'twitch', action: def.action, target, durationSec: def.durationSec, msgId })
       .catch(e => ({ anyOk: false, tResp: { error: e?.message || 'error' } }))
     if (row) row.style.opacity = wasOp || ''
     if (r?.anyOk && def.action === 'delete' && row && dimTimeouts) row.classList.add('hs-mc-msg-cleared')
@@ -5160,7 +5198,7 @@
       if (!row) return
       if (row === _modRow) { cancelModHide(); return }
       const plat = row.dataset.msgPlatform
-      if (plat === 'kick' || plat === 'youtube' || plat === 'yt') return
+      if (plat === 'youtube' || plat === 'yt') return  // no YT mod actions
       const channel = row.dataset.msgChannel
       const user = row.dataset.msgUser
       const login = row.dataset.msgLogin || row.dataset.msgUser
@@ -5171,10 +5209,12 @@
       // hover time during pre-auth bootstrap); fall back to live compare.
       if (row.dataset.msgSelf === '1') return
       if (currentUsername && user.toLowerCase() === currentUsername.toLowerCase()) return
-      // Sync gate: only attach if we already know we're a mod. Pre-fetch otherwise
-      // so the next hover in this channel is instant — no UI lag.
-      if (!isModForSync(channel)) { prefetchModFor(channel); return }
-      const ctx = { channel, user, login, msgId, row }
+      // Sync gate per platform: twitch via GQL mod-state, kick via kick_mod_status.
+      // Pre-fetch the right one so the next hover in this channel is instant.
+      const isKick = plat === 'kick'
+      const amMod = isKick ? isKickModForSync(channel) : isModForSync(channel)
+      if (!amMod) { (isKick ? prefetchKickModFor : prefetchModFor)(channel); return }
+      const ctx = { channel, user, login, msgId, row, platform: plat || 'twitch' }
       _modCtx = ctx
       buildModToolbarOnce()
       if (!gateModButtons(ctx)) return
@@ -9193,6 +9233,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (_msgsForMod && !_msgsForMod._hsModToolbarWired) wireModToolbarHover(_msgsForMod)
     // Pre-fetch isMod for the active channel so first hover is instant.
     if (typeof id === 'string' && /^[a-z0-9_]{2,40}$/i.test(id)) prefetchModFor(id)
+    // Symmetric kick warm-up — so the first kick right-click/hover surfaces mod
+    // actions without a cold-cache miss (resolve the linked kick slug for this tab).
+    const _chForMod = (typeof getChannelById === 'function') ? getChannelById(id) : null
+    if (_chForMod?.kick) prefetchKickModFor(_chForMod.kick)
     // Profile card overrides normal tab content while open
     if (typeof activeProfileCard !== 'undefined' && activeProfileCard) {
       renderProfileCardView();

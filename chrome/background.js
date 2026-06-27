@@ -6233,6 +6233,44 @@ async function handleMessage(message, sender, sendResponse) {
     })()
     return true
 
+  } else if (message.type === 'kick_mod_status') {
+    // Is the authed Kick viewer a mod/broadcaster on this channel? Gates the
+    // kick mod UI the way isModFor (twitch GQL) gates the twitch one. A plain
+    // credentialed GET on kick.com (no XSRF/relay needed — same as kick_follow
+    // and _kpResolveChatroomId) returns the viewer's role on the channel object.
+    // Fails closed (isMod:false) on any error so the UI just doesn't surface.
+    ;(async () => {
+      try {
+        const slug = String(message.slug || '').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 64)
+        if (!slug) { sendResponse({ ok: true, isMod: false }); return }
+        const cookie = await browser.cookies.get({ url: 'https://kick.com', name: 'XSRF-TOKEN' })
+        if (!cookie?.value) { sendResponse({ ok: true, isMod: false }); return }  // not logged in
+        const resp = await fetchWithTimeout(`https://kick.com/api/v2/channels/${encodeURIComponent(slug)}`, {
+          credentials: 'include', headers: { 'Accept': 'application/json' }
+        }, 5000)
+        if (!resp.ok) { sendResponse({ ok: false, isMod: false, error: 'kick api ' + resp.status }); return }
+        const data = await resp.json().catch(() => null)
+        // ONLY trust the viewer-specific `chatroom_user` object (the authed
+        // viewer's relationship to this chatroom). Do NOT probe data.user /
+        // data.role / data.chatroom.* — those are the BROADCASTER's / channel's
+        // fields (data.user is the channel owner, role always 'broadcaster'), so
+        // trusting them would mark every viewer a mod. Field path is community-
+        // documented but unconfirmed live; under-showing (no UI) is the safe
+        // failure, never showing ban buttons to a non-mod.
+        const cu = data?.chatroom_user || null
+        const role = String(cu?.role || cu?.user_role || '').toLowerCase()
+        const isMod = role === 'moderator' || role === 'broadcaster' || role === 'mod' ||
+          cu?.is_moderator === true || cu?.is_broadcaster === true
+        // log() is a no-op unless DEBUG — flip DEBUG to confirm the field path live
+        // (logs the raw viewer object whether mod or not).
+        try { log('kick_mod_status', slug, 'isMod=' + isMod, JSON.stringify(cu)) } catch (_) {}
+        sendResponse({ ok: true, isMod })
+      } catch (e) {
+        sendResponse({ ok: false, isMod: false, error: e?.message || 'fetch failed' })
+      }
+    })()
+    return true
+
   } else if (message.type === 'youtube_send_message') {
     (async () => {
       try {

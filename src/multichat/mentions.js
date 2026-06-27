@@ -25,6 +25,10 @@ function isMention(msg) {
   if (!targets.length) return false
   const sender = msg.user?.toLowerCase()
   if (sender && targets.includes(sender)) return false
+  // Blocked users can't ping you — gating here kills the notification, sound,
+  // title-flash, mentions buffer AND the tab indicator in one place (every
+  // mention surface routes through isMention).
+  if (typeof isUserBlocked === 'function' && isUserBlocked(msg.user, msg.platform)) return false
   const text = msg.text.toLowerCase()
   for (const t of targets) {
     if (text.includes('@' + t)) return true
@@ -255,6 +259,8 @@ function scanExistingMentions() {
       const username = usernameEl?.textContent || 'unknown';
       // Skip own messages
       if (targets.includes(username.toLowerCase())) return;
+      // Skip blocked users — they don't get to seed the mentions buffer either.
+      if (typeof isUserBlocked === 'function' && isUserBlocked(username)) return;
 
       mentionsBuffer.push({
         user: username,

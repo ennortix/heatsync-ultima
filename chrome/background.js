@@ -6656,6 +6656,12 @@ async function handleMessage(message, sender, sendResponse) {
     sendResponse({ bttvBadges: bttvObj, ffzBadges: ffzObj, chatterinoBadges: chatterinoObj })
     return
   } else if (message.type === 'mention_detected') {
+    // Defense-in-depth: blocked users never trigger a mention notification,
+    // regardless of which content-script path detected the @mention.
+    if (message.username && blockedUsers.has(message.username)) {
+      sendResponse({ ok: true })
+      return
+    }
     // Fire a browser notification if the user has hs_notifications enabled.
     // Show the mention author's pfp (their face), falling back to the logo.
     browser.storage.local.get('hs_notifications').then(async data => {

@@ -1668,11 +1668,11 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
     { label: isMuted ? 'unmute' : 'mute (24h)', danger: !isMuted, fn: () => _toggleMcMute(username, platform) },
     'sep',
   ]
-  // ─── Mod actions ─── only where we know we're a Twitch mod for this channel.
-  // Acts on the CLICKED platform (single — no cross-platform failure noise) and
-  // targets the LOGIN (display-name ≠ login for non-Latin users → ban would miss).
-  // Kick-only channels have no mod-status signal, so they're not surfaced here.
-  if (msg && typeof isModForSync === 'function') {
+  // ─── Mod actions ─── gated on, and acting on, the CLICKED message's platform
+  // (single — no cross-platform noise; a twitch chatter ≠ the same-named kick
+  // user). Twitch gates on GQL mod-state, Kick on kick_mod_status. Targets the
+  // LOGIN (display-name ≠ login for non-Latin users → ban would miss).
+  if (msg && (typeof isModForSync === 'function' || typeof isKickModForSync === 'function')) {
     const msgCh = msg.dataset?.msgChannel || ''
     const msgPlat = msg.dataset?.msgPlatform || 'twitch'
     const msgLogin = (msg.dataset?.msgLogin || msg.dataset?.msgUser || username || '').toLowerCase()
@@ -1681,13 +1681,18 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
     const entry = (lookup && msgCh)
       ? ((msgPlat === 'kick' ? lookup.kick.get(msgCh) : lookup.twitch.get(msgCh)) || lookup.byId.get(msgCh))
       : null
-    const twName = entry?.twitch || (msgPlat !== 'kick' ? msgCh : null)
+    const isKick = msgPlat === 'kick'
+    // The channel key for the action + gate: kick slug for kick rows, twitch login otherwise.
+    const modCh = isKick ? (entry?.kick || msgCh) : (entry?.twitch || msgCh)
     // currentUsername is a display name; compare against BOTH the login and the
     // display name so a non-Latin-named mod can't be shown self-mod actions.
     const _selfRef = (typeof currentUsername !== 'undefined' && currentUsername) ? currentUsername.toLowerCase() : null
     const notSelf = !_selfRef || (msgLogin !== _selfRef && (msg.dataset?.msgUser || '').toLowerCase() !== _selfRef)
-    if (twName && notSelf) {
-      if (isModForSync(twName)) {
+    const amMod = isKick
+      ? (typeof isKickModForSync === 'function' && isKickModForSync(modCh))
+      : (typeof isModForSync === 'function' && isModForSync(modCh))
+    if (modCh && notSelf) {
+      if (amMod) {
         const mod = []
         if (msgId) mod.push({ label: 'delete msg', danger: true, fn: () => _ctxMod('delete', msgCh, msgPlat, msgLogin, msgId, 0, 'deleted') })
         mod.push(
@@ -1697,8 +1702,10 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
           'sep',
         )
         items.push(...mod)
-      } else if (typeof prefetchModFor === 'function') {
-        prefetchModFor(twName)  // warm the cache so the next right-click surfaces actions
+      } else {
+        // Warm the right cache so the next right-click surfaces actions.
+        if (isKick) { if (typeof prefetchKickModFor === 'function') prefetchKickModFor(modCh) }
+        else if (typeof prefetchModFor === 'function') prefetchModFor(modCh)
       }
     }
   }

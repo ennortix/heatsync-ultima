@@ -374,7 +374,6 @@ function pcMakePill(plat, name, isLive) {
 // hover toolbar on every row. Returns null when not applicable so callers can
 // skip the section entirely. Twitch-only (Kick/YT mod GQL not wired).
 function pcBuildModActions(username) {
-  if (typeof isModForSync !== 'function') return null
   if (typeof getRecentMessagesFromUser !== 'function') return null
   if (!username) return null
   // Don't surface mod actions on your own profile — self-mod buttons are nonsense.
@@ -386,28 +385,50 @@ function pcBuildModActions(username) {
     return null
   const recent = getRecentMessagesFromUser(username)
   if (!recent.length) return null
-  // Group by twitch channel — find most recent msgId per channel where I mod.
-  const byChannel = new Map()
+  // Group by channel+platform — most recent msgId per channel where I'm a mod.
+  // Twitch gates on GQL mod-state, Kick on kick_mod_status; the key keeps the
+  // two namespaces apart (a twitch login and kick slug can collide).
+  const groups = new Map()
   for (const m of recent) {
-    if ((m.platform || 'twitch') !== 'twitch') continue
+    const plat = m.platform || 'twitch'
+    if (plat !== 'twitch' && plat !== 'kick') continue
     const ch = (m.channel || '').toLowerCase()
     if (!ch) continue
-    if (!isModForSync(ch)) {
-      if (typeof prefetchModFor === 'function') prefetchModFor(ch)
+    const amMod = plat === 'kick'
+      ? (typeof isKickModForSync === 'function' && isKickModForSync(ch))
+      : (typeof isModForSync === 'function' && isModForSync(ch))
+    if (!amMod) {
+      if (plat === 'kick') { if (typeof prefetchKickModFor === 'function') prefetchKickModFor(ch) }
+      else if (typeof prefetchModFor === 'function') prefetchModFor(ch)
       continue
     }
-    if (!byChannel.has(ch)) byChannel.set(ch, { channel: ch, msgId: m.id || null, login: (m.login || m.user || '').toLowerCase() })
+    const key = plat + ':' + ch
+    if (!groups.has(key)) groups.set(key, { channel: ch, platform: plat, msgId: m.id || null, login: (m.login || m.user || '').toLowerCase() })
   }
-  if (!byChannel.size) return null
+  if (!groups.size) return null
   const sec = document.createElement('div')
   sec.className = 'hs-pcard-section hs-pcard-mod'
-  for (const { channel, msgId, login } of byChannel.values()) {
+  // Optional reason — applied to every ban/timeout fired from this card. Empty =
+  // none. Click surfaces (right-click/hover) stay reason-free for speed; this is
+  // the considered surface where a reason makes sense. Terminal palette, square.
+  const reasonInput = document.createElement('input')
+  reasonInput.type = 'text'
+  reasonInput.placeholder = 'reason (optional)'
+  reasonInput.className = 'hs-pcard-mod-reason'
+  reasonInput.maxLength = 200
+  reasonInput.style.cssText = 'width:100%;box-sizing:border-box;background:#000;color:#fff;border:1px solid #333;border-radius:0;padding:2px 5px;margin-bottom:3px;font:inherit;outline:none'
+  reasonInput.addEventListener('focus', () => { reasonInput.style.borderColor = '#ff8700' })
+  reasonInput.addEventListener('blur', () => { reasonInput.style.borderColor = '#333' })
+  // Don't let card-level key handlers (vim nav etc.) hijack typing; keep Escape.
+  reasonInput.addEventListener('keydown', (e) => { if (e.key !== 'Escape') e.stopPropagation() })
+  sec.appendChild(reasonInput)
+  for (const { channel, platform, msgId, login } of groups.values()) {
     const target = login || (username || '').toLowerCase()
     const row = document.createElement('div')
     row.className = 'hs-pcard-mod-row'
     const chLabel = document.createElement('span')
     chLabel.className = 'hs-pcard-mod-ch'
-    chLabel.textContent = '#' + channel
+    chLabel.textContent = platform === 'kick' ? '#' + channel + ' (kick)' : '#' + channel
     row.appendChild(chLabel)
     const actions = [
       { label: 'del msg', title: "delete this user's latest message", need: 'msg', action: 'delete' },
@@ -432,10 +453,11 @@ function pcBuildModActions(username) {
         b.disabled = true
         const orig = b.textContent
         b.textContent = '…'
-        // Single platform (twitch — this section is built from twitch messages).
+        const reason = reasonInput.value.trim()
+        // Act on this row's own platform (twitch or kick), single-platform.
         let r
         try {
-          r = await dispatchModAction({ channel, platform: 'twitch', action: a.action, target, durationSec: a.durationSec, msgId })
+          r = await dispatchModAction({ channel, platform, action: a.action, target, durationSec: a.durationSec, msgId, reason })
         } catch (err) {
           r = { anyOk: false, tResp: { error: err?.message || 'error' } }
         }

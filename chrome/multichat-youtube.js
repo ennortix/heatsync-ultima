@@ -15799,6 +15799,45 @@ function injectStyles() {
       max-width: none !important;
       max-height: none !important;
     }
+    /* chat-right (default dock), windowed: the isRight branch in
+       applyPlatformPositionOverrides removes the player's inline width and
+       relies on Twitch's React effect to re-write width:Npx. On a cold load,
+       SPA channel-nav or extension reload it sometimes never does (same race
+       the comment above describes), so the absolutely-positioned player —
+       left:0 with no width — shrink-wraps to ~half width and the rest of the
+       16:9 slot shows Twitch's offline placeholder behind the video. Twitch's
+       own ".channel-root + .persistent-player { width:100% }" is the right
+       target; assert it with !important so it survives the missing/stale
+       inline write. Theatre has its own width rule above, so exclude it. */
+    body.hs-platform-twitch.hs-chat-right:not(.hs-mode-theatre) .persistent-player {
+      width: 100% !important;
+    }
+    /* chat-top / chat-bottom, windowed: the chat-top/bottom branch in
+       applyPlatformPositionOverrides writes all four insets inline with
+       !important, but Twitch's React effect later does el.style.top = X
+       (stripping priority) and re-asserts its own right/bottom — leaving the
+       player with a bogus right inset and width:auto, so it collapses to 0×0
+       and the video vanishes behind the chat strip. width:auto/height:auto
+       above only sizes once the insets are correct; assert the insets here in
+       the stylesheet cascade so they survive React's writes. Mirrors the
+       theatre top/bottom rules above (same --hs-chat-h, 35vh) so the player
+       edge always tracks the chat strip height. Theatre has its own rules. */
+    body.hs-platform-twitch.hs-chat-top:not(.hs-mode-theatre) .persistent-player {
+      top: var(--hs-chat-h, 35vh) !important;
+      bottom: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      inset-inline-start: 0 !important;
+      inset-inline-end: 0 !important;
+    }
+    body.hs-platform-twitch.hs-chat-bottom:not(.hs-mode-theatre) .persistent-player {
+      top: 0 !important;
+      bottom: var(--hs-chat-h, 35vh) !important;
+      left: 0 !important;
+      right: 0 !important;
+      inset-inline-start: 0 !important;
+      inset-inline-end: 0 !important;
+    }
     /* For chat-left, Twitch's React writes el.style.left = X based on its
        own internal width tracking — that wipes any inline !important we
        set in applyChatPosition. CSS rule with !important survives those
@@ -15808,14 +15847,22 @@ function injectStyles() {
        between HS panel and video. JS pushes --hs-twitch-sidenav-w via
        a ResizeObserver on .side-nav. */
     body.hs-platform-twitch.hs-chat-left .persistent-player {
-      left: calc(var(--hs-chat-w, 340px) - var(--hs-twitch-sidenav-w, 50px)) !important;
-      inset-inline-start: calc(var(--hs-chat-w, 340px) - var(--hs-twitch-sidenav-w, 50px)) !important;
+      /* Clear --hs-panel-w (chat content + tab strip), NOT --hs-chat-w: the
+         strip adds ~60px and a chat-content-width inset leaves the video's
+         left edge tucked under the strip. publishPanelWidth keeps it live. */
+      left: calc(var(--hs-panel-w, 340px) - var(--hs-twitch-sidenav-w, 50px)) !important;
+      inset-inline-start: calc(var(--hs-panel-w, 340px) - var(--hs-twitch-sidenav-w, 50px)) !important;
       /* width:auto !important (above) needs both insets to size; Twitch only
          sets right:0 inline on some states, so the player collapses to 0
          when its React effect skips the write. Assert right:0 so the
          player always fills the area between HS panel and viewport edge. */
       right: 0 !important;
       inset-inline-end: 0 !important;
+      /* Pin to top: the JS branch no longer writes any inline geometry for
+         chat-left, so on the cold-load race where React never sets top the
+         player would otherwise fall to its natural-flow position at the
+         bottom of the wrapper (the same fall the chat-right top:0 guards). */
+      top: 0 !important;
     }
     /* The 16:9 aspect-ratio wrapper inside .persistent-player uses the
        padding-bottom hack: child .ScAspectSpacer sets padding-bottom to
@@ -49134,6 +49181,11 @@ function _hsEnsureYtBelowObserver(_tries) {
     // Single source of truth so CSS hardcodes don't drift from real layout.
     _updateMcLayout = () => {
       if (!tabBarElement || !overlayElement) return
+      // Panel width (chat + tab strip) drives the chat-left player inset via
+      // --hs-panel-w. Publish it here — this runs on cold-load layout and via
+      // the tab/input ResizeObserver — so the inset is correct before the
+      // first drag-resize (which was previously the only thing that set it).
+      publishPanelWidth()
       const tabRect = tabBarElement.getBoundingClientRect()
       const tw = tabRect.width
       const th = tabRect.height
@@ -52975,6 +53027,7 @@ function _hsEnsureYtBelowObserver(_tries) {
   let chatPosition = 'right' // 'right', 'bottom', 'left', 'top'
   let theatreMode = false
   let _theatreObserver = null
+  let _panelWObs = null // ResizeObserver on #hs-mc-container → --hs-panel-w
   let _twitchSideNavObs = null
   let _twitchSideNavWinHooked = false
   let _twitchSideNavW = TWITCH_SIDE_NAV_WIDTH
@@ -53120,8 +53173,25 @@ function _hsEnsureYtBelowObserver(_tries) {
   // for CSS that must reserve the full panel footprint (theatre player inset).
   function publishPanelWidth() {
     const c = document.getElementById('hs-mc-container')
-    if (c && c.offsetWidth > 0) {
+    if (!c) return
+    if (c.offsetWidth > 0) {
       document.documentElement.style.setProperty('--hs-panel-w', c.offsetWidth + 'px')
+    }
+    // Self-install a ResizeObserver on the container the first time we see it.
+    // Call-site timing is unreliable on cold load (the panel is still 0-width
+    // when applyChatPosition / the tab-bar observer fire, so the guard above
+    // skips and --hs-panel-w stays unset until a drag-resize). Observing the
+    // container directly catches its 0 → full-width layout and every later
+    // resize, so the chat-left player inset is correct from first paint.
+    if (!_panelWObs && typeof ResizeObserver !== 'undefined') {
+      _panelWObs = new ResizeObserver(() => {
+        const el = document.getElementById('hs-mc-container')
+        if (el && el.offsetWidth > 0) {
+          document.documentElement.style.setProperty('--hs-panel-w', el.offsetWidth + 'px')
+        }
+      })
+      _panelWObs.observe(c)
+      cleanup.trackObserver(_panelWObs)
     }
   }
 
@@ -53668,22 +53738,22 @@ function _hsEnsureYtBelowObserver(_tries) {
           pp.style.removeProperty('height')
           pp.style.removeProperty('width')
         } else if (chatPosition === 'left') {
-          // chat-left: only shift the player horizontally. Don't touch
-          // top/bottom/right/width/height — Twitch's natural 16:9 sizing
-          // already gives the right height (and leaves room for the
-          // channel-info bar below the player). Forcing bottom:0 here
-          // would stretch the player to full viewport height and overlap
-          // the follow/sub/gift buttons. Width/height CSS rule below is
-          // also gated to chat-top/bottom only.
-          // Note: w above is a CSS string ("Npx"); for arithmetic use
-          // the raw chatWidth number.
-          // Containing block (.root-scrollable__wrapper) starts AFTER
-          // Twitch's side-nav (50px collapsed, ~240px expanded on wide
-          // viewports), which our HS panel covers, so subtract the live
-          // nav width to avoid double-counting.
-          const leftInsetPx = Math.max(0, chatWidth - _twitchSideNavW) + 'px'
-          pp.style.setProperty('left', leftInsetPx, 'important')
-          pp.style.setProperty('inset-inline-start', leftInsetPx, 'important')
+          // chat-left: geometry is owned entirely by the .hs-chat-left CSS
+          // rules (width:auto, left:calc(--hs-chat-w - sidenav), right:0,
+          // top:0). They use --hs-chat-w with a 340px fallback so they're
+          // correct even before the var is published, and a stylesheet
+          // !important survives React's later inline writes.
+          // Writing left inline here raced: on a cold load chatWidth was
+          // momentarily 0, so left computed to 0 and the player slid under
+          // the HS panel (inline !important beats the correct CSS rule).
+          // Just clear any stale inline geometry — including a top:0/left:0
+          // pair left behind by a prior right-mode pass — so CSS wins.
+          pp.style.removeProperty('left')
+          pp.style.removeProperty('inset-inline-start')
+          pp.style.removeProperty('top')
+          pp.style.removeProperty('width')
+          pp.style.removeProperty('height')
+          pp.style.removeProperty('max-height')
         } else {
           // chat-top / chat-bottom: full overhaul. Width/height are
           // handled by the .hs-chat-* CSS rules (width:auto !important /

@@ -36,7 +36,7 @@
     "https://api.chatterino.com/badges"
   ],
   "content_security_policy": {
-    "extension_pages": "default-src 'self'; script-src 'self'; object-src 'none'; require-trusted-types-for 'script'"
+    "extension_pages": "script-src 'self'; object-src 'none'; require-trusted-types-for 'script'"
   },
   "background": {
     "service_worker": "background.js"

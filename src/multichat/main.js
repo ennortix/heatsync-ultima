@@ -8458,6 +8458,11 @@
     // Single source of truth so CSS hardcodes don't drift from real layout.
     _updateMcLayout = () => {
       if (!tabBarElement || !overlayElement) return
+      // Panel width (chat + tab strip) drives the chat-left player inset via
+      // --hs-panel-w. Publish it here — this runs on cold-load layout and via
+      // the tab/input ResizeObserver — so the inset is correct before the
+      // first drag-resize (which was previously the only thing that set it).
+      publishPanelWidth()
       const tabRect = tabBarElement.getBoundingClientRect()
       const tw = tabRect.width
       const th = tabRect.height
@@ -12299,6 +12304,7 @@
   let chatPosition = 'right' // 'right', 'bottom', 'left', 'top'
   let theatreMode = false
   let _theatreObserver = null
+  let _panelWObs = null // ResizeObserver on #hs-mc-container → --hs-panel-w
   let _twitchSideNavObs = null
   let _twitchSideNavWinHooked = false
   let _twitchSideNavW = TWITCH_SIDE_NAV_WIDTH
@@ -12444,8 +12450,25 @@
   // for CSS that must reserve the full panel footprint (theatre player inset).
   function publishPanelWidth() {
     const c = document.getElementById('hs-mc-container')
-    if (c && c.offsetWidth > 0) {
+    if (!c) return
+    if (c.offsetWidth > 0) {
       document.documentElement.style.setProperty('--hs-panel-w', c.offsetWidth + 'px')
+    }
+    // Self-install a ResizeObserver on the container the first time we see it.
+    // Call-site timing is unreliable on cold load (the panel is still 0-width
+    // when applyChatPosition / the tab-bar observer fire, so the guard above
+    // skips and --hs-panel-w stays unset until a drag-resize). Observing the
+    // container directly catches its 0 → full-width layout and every later
+    // resize, so the chat-left player inset is correct from first paint.
+    if (!_panelWObs && typeof ResizeObserver !== 'undefined') {
+      _panelWObs = new ResizeObserver(() => {
+        const el = document.getElementById('hs-mc-container')
+        if (el && el.offsetWidth > 0) {
+          document.documentElement.style.setProperty('--hs-panel-w', el.offsetWidth + 'px')
+        }
+      })
+      _panelWObs.observe(c)
+      cleanup.trackObserver(_panelWObs)
     }
   }
 
@@ -12992,22 +13015,22 @@
           pp.style.removeProperty('height')
           pp.style.removeProperty('width')
         } else if (chatPosition === 'left') {
-          // chat-left: only shift the player horizontally. Don't touch
-          // top/bottom/right/width/height — Twitch's natural 16:9 sizing
-          // already gives the right height (and leaves room for the
-          // channel-info bar below the player). Forcing bottom:0 here
-          // would stretch the player to full viewport height and overlap
-          // the follow/sub/gift buttons. Width/height CSS rule below is
-          // also gated to chat-top/bottom only.
-          // Note: w above is a CSS string ("Npx"); for arithmetic use
-          // the raw chatWidth number.
-          // Containing block (.root-scrollable__wrapper) starts AFTER
-          // Twitch's side-nav (50px collapsed, ~240px expanded on wide
-          // viewports), which our HS panel covers, so subtract the live
-          // nav width to avoid double-counting.
-          const leftInsetPx = Math.max(0, chatWidth - _twitchSideNavW) + 'px'
-          pp.style.setProperty('left', leftInsetPx, 'important')
-          pp.style.setProperty('inset-inline-start', leftInsetPx, 'important')
+          // chat-left: geometry is owned entirely by the .hs-chat-left CSS
+          // rules (width:auto, left:calc(--hs-chat-w - sidenav), right:0,
+          // top:0). They use --hs-chat-w with a 340px fallback so they're
+          // correct even before the var is published, and a stylesheet
+          // !important survives React's later inline writes.
+          // Writing left inline here raced: on a cold load chatWidth was
+          // momentarily 0, so left computed to 0 and the player slid under
+          // the HS panel (inline !important beats the correct CSS rule).
+          // Just clear any stale inline geometry — including a top:0/left:0
+          // pair left behind by a prior right-mode pass — so CSS wins.
+          pp.style.removeProperty('left')
+          pp.style.removeProperty('inset-inline-start')
+          pp.style.removeProperty('top')
+          pp.style.removeProperty('width')
+          pp.style.removeProperty('height')
+          pp.style.removeProperty('max-height')
         } else {
           // chat-top / chat-bottom: full overhaul. Width/height are
           // handled by the .hs-chat-* CSS rules (width:auto !important /

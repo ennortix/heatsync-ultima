@@ -795,14 +795,22 @@
        between HS panel and video. JS pushes --hs-twitch-sidenav-w via
        a ResizeObserver on .side-nav. */
     body.hs-platform-twitch.hs-chat-left .persistent-player {
-      left: calc(var(--hs-chat-w, 340px) - var(--hs-twitch-sidenav-w, 50px)) !important;
-      inset-inline-start: calc(var(--hs-chat-w, 340px) - var(--hs-twitch-sidenav-w, 50px)) !important;
+      /* Clear --hs-panel-w (chat content + tab strip), NOT --hs-chat-w: the
+         strip adds ~60px and a chat-content-width inset leaves the video's
+         left edge tucked under the strip. publishPanelWidth keeps it live. */
+      left: calc(var(--hs-panel-w, 340px) - var(--hs-twitch-sidenav-w, 50px)) !important;
+      inset-inline-start: calc(var(--hs-panel-w, 340px) - var(--hs-twitch-sidenav-w, 50px)) !important;
       /* width:auto !important (above) needs both insets to size; Twitch only
          sets right:0 inline on some states, so the player collapses to 0
          when its React effect skips the write. Assert right:0 so the
          player always fills the area between HS panel and viewport edge. */
       right: 0 !important;
       inset-inline-end: 0 !important;
+      /* Pin to top: the JS branch no longer writes any inline geometry for
+         chat-left, so on the cold-load race where React never sets top the
+         player would otherwise fall to its natural-flow position at the
+         bottom of the wrapper (the same fall the chat-right top:0 guards). */
+      top: 0 !important;
     }
     /* The 16:9 aspect-ratio wrapper inside .persistent-player uses the
        padding-bottom hack: child .ScAspectSpacer sets padding-bottom to

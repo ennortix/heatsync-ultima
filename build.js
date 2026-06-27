@@ -147,8 +147,8 @@ function checkScopeCollisions() {
     return map
   }
 
-  // multichat layer: all MULTICHAT_MODULES + main.js
-  const mcFiles = [...MULTICHAT_MODULES, 'main.js']
+  // multichat layer: all MULTICHAT_MODULES + per-platform host modules + main.js
+  const mcFiles = [...MULTICHAT_MODULES, 'kick-host.js', 'youtube-host.js', 'twitch-host.js', 'main.js']
   const libDecls = extractDecls(libDir, LIB_FILES)
   const mcDecls = extractDecls(mcDir, mcFiles)
 
@@ -408,10 +408,11 @@ const MULTICHAT_MODULES = [
 ]
 
 // native-tap.js reads Twitch's React fiber tree — twitch-only, exclude on kick/youtube
+// kick-host.js / youtube-host.js / twitch-host.js: per-platform host DOM modules
 const PLATFORM_MODULES = {
-  twitch: MULTICHAT_MODULES,
-  kick: MULTICHAT_MODULES.filter((f) => f !== 'native-tap.js'),
-  youtube: MULTICHAT_MODULES.filter((f) => f !== 'native-tap.js'),
+  twitch: [...MULTICHAT_MODULES, 'twitch-host.js'],
+  kick: [...MULTICHAT_MODULES.filter((f) => f !== 'native-tap.js'), 'kick-host.js'],
+  youtube: [...MULTICHAT_MODULES.filter((f) => f !== 'native-tap.js'), 'youtube-host.js'],
 }
 
 function readMultichatModules(platform) {

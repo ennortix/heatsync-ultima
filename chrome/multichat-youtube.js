@@ -5,6 +5,7 @@ if (typeof window !== 'undefined' && typeof window.name === 'string' && window.n
 // === HEATSYNC LIB (auto-bundled) ===
 
 // --- error-reporter.js ---
+// @ts-check
 // Error reporter — capture uncaught errors + unhandledrejection + console.error
 // into a ring buffer in chrome.storage.local. Popup exposes "copy errors" so
 // the user can paste a real repro context (stack + ver + platform + url) when
@@ -322,7 +323,7 @@ if (typeof window !== 'undefined' && typeof window.name === 'string' && window.n
   // Skip console.warn/log — far too noisy. Pass-through to native so devtools
   // output is unchanged.
   try {
-    const origErr = console.error
+    const origErr = /** @type {any} */ (console.error) // property __hsWrapped added at runtime
     if (origErr && !origErr.__hsWrapped) {
       const wrapped = function (...args) {
         try {
@@ -673,6 +674,7 @@ if (typeof window !== 'undefined') {
 
 
 // --- cleanup.js ---
+// @ts-check
 /**
  * Cleanup/lifecycle module — memory leak prevention for long streaming sessions.
  * Tracks intervals, timeouts, MutationObservers, and event listeners for bulk teardown.
@@ -881,6 +883,7 @@ if (typeof window !== 'undefined') {
 
 
 // --- utils.js ---
+// @ts-check
 /**
  * Shared utilities for heatsync extension.
  * XSS prevention, DOM helpers, debouncing, etc.
@@ -964,7 +967,7 @@ function createElement(tag, text, className) {
 /**
  * Query selector (first match)
  * @param {string} selector
- * @param {Element} [parent=document]
+ * @param {Element|Document} [parent=document]
  * @returns {Element|null}
  */
 function $(selector, parent = document) {
@@ -974,7 +977,7 @@ function $(selector, parent = document) {
 /**
  * Query selector all
  * @param {string} selector
- * @param {Element} [parent=document]
+ * @param {Element|Document} [parent=document]
  * @returns {NodeListOf<Element>}
  */
 function $$(selector, parent = document) {
@@ -1267,6 +1270,7 @@ if (typeof window !== 'undefined') {
 
 
 // --- settings-schema.js ---
+// @ts-check
 // settings registry — every multichat setting as one declarative entry.
 // pure data + pure validators only: no DOM, no chrome.*, no i18n calls.
 // bundled at IIFE scope (build.js lib list) so main.js, every multichat
@@ -1325,6 +1329,10 @@ if (typeof window !== 'undefined') {
 //              rollback; main.js derives CW_CATS from these
 
 /**
+ * @typedef {{ value: *, label?: string, labelKey?: string, tip?: string, tipKey?: string, default?: boolean, tag?: string, color?: string, borderColor?: string, applies?: 'live'|'reload' }} SettingOption
+ */
+
+/**
  * @typedef {Object} SettingDef
  * @property {string} key EXACT storage key — never rename
  * @property {'bool'|'enum'|'range'|'text'|'multiselect'|'boolmap'} type
@@ -1332,15 +1340,19 @@ if (typeof window !== 'undefined') {
  * @property {'sync'|'local'|'local-mirror'} scope
  * @property {string} category settings subtab id
  * @property {string} [section] group title ([sectionKey] when i18n'd)
- * @property {string} [label] lowercase literal ([labelKey] for i18n)
- * @property {string} [tip] hover tooltip ([tipKey] for i18n)
+ * @property {string} [sectionKey] i18n key for section title
+ * @property {string} [label] lowercase literal
+ * @property {string} [labelKey] i18n key for label
+ * @property {string} [tip] hover tooltip
+ * @property {string} [tipKey] i18n key for tip
  * @property {'pill'|'select'|'sizebtns'|'range'|'text'|'textarea'} [control]
- * @property {Array<{value:*,label?:string,labelKey?:string,tip?:string,tipKey?:string,default?:boolean,tag?:string,color?:string,applies?:'live'|'reload'}>|{min:number,max:number,step:number}} [options]
+ * @property {SettingOption[]|{min:number,max:number,step:number}} [options]
  * @property {string} [alias] extra search keywords
  * @property {{key:string,equals?:*}} [dependsOn]
  * @property {string} [runtimeVar] legacy module var bridged in main.js
  * @property {string} [apply] id into main.js _APPLIERS
  * @property {boolean} [applyOnLoad]
+ * @property {boolean} [syncSilent] skip applier on remote cross-tab changes
  * @property {boolean} [rerender]
  * @property {boolean} [rerenderSettings]
  * @property {string} [migrate] one-shot default-flip guard key
@@ -3044,21 +3056,30 @@ function validateSettingValue(def, v) {
   switch (def.type) {
     case 'bool':
       return typeof v === 'boolean'
-    case 'enum':
-      return def.options.some((o) => o.value === v)
-    case 'range':
-      return typeof v === 'number' && isFinite(v) && v >= def.options.min && v <= def.options.max
+    case 'enum': {
+      const opts = /** @type {SettingOption[]} */ (def.options)
+      return !!opts && opts.some((o) => o.value === v)
+    }
+    case 'range': {
+      const range = /** @type {{min:number,max:number,step:number}} */ (def.options)
+      return typeof v === 'number' && isFinite(v) && !!range && v >= range.min && v <= range.max
+    }
     case 'text':
       return typeof v === 'string' && v.length <= (def.maxLen || 4096)
-    case 'multiselect':
-      return Array.isArray(v) && v.every((x) => def.options.some((o) => o.value === x))
-    case 'boolmap':
+    case 'multiselect': {
+      const opts = /** @type {SettingOption[]} */ (def.options)
+      return !!opts && Array.isArray(v) && v.every((x) => opts.some((o) => o.value === x))
+    }
+    case 'boolmap': {
+      const opts = /** @type {SettingOption[]} */ (def.options)
       return (
         !!v &&
         typeof v === 'object' &&
         !Array.isArray(v) &&
-        Object.keys(v).every((k) => typeof v[k] === 'boolean' && def.options.some((o) => o.value === k))
+        !!opts &&
+        Object.keys(v).every((k) => typeof v[k] === 'boolean' && opts.some((o) => o.value === k))
       )
+    }
     default:
       return false
   }
@@ -3076,32 +3097,36 @@ function coerceSettingValue(def, v) {
     case 'bool':
       return !!v
     case 'enum': {
-      if (def.options.some((o) => o.value === v)) return v
+      const opts = /** @type {SettingOption[]} */ (def.options)
+      if (opts && opts.some((o) => o.value === v)) return v
       // tolerate string/number mismatch ('2' vs 2) from DOM datasets
-      var loose = def.options.find((o) => String(o.value) === String(v))
+      var loose = opts && opts.find((o) => String(o.value) === String(v))
       return loose ? loose.value : undefined
     }
     case 'range': {
+      const range = /** @type {{min:number,max:number,step:number}} */ (def.options)
       var n = typeof v === 'number' ? v : parseFloat(v)
-      if (!isFinite(n)) return undefined
-      return Math.min(def.options.max, Math.max(def.options.min, n))
+      if (!isFinite(n) || !range) return undefined
+      return Math.min(range.max, Math.max(range.min, n))
     }
     case 'text': {
       if (typeof v !== 'string') return undefined
       return v.length > (def.maxLen || 4096) ? v.slice(0, def.maxLen || 4096) : v
     }
     case 'multiselect': {
-      if (!Array.isArray(v)) return undefined
-      return v.filter((x) => def.options.some((o) => o.value === x))
+      const opts = /** @type {SettingOption[]} */ (def.options)
+      if (!Array.isArray(v) || !opts) return undefined
+      return v.filter((x) => opts.some((o) => o.value === x))
     }
     case 'boolmap': {
-      if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined
+      const opts = /** @type {SettingOption[]} */ (def.options)
+      if (!v || typeof v !== 'object' || Array.isArray(v) || !opts) return undefined
       // merge known stored subkeys over the full default map — legacy
       // installs persisted partial maps and expect default-fill semantics
       var merged = {}
       for (var dk in def.default) merged[dk] = def.default[dk]
       for (var sk in v) {
-        if (def.options.some((o) => o.value === sk)) merged[sk] = !!v[sk]
+        if (opts.some((o) => o.value === sk)) merged[sk] = !!v[sk]
       }
       return merged
     }
@@ -3141,12 +3166,13 @@ function lintSettings(syncBlocklist) {
     }
     if (!def.label && !def.labelKey) problems.push('no label: ' + def.key)
     if (def.type === 'boolmap') {
-      var optVals = def.options.map((o) => o.value)
+      var boolmapOpts = /** @type {SettingOption[]} */ (def.options)
+      var optVals = boolmapOpts ? boolmapOpts.map((o) => o.value) : []
       var defKeys = Object.keys(def.default)
       if (optVals.length !== defKeys.length || !optVals.every((k) => defKeys.indexOf(k) !== -1)) {
         problems.push('boolmap default/options key mismatch: ' + def.key)
       }
-      def.options.forEach((o) => {
+      if (boolmapOpts) boolmapOpts.forEach((o) => {
         if (def.default[o.value] !== o.default)
           problems.push('boolmap per-option default disagrees with default map: ' + def.key + '.' + o.value)
       })
@@ -3154,8 +3180,9 @@ function lintSettings(syncBlocklist) {
     if (def.cw && (!def.cw.stateKey || !def.cw.serverBody || !def.cw.noun)) {
       problems.push('cw sub-shape incomplete: ' + def.key)
     }
-    if (def.dependsOn && !SETTINGS.some((d) => d.key === def.dependsOn.key)) {
-      problems.push('dependsOn unknown key: ' + def.key)
+    if (def.dependsOn) {
+      const depKey = def.dependsOn.key
+      if (!SETTINGS.some((d) => d.key === depKey)) problems.push('dependsOn unknown key: ' + def.key)
     }
     if (def.scope === 'sync') syncDefaults[def.key] = def.default
   }
@@ -3190,6 +3217,7 @@ if (typeof window !== 'undefined') {
 
 
 // --- browser-api.js ---
+// @ts-check
 /**
  * Unified browser API wrapper for Chrome/Firefox compatibility.
  * Handles chrome.* vs browser.* API differences.
@@ -3594,10 +3622,18 @@ try {
 } catch {}
 
 function hydrateI18n(root = document) {
-  for (const el of root.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n) || el.textContent
-  for (const el of root.querySelectorAll('[data-i18n-placeholder]'))
-    el.placeholder = t(el.dataset.i18nPlaceholder) || el.placeholder
-  for (const el of root.querySelectorAll('[data-i18n-title]')) el.title = t(el.dataset.i18nTitle) || el.title
+  for (const el of root.querySelectorAll('[data-i18n]')) {
+    const h = /** @type {HTMLElement} */ (el)
+    h.textContent = t(h.dataset.i18n) || h.textContent
+  }
+  for (const el of root.querySelectorAll('[data-i18n-placeholder]')) {
+    const h = /** @type {HTMLInputElement} */ (el)
+    h.placeholder = t(h.dataset.i18nPlaceholder) || h.placeholder
+  }
+  for (const el of root.querySelectorAll('[data-i18n-title]')) {
+    const h = /** @type {HTMLElement} */ (el)
+    h.title = t(h.dataset.i18nTitle) || h.title
+  }
 }
 
 // Global export for non-module scripts
@@ -3904,6 +3940,7 @@ function hsModWordsFromState(mods, hue) {
 
 
 // --- undo-manager.js ---
+// @ts-check
 /**
  * Unified undo/redo for contenteditable input (extension port).
  *
@@ -3997,9 +4034,10 @@ class UndoManager {
         return offset
       }
       if (node.nodeType === Node.TEXT_NODE) {
-        offset += node.textContent.length
+        offset += (node.textContent || '').length
       } else if (node.nodeType === Node.ELEMENT_NODE) {
-        if (node.tagName === 'IMG' && node.alt) offset += node.alt.length
+        const el = /** @type {HTMLImageElement} */ (node)
+        if (el.tagName === 'IMG' && el.alt) offset += el.alt.length
       }
       node = walker.nextNode()
     }
@@ -4012,9 +4050,10 @@ class UndoManager {
     let node = walker.nextNode()
     while (node) {
       if (node.nodeType === Node.TEXT_NODE) {
-        const len = node.textContent.length
+        const len = (node.textContent || '').length
         if (offset + len >= target) {
           const sel = window.getSelection()
+          if (!sel) return
           const range = document.createRange()
           range.setStart(node, Math.max(0, Math.min(target - offset, len)))
           range.collapse(true)
@@ -4023,22 +4062,27 @@ class UndoManager {
           return
         }
         offset += len
-      } else if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'IMG' && node.alt) {
-        const len = node.alt.length
-        if (offset + len > target) {
-          const sel = window.getSelection()
-          const range = document.createRange()
-          range.setStartAfter(node)
-          range.collapse(true)
-          sel.removeAllRanges()
-          sel.addRange(range)
-          return
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        const img = /** @type {HTMLImageElement} */ (node)
+        if (img.tagName === 'IMG' && img.alt) {
+          const len = img.alt.length
+          if (offset + len > target) {
+            const sel = window.getSelection()
+            if (!sel) return
+            const range = document.createRange()
+            range.setStartAfter(img)
+            range.collapse(true)
+            sel.removeAllRanges()
+            sel.addRange(range)
+            return
+          }
+          offset += len
         }
-        offset += len
       }
       node = walker.nextNode()
     }
     const sel = window.getSelection()
+    if (!sel) return
     const range = document.createRange()
     range.selectNodeContents(this.input)
     range.collapse(false)
@@ -40040,6 +40084,275 @@ document.addEventListener(
   { signal: mcSignal, capture: true },
 )
 
+
+// --- multichat/youtube-host.js ---
+// YouTube host UI/nav — extracted from main.js (bundled into youtube bundle only)
+
+// Compute the largest chat width that won't squash YouTube's video column.
+// Bases on the watch-flexy container width (the actual flex-row that holds
+// primary + secondary) when available, falling back to viewport. Keeps a
+// YT_MIN_PRIMARY_WIDTH gutter for the player.
+function getYtMaxChatWidth() {
+  if (hostPlatform !== 'yt') return MAX_CHAT_WIDTH
+  const flexy = document.querySelector('ytd-watch-flexy:not([hidden])')
+  const flexyW = flexy?.getBoundingClientRect?.().width || 0
+  const vw = window.innerWidth || document.documentElement.clientWidth || 1280
+  const available = flexyW > 0 ? Math.min(flexyW, vw) : vw
+  return Math.max(MIN_CHAT_WIDTH, Math.min(MAX_CHAT_WIDTH, available - YT_MIN_PRIMARY_WIDTH))
+}
+
+// Re-apply layout whenever YT toggles theater/fullscreen so we release or
+// restore our width overrides at the right moment.
+function watchYtLayoutAttrs() {
+  if (hostPlatform !== 'yt') return
+  const flexy = document.querySelector('ytd-watch-flexy:not([hidden])')
+  if (!flexy) return
+  const obs = new MutationObserver(() => applyYouTubeChatWidth())
+  obs.observe(flexy, { attributes: true, attributeFilter: ['theater', 'fullscreen', 'is-two-columns_'] })
+  cleanup.trackObserver(obs)
+}
+
+// Re-run applyChatPosition when ytd-watch-flexy mounts on an SPA nav from
+// a non-watch page (home/search/channel) → a watch page. Without this,
+// the first applyChatPosition call ran with isYtNonWatch=true and never
+// re-added hs-chat-right to <body>, so the position:fixed CSS for
+// #hs-mc-container stayed inactive even after flexy mounted.
+let _ytFlexyMountObs = null
+function watchYtFlexyMount() {
+  // Idempotent: callable from init AND from applyChatPosition when it
+  // detects isYtNonWatch on a watch URL (cold-load before flexy mounts).
+  // Without re-arming on every nav, the body class hs-chat-* stays stripped
+  // when flexy unmounts during /watch → /watch SPA transitions and the
+  // observer was already torn down.
+  if (hostPlatform !== 'yt') return
+  if (_ytFlexyMountObs) return
+  if (document.querySelector('ytd-watch-flexy:not([hidden])')) return // already there
+  _ytFlexyMountObs = new MutationObserver(() => {
+    if (!document.querySelector('ytd-watch-flexy:not([hidden])')) return
+    _ytFlexyMountObs.disconnect()
+    _ytFlexyMountObs = null
+    try {
+      applyChatPosition()
+    } catch {}
+    try {
+      applyYouTubeChatWidth()
+    } catch {}
+  })
+  _ytFlexyMountObs.observe(document.body, { childList: true, subtree: true })
+  cleanup.trackObserver(_ytFlexyMountObs)
+}
+
+// Re-clamp chat width when viewport shrinks (window resize / devtools open).
+// Without this, a chat width persisted at a wider viewport pushes the video
+// off-screen on a smaller window and the resize handle's max can't catch up.
+let _ytViewportClampTimer = null
+function watchYtViewportClamp() {
+  if (hostPlatform !== 'yt') return
+  const onResize = () => {
+    if (_ytViewportClampTimer) cleanup.clearTimeout(_ytViewportClampTimer)
+    _ytViewportClampTimer = cleanup.setTimeout(() => {
+      _ytViewportClampTimer = null
+      applyYouTubeChatWidth()
+      // Recompute the player's inline size for the new viewport. Without this
+      // the player keeps the px size computed at the LAST chat-position change
+      // — resize the window and the video overshoots its column (huge, clips
+      // off both edges) while the metadata column is crushed into a sliver.
+      // applyYouTubeChatWidth (above) re-clamps chatWidth first, so the player
+      // sizes off the corrected width. Mirrors the Kick resize handler.
+      try {
+        applyPlatformPositionOverrides()
+      } catch {}
+      // Re-run full layout reflow — viewport change (WM fullscreen, devtools
+      // toggle, browser zoom) needs every position-dependent piece updated.
+      // The orange resize bar uses inline px from container.getBoundingClientRect
+      // and goes stale; the tab/input bars follow via _updateMcLayout's
+      // ResizeObserver but only when the bars themselves resize, which doesn't
+      // fire on pure viewport changes. Cheap calls — all early-bail when nothing
+      // to reposition.
+      try {
+        positionChatResizeHandle()
+      } catch {}
+      try {
+        _updateMcLayout()
+      } catch {}
+    }, 80)
+  }
+  window.addEventListener('resize', onResize, { signal: mcSignal })
+}
+
+/**
+ * Setup resize handle for YouTube — left edge of #secondary sidebar
+ */
+function setupYouTubeResizeHandle() {
+  const secondary = document.querySelector('#secondary, ytd-watch-flexy #secondary')
+  const mcContainer = document.getElementById('hs-mc-container')
+  if (!secondary || !mcContainer || document.getElementById('hs-yt-resize-handle')) return
+
+  const handle = document.createElement('div')
+  handle.id = 'hs-yt-resize-handle'
+  handle.style.touchAction = 'none'
+  // YT now uses the unified #hs-c-resize-handle for ALL chat positions
+  // (because chat-right is position:fixed, not in YT's flex tree). Hide
+  // this platform handle on creation so we don't render two orange bars.
+  handle.dataset._hsCHidden = '1'
+  handle.style.setProperty('display', 'none', 'important')
+  secondary.style.position = 'relative'
+  secondary.insertBefore(handle, secondary.firstChild)
+
+  let isResizing = false
+  let startX = 0
+  let startWidth = 0
+  let rafId = 0
+  let pendingWidth = 0
+  let lastGhostWidth = 0
+  let activePointerId = -1
+  let overlay = null
+  let ghost = null
+
+  function applyResize() {
+    rafId = 0
+    if (pendingWidth === lastGhostWidth) return
+    lastGhostWidth = pendingWidth
+    chatWidth = pendingWidth
+    if (ghost) ghost.style.width = pendingWidth + 'px'
+  }
+
+  handle.addEventListener(
+    'pointerdown',
+    (e) => {
+      if (e.button !== 0) return
+      isResizing = true
+      activePointerId = e.pointerId
+      try {
+        handle.setPointerCapture(e.pointerId)
+      } catch (_) {}
+      startX = e.clientX
+      startWidth = chatWidth
+      const rect = secondary.getBoundingClientRect()
+      const w0 = Math.round(rect.width)
+      pendingWidth = chatWidth
+      lastGhostWidth = w0
+      document.body.style.cursor = 'ew-resize'
+      document.body.style.userSelect = 'none'
+
+      ghost = document.createElement('div')
+      ghost.id = 'hs-resize-ghost'
+      ghost.style.cssText = buildGhostCss(rect, w0)
+      document.body.appendChild(ghost)
+
+      overlay = document.createElement('div')
+      overlay.id = 'hs-resize-overlay'
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;cursor:ew-resize'
+      document.body.appendChild(overlay)
+      e.preventDefault()
+    },
+    { signal: mcSignal },
+  )
+
+  handle.addEventListener(
+    'pointermove',
+    (e) => {
+      if (!isResizing || e.pointerId !== activePointerId) return
+      const delta = startX - e.clientX
+      // Use the viewport-aware cap so a small window can't be dragged past the
+      // point where the video column gets crushed.
+      const ytMax = getYtMaxChatWidth()
+      pendingWidth = Math.min(ytMax, Math.max(MIN_CHAT_WIDTH, startWidth + delta))
+      if (!rafId) rafId = requestAnimationFrame(applyResize)
+    },
+    { signal: mcSignal },
+  )
+
+  function endDrag(e) {
+    if (!isResizing || (e && e.pointerId !== activePointerId)) return
+    isResizing = false
+    activePointerId = -1
+    if (rafId) {
+      cancelAnimationFrame(rafId)
+      rafId = 0
+    }
+    chatWidth = pendingWidth || chatWidth
+    if (ghost) {
+      ghost.remove()
+      ghost = null
+    }
+    applyYouTubeChatWidth()
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+    if (overlay) {
+      overlay.remove()
+      overlay = null
+    }
+    // Force YT's IMA SDK + html5 player to re-measure so a mid-ad resize
+    // doesn't leave the ad video at its pre-drag dimensions.
+    try {
+      window.dispatchEvent(new Event('resize'))
+    } catch (_) {}
+    saveChatWidth()
+  }
+  handle.addEventListener('pointerup', endDrag, { signal: mcSignal })
+  handle.addEventListener('pointercancel', endDrag, { signal: mcSignal })
+
+  loadChatWidth().then(() => {
+    applyYouTubeChatWidth()
+  })
+  loadChatHeight()
+  watchYtViewportClamp()
+  watchYtLayoutAttrs()
+  watchYtFlexyMount()
+}
+
+// YT reflow: a ResizeObserver on #movie_player keeps --hs-yt-below-top in sync
+// with the real video bottom. The rAF-based set in applyPlatformPositionOverrides
+// is racy on fresh load (the player gets its size after our last run), leaving
+// #below pinned at the fallback top over the video. The observer fires whenever
+// the player sizes/resizes, so the var is always correct. Re-observes on SPA nav.
+let _hsYtBelowRO = null,
+  _hsYtBelowEl = null,
+  _hsYtBelowPoll = null
+function _hsSetYtBelowTop() {
+  // Panel hidden (non-live, no opt-in) → don't pin #below; the CSS reflow rule
+  // is gated on :not(.hs-offline) anyway, but clear the var to be tidy.
+  if (document.body.classList.contains('hs-offline')) {
+    document.documentElement.style.removeProperty('--hs-yt-below-top')
+    return
+  }
+  if (chatPosition !== 'left' && chatPosition !== 'right') {
+    document.documentElement.style.removeProperty('--hs-yt-below-top')
+    return
+  }
+  const flexy = document.querySelector('ytd-watch-flexy')
+  if (flexy && (flexy.hasAttribute('theater') || flexy.hasAttribute('fullscreen'))) {
+    document.documentElement.style.removeProperty('--hs-yt-below-top')
+    return
+  }
+  const mp = document.querySelector('#movie_player') || document.querySelector('.html5-video-player')
+  const b = mp && mp.getBoundingClientRect()
+  if (b && b.height > 0) document.documentElement.style.setProperty('--hs-yt-below-top', Math.round(b.bottom) + 'px')
+}
+function _hsEnsureYtBelowObserver(_tries) {
+  const mp = document.querySelector('#movie_player')
+  // On fresh load applyPlatformPositionOverrides often runs before #movie_player
+  // exists; self-retry so the observer attaches once the player mounts (instead
+  // of depending on the function happening to re-run after). ~12s ceiling.
+  if (!mp) {
+    if ((_tries || 0) < 30) cleanup.setTimeout(() => _hsEnsureYtBelowObserver((_tries || 0) + 1), 400)
+    return
+  }
+  if (_hsYtBelowEl !== mp) {
+    if (_hsYtBelowRO) _hsYtBelowRO.disconnect()
+    _hsYtBelowEl = mp
+    _hsYtBelowRO = new ResizeObserver(_hsSetYtBelowTop)
+    _hsYtBelowRO.observe(mp)
+    cleanup.trackObserver(_hsYtBelowRO)
+  }
+  // ResizeObserver only fires on SIZE changes — but YT shifts the player's
+  // POSITION during load (same height, different top), so the observed bottom
+  // goes stale. A light poll catches position shifts + keeps the var honest.
+  if (!_hsYtBelowPoll) _hsYtBelowPoll = cleanup.setInterval(_hsSetYtBelowTop, 500)
+  _hsSetYtBelowTop()
+}
+
 // === END MULTICHAT MODULES ===
 
 
@@ -43403,18 +43716,7 @@ document.addEventListener(
   const TWITCH_SIDE_NAV_WIDTH = 50 // left rail when collapsed; conservative
   const TWITCH_TOP_NAV_HEIGHT = 50 // .top-nav strip; hidden in theatre mode
 
-  // Compute the largest chat width that won't squash YouTube's video column.
-  // Bases on the watch-flexy container width (the actual flex-row that holds
-  // primary + secondary) when available, falling back to viewport. Keeps a
-  // YT_MIN_PRIMARY_WIDTH gutter for the player.
-  function getYtMaxChatWidth() {
-    if (hostPlatform !== 'yt') return MAX_CHAT_WIDTH
-    const flexy = document.querySelector('ytd-watch-flexy:not([hidden])')
-    const flexyW = flexy?.getBoundingClientRect?.().width || 0
-    const vw = window.innerWidth || document.documentElement.clientWidth || 1280
-    const available = flexyW > 0 ? Math.min(flexyW, vw) : vw
-    return Math.max(MIN_CHAT_WIDTH, Math.min(MAX_CHAT_WIDTH, available - YT_MIN_PRIMARY_WIDTH))
-  }
+  // getYtMaxChatWidth moved to youtube-host.js (platform module)
 
   // Twitch: max chat width that keeps .channel-root__main >= TWITCH_MIN_MAIN_WIDTH.
   // Vertical tab strip eats +90 from the right-column total, so subtract it
@@ -45024,151 +45326,7 @@ document.addEventListener(
     }
   }
 
-  /**
-   * Detect Kick's left sidebar at the current viewport width. Kick drops the
-   * sidebar from the DOM at narrow widths (~< ~1000px). The padding-left we
-   * apply to <main> needs to subtract the sidebar's effective width so the
-   * video starts where our fixed panel ends — without leaving a gap when the
-   * sidebar is present, and without overlapping the video when it isn't.
-   */
-  function getKickSidebarWidth() {
-    const el = document.querySelector('[class*="sidebar-collapsed-width"]')
-    if (!el) return 0
-    const w = el.offsetWidth
-    return w > 0 ? w : 0
-  }
-
-  function syncKickSidebarVar() {
-    document.documentElement.style.setProperty('--hs-kick-sidebar-w', getKickSidebarWidth() + 'px')
-  }
-
-  /**
-   * Apply chat width to Kick's fixed #channel-chatroom panel
-   */
-  function applyKickChatWidth() {
-    const chatroom = document.getElementById('channel-chatroom')
-    if (!chatroom) return
-    chatWidth = Math.min(MAX_CHAT_WIDTH, Math.max(MIN_CHAT_WIDTH, chatWidth))
-    document.documentElement.style.setProperty('--hs-kick-chat-width', chatWidth + 'px')
-    document.documentElement.style.setProperty('--chat-width', chatWidth + 'px')
-    syncKickSidebarVar()
-    // C button took chat off the right edge — chatroom is hidden via CSS,
-    // skip restoring its width (would un-hide it visually as the shell still
-    // claims layout when display is intercepted by the cascade).
-    if (chatPosition && chatPosition !== 'right') return
-    chatroom.style.setProperty('width', chatWidth + 'px', 'important')
-  }
-
-  /**
-   * Setup resize handle for Kick — left edge of fixed #channel-chatroom panel
-   * Uses rAF batching, iframe overlay, and kills Kick's native transitions
-   */
-  function setupKickResizeHandle() {
-    const chatroom = document.getElementById('channel-chatroom')
-    const mcContainer = document.getElementById('hs-mc-container')
-    if (!chatroom || !mcContainer || document.getElementById('hs-kick-resize-handle')) return
-
-    const handle = document.createElement('div')
-    handle.id = 'hs-kick-resize-handle'
-    handle.style.touchAction = 'none'
-    mcContainer.insertBefore(handle, mcContainer.firstChild)
-
-    let isResizing = false
-    let startX = 0
-    let startWidth = 0
-    let rafId = 0
-    let pendingWidth = 0
-    let lastGhostWidth = 0
-    let activePointerId = -1
-    let overlay = null
-    let ghost = null
-
-    function applyResize() {
-      rafId = 0
-      if (pendingWidth === lastGhostWidth) return
-      lastGhostWidth = pendingWidth
-      chatWidth = pendingWidth
-      if (ghost) ghost.style.width = pendingWidth + 'px'
-    }
-
-    handle.addEventListener(
-      'pointerdown',
-      (e) => {
-        if (e.button !== 0) return
-        isResizing = true
-        activePointerId = e.pointerId
-        try {
-          handle.setPointerCapture(e.pointerId)
-        } catch (_) {}
-        startX = e.clientX
-        startWidth = chatWidth
-        const rect = (chatroom.classList.contains('hs-native-hidden') ? mcContainer : chatroom).getBoundingClientRect()
-        const w0 = Math.round(rect.width)
-        pendingWidth = chatWidth
-        lastGhostWidth = w0
-        document.body.style.cursor = 'col-resize'
-        document.body.style.userSelect = 'none'
-
-        ghost = document.createElement('div')
-        ghost.id = 'hs-resize-ghost'
-        ghost.style.cssText = buildGhostCss(rect, w0)
-        document.body.appendChild(ghost)
-
-        overlay = document.createElement('div')
-        overlay.id = 'hs-resize-overlay'
-        overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;cursor:col-resize'
-        document.body.appendChild(overlay)
-        e.preventDefault()
-      },
-      { signal: mcSignal },
-    )
-
-    handle.addEventListener(
-      'pointermove',
-      (e) => {
-        if (!isResizing || e.pointerId !== activePointerId) return
-        const delta = startX - e.clientX
-        pendingWidth = Math.min(MAX_CHAT_WIDTH, Math.max(MIN_CHAT_WIDTH, startWidth + delta))
-        if (!rafId) rafId = requestAnimationFrame(applyResize)
-      },
-      { signal: mcSignal },
-    )
-
-    function endDrag(e) {
-      if (!isResizing || (e && e.pointerId !== activePointerId)) return
-      isResizing = false
-      activePointerId = -1
-      if (rafId) {
-        cancelAnimationFrame(rafId)
-        rafId = 0
-      }
-      chatWidth = pendingWidth || chatWidth
-      if (ghost) {
-        ghost.remove()
-        ghost = null
-      }
-      applyKickChatWidth()
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
-      if (overlay) {
-        overlay.remove()
-        overlay = null
-      }
-      // Force Kick's video.js player + any preroll/midroll ad layer to
-      // re-measure so the ad video stops overlapping chat.
-      try {
-        window.dispatchEvent(new Event('resize'))
-      } catch (_) {}
-      saveChatWidth()
-    }
-    handle.addEventListener('pointerup', endDrag, { signal: mcSignal })
-    handle.addEventListener('pointercancel', endDrag, { signal: mcSignal })
-
-    loadChatWidth().then(() => {
-      applyKickChatWidth()
-    })
-    loadChatHeight()
-  }
+  // getKickSidebarWidth, syncKickSidebarVar, applyKickChatWidth, setupKickResizeHandle moved to kick-host.js (platform module)
 
   /**
    * Apply chat width to YouTube's #secondary sidebar
@@ -45203,9 +45361,11 @@ document.addEventListener(
     // whereas applyPlatformPositionOverrides' YT branch can be skipped on a
     // fresh single-column load, leaving --hs-yt-below-top unset (#below pinned
     // over the video). Self-retry inside handles the player not existing yet.
-    try {
-      _hsEnsureYtBelowObserver()
-    } catch (_) {}
+    if (hostPlatform === 'yt') {
+      try {
+        _hsEnsureYtBelowObserver()
+      } catch (_) {}
+    }
     // C button took chat off the right edge — collapse #secondary to 0 so
     // the freed width goes back to the player; don't run the native width
     // sizer which would re-claim the sidebar.
@@ -45255,392 +45415,15 @@ document.addEventListener(
     if (container) container.style.removeProperty('width')
   }
 
-  // Twitch: .persistent-player mounts asynchronously after our initial
-  // applyChatPosition runs. Without this, our top:0 fix never applies on
-  // first load. Also: on certain SPA flows (channel→home→channel) Twitch's
-  // React resets persistent-player's inline top to "", letting it fall to
-  // its natural-flow position at the bottom of root-scrollable__wrapper
-  // (y > 2000px), which pushes the video off-screen below the about
-  // section. Watch for the mount + style resets and re-pin top:0 left:0
-  // when we're in chat-right normal mode.
-  let _ttvPpObserver = null
-  let _ttvPpStyleObserver = null
-  let _ttvPpLastSeen = null
-  function pinTwitchPersistentPlayer() {
-    if (hostPlatform !== 'twitch' || isKick) return
-    const pp = document.querySelector('.persistent-player')
-    if (!pp) return
-    // For non-right chatPosition, the player must inset around the chat
-    // strip. applyChatPosition's first call fires before .persistent-player
-    // mounts on SPA nav (channel→channel), so our inline top/bottom/left/
-    // right are never applied. Re-apply ONCE on mount. We deliberately do
-    // NOT observe style mutations on pp here — applyPlatformPositionOverrides
-    // itself writes inline styles, which would self-trigger the observer
-    // and loop the page to a freeze. Twitch rarely resets our !important
-    // inline overrides; the rotateChatPosition path re-applies if needed.
-    if (chatPosition !== 'right' && !theatreMode) {
-      const tag = `${chatPosition}:${chatWidth}:${chatHeight}:${pp === _ttvPpLastSeen}`
-      if (pp._hsTwPosTag === tag) return
-      pp._hsTwPosTag = tag
-      _ttvPpLastSeen = pp
-      try {
-        applyPlatformPositionOverrides()
-      } catch (_) {}
-      return
-    }
-    if (theatreMode) return
-    // Offline channel: Twitch shows a small recommended-VOD PiP mini-player
-    // (~185×104) on the channel-home page. Pinning it top:0/left:0 makes it
-    // float awkwardly in the corner instead of where Twitch positioned it.
-    // Skip pinning when .channel-root--home is present.
-    if (document.querySelector('.channel-root--home')) {
-      // Also clear any prior pin we may have applied before going offline.
-      if (pp.style.top === '0px' || pp.style.left === '0px') {
-        pp.style.removeProperty('top')
-        pp.style.removeProperty('left')
-      }
-      return
-    }
-    // chatPosition === 'right' default path — pin top:0 when Twitch's React
-    // forgets to set it (player falls to natural-flow position y > 2000px).
-    const cur = pp.style.top
-    const resolved = parseFloat(getComputedStyle(pp).top) || 0
-    if (cur === '0px' && resolved < 100) return // already pinned
-    pp.style.setProperty('top', '0', 'important')
-    pp.style.setProperty('left', '0', 'important')
-    if (_ttvPpLastSeen !== pp) {
-      _ttvPpLastSeen = pp
-      if (_ttvPpStyleObserver) {
-        try {
-          _ttvPpStyleObserver.disconnect()
-        } catch (_) {}
-        _ttvPpStyleObserver = null
-      }
-      _ttvPpStyleObserver = new MutationObserver(() => {
-        if (chatPosition !== 'right' || theatreMode) return
-        // Same offline guard inside the style observer — Twitch's React may
-        // re-render mid-session (live → offline) and we'd otherwise re-pin.
-        if (document.querySelector('.channel-root--home')) return
-        const r = parseFloat(getComputedStyle(pp).top) || 0
-        if (r > 200) {
-          pp.style.setProperty('top', '0', 'important')
-          pp.style.setProperty('left', '0', 'important')
-        }
-      })
-      _ttvPpStyleObserver.observe(pp, { attributes: true, attributeFilter: ['style'] })
-      cleanup.trackObserver(_ttvPpStyleObserver)
-    }
-  }
-  function watchTwitchPersistentPlayer() {
-    if (hostPlatform !== 'twitch' || isKick) return
-    pinTwitchPersistentPlayer() // immediate, in case it's already mounted
-    if (_ttvPpObserver) return
-    let _ttvPpRaf = 0
-    let _ttvPpDetachObs = null
-    // Two-phase observer to avoid permanent body-subtree dispatch on Twitch:
-    //   1. Body watch — fires until the persistent player mounts and we pin it,
-    //      then disconnects. Walking body subtree is only paid during SPA nav.
-    //   2. Detach watch — observes the pinned player's PARENT (childList only,
-    //      no subtree) so we re-arm phase 1 the moment Twitch unmounts the
-    //      player on channel→channel nav. Effectively zero per-frame overhead
-    //      while the player is stable, which is 99% of session time.
-    const armDetachWatch = () => {
-      if (_ttvPpDetachObs) {
-        try {
-          _ttvPpDetachObs.disconnect()
-        } catch (_) {}
-        _ttvPpDetachObs = null
-      }
-      const pp = _ttvPpLastSeen
-      const parent = pp?.parentElement
-      if (!parent) {
-        armBodyWatch()
-        return
-      }
-      _ttvPpDetachObs = new MutationObserver(() => {
-        if (pp && pp.isConnected) return
-        try {
-          _ttvPpDetachObs.disconnect()
-        } catch (_) {}
-        _ttvPpDetachObs = null
-        _ttvPpLastSeen = null
-        armBodyWatch()
-      })
-      _ttvPpDetachObs.observe(parent, { childList: true })
-      cleanup.trackObserver(_ttvPpDetachObs)
-    }
-    function armBodyWatch() {
-      if (_ttvPpObserver) {
-        try {
-          _ttvPpObserver.disconnect()
-        } catch (_) {}
-      }
-      _ttvPpObserver = new MutationObserver(() => {
-        if (_ttvPpLastSeen && _ttvPpLastSeen.isConnected) {
-          try {
-            _ttvPpObserver.disconnect()
-          } catch (_) {}
-          armDetachWatch()
-          return
-        }
-        if (_ttvPpRaf) return
-        _ttvPpRaf = requestAnimationFrame(() => {
-          _ttvPpRaf = 0
-          pinTwitchPersistentPlayer()
-          if (_ttvPpLastSeen?.isConnected) {
-            try {
-              _ttvPpObserver.disconnect()
-            } catch (_) {}
-            armDetachWatch()
-          }
-        })
-      })
-      _ttvPpObserver.observe(document.body, { childList: true, subtree: true })
-      cleanup.trackObserver(_ttvPpObserver)
-    }
-    if (_ttvPpLastSeen?.isConnected) armDetachWatch()
-    else armBodyWatch()
-  }
+  // pinTwitchPersistentPlayer, watchTwitchPersistentPlayer moved to twitch-host.js (platform module)
 
-  // Re-apply layout whenever YT toggles theater/fullscreen so we release or
-  // restore our width overrides at the right moment.
-  function watchYtLayoutAttrs() {
-    if (hostPlatform !== 'yt') return
-    const flexy = document.querySelector('ytd-watch-flexy:not([hidden])')
-    if (!flexy) return
-    const obs = new MutationObserver(() => applyYouTubeChatWidth())
-    obs.observe(flexy, { attributes: true, attributeFilter: ['theater', 'fullscreen', 'is-two-columns_'] })
-    cleanup.trackObserver(obs)
-  }
+  // watchYtLayoutAttrs, watchYtFlexyMount moved to youtube-host.js (platform module)
 
-  // Re-run applyChatPosition when ytd-watch-flexy mounts on an SPA nav from
-  // a non-watch page (home/search/channel) → a watch page. Without this,
-  // the first applyChatPosition call ran with isYtNonWatch=true and never
-  // re-added hs-chat-right to <body>, so the position:fixed CSS for
-  // #hs-mc-container stayed inactive even after flexy mounted.
-  let _ytFlexyMountObs = null
-  function watchYtFlexyMount() {
-    // Idempotent: callable from init AND from applyChatPosition when it
-    // detects isYtNonWatch on a watch URL (cold-load before flexy mounts).
-    // Without re-arming on every nav, the body class hs-chat-* stays stripped
-    // when flexy unmounts during /watch → /watch SPA transitions and the
-    // observer was already torn down.
-    if (hostPlatform !== 'yt') return
-    if (_ytFlexyMountObs) return
-    if (document.querySelector('ytd-watch-flexy:not([hidden])')) return // already there
-    _ytFlexyMountObs = new MutationObserver(() => {
-      if (!document.querySelector('ytd-watch-flexy:not([hidden])')) return
-      _ytFlexyMountObs.disconnect()
-      _ytFlexyMountObs = null
-      try {
-        applyChatPosition()
-      } catch {}
-      try {
-        applyYouTubeChatWidth()
-      } catch {}
-    })
-    _ytFlexyMountObs.observe(document.body, { childList: true, subtree: true })
-    cleanup.trackObserver(_ytFlexyMountObs)
-  }
+  // watchYtViewportClamp moved to youtube-host.js (platform module)
 
-  // Re-clamp chat width when viewport shrinks (window resize / devtools open).
-  // Without this, a chat width persisted at a wider viewport pushes the video
-  // off-screen on a smaller window and the resize handle's max can't catch up.
-  let _ytViewportClampTimer = null
-  function watchYtViewportClamp() {
-    if (hostPlatform !== 'yt') return
-    const onResize = () => {
-      if (_ytViewportClampTimer) cleanup.clearTimeout(_ytViewportClampTimer)
-      _ytViewportClampTimer = cleanup.setTimeout(() => {
-        _ytViewportClampTimer = null
-        applyYouTubeChatWidth()
-        // Recompute the player's inline size for the new viewport. Without this
-        // the player keeps the px size computed at the LAST chat-position change
-        // — resize the window and the video overshoots its column (huge, clips
-        // off both edges) while the metadata column is crushed into a sliver.
-        // applyYouTubeChatWidth (above) re-clamps chatWidth first, so the player
-        // sizes off the corrected width. Mirrors the Kick resize handler.
-        try {
-          applyPlatformPositionOverrides()
-        } catch {}
-        // Re-run full layout reflow — viewport change (WM fullscreen, devtools
-        // toggle, browser zoom) needs every position-dependent piece updated.
-        // The orange resize bar uses inline px from container.getBoundingClientRect
-        // and goes stale; the tab/input bars follow via _updateMcLayout's
-        // ResizeObserver but only when the bars themselves resize, which doesn't
-        // fire on pure viewport changes. Cheap calls — all early-bail when nothing
-        // to reposition.
-        try {
-          positionChatResizeHandle()
-        } catch {}
-        try {
-          _updateMcLayout()
-        } catch {}
-      }, 80)
-    }
-    window.addEventListener('resize', onResize, { signal: mcSignal })
-  }
+  // watchKickViewportClamp moved to kick-host.js (platform module)
 
-  // Kick: re-apply player sizing on window resize AND on player mount.
-  // applyPlatformPositionOverrides runs early in init — usually before Kick
-  // mounts #injected-channel-player — and never re-ran, so overrides never
-  // landed. Always re-apply once the player is present, plus on every resize.
-  let _kickViewportClampTimer = null
-  let _kickPlayerMountObs = null
-  function watchKickViewportClamp() {
-    if (!isKick) return
-    const onResize = () => {
-      if (_kickViewportClampTimer) cleanup.clearTimeout(_kickViewportClampTimer)
-      _kickViewportClampTimer = cleanup.setTimeout(() => {
-        _kickViewportClampTimer = null
-        applyPlatformPositionOverrides()
-        try {
-          positionChatResizeHandle()
-        } catch {}
-        try {
-          _updateMcLayout()
-        } catch {}
-      }, 80)
-    }
-    window.addEventListener('resize', onResize, { signal: mcSignal })
-
-    if (document.querySelector('#injected-channel-player')) {
-      // Player already mounted — apply now (early init call missed it).
-      applyPlatformPositionOverrides()
-    } else if (!_kickPlayerMountObs) {
-      _kickPlayerMountObs = new MutationObserver(() => {
-        if (document.querySelector('#injected-channel-player')) {
-          _kickPlayerMountObs.disconnect()
-          _kickPlayerMountObs = null
-          applyPlatformPositionOverrides()
-        }
-      })
-      _kickPlayerMountObs.observe(document.body, { childList: true, subtree: true })
-      cleanup.trackObserver(_kickPlayerMountObs)
-    }
-  }
-
-  /**
-   * Setup resize handle for YouTube — left edge of #secondary sidebar
-   */
-  function setupYouTubeResizeHandle() {
-    const secondary = document.querySelector('#secondary, ytd-watch-flexy #secondary')
-    const mcContainer = document.getElementById('hs-mc-container')
-    if (!secondary || !mcContainer || document.getElementById('hs-yt-resize-handle')) return
-
-    const handle = document.createElement('div')
-    handle.id = 'hs-yt-resize-handle'
-    handle.style.touchAction = 'none'
-    // YT now uses the unified #hs-c-resize-handle for ALL chat positions
-    // (because chat-right is position:fixed, not in YT's flex tree). Hide
-    // this platform handle on creation so we don't render two orange bars.
-    handle.dataset._hsCHidden = '1'
-    handle.style.setProperty('display', 'none', 'important')
-    secondary.style.position = 'relative'
-    secondary.insertBefore(handle, secondary.firstChild)
-
-    let isResizing = false
-    let startX = 0
-    let startWidth = 0
-    let rafId = 0
-    let pendingWidth = 0
-    let lastGhostWidth = 0
-    let activePointerId = -1
-    let overlay = null
-    let ghost = null
-
-    function applyResize() {
-      rafId = 0
-      if (pendingWidth === lastGhostWidth) return
-      lastGhostWidth = pendingWidth
-      chatWidth = pendingWidth
-      if (ghost) ghost.style.width = pendingWidth + 'px'
-    }
-
-    handle.addEventListener(
-      'pointerdown',
-      (e) => {
-        if (e.button !== 0) return
-        isResizing = true
-        activePointerId = e.pointerId
-        try {
-          handle.setPointerCapture(e.pointerId)
-        } catch (_) {}
-        startX = e.clientX
-        startWidth = chatWidth
-        const rect = secondary.getBoundingClientRect()
-        const w0 = Math.round(rect.width)
-        pendingWidth = chatWidth
-        lastGhostWidth = w0
-        document.body.style.cursor = 'ew-resize'
-        document.body.style.userSelect = 'none'
-
-        ghost = document.createElement('div')
-        ghost.id = 'hs-resize-ghost'
-        ghost.style.cssText = buildGhostCss(rect, w0)
-        document.body.appendChild(ghost)
-
-        overlay = document.createElement('div')
-        overlay.id = 'hs-resize-overlay'
-        overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;cursor:ew-resize'
-        document.body.appendChild(overlay)
-        e.preventDefault()
-      },
-      { signal: mcSignal },
-    )
-
-    handle.addEventListener(
-      'pointermove',
-      (e) => {
-        if (!isResizing || e.pointerId !== activePointerId) return
-        const delta = startX - e.clientX
-        // Use the viewport-aware cap so a small window can't be dragged past the
-        // point where the video column gets crushed.
-        const ytMax = getYtMaxChatWidth()
-        pendingWidth = Math.min(ytMax, Math.max(MIN_CHAT_WIDTH, startWidth + delta))
-        if (!rafId) rafId = requestAnimationFrame(applyResize)
-      },
-      { signal: mcSignal },
-    )
-
-    function endDrag(e) {
-      if (!isResizing || (e && e.pointerId !== activePointerId)) return
-      isResizing = false
-      activePointerId = -1
-      if (rafId) {
-        cancelAnimationFrame(rafId)
-        rafId = 0
-      }
-      chatWidth = pendingWidth || chatWidth
-      if (ghost) {
-        ghost.remove()
-        ghost = null
-      }
-      applyYouTubeChatWidth()
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
-      if (overlay) {
-        overlay.remove()
-        overlay = null
-      }
-      // Force YT's IMA SDK + html5 player to re-measure so a mid-ad resize
-      // doesn't leave the ad video at its pre-drag dimensions.
-      try {
-        window.dispatchEvent(new Event('resize'))
-      } catch (_) {}
-      saveChatWidth()
-    }
-    handle.addEventListener('pointerup', endDrag, { signal: mcSignal })
-    handle.addEventListener('pointercancel', endDrag, { signal: mcSignal })
-
-    loadChatWidth().then(() => {
-      applyYouTubeChatWidth()
-    })
-    loadChatHeight()
-    watchYtViewportClamp()
-    watchYtLayoutAttrs()
-    watchYtFlexyMount()
-  }
+  // setupYouTubeResizeHandle moved to youtube-host.js (platform module)
 
   // Emote size — registry-managed (hs_emote_size); the emoteSize applier
   // runs applyEmoteSize + picker invalidation. Kept as a named function for
@@ -52816,10 +52599,9 @@ document.addEventListener(
   let _twitchSideNavObs = null
   let _twitchSideNavWinHooked = false
   let _twitchSideNavW = TWITCH_SIDE_NAV_WIDTH
-  let _twitchTopNavObs = null
+  // _twitchTopNavObs moved to twitch-host.js (platform module)
   let _twitchTopNavH = TWITCH_TOP_NAV_HEIGHT
-  let _kickTopNavObs = null
-  let _kickTopNavH = 60 // matches --hs-kick-topnav-h CSS fallback
+  // _kickTopNavObs, _kickTopNavH moved to kick-host.js (platform module)
 
   // Twitch's left side-nav is 50px when collapsed, ~240px when expanded.
   // It auto-expands on wide viewports (>~1200px), and the user can also
@@ -52828,20 +52610,7 @@ document.addEventListener(
   // not assumed. Pushes --hs-twitch-sidenav-w for the CSS rules to consume,
   // and re-runs applyPlatformPositionOverrides so JS-side arithmetic
   // (persistent-player inset, channel-root padding) updates too.
-  function updateTwitchSideNavWidth() {
-    if (hostPlatform !== 'twitch') return
-    const nav = document.querySelector('.side-nav')
-    const w = nav?.getBoundingClientRect?.().width
-    const next = w && w > 0 ? Math.round(w) : TWITCH_SIDE_NAV_WIDTH
-    if (next === _twitchSideNavW) return
-    _twitchSideNavW = next
-    document.documentElement.style.setProperty('--hs-twitch-sidenav-w', next + 'px')
-    if (chatPosition === 'left') {
-      try {
-        applyPlatformPositionOverrides()
-      } catch (_) {}
-    }
-  }
+  // updateTwitchSideNavWidth moved to twitch-host.js (platform module)
 
   // Twitch's top nav (.top-nav) is 50px tall and lives in a sibling DOM tree
   // that paints above HS's chat container — even though HS has z-index 9999,
@@ -52850,78 +52619,18 @@ document.addEventListener(
   // by the nav height when chat docks left/top so the rotate buttons aren't
   // hidden under Following/Browse. Theatre mode hides .top-nav (height = 0),
   // so the offset auto-collapses and chat reclaims the full viewport.
-  function updateTwitchTopNavHeight() {
-    if (hostPlatform !== 'twitch') return
-    const nav = document.querySelector('.top-nav')
-    let h = 0
-    if (nav) {
-      const r = nav.getBoundingClientRect()
-      // height>0 AND visible — theatre mode collapses to 0 via display:none
-      h = r.height > 0 && getComputedStyle(nav).display !== 'none' ? Math.round(r.height) : 0
-    }
-    if (h === _twitchTopNavH) return
-    _twitchTopNavH = h
-    document.documentElement.style.setProperty('--hs-twitch-topnav-h', h + 'px')
-    if (chatPosition === 'left' || chatPosition === 'top') {
-      try {
-        applyPlatformPositionOverrides()
-      } catch (_) {}
-    }
-  }
+  // updateTwitchTopNavHeight moved to twitch-host.js (platform module)
 
-  function setupTwitchTopNavObserver() {
-    if (hostPlatform !== 'twitch') return
-    document.documentElement.style.setProperty('--hs-twitch-topnav-h', _twitchTopNavH + 'px')
-    if (_twitchTopNavObs) {
-      try {
-        _twitchTopNavObs.disconnect()
-      } catch (_) {}
-      _twitchTopNavObs = null
-    }
-    const nav = document.querySelector('.top-nav')
-    if (nav && typeof ResizeObserver !== 'undefined') {
-      _twitchTopNavObs = new ResizeObserver(() => updateTwitchTopNavHeight())
-      _twitchTopNavObs.observe(nav)
-      cleanup.trackObserver(_twitchTopNavObs)
-    }
-    updateTwitchTopNavHeight()
-  }
+  // setupTwitchTopNavObserver moved to twitch-host.js (platform module)
 
   // Kick's top nav is position:fixed, ~60px tall (matches the CSS fallback).
   // Mirrors the twitch pattern: measure once, track via ResizeObserver, push
   // --hs-kick-topnav-h so CSS rules that offset the panel don't need to
   // hard-code the height. Selector matches the <nav> used elsewhere in the
   // codebase for kick nav height measurement.
-  function updateKickTopNavHeight() {
-    if (!isKick) return
-    const nav = document.querySelector('nav, [class*="navbar"]')
-    let h = 60 // CSS fallback default
-    if (nav) {
-      const r = nav.getBoundingClientRect()
-      h = r.height > 0 && getComputedStyle(nav).display !== 'none' ? Math.round(r.height) : 60
-    }
-    if (h === _kickTopNavH) return
-    _kickTopNavH = h
-    document.documentElement.style.setProperty('--hs-kick-topnav-h', h + 'px')
-  }
+  // updateKickTopNavHeight moved to kick-host.js (platform module)
 
-  function setupKickTopNavObserver() {
-    if (!isKick) return
-    document.documentElement.style.setProperty('--hs-kick-topnav-h', _kickTopNavH + 'px')
-    if (_kickTopNavObs) {
-      try {
-        _kickTopNavObs.disconnect()
-      } catch (_) {}
-      _kickTopNavObs = null
-    }
-    const nav = document.querySelector('nav, [class*="navbar"]')
-    if (nav && typeof ResizeObserver !== 'undefined') {
-      _kickTopNavObs = new ResizeObserver(() => updateKickTopNavHeight())
-      _kickTopNavObs.observe(nav)
-      cleanup.trackObserver(_kickTopNavObs)
-    }
-    updateKickTopNavHeight()
-  }
+  // setupKickTopNavObserver moved to kick-host.js (platform module)
 
   // Persistent-overlay mode toggle. Sets `hs-twitch-no-channel` on body when
   // we're on a twitch URL with no .channel-root (directory, settings, videos,
@@ -52965,20 +52674,7 @@ document.addEventListener(
     }
   }
 
-  // Mirror of updateTwitchNoChannelClass for Kick. #channel-chatroom is
-  // present only on /<channel> pages; absent on /browse, /categories,
-  // /following, /search, /settings, etc. CSS keyed off this flips the
-  // panel to position:fixed overlay and squeezes <main> width/height.
-  function updateKickNoChannelClass() {
-    if (!isKick) return
-    try {
-      injectStyles()
-    } catch (_) {} // kick SPA navs — same sweep guard
-
-    const onChannel = !!document.getElementById('channel-chatroom')
-    const popout = document.body.classList.contains('hs-popout')
-    document.body.classList.toggle('hs-kick-no-channel', !onChannel && !popout)
-  }
+  // updateKickNoChannelClass moved to kick-host.js (platform module)
 
   function setupTwitchSideNavObserver() {
     if (hostPlatform !== 'twitch') return
@@ -53027,10 +52723,10 @@ document.addEventListener(
       detectTheatreMode()
       setupTheatreObserver()
       setupTwitchSideNavObserver()
-      setupTwitchTopNavObserver()
-      setupKickTopNavObserver()
+      if (hostPlatform === 'twitch') setupTwitchTopNavObserver()
+      if (isKick) setupKickTopNavObserver()
       updateTwitchNoChannelClass()
-      updateKickNoChannelClass()
+      if (isKick) updateKickNoChannelClass()
       applyChatPosition()
     } catch (e) {
       log('Error loading chat position:', e)
@@ -53240,56 +52936,7 @@ document.addEventListener(
   // inline. When chatPosition flips back to 'right' we restore the native
   // values (Twitch's chat-width JS will re-apply them on next tick).
   const _overrideObserver = null
-  // YT reflow: a ResizeObserver on #movie_player keeps --hs-yt-below-top in sync
-  // with the real video bottom. The rAF-based set in applyPlatformPositionOverrides
-  // is racy on fresh load (the player gets its size after our last run), leaving
-  // #below pinned at the fallback top over the video. The observer fires whenever
-  // the player sizes/resizes, so the var is always correct. Re-observes on SPA nav.
-  let _hsYtBelowRO = null,
-    _hsYtBelowEl = null,
-    _hsYtBelowPoll = null
-  function _hsSetYtBelowTop() {
-    // Panel hidden (non-live, no opt-in) → don't pin #below; the CSS reflow rule
-    // is gated on :not(.hs-offline) anyway, but clear the var to be tidy.
-    if (document.body.classList.contains('hs-offline')) {
-      document.documentElement.style.removeProperty('--hs-yt-below-top')
-      return
-    }
-    if (chatPosition !== 'left' && chatPosition !== 'right') {
-      document.documentElement.style.removeProperty('--hs-yt-below-top')
-      return
-    }
-    const flexy = document.querySelector('ytd-watch-flexy')
-    if (flexy && (flexy.hasAttribute('theater') || flexy.hasAttribute('fullscreen'))) {
-      document.documentElement.style.removeProperty('--hs-yt-below-top')
-      return
-    }
-    const mp = document.querySelector('#movie_player') || document.querySelector('.html5-video-player')
-    const b = mp && mp.getBoundingClientRect()
-    if (b && b.height > 0) document.documentElement.style.setProperty('--hs-yt-below-top', Math.round(b.bottom) + 'px')
-  }
-  function _hsEnsureYtBelowObserver(_tries) {
-    const mp = document.querySelector('#movie_player')
-    // On fresh load applyPlatformPositionOverrides often runs before #movie_player
-    // exists; self-retry so the observer attaches once the player mounts (instead
-    // of depending on the function happening to re-run after). ~12s ceiling.
-    if (!mp) {
-      if ((_tries || 0) < 30) cleanup.setTimeout(() => _hsEnsureYtBelowObserver((_tries || 0) + 1), 400)
-      return
-    }
-    if (_hsYtBelowEl !== mp) {
-      if (_hsYtBelowRO) _hsYtBelowRO.disconnect()
-      _hsYtBelowEl = mp
-      _hsYtBelowRO = new ResizeObserver(_hsSetYtBelowTop)
-      _hsYtBelowRO.observe(mp)
-      cleanup.trackObserver(_hsYtBelowRO)
-    }
-    // ResizeObserver only fires on SIZE changes — but YT shifts the player's
-    // POSITION during load (same height, different top), so the observed bottom
-    // goes stale. A light poll catches position shifts + keeps the var honest.
-    if (!_hsYtBelowPoll) _hsYtBelowPoll = cleanup.setInterval(_hsSetYtBelowTop, 500)
-    _hsSetYtBelowTop()
-  }
+  // _hsSetYtBelowTop, _hsEnsureYtBelowObserver moved to youtube-host.js (platform module)
   function applyPlatformPositionOverrides() {
     const isRight = chatPosition === 'right'
     const w = `${chatWidth}px`
@@ -56336,309 +55983,9 @@ document.addEventListener(
   // the full search string to catch video-to-video hops.
   let lastSearch = location.search
   let spaReinitializing = false
-  // Twitch SPA nav: zero-flicker soft refresh. Pre-emptively migrate the
-  // panel to <body> so twitch's chat-shell teardown doesn't take it down,
-  // refresh the body class for the new URL, and (if the new page is a
-  // channel page) reparent into the freshly-mounted chat-shell once it
-  // appears. IRC, kickChat, observers, feed state — none of it gets
-  // destroyed, so the visible panel keeps showing live messages without
-  // a single empty frame.
-  function softTwitchNav(prevLiveCh) {
-    const container = document.getElementById('hs-mc-container')
-    // SPA nav changes the URL channel — only the LIVE tab cache becomes
-    // stale (it follows getLiveChannel()). Per-channel tab caches stay
-    // valid since their data is keyed by channel buffer, not URL.
-    try {
-      _dropTabCache('live')
-    } catch {}
-    // Mark body for the entire transition window so the CSS guard hides any
-    // native chat-shell children that paint during Twitch's teardown/remount.
-    document.body.classList.add('hs-mc-navigating')
-    // Step 1 — detach from doomed chat-shell ahead of twitch's teardown.
-    if (container && container.parentElement && container.parentElement !== document.body) {
-      document.body.appendChild(container)
-    }
-    // Step 2 — flip CSS state to match the new URL's mount surface.
-    try {
-      updateTwitchNoChannelClass()
-    } catch (_) {}
+  // softTwitchNav moved to twitch-host.js (platform module)
 
-    // Step 3 — if the new page is a channel page, wait for its chat-shell to
-    // mount, then reparent the panel back so theatre/persistent-player layout
-    // continues to work. Single-shot observer; gives up after 4s on slow tabs.
-    let done = false
-    const finish = () => {
-      // Re-apply hs-native-hidden to the new chat-shell + chat-room + stream-
-      // chat. Without this the body.hs-mc-navigating guard would be the only
-      // thing hiding native chat — once we drop that class native chat blooms.
-      // Gated: skip re-hide when the user has chosen nativeVisible so they
-      // keep native chat visible across SPA navigations.
-      if (!nativeVisible)
-        try {
-          setNativeChatHidden(true)
-        } catch (_) {}
-      // Resume sticky-bottom on every channel switch — the panel persists
-      // across SPA nav, so without this reset the new channel inherits the
-      // previous channel's mid-scroll position and live messages stack
-      // behind a "N new" pause indicator the user never asked for.
-      isScrolledUp = false
-      newMessageCount = 0
-      _scrollbackWindow = 0 // new channel starts at the live tail
-      // SPA nav changed the URL channel — re-join + repaint the live tab so the
-      // new channel actually connects and renders. Without this the panel froze
-      // on the previous channel until an unrelated render fired — a deadlock on
-      // a quiet/offline target, the classic "broken or just needs a refresh?"
-      // symptom. renderMessages('live') performs the lazy join itself.
-      if (currentTab === 'live') {
-        try {
-          renderMessages('live')
-        } catch (_) {}
-      }
-      const newBtn = document.getElementById('hs-mc-new-msgs')
-      if (newBtn) newBtn.style.display = 'none'
-      const msgsEl = document.getElementById('hs-mc-messages')
-      if (msgsEl)
-        try {
-          scrollMsgsToBottom(msgsEl)
-        } catch (_) {}
-      // Join the new live channel so IRC delivers messages for it.
-      // Without this the live tab shows nothing (and deadlocks on quiet
-      // channels) because irc never subscribes to the new channel name.
-      // Part the previous live channel first (Bug #3) so we don't accumulate
-      // a 3000-msg CircularBuffer per visited channel over a long session.
-      // Only part if it is not also a config-managed channel tab.
-      try {
-        const newCh = getCurrentChannel()?.toLowerCase()
-        if (prevLiveCh && prevLiveCh !== newCh) {
-          const isConfigCh = config.channels.some(
-            (ch) => ch.twitch?.toLowerCase() === prevLiveCh || ch.kick?.toLowerCase() === prevLiveCh,
-          )
-          if (!isConfigCh) {
-            irc?.part(prevLiveCh)
-            kickChat?.part(prevLiveCh)
-          }
-        }
-        if (newCh && irc && !irc.channels.has(newCh)) irc.join(newCh)
-        if (newCh && kickChat && !kickChat.channels.has(newCh)) kickChat.join(newCh)
-        // Re-arm the native-chat tap on the new channel. Twitch tears down and
-        // remounts the message container across SPA nav; without an eager
-        // re-bind the tap stays dark until the 5s remount poll fires, leaving a
-        // hole in live coverage on every channel switch (worst on starved IPs
-        // where the tap IS the live source). startNativeTap is idempotent.
-        if (newCh && hostPlatform === 'twitch')
-          try {
-            startNativeTap(newCh)
-          } catch (_) {}
-        renderMessages('live')
-      } catch (_) {}
-      // Hold the nav guard for ~300ms so Twitch's render cycle + width
-      // transitions on chat-shell ancestors complete entirely behind it.
-      // Two rAFs (~32ms) was too short — the grey theme wrappers re-bled in
-      // mid-transition. 300ms covers Twitch's full reflow on every machine
-      // tested. Plus a chat-shell mutation observer continuously re-applies
-      // hs-native-hidden in case React swaps the chat-room__content node.
-      const reHide = new MutationObserver(() => {
-        if (!nativeVisible)
-          try {
-            setNativeChatHidden(true)
-          } catch (_) {}
-      })
-      const target = document.querySelector('.chat-shell, ' + CONFIG.SELECTORS.TWITCH_CHAT_SHELL)
-      if (target) {
-        reHide.observe(target, { childList: true })
-        cleanup.trackObserver(reHide)
-      }
-      cleanup.setTimeout(
-        () => {
-          cleanup.untrackObserver(reHide)
-          document.body.classList.remove('hs-mc-navigating')
-          // Bar tracks container.getBoundingClientRect — re-anchor now that the
-          // container has moved out of its nav-guard fixed slot into chat-shell.
-          try {
-            positionChatResizeHandle()
-          } catch (_) {}
-        },
-        300,
-        'twitch-soft-nav-release',
-      )
-      // Twitch's right-column slide-in animation is 500ms. Re-check after it
-      // settles so the clipped-chat detection in updateTwitchNoChannelClass
-      // catches miniplayer→fullscreen layout breakage post-animation.
-      cleanup.setTimeout(
-        () => {
-          try {
-            updateTwitchNoChannelClass()
-          } catch (_) {}
-          try {
-            positionChatResizeHandle()
-          } catch (_) {}
-        },
-        700,
-        'twitch-soft-nav-clipped-check',
-      )
-    }
-    const tryReparent = () => {
-      if (done) return true
-      const chatShell = document.querySelector('.chat-shell, [class*="chat-shell"]')
-      const c = document.getElementById('hs-mc-container')
-      if (chatShell && c && !chatShell.contains(c)) {
-        chatShell.appendChild(c)
-        try {
-          updateTwitchNoChannelClass()
-        } catch (_) {}
-        done = true
-        finish()
-        return true
-      }
-      return false
-    }
-    if (tryReparent()) return
-    const obs = new MutationObserver(() => {
-      if (tryReparent()) cleanup.untrackObserver(obs)
-    })
-    obs.observe(document.documentElement, { childList: true, subtree: true })
-    cleanup.trackObserver(obs)
-    cleanup.setTimeout(
-      () => {
-        if (!done) {
-          done = true
-          cleanup.untrackObserver(obs)
-          try {
-            updateTwitchNoChannelClass()
-          } catch (_) {}
-          finish()
-        }
-      },
-      4000,
-      'twitch-soft-nav-finalize',
-    )
-  }
-
-  // Kick mirror of softTwitchNav — keep the panel mounted across SPA nav.
-  // Pre-emptively migrate to <body> so kick's React teardown of the
-  // #channel-chatroom region doesn't take it down, refresh the no-channel
-  // class for the new URL, and reparent into a freshly-mounted #channel-
-  // chatroom once it appears (channel pages).
-  function softKickNav(prevLiveCh) {
-    const container = document.getElementById('hs-mc-container')
-    // Bug #5: if the container is gone (e.g. back-button landed on a page
-    // before our script had mounted it, or a prior nav already removed it),
-    // run the full destroy+rebuild path rather than spinning a useless
-    // MutationObserver that can never recover a null reference.
-    if (!container) {
-      fullSpaReinit()
-      return
-    }
-    // Only invalidate live cache — per-channel tabs stay valid (their
-    // buffers are keyed by channel name, unchanged by URL).
-    try {
-      _dropTabCache('live')
-    } catch {}
-    document.body.classList.add('hs-mc-navigating')
-    if (container.parentElement && container.parentElement !== document.body) {
-      document.body.appendChild(container)
-    }
-    try {
-      updateKickNoChannelClass()
-    } catch (_) {}
-    let done = false
-    const finish = () => {
-      // Gated: skip re-hide when the user has chosen nativeVisible.
-      if (!nativeVisible)
-        try {
-          setNativeChatHidden(true)
-        } catch (_) {}
-      isScrolledUp = false
-      newMessageCount = 0
-      _scrollbackWindow = 0 // new channel starts at the live tail
-      // SPA nav changed the URL channel — re-join + repaint the live tab so the
-      // new Kick channel connects and renders (otherwise the panel freezes on
-      // the previous channel until an unrelated render fires).
-      if (currentTab === 'live') {
-        try {
-          renderMessages('live')
-        } catch (_) {}
-      }
-      const newBtn = document.getElementById('hs-mc-new-msgs')
-      if (newBtn) newBtn.style.display = 'none'
-      const msgsEl = document.getElementById('hs-mc-messages')
-      if (msgsEl)
-        try {
-          scrollMsgsToBottom(msgsEl)
-        } catch (_) {}
-      // Join the new live channel (Bug #1 for Kick path).
-      // Part the previous live channel (Bug #3) to avoid buffer accumulation.
-      try {
-        const newCh = getCurrentChannel()?.toLowerCase()
-        if (prevLiveCh && prevLiveCh !== newCh) {
-          const isConfigCh = config.channels.some(
-            (ch) => ch.twitch?.toLowerCase() === prevLiveCh || ch.kick?.toLowerCase() === prevLiveCh,
-          )
-          if (!isConfigCh) {
-            irc?.part(prevLiveCh)
-            kickChat?.part(prevLiveCh)
-          }
-        }
-        if (newCh && irc && !irc.channels.has(newCh)) irc.join(newCh)
-        if (newCh && kickChat && !kickChat.channels.has(newCh)) kickChat.join(newCh)
-        renderMessages('live')
-      } catch (_) {}
-      const reHide = new MutationObserver(() => {
-        if (!nativeVisible)
-          try {
-            setNativeChatHidden(true)
-          } catch (_) {}
-      })
-      const target = document.getElementById('channel-chatroom')
-      if (target) {
-        reHide.observe(target, { childList: true })
-        cleanup.trackObserver(reHide)
-      }
-      cleanup.setTimeout(
-        () => {
-          cleanup.untrackObserver(reHide)
-          document.body.classList.remove('hs-mc-navigating')
-        },
-        300,
-        'kick-soft-nav-release',
-      )
-    }
-    const tryReparent = () => {
-      if (done) return true
-      const chatRoom = document.getElementById('channel-chatroom')
-      const c = document.getElementById('hs-mc-container')
-      if (chatRoom && c && c.previousElementSibling !== chatRoom) {
-        chatRoom.after(c)
-        try {
-          updateKickNoChannelClass()
-        } catch (_) {}
-        done = true
-        finish()
-        return true
-      }
-      return false
-    }
-    if (tryReparent()) return
-    const obs = new MutationObserver(() => {
-      if (tryReparent()) cleanup.untrackObserver(obs)
-    })
-    obs.observe(document.documentElement, { childList: true, subtree: true })
-    cleanup.trackObserver(obs)
-    cleanup.setTimeout(
-      () => {
-        if (!done) {
-          done = true
-          cleanup.untrackObserver(obs)
-          try {
-            updateKickNoChannelClass()
-          } catch (_) {}
-          finish()
-        }
-      },
-      4000,
-      'kick-soft-nav-finalize',
-    )
-  }
+  // softKickNav moved to kick-host.js (platform module)
 
   function handleMcNav() {
     // On YouTube, /watch?v=A → /watch?v=B keeps the same pathname — detect
@@ -56670,9 +56017,11 @@ document.addEventListener(
     try {
       updateTwitchNoChannelClass()
     } catch (_) {}
-    try {
-      updateKickNoChannelClass()
-    } catch (_) {}
+    if (isKick) {
+      try {
+        updateKickNoChannelClass()
+      } catch (_) {}
+    }
 
     // Twitch SPA nav: skip the destroy+rebuild path entirely. The panel
     // (and IRC, and feed state) all survive intact — see softTwitchNav.

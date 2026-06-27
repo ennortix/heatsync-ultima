@@ -747,6 +747,45 @@
       max-width: none !important;
       max-height: none !important;
     }
+    /* chat-right (default dock), windowed: the isRight branch in
+       applyPlatformPositionOverrides removes the player's inline width and
+       relies on Twitch's React effect to re-write width:Npx. On a cold load,
+       SPA channel-nav or extension reload it sometimes never does (same race
+       the comment above describes), so the absolutely-positioned player —
+       left:0 with no width — shrink-wraps to ~half width and the rest of the
+       16:9 slot shows Twitch's offline placeholder behind the video. Twitch's
+       own ".channel-root + .persistent-player { width:100% }" is the right
+       target; assert it with !important so it survives the missing/stale
+       inline write. Theatre has its own width rule above, so exclude it. */
+    body.hs-platform-twitch.hs-chat-right:not(.hs-mode-theatre) .persistent-player {
+      width: 100% !important;
+    }
+    /* chat-top / chat-bottom, windowed: the chat-top/bottom branch in
+       applyPlatformPositionOverrides writes all four insets inline with
+       !important, but Twitch's React effect later does el.style.top = X
+       (stripping priority) and re-asserts its own right/bottom — leaving the
+       player with a bogus right inset and width:auto, so it collapses to 0×0
+       and the video vanishes behind the chat strip. width:auto/height:auto
+       above only sizes once the insets are correct; assert the insets here in
+       the stylesheet cascade so they survive React's writes. Mirrors the
+       theatre top/bottom rules above (same --hs-chat-h, 35vh) so the player
+       edge always tracks the chat strip height. Theatre has its own rules. */
+    body.hs-platform-twitch.hs-chat-top:not(.hs-mode-theatre) .persistent-player {
+      top: var(--hs-chat-h, 35vh) !important;
+      bottom: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      inset-inline-start: 0 !important;
+      inset-inline-end: 0 !important;
+    }
+    body.hs-platform-twitch.hs-chat-bottom:not(.hs-mode-theatre) .persistent-player {
+      top: 0 !important;
+      bottom: var(--hs-chat-h, 35vh) !important;
+      left: 0 !important;
+      right: 0 !important;
+      inset-inline-start: 0 !important;
+      inset-inline-end: 0 !important;
+    }
     /* For chat-left, Twitch's React writes el.style.left = X based on its
        own internal width tracking — that wipes any inline !important we
        set in applyChatPosition. CSS rule with !important survives those

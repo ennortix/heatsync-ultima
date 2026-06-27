@@ -26,23 +26,46 @@ function mcHasExternalSource() {
 }
 
 // Per-provider result caches keyed per-query. AbortController cancels stale
-// in-flight requests on each keystroke.
+// in-flight requests on each keystroke. Results ACCUMULATE across pages
+// (load-more appends), so a buried emote past the first page is reachable.
 const mcProviderResults = { '7tv': [], bttv: [], ffz: [] }
 const mcProviderLastQuery = { '7tv': '', bttv: '', ffz: '' }
 const mcProviderInFlight = { '7tv': false, bttv: false, ffz: false }
+const mcProviderPage = { '7tv': 0, bttv: 0, ffz: 0 } // pages loaded so far (0 = none)
+const mcProviderExhausted = { '7tv': false, bttv: false, ffz: false }
+const mcProviderSeenIds = { '7tv': new Set(), bttv: new Set(), ffz: new Set() }
+// A page shorter than the provider's page size means we hit the tail.
+const MC_PAGE_SIZE = { '7tv': 60, bttv: 100, ffz: 200 }
 const _mcProviderAborts = { '7tv': null, bttv: null, ffz: null }
 let mcCurrentQuery = ''
+// Exact-match filter — when on, picker search shows only emotes whose name
+// equals the query (drops prefix + substring), so a common stem like "xd"
+// pins to the literal name. Client-side filter; no refetch needed to toggle.
+let mcExactMatch = (() => {
+  try {
+    return localStorage.getItem('hs-mc-picker-exact') === '1'
+  } catch (_) {
+    return false
+  }
+})()
+function mcSaveExact() {
+  try {
+    localStorage.setItem('hs-mc-picker-exact', mcExactMatch ? '1' : '0')
+  } catch (_) {}
+}
 // Map<name, {url, provider, id}> — populated by rerenderSearch with remote
 // provider results so the click handler can fire add-to-inventory before
 // pasting. Bounded by # of unique provider-search names per session.
 const mcRemoteEmoteIndex = new Map()
 
 // Module-scope re-render so the async event listener can drive it.
+let _mcSearchRenderedQuery = ''
 function mcRerenderSearch(query) {
   const grid = document.getElementById('hs-mc-emote-grid')
   if (!grid) return
   mcRemoteEmoteIndex.clear()
   if (!query) {
+    _mcSearchRenderedQuery = ''
     const allMap = new Map()
     for (const [k, v] of viewerPersonalEmotes) allMap.set(k, v)
     const cc = channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()]
@@ -53,35 +76,94 @@ function mcRerenderSearch(query) {
     markPickerDirty()
     return
   }
-  const filtered = new Map()
-  // Local matches (channel + global + your set) always included.
+  // Best-match ordering — type a name, the exact match leads instantly, then
+  // prefix, then substring; remote provider-fuzzy hits land last. Within a
+  // match bucket: owned > channel > global-local > remote (locality), then
+  // popularity (provider order / local iteration order = `pop`), then alpha.
+  // `pop` is a monotonic insertion counter, so already-shown tiles keep a
+  // stable order when load-more appends new pages.
+  const seenNames = new Set()
+  const entries = []
+  let pop = 0
+  const matchQuality = (nl) => (nl === query ? 0 : nl.startsWith(query) ? 1 : nl.includes(query) ? 2 : 3)
+  // Local matches (your set + channel + globals) — locality 0/1/2.
   {
+    const localLoc = new Map()
     const pool = new Map()
-    for (const [k, v] of viewerPersonalEmotes) pool.set(k, v)
+    for (const [k, v] of viewerPersonalEmotes) {
+      pool.set(k, v)
+      localLoc.set(k, 0)
+    }
     const sc = channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()]
-    if (sc) for (const [k, v] of sc) if (!pool.has(k)) pool.set(k, v)
-    for (const [k, v] of emoteCache) if (!pool.has(k)) pool.set(k, v)
+    if (sc)
+      for (const [k, v] of sc)
+        if (!pool.has(k)) {
+          pool.set(k, v)
+          localLoc.set(k, 1)
+        }
+    for (const [k, v] of emoteCache)
+      if (!pool.has(k)) {
+        pool.set(k, v)
+        localLoc.set(k, 2)
+      }
     for (const [name, emote] of pool) {
-      if (name.toLowerCase().includes(query)) filtered.set(name, emote)
+      const mq = matchQuality(name.toLowerCase())
+      if (mq === 3) continue // local has no fuzzy concept — substring or nothing
+      if (mcExactMatch && mq !== 0) continue
+      seenNames.add(name)
+      entries.push({ name, emote, mq, loc: localLoc.get(name) ?? 2, pop: pop++ })
     }
   }
+  // Remote provider results — locality 3 (below all local). Provider order
+  // already reflects popularity (7TV TOP_ALL_TIME / FFZ count-desc), preserved
+  // via `pop`. Same-name dups collapse to the first (one tile per name —
+  // inventory is name-keyed, so a viewer can only hold one image per name).
   for (const p of ['7tv', 'bttv', 'ffz']) {
     if (!mcPickerSources.has(p)) continue
     if (mcProviderLastQuery[p] !== query) continue
     for (const r of mcProviderResults[p]) {
-      if (!r.name || filtered.has(r.name)) continue
+      if (!r.name || seenNames.has(r.name)) continue
+      const mq = matchQuality(r.name.toLowerCase())
+      if (mcExactMatch && mq !== 0) continue
+      seenNames.add(r.name)
       // state='remote' — unowned picker result, click handler routes through
       // addEmoteToInventory to persist. Auto-add-on-send also commits the slot.
-      filtered.set(r.name, { source: p, state: 'remote', url: r.url, provider: r.provider })
+      entries.push({ name: r.name, emote: { source: p, state: 'remote', url: r.url, provider: r.provider }, mq, loc: 3, pop: pop++ })
       mcRemoteEmoteIndex.set(r.name, { url: r.url, provider: r.provider, id: r.id, zeroWidth: !!r.zeroWidth })
     }
   }
-  // One unified flat feed — no section headers, no visual distinction
-  // between owned and remote results. Click handler still routes remote
-  // emotes through add-to-inventory transparently.
-  const flatEntries = [...filtered.entries()]
+  entries.sort((a, b) => a.mq - b.mq || a.loc - b.loc || a.pop - b.pop || a.name.localeCompare(b.name))
+  // One unified flat feed — no section headers, no visual distinction between
+  // owned and remote results. Click handler routes remote emotes through
+  // add-to-inventory transparently.
+  const flatEntries = entries.map((e) => [e.name, e.emote])
   const flatSection = [{ key: 'search', label: '', emotes: flatEntries }]
+  // Preserve scroll position only when re-rendering the SAME query (load-more
+  // appends below the fold — don't snap to top). A new query resets to top.
+  const sameQuery = query === _mcSearchRenderedQuery
+  const prevScroll = grid.scrollTop
+  _mcSearchRenderedQuery = query
   grid.innerHTML = renderEmoteSections(flatSection, t('common_no_matches'), { noHeaders: true })
+  // `[ load more ]` tile while any enabled provider still has pages to fetch.
+  // Suppressed in exact mode: deeper pages only yield more same-name dups that
+  // collapse to the tiles already shown, so paging would just burn round-trips
+  // on results the exact filter discards.
+  const canLoadMore =
+    entries.length > 0 && !mcExactMatch && ['7tv', 'bttv', 'ffz'].some((p) => mcPickerSources.has(p) && !mcProviderExhausted[p])
+  if (canLoadMore) {
+    const more = document.createElement('button')
+    more.type = 'button'
+    more.className = 'hs-mc-load-more'
+    more.textContent = t('mc_emote_load_more')
+    more.addEventListener('click', (e) => {
+      e.stopPropagation()
+      more.textContent = t('common_loading') // reset on the next results-ready rebuild
+      more.disabled = true
+      mcLoadMoreSearch()
+    })
+    grid.appendChild(more)
+  }
+  grid.scrollTop = sameQuery ? prevScroll : 0
   attachChunkObserver(grid)
   markPickerDirty()
 }
@@ -100,6 +182,7 @@ const MC_SEVEN_TV_V4_GQL = `query SearchEmotes($query: String!, $page: Int!, $pe
 
 async function mcSearch7tvApi(q, signal, opts) {
   const perPage = opts && Number.isFinite(opts.perPage) ? opts.perPage : 60
+  const page = opts && Number.isFinite(opts.page) ? opts.page : 1
   const resp = await fetch('https://api.7tv.app/v4/gql', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -107,7 +190,7 @@ async function mcSearch7tvApi(q, signal, opts) {
     body: JSON.stringify({
       operationName: 'SearchEmotes',
       query: MC_SEVEN_TV_V4_GQL,
-      variables: { query: q, page: 1, perPage },
+      variables: { query: q, page, perPage },
     }),
   })
   if (!resp.ok) throw new Error(`7tv ${resp.status}`)
@@ -124,9 +207,11 @@ async function mcSearch7tvApi(q, signal, opts) {
   }))
 }
 
-async function mcSearchBttvApi(q, signal) {
+async function mcSearchBttvApi(q, signal, opts) {
+  const page = opts && Number.isFinite(opts.page) ? opts.page : 1
+  const offset = (page - 1) * MC_PAGE_SIZE.bttv
   const r = await fetch(
-    `https://api.betterttv.net/3/emotes/shared/search?query=${encodeURIComponent(q)}&offset=0&limit=100`,
+    `https://api.betterttv.net/3/emotes/shared/search?query=${encodeURIComponent(q)}&offset=${offset}&limit=${MC_PAGE_SIZE.bttv}`,
     { signal },
   )
   if (!r.ok) throw new Error(`bttv ${r.status}`)
@@ -141,9 +226,10 @@ async function mcSearchBttvApi(q, signal) {
   }))
 }
 
-async function mcSearchFfzApi(q, signal) {
+async function mcSearchFfzApi(q, signal, opts) {
+  const page = opts && Number.isFinite(opts.page) ? opts.page : 1
   const r = await fetch(
-    `https://api.frankerfacez.com/v1/emotes?q=${encodeURIComponent(q)}&sort=count-desc&per_page=200`,
+    `https://api.frankerfacez.com/v1/emotes?q=${encodeURIComponent(q)}&sort=count-desc&per_page=${MC_PAGE_SIZE.ffz}&page=${page}`,
     { signal },
   )
   if (!r.ok) throw new Error(`ffz ${r.status}`)
@@ -164,53 +250,93 @@ async function mcSearchFfzApi(q, signal) {
   })
 }
 
+function mcResetProvider(p) {
+  mcProviderResults[p] = []
+  mcProviderSeenIds[p].clear()
+  mcProviderPage[p] = 0
+  mcProviderExhausted[p] = false
+  mcProviderInFlight[p] = false
+  mcProviderLastQuery[p] = ''
+}
+
+// Fetch the next page for one provider and APPEND (dedup by id) to its
+// accumulated results. Guarded so it's a no-op while a fetch is in flight or
+// the provider is exhausted, so a load-more burst or rapid clicks can't pile
+// up duplicate requests.
+function mcFetchProviderPage(p, q) {
+  if (!q || !mcPickerSources.has(p) || mcProviderExhausted[p] || mcProviderInFlight[p]) return
+  const page = mcProviderPage[p] + 1
+  const ac = new AbortController()
+  _mcProviderAborts[p] = ac
+  mcProviderInFlight[p] = true
+  const fn = p === '7tv' ? mcSearch7tvApi : p === 'bttv' ? mcSearchBttvApi : mcSearchFfzApi
+  fn(q, ac.signal, { page })
+    .then((items) => {
+      if (ac.signal.aborted || mcCurrentQuery !== q) return
+      mcProviderInFlight[p] = false
+      mcProviderPage[p] = page
+      mcProviderLastQuery[p] = q
+      // A short page means the tail — stop offering more for this provider.
+      if (!Array.isArray(items) || items.length < MC_PAGE_SIZE[p]) mcProviderExhausted[p] = true
+      const seen = mcProviderSeenIds[p]
+      for (const it of items || []) {
+        const key = it.id || it.name
+        if (key && seen.has(key)) continue
+        if (key) seen.add(key)
+        mcProviderResults[p].push(it)
+      }
+      document.dispatchEvent(new CustomEvent('hs-mc-search-results-ready', { detail: { query: q, provider: p } }))
+    })
+    .catch((err) => {
+      if (ac.signal.aborted || err?.name === 'AbortError') return
+      mcProviderInFlight[p] = false
+      // Stop hammering a failing provider, but keep pages already fetched.
+      mcProviderExhausted[p] = true
+      document.dispatchEvent(new CustomEvent('hs-mc-search-results-ready', { detail: { query: q, provider: p } }))
+    })
+}
+
+// Initial search for a new query — reset pagination per provider (aborting any
+// stale in-flight page) and fetch page 1. A provider already holding results
+// for this exact query is a cache hit (skipped), so re-toggling a chip or
+// re-opening the picker doesn't refetch.
 function mcTriggerProviderSearches(q) {
   for (const p of ['7tv', 'bttv', 'ffz']) {
-    if (_mcProviderAborts[p]) {
-      try {
-        _mcProviderAborts[p].abort()
-      } catch (_) {}
-    }
     if (!q) {
-      mcProviderResults[p] = []
-      mcProviderLastQuery[p] = ''
-      mcProviderInFlight[p] = false
+      if (_mcProviderAborts[p]) {
+        try {
+          _mcProviderAborts[p].abort()
+        } catch (_) {}
+      }
+      mcResetProvider(p)
       continue
     }
     if (!mcPickerSources.has(p)) {
-      mcProviderInFlight[p] = false
+      // Just-disabled provider — abort any in-flight page so it can't push a
+      // stale result + fire a spurious repaint.
+      if (_mcProviderAborts[p]) {
+        try {
+          _mcProviderAborts[p].abort()
+        } catch (_) {}
+      }
       continue
     }
-    if (mcProviderLastQuery[p] === q && mcProviderResults[p].length > 0) {
-      mcProviderInFlight[p] = false
-      continue
+    if (mcProviderLastQuery[p] === q && mcProviderResults[p].length > 0) continue // cache hit
+    if (_mcProviderAborts[p]) {
+      try {
+        _mcProviderAborts[p].abort() // kill a stale page (e.g. "xd" page 2) before the new query
+      } catch (_) {}
     }
-    const ac = new AbortController()
-    _mcProviderAborts[p] = ac
-    mcProviderInFlight[p] = true
-    const fn = p === '7tv' ? mcSearch7tvApi : p === 'bttv' ? mcSearchBttvApi : mcSearchFfzApi
-    fn(q, ac.signal)
-      .then((items) => {
-        if (ac.signal.aborted) return
-        mcProviderResults[p] = items
-        mcProviderLastQuery[p] = q
-        mcProviderInFlight[p] = false
-        if (mcCurrentQuery === q) {
-          // Re-render the picker grid with merged results.
-          const ev = new CustomEvent('hs-mc-search-results-ready', { detail: { query: q, provider: p } })
-          document.dispatchEvent(ev)
-        }
-      })
-      .catch((err) => {
-        if (ac.signal.aborted || err?.name === 'AbortError') return
-        mcProviderInFlight[p] = false
-        mcProviderResults[p] = []
-        if (mcCurrentQuery === q) {
-          const ev = new CustomEvent('hs-mc-search-results-ready', { detail: { query: q, provider: p } })
-          document.dispatchEvent(ev)
-        }
-      })
+    mcResetProvider(p)
+    mcFetchProviderPage(p, q)
   }
+}
+
+// Load-more — pull the next page from every enabled, non-exhausted provider.
+function mcLoadMoreSearch() {
+  const q = mcCurrentQuery
+  if (!q) return
+  for (const p of ['7tv', 'bttv', 'ffz']) mcFetchProviderPage(p, q)
 }
 
 const UNICODE_EMOJI_RE = /^[\p{Extended_Pictographic}\p{Emoji_Presentation}\uFE0F\u200D]+$/u
@@ -622,9 +748,18 @@ function showEmotePicker(tab = null) {
       btn.type = 'button'
       chipBar.appendChild(btn)
     }
+    // Exact-match filter chip — precision toggle (exact name only). Orange
+    // accent marks it as a HeatSync filter, distinct from the brand-colored
+    // provider chips.
+    const exactBtn = document.createElement('button')
+    exactBtn.className = 'hs-mc-exact-chip' + (mcExactMatch ? ' active' : '')
+    exactBtn.textContent = t('mc_emote_exact')
+    exactBtn.title = 'exact name match only'
+    exactBtn.type = 'button'
+    chipBar.appendChild(exactBtn)
     // Clicking a chip blurs the search input; preventDefault keeps focus.
     chipBar.addEventListener('mousedown', (e) => {
-      if (e.target.closest('.hs-mc-src-chip')) e.preventDefault()
+      if (e.target.closest('.hs-mc-src-chip, .hs-mc-exact-chip')) e.preventDefault()
     })
     searchWrap.appendChild(chipBar)
   }
@@ -646,6 +781,16 @@ function showEmotePicker(tab = null) {
       if (mcHasExternalSource()) mcTriggerProviderSearches(q)
       rerenderSearch(q)
     })
+  })
+
+  // Exact-match chip — client-side filter, no refetch (results already cached).
+  picker.querySelector('.hs-mc-exact-chip')?.addEventListener('click', (e) => {
+    e.stopPropagation()
+    mcExactMatch = !mcExactMatch
+    e.currentTarget.classList.toggle('active', mcExactMatch)
+    mcSaveExact()
+    const q = (document.getElementById('hs-mc-emote-search')?.value || '').toLowerCase().trim()
+    if (q) rerenderSearch(q)
   })
 
   // Search functionality (debounced). When external chips are on the query

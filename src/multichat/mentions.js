@@ -6,7 +6,7 @@ function escapeRegex(s) {
 
 // Aliases — kick + youtube usernames in addition to currentUsername (twitch).
 // Populated by loadHsUsername() in social.js from user_info.kick_username etc.
-const mentionAliases = new Set()
+let mentionAliases = new Set()
 let _mentionReList = null
 let _mentionReKey = ''
 

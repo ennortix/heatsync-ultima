@@ -5881,7 +5881,10 @@ async function handleMessage(message, sender, sendResponse) {
       sendResponse(null)
       return true
     }
-    fetch(`${LINK_PREVIEW_API}?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(6000), credentials: 'include' })
+    fetch(`${LINK_PREVIEW_API}?url=${encodeURIComponent(url)}`, {
+      signal: AbortSignal.timeout(6000),
+      credentials: 'include',
+    })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => sendResponse(data))
       .catch(() => sendResponse(null))
@@ -9281,7 +9284,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Reject messages from other extensions — must be this extension's own scripts.
   const _senderUrl = sender?.tab?.url || sender?.url || ''
   const _isFromPopup = !sender?.tab
-  const _isOwnExt = !sender?.id || sender.id === chrome.runtime.id
+  const _isOwnExt = sender?.id === chrome.runtime.id
   const _isValidOrigin =
     _isFromPopup || /^https:\/\/([a-z0-9-]+\.)*(twitch\.tv|kick\.com|heatsync\.org|youtube\.com)(\/|$)/.test(_senderUrl)
   if (!(_isOwnExt && _isValidOrigin)) {
@@ -9785,9 +9788,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Reject messages from other extensions — must be this extension's own scripts.
   const _senderUrl2 = sender?.tab?.url || sender?.url || ''
   const _isFromPopup2 = !sender?.tab
-  const _isOwnExt2 = !sender?.id || sender.id === chrome.runtime.id
+  const _isOwnExt2 = sender?.id === chrome.runtime.id
   const _isValidOrigin2 =
-    _isFromPopup2 || /^https:\/\/([a-z0-9-]+\.)*(twitch\.tv|kick\.com|heatsync\.org|youtube\.com)(\/|$)/.test(_senderUrl2)
+    _isFromPopup2 ||
+    /^https:\/\/([a-z0-9-]+\.)*(twitch\.tv|kick\.com|heatsync\.org|youtube\.com)(\/|$)/.test(_senderUrl2)
   if (!(_isOwnExt2 && _isValidOrigin2)) {
     sendResponse({ ok: false, error: 'unauthorized sender' })
     return true

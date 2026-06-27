@@ -128,7 +128,7 @@ function pushActivityEvent(evt) {
   if (activityEvents.length > ACTIVITY_EVENTS_MAX) activityEvents.splice(0, activityEvents.length - ACTIVITY_EVENTS_MAX)
 }
 let activeThread = null // { id, op, replies[] } — when set, feed shows thread view
-const replyState = null // { msgId, user, channel } when replying to a message
+let replyState = null // { msgId, user, channel } when replying to a message
 let hsAuthToken = null // Heatsync auth state (loaded from storage)
 let hsCurrentUsername = null // Heatsync username (loaded from storage user_info)
 let hsCurrentUserId = null // Heatsync numeric user id (for reaction matching)
@@ -1563,7 +1563,7 @@ function renderFeedContent(content, emoteRefs) {
       const url = /^https?:\/\//i.test(match) ? match : 'https://' + match
       const text = escapeHtml(match)
       const href = escapeHtml(url)
-      return `<a href="${href}" target="_blank" rel="noopener" class="hs-mc-link">${text}</a>`
+      return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="hs-mc-link">${text}</a>`
     })
   }
   // Text formatting (bold, italic, spoilers, etc.) — skip <a>...</a> blocks so URL underscores aren't italicized.
@@ -1589,7 +1589,7 @@ function renderFeedContent(content, emoteRefs) {
           const lower = name.toLowerCase()
           const isSelf = hsCurrentUsername === lower
           const cls = isSelf ? 'hs-mention self' : 'hs-mention'
-          return `<a href="https://heatsync.org/user/${encodeURIComponent(name)}" target="_blank" rel="noopener" class="${cls}" data-username="${escapeHtml(lower)}">@${escapeHtml(name)}</a>`
+          return `<a href="https://heatsync.org/user/${encodeURIComponent(name)}" target="_blank" rel="noopener noreferrer" class="${cls}" data-username="${escapeHtml(lower)}">@${escapeHtml(name)}</a>`
         })
       })
       .join('')
@@ -1602,7 +1602,7 @@ function renderFeedContent(content, emoteRefs) {
       .map((part, i) => {
         if (i % 2 === 1) return part
         return part.replace(/#([a-zA-Z][a-zA-Z0-9_]{1,29})\b/g, (m, tag) => {
-          return `<a href="https://heatsync.org/tag/${encodeURIComponent(tag)}" target="_blank" rel="noopener" class="hs-hashtag" data-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</a>`
+          return `<a href="https://heatsync.org/tag/${encodeURIComponent(tag)}" target="_blank" rel="noopener noreferrer" class="hs-hashtag" data-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</a>`
         })
       })
       .join('')

@@ -40,7 +40,7 @@ const pendingEmoteOps = new Set()
 // Cache own badge string from IRC messages for optimistic display.
 // Per-channel: sub badge tier differs by streamer, so a single global ref
 // stamped the wrong channel's sub badge onto synthetic celebrations.
-const _ownBadges = ''
+let _ownBadges = ''
 const _ownBadgesByChannel = new Map() // channelLower -> badges string
 function ownBadgesFor(channel) {
   if (!channel) return _ownBadges

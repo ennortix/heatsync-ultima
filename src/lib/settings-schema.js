@@ -1900,10 +1900,11 @@ function lintSettings(syncBlocklist) {
       if (optVals.length !== defKeys.length || !optVals.every((k) => defKeys.indexOf(k) !== -1)) {
         problems.push('boolmap default/options key mismatch: ' + def.key)
       }
-      if (boolmapOpts) boolmapOpts.forEach((o) => {
-        if (def.default[o.value] !== o.default)
-          problems.push('boolmap per-option default disagrees with default map: ' + def.key + '.' + o.value)
-      })
+      if (boolmapOpts)
+        boolmapOpts.forEach((o) => {
+          if (def.default[o.value] !== o.default)
+            problems.push('boolmap per-option default disagrees with default map: ' + def.key + '.' + o.value)
+        })
     }
     if (def.cw && (!def.cw.stateKey || !def.cw.serverBody || !def.cw.noun)) {
       problems.push('cw sub-shape incomplete: ' + def.key)

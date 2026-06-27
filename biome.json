@@ -37,7 +37,7 @@
         "noInnerDeclarations": "off"
       },
       "style": {
-        "useConst": "warn"
+        "useConst": "off"
       }
     }
   },

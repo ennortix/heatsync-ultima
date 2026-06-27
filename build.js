@@ -224,7 +224,11 @@ function checkErrorReporterParity() {
       if (src[i] === '[') depth++
       else if (src[i] === ']') {
         depth--
-        if (depth === 0) return src.slice(open + 1, i).replace(/\s+/g, ' ').trim()
+        if (depth === 0)
+          return src
+            .slice(open + 1, i)
+            .replace(/\s+/g, ' ')
+            .trim()
       }
     }
     return null
@@ -240,9 +244,7 @@ function checkErrorReporterParity() {
       'checkErrorReporterParity: could not extract SENSITIVE_PARAMS from background.js or error-reporter.js',
     )
   if (!bgTS || !erTS)
-    throw new Error(
-      'checkErrorReporterParity: could not extract TEXT_SCRUB from background.js or error-reporter.js',
-    )
+    throw new Error('checkErrorReporterParity: could not extract TEXT_SCRUB from background.js or error-reporter.js')
   if (bgSP !== erSP)
     throw new Error(
       `checkErrorReporterParity: SENSITIVE_PARAMS drift detected\n  background.js: ${bgSP.slice(0, 80)}\n  error-reporter.js: ${erSP.slice(0, 80)}`,
@@ -532,10 +534,6 @@ function build(browser) {
     // Write to chrome/ so unpacked extension loads the bundled version
     if (browser === 'chrome') {
       writeFileSync(join(chromeDir, outFile), bundled)
-      // Back-compat: keep chrome/multichat.js pointing at twitch bundle for dev
-      if (platform === 'twitch') {
-        writeFileSync(join(chromeDir, 'multichat.js'), bundled)
-      }
     }
     console.log(`  Bundled multichat-${platform}.js`)
   }

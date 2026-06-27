@@ -218,13 +218,13 @@ const WS_RE = /^\s+$/
 const LINK_RE = /^(https?:\/\/\S+|[a-z0-9-]+(\.[a-z0-9-]+)+\/\S*)/i
 
 // Emote size (1, 2, or 4)
-const emoteSize = 1
+let emoteSize = 1
 
 // Animate-emotes toggle (registry: animateEmotes). When off, animated
 // gif/webp srcs route through heatsync's emote proxy with static=1 —
 // the server extracts the first frame (sharp, 30-day immutable cache).
 // data-emote-url keeps the ORIGINAL url for tooltips/copy/re-add.
-const emoteAnimationEnabled = true
+let emoteAnimationEnabled = true
 function staticEmoteSrc(url) {
   if (emoteAnimationEnabled || !url) return url
   if (!/\.(gif|webp)(\?|$)/i.test(url)) return url

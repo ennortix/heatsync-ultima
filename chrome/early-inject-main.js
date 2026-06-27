@@ -902,7 +902,10 @@
       }
       if (!_proxyAllowed(_helixRate)) {
         log('heatsync-helix: rate limit exceeded')
-        window.postMessage({ type: 'heatsync-helix-response', id: e.data.id, error: 'rate limit exceeded' }, location.origin)
+        window.postMessage(
+          { type: 'heatsync-helix-response', id: e.data.id, error: 'rate limit exceeded' },
+          location.origin,
+        )
         return
       }
       const req = e.data

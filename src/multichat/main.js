@@ -249,7 +249,16 @@
   const SCROLLBACK_MAX = 1500 // hard ceiling on rendered rows (3x the live cap)
 
   const isKick = typeof __HS_HOST__ !== 'undefined' ? __HS_HOST__ === 'kick' : location.hostname.includes('kick.com')
-  const hostPlatform = typeof __HS_HOST__ !== 'undefined' ? (__HS_HOST__ === 'youtube' ? 'yt' : __HS_HOST__) : (isKick ? 'kick' : location.hostname.includes('youtube.com') ? 'yt' : 'twitch')
+  const hostPlatform =
+    typeof __HS_HOST__ !== 'undefined'
+      ? __HS_HOST__ === 'youtube'
+        ? 'yt'
+        : __HS_HOST__
+      : isKick
+        ? 'kick'
+        : location.hostname.includes('youtube.com')
+          ? 'yt'
+          : 'twitch'
 
   // Whether the user has chosen to show native platform chat alongside HS.
   // Persisted via settings registry (key: nativeVisible). Default false = same

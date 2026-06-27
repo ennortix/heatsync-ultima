@@ -3172,10 +3172,11 @@ function lintSettings(syncBlocklist) {
       if (optVals.length !== defKeys.length || !optVals.every((k) => defKeys.indexOf(k) !== -1)) {
         problems.push('boolmap default/options key mismatch: ' + def.key)
       }
-      if (boolmapOpts) boolmapOpts.forEach((o) => {
-        if (def.default[o.value] !== o.default)
-          problems.push('boolmap per-option default disagrees with default map: ' + def.key + '.' + o.value)
-      })
+      if (boolmapOpts)
+        boolmapOpts.forEach((o) => {
+          if (def.default[o.value] !== o.default)
+            problems.push('boolmap per-option default disagrees with default map: ' + def.key + '.' + o.value)
+        })
     }
     if (def.cw && (!def.cw.stateKey || !def.cw.serverBody || !def.cw.noun)) {
       problems.push('cw sub-shape incomplete: ' + def.key)
@@ -16869,7 +16870,7 @@ function escapeRegex(s) {
 
 // Aliases — kick + youtube usernames in addition to currentUsername (twitch).
 // Populated by loadHsUsername() in social.js from user_info.kick_username etc.
-const mentionAliases = new Set()
+let mentionAliases = new Set()
 let _mentionReList = null
 let _mentionReKey = ''
 
@@ -19080,13 +19081,13 @@ const WS_RE = /^\s+$/
 const LINK_RE = /^(https?:\/\/\S+|[a-z0-9-]+(\.[a-z0-9-]+)+\/\S*)/i
 
 // Emote size (1, 2, or 4)
-const emoteSize = 1
+let emoteSize = 1
 
 // Animate-emotes toggle (registry: animateEmotes). When off, animated
 // gif/webp srcs route through heatsync's emote proxy with static=1 —
 // the server extracts the first frame (sharp, 30-day immutable cache).
 // data-emote-url keeps the ORIGINAL url for tooltips/copy/re-add.
-const emoteAnimationEnabled = true
+let emoteAnimationEnabled = true
 function staticEmoteSrc(url) {
   if (emoteAnimationEnabled || !url) return url
   if (!/\.(gif|webp)(\?|$)/i.test(url)) return url
@@ -28237,7 +28238,7 @@ function pushActivityEvent(evt) {
   if (activityEvents.length > ACTIVITY_EVENTS_MAX) activityEvents.splice(0, activityEvents.length - ACTIVITY_EVENTS_MAX)
 }
 let activeThread = null // { id, op, replies[] } — when set, feed shows thread view
-const replyState = null // { msgId, user, channel } when replying to a message
+let replyState = null // { msgId, user, channel } when replying to a message
 let hsAuthToken = null // Heatsync auth state (loaded from storage)
 let hsCurrentUsername = null // Heatsync username (loaded from storage user_info)
 let hsCurrentUserId = null // Heatsync numeric user id (for reaction matching)
@@ -29672,7 +29673,7 @@ function renderFeedContent(content, emoteRefs) {
       const url = /^https?:\/\//i.test(match) ? match : 'https://' + match
       const text = escapeHtml(match)
       const href = escapeHtml(url)
-      return `<a href="${href}" target="_blank" rel="noopener" class="hs-mc-link">${text}</a>`
+      return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="hs-mc-link">${text}</a>`
     })
   }
   // Text formatting (bold, italic, spoilers, etc.) — skip <a>...</a> blocks so URL underscores aren't italicized.
@@ -29698,7 +29699,7 @@ function renderFeedContent(content, emoteRefs) {
           const lower = name.toLowerCase()
           const isSelf = hsCurrentUsername === lower
           const cls = isSelf ? 'hs-mention self' : 'hs-mention'
-          return `<a href="https://heatsync.org/user/${encodeURIComponent(name)}" target="_blank" rel="noopener" class="${cls}" data-username="${escapeHtml(lower)}">@${escapeHtml(name)}</a>`
+          return `<a href="https://heatsync.org/user/${encodeURIComponent(name)}" target="_blank" rel="noopener noreferrer" class="${cls}" data-username="${escapeHtml(lower)}">@${escapeHtml(name)}</a>`
         })
       })
       .join('')
@@ -29711,7 +29712,7 @@ function renderFeedContent(content, emoteRefs) {
       .map((part, i) => {
         if (i % 2 === 1) return part
         return part.replace(/#([a-zA-Z][a-zA-Z0-9_]{1,29})\b/g, (m, tag) => {
-          return `<a href="https://heatsync.org/tag/${encodeURIComponent(tag)}" target="_blank" rel="noopener" class="hs-hashtag" data-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</a>`
+          return `<a href="https://heatsync.org/tag/${encodeURIComponent(tag)}" target="_blank" rel="noopener noreferrer" class="hs-hashtag" data-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</a>`
         })
       })
       .join('')
@@ -32342,7 +32343,7 @@ const pendingEmoteOps = new Set()
 // Cache own badge string from IRC messages for optimistic display.
 // Per-channel: sub badge tier differs by streamer, so a single global ref
 // stamped the wrong channel's sub badge onto synthetic celebrations.
-const _ownBadges = ''
+let _ownBadges = ''
 const _ownBadgesByChannel = new Map() // channelLower -> badges string
 function ownBadgesFor(channel) {
   if (!channel) return _ownBadges
@@ -40607,7 +40608,16 @@ function _hsEnsureYtBelowObserver(_tries) {
   const SCROLLBACK_MAX = 1500 // hard ceiling on rendered rows (3x the live cap)
 
   const isKick = typeof __HS_HOST__ !== 'undefined' ? __HS_HOST__ === 'kick' : location.hostname.includes('kick.com')
-  const hostPlatform = typeof __HS_HOST__ !== 'undefined' ? (__HS_HOST__ === 'youtube' ? 'yt' : __HS_HOST__) : (isKick ? 'kick' : location.hostname.includes('youtube.com') ? 'yt' : 'twitch')
+  const hostPlatform =
+    typeof __HS_HOST__ !== 'undefined'
+      ? __HS_HOST__ === 'youtube'
+        ? 'yt'
+        : __HS_HOST__
+      : isKick
+        ? 'kick'
+        : location.hostname.includes('youtube.com')
+          ? 'yt'
+          : 'twitch'
 
   // Whether the user has chosen to show native platform chat alongside HS.
   // Persisted via settings registry (key: nativeVisible). Default false = same

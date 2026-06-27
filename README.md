@@ -1,15 +1,15 @@
 # heatsync
 
-your own emotes on every twitch, kick + youtube chat — no streamer approval, no sub. plus a multichat panel for all three.
+your emotes in twitch and kick chat — any channel, no streamer approval, no sub. plus one multichat panel for twitch, kick + youtube.
 
 ## features
 
-- **emote sovereignty** — a free 5000-slot inventory (one free account at [heatsync.org](https://heatsync.org)) renders in twitch + kick native chat and across the overlay, in any channel — whether or not the streamer enabled anything. tab-complete a 7TV name or paste any emote, hit enter; the slot lands silently. one click imports every emote from a channel.
-- **multichat overlay** — twitch + kick + youtube live chat in one tabbed panel: per-channel tabs, per-platform filters, mentions, whispers, resizable + dockable to any edge. no account required to watch.
-- **7TV / BTTV / FFZ** — emotes, paints, and badges render automatically. coexists with those extensions — keep 7TV, add heatsync for the cross-platform chat and portable emotes it doesn't do.
-- **power-user input** — vim keybindings on every chat input (normal/insert, motions, operators, `.` repeat), wysiwyg emote composer, message history, reply threading, and instant `/`-filter of the live buffer by text or user.
-- **moderation + profiles** — hover mod toolbar (`/ban` `/timeout` `/unban` `/delete`), client-side automod, user mute/block synced across twitch↔kick, btop-style profile cards with a paginated chat-log archive, one-click twitch clips.
-- **light on your machine** — vanilla js, zero runtime deps; capped chat buffer + dom render cap hold memory steady across 8+ hour sessions. one-click low-RAM preset for weak or passively-cooled hardware.
+- **emote sovereignty** — a free 5000-slot inventory ([one account](https://heatsync.org)) that follows you into twitch and kick native chat and the overlay — any channel, no streamer opt-in. tab-complete a 7TV emote and hit send; the slot fills silently. one click imports a channel's whole emote set.
+- **multichat overlay** — twitch, kick, and youtube chat in one panel: per-channel tabs, per-platform filters, mentions, twitch whispers, resizable and dockable to any edge. no account needed to read.
+- **7TV / BTTV / FFZ** — emotes, paints, and badges render automatically, channel and global. heatsync sits next to those extensions — keep them, and add the cross-platform chat and portable emotes they don't do.
+- **keyboard-first input** — vim keybindings on the twitch, kick, and multichat inputs (normal/insert, motions, operators, `.` repeat), a wysiwyg emote composer, message history, reply threading, and an instant filter that narrows the live buffer by text or user.
+- **moderation + profiles** — a hover mod toolbar (`/ban` `/timeout` `/unban` `/delete`), client-side automod, and mute-or-block that carries a user across twitch and kick. profile cards with socials, badges, and a paginated chat-log archive a click away. one-click twitch clips.
+- **light on your machine** — vanilla js, zero runtime dependencies. a capped message buffer and dom render cap hold memory steady through long sessions. one click drops to a low-ram preset for weak or passively-cooled hardware.
 
 ## install
 

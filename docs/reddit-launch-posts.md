@@ -24,7 +24,7 @@ positioning: lead with **viewer emote sovereignty** — your free 5000-slot inve
 
 been a multi-stream watcher for years — main stream up, a couple others i half-follow, chat moving in all of them. the problem was never one platform, it was that they don't talk to each other. chatterino handles twitch beautifully but stops at the twitch border, and the second a creator i follow goes live on kick or does a youtube stream, i'm back to tab-roulette.
 
-so i built the thing i wanted: one tabbed panel that pulls twitch, kick, and youtube chat together. you read and send in all of them from one place, your mentions and whispers surface across platforms, and 7tv / bttv / ffz emotes render everywhere (no account needed for that part).
+so i built the thing i wanted: one tabbed panel that pulls twitch, kick, and youtube chat together. you read and send in all of them from one place, your mentions surface across platforms (plus a twitch whispers tab), and 7tv / bttv / ffz emotes render everywhere (no account needed for that part).
 
 honest disclaimers up front:
 - i'm a solo dev, this is a passion project, not a company
@@ -48,7 +48,7 @@ not trying to spam a link in the body — happy to drop it in a comment if a mod
 
 one thing about following kick streamers: half the people i watch are split across kick and twitch, and i was constantly bouncing tabs to keep up with chat in both. native tools are all single-platform — chatterino is twitch-only, and nothing treats kick as a first-class citizen alongside the others.
 
-so i built a multichat overlay that does: kick + twitch + youtube live chat in ONE tabbed panel. read and send in any of them without leaving the page, mentions/whispers surface across platforms, and it renders 7tv / bttv / ffz emotes too (no account needed).
+so i built a multichat overlay that does: kick + twitch + youtube live chat in ONE tabbed panel. read and send in any of them without leaving the page, mentions surface across platforms (with a twitch whispers tab), and it renders 7tv / bttv / ffz emotes too (no account needed).
 
 straight up:
 - solo dev, free, no ads

@@ -78,7 +78,7 @@ unified right-click ctx menu (mute/block/block-emote/profile/logs/copy); user
 mute (kick↔twitch alias cross-mute, timed, ws-synced); user block; client automod
 (caps + custom regex); hide bots/commands/dupes/keywords; show-cleared-messages.
 
-**profile cards** — btop-style card (banner/avatar/subs/stats/linked accounts/
+**profile cards** — rich card (banner/avatar/subs/stats/linked accounts/
 follow); clip creation; chat-logs panel (paginated archive, search-within,
 permalinks); quick-links (sub/clip/popout/modview/dashboard deep-links).
 

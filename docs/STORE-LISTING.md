@@ -26,17 +26,17 @@ your emote inventory in any twitch, kick or youtube chat — free, up to 5000 sl
 
 ## AMO / CWS Description (long — current AMO copy is timeless; reuse for CWS detailed description)
 ```
-your own emotes, in every chat — twitch, kick + youtube. heatsync gives you a personal 5000-slot emote inventory that renders in any channel's chat, whether or not the streamer enabled anything. free.
+your own emotes in twitch and kick chat — any channel, whether or not the streamer enabled anything. a personal 5000-slot inventory, plus one panel for twitch, kick + youtube chat. free.
 
-• emote sovereignty — upload or import any emote (7tv, bttv, ffz, or your own) into a free 5000-slot inventory. tab-complete a name or paste a link, hit enter — it renders in twitch + kick native chat and across the overlay, in any channel. one click imports a whole channel's emotes.
+• emote sovereignty — upload or import any emote (7tv, bttv, ffz, or your own) into a free 5000-slot inventory. tab-complete a name and send — it fills the slot silently and renders in twitch + kick native chat and the overlay, any channel. one click imports a whole channel's emotes.
 
-• cross-platform multichat — twitch, kick + youtube live chat in one tabbed panel: per-channel tabs, per-platform filters, mentions, whispers, resizable + dockable. no account needed to watch.
+• cross-platform multichat — twitch, kick + youtube live chat in one tabbed panel: per-channel tabs, per-platform filters, mentions, twitch whispers, resizable + dockable to any edge. no account needed to read.
 
-• 7tv / bttv / ffz — emotes, paints + badges render automatically. coexists with those extensions.
+• 7tv / bttv / ffz — emotes, paints + badges render automatically, channel and global. runs alongside those extensions — add the cross-platform chat and portable emotes they don't do.
 
-• power-user input — vim keybindings on every chat input, wysiwyg emote composer, message history, reply threading, instant /-filter of the live buffer.
+• keyboard-first input — vim keybindings on the twitch, kick + multichat inputs, wysiwyg emote composer, message history, reply threading, instant filter of the live buffer by text or user.
 
-• moderation + profiles — hover mod toolbar, client-side automod, mute/block synced across twitch↔kick, profile cards with a chat-log archive + one-click clips.
+• moderation + profiles — hover mod toolbar (ban/timeout/unban/delete), client-side automod, mute or block that carries a user across twitch and kick, profile cards with a paginated chat-log archive, one-click twitch clips.
 
 • light on your machine — vanilla js, zero runtime deps, capped buffers hold memory steady over long sessions.
 

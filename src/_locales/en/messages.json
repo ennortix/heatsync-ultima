@@ -653,6 +653,12 @@
   "mc_settings_link_previews_desc": {
     "message": "show og:title/description tooltip on hover"
   },
+  "mc_settings_media_embeds": {
+    "message": "inline media"
+  },
+  "mc_settings_media_embeds_desc": {
+    "message": "show images, gifs, video and link cards inline in chat (no autoplaying iframes)"
+  },
   "mc_settings_vi_mode": {
     "message": "vi mode"
   },

@@ -2036,6 +2036,12 @@
         linkPreviewsEnabled = v
       },
     },
+    mediaEmbedsEnabled: {
+      get: () => mediaEmbedsEnabled,
+      set: (v) => {
+        mediaEmbedsEnabled = v
+      },
+    },
     viModeEnabled: {
       get: () => viModeEnabled,
       set: (v) => {
@@ -3178,6 +3184,10 @@
 
   // Link preview tooltip on hover (default on)
   let linkPreviewsEnabled = true
+
+  // Inline media embeds in chat — images/gifs/video/link-cards rendered below
+  // the message (never live iframes; see extractChatEmbed). Default on.
+  let mediaEmbedsEnabled = true;
 
   // Vi mode for chat input (default off)
   let viModeEnabled = false
@@ -9491,6 +9501,23 @@
     if (m.replyTo) {
       if (m.replyTo.id) div.dataset.replyId = m.replyTo.id
       if (m.replyTo.threadId) div.dataset.replyThreadId = m.replyTo.threadId
+    }
+    // Inline media — a single lightweight embed (direct img/video, a youtube
+    // thumbnail, or a server-resolved rich card) below the text. NEVER a live
+    // iframe: chat is high-volume and runs on low-RAM hardware. Appended as a
+    // sibling node (outside the cached _renderedHtml) so toggling the setting
+    // takes effect on the next rerender. Lazy-loaded, error-guarded, capped.
+    if (mediaEmbedsEnabled && !m.cleared && m.text && m.type !== 'usernotice' && m.type !== 'notice'
+        && typeof extractChatEmbed === 'function') {
+      const embedHtml = extractChatEmbed(m.text)
+      if (embedHtml) {
+        const holder = document.createElement('div')
+        holder.className = 'hs-mc-media-wrap'
+        holder.insertAdjacentHTML('afterbegin', embedHtml)
+        div.appendChild(holder)
+        if (typeof resolvePendingFeedEmbeds === 'function') resolvePendingFeedEmbeds(holder)
+        if (typeof attachFeedFallbacks === 'function') attachFeedFallbacks(holder)
+      }
     }
     return div
   }

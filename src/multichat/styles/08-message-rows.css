@@ -547,3 +547,48 @@
       cursor: default;
     }
 
+    /* ---- inline chat media (images / video / yt thumb / rich link cards) ---- */
+    /* square, capped, no autoplaying iframes — built in feed-embed.js          */
+    .hs-mc-media-wrap {
+      margin: 2px 0 1px;
+    }
+    .hs-mc-media {
+      display: block;
+      max-width: 100%;
+      border-radius: 0;
+    }
+    .hs-mc-media img,
+    .hs-mc-media video {
+      display: block;
+      max-width: 100%;
+      max-height: 220px;
+      width: auto;
+      height: auto;
+      border-radius: 0;
+      background: #000;
+    }
+    .hs-mc-media.hs-feed-embed-yt-thumb {
+      position: relative;
+      width: max-content;
+      max-width: 100%;
+      cursor: pointer;
+    }
+    .hs-mc-media.hs-feed-embed-yt-thumb .hs-feed-embed-yt-play {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #fff;
+      font-size: 22px;
+      text-shadow: 0 0 4px #000;
+      pointer-events: none;
+    }
+    /* pending/resolved rich cards reuse feed-embed styling; just cap + de-gap here */
+    .hs-mc-media.hs-feed-embed-pending {
+      min-height: 0;
+      max-width: 100%;
+      padding: 3px 6px;
+      font-size: 12px;
+      color: #808080;
+    }
+

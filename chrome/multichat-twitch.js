@@ -45801,7 +45801,12 @@ function softTwitchNav(prevLiveCh) {
     for (const el of targets) {
       for (const [k, v] of Object.entries(vars)) el.style.setProperty(k, v)
     }
-    renderMessages(currentTab)
+    // Already-posted messages cache their rendered HTML (m._renderedHtml) built
+    // with the previous size's emote-res URLs, so a plain renderMessages would
+    // re-serve the old low-res <img> (box grows, image can't). reloadEmotesInPlace
+    // clears the per-message cache and reprocesses, so existing emotes rebuild at
+    // the new res from getChatResUrl — matching new messages.
+    reloadEmotesInPlace()
   }
 
   // Emoji scale — separate var, default 2x. Registry-managed (hs_emoji_size,

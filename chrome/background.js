@@ -6220,7 +6220,9 @@ async function handleMessage(message, sender, sendResponse) {
             reason: message.reason || '',
             messageId: message.messageId || '',
             xsrfToken: cookie.value
-          }),
+          // .catch keeps a late rejection (tab port closes after the timeout
+          // already won the race) from becoming an unhandled promise rejection.
+          }).catch((e) => ({ ok: false, error: e?.message || 'kick relay failed' })),
           new Promise((res) => setTimeout(() => res({ ok: false, error: 'kick tab unresponsive — reload kick.com' }), 12000))
         ])
         sendResponse(result || { ok: false, error: 'no response from tab' })

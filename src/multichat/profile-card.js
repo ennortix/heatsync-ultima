@@ -389,12 +389,13 @@ function pcBuildModActions(username) {
       if (typeof prefetchModFor === 'function') prefetchModFor(ch)
       continue
     }
-    if (!byChannel.has(ch)) byChannel.set(ch, { channel: ch, msgId: m.id || null })
+    if (!byChannel.has(ch)) byChannel.set(ch, { channel: ch, msgId: m.id || null, login: (m.login || m.user || '').toLowerCase() })
   }
   if (!byChannel.size) return null
   const sec = document.createElement('div')
   sec.className = 'hs-pcard-section hs-pcard-mod'
-  for (const { channel, msgId } of byChannel.values()) {
+  for (const { channel, msgId, login } of byChannel.values()) {
+    const target = login || (username || '').toLowerCase()
     const row = document.createElement('div')
     row.className = 'hs-pcard-mod-row'
     const chLabel = document.createElement('span')
@@ -402,13 +403,14 @@ function pcBuildModActions(username) {
     chLabel.textContent = '#' + channel
     row.appendChild(chLabel)
     const actions = [
-      { label: 'del msg', title: 'delete this user\'s latest message', need: 'msg', fn: () => deleteTwitchMessage(channel, msgId), verb: 'deleted', action: 'delete' },
-      { label: '1m',  title: 'timeout 1 minute',   fn: () => timeoutTwitchUser(channel, username, 60, ''),     verb: `timed out ${username} 60s`,  action: 'timeout', durationSec: 60 },
-      { label: '10m', title: 'timeout 10 minutes', fn: () => timeoutTwitchUser(channel, username, 600, ''),    verb: `timed out ${username} 600s`, action: 'timeout', durationSec: 600 },
-      { label: '1h',  title: 'timeout 1 hour',     fn: () => timeoutTwitchUser(channel, username, 3600, ''),   verb: `timed out ${username} 1h`,   action: 'timeout', durationSec: 3600 },
-      { label: '24h', title: 'timeout 24 hours',   fn: () => timeoutTwitchUser(channel, username, 86400, ''),  verb: `timed out ${username} 24h`,  action: 'timeout', durationSec: 86400 },
-      { label: 'ban', title: 'permanent ban',      fn: () => banTwitchUser(channel, username, ''),             verb: `banned ${username}`, danger: true, action: 'ban' },
-      { label: 'unban', title: 'unban user',       fn: () => unbanTwitchUser(channel, username),               verb: `unbanned ${username}`, action: 'unban' },
+      { label: 'del msg', title: 'delete this user\'s latest message', need: 'msg', action: 'delete' },
+      { label: '1m',  title: 'timeout 1 minute',   action: 'timeout', durationSec: 60 },
+      { label: '10m', title: 'timeout 10 minutes', action: 'timeout', durationSec: 600 },
+      { label: '1h',  title: 'timeout 1 hour',     action: 'timeout', durationSec: 3600 },
+      { label: '24h', title: 'timeout 24 hours',   action: 'timeout', durationSec: 86400 },
+      { label: '7d',  title: 'timeout 7 days',     action: 'timeout', durationSec: 604800 },
+      { label: 'ban', title: 'permanent ban',      action: 'ban', danger: true },
+      { label: 'unban', title: 'unban user',       action: 'unban' },
     ]
     for (const a of actions) {
       const b = document.createElement('button')
@@ -422,14 +424,17 @@ function pcBuildModActions(username) {
         b.disabled = true
         const orig = b.textContent
         b.textContent = '…'
-        let resp
-        try { resp = await a.fn() } catch (err) { resp = { error: err?.message || 'error' } }
+        // Single platform (twitch — this section is built from twitch messages).
+        let r
+        try {
+          r = await dispatchModAction({ channel, platform: 'twitch', action: a.action, target, durationSec: a.durationSec, msgId })
+        } catch (err) { r = { anyOk: false, tResp: { error: err?.message || 'error' } } }
         b.textContent = orig
-        if (resp?.ok) {
-          globalThis.__hsInjectModNotice?.({ channel, action: a.action, target: username, durationSec: a.durationSec, msgId })
-          if (typeof showToast === 'function') showToast(a.verb, 'success')
+        if (a.action === 'delete') {
+          if (typeof showToast === 'function') showToast(r?.anyOk ? 'deleted message' : `delete failed: ${(r?.tResp || r?.kResp)?.error || 'unknown'}`, r?.anyOk ? 'success' : 'error')
         } else {
-          if (typeof showToast === 'function') showToast(`${a.label} failed: ${resp?.error || 'unknown'}`, 'error')
+          const label = a.action === 'ban' ? 'banned' : a.action === 'unban' ? 'unbanned' : `timed out ${a.durationSec}s`
+          if (typeof showModResultToast === 'function') showModResultToast(label, target, r)
         }
         b.disabled = a.need === 'msg' && !msgId
       })

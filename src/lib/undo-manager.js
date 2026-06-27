@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * Unified undo/redo for contenteditable input (extension port).
  *
@@ -91,9 +92,10 @@ export class UndoManager {
         return offset
       }
       if (node.nodeType === Node.TEXT_NODE) {
-        offset += node.textContent.length
+        offset += (node.textContent || '').length
       } else if (node.nodeType === Node.ELEMENT_NODE) {
-        if (node.tagName === 'IMG' && node.alt) offset += node.alt.length
+        const el = /** @type {HTMLImageElement} */ (node)
+        if (el.tagName === 'IMG' && el.alt) offset += el.alt.length
       }
       node = walker.nextNode()
     }
@@ -106,9 +108,10 @@ export class UndoManager {
     let node = walker.nextNode()
     while (node) {
       if (node.nodeType === Node.TEXT_NODE) {
-        const len = node.textContent.length
+        const len = (node.textContent || '').length
         if (offset + len >= target) {
           const sel = window.getSelection()
+          if (!sel) return
           const range = document.createRange()
           range.setStart(node, Math.max(0, Math.min(target - offset, len)))
           range.collapse(true)
@@ -117,22 +120,27 @@ export class UndoManager {
           return
         }
         offset += len
-      } else if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'IMG' && node.alt) {
-        const len = node.alt.length
-        if (offset + len > target) {
-          const sel = window.getSelection()
-          const range = document.createRange()
-          range.setStartAfter(node)
-          range.collapse(true)
-          sel.removeAllRanges()
-          sel.addRange(range)
-          return
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        const img = /** @type {HTMLImageElement} */ (node)
+        if (img.tagName === 'IMG' && img.alt) {
+          const len = img.alt.length
+          if (offset + len > target) {
+            const sel = window.getSelection()
+            if (!sel) return
+            const range = document.createRange()
+            range.setStartAfter(img)
+            range.collapse(true)
+            sel.removeAllRanges()
+            sel.addRange(range)
+            return
+          }
+          offset += len
         }
-        offset += len
       }
       node = walker.nextNode()
     }
     const sel = window.getSelection()
+    if (!sel) return
     const range = document.createRange()
     range.selectNodeContents(this.input)
     range.collapse(false)

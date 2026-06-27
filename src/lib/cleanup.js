@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * Cleanup/lifecycle module — memory leak prevention for long streaming sessions.
  * Tracks intervals, timeouts, MutationObservers, and event listeners for bulk teardown.

@@ -1,3 +1,4 @@
+// @ts-check
 // settings registry — every multichat setting as one declarative entry.
 // pure data + pure validators only: no DOM, no chrome.*, no i18n calls.
 // bundled at IIFE scope (build.js lib list) so main.js, every multichat
@@ -56,6 +57,10 @@
 //              rollback; main.js derives CW_CATS from these
 
 /**
+ * @typedef {{ value: *, label?: string, labelKey?: string, tip?: string, tipKey?: string, default?: boolean, tag?: string, color?: string, borderColor?: string, applies?: 'live'|'reload' }} SettingOption
+ */
+
+/**
  * @typedef {Object} SettingDef
  * @property {string} key EXACT storage key — never rename
  * @property {'bool'|'enum'|'range'|'text'|'multiselect'|'boolmap'} type
@@ -63,15 +68,19 @@
  * @property {'sync'|'local'|'local-mirror'} scope
  * @property {string} category settings subtab id
  * @property {string} [section] group title ([sectionKey] when i18n'd)
- * @property {string} [label] lowercase literal ([labelKey] for i18n)
- * @property {string} [tip] hover tooltip ([tipKey] for i18n)
+ * @property {string} [sectionKey] i18n key for section title
+ * @property {string} [label] lowercase literal
+ * @property {string} [labelKey] i18n key for label
+ * @property {string} [tip] hover tooltip
+ * @property {string} [tipKey] i18n key for tip
  * @property {'pill'|'select'|'sizebtns'|'range'|'text'|'textarea'} [control]
- * @property {Array<{value:*,label?:string,labelKey?:string,tip?:string,tipKey?:string,default?:boolean,tag?:string,color?:string,applies?:'live'|'reload'}>|{min:number,max:number,step:number}} [options]
+ * @property {SettingOption[]|{min:number,max:number,step:number}} [options]
  * @property {string} [alias] extra search keywords
  * @property {{key:string,equals?:*}} [dependsOn]
  * @property {string} [runtimeVar] legacy module var bridged in main.js
  * @property {string} [apply] id into main.js _APPLIERS
  * @property {boolean} [applyOnLoad]
+ * @property {boolean} [syncSilent] skip applier on remote cross-tab changes
  * @property {boolean} [rerender]
  * @property {boolean} [rerenderSettings]
  * @property {string} [migrate] one-shot default-flip guard key
@@ -1775,21 +1784,30 @@ function validateSettingValue(def, v) {
   switch (def.type) {
     case 'bool':
       return typeof v === 'boolean'
-    case 'enum':
-      return def.options.some((o) => o.value === v)
-    case 'range':
-      return typeof v === 'number' && isFinite(v) && v >= def.options.min && v <= def.options.max
+    case 'enum': {
+      const opts = /** @type {SettingOption[]} */ (def.options)
+      return !!opts && opts.some((o) => o.value === v)
+    }
+    case 'range': {
+      const range = /** @type {{min:number,max:number,step:number}} */ (def.options)
+      return typeof v === 'number' && isFinite(v) && !!range && v >= range.min && v <= range.max
+    }
     case 'text':
       return typeof v === 'string' && v.length <= (def.maxLen || 4096)
-    case 'multiselect':
-      return Array.isArray(v) && v.every((x) => def.options.some((o) => o.value === x))
-    case 'boolmap':
+    case 'multiselect': {
+      const opts = /** @type {SettingOption[]} */ (def.options)
+      return !!opts && Array.isArray(v) && v.every((x) => opts.some((o) => o.value === x))
+    }
+    case 'boolmap': {
+      const opts = /** @type {SettingOption[]} */ (def.options)
       return (
         !!v &&
         typeof v === 'object' &&
         !Array.isArray(v) &&
-        Object.keys(v).every((k) => typeof v[k] === 'boolean' && def.options.some((o) => o.value === k))
+        !!opts &&
+        Object.keys(v).every((k) => typeof v[k] === 'boolean' && opts.some((o) => o.value === k))
       )
+    }
     default:
       return false
   }
@@ -1807,32 +1825,36 @@ function coerceSettingValue(def, v) {
     case 'bool':
       return !!v
     case 'enum': {
-      if (def.options.some((o) => o.value === v)) return v
+      const opts = /** @type {SettingOption[]} */ (def.options)
+      if (opts && opts.some((o) => o.value === v)) return v
       // tolerate string/number mismatch ('2' vs 2) from DOM datasets
-      var loose = def.options.find((o) => String(o.value) === String(v))
+      var loose = opts && opts.find((o) => String(o.value) === String(v))
       return loose ? loose.value : undefined
     }
     case 'range': {
+      const range = /** @type {{min:number,max:number,step:number}} */ (def.options)
       var n = typeof v === 'number' ? v : parseFloat(v)
-      if (!isFinite(n)) return undefined
-      return Math.min(def.options.max, Math.max(def.options.min, n))
+      if (!isFinite(n) || !range) return undefined
+      return Math.min(range.max, Math.max(range.min, n))
     }
     case 'text': {
       if (typeof v !== 'string') return undefined
       return v.length > (def.maxLen || 4096) ? v.slice(0, def.maxLen || 4096) : v
     }
     case 'multiselect': {
-      if (!Array.isArray(v)) return undefined
-      return v.filter((x) => def.options.some((o) => o.value === x))
+      const opts = /** @type {SettingOption[]} */ (def.options)
+      if (!Array.isArray(v) || !opts) return undefined
+      return v.filter((x) => opts.some((o) => o.value === x))
     }
     case 'boolmap': {
-      if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined
+      const opts = /** @type {SettingOption[]} */ (def.options)
+      if (!v || typeof v !== 'object' || Array.isArray(v) || !opts) return undefined
       // merge known stored subkeys over the full default map — legacy
       // installs persisted partial maps and expect default-fill semantics
       var merged = {}
       for (var dk in def.default) merged[dk] = def.default[dk]
       for (var sk in v) {
-        if (def.options.some((o) => o.value === sk)) merged[sk] = !!v[sk]
+        if (opts.some((o) => o.value === sk)) merged[sk] = !!v[sk]
       }
       return merged
     }
@@ -1872,12 +1894,13 @@ function lintSettings(syncBlocklist) {
     }
     if (!def.label && !def.labelKey) problems.push('no label: ' + def.key)
     if (def.type === 'boolmap') {
-      var optVals = def.options.map((o) => o.value)
+      var boolmapOpts = /** @type {SettingOption[]} */ (def.options)
+      var optVals = boolmapOpts ? boolmapOpts.map((o) => o.value) : []
       var defKeys = Object.keys(def.default)
       if (optVals.length !== defKeys.length || !optVals.every((k) => defKeys.indexOf(k) !== -1)) {
         problems.push('boolmap default/options key mismatch: ' + def.key)
       }
-      def.options.forEach((o) => {
+      if (boolmapOpts) boolmapOpts.forEach((o) => {
         if (def.default[o.value] !== o.default)
           problems.push('boolmap per-option default disagrees with default map: ' + def.key + '.' + o.value)
       })
@@ -1885,8 +1908,9 @@ function lintSettings(syncBlocklist) {
     if (def.cw && (!def.cw.stateKey || !def.cw.serverBody || !def.cw.noun)) {
       problems.push('cw sub-shape incomplete: ' + def.key)
     }
-    if (def.dependsOn && !SETTINGS.some((d) => d.key === def.dependsOn.key)) {
-      problems.push('dependsOn unknown key: ' + def.key)
+    if (def.dependsOn) {
+      const depKey = def.dependsOn.key
+      if (!SETTINGS.some((d) => d.key === depKey)) problems.push('dependsOn unknown key: ' + def.key)
     }
     if (def.scope === 'sync') syncDefaults[def.key] = def.default
   }

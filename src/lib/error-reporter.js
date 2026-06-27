@@ -1,3 +1,4 @@
+// @ts-check
 // Error reporter — capture uncaught errors + unhandledrejection + console.error
 // into a ring buffer in chrome.storage.local. Popup exposes "copy errors" so
 // the user can paste a real repro context (stack + ver + platform + url) when
@@ -315,7 +316,7 @@
   // Skip console.warn/log — far too noisy. Pass-through to native so devtools
   // output is unchanged.
   try {
-    const origErr = console.error
+    const origErr = /** @type {any} */ (console.error) // property __hsWrapped added at runtime
     if (origErr && !origErr.__hsWrapped) {
       const wrapped = function (...args) {
         try {

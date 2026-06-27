@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * Shared utilities for heatsync extension.
  * XSS prevention, DOM helpers, debouncing, etc.
@@ -81,7 +82,7 @@ function createElement(tag, text, className) {
 /**
  * Query selector (first match)
  * @param {string} selector
- * @param {Element} [parent=document]
+ * @param {Element|Document} [parent=document]
  * @returns {Element|null}
  */
 function $(selector, parent = document) {
@@ -91,7 +92,7 @@ function $(selector, parent = document) {
 /**
  * Query selector all
  * @param {string} selector
- * @param {Element} [parent=document]
+ * @param {Element|Document} [parent=document]
  * @returns {NodeListOf<Element>}
  */
 function $$(selector, parent = document) {

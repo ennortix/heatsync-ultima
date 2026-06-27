@@ -14,6 +14,7 @@ const eswState = {
   destroyed: false,
   connecting: false,
   subscribed: false,
+  subscribing: false, // a subscribe POST is in flight — block a reconnect-welcome from firing a duplicate
   reconnectTimer: null,
   reconnectDelay: 1000,
   keepaliveTimer: null,
@@ -59,6 +60,8 @@ async function eswFetchSelfUserId(token) {
 
 async function eswSubscribeWhispers(token) {
   if (!eswState.sessionId || !eswState.selfUserId) return false
+  if (eswState.subscribing) return false // POST already in flight — don't double-subscribe
+  eswState.subscribing = true
   try {
     const resp = await fetch(ESW_HELIX_SUBS, {
       method: 'POST',
@@ -91,6 +94,8 @@ async function eswSubscribeWhispers(token) {
   } catch (e) {
     log('EventSub: subscribe error', e.message)
     return false
+  } finally {
+    eswState.subscribing = false
   }
 }
 
@@ -193,8 +198,10 @@ function eswHandleMessage(token) {
       const kt = msg.payload?.session?.keepalive_timeout_seconds
       if (typeof kt === 'number') eswState.keepaliveTimeoutMs = (kt + 5) * 1000
       log('EventSub session welcome:', eswState.sessionId)
-      // Reconnect-flow welcome carries existing subs over — only subscribe on first connect
-      if (!eswState.subscribed) eswSubscribeWhispers(token)
+      // Reconnect-flow welcome carries existing subs over — only subscribe on
+      // first connect, and never while a prior POST is still in flight (a fast
+      // server reconnect mid-POST would otherwise create a duplicate sub).
+      if (!eswState.subscribed && !eswState.subscribing) eswSubscribeWhispers(token)
       if (eswState.keepaliveTimer) cleanup.clearInterval(eswState.keepaliveTimer)
       eswState.keepaliveTimer = cleanup.setInterval(() => {
         if (Date.now() - eswState.lastMessageTime > eswState.keepaliveTimeoutMs) {

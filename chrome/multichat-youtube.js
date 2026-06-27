@@ -19215,15 +19215,21 @@ function mcTriggerProviderSearches(q) {
     }
     if (!mcPickerSources.has(p)) {
       // Just-disabled provider — abort any in-flight page so it can't push a
-      // stale result + fire a spurious repaint.
+      // stale result + fire a spurious repaint. Clear inFlight here: the
+      // aborted fetch's .then/.catch bail early without resetting it, so
+      // without this a later re-enable would leave the guard stuck and
+      // load-more silently dead for the rest of the query.
       if (_mcProviderAborts[p]) {
         try {
           _mcProviderAborts[p].abort()
         } catch (_) {}
       }
+      mcProviderInFlight[p] = false
       continue
     }
-    if (mcProviderLastQuery[p] === q && mcProviderResults[p].length > 0) continue // cache hit
+    // Cache hit: same query already resolved (results, or definitively exhausted
+    // with zero results — don't refetch a known-empty provider on every toggle).
+    if (mcProviderLastQuery[p] === q && (mcProviderResults[p].length > 0 || mcProviderExhausted[p])) continue
     if (_mcProviderAborts[p]) {
       try {
         _mcProviderAborts[p].abort() // kill a stale page (e.g. "xd" page 2) before the new query
@@ -19768,7 +19774,8 @@ function showEmotePicker(tab = null) {
       if (img.dataset.state === 'remote') {
         const remote = mcRemoteEmoteIndex.get(name)
         if (remote) {
-          if (!viewerPersonalEmotes.has(name)) {
+          const _optimistic = !viewerPersonalEmotes.has(name)
+          if (_optimistic) {
             viewerPersonalEmotes.set(name, {
               url: remote.url,
               source: remote.provider || '7tv',
@@ -19776,7 +19783,17 @@ function showEmotePicker(tab = null) {
               zeroWidth: !!remote.zeroWidth,
             })
           }
-          addEmoteToInventory(name, remote.url, remote.provider, img, !!remote.zeroWidth).catch(() => {})
+          // Roll back the optimistic slot if the server add didn't take (e.g.
+          // logged out) — otherwise the picker shows a phantom "owned" emote
+          // with no real slot until the next reload (split-brain vs inventory).
+          const _rollback = () => {
+            if (_optimistic && !inventoryEmotes.has(name)) viewerPersonalEmotes.delete(name)
+          }
+          addEmoteToInventory(name, remote.url, remote.provider, img, !!remote.zeroWidth)
+            .then((ok) => {
+              if (!ok) _rollback()
+            })
+            .catch(_rollback)
         }
       }
 
@@ -19943,6 +19960,15 @@ function applyBlockedHashDelta(newHashesArr) {
     if (!name) continue
     blockedEmoteNames.add(name)
     changedNames.push(name)
+    // Persist the name (+url when resolvable) to the block fallback so a
+    // cross-device block survives reload even when hashToName can't resolve the
+    // hash next session (e.g. a sender-personal 7TV emote in no loaded cache).
+    // Mirrors blockEmote's local path; persist is debounced/single-flight.
+    {
+      const _be = lookupEmote(name)
+      const _u = typeof _be?.url === 'string' && /^https?:\/\//i.test(_be.url) ? _be.url : ''
+      rememberBlockedEmote(name, _u, _be?.source || 'heatsync', _be?.zeroWidth)
+    }
     queryEmoteWrappers(name).forEach((w) => {
       if (w.classList.contains('hs-state-blocked')) return
       w.classList.remove(
@@ -19970,6 +19996,10 @@ function applyBlockedHashDelta(newHashesArr) {
     if (!name) continue
     blockedEmoteNames.delete(name)
     changedNames.push(name)
+    // Drop the persisted fallback too, else rebuildBlockedNames re-seeds this
+    // name from blockedEmoteFallback on the next reload and the emote re-blocks
+    // itself. Mirrors unblockEmote's cleanup; persist is debounced.
+    if (blockedEmoteFallback.delete(name)) persistBlockedFallback()
     const emote = lookupEmote(name)
     const realUrl = emote?.url || ''
     // 2-state model: block never dropped this from the set (server preserves
@@ -20095,6 +20125,10 @@ function markInputEmoteBlocked(img, blocked) {
     if (img.src && !img.src.startsWith('data:')) img.dataset.hsOrigSrc = img.src
     img.src = HS_TRANSPARENT_PX
     img.classList.add('hs-state-blocked')
+    // Stash the real ownership state so unblock can restore it, instead of
+    // leaving the chip stateless (findEmoteTarget would then default to 'global'
+    // and mis-route the right-click/hover menu on an owned emote).
+    if (img.dataset.state && img.dataset.state !== 'blocked') img.dataset.hsPrevState = img.dataset.state
     // dataset.state lets findEmoteTarget (input.js) and the chrome content.js
     // hover-overlay color picker route through the blocked branch even when
     // src is the transparent placeholder.
@@ -20106,7 +20140,12 @@ function markInputEmoteBlocked(img, blocked) {
     delete img.dataset.hsInputBlocked
     delete img.dataset.hsOrigSrc
     img.classList.remove('hs-state-blocked')
-    delete img.dataset.state
+    if (img.dataset.hsPrevState) {
+      img.dataset.state = img.dataset.hsPrevState
+      delete img.dataset.hsPrevState
+    } else {
+      delete img.dataset.state
+    }
   }
 }
 
@@ -20350,7 +20389,11 @@ function blockEmote(emoteName, clickedUrl, clickedSource) {
   // stored no url, leaving it un-re-addable (renders blank on re-add).
   const _be = lookupEmote(emoteName)
   const _httpOk = (u) => typeof u === 'string' && /^https?:\/\//i.test(u)
-  const capturedUrl = _httpOk(_be?.url) ? _be.url : _httpOk(clickedUrl) ? clickedUrl : ''
+  // Prefer the CLICKED element's url (the actually-rendered image — channel
+  // version when a name exists both channel + global) over lookupEmote, which
+  // returns the global cache first and would otherwise capture the wrong image
+  // for unblock/re-add.
+  const capturedUrl = _httpOk(clickedUrl) ? clickedUrl : _httpOk(_be?.url) ? _be.url : ''
   rememberBlockedEmote(emoteName, capturedUrl, _be?.source || clickedSource, _be?.zeroWidth)
 
   // 2-state model: block is a render-preference, not an inventory mutation.
@@ -20516,7 +20559,7 @@ function unblockEmote(emoteName) {
 // (picker, chat-row click, auto-add-on-send, chip-paste) inherit the flag
 // without each having to plumb it through their own state.
 async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, targetEl, zeroWidth, silent) {
-  if (!emoteName) return
+  if (!emoteName) return false
   if (zeroWidth == null) {
     const remote = mcRemoteEmoteIndex.get(emoteName)
     zeroWidth = !!(remote?.zeroWidth || zeroWidthFromAnyCache(emoteName))
@@ -20527,8 +20570,9 @@ async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, targetEl, z
   // rejects non-https anyway). Reject early with a clear toast.
   if (!emoteUrl || !/^https?:\/\//i.test(emoteUrl)) {
     if (!silent) showToast(`can't add ${emoteName} — image unavailable`, 'error')
-    return
+    return false
   }
+  let _added = false
   pendingEmoteOps.add(emoteName)
   try {
     // Generate a hash from the URL for the API
@@ -20549,6 +20593,7 @@ async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, targetEl, z
     })
 
     if (response?.success) {
+      _added = true
       // Update local cache - change from unadded to owned
       // Adding and blocking are mutually exclusive
       blockedEmoteNames.delete(emoteName)
@@ -20611,6 +20656,7 @@ async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, targetEl, z
   } finally {
     pendingEmoteOps.delete(emoteName)
   }
+  return _added
 }
 
 // Sync block/unblock to heatsync.org API via background script
@@ -24772,7 +24818,12 @@ function attachPredictionHandlers() {
         }, 3000)
       } else {
         btn.textContent = '\u2713'
-        optimisticBetUpdate(container, btn.dataset.outcome, points)
+        // Guard like the fixed-amount path: a detached container (slot re-rendered
+        // during the await) would otherwise throw and skip the input clear + the
+        // 3s refresh, leaving stale totals and the typed amount on screen.
+        try {
+          optimisticBetUpdate(container, btn.dataset.outcome, points)
+        } catch {}
         input.value = ''
         setTimeout(() => refreshPredictionSlot(), 3000)
       }
@@ -29091,11 +29142,13 @@ function listenForSocialEvents() {
           .then((stored) => {
             const dim = stored.hs_dim_timeouts !== undefined ? stored.hs_dim_timeouts : true
             if (!dim) return
+            // data-platform lives on the inner .hs-mc-user anchor, not the outer
+            // .hs-mc-msg div (YouTube is excluded from data-msg-platform), so
+            // query the anchor and walk up — mirrors main.js's YT user lookup.
             msgsEl
-              .querySelectorAll('.hs-mc-msg[data-platform="yt"], .hs-mc-msg[data-platform="youtube"]')
-              .forEach((div) => {
-                const a = div.querySelector('.hs-mc-user')
-                if (a && a.dataset.username === u) div.classList.add('hs-mc-msg-cleared')
+              .querySelectorAll('.hs-mc-msg .hs-mc-user[data-platform="yt"], .hs-mc-msg .hs-mc-user[data-platform="youtube"]')
+              .forEach((a) => {
+                if (a.dataset.username === u) a.closest('.hs-mc-msg')?.classList.add('hs-mc-msg-cleared')
               })
           })
           .catch(() => {})
@@ -29651,7 +29704,10 @@ function buildFeedMessageDiv(m, opUsername) {
   const time = formatRelativeTime(m.created_at)
   const rawAvatar = m.profile_image_url || m.twitch_profile_pic || m.kick_profile_pic || ''
   const avatarUrl = safeUrl(rawAvatar)
-  const heat = m.heat || 0
+  // Number() coercion is the guard: a non-numeric server value (e.g. a string)
+  // would slip past getHeatDisplay's NaN comparisons and reach innerHTML
+  // verbatim via formatHeat. Mirrors heatSpanHtml/heatSpanEl.
+  const heat = Number(m.heat) || 0
   const replies = m.reply_count || 0
   // renderFeedContent sanitizes via escapeHtml + emote ref escaping
   const content = renderFeedContent(m.content, m.emote_refs)
@@ -31941,6 +31997,7 @@ const eswState = {
   destroyed: false,
   connecting: false,
   subscribed: false,
+  subscribing: false, // a subscribe POST is in flight — block a reconnect-welcome from firing a duplicate
   reconnectTimer: null,
   reconnectDelay: 1000,
   keepaliveTimer: null,
@@ -31986,6 +32043,8 @@ async function eswFetchSelfUserId(token) {
 
 async function eswSubscribeWhispers(token) {
   if (!eswState.sessionId || !eswState.selfUserId) return false
+  if (eswState.subscribing) return false // POST already in flight — don't double-subscribe
+  eswState.subscribing = true
   try {
     const resp = await fetch(ESW_HELIX_SUBS, {
       method: 'POST',
@@ -32018,6 +32077,8 @@ async function eswSubscribeWhispers(token) {
   } catch (e) {
     log('EventSub: subscribe error', e.message)
     return false
+  } finally {
+    eswState.subscribing = false
   }
 }
 
@@ -32120,8 +32181,10 @@ function eswHandleMessage(token) {
       const kt = msg.payload?.session?.keepalive_timeout_seconds
       if (typeof kt === 'number') eswState.keepaliveTimeoutMs = (kt + 5) * 1000
       log('EventSub session welcome:', eswState.sessionId)
-      // Reconnect-flow welcome carries existing subs over — only subscribe on first connect
-      if (!eswState.subscribed) eswSubscribeWhispers(token)
+      // Reconnect-flow welcome carries existing subs over — only subscribe on
+      // first connect, and never while a prior POST is still in flight (a fast
+      // server reconnect mid-POST would otherwise create a duplicate sub).
+      if (!eswState.subscribed && !eswState.subscribing) eswSubscribeWhispers(token)
       if (eswState.keepaliveTimer) cleanup.clearInterval(eswState.keepaliveTimer)
       eswState.keepaliveTimer = cleanup.setInterval(() => {
         if (Date.now() - eswState.lastMessageTime > eswState.keepaliveTimeoutMs) {
@@ -32560,8 +32623,8 @@ function _pruneRecent(arr) {
   return arr.filter((e) => e && e.time >= cutoff)
 }
 
-function trackSentMessage(text, hostOverride, synthId) {
-  _recentSentMessages.push({ text, time: Date.now(), host: hostOverride || hostPlatform, synthId })
+function trackSentMessage(text, hostOverride, synthId, echoes) {
+  _recentSentMessages.push({ text, time: Date.now(), host: hostOverride || hostPlatform, synthId, echoes: echoes || 1 })
   _recentSentMessages = _pruneRecent(_recentSentMessages)
   // Cross-tab sync: kick.com tab and twitch.tv tab live in different
   // content-script contexts, so they each have their own array. Storage
@@ -32640,7 +32703,11 @@ function isSentEcho(msgText, _msgPlatform) {
       // on a different host (e.g. kick.com → twitch-only mellen).
       entry.suppressed = (entry.suppressed || 0) + 1
       if (entry.suppressed >= 2) {
-        _recentSentMessages.splice(i, 1)
+        // Suppress every echo after the first. Remove the entry only once all
+        // expected echoes have arrived (one per target platform) — a triple
+        // send (twitch+kick+youtube) produces 3 echoes; removing after the 2nd
+        // let the 3rd render as a duplicate of the user's own message.
+        if (entry.suppressed >= (entry.echoes || 2)) _recentSentMessages.splice(i, 1)
         return true
       }
       return false
@@ -32661,7 +32728,10 @@ function peekSentHost(msgText) {
   const cutoff = Date.now() - SENT_HOST_WINDOW
   for (let i = _recentSentMessages.length - 1; i >= 0; i--) {
     const entry = _recentSentMessages[i]
-    if (entry.time < cutoff) break
+    // continue (not break): cross-tab storage merges can leave entries out of
+    // time order, so a stale entry early in the reverse scan must not abort the
+    // search before a valid newer match (mirrors isSentEcho). Array is capped.
+    if (entry.time < cutoff) continue
     if (entry.text === msgText) return entry.host || null
   }
   return null
@@ -32885,7 +32955,7 @@ function retryPendingSend(synthId) {
   const input = document.getElementById('hs-mc-input')
   if (!input) return
   // Restore text into input. wysiwygEnabled is the same flag sendMessage uses.
-  if (wysiwygEnabled) input.textContent = entry.text
+  if (wysiwygEnabled) restoreWysiwygText(input, entry.text)
   else input.value = entry.text
   // Restore reply state if the original was a reply
   if (entry.replyParentId) {
@@ -34502,8 +34572,23 @@ function _mentionInMcInput(username) {
       input.setSelectionRange(input.value.length, input.value.length)
     } catch {}
   } else {
-    input.textContent = (input.textContent || '') + mention
+    // Append WITHOUT clobbering existing emote chips: reading/writing
+    // textContent on a contenteditable strips every <img> chip the user already
+    // typed. Insert a trailing text node (leading space when needed) and move
+    // the caret to the end, preserving the composed message.
     input.focus()
+    const last = input.lastChild
+    const needsSpace = !!last && !(last.nodeType === Node.TEXT_NODE && /\s$/.test(last.textContent || ''))
+    input.appendChild(document.createTextNode((needsSpace ? ' ' : '') + mention))
+    try {
+      const sel = window.getSelection()
+      const range = document.createRange()
+      range.selectNodeContents(input)
+      range.collapse(false)
+      sel.removeAllRanges()
+      sel.addRange(range)
+    } catch {}
+    pendingMessage = getInputText()
   }
 }
 
@@ -34804,7 +34889,7 @@ function handleInputKeydown(e) {
       }
       const text = mcHistoryIndex < 0 ? mcHistoryDraft : mcMessageHistory[mcHistoryIndex]
       if (wysiwygEnabled) {
-        input.textContent = text
+        restoreWysiwygText(input, text)
       } else {
         input.value = text
       }
@@ -35097,6 +35182,14 @@ function imagifyValidWordsInTextNode(textNode) {
       replacements.push(document.createTextNode(part))
       continue
     }
+    // Blocked emotes must stay plain text here too — buildInputEmoteImg (below)
+    // skips the blockedEmoteNames check that createInputEmoteImg applies, so
+    // without this a blocked emote reaching a text node (paste/undo/unwrap)
+    // would silently render as a live chip, defeating the block.
+    if (typeof blockedEmoteNames !== 'undefined' && blockedEmoteNames.has(part)) {
+      replacements.push(document.createTextNode(part))
+      continue
+    }
     let resolved = null
     try {
       resolved = lookupEmoteWithOverlay(part)
@@ -35113,6 +35206,26 @@ function imagifyValidWordsInTextNode(textNode) {
   for (const n of replacements) frag.appendChild(n)
   textNode.parentNode.replaceChild(frag, textNode)
   return true
+}
+
+// Restore a plain wire-text string into the WYSIWYG composer AS chips. History
+// recall and pending-send retry store the serialized plain form (e.g.
+// "KEKW hello"); writing it straight to textContent shows raw emote names, so
+// re-imagify each resulting text node and drop the caret at the end.
+function restoreWysiwygText(input, text) {
+  if (!input) return
+  input.textContent = text
+  for (const child of [...input.childNodes]) {
+    if (child.nodeType === Node.TEXT_NODE) imagifyValidWordsInTextNode(child)
+  }
+  try {
+    const sel = window.getSelection()
+    const range = document.createRange()
+    range.selectNodeContents(input)
+    range.collapse(false)
+    sel.removeAllRanges()
+    sel.addRange(range)
+  } catch {}
 }
 
 function unwrapStuckChips(inputEl, acceptWhitespace) {
@@ -37972,7 +38085,10 @@ async function sendMessage() {
   // attribution via peekSentHost so own messages render with the platform
   // the user is viewing FROM (extension input on kick.com → [K]) regardless
   // of which relay platform actually echoed back.
-  trackSentMessage(restText, undefined, _synthId)
+  // echoes = one per platform whose chat stream loops the message back, so the
+  // dedup entry survives until the last echo (twitch + kick + youtube triple).
+  const _echoCount = (sendToTwitch ? 1 : 0) + (sendToKick ? 1 : 0) + (sendToYoutube ? 1 : 0)
+  trackSentMessage(restText, undefined, _synthId, _echoCount || 1)
 
   // Push to message history (dedup consecutive, cap at max)
   if (mcMessageHistory[0] !== text) {
@@ -40664,7 +40780,7 @@ function _hsEnsureYtBelowObserver(_tries) {
   let tabBarElement = null
   let overlayElement = null
   let inputBarElement = null // Separate input bar (always visible)
-  const pendingMessage = '' // Persists across tab switches
+  let pendingMessage = '' // Persists across tab switches
   let tabPosition = 'top' // 'top', 'right', 'bottom', 'left'
   let resizeObserver = null // Tracks overlay top sync observer
   let _updateMcLayout = () => {} // Set by ensureUIElements; callable from rotateTabPosition
@@ -56457,6 +56573,19 @@ function _hsEnsureYtBelowObserver(_tries) {
       } catch {}
       return false
     })
+    // Null the sentinels whose observers/timers were just disconnected/cleared
+    // above. Their "already running" guards (if (columnObserver) return,
+    // if (!mcCosmeticsTimer), if (_persistMentionsState.timer) return, etc.)
+    // would otherwise stay truthy forever, so after the first channel switch
+    // the column watcher, 7TV cosmetics flush, mention/YT persistence, and
+    // resub-callout observer are never recreated. dirty Sets are intentionally
+    // kept — the next message reschedules a flush that still includes pre-nav data.
+    columnObserver = null
+    _hsCalloutCloseObs = null
+    mcCosmeticsTimer = null
+    _persistMentionsState.timer = null
+    _persistYtTimers.clear()
+    _persistTabSeenTimer = null
     mcInitialized = false // Allow init() to run again
 
     // Reset social tab state (stale on nav)

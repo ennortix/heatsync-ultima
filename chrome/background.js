@@ -3910,6 +3910,14 @@ function persistMutedUsers() {
   browser.storage.local.set({ muted_users: arr }).catch(() => {})
 }
 
+// Persist blocked users (mirrors persistMutedUsers). The previous bare set had
+// no .catch, so a rejected write in the MV3 service worker (quota, SW teardown)
+// was an unhandled rejection AND the block was silently lost — the user
+// reappeared after the next SW restart even though the UI showed { ok: true }.
+function persistBlockedUsers() {
+  browser.storage.local.set({ blocked_users: Array.from(blockedUsers) }).catch(() => {})
+}
+
 // Fetch server-side mute list on first auth — merges with any locally-stored
 // mutes so cross-device mutes (set on heatsync.org) take effect immediately.
 // Gracefully no-ops if not logged in, server is unreachable, or returns 401.
@@ -6436,13 +6444,13 @@ async function handleMessage(message, sender, sendResponse) {
     sendResponse({ users: Array.from(mutedUsers.keys()) })
   } else if (message.type === 'block_user') {
     blockedUsers.add(message.username)
-    browser.storage.local.set({ blocked_users: Array.from(blockedUsers) })
+    persistBlockedUsers()
     broadcastToTabs({ type: 'user_blocked', username: message.username })
     log(' Blocked user:', message.username)
     sendResponse({ ok: true })
   } else if (message.type === 'unblock_user') {
     blockedUsers.delete(message.username)
-    browser.storage.local.set({ blocked_users: Array.from(blockedUsers) })
+    persistBlockedUsers()
     broadcastToTabs({ type: 'user_unblocked', username: message.username })
     log(' Unblocked user:', message.username)
     sendResponse({ ok: true })
@@ -9496,7 +9504,12 @@ function bgKickIngest(data) {
     user: data.username || data.user || 'unknown',
     text: data.content || data.message || data.text || '',
     color: data.color || '#53fc18',
-    badges: '',
+    // Extract Kick badges from the live payload (mirrors kick-chat-backfill).
+    // Was hardcoded '' — so BG-buffer history replay (_refreshFromBg) dropped
+    // the sub/mod badges that were present when the message arrived live.
+    badges: Array.isArray(data.badges)
+      ? data.badges.map((b) => `${b.type || b.name || 'badge'}/${b.version || b.count || '1'}`).join(',')
+      : '',
     channel: ch,
     time: data.timestamp || data.time || Date.now(),
     platform: 'kick',

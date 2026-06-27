@@ -785,11 +785,13 @@ function listenForSocialEvents() {
           .then((stored) => {
             const dim = stored.hs_dim_timeouts !== undefined ? stored.hs_dim_timeouts : true
             if (!dim) return
+            // data-platform lives on the inner .hs-mc-user anchor, not the outer
+            // .hs-mc-msg div (YouTube is excluded from data-msg-platform), so
+            // query the anchor and walk up — mirrors main.js's YT user lookup.
             msgsEl
-              .querySelectorAll('.hs-mc-msg[data-platform="yt"], .hs-mc-msg[data-platform="youtube"]')
-              .forEach((div) => {
-                const a = div.querySelector('.hs-mc-user')
-                if (a && a.dataset.username === u) div.classList.add('hs-mc-msg-cleared')
+              .querySelectorAll('.hs-mc-msg .hs-mc-user[data-platform="yt"], .hs-mc-msg .hs-mc-user[data-platform="youtube"]')
+              .forEach((a) => {
+                if (a.dataset.username === u) a.closest('.hs-mc-msg')?.classList.add('hs-mc-msg-cleared')
               })
           })
           .catch(() => {})
@@ -1345,7 +1347,10 @@ function buildFeedMessageDiv(m, opUsername) {
   const time = formatRelativeTime(m.created_at)
   const rawAvatar = m.profile_image_url || m.twitch_profile_pic || m.kick_profile_pic || ''
   const avatarUrl = safeUrl(rawAvatar)
-  const heat = m.heat || 0
+  // Number() coercion is the guard: a non-numeric server value (e.g. a string)
+  // would slip past getHeatDisplay's NaN comparisons and reach innerHTML
+  // verbatim via formatHeat. Mirrors heatSpanHtml/heatSpanEl.
+  const heat = Number(m.heat) || 0
   const replies = m.reply_count || 0
   // renderFeedContent sanitizes via escapeHtml + emote ref escaping
   const content = renderFeedContent(m.content, m.emote_refs)

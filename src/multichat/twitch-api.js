@@ -1193,7 +1193,12 @@ function attachPredictionHandlers() {
         }, 3000)
       } else {
         btn.textContent = '\u2713'
-        optimisticBetUpdate(container, btn.dataset.outcome, points)
+        // Guard like the fixed-amount path: a detached container (slot re-rendered
+        // during the await) would otherwise throw and skip the input clear + the
+        // 3s refresh, leaving stale totals and the typed amount on screen.
+        try {
+          optimisticBetUpdate(container, btn.dataset.outcome, points)
+        } catch {}
         input.value = ''
         setTimeout(() => refreshPredictionSlot(), 3000)
       }

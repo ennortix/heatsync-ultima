@@ -61,8 +61,8 @@ function _pruneRecent(arr) {
   return arr.filter((e) => e && e.time >= cutoff)
 }
 
-function trackSentMessage(text, hostOverride, synthId) {
-  _recentSentMessages.push({ text, time: Date.now(), host: hostOverride || hostPlatform, synthId })
+function trackSentMessage(text, hostOverride, synthId, echoes) {
+  _recentSentMessages.push({ text, time: Date.now(), host: hostOverride || hostPlatform, synthId, echoes: echoes || 1 })
   _recentSentMessages = _pruneRecent(_recentSentMessages)
   // Cross-tab sync: kick.com tab and twitch.tv tab live in different
   // content-script contexts, so they each have their own array. Storage
@@ -141,7 +141,11 @@ function isSentEcho(msgText, _msgPlatform) {
       // on a different host (e.g. kick.com → twitch-only mellen).
       entry.suppressed = (entry.suppressed || 0) + 1
       if (entry.suppressed >= 2) {
-        _recentSentMessages.splice(i, 1)
+        // Suppress every echo after the first. Remove the entry only once all
+        // expected echoes have arrived (one per target platform) — a triple
+        // send (twitch+kick+youtube) produces 3 echoes; removing after the 2nd
+        // let the 3rd render as a duplicate of the user's own message.
+        if (entry.suppressed >= (entry.echoes || 2)) _recentSentMessages.splice(i, 1)
         return true
       }
       return false
@@ -162,7 +166,10 @@ function peekSentHost(msgText) {
   const cutoff = Date.now() - SENT_HOST_WINDOW
   for (let i = _recentSentMessages.length - 1; i >= 0; i--) {
     const entry = _recentSentMessages[i]
-    if (entry.time < cutoff) break
+    // continue (not break): cross-tab storage merges can leave entries out of
+    // time order, so a stale entry early in the reverse scan must not abort the
+    // search before a valid newer match (mirrors isSentEcho). Array is capped.
+    if (entry.time < cutoff) continue
     if (entry.text === msgText) return entry.host || null
   }
   return null
@@ -386,7 +393,7 @@ function retryPendingSend(synthId) {
   const input = document.getElementById('hs-mc-input')
   if (!input) return
   // Restore text into input. wysiwygEnabled is the same flag sendMessage uses.
-  if (wysiwygEnabled) input.textContent = entry.text
+  if (wysiwygEnabled) restoreWysiwygText(input, entry.text)
   else input.value = entry.text
   // Restore reply state if the original was a reply
   if (entry.replyParentId) {
@@ -2003,8 +2010,23 @@ function _mentionInMcInput(username) {
       input.setSelectionRange(input.value.length, input.value.length)
     } catch {}
   } else {
-    input.textContent = (input.textContent || '') + mention
+    // Append WITHOUT clobbering existing emote chips: reading/writing
+    // textContent on a contenteditable strips every <img> chip the user already
+    // typed. Insert a trailing text node (leading space when needed) and move
+    // the caret to the end, preserving the composed message.
     input.focus()
+    const last = input.lastChild
+    const needsSpace = !!last && !(last.nodeType === Node.TEXT_NODE && /\s$/.test(last.textContent || ''))
+    input.appendChild(document.createTextNode((needsSpace ? ' ' : '') + mention))
+    try {
+      const sel = window.getSelection()
+      const range = document.createRange()
+      range.selectNodeContents(input)
+      range.collapse(false)
+      sel.removeAllRanges()
+      sel.addRange(range)
+    } catch {}
+    pendingMessage = getInputText()
   }
 }
 
@@ -2305,7 +2327,7 @@ function handleInputKeydown(e) {
       }
       const text = mcHistoryIndex < 0 ? mcHistoryDraft : mcMessageHistory[mcHistoryIndex]
       if (wysiwygEnabled) {
-        input.textContent = text
+        restoreWysiwygText(input, text)
       } else {
         input.value = text
       }
@@ -2598,6 +2620,14 @@ function imagifyValidWordsInTextNode(textNode) {
       replacements.push(document.createTextNode(part))
       continue
     }
+    // Blocked emotes must stay plain text here too — buildInputEmoteImg (below)
+    // skips the blockedEmoteNames check that createInputEmoteImg applies, so
+    // without this a blocked emote reaching a text node (paste/undo/unwrap)
+    // would silently render as a live chip, defeating the block.
+    if (typeof blockedEmoteNames !== 'undefined' && blockedEmoteNames.has(part)) {
+      replacements.push(document.createTextNode(part))
+      continue
+    }
     let resolved = null
     try {
       resolved = lookupEmoteWithOverlay(part)
@@ -2614,6 +2644,26 @@ function imagifyValidWordsInTextNode(textNode) {
   for (const n of replacements) frag.appendChild(n)
   textNode.parentNode.replaceChild(frag, textNode)
   return true
+}
+
+// Restore a plain wire-text string into the WYSIWYG composer AS chips. History
+// recall and pending-send retry store the serialized plain form (e.g.
+// "KEKW hello"); writing it straight to textContent shows raw emote names, so
+// re-imagify each resulting text node and drop the caret at the end.
+function restoreWysiwygText(input, text) {
+  if (!input) return
+  input.textContent = text
+  for (const child of [...input.childNodes]) {
+    if (child.nodeType === Node.TEXT_NODE) imagifyValidWordsInTextNode(child)
+  }
+  try {
+    const sel = window.getSelection()
+    const range = document.createRange()
+    range.selectNodeContents(input)
+    range.collapse(false)
+    sel.removeAllRanges()
+    sel.addRange(range)
+  } catch {}
 }
 
 function unwrapStuckChips(inputEl, acceptWhitespace) {
@@ -5473,7 +5523,10 @@ async function sendMessage() {
   // attribution via peekSentHost so own messages render with the platform
   // the user is viewing FROM (extension input on kick.com → [K]) regardless
   // of which relay platform actually echoed back.
-  trackSentMessage(restText, undefined, _synthId)
+  // echoes = one per platform whose chat stream loops the message back, so the
+  // dedup entry survives until the last echo (twitch + kick + youtube triple).
+  const _echoCount = (sendToTwitch ? 1 : 0) + (sendToKick ? 1 : 0) + (sendToYoutube ? 1 : 0)
+  trackSentMessage(restText, undefined, _synthId, _echoCount || 1)
 
   // Push to message history (dedup consecutive, cap at max)
   if (mcMessageHistory[0] !== text) {

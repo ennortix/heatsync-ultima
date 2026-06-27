@@ -313,15 +313,21 @@ function mcTriggerProviderSearches(q) {
     }
     if (!mcPickerSources.has(p)) {
       // Just-disabled provider — abort any in-flight page so it can't push a
-      // stale result + fire a spurious repaint.
+      // stale result + fire a spurious repaint. Clear inFlight here: the
+      // aborted fetch's .then/.catch bail early without resetting it, so
+      // without this a later re-enable would leave the guard stuck and
+      // load-more silently dead for the rest of the query.
       if (_mcProviderAborts[p]) {
         try {
           _mcProviderAborts[p].abort()
         } catch (_) {}
       }
+      mcProviderInFlight[p] = false
       continue
     }
-    if (mcProviderLastQuery[p] === q && mcProviderResults[p].length > 0) continue // cache hit
+    // Cache hit: same query already resolved (results, or definitively exhausted
+    // with zero results — don't refetch a known-empty provider on every toggle).
+    if (mcProviderLastQuery[p] === q && (mcProviderResults[p].length > 0 || mcProviderExhausted[p])) continue
     if (_mcProviderAborts[p]) {
       try {
         _mcProviderAborts[p].abort() // kill a stale page (e.g. "xd" page 2) before the new query
@@ -866,7 +872,8 @@ function showEmotePicker(tab = null) {
       if (img.dataset.state === 'remote') {
         const remote = mcRemoteEmoteIndex.get(name)
         if (remote) {
-          if (!viewerPersonalEmotes.has(name)) {
+          const _optimistic = !viewerPersonalEmotes.has(name)
+          if (_optimistic) {
             viewerPersonalEmotes.set(name, {
               url: remote.url,
               source: remote.provider || '7tv',
@@ -874,7 +881,17 @@ function showEmotePicker(tab = null) {
               zeroWidth: !!remote.zeroWidth,
             })
           }
-          addEmoteToInventory(name, remote.url, remote.provider, img, !!remote.zeroWidth).catch(() => {})
+          // Roll back the optimistic slot if the server add didn't take (e.g.
+          // logged out) — otherwise the picker shows a phantom "owned" emote
+          // with no real slot until the next reload (split-brain vs inventory).
+          const _rollback = () => {
+            if (_optimistic && !inventoryEmotes.has(name)) viewerPersonalEmotes.delete(name)
+          }
+          addEmoteToInventory(name, remote.url, remote.provider, img, !!remote.zeroWidth)
+            .then((ok) => {
+              if (!ok) _rollback()
+            })
+            .catch(_rollback)
         }
       }
 
@@ -1041,6 +1058,15 @@ function applyBlockedHashDelta(newHashesArr) {
     if (!name) continue
     blockedEmoteNames.add(name)
     changedNames.push(name)
+    // Persist the name (+url when resolvable) to the block fallback so a
+    // cross-device block survives reload even when hashToName can't resolve the
+    // hash next session (e.g. a sender-personal 7TV emote in no loaded cache).
+    // Mirrors blockEmote's local path; persist is debounced/single-flight.
+    {
+      const _be = lookupEmote(name)
+      const _u = typeof _be?.url === 'string' && /^https?:\/\//i.test(_be.url) ? _be.url : ''
+      rememberBlockedEmote(name, _u, _be?.source || 'heatsync', _be?.zeroWidth)
+    }
     queryEmoteWrappers(name).forEach((w) => {
       if (w.classList.contains('hs-state-blocked')) return
       w.classList.remove(
@@ -1068,6 +1094,10 @@ function applyBlockedHashDelta(newHashesArr) {
     if (!name) continue
     blockedEmoteNames.delete(name)
     changedNames.push(name)
+    // Drop the persisted fallback too, else rebuildBlockedNames re-seeds this
+    // name from blockedEmoteFallback on the next reload and the emote re-blocks
+    // itself. Mirrors unblockEmote's cleanup; persist is debounced.
+    if (blockedEmoteFallback.delete(name)) persistBlockedFallback()
     const emote = lookupEmote(name)
     const realUrl = emote?.url || ''
     // 2-state model: block never dropped this from the set (server preserves
@@ -1193,6 +1223,10 @@ function markInputEmoteBlocked(img, blocked) {
     if (img.src && !img.src.startsWith('data:')) img.dataset.hsOrigSrc = img.src
     img.src = HS_TRANSPARENT_PX
     img.classList.add('hs-state-blocked')
+    // Stash the real ownership state so unblock can restore it, instead of
+    // leaving the chip stateless (findEmoteTarget would then default to 'global'
+    // and mis-route the right-click/hover menu on an owned emote).
+    if (img.dataset.state && img.dataset.state !== 'blocked') img.dataset.hsPrevState = img.dataset.state
     // dataset.state lets findEmoteTarget (input.js) and the chrome content.js
     // hover-overlay color picker route through the blocked branch even when
     // src is the transparent placeholder.
@@ -1204,7 +1238,12 @@ function markInputEmoteBlocked(img, blocked) {
     delete img.dataset.hsInputBlocked
     delete img.dataset.hsOrigSrc
     img.classList.remove('hs-state-blocked')
-    delete img.dataset.state
+    if (img.dataset.hsPrevState) {
+      img.dataset.state = img.dataset.hsPrevState
+      delete img.dataset.hsPrevState
+    } else {
+      delete img.dataset.state
+    }
   }
 }
 
@@ -1448,7 +1487,11 @@ function blockEmote(emoteName, clickedUrl, clickedSource) {
   // stored no url, leaving it un-re-addable (renders blank on re-add).
   const _be = lookupEmote(emoteName)
   const _httpOk = (u) => typeof u === 'string' && /^https?:\/\//i.test(u)
-  const capturedUrl = _httpOk(_be?.url) ? _be.url : _httpOk(clickedUrl) ? clickedUrl : ''
+  // Prefer the CLICKED element's url (the actually-rendered image — channel
+  // version when a name exists both channel + global) over lookupEmote, which
+  // returns the global cache first and would otherwise capture the wrong image
+  // for unblock/re-add.
+  const capturedUrl = _httpOk(clickedUrl) ? clickedUrl : _httpOk(_be?.url) ? _be.url : ''
   rememberBlockedEmote(emoteName, capturedUrl, _be?.source || clickedSource, _be?.zeroWidth)
 
   // 2-state model: block is a render-preference, not an inventory mutation.
@@ -1614,7 +1657,7 @@ function unblockEmote(emoteName) {
 // (picker, chat-row click, auto-add-on-send, chip-paste) inherit the flag
 // without each having to plumb it through their own state.
 async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, targetEl, zeroWidth, silent) {
-  if (!emoteName) return
+  if (!emoteName) return false
   if (zeroWidth == null) {
     const remote = mcRemoteEmoteIndex.get(emoteName)
     zeroWidth = !!(remote?.zeroWidth || zeroWidthFromAnyCache(emoteName))
@@ -1625,8 +1668,9 @@ async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, targetEl, z
   // rejects non-https anyway). Reject early with a clear toast.
   if (!emoteUrl || !/^https?:\/\//i.test(emoteUrl)) {
     if (!silent) showToast(`can't add ${emoteName} — image unavailable`, 'error')
-    return
+    return false
   }
+  let _added = false
   pendingEmoteOps.add(emoteName)
   try {
     // Generate a hash from the URL for the API
@@ -1647,6 +1691,7 @@ async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, targetEl, z
     })
 
     if (response?.success) {
+      _added = true
       // Update local cache - change from unadded to owned
       // Adding and blocking are mutually exclusive
       blockedEmoteNames.delete(emoteName)
@@ -1709,6 +1754,7 @@ async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, targetEl, z
   } finally {
     pendingEmoteOps.delete(emoteName)
   }
+  return _added
 }
 
 // Sync block/unblock to heatsync.org API via background script

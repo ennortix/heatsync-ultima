@@ -104,7 +104,7 @@
   let tabBarElement = null
   let overlayElement = null
   let inputBarElement = null // Separate input bar (always visible)
-  const pendingMessage = '' // Persists across tab switches
+  let pendingMessage = '' // Persists across tab switches
   let tabPosition = 'top' // 'top', 'right', 'bottom', 'left'
   let resizeObserver = null // Tracks overlay top sync observer
   let _updateMcLayout = () => {} // Set by ensureUIElements; callable from rotateTabPosition
@@ -15897,6 +15897,19 @@
       } catch {}
       return false
     })
+    // Null the sentinels whose observers/timers were just disconnected/cleared
+    // above. Their "already running" guards (if (columnObserver) return,
+    // if (!mcCosmeticsTimer), if (_persistMentionsState.timer) return, etc.)
+    // would otherwise stay truthy forever, so after the first channel switch
+    // the column watcher, 7TV cosmetics flush, mention/YT persistence, and
+    // resub-callout observer are never recreated. dirty Sets are intentionally
+    // kept — the next message reschedules a flush that still includes pre-nav data.
+    columnObserver = null
+    _hsCalloutCloseObs = null
+    mcCosmeticsTimer = null
+    _persistMentionsState.timer = null
+    _persistYtTimers.clear()
+    _persistTabSeenTimer = null
     mcInitialized = false // Allow init() to run again
 
     // Reset social tab state (stale on nav)

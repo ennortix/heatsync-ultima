@@ -49788,8 +49788,7 @@ function softTwitchNav(prevLiveCh) {
       const dmPaint = m.platform === 'twitch' ? userPaintStyle(m.userId, (m.user || '').toLowerCase()) : ''
       const userName = `<span style="${dmPaint || `color:${sanitizeColor(m.color)};font-weight:600`}">${escapeHtml(m.user)}</span>`
       // All values sanitized — safe innerHTML
-      if (m._renderedHtml == null)
-        m._renderedHtml = highlightHashtagsInHtml(processEmotes(escapeHtml(m.text), null))
+      if (m._renderedHtml == null) m._renderedHtml = highlightHashtagsInHtml(processEmotes(escapeHtml(m.text), null))
       // All values already sanitized via escapeHtml/processEmotes — safe innerHTML (existing pattern)
       div.innerHTML = `${tsSpan}${label}${platBadge}${userName}: ${m._renderedHtml}`
       div.style.cursor = 'pointer'

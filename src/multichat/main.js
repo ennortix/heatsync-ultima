@@ -1817,6 +1817,7 @@
     wysiwygEnabled: { get: function() { return wysiwygEnabled }, set: function(v) { wysiwygEnabled = v } },
     linksEnabled: { get: function() { return linksEnabled }, set: function(v) { linksEnabled = v } },
     linkPreviewsEnabled: { get: function() { return linkPreviewsEnabled }, set: function(v) { linkPreviewsEnabled = v } },
+    mediaEmbedsEnabled: { get: function() { return mediaEmbedsEnabled }, set: function(v) { mediaEmbedsEnabled = v } },
     viModeEnabled: { get: function() { return viModeEnabled }, set: function(v) { viModeEnabled = v } },
     platformBadgesEnabled: { get: function() { return platformBadgesEnabled }, set: function(v) { platformBadgesEnabled = v } },
     zebraEnabled: { get: function() { return zebraEnabled }, set: function(v) { zebraEnabled = v } },
@@ -2704,6 +2705,10 @@
 
   // Link preview tooltip on hover (default on)
   let linkPreviewsEnabled = true;
+
+  // Inline media embeds in chat — images/gifs/video/link-cards rendered below
+  // the message (never live iframes; see extractChatEmbed). Default on.
+  let mediaEmbedsEnabled = true;
 
   // Vi mode for chat input (default off)
   let viModeEnabled = false;
@@ -8405,6 +8410,23 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (m.replyTo) {
       if (m.replyTo.id) div.dataset.replyId = m.replyTo.id
       if (m.replyTo.threadId) div.dataset.replyThreadId = m.replyTo.threadId
+    }
+    // Inline media — a single lightweight embed (direct img/video, a youtube
+    // thumbnail, or a server-resolved rich card) below the text. NEVER a live
+    // iframe: chat is high-volume and runs on low-RAM hardware. Appended as a
+    // sibling node (outside the cached _renderedHtml) so toggling the setting
+    // takes effect on the next rerender. Lazy-loaded, error-guarded, capped.
+    if (mediaEmbedsEnabled && !m.cleared && m.text && m.type !== 'usernotice' && m.type !== 'notice'
+        && typeof extractChatEmbed === 'function') {
+      const embedHtml = extractChatEmbed(m.text)
+      if (embedHtml) {
+        const holder = document.createElement('div')
+        holder.className = 'hs-mc-media-wrap'
+        holder.insertAdjacentHTML('afterbegin', embedHtml)
+        div.appendChild(holder)
+        if (typeof resolvePendingFeedEmbeds === 'function') resolvePendingFeedEmbeds(holder)
+        if (typeof attachFeedFallbacks === 'function') attachFeedFallbacks(holder)
+      }
     }
     return div;
   }

@@ -347,6 +347,66 @@ function extractFeedEmbed(content) {
   return ''
 }
 
+// ── CHAT INLINE EMBEDS ──────────────────────────────────────────────────────
+// Chat is high-volume and lives on low-RAM / passive-cooled hardware, so chat
+// NEVER renders live iframes the way the feed does (the feed virtual-scrolls, so
+// its visible iframe count stays tiny — chat has no such bound). Chat media is
+// therefore always lightweight: an inline direct image/video, a YouTube
+// thumbnail card, or a server-resolved rich card. One embed per message. Every
+// branch emits ONLY safeUrl()-validated + attr()-escaped strings — never raw
+// message text — so the holder's insertAdjacentHTML in main.js stays XSS-safe.
+const _CHAT_URL_RE = /https?:\/\/[^\s<>"']+/i
+
+function extractChatEmbed(text) {
+  if (!text || typeof text !== 'string') return ''
+  const m = text.match(_CHAT_URL_RE)
+  if (!m) return ''
+  return chatEmbedForUrl(m[0])
+}
+
+function chatEmbedForUrl(rawUrl) {
+  // Strip trailing sentence punctuation, but only strip a trailing ) or ] when
+  // it's UNBALANCED — otherwise wikipedia/github URLs like .../Foo_(bar) lose
+  // their closing paren and the embed/link breaks.
+  let cleanUrl = rawUrl.replace(/[.,;!?]+$/, '')
+  while (/[)\]]$/.test(cleanUrl)) {
+    const opens = (cleanUrl.match(/[([]/g) || []).length
+    const closes = (cleanUrl.match(/[)\]]/g) || []).length
+    if (closes <= opens) break
+    cleanUrl = cleanUrl.slice(0, -1).replace(/[.,;!?]+$/, '')
+  }
+  const safe = safeUrl(cleanUrl)
+  if (!safe) return ''
+  // Direct image / gif → inline, lazy, error-guarded (data-fb hides on 404/blocked).
+  if (/\.(jpg|jpeg|png|gif|webp|avif)(\?.*)?$/i.test(cleanUrl)) {
+    return `<div class="hs-mc-media"><img src="${attr(safe)}" alt="" loading="lazy" decoding="async" data-fb="hide"></div>`
+  }
+  // Direct video → inline, preload=none (no bytes until play — critical at chat volume).
+  if (/\.(mp4|webm|mov)(\?.*)?$/i.test(cleanUrl)) {
+    return `<div class="hs-mc-media"><video controls muted preload="none" playsinline src="${attr(safe)}" data-fb="hide"></video></div>`
+  }
+  // YouTube → thumbnail card that opens the video. Never an iframe in chat.
+  let ytId = ''
+  let ym
+  if ((ym = cleanUrl.match(/youtu\.be\/([\w-]{11})/))) ytId = ym[1]
+  else if ((ym = cleanUrl.match(/youtube\.com\/watch\?v=([\w-]{11})/))) ytId = ym[1]
+  else if ((ym = cleanUrl.match(/youtube\.com\/shorts\/([\w-]{11})/))) ytId = ym[1]
+  if (ytId) {
+    const id = sanitizeEmbedId(ytId)
+    if (id) return `<a href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener" class="hs-mc-media hs-feed-embed-yt-thumb">
+      <img src="https://i.ytimg.com/vi/${id}/mqdefault.jpg" alt="" loading="lazy" decoding="async" data-fb="hide">
+      <span class="hs-feed-embed-yt-play">▶</span>
+    </a>`
+  }
+  // Providers the server resolver handles (oEmbed) → lightweight pending card.
+  // Server returns image/video/audio/rich; unsupported → graceful link card.
+  // No iframes. data-resolve-url drives resolvePendingFeedEmbeds().
+  if (/(?:reddit\.com\/r\/|(?:twitter|x)\.com\/[\w_]+\/status\/|open\.spotify\.com\/(?:track|album|playlist|episode|show)\/|(?:www\.)?vimeo\.com\/\d|tiktok\.com\/@[\w.]+\/video\/|instagram\.com\/(?:p|reel)\/|soundcloud\.com\/[\w-]+\/[\w-]+|kick\.com\/[\w_-]+\/clips\/|clips\.twitch\.tv\/|streamable\.com\/\w)/i.test(cleanUrl)) {
+    return `<div class="hs-mc-media hs-feed-embed-pending" data-resolve-url="${attr(safe)}" data-resolve-platform="link"><span class="hs-feed-embed-pending-label">loading preview…</span></div>`
+  }
+  return ''
+}
+
 // Main entry: build full media HTML for a feed message.
 // Handles direct uploads (image/video), multi-image (media[]), and content-extracted embeds.
 function buildFeedMediaHtml(m) {
@@ -526,6 +586,10 @@ function resolvePendingFeedEmbeds(root) {
     const url = ph.dataset.resolveUrl
     if (!url) continue
     _fetchFeedResolve(url).then(data => {
+      // The row may have been culled (chat trimMessagesEl, or a feed re-render)
+      // during the async resolve — don't mutate a detached node or wire dead
+      // listeners. Matches the isConnected guard pattern used elsewhere.
+      if (!ph.isConnected) return
       if (data && !data.error) {
         const html = _buildFeedResolvedHtml(ph, data)
         if (html) _swapPlaceholder(ph, html, 'hs-feed-embed-resolved')
@@ -566,5 +630,11 @@ function attachFeedFallbacks(root) {
         img.replaceWith(replacement)
       }
     }, { once: true })
+  })
+  // Inline <video> (direct chat media) — a dead source must hide, not leave a
+  // broken player. <video> 'error' doesn't bubble, so wire it directly here.
+  root.querySelectorAll('video[data-fb="hide"]').forEach((video) => {
+    video.removeAttribute('data-fb')
+    video.addEventListener('error', () => { video.style.display = 'none' }, { once: true })
   })
 }

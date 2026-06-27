@@ -347,6 +347,12 @@ const SETTINGS = [
     control: 'pill', alias: 'linkpreviews', runtimeVar: 'linkPreviewsEnabled',
   },
   {
+    key: 'mediaEmbedsEnabled', type: 'bool', default: true, scope: 'sync',
+    category: 'chat', section: 'messages',
+    labelKey: 'mc_settings_media_embeds', tipKey: 'mc_settings_media_embeds_desc',
+    control: 'pill', alias: 'mediaembeds', runtimeVar: 'mediaEmbedsEnabled', rerender: true,
+  },
+  {
     key: 'hs_auto_claim_points', type: 'bool', default: true, scope: 'local',
     category: 'chat', section: 'messages',
     labelKey: 'mc_settings_auto_claim', tipKey: 'mc_settings_auto_claim_desc',

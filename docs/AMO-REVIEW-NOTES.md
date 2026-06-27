@@ -2,8 +2,8 @@
 
 Reference for the Firefox Add-ons (AMO) submission. Paste the **Notes for Reviewers**
 block below into the submission, and use the permission/host tables to answer any
-per-permission prompts. Keep this in sync with `chrome/manifest.json` +
-`firefox/manifest.json` when permissions change.
+per-permission prompts. Keep this in sync with `src/manifests/chrome.json` +
+`src/manifests/firefox.json` when permissions change.
 
 ---
 
@@ -72,7 +72,7 @@ the emote inventory, sign in with the free Twitch/Kick OAuth at heatsync.org.
 ---
 
 ## Pre-submit checklist
-- [ ] `firefox/manifest.json` version == the version being submitted (build.js guards this).
+- [ ] `src/manifests/firefox.json` version == the version being submitted (build.js guards this).
 - [ ] attach `dist/heatsync-source-X.Y.Z.zip` (produced by `bun run build.js --package`).
 - [ ] permissions in the tables above still match both manifests.
 - [ ] data-collection form: declare "no data collected" (local-only storage; cookies first-party, never sent).

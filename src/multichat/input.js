@@ -3446,6 +3446,9 @@ function getRecencyMap() {
     const msg = pickIrc ? ircMsgs[i--] : ytMsgs[j--]
     const u = (msg?.user || '').toLowerCase()
     if (!u || out.has(u)) continue
+    // Blocked users never tab-complete — drop them at this one chokepoint so
+    // both the recent-chatter and @-mention recency paths stay clean.
+    if (typeof isUserBlocked === 'function' && isUserBlocked(u)) continue
     out.set(u, rank++)
   }
   return out
@@ -3537,6 +3540,9 @@ function findEmoteMatches(search) {
     for (const username of usernameCache) {
       if (!username) continue
       const userLower = username.toLowerCase()
+      // Blocked users never surface as an @-completion suggestion (and don't
+      // trigger a color prefetch for them).
+      if (typeof isUserBlocked === 'function' && isUserBlocked(userLower)) continue
       let color = (typeof knownColors !== 'undefined' && knownColors.get(userLower)) || null
       if (!color && _hsUserColorCache.has(userLower)) color = _hsUserColorCache.get(userLower) || null
       if (!color) _hsPrefetchList.push(userLower)
@@ -3672,6 +3678,7 @@ function findEmoteMatches(search) {
       if (!username) continue
       const userLower = username.toLowerCase()
       if (_recentSeen.has(userLower)) continue
+      if (typeof isUserBlocked === 'function' && isUserBlocked(userLower)) continue
       if (userLower.startsWith(searchLower)) {
         matches.push({ name: username, url: null, priority: 0, type: 'user' })
       } else if (userLower.includes(searchLower)) {

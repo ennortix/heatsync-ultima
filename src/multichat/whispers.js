@@ -203,6 +203,11 @@ function loadWhispers() {
 }
 
 function handleIncomingWhisper(msg) {
+  // Blocked users can't reach you via Twitch whisper — no timeline entry, no
+  // red-dot/badge, no popup. (These arrive straight from Twitch EventSub/IRC,
+  // so there's no server-side gate like HeatSync DMs have.) Checked BEFORE the
+  // dedup mark so unblocking mid-session lets a later re-delivery surface.
+  if (typeof isUserBlocked === 'function' && isUserBlocked(msg.user, 'twitch')) return
   // O(1) dedup that also collapses dual IRC↔EventSub delivery when ID is missing
   if (_whisperMarkSeen(_whisperDedupKey('twitch', msg.id, msg.user, msg.time, msg.text))) return
 

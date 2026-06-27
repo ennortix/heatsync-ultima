@@ -5287,6 +5287,11 @@
     if (messageAuthor === currentUser) {
       return // Don't highlight your own messages
     }
+    // Blocked users can't ping you — no highlight, no notification (covers the
+    // unprotected observer path where the message is hidden but still in DOM)
+    if (messageAuthor && blockedUsers.has(messageAuthor)) {
+      return
+    }
 
     let shouldHighlight = false
 
@@ -5845,8 +5850,11 @@
       }
     }
 
-    // Check if user is blocked (hard hide)
-    if (blockedUsers.has(username)) {
+    // Check if user is blocked (hard hide). Compare lowercased — blockedUsers
+    // stores lowercased names (block_user sends username.toLowerCase()), so a
+    // raw-case display name like "Ninja" would otherwise never match and the
+    // blocked message would render.
+    if (blockedUsers.has(lowerUser)) {
       messageElement.style.display = 'none'
       return
     }

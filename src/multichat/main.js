@@ -8962,7 +8962,13 @@
     // Blocked user — fully hide (skip render entirely). Both the append and the
     // full-rebuild path go through buildMessageDiv, so returning null here hides
     // the message everywhere. Unblock + renderMessages brings them back.
+    // m.actor covers stream-events whose sender is carried in actor, not user —
+    // channel-point redeems (redeemer, set ~13343) and 7TV emote-change banners
+    // (set ~12245). Those have no m.user so the first check misses them. Hiding a
+    // blocked user's emote-add banner is desirable too. online/offline/raid/hype/
+    // sub events leave actor null, so their banners still render.
     if (m.user && isUserBlocked(m.user, m.platform)) return null
+    if (m.actor && isUserBlocked(m.actor, m.platform)) return null
     // Stream event — render as magenta inline notification.
     // Render-time gate: skip if the corresponding hermes toggle is off
     // (buffer can hold events saved before a toggle flipped). Mirrors the
@@ -9418,8 +9424,13 @@
     const replyPaint = replyUid ? userPaintStyle(replyUid, replyLower) : ''
     const replyStyle = replyPaint || `color:${mentionColor(replyLower)}`
     const replyUidAttr = replyUid ? ` data-uid="${escapeHtml(replyUid)}"` : ''
-    const replyBar =
-      m.replyTo && m.replyTo.user
+    // A blocked user's name + message snippet must not leak through a reply
+    // context bar when someone else replies to them. Show a neutral marker
+    // with no name, no text, no profile link.
+    const replyBlocked = m.replyTo && m.replyTo.user && isUserBlocked(m.replyTo.user, m.platform)
+    const replyBar = replyBlocked
+      ? `<div class="hs-mc-reply-ctx">&#8618; Replying to [blocked]</div>`
+      : m.replyTo && m.replyTo.user
         ? `<div class="hs-mc-reply-ctx" title="${escapeHtml(m.replyTo.user)}: ${escapeHtml(m.replyTo.text || '')}">&#8618; Replying to <a href="https://heatsync.org/user/${encodeURIComponent(m.replyTo.user)}" target="_blank" rel="noopener noreferrer" class="hs-mc-user hs-mc-reply-user" data-username="${escapeHtml(replyLower)}"${replyUidAttr} style="${replyStyle}">@${escapeHtml(m.replyTo.user)}</a>${m.replyTo.text ? ': ' + escapeHtml(m.replyTo.text.length > 80 ? m.replyTo.text.slice(0, 80) + '...' : m.replyTo.text) : ''}</div>`
         : ''
     // Redeem label — look up reward title from Hermes cache
@@ -13614,6 +13625,8 @@
         const username = String(msg.username || '')
         const snippet = String(msg.snippet || '').slice(0, 200)
         const pattern = String(msg.pattern || '')
+        // Blocked users can't ping you, even via a server-evaluated rule.
+        if (typeof isUserBlocked === 'function' && isUserBlocked(username, msg.platform)) return
         try {
           HsNotifs.emit('server-mention-rule', { channel, username, snippet, pattern })
         } catch (_) {}

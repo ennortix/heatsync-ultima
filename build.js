@@ -481,15 +481,45 @@ function bundleContentScript(srcPath, lib, mcModules) {
     content = content.replace(/\/\/ === MULTICHAT MODULES[\s\S]*?\/\/ === END MULTICHAT MODULES ===\n\n/, '')
   }
 
-  // Strip existing IIFE wrapper so we can rebuild cleanly
-  // Strip leading block comments before checking for IIFE
+  // Strip the module's own IIFE wrapper so its top-level declarations merge
+  // into the bundle's shared block scope.
   let body = content
-  const stripped = content.replace(/^\s*\/\*[\s\S]*?\*\/\s*/, '').trim()
-  if (stripped.startsWith('(function()') || stripped.startsWith('(() =>')) {
-    // Remove opening: optional block comment + (function() { 'use strict';
-    body = content.replace(/^[\s\S]*?\((?:function\s*\(\)|(?:\(\)\s*=>))\s*\{[\s\n]*(?:'use strict';?\s*)?/, '')
-    // Remove closing: })();
-    body = body.replace(/\}\s*\)\s*\(\s*\)\s*;?\s*$/, '')
+  const closeRe = /\}\s*\)\s*\(\s*\)\s*;?\s*$/
+  if (mcModules != null) {
+    // MULTICHAT bundle ONLY. Sibling modules (input.js, emotes.js, …) are
+    // concatenated alongside main.js and reference its globals, so main.js's
+    // wrapper MUST be stripped or every global is scope-trapped → the whole
+    // bundle throws "X is not defined" and chat never loads. main.js opens
+    // with `;(() => {` (biome's ASI-guard semicolon + arrow form); the old
+    // gate only matched a bare `(() =>`, so the `;` slipped it past the strip
+    // — that was the long-standing chat-break. Tolerate the leading `;` here.
+    const stripped = content
+      .replace(/^\s*\/\*[\s\S]*?\*\/\s*/, '')
+      .replace(/^[\s;]+/, '')
+      .trim()
+    if ((stripped.startsWith('(function') || stripped.startsWith('(()')) && closeRe.test(content.trimEnd())) {
+      body = content.replace(
+        /^[\s\S]*?\((?:function\s*\(\)|(?:\(\)\s*=>))\s*\{[\s\n]*(?:'use strict';?\s*)?/,
+        '',
+      )
+      body = body.replace(closeRe, '')
+      // Bulletproof: if either end survived, globals stay scope-trapped and the
+      // bundle throws at runtime. Fail the build loudly instead.
+      if (closeRe.test(body.trimEnd()) || body.length === content.length) {
+        throw new Error(`build: IIFE wrapper not fully stripped in ${srcPath} — globals would be scope-trapped`)
+      }
+    }
+  } else {
+    // STANDALONE content scripts (chat-injector, autocomplete-hook, …) are
+    // self-contained and have always run as nested IIFEs inside the lib
+    // wrapper — they have no sibling modules, so there is nothing to merge
+    // scopes with, and stripping them changes their scope and breaks them.
+    // Keep the original conservative gate verbatim (does NOT match `;(() =>`).
+    const stripped = content.replace(/^\s*\/\*[\s\S]*?\*\/\s*/, '').trim()
+    if (stripped.startsWith('(function()') || stripped.startsWith('(() =>')) {
+      body = content.replace(/^[\s\S]*?\((?:function\s*\(\)|(?:\(\)\s*=>))\s*\{[\s\n]*(?:'use strict';?\s*)?/, '')
+      body = body.replace(closeRe, '')
+    }
   }
 
   // Build: IIFE > lib at outer scope > content in block scope

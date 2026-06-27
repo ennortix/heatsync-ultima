@@ -40721,18 +40721,7 @@ function _hsEnsureYtBelowObserver(_tries) {
 // === END MULTICHAT MODULES ===
 
 
-/**
- * Heatsync MultiChat - FFZ-style React-aware implementation
- *
- * KEY PRINCIPLE: Work WITHIN React, not around it.
- * - Never manipulate DOM after React renders
- * - Hook into React components and modify render output
- * - Use forceUpdate() to trigger re-renders
- * - Inject UI as React children, not DOM insertions
- */
-
-;(() => {
-  const STORAGE_KEY = 'heatsync_multichat'
+const STORAGE_KEY = 'heatsync_multichat'
   const LOG_PREFIX = '[heatsync-mc]'
 
   // bidi direction for the user's locale (ltr/rtl) — applied to injected UI roots
@@ -56800,7 +56789,6 @@ function _hsEnsureYtBelowObserver(_tries) {
 
   // Fallback: polling in case MAIN world script didn't load
   cleanup.setIntervalIfVisible(() => handleMcNav(), 5000)
-})()
 
 }
 })();

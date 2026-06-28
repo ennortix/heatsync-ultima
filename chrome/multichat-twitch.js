@@ -1374,21 +1374,6 @@ if (typeof window !== 'undefined') {
 /** @type {SettingDef[]} */
 const SETTINGS = [
   // ── display — the headline toggle first ──────────────────────────────
-  {
-    key: 'multichatOverlayEnabled',
-    type: 'bool',
-    default: true,
-    scope: 'sync',
-    category: 'display',
-    section: 'chat messages',
-    label: 'multichat overlay',
-    tip: 'off = emotes only (lite mode) — native chat keeps your emotes, tab-complete and picker; the panel disappears. flip it back here, from the extension icon popup, or on heatsync.org.',
-    control: 'pill',
-    alias: 'multichatoverlay lite emotes only disable hide panel off',
-    runtimeVar: 'multichatOverlayEnabled',
-    apply: 'multichatOverlay',
-    legacy: (ui) => (ui.subsystems && ui.subsystems.overlay === false ? false : undefined),
-  },
 
   // ── display / font ────────────────────────────────────────────────────
   {
@@ -3010,14 +2995,6 @@ const SETTINGS_PRESETS = [
       viMode: true,
       timestamps: true,
       hiddenTabs: [],
-    },
-  },
-  {
-    id: 'emotes-only',
-    label: 'emotes only (lite)',
-    tip: 'overlay off — emotes, tab-complete and picker in native chat only. applies live.',
-    diff: {
-      multichatOverlayEnabled: false,
     },
   },
   {
@@ -55752,19 +55729,10 @@ const STORAGE_KEY = 'heatsync_multichat'
     const _localPrime = chrome.storage.local.get([STORAGE_KEY, 'user_info', 'muted_users'])
     await loadConfig()
     if (!config.enabled) return
-    // Lite / emotes-only mode — multichatOverlayEnabled off kills the whole
-    // panel before any DOM or sockets exist. The emote layer (content.js,
-    // separate script) keeps running. Re-enable: settings pill (live),
-    // extension popup, or heatsync.org. The retired subsystems.overlay key
-    // is honored here too until the loadAllSettings legacy hook migrates it.
-    try {
-      const _pre = await _uiPrime
-      const _ui = _pre?.ui_settings
-      if (_ui?.multichatOverlayEnabled === false || _ui?.subsystems?.overlay === false) {
-        log('overlay off — lite mode, skipping multichat init')
-        return
-      }
-    } catch {}
+    // Lite / emotes-only mode REMOVED — the overlay always boots now (the
+    // emotes-only mode was buggy + unwanted). A stale multichatOverlayEnabled=false
+    // no longer disables the panel. To restore lite later, re-add the _uiPrime
+    // check that early-returned on multichatOverlayEnabled === false.
     log('Initializing...')
 
     // ── PHASE 2: hydrate username + muted users from prefetched local ─────

@@ -102,21 +102,6 @@
 /** @type {SettingDef[]} */
 const SETTINGS = [
   // ── display — the headline toggle first ──────────────────────────────
-  {
-    key: 'multichatOverlayEnabled',
-    type: 'bool',
-    default: true,
-    scope: 'sync',
-    category: 'display',
-    section: 'chat messages',
-    label: 'multichat overlay',
-    tip: 'off = emotes only (lite mode) — native chat keeps your emotes, tab-complete and picker; the panel disappears. flip it back here, from the extension icon popup, or on heatsync.org.',
-    control: 'pill',
-    alias: 'multichatoverlay lite emotes only disable hide panel off',
-    runtimeVar: 'multichatOverlayEnabled',
-    apply: 'multichatOverlay',
-    legacy: (ui) => (ui.subsystems && ui.subsystems.overlay === false ? false : undefined),
-  },
 
   // ── display / font ────────────────────────────────────────────────────
   {
@@ -1738,14 +1723,6 @@ const SETTINGS_PRESETS = [
       viMode: true,
       timestamps: true,
       hiddenTabs: [],
-    },
-  },
-  {
-    id: 'emotes-only',
-    label: 'emotes only (lite)',
-    tip: 'overlay off — emotes, tab-complete and picker in native chat only. applies live.',
-    diff: {
-      multichatOverlayEnabled: false,
     },
   },
   {

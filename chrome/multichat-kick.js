@@ -43224,6 +43224,24 @@ const STORAGE_KEY = 'heatsync_multichat'
       try {
         setNativeChatHidden(!v)
       } catch (_) {}
+      // Force the panel to collapse to its tab-bar strip so native chat shows
+      // through. The CSS collapse rule (04-native-chat-shell) loses a specificity
+      // war to the position rules (17-platform-position, e.g. the no-channel
+      // chat-right rule at 1,3,1 forcing bottom:0) — without this the full-height
+      // opaque panel stays put and covers native chat (looks blank). Inline
+      // !important beats every rule; #hs-mc-container is ours (not React) so it sticks.
+      try {
+        const _c = document.getElementById('hs-mc-container')
+        if (_c) {
+          if (v) {
+            _c.style.setProperty('height', 'auto', 'important')
+            _c.style.setProperty('bottom', 'auto', 'important')
+          } else {
+            _c.style.removeProperty('height')
+            _c.style.removeProperty('bottom')
+          }
+        }
+      } catch (_) {}
       const btn = document.getElementById('hs-mc-native-btn')
       if (btn) {
         btn.title = v ? 'hide native chat' : 'show native chat'

@@ -46,6 +46,15 @@ function pinTwitchPersistentPlayer() {
     }
     return
   }
+  // Browsing away from a live stream (e.g. clicking Browse/Following) puts
+  // .persistent-player into Twitch's floating mini-player mode — no
+  // .channel-root is present. Pinning top:0/left:0 breaks the mini-player
+  // corner position; clear any stale overrides and let Twitch own it.
+  if (!document.querySelector('.channel-root, [class*="channel-root"]')) {
+    if (pp.style.top === '0px') pp.style.removeProperty('top')
+    if (pp.style.left === '0px') pp.style.removeProperty('left')
+    return
+  }
   // chatPosition === 'right' default path — pin top:0 when Twitch's React
   // forgets to set it (player falls to natural-flow position y > 2000px).
   const cur = pp.style.top

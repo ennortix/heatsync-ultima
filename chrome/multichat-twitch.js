@@ -15771,9 +15771,12 @@ function injectStyles() {
        el.style.height = X write (that strips priority). A stylesheet rule
        with !important sits in a separate cascade origin and beats those
        non-important inline writes. */
-    body.hs-platform-twitch.hs-chat-top .persistent-player,
-    body.hs-platform-twitch.hs-chat-bottom .persistent-player,
-    body.hs-platform-twitch.hs-chat-left .persistent-player {
+    /* hs-twitch-no-channel = browsing away while stream continues as mini-player.
+       All persistent-player geometry rules must be gated off that class so the
+       floating mini-player keeps Twitch's own sizing and corner position. */
+    body.hs-platform-twitch.hs-chat-top:not(.hs-twitch-no-channel) .persistent-player,
+    body.hs-platform-twitch.hs-chat-bottom:not(.hs-twitch-no-channel) .persistent-player,
+    body.hs-platform-twitch.hs-chat-left:not(.hs-twitch-no-channel) .persistent-player {
       width: auto !important;
       height: auto !important;
       max-width: none !important;
@@ -15788,8 +15791,8 @@ function injectStyles() {
        16:9 slot shows Twitch's offline placeholder behind the video. Twitch's
        own ".channel-root + .persistent-player { width:100% }" is the right
        target; assert it with !important so it survives the missing/stale
-       inline write. Theatre has its own width rule above, so exclude it. */
-    body.hs-platform-twitch.hs-chat-right:not(.hs-mode-theatre) .persistent-player {
+       inline write. Theatre and mini-player (no-channel) have their own rules. */
+    body.hs-platform-twitch.hs-chat-right:not(.hs-mode-theatre):not(.hs-twitch-no-channel) .persistent-player {
       width: 100% !important;
     }
     /* chat-top / chat-bottom, windowed: the chat-top/bottom branch in
@@ -15802,7 +15805,7 @@ function injectStyles() {
        the stylesheet cascade so they survive React's writes. Mirrors the
        theatre top/bottom rules above (same --hs-chat-h, 35vh) so the player
        edge always tracks the chat strip height. Theatre has its own rules. */
-    body.hs-platform-twitch.hs-chat-top:not(.hs-mode-theatre) .persistent-player {
+    body.hs-platform-twitch.hs-chat-top:not(.hs-mode-theatre):not(.hs-twitch-no-channel) .persistent-player {
       top: var(--hs-chat-h, 35vh) !important;
       bottom: 0 !important;
       left: 0 !important;
@@ -15810,7 +15813,7 @@ function injectStyles() {
       inset-inline-start: 0 !important;
       inset-inline-end: 0 !important;
     }
-    body.hs-platform-twitch.hs-chat-bottom:not(.hs-mode-theatre) .persistent-player {
+    body.hs-platform-twitch.hs-chat-bottom:not(.hs-mode-theatre):not(.hs-twitch-no-channel) .persistent-player {
       top: 0 !important;
       bottom: var(--hs-chat-h, 35vh) !important;
       left: 0 !important;
@@ -15826,7 +15829,7 @@ function injectStyles() {
        the nav, so left: chatWidth would double-count it and leave a gap
        between HS panel and video. JS pushes --hs-twitch-sidenav-w via
        a ResizeObserver on .side-nav. */
-    body.hs-platform-twitch.hs-chat-left .persistent-player {
+    body.hs-platform-twitch.hs-chat-left:not(.hs-twitch-no-channel) .persistent-player {
       /* Clear --hs-panel-w (chat content + tab strip), NOT --hs-chat-w: the
          strip adds ~60px and a chat-content-width inset leaves the video's
          left edge tucked under the strip. publishPanelWidth keeps it live. */
@@ -15843,6 +15846,41 @@ function injectStyles() {
          player would otherwise fall to its natural-flow position at the
          bottom of the wrapper (the same fall the chat-right top:0 guards). */
       top: 0 !important;
+    }
+    /* True browser fullscreen. Twitch promotes #root to the top layer so it
+       fills the screen, but the theatre/dock rules above keep .persistent-player
+       inset by the chat-panel width (--hs-panel-w) — so the video stops short
+       of the right edge and Twitch's dark fallback fills the gap. In fullscreen
+       chat is hidden, so the player must fill the whole viewport. :has(:fullscreen)
+       matches whenever any descendant is the fullscreen element. Every selector
+       carries a dock class so specificity equals the theatre rules above (0,4,1)
+       and source-order seals the win — a dock-less selector would fall to 0,3,1
+       and lose to the theatre rule it must override. video-player--theatre /
+       persistent-player--theatre are Twitch's own fullscreen-layout classes —
+       clear them too. */
+    body.hs-platform-twitch.hs-chat-right:has(:fullscreen) .persistent-player,
+    body.hs-platform-twitch.hs-chat-left:has(:fullscreen) .persistent-player,
+    body.hs-platform-twitch.hs-chat-top:has(:fullscreen) .persistent-player,
+    body.hs-platform-twitch.hs-chat-bottom:has(:fullscreen) .persistent-player,
+    body.hs-platform-twitch.hs-chat-right:has(:fullscreen) .persistent-player--theatre,
+    body.hs-platform-twitch.hs-chat-left:has(:fullscreen) .persistent-player--theatre,
+    body.hs-platform-twitch.hs-chat-top:has(:fullscreen) .persistent-player--theatre,
+    body.hs-platform-twitch.hs-chat-bottom:has(:fullscreen) .persistent-player--theatre,
+    body.hs-platform-twitch.hs-chat-right:has(:fullscreen) .video-player--theatre,
+    body.hs-platform-twitch.hs-chat-left:has(:fullscreen) .video-player--theatre,
+    body.hs-platform-twitch.hs-chat-top:has(:fullscreen) .video-player--theatre,
+    body.hs-platform-twitch.hs-chat-bottom:has(:fullscreen) .video-player--theatre {
+      inset: 0 !important;
+      top: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      left: 0 !important;
+      inset-inline-start: 0 !important;
+      inset-inline-end: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      max-width: none !important;
+      max-height: none !important;
     }
     /* The 16:9 aspect-ratio wrapper inside .persistent-player uses the
        padding-bottom hack: child .ScAspectSpacer sets padding-bottom to
@@ -40863,6 +40901,15 @@ function pinTwitchPersistentPlayer() {
     }
     return
   }
+  // Browsing away from a live stream (e.g. clicking Browse/Following) puts
+  // .persistent-player into Twitch's floating mini-player mode — no
+  // .channel-root is present. Pinning top:0/left:0 breaks the mini-player
+  // corner position; clear any stale overrides and let Twitch own it.
+  if (!document.querySelector('.channel-root, [class*="channel-root"]')) {
+    if (pp.style.top === '0px') pp.style.removeProperty('top')
+    if (pp.style.left === '0px') pp.style.removeProperty('left')
+    return
+  }
   // chatPosition === 'right' default path — pin top:0 when Twitch's React
   // forgets to set it (player falls to natural-flow position y > 2000px).
   const cur = pp.style.top
@@ -54440,7 +54487,18 @@ const STORAGE_KEY = 'heatsync_multichat'
       // directly so the chat strip doesn't sit on top of the video.
       const pp = document.querySelector('.persistent-player')
       if (pp) {
-        if (isRight) {
+        // On no-channel pages (directory, browse, following) .persistent-player
+        // is Twitch's floating mini-player. Clear any stale overrides we applied
+        // on the prior channel page and let Twitch own the mini-player geometry.
+        if (document.body.classList.contains('hs-twitch-no-channel')) {
+          pp.style.removeProperty('top')
+          pp.style.removeProperty('left')
+          pp.style.removeProperty('bottom')
+          pp.style.removeProperty('right')
+          pp.style.removeProperty('width')
+          pp.style.removeProperty('height')
+          pp.style.removeProperty('max-height')
+        } else if (isRight) {
           // Twitch's persistent-player has position:absolute with no CSS
           // rule setting `top`. The previous code removed inline top expecting
           // Twitch's React effect to re-apply it — but on certain layouts

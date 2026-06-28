@@ -13238,7 +13238,18 @@
       // directly so the chat strip doesn't sit on top of the video.
       const pp = document.querySelector('.persistent-player')
       if (pp) {
-        if (isRight) {
+        // On no-channel pages (directory, browse, following) .persistent-player
+        // is Twitch's floating mini-player. Clear any stale overrides we applied
+        // on the prior channel page and let Twitch own the mini-player geometry.
+        if (document.body.classList.contains('hs-twitch-no-channel')) {
+          pp.style.removeProperty('top')
+          pp.style.removeProperty('left')
+          pp.style.removeProperty('bottom')
+          pp.style.removeProperty('right')
+          pp.style.removeProperty('width')
+          pp.style.removeProperty('height')
+          pp.style.removeProperty('max-height')
+        } else if (isRight) {
           // Twitch's persistent-player has position:absolute with no CSS
           // rule setting `top`. The previous code removed inline top expecting
           // Twitch's React effect to re-apply it — but on certain layouts

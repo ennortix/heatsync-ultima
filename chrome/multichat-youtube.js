@@ -8714,9 +8714,19 @@ function injectStyles() {
        — adjust the padding-top below (and add a top: pin if the strip drifts
        over the nav). */
 
-    /* collapse the HS panel to just its tab-bar strip (toggle stays reachable) */
-    body.hs-native-visible #hs-mc-container {
+    /* Collapse the HS panel to a small top-right tab-bar strip in native mode —
+       regardless of chat position (right/left/top/BOTTOM) and on first boot.
+       The quadrupled class beats the no-channel position rules (specificity 1,3,1)
+       that otherwise pin the panel full-width/full-height (covering native chat +
+       leaving a bottom gap). Pure CSS so it applies on boot, no JS timing. */
+    body.hs-native-visible.hs-native-visible.hs-native-visible.hs-native-visible #hs-mc-container {
+      position: fixed !important;
+      top: var(--hs-twitch-topnav-h, 50px) !important;
+      right: 0 !important;
+      left: auto !important;
       bottom: auto !important;
+      width: auto !important;
+      max-width: 360px !important;
       height: auto !important;
       z-index: 10000 !important;
     }
@@ -43108,24 +43118,9 @@ const STORAGE_KEY = 'heatsync_multichat'
       try {
         setNativeChatHidden(!v)
       } catch (_) {}
-      // Force the panel to collapse to its tab-bar strip so native chat shows
-      // through. The CSS collapse rule (04-native-chat-shell) loses a specificity
-      // war to the position rules (17-platform-position, e.g. the no-channel
-      // chat-right rule at 1,3,1 forcing bottom:0) — without this the full-height
-      // opaque panel stays put and covers native chat (looks blank). Inline
-      // !important beats every rule; #hs-mc-container is ours (not React) so it sticks.
-      try {
-        const _c = document.getElementById('hs-mc-container')
-        if (_c) {
-          if (v) {
-            _c.style.setProperty('height', 'auto', 'important')
-            _c.style.setProperty('bottom', 'auto', 'important')
-          } else {
-            _c.style.removeProperty('height')
-            _c.style.removeProperty('bottom')
-          }
-        }
-      } catch (_) {}
+      // The collapse-to-strip is now pure CSS (04-native-chat-shell, high
+      // specificity, position-agnostic) so it applies on first boot too — no JS
+      // inline needed. On toggle-off the layout fns re-run and restore the panel.
       const btn = document.getElementById('hs-mc-native-btn')
       if (btn) {
         btn.title = v ? 'hide native chat' : 'show native chat'

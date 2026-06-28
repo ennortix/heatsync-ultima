@@ -154,7 +154,13 @@
     }
   }
 
-  const HsWebSocket = (url, protocols) => {
+  // MUST be a real function, not an arrow: page code calls `new WebSocket(...)`,
+  // and arrow functions throw "not a constructor". A constructor that returns an
+  // object yields that object from `new`, so we hand back the real OrigWebSocket
+  // (instanceof still holds — HsWebSocket.prototype === OrigWebSocket.prototype
+  // below). As an arrow this broke EVERY `new WebSocket()` on the page — killing
+  // Twitch's own chat (Hermes auth timeout) and all live chat.
+  function HsWebSocket(url, protocols) {
     const ws = protocols !== undefined ? new OrigWebSocket(url, protocols) : new OrigWebSocket(url)
     if (typeof url === 'string' && url.includes('hermes.twitch.tv')) {
       ws.addEventListener('message', handleHermesMessage)

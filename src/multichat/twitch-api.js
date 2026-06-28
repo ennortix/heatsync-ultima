@@ -458,6 +458,21 @@ function attachModeHandlers() {
   })
 }
 
+// Set one or more Twitch chat modes (follower/slow/emote/subscriber/unique) via
+// Helix PATCH /chat/settings — same endpoint + scope the mode buttons use.
+// `body` is the raw Helix payload, e.g. { follower_mode: true, follower_mode_duration: 30 }.
+// Returns { ok } or { ok:false, error } so callers can toast uniformly.
+async function setTwitchChatMode(channelLogin, body) {
+  const broadcasterId = await resolveTwitchChannelId(channelLogin)
+  if (!broadcasterId) return { ok: false, error: 'channel not found' }
+  const resp = await helixRequest(
+    `https://api.twitch.tv/helix/chat/settings?broadcaster_id=${broadcasterId}&moderator_id={me}`,
+    'PATCH',
+    body,
+  )
+  return resp.ok ? { ok: true } : { ok: false, error: resp.error || resp.status || 'unknown' }
+}
+
 function makeCoinSvg(size) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
   svg.setAttribute('width', String(size))

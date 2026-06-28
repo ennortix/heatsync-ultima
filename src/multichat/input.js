@@ -658,10 +658,12 @@ const SLASH_COMMANDS = [
   { cmd: 'mod', args: '<user>', desc: 'promote mod (broadcaster)' },
   { cmd: 'vip', args: '<user>', desc: 'add vip (broadcaster)' },
   { cmd: 'raid', args: '<channel>', desc: 'twitch raid (broadcaster)' },
-  { cmd: 'slow', args: '[secs]', desc: 'slow mode (mod)' },
+  { cmd: 'slow', args: '[secs|off]', desc: 'slow mode (twitch mod)' },
   { cmd: 'clear', args: '', desc: 'clear chat (mod)' },
-  { cmd: 'followers', args: '[mins]', desc: 'followers-only (mod)' },
-  { cmd: 'emoteonly', args: '', desc: 'emote-only mode (mod)' },
+  { cmd: 'followers', args: '[mins|off]', desc: 'followers-only (twitch mod)' },
+  { cmd: 'emoteonly', args: '[off]', desc: 'emote-only mode (twitch mod)' },
+  { cmd: 'subscribers', args: '[off]', desc: 'subs-only mode (twitch mod)' },
+  { cmd: 'unique', args: '[off]', desc: 'unique-chat/r9k (twitch mod)' },
 ]
 const slashAcState = { active: false, matches: [], index: 0 }
 function rebuildInput() {
@@ -4977,6 +4979,52 @@ const SLASH_ALIASES = {
   del: 'delete',
   lc: 'lclear',
   '?': 'help',
+  // chat-mode aliases → canonical mode command (see CHAT_MODES)
+  followersonly: 'followers',
+  followeronly: 'followers',
+  slowmode: 'slow',
+  emote: 'emoteonly',
+  emoteonlymode: 'emoteonly',
+  subonly: 'subscribers',
+  subsonly: 'subscribers',
+  subscribersonly: 'subscribers',
+  subs: 'subscribers',
+  uniquechat: 'unique',
+  r9k: 'unique',
+  r9kbeta: 'unique',
+}
+
+// Twitch chat modes — set via Helix /chat/settings (setTwitchChatMode). Each maps
+// to the Helix boolean field; `dur` modes also take a duration arg. follower
+// duration is MINUTES (0–129600), slow is SECONDS (3–120). Kick has no chat-mode
+// write API wired yet, so these are twitch-only (clear message below).
+const CHAT_MODES = {
+  followers: { field: 'follower_mode', dur: 'follower_mode_duration', unit: 'min', label: 'followers-only' },
+  slow: { field: 'slow_mode', dur: 'slow_mode_wait_time', unit: 'sec', label: 'slow mode' },
+  emoteonly: { field: 'emote_mode', label: 'emote-only' },
+  subscribers: { field: 'subscriber_mode', label: 'subscribers-only' },
+  unique: { field: 'unique_chat_mode', label: 'unique-chat' },
+}
+
+// Parse a chat-mode duration arg into the unit Twitch expects.
+// minutes: bare number = minutes; m/h/d/w suffixes; s rounds up to a minute.
+// seconds: bare number = seconds. Returns null on malformed input.
+function _parseModeDuration(arg, unit) {
+  const m = arg.match(/^(\d+)\s*([smhdw]?)$/)
+  if (!m) return null
+  let n = parseInt(m[1], 10)
+  const suf = m[2]
+  if (unit === 'sec') {
+    if (suf === 'm') n *= 60
+    else if (suf === 'h') n *= 3600
+    return Math.min(86400, Math.max(0, n))
+  }
+  // minutes
+  if (suf === 'h') n *= 60
+  else if (suf === 'd') n *= 1440
+  else if (suf === 'w') n *= 10080
+  else if (suf === 's') n = Math.ceil(n / 60)
+  return Math.min(129600, Math.max(0, n))
 }
 
 async function handleSlashCommand(text, input) {
@@ -5257,6 +5305,49 @@ async function handleSlashCommand(text, input) {
     return true
   }
 
+  // ─── Chat modes (mod) ─── followers/slow/emoteonly/subscribers/unique.
+  // Twitch via Helix /chat/settings (setTwitchChatMode). `/<mode> off` disables;
+  // duration modes take an optional arg (/followers 30, /slow 10). Kick has no
+  // chat-mode write API wired yet → clear message, never a silent no-op.
+  if (CHAT_MODES[cmd]) {
+    const cm = CHAT_MODES[cmd]
+    if (!modChannel) {
+      showToast(`/${cmd} needs a channel tab (not live/mentions/posts)`, 'error')
+      return true
+    }
+    if (!_twitchModName) {
+      showToast(
+        _kickModSlug ? `/${cmd} is twitch-only for now (kick chat modes not wired)` : `/${cmd} needs a twitch channel`,
+        'error',
+      )
+      return true
+    }
+    const arg = rest.trim().toLowerCase()
+    const off = arg === 'off'
+    const body = { [cm.field]: !off }
+    if (!off && cm.dur) {
+      if (arg) {
+        const dur = _parseModeDuration(arg, cm.unit)
+        if (dur == null) {
+          showToast(`usage: /${cmd} [${cm.unit === 'sec' ? 'secs' : 'mins'}] | off`, 'error')
+          return true
+        }
+        body[cm.dur] = dur
+      } else {
+        body[cm.dur] = cm.unit === 'sec' ? 30 : 0 // slow default 30s; followers any-follower
+      }
+    }
+    const resp = await setTwitchChatMode(_twitchModName, body)
+    if (resp.ok) {
+      const detail = !off && cm.dur && body[cm.dur] ? ` (${body[cm.dur]}${cm.unit === 'sec' ? 's' : 'm'})` : ''
+      showToast(`${cm.label} ${off ? 'off' : `on${detail}`}`, 'success')
+      clearInput(input)
+    } else {
+      showToast(`/${cmd} failed: ${resp.error}`, 'error')
+    }
+    return true
+  }
+
   return false
 }
 
@@ -5280,9 +5371,15 @@ const SLASH_HELP_LINES = [
   '/unban <user>          — unban or end timeout',
   '/delete <msg-id>       — delete one message',
   '',
+  'chat modes (twitch, mod):',
+  '/followers [mins]      — followers-only ("/followers off")',
+  '/slow [secs]           — slow mode, default 30s ("/slow off")',
+  '/emoteonly             — emote-only ("/emoteonly off")',
+  '/subscribers           — subs-only ("/subscribers off")',
+  '/unique                — unique-chat/r9k ("/unique off")',
+  '',
   '/me /color and chat pass through to twitch & kick.',
-  'other native commands (/mod /vip /raid /slow /clear /',
-  'followers /emoteonly /announce) are not yet wired —',
+  '/mod /vip /raid /clear /announce are not yet wired —',
   'use twitch native chat or mod panel.',
 ]
 

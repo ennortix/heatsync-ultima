@@ -8655,6 +8655,13 @@ function injectStyles() {
     body.hs-chat-hidden #hs-mc-resize-handle,
     body.hs-chat-hidden #hs-kick-resize-handle,
     body.hs-chat-hidden #hs-yt-resize-handle { display: none !important; }
+    /* Native chat shown: the HS resize bar floats (position:fixed, max z-index)
+       over native chat + its emote picker — hide it. You're using native chat,
+       not resizing the HS panel. */
+    body.hs-native-visible #hs-c-resize-handle,
+    body.hs-native-visible #hs-mc-resize-handle,
+    body.hs-native-visible #hs-kick-resize-handle,
+    body.hs-native-visible #hs-yt-resize-handle { display: none !important; }
     body.hs-chat-hidden .chat-shell.hs-native-hidden,
     body.hs-chat-hidden [class*="chat-shell"].hs-native-hidden { display: none !important; }
     #hs-chat-restore-pill {
@@ -45872,6 +45879,10 @@ const STORAGE_KEY = 'heatsync_multichat'
     return handle
   }
   function positionChatResizeHandle() {
+    // Native chat shown: leave the resize handle alone — CSS hides it
+    // (body.hs-native-visible). If we set display:none here during the collapse,
+    // it'd persist as a stale inline style after toggling back to HS mode.
+    if (typeof getSetting === 'function' && getSetting('nativeVisible')) return
     const handle = ensureChatResizeHandle()
     ;['top', 'bottom', 'left', 'right', 'width', 'height'].forEach((p) => handle.style.removeProperty(p))
     // For YT, chat-right is now position:fixed so the unified handle

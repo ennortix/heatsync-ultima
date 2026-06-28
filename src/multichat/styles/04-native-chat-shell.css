@@ -97,6 +97,13 @@
     body.hs-chat-hidden #hs-mc-resize-handle,
     body.hs-chat-hidden #hs-kick-resize-handle,
     body.hs-chat-hidden #hs-yt-resize-handle { display: none !important; }
+    /* Native chat shown: the HS resize bar floats (position:fixed, max z-index)
+       over native chat + its emote picker — hide it. You're using native chat,
+       not resizing the HS panel. */
+    body.hs-native-visible #hs-c-resize-handle,
+    body.hs-native-visible #hs-mc-resize-handle,
+    body.hs-native-visible #hs-kick-resize-handle,
+    body.hs-native-visible #hs-yt-resize-handle { display: none !important; }
     body.hs-chat-hidden .chat-shell.hs-native-hidden,
     body.hs-chat-hidden [class*="chat-shell"].hs-native-hidden { display: none !important; }
     #hs-chat-restore-pill {

@@ -4893,6 +4893,10 @@
     return handle
   }
   function positionChatResizeHandle() {
+    // Native chat shown: leave the resize handle alone — CSS hides it
+    // (body.hs-native-visible). If we set display:none here during the collapse,
+    // it'd persist as a stale inline style after toggling back to HS mode.
+    if (typeof getSetting === 'function' && getSetting('nativeVisible')) return
     const handle = ensureChatResizeHandle()
     ;['top', 'bottom', 'left', 'right', 'width', 'height'].forEach((p) => handle.style.removeProperty(p))
     // For YT, chat-right is now position:fixed so the unified handle

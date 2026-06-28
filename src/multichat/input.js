@@ -5310,39 +5310,40 @@ async function handleSlashCommand(text, input) {
   // duration modes take an optional arg (/followers 30, /slow 10). Kick has no
   // chat-mode write API wired yet → clear message, never a silent no-op.
   if (CHAT_MODES[cmd]) {
-    const cm = CHAT_MODES[cmd]
+    // Only followers-only is wired (twitch GQL SetFollowersOnlyModeSetting). The
+    // other modes (slow/emote/subs/unique) need their own captured GQL mutations
+    // — Helix /chat/settings 404s for the web client, so don't pretend they work.
+    if (cmd !== 'followers') {
+      showToast(`/${cmd} isn't wired yet — only /followers works for now`, 'error')
+      return true
+    }
     // Target the twitch channel you're moderating: a real channel tab's twitch
     // login, else the twitch channel you're currently viewing (so it works from
     // the live/aggregate tab too, where currentTab='live' is not a channel).
-    // chat-modes are twitch-only.
     const twitchTarget =
       _modCh?.twitch || (hostPlatform === 'twitch' ? (getCurrentChannel() || '').toLowerCase().replace(/^#/, '') : null)
     if (!twitchTarget) {
-      showToast(`/${cmd} is twitch-only — open a twitch channel`, 'error')
+      showToast('/followers is twitch-only — open a twitch channel', 'error')
       return true
     }
     const arg = rest.trim().toLowerCase()
     const off = arg === 'off'
-    const body = { [cm.field]: !off }
-    if (!off && cm.dur) {
-      if (arg) {
-        const dur = _parseModeDuration(arg, cm.unit)
-        if (dur == null) {
-          showToast(`usage: /${cmd} [${cm.unit === 'sec' ? 'secs' : 'mins'}] | off`, 'error')
-          return true
-        }
-        body[cm.dur] = dur
-      } else {
-        body[cm.dur] = cm.unit === 'sec' ? 30 : 0 // slow default 30s; followers any-follower
+    let minutes
+    if (off) minutes = -1
+    else if (!arg) minutes = 0 // any follower
+    else {
+      minutes = _parseModeDuration(arg, 'min')
+      if (minutes == null) {
+        showToast('usage: /followers [mins] | off', 'error')
+        return true
       }
     }
-    const resp = await setTwitchChatMode(twitchTarget, body)
+    const resp = await setTwitchFollowersMode(twitchTarget, minutes)
     if (resp.ok) {
-      const detail = !off && cm.dur && body[cm.dur] ? ` (${body[cm.dur]}${cm.unit === 'sec' ? 's' : 'm'})` : ''
-      showToast(`${cm.label} ${off ? 'off' : `on${detail}`}`, 'success')
+      showToast(off ? 'followers-only off' : minutes ? `followers-only on (${minutes}m)` : 'followers-only on', 'success')
       clearInput(input)
     } else {
-      showToast(`/${cmd} failed: ${resp.error}`, 'error')
+      showToast(`/followers failed: ${resp.error}`, 'error')
     }
     return true
   }

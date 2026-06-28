@@ -462,15 +462,23 @@ function attachModeHandlers() {
 // Helix PATCH /chat/settings — same endpoint + scope the mode buttons use.
 // `body` is the raw Helix payload, e.g. { follower_mode: true, follower_mode_duration: 30 }.
 // Returns { ok } or { ok:false, error } so callers can toast uniformly.
-async function setTwitchChatMode(channelLogin, body) {
-  const broadcasterId = await resolveTwitchChannelId(channelLogin)
-  if (!broadcasterId) return { ok: false, error: 'channel not found' }
-  const resp = await helixRequest(
-    `https://api.twitch.tv/helix/chat/settings?broadcaster_id=${broadcasterId}&moderator_id={me}`,
-    'PATCH',
-    body,
-  )
-  return resp.ok ? { ok: true } : { ok: false, error: resp.error || resp.status || 'unknown' }
+// Set twitch followers-only mode via GQL (SetFollowersOnlyModeSetting). The web
+// client can't call Helix /chat/settings (404), so we use the same GQL persisted
+// mutation twitch.tv itself fires. minutes: -1 = off, 0 = any follower, N = N min.
+async function setTwitchFollowersMode(channelLogin, minutes) {
+  const channelID = await resolveTwitchChannelId(channelLogin)
+  if (!channelID) return { ok: false, error: 'channel not found' }
+  try {
+    const res = await gqlPersistedMutation('SetFollowersOnlyModeSetting', {
+      input: { channelID: String(channelID), followersOnlyDurationMinutes: minutes },
+    })
+    const err = res?.errors?.[0]?.message || res?.data?.errors?.[0]?.message
+    if (err) return { ok: false, error: err }
+    if (!res?.data?.updateChatSettings) return { ok: false, error: 'no permission (need mod/broadcaster)' }
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e?.message || 'failed' }
+  }
 }
 
 function makeCoinSvg(size) {
@@ -2774,6 +2782,10 @@ const TWITCH_HASHES = {
   // killed the public follow REST API in Aug 2023, so this is the only path.
   FollowButton_FollowUser: '800e7346bdf7e5278a3c1d3f21b2b56e2639928f86815677a7126b093b2fdd08',
   FollowButton_UnfollowUser: 'f7dae976ebf41c755ae2d758546bfd176b4eeb856656098bb40e0a672ca0d880',
+  // Followers-only chat mode — the web client can't call Helix /chat/settings
+  // (404), so chat modes go through this GQL persisted mutation. Captured from
+  // twitch.tv. followersOnlyDurationMinutes: -1=off, 0=any follower, N=minutes.
+  SetFollowersOnlyModeSetting: '0ee2e448691c84b4be72bcd1ae6c51fcf512414fe372e502fe67d3c7eaf8da31',
 }
 
 // Route mutation through MAIN world proxy (has integrity token) with direct fetch fallback

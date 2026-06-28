@@ -55270,32 +55270,36 @@ const STORAGE_KEY = 'heatsync_multichat'
     // the InnerTube API.
     if (hostPlatform === 'yt') {
       function checkYtLive() {
-        // "This page has live chat" = the ytd-live-chat-frame WRAPPER exists.
-        // It's present only on livestreams-with-chat (absent on VODs/home), and
-        // appears with the page layout — far faster than waiting for the inner
-        // iframe's contentDocument to load (which left the panel hidden for
-        // seconds). This is the signal that gates the default panel visibility.
+        // A LIVE stream mounts ytd-live-chat-frame#chat with a LIVE chat iframe
+        // (/live_chat). A VOD of a past stream mounts the SAME element but with a
+        // chat-REPLAY iframe (/live_chat_replay) — so frame-presence alone wrongly
+        // flags VODs as live and surfaced our panel on non-live videos. Distinguish
+        // by the iframe src (the same signal youtube-content.js gates on): replay ⇒
+        // treat as non-live so the panel stays hidden on VODs by default.
         const frameEl = document.querySelector('ytd-live-chat-frame#chat')
-        const hasChatFrame = !!frameEl
-        const isLive = hasChatFrame || !!_autoYtVideoId
+        const chatSrc = frameEl?.querySelector('iframe')?.getAttribute('src') || ''
+        const isReplayChat = chatSrc.includes('live_chat_replay')
+        const hasLiveChat = !!frameEl && !isReplayChat
+        const isLive = hasLiveChat || !!_autoYtVideoId
         const liveTab = tabBarElement?.querySelector('[data-tab="live"]')
         if (liveTab) liveTab.dataset.live = String(isLive)
-        // Show the multichat panel on YT only when THIS page has its own live
+        // Show the multichat panel on YT only when THIS page has its own LIVE
         // chat (a livestream), OR the user opted into chat on non-live pages
         // (ytChatOnNonLive → body.hs-yt-nonlive-chat). hs-offline drives both the
         // existing :not(.hs-offline) layout gating AND the panel-hide rule below,
         // so this single signal hides the panel on VODs/home/search by default.
-        // Use hasChatFrame (THIS page) — NOT isLive, which is true whenever any
-        // tracked YT channel is live and would wrongly surface the panel on a VOD.
-        const showYtChat = hasChatFrame || document.body.classList.contains('hs-yt-nonlive-chat')
+        // Use hasLiveChat (THIS page, live-not-replay) — NOT isLive, which is true
+        // whenever any tracked YT channel is live and would surface it on a VOD.
+        const showYtChat = hasLiveChat || document.body.classList.contains('hs-yt-nonlive-chat')
         document.body.classList.toggle('hs-offline', !showYtChat)
         // Watch-page detection: ytd-watch-flexy stays in DOM with `hidden`
         // attr off-watch — only count it as a watch page when visible.
         const onWatch = !!document.querySelector('ytd-watch-flexy:not([hidden])')
         document.body.classList.toggle('hs-yt-watch', onWatch)
-        // Hide native YT live chat once it mounts — our multichat panel takes
-        // its place. (frameEl computed above.) Re-attempt as the iframe loads.
-        if (frameEl && frameEl.style.display !== 'none') {
+        // Hide native YT chat once it mounts — but ONLY when we're showing our
+        // panel in its place. On a replay VOD (no opt-in) we leave YT's chat
+        // replay visible rather than blanking it with nothing.
+        if (showYtChat && frameEl && frameEl.style.display !== 'none') {
           frameEl.style.display = 'none'
         }
       }

@@ -26,7 +26,14 @@
   // ═══ Hermes Event Bus Interception ═══
   // Twitch's internal real-time event bus (replaced PubSub Apr 2025).
   // Passively read notifications from topics Twitch already subscribes to.
-  const OrigWebSocket = window.WebSocket
+  // Capture the TRUE native WebSocket ONCE and stash it on a stable global. On a
+  // re-inject (extension reload with no page nav) window.WebSocket is already our
+  // wrapper from the prior run, so reading it here would wrap-the-wrapper — each
+  // reload then added another handleHermesMessage listener per hermes socket →
+  // duplicate raid/pin/redeem events and overlay churn. Reusing the persisted
+  // native keeps it a single wrap no matter how many times we re-inject.
+  if (!window.__hsNativeWebSocket) window.__hsNativeWebSocket = window.WebSocket
+  const OrigWebSocket = window.__hsNativeWebSocket
   const channelIdToLogin = {}
   function setChannelId(id, login) {
     if (Object.keys(channelIdToLogin).length >= 200) {
@@ -1252,6 +1259,9 @@
     window.removeEventListener('message', hsUrlMapHandler)
     window.removeEventListener('message', hsUidNavHandler)
     window.removeEventListener('popstate', notifyNav)
+    // Restore native WebSocket so we never leave a wrapper installed between a
+    // removeListeners() and the next re-wrap (defense-in-depth against double-wrap).
+    if (window.__hsNativeWebSocket) safeOverride(window, 'WebSocket', window.__hsNativeWebSocket)
   }
   window.__heatsyncEarlyInject.removeListeners = hsRemoveListeners
 

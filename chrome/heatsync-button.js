@@ -502,7 +502,7 @@
         flex-shrink: 0;
         align-items: center;
         justify-content: space-between;
-        padding: 12px 16px;
+        padding: 6px 12px;
         background: #000;
         border-bottom: 1px solid rgba(255,255,255,0.12);
       }
@@ -684,7 +684,7 @@
         display: flex;
         align-items: center;
         gap: 6px;
-        padding: 6px 8px;
+        padding: 3px 8px;
         background: #000;
         border-bottom: 1px solid rgba(255,255,255,0.12);
         flex-shrink: 0;
@@ -1427,7 +1427,7 @@
         display: flex;
         align-items: center;
         gap: 8px;
-        padding: 10px 12px;
+        padding: 4px 10px;
         background: rgba(145, 71, 255, 0.15);
         border-bottom: 1px solid #9147ff;
         color: #bf94ff;
@@ -2166,7 +2166,12 @@
       // tall picker that reaches (near) the top instead of wasting space above a
       // 500px panel. The grid (flex:1) expands to show more emotes.
       const avail = (showBelow ? spaceBelow : spaceAbove) - GAP - MARGIN
-      panel.style.maxHeight = Math.max(220, avail) + 'px'
+      // Set HEIGHT (not just max-height) so the panel actually fills the space and
+      // the grid (flex:1) expands to show emotes. With height:auto the panel shrank
+      // to its chrome and the grid collapsed to ~16px (no emotes visible).
+      const sized = Math.max(220, avail) + 'px'
+      panel.style.height = sized
+      panel.style.maxHeight = sized
     }
 
     async function openPanel() {

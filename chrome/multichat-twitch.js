@@ -41758,7 +41758,7 @@ const STORAGE_KEY = 'heatsync_multichat'
   // to close the debounce gap that survives a reload mid-burst.
   // ============================================
   const PERSIST_DEBOUNCE_MS = 1500
-  const PERSIST_MAX_MENTIONS = 200
+  const PERSIST_MAX_MENTIONS = 500 // matches MAX_BUFFER so restore fills the live buffer
   const PERSIST_MAX_YT = 500
   const PERSIST_SYNC_MAX = 100
   const _persistMentionsState = { timer: null, dirty: false }
@@ -53213,7 +53213,11 @@ const STORAGE_KEY = 'heatsync_multichat'
   async function loadConfig() {
     try {
       const s = await chrome.storage.local.get([STORAGE_KEY])
-      config = { channels: [], enabled: true, ...s[STORAGE_KEY] }
+      const _raw = s[STORAGE_KEY]
+      config = { channels: [], enabled: true, ...(_raw && typeof _raw === 'object' ? _raw : {}) }
+      // Guard: a persisted null channels field (corrupted storage) would propagate
+      // through the spread and cause config.channels.some() to throw below.
+      if (!Array.isArray(config.channels)) config.channels = []
       _channelLookup = null
       // Migrate old string channels to object format
       let needsSave = false
@@ -54460,7 +54464,7 @@ const STORAGE_KEY = 'heatsync_multichat'
             // pick up the now-renderable emotes. In-place text swap instead of
             // clearRenderedHtmlCache()→epoch bump→full rebuild (the flash).
             if (firstLoad) reloadEmotesInPlace()
-          })
+          }).catch((e) => log('[heatsync-mc] loadEmotes error:', e))
         }, 300)
       }
       // Inventory changes: update membership + viewer's personal set.
@@ -54968,7 +54972,7 @@ const STORAGE_KEY = 'heatsync_multichat'
             // now (only when at/near bottom, to not yank a scrolled-up reader).
             if (firstLoad) reloadEmotesInPlace(!isScrolledUp)
             else if (!isScrolledUp) renderMessages(currentTab)
-          })
+          }).catch((e) => log('[heatsync-mc] loadEmotes error:', e))
         }, 300)
       }
 
@@ -55682,7 +55686,7 @@ const STORAGE_KEY = 'heatsync_multichat'
             renderMessages(active)
           }
         }
-      })
+      }).catch((e) => log('[heatsync-mc] loadStreamEvents error:', e))
     }, 300)
 
     // Scan existing chat for mentions (before IRC catches new ones)
@@ -56429,10 +56433,12 @@ const STORAGE_KEY = 'heatsync_multichat'
     }
 
     // Request cached follow history from background (handles race condition on load)
-    safeSendMessage({ type: 'get_follow_history' }).then((resp) => {
-      if (resp?.colors) processFollowColors(resp.colors)
-      if (resp?.history) processFollowHistory(resp.history)
-    })
+    safeSendMessage({ type: 'get_follow_history' })
+      .then((resp) => {
+        if (resp?.colors) processFollowColors(resp.colors)
+        if (resp?.history) processFollowHistory(resp.history)
+      })
+      .catch(() => {})
 
     // === BULLETPROOF CONNECTION MAINTENANCE ===
 

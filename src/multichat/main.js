@@ -9899,7 +9899,10 @@
     for (let i = 0; i < parts.length; i += 2) {
       const seg = parts[i]
       if (!seg || !seg.includes('#')) continue
-      parts[i] = seg.replace(/#([a-zA-Z][a-zA-Z0-9_]{1,29})\b/g, (m, tag) => {
+      // (?<!&) — seg is already escaped, so a #tag inside an HTML entity
+      // (&#x27; → #x27, &#39; → #39) must NOT match, else an apostrophe renders
+      // as a bogus magenta tag.
+      parts[i] = seg.replace(/(?<!&)#([a-zA-Z][a-zA-Z0-9_]{1,29})\b/g, (m, tag) => {
         return `<a href="https://heatsync.org/tags/${encodeURIComponent(tag)}" target="_blank" rel="noopener noreferrer" class="hs-hashtag" data-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</a>`
       })
     }

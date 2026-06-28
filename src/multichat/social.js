@@ -1488,7 +1488,8 @@ function renderFeedContent(content, emoteRefs) {
     html = parts
       .map((part, i) => {
         if (i % 2 === 1) return part
-        return part.replace(/#([a-zA-Z][a-zA-Z0-9_]{1,29})\b/g, (m, tag) => {
+        // (?<!&) — part is already escaped; don't tag #x27 inside &#x27; etc.
+        return part.replace(/(?<!&)#([a-zA-Z][a-zA-Z0-9_]{1,29})\b/g, (m, tag) => {
           return `<a href="https://heatsync.org/tags/${encodeURIComponent(tag)}" target="_blank" rel="noopener noreferrer" class="hs-hashtag" data-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</a>`
         })
       })

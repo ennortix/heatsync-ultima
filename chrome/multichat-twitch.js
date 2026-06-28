@@ -38174,15 +38174,14 @@ async function handleSlashCommand(text, input) {
   // chat-mode write API wired yet → clear message, never a silent no-op.
   if (CHAT_MODES[cmd]) {
     const cm = CHAT_MODES[cmd]
-    if (!modChannel) {
-      showToast(`/${cmd} needs a channel tab (not live/mentions/posts)`, 'error')
-      return true
-    }
-    if (!_twitchModName) {
-      showToast(
-        _kickModSlug ? `/${cmd} is twitch-only for now (kick chat modes not wired)` : `/${cmd} needs a twitch channel`,
-        'error',
-      )
+    // Target the twitch channel you're moderating: a real channel tab's twitch
+    // login, else the twitch channel you're currently viewing (so it works from
+    // the live/aggregate tab too, where currentTab='live' is not a channel).
+    // chat-modes are twitch-only.
+    const twitchTarget =
+      _modCh?.twitch || (hostPlatform === 'twitch' ? (getCurrentChannel() || '').toLowerCase().replace(/^#/, '') : null)
+    if (!twitchTarget) {
+      showToast(`/${cmd} is twitch-only — open a twitch channel`, 'error')
       return true
     }
     const arg = rest.trim().toLowerCase()
@@ -38200,7 +38199,7 @@ async function handleSlashCommand(text, input) {
         body[cm.dur] = cm.unit === 'sec' ? 30 : 0 // slow default 30s; followers any-follower
       }
     }
-    const resp = await setTwitchChatMode(_twitchModName, body)
+    const resp = await setTwitchChatMode(twitchTarget, body)
     if (resp.ok) {
       const detail = !off && cm.dur && body[cm.dur] ? ` (${body[cm.dur]}${cm.unit === 'sec' ? 's' : 'm'})` : ''
       showToast(`${cm.label} ${off ? 'off' : `on${detail}`}`, 'success')

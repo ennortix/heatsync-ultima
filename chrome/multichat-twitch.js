@@ -1860,6 +1860,20 @@ const SETTINGS = [
     runtimeVar: 'linkPreviewsEnabled',
   },
   {
+    key: 'mediaEmbedsEnabled',
+    type: 'bool',
+    default: true,
+    scope: 'sync',
+    category: 'chat',
+    section: 'messages',
+    labelKey: 'mc_settings_media_embeds',
+    tipKey: 'mc_settings_media_embeds_desc',
+    control: 'pill',
+    alias: 'mediaembeds',
+    runtimeVar: 'mediaEmbedsEnabled',
+    rerender: true,
+  },
+  {
     key: 'hs_auto_claim_points',
     type: 'bool',
     default: true,
@@ -9921,6 +9935,51 @@ function injectStyles() {
       cursor: default;
     }
 
+    /* ---- inline chat media (images / video / yt thumb / rich link cards) ---- */
+    /* square, capped, no autoplaying iframes — built in feed-embed.js          */
+    .hs-mc-media-wrap {
+      margin: 2px 0 1px;
+    }
+    .hs-mc-media {
+      display: block;
+      max-width: 100%;
+      border-radius: 0;
+    }
+    .hs-mc-media img,
+    .hs-mc-media video {
+      display: block;
+      max-width: 100%;
+      max-height: 220px;
+      width: auto;
+      height: auto;
+      border-radius: 0;
+      background: #000;
+    }
+    .hs-mc-media.hs-feed-embed-yt-thumb {
+      position: relative;
+      width: max-content;
+      max-width: 100%;
+      cursor: pointer;
+    }
+    .hs-mc-media.hs-feed-embed-yt-thumb .hs-feed-embed-yt-play {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #fff;
+      font-size: 22px;
+      text-shadow: 0 0 4px #000;
+      pointer-events: none;
+    }
+    /* pending/resolved rich cards reuse feed-embed styling; just cap + de-gap here */
+    .hs-mc-media.hs-feed-embed-pending {
+      min-height: 0;
+      max-width: 100%;
+      padding: 3px 6px;
+      font-size: 12px;
+      color: #808080;
+    }
+
     /* Username hover tooltip - profile preview */
     /* Body-appended popovers — pull font from :root vars so they render in
        Cozette/user-chosen face instead of inheriting Twitch's Inter. .hs-pcard
@@ -14991,66 +15050,6 @@ function injectStyles() {
       text-overflow: ellipsis;
     }
     .hs-pinned-row:hover .hs-pinned-body { color: #fff; }
-
-    /* ---- MOMENTS BAND (live chat-velocity spikes) ---- */
-    .hs-moment-band-head {
-      font-size: 13px;
-      font-weight: 700;
-      color: #ff8700;
-      padding: 4px 6px 2px;
-      letter-spacing: 0.02em;
-    }
-    .hs-feed-moment {
-      border-left: 2px solid #ff8700;
-      background: #1a1408;
-      padding: 3px 6px;
-      margin-bottom: 2px;
-      cursor: pointer;
-    }
-    .hs-feed-moment:hover {
-      background: #fff;
-    }
-    .hs-feed-moment:hover .hs-moment-ch,
-    .hs-feed-moment:hover .hs-moment-rate,
-    .hs-feed-moment:hover .hs-moment-mult,
-    .hs-feed-moment:hover .hs-moment-ctx,
-    .hs-feed-moment:hover .hs-moment-game,
-    .hs-feed-moment:hover .hs-moment-name,
-    .hs-feed-moment:hover .hs-feed-body,
-    .hs-feed-moment:hover .hs-feed-time {
-      color: #000 !important;
-    }
-    .hs-moment-head { line-height: 18px; }
-    .hs-feed-tag-moment { color: #ff8700; }
-    .hs-moment-ch { color: #ff8700; }
-    .hs-moment-rate { color: #ff8700; font-weight: 600; }
-    .hs-moment-mult { color: #ff8700; font-weight: 600; font-variant-numeric: tabular-nums; }
-    .hs-moment-stale .hs-moment-rate,
-    .hs-moment-stale .hs-moment-mult { color: #888; }
-    .hs-moment-stale .hs-feed-tag-moment { opacity: 0.5; }
-    .hs-feed-moment.hs-moment-new { background: #1a0f00; }
-    .hs-moment-ctx {
-      font-size: 13px;
-      color: #bbb;
-      padding: 1px 0;
-      word-break: break-word;
-    }
-    .hs-moment-game { color: #888; }
-    .hs-moment-sample {
-      border-left: 1px solid #3a2e14;
-      padding-left: 6px;
-      margin: 2px 0 1px 2px;
-    }
-    .hs-feed-moment:hover .hs-moment-sample { border-left-color: #000; }
-    .hs-moment-line {
-      font-size: 13px;
-      line-height: 17px;
-      color: #fff;
-      word-break: break-word;
-    }
-    .hs-moment-name { font-weight: 600; color: #9a8be0; }
-    .hs-feed-moment:hover .hs-moment-name { color: #000 !important; }
-    .hs-moment-empty { color: #888; font-style: italic; }
 
     /* ---- YOUTUBE NATIVE CHAT HIDING ----
        Inline display:none on the iframe gets blown away when YT recreates
@@ -28386,6 +28385,66 @@ function extractFeedEmbed(content) {
   return ''
 }
 
+// ── CHAT INLINE EMBEDS ──────────────────────────────────────────────────────
+// Chat is high-volume and lives on low-RAM / passive-cooled hardware, so chat
+// NEVER renders live iframes the way the feed does (the feed virtual-scrolls, so
+// its visible iframe count stays tiny — chat has no such bound). Chat media is
+// therefore always lightweight: an inline direct image/video, a YouTube
+// thumbnail card, or a server-resolved rich card. One embed per message. Every
+// branch emits ONLY safeUrl()-validated + attr()-escaped strings — never raw
+// message text — so the holder's insertAdjacentHTML in main.js stays XSS-safe.
+const _CHAT_URL_RE = /https?:\/\/[^\s<>"']+/i
+
+function extractChatEmbed(text) {
+  if (!text || typeof text !== 'string') return ''
+  const m = text.match(_CHAT_URL_RE)
+  if (!m) return ''
+  return chatEmbedForUrl(m[0])
+}
+
+function chatEmbedForUrl(rawUrl) {
+  // Strip trailing sentence punctuation, but only strip a trailing ) or ] when
+  // it's UNBALANCED — otherwise wikipedia/github URLs like .../Foo_(bar) lose
+  // their closing paren and the embed/link breaks.
+  let cleanUrl = rawUrl.replace(/[.,;!?]+$/, '')
+  while (/[)\]]$/.test(cleanUrl)) {
+    const opens = (cleanUrl.match(/[([]/g) || []).length
+    const closes = (cleanUrl.match(/[)\]]/g) || []).length
+    if (closes <= opens) break
+    cleanUrl = cleanUrl.slice(0, -1).replace(/[.,;!?]+$/, '')
+  }
+  const safe = safeUrl(cleanUrl)
+  if (!safe) return ''
+  // Direct image / gif → inline, lazy, error-guarded (data-fb hides on 404/blocked).
+  if (/\.(jpg|jpeg|png|gif|webp|avif)(\?.*)?$/i.test(cleanUrl)) {
+    return `<div class="hs-mc-media"><img src="${attr(safe)}" alt="" loading="lazy" decoding="async" data-fb="hide"></div>`
+  }
+  // Direct video → inline, preload=none (no bytes until play — critical at chat volume).
+  if (/\.(mp4|webm|mov)(\?.*)?$/i.test(cleanUrl)) {
+    return `<div class="hs-mc-media"><video controls muted preload="none" playsinline src="${attr(safe)}" data-fb="hide"></video></div>`
+  }
+  // YouTube → thumbnail card that opens the video. Never an iframe in chat.
+  let ytId = ''
+  let ym
+  if ((ym = cleanUrl.match(/youtu\.be\/([\w-]{11})/))) ytId = ym[1]
+  else if ((ym = cleanUrl.match(/youtube\.com\/watch\?v=([\w-]{11})/))) ytId = ym[1]
+  else if ((ym = cleanUrl.match(/youtube\.com\/shorts\/([\w-]{11})/))) ytId = ym[1]
+  if (ytId) {
+    const id = sanitizeEmbedId(ytId)
+    if (id) return `<a href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener" class="hs-mc-media hs-feed-embed-yt-thumb">
+      <img src="https://i.ytimg.com/vi/${id}/mqdefault.jpg" alt="" loading="lazy" decoding="async" data-fb="hide">
+      <span class="hs-feed-embed-yt-play">▶</span>
+    </a>`
+  }
+  // Providers the server resolver handles (oEmbed) → lightweight pending card.
+  // Server returns image/video/audio/rich; unsupported → graceful link card.
+  // No iframes. data-resolve-url drives resolvePendingFeedEmbeds().
+  if (/(?:reddit\.com\/r\/|(?:twitter|x)\.com\/[\w_]+\/status\/|open\.spotify\.com\/(?:track|album|playlist|episode|show)\/|(?:www\.)?vimeo\.com\/\d|tiktok\.com\/@[\w.]+\/video\/|instagram\.com\/(?:p|reel)\/|soundcloud\.com\/[\w-]+\/[\w-]+|kick\.com\/[\w_-]+\/clips\/|clips\.twitch\.tv\/|streamable\.com\/\w)/i.test(cleanUrl)) {
+    return `<div class="hs-mc-media hs-feed-embed-pending" data-resolve-url="${attr(safe)}" data-resolve-platform="link"><span class="hs-feed-embed-pending-label">loading preview…</span></div>`
+  }
+  return ''
+}
+
 // Main entry: build full media HTML for a feed message.
 // Handles direct uploads (image/video), multi-image (media[]), and content-extracted embeds.
 function buildFeedMediaHtml(m) {
@@ -28573,6 +28632,10 @@ function resolvePendingFeedEmbeds(root) {
     const url = ph.dataset.resolveUrl
     if (!url) continue
     _fetchFeedResolve(url).then((data) => {
+      // The row may have been culled (chat trimMessagesEl, or a feed re-render)
+      // during the async resolve — don't mutate a detached node or wire dead
+      // listeners. Matches the isConnected guard pattern used elsewhere.
+      if (!ph.isConnected) return
       if (data && !data.error) {
         const html = _buildFeedResolvedHtml(ph, data)
         if (html) _swapPlaceholder(ph, html, 'hs-feed-embed-resolved')
@@ -28621,6 +28684,12 @@ function attachFeedFallbacks(root) {
       },
       { once: true },
     )
+  })
+  // Inline <video> (direct chat media) — a dead source must hide, not leave a
+  // broken player. <video> 'error' doesn't bubble, so wire it directly here.
+  root.querySelectorAll('video[data-fb="hide"]').forEach((video) => {
+    video.removeAttribute('data-fb')
+    video.addEventListener('error', () => { video.style.display = 'none' }, { once: true })
   })
 }
 
@@ -28729,20 +28798,8 @@ let feedPage = 1
 let feedHasMore = true
 let feedLastFetch = 0 // Timestamp of last feed fetch
 let feedFromHotFallback = false // true when /following was empty + we showed /hot instead
-let feedMoments = [] // recent chat-velocity spikes (server /api/moments) — the zero-user discovery band
 const FEED_STALE_MS = 120000 // 2 minutes
 
-// Decayed-intensity score for ranking moments. MUST stay identical to the
-// server's /api/moments ORDER BY and the site's port — single source of truth so
-// the band can't reorder/flicker between a live-insert and the next refetch.
-// rate/baseline normalises for channel size (a 50-chatter at 6× beats an
-// 800-chatter at 2×); ÷12 on minutes = ~8min half-life keeps the band fresh.
-function momentScore(mo) {
-  const rate = mo.rate || 0
-  const baseline = Math.max(mo.baseline || 0, 1)
-  const ageMin = mo.created_at ? (Date.now() - new Date(mo.created_at).getTime()) / 60000 : 0
-  return (rate / baseline) * Math.exp(-ageMin / 12)
-}
 
 // Feed scroll state — handler ref for teardown only, infinite-scroll trigger
 let _feedVirtualScrollHandler = null
@@ -29166,8 +29223,12 @@ function listenForSocialEvents() {
       if (id && feedMessages.some((m) => m.base36_id === id)) return
 
       if (msg.data.username === 'Anonymous') return
-      feedMessages.unshift(msg.data)
-      if (feedMessages.length > 150) feedMessages.pop()
+      // Following tab is OPs only — replies still update their thread + the
+      // parent's reply_count below, but never get unshifted as a top-level row.
+      if (isOpMsg(msg.data)) {
+        feedMessages.unshift(msg.data)
+        if (feedMessages.length > 150) feedMessages.pop()
+      }
 
       // Real-time thread update: if reply to the active thread, append it
       const replyTo = msg.data.reply_to
@@ -29207,28 +29268,6 @@ function listenForSocialEvents() {
           })
         }
       }
-    }
-    if (msg.type === 'hs_moment' && msg.data) {
-      // A chat-velocity spike fired live. Insert it into the moments band at its
-      // ranked slot — a fresh spike appearing IS the retention hook. The WS
-      // payload has no sample[] (it renders the empty-state line); the next
-      // /api/moments refresh backfills the real chat lines.
-      const mo = msg.data
-      // Backstop the server's cooldown+floor: never surface a weak spike.
-      const mult = (mo.rate || 0) / Math.max(mo.baseline || 0, 1)
-      if (mult < 3) return
-      if (!feedLoaded) return
-      // Dedup by moment id, then collapse to one card per channel (keep this one).
-      if (mo.id != null && feedMoments.some((m) => m.id != null && m.id === mo.id)) return
-      feedMoments = feedMoments.filter((m) => !(m.platform === mo.platform && m.channel === mo.channel))
-      mo._isNew = true
-      feedMoments.unshift(mo)
-      // Re-rank by decayed intensity, cap 8 (drop the lowest, not the oldest).
-      feedMoments.sort((a, b) => momentScore(b) - momentScore(a))
-      if (feedMoments.length > 8) feedMoments.length = 8
-      if (currentTab === 'feed') renderFeed()
-      else updateTabIndicator('feed')
-      return
     }
     if (msg.type === 'dm_new' && msg.data) {
       // Server-pushed Twitch whispers must route through handleIncomingWhisper
@@ -29572,6 +29611,13 @@ function listenForSocialEvents() {
 
 // ---- FEED ----
 
+// A feed row is an OP (original post / "tweet") when it isn't a reply. The
+// following tab shows OPs only — replies live inside their thread, opened via
+// >>id, never as top-level rows. Mirrors buildFeedMessageDiv's isOp test.
+function isOpMsg(m) {
+  return m.is_op != null ? !!m.is_op : (!m.reply_to || m.reply_to === '')
+}
+
 async function fetchFeed(append = false) {
   if (feedLoading) return
   feedLoading = true
@@ -29601,7 +29647,7 @@ async function fetchFeed(append = false) {
     }
     return
   }
-  let msgs = (resp.data?.messages || []).filter((m) => m.username !== 'Anonymous')
+  let msgs = (resp.data?.messages || []).filter((m) => m.username !== 'Anonymous' && isOpMsg(m))
   let usedHotFallback = false
 
   // Following empty → fallback to /api/messages/hot (heat-sorted, last 30d) so
@@ -29612,7 +29658,7 @@ async function fetchFeed(append = false) {
     try {
       const hotResp = await apiFetch('/api/messages/hot?limit=30&hours=720', { auth: true })
       if (hotResp.ok) {
-        const hotMsgs = (hotResp.data?.messages || []).filter((m) => m.username !== 'Anonymous')
+        const hotMsgs = (hotResp.data?.messages || []).filter((m) => m.username !== 'Anonymous' && isOpMsg(m))
         if (hotMsgs.length > 0) {
           msgs = hotMsgs.map((m) => Object.assign({}, m, { _fromHotFallback: true }))
           usedHotFallback = true
@@ -29655,17 +29701,6 @@ async function fetchFeed(append = false) {
       return ts > mx ? ts : mx
     }, 0)
     if (newestTs > 0) noteSeenEvent('live', newestTs)
-  }
-  // Moments band — recent chat-velocity spikes off the native firehose. The
-  // discovery feed's zero-user content engine, so it loads regardless of auth
-  // or follow graph. Best-effort: a failure just hides the band, never the feed.
-  if (!append) {
-    try {
-      const moResp = await apiFetch('/api/moments?limit=8&hours=24', { auth: false })
-      feedMoments = moResp.ok ? moResp.data?.moments || [] : []
-    } catch (_) {
-      feedMoments = []
-    }
   }
   if (currentTab === 'feed') renderFeed()
 }
@@ -29808,13 +29843,6 @@ function renderFeed() {
   if (feedMessages.length === 0) {
     _feedVirtualTeardown(msgsEl)
     msgsEl.textContent = ''
-    // Moments first — a brand-new user with no posts still gets live, browsable
-    // "what's popping off right now" content instead of a dead empty wall.
-    if (feedMoments.length) {
-      const moFrag = document.createDocumentFragment()
-      _renderMomentsBand(moFrag)
-      msgsEl.appendChild(moFrag)
-    }
     msgsEl.appendChild(_renderFeedEmptyCard())
     return
   }
@@ -29851,8 +29879,6 @@ function renderFeed() {
     banner.appendChild(sub)
     frag.appendChild(banner)
   }
-  // Moments band — live heat-spikes pinned above the post list (discovery hook).
-  _renderMomentsBand(frag)
   let zebraCount = 0
   for (let i = 0; i < items.length; i++) {
     const div = buildFeedMessageDiv(items[i])
@@ -29890,81 +29916,6 @@ function renderFeed() {
     }, 200)
   }
   msgsEl.addEventListener('scroll', _feedVirtualScrollHandler, { signal: mcSignal, passive: true })
-}
-
-// Moments band — render the top-N live spikes as a header + cards. Capped so it
-// stays a teaser, not a second feed. No-op when empty.
-function _renderMomentsBand(frag) {
-  const moments = Array.isArray(feedMoments) ? feedMoments.slice(0, 8) : []
-  if (!moments.length) return
-  const head = document.createElement('div')
-  head.className = 'hs-moment-band-head'
-  head.textContent = '🔥 popping off right now'
-  frag.appendChild(head)
-  for (const mo of moments) frag.appendChild(buildMomentDiv(mo))
-}
-
-// A single spike card: 🔥 header (platform + channel + velocity), stream context,
-// and a small native-chat sample. Click opens the stream. All dynamic values are
-// sanitized (escapeHtml / renderFeedContent) — mirrors buildFeedMessageDiv.
-function buildMomentDiv(mo) {
-  const div = document.createElement('div')
-  div.className = 'hs-feed-msg hs-feed-moment'
-  // Stale = aged past the freshness window; dims the velocity so the band reads
-  // newest-hottest at a glance. New = just live-inserted via WS; one-shot bg flip.
-  const _ageMin = mo.created_at ? (Date.now() - new Date(mo.created_at).getTime()) / 60000 : 0
-  if (_ageMin > 20) div.classList.add('hs-moment-stale')
-  if (mo._isNew) {
-    div.classList.add('hs-moment-new')
-    delete mo._isNew
-    cleanup.setTimeout(() => div.classList.remove('hs-moment-new'), 1200)
-  }
-  const plat = mo.platform === 'kick' ? 'kick' : mo.platform === 'youtube' ? 'youtube' : 'twitch'
-  const platLabel = plat === 'kick' ? '[K]' : plat === 'youtube' ? '[Y]' : '[T]'
-  const platColors = { twitch: '#9146ff', kick: '#53fc18', youtube: '#ff0000' }
-  const ch = (mo.channel || '').toString()
-  // Always show age on moments — "when did this peak" is core context for a
-  // discovery card (a frozen-at-spike rate reads as live without it), so it's
-  // never gated on the global timestamp toggle the way feed rows are.
-  const time = formatRelativeTime(mo.created_at)
-  const timeHtml = `<span class="hs-feed-time">${escapeHtml(time)}</span>`
-  const head =
-    `<span class="hs-feed-tag hs-feed-tag-moment">🔥</span>` +
-    `<span class="hs-feed-tag" style="color:${platColors[plat]}">${platLabel}</span>` +
-    `<span class="hs-feed-user hs-moment-ch">${escapeHtml(ch)}</span>` +
-    `<span class="hs-feed-stat hs-moment-rate" title="chat velocity">${escapeHtml(String(mo.rate || 0))} msgs/30s</span>` +
-    `<span class="hs-feed-stat hs-moment-mult" title="vs baseline">${Math.round((mo.rate || 0) / Math.max(mo.baseline || 0, 1))}×</span>`
-  const ctx = mo.title
-    ? `<div class="hs-moment-ctx">${escapeHtml(mo.title)}${mo.game ? ` <span class="hs-moment-game">· ${escapeHtml(mo.game)}</span>` : ''}</div>`
-    : ''
-  let sampleHtml = ''
-  const sample = Array.isArray(mo.sample) ? mo.sample : []
-  for (const s of sample) {
-    const name = escapeHtml((s.display_name || s.username || '?').toString())
-    const body = renderFeedContent(s.message || '', s.emote_refs)
-    sampleHtml += `<div class="hs-moment-line"><span class="hs-moment-name">${name}</span> <span class="hs-feed-body">${body}</span></div>`
-  }
-  if (!sampleHtml) sampleHtml = `<div class="hs-moment-line hs-moment-empty">chat is exploding — click to jump in</div>`
-  div.innerHTML = `<div class="hs-moment-head">${timeHtml}${head}</div>${ctx}<div class="hs-moment-sample">${sampleHtml}</div>`
-  attachFeedFallbacks(div)
-  // Click → open the stream (twitch/kick only; never fabricate a YouTube /live URL).
-  const url =
-    plat === 'kick'
-      ? `https://kick.com/${encodeURIComponent(ch)}`
-      : plat === 'twitch'
-        ? `https://www.twitch.tv/${encodeURIComponent(ch)}`
-        : null
-  if (url) {
-    div.style.cursor = 'pointer'
-    div.addEventListener('click', (e) => {
-      // let inner links (emote → 7tv etc.) handle their own clicks
-      if (e.target.closest('a')) return
-      try {
-        window.open(url, '_blank', 'noopener')
-      } catch (_) {}
-    })
-  }
-  return div
 }
 
 function buildFeedMessageDiv(m, opUsername) {
@@ -30563,7 +30514,9 @@ async function postFeedMessage(text, { topLevel = false } = {}) {
     // Insert own post immediately from response (fetchFeed unreliable — service worker gets killed)
     const posted = resp.data?.message
     if (posted) {
-      if (!feedMessages.some((f) => f.base36_id === posted.base36_id)) {
+      // OPs only in the following timeline — a reply posted from thread view
+      // still lands in its thread (below), but must not leak into the feed.
+      if (isOpMsg(posted) && !feedMessages.some((f) => f.base36_id === posted.base36_id)) {
         feedMessages.unshift(posted)
         if (feedMessages.length > 150) feedMessages.pop()
       }
@@ -43110,6 +43063,12 @@ const STORAGE_KEY = 'heatsync_multichat'
         linkPreviewsEnabled = v
       },
     },
+    mediaEmbedsEnabled: {
+      get: () => mediaEmbedsEnabled,
+      set: (v) => {
+        mediaEmbedsEnabled = v
+      },
+    },
     viModeEnabled: {
       get: () => viModeEnabled,
       set: (v) => {
@@ -44252,6 +44211,10 @@ const STORAGE_KEY = 'heatsync_multichat'
 
   // Link preview tooltip on hover (default on)
   let linkPreviewsEnabled = true
+
+  // Inline media embeds in chat — images/gifs/video/link-cards rendered below
+  // the message (never live iframes; see extractChatEmbed). Default on.
+  let mediaEmbedsEnabled = true;
 
   // Vi mode for chat input (default off)
   let viModeEnabled = false
@@ -50565,6 +50528,23 @@ const STORAGE_KEY = 'heatsync_multichat'
     if (m.replyTo) {
       if (m.replyTo.id) div.dataset.replyId = m.replyTo.id
       if (m.replyTo.threadId) div.dataset.replyThreadId = m.replyTo.threadId
+    }
+    // Inline media — a single lightweight embed (direct img/video, a youtube
+    // thumbnail, or a server-resolved rich card) below the text. NEVER a live
+    // iframe: chat is high-volume and runs on low-RAM hardware. Appended as a
+    // sibling node (outside the cached _renderedHtml) so toggling the setting
+    // takes effect on the next rerender. Lazy-loaded, error-guarded, capped.
+    if (mediaEmbedsEnabled && !m.cleared && m.text && m.type !== 'usernotice' && m.type !== 'notice'
+        && typeof extractChatEmbed === 'function') {
+      const embedHtml = extractChatEmbed(m.text)
+      if (embedHtml) {
+        const holder = document.createElement('div')
+        holder.className = 'hs-mc-media-wrap'
+        holder.insertAdjacentHTML('afterbegin', embedHtml)
+        div.appendChild(holder)
+        if (typeof resolvePendingFeedEmbeds === 'function') resolvePendingFeedEmbeds(holder)
+        if (typeof attachFeedFallbacks === 'function') attachFeedFallbacks(holder)
+      }
     }
     return div
   }

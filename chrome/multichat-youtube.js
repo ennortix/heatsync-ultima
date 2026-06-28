@@ -45398,6 +45398,8 @@ const STORAGE_KEY = 'heatsync_multichat'
   }
 
   function applyChatWidth(cachedRightCol) {
+    // Native chat shown: don't resize the right-column (races native chat layout).
+    if (typeof getSetting === 'function' && getSetting('nativeVisible')) return
     const rightCol = cachedRightCol || document.querySelector('.right-column')
     if (!rightCol) return
     // No-channel pages (/videos, /directory, …) body-mount the panel as a
@@ -53704,6 +53706,8 @@ const STORAGE_KEY = 'heatsync_multichat'
   }
 
   function applyChatPosition() {
+    // Native chat shown: don't re-position/override layout (races native chat).
+    if (typeof getSetting === 'function' && getSetting('nativeVisible')) return
     // Sanitize — 5 valid positions: 4 visible + 'hidden'.
     const VALID_POSITIONS = ['right', 'bottom', 'left', 'top', 'hidden']
     if (!VALID_POSITIONS.includes(chatPosition)) {
@@ -53804,6 +53808,11 @@ const STORAGE_KEY = 'heatsync_multichat'
   const _overrideObserver = null
   // _hsSetYtBelowTop, _hsEnsureYtBelowObserver moved to youtube-host.js (platform module)
   function applyPlatformPositionOverrides() {
+    // Native chat shown: stop touching the player/chat geometry — our overrides
+    // race Twitch's native layout and push the native input off-screen. The panel
+    // is collapsed to its strip (handled in the nativeVisible reader); leave the
+    // rest to Twitch.
+    if (typeof getSetting === 'function' && getSetting('nativeVisible')) return
     const isRight = chatPosition === 'right'
     const w = `${chatWidth}px`
     const h = `${chatHeight}px`

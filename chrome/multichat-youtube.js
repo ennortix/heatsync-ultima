@@ -1770,20 +1770,6 @@ const SETTINGS = [
     control: 'pill',
     rerender: true,
   },
-  {
-    key: 'nativeVisible',
-    type: 'bool',
-    default: false,
-    scope: 'sync',
-    category: 'display',
-    section: 'cosmetics',
-    label: 'show native chat',
-    tip: 'show the platform native chat alongside heatsync — access gift sub, channel points, predictions',
-    control: 'pill',
-    runtimeVar: 'nativeVisible',
-    apply: 'nativeVisible',
-    applyOnLoad: true,
-  },
 
   // ── chat / input ──────────────────────────────────────────────────────
   {
@@ -43051,9 +43037,11 @@ const STORAGE_KEY = 'heatsync_multichat'
       },
     },
     nativeVisible: {
-      get: () => nativeVisible,
-      set: (v) => {
-        nativeVisible = !!v
+      // native-chat escape hatch removed — force OFF so a stored `true` can't
+      // reactivate the (removed) native mode.
+      get: () => false,
+      set: () => {
+        nativeVisible = false
       },
     },
   }
@@ -43113,20 +43101,13 @@ const STORAGE_KEY = 'heatsync_multichat'
     keywordRegex: () => {
       rebuildKeywordRegex()
     },
-    nativeVisible: (v) => {
-      document.body.classList.toggle('hs-native-visible', !!v)
+    nativeVisible: () => {
+      // native-chat escape hatch removed — always keep native hidden + the
+      // body class off, regardless of any stored value.
+      document.body.classList.remove('hs-native-visible')
       try {
-        setNativeChatHidden(!v)
+        setNativeChatHidden(true)
       } catch (_) {}
-      // The collapse-to-strip is now pure CSS (04-native-chat-shell, high
-      // specificity, position-agnostic) so it applies on first boot too — no JS
-      // inline needed. On toggle-off the layout fns re-run and restore the panel.
-      const btn = document.getElementById('hs-mc-native-btn')
-      if (btn) {
-        btn.title = v ? 'hide native chat' : 'show native chat'
-        btn.setAttribute('aria-label', v ? 'hide native chat' : 'show native chat')
-        btn.classList.toggle('active', !!v)
-      }
     },
     fonts: () => {
       applyFontSettings(getSetting('fontFamily'), getSetting('fontSize'), getSetting('customFontName'))
@@ -43815,7 +43796,6 @@ const STORAGE_KEY = 'heatsync_multichat'
       <div class="hs-mc-right-cluster">
         <div class="hs-mc-util-row">
           <button class="hs-mc-tab hs-mc-util-btn" data-tab="settings" title="${t('mc_btn_settings')}">\u2699</button>
-          ${hostPlatform !== 'yt' ? `<button class="hs-mc-tab hs-mc-util-btn" id="hs-mc-native-btn" data-tab="native" title="show native chat" aria-label="show native chat">\u21c4</button>` : ''}
           ${hostPlatform === 'twitch' ? `<button class="hs-mc-tab hs-mc-util-btn" id="hs-mc-actions-btn" data-tab="actions" title="stream actions" aria-label="stream actions">\u26a1</button>` : ''}
           <button class="hs-mc-tab hs-mc-util-btn hs-mc-collapse-btn" id="hs-mc-collapse-btn" data-tab="collapse" title="hide chat (\\)" aria-label="hide chat"></button>
           <button class="hs-mc-tab hs-mc-util-btn hs-mc-popout-btn" data-tab="popout" title="pop out chat to standalone window" style="display:none">\u26f6</button>
@@ -43824,19 +43804,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       </div>
     `
 
-    // Reflect persisted nativeVisible (escape-hatch) state on the freshly
-    // rendered button — the applyOnLoad applier runs before this button exists,
-    // so without this the button shows the wrong tooltip/highlight on load.
-    try {
-      if (getSetting('nativeVisible')) {
-        const _nb = container.querySelector('#hs-mc-native-btn')
-        if (_nb) {
-          _nb.classList.add('active')
-          _nb.title = 'hide native chat'
-          _nb.setAttribute('aria-label', 'hide native chat')
-        }
-      }
-    } catch (_) {}
+    // native-chat escape hatch removed (too fragile across chat positions/boot).
 
     // Event delegation for tab clicks
     container.addEventListener('click', (e) => {

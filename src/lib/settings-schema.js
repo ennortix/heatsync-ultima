@@ -498,20 +498,6 @@ const SETTINGS = [
     control: 'pill',
     rerender: true,
   },
-  {
-    key: 'nativeVisible',
-    type: 'bool',
-    default: false,
-    scope: 'sync',
-    category: 'display',
-    section: 'cosmetics',
-    label: 'show native chat',
-    tip: 'show the platform native chat alongside heatsync — access gift sub, channel points, predictions',
-    control: 'pill',
-    runtimeVar: 'nativeVisible',
-    apply: 'nativeVisible',
-    applyOnLoad: true,
-  },
 
   // ── chat / input ──────────────────────────────────────────────────────
   {

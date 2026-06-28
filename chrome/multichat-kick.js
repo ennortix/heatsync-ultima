@@ -43896,7 +43896,6 @@ const STORAGE_KEY = 'heatsync_multichat'
       <div class="hs-mc-right-cluster">
         <div class="hs-mc-util-row">
           <button class="hs-mc-tab hs-mc-util-btn" data-tab="settings" title="${t('mc_btn_settings')}">\u2699</button>
-          ${hostPlatform === 'twitch' ? `<button class="hs-mc-tab hs-mc-util-btn" id="hs-mc-actions-btn" data-tab="actions" title="stream actions" aria-label="stream actions">\u26a1</button>` : ''}
           <button class="hs-mc-tab hs-mc-util-btn hs-mc-collapse-btn" id="hs-mc-collapse-btn" data-tab="collapse" title="hide chat (\\)" aria-label="hide chat"></button>
           <button class="hs-mc-tab hs-mc-util-btn hs-mc-popout-btn" data-tab="popout" title="pop out chat to standalone window" style="display:none">\u26f6</button>
         </div>

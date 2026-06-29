@@ -9175,10 +9175,21 @@ function bgIrcRecordToExt(rec, channelHint) {
   if (!ch) return null
   const t = rec.type
   if (t === 'privmsg') {
+    // /me actions: the IRC transport persists the raw \x01ACTION…\x01 wrapper
+    // (EventSub strips it). Mirror bgIrcParseLine — strip for display, flag
+    // isAction, and slice the STRIPPED text for emote names so positions align
+    // exactly as on the live IRC path. A record that arrives already-stripped
+    // just no-ops the guard.
+    let content = rec.content || ''
+    let isAction = false
+    if (content.charCodeAt(0) === 1 && content.startsWith('\x01ACTION ')) {
+      content = content.slice(8, content.endsWith('\x01') ? -1 : undefined)
+      isAction = true
+    }
     const msg = {
       user: rec.displayName || rec.username || 'anonymous',
       userId: rec.userId || '',
-      text: rec.content || '',
+      text: content,
       color: bgIrcSanitizeColor(rec.color || '#fff'),
       badges: rec.badges || '',
       channel: ch,
@@ -9202,7 +9213,7 @@ function bgIrcRecordToExt(rec, channelHint) {
         const firstPos = posStr.split(',')[0]
         const [start, end] = firstPos.split('-').map(Number)
         if (isNaN(start) || isNaN(end)) continue
-        const name = (rec.content || '').slice(start, end + 1)
+        const name = content.slice(start, end + 1)
         if (name && !twitchEmotes[name]) {
           twitchEmotes[name] = `https://static-cdn.jtvnw.net/emoticons/v2/${emoteId}/default/dark/2.0`
         }
@@ -9215,6 +9226,7 @@ function bgIrcRecordToExt(rec, channelHint) {
     if (rec.isRedemption) msg.redeemed = true
     const subMatch = (rec.badgeInfo || '').match?.(/subscriber\/(\d+)/)
     if (subMatch) msg.subMonths = parseInt(subMatch[1])
+    if (isAction) msg.isAction = true
     return msg
   }
   if (t === 'usernotice') {

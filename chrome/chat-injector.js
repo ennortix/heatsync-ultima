@@ -151,7 +151,7 @@
   /**
    * Show emote tooltip with high-res preview
    */
-  function showEmoteTooltip(emote, event) {
+  function showEmoteTooltip(emote, _event) {
     let tooltip = document.getElementById('heatsync-emote-tooltip')
     if (!tooltip) {
       tooltip = document.createElement('div')
@@ -265,7 +265,7 @@
         followedUsers = new Set(response.users)
         log(' Loaded followed users:', followedUsers.size)
       }
-    } catch (error) {
+    } catch {
       // Extension context may be invalidated — non-fatal
     }
   }

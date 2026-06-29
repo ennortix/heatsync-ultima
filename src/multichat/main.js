@@ -237,6 +237,12 @@
   const mentionsBuffer = []
   const MAX_BUFFER = 500
 
+  // Mod-action log: capped in-memory history of ban/timeout/unban/delete notices
+  // (self + observed, all channels), for the streamer/mod popout view. Recorded
+  // at the irc/kick 'message' chokepoints (below) so it survives chat-buffer
+  // cycling. Pure logic + dedup/cap live in mod-log.js (unit-tested).
+  const modActionLog = []
+
   // Max chat rows kept as live DOM. Decoupled from the data buffers (ring
   // buffer 1500, persist 1500) which stay large for scrollback-data, sync and
   // reload restore — those are cheap plain objects. The DOM cap is the
@@ -15503,6 +15509,9 @@
           } catch (_) {}
         }
       }
+      // Record every mod-action notice (self + observed, all channels) into the
+      // mod-action log for the streamer/mod popout. No-op for non-mod notices.
+      pushModLogEntry(modActionLog, modLogEntryFromNotice(msg))
       // CLEARCHAT/CLEARMSG → live-dim already-rendered DOM rows from the offender.
       // Buffer entries were already flagged with `cleared=true` inside the IRC client,
       // so future re-renders pick it up via the renderer; this just patches the visible DOM.
@@ -15632,6 +15641,8 @@
 
     // Handle incoming Kick messages
     kickChat.on('message', (msg) => {
+      // Record Kick mod-action notices into the mod-action log (no-op otherwise).
+      pushModLogEntry(modActionLog, modLogEntryFromNotice(msg))
       // Lazy-resolve username → 7TV cosmetics + twitchId. First sighting per
       // session triggers one /users/kick/{name} fetch; result is cached and
       // backfilled into the rendered DOM so paints/badges paint in place.

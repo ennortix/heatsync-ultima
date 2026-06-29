@@ -16995,6 +16995,70 @@ function _frTest(rule, m) {
 
 
 
+// --- multichat/mod-log.js ---
+// Mod-action log — pure helpers for the streamer/mod popout view (drag to a
+// stream monitor / capture in OBS). Self-contained: no DOM or bundle-closure
+// deps, so it's unit-testable outside the bundle. Mirrors filter-rules.js — the
+// source `export`s for tests; the build strips exports to bundle-globals that
+// main.js calls directly.
+
+// Notice types that represent a mod action worth logging.
+const MOD_NOTICE_TYPES = new Set([
+  'ban_success',
+  'timeout_success',
+  'unban_success',
+  'untimeout_success',
+  'delete_message_success',
+])
+
+const MOD_ACTION_MAP = {
+  ban_success: 'ban',
+  timeout_success: 'timeout',
+  unban_success: 'unban',
+  untimeout_success: 'untimeout',
+  delete_message_success: 'delete',
+}
+
+// Is this message a mod-action notice we log?
+function isModNotice(msg) {
+  return !!msg && msg.type === 'notice' && MOD_NOTICE_TYPES.has(msg.noticeType)
+}
+
+// Build a structured, render-ready log entry from a mod-action notice. Returns
+// null for non-mod messages. Pure: no Date.now() fallback (stays deterministic
+// for tests) — callers pass notices that already carry msg.time.
+function modLogEntryFromNotice(msg) {
+  if (!isModNotice(msg)) return null
+  const target = (msg.targetUser || '').toLowerCase()
+  const channel = (msg.channel || '').toLowerCase()
+  const id = msg.id || `${msg.noticeType}:${channel}:${target}:${msg.time || 0}`
+  return {
+    id,
+    action: MOD_ACTION_MAP[msg.noticeType] || msg.noticeType,
+    target,
+    durationSec: msg.banDuration || 0,
+    channel,
+    platform: msg.platform || 'twitch',
+    text: msg.systemMsg || msg.text || '',
+    time: msg.time || 0,
+  }
+}
+
+// Append an entry to a capped log, deduped by id (cheap last-id short-circuit,
+// then a reverse scan for the recent-dup common case). Mutates + returns the
+// log. `max` caps retained entries (oldest trimmed first).
+function pushModLogEntry(log, entry, max = 300) {
+  if (!entry) return log
+  const n = log.length
+  if (n && log[n - 1].id === entry.id) return log
+  for (let i = n - 1; i >= 0; i--) if (log[i].id === entry.id) return log
+  log.push(entry)
+  if (log.length > max) log.splice(0, log.length - max)
+  return log
+}
+
+
+
 // --- multichat/live-search.js ---
 // Live chat search — builds a per-query matcher compiled ONCE, not per message.
 // Three modes: /regex/[i] | @username prefix | bare substring. ReDoS-guarded.
@@ -41743,6 +41807,12 @@ const STORAGE_KEY = 'heatsync_multichat'
   const mentionsBuffer = []
   const MAX_BUFFER = 500
 
+  // Mod-action log: capped in-memory history of ban/timeout/unban/delete notices
+  // (self + observed, all channels), for the streamer/mod popout view. Recorded
+  // at the irc/kick 'message' chokepoints (below) so it survives chat-buffer
+  // cycling. Pure logic + dedup/cap live in mod-log.js (unit-tested).
+  const modActionLog = []
+
   // Max chat rows kept as live DOM. Decoupled from the data buffers (ring
   // buffer 1500, persist 1500) which stay large for scrollback-data, sync and
   // reload restore — those are cheap plain objects. The DOM cap is the
@@ -57009,6 +57079,9 @@ const STORAGE_KEY = 'heatsync_multichat'
           } catch (_) {}
         }
       }
+      // Record every mod-action notice (self + observed, all channels) into the
+      // mod-action log for the streamer/mod popout. No-op for non-mod notices.
+      pushModLogEntry(modActionLog, modLogEntryFromNotice(msg))
       // CLEARCHAT/CLEARMSG → live-dim already-rendered DOM rows from the offender.
       // Buffer entries were already flagged with `cleared=true` inside the IRC client,
       // so future re-renders pick it up via the renderer; this just patches the visible DOM.
@@ -57138,6 +57211,8 @@ const STORAGE_KEY = 'heatsync_multichat'
 
     // Handle incoming Kick messages
     kickChat.on('message', (msg) => {
+      // Record Kick mod-action notices into the mod-action log (no-op otherwise).
+      pushModLogEntry(modActionLog, modLogEntryFromNotice(msg))
       // Lazy-resolve username → 7TV cosmetics + twitchId. First sighting per
       // session triggers one /users/kick/{name} fetch; result is cached and
       // backfilled into the rendered DOM so paints/badges paint in place.

@@ -925,6 +925,20 @@ const SETTINGS = [
     ],
   },
 
+  {
+    key: 'modConfirmBan',
+    type: 'bool',
+    default: false,
+    scope: 'sync',
+    category: 'mod',
+    section: 'mod toolbar',
+    label: 'confirm before ban',
+    tip: 'show a confirm dialog before a permanent ban — guards against a misclick',
+    control: 'pill',
+    runtimeVar: 'modConfirmBan',
+    applyOnLoad: true,
+  },
+
   // ── mod / automod ─────────────────────────────────────────────────────
   {
     key: 'automodAllCaps',

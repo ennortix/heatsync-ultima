@@ -2225,6 +2225,12 @@
         dimTimeouts = v
       },
     },
+    modConfirmBan: {
+      get: () => modConfirmBan,
+      set: (v) => {
+        modConfirmBan = v
+      },
+    },
     readableNamesEnabled: {
       get: () => readableNamesEnabled,
       set: (v) => {
@@ -3348,6 +3354,10 @@
 
   // Dim timed-out/banned messages instead of hiding (default on)
   let dimTimeouts = true
+
+  // Opt-in (default off): confirm before a permanent ban — guards against a
+  // fat-fingered irreversible ban. Read at the dispatchModAction chokepoint.
+  let modConfirmBan = false
 
   // Boost username color brightness for readability on black bg (default on)
   let readableNamesEnabled = true
@@ -5636,7 +5646,65 @@
   // platform; without it (click surfaces) only the clicked platform is touched,
   // so a twitch-only mod never sees "kick failed: not a mod" noise. Returns
   // { tResp, kResp, twitchName, kickSlug, anyOk } for the caller's toast.
+  // Minimal square confirm modal — Promise<boolean>. Keyboard-first (Esc=cancel,
+  // Enter=confirm), backdrop-click cancels, mounted in the overlay root so it
+  // works in the popout too. Reusable for any destructive action.
+  function hsConfirm(message, confirmLabel = 'confirm') {
+    return new Promise((resolve) => {
+      const root = document.getElementById('hs-mc-overlay') || document.body
+      const overlay = document.createElement('div')
+      overlay.className = 'hs-mc-confirm-overlay'
+      const box = document.createElement('div')
+      box.className = 'hs-mc-confirm-box'
+      const msg = document.createElement('div')
+      msg.className = 'hs-mc-confirm-msg'
+      msg.textContent = message
+      const btns = document.createElement('div')
+      btns.className = 'hs-mc-confirm-btns'
+      const cancelBtn = document.createElement('button')
+      cancelBtn.className = 'hs-mc-confirm-cancel'
+      cancelBtn.textContent = 'cancel'
+      const okBtn = document.createElement('button')
+      okBtn.className = 'hs-mc-confirm-ok'
+      okBtn.textContent = confirmLabel
+      const done = (v) => {
+        overlay.remove()
+        document.removeEventListener('keydown', onKey, true)
+        resolve(v)
+      }
+      const onKey = (e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          e.stopPropagation()
+          done(false)
+        } else if (e.key === 'Enter') {
+          e.preventDefault()
+          e.stopPropagation()
+          done(true)
+        }
+      }
+      cancelBtn.addEventListener('click', () => done(false))
+      okBtn.addEventListener('click', () => done(true))
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) done(false)
+      })
+      document.addEventListener('keydown', onKey, true)
+      btns.append(cancelBtn, okBtn)
+      box.append(msg, btns)
+      overlay.append(box)
+      root.appendChild(overlay)
+      okBtn.focus()
+    })
+  }
+
   async function dispatchModAction({ channel, platform, action, target, durationSec, msgId, reason, fanout }) {
+    // Opt-in misclick guard: confirm before an irreversible ban (every surface
+    // routes through here, so one gate covers toolbar/hotkey/slash/ctx/card).
+    if (action === 'ban' && modConfirmBan) {
+      const tgtName = String(target || '').replace(/^@/, '')
+      const ok = await hsConfirm(`ban ${tgtName} in #${String(channel || '').replace(/^#/, '')}?`, 'ban')
+      if (!ok) return { tResp: null, kResp: null, twitchName: null, kickSlug: null, anyOk: false, cancelled: true }
+    }
     const { twitchName, kickSlug } = _resolveModTargets(channel, platform)
     // No resolvable platform (aggregate tab, empty/garbage channel) — fail clean
     // rather than firing a doomed API call with the tab id as a channel name.
@@ -5722,6 +5790,7 @@
 
   // One consistent result toast for every surface.
   function showModResultToast(label, target, r) {
+    if (r?.cancelled) return // user cancelled the confirm dialog — no result toast
     try {
       const tResp = r?.tResp,
         kResp = r?.kResp

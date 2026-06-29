@@ -295,7 +295,12 @@
           document.documentElement.dataset.hsSelfTwitchId = String(cu.id)
           document.documentElement.dataset.hsSelfTwitchLogin = String(cu.login || '').toLowerCase()
           window.postMessage(
-            { type: 'heatsync-self-twitch-id', twitchId: String(cu.id), login: String(cu.login || '').toLowerCase() },
+            {
+              type: 'heatsync-self-twitch-id',
+              twitchId: String(cu.id),
+              login: String(cu.login || '').toLowerCase(),
+              nonce: _hsNonce,
+            },
             location.origin,
           )
         } catch {}
@@ -423,6 +428,7 @@
                       operation: opName,
                       data: item.data,
                       errors: item.errors || null,
+                      nonce: _hsNonce,
                     },
                     location.origin,
                   )

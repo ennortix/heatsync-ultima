@@ -1256,6 +1256,8 @@
 
       // Predictions/polls chip from MAIN-world GQL interception
       if (event.data?.type === 'heatsync-gql-data' && _uiPrefs.showPredictionsChip) {
+        const expected = window.HS?.getMainWorldNonce?.()
+        if (!expected || event.data.nonce !== expected) return
         const op = String(event.data.operation || '')
         if (/Prediction|Poll/i.test(op)) {
           try {
@@ -11147,6 +11149,8 @@
         event.data.twitchId &&
         /^\d+$/.test(String(event.data.twitchId))
       ) {
+        const expected = window.HS?.getMainWorldNonce?.()
+        if (!expected || event.data.nonce !== expected) return
         if (!_selfTwitchIdRegistered) {
           _selfTwitchIdRegistered = true
           if (event.data.login && !cachedUsername) cachedUsername = String(event.data.login).toLowerCase()

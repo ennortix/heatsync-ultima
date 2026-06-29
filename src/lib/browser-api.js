@@ -15,12 +15,25 @@
  *   api.runtime.onMessage.addListener(handler)
  */
 
-// Detect browser environment
-const isFirefox = typeof browser !== 'undefined'
-const isChrome = typeof chrome !== 'undefined' && !isFirefox
+// Detect browser environment.
+// Do NOT use `typeof browser !== 'undefined'` — the content bundle aliases
+// `browser = globalThis.browser || chrome`, so that test is true on Chrome too,
+// which silently mis-routed FF-only branches (e.g. promisify, emote-CDN format).
+// navigator.userAgent is the reliable cross-world signal (Firefox UA contains
+// "Firefox"; no Chromium-family UA does), with the moz-extension URL scheme as a
+// corroborating check for extension pages.
+const isFirefox =
+  (typeof navigator !== 'undefined' && /firefox/i.test(navigator.userAgent)) ||
+  (typeof location !== 'undefined' && location.protocol === 'moz-extension:')
+const isChrome = !isFirefox && typeof chrome !== 'undefined'
 
-// Get the raw API object
-const rawApi = isFirefox ? browser : typeof chrome !== 'undefined' ? chrome : null
+// Get the raw API object — prefer the API matching the detected browser, with a
+// fallback chain so a missing global can never null out the wrapper.
+const rawApi =
+  (isFirefox && typeof browser !== 'undefined' && browser) ||
+  (typeof chrome !== 'undefined' && chrome) ||
+  (typeof browser !== 'undefined' && browser) ||
+  null
 
 let _ctxInvalidatedLogged = false
 let _storageMissingLogged = false

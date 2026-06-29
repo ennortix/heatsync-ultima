@@ -15,10 +15,30 @@ function _frIsDangerous(p) {
 function _frEscapeLiteral(p) {
   return p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
+// Empirical backstop behind the denylist heuristic (mirrors automod.js): run the
+// compiled regex against short pathological probes under a time budget; a pattern
+// that trips it is unsafe regardless of shape. See automod.js for the rationale.
+const _FR_REDOS_PROBES = ['a'.repeat(28), '0'.repeat(28), 'ab'.repeat(14), 'a1'.repeat(14), ' '.repeat(28)].map(
+  (s) => s + ' !',
+)
+function _frTripsCatastrophic(re) {
+  try {
+    const start = performance.now()
+    for (const probe of _FR_REDOS_PROBES) {
+      re.test(probe)
+      if (performance.now() - start > 20) return true
+    }
+  } catch {
+    return true
+  }
+  return false
+}
 function _frSafeRegex(src, flags) {
   const safe = _frIsDangerous(src) ? _frEscapeLiteral(src) : src
   try {
-    return new RegExp(safe, flags)
+    const re = new RegExp(safe, flags)
+    if (_frTripsCatastrophic(re)) return new RegExp(_frEscapeLiteral(src), flags)
+    return re
   } catch {
     try {
       return new RegExp(_frEscapeLiteral(src), flags)

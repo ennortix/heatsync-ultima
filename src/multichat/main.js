@@ -5951,7 +5951,15 @@
       },
       true,
     )
-    messagesEl.addEventListener('scroll', () => detachModToolbar(), { passive: true })
+    // Only do work when a toolbar is actually open — the common case is
+    // scrolling with none attached, where this must stay a cheap no-op.
+    messagesEl.addEventListener(
+      'scroll',
+      () => {
+        if (_modRow || _modHideTimer) detachModToolbar()
+      },
+      { passive: true },
+    )
   }
 
   // Hotkeys — x (delete), t (10m timeout), b (ban). Hold while hovering a row.
@@ -10728,6 +10736,20 @@
     })
   }
 
+  // Coalesced scroll-pin for the single-message append path. Calling
+  // scrollMsgsToBottom inline per message forced a synchronous layout flush
+  // (read scrollHeight, write scrollTop) on every message — 60 forced reflows/s
+  // on a busy solo tab. Batching to one rAF pins once per frame (before paint,
+  // so no visible lag) and reads layout once instead of per message.
+  let _scrollPinRaf = null
+  function scheduleScrollPin(msgsEl) {
+    if (_scrollPinRaf) return
+    _scrollPinRaf = cleanup.raf(() => {
+      _scrollPinRaf = null
+      scrollMsgsToBottom(msgsEl)
+    })
+  }
+
   // Incremental append for single messages on the active tab (hot path)
   // Returns true if handled, false if full rebuild needed
   // Check if a tab has multiple platform sources active (needs fair merge)
@@ -10852,9 +10874,11 @@
     const msgsEl = document.getElementById('hs-mc-messages')
     if (!msgsEl) return false
 
-    // Remove "no messages" placeholder
-    const empty = msgsEl.querySelector('.hs-mc-empty')
-    if (empty) empty.remove()
+    // Remove "no messages" placeholder. It's always the sole/first child (see
+    // isEmptyTab), so an O(1) firstChild check beats a descendant querySelector
+    // on every appended message.
+    const first = msgsEl.firstElementChild
+    if (first && first.classList.contains('hs-mc-empty')) first.remove()
 
     // Compute key first so we can skip if a node with this key already exists
     // (IRC reconnect, replay echo, dual-send race — all paths benefit from
@@ -10903,7 +10927,7 @@
     // "unseen" badges, whose state changes solely via noteSeenEvent/bumpSeen
     // (both already call refreshSeenBadges). A plain incoming chat message can't
     // change it, so calling it per-append was 3 querySelectors/msg of pure waste.
-    scrollMsgsToBottom(msgsEl)
+    scheduleScrollPin(msgsEl)
     return true
   }
 
@@ -10994,6 +11018,33 @@
   // order, but platforms are woven together evenly so no single source
   // dominates any region of the output — even when their time ranges
   // don't overlap (e.g. IRC history from hours ago + YT from seconds ago).
+  // Merge k already-time-sorted runs into one ascending array, exploiting each
+  // source's chronological order instead of re-sorting the whole pool every
+  // frame (fairMerge runs once per render, ~60×/s on a busy tab). Tie policy:
+  // equal byTimeStable → lowest run index first — deterministic across renders,
+  // so the insert-only diff stays stable. k is the platform count (≤~4), so the
+  // linear head-scan beats Array.sort's O(n log n) on the merged buffer.
+  function mergeSortedRuns(runs) {
+    const live = runs.filter((r) => r.length > 0)
+    if (live.length === 0) return []
+    if (live.length === 1) return live[0].slice()
+    const idx = new Array(live.length).fill(0)
+    let total = 0
+    for (const r of live) total += r.length
+    const out = new Array(total)
+    let o = 0
+    for (;;) {
+      let best = -1
+      for (let i = 0; i < live.length; i++) {
+        if (idx[i] >= live[i].length) continue
+        if (best === -1 || byTimeStable(live[i][idx[i]], live[best][idx[best]]) < 0) best = i
+      }
+      if (best === -1) break
+      out[o++] = live[best][idx[best]++]
+    }
+    return out
+  }
+
   function fairMerge(sources) {
     if (MC_DEBUG)
       log(
@@ -11022,8 +11073,8 @@
     const RECENT_THRESHOLD_MS = 60 * 60 * 1000
     const coLive = newestMax - oldestMax < CO_LIVE_WINDOW_MS && newestMax > Date.now() - RECENT_THRESHOLD_MS
 
-    const pool = []
     if (coLive) {
+      const pool = []
       // Anti-drown WITHOUT retroactive eviction. The old proportional cap
       // (ceil(limit/active.length)) re-sliced every source whenever active
       // count changed — so the moment a quiet platform (e.g. YouTube) started
@@ -11042,23 +11093,23 @@
             pool.push(m)
           }
         }
-      const rest = []
-      for (const s of active) for (const m of s) if (!seen.has(m)) rest.push(m)
-      rest.sort(byTimeStable)
+      // rest = each source's non-floor tail (a sorted run) → k-way merge, not sort.
+      const rest = mergeSortedRuns(active.map((s) => s.filter((m) => !seen.has(m))))
       const room = Math.max(0, limit - pool.length)
       for (const m of rest.slice(-room)) {
         seen.add(m)
         pool.push(m)
       }
-    } else {
-      for (const s of active) pool.push(...s.slice(-limit))
+      // pool is floor-interleaved + a sorted tail → one stable sort to finalise.
+      // (The stableMsgId tie-break keeps tied timestamps deterministic across
+      // renders; without it the insert-only diff would duplicate flipped pairs.)
+      pool.sort(byTimeStable)
+      return pool.slice(-limit)
     }
-
-    // Stable chronological sort. Secondary stableMsgId key keeps tied
-    // timestamps deterministic across renders — without it, the insert-only
-    // diff treats every flipped pair as a new insert and duplicates pile up.
-    pool.sort(byTimeStable)
-    return pool.slice(-limit)
+    // Non-co-live: each source is already chronological, so merge the sorted
+    // tails directly — no full re-sort of the merged buffer this frame.
+    const merged = mergeSortedRuns(active.map((s) => s.slice(-limit)))
+    return merged.length <= limit ? merged : merged.slice(-limit)
   }
   function stableMsgId(m) {
     // Memoize on the message object — id/base36_id/user/time/text are immutable
@@ -11440,15 +11491,21 @@
 
     // Merge follow stream events into channel + live tabs (went live,
     // switched game, went offline). Skip mentions: it's reserved for actual
-    // @-mentions of the user, not followed-channel stream events. fairMerge's
-    // full sort below puts everything at its correct chronological position
-    // regardless of insertion order.
+    // @-mentions of the user, not followed-channel stream events. msgs is
+    // already chronological from fairMerge, and `missing` is tiny, so
+    // binary-insert each at its position instead of re-sorting the whole buffer.
     if (id !== 'mentions' && activityEvents.length > 0 && msgs.length > 0) {
       const existingTexts = new Set(msgs.filter((m) => m.type === 'stream-event').map((m) => m.text))
       const missing = activityEvents.filter((e) => e.eventClass?.includes('event-follow') && !existingTexts.has(e.text))
-      if (missing.length > 0) {
-        msgs.push(...missing)
-        msgs.sort(byTimeStable)
+      for (const e of missing) {
+        let lo = 0
+        let hi = msgs.length
+        while (lo < hi) {
+          const mid = (lo + hi) >> 1
+          if (byTimeStable(msgs[mid], e) < 0) lo = mid + 1
+          else hi = mid
+        }
+        msgs.splice(lo, 0, e)
       }
     }
 

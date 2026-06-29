@@ -671,6 +671,21 @@
     #hs-mc-search-input::placeholder {
       color: #aaa;
     }
+    #hs-mc-search-count {
+      display: none;
+      font-size: 13px;
+      font-family: inherit;
+      color: #aaa;
+      background: #111;
+      border: 1px solid #333;
+      padding: 1px 5px;
+      flex-shrink: 0;
+      white-space: nowrap;
+      min-width: 0;
+    }
+    #hs-mc-search-count.visible {
+      display: block;
+    }
     #hs-mc-search-spinner {
       display: none;
       width: 14px;

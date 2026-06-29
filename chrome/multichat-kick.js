@@ -14597,6 +14597,21 @@ function injectStyles() {
     #hs-mc-search-input::placeholder {
       color: #aaa;
     }
+    #hs-mc-search-count {
+      display: none;
+      font-size: 13px;
+      font-family: inherit;
+      color: #aaa;
+      background: #111;
+      border: 1px solid #333;
+      padding: 1px 5px;
+      flex-shrink: 0;
+      white-space: nowrap;
+      min-width: 0;
+    }
+    #hs-mc-search-count.visible {
+      display: block;
+    }
     #hs-mc-search-spinner {
       display: none;
       width: 14px;
@@ -16978,6 +16993,82 @@ function _frTest(rule, m) {
     }
     default:
       return false
+  }
+}
+
+
+
+// --- multichat/live-search.js ---
+// Live chat search — builds a per-query matcher compiled ONCE, not per message.
+// Three modes: /regex/[i] | @username prefix | bare substring. ReDoS-guarded.
+
+// Private copies of the ReDoS heuristics (mirrors automod.js — kept local so
+// this file is importable by tests without dragging in the whole bundle).
+function _lsIsDangerous(p) {
+  if (/\([^)]*[+*][^)]*\)\s*[*+]/.test(p)) return true
+  if (/\([^)]*\|[^)]*\)\s*[*+]/.test(p)) return true
+  if (/\{\s*\d{4,}/.test(p)) return true
+  return false
+}
+
+function _lsEscapeLiteral(p) {
+  return p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+// Build a matcher for rawQuery (trimmed, case preserved).
+// Returns { test(m) } where m has .user / .display_name / .text fields.
+function buildLiveSearchMatcher(rawQuery) {
+  if (!rawQuery) return { test: () => true }
+
+  // ── Regex mode: /pattern/ or /pattern/i ─────────────────────────────────────
+  // The trailing delimiter must follow the closing slash with no intervening
+  // non-flag characters, so `/foo/i` is regex but `/foo/bar` is literal text.
+  const reSlash = /^\/(.+)\/(i?)$/.exec(rawQuery)
+  if (reSlash) {
+    const src = reSlash[1]
+    const flags = reSlash[2]
+    // ReDoS guard — dangerous pattern degrades to literal substring so it can
+    // never trigger catastrophic backtracking regardless of message content.
+    const safeSrc = _lsIsDangerous(src) ? _lsEscapeLiteral(src) : src
+    let re
+    try {
+      re = new RegExp(safeSrc, flags)
+    } catch {
+      // Invalid regex (e.g. `/[/` mid-typing) — fall back to literal.
+      try {
+        re = new RegExp(_lsEscapeLiteral(src), flags)
+      } catch {
+        // Pathological: literal form still invalid (shouldn't happen). Fall
+        // through to bare-substring on the full rawQuery.
+        re = null
+      }
+    }
+    if (re) {
+      return {
+        test(m) {
+          return re.test(String(m.user || m.display_name || '')) || re.test(String(m.text || ''))
+        },
+      }
+    }
+  }
+
+  // ── @name prefix — scopes to one sender ─────────────────────────────────────
+  const q = rawQuery.toLowerCase()
+  if (q[0] === '@') {
+    const prefix = q.slice(1)
+    return {
+      test(m) {
+        return String(m.user || m.display_name || '').toLowerCase().startsWith(prefix)
+      },
+    }
+  }
+
+  // ── Bare substring — matches username OR message body ────────────────────────
+  return {
+    test(m) {
+      const user = String(m.user || m.display_name || '').toLowerCase()
+      return user.includes(q) || String(m.text || '').toLowerCase().includes(q)
+    },
   }
 }
 
@@ -44787,6 +44878,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     overlay.innerHTML = `
       <div id="hs-mc-search-bar">
         <input id="hs-mc-search-input" type="text" placeholder="${searchPlaceholder}" autocomplete="off" spellcheck="false" />
+        <span id="hs-mc-search-count"></span>
         <div id="hs-mc-search-spinner"></div>
       </div>
       <div id="hs-mc-statusbar">
@@ -50415,8 +50507,10 @@ const STORAGE_KEY = 'heatsync_multichat'
     const _searchInputEl = document.getElementById('hs-mc-search-input')
     if (_searchInputEl) {
       _searchInputEl.value = ''
-      _searchInputEl.placeholder = isLiveSearchTab(id) ? 'filter chat — @user for one person' : 'search messages…'
+      _searchInputEl.placeholder = isLiveSearchTab(id) ? 'filter — /regex/ or @user' : 'search messages…'
     }
+    const _searchCountEl = document.getElementById('hs-mc-search-count')
+    if (_searchCountEl) _searchCountEl.classList.remove('visible')
 
     // Discover/pinned refresh bars removed — auto-poll handles freshness
 
@@ -52047,24 +52141,12 @@ const STORAGE_KEY = 'heatsync_multichat'
   function isLiveSearchTab(id) {
     return typeof id === 'string' && !_SERVER_TABS.has(id)
   }
-  // Active local-filter query for a live tab (trimmed, lowercased), else ''.
+  // Active local-filter query for a live tab (trimmed, case preserved), else ''.
+  // Case preservation is required so /Pattern/i vs /Pattern/ both work correctly.
   function liveSearchQuery(id) {
     if (!isLiveSearchTab(id)) return ''
     const el = document.getElementById('hs-mc-search-input')
-    return el ? el.value.trim().toLowerCase() : ''
-  }
-  // '@name' scopes to one user (name prefix); bare text matches username OR
-  // message body. Substring, case-insensitive.
-  function matchesLiveSearch(m, q) {
-    if (!q) return true
-    const user = String(m.user || m.display_name || '').toLowerCase()
-    if (q[0] === '@') return user.startsWith(q.slice(1))
-    return (
-      user.includes(q) ||
-      String(m.text || '')
-        .toLowerCase()
-        .includes(q)
-    )
+    return el ? el.value.trim() : ''
   }
 
   // Upward infinite-scroll: when the user reaches the top, paint the next chunk
@@ -52341,11 +52423,17 @@ const STORAGE_KEY = 'heatsync_multichat'
       }
       toRender = out
     }
-    // Live-tab local filter: keep only matches (applied before the cap so the
-    // cap bounds matches, not pre-filter rows). Empty result shows its own state.
+    // Live-tab local filter: matcher compiled ONCE per query (not per message)
+    // so /regex/ patterns, ReDoS guards, and @user/text modes are all O(1) setup.
     const _liveQ = liveSearchQuery(id)
-    if (_liveQ) {
-      toRender = toRender.filter((m) => matchesLiveSearch(m, _liveQ))
+    const _liveMatcher = _liveQ ? buildLiveSearchMatcher(_liveQ) : null
+    const _liveCountEl = document.getElementById('hs-mc-search-count')
+    if (_liveMatcher) {
+      toRender = toRender.filter((m) => _liveMatcher.test(m))
+      if (_liveCountEl) {
+        _liveCountEl.textContent = String(toRender.length)
+        _liveCountEl.classList.add('visible')
+      }
       if (toRender.length === 0) {
         _clearMessageIndices()
         msgsEl.textContent = ''
@@ -52355,6 +52443,8 @@ const STORAGE_KEY = 'heatsync_multichat'
         msgsEl.appendChild(empty)
         return
       }
+    } else {
+      if (_liveCountEl) _liveCountEl.classList.remove('visible')
     }
     // Live tail is always DOM_RENDER_CAP; _scrollbackWindow adds older rows
     // when the user has scrolled to the top (loadOlderScrollback). Capped at

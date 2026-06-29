@@ -3498,6 +3498,7 @@
     overlay.innerHTML = `
       <div id="hs-mc-search-bar">
         <input id="hs-mc-search-input" type="text" placeholder="${searchPlaceholder}" autocomplete="off" spellcheck="false" />
+        <span id="hs-mc-search-count"></span>
         <div id="hs-mc-search-spinner"></div>
       </div>
       <div id="hs-mc-statusbar">
@@ -9126,8 +9127,10 @@
     const _searchInputEl = document.getElementById('hs-mc-search-input')
     if (_searchInputEl) {
       _searchInputEl.value = ''
-      _searchInputEl.placeholder = isLiveSearchTab(id) ? 'filter chat — @user for one person' : 'search messages…'
+      _searchInputEl.placeholder = isLiveSearchTab(id) ? 'filter — /regex/ or @user' : 'search messages…'
     }
+    const _searchCountEl = document.getElementById('hs-mc-search-count')
+    if (_searchCountEl) _searchCountEl.classList.remove('visible')
 
     // Discover/pinned refresh bars removed — auto-poll handles freshness
 
@@ -10758,24 +10761,12 @@
   function isLiveSearchTab(id) {
     return typeof id === 'string' && !_SERVER_TABS.has(id)
   }
-  // Active local-filter query for a live tab (trimmed, lowercased), else ''.
+  // Active local-filter query for a live tab (trimmed, case preserved), else ''.
+  // Case preservation is required so /Pattern/i vs /Pattern/ both work correctly.
   function liveSearchQuery(id) {
     if (!isLiveSearchTab(id)) return ''
     const el = document.getElementById('hs-mc-search-input')
-    return el ? el.value.trim().toLowerCase() : ''
-  }
-  // '@name' scopes to one user (name prefix); bare text matches username OR
-  // message body. Substring, case-insensitive.
-  function matchesLiveSearch(m, q) {
-    if (!q) return true
-    const user = String(m.user || m.display_name || '').toLowerCase()
-    if (q[0] === '@') return user.startsWith(q.slice(1))
-    return (
-      user.includes(q) ||
-      String(m.text || '')
-        .toLowerCase()
-        .includes(q)
-    )
+    return el ? el.value.trim() : ''
   }
 
   // Upward infinite-scroll: when the user reaches the top, paint the next chunk
@@ -11052,11 +11043,17 @@
       }
       toRender = out
     }
-    // Live-tab local filter: keep only matches (applied before the cap so the
-    // cap bounds matches, not pre-filter rows). Empty result shows its own state.
+    // Live-tab local filter: matcher compiled ONCE per query (not per message)
+    // so /regex/ patterns, ReDoS guards, and @user/text modes are all O(1) setup.
     const _liveQ = liveSearchQuery(id)
-    if (_liveQ) {
-      toRender = toRender.filter((m) => matchesLiveSearch(m, _liveQ))
+    const _liveMatcher = _liveQ ? buildLiveSearchMatcher(_liveQ) : null
+    const _liveCountEl = document.getElementById('hs-mc-search-count')
+    if (_liveMatcher) {
+      toRender = toRender.filter((m) => _liveMatcher.test(m))
+      if (_liveCountEl) {
+        _liveCountEl.textContent = String(toRender.length)
+        _liveCountEl.classList.add('visible')
+      }
       if (toRender.length === 0) {
         _clearMessageIndices()
         msgsEl.textContent = ''
@@ -11066,6 +11063,8 @@
         msgsEl.appendChild(empty)
         return
       }
+    } else {
+      if (_liveCountEl) _liveCountEl.classList.remove('visible')
     }
     // Live tail is always DOM_RENDER_CAP; _scrollbackWindow adds older rows
     // when the user has scrolled to the top (loadOlderScrollback). Capped at

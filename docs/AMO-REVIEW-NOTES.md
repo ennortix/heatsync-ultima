@@ -75,4 +75,4 @@ the emote inventory, sign in with the free Twitch/Kick OAuth at heatsync.org.
 - [ ] `src/manifests/firefox.json` version == the version being submitted (build.js guards this).
 - [ ] attach `dist/heatsync-source-X.Y.Z.zip` (produced by `bun run build.js --package`).
 - [ ] permissions in the tables above still match both manifests.
-- [ ] data-collection form: declare "no data collected" (local-only storage; cookies first-party, never sent).
+- [ ] data-collection form: MUST match `src/manifests/firefox.json` → `data_collection_permissions` (declares `authenticationInfo`). Declare **authentication info collected + transmitted** to first-party heatsync.org for emote/account sync, plus synced account data (emote inventory, blocked emotes, channel names, ui prefs). Do NOT declare "no data collected" — the extension transmits the heatsync account token + inventory to heatsync.org and retains it server-side (see PRIVACY.md / table above, heatsync.org row). No third-party sharing, no analytics/telemetry. Twitch/Kick cookies are read locally for identity and never sent to us.

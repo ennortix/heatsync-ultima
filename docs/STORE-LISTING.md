@@ -21,7 +21,7 @@ your emotes in any twitch, kick or youtube chat — free, up to 5000 slots. plus
 
 ## AMO Summary (dashboard, ≤250 — currently ~233, leave it)
 ```
-your emote inventory in any twitch, kick or youtube chat — free, up to 5000 slots, in any channel. one click imports a whole channel's 7tv/bttv/ffz emotes. plus a cross-platform multichat panel, no account needed to watch. open source.
+your emote inventory in any twitch, kick or youtube chat — free, up to 5000 slots, in any channel. one click imports a whole channel's 7tv/bttv/ffz emotes. plus a cross-platform multichat panel, no account needed to watch. open source, no trackers.
 ```
 
 ## AMO / CWS Description (long — current AMO copy is timeless; reuse for CWS detailed description)
@@ -39,6 +39,8 @@ your own emotes in twitch and kick chat — any channel, whether or not the stre
 • moderation + profiles — hover mod toolbar (ban/timeout/unban/delete), client-side automod, mute or block that carries a user across twitch and kick, profile cards with a paginated chat-log archive, one-click twitch clips.
 
 • light on your machine — vanilla js, zero runtime deps, capped buffers hold memory steady over long sessions.
+
+• private by default — no trackers, no analytics, no third-party telemetry. your data is never sold or shared; emotes + settings sync through heatsync's own first-party servers.
 
 free · open source (MIT) · no trackers · your emotes stay yours
 ```
@@ -62,4 +64,4 @@ chat, streaming, twitch, kick, youtube, emotes, 7tv
 ## Pre-release / pre-submit checklist
 - [ ] `bun run build.js --package` green (build + node --check + zips + source zip + tests) — verified 1.7.5: 552 tests pass.
 - [ ] CWS: short description auto-from manifest (118 chars, OK); paste long description above; set tags.
-- [ ] AMO: submit 1.7.5; attach `dist/heatsync-source-1.7.5.zip`; paste AMO-REVIEW-NOTES "Notes for Reviewers"; add `kick`/`emotes`/`7tv` tags; data form = "no data collected".
+- [ ] AMO: submit 1.7.5; attach `dist/heatsync-source-1.7.5.zip`; paste AMO-REVIEW-NOTES "Notes for Reviewers"; add `kick`/`emotes`/`7tv` tags; data form must MATCH the manifest `data_collection_permissions` (declares `authenticationInfo`) — declare **authentication info collected + transmitted** to first-party heatsync.org for emote/account sync; plus the synced account data (emote inventory, blocked emotes, channel names, ui prefs). NOT "no data collected" — that contradicts the manifest + PRIVACY.md (server-side retention). no third-party sharing, no analytics/telemetry. twitch/kick cookies are read locally and never sent to us.

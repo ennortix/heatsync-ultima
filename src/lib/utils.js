@@ -305,7 +305,7 @@ function debounce(fn, ms = 100) {
 // 8 KB QUOTA_BYTES_PER_ITEM ceiling. These move to chrome.storage.local
 // (we hold the unlimitedStorage permission) and are not part of cross-
 // device sync. Server-backed sync (ws ui-state:sync) also excludes them.
-const UI_SYNC_BLOCKLIST = new Set(['platformFilters', 'keywordHighlights'])
+const UI_SYNC_BLOCKLIST = new Set(['platformFilters', 'keywordHighlights', 'chatFilterRules'])
 
 /**
  * Sanitize a ui_settings-shaped object before merging into chrome.storage.sync

@@ -1086,6 +1086,26 @@ const SETTINGS = [
     maxLen: 65536,
   },
 
+  // ── filters / rules — per-rule highlight/hide engine ─────────────────
+  // Stored as a JSON string in chrome.storage.local (array can be large).
+  // Rendered as a custom UI; control:'custom' suppresses the auto row.
+  {
+    key: 'chatFilterRules',
+    type: 'text',
+    default: '[]',
+    scope: 'local-mirror',
+    mirrorKey: 'chat_filter_rules',
+    category: 'filters',
+    section: 'rules',
+    label: 'filter rules',
+    tip: 'per-rule highlight/hide filters — keyword, regex, user, badge, or msgtype; managed via the rules editor',
+    control: 'custom',
+    alias: 'filterrules highlight hide rules',
+    apply: 'filterRules',
+    applyOnLoad: true,
+    maxLen: 524288,
+  },
+
   // ── tweaks — twitch ui noise toggles (content.js CSS-hide flags) ──────
   // order defines section ordering in the tweaks subtab
   {

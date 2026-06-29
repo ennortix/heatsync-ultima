@@ -1190,7 +1190,7 @@ function debounce(fn, ms = 100) {
 // 8 KB QUOTA_BYTES_PER_ITEM ceiling. These move to chrome.storage.local
 // (we hold the unlimitedStorage permission) and are not part of cross-
 // device sync. Server-backed sync (ws ui-state:sync) also excludes them.
-const UI_SYNC_BLOCKLIST = new Set(['platformFilters', 'keywordHighlights'])
+const UI_SYNC_BLOCKLIST = new Set(['platformFilters', 'keywordHighlights', 'chatFilterRules'])
 
 /**
  * Sanitize a ui_settings-shaped object before merging into chrome.storage.sync
@@ -2356,6 +2356,26 @@ const SETTINGS = [
     applyOnLoad: true,
     rerender: true,
     maxLen: 65536,
+  },
+
+  // ── filters / rules — per-rule highlight/hide engine ─────────────────
+  // Stored as a JSON string in chrome.storage.local (array can be large).
+  // Rendered as a custom UI; control:'custom' suppresses the auto row.
+  {
+    key: 'chatFilterRules',
+    type: 'text',
+    default: '[]',
+    scope: 'local-mirror',
+    mirrorKey: 'chat_filter_rules',
+    category: 'filters',
+    section: 'rules',
+    label: 'filter rules',
+    tip: 'per-rule highlight/hide filters — keyword, regex, user, badge, or msgtype; managed via the rules editor',
+    control: 'custom',
+    alias: 'filterrules highlight hide rules',
+    apply: 'filterRules',
+    applyOnLoad: true,
+    maxLen: 524288,
   },
 
   // ── tweaks — twitch ui noise toggles (content.js CSS-hide flags) ──────
@@ -9856,6 +9876,12 @@ function injectStyles() {
       background: rgba(255, 255, 0, 0.14);
       box-shadow: inset 0 0 0 1px #ffff00;
     }
+    /* Filter-rule highlight — color driven by per-rule CSS custom property */
+    .hs-mc-msg.hs-mc-rule-highlight {
+      border-left: 3px solid var(--hs-rule-hl, #ff8700);
+      padding-left: 4px;
+      background: color-mix(in srgb, var(--hs-rule-hl, #ff8700) 12%, transparent);
+    }
     .hs-mc-msg.tweet {
       background: rgba(212, 73, 73, 0.3);
     }
@@ -16775,6 +16801,186 @@ function refreshSeenBadges() {
     tab.classList.toggle(cls, hasUnseen(surface))
   }
 }
+
+
+// --- multichat/filter-rules.js ---
+// Chat filter/highlight rule engine — per-rule hide or highlight for incoming messages.
+// Compiles once on settings change; evaluates cheaply per message.
+// Self-contained — no imports. Mirrors automod.js shape (compileX / evaluateX).
+
+// ── ReDoS guard (same heuristic as automod.js) ────────────────────────────────
+// Inlined so this module is testable without the bundle scope.
+function _frIsDangerous(p) {
+  if (/\([^)]*[+*][^)]*\)\s*[*+]/.test(p)) return true
+  if (/\([^)]*\|[^)]*\)\s*[*+]/.test(p)) return true
+  if (/\{\s*\d{4,}/.test(p)) return true
+  return false
+}
+function _frEscapeLiteral(p) {
+  return p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+function _frSafeRegex(src, flags) {
+  const safe = _frIsDangerous(src) ? _frEscapeLiteral(src) : src
+  try {
+    return new RegExp(safe, flags)
+  } catch {
+    try {
+      return new RegExp(_frEscapeLiteral(src), flags)
+    } catch {
+      return null
+    }
+  }
+}
+
+// ── module state ──────────────────────────────────────────────────────────────
+// Two buckets: all-scope rules run on every message; per-channel rules run only
+// when channelKey matches. Compiled once → evaluated with no allocation per call.
+let _frAllRules = []         // compiled rules with scope 'all'
+let _frByChannel = new Map() // compiled rules keyed by channel tab id
+
+// ── compile helpers ───────────────────────────────────────────────────────────
+function _frCompileOne(rule) {
+  if (!rule || typeof rule !== 'object') return null
+  if (!rule.id || !rule.enabled) return null
+  const m = rule.match
+  if (!m || typeof m.type !== 'string' || typeof m.value !== 'string') return null
+  const val = m.value.trim()
+  if (!val) return null
+  const action = rule.action === 'hide' ? 'hide' : rule.action === 'highlight' ? 'highlight' : null
+  if (!action) return null
+  const scope = rule.scope === 'all' || !rule.scope ? 'all' : String(rule.scope)
+  const cs = !!m.caseSensitive
+  const flags = cs ? '' : 'i'
+
+  const c = {
+    id: String(rule.id),
+    action,
+    color: (action === 'highlight' && rule.color && /^#[0-9a-f]{3,8}$/i.test(rule.color))
+      ? rule.color : null,
+    scope,
+    matchType: m.type,
+    caseSensitive: cs,
+    value: '',
+    re: null,
+  }
+
+  switch (m.type) {
+    case 'keyword': {
+      // Word-boundary–ish: allow leading/trailing whitespace or line boundary,
+      // but don't require \b so emoji/Unicode words also match. Case-insensitive
+      // by default. RegExp compiled once; never touches user-supplied raw regex.
+      const esc = _frEscapeLiteral(val)
+      try {
+        c.re = new RegExp('(?:^|[\\s,!?.:;\'"])' + esc + '(?=$|[\\s,!?.:;\'"])', flags)
+      } catch {
+        c.re = null
+      }
+      break
+    }
+    case 'regex':
+      // User-supplied pattern — guard against ReDoS, then compile.
+      c.re = _frSafeRegex(val, flags)
+      break
+    case 'user':
+      c.value = cs ? val : val.toLowerCase()
+      break
+    case 'badge':
+      c.value = val.toLowerCase()
+      break
+    case 'msgtype':
+      c.value = val.toLowerCase()
+      break
+    default:
+      return null // unknown match type — skip
+  }
+
+  return c
+}
+
+// ── public API ────────────────────────────────────────────────────────────────
+
+/**
+ * Validate + pre-compile an array of raw rule objects into module state.
+ * Must be called once on load and again whenever chatFilterRules changes.
+ * Safe to call with null / undefined / non-array (treated as empty).
+ * @param {Array} rules  raw chatFilterRules array
+ */
+function compileFilterRules(rules) {
+  _frAllRules = []
+  _frByChannel = new Map()
+  if (!Array.isArray(rules)) return
+  for (const rule of rules) {
+    const c = _frCompileOne(rule)
+    if (!c) continue
+    if (c.scope === 'all') {
+      _frAllRules.push(c)
+    } else {
+      let bucket = _frByChannel.get(c.scope)
+      if (!bucket) {
+        bucket = []
+        _frByChannel.set(c.scope, bucket)
+      }
+      bucket.push(c)
+    }
+  }
+}
+
+/**
+ * Evaluate applicable compiled rules against an incoming message.
+ * Hot path — no per-call allocation when there are no rules for this scope.
+ * @param {object} m           message object (text, user, badges, isFirstMsg, isAction, bits, replyTo)
+ * @param {string|null} channelKey  channel tab id (ch.id) or null
+ * @returns {{ hide: boolean, highlight: string|null }}
+ */
+function evaluateFilterRules(m, channelKey) {
+  const hasChannel = channelKey && _frByChannel.has(channelKey)
+  if (!_frAllRules.length && !hasChannel) return { hide: false, highlight: null }
+
+  const rules = hasChannel
+    ? _frAllRules.concat(_frByChannel.get(channelKey))
+    : _frAllRules
+
+  let highlight = null
+  for (let i = 0; i < rules.length; i++) {
+    const rule = rules[i]
+    if (!_frTest(rule, m)) continue
+    if (rule.action === 'hide') return { hide: true, highlight: null }
+    if (rule.action === 'highlight' && highlight === null) highlight = rule.color
+  }
+  return { hide: false, highlight }
+}
+
+function _frTest(rule, m) {
+  switch (rule.matchType) {
+    case 'keyword':
+    case 'regex':
+      return !!rule.re && typeof m.text === 'string' && rule.re.test(m.text)
+    case 'user': {
+      if (!m.user) return false
+      const u = rule.caseSensitive ? String(m.user) : String(m.user).toLowerCase()
+      return u === rule.value
+    }
+    case 'badge': {
+      if (!m.badges || typeof m.badges !== 'string') return false
+      const badges = m.badges.split(',')
+      for (let i = 0; i < badges.length; i++) {
+        if (badges[i].split('/')[0].toLowerCase() === rule.value) return true
+      }
+      return false
+    }
+    case 'msgtype': {
+      const mt = rule.value
+      if (mt === 'first-message') return !!m.isFirstMsg
+      if (mt === 'action') return !!m.isAction
+      if (mt === 'reply') return !!(m.replyTo && m.replyTo.user)
+      if (mt === 'cheer') return !!(m.bits && Number(m.bits) > 0)
+      return false
+    }
+    default:
+      return false
+  }
+}
+
 
 
 // --- multichat/automod.js ---
@@ -29571,8 +29777,11 @@ function listenForSocialEvents() {
         if (sentHost) ytMsg.platform = sentHost === 'yt' ? 'youtube' : sentHost
       }
 
-      // Same pipeline as Twitch/Kick handlers: automod → mention → stats
-      if (ytMsg.user?.toLowerCase() !== currentUsername?.toLowerCase() && shouldAutomod(ytMsg.text)) return
+      // Same pipeline as Twitch/Kick handlers: automod + filter rules → mention → stats
+      if (ytMsg.user?.toLowerCase() !== currentUsername?.toLowerCase() && (
+        shouldAutomod(ytMsg.text) ||
+        evaluateFilterRules(ytMsg, targetChannelId !== '__live_yt_auto__' ? targetChannelId : null).hide
+      )) return
       const isMent = isMention(ytMsg)
       bumpStreamStats(ytMsg.channel, ytMsg, isMent)
       if (isMent) {
@@ -43231,7 +43440,7 @@ const STORAGE_KEY = 'heatsync_multichat'
   let _uiOverflowCachePromise = null
   function cachedUiOverflow() {
     if (!_uiOverflowCachePromise) {
-      _uiOverflowCachePromise = chrome.storage.local.get(['platform_filters', 'keyword_highlights'])
+      _uiOverflowCachePromise = chrome.storage.local.get(['platform_filters', 'keyword_highlights', 'chat_filter_rules'])
     }
     return _uiOverflowCachePromise
   }
@@ -43381,6 +43590,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         if (UI_SYNC_BLOCKLIST.has(k)) {
           if (k === 'platformFilters') localPatch.platform_filters = pending[k]
           else if (k === 'keywordHighlights') localPatch.keyword_highlights = pending[k]
+          else if (k === 'chatFilterRules') localPatch.chat_filter_rules = pending[k]
         } else {
           syncPatch[k] = pending[k]
         }
@@ -43673,6 +43883,11 @@ const STORAGE_KEY = 'heatsync_multichat'
     },
     keywordRegex: () => {
       rebuildKeywordRegex()
+    },
+    filterRules: () => {
+      let rules = []
+      try { rules = JSON.parse(getSetting('chatFilterRules') || '[]') } catch {}
+      compileFilterRules(Array.isArray(rules) ? rules : [])
     },
     nativeVisible: () => {
       // native-chat escape hatch removed — always keep native hidden + the
@@ -47526,6 +47741,8 @@ const STORAGE_KEY = 'heatsync_multichat'
 
   function _rowsForDef(def) {
     var rows = []
+    // Custom-rendered entries (e.g. filter rules editor) skip auto-row generation.
+    if (def.control === 'custom') return rows
     var base = (
       _setLabel(def) +
       ' ' +
@@ -47949,9 +48166,171 @@ const STORAGE_KEY = 'heatsync_multichat'
     )
   }
 
+  // ── filter rules custom settings UI ────────────────────────────────────────
+  // Reads chatFilterRules (JSON string) from getSetting, renders an editor with
+  // per-rule rows + an add-rule form. Wired into the click/change handlers below.
+
+  function _getRawFilterRules() {
+    var raw = getSetting('chatFilterRules') || '[]'
+    var arr = []
+    try { arr = JSON.parse(raw) } catch {}
+    return Array.isArray(arr) ? arr : []
+  }
+
+  function _saveFilterRules(rules) {
+    var json = JSON.stringify(rules)
+    saveUiSetting('chatFilterRules', json)
+    var parsed = []
+    try { parsed = JSON.parse(json) } catch {}
+    compileFilterRules(parsed)
+    renderMessages(currentTab)
+    if (currentTab === 'settings') renderSettingsTab()
+  }
+
+  var FR_TYPE_LABELS = {
+    keyword: 'kw',
+    regex: 'rx',
+    user: 'user',
+    badge: 'badge',
+    msgtype: 'type',
+  }
+  var FR_SCOPE_BTN = 'background:#000;color:#808080;border:1px solid #444;padding:1px 5px;font-size:11px;cursor:pointer;font-family:inherit;line-height:1.4'
+  var FR_BTN = 'background:#000;color:#fff;border:1px solid #808080;padding:1px 6px;font-size:11px;cursor:pointer;font-family:inherit;line-height:1.4'
+  var FR_SEL = 'background:#000;color:#fff;border:1px solid #808080;padding:1px 3px;font-size:12px;font-family:inherit'
+  var FR_INPUT = 'background:#000;color:#fff;border:1px solid #808080;padding:1px 4px;font-size:12px;font-family:inherit;flex:1;min-width:60px'
+
+  function _renderFilterRuleRow(r) {
+    var on = !!r.enabled
+    var typeLabel = FR_TYPE_LABELS[r.match && r.match.type] || '?'
+    var val = r.match && r.match.value ? escapeHtml(String(r.match.value)) : ''
+    var aLabel = r.action === 'hide' ? 'hide' : 'hl'
+    var aColor = r.action === 'highlight' && r.color ? escapeHtml(r.color) : ''
+    var swatch = aColor
+      ? '<span style="display:inline-block;width:10px;height:10px;background:' + aColor + ';border:1px solid #444;vertical-align:middle;margin-left:2px"></span>'
+      : ''
+    var scopeLabel = r.scope && r.scope !== 'all' ? escapeHtml(String(r.scope)) : 'all'
+    var id = escapeHtml(String(r.id))
+    return (
+      '<div class="hs-mc-setting-row hs-mc-setting-row-split" data-fr-row="' + id + '" style="gap:4px">' +
+      '<div style="display:flex;align-items:center;gap:4px;flex:1;min-width:0;overflow:hidden">' +
+      '<button class="hs-mc-toggle-pill' + (on ? ' active' : '') + '" data-fr-action="toggle" data-fr-id="' + id + '" style="flex-shrink:0"><span class="hs-mc-toggle-knob"></span></button>' +
+      '<span style="color:#808080;font-size:11px;min-width:28px;flex-shrink:0">' + typeLabel + '</span>' +
+      '<span style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1" title="' + val + '">' + val + '</span>' +
+      '<span style="color:#aaa;font-size:11px;flex-shrink:0">▶' + aLabel + '</span>' +
+      (aColor ? '<span style="display:inline-block;width:10px;height:10px;background:' + aColor + ';border:1px solid #444;flex-shrink:0"></span>' : '') +
+      '<span style="color:#666;font-size:11px;flex-shrink:0">' + scopeLabel + '</span>' +
+      '</div>' +
+      '<button data-fr-action="delete" data-fr-id="' + id + '" style="' + FR_BTN + ';color:#808080;flex-shrink:0" title="delete rule">✕</button>' +
+      '</div>'
+    )
+  }
+
+  function _renderFilterRuleAddForm() {
+    var channels = (typeof config !== 'undefined' && config && config.channels) ? config.channels : []
+    var chOptions = '<option value="all">all channels</option>' +
+      channels.map(function(ch) {
+        var label = ch.twitch || ch.kick || ch.id || ''
+        return '<option value="' + escapeHtml(ch.id) + '">' + escapeHtml(label) + '</option>'
+      }).join('')
+    return (
+      '<div class="hs-mc-setting-row hs-mc-setting-row-block hs-mc-fr-addform" style="padding:4px 4px 6px">' +
+      '<div style="font-size:11px;color:#808080;margin-bottom:4px">add rule</div>' +
+      '<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">' +
+      '<select data-fr-field="type" style="' + FR_SEL + ';width:60px">' +
+      '<option value="keyword">keyword</option>' +
+      '<option value="regex">regex</option>' +
+      '<option value="user">user</option>' +
+      '<option value="badge">badge</option>' +
+      '<option value="msgtype">msgtype</option>' +
+      '</select>' +
+      '<input type="text" data-fr-field="value" placeholder="value..." style="' + FR_INPUT + '">' +
+      '<select data-fr-field="action" style="' + FR_SEL + ';width:68px">' +
+      '<option value="highlight">highlight</option>' +
+      '<option value="hide">hide</option>' +
+      '</select>' +
+      '<input type="color" data-fr-field="color" value="#ffff00" style="width:28px;height:22px;border:1px solid #808080;background:#000;padding:1px;cursor:pointer;flex-shrink:0" title="highlight color">' +
+      '<select data-fr-field="scope" style="' + FR_SEL + ';max-width:80px">' + chOptions + '</select>' +
+      '<button data-fr-action="add" style="' + FR_BTN + ';background:#222">+ add</button>' +
+      '</div>' +
+      '</div>'
+    )
+  }
+
+  function _renderFilterRulesGroup() {
+    var fold = _setCollapsed.has('filters|rules')
+    var rules = _getRawFilterRules()
+    var ruleRows = rules.length === 0
+      ? '<div class="hs-mc-setting-row" style="color:#808080;font-size:13px">no rules — add one below</div>'
+      : rules.map(_renderFilterRuleRow).join('')
+    return (
+      '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title" data-set-fold="rules">' +
+      (fold ? '▸ ' : '▾ ') + 'filter rules' +
+      (rules.length ? ' <span class="hs-mc-set-cnt">(' + rules.length + ')</span>' : '') +
+      '</div>' +
+      (fold ? '' : ruleRows + _renderFilterRuleAddForm()) +
+      '</div>'
+    )
+  }
+
+  function _handleFilterRuleAction(el, panelRoot) {
+    var action = el.dataset.frAction
+    var id = el.dataset.frId
+    var rules = _getRawFilterRules()
+
+    if (action === 'toggle' && id) {
+      var toggleRule = rules.find(function(r) { return String(r.id) === id })
+      if (toggleRule) {
+        toggleRule.enabled = !toggleRule.enabled
+        _saveFilterRules(rules)
+      }
+      return
+    }
+
+    if (action === 'delete' && id) {
+      var delIdx = rules.findIndex(function(r) { return String(r.id) === id })
+      if (delIdx !== -1) {
+        rules.splice(delIdx, 1)
+        _saveFilterRules(rules)
+      }
+      return
+    }
+
+    if (action === 'add') {
+      var form = el.closest('.hs-mc-fr-addform')
+      if (!form) return
+      var typeEl = form.querySelector('[data-fr-field="type"]')
+      var valEl = form.querySelector('[data-fr-field="value"]')
+      var actEl = form.querySelector('[data-fr-field="action"]')
+      var colEl = form.querySelector('[data-fr-field="color"]')
+      var scopeEl = form.querySelector('[data-fr-field="scope"]')
+      var ruleType = typeEl ? typeEl.value : 'keyword'
+      var ruleVal = valEl ? valEl.value.trim() : ''
+      var ruleAct = actEl ? actEl.value : 'highlight'
+      var ruleCol = colEl ? colEl.value : '#ffff00'
+      var ruleScope = scopeEl ? scopeEl.value : 'all'
+      if (!ruleVal) { showToast('rule value is empty', 'error'); return }
+      var newRule = {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+        enabled: true,
+        scope: ruleScope,
+        match: { type: ruleType, value: ruleVal, caseSensitive: false },
+        action: ruleAct,
+      }
+      if (ruleAct === 'highlight') newRule.color = ruleCol
+      rules.push(newRule)
+      _saveFilterRules(rules)
+      return
+    }
+  }
+
   // Compose one category pane: registry sections + that category's islands.
   function _renderCategoryPane(cat) {
     if (cat === 'mod') return _regSections(cat)
+    if (cat === 'filters') {
+      // 'rules' section is custom-rendered; exclude it from auto-sections
+      return _regSections(cat, ['content', 'messages']) + _renderFilterRulesGroup()
+    }
     if (cat === 'tweaks') {
       return (
         '<div class="hs-mc-set-keyhint" style="padding-top:8px">twitch.tv only — kick/youtube unaffected</div>' +
@@ -48732,6 +49111,13 @@ const STORAGE_KEY = 'heatsync_multichat'
         else _setCollapsed.add(foldId)
         _saveCollapsedSections()
         renderSettingsTab()
+        return
+      }
+
+      // Filter rule actions (toggle/delete/add) — data-fr-action
+      var frEl = e.target.closest('[data-fr-action]')
+      if (frEl && !/^(SELECT|INPUT|TEXTAREA)$/.test(frEl.tagName)) {
+        _handleFilterRuleAction(frEl, msgsEl)
         return
       }
 
@@ -51083,6 +51469,12 @@ const STORAGE_KEY = 'heatsync_multichat'
     // Keyword highlight — message text matches a user-defined term
     if (keywordHighlightsRegex && m.text && keywordHighlightsRegex.test(m.text)) {
       div.classList.add('hs-kw-match')
+    }
+    // Filter rule highlight — per-rule color accent (hide is handled before buffer insert)
+    const _frHL = evaluateFilterRules(m, tabId)
+    if (_frHL.highlight) {
+      div.classList.add('hs-mc-rule-highlight')
+      div.style.setProperty('--hs-rule-hl', _frHL.highlight)
     }
     // Reply context bar (Chatterino-style) — all values escaped via escapeHtml
     const replyLower = m.replyTo && m.replyTo.user ? m.replyTo.user.toLowerCase() : ''
@@ -55576,6 +55968,16 @@ const STORAGE_KEY = 'heatsync_multichat'
           renderMessages(currentTab)
         }
       }
+      if (changes.chat_filter_rules) {
+        const v = changes.chat_filter_rules.newValue
+        if (typeof v === 'string') {
+          let rules = []
+          try { rules = JSON.parse(v) } catch {}
+          compileFilterRules(Array.isArray(rules) ? rules : [])
+          renderMessages(currentTab)
+          if (currentTab === 'settings') renderSettingsTab()
+        }
+      }
 
       // Emote updates - reload when storage changes (debounced to avoid spam)
       if (
@@ -56475,9 +56877,11 @@ const STORAGE_KEY = 'heatsync_multichat'
           msg.platform = sentHost === 'yt' ? 'youtube' : sentHost
         }
       }
-      // Automod: drop messages matching user-defined filter or all-caps spam.
-      // Don't filter own messages (you saw what you typed).
-      if (msg.user?.toLowerCase() !== currentUsername?.toLowerCase() && shouldAutomod(msg.text)) return
+      // Automod + filter rules: drop messages matching filter. Own msgs exempt.
+      if (msg.user?.toLowerCase() !== currentUsername?.toLowerCase() && (
+        shouldAutomod(msg.text) ||
+        evaluateFilterRules(msg, getChannelLookup().twitch.get(msg.channel)?.id).hide
+      )) return
       const isMent = isMention(msg)
       bumpStreamStats(msg.channel, msg, isMent)
       if (isMent) {
@@ -56551,7 +56955,10 @@ const STORAGE_KEY = 'heatsync_multichat'
           msg.platform = sentHost === 'yt' ? 'youtube' : sentHost
         }
       }
-      if (msg.user?.toLowerCase() !== currentUsername?.toLowerCase() && shouldAutomod(msg.text)) return
+      if (msg.user?.toLowerCase() !== currentUsername?.toLowerCase() && (
+        shouldAutomod(msg.text) ||
+        evaluateFilterRules(msg, getChannelLookup().kick.get(msg.channel)?.id).hide
+      )) return
       const isMent = isMention(msg)
       bumpStreamStats(msg.channel, msg, isMent)
       if (isMent) {

@@ -390,6 +390,7 @@ const MULTICHAT_MODULES = [
   'notifs.js',
   'styles.js',
   'seen-state.js',
+  'filter-rules.js',
   'automod.js',
   'stream-stats.js',
   'mentions.js',

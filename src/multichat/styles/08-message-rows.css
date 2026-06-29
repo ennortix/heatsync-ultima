@@ -488,6 +488,12 @@
       background: rgba(255, 255, 0, 0.14);
       box-shadow: inset 0 0 0 1px #ffff00;
     }
+    /* Filter-rule highlight — color driven by per-rule CSS custom property */
+    .hs-mc-msg.hs-mc-rule-highlight {
+      border-left: 3px solid var(--hs-rule-hl, #ff8700);
+      padding-left: 4px;
+      background: color-mix(in srgb, var(--hs-rule-hl, #ff8700) 12%, transparent);
+    }
     .hs-mc-msg.tweet {
       background: rgba(212, 73, 73, 0.3);
     }

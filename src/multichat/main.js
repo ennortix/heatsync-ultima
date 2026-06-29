@@ -1899,7 +1899,7 @@
   let _uiOverflowCachePromise = null
   function cachedUiOverflow() {
     if (!_uiOverflowCachePromise) {
-      _uiOverflowCachePromise = chrome.storage.local.get(['platform_filters', 'keyword_highlights'])
+      _uiOverflowCachePromise = chrome.storage.local.get(['platform_filters', 'keyword_highlights', 'chat_filter_rules'])
     }
     return _uiOverflowCachePromise
   }
@@ -2049,6 +2049,7 @@
         if (UI_SYNC_BLOCKLIST.has(k)) {
           if (k === 'platformFilters') localPatch.platform_filters = pending[k]
           else if (k === 'keywordHighlights') localPatch.keyword_highlights = pending[k]
+          else if (k === 'chatFilterRules') localPatch.chat_filter_rules = pending[k]
         } else {
           syncPatch[k] = pending[k]
         }
@@ -2341,6 +2342,11 @@
     },
     keywordRegex: () => {
       rebuildKeywordRegex()
+    },
+    filterRules: () => {
+      let rules = []
+      try { rules = JSON.parse(getSetting('chatFilterRules') || '[]') } catch {}
+      compileFilterRules(Array.isArray(rules) ? rules : [])
     },
     nativeVisible: () => {
       // native-chat escape hatch removed — always keep native hidden + the
@@ -6194,6 +6200,8 @@
 
   function _rowsForDef(def) {
     var rows = []
+    // Custom-rendered entries (e.g. filter rules editor) skip auto-row generation.
+    if (def.control === 'custom') return rows
     var base = (
       _setLabel(def) +
       ' ' +
@@ -6617,9 +6625,171 @@
     )
   }
 
+  // ── filter rules custom settings UI ────────────────────────────────────────
+  // Reads chatFilterRules (JSON string) from getSetting, renders an editor with
+  // per-rule rows + an add-rule form. Wired into the click/change handlers below.
+
+  function _getRawFilterRules() {
+    var raw = getSetting('chatFilterRules') || '[]'
+    var arr = []
+    try { arr = JSON.parse(raw) } catch {}
+    return Array.isArray(arr) ? arr : []
+  }
+
+  function _saveFilterRules(rules) {
+    var json = JSON.stringify(rules)
+    saveUiSetting('chatFilterRules', json)
+    var parsed = []
+    try { parsed = JSON.parse(json) } catch {}
+    compileFilterRules(parsed)
+    renderMessages(currentTab)
+    if (currentTab === 'settings') renderSettingsTab()
+  }
+
+  var FR_TYPE_LABELS = {
+    keyword: 'kw',
+    regex: 'rx',
+    user: 'user',
+    badge: 'badge',
+    msgtype: 'type',
+  }
+  var FR_SCOPE_BTN = 'background:#000;color:#808080;border:1px solid #444;padding:1px 5px;font-size:11px;cursor:pointer;font-family:inherit;line-height:1.4'
+  var FR_BTN = 'background:#000;color:#fff;border:1px solid #808080;padding:1px 6px;font-size:11px;cursor:pointer;font-family:inherit;line-height:1.4'
+  var FR_SEL = 'background:#000;color:#fff;border:1px solid #808080;padding:1px 3px;font-size:12px;font-family:inherit'
+  var FR_INPUT = 'background:#000;color:#fff;border:1px solid #808080;padding:1px 4px;font-size:12px;font-family:inherit;flex:1;min-width:60px'
+
+  function _renderFilterRuleRow(r) {
+    var on = !!r.enabled
+    var typeLabel = FR_TYPE_LABELS[r.match && r.match.type] || '?'
+    var val = r.match && r.match.value ? escapeHtml(String(r.match.value)) : ''
+    var aLabel = r.action === 'hide' ? 'hide' : 'hl'
+    var aColor = r.action === 'highlight' && r.color ? escapeHtml(r.color) : ''
+    var swatch = aColor
+      ? '<span style="display:inline-block;width:10px;height:10px;background:' + aColor + ';border:1px solid #444;vertical-align:middle;margin-left:2px"></span>'
+      : ''
+    var scopeLabel = r.scope && r.scope !== 'all' ? escapeHtml(String(r.scope)) : 'all'
+    var id = escapeHtml(String(r.id))
+    return (
+      '<div class="hs-mc-setting-row hs-mc-setting-row-split" data-fr-row="' + id + '" style="gap:4px">' +
+      '<div style="display:flex;align-items:center;gap:4px;flex:1;min-width:0;overflow:hidden">' +
+      '<button class="hs-mc-toggle-pill' + (on ? ' active' : '') + '" data-fr-action="toggle" data-fr-id="' + id + '" style="flex-shrink:0"><span class="hs-mc-toggle-knob"></span></button>' +
+      '<span style="color:#808080;font-size:11px;min-width:28px;flex-shrink:0">' + typeLabel + '</span>' +
+      '<span style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1" title="' + val + '">' + val + '</span>' +
+      '<span style="color:#aaa;font-size:11px;flex-shrink:0">▶' + aLabel + '</span>' +
+      (aColor ? '<span style="display:inline-block;width:10px;height:10px;background:' + aColor + ';border:1px solid #444;flex-shrink:0"></span>' : '') +
+      '<span style="color:#666;font-size:11px;flex-shrink:0">' + scopeLabel + '</span>' +
+      '</div>' +
+      '<button data-fr-action="delete" data-fr-id="' + id + '" style="' + FR_BTN + ';color:#808080;flex-shrink:0" title="delete rule">✕</button>' +
+      '</div>'
+    )
+  }
+
+  function _renderFilterRuleAddForm() {
+    var channels = (typeof config !== 'undefined' && config && config.channels) ? config.channels : []
+    var chOptions = '<option value="all">all channels</option>' +
+      channels.map(function(ch) {
+        var label = ch.twitch || ch.kick || ch.id || ''
+        return '<option value="' + escapeHtml(ch.id) + '">' + escapeHtml(label) + '</option>'
+      }).join('')
+    return (
+      '<div class="hs-mc-setting-row hs-mc-setting-row-block hs-mc-fr-addform" style="padding:4px 4px 6px">' +
+      '<div style="font-size:11px;color:#808080;margin-bottom:4px">add rule</div>' +
+      '<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">' +
+      '<select data-fr-field="type" style="' + FR_SEL + ';width:60px">' +
+      '<option value="keyword">keyword</option>' +
+      '<option value="regex">regex</option>' +
+      '<option value="user">user</option>' +
+      '<option value="badge">badge</option>' +
+      '<option value="msgtype">msgtype</option>' +
+      '</select>' +
+      '<input type="text" data-fr-field="value" placeholder="value..." style="' + FR_INPUT + '">' +
+      '<select data-fr-field="action" style="' + FR_SEL + ';width:68px">' +
+      '<option value="highlight">highlight</option>' +
+      '<option value="hide">hide</option>' +
+      '</select>' +
+      '<input type="color" data-fr-field="color" value="#ffff00" style="width:28px;height:22px;border:1px solid #808080;background:#000;padding:1px;cursor:pointer;flex-shrink:0" title="highlight color">' +
+      '<select data-fr-field="scope" style="' + FR_SEL + ';max-width:80px">' + chOptions + '</select>' +
+      '<button data-fr-action="add" style="' + FR_BTN + ';background:#222">+ add</button>' +
+      '</div>' +
+      '</div>'
+    )
+  }
+
+  function _renderFilterRulesGroup() {
+    var fold = _setCollapsed.has('filters|rules')
+    var rules = _getRawFilterRules()
+    var ruleRows = rules.length === 0
+      ? '<div class="hs-mc-setting-row" style="color:#808080;font-size:13px">no rules — add one below</div>'
+      : rules.map(_renderFilterRuleRow).join('')
+    return (
+      '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title" data-set-fold="rules">' +
+      (fold ? '▸ ' : '▾ ') + 'filter rules' +
+      (rules.length ? ' <span class="hs-mc-set-cnt">(' + rules.length + ')</span>' : '') +
+      '</div>' +
+      (fold ? '' : ruleRows + _renderFilterRuleAddForm()) +
+      '</div>'
+    )
+  }
+
+  function _handleFilterRuleAction(el, panelRoot) {
+    var action = el.dataset.frAction
+    var id = el.dataset.frId
+    var rules = _getRawFilterRules()
+
+    if (action === 'toggle' && id) {
+      var toggleRule = rules.find(function(r) { return String(r.id) === id })
+      if (toggleRule) {
+        toggleRule.enabled = !toggleRule.enabled
+        _saveFilterRules(rules)
+      }
+      return
+    }
+
+    if (action === 'delete' && id) {
+      var delIdx = rules.findIndex(function(r) { return String(r.id) === id })
+      if (delIdx !== -1) {
+        rules.splice(delIdx, 1)
+        _saveFilterRules(rules)
+      }
+      return
+    }
+
+    if (action === 'add') {
+      var form = el.closest('.hs-mc-fr-addform')
+      if (!form) return
+      var typeEl = form.querySelector('[data-fr-field="type"]')
+      var valEl = form.querySelector('[data-fr-field="value"]')
+      var actEl = form.querySelector('[data-fr-field="action"]')
+      var colEl = form.querySelector('[data-fr-field="color"]')
+      var scopeEl = form.querySelector('[data-fr-field="scope"]')
+      var ruleType = typeEl ? typeEl.value : 'keyword'
+      var ruleVal = valEl ? valEl.value.trim() : ''
+      var ruleAct = actEl ? actEl.value : 'highlight'
+      var ruleCol = colEl ? colEl.value : '#ffff00'
+      var ruleScope = scopeEl ? scopeEl.value : 'all'
+      if (!ruleVal) { showToast('rule value is empty', 'error'); return }
+      var newRule = {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+        enabled: true,
+        scope: ruleScope,
+        match: { type: ruleType, value: ruleVal, caseSensitive: false },
+        action: ruleAct,
+      }
+      if (ruleAct === 'highlight') newRule.color = ruleCol
+      rules.push(newRule)
+      _saveFilterRules(rules)
+      return
+    }
+  }
+
   // Compose one category pane: registry sections + that category's islands.
   function _renderCategoryPane(cat) {
     if (cat === 'mod') return _regSections(cat)
+    if (cat === 'filters') {
+      // 'rules' section is custom-rendered; exclude it from auto-sections
+      return _regSections(cat, ['content', 'messages']) + _renderFilterRulesGroup()
+    }
     if (cat === 'tweaks') {
       return (
         '<div class="hs-mc-set-keyhint" style="padding-top:8px">twitch.tv only — kick/youtube unaffected</div>' +
@@ -7400,6 +7570,13 @@
         else _setCollapsed.add(foldId)
         _saveCollapsedSections()
         renderSettingsTab()
+        return
+      }
+
+      // Filter rule actions (toggle/delete/add) — data-fr-action
+      var frEl = e.target.closest('[data-fr-action]')
+      if (frEl && !/^(SELECT|INPUT|TEXTAREA)$/.test(frEl.tagName)) {
+        _handleFilterRuleAction(frEl, msgsEl)
         return
       }
 
@@ -9751,6 +9928,12 @@
     // Keyword highlight — message text matches a user-defined term
     if (keywordHighlightsRegex && m.text && keywordHighlightsRegex.test(m.text)) {
       div.classList.add('hs-kw-match')
+    }
+    // Filter rule highlight — per-rule color accent (hide is handled before buffer insert)
+    const _frHL = evaluateFilterRules(m, tabId)
+    if (_frHL.highlight) {
+      div.classList.add('hs-mc-rule-highlight')
+      div.style.setProperty('--hs-rule-hl', _frHL.highlight)
     }
     // Reply context bar (Chatterino-style) — all values escaped via escapeHtml
     const replyLower = m.replyTo && m.replyTo.user ? m.replyTo.user.toLowerCase() : ''
@@ -14244,6 +14427,16 @@
           renderMessages(currentTab)
         }
       }
+      if (changes.chat_filter_rules) {
+        const v = changes.chat_filter_rules.newValue
+        if (typeof v === 'string') {
+          let rules = []
+          try { rules = JSON.parse(v) } catch {}
+          compileFilterRules(Array.isArray(rules) ? rules : [])
+          renderMessages(currentTab)
+          if (currentTab === 'settings') renderSettingsTab()
+        }
+      }
 
       // Emote updates - reload when storage changes (debounced to avoid spam)
       if (
@@ -15143,9 +15336,11 @@
           msg.platform = sentHost === 'yt' ? 'youtube' : sentHost
         }
       }
-      // Automod: drop messages matching user-defined filter or all-caps spam.
-      // Don't filter own messages (you saw what you typed).
-      if (msg.user?.toLowerCase() !== currentUsername?.toLowerCase() && shouldAutomod(msg.text)) return
+      // Automod + filter rules: drop messages matching filter. Own msgs exempt.
+      if (msg.user?.toLowerCase() !== currentUsername?.toLowerCase() && (
+        shouldAutomod(msg.text) ||
+        evaluateFilterRules(msg, getChannelLookup().twitch.get(msg.channel)?.id).hide
+      )) return
       const isMent = isMention(msg)
       bumpStreamStats(msg.channel, msg, isMent)
       if (isMent) {
@@ -15219,7 +15414,10 @@
           msg.platform = sentHost === 'yt' ? 'youtube' : sentHost
         }
       }
-      if (msg.user?.toLowerCase() !== currentUsername?.toLowerCase() && shouldAutomod(msg.text)) return
+      if (msg.user?.toLowerCase() !== currentUsername?.toLowerCase() && (
+        shouldAutomod(msg.text) ||
+        evaluateFilterRules(msg, getChannelLookup().kick.get(msg.channel)?.id).hide
+      )) return
       const isMent = isMention(msg)
       bumpStreamStats(msg.channel, msg, isMent)
       if (isMent) {

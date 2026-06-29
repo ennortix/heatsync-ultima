@@ -690,8 +690,11 @@ function listenForSocialEvents() {
         if (sentHost) ytMsg.platform = sentHost === 'yt' ? 'youtube' : sentHost
       }
 
-      // Same pipeline as Twitch/Kick handlers: automod → mention → stats
-      if (ytMsg.user?.toLowerCase() !== currentUsername?.toLowerCase() && shouldAutomod(ytMsg.text)) return
+      // Same pipeline as Twitch/Kick handlers: automod + filter rules → mention → stats
+      if (ytMsg.user?.toLowerCase() !== currentUsername?.toLowerCase() && (
+        shouldAutomod(ytMsg.text) ||
+        evaluateFilterRules(ytMsg, targetChannelId !== '__live_yt_auto__' ? targetChannelId : null).hide
+      )) return
       const isMent = isMention(ytMsg)
       bumpStreamStats(ytMsg.channel, ytMsg, isMent)
       if (isMent) {

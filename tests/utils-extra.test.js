@@ -339,9 +339,13 @@ describe('UI_SYNC_BLOCKLIST', () => {
     expect(UI_SYNC_BLOCKLIST.has('keywordHighlights')).toBe(true)
   })
 
+  test('contains chatFilterRules (JSON array — too large for sync quota)', () => {
+    expect(UI_SYNC_BLOCKLIST.has('chatFilterRules')).toBe(true)
+  })
+
   test('has exactly the documented entries (no silent additions)', () => {
     // guards against accidental expansion; update this test if blocklist grows
-    expect(UI_SYNC_BLOCKLIST.size).toBe(2)
+    expect(UI_SYNC_BLOCKLIST.size).toBe(3)
   })
 })
 

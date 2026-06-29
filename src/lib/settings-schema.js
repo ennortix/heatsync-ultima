@@ -22,7 +22,7 @@
 //   section    group title within the subtab (sectionKey when i18n'd)
 //   label/tip  literal lowercase strings — or labelKey/tipKey when the
 //              string is i18n'd (renderer resolves via t(); not available here)
-//   control    'pill' | 'select' | 'sizebtns' | 'range' | 'text' | 'textarea'
+//   control    'pill' | 'select' | 'sizebtns' | 'range' | 'text' | 'textarea' | 'custom'
 //   options    [{value,label|labelKey}] for enum/multiselect;
 //              {min,max,step} for range
 //   alias      extra search keywords (originally the legacy data-setting
@@ -73,7 +73,7 @@
  * @property {string} [labelKey] i18n key for label
  * @property {string} [tip] hover tooltip
  * @property {string} [tipKey] i18n key for tip
- * @property {'pill'|'select'|'sizebtns'|'range'|'text'|'textarea'} [control]
+ * @property {'pill'|'select'|'sizebtns'|'range'|'text'|'textarea'|'custom'} [control]
  * @property {SettingOption[]|{min:number,max:number,step:number}} [options]
  * @property {string} [alias] extra search keywords
  * @property {{key:string,equals?:*}} [dependsOn]

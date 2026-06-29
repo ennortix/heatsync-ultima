@@ -1,5 +1,35 @@
 # changelog
 
+## [1.7.8] — 2026-06-28
+
+### changed
+- **re-cut release** — rebuilt to clear a duplicate-1.7.7 upload conflict on amo. no functional change from 1.7.7.
+
+## [1.7.7] — 2026-06-27
+
+### added
+- **unified cross-platform mod suite** — ban / timeout / unban / delete plus /followers and chat-mode commands now work the same across twitch and kick, with mod-status gating and reason support.
+- **instant mod feedback** — self-initiated mod actions show an immediate gray notice instead of waiting for the round-trip.
+- **inline media embeds** — links in live chat render inline (op-only in the following timeline; chat embeds never iframe, to stay light).
+
+### changed
+- **following tab** — shows op posts only; the moments band is gone.
+- **removed lite / emotes-only mode** — it was buggy and unwanted; the overlay always boots now.
+- **removed native-chat escape hatch (⇄) and ⚡ stream-actions button** — too fragile / couldn't work while heatsync replaces native chat.
+- **native-chat reliability** — panel collapses cleanly on boot in every chat position, the emote picker fills its space, and the resize bar no longer overlaps native ui.
+
+### fixed
+- **blocked users can no longer ping or reach you** — closed every path a blocked user could surface a mention or notification.
+- **youtube** — the chat panel no longer appears on vods (chat-replay isn't live); native websocket persists across re-injects to stop reload double-wrap.
+- **mentions buffer** — aligned the persisted-mentions cap with the message buffer (200 → 500) so older mentions survive.
+- **7tv on kick** — allow hyphens in the kick slug lookup and validate the numeric id before caching.
+- **hashtags** — stop magenta-tagging inside escaped html entities (e.g. `&#x27;`).
+- **kick** — the docked channel-page chat no longer covers the top nav.
+
+### security
+- **deny-by-default csp** — explicit minimal allowlist instead of dropping `default-src`; allow `static-cdn.jtvnw.net` in `connect-src` for notification avatars.
+- **websocket override** — must be a constructor, not an arrow fn (the early-inject override was throwing and killing native chat).
+
 ## [1.7.5] — 2026-06-21
 
 ### changed

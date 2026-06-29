@@ -9,12 +9,14 @@ let automodCompiled = null
 // shared/imported automod config could weaponise it. Patterns flagged dangerous
 // fall back to a literal (escaped) match instead of a raw regex. No dependency.
 function isDangerousRegexSource(p) {
+  if (p.length > 512) return true
   // a quantified group whose body also contains a quantifier → exponential
-  if (/\([^)]*[+*][^)]*\)\s*[*+]/.test(p)) return true
-  // unbounded repeat of an alternation group → (a|a)+ style blowup
-  if (/\([^)]*\|[^)]*\)\s*[*+]/.test(p)) return true
-  // absurd bounded repetition
-  if (/\{\s*\d{4,}/.test(p)) return true
+  // brace quantifiers ({n}) after such groups also trigger catastrophic backtracking
+  if (/\([^)]*[+*][^)]*\)\s*[*+{]/.test(p)) return true
+  // unbounded repeat of an alternation group → (a|a)+ or (a|a){n} style blowup
+  if (/\([^)]*\|[^)]*\)\s*[*+{]/.test(p)) return true
+  // bounded repetition ≥ 10 reps is exponential with any nested quantifier
+  if (/\{\s*\d{2,}/.test(p)) return true
   return false
 }
 
@@ -55,7 +57,8 @@ function compileAutomod(rawSettings) {
 
 function shouldAutomod(text) {
   if (!text) return false
-  if (automodCompiled && automodCompiled.test(text)) return true
+  const t = text.length > 256 ? text.slice(0, 256) : text
+  if (automodCompiled && automodCompiled.test(t)) return true
   if (automodAllCaps && text.length > 10) {
     const letters = text.replace(/[^A-Za-z]/g, '')
     if (letters.length >= 8) {
@@ -65,3 +68,5 @@ function shouldAutomod(text) {
   }
   return false
 }
+
+export { isDangerousRegexSource, compileAutomod, shouldAutomod }

@@ -5,9 +5,11 @@
 // ── ReDoS guard (same heuristic as automod.js) ────────────────────────────────
 // Inlined so this module is testable without the bundle scope.
 function _frIsDangerous(p) {
-  if (/\([^)]*[+*][^)]*\)\s*[*+]/.test(p)) return true
-  if (/\([^)]*\|[^)]*\)\s*[*+]/.test(p)) return true
-  if (/\{\s*\d{4,}/.test(p)) return true
+  if (p.length > 512) return true
+  if (/\([^)]*[+*][^)]*\)\s*[*+{]/.test(p)) return true
+  if (/\([^)]*\|[^)]*\)\s*[*+{]/.test(p)) return true
+  // bounded repetition ≥ 10 reps is exponential with any nested quantifier
+  if (/\{\s*\d{2,}/.test(p)) return true
   return false
 }
 function _frEscapeLiteral(p) {
@@ -144,8 +146,11 @@ function evaluateFilterRules(m, channelKey) {
 function _frTest(rule, m) {
   switch (rule.matchType) {
     case 'keyword':
-    case 'regex':
-      return !!rule.re && typeof m.text === 'string' && rule.re.test(m.text)
+    case 'regex': {
+      if (!rule.re || typeof m.text !== 'string') return false
+      const t = m.text.length > 256 ? m.text.slice(0, 256) : m.text
+      return rule.re.test(t)
+    }
     case 'user': {
       if (!m.user) return false
       const u = rule.caseSensitive ? String(m.user) : String(m.user).toLowerCase()

@@ -119,6 +119,29 @@ test('regex: alternation catastrophic pattern falls back (no hang)', () => {
   expect(typeof res.hide).toBe('boolean')
 })
 
+test('regex: brace-quantified nested quantifier falls back (no hang)', () => {
+  // (a+){30} bypassed old guard but causes ~33s backtracking — must be blocked
+  compileFilterRules([rule({ match: { type: 'regex', value: '(a+){30}' } })])
+  const msg = makeMsg({ text: 'a'.repeat(32) + '!' })
+  const res = evaluateFilterRules(msg, null)
+  expect(typeof res.hide).toBe('boolean')
+})
+
+test('regex: brace-quantified alternation falls back (no hang)', () => {
+  compileFilterRules([rule({ match: { type: 'regex', value: '(a|ab){20}' } })])
+  const msg = makeMsg({ text: 'a'.repeat(25) + '!' })
+  const res = evaluateFilterRules(msg, null)
+  expect(typeof res.hide).toBe('boolean')
+})
+
+test('regex: overlong source pattern is rejected (no hang)', () => {
+  const longPat = 'a'.repeat(600)
+  compileFilterRules([rule({ match: { type: 'regex', value: longPat } })])
+  const msg = makeMsg({ text: 'hello world' })
+  const res = evaluateFilterRules(msg, null)
+  expect(typeof res.hide).toBe('boolean')
+})
+
 test('regex: case-insensitive by default', () => {
   compileFilterRules([rule({ match: { type: 'regex', value: 'HELLO' } })])
   const res = evaluateFilterRules(makeMsg({ text: 'hello world' }), null)

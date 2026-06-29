@@ -59,4 +59,49 @@ function pushModLogEntry(log, entry, max = 300) {
   return log
 }
 
-export { isModNotice, MOD_NOTICE_TYPES, modLogEntryFromNotice, pushModLogEntry }
+// Compact human duration for a timeout (e.g. 600 → "10m"). '' for 0/none.
+function formatDuration(sec) {
+  const s = Math.max(0, Math.floor(sec || 0))
+  if (s === 0) return ''
+  if (s < 60) return `${s}s`
+  if (s < 3600) return `${Math.floor(s / 60)}m`
+  if (s < 86400) return `${Math.floor(s / 3600)}h`
+  return `${Math.floor(s / 86400)}d`
+}
+
+// One-line human summary of a log entry, for the popout row.
+function modLogLine(entry) {
+  if (!entry) return ''
+  const t = entry.target || 'someone'
+  if (entry.action === 'ban') return `banned ${t}`
+  if (entry.action === 'timeout') {
+    const d = formatDuration(entry.durationSec)
+    return d ? `timed out ${t} (${d})` : `timed out ${t}`
+  }
+  if (entry.action === 'unban') return `unbanned ${t}`
+  if (entry.action === 'untimeout') return `untimed-out ${t}`
+  if (entry.action === 'delete') return entry.target ? `deleted ${t}'s message` : 'deleted a message'
+  return entry.text || entry.action || ''
+}
+
+// Filter a log by action type and/or a free-text query (matches target/channel).
+// Pure — drives the popout's filter controls.
+function filterModLog(log, opts = {}) {
+  const action = opts.action || ''
+  const q = (opts.query || '').trim().toLowerCase()
+  return log.filter((e) => {
+    if (action && e.action !== action) return false
+    if (q && !((e.target || '').includes(q) || (e.channel || '').includes(q))) return false
+    return true
+  })
+}
+
+export {
+  filterModLog,
+  formatDuration,
+  isModNotice,
+  MOD_NOTICE_TYPES,
+  modLogEntryFromNotice,
+  modLogLine,
+  pushModLogEntry,
+}

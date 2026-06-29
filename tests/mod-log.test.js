@@ -1,5 +1,13 @@
 import { expect, test } from 'bun:test'
-import { isModNotice, MOD_NOTICE_TYPES, modLogEntryFromNotice, pushModLogEntry } from '../src/multichat/mod-log.js'
+import {
+  filterModLog,
+  formatDuration,
+  isModNotice,
+  MOD_NOTICE_TYPES,
+  modLogEntryFromNotice,
+  modLogLine,
+  pushModLogEntry,
+} from '../src/multichat/mod-log.js'
 
 function notice(overrides = {}) {
   return {
@@ -100,4 +108,41 @@ test('pushModLogEntry: caps at max, trimming oldest first', () => {
   expect(log.length).toBe(5)
   expect(log[0].id).toBe('e5')
   expect(log[4].id).toBe('e9')
+})
+
+// ── formatDuration ────────────────────────────────────────────────────────
+test('formatDuration: compact human units, empty for 0', () => {
+  expect(formatDuration(0)).toBe('')
+  expect(formatDuration(undefined)).toBe('')
+  expect(formatDuration(45)).toBe('45s')
+  expect(formatDuration(600)).toBe('10m')
+  expect(formatDuration(3600)).toBe('1h')
+  expect(formatDuration(7200)).toBe('2h')
+  expect(formatDuration(86400)).toBe('1d')
+  expect(formatDuration(-5)).toBe('')
+})
+
+// ── modLogLine ────────────────────────────────────────────────────────────
+test('modLogLine: human one-liner per action', () => {
+  expect(modLogLine({ action: 'ban', target: 'bob' })).toBe('banned bob')
+  expect(modLogLine({ action: 'timeout', target: 'bob', durationSec: 600 })).toBe('timed out bob (10m)')
+  expect(modLogLine({ action: 'timeout', target: 'bob', durationSec: 0 })).toBe('timed out bob')
+  expect(modLogLine({ action: 'unban', target: 'bob' })).toBe('unbanned bob')
+  expect(modLogLine({ action: 'delete', target: 'bob' })).toBe("deleted bob's message")
+  expect(modLogLine({ action: 'delete', target: '' })).toBe('deleted a message')
+  expect(modLogLine(null)).toBe('')
+})
+
+// ── filterModLog ──────────────────────────────────────────────────────────
+test('filterModLog: by action and/or free-text query', () => {
+  const log = [
+    { action: 'ban', target: 'alice', channel: 'chan1' },
+    { action: 'timeout', target: 'bob', channel: 'chan2' },
+    { action: 'ban', target: 'bobby', channel: 'chan1' },
+  ]
+  expect(filterModLog(log, { action: 'ban' }).map((e) => e.target)).toEqual(['alice', 'bobby'])
+  expect(filterModLog(log, { query: 'bob' }).map((e) => e.target)).toEqual(['bob', 'bobby'])
+  expect(filterModLog(log, { action: 'ban', query: 'bob' }).map((e) => e.target)).toEqual(['bobby'])
+  expect(filterModLog(log, { query: 'chan2' }).map((e) => e.target)).toEqual(['bob'])
+  expect(filterModLog(log, {}).length).toBe(3)
 })

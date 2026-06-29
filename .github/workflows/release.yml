@@ -23,10 +23,10 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.3.14
 
       - name: install
-        run: bun install --frozen-lockfile 2>/dev/null || bun install
+        run: bun install --frozen-lockfile
 
       - name: build + package
         run: bun run build.js --package
@@ -53,7 +53,7 @@ jobs:
           # publish the signed .xpi as the versionless alias. Fails loud if signing
           # fails — release Firefox refuses to install an unsigned xpi, so we never
           # ship the bare zip renamed to .xpi (the old bug).
-          bunx web-ext@10 sign \
+          bunx web-ext@10.4.0 sign \
             --source-dir dist/firefox \
             --channel unlisted \
             --api-key "$AMO_JWT_ISSUER" \

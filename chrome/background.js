@@ -9502,11 +9502,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true
     }
     ;(async () => {
-      if (!BG_IRC.storageRestored) await bgIrcRestoreFromStorage()
-      bgIrcEnsureChannel(ch)
-      if (tabId) bgIrcRegisterTabInterest(tabId, ch)
-      BG_IRC.liveTabs.add(tabId)
-      sendResponse({ ok: true })
+      try {
+        if (!BG_IRC.storageRestored) await bgIrcRestoreFromStorage()
+        bgIrcEnsureChannel(ch)
+        if (tabId) bgIrcRegisterTabInterest(tabId, ch)
+        BG_IRC.liveTabs.add(tabId)
+        sendResponse({ ok: true })
+      } catch (e) {
+        // Always respond — a thrown restore/join would otherwise leave the
+        // content script's await hanging (no port reply) and the join silently dead.
+        sendResponse({ ok: false, error: e?.message || String(e) })
+      }
     })()
     return true
   }
@@ -9519,19 +9525,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'bg_irc_history') {
     const ch = (message.channel || '').toLowerCase()
     ;(async () => {
-      if (!BG_IRC.storageRestored) await bgIrcRestoreFromStorage()
-      // If a robotty backfill is in flight (cold SW / fresh channel), wait
-      // for it so the tab's first paint already has full history instead of
-      // depending on the later bg_irc_history_merged broadcast. Cap the wait
-      // so a slow robotty doesn't block the page indefinitely.
-      const pending = BG_IRC.historyInFlight.get(ch)
-      if (pending) {
-        try {
-          await Promise.race([pending, new Promise((r) => setTimeout(r, 4000))])
-        } catch {}
+      try {
+        if (!BG_IRC.storageRestored) await bgIrcRestoreFromStorage()
+        // If a robotty backfill is in flight (cold SW / fresh channel), wait
+        // for it so the tab's first paint already has full history instead of
+        // depending on the later bg_irc_history_merged broadcast. Cap the wait
+        // so a slow robotty doesn't block the page indefinitely.
+        const pending = BG_IRC.historyInFlight.get(ch)
+        if (pending) {
+          try {
+            await Promise.race([pending, new Promise((r) => setTimeout(r, 4000))])
+          } catch {}
+        }
+        const buf = BG_IRC.channels.get(ch)
+        sendResponse({ ok: true, msgs: buf ? buf.getAll() : [], hasBg: true })
+      } catch (e) {
+        sendResponse({ ok: false, error: e?.message || String(e), msgs: [], hasBg: true })
       }
-      const buf = BG_IRC.channels.get(ch)
-      sendResponse({ ok: true, msgs: buf ? buf.getAll() : [], hasBg: true })
     })()
     return true
   }
@@ -9978,18 +9988,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'bg_kick_history') {
     const ch = (message.channel || '').toLowerCase()
     ;(async () => {
-      if (!BG_KICK.storageRestored) await bgKickRestoreFromStorage()
-      const buf = BG_KICK.channels.get(ch)
-      sendResponse({ ok: true, msgs: buf ? buf.getAll() : [] })
+      try {
+        if (!BG_KICK.storageRestored) await bgKickRestoreFromStorage()
+        const buf = BG_KICK.channels.get(ch)
+        sendResponse({ ok: true, msgs: buf ? buf.getAll() : [] })
+      } catch (e) {
+        sendResponse({ ok: false, error: e?.message || String(e), msgs: [] })
+      }
     })()
     return true
   }
   if (message.type === 'bg_yt_history') {
     const channelId = message.channelId || ''
     ;(async () => {
-      if (!BG_YT.storageRestored) await bgYtRestoreFromStorage()
-      const buf = BG_YT.channels.get(channelId)
-      sendResponse({ ok: true, msgs: buf ? buf.getAll() : [] })
+      try {
+        if (!BG_YT.storageRestored) await bgYtRestoreFromStorage()
+        const buf = BG_YT.channels.get(channelId)
+        sendResponse({ ok: true, msgs: buf ? buf.getAll() : [] })
+      } catch (e) {
+        sendResponse({ ok: false, error: e?.message || String(e), msgs: [] })
+      }
     })()
     return true
   }

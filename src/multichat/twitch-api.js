@@ -2494,10 +2494,10 @@ async function fetchGlobalBadges() {
       twitchBadgeUrls.set(`${b.setID}/${b.version}`, b.imageURL)
     }
     log('Loaded global badges:', twitchBadgeUrls.size)
-    // Existing message DOM was built before badges loaded — bump epoch so the
-    // diff invalidates old msgKeys and rebuilds with the now-populated URLs.
-    if (typeof bumpRenderEpoch === 'function') bumpRenderEpoch()
-    renderMessages(currentTab)
+    // Patch live rows in-place instead of bumping epoch + full rebuild.
+    // updateNativeBadgesInPlace upgrades text-fallback spans to imgs without
+    // tearing down any row, so avatars/emotes never reload = no flash.
+    if (typeof updateNativeBadgesInPlace === 'function') updateNativeBadgesInPlace(null)
   } catch (e) {
     globalBadgesFetched = false
     log('Failed to fetch global badges:', e.message)
@@ -3664,14 +3664,10 @@ async function fetchChannelBadges(channelLogin) {
         }
       }
       log('Loaded channel badges for', channelLogin)
-      // Same cold-start race as global badges — bump epoch so messages from
-      // this channel that already rendered with the text-fallback star get
-      // rebuilt with the channel-specific image.
-      if (typeof bumpRenderEpoch === 'function') bumpRenderEpoch()
-      // Coalesce: channel-badge + global-badge + cosmetics rebuilds land in a
-      // rapid burst on cold load (strobe); debounce them into one rebuild.
-      if (typeof scheduleCoalescedRender === 'function') scheduleCoalescedRender()
-      else renderMessages(currentTab)
+      // Patch rows for this channel in-place: no epoch bump, no full rebuild,
+      // no image-reload flash. Other tabs are invalidated via _dropAllTabCaches
+      // inside updateNativeBadgesInPlace so they rebuild fresh on next switch.
+      if (typeof updateNativeBadgesInPlace === 'function') updateNativeBadgesInPlace(channelLogin)
     } else {
       // No data populated — schedule retry after backoff
       if (badgesFailedAt.size >= BADGES_FAILED_MAX) {
@@ -3807,12 +3803,12 @@ function renderBadges(badgesStr, channel, platform) {
         const bgStyle =
           isFFZ && BADGE_STYLES[name] ? `background:${BADGE_STYLES[name].bg};padding:1px;border-radius:2px;` : ''
         const label = BADGE_STYLES[name]?.label || name
-        return `<img class="hs-mc-badge-img" src="${escapeHtml(safeUrl(url) || '')}" alt="${escapeHtml(name)}" title="${escapeHtml(label)}" loading="lazy" decoding="async" width="18" height="18" style="width:18px;height:18px;${bgStyle}">`
+        return `<img class="hs-mc-badge-img" data-badge="${escapeHtml(name)}/${escapeHtml(version)}" src="${escapeHtml(safeUrl(url) || '')}" alt="${escapeHtml(name)}" title="${escapeHtml(label)}" loading="lazy" decoding="async" width="18" height="18" style="width:18px;height:18px;${bgStyle}">`
       }
       // Text fallback
       const style = BADGE_STYLES[name]
       if (!style) return ''
-      return `<span class="hs-mc-badge" style="background:${style.bg};color:${style.fg}" title="${escapeHtml(style.label)}">${style.label}</span>`
+      return `<span class="hs-mc-badge" data-badge="${escapeHtml(name)}/${escapeHtml(version)}" style="background:${style.bg};color:${style.fg}" title="${escapeHtml(style.label)}">${style.label}</span>`
     })
     .join('')
 }

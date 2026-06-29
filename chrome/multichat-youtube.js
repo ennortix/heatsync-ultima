@@ -26321,10 +26321,10 @@ async function fetchGlobalBadges() {
       twitchBadgeUrls.set(`${b.setID}/${b.version}`, b.imageURL)
     }
     log('Loaded global badges:', twitchBadgeUrls.size)
-    // Existing message DOM was built before badges loaded — bump epoch so the
-    // diff invalidates old msgKeys and rebuilds with the now-populated URLs.
-    if (typeof bumpRenderEpoch === 'function') bumpRenderEpoch()
-    renderMessages(currentTab)
+    // Patch live rows in-place instead of bumping epoch + full rebuild.
+    // updateNativeBadgesInPlace upgrades text-fallback spans to imgs without
+    // tearing down any row, so avatars/emotes never reload = no flash.
+    if (typeof updateNativeBadgesInPlace === 'function') updateNativeBadgesInPlace(null)
   } catch (e) {
     globalBadgesFetched = false
     log('Failed to fetch global badges:', e.message)
@@ -27491,14 +27491,10 @@ async function fetchChannelBadges(channelLogin) {
         }
       }
       log('Loaded channel badges for', channelLogin)
-      // Same cold-start race as global badges — bump epoch so messages from
-      // this channel that already rendered with the text-fallback star get
-      // rebuilt with the channel-specific image.
-      if (typeof bumpRenderEpoch === 'function') bumpRenderEpoch()
-      // Coalesce: channel-badge + global-badge + cosmetics rebuilds land in a
-      // rapid burst on cold load (strobe); debounce them into one rebuild.
-      if (typeof scheduleCoalescedRender === 'function') scheduleCoalescedRender()
-      else renderMessages(currentTab)
+      // Patch rows for this channel in-place: no epoch bump, no full rebuild,
+      // no image-reload flash. Other tabs are invalidated via _dropAllTabCaches
+      // inside updateNativeBadgesInPlace so they rebuild fresh on next switch.
+      if (typeof updateNativeBadgesInPlace === 'function') updateNativeBadgesInPlace(channelLogin)
     } else {
       // No data populated — schedule retry after backoff
       if (badgesFailedAt.size >= BADGES_FAILED_MAX) {
@@ -27634,12 +27630,12 @@ function renderBadges(badgesStr, channel, platform) {
         const bgStyle =
           isFFZ && BADGE_STYLES[name] ? `background:${BADGE_STYLES[name].bg};padding:1px;border-radius:2px;` : ''
         const label = BADGE_STYLES[name]?.label || name
-        return `<img class="hs-mc-badge-img" src="${escapeHtml(safeUrl(url) || '')}" alt="${escapeHtml(name)}" title="${escapeHtml(label)}" loading="lazy" decoding="async" width="18" height="18" style="width:18px;height:18px;${bgStyle}">`
+        return `<img class="hs-mc-badge-img" data-badge="${escapeHtml(name)}/${escapeHtml(version)}" src="${escapeHtml(safeUrl(url) || '')}" alt="${escapeHtml(name)}" title="${escapeHtml(label)}" loading="lazy" decoding="async" width="18" height="18" style="width:18px;height:18px;${bgStyle}">`
       }
       // Text fallback
       const style = BADGE_STYLES[name]
       if (!style) return ''
-      return `<span class="hs-mc-badge" style="background:${style.bg};color:${style.fg}" title="${escapeHtml(style.label)}">${style.label}</span>`
+      return `<span class="hs-mc-badge" data-badge="${escapeHtml(name)}/${escapeHtml(version)}" style="background:${style.bg};color:${style.fg}" title="${escapeHtml(style.label)}">${style.label}</span>`
     })
     .join('')
 }
@@ -42659,6 +42655,106 @@ const STORAGE_KEY = 'heatsync_multichat'
         }
       }
     }
+  }
+
+  // Patch native Twitch/Kick badge imgs into already-rendered rows when
+  // fetchGlobalBadges or fetchChannelBadges resolve late (cold-load race).
+  // Mirrors updateThirdPartyBadgesInPlace: no _renderEpoch bump, no full
+  // rebuild, no image-reload flash. renderBadges now stamps data-badge="name/version"
+  // on every badge element (both imgs and text-fallback spans) so we can
+  // find each slot precisely via querySelector.
+  //
+  // channelLogin: null  = global badges just loaded (update all rows)
+  //               string = channel badges for that specific channel only
+  //
+  // Dedup: if an img with the correct data-badge already exists (row built
+  // after badges loaded), we update its src in case a better URL is now
+  // available (e.g. channel-specific sub badge overrides the global star).
+  // If only a text-fallback span exists, we replace it with the img.
+  // If neither exists (badge had no URL + no BADGE_STYLES at render time),
+  // we insert a new img before the avatar/username anchor — same position
+  // as build-time. _dropAllTabCaches() invalidates other tabs so they
+  // rebuild fresh on next switch (no epoch bump needed).
+  function updateNativeBadgesInPlace(channelLogin) {
+    const msgsEl = document.getElementById('hs-mc-messages')
+    if (!msgsEl) return
+    for (const div of msgsEl.querySelectorAll('.hs-mc-msg')) {
+      const m = div._hsMsg
+      if (!m?.badges || typeof m.badges !== 'string') continue
+      // YouTube badge arrays are not in twitchBadgeUrls — skip
+      if (m.platform === 'youtube') continue
+      // Channel-specific update: only touch rows for the fetched channel
+      if (channelLogin && m.channel !== channelLogin) continue
+      const ch = m.channel || null
+      const isKick = (m.badgePlatform || m.platform) === 'kick'
+      const anchor =
+        div.querySelector('.hs-mc-avatar') || div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
+      if (!anchor) continue
+      for (const badge of m.badges.split(',')) {
+        const sep = badge.indexOf('/')
+        if (sep < 1) continue
+        const name = badge.slice(0, sep)
+        const version = badge.slice(sep + 1)
+        // Replicate renderBadges URL lookup exactly (same priority chain)
+        let url = null
+        if (isKick && ch) {
+          url = kickBadgeUrls.get(`${ch}:${name}/${version}`)
+          if (!url) {
+            const nearest = findNearestKickBadgeVersion(ch, name, version)
+            if (nearest != null) url = kickBadgeUrls.get(`${ch}:${name}/${nearest}`)
+          }
+        } else {
+          url = ch && twitchBadgeUrls.get(`${ch}:${name}/${version}`)
+          if (!url && ch) {
+            const nearest = findNearestChannelBadgeVersion(ch, name, version)
+            if (nearest != null) url = twitchBadgeUrls.get(`${ch}:${name}/${nearest}`)
+          }
+          url = url || twitchBadgeUrls.get(`${name}/${version}`) || twitchBadgeUrls.get(`${name}/1`)
+        }
+        if (!url) continue
+        const safeU = safeUrl(url)
+        if (!safeU) continue
+        const key = `${name}/${version}`
+        // Dedup: img already present — update src if a better URL is available
+        const existingImg = div.querySelector(`img.hs-mc-badge-img[data-badge="${key}"]`)
+        if (existingImg) {
+          if (existingImg.getAttribute('src') !== safeU) {
+            existingImg.dataset.hsSrc = safeU
+            existingImg.src = safeU
+          }
+          continue
+        }
+        // Build replacement img matching renderBadges output
+        const isFFZ = ch && ffzBadgeKeys.has(`${ch}:${name}`)
+        const img = document.createElement('img')
+        img.className = 'hs-mc-badge-img'
+        img.dataset.badge = key
+        img.alt = name
+        img.title = BADGE_STYLES[name]?.label || name
+        img.loading = 'lazy'
+        img.decoding = 'async'
+        img.width = 18
+        img.height = 18
+        img.style.cssText = `width:18px;height:18px;${
+          isFFZ && BADGE_STYLES[name]
+            ? `background:${BADGE_STYLES[name].bg};padding:1px;border-radius:2px;`
+            : ''
+        }`
+        img.dataset.hsSrc = safeU
+        // Replace text-fallback span if present; else insert before anchor.
+        // Set src after DOM insertion so the capture-phase retryOrHideBadgeImg
+        // error handler fires while the img is already attached.
+        const existingSpan = div.querySelector(`span.hs-mc-badge[data-badge="${key}"]`)
+        if (existingSpan) {
+          existingSpan.parentNode.replaceChild(img, existingSpan)
+        } else {
+          anchor.parentNode.insertBefore(img, anchor)
+        }
+        img.src = safeU
+      }
+    }
+    // Invalidate other tabs' cached fragments so they rebuild fresh on switch
+    _dropAllTabCaches()
   }
 
   // 7TV paint → CSS style string

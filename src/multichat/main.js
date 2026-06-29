@@ -1677,6 +1677,106 @@
     }
   }
 
+  // Patch native Twitch/Kick badge imgs into already-rendered rows when
+  // fetchGlobalBadges or fetchChannelBadges resolve late (cold-load race).
+  // Mirrors updateThirdPartyBadgesInPlace: no _renderEpoch bump, no full
+  // rebuild, no image-reload flash. renderBadges now stamps data-badge="name/version"
+  // on every badge element (both imgs and text-fallback spans) so we can
+  // find each slot precisely via querySelector.
+  //
+  // channelLogin: null  = global badges just loaded (update all rows)
+  //               string = channel badges for that specific channel only
+  //
+  // Dedup: if an img with the correct data-badge already exists (row built
+  // after badges loaded), we update its src in case a better URL is now
+  // available (e.g. channel-specific sub badge overrides the global star).
+  // If only a text-fallback span exists, we replace it with the img.
+  // If neither exists (badge had no URL + no BADGE_STYLES at render time),
+  // we insert a new img before the avatar/username anchor — same position
+  // as build-time. _dropAllTabCaches() invalidates other tabs so they
+  // rebuild fresh on next switch (no epoch bump needed).
+  function updateNativeBadgesInPlace(channelLogin) {
+    const msgsEl = document.getElementById('hs-mc-messages')
+    if (!msgsEl) return
+    for (const div of msgsEl.querySelectorAll('.hs-mc-msg')) {
+      const m = div._hsMsg
+      if (!m?.badges || typeof m.badges !== 'string') continue
+      // YouTube badge arrays are not in twitchBadgeUrls — skip
+      if (m.platform === 'youtube') continue
+      // Channel-specific update: only touch rows for the fetched channel
+      if (channelLogin && m.channel !== channelLogin) continue
+      const ch = m.channel || null
+      const isKick = (m.badgePlatform || m.platform) === 'kick'
+      const anchor =
+        div.querySelector('.hs-mc-avatar') || div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
+      if (!anchor) continue
+      for (const badge of m.badges.split(',')) {
+        const sep = badge.indexOf('/')
+        if (sep < 1) continue
+        const name = badge.slice(0, sep)
+        const version = badge.slice(sep + 1)
+        // Replicate renderBadges URL lookup exactly (same priority chain)
+        let url = null
+        if (isKick && ch) {
+          url = kickBadgeUrls.get(`${ch}:${name}/${version}`)
+          if (!url) {
+            const nearest = findNearestKickBadgeVersion(ch, name, version)
+            if (nearest != null) url = kickBadgeUrls.get(`${ch}:${name}/${nearest}`)
+          }
+        } else {
+          url = ch && twitchBadgeUrls.get(`${ch}:${name}/${version}`)
+          if (!url && ch) {
+            const nearest = findNearestChannelBadgeVersion(ch, name, version)
+            if (nearest != null) url = twitchBadgeUrls.get(`${ch}:${name}/${nearest}`)
+          }
+          url = url || twitchBadgeUrls.get(`${name}/${version}`) || twitchBadgeUrls.get(`${name}/1`)
+        }
+        if (!url) continue
+        const safeU = safeUrl(url)
+        if (!safeU) continue
+        const key = `${name}/${version}`
+        // Dedup: img already present — update src if a better URL is available
+        const existingImg = div.querySelector(`img.hs-mc-badge-img[data-badge="${key}"]`)
+        if (existingImg) {
+          if (existingImg.getAttribute('src') !== safeU) {
+            existingImg.dataset.hsSrc = safeU
+            existingImg.src = safeU
+          }
+          continue
+        }
+        // Build replacement img matching renderBadges output
+        const isFFZ = ch && ffzBadgeKeys.has(`${ch}:${name}`)
+        const img = document.createElement('img')
+        img.className = 'hs-mc-badge-img'
+        img.dataset.badge = key
+        img.alt = name
+        img.title = BADGE_STYLES[name]?.label || name
+        img.loading = 'lazy'
+        img.decoding = 'async'
+        img.width = 18
+        img.height = 18
+        img.style.cssText = `width:18px;height:18px;${
+          isFFZ && BADGE_STYLES[name]
+            ? `background:${BADGE_STYLES[name].bg};padding:1px;border-radius:2px;`
+            : ''
+        }`
+        img.dataset.hsSrc = safeU
+        // Replace text-fallback span if present; else insert before anchor.
+        // Set src after DOM insertion so the capture-phase retryOrHideBadgeImg
+        // error handler fires while the img is already attached.
+        const existingSpan = div.querySelector(`span.hs-mc-badge[data-badge="${key}"]`)
+        if (existingSpan) {
+          existingSpan.parentNode.replaceChild(img, existingSpan)
+        } else {
+          anchor.parentNode.insertBefore(img, anchor)
+        }
+        img.src = safeU
+      }
+    }
+    // Invalidate other tabs' cached fragments so they rebuild fresh on switch
+    _dropAllTabCaches()
+  }
+
   // 7TV paint → CSS style string
   // 7TV paint → CSS is static per paint object but getMcPaintStyle runs per
   // sender + per @mention + inside updateCosmeticsInPlace, re-deriving the same

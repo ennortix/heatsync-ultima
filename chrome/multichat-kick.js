@@ -2192,6 +2192,7 @@ const SETTINGS = [
       { value: 'timeout_1h', tag: '1h', label: 'timeout 1 hour' },
       { value: 'timeout_24h', tag: '24h', label: 'timeout 24 hours' },
       { value: 'timeout_7d', tag: '7d', label: 'timeout 7 days' },
+      { value: 'purge', tag: 'purge', label: 'purge (clear messages, 1s)' },
       { value: 'ban', tag: '⛔', label: 'permanent ban' },
       { value: 'unban', tag: '✓', label: 'unban user' },
     ],
@@ -2208,6 +2209,19 @@ const SETTINGS = [
     tip: 'show a confirm dialog before a permanent ban — guards against a misclick',
     control: 'pill',
     runtimeVar: 'modConfirmBan',
+    applyOnLoad: true,
+  },
+  {
+    key: 'modBanReasons',
+    type: 'text',
+    default: '',
+    scope: 'sync',
+    category: 'mod',
+    section: 'mod toolbar',
+    label: 'ban reasons',
+    tip: 'one per line — shown as selectable chips in the ban dialog; the choice is sent with the ban',
+    control: 'textarea',
+    runtimeVar: 'modBanReasons',
     applyOnLoad: true,
   },
 
@@ -13644,6 +13658,19 @@ function injectStyles() {
     .hs-mc-confirm-cancel:hover { background: #fff; color: #000; }
     .hs-mc-confirm-ok { border-color: #ff5f5f; color: #ff5f5f; }
     .hs-mc-confirm-ok:hover { background: #ff5f5f; color: #000; }
+    .hs-mc-confirm-reasons { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px; }
+    .hs-mc-confirm-reason {
+      background: #000;
+      color: #bbb;
+      border: 1px solid #555;
+      padding: 2px 8px;
+      font-size: 13px;
+      font-family: inherit;
+      cursor: pointer;
+    }
+    .hs-mc-confirm-reason:hover { background: #fff; color: #000; }
+    .hs-mc-confirm-reason.sel { border-color: #ff8700; color: #ff8700; }
+    .hs-mc-confirm-reason.sel:hover { background: #ff8700; color: #000; }
 
     /* Ensure parent has relative positioning for overlay */
     .chat-scrollable-area__message-container {
@@ -43952,6 +43979,12 @@ const STORAGE_KEY = 'heatsync_multichat'
         modConfirmBan = v
       },
     },
+    modBanReasons: {
+      get: () => modBanReasons,
+      set: (v) => {
+        modBanReasons = v
+      },
+    },
     readableNamesEnabled: {
       get: () => readableNamesEnabled,
       set: (v) => {
@@ -45079,6 +45112,10 @@ const STORAGE_KEY = 'heatsync_multichat'
   // Opt-in (default off): confirm before a permanent ban — guards against a
   // fat-fingered irreversible ban. Read at the dispatchModAction chokepoint.
   let modConfirmBan = false
+
+  // Configurable ban reasons (one per line, default empty). When set, the ban
+  // dialog shows them as selectable chips; the choice flows to the ban API.
+  let modBanReasons = ''
 
   // Boost username color brightness for readability on black bg (default on)
   let readableNamesEnabled = true
@@ -47060,6 +47097,14 @@ const STORAGE_KEY = 'heatsync_multichat'
       needsMsgId: false,
       hotkey: null,
     },
+    purge: {
+      label: 'purge',
+      title: 'purge — clear this user’s messages (1s timeout)',
+      action: 'timeout',
+      durationSec: 1,
+      needsMsgId: false,
+      hotkey: null,
+    },
     ban: { label: '⛔', title: 'permanent ban', action: 'ban', durationSec: null, needsMsgId: false, hotkey: 'b' },
     unban: { label: '✓', title: 'unban user', action: 'unban', durationSec: null, needsMsgId: false, hotkey: null },
   }
@@ -47370,7 +47415,9 @@ const STORAGE_KEY = 'heatsync_multichat'
   // Minimal square confirm modal — Promise<boolean>. Keyboard-first (Esc=cancel,
   // Enter=confirm), backdrop-click cancels, mounted in the overlay root so it
   // works in the popout too. Reusable for any destructive action.
-  function hsConfirm(message, confirmLabel = 'confirm') {
+  // Resolves to { ok, reason }. `reasons` (optional) renders selectable chips;
+  // the chosen one is returned (empty if none / cancelled).
+  function hsConfirm(message, confirmLabel = 'confirm', reasons = []) {
     return new Promise((resolve) => {
       const root = document.getElementById('hs-mc-overlay') || document.body
       const overlay = document.createElement('div')
@@ -47380,6 +47427,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       const msg = document.createElement('div')
       msg.className = 'hs-mc-confirm-msg'
       msg.textContent = message
+      let selectedReason = ''
       const btns = document.createElement('div')
       btns.className = 'hs-mc-confirm-btns'
       const cancelBtn = document.createElement('button')
@@ -47391,7 +47439,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       const done = (v) => {
         overlay.remove()
         document.removeEventListener('keydown', onKey, true)
-        resolve(v)
+        resolve({ ok: v, reason: v ? selectedReason : '' })
       }
       const onKey = (e) => {
         if (e.key === 'Escape') {
@@ -47410,8 +47458,30 @@ const STORAGE_KEY = 'heatsync_multichat'
         if (e.target === overlay) done(false)
       })
       document.addEventListener('keydown', onKey, true)
+      box.append(msg)
+      if (Array.isArray(reasons) && reasons.length) {
+        const chips = document.createElement('div')
+        chips.className = 'hs-mc-confirm-reasons'
+        for (const rsn of reasons) {
+          const chip = document.createElement('button')
+          chip.className = 'hs-mc-confirm-reason'
+          chip.textContent = rsn
+          chip.addEventListener('click', () => {
+            const wasSel = chip.classList.contains('sel')
+            for (const c of chips.querySelectorAll('.hs-mc-confirm-reason')) c.classList.remove('sel')
+            if (wasSel) {
+              selectedReason = ''
+            } else {
+              selectedReason = rsn
+              chip.classList.add('sel')
+            }
+          })
+          chips.appendChild(chip)
+        }
+        box.append(chips)
+      }
+      box.append(btns)
       btns.append(cancelBtn, okBtn)
-      box.append(msg, btns)
       overlay.append(box)
       root.appendChild(overlay)
       okBtn.focus()
@@ -47419,12 +47489,21 @@ const STORAGE_KEY = 'heatsync_multichat'
   }
 
   async function dispatchModAction({ channel, platform, action, target, durationSec, msgId, reason, fanout }) {
-    // Opt-in misclick guard: confirm before an irreversible ban (every surface
-    // routes through here, so one gate covers toolbar/hotkey/slash/ctx/card).
-    if (action === 'ban' && modConfirmBan) {
-      const tgtName = String(target || '').replace(/^@/, '')
-      const ok = await hsConfirm(`ban ${tgtName} in #${String(channel || '').replace(/^#/, '')}?`, 'ban')
-      if (!ok) return { tResp: null, kResp: null, twitchName: null, kickSlug: null, anyOk: false, cancelled: true }
+    // Opt-in ban dialog: confirm (misclick guard) and/or reason chips. Every
+    // surface routes through here, so one gate covers toolbar/hotkey/slash/ctx/
+    // card. Shows when confirm is on OR ban reasons are configured.
+    if (action === 'ban') {
+      const banReasons = String(modBanReasons || '')
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean)
+      if (modConfirmBan || banReasons.length) {
+        const tgtName = String(target || '').replace(/^@/, '')
+        const res = await hsConfirm(`ban ${tgtName} in #${String(channel || '').replace(/^#/, '')}?`, 'ban', banReasons)
+        if (!res.ok)
+          return { tResp: null, kResp: null, twitchName: null, kickSlug: null, anyOk: false, cancelled: true }
+        if (res.reason) reason = res.reason
+      }
     }
     const { twitchName, kickSlug } = _resolveModTargets(channel, platform)
     // No resolvable platform (aggregate tab, empty/garbage channel) — fail clean

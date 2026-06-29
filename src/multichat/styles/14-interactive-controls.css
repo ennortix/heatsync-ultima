@@ -1456,4 +1456,17 @@
     .hs-mc-confirm-cancel:hover { background: #fff; color: #000; }
     .hs-mc-confirm-ok { border-color: #ff5f5f; color: #ff5f5f; }
     .hs-mc-confirm-ok:hover { background: #ff5f5f; color: #000; }
+    .hs-mc-confirm-reasons { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px; }
+    .hs-mc-confirm-reason {
+      background: #000;
+      color: #bbb;
+      border: 1px solid #555;
+      padding: 2px 8px;
+      font-size: 13px;
+      font-family: inherit;
+      cursor: pointer;
+    }
+    .hs-mc-confirm-reason:hover { background: #fff; color: #000; }
+    .hs-mc-confirm-reason.sel { border-color: #ff8700; color: #ff8700; }
+    .hs-mc-confirm-reason.sel:hover { background: #ff8700; color: #000; }
 

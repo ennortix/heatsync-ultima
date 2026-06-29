@@ -2231,6 +2231,12 @@
         modConfirmBan = v
       },
     },
+    modBanReasons: {
+      get: () => modBanReasons,
+      set: (v) => {
+        modBanReasons = v
+      },
+    },
     readableNamesEnabled: {
       get: () => readableNamesEnabled,
       set: (v) => {
@@ -3358,6 +3364,10 @@
   // Opt-in (default off): confirm before a permanent ban — guards against a
   // fat-fingered irreversible ban. Read at the dispatchModAction chokepoint.
   let modConfirmBan = false
+
+  // Configurable ban reasons (one per line, default empty). When set, the ban
+  // dialog shows them as selectable chips; the choice flows to the ban API.
+  let modBanReasons = ''
 
   // Boost username color brightness for readability on black bg (default on)
   let readableNamesEnabled = true
@@ -5339,6 +5349,14 @@
       needsMsgId: false,
       hotkey: null,
     },
+    purge: {
+      label: 'purge',
+      title: 'purge — clear this user’s messages (1s timeout)',
+      action: 'timeout',
+      durationSec: 1,
+      needsMsgId: false,
+      hotkey: null,
+    },
     ban: { label: '⛔', title: 'permanent ban', action: 'ban', durationSec: null, needsMsgId: false, hotkey: 'b' },
     unban: { label: '✓', title: 'unban user', action: 'unban', durationSec: null, needsMsgId: false, hotkey: null },
   }
@@ -5649,7 +5667,9 @@
   // Minimal square confirm modal — Promise<boolean>. Keyboard-first (Esc=cancel,
   // Enter=confirm), backdrop-click cancels, mounted in the overlay root so it
   // works in the popout too. Reusable for any destructive action.
-  function hsConfirm(message, confirmLabel = 'confirm') {
+  // Resolves to { ok, reason }. `reasons` (optional) renders selectable chips;
+  // the chosen one is returned (empty if none / cancelled).
+  function hsConfirm(message, confirmLabel = 'confirm', reasons = []) {
     return new Promise((resolve) => {
       const root = document.getElementById('hs-mc-overlay') || document.body
       const overlay = document.createElement('div')
@@ -5659,6 +5679,7 @@
       const msg = document.createElement('div')
       msg.className = 'hs-mc-confirm-msg'
       msg.textContent = message
+      let selectedReason = ''
       const btns = document.createElement('div')
       btns.className = 'hs-mc-confirm-btns'
       const cancelBtn = document.createElement('button')
@@ -5670,7 +5691,7 @@
       const done = (v) => {
         overlay.remove()
         document.removeEventListener('keydown', onKey, true)
-        resolve(v)
+        resolve({ ok: v, reason: v ? selectedReason : '' })
       }
       const onKey = (e) => {
         if (e.key === 'Escape') {
@@ -5689,8 +5710,30 @@
         if (e.target === overlay) done(false)
       })
       document.addEventListener('keydown', onKey, true)
+      box.append(msg)
+      if (Array.isArray(reasons) && reasons.length) {
+        const chips = document.createElement('div')
+        chips.className = 'hs-mc-confirm-reasons'
+        for (const rsn of reasons) {
+          const chip = document.createElement('button')
+          chip.className = 'hs-mc-confirm-reason'
+          chip.textContent = rsn
+          chip.addEventListener('click', () => {
+            const wasSel = chip.classList.contains('sel')
+            for (const c of chips.querySelectorAll('.hs-mc-confirm-reason')) c.classList.remove('sel')
+            if (wasSel) {
+              selectedReason = ''
+            } else {
+              selectedReason = rsn
+              chip.classList.add('sel')
+            }
+          })
+          chips.appendChild(chip)
+        }
+        box.append(chips)
+      }
+      box.append(btns)
       btns.append(cancelBtn, okBtn)
-      box.append(msg, btns)
       overlay.append(box)
       root.appendChild(overlay)
       okBtn.focus()
@@ -5698,12 +5741,21 @@
   }
 
   async function dispatchModAction({ channel, platform, action, target, durationSec, msgId, reason, fanout }) {
-    // Opt-in misclick guard: confirm before an irreversible ban (every surface
-    // routes through here, so one gate covers toolbar/hotkey/slash/ctx/card).
-    if (action === 'ban' && modConfirmBan) {
-      const tgtName = String(target || '').replace(/^@/, '')
-      const ok = await hsConfirm(`ban ${tgtName} in #${String(channel || '').replace(/^#/, '')}?`, 'ban')
-      if (!ok) return { tResp: null, kResp: null, twitchName: null, kickSlug: null, anyOk: false, cancelled: true }
+    // Opt-in ban dialog: confirm (misclick guard) and/or reason chips. Every
+    // surface routes through here, so one gate covers toolbar/hotkey/slash/ctx/
+    // card. Shows when confirm is on OR ban reasons are configured.
+    if (action === 'ban') {
+      const banReasons = String(modBanReasons || '')
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean)
+      if (modConfirmBan || banReasons.length) {
+        const tgtName = String(target || '').replace(/^@/, '')
+        const res = await hsConfirm(`ban ${tgtName} in #${String(channel || '').replace(/^#/, '')}?`, 'ban', banReasons)
+        if (!res.ok)
+          return { tResp: null, kResp: null, twitchName: null, kickSlug: null, anyOk: false, cancelled: true }
+        if (res.reason) reason = res.reason
+      }
     }
     const { twitchName, kickSlug } = _resolveModTargets(channel, platform)
     // No resolvable platform (aggregate tab, empty/garbage channel) — fail clean

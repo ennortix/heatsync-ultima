@@ -47468,7 +47468,9 @@ const STORAGE_KEY = 'heatsync_multichat'
       if (t && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))) return
       if (e.ctrlKey || e.metaKey || e.altKey) return
       if (currentTab === 'settings') return
-      if (!bv.overlay.matches(':hover')) return
+      // Active when the overlay is hovered (mouse) OR holds focus (keyboard) —
+      // a keyboard-first feature can't require the mouse to be parked on it.
+      if (!bv.overlay.matches(':hover') && !bv.overlay.contains(document.activeElement)) return
       if (e.key === 'f') { if (bv.hint.enter({ newTab: false })) { e.preventDefault(); e.stopImmediatePropagation() } }
       else if (e.key === 'F') { if (bv.hint.enter({ newTab: true })) { e.preventDefault(); e.stopImmediatePropagation() } }
       else if (e.key === 'v') {

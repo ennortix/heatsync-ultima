@@ -379,8 +379,12 @@ function staticEmoteSrc(url) {
 // avif by default, so animated 7TV emotes render as a frozen first frame on
 // Firefox. Detect once and rewrite 7TV avif → webp at the chat chokepoint
 // below (FF animates webp fine; static webp is correct too, just marginally
-// larger). Chrome keeps avif. Matches browser-api.js's FF signal.
-const HS_IS_FF = typeof browser !== 'undefined'
+// larger). Chrome keeps avif.
+// NB: `typeof browser` is NOT a usable FF signal in this bundle — background's
+// `const browser = globalThis.browser || chrome` alias makes it truthy on
+// Chrome too, which (verified live) wrongly stripped avif on Chrome. The UA is
+// the reliable discriminator: only Firefox's userAgent contains "Firefox".
+const HS_IS_FF = typeof navigator !== 'undefined' && navigator.userAgent.includes('Firefox')
 let _resCacheSize = 1
 const _resCache = new Map()
 function getChatResUrl(url) {

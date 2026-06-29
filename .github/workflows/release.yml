@@ -79,6 +79,12 @@ jobs:
           if [ -z "$notes" ]; then
             notes="release $TAG"
           fi
+          # sha256 checksums so anyone can self-verify the published artifacts
+          ( cd dist && sha256sum \
+              "heatsync-chrome-${VERSION}.zip" \
+              "heatsync-firefox-${VERSION}.zip" \
+              "heatsync-source-${VERSION}.zip" > checksums.txt )
+          notes="$(printf '%s\n\n### sha256\n```\n%s\n```\n' "$notes" "$(cat dist/checksums.txt)")"
           gh release create "$TAG" \
             --title "$TAG" \
             --notes "$notes" \
@@ -86,4 +92,5 @@ jobs:
             "dist/heatsync-firefox-${VERSION}.zip" \
             "dist/heatsync-source-${VERSION}.zip" \
             dist/heatsync-chrome.zip \
-            dist/heatsync-firefox.xpi
+            dist/heatsync-firefox.xpi \
+            dist/checksums.txt

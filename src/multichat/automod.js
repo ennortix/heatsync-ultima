@@ -3,6 +3,25 @@
 let automodAllCaps = false
 let automodCompiled = null
 
+// Heuristic ReDoS guard: user-supplied patterns are compiled into a live RegExp
+// run against every incoming message. A catastrophic-backtracking pattern (e.g.
+// `(a+)+`, `(.*)*`, `(a|a)+`, `x{9999}`) would freeze the user's own tab — and a
+// shared/imported automod config could weaponise it. Patterns flagged dangerous
+// fall back to a literal (escaped) match instead of a raw regex. No dependency.
+function isDangerousRegexSource(p) {
+  // a quantified group whose body also contains a quantifier → exponential
+  if (/\([^)]*[+*][^)]*\)\s*[*+]/.test(p)) return true
+  // unbounded repeat of an alternation group → (a|a)+ style blowup
+  if (/\([^)]*\|[^)]*\)\s*[*+]/.test(p)) return true
+  // absurd bounded repetition
+  if (/\{\s*\d{4,}/.test(p)) return true
+  return false
+}
+
+function escapeRegexLiteral(p) {
+  return p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 function compileAutomod(rawSettings) {
   automodAllCaps = !!rawSettings?.automodAllCaps
   const raw = (rawSettings?.automodRegex || '').trim()
@@ -18,10 +37,14 @@ function compileAutomod(rawSettings) {
     automodCompiled = null
     return
   }
+  // Safe patterns stay as regex; dangerous ones degrade to a literal match so
+  // they can never trigger catastrophic backtracking.
+  const safeParts = patterns.map((p) => (isDangerousRegexSource(p) ? escapeRegexLiteral(p) : p))
   try {
-    automodCompiled = new RegExp(patterns.join('|'), 'i')
+    automodCompiled = new RegExp(safeParts.join('|'), 'i')
   } catch (e) {
-    const esc = patterns.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
+    // A surviving pattern is still invalid — escape everything to literal.
+    const esc = patterns.map(escapeRegexLiteral).join('|')
     try {
       automodCompiled = new RegExp(esc, 'i')
     } catch {

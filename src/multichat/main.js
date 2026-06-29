@@ -3661,6 +3661,19 @@
             const orig = t.closest('.hs-mc-emote-wrapper')?.dataset?.emoteUrl
             if (orig) t.src = orig
           }
+          // 7TV emote requested as AVIF (10x smaller for animated) but this
+          // emote has no avif variant (rare — e.g. brand-new emote still
+          // processing) → fall back to webp once instead of a broken icon.
+          if (
+            t instanceof HTMLImageElement &&
+            t.classList.contains('hs-mc-emote') &&
+            (t.src || '').includes('cdn.7tv.app/emote/') &&
+            t.src.endsWith('.avif') &&
+            !t.dataset.hsAvifFell
+          ) {
+            t.dataset.hsAvifFell = '1'
+            t.src = t.src.replace(/\.avif$/, '.webp')
+          }
         }
         // Snap the emote box to an integer width so the text after it stays on
         // the pixel grid (see hsSnapEmoteBox — fixes blurry post-emote text).
@@ -9110,10 +9123,17 @@
   function reprocessEmoteTextInPlace() {
     const msgsEl = document.getElementById('hs-mc-messages')
     if (!msgsEl) return
-    for (const div of msgsEl.querySelectorAll('.hs-mc-msg[data-msg-key]')) {
+    // Snapshot rows ONCE — DOM may mutate across async chunks
+    const rows = [...msgsEl.querySelectorAll('.hs-mc-msg[data-msg-key]')]
+    if (rows.length === 0) return
+
+    const CHUNK = 50
+
+    function _processRow(div) {
+      if (!div.isConnected) return // removed mid-iteration — skip
       const span = div.querySelector(':scope > .hs-mc-text')
       const m = div._hsMsg
-      if (!span || !m) continue
+      if (!span || !m) return
       const html = computeMessageText(m) // m._renderedHtml cleared by caller → recomputes
       span.innerHTML = html
       if (html.includes('data-source="heatsync"')) reconcileHeatsyncEmoteStates(span)
@@ -9123,6 +9143,35 @@
       div._hsMentionEls = null
       _indexMessageDiv(div, div.dataset.msgKey)
     }
+
+    // Fast path: ≤50 rows — run synchronously, no rAF overhead
+    if (rows.length <= CHUNK) {
+      for (const div of rows) _processRow(div)
+      return
+    }
+
+    // Chunked path: capture invalidation state ONCE at start. Each chunk bails
+    // immediately if the tab switches, epoch bumps, or msgsEl is replaced —
+    // stale work must never paint after a channel change or full rebuild.
+    const snapTab = currentTab
+    const snapEpoch = _renderEpoch
+
+    function processChunk(offset) {
+      if (
+        currentTab !== snapTab ||
+        _renderEpoch !== snapEpoch ||
+        document.getElementById('hs-mc-messages') !== msgsEl
+      ) return
+      const end = Math.min(offset + CHUNK, rows.length)
+      for (let i = offset; i < end; i++) _processRow(rows[i])
+      // Schedule next chunk via cleanup.raf — tracked in _rafs, cancelled by
+      // destroyAll() on teardown so the loop never outlives the panel.
+      if (end < rows.length) cleanup.raf(() => processChunk(end))
+    }
+
+    // First chunk runs synchronously on the current frame; subsequent chunks
+    // each get their own animation frame (~50 rows/frame, no stall).
+    processChunk(0)
   }
 
   // First-emote-load handler: clear cached HTML everywhere so every tab recomputes
@@ -9942,8 +9991,9 @@
       if (curCh && kickChat?.getMessages(curCh)?.length) count++
       if (channelYtMessages.get('__live_yt_auto__')?.length || 0) count++
       if (count < 2) {
-        // Also check config-linked platforms
-        const linked = config.channels.find((ch) => ch.twitch === curCh || ch.kick === curCh)
+        // Also check config-linked platforms (O(1) via the prebuilt lookup)
+        const lk = getChannelLookup()
+        const linked = lk.twitch.get(curCh) || lk.kick.get(curCh)
         if (linked?.kick && kickChat?.getMessages(linked.kick)?.length) count++
         if (linked?.youtube && channelYtMessages.get(linked.id)?.length) count++
       }
@@ -10204,7 +10254,10 @@
     const limit = DOM_RENDER_CAP
     const active = sources.filter((s) => s.length > 0)
     if (active.length === 0) return []
-    if (active.length === 1) return active[0].slice(-limit)
+    if (active.length === 1) {
+      const s = active[0]
+      return s.length <= limit ? s : s.slice(-limit)
+    }
 
     // Co-live detection. When every source's newest msg lands within ~10 min
     // of each other AND is fresh (<1h old), both platforms are streaming now
@@ -14393,7 +14446,17 @@
     // MutationObserver for instant transitions
     const root = document.querySelector('[class*="channel-root"]')
     if (root) {
-      const observer = new MutationObserver(() => checkOffline())
+      // Coalesce to one check per frame — Twitch's React reconciler mutates this
+      // subtree continuously; an unthrottled callback burns CPU on every flush.
+      let offlineCheckQueued = false
+      const observer = new MutationObserver(() => {
+        if (offlineCheckQueued) return
+        offlineCheckQueued = true
+        cleanup.raf(() => {
+          offlineCheckQueued = false
+          checkOffline()
+        })
+      })
       observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] })
       cleanup.trackObserver(observer)
     }

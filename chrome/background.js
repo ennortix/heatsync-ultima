@@ -2340,7 +2340,7 @@ async function fetch7TVChannelEmotes(channelName, channelId = null, platform = '
     const emotes = sanitizeEmoteList(
       emoteList.map((e) => ({
         name: e.name,
-        url: `https://cdn.7tv.app/emote/${e.id}/1x.webp`,
+        url: `https://cdn.7tv.app/emote/${e.id}/1x.avif`,
         source: '7tv',
         hash: e.id,
         flags: e.flags || e.data?.flags || 0,
@@ -2899,7 +2899,7 @@ async function fetch7TVEmotes() {
     const emotes = sanitizeEmoteList(
       (data?.emotes || []).map((e) => ({
         name: e.name,
-        url: `https://cdn.7tv.app/emote/${e.id}/1x.webp`,
+        url: `https://cdn.7tv.app/emote/${e.id}/1x.avif`,
         source: '7tv',
         hash: e.id,
         animated: !!e.data?.animated,
@@ -3356,7 +3356,7 @@ async function capture7TVPersonalEntitlement(body) {
       if (!e?.name || !e?.id) continue
       const flags = (e.flags || 0) | (e.data?.flags || 0)
       out[e.name] = {
-        url: `https://cdn.7tv.app/emote/${e.id}/1x.webp`,
+        url: `https://cdn.7tv.app/emote/${e.id}/1x.avif`,
         source: '7tv',
         state: 'global',
         zeroWidth: !!(flags & 257),
@@ -3432,7 +3432,7 @@ function handle7TVEmoteSetUpdate(updateData) {
       if (!emote || typeof emote.id !== 'string' || !/^[0-9A-HJKMNP-TV-Z]{26}$/.test(emote.id)) continue
       const newEmote = {
         name: String(emote.name || '').slice(0, 100),
-        url: `https://cdn.7tv.app/emote/${emote.id}/1x.webp`,
+        url: `https://cdn.7tv.app/emote/${emote.id}/1x.avif`,
         source: '7tv',
         hash: emote.id,
         animated: !!emote.data?.animated,
@@ -3623,7 +3623,7 @@ async function poll7TVEmoteSet() {
       for (const e of emoteSet.emotes) {
         fetchedEmotes.set(e.id, {
           name: e.name,
-          url: `https://cdn.7tv.app/emote/${e.id}/1x.webp`,
+          url: `https://cdn.7tv.app/emote/${e.id}/1x.avif`,
           source: '7tv',
           hash: e.id,
           flags: e.flags || e.data?.flags || 0,
@@ -7464,7 +7464,7 @@ async function handleMessage(message, sender, sendResponse) {
             if (!e?.name || !e?.id) continue
             const flags = (e.flags || 0) | (e.data?.flags || 0)
             collected[e.name] = {
-              url: `https://cdn.7tv.app/emote/${e.id}/1x.webp`,
+              url: `https://cdn.7tv.app/emote/${e.id}/1x.avif`,
               source: '7tv',
               state: 'global',
               zeroWidth: !!(flags & 257),

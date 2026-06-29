@@ -199,7 +199,7 @@ async function mcSearch7tvApi(q, signal, opts) {
     (data && data.data && data.data.emotes && data.data.emotes.search && data.data.emotes.search.items) || []
   return items.map((e) => ({
     name: e.defaultName,
-    url: `https://cdn.7tv.app/emote/${e.id}/1x.webp`,
+    url: `https://cdn.7tv.app/emote/${e.id}/1x.avif`,
     provider: '7tv',
     id: e.id,
     animated: !!(e.flags && e.flags.animated),

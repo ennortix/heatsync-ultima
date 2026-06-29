@@ -44745,7 +44745,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         <button class="hs-mc-tab" data-tab="whispers">${t('mc_tab_whispers')}</button>
         <button class="hs-mc-tab" data-tab="mentions">${t('mc_tab_mentions')}</button>
         <button class="hs-mc-tab" data-tab="pinned">${t('mc_tab_pinned')}</button>
-        <button class="hs-mc-tab" data-tab="modlog">mod log</button>
+        <button class="hs-mc-tab" data-tab="modlog">${t('mc_tab_modlog')}</button>
         <button class="hs-mc-tab" data-tab="live">${t('mc_tab_live')}</button>
         <button class="hs-mc-tab" data-tab="add">+</button>
       </div>

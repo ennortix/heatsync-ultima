@@ -19704,6 +19704,12 @@ function staticEmoteSrc(url) {
 // Upgrade emote URL to match current emote size setting.
 // Memoized: input URLs are bounded by emote count (~few thousand). Cache
 // resets when emoteSize changes — same input → same output otherwise.
+// Firefox has no animated-AVIF decoder (Chrome-only). 7TV serves emotes as
+// avif by default, so animated 7TV emotes render as a frozen first frame on
+// Firefox. Detect once and rewrite 7TV avif → webp at the chat chokepoint
+// below (FF animates webp fine; static webp is correct too, just marginally
+// larger). Chrome keeps avif. Matches browser-api.js's FF signal.
+const HS_IS_FF = typeof browser !== 'undefined'
 let _resCacheSize = 1
 const _resCache = new Map()
 function getChatResUrl(url) {
@@ -19732,6 +19738,9 @@ function getChatResUrl(url) {
     else if (url.includes('cdn.frankerfacez.com')) out = url.replace(/\/[12](?=\.|$)/, '/4')
     else if (url.includes('static-cdn.jtvnw.net')) out = url.replace(/\/[12]\.0/, '/3.0')
   }
+  // Firefox: 7TV avif → webp (animated avif freezes on FF; see HS_IS_FF above).
+  // Applied after the size rewrite so it isn't clobbered.
+  if (HS_IS_FF && out.includes('cdn.7tv.app')) out = out.replace(/\.avif(\?|$)/i, '.webp$1')
   _resCache.set(url, out)
   return out
 }

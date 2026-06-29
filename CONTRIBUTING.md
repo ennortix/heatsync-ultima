@@ -8,6 +8,7 @@ requires [bun](https://bun.sh) — not node.
 git clone https://github.com/mellen9999/heatsync-extension
 cd heatsync-extension
 bun install
+git config core.hooksPath .githooks   # enable the pre-push gate (lint/typecheck/version/test)
 ```
 
 ## build

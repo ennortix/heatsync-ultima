@@ -763,18 +763,9 @@ class KickChat {
   }
 
   _flushPendingSync() {
-    for (const ch of this._pendingChannels) {
-      try {
-        const buffer = this.channels.get(ch)
-        if (!buffer) continue
-        const msgs = buffer
-          .getAll()
-          .slice(-this._SYNC_BACKUP_MAX)
-          .map((m) => this._serializeMsg(m))
-          .filter(Boolean)
-        localStorage.setItem(`hs_kick_sync_${ch}`, JSON.stringify({ msgs, ts: Date.now() }))
-      } catch {}
-    }
+    // kick chat history is backed exclusively by chrome.storage.local (persistBuffer)
+    // — writing to host-page localStorage (kick.com) would expose it to host-page
+    // scripts and co-resident extensions.
   }
 
   _touchChannel(ch) {

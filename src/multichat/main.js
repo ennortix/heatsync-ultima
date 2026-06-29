@@ -801,16 +801,10 @@
 
   function _flushPersistenceSync() {
     try {
-      if (_persistMentionsState.dirty) {
-        const msgs = mentionsBuffer.slice(-PERSIST_SYNC_MAX).map(_serializePersistMsg)
-        localStorage.setItem('hs_mentions_sync', JSON.stringify({ msgs, ts: Date.now() }))
-      }
-      for (const channelId of _persistYtDirty) {
-        const buf = channelYtMessages.get(channelId)
-        if (!buf) continue
-        const msgs = buf.slice(-PERSIST_SYNC_MAX).map(_serializePersistMsg)
-        localStorage.setItem(`hs_yt_sync_${channelId}`, JSON.stringify({ msgs, ts: Date.now() }))
-      }
+      // chat history and cross-platform mentions are backed exclusively by
+      // chrome.storage.local (persistMentions/persistYt) — writing them to the
+      // host page's localStorage (twitch.tv/kick.com/youtube.com) would expose
+      // HeatSync user data to host-page scripts and co-resident extensions.
       if (_persistTabSeenTimer) {
         localStorage.setItem('hs_tab_seen_sync', JSON.stringify({ data: { ...tabSeenAt }, ts: Date.now() }))
       }

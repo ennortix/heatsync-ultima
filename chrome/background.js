@@ -6381,24 +6381,82 @@ async function handleMessage(message, sender, sendResponse) {
   }
 
   if (message.type === 'set_auth_token') {
-    authToken = message.token
-    authFailedBlock = false
-    log(' Received auth token from content script')
-    // Clear old cached inventory before setting new token (prevents wrong user's emotes)
-    emoteInventory = []
-    blockedEmotes = new Set()
-    followedUsers = []
-    browser.storage.local.remove(['emote_inventory', 'blocked_emotes'])
-    // Persist new token to encrypted storage
-    storeToken(message.token).catch((err) => log('storeToken failed, token not persisted:', err?.message))
-    // Fetch inventory now that we have token
-    fetchEmoteInventory().catch(() => {})
-    fetchBlockedEmotes().catch(() => {})
-    fetchFollowedUsers().catch(() => {})
-    // IMPORTANT: Reconnect WebSocket with new token (fixes stale auth after login switch)
-    log(' 🔄 Reconnecting WebSocket with new auth token...')
-    connectWebSocket().catch(() => {})
-    sendResponse({ ok: true })
+    // Async: verify state nonce + confirm token via /api/auth/me before touching caches
+    ;(async () => {
+      try {
+        // State nonce check (defense against identity fixation)
+        const stored = await browser.storage.local.get('hs_login_state')
+        const storedState = stored?.hs_login_state
+        if (storedState) {
+          // One-time: always consume regardless of match
+          await browser.storage.local.remove('hs_login_state')
+          // Enforce ONLY when the backend echoed state back. During rollout
+          // (backend not yet deploying the state echo) message.state is absent
+          // — fall through to the /api/auth/me verify + identity-switch confirm
+          // below so logins don't break. Once the backend echoes state, a forged
+          // auth_token URL can't supply a matching nonce → rejected.
+          if (message.state && message.state !== storedState) {
+            log(' ⚠ set_auth_token rejected — state nonce mismatch')
+            sendResponse({ ok: false, error: 'state mismatch' })
+            return
+          }
+        }
+        // Verify token against /api/auth/me before wiping any caches
+        const verifyResp = await fetchWithTimeout(`${API_URL}/api/auth/me`, {
+          credentials: 'include',
+          headers: { Authorization: `Bearer ${message.token}` },
+        })
+        if (!verifyResp.ok) {
+          verifyResp.body?.cancel()
+          log(' ⚠ set_auth_token rejected — /api/auth/me returned', verifyResp.status)
+          sendResponse({ ok: false, error: 'token verification failed' })
+          return
+        }
+        let meUser
+        try {
+          meUser = JSON.parse(await verifyResp.text())
+        } catch {
+          meUser = null
+        }
+        if (!meUser) {
+          log(' ⚠ set_auth_token rejected — invalid /api/auth/me response')
+          sendResponse({ ok: false, error: 'invalid auth response' })
+          return
+        }
+        const newUsername = (meUser.username || meUser.twitch_username || '').toLowerCase()
+        // Notify on identity switch so user is aware
+        if (currentUsername && newUsername && newUsername !== currentUsername.toLowerCase()) {
+          log(` set_auth_token: account switch ${currentUsername} → ${newUsername}`)
+          try {
+            chrome.notifications.create(`hs-account-switch-${Date.now()}`, {
+              type: 'basic',
+              iconUrl: 'icon-48.png',
+              title: 'heatsync — account switch',
+              message: `switching from ${currentUsername} to ${newUsername}`,
+            })
+          } catch {}
+        }
+        // Token verified — adopt it and refresh caches
+        authToken = message.token
+        authFailedBlock = false
+        log(' Received and verified auth token from content script')
+        emoteInventory = []
+        blockedEmotes = new Set()
+        followedUsers = []
+        browser.storage.local.remove(['emote_inventory', 'blocked_emotes'])
+        storeToken(message.token).catch((err) => log('storeToken failed:', err?.message))
+        fetchEmoteInventory().catch(() => {})
+        fetchBlockedEmotes().catch(() => {})
+        fetchFollowedUsers().catch(() => {})
+        log(' 🔄 Reconnecting WebSocket with new auth token...')
+        connectWebSocket().catch(() => {})
+        sendResponse({ ok: true })
+      } catch (err) {
+        log(' set_auth_token error:', err?.message || err)
+        sendResponse({ ok: false, error: err?.message || 'unknown error' })
+      }
+    })()
+    return true // async sendResponse
   } else if (message.type === 'block_emote') {
     // Async - send response when done
     blockEmote(message.hash).then((result) => {

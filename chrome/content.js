@@ -35,8 +35,9 @@
       const urlToken = urlParams.get('auth_token')
       if (urlToken && /^[\w-]+\.[\w-]+\.[\w-]+$/.test(urlToken)) {
         log(' ✓ Found auth_token in URL, sending to background (length:', urlToken.length, ')')
+        const urlState = urlParams.get('state') || null
         try {
-          chrome.runtime.sendMessage({ type: 'set_auth_token', token: urlToken })
+          chrome.runtime.sendMessage({ type: 'set_auth_token', token: urlToken, state: urlState })
         } catch {}
         window.history.replaceState({}, document.title, window.location.pathname)
       }
@@ -10304,9 +10305,16 @@
       const handler = (e) => {
         if (e.source !== window || e.origin !== location.origin) return
         if (e.data?.type === 'heatsync-page-channel-id' && e.data.login === slug && e.data.channelId) {
+          // Require nonce (set by content.js initMainWorldNonce) — blocks rogue
+          // MAIN-world page scripts that satisfy source+origin checks
+          const nonce = window.HS?.getMainWorldNonce?.()
+          if (!nonce || e.data.nonce !== nonce) return
+          // Strictly numeric channel IDs only
+          const cid = String(e.data.channelId)
+          if (!/^\d+$/.test(cid)) return
           ac.abort()
           clearTimeout(timer)
-          resolve(e.data.channelId)
+          resolve(cid)
         }
       }
       const timer = setTimeout(() => {
@@ -11108,18 +11116,15 @@
       // the message to come from our own window, not a sub-frame.
       if (event.source !== window) return
       if (event.data?.type === 'heatsync-nav') handleNavigation()
-      if (event.data?.type === 'heatsync-clear-history') {
-        safeSendMessage({ type: 'clear_history' }).then((r) => {
-          window.postMessage({ type: 'heatsync-clear-history-result', result: r }, location.origin)
-        })
-      }
-      // Dev/automation hook: page asks BG to reload the whole extension. Trigger
-      // from the page console via:
-      //   window.postMessage({ type: 'heatsync-reload-extension' }, location.origin)
-      // No auth — anyone with page access can already inspect chrome.runtime; the
-      // worst this enables is the user reloading their own extension. Same-origin
-      // gate (above) prevents cross-frame triggers from third-party scripts.
+      // heatsync-clear-history window hook removed: no internal MAIN-world caller;
+      // clear_history is now triggered only from extension popup via chrome.runtime.
+      // Dev/automation hook: extension reload, gated on per-session nonce so rogue
+      // page scripts can't trigger it without first observing the init-nonce exchange.
+      // Usage (dev console, after capturing nonce from heatsync-init-nonce message):
+      //   window.postMessage({ type: 'heatsync-reload-extension', nonce: <captured> }, location.origin)
       if (event.data?.type === 'heatsync-reload-extension') {
+        const nonce = window.HS?.getMainWorldNonce?.()
+        if (!nonce || event.data.nonce !== nonce) return
         const now = Date.now()
         if (now - _lastExtReloadMs < 30000) return
         _lastExtReloadMs = now

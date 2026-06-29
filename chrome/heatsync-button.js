@@ -2319,6 +2319,28 @@
       container.appendChild(panel)
       panelOpen = true
 
+      // Login link — generate a one-time state nonce before navigating so
+      // background.js can reject a forged set_auth_token that omits it.
+      const loginLink = panel.querySelector('.heatsync-auth-banner a')
+      if (loginLink) {
+        loginLink.addEventListener('click', async (e) => {
+          e.preventDefault()
+          try {
+            const nonce = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+              .map((b) => b.toString(16).padStart(2, '0'))
+              .join('')
+            await chrome.storage.local.set({ hs_login_state: nonce })
+            window.open(
+              `https://heatsync.org/api/auth/login?return_to=%2F&state=${encodeURIComponent(nonce)}`,
+              '_blank',
+              'noopener,noreferrer',
+            )
+          } catch {
+            window.open('https://heatsync.org/api/auth/login?return_to=%2F', '_blank', 'noopener,noreferrer')
+          }
+        })
+      }
+
       // Close button handler
       panel.querySelector('.heatsync-panel-close')?.addEventListener('click', closePanel)
 

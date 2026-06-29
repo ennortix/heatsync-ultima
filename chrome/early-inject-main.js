@@ -47,8 +47,11 @@
       if (slug && login === slug && id) {
         document.documentElement.dataset.hsTwitchChannelId = String(id)
         document.documentElement.dataset.hsTwitchChannelLogin = login
-        // Also broadcast — content.js can react instantly without polling
-        window.postMessage({ type: 'heatsync-page-channel-id', channelId: String(id), login }, location.origin)
+        // Also broadcast — content.js can react instantly without polling.
+        // Include nonce (set by content.js initMainWorldNonce and stored in _hsNonce)
+        // so content.js can verify this came from our MAIN-world script and not
+        // a rogue page script forging the same message type.
+        window.postMessage({ type: 'heatsync-page-channel-id', channelId: String(id), login, nonce: _hsNonce }, location.origin)
       }
     } catch {}
   }

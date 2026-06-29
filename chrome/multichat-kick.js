@@ -20471,12 +20471,76 @@ function pasteEmojiSpanFromNestToInput(srcSpan, asOverlay) {
   pendingMessage = getInputText()
 }
 
-// [2-state model] removeEmoteFromInventory / _removeEmoteFromInventory /
-// handleRemoveSuccess removed — the overlay picker no longer offers a
-// remove path (right-click block/unblock only). Inventory cleanup lives on
-// the heatsync.org panel picker (chrome/heatsync-button.js) which calls
-// the bg `remove_from_inventory` handler directly; the multichat-side
-// helpers were left orphaned by the model change.
+// Right-click an owned emote in multichat removes it from your HS inventory and
+// the name falls back to its next-in-line source (channel/global) or plain text —
+// mirroring heatsync.org. The call site (input.js) gates this to genuine inventory
+// emotes (state==='owned' && inventoryEmotes.has) so subs / channel / bits are
+// never removable, and removal is reversible (30-day recovery on the backend) —
+// which is what made the old accidental-vanish concern safe to revisit.
+async function removeEmoteFromInventory(emoteName, targetEl) {
+  if (!emoteName) return
+  pendingEmoteOps.add(emoteName)
+  try { await _removeEmoteFromInventory(emoteName, targetEl) }
+  finally { pendingEmoteOps.delete(emoteName) }
+}
+
+async function _removeEmoteFromInventory(emoteName, targetEl) {
+  const wrapper = targetEl?.closest?.('.hs-mc-emote-wrapper') || targetEl
+  const emoteHash = inventoryHashes.get(emoteName)
+    || wrapper?.dataset?.emoteHash
+    || emoteHashes.get(emoteName)
+    || lookupEmote(emoteName)?.hash
+    || emoteName
+  try {
+    const response = await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({ type: 'remove_from_inventory', emoteHash, emoteName }, (resp) => {
+        if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message))
+        else resolve(resp)
+      })
+    })
+    // Server is authoritative: treat "not found in your set" as already-removed so a
+    // stale 'owned' state can't trap the user looping on a failing remove.
+    if (response?.success || (response?.error && /not found in your set/i.test(response.error))) {
+      handleRemoveSuccess(emoteName)
+    } else {
+      showToast(response?.error || `failed to remove: ${emoteName}`, 'error')
+    }
+  } catch (e) {
+    showToast(`error removing: ${emoteName}`, 'error')
+  }
+}
+
+function handleRemoveSuccess(emoteName) {
+  inventoryEmotes.delete(emoteName)
+  inventoryHashes.delete(emoteName)
+  viewerPersonalEmotes.delete(emoteName)
+  // Drop from the tab-complete auto-add registry so re-posting doesn't silently re-add it.
+  if (typeof recentRemoteCompletions !== 'undefined') recentRemoteCompletions.delete(emoteName)
+  // Vanish the picker thumbnail(s) + keep section counts truthful; rebuild on reopen.
+  try {
+    const wraps = document.querySelectorAll(`.hs-mc-picker-emote-wrap[data-name="${CSS.escape(emoteName)}"]`)
+    const sections = new Set()
+    wraps.forEach((w) => {
+      const sec = w.closest('.hs-mc-picker-section')
+      if (sec) sections.add(sec)
+      w.remove()
+    })
+    for (const sec of sections) {
+      const count = sec.querySelector('.hs-mc-picker-section-count')
+      if (count) { const n = parseInt(count.textContent, 10); if (!isNaN(n) && n > 0) count.textContent = String(n - 1) }
+    }
+  } catch {}
+  markPickerDirty()
+  // Re-resolve the name in rendered chat. Dropping it from viewerPersonalEmotes
+  // (above) makes processEmotes fall through to channel/global, or plain text if
+  // nothing else is named that. We intentionally leave channel/global caches intact
+  // so the fallback emote still resolves. Invalidate cached renders + reprocess
+  // visible rows so existing messages update in place instead of keeping the
+  // removed image. (typeof guards: these live in main.js, loaded after this module.)
+  if (typeof invalidateRenderedForEmotes === 'function') invalidateRenderedForEmotes([emoteName])
+  if (typeof reprocessEmoteTextInPlace === 'function') reprocessEmoteTextInPlace()
+  showToast(`removed: ${emoteName}`, 'success')
+}
 
 function blockAllEmotesInStack(stack) {
   const wrappers = stack.querySelectorAll('.hs-mc-emote-wrapper')
@@ -33987,18 +34051,18 @@ function initInput() {
         // Race-guard against rapid clicking
         if (pendingEmoteOps.has(emoteName)) return
 
-        // 2-state right-click toggle. blocked → unblock, else → block.
+        // 3-state right-click: blocked → unblock; owned (your HS inventory) →
+        // remove from set; everything else → block. Remove is gated to genuine
+        // inventory emotes (state==='owned' AND inventoryEmotes.has) so Twitch
+        // subs, channel emotes, follower/bits and third-party copies can NEVER be
+        // removed from a chat-flow right-click — only blocked. Removal is reversible
+        // (30-day recovery) and the name falls back to the next emote of that name
+        // (channel/global) or plain text, mirroring heatsync.org.
         if (state === 'blocked') {
           unblockEmote(emoteName)
+        } else if (state === 'owned' && inventoryEmotes.has(emoteName)) {
+          removeEmoteFromInventory(emoteName, e.target)
         } else {
-          // 2-state model: every non-blocked emote right-click toggles to blocked.
-          // No remove path here — destructive slot cleanup lives on the heatsync.org
-          // panel picker (explicit menu item) where the user knows they're managing
-          // inventory rather than mid-chat triaging what they want to see. The old
-          // owned→remove ladder was the source of the accidental-vanish class of
-          // bugs that hit Twitch subs, channel emotes, follower/bits, and slotted
-          // copies of third-party emotes — all of which feel undeletable from a
-          // chat-flow surface.
           blockEmote(emoteName, emoteUrl, source)
         }
       },

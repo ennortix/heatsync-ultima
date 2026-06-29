@@ -1311,18 +1311,18 @@ function initInput() {
         // Race-guard against rapid clicking
         if (pendingEmoteOps.has(emoteName)) return
 
-        // 2-state right-click toggle. blocked → unblock, else → block.
+        // 3-state right-click: blocked → unblock; owned (your HS inventory) →
+        // remove from set; everything else → block. Remove is gated to genuine
+        // inventory emotes (state==='owned' AND inventoryEmotes.has) so Twitch
+        // subs, channel emotes, follower/bits and third-party copies can NEVER be
+        // removed from a chat-flow right-click — only blocked. Removal is reversible
+        // (30-day recovery) and the name falls back to the next emote of that name
+        // (channel/global) or plain text, mirroring heatsync.org.
         if (state === 'blocked') {
           unblockEmote(emoteName)
+        } else if (state === 'owned' && inventoryEmotes.has(emoteName)) {
+          removeEmoteFromInventory(emoteName, e.target)
         } else {
-          // 2-state model: every non-blocked emote right-click toggles to blocked.
-          // No remove path here — destructive slot cleanup lives on the heatsync.org
-          // panel picker (explicit menu item) where the user knows they're managing
-          // inventory rather than mid-chat triaging what they want to see. The old
-          // owned→remove ladder was the source of the accidental-vanish class of
-          // bugs that hit Twitch subs, channel emotes, follower/bits, and slotted
-          // copies of third-party emotes — all of which feel undeletable from a
-          // chat-flow surface.
           blockEmote(emoteName, emoteUrl, source)
         }
       },

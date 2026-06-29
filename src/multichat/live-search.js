@@ -57,7 +57,9 @@ function buildLiveSearchMatcher(rawQuery) {
     const prefix = q.slice(1)
     return {
       test(m) {
-        return String(m.user || m.display_name || '').toLowerCase().startsWith(prefix)
+        return String(m.user || m.display_name || '')
+          .toLowerCase()
+          .startsWith(prefix)
       },
     }
   }
@@ -66,7 +68,12 @@ function buildLiveSearchMatcher(rawQuery) {
   return {
     test(m) {
       const user = String(m.user || m.display_name || '').toLowerCase()
-      return user.includes(q) || String(m.text || '').toLowerCase().includes(q)
+      return (
+        user.includes(q) ||
+        String(m.text || '')
+          .toLowerCase()
+          .includes(q)
+      )
     },
   }
 }

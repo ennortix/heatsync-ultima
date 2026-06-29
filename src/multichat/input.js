@@ -214,16 +214,35 @@ function makeSynthId() {
 // real ack (success or rejection, surfaced by auth-irc). /me is NOT here — it
 // echoes as a CTCP ACTION.
 const NON_ECHOING_CHAT_COMMANDS = new Set([
-  'followers', 'followersoff',
-  'emoteonly', 'emoteonlyoff',
-  'subscribers', 'subscribersoff',
-  'slow', 'slowoff',
-  'uniquechat', 'uniquechatoff', 'r9kbeta', 'r9kbetaoff',
-  'clear', 'color',
-  'mod', 'unmod', 'vip', 'unvip',
-  'untimeout', 'unban',
-  'raid', 'unraid', 'commercial', 'marker',
-  'announce', 'announceblue', 'announcegreen', 'announceorange', 'announcepurple',
+  'followers',
+  'followersoff',
+  'emoteonly',
+  'emoteonlyoff',
+  'subscribers',
+  'subscribersoff',
+  'slow',
+  'slowoff',
+  'uniquechat',
+  'uniquechatoff',
+  'r9kbeta',
+  'r9kbetaoff',
+  'clear',
+  'color',
+  'mod',
+  'unmod',
+  'vip',
+  'unvip',
+  'untimeout',
+  'unban',
+  'raid',
+  'unraid',
+  'commercial',
+  'marker',
+  'announce',
+  'announceblue',
+  'announcegreen',
+  'announceorange',
+  'announcepurple',
 ])
 function isNonEchoingCommand(text) {
   if (typeof text !== 'string' || text[0] !== '/') return false
@@ -254,7 +273,10 @@ function registerPendingSend({ text, channel, platforms, replyParentId, noEcho }
     // succeeded, so retire silently rather than firing a false no_echo. Genuine
     // write failures still surface via the explicit markPendingFailed calls in
     // the send paths (auth_failed/send_failed).
-    if (e.noEcho) { pendingSends.delete(synthId); return }
+    if (e.noEcho) {
+      pendingSends.delete(synthId)
+      return
+    }
     markPendingFailed(synthId, 'no_echo')
   }, PENDING_ECHO_TIMEOUT_MS)
   pendingSends.set(synthId, entry)
@@ -1643,7 +1665,10 @@ async function hsBlockFromMenu(username, platform) {
 async function _ctxMod(action, channel, platform, target, msgId, durationSec, label) {
   const r = await dispatchModAction({ channel, platform, action, target, durationSec, msgId })
   if (action === 'delete') {
-    showToast(r?.anyOk ? 'deleted message' : `delete failed: ${(r?.tResp || r?.kResp)?.error || 'unknown'}`, r?.anyOk ? 'success' : 'error')
+    showToast(
+      r?.anyOk ? 'deleted message' : `delete failed: ${(r?.tResp || r?.kResp)?.error || 'unknown'}`,
+      r?.anyOk ? 'success' : 'error',
+    )
   } else {
     showModResultToast(label, target, r)
   }
@@ -1679,26 +1704,35 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
     const msgPlat = msg.dataset?.msgPlatform || 'twitch'
     const msgLogin = (msg.dataset?.msgLogin || msg.dataset?.msgUser || username || '').toLowerCase()
     const msgId = msg.dataset?.msgId || ''
-    const lookup = (typeof getChannelLookup === 'function') ? getChannelLookup() : null
-    const entry = (lookup && msgCh)
-      ? ((msgPlat === 'kick' ? lookup.kick.get(msgCh) : lookup.twitch.get(msgCh)) || lookup.byId.get(msgCh))
-      : null
+    const lookup = typeof getChannelLookup === 'function' ? getChannelLookup() : null
+    const entry =
+      lookup && msgCh
+        ? (msgPlat === 'kick' ? lookup.kick.get(msgCh) : lookup.twitch.get(msgCh)) || lookup.byId.get(msgCh)
+        : null
     const isKick = msgPlat === 'kick'
     // The channel key for the action + gate: kick slug for kick rows, twitch login otherwise.
-    const modCh = isKick ? (entry?.kick || msgCh) : (entry?.twitch || msgCh)
+    const modCh = isKick ? entry?.kick || msgCh : entry?.twitch || msgCh
     // currentUsername is a display name; compare against BOTH the login and the
     // display name so a non-Latin-named mod can't be shown self-mod actions.
-    const _selfRef = (typeof currentUsername !== 'undefined' && currentUsername) ? currentUsername.toLowerCase() : null
+    const _selfRef = typeof currentUsername !== 'undefined' && currentUsername ? currentUsername.toLowerCase() : null
     const notSelf = !_selfRef || (msgLogin !== _selfRef && (msg.dataset?.msgUser || '').toLowerCase() !== _selfRef)
     const amMod = isKick
-      ? (typeof isKickModForSync === 'function' && isKickModForSync(modCh))
-      : (typeof isModForSync === 'function' && isModForSync(modCh))
+      ? typeof isKickModForSync === 'function' && isKickModForSync(modCh)
+      : typeof isModForSync === 'function' && isModForSync(modCh)
     if (modCh && notSelf) {
       if (amMod) {
         const mod = []
-        if (msgId) mod.push({ label: 'delete msg', danger: true, fn: () => _ctxMod('delete', msgCh, msgPlat, msgLogin, msgId, 0, 'deleted') })
+        if (msgId)
+          mod.push({
+            label: 'delete msg',
+            danger: true,
+            fn: () => _ctxMod('delete', msgCh, msgPlat, msgLogin, msgId, 0, 'deleted'),
+          })
         mod.push(
-          { label: 'timeout 10m', fn: () => _ctxMod('timeout', msgCh, msgPlat, msgLogin, msgId, 600, 'timed out 600s') },
+          {
+            label: 'timeout 10m',
+            fn: () => _ctxMod('timeout', msgCh, msgPlat, msgLogin, msgId, 600, 'timed out 600s'),
+          },
           { label: 'ban', danger: true, fn: () => _ctxMod('ban', msgCh, msgPlat, msgLogin, msgId, 0, 'banned') },
           { label: 'unban', fn: () => _ctxMod('unban', msgCh, msgPlat, msgLogin, msgId, 0, 'unbanned') },
           'sep',
@@ -1706,8 +1740,9 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
         items.push(...mod)
       } else {
         // Warm the right cache so the next right-click surfaces actions.
-        if (isKick) { if (typeof prefetchKickModFor === 'function') prefetchKickModFor(modCh) }
-        else if (typeof prefetchModFor === 'function') prefetchModFor(modCh)
+        if (isKick) {
+          if (typeof prefetchKickModFor === 'function') prefetchKickModFor(modCh)
+        } else if (typeof prefetchModFor === 'function') prefetchModFor(modCh)
       }
     }
   }
@@ -5266,7 +5301,14 @@ async function handleSlashCommand(text, input) {
       }
       const [, target, secStr, reason] = m
       const sec = secStr ? Math.max(1, parseInt(secStr)) : 600
-      const r = await dispatchModAction({ channel: modChannel, action: 'timeout', target, durationSec: sec, reason, fanout: true })
+      const r = await dispatchModAction({
+        channel: modChannel,
+        action: 'timeout',
+        target,
+        durationSec: sec,
+        reason,
+        fanout: true,
+      })
       showModResultToast(`timed out ${sec}s`, target, r)
       if (r?.anyOk) clearInput(input)
       return true
@@ -5331,7 +5373,8 @@ async function handleSlashCommand(text, input) {
     const off = arg === 'off'
     let minutes
     if (off) minutes = -1
-    else if (!arg) minutes = 0 // any follower
+    else if (!arg)
+      minutes = 0 // any follower
     else {
       minutes = _parseModeDuration(arg, 'min')
       if (minutes == null) {
@@ -5341,7 +5384,10 @@ async function handleSlashCommand(text, input) {
     }
     const resp = await setTwitchFollowersMode(twitchTarget, minutes)
     if (resp.ok) {
-      showToast(off ? 'followers-only off' : minutes ? `followers-only on (${minutes}m)` : 'followers-only on', 'success')
+      showToast(
+        off ? 'followers-only off' : minutes ? `followers-only on (${minutes}m)` : 'followers-only on',
+        'success',
+      )
       clearInput(input)
     } else {
       showToast(`/followers failed: ${resp.error}`, 'error')

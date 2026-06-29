@@ -103,7 +103,6 @@ let feedLastFetch = 0 // Timestamp of last feed fetch
 let feedFromHotFallback = false // true when /following was empty + we showed /hot instead
 const FEED_STALE_MS = 120000 // 2 minutes
 
-
 // Feed scroll state — handler ref for teardown only, infinite-scroll trigger
 let _feedVirtualScrollHandler = null
 
@@ -691,10 +690,12 @@ function listenForSocialEvents() {
       }
 
       // Same pipeline as Twitch/Kick handlers: automod + filter rules → mention → stats
-      if (ytMsg.user?.toLowerCase() !== currentUsername?.toLowerCase() && (
-        shouldAutomod(ytMsg.text) ||
-        evaluateFilterRules(ytMsg, targetChannelId !== '__live_yt_auto__' ? targetChannelId : null).hide
-      )) return
+      if (
+        ytMsg.user?.toLowerCase() !== currentUsername?.toLowerCase() &&
+        (shouldAutomod(ytMsg.text) ||
+          evaluateFilterRules(ytMsg, targetChannelId !== '__live_yt_auto__' ? targetChannelId : null).hide)
+      )
+        return
       const isMent = isMention(ytMsg)
       bumpStreamStats(ytMsg.channel, ytMsg, isMent)
       if (isMent) {
@@ -762,7 +763,9 @@ function listenForSocialEvents() {
             // .hs-mc-msg div (YouTube is excluded from data-msg-platform), so
             // query the anchor and walk up — mirrors main.js's YT user lookup.
             msgsEl
-              .querySelectorAll('.hs-mc-msg .hs-mc-user[data-platform="yt"], .hs-mc-msg .hs-mc-user[data-platform="youtube"]')
+              .querySelectorAll(
+                '.hs-mc-msg .hs-mc-user[data-platform="yt"], .hs-mc-msg .hs-mc-user[data-platform="youtube"]',
+              )
               .forEach((a) => {
                 if (a.dataset.username === u) a.closest('.hs-mc-msg')?.classList.add('hs-mc-msg-cleared')
               })
@@ -921,7 +924,7 @@ function listenForSocialEvents() {
 // following tab shows OPs only — replies live inside their thread, opened via
 // >>id, never as top-level rows. Mirrors buildFeedMessageDiv's isOp test.
 function isOpMsg(m) {
-  return m.is_op != null ? !!m.is_op : (!m.reply_to || m.reply_to === '')
+  return m.is_op != null ? !!m.is_op : !m.reply_to || m.reply_to === ''
 }
 
 async function fetchFeed(append = false) {

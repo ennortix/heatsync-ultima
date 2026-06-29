@@ -1,4 +1,4 @@
-import { expect, test, beforeEach } from 'bun:test'
+import { beforeEach, expect, test } from 'bun:test'
 import { compileFilterRules, evaluateFilterRules } from '../src/multichat/filter-rules.js'
 
 // helpers

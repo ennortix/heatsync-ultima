@@ -128,7 +128,13 @@ function mcRerenderSearch(query) {
       seenNames.add(r.name)
       // state='remote' — unowned picker result, click handler routes through
       // addEmoteToInventory to persist. Auto-add-on-send also commits the slot.
-      entries.push({ name: r.name, emote: { source: p, state: 'remote', url: r.url, provider: r.provider }, mq, loc: 3, pop: pop++ })
+      entries.push({
+        name: r.name,
+        emote: { source: p, state: 'remote', url: r.url, provider: r.provider },
+        mq,
+        loc: 3,
+        pop: pop++,
+      })
       mcRemoteEmoteIndex.set(r.name, { url: r.url, provider: r.provider, id: r.id, zeroWidth: !!r.zeroWidth })
     }
   }
@@ -149,7 +155,9 @@ function mcRerenderSearch(query) {
   // collapse to the tiles already shown, so paging would just burn round-trips
   // on results the exact filter discards.
   const canLoadMore =
-    entries.length > 0 && !mcExactMatch && ['7tv', 'bttv', 'ffz'].some((p) => mcPickerSources.has(p) && !mcProviderExhausted[p])
+    entries.length > 0 &&
+    !mcExactMatch &&
+    ['7tv', 'bttv', 'ffz'].some((p) => mcPickerSources.has(p) && !mcProviderExhausted[p])
   if (canLoadMore) {
     const more = document.createElement('button')
     more.type = 'button'
@@ -1472,17 +1480,21 @@ function pasteEmojiSpanFromNestToInput(srcSpan, asOverlay) {
 async function removeEmoteFromInventory(emoteName, targetEl) {
   if (!emoteName) return
   pendingEmoteOps.add(emoteName)
-  try { await _removeEmoteFromInventory(emoteName, targetEl) }
-  finally { pendingEmoteOps.delete(emoteName) }
+  try {
+    await _removeEmoteFromInventory(emoteName, targetEl)
+  } finally {
+    pendingEmoteOps.delete(emoteName)
+  }
 }
 
 async function _removeEmoteFromInventory(emoteName, targetEl) {
   const wrapper = targetEl?.closest?.('.hs-mc-emote-wrapper') || targetEl
-  const emoteHash = inventoryHashes.get(emoteName)
-    || wrapper?.dataset?.emoteHash
-    || emoteHashes.get(emoteName)
-    || lookupEmote(emoteName)?.hash
-    || emoteName
+  const emoteHash =
+    inventoryHashes.get(emoteName) ||
+    wrapper?.dataset?.emoteHash ||
+    emoteHashes.get(emoteName) ||
+    lookupEmote(emoteName)?.hash ||
+    emoteName
   try {
     const response = await new Promise((resolve, reject) => {
       chrome.runtime.sendMessage({ type: 'remove_from_inventory', emoteHash, emoteName }, (resp) => {
@@ -1519,7 +1531,10 @@ function handleRemoveSuccess(emoteName) {
     })
     for (const sec of sections) {
       const count = sec.querySelector('.hs-mc-picker-section-count')
-      if (count) { const n = parseInt(count.textContent, 10); if (!isNaN(n) && n > 0) count.textContent = String(n - 1) }
+      if (count) {
+        const n = parseInt(count.textContent, 10)
+        if (!isNaN(n) && n > 0) count.textContent = String(n - 1)
+      }
     }
   } catch {}
   markPickerDirty()

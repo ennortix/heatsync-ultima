@@ -1294,7 +1294,7 @@ if (typeof window !== 'undefined') {
 //   section    group title within the subtab (sectionKey when i18n'd)
 //   label/tip  literal lowercase strings — or labelKey/tipKey when the
 //              string is i18n'd (renderer resolves via t(); not available here)
-//   control    'pill' | 'select' | 'sizebtns' | 'range' | 'text' | 'textarea'
+//   control    'pill' | 'select' | 'sizebtns' | 'range' | 'text' | 'textarea' | 'custom'
 //   options    [{value,label|labelKey}] for enum/multiselect;
 //              {min,max,step} for range
 //   alias      extra search keywords (originally the legacy data-setting
@@ -1345,7 +1345,7 @@ if (typeof window !== 'undefined') {
  * @property {string} [labelKey] i18n key for label
  * @property {string} [tip] hover tooltip
  * @property {string} [tipKey] i18n key for tip
- * @property {'pill'|'select'|'sizebtns'|'range'|'text'|'textarea'} [control]
+ * @property {'pill'|'select'|'sizebtns'|'range'|'text'|'textarea'|'custom'} [control]
  * @property {SettingOption[]|{min:number,max:number,step:number}} [options]
  * @property {string} [alias] extra search keywords
  * @property {{key:string,equals?:*}} [dependsOn]
@@ -16850,7 +16850,7 @@ function _frSafeRegex(src, flags) {
 // ── module state ──────────────────────────────────────────────────────────────
 // Two buckets: all-scope rules run on every message; per-channel rules run only
 // when channelKey matches. Compiled once → evaluated with no allocation per call.
-let _frAllRules = []         // compiled rules with scope 'all'
+let _frAllRules = [] // compiled rules with scope 'all'
 let _frByChannel = new Map() // compiled rules keyed by channel tab id
 
 // ── compile helpers ───────────────────────────────────────────────────────────
@@ -16870,8 +16870,7 @@ function _frCompileOne(rule) {
   const c = {
     id: String(rule.id),
     action,
-    color: (action === 'highlight' && rule.color && /^#[0-9a-f]{3,8}$/i.test(rule.color))
-      ? rule.color : null,
+    color: action === 'highlight' && rule.color && /^#[0-9a-f]{3,8}$/i.test(rule.color) ? rule.color : null,
     scope,
     matchType: m.type,
     caseSensitive: cs,
@@ -16951,9 +16950,7 @@ function evaluateFilterRules(m, channelKey) {
   const hasChannel = channelKey && _frByChannel.has(channelKey)
   if (!_frAllRules.length && !hasChannel) return { hide: false, highlight: null }
 
-  const rules = hasChannel
-    ? _frAllRules.concat(_frByChannel.get(channelKey))
-    : _frAllRules
+  const rules = hasChannel ? _frAllRules.concat(_frByChannel.get(channelKey)) : _frAllRules
 
   let highlight = null
   for (let i = 0; i < rules.length; i++) {
@@ -17058,7 +17055,9 @@ function buildLiveSearchMatcher(rawQuery) {
     const prefix = q.slice(1)
     return {
       test(m) {
-        return String(m.user || m.display_name || '').toLowerCase().startsWith(prefix)
+        return String(m.user || m.display_name || '')
+          .toLowerCase()
+          .startsWith(prefix)
       },
     }
   }
@@ -17067,7 +17066,12 @@ function buildLiveSearchMatcher(rawQuery) {
   return {
     test(m) {
       const user = String(m.user || m.display_name || '').toLowerCase()
-      return user.includes(q) || String(m.text || '').toLowerCase().includes(q)
+      return (
+        user.includes(q) ||
+        String(m.text || '')
+          .toLowerCase()
+          .includes(q)
+      )
     },
   }
 }
@@ -18081,7 +18085,7 @@ class IRC {
             // differ by >10s, defeating the collapse and double-rendering. Widen
             // to 30s whenever a synthetic is on either side; keep the tight 10s
             // for real-vs-real (multi-transport fanout of one server event).
-            const win = (existing.isSynthetic || msg.isSynthetic) ? 30000 : 10000
+            const win = existing.isSynthetic || msg.isSynthetic ? 30000 : 10000
             if (Math.abs((existing.time || 0) - (msg.time || 0)) > win) continue
             return
           }
@@ -18097,7 +18101,7 @@ class IRC {
           if (existing.type !== 'notice') continue
           if (existing.noticeType !== 'delete_message_success') continue
           if (existing.targetMsgId !== msg.targetMsgId) continue
-          const win = (existing.isSynthetic || msg.isSynthetic) ? 30000 : 10000
+          const win = existing.isSynthetic || msg.isSynthetic ? 30000 : 10000
           if (Math.abs((existing.time || 0) - (msg.time || 0)) > win) continue
           return
         }
@@ -18131,9 +18135,11 @@ class IRC {
         if (msg.noticeType === 'unban_success' && msg.targetUser) {
           const tlc = msg.targetUser.toLowerCase()
           for (const m of buf.getAll()) {
-            if (m.type === 'notice' &&
-                (m.noticeType === 'ban_success' || m.noticeType === 'timeout_success') &&
-                (m.targetUser || '').toLowerCase() === tlc) {
+            if (
+              m.type === 'notice' &&
+              (m.noticeType === 'ban_success' || m.noticeType === 'timeout_success') &&
+              (m.targetUser || '').toLowerCase() === tlc
+            ) {
               m._supersededByUnban = true
             }
           }
@@ -19465,7 +19471,13 @@ function mcRerenderSearch(query) {
       seenNames.add(r.name)
       // state='remote' — unowned picker result, click handler routes through
       // addEmoteToInventory to persist. Auto-add-on-send also commits the slot.
-      entries.push({ name: r.name, emote: { source: p, state: 'remote', url: r.url, provider: r.provider }, mq, loc: 3, pop: pop++ })
+      entries.push({
+        name: r.name,
+        emote: { source: p, state: 'remote', url: r.url, provider: r.provider },
+        mq,
+        loc: 3,
+        pop: pop++,
+      })
       mcRemoteEmoteIndex.set(r.name, { url: r.url, provider: r.provider, id: r.id, zeroWidth: !!r.zeroWidth })
     }
   }
@@ -19486,7 +19498,9 @@ function mcRerenderSearch(query) {
   // collapse to the tiles already shown, so paging would just burn round-trips
   // on results the exact filter discards.
   const canLoadMore =
-    entries.length > 0 && !mcExactMatch && ['7tv', 'bttv', 'ffz'].some((p) => mcPickerSources.has(p) && !mcProviderExhausted[p])
+    entries.length > 0 &&
+    !mcExactMatch &&
+    ['7tv', 'bttv', 'ffz'].some((p) => mcPickerSources.has(p) && !mcProviderExhausted[p])
   if (canLoadMore) {
     const more = document.createElement('button')
     more.type = 'button'
@@ -20809,17 +20823,21 @@ function pasteEmojiSpanFromNestToInput(srcSpan, asOverlay) {
 async function removeEmoteFromInventory(emoteName, targetEl) {
   if (!emoteName) return
   pendingEmoteOps.add(emoteName)
-  try { await _removeEmoteFromInventory(emoteName, targetEl) }
-  finally { pendingEmoteOps.delete(emoteName) }
+  try {
+    await _removeEmoteFromInventory(emoteName, targetEl)
+  } finally {
+    pendingEmoteOps.delete(emoteName)
+  }
 }
 
 async function _removeEmoteFromInventory(emoteName, targetEl) {
   const wrapper = targetEl?.closest?.('.hs-mc-emote-wrapper') || targetEl
-  const emoteHash = inventoryHashes.get(emoteName)
-    || wrapper?.dataset?.emoteHash
-    || emoteHashes.get(emoteName)
-    || lookupEmote(emoteName)?.hash
-    || emoteName
+  const emoteHash =
+    inventoryHashes.get(emoteName) ||
+    wrapper?.dataset?.emoteHash ||
+    emoteHashes.get(emoteName) ||
+    lookupEmote(emoteName)?.hash ||
+    emoteName
   try {
     const response = await new Promise((resolve, reject) => {
       chrome.runtime.sendMessage({ type: 'remove_from_inventory', emoteHash, emoteName }, (resp) => {
@@ -20856,7 +20874,10 @@ function handleRemoveSuccess(emoteName) {
     })
     for (const sec of sections) {
       const count = sec.querySelector('.hs-mc-picker-section-count')
-      if (count) { const n = parseInt(count.textContent, 10); if (!isNaN(n) && n > 0) count.textContent = String(n - 1) }
+      if (count) {
+        const n = parseInt(count.textContent, 10)
+        if (!isNaN(n) && n > 0) count.textContent = String(n - 1)
+      }
     }
   } catch {}
   markPickerDirty()
@@ -28078,7 +28099,10 @@ async function resolveTwitchChannelId(channelLogin) {
     // 4s ceiling: decapi is a third-party in the mod-action hot path; a hang here
     // would stall every ban/timeout/unban behind the browser's default TCP
     // timeout (60s+). Time out fast and fall through to the first-party GQL path.
-    const r = await fetch(`https://decapi.me/twitch/id/${encodeURIComponent(lc)}`, { credentials: 'omit', signal: AbortSignal.timeout(4000) })
+    const r = await fetch(`https://decapi.me/twitch/id/${encodeURIComponent(lc)}`, {
+      credentials: 'omit',
+      signal: AbortSignal.timeout(4000),
+    })
     const body = (await r.text()).trim()
     if (r.ok && /^\d+$/.test(body)) {
       _cacheChannelId(body)
@@ -28704,7 +28728,8 @@ function chatEmbedForUrl(rawUrl) {
   else if ((ym = cleanUrl.match(/youtube\.com\/shorts\/([\w-]{11})/))) ytId = ym[1]
   if (ytId) {
     const id = sanitizeEmbedId(ytId)
-    if (id) return `<a href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener" class="hs-mc-media hs-feed-embed-yt-thumb">
+    if (id)
+      return `<a href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener" class="hs-mc-media hs-feed-embed-yt-thumb">
       <img src="https://i.ytimg.com/vi/${id}/mqdefault.jpg" alt="" loading="lazy" decoding="async" data-fb="hide">
       <span class="hs-feed-embed-yt-play">▶</span>
     </a>`
@@ -28712,7 +28737,11 @@ function chatEmbedForUrl(rawUrl) {
   // Providers the server resolver handles (oEmbed) → lightweight pending card.
   // Server returns image/video/audio/rich; unsupported → graceful link card.
   // No iframes. data-resolve-url drives resolvePendingFeedEmbeds().
-  if (/(?:reddit\.com\/r\/|(?:twitter|x)\.com\/[\w_]+\/status\/|open\.spotify\.com\/(?:track|album|playlist|episode|show)\/|(?:www\.)?vimeo\.com\/\d|tiktok\.com\/@[\w.]+\/video\/|instagram\.com\/(?:p|reel)\/|soundcloud\.com\/[\w-]+\/[\w-]+|kick\.com\/[\w_-]+\/clips\/|clips\.twitch\.tv\/|streamable\.com\/\w)/i.test(cleanUrl)) {
+  if (
+    /(?:reddit\.com\/r\/|(?:twitter|x)\.com\/[\w_]+\/status\/|open\.spotify\.com\/(?:track|album|playlist|episode|show)\/|(?:www\.)?vimeo\.com\/\d|tiktok\.com\/@[\w.]+\/video\/|instagram\.com\/(?:p|reel)\/|soundcloud\.com\/[\w-]+\/[\w-]+|kick\.com\/[\w_-]+\/clips\/|clips\.twitch\.tv\/|streamable\.com\/\w)/i.test(
+      cleanUrl,
+    )
+  ) {
     return `<div class="hs-mc-media hs-feed-embed-pending" data-resolve-url="${attr(safe)}" data-resolve-platform="link"><span class="hs-feed-embed-pending-label">loading preview…</span></div>`
   }
   return ''
@@ -28962,7 +28991,13 @@ function attachFeedFallbacks(root) {
   // broken player. <video> 'error' doesn't bubble, so wire it directly here.
   root.querySelectorAll('video[data-fb="hide"]').forEach((video) => {
     video.removeAttribute('data-fb')
-    video.addEventListener('error', () => { video.style.display = 'none' }, { once: true })
+    video.addEventListener(
+      'error',
+      () => {
+        video.style.display = 'none'
+      },
+      { once: true },
+    )
   })
 }
 
@@ -29072,7 +29107,6 @@ let feedHasMore = true
 let feedLastFetch = 0 // Timestamp of last feed fetch
 let feedFromHotFallback = false // true when /following was empty + we showed /hot instead
 const FEED_STALE_MS = 120000 // 2 minutes
-
 
 // Feed scroll state — handler ref for teardown only, infinite-scroll trigger
 let _feedVirtualScrollHandler = null
@@ -29661,10 +29695,12 @@ function listenForSocialEvents() {
       }
 
       // Same pipeline as Twitch/Kick handlers: automod + filter rules → mention → stats
-      if (ytMsg.user?.toLowerCase() !== currentUsername?.toLowerCase() && (
-        shouldAutomod(ytMsg.text) ||
-        evaluateFilterRules(ytMsg, targetChannelId !== '__live_yt_auto__' ? targetChannelId : null).hide
-      )) return
+      if (
+        ytMsg.user?.toLowerCase() !== currentUsername?.toLowerCase() &&
+        (shouldAutomod(ytMsg.text) ||
+          evaluateFilterRules(ytMsg, targetChannelId !== '__live_yt_auto__' ? targetChannelId : null).hide)
+      )
+        return
       const isMent = isMention(ytMsg)
       bumpStreamStats(ytMsg.channel, ytMsg, isMent)
       if (isMent) {
@@ -29732,7 +29768,9 @@ function listenForSocialEvents() {
             // .hs-mc-msg div (YouTube is excluded from data-msg-platform), so
             // query the anchor and walk up — mirrors main.js's YT user lookup.
             msgsEl
-              .querySelectorAll('.hs-mc-msg .hs-mc-user[data-platform="yt"], .hs-mc-msg .hs-mc-user[data-platform="youtube"]')
+              .querySelectorAll(
+                '.hs-mc-msg .hs-mc-user[data-platform="yt"], .hs-mc-msg .hs-mc-user[data-platform="youtube"]',
+              )
               .forEach((a) => {
                 if (a.dataset.username === u) a.closest('.hs-mc-msg')?.classList.add('hs-mc-msg-cleared')
               })
@@ -29891,7 +29929,7 @@ function listenForSocialEvents() {
 // following tab shows OPs only — replies live inside their thread, opened via
 // >>id, never as top-level rows. Mirrors buildFeedMessageDiv's isOp test.
 function isOpMsg(m) {
-  return m.is_op != null ? !!m.is_op : (!m.reply_to || m.reply_to === '')
+  return m.is_op != null ? !!m.is_op : !m.reply_to || m.reply_to === ''
 }
 
 async function fetchFeed(append = false) {
@@ -33282,16 +33320,35 @@ function makeSynthId() {
 // real ack (success or rejection, surfaced by auth-irc). /me is NOT here — it
 // echoes as a CTCP ACTION.
 const NON_ECHOING_CHAT_COMMANDS = new Set([
-  'followers', 'followersoff',
-  'emoteonly', 'emoteonlyoff',
-  'subscribers', 'subscribersoff',
-  'slow', 'slowoff',
-  'uniquechat', 'uniquechatoff', 'r9kbeta', 'r9kbetaoff',
-  'clear', 'color',
-  'mod', 'unmod', 'vip', 'unvip',
-  'untimeout', 'unban',
-  'raid', 'unraid', 'commercial', 'marker',
-  'announce', 'announceblue', 'announcegreen', 'announceorange', 'announcepurple',
+  'followers',
+  'followersoff',
+  'emoteonly',
+  'emoteonlyoff',
+  'subscribers',
+  'subscribersoff',
+  'slow',
+  'slowoff',
+  'uniquechat',
+  'uniquechatoff',
+  'r9kbeta',
+  'r9kbetaoff',
+  'clear',
+  'color',
+  'mod',
+  'unmod',
+  'vip',
+  'unvip',
+  'untimeout',
+  'unban',
+  'raid',
+  'unraid',
+  'commercial',
+  'marker',
+  'announce',
+  'announceblue',
+  'announcegreen',
+  'announceorange',
+  'announcepurple',
 ])
 function isNonEchoingCommand(text) {
   if (typeof text !== 'string' || text[0] !== '/') return false
@@ -33322,7 +33379,10 @@ function registerPendingSend({ text, channel, platforms, replyParentId, noEcho }
     // succeeded, so retire silently rather than firing a false no_echo. Genuine
     // write failures still surface via the explicit markPendingFailed calls in
     // the send paths (auth_failed/send_failed).
-    if (e.noEcho) { pendingSends.delete(synthId); return }
+    if (e.noEcho) {
+      pendingSends.delete(synthId)
+      return
+    }
     markPendingFailed(synthId, 'no_echo')
   }, PENDING_ECHO_TIMEOUT_MS)
   pendingSends.set(synthId, entry)
@@ -34711,7 +34771,10 @@ async function hsBlockFromMenu(username, platform) {
 async function _ctxMod(action, channel, platform, target, msgId, durationSec, label) {
   const r = await dispatchModAction({ channel, platform, action, target, durationSec, msgId })
   if (action === 'delete') {
-    showToast(r?.anyOk ? 'deleted message' : `delete failed: ${(r?.tResp || r?.kResp)?.error || 'unknown'}`, r?.anyOk ? 'success' : 'error')
+    showToast(
+      r?.anyOk ? 'deleted message' : `delete failed: ${(r?.tResp || r?.kResp)?.error || 'unknown'}`,
+      r?.anyOk ? 'success' : 'error',
+    )
   } else {
     showModResultToast(label, target, r)
   }
@@ -34747,26 +34810,35 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
     const msgPlat = msg.dataset?.msgPlatform || 'twitch'
     const msgLogin = (msg.dataset?.msgLogin || msg.dataset?.msgUser || username || '').toLowerCase()
     const msgId = msg.dataset?.msgId || ''
-    const lookup = (typeof getChannelLookup === 'function') ? getChannelLookup() : null
-    const entry = (lookup && msgCh)
-      ? ((msgPlat === 'kick' ? lookup.kick.get(msgCh) : lookup.twitch.get(msgCh)) || lookup.byId.get(msgCh))
-      : null
+    const lookup = typeof getChannelLookup === 'function' ? getChannelLookup() : null
+    const entry =
+      lookup && msgCh
+        ? (msgPlat === 'kick' ? lookup.kick.get(msgCh) : lookup.twitch.get(msgCh)) || lookup.byId.get(msgCh)
+        : null
     const isKick = msgPlat === 'kick'
     // The channel key for the action + gate: kick slug for kick rows, twitch login otherwise.
-    const modCh = isKick ? (entry?.kick || msgCh) : (entry?.twitch || msgCh)
+    const modCh = isKick ? entry?.kick || msgCh : entry?.twitch || msgCh
     // currentUsername is a display name; compare against BOTH the login and the
     // display name so a non-Latin-named mod can't be shown self-mod actions.
-    const _selfRef = (typeof currentUsername !== 'undefined' && currentUsername) ? currentUsername.toLowerCase() : null
+    const _selfRef = typeof currentUsername !== 'undefined' && currentUsername ? currentUsername.toLowerCase() : null
     const notSelf = !_selfRef || (msgLogin !== _selfRef && (msg.dataset?.msgUser || '').toLowerCase() !== _selfRef)
     const amMod = isKick
-      ? (typeof isKickModForSync === 'function' && isKickModForSync(modCh))
-      : (typeof isModForSync === 'function' && isModForSync(modCh))
+      ? typeof isKickModForSync === 'function' && isKickModForSync(modCh)
+      : typeof isModForSync === 'function' && isModForSync(modCh)
     if (modCh && notSelf) {
       if (amMod) {
         const mod = []
-        if (msgId) mod.push({ label: 'delete msg', danger: true, fn: () => _ctxMod('delete', msgCh, msgPlat, msgLogin, msgId, 0, 'deleted') })
+        if (msgId)
+          mod.push({
+            label: 'delete msg',
+            danger: true,
+            fn: () => _ctxMod('delete', msgCh, msgPlat, msgLogin, msgId, 0, 'deleted'),
+          })
         mod.push(
-          { label: 'timeout 10m', fn: () => _ctxMod('timeout', msgCh, msgPlat, msgLogin, msgId, 600, 'timed out 600s') },
+          {
+            label: 'timeout 10m',
+            fn: () => _ctxMod('timeout', msgCh, msgPlat, msgLogin, msgId, 600, 'timed out 600s'),
+          },
           { label: 'ban', danger: true, fn: () => _ctxMod('ban', msgCh, msgPlat, msgLogin, msgId, 0, 'banned') },
           { label: 'unban', fn: () => _ctxMod('unban', msgCh, msgPlat, msgLogin, msgId, 0, 'unbanned') },
           'sep',
@@ -34774,8 +34846,9 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
         items.push(...mod)
       } else {
         // Warm the right cache so the next right-click surfaces actions.
-        if (isKick) { if (typeof prefetchKickModFor === 'function') prefetchKickModFor(modCh) }
-        else if (typeof prefetchModFor === 'function') prefetchModFor(modCh)
+        if (isKick) {
+          if (typeof prefetchKickModFor === 'function') prefetchKickModFor(modCh)
+        } else if (typeof prefetchModFor === 'function') prefetchModFor(modCh)
       }
     }
   }
@@ -38334,7 +38407,14 @@ async function handleSlashCommand(text, input) {
       }
       const [, target, secStr, reason] = m
       const sec = secStr ? Math.max(1, parseInt(secStr)) : 600
-      const r = await dispatchModAction({ channel: modChannel, action: 'timeout', target, durationSec: sec, reason, fanout: true })
+      const r = await dispatchModAction({
+        channel: modChannel,
+        action: 'timeout',
+        target,
+        durationSec: sec,
+        reason,
+        fanout: true,
+      })
       showModResultToast(`timed out ${sec}s`, target, r)
       if (r?.anyOk) clearInput(input)
       return true
@@ -38399,7 +38479,8 @@ async function handleSlashCommand(text, input) {
     const off = arg === 'off'
     let minutes
     if (off) minutes = -1
-    else if (!arg) minutes = 0 // any follower
+    else if (!arg)
+      minutes = 0 // any follower
     else {
       minutes = _parseModeDuration(arg, 'min')
       if (minutes == null) {
@@ -38409,7 +38490,10 @@ async function handleSlashCommand(text, input) {
     }
     const resp = await setTwitchFollowersMode(twitchTarget, minutes)
     if (resp.ok) {
-      showToast(off ? 'followers-only off' : minutes ? `followers-only on (${minutes}m)` : 'followers-only on', 'success')
+      showToast(
+        off ? 'followers-only off' : minutes ? `followers-only on (${minutes}m)` : 'followers-only on',
+        'success',
+      )
       clearInput(input)
     } else {
       showToast(`/followers failed: ${resp.error}`, 'error')
@@ -39513,16 +39597,24 @@ function pcBuildModActions(username) {
     if (plat !== 'twitch' && plat !== 'kick') continue
     const ch = (m.channel || '').toLowerCase()
     if (!ch) continue
-    const amMod = plat === 'kick'
-      ? (typeof isKickModForSync === 'function' && isKickModForSync(ch))
-      : (typeof isModForSync === 'function' && isModForSync(ch))
+    const amMod =
+      plat === 'kick'
+        ? typeof isKickModForSync === 'function' && isKickModForSync(ch)
+        : typeof isModForSync === 'function' && isModForSync(ch)
     if (!amMod) {
-      if (plat === 'kick') { if (typeof prefetchKickModFor === 'function') prefetchKickModFor(ch) }
-      else if (typeof prefetchModFor === 'function') prefetchModFor(ch)
+      if (plat === 'kick') {
+        if (typeof prefetchKickModFor === 'function') prefetchKickModFor(ch)
+      } else if (typeof prefetchModFor === 'function') prefetchModFor(ch)
       continue
     }
     const key = plat + ':' + ch
-    if (!groups.has(key)) groups.set(key, { channel: ch, platform: plat, msgId: m.id || null, login: (m.login || m.user || '').toLowerCase() })
+    if (!groups.has(key))
+      groups.set(key, {
+        channel: ch,
+        platform: plat,
+        msgId: m.id || null,
+        login: (m.login || m.user || '').toLowerCase(),
+      })
   }
   if (!groups.size) return null
   const sec = document.createElement('div')
@@ -39535,11 +39627,18 @@ function pcBuildModActions(username) {
   reasonInput.placeholder = 'reason (optional)'
   reasonInput.className = 'hs-pcard-mod-reason'
   reasonInput.maxLength = 200
-  reasonInput.style.cssText = 'width:100%;box-sizing:border-box;background:#000;color:#fff;border:1px solid #333;border-radius:0;padding:2px 5px;margin-bottom:3px;font:inherit;outline:none'
-  reasonInput.addEventListener('focus', () => { reasonInput.style.borderColor = '#ff8700' })
-  reasonInput.addEventListener('blur', () => { reasonInput.style.borderColor = '#333' })
+  reasonInput.style.cssText =
+    'width:100%;box-sizing:border-box;background:#000;color:#fff;border:1px solid #333;border-radius:0;padding:2px 5px;margin-bottom:3px;font:inherit;outline:none'
+  reasonInput.addEventListener('focus', () => {
+    reasonInput.style.borderColor = '#ff8700'
+  })
+  reasonInput.addEventListener('blur', () => {
+    reasonInput.style.borderColor = '#333'
+  })
   // Don't let card-level key handlers (vim nav etc.) hijack typing; keep Escape.
-  reasonInput.addEventListener('keydown', (e) => { if (e.key !== 'Escape') e.stopPropagation() })
+  reasonInput.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') e.stopPropagation()
+  })
   sec.appendChild(reasonInput)
   for (const { channel, platform, msgId, login } of groups.values()) {
     const target = login || (username || '').toLowerCase()
@@ -39576,15 +39675,28 @@ function pcBuildModActions(username) {
         // Act on this row's own platform (twitch or kick), single-platform.
         let r
         try {
-          r = await dispatchModAction({ channel, platform, action: a.action, target, durationSec: a.durationSec, msgId, reason })
+          r = await dispatchModAction({
+            channel,
+            platform,
+            action: a.action,
+            target,
+            durationSec: a.durationSec,
+            msgId,
+            reason,
+          })
         } catch (err) {
           r = { anyOk: false, tResp: { error: err?.message || 'error' } }
         }
         b.textContent = orig
         if (a.action === 'delete') {
-          if (typeof showToast === 'function') showToast(r?.anyOk ? 'deleted message' : `delete failed: ${(r?.tResp || r?.kResp)?.error || 'unknown'}`, r?.anyOk ? 'success' : 'error')
+          if (typeof showToast === 'function')
+            showToast(
+              r?.anyOk ? 'deleted message' : `delete failed: ${(r?.tResp || r?.kResp)?.error || 'unknown'}`,
+              r?.anyOk ? 'success' : 'error',
+            )
         } else {
-          const label = a.action === 'ban' ? 'banned' : a.action === 'unban' ? 'unbanned' : `timed out ${a.durationSec}s`
+          const label =
+            a.action === 'ban' ? 'banned' : a.action === 'unban' ? 'unbanned' : `timed out ${a.durationSec}s`
           if (typeof showModResultToast === 'function') showModResultToast(label, target, r)
         }
         b.disabled = a.need === 'msg' && !msgId
@@ -43014,8 +43126,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       if (channelLogin && m.channel !== channelLogin) continue
       const ch = m.channel || null
       const isKick = (m.badgePlatform || m.platform) === 'kick'
-      const anchor =
-        div.querySelector('.hs-mc-avatar') || div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
+      const anchor = div.querySelector('.hs-mc-avatar') || div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
       if (!anchor) continue
       for (const badge of m.badges.split(',')) {
         const sep = badge.indexOf('/')
@@ -43063,9 +43174,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         img.width = 18
         img.height = 18
         img.style.cssText = `width:18px;height:18px;${
-          isFFZ && BADGE_STYLES[name]
-            ? `background:${BADGE_STYLES[name].bg};padding:1px;border-radius:2px;`
-            : ''
+          isFFZ && BADGE_STYLES[name] ? `background:${BADGE_STYLES[name].bg};padding:1px;border-radius:2px;` : ''
         }`
         img.dataset.hsSrc = safeU
         // Replace text-fallback span if present; else insert before anchor.
@@ -43206,7 +43315,11 @@ const STORAGE_KEY = 'heatsync_multichat'
   let _uiOverflowCachePromise = null
   function cachedUiOverflow() {
     if (!_uiOverflowCachePromise) {
-      _uiOverflowCachePromise = chrome.storage.local.get(['platform_filters', 'keyword_highlights', 'chat_filter_rules'])
+      _uiOverflowCachePromise = chrome.storage.local.get([
+        'platform_filters',
+        'keyword_highlights',
+        'chat_filter_rules',
+      ])
     }
     return _uiOverflowCachePromise
   }
@@ -43652,7 +43765,9 @@ const STORAGE_KEY = 'heatsync_multichat'
     },
     filterRules: () => {
       let rules = []
-      try { rules = JSON.parse(getSetting('chatFilterRules') || '[]') } catch {}
+      try {
+        rules = JSON.parse(getSetting('chatFilterRules') || '[]')
+      } catch {}
       compileFilterRules(Array.isArray(rules) ? rules : [])
     },
     nativeVisible: () => {
@@ -44584,7 +44699,7 @@ const STORAGE_KEY = 'heatsync_multichat'
 
   // Inline media embeds in chat — images/gifs/video/link-cards rendered below
   // the message (never live iframes; see extractChatEmbed). Default on.
-  let mediaEmbedsEnabled = true;
+  let mediaEmbedsEnabled = true
 
   // Vi mode for chat input (default off)
   let viModeEnabled = false
@@ -46665,8 +46780,11 @@ const STORAGE_KEY = 'heatsync_multichat'
         // which is immune only because twitchGql throws on error).
         if (res?.ok) _kickModStateCache.set(slug, isMod)
         return isMod
-      } catch (_) { return false }
-      finally { _kickModStatePending.delete(slug) }
+      } catch (_) {
+        return false
+      } finally {
+        _kickModStatePending.delete(slug)
+      }
     })()
     _kickModStatePending.set(slug, p)
     return p
@@ -46782,28 +46900,52 @@ const STORAGE_KEY = 'heatsync_multichat'
   }
   function _modNoticeFields(action, actor, tgt, durationSec) {
     const a = actor || tgt
-    if (action === 'ban')     return { noticeType: 'ban_success',     systemMsg: a ? `${a} banned ${tgt}` : `${tgt} was permanently banned` }
-    if (action === 'timeout') { const d = Math.max(1, durationSec | 0); return { noticeType: 'timeout_success', systemMsg: a ? `${a} timed out ${tgt} for ${d}s` : `${tgt} timed out for ${d}s` } }
-    if (action === 'unban' || action === 'untimeout') return { noticeType: 'unban_success', systemMsg: a ? `${a} unbanned ${tgt}` : `${tgt} is no longer banned` }
-    if (action === 'delete')  return { noticeType: 'delete_message_success', systemMsg: a ? `${a} deleted a message${tgt ? ` from ${tgt}` : ''}` : (tgt ? `${tgt}'s message deleted` : 'message deleted') }
+    if (action === 'ban')
+      return { noticeType: 'ban_success', systemMsg: a ? `${a} banned ${tgt}` : `${tgt} was permanently banned` }
+    if (action === 'timeout') {
+      const d = Math.max(1, durationSec | 0)
+      return {
+        noticeType: 'timeout_success',
+        systemMsg: a ? `${a} timed out ${tgt} for ${d}s` : `${tgt} timed out for ${d}s`,
+      }
+    }
+    if (action === 'unban' || action === 'untimeout')
+      return { noticeType: 'unban_success', systemMsg: a ? `${a} unbanned ${tgt}` : `${tgt} is no longer banned` }
+    if (action === 'delete')
+      return {
+        noticeType: 'delete_message_success',
+        systemMsg: a
+          ? `${a} deleted a message${tgt ? ` from ${tgt}` : ''}`
+          : tgt
+            ? `${tgt}'s message deleted`
+            : 'message deleted',
+      }
     return null
   }
   // Twitch — route through irc._handleMsg (dedup + buffer + render).
   function _injectTwitchModNotice({ channel, action, target, durationSec, msgId }) {
     try {
-      const ch = String(channel || '').toLowerCase().replace(/^#/, '')
+      const ch = String(channel || '')
+        .toLowerCase()
+        .replace(/^#/, '')
       if (!ch || !irc?.channels?.has(ch)) return
       const tgt = String(target || '').replace(/^@/, '')
       const tgtLc = tgt.toLowerCase()
       const f = _modNoticeFields(action, _modActor(), tgt, durationSec)
       if (!f) return
       irc._handleMsg?.({
-        type: 'notice', noticeType: f.noticeType, user: 'system',
-        text: f.systemMsg, systemMsg: f.systemMsg, color: '#808080', badges: '',
-        channel: ch, time: Date.now(),
+        type: 'notice',
+        noticeType: f.noticeType,
+        user: 'system',
+        text: f.systemMsg,
+        systemMsg: f.systemMsg,
+        color: '#808080',
+        badges: '',
+        channel: ch,
+        time: Date.now(),
         id: `hs-synth-mod-${f.noticeType}-${ch}-${tgtLc || msgId || ''}-${Date.now()}`,
         targetUser: tgtLc,
-        targetMsgId: action === 'delete' ? (msgId || '') : undefined,
+        targetMsgId: action === 'delete' ? msgId || '' : undefined,
         banDuration: action === 'timeout' ? Math.max(1, durationSec | 0) : 0,
         isSynthetic: true,
       })
@@ -46813,7 +46955,9 @@ const STORAGE_KEY = 'heatsync_multichat'
   // competing Kick transport, so no dedup needed.
   function _injectKickModNotice({ channel, action, target, durationSec, msgId }) {
     try {
-      const slug = String(channel || '').toLowerCase().replace(/^#/, '')
+      const slug = String(channel || '')
+        .toLowerCase()
+        .replace(/^#/, '')
       const buf = kickChat?.channels?.get(slug)
       if (!buf) return
       const tgt = String(target || '').replace(/^@/, '')
@@ -46821,35 +46965,52 @@ const STORAGE_KEY = 'heatsync_multichat'
       const f = _modNoticeFields(action, _modActor(), tgt, durationSec)
       if (!f) return
       const m = {
-        type: 'notice', noticeType: f.noticeType, user: 'system',
-        text: f.systemMsg, systemMsg: f.systemMsg, color: '#808080', badges: '',
-        channel: slug, time: Date.now(), platform: 'kick',
+        type: 'notice',
+        noticeType: f.noticeType,
+        user: 'system',
+        text: f.systemMsg,
+        systemMsg: f.systemMsg,
+        color: '#808080',
+        badges: '',
+        channel: slug,
+        time: Date.now(),
+        platform: 'kick',
         id: `hs-synth-kick-mod-${f.noticeType}-${slug}-${tgtLc || msgId || ''}-${Date.now()}`,
-        targetUser: tgtLc, isSynthetic: true,
+        targetUser: tgtLc,
+        isSynthetic: true,
       }
       buf.push(m)
-      try { kickChat.emit('message', m) } catch (_) {}
+      try {
+        kickChat.emit('message', m)
+      } catch (_) {}
     } catch (_) {}
   }
-  try { globalThis.__hsInjectModNotice = _injectTwitchModNotice } catch (_) {}
+  try {
+    globalThis.__hsInjectModNotice = _injectTwitchModNotice
+  } catch (_) {}
 
   // Resolve a channel descriptor (tab id, twitch login, or kick slug) to its
   // linked twitch login + kick slug via the O(1) channel lookup.
   function _resolveModTargets(channel, platform) {
-    const lookup = (typeof getChannelLookup === 'function') ? getChannelLookup() : null
+    const lookup = typeof getChannelLookup === 'function' ? getChannelLookup() : null
     const raw = String(channel || '').replace(/^#/, '')
     const lc = raw.toLowerCase()
     let entry = null
     if (lookup && raw) {
-      entry = lookup.byId?.get(raw) || lookup.byId?.get(lc)
-        || lookup.twitch?.get(raw) || lookup.twitch?.get(lc)
-        || lookup.kick?.get(raw) || lookup.kick?.get(lc) || null
+      entry =
+        lookup.byId?.get(raw) ||
+        lookup.byId?.get(lc) ||
+        lookup.twitch?.get(raw) ||
+        lookup.twitch?.get(lc) ||
+        lookup.kick?.get(raw) ||
+        lookup.kick?.get(lc) ||
+        null
     }
     // Trust a found entry: if it's kick-only, twitchName stays null (don't fire a
     // bogus Twitch call with the tab id). Only fall back to the raw channel
     // string when NO entry exists at all (unregistered/anon channel).
-    const twitchName = entry ? (entry.twitch || null) : (platform !== 'kick' && lc ? lc : null)
-    const kickSlug = entry ? (entry.kick || null) : (platform === 'kick' && lc ? lc : null)
+    const twitchName = entry ? entry.twitch || null : platform !== 'kick' && lc ? lc : null
+    const kickSlug = entry ? entry.kick || null : platform === 'kick' && lc ? lc : null
     return { twitchName, kickSlug }
   }
 
@@ -46865,66 +47026,116 @@ const STORAGE_KEY = 'heatsync_multichat'
     if (!twitchName && !kickSlug) return { tResp: null, kResp: null, twitchName: null, kickSlug: null, anyOk: false }
     const tgt = String(target || '').replace(/^@/, '')
     const sec = Math.max(1, durationSec | 0)
-    const runTwitch = () => (
-      action === 'ban'     ? banTwitchUser(twitchName, tgt, reason || '') :
-      action === 'timeout' ? timeoutTwitchUser(twitchName, tgt, sec, reason || '') :
-      action === 'unban'   ? unbanTwitchUser(twitchName, tgt) :
-      action === 'delete'  ? deleteTwitchMessage(twitchName, msgId) :
-      Promise.resolve(null)
-    )
-    const runKick = () => safeSendMessage({
-      type: 'kick_mod_action', action, slug: kickSlug, username: tgt,
-      durationMin: action === 'timeout' ? Math.max(1, Math.round(sec / 60)) : 0,
-      reason: reason || '',
-      messageId: action === 'delete' ? (msgId || '') : '',
-    })
+    const runTwitch = () =>
+      action === 'ban'
+        ? banTwitchUser(twitchName, tgt, reason || '')
+        : action === 'timeout'
+          ? timeoutTwitchUser(twitchName, tgt, sec, reason || '')
+          : action === 'unban'
+            ? unbanTwitchUser(twitchName, tgt)
+            : action === 'delete'
+              ? deleteTwitchMessage(twitchName, msgId)
+              : Promise.resolve(null)
+    const runKick = () =>
+      safeSendMessage({
+        type: 'kick_mod_action',
+        action,
+        slug: kickSlug,
+        username: tgt,
+        durationMin: action === 'timeout' ? Math.max(1, Math.round(sec / 60)) : 0,
+        reason: reason || '',
+        messageId: action === 'delete' ? msgId || '' : '',
+      })
 
     if (action === 'delete') {
       // A message exists on exactly one platform. Known platform → only there;
       // unknown (e.g. /delete <id>) → twitch-first then kick fallback.
-      let resp = null, plat = null
-      if (platform === 'kick' && kickSlug) { plat = 'kick'; resp = await runKick() }
-      else if (platform === 'twitch' && twitchName) { plat = 'twitch'; resp = await runTwitch() }
-      else if (twitchName) { plat = 'twitch'; resp = await runTwitch(); if (!resp?.ok && kickSlug) { plat = 'kick'; resp = await runKick() } }
-      else if (kickSlug) { plat = 'kick'; resp = await runKick() }
+      let resp = null,
+        plat = null
+      if (platform === 'kick' && kickSlug) {
+        plat = 'kick'
+        resp = await runKick()
+      } else if (platform === 'twitch' && twitchName) {
+        plat = 'twitch'
+        resp = await runTwitch()
+      } else if (twitchName) {
+        plat = 'twitch'
+        resp = await runTwitch()
+        if (!resp?.ok && kickSlug) {
+          plat = 'kick'
+          resp = await runKick()
+        }
+      } else if (kickSlug) {
+        plat = 'kick'
+        resp = await runKick()
+      }
       if (resp?.ok) {
         if (plat === 'kick') _injectKickModNotice({ channel: kickSlug, action, target: tgt, msgId })
         else _injectTwitchModNotice({ channel: twitchName, action, target: tgt, msgId })
       }
-      return { tResp: plat === 'twitch' ? resp : null, kResp: plat === 'kick' ? resp : null, twitchName, kickSlug, anyOk: !!resp?.ok }
+      return {
+        tResp: plat === 'twitch' ? resp : null,
+        kResp: plat === 'kick' ? resp : null,
+        twitchName,
+        kickSlug,
+        anyOk: !!resp?.ok,
+      }
     }
 
     // ban / timeout / unban
     let doTwitch, doKick
-    if (fanout) { doTwitch = !!twitchName; doKick = !!kickSlug }
-    else if (platform === 'kick') { doKick = !!kickSlug; doTwitch = !doKick && !!twitchName }
-    else { doTwitch = !!twitchName; doKick = !doTwitch && !!kickSlug }
-    const [tResp, kResp] = await Promise.all([
-      doTwitch ? runTwitch() : null,
-      doKick ? runKick() : null,
-    ])
+    if (fanout) {
+      doTwitch = !!twitchName
+      doKick = !!kickSlug
+    } else if (platform === 'kick') {
+      doKick = !!kickSlug
+      doTwitch = !doKick && !!twitchName
+    } else {
+      doTwitch = !!twitchName
+      doKick = !doTwitch && !!kickSlug
+    }
+    const [tResp, kResp] = await Promise.all([doTwitch ? runTwitch() : null, doKick ? runKick() : null])
     if (tResp?.ok) _injectTwitchModNotice({ channel: twitchName, action, target: tgt, durationSec: sec })
     if (kResp?.ok) _injectKickModNotice({ channel: kickSlug, action, target: tgt, durationSec: sec })
     return { tResp, kResp, twitchName, kickSlug, anyOk: !!(tResp?.ok || kResp?.ok) }
   }
-  try { globalThis.__hsDispatchMod = dispatchModAction } catch (_) {}
+  try {
+    globalThis.__hsDispatchMod = dispatchModAction
+  } catch (_) {}
 
   // One consistent result toast for every surface.
   function showModResultToast(label, target, r) {
     try {
-      const tResp = r?.tResp, kResp = r?.kResp
-      const tOk = tResp?.ok, kOk = kResp?.ok
+      const tResp = r?.tResp,
+        kResp = r?.kResp
+      const tOk = tResp?.ok,
+        kOk = kResp?.ok
       if (tResp && kResp) {
-        if (tOk && kOk) { showToast(`${label} ${target} (twitch+kick)`, 'success'); return }
-        if (tOk) { showToast(`${label} ${target} on twitch — kick failed: ${kResp.error || 'unknown'}`, 'error'); return }
-        if (kOk) { showToast(`${label} ${target} on kick — twitch failed: ${tResp.error || 'unknown'}`, 'error'); return }
-        showToast(`${label} failed: twitch ${tResp.error || '?'} / kick ${kResp.error || '?'}`, 'error'); return
+        if (tOk && kOk) {
+          showToast(`${label} ${target} (twitch+kick)`, 'success')
+          return
+        }
+        if (tOk) {
+          showToast(`${label} ${target} on twitch — kick failed: ${kResp.error || 'unknown'}`, 'error')
+          return
+        }
+        if (kOk) {
+          showToast(`${label} ${target} on kick — twitch failed: ${tResp.error || 'unknown'}`, 'error')
+          return
+        }
+        showToast(`${label} failed: twitch ${tResp.error || '?'} / kick ${kResp.error || '?'}`, 'error')
+        return
       }
       const only = tResp || kResp
-      showToast(only?.ok ? `${label} ${target}` : `${label} failed: ${only?.error || 'unknown'}`, only?.ok ? 'success' : 'error')
+      showToast(
+        only?.ok ? `${label} ${target}` : `${label} failed: ${only?.error || 'unknown'}`,
+        only?.ok ? 'success' : 'error',
+      )
     } catch (_) {}
   }
-  try { globalThis.__hsModToast = showModResultToast } catch (_) {}
+  try {
+    globalThis.__hsModToast = showModResultToast
+  } catch (_) {}
 
   async function runModAction(id) {
     const def = MOD_BUTTON_CATALOG[id]
@@ -46934,8 +47145,14 @@ const STORAGE_KEY = 'heatsync_multichat'
     const wasOp = row?.style?.opacity
     if (row) row.style.opacity = '0.5'
     // Act on the row's own platform (twitch or kick), single-platform.
-    const r = await dispatchModAction({ channel, platform: _modCtx.platform || 'twitch', action: def.action, target, durationSec: def.durationSec, msgId })
-      .catch((e) => ({ anyOk: false, tResp: { error: e?.message || 'error' } }))
+    const r = await dispatchModAction({
+      channel,
+      platform: _modCtx.platform || 'twitch',
+      action: def.action,
+      target,
+      durationSec: def.durationSec,
+      msgId,
+    }).catch((e) => ({ anyOk: false, tResp: { error: e?.message || 'error' } }))
     if (row) row.style.opacity = wasOp || ''
     if (r?.anyOk && def.action === 'delete' && row && dimTimeouts) row.classList.add('hs-mc-msg-cleared')
     const label =
@@ -47985,7 +48202,9 @@ const STORAGE_KEY = 'heatsync_multichat'
   function _getRawFilterRules() {
     var raw = getSetting('chatFilterRules') || '[]'
     var arr = []
-    try { arr = JSON.parse(raw) } catch {}
+    try {
+      arr = JSON.parse(raw)
+    } catch {}
     return Array.isArray(arr) ? arr : []
   }
 
@@ -47993,7 +48212,9 @@ const STORAGE_KEY = 'heatsync_multichat'
     var json = JSON.stringify(rules)
     saveUiSetting('chatFilterRules', json)
     var parsed = []
-    try { parsed = JSON.parse(json) } catch {}
+    try {
+      parsed = JSON.parse(json)
+    } catch {}
     compileFilterRules(parsed)
     renderMessages(currentTab)
     if (currentTab === 'settings') renderSettingsTab()
@@ -48006,10 +48227,13 @@ const STORAGE_KEY = 'heatsync_multichat'
     badge: 'badge',
     msgtype: 'type',
   }
-  var FR_SCOPE_BTN = 'background:#000;color:#808080;border:1px solid #444;padding:1px 5px;font-size:11px;cursor:pointer;font-family:inherit;line-height:1.4'
-  var FR_BTN = 'background:#000;color:#fff;border:1px solid #808080;padding:1px 6px;font-size:11px;cursor:pointer;font-family:inherit;line-height:1.4'
+  var FR_SCOPE_BTN =
+    'background:#000;color:#808080;border:1px solid #444;padding:1px 5px;font-size:11px;cursor:pointer;font-family:inherit;line-height:1.4'
+  var FR_BTN =
+    'background:#000;color:#fff;border:1px solid #808080;padding:1px 6px;font-size:11px;cursor:pointer;font-family:inherit;line-height:1.4'
   var FR_SEL = 'background:#000;color:#fff;border:1px solid #808080;padding:1px 3px;font-size:12px;font-family:inherit'
-  var FR_INPUT = 'background:#000;color:#fff;border:1px solid #808080;padding:1px 4px;font-size:12px;font-family:inherit;flex:1;min-width:60px'
+  var FR_INPUT =
+    'background:#000;color:#fff;border:1px solid #808080;padding:1px 4px;font-size:12px;font-family:inherit;flex:1;min-width:60px'
 
   function _renderFilterRuleRow(r) {
     var on = !!r.enabled
@@ -48018,51 +48242,92 @@ const STORAGE_KEY = 'heatsync_multichat'
     var aLabel = r.action === 'hide' ? 'hide' : 'hl'
     var aColor = r.action === 'highlight' && r.color ? escapeHtml(r.color) : ''
     var swatch = aColor
-      ? '<span style="display:inline-block;width:10px;height:10px;background:' + aColor + ';border:1px solid #444;vertical-align:middle;margin-left:2px"></span>'
+      ? '<span style="display:inline-block;width:10px;height:10px;background:' +
+        aColor +
+        ';border:1px solid #444;vertical-align:middle;margin-left:2px"></span>'
       : ''
     var scopeLabel = r.scope && r.scope !== 'all' ? escapeHtml(String(r.scope)) : 'all'
     var id = escapeHtml(String(r.id))
     return (
-      '<div class="hs-mc-setting-row hs-mc-setting-row-split" data-fr-row="' + id + '" style="gap:4px">' +
+      '<div class="hs-mc-setting-row hs-mc-setting-row-split" data-fr-row="' +
+      id +
+      '" style="gap:4px">' +
       '<div style="display:flex;align-items:center;gap:4px;flex:1;min-width:0;overflow:hidden">' +
-      '<button class="hs-mc-toggle-pill' + (on ? ' active' : '') + '" data-fr-action="toggle" data-fr-id="' + id + '" style="flex-shrink:0"><span class="hs-mc-toggle-knob"></span></button>' +
-      '<span style="color:#808080;font-size:11px;min-width:28px;flex-shrink:0">' + typeLabel + '</span>' +
-      '<span style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1" title="' + val + '">' + val + '</span>' +
-      '<span style="color:#aaa;font-size:11px;flex-shrink:0">▶' + aLabel + '</span>' +
-      (aColor ? '<span style="display:inline-block;width:10px;height:10px;background:' + aColor + ';border:1px solid #444;flex-shrink:0"></span>' : '') +
-      '<span style="color:#666;font-size:11px;flex-shrink:0">' + scopeLabel + '</span>' +
+      '<button class="hs-mc-toggle-pill' +
+      (on ? ' active' : '') +
+      '" data-fr-action="toggle" data-fr-id="' +
+      id +
+      '" style="flex-shrink:0"><span class="hs-mc-toggle-knob"></span></button>' +
+      '<span style="color:#808080;font-size:11px;min-width:28px;flex-shrink:0">' +
+      typeLabel +
+      '</span>' +
+      '<span style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1" title="' +
+      val +
+      '">' +
+      val +
+      '</span>' +
+      '<span style="color:#aaa;font-size:11px;flex-shrink:0">▶' +
+      aLabel +
+      '</span>' +
+      (aColor
+        ? '<span style="display:inline-block;width:10px;height:10px;background:' +
+          aColor +
+          ';border:1px solid #444;flex-shrink:0"></span>'
+        : '') +
+      '<span style="color:#666;font-size:11px;flex-shrink:0">' +
+      scopeLabel +
+      '</span>' +
       '</div>' +
-      '<button data-fr-action="delete" data-fr-id="' + id + '" style="' + FR_BTN + ';color:#808080;flex-shrink:0" title="delete rule">✕</button>' +
+      '<button data-fr-action="delete" data-fr-id="' +
+      id +
+      '" style="' +
+      FR_BTN +
+      ';color:#808080;flex-shrink:0" title="delete rule">✕</button>' +
       '</div>'
     )
   }
 
   function _renderFilterRuleAddForm() {
-    var channels = (typeof config !== 'undefined' && config && config.channels) ? config.channels : []
-    var chOptions = '<option value="all">all channels</option>' +
-      channels.map(function(ch) {
-        var label = ch.twitch || ch.kick || ch.id || ''
-        return '<option value="' + escapeHtml(ch.id) + '">' + escapeHtml(label) + '</option>'
-      }).join('')
+    var channels = typeof config !== 'undefined' && config && config.channels ? config.channels : []
+    var chOptions =
+      '<option value="all">all channels</option>' +
+      channels
+        .map(function (ch) {
+          var label = ch.twitch || ch.kick || ch.id || ''
+          return '<option value="' + escapeHtml(ch.id) + '">' + escapeHtml(label) + '</option>'
+        })
+        .join('')
     return (
       '<div class="hs-mc-setting-row hs-mc-setting-row-block hs-mc-fr-addform" style="padding:4px 4px 6px">' +
       '<div style="font-size:11px;color:#808080;margin-bottom:4px">add rule</div>' +
       '<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">' +
-      '<select data-fr-field="type" style="' + FR_SEL + ';width:60px">' +
+      '<select data-fr-field="type" style="' +
+      FR_SEL +
+      ';width:60px">' +
       '<option value="keyword">keyword</option>' +
       '<option value="regex">regex</option>' +
       '<option value="user">user</option>' +
       '<option value="badge">badge</option>' +
       '<option value="msgtype">msgtype</option>' +
       '</select>' +
-      '<input type="text" data-fr-field="value" placeholder="value..." style="' + FR_INPUT + '">' +
-      '<select data-fr-field="action" style="' + FR_SEL + ';width:68px">' +
+      '<input type="text" data-fr-field="value" placeholder="value..." style="' +
+      FR_INPUT +
+      '">' +
+      '<select data-fr-field="action" style="' +
+      FR_SEL +
+      ';width:68px">' +
       '<option value="highlight">highlight</option>' +
       '<option value="hide">hide</option>' +
       '</select>' +
       '<input type="color" data-fr-field="color" value="#ffff00" style="width:28px;height:22px;border:1px solid #808080;background:#000;padding:1px;cursor:pointer;flex-shrink:0" title="highlight color">' +
-      '<select data-fr-field="scope" style="' + FR_SEL + ';max-width:80px">' + chOptions + '</select>' +
-      '<button data-fr-action="add" style="' + FR_BTN + ';background:#222">+ add</button>' +
+      '<select data-fr-field="scope" style="' +
+      FR_SEL +
+      ';max-width:80px">' +
+      chOptions +
+      '</select>' +
+      '<button data-fr-action="add" style="' +
+      FR_BTN +
+      ';background:#222">+ add</button>' +
       '</div>' +
       '</div>'
     )
@@ -48071,13 +48336,15 @@ const STORAGE_KEY = 'heatsync_multichat'
   function _renderFilterRulesGroup() {
     var fold = _setCollapsed.has('filters|rules')
     var rules = _getRawFilterRules()
-    var ruleRows = rules.length === 0
-      ? '<div class="hs-mc-setting-row" style="color:#808080;font-size:13px">no rules — add one below</div>'
-      : rules.map(_renderFilterRuleRow).join('')
+    var ruleRows =
+      rules.length === 0
+        ? '<div class="hs-mc-setting-row" style="color:#808080;font-size:13px">no rules — add one below</div>'
+        : rules.map(_renderFilterRuleRow).join('')
     return (
       '<div class="hs-mc-settings-group">' +
       '<div class="hs-mc-settings-group-title" data-set-fold="rules">' +
-      (fold ? '▸ ' : '▾ ') + 'filter rules' +
+      (fold ? '▸ ' : '▾ ') +
+      'filter rules' +
       (rules.length ? ' <span class="hs-mc-set-cnt">(' + rules.length + ')</span>' : '') +
       '</div>' +
       (fold ? '' : ruleRows + _renderFilterRuleAddForm()) +
@@ -48091,7 +48358,9 @@ const STORAGE_KEY = 'heatsync_multichat'
     var rules = _getRawFilterRules()
 
     if (action === 'toggle' && id) {
-      var toggleRule = rules.find(function(r) { return String(r.id) === id })
+      var toggleRule = rules.find(function (r) {
+        return String(r.id) === id
+      })
       if (toggleRule) {
         toggleRule.enabled = !toggleRule.enabled
         _saveFilterRules(rules)
@@ -48100,7 +48369,9 @@ const STORAGE_KEY = 'heatsync_multichat'
     }
 
     if (action === 'delete' && id) {
-      var delIdx = rules.findIndex(function(r) { return String(r.id) === id })
+      var delIdx = rules.findIndex(function (r) {
+        return String(r.id) === id
+      })
       if (delIdx !== -1) {
         rules.splice(delIdx, 1)
         _saveFilterRules(rules)
@@ -48121,7 +48392,10 @@ const STORAGE_KEY = 'heatsync_multichat'
       var ruleAct = actEl ? actEl.value : 'highlight'
       var ruleCol = colEl ? colEl.value : '#ffff00'
       var ruleScope = scopeEl ? scopeEl.value : 'all'
-      if (!ruleVal) { showToast('rule value is empty', 'error'); return }
+      if (!ruleVal) {
+        showToast('rule value is empty', 'error')
+        return
+      }
       var newRule = {
         id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
         enabled: true,
@@ -50789,11 +51063,8 @@ const STORAGE_KEY = 'heatsync_multichat'
     const snapEpoch = _renderEpoch
 
     function processChunk(offset) {
-      if (
-        currentTab !== snapTab ||
-        _renderEpoch !== snapEpoch ||
-        document.getElementById('hs-mc-messages') !== msgsEl
-      ) return
+      if (currentTab !== snapTab || _renderEpoch !== snapEpoch || document.getElementById('hs-mc-messages') !== msgsEl)
+        return
       const end = Math.min(offset + CHUNK, rows.length)
       for (let i = offset; i < end; i++) _processRow(rows[i])
       // Schedule next chunk via cleanup.raf — tracked in _rafs, cancelled by
@@ -51352,7 +51623,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       // for non-Latin names (display 田中 / login tanaka123); banning the display
       // name would target a bogus login and silently fail. m.login is the IRC
       // prefix login; kick has no separate display/login so it falls back to user.
-      div.dataset.msgLogin = (m.login || m.user || '')
+      div.dataset.msgLogin = m.login || m.user || ''
       div.dataset.msgChannel = m.channel || ''
       div.dataset.msgPlatform = m.platform || ''
       // Mark self-messages so the mod hover toolbar can skip them without
@@ -51378,8 +51649,14 @@ const STORAGE_KEY = 'heatsync_multichat'
     // iframe: chat is high-volume and runs on low-RAM hardware. Appended as a
     // sibling node (outside the cached _renderedHtml) so toggling the setting
     // takes effect on the next rerender. Lazy-loaded, error-guarded, capped.
-    if (mediaEmbedsEnabled && !m.cleared && m.text && m.type !== 'usernotice' && m.type !== 'notice'
-        && typeof extractChatEmbed === 'function') {
+    if (
+      mediaEmbedsEnabled &&
+      !m.cleared &&
+      m.text &&
+      m.type !== 'usernotice' &&
+      m.type !== 'notice' &&
+      typeof extractChatEmbed === 'function'
+    ) {
       const embedHtml = extractChatEmbed(m.text)
       if (embedHtml) {
         const holder = document.createElement('div')
@@ -52168,7 +52445,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     if (typeof id === 'string' && /^[a-z0-9_]{2,40}$/i.test(id)) prefetchModFor(id)
     // Symmetric kick warm-up — so the first kick right-click/hover surfaces mod
     // actions without a cold-cache miss (resolve the linked kick slug for this tab).
-    const _chForMod = (typeof getChannelById === 'function') ? getChannelById(id) : null
+    const _chForMod = typeof getChannelById === 'function' ? getChannelById(id) : null
     if (_chForMod?.kick) prefetchKickModFor(_chForMod.kick)
     // Profile card overrides normal tab content while open
     if (typeof activeProfileCard !== 'undefined' && activeProfileCard) {
@@ -55301,19 +55578,21 @@ const STORAGE_KEY = 'heatsync_multichat'
         emoteReloadTimer = cleanup.setTimeout(() => {
           const pending = _pendingEmoteScopes
           _pendingEmoteScopes = new Set()
-          loadEmotes().then(() => {
-            let firstLoad = false
-            for (const s of pending) {
-              if (!_emoteFirstLoad.has(s)) {
-                _emoteFirstLoad.add(s)
-                firstLoad = true
+          loadEmotes()
+            .then(() => {
+              let firstLoad = false
+              for (const s of pending) {
+                if (!_emoteFirstLoad.has(s)) {
+                  _emoteFirstLoad.add(s)
+                  firstLoad = true
+                }
               }
-            }
-            // First emote payload for this scope: plain-text history rows need to
-            // pick up the now-renderable emotes. In-place text swap instead of
-            // clearRenderedHtmlCache()→epoch bump→full rebuild (the flash).
-            if (firstLoad) reloadEmotesInPlace()
-          }).catch((e) => log('[heatsync-mc] loadEmotes error:', e))
+              // First emote payload for this scope: plain-text history rows need to
+              // pick up the now-renderable emotes. In-place text swap instead of
+              // clearRenderedHtmlCache()→epoch bump→full rebuild (the flash).
+              if (firstLoad) reloadEmotesInPlace()
+            })
+            .catch((e) => log('[heatsync-mc] loadEmotes error:', e))
         }, 300)
       }
       // Inventory changes: update membership + viewer's personal set.
@@ -55782,7 +56061,9 @@ const STORAGE_KEY = 'heatsync_multichat'
         const v = changes.chat_filter_rules.newValue
         if (typeof v === 'string') {
           let rules = []
-          try { rules = JSON.parse(v) } catch {}
+          try {
+            rules = JSON.parse(v)
+          } catch {}
           compileFilterRules(Array.isArray(rules) ? rules : [])
           renderMessages(currentTab)
           if (currentTab === 'settings') renderSettingsTab()
@@ -55818,20 +56099,22 @@ const STORAGE_KEY = 'heatsync_multichat'
         emoteReloadTimer = cleanup.setTimeout(() => {
           const pending = _pendingEmoteScopes
           _pendingEmoteScopes = new Set()
-          loadEmotes().then(() => {
-            let firstLoad = false
-            for (const s of pending) {
-              if (!_emoteFirstLoad.has(s)) {
-                _emoteFirstLoad.add(s)
-                firstLoad = true
+          loadEmotes()
+            .then(() => {
+              let firstLoad = false
+              for (const s of pending) {
+                if (!_emoteFirstLoad.has(s)) {
+                  _emoteFirstLoad.add(s)
+                  firstLoad = true
+                }
               }
-            }
-            // firstLoad: in-place text swap (no rebuild flash), skipping the
-            // visible-row swap when scrolled up. non-firstLoad emote edits render
-            // now (only when at/near bottom, to not yank a scrolled-up reader).
-            if (firstLoad) reloadEmotesInPlace(!isScrolledUp)
-            else if (!isScrolledUp) renderMessages(currentTab)
-          }).catch((e) => log('[heatsync-mc] loadEmotes error:', e))
+              // firstLoad: in-place text swap (no rebuild flash), skipping the
+              // visible-row swap when scrolled up. non-firstLoad emote edits render
+              // now (only when at/near bottom, to not yank a scrolled-up reader).
+              if (firstLoad) reloadEmotesInPlace(!isScrolledUp)
+              else if (!isScrolledUp) renderMessages(currentTab)
+            })
+            .catch((e) => log('[heatsync-mc] loadEmotes error:', e))
         }, 300)
       }
 
@@ -56559,14 +56842,16 @@ const STORAGE_KEY = 'heatsync_multichat'
     // resolves before requestIdleCallback fires, so injectStreamEventsIntoBuffers
     // sees empty irc.channels and silently drops chat injection.
     cleanup.setTimeout(() => {
-      loadStreamEvents().then(() => {
-        if (streamEventsLoaded) {
-          const active = currentTab
-          if (active === 'live' || config.channels.some((ch) => ch.id === active)) {
-            renderMessages(active)
+      loadStreamEvents()
+        .then(() => {
+          if (streamEventsLoaded) {
+            const active = currentTab
+            if (active === 'live' || config.channels.some((ch) => ch.id === active)) {
+              renderMessages(active)
+            }
           }
-        }
-      }).catch((e) => log('[heatsync-mc] loadStreamEvents error:', e))
+        })
+        .catch((e) => log('[heatsync-mc] loadStreamEvents error:', e))
     }, 300)
 
     // Scan existing chat for mentions (before IRC catches new ones)
@@ -56704,10 +56989,11 @@ const STORAGE_KEY = 'heatsync_multichat'
         }
       }
       // Automod + filter rules: drop messages matching filter. Own msgs exempt.
-      if (msg.user?.toLowerCase() !== currentUsername?.toLowerCase() && (
-        shouldAutomod(msg.text) ||
-        evaluateFilterRules(msg, getChannelLookup().twitch.get(msg.channel)?.id).hide
-      )) return
+      if (
+        msg.user?.toLowerCase() !== currentUsername?.toLowerCase() &&
+        (shouldAutomod(msg.text) || evaluateFilterRules(msg, getChannelLookup().twitch.get(msg.channel)?.id).hide)
+      )
+        return
       const isMent = isMention(msg)
       bumpStreamStats(msg.channel, msg, isMent)
       if (isMent) {
@@ -56781,10 +57067,11 @@ const STORAGE_KEY = 'heatsync_multichat'
           msg.platform = sentHost === 'yt' ? 'youtube' : sentHost
         }
       }
-      if (msg.user?.toLowerCase() !== currentUsername?.toLowerCase() && (
-        shouldAutomod(msg.text) ||
-        evaluateFilterRules(msg, getChannelLookup().kick.get(msg.channel)?.id).hide
-      )) return
+      if (
+        msg.user?.toLowerCase() !== currentUsername?.toLowerCase() &&
+        (shouldAutomod(msg.text) || evaluateFilterRules(msg, getChannelLookup().kick.get(msg.channel)?.id).hide)
+      )
+        return
       const isMent = isMention(msg)
       bumpStreamStats(msg.channel, msg, isMent)
       if (isMent) {

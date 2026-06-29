@@ -394,16 +394,24 @@ function pcBuildModActions(username) {
     if (plat !== 'twitch' && plat !== 'kick') continue
     const ch = (m.channel || '').toLowerCase()
     if (!ch) continue
-    const amMod = plat === 'kick'
-      ? (typeof isKickModForSync === 'function' && isKickModForSync(ch))
-      : (typeof isModForSync === 'function' && isModForSync(ch))
+    const amMod =
+      plat === 'kick'
+        ? typeof isKickModForSync === 'function' && isKickModForSync(ch)
+        : typeof isModForSync === 'function' && isModForSync(ch)
     if (!amMod) {
-      if (plat === 'kick') { if (typeof prefetchKickModFor === 'function') prefetchKickModFor(ch) }
-      else if (typeof prefetchModFor === 'function') prefetchModFor(ch)
+      if (plat === 'kick') {
+        if (typeof prefetchKickModFor === 'function') prefetchKickModFor(ch)
+      } else if (typeof prefetchModFor === 'function') prefetchModFor(ch)
       continue
     }
     const key = plat + ':' + ch
-    if (!groups.has(key)) groups.set(key, { channel: ch, platform: plat, msgId: m.id || null, login: (m.login || m.user || '').toLowerCase() })
+    if (!groups.has(key))
+      groups.set(key, {
+        channel: ch,
+        platform: plat,
+        msgId: m.id || null,
+        login: (m.login || m.user || '').toLowerCase(),
+      })
   }
   if (!groups.size) return null
   const sec = document.createElement('div')
@@ -416,11 +424,18 @@ function pcBuildModActions(username) {
   reasonInput.placeholder = 'reason (optional)'
   reasonInput.className = 'hs-pcard-mod-reason'
   reasonInput.maxLength = 200
-  reasonInput.style.cssText = 'width:100%;box-sizing:border-box;background:#000;color:#fff;border:1px solid #333;border-radius:0;padding:2px 5px;margin-bottom:3px;font:inherit;outline:none'
-  reasonInput.addEventListener('focus', () => { reasonInput.style.borderColor = '#ff8700' })
-  reasonInput.addEventListener('blur', () => { reasonInput.style.borderColor = '#333' })
+  reasonInput.style.cssText =
+    'width:100%;box-sizing:border-box;background:#000;color:#fff;border:1px solid #333;border-radius:0;padding:2px 5px;margin-bottom:3px;font:inherit;outline:none'
+  reasonInput.addEventListener('focus', () => {
+    reasonInput.style.borderColor = '#ff8700'
+  })
+  reasonInput.addEventListener('blur', () => {
+    reasonInput.style.borderColor = '#333'
+  })
   // Don't let card-level key handlers (vim nav etc.) hijack typing; keep Escape.
-  reasonInput.addEventListener('keydown', (e) => { if (e.key !== 'Escape') e.stopPropagation() })
+  reasonInput.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') e.stopPropagation()
+  })
   sec.appendChild(reasonInput)
   for (const { channel, platform, msgId, login } of groups.values()) {
     const target = login || (username || '').toLowerCase()
@@ -457,15 +472,28 @@ function pcBuildModActions(username) {
         // Act on this row's own platform (twitch or kick), single-platform.
         let r
         try {
-          r = await dispatchModAction({ channel, platform, action: a.action, target, durationSec: a.durationSec, msgId, reason })
+          r = await dispatchModAction({
+            channel,
+            platform,
+            action: a.action,
+            target,
+            durationSec: a.durationSec,
+            msgId,
+            reason,
+          })
         } catch (err) {
           r = { anyOk: false, tResp: { error: err?.message || 'error' } }
         }
         b.textContent = orig
         if (a.action === 'delete') {
-          if (typeof showToast === 'function') showToast(r?.anyOk ? 'deleted message' : `delete failed: ${(r?.tResp || r?.kResp)?.error || 'unknown'}`, r?.anyOk ? 'success' : 'error')
+          if (typeof showToast === 'function')
+            showToast(
+              r?.anyOk ? 'deleted message' : `delete failed: ${(r?.tResp || r?.kResp)?.error || 'unknown'}`,
+              r?.anyOk ? 'success' : 'error',
+            )
         } else {
-          const label = a.action === 'ban' ? 'banned' : a.action === 'unban' ? 'unbanned' : `timed out ${a.durationSec}s`
+          const label =
+            a.action === 'ban' ? 'banned' : a.action === 'unban' ? 'unbanned' : `timed out ${a.durationSec}s`
           if (typeof showModResultToast === 'function') showModResultToast(label, target, r)
         }
         b.disabled = a.need === 'msg' && !msgId

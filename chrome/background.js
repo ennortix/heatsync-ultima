@@ -7032,24 +7032,28 @@ async function handleMessage(message, sender, sendResponse) {
         // relevant session) over an arbitrary kick.com tab. The API call is
         // slug-parameterized and cookie-authed so any logged-in kick tab CAN
         // execute it, but a frozen/unrelated tab is a worse bet.
-        const relayTab = tabs.find(t => (t.url || '').toLowerCase().includes('/' + slug)) || tabs[0]
+        const relayTab = tabs.find((t) => (t.url || '').toLowerCase().includes('/' + slug)) || tabs[0]
         // Deadline: a hung renderer would otherwise leave tabs.sendMessage
         // pending forever, hanging the mod command with no feedback. Fail loud.
         const result = await Promise.race([
-          browser.tabs.sendMessage(relayTab.id, {
-            type: 'kick_mod_relay',
-            action,
-            slug,
-            chatroomId,
-            username: message.username || '',
-            durationMin: message.durationMin || 0,
-            reason: message.reason || '',
-            messageId: message.messageId || '',
-            xsrfToken: cookie.value,
-          // .catch keeps a late rejection (tab port closes after the timeout
-          // already won the race) from becoming an unhandled promise rejection.
-          }).catch((e) => ({ ok: false, error: e?.message || 'kick relay failed' })),
-          new Promise((res) => setTimeout(() => res({ ok: false, error: 'kick tab unresponsive — reload kick.com' }), 12000)),
+          browser.tabs
+            .sendMessage(relayTab.id, {
+              type: 'kick_mod_relay',
+              action,
+              slug,
+              chatroomId,
+              username: message.username || '',
+              durationMin: message.durationMin || 0,
+              reason: message.reason || '',
+              messageId: message.messageId || '',
+              xsrfToken: cookie.value,
+              // .catch keeps a late rejection (tab port closes after the timeout
+              // already won the race) from becoming an unhandled promise rejection.
+            })
+            .catch((e) => ({ ok: false, error: e?.message || 'kick relay failed' })),
+          new Promise((res) =>
+            setTimeout(() => res({ ok: false, error: 'kick tab unresponsive — reload kick.com' }), 12000),
+          ),
         ])
         sendResponse(result || { ok: false, error: 'no response from tab' })
       } catch (e) {
@@ -7058,7 +7062,6 @@ async function handleMessage(message, sender, sendResponse) {
       }
     })()
     return true
-
   } else if (message.type === 'kick_mod_status') {
     // Is the authed Kick viewer a mod/broadcaster on this channel? Gates the
     // kick mod UI the way isModFor (twitch GQL) gates the twitch one. A plain
@@ -7067,16 +7070,28 @@ async function handleMessage(message, sender, sendResponse) {
     // Fails closed (isMod:false) on any error so the UI just doesn't surface.
     ;(async () => {
       try {
-        const slug = String(message.slug || '').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 64)
-        if (!slug) { sendResponse({ ok: true, isMod: false }); return }
+        const slug = String(message.slug || '')
+          .toLowerCase()
+          .replace(/[^a-z0-9_-]/g, '')
+          .slice(0, 64)
+        if (!slug) {
+          sendResponse({ ok: true, isMod: false })
+          return
+        }
         const cookie = await browser.cookies.get({ url: 'https://kick.com', name: 'XSRF-TOKEN' })
-        if (!cookie?.value) { sendResponse({ ok: true, isMod: false }); return } // not logged in
+        if (!cookie?.value) {
+          sendResponse({ ok: true, isMod: false })
+          return
+        } // not logged in
         const resp = await fetchWithTimeout(
           `https://kick.com/api/v2/channels/${encodeURIComponent(slug)}`,
           { credentials: 'include', headers: { Accept: 'application/json' } },
           5000,
         )
-        if (!resp.ok) { sendResponse({ ok: false, isMod: false, error: 'kick api ' + resp.status }); return }
+        if (!resp.ok) {
+          sendResponse({ ok: false, isMod: false, error: 'kick api ' + resp.status })
+          return
+        }
         const data = await resp.json().catch(() => null)
         // ONLY trust the viewer-specific `chatroom_user` object (the authed
         // viewer's relationship to this chatroom). Do NOT probe data.user /
@@ -7095,14 +7110,15 @@ async function handleMessage(message, sender, sendResponse) {
           cu?.is_broadcaster === true
         // log() is a no-op unless DEBUG — flip DEBUG to confirm the field path live
         // (logs the raw viewer object whether mod or not).
-        try { log('kick_mod_status', slug, 'isMod=' + isMod, JSON.stringify(cu)) } catch (_) {}
+        try {
+          log('kick_mod_status', slug, 'isMod=' + isMod, JSON.stringify(cu))
+        } catch (_) {}
         sendResponse({ ok: true, isMod })
       } catch (e) {
         sendResponse({ ok: false, isMod: false, error: e?.message || 'fetch failed' })
       }
     })()
     return true
-
   } else if (message.type === 'youtube_send_message') {
     ;(async () => {
       try {

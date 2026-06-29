@@ -4334,7 +4334,9 @@
           .then((t) => sendResponse({ ok: false, error: explain(r.status, t) }))
           .catch(() => sendResponse({ ok: false, error: explain(r.status, '') }))
       })
-      .catch((e) => sendResponse({ ok: false, error: e.name === 'TimeoutError' ? 'kick request timed out' : e.message }))
+      .catch((e) =>
+        sendResponse({ ok: false, error: e.name === 'TimeoutError' ? 'kick request timed out' : e.message }),
+      )
     return true
   }
   if (window.location.hostname.includes('kick.com')) {

@@ -445,7 +445,7 @@ class IRC {
             // differ by >10s, defeating the collapse and double-rendering. Widen
             // to 30s whenever a synthetic is on either side; keep the tight 10s
             // for real-vs-real (multi-transport fanout of one server event).
-            const win = (existing.isSynthetic || msg.isSynthetic) ? 30000 : 10000
+            const win = existing.isSynthetic || msg.isSynthetic ? 30000 : 10000
             if (Math.abs((existing.time || 0) - (msg.time || 0)) > win) continue
             return
           }
@@ -461,7 +461,7 @@ class IRC {
           if (existing.type !== 'notice') continue
           if (existing.noticeType !== 'delete_message_success') continue
           if (existing.targetMsgId !== msg.targetMsgId) continue
-          const win = (existing.isSynthetic || msg.isSynthetic) ? 30000 : 10000
+          const win = existing.isSynthetic || msg.isSynthetic ? 30000 : 10000
           if (Math.abs((existing.time || 0) - (msg.time || 0)) > win) continue
           return
         }
@@ -495,9 +495,11 @@ class IRC {
         if (msg.noticeType === 'unban_success' && msg.targetUser) {
           const tlc = msg.targetUser.toLowerCase()
           for (const m of buf.getAll()) {
-            if (m.type === 'notice' &&
-                (m.noticeType === 'ban_success' || m.noticeType === 'timeout_success') &&
-                (m.targetUser || '').toLowerCase() === tlc) {
+            if (
+              m.type === 'notice' &&
+              (m.noticeType === 'ban_success' || m.noticeType === 'timeout_success') &&
+              (m.targetUser || '').toLowerCase() === tlc
+            ) {
               m._supersededByUnban = true
             }
           }

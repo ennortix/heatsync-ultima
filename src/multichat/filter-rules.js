@@ -29,7 +29,7 @@ function _frSafeRegex(src, flags) {
 // ── module state ──────────────────────────────────────────────────────────────
 // Two buckets: all-scope rules run on every message; per-channel rules run only
 // when channelKey matches. Compiled once → evaluated with no allocation per call.
-let _frAllRules = []         // compiled rules with scope 'all'
+let _frAllRules = [] // compiled rules with scope 'all'
 let _frByChannel = new Map() // compiled rules keyed by channel tab id
 
 // ── compile helpers ───────────────────────────────────────────────────────────
@@ -49,8 +49,7 @@ function _frCompileOne(rule) {
   const c = {
     id: String(rule.id),
     action,
-    color: (action === 'highlight' && rule.color && /^#[0-9a-f]{3,8}$/i.test(rule.color))
-      ? rule.color : null,
+    color: action === 'highlight' && rule.color && /^#[0-9a-f]{3,8}$/i.test(rule.color) ? rule.color : null,
     scope,
     matchType: m.type,
     caseSensitive: cs,
@@ -130,9 +129,7 @@ function evaluateFilterRules(m, channelKey) {
   const hasChannel = channelKey && _frByChannel.has(channelKey)
   if (!_frAllRules.length && !hasChannel) return { hide: false, highlight: null }
 
-  const rules = hasChannel
-    ? _frAllRules.concat(_frByChannel.get(channelKey))
-    : _frAllRules
+  const rules = hasChannel ? _frAllRules.concat(_frByChannel.get(channelKey)) : _frAllRules
 
   let highlight = null
   for (let i = 0; i < rules.length; i++) {

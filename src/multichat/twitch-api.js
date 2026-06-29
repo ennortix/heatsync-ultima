@@ -3945,7 +3945,10 @@ async function resolveTwitchChannelId(channelLogin) {
     // 4s ceiling: decapi is a third-party in the mod-action hot path; a hang here
     // would stall every ban/timeout/unban behind the browser's default TCP
     // timeout (60s+). Time out fast and fall through to the first-party GQL path.
-    const r = await fetch(`https://decapi.me/twitch/id/${encodeURIComponent(lc)}`, { credentials: 'omit', signal: AbortSignal.timeout(4000) })
+    const r = await fetch(`https://decapi.me/twitch/id/${encodeURIComponent(lc)}`, {
+      credentials: 'omit',
+      signal: AbortSignal.timeout(4000),
+    })
     const body = (await r.text()).trim()
     if (r.ok && /^\d+$/.test(body)) {
       _cacheChannelId(body)

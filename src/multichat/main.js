@@ -1724,8 +1724,7 @@
       if (channelLogin && m.channel !== channelLogin) continue
       const ch = m.channel || null
       const isKick = (m.badgePlatform || m.platform) === 'kick'
-      const anchor =
-        div.querySelector('.hs-mc-avatar') || div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
+      const anchor = div.querySelector('.hs-mc-avatar') || div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
       if (!anchor) continue
       for (const badge of m.badges.split(',')) {
         const sep = badge.indexOf('/')
@@ -1773,9 +1772,7 @@
         img.width = 18
         img.height = 18
         img.style.cssText = `width:18px;height:18px;${
-          isFFZ && BADGE_STYLES[name]
-            ? `background:${BADGE_STYLES[name].bg};padding:1px;border-radius:2px;`
-            : ''
+          isFFZ && BADGE_STYLES[name] ? `background:${BADGE_STYLES[name].bg};padding:1px;border-radius:2px;` : ''
         }`
         img.dataset.hsSrc = safeU
         // Replace text-fallback span if present; else insert before anchor.
@@ -1916,7 +1913,11 @@
   let _uiOverflowCachePromise = null
   function cachedUiOverflow() {
     if (!_uiOverflowCachePromise) {
-      _uiOverflowCachePromise = chrome.storage.local.get(['platform_filters', 'keyword_highlights', 'chat_filter_rules'])
+      _uiOverflowCachePromise = chrome.storage.local.get([
+        'platform_filters',
+        'keyword_highlights',
+        'chat_filter_rules',
+      ])
     }
     return _uiOverflowCachePromise
   }
@@ -2362,7 +2363,9 @@
     },
     filterRules: () => {
       let rules = []
-      try { rules = JSON.parse(getSetting('chatFilterRules') || '[]') } catch {}
+      try {
+        rules = JSON.parse(getSetting('chatFilterRules') || '[]')
+      } catch {}
       compileFilterRules(Array.isArray(rules) ? rules : [])
     },
     nativeVisible: () => {
@@ -3294,7 +3297,7 @@
 
   // Inline media embeds in chat — images/gifs/video/link-cards rendered below
   // the message (never live iframes; see extractChatEmbed). Default on.
-  let mediaEmbedsEnabled = true;
+  let mediaEmbedsEnabled = true
 
   // Vi mode for chat input (default off)
   let viModeEnabled = false
@@ -5375,8 +5378,11 @@
         // which is immune only because twitchGql throws on error).
         if (res?.ok) _kickModStateCache.set(slug, isMod)
         return isMod
-      } catch (_) { return false }
-      finally { _kickModStatePending.delete(slug) }
+      } catch (_) {
+        return false
+      } finally {
+        _kickModStatePending.delete(slug)
+      }
     })()
     _kickModStatePending.set(slug, p)
     return p
@@ -5492,28 +5498,52 @@
   }
   function _modNoticeFields(action, actor, tgt, durationSec) {
     const a = actor || tgt
-    if (action === 'ban')     return { noticeType: 'ban_success',     systemMsg: a ? `${a} banned ${tgt}` : `${tgt} was permanently banned` }
-    if (action === 'timeout') { const d = Math.max(1, durationSec | 0); return { noticeType: 'timeout_success', systemMsg: a ? `${a} timed out ${tgt} for ${d}s` : `${tgt} timed out for ${d}s` } }
-    if (action === 'unban' || action === 'untimeout') return { noticeType: 'unban_success', systemMsg: a ? `${a} unbanned ${tgt}` : `${tgt} is no longer banned` }
-    if (action === 'delete')  return { noticeType: 'delete_message_success', systemMsg: a ? `${a} deleted a message${tgt ? ` from ${tgt}` : ''}` : (tgt ? `${tgt}'s message deleted` : 'message deleted') }
+    if (action === 'ban')
+      return { noticeType: 'ban_success', systemMsg: a ? `${a} banned ${tgt}` : `${tgt} was permanently banned` }
+    if (action === 'timeout') {
+      const d = Math.max(1, durationSec | 0)
+      return {
+        noticeType: 'timeout_success',
+        systemMsg: a ? `${a} timed out ${tgt} for ${d}s` : `${tgt} timed out for ${d}s`,
+      }
+    }
+    if (action === 'unban' || action === 'untimeout')
+      return { noticeType: 'unban_success', systemMsg: a ? `${a} unbanned ${tgt}` : `${tgt} is no longer banned` }
+    if (action === 'delete')
+      return {
+        noticeType: 'delete_message_success',
+        systemMsg: a
+          ? `${a} deleted a message${tgt ? ` from ${tgt}` : ''}`
+          : tgt
+            ? `${tgt}'s message deleted`
+            : 'message deleted',
+      }
     return null
   }
   // Twitch — route through irc._handleMsg (dedup + buffer + render).
   function _injectTwitchModNotice({ channel, action, target, durationSec, msgId }) {
     try {
-      const ch = String(channel || '').toLowerCase().replace(/^#/, '')
+      const ch = String(channel || '')
+        .toLowerCase()
+        .replace(/^#/, '')
       if (!ch || !irc?.channels?.has(ch)) return
       const tgt = String(target || '').replace(/^@/, '')
       const tgtLc = tgt.toLowerCase()
       const f = _modNoticeFields(action, _modActor(), tgt, durationSec)
       if (!f) return
       irc._handleMsg?.({
-        type: 'notice', noticeType: f.noticeType, user: 'system',
-        text: f.systemMsg, systemMsg: f.systemMsg, color: '#808080', badges: '',
-        channel: ch, time: Date.now(),
+        type: 'notice',
+        noticeType: f.noticeType,
+        user: 'system',
+        text: f.systemMsg,
+        systemMsg: f.systemMsg,
+        color: '#808080',
+        badges: '',
+        channel: ch,
+        time: Date.now(),
         id: `hs-synth-mod-${f.noticeType}-${ch}-${tgtLc || msgId || ''}-${Date.now()}`,
         targetUser: tgtLc,
-        targetMsgId: action === 'delete' ? (msgId || '') : undefined,
+        targetMsgId: action === 'delete' ? msgId || '' : undefined,
         banDuration: action === 'timeout' ? Math.max(1, durationSec | 0) : 0,
         isSynthetic: true,
       })
@@ -5523,7 +5553,9 @@
   // competing Kick transport, so no dedup needed.
   function _injectKickModNotice({ channel, action, target, durationSec, msgId }) {
     try {
-      const slug = String(channel || '').toLowerCase().replace(/^#/, '')
+      const slug = String(channel || '')
+        .toLowerCase()
+        .replace(/^#/, '')
       const buf = kickChat?.channels?.get(slug)
       if (!buf) return
       const tgt = String(target || '').replace(/^@/, '')
@@ -5531,35 +5563,52 @@
       const f = _modNoticeFields(action, _modActor(), tgt, durationSec)
       if (!f) return
       const m = {
-        type: 'notice', noticeType: f.noticeType, user: 'system',
-        text: f.systemMsg, systemMsg: f.systemMsg, color: '#808080', badges: '',
-        channel: slug, time: Date.now(), platform: 'kick',
+        type: 'notice',
+        noticeType: f.noticeType,
+        user: 'system',
+        text: f.systemMsg,
+        systemMsg: f.systemMsg,
+        color: '#808080',
+        badges: '',
+        channel: slug,
+        time: Date.now(),
+        platform: 'kick',
         id: `hs-synth-kick-mod-${f.noticeType}-${slug}-${tgtLc || msgId || ''}-${Date.now()}`,
-        targetUser: tgtLc, isSynthetic: true,
+        targetUser: tgtLc,
+        isSynthetic: true,
       }
       buf.push(m)
-      try { kickChat.emit('message', m) } catch (_) {}
+      try {
+        kickChat.emit('message', m)
+      } catch (_) {}
     } catch (_) {}
   }
-  try { globalThis.__hsInjectModNotice = _injectTwitchModNotice } catch (_) {}
+  try {
+    globalThis.__hsInjectModNotice = _injectTwitchModNotice
+  } catch (_) {}
 
   // Resolve a channel descriptor (tab id, twitch login, or kick slug) to its
   // linked twitch login + kick slug via the O(1) channel lookup.
   function _resolveModTargets(channel, platform) {
-    const lookup = (typeof getChannelLookup === 'function') ? getChannelLookup() : null
+    const lookup = typeof getChannelLookup === 'function' ? getChannelLookup() : null
     const raw = String(channel || '').replace(/^#/, '')
     const lc = raw.toLowerCase()
     let entry = null
     if (lookup && raw) {
-      entry = lookup.byId?.get(raw) || lookup.byId?.get(lc)
-        || lookup.twitch?.get(raw) || lookup.twitch?.get(lc)
-        || lookup.kick?.get(raw) || lookup.kick?.get(lc) || null
+      entry =
+        lookup.byId?.get(raw) ||
+        lookup.byId?.get(lc) ||
+        lookup.twitch?.get(raw) ||
+        lookup.twitch?.get(lc) ||
+        lookup.kick?.get(raw) ||
+        lookup.kick?.get(lc) ||
+        null
     }
     // Trust a found entry: if it's kick-only, twitchName stays null (don't fire a
     // bogus Twitch call with the tab id). Only fall back to the raw channel
     // string when NO entry exists at all (unregistered/anon channel).
-    const twitchName = entry ? (entry.twitch || null) : (platform !== 'kick' && lc ? lc : null)
-    const kickSlug = entry ? (entry.kick || null) : (platform === 'kick' && lc ? lc : null)
+    const twitchName = entry ? entry.twitch || null : platform !== 'kick' && lc ? lc : null
+    const kickSlug = entry ? entry.kick || null : platform === 'kick' && lc ? lc : null
     return { twitchName, kickSlug }
   }
 
@@ -5575,66 +5624,116 @@
     if (!twitchName && !kickSlug) return { tResp: null, kResp: null, twitchName: null, kickSlug: null, anyOk: false }
     const tgt = String(target || '').replace(/^@/, '')
     const sec = Math.max(1, durationSec | 0)
-    const runTwitch = () => (
-      action === 'ban'     ? banTwitchUser(twitchName, tgt, reason || '') :
-      action === 'timeout' ? timeoutTwitchUser(twitchName, tgt, sec, reason || '') :
-      action === 'unban'   ? unbanTwitchUser(twitchName, tgt) :
-      action === 'delete'  ? deleteTwitchMessage(twitchName, msgId) :
-      Promise.resolve(null)
-    )
-    const runKick = () => safeSendMessage({
-      type: 'kick_mod_action', action, slug: kickSlug, username: tgt,
-      durationMin: action === 'timeout' ? Math.max(1, Math.round(sec / 60)) : 0,
-      reason: reason || '',
-      messageId: action === 'delete' ? (msgId || '') : '',
-    })
+    const runTwitch = () =>
+      action === 'ban'
+        ? banTwitchUser(twitchName, tgt, reason || '')
+        : action === 'timeout'
+          ? timeoutTwitchUser(twitchName, tgt, sec, reason || '')
+          : action === 'unban'
+            ? unbanTwitchUser(twitchName, tgt)
+            : action === 'delete'
+              ? deleteTwitchMessage(twitchName, msgId)
+              : Promise.resolve(null)
+    const runKick = () =>
+      safeSendMessage({
+        type: 'kick_mod_action',
+        action,
+        slug: kickSlug,
+        username: tgt,
+        durationMin: action === 'timeout' ? Math.max(1, Math.round(sec / 60)) : 0,
+        reason: reason || '',
+        messageId: action === 'delete' ? msgId || '' : '',
+      })
 
     if (action === 'delete') {
       // A message exists on exactly one platform. Known platform → only there;
       // unknown (e.g. /delete <id>) → twitch-first then kick fallback.
-      let resp = null, plat = null
-      if (platform === 'kick' && kickSlug) { plat = 'kick'; resp = await runKick() }
-      else if (platform === 'twitch' && twitchName) { plat = 'twitch'; resp = await runTwitch() }
-      else if (twitchName) { plat = 'twitch'; resp = await runTwitch(); if (!resp?.ok && kickSlug) { plat = 'kick'; resp = await runKick() } }
-      else if (kickSlug) { plat = 'kick'; resp = await runKick() }
+      let resp = null,
+        plat = null
+      if (platform === 'kick' && kickSlug) {
+        plat = 'kick'
+        resp = await runKick()
+      } else if (platform === 'twitch' && twitchName) {
+        plat = 'twitch'
+        resp = await runTwitch()
+      } else if (twitchName) {
+        plat = 'twitch'
+        resp = await runTwitch()
+        if (!resp?.ok && kickSlug) {
+          plat = 'kick'
+          resp = await runKick()
+        }
+      } else if (kickSlug) {
+        plat = 'kick'
+        resp = await runKick()
+      }
       if (resp?.ok) {
         if (plat === 'kick') _injectKickModNotice({ channel: kickSlug, action, target: tgt, msgId })
         else _injectTwitchModNotice({ channel: twitchName, action, target: tgt, msgId })
       }
-      return { tResp: plat === 'twitch' ? resp : null, kResp: plat === 'kick' ? resp : null, twitchName, kickSlug, anyOk: !!resp?.ok }
+      return {
+        tResp: plat === 'twitch' ? resp : null,
+        kResp: plat === 'kick' ? resp : null,
+        twitchName,
+        kickSlug,
+        anyOk: !!resp?.ok,
+      }
     }
 
     // ban / timeout / unban
     let doTwitch, doKick
-    if (fanout) { doTwitch = !!twitchName; doKick = !!kickSlug }
-    else if (platform === 'kick') { doKick = !!kickSlug; doTwitch = !doKick && !!twitchName }
-    else { doTwitch = !!twitchName; doKick = !doTwitch && !!kickSlug }
-    const [tResp, kResp] = await Promise.all([
-      doTwitch ? runTwitch() : null,
-      doKick ? runKick() : null,
-    ])
+    if (fanout) {
+      doTwitch = !!twitchName
+      doKick = !!kickSlug
+    } else if (platform === 'kick') {
+      doKick = !!kickSlug
+      doTwitch = !doKick && !!twitchName
+    } else {
+      doTwitch = !!twitchName
+      doKick = !doTwitch && !!kickSlug
+    }
+    const [tResp, kResp] = await Promise.all([doTwitch ? runTwitch() : null, doKick ? runKick() : null])
     if (tResp?.ok) _injectTwitchModNotice({ channel: twitchName, action, target: tgt, durationSec: sec })
     if (kResp?.ok) _injectKickModNotice({ channel: kickSlug, action, target: tgt, durationSec: sec })
     return { tResp, kResp, twitchName, kickSlug, anyOk: !!(tResp?.ok || kResp?.ok) }
   }
-  try { globalThis.__hsDispatchMod = dispatchModAction } catch (_) {}
+  try {
+    globalThis.__hsDispatchMod = dispatchModAction
+  } catch (_) {}
 
   // One consistent result toast for every surface.
   function showModResultToast(label, target, r) {
     try {
-      const tResp = r?.tResp, kResp = r?.kResp
-      const tOk = tResp?.ok, kOk = kResp?.ok
+      const tResp = r?.tResp,
+        kResp = r?.kResp
+      const tOk = tResp?.ok,
+        kOk = kResp?.ok
       if (tResp && kResp) {
-        if (tOk && kOk) { showToast(`${label} ${target} (twitch+kick)`, 'success'); return }
-        if (tOk) { showToast(`${label} ${target} on twitch — kick failed: ${kResp.error || 'unknown'}`, 'error'); return }
-        if (kOk) { showToast(`${label} ${target} on kick — twitch failed: ${tResp.error || 'unknown'}`, 'error'); return }
-        showToast(`${label} failed: twitch ${tResp.error || '?'} / kick ${kResp.error || '?'}`, 'error'); return
+        if (tOk && kOk) {
+          showToast(`${label} ${target} (twitch+kick)`, 'success')
+          return
+        }
+        if (tOk) {
+          showToast(`${label} ${target} on twitch — kick failed: ${kResp.error || 'unknown'}`, 'error')
+          return
+        }
+        if (kOk) {
+          showToast(`${label} ${target} on kick — twitch failed: ${tResp.error || 'unknown'}`, 'error')
+          return
+        }
+        showToast(`${label} failed: twitch ${tResp.error || '?'} / kick ${kResp.error || '?'}`, 'error')
+        return
       }
       const only = tResp || kResp
-      showToast(only?.ok ? `${label} ${target}` : `${label} failed: ${only?.error || 'unknown'}`, only?.ok ? 'success' : 'error')
+      showToast(
+        only?.ok ? `${label} ${target}` : `${label} failed: ${only?.error || 'unknown'}`,
+        only?.ok ? 'success' : 'error',
+      )
     } catch (_) {}
   }
-  try { globalThis.__hsModToast = showModResultToast } catch (_) {}
+  try {
+    globalThis.__hsModToast = showModResultToast
+  } catch (_) {}
 
   async function runModAction(id) {
     const def = MOD_BUTTON_CATALOG[id]
@@ -5644,8 +5743,14 @@
     const wasOp = row?.style?.opacity
     if (row) row.style.opacity = '0.5'
     // Act on the row's own platform (twitch or kick), single-platform.
-    const r = await dispatchModAction({ channel, platform: _modCtx.platform || 'twitch', action: def.action, target, durationSec: def.durationSec, msgId })
-      .catch((e) => ({ anyOk: false, tResp: { error: e?.message || 'error' } }))
+    const r = await dispatchModAction({
+      channel,
+      platform: _modCtx.platform || 'twitch',
+      action: def.action,
+      target,
+      durationSec: def.durationSec,
+      msgId,
+    }).catch((e) => ({ anyOk: false, tResp: { error: e?.message || 'error' } }))
     if (row) row.style.opacity = wasOp || ''
     if (r?.anyOk && def.action === 'delete' && row && dimTimeouts) row.classList.add('hs-mc-msg-cleared')
     const label =
@@ -6695,7 +6800,9 @@
   function _getRawFilterRules() {
     var raw = getSetting('chatFilterRules') || '[]'
     var arr = []
-    try { arr = JSON.parse(raw) } catch {}
+    try {
+      arr = JSON.parse(raw)
+    } catch {}
     return Array.isArray(arr) ? arr : []
   }
 
@@ -6703,7 +6810,9 @@
     var json = JSON.stringify(rules)
     saveUiSetting('chatFilterRules', json)
     var parsed = []
-    try { parsed = JSON.parse(json) } catch {}
+    try {
+      parsed = JSON.parse(json)
+    } catch {}
     compileFilterRules(parsed)
     renderMessages(currentTab)
     if (currentTab === 'settings') renderSettingsTab()
@@ -6716,10 +6825,13 @@
     badge: 'badge',
     msgtype: 'type',
   }
-  var FR_SCOPE_BTN = 'background:#000;color:#808080;border:1px solid #444;padding:1px 5px;font-size:11px;cursor:pointer;font-family:inherit;line-height:1.4'
-  var FR_BTN = 'background:#000;color:#fff;border:1px solid #808080;padding:1px 6px;font-size:11px;cursor:pointer;font-family:inherit;line-height:1.4'
+  var FR_SCOPE_BTN =
+    'background:#000;color:#808080;border:1px solid #444;padding:1px 5px;font-size:11px;cursor:pointer;font-family:inherit;line-height:1.4'
+  var FR_BTN =
+    'background:#000;color:#fff;border:1px solid #808080;padding:1px 6px;font-size:11px;cursor:pointer;font-family:inherit;line-height:1.4'
   var FR_SEL = 'background:#000;color:#fff;border:1px solid #808080;padding:1px 3px;font-size:12px;font-family:inherit'
-  var FR_INPUT = 'background:#000;color:#fff;border:1px solid #808080;padding:1px 4px;font-size:12px;font-family:inherit;flex:1;min-width:60px'
+  var FR_INPUT =
+    'background:#000;color:#fff;border:1px solid #808080;padding:1px 4px;font-size:12px;font-family:inherit;flex:1;min-width:60px'
 
   function _renderFilterRuleRow(r) {
     var on = !!r.enabled
@@ -6728,51 +6840,92 @@
     var aLabel = r.action === 'hide' ? 'hide' : 'hl'
     var aColor = r.action === 'highlight' && r.color ? escapeHtml(r.color) : ''
     var swatch = aColor
-      ? '<span style="display:inline-block;width:10px;height:10px;background:' + aColor + ';border:1px solid #444;vertical-align:middle;margin-left:2px"></span>'
+      ? '<span style="display:inline-block;width:10px;height:10px;background:' +
+        aColor +
+        ';border:1px solid #444;vertical-align:middle;margin-left:2px"></span>'
       : ''
     var scopeLabel = r.scope && r.scope !== 'all' ? escapeHtml(String(r.scope)) : 'all'
     var id = escapeHtml(String(r.id))
     return (
-      '<div class="hs-mc-setting-row hs-mc-setting-row-split" data-fr-row="' + id + '" style="gap:4px">' +
+      '<div class="hs-mc-setting-row hs-mc-setting-row-split" data-fr-row="' +
+      id +
+      '" style="gap:4px">' +
       '<div style="display:flex;align-items:center;gap:4px;flex:1;min-width:0;overflow:hidden">' +
-      '<button class="hs-mc-toggle-pill' + (on ? ' active' : '') + '" data-fr-action="toggle" data-fr-id="' + id + '" style="flex-shrink:0"><span class="hs-mc-toggle-knob"></span></button>' +
-      '<span style="color:#808080;font-size:11px;min-width:28px;flex-shrink:0">' + typeLabel + '</span>' +
-      '<span style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1" title="' + val + '">' + val + '</span>' +
-      '<span style="color:#aaa;font-size:11px;flex-shrink:0">▶' + aLabel + '</span>' +
-      (aColor ? '<span style="display:inline-block;width:10px;height:10px;background:' + aColor + ';border:1px solid #444;flex-shrink:0"></span>' : '') +
-      '<span style="color:#666;font-size:11px;flex-shrink:0">' + scopeLabel + '</span>' +
+      '<button class="hs-mc-toggle-pill' +
+      (on ? ' active' : '') +
+      '" data-fr-action="toggle" data-fr-id="' +
+      id +
+      '" style="flex-shrink:0"><span class="hs-mc-toggle-knob"></span></button>' +
+      '<span style="color:#808080;font-size:11px;min-width:28px;flex-shrink:0">' +
+      typeLabel +
+      '</span>' +
+      '<span style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1" title="' +
+      val +
+      '">' +
+      val +
+      '</span>' +
+      '<span style="color:#aaa;font-size:11px;flex-shrink:0">▶' +
+      aLabel +
+      '</span>' +
+      (aColor
+        ? '<span style="display:inline-block;width:10px;height:10px;background:' +
+          aColor +
+          ';border:1px solid #444;flex-shrink:0"></span>'
+        : '') +
+      '<span style="color:#666;font-size:11px;flex-shrink:0">' +
+      scopeLabel +
+      '</span>' +
       '</div>' +
-      '<button data-fr-action="delete" data-fr-id="' + id + '" style="' + FR_BTN + ';color:#808080;flex-shrink:0" title="delete rule">✕</button>' +
+      '<button data-fr-action="delete" data-fr-id="' +
+      id +
+      '" style="' +
+      FR_BTN +
+      ';color:#808080;flex-shrink:0" title="delete rule">✕</button>' +
       '</div>'
     )
   }
 
   function _renderFilterRuleAddForm() {
-    var channels = (typeof config !== 'undefined' && config && config.channels) ? config.channels : []
-    var chOptions = '<option value="all">all channels</option>' +
-      channels.map(function(ch) {
-        var label = ch.twitch || ch.kick || ch.id || ''
-        return '<option value="' + escapeHtml(ch.id) + '">' + escapeHtml(label) + '</option>'
-      }).join('')
+    var channels = typeof config !== 'undefined' && config && config.channels ? config.channels : []
+    var chOptions =
+      '<option value="all">all channels</option>' +
+      channels
+        .map(function (ch) {
+          var label = ch.twitch || ch.kick || ch.id || ''
+          return '<option value="' + escapeHtml(ch.id) + '">' + escapeHtml(label) + '</option>'
+        })
+        .join('')
     return (
       '<div class="hs-mc-setting-row hs-mc-setting-row-block hs-mc-fr-addform" style="padding:4px 4px 6px">' +
       '<div style="font-size:11px;color:#808080;margin-bottom:4px">add rule</div>' +
       '<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">' +
-      '<select data-fr-field="type" style="' + FR_SEL + ';width:60px">' +
+      '<select data-fr-field="type" style="' +
+      FR_SEL +
+      ';width:60px">' +
       '<option value="keyword">keyword</option>' +
       '<option value="regex">regex</option>' +
       '<option value="user">user</option>' +
       '<option value="badge">badge</option>' +
       '<option value="msgtype">msgtype</option>' +
       '</select>' +
-      '<input type="text" data-fr-field="value" placeholder="value..." style="' + FR_INPUT + '">' +
-      '<select data-fr-field="action" style="' + FR_SEL + ';width:68px">' +
+      '<input type="text" data-fr-field="value" placeholder="value..." style="' +
+      FR_INPUT +
+      '">' +
+      '<select data-fr-field="action" style="' +
+      FR_SEL +
+      ';width:68px">' +
       '<option value="highlight">highlight</option>' +
       '<option value="hide">hide</option>' +
       '</select>' +
       '<input type="color" data-fr-field="color" value="#ffff00" style="width:28px;height:22px;border:1px solid #808080;background:#000;padding:1px;cursor:pointer;flex-shrink:0" title="highlight color">' +
-      '<select data-fr-field="scope" style="' + FR_SEL + ';max-width:80px">' + chOptions + '</select>' +
-      '<button data-fr-action="add" style="' + FR_BTN + ';background:#222">+ add</button>' +
+      '<select data-fr-field="scope" style="' +
+      FR_SEL +
+      ';max-width:80px">' +
+      chOptions +
+      '</select>' +
+      '<button data-fr-action="add" style="' +
+      FR_BTN +
+      ';background:#222">+ add</button>' +
       '</div>' +
       '</div>'
     )
@@ -6781,13 +6934,15 @@
   function _renderFilterRulesGroup() {
     var fold = _setCollapsed.has('filters|rules')
     var rules = _getRawFilterRules()
-    var ruleRows = rules.length === 0
-      ? '<div class="hs-mc-setting-row" style="color:#808080;font-size:13px">no rules — add one below</div>'
-      : rules.map(_renderFilterRuleRow).join('')
+    var ruleRows =
+      rules.length === 0
+        ? '<div class="hs-mc-setting-row" style="color:#808080;font-size:13px">no rules — add one below</div>'
+        : rules.map(_renderFilterRuleRow).join('')
     return (
       '<div class="hs-mc-settings-group">' +
       '<div class="hs-mc-settings-group-title" data-set-fold="rules">' +
-      (fold ? '▸ ' : '▾ ') + 'filter rules' +
+      (fold ? '▸ ' : '▾ ') +
+      'filter rules' +
       (rules.length ? ' <span class="hs-mc-set-cnt">(' + rules.length + ')</span>' : '') +
       '</div>' +
       (fold ? '' : ruleRows + _renderFilterRuleAddForm()) +
@@ -6801,7 +6956,9 @@
     var rules = _getRawFilterRules()
 
     if (action === 'toggle' && id) {
-      var toggleRule = rules.find(function(r) { return String(r.id) === id })
+      var toggleRule = rules.find(function (r) {
+        return String(r.id) === id
+      })
       if (toggleRule) {
         toggleRule.enabled = !toggleRule.enabled
         _saveFilterRules(rules)
@@ -6810,7 +6967,9 @@
     }
 
     if (action === 'delete' && id) {
-      var delIdx = rules.findIndex(function(r) { return String(r.id) === id })
+      var delIdx = rules.findIndex(function (r) {
+        return String(r.id) === id
+      })
       if (delIdx !== -1) {
         rules.splice(delIdx, 1)
         _saveFilterRules(rules)
@@ -6831,7 +6990,10 @@
       var ruleAct = actEl ? actEl.value : 'highlight'
       var ruleCol = colEl ? colEl.value : '#ffff00'
       var ruleScope = scopeEl ? scopeEl.value : 'all'
-      if (!ruleVal) { showToast('rule value is empty', 'error'); return }
+      if (!ruleVal) {
+        showToast('rule value is empty', 'error')
+        return
+      }
       var newRule = {
         id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
         enabled: true,
@@ -9499,11 +9661,8 @@
     const snapEpoch = _renderEpoch
 
     function processChunk(offset) {
-      if (
-        currentTab !== snapTab ||
-        _renderEpoch !== snapEpoch ||
-        document.getElementById('hs-mc-messages') !== msgsEl
-      ) return
+      if (currentTab !== snapTab || _renderEpoch !== snapEpoch || document.getElementById('hs-mc-messages') !== msgsEl)
+        return
       const end = Math.min(offset + CHUNK, rows.length)
       for (let i = offset; i < end; i++) _processRow(rows[i])
       // Schedule next chunk via cleanup.raf — tracked in _rafs, cancelled by
@@ -10062,7 +10221,7 @@
       // for non-Latin names (display 田中 / login tanaka123); banning the display
       // name would target a bogus login and silently fail. m.login is the IRC
       // prefix login; kick has no separate display/login so it falls back to user.
-      div.dataset.msgLogin = (m.login || m.user || '')
+      div.dataset.msgLogin = m.login || m.user || ''
       div.dataset.msgChannel = m.channel || ''
       div.dataset.msgPlatform = m.platform || ''
       // Mark self-messages so the mod hover toolbar can skip them without
@@ -10088,8 +10247,14 @@
     // iframe: chat is high-volume and runs on low-RAM hardware. Appended as a
     // sibling node (outside the cached _renderedHtml) so toggling the setting
     // takes effect on the next rerender. Lazy-loaded, error-guarded, capped.
-    if (mediaEmbedsEnabled && !m.cleared && m.text && m.type !== 'usernotice' && m.type !== 'notice'
-        && typeof extractChatEmbed === 'function') {
+    if (
+      mediaEmbedsEnabled &&
+      !m.cleared &&
+      m.text &&
+      m.type !== 'usernotice' &&
+      m.type !== 'notice' &&
+      typeof extractChatEmbed === 'function'
+    ) {
       const embedHtml = extractChatEmbed(m.text)
       if (embedHtml) {
         const holder = document.createElement('div')
@@ -10878,7 +11043,7 @@
     if (typeof id === 'string' && /^[a-z0-9_]{2,40}$/i.test(id)) prefetchModFor(id)
     // Symmetric kick warm-up — so the first kick right-click/hover surfaces mod
     // actions without a cold-cache miss (resolve the linked kick slug for this tab).
-    const _chForMod = (typeof getChannelById === 'function') ? getChannelById(id) : null
+    const _chForMod = typeof getChannelById === 'function' ? getChannelById(id) : null
     if (_chForMod?.kick) prefetchKickModFor(_chForMod.kick)
     // Profile card overrides normal tab content while open
     if (typeof activeProfileCard !== 'undefined' && activeProfileCard) {
@@ -14011,19 +14176,21 @@
         emoteReloadTimer = cleanup.setTimeout(() => {
           const pending = _pendingEmoteScopes
           _pendingEmoteScopes = new Set()
-          loadEmotes().then(() => {
-            let firstLoad = false
-            for (const s of pending) {
-              if (!_emoteFirstLoad.has(s)) {
-                _emoteFirstLoad.add(s)
-                firstLoad = true
+          loadEmotes()
+            .then(() => {
+              let firstLoad = false
+              for (const s of pending) {
+                if (!_emoteFirstLoad.has(s)) {
+                  _emoteFirstLoad.add(s)
+                  firstLoad = true
+                }
               }
-            }
-            // First emote payload for this scope: plain-text history rows need to
-            // pick up the now-renderable emotes. In-place text swap instead of
-            // clearRenderedHtmlCache()→epoch bump→full rebuild (the flash).
-            if (firstLoad) reloadEmotesInPlace()
-          }).catch((e) => log('[heatsync-mc] loadEmotes error:', e))
+              // First emote payload for this scope: plain-text history rows need to
+              // pick up the now-renderable emotes. In-place text swap instead of
+              // clearRenderedHtmlCache()→epoch bump→full rebuild (the flash).
+              if (firstLoad) reloadEmotesInPlace()
+            })
+            .catch((e) => log('[heatsync-mc] loadEmotes error:', e))
         }, 300)
       }
       // Inventory changes: update membership + viewer's personal set.
@@ -14492,7 +14659,9 @@
         const v = changes.chat_filter_rules.newValue
         if (typeof v === 'string') {
           let rules = []
-          try { rules = JSON.parse(v) } catch {}
+          try {
+            rules = JSON.parse(v)
+          } catch {}
           compileFilterRules(Array.isArray(rules) ? rules : [])
           renderMessages(currentTab)
           if (currentTab === 'settings') renderSettingsTab()
@@ -14528,20 +14697,22 @@
         emoteReloadTimer = cleanup.setTimeout(() => {
           const pending = _pendingEmoteScopes
           _pendingEmoteScopes = new Set()
-          loadEmotes().then(() => {
-            let firstLoad = false
-            for (const s of pending) {
-              if (!_emoteFirstLoad.has(s)) {
-                _emoteFirstLoad.add(s)
-                firstLoad = true
+          loadEmotes()
+            .then(() => {
+              let firstLoad = false
+              for (const s of pending) {
+                if (!_emoteFirstLoad.has(s)) {
+                  _emoteFirstLoad.add(s)
+                  firstLoad = true
+                }
               }
-            }
-            // firstLoad: in-place text swap (no rebuild flash), skipping the
-            // visible-row swap when scrolled up. non-firstLoad emote edits render
-            // now (only when at/near bottom, to not yank a scrolled-up reader).
-            if (firstLoad) reloadEmotesInPlace(!isScrolledUp)
-            else if (!isScrolledUp) renderMessages(currentTab)
-          }).catch((e) => log('[heatsync-mc] loadEmotes error:', e))
+              // firstLoad: in-place text swap (no rebuild flash), skipping the
+              // visible-row swap when scrolled up. non-firstLoad emote edits render
+              // now (only when at/near bottom, to not yank a scrolled-up reader).
+              if (firstLoad) reloadEmotesInPlace(!isScrolledUp)
+              else if (!isScrolledUp) renderMessages(currentTab)
+            })
+            .catch((e) => log('[heatsync-mc] loadEmotes error:', e))
         }, 300)
       }
 
@@ -15269,14 +15440,16 @@
     // resolves before requestIdleCallback fires, so injectStreamEventsIntoBuffers
     // sees empty irc.channels and silently drops chat injection.
     cleanup.setTimeout(() => {
-      loadStreamEvents().then(() => {
-        if (streamEventsLoaded) {
-          const active = currentTab
-          if (active === 'live' || config.channels.some((ch) => ch.id === active)) {
-            renderMessages(active)
+      loadStreamEvents()
+        .then(() => {
+          if (streamEventsLoaded) {
+            const active = currentTab
+            if (active === 'live' || config.channels.some((ch) => ch.id === active)) {
+              renderMessages(active)
+            }
           }
-        }
-      }).catch((e) => log('[heatsync-mc] loadStreamEvents error:', e))
+        })
+        .catch((e) => log('[heatsync-mc] loadStreamEvents error:', e))
     }, 300)
 
     // Scan existing chat for mentions (before IRC catches new ones)
@@ -15414,10 +15587,11 @@
         }
       }
       // Automod + filter rules: drop messages matching filter. Own msgs exempt.
-      if (msg.user?.toLowerCase() !== currentUsername?.toLowerCase() && (
-        shouldAutomod(msg.text) ||
-        evaluateFilterRules(msg, getChannelLookup().twitch.get(msg.channel)?.id).hide
-      )) return
+      if (
+        msg.user?.toLowerCase() !== currentUsername?.toLowerCase() &&
+        (shouldAutomod(msg.text) || evaluateFilterRules(msg, getChannelLookup().twitch.get(msg.channel)?.id).hide)
+      )
+        return
       const isMent = isMention(msg)
       bumpStreamStats(msg.channel, msg, isMent)
       if (isMent) {
@@ -15491,10 +15665,11 @@
           msg.platform = sentHost === 'yt' ? 'youtube' : sentHost
         }
       }
-      if (msg.user?.toLowerCase() !== currentUsername?.toLowerCase() && (
-        shouldAutomod(msg.text) ||
-        evaluateFilterRules(msg, getChannelLookup().kick.get(msg.channel)?.id).hide
-      )) return
+      if (
+        msg.user?.toLowerCase() !== currentUsername?.toLowerCase() &&
+        (shouldAutomod(msg.text) || evaluateFilterRules(msg, getChannelLookup().kick.get(msg.channel)?.id).hide)
+      )
+        return
       const isMent = isMention(msg)
       bumpStreamStats(msg.channel, msg, isMent)
       if (isMent) {

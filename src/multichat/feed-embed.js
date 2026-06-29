@@ -392,7 +392,8 @@ function chatEmbedForUrl(rawUrl) {
   else if ((ym = cleanUrl.match(/youtube\.com\/shorts\/([\w-]{11})/))) ytId = ym[1]
   if (ytId) {
     const id = sanitizeEmbedId(ytId)
-    if (id) return `<a href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener" class="hs-mc-media hs-feed-embed-yt-thumb">
+    if (id)
+      return `<a href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener" class="hs-mc-media hs-feed-embed-yt-thumb">
       <img src="https://i.ytimg.com/vi/${id}/mqdefault.jpg" alt="" loading="lazy" decoding="async" data-fb="hide">
       <span class="hs-feed-embed-yt-play">▶</span>
     </a>`
@@ -400,7 +401,11 @@ function chatEmbedForUrl(rawUrl) {
   // Providers the server resolver handles (oEmbed) → lightweight pending card.
   // Server returns image/video/audio/rich; unsupported → graceful link card.
   // No iframes. data-resolve-url drives resolvePendingFeedEmbeds().
-  if (/(?:reddit\.com\/r\/|(?:twitter|x)\.com\/[\w_]+\/status\/|open\.spotify\.com\/(?:track|album|playlist|episode|show)\/|(?:www\.)?vimeo\.com\/\d|tiktok\.com\/@[\w.]+\/video\/|instagram\.com\/(?:p|reel)\/|soundcloud\.com\/[\w-]+\/[\w-]+|kick\.com\/[\w_-]+\/clips\/|clips\.twitch\.tv\/|streamable\.com\/\w)/i.test(cleanUrl)) {
+  if (
+    /(?:reddit\.com\/r\/|(?:twitter|x)\.com\/[\w_]+\/status\/|open\.spotify\.com\/(?:track|album|playlist|episode|show)\/|(?:www\.)?vimeo\.com\/\d|tiktok\.com\/@[\w.]+\/video\/|instagram\.com\/(?:p|reel)\/|soundcloud\.com\/[\w-]+\/[\w-]+|kick\.com\/[\w_-]+\/clips\/|clips\.twitch\.tv\/|streamable\.com\/\w)/i.test(
+      cleanUrl,
+    )
+  ) {
     return `<div class="hs-mc-media hs-feed-embed-pending" data-resolve-url="${attr(safe)}" data-resolve-platform="link"><span class="hs-feed-embed-pending-label">loading preview…</span></div>`
   }
   return ''
@@ -650,6 +655,12 @@ function attachFeedFallbacks(root) {
   // broken player. <video> 'error' doesn't bubble, so wire it directly here.
   root.querySelectorAll('video[data-fb="hide"]').forEach((video) => {
     video.removeAttribute('data-fb')
-    video.addEventListener('error', () => { video.style.display = 'none' }, { once: true })
+    video.addEventListener(
+      'error',
+      () => {
+        video.style.display = 'none'
+      },
+      { once: true },
+    )
   })
 }

@@ -501,10 +501,7 @@ function bundleContentScript(srcPath, lib, mcModules) {
       .replace(/^[\s;]+/, '')
       .trim()
     if ((stripped.startsWith('(function') || stripped.startsWith('(()')) && closeRe.test(content.trimEnd())) {
-      body = content.replace(
-        /^[\s\S]*?\((?:function\s*\(\)|(?:\(\)\s*=>))\s*\{[\s\n]*(?:'use strict';?\s*)?/,
-        '',
-      )
+      body = content.replace(/^[\s\S]*?\((?:function\s*\(\)|(?:\(\)\s*=>))\s*\{[\s\n]*(?:'use strict';?\s*)?/, '')
       body = body.replace(closeRe, '')
       // Bulletproof: if either end survived, globals stay scope-trapped and the
       // bundle throws at runtime. Fail the build loudly instead.

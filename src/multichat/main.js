@@ -5776,7 +5776,8 @@
       modeLine,
       notify,
       onQuote: (id) => { setReplyState({ msgId: id }); document.getElementById('hs-mc-input')?.focus() },
-      onEnter: () => setPaused(true), // freeze autoscroll so the range stays put
+      // (autoscroll-pause on enter deferred: setPaused is scoped to the scroll
+      // setup, not reachable here; snapshot-on-enter already keeps the range correct.)
     })
     _hsBufVim = { overlay, hint, visual }
     return _hsBufVim

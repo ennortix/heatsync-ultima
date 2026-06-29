@@ -41254,8 +41254,8 @@ class HsOverlayVisual {
     this.anchor = rows.length - 1  // newest row (bottom)
     this.cursor = rows.length - 1
     this.count = ''
-    this.onEnter?.()
-    this._render()
+    this._render()                 // render first so the cursor shows on `v`
+    try { this.onEnter?.() } catch (e) {} // best-effort side-effect, never blocks render
     return true
   }
   _range() { return [Math.min(this.anchor, this.cursor), Math.max(this.anchor, this.cursor)] }
@@ -47441,7 +47441,8 @@ const STORAGE_KEY = 'heatsync_multichat'
       modeLine,
       notify,
       onQuote: (id) => { setReplyState({ msgId: id }); document.getElementById('hs-mc-input')?.focus() },
-      onEnter: () => setPaused(true), // freeze autoscroll so the range stays put
+      // (autoscroll-pause on enter deferred: setPaused is scoped to the scroll
+      // setup, not reachable here; snapshot-on-enter already keeps the range correct.)
     })
     _hsBufVim = { overlay, hint, visual }
     return _hsBufVim

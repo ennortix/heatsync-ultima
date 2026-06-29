@@ -34945,6 +34945,7 @@ async function expandUserAliases(username, platform) {
       if (p) {
         if (p.twitch_username) push(p.twitch_username)
         if (p.kick_username) push(p.kick_username)
+        if (p.youtube_username) push(p.youtube_username)
       }
     } catch {}
   }
@@ -41568,6 +41569,17 @@ const STORAGE_KEY = 'heatsync_multichat'
       const tw = kickNameToTwitchUsername.get(u)
       if (tw && tw.toLowerCase() !== u) out.push(tw.toLowerCase())
     }
+    // YouTube→Twitch: same direction as Kick, populated by the YT cosmetics
+    // lookup (flushYtNameLookups), which fetches the heatsync profile and now
+    // also caches its twitch_username. YT handles render with/without a leading
+    // '@', so normalize the bare form too — a mute/block on the linked Twitch
+    // (or YouTube) identity then also hides their YouTube messages.
+    if (typeof ytNameToTwitchUsername !== 'undefined') {
+      const yk = u.replace(/^@/, '')
+      if (yk !== u && !out.includes(yk)) out.push(yk)
+      const tw = ytNameToTwitchUsername.get(yk)
+      if (tw && !out.includes(tw.toLowerCase())) out.push(tw.toLowerCase())
+    }
     return out
   }
 
@@ -42466,6 +42478,7 @@ const STORAGE_KEY = 'heatsync_multichat'
   // (twitch_id) and misses (null) — LRU-evicted at YT_NAME_CACHE_MAX so a
   // long stream session can't grow it without bound.
   const ytNameToTwitchId = new Map() // ytUserKey → twitchId | null
+  const ytNameToTwitchUsername = new Map() // ytUserKey → twitchUsername | null (cross-platform alias)
   const ytNameLookupPending = new Set()
   let ytNameLookupTimer = null
   const YT_NAME_BATCH = 8
@@ -42473,7 +42486,9 @@ const STORAGE_KEY = 'heatsync_multichat'
 
   function evictYtNameCache() {
     if (ytNameToTwitchId.size >= YT_NAME_CACHE_MAX) {
-      ytNameToTwitchId.delete(ytNameToTwitchId.keys().next().value)
+      const oldest = ytNameToTwitchId.keys().next().value
+      ytNameToTwitchId.delete(oldest)
+      ytNameToTwitchUsername.delete(oldest)
     }
   }
 
@@ -42519,8 +42534,10 @@ const STORAGE_KEY = 'heatsync_multichat'
           method: 'GET',
         })
         const tid = resp?.data?.twitch_id || resp?.twitch_id || null
+        const tuser = resp?.data?.twitch_username || resp?.twitch_username || null
         evictYtNameCache()
         ytNameToTwitchId.set(key, tid ? String(tid) : null)
+        ytNameToTwitchUsername.set(key, tuser ? String(tuser).toLowerCase() : null)
         if (tid) {
           const tidStr = String(tid)
           // Backfill: stamp data-uid on all currently-rendered YT msgs by this
@@ -42557,6 +42574,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       } catch {
         evictYtNameCache()
         ytNameToTwitchId.set(key, null)
+        ytNameToTwitchUsername.set(key, null)
       }
     }
     for (const key of batch) await lookupOne(key)

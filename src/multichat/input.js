@@ -1886,6 +1886,7 @@ async function expandUserAliases(username, platform) {
       if (p) {
         if (p.twitch_username) push(p.twitch_username)
         if (p.kick_username) push(p.kick_username)
+        if (p.youtube_username) push(p.youtube_username)
       }
     } catch {}
   }

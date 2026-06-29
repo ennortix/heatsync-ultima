@@ -35,7 +35,8 @@
       const urlToken = urlParams.get('auth_token')
       if (urlToken && /^[\w-]+\.[\w-]+\.[\w-]+$/.test(urlToken)) {
         log(' ✓ Found auth_token in URL, sending to background (length:', urlToken.length, ')')
-        const urlState = urlParams.get('state') || null
+        // backend echoes the nonce as ext_state (plain `state` is the OAuth CSRF token)
+        const urlState = urlParams.get('ext_state') || null
         try {
           chrome.runtime.sendMessage({ type: 'set_auth_token', token: urlToken, state: urlState })
         } catch {}

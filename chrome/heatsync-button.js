@@ -2331,7 +2331,7 @@
               .join('')
             await chrome.storage.local.set({ hs_login_state: nonce })
             window.open(
-              `https://heatsync.org/api/auth/login?return_to=%2F&state=${encodeURIComponent(nonce)}`,
+              `https://heatsync.org/api/auth/login?return_to=%2F&ext_state=${encodeURIComponent(nonce)}`,
               '_blank',
               'noopener,noreferrer',
             )

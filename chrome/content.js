@@ -10418,12 +10418,18 @@
         const lateHandler = (e) => {
           if (e.source !== window || e.origin !== location.origin) return
           if (e.data?.type === 'heatsync-page-channel-id' && e.data.login === slug && e.data.channelId) {
+            // Mirror the primary handler's nonce + numeric guards — blocks rogue
+            // MAIN-world page scripts that satisfy source+origin checks
+            const nonce = window.HS?.getMainWorldNonce?.()
+            if (!nonce || e.data.nonce !== nonce) return
+            const cid = String(e.data.channelId)
+            if (!/^\d+$/.test(cid)) return
             window.removeEventListener('message', lateHandler)
             safeSendMessage({
               type: 'update_channel_id',
               platform,
               channel: channelName,
-              channelId: e.data.channelId,
+              channelId: cid,
             }).catch(() => {})
           }
         }

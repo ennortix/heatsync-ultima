@@ -5348,6 +5348,68 @@ async function handleSlashCommand(text, input) {
     return true
   }
 
+  // /nuke <term> [seconds] — bulk-delete recent messages whose text contains
+  // <term> (case-insensitive substring; NOT regex, so no ReDoS surface) within
+  // the last [seconds] (default 30, capped). Reads the local buffers and issues
+  // one delete per match via the same single-delete path /delete uses. Guarded:
+  // min 2-char term, hard match cap, and a confirm modal before anything fires.
+  if (cmd === 'nuke') {
+    if (!modChannel) {
+      showToast('/nuke needs a channel tab', 'error')
+      return true
+    }
+    if (!_twitchModName && !_kickModSlug) {
+      showToast('/nuke needs a twitch or kick channel', 'error')
+      return true
+    }
+    const NUKE_MAX = 100 // never delete more than this in one invocation
+    const NUKE_MAX_WINDOW = 300 // seconds — furthest lookback allowed
+    const nm = rest.trim().match(/^(.+?)(?:\s+(\d+))?$/)
+    const term = nm ? nm[1].trim() : ''
+    if (term.length < 2) {
+      showToast('usage: /nuke <term> [seconds] — term must be 2+ chars', 'error')
+      return true
+    }
+    const windowSec = Math.min(NUKE_MAX_WINDOW, nm && nm[2] ? Math.max(1, parseInt(nm[2])) : 30)
+    const since = Date.now() - windowSec * 1000
+    const needle = term.toLowerCase()
+    // Collect deletable matches from both platform buffers, newest dropped first
+    // if over the cap (keep the oldest so a raid's leading edge is cleared).
+    const seenIds = new Set()
+    const targets = []
+    for (const buf of [irc?.channels?.get(modChannel), kickChat?.channels?.get(modChannel)]) {
+      if (!buf?.getAll) continue
+      for (const m of buf.getAll()) {
+        if (!m?.id || typeof m.text !== 'string') continue
+        if ((m.time || 0) < since) continue
+        if (!m.text.toLowerCase().includes(needle)) continue
+        if (seenIds.has(m.id)) continue
+        seenIds.add(m.id)
+        targets.push({ msgId: m.id, platform: m.platform })
+      }
+    }
+    if (targets.length === 0) {
+      showToast(`/nuke: no messages matching "${term}" in the last ${windowSec}s`, 'error')
+      return true
+    }
+    const capped = targets.length > NUKE_MAX
+    const batch = capped ? targets.slice(0, NUKE_MAX) : targets
+    const { ok } = await hsConfirm(
+      `nuke ${batch.length}${capped ? `+ (capped from ${targets.length})` : ''} message${batch.length === 1 ? '' : 's'} matching "${term}" in #${modChannel}?`,
+      'nuke',
+    )
+    if (!ok) return true
+    const results = await Promise.allSettled(
+      batch.map((t) =>
+        dispatchModAction({ channel: modChannel, platform: t.platform, action: 'delete', msgId: t.msgId }),
+      ),
+    )
+    const okCount = results.filter((r) => r.status === 'fulfilled' && r.value?.anyOk).length
+    showToast(`nuked ${okCount}/${batch.length} matching "${term}"`, okCount ? 'success' : 'error')
+    if (okCount) clearInput(input)
+    return true
+  }
+
   // ─── Chat modes (mod) ─── followers/slow/emoteonly/subscribers/unique.
   // Twitch via Helix /chat/settings (setTwitchChatMode). `/<mode> off` disables;
   // duration modes take an optional arg (/followers 30, /slow 10). Kick has no
@@ -5417,6 +5479,7 @@ const SLASH_HELP_LINES = [
   '/timeout <user> [s] [r]— timeout, default 600s',
   '/unban <user>          — unban or end timeout',
   '/delete <msg-id>       — delete one message',
+  '/nuke <term> [secs]    — delete recent msgs matching term (default 30s)',
   '',
   'chat modes (twitch, mod):',
   '/followers [mins]      — followers-only ("/followers off")',

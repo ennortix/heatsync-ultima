@@ -1,5 +1,12 @@
 // IRC - read-only IRC client, message parsing, CircularBuffer
 
+// Raid windows: channel(lowercase) → ms timestamp until which incoming
+// first-time chatters are flagged as raiders. Opened by a raid USERNOTICE and
+// read in the PRIVMSG branch. A plain Map (one entry per recently-raided
+// channel) — stale entries are simply ignored once their timestamp passes.
+const _raidWindows = new Map()
+const RAID_WINDOW_MS = 90 * 1000
+
 function parseTags(tagStr) {
   const tags = {}
   for (const part of tagStr.split(';')) {
@@ -98,6 +105,14 @@ function parseIrcLine(raw, channel) {
       }
       if (tags['msg-id'] === 'highlighted-message') msg.isHighlighted = true
       if (tags['first-msg'] === '1') msg.isFirstMsg = true
+      if (tags['returning-chatter'] === '1') msg.isReturningChatter = true
+      // Raider: a first-time chatter arriving inside the window opened by a raid
+      // USERNOTICE for this channel (see below). Regulars chatting during a raid
+      // aren't flagged — only the incoming wave (first-msg ∩ raid window).
+      if (msg.isFirstMsg) {
+        const raidUntil = _raidWindows.get(msg.channel)
+        if (raidUntil && msg.time <= raidUntil) msg.isRaider = true
+      }
       // Extract sub tenure from badge-info (subscriber/N = cumulative months)
       const badgeInfo = tags['badge-info']
       if (badgeInfo) {
@@ -132,6 +147,12 @@ function parseIrcLine(raw, channel) {
       const msgId = rawMsgId === 'viewermilestone' && category === 'watch-streak' ? 'watchstreak' : rawMsgId
       const streakCount = msgId === 'watchstreak' ? parseInt(tags['msg-param-value'], 10) || 0 : 0
       const userText = usernotice[2] || ''
+      // Open a raid window so the incoming wave's first messages get flagged.
+      if (rawMsgId === 'raid') {
+        const uncChannel = channel || usernotice[1].toLowerCase()
+        const uncTime = parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now()
+        _raidWindows.set(uncChannel, uncTime + RAID_WINDOW_MS)
+      }
       const twitchEmotes = parseTwitchEmotesTag(tags.emotes, userText)
       return {
         user: displayName,

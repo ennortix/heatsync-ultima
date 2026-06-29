@@ -3260,12 +3260,25 @@ if (typeof window !== 'undefined') {
  *   api.runtime.onMessage.addListener(handler)
  */
 
-// Detect browser environment
-const isFirefox = typeof browser !== 'undefined'
-const isChrome = typeof chrome !== 'undefined' && !isFirefox
+// Detect browser environment.
+// Do NOT use `typeof browser !== 'undefined'` — the content bundle aliases
+// `browser = globalThis.browser || chrome`, so that test is true on Chrome too,
+// which silently mis-routed FF-only branches (e.g. promisify, emote-CDN format).
+// navigator.userAgent is the reliable cross-world signal (Firefox UA contains
+// "Firefox"; no Chromium-family UA does), with the moz-extension URL scheme as a
+// corroborating check for extension pages.
+const isFirefox =
+  (typeof navigator !== 'undefined' && /firefox/i.test(navigator.userAgent)) ||
+  (typeof location !== 'undefined' && location.protocol === 'moz-extension:')
+const isChrome = !isFirefox && typeof chrome !== 'undefined'
 
-// Get the raw API object
-const rawApi = isFirefox ? browser : typeof chrome !== 'undefined' ? chrome : null
+// Get the raw API object — prefer the API matching the detected browser, with a
+// fallback chain so a missing global can never null out the wrapper.
+const rawApi =
+  (isFirefox && typeof browser !== 'undefined' && browser) ||
+  (typeof chrome !== 'undefined' && chrome) ||
+  (typeof browser !== 'undefined' && browser) ||
+  null
 
 let _ctxInvalidatedLogged = false
 let _storageMissingLogged = false
@@ -9903,6 +9916,15 @@ function injectStyles() {
     .hs-mc-msg.hs-kw-match {
       background: rgba(255, 255, 0, 0.14);
       box-shadow: inset 0 0 0 1px #ffff00;
+    }
+    /* Returning chatter — back after a long absence (twitch returning-chatter tag) */
+    .hs-mc-msg.is-returning {
+      box-shadow: inset 2px 0 0 #00afaf;
+    }
+    /* Raider — first message arriving in the window after a raid into this channel */
+    .hs-mc-msg.is-raider {
+      box-shadow: inset 2px 0 0 #ff8700;
+      background: rgba(255, 135, 0, 0.1);
     }
     /* Filter-rule highlight — color driven by per-rule CSS custom property */
     .hs-mc-msg.hs-mc-rule-highlight {
@@ -17000,18 +17022,40 @@ function refreshSeenBadges() {
 // ── ReDoS guard (same heuristic as automod.js) ────────────────────────────────
 // Inlined so this module is testable without the bundle scope.
 function _frIsDangerous(p) {
-  if (/\([^)]*[+*][^)]*\)\s*[*+]/.test(p)) return true
-  if (/\([^)]*\|[^)]*\)\s*[*+]/.test(p)) return true
-  if (/\{\s*\d{4,}/.test(p)) return true
+  if (p.length > 512) return true
+  if (/\([^)]*[+*][^)]*\)\s*[*+{]/.test(p)) return true
+  if (/\([^)]*\|[^)]*\)\s*[*+{]/.test(p)) return true
+  // bounded repetition ≥ 10 reps is exponential with any nested quantifier
+  if (/\{\s*\d{2,}/.test(p)) return true
   return false
 }
 function _frEscapeLiteral(p) {
   return p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
+// Empirical backstop behind the denylist heuristic (mirrors automod.js): run the
+// compiled regex against short pathological probes under a time budget; a pattern
+// that trips it is unsafe regardless of shape. See automod.js for the rationale.
+const _FR_REDOS_PROBES = ['a'.repeat(28), '0'.repeat(28), 'ab'.repeat(14), 'a1'.repeat(14), ' '.repeat(28)].map(
+  (s) => s + ' !',
+)
+function _frTripsCatastrophic(re) {
+  try {
+    const start = performance.now()
+    for (const probe of _FR_REDOS_PROBES) {
+      re.test(probe)
+      if (performance.now() - start > 20) return true
+    }
+  } catch {
+    return true
+  }
+  return false
+}
 function _frSafeRegex(src, flags) {
   const safe = _frIsDangerous(src) ? _frEscapeLiteral(src) : src
   try {
-    return new RegExp(safe, flags)
+    const re = new RegExp(safe, flags)
+    if (_frTripsCatastrophic(re)) return new RegExp(_frEscapeLiteral(src), flags)
+    return re
   } catch {
     try {
       return new RegExp(_frEscapeLiteral(src), flags)
@@ -17139,8 +17183,11 @@ function evaluateFilterRules(m, channelKey) {
 function _frTest(rule, m) {
   switch (rule.matchType) {
     case 'keyword':
-    case 'regex':
-      return !!rule.re && typeof m.text === 'string' && rule.re.test(m.text)
+    case 'regex': {
+      if (!rule.re || typeof m.text !== 'string') return false
+      const t = m.text.length > 256 ? m.text.slice(0, 256) : m.text
+      return rule.re.test(t)
+    }
     case 'user': {
       if (!m.user) return false
       const u = rule.caseSensitive ? String(m.user) : String(m.user).toLowerCase()
@@ -17365,17 +17412,44 @@ let automodCompiled = null
 // shared/imported automod config could weaponise it. Patterns flagged dangerous
 // fall back to a literal (escaped) match instead of a raw regex. No dependency.
 function isDangerousRegexSource(p) {
+  if (p.length > 512) return true
   // a quantified group whose body also contains a quantifier → exponential
-  if (/\([^)]*[+*][^)]*\)\s*[*+]/.test(p)) return true
-  // unbounded repeat of an alternation group → (a|a)+ style blowup
-  if (/\([^)]*\|[^)]*\)\s*[*+]/.test(p)) return true
-  // absurd bounded repetition
-  if (/\{\s*\d{4,}/.test(p)) return true
+  // brace quantifiers ({n}) after such groups also trigger catastrophic backtracking
+  if (/\([^)]*[+*][^)]*\)\s*[*+{]/.test(p)) return true
+  // unbounded repeat of an alternation group → (a|a)+ or (a|a){n} style blowup
+  if (/\([^)]*\|[^)]*\)\s*[*+{]/.test(p)) return true
+  // bounded repetition ≥ 10 reps is exponential with any nested quantifier
+  if (/\{\s*\d{2,}/.test(p)) return true
   return false
 }
 
 function escapeRegexLiteral(p) {
   return p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+// Empirical backstop behind the static heuristic. isDangerousRegexSource is a
+// denylist — it can miss a catastrophic-backtracking shape it wasn't written for,
+// which would then freeze the tab on a crafted message at runtime. Exponential
+// blowup is dramatic even on a short input, so we run the compiled regex against a
+// handful of pathological probes (repeated chars + a forced-fail sentinel) under a
+// tight time budget. If any trips it, the pattern is unsafe regardless of shape.
+// Probes are short (28 chars) so the detection cost itself stays bounded (<1s
+// worst case); a linear/safe pattern finishes in microseconds. Synchronous,
+// dependency-free, CSP-safe — runs only on settings change (cold path).
+const REDOS_PROBES = ['a'.repeat(28), '0'.repeat(28), 'ab'.repeat(14), 'a1'.repeat(14), ' '.repeat(28)].map(
+  (s) => s + ' !',
+)
+function tripsCatastrophicBacktracking(re) {
+  try {
+    const start = performance.now()
+    for (const probe of REDOS_PROBES) {
+      re.test(probe)
+      if (performance.now() - start > 20) return true
+    }
+  } catch {
+    return true
+  }
+  return false
 }
 
 function compileAutomod(rawSettings) {
@@ -17396,10 +17470,8 @@ function compileAutomod(rawSettings) {
   // Safe patterns stay as regex; dangerous ones degrade to a literal match so
   // they can never trigger catastrophic backtracking.
   const safeParts = patterns.map((p) => (isDangerousRegexSource(p) ? escapeRegexLiteral(p) : p))
-  try {
-    automodCompiled = new RegExp(safeParts.join('|'), 'i')
-  } catch (e) {
-    // A surviving pattern is still invalid — escape everything to literal.
+  const escAll = () => {
+    // Last resort: every pattern as an escaped literal — can never backtrack.
     const esc = patterns.map(escapeRegexLiteral).join('|')
     try {
       automodCompiled = new RegExp(esc, 'i')
@@ -17407,11 +17479,23 @@ function compileAutomod(rawSettings) {
       automodCompiled = null
     }
   }
+  try {
+    automodCompiled = new RegExp(safeParts.join('|'), 'i')
+    // Backstop: a pattern that slipped the heuristic still can't ship as live regex.
+    if (tripsCatastrophicBacktracking(automodCompiled)) {
+      console.warn('[heatsync] automod pattern degraded to literal match (catastrophic-backtracking guard)')
+      escAll()
+    }
+  } catch (e) {
+    // A surviving pattern is still invalid — escape everything to literal.
+    escAll()
+  }
 }
 
 function shouldAutomod(text) {
   if (!text) return false
-  if (automodCompiled && automodCompiled.test(text)) return true
+  const t = text.length > 256 ? text.slice(0, 256) : text
+  if (automodCompiled && automodCompiled.test(t)) return true
   if (automodAllCaps && text.length > 10) {
     const letters = text.replace(/[^A-Za-z]/g, '')
     if (letters.length >= 8) {
@@ -17421,6 +17505,7 @@ function shouldAutomod(text) {
   }
   return false
 }
+
 
 
 // --- multichat/stream-stats.js ---
@@ -17915,6 +18000,13 @@ function scanExistingMentions() {
 // --- multichat/irc.js ---
 // IRC - read-only IRC client, message parsing, CircularBuffer
 
+// Raid windows: channel(lowercase) → ms timestamp until which incoming
+// first-time chatters are flagged as raiders. Opened by a raid USERNOTICE and
+// read in the PRIVMSG branch. A plain Map (one entry per recently-raided
+// channel) — stale entries are simply ignored once their timestamp passes.
+const _raidWindows = new Map()
+const RAID_WINDOW_MS = 90 * 1000
+
 function parseTags(tagStr) {
   const tags = {}
   for (const part of tagStr.split(';')) {
@@ -18013,6 +18105,14 @@ function parseIrcLine(raw, channel) {
       }
       if (tags['msg-id'] === 'highlighted-message') msg.isHighlighted = true
       if (tags['first-msg'] === '1') msg.isFirstMsg = true
+      if (tags['returning-chatter'] === '1') msg.isReturningChatter = true
+      // Raider: a first-time chatter arriving inside the window opened by a raid
+      // USERNOTICE for this channel (see below). Regulars chatting during a raid
+      // aren't flagged — only the incoming wave (first-msg ∩ raid window).
+      if (msg.isFirstMsg) {
+        const raidUntil = _raidWindows.get(msg.channel)
+        if (raidUntil && msg.time <= raidUntil) msg.isRaider = true
+      }
       // Extract sub tenure from badge-info (subscriber/N = cumulative months)
       const badgeInfo = tags['badge-info']
       if (badgeInfo) {
@@ -18047,6 +18147,12 @@ function parseIrcLine(raw, channel) {
       const msgId = rawMsgId === 'viewermilestone' && category === 'watch-streak' ? 'watchstreak' : rawMsgId
       const streakCount = msgId === 'watchstreak' ? parseInt(tags['msg-param-value'], 10) || 0 : 0
       const userText = usernotice[2] || ''
+      // Open a raid window so the incoming wave's first messages get flagged.
+      if (rawMsgId === 'raid') {
+        const uncChannel = channel || usernotice[1].toLowerCase()
+        const uncTime = parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now()
+        _raidWindows.set(uncChannel, uncTime + RAID_WINDOW_MS)
+      }
       const twitchEmotes = parseTwitchEmotesTag(tags.emotes, userText)
       return {
         user: displayName,
@@ -18678,18 +18784,9 @@ class KickChat {
   }
 
   _flushPendingSync() {
-    for (const ch of this._pendingChannels) {
-      try {
-        const buffer = this.channels.get(ch)
-        if (!buffer) continue
-        const msgs = buffer
-          .getAll()
-          .slice(-this._SYNC_BACKUP_MAX)
-          .map((m) => this._serializeMsg(m))
-          .filter(Boolean)
-        localStorage.setItem(`hs_kick_sync_${ch}`, JSON.stringify({ msgs, ts: Date.now() }))
-      } catch {}
-    }
+    // kick chat history is backed exclusively by chrome.storage.local (persistBuffer)
+    // — writing to host-page localStorage (kick.com) would expose it to host-page
+    // scripts and co-resident extensions.
   }
 
   _touchChannel(ch) {
@@ -38997,6 +39094,68 @@ async function handleSlashCommand(text, input) {
     return true
   }
 
+  // /nuke <term> [seconds] — bulk-delete recent messages whose text contains
+  // <term> (case-insensitive substring; NOT regex, so no ReDoS surface) within
+  // the last [seconds] (default 30, capped). Reads the local buffers and issues
+  // one delete per match via the same single-delete path /delete uses. Guarded:
+  // min 2-char term, hard match cap, and a confirm modal before anything fires.
+  if (cmd === 'nuke') {
+    if (!modChannel) {
+      showToast('/nuke needs a channel tab', 'error')
+      return true
+    }
+    if (!_twitchModName && !_kickModSlug) {
+      showToast('/nuke needs a twitch or kick channel', 'error')
+      return true
+    }
+    const NUKE_MAX = 100 // never delete more than this in one invocation
+    const NUKE_MAX_WINDOW = 300 // seconds — furthest lookback allowed
+    const nm = rest.trim().match(/^(.+?)(?:\s+(\d+))?$/)
+    const term = nm ? nm[1].trim() : ''
+    if (term.length < 2) {
+      showToast('usage: /nuke <term> [seconds] — term must be 2+ chars', 'error')
+      return true
+    }
+    const windowSec = Math.min(NUKE_MAX_WINDOW, nm && nm[2] ? Math.max(1, parseInt(nm[2])) : 30)
+    const since = Date.now() - windowSec * 1000
+    const needle = term.toLowerCase()
+    // Collect deletable matches from both platform buffers, newest dropped first
+    // if over the cap (keep the oldest so a raid's leading edge is cleared).
+    const seenIds = new Set()
+    const targets = []
+    for (const buf of [irc?.channels?.get(modChannel), kickChat?.channels?.get(modChannel)]) {
+      if (!buf?.getAll) continue
+      for (const m of buf.getAll()) {
+        if (!m?.id || typeof m.text !== 'string') continue
+        if ((m.time || 0) < since) continue
+        if (!m.text.toLowerCase().includes(needle)) continue
+        if (seenIds.has(m.id)) continue
+        seenIds.add(m.id)
+        targets.push({ msgId: m.id, platform: m.platform })
+      }
+    }
+    if (targets.length === 0) {
+      showToast(`/nuke: no messages matching "${term}" in the last ${windowSec}s`, 'error')
+      return true
+    }
+    const capped = targets.length > NUKE_MAX
+    const batch = capped ? targets.slice(0, NUKE_MAX) : targets
+    const { ok } = await hsConfirm(
+      `nuke ${batch.length}${capped ? `+ (capped from ${targets.length})` : ''} message${batch.length === 1 ? '' : 's'} matching "${term}" in #${modChannel}?`,
+      'nuke',
+    )
+    if (!ok) return true
+    const results = await Promise.allSettled(
+      batch.map((t) =>
+        dispatchModAction({ channel: modChannel, platform: t.platform, action: 'delete', msgId: t.msgId }),
+      ),
+    )
+    const okCount = results.filter((r) => r.status === 'fulfilled' && r.value?.anyOk).length
+    showToast(`nuked ${okCount}/${batch.length} matching "${term}"`, okCount ? 'success' : 'error')
+    if (okCount) clearInput(input)
+    return true
+  }
+
   // ─── Chat modes (mod) ─── followers/slow/emoteonly/subscribers/unique.
   // Twitch via Helix /chat/settings (setTwitchChatMode). `/<mode> off` disables;
   // duration modes take an optional arg (/followers 30, /slow 10). Kick has no
@@ -39066,6 +39225,7 @@ const SLASH_HELP_LINES = [
   '/timeout <user> [s] [r]— timeout, default 600s',
   '/unban <user>          — unban or end timeout',
   '/delete <msg-id>       — delete one message',
+  '/nuke <term> [secs]    — delete recent msgs matching term (default 30s)',
   '',
   'chat modes (twitch, mod):',
   '/followers [mins]      — followers-only ("/followers off")',
@@ -43185,16 +43345,10 @@ const STORAGE_KEY = 'heatsync_multichat'
 
   function _flushPersistenceSync() {
     try {
-      if (_persistMentionsState.dirty) {
-        const msgs = mentionsBuffer.slice(-PERSIST_SYNC_MAX).map(_serializePersistMsg)
-        localStorage.setItem('hs_mentions_sync', JSON.stringify({ msgs, ts: Date.now() }))
-      }
-      for (const channelId of _persistYtDirty) {
-        const buf = channelYtMessages.get(channelId)
-        if (!buf) continue
-        const msgs = buf.slice(-PERSIST_SYNC_MAX).map(_serializePersistMsg)
-        localStorage.setItem(`hs_yt_sync_${channelId}`, JSON.stringify({ msgs, ts: Date.now() }))
-      }
+      // chat history and cross-platform mentions are backed exclusively by
+      // chrome.storage.local (persistMentions/persistYt) — writing them to the
+      // host page's localStorage (twitch.tv/kick.com/youtube.com) would expose
+      // HeatSync user data to host-page scripts and co-resident extensions.
       if (_persistTabSeenTimer) {
         localStorage.setItem('hs_tab_seen_sync', JSON.stringify({ data: { ...tabSeenAt }, ts: Date.now() }))
       }
@@ -48341,7 +48495,15 @@ const STORAGE_KEY = 'heatsync_multichat'
       },
       true,
     )
-    messagesEl.addEventListener('scroll', () => detachModToolbar(), { passive: true })
+    // Only do work when a toolbar is actually open — the common case is
+    // scrolling with none attached, where this must stay a cheap no-op.
+    messagesEl.addEventListener(
+      'scroll',
+      () => {
+        if (_modRow || _modHideTimer) detachModToolbar()
+      },
+      { passive: true },
+    )
   }
 
   // Hotkeys — x (delete), t (10m timeout), b (ban). Hold while hovering a row.
@@ -52770,6 +52932,10 @@ const STORAGE_KEY = 'heatsync_multichat'
     if (m.isFirstMsg) {
       div.classList.add('hs-mc-first-msg')
     }
+    // Returning chatter — chatted before, back after a long absence (twitch tag).
+    if (m.isReturningChatter) div.classList.add('is-returning')
+    // Raider — a first message arriving in the window after a raid into this channel.
+    if (m.isRaider) div.classList.add('is-raider')
     // Cleared by mod (timeout/ban/delete) — Twitch-native dim + strikethrough on offending content
     if (m.cleared && dimTimeouts) {
       div.classList.add('hs-mc-msg-cleared')
@@ -53118,6 +53284,20 @@ const STORAGE_KEY = 'heatsync_multichat'
     })
   }
 
+  // Coalesced scroll-pin for the single-message append path. Calling
+  // scrollMsgsToBottom inline per message forced a synchronous layout flush
+  // (read scrollHeight, write scrollTop) on every message — 60 forced reflows/s
+  // on a busy solo tab. Batching to one rAF pins once per frame (before paint,
+  // so no visible lag) and reads layout once instead of per message.
+  let _scrollPinRaf = null
+  function scheduleScrollPin(msgsEl) {
+    if (_scrollPinRaf) return
+    _scrollPinRaf = cleanup.raf(() => {
+      _scrollPinRaf = null
+      scrollMsgsToBottom(msgsEl)
+    })
+  }
+
   // Incremental append for single messages on the active tab (hot path)
   // Returns true if handled, false if full rebuild needed
   // Check if a tab has multiple platform sources active (needs fair merge)
@@ -53242,9 +53422,11 @@ const STORAGE_KEY = 'heatsync_multichat'
     const msgsEl = document.getElementById('hs-mc-messages')
     if (!msgsEl) return false
 
-    // Remove "no messages" placeholder
-    const empty = msgsEl.querySelector('.hs-mc-empty')
-    if (empty) empty.remove()
+    // Remove "no messages" placeholder. It's always the sole/first child (see
+    // isEmptyTab), so an O(1) firstChild check beats a descendant querySelector
+    // on every appended message.
+    const first = msgsEl.firstElementChild
+    if (first && first.classList.contains('hs-mc-empty')) first.remove()
 
     // Compute key first so we can skip if a node with this key already exists
     // (IRC reconnect, replay echo, dual-send race — all paths benefit from
@@ -53293,7 +53475,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     // "unseen" badges, whose state changes solely via noteSeenEvent/bumpSeen
     // (both already call refreshSeenBadges). A plain incoming chat message can't
     // change it, so calling it per-append was 3 querySelectors/msg of pure waste.
-    scrollMsgsToBottom(msgsEl)
+    scheduleScrollPin(msgsEl)
     return true
   }
 
@@ -53384,6 +53566,33 @@ const STORAGE_KEY = 'heatsync_multichat'
   // order, but platforms are woven together evenly so no single source
   // dominates any region of the output — even when their time ranges
   // don't overlap (e.g. IRC history from hours ago + YT from seconds ago).
+  // Merge k already-time-sorted runs into one ascending array, exploiting each
+  // source's chronological order instead of re-sorting the whole pool every
+  // frame (fairMerge runs once per render, ~60×/s on a busy tab). Tie policy:
+  // equal byTimeStable → lowest run index first — deterministic across renders,
+  // so the insert-only diff stays stable. k is the platform count (≤~4), so the
+  // linear head-scan beats Array.sort's O(n log n) on the merged buffer.
+  function mergeSortedRuns(runs) {
+    const live = runs.filter((r) => r.length > 0)
+    if (live.length === 0) return []
+    if (live.length === 1) return live[0].slice()
+    const idx = new Array(live.length).fill(0)
+    let total = 0
+    for (const r of live) total += r.length
+    const out = new Array(total)
+    let o = 0
+    for (;;) {
+      let best = -1
+      for (let i = 0; i < live.length; i++) {
+        if (idx[i] >= live[i].length) continue
+        if (best === -1 || byTimeStable(live[i][idx[i]], live[best][idx[best]]) < 0) best = i
+      }
+      if (best === -1) break
+      out[o++] = live[best][idx[best]++]
+    }
+    return out
+  }
+
   function fairMerge(sources) {
     if (MC_DEBUG)
       log(
@@ -53412,8 +53621,8 @@ const STORAGE_KEY = 'heatsync_multichat'
     const RECENT_THRESHOLD_MS = 60 * 60 * 1000
     const coLive = newestMax - oldestMax < CO_LIVE_WINDOW_MS && newestMax > Date.now() - RECENT_THRESHOLD_MS
 
-    const pool = []
     if (coLive) {
+      const pool = []
       // Anti-drown WITHOUT retroactive eviction. The old proportional cap
       // (ceil(limit/active.length)) re-sliced every source whenever active
       // count changed — so the moment a quiet platform (e.g. YouTube) started
@@ -53432,23 +53641,23 @@ const STORAGE_KEY = 'heatsync_multichat'
             pool.push(m)
           }
         }
-      const rest = []
-      for (const s of active) for (const m of s) if (!seen.has(m)) rest.push(m)
-      rest.sort(byTimeStable)
+      // rest = each source's non-floor tail (a sorted run) → k-way merge, not sort.
+      const rest = mergeSortedRuns(active.map((s) => s.filter((m) => !seen.has(m))))
       const room = Math.max(0, limit - pool.length)
       for (const m of rest.slice(-room)) {
         seen.add(m)
         pool.push(m)
       }
-    } else {
-      for (const s of active) pool.push(...s.slice(-limit))
+      // pool is floor-interleaved + a sorted tail → one stable sort to finalise.
+      // (The stableMsgId tie-break keeps tied timestamps deterministic across
+      // renders; without it the insert-only diff would duplicate flipped pairs.)
+      pool.sort(byTimeStable)
+      return pool.slice(-limit)
     }
-
-    // Stable chronological sort. Secondary stableMsgId key keeps tied
-    // timestamps deterministic across renders — without it, the insert-only
-    // diff treats every flipped pair as a new insert and duplicates pile up.
-    pool.sort(byTimeStable)
-    return pool.slice(-limit)
+    // Non-co-live: each source is already chronological, so merge the sorted
+    // tails directly — no full re-sort of the merged buffer this frame.
+    const merged = mergeSortedRuns(active.map((s) => s.slice(-limit)))
+    return merged.length <= limit ? merged : merged.slice(-limit)
   }
   function stableMsgId(m) {
     // Memoize on the message object — id/base36_id/user/time/text are immutable
@@ -53830,15 +54039,21 @@ const STORAGE_KEY = 'heatsync_multichat'
 
     // Merge follow stream events into channel + live tabs (went live,
     // switched game, went offline). Skip mentions: it's reserved for actual
-    // @-mentions of the user, not followed-channel stream events. fairMerge's
-    // full sort below puts everything at its correct chronological position
-    // regardless of insertion order.
+    // @-mentions of the user, not followed-channel stream events. msgs is
+    // already chronological from fairMerge, and `missing` is tiny, so
+    // binary-insert each at its position instead of re-sorting the whole buffer.
     if (id !== 'mentions' && activityEvents.length > 0 && msgs.length > 0) {
       const existingTexts = new Set(msgs.filter((m) => m.type === 'stream-event').map((m) => m.text))
       const missing = activityEvents.filter((e) => e.eventClass?.includes('event-follow') && !existingTexts.has(e.text))
-      if (missing.length > 0) {
-        msgs.push(...missing)
-        msgs.sort(byTimeStable)
+      for (const e of missing) {
+        let lo = 0
+        let hi = msgs.length
+        while (lo < hi) {
+          const mid = (lo + hi) >> 1
+          if (byTimeStable(msgs[mid], e) < 0) lo = mid + 1
+          else hi = mid
+        }
+        msgs.splice(lo, 0, e)
       }
     }
 

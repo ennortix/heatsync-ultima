@@ -10388,6 +10388,10 @@
     if (m.isFirstMsg) {
       div.classList.add('hs-mc-first-msg')
     }
+    // Returning chatter — chatted before, back after a long absence (twitch tag).
+    if (m.isReturningChatter) div.classList.add('is-returning')
+    // Raider — a first message arriving in the window after a raid into this channel.
+    if (m.isRaider) div.classList.add('is-raider')
     // Cleared by mod (timeout/ban/delete) — Twitch-native dim + strikethrough on offending content
     if (m.cleared && dimTimeouts) {
       div.classList.add('hs-mc-msg-cleared')

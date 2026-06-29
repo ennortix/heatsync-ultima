@@ -6047,6 +6047,83 @@
     { signal: mcSignal },
   )
 
+  // ── buffer-vim: visual range-select + hint mode + mode-line ──────────────────
+  // Hover-scoped + capture-phase: only acts while the overlay is hovered and only
+  // consumes matched keys, so it never hijacks the host page (twitch f=fullscreen)
+  // and never collides with input-vi (it bails on typing). viModeEnabled-gated.
+  let _hsBufVim = null
+  function _ensureBufferVim() {
+    if (_hsBufVim) return _hsBufVim
+    const overlay = document.getElementById('hs-mc-overlay')
+    if (!overlay) return null
+    const notify = (msg) => {
+      let t = overlay.querySelector('.hs-vim-toast')
+      if (!t) { t = document.createElement('div'); t.className = 'hs-vim-toast'; overlay.appendChild(t) }
+      t.textContent = msg
+      cleanup.clearTimeout(t._hsT)
+      t._hsT = cleanup.setTimeout(() => t.remove(), 1400)
+    }
+    const modeLine = new HsOverlayModeLine(overlay)
+    const hint = new HsOverlayHint({
+      root: overlay,
+      modeLine,
+      selector: '.hs-mc-msg .hs-mc-user:not(.hs-mc-reply-user), .hs-mc-text a[href], .hs-mc-emote-wrapper, .hs-mc-emote',
+    })
+    const visual = new HsOverlayVisual({
+      rowData: (row) => {
+        const id = row.dataset.msgId || ''
+        return {
+          el: row,
+          id,
+          user: row.dataset.msgUser || '',
+          text: (row.querySelector(':scope > .hs-mc-text')?.textContent || '').trim(),
+          permalink: id ? `https://heatsync.org/m/${id}` : '',
+        }
+      },
+      modeLine,
+      notify,
+      onQuote: (id) => { setReplyState({ msgId: id }); document.getElementById('hs-mc-input')?.focus() },
+      // (autoscroll-pause on enter deferred: setPaused is scoped to the scroll
+      // setup, not reachable here; snapshot-on-enter already keeps the range correct.)
+    })
+    _hsBufVim = { overlay, hint, visual }
+    return _hsBufVim
+  }
+  document.addEventListener(
+    'keydown',
+    (e) => {
+      if (!viModeEnabled) return
+      const bv = _ensureBufferVim()
+      if (!bv) return
+      // While a modal mode is active it owns the keyboard (block host + mod hotkeys).
+      if (bv.hint.active) {
+        if (e.ctrlKey || e.metaKey || e.altKey) return
+        if (bv.hint.handleKey(e)) { e.preventDefault(); e.stopImmediatePropagation() }
+        return
+      }
+      if (bv.visual.active) {
+        if (e.ctrlKey || e.metaKey || e.altKey) return
+        if (bv.visual.handleKey(e)) { e.preventDefault(); e.stopImmediatePropagation() }
+        return
+      }
+      // Entry: only when hovering the overlay, not typing, no modifier, not in settings.
+      const t = e.target
+      if (t && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))) return
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      if (currentTab === 'settings') return
+      // Active when the overlay is hovered (mouse) OR holds focus (keyboard) —
+      // a keyboard-first feature can't require the mouse to be parked on it.
+      if (!bv.overlay.matches(':hover') && !bv.overlay.contains(document.activeElement)) return
+      if (e.key === 'f') { if (bv.hint.enter({ newTab: false })) { e.preventDefault(); e.stopImmediatePropagation() } }
+      else if (e.key === 'F') { if (bv.hint.enter({ newTab: true })) { e.preventDefault(); e.stopImmediatePropagation() } }
+      else if (e.key === 'v') {
+        const rows = Array.from(document.querySelectorAll('#hs-mc-messages .hs-mc-msg'))
+        if (bv.visual.enter(rows)) { e.preventDefault(); e.stopImmediatePropagation() }
+      }
+    },
+    { capture: true, signal: mcSignal },
+  )
+
   // (automod moved to automod.js)
 
   // Ephemeral auto-tabs — every stream open ANYWHERE in the browser shows

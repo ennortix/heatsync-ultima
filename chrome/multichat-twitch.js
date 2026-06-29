@@ -56570,18 +56570,34 @@ const STORAGE_KEY = 'heatsync_multichat'
     // write can't half-apply a subsystem. Live reads still use isEnabled().
     snapshotGates()
 
-    // Request background to re-send channel emotes (may have been fetched before we loaded)
-    try {
-      chrome.runtime.sendMessage({ type: 'get_channel_emotes' })
-    } catch (e) {
-      /* context invalidated */
-    }
-
     setupEmoteTooltipHandlers()
     setupUserTooltipHandlers()
     setupLinkTooltipHandlers()
     if (gateAtBoot('profile-cards')) setupProfileCardHandlers()
     listenForSettingsChanges()
+
+    // Request background to re-send channel emotes (may have been fetched
+    // before we loaded). A cold/restarting service worker can answer this pull
+    // before its channel_emotes_map restore (or the join-fetch) completes,
+    // returning count:0 — a one-shot fire-and-forget then leaves per-channel
+    // 7TV/FFZ/BTTV emotes AND emote tab-complete dead until a full page reload.
+    // Mirror loadBulkBadges: retry-until-count>0 with backoff, and only AFTER
+    // listenForSettingsChanges() registered the channel_emotes_update listener
+    // (the BG re-broadcasts synchronously, so a not-yet-registered listener
+    // would drop the payload).
+    const loadChannelEmotes = (attempt = 0) => {
+      safeSendMessage({ type: 'get_channel_emotes' })
+        .then((resp) => {
+          if (!resp || !resp.count) {
+            if (attempt < 8)
+              cleanup.setTimeout(() => loadChannelEmotes(attempt + 1), Math.min(500 * (attempt + 1), 3000))
+          }
+        })
+        .catch(() => {
+          if (attempt < 8) cleanup.setTimeout(() => loadChannelEmotes(attempt + 1), Math.min(500 * (attempt + 1), 3000))
+        })
+    }
+    loadChannelEmotes()
 
     // Request initial BTTV/FFZ/Chatterino badge maps from background.
     // A cold service worker can answer before its storage restore lands,

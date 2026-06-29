@@ -6627,21 +6627,28 @@ async function handleMessage(message, sender, sendResponse) {
     sendResponse(result || { success: false, reason: 'unknown' })
     return true // Keep channel open for response
   } else if (message.type === 'get_channel_emotes') {
-    // Multichat/content requesting channel emotes (may have missed the broadcast)
-    const totalEmotes = Object.values(channelEmotesMap).reduce((sum, e) => sum + (Array.isArray(e) ? e.length : 0), 0)
-    if (totalEmotes > 0) {
-      browser.storage.local.set({
-        channel_emotes_map: getStorableChannelEmotes(),
-        channel_emotes_fetched_at: channelEmotesFetchedAt,
-      })
-      for (const [k, emotes] of Object.entries(channelEmotesMap)) {
-        if (Array.isArray(emotes)) {
-          const { platform, channel } = splitChKey(k)
-          broadcastToTabs({ type: 'channel_emotes_update', emotes, channelOwner: channel, platform })
+    // Multichat/content requesting channel emotes (may have missed the broadcast).
+    // Await init like get_picker_emotes/get_inventory beside it — a cold SW
+    // must finish restoring channel_emotes_map before we count/broadcast, else
+    // we return count:0 and the client's retry just spins. Async → return true.
+    ;(async () => {
+      if (initPromise) await initPromise
+      const totalEmotes = Object.values(channelEmotesMap).reduce((sum, e) => sum + (Array.isArray(e) ? e.length : 0), 0)
+      if (totalEmotes > 0) {
+        browser.storage.local.set({
+          channel_emotes_map: getStorableChannelEmotes(),
+          channel_emotes_fetched_at: channelEmotesFetchedAt,
+        })
+        for (const [k, emotes] of Object.entries(channelEmotesMap)) {
+          if (Array.isArray(emotes)) {
+            const { platform, channel } = splitChKey(k)
+            broadcastToTabs({ type: 'channel_emotes_update', emotes, channelOwner: channel, platform })
+          }
         }
       }
-    }
-    sendResponse({ count: totalEmotes })
+      sendResponse({ count: totalEmotes })
+    })()
+    return true
   } else if (message.type === 'get_picker_emotes') {
     // Return immediately with whatever's cached. If channel emotes aren't
     // ready, trigger the fetch but DON'T poll-wait — fetchChannelOwnerEmotes

@@ -47399,6 +47399,51 @@ const STORAGE_KEY = 'heatsync_multichat'
     { signal: mcSignal },
   )
 
+  // Keyboard-first tab nav: alt+1..9 jump to the Nth content tab, alt+] / alt+[
+  // cycle next/prev (wrapping). Alt (not ctrl/cmd) avoids the browser's own
+  // ctrl/cmd+N tab switching. Only the scrollable content tabs (feed/whispers/
+  // mentions/pinned/live + channels) are navigable — the util buttons
+  // (add/settings/collapse/popout) live outside .hs-mc-tabs-scroll, so the
+  // selector skips them. e.code (Digit1.. / Bracket*) is layout-independent and
+  // immune to Alt-composition on non-Linux keymaps.
+  function _navigableTabIds() {
+    const out = []
+    for (const el of document.querySelectorAll('.hs-mc-tabs-scroll .hs-mc-tab[data-tab]')) {
+      if (el.dataset.tab === 'add' || el.offsetParent === null) continue
+      out.push(el.dataset.tab)
+    }
+    return out
+  }
+  document.addEventListener(
+    'keydown',
+    (e) => {
+      if (!e.altKey || e.ctrlKey || e.metaKey) return
+      const t = e.target
+      if (t && (t.isContentEditable || ['INPUT', 'TEXTAREA'].includes(t.tagName))) return
+      const isDigit = /^Digit[1-9]$/.test(e.code || '')
+      const isBracket = e.code === 'BracketRight' || e.code === 'BracketLeft'
+      if (!isDigit && !isBracket) return
+      const ids = _navigableTabIds()
+      if (!ids.length) return
+      if (isDigit) {
+        const idx = Number(e.code.slice(5)) - 1
+        if (idx >= ids.length) return
+        e.preventDefault()
+        switchTab(ids[idx])
+        return
+      }
+      // alt+] next, alt+[ prev — wrap. If the current tab isn't navigable
+      // (e.g. settings), start from the nearest end so the first press lands.
+      const cur = ids.indexOf(currentTab)
+      const fwd = e.code === 'BracketRight'
+      const base = cur === -1 ? (fwd ? -1 : 0) : cur
+      const next = fwd ? (base + 1) % ids.length : (base - 1 + ids.length) % ids.length
+      e.preventDefault()
+      switchTab(ids[next])
+    },
+    { signal: mcSignal },
+  )
+
   // (automod moved to automod.js)
 
   // Ephemeral auto-tabs — every stream open ANYWHERE in the browser shows

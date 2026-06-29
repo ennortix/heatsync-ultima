@@ -1,5 +1,23 @@
 # changelog
 
+## [1.7.9] — 2026-06-29
+
+### added
+- **vim buffer nav in the overlay** — `v` selects a range of messages (copy text, copy permalinks, quote); `f` paints hint labels to keyboard-click usernames, links and emotes; with a mode-line indicator. opt-in behind the vi-mode setting.
+- **mod-log tab** — a streamer-popout log of mod actions (ban / timeout / unban / delete across channels) you can drag to a second monitor or OBS.
+- **per-user purge + configurable ban-reason chips**, and an opt-in **confirm-before-ban** misclick guard.
+- **alt+1..9 / alt+[ ] tab navigation** in the overlay.
+- **regex + match-count chat search**, plus a **per-rule filter / highlight engine** for live chat.
+- **youtube cross-platform aliases** for mute / block.
+
+### changed
+- right-click an owned emote now removes it from your set.
+
+### fixed
+- firefox: serve 7TV webp where animated avif froze; correct firefox detection.
+- emotes: restore cold-start channel-emote hydration; native badges render in place without a rebuild flash.
+- security: nonce-gate page hooks, verify the auth token before adopting it, and lock the hardened CSP against silent weakening.
+
 ## [1.7.8] — 2026-06-28
 
 ### changed

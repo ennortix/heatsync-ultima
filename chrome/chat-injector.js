@@ -299,7 +299,9 @@
     if (injectedMessages.size > 500) {
       const arr = [...injectedMessages]
       injectedMessages.clear()
-      arr.slice(-250).forEach((id) => injectedMessages.add(id))
+      arr.slice(-250).forEach((id) => {
+        injectedMessages.add(id)
+      })
     }
   }
 

@@ -6058,7 +6058,11 @@
     if (!overlay) return null
     const notify = (msg) => {
       let t = overlay.querySelector('.hs-vim-toast')
-      if (!t) { t = document.createElement('div'); t.className = 'hs-vim-toast'; overlay.appendChild(t) }
+      if (!t) {
+        t = document.createElement('div')
+        t.className = 'hs-vim-toast'
+        overlay.appendChild(t)
+      }
       t.textContent = msg
       cleanup.clearTimeout(t._hsT)
       t._hsT = cleanup.setTimeout(() => t.remove(), 1400)
@@ -6067,7 +6071,8 @@
     const hint = new HsOverlayHint({
       root: overlay,
       modeLine,
-      selector: '.hs-mc-msg .hs-mc-user:not(.hs-mc-reply-user), .hs-mc-text a[href], .hs-mc-emote-wrapper, .hs-mc-emote',
+      selector:
+        '.hs-mc-msg .hs-mc-user:not(.hs-mc-reply-user), .hs-mc-text a[href], .hs-mc-emote-wrapper, .hs-mc-emote',
     })
     const visual = new HsOverlayVisual({
       rowData: (row) => {
@@ -6082,7 +6087,10 @@
       },
       modeLine,
       notify,
-      onQuote: (id) => { setReplyState({ msgId: id }); document.getElementById('hs-mc-input')?.focus() },
+      onQuote: (id) => {
+        setReplyState({ msgId: id })
+        document.getElementById('hs-mc-input')?.focus()
+      },
       // (autoscroll-pause on enter deferred: setPaused is scoped to the scroll
       // setup, not reachable here; snapshot-on-enter already keeps the range correct.)
     })
@@ -6098,12 +6106,18 @@
       // While a modal mode is active it owns the keyboard (block host + mod hotkeys).
       if (bv.hint.active) {
         if (e.ctrlKey || e.metaKey || e.altKey) return
-        if (bv.hint.handleKey(e)) { e.preventDefault(); e.stopImmediatePropagation() }
+        if (bv.hint.handleKey(e)) {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+        }
         return
       }
       if (bv.visual.active) {
         if (e.ctrlKey || e.metaKey || e.altKey) return
-        if (bv.visual.handleKey(e)) { e.preventDefault(); e.stopImmediatePropagation() }
+        if (bv.visual.handleKey(e)) {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+        }
         return
       }
       // Entry: only when hovering the overlay, not typing, no modifier, not in settings.
@@ -6114,11 +6128,22 @@
       // Active when the overlay is hovered (mouse) OR holds focus (keyboard) —
       // a keyboard-first feature can't require the mouse to be parked on it.
       if (!bv.overlay.matches(':hover') && !bv.overlay.contains(document.activeElement)) return
-      if (e.key === 'f') { if (bv.hint.enter({ newTab: false })) { e.preventDefault(); e.stopImmediatePropagation() } }
-      else if (e.key === 'F') { if (bv.hint.enter({ newTab: true })) { e.preventDefault(); e.stopImmediatePropagation() } }
-      else if (e.key === 'v') {
+      if (e.key === 'f') {
+        if (bv.hint.enter({ newTab: false })) {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+        }
+      } else if (e.key === 'F') {
+        if (bv.hint.enter({ newTab: true })) {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+        }
+      } else if (e.key === 'v') {
         const rows = Array.from(document.querySelectorAll('#hs-mc-messages .hs-mc-msg'))
-        if (bv.visual.enter(rows)) { e.preventDefault(); e.stopImmediatePropagation() }
+        if (bv.visual.enter(rows)) {
+          e.preventDefault()
+          e.stopImmediatePropagation()
+        }
       }
     },
     { capture: true, signal: mcSignal },

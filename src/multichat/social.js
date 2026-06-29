@@ -2650,6 +2650,53 @@ function renderPinnedTab() {
   msgsEl.appendChild(frag)
 }
 
+// Mod-action log tab — local-only history of ban/timeout/unban/delete actions
+// (self + observed, all channels), newest-first. Streamers pop this out and
+// drag it to a stream monitor. Data: modActionLog (main.js), recorded at the
+// irc/kick message chokepoints. Render: safe createElement + textContent only
+// (no innerHTML), mirroring renderPinnedTab; display strings from mod-log.js's
+// unit-tested modLogLine().
+function renderModLogTab() {
+  if (typeof activeProfileCard !== 'undefined' && activeProfileCard) return
+  const msgsEl = document.getElementById('hs-mc-messages')
+  if (!msgsEl) return
+  msgsEl.textContent = ''
+  const log = typeof modActionLog !== 'undefined' ? modActionLog : []
+  if (!log.length) {
+    const empty = document.createElement('div')
+    empty.className = 'hs-mc-empty'
+    empty.textContent = 'no mod actions yet'
+    msgsEl.appendChild(empty)
+    return
+  }
+  const frag = document.createDocumentFragment()
+  for (let i = log.length - 1; i >= 0; i--) {
+    const e = log[i]
+    const row = document.createElement('div')
+    row.className = `hs-modlog-row hs-modlog-${e.action || 'action'}`
+    const time = document.createElement('span')
+    time.className = 'hs-modlog-time'
+    try {
+      time.textContent = new Date(e.time || 0).toLocaleTimeString()
+    } catch {
+      time.textContent = ''
+    }
+    row.appendChild(time)
+    if (e.channel) {
+      const ch = document.createElement('span')
+      ch.className = 'hs-modlog-channel'
+      ch.textContent = e.channel
+      row.appendChild(ch)
+    }
+    const body = document.createElement('span')
+    body.className = 'hs-modlog-body'
+    body.textContent = typeof modLogLine === 'function' ? modLogLine(e) : `${e.action} ${e.target}`
+    row.appendChild(body)
+    frag.appendChild(row)
+  }
+  msgsEl.appendChild(frag)
+}
+
 // ============================================
 // FEED POST-LINK HOVER PREVIEW
 // ============================================

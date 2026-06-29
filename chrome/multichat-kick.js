@@ -15072,6 +15072,26 @@ function injectStyles() {
     }
     .hs-pinned-row:hover .hs-pinned-body { color: #fff; }
 
+    /* mod-action log (streamer/mod popout view) — per-action ANSI accents */
+    .hs-modlog-row {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      padding: 2px 8px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      line-height: 18px;
+      font-size: 13px;
+    }
+    .hs-modlog-row:hover { background: rgba(255,135,0,0.07); }
+    .hs-modlog-time { color: #808080; font-variant-numeric: tabular-nums; }
+    .hs-modlog-channel { color: #ff8700; font-weight: 600; }
+    .hs-modlog-body { color: #ddd; word-break: break-word; }
+    .hs-modlog-ban .hs-modlog-body { color: #ff5f5f; }
+    .hs-modlog-timeout .hs-modlog-body { color: #ffd75f; }
+    .hs-modlog-unban .hs-modlog-body,
+    .hs-modlog-untimeout .hs-modlog-body { color: #5fd75f; }
+    .hs-modlog-delete .hs-modlog-body { color: #9e9e9e; }
+
     /* ---- YOUTUBE NATIVE CHAT HIDING ----
        Inline display:none on the iframe gets blown away when YT recreates
        <ytd-live-chat-frame> during ad transitions. CSS rule keyed off our
@@ -31760,6 +31780,53 @@ function renderPinnedTab() {
   msgsEl.appendChild(frag)
 }
 
+// Mod-action log tab — local-only history of ban/timeout/unban/delete actions
+// (self + observed, all channels), newest-first. Streamers pop this out and
+// drag it to a stream monitor. Data: modActionLog (main.js), recorded at the
+// irc/kick message chokepoints. Render: safe createElement + textContent only
+// (no innerHTML), mirroring renderPinnedTab; display strings from mod-log.js's
+// unit-tested modLogLine().
+function renderModLogTab() {
+  if (typeof activeProfileCard !== 'undefined' && activeProfileCard) return
+  const msgsEl = document.getElementById('hs-mc-messages')
+  if (!msgsEl) return
+  msgsEl.textContent = ''
+  const log = typeof modActionLog !== 'undefined' ? modActionLog : []
+  if (!log.length) {
+    const empty = document.createElement('div')
+    empty.className = 'hs-mc-empty'
+    empty.textContent = 'no mod actions yet'
+    msgsEl.appendChild(empty)
+    return
+  }
+  const frag = document.createDocumentFragment()
+  for (let i = log.length - 1; i >= 0; i--) {
+    const e = log[i]
+    const row = document.createElement('div')
+    row.className = `hs-modlog-row hs-modlog-${e.action || 'action'}`
+    const time = document.createElement('span')
+    time.className = 'hs-modlog-time'
+    try {
+      time.textContent = new Date(e.time || 0).toLocaleTimeString()
+    } catch {
+      time.textContent = ''
+    }
+    row.appendChild(time)
+    if (e.channel) {
+      const ch = document.createElement('span')
+      ch.className = 'hs-modlog-channel'
+      ch.textContent = e.channel
+      row.appendChild(ch)
+    }
+    const body = document.createElement('span')
+    body.className = 'hs-modlog-body'
+    body.textContent = typeof modLogLine === 'function' ? modLogLine(e) : `${e.action} ${e.target}`
+    row.appendChild(body)
+    frag.appendChild(row)
+  }
+  msgsEl.appendChild(frag)
+}
+
 // ============================================
 // FEED POST-LINK HOVER PREVIEW
 // ============================================
@@ -42032,7 +42099,15 @@ const STORAGE_KEY = 'heatsync_multichat'
   function _isChatTab(id) {
     if (!id) return false
     if (id === 'live' || id === 'mentions') return true
-    if (id === 'feed' || id === 'whispers' || id === 'discover' || id === 'pinned' || id === 'settings' || id === 'add')
+    if (
+      id === 'feed' ||
+      id === 'whispers' ||
+      id === 'discover' ||
+      id === 'pinned' ||
+      id === 'modlog' ||
+      id === 'settings' ||
+      id === 'add'
+    )
       return false
     return true // per-channel tab
   }
@@ -42553,7 +42628,7 @@ const STORAGE_KEY = 'heatsync_multichat'
   function applyUnreadIndicatorsFromPersist() {
     if (!tabBarElement) return
     const tabs = tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]')
-    const SPECIAL = new Set(['mentions', 'whispers', 'feed', 'discover', 'pinned', 'add', 'settings', 'live'])
+    const SPECIAL = new Set(['mentions', 'whispers', 'feed', 'discover', 'pinned', 'modlog', 'add', 'settings', 'live'])
     for (const tabEl of tabs) {
       const tabId = tabEl.dataset.tab
       if (!tabId || tabId === currentTab) continue
@@ -44670,6 +44745,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         <button class="hs-mc-tab" data-tab="whispers">${t('mc_tab_whispers')}</button>
         <button class="hs-mc-tab" data-tab="mentions">${t('mc_tab_mentions')}</button>
         <button class="hs-mc-tab" data-tab="pinned">${t('mc_tab_pinned')}</button>
+        <button class="hs-mc-tab" data-tab="modlog">mod log</button>
         <button class="hs-mc-tab" data-tab="live">${t('mc_tab_live')}</button>
         <button class="hs-mc-tab" data-tab="add">+</button>
       </div>
@@ -44830,7 +44906,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       }
 
       // Channel tabs get edit/remove context menu
-      const reserved = ['feed', 'mentions', 'whispers', 'discover', 'pinned', 'add', 'settings']
+      const reserved = ['feed', 'mentions', 'whispers', 'discover', 'pinned', 'modlog', 'add', 'settings']
       if (reserved.includes(tabId)) return
       e.preventDefault()
 
@@ -44928,7 +45004,7 @@ const STORAGE_KEY = 'heatsync_multichat'
   // Util row collapsed — hides C/T/F-/F+/⚙ for clean single-line tabs
 
   // User-hidable tabs — persisted in ui_settings.hiddenTabs (auto-syncs cross-device)
-  const HIDABLE_TABS = ['feed', 'whispers', 'mentions', 'pinned']
+  const HIDABLE_TABS = ['feed', 'whispers', 'mentions', 'pinned', 'modlog']
   // Default hidden — empty for new users until they enable in settings (saved/pinned tab)
   const DEFAULT_HIDDEN_TABS = ['pinned']
   let hiddenTabs = new Set(DEFAULT_HIDDEN_TABS)
@@ -45176,7 +45252,11 @@ const STORAGE_KEY = 'heatsync_multichat'
       )
 
       const isStaticTab = () =>
-        currentTab === 'feed' || currentTab === 'settings' || currentTab === 'discover' || currentTab === 'pinned'
+        currentTab === 'feed' ||
+        currentTab === 'settings' ||
+        currentTab === 'discover' ||
+        currentTab === 'pinned' ||
+        currentTab === 'modlog'
 
       // Bulletproof scroll-pause: ANY upward movement pauses chat sticky.
       // Resumes ONLY when user lands within 2px of true bottom OR clicks "new" button.
@@ -49584,7 +49664,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     // them updateTabBar (runs on every channel load) silently removes the ⇄ / ⚡
     // buttons right after they render. That was "BUG 1: ⇄ missing on kick".
     const existingChannelTabs = tabBarElement.querySelectorAll(
-      '.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="mentions"]):not([data-tab="whispers"]):not([data-tab="discover"]):not([data-tab="pinned"]):not([data-tab="add"]):not([data-tab="settings"]):not([data-tab="popout"]):not([data-tab="collapse"]):not([data-tab="native"]):not([data-tab="actions"])',
+      '.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="mentions"]):not([data-tab="whispers"]):not([data-tab="discover"]):not([data-tab="pinned"]):not([data-tab="modlog"]):not([data-tab="add"]):not([data-tab="settings"]):not([data-tab="popout"]):not([data-tab="collapse"]):not([data-tab="native"]):not([data-tab="actions"])',
     )
     existingChannelTabs.forEach((t) => t.remove())
 
@@ -51041,7 +51121,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     // Hide input bar on add-channel form, or when auto-hide is on
     if (inputBarElement) {
       const pickerOpen = document.getElementById('hs-mc-emote-picker')?.classList.contains('visible')
-      if (id === 'add' || id === 'settings' || id === 'discover' || id === 'pinned') {
+      if (id === 'add' || id === 'settings' || id === 'discover' || id === 'pinned' || id === 'modlog') {
         inputBarElement.classList.add('hs-hidden')
         inputBarVisible = false
       } else if (autoHideInput && !pickerOpen) {
@@ -52616,7 +52696,13 @@ const STORAGE_KEY = 'heatsync_multichat'
   // scroll so the viewport doesn't jump when rows prepend above it.
   function loadOlderScrollback() {
     if (!isScrolledUp) return // only while the user is paused (scrolled up)
-    if (currentTab === 'feed' || currentTab === 'settings' || currentTab === 'discover' || currentTab === 'pinned')
+    if (
+      currentTab === 'feed' ||
+      currentTab === 'settings' ||
+      currentTab === 'discover' ||
+      currentTab === 'pinned' ||
+      currentTab === 'modlog'
+    )
       return
     if (_scrollbackWindow >= SCROLLBACK_MAX - DOM_RENDER_CAP) return // at the depth ceiling
     const msgsEl = document.getElementById('hs-mc-messages')
@@ -52684,6 +52770,11 @@ const STORAGE_KEY = 'heatsync_multichat'
       renderPinnedTab()
       return
     }
+    if (id === 'modlog') {
+      hideMultistreamBanner()
+      renderModLogTab()
+      return
+    }
     if (id === 'settings') {
       hideMultistreamBanner()
       renderSettingsTab()
@@ -52696,7 +52787,11 @@ const STORAGE_KEY = 'heatsync_multichat'
     if (id === 'live') {
       const liveCh = getLiveChannel()
       maybeShowMultistreamBanner(liveCh, hostPlatform)
-    } else if (id && id !== 'add' && !['mentions', 'feed', 'whispers', 'discover', 'pinned', 'settings'].includes(id)) {
+    } else if (
+      id &&
+      id !== 'add' &&
+      !['mentions', 'feed', 'whispers', 'discover', 'pinned', 'modlog', 'settings'].includes(id)
+    ) {
       // Per-channel tab — id may be a username or a linked-tab id; resolve from config
       const ch = getChannelById(id)
       // YT-only channels: extract handle from the youtube URL so the banner can
@@ -53018,7 +53113,10 @@ const STORAGE_KEY = 'heatsync_multichat'
       cleanup.raf(() => {
         isProgrammaticScroll = false
       })
-      if (!isScrolledUp && !(id === 'feed' || id === 'settings' || id === 'discover' || id === 'pinned')) {
+      if (
+        !isScrolledUp &&
+        !(id === 'feed' || id === 'settings' || id === 'discover' || id === 'pinned' || id === 'modlog')
+      ) {
         scrollMsgsToBottom(msgsEl)
       }
       return
@@ -53056,7 +53154,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     // unreliable — a width rewrap, image-load reflow, or content-visibility
     // resolve could shift scrollTop a few px and flip the gate to false even
     // though the user logically was at-bottom.
-    const isStaticRender = id === 'feed' || id === 'settings' || id === 'discover' || id === 'pinned'
+    const isStaticRender = id === 'feed' || id === 'settings' || id === 'discover' || id === 'pinned' || id === 'modlog'
 
     // PASS B: walk desired list, MOVE existing nodes into position or insert
     // new ones. Crucially: when a desired key already lives in DOM at the
@@ -53284,7 +53382,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       }
 
       const id = twitchVal || kickVal || 'yt-' + Date.now()
-      const reserved = ['live', 'feed', 'mentions', 'whispers', 'discover', 'pinned', 'add', 'settings']
+      const reserved = ['live', 'feed', 'mentions', 'whispers', 'discover', 'pinned', 'modlog', 'add', 'settings']
       if (reserved.includes(id)) {
         showErr(t('mc_reserved_name'))
         return
@@ -54194,7 +54292,7 @@ const STORAGE_KEY = 'heatsync_multichat'
    */
   async function resolveLiveCandidateToTab({ name, platform, youtubeUrl }) {
     const lower = name.toLowerCase()
-    const reserved = ['live', 'feed', 'mentions', 'whispers', 'discover', 'pinned', 'add', 'settings']
+    const reserved = ['live', 'feed', 'mentions', 'whispers', 'discover', 'pinned', 'modlog', 'add', 'settings']
 
     // Resolve all 3 platform identities up-front via /api/profile so the resulting
     // tab pulls Twitch + Kick + YouTube together — not just the platform we
@@ -54631,7 +54729,7 @@ const STORAGE_KEY = 'heatsync_multichat'
   let _savedActiveTab = null
   // 'discover' intentionally omitted — tab is hidden from the bar pre-launch,
   // so a stale saved 'discover' falls back to 'live' on restore.
-  const BUILTIN_TABS = ['live', 'feed', 'mentions', 'pinned', 'add']
+  const BUILTIN_TABS = ['live', 'feed', 'mentions', 'pinned', 'modlog', 'add']
   async function loadActiveTab() {
     try {
       const stored = await cachedUiSettings()

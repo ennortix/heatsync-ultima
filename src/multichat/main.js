@@ -425,7 +425,15 @@
   function _isChatTab(id) {
     if (!id) return false
     if (id === 'live' || id === 'mentions') return true
-    if (id === 'feed' || id === 'whispers' || id === 'discover' || id === 'pinned' || id === 'settings' || id === 'add')
+    if (
+      id === 'feed' ||
+      id === 'whispers' ||
+      id === 'discover' ||
+      id === 'pinned' ||
+      id === 'modlog' ||
+      id === 'settings' ||
+      id === 'add'
+    )
       return false
     return true // per-channel tab
   }
@@ -946,7 +954,7 @@
   function applyUnreadIndicatorsFromPersist() {
     if (!tabBarElement) return
     const tabs = tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]')
-    const SPECIAL = new Set(['mentions', 'whispers', 'feed', 'discover', 'pinned', 'add', 'settings', 'live'])
+    const SPECIAL = new Set(['mentions', 'whispers', 'feed', 'discover', 'pinned', 'modlog', 'add', 'settings', 'live'])
     for (const tabEl of tabs) {
       const tabId = tabEl.dataset.tab
       if (!tabId || tabId === currentTab) continue
@@ -3063,6 +3071,7 @@
         <button class="hs-mc-tab" data-tab="whispers">${t('mc_tab_whispers')}</button>
         <button class="hs-mc-tab" data-tab="mentions">${t('mc_tab_mentions')}</button>
         <button class="hs-mc-tab" data-tab="pinned">${t('mc_tab_pinned')}</button>
+        <button class="hs-mc-tab" data-tab="modlog">mod log</button>
         <button class="hs-mc-tab" data-tab="live">${t('mc_tab_live')}</button>
         <button class="hs-mc-tab" data-tab="add">+</button>
       </div>
@@ -3223,7 +3232,7 @@
       }
 
       // Channel tabs get edit/remove context menu
-      const reserved = ['feed', 'mentions', 'whispers', 'discover', 'pinned', 'add', 'settings']
+      const reserved = ['feed', 'mentions', 'whispers', 'discover', 'pinned', 'modlog', 'add', 'settings']
       if (reserved.includes(tabId)) return
       e.preventDefault()
 
@@ -3321,7 +3330,7 @@
   // Util row collapsed — hides C/T/F-/F+/⚙ for clean single-line tabs
 
   // User-hidable tabs — persisted in ui_settings.hiddenTabs (auto-syncs cross-device)
-  const HIDABLE_TABS = ['feed', 'whispers', 'mentions', 'pinned']
+  const HIDABLE_TABS = ['feed', 'whispers', 'mentions', 'pinned', 'modlog']
   // Default hidden — empty for new users until they enable in settings (saved/pinned tab)
   const DEFAULT_HIDDEN_TABS = ['pinned']
   let hiddenTabs = new Set(DEFAULT_HIDDEN_TABS)
@@ -3569,7 +3578,11 @@
       )
 
       const isStaticTab = () =>
-        currentTab === 'feed' || currentTab === 'settings' || currentTab === 'discover' || currentTab === 'pinned'
+        currentTab === 'feed' ||
+        currentTab === 'settings' ||
+        currentTab === 'discover' ||
+        currentTab === 'pinned' ||
+        currentTab === 'modlog'
 
       // Bulletproof scroll-pause: ANY upward movement pauses chat sticky.
       // Resumes ONLY when user lands within 2px of true bottom OR clicks "new" button.
@@ -7977,7 +7990,7 @@
     // them updateTabBar (runs on every channel load) silently removes the ⇄ / ⚡
     // buttons right after they render. That was "BUG 1: ⇄ missing on kick".
     const existingChannelTabs = tabBarElement.querySelectorAll(
-      '.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="mentions"]):not([data-tab="whispers"]):not([data-tab="discover"]):not([data-tab="pinned"]):not([data-tab="add"]):not([data-tab="settings"]):not([data-tab="popout"]):not([data-tab="collapse"]):not([data-tab="native"]):not([data-tab="actions"])',
+      '.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="mentions"]):not([data-tab="whispers"]):not([data-tab="discover"]):not([data-tab="pinned"]):not([data-tab="modlog"]):not([data-tab="add"]):not([data-tab="settings"]):not([data-tab="popout"]):not([data-tab="collapse"]):not([data-tab="native"]):not([data-tab="actions"])',
     )
     existingChannelTabs.forEach((t) => t.remove())
 
@@ -9434,7 +9447,7 @@
     // Hide input bar on add-channel form, or when auto-hide is on
     if (inputBarElement) {
       const pickerOpen = document.getElementById('hs-mc-emote-picker')?.classList.contains('visible')
-      if (id === 'add' || id === 'settings' || id === 'discover' || id === 'pinned') {
+      if (id === 'add' || id === 'settings' || id === 'discover' || id === 'pinned' || id === 'modlog') {
         inputBarElement.classList.add('hs-hidden')
         inputBarVisible = false
       } else if (autoHideInput && !pickerOpen) {
@@ -11009,7 +11022,13 @@
   // scroll so the viewport doesn't jump when rows prepend above it.
   function loadOlderScrollback() {
     if (!isScrolledUp) return // only while the user is paused (scrolled up)
-    if (currentTab === 'feed' || currentTab === 'settings' || currentTab === 'discover' || currentTab === 'pinned')
+    if (
+      currentTab === 'feed' ||
+      currentTab === 'settings' ||
+      currentTab === 'discover' ||
+      currentTab === 'pinned' ||
+      currentTab === 'modlog'
+    )
       return
     if (_scrollbackWindow >= SCROLLBACK_MAX - DOM_RENDER_CAP) return // at the depth ceiling
     const msgsEl = document.getElementById('hs-mc-messages')
@@ -11077,6 +11096,11 @@
       renderPinnedTab()
       return
     }
+    if (id === 'modlog') {
+      hideMultistreamBanner()
+      renderModLogTab()
+      return
+    }
     if (id === 'settings') {
       hideMultistreamBanner()
       renderSettingsTab()
@@ -11089,7 +11113,11 @@
     if (id === 'live') {
       const liveCh = getLiveChannel()
       maybeShowMultistreamBanner(liveCh, hostPlatform)
-    } else if (id && id !== 'add' && !['mentions', 'feed', 'whispers', 'discover', 'pinned', 'settings'].includes(id)) {
+    } else if (
+      id &&
+      id !== 'add' &&
+      !['mentions', 'feed', 'whispers', 'discover', 'pinned', 'modlog', 'settings'].includes(id)
+    ) {
       // Per-channel tab — id may be a username or a linked-tab id; resolve from config
       const ch = getChannelById(id)
       // YT-only channels: extract handle from the youtube URL so the banner can
@@ -11411,7 +11439,10 @@
       cleanup.raf(() => {
         isProgrammaticScroll = false
       })
-      if (!isScrolledUp && !(id === 'feed' || id === 'settings' || id === 'discover' || id === 'pinned')) {
+      if (
+        !isScrolledUp &&
+        !(id === 'feed' || id === 'settings' || id === 'discover' || id === 'pinned' || id === 'modlog')
+      ) {
         scrollMsgsToBottom(msgsEl)
       }
       return
@@ -11449,7 +11480,7 @@
     // unreliable — a width rewrap, image-load reflow, or content-visibility
     // resolve could shift scrollTop a few px and flip the gate to false even
     // though the user logically was at-bottom.
-    const isStaticRender = id === 'feed' || id === 'settings' || id === 'discover' || id === 'pinned'
+    const isStaticRender = id === 'feed' || id === 'settings' || id === 'discover' || id === 'pinned' || id === 'modlog'
 
     // PASS B: walk desired list, MOVE existing nodes into position or insert
     // new ones. Crucially: when a desired key already lives in DOM at the
@@ -11677,7 +11708,7 @@
       }
 
       const id = twitchVal || kickVal || 'yt-' + Date.now()
-      const reserved = ['live', 'feed', 'mentions', 'whispers', 'discover', 'pinned', 'add', 'settings']
+      const reserved = ['live', 'feed', 'mentions', 'whispers', 'discover', 'pinned', 'modlog', 'add', 'settings']
       if (reserved.includes(id)) {
         showErr(t('mc_reserved_name'))
         return
@@ -12587,7 +12618,7 @@
    */
   async function resolveLiveCandidateToTab({ name, platform, youtubeUrl }) {
     const lower = name.toLowerCase()
-    const reserved = ['live', 'feed', 'mentions', 'whispers', 'discover', 'pinned', 'add', 'settings']
+    const reserved = ['live', 'feed', 'mentions', 'whispers', 'discover', 'pinned', 'modlog', 'add', 'settings']
 
     // Resolve all 3 platform identities up-front via /api/profile so the resulting
     // tab pulls Twitch + Kick + YouTube together — not just the platform we
@@ -13024,7 +13055,7 @@
   let _savedActiveTab = null
   // 'discover' intentionally omitted — tab is hidden from the bar pre-launch,
   // so a stale saved 'discover' falls back to 'live' on restore.
-  const BUILTIN_TABS = ['live', 'feed', 'mentions', 'pinned', 'add']
+  const BUILTIN_TABS = ['live', 'feed', 'mentions', 'pinned', 'modlog', 'add']
   async function loadActiveTab() {
     try {
       const stored = await cachedUiSettings()

@@ -1145,3 +1145,23 @@
       text-overflow: ellipsis;
     }
     .hs-pinned-row:hover .hs-pinned-body { color: #fff; }
+
+    /* mod-action log (streamer/mod popout view) — per-action ANSI accents */
+    .hs-modlog-row {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      padding: 2px 8px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      line-height: 18px;
+      font-size: 13px;
+    }
+    .hs-modlog-row:hover { background: rgba(255,135,0,0.07); }
+    .hs-modlog-time { color: #808080; font-variant-numeric: tabular-nums; }
+    .hs-modlog-channel { color: #ff8700; font-weight: 600; }
+    .hs-modlog-body { color: #ddd; word-break: break-word; }
+    .hs-modlog-ban .hs-modlog-body { color: #ff5f5f; }
+    .hs-modlog-timeout .hs-modlog-body { color: #ffd75f; }
+    .hs-modlog-unban .hs-modlog-body,
+    .hs-modlog-untimeout .hs-modlog-body { color: #5fd75f; }
+    .hs-modlog-delete .hs-modlog-body { color: #9e9e9e; }

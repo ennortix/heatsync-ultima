@@ -107,9 +107,60 @@ async function fetchBannerChain(chain) {
   return null
 }
 
+// ── user notes ───────────────────────────────────────────────────────────────
+// Private, per-username annotations ("known troll", "ban-evader", "friend").
+// Local-only: chrome.storage.local under one blob, never synced or sent anywhere
+// — first-party by design. Keyed by lowercased username (a person, platform-
+// agnostic). Loaded once into a Map; the whole blob is rewritten on each edit
+// (notes are few, so a full atomic write beats partial-update bookkeeping).
+let _userNotes = null // Map<usernameLc, {text, ts}> | null until loaded
+let _userNotesLoaded = false
+async function _ensureUserNotes() {
+  if (_userNotesLoaded) return _userNotes
+  _userNotes = new Map()
+  try {
+    const r = await chrome.storage.local.get('hs_user_notes')
+    const blob = r?.hs_user_notes
+    if (blob && typeof blob === 'object') {
+      for (const [k, v] of Object.entries(blob)) {
+        if (v && typeof v.text === 'string') _userNotes.set(k, { text: v.text, ts: v.ts || 0 })
+      }
+    }
+  } catch {}
+  _userNotesLoaded = true
+  return _userNotes
+}
+function getUserNote(username) {
+  if (!_userNotes || !username) return ''
+  const n = _userNotes.get(String(username).toLowerCase())
+  return n ? n.text : ''
+}
+async function setUserNote(username, text) {
+  if (!username) return
+  await _ensureUserNotes()
+  const key = String(username).toLowerCase()
+  const t = String(text || '')
+    .slice(0, 500)
+    .trim()
+  const prev = _userNotes.get(key)
+  // No-op if unchanged — avoids a pointless storage write on every blur.
+  if ((prev?.text || '') === t) return
+  if (t) _userNotes.set(key, { text: t, ts: Date.now() })
+  else _userNotes.delete(key)
+  const blob = {}
+  for (const [k, v] of _userNotes) blob[k] = v
+  try {
+    await chrome.storage.local.set({ hs_user_notes: blob })
+  } catch {}
+}
+
 async function openProfileCard(username, platform) {
   if (!username) return
   username = String(username).toLowerCase()
+  // Notes are tiny + local; ensure the Map is hydrated so the note section
+  // renders the saved text. Resolves in ~1ms (before the network profile fetch
+  // re-renders), so no clobber of a focused textarea.
+  _ensureUserNotes()
 
   // Hide input bar — typing makes no sense in card view
   const inputBar = document.getElementById('hs-mc-inputbar')
@@ -505,6 +556,60 @@ function pcBuildModActions(username) {
   return sec
 }
 
+// Private note section — a small textarea seeded with any saved note. Persists
+// on blur AND on a debounced input tick so closing the card via Escape (which
+// removes the textarea without firing a change event) can never lose text.
+let _noteSaveTimer = null
+function pcBuildNoteSection(username) {
+  const sec = pcMakeSection('note')
+  sec.classList.add('hs-pcard-note')
+  const existing = getUserNote(username)
+  // At-a-glance marker — a dot on the title when a note already exists, so you
+  // know a user is annotated without reading the textarea.
+  if (existing) {
+    const titleEl = sec.querySelector('.hs-pcard-section-title')
+    if (titleEl) {
+      const dot = document.createElement('span')
+      dot.textContent = ' ●'
+      dot.style.cssText = 'color:#ff8700'
+      titleEl.appendChild(dot)
+    }
+  }
+  const ta = document.createElement('textarea')
+  ta.className = 'hs-pcard-note-input'
+  ta.placeholder = 'private note — only you, stored locally'
+  ta.maxLength = 500
+  ta.rows = 2
+  ta.value = existing
+  ta.style.cssText =
+    'width:100%;box-sizing:border-box;background:#000;color:#fff;border:1px solid #333;border-radius:0;padding:3px 5px;font:inherit;outline:none;resize:vertical;min-height:2.4em'
+  ta.addEventListener('focus', () => {
+    ta.style.borderColor = '#ff8700'
+  })
+  ta.addEventListener('blur', () => {
+    ta.style.borderColor = '#333'
+    if (_noteSaveTimer) {
+      clearTimeout(_noteSaveTimer)
+      _noteSaveTimer = null
+    }
+    setUserNote(username, ta.value)
+  })
+  // Let Escape bubble (closes the card); swallow other keys so card/vim hotkeys
+  // don't act on note typing.
+  ta.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') e.stopPropagation()
+  })
+  ta.addEventListener('input', () => {
+    if (_noteSaveTimer) clearTimeout(_noteSaveTimer)
+    _noteSaveTimer = setTimeout(() => {
+      _noteSaveTimer = null
+      setUserNote(username, ta.value)
+    }, 400)
+  })
+  sec.appendChild(ta)
+  return sec
+}
+
 function renderProfileCardView() {
   const msgsEl = document.getElementById('hs-mc-messages')
   if (!msgsEl || !activeProfileCard) return
@@ -678,6 +783,11 @@ function renderProfileCardView() {
   idRow.appendChild(idText)
   idSec.appendChild(idRow)
   card.appendChild(idSec)
+
+  // === Note section === — private annotation, keyed by username so it renders
+  // in every state (loading/error/data). Sits right under identity so a mod
+  // sees "known evader" before acting.
+  card.appendChild(pcBuildNoteSection(username))
 
   // === Mod actions === — top priority when you mod a channel this user is in
   const modSec = pcBuildModActions(username)
@@ -1208,6 +1318,9 @@ function pcDoWhisper(username, platform) {
 function setupProfileCardHandlers() {
   if (window._hsProfileCardSetup) return
   window._hsProfileCardSetup = true
+
+  // Hydrate local user notes once at boot so the first card open shows them.
+  _ensureUserNotes()
 
   // Primary path — pcard-early.js (document_start) intercepts the click before
   // Twitch/Kick can react and dispatches this event.

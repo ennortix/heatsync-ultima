@@ -1,9 +1,9 @@
-import { expect, test, beforeEach } from 'bun:test'
+import { beforeEach, expect, test } from 'bun:test'
 import {
-  isDangerousRegexSource,
-  tripsCatastrophicBacktracking,
   compileAutomod,
+  isDangerousRegexSource,
   shouldAutomod,
+  tripsCatastrophicBacktracking,
 } from '../src/multichat/automod.js'
 
 beforeEach(() => {
@@ -74,7 +74,7 @@ test('backstop: passes a safe regex', () => {
 test('backstop: catches a catastrophic pattern that slips the static heuristic', () => {
   // ((a+))+$ is double-nested: the denylist does not flag it, but it is exponential.
   expect(isDangerousRegexSource('((a+))+$')).toBe(false)
-  expect(tripsCatastrophicBacktracking(new RegExp('((a+))+$', 'i'))).toBe(true)
+  expect(tripsCatastrophicBacktracking(/((a+))+$/i)).toBe(true)
 })
 
 test('backstop: compileAutomod degrades a heuristic-evading pattern to literal', () => {

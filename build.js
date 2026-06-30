@@ -763,7 +763,13 @@ function minifyDist(outDir) {
     if (!existsSync(p)) continue
     bytesBefore += readFileSync(p).length
     const platform = MULTICHAT_PLATFORM_DEFINE[f]
-    const extraDefines = platform ? { __HS_HOST__: JSON.stringify(platform) } : undefined
+    // __HS_DEV_BUILD__ → false in every minified (packaged/released/store) bundle,
+    // so the nonce-less dev reload relaxation in content.js is dead-code-eliminated
+    // for real users. Dev builds skip minify → the identifier stays undefined →
+    // content.js's `typeof` guard treats it as dev-mode-on. Fail-closed: only the
+    // packaged build path (which minifies) flips it off, and that's exactly the
+    // store artifact.
+    const extraDefines = { __HS_DEV_BUILD__: 'false', ...(platform ? { __HS_HOST__: JSON.stringify(platform) } : {}) }
     minifyDistFile(outDir, f, extraDefines)
     bytesAfter += readFileSync(p).length
   }

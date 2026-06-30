@@ -11134,10 +11134,23 @@
       // Usage (dev console, after capturing nonce from heatsync-init-nonce message):
       //   window.postMessage({ type: 'heatsync-reload-extension', nonce: <captured> }, location.origin)
       if (event.data?.type === 'heatsync-reload-extension') {
+        // Two accept paths:
+        //  • nonce — any build; gated on the per-session nonce a rogue page can't
+        //    observe (the original hook).
+        //  • dev build — locally-built (unminified) bundles ALSO accept a
+        //    nonce-less reload so remote automation (ssh-from-phone dev) can reload
+        //    without a manual chrome://extensions click. __HS_DEV_BUILD__ is
+        //    replaced with `false` by esbuild define in every packaged/store build
+        //    (see build.js minifyDist), so this relaxation is compiled out for real
+        //    users — no host page can ever reload a published extension.
         const nonce = window.HS?.getMainWorldNonce?.()
-        if (!nonce || event.data.nonce !== nonce) return
+        const nonceOk = !!nonce && event.data.nonce === nonce
+        const devBuild = typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true
+        if (!nonceOk && !devBuild) return
         const now = Date.now()
-        if (now - _lastExtReloadMs < 30000) return
+        // Tighter spacing on dev so back-to-back iteration reloads aren't silently
+        // swallowed; the 30s guard still throttles the nonce/prod path.
+        if (now - _lastExtReloadMs < (devBuild ? 3000 : 30000)) return
         _lastExtReloadMs = now
         safeSendMessage({ type: 'extension_reload' }).catch(() => {})
       }

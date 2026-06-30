@@ -48,6 +48,11 @@ function _frSafeRegex(src, flags) {
   }
 }
 
+// Valid highlight-sound names — kept in sync with FILTER_SOUND_PRESETS in
+// mentions.js (the player). An unknown/absent name compiles to null = silent.
+// Inlined (not imported) so this module stays self-contained + unit-testable.
+const FR_SOUNDS = new Set(['ping', 'blip', 'knock', 'chime'])
+
 // ── module state ──────────────────────────────────────────────────────────────
 // Two buckets: all-scope rules run on every message; per-channel rules run only
 // when channelKey matches. Compiled once → evaluated with no allocation per call.
@@ -72,6 +77,7 @@ function _frCompileOne(rule) {
     id: String(rule.id),
     action,
     color: action === 'highlight' && rule.color && /^#[0-9a-f]{3,8}$/i.test(rule.color) ? rule.color : null,
+    sound: action === 'highlight' && typeof rule.sound === 'string' && FR_SOUNDS.has(rule.sound) ? rule.sound : null,
     scope,
     matchType: m.type,
     caseSensitive: cs,
@@ -149,18 +155,22 @@ function compileFilterRules(rules) {
  */
 function evaluateFilterRules(m, channelKey) {
   const hasChannel = channelKey && _frByChannel.has(channelKey)
-  if (!_frAllRules.length && !hasChannel) return { hide: false, highlight: null }
+  if (!_frAllRules.length && !hasChannel) return { hide: false, highlight: null, sound: null }
 
   const rules = hasChannel ? _frAllRules.concat(_frByChannel.get(channelKey)) : _frAllRules
 
   let highlight = null
+  let sound = null
   for (let i = 0; i < rules.length; i++) {
     const rule = rules[i]
     if (!_frTest(rule, m)) continue
-    if (rule.action === 'hide') return { hide: true, highlight: null }
-    if (rule.action === 'highlight' && highlight === null) highlight = rule.color
+    if (rule.action === 'hide') return { hide: true, highlight: null, sound: null }
+    if (rule.action === 'highlight' && highlight === null) {
+      highlight = rule.color
+      sound = rule.sound
+    }
   }
-  return { hide: false, highlight }
+  return { hide: false, highlight, sound }
 }
 
 function _frTest(rule, m) {

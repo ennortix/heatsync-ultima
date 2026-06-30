@@ -7122,6 +7122,11 @@
           aColor +
           ';border:1px solid #444;flex-shrink:0"></span>'
         : '') +
+      (r.action === 'highlight' && r.sound
+        ? '<span style="color:#808080;font-size:11px;flex-shrink:0" title="sound: ' +
+          escapeHtml(String(r.sound)) +
+          '">♪</span>'
+        : '') +
       '<span style="color:#666;font-size:11px;flex-shrink:0">' +
       scopeLabel +
       '</span>' +
@@ -7168,6 +7173,15 @@
       '<option value="hide">hide</option>' +
       '</select>' +
       '<input type="color" data-fr-field="color" value="#ffff00" style="width:28px;height:22px;border:1px solid #808080;background:#000;padding:1px;cursor:pointer;flex-shrink:0" title="highlight color">' +
+      '<select data-fr-field="sound" style="' +
+      FR_SEL +
+      ';width:62px" title="highlight sound (highlight action only)">' +
+      '<option value="none">silent</option>' +
+      '<option value="ping">ping</option>' +
+      '<option value="blip">blip</option>' +
+      '<option value="knock">knock</option>' +
+      '<option value="chime">chime</option>' +
+      '</select>' +
       '<select data-fr-field="scope" style="' +
       FR_SEL +
       ';max-width:80px">' +
@@ -7234,11 +7248,13 @@
       var valEl = form.querySelector('[data-fr-field="value"]')
       var actEl = form.querySelector('[data-fr-field="action"]')
       var colEl = form.querySelector('[data-fr-field="color"]')
+      var soundEl = form.querySelector('[data-fr-field="sound"]')
       var scopeEl = form.querySelector('[data-fr-field="scope"]')
       var ruleType = typeEl ? typeEl.value : 'keyword'
       var ruleVal = valEl ? valEl.value.trim() : ''
       var ruleAct = actEl ? actEl.value : 'highlight'
       var ruleCol = colEl ? colEl.value : '#ffff00'
+      var ruleSound = soundEl ? soundEl.value : 'none'
       var ruleScope = scopeEl ? scopeEl.value : 'all'
       if (!ruleVal) {
         showToast('rule value is empty', 'error')
@@ -7251,7 +7267,10 @@
         match: { type: ruleType, value: ruleVal, caseSensitive: false },
         action: ruleAct,
       }
-      if (ruleAct === 'highlight') newRule.color = ruleCol
+      if (ruleAct === 'highlight') {
+        newRule.color = ruleCol
+        if (ruleSound && ruleSound !== 'none') newRule.sound = ruleSound
+      }
       rules.push(newRule)
       _saveFilterRules(rules)
       return
@@ -15911,11 +15930,12 @@
         }
       }
       // Automod + filter rules: drop messages matching filter. Own msgs exempt.
-      if (
-        msg.user?.toLowerCase() !== currentUsername?.toLowerCase() &&
-        (shouldAutomod(msg.text) || evaluateFilterRules(msg, getChannelLookup().twitch.get(msg.channel)?.id).hide)
-      )
-        return
+      const _frOwnTw = msg.user?.toLowerCase() === currentUsername?.toLowerCase()
+      const _frTw = _frOwnTw ? null : evaluateFilterRules(msg, getChannelLookup().twitch.get(msg.channel)?.id)
+      if (!_frOwnTw && (shouldAutomod(msg.text) || _frTw.hide)) return
+      // Highlight-rule audio cue — once, on live arrival (this path is live-only;
+      // history replay doesn't reach here). Own/hidden already returned above.
+      if (_frTw && _frTw.sound && typeof playFilterRuleSound === 'function') playFilterRuleSound(_frTw.sound)
       const isMent = isMention(msg)
       bumpStreamStats(msg.channel, msg, isMent)
       if (isMent) {
@@ -15991,11 +16011,11 @@
           msg.platform = sentHost === 'yt' ? 'youtube' : sentHost
         }
       }
-      if (
-        msg.user?.toLowerCase() !== currentUsername?.toLowerCase() &&
-        (shouldAutomod(msg.text) || evaluateFilterRules(msg, getChannelLookup().kick.get(msg.channel)?.id).hide)
-      )
-        return
+      const _frOwnKi = msg.user?.toLowerCase() === currentUsername?.toLowerCase()
+      const _frKi = _frOwnKi ? null : evaluateFilterRules(msg, getChannelLookup().kick.get(msg.channel)?.id)
+      if (!_frOwnKi && (shouldAutomod(msg.text) || _frKi.hide)) return
+      // Highlight-rule audio cue — once, on live kick arrival.
+      if (_frKi && _frKi.sound && typeof playFilterRuleSound === 'function') playFilterRuleSound(_frKi.sound)
       const isMent = isMention(msg)
       bumpStreamStats(msg.channel, msg, isMent)
       if (isMent) {

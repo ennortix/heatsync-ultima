@@ -287,3 +287,55 @@ test('additive: evaluateFilterRules has no side-effects on outside state', () =>
   expect(r1.hide).toBe(r2.hide)
   expect(r1.highlight).toBe(r2.highlight)
 })
+
+// ── highlight sounds ────────────────────────────────────────────────────────────
+
+test('sound: valid sound on highlight rule is returned on match', () => {
+  compileFilterRules([rule({ sound: 'ping' })])
+  const res = evaluateFilterRules(makeMsg({ text: 'hello' }), null)
+  expect(res.highlight).toBe('#ff0000')
+  expect(res.sound).toBe('ping')
+})
+
+test('sound: invalid/unknown sound compiles to null', () => {
+  compileFilterRules([rule({ sound: 'airhorn' })])
+  expect(evaluateFilterRules(makeMsg({ text: 'hello' }), null).sound).toBe(null)
+  compileFilterRules([rule({ sound: 123 })])
+  expect(evaluateFilterRules(makeMsg({ text: 'hello' }), null).sound).toBe(null)
+})
+
+test('sound: hide rule never carries a sound', () => {
+  compileFilterRules([rule({ action: 'hide', sound: 'ping', color: undefined })])
+  const res = evaluateFilterRules(makeMsg({ text: 'hello' }), null)
+  expect(res.hide).toBe(true)
+  expect(res.sound).toBe(null)
+})
+
+test('sound: highlight rule without a sound returns null', () => {
+  compileFilterRules([rule()])
+  expect(evaluateFilterRules(makeMsg({ text: 'hello' }), null).sound).toBe(null)
+})
+
+test('sound: no-match result always has a null sound key', () => {
+  compileFilterRules([rule({ match: { type: 'keyword', value: 'nope' } })])
+  const res = evaluateFilterRules(makeMsg({ text: 'hello' }), null)
+  expect(res).toHaveProperty('sound')
+  expect(res.sound).toBe(null)
+})
+
+test('sound: first matching highlight wins for both color and sound', () => {
+  compileFilterRules([
+    rule({ match: { type: 'keyword', value: 'hello' }, color: '#111111', sound: 'blip' }),
+    rule({ match: { type: 'keyword', value: 'world' }, color: '#222222', sound: 'chime' }),
+  ])
+  const res = evaluateFilterRules(makeMsg({ text: 'hello world' }), null)
+  expect(res.highlight).toBe('#111111')
+  expect(res.sound).toBe('blip')
+})
+
+test('sound: all four presets are accepted', () => {
+  for (const s of ['ping', 'blip', 'knock', 'chime']) {
+    compileFilterRules([rule({ sound: s })])
+    expect(evaluateFilterRules(makeMsg({ text: 'hello' }), null).sound).toBe(s)
+  }
+})

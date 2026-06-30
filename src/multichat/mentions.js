@@ -158,6 +158,60 @@ function playMentionPing(volume) {
   } catch {}
 }
 
+// Filter-rule highlight cues — same pure Web Audio synth, a few named presets so
+// a highlight rule can carry an optional audible tag. Throttled (one per 1.2s)
+// so a burst of matches can't machine-gun. Shares ui_settings.mentionSoundVolume
+// (one "chat sounds" knob); 0 = silent. Unknown name → no-op.
+const FILTER_SOUND_PRESETS = {
+  ping: [
+    { f: 880, t0: 0, d: 0.32 },
+    { f: 1175, t0: 0.08, d: 0.24 },
+  ],
+  blip: [{ f: 1320, t0: 0, d: 0.12 }],
+  knock: [
+    { f: 200, t0: 0, d: 0.1 },
+    { f: 200, t0: 0.13, d: 0.1 },
+  ],
+  chime: [
+    { f: 660, t0: 0, d: 0.18 },
+    { f: 880, t0: 0.09, d: 0.18 },
+    { f: 1318, t0: 0.18, d: 0.26 },
+  ],
+}
+let _lastFilterSoundMs = 0
+function playFilterRuleSound(name) {
+  const preset = FILTER_SOUND_PRESETS[name]
+  if (!preset) return
+  const volume = mentionSoundVolume
+  if (!(volume > 0)) return
+  const now = Date.now()
+  if (now - _lastFilterSoundMs < 1200) return // throttle bursty matches
+  _lastFilterSoundMs = now
+  const ctx = _getMentionAudioCtx()
+  if (!ctx) return
+  try {
+    if (ctx.state === 'suspended') {
+      try {
+        ctx.resume()
+      } catch {}
+    }
+    const t = ctx.currentTime
+    for (const tone of preset) {
+      const gain = ctx.createGain()
+      gain.gain.setValueAtTime(0, t + tone.t0)
+      gain.gain.linearRampToValueAtTime(Math.min(1, volume) * 0.35, t + tone.t0 + 0.01)
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + tone.t0 + tone.d)
+      gain.connect(ctx.destination)
+      const o = ctx.createOscillator()
+      o.type = 'sine'
+      o.frequency.setValueAtTime(tone.f, t + tone.t0)
+      o.connect(gain)
+      o.start(t + tone.t0)
+      o.stop(t + tone.t0 + tone.d + 0.02)
+    }
+  } catch {}
+}
+
 // Tab title flash — when an @mention arrives while the tab is unfocused,
 // flip document.title between "@you ← original" and the original on a 1.2s
 // timer until the tab regains focus. Persists across many mentions (queue

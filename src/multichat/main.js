@@ -7131,6 +7131,16 @@
       scopeLabel +
       '</span>' +
       '</div>' +
+      '<button data-fr-action="up" data-fr-id="' +
+      id +
+      '" style="' +
+      FR_BTN +
+      ';color:#808080;flex-shrink:0;padding:1px 4px" title="move up (higher priority — first match wins)">▲</button>' +
+      '<button data-fr-action="down" data-fr-id="' +
+      id +
+      '" style="' +
+      FR_BTN +
+      ';color:#808080;flex-shrink:0;padding:1px 4px" title="move down">▼</button>' +
       '<button data-fr-action="delete" data-fr-id="' +
       id +
       '" style="' +
@@ -7182,6 +7192,8 @@
       '<option value="knock">knock</option>' +
       '<option value="chime">chime</option>' +
       '</select>' +
+      '<label style="display:flex;align-items:center;gap:2px;color:#808080;font-size:11px;cursor:pointer;flex-shrink:0" title="case-sensitive match">' +
+      '<input type="checkbox" data-fr-field="cs" style="margin:0;cursor:pointer">Aa</label>' +
       '<select data-fr-field="scope" style="' +
       FR_SEL +
       ';max-width:80px">' +
@@ -7241,6 +7253,23 @@
       return
     }
 
+    if ((action === 'up' || action === 'down') && id) {
+      // Reorder = priority. evaluateFilterRules is first-match-wins (hide
+      // short-circuits; first highlight's color+sound win), so moving a rule up
+      // makes it take precedence.
+      var mvIdx = rules.findIndex(function (r) {
+        return String(r.id) === id
+      })
+      if (mvIdx === -1) return
+      var swapIdx = action === 'up' ? mvIdx - 1 : mvIdx + 1
+      if (swapIdx < 0 || swapIdx >= rules.length) return
+      var tmp = rules[mvIdx]
+      rules[mvIdx] = rules[swapIdx]
+      rules[swapIdx] = tmp
+      _saveFilterRules(rules)
+      return
+    }
+
     if (action === 'add') {
       var form = el.closest('.hs-mc-fr-addform')
       if (!form) return
@@ -7249,12 +7278,14 @@
       var actEl = form.querySelector('[data-fr-field="action"]')
       var colEl = form.querySelector('[data-fr-field="color"]')
       var soundEl = form.querySelector('[data-fr-field="sound"]')
+      var csEl = form.querySelector('[data-fr-field="cs"]')
       var scopeEl = form.querySelector('[data-fr-field="scope"]')
       var ruleType = typeEl ? typeEl.value : 'keyword'
       var ruleVal = valEl ? valEl.value.trim() : ''
       var ruleAct = actEl ? actEl.value : 'highlight'
       var ruleCol = colEl ? colEl.value : '#ffff00'
       var ruleSound = soundEl ? soundEl.value : 'none'
+      var ruleCs = csEl ? !!csEl.checked : false
       var ruleScope = scopeEl ? scopeEl.value : 'all'
       if (!ruleVal) {
         showToast('rule value is empty', 'error')
@@ -7264,7 +7295,7 @@
         id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
         enabled: true,
         scope: ruleScope,
-        match: { type: ruleType, value: ruleVal, caseSensitive: false },
+        match: { type: ruleType, value: ruleVal, caseSensitive: ruleCs },
         action: ruleAct,
       }
       if (ruleAct === 'highlight') {

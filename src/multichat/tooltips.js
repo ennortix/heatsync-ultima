@@ -947,6 +947,18 @@ function renderProfileCard(p) {
       `<dt>${escapeHtml(label)}</dt><dd class="${valCls || ''}" data-k="${escapeHtml(key || label)}">${value}</dd>`,
     )
 
+  // Private note (local) — surfaced on hover so a mod sees their annotation
+  // without opening the full card. Top row for at-a-glance; truncated with the
+  // full text in the title. getUserNote lives in profile-card.js (same bundle).
+  const _noteUser = p.username || p.twitch_username || p.kick_username || ''
+  const _note = typeof getUserNote === 'function' ? getUserNote(_noteUser) : ''
+  if (_note) {
+    const _short = _note.length > 60 ? _note.slice(0, 60) + '…' : _note
+    sheetRows.push(
+      `<dt>note</dt><dd data-k="note" style="color:#ff8700" title="${escapeHtml(_note)}">${escapeHtml(_short)}</dd>`,
+    )
+  }
+
   // Platform identity rows — value text brand-colored, live dot inline.
   if (p.twitch_username) {
     const live = p.twitch_is_live ? ' ' + liveStr(Number(p.twitch_viewer_count) || 0) : ''

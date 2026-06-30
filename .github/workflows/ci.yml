@@ -16,10 +16,13 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.3.14
 
       - name: install dependencies
-        run: bun install --frozen-lockfile 2>/dev/null || bun install
+        # Strict frozen install — no fallback. A drifted/poisoned lockfile must
+        # fail the build loudly, not silently resolve to un-pinned deps. Matches
+        # release.yml; keep the two in sync.
+        run: bun install --frozen-lockfile
 
       - name: build
         run: bun run build.js

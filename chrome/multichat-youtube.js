@@ -9917,14 +9917,17 @@ function injectStyles() {
       background: rgba(255, 255, 0, 0.14);
       box-shadow: inset 0 0 0 1px #ffff00;
     }
-    /* Returning chatter — back after a long absence (twitch returning-chatter tag) */
+    /* Returning chatter — back after a long absence (twitch returning-chatter tag).
+       Monochrome by intent: a low-key gray bar (familiar, seen before). */
     .hs-mc-msg.is-returning {
-      box-shadow: inset 2px 0 0 #00afaf;
+      box-shadow: inset 2px 0 0 #808080;
     }
-    /* Raider — first message arriving in the window after a raid into this channel */
+    /* Raider — first message arriving in the window after a raid into this channel.
+       Brighter mono accent + faint wash so the incoming wave reads at a glance,
+       without a color. */
     .hs-mc-msg.is-raider {
-      box-shadow: inset 2px 0 0 #ff8700;
-      background: rgba(255, 135, 0, 0.1);
+      box-shadow: inset 2px 0 0 #fff;
+      background: rgba(255, 255, 255, 0.06);
     }
     /* Filter-rule highlight — color driven by per-rule CSS custom property */
     .hs-mc-msg.hs-mc-rule-highlight {

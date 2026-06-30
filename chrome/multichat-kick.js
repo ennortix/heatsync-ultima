@@ -17068,6 +17068,11 @@ function _frSafeRegex(src, flags) {
   }
 }
 
+// Valid highlight-sound names — kept in sync with FILTER_SOUND_PRESETS in
+// mentions.js (the player). An unknown/absent name compiles to null = silent.
+// Inlined (not imported) so this module stays self-contained + unit-testable.
+const FR_SOUNDS = new Set(['ping', 'blip', 'knock', 'chime'])
+
 // ── module state ──────────────────────────────────────────────────────────────
 // Two buckets: all-scope rules run on every message; per-channel rules run only
 // when channelKey matches. Compiled once → evaluated with no allocation per call.
@@ -17092,6 +17097,7 @@ function _frCompileOne(rule) {
     id: String(rule.id),
     action,
     color: action === 'highlight' && rule.color && /^#[0-9a-f]{3,8}$/i.test(rule.color) ? rule.color : null,
+    sound: action === 'highlight' && typeof rule.sound === 'string' && FR_SOUNDS.has(rule.sound) ? rule.sound : null,
     scope,
     matchType: m.type,
     caseSensitive: cs,
@@ -17165,22 +17171,26 @@ function compileFilterRules(rules) {
  * Hot path — no per-call allocation when there are no rules for this scope.
  * @param {object} m           message object (text, user, badges, isFirstMsg, isAction, bits, replyTo)
  * @param {string|null} channelKey  channel tab id (ch.id) or null
- * @returns {{ hide: boolean, highlight: string|null }}
+ * @returns {{ hide: boolean, highlight: string|null, sound: string|null }}
  */
 function evaluateFilterRules(m, channelKey) {
   const hasChannel = channelKey && _frByChannel.has(channelKey)
-  if (!_frAllRules.length && !hasChannel) return { hide: false, highlight: null }
+  if (!_frAllRules.length && !hasChannel) return { hide: false, highlight: null, sound: null }
 
   const rules = hasChannel ? _frAllRules.concat(_frByChannel.get(channelKey)) : _frAllRules
 
   let highlight = null
+  let sound = null
   for (let i = 0; i < rules.length; i++) {
     const rule = rules[i]
     if (!_frTest(rule, m)) continue
-    if (rule.action === 'hide') return { hide: true, highlight: null }
-    if (rule.action === 'highlight' && highlight === null) highlight = rule.color
+    if (rule.action === 'hide') return { hide: true, highlight: null, sound: null }
+    if (rule.action === 'highlight' && highlight === null) {
+      highlight = rule.color
+      sound = rule.sound
+    }
   }
-  return { hide: false, highlight }
+  return { hide: false, highlight, sound }
 }
 
 function _frTest(rule, m) {
@@ -17810,6 +17820,60 @@ function playMentionPing(volume) {
     o2.connect(gain)
     o2.start(now + 0.08)
     o2.stop(now + 0.32)
+  } catch {}
+}
+
+// Filter-rule highlight cues — same pure Web Audio synth, a few named presets so
+// a highlight rule can carry an optional audible tag. Throttled (one per 1.2s)
+// so a burst of matches can't machine-gun. Shares ui_settings.mentionSoundVolume
+// (one "chat sounds" knob); 0 = silent. Unknown name → no-op.
+const FILTER_SOUND_PRESETS = {
+  ping: [
+    { f: 880, t0: 0, d: 0.32 },
+    { f: 1175, t0: 0.08, d: 0.24 },
+  ],
+  blip: [{ f: 1320, t0: 0, d: 0.12 }],
+  knock: [
+    { f: 200, t0: 0, d: 0.1 },
+    { f: 200, t0: 0.13, d: 0.1 },
+  ],
+  chime: [
+    { f: 660, t0: 0, d: 0.18 },
+    { f: 880, t0: 0.09, d: 0.18 },
+    { f: 1318, t0: 0.18, d: 0.26 },
+  ],
+}
+let _lastFilterSoundMs = 0
+function playFilterRuleSound(name) {
+  const preset = FILTER_SOUND_PRESETS[name]
+  if (!preset) return
+  const volume = mentionSoundVolume
+  if (!(volume > 0)) return
+  const now = Date.now()
+  if (now - _lastFilterSoundMs < 1200) return // throttle bursty matches
+  _lastFilterSoundMs = now
+  const ctx = _getMentionAudioCtx()
+  if (!ctx) return
+  try {
+    if (ctx.state === 'suspended') {
+      try {
+        ctx.resume()
+      } catch {}
+    }
+    const t = ctx.currentTime
+    for (const tone of preset) {
+      const gain = ctx.createGain()
+      gain.gain.setValueAtTime(0, t + tone.t0)
+      gain.gain.linearRampToValueAtTime(Math.min(1, volume) * 0.35, t + tone.t0 + 0.01)
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + tone.t0 + tone.d)
+      gain.connect(ctx.destination)
+      const o = ctx.createOscillator()
+      o.type = 'sine'
+      o.frequency.setValueAtTime(tone.f, t + tone.t0)
+      o.connect(gain)
+      o.start(t + tone.t0)
+      o.stop(t + tone.t0 + tone.d + 0.02)
+    }
   } catch {}
 }
 
@@ -23800,6 +23864,18 @@ function renderProfileCard(p) {
     sheetRows.push(
       `<dt>${escapeHtml(label)}</dt><dd class="${valCls || ''}" data-k="${escapeHtml(key || label)}">${value}</dd>`,
     )
+
+  // Private note (local) — surfaced on hover so a mod sees their annotation
+  // without opening the full card. Top row for at-a-glance; truncated with the
+  // full text in the title. getUserNote lives in profile-card.js (same bundle).
+  const _noteUser = p.username || p.twitch_username || p.kick_username || ''
+  const _note = typeof getUserNote === 'function' ? getUserNote(_noteUser) : ''
+  if (_note) {
+    const _short = _note.length > 60 ? _note.slice(0, 60) + '…' : _note
+    sheetRows.push(
+      `<dt>note</dt><dd data-k="note" style="color:#ff8700" title="${escapeHtml(_note)}">${escapeHtml(_short)}</dd>`,
+    )
+  }
 
   // Platform identity rows — value text brand-colored, live dot inline.
   if (p.twitch_username) {
@@ -39799,9 +39875,60 @@ async function fetchBannerChain(chain) {
   return null
 }
 
+// ── user notes ───────────────────────────────────────────────────────────────
+// Private, per-username annotations ("known troll", "ban-evader", "friend").
+// Local-only: chrome.storage.local under one blob, never synced or sent anywhere
+// — first-party by design. Keyed by lowercased username (a person, platform-
+// agnostic). Loaded once into a Map; the whole blob is rewritten on each edit
+// (notes are few, so a full atomic write beats partial-update bookkeeping).
+let _userNotes = null // Map<usernameLc, {text, ts}> | null until loaded
+let _userNotesLoaded = false
+async function _ensureUserNotes() {
+  if (_userNotesLoaded) return _userNotes
+  _userNotes = new Map()
+  try {
+    const r = await chrome.storage.local.get('hs_user_notes')
+    const blob = r?.hs_user_notes
+    if (blob && typeof blob === 'object') {
+      for (const [k, v] of Object.entries(blob)) {
+        if (v && typeof v.text === 'string') _userNotes.set(k, { text: v.text, ts: v.ts || 0 })
+      }
+    }
+  } catch {}
+  _userNotesLoaded = true
+  return _userNotes
+}
+function getUserNote(username) {
+  if (!_userNotes || !username) return ''
+  const n = _userNotes.get(String(username).toLowerCase())
+  return n ? n.text : ''
+}
+async function setUserNote(username, text) {
+  if (!username) return
+  await _ensureUserNotes()
+  const key = String(username).toLowerCase()
+  const t = String(text || '')
+    .slice(0, 500)
+    .trim()
+  const prev = _userNotes.get(key)
+  // No-op if unchanged — avoids a pointless storage write on every blur.
+  if ((prev?.text || '') === t) return
+  if (t) _userNotes.set(key, { text: t, ts: Date.now() })
+  else _userNotes.delete(key)
+  const blob = {}
+  for (const [k, v] of _userNotes) blob[k] = v
+  try {
+    await chrome.storage.local.set({ hs_user_notes: blob })
+  } catch {}
+}
+
 async function openProfileCard(username, platform) {
   if (!username) return
   username = String(username).toLowerCase()
+  // Notes are tiny + local; ensure the Map is hydrated so the note section
+  // renders the saved text. Resolves in ~1ms (before the network profile fetch
+  // re-renders), so no clobber of a focused textarea.
+  _ensureUserNotes()
 
   // Hide input bar — typing makes no sense in card view
   const inputBar = document.getElementById('hs-mc-inputbar')
@@ -39984,6 +40111,85 @@ function getRecentMessagesFromUser(username) {
     }
   } catch {}
   return out.sort((a, b) => (b.time || 0) - (a.time || 0)).slice(0, 12)
+}
+
+// Scan the same buffers as getRecentMessagesFromUser and return aggregate
+// session stats for this user — total message count, earliest/latest timestamp,
+// and the set of distinct channels they appeared in. Read-only, zero API calls.
+function getUserSessionStats(username) {
+  const lower = username.toLowerCase()
+  let count = 0
+  let firstTime = null
+  let lastTime = null
+  const channels = new Set()
+  try {
+    if (typeof irc !== 'undefined' && irc?.channels) {
+      for (const [ch, buf] of irc.channels) {
+        for (const m of buf.getAll()) {
+          if (m.user?.toLowerCase() !== lower) continue
+          count++
+          if (m.time) {
+            if (firstTime === null || m.time < firstTime) firstTime = m.time
+            if (lastTime === null || m.time > lastTime) lastTime = m.time
+          }
+          if (ch) channels.add(ch)
+        }
+      }
+    }
+    if (typeof kickChat !== 'undefined' && kickChat?.channels) {
+      for (const [ch, buf] of kickChat.channels) {
+        for (const m of buf.getAll()) {
+          if (m.user?.toLowerCase() !== lower) continue
+          count++
+          if (m.time) {
+            if (firstTime === null || m.time < firstTime) firstTime = m.time
+            if (lastTime === null || m.time > lastTime) lastTime = m.time
+          }
+          if (ch) channels.add(ch)
+        }
+      }
+    }
+    if (typeof channelYtMessages !== 'undefined' && channelYtMessages) {
+      for (const [ch, buf] of channelYtMessages) {
+        for (const m of buf) {
+          if (m.user?.toLowerCase() !== lower) continue
+          count++
+          if (m.time) {
+            if (firstTime === null || m.time < firstTime) firstTime = m.time
+            if (lastTime === null || m.time > lastTime) lastTime = m.time
+          }
+          if (ch) channels.add(ch)
+        }
+      }
+    }
+  } catch {}
+  return { count, firstTime, lastTime, channels }
+}
+
+// Build a 'session' section showing local-only mod context derived purely from
+// the in-memory chat buffers. Returns null when the user has no buffered messages
+// so the caller can skip the section entirely.
+function pcBuildSessionSection(username) {
+  const { count, firstTime, channels } = getUserSessionStats(username)
+  if (!count) return null
+  const sec = pcMakeSection('session')
+  const sheet = document.createElement('dl')
+  sheet.className = 'hs-pcard-sheet'
+  const addRow = (label, value) => {
+    const dt = document.createElement('dt')
+    dt.textContent = label
+    const dd = document.createElement('dd')
+    dd.textContent = value
+    sheet.appendChild(dt)
+    sheet.appendChild(dd)
+  }
+  addRow('msgs', String(count))
+  if (firstTime) {
+    addRow('first', new Date(firstTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
+  }
+  if (channels.size) addRow('channels', String(channels.size))
+  sec.appendChild(sheet)
+  return sec
 }
 
 function pcFmt(n) {
@@ -40197,6 +40403,60 @@ function pcBuildModActions(username) {
   return sec
 }
 
+// Private note section — a small textarea seeded with any saved note. Persists
+// on blur AND on a debounced input tick so closing the card via Escape (which
+// removes the textarea without firing a change event) can never lose text.
+let _noteSaveTimer = null
+function pcBuildNoteSection(username) {
+  const sec = pcMakeSection('note')
+  sec.classList.add('hs-pcard-note')
+  const existing = getUserNote(username)
+  // At-a-glance marker — a dot on the title when a note already exists, so you
+  // know a user is annotated without reading the textarea.
+  if (existing) {
+    const titleEl = sec.querySelector('.hs-pcard-section-title')
+    if (titleEl) {
+      const dot = document.createElement('span')
+      dot.textContent = ' ●'
+      dot.style.cssText = 'color:#ff8700'
+      titleEl.appendChild(dot)
+    }
+  }
+  const ta = document.createElement('textarea')
+  ta.className = 'hs-pcard-note-input'
+  ta.placeholder = 'private note — only you, stored locally'
+  ta.maxLength = 500
+  ta.rows = 2
+  ta.value = existing
+  ta.style.cssText =
+    'width:100%;box-sizing:border-box;background:#000;color:#fff;border:1px solid #333;border-radius:0;padding:3px 5px;font:inherit;outline:none;resize:vertical;min-height:2.4em'
+  ta.addEventListener('focus', () => {
+    ta.style.borderColor = '#ff8700'
+  })
+  ta.addEventListener('blur', () => {
+    ta.style.borderColor = '#333'
+    if (_noteSaveTimer) {
+      clearTimeout(_noteSaveTimer)
+      _noteSaveTimer = null
+    }
+    setUserNote(username, ta.value)
+  })
+  // Let Escape bubble (closes the card); swallow other keys so card/vim hotkeys
+  // don't act on note typing.
+  ta.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') e.stopPropagation()
+  })
+  ta.addEventListener('input', () => {
+    if (_noteSaveTimer) clearTimeout(_noteSaveTimer)
+    _noteSaveTimer = setTimeout(() => {
+      _noteSaveTimer = null
+      setUserNote(username, ta.value)
+    }, 400)
+  })
+  sec.appendChild(ta)
+  return sec
+}
+
 function renderProfileCardView() {
   const msgsEl = document.getElementById('hs-mc-messages')
   if (!msgsEl || !activeProfileCard) return
@@ -40370,6 +40630,11 @@ function renderProfileCardView() {
   idRow.appendChild(idText)
   idSec.appendChild(idRow)
   card.appendChild(idSec)
+
+  // === Note section === — private annotation, keyed by username so it renders
+  // in every state (loading/error/data). Sits right under identity so a mod
+  // sees "known evader" before acting.
+  card.appendChild(pcBuildNoteSection(username))
 
   // === Mod actions === — top priority when you mod a channel this user is in
   const modSec = pcBuildModActions(username)
@@ -40589,6 +40854,10 @@ function renderProfileCardView() {
     else statsSec.appendChild(document.createTextNode('no stats yet'))
   }
   card.appendChild(statsSec)
+
+  // === Session section — local-only mod context from in-memory buffers ===
+  const sessionSec = pcBuildSessionSection(username)
+  if (sessionSec) card.appendChild(sessionSec)
 
   // === Stream section (only when live) ===
   if (data && (data.twitch_is_live || data.kick_is_live || data.youtube_is_live)) {
@@ -40900,6 +41169,9 @@ function pcDoWhisper(username, platform) {
 function setupProfileCardHandlers() {
   if (window._hsProfileCardSetup) return
   window._hsProfileCardSetup = true
+
+  // Hydrate local user notes once at boot so the first card open shows them.
+  _ensureUserNotes()
 
   // Primary path — pcard-early.js (document_start) intercepts the click before
   // Twitch/Kick can react and dispatches this event.
@@ -43139,6 +43411,12 @@ const STORAGE_KEY = 'heatsync_multichat'
         if (raw) {
           const data = JSON.parse(raw)
           if (data?.msgs?.length > 0 && Date.now() - data.ts < 86400000) mSync = data.msgs
+          // Legacy residue: older builds mirrored cross-platform mentions to
+          // host-page localStorage (readable by the host site + co-resident
+          // extensions). We no longer write it — chrome.storage.local
+          // (hs_mentions_v2) is authoritative — so migrate any remaining copy
+          // via the merge below, then purge it from the host origin for good.
+          localStorage.removeItem('hs_mentions_sync')
         }
       } catch {}
       if (mChrome || mSync) {
@@ -49411,10 +49689,25 @@ const STORAGE_KEY = 'heatsync_multichat'
           aColor +
           ';border:1px solid #444;flex-shrink:0"></span>'
         : '') +
+      (r.action === 'highlight' && r.sound
+        ? '<span style="color:#808080;font-size:11px;flex-shrink:0" title="sound: ' +
+          escapeHtml(String(r.sound)) +
+          '">♪</span>'
+        : '') +
       '<span style="color:#666;font-size:11px;flex-shrink:0">' +
       scopeLabel +
       '</span>' +
       '</div>' +
+      '<button data-fr-action="up" data-fr-id="' +
+      id +
+      '" style="' +
+      FR_BTN +
+      ';color:#808080;flex-shrink:0;padding:1px 4px" title="move up (higher priority — first match wins)">▲</button>' +
+      '<button data-fr-action="down" data-fr-id="' +
+      id +
+      '" style="' +
+      FR_BTN +
+      ';color:#808080;flex-shrink:0;padding:1px 4px" title="move down">▼</button>' +
       '<button data-fr-action="delete" data-fr-id="' +
       id +
       '" style="' +
@@ -49457,6 +49750,17 @@ const STORAGE_KEY = 'heatsync_multichat'
       '<option value="hide">hide</option>' +
       '</select>' +
       '<input type="color" data-fr-field="color" value="#ffff00" style="width:28px;height:22px;border:1px solid #808080;background:#000;padding:1px;cursor:pointer;flex-shrink:0" title="highlight color">' +
+      '<select data-fr-field="sound" style="' +
+      FR_SEL +
+      ';width:62px" title="highlight sound (highlight action only)">' +
+      '<option value="none">silent</option>' +
+      '<option value="ping">ping</option>' +
+      '<option value="blip">blip</option>' +
+      '<option value="knock">knock</option>' +
+      '<option value="chime">chime</option>' +
+      '</select>' +
+      '<label style="display:flex;align-items:center;gap:2px;color:#808080;font-size:11px;cursor:pointer;flex-shrink:0" title="case-sensitive match">' +
+      '<input type="checkbox" data-fr-field="cs" style="margin:0;cursor:pointer">Aa</label>' +
       '<select data-fr-field="scope" style="' +
       FR_SEL +
       ';max-width:80px">' +
@@ -49516,6 +49820,23 @@ const STORAGE_KEY = 'heatsync_multichat'
       return
     }
 
+    if ((action === 'up' || action === 'down') && id) {
+      // Reorder = priority. evaluateFilterRules is first-match-wins (hide
+      // short-circuits; first highlight's color+sound win), so moving a rule up
+      // makes it take precedence.
+      var mvIdx = rules.findIndex(function (r) {
+        return String(r.id) === id
+      })
+      if (mvIdx === -1) return
+      var swapIdx = action === 'up' ? mvIdx - 1 : mvIdx + 1
+      if (swapIdx < 0 || swapIdx >= rules.length) return
+      var tmp = rules[mvIdx]
+      rules[mvIdx] = rules[swapIdx]
+      rules[swapIdx] = tmp
+      _saveFilterRules(rules)
+      return
+    }
+
     if (action === 'add') {
       var form = el.closest('.hs-mc-fr-addform')
       if (!form) return
@@ -49523,11 +49844,15 @@ const STORAGE_KEY = 'heatsync_multichat'
       var valEl = form.querySelector('[data-fr-field="value"]')
       var actEl = form.querySelector('[data-fr-field="action"]')
       var colEl = form.querySelector('[data-fr-field="color"]')
+      var soundEl = form.querySelector('[data-fr-field="sound"]')
+      var csEl = form.querySelector('[data-fr-field="cs"]')
       var scopeEl = form.querySelector('[data-fr-field="scope"]')
       var ruleType = typeEl ? typeEl.value : 'keyword'
       var ruleVal = valEl ? valEl.value.trim() : ''
       var ruleAct = actEl ? actEl.value : 'highlight'
       var ruleCol = colEl ? colEl.value : '#ffff00'
+      var ruleSound = soundEl ? soundEl.value : 'none'
+      var ruleCs = csEl ? !!csEl.checked : false
       var ruleScope = scopeEl ? scopeEl.value : 'all'
       if (!ruleVal) {
         showToast('rule value is empty', 'error')
@@ -49537,10 +49862,13 @@ const STORAGE_KEY = 'heatsync_multichat'
         id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
         enabled: true,
         scope: ruleScope,
-        match: { type: ruleType, value: ruleVal, caseSensitive: false },
+        match: { type: ruleType, value: ruleVal, caseSensitive: ruleCs },
         action: ruleAct,
       }
-      if (ruleAct === 'highlight') newRule.color = ruleCol
+      if (ruleAct === 'highlight') {
+        newRule.color = ruleCol
+        if (ruleSound && ruleSound !== 'none') newRule.sound = ruleSound
+      }
       rules.push(newRule)
       _saveFilterRules(rules)
       return
@@ -58200,11 +58528,18 @@ const STORAGE_KEY = 'heatsync_multichat'
         }
       }
       // Automod + filter rules: drop messages matching filter. Own msgs exempt.
-      if (
-        msg.user?.toLowerCase() !== currentUsername?.toLowerCase() &&
-        (shouldAutomod(msg.text) || evaluateFilterRules(msg, getChannelLookup().twitch.get(msg.channel)?.id).hide)
-      )
-        return
+      const _frOwnTw = msg.user?.toLowerCase() === currentUsername?.toLowerCase()
+      let _frTw = null
+      if (!_frOwnTw) {
+        // Lazy: automod first (cheap), then filter rules only if it survives —
+        // preserves the original short-circuit so automod'd messages skip the eval.
+        if (shouldAutomod(msg.text)) return
+        _frTw = evaluateFilterRules(msg, getChannelLookup().twitch.get(msg.channel)?.id)
+        if (_frTw.hide) return
+      }
+      // Highlight-rule audio cue — once, on live arrival (this path is live-only;
+      // history replay doesn't reach here). Own/hidden already returned above.
+      if (_frTw && _frTw.sound && typeof playFilterRuleSound === 'function') playFilterRuleSound(_frTw.sound)
       const isMent = isMention(msg)
       bumpStreamStats(msg.channel, msg, isMent)
       if (isMent) {
@@ -58280,11 +58615,15 @@ const STORAGE_KEY = 'heatsync_multichat'
           msg.platform = sentHost === 'yt' ? 'youtube' : sentHost
         }
       }
-      if (
-        msg.user?.toLowerCase() !== currentUsername?.toLowerCase() &&
-        (shouldAutomod(msg.text) || evaluateFilterRules(msg, getChannelLookup().kick.get(msg.channel)?.id).hide)
-      )
-        return
+      const _frOwnKi = msg.user?.toLowerCase() === currentUsername?.toLowerCase()
+      let _frKi = null
+      if (!_frOwnKi) {
+        if (shouldAutomod(msg.text)) return
+        _frKi = evaluateFilterRules(msg, getChannelLookup().kick.get(msg.channel)?.id)
+        if (_frKi.hide) return
+      }
+      // Highlight-rule audio cue — once, on live kick arrival.
+      if (_frKi && _frKi.sound && typeof playFilterRuleSound === 'function') playFilterRuleSound(_frKi.sound)
       const isMent = isMention(msg)
       bumpStreamStats(msg.channel, msg, isMent)
       if (isMent) {

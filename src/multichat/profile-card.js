@@ -345,6 +345,85 @@ function getRecentMessagesFromUser(username) {
   return out.sort((a, b) => (b.time || 0) - (a.time || 0)).slice(0, 12)
 }
 
+// Scan the same buffers as getRecentMessagesFromUser and return aggregate
+// session stats for this user — total message count, earliest/latest timestamp,
+// and the set of distinct channels they appeared in. Read-only, zero API calls.
+function getUserSessionStats(username) {
+  const lower = username.toLowerCase()
+  let count = 0
+  let firstTime = null
+  let lastTime = null
+  const channels = new Set()
+  try {
+    if (typeof irc !== 'undefined' && irc?.channels) {
+      for (const [ch, buf] of irc.channels) {
+        for (const m of buf.getAll()) {
+          if (m.user?.toLowerCase() !== lower) continue
+          count++
+          if (m.time) {
+            if (firstTime === null || m.time < firstTime) firstTime = m.time
+            if (lastTime === null || m.time > lastTime) lastTime = m.time
+          }
+          if (ch) channels.add(ch)
+        }
+      }
+    }
+    if (typeof kickChat !== 'undefined' && kickChat?.channels) {
+      for (const [ch, buf] of kickChat.channels) {
+        for (const m of buf.getAll()) {
+          if (m.user?.toLowerCase() !== lower) continue
+          count++
+          if (m.time) {
+            if (firstTime === null || m.time < firstTime) firstTime = m.time
+            if (lastTime === null || m.time > lastTime) lastTime = m.time
+          }
+          if (ch) channels.add(ch)
+        }
+      }
+    }
+    if (typeof channelYtMessages !== 'undefined' && channelYtMessages) {
+      for (const [ch, buf] of channelYtMessages) {
+        for (const m of buf) {
+          if (m.user?.toLowerCase() !== lower) continue
+          count++
+          if (m.time) {
+            if (firstTime === null || m.time < firstTime) firstTime = m.time
+            if (lastTime === null || m.time > lastTime) lastTime = m.time
+          }
+          if (ch) channels.add(ch)
+        }
+      }
+    }
+  } catch {}
+  return { count, firstTime, lastTime, channels }
+}
+
+// Build a 'session' section showing local-only mod context derived purely from
+// the in-memory chat buffers. Returns null when the user has no buffered messages
+// so the caller can skip the section entirely.
+function pcBuildSessionSection(username) {
+  const { count, firstTime, channels } = getUserSessionStats(username)
+  if (!count) return null
+  const sec = pcMakeSection('session')
+  const sheet = document.createElement('dl')
+  sheet.className = 'hs-pcard-sheet'
+  const addRow = (label, value) => {
+    const dt = document.createElement('dt')
+    dt.textContent = label
+    const dd = document.createElement('dd')
+    dd.textContent = value
+    sheet.appendChild(dt)
+    sheet.appendChild(dd)
+  }
+  addRow('msgs', String(count))
+  if (firstTime) {
+    addRow('first', new Date(firstTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
+  }
+  if (channels.size) addRow('channels', String(channels.size))
+  sec.appendChild(sheet)
+  return sec
+}
+
 function pcFmt(n) {
   n = Number(n) || 0
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'm'
@@ -1007,6 +1086,10 @@ function renderProfileCardView() {
     else statsSec.appendChild(document.createTextNode('no stats yet'))
   }
   card.appendChild(statsSec)
+
+  // === Session section — local-only mod context from in-memory buffers ===
+  const sessionSec = pcBuildSessionSection(username)
+  if (sessionSec) card.appendChild(sessionSec)
 
   // === Stream section (only when live) ===
   if (data && (data.twitch_is_live || data.kick_is_live || data.youtube_is_live)) {

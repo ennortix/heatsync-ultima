@@ -844,6 +844,12 @@
         if (raw) {
           const data = JSON.parse(raw)
           if (data?.msgs?.length > 0 && Date.now() - data.ts < 86400000) mSync = data.msgs
+          // Legacy residue: older builds mirrored cross-platform mentions to
+          // host-page localStorage (readable by the host site + co-resident
+          // extensions). We no longer write it — chrome.storage.local
+          // (hs_mentions_v2) is authoritative — so migrate any remaining copy
+          // via the merge below, then purge it from the host origin for good.
+          localStorage.removeItem('hs_mentions_sync')
         }
       } catch {}
       if (mChrome || mSync) {

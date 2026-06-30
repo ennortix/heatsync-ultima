@@ -15962,8 +15962,14 @@
       }
       // Automod + filter rules: drop messages matching filter. Own msgs exempt.
       const _frOwnTw = msg.user?.toLowerCase() === currentUsername?.toLowerCase()
-      const _frTw = _frOwnTw ? null : evaluateFilterRules(msg, getChannelLookup().twitch.get(msg.channel)?.id)
-      if (!_frOwnTw && (shouldAutomod(msg.text) || _frTw.hide)) return
+      let _frTw = null
+      if (!_frOwnTw) {
+        // Lazy: automod first (cheap), then filter rules only if it survives —
+        // preserves the original short-circuit so automod'd messages skip the eval.
+        if (shouldAutomod(msg.text)) return
+        _frTw = evaluateFilterRules(msg, getChannelLookup().twitch.get(msg.channel)?.id)
+        if (_frTw.hide) return
+      }
       // Highlight-rule audio cue — once, on live arrival (this path is live-only;
       // history replay doesn't reach here). Own/hidden already returned above.
       if (_frTw && _frTw.sound && typeof playFilterRuleSound === 'function') playFilterRuleSound(_frTw.sound)
@@ -16043,8 +16049,12 @@
         }
       }
       const _frOwnKi = msg.user?.toLowerCase() === currentUsername?.toLowerCase()
-      const _frKi = _frOwnKi ? null : evaluateFilterRules(msg, getChannelLookup().kick.get(msg.channel)?.id)
-      if (!_frOwnKi && (shouldAutomod(msg.text) || _frKi.hide)) return
+      let _frKi = null
+      if (!_frOwnKi) {
+        if (shouldAutomod(msg.text)) return
+        _frKi = evaluateFilterRules(msg, getChannelLookup().kick.get(msg.channel)?.id)
+        if (_frKi.hide) return
+      }
       // Highlight-rule audio cue — once, on live kick arrival.
       if (_frKi && _frKi.sound && typeof playFilterRuleSound === 'function') playFilterRuleSound(_frKi.sound)
       const isMent = isMention(msg)

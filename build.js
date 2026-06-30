@@ -773,6 +773,17 @@ function minifyDist(outDir) {
     minifyDistFile(outDir, f, extraDefines)
     bytesAfter += readFileSync(p).length
   }
+  // Fail-closed: the nonce-less dev-reload relaxation MUST be compiled out of
+  // every minified (packaged/store) build. minifyDistFile swallows esbuild
+  // transform errors (warn + continue), so a failed fold would silently leave
+  // the raw __HS_DEV_BUILD__ identifier in content.js → devBuild=true would ship
+  // to real users. Refuse to build instead of risking it.
+  const _contentOut = join(outDir, 'content.js')
+  if (existsSync(_contentOut) && readFileSync(_contentOut, 'utf8').includes('__HS_DEV_BUILD__')) {
+    throw new Error(
+      'build: content.js still references __HS_DEV_BUILD__ after minify — dev-reload guard not folded; refusing to ship a build that could enable nonce-less reload for store users',
+    )
+  }
   if (bytesBefore > 0) {
     const pct = ((1 - bytesAfter / bytesBefore) * 100).toFixed(1)
     console.log(

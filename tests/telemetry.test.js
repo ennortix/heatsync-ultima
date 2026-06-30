@@ -29,10 +29,9 @@ const TRACKER_PATTERNS = [
   /\bga\s*\(\s*['"](create|send)\b/i,
 ]
 
-// Source of truth for ext logic. chrome/*.js glue scripts are scanned explicitly
-// (the built multichat-*.js bundles derive from src/, already covered).
-const SRC_ROOT = 'src'
-const CHROME_GLUE = ['chrome/content.js', 'chrome/background.js', 'chrome/early-inject-main.js']
+// Scan ALL ext source: src/ (the logic) + chrome/ (every content script,
+// background, glue, popup). Comprehensive — a tracker import anywhere fails CI.
+const ROOTS = ['src', 'chrome']
 
 function jsFiles(dir) {
   const out = []
@@ -44,7 +43,7 @@ function jsFiles(dir) {
   return out
 }
 
-const files = [...jsFiles(SRC_ROOT), ...CHROME_GLUE]
+const files = ROOTS.flatMap(jsFiles)
 
 test('extension source ships zero third-party telemetry/analytics', () => {
   const offenders = []

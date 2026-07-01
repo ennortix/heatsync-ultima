@@ -5013,17 +5013,18 @@
   const kickCosmeticsPending = new Set()
   let kickCosmeticsBatchTimer = null
 
-  // Heat tier config — matches client/config/colors.js
+  // Heat tier config — monochrome intensity ramp (ext is taste-neutral; the
+  // site keeps the orange gradient). Dark grey = cold, white = hot.
   const HEAT_GRADIENT = [
     '#808080',
-    '#cc6e00',
-    '#ee8000',
-    '#ff9900',
-    '#ff6600',
-    '#ff0000',
-    '#ff2200',
-    '#ff9900',
-    '#ffcc00',
+    '#909090',
+    '#a0a0a0',
+    '#b0b0b0',
+    '#c0c0c0',
+    '#cccccc',
+    '#d6d6d6',
+    '#e2e2e2',
+    '#f0f0f0',
     '#ffffff',
   ]
 

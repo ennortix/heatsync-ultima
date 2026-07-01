@@ -112,7 +112,7 @@
       padding: 5px 10px;
       font-size: 13px;
       font-weight: 600;
-      transition: background 0.15s;
+      transition: none;
     }
     .hs-mc-chat-banner-item:hover {
       background: #fff;

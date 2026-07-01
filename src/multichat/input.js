@@ -5177,7 +5177,7 @@ async function handleSlashCommand(text, input) {
       return true
     }
     for (const a of aliases) mutedUsers.add(a)
-    chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] })
+    chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] }).catch((e) => log('mute persist failed:', e))
     const exp = Date.now() + 86400000
     for (const a of aliases) safeSendMessage({ type: 'mute_user', username: a, expiresAt: exp })
     const aliasNote = aliases.length > 1 ? ` (+@${aliases[1]})` : ''
@@ -5549,21 +5549,20 @@ async function sendSlashWhisper(platform, username, text, input) {
   if (platform === 'twitch') {
     key = `twitch:${lowerUser}`
     if (!whisperUsers.has(key)) {
-      // Resolve username → Twitch ID via decapi
+      // Resolve username → Twitch ID via the canonical first-party resolver
+      // (Twitch GQL; decapi.me only as its own internal last-resort fallback).
+      let body
       try {
-        const resp = await fetch(`https://decapi.me/twitch/id/${encodeURIComponent(lowerUser)}`, {
-          credentials: 'omit',
-        })
-        const body = (await resp.text()).trim()
-        if (!resp.ok || !/^\d+$/.test(body)) {
-          showToast(t('mc_whisper_user_not_found', [username]), 'error')
-          return
-        }
-        whisperUsersSet(key, { platform: 'twitch', userId: body, displayName: username, color: '#fff' })
+        body = await resolveTwitchChannelId(lowerUser)
       } catch (e) {
         showToast(t('mc_whisper_resolve_failed'), 'error')
         return
       }
+      if (!body) {
+        showToast(t('mc_whisper_user_not_found', [username]), 'error')
+        return
+      }
+      whisperUsersSet(key, { platform: 'twitch', userId: body, displayName: username, color: '#fff' })
     }
   } else {
     // HeatSync DM — resolve username → user_id via profile API

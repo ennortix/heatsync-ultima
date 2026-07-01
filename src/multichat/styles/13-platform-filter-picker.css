@@ -192,8 +192,25 @@
       overflow-y: auto;
       min-height: 0;
     }
+    /* Section headers surface the superset — Set / 7TV / BTTV / FFZ / channel —
+       so a user sees at a glance that HeatSync renders every network's emotes
+       (the thing a 7TV-only user can't). Sticky within the scroll so the label
+       stays put while paging a long section. Square, dim, 13px, terminal palette. */
     .hs-mc-picker-section-header {
-      display: none;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 6px 3px;
+      font-size: 13px;
+      color: #808080;
+      background: #000;
+      border-top: 1px solid rgba(255,255,255,0.08);
+    }
+    .hs-mc-picker-section:first-child .hs-mc-picker-section-header {
+      border-top: none;
     }
     .hs-mc-picker-section-count {
       color: #aaa;
@@ -274,7 +291,7 @@
       line-height: 15px;
       text-transform: uppercase;
       letter-spacing: 1px;
-      transition: background 60ms, color 60ms, border-color 60ms;
+      transition: none;
     }
     .hs-mc-src-chip[data-src="7tv"]  { color: #29d8f6; border-color: rgba(41,216,246,0.5); }
     .hs-mc-src-chip[data-src="bttv"] { color: #d50014; border-color: rgba(213,0,20,0.5); }
@@ -298,7 +315,7 @@
       line-height: 15px;
       text-transform: uppercase;
       letter-spacing: 1px;
-      transition: background 60ms, color 60ms, border-color 60ms;
+      transition: none;
     }
     .hs-mc-exact-chip.active { background: #ff8700; color: #000; border-color: #ff8700; }
     .hs-mc-exact-chip:hover { background: #fff !important; color: #000 !important; border-color: #fff !important; }
@@ -319,7 +336,7 @@
       text-transform: uppercase;
       letter-spacing: 1px;
       cursor: pointer;
-      transition: background 60ms, color 60ms, border-color 60ms;
+      transition: none;
     }
     .hs-mc-load-more:hover { background: #fff; color: #000; border-color: #fff; }
     #hs-mc-emote-search::placeholder {

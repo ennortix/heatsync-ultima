@@ -259,6 +259,42 @@
 
   // Lite mode removed — the overlay always boots now.
 
+  // Inventory slot count — personal emotes only (filter out subscription:true)
+  ;(async () => {
+    const invEl = document.getElementById('inv-line')
+    if (!invEl) return
+    try {
+      const data = await new Promise((r) =>
+        chrome.storage.local.get(['auth_token_encrypted', 'emote_inventory'], r),
+      )
+      const signedIn = !!data.auth_token_encrypted
+      const arr = Array.isArray(data.emote_inventory) ? data.emote_inventory : []
+      const personalCount = arr.filter((e) => !e.subscription).length
+      while (invEl.firstChild) invEl.removeChild(invEl.firstChild)
+      if (!signedIn) {
+        const s = document.createElement('span')
+        s.className = 'inv-label'
+        s.textContent = '5,000 emote slots'
+        invEl.appendChild(s)
+        return
+      }
+      const c = document.createElement('span')
+      c.className = 'inv-count'
+      c.textContent = personalCount.toLocaleString('en-US')
+      invEl.appendChild(c)
+      const l = document.createElement('span')
+      l.className = 'inv-label'
+      l.textContent = ' / 5,000 slots'
+      invEl.appendChild(l)
+      if (personalCount === 0) {
+        const h = document.createElement('span')
+        h.className = 'inv-label'
+        h.textContent = ' · import a channel to fill it'
+        invEl.appendChild(h)
+      }
+    } catch {}
+  })()
+
   autofillFromActiveTab()
   input.focus()
 })()

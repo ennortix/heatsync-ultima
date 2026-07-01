@@ -97,33 +97,6 @@
       color: #fff;
     }
 
-    .lite-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 16px;
-      border-top: 1px solid #1c1c1c;
-      cursor: pointer;
-      user-select: none;
-    }
-    .lite-row:hover { background: #fff; color: #000; }
-    .lite-pill {
-      width: 16px;
-      height: 16px;
-      background: #d70000;
-      border: none;
-      flex-shrink: 0;
-      cursor: pointer;
-      padding: 0;
-    }
-    .lite-pill.active { background: #00d700; }
-    .lite-hint {
-      padding: 0 16px 10px;
-      font-size: 11px;
-      color: #888;
-      display: none;
-    }
-    .lite-hint.visible { display: block; }
 
     .footer {
       display: flex;
@@ -140,6 +113,16 @@
     }
     .footer a + a { border-left: 1px solid #1c1c1c; }
     .footer a:hover { background: #fff; color: #000; }
+
+    .inv-line {
+      padding: 5px 16px;
+      border-bottom: 1px solid #1c1c1c;
+      font-size: 13px;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    .inv-count { color: #ff8700; }
+    .inv-label { color: #808080; }
   </style>
 </head>
 <body>
@@ -147,6 +130,8 @@
     <img src="icon-48.png" alt="">
     <span class="brand">heatsync</span>
   </div>
+
+  <div id="inv-line" class="inv-line"></div>
 
   <div class="body">
     <div class="not-signed-in" id="not-signed-in" hidden>

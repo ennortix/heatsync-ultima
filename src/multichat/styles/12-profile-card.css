@@ -65,7 +65,7 @@
       border: 1px solid rgba(255, 255, 255, 0.25);
       cursor: pointer; padding: 0;
       z-index: 10;
-      transition: background 80ms, color 80ms, border-color 80ms;
+      transition: none;
     }
     .hs-pcard-close:hover { background: #fff; color: #000; border-color: #fff; }
     .hs-pcard-close:active { }
@@ -112,8 +112,7 @@
       font-size: 16px; font-weight: 700; color: #fff;
       display: flex; align-items: center; gap: 6px; line-height: 18px;
     }
-    .hs-pcard-livedot { color: #ff5050; font-size: 9px; animation: hs-pcard-pulse 1.5s infinite; }
-    @keyframes hs-pcard-pulse { 50% { opacity: 0.4; } }
+    .hs-pcard-livedot { color: #ff5050; font-size: 9px; }
     /* Filled-style platform pills — mirror #hs-user-tooltip .hs-pc-platform
        so the click-card identity row looks identical to the hover tooltip. */
     .hs-pcard-pill {

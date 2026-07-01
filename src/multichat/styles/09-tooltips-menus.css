@@ -35,8 +35,7 @@
     .hs-mc-ctx.hs-mc-em-flip-y { transform-origin: bottom left; }
     .hs-mc-ctx.hs-mc-em-flip-x.hs-mc-em-flip-y { transform-origin: bottom right; }
     .hs-mc-ctx .hs-mc-em-header {
-      padding: 4px 10px; font-size: 10px; color: #aaa;
-      text-transform: uppercase; letter-spacing: 0.5px;
+      padding: 4px 10px; font-size: 13px; color: #555;
       background: #050505;
     }
     .hs-mc-ctx .hs-mc-em-item {
@@ -54,7 +53,7 @@
     .hs-mc-ctx .hs-mc-em-kbd {
       display: inline-block; min-width: 14px; padding: 0 4px;
       border: 1px solid #333; background: #0a0a0a; color: #888;
-      font-size: 10px; line-height: 14px; text-align: center;
+      font-size: 13px; line-height: 14px; text-align: center;
     }
     .hs-mc-ctx .hs-mc-em-item.hs-mc-em-disabled { opacity: 0.4; cursor: not-allowed; }
     .hs-mc-ctx .hs-mc-em-item.hs-mc-em-disabled:hover { background: none; color: inherit; }
@@ -360,7 +359,7 @@
     }
     .hs-mc-time {
       color: #aaa;
-      font-size: var(--hs-time-font, 10px);
+      font-size: var(--hs-time-font, 13px);
       margin-right: 4px;
     }
     .hs-mc-empty {

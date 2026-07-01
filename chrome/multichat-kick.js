@@ -710,26 +710,32 @@ if (typeof window !== 'undefined') {
   // for anonymous arrow fns.
   function _wrap(fn, ms, kind) {
     let src = ''
-    try {
-      const stack = new Error().stack || ''
-      const lines = stack.split('\n')
-      // Skip frames inside this module
-      for (const line of lines) {
-        if (!line) continue
-        if (line.includes('cleanup.js') || line.includes('multichat.js')) {
-          if (line.includes('multichat.js')) {
+    // Stack capture is only ever read when tracing is armed (see wrapper below).
+    // Skipping it when tracing is off avoids ~40 `new Error().stack` builds at
+    // boot. Arm __hsPerfTrace BEFORE the timers you want to attribute register;
+    // the call-time gate still times pre-existing timers (just without src).
+    if (window.__hsPerfTrace) {
+      try {
+        const stack = new Error().stack || ''
+        const lines = stack.split('\n')
+        // Skip frames inside this module
+        for (const line of lines) {
+          if (!line) continue
+          if (line.includes('cleanup.js') || line.includes('multichat.js')) {
+            if (line.includes('multichat.js')) {
+              src = line.trim().slice(0, 120)
+              break
+            }
+            continue
+          }
+          if (line.includes('content.js') || line.includes('background.js') || line.includes('youtube-content.js')) {
             src = line.trim().slice(0, 120)
             break
           }
-          continue
         }
-        if (line.includes('content.js') || line.includes('background.js') || line.includes('youtube-content.js')) {
-          src = line.trim().slice(0, 120)
-          break
-        }
-      }
-      if (!src) src = (lines[3] || lines[2] || '').trim().slice(0, 120)
-    } catch {}
+        if (!src) src = (lines[3] || lines[2] || '').trim().slice(0, 120)
+      } catch {}
+    }
     return function () {
       if (!window.__hsPerfTrace) return fn.apply(this, arguments)
       const t = performance.now()
@@ -8490,7 +8496,7 @@ function injectStyles() {
       padding: 5px 10px;
       font-size: 13px;
       font-weight: 600;
-      transition: background 0.15s;
+      transition: none;
     }
     .hs-mc-chat-banner-item:hover {
       background: #fff;
@@ -10035,7 +10041,7 @@ function injectStyles() {
       min-height: 0;
       max-width: 100%;
       padding: 3px 6px;
-      font-size: 12px;
+      font-size: 13px;
       color: #808080;
     }
 
@@ -10076,8 +10082,7 @@ function injectStyles() {
     .hs-mc-ctx.hs-mc-em-flip-y { transform-origin: bottom left; }
     .hs-mc-ctx.hs-mc-em-flip-x.hs-mc-em-flip-y { transform-origin: bottom right; }
     .hs-mc-ctx .hs-mc-em-header {
-      padding: 4px 10px; font-size: 10px; color: #aaa;
-      text-transform: uppercase; letter-spacing: 0.5px;
+      padding: 4px 10px; font-size: 13px; color: #555;
       background: #050505;
     }
     .hs-mc-ctx .hs-mc-em-item {
@@ -10095,7 +10100,7 @@ function injectStyles() {
     .hs-mc-ctx .hs-mc-em-kbd {
       display: inline-block; min-width: 14px; padding: 0 4px;
       border: 1px solid #333; background: #0a0a0a; color: #888;
-      font-size: 10px; line-height: 14px; text-align: center;
+      font-size: 13px; line-height: 14px; text-align: center;
     }
     .hs-mc-ctx .hs-mc-em-item.hs-mc-em-disabled { opacity: 0.4; cursor: not-allowed; }
     .hs-mc-ctx .hs-mc-em-item.hs-mc-em-disabled:hover { background: none; color: inherit; }
@@ -10401,7 +10406,7 @@ function injectStyles() {
     }
     .hs-mc-time {
       color: #aaa;
-      font-size: var(--hs-time-font, 10px);
+      font-size: var(--hs-time-font, 13px);
       margin-right: 4px;
     }
     .hs-mc-empty {
@@ -11650,7 +11655,7 @@ function injectStyles() {
       border: 1px solid rgba(255, 255, 255, 0.25);
       cursor: pointer; padding: 0;
       z-index: 10;
-      transition: background 80ms, color 80ms, border-color 80ms;
+      transition: none;
     }
     .hs-pcard-close:hover { background: #fff; color: #000; border-color: #fff; }
     .hs-pcard-close:active { }
@@ -11697,8 +11702,7 @@ function injectStyles() {
       font-size: 16px; font-weight: 700; color: #fff;
       display: flex; align-items: center; gap: 6px; line-height: 18px;
     }
-    .hs-pcard-livedot { color: #ff5050; font-size: 9px; animation: hs-pcard-pulse 1.5s infinite; }
-    @keyframes hs-pcard-pulse { 50% { opacity: 0.4; } }
+    .hs-pcard-livedot { color: #ff5050; font-size: 9px; }
     /* Filled-style platform pills — mirror #hs-user-tooltip .hs-pc-platform
        so the click-card identity row looks identical to the hover tooltip. */
     .hs-pcard-pill {
@@ -12055,8 +12059,25 @@ function injectStyles() {
       overflow-y: auto;
       min-height: 0;
     }
+    /* Section headers surface the superset — Set / 7TV / BTTV / FFZ / channel —
+       so a user sees at a glance that HeatSync renders every network's emotes
+       (the thing a 7TV-only user can't). Sticky within the scroll so the label
+       stays put while paging a long section. Square, dim, 13px, terminal palette. */
     .hs-mc-picker-section-header {
-      display: none;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 6px 3px;
+      font-size: 13px;
+      color: #808080;
+      background: #000;
+      border-top: 1px solid rgba(255,255,255,0.08);
+    }
+    .hs-mc-picker-section:first-child .hs-mc-picker-section-header {
+      border-top: none;
     }
     .hs-mc-picker-section-count {
       color: #aaa;
@@ -12137,7 +12158,7 @@ function injectStyles() {
       line-height: 15px;
       text-transform: uppercase;
       letter-spacing: 1px;
-      transition: background 60ms, color 60ms, border-color 60ms;
+      transition: none;
     }
     .hs-mc-src-chip[data-src="7tv"]  { color: #29d8f6; border-color: rgba(41,216,246,0.5); }
     .hs-mc-src-chip[data-src="bttv"] { color: #d50014; border-color: rgba(213,0,20,0.5); }
@@ -12161,7 +12182,7 @@ function injectStyles() {
       line-height: 15px;
       text-transform: uppercase;
       letter-spacing: 1px;
-      transition: background 60ms, color 60ms, border-color 60ms;
+      transition: none;
     }
     .hs-mc-exact-chip.active { background: #ff8700; color: #000; border-color: #ff8700; }
     .hs-mc-exact-chip:hover { background: #fff !important; color: #000 !important; border-color: #fff !important; }
@@ -12182,7 +12203,7 @@ function injectStyles() {
       text-transform: uppercase;
       letter-spacing: 1px;
       cursor: pointer;
-      transition: background 60ms, color 60ms, border-color 60ms;
+      transition: none;
     }
     .hs-mc-load-more:hover { background: #fff; color: #000; border-color: #fff; }
     #hs-mc-emote-search::placeholder {
@@ -12557,7 +12578,7 @@ function injectStyles() {
       box-shadow: inset 0 0 0 1px rgba(255,135,0,0.3);
     }
     .hs-mc-pred-winner-badge {
-      font-size: 9px;
+      font-size: 13px;
       padding: 1px 5px;
       background: #00c864;
       color: #000;
@@ -12939,7 +12960,7 @@ function injectStyles() {
     }
     .hs-mc-pred-links .hs-mc-quicklink-section {
       padding: 10px 14px 4px;
-      font-size: 10px;
+      font-size: 13px;
       color: #aaa;
       text-transform: uppercase;
       letter-spacing: 0.5px;
@@ -13061,7 +13082,7 @@ function injectStyles() {
       color: #aaa;
     }
     .hs-mc-reward-reason {
-      font-size: 9px;
+      font-size: 13px;
       color: #f5009b;
       margin-top: 1px;
     }
@@ -13381,7 +13402,7 @@ function injectStyles() {
     }
     .hs-mc-set-search-count {
       color: #aaa;
-      font-size: 11px;
+      font-size: 13px;
       flex-shrink: 0;
     }
     .hs-mc-set-presets-btn {
@@ -13460,7 +13481,7 @@ function injectStyles() {
       color: #ff8700;
       border: 1px solid #808080;
       font-family: inherit;
-      font-size: 11px;
+      font-size: 13px;
       padding: 0 6px;
       cursor: pointer;
       margin-left: auto;
@@ -13474,7 +13495,7 @@ function injectStyles() {
     /* search result group headers — click jumps to that pane + section */
     .hs-mc-set-search-hdr {
       color: #aaa;
-      font-size: 11px;
+      font-size: 13px;
       text-transform: uppercase;
       letter-spacing: 0.5px;
       padding: 8px 14px 2px;
@@ -13534,14 +13555,14 @@ function injectStyles() {
     }
     .hs-mc-set-help-title {
       color: #aaa;
-      font-size: 11px;
+      font-size: 13px;
       text-transform: uppercase;
       letter-spacing: 0.5px;
       padding: 6px 0 2px;
     }
     .hs-mc-set-keyhint {
       color: #aaa;
-      font-size: 11px;
+      font-size: 13px;
       padding: 6px 14px 10px;
     }
     .hs-mc-set-range {
@@ -13565,7 +13586,7 @@ function injectStyles() {
     }
     .hs-mc-set-range-val {
       color: #aaa;
-      font-size: 11px;
+      font-size: 13px;
       min-width: 28px;
       text-align: right;
       flex-shrink: 0;
@@ -13636,7 +13657,7 @@ function injectStyles() {
       color: #c0c0c0;
       border: 1px solid #333;
       padding: 6px 8px;
-      font-size: 10px;
+      font-size: 13px;
       max-height: 180px;
       overflow: auto;
       white-space: pre-wrap;
@@ -14150,26 +14171,6 @@ function injectStyles() {
     .hs-heat-deg {
       font-family: ui-monospace, SFMono-Regular, monospace;
     }
-    .hs-feed-heat-breathe {
-      animation: hs-feed-heat-breathe 2.5s ease-in-out infinite;
-    }
-    @keyframes hs-feed-heat-breathe {
-      0%, 100% { background: rgba(60,20,0,0.15); }
-      50% { background: rgba(80,25,0,0.25); }
-    }
-    @keyframes hs-heat-breathe {
-      0%, 100% { transform: scale(1); opacity: 1; }
-      50% { transform: scale(1.04); opacity: 0.9; }
-    }
-    /* Pause our infinite animations inside the multichat panel when the
-       host page is hidden. Scoped to specific animated elements rather
-       than universal selectors — those caused selector-match thrash on
-       every state change in heatsync.org. */
-    body.hs-ext-hidden .hs-pcard-livedot,
-    body.hs-ext-hidden [style*="hs-heat-breathe"],
-    body.hs-ext-hidden [style*="hs-feed-heat-breathe"] {
-      animation-play-state: paused !important;
-    }
     .hs-post-link {
       color: #ffff00;
       font-weight: 700;
@@ -14178,14 +14179,9 @@ function injectStyles() {
     .hs-post-link:hover {
       text-decoration: underline;
     }
-    @keyframes hs-post-highlight-pulse {
-      0%   { outline-color: rgba(255, 255, 0, 1); background-color: rgba(255, 255, 0, 0.15); }
-      100% { outline-color: rgba(255, 255, 0, 0); background-color: transparent; }
-    }
     .hs-post-highlight {
       outline: 2px solid #ffff00;
       outline-offset: -2px;
-      animation: hs-post-highlight-pulse 1s ease-out forwards;
     }
     .hs-thread-op {
       border-bottom: 1px solid #ff8700;
@@ -14713,19 +14709,13 @@ function injectStyles() {
     }
     #hs-mc-search-spinner {
       display: none;
-      width: 14px;
-      height: 14px;
-      border: 2px solid #333;
-      border-top-color: #ff8700;
-      border-radius: 50%;
-      animation: hs-spin 0.6s linear infinite;
+      width: 8px;
+      height: 8px;
+      background: #ff8700;
       flex-shrink: 0;
     }
     #hs-mc-search-spinner.visible {
       display: block;
-    }
-    @keyframes hs-spin {
-      to { transform: rotate(360deg); }
     }
     .hs-mc-search-result {
       display: flex;
@@ -17337,9 +17327,32 @@ function filterModLog(log, opts = {}) {
 // Private copies of the ReDoS heuristics (mirrors automod.js — kept local so
 // this file is importable by tests without dragging in the whole bundle).
 function _lsIsDangerous(p) {
-  if (/\([^)]*[+*][^)]*\)\s*[*+]/.test(p)) return true
-  if (/\([^)]*\|[^)]*\)\s*[*+]/.test(p)) return true
-  if (/\{\s*\d{4,}/.test(p)) return true
+  if (p.length > 512) return true
+  // quantified group whose body also has a quantifier → exponential blowup
+  if (/\([^)]*[+*][^)]*\)\s*[*+{]/.test(p)) return true
+  // unbounded repeat of an alternation → (a|a)+/{n} style blowup
+  if (/\([^)]*\|[^)]*\)\s*[*+{]/.test(p)) return true
+  // bounded repetition ≥ 10 reps (2-digit brace) is exponential with nested quantifiers
+  if (/\{\s*\d{2,}/.test(p)) return true
+  return false
+}
+
+// Empirical backstop: run the compiled regex against pathological probes under a
+// tight time budget. Catches catastrophic-backtracking shapes the static heuristic
+// didn't anticipate (e.g. /a{100}b/). Kept local for test isolation (mirrors automod).
+const _LS_REDOS_PROBES = ['a'.repeat(28), '0'.repeat(28), 'ab'.repeat(14), 'a1'.repeat(14), ' '.repeat(28)].map(
+  (s) => s + ' !',
+)
+function _lsTripsCatastrophicBacktracking(re) {
+  try {
+    const start = performance.now()
+    for (const probe of _LS_REDOS_PROBES) {
+      re.test(probe)
+      if (performance.now() - start > 20) return true
+    }
+  } catch {
+    return true
+  }
   return false
 }
 
@@ -17365,6 +17378,11 @@ function buildLiveSearchMatcher(rawQuery) {
     let re
     try {
       re = new RegExp(safeSrc, flags)
+      // Empirical backstop: catches blowup shapes the static heuristic missed.
+      // Runs once at compile time (not per message), so probing cost is bounded.
+      if (_lsTripsCatastrophicBacktracking(re)) {
+        re = new RegExp(_lsEscapeLiteral(src), flags)
+      }
     } catch {
       // Invalid regex (e.g. `/[/` mid-typing) — fall back to literal.
       try {
@@ -18422,6 +18440,12 @@ class IRC {
     // when this is fresh (IRC copies carry replies/bits/highlight richness)
     this._lastLiveAt = new Map()
     this.channels = new Map() // ch -> CircularBuffer (local mirror)
+    // O(1) mod-notice dedup indices — keyed by "ch:targetLc" and "ch:targetMsgId"
+    // respectively. Each stores the first-wins notice object so time-window and
+    // _supersededByUnban checks can be done without scanning the full buffer.
+    // Capped at 500 entries (FIFO eviction) so they can't grow unbounded.
+    this._modNoticeIndex = new Map()
+    this._deleteNoticeIndex = new Map()
     this.handlers = new Map()
     this._destroyed = false
     this._listener = (message) => {
@@ -18521,22 +18545,22 @@ class IRC {
         const tm = (msg.text || '').match(/^(\S+) has been/)
         const targetLc = (msg.targetUser || '').toLowerCase() || (tm ? tm[1].toLowerCase() : '')
         if (targetLc) {
-          for (const existing of buf.getAll()) {
-            if (existing.type !== 'notice') continue
-            if (existing.noticeType !== 'timeout_success' && existing.noticeType !== 'ban_success') continue
-            if ((existing.targetUser || '').toLowerCase() !== targetLc) continue
-            // A later unban for this target retired the prior ban — don't collapse
-            // a fresh re-ban against it (ban→unban→ban must show every step).
-            if (existing._supersededByUnban) continue
+          const idxKey = `${ch}:${targetLc}`
+          const existing = this._modNoticeIndex.get(idxKey)
+          // A later unban for this target retired the prior ban — don't collapse
+          // a fresh re-ban against it (ban→unban→ban must show every step).
+          if (existing && !existing._supersededByUnban) {
             // A local synthetic carries client Date.now(); the real IRC copy
             // carries Twitch's server tmi-sent-ts. Under clock skew those can
             // differ by >10s, defeating the collapse and double-rendering. Widen
             // to 30s whenever a synthetic is on either side; keep the tight 10s
             // for real-vs-real (multi-transport fanout of one server event).
             const win = existing.isSynthetic || msg.isSynthetic ? 30000 : 10000
-            if (Math.abs((existing.time || 0) - (msg.time || 0)) > win) continue
-            return
+            if (Math.abs((existing.time || 0) - (msg.time || 0)) <= win) return
           }
+          // First/winning notice for this target in this window — record it.
+          if (this._modNoticeIndex.size >= 500) this._modNoticeIndex.delete(this._modNoticeIndex.keys().next().value)
+          this._modNoticeIndex.set(idxKey, msg)
         }
       }
       // Same first-wins collapse for deletes: our optimistic local inject and the
@@ -18545,14 +18569,15 @@ class IRC {
       // never render both for one deletion. target-msg-id is unique per message,
       // so the window only separates a synthetic from its own real echo.
       if (msg.type === 'notice' && msg.noticeType === 'delete_message_success' && msg.targetMsgId) {
-        for (const existing of buf.getAll()) {
-          if (existing.type !== 'notice') continue
-          if (existing.noticeType !== 'delete_message_success') continue
-          if (existing.targetMsgId !== msg.targetMsgId) continue
+        const idxKey = `${ch}:${msg.targetMsgId}`
+        const existing = this._deleteNoticeIndex.get(idxKey)
+        if (existing) {
           const win = existing.isSynthetic || msg.isSynthetic ? 30000 : 10000
-          if (Math.abs((existing.time || 0) - (msg.time || 0)) > win) continue
-          return
+          if (Math.abs((existing.time || 0) - (msg.time || 0)) <= win) return
         }
+        // First/winning delete for this msg-id — record it.
+        if (this._deleteNoticeIndex.size >= 500) this._deleteNoticeIndex.delete(this._deleteNoticeIndex.keys().next().value)
+        this._deleteNoticeIndex.set(idxKey, msg)
       }
       buf.push(msg)
       // Relay PRIVMSGs to server archive (ON CONFLICT DO NOTHING dedupes across
@@ -18768,6 +18793,11 @@ class IRC {
     ch = ch.toLowerCase()
     if (!this.channels.has(ch)) return
     this.channels.delete(ch)
+    // Purge mod-notice index entries for the parted channel to prevent stale
+    // accumulation; spread to avoid mutating the map during iteration.
+    const prefix = `${ch}:`
+    for (const k of [...this._modNoticeIndex.keys()]) if (k.startsWith(prefix)) this._modNoticeIndex.delete(k)
+    for (const k of [...this._deleteNoticeIndex.keys()]) if (k.startsWith(prefix)) this._deleteNoticeIndex.delete(k)
     log('Parted', ch)
     try {
       chrome.runtime.sendMessage({ type: 'bg_irc_part', channel: ch }).catch(() => {})
@@ -18851,9 +18881,21 @@ class KickChat {
   }
 
   _flushPendingSync() {
-    // kick chat history is backed exclusively by chrome.storage.local (persistBuffer)
-    // — writing to host-page localStorage (kick.com) would expose it to host-page
-    // scripts and co-resident extensions.
+    // Kick chat history is backed exclusively by chrome.storage.local (NOT
+    // host-page localStorage, which would expose it to kick.com scripts and
+    // co-resident extensions). On pagehide we drain every debounced write
+    // synchronously — the storage.local.set is dispatched to the extension
+    // backend and survives the page unload, closing the ~1.5s debounce gap that
+    // was silently dropping the tail of Kick chat on reload/close.
+    for (const ch of [...this._pendingChannels]) {
+      const t = this._persistTimers[ch]
+      if (t) {
+        cleanup.clearTimeout(t)
+        delete this._persistTimers[ch]
+      }
+      this._pendingChannels.delete(ch)
+      this._persistChannelNow(ch)
+    }
   }
 
   _touchChannel(ch) {
@@ -19021,24 +19063,30 @@ class KickChat {
     log('Kick chat listener registered (webhook mode)')
   }
 
+  // Serialize + write one channel's buffer to chrome.storage.local NOW. Shared
+  // by the debounced timer and the synchronous pagehide flush.
+  _persistChannelNow(ch) {
+    try {
+      if (!chrome?.runtime?.id) return
+      const buffer = this.channels.get(ch)
+      if (!buffer) return
+      const msgs = buffer
+        .getAll()
+        .slice(-this._PERSIST_MAX)
+        .map((m) => this._serializeMsg(m))
+        .filter(Boolean)
+      const p = chrome.storage.local.set({ [`hs_kick_${ch}`]: { msgs, ts: Date.now() } })
+      if (p && typeof p.catch === 'function') p.catch(() => {})
+    } catch {}
+  }
+
   persistBuffer(ch) {
     this._pendingChannels.add(ch)
     if (this._persistTimers[ch]) return
     this._persistTimers[ch] = cleanup.setTimeout(() => {
-      try {
-        delete this._persistTimers[ch]
-        this._pendingChannels.delete(ch)
-        if (!chrome?.runtime?.id) return
-        const buffer = this.channels.get(ch)
-        if (!buffer) return
-        const msgs = buffer
-          .getAll()
-          .slice(-this._PERSIST_MAX)
-          .map((m) => this._serializeMsg(m))
-          .filter(Boolean)
-        const p = chrome.storage.local.set({ [`hs_kick_${ch}`]: { msgs, ts: Date.now() } })
-        if (p && typeof p.catch === 'function') p.catch(() => {})
-      } catch {}
+      delete this._persistTimers[ch]
+      this._pendingChannels.delete(ch)
+      this._persistChannelNow(ch)
     }, this._PERSIST_DEBOUNCE_MS)
   }
 
@@ -21560,7 +21608,13 @@ async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, targetEl, z
           emoteUrl: emoteUrl,
           zeroWidth: !!zeroWidth,
         },
-        resolve,
+        (resp) => {
+          // Read lastError so Chrome doesn't log an "unchecked runtime.lastError"
+          // warning on context invalidation / BG crash; treat as a failed add
+          // (resp stays undefined → response?.success is falsy below).
+          if (chrome.runtime.lastError) resolve(undefined)
+          else resolve(resp)
+        },
       )
     })
 
@@ -22097,181 +22151,204 @@ function _buildChannelEmoteCache(ch, emotes, platform) {
   }
 }
 
+let _loadEmotesInFlight = false
+let _loadEmotesRerun = false
 async function loadEmotes() {
+  // Concurrency guard: the storage read is async (100–500ms on a cold SW). Two
+  // overlapping calls would each clear viewerPersonalEmotes mid-populate, wiping
+  // the other's partial state → messages render with no personal emotes. Serialize;
+  // if events arrived during a run, rerun once to pick up the latest storage.
+  if (_loadEmotesInFlight) {
+    _loadEmotesRerun = true
+    return
+  }
+  _loadEmotesInFlight = true
   try {
-    const stored = await chrome.storage.local.get([
-      'global_emotes',
-      'emote_inventory',
-      'channel_emotes_map',
-      'native_twitch_emotes',
-      'hs_removed_emote_fallback',
-      'hs_blocked_emote_fallback',
-    ])
-    // Restore removed-emote render fallback (persists across refresh).
-    removedEmoteFallback.clear()
-    const rf = stored.hs_removed_emote_fallback
-    if (rf && typeof rf === 'object') {
-      for (const [name, e] of Object.entries(rf)) {
-        if (e && e.url)
-          removedEmoteFallback.set(name, {
-            url: e.url,
-            source: e.source || 'heatsync',
-            zeroWidth: !!e.zeroWidth,
-            state: 'unadded',
-            removedAt: Number(e.removedAt) || 0,
-          })
-      }
-    }
-    // Restore block-state render fallback so the dashed box survives refresh
-    // (rebuildBlockedNames at the tail of this fn seeds blockedEmoteNames from it).
-    blockedEmoteFallback.clear()
-    const bf = stored.hs_blocked_emote_fallback
-    if (bf && typeof bf === 'object') {
-      for (const [name, e] of Object.entries(bf)) {
-        if (e)
-          blockedEmoteFallback.set(name, { url: e.url || '', source: e.source || 'heatsync', zeroWidth: !!e.zeroWidth })
-      }
-    }
-    emoteCache.clear()
-    // Don't wipe channelEmoteCaches — live broadcasts may have direct-
-    // populated a channel that storage hasn't persisted yet (BG writes
-    // storage AFTER the final broadcast). Wiping would clobber it; the
-    // loop below refreshes each channel that storage knows about.
-    // Preserve in-flight optimistic preregister entries (autoAddInputEmotes
-    // sets viewerPersonalEmotes BEFORE the server add resolves so the IRC
-    // echo of "wavE" renders the image, not the bare word). Without this
-    // snapshot, an unrelated storage change (channel emote refresh, global
-    // update) racing the add wipes the optimistic entry before the echo
-    // arrives → message renders as plain text. pendingEmoteOps tracks names
-    // whose addEmoteToInventory is still in flight; restored at the bottom.
-    const _inflight = new Map()
-    for (const name of pendingEmoteOps) {
-      const e = viewerPersonalEmotes.get(name)
-      if (e) _inflight.set(name, e)
-    }
-    inventoryEmotes.clear()
-    viewerPersonalEmotes.clear()
-    inventoryHashes.clear()
-    emoteHashes.clear()
-    hashToName.clear()
-
-    // Helper to register hash<->name mapping
-    const registerHash = (name, hash) => {
-      if (name && hash) {
-        emoteHashes.set(name, hash)
-        hashToName.set(hash, name)
-      }
-    }
-
-    // First, build inventory set (emotes user owns)
-    ;(stored.emote_inventory || []).forEach((e) => {
-      if (e.name) {
-        inventoryEmotes.add(e.name)
-        if (e.hash) {
-          inventoryHashes.set(e.name, e.hash)
-          registerHash(e.name, e.hash)
+    try {
+      const stored = await chrome.storage.local.get([
+        'global_emotes',
+        'emote_inventory',
+        'channel_emotes_map',
+        'native_twitch_emotes',
+        'hs_removed_emote_fallback',
+        'hs_blocked_emote_fallback',
+      ])
+      // Restore removed-emote render fallback (persists across refresh).
+      removedEmoteFallback.clear()
+      const rf = stored.hs_removed_emote_fallback
+      if (rf && typeof rf === 'object') {
+        for (const [name, e] of Object.entries(rf)) {
+          if (e && e.url)
+            removedEmoteFallback.set(name, {
+              url: e.url,
+              source: e.source || 'heatsync',
+              zeroWidth: !!e.zeroWidth,
+              state: 'unadded',
+              removedAt: Number(e.removedAt) || 0,
+            })
         }
       }
-    })
+      // Restore block-state render fallback so the dashed box survives refresh
+      // (rebuildBlockedNames at the tail of this fn seeds blockedEmoteNames from it).
+      blockedEmoteFallback.clear()
+      const bf = stored.hs_blocked_emote_fallback
+      if (bf && typeof bf === 'object') {
+        for (const [name, e] of Object.entries(bf)) {
+          if (e)
+            blockedEmoteFallback.set(name, {
+              url: e.url || '',
+              source: e.source || 'heatsync',
+              zeroWidth: !!e.zeroWidth,
+            })
+        }
+      }
+      emoteCache.clear()
+      // Don't wipe channelEmoteCaches — live broadcasts may have direct-
+      // populated a channel that storage hasn't persisted yet (BG writes
+      // storage AFTER the final broadcast). Wiping would clobber it; the
+      // loop below refreshes each channel that storage knows about.
+      // Preserve in-flight optimistic preregister entries (autoAddInputEmotes
+      // sets viewerPersonalEmotes BEFORE the server add resolves so the IRC
+      // echo of "wavE" renders the image, not the bare word). Without this
+      // snapshot, an unrelated storage change (channel emote refresh, global
+      // update) racing the add wipes the optimistic entry before the echo
+      // arrives → message renders as plain text. pendingEmoteOps tracks names
+      // whose addEmoteToInventory is still in flight; restored at the bottom.
+      const _inflight = new Map()
+      for (const name of pendingEmoteOps) {
+        const e = viewerPersonalEmotes.get(name)
+        if (e) _inflight.set(name, e)
+      }
+      inventoryEmotes.clear()
+      viewerPersonalEmotes.clear()
+      inventoryHashes.clear()
+      emoteHashes.clear()
+      hashToName.clear()
 
-    // Add global emotes (heatsync globals - may or may not be in inventory)
-    ;(stored.global_emotes || []).forEach((e) => {
-      if (e.name && e.url) {
-        const source = e.source || detectEmoteSource(e.url, 'heatsync')
-        const state = getEmoteState(e.name, source)
-        emoteCache.set(e.name, { url: e.url, source, state, zeroWidth: !!e.zeroWidth, nsfw: !!e.nsfw })
+      // Helper to register hash<->name mapping
+      const registerHash = (name, hash) => {
+        if (name && hash) {
+          emoteHashes.set(name, hash)
+          hashToName.set(hash, name)
+        }
+      }
+
+      // First, build inventory set (emotes user owns)
+      ;(stored.emote_inventory || []).forEach((e) => {
+        if (e.name) {
+          inventoryEmotes.add(e.name)
+          if (e.hash) {
+            inventoryHashes.set(e.name, e.hash)
+            registerHash(e.name, e.hash)
+          }
+        }
+      })
+
+      // Add global emotes (heatsync globals - may or may not be in inventory)
+      ;(stored.global_emotes || []).forEach((e) => {
+        if (e.name && e.url) {
+          const source = e.source || detectEmoteSource(e.url, 'heatsync')
+          const state = getEmoteState(e.name, source)
+          emoteCache.set(e.name, { url: e.url, source, state, zeroWidth: !!e.zeroWidth, nsfw: !!e.nsfw })
+          while (emoteCache.size > 2000) {
+            emoteCache.delete(emoteCache.keys().next().value)
+          }
+          if (e.hash) registerHash(e.name, e.hash)
+        }
+      })
+
+      // Add inventory emotes (definitely owned) → viewerPersonalEmotes ONLY.
+      // Keeping these out of emoteCache (the global fallback) is what prevents
+      // viewer's personal '67' from bleeding into other users' messages.
+      // Render path passes viewerPersonalEmotes as senderEmotes for own outgoing,
+      // and lookupEmote() composes both for picker/hover/UI use cases.
+      ;(stored.emote_inventory || []).forEach((e) => {
+        if (e.name && e.url) {
+          const source = e.source || 'heatsync'
+          // server returns zero_width (snake_case from postgres column), older
+          // payloads may carry zeroWidth — accept either; falsy default is fine.
+          viewerPersonalEmotes.set(e.name, {
+            url: e.url,
+            source,
+            state: 'owned',
+            zeroWidth: !!(e.zero_width ?? e.zeroWidth),
+            subscription: !!e.subscription,
+            slot: e.slot,
+            nsfw: !!e.nsfw,
+          })
+        }
+      })
+
+      // Load per-channel emotes into separate caches (prevents cross-channel leaking)
+      const map = stored.channel_emotes_map || {}
+      for (const [k, emotes] of Object.entries(map)) {
+        if (!Array.isArray(emotes)) continue // skip 'loading' sentinels
+        // Keys are "platform/channel" — split so the cache merges both platforms'
+        // sets under the bare channel name (per-platform tagged, no overwrite).
+        const slash = k.indexOf('/')
+        const platform = slash >= 0 ? k.slice(0, slash) : 'twitch'
+        const bare = slash >= 0 ? k.slice(slash + 1) : k
+        _buildChannelEmoteCache(bare, emotes, platform)
+      }
+      // Native Twitch emotes — sub emotes carry e.owner (broadcaster login),
+      // true Twitch globals do not. Globals → emoteCache (everyone can render them).
+      // Subs → viewerPersonalEmotes: same gate as heatsync inventory — surfaced
+      // for picker/autocomplete/own outgoing, kept out of the global render
+      // fallback so they don't bleed into other senders' messages.
+      ;(stored.native_twitch_emotes || []).forEach((e) => {
+        if (!e.name || !e.url) return
+        const isSub = !!e.owner
+        if (isSub) {
+          if (!viewerPersonalEmotes.has(e.name)) {
+            viewerPersonalEmotes.set(e.name, {
+              url: e.url,
+              source: 'twitch',
+              state: 'owned',
+              subscription: true,
+              owner: e.owner,
+            })
+            if (e.hash) registerHash(e.name, e.hash)
+          }
+          return
+        }
+        if (emoteCache.has(e.name)) return
+        emoteCache.set(e.name, { url: e.url, source: 'twitch', state: 'global' })
         while (emoteCache.size > 2000) {
           emoteCache.delete(emoteCache.keys().next().value)
         }
         if (e.hash) registerHash(e.name, e.hash)
-      }
-    })
+      })
 
-    // Add inventory emotes (definitely owned) → viewerPersonalEmotes ONLY.
-    // Keeping these out of emoteCache (the global fallback) is what prevents
-    // viewer's personal '67' from bleeding into other users' messages.
-    // Render path passes viewerPersonalEmotes as senderEmotes for own outgoing,
-    // and lookupEmote() composes both for picker/hover/UI use cases.
-    ;(stored.emote_inventory || []).forEach((e) => {
-      if (e.name && e.url) {
-        const source = e.source || 'heatsync'
-        // server returns zero_width (snake_case from postgres column), older
-        // payloads may carry zeroWidth — accept either; falsy default is fine.
-        viewerPersonalEmotes.set(e.name, {
-          url: e.url,
-          source,
-          state: 'owned',
-          zeroWidth: !!(e.zero_width ?? e.zeroWidth),
-          subscription: !!e.subscription,
-          slot: e.slot,
-          nsfw: !!e.nsfw,
-        })
+      // Restore in-flight optimistic preregister entries that the clear()
+      // above wiped — server hasn't confirmed yet, so they're not in stored.
+      // Without this, the IRC echo of an auto-add emote misses the lookup
+      // and the message renders as plain text instead of the image.
+      for (const [name, e] of _inflight) {
+        if (!viewerPersonalEmotes.has(name)) viewerPersonalEmotes.set(name, e)
       }
-    })
 
-    // Load per-channel emotes into separate caches (prevents cross-channel leaking)
-    const map = stored.channel_emotes_map || {}
-    for (const [k, emotes] of Object.entries(map)) {
-      if (!Array.isArray(emotes)) continue // skip 'loading' sentinels
-      // Keys are "platform/channel" — split so the cache merges both platforms'
-      // sets under the bare channel name (per-platform tagged, no overwrite).
-      const slash = k.indexOf('/')
-      const platform = slash >= 0 ? k.slice(0, slash) : 'twitch'
-      const bare = slash >= 0 ? k.slice(slash + 1) : k
-      _buildChannelEmoteCache(bare, emotes, platform)
-    }
-    // Native Twitch emotes — sub emotes carry e.owner (broadcaster login),
-    // true Twitch globals do not. Globals → emoteCache (everyone can render them).
-    // Subs → viewerPersonalEmotes: same gate as heatsync inventory — surfaced
-    // for picker/autocomplete/own outgoing, kept out of the global render
-    // fallback so they don't bleed into other senders' messages.
-    ;(stored.native_twitch_emotes || []).forEach((e) => {
-      if (!e.name || !e.url) return
-      const isSub = !!e.owner
-      if (isSub) {
-        if (!viewerPersonalEmotes.has(e.name)) {
-          viewerPersonalEmotes.set(e.name, {
-            url: e.url,
-            source: 'twitch',
-            state: 'owned',
-            subscription: true,
-            owner: e.owner,
-          })
-          if (e.hash) registerHash(e.name, e.hash)
-        }
-        return
-      }
-      if (emoteCache.has(e.name)) return
-      emoteCache.set(e.name, { url: e.url, source: 'twitch', state: 'global' })
-      while (emoteCache.size > 2000) {
-        emoteCache.delete(emoteCache.keys().next().value)
-      }
-      if (e.hash) registerHash(e.name, e.hash)
-    })
+      // Rebuild blockedEmoteNames from loaded hashes
+      rebuildBlockedNames()
 
-    // Restore in-flight optimistic preregister entries that the clear()
-    // above wiped — server hasn't confirmed yet, so they're not in stored.
-    // Without this, the IRC echo of an auto-add emote misses the lookup
-    // and the message renders as plain text instead of the image.
-    for (const [name, e] of _inflight) {
-      if (!viewerPersonalEmotes.has(name)) viewerPersonalEmotes.set(name, e)
+      log('Loaded', emoteCache.size, 'emotes (inventory:', inventoryEmotes.size, ', hashes:', emoteHashes.size, ')')
+    } catch (e) {
+      log('Error loading emotes:', e)
     }
 
-    // Rebuild blockedEmoteNames from loaded hashes
-    rebuildBlockedNames()
+    // Also scan DOM for third-party emotes (BTTV, FFZ, 7TV)
+    scanDomForEmotes()
 
-    log('Loaded', emoteCache.size, 'emotes (inventory:', inventoryEmotes.size, ', hashes:', emoteHashes.size, ')')
-  } catch (e) {
-    log('Error loading emotes:', e)
+    // Picker DOM is now stale — schedule an idle prebuild so the very first
+    // click after page load opens the picker instantly (no parse on click).
+    markPickerDirty()
+    prebuildPickerIdle()
+  } finally {
+    _loadEmotesInFlight = false
+    if (_loadEmotesRerun) {
+      _loadEmotesRerun = false
+      loadEmotes()
+    }
   }
-
-  // Also scan DOM for third-party emotes (BTTV, FFZ, 7TV)
-  scanDomForEmotes()
-
-  // Picker DOM is now stale — schedule an idle prebuild so the very first
-  // click after page load opens the picker instantly (no parse on click).
-  markPickerDirty()
-  prebuildPickerIdle()
 }
 
 // Scan DOM for emotes rendered in chat — route to the current channel's cache, not global
@@ -22433,7 +22510,12 @@ function hsSnapEmoteBox(img) {
       // the base emote. Overlays always render inline-unconstrained via renderEmoteStack.
       if (it.im.classList.contains('hs-mc-overlay-emote')) continue
       const url = it.im.closest('.hs-mc-emote-wrapper')?.dataset?.emoteUrl || it.im.getAttribute('src')
-      if (url) _hsEmoteBoxW.set(url, it.w)
+      if (url) {
+        _hsEmoteBoxW.set(url, it.w)
+        // FIFO cap — a long multi-channel session measures thousands of unique
+        // emote URLs; without eviction this Map grows unbounded for the tab's life.
+        if (_hsEmoteBoxW.size > 2000) _hsEmoteBoxW.delete(_hsEmoteBoxW.keys().next().value)
+      }
     }
   })
 }
@@ -24004,7 +24086,10 @@ async function applyTooltipBanner(tooltip, profile, platform, username, gen) {
   if (banner.profileUrl) {
     const avatar = tooltip.querySelector('.hs-pc-avatar')
     if (avatar && (avatar.src || '').includes('anon.webp')) {
-      avatar.src = banner.profileUrl
+      // safeUrl-gate like every other avatar path (social.js/main.js) — profileUrl
+      // comes from Kick v2 / YT HTML extraction, neither URL-validated by the BG.
+      const safe = safeUrl(banner.profileUrl)
+      if (safe) avatar.src = safe
     }
   }
   if (banner.accent) {
@@ -26994,6 +27079,11 @@ window.addEventListener(
     // restrict to the top window (where early-inject-main.js runs).
     if (e.source !== window || e.origin !== location.origin) return
     if (e.data?.type === 'heatsync-gql-data') {
+      // Verify the MAIN-world nonce (early-inject stamps it on the push). Without
+      // this, page JS on twitch.tv could post a crafted heatsync-gql-data to
+      // spoof poll/prediction state into the panel. Same check content.js uses.
+      const expected = window.HS?.getMainWorldNonce?.()
+      if (!expected || e.data.nonce !== expected) return
       const { operation, data, errors } = e.data
       if (data && !errors?.length) {
         _gqlDataCache[operation] = { data, ts: Date.now() }
@@ -28550,10 +28640,22 @@ async function resolveTwitchChannelId(channelLogin) {
     }
     _twChannelIdCache.set(lc, { id, ts: Date.now() })
   }
+  // First-party first: Twitch GQL (relayed through a twitch.tv tab when
+  // off-Twitch). decapi.me is a third-party and runs ONLY as a last-resort
+  // fallback for the rare case GQL is unreachable — slated for removal once the
+  // first-party /api/resolve endpoint deploys.
   try {
-    // 4s ceiling: decapi is a third-party in the mod-action hot path; a hang here
+    const data = await gqlProxy(null, null, { rawQuery: `{ user(login: "${lc}") { id } }` })
+    const id = data?.data?.user?.id || (Array.isArray(data) ? data[0]?.data?.user?.id : null)
+    if (id) {
+      _cacheChannelId(id)
+      return id
+    }
+  } catch (_) {}
+  try {
+    // 4s ceiling: third-party fallback in the mod-action hot path; a hang here
     // would stall every ban/timeout/unban behind the browser's default TCP
-    // timeout (60s+). Time out fast and fall through to the first-party GQL path.
+    // timeout (60s+). Time out fast.
     const r = await fetch(`https://decapi.me/twitch/id/${encodeURIComponent(lc)}`, {
       credentials: 'omit',
       signal: AbortSignal.timeout(4000),
@@ -28562,14 +28664,6 @@ async function resolveTwitchChannelId(channelLogin) {
     if (r.ok && /^\d+$/.test(body)) {
       _cacheChannelId(body)
       return body
-    }
-  } catch (_) {}
-  try {
-    const data = await gqlProxy(null, null, { rawQuery: `{ user(login: "${lc}") { id } }` })
-    const id = data?.data?.user?.id || (Array.isArray(data) ? data[0]?.data?.user?.id : null)
-    if (id) {
-      _cacheChannelId(id)
-      return id
     }
   } catch (_) {}
   return null
@@ -38785,7 +38879,7 @@ async function handleSlashCommand(text, input) {
       return true
     }
     for (const a of aliases) mutedUsers.add(a)
-    chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] })
+    chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] }).catch((e) => log('mute persist failed:', e))
     const exp = Date.now() + 86400000
     for (const a of aliases) safeSendMessage({ type: 'mute_user', username: a, expiresAt: exp })
     const aliasNote = aliases.length > 1 ? ` (+@${aliases[1]})` : ''
@@ -39157,21 +39251,20 @@ async function sendSlashWhisper(platform, username, text, input) {
   if (platform === 'twitch') {
     key = `twitch:${lowerUser}`
     if (!whisperUsers.has(key)) {
-      // Resolve username → Twitch ID via decapi
+      // Resolve username → Twitch ID via the canonical first-party resolver
+      // (Twitch GQL; decapi.me only as its own internal last-resort fallback).
+      let body
       try {
-        const resp = await fetch(`https://decapi.me/twitch/id/${encodeURIComponent(lowerUser)}`, {
-          credentials: 'omit',
-        })
-        const body = (await resp.text()).trim()
-        if (!resp.ok || !/^\d+$/.test(body)) {
-          showToast(t('mc_whisper_user_not_found', [username]), 'error')
-          return
-        }
-        whisperUsersSet(key, { platform: 'twitch', userId: body, displayName: username, color: '#fff' })
+        body = await resolveTwitchChannelId(lowerUser)
       } catch (e) {
         showToast(t('mc_whisper_resolve_failed'), 'error')
         return
       }
+      if (!body) {
+        showToast(t('mc_whisper_user_not_found', [username]), 'error')
+        return
+      }
+      whisperUsersSet(key, { platform: 'twitch', userId: body, displayName: username, color: '#fff' })
     }
   } else {
     // HeatSync DM — resolve username → user_id via profile API
@@ -43620,8 +43713,9 @@ const STORAGE_KEY = 'heatsync_multichat'
   let _activeAvatarFetches = 0
   const MAX_AVATAR_FETCHES = 5
   // Neutral initials avatar. Renders immediately so the fixed 18px avatar box
-  // is reserved from first paint — the real pfp (fetched async via decapi for
-  // twitch, carried inline for yt, absent for kick) then swaps in IN PLACE with
+  // is reserved from first paint — the real pfp (fetched async via first-party
+  // GQL (BG resolveAvatarUrl) for twitch, carried inline for yt, absent for kick)
+  // then swaps in IN PLACE with
   // zero layout shift instead of popping the row sideways on arrival. A failed
   // or absent fetch simply stays as the initial — no blank gap. `withDataUser`
   // tags the twitch placeholder so fetchAvatar can find and replace it.
@@ -43639,12 +43733,12 @@ const STORAGE_KEY = 'heatsync_multichat'
     if (_activeAvatarFetches >= MAX_AVATAR_FETCHES) return
     avatarFetching.add(key)
     _activeAvatarFetches++
-    fetch(`https://decapi.me/twitch/avatar/${encodeURIComponent(key)}`, { credentials: 'omit' })
-      .then((r) => (r.ok ? r.text() : null))
-      .then((url) => {
+    chrome.runtime
+      .sendMessage({ type: 'resolve_avatar_url', username: key, platform: 'twitch' })
+      .then((resp) => {
         avatarFetching.delete(key)
         _activeAvatarFetches--
-        const safe = safeUrl((url || '').trim())
+        const safe = safeUrl((resp?.url || '').trim())
         if (!safe) return
         avatarCache.set(key, safe)
         if (avatarCache.size > 500) {
@@ -44760,12 +44854,6 @@ const STORAGE_KEY = 'heatsync_multichat'
         zebraEnabled = v
       },
     },
-    multichatOverlayEnabled: {
-      get: () => multichatOverlayEnabled,
-      set: (v) => {
-        multichatOverlayEnabled = v
-      },
-    },
     // setter also feeds the window flag content.js reads for timestamp paint
     timestampsEnabled: {
       get: () => timestampsEnabled,
@@ -45081,55 +45169,6 @@ const STORAGE_KEY = 'heatsync_multichat'
           _cwRollback(def, v)
         })
     },
-    // Overlay on/off needs a clean boot either way: the live teardown left
-    // the native chat column blank (the overlay hides it at init and only
-    // youtube's iframe was restored), and turning it ON in a lite-booted
-    // tab would mount UI with no init behind it. Flush the setting
-    // explicitly (the debounced writer wouldn't survive the reload), then
-    // reload — visible tab immediately, background tabs when next visible.
-    multichatOverlay: (v, def, onLoad, isRemote) => {
-      if (onLoad) return
-      if (isRemote) {
-        _liteReload()
-        return
-      } // already persisted remotely — just reload
-      showToast(v ? 'multichat back on — reloading' : 'emotes-only mode — reloading', 'info')
-      try {
-        chrome.storage.sync.get('ui_settings', (d) => {
-          const ui = (d && d.ui_settings) || {}
-          chrome.storage.sync.set({ ui_settings: sanitizeUiSettings({ ...ui, multichatOverlayEnabled: !!v }) }, () => {
-            if (chrome.runtime.lastError) {
-              console.warn('[heatsync-ext] overlay mode save failed:', chrome.runtime.lastError.message)
-            }
-            _liteReload()
-          })
-        })
-      } catch (_) {
-        _liteReload()
-      }
-    },
-  }
-
-  // Reload for overlay-mode flips — visible tab reloads now, hidden tabs
-  // defer to visibilitychange (same anti-thundering-herd shape as the
-  // ext-reload path). Deduped per page.
-  function _liteReload() {
-    if (window.__hsLiteReloadScheduled) return
-    window.__hsLiteReloadScheduled = true
-    const doReload = () => {
-      try {
-        location.reload()
-      } catch (_) {}
-    }
-    if (document.visibilityState === 'visible') {
-      setTimeout(doReload, 150)
-    } else {
-      document.addEventListener('visibilitychange', function once() {
-        if (document.visibilityState !== 'visible') return
-        document.removeEventListener('visibilitychange', once)
-        setTimeout(doReload, 300 + Math.random() * 1500)
-      })
-    }
   }
 
   function _cwRollback(def, attempted) {
@@ -45742,7 +45781,6 @@ const STORAGE_KEY = 'heatsync_multichat'
             },
             disabled: !document.querySelector('[data-a-target="hype-chat-button"], [aria-label*="Hype Chat"i]'),
           },
-          // TODO(native-bridge): live-DOM selectors needed for: kick gift/sub/rewards, twitch sub/gift, youtube superchat
         ]
         try {
           showHsCtxMenu(r.left, r.bottom + 4, 'stream actions', items)
@@ -45901,10 +45939,6 @@ const STORAGE_KEY = 'heatsync_multichat'
 
   // Zebra striping — alternate row backgrounds (default on)
   let zebraEnabled = true
-
-  // Emotes-only mode — when false, suppresses the multichat overlay entirely;
-  // native-chat emotes and the picker button keep working normally (default on)
-  let multichatOverlayEnabled = true
 
   // Util row collapsed — hides C/T/F-/F+/⚙ for clean single-line tabs
 
@@ -51906,8 +51940,6 @@ const STORAGE_KEY = 'heatsync_multichat'
   }
 
   function ensureUIElements() {
-    if (!multichatOverlayEnabled) return
-
     // Re-assert the stylesheet — twitch SPA navigations can sweep injected
     // <style> tags from <head>, leaving a remounted overlay fully unstyled
     // (raw text flow). injectStyles is idempotent (id check), so this is a
@@ -58026,10 +58058,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     const _localPrime = chrome.storage.local.get([STORAGE_KEY, 'user_info', 'muted_users'])
     await loadConfig()
     if (!config.enabled) return
-    // Lite / emotes-only mode REMOVED — the overlay always boots now (the
-    // emotes-only mode was buggy + unwanted). A stale multichatOverlayEnabled=false
-    // no longer disables the panel. To restore lite later, re-add the _uiPrime
-    // check that early-returned on multichatOverlayEnabled === false.
+    // Lite / emotes-only mode is fully removed — overlay always boots.
     log('Initializing...')
 
     // ── PHASE 2: hydrate username + muted users from prefetched local ─────

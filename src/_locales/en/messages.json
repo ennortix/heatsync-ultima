@@ -129,15 +129,6 @@
   "popup_setup_link": {
     "message": "set up heatsync →"
   },
-  "popup_lite_label": {
-    "message": "lite mode (emotes only)"
-  },
-  "popup_lite_title": {
-    "message": "overlay off — emotes, tab-complete and picker keep working in native chat"
-  },
-  "popup_lite_hint": {
-    "message": "reload open twitch/kick/youtube tabs to apply"
-  },
   "popup_errors_title": {
     "message": "left-click: copy last 50 errors / right-click: clear"
   },
@@ -173,7 +164,7 @@
     "message": "heatsync"
   },
   "welcome_tagline": {
-    "message": "your emotes in every chat — twitch, kick + youtube"
+    "message": "5,000 emote slots · every 7tv, bttv + ffz emote in every chat"
   },
   "welcome_cta": {
     "message": "open a stream → try it"
@@ -197,7 +188,7 @@
     "message": "open a stream and click the heatsync button → import all channel emotes"
   },
   "welcome_done_2": {
-    "message": "your set starts empty — import a channel you watch to fill it"
+    "message": "import a channel you watch → its emotes render in every chat you open"
   },
   "welcome_trust": {
     "message": "open source · no trackers · your emotes stay yours"

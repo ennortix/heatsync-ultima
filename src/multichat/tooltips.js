@@ -1086,7 +1086,10 @@ async function applyTooltipBanner(tooltip, profile, platform, username, gen) {
   if (banner.profileUrl) {
     const avatar = tooltip.querySelector('.hs-pc-avatar')
     if (avatar && (avatar.src || '').includes('anon.webp')) {
-      avatar.src = banner.profileUrl
+      // safeUrl-gate like every other avatar path (social.js/main.js) — profileUrl
+      // comes from Kick v2 / YT HTML extraction, neither URL-validated by the BG.
+      const safe = safeUrl(banner.profileUrl)
+      if (safe) avatar.src = safe
     }
   }
   if (banner.accent) {

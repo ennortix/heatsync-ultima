@@ -355,6 +355,12 @@ class IRC {
     // when this is fresh (IRC copies carry replies/bits/highlight richness)
     this._lastLiveAt = new Map()
     this.channels = new Map() // ch -> CircularBuffer (local mirror)
+    // O(1) mod-notice dedup indices — keyed by "ch:targetLc" and "ch:targetMsgId"
+    // respectively. Each stores the first-wins notice object so time-window and
+    // _supersededByUnban checks can be done without scanning the full buffer.
+    // Capped at 500 entries (FIFO eviction) so they can't grow unbounded.
+    this._modNoticeIndex = new Map()
+    this._deleteNoticeIndex = new Map()
     this.handlers = new Map()
     this._destroyed = false
     this._listener = (message) => {
@@ -454,22 +460,22 @@ class IRC {
         const tm = (msg.text || '').match(/^(\S+) has been/)
         const targetLc = (msg.targetUser || '').toLowerCase() || (tm ? tm[1].toLowerCase() : '')
         if (targetLc) {
-          for (const existing of buf.getAll()) {
-            if (existing.type !== 'notice') continue
-            if (existing.noticeType !== 'timeout_success' && existing.noticeType !== 'ban_success') continue
-            if ((existing.targetUser || '').toLowerCase() !== targetLc) continue
-            // A later unban for this target retired the prior ban — don't collapse
-            // a fresh re-ban against it (ban→unban→ban must show every step).
-            if (existing._supersededByUnban) continue
+          const idxKey = `${ch}:${targetLc}`
+          const existing = this._modNoticeIndex.get(idxKey)
+          // A later unban for this target retired the prior ban — don't collapse
+          // a fresh re-ban against it (ban→unban→ban must show every step).
+          if (existing && !existing._supersededByUnban) {
             // A local synthetic carries client Date.now(); the real IRC copy
             // carries Twitch's server tmi-sent-ts. Under clock skew those can
             // differ by >10s, defeating the collapse and double-rendering. Widen
             // to 30s whenever a synthetic is on either side; keep the tight 10s
             // for real-vs-real (multi-transport fanout of one server event).
             const win = existing.isSynthetic || msg.isSynthetic ? 30000 : 10000
-            if (Math.abs((existing.time || 0) - (msg.time || 0)) > win) continue
-            return
+            if (Math.abs((existing.time || 0) - (msg.time || 0)) <= win) return
           }
+          // First/winning notice for this target in this window — record it.
+          if (this._modNoticeIndex.size >= 500) this._modNoticeIndex.delete(this._modNoticeIndex.keys().next().value)
+          this._modNoticeIndex.set(idxKey, msg)
         }
       }
       // Same first-wins collapse for deletes: our optimistic local inject and the
@@ -478,14 +484,15 @@ class IRC {
       // never render both for one deletion. target-msg-id is unique per message,
       // so the window only separates a synthetic from its own real echo.
       if (msg.type === 'notice' && msg.noticeType === 'delete_message_success' && msg.targetMsgId) {
-        for (const existing of buf.getAll()) {
-          if (existing.type !== 'notice') continue
-          if (existing.noticeType !== 'delete_message_success') continue
-          if (existing.targetMsgId !== msg.targetMsgId) continue
+        const idxKey = `${ch}:${msg.targetMsgId}`
+        const existing = this._deleteNoticeIndex.get(idxKey)
+        if (existing) {
           const win = existing.isSynthetic || msg.isSynthetic ? 30000 : 10000
-          if (Math.abs((existing.time || 0) - (msg.time || 0)) > win) continue
-          return
+          if (Math.abs((existing.time || 0) - (msg.time || 0)) <= win) return
         }
+        // First/winning delete for this msg-id — record it.
+        if (this._deleteNoticeIndex.size >= 500) this._deleteNoticeIndex.delete(this._deleteNoticeIndex.keys().next().value)
+        this._deleteNoticeIndex.set(idxKey, msg)
       }
       buf.push(msg)
       // Relay PRIVMSGs to server archive (ON CONFLICT DO NOTHING dedupes across
@@ -701,6 +708,11 @@ class IRC {
     ch = ch.toLowerCase()
     if (!this.channels.has(ch)) return
     this.channels.delete(ch)
+    // Purge mod-notice index entries for the parted channel to prevent stale
+    // accumulation; spread to avoid mutating the map during iteration.
+    const prefix = `${ch}:`
+    for (const k of [...this._modNoticeIndex.keys()]) if (k.startsWith(prefix)) this._modNoticeIndex.delete(k)
+    for (const k of [...this._deleteNoticeIndex.keys()]) if (k.startsWith(prefix)) this._deleteNoticeIndex.delete(k)
     log('Parted', ch)
     try {
       chrome.runtime.sendMessage({ type: 'bg_irc_part', channel: ch }).catch(() => {})
@@ -784,9 +796,21 @@ class KickChat {
   }
 
   _flushPendingSync() {
-    // kick chat history is backed exclusively by chrome.storage.local (persistBuffer)
-    // — writing to host-page localStorage (kick.com) would expose it to host-page
-    // scripts and co-resident extensions.
+    // Kick chat history is backed exclusively by chrome.storage.local (NOT
+    // host-page localStorage, which would expose it to kick.com scripts and
+    // co-resident extensions). On pagehide we drain every debounced write
+    // synchronously — the storage.local.set is dispatched to the extension
+    // backend and survives the page unload, closing the ~1.5s debounce gap that
+    // was silently dropping the tail of Kick chat on reload/close.
+    for (const ch of [...this._pendingChannels]) {
+      const t = this._persistTimers[ch]
+      if (t) {
+        cleanup.clearTimeout(t)
+        delete this._persistTimers[ch]
+      }
+      this._pendingChannels.delete(ch)
+      this._persistChannelNow(ch)
+    }
   }
 
   _touchChannel(ch) {
@@ -954,24 +978,30 @@ class KickChat {
     log('Kick chat listener registered (webhook mode)')
   }
 
+  // Serialize + write one channel's buffer to chrome.storage.local NOW. Shared
+  // by the debounced timer and the synchronous pagehide flush.
+  _persistChannelNow(ch) {
+    try {
+      if (!chrome?.runtime?.id) return
+      const buffer = this.channels.get(ch)
+      if (!buffer) return
+      const msgs = buffer
+        .getAll()
+        .slice(-this._PERSIST_MAX)
+        .map((m) => this._serializeMsg(m))
+        .filter(Boolean)
+      const p = chrome.storage.local.set({ [`hs_kick_${ch}`]: { msgs, ts: Date.now() } })
+      if (p && typeof p.catch === 'function') p.catch(() => {})
+    } catch {}
+  }
+
   persistBuffer(ch) {
     this._pendingChannels.add(ch)
     if (this._persistTimers[ch]) return
     this._persistTimers[ch] = cleanup.setTimeout(() => {
-      try {
-        delete this._persistTimers[ch]
-        this._pendingChannels.delete(ch)
-        if (!chrome?.runtime?.id) return
-        const buffer = this.channels.get(ch)
-        if (!buffer) return
-        const msgs = buffer
-          .getAll()
-          .slice(-this._PERSIST_MAX)
-          .map((m) => this._serializeMsg(m))
-          .filter(Boolean)
-        const p = chrome.storage.local.set({ [`hs_kick_${ch}`]: { msgs, ts: Date.now() } })
-        if (p && typeof p.catch === 'function') p.catch(() => {})
-      } catch {}
+      delete this._persistTimers[ch]
+      this._pendingChannels.delete(ch)
+      this._persistChannelNow(ch)
     }, this._PERSIST_DEBOUNCE_MS)
   }
 

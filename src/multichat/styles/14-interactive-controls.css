@@ -330,7 +330,7 @@
       box-shadow: inset 0 0 0 1px rgba(255,135,0,0.3);
     }
     .hs-mc-pred-winner-badge {
-      font-size: 9px;
+      font-size: 13px;
       padding: 1px 5px;
       background: #00c864;
       color: #000;
@@ -712,7 +712,7 @@
     }
     .hs-mc-pred-links .hs-mc-quicklink-section {
       padding: 10px 14px 4px;
-      font-size: 10px;
+      font-size: 13px;
       color: #aaa;
       text-transform: uppercase;
       letter-spacing: 0.5px;
@@ -834,7 +834,7 @@
       color: #aaa;
     }
     .hs-mc-reward-reason {
-      font-size: 9px;
+      font-size: 13px;
       color: #f5009b;
       margin-top: 1px;
     }
@@ -1154,7 +1154,7 @@
     }
     .hs-mc-set-search-count {
       color: #aaa;
-      font-size: 11px;
+      font-size: 13px;
       flex-shrink: 0;
     }
     .hs-mc-set-presets-btn {
@@ -1233,7 +1233,7 @@
       color: #ff8700;
       border: 1px solid #808080;
       font-family: inherit;
-      font-size: 11px;
+      font-size: 13px;
       padding: 0 6px;
       cursor: pointer;
       margin-left: auto;
@@ -1247,7 +1247,7 @@
     /* search result group headers — click jumps to that pane + section */
     .hs-mc-set-search-hdr {
       color: #aaa;
-      font-size: 11px;
+      font-size: 13px;
       text-transform: uppercase;
       letter-spacing: 0.5px;
       padding: 8px 14px 2px;
@@ -1307,14 +1307,14 @@
     }
     .hs-mc-set-help-title {
       color: #aaa;
-      font-size: 11px;
+      font-size: 13px;
       text-transform: uppercase;
       letter-spacing: 0.5px;
       padding: 6px 0 2px;
     }
     .hs-mc-set-keyhint {
       color: #aaa;
-      font-size: 11px;
+      font-size: 13px;
       padding: 6px 14px 10px;
     }
     .hs-mc-set-range {
@@ -1338,7 +1338,7 @@
     }
     .hs-mc-set-range-val {
       color: #aaa;
-      font-size: 11px;
+      font-size: 13px;
       min-width: 28px;
       text-align: right;
       flex-shrink: 0;
@@ -1409,7 +1409,7 @@
       color: #c0c0c0;
       border: 1px solid #333;
       padding: 6px 8px;
-      font-size: 10px;
+      font-size: 13px;
       max-height: 180px;
       overflow: auto;
       white-space: pre-wrap;

@@ -4,9 +4,32 @@
 // Private copies of the ReDoS heuristics (mirrors automod.js — kept local so
 // this file is importable by tests without dragging in the whole bundle).
 function _lsIsDangerous(p) {
-  if (/\([^)]*[+*][^)]*\)\s*[*+]/.test(p)) return true
-  if (/\([^)]*\|[^)]*\)\s*[*+]/.test(p)) return true
-  if (/\{\s*\d{4,}/.test(p)) return true
+  if (p.length > 512) return true
+  // quantified group whose body also has a quantifier → exponential blowup
+  if (/\([^)]*[+*][^)]*\)\s*[*+{]/.test(p)) return true
+  // unbounded repeat of an alternation → (a|a)+/{n} style blowup
+  if (/\([^)]*\|[^)]*\)\s*[*+{]/.test(p)) return true
+  // bounded repetition ≥ 10 reps (2-digit brace) is exponential with nested quantifiers
+  if (/\{\s*\d{2,}/.test(p)) return true
+  return false
+}
+
+// Empirical backstop: run the compiled regex against pathological probes under a
+// tight time budget. Catches catastrophic-backtracking shapes the static heuristic
+// didn't anticipate (e.g. /a{100}b/). Kept local for test isolation (mirrors automod).
+const _LS_REDOS_PROBES = ['a'.repeat(28), '0'.repeat(28), 'ab'.repeat(14), 'a1'.repeat(14), ' '.repeat(28)].map(
+  (s) => s + ' !',
+)
+function _lsTripsCatastrophicBacktracking(re) {
+  try {
+    const start = performance.now()
+    for (const probe of _LS_REDOS_PROBES) {
+      re.test(probe)
+      if (performance.now() - start > 20) return true
+    }
+  } catch {
+    return true
+  }
   return false
 }
 
@@ -32,6 +55,11 @@ function buildLiveSearchMatcher(rawQuery) {
     let re
     try {
       re = new RegExp(safeSrc, flags)
+      // Empirical backstop: catches blowup shapes the static heuristic missed.
+      // Runs once at compile time (not per message), so probing cost is bounded.
+      if (_lsTripsCatastrophicBacktracking(re)) {
+        re = new RegExp(_lsEscapeLiteral(src), flags)
+      }
     } catch {
       // Invalid regex (e.g. `/[/` mid-typing) — fall back to literal.
       try {

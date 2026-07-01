@@ -2385,6 +2385,11 @@ window.addEventListener(
     // restrict to the top window (where early-inject-main.js runs).
     if (e.source !== window || e.origin !== location.origin) return
     if (e.data?.type === 'heatsync-gql-data') {
+      // Verify the MAIN-world nonce (early-inject stamps it on the push). Without
+      // this, page JS on twitch.tv could post a crafted heatsync-gql-data to
+      // spoof poll/prediction state into the panel. Same check content.js uses.
+      const expected = window.HS?.getMainWorldNonce?.()
+      if (!expected || e.data.nonce !== expected) return
       const { operation, data, errors } = e.data
       if (data && !errors?.length) {
         _gqlDataCache[operation] = { data, ts: Date.now() }
@@ -3941,10 +3946,22 @@ async function resolveTwitchChannelId(channelLogin) {
     }
     _twChannelIdCache.set(lc, { id, ts: Date.now() })
   }
+  // First-party first: Twitch GQL (relayed through a twitch.tv tab when
+  // off-Twitch). decapi.me is a third-party and runs ONLY as a last-resort
+  // fallback for the rare case GQL is unreachable — slated for removal once the
+  // first-party /api/resolve endpoint deploys.
   try {
-    // 4s ceiling: decapi is a third-party in the mod-action hot path; a hang here
+    const data = await gqlProxy(null, null, { rawQuery: `{ user(login: "${lc}") { id } }` })
+    const id = data?.data?.user?.id || (Array.isArray(data) ? data[0]?.data?.user?.id : null)
+    if (id) {
+      _cacheChannelId(id)
+      return id
+    }
+  } catch (_) {}
+  try {
+    // 4s ceiling: third-party fallback in the mod-action hot path; a hang here
     // would stall every ban/timeout/unban behind the browser's default TCP
-    // timeout (60s+). Time out fast and fall through to the first-party GQL path.
+    // timeout (60s+). Time out fast.
     const r = await fetch(`https://decapi.me/twitch/id/${encodeURIComponent(lc)}`, {
       credentials: 'omit',
       signal: AbortSignal.timeout(4000),
@@ -3953,14 +3970,6 @@ async function resolveTwitchChannelId(channelLogin) {
     if (r.ok && /^\d+$/.test(body)) {
       _cacheChannelId(body)
       return body
-    }
-  } catch (_) {}
-  try {
-    const data = await gqlProxy(null, null, { rawQuery: `{ user(login: "${lc}") { id } }` })
-    const id = data?.data?.user?.id || (Array.isArray(data) ? data[0]?.data?.user?.id : null)
-    if (id) {
-      _cacheChannelId(id)
-      return id
     }
   } catch (_) {}
   return null

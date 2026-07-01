@@ -1366,10 +1366,20 @@
     }, 1000)
   }
 
-  // Listen for SPA navigation from our own history hooks
+  // Listen for SPA navigation from our own history hooks.
+  // Guard: notifyNav() always stamps url=location.href, so we reject messages
+  // where the url doesn't match (stale or spoofed).  The 500ms throttle caps
+  // the blast radius if same-origin page JS floods us — real SPA transitions
+  // never arrive faster than that, so no legit nav event is suppressed.
+  let _uidNavLastMs = 0
   const hsUidNavHandler = (e) => {
     if (e.source !== window || e.origin !== location.origin) return
-    if (e.data?.type === 'heatsync-nav') resetUidObserver()
+    if (e.data?.type !== 'heatsync-nav') return
+    if (e.data.url !== location.href) return
+    const now = Date.now()
+    if (now - _uidNavLastMs < 500) return
+    _uidNavLastMs = now
+    resetUidObserver()
   }
   window.addEventListener('message', hsUidNavHandler)
 

@@ -34,26 +34,32 @@
   // for anonymous arrow fns.
   function _wrap(fn, ms, kind) {
     let src = ''
-    try {
-      const stack = new Error().stack || ''
-      const lines = stack.split('\n')
-      // Skip frames inside this module
-      for (const line of lines) {
-        if (!line) continue
-        if (line.includes('cleanup.js') || line.includes('multichat.js')) {
-          if (line.includes('multichat.js')) {
+    // Stack capture is only ever read when tracing is armed (see wrapper below).
+    // Skipping it when tracing is off avoids ~40 `new Error().stack` builds at
+    // boot. Arm __hsPerfTrace BEFORE the timers you want to attribute register;
+    // the call-time gate still times pre-existing timers (just without src).
+    if (window.__hsPerfTrace) {
+      try {
+        const stack = new Error().stack || ''
+        const lines = stack.split('\n')
+        // Skip frames inside this module
+        for (const line of lines) {
+          if (!line) continue
+          if (line.includes('cleanup.js') || line.includes('multichat.js')) {
+            if (line.includes('multichat.js')) {
+              src = line.trim().slice(0, 120)
+              break
+            }
+            continue
+          }
+          if (line.includes('content.js') || line.includes('background.js') || line.includes('youtube-content.js')) {
             src = line.trim().slice(0, 120)
             break
           }
-          continue
         }
-        if (line.includes('content.js') || line.includes('background.js') || line.includes('youtube-content.js')) {
-          src = line.trim().slice(0, 120)
-          break
-        }
-      }
-      if (!src) src = (lines[3] || lines[2] || '').trim().slice(0, 120)
-    } catch {}
+        if (!src) src = (lines[3] || lines[2] || '').trim().slice(0, 120)
+      } catch {}
+    }
     return function () {
       if (!window.__hsPerfTrace) return fn.apply(this, arguments)
       const t = performance.now()

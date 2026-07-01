@@ -1053,8 +1053,9 @@
   let _activeAvatarFetches = 0
   const MAX_AVATAR_FETCHES = 5
   // Neutral initials avatar. Renders immediately so the fixed 18px avatar box
-  // is reserved from first paint — the real pfp (fetched async via decapi for
-  // twitch, carried inline for yt, absent for kick) then swaps in IN PLACE with
+  // is reserved from first paint — the real pfp (fetched async via first-party
+  // GQL (BG resolveAvatarUrl) for twitch, carried inline for yt, absent for kick)
+  // then swaps in IN PLACE with
   // zero layout shift instead of popping the row sideways on arrival. A failed
   // or absent fetch simply stays as the initial — no blank gap. `withDataUser`
   // tags the twitch placeholder so fetchAvatar can find and replace it.
@@ -1072,12 +1073,12 @@
     if (_activeAvatarFetches >= MAX_AVATAR_FETCHES) return
     avatarFetching.add(key)
     _activeAvatarFetches++
-    fetch(`https://decapi.me/twitch/avatar/${encodeURIComponent(key)}`, { credentials: 'omit' })
-      .then((r) => (r.ok ? r.text() : null))
-      .then((url) => {
+    chrome.runtime
+      .sendMessage({ type: 'resolve_avatar_url', username: key, platform: 'twitch' })
+      .then((resp) => {
         avatarFetching.delete(key)
         _activeAvatarFetches--
-        const safe = safeUrl((url || '').trim())
+        const safe = safeUrl((resp?.url || '').trim())
         if (!safe) return
         avatarCache.set(key, safe)
         if (avatarCache.size > 500) {
@@ -2193,12 +2194,6 @@
         zebraEnabled = v
       },
     },
-    multichatOverlayEnabled: {
-      get: () => multichatOverlayEnabled,
-      set: (v) => {
-        multichatOverlayEnabled = v
-      },
-    },
     // setter also feeds the window flag content.js reads for timestamp paint
     timestampsEnabled: {
       get: () => timestampsEnabled,
@@ -2514,55 +2509,6 @@
           _cwRollback(def, v)
         })
     },
-    // Overlay on/off needs a clean boot either way: the live teardown left
-    // the native chat column blank (the overlay hides it at init and only
-    // youtube's iframe was restored), and turning it ON in a lite-booted
-    // tab would mount UI with no init behind it. Flush the setting
-    // explicitly (the debounced writer wouldn't survive the reload), then
-    // reload — visible tab immediately, background tabs when next visible.
-    multichatOverlay: (v, def, onLoad, isRemote) => {
-      if (onLoad) return
-      if (isRemote) {
-        _liteReload()
-        return
-      } // already persisted remotely — just reload
-      showToast(v ? 'multichat back on — reloading' : 'emotes-only mode — reloading', 'info')
-      try {
-        chrome.storage.sync.get('ui_settings', (d) => {
-          const ui = (d && d.ui_settings) || {}
-          chrome.storage.sync.set({ ui_settings: sanitizeUiSettings({ ...ui, multichatOverlayEnabled: !!v }) }, () => {
-            if (chrome.runtime.lastError) {
-              console.warn('[heatsync-ext] overlay mode save failed:', chrome.runtime.lastError.message)
-            }
-            _liteReload()
-          })
-        })
-      } catch (_) {
-        _liteReload()
-      }
-    },
-  }
-
-  // Reload for overlay-mode flips — visible tab reloads now, hidden tabs
-  // defer to visibilitychange (same anti-thundering-herd shape as the
-  // ext-reload path). Deduped per page.
-  function _liteReload() {
-    if (window.__hsLiteReloadScheduled) return
-    window.__hsLiteReloadScheduled = true
-    const doReload = () => {
-      try {
-        location.reload()
-      } catch (_) {}
-    }
-    if (document.visibilityState === 'visible') {
-      setTimeout(doReload, 150)
-    } else {
-      document.addEventListener('visibilitychange', function once() {
-        if (document.visibilityState !== 'visible') return
-        document.removeEventListener('visibilitychange', once)
-        setTimeout(doReload, 300 + Math.random() * 1500)
-      })
-    }
   }
 
   function _cwRollback(def, attempted) {
@@ -3175,7 +3121,6 @@
             },
             disabled: !document.querySelector('[data-a-target="hype-chat-button"], [aria-label*="Hype Chat"i]'),
           },
-          // TODO(native-bridge): live-DOM selectors needed for: kick gift/sub/rewards, twitch sub/gift, youtube superchat
         ]
         try {
           showHsCtxMenu(r.left, r.bottom + 4, 'stream actions', items)
@@ -3334,10 +3279,6 @@
 
   // Zebra striping — alternate row backgrounds (default on)
   let zebraEnabled = true
-
-  // Emotes-only mode — when false, suppresses the multichat overlay entirely;
-  // native-chat emotes and the picker button keep working normally (default on)
-  let multichatOverlayEnabled = true
 
   // Util row collapsed — hides C/T/F-/F+/⚙ for clean single-line tabs
 
@@ -9339,8 +9280,6 @@
   }
 
   function ensureUIElements() {
-    if (!multichatOverlayEnabled) return
-
     // Re-assert the stylesheet — twitch SPA navigations can sweep injected
     // <style> tags from <head>, leaving a remounted overlay fully unstyled
     // (raw text flow). injectStyles is idempotent (id check), so this is a
@@ -15459,10 +15398,7 @@
     const _localPrime = chrome.storage.local.get([STORAGE_KEY, 'user_info', 'muted_users'])
     await loadConfig()
     if (!config.enabled) return
-    // Lite / emotes-only mode REMOVED — the overlay always boots now (the
-    // emotes-only mode was buggy + unwanted). A stale multichatOverlayEnabled=false
-    // no longer disables the panel. To restore lite later, re-add the _uiPrime
-    // check that early-returned on multichatOverlayEnabled === false.
+    // Lite / emotes-only mode is fully removed — overlay always boots.
     log('Initializing...')
 
     // ── PHASE 2: hydrate username + muted users from prefetched local ─────

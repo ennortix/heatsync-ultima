@@ -1778,7 +1778,13 @@ async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, targetEl, z
           emoteUrl: emoteUrl,
           zeroWidth: !!zeroWidth,
         },
-        resolve,
+        (resp) => {
+          // Read lastError so Chrome doesn't log an "unchecked runtime.lastError"
+          // warning on context invalidation / BG crash; treat as a failed add
+          // (resp stays undefined → response?.success is falsy below).
+          if (chrome.runtime.lastError) resolve(undefined)
+          else resolve(resp)
+        },
       )
     })
 
@@ -2315,181 +2321,204 @@ function _buildChannelEmoteCache(ch, emotes, platform) {
   }
 }
 
+let _loadEmotesInFlight = false
+let _loadEmotesRerun = false
 async function loadEmotes() {
+  // Concurrency guard: the storage read is async (100–500ms on a cold SW). Two
+  // overlapping calls would each clear viewerPersonalEmotes mid-populate, wiping
+  // the other's partial state → messages render with no personal emotes. Serialize;
+  // if events arrived during a run, rerun once to pick up the latest storage.
+  if (_loadEmotesInFlight) {
+    _loadEmotesRerun = true
+    return
+  }
+  _loadEmotesInFlight = true
   try {
-    const stored = await chrome.storage.local.get([
-      'global_emotes',
-      'emote_inventory',
-      'channel_emotes_map',
-      'native_twitch_emotes',
-      'hs_removed_emote_fallback',
-      'hs_blocked_emote_fallback',
-    ])
-    // Restore removed-emote render fallback (persists across refresh).
-    removedEmoteFallback.clear()
-    const rf = stored.hs_removed_emote_fallback
-    if (rf && typeof rf === 'object') {
-      for (const [name, e] of Object.entries(rf)) {
-        if (e && e.url)
-          removedEmoteFallback.set(name, {
-            url: e.url,
-            source: e.source || 'heatsync',
-            zeroWidth: !!e.zeroWidth,
-            state: 'unadded',
-            removedAt: Number(e.removedAt) || 0,
-          })
-      }
-    }
-    // Restore block-state render fallback so the dashed box survives refresh
-    // (rebuildBlockedNames at the tail of this fn seeds blockedEmoteNames from it).
-    blockedEmoteFallback.clear()
-    const bf = stored.hs_blocked_emote_fallback
-    if (bf && typeof bf === 'object') {
-      for (const [name, e] of Object.entries(bf)) {
-        if (e)
-          blockedEmoteFallback.set(name, { url: e.url || '', source: e.source || 'heatsync', zeroWidth: !!e.zeroWidth })
-      }
-    }
-    emoteCache.clear()
-    // Don't wipe channelEmoteCaches — live broadcasts may have direct-
-    // populated a channel that storage hasn't persisted yet (BG writes
-    // storage AFTER the final broadcast). Wiping would clobber it; the
-    // loop below refreshes each channel that storage knows about.
-    // Preserve in-flight optimistic preregister entries (autoAddInputEmotes
-    // sets viewerPersonalEmotes BEFORE the server add resolves so the IRC
-    // echo of "wavE" renders the image, not the bare word). Without this
-    // snapshot, an unrelated storage change (channel emote refresh, global
-    // update) racing the add wipes the optimistic entry before the echo
-    // arrives → message renders as plain text. pendingEmoteOps tracks names
-    // whose addEmoteToInventory is still in flight; restored at the bottom.
-    const _inflight = new Map()
-    for (const name of pendingEmoteOps) {
-      const e = viewerPersonalEmotes.get(name)
-      if (e) _inflight.set(name, e)
-    }
-    inventoryEmotes.clear()
-    viewerPersonalEmotes.clear()
-    inventoryHashes.clear()
-    emoteHashes.clear()
-    hashToName.clear()
-
-    // Helper to register hash<->name mapping
-    const registerHash = (name, hash) => {
-      if (name && hash) {
-        emoteHashes.set(name, hash)
-        hashToName.set(hash, name)
-      }
-    }
-
-    // First, build inventory set (emotes user owns)
-    ;(stored.emote_inventory || []).forEach((e) => {
-      if (e.name) {
-        inventoryEmotes.add(e.name)
-        if (e.hash) {
-          inventoryHashes.set(e.name, e.hash)
-          registerHash(e.name, e.hash)
+    try {
+      const stored = await chrome.storage.local.get([
+        'global_emotes',
+        'emote_inventory',
+        'channel_emotes_map',
+        'native_twitch_emotes',
+        'hs_removed_emote_fallback',
+        'hs_blocked_emote_fallback',
+      ])
+      // Restore removed-emote render fallback (persists across refresh).
+      removedEmoteFallback.clear()
+      const rf = stored.hs_removed_emote_fallback
+      if (rf && typeof rf === 'object') {
+        for (const [name, e] of Object.entries(rf)) {
+          if (e && e.url)
+            removedEmoteFallback.set(name, {
+              url: e.url,
+              source: e.source || 'heatsync',
+              zeroWidth: !!e.zeroWidth,
+              state: 'unadded',
+              removedAt: Number(e.removedAt) || 0,
+            })
         }
       }
-    })
+      // Restore block-state render fallback so the dashed box survives refresh
+      // (rebuildBlockedNames at the tail of this fn seeds blockedEmoteNames from it).
+      blockedEmoteFallback.clear()
+      const bf = stored.hs_blocked_emote_fallback
+      if (bf && typeof bf === 'object') {
+        for (const [name, e] of Object.entries(bf)) {
+          if (e)
+            blockedEmoteFallback.set(name, {
+              url: e.url || '',
+              source: e.source || 'heatsync',
+              zeroWidth: !!e.zeroWidth,
+            })
+        }
+      }
+      emoteCache.clear()
+      // Don't wipe channelEmoteCaches — live broadcasts may have direct-
+      // populated a channel that storage hasn't persisted yet (BG writes
+      // storage AFTER the final broadcast). Wiping would clobber it; the
+      // loop below refreshes each channel that storage knows about.
+      // Preserve in-flight optimistic preregister entries (autoAddInputEmotes
+      // sets viewerPersonalEmotes BEFORE the server add resolves so the IRC
+      // echo of "wavE" renders the image, not the bare word). Without this
+      // snapshot, an unrelated storage change (channel emote refresh, global
+      // update) racing the add wipes the optimistic entry before the echo
+      // arrives → message renders as plain text. pendingEmoteOps tracks names
+      // whose addEmoteToInventory is still in flight; restored at the bottom.
+      const _inflight = new Map()
+      for (const name of pendingEmoteOps) {
+        const e = viewerPersonalEmotes.get(name)
+        if (e) _inflight.set(name, e)
+      }
+      inventoryEmotes.clear()
+      viewerPersonalEmotes.clear()
+      inventoryHashes.clear()
+      emoteHashes.clear()
+      hashToName.clear()
 
-    // Add global emotes (heatsync globals - may or may not be in inventory)
-    ;(stored.global_emotes || []).forEach((e) => {
-      if (e.name && e.url) {
-        const source = e.source || detectEmoteSource(e.url, 'heatsync')
-        const state = getEmoteState(e.name, source)
-        emoteCache.set(e.name, { url: e.url, source, state, zeroWidth: !!e.zeroWidth, nsfw: !!e.nsfw })
+      // Helper to register hash<->name mapping
+      const registerHash = (name, hash) => {
+        if (name && hash) {
+          emoteHashes.set(name, hash)
+          hashToName.set(hash, name)
+        }
+      }
+
+      // First, build inventory set (emotes user owns)
+      ;(stored.emote_inventory || []).forEach((e) => {
+        if (e.name) {
+          inventoryEmotes.add(e.name)
+          if (e.hash) {
+            inventoryHashes.set(e.name, e.hash)
+            registerHash(e.name, e.hash)
+          }
+        }
+      })
+
+      // Add global emotes (heatsync globals - may or may not be in inventory)
+      ;(stored.global_emotes || []).forEach((e) => {
+        if (e.name && e.url) {
+          const source = e.source || detectEmoteSource(e.url, 'heatsync')
+          const state = getEmoteState(e.name, source)
+          emoteCache.set(e.name, { url: e.url, source, state, zeroWidth: !!e.zeroWidth, nsfw: !!e.nsfw })
+          while (emoteCache.size > 2000) {
+            emoteCache.delete(emoteCache.keys().next().value)
+          }
+          if (e.hash) registerHash(e.name, e.hash)
+        }
+      })
+
+      // Add inventory emotes (definitely owned) → viewerPersonalEmotes ONLY.
+      // Keeping these out of emoteCache (the global fallback) is what prevents
+      // viewer's personal '67' from bleeding into other users' messages.
+      // Render path passes viewerPersonalEmotes as senderEmotes for own outgoing,
+      // and lookupEmote() composes both for picker/hover/UI use cases.
+      ;(stored.emote_inventory || []).forEach((e) => {
+        if (e.name && e.url) {
+          const source = e.source || 'heatsync'
+          // server returns zero_width (snake_case from postgres column), older
+          // payloads may carry zeroWidth — accept either; falsy default is fine.
+          viewerPersonalEmotes.set(e.name, {
+            url: e.url,
+            source,
+            state: 'owned',
+            zeroWidth: !!(e.zero_width ?? e.zeroWidth),
+            subscription: !!e.subscription,
+            slot: e.slot,
+            nsfw: !!e.nsfw,
+          })
+        }
+      })
+
+      // Load per-channel emotes into separate caches (prevents cross-channel leaking)
+      const map = stored.channel_emotes_map || {}
+      for (const [k, emotes] of Object.entries(map)) {
+        if (!Array.isArray(emotes)) continue // skip 'loading' sentinels
+        // Keys are "platform/channel" — split so the cache merges both platforms'
+        // sets under the bare channel name (per-platform tagged, no overwrite).
+        const slash = k.indexOf('/')
+        const platform = slash >= 0 ? k.slice(0, slash) : 'twitch'
+        const bare = slash >= 0 ? k.slice(slash + 1) : k
+        _buildChannelEmoteCache(bare, emotes, platform)
+      }
+      // Native Twitch emotes — sub emotes carry e.owner (broadcaster login),
+      // true Twitch globals do not. Globals → emoteCache (everyone can render them).
+      // Subs → viewerPersonalEmotes: same gate as heatsync inventory — surfaced
+      // for picker/autocomplete/own outgoing, kept out of the global render
+      // fallback so they don't bleed into other senders' messages.
+      ;(stored.native_twitch_emotes || []).forEach((e) => {
+        if (!e.name || !e.url) return
+        const isSub = !!e.owner
+        if (isSub) {
+          if (!viewerPersonalEmotes.has(e.name)) {
+            viewerPersonalEmotes.set(e.name, {
+              url: e.url,
+              source: 'twitch',
+              state: 'owned',
+              subscription: true,
+              owner: e.owner,
+            })
+            if (e.hash) registerHash(e.name, e.hash)
+          }
+          return
+        }
+        if (emoteCache.has(e.name)) return
+        emoteCache.set(e.name, { url: e.url, source: 'twitch', state: 'global' })
         while (emoteCache.size > 2000) {
           emoteCache.delete(emoteCache.keys().next().value)
         }
         if (e.hash) registerHash(e.name, e.hash)
-      }
-    })
+      })
 
-    // Add inventory emotes (definitely owned) → viewerPersonalEmotes ONLY.
-    // Keeping these out of emoteCache (the global fallback) is what prevents
-    // viewer's personal '67' from bleeding into other users' messages.
-    // Render path passes viewerPersonalEmotes as senderEmotes for own outgoing,
-    // and lookupEmote() composes both for picker/hover/UI use cases.
-    ;(stored.emote_inventory || []).forEach((e) => {
-      if (e.name && e.url) {
-        const source = e.source || 'heatsync'
-        // server returns zero_width (snake_case from postgres column), older
-        // payloads may carry zeroWidth — accept either; falsy default is fine.
-        viewerPersonalEmotes.set(e.name, {
-          url: e.url,
-          source,
-          state: 'owned',
-          zeroWidth: !!(e.zero_width ?? e.zeroWidth),
-          subscription: !!e.subscription,
-          slot: e.slot,
-          nsfw: !!e.nsfw,
-        })
+      // Restore in-flight optimistic preregister entries that the clear()
+      // above wiped — server hasn't confirmed yet, so they're not in stored.
+      // Without this, the IRC echo of an auto-add emote misses the lookup
+      // and the message renders as plain text instead of the image.
+      for (const [name, e] of _inflight) {
+        if (!viewerPersonalEmotes.has(name)) viewerPersonalEmotes.set(name, e)
       }
-    })
 
-    // Load per-channel emotes into separate caches (prevents cross-channel leaking)
-    const map = stored.channel_emotes_map || {}
-    for (const [k, emotes] of Object.entries(map)) {
-      if (!Array.isArray(emotes)) continue // skip 'loading' sentinels
-      // Keys are "platform/channel" — split so the cache merges both platforms'
-      // sets under the bare channel name (per-platform tagged, no overwrite).
-      const slash = k.indexOf('/')
-      const platform = slash >= 0 ? k.slice(0, slash) : 'twitch'
-      const bare = slash >= 0 ? k.slice(slash + 1) : k
-      _buildChannelEmoteCache(bare, emotes, platform)
-    }
-    // Native Twitch emotes — sub emotes carry e.owner (broadcaster login),
-    // true Twitch globals do not. Globals → emoteCache (everyone can render them).
-    // Subs → viewerPersonalEmotes: same gate as heatsync inventory — surfaced
-    // for picker/autocomplete/own outgoing, kept out of the global render
-    // fallback so they don't bleed into other senders' messages.
-    ;(stored.native_twitch_emotes || []).forEach((e) => {
-      if (!e.name || !e.url) return
-      const isSub = !!e.owner
-      if (isSub) {
-        if (!viewerPersonalEmotes.has(e.name)) {
-          viewerPersonalEmotes.set(e.name, {
-            url: e.url,
-            source: 'twitch',
-            state: 'owned',
-            subscription: true,
-            owner: e.owner,
-          })
-          if (e.hash) registerHash(e.name, e.hash)
-        }
-        return
-      }
-      if (emoteCache.has(e.name)) return
-      emoteCache.set(e.name, { url: e.url, source: 'twitch', state: 'global' })
-      while (emoteCache.size > 2000) {
-        emoteCache.delete(emoteCache.keys().next().value)
-      }
-      if (e.hash) registerHash(e.name, e.hash)
-    })
+      // Rebuild blockedEmoteNames from loaded hashes
+      rebuildBlockedNames()
 
-    // Restore in-flight optimistic preregister entries that the clear()
-    // above wiped — server hasn't confirmed yet, so they're not in stored.
-    // Without this, the IRC echo of an auto-add emote misses the lookup
-    // and the message renders as plain text instead of the image.
-    for (const [name, e] of _inflight) {
-      if (!viewerPersonalEmotes.has(name)) viewerPersonalEmotes.set(name, e)
+      log('Loaded', emoteCache.size, 'emotes (inventory:', inventoryEmotes.size, ', hashes:', emoteHashes.size, ')')
+    } catch (e) {
+      log('Error loading emotes:', e)
     }
 
-    // Rebuild blockedEmoteNames from loaded hashes
-    rebuildBlockedNames()
+    // Also scan DOM for third-party emotes (BTTV, FFZ, 7TV)
+    scanDomForEmotes()
 
-    log('Loaded', emoteCache.size, 'emotes (inventory:', inventoryEmotes.size, ', hashes:', emoteHashes.size, ')')
-  } catch (e) {
-    log('Error loading emotes:', e)
+    // Picker DOM is now stale — schedule an idle prebuild so the very first
+    // click after page load opens the picker instantly (no parse on click).
+    markPickerDirty()
+    prebuildPickerIdle()
+  } finally {
+    _loadEmotesInFlight = false
+    if (_loadEmotesRerun) {
+      _loadEmotesRerun = false
+      loadEmotes()
+    }
   }
-
-  // Also scan DOM for third-party emotes (BTTV, FFZ, 7TV)
-  scanDomForEmotes()
-
-  // Picker DOM is now stale — schedule an idle prebuild so the very first
-  // click after page load opens the picker instantly (no parse on click).
-  markPickerDirty()
-  prebuildPickerIdle()
 }
 
 // Scan DOM for emotes rendered in chat — route to the current channel's cache, not global
@@ -2651,7 +2680,12 @@ function hsSnapEmoteBox(img) {
       // the base emote. Overlays always render inline-unconstrained via renderEmoteStack.
       if (it.im.classList.contains('hs-mc-overlay-emote')) continue
       const url = it.im.closest('.hs-mc-emote-wrapper')?.dataset?.emoteUrl || it.im.getAttribute('src')
-      if (url) _hsEmoteBoxW.set(url, it.w)
+      if (url) {
+        _hsEmoteBoxW.set(url, it.w)
+        // FIFO cap — a long multi-channel session measures thousands of unique
+        // emote URLs; without eviction this Map grows unbounded for the tab's life.
+        if (_hsEmoteBoxW.size > 2000) _hsEmoteBoxW.delete(_hsEmoteBoxW.keys().next().value)
+      }
     }
   })
 }

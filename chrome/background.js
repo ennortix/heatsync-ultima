@@ -7676,6 +7676,18 @@ async function handleMessage(message, sender, sendResponse) {
       }
     })()
     return true // async response
+  } else if (message.type === 'resolve_avatar_url') {
+    // Raw avatar URL (NOT a data URL) for in-chat avatar rendering — the browser
+    // caches the image normally, so per-row avatars stay light on RAM. First-party
+    // resolution (Twitch GQL / Kick v2), replacing the third-party decapi.me path.
+    ;(async () => {
+      try {
+        sendResponse({ url: (await resolveAvatarUrl(message.username, message.platform)) || '' })
+      } catch {
+        sendResponse({ url: '' })
+      }
+    })()
+    return true // async response
   }
 }
 

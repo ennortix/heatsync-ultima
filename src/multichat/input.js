@@ -1764,6 +1764,10 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
     { label: 'dm', fn: () => _openDmFor(username, platform) },
     { label: 'mention', fn: () => _mentionInMcInput(username) },
     { label: 'view profile', fn: () => openProfileCard(username, platform) },
+    {
+      label: typeof hsNoteHas === 'function' && hsNoteHas(username, platform) ? 'edit note' : 'add note',
+      fn: () => hsNoteOpenEditor(username, platform, x, y),
+    },
   )
   // Filter the live buffer to just this user — sets the search bar to @name.
   // Only on a live/channel tab (where local filtering applies) and a real row.

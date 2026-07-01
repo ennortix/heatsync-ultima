@@ -34,6 +34,44 @@
     .hs-mc-ctx.hs-mc-em-flip-x { transform-origin: top right; }
     .hs-mc-ctx.hs-mc-em-flip-y { transform-origin: bottom left; }
     .hs-mc-ctx.hs-mc-em-flip-x.hs-mc-em-flip-y { transform-origin: bottom right; }
+
+    /* Note editor popover — private cross-platform note on a chatter. Floats at
+       body level like the ctx menu; same max-int z so it sits above the panel
+       and resize bar. Square, terminal palette, no motion. */
+    .hs-note-editor {
+      position: fixed;
+      z-index: 2147483647 !important;
+      background: #000; color: #fff;
+      border: 1px solid #ff8700;
+      padding: 0; width: 300px;
+      box-shadow: 0 6px 32px rgba(0,0,0,0.75);
+      font-family: var(--hs-mc-font, 'CozetteVector', 'Courier New', monospace);
+      font-size: var(--hs-mc-base-size, 13px);
+      user-select: none;
+    }
+    .hs-note-editor-head {
+      padding: 4px 10px; font-size: 10px; color: #aaa;
+      text-transform: uppercase; letter-spacing: 0.5px;
+      background: #050505; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .hs-note-editor-ta {
+      display: block; width: 100%; box-sizing: border-box;
+      background: #000; color: #fff; border: none; border-top: 1px solid #1a1a1a;
+      padding: 8px 10px; margin: 0; resize: vertical; min-height: 72px;
+      font-family: inherit; font-size: 13px; line-height: 1.4; outline: none;
+    }
+    .hs-note-editor-ta::placeholder { color: #555; }
+    .hs-note-editor-ta:focus { box-shadow: inset 0 0 0 1px #ff8700; }
+    .hs-note-editor-foot {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 4px 10px; background: #050505; border-top: 1px solid #1a1a1a;
+    }
+    .hs-note-editor-status { font-size: 10px; color: #808080; text-transform: uppercase; letter-spacing: 0.5px; }
+    .hs-note-editor-del {
+      background: transparent; color: #808080; border: 1px solid #333;
+      padding: 2px 8px; cursor: pointer; font-family: inherit; font-size: 11px;
+    }
+    .hs-note-editor-del:hover { background: #ff5050; color: #000; border-color: #ff5050; }
     .hs-mc-ctx .hs-mc-em-header {
       padding: 4px 10px; font-size: 10px; color: #aaa;
       text-transform: uppercase; letter-spacing: 0.5px;

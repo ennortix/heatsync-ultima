@@ -3986,6 +3986,43 @@ async function fetchServerMutes() {
   }
 }
 
+// Fetch server-side block list on first auth — merges with any locally-stored
+// blocks so cross-device blocks (set on heatsync.org) take effect immediately.
+// Gracefully no-ops if not logged in, server is unreachable, or returns 401.
+let _serverBlocksFetched = false
+async function fetchServerBlocks() {
+  if (_serverBlocksFetched) return
+  _serverBlocksFetched = true
+  try {
+    const res = await fetch('https://heatsync.org/api/user/blocks', {
+      credentials: 'include',
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!res.ok) return // 401 = not logged in, skip silently
+    const data = await res.json()
+    const list = Array.isArray(data?.blocked_users) ? data.blocked_users : null
+    if (!list) return
+    let changed = false
+    for (const entry of list) {
+      const u = (entry.username || '').toLowerCase()
+      if (!u) continue
+      const platform = entry.platform || null
+      const key = userKey(u, platform)
+      if (!key) continue
+      if (!blockedUsers.has(key)) {
+        blockedUsers.add(key)
+        broadcastToTabs({ type: 'user_blocked', username: key })
+        changed = true
+        log(' server block synced:', key)
+      }
+    }
+    if (changed) persistBlockedUsers()
+  } catch (e) {
+    log(' fetchServerBlocks failed:', e?.message)
+    _serverBlocksFetched = false // allow retry on next auth
+  }
+}
+
 // Write a mute to the server's REST /api/mutes endpoint. Server broadcasts
 // mute:added WS event so heatsync.org MuteManager + other ext instances pick
 // up. Bearer auth → CSRF-exempt.
@@ -4473,9 +4510,11 @@ function handleWSMessage(msg) {
         wsState = WS_STATE.AUTHENTICATED
         // Flush any queued messages now that we're authenticated
         flushMessageQueue()
-        // Pull server mute list once per session so heatsync.org mutes are
-        // reflected immediately (WS events only arrive for changes while connected)
+        // Pull server mute + block lists once per session so heatsync.org
+        // actions are reflected immediately (WS events only arrive for changes
+        // while connected)
         fetchServerMutes().catch(() => {})
+        fetchServerBlocks().catch(() => {})
         break
 
       case 'server:shutdown':

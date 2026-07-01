@@ -1,0 +1,321 @@
+// Cross-platform per-user notes — a private note you write about a chatter that
+// follows them across Twitch / Kick / YouTube via the identity graph. Chatterino
+// has local single-platform notes; this is the only implementation that keys a
+// note to a person, not a handle: note a Twitch user and it surfaces on their
+// Kick/YouTube identity too, and syncs across your devices (server sync = future).
+//
+// Self-contained (mirrors filter-rules.js / automod.js): no imports, functions
+// become globals in the concatenated bundle, exports stripped by build.js and
+// used only by the unit test. Persistence = chrome.storage.local under one
+// versioned key, in a shape a server endpoint can accept verbatim later.
+
+const HS_NOTES_KEY = 'hs_user_notes_v1'
+const HS_NOTE_MAX = 2000 // chars — bounded so storage can't be griefed by a paste
+
+// ── in-memory model (source of truth at runtime; storage is the mirror) ─────────
+// notes:  canonicalKey -> { text, updatedAt }
+// index:  aliasHandle  -> canonicalKey   (every known alias points at one note)
+// The index is what makes a note follow a person: when the same chatter is noted
+// from a second platform whose alias set overlaps an existing note, both resolve
+// to the same canonical key and merge instead of forking.
+let _hsnNotes = new Map()
+let _hsnIndex = new Map()
+let _hsnLoaded = false
+
+function _hsnHasStorage() {
+  return typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local
+}
+
+// Resolve a chatter to their lowercased alias set. Sync path (getUserAliases) for
+// render/indicator; the async path (expandUserAliases, also pulls the server
+// identity graph) is used on save so a note captures the fullest alias set known.
+function _hsnAliasesSync(username, platform) {
+  const u = String(username || '').toLowerCase()
+  if (!u) return []
+  if (typeof getUserAliases === 'function') {
+    try {
+      const a = getUserAliases(u, platform)
+      if (Array.isArray(a) && a.length) return [...new Set(a.map((x) => String(x).toLowerCase()))]
+    } catch {}
+  }
+  return [u]
+}
+
+async function _hsnAliasesAsync(username, platform) {
+  const u = String(username || '').toLowerCase()
+  if (!u) return []
+  if (typeof expandUserAliases === 'function') {
+    try {
+      const a = await expandUserAliases(u, platform)
+      if (Array.isArray(a) && a.length) return [...new Set(a.map((x) => String(x).toLowerCase()))]
+    } catch {}
+  }
+  return _hsnAliasesSync(u, platform)
+}
+
+// Canonical key for a set of aliases: reuse an existing note's key if any alias
+// already maps to one (so we merge), else the lexicographically first alias
+// (stable regardless of which platform the note was created from).
+function _hsnCanonicalFor(aliases) {
+  for (const a of aliases) {
+    const c = _hsnIndex.get(a)
+    if (c && _hsnNotes.has(c)) return c
+    if (_hsnNotes.has(a)) return a // note saved before an index existed
+  }
+  return aliases.slice().sort()[0] || null
+}
+
+function _hsnPersist() {
+  if (!_hsnHasStorage()) return
+  const payload = {
+    notes: Object.fromEntries(_hsnNotes),
+    index: Object.fromEntries(_hsnIndex),
+  }
+  try {
+    chrome.storage.local.set({ [HS_NOTES_KEY]: payload }, () => void chrome.runtime?.lastError)
+  } catch {}
+}
+
+function _hsnLoad() {
+  if (_hsnLoaded || !_hsnHasStorage()) {
+    _hsnLoaded = true
+    return
+  }
+  try {
+    chrome.storage.local.get(HS_NOTES_KEY, (d) => {
+      const raw = d && d[HS_NOTES_KEY]
+      if (raw && typeof raw === 'object') {
+        if (raw.notes && typeof raw.notes === 'object') {
+          for (const [k, v] of Object.entries(raw.notes)) {
+            if (v && typeof v.text === 'string') _hsnNotes.set(k, { text: v.text, updatedAt: v.updatedAt || 0 })
+          }
+        }
+        if (raw.index && typeof raw.index === 'object') {
+          for (const [k, v] of Object.entries(raw.index)) if (typeof v === 'string') _hsnIndex.set(k, v)
+        }
+      }
+      _hsnLoaded = true
+    })
+  } catch {
+    _hsnLoaded = true
+  }
+}
+
+// ── public API ──────────────────────────────────────────────────────────────
+
+/** Sync note lookup for the current chatter (uses local alias set). null if none. */
+function hsNoteGet(username, platform) {
+  const aliases = _hsnAliasesSync(username, platform)
+  for (const a of aliases) {
+    const c = _hsnIndex.get(a)
+    if (c && _hsnNotes.has(c)) return _hsnNotes.get(c)
+    if (_hsnNotes.has(a)) return _hsnNotes.get(a)
+  }
+  return null
+}
+
+/** Cheap boolean for indicators / menu labels. */
+function hsNoteHas(username, platform) {
+  const n = hsNoteGet(username, platform)
+  return !!(n && n.text)
+}
+
+/** Create/update a note. Async so it can pull the fullest alias set. Empty text deletes. */
+async function hsNoteSave(username, platform, text, nowMs) {
+  const clean = String(text == null ? '' : text)
+    .slice(0, HS_NOTE_MAX)
+    .trim()
+  const aliases = await _hsnAliasesAsync(username, platform)
+  if (!aliases.length) return null
+  if (!clean) return hsNoteDelete(username, platform)
+  const canonical = _hsnCanonicalFor(aliases) || aliases.slice().sort()[0]
+  const rec = { text: clean, updatedAt: typeof nowMs === 'number' ? nowMs : _hsnNow() }
+  _hsnNotes.set(canonical, rec)
+  for (const a of aliases) _hsnIndex.set(a, canonical)
+  _hsnPersist()
+  return rec
+}
+
+/** Delete a note and every alias pointer at it. */
+async function hsNoteDelete(username, platform) {
+  const aliases = await _hsnAliasesAsync(username, platform)
+  const canonical = _hsnCanonicalFor(aliases)
+  if (!canonical) return false
+  _hsnNotes.delete(canonical)
+  for (const [a, c] of [..._hsnIndex]) if (c === canonical) _hsnIndex.delete(a)
+  _hsnPersist()
+  return true
+}
+
+function _hsnNow() {
+  // Date.now is fine in the extension runtime; guarded only so the module stays
+  // importable in odd sandboxes. Tests pass an explicit nowMs for determinism.
+  try {
+    return Date.now()
+  } catch {
+    return 0
+  }
+}
+
+// ── editor popover ────────────────────────────────────────────────────────────
+// One small square terminal-styled popover, reused by the context menu and the
+// profile-card "edit" button. Autofocus, char counter, debounced auto-save,
+// esc / outside-click to close (saves on close). No modal, no framework.
+function hsNoteOpenEditor(username, platform, x, y, onSaved) {
+  if (typeof document === 'undefined') return
+  document.getElementById('hs-note-editor')?.remove()
+  const existing = hsNoteGet(username, platform)
+  const box = document.createElement('div')
+  box.id = 'hs-note-editor'
+  box.className = 'hs-note-editor'
+  box.tabIndex = -1
+
+  const head = document.createElement('div')
+  head.className = 'hs-note-editor-head'
+  head.textContent = 'note · ' + String(username || '').toLowerCase()
+  box.appendChild(head)
+
+  const ta = document.createElement('textarea')
+  ta.className = 'hs-note-editor-ta'
+  ta.rows = 4
+  ta.maxLength = HS_NOTE_MAX
+  ta.placeholder = 'private note — only you see this. follows them across platforms.'
+  ta.value = existing?.text || ''
+  ta.spellcheck = false
+  box.appendChild(ta)
+
+  const foot = document.createElement('div')
+  foot.className = 'hs-note-editor-foot'
+  const status = document.createElement('span')
+  status.className = 'hs-note-editor-status'
+  status.textContent = 'esc to close'
+  const del = document.createElement('button')
+  del.className = 'hs-note-editor-del'
+  del.textContent = 'delete'
+  del.style.visibility = existing?.text ? '' : 'hidden'
+  foot.appendChild(status)
+  foot.appendChild(del)
+  box.appendChild(foot)
+
+  document.body.appendChild(box)
+  // Position like showHsCtxMenu — flip near viewport edges.
+  box.style.visibility = 'hidden'
+  box.style.left = '0px'
+  box.style.top = '0px'
+  const bw = box.offsetWidth,
+    bh = box.offsetHeight
+  const vw = window.innerWidth,
+    vh = window.innerHeight
+  const px = typeof x === 'number' ? x : Math.round(vw / 2 - bw / 2)
+  const py = typeof y === 'number' ? y : Math.round(vh / 2 - bh / 2)
+  box.style.left = (px + bw + 8 > vw ? Math.max(4, px - bw) : Math.min(px, vw - bw - 4)) + 'px'
+  box.style.top = (py + bh + 8 > vh ? Math.max(4, py - bh) : Math.min(py, vh - bh - 4)) + 'px'
+  box.style.visibility = ''
+
+  let saveTimer = null
+  let dirty = false
+  const flush = async () => {
+    if (!dirty) return
+    dirty = false
+    await hsNoteSave(username, platform, ta.value)
+    del.style.visibility = ta.value.trim() ? '' : 'hidden'
+    status.textContent = 'saved · esc to close'
+    if (typeof onSaved === 'function') {
+      try {
+        onSaved()
+      } catch {}
+    }
+  }
+  ta.addEventListener('input', () => {
+    dirty = true
+    status.textContent = 'saving…'
+    if (saveTimer) clearTimeout(saveTimer)
+    saveTimer = setTimeout(flush, 350)
+  })
+  del.addEventListener('click', async () => {
+    ta.value = ''
+    dirty = false
+    await hsNoteDelete(username, platform)
+    if (typeof onSaved === 'function') {
+      try {
+        onSaved()
+      } catch {}
+    }
+    dismiss()
+  })
+
+  function dismiss() {
+    if (saveTimer) clearTimeout(saveTimer)
+    flush()
+    box.remove()
+    document.removeEventListener('mousedown', outside, true)
+    document.removeEventListener('keydown', keyHandler, true)
+  }
+  function outside(ev) {
+    if (!box.contains(ev.target)) dismiss()
+  }
+  function keyHandler(ev) {
+    if (ev.key === 'Escape') {
+      ev.preventDefault()
+      dismiss()
+    }
+  }
+  setTimeout(() => {
+    document.addEventListener('mousedown', outside, true)
+    document.addEventListener('keydown', keyHandler, true)
+    try {
+      ta.focus()
+      ta.setSelectionRange(ta.value.length, ta.value.length)
+    } catch {}
+  }, 0)
+}
+
+/** Build the profile-card "notes" section (read preview + edit button). */
+function hsNoteRenderCardSection(username, platform, mkSection) {
+  if (typeof document === 'undefined') return null
+  const make = typeof mkSection === 'function' ? mkSection : typeof pcMakeSection === 'function' ? pcMakeSection : null
+  const sec = make ? make('notes') : document.createElement('div')
+  if (!make) sec.className = 'hs-pcard-section'
+  sec.classList.add('hs-pcard-notes')
+
+  const body = document.createElement('div')
+  body.className = 'hs-pcard-note-body'
+  const btn = document.createElement('button')
+  btn.className = 'hs-pcard-note-edit'
+
+  const paint = () => {
+    const n = hsNoteGet(username, platform)
+    body.textContent = n?.text || 'no note yet'
+    body.classList.toggle('hs-pcard-note-empty', !n?.text)
+    btn.textContent = n?.text ? 'edit' : 'add note'
+  }
+  btn.addEventListener('click', (e) => {
+    const r = btn.getBoundingClientRect()
+    hsNoteOpenEditor(username, platform, e?.clientX || r.left, e?.clientY || r.bottom, paint)
+  })
+  paint()
+  sec.appendChild(body)
+  sec.appendChild(btn)
+  return sec
+}
+
+// Kick off a load at bundle init (no-op in tests where chrome is absent).
+_hsnLoad()
+
+// Test-only reset so specs start from a clean model.
+function _hsNoteResetForTest() {
+  _hsnNotes = new Map()
+  _hsnIndex = new Map()
+  _hsnLoaded = true
+}
+
+export {
+  _hsNoteResetForTest,
+  HS_NOTE_MAX,
+  hsNoteDelete,
+  hsNoteGet,
+  hsNoteHas,
+  hsNoteOpenEditor,
+  hsNoteRenderCardSection,
+  hsNoteSave,
+}

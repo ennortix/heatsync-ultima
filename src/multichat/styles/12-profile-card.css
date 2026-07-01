@@ -243,6 +243,19 @@
     .hs-pcard-action:hover:not(:disabled) { background: #fff; color: #000; border-color: #fff; }
     .hs-pcard-action:disabled { opacity: 0.4; cursor: not-allowed; }
 
+    /* Notes section — private cross-platform note preview + edit trigger. */
+    .hs-pcard-notes { display: flex; flex-direction: column; gap: 4px; }
+    .hs-pcard-note-body {
+      color: #fff; white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere;
+      max-height: 96px; overflow-y: auto; font-size: 13px; line-height: 1.4;
+    }
+    .hs-pcard-note-body.hs-pcard-note-empty { color: #555; font-style: italic; }
+    .hs-pcard-note-edit {
+      align-self: flex-start; background: transparent; color: #fff; border: 1px solid #333;
+      padding: 3px 10px; cursor: pointer; font-family: inherit; font-size: 13px;
+    }
+    .hs-pcard-note-edit:hover { background: #fff; color: #000; border-color: #fff; }
+
     /* Mod actions row — compact toolbar at the top of the card when you mod
        a channel this user has chatted in. Channel label + del/timeout/ban
        buttons sit on a single line per channel. Buttons share borders so the

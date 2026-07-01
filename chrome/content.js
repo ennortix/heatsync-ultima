@@ -594,8 +594,66 @@
       rebuildUserColorMap(changes.hs_user_colors.newValue)
       applyUserColorsToVisibleMessages()
     }
+    // User notes — refresh the native cache when the overlay (or another tab) writes.
+    if (changes[HS_NOTE_STORE_KEY]) _noteSetBlob(changes[HS_NOTE_STORE_KEY].newValue)
   }
   chrome.storage.onChanged.addListener(_onStorageChanged)
+
+  // ── Cross-platform user notes (native surface) ──────────────────────────────
+  // A private note on a chatter, editable from the native user card. The storage
+  // shape here is the CONTRACT shared with src/multichat/user-notes.js (the
+  // overlay): both read/write { notes:{canonical:{text,updatedAt}}, index:{alias:
+  // canonical} } under hs_user_notes_v1, so notes made on either surface merge.
+  // Native chat is single-platform, so we key by the bare handle; the overlay's
+  // alias graph links identities across platforms later via the index.
+  const HS_NOTE_STORE_KEY = 'hs_user_notes_v1'
+  const HS_NOTE_MAX = 2000
+  let _noteBlob = { notes: {}, index: {} }
+  function _noteSetBlob(raw) {
+    _noteBlob =
+      raw && typeof raw === 'object'
+        ? {
+            notes: raw.notes && typeof raw.notes === 'object' ? raw.notes : {},
+            index: raw.index && typeof raw.index === 'object' ? raw.index : {},
+          }
+        : { notes: {}, index: {} }
+  }
+  function _noteCanonical(handle) {
+    const h = String(handle).toLowerCase()
+    const c = _noteBlob.index[h]
+    if (c && _noteBlob.notes[c]) return c
+    return h
+  }
+  function noteGet(handle) {
+    if (!handle) return null
+    return _noteBlob.notes[_noteCanonical(handle)] || null
+  }
+  function noteSave(handle, text) {
+    const h = String(handle || '').toLowerCase()
+    if (!h) return
+    const clean = String(text == null ? '' : text)
+      .slice(0, HS_NOTE_MAX)
+      .trim()
+    if (!clean) return noteDelete(h)
+    const c = _noteCanonical(h)
+    _noteBlob.notes[c] = { text: clean, updatedAt: Date.now() }
+    _noteBlob.index[h] = c
+    try {
+      chrome.storage.local.set({ [HS_NOTE_STORE_KEY]: _noteBlob }, () => void chrome.runtime?.lastError)
+    } catch {}
+  }
+  function noteDelete(handle) {
+    const h = String(handle || '').toLowerCase()
+    const c = _noteCanonical(h)
+    delete _noteBlob.notes[c]
+    for (const k of Object.keys(_noteBlob.index)) if (_noteBlob.index[k] === c) delete _noteBlob.index[k]
+    try {
+      chrome.storage.local.set({ [HS_NOTE_STORE_KEY]: _noteBlob }, () => void chrome.runtime?.lastError)
+    } catch {}
+  }
+  try {
+    chrome.storage.local.get(HS_NOTE_STORE_KEY, (d) => _noteSetBlob(d?.[HS_NOTE_STORE_KEY]))
+  } catch {}
 
   // Keyword highlights (BTTV/FFZ-style custom highlight word list)
   let _keywordRegex = null
@@ -1931,6 +1989,26 @@
     color: #fff !important;
     margin-left: 4px !important;
   }
+  /* User note textarea — inline editable, terminal palette, square */
+  .hs-pc-note-ta {
+    display: block !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    background: #000 !important;
+    color: #fff !important;
+    border: 1px solid #333 !important;
+    border-radius: 0 !important;
+    padding: 6px 8px !important;
+    margin: 0 !important;
+    resize: vertical !important;
+    min-height: 44px !important;
+    font-family: inherit !important;
+    font-size: 13px !important;
+    line-height: 1.4 !important;
+    outline: none !important;
+  }
+  .hs-pc-note-ta:focus { box-shadow: inset 0 0 0 1px #ff8700 !important; }
+  .hs-pc-note-ta::placeholder { color: #555 !important; }
 
   /* Mod tools grid — groups stack vertically (timeout row, then hard actions row) */
   .hs-pc-mod-grid {
@@ -8463,6 +8541,38 @@
       return section
     }
 
+    // Notes section — private cross-platform note on this chatter, editable
+    // inline. Auto-saves (debounced) to the shared note store; the overlay
+    // surfaces the same note keyed to this person's identity.
+    function buildNotesSection(username) {
+      const section = document.createElement('div')
+      section.className = 'hs-pc-section'
+      const title = document.createElement('div')
+      title.className = 'hs-pc-section-title'
+      title.textContent = 'note'
+      section.appendChild(title)
+
+      const ta = document.createElement('textarea')
+      ta.className = 'hs-pc-note-ta'
+      ta.rows = 2
+      ta.maxLength = HS_NOTE_MAX
+      ta.spellcheck = false
+      ta.placeholder = 'private note — only you see this'
+      ta.value = noteGet(username)?.text || ''
+      let t = null
+      const save = () => noteSave(username, ta.value)
+      ta.addEventListener('input', () => {
+        if (t) clearTimeout(t)
+        t = setTimeout(save, 400)
+      })
+      ta.addEventListener('blur', () => {
+        if (t) clearTimeout(t)
+        save()
+      })
+      section.appendChild(ta)
+      return section
+    }
+
     // Build message history shell (filled async)
     function buildHistorySection(username) {
       const section = document.createElement('div')
@@ -8862,6 +8972,9 @@
 
           // Mod actions
           cardEl.appendChild(buildModSection(username, channelLogin, isMod))
+
+          // Notes — private cross-platform note on this chatter
+          cardEl.appendChild(buildNotesSection(username))
 
           // Message history (filled async)
           const { section: histSection, list: histList, count: histCount } = buildHistorySection(username)

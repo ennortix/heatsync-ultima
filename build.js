@@ -393,6 +393,7 @@ const MULTICHAT_MODULES = [
   'styles.js',
   'seen-state.js',
   'filter-rules.js',
+  'user-notes.js',
   'mod-log.js',
   'live-search.js',
   'automod.js',

@@ -935,6 +935,14 @@ function renderProfileCardView() {
     card.appendChild(asec)
   }
 
+  // === Notes section === — private cross-platform note on this chatter, sits
+  // next to the actions so it's in the first viewport. Renders read-preview +
+  // edit button; the editor popover is owned by user-notes.js.
+  if (typeof hsNoteRenderCardSection === 'function') {
+    const nsec = hsNoteRenderCardSection(username, activeProfileCard.platform, pcMakeSection)
+    if (nsec) card.appendChild(nsec)
+  }
+
   // === Stats section ===
   const statsSec = pcMakeSection('stats')
   if (!data) {

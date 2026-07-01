@@ -7040,6 +7040,7 @@
     user: 'user',
     badge: 'badge',
     msgtype: 'type',
+    expr: 'expr',
   }
   var FR_SCOPE_BTN =
     'background:#000;color:#808080;border:1px solid #444;padding:1px 5px;font-size:11px;cursor:pointer;font-family:inherit;line-height:1.4'
@@ -7138,6 +7139,7 @@
       '<option value="user">user</option>' +
       '<option value="badge">badge</option>' +
       '<option value="msgtype">msgtype</option>' +
+      '<option value="expr">expr</option>' +
       '</select>' +
       '<input type="text" data-fr-field="value" placeholder="value..." style="' +
       FR_INPUT +
@@ -7168,6 +7170,10 @@
       '<button data-fr-action="add" style="' +
       FR_BTN +
       ';background:#222">+ add</button>' +
+      '</div>' +
+      '<div style="font-size:10px;color:#666;margin-top:4px;line-height:1.4">' +
+      'expr: compose with &amp;&amp; || ! and ( ). fields user: badge: type: contains: regex: · flags first action reply cheer · bits&gt;100. ' +
+      'e.g. <code style="color:#808080">first &amp;&amp; !badge:subscriber</code>' +
       '</div>' +
       '</div>'
     )
@@ -7255,6 +7261,12 @@
       var ruleScope = scopeEl ? scopeEl.value : 'all'
       if (!ruleVal) {
         showToast('rule value is empty', 'error')
+        return
+      }
+      // Validate expr syntax up front so a malformed rule toasts instead of
+      // silently compiling to nothing (the parser lives in the same bundle).
+      if (ruleType === 'expr' && typeof _frParseExpr === 'function' && !_frParseExpr(_frTokenizeExpr(ruleVal))) {
+        showToast('invalid expression', 'error')
         return
       }
       var newRule = {

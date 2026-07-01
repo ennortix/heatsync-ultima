@@ -339,3 +339,119 @@ test('sound: all four presets are accepted', () => {
     expect(evaluateFilterRules(makeMsg({ text: 'hello' }), null).sound).toBe(s)
   }
 })
+
+// ── boolean expression engine (match type 'expr') ─────────────────────────────
+
+function exprRule(value, action = 'hide') {
+  return rule({ match: { type: 'expr', value, caseSensitive: false }, action, color: '#00ff00' })
+}
+function hides(value, msg) {
+  compileFilterRules([exprRule(value, 'hide')])
+  return evaluateFilterRules(msg, null).hide
+}
+
+test('expr: bare flag matches first-message', () => {
+  expect(hides('first', makeMsg({ isFirstMsg: true }))).toBe(true)
+  expect(hides('first', makeMsg({ isFirstMsg: false }))).toBe(false)
+})
+
+test('expr: field term user:name', () => {
+  expect(hides('user:bob', makeMsg({ user: 'Bob' }))).toBe(true)
+  expect(hides('user:bob', makeMsg({ user: 'alice' }))).toBe(false)
+})
+
+test('expr: AND requires both', () => {
+  expect(hides('user:bob && contains:lol', makeMsg({ user: 'bob', text: 'haha lol' }))).toBe(true)
+  expect(hides('user:bob && contains:lol', makeMsg({ user: 'bob', text: 'nope' }))).toBe(false)
+})
+
+test('expr: OR requires either', () => {
+  expect(hides('user:bob || user:sue', makeMsg({ user: 'sue' }))).toBe(true)
+  expect(hides('user:bob || user:sue', makeMsg({ user: 'zed' }))).toBe(false)
+})
+
+test('expr: NOT negates', () => {
+  expect(hides('first && !badge:subscriber', makeMsg({ isFirstMsg: true, badges: 'moderator/1' }))).toBe(true)
+  expect(hides('first && !badge:subscriber', makeMsg({ isFirstMsg: true, badges: 'subscriber/12' }))).toBe(false)
+})
+
+test('expr: precedence — || is lower than &&', () => {
+  // "user:zed || user:bob && contains:x" == user:zed OR (user:bob AND contains:x)
+  const e = 'user:zed || user:bob && contains:x'
+  expect(hides(e, makeMsg({ user: 'zed', text: 'anything' }))).toBe(true) // left OR branch
+  expect(hides(e, makeMsg({ user: 'bob', text: 'has x here' }))).toBe(true) // right AND branch
+  expect(hides(e, makeMsg({ user: 'bob', text: 'no match' }))).toBe(false) // bob but no x
+})
+
+test('expr: parentheses override precedence', () => {
+  const e = '(user:bob || user:sue) && first'
+  expect(hides(e, makeMsg({ user: 'sue', isFirstMsg: true }))).toBe(true)
+  expect(hides(e, makeMsg({ user: 'sue', isFirstMsg: false }))).toBe(false)
+})
+
+test('expr: quoted value with spaces', () => {
+  expect(hides('contains:"first time"', makeMsg({ text: 'my first time here' }))).toBe(true)
+  expect(hides('contains:"first time"', makeMsg({ text: 'firsttime' }))).toBe(false)
+})
+
+test('expr: regex term is ReDoS-guarded and works', () => {
+  expect(hides('regex:"^!"', makeMsg({ text: '!command' }))).toBe(true)
+  expect(hides('regex:"^!"', makeMsg({ text: 'hi' }))).toBe(false)
+  // catastrophic pattern degrades to literal, must not hang
+  const start = performance.now()
+  hides('regex:"(a+)+$"', makeMsg({ text: 'a'.repeat(40) + '!' }))
+  expect(performance.now() - start).toBeLessThan(100)
+})
+
+test('expr: bits comparison', () => {
+  expect(hides('bits > 100', makeMsg({ bits: 200 }))).toBe(true)
+  expect(hides('bits > 100', makeMsg({ bits: 50 }))).toBe(false)
+  expect(hides('bits >= 100', makeMsg({ bits: 100 }))).toBe(true)
+  expect(hides('bits == 0', makeMsg({ bits: null }))).toBe(true)
+})
+
+test('expr: badge term', () => {
+  expect(hides('badge:vip', makeMsg({ badges: 'vip/1,subscriber/6' }))).toBe(true)
+  expect(hides('badge:vip', makeMsg({ badges: 'subscriber/6' }))).toBe(false)
+})
+
+test('expr: operators are case-insensitive words', () => {
+  expect(hides('user:bob AND first', makeMsg({ user: 'bob', isFirstMsg: true }))).toBe(true)
+  expect(hides('user:bob OR user:sue', makeMsg({ user: 'sue' }))).toBe(true)
+  expect(hides('NOT first', makeMsg({ isFirstMsg: false }))).toBe(true)
+})
+
+test('expr: malformed expressions are dropped (fail-safe, never hide)', () => {
+  const bad = [
+    'user:', // missing value
+    'user:bob &&', // dangling operator
+    '&& user:bob', // leading operator
+    '(user:bob', // unbalanced paren
+    'user:bob)', // trailing paren
+    'contains:"unterminated', // unterminated string
+    'bogusfield:x', // unknown field
+    'randomword', // bare non-flag word
+    '()', // empty parens
+    'bits > notanumber', // non-numeric bits
+    '', // empty
+  ]
+  for (const e of bad) {
+    expect(hides(e, makeMsg({ user: 'bob', text: 'x', isFirstMsg: true }))).toBe(false)
+  }
+})
+
+test('expr: deep nesting does not crash (depth guard drops it)', () => {
+  const deep = '('.repeat(200) + 'first' + ')'.repeat(200)
+  // Must not throw; over-deep → dropped → no hide.
+  expect(hides(deep, makeMsg({ isFirstMsg: true }))).toBe(false)
+})
+
+test('expr: overlong expression is rejected', () => {
+  expect(hides('contains:x || '.repeat(60) + 'first', makeMsg({ isFirstMsg: true }))).toBe(false)
+})
+
+test('expr: highlight action returns color', () => {
+  compileFilterRules([exprRule('user:bob && first', 'highlight')])
+  const res = evaluateFilterRules(makeMsg({ user: 'bob', isFirstMsg: true }), null)
+  expect(res.highlight).toBe('#00ff00')
+})

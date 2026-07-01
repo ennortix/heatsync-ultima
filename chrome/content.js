@@ -9805,7 +9805,9 @@
   // Replaces the old insta-mute so an accidental right-click can't silently 24h-mute.
   function openMessageActionMenu(msgEl, username, x, y) {
     closeEmoteMenu()
-    const isMuted = mutedUsers.has(username)
+    // Namespace-aware (+ legacy-bare) so the mute/unmute label is correct for
+    // platform-scoped mutes, matching the render-filter check above.
+    const isMuted = userSetMatches(mutedUsers, username, isKick ? 'kick' : 'twitch', [])
 
     const el = document.createElement('div')
     el.id = 'hs-msg-menu'

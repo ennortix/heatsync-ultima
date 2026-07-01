@@ -11068,7 +11068,7 @@ function injectStyles() {
     #hs-emote-tooltip .tooltip-source.src-ffz { background: #0086c8; color: #fff; }
     #hs-emote-tooltip .tooltip-source.src-twitch { background: #9146ff; color: #fff; }
     #hs-emote-tooltip .tooltip-source.src-kick { background: #53fc18; color: #000; }
-    #hs-emote-tooltip .tooltip-source.src-heatsync { background: #fff; color: #000; }
+    #hs-emote-tooltip .tooltip-source.src-heatsync { background: #ff8700; color: #000; }
 
     /* Max z-index + showLinkTooltip re-appends to body — beats reply-stack overlay. */
     #hs-link-tooltip {
@@ -38564,13 +38564,13 @@ function emoteCycleMeta(m) {
   if (!m) return { cat: '', vis: null }
   if (m.type === 'user' || m.type === 'user-bare') return { cat: 'chatter', vis: { t: 'everyone', c: '#5fd75f' } }
   if (m.type === 'emoji') return { cat: 'emoji', vis: { t: 'everyone', c: '#5fd75f' } }
-  if (m.remote) return { cat: '7tv search', vis: { t: 'heatsync only', c: '#fff' } }
+  if (m.remote) return { cat: '7tv search', vis: { t: 'heatsync only', c: '#ff8700' } }
   const tier = m.tier ?? 2
   const cat = tier === 0 ? 'channel' : tier === 1 ? 'your set' : 'global'
   if (m.source === 'twitch') return { cat, vis: { t: 'all twitch', c: '#5fd75f' } }
   // Your personal set (tier 1) or a heatsync-hosted emote: others only see it via
   // heatsync's sender-set merge — non-heatsync viewers get plain text.
-  if (tier === 1 || m.source === 'heatsync') return { cat, vis: { t: 'heatsync only', c: '#fff' } }
+  if (tier === 1 || m.source === 'heatsync') return { cat, vis: { t: 'heatsync only', c: '#ff8700' } }
   // Third-party emote active in the channel/global set — provider-ext users see it.
   return { cat, vis: { t: `${m.source || 'ext'} users`, c: '#ffd75f' } }
 }

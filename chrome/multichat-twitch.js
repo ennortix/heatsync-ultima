@@ -35725,6 +35725,11 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
         }),
     })
   }
+  // Op this message to the heatsync feed — posting emerges from chat, where the
+  // moment actually happens, quoting the author with @attribution.
+  if (msg) {
+    items.push({ label: 'op to feed', fn: () => _quickOpToFeed(username, msg) })
+  }
   items.push(
     { label: 'whisper', fn: () => _openWhisperFor(username, platform) },
     { label: 'dm', fn: () => _openDmFor(username, platform) },
@@ -36080,6 +36085,30 @@ function _prefillMcInput(text) {
 // their linked twitch handle via /api/profile?platform= so the typed /w lands
 // on the right twitch acct (decapi only knows twitch). If they have no linked
 // twitch, bail with a clear "try /dm" hint instead of letting /w 404.
+// Op the right-clicked chat message to the heatsync feed. Posting emerges from
+// chat, quoting the author with an @mention (which renders as a crawlable
+// /user/ profile link server-side — attribution doubles as internal SEO).
+// Self-contained POST; deliberately does NOT reuse postFeedMessage (which is
+// coupled to the chat input and would clear the user's draft).
+async function _quickOpToFeed(username, msg) {
+  if (!hsAuthToken) {
+    showToast(t('mc_social_login_first') || 'log in at heatsync.org first to post', 'error')
+    return
+  }
+  const raw = ((typeof _extractMcMsgText === 'function' ? _extractMcMsgText(msg) : msg?.textContent) || '').trim()
+  if (!raw) {
+    showToast('nothing to post', 'error')
+    return
+  }
+  const content = `@${username}: ${raw}`.slice(0, 500)
+  try {
+    const resp = await apiFetch('/api/messages', { method: 'POST', auth: true, body: { content } })
+    showToast(resp?.ok ? 'posted to feed' : 'post failed', resp?.ok ? 'success' : 'error')
+  } catch {
+    showToast('post failed', 'error')
+  }
+}
+
 async function _openWhisperFor(username, platform) {
   if (typeof switchTab === 'function') switchTab('whispers')
   let whisperName = username

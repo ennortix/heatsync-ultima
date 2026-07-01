@@ -498,7 +498,7 @@ function outcomeColor(color) {
   const map = {
     PINK: '#f5009b',
     BLUE: '#387aff',
-    ORANGE: '#ff8700',
+    ORANGE: '#fff',
     GREEN: '#00c853',
     TEAL: '#00bcd4',
     PURPLE: '#9c27b0',
@@ -1673,7 +1673,7 @@ function updateChatBanners(predResult, pollData) {
     const badge = document.createElement('span')
     badge.className = 'hs-mc-chat-banner-badge'
     badge.textContent = t('mc_chat_hype_level', [String(_hypeTrainActive.level || 1)])
-    badge.style.color = '#ff8700'
+    badge.style.color = '#fff'
     row.appendChild(badge)
     banner.appendChild(row)
   }

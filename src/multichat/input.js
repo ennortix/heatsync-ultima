@@ -4598,13 +4598,13 @@ function emoteCycleMeta(m) {
   if (!m) return { cat: '', vis: null }
   if (m.type === 'user' || m.type === 'user-bare') return { cat: 'chatter', vis: { t: 'everyone', c: '#5fd75f' } }
   if (m.type === 'emoji') return { cat: 'emoji', vis: { t: 'everyone', c: '#5fd75f' } }
-  if (m.remote) return { cat: '7tv search', vis: { t: 'heatsync only', c: '#ff8700' } }
+  if (m.remote) return { cat: '7tv search', vis: { t: 'heatsync only', c: '#fff' } }
   const tier = m.tier ?? 2
   const cat = tier === 0 ? 'channel' : tier === 1 ? 'your set' : 'global'
   if (m.source === 'twitch') return { cat, vis: { t: 'all twitch', c: '#5fd75f' } }
   // Your personal set (tier 1) or a heatsync-hosted emote: others only see it via
   // heatsync's sender-set merge — non-heatsync viewers get plain text.
-  if (tier === 1 || m.source === 'heatsync') return { cat, vis: { t: 'heatsync only', c: '#ff8700' } }
+  if (tier === 1 || m.source === 'heatsync') return { cat, vis: { t: 'heatsync only', c: '#fff' } }
   // Third-party emote active in the channel/global set — provider-ext users see it.
   return { cat, vis: { t: `${m.source || 'ext'} users`, c: '#ffd75f' } }
 }
@@ -5587,7 +5587,7 @@ function showSlashHelp() {
   panel = document.createElement('div')
   panel.id = 'hs-mc-slash-help'
   panel.style.cssText =
-    "position:fixed;bottom:60px;right:20px;z-index:99999;background:#000;border:2px solid #ff8700;padding:10px 14px;font:13px/1.4 'CozetteVector','Courier New',monospace;color:#fff;white-space:pre;max-width:420px;box-shadow:0 0 12px rgba(255,135,0,0.5)"
+    "position:fixed;bottom:60px;right:20px;z-index:99999;background:#000;border:2px solid #fff;padding:10px 14px;font:13px/1.4 'CozetteVector','Courier New',monospace;color:#fff;white-space:pre;max-width:420px;box-shadow:0 0 12px rgba(255,255,255,0.3)"
   panel.textContent = SLASH_HELP_LINES.join('\n')
   panel.addEventListener('click', () => panel.remove())
   document.body.appendChild(panel)
@@ -6072,7 +6072,7 @@ function showUploadStatus(msg, isError) {
   if (msg) {
     if (bar) {
       bar.textContent = msg
-      bar.style.color = isError ? '#ff4444' : '#ff8700'
+      bar.style.color = isError ? '#ff4444' : '#fff'
       bar.style.display = 'block'
       return
     }
@@ -6080,7 +6080,7 @@ function showUploadStatus(msg, isError) {
     if (!inputbar) return
     const el = document.createElement('div')
     el.id = 'hs-mc-upload-status'
-    el.style.cssText = 'padding:2px 8px;font-size:13px;color:#ff8700;background:#000;border-top:1px solid #808080;'
+    el.style.cssText = 'padding:2px 8px;font-size:13px;color:#fff;background:#000;border-top:1px solid #808080;'
     el.textContent = msg
     inputbar.insertBefore(el, inputbar.firstChild)
   } else if (bar) {
@@ -6187,7 +6187,7 @@ function setupMediaDropHandlers() {
       dz = document.createElement('div')
       dz.id = 'hs-mc-drop-zone'
       dz.style.cssText =
-        'position:absolute;inset:0;background:rgba(255,135,0,0.15);border:2px dashed #ff8700;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;z-index:99998;pointer-events:none;'
+        'position:absolute;inset:0;background:rgba(255,255,255,0.1);border:2px dashed #fff;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;z-index:99998;pointer-events:none;'
       dz.textContent = 'drop image/video to upload'
       overlay.appendChild(dz)
     }

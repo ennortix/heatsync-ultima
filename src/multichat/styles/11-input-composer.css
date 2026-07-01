@@ -28,7 +28,7 @@
       overflow-wrap: anywhere;
     }
     #hs-mc-input:focus {
-      border-color: #ff8700;
+      border-color: #fff;
     }
     #hs-mc-input::placeholder {
       color: #aaa;
@@ -234,7 +234,7 @@
       background: #fff;
       color: #000;
     }
-    .hs-mc-slash-name { color: #ff8700; font-weight: 700; }
+    .hs-mc-slash-name { color: #fff; font-weight: 700; }
     .hs-mc-slash-args { color: #aaa; flex-shrink: 0; }
     .hs-mc-slash-desc { color: #aaa; font-size: 13px; margin-left: auto; }
     .hs-mc-slash-row:hover .hs-mc-slash-args,

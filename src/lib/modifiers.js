@@ -12,7 +12,7 @@
 // - Multiset compounding: "Kappa w! w!" → 4x wide
 // - Each axis clamped to ±MAX_SCALE (chat layout breaks past)
 // - Chained shorthand: "w!h!ffzX" peels into [wide, tall, hflip]
-// - Color: "c!#ff8700" tints via hue-rotate (peel-friendly: "w!c!#ff8700h!")
+// - Color: "c!#888" tints via hue-rotate (peel-friendly: "w!c!#888h!")
 // - Prefix completion: "w" → "w!", "ffzx" → "ffzX"
 
 const HS_MOD_TOKENS = Object.freeze({

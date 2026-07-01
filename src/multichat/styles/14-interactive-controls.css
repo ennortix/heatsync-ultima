@@ -24,9 +24,9 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      background: rgba(255,135,0,0.12);
-      background: color-mix(in srgb, var(--menu-accent, #ff8700) 12%, transparent);
-      color: var(--menu-accent, #ff8700);
+      background: rgba(255,255,255,0.12);
+      background: color-mix(in srgb, var(--menu-accent, #fff) 12%, transparent);
+      color: var(--menu-accent, #fff);
       flex-shrink: 0;
       transition: none;
     }
@@ -110,7 +110,7 @@
     }
     .hs-mc-pred-timer {
       font-size: 13px;
-      color: #ff8700;
+      color: #fff;
       font-weight: 600;
       font-variant-numeric: tabular-nums;
       white-space: nowrap;
@@ -208,7 +208,7 @@
     }
     .hs-mc-pred-bet-custom::placeholder { color: #aaa; }
     .hs-mc-pred-bet-custom:focus {
-      border-color: #ff8700;
+      border-color: #fff;
     }
     .hs-mc-pred-bet-custom:disabled {
       background: rgba(255,255,255,0.04);
@@ -244,7 +244,7 @@
     }
     .hs-mc-pred-bet-max {
       font-weight: 600;
-      color: #ff8700;
+      color: #fff;
     }
     .hs-mc-pred-bet-max:hover {
       background: #fff;
@@ -306,9 +306,9 @@
       border: 1px solid rgba(255,60,60,0.2);
     }
     .hs-mc-pred-result-refund {
-      background: rgba(255,135,0,0.1);
-      color: #ff8700;
-      border: 1px solid rgba(255,135,0,0.25);
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.25);
     }
     .hs-mc-pred-result-neutral {
       font-size: 13px;
@@ -344,17 +344,17 @@
     /* ═══ Mod controls ═══ */
     .hs-mc-pred-mod-notice {
       font-size: 13px;
-      color: #ff8700;
-      background: rgba(255,135,0,0.08);
-      border: 1px solid rgba(255,135,0,0.2);
+      color: #fff;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.2);
       border-radius: 0;
       padding: 5px 8px;
       margin-top: 6px;
       text-align: center;
     }
     .hs-mc-pred-resolve-yours {
-      border-color: #ff8700 !important;
-      color: #ff8700 !important;
+      border-color: #fff !important;
+      color: #fff !important;
     }
     .hs-mc-pred-resolve-yours:hover {
       background: #fff !important;
@@ -428,7 +428,7 @@
     }
     .hs-mc-pred-create-input::placeholder { color: #aaa; }
     .hs-mc-pred-create-input:focus {
-      border-color: #ff8700;
+      border-color: #fff;
       outline: none;
     }
     .hs-mc-pred-create-dur-row {
@@ -456,14 +456,14 @@
       color: #000;
     }
     .hs-mc-pred-create-dur-active {
-      background: #ff8700;
+      background: #fff;
       color: #000;
-      border-color: #ff8700;
+      border-color: #fff;
     }
     .hs-mc-pred-create-submit {
       background: rgba(0,0,0,0.7);
-      color: #ff8700;
-      border-color: #ff8700;
+      color: #fff;
+      border-color: #fff;
       font-weight: 600;
     }
     .hs-mc-pred-create-submit:hover {
@@ -506,7 +506,7 @@
     }
     .hs-mc-poll-timer {
       font-size: 13px;
-      color: #ff8700;
+      color: #fff;
       font-weight: 600;
       font-variant-numeric: tabular-nums;
       white-space: nowrap;
@@ -575,7 +575,7 @@
       color: #bf8fff;
     }
     .hs-mc-poll-voted-check {
-      color: #ff8700;
+      color: #fff;
       font-weight: 700;
     }
     .hs-mc-poll-vote-btn {
@@ -652,7 +652,7 @@
     }
     .hs-mc-poll-create-input::placeholder { color: #aaa; }
     .hs-mc-poll-create-input:focus {
-      border-color: #ff8700;
+      border-color: #fff;
       outline: none;
     }
     .hs-mc-poll-create-dur-row {
@@ -680,16 +680,16 @@
       color: #000;
     }
     .hs-mc-poll-create-dur-active {
-      background: #ff8700;
+      background: #fff;
       color: #000;
-      border-color: #ff8700;
+      border-color: #fff;
     }
     .hs-mc-poll-create-submit {
       width: 100%;
       text-align: center;
       background: rgba(0,0,0,0.7);
-      color: #ff8700;
-      border-color: #ff8700;
+      color: #fff;
+      border-color: #fff;
       font-weight: 600;
     }
     .hs-mc-poll-create-submit:hover {
@@ -728,15 +728,15 @@
        it here; just lock the family + size. */
     .hs-mc-status-overlay {
       position: fixed; bottom: 60px; right: 20px; z-index: 99999;
-      background: #000; border: 2px solid #ff8700;
+      background: #000; border: 2px solid #fff;
       padding: 12px 16px; min-width: 280px; max-width: 420px;
       font: 13px/1.4 'CozetteVector', 'Courier New', monospace;
       color: #fff;
-      box-shadow: 0 0 12px rgba(255,135,0,0.5);
+      box-shadow: 0 0 12px rgba(255,255,255,0.3);
       cursor: pointer;
     }
     .hs-mc-status-loading { font-size: 13px; color: #999; }
-    .hs-mc-status-title { font-size: 13px; font-weight: 600; color: #ff8700; }
+    .hs-mc-status-title { font-size: 13px; font-weight: 600; color: #fff; }
     .hs-mc-status-sub { font-size: 13px; margin-top: 2px; }
     .hs-mc-status-sub.live { color: #59ff8a; }
     .hs-mc-status-sub.off  { color: #999; }
@@ -1053,7 +1053,7 @@
     }
     .hs-mc-setting-textarea:focus {
       outline: none;
-      border-color: #ff8700;
+      border-color: #fff;
     }
     .hs-mc-locale-select {
       background: #000;
@@ -1150,7 +1150,7 @@
     }
     .hs-mc-set-search:focus {
       outline: none;
-      border-color: #ff8700;
+      border-color: #fff;
     }
     .hs-mc-set-search-count {
       color: #aaa;
@@ -1213,14 +1213,14 @@
     /* Modified-from-default — 3px orange inset edge, zero layout shift,
        survives zebra/hover/focus backgrounds */
     .hs-mc-setting-row.hs-mc-set-mod {
-      box-shadow: inset 3px 0 0 #ff8700;
+      box-shadow: inset 3px 0 0 #fff;
     }
     .hs-mc-set-cnt {
       color: #aaa;
       font-weight: 400;
     }
     .hs-mc-set-modcnt {
-      color: #ff8700;
+      color: #fff;
       font-weight: 400;
     }
     .hs-mc-settings-group-title:hover .hs-mc-set-cnt,
@@ -1230,7 +1230,7 @@
     /* [reload] chip — setting applied only after a page reload */
     .hs-mc-set-reload {
       background: #000;
-      color: #ff8700;
+      color: #fff;
       border: 1px solid #808080;
       font-family: inherit;
       font-size: 13px;
@@ -1303,7 +1303,7 @@
       gap: 2px 10px;
     }
     .hs-mc-set-help-key {
-      color: #ff8700;
+      color: #fff;
     }
     .hs-mc-set-help-title {
       color: #aaa;
@@ -1331,7 +1331,7 @@
       appearance: none;
       width: 10px;
       height: 14px;
-      background: #ff8700;
+      background: #fff;
       border: none;
       border-radius: 0;
       cursor: pointer;
@@ -1401,7 +1401,7 @@
     }
     .hs-mc-set-text-input:focus {
       outline: none;
-      border-color: #ff8700;
+      border-color: #fff;
     }
     /* Crash log pre block */
     .hs-mc-set-crash-pre {
@@ -1422,7 +1422,7 @@
        Sizing/layout comes from inline cssText; this class provides the parts that
        can't be set inline: focus border swap and placeholder color. */
     .hs-mc-ch-input::placeholder { color: #aaa; }
-    .hs-mc-ch-input:focus { border-color: #ff8700; }
+    .hs-mc-ch-input:focus { border-color: #fff; }
 
     /* Confirm modal (hsConfirm) — square, terminal, hover-inverts; ban = danger red */
     .hs-mc-confirm-overlay {
@@ -1467,6 +1467,6 @@
       cursor: pointer;
     }
     .hs-mc-confirm-reason:hover { background: #fff; color: #000; }
-    .hs-mc-confirm-reason.sel { border-color: #ff8700; color: #ff8700; }
-    .hs-mc-confirm-reason.sel:hover { background: #ff8700; color: #000; }
+    .hs-mc-confirm-reason.sel { border-color: #fff; color: #fff; }
+    .hs-mc-confirm-reason.sel:hover { background: #fff; color: #000; }
 

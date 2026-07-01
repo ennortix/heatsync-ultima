@@ -120,8 +120,8 @@
       transition: background 80ms linear, color 80ms linear;
     }
     .hs-notif-action:hover { background: #fff; color: #000; }
-    .hs-notif-action:focus-visible { outline: 1px solid #ff8700; outline-offset: -2px; }
-    .hs-notif-action-primary { color: #ff8700; font-weight: 700; }
+    .hs-notif-action:focus-visible { outline: 1px solid #fff; outline-offset: -2px; }
+    .hs-notif-action-primary { color: #fff; font-weight: 700; }
     .hs-notif-action-primary:hover { background: #fff; color: #000; }
     .hs-notif-action-dismiss { padding: 0 10px; font-size: 14px; color: #848494; }
     .hs-notif-action-dismiss:hover { background: #ff4040; color: #000; }

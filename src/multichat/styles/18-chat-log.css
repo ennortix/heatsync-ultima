@@ -46,7 +46,7 @@
       outline: none; height: 22px;
       box-sizing: border-box;
     }
-    .hs-cl-search:focus { border-color: #ff8700; }
+    .hs-cl-search:focus { border-color: #fff; }
     .hs-cl-scope, .hs-cl-export {
       background: #111; color: #ccc;
       border: 1px solid #333; padding: 1px 6px;
@@ -79,7 +79,7 @@
       white-space: nowrap;
     }
     .hs-cl-ch {
-      color: #ff8700; flex-shrink: 0;
+      color: #fff; flex-shrink: 0;
     }
     .hs-cl-user {
       color: #fff; font-weight: 700; flex-shrink: 0;
@@ -96,7 +96,7 @@
       color: #aaa; text-align: center; padding: 12px 8px;
     }
     .hs-cl-public-archive {
-      color: #ff8700; text-decoration: none;
+      color: #fff; text-decoration: none;
       font-size: 13px; padding: 1px 6px;
       border: 1px solid #333;
       height: 22px; line-height: 18px;
@@ -115,7 +115,7 @@
     .hs-cl-row:hover .hs-cl-permalink { opacity: 1; }
     .hs-cl-permalink:hover { color: #fff; }
     .hs-cl-permalink.hs-cl-permalink-copied {
-      opacity: 1; color: #ff8700;
+      opacity: 1; color: #fff;
     }
 
   

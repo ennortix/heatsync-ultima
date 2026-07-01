@@ -15,14 +15,14 @@
       display: flex;
     }
 
-    /* Unified resize-bar styling — 2px visible #ff8700 line + invisible
+    /* Unified resize-bar styling — 2px visible #fff line + invisible
        ::before grab-zone (--hs-resize-grab per side). Mirrors heatsync.org's
        .hs-resizer. Each id below sets only position/size/cursor/z-index. */
     #hs-mc-resize-handle,
     #hs-yt-resize-handle,
     #hs-kick-resize-handle,
     #hs-c-resize-handle {
-      background: #ff8700;
+      background: #fff;
       opacity: 0.55;
       transition: opacity 0.12s;
     }
@@ -156,7 +156,7 @@
       font-family: 'SF Mono', 'Consolas', monospace;
       font-size: 13px;
       font-weight: 700;
-      color: #ff8700;
+      color: #fff;
       background: rgba(0,0,0,0.4);
       padding: 1px 5px;
       border-radius: 0;

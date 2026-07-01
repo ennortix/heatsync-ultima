@@ -86,7 +86,7 @@
        inputbar below. */
     .hs-notif-layer-chat-docked-bottom > .hs-notif {
       border: none;
-      border-top: 1px solid #ff8700;
+      border-top: 1px solid #808080;
       border-bottom: 1px solid #808080;
       box-shadow: 0 -2px 8px rgba(0,0,0,0.5);
       background: #0a0a0d;
@@ -102,7 +102,7 @@
     .hs-notif-resub-icon {
       flex: 0 0 auto;
       font-size: 14px;
-      color: #ff8700;
+      color: #fff;
     }
     .hs-notif-resub-text {
       flex: 1 1 0;
@@ -193,7 +193,7 @@
       pointer-events: auto !important;
       background: #18181b !important;
       border: none !important;
-      border-top: 1px solid #ff8700 !important;
+      border-top: 1px solid #808080 !important;
       border-bottom: 1px solid #808080 !important;
       border-radius: 0 !important;
       box-shadow: 0 -2px 8px rgba(0,0,0,0.5) !important;

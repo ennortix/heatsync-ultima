@@ -15,7 +15,7 @@ const _ytPaceTimer = new Map() // channelId → timer handle
 const _ytPaceLastEmit = new Map() // channelId → { time: ms, msgTime: real msg.time }
 
 // Heat tier display — big scaling numbers + color glow + row effects, no emoji
-// Matches website colors.js: #444 → #888 → #cc6600 → #ff8700 → #ffaa33 → #fff
+// Matches website colors.js: #444 → #888 → #aaa → #ccc → #eee → #fff
 function formatHeat(heat) {
   if (heat >= 1000) {
     const k = heat / 1000
@@ -46,13 +46,13 @@ function getHeatNumberStyle(heat, isReply) {
       '0 0 6px rgba(255,255,255,1),0 0 15px rgba(255,200,100,1),0 0 30px rgba(255,135,0,0.9),0 0 50px rgba(255,80,0,0.6)'
     animation = 'hs-heat-breathe 2s ease-in-out infinite'
   } else if (heat > 100) {
-    color = '#ffaa33'
+    color = '#eee'
     textShadow = '0 0 6px rgba(255,170,50,0.9),0 0 16px rgba(255,135,0,0.6),0 0 30px rgba(255,80,0,0.3)'
   } else if (heat > 50) {
-    color = '#ff8700'
+    color = '#fff'
     textShadow = '0 0 6px rgba(255,135,0,0.7),0 0 14px rgba(255,135,0,0.3)'
   } else if (heat > 10) {
-    color = heat > 30 ? '#cc6600' : '#888'
+    color = heat > 30 ? '#aaa' : '#888'
     textShadow = heat > 30 ? '0 0 4px rgba(204,102,0,0.3)' : undefined
   } else {
     color = '#444'
@@ -74,15 +74,15 @@ function getHeatDisplay(heat) {
     borderWidth = 4
     bg = 'rgba(60,20,0,0.15)'
   } else if (heat >= 100) {
-    border = '#ffaa33'
+    border = '#eee'
     borderWidth = 3
     bg = 'rgba(50,15,0,0.10)'
   } else if (heat >= 25) {
-    border = '#ff8700'
+    border = '#fff'
     borderWidth = 3
     bg = 'rgba(40,12,0,0.07)'
   } else if (heat >= 10) {
-    border = '#ff8700'
+    border = '#fff'
     borderWidth = 2
   } else {
     border = '#444'
@@ -166,7 +166,7 @@ function showFeedEditUI(div, msg) {
   const saveBtn = document.createElement('button')
   saveBtn.textContent = 'save'
   saveBtn.style.cssText =
-    'background:#ff8700;color:#000;border:none;padding:4px 8px;font-family:inherit;font-size:13px;cursor:pointer;'
+    'background:#fff;color:#000;border:none;padding:4px 8px;font-family:inherit;font-size:13px;cursor:pointer;'
   const cancelBtn = document.createElement('button')
   cancelBtn.textContent = 'cancel'
   cancelBtn.style.cssText =
@@ -1177,9 +1177,9 @@ function renderFeed() {
     const banner = document.createElement('div')
     banner.className = 'hs-mc-feed-fallback-banner'
     banner.style.cssText =
-      'padding:8px 10px;background:#1a1408;border-left:2px solid #ff8700;color:#e6e6e6;font-size:12px;margin-bottom:4px;line-height:1.5'
+      'padding:8px 10px;background:#1a1408;border-left:2px solid #808080;color:#e6e6e6;font-size:12px;margin-bottom:4px;line-height:1.5'
     const head = document.createElement('div')
-    head.style.cssText = 'color:#ff8700;font-weight:600;margin-bottom:2px'
+    head.style.cssText = 'color:#fff;font-weight:600;margin-bottom:2px'
     head.textContent = 'no posts from your follows'
     const sub = document.createElement('div')
     sub.style.cssText = 'color:#bbb'
@@ -1949,8 +1949,8 @@ function formatDiscoverCount(n) {
 
 // Compact heat tier styling — matches site canonical color tiers from getHeatNumberStyle,
 // but with fixed (small) size so discover rows stay dense.
-// Tiers: 0 → #444, 1-10 → #888, 10-30 → #888, 30-50 → #cc6600, 50-100 → #ff8700,
-//        100-500 → #ffaa33, 500+ → #fff with breathe animation
+// Tiers: 0 → #444, 1-10 → #888, 10-30 → #888, 30-50 → #aaa, 50-100 → #ccc,
+//        100-500 → #eee, 500+ → #fff with breathe animation
 function discoverHeatStyle(heat) {
   let color = '#444',
     textShadow = '',
@@ -1960,13 +1960,13 @@ function discoverHeatStyle(heat) {
     textShadow = '0 0 4px rgba(255,255,255,1),0 0 10px rgba(255,200,100,0.9),0 0 18px rgba(255,135,0,0.6)'
     animation = 'hs-heat-breathe 2s ease-in-out infinite'
   } else if (heat > 100) {
-    color = '#ffaa33'
+    color = '#eee'
     textShadow = '0 0 4px rgba(255,170,50,0.85),0 0 10px rgba(255,135,0,0.4)'
   } else if (heat > 50) {
-    color = '#ff8700'
+    color = '#fff'
     textShadow = '0 0 3px rgba(255,135,0,0.55)'
   } else if (heat > 30) {
-    color = '#cc6600'
+    color = '#aaa'
   } else if (heat > 10) {
     color = '#888'
   }
@@ -2408,7 +2408,7 @@ function renderDiscoverTab() {
             const a = document.createElement('a')
             a.href = '#'
             a.textContent = 'import follows from twitch'
-            a.style.color = '#ff8700'
+            a.style.color = '#fff'
             a.style.textDecoration = 'none'
             a.addEventListener('click', async (e) => {
               e.preventDefault()

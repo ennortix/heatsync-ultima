@@ -540,7 +540,7 @@
     #hs-emote-tooltip .tooltip-source.src-ffz { background: #0086c8; color: #fff; }
     #hs-emote-tooltip .tooltip-source.src-twitch { background: #9146ff; color: #fff; }
     #hs-emote-tooltip .tooltip-source.src-kick { background: #53fc18; color: #000; }
-    #hs-emote-tooltip .tooltip-source.src-heatsync { background: #ff8700; color: #000; }
+    #hs-emote-tooltip .tooltip-source.src-heatsync { background: #fff; color: #000; }
 
     /* Max z-index + showLinkTooltip re-appends to body — beats reply-stack overlay. */
     #hs-link-tooltip {

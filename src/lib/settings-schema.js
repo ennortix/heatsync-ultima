@@ -751,8 +751,8 @@ const SETTINGS = [
         value: 'moment',
         default: true,
         tag: '[🔥]',
-        color: '#ff8700',
-        borderColor: '#ff8700',
+        color: '#fff',
+        borderColor: '#fff',
         label: 'moment alerts',
         tip: "a channel's chat suddenly explodes — heat spike detected server-side; click the row to open the stream",
       },
@@ -806,7 +806,7 @@ const SETTINGS = [
       {
         value: 'hype',
         default: false,
-        color: '#ff8700',
+        color: '#fff',
         labelKey: 'mc_settings_hype_trains',
         tipKey: 'mc_settings_hype_trains_desc',
       },
@@ -1657,7 +1657,7 @@ const SETTINGS = [
       {
         value: 'emote-render',
         default: true,
-        color: '#ff8700',
+        color: '#fff',
         applies: 'reload',
         label: 'emotes in native chat',
         tip: 'render heatsync emotes inside the platform’s own chat',
@@ -1665,7 +1665,7 @@ const SETTINGS = [
       {
         value: 'tab-complete',
         default: true,
-        color: '#ff8700',
+        color: '#fff',
         applies: 'reload',
         label: 'tab-complete in native chat',
         tip: 'emote + username completion in the platform’s own input',
@@ -1673,7 +1673,7 @@ const SETTINGS = [
       {
         value: 'picker-button',
         default: true,
-        color: '#ff8700',
+        color: '#fff',
         applies: 'reload',
         label: 'emote picker button',
         tip: 'the heatsync picker button beside the native chat input',
@@ -1681,7 +1681,7 @@ const SETTINGS = [
       {
         value: 'right-click-block',
         default: true,
-        color: '#ff8700',
+        color: '#fff',
         applies: 'live',
         label: 'right-click emote block',
         tip: 'right-click any emote to instantly block it',

@@ -834,7 +834,7 @@ function ensureUserTooltip() {
 }
 
 function getHeatColor() {
-  return '#ff8700'
+  return '#fff'
 }
 
 function formatCompact(n) {
@@ -955,7 +955,7 @@ function renderProfileCard(p) {
   if (_note) {
     const _short = _note.length > 60 ? _note.slice(0, 60) + '…' : _note
     sheetRows.push(
-      `<dt>note</dt><dd data-k="note" style="color:#ff8700" title="${escapeHtml(_note)}">${escapeHtml(_short)}</dd>`,
+      `<dt>note</dt><dd data-k="note" style="color:#fff" title="${escapeHtml(_note)}">${escapeHtml(_short)}</dd>`,
     )
   }
 

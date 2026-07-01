@@ -1335,7 +1335,7 @@ function cursorToEnd(input) {
   sel.addRange(range)
 }
 
-// Parse a space-separated modifier-word string ("w! h! c!#ff8700") into
+// Parse a space-separated modifier-word string ("w! h! c!#888") into
 // canonical {mods, hue, words}; skips tokens that don't classify as modifiers
 // so a stray non-modifier word can't poison the result.
 function _hsMcParseModWords(s) {
@@ -2623,7 +2623,7 @@ function _hsMcApplyMods(html, mods, hue) {
     out = out.replace(/<img(\s)/, `<img style="filter:${imgFilter} !important;"$1`)
   }
   // Stash wire words on the wrapper so left-clicking a nested emote can
-  // round-trip modifiers ("w! h! c!#ff8700") into the input on paste.
+  // round-trip modifiers ("w! h! c!#888") into the input on paste.
   const wireWords = hsModWordsFromState(mods, hue).join(' ')
   if (wireWords) {
     const safe = wireWords.replace(/"/g, '&quot;')
@@ -2795,7 +2795,7 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime) {
       pendingWhitespace = ''
       continue
     }
-    // Peel chained modifier word (e.g. "w!h!ffzX" or "w!c!#ff8700h!")
+    // Peel chained modifier word (e.g. "w!h!ffzX" or "w!c!#888h!")
     const _hsPeel = hsModPeelChain(word)
     if (_hsPeel) {
       const last = _lastItem()
@@ -2935,7 +2935,7 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime) {
           }
         }
       }
-      // c!#hex inline (KappaC!#ff8700 — also try)
+      // c!#hex inline (KappaC!#888 — also try)
       if (!emote) {
         const inlineColor = word.match(/^(.+?)(c!#?[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?)$/)
         if (inlineColor) {

@@ -21,7 +21,7 @@
          click after the bar exists, so later DOM order tie-breaks above. */
       z-index: 2147483647 !important;
       background: #000; color: #fff;
-      border: 1px solid #ff8700;
+      border: 1px solid #fff;
       padding: 0; min-width: 220px; max-width: 280px;
       box-shadow: 0 6px 32px rgba(0,0,0,0.75);
       animation: hs-mc-em-in 80ms ease-out;
@@ -74,7 +74,7 @@
       max-width: 360px;
       overflow: hidden;
       isolation: isolate;
-      --hs-pc-accent: #ff8700;
+      --hs-pc-accent: #fff;
     }
     #hs-user-tooltip.visible {
       display: block;
@@ -221,7 +221,7 @@
       -webkit-box-orient: vertical;
       overflow: hidden;
     }
-    #hs-user-tooltip .hs-pc-bio-mention { color: #ff8700; cursor: pointer; }
+    #hs-user-tooltip .hs-pc-bio-mention { color: #fff; cursor: pointer; }
     #hs-user-tooltip .hs-pc-bio-mention:hover { text-decoration: underline; }
     #hs-user-tooltip .hs-pc-bio-tag { color: #ff00ff; text-decoration: none; }
     #hs-user-tooltip .hs-pc-bio-tag:hover { text-decoration: underline; }
@@ -254,7 +254,7 @@
     #hs-user-tooltip .hs-pc-stat.mop .hs-pc-num { color: #fff; }
     #hs-user-tooltip .hs-pc-stat.re { border-color: #00ffff; color: #00ffff; }
     #hs-user-tooltip .hs-pc-stat.re .hs-pc-num { color: #fff; }
-    #hs-user-tooltip .hs-pc-stat-heat { border-color: #ff8700; }
+    #hs-user-tooltip .hs-pc-stat-heat { border-color: #fff; }
     #hs-user-tooltip .hs-pc-stat-heat .hs-heat-num { font-size: 13px; font-weight: 700; }
     #hs-user-tooltip .hs-pc-rel {
       display: flex;
@@ -272,11 +272,11 @@
       letter-spacing: 0.3px;
     }
     #hs-user-tooltip .hs-pc-rel-badge.mutual { background: #00aaaa; color: #fff; }
-    #hs-user-tooltip .hs-pc-rel-badge.supporter { background: #ff8700; color: #000; }
+    #hs-user-tooltip .hs-pc-rel-badge.supporter { background: #fff; color: #000; }
     #hs-user-tooltip .hs-pc-rel-badge.following { background: #0099ff; color: #fff; }
     #hs-user-tooltip .hs-pc-rel-badge.subbed { background: #9146ff; color: #fff; }
     #hs-user-tooltip .hs-pc-rel-badge.mutual-follow { background: #000; color: #fff; border: 1px solid #00aaaa; }
-    #hs-user-tooltip .hs-pc-rel-badge.mutual-sub { background: #000; color: #fff; border: 1px solid #ff8700; }
+    #hs-user-tooltip .hs-pc-rel-badge.mutual-sub { background: #000; color: #fff; border: 1px solid #fff; }
     /* Property sheet — mirrors .hs-pcard-sheet. Tooltip already inherits
        CozetteVector bitmap rendering from body.hs-font-bitmap, so no
        counter-counter block needed here (unlike the pcard sheet which
@@ -304,7 +304,7 @@
     #hs-user-tooltip .hs-pc-sheet .val-kick { color: #53fc18; }
     #hs-user-tooltip .hs-pc-sheet .val-yt { color: #ff0000; }
     #hs-user-tooltip .hs-pc-sheet .val-admin { color: #ff0000; }
-    #hs-user-tooltip .hs-pc-sheet .val-staff { color: #ff8700; }
+    #hs-user-tooltip .hs-pc-sheet .val-staff { color: #fff; }
     #hs-user-tooltip .hs-pc-sheet .val-heat { color: #ff0000; }
     #hs-user-tooltip .hs-pc-sheet .val-followers { color: #0087ff; }
     #hs-user-tooltip .hs-pc-sheet .val-you-follow { color: #00ffff; }
@@ -313,7 +313,7 @@
     #hs-user-tooltip .hs-pc-sheet .val-they-sub { color: #ff5fff; }
     #hs-user-tooltip .hs-pc-sheet .val-mutual { color: #00ff00; }
     #hs-user-tooltip .hs-pc-sheet .val-mutual-sub { color: #ffd700; }
-    #hs-user-tooltip .hs-pc-sheet .val-ch { color: #ff8700; }
+    #hs-user-tooltip .hs-pc-sheet .val-ch { color: #fff; }
     #hs-user-tooltip .hs-pc-sheet .hs-pc-live { color: #ff0000; font-weight: 700; }
     /* Heat number inside the sheet: digits inherit Cozette (already crisp
        on this tooltip surface), ° gets vector fallback for a clean glyph. */
@@ -378,7 +378,7 @@
     }
     .hs-mc-empty-title {
       font-size: 14px;
-      color: #ff8700;
+      color: #fff;
       margin-bottom: 6px;
       text-transform: lowercase;
     }
@@ -413,9 +413,9 @@
       border-color: #fff;
     }
     .hs-mc-empty-btn.primary {
-      background: #ff8700;
+      background: #fff;
       color: #000;
-      border-color: #ff8700;
+      border-color: #fff;
     }
     .hs-mc-empty-btn.primary:hover {
       background: #fff;

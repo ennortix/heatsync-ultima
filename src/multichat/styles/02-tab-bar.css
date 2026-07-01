@@ -94,7 +94,7 @@
        bitmap font still nudges Chrome's text path off the crisp bitmap
        route in practice. White-on-black background already conveys focus. */
     .hs-mc-tab-auto { color: #aaa; }
-.hs-mc-tab-auto::before { content: '·'; color: #ff8700; margin-right: 3px; }
+.hs-mc-tab-auto::before { content: '·'; color: #fff; margin-right: 3px; }
 .hs-mc-tab.active {
       background: #fff !important;
       color: #000 !important;
@@ -308,14 +308,14 @@
       text-decoration: underline;
     }
     .hs-whisper-retry:hover {
-      color: #ff8700;
+      color: #fff;
     }
     .hs-whisper-relogin {
       display: inline-block;
       padding: 1px 6px;
       margin-left: 4px;
-      background: #ff8700;
-      color: #fff !important;
+      background: #fff;
+      color: #000 !important;
       border-radius: 0;
       font-weight: 700;
       text-decoration: none;
@@ -341,7 +341,7 @@
       gap: 6px;
       padding: 4px 8px;
       background: #1a1a1a;
-      border-bottom: 1px solid #ff8700;
+      border-bottom: 1px solid #fff;
       font-size: 13px;
       color: #fff;
     }
@@ -355,8 +355,8 @@
       white-space: nowrap;
     }
     .hs-mc-multi-link {
-      background: #ff8700;
-      color: #fff;
+      background: #fff;
+      color: #000;
       border: 0;
       padding: 2px 8px;
       font-weight: 700;

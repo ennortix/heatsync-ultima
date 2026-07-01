@@ -16,7 +16,7 @@
       /* Accent CSS var — defaults to heatsync orange, overridden per-streamer
          when the GQL response carries a primaryColorHex. Drives the hero
          border, avatar ring, and accent-tinted divider glow below. */
-      --hs-pcard-accent: #ff8700;
+      --hs-pcard-accent: #fff;
     }
     /* Hero banner — compact strip, image lives behind the avatar/name. Shorter
        than the original 140px so identity + actions fit in the first viewport. */
@@ -69,7 +69,7 @@
     }
     .hs-pcard-close:hover { background: #fff; color: #000; border-color: #fff; }
     .hs-pcard-close:active { }
-    .hs-pcard-close:focus-visible { outline: 1px solid #ff8700; outline-offset: 1px; }
+    .hs-pcard-close:focus-visible { outline: 1px solid #fff; outline-offset: 1px; }
     /* Close button overlays the hero — no need to reserve right space on the id row.
        Kept rule absent so the row sits flush; the absolute-positioned close has its own footprint. */
     /* Sections are pure spacing — drop chrome borders + label-on-top */
@@ -131,7 +131,7 @@
       white-space: pre-wrap; word-break: break-word;
       border-left: 2px solid #1a1a1a; padding: 0 0 0 8px;
     }
-    .hs-pcard-bio-mention { color: #ff8700; cursor: pointer; }
+    .hs-pcard-bio-mention { color: #fff; cursor: pointer; }
     .hs-pcard-bio-mention:hover { text-decoration: underline; }
     .hs-pcard-bio-tag { color: #ff00ff; text-decoration: none; }
     .hs-pcard-bio-tag:hover { text-decoration: underline; }
@@ -167,7 +167,7 @@
     .hs-pcard-sheet .val-kick { color: #53fc18; }       /* kick brand */
     .hs-pcard-sheet .val-yt { color: #ff0000; }         /* xterm 196 — yt brand */
     .hs-pcard-sheet .val-admin { color: #ff0000; }      /* xterm 196 — power */
-    .hs-pcard-sheet .val-staff { color: #ff8700; }      /* xterm 208 — hs orange */
+    .hs-pcard-sheet .val-staff { color: #fff; }      /* xterm 208 — hs orange */
     .hs-pcard-sheet .val-heat { color: #ff0000; }       /* xterm 196 — fire */
     .hs-pcard-sheet .val-followers { color: #0087ff; }  /* xterm 33 — popularity */
     .hs-pcard-sheet .val-you-follow { color: #00ffff; } /* xterm 51 — outflow */
@@ -176,14 +176,14 @@
     .hs-pcard-sheet .val-they-sub { color: #ff5fff; }   /* xterm 207 — paid inflow */
     .hs-pcard-sheet .val-mutual { color: #00ff00; }     /* xterm 46 — handshake */
     .hs-pcard-sheet .val-mutual-sub { color: #ffd700; } /* xterm 220 — premium handshake */
-    .hs-pcard-sheet .val-ch { color: #ff8700; }         /* xterm 208 — channel context */
+    .hs-pcard-sheet .val-ch { color: #fff; }         /* xterm 208 — channel context */
     .hs-pcard-sheet .hs-pc-live { color: #ff0000; font-weight: 700; }
     /* Inside the sheet: digits inherit cozette from the sheet (bitmap-crisp),
        degree symbol falls back to ui-monospace (vector AA, has clean °). */
     .hs-pcard-sheet .hs-heat-num { font-family: inherit; }
     .hs-pcard-sheet .hs-heat-n { font-family: inherit; }
     .hs-pcard-sheet .hs-heat-deg { font-family: ui-monospace, SFMono-Regular, monospace; }
-    .hs-pcard-sheet .val-rel { color: #ff8700; }
+    .hs-pcard-sheet .val-rel { color: #fff; }
     /* Counter-counter: re-apply bitmap render block to the sheet so cozette
        renders crisp inside the .hs-pcard system-sans bubble. */
     body.hs-font-bitmap .hs-pcard .hs-pcard-sheet,
@@ -211,7 +211,7 @@
       font-feature-settings: normal !important;
       letter-spacing: normal !important;
     }
-    .hs-pcard-link { color: #ff8700; text-decoration: none; font-weight: 600; }
+    .hs-pcard-link { color: #fff; text-decoration: none; font-weight: 600; }
     .hs-pcard-link:hover { text-decoration: underline; }
     .hs-pcard-msg {
       display: flex; gap: 6px; padding: 2px 0;
@@ -248,8 +248,8 @@
        buttons sit on a single line per channel. Buttons share borders so the
        group reads as one unit, mirroring the inline hover toolbar style. */
     .hs-pcard-mod {
-      background: color-mix(in srgb, var(--hs-pcard-accent, #ff8700) 10%, #000);
-      border-left: 2px solid var(--hs-pcard-accent, #ff8700);
+      background: rgba(255,255,255,0.08);
+      border-left: 2px solid var(--hs-pcard-accent, #fff);
       padding: 5px 8px;
       margin: -2px 0;
     }
@@ -259,7 +259,7 @@
     }
     .hs-pcard-mod-row + .hs-pcard-mod-row { margin-top: 4px; }
     .hs-pcard-mod-ch {
-      color: var(--hs-pcard-accent, #ff8700);
+      color: var(--hs-pcard-accent, #fff);
       font-weight: 700; font-size: 13px;
       min-width: 0; flex-shrink: 0; margin-right: 2px;
     }

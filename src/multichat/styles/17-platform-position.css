@@ -1248,8 +1248,8 @@
     body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #below #description a,
     body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #below a,
     body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #below #description a {
-      color: #ff8700 !important;
-      -webkit-text-fill-color: #ff8700 !important;
+      color: #fff !important;
+      -webkit-text-fill-color: #fff !important;
     }
 
     /* ============================================

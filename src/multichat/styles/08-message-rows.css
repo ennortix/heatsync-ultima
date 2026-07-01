@@ -349,7 +349,7 @@
        yellow(11)=first-seen/announcement/bits/DM/kw-match/warn (attention),
        magenta(13)=raid/gift/mention/first-msg-ever (special event),
        cyan(14)=stream-hype/milestone (action-needed).
-       #ff8700 reserved for brand chrome only (buttons, frames, drag bars). */
+       #fff reserved for brand chrome only (buttons, frames, drag bars). */
     .hs-mc-msg.hs-mc-notice-ban       { border-left-color: #ff0000 !important; background: rgba(255, 0, 0, 0.12) !important; }
     .hs-mc-msg.hs-mc-notice-ban       .hs-mc-system-text { color: #ff4040; font-weight: 600; }
     .hs-mc-msg.hs-mc-notice-timeout   { border-left-color: #008000 !important; background: rgba(0, 128, 0, 0.10) !important; }
@@ -502,9 +502,9 @@
     }
     /* Filter-rule highlight — color driven by per-rule CSS custom property */
     .hs-mc-msg.hs-mc-rule-highlight {
-      border-left: 3px solid var(--hs-rule-hl, #ff8700);
+      border-left: 3px solid var(--hs-rule-hl, #fff);
       padding-left: 4px;
-      background: color-mix(in srgb, var(--hs-rule-hl, #ff8700) 12%, transparent);
+      background: color-mix(in srgb, var(--hs-rule-hl, #fff) 12%, transparent);
     }
     .hs-mc-msg.tweet {
       background: rgba(212, 73, 73, 0.3);

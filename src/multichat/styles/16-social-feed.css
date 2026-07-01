@@ -138,13 +138,13 @@
       outline-offset: -2px;
     }
     .hs-thread-op {
-      border-bottom: 1px solid #ff8700;
+      border-bottom: 1px solid #808080;
       padding-bottom: 4px;
       margin-bottom: 4px;
     }
     .hs-thread-container {
       margin-left: 12px;
-      border-left: 2px solid #ff8700;
+      border-left: 2px solid #fff;
       padding-left: 8px;
       margin-bottom: 4px;
     }
@@ -275,7 +275,7 @@
       display: flex;
       align-items: center;
       gap: 6px;
-      color: #ff8700;
+      color: #fff;
       text-decoration: none;
       font-size: 13px;
     }
@@ -446,8 +446,8 @@
 
     /* ---- TAB BADGE ---- */
     .hs-mc-tab .hs-badge {
-      background: #ff8700;
-      color: #fff;
+      background: #fff;
+      color: #000;
       border-radius: 0;
       font-size: 13px;
       min-width: 14px;
@@ -641,7 +641,7 @@
       outline: none;
     }
     #hs-mc-search-input:focus {
-      border-color: #ff8700;
+      border-color: #fff;
     }
     #hs-mc-search-input::placeholder {
       color: #aaa;
@@ -665,7 +665,7 @@
       display: none;
       width: 8px;
       height: 8px;
-      background: #ff8700;
+      background: #fff;
       flex-shrink: 0;
     }
     #hs-mc-search-spinner.visible {
@@ -696,7 +696,7 @@
     }
     .hs-mc-search-user {
       font-weight: bold;
-      color: #ff8700;
+      color: #fff;
     }
     .hs-mc-search-content {
       color: #ccc;
@@ -738,14 +738,14 @@
     .hs-discover-section + .hs-discover-section { margin-top: 0; }
     .hs-discover-heading {
       font-size: 13px;
-      color: #ff8700;
+      color: #fff;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.6px;
       margin: 0;
       padding: 4px 8px;
-      background: rgba(255,135,0,0.08);
-      border-bottom: 1px solid rgba(255,135,0,0.2);
+      background: rgba(255,255,255,0.08);
+      border-bottom: 1px solid rgba(255,255,255,0.2);
       line-height: 17px;
       display: flex;
       justify-content: space-between;
@@ -859,12 +859,12 @@
     .hs-discover-platforms .hs-plat-t { color: #9146ff; }
     .hs-discover-platforms .hs-plat-k { color: #53fc18; }
     .hs-discover-platforms .hs-plat-yt { color: #ff0000; }
-    .hs-discover-platforms .hs-plat-h { color: #ff8700; }
+    .hs-discover-platforms .hs-plat-h { color: #fff; }
     /* Post platform letters use same colors */
     .hs-discover-post-plat.hs-plat-t { color: #9146ff; }
     .hs-discover-post-plat.hs-plat-k { color: #53fc18; }
     .hs-discover-post-plat.hs-plat-yt { color: #ff0000; }
-    .hs-discover-post-plat.hs-plat-h { color: #ff8700; }
+    .hs-discover-post-plat.hs-plat-h { color: #fff; }
     .hs-discover-bar {
       flex: 1;
       min-width: 28px;
@@ -877,7 +877,7 @@
     .hs-discover-bar > i {
       display: block;
       height: 100%;
-      background: #ff8700;
+      background: #fff;
     }
     .hs-discover-row-live .hs-discover-bar > i {
       background: #ff3030;
@@ -930,8 +930,8 @@
       line-height: 18px;
     }
     .hs-discover-chip-btn.hs-active {
-      background: #ff8700;
-      border-color: #ff8700;
+      background: #fff;
+      border-color: #fff;
       color: #000;
     }
     .hs-discover-chip-btn.hs-chip-plat-t.hs-active {
@@ -969,11 +969,11 @@
       color: #ff5050;
     }
     .hs-discover-section-posts {
-      border-color: rgba(255,135,0,0.3);
+      border-color: rgba(255,255,255,0.3);
     }
     .hs-discover-section-posts > .hs-discover-heading {
-      background: rgba(255,135,0,0.10);
-      color: #ffaa44;
+      background: rgba(255,255,255,0.10);
+      color: #fff;
     }
     .hs-discover-section-trending {
       border-color: rgba(255,255,255,0.15);
@@ -1102,7 +1102,7 @@
       gap: 5px;
       margin: 0;
     }
-    .hs-pinned-channel { font-size: 13px; color: #ff8700; font-weight: 600; }
+    .hs-pinned-channel { font-size: 13px; color: #fff; font-weight: 600; }
     .hs-pinned-user { font-size: 13px; color: #bbb; }
     .hs-pinned-time { font-size: 13px; color: #aaa; margin-left: auto; }
     .hs-pinned-body {
@@ -1127,7 +1127,7 @@
     }
     .hs-modlog-row:hover { background: rgba(255,135,0,0.07); }
     .hs-modlog-time { color: #808080; font-variant-numeric: tabular-nums; }
-    .hs-modlog-channel { color: #ff8700; font-weight: 600; }
+    .hs-modlog-channel { color: #fff; font-weight: 600; }
     .hs-modlog-body { color: #ddd; word-break: break-word; }
     .hs-modlog-ban .hs-modlog-body { color: #ff5f5f; }
     .hs-modlog-timeout .hs-modlog-body { color: #ffd75f; }

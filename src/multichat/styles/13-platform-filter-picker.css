@@ -143,7 +143,7 @@
       color: #000 !important;
     }
     #hs-mc-emote-picker .hs-mc-picker-tab.active {
-      color: #ff8700 !important;
+      color: #fff !important;
       background: transparent !important;
     }
     #hs-mc-emote-picker .hs-mc-picker-tab.active:hover {
@@ -157,7 +157,7 @@
       left: 0;
       right: 0;
       height: 2px;
-      background: #ff8700;
+      background: #fff;
     }
     .hs-mc-tab-content {
       flex: 1 1 0 !important;
@@ -266,7 +266,7 @@
       transition: none;
     }
     #hs-mc-emote-search:focus {
-      border-color: #ff8700;
+      border-color: #fff;
     }
     .hs-mc-src-chips {
       display: flex;
@@ -304,8 +304,8 @@
        brand-colored provider chips. Same square metrics. */
     .hs-mc-exact-chip {
       background: transparent;
-      border: 1px solid rgba(255,135,0,0.5);
-      color: #ff8700;
+      border: 1px solid rgba(255,255,255,0.5);
+      color: #fff;
       font-size: 13px;
       font-weight: 700;
       padding: 3px 7px;
@@ -317,7 +317,7 @@
       letter-spacing: 1px;
       transition: none;
     }
-    .hs-mc-exact-chip.active { background: #ff8700; color: #000; border-color: #ff8700; }
+    .hs-mc-exact-chip.active { background: #fff; color: #000; border-color: #fff; }
     .hs-mc-exact-chip:hover { background: #fff !important; color: #000 !important; border-color: #fff !important; }
     /* Load-more tile — full-width square action at the tail of search results
        to fetch the next page from each provider. */
@@ -327,8 +327,8 @@
       margin: 4px 6px 8px;
       padding: 7px;
       background: #000;
-      color: #ff8700;
-      border: 1px solid #ff8700;
+      color: #fff;
+      border: 1px solid #fff;
       border-radius: 0;
       font-family: inherit;
       font-size: 13px;

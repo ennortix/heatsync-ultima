@@ -258,13 +258,13 @@ function handleIncomingDm(data) {
     platform: 'heatsync',
     userId: data.from_user_id,
     displayName: data.from_display_name,
-    color: data.from_color || '#ff8700',
+    color: data.from_color || '#fff',
   })
 
   whisperTimeline.push({
     user: data.from_display_name,
     text: data.content,
-    color: data.from_color || '#ff8700',
+    color: data.from_color || '#fff',
     time,
     self: false,
     platform: 'heatsync',
@@ -283,7 +283,7 @@ function handleIncomingDm(data) {
       type: 'inline-dm',
       user: data.from_display_name,
       text: data.content,
-      color: data.from_color || '#ff8700',
+      color: data.from_color || '#fff',
       time,
       platform: 'heatsync',
     })
@@ -475,7 +475,7 @@ function renderWhispersTab() {
             platform: 'heatsync',
             userId: dm.other_user_id,
             displayName: dm.other_display_name,
-            color: dm.other_color || '#ff8700',
+            color: dm.other_color || '#fff',
           })
           // Fetch recent messages for each conversation
           apiFetch(`/api/dm/${dm.other_user_id}`)
@@ -489,7 +489,7 @@ function renderWhispersTab() {
                 whisperTimeline.push({
                   user: isSelf ? 'you' : dm.other_display_name,
                   text: m.content,
-                  color: isSelf ? '#808080' : dm.other_color || '#ff8700',
+                  color: isSelf ? '#808080' : dm.other_color || '#fff',
                   time: t,
                   self: isSelf,
                   platform: 'heatsync',
@@ -550,7 +550,7 @@ function renderWhispersTab() {
 
     const ts = formatTimeFromTs(m.time)
     const tsHtml = ts ? `<span class="hs-mc-ts">${ts}</span>` : ''
-    const platColor = m.platform === 'twitch' ? '#9146ff' : '#ff8700'
+    const platColor = m.platform === 'twitch' ? '#9146ff' : '#808080'
     const platTag = m.platform === 'twitch' ? 'T' : 'HS'
     const arrow = m.self ? '\u2192' : '\u2190'
 

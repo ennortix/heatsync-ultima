@@ -1083,7 +1083,7 @@
   // tags the twitch placeholder so fetchAvatar can find and replace it.
   function avatarFallbackHtml(user, key, withDataUser) {
     const initial = (user || '?').charAt(0).toUpperCase()
-    const palette = ['#ff8700', '#5f87ff', '#00d65a', '#ffff00', '#ff4f4d', '#af87ff']
+    const palette = ['#808080', '#5f87ff', '#00d65a', '#ffff00', '#ff4f4d', '#af87ff']
     let h = 0
     for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0
     const du = withDataUser ? ` data-user="${escapeHtml(key)}"` : ''
@@ -4505,7 +4505,7 @@
   // Shared drag-ghost style — identical across the twitch/kick/yt resize
   // handles. One spec to keep in sync (orange tint, 3px left edge, z 99998).
   const buildGhostCss = (rect, w0) =>
-    `position:fixed;top:${rect.top}px;right:0;height:${rect.height}px;width:${w0}px;background:rgba(255,135,0,0.06);border-left:3px solid #ff8700;pointer-events:none;z-index:99998;will-change:width;`
+    `position:fixed;top:${rect.top}px;right:0;height:${rect.height}px;width:${w0}px;background:rgba(255,255,255,0.06);border-left:3px solid #fff;pointer-events:none;z-index:99998;will-change:width;`
   function setupResizeHandle() {
     const rightCol = document.querySelector('.right-column.right-column--beside')
     if (!rightCol || document.getElementById('hs-mc-resize-handle')) return
@@ -4753,7 +4753,7 @@
   // is called from applyChatPosition. Drags chatWidth (left/right) or
   // chatHeight (top/bottom). Hides itself when chatPosition='right' and
   // delegates to existing per-platform handles for the default layout.
-  // Orange #ff8700, 2px thin + invisible grab, no text — matches the
+  // White #fff, 2px thin + invisible grab, no text — matches the
   // --hs-resize-thickness token in styles.js (and heatsync.org's .hs-resizer).
   // ============================================
   const HS_RESIZE_PX = 4 // visible thickness — mirrors --hs-resize-thickness
@@ -4765,7 +4765,7 @@
     handle.id = 'hs-c-resize-handle'
     Object.assign(handle.style, {
       position: 'fixed',
-      background: '#ff8700',
+      background: '#fff',
       opacity: '0.55',
       userSelect: 'none',
       touchAction: 'none',
@@ -4883,21 +4883,21 @@
         // and inline-style writes on YT player wrappers thrash IMA SDK.
         ghost = document.createElement('div')
         ghost.id = 'hs-c-resize-ghost'
-        const baseStyle = 'position:fixed;background:rgba(255,135,0,0.06);pointer-events:none;z-index:99997;'
+        const baseStyle = 'position:fixed;background:rgba(255,255,255,0.06);pointer-events:none;z-index:99997;'
         if (chatPosition === 'right') {
           ghost.style.cssText =
             baseStyle +
-            `top:${panelTop}px;right:0;height:${panelBottom - panelTop}px;width:${pendingW}px;border-left:3px solid #ff8700;will-change:width;`
+            `top:${panelTop}px;right:0;height:${panelBottom - panelTop}px;width:${pendingW}px;border-left:3px solid #fff;will-change:width;`
         } else if (chatPosition === 'left') {
           ghost.style.cssText =
             baseStyle +
-            `top:${panelTop}px;left:0;height:${panelBottom - panelTop}px;width:${pendingW}px;border-right:3px solid #ff8700;will-change:width;`
+            `top:${panelTop}px;left:0;height:${panelBottom - panelTop}px;width:${pendingW}px;border-right:3px solid #fff;will-change:width;`
         } else if (chatPosition === 'top') {
           ghost.style.cssText =
-            baseStyle + `top:0;left:0;right:0;height:${pendingH}px;border-bottom:3px solid #ff8700;will-change:height;`
+            baseStyle + `top:0;left:0;right:0;height:${pendingH}px;border-bottom:3px solid #fff;will-change:height;`
         } else if (chatPosition === 'bottom') {
           ghost.style.cssText =
-            baseStyle + `bottom:0;left:0;right:0;height:${pendingH}px;border-top:3px solid #ff8700;will-change:height;`
+            baseStyle + `bottom:0;left:0;right:0;height:${pendingH}px;border-top:3px solid #fff;will-change:height;`
         }
         document.body.appendChild(ghost)
         e.preventDefault()
@@ -6194,7 +6194,7 @@
       momentChannel: d.channel,
       momentPlatform: d.platform || 'twitch',
       text: `${d.channel} chat is exploding — ${d.rate} msgs/30s (usually ~${Math.max(1, Math.round(d.baseline))})`,
-      color: '#ff8700',
+      color: '#fff',
       time: now,
     })
   }
@@ -6648,7 +6648,7 @@
         var active = def.invertDisplay ? !member : member
         var mMod = _rowModified(def, o)
         var mTag = o.tag
-          ? '<span style="font-family:monospace;color:#ff8700;margin-right:6px;min-width:34px;display:inline-block">' +
+          ? '<span style="font-family:monospace;color:#fff;margin-right:6px;min-width:34px;display:inline-block">' +
             escapeHtml(o.tag) +
             '</span>'
           : ''
@@ -7614,7 +7614,7 @@
         '<span style="font-size:13px;flex-shrink:0"><span style="color:#808080">' +
         escapeHtml(_fmtPresetVal(c.def, c.from)) +
         '</span>' +
-        ' → <span style="color:#ff8700">' +
+        ' → <span style="color:#fff">' +
         escapeHtml(_fmtPresetVal(c.def, c.to)) +
         '</span></span>' +
         '</div>'
@@ -7627,7 +7627,7 @@
       rows +
       '<div class="hs-mc-setting-row" style="justify-content:flex-end;gap:4px">' +
       (changes.length
-        ? '<button class="hs-mc-settings-btn" data-preset-action="apply" style="background:#ff8700;color:#000;border:none;padding:2px 12px;font-size:13px;cursor:pointer;font-family:inherit">apply</button>'
+        ? '<button class="hs-mc-settings-btn" data-preset-action="apply" style="background:#fff;color:#000;border:none;padding:2px 12px;font-size:13px;cursor:pointer;font-family:inherit">apply</button>'
         : '') +
       '<button class="hs-mc-settings-btn" data-preset-action="cancel" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">cancel</button>' +
       '</div>' +
@@ -8631,7 +8631,7 @@
       user,
       text: customText || '',
       systemMsg: `${user} is celebrating ${months} months as a subscriber!`,
-      color: '#ff8700',
+      color: '#fff',
       badges: ownBadgesFor(claim.channel) || '',
       channel: claim.channel,
       time: Date.now(),
@@ -8882,7 +8882,7 @@
       user,
       text: customText || '',
       systemMsg: `${user} watched ${streakCount} streams in a row — watch streak`,
-      color: '#ff8700',
+      color: '#fff',
       badges: ownBadgesFor(claim.channel) || '',
       channel: claim.channel,
       time: Date.now(),
@@ -9964,7 +9964,7 @@
 
   // Static platform→accent map — hoisted out of buildMessageDiv so it isn't
   // reallocated for every chat row rendered.
-  const PLAT_COLORS = { twitch: '#9146ff', kick: '#53fc18', yt: '#ff0000', heatsync: '#ff8700' }
+  const PLAT_COLORS = { twitch: '#9146ff', kick: '#53fc18', yt: '#ff0000', heatsync: '#fff' }
   function buildMessageDiv(m, tabId) {
     // Blocked user — fully hide (skip render entirely). Both the append and the
     // full-rebuild path go through buildMessageDiv, so returning null here hides
@@ -10058,7 +10058,7 @@
       const isThreadOp = !!m.is_thread_op
       const notifType = isThreadOp ? 'mop' : isOp ? 'op' : 're'
       const typeDef = INLINE_NOTIF_TYPES[notifType]
-      const borderColor = m.inlineNotifBorderColor || typeDef?.borderColor || '#ff8700'
+      const borderColor = m.inlineNotifBorderColor || typeDef?.borderColor || '#fff'
       div.style.borderLeftColor = borderColor
       const tsVal = timestampsEnabled ? formatTimeFromTs(m.time) : ''
       const tsSpan = tsVal ? `<span class="hs-mc-ts">${tsVal}</span>` : ''
@@ -10100,7 +10100,7 @@
       const platBadge =
         m.platform === 'twitch'
           ? '<span style="color:#9146ff;font-size:13px;font-weight:700;margin-right:3px">[T]</span>'
-          : '<span style="color:#ff8700;font-size:13px;font-weight:700;margin-right:3px">[HS]</span>'
+          : '<span style="color:#fff;font-size:13px;font-weight:700;margin-right:3px">[HS]</span>'
       const dmPaint = m.platform === 'twitch' ? userPaintStyle(m.userId, (m.user || '').toLowerCase()) : ''
       const userName = `<span style="${dmPaint || `color:${sanitizeColor(m.color)};font-weight:600`}">${escapeHtml(m.user)}</span>`
       // All values sanitized — safe innerHTML
@@ -10118,10 +10118,10 @@
     if (m.type === 'moment') {
       const div = document.createElement('div')
       div.className = 'hs-mc-feed-inline hs-mc-moment-inline'
-      div.style.borderLeftColor = m.inlineNotifBorderColor || '#ff8700'
+      div.style.borderLeftColor = m.inlineNotifBorderColor || '#fff'
       const tsVal = timestampsEnabled ? formatTimeFromTs(m.time) : ''
       const tsSpan = tsVal ? `<span class="hs-mc-ts">${tsVal}</span>` : ''
-      const label = `<span style="color:${m.inlineNotifColor || '#ff8700'};font-size:13px;font-weight:700;margin-right:3px">[🔥]</span>`
+      const label = `<span style="color:${m.inlineNotifColor || '#fff'};font-size:13px;font-weight:700;margin-right:3px">[🔥]</span>`
       div.innerHTML = `${tsSpan}${label}<span style="color:#c0c0c0">${escapeHtml(m.text || '')}</span>`
       div.style.cursor = 'pointer'
       const ch = m.momentChannel
@@ -13154,7 +13154,7 @@
       item.appendChild(dot)
       item.appendChild(document.createTextNode(ch.name))
 
-      const baseColor = isActive ? '#ff8700' : '#fff'
+      const baseColor = isActive ? '#fff' : '#fff'
       item.style.cssText = `padding:6px 12px;cursor:pointer;color:${baseColor};white-space:nowrap;`
       item.addEventListener('mouseenter', () => {
         item.style.background = '#fff'
@@ -14247,7 +14247,7 @@
   }
 
   // Edge-pill: orange strip pinned to the edge where chat last lived. Click to
-  // restore (not a resize bar) — kept visible/thick on purpose, #ff8700, no text.
+  // restore (not a resize bar) — kept visible/thick on purpose, #fff, no text.
   function ensureChatRestorePill(show) {
     let pill = document.getElementById('hs-chat-restore-pill')
     if (!show) {
@@ -14377,7 +14377,7 @@
     banner.id = id
     banner.className = 'hs-mc-api-banner'
     banner.style.cssText =
-      'background:#ff8700;color:#000;font:600 11px/1.4 monospace;padding:6px 10px;text-align:center;display:flex;align-items:center;justify-content:center;gap:8px;'
+      'background:#fff;color:#000;font:600 11px/1.4 monospace;padding:6px 10px;text-align:center;display:flex;align-items:center;justify-content:center;gap:8px;'
     const label = source === 'heatsync' ? 'heatsync.org unreachable — reconnecting' : `${source} unreachable`
     const text = document.createElement('span')
     text.textContent = label
@@ -14411,7 +14411,7 @@
     banner.id = id
     banner.className = 'hs-mc-auth-banner'
     banner.style.cssText =
-      'background:#ff8700;color:#000;font:600 11px/1.4 monospace;padding:6px 10px;text-align:center;display:flex;align-items:center;justify-content:center;gap:8px;'
+      'background:#fff;color:#000;font:600 11px/1.4 monospace;padding:6px 10px;text-align:center;display:flex;align-items:center;justify-content:center;gap:8px;'
     const text = document.createElement('span')
     text.textContent = 'youtube chat needs heatsync login —'
     const link = document.createElement('a')

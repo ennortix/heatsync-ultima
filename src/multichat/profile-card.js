@@ -557,7 +557,7 @@ function pcBuildModActions(username) {
   reasonInput.style.cssText =
     'width:100%;box-sizing:border-box;background:#000;color:#fff;border:1px solid #333;border-radius:0;padding:2px 5px;margin-bottom:3px;font:inherit;outline:none'
   reasonInput.addEventListener('focus', () => {
-    reasonInput.style.borderColor = '#ff8700'
+    reasonInput.style.borderColor = '#fff'
   })
   reasonInput.addEventListener('blur', () => {
     reasonInput.style.borderColor = '#333'
@@ -650,7 +650,7 @@ function pcBuildNoteSection(username) {
     if (titleEl) {
       const dot = document.createElement('span')
       dot.textContent = ' ●'
-      dot.style.cssText = 'color:#ff8700'
+      dot.style.cssText = 'color:#fff'
       titleEl.appendChild(dot)
     }
   }
@@ -663,7 +663,7 @@ function pcBuildNoteSection(username) {
   ta.style.cssText =
     'width:100%;box-sizing:border-box;background:#000;color:#fff;border:1px solid #333;border-radius:0;padding:3px 5px;font:inherit;outline:none;resize:vertical;min-height:2.4em'
   ta.addEventListener('focus', () => {
-    ta.style.borderColor = '#ff8700'
+    ta.style.borderColor = '#fff'
   })
   ta.addEventListener('blur', () => {
     ta.style.borderColor = '#333'

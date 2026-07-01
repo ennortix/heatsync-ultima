@@ -2079,7 +2079,6 @@
           log(' rightClickBlockMode →', value)
         })
       })
-
     }
 
     // Handle button click - toggle panel

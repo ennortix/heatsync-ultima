@@ -1989,7 +1989,9 @@ async function _toggleMcMute(username, platform) {
     for (const k of aliasKeys) mutedUsers.delete(k)
     // Also clear any legacy bare entry (pre-namespace storage) so unmute always lands
     // even if the Set was populated before namespacing was introduced.
-    const bareLower = String(username == null ? '' : username).toLowerCase().replace(/^@/, '')
+    const bareLower = String(username == null ? '' : username)
+      .toLowerCase()
+      .replace(/^@/, '')
     if (bareLower) mutedUsers.delete(bareLower)
     showToast(`unmuted ${username}`, 'success')
     for (const k of aliasKeys) safeSendMessage({ type: 'unmute_user', username: k })
@@ -2019,7 +2021,9 @@ async function _toggleMcBlock(username, platform) {
   if (wasBlocked) {
     for (const k of aliasKeys) blockedUsers.delete(k)
     // Also clear any legacy bare entry (pre-namespace storage) so unblock always lands.
-    const bareLower = String(username == null ? '' : username).toLowerCase().replace(/^@/, '')
+    const bareLower = String(username == null ? '' : username)
+      .toLowerCase()
+      .replace(/^@/, '')
     if (bareLower) blockedUsers.delete(bareLower)
     showToast(`unblocked ${username}`, 'success')
     for (const k of aliasKeys) safeSendMessage({ type: 'unblock_user', username: k })

@@ -264,9 +264,7 @@
     const invEl = document.getElementById('inv-line')
     if (!invEl) return
     try {
-      const data = await new Promise((r) =>
-        chrome.storage.local.get(['auth_token_encrypted', 'emote_inventory'], r),
-      )
+      const data = await new Promise((r) => chrome.storage.local.get(['auth_token_encrypted', 'emote_inventory'], r))
       const signedIn = !!data.auth_token_encrypted
       const arr = Array.isArray(data.emote_inventory) ? data.emote_inventory : []
       const personalCount = arr.filter((e) => !e.subscription).length

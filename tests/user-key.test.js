@@ -91,7 +91,7 @@ test('unblock scenario: deleting namespaced key removes block', () => {
 test('legacy unblock: deleting both namespaced + bare clears pre-namespace entry', () => {
   const blockedUsers = new Set(['alice']) // legacy bare
   const key = userKey('alice', 'twitch')
-  blockedUsers.delete(key)       // namespaced delete → no-op on legacy
-  blockedUsers.delete('alice')   // bare delete → clears it
+  blockedUsers.delete(key) // namespaced delete → no-op on legacy
+  blockedUsers.delete('alice') // bare delete → clears it
   expect(userSetMatches(blockedUsers, 'alice', 'twitch', [])).toBe(false)
 })

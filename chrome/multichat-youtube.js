@@ -19235,7 +19235,8 @@ class IRC {
           if (Math.abs((existing.time || 0) - (msg.time || 0)) <= win) return
         }
         // First/winning delete for this msg-id — record it.
-        if (this._deleteNoticeIndex.size >= 500) this._deleteNoticeIndex.delete(this._deleteNoticeIndex.keys().next().value)
+        if (this._deleteNoticeIndex.size >= 500)
+          this._deleteNoticeIndex.delete(this._deleteNoticeIndex.keys().next().value)
         this._deleteNoticeIndex.set(idxKey, msg)
       }
       buf.push(msg)
@@ -36350,7 +36351,9 @@ async function _toggleMcMute(username, platform) {
     for (const k of aliasKeys) mutedUsers.delete(k)
     // Also clear any legacy bare entry (pre-namespace storage) so unmute always lands
     // even if the Set was populated before namespacing was introduced.
-    const bareLower = String(username == null ? '' : username).toLowerCase().replace(/^@/, '')
+    const bareLower = String(username == null ? '' : username)
+      .toLowerCase()
+      .replace(/^@/, '')
     if (bareLower) mutedUsers.delete(bareLower)
     showToast(`unmuted ${username}`, 'success')
     for (const k of aliasKeys) safeSendMessage({ type: 'unmute_user', username: k })
@@ -36380,7 +36383,9 @@ async function _toggleMcBlock(username, platform) {
   if (wasBlocked) {
     for (const k of aliasKeys) blockedUsers.delete(k)
     // Also clear any legacy bare entry (pre-namespace storage) so unblock always lands.
-    const bareLower = String(username == null ? '' : username).toLowerCase().replace(/^@/, '')
+    const bareLower = String(username == null ? '' : username)
+      .toLowerCase()
+      .replace(/^@/, '')
     if (bareLower) blockedUsers.delete(bareLower)
     showToast(`unblocked ${username}`, 'success')
     for (const k of aliasKeys) safeSendMessage({ type: 'unblock_user', username: k })
@@ -41656,7 +41661,11 @@ function renderProfileCardView() {
       const ytHref = ytU
         ? 'https://youtube.com/@' + encodeURIComponent(ytU)
         : 'https://youtube.com/channel/' + encodeURIComponent(data.youtube_channel_id)
-      addRow('yt', mkLink(ytHref, ytName, (ls.youtube ?? data.youtube_is_live) ? data.youtube_viewer_count || 0 : undefined), 'val-yt')
+      addRow(
+        'yt',
+        mkLink(ytHref, ytName, (ls.youtube ?? data.youtube_is_live) ? data.youtube_viewer_count || 0 : undefined),
+        'val-yt',
+      )
     } else if (activeProfileCard.platform === 'yt' || activeProfileCard.platform === 'youtube') {
       addRow('yt', mkLink('https://youtube.com/@' + encodeURIComponent(username), username), 'val-yt')
     }
@@ -41715,7 +41724,10 @@ function renderProfileCardView() {
   if (sessionSec) card.appendChild(sessionSec)
 
   // === Stream section (only when live) ===
-  if (data && ((ls.twitch ?? data.twitch_is_live) || (ls.kick ?? data.kick_is_live) || (ls.youtube ?? data.youtube_is_live))) {
+  if (
+    data &&
+    ((ls.twitch ?? data.twitch_is_live) || (ls.kick ?? data.kick_is_live) || (ls.youtube ?? data.youtube_is_live))
+  ) {
     let plat, platName, vc, url
     if (ls.twitch ?? data.twitch_is_live) {
       plat = 'twitch'
@@ -41731,11 +41743,12 @@ function renderProfileCardView() {
       plat = 'youtube'
       platName = di.youtube || data.youtube_username || data.youtube_channel_id
       vc = data.youtube_viewer_count || 0
-      url = (di.youtube || data.youtube_username)
-        ? `https://youtube.com/@${di.youtube || data.youtube_username}/live`
-        : data.youtube_channel_id
-          ? `https://youtube.com/channel/${data.youtube_channel_id}/live`
-          : 'https://youtube.com'
+      url =
+        di.youtube || data.youtube_username
+          ? `https://youtube.com/@${di.youtube || data.youtube_username}/live`
+          : data.youtube_channel_id
+            ? `https://youtube.com/channel/${data.youtube_channel_id}/live`
+            : 'https://youtube.com'
     }
 
     const ssec = pcMakeSection(plat + ' · live')
@@ -50452,7 +50465,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     var chOptions =
       '<option value="all">all channels</option>' +
       channels
-        .map(function (ch) {
+        .map((ch) => {
           var label = ch.twitch || ch.kick || ch.id || ''
           return '<option value="' + escapeHtml(ch.id) + '">' + escapeHtml(label) + '</option>'
         })
@@ -50534,9 +50547,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     var rules = _getRawFilterRules()
 
     if (action === 'toggle' && id) {
-      var toggleRule = rules.find(function (r) {
-        return String(r.id) === id
-      })
+      var toggleRule = rules.find((r) => String(r.id) === id)
       if (toggleRule) {
         toggleRule.enabled = !toggleRule.enabled
         _saveFilterRules(rules)
@@ -50545,9 +50556,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     }
 
     if (action === 'delete' && id) {
-      var delIdx = rules.findIndex(function (r) {
-        return String(r.id) === id
-      })
+      var delIdx = rules.findIndex((r) => String(r.id) === id)
       if (delIdx !== -1) {
         rules.splice(delIdx, 1)
         _saveFilterRules(rules)
@@ -50559,9 +50568,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       // Reorder = priority. evaluateFilterRules is first-match-wins (hide
       // short-circuits; first highlight's color+sound win), so moving a rule up
       // makes it take precedence.
-      var mvIdx = rules.findIndex(function (r) {
-        return String(r.id) === id
-      })
+      var mvIdx = rules.findIndex((r) => String(r.id) === id)
       if (mvIdx === -1) return
       var swapIdx = action === 'up' ? mvIdx - 1 : mvIdx + 1
       if (swapIdx < 0 || swapIdx >= rules.length) return
@@ -58038,8 +58045,14 @@ const STORAGE_KEY = 'heatsync_multichat'
         const u = msg.username?.toLowerCase()
         const bare = u && u.includes(':') ? u.split(':')[1] : null
         let changed = false
-        if (u && mutedUsers.has(u)) { mutedUsers.delete(u); changed = true }
-        if (bare && mutedUsers.has(bare)) { mutedUsers.delete(bare); changed = true }
+        if (u && mutedUsers.has(u)) {
+          mutedUsers.delete(u)
+          changed = true
+        }
+        if (bare && mutedUsers.has(bare)) {
+          mutedUsers.delete(bare)
+          changed = true
+        }
         if (changed) {
           restoreMcUnmutedDom(bare || u)
           renderMessages(currentTab)

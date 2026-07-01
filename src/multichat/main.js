@@ -7122,7 +7122,7 @@
     var chOptions =
       '<option value="all">all channels</option>' +
       channels
-        .map(function (ch) {
+        .map((ch) => {
           var label = ch.twitch || ch.kick || ch.id || ''
           return '<option value="' + escapeHtml(ch.id) + '">' + escapeHtml(label) + '</option>'
         })
@@ -7204,9 +7204,7 @@
     var rules = _getRawFilterRules()
 
     if (action === 'toggle' && id) {
-      var toggleRule = rules.find(function (r) {
-        return String(r.id) === id
-      })
+      var toggleRule = rules.find((r) => String(r.id) === id)
       if (toggleRule) {
         toggleRule.enabled = !toggleRule.enabled
         _saveFilterRules(rules)
@@ -7215,9 +7213,7 @@
     }
 
     if (action === 'delete' && id) {
-      var delIdx = rules.findIndex(function (r) {
-        return String(r.id) === id
-      })
+      var delIdx = rules.findIndex((r) => String(r.id) === id)
       if (delIdx !== -1) {
         rules.splice(delIdx, 1)
         _saveFilterRules(rules)
@@ -7229,9 +7225,7 @@
       // Reorder = priority. evaluateFilterRules is first-match-wins (hide
       // short-circuits; first highlight's color+sound win), so moving a rule up
       // makes it take precedence.
-      var mvIdx = rules.findIndex(function (r) {
-        return String(r.id) === id
-      })
+      var mvIdx = rules.findIndex((r) => String(r.id) === id)
       if (mvIdx === -1) return
       var swapIdx = action === 'up' ? mvIdx - 1 : mvIdx + 1
       if (swapIdx < 0 || swapIdx >= rules.length) return
@@ -14708,8 +14702,14 @@
         const u = msg.username?.toLowerCase()
         const bare = u && u.includes(':') ? u.split(':')[1] : null
         let changed = false
-        if (u && mutedUsers.has(u)) { mutedUsers.delete(u); changed = true }
-        if (bare && mutedUsers.has(bare)) { mutedUsers.delete(bare); changed = true }
+        if (u && mutedUsers.has(u)) {
+          mutedUsers.delete(u)
+          changed = true
+        }
+        if (bare && mutedUsers.has(bare)) {
+          mutedUsers.delete(bare)
+          changed = true
+        }
         if (changed) {
           restoreMcUnmutedDom(bare || u)
           renderMessages(currentTab)

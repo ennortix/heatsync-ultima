@@ -1049,7 +1049,11 @@ function renderProfileCardView() {
       const ytHref = ytU
         ? 'https://youtube.com/@' + encodeURIComponent(ytU)
         : 'https://youtube.com/channel/' + encodeURIComponent(data.youtube_channel_id)
-      addRow('yt', mkLink(ytHref, ytName, (ls.youtube ?? data.youtube_is_live) ? data.youtube_viewer_count || 0 : undefined), 'val-yt')
+      addRow(
+        'yt',
+        mkLink(ytHref, ytName, (ls.youtube ?? data.youtube_is_live) ? data.youtube_viewer_count || 0 : undefined),
+        'val-yt',
+      )
     } else if (activeProfileCard.platform === 'yt' || activeProfileCard.platform === 'youtube') {
       addRow('yt', mkLink('https://youtube.com/@' + encodeURIComponent(username), username), 'val-yt')
     }
@@ -1108,7 +1112,10 @@ function renderProfileCardView() {
   if (sessionSec) card.appendChild(sessionSec)
 
   // === Stream section (only when live) ===
-  if (data && ((ls.twitch ?? data.twitch_is_live) || (ls.kick ?? data.kick_is_live) || (ls.youtube ?? data.youtube_is_live))) {
+  if (
+    data &&
+    ((ls.twitch ?? data.twitch_is_live) || (ls.kick ?? data.kick_is_live) || (ls.youtube ?? data.youtube_is_live))
+  ) {
     let plat, platName, vc, url
     if (ls.twitch ?? data.twitch_is_live) {
       plat = 'twitch'
@@ -1124,11 +1131,12 @@ function renderProfileCardView() {
       plat = 'youtube'
       platName = di.youtube || data.youtube_username || data.youtube_channel_id
       vc = data.youtube_viewer_count || 0
-      url = (di.youtube || data.youtube_username)
-        ? `https://youtube.com/@${di.youtube || data.youtube_username}/live`
-        : data.youtube_channel_id
-          ? `https://youtube.com/channel/${data.youtube_channel_id}/live`
-          : 'https://youtube.com'
+      url =
+        di.youtube || data.youtube_username
+          ? `https://youtube.com/@${di.youtube || data.youtube_username}/live`
+          : data.youtube_channel_id
+            ? `https://youtube.com/channel/${data.youtube_channel_id}/live`
+            : 'https://youtube.com'
     }
 
     const ssec = pcMakeSection(plat + ' · live')

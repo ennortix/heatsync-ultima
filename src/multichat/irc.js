@@ -491,7 +491,8 @@ class IRC {
           if (Math.abs((existing.time || 0) - (msg.time || 0)) <= win) return
         }
         // First/winning delete for this msg-id — record it.
-        if (this._deleteNoticeIndex.size >= 500) this._deleteNoticeIndex.delete(this._deleteNoticeIndex.keys().next().value)
+        if (this._deleteNoticeIndex.size >= 500)
+          this._deleteNoticeIndex.delete(this._deleteNoticeIndex.keys().next().value)
         this._deleteNoticeIndex.set(idxKey, msg)
       }
       buf.push(msg)

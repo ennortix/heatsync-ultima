@@ -8822,7 +8822,9 @@
           break
         case 'block':
           // Namespace the key so twitch:alice and kick:alice are independent.
-          safeSendMessage({ type: 'block_user', username: userKey(username, isKick ? 'kick' : 'twitch') }).catch(() => {})
+          safeSendMessage({ type: 'block_user', username: userKey(username, isKick ? 'kick' : 'twitch') }).catch(
+            () => {},
+          )
           closeCard()
           break
         case 'copy':

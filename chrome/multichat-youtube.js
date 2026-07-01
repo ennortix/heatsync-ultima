@@ -7094,6 +7094,53 @@ const cleanup = {
 }
 
 
+// --- multichat/user-key.js ---
+// User block/mute keys — namespaced by platform.
+//
+// Historically block/mute Sets stored bare lowercase usernames, so blocking
+// twitch "alice" also hid an unrelated kick "alice" (a different person). Keys
+// are now `platform:username` so same-handle users on different platforms don't
+// collide.
+//
+// Backward compatibility: a stored key WITHOUT a platform prefix is treated as a
+// legacy GLOBAL entry and still matches on every platform. Existing stored
+// block/mute lists (bare usernames from before namespacing) therefore keep
+// working with no migration; only new writes are platform-scoped. Linked
+// cross-platform identities (e.g. a kick chatter's 7TV-linked twitch handle) are
+// passed in as pre-namespaced `aliasKeys` by the caller, so a block on one
+// linked identity still hides the other.
+//
+// Pure + dependency-free so it can be unit-tested in isolation.
+
+function userKey(username, platform) {
+  const u = String(username == null ? '' : username)
+    .toLowerCase()
+    .replace(/^@/, '')
+  if (!u) return ''
+  return platform ? `${platform}:${u}` : u
+}
+
+// True if `set` contains this user for this platform. Order:
+//   1. legacy bare key (global, pre-namespace entries)
+//   2. the platform-scoped key
+//   3. any caller-supplied alias keys (already namespaced — linked identities)
+function userSetMatches(set, username, platform, aliasKeys) {
+  if (!set || set.size === 0) return false
+  const u = String(username == null ? '' : username)
+    .toLowerCase()
+    .replace(/^@/, '')
+  if (!u) return false
+  if (set.has(u)) return true
+  if (set.has(userKey(u, platform))) return true
+  if (aliasKeys) {
+    for (const k of aliasKeys) {
+      if (k && set.has(k)) return true
+    }
+  }
+  return false
+}
+
+
 // --- multichat/notifs.js ---
 // Notifs — central notification system for multichat.
 //
@@ -42762,23 +42809,45 @@ const STORAGE_KEY = 'heatsync_multichat'
     return out
   }
 
-  function isUserMuted(username, platform) {
-    // Called per-message in the append/build hot path. The common case is an
-    // empty mute set — short-circuit before getUserAliases allocates an array
-    // and lowercases for a guaranteed-false result.
-    if (!username || mutedUsers.size === 0) return false
-    for (const a of getUserAliases(username, platform)) {
-      if (mutedUsers.has(a)) return true
+  // Namespaced-key variant of getUserAliases: `platform:username` for the base
+  // identity plus any linked cross-platform identity (always twitch). Feeds the
+  // platform-scoped block/mute Sets so unrelated same-handle users on different
+  // platforms don't collide. See user-key.js.
+  function getUserAliasKeys(username, platform) {
+    const u = String(username || '')
+      .toLowerCase()
+      .replace(/^@/, '')
+    if (!u) return []
+    const keys = [userKey(u, platform)]
+    if (typeof kickNameToTwitchUsername !== 'undefined') {
+      const tw = kickNameToTwitchUsername.get(u)
+      if (tw) {
+        const k = userKey(tw, 'twitch')
+        if (!keys.includes(k)) keys.push(k)
+      }
     }
-    return false
+    if (typeof ytNameToTwitchUsername !== 'undefined') {
+      const tw = ytNameToTwitchUsername.get(u)
+      if (tw) {
+        const k = userKey(tw, 'twitch')
+        if (!keys.includes(k)) keys.push(k)
+      }
+    }
+    return keys
+  }
+
+  function isUserMuted(username, platform) {
+    // Per-message hot path — short-circuit the empty set before allocating.
+    // userSetMatches checks the legacy bare key first, so pre-namespace stored
+    // mutes still match on every platform (no migration); the platform-scoped and
+    // linked-identity keys match new namespaced writes. See user-key.js.
+    if (!username || mutedUsers.size === 0) return false
+    return userSetMatches(mutedUsers, username, platform, getUserAliasKeys(username, platform))
   }
 
   function isUserBlocked(username, platform) {
     if (!username || blockedUsers.size === 0) return false
-    for (const a of getUserAliases(username, platform)) {
-      if (blockedUsers.has(a)) return true
-    }
-    return false
+    return userSetMatches(blockedUsers, username, platform, getUserAliasKeys(username, platform))
   }
 
   // Active settings sub-tab — persisted across re-renders

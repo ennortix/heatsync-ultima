@@ -695,6 +695,11 @@ function renderProfileCardView() {
   msgsEl.textContent = ''
 
   const { username, data } = activeProfileCard
+  // Prefer display_identity (public streamer_identities + opted-in self-links,
+  // server-gated) over raw fields. Both sources are redacted server-side for
+  // non-opted-in users → null||null = no pill = no leak.
+  const di = data?.display_identity || {}
+  const ls = data?.live_status || {}
   const card = document.createElement('div')
   card.className = 'hs-pcard'
 
@@ -1006,34 +1011,37 @@ function renderProfileCardView() {
       if (typeof liveVc === 'number') a.appendChild(liveDot(liveVc))
       return a
     }
-    if (data.twitch_username) {
+    const twU = di.twitch || data.twitch_username
+    const kiU = di.kick || data.kick_username
+    const ytU = di.youtube || data.youtube_username
+    if (twU) {
       addRow(
         'ttv',
         mkLink(
-          'https://twitch.tv/' + encodeURIComponent(data.twitch_username),
-          data.twitch_username,
-          data.twitch_is_live ? data.twitch_viewer_count || 0 : undefined,
+          'https://twitch.tv/' + encodeURIComponent(twU),
+          twU,
+          (ls.twitch ?? data.twitch_is_live) ? data.twitch_viewer_count || 0 : undefined,
         ),
         'val-ttv',
       )
     }
-    if (data.kick_username) {
+    if (kiU) {
       addRow(
         'kick',
         mkLink(
-          'https://kick.com/' + encodeURIComponent(data.kick_username),
-          data.kick_username,
-          data.kick_is_live ? data.kick_viewer_count || 0 : undefined,
+          'https://kick.com/' + encodeURIComponent(kiU),
+          kiU,
+          (ls.kick ?? data.kick_is_live) ? data.kick_viewer_count || 0 : undefined,
         ),
         'val-kick',
       )
     }
-    if (data.youtube_username || data.youtube_channel_id) {
-      const ytName = data.youtube_username || username
-      const ytHref = data.youtube_username
-        ? 'https://youtube.com/@' + encodeURIComponent(data.youtube_username)
+    if (ytU || data.youtube_channel_id) {
+      const ytName = ytU || username
+      const ytHref = ytU
+        ? 'https://youtube.com/@' + encodeURIComponent(ytU)
         : 'https://youtube.com/channel/' + encodeURIComponent(data.youtube_channel_id)
-      addRow('yt', mkLink(ytHref, ytName, data.youtube_is_live ? data.youtube_viewer_count || 0 : undefined), 'val-yt')
+      addRow('yt', mkLink(ytHref, ytName, (ls.youtube ?? data.youtube_is_live) ? data.youtube_viewer_count || 0 : undefined), 'val-yt')
     } else if (activeProfileCard.platform === 'yt' || activeProfileCard.platform === 'youtube') {
       addRow('yt', mkLink('https://youtube.com/@' + encodeURIComponent(username), username), 'val-yt')
     }
@@ -1092,24 +1100,24 @@ function renderProfileCardView() {
   if (sessionSec) card.appendChild(sessionSec)
 
   // === Stream section (only when live) ===
-  if (data && (data.twitch_is_live || data.kick_is_live || data.youtube_is_live)) {
+  if (data && ((ls.twitch ?? data.twitch_is_live) || (ls.kick ?? data.kick_is_live) || (ls.youtube ?? data.youtube_is_live))) {
     let plat, platName, vc, url
-    if (data.twitch_is_live) {
+    if (ls.twitch ?? data.twitch_is_live) {
       plat = 'twitch'
-      platName = data.twitch_username
+      platName = di.twitch || data.twitch_username
       vc = data.twitch_viewer_count || 0
       url = `https://twitch.tv/${platName}`
-    } else if (data.kick_is_live) {
+    } else if (ls.kick ?? data.kick_is_live) {
       plat = 'kick'
-      platName = data.kick_username
+      platName = di.kick || data.kick_username
       vc = data.kick_viewer_count || 0
       url = `https://kick.com/${platName}`
     } else {
       plat = 'youtube'
-      platName = data.youtube_username || data.youtube_channel_id
+      platName = di.youtube || data.youtube_username || data.youtube_channel_id
       vc = data.youtube_viewer_count || 0
-      url = data.youtube_username
-        ? `https://youtube.com/@${data.youtube_username}/live`
+      url = (di.youtube || data.youtube_username)
+        ? `https://youtube.com/@${di.youtube || data.youtube_username}/live`
         : data.youtube_channel_id
           ? `https://youtube.com/channel/${data.youtube_channel_id}/live`
           : 'https://youtube.com'

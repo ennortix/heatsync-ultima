@@ -13,6 +13,32 @@
 
   const isKick = window.location.hostname.includes('kick.com')
 
+  // --- user-key helpers (content script) ---
+  // Inlined because lib/ is bundled into other targets only.
+  // Canonical source: src/lib/user-key.js — keep in sync if either changes.
+  function userKey(username, platform) {
+    const u = String(username == null ? '' : username)
+      .toLowerCase()
+      .replace(/^@/, '')
+    if (!u) return ''
+    return platform ? `${platform}:${u}` : u
+  }
+  function userSetMatches(set, username, platform, aliasKeys) {
+    if (!set || set.size === 0) return false
+    const u = String(username == null ? '' : username)
+      .toLowerCase()
+      .replace(/^@/, '')
+    if (!u) return false
+    if (set.has(u)) return true
+    if (set.has(userKey(u, platform))) return true
+    if (aliasKeys) {
+      for (const k of aliasKeys) {
+        if (k && set.has(k)) return true
+      }
+    }
+    return false
+  }
+
   // Chrome compatibility - use 'browser' namespace like Firefox
   // Firefox uses native browser API
 
@@ -4033,25 +4059,37 @@
           break
         }
 
-        case 'user_muted':
+        case 'user_muted': {
+          // Key may be namespaced (twitch:alice) or legacy bare (alice). Store as
+          // received; DOM ops need the bare display name so extract it.
+          const muteBare = message.username?.includes(':') ? message.username.split(':')[1] : message.username
           mutedUsers.add(message.username)
-          muteUser(message.username)
+          muteUser(muteBare || message.username)
           break
+        }
 
-        case 'user_unmuted':
+        case 'user_unmuted': {
+          const unmuteBare = message.username?.includes(':') ? message.username.split(':')[1] : message.username
           mutedUsers.delete(message.username)
-          unmuteUser(message.username)
+          if (unmuteBare && unmuteBare !== message.username) mutedUsers.delete(unmuteBare) // clear legacy bare
+          unmuteUser(unmuteBare || message.username)
           break
+        }
 
-        case 'user_blocked':
+        case 'user_blocked': {
+          const blockBare = message.username?.includes(':') ? message.username.split(':')[1] : message.username
           blockedUsers.add(message.username)
-          hideBlockedUser(message.username)
+          hideBlockedUser(blockBare || message.username)
           break
+        }
 
-        case 'user_unblocked':
+        case 'user_unblocked': {
+          const unblockBare = message.username?.includes(':') ? message.username.split(':')[1] : message.username
           blockedUsers.delete(message.username)
-          unhideBlockedUser(message.username)
+          if (unblockBare && unblockBare !== message.username) blockedUsers.delete(unblockBare) // clear legacy bare
+          unhideBlockedUser(unblockBare || message.username)
           break
+        }
 
         case 'channel_emote_added':
           // Handled by multichat.js as a persistent stream-event. Also clear the
@@ -5303,8 +5341,9 @@
       return // Don't highlight your own messages
     }
     // Blocked users can't ping you — no highlight, no notification (covers the
-    // unprotected observer path where the message is hidden but still in DOM)
-    if (messageAuthor && blockedUsers.has(messageAuthor)) {
+    // unprotected observer path where the message is hidden but still in DOM).
+    // userSetMatches checks legacy bare keys first so pre-namespace entries still work.
+    if (messageAuthor && userSetMatches(blockedUsers, messageAuthor, isKick ? 'kick' : 'twitch', [])) {
       return
     }
 
@@ -5865,17 +5904,17 @@
       }
     }
 
-    // Check if user is blocked (hard hide). Compare lowercased — blockedUsers
-    // stores lowercased names (block_user sends username.toLowerCase()), so a
-    // raw-case display name like "Ninja" would otherwise never match and the
-    // blocked message would render.
-    if (blockedUsers.has(lowerUser)) {
+    // Check if user is blocked (hard hide). userSetMatches checks legacy bare keys
+    // first (global-match) then the platform-scoped key, so pre-namespace stored
+    // entries keep working and twitch:alice never hides an unrelated kick:alice.
+    if (userSetMatches(blockedUsers, lowerUser, isKick ? 'kick' : 'twitch', [])) {
       messageElement.style.display = 'none'
       return
     }
 
-    // Check if user is muted — strip content, gray username
-    if (mutedUsers.has(username)) {
+    // Check if user is muted — strip content, gray username.
+    // Same userSetMatches pattern so overlay-mute's namespaced keys reach native chat.
+    if (userSetMatches(mutedUsers, username, isKick ? 'kick' : 'twitch', [])) {
       stripMutedMessage(messageElement)
       return
     }
@@ -8668,7 +8707,8 @@
           injectChatCommand(`/unvip ${username}`)
           break
         case 'block':
-          safeSendMessage({ type: 'block_user', username: username.toLowerCase() }).catch(() => {})
+          // Namespace the key so twitch:alice and kick:alice are independent.
+          safeSendMessage({ type: 'block_user', username: userKey(username, isKick ? 'kick' : 'twitch') }).catch(() => {})
           closeCard()
           break
         case 'copy':
@@ -9705,15 +9745,19 @@
   }
 
   function _toggleUserMute(username) {
-    if (mutedUsers.has(username)) {
-      mutedUsers.delete(username)
-      safeSendMessage({ type: 'unmute_user', username }).catch(() => {})
-      unmuteUser(username)
+    const pagePlatform = isKick ? 'kick' : 'twitch'
+    const key = userKey(username, pagePlatform)
+    const bareLower = username.toLowerCase()
+    if (userSetMatches(mutedUsers, username, pagePlatform, [])) {
+      mutedUsers.delete(key)
+      if (bareLower !== key) mutedUsers.delete(bareLower) // clear legacy bare entry
+      safeSendMessage({ type: 'unmute_user', username: key }).catch(() => {})
+      unmuteUser(username) // bare for DOM matching
       showToast(t('content_toast_unmuted', [username]))
     } else {
-      mutedUsers.add(username)
-      safeSendMessage({ type: 'mute_user', username, expiresAt: Date.now() + 86400000 }).catch(() => {})
-      muteUser(username)
+      mutedUsers.add(key)
+      safeSendMessage({ type: 'mute_user', username: key, expiresAt: Date.now() + 86400000 }).catch(() => {})
+      muteUser(username) // bare for DOM matching
       showToast(t('content_toast_muted_24h', [username]))
     }
   }

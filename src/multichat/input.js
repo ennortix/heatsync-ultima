@@ -1983,6 +1983,10 @@ async function _toggleMcMute(username, platform) {
   const wasUnmute = wasMuted
   if (wasMuted) {
     for (const k of aliasKeys) mutedUsers.delete(k)
+    // Also clear any legacy bare entry (pre-namespace storage) so unmute always lands
+    // even if the Set was populated before namespacing was introduced.
+    const bareLower = String(username == null ? '' : username).toLowerCase().replace(/^@/, '')
+    if (bareLower) mutedUsers.delete(bareLower)
     showToast(`unmuted ${username}`, 'success')
     for (const k of aliasKeys) safeSendMessage({ type: 'unmute_user', username: k })
   } else {
@@ -2003,19 +2007,25 @@ async function _toggleMcMute(username, platform) {
 
 async function _toggleMcBlock(username, platform) {
   const aliases = await expandUserAliases(username, platform)
+  // Namespaced keys for the block set + cross-tab messages — same pattern as
+  // _toggleMcMute; bare `aliases` stays for toast display only.
+  const aliasKeys = await expandUserAliasKeys(username, platform)
   const wasBlocked =
     typeof isUserBlocked === 'function' ? isUserBlocked(username, platform) : blockedUsers.has(aliases[0])
   if (wasBlocked) {
-    for (const a of aliases) blockedUsers.delete(a)
+    for (const k of aliasKeys) blockedUsers.delete(k)
+    // Also clear any legacy bare entry (pre-namespace storage) so unblock always lands.
+    const bareLower = String(username == null ? '' : username).toLowerCase().replace(/^@/, '')
+    if (bareLower) blockedUsers.delete(bareLower)
     showToast(`unblocked ${username}`, 'success')
-    for (const a of aliases) safeSendMessage({ type: 'unblock_user', username: a })
+    for (const k of aliasKeys) safeSendMessage({ type: 'unblock_user', username: k })
   } else {
-    for (const a of aliases) blockedUsers.add(a)
+    for (const k of aliasKeys) blockedUsers.add(k)
     const primary = aliases[0] || String(username).toLowerCase()
     const other = aliases.slice(1).filter((a) => a !== primary)
     const aliasNote = other.length ? ` (+linked @${other.join(' @')})` : ''
     showToast(`blocked ${username}${aliasNote}`, 'success')
-    for (const a of aliases) safeSendMessage({ type: 'block_user', username: a })
+    for (const k of aliasKeys) safeSendMessage({ type: 'block_user', username: k })
   }
   // buildMessageDiv filters blocked users, so a full re-render hides/restores them.
   renderMessages(currentTab)

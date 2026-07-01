@@ -53,3 +53,45 @@ test('@-prefixed lookup normalizes to stored key (youtube handles)', () => {
   expect(userSetMatches(set, '@bob', 'youtube')).toBe(true)
   expect(userSetMatches(set, 'bob', 'youtube')).toBe(true)
 })
+
+// Block-specific scenarios (overlay → content.js propagation)
+
+test('block scenario: overlay block (twitch:alice) hides message on twitch content.js', () => {
+  // Overlay sends block_user with namespaced key; content.js stores it and checks
+  // via userSetMatches with the page platform.
+  const blockedUsers = new Set([userKey('alice', 'twitch')]) // stored by content.js receiver
+  const lowerUser = 'alice'
+  const pagePlatform = 'twitch'
+  expect(userSetMatches(blockedUsers, lowerUser, pagePlatform, [])).toBe(true)
+})
+
+test('block scenario: twitch block does NOT hide unrelated kick user of same name', () => {
+  const blockedUsers = new Set([userKey('alice', 'twitch')])
+  expect(userSetMatches(blockedUsers, 'alice', 'kick', [])).toBe(false)
+})
+
+test('block scenario: legacy bare block still hides on all platforms (global-match)', () => {
+  const blockedUsers = new Set(['alice']) // pre-namespace entry from old storage
+  expect(userSetMatches(blockedUsers, 'alice', 'twitch', [])).toBe(true)
+  expect(userSetMatches(blockedUsers, 'alice', 'kick', [])).toBe(true)
+})
+
+test('mute scenario: overlay mute key (kick:bob) reaches kick native chat', () => {
+  const mutedUsers = new Set([userKey('bob', 'kick')])
+  expect(userSetMatches(mutedUsers, 'bob', 'kick', [])).toBe(true)
+  expect(userSetMatches(mutedUsers, 'bob', 'twitch', [])).toBe(false)
+})
+
+test('unblock scenario: deleting namespaced key removes block', () => {
+  const blockedUsers = new Set([userKey('alice', 'twitch')])
+  blockedUsers.delete(userKey('alice', 'twitch'))
+  expect(userSetMatches(blockedUsers, 'alice', 'twitch', [])).toBe(false)
+})
+
+test('legacy unblock: deleting both namespaced + bare clears pre-namespace entry', () => {
+  const blockedUsers = new Set(['alice']) // legacy bare
+  const key = userKey('alice', 'twitch')
+  blockedUsers.delete(key)       // namespaced delete → no-op on legacy
+  blockedUsers.delete('alice')   // bare delete → clears it
+  expect(userSetMatches(blockedUsers, 'alice', 'twitch', [])).toBe(false)
+})

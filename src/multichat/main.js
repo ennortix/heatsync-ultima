@@ -6929,19 +6929,22 @@
         ? '<div class="hs-mc-setting-row" style="color:#808080;font-size:13px">' + t('mc_settings_no_muted') + '</div>'
         : Array.from(mutedUsers)
             .sort()
-            .map(
-              (u) =>
+            .map((u) => {
+              // Display bare username; data-username keeps the full key for deletion.
+              const displayU = u.includes(':') ? u.split(':')[1] : u
+              return (
                 '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
                 '<span class="hs-mc-setting-label" style="font-size:13px">' +
-                escapeHtml(u) +
+                escapeHtml(displayU) +
                 '</span>' +
                 '<button class="hs-mc-unmute-btn" data-username="' +
                 escapeHtml(u) +
                 '" style="background:none;border:1px solid #808080;color:#808080;font-size:13px;cursor:pointer;padding:1px 6px;line-height:1.4" title="' +
                 t('mc_settings_unmute') +
                 '">✕</button>' +
-                '</div>',
-            )
+                '</div>'
+              )
+            })
             .join('')) +
       '</div>'
     )
@@ -8081,9 +8084,13 @@
       if (unmuteBtn) {
         var username = unmuteBtn.dataset.username
         if (username) {
+          // data-username stores the full namespaced key (e.g. twitch:alice); also
+          // clear legacy bare form so old storage entries don't linger.
+          var unmuteBare = username.includes(':') ? username.split(':')[1] : username
           mutedUsers.delete(username)
+          if (unmuteBare !== username) mutedUsers.delete(unmuteBare)
           safeSendMessage({ type: 'unmute_user', username: username })
-          restoreMcUnmutedDom(username)
+          restoreMcUnmutedDom(unmuteBare)
           renderMessages(currentTab)
           renderSettingsTab()
         }
@@ -14684,16 +14691,25 @@
         }
       }
       if (msg.type === 'user_unmuted') {
+        // Key may be namespaced (twitch:alice) or legacy bare (alice). Delete both
+        // so unmuting always clears the Set regardless of when the entry was written.
         const u = msg.username?.toLowerCase()
-        if (u && mutedUsers.has(u)) {
-          mutedUsers.delete(u)
-          restoreMcUnmutedDom(u)
+        const bare = u && u.includes(':') ? u.split(':')[1] : null
+        let changed = false
+        if (u && mutedUsers.has(u)) { mutedUsers.delete(u); changed = true }
+        if (bare && mutedUsers.has(bare)) { mutedUsers.delete(bare); changed = true }
+        if (changed) {
+          restoreMcUnmutedDom(bare || u)
           renderMessages(currentTab)
         }
       }
       // Server cleared the entire mute list (e.g. user clicked "clear all" on heatsync.org)
       if (msg.type === 'mutes_cleared' && mutedUsers.size > 0) {
-        for (const u of mutedUsers) restoreMcUnmutedDom(u)
+        for (const u of mutedUsers) {
+          // Keys may be namespaced — restoreMcUnmutedDom matches by bare display name
+          const bare = u.includes(':') ? u.split(':')[1] : u
+          restoreMcUnmutedDom(bare)
+        }
         mutedUsers.clear()
         renderMessages(currentTab)
       }
@@ -14707,8 +14723,11 @@
         }
       }
       if (msg.type === 'user_unblocked') {
+        // Delete both namespaced key AND legacy bare form so unblock always lands.
         const u = msg.username?.toLowerCase()
-        if (u && blockedUsers.delete(u)) renderMessages(currentTab)
+        const bare = u && u.includes(':') ? u.split(':')[1] : null
+        const had = (u && blockedUsers.delete(u)) | (bare && blockedUsers.delete(bare))
+        if (had) renderMessages(currentTab)
       }
 
       // A different user added an emote to their set. Drop the freshness

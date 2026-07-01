@@ -1228,6 +1228,8 @@ async function pcToggleMute(username) {
   const wasMuted = typeof isUserMuted === 'function' ? isUserMuted(username, platform) : mutedUsers.has(username)
   if (wasMuted) {
     for (const k of aliasKeys) mutedUsers.delete(k)
+    // Also clear any legacy bare entry so unmute always lands on pre-namespace storage.
+    mutedUsers.delete(username)
     for (const k of aliasKeys) safeSendMessage({ type: 'unmute_user', username: k })
   } else {
     for (const k of aliasKeys) mutedUsers.add(k)
@@ -1362,12 +1364,16 @@ async function pcToggleBlock(profileId, username, currentlyBlocked) {
     // effect on next reload. Fans out across linked twitch/kick aliases.
     try {
       const platform = activeProfileCard?.platform
-      const aliases =
-        typeof expandUserAliases === 'function'
-          ? await expandUserAliases(String(username).toLowerCase(), platform)
-          : [String(username).toLowerCase()]
+      // Use namespaced keys so block_user/unblock_user messages carry platform scope,
+      // preventing twitch:alice from hiding an unrelated kick:alice.
+      const aliasKeys =
+        typeof expandUserAliasKeys === 'function'
+          ? await expandUserAliasKeys(String(username).toLowerCase(), platform)
+          : typeof getUserAliasKeys === 'function'
+            ? getUserAliasKeys(String(username).toLowerCase(), platform)
+            : [String(username).toLowerCase()]
       const blockMsg = targetBlocked ? 'block_user' : 'unblock_user'
-      for (const a of aliases) safeSendMessage({ type: blockMsg, username: a })
+      for (const k of aliasKeys) safeSendMessage({ type: blockMsg, username: k })
     } catch (_) {
       /* best-effort live hide */
     }

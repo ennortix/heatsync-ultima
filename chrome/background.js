@@ -7664,7 +7664,8 @@ async function handleMessage(message, sender, sendResponse) {
   } else if (message.type === 'mention_detected') {
     // Defense-in-depth: blocked users never trigger a mention notification,
     // regardless of which content-script path detected the @mention.
-    if (message.username && blockedUsers.has(message.username)) {
+    // userSetMatches checks legacy bare keys first so pre-namespace entries still match.
+    if (message.username && userSetMatches(blockedUsers, message.username, message.platform || null, [])) {
       sendResponse({ ok: true })
       return
     }

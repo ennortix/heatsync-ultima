@@ -2076,8 +2076,8 @@ const SETTINGS = [
         value: 'moment',
         default: true,
         tag: '[🔥]',
-        color: '#ff8700',
-        borderColor: '#ff8700',
+        color: '#fff',
+        borderColor: '#fff',
         label: 'moment alerts',
         tip: "a channel's chat suddenly explodes — heat spike detected server-side; click the row to open the stream",
       },
@@ -2131,7 +2131,7 @@ const SETTINGS = [
       {
         value: 'hype',
         default: false,
-        color: '#ff8700',
+        color: '#fff',
         labelKey: 'mc_settings_hype_trains',
         tipKey: 'mc_settings_hype_trains_desc',
       },
@@ -2982,7 +2982,7 @@ const SETTINGS = [
       {
         value: 'emote-render',
         default: true,
-        color: '#ff8700',
+        color: '#fff',
         applies: 'reload',
         label: 'emotes in native chat',
         tip: 'render heatsync emotes inside the platform’s own chat',
@@ -2990,7 +2990,7 @@ const SETTINGS = [
       {
         value: 'tab-complete',
         default: true,
-        color: '#ff8700',
+        color: '#fff',
         applies: 'reload',
         label: 'tab-complete in native chat',
         tip: 'emote + username completion in the platform’s own input',
@@ -2998,7 +2998,7 @@ const SETTINGS = [
       {
         value: 'picker-button',
         default: true,
-        color: '#ff8700',
+        color: '#fff',
         applies: 'reload',
         label: 'emote picker button',
         tip: 'the heatsync picker button beside the native chat input',
@@ -3006,7 +3006,7 @@ const SETTINGS = [
       {
         value: 'right-click-block',
         default: true,
-        color: '#ff8700',
+        color: '#fff',
         applies: 'live',
         label: 'right-click emote block',
         tip: 'right-click any emote to instantly block it',
@@ -3750,7 +3750,7 @@ if (typeof window !== 'undefined') {
 // - Multiset compounding: "Kappa w! w!" → 4x wide
 // - Each axis clamped to ±MAX_SCALE (chat layout breaks past)
 // - Chained shorthand: "w!h!ffzX" peels into [wide, tall, hflip]
-// - Color: "c!#ff8700" tints via hue-rotate (peel-friendly: "w!c!#ff8700h!")
+// - Color: "c!#888" tints via hue-rotate (peel-friendly: "w!c!#888h!")
 // - Prefix completion: "w" → "w!", "ffzx" → "ffzX"
 
 const HS_MOD_TOKENS = Object.freeze({
@@ -8054,7 +8054,7 @@ function injectStyles() {
        bitmap font still nudges Chrome's text path off the crisp bitmap
        route in practice. White-on-black background already conveys focus. */
     .hs-mc-tab-auto { color: #aaa; }
-.hs-mc-tab-auto::before { content: '·'; color: #ff8700; margin-right: 3px; }
+.hs-mc-tab-auto::before { content: '·'; color: #fff; margin-right: 3px; }
 .hs-mc-tab.active {
       background: #fff !important;
       color: #000 !important;
@@ -8268,14 +8268,14 @@ function injectStyles() {
       text-decoration: underline;
     }
     .hs-whisper-retry:hover {
-      color: #ff8700;
+      color: #fff;
     }
     .hs-whisper-relogin {
       display: inline-block;
       padding: 1px 6px;
       margin-left: 4px;
-      background: #ff8700;
-      color: #fff !important;
+      background: #fff;
+      color: #000 !important;
       border-radius: 0;
       font-weight: 700;
       text-decoration: none;
@@ -8301,7 +8301,7 @@ function injectStyles() {
       gap: 6px;
       padding: 4px 8px;
       background: #1a1a1a;
-      border-bottom: 1px solid #ff8700;
+      border-bottom: 1px solid #fff;
       font-size: 13px;
       color: #fff;
     }
@@ -8315,8 +8315,8 @@ function injectStyles() {
       white-space: nowrap;
     }
     .hs-mc-multi-link {
-      background: #ff8700;
-      color: #fff;
+      background: #fff;
+      color: #000;
       border: 0;
       padding: 2px 8px;
       font-weight: 700;
@@ -8446,14 +8446,14 @@ function injectStyles() {
       display: flex;
     }
 
-    /* Unified resize-bar styling — 2px visible #ff8700 line + invisible
+    /* Unified resize-bar styling — 2px visible #fff line + invisible
        ::before grab-zone (--hs-resize-grab per side). Mirrors heatsync.org's
        .hs-resizer. Each id below sets only position/size/cursor/z-index. */
     #hs-mc-resize-handle,
     #hs-yt-resize-handle,
     #hs-kick-resize-handle,
     #hs-c-resize-handle {
-      background: #ff8700;
+      background: #fff;
       opacity: 0.55;
       transition: opacity 0.12s;
     }
@@ -8587,7 +8587,7 @@ function injectStyles() {
       font-family: 'SF Mono', 'Consolas', monospace;
       font-size: 13px;
       font-weight: 700;
-      color: #ff8700;
+      color: #fff;
       background: rgba(0,0,0,0.4);
       padding: 1px 5px;
       border-radius: 0;
@@ -8743,7 +8743,7 @@ function injectStyles() {
     body.hs-chat-hidden [class*="chat-shell"].hs-native-hidden { display: none !important; }
     #hs-chat-restore-pill {
       position: fixed !important;
-      background: #ff8700 !important;
+      background: #fff !important;
       z-index: 2147483647 !important;
       cursor: pointer !important;
       transition: opacity 120ms ease-out !important;
@@ -8846,7 +8846,7 @@ function injectStyles() {
 
     /* highlight the native-btn when active */
     #hs-mc-native-btn.active {
-      color: #ff8700 !important;
+      color: #fff !important;
     }
 
     /* === NOTIF LAYERS (HsNotifs) ===
@@ -8971,8 +8971,8 @@ function injectStyles() {
       transition: background 80ms linear, color 80ms linear;
     }
     .hs-notif-action:hover { background: #fff; color: #000; }
-    .hs-notif-action:focus-visible { outline: 1px solid #ff8700; outline-offset: -2px; }
-    .hs-notif-action-primary { color: #ff8700; font-weight: 700; }
+    .hs-notif-action:focus-visible { outline: 1px solid #fff; outline-offset: -2px; }
+    .hs-notif-action-primary { color: #fff; font-weight: 700; }
     .hs-notif-action-primary:hover { background: #fff; color: #000; }
     .hs-notif-action-dismiss { padding: 0 10px; font-size: 14px; color: #848494; }
     .hs-notif-action-dismiss:hover { background: #ff4040; color: #000; }
@@ -9103,7 +9103,7 @@ function injectStyles() {
        inputbar below. */
     .hs-notif-layer-chat-docked-bottom > .hs-notif {
       border: none;
-      border-top: 1px solid #ff8700;
+      border-top: 1px solid #808080;
       border-bottom: 1px solid #808080;
       box-shadow: 0 -2px 8px rgba(0,0,0,0.5);
       background: #0a0a0d;
@@ -9119,7 +9119,7 @@ function injectStyles() {
     .hs-notif-resub-icon {
       flex: 0 0 auto;
       font-size: 14px;
-      color: #ff8700;
+      color: #fff;
     }
     .hs-notif-resub-text {
       flex: 1 1 0;
@@ -9210,7 +9210,7 @@ function injectStyles() {
       pointer-events: auto !important;
       background: #18181b !important;
       border: none !important;
-      border-top: 1px solid #ff8700 !important;
+      border-top: 1px solid #808080 !important;
       border-bottom: 1px solid #808080 !important;
       border-radius: 0 !important;
       box-shadow: 0 -2px 8px rgba(0,0,0,0.5) !important;
@@ -9831,7 +9831,7 @@ function injectStyles() {
        yellow(11)=first-seen/announcement/bits/DM/kw-match/warn (attention),
        magenta(13)=raid/gift/mention/first-msg-ever (special event),
        cyan(14)=stream-hype/milestone (action-needed).
-       #ff8700 reserved for brand chrome only (buttons, frames, drag bars). */
+       #fff reserved for brand chrome only (buttons, frames, drag bars). */
     .hs-mc-msg.hs-mc-notice-ban       { border-left-color: #ff0000 !important; background: rgba(255, 0, 0, 0.12) !important; }
     .hs-mc-msg.hs-mc-notice-ban       .hs-mc-system-text { color: #ff4040; font-weight: 600; }
     .hs-mc-msg.hs-mc-notice-timeout   { border-left-color: #008000 !important; background: rgba(0, 128, 0, 0.10) !important; }
@@ -9984,9 +9984,9 @@ function injectStyles() {
     }
     /* Filter-rule highlight — color driven by per-rule CSS custom property */
     .hs-mc-msg.hs-mc-rule-highlight {
-      border-left: 3px solid var(--hs-rule-hl, #ff8700);
+      border-left: 3px solid var(--hs-rule-hl, #fff);
       padding-left: 4px;
-      background: color-mix(in srgb, var(--hs-rule-hl, #ff8700) 12%, transparent);
+      background: color-mix(in srgb, var(--hs-rule-hl, #fff) 12%, transparent);
     }
     .hs-mc-msg.tweet {
       background: rgba(212, 73, 73, 0.3);
@@ -10115,7 +10115,7 @@ function injectStyles() {
          click after the bar exists, so later DOM order tie-breaks above. */
       z-index: 2147483647 !important;
       background: #000; color: #fff;
-      border: 1px solid #ff8700;
+      border: 1px solid #fff;
       padding: 0; min-width: 220px; max-width: 280px;
       box-shadow: 0 6px 32px rgba(0,0,0,0.75);
       animation: hs-mc-em-in 80ms ease-out;
@@ -10168,7 +10168,7 @@ function injectStyles() {
       max-width: 360px;
       overflow: hidden;
       isolation: isolate;
-      --hs-pc-accent: #ff8700;
+      --hs-pc-accent: #fff;
     }
     #hs-user-tooltip.visible {
       display: block;
@@ -10315,7 +10315,7 @@ function injectStyles() {
       -webkit-box-orient: vertical;
       overflow: hidden;
     }
-    #hs-user-tooltip .hs-pc-bio-mention { color: #ff8700; cursor: pointer; }
+    #hs-user-tooltip .hs-pc-bio-mention { color: #fff; cursor: pointer; }
     #hs-user-tooltip .hs-pc-bio-mention:hover { text-decoration: underline; }
     #hs-user-tooltip .hs-pc-bio-tag { color: #ff00ff; text-decoration: none; }
     #hs-user-tooltip .hs-pc-bio-tag:hover { text-decoration: underline; }
@@ -10348,7 +10348,7 @@ function injectStyles() {
     #hs-user-tooltip .hs-pc-stat.mop .hs-pc-num { color: #fff; }
     #hs-user-tooltip .hs-pc-stat.re { border-color: #00ffff; color: #00ffff; }
     #hs-user-tooltip .hs-pc-stat.re .hs-pc-num { color: #fff; }
-    #hs-user-tooltip .hs-pc-stat-heat { border-color: #ff8700; }
+    #hs-user-tooltip .hs-pc-stat-heat { border-color: #fff; }
     #hs-user-tooltip .hs-pc-stat-heat .hs-heat-num { font-size: 13px; font-weight: 700; }
     #hs-user-tooltip .hs-pc-rel {
       display: flex;
@@ -10366,11 +10366,11 @@ function injectStyles() {
       letter-spacing: 0.3px;
     }
     #hs-user-tooltip .hs-pc-rel-badge.mutual { background: #00aaaa; color: #fff; }
-    #hs-user-tooltip .hs-pc-rel-badge.supporter { background: #ff8700; color: #000; }
+    #hs-user-tooltip .hs-pc-rel-badge.supporter { background: #fff; color: #000; }
     #hs-user-tooltip .hs-pc-rel-badge.following { background: #0099ff; color: #fff; }
     #hs-user-tooltip .hs-pc-rel-badge.subbed { background: #9146ff; color: #fff; }
     #hs-user-tooltip .hs-pc-rel-badge.mutual-follow { background: #000; color: #fff; border: 1px solid #00aaaa; }
-    #hs-user-tooltip .hs-pc-rel-badge.mutual-sub { background: #000; color: #fff; border: 1px solid #ff8700; }
+    #hs-user-tooltip .hs-pc-rel-badge.mutual-sub { background: #000; color: #fff; border: 1px solid #fff; }
     /* Property sheet — mirrors .hs-pcard-sheet. Tooltip already inherits
        CozetteVector bitmap rendering from body.hs-font-bitmap, so no
        counter-counter block needed here (unlike the pcard sheet which
@@ -10398,7 +10398,7 @@ function injectStyles() {
     #hs-user-tooltip .hs-pc-sheet .val-kick { color: #53fc18; }
     #hs-user-tooltip .hs-pc-sheet .val-yt { color: #ff0000; }
     #hs-user-tooltip .hs-pc-sheet .val-admin { color: #ff0000; }
-    #hs-user-tooltip .hs-pc-sheet .val-staff { color: #ff8700; }
+    #hs-user-tooltip .hs-pc-sheet .val-staff { color: #fff; }
     #hs-user-tooltip .hs-pc-sheet .val-heat { color: #ff0000; }
     #hs-user-tooltip .hs-pc-sheet .val-followers { color: #0087ff; }
     #hs-user-tooltip .hs-pc-sheet .val-you-follow { color: #00ffff; }
@@ -10407,7 +10407,7 @@ function injectStyles() {
     #hs-user-tooltip .hs-pc-sheet .val-they-sub { color: #ff5fff; }
     #hs-user-tooltip .hs-pc-sheet .val-mutual { color: #00ff00; }
     #hs-user-tooltip .hs-pc-sheet .val-mutual-sub { color: #ffd700; }
-    #hs-user-tooltip .hs-pc-sheet .val-ch { color: #ff8700; }
+    #hs-user-tooltip .hs-pc-sheet .val-ch { color: #fff; }
     #hs-user-tooltip .hs-pc-sheet .hs-pc-live { color: #ff0000; font-weight: 700; }
     /* Heat number inside the sheet: digits inherit Cozette (already crisp
        on this tooltip surface), ° gets vector fallback for a clean glyph. */
@@ -10472,7 +10472,7 @@ function injectStyles() {
     }
     .hs-mc-empty-title {
       font-size: 14px;
-      color: #ff8700;
+      color: #fff;
       margin-bottom: 6px;
       text-transform: lowercase;
     }
@@ -10507,9 +10507,9 @@ function injectStyles() {
       border-color: #fff;
     }
     .hs-mc-empty-btn.primary {
-      background: #ff8700;
+      background: #fff;
       color: #000;
-      border-color: #ff8700;
+      border-color: #fff;
     }
     .hs-mc-empty-btn.primary:hover {
       background: #fff;
@@ -11068,7 +11068,7 @@ function injectStyles() {
     #hs-emote-tooltip .tooltip-source.src-ffz { background: #0086c8; color: #fff; }
     #hs-emote-tooltip .tooltip-source.src-twitch { background: #9146ff; color: #fff; }
     #hs-emote-tooltip .tooltip-source.src-kick { background: #53fc18; color: #000; }
-    #hs-emote-tooltip .tooltip-source.src-heatsync { background: #ff8700; color: #000; }
+    #hs-emote-tooltip .tooltip-source.src-heatsync { background: #fff; color: #000; }
 
     /* Max z-index + showLinkTooltip re-appends to body — beats reply-stack overlay. */
     #hs-link-tooltip {
@@ -11157,7 +11157,7 @@ function injectStyles() {
       overflow-wrap: anywhere;
     }
     #hs-mc-input:focus {
-      border-color: #ff8700;
+      border-color: #fff;
     }
     #hs-mc-input::placeholder {
       color: #aaa;
@@ -11363,7 +11363,7 @@ function injectStyles() {
       background: #fff;
       color: #000;
     }
-    .hs-mc-slash-name { color: #ff8700; font-weight: 700; }
+    .hs-mc-slash-name { color: #fff; font-weight: 700; }
     .hs-mc-slash-args { color: #aaa; flex-shrink: 0; }
     .hs-mc-slash-desc { color: #aaa; font-size: 13px; margin-left: auto; }
     .hs-mc-slash-row:hover .hs-mc-slash-args,
@@ -11653,7 +11653,7 @@ function injectStyles() {
       /* Accent CSS var — defaults to heatsync orange, overridden per-streamer
          when the GQL response carries a primaryColorHex. Drives the hero
          border, avatar ring, and accent-tinted divider glow below. */
-      --hs-pcard-accent: #ff8700;
+      --hs-pcard-accent: #fff;
     }
     /* Hero banner — compact strip, image lives behind the avatar/name. Shorter
        than the original 140px so identity + actions fit in the first viewport. */
@@ -11706,7 +11706,7 @@ function injectStyles() {
     }
     .hs-pcard-close:hover { background: #fff; color: #000; border-color: #fff; }
     .hs-pcard-close:active { }
-    .hs-pcard-close:focus-visible { outline: 1px solid #ff8700; outline-offset: 1px; }
+    .hs-pcard-close:focus-visible { outline: 1px solid #fff; outline-offset: 1px; }
     /* Close button overlays the hero — no need to reserve right space on the id row.
        Kept rule absent so the row sits flush; the absolute-positioned close has its own footprint. */
     /* Sections are pure spacing — drop chrome borders + label-on-top */
@@ -11768,7 +11768,7 @@ function injectStyles() {
       white-space: pre-wrap; word-break: break-word;
       border-left: 2px solid #1a1a1a; padding: 0 0 0 8px;
     }
-    .hs-pcard-bio-mention { color: #ff8700; cursor: pointer; }
+    .hs-pcard-bio-mention { color: #fff; cursor: pointer; }
     .hs-pcard-bio-mention:hover { text-decoration: underline; }
     .hs-pcard-bio-tag { color: #ff00ff; text-decoration: none; }
     .hs-pcard-bio-tag:hover { text-decoration: underline; }
@@ -11804,7 +11804,7 @@ function injectStyles() {
     .hs-pcard-sheet .val-kick { color: #53fc18; }       /* kick brand */
     .hs-pcard-sheet .val-yt { color: #ff0000; }         /* xterm 196 — yt brand */
     .hs-pcard-sheet .val-admin { color: #ff0000; }      /* xterm 196 — power */
-    .hs-pcard-sheet .val-staff { color: #ff8700; }      /* xterm 208 — hs orange */
+    .hs-pcard-sheet .val-staff { color: #fff; }      /* xterm 208 — hs orange */
     .hs-pcard-sheet .val-heat { color: #ff0000; }       /* xterm 196 — fire */
     .hs-pcard-sheet .val-followers { color: #0087ff; }  /* xterm 33 — popularity */
     .hs-pcard-sheet .val-you-follow { color: #00ffff; } /* xterm 51 — outflow */
@@ -11813,14 +11813,14 @@ function injectStyles() {
     .hs-pcard-sheet .val-they-sub { color: #ff5fff; }   /* xterm 207 — paid inflow */
     .hs-pcard-sheet .val-mutual { color: #00ff00; }     /* xterm 46 — handshake */
     .hs-pcard-sheet .val-mutual-sub { color: #ffd700; } /* xterm 220 — premium handshake */
-    .hs-pcard-sheet .val-ch { color: #ff8700; }         /* xterm 208 — channel context */
+    .hs-pcard-sheet .val-ch { color: #fff; }         /* xterm 208 — channel context */
     .hs-pcard-sheet .hs-pc-live { color: #ff0000; font-weight: 700; }
     /* Inside the sheet: digits inherit cozette from the sheet (bitmap-crisp),
        degree symbol falls back to ui-monospace (vector AA, has clean °). */
     .hs-pcard-sheet .hs-heat-num { font-family: inherit; }
     .hs-pcard-sheet .hs-heat-n { font-family: inherit; }
     .hs-pcard-sheet .hs-heat-deg { font-family: ui-monospace, SFMono-Regular, monospace; }
-    .hs-pcard-sheet .val-rel { color: #ff8700; }
+    .hs-pcard-sheet .val-rel { color: #fff; }
     /* Counter-counter: re-apply bitmap render block to the sheet so cozette
        renders crisp inside the .hs-pcard system-sans bubble. */
     body.hs-font-bitmap .hs-pcard .hs-pcard-sheet,
@@ -11848,7 +11848,7 @@ function injectStyles() {
       font-feature-settings: normal !important;
       letter-spacing: normal !important;
     }
-    .hs-pcard-link { color: #ff8700; text-decoration: none; font-weight: 600; }
+    .hs-pcard-link { color: #fff; text-decoration: none; font-weight: 600; }
     .hs-pcard-link:hover { text-decoration: underline; }
     .hs-pcard-msg {
       display: flex; gap: 6px; padding: 2px 0;
@@ -11885,8 +11885,8 @@ function injectStyles() {
        buttons sit on a single line per channel. Buttons share borders so the
        group reads as one unit, mirroring the inline hover toolbar style. */
     .hs-pcard-mod {
-      background: color-mix(in srgb, var(--hs-pcard-accent, #ff8700) 10%, #000);
-      border-left: 2px solid var(--hs-pcard-accent, #ff8700);
+      background: rgba(255,255,255,0.08);
+      border-left: 2px solid var(--hs-pcard-accent, #fff);
       padding: 5px 8px;
       margin: -2px 0;
     }
@@ -11896,7 +11896,7 @@ function injectStyles() {
     }
     .hs-pcard-mod-row + .hs-pcard-mod-row { margin-top: 4px; }
     .hs-pcard-mod-ch {
-      color: var(--hs-pcard-accent, #ff8700);
+      color: var(--hs-pcard-accent, #fff);
       font-weight: 700; font-size: 13px;
       min-width: 0; flex-shrink: 0; margin-right: 2px;
     }
@@ -12057,7 +12057,7 @@ function injectStyles() {
       color: #000 !important;
     }
     #hs-mc-emote-picker .hs-mc-picker-tab.active {
-      color: #ff8700 !important;
+      color: #fff !important;
       background: transparent !important;
     }
     #hs-mc-emote-picker .hs-mc-picker-tab.active:hover {
@@ -12071,7 +12071,7 @@ function injectStyles() {
       left: 0;
       right: 0;
       height: 2px;
-      background: #ff8700;
+      background: #fff;
     }
     .hs-mc-tab-content {
       flex: 1 1 0 !important;
@@ -12180,7 +12180,7 @@ function injectStyles() {
       transition: none;
     }
     #hs-mc-emote-search:focus {
-      border-color: #ff8700;
+      border-color: #fff;
     }
     .hs-mc-src-chips {
       display: flex;
@@ -12218,8 +12218,8 @@ function injectStyles() {
        brand-colored provider chips. Same square metrics. */
     .hs-mc-exact-chip {
       background: transparent;
-      border: 1px solid rgba(255,135,0,0.5);
-      color: #ff8700;
+      border: 1px solid rgba(255,255,255,0.5);
+      color: #fff;
       font-size: 13px;
       font-weight: 700;
       padding: 3px 7px;
@@ -12231,7 +12231,7 @@ function injectStyles() {
       letter-spacing: 1px;
       transition: none;
     }
-    .hs-mc-exact-chip.active { background: #ff8700; color: #000; border-color: #ff8700; }
+    .hs-mc-exact-chip.active { background: #fff; color: #000; border-color: #fff; }
     .hs-mc-exact-chip:hover { background: #fff !important; color: #000 !important; border-color: #fff !important; }
     /* Load-more tile — full-width square action at the tail of search results
        to fetch the next page from each provider. */
@@ -12241,8 +12241,8 @@ function injectStyles() {
       margin: 4px 6px 8px;
       padding: 7px;
       background: #000;
-      color: #ff8700;
-      border: 1px solid #ff8700;
+      color: #fff;
+      border: 1px solid #fff;
       border-radius: 0;
       font-family: inherit;
       font-size: 13px;
@@ -12319,9 +12319,9 @@ function injectStyles() {
       display: flex;
       align-items: center;
       justify-content: center;
-      background: rgba(255,135,0,0.12);
-      background: color-mix(in srgb, var(--menu-accent, #ff8700) 12%, transparent);
-      color: var(--menu-accent, #ff8700);
+      background: rgba(255,255,255,0.12);
+      background: color-mix(in srgb, var(--menu-accent, #fff) 12%, transparent);
+      color: var(--menu-accent, #fff);
       flex-shrink: 0;
       transition: none;
     }
@@ -12405,7 +12405,7 @@ function injectStyles() {
     }
     .hs-mc-pred-timer {
       font-size: 13px;
-      color: #ff8700;
+      color: #fff;
       font-weight: 600;
       font-variant-numeric: tabular-nums;
       white-space: nowrap;
@@ -12503,7 +12503,7 @@ function injectStyles() {
     }
     .hs-mc-pred-bet-custom::placeholder { color: #aaa; }
     .hs-mc-pred-bet-custom:focus {
-      border-color: #ff8700;
+      border-color: #fff;
     }
     .hs-mc-pred-bet-custom:disabled {
       background: rgba(255,255,255,0.04);
@@ -12539,7 +12539,7 @@ function injectStyles() {
     }
     .hs-mc-pred-bet-max {
       font-weight: 600;
-      color: #ff8700;
+      color: #fff;
     }
     .hs-mc-pred-bet-max:hover {
       background: #fff;
@@ -12601,9 +12601,9 @@ function injectStyles() {
       border: 1px solid rgba(255,60,60,0.2);
     }
     .hs-mc-pred-result-refund {
-      background: rgba(255,135,0,0.1);
-      color: #ff8700;
-      border: 1px solid rgba(255,135,0,0.25);
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.25);
     }
     .hs-mc-pred-result-neutral {
       font-size: 13px;
@@ -12639,17 +12639,17 @@ function injectStyles() {
     /* ═══ Mod controls ═══ */
     .hs-mc-pred-mod-notice {
       font-size: 13px;
-      color: #ff8700;
-      background: rgba(255,135,0,0.08);
-      border: 1px solid rgba(255,135,0,0.2);
+      color: #fff;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.2);
       border-radius: 0;
       padding: 5px 8px;
       margin-top: 6px;
       text-align: center;
     }
     .hs-mc-pred-resolve-yours {
-      border-color: #ff8700 !important;
-      color: #ff8700 !important;
+      border-color: #fff !important;
+      color: #fff !important;
     }
     .hs-mc-pred-resolve-yours:hover {
       background: #fff !important;
@@ -12723,7 +12723,7 @@ function injectStyles() {
     }
     .hs-mc-pred-create-input::placeholder { color: #aaa; }
     .hs-mc-pred-create-input:focus {
-      border-color: #ff8700;
+      border-color: #fff;
       outline: none;
     }
     .hs-mc-pred-create-dur-row {
@@ -12751,14 +12751,14 @@ function injectStyles() {
       color: #000;
     }
     .hs-mc-pred-create-dur-active {
-      background: #ff8700;
+      background: #fff;
       color: #000;
-      border-color: #ff8700;
+      border-color: #fff;
     }
     .hs-mc-pred-create-submit {
       background: rgba(0,0,0,0.7);
-      color: #ff8700;
-      border-color: #ff8700;
+      color: #fff;
+      border-color: #fff;
       font-weight: 600;
     }
     .hs-mc-pred-create-submit:hover {
@@ -12801,7 +12801,7 @@ function injectStyles() {
     }
     .hs-mc-poll-timer {
       font-size: 13px;
-      color: #ff8700;
+      color: #fff;
       font-weight: 600;
       font-variant-numeric: tabular-nums;
       white-space: nowrap;
@@ -12870,7 +12870,7 @@ function injectStyles() {
       color: #bf8fff;
     }
     .hs-mc-poll-voted-check {
-      color: #ff8700;
+      color: #fff;
       font-weight: 700;
     }
     .hs-mc-poll-vote-btn {
@@ -12947,7 +12947,7 @@ function injectStyles() {
     }
     .hs-mc-poll-create-input::placeholder { color: #aaa; }
     .hs-mc-poll-create-input:focus {
-      border-color: #ff8700;
+      border-color: #fff;
       outline: none;
     }
     .hs-mc-poll-create-dur-row {
@@ -12975,16 +12975,16 @@ function injectStyles() {
       color: #000;
     }
     .hs-mc-poll-create-dur-active {
-      background: #ff8700;
+      background: #fff;
       color: #000;
-      border-color: #ff8700;
+      border-color: #fff;
     }
     .hs-mc-poll-create-submit {
       width: 100%;
       text-align: center;
       background: rgba(0,0,0,0.7);
-      color: #ff8700;
-      border-color: #ff8700;
+      color: #fff;
+      border-color: #fff;
       font-weight: 600;
     }
     .hs-mc-poll-create-submit:hover {
@@ -13023,15 +13023,15 @@ function injectStyles() {
        it here; just lock the family + size. */
     .hs-mc-status-overlay {
       position: fixed; bottom: 60px; right: 20px; z-index: 99999;
-      background: #000; border: 2px solid #ff8700;
+      background: #000; border: 2px solid #fff;
       padding: 12px 16px; min-width: 280px; max-width: 420px;
       font: 13px/1.4 'CozetteVector', 'Courier New', monospace;
       color: #fff;
-      box-shadow: 0 0 12px rgba(255,135,0,0.5);
+      box-shadow: 0 0 12px rgba(255,255,255,0.3);
       cursor: pointer;
     }
     .hs-mc-status-loading { font-size: 13px; color: #999; }
-    .hs-mc-status-title { font-size: 13px; font-weight: 600; color: #ff8700; }
+    .hs-mc-status-title { font-size: 13px; font-weight: 600; color: #fff; }
     .hs-mc-status-sub { font-size: 13px; margin-top: 2px; }
     .hs-mc-status-sub.live { color: #59ff8a; }
     .hs-mc-status-sub.off  { color: #999; }
@@ -13348,7 +13348,7 @@ function injectStyles() {
     }
     .hs-mc-setting-textarea:focus {
       outline: none;
-      border-color: #ff8700;
+      border-color: #fff;
     }
     .hs-mc-locale-select {
       background: #000;
@@ -13445,7 +13445,7 @@ function injectStyles() {
     }
     .hs-mc-set-search:focus {
       outline: none;
-      border-color: #ff8700;
+      border-color: #fff;
     }
     .hs-mc-set-search-count {
       color: #aaa;
@@ -13508,14 +13508,14 @@ function injectStyles() {
     /* Modified-from-default — 3px orange inset edge, zero layout shift,
        survives zebra/hover/focus backgrounds */
     .hs-mc-setting-row.hs-mc-set-mod {
-      box-shadow: inset 3px 0 0 #ff8700;
+      box-shadow: inset 3px 0 0 #fff;
     }
     .hs-mc-set-cnt {
       color: #aaa;
       font-weight: 400;
     }
     .hs-mc-set-modcnt {
-      color: #ff8700;
+      color: #fff;
       font-weight: 400;
     }
     .hs-mc-settings-group-title:hover .hs-mc-set-cnt,
@@ -13525,7 +13525,7 @@ function injectStyles() {
     /* [reload] chip — setting applied only after a page reload */
     .hs-mc-set-reload {
       background: #000;
-      color: #ff8700;
+      color: #fff;
       border: 1px solid #808080;
       font-family: inherit;
       font-size: 13px;
@@ -13598,7 +13598,7 @@ function injectStyles() {
       gap: 2px 10px;
     }
     .hs-mc-set-help-key {
-      color: #ff8700;
+      color: #fff;
     }
     .hs-mc-set-help-title {
       color: #aaa;
@@ -13626,7 +13626,7 @@ function injectStyles() {
       appearance: none;
       width: 10px;
       height: 14px;
-      background: #ff8700;
+      background: #fff;
       border: none;
       border-radius: 0;
       cursor: pointer;
@@ -13696,7 +13696,7 @@ function injectStyles() {
     }
     .hs-mc-set-text-input:focus {
       outline: none;
-      border-color: #ff8700;
+      border-color: #fff;
     }
     /* Crash log pre block */
     .hs-mc-set-crash-pre {
@@ -13717,7 +13717,7 @@ function injectStyles() {
        Sizing/layout comes from inline cssText; this class provides the parts that
        can't be set inline: focus border swap and placeholder color. */
     .hs-mc-ch-input::placeholder { color: #aaa; }
-    .hs-mc-ch-input:focus { border-color: #ff8700; }
+    .hs-mc-ch-input:focus { border-color: #fff; }
 
     /* Confirm modal (hsConfirm) — square, terminal, hover-inverts; ban = danger red */
     .hs-mc-confirm-overlay {
@@ -13762,8 +13762,8 @@ function injectStyles() {
       cursor: pointer;
     }
     .hs-mc-confirm-reason:hover { background: #fff; color: #000; }
-    .hs-mc-confirm-reason.sel { border-color: #ff8700; color: #ff8700; }
-    .hs-mc-confirm-reason.sel:hover { background: #ff8700; color: #000; }
+    .hs-mc-confirm-reason.sel { border-color: #fff; color: #fff; }
+    .hs-mc-confirm-reason.sel:hover { background: #fff; color: #000; }
 
     /* Ensure parent has relative positioning for overlay */
     .chat-scrollable-area__message-container {
@@ -14231,13 +14231,13 @@ function injectStyles() {
       outline-offset: -2px;
     }
     .hs-thread-op {
-      border-bottom: 1px solid #ff8700;
+      border-bottom: 1px solid #808080;
       padding-bottom: 4px;
       margin-bottom: 4px;
     }
     .hs-thread-container {
       margin-left: 12px;
-      border-left: 2px solid #ff8700;
+      border-left: 2px solid #fff;
       padding-left: 8px;
       margin-bottom: 4px;
     }
@@ -14368,7 +14368,7 @@ function injectStyles() {
       display: flex;
       align-items: center;
       gap: 6px;
-      color: #ff8700;
+      color: #fff;
       text-decoration: none;
       font-size: 13px;
     }
@@ -14539,8 +14539,8 @@ function injectStyles() {
 
     /* ---- TAB BADGE ---- */
     .hs-mc-tab .hs-badge {
-      background: #ff8700;
-      color: #fff;
+      background: #fff;
+      color: #000;
       border-radius: 0;
       font-size: 13px;
       min-width: 14px;
@@ -14734,7 +14734,7 @@ function injectStyles() {
       outline: none;
     }
     #hs-mc-search-input:focus {
-      border-color: #ff8700;
+      border-color: #fff;
     }
     #hs-mc-search-input::placeholder {
       color: #aaa;
@@ -14758,7 +14758,7 @@ function injectStyles() {
       display: none;
       width: 8px;
       height: 8px;
-      background: #ff8700;
+      background: #fff;
       flex-shrink: 0;
     }
     #hs-mc-search-spinner.visible {
@@ -14789,7 +14789,7 @@ function injectStyles() {
     }
     .hs-mc-search-user {
       font-weight: bold;
-      color: #ff8700;
+      color: #fff;
     }
     .hs-mc-search-content {
       color: #ccc;
@@ -14831,14 +14831,14 @@ function injectStyles() {
     .hs-discover-section + .hs-discover-section { margin-top: 0; }
     .hs-discover-heading {
       font-size: 13px;
-      color: #ff8700;
+      color: #fff;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.6px;
       margin: 0;
       padding: 4px 8px;
-      background: rgba(255,135,0,0.08);
-      border-bottom: 1px solid rgba(255,135,0,0.2);
+      background: rgba(255,255,255,0.08);
+      border-bottom: 1px solid rgba(255,255,255,0.2);
       line-height: 17px;
       display: flex;
       justify-content: space-between;
@@ -14952,12 +14952,12 @@ function injectStyles() {
     .hs-discover-platforms .hs-plat-t { color: #9146ff; }
     .hs-discover-platforms .hs-plat-k { color: #53fc18; }
     .hs-discover-platforms .hs-plat-yt { color: #ff0000; }
-    .hs-discover-platforms .hs-plat-h { color: #ff8700; }
+    .hs-discover-platforms .hs-plat-h { color: #fff; }
     /* Post platform letters use same colors */
     .hs-discover-post-plat.hs-plat-t { color: #9146ff; }
     .hs-discover-post-plat.hs-plat-k { color: #53fc18; }
     .hs-discover-post-plat.hs-plat-yt { color: #ff0000; }
-    .hs-discover-post-plat.hs-plat-h { color: #ff8700; }
+    .hs-discover-post-plat.hs-plat-h { color: #fff; }
     .hs-discover-bar {
       flex: 1;
       min-width: 28px;
@@ -14970,7 +14970,7 @@ function injectStyles() {
     .hs-discover-bar > i {
       display: block;
       height: 100%;
-      background: #ff8700;
+      background: #fff;
     }
     .hs-discover-row-live .hs-discover-bar > i {
       background: #ff3030;
@@ -15023,8 +15023,8 @@ function injectStyles() {
       line-height: 18px;
     }
     .hs-discover-chip-btn.hs-active {
-      background: #ff8700;
-      border-color: #ff8700;
+      background: #fff;
+      border-color: #fff;
       color: #000;
     }
     .hs-discover-chip-btn.hs-chip-plat-t.hs-active {
@@ -15062,11 +15062,11 @@ function injectStyles() {
       color: #ff5050;
     }
     .hs-discover-section-posts {
-      border-color: rgba(255,135,0,0.3);
+      border-color: rgba(255,255,255,0.3);
     }
     .hs-discover-section-posts > .hs-discover-heading {
-      background: rgba(255,135,0,0.10);
-      color: #ffaa44;
+      background: rgba(255,255,255,0.10);
+      color: #fff;
     }
     .hs-discover-section-trending {
       border-color: rgba(255,255,255,0.15);
@@ -15195,7 +15195,7 @@ function injectStyles() {
       gap: 5px;
       margin: 0;
     }
-    .hs-pinned-channel { font-size: 13px; color: #ff8700; font-weight: 600; }
+    .hs-pinned-channel { font-size: 13px; color: #fff; font-weight: 600; }
     .hs-pinned-user { font-size: 13px; color: #bbb; }
     .hs-pinned-time { font-size: 13px; color: #aaa; margin-left: auto; }
     .hs-pinned-body {
@@ -15220,7 +15220,7 @@ function injectStyles() {
     }
     .hs-modlog-row:hover { background: rgba(255,135,0,0.07); }
     .hs-modlog-time { color: #808080; font-variant-numeric: tabular-nums; }
-    .hs-modlog-channel { color: #ff8700; font-weight: 600; }
+    .hs-modlog-channel { color: #fff; font-weight: 600; }
     .hs-modlog-body { color: #ddd; word-break: break-word; }
     .hs-modlog-ban .hs-modlog-body { color: #ff5f5f; }
     .hs-modlog-timeout .hs-modlog-body { color: #ffd75f; }
@@ -16477,8 +16477,8 @@ function injectStyles() {
     body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #below #description a,
     body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #below a,
     body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #below #description a {
-      color: #ff8700 !important;
-      -webkit-text-fill-color: #ff8700 !important;
+      color: #fff !important;
+      -webkit-text-fill-color: #fff !important;
     }
 
     /* ============================================
@@ -16682,7 +16682,7 @@ function injectStyles() {
       outline: none; height: 22px;
       box-sizing: border-box;
     }
-    .hs-cl-search:focus { border-color: #ff8700; }
+    .hs-cl-search:focus { border-color: #fff; }
     .hs-cl-scope, .hs-cl-export {
       background: #111; color: #ccc;
       border: 1px solid #333; padding: 1px 6px;
@@ -16715,7 +16715,7 @@ function injectStyles() {
       white-space: nowrap;
     }
     .hs-cl-ch {
-      color: #ff8700; flex-shrink: 0;
+      color: #fff; flex-shrink: 0;
     }
     .hs-cl-user {
       color: #fff; font-weight: 700; flex-shrink: 0;
@@ -16732,7 +16732,7 @@ function injectStyles() {
       color: #aaa; text-align: center; padding: 12px 8px;
     }
     .hs-cl-public-archive {
-      color: #ff8700; text-decoration: none;
+      color: #fff; text-decoration: none;
       font-size: 13px; padding: 1px 6px;
       border: 1px solid #333;
       height: 22px; line-height: 18px;
@@ -16751,7 +16751,7 @@ function injectStyles() {
     .hs-cl-row:hover .hs-cl-permalink { opacity: 1; }
     .hs-cl-permalink:hover { color: #fff; }
     .hs-cl-permalink.hs-cl-permalink-copied {
-      opacity: 1; color: #ff8700;
+      opacity: 1; color: #fff;
     }
 
   /* buffer-vim: mode-line, visual range selection, hint labels, toast.
@@ -16777,18 +16777,18 @@ function injectStyles() {
   white-space: nowrap;
   user-select: none;
 }
-.hs-vim-modeline[data-mode='visual'] { color: #ff8700; border-color: #ff8700; }
+.hs-vim-modeline[data-mode='visual'] { color: #fff; border-color: #fff; }
 .hs-vim-modeline[data-mode='hint'] { color: #00afff; border-color: #00afff; }
 .hs-vim-modeline-count { color: #fff; margin-left: 8px; }
 
 .hs-mc-msg.hs-vim-sel {
-  background: rgba(255, 135, 0, 0.12) !important;
-  box-shadow: inset 3px 0 0 #ff8700 !important;
+  background: rgba(255, 255, 255, 0.12) !important;
+  box-shadow: inset 3px 0 0 #fff !important;
   border-radius: 0 !important;
 }
 .hs-mc-msg.hs-vim-cursor {
-  background: rgba(255, 135, 0, 0.24) !important;
-  box-shadow: inset 3px 0 0 #ff8700, inset 0 0 0 1px rgba(255, 135, 0, 0.5) !important;
+  background: rgba(255, 255, 255, 0.24) !important;
+  box-shadow: inset 3px 0 0 #fff, inset 0 0 0 1px rgba(255,255,255,0.3) !important;
   border-radius: 0 !important;
 }
 
@@ -16805,7 +16805,7 @@ function injectStyles() {
   font-weight: 700;
   line-height: 1;
   padding: 1px 3px;
-  background: #ff8700;
+  background: #fff;
   color: #000;
   border: 1px solid #000;
   border-radius: 0;
@@ -16827,7 +16827,7 @@ function injectStyles() {
   padding: 3px 8px;
   background: #000;
   color: #fff;
-  border: 1px solid #ff8700;
+  border: 1px solid #fff;
   border-right: 0;
   border-bottom: 0;
   border-radius: 0;
@@ -17691,9 +17691,9 @@ function renderStreamSummary(channel) {
   card.id = id
   card.className = 'hs-mc-stream-summary'
   card.style.cssText =
-    'background:#0a0a0a;color:#fff;border:1px solid #ff8700;font:11px/1.5 monospace;padding:10px 12px;margin:6px;display:flex;flex-direction:column;gap:6px;'
+    'background:#0a0a0a;color:#fff;border:1px solid #808080;font:11px/1.5 monospace;padding:10px 12px;margin:6px;display:flex;flex-direction:column;gap:6px;'
   const title = document.createElement('div')
-  title.style.cssText = 'display:flex;justify-content:space-between;align-items:center;color:#ff8700;font-weight:700'
+  title.style.cssText = 'display:flex;justify-content:space-between;align-items:center;color:#fff;font-weight:700'
   const titleText = document.createElement('span')
   titleText.textContent = `${key} stream summary`
   const dismiss = document.createElement('span')
@@ -21212,7 +21212,7 @@ function cursorToEnd(input) {
   sel.addRange(range)
 }
 
-// Parse a space-separated modifier-word string ("w! h! c!#ff8700") into
+// Parse a space-separated modifier-word string ("w! h! c!#888") into
 // canonical {mods, hue, words}; skips tokens that don't classify as modifiers
 // so a stray non-modifier word can't poison the result.
 function _hsMcParseModWords(s) {
@@ -22500,7 +22500,7 @@ function _hsMcApplyMods(html, mods, hue) {
     out = out.replace(/<img(\s)/, `<img style="filter:${imgFilter} !important;"$1`)
   }
   // Stash wire words on the wrapper so left-clicking a nested emote can
-  // round-trip modifiers ("w! h! c!#ff8700") into the input on paste.
+  // round-trip modifiers ("w! h! c!#888") into the input on paste.
   const wireWords = hsModWordsFromState(mods, hue).join(' ')
   if (wireWords) {
     const safe = wireWords.replace(/"/g, '&quot;')
@@ -22672,7 +22672,7 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime) {
       pendingWhitespace = ''
       continue
     }
-    // Peel chained modifier word (e.g. "w!h!ffzX" or "w!c!#ff8700h!")
+    // Peel chained modifier word (e.g. "w!h!ffzX" or "w!c!#888h!")
     const _hsPeel = hsModPeelChain(word)
     if (_hsPeel) {
       const last = _lastItem()
@@ -22812,7 +22812,7 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime) {
           }
         }
       }
-      // c!#hex inline (KappaC!#ff8700 — also try)
+      // c!#hex inline (KappaC!#888 — also try)
       if (!emote) {
         const inlineColor = word.match(/^(.+?)(c!#?[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?)$/)
         if (inlineColor) {
@@ -23881,7 +23881,7 @@ function ensureUserTooltip() {
 }
 
 function getHeatColor() {
-  return '#ff8700'
+  return '#fff'
 }
 
 function formatCompact(n) {
@@ -24002,7 +24002,7 @@ function renderProfileCard(p) {
   if (_note) {
     const _short = _note.length > 60 ? _note.slice(0, 60) + '…' : _note
     sheetRows.push(
-      `<dt>note</dt><dd data-k="note" style="color:#ff8700" title="${escapeHtml(_note)}">${escapeHtml(_short)}</dd>`,
+      `<dt>note</dt><dd data-k="note" style="color:#fff" title="${escapeHtml(_note)}">${escapeHtml(_short)}</dd>`,
     )
   }
 
@@ -25239,7 +25239,7 @@ function outcomeColor(color) {
   const map = {
     PINK: '#f5009b',
     BLUE: '#387aff',
-    ORANGE: '#ff8700',
+    ORANGE: '#fff',
     GREEN: '#00c853',
     TEAL: '#00bcd4',
     PURPLE: '#9c27b0',
@@ -26414,7 +26414,7 @@ function updateChatBanners(predResult, pollData) {
     const badge = document.createElement('span')
     badge.className = 'hs-mc-chat-banner-badge'
     badge.textContent = t('mc_chat_hype_level', [String(_hypeTrainActive.level || 1)])
-    badge.style.color = '#ff8700'
+    badge.style.color = '#fff'
     row.appendChild(badge)
     banner.appendChild(row)
   }
@@ -29616,7 +29616,7 @@ const _ytPaceTimer = new Map() // channelId → timer handle
 const _ytPaceLastEmit = new Map() // channelId → { time: ms, msgTime: real msg.time }
 
 // Heat tier display — big scaling numbers + color glow + row effects, no emoji
-// Matches website colors.js: #444 → #888 → #cc6600 → #ff8700 → #ffaa33 → #fff
+// Matches website colors.js: #444 → #888 → #aaa → #ccc → #eee → #fff
 function formatHeat(heat) {
   if (heat >= 1000) {
     const k = heat / 1000
@@ -29647,13 +29647,13 @@ function getHeatNumberStyle(heat, isReply) {
       '0 0 6px rgba(255,255,255,1),0 0 15px rgba(255,200,100,1),0 0 30px rgba(255,135,0,0.9),0 0 50px rgba(255,80,0,0.6)'
     animation = 'hs-heat-breathe 2s ease-in-out infinite'
   } else if (heat > 100) {
-    color = '#ffaa33'
+    color = '#eee'
     textShadow = '0 0 6px rgba(255,170,50,0.9),0 0 16px rgba(255,135,0,0.6),0 0 30px rgba(255,80,0,0.3)'
   } else if (heat > 50) {
-    color = '#ff8700'
+    color = '#fff'
     textShadow = '0 0 6px rgba(255,135,0,0.7),0 0 14px rgba(255,135,0,0.3)'
   } else if (heat > 10) {
-    color = heat > 30 ? '#cc6600' : '#888'
+    color = heat > 30 ? '#aaa' : '#888'
     textShadow = heat > 30 ? '0 0 4px rgba(204,102,0,0.3)' : undefined
   } else {
     color = '#444'
@@ -29675,15 +29675,15 @@ function getHeatDisplay(heat) {
     borderWidth = 4
     bg = 'rgba(60,20,0,0.15)'
   } else if (heat >= 100) {
-    border = '#ffaa33'
+    border = '#eee'
     borderWidth = 3
     bg = 'rgba(50,15,0,0.10)'
   } else if (heat >= 25) {
-    border = '#ff8700'
+    border = '#fff'
     borderWidth = 3
     bg = 'rgba(40,12,0,0.07)'
   } else if (heat >= 10) {
-    border = '#ff8700'
+    border = '#fff'
     borderWidth = 2
   } else {
     border = '#444'
@@ -29767,7 +29767,7 @@ function showFeedEditUI(div, msg) {
   const saveBtn = document.createElement('button')
   saveBtn.textContent = 'save'
   saveBtn.style.cssText =
-    'background:#ff8700;color:#000;border:none;padding:4px 8px;font-family:inherit;font-size:13px;cursor:pointer;'
+    'background:#fff;color:#000;border:none;padding:4px 8px;font-family:inherit;font-size:13px;cursor:pointer;'
   const cancelBtn = document.createElement('button')
   cancelBtn.textContent = 'cancel'
   cancelBtn.style.cssText =
@@ -30778,9 +30778,9 @@ function renderFeed() {
     const banner = document.createElement('div')
     banner.className = 'hs-mc-feed-fallback-banner'
     banner.style.cssText =
-      'padding:8px 10px;background:#1a1408;border-left:2px solid #ff8700;color:#e6e6e6;font-size:12px;margin-bottom:4px;line-height:1.5'
+      'padding:8px 10px;background:#1a1408;border-left:2px solid #808080;color:#e6e6e6;font-size:12px;margin-bottom:4px;line-height:1.5'
     const head = document.createElement('div')
-    head.style.cssText = 'color:#ff8700;font-weight:600;margin-bottom:2px'
+    head.style.cssText = 'color:#fff;font-weight:600;margin-bottom:2px'
     head.textContent = 'no posts from your follows'
     const sub = document.createElement('div')
     sub.style.cssText = 'color:#bbb'
@@ -31550,8 +31550,8 @@ function formatDiscoverCount(n) {
 
 // Compact heat tier styling — matches site canonical color tiers from getHeatNumberStyle,
 // but with fixed (small) size so discover rows stay dense.
-// Tiers: 0 → #444, 1-10 → #888, 10-30 → #888, 30-50 → #cc6600, 50-100 → #ff8700,
-//        100-500 → #ffaa33, 500+ → #fff with breathe animation
+// Tiers: 0 → #444, 1-10 → #888, 10-30 → #888, 30-50 → #aaa, 50-100 → #ccc,
+//        100-500 → #eee, 500+ → #fff with breathe animation
 function discoverHeatStyle(heat) {
   let color = '#444',
     textShadow = '',
@@ -31561,13 +31561,13 @@ function discoverHeatStyle(heat) {
     textShadow = '0 0 4px rgba(255,255,255,1),0 0 10px rgba(255,200,100,0.9),0 0 18px rgba(255,135,0,0.6)'
     animation = 'hs-heat-breathe 2s ease-in-out infinite'
   } else if (heat > 100) {
-    color = '#ffaa33'
+    color = '#eee'
     textShadow = '0 0 4px rgba(255,170,50,0.85),0 0 10px rgba(255,135,0,0.4)'
   } else if (heat > 50) {
-    color = '#ff8700'
+    color = '#fff'
     textShadow = '0 0 3px rgba(255,135,0,0.55)'
   } else if (heat > 30) {
-    color = '#cc6600'
+    color = '#aaa'
   } else if (heat > 10) {
     color = '#888'
   }
@@ -32009,7 +32009,7 @@ function renderDiscoverTab() {
             const a = document.createElement('a')
             a.href = '#'
             a.textContent = 'import follows from twitch'
-            a.style.color = '#ff8700'
+            a.style.color = '#fff'
             a.style.textDecoration = 'none'
             a.addEventListener('click', async (e) => {
               e.preventDefault()
@@ -32811,13 +32811,13 @@ function handleIncomingDm(data) {
     platform: 'heatsync',
     userId: data.from_user_id,
     displayName: data.from_display_name,
-    color: data.from_color || '#ff8700',
+    color: data.from_color || '#fff',
   })
 
   whisperTimeline.push({
     user: data.from_display_name,
     text: data.content,
-    color: data.from_color || '#ff8700',
+    color: data.from_color || '#fff',
     time,
     self: false,
     platform: 'heatsync',
@@ -32836,7 +32836,7 @@ function handleIncomingDm(data) {
       type: 'inline-dm',
       user: data.from_display_name,
       text: data.content,
-      color: data.from_color || '#ff8700',
+      color: data.from_color || '#fff',
       time,
       platform: 'heatsync',
     })
@@ -33028,7 +33028,7 @@ function renderWhispersTab() {
             platform: 'heatsync',
             userId: dm.other_user_id,
             displayName: dm.other_display_name,
-            color: dm.other_color || '#ff8700',
+            color: dm.other_color || '#fff',
           })
           // Fetch recent messages for each conversation
           apiFetch(`/api/dm/${dm.other_user_id}`)
@@ -33042,7 +33042,7 @@ function renderWhispersTab() {
                 whisperTimeline.push({
                   user: isSelf ? 'you' : dm.other_display_name,
                   text: m.content,
-                  color: isSelf ? '#808080' : dm.other_color || '#ff8700',
+                  color: isSelf ? '#808080' : dm.other_color || '#fff',
                   time: t,
                   self: isSelf,
                   platform: 'heatsync',
@@ -33103,7 +33103,7 @@ function renderWhispersTab() {
 
     const ts = formatTimeFromTs(m.time)
     const tsHtml = ts ? `<span class="hs-mc-ts">${ts}</span>` : ''
-    const platColor = m.platform === 'twitch' ? '#9146ff' : '#ff8700'
+    const platColor = m.platform === 'twitch' ? '#9146ff' : '#808080'
     const platTag = m.platform === 'twitch' ? 'T' : 'HS'
     const arrow = m.self ? '\u2192' : '\u2190'
 
@@ -38347,13 +38347,13 @@ function emoteCycleMeta(m) {
   if (!m) return { cat: '', vis: null }
   if (m.type === 'user' || m.type === 'user-bare') return { cat: 'chatter', vis: { t: 'everyone', c: '#5fd75f' } }
   if (m.type === 'emoji') return { cat: 'emoji', vis: { t: 'everyone', c: '#5fd75f' } }
-  if (m.remote) return { cat: '7tv search', vis: { t: 'heatsync only', c: '#ff8700' } }
+  if (m.remote) return { cat: '7tv search', vis: { t: 'heatsync only', c: '#fff' } }
   const tier = m.tier ?? 2
   const cat = tier === 0 ? 'channel' : tier === 1 ? 'your set' : 'global'
   if (m.source === 'twitch') return { cat, vis: { t: 'all twitch', c: '#5fd75f' } }
   // Your personal set (tier 1) or a heatsync-hosted emote: others only see it via
   // heatsync's sender-set merge — non-heatsync viewers get plain text.
-  if (tier === 1 || m.source === 'heatsync') return { cat, vis: { t: 'heatsync only', c: '#ff8700' } }
+  if (tier === 1 || m.source === 'heatsync') return { cat, vis: { t: 'heatsync only', c: '#fff' } }
   // Third-party emote active in the channel/global set — provider-ext users see it.
   return { cat, vis: { t: `${m.source || 'ext'} users`, c: '#ffd75f' } }
 }
@@ -39336,7 +39336,7 @@ function showSlashHelp() {
   panel = document.createElement('div')
   panel.id = 'hs-mc-slash-help'
   panel.style.cssText =
-    "position:fixed;bottom:60px;right:20px;z-index:99999;background:#000;border:2px solid #ff8700;padding:10px 14px;font:13px/1.4 'CozetteVector','Courier New',monospace;color:#fff;white-space:pre;max-width:420px;box-shadow:0 0 12px rgba(255,135,0,0.5)"
+    "position:fixed;bottom:60px;right:20px;z-index:99999;background:#000;border:2px solid #fff;padding:10px 14px;font:13px/1.4 'CozetteVector','Courier New',monospace;color:#fff;white-space:pre;max-width:420px;box-shadow:0 0 12px rgba(255,255,255,0.3)"
   panel.textContent = SLASH_HELP_LINES.join('\n')
   panel.addEventListener('click', () => panel.remove())
   document.body.appendChild(panel)
@@ -39821,7 +39821,7 @@ function showUploadStatus(msg, isError) {
   if (msg) {
     if (bar) {
       bar.textContent = msg
-      bar.style.color = isError ? '#ff4444' : '#ff8700'
+      bar.style.color = isError ? '#ff4444' : '#fff'
       bar.style.display = 'block'
       return
     }
@@ -39829,7 +39829,7 @@ function showUploadStatus(msg, isError) {
     if (!inputbar) return
     const el = document.createElement('div')
     el.id = 'hs-mc-upload-status'
-    el.style.cssText = 'padding:2px 8px;font-size:13px;color:#ff8700;background:#000;border-top:1px solid #808080;'
+    el.style.cssText = 'padding:2px 8px;font-size:13px;color:#fff;background:#000;border-top:1px solid #808080;'
     el.textContent = msg
     inputbar.insertBefore(el, inputbar.firstChild)
   } else if (bar) {
@@ -39936,7 +39936,7 @@ function setupMediaDropHandlers() {
       dz = document.createElement('div')
       dz.id = 'hs-mc-drop-zone'
       dz.style.cssText =
-        'position:absolute;inset:0;background:rgba(255,135,0,0.15);border:2px dashed #ff8700;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;z-index:99998;pointer-events:none;'
+        'position:absolute;inset:0;background:rgba(255,255,255,0.1);border:2px dashed #fff;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;z-index:99998;pointer-events:none;'
       dz.textContent = 'drop image/video to upload'
       overlay.appendChild(dz)
     }
@@ -40548,7 +40548,7 @@ function pcBuildModActions(username) {
   reasonInput.style.cssText =
     'width:100%;box-sizing:border-box;background:#000;color:#fff;border:1px solid #333;border-radius:0;padding:2px 5px;margin-bottom:3px;font:inherit;outline:none'
   reasonInput.addEventListener('focus', () => {
-    reasonInput.style.borderColor = '#ff8700'
+    reasonInput.style.borderColor = '#fff'
   })
   reasonInput.addEventListener('blur', () => {
     reasonInput.style.borderColor = '#333'
@@ -40641,7 +40641,7 @@ function pcBuildNoteSection(username) {
     if (titleEl) {
       const dot = document.createElement('span')
       dot.textContent = ' ●'
-      dot.style.cssText = 'color:#ff8700'
+      dot.style.cssText = 'color:#fff'
       titleEl.appendChild(dot)
     }
   }
@@ -40654,7 +40654,7 @@ function pcBuildNoteSection(username) {
   ta.style.cssText =
     'width:100%;box-sizing:border-box;background:#000;color:#fff;border:1px solid #333;border-radius:0;padding:3px 5px;font:inherit;outline:none;resize:vertical;min-height:2.4em'
   ta.addEventListener('focus', () => {
-    ta.style.borderColor = '#ff8700'
+    ta.style.borderColor = '#fff'
   })
   ta.addEventListener('blur', () => {
     ta.style.borderColor = '#333'
@@ -43889,7 +43889,7 @@ const STORAGE_KEY = 'heatsync_multichat'
   // tags the twitch placeholder so fetchAvatar can find and replace it.
   function avatarFallbackHtml(user, key, withDataUser) {
     const initial = (user || '?').charAt(0).toUpperCase()
-    const palette = ['#ff8700', '#5f87ff', '#00d65a', '#ffff00', '#ff4f4d', '#af87ff']
+    const palette = ['#808080', '#5f87ff', '#00d65a', '#ffff00', '#ff4f4d', '#af87ff']
     let h = 0
     for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0
     const du = withDataUser ? ` data-user="${escapeHtml(key)}"` : ''
@@ -47311,7 +47311,7 @@ const STORAGE_KEY = 'heatsync_multichat'
   // Shared drag-ghost style — identical across the twitch/kick/yt resize
   // handles. One spec to keep in sync (orange tint, 3px left edge, z 99998).
   const buildGhostCss = (rect, w0) =>
-    `position:fixed;top:${rect.top}px;right:0;height:${rect.height}px;width:${w0}px;background:rgba(255,135,0,0.06);border-left:3px solid #ff8700;pointer-events:none;z-index:99998;will-change:width;`
+    `position:fixed;top:${rect.top}px;right:0;height:${rect.height}px;width:${w0}px;background:rgba(255,255,255,0.06);border-left:3px solid #fff;pointer-events:none;z-index:99998;will-change:width;`
   function setupResizeHandle() {
     const rightCol = document.querySelector('.right-column.right-column--beside')
     if (!rightCol || document.getElementById('hs-mc-resize-handle')) return
@@ -47559,7 +47559,7 @@ const STORAGE_KEY = 'heatsync_multichat'
   // is called from applyChatPosition. Drags chatWidth (left/right) or
   // chatHeight (top/bottom). Hides itself when chatPosition='right' and
   // delegates to existing per-platform handles for the default layout.
-  // Orange #ff8700, 2px thin + invisible grab, no text — matches the
+  // White #fff, 2px thin + invisible grab, no text — matches the
   // --hs-resize-thickness token in styles.js (and heatsync.org's .hs-resizer).
   // ============================================
   const HS_RESIZE_PX = 4 // visible thickness — mirrors --hs-resize-thickness
@@ -47571,7 +47571,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     handle.id = 'hs-c-resize-handle'
     Object.assign(handle.style, {
       position: 'fixed',
-      background: '#ff8700',
+      background: '#fff',
       opacity: '0.55',
       userSelect: 'none',
       touchAction: 'none',
@@ -47689,21 +47689,21 @@ const STORAGE_KEY = 'heatsync_multichat'
         // and inline-style writes on YT player wrappers thrash IMA SDK.
         ghost = document.createElement('div')
         ghost.id = 'hs-c-resize-ghost'
-        const baseStyle = 'position:fixed;background:rgba(255,135,0,0.06);pointer-events:none;z-index:99997;'
+        const baseStyle = 'position:fixed;background:rgba(255,255,255,0.06);pointer-events:none;z-index:99997;'
         if (chatPosition === 'right') {
           ghost.style.cssText =
             baseStyle +
-            `top:${panelTop}px;right:0;height:${panelBottom - panelTop}px;width:${pendingW}px;border-left:3px solid #ff8700;will-change:width;`
+            `top:${panelTop}px;right:0;height:${panelBottom - panelTop}px;width:${pendingW}px;border-left:3px solid #fff;will-change:width;`
         } else if (chatPosition === 'left') {
           ghost.style.cssText =
             baseStyle +
-            `top:${panelTop}px;left:0;height:${panelBottom - panelTop}px;width:${pendingW}px;border-right:3px solid #ff8700;will-change:width;`
+            `top:${panelTop}px;left:0;height:${panelBottom - panelTop}px;width:${pendingW}px;border-right:3px solid #fff;will-change:width;`
         } else if (chatPosition === 'top') {
           ghost.style.cssText =
-            baseStyle + `top:0;left:0;right:0;height:${pendingH}px;border-bottom:3px solid #ff8700;will-change:height;`
+            baseStyle + `top:0;left:0;right:0;height:${pendingH}px;border-bottom:3px solid #fff;will-change:height;`
         } else if (chatPosition === 'bottom') {
           ghost.style.cssText =
-            baseStyle + `bottom:0;left:0;right:0;height:${pendingH}px;border-top:3px solid #ff8700;will-change:height;`
+            baseStyle + `bottom:0;left:0;right:0;height:${pendingH}px;border-top:3px solid #fff;will-change:height;`
         }
         document.body.appendChild(ghost)
         e.preventDefault()
@@ -49000,7 +49000,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       momentChannel: d.channel,
       momentPlatform: d.platform || 'twitch',
       text: `${d.channel} chat is exploding — ${d.rate} msgs/30s (usually ~${Math.max(1, Math.round(d.baseline))})`,
-      color: '#ff8700',
+      color: '#fff',
       time: now,
     })
   }
@@ -49454,7 +49454,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         var active = def.invertDisplay ? !member : member
         var mMod = _rowModified(def, o)
         var mTag = o.tag
-          ? '<span style="font-family:monospace;color:#ff8700;margin-right:6px;min-width:34px;display:inline-block">' +
+          ? '<span style="font-family:monospace;color:#fff;margin-right:6px;min-width:34px;display:inline-block">' +
             escapeHtml(o.tag) +
             '</span>'
           : ''
@@ -50420,7 +50420,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         '<span style="font-size:13px;flex-shrink:0"><span style="color:#808080">' +
         escapeHtml(_fmtPresetVal(c.def, c.from)) +
         '</span>' +
-        ' → <span style="color:#ff8700">' +
+        ' → <span style="color:#fff">' +
         escapeHtml(_fmtPresetVal(c.def, c.to)) +
         '</span></span>' +
         '</div>'
@@ -50433,7 +50433,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       rows +
       '<div class="hs-mc-setting-row" style="justify-content:flex-end;gap:4px">' +
       (changes.length
-        ? '<button class="hs-mc-settings-btn" data-preset-action="apply" style="background:#ff8700;color:#000;border:none;padding:2px 12px;font-size:13px;cursor:pointer;font-family:inherit">apply</button>'
+        ? '<button class="hs-mc-settings-btn" data-preset-action="apply" style="background:#fff;color:#000;border:none;padding:2px 12px;font-size:13px;cursor:pointer;font-family:inherit">apply</button>'
         : '') +
       '<button class="hs-mc-settings-btn" data-preset-action="cancel" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">cancel</button>' +
       '</div>' +
@@ -51437,7 +51437,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       user,
       text: customText || '',
       systemMsg: `${user} is celebrating ${months} months as a subscriber!`,
-      color: '#ff8700',
+      color: '#fff',
       badges: ownBadgesFor(claim.channel) || '',
       channel: claim.channel,
       time: Date.now(),
@@ -51688,7 +51688,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       user,
       text: customText || '',
       systemMsg: `${user} watched ${streakCount} streams in a row — watch streak`,
-      color: '#ff8700',
+      color: '#fff',
       badges: ownBadgesFor(claim.channel) || '',
       channel: claim.channel,
       time: Date.now(),
@@ -52770,7 +52770,7 @@ const STORAGE_KEY = 'heatsync_multichat'
 
   // Static platform→accent map — hoisted out of buildMessageDiv so it isn't
   // reallocated for every chat row rendered.
-  const PLAT_COLORS = { twitch: '#9146ff', kick: '#53fc18', yt: '#ff0000', heatsync: '#ff8700' }
+  const PLAT_COLORS = { twitch: '#9146ff', kick: '#53fc18', yt: '#ff0000', heatsync: '#fff' }
   function buildMessageDiv(m, tabId) {
     // Blocked user — fully hide (skip render entirely). Both the append and the
     // full-rebuild path go through buildMessageDiv, so returning null here hides
@@ -52864,7 +52864,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       const isThreadOp = !!m.is_thread_op
       const notifType = isThreadOp ? 'mop' : isOp ? 'op' : 're'
       const typeDef = INLINE_NOTIF_TYPES[notifType]
-      const borderColor = m.inlineNotifBorderColor || typeDef?.borderColor || '#ff8700'
+      const borderColor = m.inlineNotifBorderColor || typeDef?.borderColor || '#fff'
       div.style.borderLeftColor = borderColor
       const tsVal = timestampsEnabled ? formatTimeFromTs(m.time) : ''
       const tsSpan = tsVal ? `<span class="hs-mc-ts">${tsVal}</span>` : ''
@@ -52906,7 +52906,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       const platBadge =
         m.platform === 'twitch'
           ? '<span style="color:#9146ff;font-size:13px;font-weight:700;margin-right:3px">[T]</span>'
-          : '<span style="color:#ff8700;font-size:13px;font-weight:700;margin-right:3px">[HS]</span>'
+          : '<span style="color:#fff;font-size:13px;font-weight:700;margin-right:3px">[HS]</span>'
       const dmPaint = m.platform === 'twitch' ? userPaintStyle(m.userId, (m.user || '').toLowerCase()) : ''
       const userName = `<span style="${dmPaint || `color:${sanitizeColor(m.color)};font-weight:600`}">${escapeHtml(m.user)}</span>`
       // All values sanitized — safe innerHTML
@@ -52924,10 +52924,10 @@ const STORAGE_KEY = 'heatsync_multichat'
     if (m.type === 'moment') {
       const div = document.createElement('div')
       div.className = 'hs-mc-feed-inline hs-mc-moment-inline'
-      div.style.borderLeftColor = m.inlineNotifBorderColor || '#ff8700'
+      div.style.borderLeftColor = m.inlineNotifBorderColor || '#fff'
       const tsVal = timestampsEnabled ? formatTimeFromTs(m.time) : ''
       const tsSpan = tsVal ? `<span class="hs-mc-ts">${tsVal}</span>` : ''
-      const label = `<span style="color:${m.inlineNotifColor || '#ff8700'};font-size:13px;font-weight:700;margin-right:3px">[🔥]</span>`
+      const label = `<span style="color:${m.inlineNotifColor || '#fff'};font-size:13px;font-weight:700;margin-right:3px">[🔥]</span>`
       div.innerHTML = `${tsSpan}${label}<span style="color:#c0c0c0">${escapeHtml(m.text || '')}</span>`
       div.style.cursor = 'pointer'
       const ch = m.momentChannel
@@ -55960,7 +55960,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       item.appendChild(dot)
       item.appendChild(document.createTextNode(ch.name))
 
-      const baseColor = isActive ? '#ff8700' : '#fff'
+      const baseColor = isActive ? '#fff' : '#fff'
       item.style.cssText = `padding:6px 12px;cursor:pointer;color:${baseColor};white-space:nowrap;`
       item.addEventListener('mouseenter', () => {
         item.style.background = '#fff'
@@ -57053,7 +57053,7 @@ const STORAGE_KEY = 'heatsync_multichat'
   }
 
   // Edge-pill: orange strip pinned to the edge where chat last lived. Click to
-  // restore (not a resize bar) — kept visible/thick on purpose, #ff8700, no text.
+  // restore (not a resize bar) — kept visible/thick on purpose, #fff, no text.
   function ensureChatRestorePill(show) {
     let pill = document.getElementById('hs-chat-restore-pill')
     if (!show) {
@@ -57183,7 +57183,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     banner.id = id
     banner.className = 'hs-mc-api-banner'
     banner.style.cssText =
-      'background:#ff8700;color:#000;font:600 11px/1.4 monospace;padding:6px 10px;text-align:center;display:flex;align-items:center;justify-content:center;gap:8px;'
+      'background:#fff;color:#000;font:600 11px/1.4 monospace;padding:6px 10px;text-align:center;display:flex;align-items:center;justify-content:center;gap:8px;'
     const label = source === 'heatsync' ? 'heatsync.org unreachable — reconnecting' : `${source} unreachable`
     const text = document.createElement('span')
     text.textContent = label
@@ -57217,7 +57217,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     banner.id = id
     banner.className = 'hs-mc-auth-banner'
     banner.style.cssText =
-      'background:#ff8700;color:#000;font:600 11px/1.4 monospace;padding:6px 10px;text-align:center;display:flex;align-items:center;justify-content:center;gap:8px;'
+      'background:#fff;color:#000;font:600 11px/1.4 monospace;padding:6px 10px;text-align:center;display:flex;align-items:center;justify-content:center;gap:8px;'
     const text = document.createElement('span')
     text.textContent = 'youtube chat needs heatsync login —'
     const link = document.createElement('a')

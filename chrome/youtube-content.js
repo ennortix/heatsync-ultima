@@ -539,7 +539,7 @@
       .hs-yt-ac-vis { margin-left: auto; flex-shrink: 0; padding-left: 8px; }
       .hs-yt-ac-vis.v-all { color: #5fd75f; }
       .hs-yt-ac-vis.v-ext { color: #ffd75f; }
-      .hs-yt-ac-vis.v-hs  { color: #ff8700; }
+      .hs-yt-ac-vis.v-hs  { color: #fff; }
       .hs-yt-ac-vis.v-dim { color: #9e9e9e; }
       .hs-yt-toast {
         position: fixed;

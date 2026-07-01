@@ -672,7 +672,7 @@
       }
 
       .heatsync-search input:focus {
-        border-color: #ff8700;
+        border-color: #fff;
       }
 
       .heatsync-search input::placeholder {
@@ -701,7 +701,7 @@
         outline: none;
         font-family: inherit;
       }
-      .hs-top-search input:focus { border-color: #ff8700; }
+      .hs-top-search input:focus { border-color: #fff; }
       .hs-top-search input::placeholder { color: #808080; }
 
       .hs-src-chips {
@@ -727,8 +727,8 @@
       }
       .hs-src-chip:hover { background: #fff; color: #000; border-color: #fff; }
       .hs-src-chip.active {
-        background: #ff8700;
-        border-color: #ff8700;
+        background: #fff;
+        border-color: #fff;
         color: #000;
       }
       .hs-src-chip.active:hover { background: #fff; border-color: #fff; }
@@ -830,7 +830,7 @@
 
       /* Keyboard focus highlight */
       .heatsync-emote-wrap.hs-kb-focus {
-        outline: 2px solid #ff8700;
+        outline: 2px solid #fff;
         outline-offset: -2px;
       }
 
@@ -1045,8 +1045,8 @@
       }
       .heatsync-set-apply-btn {
         background: transparent;
-        color: #ff8700;
-        border: 1px solid #ff8700;
+        color: #fff;
+        border: 1px solid #fff;
         padding: 0 6px;
         font: inherit;
         font-size: 13px;
@@ -1062,9 +1062,9 @@
         border-color: #fff;
       }
       .heatsync-set-apply-btn.confirming {
-        background: #ff8700;
+        background: #fff;
         color: #000;
-        border-color: #ff8700;
+        border-color: #fff;
       }
       .heatsync-set-apply-btn.applying {
         opacity: 0.6;
@@ -1133,8 +1133,8 @@
       }
       .heatsync-restore-btn {
         background: transparent;
-        color: #ff8700;
-        border: 1px solid #ff8700;
+        color: #fff;
+        border: 1px solid #fff;
         padding: 0 6px;
         font: inherit;
         font-size: 13px;
@@ -1150,9 +1150,9 @@
         border-color: #fff;
       }
       .heatsync-restore-btn.confirming {
-        background: #ff8700;
+        background: #fff;
         color: #000;
-        border-color: #ff8700;
+        border-color: #fff;
       }
       .heatsync-restore-btn.restoring {
         opacity: 0.6;
@@ -1186,10 +1186,10 @@
       .heatsync-import-btn {
         width: 100%;
         padding: 10px 16px;
-        background: #ff8700;
+        background: #fff;
         border: none;
         border-radius: 0;
-        color: #fff;
+        color: #000;
         font-size: 14px;
         font-weight: 600;
         cursor: pointer;
@@ -1387,7 +1387,7 @@
         z-index: 5000;
         pointer-events: none;
         background: #000;
-        border: 2px solid #ff8700;
+        border: 2px solid #fff;
         border-radius: 0;
         padding: 8px;
       }
@@ -1414,7 +1414,7 @@
       }
 
       .heatsync-settings-section-title {
-        color: #ff8700;
+        color: #fff;
         font-size: 11px;
         font-weight: 600;
         text-transform: uppercase;
@@ -1529,7 +1529,7 @@
         z-index: 5001;
         background: #000;
         color: #fff;
-        border: 1px solid #ff8700;
+        border: 1px solid #fff;
         padding: 0 0 4px;
         min-width: 200px;
         max-width: 280px;
@@ -1566,7 +1566,7 @@
       }
       .hs-emote-ctx-provider {
         display: inline-block; padding: 0 4px;
-        border: 1px solid #444; color: #ff8700;
+        border: 1px solid #444; color: #fff;
         font-size: 10px; line-height: 14px;
       }
       .hs-emote-ctx-item {
@@ -1604,13 +1604,13 @@
         font-size: 12px;
         outline: none;
       }
-      .hs-emote-ctx-input:focus { border-color: #ff8700; }
+      .hs-emote-ctx-input:focus { border-color: #fff; }
       .hs-emote-ctx-confirm {
         display: block;
         width: calc(100% - 16px);
         margin: 2px 8px 6px;
         padding: 4px 8px;
-        background: #ff8700;
+        background: #fff;
         border: none;
         border-radius: 2px;
         color: #000;
@@ -1634,15 +1634,15 @@
         flex: 1;
         padding: 5px 10px;
         background: none;
-        border: 1px solid #ff8700;
-        color: #ff8700;
+        border: 1px solid #fff;
+        color: #fff;
         font-size: 13px;
         font-weight: 600;
         cursor: pointer;
         text-align: center;
         border-radius: 0;
       }
-      .hs-import-channel-btn:hover { background: #ff8700; color: #000; }
+      .hs-import-channel-btn:hover { background: #fff; color: #000; }
       .hs-import-channel-btn:disabled { opacity: 0.4; cursor: wait; }
 
       /* Discover tab list */
@@ -1695,8 +1695,8 @@
       }
       .hs-discover-add-btn {
         background: none;
-        border: 1px solid #ff8700;
-        color: #ff8700;
+        border: 1px solid #fff;
+        color: #fff;
         font-size: 13px;
         font-weight: 600;
         padding: 0 6px;
@@ -1705,7 +1705,7 @@
         border-radius: 0;
         line-height: 1.4;
       }
-      .hs-discover-add-btn:hover { background: #ff8700; color: #000; }
+      .hs-discover-add-btn:hover { background: #fff; color: #000; }
       .hs-discover-add-btn.added { border-color: #00cc66; color: #00cc66; background: none; cursor: default; }
       .hs-discover-add-btn:disabled { opacity: 0.4; cursor: wait; }
       .hs-discover-hint {
@@ -1720,8 +1720,8 @@
         width: calc(100% - 16px);
         margin: 6px 8px;
         background: none;
-        border: 1px solid #ff8700;
-        color: #ff8700;
+        border: 1px solid #fff;
+        color: #fff;
         font-size: 11px;
         font-weight: 600;
         padding: 6px 8px;
@@ -1743,7 +1743,7 @@
       .hs-discover-prov.prov-7tv { color: #29d9ff; }
       .hs-discover-prov.prov-bttv { color: #ffaa00; }
       .hs-discover-prov.prov-ffz { color: #5c8bff; }
-      .hs-discover-prov.prov-hs { color: #ff8700; }
+      .hs-discover-prov.prov-hs { color: #fff; }
       .hs-discover-item:hover .hs-discover-prov { color: #000 !important; border-color: #000 !important; }
       .hs-discover-uses {
         font-size: 10px;
@@ -4165,7 +4165,7 @@
         toast = document.createElement('div')
         toast.className = 'heatsync-floating-toast'
         toast.style.cssText =
-          'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#000;color:#fff;border:1px solid #ff8700;padding:8px 14px;font-size:13px;z-index:99999;pointer-events:none;opacity:0;transition:opacity 0.15s'
+          'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#000;color:#fff;border:1px solid #fff;padding:8px 14px;font-size:13px;z-index:99999;pointer-events:none;opacity:0;transition:opacity 0.15s'
         document.body.appendChild(toast)
       }
       toast.textContent = msg

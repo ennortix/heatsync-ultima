@@ -1262,11 +1262,11 @@
     if (!m) return { cat: '', vis: null }
     if (m.isUser || m.type === 'user') return { cat: 'chatter', vis: { t: 'everyone', c: '#5fd75f' } }
     if (m.isEmoji || m.type === 'emoji') return { cat: 'emoji', vis: { t: 'everyone', c: '#5fd75f' } }
-    if (m.remote) return { cat: '7tv search', vis: { t: 'heatsync only', c: '#ff8700' } }
+    if (m.remote) return { cat: '7tv search', vis: { t: 'heatsync only', c: '#fff' } }
     const tier = m.tier ?? 2
     const cat = tier === 0 ? 'channel' : tier === 1 ? 'your set' : 'global'
     if (m.source === 'twitch' || m.native) return { cat, vis: { t: 'all twitch', c: '#5fd75f' } }
-    if (tier === 1 || m.source === 'heatsync') return { cat, vis: { t: 'heatsync only', c: '#ff8700' } }
+    if (tier === 1 || m.source === 'heatsync') return { cat, vis: { t: 'heatsync only', c: '#fff' } }
     return { cat, vis: { t: `${m.source || 'ext'} users`, c: '#ffd75f' } }
   }
 

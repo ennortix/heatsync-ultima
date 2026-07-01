@@ -236,7 +236,7 @@
       }
       #${EMOTE_DROPDOWN_ID} .hs-ac-vis.v-all { color: #5fd75f; }
       #${EMOTE_DROPDOWN_ID} .hs-ac-vis.v-ext { color: #ffd75f; }
-      #${EMOTE_DROPDOWN_ID} .hs-ac-vis.v-hs  { color: #ff8700; }
+      #${EMOTE_DROPDOWN_ID} .hs-ac-vis.v-hs  { color: #fff; }
       #${EMOTE_DROPDOWN_ID} .hs-ac-vis.v-dim { color: #9e9e9e; }
       #${EMOTE_DROPDOWN_ID} .hs-ac-item.selected .hs-ac-vis,
       #${EMOTE_DROPDOWN_ID} .hs-ac-item:hover .hs-ac-vis { color: #000; }

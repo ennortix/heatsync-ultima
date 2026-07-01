@@ -699,7 +699,7 @@
 
   // User color picker popup (right-click username → open)
   const HS_USER_COLOR_SWATCHES = [
-    '#ff8700',
+    '#fff',
     '#ffd700',
     '#ff4d4d',
     '#ff66cc',
@@ -741,7 +741,7 @@
   function openUserColorPicker(username, x, y) {
     closeUserColorPicker()
     const lower = username.toLowerCase()
-    const current = _userColors.get(lower) || '#ff8700'
+    const current = _userColors.get(lower) || '#fff'
 
     const el = document.createElement('div')
     el.id = 'hs-user-color-picker'
@@ -777,7 +777,7 @@
     hexInput.type = 'text'
     hexInput.value = current
     hexInput.maxLength = 7
-    hexInput.placeholder = '#ff8700'
+    hexInput.placeholder = '#fff'
     colorInput.addEventListener('input', () => {
       hexInput.value = colorInput.value
     })
@@ -886,7 +886,7 @@
   }
 
   // FFZ/BTTV modifier WYSIWYG preview in chat input box.
-  // As the user types `Kappa w! h! ffzX c!#ff8700`, the inserted Kappa <img>
+  // As the user types `Kappa w! h! ffzX c!#888`, the inserted Kappa <img>
   // inside `.wysiwig-chat-input-emote` previews wide+tall+flipped+tinted live.
   const HS_INPUT_EMOTE_SELECTOR = '.wysiwig-chat-input-emote, span[data-slate-node="element"][data-slate-void]'
   const HS_INPUT_EDITOR_SELECTOR = '[data-slate-editor="true"], .chat-wysiwyg-input__editor, [data-testid="chat-input"]'
@@ -1665,7 +1665,7 @@
     white-space: nowrap !important;
   }
   .hs-pc-subs-you {
-    background: #ff8700 !important;
+    background: #fff !important;
     color: #000 !important;
     padding: 2px 4px !important;
     border-radius: 0 !important;
@@ -1689,7 +1689,7 @@
     background: #000 !important;
     color: #fff !important;
     padding: 2px 4px !important;
-    border: 1px solid #ff8700 !important;
+    border: 1px solid #fff !important;
     border-radius: 0 !important;
     font-size: 10px !important;
     font-weight: 900 !important;
@@ -1745,7 +1745,7 @@
 
   .hs-pc-heat {
     background: #000 !important;
-    border: 1px solid #ff8700 !important;
+    border: 1px solid #fff !important;
     font-weight: 900 !important;
     font-size: 12px !important;
     padding: 2px 6px !important;
@@ -1785,8 +1785,8 @@
 
   .hs-pc-streak {
     background: #000 !important;
-    color: #ff8700 !important;
-    border: 1px solid #ff8700 !important;
+    color: #fff !important;
+    border: 1px solid #fff !important;
     padding: 2px 6px !important;
     border-radius: 0 !important;
     font-size: 11px !important;
@@ -1991,8 +1991,8 @@
     border-color: #fff !important;
   }
   .hs-pc-follow-btn.hs-pc-following {
-    border-color: #ff8700 !important;
-    color: #ff8700 !important;
+    border-color: #fff !important;
+    color: #fff !important;
   }
   .hs-pc-follow-btn.hs-pc-following:hover:not(:disabled) {
     background: #fff !important;
@@ -2038,7 +2038,7 @@
     flex: 1 !important;
   }
   .hs-pc-history .hs-pc-history-msg.system .hs-pc-history-text {
-    color: #ff8700 !important;
+    color: #fff !important;
     font-style: italic !important;
   }
 
@@ -2301,7 +2301,7 @@
     position: absolute !important;
     top: -4px !important;
     right: -6px !important;
-    background: #ff8700 !important;
+    background: #fff !important;
     color: #000 !important;
     font-size: 9px !important;
     font-weight: bold !important;
@@ -2540,8 +2540,8 @@
   /* Custom keyword highlight (BTTV/FFZ-style) */
   .chat-line__message.hs-keyword-match,
   .hs-keyword-match {
-    background-color: rgba(255, 135, 0, 0.18) !important;
-    box-shadow: inset 0 0 0 1px #ff8700 !important;
+    background-color: rgba(255,255,255,0.08) !important;
+    box-shadow: inset 0 0 0 1px #808080 !important;
   }
 
   /* Show deleted/timeout messages (toggle .hs-show-cleared on <html>) */
@@ -2565,7 +2565,7 @@
   #hs-user-color-picker {
     position: fixed; z-index: 2147483646;
     background: #000; color: #fff;
-    border: 1px solid #ff8700;
+    border: 1px solid #fff;
     padding: 8px; min-width: 220px;
     font-family: ui-monospace, Menlo, monospace; font-size: 12px;
     box-shadow: 0 4px 24px rgba(0,0,0,0.6);
@@ -2595,7 +2595,7 @@
   .hs-ctx-menu {
     position: fixed; z-index: 2147483646;
     background: #000; color: #fff;
-    border: 1px solid #ff8700;
+    border: 1px solid #fff;
     padding: 0; min-width: 220px; max-width: 280px;
     font-family: ui-monospace, Menlo, monospace; font-size: 13px;
     box-shadow: 0 6px 32px rgba(0,0,0,0.75);
@@ -2638,7 +2638,7 @@
     position: fixed; right: 12px; bottom: 12px;
     z-index: 9999;
     background: #000; color: #fff;
-    border: 1px solid #ff8700;
+    border: 1px solid #fff;
     padding: 6px 10px;
     font-family: ui-monospace, Menlo, monospace; font-size: 13px;
     max-width: 280px;
@@ -5017,7 +5017,7 @@
   const HEAT_GRADIENT = [
     '#808080',
     '#cc6e00',
-    '#ff8700',
+    '#ee8000',
     '#ff9900',
     '#ff6600',
     '#ff0000',
@@ -6538,7 +6538,7 @@
         continue
       }
 
-      // Chained modifier word (e.g. "w!h!ffzX" or "w!c!#ff8700") — peel into parts.
+      // Chained modifier word (e.g. "w!h!ffzX" or "w!c!#888") — peel into parts.
       if (_uiPrefs.emoteModifiers && !HS_MODIFIER_CLASSES[trimmed] && !HS_C_HEX_RE.test(trimmed)) {
         const _hsPeel = (() => {
           if (!trimmed || trimmed.length < 2) return null

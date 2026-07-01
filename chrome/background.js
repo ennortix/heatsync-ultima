@@ -3925,7 +3925,7 @@ function recomputeBadge() {
     badgeApi.setBadgeBackgroundColor({ color: '#ff3030' }).catch(() => {})
   } else if (notifs > 0) {
     badgeApi.setBadgeText({ text: String(notifs) }).catch(() => {})
-    badgeApi.setBadgeBackgroundColor({ color: '#ff8700' }).catch(() => {})
+    badgeApi.setBadgeBackgroundColor({ color: '#555' }).catch(() => {})
   } else {
     badgeApi.setBadgeText({ text: '' }).catch(() => {})
   }

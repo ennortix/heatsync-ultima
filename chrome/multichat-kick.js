@@ -35732,6 +35732,10 @@ async function _toggleMcMute(username, platform) {
   const wasUnmute = wasMuted
   if (wasMuted) {
     for (const k of aliasKeys) mutedUsers.delete(k)
+    // Also clear any legacy bare entry (pre-namespace storage) so unmute always lands
+    // even if the Set was populated before namespacing was introduced.
+    const bareLower = String(username == null ? '' : username).toLowerCase().replace(/^@/, '')
+    if (bareLower) mutedUsers.delete(bareLower)
     showToast(`unmuted ${username}`, 'success')
     for (const k of aliasKeys) safeSendMessage({ type: 'unmute_user', username: k })
   } else {
@@ -35752,19 +35756,25 @@ async function _toggleMcMute(username, platform) {
 
 async function _toggleMcBlock(username, platform) {
   const aliases = await expandUserAliases(username, platform)
+  // Namespaced keys for the block set + cross-tab messages — same pattern as
+  // _toggleMcMute; bare `aliases` stays for toast display only.
+  const aliasKeys = await expandUserAliasKeys(username, platform)
   const wasBlocked =
     typeof isUserBlocked === 'function' ? isUserBlocked(username, platform) : blockedUsers.has(aliases[0])
   if (wasBlocked) {
-    for (const a of aliases) blockedUsers.delete(a)
+    for (const k of aliasKeys) blockedUsers.delete(k)
+    // Also clear any legacy bare entry (pre-namespace storage) so unblock always lands.
+    const bareLower = String(username == null ? '' : username).toLowerCase().replace(/^@/, '')
+    if (bareLower) blockedUsers.delete(bareLower)
     showToast(`unblocked ${username}`, 'success')
-    for (const a of aliases) safeSendMessage({ type: 'unblock_user', username: a })
+    for (const k of aliasKeys) safeSendMessage({ type: 'unblock_user', username: k })
   } else {
-    for (const a of aliases) blockedUsers.add(a)
+    for (const k of aliasKeys) blockedUsers.add(k)
     const primary = aliases[0] || String(username).toLowerCase()
     const other = aliases.slice(1).filter((a) => a !== primary)
     const aliasNote = other.length ? ` (+linked @${other.join(' @')})` : ''
     showToast(`blocked ${username}${aliasNote}`, 'success')
-    for (const a of aliases) safeSendMessage({ type: 'block_user', username: a })
+    for (const k of aliasKeys) safeSendMessage({ type: 'block_user', username: k })
   }
   // buildMessageDiv filters blocked users, so a full re-render hides/restores them.
   renderMessages(currentTab)
@@ -41209,6 +41219,8 @@ async function pcToggleMute(username) {
   const wasMuted = typeof isUserMuted === 'function' ? isUserMuted(username, platform) : mutedUsers.has(username)
   if (wasMuted) {
     for (const k of aliasKeys) mutedUsers.delete(k)
+    // Also clear any legacy bare entry so unmute always lands on pre-namespace storage.
+    mutedUsers.delete(username)
     for (const k of aliasKeys) safeSendMessage({ type: 'unmute_user', username: k })
   } else {
     for (const k of aliasKeys) mutedUsers.add(k)
@@ -41343,12 +41355,16 @@ async function pcToggleBlock(profileId, username, currentlyBlocked) {
     // effect on next reload. Fans out across linked twitch/kick aliases.
     try {
       const platform = activeProfileCard?.platform
-      const aliases =
-        typeof expandUserAliases === 'function'
-          ? await expandUserAliases(String(username).toLowerCase(), platform)
-          : [String(username).toLowerCase()]
+      // Use namespaced keys so block_user/unblock_user messages carry platform scope,
+      // preventing twitch:alice from hiding an unrelated kick:alice.
+      const aliasKeys =
+        typeof expandUserAliasKeys === 'function'
+          ? await expandUserAliasKeys(String(username).toLowerCase(), platform)
+          : typeof getUserAliasKeys === 'function'
+            ? getUserAliasKeys(String(username).toLowerCase(), platform)
+            : [String(username).toLowerCase()]
       const blockMsg = targetBlocked ? 'block_user' : 'unblock_user'
-      for (const a of aliases) safeSendMessage({ type: blockMsg, username: a })
+      for (const k of aliasKeys) safeSendMessage({ type: blockMsg, username: k })
     } catch (_) {
       /* best-effort live hide */
     }
@@ -49711,19 +49727,22 @@ const STORAGE_KEY = 'heatsync_multichat'
         ? '<div class="hs-mc-setting-row" style="color:#808080;font-size:13px">' + t('mc_settings_no_muted') + '</div>'
         : Array.from(mutedUsers)
             .sort()
-            .map(
-              (u) =>
+            .map((u) => {
+              // Display bare username; data-username keeps the full key for deletion.
+              const displayU = u.includes(':') ? u.split(':')[1] : u
+              return (
                 '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
                 '<span class="hs-mc-setting-label" style="font-size:13px">' +
-                escapeHtml(u) +
+                escapeHtml(displayU) +
                 '</span>' +
                 '<button class="hs-mc-unmute-btn" data-username="' +
                 escapeHtml(u) +
                 '" style="background:none;border:1px solid #808080;color:#808080;font-size:13px;cursor:pointer;padding:1px 6px;line-height:1.4" title="' +
                 t('mc_settings_unmute') +
                 '">✕</button>' +
-                '</div>',
-            )
+                '</div>'
+              )
+            })
             .join('')) +
       '</div>'
     )
@@ -50863,9 +50882,13 @@ const STORAGE_KEY = 'heatsync_multichat'
       if (unmuteBtn) {
         var username = unmuteBtn.dataset.username
         if (username) {
+          // data-username stores the full namespaced key (e.g. twitch:alice); also
+          // clear legacy bare form so old storage entries don't linger.
+          var unmuteBare = username.includes(':') ? username.split(':')[1] : username
           mutedUsers.delete(username)
+          if (unmuteBare !== username) mutedUsers.delete(unmuteBare)
           safeSendMessage({ type: 'unmute_user', username: username })
-          restoreMcUnmutedDom(username)
+          restoreMcUnmutedDom(unmuteBare)
           renderMessages(currentTab)
           renderSettingsTab()
         }
@@ -57466,16 +57489,25 @@ const STORAGE_KEY = 'heatsync_multichat'
         }
       }
       if (msg.type === 'user_unmuted') {
+        // Key may be namespaced (twitch:alice) or legacy bare (alice). Delete both
+        // so unmuting always clears the Set regardless of when the entry was written.
         const u = msg.username?.toLowerCase()
-        if (u && mutedUsers.has(u)) {
-          mutedUsers.delete(u)
-          restoreMcUnmutedDom(u)
+        const bare = u && u.includes(':') ? u.split(':')[1] : null
+        let changed = false
+        if (u && mutedUsers.has(u)) { mutedUsers.delete(u); changed = true }
+        if (bare && mutedUsers.has(bare)) { mutedUsers.delete(bare); changed = true }
+        if (changed) {
+          restoreMcUnmutedDom(bare || u)
           renderMessages(currentTab)
         }
       }
       // Server cleared the entire mute list (e.g. user clicked "clear all" on heatsync.org)
       if (msg.type === 'mutes_cleared' && mutedUsers.size > 0) {
-        for (const u of mutedUsers) restoreMcUnmutedDom(u)
+        for (const u of mutedUsers) {
+          // Keys may be namespaced — restoreMcUnmutedDom matches by bare display name
+          const bare = u.includes(':') ? u.split(':')[1] : u
+          restoreMcUnmutedDom(bare)
+        }
         mutedUsers.clear()
         renderMessages(currentTab)
       }
@@ -57489,8 +57521,11 @@ const STORAGE_KEY = 'heatsync_multichat'
         }
       }
       if (msg.type === 'user_unblocked') {
+        // Delete both namespaced key AND legacy bare form so unblock always lands.
         const u = msg.username?.toLowerCase()
-        if (u && blockedUsers.delete(u)) renderMessages(currentTab)
+        const bare = u && u.includes(':') ? u.split(':')[1] : null
+        const had = (u && blockedUsers.delete(u)) | (bare && blockedUsers.delete(bare))
+        if (had) renderMessages(currentTab)
       }
 
       // A different user added an emote to their set. Drop the freshness

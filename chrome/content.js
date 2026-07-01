@@ -56,6 +56,9 @@
   // IIFE (line 2).
   if (window.location.hostname === 'heatsync.org' || window.location.hostname.endsWith('.heatsync.org')) {
     log(' 🔍 Content script on heatsync.org — OAuth-only mode')
+    // Announce presence so the site's install nudge can detect the ext.
+    // ISOLATED world shares the DOM — page main-world JS reads dataset.hsExt.
+    document.documentElement.dataset.hsExt = '1'
     try {
       const urlParams = new URLSearchParams(window.location.search)
       const urlToken = urlParams.get('auth_token')

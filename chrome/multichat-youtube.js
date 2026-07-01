@@ -35677,25 +35677,69 @@ async function expandUserAliases(username, platform) {
   return out
 }
 
+// Namespaced-key variant of expandUserAliases (base + sync local links + async
+// heatsync-profile links), each scoped to its platform. Mute/block ACTIONS use
+// this so the write covers every linked identity with no bare-name collision.
+async function expandUserAliasKeys(username, platform) {
+  const seen = new Set()
+  const out = []
+  const push = (name, plat) => {
+    const k = typeof userKey === 'function' ? userKey(name, plat) : String(name || '').toLowerCase()
+    if (!k || seen.has(k)) return
+    seen.add(k)
+    out.push(k)
+  }
+  push(username, platform)
+  // sync local links (kick→twitch, yt→twitch) — already namespaced
+  if (typeof getUserAliasKeys === 'function') {
+    for (const k of getUserAliasKeys(username, platform)) {
+      if (!seen.has(k)) {
+        seen.add(k)
+        out.push(k)
+      }
+    }
+  }
+  // async heatsync-profile links — registered users expose linked handles,
+  // each on its own platform
+  if (typeof resolveIdentity === 'function') {
+    try {
+      const ri = await resolveIdentity(username, { platform })
+      const p = ri?.profile
+      if (p) {
+        push(p.twitch_username, 'twitch')
+        push(p.kick_username, 'kick')
+        push(p.youtube_username, 'youtube')
+      }
+    } catch {}
+  }
+  return out
+}
+
 async function _toggleMcMute(username, platform) {
   const aliases = await expandUserAliases(username, platform)
+  // Namespaced keys for the mute set + cross-tab messages — covers every linked
+  // identity (async profile resolution) with no bare-name collision between
+  // unrelated twitch:alice / kick:alice accounts. Bare `aliases` stays for the
+  // toast note + restoreMcUnmutedDom (which match bare display names).
+  const aliasKeys = await expandUserAliasKeys(username, platform)
   const primary = aliases[0] || String(username).toLowerCase()
   const wasMuted = typeof isUserMuted === 'function' ? isUserMuted(username, platform) : mutedUsers.has(primary)
   const wasUnmute = wasMuted
   if (wasMuted) {
-    for (const a of aliases) mutedUsers.delete(a)
+    for (const k of aliasKeys) mutedUsers.delete(k)
     showToast(`unmuted ${username}`, 'success')
-    for (const a of aliases) safeSendMessage({ type: 'unmute_user', username: a })
+    for (const k of aliasKeys) safeSendMessage({ type: 'unmute_user', username: k })
   } else {
-    for (const a of aliases) mutedUsers.add(a)
+    for (const k of aliasKeys) mutedUsers.add(k)
     const otherAlias = aliases.slice(1).filter((a) => a !== primary)
     const aliasNote = otherAlias.length ? ` (+linked @${otherAlias.join(' @')})` : ''
     showToast(`muted ${username}${aliasNote} (24h)`, 'success')
     const exp = Date.now() + 86400000
-    for (const a of aliases) safeSendMessage({ type: 'mute_user', username: a, expiresAt: exp })
+    for (const k of aliasKeys) safeSendMessage({ type: 'mute_user', username: k, expiresAt: exp })
   }
   chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] })
   if (wasUnmute) {
+    // restoreMcUnmutedDom matches by bare DOM text — use bare aliases here.
     for (const a of aliases) restoreMcUnmutedDom(a)
   }
   renderMessages(currentTab)
@@ -38917,19 +38961,19 @@ async function handleSlashCommand(text, input) {
       showToast('usage: /mute <user>')
       return true
     }
-    // platform unknown from slash command — try both kick→twitch aliasing and
-    // raw username. getUserAliases handles unknown-platform gracefully.
-    const aliases = typeof getUserAliases === 'function' ? getUserAliases(u, null) : [u]
+    // platform unknown from slash command — null platform → userKey returns bare
+    // key, so /mute stays global (correct: no platform context from bare name).
+    const aliasKeys = typeof getUserAliasKeys === 'function' ? getUserAliasKeys(u, null) : [u]
     const already = typeof isUserMuted === 'function' ? isUserMuted(u, null) : mutedUsers.has(u)
     if (already) {
       showToast(`${u} already muted`)
       return true
     }
-    for (const a of aliases) mutedUsers.add(a)
+    for (const k of aliasKeys) mutedUsers.add(k)
     chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] }).catch((e) => log('mute persist failed:', e))
     const exp = Date.now() + 86400000
-    for (const a of aliases) safeSendMessage({ type: 'mute_user', username: a, expiresAt: exp })
-    const aliasNote = aliases.length > 1 ? ` (+@${aliases[1]})` : ''
+    for (const k of aliasKeys) safeSendMessage({ type: 'mute_user', username: k, expiresAt: exp })
+    const aliasNote = aliasKeys.length > 1 ? ` (+@${aliasKeys[1]})` : ''
     showToast(`muted ${u}${aliasNote} (24h)`, 'success')
     renderMessages(currentTab)
     return true
@@ -38941,15 +38985,15 @@ async function handleSlashCommand(text, input) {
       showToast('usage: /unmute <user>')
       return true
     }
-    const aliases = typeof getUserAliases === 'function' ? getUserAliases(u, null) : [u]
+    const aliasKeys = typeof getUserAliasKeys === 'function' ? getUserAliasKeys(u, null) : [u]
     const wasMuted = typeof isUserMuted === 'function' ? isUserMuted(u, null) : mutedUsers.has(u)
     if (!wasMuted) {
       showToast(`${u} not muted`)
       return true
     }
-    for (const a of aliases) mutedUsers.delete(a)
+    for (const k of aliasKeys) mutedUsers.delete(k)
     chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] })
-    for (const a of aliases) safeSendMessage({ type: 'unmute_user', username: a })
+    for (const k of aliasKeys) safeSendMessage({ type: 'unmute_user', username: k })
     showToast(`unmuted ${u}`, 'success')
     renderMessages(currentTab)
     return true
@@ -41125,20 +41169,22 @@ async function pcApplyBanner(card, chain) {
 async function pcToggleMute(username) {
   username = username.toLowerCase()
   const platform = activeProfileCard?.platform
-  const aliases =
-    typeof expandUserAliases === 'function'
-      ? await expandUserAliases(username, platform)
-      : typeof getUserAliases === 'function'
-        ? getUserAliases(username, platform)
+  // Namespaced keys (async: includes heatsync-profile linked identities) prevent
+  // twitch:alice / kick:alice collisions while still covering linked accounts.
+  const aliasKeys =
+    typeof expandUserAliasKeys === 'function'
+      ? await expandUserAliasKeys(username, platform)
+      : typeof getUserAliasKeys === 'function'
+        ? getUserAliasKeys(username, platform)
         : [username]
   const wasMuted = typeof isUserMuted === 'function' ? isUserMuted(username, platform) : mutedUsers.has(username)
   if (wasMuted) {
-    for (const a of aliases) mutedUsers.delete(a)
-    for (const a of aliases) safeSendMessage({ type: 'unmute_user', username: a })
+    for (const k of aliasKeys) mutedUsers.delete(k)
+    for (const k of aliasKeys) safeSendMessage({ type: 'unmute_user', username: k })
   } else {
-    for (const a of aliases) mutedUsers.add(a)
+    for (const k of aliasKeys) mutedUsers.add(k)
     const exp = Date.now() + 86400000
-    for (const a of aliases) safeSendMessage({ type: 'mute_user', username: a, expiresAt: exp })
+    for (const k of aliasKeys) safeSendMessage({ type: 'mute_user', username: k, expiresAt: exp })
   }
   chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] })
   renderProfileCardView()

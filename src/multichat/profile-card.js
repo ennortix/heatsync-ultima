@@ -1217,20 +1217,22 @@ async function pcApplyBanner(card, chain) {
 async function pcToggleMute(username) {
   username = username.toLowerCase()
   const platform = activeProfileCard?.platform
-  const aliases =
-    typeof expandUserAliases === 'function'
-      ? await expandUserAliases(username, platform)
-      : typeof getUserAliases === 'function'
-        ? getUserAliases(username, platform)
+  // Namespaced keys (async: includes heatsync-profile linked identities) prevent
+  // twitch:alice / kick:alice collisions while still covering linked accounts.
+  const aliasKeys =
+    typeof expandUserAliasKeys === 'function'
+      ? await expandUserAliasKeys(username, platform)
+      : typeof getUserAliasKeys === 'function'
+        ? getUserAliasKeys(username, platform)
         : [username]
   const wasMuted = typeof isUserMuted === 'function' ? isUserMuted(username, platform) : mutedUsers.has(username)
   if (wasMuted) {
-    for (const a of aliases) mutedUsers.delete(a)
-    for (const a of aliases) safeSendMessage({ type: 'unmute_user', username: a })
+    for (const k of aliasKeys) mutedUsers.delete(k)
+    for (const k of aliasKeys) safeSendMessage({ type: 'unmute_user', username: k })
   } else {
-    for (const a of aliases) mutedUsers.add(a)
+    for (const k of aliasKeys) mutedUsers.add(k)
     const exp = Date.now() + 86400000
-    for (const a of aliases) safeSendMessage({ type: 'mute_user', username: a, expiresAt: exp })
+    for (const k of aliasKeys) safeSendMessage({ type: 'mute_user', username: k, expiresAt: exp })
   }
   chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] })
   renderProfileCardView()

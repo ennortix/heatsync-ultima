@@ -10128,6 +10128,44 @@ function injectStyles() {
     .hs-mc-ctx.hs-mc-em-flip-x { transform-origin: top right; }
     .hs-mc-ctx.hs-mc-em-flip-y { transform-origin: bottom left; }
     .hs-mc-ctx.hs-mc-em-flip-x.hs-mc-em-flip-y { transform-origin: bottom right; }
+
+    /* Note editor popover — private cross-platform note on a chatter. Floats at
+       body level like the ctx menu; same max-int z so it sits above the panel
+       and resize bar. Square, terminal palette, no motion. */
+    .hs-note-editor {
+      position: fixed;
+      z-index: 2147483647 !important;
+      background: #000; color: #fff;
+      border: 1px solid #ff8700;
+      padding: 0; width: 300px;
+      box-shadow: 0 6px 32px rgba(0,0,0,0.75);
+      font-family: var(--hs-mc-font, 'CozetteVector', 'Courier New', monospace);
+      font-size: var(--hs-mc-base-size, 13px);
+      user-select: none;
+    }
+    .hs-note-editor-head {
+      padding: 4px 10px; font-size: 10px; color: #aaa;
+      text-transform: uppercase; letter-spacing: 0.5px;
+      background: #050505; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .hs-note-editor-ta {
+      display: block; width: 100%; box-sizing: border-box;
+      background: #000; color: #fff; border: none; border-top: 1px solid #1a1a1a;
+      padding: 8px 10px; margin: 0; resize: vertical; min-height: 72px;
+      font-family: inherit; font-size: 13px; line-height: 1.4; outline: none;
+    }
+    .hs-note-editor-ta::placeholder { color: #555; }
+    .hs-note-editor-ta:focus { box-shadow: inset 0 0 0 1px #ff8700; }
+    .hs-note-editor-foot {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 4px 10px; background: #050505; border-top: 1px solid #1a1a1a;
+    }
+    .hs-note-editor-status { font-size: 10px; color: #808080; text-transform: uppercase; letter-spacing: 0.5px; }
+    .hs-note-editor-del {
+      background: transparent; color: #808080; border: 1px solid #333;
+      padding: 2px 8px; cursor: pointer; font-family: inherit; font-size: 11px;
+    }
+    .hs-note-editor-del:hover { background: #ff5050; color: #000; border-color: #ff5050; }
     .hs-mc-ctx .hs-mc-em-header {
       padding: 4px 10px; font-size: 13px; color: #555;
       background: #050505;
@@ -11879,6 +11917,19 @@ function injectStyles() {
     }
     .hs-pcard-action:hover:not(:disabled) { background: #fff; color: #000; border-color: #fff; }
     .hs-pcard-action:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* Notes section — private cross-platform note preview + edit trigger. */
+    .hs-pcard-notes { display: flex; flex-direction: column; gap: 4px; }
+    .hs-pcard-note-body {
+      color: #fff; white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere;
+      max-height: 96px; overflow-y: auto; font-size: 13px; line-height: 1.4;
+    }
+    .hs-pcard-note-body.hs-pcard-note-empty { color: #555; font-style: italic; }
+    .hs-pcard-note-edit {
+      align-self: flex-start; background: transparent; color: #fff; border: 1px solid #333;
+      padding: 3px 10px; cursor: pointer; font-family: inherit; font-size: 13px;
+    }
+    .hs-pcard-note-edit:hover { background: #fff; color: #000; border-color: #fff; }
 
     /* Mod actions row — compact toolbar at the top of the card when you mod
        a channel this user has chatted in. Channel label + del/timeout/ban
@@ -17110,6 +17161,243 @@ function _frSafeRegex(src, flags) {
 // Inlined (not imported) so this module stays self-contained + unit-testable.
 const FR_SOUNDS = new Set(['ping', 'blip', 'knock', 'chime'])
 
+// ── boolean expression engine (match type 'expr') ─────────────────────────────
+// Chatterino-style composable filters — "user:bob && !badge:subscriber", "first
+// || contains:\"first time\"", "bits > 100". Compiled once to a tiny AST and
+// evaluated cheaply per message. No eval(), no user regex except via a guarded
+// regex: term. Parse failure → rule is dropped (fail-safe), same as any invalid
+// rule. Grammar (case-insensitive operators):
+//   expr    := or
+//   or      := and ( ('||'|'or') and )*
+//   and     := unary ( ('&&'|'and') unary )*
+//   unary   := ('!'|'not') unary | primary
+//   primary := '(' expr ')' | term
+//   term    := FLAG | FIELD ':' VALUE | 'bits' OP NUMBER
+//   FLAG    := first | action | reply | cheer
+//   FIELD   := user | badge | type | contains | regex
+//   VALUE   := "quoted string" | bareword   (quote anything with spaces/specials)
+const FR_MAX_EXPR_DEPTH = 40
+const FR_FLAGS = new Set(['first', 'action', 'reply', 'cheer'])
+const FR_FIELDS = new Set(['user', 'badge', 'type', 'msgtype', 'contains', 'has', 'regex'])
+
+function _frTokenizeExpr(src) {
+  if (typeof src !== 'string' || src.length > 512) return null
+  const toks = []
+  let i = 0
+  const n = src.length
+  const STRUCT = new Set([' ', '\t', '\n', '(', ')', '!', ':', '"', '<', '>', '=', '&', '|'])
+  while (i < n) {
+    const c = src[i]
+    if (c === ' ' || c === '\t' || c === '\n') {
+      i++
+      continue
+    }
+    if (c === '(' || c === ')' || c === '!' || c === ':') {
+      toks.push({ t: c })
+      i++
+      continue
+    }
+    if (c === '&' && src[i + 1] === '&') {
+      toks.push({ t: '&&' })
+      i += 2
+      continue
+    }
+    if (c === '|' && src[i + 1] === '|') {
+      toks.push({ t: '||' })
+      i += 2
+      continue
+    }
+    if (c === '>' || c === '<' || c === '=') {
+      const two = src.slice(i, i + 2)
+      if (two === '>=' || two === '<=' || two === '==') {
+        toks.push({ t: 'op', v: two })
+        i += 2
+      } else if (c === '>' || c === '<') {
+        toks.push({ t: 'op', v: c })
+        i++
+      } else {
+        return null // bare '=' is invalid
+      }
+      continue
+    }
+    if (c === '"') {
+      let j = i + 1
+      let s = ''
+      while (j < n && src[j] !== '"') {
+        s += src[j]
+        j++
+      }
+      if (j >= n) return null // unterminated string
+      toks.push({ t: 'str', v: s })
+      i = j + 1
+      continue
+    }
+    // bareword — run of non-structural chars
+    let w = ''
+    while (i < n && !STRUCT.has(src[i])) {
+      w += src[i]
+      i++
+    }
+    if (!w) return null
+    toks.push({ t: 'word', v: w })
+    if (toks.length > 256) return null
+  }
+  return toks
+}
+
+function _frParseExpr(toks) {
+  if (!toks || !toks.length) return null
+  let pos = 0
+  const peek = () => toks[pos]
+  const next = () => toks[pos++]
+  const isWord = (tok, w) => tok && tok.t === 'word' && tok.v.toLowerCase() === w
+
+  function parseOr(depth) {
+    if (depth > FR_MAX_EXPR_DEPTH) return null
+    let node = parseAnd(depth + 1)
+    if (!node) return null
+    while (peek() && (peek().t === '||' || isWord(peek(), 'or'))) {
+      next()
+      const r = parseAnd(depth + 1)
+      if (!r) return null
+      node = { op: 'or', l: node, r }
+    }
+    return node
+  }
+  function parseAnd(depth) {
+    if (depth > FR_MAX_EXPR_DEPTH) return null
+    let node = parseUnary(depth + 1)
+    if (!node) return null
+    while (peek() && (peek().t === '&&' || isWord(peek(), 'and'))) {
+      next()
+      const r = parseUnary(depth + 1)
+      if (!r) return null
+      node = { op: 'and', l: node, r }
+    }
+    return node
+  }
+  function parseUnary(depth) {
+    if (depth > FR_MAX_EXPR_DEPTH) return null
+    if (peek() && (peek().t === '!' || isWord(peek(), 'not'))) {
+      next()
+      const x = parseUnary(depth + 1)
+      return x ? { op: 'not', x } : null
+    }
+    return parsePrimary(depth + 1)
+  }
+  function parsePrimary(depth) {
+    if (depth > FR_MAX_EXPR_DEPTH) return null
+    const tok = peek()
+    if (tok && tok.t === '(') {
+      next()
+      const e = parseOr(depth + 1)
+      if (!e || !peek() || peek().t !== ')') return null
+      next()
+      return e
+    }
+    return parseTerm()
+  }
+  function parseTerm() {
+    const tok = next()
+    if (!tok || tok.t !== 'word') return null
+    const kw = tok.v.toLowerCase()
+    // bits comparison: bits OP number
+    if (kw === 'bits' && peek() && peek().t === 'op') {
+      const cmp = next().v
+      const numTok = next()
+      if (!numTok || numTok.t !== 'word') return null
+      const num = Number(numTok.v)
+      if (!Number.isFinite(num)) return null
+      return { op: 'bits', cmp, n: num }
+    }
+    // field:value
+    if (peek() && peek().t === ':') {
+      if (!FR_FIELDS.has(kw)) return null
+      next() // consume ':'
+      const valTok = next()
+      if (!valTok || (valTok.t !== 'word' && valTok.t !== 'str')) return null
+      const val = valTok.v
+      switch (kw) {
+        case 'user':
+          return { op: 'user', v: val.toLowerCase() }
+        case 'badge':
+          return { op: 'badge', v: val.toLowerCase() }
+        case 'type':
+        case 'msgtype':
+          return { op: 'type', v: val.toLowerCase() }
+        case 'contains':
+        case 'has':
+          return { op: 'contains', v: val.toLowerCase() }
+        case 'regex': {
+          const re = _frSafeRegex(val, 'i')
+          return re ? { op: 'regex', re } : null
+        }
+        default:
+          return null
+      }
+    }
+    // bare flag
+    if (FR_FLAGS.has(kw)) return { op: 'flag', name: kw }
+    return null
+  }
+
+  const ast = parseOr(0)
+  if (!ast || pos !== toks.length) return null // trailing tokens = malformed
+  return ast
+}
+
+function _frEvalNode(node, m) {
+  switch (node.op) {
+    case 'or':
+      return _frEvalNode(node.l, m) || _frEvalNode(node.r, m)
+    case 'and':
+      return _frEvalNode(node.l, m) && _frEvalNode(node.r, m)
+    case 'not':
+      return !_frEvalNode(node.x, m)
+    case 'flag':
+      if (node.name === 'first') return !!m.isFirstMsg
+      if (node.name === 'action') return !!m.isAction
+      if (node.name === 'reply') return !!(m.replyTo && m.replyTo.user)
+      if (node.name === 'cheer') return !!(m.bits && Number(m.bits) > 0)
+      return false
+    case 'user':
+      return !!m.user && String(m.user).toLowerCase() === node.v
+    case 'badge': {
+      if (!m.badges || typeof m.badges !== 'string') return false
+      const badges = m.badges.split(',')
+      for (let i = 0; i < badges.length; i++) if (badges[i].split('/')[0].toLowerCase() === node.v) return true
+      return false
+    }
+    case 'type':
+      if (node.v === 'first-message' || node.v === 'first') return !!m.isFirstMsg
+      if (node.v === 'action') return !!m.isAction
+      if (node.v === 'reply') return !!(m.replyTo && m.replyTo.user)
+      if (node.v === 'cheer') return !!(m.bits && Number(m.bits) > 0)
+      return false
+    case 'contains': {
+      if (typeof m.text !== 'string') return false
+      const t = m.text.length > 256 ? m.text.slice(0, 256) : m.text
+      return t.toLowerCase().includes(node.v)
+    }
+    case 'regex': {
+      if (typeof m.text !== 'string') return false
+      const t = m.text.length > 256 ? m.text.slice(0, 256) : m.text
+      return node.re.test(t)
+    }
+    case 'bits': {
+      const b = Number(m.bits) || 0
+      if (node.cmp === '>') return b > node.n
+      if (node.cmp === '>=') return b >= node.n
+      if (node.cmp === '<') return b < node.n
+      if (node.cmp === '<=') return b <= node.n
+      if (node.cmp === '==') return b === node.n
+      return false
+    }
+    default:
+      return false
+  }
+}
+
 // ── module state ──────────────────────────────────────────────────────────────
 // Two buckets: all-scope rules run on every message; per-channel rules run only
 // when channelKey matches. Compiled once → evaluated with no allocation per call.
@@ -17140,6 +17428,7 @@ function _frCompileOne(rule) {
     caseSensitive: cs,
     value: '',
     re: null,
+    ast: null,
   }
 
   switch (m.type) {
@@ -17159,6 +17448,13 @@ function _frCompileOne(rule) {
       // User-supplied pattern — guard against ReDoS, then compile.
       c.re = _frSafeRegex(val, flags)
       break
+    case 'expr': {
+      // Boolean composition over the typed vars. Parse once to an AST.
+      const ast = _frParseExpr(_frTokenizeExpr(val))
+      if (!ast) return null // malformed expression → drop the rule (fail-safe)
+      c.ast = ast
+      break
+    }
     case 'user':
       c.value = cs ? val : val.toLowerCase()
       break
@@ -17238,6 +17534,8 @@ function _frTest(rule, m) {
       const t = m.text.length > 256 ? m.text.slice(0, 256) : m.text
       return rule.re.test(t)
     }
+    case 'expr':
+      return rule.ast ? _frEvalNode(rule.ast, m) : false
     case 'user': {
       if (!m.user) return false
       const u = rule.caseSensitive ? String(m.user) : String(m.user).toLowerCase()
@@ -17262,6 +17560,320 @@ function _frTest(rule, m) {
     default:
       return false
   }
+}
+
+
+
+// --- multichat/user-notes.js ---
+// Cross-platform per-user notes — a private note you write about a chatter that
+// follows them across Twitch / Kick / YouTube via the identity graph. Chatterino
+// has local single-platform notes; this is the only implementation that keys a
+// note to a person, not a handle: note a Twitch user and it surfaces on their
+// Kick/YouTube identity too, and syncs across your devices (server sync = future).
+//
+// Self-contained (mirrors filter-rules.js / automod.js): no imports, functions
+// become globals in the concatenated bundle, exports stripped by build.js and
+// used only by the unit test. Persistence = chrome.storage.local under one
+// versioned key, in a shape a server endpoint can accept verbatim later.
+
+const HS_NOTES_KEY = 'hs_user_notes_v1'
+const HS_NOTE_MAX = 2000 // chars — bounded so storage can't be griefed by a paste
+
+// ── in-memory model (source of truth at runtime; storage is the mirror) ─────────
+// notes:  canonicalKey -> { text, updatedAt }
+// index:  aliasHandle  -> canonicalKey   (every known alias points at one note)
+// The index is what makes a note follow a person: when the same chatter is noted
+// from a second platform whose alias set overlaps an existing note, both resolve
+// to the same canonical key and merge instead of forking.
+let _hsnNotes = new Map()
+let _hsnIndex = new Map()
+let _hsnLoaded = false
+
+function _hsnHasStorage() {
+  return typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local
+}
+
+// Resolve a chatter to their lowercased alias set. Sync path (getUserAliases) for
+// render/indicator; the async path (expandUserAliases, also pulls the server
+// identity graph) is used on save so a note captures the fullest alias set known.
+function _hsnAliasesSync(username, platform) {
+  const u = String(username || '').toLowerCase()
+  if (!u) return []
+  if (typeof getUserAliases === 'function') {
+    try {
+      const a = getUserAliases(u, platform)
+      if (Array.isArray(a) && a.length) return [...new Set(a.map((x) => String(x).toLowerCase()))]
+    } catch {}
+  }
+  return [u]
+}
+
+async function _hsnAliasesAsync(username, platform) {
+  const u = String(username || '').toLowerCase()
+  if (!u) return []
+  if (typeof expandUserAliases === 'function') {
+    try {
+      const a = await expandUserAliases(u, platform)
+      if (Array.isArray(a) && a.length) return [...new Set(a.map((x) => String(x).toLowerCase()))]
+    } catch {}
+  }
+  return _hsnAliasesSync(u, platform)
+}
+
+// Canonical key for a set of aliases: reuse an existing note's key if any alias
+// already maps to one (so we merge), else the lexicographically first alias
+// (stable regardless of which platform the note was created from).
+function _hsnCanonicalFor(aliases) {
+  for (const a of aliases) {
+    const c = _hsnIndex.get(a)
+    if (c && _hsnNotes.has(c)) return c
+    if (_hsnNotes.has(a)) return a // note saved before an index existed
+  }
+  return aliases.slice().sort()[0] || null
+}
+
+function _hsnPersist() {
+  if (!_hsnHasStorage()) return
+  const payload = {
+    notes: Object.fromEntries(_hsnNotes),
+    index: Object.fromEntries(_hsnIndex),
+  }
+  try {
+    chrome.storage.local.set({ [HS_NOTES_KEY]: payload }, () => void chrome.runtime?.lastError)
+  } catch {}
+}
+
+function _hsnLoad() {
+  if (_hsnLoaded || !_hsnHasStorage()) {
+    _hsnLoaded = true
+    return
+  }
+  try {
+    chrome.storage.local.get(HS_NOTES_KEY, (d) => {
+      const raw = d && d[HS_NOTES_KEY]
+      if (raw && typeof raw === 'object') {
+        if (raw.notes && typeof raw.notes === 'object') {
+          for (const [k, v] of Object.entries(raw.notes)) {
+            if (v && typeof v.text === 'string') _hsnNotes.set(k, { text: v.text, updatedAt: v.updatedAt || 0 })
+          }
+        }
+        if (raw.index && typeof raw.index === 'object') {
+          for (const [k, v] of Object.entries(raw.index)) if (typeof v === 'string') _hsnIndex.set(k, v)
+        }
+      }
+      _hsnLoaded = true
+    })
+  } catch {
+    _hsnLoaded = true
+  }
+}
+
+// ── public API ──────────────────────────────────────────────────────────────
+
+/** Sync note lookup for the current chatter (uses local alias set). null if none. */
+function hsNoteGet(username, platform) {
+  const aliases = _hsnAliasesSync(username, platform)
+  for (const a of aliases) {
+    const c = _hsnIndex.get(a)
+    if (c && _hsnNotes.has(c)) return _hsnNotes.get(c)
+    if (_hsnNotes.has(a)) return _hsnNotes.get(a)
+  }
+  return null
+}
+
+/** Cheap boolean for indicators / menu labels. */
+function hsNoteHas(username, platform) {
+  const n = hsNoteGet(username, platform)
+  return !!(n && n.text)
+}
+
+/** Create/update a note. Async so it can pull the fullest alias set. Empty text deletes. */
+async function hsNoteSave(username, platform, text, nowMs) {
+  const clean = String(text == null ? '' : text)
+    .slice(0, HS_NOTE_MAX)
+    .trim()
+  const aliases = await _hsnAliasesAsync(username, platform)
+  if (!aliases.length) return null
+  if (!clean) return hsNoteDelete(username, platform)
+  const canonical = _hsnCanonicalFor(aliases) || aliases.slice().sort()[0]
+  const rec = { text: clean, updatedAt: typeof nowMs === 'number' ? nowMs : _hsnNow() }
+  _hsnNotes.set(canonical, rec)
+  for (const a of aliases) _hsnIndex.set(a, canonical)
+  _hsnPersist()
+  return rec
+}
+
+/** Delete a note and every alias pointer at it. */
+async function hsNoteDelete(username, platform) {
+  const aliases = await _hsnAliasesAsync(username, platform)
+  const canonical = _hsnCanonicalFor(aliases)
+  if (!canonical) return false
+  _hsnNotes.delete(canonical)
+  for (const [a, c] of [..._hsnIndex]) if (c === canonical) _hsnIndex.delete(a)
+  _hsnPersist()
+  return true
+}
+
+function _hsnNow() {
+  // Date.now is fine in the extension runtime; guarded only so the module stays
+  // importable in odd sandboxes. Tests pass an explicit nowMs for determinism.
+  try {
+    return Date.now()
+  } catch {
+    return 0
+  }
+}
+
+// ── editor popover ────────────────────────────────────────────────────────────
+// One small square terminal-styled popover, reused by the context menu and the
+// profile-card "edit" button. Autofocus, char counter, debounced auto-save,
+// esc / outside-click to close (saves on close). No modal, no framework.
+function hsNoteOpenEditor(username, platform, x, y, onSaved) {
+  if (typeof document === 'undefined') return
+  document.getElementById('hs-note-editor')?.remove()
+  const existing = hsNoteGet(username, platform)
+  const box = document.createElement('div')
+  box.id = 'hs-note-editor'
+  box.className = 'hs-note-editor'
+  box.tabIndex = -1
+
+  const head = document.createElement('div')
+  head.className = 'hs-note-editor-head'
+  head.textContent = 'note · ' + String(username || '').toLowerCase()
+  box.appendChild(head)
+
+  const ta = document.createElement('textarea')
+  ta.className = 'hs-note-editor-ta'
+  ta.rows = 4
+  ta.maxLength = HS_NOTE_MAX
+  ta.placeholder = 'private note — only you see this. follows them across platforms.'
+  ta.value = existing?.text || ''
+  ta.spellcheck = false
+  box.appendChild(ta)
+
+  const foot = document.createElement('div')
+  foot.className = 'hs-note-editor-foot'
+  const status = document.createElement('span')
+  status.className = 'hs-note-editor-status'
+  status.textContent = 'esc to close'
+  const del = document.createElement('button')
+  del.className = 'hs-note-editor-del'
+  del.textContent = 'delete'
+  del.style.visibility = existing?.text ? '' : 'hidden'
+  foot.appendChild(status)
+  foot.appendChild(del)
+  box.appendChild(foot)
+
+  document.body.appendChild(box)
+  // Position like showHsCtxMenu — flip near viewport edges.
+  box.style.visibility = 'hidden'
+  box.style.left = '0px'
+  box.style.top = '0px'
+  const bw = box.offsetWidth,
+    bh = box.offsetHeight
+  const vw = window.innerWidth,
+    vh = window.innerHeight
+  const px = typeof x === 'number' ? x : Math.round(vw / 2 - bw / 2)
+  const py = typeof y === 'number' ? y : Math.round(vh / 2 - bh / 2)
+  box.style.left = (px + bw + 8 > vw ? Math.max(4, px - bw) : Math.min(px, vw - bw - 4)) + 'px'
+  box.style.top = (py + bh + 8 > vh ? Math.max(4, py - bh) : Math.min(py, vh - bh - 4)) + 'px'
+  box.style.visibility = ''
+
+  let saveTimer = null
+  let dirty = false
+  const flush = async () => {
+    if (!dirty) return
+    dirty = false
+    await hsNoteSave(username, platform, ta.value)
+    del.style.visibility = ta.value.trim() ? '' : 'hidden'
+    status.textContent = 'saved · esc to close'
+    if (typeof onSaved === 'function') {
+      try {
+        onSaved()
+      } catch {}
+    }
+  }
+  ta.addEventListener('input', () => {
+    dirty = true
+    status.textContent = 'saving…'
+    if (saveTimer) clearTimeout(saveTimer)
+    saveTimer = setTimeout(flush, 350)
+  })
+  del.addEventListener('click', async () => {
+    ta.value = ''
+    dirty = false
+    await hsNoteDelete(username, platform)
+    if (typeof onSaved === 'function') {
+      try {
+        onSaved()
+      } catch {}
+    }
+    dismiss()
+  })
+
+  function dismiss() {
+    if (saveTimer) clearTimeout(saveTimer)
+    flush()
+    box.remove()
+    document.removeEventListener('mousedown', outside, true)
+    document.removeEventListener('keydown', keyHandler, true)
+  }
+  function outside(ev) {
+    if (!box.contains(ev.target)) dismiss()
+  }
+  function keyHandler(ev) {
+    if (ev.key === 'Escape') {
+      ev.preventDefault()
+      dismiss()
+    }
+  }
+  setTimeout(() => {
+    document.addEventListener('mousedown', outside, true)
+    document.addEventListener('keydown', keyHandler, true)
+    try {
+      ta.focus()
+      ta.setSelectionRange(ta.value.length, ta.value.length)
+    } catch {}
+  }, 0)
+}
+
+/** Build the profile-card "notes" section (read preview + edit button). */
+function hsNoteRenderCardSection(username, platform, mkSection) {
+  if (typeof document === 'undefined') return null
+  const make = typeof mkSection === 'function' ? mkSection : typeof pcMakeSection === 'function' ? pcMakeSection : null
+  const sec = make ? make('notes') : document.createElement('div')
+  if (!make) sec.className = 'hs-pcard-section'
+  sec.classList.add('hs-pcard-notes')
+
+  const body = document.createElement('div')
+  body.className = 'hs-pcard-note-body'
+  const btn = document.createElement('button')
+  btn.className = 'hs-pcard-note-edit'
+
+  const paint = () => {
+    const n = hsNoteGet(username, platform)
+    body.textContent = n?.text || 'no note yet'
+    body.classList.toggle('hs-pcard-note-empty', !n?.text)
+    btn.textContent = n?.text ? 'edit' : 'add note'
+  }
+  btn.addEventListener('click', (e) => {
+    const r = btn.getBoundingClientRect()
+    hsNoteOpenEditor(username, platform, e?.clientX || r.left, e?.clientY || r.bottom, paint)
+  })
+  paint()
+  sec.appendChild(body)
+  sec.appendChild(btn)
+  return sec
+}
+
+// Kick off a load at bundle init (no-op in tests where chrome is absent).
+_hsnLoad()
+
+// Test-only reset so specs start from a clean model.
+function _hsNoteResetForTest() {
+  _hsnNotes = new Map()
+  _hsnIndex = new Map()
+  _hsnLoaded = true
 }
 
 
@@ -35518,6 +36130,10 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
     { label: 'dm', fn: () => _openDmFor(username, platform) },
     { label: 'mention', fn: () => _mentionInMcInput(username) },
     { label: 'view profile', fn: () => openProfileCard(username, platform) },
+    {
+      label: typeof hsNoteHas === 'function' && hsNoteHas(username, platform) ? 'edit note' : 'add note',
+      fn: () => hsNoteOpenEditor(username, platform, x, y),
+    },
   )
   // Filter the live buffer to just this user — sets the search bar to @name.
   // Only on a live/channel tab (where local filtering applies) and a real row.
@@ -40924,6 +41540,14 @@ function renderProfileCardView() {
     }
     asec.appendChild(grid)
     card.appendChild(asec)
+  }
+
+  // === Notes section === — private cross-platform note on this chatter, sits
+  // next to the actions so it's in the first viewport. Renders read-preview +
+  // edit button; the editor popover is owned by user-notes.js.
+  if (typeof hsNoteRenderCardSection === 'function') {
+    const nsec = hsNoteRenderCardSection(username, activeProfileCard.platform, pcMakeSection)
+    if (nsec) card.appendChild(nsec)
   }
 
   // === Stats section ===
@@ -49846,6 +50470,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     user: 'user',
     badge: 'badge',
     msgtype: 'type',
+    expr: 'expr',
   }
   var FR_SCOPE_BTN =
     'background:#000;color:#808080;border:1px solid #444;padding:1px 5px;font-size:11px;cursor:pointer;font-family:inherit;line-height:1.4'
@@ -49944,6 +50569,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       '<option value="user">user</option>' +
       '<option value="badge">badge</option>' +
       '<option value="msgtype">msgtype</option>' +
+      '<option value="expr">expr</option>' +
       '</select>' +
       '<input type="text" data-fr-field="value" placeholder="value..." style="' +
       FR_INPUT +
@@ -49974,6 +50600,10 @@ const STORAGE_KEY = 'heatsync_multichat'
       '<button data-fr-action="add" style="' +
       FR_BTN +
       ';background:#222">+ add</button>' +
+      '</div>' +
+      '<div style="font-size:10px;color:#666;margin-top:4px;line-height:1.4">' +
+      'expr: compose with &amp;&amp; || ! and ( ). fields user: badge: type: contains: regex: · flags first action reply cheer · bits&gt;100. ' +
+      'e.g. <code style="color:#808080">first &amp;&amp; !badge:subscriber</code>' +
       '</div>' +
       '</div>'
     )
@@ -50061,6 +50691,12 @@ const STORAGE_KEY = 'heatsync_multichat'
       var ruleScope = scopeEl ? scopeEl.value : 'all'
       if (!ruleVal) {
         showToast('rule value is empty', 'error')
+        return
+      }
+      // Validate expr syntax up front so a malformed rule toasts instead of
+      // silently compiling to nothing (the parser lives in the same bundle).
+      if (ruleType === 'expr' && typeof _frParseExpr === 'function' && !_frParseExpr(_frTokenizeExpr(ruleVal))) {
+        showToast('invalid expression', 'error')
         return
       }
       var newRule = {

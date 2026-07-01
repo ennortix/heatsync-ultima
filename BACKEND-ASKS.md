@@ -160,6 +160,68 @@ Requires:
 
 ---
 
+## 6. User-notes sync + team-shared mod notes — **NEW, HIGH DIFFERENTIATION**
+
+Backs the cross-platform user-notes feature now shipped in the extension (local-only today). Chatterino has local single-platform notes; syncing them cross-device AND letting a mod team share notes on a viewer is **white space no competitor occupies**. The extension already persists notes in a server-ready shape, so this is a thin sync endpoint.
+
+**Client storage shape (already written locally, key `hs_user_notes_v1`):**
+```
+{ notes: { <canonicalHandle>: { text, updatedAt } },
+  index: { <aliasHandle>:   <canonicalHandle> } }
+```
+`canonicalHandle` = lexicographically-first alias in the person's alias set; `index` maps every known platform handle → canonical so a note follows a person across Twitch/Kick/YouTube.
+
+**Endpoints (personal notes — private to the author):**
+```
+GET  /api/user/notes                → 200 { notes: {...}, index: {...}, updatedAt }
+PUT  /api/user/notes                → 200 { ok, updatedAt }   body: { notes, index }  (last-write-wins per canonical by updatedAt)
+```
+Prefer per-record upsert to avoid clobbering concurrent edits:
+```
+PUT    /api/user/notes/:canonical   → 200 { ok }   body: { text, aliases: [...], updatedAt }
+DELETE /api/user/notes/:canonical   → 200 { ok }
+```
+Server merges by `updatedAt` (newer wins), unions `index` entries. Return the merged blob so the client reconciles.
+
+**Auth:** `Authorization: Bearer {hs_token}`. Notes are private to the author — never exposed on `/api/profile`.
+
+**Schema:**
+```sql
+CREATE TABLE user_notes (
+  author_id    bigint NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  canonical    text   NOT NULL,              -- canonical handle key
+  text         text   NOT NULL,              -- capped 2000 chars, server re-validates
+  updated_at   timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (author_id, canonical)
+);
+CREATE TABLE user_note_aliases (             -- the index, normalized
+  author_id  bigint NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  alias      text   NOT NULL,
+  canonical  text   NOT NULL,
+  PRIMARY KEY (author_id, alias)
+);
+```
+
+**Team-shared variant (phase 2):** scope a note to `channel_id` instead of `author_id` so a broadcaster's mod team sees shared notes on a viewer (`GET /api/channel/:id/notes/:handle`, mod-auth gated). This is the genuinely novel bit — synced, cross-platform, team-shared viewer notes exist nowhere else.
+
+**Edge cases:** re-validate `text` length server-side (client caps 2000); reject notes on yourself is unnecessary (harmless); `index` entries pointing at a missing canonical are dropped on read.
+
+---
+
+## 7. Operation-Zero white-space features (design briefs, not yet built)
+
+Scoped asks for the competitor-absent features in `docs/OPERATION-ZERO.md` tier B. Each needs a server/model component before the extension can wire it. Listed so the shape is agreed before build.
+
+**7a. AI chat catch-up ("what did I miss") — privacy-first, opt-in.** Twitch is shipping forced AI summaries to streamer backlash; our angle is viewer-side + opt-in, fed by the heat/moments engine we already run. Ask: `POST /api/catchup { platform, channel, sinceMs }` → `{ summary, momentRefs[] }`. Server summarizes the last N minutes (or the detected moments) of a channel's archived chat via an LLM (Claude), cached per (channel, window) to bound cost. No per-user data in the prompt — channel-public chat only. Extension surfaces a "catch up" button on a channel tab.
+
+**7b. Inline translation — LibreTranslate (FOSS, self-hostable, on-brand vs a SaaS).** Ask: `POST /api/translate { text, target }` → `{ translated, detected }`, rate-limited + cached by hash(text,target). Extension adds a per-message "translate" affordance + optional auto-translate-incoming (setting). Cross-platform + multilingual is a global-audience unlock none of the four competitors touch.
+
+**7c. VOD chat replay with emote rendering.** FFZ #1158 (open, 11👍); 7TV's Kick VOD replay is broken. We already archive chat with `chat_message_origins` + timestamps. Ask: `GET /api/archive/channel/:channel/messages?from=<vodStartMs>&to=<ms>` (range already partly supported) returning rendered-ready messages; extension syncs playback to the VOD player timeline and renders our emotes over it. First-class where everyone else bolts on.
+
+**7d. Semantic emote search.** All four do substring name-match only. Ask: `GET /api/emote-search?q=<natural language>&mode=semantic` backed by embeddings over emote names/tags. Pairs with the 5000-slot inventory + emote analytics we already have.
+
+---
+
 ## Implementation order (recommended)
 
 | Priority | Item | Effort | User-facing payoff |

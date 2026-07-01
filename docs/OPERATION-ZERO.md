@@ -43,11 +43,11 @@ ranked by (value × on-brand × buildability). "on-brand" = fits _out-platform_ 
    - ext: new `user-notes.js` module, alias-keyed, chrome.storage.local (sync-ready shape) → profile card section + ctx-menu item + a small `[note]` indicator on names that have one.
    - server follow-up (BACKEND-ASK): `/api/user/notes` for cross-device + team-shared mod notes (white-space #8 — nobody has team-shared cross-platform notes).
 
-2. **accessibility pack** _cheap, on-brand (readable ≥13px is already law)_
-   - emote **alt-text** (`alt`/`aria-label` = emote name) on every emote img — screen-reader chat is "tedious/DIY" everywhere; we make it free.
-   - **minimum-contrast clamp** on username colors vs chat bg (FFZ's one a11y feature, we generalize it) — setting `hs_min_name_contrast`.
-   - honor **prefers-reduced-motion** → freeze animated emotes to first frame unless user overrides.
-   - colorblind-safe name palette option.
+2. **accessibility** — _audit finding: already a HeatSync strength, ahead of FFZ. do not "fix"._
+   - emote **alt-text** (`alt` = name) is already universal across every render path (feed, native, picker, logs). screen-reader chat — "tedious/DIY" everywhere else — already works here.
+   - a **WCAG contrast clamp** already exists (`boostReadability`, min relative-luminance 0.25) applied to every username color via `sanitizeColor`. FFZ's one a11y feature, we already generalize it.
+   - hover names are handled by the custom tooltip system — adding native `title` would double-tooltip (a regression), so we don't.
+   - only real remaining a11y idea: an optional colorblind-safe name palette + honoring `prefers-reduced-motion` to freeze animated emotes (needs `img.src`→static-frame swap; static-frame fallback already exists). low priority — this is a moat we already hold.
 
 3. **filter DSL — boolean composition**
    Chatterino's filter language is the one power-user moat we don't match. our engine already types the vars (user/badge/msgtype/cheer/reply/first) — it just lacks `AND/OR/NOT` composition and numeric predicates (`bits > 100`). extend `filter-rules.js` (already unit-tested) with an optional boolean expression matcher; keep the simple per-rule form as the default UI. ship a **GUI builder** (white-space #9 — Chatterino gatekeeps behind syntax) so power stays but the cliff goes.
@@ -74,10 +74,15 @@ ranked by (value × on-brand × buildability). "on-brand" = fits _out-platform_ 
 
 ## tonight's execution (autonomous, no deploy)
 
-building tier-A to completion, tested, committed atomically on this branch. **not deploying** — public-facing, leaving prod for morning review.
+built tier-A to completion, tested, committed atomically on this branch. **not deployed** — public-facing, left for morning review.
 
-- [ ] cross-platform user notes (flagship)
-- [ ] accessibility pack
-- [ ] filter DSL boolean + GUI builder (if the first two land clean)
+- [x] **cross-platform user notes (flagship)** — overlay (new `user-notes.js`, alias-keyed canonical+index model, profile-card section + right-click editor popover, 9 unit tests) + native chat (inline-editable note section in the user card, same storage-shape contract, live cross-context refresh via `storage.onChanged`). local storage; sync-ready shape.
+- [x] **accessibility** — audited: already a strength (universal alt-text + WCAG contrast clamp + custom tooltips). no work needed; adding native `title` would regress. finding recorded above.
+- [ ] filter DSL boolean + GUI builder — **deferred to mellen**: the engine (boolean AND/OR/NOT over the already-typed vars) is a clean self-contained extension-only build, but the GUI builder is a UX decision worth mellen's call before building. spec stands.
 
-server-dependent items (AI catch-up, translation, VOD replay, notes-sync, cosmetic store) → captured in BACKEND-ASKS.md as designed asks, not half-built tonight.
+**verification done headlessly:** 9 new unit tests + full suite (654 pass, 0 fail) + clean build (bundle contains note code, no scope collisions, syntax check clean) on both overlay and native.
+**skipped (called out):** live Chrome drive of the note UI — high-risk unattended (needs ext reload + live channel + right-click sim; `computer` tool is banned for freezing the PC). **morning step:** reload ext, open a Twitch/Kick channel, right-click a chatter → "add note", confirm it persists + re-surfaces from a different-platform handle.
+
+**site surface (chat-tile + main):** not built — needs the `/api/user/notes` sync endpoint (specced in BACKEND-ASKS.md #6). that endpoint also unlocks cross-device sync + team-shared mod notes (the genuinely novel bit).
+
+server-dependent items (AI catch-up, translation, VOD replay, notes-sync, cosmetic store) → captured in BACKEND-ASKS.md #6–7 as designed asks, not half-built tonight.

@@ -52770,7 +52770,7 @@ const STORAGE_KEY = 'heatsync_multichat'
 
   // Static platform→accent map — hoisted out of buildMessageDiv so it isn't
   // reallocated for every chat row rendered.
-  const PLAT_COLORS = { twitch: '#9146ff', kick: '#53fc18', yt: '#ff0000', heatsync: '#fff' }
+  const PLAT_COLORS = { twitch: '#9146ff', kick: '#53fc18', yt: '#ff0000', heatsync: '#ff8700' }
   function buildMessageDiv(m, tabId) {
     // Blocked user — fully hide (skip render entirely). Both the append and the
     // full-rebuild path go through buildMessageDiv, so returning null here hides

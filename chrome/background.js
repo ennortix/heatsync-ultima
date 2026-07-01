@@ -224,6 +224,32 @@ const browser = globalThis.browser || chrome
   globalThis.__hsErrorReporterSw = { capture, flush, ver }
 })()
 
+// --- user-key.js (service worker) ---
+// Inlined here because lib/ is bundled into content scripts only.
+// Canonical source: src/lib/user-key.js — keep in sync if either changes.
+function userKey(username, platform) {
+  const u = String(username == null ? '' : username)
+    .toLowerCase()
+    .replace(/^@/, '')
+  if (!u) return ''
+  return platform ? `${platform}:${u}` : u
+}
+function userSetMatches(set, username, platform, aliasKeys) {
+  if (!set || set.size === 0) return false
+  const u = String(username == null ? '' : username)
+    .toLowerCase()
+    .replace(/^@/, '')
+  if (!u) return false
+  if (set.has(u)) return true
+  if (set.has(userKey(u, platform))) return true
+  if (aliasKeys) {
+    for (const k of aliasKeys) {
+      if (k && set.has(k)) return true
+    }
+  }
+  return false
+}
+
 // Storage hygiene — sanitize ui_settings before merging into chrome.storage
 // .sync. Strips numeric-string keys (corruption marker), prototype-pollution
 // keys, blocklist keys (platformFilters / keywordHighlights belong in local),

@@ -121,6 +121,7 @@ function checkScopeCollisions() {
     'error-reporter.js',
     'config.js',
     'cleanup.js',
+    'user-key.js',
     'utils.js',
     'settings-schema.js',
     'browser-api.js',
@@ -367,6 +368,7 @@ function readLib() {
     'error-reporter.js',
     'config.js',
     'cleanup.js',
+    'user-key.js',
     'utils.js',
     'settings-schema.js',
     'browser-api.js',
@@ -387,7 +389,6 @@ function readLib() {
 // Read multichat module files (only bundled into multichat-<platform>.js)
 const MULTICHAT_MODULES = [
   'bootstrap.js',
-  'user-key.js',
   'notifs.js',
   'styles.js',
   'seen-state.js',

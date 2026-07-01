@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { userKey, userSetMatches } from '../src/multichat/user-key.js'
+import { userKey, userSetMatches } from '../src/lib/user-key.js'
 
 test('userKey: platform-scoped, lowercased, @-stripped', () => {
   expect(userKey('Alice', 'twitch')).toBe('twitch:alice')

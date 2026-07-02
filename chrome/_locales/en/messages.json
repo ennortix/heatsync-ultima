@@ -720,7 +720,7 @@
     "message": "ping on whisper or DM"
   },
   "mc_settings_twitch_events": {
-    "message": "twitch events"
+    "message": "stream events"
   },
   "mc_settings_raids": {
     "message": "raids"
@@ -757,6 +757,36 @@
   },
   "mc_settings_poll_banner_desc": {
     "message": "active poll banner, vote inline"
+  },
+  "mc_settings_yt_superchat": {
+    "message": "super chats"
+  },
+  "mc_settings_yt_superchat_desc": {
+    "message": "banner for youtube super chats with amount"
+  },
+  "mc_settings_yt_supersticker": {
+    "message": "super stickers"
+  },
+  "mc_settings_yt_supersticker_desc": {
+    "message": "banner for youtube super stickers with amount"
+  },
+  "mc_settings_yt_membership": {
+    "message": "new members"
+  },
+  "mc_settings_yt_membership_desc": {
+    "message": "banner when someone joins as a channel member"
+  },
+  "mc_settings_yt_milestone": {
+    "message": "member milestones"
+  },
+  "mc_settings_yt_milestone_desc": {
+    "message": "banner for member milestone months"
+  },
+  "mc_settings_yt_gift_memberships": {
+    "message": "gift memberships"
+  },
+  "mc_settings_yt_gift_memberships_desc": {
+    "message": "banner for gifted memberships with count"
   },
   "mc_settings_pinned_messages": {
     "message": "pinned messages"

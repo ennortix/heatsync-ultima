@@ -401,10 +401,11 @@ const CONFIG = {
   WS_7TV: 'wss://events.7tv.io/v3',
   API_BTTV: 'https://api.betterttv.net/3',
   API_FFZ: 'https://api.frankerfacez.com/v1',
-  API_DECAPI: 'https://decapi.me/twitch',
+  API_RESOLVE_TWITCH: 'https://heatsync.org/api/resolve/twitch',
   API_TWITCH_GQL: 'https://gql.twitch.tv/gql',
   API_TWITCH_HELIX: 'https://api.twitch.tv/helix',
-  API_RECENT_MSGS: 'https://recent-messages.robotty.de/api/v2/recent-messages',
+  API_RECENT_MSGS: 'https://heatsync.org/api/recent-messages',
+  API_CHATTERINO_BADGES: 'https://heatsync.org/api/chatterino-badges',
   WS_TWITCH_IRC: 'wss://irc-ws.chat.twitch.tv:443',
 
   // ─── Timing ─────────────────────────────────────────────────────────────────
@@ -502,7 +503,7 @@ const CONFIG = {
     STREAM_EVENTS_MAX: 200,
     MC_AVATAR_FETCH_BATCH: 5,
     MC_CHANNEL_MSG_BUFFER: 500,
-    MC_RECENT_MSGS_LIMIT: 800, // limit param for robotty recent-messages
+    MC_RECENT_MSGS_LIMIT: 800, // limit param for heatsync.org recent-messages (server caps at 800)
     MC_FEED_PAGE_SIZE: 30,
     MC_MENTIONS_PAGE_SIZE: 20,
     MC_EMOTE_RENDER_CHUNK: 80, // emotes rendered per animation frame
@@ -1235,6 +1236,68 @@ function debounce(fn, ms = 100) {
 }
 
 // ============================================
+// YOUTUBE LIVE CHAT EVENT CLASSIFICATION
+// ============================================
+// Pure parsing helpers for yt-live-chat's special renderers — shared between
+// chrome/youtube-content.js (DOM extraction) and the multichat overlay (event
+// banner dispatch in social.js) so tag-name → type and text-pattern → subtype
+// logic lives in exactly one place.
+
+/**
+ * Map a yt-live-chat-*-renderer tag name to our internal message type.
+ * @param {string} tagName - element.tagName (DOM tagName is already uppercase)
+ * @returns {string}
+ */
+function classifyYtRendererType(tagName) {
+  switch (tagName) {
+    case 'YT-LIVE-CHAT-PAID-MESSAGE-RENDERER':
+      return 'superchat'
+    case 'YT-LIVE-CHAT-PAID-STICKER-RENDERER':
+      return 'supersticker'
+    case 'YT-LIVE-CHAT-MEMBERSHIP-ITEM-RENDERER':
+      return 'membership'
+    case 'YT-LIVE-CHAT-SPONSORSHIPS-GIFT-PURCHASE-ANNOUNCEMENT-RENDERER':
+      return 'giftpurchase'
+    case 'YT-LIVE-CHAT-SPONSORSHIPS-GIFT-REDEMPTION-ANNOUNCEMENT-RENDERER':
+      return 'giftredemption'
+    case 'YT-LIVE-CHAT-SPONSORSHIPS-HEADER-RENDERER':
+      return 'giftheader'
+    default:
+      return 'text'
+  }
+}
+
+/**
+ * A membership-item-renderer covers two distinct events under one tag: a
+ * brand-new member joining ("Welcome to <tier>!") vs an existing member's
+ * renewal milestone ("Member for 11 months"). YouTube exposes no separate
+ * attribute for this, so classify from the renderer's own header text.
+ * @param {string} systemText - header text (headerPrimaryText/headerSubtext)
+ * @returns {'join'|'milestone'}
+ */
+function classifyYtMembership(systemText) {
+  const s = (systemText || '').trim()
+  if (!s) return 'join'
+  if (/^welcome\b/i.test(s)) return 'join'
+  if (/member for\b/i.test(s) || /\b\d+\s*(month|months|year|years)\b/i.test(s)) return 'milestone'
+  return 'join'
+}
+
+/**
+ * Extract the gift count from a gift-membership purchase announcement's
+ * header text ("<name> gifted 5 Channel memberships"). Falls back to 1 for
+ * the singular phrasing some locales render ("gifted a membership").
+ * @param {string} systemText
+ * @returns {number}
+ */
+function parseYtGiftCount(systemText) {
+  const s = systemText || ''
+  const m = s.match(/gifted\s+(\d+)/i) || s.match(/(\d+)/)
+  const n = m ? Number.parseInt(m[1], 10) : 1
+  return Number.isFinite(n) && n > 0 ? n : 1
+}
+
+// ============================================
 // UI SETTINGS SANITIZATION
 // ============================================
 
@@ -1300,6 +1363,11 @@ const utils = {
   // Color
   boostReadability,
 
+  // YouTube live chat event classification
+  classifyYtRendererType,
+  classifyYtMembership,
+  parseYtGiftCount,
+
   // Rate limiting
   throttle,
   debounce,
@@ -1332,11 +1400,14 @@ if (typeof window !== 'undefined') {
 // entry fields:
 //   key        EXACT storage key — never rename, existing users' synced
 //              data lives under these names
-//   type       'bool' | 'enum' | 'range' | 'text' | 'multiselect' | 'boolmap'
+//   type       'bool' | 'enum' | 'range' | 'text' | 'multiselect' | 'boolmap' | 'json'
 //              boolmap = one storage key holding {subkey: bool} (the
 //              inlineNotifs / hermesEvents nested savers); options list the
 //              subkeys, each with {value, default, color, tag?, label(/Key)?,
 //              tip(/Key)?}; coercion merges partial stored maps over default
+//              json = structured array/object stored raw (state blobs like
+//              customPresets); validated as JSON-serializable, size-capped
+//              via maxLen (stringified length)
 //   default    value assumed when storage is empty; written by reset
 //   scope      'sync'         → ui_settings.<key> in chrome.storage.sync
 //              'local'        → chrome.storage.local.<key> (per-device)
@@ -1388,7 +1459,7 @@ if (typeof window !== 'undefined') {
 /**
  * @typedef {Object} SettingDef
  * @property {string} key EXACT storage key — never rename
- * @property {'bool'|'enum'|'range'|'text'|'multiselect'|'boolmap'} type
+ * @property {'bool'|'enum'|'range'|'text'|'multiselect'|'boolmap'|'json'} type
  * @property {*} default
  * @property {'sync'|'local'|'local-mirror'} scope
  * @property {string} category settings subtab id
@@ -2084,14 +2155,14 @@ const SETTINGS = [
     ],
   },
 
-  // ── notifs / twitch events ────────────────────────────────────────────
+  // ── notifs / stream events (twitch + youtube) ─────────────────────────
   {
     key: 'hermesEvents',
     type: 'boolmap',
     scope: 'sync',
     category: 'notifs',
     sectionKey: 'mc_settings_twitch_events',
-    label: 'twitch events',
+    label: 'stream events',
     control: 'pill',
     runtimeVar: 'hermesToggles',
     default: {
@@ -2104,6 +2175,11 @@ const SETTINGS = [
       redeem: true,
       pred: true,
       poll: true,
+      ytSuperchat: true,
+      ytSupersticker: true,
+      ytMembership: true,
+      ytMilestone: true,
+      ytGiftMemberships: true,
     },
     options: [
       { value: 'online', default: true, color: '#00ff7f', label: 'went live', tip: 'banner when a channel goes live' },
@@ -2162,6 +2238,41 @@ const SETTINGS = [
         color: '#00c853',
         labelKey: 'mc_settings_poll_banner',
         tipKey: 'mc_settings_poll_banner_desc',
+      },
+      {
+        value: 'ytSuperchat',
+        default: true,
+        color: '#ffca28',
+        labelKey: 'mc_settings_yt_superchat',
+        tipKey: 'mc_settings_yt_superchat_desc',
+      },
+      {
+        value: 'ytSupersticker',
+        default: true,
+        color: '#ff8a65',
+        labelKey: 'mc_settings_yt_supersticker',
+        tipKey: 'mc_settings_yt_supersticker_desc',
+      },
+      {
+        value: 'ytMembership',
+        default: true,
+        color: '#2ba640',
+        labelKey: 'mc_settings_yt_membership',
+        tipKey: 'mc_settings_yt_membership_desc',
+      },
+      {
+        value: 'ytMilestone',
+        default: true,
+        color: '#00e5ff',
+        labelKey: 'mc_settings_yt_milestone',
+        tipKey: 'mc_settings_yt_milestone_desc',
+      },
+      {
+        value: 'ytGiftMemberships',
+        default: true,
+        color: '#ff4081',
+        labelKey: 'mc_settings_yt_gift_memberships',
+        tipKey: 'mc_settings_yt_gift_memberships_desc',
       },
     ],
   },
@@ -3039,6 +3150,65 @@ const SETTINGS = [
     control: 'pill',
     reloadApply: true,
   },
+
+  // ── system / state — ui state persisted via saveUiSetting, no settings
+  // row (control:'custom' suppresses auto-row + search; 'state' section is
+  // not in the system subtab's rendered-sections list). declared so the
+  // registry stays the single source of truth for every ui_settings key.
+  // noReset: these are session state / user data, not preferences — "reset
+  // to defaults" must not close the user's tab or wipe their presets.
+  {
+    key: 'activeTab',
+    type: 'text',
+    default: 'live',
+    scope: 'sync',
+    category: 'system',
+    section: 'state',
+    label: 'active tab',
+    tip: 'last active multichat tab — restored on load (built-in tab id or channel tab id)',
+    control: 'custom',
+    maxLen: 128,
+    noReset: true,
+  },
+  {
+    key: 'liveChannel',
+    type: 'text',
+    default: '',
+    scope: 'sync',
+    category: 'system',
+    section: 'state',
+    label: 'live tab channel',
+    tip: 'live-tab channel override — popout-scoped; empty/null means use the url channel',
+    control: 'custom',
+    maxLen: 128,
+    noReset: true,
+  },
+  {
+    key: 'chatPositionPrevious',
+    type: 'enum',
+    default: 'right',
+    scope: 'sync',
+    category: 'system',
+    section: 'state',
+    label: 'previous chat dock side',
+    tip: 'last non-hidden dock side — the \\ hide toggle restores to it',
+    control: 'custom',
+    options: [{ value: 'right' }, { value: 'bottom' }, { value: 'left' }, { value: 'top' }],
+    noReset: true,
+  },
+  {
+    key: 'customPresets',
+    type: 'json',
+    default: [],
+    scope: 'sync',
+    category: 'system',
+    section: 'state',
+    label: 'custom presets',
+    tip: 'user-saved settings presets — diff-vs-defaults snapshots, managed from the presets bar',
+    control: 'custom',
+    maxLen: 6000,
+    noReset: true,
+  },
 ]
 
 // ── presets ("builds") — sparse diffs over registry defaults ──────────────
@@ -3158,6 +3328,17 @@ function validateSettingValue(def, v) {
         Object.keys(v).every((k) => typeof v[k] === 'boolean' && opts.some((o) => o.value === k))
       )
     }
+    case 'json': {
+      // structured state blob — any JSON-serializable array/object under the
+      // size cap. shape-specific filtering stays at the consumer (it owns the
+      // semantics); this guards type + serializability + size only.
+      if (v === null || typeof v !== 'object') return false
+      try {
+        return JSON.stringify(v).length <= (def.maxLen || 524288)
+      } catch {
+        return false
+      }
+    }
     default:
       return false
   }
@@ -3208,6 +3389,10 @@ function coerceSettingValue(def, v) {
       }
       return merged
     }
+    case 'json':
+      // no partial salvage for structured blobs — either the value is a
+      // valid serializable object/array or the consumer's default stands
+      return validateSettingValue(def, v) ? v : undefined
     default:
       return undefined
   }
@@ -8370,6 +8555,14 @@ function injectStyles() {
     .hs-mc-stream-event.event-emote   { --evt: #29d391; }
     .hs-mc-stream-event.event-pred    { --evt: #ffaa00; }
     .hs-mc-stream-event.event-follow  { opacity: 0.8; }
+    /* YouTube event banners — superchat/sticker default to the amount-tier gold;
+       m.scColor (inline style, set in main.js) overrides with the real per-message
+       tier color from YouTube's own renderer when present. */
+    .hs-mc-stream-event.event-yt-superchat    { --evt: #ffca28; }
+    .hs-mc-stream-event.event-yt-supersticker { --evt: #ff8a65; }
+    .hs-mc-stream-event.event-yt-membership   { --evt: #2ba640; }
+    .hs-mc-stream-event.event-yt-milestone    { --evt: #00e5ff; }
+    .hs-mc-stream-event.event-yt-gift         { --evt: #ff4081; }
     /* Inline feed posts in chat timeline */
     .hs-mc-feed-inline {
       padding: 2px 8px;
@@ -12335,6 +12528,16 @@ function injectStyles() {
       font-size: 13px !important;
       visibility: visible !important;
     }
+    /* Empty-inventory cold-start CTA — import button reuses .hs-mc-load-more */
+    .hs-mc-cold-start {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+    .hs-mc-cold-start-title { color: #fff; font-size: 14px; font-weight: 700; }
+    .hs-mc-cold-start-sub { color: #aaa; font-size: 13px; max-width: 260px; line-height: 1.4; }
+    .hs-mc-cold-start .hs-mc-load-more { width: auto; margin: 0; padding: 7px 14px; text-transform: none; letter-spacing: 0; }
     .hs-mc-picker-divider {
       height: 1px;
       background: rgba(255,255,255,0.06);
@@ -19183,7 +19386,7 @@ class IRC {
         addUsername(msg.user)
       } catch {}
       try {
-        setKnownColor(msg.user.toLowerCase(), msg.color, msg.userId)
+        setKnownColor(msg.user.toLowerCase(), msg.color, msg.userId, 'twitch')
       } catch {}
     }
     if (msg.subMonths) {
@@ -19329,7 +19532,7 @@ class IRC {
             addUsername(m.user)
           } catch {}
           try {
-            setKnownColor(m.user.toLowerCase(), m.color, m.userId)
+            setKnownColor(m.user.toLowerCase(), m.color, m.userId, 'twitch')
           } catch {}
         }
         if (m.subMonths) {
@@ -19405,7 +19608,7 @@ class IRC {
               addUsername(m.user)
             } catch {}
             try {
-              setKnownColor(m.user.toLowerCase(), m.color, m.userId)
+              setKnownColor(m.user.toLowerCase(), m.color, m.userId, 'twitch')
             } catch {}
           }
           if (m.subMonths) {
@@ -19667,7 +19870,7 @@ class KickChat {
         this.channels.get(channel).push(msg)
         if (msg.user) {
           addUsername(msg.user)
-          setKnownColor(msg.user.toLowerCase(), msg.color, msg.userId)
+          setKnownColor(msg.user.toLowerCase(), msg.color, msg.userId, 'kick')
         }
         this.persistBuffer(channel)
         this.emit('message', msg)
@@ -19776,7 +19979,7 @@ class KickChat {
             addUsername(m.user)
           } catch {}
           try {
-            setKnownColor(m.user.toLowerCase(), m.color, m.userId)
+            setKnownColor(m.user.toLowerCase(), m.color, m.userId, 'kick')
           } catch {}
         }
         try {
@@ -19878,7 +20081,7 @@ class KickChat {
       msg.isHistory = true
       if (msg.user) {
         addUsername(msg.user)
-        setKnownColor(msg.user.toLowerCase(), msg.color, msg.userId)
+        setKnownColor(msg.user.toLowerCase(), msg.color, msg.userId, 'kick')
       }
       buffer.push(msg)
     }
@@ -19945,7 +20148,7 @@ class KickChat {
               addUsername(m.user)
             } catch {}
             try {
-              setKnownColor(m.user.toLowerCase(), m.color, m.userId)
+              setKnownColor(m.user.toLowerCase(), m.color, m.userId, 'kick')
             } catch {}
           }
           try {
@@ -20011,6 +20214,7 @@ class KickChat {
     })
   }
 }
+
 
 
 // --- multichat/auth-irc.js ---
@@ -21071,7 +21275,14 @@ function estimateChunkHeight(count) {
 
 function renderEmoteSections(sections, emptyMsg = t('mc_emote_no_loaded'), opts) {
   clearChunkStore()
-  if (!sections.length) return `<div class="hs-mc-picker-empty">${escapeHtml(emptyMsg)}</div>`
+  if (!sections.length) {
+    // Cold-start: personal + channel + global caches are all empty. Not the
+    // "no search matches" case (that passes opts.noHeaders + its own emptyMsg)
+    // — point the user at the one-click channel import instead of a dead end.
+    const channel = !(opts && opts.noHeaders) && getCurrentChannel()
+    if (channel) return renderEmoteColdStart(channel)
+    return `<div class="hs-mc-picker-empty">${escapeHtml(emptyMsg)}</div>`
+  }
   const noHeaders = !!(opts && opts.noHeaders)
   return sections
     .map((s, si) => {
@@ -21103,6 +21314,58 @@ function renderEmoteSections(sections, emptyMsg = t('mc_emote_no_loaded'), opts)
       </div>`
     })
     .join('')
+}
+
+// Empty-inventory cold-start: point a fresh/logged-out-of-emotes user straight
+// at the one-click channel import instead of a dead-end "no emotes" message.
+// Mirrors chrome/heatsync-button.js's renderInventoryColdStart pattern; button
+// reuses the existing .hs-mc-load-more style (no new button chrome).
+function renderEmoteColdStart(channel) {
+  const safeCh = escapeHtml(channel)
+  return `
+    <div class="hs-mc-picker-empty hs-mc-cold-start">
+      <div class="hs-mc-cold-start-title">${escapeHtml(t('mc_emote_cold_start_title'))}</div>
+      <div class="hs-mc-cold-start-sub">${escapeHtml(t('mc_emote_cold_start_sub', [channel]))}</div>
+      <button type="button" class="hs-mc-load-more hs-mc-cold-start-import" data-channel="${safeCh}">${escapeHtml(t('mc_emote_cold_start_import', [channel]))}</button>
+    </div>`
+}
+
+// One-click "import all of a channel's 7TV/BTTV/FFZ emotes into your set" —
+// same server endpoint as chrome/heatsync-button.js's hsImportChannel.
+async function hsMcImportChannelEmotes(btn, channel) {
+  if (!channel || btn.disabled) return
+  btn.disabled = true
+  const label = btn.textContent
+  btn.textContent = t('mc_emote_cold_start_importing')
+  try {
+    const platform = hostPlatform === 'yt' ? 'youtube' : hostPlatform || 'twitch'
+    const resp = await apiFetch('/api/user/emotes/import-channel', {
+      method: 'POST',
+      auth: true,
+      body: { channel, platform },
+    })
+    if (resp && resp.ok !== false) {
+      const n = resp.data?.imported ?? resp.imported ?? resp.data?.count ?? '?'
+      showToast(t('mc_emote_cold_start_imported', [String(n)]), 'success')
+      markPickerDirty()
+      await loadEmotes()
+      showEmotePicker(pickerTab)
+    } else {
+      btn.textContent = t('mc_emote_cold_start_failed')
+      showToast(resp?.error || t('mc_emote_cold_start_failed'), 'error')
+      setTimeout(() => {
+        btn.textContent = label
+        btn.disabled = false
+      }, 2000)
+    }
+  } catch (e) {
+    btn.textContent = t('mc_emote_cold_start_failed')
+    showToast(t('mc_emote_cold_start_failed'), 'error')
+    setTimeout(() => {
+      btn.textContent = label
+      btn.disabled = false
+    }, 2000)
+  }
 }
 
 function emoteImgHtml([name, emote]) {
@@ -21363,13 +21626,20 @@ function showEmotePicker(tab = null) {
   })
 
   // Event delegation for emote clicks (single handler, works for chunked rendering).
-  // Bumped to v2 — the old `_hsDelegated` boolean property survives extension
+  // Bumped to v3 — the old `_hsDelegated` boolean property survives extension
   // reload (page owns the DOM), but the listener it tracked is destroyed with
   // the previous content-script context. Versioning forces re-attach when this
-  // bundle's flag is missing.
-  if (picker.dataset.hsClickVersion !== '2') {
-    picker.dataset.hsClickVersion = '2'
+  // bundle's flag is missing. (v3: cold-start import CTA branch.)
+  if (picker.dataset.hsClickVersion !== '3') {
+    picker.dataset.hsClickVersion = '3'
     picker.addEventListener('click', (e) => {
+      // Cold-start import CTA (empty inventory) — one-click channel import.
+      const coldBtn = e.target.closest('.hs-mc-cold-start-import')
+      if (coldBtn) {
+        e.stopPropagation()
+        hsMcImportChannelEmotes(coldBtn, coldBtn.dataset.channel)
+        return
+      }
       const img = e.target.closest('.hs-mc-picker-emote')
       if (!img) return
       const name = img.dataset.name
@@ -23659,6 +23929,7 @@ function renderEmoteStack(stack) {
 }
 
 
+
 // --- multichat/tooltips.js ---
 // Tooltips - toast, emote tooltip, user profile card, link preview
 // Note: all innerHTML usage passes content through escapeHtml() first (see src/lib/utils.js)
@@ -24530,7 +24801,7 @@ function getCompactRelTime(dateStr) {
   return 'just now'
 }
 
-function renderProfileCard(p) {
+function renderProfileCard(p, platform) {
   const pfp = p.twitch_profile_pic || p.kick_profile_pic || p.profile_image_url || 'https://heatsync.org/anon.webp'
   const displayName = p.display_name || p.username || 'unknown'
 
@@ -24696,6 +24967,7 @@ function renderProfileCard(p) {
   const namePaint = userPaintStyle(
     String(p.twitch_user_id || p.twitch_id || ''),
     (p.username || p.twitch_username || '').toLowerCase(),
+    platform,
   )
 
   // Hero banner placeholder — wraps the whole card so the banner sits behind
@@ -24810,7 +25082,7 @@ async function showUserTooltip(targetEl, username, color, platform) {
   if (cached && Date.now() - cached.ts < PROFILE_CACHE_TTL) {
     if (gen !== _profileGen) return
     // NOTE: innerHTML is XSS-safe — all user content goes through escapeHtml() in renderProfileCard
-    tooltip.innerHTML = renderProfileCard(cached.profile)
+    tooltip.innerHTML = renderProfileCard(cached.profile, platform)
     appendSubTenureBadge(tooltip, username, msgChannel)
     positionTooltipAtElement(tooltip, targetEl)
     fetchAndShowFollowage(tooltip, username, gen, platform)
@@ -24840,7 +25112,7 @@ async function showUserTooltip(targetEl, username, color, platform) {
     _profileCache.set(cacheKey, { profile, ts: Date.now() })
     while (_profileCache.size > PROFILE_CACHE_MAX) _profileCache.delete(_profileCache.keys().next().value)
     // NOTE: innerHTML XSS-safe — renderProfileCard escapes everything
-    tooltip.innerHTML = renderProfileCard(profile)
+    tooltip.innerHTML = renderProfileCard(profile, platform)
     appendSubTenureBadge(tooltip, username, msgChannel)
     positionTooltipAtElement(tooltip, targetEl)
     fetchAndShowFollowage(tooltip, username, gen, platform)
@@ -24866,7 +25138,7 @@ async function showUserTooltip(targetEl, username, color, platform) {
         : platform === 'youtube' || platform === 'yt'
           ? `<dt>yt</dt><dd class="val-yt" data-k="yt">${safeName}</dd>`
           : `<dt>ttv</dt><dd class="val-ttv" data-k="ttv">${safeName}</dd>`
-    const namePaint = platform === 'twitch' ? userPaintStyle('', username.toLowerCase()) : ''
+    const namePaint = platform === 'twitch' ? userPaintStyle('', username.toLowerCase(), 'twitch') : ''
     const header =
       nativeBadges || `<span class="hs-pc-name" style="${namePaint || `color:${safeColor}`}">${safeName}</span>`
     // NOTE: innerHTML XSS-safe — username via escapeHtml, color via sanitizeColor (hex-only),
@@ -29303,9 +29575,8 @@ async function resolveTwitchChannelId(channelLogin) {
     _twChannelIdCache.set(lc, { id, ts: Date.now() })
   }
   // First-party first: Twitch GQL (relayed through a twitch.tv tab when
-  // off-Twitch). decapi.me is a third-party and runs ONLY as a last-resort
-  // fallback for the rare case GQL is unreachable — slated for removal once the
-  // first-party /api/resolve endpoint deploys.
+  // off-Twitch). heatsync.org/api/resolve is our own first-party fallback for
+  // the rare case GQL is unreachable — no third-party call in this path.
   try {
     const data = await gqlProxy(null, null, { rawQuery: `{ user(login: "${lc}") { id } }` })
     const id = data?.data?.user?.id || (Array.isArray(data) ? data[0]?.data?.user?.id : null)
@@ -29315,17 +29586,19 @@ async function resolveTwitchChannelId(channelLogin) {
     }
   } catch (_) {}
   try {
-    // 4s ceiling: third-party fallback in the mod-action hot path; a hang here
-    // would stall every ban/timeout/unban behind the browser's default TCP
-    // timeout (60s+). Time out fast.
-    const r = await fetch(`https://decapi.me/twitch/id/${encodeURIComponent(lc)}`, {
+    // 4s ceiling: fallback in the mod-action hot path; a hang here would stall
+    // every ban/timeout/unban behind the browser's default TCP timeout (60s+).
+    // Time out fast.
+    const r = await fetch(`https://heatsync.org/api/resolve/twitch/${encodeURIComponent(lc)}`, {
       credentials: 'omit',
       signal: AbortSignal.timeout(4000),
     })
-    const body = (await r.text()).trim()
-    if (r.ok && /^\d+$/.test(body)) {
-      _cacheChannelId(body)
-      return body
+    if (!r.ok) return null
+    const data = await r.json()
+    const id = data?.id
+    if (id && /^\d+$/.test(String(id))) {
+      _cacheChannelId(String(id))
+      return String(id)
     }
   } catch (_) {}
   return null
@@ -30590,6 +30863,99 @@ function ingestReplayYtMsg(targetChannelId, ytMsg) {
   })
 }
 
+// YT special-renderer events (superchat/supersticker/membership/gift purchase)
+// → the same inline "stream-event" banner Twitch's raid/hype/sub-gift/redeem
+// events use: toggleable via hermesToggles, [Y]-badged, colored left-stripe.
+// Rides the existing YT buffer/pacing pipeline (channelYtMessages +
+// enqueueYtForPacing/ingestReplayYtMsg) rather than Twitch's irc.channels-based
+// dispatch — that's what already merges correctly with paired twitch/kick chat
+// on a shared tab, and already persists via persistYt. giftredemption (fires
+// once PER recipient — a 20-gift purchase would be 20 banners) and giftheader
+// (no event data) are intentionally excluded; they stay on the plain
+// system-row path in the youtube_chat_message handler below.
+function dispatchYtStreamEvent(targetChannelId, msg) {
+  const user = msg.user || ''
+  const systemMsg = msg.systemMsg || ''
+  let toggleKey = '',
+    eventClass = '',
+    text = ''
+
+  if (msg.msgType === 'superchat') {
+    toggleKey = 'ytSuperchat'
+    eventClass = 'event-yt-superchat'
+    const comment = (msg.text || '').trim()
+    text = `superchat ${msg.amount || ''}`.trim() + (comment ? `: ${comment}` : '')
+  } else if (msg.msgType === 'supersticker') {
+    toggleKey = 'ytSupersticker'
+    eventClass = 'event-yt-supersticker'
+    text = `super sticker ${msg.amount || ''}`.trim()
+  } else if (msg.msgType === 'membership') {
+    if (classifyYtMembership(systemMsg) === 'milestone') {
+      toggleKey = 'ytMilestone'
+      eventClass = 'event-yt-milestone'
+      text = systemMsg || 'membership milestone'
+    } else {
+      toggleKey = 'ytMembership'
+      eventClass = 'event-yt-membership'
+      text = 'became a member'
+    }
+  } else if (msg.msgType === 'giftpurchase') {
+    toggleKey = 'ytGiftMemberships'
+    eventClass = 'event-yt-gift'
+    const count = parseYtGiftCount(systemMsg)
+    text = `gifted ${count} membership${count === 1 ? '' : 's'}`
+  } else {
+    return
+  }
+
+  if (!hermesToggles?.[toggleKey]) return
+  if (!user || !text) return
+
+  // Dedup — same 60s-window Map shape the Twitch stream-event dispatchers use
+  // (keyed by channel+user+text here since YT events have no msg-id to key on).
+  if (!window._hsStreamEventDedup) window._hsStreamEventDedup = new Map()
+  const dedup = window._hsStreamEventDedup
+  const now = Date.now()
+  const dedupKey = `${targetChannelId} ${user} ${text}`
+  if (dedup.has(dedupKey) && now - dedup.get(dedupKey) < 60000) return
+  dedup.set(dedupKey, now)
+  if (dedup.size > 500) {
+    for (const [k, t] of dedup) {
+      if (now - t > 60000) dedup.delete(k)
+    }
+  }
+
+  const evt = {
+    type: 'stream-event',
+    eventClass,
+    text,
+    user,
+    actor: user,
+    channel: targetChannelId,
+    time: msg.time || now,
+    platform: 'youtube',
+    color: msg.color || '#ff0000',
+    scColor: msg.scColor || undefined,
+  }
+
+  if (msg.replay) {
+    ingestReplayYtMsg(targetChannelId, evt)
+  } else {
+    enqueueYtForPacing(targetChannelId, evt)
+  }
+  pushActivityEvent(evt)
+
+  // Yellow tab highlight, mirroring the Twitch stream-event dispatchers.
+  // enqueueYtForPacing/ingestReplayYtMsg already fire the generic 'has-new'
+  // dot via updateTabIndicator on a non-active tab; this adds the
+  // banner-specific highlight alongside it.
+  const tabId = targetChannelId === '__live_yt_auto__' ? 'live' : targetChannelId
+  if (currentTab !== tabId) {
+    const tab = tabBarElement?.querySelector(`[data-tab="${tabId}"]`)
+    if (tab) tab.classList.add('has-stream-event')
+  }
+}
+
 // Buffer-push + visible render for ONE paced (live) YT message. Critical:
 // overwrite ytMsg.time = Date.now() AT THE MOMENT OF EMIT (not at WS arrival).
 // Without this, every msg in a 5-sec poll batch shares the same arrival ms
@@ -30863,6 +31229,19 @@ function listenForSocialEvents() {
         if (!_autoYtVideoId) return // no confirmed subscription yet — reject
         if (msg.videoId && msg.videoId !== _autoYtVideoId) return // wrong video
       }
+      // Event renderers (superchat/supersticker/membership/gift purchase) skip
+      // the normal chat-row path entirely and go out as toggleable stream-event
+      // banners instead — see dispatchYtStreamEvent for what's excluded and why.
+      if (
+        msg.msgType === 'superchat' ||
+        msg.msgType === 'supersticker' ||
+        msg.msgType === 'membership' ||
+        msg.msgType === 'giftpurchase'
+      ) {
+        dispatchYtStreamEvent(targetChannelId, msg)
+        return
+      }
+
       // Dedup against message buffer (survives WS reconnects unlike 5s hash)
       if (targetChannelId && isYtDuplicate(msg.user, msg.text, targetChannelId)) return
 
@@ -33741,7 +34120,7 @@ function renderWhispersTab() {
         m.platform === 'heatsync'
           ? `https://heatsync.org/user/${encodeURIComponent(username)}`
           : `https://heatsync.org/twitch/${encodeURIComponent(username)}`
-      const paint = m.platform === 'heatsync' ? '' : userPaintStyle(uid, lower)
+      const paint = m.platform === 'heatsync' ? '' : userPaintStyle(uid, lower, 'twitch')
       const style = paint || `color:${color};font-weight:600`
       return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="hs-mc-user" data-username="${safeUser}" style="${style}">${safe}</a>`
     }
@@ -36499,8 +36878,8 @@ function _prefillMcInput(text) {
 
 // Cross-platform whisper open: when the target is a kick/yt user, resolve to
 // their linked twitch handle via /api/profile?platform= so the typed /w lands
-// on the right twitch acct (decapi only knows twitch). If they have no linked
-// twitch, bail with a clear "try /dm" hint instead of letting /w 404.
+// on the right twitch acct (whisper resolution only knows twitch). If they
+// have no linked twitch, bail with a clear "try /dm" hint instead of letting /w 404.
 // Op the right-clicked chat message to the heatsync feed. Posting emerges from
 // chat, quoting the author with an @mention (which renders as a crawlable
 // /user/ profile link server-side — attribution doubles as internal SEO).
@@ -36541,7 +36920,7 @@ async function _openWhisperFor(username, platform) {
         return
       }
     } catch {
-      // network failed — fall back to raw name, let /w try decapi
+      // network failed — fall back to raw name, let /w try resolveTwitchChannelId
     }
   }
   _prefillMcInput(`/w ${whisperName} `)
@@ -40005,7 +40384,7 @@ async function sendSlashWhisper(platform, username, text, input) {
     key = `twitch:${lowerUser}`
     if (!whisperUsers.has(key)) {
       // Resolve username → Twitch ID via the canonical first-party resolver
-      // (Twitch GQL; decapi.me only as its own internal last-resort fallback).
+      // (Twitch GQL; heatsync.org/api/resolve as its own internal last-resort fallback).
       let body
       try {
         body = await resolveTwitchChannelId(lowerUser)
@@ -40263,7 +40642,14 @@ async function sendMessage() {
     Promise.all([kickPromise, twitchPromise])
       .then(([kickResult, twitchResult]) => {
         const kickOk = kickResult === true
-        const twitchOk = twitchResult === true || twitchResult === null
+        // twitchResult null = no twitch leg on this send. It still counts as
+        // "not failed" (twitchOk) for the queued/partial logic below, but it
+        // is NOT a delivery — the success gate must use twitchSent, or a
+        // kick-only relay failure routes to "partial success" and dies
+        // silently (no red border, no retry notif, just a no_echo warning
+        // 20s later).
+        const twitchSent = twitchResult === true
+        const twitchOk = twitchSent || twitchResult === null
         // 'queued' = IRC was offline, message stuffed in send-queue for next
         // reconnect (could be never). Treat as a visible yellow cue, not silent
         // success — without this the input clears and the user thinks the
@@ -40285,7 +40671,7 @@ async function sendMessage() {
           return
         }
 
-        if (kickOk || twitchOk) {
+        if (kickOk || twitchSent) {
           // Dual-send partial success: at least one platform delivered. Drain
           // the failed platform from the pending tracker's awaiting set so the
           // no_echo toast doesn't fire 20s later for the side that locally
@@ -41332,7 +41718,11 @@ function renderProfileCardView() {
   const idSec = pcMakeSection(data?.display_name || username)
   idSec.classList.add('hs-pcard-id')
   // Paint the identity title with the user's 7TV cosmetic when known.
-  const idPaint = userPaintStyle(String(data?.twitch_user_id || data?.twitch_id || ''), (username || '').toLowerCase())
+  const idPaint = userPaintStyle(
+    String(data?.twitch_user_id || data?.twitch_id || ''),
+    (username || '').toLowerCase(),
+    activeProfileCard?.platform,
+  )
   if (idPaint) {
     const titleEl = idSec.querySelector('.hs-pcard-section-title')
     if (titleEl) titleEl.style.cssText += ';' + idPaint
@@ -42663,7 +43053,10 @@ function renderChatLogRow(r) {
     }
     let paintApplied = false
     if (typeof knownUserIds !== 'undefined' && knownUserIds instanceof Map && typeof getMcPaintStyle === 'function') {
-      const uid = knownUserIds.get(ulow)
+      // Platform-scoped key — a twitch and kick chatter sharing this username
+      // must never trade 7TV paints in the archive view either.
+      const uidKey = typeof userKey === 'function' ? userKey(ulow, r.platform) : ulow
+      const uid = knownUserIds.get(uidKey)
       if (uid) {
         const paintCss = getMcPaintStyle(String(uid))
         if (paintCss) {
@@ -44207,6 +44600,8 @@ const STORAGE_KEY = 'heatsync_multichat'
       systemMsg: m.systemMsg || undefined,
       sticker: m.sticker || undefined,
       scColor: m.scColor || undefined,
+      eventClass: m.eventClass || undefined,
+      actor: m.actor || undefined,
       emotes: m.emotes || undefined,
       subMonths: m.subMonths || undefined,
       streakCount: m.streakCount || undefined,
@@ -44498,23 +44893,29 @@ const STORAGE_KEY = 'heatsync_multichat'
   }
   // Username → color map for @mention coloring (LRU-bounded)
   const knownColors = new Map()
-  // Username → Twitch userId for paint cosmetics on @mentions
+  // platform:username → Twitch userId for paint cosmetics on @mentions. Keyed
+  // by platform so a twitch "alice" and an unrelated kick "alice" never share
+  // a slot — without the prefix, whichever platform's chatter spoke last would
+  // silently steal the other's 7TV paint/badge on every @mention/reply of that
+  // name. Values are always a resolved TWITCH id (see resolveSenderEmoteKey /
+  // flushKickNameLookups) — only the KEY needs the platform tag.
   const knownUserIds = new Map()
-  function setKnownColor(user, color, userId) {
+  function setKnownColor(user, color, userId, platform) {
     knownColors.set(user, color)
     if (knownColors.size > 2000) {
       const iter = knownColors.keys()
       for (let i = 0; i < 500; i++) knownColors.delete(iter.next().value)
     }
     if (userId) {
-      knownUserIds.set(user, userId)
+      const uidKey = typeof userKey === 'function' ? userKey(user, platform) : user
+      knownUserIds.set(uidKey, userId)
       if (knownUserIds.size > 2000) {
         const iter = knownUserIds.keys()
         for (let i = 0; i < 500; i++) knownUserIds.delete(iter.next().value)
       }
     }
   }
-  // Avatar URL cache: username → CDN URL (fetched from decapi)
+  // Avatar URL cache: username → CDN URL (fetched via BG resolveAvatarUrl)
   const avatarCache = new Map()
   const avatarFetching = new Set() // prevent duplicate fetches
   let _activeAvatarFetches = 0
@@ -45363,8 +45764,8 @@ const STORAGE_KEY = 'heatsync_multichat'
   // Queues a cosmetics lookup when the uid is known but not yet cached, so the
   // paint lands on the next render/in-place repaint. Returns '' when no paint
   // is available — callers fall back to their plain color.
-  function userPaintStyle(uid, lower) {
-    if (!uid && lower) uid = knownUserIds.get(lower) || ''
+  function userPaintStyle(uid, lower, platform) {
+    if (!uid && lower) uid = knownUserIds.get(userKey(lower, platform)) || ''
     if (!uid) return ''
     if (!mcUserCosmetics.has(uid)) queueMcCosmeticsLookup(uid)
     return getMcPaintStyle(uid)
@@ -46097,8 +46498,8 @@ const STORAGE_KEY = 'heatsync_multichat'
       cachedUiOverflow().catch(() => ({})),
     ])
     const ui = (synced && synced.ui_settings) || {}
-    // custom presets ride along in ui_settings (not a registry entry —
-    // they're user data, not a setting)
+    // custom presets ride along in ui_settings (declared in the registry as
+    // system/state json; the shape filter below owns the semantics)
     _customPresets = Array.isArray(ui.customPresets)
       ? ui.customPresets.filter(
           (p) => p && typeof p === 'object' && p.id && p.name && p.diff && typeof p.diff === 'object',
@@ -53307,7 +53708,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       processedText = processedText.replace(/&lt;img\b[^<]*/g, '')
     }
     // Highlight mentions AFTER emote processing so emote-name <img> tags aren't touched.
-    processedText = highlightMentionsInHtml(processedText)
+    processedText = highlightMentionsInHtml(processedText, m.platform)
     // Magenta #hashtags — mirrors the feed (renderFeedContent) so tags read the same everywhere.
     processedText = highlightHashtagsInHtml(processedText)
     // Cheermotes — only when twitch IRC tagged bits=N (server-confirmed cheer).
@@ -53445,47 +53846,71 @@ const STORAGE_KEY = 'heatsync_multichat'
         'event-sub': 'sub',
         'event-redeem': 'redeem',
         'event-pred': 'pred',
+        'event-yt-superchat': 'ytSuperchat',
+        'event-yt-supersticker': 'ytSupersticker',
+        'event-yt-membership': 'ytMembership',
+        'event-yt-milestone': 'ytMilestone',
+        'event-yt-gift': 'ytGiftMemberships',
       }
       const hkey = evtMap[last]
       if (hkey && hermesToggles?.[hkey] === false) return null
       const div = document.createElement('div')
       div.className = `hs-mc-stream-event ${m.eventClass || ''}`
+      // Superchat/sticker tier color rides per-message (m.scColor, extracted from
+      // YouTube's own renderer background) — overrides the eventClass default.
+      if (m.scColor) div.style.setProperty('--evt', sanitizeColor(m.scColor))
       const tsVal = timestampsEnabled && m.time ? formatTimeFromTs(m.time) : ''
       const tsSpan = tsVal ? `<span class="hs-mc-ts">${tsVal}</span>` : ''
+      const isYtEvent = m.platform === 'youtube'
+      // [Y] platform badge — parity with regular YT chat rows.
+      const platBadge =
+        isYtEvent && (platformBadgesEnabled || hostPlatform !== 'yt')
+          ? `<span class="hs-mc-platform-badge hs-mc-pb-yt" style="font-size:13px;margin-right:3px;font-weight:700;vertical-align:middle;color:${PLAT_COLORS.yt}">[Y]</span>`
+          : ''
       // For redeems, the actor is the redeemer (m.actor). For other events the channel is the actor.
       const ch = m.actor || m.channel || ''
       const chLc = ch.toLowerCase()
-      // Look up color: event data → color map → profile cache → IRC buffers → async fetch
+      // Look up color: event data → color map → profile cache → IRC buffers → async fetch.
+      // YT events already carry their own m.color from the DOM scrape — the
+      // Twitch-profile-keyed lookups below would be meaningless (and could even
+      // false-match a same-named Twitch user), so skip them entirely for YT.
       let userColor = m.color || ''
-      if (!userColor) userColor = streamColorMap.get(chLc) || ''
-      if (!userColor) {
-        const cached = _profileCache.get(chLc)
-        if (cached?.profile?.twitch_color) userColor = cached.profile.twitch_color
-      }
-      if (!userColor && chLc && irc?.channels) {
-        for (const [, buf] of irc.channels) {
-          const msgs = buf.getAll()
-          for (let i = msgs.length - 1; i >= 0; i--) {
-            if (msgs[i].user?.toLowerCase() === chLc) {
-              userColor = msgs[i].color || ''
-              break
+      if (!isYtEvent) {
+        if (!userColor) userColor = streamColorMap.get(chLc) || ''
+        if (!userColor) {
+          const cached = _profileCache.get(chLc)
+          if (cached?.profile?.twitch_color) userColor = cached.profile.twitch_color
+        }
+        if (!userColor && chLc && irc?.channels) {
+          for (const [, buf] of irc.channels) {
+            const msgs = buf.getAll()
+            for (let i = msgs.length - 1; i >= 0; i--) {
+              if (msgs[i].user?.toLowerCase() === chLc) {
+                userColor = msgs[i].color || ''
+                break
+              }
             }
+            if (userColor) break
           }
-          if (userColor) break
         }
       }
       // Build structured HTML: [username] ◆ action game
       if (!userColor) userColor = '#fff'
       const colorStyle = `color:${sanitizeColor(userColor)}`
-      const userLink = `<a href="https://twitch.tv/${encodeURIComponent(ch)}" target="_blank" rel="noopener noreferrer" class="hs-mc-user hs-evt-user" data-username="${escapeHtml(ch)}" style="${colorStyle}">${escapeHtml(ch)}</a>`
+      // YT has no reliable channel URL from a display name alone — render plain
+      // text instead of a (likely wrong) twitch.tv link.
+      const userLink = isYtEvent
+        ? `<span class="hs-mc-user hs-evt-user" data-username="${escapeHtml(ch)}" style="${colorStyle}">${escapeHtml(ch)}</span>`
+        : `<a href="https://twitch.tv/${encodeURIComponent(ch)}" target="_blank" rel="noopener noreferrer" class="hs-mc-user hs-evt-user" data-username="${escapeHtml(ch)}" style="${colorStyle}">${escapeHtml(ch)}</a>`
       const textAfterChannel = escapeHtml(m.text).replace(/^\[[^\]]+\]\s*/, '')
       const actionHtml = textAfterChannel.replace(
         /(switched to |now playing |went live \u2014 )(.+)$/,
         '$1<span class="hs-evt-game">$2</span>',
       )
-      div.innerHTML = `${tsSpan}${userLink} ${actionHtml}`
-      // Async fetch color if not cached
-      if (!userColor && chLc) {
+      div.innerHTML = `${tsSpan}${platBadge}${userLink} ${actionHtml}`
+      // Async fetch color if not cached — Twitch profile lookup only; YT color
+      // already came from m.color above.
+      if (!isYtEvent && !userColor && chLc) {
         apiFetch(`/api/profile/${encodeURIComponent(chLc)}`).then((resp) => {
           if (resp?.ok && resp.data?.profile) {
             const profile = resp.data.profile
@@ -53553,7 +53978,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         m.platform === 'twitch'
           ? '<span style="color:#9146ff;font-size:13px;font-weight:700;margin-right:3px">[T]</span>'
           : '<span style="color:#fff;font-size:13px;font-weight:700;margin-right:3px">[HS]</span>'
-      const dmPaint = m.platform === 'twitch' ? userPaintStyle(m.userId, (m.user || '').toLowerCase()) : ''
+      const dmPaint = m.platform === 'twitch' ? userPaintStyle(m.userId, (m.user || '').toLowerCase(), 'twitch') : ''
       const userName = `<span style="${dmPaint || `color:${sanitizeColor(m.color)};font-weight:600`}">${escapeHtml(m.user)}</span>`
       // All values sanitized — safe innerHTML
       if (m._renderedHtml == null) m._renderedHtml = highlightHashtagsInHtml(processEmotes(escapeHtml(m.text), null))
@@ -53797,12 +54222,12 @@ const STORAGE_KEY = 'heatsync_multichat'
     let avatarHtml = ''
     if (avatarsEnabled) {
       const userKey = m.user.toLowerCase()
-      // YouTube messages carry avatar URL directly — cache it and skip decapi.
-      // Same 500-entry LRU as the decapi path so 30k unique YT chatters can't
-      // grow the Map unbounded over an 8h stream.
+      // YouTube messages carry avatar URL directly — cache it and skip the fetch.
+      // Same 500-entry LRU as the fetched-avatar path so 30k unique YT chatters
+      // can't grow the Map unbounded over an 8h stream.
       if (m.avatar && m.platform === 'youtube') {
         // Protocol-validate before caching — this URL later flows into img.src.
-        // Mirrors the decapi avatar path which already routes through safeUrl.
+        // Mirrors the fetched avatar path which already routes through safeUrl.
         const safe = safeUrl(m.avatar)
         if (safe) avatarCache.set(userKey, safe)
         if (avatarCache.size > 500) {
@@ -53813,14 +54238,14 @@ const STORAGE_KEY = 'heatsync_multichat'
       if (cachedUrl) {
         avatarHtml = `<img class="hs-mc-avatar" src="${escapeHtml(cachedUrl)}" alt="" loading="lazy" decoding="async">`
       } else if (!m.platform || m.platform === 'twitch') {
-        // Initials reserve the box immediately; decapi fetch swaps the real pfp
+        // Initials reserve the box immediately; fetchAvatar swaps the real pfp
         // in place on success (zero shift) or it stays as the initial on a
         // miss/failure (no blank gap). Unifies with the kick/yt path below.
         avatarHtml = avatarFallbackHtml(m.user, userKey, true)
         fetchAvatar(userKey)
       } else {
         // Kick/YouTube without a cached avatar — neutral initials placeholder so
-        // the avatar column doesn't have an empty gap (no decapi for these).
+        // the avatar column doesn't have an empty gap (no fetch path for these).
         avatarHtml = avatarFallbackHtml(m.user, userKey, false)
       }
     }
@@ -53895,8 +54320,8 @@ const STORAGE_KEY = 'heatsync_multichat'
     // paint as their own messages. Twitch carries reply-parent-user-id; Kick
     // (no parent id) falls back to the name→uid map. data-uid lets
     // updateCosmeticsInPlace repaint it once the cosmetic batch lands.
-    const replyUid = (m.replyTo && (m.replyTo.userId || knownUserIds.get(replyLower))) || ''
-    const replyPaint = replyUid ? userPaintStyle(replyUid, replyLower) : ''
+    const replyUid = (m.replyTo && (m.replyTo.userId || knownUserIds.get(userKey(replyLower, m.platform)))) || ''
+    const replyPaint = replyUid ? userPaintStyle(replyUid, replyLower, m.platform) : ''
     const replyStyle = replyPaint || `color:${mentionColor(replyLower)}`
     const replyUidAttr = replyUid ? ` data-uid="${escapeHtml(replyUid)}"` : ''
     // A blocked user's name + message snippet must not leak through a reply
@@ -54110,7 +54535,7 @@ const STORAGE_KEY = 'heatsync_multichat'
   // Highlight @mentions and bare known usernames in rendered chat HTML.
   // Splits on tags so substitution only happens in text segments.
   // Applies 7TV paint cosmetics if the mentioned user's userId + paint are cached.
-  function highlightMentionsInHtml(html) {
+  function highlightMentionsInHtml(html, platform) {
     if (!html || (!html.includes('@') && knownColors.size === 0)) return html
     const parts = html.split(/(<[^>]+>)/)
     for (let i = 0; i < parts.length; i += 2) {
@@ -54127,7 +54552,9 @@ const STORAGE_KEY = 'heatsync_multichat'
           const color = at ? mentionColor(lower) : sanitizeColor(knownColors.get(lower) || '#fff')
           const safeName = escapeHtml(name)
           const safeLower = escapeHtml(lower)
-          const uid = knownUserIds.get(lower) || ''
+          // Platform-scoped lookup — a twitch and kick chatter sharing this
+          // lowercase name must never trade 7TV paints/cosmetics.
+          const uid = knownUserIds.get(userKey(lower, platform)) || ''
           let style = `color:${color}`
           let uidAttr = ''
           if (uid) {

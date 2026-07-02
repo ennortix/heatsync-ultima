@@ -5899,7 +5899,14 @@ async function sendMessage() {
     Promise.all([kickPromise, twitchPromise])
       .then(([kickResult, twitchResult]) => {
         const kickOk = kickResult === true
-        const twitchOk = twitchResult === true || twitchResult === null
+        // twitchResult null = no twitch leg on this send. It still counts as
+        // "not failed" (twitchOk) for the queued/partial logic below, but it
+        // is NOT a delivery — the success gate must use twitchSent, or a
+        // kick-only relay failure routes to "partial success" and dies
+        // silently (no red border, no retry notif, just a no_echo warning
+        // 20s later).
+        const twitchSent = twitchResult === true
+        const twitchOk = twitchSent || twitchResult === null
         // 'queued' = IRC was offline, message stuffed in send-queue for next
         // reconnect (could be never). Treat as a visible yellow cue, not silent
         // success — without this the input clears and the user thinks the
@@ -5921,7 +5928,7 @@ async function sendMessage() {
           return
         }
 
-        if (kickOk || twitchOk) {
+        if (kickOk || twitchSent) {
           // Dual-send partial success: at least one platform delivered. Drain
           // the failed platform from the pending tracker's awaiting set so the
           // no_echo toast doesn't fire 20s later for the side that locally

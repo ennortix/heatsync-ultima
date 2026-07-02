@@ -170,13 +170,13 @@
     "message": "open a stream → try it"
   },
   "welcome_next_label": {
-    "message": "2 steps to your emotes everywhere"
+    "message": "what happens when you click"
   },
   "welcome_next_1": {
-    "message": "sign in to claim your emote inventory"
+    "message": "emotes light up instantly — 7tv, bttv, ffz — no sign-in"
   },
   "welcome_next_2": {
-    "message": "import any channel's emotes — yours in every chat"
+    "message": "sign in whenever to claim your own 5,000-slot inventory"
   },
   "welcome_cta_kick": {
     "message": "sign in → save your emote inventory"
@@ -1310,5 +1310,8 @@
   },
   "btn_error_inventory": {
     "message": "failed to load your emotes"
+  },
+  "welcome_cta_live": {
+    "message": "watch live"
   }
 }

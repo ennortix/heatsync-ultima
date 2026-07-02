@@ -17,6 +17,26 @@ function t(k) {
   document.title = t('welcome_title')
 })()
 
+// Deep-link the CTA to the hottest live twitch/kick channel instead of the
+// twitch front page — click → busy chat → emotes render → wow, no browsing
+// step in between. Fail-safe: any error keeps the default twitch.tv href.
+;(async () => {
+  try {
+    const res = await fetch('https://heatsync.org/api/live/top?limit=10')
+    if (!res.ok) return
+    const { streams } = await res.json()
+    const s = (streams || []).find(
+      (x) => (x?.platform === 'twitch' || x?.platform === 'kick') && /^[a-zA-Z0-9_]{2,32}$/.test(x?.username || ''),
+    )
+    if (!s) return
+    const cta = document.querySelector('.cta[data-when="out"]')
+    if (!cta) return
+    cta.href = s.platform === 'kick' ? `https://kick.com/${s.username}` : `https://www.twitch.tv/${s.username}`
+    const label = t('welcome_cta_live')
+    cta.textContent = `${label === 'welcome_cta_live' ? 'watch live' : label} → ${s.username}`
+  } catch {}
+})()
+
 // Live success state: the moment oauth completes (in the tab we open), the
 // background script writes auth_token_encrypted to storage.local. Swap the
 // sign-in elements for the "you're in + next action" block so this tab closes

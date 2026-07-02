@@ -297,6 +297,68 @@ function debounce(fn, ms = 100) {
 }
 
 // ============================================
+// YOUTUBE LIVE CHAT EVENT CLASSIFICATION
+// ============================================
+// Pure parsing helpers for yt-live-chat's special renderers — shared between
+// chrome/youtube-content.js (DOM extraction) and the multichat overlay (event
+// banner dispatch in social.js) so tag-name → type and text-pattern → subtype
+// logic lives in exactly one place.
+
+/**
+ * Map a yt-live-chat-*-renderer tag name to our internal message type.
+ * @param {string} tagName - element.tagName (DOM tagName is already uppercase)
+ * @returns {string}
+ */
+function classifyYtRendererType(tagName) {
+  switch (tagName) {
+    case 'YT-LIVE-CHAT-PAID-MESSAGE-RENDERER':
+      return 'superchat'
+    case 'YT-LIVE-CHAT-PAID-STICKER-RENDERER':
+      return 'supersticker'
+    case 'YT-LIVE-CHAT-MEMBERSHIP-ITEM-RENDERER':
+      return 'membership'
+    case 'YT-LIVE-CHAT-SPONSORSHIPS-GIFT-PURCHASE-ANNOUNCEMENT-RENDERER':
+      return 'giftpurchase'
+    case 'YT-LIVE-CHAT-SPONSORSHIPS-GIFT-REDEMPTION-ANNOUNCEMENT-RENDERER':
+      return 'giftredemption'
+    case 'YT-LIVE-CHAT-SPONSORSHIPS-HEADER-RENDERER':
+      return 'giftheader'
+    default:
+      return 'text'
+  }
+}
+
+/**
+ * A membership-item-renderer covers two distinct events under one tag: a
+ * brand-new member joining ("Welcome to <tier>!") vs an existing member's
+ * renewal milestone ("Member for 11 months"). YouTube exposes no separate
+ * attribute for this, so classify from the renderer's own header text.
+ * @param {string} systemText - header text (headerPrimaryText/headerSubtext)
+ * @returns {'join'|'milestone'}
+ */
+function classifyYtMembership(systemText) {
+  const s = (systemText || '').trim()
+  if (!s) return 'join'
+  if (/^welcome\b/i.test(s)) return 'join'
+  if (/member for\b/i.test(s) || /\b\d+\s*(month|months|year|years)\b/i.test(s)) return 'milestone'
+  return 'join'
+}
+
+/**
+ * Extract the gift count from a gift-membership purchase announcement's
+ * header text ("<name> gifted 5 Channel memberships"). Falls back to 1 for
+ * the singular phrasing some locales render ("gifted a membership").
+ * @param {string} systemText
+ * @returns {number}
+ */
+function parseYtGiftCount(systemText) {
+  const s = systemText || ''
+  const m = s.match(/gifted\s+(\d+)/i) || s.match(/(\d+)/)
+  const n = m ? Number.parseInt(m[1], 10) : 1
+  return Number.isFinite(n) && n > 0 ? n : 1
+}
+
+// ============================================
 // UI SETTINGS SANITIZATION
 // ============================================
 
@@ -362,6 +424,11 @@ const utils = {
   // Color
   boostReadability,
 
+  // YouTube live chat event classification
+  classifyYtRendererType,
+  classifyYtMembership,
+  parseYtGiftCount,
+
   // Rate limiting
   throttle,
   debounce,
@@ -386,6 +453,8 @@ export {
   $,
   $$,
   boostReadability,
+  classifyYtMembership,
+  classifyYtRendererType,
   createElement,
   debounce,
   error,
@@ -393,6 +462,7 @@ export {
   findComponent,
   getFiber,
   log,
+  parseYtGiftCount,
   safeUrl,
   sanitizeUiSettings,
   throttle,

@@ -762,6 +762,8 @@
       systemMsg: m.systemMsg || undefined,
       sticker: m.sticker || undefined,
       scColor: m.scColor || undefined,
+      eventClass: m.eventClass || undefined,
+      actor: m.actor || undefined,
       emotes: m.emotes || undefined,
       subMonths: m.subMonths || undefined,
       streakCount: m.streakCount || undefined,
@@ -10006,47 +10008,71 @@
         'event-sub': 'sub',
         'event-redeem': 'redeem',
         'event-pred': 'pred',
+        'event-yt-superchat': 'ytSuperchat',
+        'event-yt-supersticker': 'ytSupersticker',
+        'event-yt-membership': 'ytMembership',
+        'event-yt-milestone': 'ytMilestone',
+        'event-yt-gift': 'ytGiftMemberships',
       }
       const hkey = evtMap[last]
       if (hkey && hermesToggles?.[hkey] === false) return null
       const div = document.createElement('div')
       div.className = `hs-mc-stream-event ${m.eventClass || ''}`
+      // Superchat/sticker tier color rides per-message (m.scColor, extracted from
+      // YouTube's own renderer background) — overrides the eventClass default.
+      if (m.scColor) div.style.setProperty('--evt', sanitizeColor(m.scColor))
       const tsVal = timestampsEnabled && m.time ? formatTimeFromTs(m.time) : ''
       const tsSpan = tsVal ? `<span class="hs-mc-ts">${tsVal}</span>` : ''
+      const isYtEvent = m.platform === 'youtube'
+      // [Y] platform badge — parity with regular YT chat rows.
+      const platBadge =
+        isYtEvent && (platformBadgesEnabled || hostPlatform !== 'yt')
+          ? `<span class="hs-mc-platform-badge hs-mc-pb-yt" style="font-size:13px;margin-right:3px;font-weight:700;vertical-align:middle;color:${PLAT_COLORS.yt}">[Y]</span>`
+          : ''
       // For redeems, the actor is the redeemer (m.actor). For other events the channel is the actor.
       const ch = m.actor || m.channel || ''
       const chLc = ch.toLowerCase()
-      // Look up color: event data → color map → profile cache → IRC buffers → async fetch
+      // Look up color: event data → color map → profile cache → IRC buffers → async fetch.
+      // YT events already carry their own m.color from the DOM scrape — the
+      // Twitch-profile-keyed lookups below would be meaningless (and could even
+      // false-match a same-named Twitch user), so skip them entirely for YT.
       let userColor = m.color || ''
-      if (!userColor) userColor = streamColorMap.get(chLc) || ''
-      if (!userColor) {
-        const cached = _profileCache.get(chLc)
-        if (cached?.profile?.twitch_color) userColor = cached.profile.twitch_color
-      }
-      if (!userColor && chLc && irc?.channels) {
-        for (const [, buf] of irc.channels) {
-          const msgs = buf.getAll()
-          for (let i = msgs.length - 1; i >= 0; i--) {
-            if (msgs[i].user?.toLowerCase() === chLc) {
-              userColor = msgs[i].color || ''
-              break
+      if (!isYtEvent) {
+        if (!userColor) userColor = streamColorMap.get(chLc) || ''
+        if (!userColor) {
+          const cached = _profileCache.get(chLc)
+          if (cached?.profile?.twitch_color) userColor = cached.profile.twitch_color
+        }
+        if (!userColor && chLc && irc?.channels) {
+          for (const [, buf] of irc.channels) {
+            const msgs = buf.getAll()
+            for (let i = msgs.length - 1; i >= 0; i--) {
+              if (msgs[i].user?.toLowerCase() === chLc) {
+                userColor = msgs[i].color || ''
+                break
+              }
             }
+            if (userColor) break
           }
-          if (userColor) break
         }
       }
       // Build structured HTML: [username] ◆ action game
       if (!userColor) userColor = '#fff'
       const colorStyle = `color:${sanitizeColor(userColor)}`
-      const userLink = `<a href="https://twitch.tv/${encodeURIComponent(ch)}" target="_blank" rel="noopener noreferrer" class="hs-mc-user hs-evt-user" data-username="${escapeHtml(ch)}" style="${colorStyle}">${escapeHtml(ch)}</a>`
+      // YT has no reliable channel URL from a display name alone — render plain
+      // text instead of a (likely wrong) twitch.tv link.
+      const userLink = isYtEvent
+        ? `<span class="hs-mc-user hs-evt-user" data-username="${escapeHtml(ch)}" style="${colorStyle}">${escapeHtml(ch)}</span>`
+        : `<a href="https://twitch.tv/${encodeURIComponent(ch)}" target="_blank" rel="noopener noreferrer" class="hs-mc-user hs-evt-user" data-username="${escapeHtml(ch)}" style="${colorStyle}">${escapeHtml(ch)}</a>`
       const textAfterChannel = escapeHtml(m.text).replace(/^\[[^\]]+\]\s*/, '')
       const actionHtml = textAfterChannel.replace(
         /(switched to |now playing |went live \u2014 )(.+)$/,
         '$1<span class="hs-evt-game">$2</span>',
       )
-      div.innerHTML = `${tsSpan}${userLink} ${actionHtml}`
-      // Async fetch color if not cached
-      if (!userColor && chLc) {
+      div.innerHTML = `${tsSpan}${platBadge}${userLink} ${actionHtml}`
+      // Async fetch color if not cached — Twitch profile lookup only; YT color
+      // already came from m.color above.
+      if (!isYtEvent && !userColor && chLc) {
         apiFetch(`/api/profile/${encodeURIComponent(chLc)}`).then((resp) => {
           if (resp?.ok && resp.data?.profile) {
             const profile = resp.data.profile

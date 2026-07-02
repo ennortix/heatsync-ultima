@@ -697,24 +697,9 @@
     })
   }
 
-  function getMsgType(tagName) {
-    switch (tagName) {
-      case 'YT-LIVE-CHAT-PAID-MESSAGE-RENDERER':
-        return 'superchat'
-      case 'YT-LIVE-CHAT-PAID-STICKER-RENDERER':
-        return 'supersticker'
-      case 'YT-LIVE-CHAT-MEMBERSHIP-ITEM-RENDERER':
-        return 'membership'
-      case 'YT-LIVE-CHAT-SPONSORSHIPS-GIFT-PURCHASE-ANNOUNCEMENT-RENDERER':
-        return 'giftpurchase'
-      case 'YT-LIVE-CHAT-SPONSORSHIPS-GIFT-REDEMPTION-ANNOUNCEMENT-RENDERER':
-        return 'giftredemption'
-      case 'YT-LIVE-CHAT-SPONSORSHIPS-HEADER-RENDERER':
-        return 'giftheader'
-      default:
-        return 'text'
-    }
-  }
+  // Tag → msgType mapping lives in lib/utils.js (classifyYtRendererType,
+  // bundled into this content script) so it's tested once and shared with
+  // the multichat overlay's event-banner dispatch — not duplicated here.
 
   function extractSuperchatData(el) {
     const amountEl = el.querySelector('#purchase-amount, #purchase-amount-chip')
@@ -742,7 +727,7 @@
     const msg = extractMessage(node)
     if (!msg) return
 
-    const msgType = getMsgType(node.tagName)
+    const msgType = classifyYtRendererType(node.tagName)
 
     // Emote overlay — replace emote text with images in the message element
     const messageEl = node.querySelector('#message')

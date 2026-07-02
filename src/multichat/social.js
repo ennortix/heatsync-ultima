@@ -374,6 +374,99 @@ function ingestReplayYtMsg(targetChannelId, ytMsg) {
   })
 }
 
+// YT special-renderer events (superchat/supersticker/membership/gift purchase)
+// → the same inline "stream-event" banner Twitch's raid/hype/sub-gift/redeem
+// events use: toggleable via hermesToggles, [Y]-badged, colored left-stripe.
+// Rides the existing YT buffer/pacing pipeline (channelYtMessages +
+// enqueueYtForPacing/ingestReplayYtMsg) rather than Twitch's irc.channels-based
+// dispatch — that's what already merges correctly with paired twitch/kick chat
+// on a shared tab, and already persists via persistYt. giftredemption (fires
+// once PER recipient — a 20-gift purchase would be 20 banners) and giftheader
+// (no event data) are intentionally excluded; they stay on the plain
+// system-row path in the youtube_chat_message handler below.
+function dispatchYtStreamEvent(targetChannelId, msg) {
+  const user = msg.user || ''
+  const systemMsg = msg.systemMsg || ''
+  let toggleKey = '',
+    eventClass = '',
+    text = ''
+
+  if (msg.msgType === 'superchat') {
+    toggleKey = 'ytSuperchat'
+    eventClass = 'event-yt-superchat'
+    const comment = (msg.text || '').trim()
+    text = `superchat ${msg.amount || ''}`.trim() + (comment ? `: ${comment}` : '')
+  } else if (msg.msgType === 'supersticker') {
+    toggleKey = 'ytSupersticker'
+    eventClass = 'event-yt-supersticker'
+    text = `super sticker ${msg.amount || ''}`.trim()
+  } else if (msg.msgType === 'membership') {
+    if (classifyYtMembership(systemMsg) === 'milestone') {
+      toggleKey = 'ytMilestone'
+      eventClass = 'event-yt-milestone'
+      text = systemMsg || 'membership milestone'
+    } else {
+      toggleKey = 'ytMembership'
+      eventClass = 'event-yt-membership'
+      text = 'became a member'
+    }
+  } else if (msg.msgType === 'giftpurchase') {
+    toggleKey = 'ytGiftMemberships'
+    eventClass = 'event-yt-gift'
+    const count = parseYtGiftCount(systemMsg)
+    text = `gifted ${count} membership${count === 1 ? '' : 's'}`
+  } else {
+    return
+  }
+
+  if (!hermesToggles?.[toggleKey]) return
+  if (!user || !text) return
+
+  // Dedup — same 60s-window Map shape the Twitch stream-event dispatchers use
+  // (keyed by channel+user+text here since YT events have no msg-id to key on).
+  if (!window._hsStreamEventDedup) window._hsStreamEventDedup = new Map()
+  const dedup = window._hsStreamEventDedup
+  const now = Date.now()
+  const dedupKey = `${targetChannelId} ${user} ${text}`
+  if (dedup.has(dedupKey) && now - dedup.get(dedupKey) < 60000) return
+  dedup.set(dedupKey, now)
+  if (dedup.size > 500) {
+    for (const [k, t] of dedup) {
+      if (now - t > 60000) dedup.delete(k)
+    }
+  }
+
+  const evt = {
+    type: 'stream-event',
+    eventClass,
+    text,
+    user,
+    actor: user,
+    channel: targetChannelId,
+    time: msg.time || now,
+    platform: 'youtube',
+    color: msg.color || '#ff0000',
+    scColor: msg.scColor || undefined,
+  }
+
+  if (msg.replay) {
+    ingestReplayYtMsg(targetChannelId, evt)
+  } else {
+    enqueueYtForPacing(targetChannelId, evt)
+  }
+  pushActivityEvent(evt)
+
+  // Yellow tab highlight, mirroring the Twitch stream-event dispatchers.
+  // enqueueYtForPacing/ingestReplayYtMsg already fire the generic 'has-new'
+  // dot via updateTabIndicator on a non-active tab; this adds the
+  // banner-specific highlight alongside it.
+  const tabId = targetChannelId === '__live_yt_auto__' ? 'live' : targetChannelId
+  if (currentTab !== tabId) {
+    const tab = tabBarElement?.querySelector(`[data-tab="${tabId}"]`)
+    if (tab) tab.classList.add('has-stream-event')
+  }
+}
+
 // Buffer-push + visible render for ONE paced (live) YT message. Critical:
 // overwrite ytMsg.time = Date.now() AT THE MOMENT OF EMIT (not at WS arrival).
 // Without this, every msg in a 5-sec poll batch shares the same arrival ms
@@ -647,6 +740,19 @@ function listenForSocialEvents() {
         if (!_autoYtVideoId) return // no confirmed subscription yet — reject
         if (msg.videoId && msg.videoId !== _autoYtVideoId) return // wrong video
       }
+      // Event renderers (superchat/supersticker/membership/gift purchase) skip
+      // the normal chat-row path entirely and go out as toggleable stream-event
+      // banners instead — see dispatchYtStreamEvent for what's excluded and why.
+      if (
+        msg.msgType === 'superchat' ||
+        msg.msgType === 'supersticker' ||
+        msg.msgType === 'membership' ||
+        msg.msgType === 'giftpurchase'
+      ) {
+        dispatchYtStreamEvent(targetChannelId, msg)
+        return
+      }
+
       // Dedup against message buffer (survives WS reconnects unlike 5s hash)
       if (targetChannelId && isYtDuplicate(msg.user, msg.text, targetChannelId)) return
 

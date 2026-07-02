@@ -410,6 +410,14 @@
     .hs-mc-stream-event.event-emote   { --evt: #29d391; }
     .hs-mc-stream-event.event-pred    { --evt: #ffaa00; }
     .hs-mc-stream-event.event-follow  { opacity: 0.8; }
+    /* YouTube event banners — superchat/sticker default to the amount-tier gold;
+       m.scColor (inline style, set in main.js) overrides with the real per-message
+       tier color from YouTube's own renderer when present. */
+    .hs-mc-stream-event.event-yt-superchat    { --evt: #ffca28; }
+    .hs-mc-stream-event.event-yt-supersticker { --evt: #ff8a65; }
+    .hs-mc-stream-event.event-yt-membership   { --evt: #2ba640; }
+    .hs-mc-stream-event.event-yt-milestone    { --evt: #00e5ff; }
+    .hs-mc-stream-event.event-yt-gift         { --evt: #ff4081; }
     /* Inline feed posts in chat timeline */
     .hs-mc-feed-inline {
       padding: 2px 8px;

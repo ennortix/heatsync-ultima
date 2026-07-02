@@ -762,14 +762,14 @@ const SETTINGS = [
     ],
   },
 
-  // ── notifs / twitch events ────────────────────────────────────────────
+  // ── notifs / stream events (twitch + youtube) ─────────────────────────
   {
     key: 'hermesEvents',
     type: 'boolmap',
     scope: 'sync',
     category: 'notifs',
     sectionKey: 'mc_settings_twitch_events',
-    label: 'twitch events',
+    label: 'stream events',
     control: 'pill',
     runtimeVar: 'hermesToggles',
     default: {
@@ -782,6 +782,11 @@ const SETTINGS = [
       redeem: true,
       pred: true,
       poll: true,
+      ytSuperchat: true,
+      ytSupersticker: true,
+      ytMembership: true,
+      ytMilestone: true,
+      ytGiftMemberships: true,
     },
     options: [
       { value: 'online', default: true, color: '#00ff7f', label: 'went live', tip: 'banner when a channel goes live' },
@@ -840,6 +845,41 @@ const SETTINGS = [
         color: '#00c853',
         labelKey: 'mc_settings_poll_banner',
         tipKey: 'mc_settings_poll_banner_desc',
+      },
+      {
+        value: 'ytSuperchat',
+        default: true,
+        color: '#ffca28',
+        labelKey: 'mc_settings_yt_superchat',
+        tipKey: 'mc_settings_yt_superchat_desc',
+      },
+      {
+        value: 'ytSupersticker',
+        default: true,
+        color: '#ff8a65',
+        labelKey: 'mc_settings_yt_supersticker',
+        tipKey: 'mc_settings_yt_supersticker_desc',
+      },
+      {
+        value: 'ytMembership',
+        default: true,
+        color: '#2ba640',
+        labelKey: 'mc_settings_yt_membership',
+        tipKey: 'mc_settings_yt_membership_desc',
+      },
+      {
+        value: 'ytMilestone',
+        default: true,
+        color: '#00e5ff',
+        labelKey: 'mc_settings_yt_milestone',
+        tipKey: 'mc_settings_yt_milestone_desc',
+      },
+      {
+        value: 'ytGiftMemberships',
+        default: true,
+        color: '#ff4081',
+        labelKey: 'mc_settings_yt_gift_memberships',
+        tipKey: 'mc_settings_yt_gift_memberships_desc',
       },
     ],
   },

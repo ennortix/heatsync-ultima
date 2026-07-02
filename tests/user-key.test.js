@@ -104,7 +104,7 @@ test('legacy unblock: deleting both namespaced + bare clears pre-namespace entry
 // bare-key compat layer needed. These tests model that Map directly since
 // main.js isn't import-able (bundled global-scope script, not an ES module).
 
-test('cosmetics: bare-keyed map lets a kick chatter steal a twitch chatter\'s paint (the bug)', () => {
+test("cosmetics: bare-keyed map lets a kick chatter steal a twitch chatter's paint (the bug)", () => {
   const knownUserIds = new Map() // bare username → twitch id, pre-fix shape
   knownUserIds.set('alice', '111') // real twitch alice's linked 7TV/twitch id
   knownUserIds.set('alice', '222') // unrelated kick alice's 7TV-linked twitch id overwrites the same bare slot
@@ -133,7 +133,7 @@ test('cosmetics: mention/reply paint lookup resolves to the mentioning platform,
   expect(resolveMentionUid('alice', 'youtube')).toBe('') // no yt-linked entry — correctly empty, not a stolen id
 })
 
-test('cosmetics: unknown platform for a known name never falls back to a stranger\'s id', () => {
+test("cosmetics: unknown platform for a known name never falls back to a stranger's id", () => {
   const knownUserIds = new Map([[userKey('bob', 'kick'), '333']])
   expect(knownUserIds.get(userKey('bob', 'twitch'))).toBeUndefined()
 })

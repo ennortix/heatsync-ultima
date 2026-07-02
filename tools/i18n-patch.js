@@ -3,7 +3,7 @@
 // preserves placeholders from en/messages.json
 // usage: bun tools/i18n-patch.js <locale> <patches.json>
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 
 const ROOT = join(import.meta.dir, '..')

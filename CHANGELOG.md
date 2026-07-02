@@ -1,5 +1,13 @@
 # changelog
 
+## [1.7.13] — 2026-07-02
+
+### added
+- **¶ permalink on 🔥 heat-spike rows** — every moment alert links its shareable heatsync.org/moment page (real chat, real emotes, no install needed to view).
+
+### changed
+- **welcome page** — the try-it button now opens the busiest live channel instead of the twitch front page, and the copy leads with what's true: emotes render instantly, no sign-in; the 5,000-slot inventory is the optional upgrade.
+
 ## [1.7.9] — 2026-06-29
 
 ### added

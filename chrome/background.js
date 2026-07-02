@@ -5972,6 +5972,25 @@ async function handleMessage(message, sender, sendResponse) {
     return true
   }
 
+  // Proxy recent-messages backfill through SW — cross-origin content-script
+  // fetches trip Cloudflare bot heuristics (edge 503 before the origin ever
+  // sees them); SW requests pass clean.
+  if (message.type === 'fetch_recent_messages') {
+    const ch = String(message.channel || '').toLowerCase()
+    if (!/^[a-z0-9_]{1,25}$/.test(ch)) {
+      sendResponse(null)
+      return true
+    }
+    fetch(`https://heatsync.org/api/recent-messages/${ch}?limit=500`, {
+      signal: AbortSignal.timeout(15000),
+      credentials: 'omit',
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => sendResponse(data))
+      .catch(() => sendResponse(null))
+    return true
+  }
+
   // Proxy /api/embed/resolve through SW — content-script fetches in MV3 still
   // get blocked by CORS even with host_permissions; SW bypasses it.
   // 1hr in-memory cache keyed by URL so re-renders (tab switch, scrollback)

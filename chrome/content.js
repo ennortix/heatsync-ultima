@@ -4823,15 +4823,22 @@
     log(' 📜 Backfilling chat history for', channel)
 
     try {
-      const resp = await fetch(`https://heatsync.org/api/recent-messages/${channel}?limit=500`, {
-        credentials: 'omit',
-        signal: AbortSignal.timeout(15000),
+      // Relayed through the SW: direct cross-origin fetches from content
+      // scripts trip Cloudflare bot heuristics (edge 503).
+      const data = await new Promise((resolve) => {
+        try {
+          chrome.runtime.sendMessage({ type: 'fetch_recent_messages', channel }, (resp) => {
+            if (chrome.runtime.lastError) resolve(null)
+            else resolve(resp)
+          })
+        } catch {
+          resolve(null)
+        }
       })
-      if (!resp.ok) {
-        log(' Backfill fetch failed:', resp.status)
+      if (!data) {
+        log(' Backfill fetch failed')
         return
       }
-      const data = await resp.json()
       if (!data.messages?.length) return
 
       // Collect existing message IDs from DOM for dedup

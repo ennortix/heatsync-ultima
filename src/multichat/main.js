@@ -1069,7 +1069,7 @@
       }
     }
   }
-  // Avatar URL cache: username → CDN URL (fetched from decapi)
+  // Avatar URL cache: username → CDN URL (fetched via BG resolveAvatarUrl)
   const avatarCache = new Map()
   const avatarFetching = new Set() // prevent duplicate fetches
   let _activeAvatarFetches = 0
@@ -10352,12 +10352,12 @@
     let avatarHtml = ''
     if (avatarsEnabled) {
       const userKey = m.user.toLowerCase()
-      // YouTube messages carry avatar URL directly — cache it and skip decapi.
-      // Same 500-entry LRU as the decapi path so 30k unique YT chatters can't
-      // grow the Map unbounded over an 8h stream.
+      // YouTube messages carry avatar URL directly — cache it and skip the fetch.
+      // Same 500-entry LRU as the fetched-avatar path so 30k unique YT chatters
+      // can't grow the Map unbounded over an 8h stream.
       if (m.avatar && m.platform === 'youtube') {
         // Protocol-validate before caching — this URL later flows into img.src.
-        // Mirrors the decapi avatar path which already routes through safeUrl.
+        // Mirrors the fetched avatar path which already routes through safeUrl.
         const safe = safeUrl(m.avatar)
         if (safe) avatarCache.set(userKey, safe)
         if (avatarCache.size > 500) {
@@ -10368,14 +10368,14 @@
       if (cachedUrl) {
         avatarHtml = `<img class="hs-mc-avatar" src="${escapeHtml(cachedUrl)}" alt="" loading="lazy" decoding="async">`
       } else if (!m.platform || m.platform === 'twitch') {
-        // Initials reserve the box immediately; decapi fetch swaps the real pfp
+        // Initials reserve the box immediately; fetchAvatar swaps the real pfp
         // in place on success (zero shift) or it stays as the initial on a
         // miss/failure (no blank gap). Unifies with the kick/yt path below.
         avatarHtml = avatarFallbackHtml(m.user, userKey, true)
         fetchAvatar(userKey)
       } else {
         // Kick/YouTube without a cached avatar — neutral initials placeholder so
-        // the avatar column doesn't have an empty gap (no decapi for these).
+        // the avatar column doesn't have an empty gap (no fetch path for these).
         avatarHtml = avatarFallbackHtml(m.user, userKey, false)
       }
     }

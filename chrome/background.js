@@ -2088,9 +2088,9 @@ async function fetchFFZChannelEmotes(channelName) {
   }
 }
 
-// Cache Twitch user IDs to avoid repeated decapi lookups (especially for polling).
+// Cache Twitch user IDs to avoid repeated lookups (especially for polling).
 // Persisted to chrome.storage.local — IDs never change, so cross-SW survival
-// eliminates the decapi/GQL cascade on every SW wake (critical at 30k users).
+// eliminates the resolve/GQL cascade on every SW wake (critical at 30k users).
 const twitchIdCache = new Map()
 const TWITCH_ID_CACHE_MAX = 1000
 const kickChannelIdCache = new Map()
@@ -2108,7 +2108,7 @@ function persistTwitchIdCache() {
   }, 5000)
 }
 
-// Lookup Twitch user ID from username — try Twitch GQL first (fast, no rate limit), decapi fallback
+// Lookup Twitch user ID from username — try Twitch GQL first (fast, no rate limit), first-party resolve fallback
 async function lookupTwitchUserId(username) {
   const cached = twitchIdCache.get(username)
   if (cached) {
@@ -2137,24 +2137,28 @@ async function lookupTwitchUserId(username) {
       }
     }
   } catch (e) {
-    log(' GQL user lookup failed, trying decapi:', e.message)
+    log(' GQL user lookup failed, trying first-party resolve:', e.message)
   }
-  // Fallback to decapi.me
+  // Fallback to first-party resolver (replaces decapi.me)
   try {
-    const response = await fetchWithTimeout(`https://decapi.me/twitch/id/${encodeURIComponent(username)}`, {}, 2000)
+    const response = await fetchWithTimeout(
+      `https://heatsync.org/api/resolve/twitch/${encodeURIComponent(username)}`,
+      {},
+      2000,
+    )
     if (!response.ok) {
       response.body?.cancel()
       return null
     }
-    const text = await response.text()
-    if (/^\d+$/.test(text.trim())) {
-      const id = text.trim()
+    const data = await response.json()
+    const id = data?.id
+    if (id && /^\d+$/.test(String(id))) {
       if (twitchIdCache.size >= TWITCH_ID_CACHE_MAX) {
         twitchIdCache.delete(twitchIdCache.keys().next().value)
       }
-      twitchIdCache.set(username, id)
+      twitchIdCache.set(username, String(id))
       persistTwitchIdCache()
-      return id
+      return String(id)
     }
     return null
   } catch (e) {
@@ -2303,13 +2307,13 @@ async function fetch7TVChannelEmotes(channelName, channelId = null, platform = '
       data = await response.json()
       log(' ✅ 7TV: Kick lookup succeeded (id:', kickId + ')')
     } else {
-      // Twitch: use channelId if available, otherwise lookup via decapi.me
+      // Twitch: use channelId if available, otherwise lookup via GQL/first-party resolve
       identifier = channelId
       if (!identifier) {
-        log(' 7TV: No channelId provided, looking up via decapi.me...')
+        log(' 7TV: No channelId provided, looking up via lookupTwitchUserId...')
         identifier = await lookupTwitchUserId(channelName)
         if (identifier) {
-          log(' 7TV: Got user ID from decapi:', identifier)
+          log(' 7TV: Got user ID:', identifier)
         }
       }
 
@@ -2539,7 +2543,7 @@ async function fetchBulkBadges() {
     const [bttvResp, ffzResp, chatterinoResp] = await Promise.allSettled([
       fetchWithTimeout('https://api.betterttv.net/3/cached/badges'),
       fetchWithTimeout('https://api.frankerfacez.com/v1/badges/ids'),
-      fetchWithTimeout('https://api.chatterino.com/badges'),
+      fetchWithTimeout('https://heatsync.org/api/chatterino-badges'),
     ])
     if (bttvResp.status === 'fulfilled' && bttvResp.value.ok) {
       const data = await bttvResp.value.json()
@@ -9140,7 +9144,7 @@ function bgIrcFetchRobotty(ch) {
       const ctrl = new AbortController()
       const timer = setTimeout(() => ctrl.abort(), 15000)
       const resp = await fetch(
-        `https://recent-messages.robotty.de/api/v2/recent-messages/${ch}?limit=1000&hide_moderation_messages=false&hide_moderated_messages=false&clearchatToNotice=true`,
+        `https://heatsync.org/api/recent-messages/${ch}?limit=1000&hide_moderation_messages=false&hide_moderated_messages=false&clearchatToNotice=true`,
         { signal: ctrl.signal, credentials: 'omit' },
       )
       clearTimeout(timer)

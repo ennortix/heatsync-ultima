@@ -3947,9 +3947,8 @@ async function resolveTwitchChannelId(channelLogin) {
     _twChannelIdCache.set(lc, { id, ts: Date.now() })
   }
   // First-party first: Twitch GQL (relayed through a twitch.tv tab when
-  // off-Twitch). decapi.me is a third-party and runs ONLY as a last-resort
-  // fallback for the rare case GQL is unreachable — slated for removal once the
-  // first-party /api/resolve endpoint deploys.
+  // off-Twitch). heatsync.org/api/resolve is our own first-party fallback for
+  // the rare case GQL is unreachable — no third-party call in this path.
   try {
     const data = await gqlProxy(null, null, { rawQuery: `{ user(login: "${lc}") { id } }` })
     const id = data?.data?.user?.id || (Array.isArray(data) ? data[0]?.data?.user?.id : null)
@@ -3959,17 +3958,19 @@ async function resolveTwitchChannelId(channelLogin) {
     }
   } catch (_) {}
   try {
-    // 4s ceiling: third-party fallback in the mod-action hot path; a hang here
-    // would stall every ban/timeout/unban behind the browser's default TCP
-    // timeout (60s+). Time out fast.
-    const r = await fetch(`https://decapi.me/twitch/id/${encodeURIComponent(lc)}`, {
+    // 4s ceiling: fallback in the mod-action hot path; a hang here would stall
+    // every ban/timeout/unban behind the browser's default TCP timeout (60s+).
+    // Time out fast.
+    const r = await fetch(`https://heatsync.org/api/resolve/twitch/${encodeURIComponent(lc)}`, {
       credentials: 'omit',
       signal: AbortSignal.timeout(4000),
     })
-    const body = (await r.text()).trim()
-    if (r.ok && /^\d+$/.test(body)) {
-      _cacheChannelId(body)
-      return body
+    if (!r.ok) return null
+    const data = await r.json()
+    const id = data?.id
+    if (id && /^\d+$/.test(String(id))) {
+      _cacheChannelId(String(id))
+      return String(id)
     }
   } catch (_) {}
   return null

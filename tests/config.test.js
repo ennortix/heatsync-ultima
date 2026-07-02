@@ -50,10 +50,11 @@ describe('config: URL constants', () => {
       'WS_7TV',
       'API_BTTV',
       'API_FFZ',
-      'API_DECAPI',
+      'API_RESOLVE_TWITCH',
       'API_TWITCH_GQL',
       'API_TWITCH_HELIX',
       'API_RECENT_MSGS',
+      'API_CHATTERINO_BADGES',
       'WS_TWITCH_IRC',
     ]
     for (const key of urlKeys) {

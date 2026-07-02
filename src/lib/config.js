@@ -21,10 +21,11 @@ const CONFIG = {
   WS_7TV: 'wss://events.7tv.io/v3',
   API_BTTV: 'https://api.betterttv.net/3',
   API_FFZ: 'https://api.frankerfacez.com/v1',
-  API_DECAPI: 'https://decapi.me/twitch',
+  API_RESOLVE_TWITCH: 'https://heatsync.org/api/resolve/twitch',
   API_TWITCH_GQL: 'https://gql.twitch.tv/gql',
   API_TWITCH_HELIX: 'https://api.twitch.tv/helix',
-  API_RECENT_MSGS: 'https://recent-messages.robotty.de/api/v2/recent-messages',
+  API_RECENT_MSGS: 'https://heatsync.org/api/recent-messages',
+  API_CHATTERINO_BADGES: 'https://heatsync.org/api/chatterino-badges',
   WS_TWITCH_IRC: 'wss://irc-ws.chat.twitch.tv:443',
 
   // ─── Timing ─────────────────────────────────────────────────────────────────
@@ -122,7 +123,7 @@ const CONFIG = {
     STREAM_EVENTS_MAX: 200,
     MC_AVATAR_FETCH_BATCH: 5,
     MC_CHANNEL_MSG_BUFFER: 500,
-    MC_RECENT_MSGS_LIMIT: 800, // limit param for robotty recent-messages
+    MC_RECENT_MSGS_LIMIT: 800, // limit param for heatsync.org recent-messages (server caps at 800)
     MC_FEED_PAGE_SIZE: 30,
     MC_MENTIONS_PAGE_SIZE: 20,
     MC_EMOTE_RENDER_CHUNK: 80, // emotes rendered per animation frame

@@ -2135,8 +2135,8 @@ function _prefillMcInput(text) {
 
 // Cross-platform whisper open: when the target is a kick/yt user, resolve to
 // their linked twitch handle via /api/profile?platform= so the typed /w lands
-// on the right twitch acct (decapi only knows twitch). If they have no linked
-// twitch, bail with a clear "try /dm" hint instead of letting /w 404.
+// on the right twitch acct (whisper resolution only knows twitch). If they
+// have no linked twitch, bail with a clear "try /dm" hint instead of letting /w 404.
 // Op the right-clicked chat message to the heatsync feed. Posting emerges from
 // chat, quoting the author with an @mention (which renders as a crawlable
 // /user/ profile link server-side — attribution doubles as internal SEO).
@@ -2177,7 +2177,7 @@ async function _openWhisperFor(username, platform) {
         return
       }
     } catch {
-      // network failed — fall back to raw name, let /w try decapi
+      // network failed — fall back to raw name, let /w try resolveTwitchChannelId
     }
   }
   _prefillMcInput(`/w ${whisperName} `)
@@ -5641,7 +5641,7 @@ async function sendSlashWhisper(platform, username, text, input) {
     key = `twitch:${lowerUser}`
     if (!whisperUsers.has(key)) {
       // Resolve username → Twitch ID via the canonical first-party resolver
-      // (Twitch GQL; decapi.me only as its own internal last-resort fallback).
+      // (Twitch GQL; heatsync.org/api/resolve as its own internal last-resort fallback).
       let body
       try {
         body = await resolveTwitchChannelId(lowerUser)

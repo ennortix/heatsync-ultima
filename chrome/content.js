@@ -4823,7 +4823,7 @@
     log(' 📜 Backfilling chat history for', channel)
 
     try {
-      const resp = await fetch(`https://recent-messages.robotty.de/api/v2/recent-messages/${channel}?limit=500`, {
+      const resp = await fetch(`https://heatsync.org/api/recent-messages/${channel}?limit=500`, {
         credentials: 'omit',
         signal: AbortSignal.timeout(15000),
       })

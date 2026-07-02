@@ -3184,6 +3184,18 @@ const SETTINGS = [
     noReset: true,
   },
   {
+    key: 'nativeVisible',
+    type: 'bool',
+    default: false,
+    scope: 'sync',
+    category: 'system',
+    section: 'state',
+    label: 'native chat visible',
+    tip: 'user chose to keep the platform-native chat column visible alongside the overlay',
+    control: 'custom',
+    noReset: true,
+  },
+  {
     key: 'chatPositionPrevious',
     type: 'enum',
     default: 'right',

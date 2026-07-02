@@ -6191,6 +6191,7 @@
     }
     injectInlineNotif('moment', {
       type: 'moment',
+      momentId: d.id != null ? String(d.id) : null,
       momentChannel: d.channel,
       momentPlatform: d.platform || 'twitch',
       text: `${d.channel} chat is exploding — ${d.rate} msgs/30s (usually ~${Math.max(1, Math.round(d.baseline))})`,
@@ -10128,7 +10129,13 @@
       const tsVal = timestampsEnabled ? formatTimeFromTs(m.time) : ''
       const tsSpan = tsVal ? `<span class="hs-mc-ts">${tsVal}</span>` : ''
       const label = `<span style="color:${m.inlineNotifColor || '#fff'};font-size:13px;font-weight:700;margin-right:3px">[🔥]</span>`
-      div.innerHTML = `${tsSpan}${label}<span style="color:#c0c0c0">${escapeHtml(m.text || '')}</span>`
+      // ¶ permalink → shareable SSR page (right-click copy-link works natively);
+      // the row click handler ignores anchors, mirrors the site's moment-card
+      const perma =
+        m.momentId && /^\d+$/.test(m.momentId)
+          ? ` <a class="hs-mc-moment-perma" href="https://heatsync.org/moment/${m.momentId}" target="_blank" rel="noopener" title="permalink — share this moment">¶</a>`
+          : ''
+      div.innerHTML = `${tsSpan}${label}<span style="color:#c0c0c0">${escapeHtml(m.text || '')}</span>${perma}`
       div.style.cursor = 'pointer'
       const ch = m.momentChannel
       const plat = m.momentPlatform || 'twitch'

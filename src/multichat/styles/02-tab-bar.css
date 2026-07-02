@@ -424,6 +424,8 @@
       color: #ffff00; text-decoration: none; font-size: 13px; margin-right: 4px;
     }
     .hs-mc-feed-inline .hs-feed-thread-link:hover { text-decoration: underline; }
+    .hs-mc-moment-perma { color: #808080; margin-left: 4px; text-decoration: none; }
+    .hs-mc-moment-perma:hover { background: #fff; color: #000; }
     .hs-mc-dm-inline {
       border-left-color: #ffff00;
     }

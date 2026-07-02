@@ -72,7 +72,8 @@ describe('detectEmoteSource', () => {
     expect(detectEmoteSource('https://static-cdn.jtvnw.net/emoticons/v2/1/default/dark/2.0')).toBe('twitch'))
   test('kick url', () => expect(detectEmoteSource('https://files.kick.com/emotes/1/fullsize')).toBe('kick'))
   test('heatsync url', () => expect(detectEmoteSource('https://heatsync.org/uploads/x.png')).toBe('heatsync'))
-  test('unknown url with no hint → "unknown"', () => expect(detectEmoteSource('https://evil.example/x.png')).toBe('unknown'))
+  test('unknown url with no hint → "unknown"', () =>
+    expect(detectEmoteSource('https://evil.example/x.png')).toBe('unknown'))
   test('unknown url WITH hint → hint used', () =>
     expect(detectEmoteSource('https://evil.example/x.png', 'kick')).toBe('kick'))
   test('null url with hint → hint', () => expect(detectEmoteSource(null, '7tv')).toBe('7tv'))

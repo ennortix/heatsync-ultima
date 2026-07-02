@@ -3233,17 +3233,17 @@ function renderEmoteStack(stack) {
 }
 
 export {
+  blockedEmoteFallback,
+  channelEmoteCaches,
   detectEmoteSource,
+  emoteCache,
   getEmoteState,
+  inventoryEmotes,
   lookupEmote,
-  lookupOwnedEmote,
   lookupEmoteRenderOrder,
   lookupEmoteWithOverlay,
-  zeroWidthFromAnyCache,
-  viewerPersonalEmotes,
-  emoteCache,
-  channelEmoteCaches,
-  inventoryEmotes,
+  lookupOwnedEmote,
   removedEmoteFallback,
-  blockedEmoteFallback,
+  viewerPersonalEmotes,
+  zeroWidthFromAnyCache,
 }

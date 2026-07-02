@@ -212,3 +212,5 @@ function startNativeTap(channel) {
       if (c && c !== _tapContainer) _tapBind()
     }, 5000)
 }
+
+export { _tapToMsg }

@@ -48,19 +48,28 @@ jobs:
         env:
           AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
           AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+          VERSION: ${{ steps.ver.outputs.version }}
         run: |
           # Upload dist/firefox to AMO, wait for automated unlisted signing, then
           # publish the signed .xpi as the versionless alias. Fails loud if signing
           # fails — release Firefox refuses to install an unsigned xpi, so we never
           # ship the bare zip renamed to .xpi (the old bug).
-          bunx web-ext@10.4.0 sign \
+          # web-ext can 409 against its OWN submission ("version already exists")
+          # when validation polling races the upload — the version record is live
+          # on AMO and signs server-side regardless. Fall back to downloading the
+          # signed file for this exact version instead of failing the release.
+          if ! bunx web-ext@10.4.0 sign \
             --source-dir dist/firefox \
             --channel unlisted \
             --api-key "$AMO_JWT_ISSUER" \
             --api-secret "$AMO_JWT_SECRET" \
             --artifacts-dir dist/signed \
             --timeout 900000 \
-            --no-input
+            --no-input; then
+            echo "web-ext sign failed — trying to fetch already-signed ${VERSION} from AMO"
+            mkdir -p dist/signed
+            bun scripts/amo-fetch-signed.js "$VERSION" "dist/signed/heatsync-${VERSION}.xpi"
+          fi
           signed=$(ls dist/signed/*.xpi 2>/dev/null | head -1)
           if [ -z "$signed" ]; then echo "::error::no signed xpi produced"; exit 1; fi
           cp "$signed" dist/heatsync-firefox.xpi

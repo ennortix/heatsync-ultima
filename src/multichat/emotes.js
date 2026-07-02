@@ -579,7 +579,14 @@ function estimateChunkHeight(count) {
 
 function renderEmoteSections(sections, emptyMsg = t('mc_emote_no_loaded'), opts) {
   clearChunkStore()
-  if (!sections.length) return `<div class="hs-mc-picker-empty">${escapeHtml(emptyMsg)}</div>`
+  if (!sections.length) {
+    // Cold-start: personal + channel + global caches are all empty. Not the
+    // "no search matches" case (that passes opts.noHeaders + its own emptyMsg)
+    // — point the user at the one-click channel import instead of a dead end.
+    const channel = !(opts && opts.noHeaders) && getCurrentChannel()
+    if (channel) return renderEmoteColdStart(channel)
+    return `<div class="hs-mc-picker-empty">${escapeHtml(emptyMsg)}</div>`
+  }
   const noHeaders = !!(opts && opts.noHeaders)
   return sections
     .map((s, si) => {
@@ -611,6 +618,58 @@ function renderEmoteSections(sections, emptyMsg = t('mc_emote_no_loaded'), opts)
       </div>`
     })
     .join('')
+}
+
+// Empty-inventory cold-start: point a fresh/logged-out-of-emotes user straight
+// at the one-click channel import instead of a dead-end "no emotes" message.
+// Mirrors chrome/heatsync-button.js's renderInventoryColdStart pattern; button
+// reuses the existing .hs-mc-load-more style (no new button chrome).
+function renderEmoteColdStart(channel) {
+  const safeCh = escapeHtml(channel)
+  return `
+    <div class="hs-mc-picker-empty hs-mc-cold-start">
+      <div class="hs-mc-cold-start-title">${escapeHtml(t('mc_emote_cold_start_title'))}</div>
+      <div class="hs-mc-cold-start-sub">${escapeHtml(t('mc_emote_cold_start_sub', [channel]))}</div>
+      <button type="button" class="hs-mc-load-more hs-mc-cold-start-import" data-channel="${safeCh}">${escapeHtml(t('mc_emote_cold_start_import', [channel]))}</button>
+    </div>`
+}
+
+// One-click "import all of a channel's 7TV/BTTV/FFZ emotes into your set" —
+// same server endpoint as chrome/heatsync-button.js's hsImportChannel.
+async function hsMcImportChannelEmotes(btn, channel) {
+  if (!channel || btn.disabled) return
+  btn.disabled = true
+  const label = btn.textContent
+  btn.textContent = t('mc_emote_cold_start_importing')
+  try {
+    const platform = hostPlatform === 'yt' ? 'youtube' : hostPlatform || 'twitch'
+    const resp = await apiFetch('/api/user/emotes/import-channel', {
+      method: 'POST',
+      auth: true,
+      body: { channel, platform },
+    })
+    if (resp && resp.ok !== false) {
+      const n = resp.data?.imported ?? resp.imported ?? resp.data?.count ?? '?'
+      showToast(t('mc_emote_cold_start_imported', [String(n)]), 'success')
+      markPickerDirty()
+      await loadEmotes()
+      showEmotePicker(pickerTab)
+    } else {
+      btn.textContent = t('mc_emote_cold_start_failed')
+      showToast(resp?.error || t('mc_emote_cold_start_failed'), 'error')
+      setTimeout(() => {
+        btn.textContent = label
+        btn.disabled = false
+      }, 2000)
+    }
+  } catch (e) {
+    btn.textContent = t('mc_emote_cold_start_failed')
+    showToast(t('mc_emote_cold_start_failed'), 'error')
+    setTimeout(() => {
+      btn.textContent = label
+      btn.disabled = false
+    }, 2000)
+  }
 }
 
 function emoteImgHtml([name, emote]) {
@@ -871,13 +930,20 @@ function showEmotePicker(tab = null) {
   })
 
   // Event delegation for emote clicks (single handler, works for chunked rendering).
-  // Bumped to v2 — the old `_hsDelegated` boolean property survives extension
+  // Bumped to v3 — the old `_hsDelegated` boolean property survives extension
   // reload (page owns the DOM), but the listener it tracked is destroyed with
   // the previous content-script context. Versioning forces re-attach when this
-  // bundle's flag is missing.
-  if (picker.dataset.hsClickVersion !== '2') {
-    picker.dataset.hsClickVersion = '2'
+  // bundle's flag is missing. (v3: cold-start import CTA branch.)
+  if (picker.dataset.hsClickVersion !== '3') {
+    picker.dataset.hsClickVersion = '3'
     picker.addEventListener('click', (e) => {
+      // Cold-start import CTA (empty inventory) — one-click channel import.
+      const coldBtn = e.target.closest('.hs-mc-cold-start-import')
+      if (coldBtn) {
+        e.stopPropagation()
+        hsMcImportChannelEmotes(coldBtn, coldBtn.dataset.channel)
+        return
+      }
       const img = e.target.closest('.hs-mc-picker-emote')
       if (!img) return
       const name = img.dataset.name

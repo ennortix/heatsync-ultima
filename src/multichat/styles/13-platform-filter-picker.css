@@ -368,6 +368,16 @@
       font-size: 13px !important;
       visibility: visible !important;
     }
+    /* Empty-inventory cold-start CTA — import button reuses .hs-mc-load-more */
+    .hs-mc-cold-start {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+    .hs-mc-cold-start-title { color: #fff; font-size: 14px; font-weight: 700; }
+    .hs-mc-cold-start-sub { color: #aaa; font-size: 13px; max-width: 260px; line-height: 1.4; }
+    .hs-mc-cold-start .hs-mc-load-more { width: auto; margin: 0; padding: 7px 14px; text-transform: none; letter-spacing: 0; }
     .hs-mc-picker-divider {
       height: 1px;
       background: rgba(255,255,255,0.06);

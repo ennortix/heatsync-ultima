@@ -1269,6 +1269,39 @@
   "mc_emote_no_loaded": {
     "message": "no emotes loaded"
   },
+  "mc_emote_cold_start_title": {
+    "message": "your emotes, in every chat"
+  },
+  "mc_emote_cold_start_sub": {
+    "message": "pull every 7tv, bttv & ffz emote from $CHANNEL$ into your set — one click, renders in every chat.",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_emote_cold_start_import": {
+    "message": "import all of $CHANNEL$'s emotes",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_emote_cold_start_importing": {
+    "message": "importing…"
+  },
+  "mc_emote_cold_start_imported": {
+    "message": "imported $COUNT$",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_emote_cold_start_failed": {
+    "message": "import failed"
+  },
   "mc_emote_load_more": {
     "message": "load more"
   },

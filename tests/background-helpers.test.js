@@ -28,8 +28,8 @@
  * source drift fails the test suite instead of silently testing stale logic.
  */
 
-import { readFileSync } from 'fs'
 import { describe, expect, test } from 'bun:test'
+import { readFileSync } from 'fs'
 
 const BG_SRC = readFileSync(new URL('../chrome/background.js', import.meta.url), 'utf8')
 

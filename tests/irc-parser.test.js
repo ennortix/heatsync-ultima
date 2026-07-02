@@ -130,8 +130,7 @@ test('parseIrcLine: PRIVMSG falls back to display-name when no login prefix matc
 })
 
 test('parseIrcLine: PRIVMSG login is lowercase and independent of display-name casing', () => {
-  const raw =
-    '@display-name=AlIcE :AlIcE!AlIcE@AlIcE.tmi.twitch.tv PRIVMSG #chan :hi'
+  const raw = '@display-name=AlIcE :AlIcE!AlIcE@AlIcE.tmi.twitch.tv PRIVMSG #chan :hi'
   const msg = parseIrcLine(raw, 'chan')
   expect(msg.user).toBe('AlIcE')
   expect(msg.login).toBe('alice')
@@ -204,8 +203,7 @@ test('parseIrcLine: highlighted-message msg-id sets isHighlighted', () => {
 })
 
 test('parseIrcLine: first-msg=1 sets isFirstMsg, returning-chatter=1 sets isReturningChatter', () => {
-  const raw =
-    '@display-name=Bob;first-msg=1;returning-chatter=1 :bob!bob@bob.tmi.twitch.tv PRIVMSG #chan :hi'
+  const raw = '@display-name=Bob;first-msg=1;returning-chatter=1 :bob!bob@bob.tmi.twitch.tv PRIVMSG #chan :hi'
   const msg = parseIrcLine(raw, 'chan')
   expect(msg.isFirstMsg).toBe(true)
   expect(msg.isReturningChatter).toBe(true)
@@ -218,8 +216,7 @@ test('parseIrcLine: badge-info subscriber/N sets subMonths', () => {
 })
 
 test('parseIrcLine: twitchEmotes tag attaches parsed emote map', () => {
-  const raw =
-    '@display-name=Bob;emotes=25:0-4 :bob!bob@bob.tmi.twitch.tv PRIVMSG #chan :Kappa test'
+  const raw = '@display-name=Bob;emotes=25:0-4 :bob!bob@bob.tmi.twitch.tv PRIVMSG #chan :Kappa test'
   const msg = parseIrcLine(raw, 'chan')
   expect(msg.twitchEmotes).toEqual({ Kappa: 'https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/2.0' })
 })
@@ -282,7 +279,8 @@ test('parseIrcLine: regular (non-first-msg) chatter during a raid window is not 
 // ── parseIrcLine: USERNOTICE (sub/resub/gift/watchstreak) ─────────────────
 
 test('parseIrcLine: USERNOTICE sub tier 2000 maps to tier "2"', () => {
-  const raw = '@display-name=Bob;msg-param-sub-plan=2000;msg-param-cumulative-months=5 :tmi.twitch.tv USERNOTICE #chan :resub message'
+  const raw =
+    '@display-name=Bob;msg-param-sub-plan=2000;msg-param-cumulative-months=5 :tmi.twitch.tv USERNOTICE #chan :resub message'
   const msg = parseIrcLine(raw, 'chan')
   expect(msg.type).toBe('usernotice')
   expect(msg.subTier).toBe('2')
@@ -326,7 +324,7 @@ test('parseIrcLine: viewermilestone with a DIFFERENT category is not promoted', 
 })
 
 test('parseIrcLine: USERNOTICE system-msg unescapes \\s to spaces', () => {
-  const raw = "@system-msg=Bob\\ssubscribed\\swith\\sPrime! :tmi.twitch.tv USERNOTICE #chan :thanks"
+  const raw = '@system-msg=Bob\\ssubscribed\\swith\\sPrime! :tmi.twitch.tv USERNOTICE #chan :thanks'
   const msg = parseIrcLine(raw, 'chan')
   expect(msg.systemMsg).toBe('Bob subscribed with Prime!')
 })
@@ -334,7 +332,8 @@ test('parseIrcLine: USERNOTICE system-msg unescapes \\s to spaces', () => {
 // ── parseIrcLine: NOTICE ──────────────────────────────────────────────────
 
 test('parseIrcLine: NOTICE basic shape + deterministic id when server omits one', () => {
-  const raw = '@tmi-sent-ts=1700000000000;msg-id=msg_banned :tmi.twitch.tv NOTICE #chan :You are banned from this channel.'
+  const raw =
+    '@tmi-sent-ts=1700000000000;msg-id=msg_banned :tmi.twitch.tv NOTICE #chan :You are banned from this channel.'
   const msg = parseIrcLine(raw, 'chan')
   expect(msg.type).toBe('notice')
   expect(msg.noticeType).toBe('msg_banned')

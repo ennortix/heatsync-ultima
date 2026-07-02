@@ -7,11 +7,14 @@
 // entry fields:
 //   key        EXACT storage key — never rename, existing users' synced
 //              data lives under these names
-//   type       'bool' | 'enum' | 'range' | 'text' | 'multiselect' | 'boolmap'
+//   type       'bool' | 'enum' | 'range' | 'text' | 'multiselect' | 'boolmap' | 'json'
 //              boolmap = one storage key holding {subkey: bool} (the
 //              inlineNotifs / hermesEvents nested savers); options list the
 //              subkeys, each with {value, default, color, tag?, label(/Key)?,
 //              tip(/Key)?}; coercion merges partial stored maps over default
+//              json = structured array/object stored raw (state blobs like
+//              customPresets); validated as JSON-serializable, size-capped
+//              via maxLen (stringified length)
 //   default    value assumed when storage is empty; written by reset
 //   scope      'sync'         → ui_settings.<key> in chrome.storage.sync
 //              'local'        → chrome.storage.local.<key> (per-device)
@@ -63,7 +66,7 @@
 /**
  * @typedef {Object} SettingDef
  * @property {string} key EXACT storage key — never rename
- * @property {'bool'|'enum'|'range'|'text'|'multiselect'|'boolmap'} type
+ * @property {'bool'|'enum'|'range'|'text'|'multiselect'|'boolmap'|'json'} type
  * @property {*} default
  * @property {'sync'|'local'|'local-mirror'} scope
  * @property {string} category settings subtab id
@@ -1714,6 +1717,65 @@ const SETTINGS = [
     control: 'pill',
     reloadApply: true,
   },
+
+  // ── system / state — ui state persisted via saveUiSetting, no settings
+  // row (control:'custom' suppresses auto-row + search; 'state' section is
+  // not in the system subtab's rendered-sections list). declared so the
+  // registry stays the single source of truth for every ui_settings key.
+  // noReset: these are session state / user data, not preferences — "reset
+  // to defaults" must not close the user's tab or wipe their presets.
+  {
+    key: 'activeTab',
+    type: 'text',
+    default: 'live',
+    scope: 'sync',
+    category: 'system',
+    section: 'state',
+    label: 'active tab',
+    tip: 'last active multichat tab — restored on load (built-in tab id or channel tab id)',
+    control: 'custom',
+    maxLen: 128,
+    noReset: true,
+  },
+  {
+    key: 'liveChannel',
+    type: 'text',
+    default: '',
+    scope: 'sync',
+    category: 'system',
+    section: 'state',
+    label: 'live tab channel',
+    tip: 'live-tab channel override — popout-scoped; empty/null means use the url channel',
+    control: 'custom',
+    maxLen: 128,
+    noReset: true,
+  },
+  {
+    key: 'chatPositionPrevious',
+    type: 'enum',
+    default: 'right',
+    scope: 'sync',
+    category: 'system',
+    section: 'state',
+    label: 'previous chat dock side',
+    tip: 'last non-hidden dock side — the \\ hide toggle restores to it',
+    control: 'custom',
+    options: [{ value: 'right' }, { value: 'bottom' }, { value: 'left' }, { value: 'top' }],
+    noReset: true,
+  },
+  {
+    key: 'customPresets',
+    type: 'json',
+    default: [],
+    scope: 'sync',
+    category: 'system',
+    section: 'state',
+    label: 'custom presets',
+    tip: 'user-saved settings presets — diff-vs-defaults snapshots, managed from the presets bar',
+    control: 'custom',
+    maxLen: 6000,
+    noReset: true,
+  },
 ]
 
 // ── presets ("builds") — sparse diffs over registry defaults ──────────────
@@ -1833,6 +1895,17 @@ function validateSettingValue(def, v) {
         Object.keys(v).every((k) => typeof v[k] === 'boolean' && opts.some((o) => o.value === k))
       )
     }
+    case 'json': {
+      // structured state blob — any JSON-serializable array/object under the
+      // size cap. shape-specific filtering stays at the consumer (it owns the
+      // semantics); this guards type + serializability + size only.
+      if (v === null || typeof v !== 'object') return false
+      try {
+        return JSON.stringify(v).length <= (def.maxLen || 524288)
+      } catch {
+        return false
+      }
+    }
     default:
       return false
   }
@@ -1883,6 +1956,10 @@ function coerceSettingValue(def, v) {
       }
       return merged
     }
+    case 'json':
+      // no partial salvage for structured blobs — either the value is a
+      // valid serializable object/array or the consumer's default stands
+      return validateSettingValue(def, v) ? v : undefined
     default:
       return undefined
   }

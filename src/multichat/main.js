@@ -2652,8 +2652,8 @@
       cachedUiOverflow().catch(() => ({})),
     ])
     const ui = (synced && synced.ui_settings) || {}
-    // custom presets ride along in ui_settings (not a registry entry —
-    // they're user data, not a setting)
+    // custom presets ride along in ui_settings (declared in the registry as
+    // system/state json; the shape filter below owns the semantics)
     _customPresets = Array.isArray(ui.customPresets)
       ? ui.customPresets.filter(
           (p) => p && typeof p === 'object' && p.id && p.name && p.diff && typeof p.diff === 'object',

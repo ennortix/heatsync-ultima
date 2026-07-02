@@ -3231,3 +3231,19 @@ function renderEmoteStack(stack) {
   const count = stack.overlays.length + 1
   return `<span class="hs-mc-emote-stack" data-stack-count="${count}" title="expand"><span class="hs-mc-emote-stack-emotes">${stack.base}${overlayHtml}</span><span class="hs-mc-stack-collapse" title="collapse">\u00d7</span><span class="hs-mc-stack-block-all" title="block all">\u2298</span></span>`
 }
+
+export {
+  detectEmoteSource,
+  getEmoteState,
+  lookupEmote,
+  lookupOwnedEmote,
+  lookupEmoteRenderOrder,
+  lookupEmoteWithOverlay,
+  zeroWidthFromAnyCache,
+  viewerPersonalEmotes,
+  emoteCache,
+  channelEmoteCaches,
+  inventoryEmotes,
+  removedEmoteFallback,
+  blockedEmoteFallback,
+}

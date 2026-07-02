@@ -718,7 +718,11 @@ function renderProfileCardView() {
   const idSec = pcMakeSection(data?.display_name || username)
   idSec.classList.add('hs-pcard-id')
   // Paint the identity title with the user's 7TV cosmetic when known.
-  const idPaint = userPaintStyle(String(data?.twitch_user_id || data?.twitch_id || ''), (username || '').toLowerCase())
+  const idPaint = userPaintStyle(
+    String(data?.twitch_user_id || data?.twitch_id || ''),
+    (username || '').toLowerCase(),
+    activeProfileCard?.platform,
+  )
   if (idPaint) {
     const titleEl = idSec.querySelector('.hs-pcard-section-title')
     if (titleEl) titleEl.style.cssText += ';' + idPaint

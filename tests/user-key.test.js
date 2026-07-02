@@ -95,3 +95,45 @@ test('legacy unblock: deleting both namespaced + bare clears pre-namespace entry
   blockedUsers.delete('alice') // bare delete → clears it
   expect(userSetMatches(blockedUsers, 'alice', 'twitch', [])).toBe(false)
 })
+
+// Cosmetics-identity scenarios (main.js knownUserIds: Map<key, resolvedTwitchId>,
+// backing 7TV paint/badge lookup for @mentions/replies/archive rows/tooltips).
+// Unlike the block/mute Sets above, this is a persisted-per-session VALUE map
+// (username → twitch id), not a membership check — no legacy bare data exists
+// (pure in-memory, rebuilt each session) so it namespaces cleanly with no
+// bare-key compat layer needed. These tests model that Map directly since
+// main.js isn't import-able (bundled global-scope script, not an ES module).
+
+test('cosmetics: bare-keyed map lets a kick chatter steal a twitch chatter\'s paint (the bug)', () => {
+  const knownUserIds = new Map() // bare username → twitch id, pre-fix shape
+  knownUserIds.set('alice', '111') // real twitch alice's linked 7TV/twitch id
+  knownUserIds.set('alice', '222') // unrelated kick alice's 7TV-linked twitch id overwrites the same bare slot
+  // Both platforms now resolve to kick-alice's id — twitch alice's paint is gone.
+  expect(knownUserIds.get('alice')).toBe('222')
+})
+
+test('cosmetics: platform-scoped keys keep twitch alice and kick alice independent', () => {
+  const knownUserIds = new Map()
+  knownUserIds.set(userKey('alice', 'twitch'), '111')
+  knownUserIds.set(userKey('alice', 'kick'), '222')
+  expect(knownUserIds.get(userKey('alice', 'twitch'))).toBe('111')
+  expect(knownUserIds.get(userKey('alice', 'kick'))).toBe('222')
+})
+
+test('cosmetics: mention/reply paint lookup resolves to the mentioning platform, not a same-name stranger', () => {
+  // Mirrors main.js highlightMentionsInHtml / replyUid: resolve a bare @name
+  // against the CURRENT message's platform, never a bare cross-platform key.
+  const knownUserIds = new Map([
+    [userKey('alice', 'twitch'), '111'],
+    [userKey('alice', 'kick'), '222'],
+  ])
+  const resolveMentionUid = (lower, platform) => knownUserIds.get(userKey(lower, platform)) || ''
+  expect(resolveMentionUid('alice', 'twitch')).toBe('111')
+  expect(resolveMentionUid('alice', 'kick')).toBe('222')
+  expect(resolveMentionUid('alice', 'youtube')).toBe('') // no yt-linked entry — correctly empty, not a stolen id
+})
+
+test('cosmetics: unknown platform for a known name never falls back to a stranger\'s id', () => {
+  const knownUserIds = new Map([[userKey('bob', 'kick'), '333']])
+  expect(knownUserIds.get(userKey('bob', 'twitch'))).toBeUndefined()
+})

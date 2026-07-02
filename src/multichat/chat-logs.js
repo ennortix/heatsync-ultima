@@ -418,7 +418,10 @@ function renderChatLogRow(r) {
     }
     let paintApplied = false
     if (typeof knownUserIds !== 'undefined' && knownUserIds instanceof Map && typeof getMcPaintStyle === 'function') {
-      const uid = knownUserIds.get(ulow)
+      // Platform-scoped key — a twitch and kick chatter sharing this username
+      // must never trade 7TV paints in the archive view either.
+      const uidKey = typeof userKey === 'function' ? userKey(ulow, r.platform) : ulow
+      const uid = knownUserIds.get(uidKey)
       if (uid) {
         const paintCss = getMcPaintStyle(String(uid))
         if (paintCss) {

@@ -437,7 +437,7 @@ class IRC {
         addUsername(msg.user)
       } catch {}
       try {
-        setKnownColor(msg.user.toLowerCase(), msg.color, msg.userId)
+        setKnownColor(msg.user.toLowerCase(), msg.color, msg.userId, 'twitch')
       } catch {}
     }
     if (msg.subMonths) {
@@ -583,7 +583,7 @@ class IRC {
             addUsername(m.user)
           } catch {}
           try {
-            setKnownColor(m.user.toLowerCase(), m.color, m.userId)
+            setKnownColor(m.user.toLowerCase(), m.color, m.userId, 'twitch')
           } catch {}
         }
         if (m.subMonths) {
@@ -659,7 +659,7 @@ class IRC {
               addUsername(m.user)
             } catch {}
             try {
-              setKnownColor(m.user.toLowerCase(), m.color, m.userId)
+              setKnownColor(m.user.toLowerCase(), m.color, m.userId, 'twitch')
             } catch {}
           }
           if (m.subMonths) {
@@ -921,7 +921,7 @@ class KickChat {
         this.channels.get(channel).push(msg)
         if (msg.user) {
           addUsername(msg.user)
-          setKnownColor(msg.user.toLowerCase(), msg.color, msg.userId)
+          setKnownColor(msg.user.toLowerCase(), msg.color, msg.userId, 'kick')
         }
         this.persistBuffer(channel)
         this.emit('message', msg)
@@ -1030,7 +1030,7 @@ class KickChat {
             addUsername(m.user)
           } catch {}
           try {
-            setKnownColor(m.user.toLowerCase(), m.color, m.userId)
+            setKnownColor(m.user.toLowerCase(), m.color, m.userId, 'kick')
           } catch {}
         }
         try {
@@ -1132,7 +1132,7 @@ class KickChat {
       msg.isHistory = true
       if (msg.user) {
         addUsername(msg.user)
-        setKnownColor(msg.user.toLowerCase(), msg.color, msg.userId)
+        setKnownColor(msg.user.toLowerCase(), msg.color, msg.userId, 'kick')
       }
       buffer.push(msg)
     }
@@ -1199,7 +1199,7 @@ class KickChat {
               addUsername(m.user)
             } catch {}
             try {
-              setKnownColor(m.user.toLowerCase(), m.color, m.userId)
+              setKnownColor(m.user.toLowerCase(), m.color, m.userId, 'kick')
             } catch {}
           }
           try {

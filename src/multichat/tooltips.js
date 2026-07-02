@@ -868,7 +868,7 @@ function getCompactRelTime(dateStr) {
   return 'just now'
 }
 
-function renderProfileCard(p) {
+function renderProfileCard(p, platform) {
   const pfp = p.twitch_profile_pic || p.kick_profile_pic || p.profile_image_url || 'https://heatsync.org/anon.webp'
   const displayName = p.display_name || p.username || 'unknown'
 
@@ -1034,6 +1034,7 @@ function renderProfileCard(p) {
   const namePaint = userPaintStyle(
     String(p.twitch_user_id || p.twitch_id || ''),
     (p.username || p.twitch_username || '').toLowerCase(),
+    platform,
   )
 
   // Hero banner placeholder — wraps the whole card so the banner sits behind
@@ -1148,7 +1149,7 @@ async function showUserTooltip(targetEl, username, color, platform) {
   if (cached && Date.now() - cached.ts < PROFILE_CACHE_TTL) {
     if (gen !== _profileGen) return
     // NOTE: innerHTML is XSS-safe — all user content goes through escapeHtml() in renderProfileCard
-    tooltip.innerHTML = renderProfileCard(cached.profile)
+    tooltip.innerHTML = renderProfileCard(cached.profile, platform)
     appendSubTenureBadge(tooltip, username, msgChannel)
     positionTooltipAtElement(tooltip, targetEl)
     fetchAndShowFollowage(tooltip, username, gen, platform)
@@ -1178,7 +1179,7 @@ async function showUserTooltip(targetEl, username, color, platform) {
     _profileCache.set(cacheKey, { profile, ts: Date.now() })
     while (_profileCache.size > PROFILE_CACHE_MAX) _profileCache.delete(_profileCache.keys().next().value)
     // NOTE: innerHTML XSS-safe — renderProfileCard escapes everything
-    tooltip.innerHTML = renderProfileCard(profile)
+    tooltip.innerHTML = renderProfileCard(profile, platform)
     appendSubTenureBadge(tooltip, username, msgChannel)
     positionTooltipAtElement(tooltip, targetEl)
     fetchAndShowFollowage(tooltip, username, gen, platform)
@@ -1204,7 +1205,7 @@ async function showUserTooltip(targetEl, username, color, platform) {
         : platform === 'youtube' || platform === 'yt'
           ? `<dt>yt</dt><dd class="val-yt" data-k="yt">${safeName}</dd>`
           : `<dt>ttv</dt><dd class="val-ttv" data-k="ttv">${safeName}</dd>`
-    const namePaint = platform === 'twitch' ? userPaintStyle('', username.toLowerCase()) : ''
+    const namePaint = platform === 'twitch' ? userPaintStyle('', username.toLowerCase(), 'twitch') : ''
     const header =
       nativeBadges || `<span class="hs-pc-name" style="${namePaint || `color:${safeColor}`}">${safeName}</span>`
     // NOTE: innerHTML XSS-safe — username via escapeHtml, color via sanitizeColor (hex-only),

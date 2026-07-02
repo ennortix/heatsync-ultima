@@ -1053,16 +1053,22 @@
   }
   // Username → color map for @mention coloring (LRU-bounded)
   const knownColors = new Map()
-  // Username → Twitch userId for paint cosmetics on @mentions
+  // platform:username → Twitch userId for paint cosmetics on @mentions. Keyed
+  // by platform so a twitch "alice" and an unrelated kick "alice" never share
+  // a slot — without the prefix, whichever platform's chatter spoke last would
+  // silently steal the other's 7TV paint/badge on every @mention/reply of that
+  // name. Values are always a resolved TWITCH id (see resolveSenderEmoteKey /
+  // flushKickNameLookups) — only the KEY needs the platform tag.
   const knownUserIds = new Map()
-  function setKnownColor(user, color, userId) {
+  function setKnownColor(user, color, userId, platform) {
     knownColors.set(user, color)
     if (knownColors.size > 2000) {
       const iter = knownColors.keys()
       for (let i = 0; i < 500; i++) knownColors.delete(iter.next().value)
     }
     if (userId) {
-      knownUserIds.set(user, userId)
+      const uidKey = typeof userKey === 'function' ? userKey(user, platform) : user
+      knownUserIds.set(uidKey, userId)
       if (knownUserIds.size > 2000) {
         const iter = knownUserIds.keys()
         for (let i = 0; i < 500; i++) knownUserIds.delete(iter.next().value)
@@ -1918,8 +1924,8 @@
   // Queues a cosmetics lookup when the uid is known but not yet cached, so the
   // paint lands on the next render/in-place repaint. Returns '' when no paint
   // is available — callers fall back to their plain color.
-  function userPaintStyle(uid, lower) {
-    if (!uid && lower) uid = knownUserIds.get(lower) || ''
+  function userPaintStyle(uid, lower, platform) {
+    if (!uid && lower) uid = knownUserIds.get(userKey(lower, platform)) || ''
     if (!uid) return ''
     if (!mcUserCosmetics.has(uid)) queueMcCosmeticsLookup(uid)
     return getMcPaintStyle(uid)
@@ -9862,7 +9868,7 @@
       processedText = processedText.replace(/&lt;img\b[^<]*/g, '')
     }
     // Highlight mentions AFTER emote processing so emote-name <img> tags aren't touched.
-    processedText = highlightMentionsInHtml(processedText)
+    processedText = highlightMentionsInHtml(processedText, m.platform)
     // Magenta #hashtags — mirrors the feed (renderFeedContent) so tags read the same everywhere.
     processedText = highlightHashtagsInHtml(processedText)
     // Cheermotes — only when twitch IRC tagged bits=N (server-confirmed cheer).
@@ -10108,7 +10114,7 @@
         m.platform === 'twitch'
           ? '<span style="color:#9146ff;font-size:13px;font-weight:700;margin-right:3px">[T]</span>'
           : '<span style="color:#fff;font-size:13px;font-weight:700;margin-right:3px">[HS]</span>'
-      const dmPaint = m.platform === 'twitch' ? userPaintStyle(m.userId, (m.user || '').toLowerCase()) : ''
+      const dmPaint = m.platform === 'twitch' ? userPaintStyle(m.userId, (m.user || '').toLowerCase(), 'twitch') : ''
       const userName = `<span style="${dmPaint || `color:${sanitizeColor(m.color)};font-weight:600`}">${escapeHtml(m.user)}</span>`
       // All values sanitized — safe innerHTML
       if (m._renderedHtml == null) m._renderedHtml = highlightHashtagsInHtml(processEmotes(escapeHtml(m.text), null))
@@ -10450,8 +10456,8 @@
     // paint as their own messages. Twitch carries reply-parent-user-id; Kick
     // (no parent id) falls back to the name→uid map. data-uid lets
     // updateCosmeticsInPlace repaint it once the cosmetic batch lands.
-    const replyUid = (m.replyTo && (m.replyTo.userId || knownUserIds.get(replyLower))) || ''
-    const replyPaint = replyUid ? userPaintStyle(replyUid, replyLower) : ''
+    const replyUid = (m.replyTo && (m.replyTo.userId || knownUserIds.get(userKey(replyLower, m.platform)))) || ''
+    const replyPaint = replyUid ? userPaintStyle(replyUid, replyLower, m.platform) : ''
     const replyStyle = replyPaint || `color:${mentionColor(replyLower)}`
     const replyUidAttr = replyUid ? ` data-uid="${escapeHtml(replyUid)}"` : ''
     // A blocked user's name + message snippet must not leak through a reply
@@ -10665,7 +10671,7 @@
   // Highlight @mentions and bare known usernames in rendered chat HTML.
   // Splits on tags so substitution only happens in text segments.
   // Applies 7TV paint cosmetics if the mentioned user's userId + paint are cached.
-  function highlightMentionsInHtml(html) {
+  function highlightMentionsInHtml(html, platform) {
     if (!html || (!html.includes('@') && knownColors.size === 0)) return html
     const parts = html.split(/(<[^>]+>)/)
     for (let i = 0; i < parts.length; i += 2) {
@@ -10682,7 +10688,9 @@
           const color = at ? mentionColor(lower) : sanitizeColor(knownColors.get(lower) || '#fff')
           const safeName = escapeHtml(name)
           const safeLower = escapeHtml(lower)
-          const uid = knownUserIds.get(lower) || ''
+          // Platform-scoped lookup — a twitch and kick chatter sharing this
+          // lowercase name must never trade 7TV paints/cosmetics.
+          const uid = knownUserIds.get(userKey(lower, platform)) || ''
           let style = `color:${color}`
           let uidAttr = ''
           if (uid) {

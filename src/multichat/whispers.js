@@ -573,7 +573,7 @@ function renderWhispersTab() {
         m.platform === 'heatsync'
           ? `https://heatsync.org/user/${encodeURIComponent(username)}`
           : `https://heatsync.org/twitch/${encodeURIComponent(username)}`
-      const paint = m.platform === 'heatsync' ? '' : userPaintStyle(uid, lower)
+      const paint = m.platform === 'heatsync' ? '' : userPaintStyle(uid, lower, 'twitch')
       const style = paint || `color:${color};font-weight:600`
       return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="hs-mc-user" data-username="${safeUser}" style="${style}">${safe}</a>`
     }

@@ -2139,7 +2139,7 @@ async function lookupTwitchUserId(username) {
   } catch (e) {
     log(' GQL user lookup failed, trying first-party resolve:', e.message)
   }
-  // Fallback to first-party resolver (replaces decapi.me)
+  // Fallback to first-party resolver
   try {
     const response = await fetchWithTimeout(
       `https://heatsync.org/api/resolve/twitch/${encodeURIComponent(username)}`,
@@ -7749,7 +7749,7 @@ async function handleMessage(message, sender, sendResponse) {
   } else if (message.type === 'resolve_avatar_url') {
     // Raw avatar URL (NOT a data URL) for in-chat avatar rendering — the browser
     // caches the image normally, so per-row avatars stay light on RAM. First-party
-    // resolution (Twitch GQL / Kick v2), replacing the third-party decapi.me path.
+    // resolution (Twitch GQL / Kick v2).
     ;(async () => {
       try {
         sendResponse({ url: (await resolveAvatarUrl(message.username, message.platform)) || '' })

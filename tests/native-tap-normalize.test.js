@@ -37,7 +37,7 @@ test('_tapToMsg: falls back to displayName when userDisplayName missing', () => 
   expect(_tapToMsg(m, 'chan').user).toBe('Bob')
 })
 
-test('_tapToMsg: no display name at all → null (can\'t render an anonymous native message)', () => {
+test("_tapToMsg: no display name at all → null (can't render an anonymous native message)", () => {
   const m = { id: '1', user: {}, messageParts: [{ content: 'hi' }] }
   expect(_tapToMsg(m, 'chan')).toBeNull()
 })

@@ -1265,3 +1265,5 @@ class KickChat {
     })
   }
 }
+
+export { parseTags, parseTwitchEmotesTag, parseIrcLine, CircularBuffer }

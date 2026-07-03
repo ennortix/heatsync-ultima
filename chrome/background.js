@@ -732,6 +732,14 @@ const USER_COSMETICS_MAX = 500
 // the heatsync server every time.
 const _embedResolveCache = new Map()
 const EMBED_RESOLVE_TTL = 60 * 60 * 1000 // 1 hour
+// HeatSync name paints (GET /api/paints?ids=..., public, ≤50/batch) — short
+// in-memory cache. 60s matches the server's own redis TTL (server/routes/paint.ts);
+// no point holding it any longer client-side since the server refreshes at the
+// same cadence. In-memory only (unlike userCosmeticsCache) — paints are cheap,
+// low-stakes to refetch, and don't need to survive an SW restart.
+const _paintsCache = new Map() // twitchUserId → { spec: object|null, fetchedAt }
+const PAINTS_TTL = 60 * 1000
+const PAINTS_CACHE_MAX = 500
 // Channel banner / accent across platforms — Twitch GQL (public client id),
 // Kick public API, YouTube HTML scrape via ytInitialData. All sources return
 // the same shape: { bannerUrl, offlineUrl, accent, profileUrl }. Cache keyed
@@ -2533,6 +2541,13 @@ function setUserCosmetic(twitchId, cosmetic) {
   }
   userCosmeticsCache.set(twitchId, { ...(cosmetic || { paint: null, badge: null }), fetchedAt: Date.now() })
   debounceSaveCosmetics()
+}
+
+function setPaintCache(twitchId, spec) {
+  if (_paintsCache.size >= PAINTS_CACHE_MAX) {
+    _paintsCache.delete(_paintsCache.keys().next().value)
+  }
+  _paintsCache.set(twitchId, { spec: spec ?? null, fetchedAt: Date.now() })
 }
 
 async function fetchBulkBadges() {
@@ -7515,6 +7530,108 @@ async function handleMessage(message, sender, sendResponse) {
         }),
       )
       sendResponse({ cosmetics: result })
+    })()
+    return true
+  } else if (message.type === 'fetch_paints') {
+    // Relay for GET /api/paints?ids=... (public, ≤50/batch) — CRITICAL: this
+    // must stay a BG fetch, never a content-script one. Cross-origin
+    // content-script fetches to heatsync.org trip Cloudflare's bot heuristics
+    // (edge 503 before the origin ever sees them; see fetch_recent_messages
+    // above for the same reasoning). Mirrors get_user_cosmetics's shape:
+    // per-id TTL cache + in-flight promise sharing so concurrent overlapping
+    // batches (multi-tab, rapid chat) don't each re-fire the same ids.
+    const ids = Array.from(
+      new Set((message.userIds || []).filter((id) => typeof id === 'string' && /^[a-zA-Z0-9_]{1,50}$/.test(id))),
+    ).slice(0, 50)
+    ;(async () => {
+      if (!ids.length) {
+        sendResponse({ paints: {} })
+        return
+      }
+      const result = {}
+      const toFetch = []
+      if (!globalThis.__paintsInflight) globalThis.__paintsInflight = new Map()
+      const inflightMap = globalThis.__paintsInflight
+      const pendingInflight = []
+      for (const id of ids) {
+        const cached = _paintsCache.get(id)
+        if (cached && Date.now() - cached.fetchedAt < PAINTS_TTL) {
+          result[id] = cached.spec
+        } else if (inflightMap.has(id)) {
+          pendingInflight.push(id)
+        } else {
+          toFetch.push(id)
+        }
+      }
+
+      if (toFetch.length > 0) {
+        const batchPromise = (async () => {
+          // CRITICAL: only ever set `out[id]` (and cache it) on a CONFIRMED
+          // answer from a successful, parseable response — including a
+          // confirmed negative (id genuinely absent from `paints`, meaning
+          // the user has no paint set). On any failure (non-OK, timeout,
+          // unparseable body) leave the id OUT of `out` entirely so the
+          // per-id key is absent from the response; the content script
+          // (paints.js) treats an absent key as "retry later" and never
+          // caches it — a transient BG hiccup must never get mistaken for
+          // (and mask) a real paint, mirroring the same rule already applied
+          // to 7TV cosmetics negative-caching above.
+          const out = {}
+          try {
+            const resp = await fetchWithTimeout(
+              `${API_URL}/api/paints?ids=${toFetch.map(encodeURIComponent).join(',')}`,
+              {},
+              10000,
+            )
+            if (resp.ok) {
+              const data = await resp.json().catch(() => null)
+              if (data && data.paints && typeof data.paints === 'object') {
+                for (const id of toFetch) {
+                  const spec = data.paints[id] ?? null
+                  setPaintCache(id, spec)
+                  out[id] = spec
+                }
+              }
+              // else: unparseable/malformed body — leave `out` empty, retry next flush.
+            } else {
+              resp.body?.cancel?.()
+            }
+          } catch (e) {
+            /* network error/timeout — leave `out` empty, retry next flush */
+          }
+          return out
+        })()
+        // `undefined` (not `null`) is the "unresolved, retry later" sentinel
+        // threaded through the inflight-sharing chain — `null` is reserved
+        // for a CONFIRMED negative and must never be conflated with it.
+        for (const id of toFetch) {
+          const idP = batchPromise.then((m) => (id in m ? m[id] : undefined))
+          inflightMap.set(id, idP)
+          idP.finally(() => {
+            if (inflightMap.get(id) === idP) inflightMap.delete(id)
+          })
+        }
+        const batchResult = await batchPromise
+        for (const id of toFetch) {
+          if (id in batchResult) result[id] = batchResult[id]
+        }
+      }
+
+      if (pendingInflight.length > 0) {
+        await Promise.all(
+          pendingInflight.map(async (id) => {
+            const p = inflightMap.get(id)
+            if (!p) return
+            const v = await p
+            if (v !== undefined) result[id] = v
+          }),
+        )
+      }
+
+      // `result` only has keys for CONFIRMED ids (positive spec, or a
+      // confirmed negative) — an id with no answer yet is simply absent, and
+      // paints.js (content script) treats an absent key as "retry next flush".
+      sendResponse({ paints: result })
     })()
     return true
   } else if (message.type === 'get_sender_emotes') {

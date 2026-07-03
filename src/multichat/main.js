@@ -1366,7 +1366,14 @@
 
   // 7TV cosmetics queue — batch lookups to avoid per-message requests
   function queueMcCosmeticsLookup(userId) {
-    if (!userId || mcUserCosmetics.has(userId)) return
+    if (!userId) return
+    // HeatSync paints ride the exact same choke point as 7TV cosmetics —
+    // every call site here already only ever passes a resolved twitch-space
+    // id (see the ID-SPACE SAFETY note atop paints.js). Independent cache/
+    // dedup (hsPaintCache), so this is unconditional even when the 7TV lookup
+    // below short-circuits on an already-cached (possibly negative) entry.
+    queuePaintLookup(userId)
+    if (mcUserCosmetics.has(userId)) return
     if (mcCosmeticsPending.size >= MC_COSMETICS_PENDING_MAX) return
     mcCosmeticsPending.add(userId)
     if (!mcCosmeticsTimer) {
@@ -1614,6 +1621,27 @@
     )
   }
 
+  // In-place repaint for HeatSync name paints (paints.js) — the counterpart
+  // to updateCosmeticsInPlace below, fired from its own independent batch
+  // (queuePaintLookup/flushHsPaintBatch in paints.js) once a paint resolves.
+  // Repaints both the sender username div (_uidIndex) and any inline
+  // @mention/reply-context anchors (_mentionIndex) for this uid.
+  function updateHsPaintsInPlace(userIds) {
+    if (!document.getElementById('hs-mc-messages')) return
+    for (const uid of userIds) {
+      const mentionSet = _mentionIndex.get(uid)
+      if (mentionSet) {
+        for (const el of mentionSet) applyHsPaintToElement(el, uid)
+      }
+      const divSet = _uidIndex.get(uid)
+      if (!divSet) continue
+      for (const div of divSet) {
+        const userLink = div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
+        if (userLink) applyHsPaintToElement(userLink, uid)
+      }
+    }
+  }
+
   // Update cosmetics (badges + paint) in-place without full re-render.
   // O(1) lookup via _uidIndex / _mentionIndex instead of querySelectorAll over
   // the full message container — at 25-user batches × 500 children that was
@@ -1623,7 +1651,12 @@
     for (const uid of userIds) {
       const cosmetic = mcUserCosmetics.get(uid)
       if (!cosmetic) continue
-      const paintStyle = getMcPaintStyle(uid)
+      // Precedence: a HeatSync paint (this user's own choice on our platform)
+      // always wins over their 7TV paint. If one is already resolved for this
+      // uid, skip the 7TV inline style entirely — applyHsPaintToElement (via
+      // updateHsPaintsInPlace) owns painting this element from here on,
+      // whichever batch (7TV or HS) resolves first or last.
+      const paintStyle = hasResolvedHsPaint(uid) ? '' : getMcPaintStyle(uid)
       // Repaint inline @mentions of this user across all visible messages
       if (paintStyle) {
         const mentionSet = _mentionIndex.get(uid)
@@ -2362,6 +2395,14 @@
   const _APPLIERS = {
     rebuildInput: () => {
       rebuildInput()
+    },
+    namePaints: (v) => {
+      // Toggle off: drop the injected <style id="hs-mc-paints"> sheet (rather
+      // than leaving stale/orphaned rules behind — hygiene, no correctness
+      // impact since bumpRenderEpoch's rebuild below already stops adding the
+      // hsp-* class to any element). Cache entries are kept; a later toggle-on
+      // recompiles fresh from the same spec.
+      if (!v) clearHsPaintSheet()
     },
     viMode: (v) => {
       // mirror to localStorage + notify MAIN-world vi-mode.js
@@ -10365,7 +10406,11 @@
         : ''
     const bitsBadge = m.bits ? `<span class="hs-mc-bits-badge" title="${m.bits} bits">${m.bits} bits</span>` : ''
     // (cheermote rendering is applied inline in processedText via renderCheermotesInText)
-    const paintStyle = m.userId ? getMcPaintStyle(m.userId) : ''
+    // HeatSync paint (own-platform cosmetic) takes precedence over 7TV — see
+    // hsPaintRender in paints.js. Returns null (falls through to the existing
+    // 7TV/plain-color path) until/unless one is cached for this uid.
+    const hsPaint = m.userId ? hsPaintRender(m.userId, m.user) : null
+    const paintStyle = hsPaint ? '' : m.userId ? getMcPaintStyle(m.userId) : ''
     // Build the channel link for the username. YouTube usernames arrive
     // prefixed with "@" so we strip it before concatenating to avoid
     // youtube.com/@/%40handle-style double-encoding.
@@ -10380,7 +10425,7 @@
     } else {
       userHref = `https://twitch.tv/${encodeURIComponent(m.user)}`
     }
-    const userLink = `<a href="${userHref}" target="_blank" rel="noopener noreferrer" class="hs-mc-user" data-username="${escapeHtml(m.user.toLowerCase())}" data-platform="${plat}" style="${paintStyle || 'color:' + sanitizeColor(m.color || '#fff')}">${escapeHtml(m.user)}</a>`
+    const userLink = `<a href="${userHref}" target="_blank" rel="noopener noreferrer" class="hs-mc-user${hsPaint ? ' ' + hsPaint.cls : ''}" data-username="${escapeHtml(m.user.toLowerCase())}" data-platform="${plat}"${hsPaint ? hsPaint.splitAttr : ''} style="${hsPaint ? '' : paintStyle || 'color:' + sanitizeColor(m.color || '#fff')}">${hsPaint ? hsPaint.html : escapeHtml(m.user)}</a>`
     let avatarHtml = ''
     if (avatarsEnabled) {
       const userKey = m.user.toLowerCase()
@@ -10483,9 +10528,15 @@
     // (no parent id) falls back to the name→uid map. data-uid lets
     // updateCosmeticsInPlace repaint it once the cosmetic batch lands.
     const replyUid = (m.replyTo && (m.replyTo.userId || knownUserIds.get(userKey(replyLower, m.platform)))) || ''
-    const replyPaint = replyUid ? userPaintStyle(replyUid, replyLower, m.platform) : ''
-    const replyStyle = replyPaint || `color:${mentionColor(replyLower)}`
+    // HeatSync paint wins over 7TV here too — same precedence rule as the
+    // sender username above.
+    const replyHsPaint = replyUid ? hsPaintRender(replyUid, '@' + (m.replyTo?.user || '')) : null
+    const replyPaint = replyHsPaint ? '' : replyUid ? userPaintStyle(replyUid, replyLower, m.platform) : ''
+    const replyStyle = replyHsPaint ? '' : replyPaint || `color:${mentionColor(replyLower)}`
     const replyUidAttr = replyUid ? ` data-uid="${escapeHtml(replyUid)}"` : ''
+    const replyUserCls = `hs-mc-user hs-mc-reply-user${replyHsPaint ? ' ' + replyHsPaint.cls : ''}`
+    const replyUserSplitAttr = replyHsPaint ? replyHsPaint.splitAttr : ''
+    const replyUserHtml = replyHsPaint ? replyHsPaint.html : '@' + escapeHtml(m.replyTo?.user || '')
     // A blocked user's name + message snippet must not leak through a reply
     // context bar when someone else replies to them. Show a neutral marker
     // with no name, no text, no profile link.
@@ -10493,7 +10544,7 @@
     const replyBar = replyBlocked
       ? `<div class="hs-mc-reply-ctx">&#8618; Replying to [blocked]</div>`
       : m.replyTo && m.replyTo.user
-        ? `<div class="hs-mc-reply-ctx" title="${escapeHtml(m.replyTo.user)}: ${escapeHtml(m.replyTo.text || '')}">&#8618; Replying to <a href="https://heatsync.org/user/${encodeURIComponent(m.replyTo.user)}" target="_blank" rel="noopener noreferrer" class="hs-mc-user hs-mc-reply-user" data-username="${escapeHtml(replyLower)}"${replyUidAttr} style="${replyStyle}">@${escapeHtml(m.replyTo.user)}</a>${m.replyTo.text ? ': ' + escapeHtml(m.replyTo.text.length > 80 ? m.replyTo.text.slice(0, 80) + '...' : m.replyTo.text) : ''}</div>`
+        ? `<div class="hs-mc-reply-ctx" title="${escapeHtml(m.replyTo.user)}: ${escapeHtml(m.replyTo.text || '')}">&#8618; Replying to <a href="https://heatsync.org/user/${encodeURIComponent(m.replyTo.user)}" target="_blank" rel="noopener noreferrer" class="${replyUserCls}" data-username="${escapeHtml(replyLower)}"${replyUidAttr}${replyUserSplitAttr} style="${replyStyle}">${replyUserHtml}</a>${m.replyTo.text ? ': ' + escapeHtml(m.replyTo.text.length > 80 ? m.replyTo.text.slice(0, 80) + '...' : m.replyTo.text) : ''}</div>`
         : ''
     // Redeem label — look up reward title from Hermes cache
     let redeemLabel = ''
@@ -10719,13 +10770,26 @@
           const uid = knownUserIds.get(userKey(lower, platform)) || ''
           let style = `color:${color}`
           let uidAttr = ''
+          let mentionCls = 'hs-mc-user hs-mc-mention'
+          let splitAttr = ''
+          let inner = `${at}${safeName}`
           if (uid) {
             uidAttr = ` data-uid="${escapeHtml(uid)}"`
             if (!mcUserCosmetics.has(uid)) queueMcCosmeticsLookup(uid)
-            const paint = getMcPaintStyle(uid)
-            if (paint) style = paint
+            // HeatSync paint wins over 7TV — same precedence rule as the
+            // sender username / reply-context bar.
+            const hsPaint = hsPaintRender(uid, `${at}${name}`)
+            if (hsPaint) {
+              mentionCls += ` ${hsPaint.cls}`
+              splitAttr = hsPaint.splitAttr
+              inner = hsPaint.html
+              style = ''
+            } else {
+              const paint = getMcPaintStyle(uid)
+              if (paint) style = paint
+            }
           }
-          return `${lead}<a href="https://heatsync.org/user/${encodeURIComponent(lower)}" target="_blank" rel="noopener noreferrer" class="hs-mc-user hs-mc-mention" data-username="${safeLower}"${uidAttr} style="${style}">${at}${safeName}</a>`
+          return `${lead}<a href="https://heatsync.org/user/${encodeURIComponent(lower)}" target="_blank" rel="noopener noreferrer" class="${mentionCls}" data-username="${safeLower}"${uidAttr}${splitAttr} style="${style}">${inner}</a>`
         },
       )
     }

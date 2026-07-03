@@ -111,7 +111,17 @@ function ensureHsPaintSheet() {
     // Single kill-switch: every hsp_* animation pauses under reduced motion,
     // regardless of how many per-hash rules get appended after this.
     hsPaintSheetEl.textContent =
-      '@media (prefers-reduced-motion: reduce){[class*="hsp-"],[class*="hsp-"] *{animation-play-state:paused !important;}}'
+      '@media (prefers-reduced-motion: reduce){[class*="hsp-"],[class*="hsp-"] *{animation-play-state:paused !important;}}' +
+      // Hover freeze: pause the paint animation and swap to a plain white/black
+      // chip so the name stays fully readable while the pointer is over it.
+      // background-clip goes back to border-box (was `text`, see compilePaintCss)
+      // so `color` renders as normal solid fill instead of clipping to nothing.
+      // Transform-driven effects (letter wave/tumble on spans, coin/heli/swing
+      // on the element itself — see lib/paint-spec.js) would freeze mid-rotation
+      // (edge-on at rotateX/Y 90deg = invisible), so `transform:none !important`
+      // — which beats animation-applied values in the cascade — snaps both the
+      // element and its spans flat.
+      '[class*="hsp-"]:hover,[class*="hsp-"]:hover span{animation-play-state:paused !important;background:#fff !important;-webkit-background-clip:border-box !important;background-clip:border-box !important;color:#000 !important;transform:none !important;}'
     const tracked =
       typeof cleanup !== 'undefined' && cleanup.trackNode ? cleanup.trackNode(hsPaintSheetEl) : hsPaintSheetEl
     document.head.appendChild(tracked)

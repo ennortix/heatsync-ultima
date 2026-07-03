@@ -208,3 +208,73 @@ describe('sanitizeEmoteList', () => {
     expect(sanitizeEmoteList([])).toEqual([])
   })
 })
+
+// ── bgIrcParseLine / bgIrcRecordToExt: reply-parent-user-id parity ─────────
+//
+// background.js runs its OWN duplicate IRC-tag parser (bgIrcParseLine) and its
+// own EventSub-record→ext converter (bgIrcRecordToExt) — separate from
+// src/multichat/irc.js's parseIrcLine, which already threads
+// reply-parent-user-id into replyTo.userId (see tests/irc-parser.test.js).
+// These two background.js copies had drifted: both built a replyTo object
+// that dropped the uid entirely, so a reply-context chip for a user unknown
+// to knownUserIds at render time could never get data-uid, and so could never
+// paint (live-verified: a.hs-mc-reply-user[data-uid] absent). Fixed by
+// threading tags['reply-parent-user-id'] / rec.replyTo.userId through, same
+// as parseIrcLine already does.
+
+const { bgIrcParseLine, bgIrcRecordToExt } = new Function(
+  `${extractConstLine('BG_IRC_COLOR_RE')}\n${extractFn('bgIrcParseTags')}\n${extractFn('bgIrcSanitizeColor')}\n${extractFn('bgIrcParseEmotesTag')}\n${extractFn('bgIrcParseLine')}\n${extractFn('bgIrcRecordToExt')}\nreturn { bgIrcParseLine, bgIrcRecordToExt }`,
+)()
+
+describe('bgIrcParseLine — reply-parent-user-id threading (background.js live IRC path)', () => {
+  test('reply-parent tags build a replyTo object including userId', () => {
+    const raw =
+      '@display-name=Bob;reply-parent-display-name=Alice;reply-parent-msg-body=hello\\sthere;reply-parent-msg-id=m1;reply-parent-user-id=u1;reply-thread-parent-msg-id=t1 :bob!bob@bob.tmi.twitch.tv PRIVMSG #chan :reply text'
+    const msg = bgIrcParseLine(raw, 'chan')
+    expect(msg.replyTo).toEqual({
+      user: 'Alice',
+      text: 'hello there',
+      id: 'm1',
+      userId: 'u1',
+      threadId: 't1',
+    })
+  })
+  test('no reply-parent-user-id tag → replyTo.userId is empty string, never undefined', () => {
+    const raw =
+      '@display-name=Bob;reply-parent-display-name=Alice;reply-parent-msg-id=m1 :bob!bob@bob.tmi.twitch.tv PRIVMSG #chan :reply text'
+    const msg = bgIrcParseLine(raw, 'chan')
+    expect(msg.replyTo.userId).toBe('')
+  })
+  test('no reply tags at all → replyTo is null', () => {
+    const raw = '@display-name=Bob :bob!bob@bob.tmi.twitch.tv PRIVMSG #chan :hi'
+    expect(bgIrcParseLine(raw, 'chan').replyTo).toBeNull()
+  })
+})
+
+describe('bgIrcRecordToExt — reply-parent-user-id threading (server EventSub-relay path)', () => {
+  test('rec.replyTo.userId is carried through to ext.replyTo.userId', () => {
+    const ext = bgIrcRecordToExt(
+      {
+        type: 'privmsg',
+        channel: 'chan',
+        displayName: 'Bob',
+        userId: '99',
+        content: 'hi',
+        replyTo: { username: 'Alice', content: 'parent text', messageId: 'm1', userId: 'u1', threadId: 't1' },
+      },
+      'chan',
+    )
+    expect(ext.replyTo).toEqual({ user: 'Alice', text: 'parent text', id: 'm1', userId: 'u1', threadId: 't1' })
+  })
+  test('rec.replyTo with no userId field → ext.replyTo.userId is empty string', () => {
+    const ext = bgIrcRecordToExt(
+      { type: 'privmsg', channel: 'chan', displayName: 'Bob', content: 'hi', replyTo: { username: 'Alice' } },
+      'chan',
+    )
+    expect(ext.replyTo.userId).toBe('')
+  })
+  test('no rec.replyTo → ext.replyTo is null', () => {
+    const ext = bgIrcRecordToExt({ type: 'privmsg', channel: 'chan', displayName: 'Bob', content: 'hi' }, 'chan')
+    expect(ext.replyTo).toBeNull()
+  })
+})

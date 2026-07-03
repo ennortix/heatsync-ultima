@@ -8556,6 +8556,11 @@ function bgIrcParseLine(raw, channelHint) {
                 ? decodeURIComponent(tags['reply-parent-msg-body'].replace(/\\s/g, ' '))
                 : '',
               id: tags['reply-parent-msg-id'] || '',
+              // Twitch-resolved id — lets the multichat renderer paint the reply
+              // target with their own cosmetic synchronously, without waiting on
+              // the async name→uid resolve (see src/multichat/irc.js's parseIrcLine,
+              // which already carries this; this copy had drifted from it).
+              userId: tags['reply-parent-user-id'] || '',
               threadId: tags['reply-thread-parent-msg-id'] || tags['reply-parent-msg-id'] || '',
             }
           : null,
@@ -9435,6 +9440,11 @@ function bgIrcRecordToExt(rec, channelHint) {
             user: rec.replyTo.username || '',
             text: rec.replyTo.content || '',
             id: rec.replyTo.messageId || '',
+            // Twitch-resolved id, mirroring rec.userId's convention above — the
+            // server relays reply-parent-user-id under this same camelCase field.
+            // Lets the renderer paint the reply target synchronously instead of
+            // falling back to an async name→uid lookup.
+            userId: rec.replyTo.userId || '',
             threadId: rec.replyTo.threadId || rec.replyTo.messageId || '',
           }
         : null,

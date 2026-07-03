@@ -55141,6 +55141,10 @@ const STORAGE_KEY = 'heatsync_multichat'
     processedText = highlightMentionsInHtml(processedText, m.platform)
     // Magenta #hashtags — mirrors the feed (renderFeedContent) so tags read the same everywhere.
     processedText = highlightHashtagsInHtml(processedText)
+    // Yellow >>id thread references — links a HeatSync thread from inside platform
+    // chat, mirroring the feed's >>id convention. Click opens the thread in the
+    // overlay (wired per-row in buildMessageDiv), not a new tab.
+    processedText = highlightThreadRefsInHtml(processedText)
     // Cheermotes — only when twitch IRC tagged bits=N (server-confirmed cheer).
     if (m.bits) processedText = renderCheermotesInText(processedText, m.bits)
     m._renderedHtml = processedText
@@ -55839,6 +55843,24 @@ const STORAGE_KEY = 'heatsync_multichat'
     // walk on the >95% of msgs that don't contain heatsync emotes — the gate
     // is a single substring scan, the QSA was iterating div subtree.
     if (processedText.includes('data-source="heatsync"')) reconcileHeatsyncEmoteStates(div)
+    // >>id thread refs → open the thread in the overlay feed panel. Mirrors the
+    // feed's own per-row handler (social.js:1453) + a switchTab so the panel
+    // surfaces when clicked from a chat tab. Class gate skips the QSA on the
+    // >99% of messages with no thread ref.
+    if (processedText.includes('hs-post-link') && typeof openThread === 'function') {
+      div.querySelectorAll('.hs-post-link').forEach((link) => {
+        link.addEventListener('click', (e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          const targetId = link.dataset.id
+          if (!targetId) return
+          const target = feedMessages.find((f) => f.base36_id === targetId)
+          const threadId = target ? target.reply_to || target.base36_id : targetId
+          switchTab('feed')
+          openThread(threadId, targetId)
+        })
+      })
+    }
     // Reply button for threading (Twitch/Kick — YT has no native thread id,
     // so we'd render an @-mention reply, but the YT message renderer reuses
     // videoId as id which collides across messages; suppress on YT for now).
@@ -56159,6 +56181,29 @@ const STORAGE_KEY = 'heatsync_multichat'
       // as a bogus magenta tag.
       parts[i] = seg.replace(/(?<!&)#([a-zA-Z][a-zA-Z0-9_]{1,29})\b/g, (m, tag) => {
         return `<a href="https://heatsync.org/tags/${encodeURIComponent(tag)}" target="_blank" rel="noopener noreferrer" class="hs-hashtag" data-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</a>`
+      })
+    }
+    return parts.join('')
+  }
+
+  // Yellow >>id HeatSync thread references in chat — same regex, id format, span
+  // and yellow style the social feed already ships (social.js renderFeedContent),
+  // so a thread ref reads identically on every surface. Emits the feed's
+  // .hs-post-link span (NOT an <a>) so the click opens the thread inside the
+  // overlay feed panel rather than a new tab — wired per-row in buildMessageDiv.
+  // Text is HTML-escaped here, so a typed ">>" arrives as "&gt;&gt;".
+  function highlightThreadRefsInHtml(html) {
+    // Gate on the doubled forms — text is HTML-escaped here so a typed ">>" is
+    // "&gt;&gt;" (no bare ">"); also accept raw ">>" belt-and-suspenders.
+    if (!html || (!html.includes('&gt;&gt;') && !html.includes('>>'))) return html
+    const parts = html.split(/(<[^>]+>)/)
+    for (let i = 0; i < parts.length; i += 2) {
+      const seg = parts[i]
+      if (!seg || (!seg.includes('&gt;&gt;') && !seg.includes('>>'))) continue
+      parts[i] = seg.replace(/(?:&gt;&gt;|>>)(\w{1,6})/g, (m, id) => {
+        const paddedId = id.padStart(6, '0')
+        const displayId = id.replace(/^0+/, '') || '0'
+        return `<span class="hs-post-link" data-id="${escapeHtml(paddedId)}" style="cursor:pointer">&gt;&gt;${escapeHtml(displayId)}</span>`
       })
     }
     return parts.join('')

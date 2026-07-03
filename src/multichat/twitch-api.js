@@ -3696,9 +3696,7 @@ async function fetchChannelBadges(channelLogin) {
 // cross-origin fetch isn't gated by the panel's CORS rules — panel may be on
 // twitch.tv viewing a linked Kick channel. Populates twitchBadgeUrls under
 // (slug):subscriber/(months) so renderBadges' channel-prefixed lookup picks
-// them up without any caller change. No render-side effects — natural
-// re-render on next msg picks up the new entries; calling renderMessages
-// from here risked init-timing crashes.
+// them up without any caller change.
 // Kick badges live in their own Map so dual-link channels don't collide with
 // Twitch's tier-encoded sub badge versions (1000/2000/3000 for tiers vs Kick's
 // linear month numbers 1/2/3/6/12). renderBadges checks platform to pick which
@@ -3760,6 +3758,15 @@ async function fetchKickChannelBadges(slug) {
         }
         kickChannelBadgeVersions.delete(oldest + ':subscriber')
       }
+      // Patch rows for this channel in-place — same choke point the Twitch
+      // fetchChannelBadges/fetchGlobalBadges paths already use. This one was
+      // missing it entirely (see removed comment above): join()'s history
+      // hydration resolves off BG's in-memory cache, reliably faster than this
+      // real network round-trip, so backfilled Kick sub-badge rows always lost
+      // the race and — with no patch call here — never got upgraded from the
+      // TEXT-fallback chip to the styled image badge until something else
+      // forced a full rebuild.
+      if (typeof updateNativeBadgesInPlace === 'function') updateNativeBadgesInPlace(slug)
     }
   } catch (e) {
     if (kickBadgesFailedAt.size >= BADGES_FAILED_MAX) {
@@ -3771,6 +3778,36 @@ async function fetchKickChannelBadges(slug) {
   }
 }
 
+// Pure: resolves a single badge's image URL following the exact priority
+// chain — channel-specific exact match → channel-specific nearest tier (e.g.
+// a 5mo sub on a channel that only defines 0/3/6 → use 3) → global exact →
+// global "/1" generic-star fallback. Kick is a separate, simpler chain: its
+// own Map, and it never falls through to Twitch URLs — Twitch sub badges are
+// keyed by tier-encoded versions (1000/2000/3000) which mismatch Kick's
+// linear month numbers (1/2/3/6/12); the Twitch findNearest would return e.g.
+// "subscriber/0" for Kick's "subscriber/1", producing a wrong tier badge.
+// Shared by renderBadges (initial render) and _patchBadgesInRoot (main.js —
+// the late in-place patch once fetchGlobalBadges/fetchChannelBadges/
+// fetchKickChannelBadges resolve) so the two can never drift apart on which
+// URL a given badge/version resolves to.
+function resolveBadgeImageUrl(isKick, channel, name, version) {
+  if (isKick) {
+    if (!channel) return null
+    let url = kickBadgeUrls.get(`${channel}:${name}/${version}`)
+    if (!url) {
+      const nearest = findNearestKickBadgeVersion(channel, name, version)
+      if (nearest != null) url = kickBadgeUrls.get(`${channel}:${name}/${nearest}`)
+    }
+    return url || null
+  }
+  let url = channel && twitchBadgeUrls.get(`${channel}:${name}/${version}`)
+  if (!url && channel) {
+    const nearest = findNearestChannelBadgeVersion(channel, name, version)
+    if (nearest != null) url = twitchBadgeUrls.get(`${channel}:${name}/${nearest}`)
+  }
+  return url || twitchBadgeUrls.get(`${name}/${version}`) || twitchBadgeUrls.get(`${name}/1`) || null
+}
+
 function renderBadges(badgesStr, channel, platform) {
   if (!badgesStr) return ''
   const isKick = platform === 'kick'
@@ -3778,29 +3815,7 @@ function renderBadges(badgesStr, channel, platform) {
     .split(',')
     .map((badge) => {
       const [name, version] = badge.split('/')
-      let url = null
-      if (isKick && channel) {
-        // Kick-only lookup. Never fall through to Twitch URLs — Twitch sub badges
-        // are keyed by tier-encoded versions (1000/2000/3000) which mismatch
-        // Kick's linear month numbers (1/2/3/6/12); the Twitch findNearest would
-        // return e.g. "subscriber/0" for Kick's "subscriber/1" producing a wrong
-        // tier badge. Better to show the text-style chip when no Kick URL exists.
-        url = kickBadgeUrls.get(`${channel}:${name}/${version}`)
-        if (!url) {
-          const nearest = findNearestKickBadgeVersion(channel, name, version)
-          if (nearest != null) url = kickBadgeUrls.get(`${channel}:${name}/${nearest}`)
-        }
-      } else {
-        // Channel-specific exact match → channel-specific nearest-tier (e.g. 5mo
-        // sub on a channel that only defines 0/3/6 → use 3) → global exact →
-        // global "/1" generic-star fallback.
-        url = channel && twitchBadgeUrls.get(`${channel}:${name}/${version}`)
-        if (!url && channel) {
-          const nearest = findNearestChannelBadgeVersion(channel, name, version)
-          if (nearest != null) url = twitchBadgeUrls.get(`${channel}:${name}/${nearest}`)
-        }
-        url = url || twitchBadgeUrls.get(`${name}/${version}`) || twitchBadgeUrls.get(`${name}/1`)
-      }
+      const url = resolveBadgeImageUrl(isKick, channel, name, version)
       if (url) {
         // FFZ custom badges are white icons on transparent bg — add badge-type background
         const ffzKey = channel && `${channel}:${name}/`

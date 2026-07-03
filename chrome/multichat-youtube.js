@@ -6506,32 +6506,106 @@ const MIN_LUMINANCE_PERIOD_S = 1
  */
 const EFFECTS = {
   // ── paint slot — mutually exclusive, at most 1 ──────────────────────────
-  pan:    { slot: 'paint', luminance: false, basePeriod: 5,   letterSplit: false, label: 'gradient pan' },
-  conic:  { slot: 'paint', luminance: false, basePeriod: 6,   letterSplit: false, label: 'conic sweep' },
-  hue:    { slot: 'paint', luminance: true,  basePeriod: 8,   letterSplit: false, label: 'hue cycle' },
-  glint:  { slot: 'paint', luminance: false, basePeriod: 3.4, letterSplit: false, label: 'shimmer glint' },
+  pan: { slot: 'paint', luminance: false, basePeriod: 5, letterSplit: false, label: 'gradient pan' },
+  conic: { slot: 'paint', luminance: false, basePeriod: 6, letterSplit: false, label: 'conic sweep' },
+  hue: { slot: 'paint', luminance: true, basePeriod: 8, letterSplit: false, label: 'hue cycle' },
+  glint: { slot: 'paint', luminance: false, basePeriod: 3.4, letterSplit: false, label: 'shimmer glint' },
   chrome: { slot: 'paint', luminance: false, basePeriod: 4.5, letterSplit: false, label: 'liquid chrome' },
-  gold:   { slot: 'paint', luminance: false, basePeriod: 5,   letterSplit: false, label: 'gold foil' },
-  fire:   { slot: 'paint', luminance: false, basePeriod: 1.8, letterSplit: false, label: 'fire' },
+  gold: { slot: 'paint', luminance: false, basePeriod: 5, letterSplit: false, label: 'gold foil' },
+  fire: { slot: 'paint', luminance: false, basePeriod: 1.8, letterSplit: false, label: 'fire' },
   matrix: { slot: 'paint', luminance: false, basePeriod: 3.2, letterSplit: false, label: 'matrix rain' },
-  holo:   { slot: 'paint', luminance: false, basePeriod: 2.8, letterSplit: false, label: 'hologram' },
-  reveal: { slot: 'paint', luminance: false, basePeriod: 3,   letterSplit: false, label: 'mask reveal' },
+  holo: { slot: 'paint', luminance: false, basePeriod: 2.8, letterSplit: false, label: 'hologram' },
+  reveal: { slot: 'paint', luminance: false, basePeriod: 3, letterSplit: false, label: 'mask reveal' },
 
   // ── motion/glow slot — up to 2, distinct sig required ───────────────────
-  wave:   { slot: 'motion', luminance: false, basePeriod: 1.6, letterSplit: true,  label: 'letter wave',   sig: 'letter:transform' },
-  ripple: { slot: 'motion', luminance: true,  basePeriod: 2.4, letterSplit: true,  label: 'rainbow ripple', sig: 'letter:filter' },
-  coin:   { slot: 'motion', luminance: false, basePeriod: 5,   letterSplit: false, label: 'coin spin',     sig: 'self:transform' },
-  heli:   { slot: 'motion', luminance: false, basePeriod: 2.2, letterSplit: false, label: 'helicopter',    sig: 'self:transform' },
-  float:  { slot: 'motion', luminance: false, basePeriod: 5.5, letterSplit: false, label: 'zero-g float',  sig: 'self:transform' },
-  heart:  { slot: 'motion', luminance: false, basePeriod: 1.3, letterSplit: false, label: 'heartbeat',     sig: 'self:transform' },
-  wobble: { slot: 'motion', luminance: false, basePeriod: 2.8, letterSplit: false, label: 'wobble stretch', sig: 'self:transform' },
-  swing:  { slot: 'motion', luminance: false, basePeriod: 2.6, letterSplit: false, label: 'pendulum',      sig: 'self:transform' },
-  tumble: { slot: 'motion', luminance: false, basePeriod: 3.4, letterSplit: true,  label: 'letter tumble', sig: 'letter:transform' },
-  neon:   { slot: 'motion', luminance: true,  basePeriod: 2.6, letterSplit: false, label: 'neon breathe',  sig: 'self:shadow' },
+  wave: {
+    slot: 'motion',
+    luminance: false,
+    basePeriod: 1.6,
+    letterSplit: true,
+    label: 'letter wave',
+    sig: 'letter:transform',
+  },
+  ripple: {
+    slot: 'motion',
+    luminance: true,
+    basePeriod: 2.4,
+    letterSplit: true,
+    label: 'rainbow ripple',
+    sig: 'letter:filter',
+  },
+  coin: {
+    slot: 'motion',
+    luminance: false,
+    basePeriod: 5,
+    letterSplit: false,
+    label: 'coin spin',
+    sig: 'self:transform',
+  },
+  heli: {
+    slot: 'motion',
+    luminance: false,
+    basePeriod: 2.2,
+    letterSplit: false,
+    label: 'helicopter',
+    sig: 'self:transform',
+  },
+  float: {
+    slot: 'motion',
+    luminance: false,
+    basePeriod: 5.5,
+    letterSplit: false,
+    label: 'zero-g float',
+    sig: 'self:transform',
+  },
+  heart: {
+    slot: 'motion',
+    luminance: false,
+    basePeriod: 1.3,
+    letterSplit: false,
+    label: 'heartbeat',
+    sig: 'self:transform',
+  },
+  wobble: {
+    slot: 'motion',
+    luminance: false,
+    basePeriod: 2.8,
+    letterSplit: false,
+    label: 'wobble stretch',
+    sig: 'self:transform',
+  },
+  swing: {
+    slot: 'motion',
+    luminance: false,
+    basePeriod: 2.6,
+    letterSplit: false,
+    label: 'pendulum',
+    sig: 'self:transform',
+  },
+  tumble: {
+    slot: 'motion',
+    luminance: false,
+    basePeriod: 3.4,
+    letterSplit: true,
+    label: 'letter tumble',
+    sig: 'letter:transform',
+  },
+  neon: {
+    slot: 'motion',
+    luminance: true,
+    basePeriod: 2.6,
+    letterSplit: false,
+    label: 'neon breathe',
+    sig: 'self:shadow',
+  },
 }
 
 const EFFECT_IDS = new Set(Object.keys(EFFECTS))
-const LETTER_SPLIT_IDS = new Set(Object.entries(EFFECTS).filter(([, m]) => m.letterSplit).map(([id]) => id))
+const LETTER_SPLIT_IDS = new Set(
+  Object.entries(EFFECTS)
+    .filter(([, m]) => m.letterSplit)
+    .map(([id]) => id),
+)
 
 // ── small pure helpers ───────────────────────────────────────────────────
 
@@ -6572,9 +6646,9 @@ function normalizeForHash(spec) {
     base: spec?.base && {
       type: spec.base.type,
       angle: spec.base.angle,
-      stops: Array.isArray(spec.base.stops) ? spec.base.stops.map(s => ({ color: s?.color, pos: s?.pos })) : [],
+      stops: Array.isArray(spec.base.stops) ? spec.base.stops.map((s) => ({ color: s?.color, pos: s?.pos })) : [],
     },
-    effects: Array.isArray(spec?.effects) ? spec.effects.map(e => ({ id: e?.id, speed: e?.speed })) : [],
+    effects: Array.isArray(spec?.effects) ? spec.effects.map((e) => ({ id: e?.id, speed: e?.speed })) : [],
     glow: spec?.glow ? { color: spec.glow.color, strength: spec.glow.strength } : null,
   }
 }
@@ -6662,14 +6736,19 @@ function validatePaintSpec(spec) {
       } else {
         motionCount++
         if (motionSigs.has(meta.sig)) {
-          errors.push(`effects: "${e.id}" conflicts with another selected effect animating the same property (${meta.sig}) — pick effects with different motion targets`)
+          errors.push(
+            `effects: "${e.id}" conflicts with another selected effect animating the same property (${meta.sig}) — pick effects with different motion targets`,
+          )
         }
         motionSigs.add(meta.sig)
       }
     })
 
     if (structurallyValid) {
-      if (paintCount > 1) errors.push('at most 1 paint-slot effect allowed (pan/conic/hue/glint/chrome/gold/fire/matrix/holo/reveal are mutually exclusive)')
+      if (paintCount > 1)
+        errors.push(
+          'at most 1 paint-slot effect allowed (pan/conic/hue/glint/chrome/gold/fire/matrix/holo/reveal are mutually exclusive)',
+        )
       if (motionCount > 2) errors.push('at most 2 motion-slot effects allowed')
     }
   }
@@ -6694,7 +6773,7 @@ function validatePaintSpec(spec) {
 /** True if the spec's effects include any per-letter effect (wave/ripple/tumble). */
 function paintNeedsLetterSplit(spec) {
   if (!spec || !Array.isArray(spec.effects)) return false
-  return spec.effects.some(e => LETTER_SPLIT_IDS.has(e?.id))
+  return spec.effects.some((e) => LETTER_SPLIT_IDS.has(e?.id))
 }
 
 // ── compiler ─────────────────────────────────────────────────────────────
@@ -6721,8 +6800,8 @@ function safeSpeed(speed) {
 function sortedStops(base) {
   const stops = Array.isArray(base?.stops) ? base.stops : []
   return stops
-    .filter(s => isPlainObject(s) && HEX_RE.test(s?.color) && isIntInRange(s.pos, 0, 100))
-    .map(s => ({ color: safeHex(s.color), pos: safePos(s.pos) }))
+    .filter((s) => isPlainObject(s) && HEX_RE.test(s?.color) && isIntInRange(s.pos, 0, 100))
+    .map((s) => ({ color: safeHex(s.color), pos: safePos(s.pos) }))
     .sort((a, b) => a.pos - b.pos)
 }
 
@@ -6737,7 +6816,7 @@ function effectDuration(effectId, speed) {
 }
 
 function gradientStopsCss(stops) {
-  return stops.map(s => `${s.color} ${s.pos}%`).join(', ')
+  return stops.map((s) => `${s.color} ${s.pos}%`).join(', ')
 }
 
 /** Build the CSS for the resting `base` paint. Returns { decl, isClipText }. */
@@ -6747,9 +6826,10 @@ function buildBaseCss(base, stops) {
     return { decl: `color:${color};`, isClipText: false, cssImage: `linear-gradient(${color}, ${color})` }
   }
   const angle = safeAngle(base.angle)
-  const image = base.type === 'linear'
-    ? `linear-gradient(${angle}deg, ${gradientStopsCss(stops)})`
-    : `conic-gradient(from ${angle}deg, ${gradientStopsCss(stops)})`
+  const image =
+    base.type === 'linear'
+      ? `linear-gradient(${angle}deg, ${gradientStopsCss(stops)})`
+      : `conic-gradient(from ${angle}deg, ${gradientStopsCss(stops)})`
   return {
     decl: `background:${image};-webkit-background-clip:text;background-clip:text;color:transparent;`,
     isClipText: true,
@@ -6761,7 +6841,8 @@ function buildBaseCss(base, stops) {
 
 const THEMED_PAINT = {
   chrome: {
-    gradient: 'linear-gradient(100deg, #6b7280, #e5e7eb 20%, #4b5563 38%, #f3f4f6 52%, #374151 70%, #d1d5db 88%, #6b7280)',
+    gradient:
+      'linear-gradient(100deg, #6b7280, #e5e7eb 20%, #4b5563 38%, #f3f4f6 52%, #374151 70%, #d1d5db 88%, #6b7280)',
     size: '220% 100%',
     timing: 'ease-in-out',
     direction: 'alternate',
@@ -6781,7 +6862,8 @@ const THEMED_PAINT = {
     size: '100% 300%',
     timing: 'ease-in-out',
     direction: 'alternate',
-    keyframes: (name) => `@keyframes ${name}{from{background-position:0 100%;transform:skewX(0);}to{background-position:0 40%;transform:skewX(-1.5deg);}}`,
+    keyframes: (name) =>
+      `@keyframes ${name}{from{background-position:0 100%;transform:skewX(0);}to{background-position:0 40%;transform:skewX(-1.5deg);}}`,
   },
   matrix: {
     gradient: 'repeating-linear-gradient(0deg, #003300 0 6px, #00d700 6px 9px, #00ff87 9px 10px)',
@@ -6830,7 +6912,8 @@ function buildPaintEffectCss(effectId, speed, base, stops, selector, hash) {
     const wrapStops = stops.length ? [...stops, { color: stops[0].color, pos: 100 }] : stops
     const image = `conic-gradient(from calc(${angle}deg + var(${angleVar})), ${gradientStopsCss(wrapStops)})`
     const rule = `${selector}{background:${image};-webkit-background-clip:text;background-clip:text;color:transparent;animation:${animName} ${duration}s linear infinite;}`
-    const kf = `@property ${angleVar}{syntax:"<angle>";initial-value:0deg;inherits:false;}` +
+    const kf =
+      `@property ${angleVar}{syntax:"<angle>";initial-value:0deg;inherits:false;}` +
       `@keyframes ${animName}{to{${angleVar}:360deg;}}`
     return rule + kf
   }
@@ -6918,8 +7001,11 @@ function buildMotionEffectCss(effectId, speed, selector, hash, glow) {
     case 'neon': {
       const color = glow && HEX_RE.test(glow.color) ? safeHex(glow.color) : '#ff40af'
       const scale = glow && glow.strength === 2 ? 1.6 : 1
-      const r1 = Math.round(4 * scale), r2 = Math.round(11 * scale)
-      const r1b = Math.round(6 * scale), r2b = Math.round(22 * scale), r3b = Math.round(40 * scale)
+      const r1 = Math.round(4 * scale),
+        r2 = Math.round(11 * scale)
+      const r1b = Math.round(6 * scale),
+        r2b = Math.round(22 * scale),
+        r3b = Math.round(40 * scale)
       const rule = `${selector}{animation:${animName} ${duration}s ease-in-out infinite;}`
       const kf = `@keyframes ${animName}{0%,100%{text-shadow:0 0 ${r1}px ${color}80, 0 0 ${r2}px ${color}40;}50%{text-shadow:0 0 ${r1b}px ${color}cc, 0 0 ${r2b}px ${color}88, 0 0 ${r3b}px ${color}44;}}`
       return rule + kf
@@ -6953,9 +7039,11 @@ function compilePaintCss(spec, selector, opts = {}) {
   const hash = opts.hash || hashPaintSpec(spec)
   const base = isPlainObject(spec.base) ? spec.base : { type: 'solid', angle: 0, stops: [{ color: '#e4e4e4', pos: 0 }] }
   const stops = sortedStops(base)
-  const effects = Array.isArray(spec.effects) ? spec.effects.filter(e => isPlainObject(e) && EFFECT_IDS.has(e.id)) : []
-  const paintEffect = effects.find(e => EFFECTS[e.id].slot === 'paint')
-  const motionEffects = effects.filter(e => EFFECTS[e.id].slot === 'motion')
+  const effects = Array.isArray(spec.effects)
+    ? spec.effects.filter((e) => isPlainObject(e) && EFFECT_IDS.has(e.id))
+    : []
+  const paintEffect = effects.find((e) => EFFECTS[e.id].slot === 'paint')
+  const motionEffects = effects.filter((e) => EFFECTS[e.id].slot === 'motion')
   const needsLetterSplit = paintNeedsLetterSplit(spec)
 
   let css = `${selector}{display:inline-block;`
@@ -6977,7 +7065,7 @@ function compilePaintCss(spec, selector, opts = {}) {
   // Static glow — skip if neon is active and sourced the same color (neon's
   // own keyframes already carry a shadow on every frame); otherwise layer
   // the constant shadow on so it doesn't require an active effect to show.
-  const hasNeon = motionEffects.some(e => e.id === 'neon')
+  const hasNeon = motionEffects.some((e) => e.id === 'neon')
   if (spec.glow && !hasNeon) {
     css += buildGlowCss(spec.glow, selector)
   }
@@ -24047,7 +24135,26 @@ function hsSnapEmoteBox(img) {
   })
 }
 
-function processEmotes(text, channel, extraCache, senderEmotes, msgTime) {
+// @param {boolean} skipMentions  Skip this function's own plain @mention→<a>
+//   wrap (still emits the word as plain escaped text). Pass true when the
+//   caller runs highlightMentionsInHtml (main.js) on the result afterward —
+//   that is the single source of truth for mention anchors (uid resolution,
+//   HeatSync-paint/7TV precedence, letter-split). Without this flag, a chat
+//   message containing "@name" gets wrapped HERE first (plain <a>, no uid)
+//   and then AGAIN by highlightMentionsInHtml around the same text, producing
+//   a nested <a>…<a>…</a></a>. Nested anchors are invalid HTML5 — browsers
+//   auto-close the outer one the instant the inner <a> opens, leaving a
+//   permanently EMPTY sibling anchor (no uid, no paint class, no text) right
+//   next to the real one — verified live via Chrome DOM inspection. That
+//   empty husk is exactly the "painted username renders blank" bug: it
+//   carries a normal-looking inline color style (set by this function) but
+//   zero content, because the real text/uid/paint ended up on its orphaned
+//   sibling instead. Callers
+//   that do NOT run highlightMentionsInHtml afterward (whispers.js,
+//   twitch-api.js prediction/outcome titles, main.js's compact/system-line
+//   render) must keep skipMentions=false — this function's own wrap is the
+//   only mention coloring those surfaces get.
+function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMentions = false) {
   if (emoteCache.size === 0 && !channelEmoteCaches[channel] && !extraCache?.size && !senderEmotes?.size) return text
   // Removed-emote render fallback applies ONLY to the viewer's own messages
   // (main.js passes viewerPersonalEmotes by reference for isOwn). Keeps removed
@@ -24465,7 +24572,11 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime) {
       }
       // Color @mentions — always hoverable for profile cards. Unknown users
       // resolve a color asynchronously (mentionColor) instead of flat white.
-      if (word.startsWith('@') && word.length > 1) {
+      // Skipped when the caller (computeMessageText) is about to run
+      // highlightMentionsInHtml over this output anyway — see skipMentions
+      // doc comment on this function's signature for why a double-wrap here
+      // is a real (not theoretical) blank-username bug.
+      if (!skipMentions && word.startsWith('@') && word.length > 1) {
         const name = word
           .slice(1)
           .replace(/[,.:!?]+$/, '')
@@ -44186,7 +44297,8 @@ function ensureHsPaintSheet() {
     // regardless of how many per-hash rules get appended after this.
     hsPaintSheetEl.textContent =
       '@media (prefers-reduced-motion: reduce){[class*="hsp-"],[class*="hsp-"] *{animation-play-state:paused !important;}}'
-    const tracked = typeof cleanup !== 'undefined' && cleanup.trackNode ? cleanup.trackNode(hsPaintSheetEl) : hsPaintSheetEl
+    const tracked =
+      typeof cleanup !== 'undefined' && cleanup.trackNode ? cleanup.trackNode(hsPaintSheetEl) : hsPaintSheetEl
     document.head.appendChild(tracked)
   }
   return hsPaintSheetEl
@@ -44283,7 +44395,7 @@ async function flushHsPaintBatch() {
     // caching a false negative that would mask a real paint until reload.
     const changed = []
     for (const id of batch) {
-      if (Object.prototype.hasOwnProperty.call(paints, id)) {
+      if (Object.hasOwn(paints, id)) {
         setHsPaintEntry(id, paints[id])
         if (paints[id]) changed.push(id)
       } else {
@@ -44344,7 +44456,12 @@ function applyHsPaintToElement(el, userId) {
     el.classList.add(cls)
   }
   if (el.hasAttribute('style')) el.removeAttribute('style')
-  if (paintNeedsLetterSplit(spec) && !el.dataset.hsPaintSplit) {
+  // Belt-and-suspenders against any future race that hands us an element
+  // whose text was already cleared/moved by something else (e.g. a nested-
+  // anchor DOM-correction, a mid-flight rebuild): splitting '' is a silent
+  // no-op that would still mark the node as "split" and leave it permanently
+  // blank. Never touch innerHTML when there's no text to split.
+  if (paintNeedsLetterSplit(spec) && !el.dataset.hsPaintSplit && el.textContent) {
     el.innerHTML = splitHsLettersHtml(el.textContent)
     el.dataset.hsPaintSplit = '1'
   }
@@ -54516,7 +54633,14 @@ const STORAGE_KEY = 'heatsync_multichat'
       senderEmotes = getSenderEmotes(senderKey)
       queueSenderEmoteFetch(senderKey, m)
     }
-    let processedText = processEmotes(escapeHtml(m.text), m.channel, twitchExtra, senderEmotes, m.time)
+    // skipMentions=true: highlightMentionsInHtml (below) is the single source
+    // of truth for mention anchors on this surface (uid resolution, HeatSync
+    // paint/7TV precedence, letter-split). Letting processEmotes ALSO wrap
+    // "@name" in its own plain <a> here would produce a nested <a>…<a>…</a></a>
+    // — invalid HTML5 that browsers "fix" by auto-closing the outer anchor
+    // empty, leaving a permanently blank username node next to its painted
+    // sibling. See processEmotes' skipMentions doc comment (emotes.js).
+    let processedText = processEmotes(escapeHtml(m.text), m.channel, twitchExtra, senderEmotes, m.time, true)
     if (m.emotes && m.emotes.length > 0) {
       processedText = processYtEmotes(processedText, m.emotes, true)
     }
@@ -55338,9 +55462,15 @@ const STORAGE_KEY = 'heatsync_multichat'
         document
           .querySelectorAll(`a.hs-mc-mention[data-username="${esc}"], a.hs-mc-reply-user[data-username="${esc}"]`)
           .forEach((a) => {
-            // a 7TV paint cosmetic outranks a flat color — never overwrite it
+            // A HeatSync paint or a 7TV paint cosmetic outranks a flat color —
+            // never overwrite either. hasResolvedHsPaint MUST be checked here
+            // too (not just getMcPaintStyle/7TV): applyHsPaintToElement clears
+            // this exact element's style attribute when it paints it, and if
+            // this async color resolve lands afterward it would silently
+            // re-add an inline style that outranks the class-based paint by
+            // specificity — stomping the paint precedence the class relies on.
             const uid = a.dataset.uid
-            if (uid && getMcPaintStyle(uid)) return
+            if (uid && (getMcPaintStyle(uid) || hasResolvedHsPaint(uid))) return
             a.style.color = safe
           })
       })
@@ -56456,13 +56586,23 @@ const STORAGE_KEY = 'heatsync_multichat'
       // (cached HTML is paint-less). Re-apply for already-resolved users and
       // queue lookups for the rest; updateCosmeticsInPlace repaints via the
       // restored _uidIndex once each resolves.
+      // HeatSync paints are a SEPARATE cache from 7TV cosmetics (hsPaintCache
+      // in paints.js vs mcUserCosmetics here) — a paint can already be
+      // resolved even when mcUserCosmetics has nothing for this uid, so it
+      // needs its own re-apply pass here too. Without this, a painted user's
+      // restored rows (reload, tab-switch-back) stay unpainted forever: the
+      // cache-restored fast path returns below and never calls
+      // buildMessageDiv, which is the only other place that applies a paint.
       const _restoredCosUids = []
+      const _restoredPaintUids = []
       for (const m of toRender) {
         if (!m.userId) continue
         if (mcUserCosmetics.has(m.userId)) _restoredCosUids.push(m.userId)
         else queueMcCosmeticsLookup(m.userId)
+        if (hasResolvedHsPaint(m.userId)) _restoredPaintUids.push(m.userId)
       }
       if (_restoredCosUids.length) updateCosmeticsInPlace([...new Set(_restoredCosUids)])
+      if (_restoredPaintUids.length) updateHsPaintsInPlace([...new Set(_restoredPaintUids)])
       cleanup.raf(() => {
         isProgrammaticScroll = false
       })

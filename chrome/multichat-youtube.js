@@ -39671,7 +39671,12 @@ function hsPrefetchUserColors(usernames) {
 // Deduped via _hsUserColorInflight; persisted via _hsUserColorCache. Shared by
 // input chips (hsFetchUserColorAndApply) and message @mentions/reply links.
 function hsResolveUserColor(lower) {
-  if (_hsUserColorCache.has(lower)) return Promise.resolve(_hsUserColorCache.get(lower) || null)
+  // Short-circuit only when BOTH answers are cached — a cached color with an
+  // unknown uid must still hit /api/profile, or the uid (which name paints
+  // depend on) is starved forever by the color cache.
+  if (_hsUserColorCache.has(lower) && _hsUserIdCache.has(lower)) {
+    return Promise.resolve(_hsUserColorCache.get(lower) || null)
+  }
   let p = _hsUserColorInflight.get(lower)
   if (!p) {
     p = (async () => {

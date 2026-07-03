@@ -626,17 +626,27 @@ export function compilePaintCss(spec, selector, opts = {}) {
   const motionEffects = effects.filter((e) => EFFECTS[e.id].slot === 'motion')
   const needsLetterSplit = paintNeedsLetterSplit(spec)
 
+  // Chrome cannot paint a parent's background-clip:text into TRANSFORMED
+  // descendant layers — per-letter motion (wave/ripple/tumble) composites
+  // each span, which silently blanks any parent-level clip-text gradient
+  // (letters render transparent over nothing; only a hover background
+  // clipped into the glyphs reveals them). When the name is letter-split,
+  // ALL clip-text painting must live on the spans themselves.
+  // Mirrors the monorepo compiler fix (client/utils/paint-spec.js).
+  const paintTarget = needsLetterSplit ? `${selector} span` : selector
+  const baseCss = paintEffect ? null : buildBaseCss(base, stops)
+
   let css = `${selector}{display:inline-block;`
-  if (needsLetterSplit) css += `` // spans get display:inline-block in their own rule below
-  if (!paintEffect) {
-    const baseCss = buildBaseCss(base, stops)
-    css += baseCss.decl
-  }
+  if (baseCss && (!needsLetterSplit || !baseCss.isClipText)) css += baseCss.decl
   css += '}'
-  if (needsLetterSplit) css += `${selector} span{display:inline-block;}`
+  if (needsLetterSplit) {
+    css += `${selector} span{display:inline-block;`
+    if (baseCss?.isClipText) css += baseCss.decl
+    css += '}'
+  }
 
   if (paintEffect) {
-    css += buildPaintEffectCss(paintEffect.id, paintEffect.speed, base, stops, selector, hash)
+    css += buildPaintEffectCss(paintEffect.id, paintEffect.speed, base, stops, paintTarget, hash)
   }
   for (const e of motionEffects) {
     css += buildMotionEffectCss(e.id, e.speed, selector, hash, spec.glow)

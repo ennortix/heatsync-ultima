@@ -56053,6 +56053,12 @@ const STORAGE_KEY = 'heatsync_multichat'
   // Splits on tags so substitution only happens in text segments.
   // Applies 7TV paint cosmetics if the mentioned user's userId + paint are cached.
   function highlightMentionsInHtml(html, platform) {
+    // Twitch is the implicit default platform — m.platform is UNDEFINED on
+    // twitch rows (same convention as buildMessageDiv's `!m.platform ||
+    // m.platform === 'twitch'`). Without this, userKey(lower, undefined)
+    // never matches the 'twitch'-scoped knownUserIds entries and every
+    // twitch mention renders uid-less (unpaintable).
+    platform = platform || 'twitch'
     if (!html || (!html.includes('@') && knownColors.size === 0)) return html
     const parts = html.split(/(<[^>]+>)/)
     for (let i = 0; i < parts.length; i += 2) {

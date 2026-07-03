@@ -6881,15 +6881,25 @@ const THEMED_PAINT = {
   },
 }
 
-/** Build the CSS for a `paint`-slot effect. selector is the outer `.hsp-<hash>`. */
-function buildPaintEffectCss(effectId, speed, base, stops, selector, hash) {
+/** Build the pieces for a `paint`-slot effect: { decls, animShorthand, keyframes }.
+ * `decls` never includes `animation` itself — the caller (compilePaintCss)
+ * always appends that, either alone (non-split: one paint effect, one rule)
+ * or combined with per-letter motion animations into a single comma-list
+ * (letter-split: paint + motion share `${selector} span`, and two separate
+ * `animation:` shorthand rules on the same selector would silently clobber
+ * each other — see compilePaintCss). Returns null for an unknown effect id. */
+function buildPaintEffectCss(effectId, speed, base, stops, hash) {
   const duration = effectDuration(effectId, speed)
   const animName = `hsp_${hash}_${effectId}`
 
   if (THEMED_PAINT[effectId]) {
     const t = THEMED_PAINT[effectId]
-    const rule = `${selector}{background:${t.gradient};background-size:${t.size};-webkit-background-clip:text;background-clip:text;color:transparent;animation:${animName} ${duration}s ${t.timing} infinite ${t.direction};}`
-    return rule + t.keyframes(animName)
+    const decls = `background:${t.gradient};background-size:${t.size};-webkit-background-clip:text;background-clip:text;color:transparent;`
+    return {
+      decls,
+      animShorthand: `${animName} ${duration}s ${t.timing} infinite ${t.direction}`,
+      keyframes: t.keyframes(animName),
+    }
   }
 
   if (effectId === 'pan') {
@@ -6899,9 +6909,9 @@ function buildPaintEffectCss(effectId, speed, base, stops, selector, hash) {
     const angle = safeAngle(base.angle)
     const wrapStops = stops.length ? [...stops, { color: stops[0].color, pos: 100 }] : stops
     const image = `linear-gradient(${angle}deg, ${gradientStopsCss(wrapStops)})`
-    const rule = `${selector}{background:${image};background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:${animName} ${duration}s linear infinite;}`
+    const decls = `background:${image};background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;`
     const kf = `@keyframes ${animName}{to{background-position:300% 0;}}`
-    return rule + kf
+    return { decls, animShorthand: `${animName} ${duration}s linear infinite`, keyframes: kf }
   }
 
   if (effectId === 'conic') {
@@ -6911,58 +6921,97 @@ function buildPaintEffectCss(effectId, speed, base, stops, selector, hash) {
     const angle = safeAngle(base.angle)
     const wrapStops = stops.length ? [...stops, { color: stops[0].color, pos: 100 }] : stops
     const image = `conic-gradient(from calc(${angle}deg + var(${angleVar})), ${gradientStopsCss(wrapStops)})`
-    const rule = `${selector}{background:${image};-webkit-background-clip:text;background-clip:text;color:transparent;animation:${animName} ${duration}s linear infinite;}`
+    const decls = `background:${image};-webkit-background-clip:text;background-clip:text;color:transparent;`
     const kf =
       `@property ${angleVar}{syntax:"<angle>";initial-value:0deg;inherits:false;}` +
       `@keyframes ${animName}{to{${angleVar}:360deg;}}`
-    return rule + kf
+    return { decls, animShorthand: `${animName} ${duration}s linear infinite`, keyframes: kf }
   }
 
   if (effectId === 'hue') {
     // Orthogonal to gradient type — filter applies post-render regardless
     // of how base painted the text.
     const baseCss = buildBaseCss(base, stops)
-    const rule = `${selector}{${baseCss.decl}animation:${animName} ${duration}s linear infinite;}`
     const kf = `@keyframes ${animName}{to{filter:hue-rotate(360deg);}}`
-    return rule + kf
+    return { decls: baseCss.decl, animShorthand: `${animName} ${duration}s linear infinite`, keyframes: kf }
   }
 
   if (effectId === 'glint') {
     const baseCss = buildBaseCss(base, stops)
     const image = `linear-gradient(115deg, transparent 38%, #ffffffcc 50%, transparent 62%) no-repeat, ${baseCss.cssImage}`
-    const rule = `${selector}{background:${image};background-size:250% 100%, 100% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:${animName} ${duration}s ease-in-out infinite;}`
+    const decls = `background:${image};background-size:250% 100%, 100% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;`
     const kf = `@keyframes ${animName}{0%{background-position:210% 0, 0 0;}100%{background-position:-110% 0, 0 0;}}`
-    return rule + kf
+    return { decls, animShorthand: `${animName} ${duration}s ease-in-out infinite`, keyframes: kf }
   }
 
   if (effectId === 'reveal') {
     const baseCss = buildBaseCss(base, stops)
     const mask = 'linear-gradient(90deg, #000 30%, #0003 50%, #000 70%)'
-    const rule = `${selector}{${baseCss.decl}-webkit-mask-image:${mask};mask-image:${mask};-webkit-mask-size:300% 100%;mask-size:300% 100%;animation:${animName} ${duration}s linear infinite;}`
+    const decls = `${baseCss.decl}-webkit-mask-image:${mask};mask-image:${mask};-webkit-mask-size:300% 100%;mask-size:300% 100%;`
     const kf = `@keyframes ${animName}{from{-webkit-mask-position:130% 0;mask-position:130% 0;}to{-webkit-mask-position:-130% 0;mask-position:-130% 0;}}`
-    return rule + kf
+    return { decls, animShorthand: `${animName} ${duration}s linear infinite`, keyframes: kf }
   }
 
-  return ''
+  return null
 }
 
-/** Build the CSS for a `motion`-slot effect. Applies on top of whatever the
- * base/paint layer already painted — never touches color/background. */
-function buildMotionEffectCss(effectId, speed, selector, hash, glow) {
+/** Build the pieces for a per-letter motion effect (wave/ripple/tumble):
+ * { decls, animShorthand, delayExpr, keyframes, extraRule }. These always
+ * target `${selector} span` (one glyph per span), same as any active paint
+ * effect on a letter-split name — so compilePaintCss combines them into one
+ * `animation:`/`animation-delay:` comma-list rather than emitting separate
+ * rules (which would clobber each other; see compilePaintCss). `extraRule`
+ * is an optional standalone rule on the parent selector (tumble's
+ * `perspective`), unrelated to the animation merge. */
+function buildLetterMotionCss(effectId, speed, selector, hash) {
   const duration = effectDuration(effectId, speed)
   const animName = `hsp_${hash}_${effectId}`
 
   switch (effectId) {
     case 'wave': {
-      const rule = `${selector} span{animation:${animName} ${duration}s ease-in-out infinite;animation-delay:calc(var(--i) * ${(0.09 / safeSpeed(speed)).toFixed(4)}s);}`
       const kf = `@keyframes ${animName}{0%,100%{transform:translateY(0);}50%{transform:translateY(-4px);}}`
-      return rule + kf
+      return {
+        decls: '',
+        animShorthand: `${animName} ${duration}s ease-in-out infinite`,
+        delayExpr: `calc(var(--i) * ${(0.09 / safeSpeed(speed)).toFixed(4)}s)`,
+        keyframes: kf,
+      }
     }
     case 'ripple': {
-      const rule = `${selector} span{animation:${animName} ${duration}s linear infinite;animation-delay:calc(var(--i) * -${(0.18 / safeSpeed(speed)).toFixed(4)}s);}`
       const kf = `@keyframes ${animName}{to{filter:hue-rotate(360deg);}}`
-      return rule + kf
+      return {
+        decls: '',
+        animShorthand: `${animName} ${duration}s linear infinite`,
+        delayExpr: `calc(var(--i) * -${(0.18 / safeSpeed(speed)).toFixed(4)}s)`,
+        keyframes: kf,
+      }
     }
+    case 'tumble': {
+      const kf = `@keyframes ${animName}{0%,60%,100%{transform:rotateX(0);}75%{transform:rotateX(180deg);}90%{transform:rotateX(360deg);}}`
+      return {
+        decls: 'transform-style:preserve-3d;',
+        animShorthand: `${animName} ${duration}s cubic-bezier(.5,0,.5,1) infinite`,
+        delayExpr: `calc(var(--i) * ${(0.12 / safeSpeed(speed)).toFixed(4)}s)`,
+        keyframes: kf,
+        extraRule: `${selector}{perspective:300px;}`,
+      }
+    }
+    default:
+      return null
+  }
+}
+
+/** Build the CSS for a `motion`-slot effect. Applies on top of whatever the
+ * base/paint layer already painted — never touches color/background. Only
+ * the whole-name motions (coin/heli/float/heart/wobble/swing/neon) — they
+ * always target the parent selector and never share it with a paint effect,
+ * so they keep emitting a standalone rule. wave/ripple/tumble (per-letter)
+ * are handled by buildLetterMotionCss instead. */
+function buildMotionEffectCss(effectId, speed, selector, hash, glow) {
+  const duration = effectDuration(effectId, speed)
+  const animName = `hsp_${hash}_${effectId}`
+
+  switch (effectId) {
     case 'coin': {
       const rule = `${selector}{animation:${animName} ${duration}s cubic-bezier(.6,0,.4,1) infinite;transform-style:preserve-3d;}`
       const kf = `@keyframes ${animName}{0%,55%{transform:rotateY(0);}75%{transform:rotateY(180deg);}95%,100%{transform:rotateY(360deg);}}`
@@ -6991,11 +7040,6 @@ function buildMotionEffectCss(effectId, speed, selector, hash, glow) {
     case 'swing': {
       const rule = `${selector}{transform-origin:50% -60%;animation:${animName} ${duration}s ease-in-out infinite;}`
       const kf = `@keyframes ${animName}{0%,100%{transform:rotate(4.5deg);}50%{transform:rotate(-4.5deg);}}`
-      return rule + kf
-    }
-    case 'tumble': {
-      const rule = `${selector}{perspective:300px;}${selector} span{animation:${animName} ${duration}s cubic-bezier(.5,0,.5,1) infinite;animation-delay:calc(var(--i) * ${(0.12 / safeSpeed(speed)).toFixed(4)}s);transform-style:preserve-3d;}`
-      const kf = `@keyframes ${animName}{0%,60%,100%{transform:rotateX(0);}75%{transform:rotateX(180deg);}90%{transform:rotateX(360deg);}}`
       return rule + kf
     }
     case 'neon': {
@@ -7059,17 +7103,56 @@ function compilePaintCss(spec, selector, opts = {}) {
   let css = `${selector}{display:inline-block;`
   if (baseCss && (!needsLetterSplit || !baseCss.isClipText)) css += baseCss.decl
   css += '}'
-  if (needsLetterSplit) {
-    css += `${selector} span{display:inline-block;`
-    if (baseCss?.isClipText) css += baseCss.decl
-    css += '}'
-  }
 
-  if (paintEffect) {
-    css += buildPaintEffectCss(paintEffect.id, paintEffect.speed, base, stops, paintTarget, hash)
-  }
-  for (const e of motionEffects) {
-    css += buildMotionEffectCss(e.id, e.speed, selector, hash, spec.glow)
+  if (needsLetterSplit) {
+    // Every animation that lands on `${selector} span` (the paint effect,
+    // when the name is split, plus any per-letter motion effects) must be
+    // ONE rule with comma-listed `animation`/`animation-delay` — two
+    // separate rules setting the `animation` shorthand on the same selector
+    // don't compose, the later rule wins outright and blanks the earlier
+    // one's animation-name entirely (see module-level comment + the
+    // buildPaintEffectCss/buildLetterMotionCss doc comments).
+    let spanDecls = ''
+    const animList = []
+    const delayList = []
+
+    if (baseCss?.isClipText) spanDecls += baseCss.decl
+
+    if (paintEffect) {
+      const p = buildPaintEffectCss(paintEffect.id, paintEffect.speed, base, stops, hash)
+      if (p) {
+        spanDecls += p.decls
+        animList.push(p.animShorthand)
+        delayList.push('0s')
+        css += p.keyframes
+      }
+    }
+    for (const e of motionEffects) {
+      if (EFFECTS[e.id].letterSplit) {
+        const m = buildLetterMotionCss(e.id, e.speed, selector, hash)
+        if (m) {
+          spanDecls += m.decls
+          animList.push(m.animShorthand)
+          delayList.push(m.delayExpr)
+          css += m.keyframes
+          if (m.extraRule) css += m.extraRule
+        }
+      } else {
+        css += buildMotionEffectCss(e.id, e.speed, selector, hash, spec.glow)
+      }
+    }
+
+    css += `${selector} span{display:inline-block;${spanDecls}`
+    if (animList.length) css += `animation:${animList.join(', ')};animation-delay:${delayList.join(', ')};`
+    css += '}'
+  } else {
+    if (paintEffect) {
+      const p = buildPaintEffectCss(paintEffect.id, paintEffect.speed, base, stops, hash)
+      if (p) css += `${paintTarget}{${p.decls}animation:${p.animShorthand};}${p.keyframes}`
+    }
+    for (const e of motionEffects) {
+      css += buildMotionEffectCss(e.id, e.speed, selector, hash, spec.glow)
+    }
   }
 
   // Static glow — skip if neon is active and sourced the same color (neon's

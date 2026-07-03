@@ -317,12 +317,122 @@ describe('compilePaintCss — structural checks', () => {
     expect(css).toContain('color:#ff8700')
   })
 
-  test('letter-split effect (wave) emits a `span` rule with --i delay', () => {
+  test('letter-split effect (wave) emits ONE `span` rule with --i delay', () => {
     const spec = baseSpec({ effects: [{ id: 'wave', speed: 1 }] })
     const css = compilePaintCss(spec, '.hsp-wave1', { hash: 'wave1' })
-    expect(css).toContain('.hsp-wave1 span{display:inline-block;}')
-    expect(css).toContain('.hsp-wave1 span{animation:hsp_wave1_wave')
+    // Single combined rule — display:inline-block + animation live together,
+    // not a separate display-only rule followed by a separate animation rule.
+    expect(css.match(/\.hsp-wave1 span\{/g)?.length).toBe(1)
+    expect(css).toContain('.hsp-wave1 span{display:inline-block;animation:hsp_wave1_wave')
     expect(css).toContain('var(--i)')
+  })
+
+  // Regression: paint effect (fire/pan/conic/hue/glint/reveal/themed) and
+  // per-letter motion (wave/ripple/tumble) both target `${selector} span`
+  // when the name is split. Two separate rules each setting the `animation`
+  // shorthand on that same selector don't compose — the later rule wins
+  // outright and blanks the earlier one's animation-name (verified live:
+  // the fire gradient rendered fully static, only the wave transform ran).
+  // The fix combines every span-targeted animation into ONE rule with
+  // comma-listed animation/animation-delay.
+  test('fire (paint) + wave (motion): one span rule, two comma-listed animations, paint delay 0s', () => {
+    const spec = baseSpec({
+      base: {
+        type: 'linear',
+        angle: 90,
+        stops: [
+          { color: '#ff8700', pos: 0 },
+          { color: '#d70000', pos: 100 },
+        ],
+      },
+      effects: [
+        { id: 'fire', speed: 1 },
+        { id: 'wave', speed: 1 },
+      ],
+    })
+    const css = compilePaintCss(spec, '.hsp-fw', { hash: 'fw' })
+    const spanRules = css.match(/\.hsp-fw span\{[^}]*\}/g) || []
+    expect(spanRules.length).toBe(1)
+    const rule = spanRules[0]
+    expect(rule).toMatch(/animation:hsp_fw_fire[^,]*, hsp_fw_wave[^;]*;/)
+    expect(rule).toMatch(/animation-delay:0s, calc\(var\(--i\)[^;]*\);/)
+    // Paint decls (background/clip) must still be present — not clobbered.
+    expect(rule).toContain('background:linear-gradient(0deg, #870000')
+    expect(rule).toContain('background-clip:text')
+  })
+
+  test('wave + ripple (two per-letter motions, no paint): both animations combine, no paint slot', () => {
+    const spec = baseSpec({
+      base: {
+        type: 'linear',
+        angle: 90,
+        stops: [
+          { color: '#ff8700', pos: 0 },
+          { color: '#d70000', pos: 100 },
+        ],
+      },
+      effects: [
+        { id: 'wave', speed: 1 },
+        { id: 'ripple', speed: 1 },
+      ],
+    })
+    const css = compilePaintCss(spec, '.hsp-wr', { hash: 'wr' })
+    const spanRules = css.match(/\.hsp-wr span\{[^}]*\}/g) || []
+    expect(spanRules.length).toBe(1)
+    expect(spanRules[0]).toMatch(/animation:hsp_wr_wave[^,]*, hsp_wr_ripple[^;]*;/)
+    expect(spanRules[0]).toMatch(/animation-delay:calc\(var\(--i\) \* 0\.0900s\), calc\(var\(--i\) \* -0\.1800s\);/)
+  })
+
+  test('pan (paint) + tumble (motion): one span rule; tumble perspective stays a separate parent rule', () => {
+    const spec = baseSpec({
+      base: {
+        type: 'linear',
+        angle: 90,
+        stops: [
+          { color: '#ff8700', pos: 0 },
+          { color: '#d70000', pos: 100 },
+        ],
+      },
+      effects: [
+        { id: 'pan', speed: 1 },
+        { id: 'tumble', speed: 1 },
+      ],
+    })
+    const css = compilePaintCss(spec, '.hsp-pt', { hash: 'pt' })
+    const spanRules = css.match(/\.hsp-pt span\{[^}]*\}/g) || []
+    expect(spanRules.length).toBe(1)
+    expect(spanRules[0]).toMatch(/animation:hsp_pt_pan[^,]*, hsp_pt_tumble[^;]*;/)
+    expect(spanRules[0]).toMatch(/animation-delay:0s, calc\(var\(--i\)[^;]*\);/)
+    expect(spanRules[0]).toContain('transform-style:preserve-3d;')
+    expect(css).toContain('.hsp-pt{perspective:300px;}')
+  })
+
+  test('split-without-paint (wave only): single animation, still fine, one rule', () => {
+    const spec = baseSpec({ effects: [{ id: 'wave', speed: 1 }] })
+    const css = compilePaintCss(spec, '.hsp-w', { hash: 'w' })
+    const spanRules = css.match(/\.hsp-w span\{[^}]*\}/g) || []
+    expect(spanRules.length).toBe(1)
+    expect(spanRules[0]).toMatch(/animation:hsp_w_wave[^;,]*;/)
+  })
+
+  test('non-split paint + whole-name motion (fire + coin) is untouched — separate rules, out of scope here', () => {
+    const spec = baseSpec({
+      base: {
+        type: 'linear',
+        angle: 90,
+        stops: [
+          { color: '#ff8700', pos: 0 },
+          { color: '#d70000', pos: 100 },
+        ],
+      },
+      effects: [
+        { id: 'fire', speed: 1 },
+        { id: 'coin', speed: 1 },
+      ],
+    })
+    const css = compilePaintCss(spec, '.hsp-fc', { hash: 'fc' })
+    expect(css).not.toContain(' span{')
+    expect(css.match(/\.hsp-fc\{[^}]*animation:/g)?.length).toBe(2)
   })
 
   test('conic effect namespaces its @property angle var per-hash (no cross-user collision)', () => {

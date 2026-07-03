@@ -4022,6 +4022,14 @@ function createUserMentionSpan(username, color) {
 // Cache: username (lower) → color hex (or null for "fetched but no color")
 const _hsUserColorCache = new Map()
 const _hsUserColorInflight = new Map()
+// Cache: username (lower) → resolved Twitch userId (string), or null once
+// resolved-but-no-twitch-link. Populated alongside _hsUserColorCache by the
+// same /api/profile/ fetch in hsResolveUserColor — the response already
+// carries twitch_user_id, so this piggybacks the existing lookup instead of
+// firing a second request. Read directly (typeof-guarded, same convention as
+// main.js's existing _hsUserColorCache read) once the color promise settles —
+// see resolveMentionColor in main.js.
+const _hsUserIdCache = new Map()
 
 // Persist cache across page reloads — colors don't change often. Loads at startup.
 try {
@@ -4114,6 +4122,13 @@ function hsResolveUserColor(lower) {
         if (typeof apiFetch !== 'function') return null
         const resp = await apiFetch(`/api/profile/${encodeURIComponent(lower)}`)
         const profile = resp?.data?.profile
+        // Twitch userId, when this name resolves to a linked Twitch identity —
+        // same field profile-card.js/tooltips.js read (twitch_user_id, with a
+        // twitch_id fallback for older payload shapes). Cached even when null
+        // so a name with no Twitch link doesn't get re-derived every render.
+        const uid = profile?.twitch_user_id || profile?.twitch_id || null
+        _hsUserIdCache.set(lower, uid ? String(uid) : null)
+        if (_hsUserIdCache.size > 5000) _hsUserIdCache.delete(_hsUserIdCache.keys().next().value)
         // 1. heatsync custom color (set on heatsync.org)
         let c = profile?.color || profile?.user_color || profile?.userColor || null
         // 2. fallback: fetch Twitch chat color via unauthed GQL (no scope needed)

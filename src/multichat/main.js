@@ -10761,17 +10761,18 @@
     hsResolveUserColor(lower)
       .then((c) => {
         _mentionColorPending.delete(lower)
-        if (!c) return
-        const safe = sanitizeColor(c)
         let esc
         try {
           esc = CSS.escape(lower)
         } catch {
           esc = lower
         }
-        document
-          .querySelectorAll(`a.hs-mc-mention[data-username="${esc}"], a.hs-mc-reply-user[data-username="${esc}"]`)
-          .forEach((a) => {
+        const anchors = document.querySelectorAll(
+          `a.hs-mc-mention[data-username="${esc}"], a.hs-mc-reply-user[data-username="${esc}"]`,
+        )
+        if (c) {
+          const safe = sanitizeColor(c)
+          anchors.forEach((a) => {
             // A HeatSync paint or a 7TV paint cosmetic outranks a flat color —
             // never overwrite either. hasResolvedHsPaint MUST be checked here
             // too (not just getMcPaintStyle/7TV): applyHsPaintToElement clears
@@ -10783,6 +10784,43 @@
             if (uid && (getMcPaintStyle(uid) || hasResolvedHsPaint(uid))) return
             a.style.color = safe
           })
+        }
+        // Twitch uid piggybacked off the same /api/profile/ lookup hsResolveUserColor
+        // just made (hsResolveUserId reads the cache it populated — no extra
+        // request). Render time had no uid for this name; close the loop now:
+        // stamp it on every live anchor, index them so the cosmetics/paint
+        // batches (which only know about indexed elements) can retro-paint,
+        // and remember it in knownUserIds so the NEXT render of this name
+        // hits synchronously instead of taking this async detour again.
+        const resolvedUid = typeof _hsUserIdCache !== 'undefined' ? _hsUserIdCache.get(lower) || null : null
+        if (!resolvedUid) return
+        for (const a of anchors) {
+          if (a.dataset.uid) continue // already stamped/indexed (or render-time known)
+          // Id-space guard: this uid is Twitch-resolved (twitch_user_id from the
+          // profile API), so only stamp anchors that belong to a twitch-platform
+          // message — a same-named Kick/YouTube chatter must never inherit a
+          // Twitch stranger's uid/cosmetics.
+          const row = a.closest('.hs-mc-msg')
+          if ((row?._hsMsg?.platform || 'twitch') !== 'twitch') continue
+          a.dataset.uid = resolvedUid
+          let ms = _mentionIndex.get(resolvedUid)
+          if (!ms) {
+            ms = new Set()
+            _mentionIndex.set(resolvedUid, ms)
+          }
+          ms.add(a)
+          // Keep the row's cached mention list (built once by _indexMessageDiv via
+          // querySelectorAll('[data-uid]')) in sync — it excluded this anchor when
+          // first indexed because data-uid was empty then, so _unindexMessageDiv's
+          // cleanup would otherwise never find it here.
+          if (Array.isArray(row?._hsMentionEls) && !row._hsMentionEls.includes(a)) {
+            row._hsMentionEls.push(a)
+          }
+        }
+        try {
+          setKnownColor(lower, c || knownColors.get(lower) || '#fff', resolvedUid, 'twitch')
+        } catch {}
+        queueMcCosmeticsLookup(resolvedUid)
       })
       .catch(() => {
         _mentionColorPending.delete(lower)

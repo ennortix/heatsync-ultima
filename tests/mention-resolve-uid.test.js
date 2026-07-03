@@ -86,12 +86,12 @@ describe('resolveMentionColor (main.js) — stamp + index + queue on resolve', (
   test('stamps data-uid on the anchor', () => {
     expect(body).toContain('a.dataset.uid = resolvedUid')
   })
-  test('registers the anchor in _mentionIndex, mirroring _indexMessageDiv\'s Map<uid, Set<el>> convention', () => {
+  test("registers the anchor in _mentionIndex, mirroring _indexMessageDiv's Map<uid, Set<el>> convention", () => {
     expect(body).toContain('_mentionIndex.get(resolvedUid)')
     expect(body).toContain('_mentionIndex.set(resolvedUid, ms)')
     expect(body).toContain('ms.add(a)')
   })
-  test('keeps the row\'s cached _hsMentionEls list in sync so _unindexMessageDiv can find it later', () => {
+  test("keeps the row's cached _hsMentionEls list in sync so _unindexMessageDiv can find it later", () => {
     expect(body).toContain('row._hsMentionEls.push(a)')
   })
   test('populates knownUserIds via the existing platform-keyed setKnownColor, not a bespoke write', () => {

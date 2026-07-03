@@ -47,7 +47,7 @@
       width: var(--hs-resize-thickness);
       height: 100%;
       cursor: ew-resize;
-      z-index: 2000;
+      z-index: 999; /* below twitch chrome (toasts/modals), above chat internals */
     }
     /* YouTube resize handle — left edge of #secondary sidebar */
     #hs-yt-resize-handle {
@@ -57,7 +57,7 @@
       width: var(--hs-resize-thickness);
       height: 100%;
       cursor: ew-resize;
-      z-index: 2000;
+      z-index: 999; /* below twitch chrome (toasts/modals), above chat internals */
     }
 
     #hs-mc-messages {

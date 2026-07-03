@@ -55812,8 +55812,18 @@ const STORAGE_KEY = 'heatsync_multichat'
           const safeName = escapeHtml(name)
           const safeLower = escapeHtml(lower)
           // Platform-scoped lookup — a twitch and kick chatter sharing this
-          // lowercase name must never trade 7TV paints/cosmetics.
-          const uid = knownUserIds.get(userKey(lower, platform)) || ''
+          // lowercase name must never trade 7TV paints/cosmetics. Falls back
+          // to the async-resolved uid cache (survives when knownUserIds was
+          // never seeded this session — e.g. page reload restored the color
+          // cache but the user hasn't chatted yet).
+          const uid =
+            knownUserIds.get(userKey(lower, platform)) ||
+            (platform === 'twitch' && typeof _hsUserIdCache !== 'undefined' ? _hsUserIdCache.get(lower) || '' : '')
+          // No uid yet: fire the profile resolve for its uid side-effect even
+          // when the COLOR is already cached — mentionColor short-circuits on
+          // known colors and would otherwise never fetch the uid, leaving
+          // this mention unpaintable forever. Deduped via _mentionColorPending.
+          if (!uid && platform === 'twitch') resolveMentionColor(lower)
           let style = `color:${color}`
           let uidAttr = ''
           let mentionCls = 'hs-mc-user hs-mc-mention'

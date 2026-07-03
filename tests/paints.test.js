@@ -1,6 +1,6 @@
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { readFileSync } from 'fs'
 import { join } from 'path'
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { escapeHtml } from '../src/lib/utils.js'
 import {
   computeHsLetterSpans,
@@ -30,7 +30,11 @@ afterEach(() => {
 
 describe('evictOldestPaintEntry — pure LRU-ish eviction (mirrors monorepo evictOldest)', () => {
   test('evicts the oldest (first-inserted) entry once at capacity', () => {
-    const m = new Map([['a', 1], ['b', 2], ['c', 3]])
+    const m = new Map([
+      ['a', 1],
+      ['b', 2],
+      ['c', 3],
+    ])
     evictOldestPaintEntry(m, 3)
     expect([...m.keys()]).toEqual(['b', 'c'])
   })
@@ -69,7 +73,7 @@ describe('partitionPaintBatch — pure batch/rest split, newest-queued first', (
     expect(s.size).toBe(3)
   })
 
-  test('caps at the server\'s MAX_BATCH_IDS (50)', () => {
+  test("caps at the server's MAX_BATCH_IDS (50)", () => {
     const ids = Array.from({ length: 120 }, (_, i) => String(i))
     const { batch, rest } = partitionPaintBatch(ids, 50)
     expect(batch.length).toBe(50)
@@ -85,7 +89,10 @@ describe('computeHsLetterSpans — pure per-letter split data', () => {
     const { mid, letters } = computeHsLetterSpans('abcd')
     expect(mid).toBe(1.5)
     expect(letters).toEqual([
-      { ch: 'a', i: 0 }, { ch: 'b', i: 1 }, { ch: 'c', i: 2 }, { ch: 'd', i: 3 },
+      { ch: 'a', i: 0 },
+      { ch: 'b', i: 1 },
+      { ch: 'c', i: 2 },
+      { ch: 'd', i: 3 },
     ])
   })
 

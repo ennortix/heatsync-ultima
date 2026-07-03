@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import {
-  EFFECTS,
   compilePaintCss,
+  EFFECTS,
   hashPaintSpec,
   paintNeedsLetterSplit,
   validatePaintSpec,
@@ -47,7 +47,10 @@ describe('validatePaintSpec — schema clamps', () => {
   })
 
   test('clamps base.angle to integer 0-360', () => {
-    const stops = [{ color: '#fff000', pos: 0 }, { color: '#000fff', pos: 100 }]
+    const stops = [
+      { color: '#fff000', pos: 0 },
+      { color: '#000fff', pos: 100 },
+    ]
     expect(validatePaintSpec(baseSpec({ base: { type: 'linear', angle: -1, stops } })).ok).toBe(false)
     expect(validatePaintSpec(baseSpec({ base: { type: 'linear', angle: 361, stops } })).ok).toBe(false)
     expect(validatePaintSpec(baseSpec({ base: { type: 'linear', angle: 45.5, stops } })).ok).toBe(false)
@@ -65,14 +68,25 @@ describe('validatePaintSpec — schema clamps', () => {
 
   test('requires exactly 1 stop for solid type', () => {
     const spec = baseSpec({
-      base: { type: 'solid', angle: 0, stops: [{ color: '#ff0000', pos: 0 }, { color: '#00ff00', pos: 100 }] },
+      base: {
+        type: 'solid',
+        angle: 0,
+        stops: [
+          { color: '#ff0000', pos: 0 },
+          { color: '#00ff00', pos: 100 },
+        ],
+      },
     })
     expect(validatePaintSpec(spec).ok).toBe(false)
   })
 
   test('rejects stop.pos out of 0-100 range', () => {
-    expect(validatePaintSpec(baseSpec({ base: { type: 'solid', angle: 0, stops: [{ color: '#ff0000', pos: -1 }] } })).ok).toBe(false)
-    expect(validatePaintSpec(baseSpec({ base: { type: 'solid', angle: 0, stops: [{ color: '#ff0000', pos: 101 }] } })).ok).toBe(false)
+    expect(
+      validatePaintSpec(baseSpec({ base: { type: 'solid', angle: 0, stops: [{ color: '#ff0000', pos: -1 }] } })).ok,
+    ).toBe(false)
+    expect(
+      validatePaintSpec(baseSpec({ base: { type: 'solid', angle: 0, stops: [{ color: '#ff0000', pos: 101 }] } })).ok,
+    ).toBe(false)
   })
 
   test('strict #rrggbb hex only — rejects shorthand, names, and non-hex', () => {
@@ -85,7 +99,12 @@ describe('validatePaintSpec — schema clamps', () => {
 
   test('rejects effects array over 3 entries', () => {
     const spec = baseSpec({
-      effects: [{ id: 'heli', speed: 1 }, { id: 'float', speed: 1 }, { id: 'heart', speed: 1 }, { id: 'wobble', speed: 1 }],
+      effects: [
+        { id: 'heli', speed: 1 },
+        { id: 'float', speed: 1 },
+        { id: 'heart', speed: 1 },
+        { id: 'wobble', speed: 1 },
+      ],
     })
     expect(validatePaintSpec(spec).ok).toBe(false)
   })
@@ -95,7 +114,12 @@ describe('validatePaintSpec — schema clamps', () => {
   })
 
   test('rejects duplicate effect ids', () => {
-    const spec = baseSpec({ effects: [{ id: 'wave', speed: 1 }, { id: 'wave', speed: 2 }] })
+    const spec = baseSpec({
+      effects: [
+        { id: 'wave', speed: 1 },
+        { id: 'wave', speed: 2 },
+      ],
+    })
     expect(validatePaintSpec(spec).ok).toBe(false)
   })
 
@@ -121,7 +145,12 @@ describe('validatePaintSpec — schema clamps', () => {
 
 describe('validatePaintSpec — layer/slot compatibility rules', () => {
   test('rejects two paint-slot effects together', () => {
-    const spec = baseSpec({ effects: [{ id: 'pan', speed: 1 }, { id: 'gold', speed: 1 }] })
+    const spec = baseSpec({
+      effects: [
+        { id: 'pan', speed: 1 },
+        { id: 'gold', speed: 1 },
+      ],
+    })
     const result = validatePaintSpec(spec)
     expect(result.ok).toBe(false)
     expect(result.errors.some((e) => /at most 1 paint-slot/.test(e))).toBe(true)
@@ -134,19 +163,35 @@ describe('validatePaintSpec — layer/slot compatibility rules', () => {
   })
 
   test('rejects 2 motion effects that animate the same property on the same target', () => {
-    const spec = baseSpec({ effects: [{ id: 'coin', speed: 1 }, { id: 'heli', speed: 1 }] })
+    const spec = baseSpec({
+      effects: [
+        { id: 'coin', speed: 1 },
+        { id: 'heli', speed: 1 },
+      ],
+    })
     const result = validatePaintSpec(spec)
     expect(result.ok).toBe(false)
     expect(result.errors.some((e) => /conflicts/.test(e))).toBe(true)
   })
 
   test('accepts 2 motion effects with distinct signatures', () => {
-    const spec = baseSpec({ effects: [{ id: 'wave', speed: 1 }, { id: 'ripple', speed: 1 }] })
+    const spec = baseSpec({
+      effects: [
+        { id: 'wave', speed: 1 },
+        { id: 'ripple', speed: 1 },
+      ],
+    })
     expect(validatePaintSpec(spec).ok).toBe(true)
   })
 
   test('accepts a paint effect + 2 compatible motion effects (max 3 total)', () => {
-    const spec = baseSpec({ effects: [{ id: 'pan', speed: 1 }, { id: 'heli', speed: 1 }, { id: 'neon', speed: 1 }] })
+    const spec = baseSpec({
+      effects: [
+        { id: 'pan', speed: 1 },
+        { id: 'heli', speed: 1 },
+        { id: 'neon', speed: 1 },
+      ],
+    })
     expect(validatePaintSpec(spec).ok).toBe(true)
   })
 })
@@ -195,8 +240,18 @@ describe('hashPaintSpec — stability', () => {
   })
 
   test('is insensitive to key insertion order in stop objects', () => {
-    const a = { v: 1, base: { type: 'solid', angle: 0, stops: [{ color: '#ff8700', pos: 0 }] }, effects: [], glow: null }
-    const b = { v: 1, base: { type: 'solid', stops: [{ pos: 0, color: '#ff8700' }], angle: 0 }, effects: [], glow: null }
+    const a = {
+      v: 1,
+      base: { type: 'solid', angle: 0, stops: [{ color: '#ff8700', pos: 0 }] },
+      effects: [],
+      glow: null,
+    }
+    const b = {
+      v: 1,
+      base: { type: 'solid', stops: [{ pos: 0, color: '#ff8700' }], angle: 0 },
+      effects: [],
+      glow: null,
+    }
     expect(hashPaintSpec(a)).toBe(hashPaintSpec(b))
   })
 
@@ -220,7 +275,14 @@ describe('compilePaintCss — structural checks', () => {
 
   test('linear base + pan effect compiles a background-clip gradient with animation + keyframes', () => {
     const spec = baseSpec({
-      base: { type: 'linear', angle: 90, stops: [{ color: '#ff0000', pos: 0 }, { color: '#0000ff', pos: 100 }] },
+      base: {
+        type: 'linear',
+        angle: 90,
+        stops: [
+          { color: '#ff0000', pos: 0 },
+          { color: '#0000ff', pos: 100 },
+        ],
+      },
       effects: [{ id: 'pan', speed: 1 }],
     })
     const css = compilePaintCss(spec, '.hsp-xyz789', { hash: 'xyz789' })
@@ -233,7 +295,14 @@ describe('compilePaintCss — structural checks', () => {
 
   test('themed preset (gold) ignores base stops entirely — fixed palette', () => {
     const spec = baseSpec({
-      base: { type: 'linear', angle: 0, stops: [{ color: '#00ff00', pos: 0 }, { color: '#0000ff', pos: 100 }] },
+      base: {
+        type: 'linear',
+        angle: 0,
+        stops: [
+          { color: '#00ff00', pos: 0 },
+          { color: '#0000ff', pos: 100 },
+        ],
+      },
       effects: [{ id: 'gold', speed: 1 }],
     })
     const css = compilePaintCss(spec, '.hsp-gold1', { hash: 'gold1' })
@@ -316,9 +385,26 @@ describe('compilePaintCss — adversarial injection resistance', () => {
 
 describe('EFFECTS enum — exactly the 20 phase-1 effects, correctly classified', () => {
   const EXPECTED_IDS = [
-    'pan', 'conic', 'hue', 'wave', 'ripple', 'coin', 'heli', 'glint', 'neon',
-    'chrome', 'gold', 'fire', 'matrix', 'holo', 'float', 'heart', 'reveal',
-    'wobble', 'swing', 'tumble',
+    'pan',
+    'conic',
+    'hue',
+    'wave',
+    'ripple',
+    'coin',
+    'heli',
+    'glint',
+    'neon',
+    'chrome',
+    'gold',
+    'fire',
+    'matrix',
+    'holo',
+    'float',
+    'heart',
+    'reveal',
+    'wobble',
+    'swing',
+    'tumble',
   ]
 
   test('has exactly the 20 required ids, no more, no less', () => {
@@ -326,12 +412,18 @@ describe('EFFECTS enum — exactly the 20 phase-1 effects, correctly classified'
   })
 
   test('paint-slot ids are exactly pan/conic/hue/glint/chrome/gold/fire/matrix/holo/reveal', () => {
-    const paintIds = Object.entries(EFFECTS).filter(([, m]) => m.slot === 'paint').map(([id]) => id).sort()
+    const paintIds = Object.entries(EFFECTS)
+      .filter(([, m]) => m.slot === 'paint')
+      .map(([id]) => id)
+      .sort()
     expect(paintIds).toEqual(['chrome', 'conic', 'fire', 'glint', 'gold', 'holo', 'hue', 'matrix', 'pan', 'reveal'])
   })
 
   test('only hue/ripple/neon are classified as luminance-changing', () => {
-    const lumIds = Object.entries(EFFECTS).filter(([, m]) => m.luminance).map(([id]) => id).sort()
+    const lumIds = Object.entries(EFFECTS)
+      .filter(([, m]) => m.luminance)
+      .map(([id]) => id)
+      .sort()
     expect(lumIds).toEqual(['hue', 'neon', 'ripple'])
   })
 })

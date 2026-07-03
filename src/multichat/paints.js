@@ -112,7 +112,8 @@ function ensureHsPaintSheet() {
     // regardless of how many per-hash rules get appended after this.
     hsPaintSheetEl.textContent =
       '@media (prefers-reduced-motion: reduce){[class*="hsp-"],[class*="hsp-"] *{animation-play-state:paused !important;}}'
-    const tracked = typeof cleanup !== 'undefined' && cleanup.trackNode ? cleanup.trackNode(hsPaintSheetEl) : hsPaintSheetEl
+    const tracked =
+      typeof cleanup !== 'undefined' && cleanup.trackNode ? cleanup.trackNode(hsPaintSheetEl) : hsPaintSheetEl
     document.head.appendChild(tracked)
   }
   return hsPaintSheetEl
@@ -209,7 +210,7 @@ async function flushHsPaintBatch() {
     // caching a false negative that would mask a real paint until reload.
     const changed = []
     for (const id of batch) {
-      if (Object.prototype.hasOwnProperty.call(paints, id)) {
+      if (Object.hasOwn(paints, id)) {
         setHsPaintEntry(id, paints[id])
         if (paints[id]) changed.push(id)
       } else {
@@ -277,15 +278,15 @@ function applyHsPaintToElement(el, userId) {
 }
 
 export {
-  evictOldestPaintEntry,
-  partitionPaintBatch,
+  applyHsPaintToElement,
+  clearHsPaintSheet,
   computeHsLetterSpans,
-  splitHsLettersHtml,
+  evictOldestPaintEntry,
   getHsPaintClass,
   getHsPaintSpec,
   hasResolvedHsPaint,
-  queuePaintLookup,
   hsPaintRender,
-  applyHsPaintToElement,
-  clearHsPaintSheet,
+  partitionPaintBatch,
+  queuePaintLookup,
+  splitHsLettersHtml,
 }

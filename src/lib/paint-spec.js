@@ -86,32 +86,106 @@ const MIN_LUMINANCE_PERIOD_S = 1
  */
 const EFFECTS = {
   // ── paint slot — mutually exclusive, at most 1 ──────────────────────────
-  pan:    { slot: 'paint', luminance: false, basePeriod: 5,   letterSplit: false, label: 'gradient pan' },
-  conic:  { slot: 'paint', luminance: false, basePeriod: 6,   letterSplit: false, label: 'conic sweep' },
-  hue:    { slot: 'paint', luminance: true,  basePeriod: 8,   letterSplit: false, label: 'hue cycle' },
-  glint:  { slot: 'paint', luminance: false, basePeriod: 3.4, letterSplit: false, label: 'shimmer glint' },
+  pan: { slot: 'paint', luminance: false, basePeriod: 5, letterSplit: false, label: 'gradient pan' },
+  conic: { slot: 'paint', luminance: false, basePeriod: 6, letterSplit: false, label: 'conic sweep' },
+  hue: { slot: 'paint', luminance: true, basePeriod: 8, letterSplit: false, label: 'hue cycle' },
+  glint: { slot: 'paint', luminance: false, basePeriod: 3.4, letterSplit: false, label: 'shimmer glint' },
   chrome: { slot: 'paint', luminance: false, basePeriod: 4.5, letterSplit: false, label: 'liquid chrome' },
-  gold:   { slot: 'paint', luminance: false, basePeriod: 5,   letterSplit: false, label: 'gold foil' },
-  fire:   { slot: 'paint', luminance: false, basePeriod: 1.8, letterSplit: false, label: 'fire' },
+  gold: { slot: 'paint', luminance: false, basePeriod: 5, letterSplit: false, label: 'gold foil' },
+  fire: { slot: 'paint', luminance: false, basePeriod: 1.8, letterSplit: false, label: 'fire' },
   matrix: { slot: 'paint', luminance: false, basePeriod: 3.2, letterSplit: false, label: 'matrix rain' },
-  holo:   { slot: 'paint', luminance: false, basePeriod: 2.8, letterSplit: false, label: 'hologram' },
-  reveal: { slot: 'paint', luminance: false, basePeriod: 3,   letterSplit: false, label: 'mask reveal' },
+  holo: { slot: 'paint', luminance: false, basePeriod: 2.8, letterSplit: false, label: 'hologram' },
+  reveal: { slot: 'paint', luminance: false, basePeriod: 3, letterSplit: false, label: 'mask reveal' },
 
   // ── motion/glow slot — up to 2, distinct sig required ───────────────────
-  wave:   { slot: 'motion', luminance: false, basePeriod: 1.6, letterSplit: true,  label: 'letter wave',   sig: 'letter:transform' },
-  ripple: { slot: 'motion', luminance: true,  basePeriod: 2.4, letterSplit: true,  label: 'rainbow ripple', sig: 'letter:filter' },
-  coin:   { slot: 'motion', luminance: false, basePeriod: 5,   letterSplit: false, label: 'coin spin',     sig: 'self:transform' },
-  heli:   { slot: 'motion', luminance: false, basePeriod: 2.2, letterSplit: false, label: 'helicopter',    sig: 'self:transform' },
-  float:  { slot: 'motion', luminance: false, basePeriod: 5.5, letterSplit: false, label: 'zero-g float',  sig: 'self:transform' },
-  heart:  { slot: 'motion', luminance: false, basePeriod: 1.3, letterSplit: false, label: 'heartbeat',     sig: 'self:transform' },
-  wobble: { slot: 'motion', luminance: false, basePeriod: 2.8, letterSplit: false, label: 'wobble stretch', sig: 'self:transform' },
-  swing:  { slot: 'motion', luminance: false, basePeriod: 2.6, letterSplit: false, label: 'pendulum',      sig: 'self:transform' },
-  tumble: { slot: 'motion', luminance: false, basePeriod: 3.4, letterSplit: true,  label: 'letter tumble', sig: 'letter:transform' },
-  neon:   { slot: 'motion', luminance: true,  basePeriod: 2.6, letterSplit: false, label: 'neon breathe',  sig: 'self:shadow' },
+  wave: {
+    slot: 'motion',
+    luminance: false,
+    basePeriod: 1.6,
+    letterSplit: true,
+    label: 'letter wave',
+    sig: 'letter:transform',
+  },
+  ripple: {
+    slot: 'motion',
+    luminance: true,
+    basePeriod: 2.4,
+    letterSplit: true,
+    label: 'rainbow ripple',
+    sig: 'letter:filter',
+  },
+  coin: {
+    slot: 'motion',
+    luminance: false,
+    basePeriod: 5,
+    letterSplit: false,
+    label: 'coin spin',
+    sig: 'self:transform',
+  },
+  heli: {
+    slot: 'motion',
+    luminance: false,
+    basePeriod: 2.2,
+    letterSplit: false,
+    label: 'helicopter',
+    sig: 'self:transform',
+  },
+  float: {
+    slot: 'motion',
+    luminance: false,
+    basePeriod: 5.5,
+    letterSplit: false,
+    label: 'zero-g float',
+    sig: 'self:transform',
+  },
+  heart: {
+    slot: 'motion',
+    luminance: false,
+    basePeriod: 1.3,
+    letterSplit: false,
+    label: 'heartbeat',
+    sig: 'self:transform',
+  },
+  wobble: {
+    slot: 'motion',
+    luminance: false,
+    basePeriod: 2.8,
+    letterSplit: false,
+    label: 'wobble stretch',
+    sig: 'self:transform',
+  },
+  swing: {
+    slot: 'motion',
+    luminance: false,
+    basePeriod: 2.6,
+    letterSplit: false,
+    label: 'pendulum',
+    sig: 'self:transform',
+  },
+  tumble: {
+    slot: 'motion',
+    luminance: false,
+    basePeriod: 3.4,
+    letterSplit: true,
+    label: 'letter tumble',
+    sig: 'letter:transform',
+  },
+  neon: {
+    slot: 'motion',
+    luminance: true,
+    basePeriod: 2.6,
+    letterSplit: false,
+    label: 'neon breathe',
+    sig: 'self:shadow',
+  },
 }
 
 const EFFECT_IDS = new Set(Object.keys(EFFECTS))
-const LETTER_SPLIT_IDS = new Set(Object.entries(EFFECTS).filter(([, m]) => m.letterSplit).map(([id]) => id))
+const LETTER_SPLIT_IDS = new Set(
+  Object.entries(EFFECTS)
+    .filter(([, m]) => m.letterSplit)
+    .map(([id]) => id),
+)
 
 // ── small pure helpers ───────────────────────────────────────────────────
 
@@ -152,9 +226,9 @@ function normalizeForHash(spec) {
     base: spec?.base && {
       type: spec.base.type,
       angle: spec.base.angle,
-      stops: Array.isArray(spec.base.stops) ? spec.base.stops.map(s => ({ color: s?.color, pos: s?.pos })) : [],
+      stops: Array.isArray(spec.base.stops) ? spec.base.stops.map((s) => ({ color: s?.color, pos: s?.pos })) : [],
     },
-    effects: Array.isArray(spec?.effects) ? spec.effects.map(e => ({ id: e?.id, speed: e?.speed })) : [],
+    effects: Array.isArray(spec?.effects) ? spec.effects.map((e) => ({ id: e?.id, speed: e?.speed })) : [],
     glow: spec?.glow ? { color: spec.glow.color, strength: spec.glow.strength } : null,
   }
 }
@@ -242,14 +316,19 @@ export function validatePaintSpec(spec) {
       } else {
         motionCount++
         if (motionSigs.has(meta.sig)) {
-          errors.push(`effects: "${e.id}" conflicts with another selected effect animating the same property (${meta.sig}) — pick effects with different motion targets`)
+          errors.push(
+            `effects: "${e.id}" conflicts with another selected effect animating the same property (${meta.sig}) — pick effects with different motion targets`,
+          )
         }
         motionSigs.add(meta.sig)
       }
     })
 
     if (structurallyValid) {
-      if (paintCount > 1) errors.push('at most 1 paint-slot effect allowed (pan/conic/hue/glint/chrome/gold/fire/matrix/holo/reveal are mutually exclusive)')
+      if (paintCount > 1)
+        errors.push(
+          'at most 1 paint-slot effect allowed (pan/conic/hue/glint/chrome/gold/fire/matrix/holo/reveal are mutually exclusive)',
+        )
       if (motionCount > 2) errors.push('at most 2 motion-slot effects allowed')
     }
   }
@@ -274,7 +353,7 @@ export function validatePaintSpec(spec) {
 /** True if the spec's effects include any per-letter effect (wave/ripple/tumble). */
 export function paintNeedsLetterSplit(spec) {
   if (!spec || !Array.isArray(spec.effects)) return false
-  return spec.effects.some(e => LETTER_SPLIT_IDS.has(e?.id))
+  return spec.effects.some((e) => LETTER_SPLIT_IDS.has(e?.id))
 }
 
 // ── compiler ─────────────────────────────────────────────────────────────
@@ -301,8 +380,8 @@ function safeSpeed(speed) {
 function sortedStops(base) {
   const stops = Array.isArray(base?.stops) ? base.stops : []
   return stops
-    .filter(s => isPlainObject(s) && HEX_RE.test(s?.color) && isIntInRange(s.pos, 0, 100))
-    .map(s => ({ color: safeHex(s.color), pos: safePos(s.pos) }))
+    .filter((s) => isPlainObject(s) && HEX_RE.test(s?.color) && isIntInRange(s.pos, 0, 100))
+    .map((s) => ({ color: safeHex(s.color), pos: safePos(s.pos) }))
     .sort((a, b) => a.pos - b.pos)
 }
 
@@ -317,7 +396,7 @@ function effectDuration(effectId, speed) {
 }
 
 function gradientStopsCss(stops) {
-  return stops.map(s => `${s.color} ${s.pos}%`).join(', ')
+  return stops.map((s) => `${s.color} ${s.pos}%`).join(', ')
 }
 
 /** Build the CSS for the resting `base` paint. Returns { decl, isClipText }. */
@@ -327,9 +406,10 @@ function buildBaseCss(base, stops) {
     return { decl: `color:${color};`, isClipText: false, cssImage: `linear-gradient(${color}, ${color})` }
   }
   const angle = safeAngle(base.angle)
-  const image = base.type === 'linear'
-    ? `linear-gradient(${angle}deg, ${gradientStopsCss(stops)})`
-    : `conic-gradient(from ${angle}deg, ${gradientStopsCss(stops)})`
+  const image =
+    base.type === 'linear'
+      ? `linear-gradient(${angle}deg, ${gradientStopsCss(stops)})`
+      : `conic-gradient(from ${angle}deg, ${gradientStopsCss(stops)})`
   return {
     decl: `background:${image};-webkit-background-clip:text;background-clip:text;color:transparent;`,
     isClipText: true,
@@ -341,7 +421,8 @@ function buildBaseCss(base, stops) {
 
 const THEMED_PAINT = {
   chrome: {
-    gradient: 'linear-gradient(100deg, #6b7280, #e5e7eb 20%, #4b5563 38%, #f3f4f6 52%, #374151 70%, #d1d5db 88%, #6b7280)',
+    gradient:
+      'linear-gradient(100deg, #6b7280, #e5e7eb 20%, #4b5563 38%, #f3f4f6 52%, #374151 70%, #d1d5db 88%, #6b7280)',
     size: '220% 100%',
     timing: 'ease-in-out',
     direction: 'alternate',
@@ -361,7 +442,8 @@ const THEMED_PAINT = {
     size: '100% 300%',
     timing: 'ease-in-out',
     direction: 'alternate',
-    keyframes: (name) => `@keyframes ${name}{from{background-position:0 100%;transform:skewX(0);}to{background-position:0 40%;transform:skewX(-1.5deg);}}`,
+    keyframes: (name) =>
+      `@keyframes ${name}{from{background-position:0 100%;transform:skewX(0);}to{background-position:0 40%;transform:skewX(-1.5deg);}}`,
   },
   matrix: {
     gradient: 'repeating-linear-gradient(0deg, #003300 0 6px, #00d700 6px 9px, #00ff87 9px 10px)',
@@ -410,7 +492,8 @@ function buildPaintEffectCss(effectId, speed, base, stops, selector, hash) {
     const wrapStops = stops.length ? [...stops, { color: stops[0].color, pos: 100 }] : stops
     const image = `conic-gradient(from calc(${angle}deg + var(${angleVar})), ${gradientStopsCss(wrapStops)})`
     const rule = `${selector}{background:${image};-webkit-background-clip:text;background-clip:text;color:transparent;animation:${animName} ${duration}s linear infinite;}`
-    const kf = `@property ${angleVar}{syntax:"<angle>";initial-value:0deg;inherits:false;}` +
+    const kf =
+      `@property ${angleVar}{syntax:"<angle>";initial-value:0deg;inherits:false;}` +
       `@keyframes ${animName}{to{${angleVar}:360deg;}}`
     return rule + kf
   }
@@ -498,8 +581,11 @@ function buildMotionEffectCss(effectId, speed, selector, hash, glow) {
     case 'neon': {
       const color = glow && HEX_RE.test(glow.color) ? safeHex(glow.color) : '#ff40af'
       const scale = glow && glow.strength === 2 ? 1.6 : 1
-      const r1 = Math.round(4 * scale), r2 = Math.round(11 * scale)
-      const r1b = Math.round(6 * scale), r2b = Math.round(22 * scale), r3b = Math.round(40 * scale)
+      const r1 = Math.round(4 * scale),
+        r2 = Math.round(11 * scale)
+      const r1b = Math.round(6 * scale),
+        r2b = Math.round(22 * scale),
+        r3b = Math.round(40 * scale)
       const rule = `${selector}{animation:${animName} ${duration}s ease-in-out infinite;}`
       const kf = `@keyframes ${animName}{0%,100%{text-shadow:0 0 ${r1}px ${color}80, 0 0 ${r2}px ${color}40;}50%{text-shadow:0 0 ${r1b}px ${color}cc, 0 0 ${r2b}px ${color}88, 0 0 ${r3b}px ${color}44;}}`
       return rule + kf
@@ -533,9 +619,11 @@ export function compilePaintCss(spec, selector, opts = {}) {
   const hash = opts.hash || hashPaintSpec(spec)
   const base = isPlainObject(spec.base) ? spec.base : { type: 'solid', angle: 0, stops: [{ color: '#e4e4e4', pos: 0 }] }
   const stops = sortedStops(base)
-  const effects = Array.isArray(spec.effects) ? spec.effects.filter(e => isPlainObject(e) && EFFECT_IDS.has(e.id)) : []
-  const paintEffect = effects.find(e => EFFECTS[e.id].slot === 'paint')
-  const motionEffects = effects.filter(e => EFFECTS[e.id].slot === 'motion')
+  const effects = Array.isArray(spec.effects)
+    ? spec.effects.filter((e) => isPlainObject(e) && EFFECT_IDS.has(e.id))
+    : []
+  const paintEffect = effects.find((e) => EFFECTS[e.id].slot === 'paint')
+  const motionEffects = effects.filter((e) => EFFECTS[e.id].slot === 'motion')
   const needsLetterSplit = paintNeedsLetterSplit(spec)
 
   let css = `${selector}{display:inline-block;`
@@ -557,7 +645,7 @@ export function compilePaintCss(spec, selector, opts = {}) {
   // Static glow — skip if neon is active and sourced the same color (neon's
   // own keyframes already carry a shadow on every frame); otherwise layer
   // the constant shadow on so it doesn't require an active effect to show.
-  const hasNeon = motionEffects.some(e => e.id === 'neon')
+  const hasNeon = motionEffects.some((e) => e.id === 'neon')
   if (spec.glow && !hasNeon) {
     css += buildGlowCss(spec.glow, selector)
   }
@@ -565,4 +653,4 @@ export function compilePaintCss(spec, selector, opts = {}) {
   return css
 }
 
-export { EFFECTS, EFFECT_IDS }
+export { EFFECT_IDS, EFFECTS }

@@ -2756,7 +2756,26 @@ function hsSnapEmoteBox(img) {
   })
 }
 
-function processEmotes(text, channel, extraCache, senderEmotes, msgTime) {
+// @param {boolean} skipMentions  Skip this function's own plain @mention→<a>
+//   wrap (still emits the word as plain escaped text). Pass true when the
+//   caller runs highlightMentionsInHtml (main.js) on the result afterward —
+//   that is the single source of truth for mention anchors (uid resolution,
+//   HeatSync-paint/7TV precedence, letter-split). Without this flag, a chat
+//   message containing "@name" gets wrapped HERE first (plain <a>, no uid)
+//   and then AGAIN by highlightMentionsInHtml around the same text, producing
+//   a nested <a>…<a>…</a></a>. Nested anchors are invalid HTML5 — browsers
+//   auto-close the outer one the instant the inner <a> opens, leaving a
+//   permanently EMPTY sibling anchor (no uid, no paint class, no text) right
+//   next to the real one — verified live via Chrome DOM inspection. That
+//   empty husk is exactly the "painted username renders blank" bug: it
+//   carries a normal-looking inline color style (set by this function) but
+//   zero content, because the real text/uid/paint ended up on its orphaned
+//   sibling instead. Callers
+//   that do NOT run highlightMentionsInHtml afterward (whispers.js,
+//   twitch-api.js prediction/outcome titles, main.js's compact/system-line
+//   render) must keep skipMentions=false — this function's own wrap is the
+//   only mention coloring those surfaces get.
+function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMentions = false) {
   if (emoteCache.size === 0 && !channelEmoteCaches[channel] && !extraCache?.size && !senderEmotes?.size) return text
   // Removed-emote render fallback applies ONLY to the viewer's own messages
   // (main.js passes viewerPersonalEmotes by reference for isOwn). Keeps removed
@@ -3174,7 +3193,11 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime) {
       }
       // Color @mentions — always hoverable for profile cards. Unknown users
       // resolve a color asynchronously (mentionColor) instead of flat white.
-      if (word.startsWith('@') && word.length > 1) {
+      // Skipped when the caller (computeMessageText) is about to run
+      // highlightMentionsInHtml over this output anyway — see skipMentions
+      // doc comment on this function's signature for why a double-wrap here
+      // is a real (not theoretical) blank-username bug.
+      if (!skipMentions && word.startsWith('@') && word.length > 1) {
         const name = word
           .slice(1)
           .replace(/[,.:!?]+$/, '')
@@ -3243,6 +3266,7 @@ export {
   lookupEmoteRenderOrder,
   lookupEmoteWithOverlay,
   lookupOwnedEmote,
+  processEmotes,
   removedEmoteFallback,
   viewerPersonalEmotes,
   zeroWidthFromAnyCache,

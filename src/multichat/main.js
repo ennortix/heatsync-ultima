@@ -9902,7 +9902,14 @@
       senderEmotes = getSenderEmotes(senderKey)
       queueSenderEmoteFetch(senderKey, m)
     }
-    let processedText = processEmotes(escapeHtml(m.text), m.channel, twitchExtra, senderEmotes, m.time)
+    // skipMentions=true: highlightMentionsInHtml (below) is the single source
+    // of truth for mention anchors on this surface (uid resolution, HeatSync
+    // paint/7TV precedence, letter-split). Letting processEmotes ALSO wrap
+    // "@name" in its own plain <a> here would produce a nested <a>…<a>…</a></a>
+    // — invalid HTML5 that browsers "fix" by auto-closing the outer anchor
+    // empty, leaving a permanently blank username node next to its painted
+    // sibling. See processEmotes' skipMentions doc comment (emotes.js).
+    let processedText = processEmotes(escapeHtml(m.text), m.channel, twitchExtra, senderEmotes, m.time, true)
     if (m.emotes && m.emotes.length > 0) {
       processedText = processYtEmotes(processedText, m.emotes, true)
     }
@@ -10724,9 +10731,15 @@
         document
           .querySelectorAll(`a.hs-mc-mention[data-username="${esc}"], a.hs-mc-reply-user[data-username="${esc}"]`)
           .forEach((a) => {
-            // a 7TV paint cosmetic outranks a flat color — never overwrite it
+            // A HeatSync paint or a 7TV paint cosmetic outranks a flat color —
+            // never overwrite either. hasResolvedHsPaint MUST be checked here
+            // too (not just getMcPaintStyle/7TV): applyHsPaintToElement clears
+            // this exact element's style attribute when it paints it, and if
+            // this async color resolve lands afterward it would silently
+            // re-add an inline style that outranks the class-based paint by
+            // specificity — stomping the paint precedence the class relies on.
             const uid = a.dataset.uid
-            if (uid && getMcPaintStyle(uid)) return
+            if (uid && (getMcPaintStyle(uid) || hasResolvedHsPaint(uid))) return
             a.style.color = safe
           })
       })
@@ -11842,13 +11855,23 @@
       // (cached HTML is paint-less). Re-apply for already-resolved users and
       // queue lookups for the rest; updateCosmeticsInPlace repaints via the
       // restored _uidIndex once each resolves.
+      // HeatSync paints are a SEPARATE cache from 7TV cosmetics (hsPaintCache
+      // in paints.js vs mcUserCosmetics here) — a paint can already be
+      // resolved even when mcUserCosmetics has nothing for this uid, so it
+      // needs its own re-apply pass here too. Without this, a painted user's
+      // restored rows (reload, tab-switch-back) stay unpainted forever: the
+      // cache-restored fast path returns below and never calls
+      // buildMessageDiv, which is the only other place that applies a paint.
       const _restoredCosUids = []
+      const _restoredPaintUids = []
       for (const m of toRender) {
         if (!m.userId) continue
         if (mcUserCosmetics.has(m.userId)) _restoredCosUids.push(m.userId)
         else queueMcCosmeticsLookup(m.userId)
+        if (hasResolvedHsPaint(m.userId)) _restoredPaintUids.push(m.userId)
       }
       if (_restoredCosUids.length) updateCosmeticsInPlace([...new Set(_restoredCosUids)])
+      if (_restoredPaintUids.length) updateHsPaintsInPlace([...new Set(_restoredPaintUids)])
       cleanup.raf(() => {
         isProgrammaticScroll = false
       })

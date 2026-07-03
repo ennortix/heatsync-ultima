@@ -271,7 +271,12 @@ function applyHsPaintToElement(el, userId) {
     el.classList.add(cls)
   }
   if (el.hasAttribute('style')) el.removeAttribute('style')
-  if (paintNeedsLetterSplit(spec) && !el.dataset.hsPaintSplit) {
+  // Belt-and-suspenders against any future race that hands us an element
+  // whose text was already cleared/moved by something else (e.g. a nested-
+  // anchor DOM-correction, a mid-flight rebuild): splitting '' is a silent
+  // no-op that would still mark the node as "split" and leave it permanently
+  // blank. Never touch innerHTML when there's no text to split.
+  if (paintNeedsLetterSplit(spec) && !el.dataset.hsPaintSplit && el.textContent) {
     el.innerHTML = splitHsLettersHtml(el.textContent)
     el.dataset.hsPaintSplit = '1'
   }
@@ -288,5 +293,6 @@ export {
   hsPaintRender,
   partitionPaintBatch,
   queuePaintLookup,
+  setHsPaintEntry,
   splitHsLettersHtml,
 }

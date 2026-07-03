@@ -1773,14 +1773,12 @@
   }
 
   // Patch native Twitch/Kick badge imgs into already-rendered rows when
-  // fetchGlobalBadges or fetchChannelBadges resolve late (cold-load race).
-  // Mirrors updateThirdPartyBadgesInPlace: no _renderEpoch bump, no full
-  // rebuild, no image-reload flash. renderBadges now stamps data-badge="name/version"
-  // on every badge element (both imgs and text-fallback spans) so we can
-  // find each slot precisely via querySelector.
-  //
-  // channelLogin: null  = global badges just loaded (update all rows)
-  //               string = channel badges for that specific channel only
+  // fetchGlobalBadges, fetchChannelBadges, or fetchKickChannelBadges resolve
+  // late (cold-load race). Mirrors updateThirdPartyBadgesInPlace: no
+  // _renderEpoch bump, no full rebuild, no image-reload flash. renderBadges
+  // now stamps data-badge="name/version" on every badge element (both imgs
+  // and text-fallback spans) so we can find each slot precisely via
+  // querySelector.
   //
   // Dedup: if an img with the correct data-badge already exists (row built
   // after badges loaded), we update its src in case a better URL is now
@@ -1788,12 +1786,22 @@
   // If only a text-fallback span exists, we replace it with the img.
   // If neither exists (badge had no URL + no BADGE_STYLES at render time),
   // we insert a new img before the avatar/username anchor — same position
-  // as build-time. _dropAllTabCaches() invalidates other tabs so they
-  // rebuild fresh on next switch (no epoch bump needed).
-  function updateNativeBadgesInPlace(channelLogin) {
-    const msgsEl = document.getElementById('hs-mc-messages')
-    if (!msgsEl) return
-    for (const div of msgsEl.querySelectorAll('.hs-mc-msg')) {
+  // as build-time.
+  //
+  // Per-row patch body — factored out so it can run against BOTH the live
+  // #hs-mc-messages DOM and every snapshotted (inactive-tab) DocumentFragment
+  // sitting in _tabCache. Backfill/history rows for a channel that finished
+  // rendering (join()'s history hydration, which resolves fast off BG's
+  // in-memory cache) BEFORE fetchGlobalBadges/fetchChannelBadges/
+  // fetchKickChannelBadges resolve (real network round-trips, reliably
+  // slower) always lose that race — this in-place patch is what upgrades
+  // them afterward. Without also covering _tabCache, only whichever tab
+  // happened to be the live/active one at resolve-time got fixed; any other
+  // tab the user had already switched away from (snapshotted, detached from
+  // the document — querySelectorAll on #hs-mc-messages can't see it) stayed
+  // on stale text-fallback badges until something forced a full rebuild.
+  function _patchBadgesInRoot(root, channelLogin) {
+    for (const div of root.querySelectorAll('.hs-mc-msg')) {
       const m = div._hsMsg
       if (!m?.badges || typeof m.badges !== 'string') continue
       // YouTube badge arrays are not in twitchBadgeUrls — skip
@@ -1809,22 +1817,9 @@
         if (sep < 1) continue
         const name = badge.slice(0, sep)
         const version = badge.slice(sep + 1)
-        // Replicate renderBadges URL lookup exactly (same priority chain)
-        let url = null
-        if (isKick && ch) {
-          url = kickBadgeUrls.get(`${ch}:${name}/${version}`)
-          if (!url) {
-            const nearest = findNearestKickBadgeVersion(ch, name, version)
-            if (nearest != null) url = kickBadgeUrls.get(`${ch}:${name}/${nearest}`)
-          }
-        } else {
-          url = ch && twitchBadgeUrls.get(`${ch}:${name}/${version}`)
-          if (!url && ch) {
-            const nearest = findNearestChannelBadgeVersion(ch, name, version)
-            if (nearest != null) url = twitchBadgeUrls.get(`${ch}:${name}/${nearest}`)
-          }
-          url = url || twitchBadgeUrls.get(`${name}/${version}`) || twitchBadgeUrls.get(`${name}/1`)
-        }
+        // Same priority chain renderBadges uses at initial render — shared via
+        // resolveBadgeImageUrl (twitch-api.js) so the two can never drift apart.
+        const url = resolveBadgeImageUrl(isKick, ch, name, version)
         if (!url) continue
         const safeU = safeUrl(url)
         if (!safeU) continue
@@ -1865,8 +1860,21 @@
         img.src = safeU
       }
     }
-    // Invalidate other tabs' cached fragments so they rebuild fresh on switch
-    _dropAllTabCaches()
+  }
+
+  // channelLogin: null  = global badges just loaded (update all rows)
+  //               string = channel badges for that specific channel only
+  function updateNativeBadgesInPlace(channelLogin) {
+    const msgsEl = document.getElementById('hs-mc-messages')
+    if (msgsEl) _patchBadgesInRoot(msgsEl, channelLogin)
+    // Also patch every OTHER tab's snapshotted fragment (see _patchBadgesInRoot's
+    // comment) instead of the old approach of just _dropAllTabCaches()-ing them —
+    // that forced a full rebuild (avatar/emote/badge image reload flash) on next
+    // visit just to fix a handful of badge imgs. A DocumentFragment supports the
+    // same querySelectorAll surface as a live Element, so this is exactly as cheap.
+    for (const cache of _tabCache.values()) {
+      if (cache?.frag) _patchBadgesInRoot(cache.frag, channelLogin)
+    }
   }
 
   // 7TV paint → CSS style string
@@ -10028,6 +10036,25 @@
   // Static platform→accent map — hoisted out of buildMessageDiv so it isn't
   // reallocated for every chat row rendered.
   const PLAT_COLORS = { twitch: '#9146ff', kick: '#53fc18', yt: '#ff0000', heatsync: '#ff8700' }
+
+  // Pure builder for the inline feed-post quote row's username anchor (hoisted
+  // out of buildMessageDiv, same reasoning as PLAT_COLORS above). Mirrors the
+  // sender/mention/reply-bar precedence exactly: a resolved HeatSync paint
+  // (already-rendered `hsPaint` — cls/html/splitAttr from hsPaintRender) wins;
+  // otherwise a resolved 7TV `paintStyle` string; otherwise the plain
+  // per-post color. Takes the resolved paint/style in rather than resolving
+  // them itself so it stays unit-testable without any cache/DOM/network state.
+  function buildFeedQuoteUserLink(feedUser, uid, hsPaint, paintStyle, color) {
+    const name = feedUser || 'anon'
+    const lower = name.toLowerCase()
+    const cls = `hs-mc-user hs-mc-mention${hsPaint ? ' ' + hsPaint.cls : ''}`
+    const uidAttr = uid ? ` data-uid="${escapeHtml(uid)}"` : ''
+    const splitAttr = hsPaint ? hsPaint.splitAttr : ''
+    const style = hsPaint ? '' : paintStyle || `color:${sanitizeColor(color || '#fff')}`
+    const inner = hsPaint ? hsPaint.html : escapeHtml(name)
+    return `<a href="https://heatsync.org/user/${encodeURIComponent(name)}" target="_blank" rel="noopener noreferrer" class="${cls}" data-username="${escapeHtml(lower)}"${uidAttr}${splitAttr} style="${style}">${inner}</a>`
+  }
+
   function buildMessageDiv(m, tabId) {
     // Blocked user — fully hide (skip render entirely). Both the append and the
     // full-rebuild path go through buildMessageDiv, so returning null here hides
@@ -10155,7 +10182,21 @@
       const shortId = (m.base36_id || '').replace(/^0+/, '') || '0'
       // Span (not <a>): falls through to the row click handler below → switchTab('feed') + openThread, in-ext. An anchor would open heatsync.org in a new tab.
       const threadLink = `<span class="hs-feed-thread-link" data-id="${escapeHtml(m.base36_id || '')}" style="cursor:pointer">&gt;&gt;${escapeHtml(shortId)}</span>`
-      const userLink = `<a href="https://heatsync.org/user/${encodeURIComponent(m.feedUser)}" target="_blank" rel="noopener noreferrer" class="hs-mc-user" data-username="${escapeHtml((m.feedUser || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.color || '#fff')}">${escapeHtml(m.feedUser || 'anon')}</a>`
+      // Same precedence + resolution chokepoint as the sender/mention/reply-bar
+      // sites above: knownUserIds only ever holds a RESOLVED twitch-space id
+      // (see paints.js ID-SPACE SAFETY note), populated from real chat activity
+      // in joined channels — never invent a second lookup path here. HeatSync
+      // paint wins over 7TV, same as everywhere else; queueMcCosmeticsLookup
+      // (not queuePaintLookup directly — that must stay the sole call site,
+      // see tests/paints.test.js) seeds both caches so a later resolution
+      // retro-applies via _mentionIndex (this anchor is indexed generically by
+      // _indexMessageDiv purely from its hs-mc-mention class + data-uid, same
+      // as any other inline @mention — no bespoke registration needed).
+      const feedUid = knownUserIds.get(userKey((m.feedUser || '').toLowerCase(), 'twitch')) || ''
+      const feedHsPaint = feedUid ? hsPaintRender(feedUid, m.feedUser || 'anon') : null
+      if (feedUid && !feedHsPaint && !mcUserCosmetics.has(feedUid)) queueMcCosmeticsLookup(feedUid)
+      const feedPaintStyle = feedHsPaint ? '' : feedUid ? getMcPaintStyle(feedUid) : ''
+      const userLink = buildFeedQuoteUserLink(m.feedUser, feedUid, feedHsPaint, feedPaintStyle, m.color)
       const content = renderFeedContent(m.text, m.emote_refs)
       // Canonical heat: formatHeat + ° suffix (≥10) + tier color/glow/breathe via heatSpanHtml
       const heatHtml = (m.heat || 0) > 0 ? ' ' + heatSpanHtml(m.heat) : ''

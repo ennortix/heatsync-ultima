@@ -127,6 +127,10 @@ function checkScopeCollisions() {
     'browser-api.js',
     'modifiers.js',
     'undo-manager.js',
+    // paint-spec.js isn't part of readLib()'s universal bundle (only the
+    // multichat overlay embeds it — see readMultichatModules), but it lands
+    // in the same outer scope as the lib files there, so it's checked here too.
+    'paint-spec.js',
   ]
   const libDir = join(__dirname, 'src', 'lib')
   const mcDir = join(__dirname, 'src', 'multichat')
@@ -415,6 +419,7 @@ const MULTICHAT_MODULES = [
   'profile-card.js',
   'chat-logs.js',
   'vim-buffer.js',
+  'paints.js',
 ]
 
 // native-tap.js reads Twitch's React fiber tree — twitch-only, exclude on kick/youtube
@@ -439,6 +444,16 @@ function readMultichatModules(platform) {
   const emojiDataPath = join(chromeDir, 'emoji-data.js')
   if (existsSync(emojiDataPath)) {
     combined += `\n// --- emoji-data.js ---\n${readFileSync(emojiDataPath, 'utf8')}\n`
+  }
+
+  // Paint spec compiler (src/lib/paint-spec.js) — only the multichat overlay
+  // needs a CSS compiler, so it's embedded here (like emoji-data.js above)
+  // rather than added to readLib()'s universal file list, which would bloat
+  // every content script (autocomplete-hook, chat-injector, ...) with a
+  // module none of them use.
+  const paintSpecPath = join(SRC_DIR, 'lib', 'paint-spec.js')
+  if (existsSync(paintSpecPath)) {
+    combined += `\n// --- lib/paint-spec.js ---\n${stripExports(readFileSync(paintSpecPath, 'utf8'))}\n`
   }
 
   const modules = PLATFORM_MODULES[platform] ?? MULTICHAT_MODULES

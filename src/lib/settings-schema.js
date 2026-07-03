@@ -441,6 +441,19 @@ const SETTINGS = [
 
   // ── display / cosmetics (per-provider) ────────────────────────────────
   {
+    key: 'showNamePaints',
+    type: 'bool',
+    default: true,
+    scope: 'sync',
+    category: 'display',
+    section: 'cosmetics',
+    label: 'heatsync name paints',
+    tip: 'animated name paints from heatsync — takes precedence over a 7tv paint when a chatter has both',
+    control: 'pill',
+    rerender: true,
+    apply: 'namePaints',
+  },
+  {
     key: 'sevenTvPaints',
     type: 'bool',
     default: true,

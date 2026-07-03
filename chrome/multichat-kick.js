@@ -1834,6 +1834,19 @@ const SETTINGS = [
 
   // ── display / cosmetics (per-provider) ────────────────────────────────
   {
+    key: 'showNamePaints',
+    type: 'bool',
+    default: true,
+    scope: 'sync',
+    category: 'display',
+    section: 'cosmetics',
+    label: 'heatsync name paints',
+    tip: 'animated name paints from heatsync — takes precedence over a 7tv paint when a chatter has both',
+    control: 'pill',
+    rerender: true,
+    apply: 'namePaints',
+  },
+  {
     key: 'sevenTvPaints',
     type: 'bool',
     default: true,
@@ -6402,6 +6415,576 @@ for (const entry of EMOJI_DATA) {
   }
   EMOJI_CATEGORIES.get(entry.category).push(entry)
 }
+
+
+// --- lib/paint-spec.js ---
+/**
+ * Paint spec — structured JSON schema + compiler for animated username paints.
+ *
+ * SYNCED COPY of the heatsync monorepo's client/utils/paint-spec.js — keep
+ * byte-close to the source of truth. Cross-repo auto-apply rule: a change to
+ * either copy should be mirrored in the other (see feedback_cross_repo_posts_chats
+ * in project memory). Only bundling-related adaptations belong here, never a
+ * behavior fork — the ext must compile the exact same CSS the site does for
+ * the exact same spec, or a paint would render differently across surfaces.
+ *
+ * Bundled into the multichat overlay only (twitch/kick/youtube bundles) via
+ * build.js's readMultichatModules — see the emoji-data.js-style embed there.
+ * Not part of the universal src/lib readLib() bundle since no other content
+ * script needs a CSS compiler.
+ *
+ * Replaces the old free-text `username_css` column (migration 078, removed).
+ * A paint is authored as data (base gradient + up to 3 effect layers + glow),
+ * never as a raw CSS string, so it is injection-impossible by construction:
+ * every color is regex-validated hex, every number is range-clamped, every
+ * effect id is looked up against a fixed enum table — nothing user-typed is
+ * ever concatenated into the compiled CSS string.
+ *
+ * Pure-data module — no DOM, no fetch. Shared between client (live preview +
+ * chat-tile renderer) and server (PUT /api/user/paint validation) by design,
+ * mirroring the client/settings/registry.js pattern already used for
+ * server-side settings validation.
+ *
+ * Effect catalog ported from docs/paint-lab.html (34-effect reference lab).
+ * Phase 1 ships 20 of those — see EFFECTS below for the exact source line
+ * each was ported from.
+ *
+ * ── layering model ──────────────────────────────────────────────────────
+ * Every paint is at most 3 layers:
+ *   - `base`   the resting gradient (solid / linear / conic). Always present.
+ *   - `effects[]` 0-3 animated layers, each in one of two slots:
+ *       'paint'  — owns the background/color. At most ONE active (they are
+ *                  mutually exclusive: you can't pan AND matrix-rain the
+ *                  same text at once).
+ *       'motion' — owns transform/filter/text-shadow, layered on top of
+ *                  whatever the paint slot (or plain base) already painted.
+ *                  Up to TWO active, but two effects that would animate the
+ *                  exact same CSS property on the exact same element (e.g.
+ *                  two `transform`-on-self effects) silently clobber each
+ *                  other in real browsers, so the validator also rejects
+ *                  same-signature combos — see motionSignature() below.
+ *   - `glow`   optional constant text-shadow, independent of any effect.
+ *
+ * ── paint-slot color sourcing (design decision, see final report) ────────
+ * pan / conic / hue / glint / reveal are "generic animators" — they animate
+ * the user's own `base` gradient (pan/conic force linear/conic rendering
+ * respectively since they need a directional/rotational gradient; hue/glint/
+ * reveal are orthogonal to gradient type and always honor base as-is).
+ * chrome / gold / fire / matrix / holo are "themed presets" — faithful ports
+ * of the lab's fixed palettes (that fixed palette IS the point of picking
+ * "gold foil"), so they render their own built-in gradient and `base` is
+ * visually superseded (still stored/validated normally so switching the
+ * effect off reverts to the user's base).
+ */
+
+// ── enums ──────────────────────────────────────────────────────────────────
+
+const BASE_TYPES = new Set(['solid', 'linear', 'conic'])
+const HEX_RE = /^#[0-9a-fA-F]{6}$/
+const GLOW_STRENGTHS = new Set([1, 2])
+
+const MIN_SPEED = 0.25
+const MAX_SPEED = 3
+const MAX_EFFECTS = 3
+const MIN_STOPS = 1
+const MAX_STOPS = 8
+// WCAG 2.3.1 flashing-content guard, stricter than the 3Hz threshold: any
+// effect that changes luminance must have a real-world animation period of
+// at least 1s AFTER the user's speed multiplier is applied.
+const MIN_LUMINANCE_PERIOD_S = 1
+
+/**
+ * Effect metadata table — the single source of truth for slot assignment,
+ * luminance classification, base (speed=1) animation period, and whether an
+ * effect needs its target text split into per-letter spans.
+ *
+ * `sig` (motion effects only) is the (target, property) pair the effect's
+ * keyframes animate. Two motion effects picked together must have distinct
+ * `sig` values, or one silently overrides the other's computed value every
+ * frame (a real CSS limitation — animations on the same property/element
+ * don't compose, the later one in the animation-name list wins outright).
+ */
+const EFFECTS = {
+  // ── paint slot — mutually exclusive, at most 1 ──────────────────────────
+  pan:    { slot: 'paint', luminance: false, basePeriod: 5,   letterSplit: false, label: 'gradient pan' },
+  conic:  { slot: 'paint', luminance: false, basePeriod: 6,   letterSplit: false, label: 'conic sweep' },
+  hue:    { slot: 'paint', luminance: true,  basePeriod: 8,   letterSplit: false, label: 'hue cycle' },
+  glint:  { slot: 'paint', luminance: false, basePeriod: 3.4, letterSplit: false, label: 'shimmer glint' },
+  chrome: { slot: 'paint', luminance: false, basePeriod: 4.5, letterSplit: false, label: 'liquid chrome' },
+  gold:   { slot: 'paint', luminance: false, basePeriod: 5,   letterSplit: false, label: 'gold foil' },
+  fire:   { slot: 'paint', luminance: false, basePeriod: 1.8, letterSplit: false, label: 'fire' },
+  matrix: { slot: 'paint', luminance: false, basePeriod: 3.2, letterSplit: false, label: 'matrix rain' },
+  holo:   { slot: 'paint', luminance: false, basePeriod: 2.8, letterSplit: false, label: 'hologram' },
+  reveal: { slot: 'paint', luminance: false, basePeriod: 3,   letterSplit: false, label: 'mask reveal' },
+
+  // ── motion/glow slot — up to 2, distinct sig required ───────────────────
+  wave:   { slot: 'motion', luminance: false, basePeriod: 1.6, letterSplit: true,  label: 'letter wave',   sig: 'letter:transform' },
+  ripple: { slot: 'motion', luminance: true,  basePeriod: 2.4, letterSplit: true,  label: 'rainbow ripple', sig: 'letter:filter' },
+  coin:   { slot: 'motion', luminance: false, basePeriod: 5,   letterSplit: false, label: 'coin spin',     sig: 'self:transform' },
+  heli:   { slot: 'motion', luminance: false, basePeriod: 2.2, letterSplit: false, label: 'helicopter',    sig: 'self:transform' },
+  float:  { slot: 'motion', luminance: false, basePeriod: 5.5, letterSplit: false, label: 'zero-g float',  sig: 'self:transform' },
+  heart:  { slot: 'motion', luminance: false, basePeriod: 1.3, letterSplit: false, label: 'heartbeat',     sig: 'self:transform' },
+  wobble: { slot: 'motion', luminance: false, basePeriod: 2.8, letterSplit: false, label: 'wobble stretch', sig: 'self:transform' },
+  swing:  { slot: 'motion', luminance: false, basePeriod: 2.6, letterSplit: false, label: 'pendulum',      sig: 'self:transform' },
+  tumble: { slot: 'motion', luminance: false, basePeriod: 3.4, letterSplit: true,  label: 'letter tumble', sig: 'letter:transform' },
+  neon:   { slot: 'motion', luminance: true,  basePeriod: 2.6, letterSplit: false, label: 'neon breathe',  sig: 'self:shadow' },
+}
+
+const EFFECT_IDS = new Set(Object.keys(EFFECTS))
+const LETTER_SPLIT_IDS = new Set(Object.entries(EFFECTS).filter(([, m]) => m.letterSplit).map(([id]) => id))
+
+// ── small pure helpers ───────────────────────────────────────────────────
+
+function isPlainObject(v) {
+  return v !== null && typeof v === 'object' && !Array.isArray(v)
+}
+
+function isIntInRange(v, min, max) {
+  return typeof v === 'number' && Number.isFinite(v) && Number.isInteger(v) && v >= min && v <= max
+}
+
+function isNumInRange(v, min, max) {
+  return typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max
+}
+
+/** FNV-1a 32-bit hash, base36-encoded. Sync + dependency-free — stable
+ * across processes/platforms, adequate for cosmetic CSS class/keyframe
+ * naming (collisions are a visual dedup nit, not a security concern). */
+function fnv1a(str) {
+  let h = 0x811c9dc5
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i)
+    h = Math.imul(h, 0x01000193)
+  }
+  return (h >>> 0).toString(36)
+}
+
+/** Stable short hash of a spec — same spec (same key order irrelevant,
+ * we JSON.stringify a normalized/sorted form) → same hash. */
+function hashPaintSpec(spec) {
+  return fnv1a(JSON.stringify(normalizeForHash(spec)))
+}
+
+function normalizeForHash(spec) {
+  // Deterministic shape regardless of input key order.
+  return {
+    v: spec?.v,
+    base: spec?.base && {
+      type: spec.base.type,
+      angle: spec.base.angle,
+      stops: Array.isArray(spec.base.stops) ? spec.base.stops.map(s => ({ color: s?.color, pos: s?.pos })) : [],
+    },
+    effects: Array.isArray(spec?.effects) ? spec.effects.map(e => ({ id: e?.id, speed: e?.speed })) : [],
+    glow: spec?.glow ? { color: spec.glow.color, strength: spec.glow.strength } : null,
+  }
+}
+
+// ── validation ───────────────────────────────────────────────────────────
+
+/**
+ * Validate a paint spec against v1 schema + safety rules.
+ * @param {*} spec
+ * @returns {{ ok: boolean, errors: string[] }}
+ */
+function validatePaintSpec(spec) {
+  const errors = []
+
+  if (!isPlainObject(spec)) {
+    return { ok: false, errors: ['spec must be an object'] }
+  }
+  if (spec.v !== 1) {
+    errors.push('v must be exactly 1')
+  }
+
+  // ── base ──
+  if (!isPlainObject(spec.base)) {
+    errors.push('base must be an object')
+  } else {
+    const { type, angle, stops } = spec.base
+    if (!BASE_TYPES.has(type)) {
+      errors.push(`base.type must be one of solid|linear|conic, got ${JSON.stringify(type)}`)
+    }
+    if (!isIntInRange(angle, 0, 360)) {
+      errors.push('base.angle must be an integer 0-360')
+    }
+    if (!Array.isArray(stops) || stops.length < MIN_STOPS || stops.length > MAX_STOPS) {
+      errors.push(`base.stops must be an array of ${MIN_STOPS}-${MAX_STOPS} stops`)
+    } else {
+      stops.forEach((s, i) => {
+        if (!isPlainObject(s) || typeof s.color !== 'string' || !HEX_RE.test(s.color)) {
+          errors.push(`base.stops[${i}].color must match #rrggbb`)
+        }
+        if (!isIntInRange(s.pos, 0, 100)) {
+          errors.push(`base.stops[${i}].pos must be an integer 0-100`)
+        }
+      })
+      if (type === 'solid' && stops.length !== 1) {
+        errors.push('base.type solid requires exactly 1 stop')
+      }
+    }
+  }
+
+  // ── effects ──
+  if (!Array.isArray(spec.effects)) {
+    errors.push('effects must be an array')
+  } else if (spec.effects.length > MAX_EFFECTS) {
+    errors.push(`effects must have at most ${MAX_EFFECTS} entries`)
+  } else {
+    const seenIds = new Set()
+    let paintCount = 0
+    const motionSigs = new Set()
+    let motionCount = 0
+    let structurallyValid = true
+
+    spec.effects.forEach((e, i) => {
+      if (!isPlainObject(e)) {
+        errors.push(`effects[${i}] must be an object`)
+        structurallyValid = false
+        return
+      }
+      if (!EFFECT_IDS.has(e.id)) {
+        errors.push(`effects[${i}].id unknown: ${JSON.stringify(e.id)}`)
+        structurallyValid = false
+        return
+      }
+      if (!isNumInRange(e.speed, MIN_SPEED, MAX_SPEED)) {
+        errors.push(`effects[${i}].speed must be a number ${MIN_SPEED}-${MAX_SPEED}`)
+        structurallyValid = false
+      }
+      if (seenIds.has(e.id)) {
+        errors.push(`duplicate effect id: ${e.id}`)
+      }
+      seenIds.add(e.id)
+
+      const meta = EFFECTS[e.id]
+      if (meta.slot === 'paint') {
+        paintCount++
+      } else {
+        motionCount++
+        if (motionSigs.has(meta.sig)) {
+          errors.push(`effects: "${e.id}" conflicts with another selected effect animating the same property (${meta.sig}) — pick effects with different motion targets`)
+        }
+        motionSigs.add(meta.sig)
+      }
+    })
+
+    if (structurallyValid) {
+      if (paintCount > 1) errors.push('at most 1 paint-slot effect allowed (pan/conic/hue/glint/chrome/gold/fire/matrix/holo/reveal are mutually exclusive)')
+      if (motionCount > 2) errors.push('at most 2 motion-slot effects allowed')
+    }
+  }
+
+  // ── glow ──
+  if (spec.glow !== null && spec.glow !== undefined) {
+    if (!isPlainObject(spec.glow)) {
+      errors.push('glow must be null or an object')
+    } else {
+      if (typeof spec.glow.color !== 'string' || !HEX_RE.test(spec.glow.color)) {
+        errors.push('glow.color must match #rrggbb')
+      }
+      if (!GLOW_STRENGTHS.has(spec.glow.strength)) {
+        errors.push('glow.strength must be 1 or 2')
+      }
+    }
+  }
+
+  return { ok: errors.length === 0, errors }
+}
+
+/** True if the spec's effects include any per-letter effect (wave/ripple/tumble). */
+function paintNeedsLetterSplit(spec) {
+  if (!spec || !Array.isArray(spec.effects)) return false
+  return spec.effects.some(e => LETTER_SPLIT_IDS.has(e?.id))
+}
+
+// ── compiler ─────────────────────────────────────────────────────────────
+
+function safeHex(color) {
+  return HEX_RE.test(color) ? color.toLowerCase() : '#e4e4e4'
+}
+
+function safeAngle(angle) {
+  const n = Math.round(Number(angle))
+  return Number.isFinite(n) ? ((n % 360) + 360) % 360 : 0
+}
+
+function safePos(pos) {
+  const n = Math.round(Number(pos))
+  return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : 0
+}
+
+function safeSpeed(speed) {
+  const n = Number(speed)
+  return Number.isFinite(n) ? Math.min(MAX_SPEED, Math.max(MIN_SPEED, n)) : 1
+}
+
+function sortedStops(base) {
+  const stops = Array.isArray(base?.stops) ? base.stops : []
+  return stops
+    .filter(s => isPlainObject(s) && HEX_RE.test(s?.color) && isIntInRange(s.pos, 0, 100))
+    .map(s => ({ color: safeHex(s.color), pos: safePos(s.pos) }))
+    .sort((a, b) => a.pos - b.pos)
+}
+
+/** duration in seconds for an effect at the given speed, with the WCAG
+ * luminance floor applied when the effect changes luminance. */
+function effectDuration(effectId, speed) {
+  const meta = EFFECTS[effectId]
+  const spd = safeSpeed(speed)
+  let seconds = meta.basePeriod / spd
+  if (meta.luminance) seconds = Math.max(MIN_LUMINANCE_PERIOD_S, seconds)
+  return Math.round(seconds * 1000) / 1000
+}
+
+function gradientStopsCss(stops) {
+  return stops.map(s => `${s.color} ${s.pos}%`).join(', ')
+}
+
+/** Build the CSS for the resting `base` paint. Returns { decl, isClipText }. */
+function buildBaseCss(base, stops) {
+  if (base.type === 'solid') {
+    const color = stops[0]?.color || '#e4e4e4'
+    return { decl: `color:${color};`, isClipText: false, cssImage: `linear-gradient(${color}, ${color})` }
+  }
+  const angle = safeAngle(base.angle)
+  const image = base.type === 'linear'
+    ? `linear-gradient(${angle}deg, ${gradientStopsCss(stops)})`
+    : `conic-gradient(from ${angle}deg, ${gradientStopsCss(stops)})`
+  return {
+    decl: `background:${image};-webkit-background-clip:text;background-clip:text;color:transparent;`,
+    isClipText: true,
+    cssImage: image,
+  }
+}
+
+// ── themed paint presets (fixed palettes, faithful port of paint-lab.html) ──
+
+const THEMED_PAINT = {
+  chrome: {
+    gradient: 'linear-gradient(100deg, #6b7280, #e5e7eb 20%, #4b5563 38%, #f3f4f6 52%, #374151 70%, #d1d5db 88%, #6b7280)',
+    size: '220% 100%',
+    timing: 'ease-in-out',
+    direction: 'alternate',
+    keyframes: (name) => `@keyframes ${name}{to{background-position:120% 0;}}`,
+  },
+  gold: {
+    gradient:
+      'repeating-linear-gradient(115deg, transparent 0 3px, #ffffff2e 3px 4px), ' +
+      'linear-gradient(90deg, #7a5900, #ffd700 30%, #fff3b0 50%, #ffd700 70%, #7a5900)',
+    size: '100% 100%, 200% 100%',
+    timing: 'ease-in-out',
+    direction: 'alternate',
+    keyframes: (name) => `@keyframes ${name}{to{background-position:0 0, 100% 0;}}`,
+  },
+  fire: {
+    gradient: 'linear-gradient(0deg, #870000, #d70000 35%, #ff8700 65%, #ffd700 90%)',
+    size: '100% 300%',
+    timing: 'ease-in-out',
+    direction: 'alternate',
+    keyframes: (name) => `@keyframes ${name}{from{background-position:0 100%;transform:skewX(0);}to{background-position:0 40%;transform:skewX(-1.5deg);}}`,
+  },
+  matrix: {
+    gradient: 'repeating-linear-gradient(0deg, #003300 0 6px, #00d700 6px 9px, #00ff87 9px 10px)',
+    size: '100% 340%',
+    timing: 'linear',
+    direction: 'normal',
+    keyframes: (name) => `@keyframes ${name}{to{background-position:0 340%;}}`,
+  },
+  holo: {
+    gradient: 'repeating-linear-gradient(0deg, #00e5ff 0 2px, #007a88 2px 4px)',
+    size: '100% 200%',
+    timing: 'linear',
+    direction: 'normal',
+    keyframes: (name) => `@keyframes ${name}{to{background-position:0 200%;}}`,
+  },
+}
+
+/** Build the CSS for a `paint`-slot effect. selector is the outer `.hsp-<hash>`. */
+function buildPaintEffectCss(effectId, speed, base, stops, selector, hash) {
+  const duration = effectDuration(effectId, speed)
+  const animName = `hsp_${hash}_${effectId}`
+
+  if (THEMED_PAINT[effectId]) {
+    const t = THEMED_PAINT[effectId]
+    const rule = `${selector}{background:${t.gradient};background-size:${t.size};-webkit-background-clip:text;background-clip:text;color:transparent;animation:${animName} ${duration}s ${t.timing} infinite ${t.direction};}`
+    return rule + t.keyframes(animName)
+  }
+
+  if (effectId === 'pan') {
+    // Force linear rendering — pan is a directional positional sweep, and
+    // needs the gradient axis a linear-gradient provides. Append the first
+    // stop again so the pan wraps without a visible seam.
+    const angle = safeAngle(base.angle)
+    const wrapStops = stops.length ? [...stops, { color: stops[0].color, pos: 100 }] : stops
+    const image = `linear-gradient(${angle}deg, ${gradientStopsCss(wrapStops)})`
+    const rule = `${selector}{background:${image};background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:${animName} ${duration}s linear infinite;}`
+    const kf = `@keyframes ${animName}{to{background-position:300% 0;}}`
+    return rule + kf
+  }
+
+  if (effectId === 'conic') {
+    // Force conic rendering — rotates the whole wheel via a namespaced
+    // @property angle custom prop so two users' paints never collide.
+    const angleVar = `--hsp-${hash}-ang`
+    const angle = safeAngle(base.angle)
+    const wrapStops = stops.length ? [...stops, { color: stops[0].color, pos: 100 }] : stops
+    const image = `conic-gradient(from calc(${angle}deg + var(${angleVar})), ${gradientStopsCss(wrapStops)})`
+    const rule = `${selector}{background:${image};-webkit-background-clip:text;background-clip:text;color:transparent;animation:${animName} ${duration}s linear infinite;}`
+    const kf = `@property ${angleVar}{syntax:"<angle>";initial-value:0deg;inherits:false;}` +
+      `@keyframes ${animName}{to{${angleVar}:360deg;}}`
+    return rule + kf
+  }
+
+  if (effectId === 'hue') {
+    // Orthogonal to gradient type — filter applies post-render regardless
+    // of how base painted the text.
+    const baseCss = buildBaseCss(base, stops)
+    const rule = `${selector}{${baseCss.decl}animation:${animName} ${duration}s linear infinite;}`
+    const kf = `@keyframes ${animName}{to{filter:hue-rotate(360deg);}}`
+    return rule + kf
+  }
+
+  if (effectId === 'glint') {
+    const baseCss = buildBaseCss(base, stops)
+    const image = `linear-gradient(115deg, transparent 38%, #ffffffcc 50%, transparent 62%) no-repeat, ${baseCss.cssImage}`
+    const rule = `${selector}{background:${image};background-size:250% 100%, 100% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:${animName} ${duration}s ease-in-out infinite;}`
+    const kf = `@keyframes ${animName}{0%{background-position:210% 0, 0 0;}100%{background-position:-110% 0, 0 0;}}`
+    return rule + kf
+  }
+
+  if (effectId === 'reveal') {
+    const baseCss = buildBaseCss(base, stops)
+    const mask = 'linear-gradient(90deg, #000 30%, #0003 50%, #000 70%)'
+    const rule = `${selector}{${baseCss.decl}-webkit-mask-image:${mask};mask-image:${mask};-webkit-mask-size:300% 100%;mask-size:300% 100%;animation:${animName} ${duration}s linear infinite;}`
+    const kf = `@keyframes ${animName}{from{-webkit-mask-position:130% 0;mask-position:130% 0;}to{-webkit-mask-position:-130% 0;mask-position:-130% 0;}}`
+    return rule + kf
+  }
+
+  return ''
+}
+
+/** Build the CSS for a `motion`-slot effect. Applies on top of whatever the
+ * base/paint layer already painted — never touches color/background. */
+function buildMotionEffectCss(effectId, speed, selector, hash, glow) {
+  const duration = effectDuration(effectId, speed)
+  const animName = `hsp_${hash}_${effectId}`
+
+  switch (effectId) {
+    case 'wave': {
+      const rule = `${selector} span{animation:${animName} ${duration}s ease-in-out infinite;animation-delay:calc(var(--i) * ${(0.09 / safeSpeed(speed)).toFixed(4)}s);}`
+      const kf = `@keyframes ${animName}{0%,100%{transform:translateY(0);}50%{transform:translateY(-4px);}}`
+      return rule + kf
+    }
+    case 'ripple': {
+      const rule = `${selector} span{animation:${animName} ${duration}s linear infinite;animation-delay:calc(var(--i) * -${(0.18 / safeSpeed(speed)).toFixed(4)}s);}`
+      const kf = `@keyframes ${animName}{to{filter:hue-rotate(360deg);}}`
+      return rule + kf
+    }
+    case 'coin': {
+      const rule = `${selector}{animation:${animName} ${duration}s cubic-bezier(.6,0,.4,1) infinite;transform-style:preserve-3d;}`
+      const kf = `@keyframes ${animName}{0%,55%{transform:rotateY(0);}75%{transform:rotateY(180deg);}95%,100%{transform:rotateY(360deg);}}`
+      return rule + kf
+    }
+    case 'heli': {
+      const rule = `${selector}{animation:${animName} ${duration}s linear infinite;}`
+      const kf = `@keyframes ${animName}{to{transform:rotate(360deg);}}`
+      return rule + kf
+    }
+    case 'float': {
+      const rule = `${selector}{animation:${animName} ${duration}s ease-in-out infinite;}`
+      const kf = `@keyframes ${animName}{0%,100%{transform:translateY(1.5px) rotate(-1.6deg);}50%{transform:translateY(-2.5px) rotate(1.6deg);}}`
+      return rule + kf
+    }
+    case 'heart': {
+      const rule = `${selector}{animation:${animName} ${duration}s ease-out infinite;}`
+      const kf = `@keyframes ${animName}{0%,28%,100%{transform:scale(1);}10%{transform:scale(1.11);}20%{transform:scale(1.04);}}`
+      return rule + kf
+    }
+    case 'wobble': {
+      const rule = `${selector}{animation:${animName} ${duration}s ease-in-out infinite;}`
+      const kf = `@keyframes ${animName}{0%,100%{transform:scaleX(1);}50%{transform:scaleX(1.09);}}`
+      return rule + kf
+    }
+    case 'swing': {
+      const rule = `${selector}{transform-origin:50% -60%;animation:${animName} ${duration}s ease-in-out infinite;}`
+      const kf = `@keyframes ${animName}{0%,100%{transform:rotate(4.5deg);}50%{transform:rotate(-4.5deg);}}`
+      return rule + kf
+    }
+    case 'tumble': {
+      const rule = `${selector}{perspective:300px;}${selector} span{animation:${animName} ${duration}s cubic-bezier(.5,0,.5,1) infinite;animation-delay:calc(var(--i) * ${(0.12 / safeSpeed(speed)).toFixed(4)}s);transform-style:preserve-3d;}`
+      const kf = `@keyframes ${animName}{0%,60%,100%{transform:rotateX(0);}75%{transform:rotateX(180deg);}90%{transform:rotateX(360deg);}}`
+      return rule + kf
+    }
+    case 'neon': {
+      const color = glow && HEX_RE.test(glow.color) ? safeHex(glow.color) : '#ff40af'
+      const scale = glow && glow.strength === 2 ? 1.6 : 1
+      const r1 = Math.round(4 * scale), r2 = Math.round(11 * scale)
+      const r1b = Math.round(6 * scale), r2b = Math.round(22 * scale), r3b = Math.round(40 * scale)
+      const rule = `${selector}{animation:${animName} ${duration}s ease-in-out infinite;}`
+      const kf = `@keyframes ${animName}{0%,100%{text-shadow:0 0 ${r1}px ${color}80, 0 0 ${r2}px ${color}40;}50%{text-shadow:0 0 ${r1b}px ${color}cc, 0 0 ${r2b}px ${color}88, 0 0 ${r3b}px ${color}44;}}`
+      return rule + kf
+    }
+    default:
+      return ''
+  }
+}
+
+function buildGlowCss(glow, selector) {
+  if (!glow || !HEX_RE.test(glow.color)) return ''
+  const color = safeHex(glow.color)
+  const [r1, r2] = glow.strength === 2 ? [10, 26] : [6, 14]
+  return `${selector}{text-shadow:0 0 ${r1}px ${color}cc, 0 0 ${r2}px ${color}66;}`
+}
+
+/**
+ * Compile a validated paint spec to a CSS string scoped under `selector`
+ * (e.g. `.hsp-<hash>`). Assumes `spec` already passed validatePaintSpec —
+ * every value is still re-clamped/re-matched here for defense in depth, so
+ * even a spec that reached this function unvalidated cannot inject anything:
+ * unknown effect ids are silently skipped, non-hex colors fall back to a
+ * neutral gray, out-of-range numbers are clamped.
+ * @param {object} spec
+ * @param {string} selector
+ * @param {object} [opts]
+ * @returns {string} css
+ */
+function compilePaintCss(spec, selector, opts = {}) {
+  if (!isPlainObject(spec) || typeof selector !== 'string' || !selector) return ''
+  const hash = opts.hash || hashPaintSpec(spec)
+  const base = isPlainObject(spec.base) ? spec.base : { type: 'solid', angle: 0, stops: [{ color: '#e4e4e4', pos: 0 }] }
+  const stops = sortedStops(base)
+  const effects = Array.isArray(spec.effects) ? spec.effects.filter(e => isPlainObject(e) && EFFECT_IDS.has(e.id)) : []
+  const paintEffect = effects.find(e => EFFECTS[e.id].slot === 'paint')
+  const motionEffects = effects.filter(e => EFFECTS[e.id].slot === 'motion')
+  const needsLetterSplit = paintNeedsLetterSplit(spec)
+
+  let css = `${selector}{display:inline-block;`
+  if (needsLetterSplit) css += `` // spans get display:inline-block in their own rule below
+  if (!paintEffect) {
+    const baseCss = buildBaseCss(base, stops)
+    css += baseCss.decl
+  }
+  css += '}'
+  if (needsLetterSplit) css += `${selector} span{display:inline-block;}`
+
+  if (paintEffect) {
+    css += buildPaintEffectCss(paintEffect.id, paintEffect.speed, base, stops, selector, hash)
+  }
+  for (const e of motionEffects) {
+    css += buildMotionEffectCss(e.id, e.speed, selector, hash, spec.glow)
+  }
+
+  // Static glow — skip if neon is active and sourced the same color (neon's
+  // own keyframes already carry a shadow on every frame); otherwise layer
+  // the constant shadow on so it doesn't require an active effect to show.
+  const hasNeon = motionEffects.some(e => e.id === 'neon')
+  if (spec.glow && !hasNeon) {
+    css += buildGlowCss(spec.glow, selector)
+  }
+
+  return css
+}
+
 
 
 // --- multichat/bootstrap.js ---
@@ -43488,6 +44071,287 @@ class HsOverlayVisual {
 }
 
 
+// --- multichat/paints.js ---
+// HeatSync-native name paints — batch fetch + single injected stylesheet.
+//
+// Mirrors the site's client/chat/paint-cosmetics.js pipeline, adapted for the
+// multichat overlay's IIFE/global-scope bundling (no ES module imports at
+// runtime — see build.js's readMultichatModules, which embeds lib/paint-spec.js
+// right before this file so compilePaintCss/hashPaintSpec/paintNeedsLetterSplit
+// are already free variables in this scope by the time these functions run).
+//
+// ID-SPACE SAFETY (read before touching call sites): paints are keyed by
+// HEATSYNC-side TWITCH user ids. Kick and YouTube have their own numeric/string
+// id spaces that COLLIDE with twitch ids (a kick numeric id can equal an
+// unrelated twitch numeric id — see heatsync_userid_collision_kick_twitch in
+// project memory). There is no way to tell twitch-space and kick-space apart
+// from the id VALUE alone, so the guard here is structural, not a value check:
+// queuePaintLookup is ONLY ever called from queueMcCosmeticsLookup (main.js),
+// the exact same choke point already used for 7TV cosmetics — which has the
+// identical collision risk and is already correct: kick/YouTube chatters only
+// ever reach that function with a RESOLVED twitch id (see flushKickNameLookups /
+// flushYtNameLookups in main.js, which set m.userId to the linked twitch id
+// returned by the 7TV kick/youtube lookup — never the bare kick/yt id). Twitch
+// chatters reach it with their native twitch id directly (also safe — that IS
+// twitch-id-space). Do not add a second call site that queues a paint lookup
+// directly from a raw platform-native id.
+//
+// Pipeline:
+//   1. queuePaintLookup(uid) batches ids (debounced, <=50/batch) and asks the
+//      BG service worker (fetch_paints) — content scripts never fetch
+//      heatsync.org directly (Cloudflare edge 503s those; see fetch_recent_messages
+//      in chrome/background.js for the exact reasoning).
+//   2. compilePaintCss() once per distinct spec hash, appended to a single
+//      <style id="hs-mc-paints"> sheet (never re-injected for a hash already
+//      present — many users can and will share identical specs).
+//   3. hsPaintRender(uid, rawText) is the single render-time helper every
+//      username surface uses: returns null when no HS paint is cached (caller
+//      keeps its existing 7TV/plain-color rendering), or { cls, html, splitAttr }
+//      when one is — callers add `cls` to the element's class list and skip
+//      any competing inline color/7TV-paint style (heatsync paint wins).
+
+const HS_PAINT_CACHE_MAX = 500
+const HS_PAINT_BATCH_SIZE = 50
+const HS_PAINT_BATCH_DELAY = 100
+// Mirrors MC_COSMETICS_PENDING_MAX (main.js) — a very busy/firehose channel
+// can queue unique uids faster than the batch drain rate; cap so the pending
+// Set can't grow unbounded between flushes.
+const HS_PAINT_PENDING_MAX = 3000
+
+const hsPaintCache = new Map() // uid -> { spec: object|null, hash: string|null }
+const hsPaintInjectedHashes = new Set()
+const hsPaintPending = new Set()
+let hsPaintBatchTimer = null
+let hsPaintSheetEl = null
+
+// ── pure helpers (unit-testable without DOM/network) ────────────────────────
+
+/**
+ * Evict the oldest entry from `map` if it is at/over `max` capacity.
+ * Map iteration order is insertion order, so `.keys().next()` is oldest.
+ */
+function evictOldestPaintEntry(map, max) {
+  if (map.size >= max) {
+    const oldest = map.keys().next().value
+    if (oldest !== undefined) map.delete(oldest)
+  }
+}
+
+/**
+ * Split `queue` (a Set/iterable of ids) into the next batch (<=batchSize,
+ * newest-queued first — the user is looking at the bottom of the buffer, so
+ * the visible viewport resolves before off-screen/scrolled-away chatters,
+ * mirroring flushMcCosmeticsBatch's drain order) and the remainder. Pure —
+ * does not mutate the input.
+ */
+function partitionPaintBatch(queue, batchSize) {
+  const all = [...queue]
+  return { batch: all.slice(-batchSize), rest: all.slice(0, Math.max(0, all.length - batchSize)) }
+}
+
+/** Per-letter span data for a username: `{ mid, letters: [{ch, i}] }`. Matches
+ * the site's splitter exactly — mid = (length-1)/2, i = index. */
+function computeHsLetterSpans(text) {
+  const chars = [...String(text ?? '')]
+  return {
+    mid: (chars.length - 1) / 2,
+    letters: chars.map((ch, i) => ({ ch, i })),
+  }
+}
+
+/** Build the innerHTML for a letter-split username: one <span> per glyph with
+ * --i/--mid custom properties. Takes raw (unescaped) text — each glyph is
+ * escaped individually, so this is safe to call on el.textContent directly. */
+function splitHsLettersHtml(rawText) {
+  const { mid, letters } = computeHsLetterSpans(rawText)
+  return letters.map(({ ch, i }) => `<span style="--i:${i};--mid:${mid}">${escapeHtml(ch)}</span>`).join('')
+}
+
+// ── settings gate (guarded — this module is imported standalone in tests) ───
+
+function hsPaintsEnabled() {
+  if (typeof getSetting !== 'function') return true
+  return getSetting('showNamePaints') !== false
+}
+
+// ── stylesheet management ────────────────────────────────────────────────────
+
+function ensureHsPaintSheet() {
+  if (hsPaintSheetEl && hsPaintSheetEl.isConnected) return hsPaintSheetEl
+  hsPaintSheetEl = document.getElementById('hs-mc-paints')
+  if (!hsPaintSheetEl) {
+    hsPaintSheetEl = document.createElement('style')
+    hsPaintSheetEl.id = 'hs-mc-paints'
+    // Single kill-switch: every hsp_* animation pauses under reduced motion,
+    // regardless of how many per-hash rules get appended after this.
+    hsPaintSheetEl.textContent =
+      '@media (prefers-reduced-motion: reduce){[class*="hsp-"],[class*="hsp-"] *{animation-play-state:paused !important;}}'
+    const tracked = typeof cleanup !== 'undefined' && cleanup.trackNode ? cleanup.trackNode(hsPaintSheetEl) : hsPaintSheetEl
+    document.head.appendChild(tracked)
+  }
+  return hsPaintSheetEl
+}
+
+/** Compile + append the CSS for `hash` if not already present. Idempotent. */
+function ensureHsPaintRule(spec, hash) {
+  if (hsPaintInjectedHashes.has(hash)) return
+  const sheet = ensureHsPaintSheet()
+  const css = compilePaintCss(spec, `.hsp-${hash}`, { hash })
+  if (!css) return
+  sheet.textContent += css
+  hsPaintInjectedHashes.add(hash)
+}
+
+/** Toggle-off hygiene: drop the injected sheet + hash tracking so a later
+ * toggle-on recompiles clean rather than leaving stale/duplicate CSS. Cache
+ * entries (spec/hash per uid) are kept — no need to re-fetch, only re-inject. */
+function clearHsPaintSheet() {
+  if (hsPaintSheetEl?.parentNode) hsPaintSheetEl.parentNode.removeChild(hsPaintSheetEl)
+  hsPaintSheetEl = null
+  hsPaintInjectedHashes.clear()
+}
+
+// ── public cache API ─────────────────────────────────────────────────────────
+
+/** @returns {string} the `hsp-<hash>` class to add to the element, or '' if none. */
+function getHsPaintClass(userId) {
+  if (!hsPaintsEnabled()) return ''
+  const entry = hsPaintCache.get(userId)
+  if (!entry || !entry.hash) return ''
+  return `hsp-${entry.hash}`
+}
+
+/** @returns {object|null} the raw validated spec (for paintNeedsLetterSplit checks). */
+function getHsPaintSpec(userId) {
+  if (!hsPaintsEnabled()) return null
+  return hsPaintCache.get(userId)?.spec ?? null
+}
+
+/** True if `userId` has a resolved (non-null) HeatSync paint right now. Used
+ * by the 7TV cosmetics path to yield precedence — a HeatSync paint is the
+ * user's own choice on our platform and always wins over their 7TV paint. */
+function hasResolvedHsPaint(userId) {
+  return !!getHsPaintSpec(userId)
+}
+
+function setHsPaintEntry(userId, spec) {
+  if (!spec) {
+    if (!hsPaintCache.has(userId)) evictOldestPaintEntry(hsPaintCache, HS_PAINT_CACHE_MAX)
+    hsPaintCache.set(userId, { spec: null, hash: null })
+    return
+  }
+  const hash = hashPaintSpec(spec)
+  ensureHsPaintRule(spec, hash)
+  if (!hsPaintCache.has(userId)) evictOldestPaintEntry(hsPaintCache, HS_PAINT_CACHE_MAX)
+  hsPaintCache.set(userId, { spec, hash })
+}
+
+/**
+ * Queue a resolved-twitch-space uid for a paint lookup. Debounced + batched.
+ * See the ID-SPACE SAFETY note at the top of this file — never call this with
+ * a raw kick/YouTube id.
+ */
+function queuePaintLookup(userId) {
+  if (!userId) return
+  if (hsPaintCache.has(userId)) return
+  if (!hsPaintsEnabled()) return
+  if (hsPaintPending.size >= HS_PAINT_PENDING_MAX) return
+  hsPaintPending.add(userId)
+  if (!hsPaintBatchTimer) hsPaintBatchTimer = cleanup.setTimeout(flushHsPaintBatch, HS_PAINT_BATCH_DELAY)
+}
+
+async function flushHsPaintBatch() {
+  hsPaintBatchTimer = null
+  if (!hsPaintPending.size) return
+  const { batch, rest } = partitionPaintBatch(hsPaintPending, HS_PAINT_BATCH_SIZE)
+  hsPaintPending.clear()
+  for (const id of rest) hsPaintPending.add(id)
+
+  let paints = null
+  try {
+    const resp = await safeSendMessage({ type: 'fetch_paints', userIds: batch })
+    if (resp && resp.paints && typeof resp.paints === 'object') paints = resp.paints
+  } catch (e) {
+    paints = null
+  }
+
+  if (paints) {
+    // BG only includes a key for ids it has a CONFIRMED answer for (positive
+    // spec, or a confirmed negative) — see the fetch_paints handler in
+    // chrome/background.js. An id absent from `paints` means BG couldn't
+    // resolve it this round (transient failure); requeue it instead of
+    // caching a false negative that would mask a real paint until reload.
+    const changed = []
+    for (const id of batch) {
+      if (Object.prototype.hasOwnProperty.call(paints, id)) {
+        setHsPaintEntry(id, paints[id])
+        if (paints[id]) changed.push(id)
+      } else {
+        hsPaintPending.add(id)
+      }
+    }
+    if (changed.length && typeof updateHsPaintsInPlace === 'function') updateHsPaintsInPlace(changed)
+  } else {
+    // BG unreachable entirely — put the whole batch back so the next flush
+    // retries instead of silently caching everyone in it as "no paint".
+    for (const id of batch) hsPaintPending.add(id)
+  }
+
+  if (hsPaintPending.size > 0 && !hsPaintBatchTimer) {
+    hsPaintBatchTimer = cleanup.setTimeout(flushHsPaintBatch, HS_PAINT_BATCH_DELAY * 5)
+  }
+}
+
+/**
+ * Single render-time helper every username surface (sender row, inline
+ * @mention, reply-context bar) calls. Returns null when no HeatSync paint is
+ * cached for `userId` — the caller falls back to its existing 7TV/plain-color
+ * rendering unchanged. Returns `{ cls, html, splitAttr }` when one is active:
+ * `cls` goes on the element's class list, `html` replaces the escaped-name
+ * text (already letter-split + escaped when the spec needs it), `splitAttr`
+ * is a ready-to-splice ` data-hs-paint-split="1"` marker so a later in-place
+ * repaint (updateHsPaintsInPlace) doesn't re-split already-split text.
+ */
+function hsPaintRender(userId, rawText) {
+  if (!userId) return null
+  const cls = getHsPaintClass(userId)
+  if (!cls) return null
+  const spec = getHsPaintSpec(userId)
+  const needsSplit = paintNeedsLetterSplit(spec)
+  return {
+    cls,
+    html: needsSplit ? splitHsLettersHtml(rawText) : escapeHtml(rawText),
+    splitAttr: needsSplit ? ' data-hs-paint-split="1"' : '',
+  }
+}
+
+/** In-place DOM application shared by updateHsPaintsInPlace (main.js) — adds
+ * the hsp-<hash> class (dropping any stale one), clears the element's inline
+ * style attribute (precedence: a HeatSync paint always wins over whatever
+ * 7TV inline style/plain color a prior render or cosmetics batch set — an
+ * inline style has higher specificity than any class rule, so it MUST be
+ * cleared or the class-based paint would silently lose), and letter-splits
+ * the text once if the spec needs it and it hasn't been split yet. */
+function applyHsPaintToElement(el, userId) {
+  if (!el) return
+  const cls = getHsPaintClass(userId)
+  const spec = getHsPaintSpec(userId)
+  if (!cls || !spec) return
+  if (!el.classList.contains(cls)) {
+    for (const c of [...el.classList]) {
+      if (c.startsWith('hsp-')) el.classList.remove(c)
+    }
+    el.classList.add(cls)
+  }
+  if (el.hasAttribute('style')) el.removeAttribute('style')
+  if (paintNeedsLetterSplit(spec) && !el.dataset.hsPaintSplit) {
+    el.innerHTML = splitHsLettersHtml(el.textContent)
+    el.dataset.hsPaintSplit = '1'
+  }
+}
+
+
+
 // --- multichat/kick-host.js ---
 // Kick host UI/nav — extracted from main.js (bundled into kick bundle only)
 
@@ -45216,7 +46080,14 @@ const STORAGE_KEY = 'heatsync_multichat'
 
   // 7TV cosmetics queue — batch lookups to avoid per-message requests
   function queueMcCosmeticsLookup(userId) {
-    if (!userId || mcUserCosmetics.has(userId)) return
+    if (!userId) return
+    // HeatSync paints ride the exact same choke point as 7TV cosmetics —
+    // every call site here already only ever passes a resolved twitch-space
+    // id (see the ID-SPACE SAFETY note atop paints.js). Independent cache/
+    // dedup (hsPaintCache), so this is unconditional even when the 7TV lookup
+    // below short-circuits on an already-cached (possibly negative) entry.
+    queuePaintLookup(userId)
+    if (mcUserCosmetics.has(userId)) return
     if (mcCosmeticsPending.size >= MC_COSMETICS_PENDING_MAX) return
     mcCosmeticsPending.add(userId)
     if (!mcCosmeticsTimer) {
@@ -45464,6 +46335,27 @@ const STORAGE_KEY = 'heatsync_multichat'
     )
   }
 
+  // In-place repaint for HeatSync name paints (paints.js) — the counterpart
+  // to updateCosmeticsInPlace below, fired from its own independent batch
+  // (queuePaintLookup/flushHsPaintBatch in paints.js) once a paint resolves.
+  // Repaints both the sender username div (_uidIndex) and any inline
+  // @mention/reply-context anchors (_mentionIndex) for this uid.
+  function updateHsPaintsInPlace(userIds) {
+    if (!document.getElementById('hs-mc-messages')) return
+    for (const uid of userIds) {
+      const mentionSet = _mentionIndex.get(uid)
+      if (mentionSet) {
+        for (const el of mentionSet) applyHsPaintToElement(el, uid)
+      }
+      const divSet = _uidIndex.get(uid)
+      if (!divSet) continue
+      for (const div of divSet) {
+        const userLink = div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
+        if (userLink) applyHsPaintToElement(userLink, uid)
+      }
+    }
+  }
+
   // Update cosmetics (badges + paint) in-place without full re-render.
   // O(1) lookup via _uidIndex / _mentionIndex instead of querySelectorAll over
   // the full message container — at 25-user batches × 500 children that was
@@ -45473,7 +46365,12 @@ const STORAGE_KEY = 'heatsync_multichat'
     for (const uid of userIds) {
       const cosmetic = mcUserCosmetics.get(uid)
       if (!cosmetic) continue
-      const paintStyle = getMcPaintStyle(uid)
+      // Precedence: a HeatSync paint (this user's own choice on our platform)
+      // always wins over their 7TV paint. If one is already resolved for this
+      // uid, skip the 7TV inline style entirely — applyHsPaintToElement (via
+      // updateHsPaintsInPlace) owns painting this element from here on,
+      // whichever batch (7TV or HS) resolves first or last.
+      const paintStyle = hasResolvedHsPaint(uid) ? '' : getMcPaintStyle(uid)
       // Repaint inline @mentions of this user across all visible messages
       if (paintStyle) {
         const mentionSet = _mentionIndex.get(uid)
@@ -46212,6 +47109,14 @@ const STORAGE_KEY = 'heatsync_multichat'
   const _APPLIERS = {
     rebuildInput: () => {
       rebuildInput()
+    },
+    namePaints: (v) => {
+      // Toggle off: drop the injected <style id="hs-mc-paints"> sheet (rather
+      // than leaving stale/orphaned rules behind — hygiene, no correctness
+      // impact since bumpRenderEpoch's rebuild below already stops adding the
+      // hsp-* class to any element). Cache entries are kept; a later toggle-on
+      // recompiles fresh from the same spec.
+      if (!v) clearHsPaintSheet()
     },
     viMode: (v) => {
       // mirror to localStorage + notify MAIN-world vi-mode.js
@@ -54215,7 +55120,11 @@ const STORAGE_KEY = 'heatsync_multichat'
         : ''
     const bitsBadge = m.bits ? `<span class="hs-mc-bits-badge" title="${m.bits} bits">${m.bits} bits</span>` : ''
     // (cheermote rendering is applied inline in processedText via renderCheermotesInText)
-    const paintStyle = m.userId ? getMcPaintStyle(m.userId) : ''
+    // HeatSync paint (own-platform cosmetic) takes precedence over 7TV — see
+    // hsPaintRender in paints.js. Returns null (falls through to the existing
+    // 7TV/plain-color path) until/unless one is cached for this uid.
+    const hsPaint = m.userId ? hsPaintRender(m.userId, m.user) : null
+    const paintStyle = hsPaint ? '' : m.userId ? getMcPaintStyle(m.userId) : ''
     // Build the channel link for the username. YouTube usernames arrive
     // prefixed with "@" so we strip it before concatenating to avoid
     // youtube.com/@/%40handle-style double-encoding.
@@ -54230,7 +55139,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     } else {
       userHref = `https://twitch.tv/${encodeURIComponent(m.user)}`
     }
-    const userLink = `<a href="${userHref}" target="_blank" rel="noopener noreferrer" class="hs-mc-user" data-username="${escapeHtml(m.user.toLowerCase())}" data-platform="${plat}" style="${paintStyle || 'color:' + sanitizeColor(m.color || '#fff')}">${escapeHtml(m.user)}</a>`
+    const userLink = `<a href="${userHref}" target="_blank" rel="noopener noreferrer" class="hs-mc-user${hsPaint ? ' ' + hsPaint.cls : ''}" data-username="${escapeHtml(m.user.toLowerCase())}" data-platform="${plat}"${hsPaint ? hsPaint.splitAttr : ''} style="${hsPaint ? '' : paintStyle || 'color:' + sanitizeColor(m.color || '#fff')}">${hsPaint ? hsPaint.html : escapeHtml(m.user)}</a>`
     let avatarHtml = ''
     if (avatarsEnabled) {
       const userKey = m.user.toLowerCase()
@@ -54333,9 +55242,15 @@ const STORAGE_KEY = 'heatsync_multichat'
     // (no parent id) falls back to the name→uid map. data-uid lets
     // updateCosmeticsInPlace repaint it once the cosmetic batch lands.
     const replyUid = (m.replyTo && (m.replyTo.userId || knownUserIds.get(userKey(replyLower, m.platform)))) || ''
-    const replyPaint = replyUid ? userPaintStyle(replyUid, replyLower, m.platform) : ''
-    const replyStyle = replyPaint || `color:${mentionColor(replyLower)}`
+    // HeatSync paint wins over 7TV here too — same precedence rule as the
+    // sender username above.
+    const replyHsPaint = replyUid ? hsPaintRender(replyUid, '@' + (m.replyTo?.user || '')) : null
+    const replyPaint = replyHsPaint ? '' : replyUid ? userPaintStyle(replyUid, replyLower, m.platform) : ''
+    const replyStyle = replyHsPaint ? '' : replyPaint || `color:${mentionColor(replyLower)}`
     const replyUidAttr = replyUid ? ` data-uid="${escapeHtml(replyUid)}"` : ''
+    const replyUserCls = `hs-mc-user hs-mc-reply-user${replyHsPaint ? ' ' + replyHsPaint.cls : ''}`
+    const replyUserSplitAttr = replyHsPaint ? replyHsPaint.splitAttr : ''
+    const replyUserHtml = replyHsPaint ? replyHsPaint.html : '@' + escapeHtml(m.replyTo?.user || '')
     // A blocked user's name + message snippet must not leak through a reply
     // context bar when someone else replies to them. Show a neutral marker
     // with no name, no text, no profile link.
@@ -54343,7 +55258,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     const replyBar = replyBlocked
       ? `<div class="hs-mc-reply-ctx">&#8618; Replying to [blocked]</div>`
       : m.replyTo && m.replyTo.user
-        ? `<div class="hs-mc-reply-ctx" title="${escapeHtml(m.replyTo.user)}: ${escapeHtml(m.replyTo.text || '')}">&#8618; Replying to <a href="https://heatsync.org/user/${encodeURIComponent(m.replyTo.user)}" target="_blank" rel="noopener noreferrer" class="hs-mc-user hs-mc-reply-user" data-username="${escapeHtml(replyLower)}"${replyUidAttr} style="${replyStyle}">@${escapeHtml(m.replyTo.user)}</a>${m.replyTo.text ? ': ' + escapeHtml(m.replyTo.text.length > 80 ? m.replyTo.text.slice(0, 80) + '...' : m.replyTo.text) : ''}</div>`
+        ? `<div class="hs-mc-reply-ctx" title="${escapeHtml(m.replyTo.user)}: ${escapeHtml(m.replyTo.text || '')}">&#8618; Replying to <a href="https://heatsync.org/user/${encodeURIComponent(m.replyTo.user)}" target="_blank" rel="noopener noreferrer" class="${replyUserCls}" data-username="${escapeHtml(replyLower)}"${replyUidAttr}${replyUserSplitAttr} style="${replyStyle}">${replyUserHtml}</a>${m.replyTo.text ? ': ' + escapeHtml(m.replyTo.text.length > 80 ? m.replyTo.text.slice(0, 80) + '...' : m.replyTo.text) : ''}</div>`
         : ''
     // Redeem label — look up reward title from Hermes cache
     let redeemLabel = ''
@@ -54569,13 +55484,26 @@ const STORAGE_KEY = 'heatsync_multichat'
           const uid = knownUserIds.get(userKey(lower, platform)) || ''
           let style = `color:${color}`
           let uidAttr = ''
+          let mentionCls = 'hs-mc-user hs-mc-mention'
+          let splitAttr = ''
+          let inner = `${at}${safeName}`
           if (uid) {
             uidAttr = ` data-uid="${escapeHtml(uid)}"`
             if (!mcUserCosmetics.has(uid)) queueMcCosmeticsLookup(uid)
-            const paint = getMcPaintStyle(uid)
-            if (paint) style = paint
+            // HeatSync paint wins over 7TV — same precedence rule as the
+            // sender username / reply-context bar.
+            const hsPaint = hsPaintRender(uid, `${at}${name}`)
+            if (hsPaint) {
+              mentionCls += ` ${hsPaint.cls}`
+              splitAttr = hsPaint.splitAttr
+              inner = hsPaint.html
+              style = ''
+            } else {
+              const paint = getMcPaintStyle(uid)
+              if (paint) style = paint
+            }
           }
-          return `${lead}<a href="https://heatsync.org/user/${encodeURIComponent(lower)}" target="_blank" rel="noopener noreferrer" class="hs-mc-user hs-mc-mention" data-username="${safeLower}"${uidAttr} style="${style}">${at}${safeName}</a>`
+          return `${lead}<a href="https://heatsync.org/user/${encodeURIComponent(lower)}" target="_blank" rel="noopener noreferrer" class="${mentionCls}" data-username="${safeLower}"${uidAttr}${splitAttr} style="${style}">${inner}</a>`
         },
       )
     }

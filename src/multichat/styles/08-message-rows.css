@@ -204,8 +204,8 @@
        so the referenced post keeps its brighter highlight instead of blending
        into a zebra band. */
     .hs-feed-postlink-preview-row.hs-feed-postlink-preview-linked {
-      background: #3a3a00 !important;
-      border-left: 2px solid #ffff00 !important;
+      background: #3a2600 !important;
+      border-left: 2px solid #ff8700 !important;
     }
     /* Brief flash on the message that the overflow chip scrolled to */
     .hs-mc-msg.hs-mc-thread-flash {

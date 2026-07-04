@@ -41,7 +41,7 @@
       cursor: pointer !important;
     }
     .hs-feed-thread-link {
-      color: #ff0;
+      color: #ff8700;
       font-size: 13px;
       font-weight: 700;
       margin-right: 3px;
@@ -126,7 +126,7 @@
       font-family: ui-monospace, SFMono-Regular, monospace;
     }
     .hs-post-link {
-      color: #ffff00;
+      color: #ff8700;
       font-weight: 700;
       cursor: pointer;
     }
@@ -134,7 +134,7 @@
       text-decoration: underline;
     }
     .hs-post-highlight {
-      outline: 2px solid #ffff00;
+      outline: 2px solid #ff8700;
       outline-offset: -2px;
     }
     .hs-thread-op {

@@ -9407,7 +9407,7 @@ function injectStyles() {
     .hs-mc-feed-inline .hs-mc-ts { margin-right: 4px; }
     .hs-mc-feed-inline .hs-feed-body { color: #fff; }
     .hs-mc-feed-inline .hs-feed-thread-link {
-      color: #ffff00; text-decoration: none; font-size: 13px; margin-right: 4px;
+      color: #ff8700; text-decoration: none; font-size: 13px; margin-right: 4px;
     }
     .hs-mc-feed-inline .hs-feed-thread-link:hover { text-decoration: underline; }
     .hs-mc-moment-perma { color: #808080; margin-left: 4px; text-decoration: none; }
@@ -9641,7 +9641,7 @@ function injectStyles() {
       display: none;
       align-items: center;
       gap: 4px;
-      background: #ff0;
+      background: #ff8700;
       color: #000;
       border: none;
       border-radius: 0;
@@ -10716,8 +10716,8 @@ function injectStyles() {
        so the referenced post keeps its brighter highlight instead of blending
        into a zebra band. */
     .hs-feed-postlink-preview-row.hs-feed-postlink-preview-linked {
-      background: #3a3a00 !important;
-      border-left: 2px solid #ffff00 !important;
+      background: #3a2600 !important;
+      border-left: 2px solid #ff8700 !important;
     }
     /* Brief flash on the message that the overflow chip scrolled to */
     .hs-mc-msg.hs-mc-thread-flash {
@@ -12018,7 +12018,7 @@ function injectStyles() {
     @keyframes hs-flash-paste { 0% { box-shadow: 0 0 12px 4px #fff; } 100% { box-shadow: none; } }
     @keyframes hs-flash-add { 0% { box-shadow: 0 0 12px 4px #00ff00; } 100% { box-shadow: none; } }
     @keyframes hs-flash-block { 0% { box-shadow: 0 0 12px 4px #ff0000; } 100% { box-shadow: none; } }
-    @keyframes hs-flash-unblock { 0% { box-shadow: 0 0 12px 4px #ffff00; } 100% { box-shadow: none; } }
+    @keyframes hs-flash-unblock { 0% { box-shadow: 0 0 12px 4px #ff8700; } 100% { box-shadow: none; } }
     @keyframes hs-flash-remove { 0% { box-shadow: 0 0 12px 4px #fff; } 100% { box-shadow: none; } }
     .hs-flash-paste { animation: hs-flash-paste 0.4s ease-out; }
     .hs-flash-add { animation: hs-flash-add 0.4s ease-out; }
@@ -15225,7 +15225,7 @@ function injectStyles() {
       cursor: pointer !important;
     }
     .hs-feed-thread-link {
-      color: #ff0;
+      color: #ff8700;
       font-size: 13px;
       font-weight: 700;
       margin-right: 3px;
@@ -15310,7 +15310,7 @@ function injectStyles() {
       font-family: ui-monospace, SFMono-Regular, monospace;
     }
     .hs-post-link {
-      color: #ffff00;
+      color: #ff8700;
       font-weight: 700;
       cursor: pointer;
     }
@@ -15318,7 +15318,7 @@ function injectStyles() {
       text-decoration: underline;
     }
     .hs-post-highlight {
-      outline: 2px solid #ffff00;
+      outline: 2px solid #ff8700;
       outline-offset: -2px;
     }
     .hs-thread-op {
@@ -33022,7 +33022,7 @@ function buildFeedMessageDiv(m, opUsername) {
   const inThread = !!opUsername
   const linkId = escapeHtml(m.base36_id || '')
   const threadLink = inThread
-    ? `<span class="hs-feed-thread-link hs-quote-insert" data-quote-id="${escapeHtml(shortId)}" data-id="${linkId}" style="color:#ffff00;cursor:pointer">${escapeHtml(shortId)}</span>`
+    ? `<span class="hs-feed-thread-link hs-quote-insert" data-quote-id="${escapeHtml(shortId)}" data-id="${linkId}" style="color:#ff8700;cursor:pointer">${escapeHtml(shortId)}</span>`
     : `<span class="hs-feed-thread-link hs-thread-toggle" data-id="${linkId}" style="cursor:pointer">&gt;&gt;${escapeHtml(shortId)}</span>`
 
   // Post type tag: [OP] red = original post, [OP] magenta = OP replying in own thread, [RE] = reply

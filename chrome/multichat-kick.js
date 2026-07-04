@@ -49839,9 +49839,11 @@ const STORAGE_KEY = 'heatsync_multichat'
       pointerEvents: 'auto',
       transition: 'opacity 0.12s',
     })
-    // Use !important on z-index so YT can't compete with its own
-    // own modal stacking contexts (chrome bottom bar, settings menu).
-    handle.style.setProperty('z-index', '2147483647', 'important')
+    // z-index: YT needs max-int to beat its own modal stacking contexts (chrome
+    // bottom bar, settings menu). But on twitch/kick, max-int put the handle OVER
+    // the site's own login/toast modals — so there use 999 (below twitch chrome
+    // modals, above chat internals), matching the per-platform #hs-mc-resize-handle.
+    handle.style.setProperty('z-index', hostPlatform === 'yt' ? '2147483647' : '999', 'important')
     document.body.appendChild(cleanup.trackNode(handle))
     handle.addEventListener('mouseenter', () => {
       handle.style.opacity = '1'

@@ -392,7 +392,8 @@ ensureAlarm('hs-7tv-watchdog', { periodInMinutes: 2 })
 // Server kill-switch poll — recovers from a broken release without forcing a
 // CWS update push. delayInMinutes jitter spreads 30k clients' first hit.
 ensureAlarm('hs-health-poll', { delayInMinutes: 0.25 + Math.random() * 0.5, periodInMinutes: 5 })
-browser.alarms?.onAlarm?.addListener((alarm) => {
+// async is safe here: unlike onMessage, alarms ignore the return value
+browser.alarms?.onAlarm?.addListener(async (alarm) => {
   if (alarm.name === 'keepalive') {
     // Just existing is enough to keep the worker alive
   } else if (alarm.name === 'refresh-global-emotes') {
@@ -428,6 +429,8 @@ browser.alarms?.onAlarm?.addListener((alarm) => {
     try {
       if (typeof isSocketOpen !== 'function') return
       if (!isSocketOpen()) {
+        // Idle-closed on purpose — don't resurrect a socket nobody needs
+        if (typeof hsWsIdleClosed !== 'undefined' && hsWsIdleClosed) return
         if (typeof connectWebSocket === 'function') connectWebSocket().catch(() => {})
         return
       }
@@ -455,6 +458,14 @@ browser.alarms?.onAlarm?.addListener((alarm) => {
       const ws = typeof seventvWebSocket !== 'undefined' ? seventvWebSocket : null
       const dead = !ws || (ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CONNECTING)
       if (dead) {
+        // Idle-closed on purpose, or no platform tab to serve (covers SW
+        // restarts that reset the idle flag) — don't resurrect a socket
+        // nobody is listening for. A returning tab reconnects via subscribe.
+        if (typeof seventvIdleClosed !== 'undefined' && seventvIdleClosed) return
+        try {
+          const platformTabs = await browser.tabs.query({ url: SEVENTV_PLATFORM_URLS })
+          if (platformTabs.length === 0) return
+        } catch {}
         log('7TV reconnect alarm: WS dead, reviving')
         // Reset backoff cap so we keep trying after an SW restart.
         try {
@@ -857,6 +868,19 @@ function scheduleInventoryRefresh() {
   }, 2000)
 }
 let unreadNotifCount = 0 // Unread notification count for extension badge
+// Survive SW eviction: the counter only lived in memory, so any eviction
+// zeroed the badge silently. session scope (not local) — the server is the
+// source of truth across browser restarts via hydrateUnreadNotifCount.
+browser.storage.session
+  ?.get('unread_notif_count')
+  .then((r) => {
+    const n = r?.unread_notif_count
+    if (typeof n === 'number' && n > unreadNotifCount) {
+      unreadNotifCount = n
+      updateExtensionBadge()
+    }
+  })
+  .catch(() => {})
 let cachedFollowHistory = null // Cache follow:history for late-loading content scripts
 const wsStreamEventDedup = new Map() // Dedup stream events across stream:* and follow:stream:*
 let cachedFollowColors = null // Cache follow:colors for late-loading content scripts
@@ -1002,7 +1026,8 @@ try {
       clearTimeout(reconnectTimer)
       reconnectTimer = null
     }
-    if (!isSocketOpen()) connectWebSocket().catch((err) => log(' onlineConnect failed:', err?.message))
+    if (!hsWsIdleClosed && !isSocketOpen())
+      connectWebSocket().catch((err) => log(' onlineConnect failed:', err?.message))
   })
   self.addEventListener('offline', () => {
     log(' 🚫 Network offline — pausing reconnect attempts')
@@ -3185,11 +3210,21 @@ let seventvZombieTimer = null
 const seventvSubscribedSets = new Set() // Track which set IDs we've subscribed to
 const seventvPendingSubs = new Set() // Queued while connection is opening
 const SEVENTV_MAX_RECONNECT_ATTEMPTS = 5
+// Idle disconnect: the socket only carries emote/cosmetic deltas for open
+// platform tabs — at zero tabs every event is discarded work, so we close
+// after a short grace and reconnect when a tab returns (subs replay on open).
+let seventvIdleClosed = false
+let seventvIdleTimer = null
+const SEVENTV_IDLE_GRACE_MS = 5000
+const SEVENTV_PLATFORM_URLS = ['*://*.twitch.tv/*', '*://*.kick.com/*', '*://*.youtube.com/*', '*://*.heatsync.org/*']
 
 function ensure7TVConnection() {
   if (seventvWebSocket && seventvWebSocket.readyState !== WebSocket.CLOSED) {
     return // Already connected, connecting, or closing
   }
+  // Any explicit connect intent (subscribe from a live tab, watchdog revive)
+  // ends the idle state — only the automatic paths honor it.
+  seventvIdleClosed = false
 
   clearTimeout(seventvReconnectTimer)
   seventvReconnectTimer = null
@@ -3316,6 +3351,13 @@ function ensure7TVConnection() {
       if (seventvZombieTimer) {
         untrackInterval(seventvZombieTimer)
         seventvZombieTimer = null
+      }
+
+      // Deliberate idle close — stay down until a platform tab returns
+      // (schedule7TVIdleCheck / the next subscribe call reconnects).
+      if (seventvIdleClosed) {
+        log(' 7TV EventAPI: idle close (no platform tabs) — not reconnecting')
+        return
       }
 
       if (seventvReconnectAttempts < SEVENTV_MAX_RECONNECT_ATTEMPTS && seventvEmoteSetIds.size > 0) {
@@ -3502,6 +3544,60 @@ function subscribe7TVEmoteSet(setId) {
     seventvPendingSubs.add(setId)
   }
 }
+
+// Debounced zero-tab check for BOTH long-lived sockets (7TV EventAPI +
+// heatsync WS): close when the last platform tab goes away, reconnect when
+// one returns. The grace window rides out reloads and channel switches.
+// 7TV: emote-set subs park in seventvPendingSubs (replayed in onopen), user
+// cosmetic subs re-derive from seventvToTwitchId. Heatsync: channel joins
+// replay from tabChannels/joinedExtraChannels in the connect burst, and the
+// toolbar badge resyncs via hydrateUnreadNotifCount on the next auth.
+// Closing the heatsync WS also releases the SW keepalive (its 20s heartbeat
+// pinned the worker in RAM forever) — the whole SW heap gets reclaimed.
+function scheduleWsIdleCheck() {
+  clearTimeout(seventvIdleTimer)
+  seventvIdleTimer = setTimeout(async () => {
+    seventvIdleTimer = null
+    let tabs
+    try {
+      tabs = await browser.tabs.query({ url: SEVENTV_PLATFORM_URLS })
+    } catch {
+      return // can't tell — leave the sockets alone (fail open)
+    }
+    if (tabs.length === 0) {
+      const ws = seventvWebSocket
+      if (ws && ws.readyState !== WebSocket.CLOSED) {
+        log(' 7TV EventAPI: no platform tabs — closing idle socket')
+        seventvIdleClosed = true
+        for (const setId of seventvSubscribedSets) seventvPendingSubs.add(setId)
+        clearTimeout(seventvReconnectTimer)
+        seventvReconnectTimer = null
+        try {
+          ws.close()
+        } catch {}
+      }
+      if (typeof socket !== 'undefined' && socket && socket.readyState !== WebSocket.CLOSED && !hsWsIdleClosed) {
+        log(' HS WS: no platform tabs — closing idle socket')
+        hsWsIdleClosed = true // gates onclose→scheduleReconnect + watchdog + online
+        clearTimeout(reconnectTimer)
+        reconnectTimer = null
+        try {
+          socket.close() // onclose still runs: clears heartbeat, sets state
+        } catch {}
+      }
+    } else {
+      if (seventvIdleClosed) ensure7TVConnection() // pending subs replay on open
+      if (hsWsIdleClosed) {
+        hsWsIdleClosed = false
+        connectWebSocket().catch(() => {})
+      }
+    }
+  }, SEVENTV_IDLE_GRACE_MS)
+}
+browser.tabs.onRemoved.addListener(scheduleWsIdleCheck)
+browser.tabs.onUpdated.addListener((_tabId, changeInfo) => {
+  if (changeInfo.url) scheduleWsIdleCheck()
+})
 
 function handle7TVEmoteSetUpdate(updateData) {
   // updateData.id is the emote set ID — look up which channel it belongs to
@@ -4009,6 +4105,26 @@ function updateExtensionBadge() {
   recomputeBadge()
 }
 
+// Resync the toolbar badge's notification count from the server. Runs on
+// every WS auth — the in-memory counter misses notification:new events that
+// arrive while the socket is idle-closed or the SW is evicted, so reconnect
+// always adopts server truth instead of trusting stale local state.
+async function hydrateUnreadNotifCount() {
+  try {
+    const res = await fetch('https://heatsync.org/api/notifications', {
+      credentials: 'include',
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!res.ok) return // 401 = not logged in, skip silently
+    const data = await res.json()
+    if (typeof data?.count !== 'number') return
+    if (data.count === unreadNotifCount) return
+    unreadNotifCount = data.count
+    browser.storage.session?.set({ unread_notif_count: unreadNotifCount }).catch(() => {})
+    updateExtensionBadge()
+  } catch {}
+}
+
 // Persist muted users to storage as { username, expiresAt } objects
 function persistMutedUsers() {
   const arr = Array.from(mutedUsers.entries()).map(([username, expiresAt]) => ({ username, expiresAt }))
@@ -4241,6 +4357,13 @@ let pendingStartupJitterMs = 0
 const messageQueue = [] // Queue messages when socket not ready
 let connectionPromise = null // Track ongoing connection attempt
 let lastWsDataReceived = 0 // Timestamp of last received WS message (zombie detection)
+// Idle disconnect (mirrors seventvIdleClosed): every WS consumer is
+// tab-directed except the toolbar notification badge, which resyncs via
+// hydrateUnreadNotifCount on reconnect — so at zero platform tabs the socket
+// is pure idle cost (and its 20s heartbeat pins the SW in RAM forever).
+// Gates the automatic revival paths only; any explicit connect intent
+// (wsSend queue, tab join, auth change) clears it in connectWebSocket.
+let hsWsIdleClosed = false
 
 function isSocketOpen() {
   return socket && socket.readyState === WebSocket.OPEN
@@ -4281,6 +4404,9 @@ function flushMessageQueue() {
 }
 
 async function connectWebSocket() {
+  // Explicit connect intent ends the idle state — only the automatic
+  // revival paths (watchdog alarm, scheduleReconnect, online) honor it.
+  hsWsIdleClosed = false
   // If already connecting, wait for that attempt
   if (wsState === WS_STATE.CONNECTING && connectionPromise) {
     log(' Connection in progress, waiting...')
@@ -4590,6 +4716,9 @@ function handleWSMessage(msg) {
         // while connected)
         fetchServerMutes().catch(() => {})
         fetchServerBlocks().catch(() => {})
+        // Every auth (not once-per-session): resync the badge counter the
+        // idle-closed socket / evicted SW couldn't keep current.
+        hydrateUnreadNotifCount().catch(() => {})
         break
 
       case 'server:shutdown':
@@ -4828,6 +4957,7 @@ function handleWSMessage(msg) {
       case 'notification:new':
         log(' Notification received:', msg)
         unreadNotifCount++
+        browser.storage.session?.set({ unread_notif_count: unreadNotifCount }).catch(() => {})
         updateExtensionBadge()
         broadcastToTabs({
           type: 'notification:new',
@@ -5521,6 +5651,7 @@ function handleWSMessage(msg) {
 
 // Reconnect with exponential backoff
 function scheduleReconnect() {
+  if (hsWsIdleClosed) return // Deliberate idle close — a returning tab reconnects
   if (authFailedBlock) return // Auth failed — don't loop
   if (reconnectTimer) return // Already scheduled
   // Don't burn retries against a known-dead network — the online listener
@@ -6901,6 +7032,7 @@ async function handleMessage(message, sender, sendResponse) {
     return true
   } else if (message.type === 'notifs_viewed') {
     unreadNotifCount = 0
+    browser.storage.session?.set({ unread_notif_count: 0 }).catch(() => {})
     updateExtensionBadge()
   } else if (message.type === 'get_follow_history') {
     // Content scripts request cached follow history (handles race condition on load)

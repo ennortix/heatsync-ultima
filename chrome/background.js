@@ -324,7 +324,12 @@ function splitIncomingUiState(obj) {
       if (DEVICE_LOCAL_KEYS.has(key)) continue
       if (UI_SYNC_BLOCKLIST.has(key)) {
         const mirrorKey = OVERFLOW_MIRROR_KEYS[key]
-        if (mirrorKey && estimateSettingSize(obj[key]) <= LARGE_KEY_SYNC_MAX) overflow[mirrorKey] = obj[key]
+        // string-only: both large keys are serialized strings on the wire
+        // (server enforces the same) — never let a server-fanned object/array
+        // shape into storage.local, where the sync bucket's sanitizer can't
+        // see it. size cap is defense in depth against a stale server build.
+        if (mirrorKey && typeof obj[key] === 'string' && estimateSettingSize(obj[key]) <= LARGE_KEY_SYNC_MAX)
+          overflow[mirrorKey] = obj[key]
         continue
       }
       sync[key] = obj[key]

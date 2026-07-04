@@ -2161,7 +2161,11 @@
           const mirrorKey = OVERFLOW_MIRROR_KEYS[k]
           if (mirrorKey) localPatch[mirrorKey] = v
           if (isLargeKeySyncEligible(k, v)) {
-            wsPatch[k] = v
+            // large free-text keys ride a SLOWER debounce (below) — the 100ms
+            // flush is tuned for toggles; a keystroke-by-keystroke textarea
+            // edit would otherwise fan a fresh up-to-32KB patch to every
+            // device several times per edit session
+            _pendingLargeWsPatch[k] = v
           } else if (!DEVICE_LOCAL_KEYS.has(k)) {
             warn(
               'settings sync: skipping',
@@ -2222,8 +2226,29 @@
           /* context invalidated */
         }
       }
+
+      if (Object.keys(_pendingLargeWsPatch).length) {
+        if (_largeWsPatchTimer) cleanup.clearTimeout(_largeWsPatchTimer)
+        _largeWsPatchTimer = cleanup.setTimeout(() => {
+          _largeWsPatchTimer = null
+          const patch = _pendingLargeWsPatch
+          _pendingLargeWsPatch = {}
+          try {
+            chrome.runtime.sendMessage({
+              type: 'ws_send',
+              data: { type: 'ui-state:sync', patch },
+            })
+          } catch (_) {
+            /* context invalidated */
+          }
+        }, 1200)
+      }
     }, 100)
   }
+
+  // large-key ws fanout buffer — see saveUiSetting's slow-debounce comment
+  let _pendingLargeWsPatch = {}
+  let _largeWsPatchTimer = null
 
   // ─── settings registry engine ─────────────────────────────────────────
   // SETTINGS (src/lib/settings-schema.js) is the declarative catalog; this
@@ -15979,7 +16004,10 @@
           if (DEVICE_LOCAL_KEYS.has(k)) continue
           if (UI_SYNC_BLOCKLIST.has(k)) {
             const mirrorKey = OVERFLOW_MIRROR_KEYS[k]
-            if (mirrorKey && estimateSettingSize(remote[k]) <= LARGE_KEY_SYNC_MAX) localOverflow[mirrorKey] = remote[k]
+            // string-only, mirroring splitIncomingUiState (background.js) — the
+            // overflow bucket bypasses sanitizeUiSettings, so shape-check here
+            if (mirrorKey && typeof remote[k] === 'string' && estimateSettingSize(remote[k]) <= LARGE_KEY_SYNC_MAX)
+              localOverflow[mirrorKey] = remote[k]
           } else {
             syncState[k] = remote[k]
           }

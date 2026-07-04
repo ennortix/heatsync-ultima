@@ -299,6 +299,19 @@ describe('splitIncomingUiState', () => {
     expect(overflow).toEqual({ chat_filter_rules: 'x'.repeat(32768) })
   })
 
+  test('non-string large-key values are dropped — overflow bucket is string-only', () => {
+    const { overflow } = splitIncomingUiState({
+      keywordHighlights: { __proto__: { polluted: true }, sneaky: 'object' },
+      chatFilterRules: ['not', 'a', 'string'],
+    })
+    expect(overflow).toEqual({})
+  })
+
+  test('numeric/boolean large-key values are dropped too', () => {
+    const { overflow } = splitIncomingUiState({ keywordHighlights: 42, chatFilterRules: true })
+    expect(overflow).toEqual({})
+  })
+
   test('non-object input returns empty sync/overflow (no throw)', () => {
     expect(splitIncomingUiState(null)).toEqual({ sync: {}, overflow: {} })
     expect(splitIncomingUiState('nope')).toEqual({ sync: {}, overflow: {} })

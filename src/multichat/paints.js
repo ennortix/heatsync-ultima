@@ -141,6 +141,7 @@ function ensureHsPaintSheet() {
 // the sheet.
 let _hsPaintHoverInstalled = false
 let _hsPaintHoverEls = null
+let _hsPaintHoverTarget = null
 
 function _hsPaintHoverKey(el) {
   const raw = (el.dataset && el.dataset.username) || el.textContent || ''
@@ -167,12 +168,20 @@ function installHsPaintHoverSync() {
     for (const el of _hsPaintHoverEls) el.classList.remove('hsp-hover')
     _hsPaintHoverEls = null
   }
+  const clearAll = () => {
+    _hsPaintHoverTarget = null
+    clear()
+  }
   _hsPaintHoverOn(
     document,
     'mouseover',
     (e) => {
       const t = e.target instanceof Element ? e.target.closest('[class*="hsp-"]') : null
       if (!t) return
+      // letter-split names refire mouseover per span — same outer element,
+      // no work to do (the full-document scan below is the expensive part)
+      if (t === _hsPaintHoverTarget) return
+      _hsPaintHoverTarget = t
       clear()
       const key = _hsPaintHoverKey(t)
       if (!key) return
@@ -197,7 +206,7 @@ function installHsPaintHoverSync() {
       // still inside the same painted element (moving across its letter
       // spans) — keep the sync alive
       if (e.relatedTarget instanceof Element && e.relatedTarget.closest('[class*="hsp-"]') === t) return
-      clear()
+      clearAll()
     },
     { passive: true },
   )

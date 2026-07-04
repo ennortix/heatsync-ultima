@@ -121,12 +121,86 @@ function ensureHsPaintSheet() {
       // (edge-on at rotateX/Y 90deg = invisible), so `transform:none !important`
       // — which beats animation-applied values in the cascade — snaps both the
       // element and its spans flat.
-      '[class*="hsp-"]:hover,[class*="hsp-"]:hover span{animation-play-state:paused !important;background:#fff !important;-webkit-background-clip:border-box !important;background-clip:border-box !important;color:#000 !important;transform:none !important;}'
+      // .hsp-hover is the JS-synced twin of :hover — installHsPaintHoverSync
+      // puts it on EVERY visible copy of the hovered user's name so they all
+      // freeze together, not just the pointer target.
+      '[class*="hsp-"]:hover,[class*="hsp-"]:hover span,[class*="hsp-"].hsp-hover,[class*="hsp-"].hsp-hover span{animation-play-state:paused !important;background:#fff !important;-webkit-background-clip:border-box !important;background-clip:border-box !important;color:#000 !important;transform:none !important;}'
     const tracked =
       typeof cleanup !== 'undefined' && cleanup.trackNode ? cleanup.trackNode(hsPaintSheetEl) : hsPaintSheetEl
     document.head.appendChild(tracked)
+    installHsPaintHoverSync()
   }
   return hsPaintSheetEl
+}
+
+// ── hover-freeze sync ────────────────────────────────────────────────────────
+// Hovering a painted name freezes EVERY visible copy of that user's name (the
+// CSS :hover rule above only reaches the pointer target). Matches by
+// data-username when present (.hs-mc-user rows), falling back to text content
+// so mention chips without the attribute sync too. Installed once, alongside
+// the sheet.
+let _hsPaintHoverInstalled = false
+let _hsPaintHoverEls = null
+
+function _hsPaintHoverKey(el) {
+  const raw = (el.dataset && el.dataset.username) || el.textContent || ''
+  return raw.trim().toLowerCase().replace(/^@/, '')
+}
+
+// cleanup-tracked listener when the helper is available (live multichat),
+// plain listener otherwise (test harness stubs cleanup with trackNode only).
+function _hsPaintHoverOn(target, type, fn, opts) {
+  if (typeof cleanup !== 'undefined' && typeof cleanup.addEventListener === 'function') {
+    cleanup.addEventListener(target, type, fn, opts)
+  } else {
+    target.addEventListener(type, fn, opts)
+  }
+}
+
+function installHsPaintHoverSync() {
+  if (_hsPaintHoverInstalled) return
+  // test harness stubs `document` as a bare object — nothing to install on
+  if (typeof document.addEventListener !== 'function' || typeof document.querySelectorAll !== 'function') return
+  _hsPaintHoverInstalled = true
+  const clear = () => {
+    if (!_hsPaintHoverEls) return
+    for (const el of _hsPaintHoverEls) el.classList.remove('hsp-hover')
+    _hsPaintHoverEls = null
+  }
+  _hsPaintHoverOn(
+    document,
+    'mouseover',
+    (e) => {
+      const t = e.target instanceof Element ? e.target.closest('[class*="hsp-"]') : null
+      if (!t) return
+      clear()
+      const key = _hsPaintHoverKey(t)
+      if (!key) return
+      const hit = []
+      for (const el of document.querySelectorAll('[class*="hsp-"]')) {
+        if (el !== t && _hsPaintHoverKey(el) === key) {
+          el.classList.add('hsp-hover')
+          hit.push(el)
+        }
+      }
+      if (hit.length) _hsPaintHoverEls = hit
+    },
+    { passive: true },
+  )
+  _hsPaintHoverOn(
+    document,
+    'mouseout',
+    (e) => {
+      if (!_hsPaintHoverEls) return
+      const t = e.target instanceof Element ? e.target.closest('[class*="hsp-"]') : null
+      if (!t) return
+      // still inside the same painted element (moving across its letter
+      // spans) — keep the sync alive
+      if (e.relatedTarget instanceof Element && e.relatedTarget.closest('[class*="hsp-"]') === t) return
+      clear()
+    },
+    { passive: true },
+  )
 }
 
 /** Compile + append the CSS for `hash` if not already present. Idempotent. */

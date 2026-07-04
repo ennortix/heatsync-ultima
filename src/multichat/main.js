@@ -4817,6 +4817,26 @@
   let _isResizingC = false
   let _cHandlePanelObs = null
   let _cHandlePanelObsTarget = null
+  // Mount-retry: on hard loads of no-channel pages the first position pass can
+  // run before #hs-mc-container even EXISTS — the ResizeObserver has nothing to
+  // attach to, so nothing ever re-shows the bar. Bounded ladder re-polls until
+  // the panel mounts (or gives up on genuinely panel-less pages, e.g. logged out).
+  let _cHandleRetryTimer = null
+  let _cHandleRetryCount = 0
+  function _armCHandleMountRetry() {
+    if (_cHandleRetryTimer || _cHandleRetryCount >= 20) return
+    _cHandleRetryTimer = cleanup.setTimeout(
+      () => {
+        _cHandleRetryTimer = null
+        _cHandleRetryCount++
+        try {
+          positionChatResizeHandle()
+        } catch (_) {}
+      },
+      300,
+      'c-handle-mount-retry',
+    )
+  }
   function ensureChatResizeHandle() {
     let handle = document.getElementById('hs-c-resize-handle')
     if (handle) return handle
@@ -5100,6 +5120,7 @@
     // makes the bar track the panel's true edge regardless of those
     // offsets — otherwise the bar overlays tabbar/inputbar content.
     const cont = document.getElementById('hs-mc-container')
+    if (cont) _cHandleRetryCount = 0 // panel exists — future mount-retries start fresh
     // On no-channel pages (twitch /directory, kick browse) this runs while the
     // panel is still 0×0 mid-mount, hides the bar via the rect guard below, and
     // nothing later re-triggers it — the bar stayed missing until a window
@@ -5127,6 +5148,7 @@
     // orange line with no chat). Hide it until a real chat panel exists.
     if (!r || r.width < 2 || r.height < 2) {
       handle.style.display = 'none'
+      _armCHandleMountRetry() // panel missing or pre-layout — re-check shortly
       return
     }
     handle.style.display = 'block'

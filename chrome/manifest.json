@@ -151,7 +151,6 @@
         "https://*.twitch.tv/*"
       ],
       "js": [
-        "emoji-data.js",
         "shared-utils.js",
         "multichat-twitch.js"
       ],
@@ -163,7 +162,6 @@
         "https://*.kick.com/*"
       ],
       "js": [
-        "emoji-data.js",
         "shared-utils.js",
         "multichat-kick.js"
       ],

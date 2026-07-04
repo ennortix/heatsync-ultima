@@ -504,7 +504,6 @@ const PLATFORM_MODULES = {
 
 function readMultichatModules(platform) {
   const mcDir = join(SRC_DIR, 'multichat')
-  const chromeDir = join(__dirname, 'chrome')
   // Note: __HS_HOST__ is intentionally NOT declared here as a const.
   // It is a free (global-scope) reference so esbuild's define option can
   // substitute it at minification time and constant-fold platform branches.
@@ -512,11 +511,13 @@ function readMultichatModules(platform) {
   // so main.js falls back to location.hostname detection — correct for dev.
   let combined = '// === MULTICHAT MODULES (auto-bundled) ===\n'
 
-  // Bundle emoji-data inside IIFE so it's always available regardless of content script load order
-  const emojiDataPath = join(chromeDir, 'emoji-data.js')
-  if (existsSync(emojiDataPath)) {
-    combined += `\n// --- emoji-data.js ---\n${readFileSync(emojiDataPath, 'utf8')}\n`
-  }
+  // emoji-data.js is NOT embedded: the isolated-world copy injected by the
+  // manifest (content.js group on twitch/kick, own group on youtube) always
+  // precedes the multichat bundle — same world, same run_at, earlier manifest
+  // entry — so bare EMOJI_DATA references resolve through the scope chain.
+  // Consumers are typeof/_emojiMap-guarded, so a missing global degrades to
+  // no emoji autocomplete instead of throwing. Embedding it cost 124KB parse
+  // per bundle per tab, on top of the manifest copies.
 
   // Paint spec compiler (src/lib/paint-spec.js) — only the multichat overlay
   // needs a CSS compiler, so it's embedded here (like emoji-data.js above)
@@ -645,6 +646,16 @@ function build(browser) {
   // Read lib
   const lib = readLib()
   const mcSrcPath = join(SRC_DIR, 'multichat', 'main.js')
+
+  // Self-heal: chrome/multichat.js is the retired single-bundle name (pre
+  // per-platform split) — unreferenced by any manifest, gitignored, excluded
+  // from zips. A stale copy still bloats unpacked dev loads (~2.2MB), so
+  // remove it whenever we build.
+  const staleMc = join(chromeDir, 'multichat.js')
+  if (existsSync(staleMc)) {
+    rmSync(staleMc)
+    console.log('  Removed stale chrome/multichat.js')
+  }
 
   // Emit per-platform multichat bundles
   const PLATFORMS = ['twitch', 'kick', 'youtube']

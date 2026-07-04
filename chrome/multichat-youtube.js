@@ -55510,10 +55510,13 @@ const STORAGE_KEY = 'heatsync_multichat'
       const tsSpan = tsVal ? `<span class="hs-mc-ts">${tsVal}</span>` : ''
       const label = `<span style="color:${m.inlineNotifColor || '#fff'};font-size:13px;font-weight:700;margin-right:3px">[🔥]</span>`
       // ¶ permalink → shareable SSR page (right-click copy-link works natively);
-      // the row click handler ignores anchors, mirrors the site's moment-card
+      // the row click handler ignores anchors, mirrors the site's moment-card.
+      // Shift-click pastes the URL into the chat input instead — the in-chat
+      // visibility loop: non-users see a plain heatsync.org link, click =
+      // instant value, no wall. Never auto-sends; the user owns the enter key.
       const perma =
         m.momentId && /^\d+$/.test(m.momentId)
-          ? ` <a class="hs-mc-moment-perma" href="https://heatsync.org/moment/${m.momentId}" target="_blank" rel="noopener" title="permalink — share this moment">¶</a>`
+          ? ` <a class="hs-mc-moment-perma" href="https://heatsync.org/moment/${m.momentId}" target="_blank" rel="noopener" title="permalink — click to open, shift-click to paste into chat">¶</a>`
           : ''
       div.innerHTML = `${tsSpan}${label}<span style="color:#c0c0c0">${escapeHtml(m.text || '')}</span>${perma}`
       div.style.cursor = 'pointer'
@@ -55521,6 +55524,24 @@ const STORAGE_KEY = 'heatsync_multichat'
       const plat = m.momentPlatform || 'twitch'
       div.title = `open ${plat}/${ch}`
       div.addEventListener('click', (e) => {
+        const permaEl = e.target.closest?.('a.hs-mc-moment-perma')
+        if (permaEl && e.shiftKey) {
+          e.preventDefault()
+          const input = document.getElementById('hs-mc-input')
+          if (!input) return
+          const momentUrl = permaEl.getAttribute('href')
+          const cur = (typeof getInputText === 'function' ? getInputText() : input.value) || ''
+          const next = (cur.trim() ? `${cur.trimEnd()} ` : '') + momentUrl + ' '
+          if (typeof wysiwygEnabled !== 'undefined' && wysiwygEnabled && typeof restoreWysiwygText === 'function') {
+            restoreWysiwygText(input, next)
+          } else {
+            input.value = next
+          }
+          try {
+            input.focus()
+          } catch (_) {}
+          return
+        }
         if (e.target.closest('a')) return
         const url = plat === 'kick' ? `https://kick.com/${ch}` : `https://www.twitch.tv/${ch}`
         try {

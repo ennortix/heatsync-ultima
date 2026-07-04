@@ -249,3 +249,17 @@ describe('autocomplete-hook.js — stays in lockstep with the multichat', () => 
     expect(inputSrc).toContain('acState._frecBumped = null // session over — whatever was last bumped is the commit')
   })
 })
+
+describe('moment ¶ shift-click paste (main.js) — in-chat visibility loop', () => {
+  const MAIN_SRC = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'main.js'), 'utf8')
+  test('shift-click pastes into the input, never auto-sends, and appends to a draft', () => {
+    const s = MAIN_SRC.indexOf("if (m.type === 'moment')")
+    const body = MAIN_SRC.slice(s, s + 3000)
+    expect(body).toContain("closest?.('a.hs-mc-moment-perma')")
+    expect(body).toContain('e.shiftKey')
+    expect(body).toContain('e.preventDefault()')
+    expect(body).toContain('restoreWysiwygText(input, next)')
+    expect(body).not.toContain('sendMessage(')
+    expect(body).toContain('shift-click to paste into chat')
+  })
+})

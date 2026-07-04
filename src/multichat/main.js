@@ -155,6 +155,10 @@
       document.getElementById(id)?.remove()
   }
   cleanup.addEventListener(window, 'blur', _hsAbortAllResizes)
+  // Hidden-tab DOM pause: appendMessage skips all DOM work while the tab is
+  // hidden (buffers stay the source of truth); this flag marks that at least
+  // one message was skipped so the visible transition rebuilds once.
+  let _hiddenSkippedAppend = false
   cleanup.addEventListener(document, 'visibilitychange', () => {
     if (document.hidden) _hsAbortAllResizes()
     // Pause our infinite breathe/livedot CSS animations while the tab is
@@ -163,6 +167,15 @@
     try {
       document.body.classList.toggle('hs-ext-hidden', document.hidden)
     } catch (_) {}
+    // Catch up after a hidden stretch: one rebuild from buffers replaces the
+    // N per-message appends we skipped. renderMessages self-guards for the
+    // settings tab and open profile cards, so no state checks needed here.
+    if (!document.hidden && _hiddenSkippedAppend) {
+      _hiddenSkippedAppend = false
+      try {
+        renderMessages(currentTab)
+      } catch (_) {}
+    }
   })
 
   // Muted users (right-click to hide) — loaded async from chrome.storage.local
@@ -2389,10 +2402,10 @@
         DOM_RENDER_CAP = v
       },
     },
-    emoteAnimationEnabled: {
-      get: () => emoteAnimationEnabled,
+    emoteAnimationMode: {
+      get: () => emoteAnimationMode,
       set: (v) => {
-        emoteAnimationEnabled = v
+        emoteAnimationMode = v
       },
     },
     tabPosition: {
@@ -3891,6 +3904,21 @@
             const orig = t.closest('.hs-mc-emote-wrapper')?.dataset?.emoteUrl
             if (orig) t.src = orig
           }
+          // CDN static-variant miss (brand-new emote still processing) — fall
+          // back to the original animated url once instead of a broken icon.
+          // avif static misses are excluded: the avif block below retries the
+          // webp static variant first; only its failure lands back here.
+          if (
+            t instanceof HTMLImageElement &&
+            t.classList.contains('hs-mc-emote') &&
+            /(_static\.|\/static\/)/.test(t.src || '') &&
+            !/\.avif(\?|$)/i.test(t.src || '') &&
+            !t.dataset.hsStaticFell
+          ) {
+            t.dataset.hsStaticFell = '1'
+            const orig = t.closest('.hs-mc-emote-wrapper')?.dataset?.emoteUrl
+            if (orig) t.src = orig
+          }
           // 7TV emote requested as AVIF (10x smaller for animated) but this
           // emote has no avif variant (rare — e.g. brand-new emote still
           // processing) → fall back to webp once instead of a broken icon.
@@ -3923,6 +3951,44 @@
       }
       msgsEl.addEventListener('load', onImgLoadOrError, { capture: true, passive: true, signal: mcSignal })
       msgsEl.addEventListener('error', onImgLoadOrError, { capture: true, passive: true, signal: mcSignal })
+
+      // Hover-to-animate (animateEmotes: 'hover') — rows render static srcs;
+      // pointing at a message swaps all its emotes to the original animated
+      // url (data-emote-url), leaving restores the exact pre-hover src via a
+      // stash (never recomputed, so proxy/avif fallbacks survive roundtrips).
+      // Row-level swap: one hover animates the whole message, matching how
+      // people actually read chat, and keeps the hit target big.
+      let _hoverAnimRow = null
+      const _restoreHoverRow = () => {
+        if (!_hoverAnimRow) return
+        for (const img of _hoverAnimRow.querySelectorAll('img.hs-mc-emote')) {
+          if (img.dataset.hsStaticSrc) {
+            img.src = img.dataset.hsStaticSrc
+            delete img.dataset.hsStaticSrc
+          }
+        }
+        _hoverAnimRow = null
+      }
+      msgsEl.addEventListener(
+        'mouseover',
+        (e) => {
+          if (emoteAnimationMode !== 'hover') return
+          const row = e.target instanceof Element ? e.target.closest('.hs-mc-msg') : null
+          if (row === _hoverAnimRow) return
+          _restoreHoverRow()
+          if (!row) return
+          _hoverAnimRow = row
+          for (const img of row.querySelectorAll('img.hs-mc-emote')) {
+            const orig = img.closest('.hs-mc-emote-wrapper')?.dataset?.emoteUrl
+            if (orig && img.src !== orig && !img.dataset.hsStaticSrc) {
+              img.dataset.hsStaticSrc = img.src
+              img.src = orig
+            }
+          }
+        },
+        { passive: true, signal: mcSignal },
+      )
+      msgsEl.addEventListener('mouseleave', _restoreHoverRow, { passive: true, signal: mcSignal })
 
       // Reply-chain stack overlay — viewport-bounded stack of all parents above active row
       let _stackActiveRow = null
@@ -11294,6 +11360,14 @@
       return true // tell caller we handled it
     }
 
+    // Hidden tab: skip ALL DOM work (build/append/trim/pin) — buffers keep the
+    // message and the visibilitychange handler rebuilds once on return. The
+    // multi-platform path above pauses for free (rAF never fires while hidden).
+    if (document.hidden) {
+      _hiddenSkippedAppend = true
+      return true
+    }
+
     const msgsEl = document.getElementById('hs-mc-messages')
     if (!msgsEl) return false
 
@@ -11335,7 +11409,11 @@
     _indexMessageDiv(div, msgKeyStr)
 
     // Trim oldest rows beyond the live-DOM cap (data buffer keeps more).
-    trimMessagesEl(msgsEl, DOM_RENDER_CAP)
+    // Hysteresis: let the append hot path overshoot the cap by 50 rows, then
+    // trim back down to it — one Range op per ~50 messages instead of one per
+    // message at steady state. Every other trim site stays exact-cap (tab
+    // restore paths assume ≤ cap).
+    if (msgsEl.childElementCount > DOM_RENDER_CAP + 50) trimMessagesEl(msgsEl, DOM_RENDER_CAP)
 
     // Apply mute to just this message — strip content for muted users.
     // msg.user is the sender; avoid a DOM scan to recompute it. Routes

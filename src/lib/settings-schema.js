@@ -88,6 +88,7 @@
  * @property {boolean} [rerenderSettings]
  * @property {string} [migrate] one-shot default-flip guard key
  * @property {function(Object,Object):*} [legacy] retired-key migration
+ * @property {function(*):*} [coerce] same-key type migration, runs pre-coercion
  * @property {boolean} [legacySyncFallback]
  * @property {boolean} [firstRunPersist]
  * @property {boolean} [invertDisplay]
@@ -491,16 +492,23 @@ const SETTINGS = [
   },
   {
     key: 'animateEmotes',
-    type: 'bool',
-    default: true,
+    type: 'enum',
+    default: 'always',
     scope: 'sync',
     category: 'display',
     section: 'cosmetics',
     label: 'animate emotes',
-    tip: 'play animated emotes (gifs/webp). off shows static first frames — saves cpu on busy channels. multichat messages; picker stays animated.',
-    control: 'pill',
-    runtimeVar: 'emoteAnimationEnabled',
+    tip: 'always plays animated emotes. hover shows static frames until the pointer is on a message — big cpu/ram saver on busy channels. never is fully static. multichat messages; picker stays animated.',
+    control: 'sizebtns',
+    runtimeVar: 'emoteAnimationMode',
     apply: 'emoteAnimation',
+    // pre-1.7.16 installs stored a bool under this key — map, never drop
+    coerce: (v) => (typeof v === 'boolean' ? (v ? 'always' : 'never') : v),
+    options: [
+      { value: 'always', label: 'always' },
+      { value: 'hover', label: 'hover' },
+      { value: 'never', label: 'never' },
+    ],
   },
   {
     key: 'chatterinoBadges',
@@ -1984,6 +1992,16 @@ function validateSettingValue(def, v) {
  */
 function coerceSettingValue(def, v) {
   if (!def || v === undefined || v === null) return undefined
+  // per-def pre-coercion — type migrations (e.g. a retired bool living under
+  // the same key as its enum successor) run before generic type handling so
+  // every ingest path (hydrate, setSetting, storage-change, ws sync) maps
+  // legacy values instead of dropping them to the default
+  if (def.coerce) {
+    try {
+      const cv = def.coerce(v)
+      if (cv !== undefined) v = cv
+    } catch (_) {}
+  }
   switch (def.type) {
     case 'bool':
       return !!v

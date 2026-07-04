@@ -360,15 +360,30 @@ const LINK_RE = /^(https?:\/\/\S+|[a-z0-9-]+(\.[a-z0-9-]+)+\/\S*)/i
 // Emote size (1, 2, or 4)
 let emoteSize = 1
 
-// Animate-emotes toggle (registry: animateEmotes). When off, animated
-// gif/webp srcs route through heatsync's emote proxy with static=1 —
-// the server extracts the first frame (sharp, 30-day immutable cache).
+// Animate-emotes mode (registry: animateEmotes): 'always' | 'hover' | 'never'.
+// hover and never both RENDER static srcs — hover swaps a row's emotes to
+// data-emote-url while the pointer is on it (listener in main.js). Static
+// srcs are each CDN's native static variant (zero server load); only URLs
+// with no known static form route through heatsync's emote proxy with
+// static=1 (server extracts the first frame, 30-day immutable cache).
 // data-emote-url keeps the ORIGINAL url for tooltips/copy/re-add.
-let emoteAnimationEnabled = true
+let emoteAnimationMode = 'always'
 function staticEmoteSrc(url) {
-  if (emoteAnimationEnabled || !url) return url
-  if (!/\.(gif|webp)(\?|$)/i.test(url)) return url
+  if (emoteAnimationMode === 'always' || !url) return url
   if (url.indexOf('/api/emote-proxy') !== -1) return url
+  // 7TV: Nx.{avif,webp,gif} → Nx_static.{avif,webp,gif} (covers avif, which
+  // the old gif/webp-only regex missed on Chrome)
+  if (url.includes('cdn.7tv.app')) return url.replace(/\/(\dx)\.(avif|webp|gif)(\?|$)/i, '/$1_static.$2$3')
+  // Twitch native: /default/ format token → /static/ (extensionless URLs;
+  // identical image for non-animated emotes, so no animated-detection needed)
+  if (url.includes('static-cdn.jtvnw.net/emoticons/')) return url.replace('/default/', '/static/')
+  // BTTV: /emote/{id}/{size} → /emote/{id}/static/{size}
+  if (url.includes('cdn.betterttv.net/emote/')) return url.replace(/(\/emote\/[a-f0-9]+)\//i, '$1/static/')
+  // Kick: extensionless /fullsize URLs have no CDN static variant — proxy
+  // them (files.kick.com is allowlisted server-side; static pngs pass through)
+  if (/files\.kick\.com\/emotes\//i.test(url))
+    return 'https://heatsync.org/api/emote-proxy?url=' + encodeURIComponent(url) + '&static=1'
+  if (!/\.(gif|webp)(\?|$)/i.test(url)) return url
   return 'https://heatsync.org/api/emote-proxy?url=' + encodeURIComponent(url) + '&static=1'
 }
 

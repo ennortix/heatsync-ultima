@@ -2163,7 +2163,15 @@
           if (isLargeKeySyncEligible(k, v)) {
             wsPatch[k] = v
           } else if (!DEVICE_LOCAL_KEYS.has(k)) {
-            warn('settings sync: skipping', k, '—', estimateSettingSize(v), 'bytes exceeds', LARGE_KEY_SYNC_MAX, 'cap, staying device-local')
+            warn(
+              'settings sync: skipping',
+              k,
+              '—',
+              estimateSettingSize(v),
+              'bytes exceeds',
+              LARGE_KEY_SYNC_MAX,
+              'cap, staying device-local',
+            )
           }
         } else {
           syncPatch[k] = v

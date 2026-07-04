@@ -10236,7 +10236,14 @@
       const dmPaint = m.platform === 'twitch' ? userPaintStyle(m.userId, (m.user || '').toLowerCase(), 'twitch') : ''
       const userName = `<span style="${dmPaint || `color:${sanitizeColor(m.color)};font-weight:600`}">${escapeHtml(m.user)}</span>`
       // All values sanitized — safe innerHTML
-      if (m._renderedHtml == null) m._renderedHtml = highlightHashtagsInHtml(processEmotes(escapeHtml(m.text), null))
+      // @mentions in the DM body paint like anywhere else a person is named —
+      // route through highlightMentionsInHtml (skipMentions=true avoids the
+      // double-anchor bug), reusing the sender path's HS-paint → 7TV → color
+      // precedence + twitch-space id-guard rather than the plain fallback.
+      if (m._renderedHtml == null)
+        m._renderedHtml = highlightHashtagsInHtml(
+          highlightMentionsInHtml(processEmotes(escapeHtml(m.text), null, undefined, undefined, undefined, true), m.platform),
+        )
       // All values already sanitized via escapeHtml/processEmotes — safe innerHTML (existing pattern)
       div.innerHTML = `${tsSpan}${label}${platBadge}${userName}: ${m._renderedHtml}`
       div.style.cursor = 'pointer'

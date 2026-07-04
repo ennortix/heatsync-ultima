@@ -604,7 +604,14 @@ function renderWhispersTab() {
     }
 
     // All dynamic values pass through escapeHtml/sanitizeColor — safe innerHTML (all values escaped above)
-    div.innerHTML = `${tsHtml}<span style="color:${platColor};font-size:13px;font-weight:700">[${platTag}]</span> ${senderLink} <span style="color:#808080">-&gt;</span> ${recipientLink}: ${highlightHashtagsInHtml(processEmotes(escapeHtml(m.text), null))}${statusHtml}`
+    // @mentions in the whisper body paint like anywhere else a person is named
+    // — route through highlightMentionsInHtml (skipMentions=true avoids the
+    // double-anchor bug) exactly like the live sender path, so its HS-paint →
+    // 7TV → color precedence + twitch-space id-guard are reused, not duplicated.
+    const whisperBody = highlightHashtagsInHtml(
+      highlightMentionsInHtml(processEmotes(escapeHtml(m.text), null, undefined, undefined, undefined, true), m.platform),
+    )
+    div.innerHTML = `${tsHtml}<span style="color:${platColor};font-size:13px;font-weight:700">[${platTag}]</span> ${senderLink} <span style="color:#808080">-&gt;</span> ${recipientLink}: ${whisperBody}${statusHtml}`
     frag.appendChild(div)
   }
 

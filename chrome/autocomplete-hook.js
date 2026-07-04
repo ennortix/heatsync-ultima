@@ -144,6 +144,34 @@
   const HEATSYNC_PREFIX = '__FFZ__' + HEATSYNC_SET_ID + '::'
   const HEATSYNC_SUFFIX = '__FFZ__'
 
+  // Shared MRU with the multichat picker/tab-complete (emotes.js RECENT_KEY) —
+  // same origin, same localStorage key, so native-chat completions and overlay
+  // completions feed one usage signal. Read per getMatches (≤24 names, cheap);
+  // written on every successful insert below.
+  const HS_RECENT_EMOTES_KEY = 'hs-mc-recent-emotes'
+  function readRecentEmoteSet() {
+    try {
+      const r = JSON.parse(localStorage.getItem(HS_RECENT_EMOTES_KEY))
+      return new Set(Array.isArray(r) ? r : [])
+    } catch (_) {
+      return new Set()
+    }
+  }
+  function recordRecentEmoteMru(name) {
+    if (!name) return
+    try {
+      let list = []
+      try {
+        const r = JSON.parse(localStorage.getItem(HS_RECENT_EMOTES_KEY))
+        list = Array.isArray(r) ? r : []
+      } catch (_) {}
+      list = list.filter((n) => n !== name)
+      list.unshift(name)
+      if (list.length > 24) list = list.slice(0, 24)
+      localStorage.setItem(HS_RECENT_EMOTES_KEY, JSON.stringify(list))
+    } catch (_) {}
+  }
+
   // Track insertion state to prevent autocomplete pollution (7TV-style approach)
   // After inserting an emote, Twitch re-reads input and may trigger autocomplete with emote name
   const recentlyInserted = new Set() // Track recently inserted emote names (capped at 100)
@@ -1123,6 +1151,7 @@
         for (const e of getNativeTwitchEmotes()) {
           if (e.sub) nativeSubNames.add(e.name)
         }
+        const recentSet = readRecentEmoteSet()
         for (const r of results) {
           const name = r.replacement || r.emote?.token || ''
           r._sortKey = name.toLowerCase()
@@ -1132,6 +1161,13 @@
           // anything else (Twitch's own dropdown results) falls back via sub status —
           // sub emotes are channel-tier (0).
           r._tier = r._tier ?? (r._isSub ? 0 : 2)
+          // Strong exact: the typed word IS this emote's full name AND it's
+          // channel/own tier or one the user has actually inserted before (MRU).
+          // Leads outright — typing the whole name is the intent signal
+          // ("clap" → Clap first, not 5th behind channel fuzzy hits). A
+          // never-used global that only coincidentally case-matches (the
+          // "HuG" case) has no MRU entry and still loses to channel emotes.
+          r._strong = r._sortKey === searchLower && (r._tier <= 1 || recentSet.has(name))
         }
         results.sort((a, b) => {
           // Category sort: emotes < usernames
@@ -1139,6 +1175,9 @@
 
           // Usernames: alphabetical only
           if (a._sortType === 2) return a._sortKey.localeCompare(b._sortKey)
+
+          // Used-before (or channel/own) full-name exact match beats everything.
+          if (a._strong !== b._strong) return a._strong ? -1 : 1
 
           // Tier outranks match-type (user call): a channel emote beats a global even
           // when the global is an exact/prefix match (e.g. "hug" → peepoHug over "HuG").
@@ -1166,6 +1205,7 @@
           delete r._isSub
           delete r._heatsyncSub
           delete r._tier
+          delete r._strong
         }
 
         if (results.length > 0) {
@@ -1600,6 +1640,7 @@
     // Add to recently inserted set - getMatches will skip exact matches
     // This prevents Twitch's polluted state from inserting wrong emotes
     recentlyInserted.add(matchedEmote.name)
+    recordRecentEmoteMru(matchedEmote.name)
     lastInsertedEmote = matchedEmote.name
     insertionCount++
 
@@ -1961,6 +2002,7 @@
               cycleState.lastCycledEmote = nextEmote.name
               // Add to recently inserted
               recentlyInserted.add(nextEmote.name)
+              recordRecentEmoteMru(nextEmote.name)
               if (recentlyInserted.size > 100) recentlyInserted.clear()
               // CRITICAL: Refocus input to ensure next Tab is captured
               const inputEl2 = getInputElement()

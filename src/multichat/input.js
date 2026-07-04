@@ -3922,6 +3922,9 @@ function findEmoteMatches(search) {
   }
 
   // Sort order (most-correct first):
+  //   0. strong exact — full-name match that's channel/own tier OR used before
+  //      (MRU). Typing the whole name is the intent signal: "clap" → Clap
+  //      first, not behind channel fuzzy hits.
   //   1. channel > own set > globals         (tier; emoji/non-emote have no tier)
   //   2. exact full-name match               (within tier)
   //   3. prefix > substring                  (priority)
@@ -3929,18 +3932,22 @@ function findEmoteMatches(search) {
   //   5. recently-used > never-used          (local MRU, fills as you insert)
   //   6. shorter prefix-match > longer       (Kap → Kappa before KappaPride)
   //   7. alpha
-  // Tier outranks exact-match (user call): typing "hug" surfaces the channel's
-  // peepoHug over a coincidental global "HuG" (whose name only case-matches
-  // "hug"). Exact-name still wins WITHIN a tier (own "Birdge" over own "BirdgeHmm").
+  // Tier still outranks a NEVER-USED exact match (user call): typing "hug"
+  // surfaces the channel's peepoHug over a coincidental global "HuG" — that
+  // one has no MRU entry, so it doesn't qualify as strong. Exact-name still
+  // wins WITHIN a tier (own "Birdge" over own "BirdgeHmm").
   const _recentList = typeof loadRecentEmotes === 'function' ? loadRecentEmotes() : []
   const _recentRank = new Map()
   for (let i = 0; i < _recentList.length; i++) _recentRank.set(_recentList[i], i)
   matches.sort((a, b) => {
-    const at = a.tier ?? 9,
-      bt = b.tier ?? 9
-    if (at !== bt) return at - bt
     const ae = (a.name || '').toLowerCase() === searchLower ? 0 : 1
     const be = (b.name || '').toLowerCase() === searchLower ? 0 : 1
+    const at = a.tier ?? 9,
+      bt = b.tier ?? 9
+    const as = ae === 0 && (at <= 1 || _recentRank.has(a.name)) ? 0 : 1
+    const bs = be === 0 && (bt <= 1 || _recentRank.has(b.name)) ? 0 : 1
+    if (as !== bs) return as - bs
+    if (at !== bt) return at - bt
     if (ae !== be) return ae - be
     if (a.priority !== b.priority) return a.priority - b.priority
     if (!!a.sub !== !!b.sub) return a.sub ? -1 : 1

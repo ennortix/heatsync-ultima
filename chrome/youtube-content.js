@@ -946,7 +946,21 @@
         matches.push({ emote, name, tier: emote._ytTier ?? 2, isExact, priority: isPrefix || isExact ? 0 : 1 })
       }
     }
+    // Strong exact — full-name match that's channel/own tier OR used before
+    // (shared 'hs-mc-recent-emotes' MRU with the multichat picker) leads
+    // outright ("clap" → Clap first). A never-used coincidental global exact
+    // ("HuG") has no MRU entry and still loses to channel emotes.
+    let recentSet
+    try {
+      const r = JSON.parse(localStorage.getItem('hs-mc-recent-emotes'))
+      recentSet = new Set(Array.isArray(r) ? r : [])
+    } catch (_) {
+      recentSet = new Set()
+    }
     matches.sort((a, b) => {
+      const as = a.isExact && (a.tier <= 1 || recentSet.has(a.name)) ? 0 : 1
+      const bs = b.isExact && (b.tier <= 1 || recentSet.has(b.name)) ? 0 : 1
+      if (as !== bs) return as - bs
       if (a.tier !== b.tier) return a.tier - b.tier
       if (a.isExact !== b.isExact) return a.isExact ? -1 : 1
       if (a.priority !== b.priority) return a.priority - b.priority
@@ -1048,6 +1062,25 @@
     sel.addRange(range)
 
     input.dispatchEvent(new Event('input', { bubbles: true }))
+    recordRecentEmoteMru(emoteName)
+  }
+
+  // Shared MRU with the multichat picker ('hs-mc-recent-emotes', same origin) —
+  // native-input completions feed the same usage signal that strong-exact
+  // ranking reads in searchEmotes.
+  function recordRecentEmoteMru(name) {
+    if (!name) return
+    try {
+      let list = []
+      try {
+        const r = JSON.parse(localStorage.getItem('hs-mc-recent-emotes'))
+        list = Array.isArray(r) ? r : []
+      } catch (_) {}
+      list = list.filter((n) => n !== name)
+      list.unshift(name)
+      if (list.length > 24) list = list.slice(0, 24)
+      localStorage.setItem('hs-mc-recent-emotes', JSON.stringify(list))
+    } catch (_) {}
   }
 
   // ─── Toast ────────────────────────────────────────────────────────────────────

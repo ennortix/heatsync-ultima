@@ -1197,8 +1197,12 @@
   }
 
   // Override Image constructor
+  // MUST be a real function, not an arrow — page code calls `new Image()`, and
+  // arrows throw "not a constructor" (same trap as HsWebSocket above). A biome
+  // format pass once converted this to an arrow and silently broke twitch's
+  // video player bootstrap site-wide (`new Image()` threw, media never attached).
   const OrigImage = window.Image
-  const HsImage = (width, height) => {
+  function HsImage(width, height) {
     const img = new OrigImage(width, height)
     const instSrcDesc = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src')
     Object.defineProperty(img, 'src', {

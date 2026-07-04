@@ -4815,20 +4815,22 @@
   // ============================================
   const HS_RESIZE_PX = 4 // visible thickness — mirrors --hs-resize-thickness
   let _isResizingC = false
+  let _cHandlePanelObs = null
+  let _cHandlePanelObsTarget = null
   function ensureChatResizeHandle() {
     let handle = document.getElementById('hs-c-resize-handle')
     if (handle) return handle
     handle = document.createElement('div')
     handle.id = 'hs-c-resize-handle'
+    // background/opacity/transition come from the #hs-c-resize-handle
+    // stylesheet rule — inline copies here silently overrode stylesheet
+    // changes (the 0.9-idle bump never applied to this handle).
     Object.assign(handle.style, {
       position: 'fixed',
-      background: '#fff',
-      opacity: '0.55',
       userSelect: 'none',
       touchAction: 'none',
       display: 'none',
       pointerEvents: 'auto',
-      transition: 'opacity 0.12s',
     })
     // z-index: YT needs max-int to beat its own modal stacking contexts (chrome
     // bottom bar, settings menu). But on twitch/kick, max-int put the handle OVER
@@ -5098,6 +5100,27 @@
     // makes the bar track the panel's true edge regardless of those
     // offsets — otherwise the bar overlays tabbar/inputbar content.
     const cont = document.getElementById('hs-mc-container')
+    // On no-channel pages (twitch /directory, kick browse) this runs while the
+    // panel is still 0×0 mid-mount, hides the bar via the rect guard below, and
+    // nothing later re-triggers it — the bar stayed missing until a window
+    // resize. Track the panel's rendered size and re-position on change.
+    if (cont && typeof ResizeObserver !== 'undefined' && _cHandlePanelObsTarget !== cont) {
+      if (_cHandlePanelObs) {
+        try {
+          _cHandlePanelObs.disconnect()
+        } catch (_) {}
+        cleanup.untrackObserver(_cHandlePanelObs)
+      }
+      _cHandlePanelObs = new ResizeObserver(() => {
+        if (_isResizingC) return // drag owns geometry; endDrag re-positions
+        try {
+          positionChatResizeHandle()
+        } catch (_) {}
+      })
+      _cHandlePanelObs.observe(cont)
+      cleanup.trackObserver(_cHandlePanelObs)
+      _cHandlePanelObsTarget = cont
+    }
     const r = cont ? cont.getBoundingClientRect() : null
     // No chat panel (e.g. logged out → the platform's login modal): a null
     // rect would strand the bar at the viewport fallback (a full-height

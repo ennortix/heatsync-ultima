@@ -144,18 +144,61 @@
   const HEATSYNC_PREFIX = '__FFZ__' + HEATSYNC_SET_ID + '::'
   const HEATSYNC_SUFFIX = '__FFZ__'
 
-  // Shared MRU with the multichat picker/tab-complete (emotes.js RECENT_KEY) —
-  // same origin, same localStorage key, so native-chat completions and overlay
-  // completions feed one usage signal. Read per getMatches (≤24 names, cheap);
-  // written on every successful insert below.
+  // Shared usage signal with the multichat picker/tab-complete (emotes.js) —
+  // same origin, same localStorage keys, so native-chat completions and overlay
+  // completions feed one signal. Two stores: the legacy MRU list (RECENT_KEY,
+  // drives the picker's "recent" section) and the frecency map (use count with
+  // a one-week half-life) that ranks tab-complete. Logic here MUST mirror
+  // emotes.js loadEmoteFrecency/bumpEmoteFrecency exactly — this file runs in
+  // the MAIN world and can't import it.
   const HS_RECENT_EMOTES_KEY = 'hs-mc-recent-emotes'
-  function readRecentEmoteSet() {
+  const HS_FRECENCY_KEY = 'hs-mc-emote-frecency'
+  const HS_FRECENCY_CAP = 200
+  const HS_FRECENCY_HALF_LIFE_MS = 7 * 24 * 3600e3
+  function _hsFrecScore(entry, now) {
+    if (!entry || !(entry.n > 0)) return 0
+    const age = Math.max(0, now - (entry.t || 0))
+    return entry.n * 2 ** (-age / HS_FRECENCY_HALF_LIFE_MS)
+  }
+  function _hsFrecRaw() {
     try {
-      const r = JSON.parse(localStorage.getItem(HS_RECENT_EMOTES_KEY))
-      return new Set(Array.isArray(r) ? r : [])
-    } catch (_) {
-      return new Set()
+      const r = JSON.parse(localStorage.getItem(HS_FRECENCY_KEY))
+      if (r && typeof r === 'object' && !Array.isArray(r)) return r
+    } catch (_) {}
+    // First run: seed from the legacy MRU list (same migration as emotes.js).
+    const seeded = {}
+    try {
+      const legacy = JSON.parse(localStorage.getItem(HS_RECENT_EMOTES_KEY))
+      if (Array.isArray(legacy)) {
+        for (let i = 0; i < legacy.length; i++) seeded[legacy[i]] = { n: 1, t: Date.now() - i * 3600e3 }
+      }
+    } catch (_) {}
+    return seeded
+  }
+  /** name → decayed score (>0 means the user has actually inserted this) */
+  function readEmoteFrecency() {
+    const raw = _hsFrecRaw()
+    const now = Date.now()
+    const out = new Map()
+    for (const name of Object.keys(raw)) {
+      const s = _hsFrecScore(raw[name], now)
+      if (s > 0) out.set(name, s)
     }
+    return out
+  }
+  function bumpEmoteFrecency(name) {
+    if (!name) return
+    try {
+      const raw = _hsFrecRaw()
+      const now = Date.now()
+      raw[name] = { n: _hsFrecScore(raw[name], now) + 1, t: now }
+      const names = Object.keys(raw)
+      if (names.length > HS_FRECENCY_CAP) {
+        names.sort((a, b) => _hsFrecScore(raw[a], now) - _hsFrecScore(raw[b], now))
+        for (const dead of names.slice(0, names.length - HS_FRECENCY_CAP)) delete raw[dead]
+      }
+      localStorage.setItem(HS_FRECENCY_KEY, JSON.stringify(raw))
+    } catch (_) {}
   }
   function recordRecentEmoteMru(name) {
     if (!name) return
@@ -170,6 +213,7 @@
       if (list.length > 24) list = list.slice(0, 24)
       localStorage.setItem(HS_RECENT_EMOTES_KEY, JSON.stringify(list))
     } catch (_) {}
+    bumpEmoteFrecency(name)
   }
 
   // Track insertion state to prevent autocomplete pollution (7TV-style approach)
@@ -650,31 +694,51 @@
     }
     const prev = cycleState.matches[cycleState.index]
     cycleState.matches.push(...add)
-    // Own/channel emotes first, then remote 7TV — each block: prefix before
-    // substring, then by 7TV popularity (most-used first). Channel/owned 7TV
-    // emotes inherit the global rank so they no longer order alphabetically.
+    // Own/channel emotes first, then remote 7TV — used-before (frecency) leads
+    // within each block, mirroring the getMatches sort above and the multichat
+    // comparator (input.js compareAcMatches) so a remote merge can never
+    // reorder what the local pass already ranked. Never-used items: prefix
+    // before substring, then 7TV popularity (most-used first); channel/owned
+    // 7TV emotes inherit the global rank so they don't order alphabetically.
     const prefixOf = (m) => ((m.nameLower || (m.name || '').toLowerCase()).startsWith(searchLower) ? 0 : 1)
     const rankOf = (m) => {
       const r = popRank.get((m.name || '').toLowerCase())
       return r === undefined ? Infinity : r
     }
+    const frecCycle = readEmoteFrecency()
+    const frecOf = (m) => frecCycle.get(m.name || '') || 0
     cycleState.matches.sort((a, b) => {
       const al = a.remote ? 1 : 0,
         bl = b.remote ? 1 : 0
       if (al !== bl) return al - bl
-      // Local block: channel > own > global outranks prefix/popularity, so a channel
-      // substring match beats a global prefix match. Remotes have no tier (catalog).
-      if (!a.remote && !b.remote) {
-        const at = a.tier ?? 2,
-          bt = b.tier ?? 2
-        if (at !== bt) return at - bt
-      }
+      const af = frecOf(a),
+        bf = frecOf(b)
+      if (af > 0 !== bf > 0) return af > 0 ? -1 : 1
       const ap = prefixOf(a),
         bp = prefixOf(b)
-      if (ap !== bp) return ap - bp
-      const ar = rankOf(a),
-        br = rankOf(b)
-      if (ar !== br) return ar - br
+      if (af > 0) {
+        // both used — typed prefix first, then habit strength, then tier
+        if (ap !== bp) return ap - bp
+        if (af !== bf) return bf - af
+        if (!a.remote && !b.remote) {
+          const at = a.tier ?? 2,
+            bt = b.tier ?? 2
+          if (at !== bt) return at - bt
+        }
+      } else {
+        // neither used: channel > own > global outranks prefix/popularity, so a
+        // channel substring match beats a global prefix match (user call).
+        // Remotes have no tier (catalog).
+        if (!a.remote && !b.remote) {
+          const at = a.tier ?? 2,
+            bt = b.tier ?? 2
+          if (at !== bt) return at - bt
+        }
+        if (ap !== bp) return ap - bp
+        const ar = rankOf(a),
+          br = rankOf(b)
+        if (ar !== br) return ar - br
+      }
       if (a.remote && b.remote) return (a._ai || 0) - (b._ai || 0)
       const aSub = a.sub ? 0 : 1,
         bSub = b.sub ? 0 : 1
@@ -1151,7 +1215,7 @@
         for (const e of getNativeTwitchEmotes()) {
           if (e.sub) nativeSubNames.add(e.name)
         }
-        const recentSet = readRecentEmoteSet()
+        const frec = readEmoteFrecency()
         for (const r of results) {
           const name = r.replacement || r.emote?.token || ''
           r._sortKey = name.toLowerCase()
@@ -1161,39 +1225,53 @@
           // anything else (Twitch's own dropdown results) falls back via sub status —
           // sub emotes are channel-tier (0).
           r._tier = r._tier ?? (r._isSub ? 0 : 2)
+          r._frec = frec.get(name) || 0
           // Strong exact: the typed word IS this emote's full name AND it's
-          // channel/own tier or one the user has actually inserted before (MRU).
+          // channel/own tier or one the user has actually inserted before.
           // Leads outright — typing the whole name is the intent signal
           // ("clap" → Clap first, not 5th behind channel fuzzy hits). A
           // never-used global that only coincidentally case-matches (the
-          // "HuG" case) has no MRU entry and still loses to channel emotes.
-          r._strong = r._sortKey === searchLower && (r._tier <= 1 || recentSet.has(name))
+          // "HuG" case) has no frecency entry and still loses to channel emotes.
+          r._strong = r._sortKey === searchLower && (r._tier <= 1 || r._frec > 0)
         }
+        // Same ranking as the multichat comparator (input.js compareAcMatches)
+        // — keep the two in lockstep so native chat and the overlay never
+        // disagree on what Tab produces.
         results.sort((a, b) => {
           // Category sort: emotes < usernames
           if (a._sortType !== b._sortType) return a._sortType - b._sortType
 
           // Usernames: alphabetical only
-          if (a._sortType === 2) return a._sortKey.localeCompare(b._sortKey)
+          if (a._sortType === 1) return a._sortKey.localeCompare(b._sortKey)
 
           // Used-before (or channel/own) full-name exact match beats everything.
           if (a._strong !== b._strong) return a._strong ? -1 : 1
 
-          // Tier outranks match-type (user call): a channel emote beats a global even
-          // when the global is an exact/prefix match (e.g. "hug" → peepoHug over "HuG").
-          if (a._tier !== b._tier) return a._tier - b._tier
-
-          // Emotes/emojis: exact > prefix > contains > sub > shorter > alpha
-          const aExact = a._sortKey === searchLower
-          const bExact = b._sortKey === searchLower
-          if (aExact !== bExact) return aExact ? -1 : 1
+          // Personal habit beats structure: an emote the user actually sends
+          // wins over tier ("kko" → their KKona, never the channel's untouched
+          // KKonaLand).
+          const aUsed = a._frec > 0
+          const bUsed = b._frec > 0
+          if (aUsed !== bUsed) return aUsed ? -1 : 1
 
           const aPrefix = a._sortKey.startsWith(searchLower)
           const bPrefix = b._sortKey.startsWith(searchLower)
-          if (aPrefix !== bPrefix) return aPrefix ? -1 : 1
-
-          // Within same prefix/contains tier: native sub emotes float above globals/custom
-          if (a._isSub !== b._isSub) return a._isSub ? -1 : 1
+          if (aUsed) {
+            // both used — they typed a prefix, respect it; then habit strength
+            if (aPrefix !== bPrefix) return aPrefix ? -1 : 1
+            if (a._frec !== b._frec) return b._frec - a._frec
+            if (a._tier !== b._tier) return a._tier - b._tier
+          } else {
+            // neither used — channel culture leads (tier, user call: "hug" →
+            // peepoHug over a coincidental global "HuG"), then exact > prefix
+            // > contains > sub emote
+            if (a._tier !== b._tier) return a._tier - b._tier
+            const aExact = a._sortKey === searchLower
+            const bExact = b._sortKey === searchLower
+            if (aExact !== bExact) return aExact ? -1 : 1
+            if (aPrefix !== bPrefix) return aPrefix ? -1 : 1
+            if (a._isSub !== b._isSub) return a._isSub ? -1 : 1
+          }
 
           if (a._sortKey.length !== b._sortKey.length) return a._sortKey.length - b._sortKey.length
           return a._sortKey.localeCompare(b._sortKey)
@@ -1205,6 +1283,7 @@
           delete r._isSub
           delete r._heatsyncSub
           delete r._tier
+          delete r._frec
           delete r._strong
         }
 
@@ -1829,17 +1908,38 @@
                 if (n >= 20) break
               }
             }
-            // Rank: tier (own>channel>global, emoji last) > prefix>substring > sub emote >
-            // shorter > alpha. Tier outranks match-type so a channel substring match beats
-            // a global prefix match ("hug" → channel peepoHug over global "HuG").
+            // Same ranking as everywhere else (input.js compareAcMatches / the
+            // getMatches sort above): strong exact, then used-before (frecency
+            // — "kko" → your KKona, never the channel's untouched KKonaLand),
+            // then never-used by tier (channel culture, emoji last) > exact >
+            // prefix > substring > sub emote; shorter > alpha tail.
+            const frecCyc = readEmoteFrecency()
             matches.sort((a, b) => {
               const at = a.tier ?? 2,
                 bt = b.tier ?? 2
-              if (at !== bt) return at - bt
-              if (a._isPrefix !== b._isPrefix) return a._isPrefix ? -1 : 1
-              const aSub = a.sub ? 0 : 1,
-                bSub = b.sub ? 0 : 1
-              if (aSub !== bSub) return aSub - bSub
+              const ae = a.nameLower === emoteSearch,
+                be = b.nameLower === emoteSearch
+              const af = frecCyc.get(a.name || '') || 0,
+                bf = frecCyc.get(b.name || '') || 0
+              const as = ae && (at <= 1 || af > 0),
+                bs = be && (bt <= 1 || bf > 0)
+              if (as !== bs) return as ? -1 : 1
+              if (af > 0 !== bf > 0) return af > 0 ? -1 : 1
+              if (af > 0) {
+                // both used — typed prefix first, then habit strength, then tier
+                if (a._isPrefix !== b._isPrefix) return a._isPrefix ? -1 : 1
+                if (af !== bf) return bf - af
+                if (at !== bt) return at - bt
+              } else {
+                // neither used — tier outranks match-type so a channel substring
+                // match beats a global prefix match ("hug" → peepoHug over "HuG")
+                if (at !== bt) return at - bt
+                if (ae !== be) return ae ? -1 : 1
+                if (a._isPrefix !== b._isPrefix) return a._isPrefix ? -1 : 1
+                const aSub = a.sub ? 0 : 1,
+                  bSub = b.sub ? 0 : 1
+                if (aSub !== bSub) return aSub - bSub
+              }
               const la = (a.name || '').length,
                 lb = (b.name || '').length
               if (la !== lb) return la - lb

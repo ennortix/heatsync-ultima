@@ -1304,9 +1304,61 @@ function parseYtGiftCount(systemText) {
 // Keys that must NEVER be stored in chrome.storage.sync — they're either
 // unbounded (per-tab maps, free-form text) or simply too large for the
 // 8 KB QUOTA_BYTES_PER_ITEM ceiling. These move to chrome.storage.local
-// (we hold the unlimitedStorage permission) and are not part of cross-
-// device sync. Server-backed sync (ws ui-state:sync) also excludes them.
+// (we hold the unlimitedStorage permission) instead.
+//
+// NOT all of them are device-local, though — keywordHighlights and
+// chatFilterRules are real cross-device preferences (chatterino's #1 sync
+// complaint is exactly "my highlight words don't follow me"), just too big
+// for chrome.storage.sync. They DO ride the server-backed ws ui-state
+// channel (which has no 8 KB ceiling), size-capped per key — see
+// LARGE_KEY_SYNC_MAX. Only DEVICE_LOCAL_KEYS below are excluded from that
+// channel too.
 const UI_SYNC_BLOCKLIST = new Set(['platformFilters', 'keywordHighlights', 'chatFilterRules'])
+
+// Subset of UI_SYNC_BLOCKLIST that is genuinely per-device UI state, not a
+// preference — platformFilters is keyed by this device's own multichat tab
+// ids (§ src/multichat/main.js loadPlatformFilters) and would be meaningless
+// (or actively wrong) replayed onto a different device's tab layout. Never
+// sent to, or adopted from, the server ui-state channel.
+const DEVICE_LOCAL_KEYS = new Set(['platformFilters'])
+
+// registry key → chrome.storage.local key name, for every UI_SYNC_BLOCKLIST
+// entry. Single source for the overflow-bucket names so main.js and
+// background.js route a synced/received value to the same local slot.
+const OVERFLOW_MIRROR_KEYS = {
+  platformFilters: 'platform_filters',
+  keywordHighlights: 'keyword_highlights',
+  chatFilterRules: 'chat_filter_rules',
+}
+
+// Per-key cap for the two blocklist keys that DO ride the server ui-state
+// channel. The server has no 8 KB ceiling, but "no limit" isn't a real
+// limit — this keeps one runaway textarea from blowing an unbounded hole in
+// the account's synced-state payload. Oversized values simply stay
+// device-local: never truncated, never dropped from local storage — just
+// not sent to (or adopted from) the server.
+const LARGE_KEY_SYNC_MAX = 32768
+
+// Serialized size of a value — char length for strings (settings text is
+// effectively 1 byte/char in practice), JSON length for everything else.
+// Returns Infinity for anything unmeasurable (circular refs, etc.) so
+// callers fail closed (treat as oversized) instead of throwing.
+function estimateSettingSize(value) {
+  if (typeof value === 'string') return value.length
+  try {
+    return JSON.stringify(value).length
+  } catch {
+    return Infinity
+  }
+}
+
+// True when `key` is a UI_SYNC_BLOCKLIST member that's a real cross-device
+// preference (not in DEVICE_LOCAL_KEYS) and `value` fits under
+// LARGE_KEY_SYNC_MAX — i.e. eligible to ride the server ws ui-state channel
+// even though it can never enter chrome.storage.sync directly.
+function isLargeKeySyncEligible(key, value) {
+  return UI_SYNC_BLOCKLIST.has(key) && !DEVICE_LOCAL_KEYS.has(key) && estimateSettingSize(value) <= LARGE_KEY_SYNC_MAX
+}
 
 /**
  * Sanitize a ui_settings-shaped object before merging into chrome.storage.sync
@@ -1381,6 +1433,11 @@ const utils = {
   // Storage hygiene
   sanitizeUiSettings,
   UI_SYNC_BLOCKLIST,
+  DEVICE_LOCAL_KEYS,
+  OVERFLOW_MIRROR_KEYS,
+  LARGE_KEY_SYNC_MAX,
+  estimateSettingSize,
+  isLargeKeySyncEligible,
 }
 
 // Global export
@@ -9417,15 +9474,17 @@ function injectStyles() {
       display: flex;
     }
 
-    /* Unified resize-bar styling — 2px visible #fff line + invisible
+    /* Unified resize-bar styling — visible #fff line + invisible
        ::before grab-zone (--hs-resize-grab per side). Mirrors heatsync.org's
-       .hs-resizer. Each id below sets only position/size/cursor/z-index. */
+       .hs-resizer. Each id below sets only position/size/cursor/z-index.
+       Idle 0.9 not 0.55 — white at 0.55 on twitch's dark theme read as
+       missing entirely; hover/active still snaps to 1 for the affordance. */
     #hs-mc-resize-handle,
     #hs-yt-resize-handle,
     #hs-kick-resize-handle,
     #hs-c-resize-handle {
       background: #fff;
-      opacity: 0.55;
+      opacity: 0.9;
       transition: opacity 0.12s;
     }
     #hs-mc-resize-handle::before,
@@ -21958,9 +22017,71 @@ function recordRecentEmote(name) {
   try {
     localStorage.setItem(RECENT_KEY, JSON.stringify(list))
   } catch (_) {}
+  bumpEmoteFrecency(name)
   // The cache key doesn't track the MRU list, so force a rebuild on next
   // open (idle prebuild repopulates before reopen → still instant).
   markPickerDirty()
+}
+
+// Frecency — per-emote use count with recency decay, feeding tab-complete
+// ranking. The RECENT_KEY list above is recency-only and capped at 24, which
+// made ordering fragile: one accidental completion of KKonaLand outranked
+// KKona used a hundred times, and a habitual emote silently fell off the cap.
+// Score = uses halved per week since last use, so an old habit fades but a
+// single stray insert never beats a real one.
+const FRECENCY_KEY = 'hs-mc-emote-frecency'
+const FRECENCY_CAP = 200
+const FRECENCY_HALF_LIFE_MS = 7 * 24 * 3600e3
+
+function _loadFrecencyRaw() {
+  try {
+    const r = JSON.parse(localStorage.getItem(FRECENCY_KEY))
+    if (r && typeof r === 'object' && !Array.isArray(r)) return r
+  } catch (_) {}
+  // First run: seed from the legacy MRU list so existing habits carry over
+  // (staggered timestamps preserve the list's recency order).
+  const seeded = {}
+  const legacy = loadRecentEmotes()
+  for (let i = 0; i < legacy.length; i++) {
+    seeded[legacy[i]] = { n: 1, t: Date.now() - i * 3600e3 }
+  }
+  return seeded
+}
+
+function _frecencyScore(entry, now) {
+  if (!entry || !(entry.n > 0)) return 0
+  const age = Math.max(0, now - (entry.t || 0))
+  return entry.n * 2 ** (-age / FRECENCY_HALF_LIFE_MS)
+}
+
+/** name → decayed score (>0 means "the user has actually inserted this"). */
+function loadEmoteFrecency() {
+  const raw = _loadFrecencyRaw()
+  const now = Date.now()
+  const out = new Map()
+  for (const [name, entry] of Object.entries(raw)) {
+    const s = _frecencyScore(entry, now)
+    if (s > 0) out.set(name, s)
+  }
+  return out
+}
+
+function bumpEmoteFrecency(name) {
+  if (!name) return
+  const raw = _loadFrecencyRaw()
+  const cur = raw[name]
+  const now = Date.now()
+  // Fold the decayed old score into the new count so frequency survives the
+  // bump instead of resetting the decay clock on the full total.
+  raw[name] = { n: _frecencyScore(cur, now) + 1, t: now }
+  const names = Object.keys(raw)
+  if (names.length > FRECENCY_CAP) {
+    names.sort((a, b) => _frecencyScore(raw[a], now) - _frecencyScore(raw[b], now))
+    for (const dead of names.slice(0, names.length - FRECENCY_CAP)) delete raw[dead]
+  }
+  try {
+    localStorage.setItem(FRECENCY_KEY, JSON.stringify(raw))
+  } catch (_) {}
 }
 
 // Resolve MRU names to live emote pairs, dropping any no longer available
@@ -36173,45 +36294,12 @@ async function fetchRemoteEmoteMatches(search) {
   const wasEmpty = acState.matches.length === 0
   const prev = acState.matches[acState.index]
   acState.matches.push(...add.slice(0, 80))
-  // Merged sort. Remote items keep their pre-merge order via `_ai`
-  // (FFZ-by-uses → BTTV → 7TV), so cycling through remotes hits the highest
-  // quality first regardless of provider.
-  // Order:
-  //   1. local > remote                       (channel / own set / globals beat catalog)
-  //   2. local tier (channel > own > global)
-  //   3. exact full-name match                (within tier)
-  //   4. prefix > substring
-  //   5. sub > non-sub
-  //   6. MRU recent > never-used
-  //   7. remote: _ai order (FFZ-by-uses → BTTV → 7TV)
-  //   8. shorter prefix-match wins
-  //   9. alpha
-  // Tier outranks exact-match (user call) — a channel emote beats a coincidental
-  // exact-cased global ("hug" → peepoHug, not "HuG"). Exact still wins within a tier.
-  const _recentList = typeof loadRecentEmotes === 'function' ? loadRecentEmotes() : []
-  const _recentRank = new Map()
-  for (let i = 0; i < _recentList.length; i++) _recentRank.set(_recentList[i], i)
-  acState.matches.sort((a, b) => {
-    const al = a.remote ? 1 : 0,
-      bl = b.remote ? 1 : 0
-    if (al !== bl) return al - bl
-    if (!a.remote && !b.remote) {
-      const at = a.tier ?? 9,
-        bt = b.tier ?? 9
-      if (at !== bt) return at - bt
-    }
-    const ae = a.name.toLowerCase() === searchLower ? 0 : 1
-    const be = b.name.toLowerCase() === searchLower ? 0 : 1
-    if (ae !== be) return ae - be
-    if (a.priority !== b.priority) return a.priority - b.priority
-    if (!!a.sub !== !!b.sub) return a.sub ? -1 : 1
-    const ar = _recentRank.get(a.name) ?? Infinity
-    const br = _recentRank.get(b.name) ?? Infinity
-    if (ar !== br) return ar - br
-    if (a.remote && b.remote) return (a._ai || 0) - (b._ai || 0)
-    if (a.priority === 0 && a.name.length !== b.name.length) return a.name.length - b.name.length
-    return (a.name || '').localeCompare(b.name || '')
-  })
+  // Merged sort — same comparator as the local sort (compareAcMatches), so
+  // remote expansion can never reorder differently than the local pass did.
+  // Remote items keep their pre-merge order via `_ai` (FFZ-by-uses → BTTV →
+  // 7TV), so cycling through remotes hits the highest quality first.
+  const _frec = typeof loadEmoteFrecency === 'function' ? loadEmoteFrecency() : new Map()
+  acState.matches.sort((a, b) => compareAcMatches(a, b, searchLower, _frec))
   // Two cases land here:
   //   • wasEmpty — no local match existed when Tab was pressed, so this remote
   //     fetch fired immediately; insert the first remote hit now.
@@ -39313,6 +39401,64 @@ function scanAndApplyModifiersInInput(input) {
   return appliedAny
 }
 
+// Shared tab-complete comparator — the ONE ranking for both the local sort
+// (findEmoteMatches) and the remote-merge re-sort (fetchRemoteEmoteMatches).
+// They drifted apart once already (strong-exact existed only locally); keep
+// every ordering change here.
+//
+// Order (most-correct first):
+//   0. local > remote                       (channel / own / globals beat catalog)
+//   1. strong exact — full-name match that's channel/own tier OR personally
+//      used. Typing the whole name is the intent signal: "clap" → Clap.
+//   2. used-before > never-used             (frecency; personal habit is the
+//      strongest non-exact signal: "kko" → your KKona, never the channel's
+//      untouched KKonaLand)
+//      within used:   prefix > substring, then frecency score, then tier
+//      within unused: tier, exact, prefix > substring, sub emote > non-sub
+//   3. remote catalog order (_ai: FFZ-by-uses → BTTV → 7TV)
+//   4. shorter prefix-match > longer        (Kap → Kappa before KappaPride)
+//   5. recency for @user matches, then alpha
+// Tier still outranks a NEVER-USED exact match (user call): typing "hug"
+// surfaces the channel's peepoHug over a coincidental global "HuG" — that
+// one has no frecency entry, so it doesn't qualify as strong.
+function compareAcMatches(a, b, searchLower, frecency) {
+  const al = a.remote ? 1 : 0,
+    bl = b.remote ? 1 : 0
+  if (al !== bl) return al - bl
+  const an = a.name || '',
+    bn = b.name || ''
+  const ae = an.toLowerCase() === searchLower ? 0 : 1
+  const be = bn.toLowerCase() === searchLower ? 0 : 1
+  const at = a.tier ?? 9,
+    bt = b.tier ?? 9
+  const af = frecency.get(an) || 0,
+    bf = frecency.get(bn) || 0
+  const as = ae === 0 && (at <= 1 || af > 0) ? 0 : 1
+  const bs = be === 0 && (bt <= 1 || bf > 0) ? 0 : 1
+  if (as !== bs) return as - bs
+  if (af > 0 !== bf > 0) return af > 0 ? -1 : 1
+  if (af > 0) {
+    // both used — they typed a prefix, respect it; then habit strength
+    if (a.priority !== b.priority) return a.priority - b.priority
+    if (af !== bf) return bf - af
+    if (at !== bt) return at - bt
+  } else {
+    // neither used — channel culture leads
+    if (at !== bt) return at - bt
+    if (ae !== be) return ae - be
+    if (a.priority !== b.priority) return a.priority - b.priority
+    if (!!a.sub !== !!b.sub) return a.sub ? -1 : 1
+  }
+  if (a.remote && b.remote) return (a._ai || 0) - (b._ai || 0)
+  if (a.priority === 0 && an.length !== bn.length) return an.length - bn.length
+  if (a.type === 'user' && b.type === 'user') {
+    const arr = a.recencyRank ?? Infinity,
+      brr = b.recencyRank ?? Infinity
+    if (arr !== brr) return arr - brr
+  }
+  return an.localeCompare(bn)
+}
+
 function findEmoteMatches(search) {
   const matches = []
 
@@ -39506,35 +39652,8 @@ function findEmoteMatches(search) {
     }
   }
 
-  // Sort order (most-correct first):
-  //   1. channel > own set > globals         (tier; emoji/non-emote have no tier)
-  //   2. exact full-name match               (within tier)
-  //   3. prefix > substring                  (priority)
-  //   4. sub emote > non-sub                 (entitlement-scarce)
-  //   5. recently-used > never-used          (local MRU, fills as you insert)
-  //   6. shorter prefix-match > longer       (Kap → Kappa before KappaPride)
-  //   7. alpha
-  // Tier outranks exact-match (user call): typing "hug" surfaces the channel's
-  // peepoHug over a coincidental global "HuG" (whose name only case-matches
-  // "hug"). Exact-name still wins WITHIN a tier (own "Birdge" over own "BirdgeHmm").
-  const _recentList = typeof loadRecentEmotes === 'function' ? loadRecentEmotes() : []
-  const _recentRank = new Map()
-  for (let i = 0; i < _recentList.length; i++) _recentRank.set(_recentList[i], i)
-  matches.sort((a, b) => {
-    const at = a.tier ?? 9,
-      bt = b.tier ?? 9
-    if (at !== bt) return at - bt
-    const ae = (a.name || '').toLowerCase() === searchLower ? 0 : 1
-    const be = (b.name || '').toLowerCase() === searchLower ? 0 : 1
-    if (ae !== be) return ae - be
-    if (a.priority !== b.priority) return a.priority - b.priority
-    if (!!a.sub !== !!b.sub) return a.sub ? -1 : 1
-    const ar = _recentRank.get(a.name) ?? Infinity
-    const br = _recentRank.get(b.name) ?? Infinity
-    if (ar !== br) return ar - br
-    if (a.priority === 0 && a.name.length !== b.name.length) return a.name.length - b.name.length
-    return a.name.localeCompare(b.name)
-  })
+  const _frec = typeof loadEmoteFrecency === 'function' ? loadEmoteFrecency() : new Map()
+  matches.sort((a, b) => compareAcMatches(a, b, searchLower, _frec))
 
   // Recent chatters (prefix, most-recent-first) lead the cycle, above all
   // emotes — see comment at recentChatters above.
@@ -44474,12 +44593,95 @@ function ensureHsPaintSheet() {
       // (edge-on at rotateX/Y 90deg = invisible), so `transform:none !important`
       // — which beats animation-applied values in the cascade — snaps both the
       // element and its spans flat.
-      '[class*="hsp-"]:hover,[class*="hsp-"]:hover span{animation-play-state:paused !important;background:#fff !important;-webkit-background-clip:border-box !important;background-clip:border-box !important;color:#000 !important;transform:none !important;}'
+      // .hsp-hover is the JS-synced twin of :hover — installHsPaintHoverSync
+      // puts it on EVERY visible copy of the hovered user's name so they all
+      // freeze together, not just the pointer target.
+      '[class*="hsp-"]:hover,[class*="hsp-"]:hover span,[class*="hsp-"].hsp-hover,[class*="hsp-"].hsp-hover span{animation-play-state:paused !important;background:#fff !important;-webkit-background-clip:border-box !important;background-clip:border-box !important;color:#000 !important;transform:none !important;}'
     const tracked =
       typeof cleanup !== 'undefined' && cleanup.trackNode ? cleanup.trackNode(hsPaintSheetEl) : hsPaintSheetEl
     document.head.appendChild(tracked)
+    installHsPaintHoverSync()
   }
   return hsPaintSheetEl
+}
+
+// ── hover-freeze sync ────────────────────────────────────────────────────────
+// Hovering a painted name freezes EVERY visible copy of that user's name (the
+// CSS :hover rule above only reaches the pointer target). Matches by
+// data-username when present (.hs-mc-user rows), falling back to text content
+// so mention chips without the attribute sync too. Installed once, alongside
+// the sheet.
+let _hsPaintHoverInstalled = false
+let _hsPaintHoverEls = null
+let _hsPaintHoverTarget = null
+
+function _hsPaintHoverKey(el) {
+  const raw = (el.dataset && el.dataset.username) || el.textContent || ''
+  return raw.trim().toLowerCase().replace(/^@/, '')
+}
+
+// cleanup-tracked listener when the helper is available (live multichat),
+// plain listener otherwise (test harness stubs cleanup with trackNode only).
+function _hsPaintHoverOn(target, type, fn, opts) {
+  if (typeof cleanup !== 'undefined' && typeof cleanup.addEventListener === 'function') {
+    cleanup.addEventListener(target, type, fn, opts)
+  } else {
+    target.addEventListener(type, fn, opts)
+  }
+}
+
+function installHsPaintHoverSync() {
+  if (_hsPaintHoverInstalled) return
+  // test harness stubs `document` as a bare object — nothing to install on
+  if (typeof document.addEventListener !== 'function' || typeof document.querySelectorAll !== 'function') return
+  _hsPaintHoverInstalled = true
+  const clear = () => {
+    if (!_hsPaintHoverEls) return
+    for (const el of _hsPaintHoverEls) el.classList.remove('hsp-hover')
+    _hsPaintHoverEls = null
+  }
+  const clearAll = () => {
+    _hsPaintHoverTarget = null
+    clear()
+  }
+  _hsPaintHoverOn(
+    document,
+    'mouseover',
+    (e) => {
+      const t = e.target instanceof Element ? e.target.closest('[class*="hsp-"]') : null
+      if (!t) return
+      // letter-split names refire mouseover per span — same outer element,
+      // no work to do (the full-document scan below is the expensive part)
+      if (t === _hsPaintHoverTarget) return
+      _hsPaintHoverTarget = t
+      clear()
+      const key = _hsPaintHoverKey(t)
+      if (!key) return
+      const hit = []
+      for (const el of document.querySelectorAll('[class*="hsp-"]')) {
+        if (el !== t && _hsPaintHoverKey(el) === key) {
+          el.classList.add('hsp-hover')
+          hit.push(el)
+        }
+      }
+      if (hit.length) _hsPaintHoverEls = hit
+    },
+    { passive: true },
+  )
+  _hsPaintHoverOn(
+    document,
+    'mouseout',
+    (e) => {
+      if (!_hsPaintHoverEls) return
+      const t = e.target instanceof Element ? e.target.closest('[class*="hsp-"]') : null
+      if (!t) return
+      // still inside the same painted element (moving across its letter
+      // spans) — keep the sync alive
+      if (e.relatedTarget instanceof Element && e.relatedTarget.closest('[class*="hsp-"]') === t) return
+      clearAll()
+    },
+    { passive: true },
+  )
 }
 
 /** Compile + append the CSS for `hash` if not already present. Idempotent. */
@@ -47154,17 +47356,41 @@ const STORAGE_KEY = 'heatsync_multichat'
       _pendingSettings = null
       _settingsSaveTimer = null
 
-      // Split: blocklist keys go to chrome.storage.local (no quota cap, no
-      // server sync, no cross-device leak). Everything else goes to sync.
+      // Split: blocklist keys go to chrome.storage.local (no quota cap).
+      // Everything else goes to chrome.storage.sync. The ws fanout patch is
+      // a third, overlapping view: syncPatch keys PLUS any blocklist key
+      // that's a real cross-device preference (not DEVICE_LOCAL_KEYS) and
+      // fits under LARGE_KEY_SYNC_MAX — keywordHighlights/chatFilterRules
+      // ride the server channel this way even though they never touch
+      // chrome.storage.sync directly (8KB ceiling).
       const localPatch = {}
       const syncPatch = {}
+      const wsPatch = {}
       for (const k in pending) {
+        const v = pending[k]
         if (UI_SYNC_BLOCKLIST.has(k)) {
-          if (k === 'platformFilters') localPatch.platform_filters = pending[k]
-          else if (k === 'keywordHighlights') localPatch.keyword_highlights = pending[k]
-          else if (k === 'chatFilterRules') localPatch.chat_filter_rules = pending[k]
+          const mirrorKey = OVERFLOW_MIRROR_KEYS[k]
+          if (mirrorKey) localPatch[mirrorKey] = v
+          if (isLargeKeySyncEligible(k, v)) {
+            // large free-text keys ride a SLOWER debounce (below) — the 100ms
+            // flush is tuned for toggles; a keystroke-by-keystroke textarea
+            // edit would otherwise fan a fresh up-to-32KB patch to every
+            // device several times per edit session
+            _pendingLargeWsPatch[k] = v
+          } else if (!DEVICE_LOCAL_KEYS.has(k)) {
+            warn(
+              'settings sync: skipping',
+              k,
+              '—',
+              estimateSettingSize(v),
+              'bytes exceeds',
+              LARGE_KEY_SYNC_MAX,
+              'cap, staying device-local',
+            )
+          }
         } else {
-          syncPatch[k] = pending[k]
+          syncPatch[k] = v
+          wsPatch[k] = v
         }
       }
 
@@ -47193,23 +47419,47 @@ const STORAGE_KEY = 'heatsync_multichat'
             showToast('settings failed to save — storage quota exceeded', 'error')
           })
         })
+      }
+
+      if (Object.keys(wsPatch).length) {
         // Cross-surface insta-sync: server merges + fans out to every other
         // client of this user (other tabs, ext on Twitch/Kick/YT, heatsync.org).
         // chrome.storage.sync only syncs Chrome → Chrome with same Google
         // account; server-backed covers Firefox + heatsync.org + signed-out
-        // Chrome profiles using the same heatsync login. Blocklist keys are
-        // omitted — they're per-device by design.
+        // Chrome profiles using the same heatsync login. Only DEVICE_LOCAL_KEYS
+        // (platformFilters) are omitted — genuinely per-device, not a pref.
         try {
           chrome.runtime.sendMessage({
             type: 'ws_send',
-            data: { type: 'ui-state:sync', patch: syncPatch },
+            data: { type: 'ui-state:sync', patch: wsPatch },
           })
         } catch (_) {
           /* context invalidated */
         }
       }
+
+      if (Object.keys(_pendingLargeWsPatch).length) {
+        if (_largeWsPatchTimer) cleanup.clearTimeout(_largeWsPatchTimer)
+        _largeWsPatchTimer = cleanup.setTimeout(() => {
+          _largeWsPatchTimer = null
+          const patch = _pendingLargeWsPatch
+          _pendingLargeWsPatch = {}
+          try {
+            chrome.runtime.sendMessage({
+              type: 'ws_send',
+              data: { type: 'ui-state:sync', patch },
+            })
+          } catch (_) {
+            /* context invalidated */
+          }
+        }, 1200)
+      }
     }, 100)
   }
+
+  // large-key ws fanout buffer — see saveUiSetting's slow-debounce comment
+  let _pendingLargeWsPatch = {}
+  let _largeWsPatchTimer = null
 
   // ─── settings registry engine ─────────────────────────────────────────
   // SETTINGS (src/lib/settings-schema.js) is the declarative catalog; this
@@ -49824,32 +50074,58 @@ const STORAGE_KEY = 'heatsync_multichat'
   // ============================================
   const HS_RESIZE_PX = 4 // visible thickness — mirrors --hs-resize-thickness
   let _isResizingC = false
+  let _cHandlePanelObs = null
+  let _cHandlePanelObsTarget = null
+  // Panel node reference — see getOrCreateHsContainer / softTwitchNav.
+  let _hsMcContainerNode = null
+  // Mount-retry: on hard loads of no-channel pages the first position pass can
+  // run before #hs-mc-container even EXISTS — the ResizeObserver has nothing to
+  // attach to, so nothing ever re-shows the bar. Bounded ladder re-polls until
+  // the panel mounts (or gives up on genuinely panel-less pages, e.g. logged out).
+  let _cHandleRetryTimer = null
+  let _cHandleRetryCount = 0
+  function _armCHandleMountRetry() {
+    if (_cHandleRetryTimer || _cHandleRetryCount >= 20) return
+    _cHandleRetryTimer = cleanup.setTimeout(
+      () => {
+        _cHandleRetryTimer = null
+        _cHandleRetryCount++
+        try {
+          positionChatResizeHandle()
+        } catch (_) {}
+      },
+      300,
+      'c-handle-mount-retry',
+    )
+  }
   function ensureChatResizeHandle() {
     let handle = document.getElementById('hs-c-resize-handle')
     if (handle) return handle
     handle = document.createElement('div')
     handle.id = 'hs-c-resize-handle'
+    // background/opacity/transition come from the #hs-c-resize-handle
+    // stylesheet rule — inline copies here silently overrode stylesheet
+    // changes (the 0.9-idle bump never applied to this handle).
     Object.assign(handle.style, {
       position: 'fixed',
-      background: '#fff',
-      opacity: '0.55',
       userSelect: 'none',
       touchAction: 'none',
       display: 'none',
       pointerEvents: 'auto',
-      transition: 'opacity 0.12s',
     })
     // z-index: YT needs max-int to beat its own modal stacking contexts (chrome
-    // bottom bar, settings menu). But on twitch/kick, max-int put the handle OVER
-    // the site's own login/toast modals — so there use 999 (below twitch chrome
-    // modals, above chat internals), matching the per-platform #hs-mc-resize-handle.
-    handle.style.setProperty('z-index', hostPlatform === 'yt' ? '2147483647' : '999', 'important')
+    // bottom bar, settings menu). On twitch/kick the bar overlaps the panel's
+    // left-edge pixels, and the no-channel panel is z-1500 — 999 painted the
+    // bar BEHIND the panel (present but invisible). 1501 sits above the panel
+    // and still below twitch's popup layers (balloon 2000 / overlay 3000 /
+    // modal 5000), so it can't cover sign-in or toast modals.
+    handle.style.setProperty('z-index', hostPlatform === 'yt' ? '2147483647' : '1501', 'important')
     document.body.appendChild(cleanup.trackNode(handle))
     handle.addEventListener('mouseenter', () => {
       handle.style.opacity = '1'
     })
     handle.addEventListener('mouseleave', () => {
-      if (!_isResizingC) handle.style.opacity = '0.55'
+      if (!_isResizingC) handle.style.opacity = '' // clear inline — stylesheet owns the idle value
     })
 
     // Window-level reflow: WM fullscreen (dwl mod-e, sway/i3 fullscreen),
@@ -50022,7 +50298,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       }
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
-      handle.style.opacity = '0.55'
+      handle.style.opacity = '' // clear inline — stylesheet owns the idle value
       if (overlay) {
         overlay.remove()
         overlay = null
@@ -50107,12 +50383,35 @@ const STORAGE_KEY = 'heatsync_multichat'
     // makes the bar track the panel's true edge regardless of those
     // offsets — otherwise the bar overlays tabbar/inputbar content.
     const cont = document.getElementById('hs-mc-container')
+    if (cont) _cHandleRetryCount = 0 // panel exists — future mount-retries start fresh
+    // On no-channel pages (twitch /directory, kick browse) this runs while the
+    // panel is still 0×0 mid-mount, hides the bar via the rect guard below, and
+    // nothing later re-triggers it — the bar stayed missing until a window
+    // resize. Track the panel's rendered size and re-position on change.
+    if (cont && typeof ResizeObserver !== 'undefined' && _cHandlePanelObsTarget !== cont) {
+      if (_cHandlePanelObs) {
+        try {
+          _cHandlePanelObs.disconnect()
+        } catch (_) {}
+        cleanup.untrackObserver(_cHandlePanelObs)
+      }
+      _cHandlePanelObs = new ResizeObserver(() => {
+        if (_isResizingC) return // drag owns geometry; endDrag re-positions
+        try {
+          positionChatResizeHandle()
+        } catch (_) {}
+      })
+      _cHandlePanelObs.observe(cont)
+      cleanup.trackObserver(_cHandlePanelObs)
+      _cHandlePanelObsTarget = cont
+    }
     const r = cont ? cont.getBoundingClientRect() : null
     // No chat panel (e.g. logged out → the platform's login modal): a null
     // rect would strand the bar at the viewport fallback (a full-height
     // orange line with no chat). Hide it until a real chat panel exists.
     if (!r || r.width < 2 || r.height < 2) {
       handle.style.display = 'none'
+      _armCHandleMountRetry() // panel missing or pre-layout — re-check shortly
       return
     }
     handle.style.display = 'block'
@@ -53546,6 +53845,11 @@ const STORAGE_KEY = 'heatsync_multichat'
     if (container && document.contains(container)) return container
     container = document.createElement('div')
     container.id = 'hs-mc-container'
+    // Keep a live reference: twitch commits the chat-shell unmount BEFORE
+    // pushState on some SPA transitions (channel → /directory), so by the time
+    // the nav event fires the panel is detached and invisible to
+    // getElementById. softTwitchNav re-adopts this node with its state intact.
+    _hsMcContainerNode = container
     // On Kick: insert as SIBLING of #channel-chatroom (not child!) to avoid
     // breaking Kick's React virtual scroll. React's reconciliation errors
     // corrupt native chat when our container is inside its managed tree.
@@ -60897,16 +61201,45 @@ const STORAGE_KEY = 'heatsync_multichat'
         if (!resp?.ok || !resp.data?.state) return
         const remote = resp.data.state
         if (!remote || typeof remote !== 'object' || Object.keys(remote).length === 0) return
-        const stored = await chrome.storage.sync.get(['ui_settings'])
-        // Sanitize the merged blob before persisting — `remote` is server-fanned
-        // state (accumulated across every client/version that ever PATCHed this
-        // account) and must NOT be trusted into the cross-device sync key raw.
-        // Every sibling write sanitizes (main.js:1760/5736, bg ui-state:update);
-        // this seed was the lone bypass. Skipping it let numeric-key/oversized/
-        // __proto__ garbage replicate to all devices + push the record past the
-        // 8KB quota, after which all future pref writes silently fail.
-        const merged = sanitizeUiSettings({ ...(stored.ui_settings || {}), ...remote })
-        await chrome.storage.sync.set({ ui_settings: merged })
+
+        // Split remote state: small sync-scope prefs merge into chrome.storage
+        // .sync.ui_settings (below); large blocklist prefs that ride the server
+        // channel (keywordHighlights/chatFilterRules) land in their
+        // chrome.storage.local overflow keys instead — never chrome.storage.sync
+        // (8KB ceiling). DEVICE_LOCAL_KEYS (platformFilters) are dropped — a
+        // foreign device's per-tab layout would be meaningless here.
+        const syncState = {}
+        const localOverflow = {}
+        for (const k in remote) {
+          if (!Object.hasOwn(remote, k)) continue
+          if (DEVICE_LOCAL_KEYS.has(k)) continue
+          if (UI_SYNC_BLOCKLIST.has(k)) {
+            const mirrorKey = OVERFLOW_MIRROR_KEYS[k]
+            // string-only, mirroring splitIncomingUiState (background.js) — the
+            // overflow bucket bypasses sanitizeUiSettings, so shape-check here
+            if (mirrorKey && typeof remote[k] === 'string' && estimateSettingSize(remote[k]) <= LARGE_KEY_SYNC_MAX)
+              localOverflow[mirrorKey] = remote[k]
+          } else {
+            syncState[k] = remote[k]
+          }
+        }
+
+        if (Object.keys(syncState).length) {
+          const stored = await chrome.storage.sync.get(['ui_settings'])
+          // Sanitize the merged blob before persisting — `remote` is server-fanned
+          // state (accumulated across every client/version that ever PATCHed this
+          // account) and must NOT be trusted into the cross-device sync key raw.
+          // Every sibling write sanitizes (main.js:1760/5736, bg ui-state:update);
+          // this seed was the lone bypass. Skipping it let numeric-key/oversized/
+          // __proto__ garbage replicate to all devices + push the record past the
+          // 8KB quota, after which all future pref writes silently fail.
+          const merged = sanitizeUiSettings({ ...(stored.ui_settings || {}), ...syncState })
+          await chrome.storage.sync.set({ ui_settings: merged })
+        }
+        if (Object.keys(localOverflow).length) {
+          invalidateUiOverflowCache()
+          await chrome.storage.local.set(localOverflow)
+        }
       } catch (e) {
         log('ui-state seed failed:', e?.message)
       }

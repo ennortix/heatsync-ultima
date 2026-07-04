@@ -486,9 +486,71 @@ function recordRecentEmote(name) {
   try {
     localStorage.setItem(RECENT_KEY, JSON.stringify(list))
   } catch (_) {}
+  bumpEmoteFrecency(name)
   // The cache key doesn't track the MRU list, so force a rebuild on next
   // open (idle prebuild repopulates before reopen → still instant).
   markPickerDirty()
+}
+
+// Frecency — per-emote use count with recency decay, feeding tab-complete
+// ranking. The RECENT_KEY list above is recency-only and capped at 24, which
+// made ordering fragile: one accidental completion of KKonaLand outranked
+// KKona used a hundred times, and a habitual emote silently fell off the cap.
+// Score = uses halved per week since last use, so an old habit fades but a
+// single stray insert never beats a real one.
+const FRECENCY_KEY = 'hs-mc-emote-frecency'
+const FRECENCY_CAP = 200
+const FRECENCY_HALF_LIFE_MS = 7 * 24 * 3600e3
+
+function _loadFrecencyRaw() {
+  try {
+    const r = JSON.parse(localStorage.getItem(FRECENCY_KEY))
+    if (r && typeof r === 'object' && !Array.isArray(r)) return r
+  } catch (_) {}
+  // First run: seed from the legacy MRU list so existing habits carry over
+  // (staggered timestamps preserve the list's recency order).
+  const seeded = {}
+  const legacy = loadRecentEmotes()
+  for (let i = 0; i < legacy.length; i++) {
+    seeded[legacy[i]] = { n: 1, t: Date.now() - i * 3600e3 }
+  }
+  return seeded
+}
+
+function _frecencyScore(entry, now) {
+  if (!entry || !(entry.n > 0)) return 0
+  const age = Math.max(0, now - (entry.t || 0))
+  return entry.n * 2 ** (-age / FRECENCY_HALF_LIFE_MS)
+}
+
+/** name → decayed score (>0 means "the user has actually inserted this"). */
+function loadEmoteFrecency() {
+  const raw = _loadFrecencyRaw()
+  const now = Date.now()
+  const out = new Map()
+  for (const [name, entry] of Object.entries(raw)) {
+    const s = _frecencyScore(entry, now)
+    if (s > 0) out.set(name, s)
+  }
+  return out
+}
+
+function bumpEmoteFrecency(name) {
+  if (!name) return
+  const raw = _loadFrecencyRaw()
+  const cur = raw[name]
+  const now = Date.now()
+  // Fold the decayed old score into the new count so frequency survives the
+  // bump instead of resetting the decay clock on the full total.
+  raw[name] = { n: _frecencyScore(cur, now) + 1, t: now }
+  const names = Object.keys(raw)
+  if (names.length > FRECENCY_CAP) {
+    names.sort((a, b) => _frecencyScore(raw[a], now) - _frecencyScore(raw[b], now))
+    for (const dead of names.slice(0, names.length - FRECENCY_CAP)) delete raw[dead]
+  }
+  try {
+    localStorage.setItem(FRECENCY_KEY, JSON.stringify(raw))
+  } catch (_) {}
 }
 
 // Resolve MRU names to live emote pairs, dropping any no longer available
@@ -3257,11 +3319,13 @@ function renderEmoteStack(stack) {
 
 export {
   blockedEmoteFallback,
+  bumpEmoteFrecency,
   channelEmoteCaches,
   detectEmoteSource,
   emoteCache,
   getEmoteState,
   inventoryEmotes,
+  loadEmoteFrecency,
   lookupEmote,
   lookupEmoteRenderOrder,
   lookupEmoteWithOverlay,

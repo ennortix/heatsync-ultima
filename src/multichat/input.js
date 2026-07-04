@@ -588,45 +588,12 @@ async function fetchRemoteEmoteMatches(search) {
   const wasEmpty = acState.matches.length === 0
   const prev = acState.matches[acState.index]
   acState.matches.push(...add.slice(0, 80))
-  // Merged sort. Remote items keep their pre-merge order via `_ai`
-  // (FFZ-by-uses → BTTV → 7TV), so cycling through remotes hits the highest
-  // quality first regardless of provider.
-  // Order:
-  //   1. local > remote                       (channel / own set / globals beat catalog)
-  //   2. local tier (channel > own > global)
-  //   3. exact full-name match                (within tier)
-  //   4. prefix > substring
-  //   5. sub > non-sub
-  //   6. MRU recent > never-used
-  //   7. remote: _ai order (FFZ-by-uses → BTTV → 7TV)
-  //   8. shorter prefix-match wins
-  //   9. alpha
-  // Tier outranks exact-match (user call) — a channel emote beats a coincidental
-  // exact-cased global ("hug" → peepoHug, not "HuG"). Exact still wins within a tier.
-  const _recentList = typeof loadRecentEmotes === 'function' ? loadRecentEmotes() : []
-  const _recentRank = new Map()
-  for (let i = 0; i < _recentList.length; i++) _recentRank.set(_recentList[i], i)
-  acState.matches.sort((a, b) => {
-    const al = a.remote ? 1 : 0,
-      bl = b.remote ? 1 : 0
-    if (al !== bl) return al - bl
-    if (!a.remote && !b.remote) {
-      const at = a.tier ?? 9,
-        bt = b.tier ?? 9
-      if (at !== bt) return at - bt
-    }
-    const ae = a.name.toLowerCase() === searchLower ? 0 : 1
-    const be = b.name.toLowerCase() === searchLower ? 0 : 1
-    if (ae !== be) return ae - be
-    if (a.priority !== b.priority) return a.priority - b.priority
-    if (!!a.sub !== !!b.sub) return a.sub ? -1 : 1
-    const ar = _recentRank.get(a.name) ?? Infinity
-    const br = _recentRank.get(b.name) ?? Infinity
-    if (ar !== br) return ar - br
-    if (a.remote && b.remote) return (a._ai || 0) - (b._ai || 0)
-    if (a.priority === 0 && a.name.length !== b.name.length) return a.name.length - b.name.length
-    return (a.name || '').localeCompare(b.name || '')
-  })
+  // Merged sort — same comparator as the local sort (compareAcMatches), so
+  // remote expansion can never reorder differently than the local pass did.
+  // Remote items keep their pre-merge order via `_ai` (FFZ-by-uses → BTTV →
+  // 7TV), so cycling through remotes hits the highest quality first.
+  const _frec = typeof loadEmoteFrecency === 'function' ? loadEmoteFrecency() : new Map()
+  acState.matches.sort((a, b) => compareAcMatches(a, b, searchLower, _frec))
   // Two cases land here:
   //   • wasEmpty — no local match existed when Tab was pressed, so this remote
   //     fetch fired immediately; insert the first remote hit now.
@@ -3728,6 +3695,64 @@ function scanAndApplyModifiersInInput(input) {
   return appliedAny
 }
 
+// Shared tab-complete comparator — the ONE ranking for both the local sort
+// (findEmoteMatches) and the remote-merge re-sort (fetchRemoteEmoteMatches).
+// They drifted apart once already (strong-exact existed only locally); keep
+// every ordering change here.
+//
+// Order (most-correct first):
+//   0. local > remote                       (channel / own / globals beat catalog)
+//   1. strong exact — full-name match that's channel/own tier OR personally
+//      used. Typing the whole name is the intent signal: "clap" → Clap.
+//   2. used-before > never-used             (frecency; personal habit is the
+//      strongest non-exact signal: "kko" → your KKona, never the channel's
+//      untouched KKonaLand)
+//      within used:   prefix > substring, then frecency score, then tier
+//      within unused: tier, exact, prefix > substring, sub emote > non-sub
+//   3. remote catalog order (_ai: FFZ-by-uses → BTTV → 7TV)
+//   4. shorter prefix-match > longer        (Kap → Kappa before KappaPride)
+//   5. recency for @user matches, then alpha
+// Tier still outranks a NEVER-USED exact match (user call): typing "hug"
+// surfaces the channel's peepoHug over a coincidental global "HuG" — that
+// one has no frecency entry, so it doesn't qualify as strong.
+function compareAcMatches(a, b, searchLower, frecency) {
+  const al = a.remote ? 1 : 0,
+    bl = b.remote ? 1 : 0
+  if (al !== bl) return al - bl
+  const an = a.name || '',
+    bn = b.name || ''
+  const ae = an.toLowerCase() === searchLower ? 0 : 1
+  const be = bn.toLowerCase() === searchLower ? 0 : 1
+  const at = a.tier ?? 9,
+    bt = b.tier ?? 9
+  const af = frecency.get(an) || 0,
+    bf = frecency.get(bn) || 0
+  const as = ae === 0 && (at <= 1 || af > 0) ? 0 : 1
+  const bs = be === 0 && (bt <= 1 || bf > 0) ? 0 : 1
+  if (as !== bs) return as - bs
+  if (af > 0 !== bf > 0) return af > 0 ? -1 : 1
+  if (af > 0) {
+    // both used — they typed a prefix, respect it; then habit strength
+    if (a.priority !== b.priority) return a.priority - b.priority
+    if (af !== bf) return bf - af
+    if (at !== bt) return at - bt
+  } else {
+    // neither used — channel culture leads
+    if (at !== bt) return at - bt
+    if (ae !== be) return ae - be
+    if (a.priority !== b.priority) return a.priority - b.priority
+    if (!!a.sub !== !!b.sub) return a.sub ? -1 : 1
+  }
+  if (a.remote && b.remote) return (a._ai || 0) - (b._ai || 0)
+  if (a.priority === 0 && an.length !== bn.length) return an.length - bn.length
+  if (a.type === 'user' && b.type === 'user') {
+    const arr = a.recencyRank ?? Infinity,
+      brr = b.recencyRank ?? Infinity
+    if (arr !== brr) return arr - brr
+  }
+  return an.localeCompare(bn)
+}
+
 function findEmoteMatches(search) {
   const matches = []
 
@@ -3921,42 +3946,8 @@ function findEmoteMatches(search) {
     }
   }
 
-  // Sort order (most-correct first):
-  //   0. strong exact — full-name match that's channel/own tier OR used before
-  //      (MRU). Typing the whole name is the intent signal: "clap" → Clap
-  //      first, not behind channel fuzzy hits.
-  //   1. channel > own set > globals         (tier; emoji/non-emote have no tier)
-  //   2. exact full-name match               (within tier)
-  //   3. prefix > substring                  (priority)
-  //   4. sub emote > non-sub                 (entitlement-scarce)
-  //   5. recently-used > never-used          (local MRU, fills as you insert)
-  //   6. shorter prefix-match > longer       (Kap → Kappa before KappaPride)
-  //   7. alpha
-  // Tier still outranks a NEVER-USED exact match (user call): typing "hug"
-  // surfaces the channel's peepoHug over a coincidental global "HuG" — that
-  // one has no MRU entry, so it doesn't qualify as strong. Exact-name still
-  // wins WITHIN a tier (own "Birdge" over own "BirdgeHmm").
-  const _recentList = typeof loadRecentEmotes === 'function' ? loadRecentEmotes() : []
-  const _recentRank = new Map()
-  for (let i = 0; i < _recentList.length; i++) _recentRank.set(_recentList[i], i)
-  matches.sort((a, b) => {
-    const ae = (a.name || '').toLowerCase() === searchLower ? 0 : 1
-    const be = (b.name || '').toLowerCase() === searchLower ? 0 : 1
-    const at = a.tier ?? 9,
-      bt = b.tier ?? 9
-    const as = ae === 0 && (at <= 1 || _recentRank.has(a.name)) ? 0 : 1
-    const bs = be === 0 && (bt <= 1 || _recentRank.has(b.name)) ? 0 : 1
-    if (as !== bs) return as - bs
-    if (at !== bt) return at - bt
-    if (ae !== be) return ae - be
-    if (a.priority !== b.priority) return a.priority - b.priority
-    if (!!a.sub !== !!b.sub) return a.sub ? -1 : 1
-    const ar = _recentRank.get(a.name) ?? Infinity
-    const br = _recentRank.get(b.name) ?? Infinity
-    if (ar !== br) return ar - br
-    if (a.priority === 0 && a.name.length !== b.name.length) return a.name.length - b.name.length
-    return a.name.localeCompare(b.name)
-  })
+  const _frec = typeof loadEmoteFrecency === 'function' ? loadEmoteFrecency() : new Map()
+  matches.sort((a, b) => compareAcMatches(a, b, searchLower, _frec))
 
   // Recent chatters (prefix, most-recent-first) lead the cycle, above all
   // emotes — see comment at recentChatters above.

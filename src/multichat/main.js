@@ -4855,10 +4855,12 @@
       pointerEvents: 'auto',
     })
     // z-index: YT needs max-int to beat its own modal stacking contexts (chrome
-    // bottom bar, settings menu). But on twitch/kick, max-int put the handle OVER
-    // the site's own login/toast modals — so there use 999 (below twitch chrome
-    // modals, above chat internals), matching the per-platform #hs-mc-resize-handle.
-    handle.style.setProperty('z-index', hostPlatform === 'yt' ? '2147483647' : '999', 'important')
+    // bottom bar, settings menu). On twitch/kick the bar overlaps the panel's
+    // left-edge pixels, and the no-channel panel is z-1500 — 999 painted the
+    // bar BEHIND the panel (present but invisible). 1501 sits above the panel
+    // and still below twitch's popup layers (balloon 2000 / overlay 3000 /
+    // modal 5000), so it can't cover sign-in or toast modals.
+    handle.style.setProperty('z-index', hostPlatform === 'yt' ? '2147483647' : '1501', 'important')
     document.body.appendChild(cleanup.trackNode(handle))
     handle.addEventListener('mouseenter', () => {
       handle.style.opacity = '1'

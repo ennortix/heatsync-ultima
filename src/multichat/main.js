@@ -4840,7 +4840,7 @@
       handle.style.opacity = '1'
     })
     handle.addEventListener('mouseleave', () => {
-      if (!_isResizingC) handle.style.opacity = '0.55'
+      if (!_isResizingC) handle.style.opacity = '' // clear inline — stylesheet owns the idle value
     })
 
     // Window-level reflow: WM fullscreen (dwl mod-e, sway/i3 fullscreen),
@@ -5013,7 +5013,7 @@
       }
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
-      handle.style.opacity = '0.55'
+      handle.style.opacity = '' // clear inline — stylesheet owns the idle value
       if (overlay) {
         overlay.remove()
         overlay = null

@@ -15,15 +15,17 @@
       display: flex;
     }
 
-    /* Unified resize-bar styling — 2px visible #fff line + invisible
+    /* Unified resize-bar styling — visible #fff line + invisible
        ::before grab-zone (--hs-resize-grab per side). Mirrors heatsync.org's
-       .hs-resizer. Each id below sets only position/size/cursor/z-index. */
+       .hs-resizer. Each id below sets only position/size/cursor/z-index.
+       Idle 0.9 not 0.55 — white at 0.55 on twitch's dark theme read as
+       missing entirely; hover/active still snaps to 1 for the affordance. */
     #hs-mc-resize-handle,
     #hs-yt-resize-handle,
     #hs-kick-resize-handle,
     #hs-c-resize-handle {
       background: #fff;
-      opacity: 0.55;
+      opacity: 0.9;
       transition: opacity 0.12s;
     }
     #hs-mc-resize-handle::before,

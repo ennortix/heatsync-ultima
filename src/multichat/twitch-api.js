@@ -2329,6 +2329,19 @@ const BADGE_STYLES = {
   verified: { label: '✓', bg: '#53fc18', fg: '#000' },
 }
 
+// Semantic background for a known badge type, applied to the <img> so the 18px
+// slot always shows the badge's color — even before the image paints or if it
+// fails to load in the page-load request burst. Without this, native/global
+// badges (no CSS bg, unlike FFZ) went blank on history rows until a new message
+// forced a fresh render (the "mod badge has no green bg on history" report).
+// FFZ badges are white icons on transparent → keep the padded chip; native
+// badges fill the slot → bg sits behind, invisible once the image loads.
+function badgeBgStyle(name, isFFZ) {
+  const s = BADGE_STYLES[name]
+  if (!s) return ''
+  return isFFZ ? `background:${s.bg};padding:1px;border-radius:2px;` : `background:${s.bg};border-radius:2px;`
+}
+
 // Twitch badge image URLs: "setID/version" → image_url
 const twitchBadgeUrls = new Map()
 const ffzBadgeKeys = new Set() // tracks which channel:badgeName entries are FFZ (need bg color)
@@ -3817,11 +3830,10 @@ function renderBadges(badgesStr, channel, platform) {
       const [name, version] = badge.split('/')
       const url = resolveBadgeImageUrl(isKick, channel, name, version)
       if (url) {
-        // FFZ custom badges are white icons on transparent bg — add badge-type background
-        const ffzKey = channel && `${channel}:${name}/`
-        const isFFZ = ffzKey && ffzBadgeKeys.has(`${channel}:${name}`)
-        const bgStyle =
-          isFFZ && BADGE_STYLES[name] ? `background:${BADGE_STYLES[name].bg};padding:1px;border-radius:2px;` : ''
+        // Semantic bg so the slot shows the badge color even before/without the
+        // image (FFZ = padded chip for a transparent icon; native = bg behind).
+        const isFFZ = channel && ffzBadgeKeys.has(`${channel}:${name}`)
+        const bgStyle = badgeBgStyle(name, isFFZ)
         const label = BADGE_STYLES[name]?.label || name
         // NOT loading="lazy": badges are 18px and always at the row start next
         // to visible text. When the async channel-badge fetch lands and the

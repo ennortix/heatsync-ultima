@@ -1842,9 +1842,7 @@
         img.decoding = 'async'
         img.width = 18
         img.height = 18
-        img.style.cssText = `width:18px;height:18px;${
-          isFFZ && BADGE_STYLES[name] ? `background:${BADGE_STYLES[name].bg};padding:1px;border-radius:2px;` : ''
-        }`
+        img.style.cssText = `width:18px;height:18px;${badgeBgStyle(name, isFFZ)}`
         img.dataset.hsSrc = safeU
         // Replace text-fallback span if present; else insert before anchor.
         // Set src after DOM insertion so the capture-phase retryOrHideBadgeImg

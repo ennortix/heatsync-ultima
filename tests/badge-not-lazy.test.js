@@ -51,3 +51,31 @@ describe('badge imgs are never lazy', () => {
     expect(MAIN).toContain('class="hs-mc-emote" loading="lazy"')
   })
 })
+
+// badgeBgStyle: native (non-FFZ) known badges must get a semantic background so
+// the 18px slot shows the badge color even before/without the image (the
+// "history mod badge has no green bg" fix). FFZ stays a padded chip.
+const badgeBgStyle = (() => {
+  const s = API.indexOf('function badgeBgStyle(')
+  const e = API.indexOf('\n}', s) + 2
+  const BADGE_STYLES = { moderator: { bg: '#00ad03' }, vip: { bg: '#e005b9' }, subscriber: { bg: '#8205b4' } }
+  return new Function('BADGE_STYLES', `${API.slice(s, e)}; return badgeBgStyle`)(BADGE_STYLES)
+})()
+
+describe('badgeBgStyle — semantic bg fallback', () => {
+  test('native mod badge gets green bg (no padding), so history is never blank', () => {
+    const css = badgeBgStyle('moderator', false)
+    expect(css).toContain('background:#00ad03')
+    expect(css).not.toContain('padding')
+  })
+  test('FFZ mod badge keeps the padded chip (unchanged — no xqc regression)', () => {
+    expect(badgeBgStyle('moderator', true)).toBe('background:#00ad03;padding:1px;border-radius:2px;')
+  })
+  test('unknown/third-party badge type gets no bg', () => {
+    expect(badgeBgStyle('bttv-custom', false)).toBe('')
+  })
+  test('both render paths route through badgeBgStyle', () => {
+    expect(API).toContain('badgeBgStyle(name, isFFZ)')
+    expect(MAIN).toContain('badgeBgStyle(name, isFFZ)')
+  })
+})

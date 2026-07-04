@@ -423,10 +423,19 @@ function renderChatLogRow(r) {
       const uidKey = typeof userKey === 'function' ? userKey(ulow, r.platform) : ulow
       const uid = knownUserIds.get(uidKey)
       if (uid) {
-        const paintCss = getMcPaintStyle(String(uid))
-        if (paintCss) {
-          name.style.cssText = paintCss
+        // HeatSync paint (own-platform cosmetic) wins over 7TV — same precedence
+        // as the live sender row. Twitch-keyed only (see paints.js ID-SPACE note):
+        // a kick/yt uid must never index the twitch-space HS paint cache.
+        const isTwitch = !r.platform || r.platform === 'twitch'
+        if (isTwitch && typeof hasResolvedHsPaint === 'function' && hasResolvedHsPaint(String(uid))) {
+          applyHsPaintToElement(name, String(uid))
           paintApplied = true
+        } else {
+          const paintCss = getMcPaintStyle(String(uid))
+          if (paintCss) {
+            name.style.cssText = paintCss
+            paintApplied = true
+          }
         }
       }
     }

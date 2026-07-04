@@ -717,15 +717,18 @@ function renderProfileCardView() {
   // === Identity section ===
   const idSec = pcMakeSection(data?.display_name || username)
   idSec.classList.add('hs-pcard-id')
-  // Paint the identity title with the user's 7TV cosmetic when known.
-  const idPaint = userPaintStyle(
-    String(data?.twitch_user_id || data?.twitch_id || ''),
-    (username || '').toLowerCase(),
-    activeProfileCard?.platform,
-  )
-  if (idPaint) {
-    const titleEl = idSec.querySelector('.hs-pcard-section-title')
-    if (titleEl) titleEl.style.cssText += ';' + idPaint
+  // Paint the identity title with the user's cosmetic when known. HeatSync
+  // paint (own-platform cosmetic) wins over 7TV — same precedence rule as the
+  // live sender row (see hsPaintRender/applyHsPaintToElement in paints.js).
+  const idUid = String(data?.twitch_user_id || data?.twitch_id || '')
+  const idPaint = userPaintStyle(idUid, (username || '').toLowerCase(), activeProfileCard?.platform)
+  const titleEl = idSec.querySelector('.hs-pcard-section-title')
+  if (titleEl) {
+    if (idUid && typeof hasResolvedHsPaint === 'function' && hasResolvedHsPaint(idUid)) {
+      applyHsPaintToElement(titleEl, idUid)
+    } else if (idPaint) {
+      titleEl.style.cssText += ';' + idPaint
+    }
   }
 
   // Hero banner — wide channel banner image as background, with a gradient

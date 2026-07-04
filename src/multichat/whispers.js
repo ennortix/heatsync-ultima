@@ -573,9 +573,17 @@ function renderWhispersTab() {
         m.platform === 'heatsync'
           ? `https://heatsync.org/user/${encodeURIComponent(username)}`
           : `https://heatsync.org/twitch/${encodeURIComponent(username)}`
+      // 7TV paint (side-effect: queues the cosmetics + HS-paint lookup so a
+      // later reopen paints even when nothing was cached this render).
       const paint = m.platform === 'heatsync' ? '' : userPaintStyle(uid, lower, 'twitch')
-      const style = paint || `color:${color};font-weight:600`
-      return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="hs-mc-user" data-username="${safeUser}" style="${style}">${safe}</a>`
+      // HeatSync paint (own-platform cosmetic) wins over 7TV — same precedence
+      // rule as the live sender row (see hsPaintRender in paints.js).
+      const hsPaint = m.platform === 'heatsync' || !uid ? null : hsPaintRender(uid, name)
+      const cls = `hs-mc-user${hsPaint ? ' ' + hsPaint.cls : ''}`
+      const style = hsPaint ? '' : paint || `color:${color};font-weight:600`
+      const inner = hsPaint ? hsPaint.html : safe
+      const splitAttr = hsPaint ? hsPaint.splitAttr : ''
+      return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="${cls}" data-username="${safeUser}"${splitAttr} style="${style}">${inner}</a>`
     }
 
     const themUid = target?.userId || ''

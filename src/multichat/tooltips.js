@@ -1031,11 +1031,11 @@ function renderProfileCard(p, platform) {
   const sheetHtml = sheetRows.length ? `<dl class="hs-pc-sheet">${sheetRows.join('')}</dl>` : ''
 
   // Paint the header name with the user's 7TV cosmetic when known.
-  const namePaint = userPaintStyle(
-    String(p.twitch_user_id || p.twitch_id || ''),
-    (p.username || p.twitch_username || '').toLowerCase(),
-    platform,
-  )
+  const nameUid = String(p.twitch_user_id || p.twitch_id || '')
+  const namePaint = userPaintStyle(nameUid, (p.username || p.twitch_username || '').toLowerCase(), platform)
+  // HeatSync paint (own-platform cosmetic) wins over 7TV — same precedence rule
+  // as the live sender row (see hsPaintRender in paints.js). Twitch-keyed uid.
+  const nameHsPaint = nameUid ? hsPaintRender(nameUid, displayName) : null
 
   // Hero banner placeholder — wraps the whole card so the banner sits behind
   // the avatar/info row. Filled async by pcApplyBanner once the Twitch GQL
@@ -1046,7 +1046,7 @@ function renderProfileCard(p, platform) {
       <div class="hs-pc-body">
         ${pfp ? `<img class="hs-pc-avatar" src="${escapeHtml(pfp)}" alt="${escapeHtml(displayName)}">` : ''}
         <div class="hs-pc-info">
-          <div class="hs-pc-header">${nativeBadges || `<span class="hs-pc-name" style="${namePaint}">${escapeHtml(displayName)}</span>`}</div>
+          <div class="hs-pc-header">${nativeBadges || `<span class="hs-pc-name${nameHsPaint ? ' ' + nameHsPaint.cls : ''}"${nameHsPaint ? nameHsPaint.splitAttr : ''} style="${nameHsPaint ? '' : namePaint}">${nameHsPaint ? nameHsPaint.html : escapeHtml(displayName)}</span>`}</div>
           ${bio}
           ${sheetHtml}
         </div>
@@ -1205,9 +1205,19 @@ async function showUserTooltip(targetEl, username, color, platform) {
         : platform === 'youtube' || platform === 'yt'
           ? `<dt>yt</dt><dd class="val-yt" data-k="yt">${safeName}</dd>`
           : `<dt>ttv</dt><dd class="val-ttv" data-k="ttv">${safeName}</dd>`
-    const namePaint = platform === 'twitch' ? userPaintStyle('', username.toLowerCase(), 'twitch') : ''
-    const header =
-      nativeBadges || `<span class="hs-pc-name" style="${namePaint || `color:${safeColor}`}">${safeName}</span>`
+    // Resolve the twitch-space uid the same way userPaintStyle does internally,
+    // so HeatSync-paint precedence (which needs the uid) can win over 7TV — same
+    // rule as the live sender row (see hsPaintRender in paints.js).
+    const fbLower = username.toLowerCase()
+    const fbUid =
+      platform === 'twitch' && typeof knownUserIds !== 'undefined' && typeof userKey === 'function'
+        ? knownUserIds.get(userKey(fbLower, 'twitch')) || ''
+        : ''
+    const namePaint = platform === 'twitch' ? userPaintStyle(fbUid, fbLower, 'twitch') : ''
+    const nameHsPaint = fbUid ? hsPaintRender(fbUid, username) : null
+    const header = nativeBadges
+      ? nativeBadges
+      : `<span class="hs-pc-name${nameHsPaint ? ' ' + nameHsPaint.cls : ''}"${nameHsPaint ? nameHsPaint.splitAttr : ''} style="${nameHsPaint ? '' : namePaint || `color:${safeColor}`}">${nameHsPaint ? nameHsPaint.html : safeName}</span>`
     // NOTE: innerHTML XSS-safe — username via escapeHtml, color via sanitizeColor (hex-only),
     // nativeBadges from renderBadges which emits escaped <img> markup
     tooltip.innerHTML = `<div class="hs-pc-hero"><div class="hs-pc-hero-img"></div><div class="hs-pc-hero-scrim"></div></div><div class="hs-pc-body"><img class="hs-pc-avatar" src="https://heatsync.org/anon.webp" alt=""><div class="hs-pc-info"><div class="hs-pc-header">${header}</div><dl class="hs-pc-sheet">${platRow}</dl></div></div>`

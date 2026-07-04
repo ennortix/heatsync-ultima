@@ -761,6 +761,18 @@
         // "failed integrity check", so the send must ride Twitch's own Apollo
         // link chain. SendWhisper Document is loaded from webpack by searchTerm.
         'SendWhisper',
+        // Mod actions (right-click → timeout/ban/unban/delete). These were
+        // missed when this allowlist was introduced, silently breaking every
+        // mod action: apolloMutate got "mutation not allowed" and the rawQuery
+        // fallback is also blocked, so timeouts no-oped. Same risk class as
+        // SendChatMessage above — the user's own session/mod status gates the
+        // actual effect, and _mutateRate caps spoofed-nonce spam.
+        'Chat_BanUserFromChatRoom',
+        'Chat_UnbanUserFromChatRoom',
+        'Chat_DeleteChatMessage',
+        // Prediction terms-of-service accept (first-ever prediction per account)
+        // — also missed; without it the predictions tab wedged on the ToS step.
+        'AcceptPredictionTerms',
       ]
       if (e.data.searchTerm && !ALLOWED_MUTATIONS.some((m) => e.data.searchTerm.includes(m))) {
         log('heatsync-apollo-mutate: rejected — searchTerm not in allowlist:', e.data.searchTerm)

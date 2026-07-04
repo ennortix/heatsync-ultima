@@ -25763,11 +25763,11 @@ function renderProfileCard(p, platform) {
   const sheetHtml = sheetRows.length ? `<dl class="hs-pc-sheet">${sheetRows.join('')}</dl>` : ''
 
   // Paint the header name with the user's 7TV cosmetic when known.
-  const namePaint = userPaintStyle(
-    String(p.twitch_user_id || p.twitch_id || ''),
-    (p.username || p.twitch_username || '').toLowerCase(),
-    platform,
-  )
+  const nameUid = String(p.twitch_user_id || p.twitch_id || '')
+  const namePaint = userPaintStyle(nameUid, (p.username || p.twitch_username || '').toLowerCase(), platform)
+  // HeatSync paint (own-platform cosmetic) wins over 7TV — same precedence rule
+  // as the live sender row (see hsPaintRender in paints.js). Twitch-keyed uid.
+  const nameHsPaint = nameUid ? hsPaintRender(nameUid, displayName) : null
 
   // Hero banner placeholder — wraps the whole card so the banner sits behind
   // the avatar/info row. Filled async by pcApplyBanner once the Twitch GQL
@@ -25778,7 +25778,7 @@ function renderProfileCard(p, platform) {
       <div class="hs-pc-body">
         ${pfp ? `<img class="hs-pc-avatar" src="${escapeHtml(pfp)}" alt="${escapeHtml(displayName)}">` : ''}
         <div class="hs-pc-info">
-          <div class="hs-pc-header">${nativeBadges || `<span class="hs-pc-name" style="${namePaint}">${escapeHtml(displayName)}</span>`}</div>
+          <div class="hs-pc-header">${nativeBadges || `<span class="hs-pc-name${nameHsPaint ? ' ' + nameHsPaint.cls : ''}"${nameHsPaint ? nameHsPaint.splitAttr : ''} style="${nameHsPaint ? '' : namePaint}">${nameHsPaint ? nameHsPaint.html : escapeHtml(displayName)}</span>`}</div>
           ${bio}
           ${sheetHtml}
         </div>
@@ -25937,9 +25937,19 @@ async function showUserTooltip(targetEl, username, color, platform) {
         : platform === 'youtube' || platform === 'yt'
           ? `<dt>yt</dt><dd class="val-yt" data-k="yt">${safeName}</dd>`
           : `<dt>ttv</dt><dd class="val-ttv" data-k="ttv">${safeName}</dd>`
-    const namePaint = platform === 'twitch' ? userPaintStyle('', username.toLowerCase(), 'twitch') : ''
-    const header =
-      nativeBadges || `<span class="hs-pc-name" style="${namePaint || `color:${safeColor}`}">${safeName}</span>`
+    // Resolve the twitch-space uid the same way userPaintStyle does internally,
+    // so HeatSync-paint precedence (which needs the uid) can win over 7TV — same
+    // rule as the live sender row (see hsPaintRender in paints.js).
+    const fbLower = username.toLowerCase()
+    const fbUid =
+      platform === 'twitch' && typeof knownUserIds !== 'undefined' && typeof userKey === 'function'
+        ? knownUserIds.get(userKey(fbLower, 'twitch')) || ''
+        : ''
+    const namePaint = platform === 'twitch' ? userPaintStyle(fbUid, fbLower, 'twitch') : ''
+    const nameHsPaint = fbUid ? hsPaintRender(fbUid, username) : null
+    const header = nativeBadges
+      ? nativeBadges
+      : `<span class="hs-pc-name${nameHsPaint ? ' ' + nameHsPaint.cls : ''}"${nameHsPaint ? nameHsPaint.splitAttr : ''} style="${nameHsPaint ? '' : namePaint || `color:${safeColor}`}">${nameHsPaint ? nameHsPaint.html : safeName}</span>`
     // NOTE: innerHTML XSS-safe — username via escapeHtml, color via sanitizeColor (hex-only),
     // nativeBadges from renderBadges which emits escaped <img> markup
     tooltip.innerHTML = `<div class="hs-pc-hero"><div class="hs-pc-hero-img"></div><div class="hs-pc-hero-scrim"></div></div><div class="hs-pc-body"><img class="hs-pc-avatar" src="https://heatsync.org/anon.webp" alt=""><div class="hs-pc-info"><div class="hs-pc-header">${header}</div><dl class="hs-pc-sheet">${platRow}</dl></div></div>`
@@ -34934,9 +34944,17 @@ function renderWhispersTab() {
         m.platform === 'heatsync'
           ? `https://heatsync.org/user/${encodeURIComponent(username)}`
           : `https://heatsync.org/twitch/${encodeURIComponent(username)}`
+      // 7TV paint (side-effect: queues the cosmetics + HS-paint lookup so a
+      // later reopen paints even when nothing was cached this render).
       const paint = m.platform === 'heatsync' ? '' : userPaintStyle(uid, lower, 'twitch')
-      const style = paint || `color:${color};font-weight:600`
-      return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="hs-mc-user" data-username="${safeUser}" style="${style}">${safe}</a>`
+      // HeatSync paint (own-platform cosmetic) wins over 7TV — same precedence
+      // rule as the live sender row (see hsPaintRender in paints.js).
+      const hsPaint = m.platform === 'heatsync' || !uid ? null : hsPaintRender(uid, name)
+      const cls = `hs-mc-user${hsPaint ? ' ' + hsPaint.cls : ''}`
+      const style = hsPaint ? '' : paint || `color:${color};font-weight:600`
+      const inner = hsPaint ? hsPaint.html : safe
+      const splitAttr = hsPaint ? hsPaint.splitAttr : ''
+      return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="${cls}" data-username="${safeUser}"${splitAttr} style="${style}">${inner}</a>`
     }
 
     const themUid = target?.userId || ''
@@ -34957,7 +34975,17 @@ function renderWhispersTab() {
     }
 
     // All dynamic values pass through escapeHtml/sanitizeColor — safe innerHTML (all values escaped above)
-    div.innerHTML = `${tsHtml}<span style="color:${platColor};font-size:13px;font-weight:700">[${platTag}]</span> ${senderLink} <span style="color:#808080">-&gt;</span> ${recipientLink}: ${highlightHashtagsInHtml(processEmotes(escapeHtml(m.text), null))}${statusHtml}`
+    // @mentions in the whisper body paint like anywhere else a person is named
+    // — route through highlightMentionsInHtml (skipMentions=true avoids the
+    // double-anchor bug) exactly like the live sender path, so its HS-paint →
+    // 7TV → color precedence + twitch-space id-guard are reused, not duplicated.
+    const whisperBody = highlightHashtagsInHtml(
+      highlightMentionsInHtml(
+        processEmotes(escapeHtml(m.text), null, undefined, undefined, undefined, true),
+        m.platform,
+      ),
+    )
+    div.innerHTML = `${tsHtml}<span style="color:${platColor};font-size:13px;font-weight:700">[${platTag}]</span> ${senderLink} <span style="color:#808080">-&gt;</span> ${recipientLink}: ${whisperBody}${statusHtml}`
     frag.appendChild(div)
   }
 
@@ -42551,15 +42579,18 @@ function renderProfileCardView() {
   // === Identity section ===
   const idSec = pcMakeSection(data?.display_name || username)
   idSec.classList.add('hs-pcard-id')
-  // Paint the identity title with the user's 7TV cosmetic when known.
-  const idPaint = userPaintStyle(
-    String(data?.twitch_user_id || data?.twitch_id || ''),
-    (username || '').toLowerCase(),
-    activeProfileCard?.platform,
-  )
-  if (idPaint) {
-    const titleEl = idSec.querySelector('.hs-pcard-section-title')
-    if (titleEl) titleEl.style.cssText += ';' + idPaint
+  // Paint the identity title with the user's cosmetic when known. HeatSync
+  // paint (own-platform cosmetic) wins over 7TV — same precedence rule as the
+  // live sender row (see hsPaintRender/applyHsPaintToElement in paints.js).
+  const idUid = String(data?.twitch_user_id || data?.twitch_id || '')
+  const idPaint = userPaintStyle(idUid, (username || '').toLowerCase(), activeProfileCard?.platform)
+  const titleEl = idSec.querySelector('.hs-pcard-section-title')
+  if (titleEl) {
+    if (idUid && typeof hasResolvedHsPaint === 'function' && hasResolvedHsPaint(idUid)) {
+      applyHsPaintToElement(titleEl, idUid)
+    } else if (idPaint) {
+      titleEl.style.cssText += ';' + idPaint
+    }
   }
 
   // Hero banner — wide channel banner image as background, with a gradient
@@ -43892,10 +43923,19 @@ function renderChatLogRow(r) {
       const uidKey = typeof userKey === 'function' ? userKey(ulow, r.platform) : ulow
       const uid = knownUserIds.get(uidKey)
       if (uid) {
-        const paintCss = getMcPaintStyle(String(uid))
-        if (paintCss) {
-          name.style.cssText = paintCss
+        // HeatSync paint (own-platform cosmetic) wins over 7TV — same precedence
+        // as the live sender row. Twitch-keyed only (see paints.js ID-SPACE note):
+        // a kick/yt uid must never index the twitch-space HS paint cache.
+        const isTwitch = !r.platform || r.platform === 'twitch'
+        if (isTwitch && typeof hasResolvedHsPaint === 'function' && hasResolvedHsPaint(String(uid))) {
+          applyHsPaintToElement(name, String(uid))
           paintApplied = true
+        } else {
+          const paintCss = getMcPaintStyle(String(uid))
+          if (paintCss) {
+            name.style.cssText = paintCss
+            paintApplied = true
+          }
         }
       }
     }
@@ -55105,7 +55145,17 @@ const STORAGE_KEY = 'heatsync_multichat'
       const dmPaint = m.platform === 'twitch' ? userPaintStyle(m.userId, (m.user || '').toLowerCase(), 'twitch') : ''
       const userName = `<span style="${dmPaint || `color:${sanitizeColor(m.color)};font-weight:600`}">${escapeHtml(m.user)}</span>`
       // All values sanitized — safe innerHTML
-      if (m._renderedHtml == null) m._renderedHtml = highlightHashtagsInHtml(processEmotes(escapeHtml(m.text), null))
+      // @mentions in the DM body paint like anywhere else a person is named —
+      // route through highlightMentionsInHtml (skipMentions=true avoids the
+      // double-anchor bug), reusing the sender path's HS-paint → 7TV → color
+      // precedence + twitch-space id-guard rather than the plain fallback.
+      if (m._renderedHtml == null)
+        m._renderedHtml = highlightHashtagsInHtml(
+          highlightMentionsInHtml(
+            processEmotes(escapeHtml(m.text), null, undefined, undefined, undefined, true),
+            m.platform,
+          ),
+        )
       // All values already sanitized via escapeHtml/processEmotes — safe innerHTML (existing pattern)
       div.innerHTML = `${tsSpan}${label}${platBadge}${userName}: ${m._renderedHtml}`
       div.style.cursor = 'pointer'

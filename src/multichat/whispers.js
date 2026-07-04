@@ -609,7 +609,10 @@ function renderWhispersTab() {
     // double-anchor bug) exactly like the live sender path, so its HS-paint →
     // 7TV → color precedence + twitch-space id-guard are reused, not duplicated.
     const whisperBody = highlightHashtagsInHtml(
-      highlightMentionsInHtml(processEmotes(escapeHtml(m.text), null, undefined, undefined, undefined, true), m.platform),
+      highlightMentionsInHtml(
+        processEmotes(escapeHtml(m.text), null, undefined, undefined, undefined, true),
+        m.platform,
+      ),
     )
     div.innerHTML = `${tsHtml}<span style="color:${platColor};font-size:13px;font-weight:700">[${platTag}]</span> ${senderLink} <span style="color:#808080">-&gt;</span> ${recipientLink}: ${whisperBody}${statusHtml}`
     frag.appendChild(div)

@@ -10242,7 +10242,10 @@
       // precedence + twitch-space id-guard rather than the plain fallback.
       if (m._renderedHtml == null)
         m._renderedHtml = highlightHashtagsInHtml(
-          highlightMentionsInHtml(processEmotes(escapeHtml(m.text), null, undefined, undefined, undefined, true), m.platform),
+          highlightMentionsInHtml(
+            processEmotes(escapeHtml(m.text), null, undefined, undefined, undefined, true),
+            m.platform,
+          ),
         )
       // All values already sanitized via escapeHtml/processEmotes — safe innerHTML (existing pattern)
       div.innerHTML = `${tsSpan}${label}${platBadge}${userName}: ${m._renderedHtml}`

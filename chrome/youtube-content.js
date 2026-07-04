@@ -791,6 +791,20 @@
 
   // ─── Autocomplete ─────────────────────────────────────────────────────────────
 
+  // subsystems.tab-complete gate ("tab-complete in native chat" — applies to
+  // all 3 platforms per settings-schema.js; Twitch/Kick already respect it,
+  // this brings youtube's native-input autocomplete to the same parity).
+  // reload-only (matches content.js's HS_GATES — read once at init).
+  let tabCompleteEnabled = true
+  async function readTabCompleteGate() {
+    try {
+      const stored = await chrome.storage.sync.get('ui_settings')
+      tabCompleteEnabled = stored?.ui_settings?.subsystems?.['tab-complete'] !== false
+    } catch (e) {
+      log('tab-complete gate read failed:', e?.message)
+    }
+  }
+
   let autocompleteEl = null
   let acItems = []
   let acSelectedIndex = -1
@@ -824,6 +838,10 @@
   let _setupAutocompleteRetryTimer = null
   function setupAutocomplete() {
     if (signal.aborted) return
+    if (!tabCompleteEnabled) {
+      log('tab-complete subsystem off — skipping native autocomplete')
+      return
+    }
     const inputRenderer = document.querySelector('yt-live-chat-text-input-field-renderer')
     if (!inputRenderer) {
       if (_setupAutocompleteRetryTimer) cleanup.clearTimeout(_setupAutocompleteRetryTimer)
@@ -1229,6 +1247,8 @@
     } catch (e) {
       log('emote-size read failed:', e?.message)
     }
+
+    await readTabCompleteGate()
 
     injectStyles()
 

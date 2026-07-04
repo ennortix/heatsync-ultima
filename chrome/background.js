@@ -6519,8 +6519,6 @@ async function handleMessage(message, sender, sendResponse) {
       'youtube:subscribe',
       'youtube:unsubscribe',
       'multichat:sync',
-      'user:mute',
-      'user:unmute',
       'ui-state:sync',
       'twitch:chat:relay',
     ]

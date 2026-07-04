@@ -138,7 +138,7 @@ globalThis.currentTab = 'chan-a'
 globalThis.getCurrentChannel = () => 'chan-a'
 globalThis.getLiveChannel = () => 'chan-a'
 
-const { bumpEmoteFrecency, loadEmoteFrecency } = await import('../src/multichat/emotes.js')
+const { bumpEmoteFrecency, loadEmoteFrecency, unbumpEmoteFrecency } = await import('../src/multichat/emotes.js')
 
 describe('emote frecency store', () => {
   beforeEach(() => store.clear())
@@ -173,6 +173,25 @@ describe('emote frecency store', () => {
     expect(Object.keys(raw).length).toBeLessThanOrEqual(200)
     // the most recent bumps survived
     expect(raw.emote209).toBeDefined()
+  })
+
+  test('unbump reverts a bump exactly — cycling PAST an emote leaves no trace', () => {
+    bumpEmoteFrecency('KKona')
+    const before = loadEmoteFrecency().get('KKona')
+    // cycle visits KKonaLand then moves on: bump + unbump must cancel out
+    bumpEmoteFrecency('KKonaLand')
+    unbumpEmoteFrecency('KKonaLand')
+    const f = loadEmoteFrecency()
+    expect(f.get('KKonaLand')).toBeUndefined()
+    expect(f.get('KKona')).toBeCloseTo(before, 10)
+  })
+
+  test('unbump only removes one use — real habit survives a cycle-past', () => {
+    bumpEmoteFrecency('KKona')
+    bumpEmoteFrecency('KKona')
+    bumpEmoteFrecency('KKona')
+    unbumpEmoteFrecency('KKona')
+    expect(loadEmoteFrecency().get('KKona')).toBeGreaterThan(1.9)
   })
 })
 
@@ -216,5 +235,17 @@ describe('autocomplete-hook.js — stays in lockstep with the multichat', () => 
     const body = HOOK_SRC.slice(s, s + 700)
     expect(body).toContain('bumpEmoteFrecency(name)')
     expect(body).toContain('HS_RECENT_EMOTES_KEY')
+  })
+
+  test('usage records where the user STOPS, not on every cycle step', () => {
+    // single recording authority inside insertEmoteViaSlate, cycle-aware
+    expect(HOOK_SRC).toContain('if (isCycling && _frecSessionBumped && _frecSessionBumped !== matchedEmote.name)')
+    // the cycle path must NOT also record (that double-bumped every step and
+    // let the #1-ranked emote entrench itself on each failed "kko"+Tab attempt)
+    expect(HOOK_SRC).not.toContain('recordRecentEmoteMru(nextEmote.name)')
+    // multichat mirrors the same commit semantics
+    const inputSrc = INPUT_SRC
+    expect(inputSrc).toContain('unbumpEmoteFrecency(acState._frecBumped)')
+    expect(inputSrc).toContain('acState._frecBumped = null // session over — whatever was last bumped is the commit')
   })
 })

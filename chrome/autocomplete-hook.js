@@ -200,6 +200,20 @@
       localStorage.setItem(HS_FRECENCY_KEY, JSON.stringify(raw))
     } catch (_) {}
   }
+  /** Revert one bump — used when a cycle step replaces a candidate, so only
+   *  the emote the user stops on keeps the credit. Mirrors emotes.js. */
+  function unbumpEmoteFrecency(name) {
+    if (!name) return
+    try {
+      const raw = _hsFrecRaw()
+      const cur = raw[name]
+      if (!cur) return
+      const n = (cur.n || 0) - 1
+      if (n <= 0) delete raw[name]
+      else raw[name] = { n, t: cur.t }
+      localStorage.setItem(HS_FRECENCY_KEY, JSON.stringify(raw))
+    } catch (_) {}
+  }
   function recordRecentEmoteMru(name) {
     if (!name) return
     try {
@@ -215,6 +229,12 @@
     } catch (_) {}
     bumpEmoteFrecency(name)
   }
+  // Last emote whose frecency this completion session bumped. Usage must
+  // reflect where the user STOPS, not every candidate they cycle through —
+  // otherwise the #1-ranked emote gets a bump on every Tab press and
+  // entrenches itself (the KKonaLand loop: each "kko"+Tab attempt fed the
+  // wrong emote before the user ever reached KKona).
+  let _frecSessionBumped = null
 
   // Track insertion state to prevent autocomplete pollution (7TV-style approach)
   // After inserting an emote, Twitch re-reads input and may trigger autocomplete with emote name
@@ -1719,7 +1739,16 @@
     // Add to recently inserted set - getMatches will skip exact matches
     // This prevents Twitch's polluted state from inserting wrong emotes
     recentlyInserted.add(matchedEmote.name)
-    recordRecentEmoteMru(matchedEmote.name)
+    // Single recording authority (both the dropdown path and the Tab-cycle
+    // path insert through here). A cycle step REPLACES the previous candidate
+    // in the input, so its bump moves with it; a fresh insert never unbumps
+    // (the prior word's emote is committed).
+    if (isCycling && _frecSessionBumped && _frecSessionBumped !== matchedEmote.name) {
+      unbumpEmoteFrecency(_frecSessionBumped)
+    }
+    // record unless a cycle wrapped back onto the emote it already credited
+    if (!isCycling || _frecSessionBumped !== matchedEmote.name) recordRecentEmoteMru(matchedEmote.name)
+    _frecSessionBumped = matchedEmote.name
     lastInsertedEmote = matchedEmote.name
     insertionCount++
 
@@ -2100,9 +2129,9 @@
             if (insertEmoteViaSlate(nextEmote, inst, justCycled)) {
               // Track cycled emote to detect suffix pollution (e.g., "Cool" from "KappaCool")
               cycleState.lastCycledEmote = nextEmote.name
-              // Add to recently inserted
+              // Add to recently inserted (frecency/MRU recording happens inside
+              // insertEmoteViaSlate — recording here too double-bumped every cycle step)
               recentlyInserted.add(nextEmote.name)
-              recordRecentEmoteMru(nextEmote.name)
               if (recentlyInserted.size > 100) recentlyInserted.clear()
               // CRITICAL: Refocus input to ensure next Tab is captured
               const inputEl2 = getInputElement()

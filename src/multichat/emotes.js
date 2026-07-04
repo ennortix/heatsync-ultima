@@ -535,6 +535,22 @@ function loadEmoteFrecency() {
   return out
 }
 
+/** Revert one bump — used when the user cycles PAST a candidate mid-session,
+ *  so only the emote they stop on keeps the credit. Subtracting 1 restores the
+ *  exact pre-bump decayed score (bump set n = decayed + 1 at t = now). */
+function unbumpEmoteFrecency(name) {
+  if (!name) return
+  const raw = _loadFrecencyRaw()
+  const cur = raw[name]
+  if (!cur) return
+  const n = (cur.n || 0) - 1
+  if (n <= 0) delete raw[name]
+  else raw[name] = { n, t: cur.t }
+  try {
+    localStorage.setItem(FRECENCY_KEY, JSON.stringify(raw))
+  } catch (_) {}
+}
+
 function bumpEmoteFrecency(name) {
   if (!name) return
   const raw = _loadFrecencyRaw()
@@ -3332,6 +3348,7 @@ export {
   lookupOwnedEmote,
   processEmotes,
   removedEmoteFallback,
+  unbumpEmoteFrecency,
   viewerPersonalEmotes,
   zeroWidthFromAnyCache,
 }

@@ -468,6 +468,7 @@ const acState = {
   active: false, // true when cycling through matches
   wordStart: 0, // Position where the completion word starts
   afterText: '', // Text after the completion
+  _frecBumped: null, // emote bumped this session — reverted if the user cycles past it
   search: '', // search term that produced these matches (remote-fetch guard)
   remoteDone: false, // 7tv fallback already merged for this search
   remotePending: false, // a lazy remote fetch is in flight for this search
@@ -3960,7 +3961,19 @@ function insertCompletionKeepOpen(match) {
   if (!input || !match) return
 
   trackCompletionForAutoAdd(match)
-  if (match.type === 'emote' && match.name && typeof recordRecentEmote === 'function') recordRecentEmote(match.name)
+  if (match.type === 'emote' && match.name && typeof recordRecentEmote === 'function') {
+    // Usage must reflect where the user STOPS, not every candidate they cycle
+    // through — otherwise the #1-ranked emote gets a bump on every Tab press
+    // and entrenches itself (the KKonaLand loop: each "kko"+Tab attempt fed
+    // the wrong emote before the user ever reached KKona). Within a session,
+    // revert the previous candidate's bump before recording the new one; the
+    // one still standing when the session closes keeps the credit.
+    if (acState._frecBumped && acState._frecBumped !== match.name && typeof unbumpEmoteFrecency === 'function') {
+      unbumpEmoteFrecency(acState._frecBumped)
+    }
+    if (acState._frecBumped !== match.name) recordRecentEmote(match.name)
+    acState._frecBumped = match.name
+  }
 
   if (wysiwygEnabled) {
     insertCompletionWysiwyg(match)
@@ -4688,6 +4701,7 @@ function hideAutocomplete() {
   acState.wordStart = 0
   acState.afterText = ''
   acState.search = ''
+  acState._frecBumped = null // session over — whatever was last bumped is the commit
   acState.remoteDone = false
   acState.remotePending = false
   _acRemoteToken++ // invalidate any in-flight 7TV fetch

@@ -1731,7 +1731,6 @@
       img.className = 'hs-mc-badge-img ' + cls
       img.alt = title || ''
       img.title = title || ''
-      img.loading = 'lazy'
       img.decoding = 'async'
       img.width = 18
       img.height = 18
@@ -1840,7 +1839,6 @@
         img.dataset.badge = key
         img.alt = name
         img.title = BADGE_STYLES[name]?.label || name
-        img.loading = 'lazy'
         img.decoding = 'async'
         img.width = 18
         img.height = 18
@@ -10529,7 +10527,7 @@
       badges = m.badges
         .map((b) => {
           if (b.url) {
-            return `<img class="hs-mc-badge-img" src="${escapeHtml(b.url)}" alt="${escapeHtml(b.label)}" title="${escapeHtml(b.label)}" loading="lazy" decoding="async" width="18" height="18" style="width:18px;height:18px;">`
+            return `<img class="hs-mc-badge-img" src="${escapeHtml(b.url)}" alt="${escapeHtml(b.label)}" title="${escapeHtml(b.label)}" decoding="async" width="18" height="18" style="width:18px;height:18px;">`
           }
           // Text fallback for owner/mod without image
           const ytBadgeStyles = {

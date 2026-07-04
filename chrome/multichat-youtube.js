@@ -30397,7 +30397,12 @@ function renderBadges(badgesStr, channel, platform) {
         const bgStyle =
           isFFZ && BADGE_STYLES[name] ? `background:${BADGE_STYLES[name].bg};padding:1px;border-radius:2px;` : ''
         const label = BADGE_STYLES[name]?.label || name
-        return `<img class="hs-mc-badge-img" data-badge="${escapeHtml(name)}/${escapeHtml(version)}" src="${escapeHtml(safeUrl(url) || '')}" alt="${escapeHtml(name)}" title="${escapeHtml(label)}" loading="lazy" decoding="async" width="18" height="18" style="width:18px;height:18px;${bgStyle}">`
+        // NOT loading="lazy": badges are 18px and always at the row start next
+        // to visible text. When the async channel-badge fetch lands and the
+        // retro-paint (_patchBadgesInRoot) swaps the green text fallback for
+        // this img, a lazy img wouldn't paint until the next reflow — so the
+        // mod/vip/sub badge vanished until a new message or channel switch.
+        return `<img class="hs-mc-badge-img" data-badge="${escapeHtml(name)}/${escapeHtml(version)}" src="${escapeHtml(safeUrl(url) || '')}" alt="${escapeHtml(name)}" title="${escapeHtml(label)}" decoding="async" width="18" height="18" style="width:18px;height:18px;${bgStyle}">`
       }
       // Text fallback
       const style = BADGE_STYLES[name]
@@ -30416,18 +30421,18 @@ function renderThirdPartyBadges(userId) {
   // full rebuild (the "loads then shifts" flash on channel switch).
   const bttv = getSetting('bttvBadges') ? mcBttvBadgeMap.get(userId) : null
   if (bttv) {
-    html += `<img class="hs-mc-badge-img hs-mc-bttv-badge" src="${escapeHtml(safeUrl(bttv.url) || '')}" alt="${escapeHtml(bttv.description)}" title="${escapeHtml(bttv.description)}" loading="lazy" decoding="async" width="18" height="18" style="width:18px;height:18px;">`
+    html += `<img class="hs-mc-badge-img hs-mc-bttv-badge" src="${escapeHtml(safeUrl(bttv.url) || '')}" alt="${escapeHtml(bttv.description)}" title="${escapeHtml(bttv.description)}" decoding="async" width="18" height="18" style="width:18px;height:18px;">`
   }
   const ffzList = getSetting('ffzBadges') ? mcFfzBadgeMap.get(userId) : null
   if (ffzList) {
     for (const b of ffzList) {
       const safeColor = /^#[0-9a-fA-F]{3,8}$/.test(b.color) ? b.color : ''
-      html += `<img class="hs-mc-badge-img hs-mc-ffz-badge" src="${escapeHtml(safeUrl(b.url) || '')}" alt="${escapeHtml(b.title)}" title="${escapeHtml(b.title)}" loading="lazy" decoding="async" width="18" height="18" style="width:18px;height:18px;${safeColor ? 'background:' + safeColor + ';border-radius:2px;' : ''}">`
+      html += `<img class="hs-mc-badge-img hs-mc-ffz-badge" src="${escapeHtml(safeUrl(b.url) || '')}" alt="${escapeHtml(b.title)}" title="${escapeHtml(b.title)}" decoding="async" width="18" height="18" style="width:18px;height:18px;${safeColor ? 'background:' + safeColor + ';border-radius:2px;' : ''}">`
     }
   }
   const chat = getSetting('chatterinoBadges') ? mcChatterinoBadgeMap.get(userId) : null
   if (chat) {
-    html += `<img class="hs-mc-badge-img hs-mc-chatterino-badge" src="${escapeHtml(safeUrl(chat.url) || '')}" alt="Chatterino" title="${escapeHtml(chat.tooltip || 'Chatterino')}" loading="lazy" decoding="async" width="18" height="18" style="width:18px;height:18px;">`
+    html += `<img class="hs-mc-badge-img hs-mc-chatterino-badge" src="${escapeHtml(safeUrl(chat.url) || '')}" alt="Chatterino" title="${escapeHtml(chat.tooltip || 'Chatterino')}" decoding="async" width="18" height="18" style="width:18px;height:18px;">`
   }
   const cosmetic = getSetting('sevenTvPaints') ? mcUserCosmetics.get(userId) : null
   if (cosmetic?.badge) {
@@ -30445,7 +30450,7 @@ function renderThirdPartyBadges(userId) {
         // Class includes hs-mc-7tv-badge so updateCosmeticsInPlace's dedup
         // selector finds it and doesn't insert a duplicate when the async
         // cosmetic fetch resolves after the inline render.
-        html += `<img class="hs-mc-badge-img hs-mc-7tv-badge" src="${escapeHtml(safeUrl(url) || '')}" alt="7TV" title="${escapeHtml(cosmetic.badge.tooltip || '7TV')}" loading="lazy" decoding="async" width="18" height="18" style="width:18px;height:18px;">`
+        html += `<img class="hs-mc-badge-img hs-mc-7tv-badge" src="${escapeHtml(safeUrl(url) || '')}" alt="7TV" title="${escapeHtml(cosmetic.badge.tooltip || '7TV')}" decoding="async" width="18" height="18" style="width:18px;height:18px;">`
       }
     }
   }
@@ -46872,7 +46877,6 @@ const STORAGE_KEY = 'heatsync_multichat'
       img.className = 'hs-mc-badge-img ' + cls
       img.alt = title || ''
       img.title = title || ''
-      img.loading = 'lazy'
       img.decoding = 'async'
       img.width = 18
       img.height = 18
@@ -46981,7 +46985,6 @@ const STORAGE_KEY = 'heatsync_multichat'
         img.dataset.badge = key
         img.alt = name
         img.title = BADGE_STYLES[name]?.label || name
-        img.loading = 'lazy'
         img.decoding = 'async'
         img.width = 18
         img.height = 18
@@ -55670,7 +55673,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       badges = m.badges
         .map((b) => {
           if (b.url) {
-            return `<img class="hs-mc-badge-img" src="${escapeHtml(b.url)}" alt="${escapeHtml(b.label)}" title="${escapeHtml(b.label)}" loading="lazy" decoding="async" width="18" height="18" style="width:18px;height:18px;">`
+            return `<img class="hs-mc-badge-img" src="${escapeHtml(b.url)}" alt="${escapeHtml(b.label)}" title="${escapeHtml(b.label)}" decoding="async" width="18" height="18" style="width:18px;height:18px;">`
           }
           // Text fallback for owner/mod without image
           const ytBadgeStyles = {

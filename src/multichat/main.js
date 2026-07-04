@@ -2145,17 +2145,29 @@
       _pendingSettings = null
       _settingsSaveTimer = null
 
-      // Split: blocklist keys go to chrome.storage.local (no quota cap, no
-      // server sync, no cross-device leak). Everything else goes to sync.
+      // Split: blocklist keys go to chrome.storage.local (no quota cap).
+      // Everything else goes to chrome.storage.sync. The ws fanout patch is
+      // a third, overlapping view: syncPatch keys PLUS any blocklist key
+      // that's a real cross-device preference (not DEVICE_LOCAL_KEYS) and
+      // fits under LARGE_KEY_SYNC_MAX — keywordHighlights/chatFilterRules
+      // ride the server channel this way even though they never touch
+      // chrome.storage.sync directly (8KB ceiling).
       const localPatch = {}
       const syncPatch = {}
+      const wsPatch = {}
       for (const k in pending) {
+        const v = pending[k]
         if (UI_SYNC_BLOCKLIST.has(k)) {
-          if (k === 'platformFilters') localPatch.platform_filters = pending[k]
-          else if (k === 'keywordHighlights') localPatch.keyword_highlights = pending[k]
-          else if (k === 'chatFilterRules') localPatch.chat_filter_rules = pending[k]
+          const mirrorKey = OVERFLOW_MIRROR_KEYS[k]
+          if (mirrorKey) localPatch[mirrorKey] = v
+          if (isLargeKeySyncEligible(k, v)) {
+            wsPatch[k] = v
+          } else if (!DEVICE_LOCAL_KEYS.has(k)) {
+            warn('settings sync: skipping', k, '—', estimateSettingSize(v), 'bytes exceeds', LARGE_KEY_SYNC_MAX, 'cap, staying device-local')
+          }
         } else {
-          syncPatch[k] = pending[k]
+          syncPatch[k] = v
+          wsPatch[k] = v
         }
       }
 
@@ -2184,16 +2196,19 @@
             showToast('settings failed to save — storage quota exceeded', 'error')
           })
         })
+      }
+
+      if (Object.keys(wsPatch).length) {
         // Cross-surface insta-sync: server merges + fans out to every other
         // client of this user (other tabs, ext on Twitch/Kick/YT, heatsync.org).
         // chrome.storage.sync only syncs Chrome → Chrome with same Google
         // account; server-backed covers Firefox + heatsync.org + signed-out
-        // Chrome profiles using the same heatsync login. Blocklist keys are
-        // omitted — they're per-device by design.
+        // Chrome profiles using the same heatsync login. Only DEVICE_LOCAL_KEYS
+        // (platformFilters) are omitted — genuinely per-device, not a pref.
         try {
           chrome.runtime.sendMessage({
             type: 'ws_send',
-            data: { type: 'ui-state:sync', patch: syncPatch },
+            data: { type: 'ui-state:sync', patch: wsPatch },
           })
         } catch (_) {
           /* context invalidated */
@@ -15942,16 +15957,42 @@
         if (!resp?.ok || !resp.data?.state) return
         const remote = resp.data.state
         if (!remote || typeof remote !== 'object' || Object.keys(remote).length === 0) return
-        const stored = await chrome.storage.sync.get(['ui_settings'])
-        // Sanitize the merged blob before persisting — `remote` is server-fanned
-        // state (accumulated across every client/version that ever PATCHed this
-        // account) and must NOT be trusted into the cross-device sync key raw.
-        // Every sibling write sanitizes (main.js:1760/5736, bg ui-state:update);
-        // this seed was the lone bypass. Skipping it let numeric-key/oversized/
-        // __proto__ garbage replicate to all devices + push the record past the
-        // 8KB quota, after which all future pref writes silently fail.
-        const merged = sanitizeUiSettings({ ...(stored.ui_settings || {}), ...remote })
-        await chrome.storage.sync.set({ ui_settings: merged })
+
+        // Split remote state: small sync-scope prefs merge into chrome.storage
+        // .sync.ui_settings (below); large blocklist prefs that ride the server
+        // channel (keywordHighlights/chatFilterRules) land in their
+        // chrome.storage.local overflow keys instead — never chrome.storage.sync
+        // (8KB ceiling). DEVICE_LOCAL_KEYS (platformFilters) are dropped — a
+        // foreign device's per-tab layout would be meaningless here.
+        const syncState = {}
+        const localOverflow = {}
+        for (const k in remote) {
+          if (!Object.hasOwn(remote, k)) continue
+          if (DEVICE_LOCAL_KEYS.has(k)) continue
+          if (UI_SYNC_BLOCKLIST.has(k)) {
+            const mirrorKey = OVERFLOW_MIRROR_KEYS[k]
+            if (mirrorKey && estimateSettingSize(remote[k]) <= LARGE_KEY_SYNC_MAX) localOverflow[mirrorKey] = remote[k]
+          } else {
+            syncState[k] = remote[k]
+          }
+        }
+
+        if (Object.keys(syncState).length) {
+          const stored = await chrome.storage.sync.get(['ui_settings'])
+          // Sanitize the merged blob before persisting — `remote` is server-fanned
+          // state (accumulated across every client/version that ever PATCHed this
+          // account) and must NOT be trusted into the cross-device sync key raw.
+          // Every sibling write sanitizes (main.js:1760/5736, bg ui-state:update);
+          // this seed was the lone bypass. Skipping it let numeric-key/oversized/
+          // __proto__ garbage replicate to all devices + push the record past the
+          // 8KB quota, after which all future pref writes silently fail.
+          const merged = sanitizeUiSettings({ ...(stored.ui_settings || {}), ...syncState })
+          await chrome.storage.sync.set({ ui_settings: merged })
+        }
+        if (Object.keys(localOverflow).length) {
+          invalidateUiOverflowCache()
+          await chrome.storage.local.set(localOverflow)
+        }
       } catch (e) {
         log('ui-state seed failed:', e?.message)
       }

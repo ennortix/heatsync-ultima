@@ -263,7 +263,79 @@ function checkErrorReporterParity() {
   console.log('  Error reporter parity: scrub patterns match ✓')
 }
 
-// Guard 6: escapeHtml coverage parity.
+// Guard 6: UI-sync-blocklist parity between src/lib/utils.js and
+// chrome/background.js. The service worker can't import lib/ (same reason as
+// checkErrorReporterParity above) so it keeps a hand-duplicated copy of
+// UI_SYNC_BLOCKLIST / DEVICE_LOCAL_KEYS / OVERFLOW_MIRROR_KEYS /
+// LARGE_KEY_SYNC_MAX. A silent drift here already caused a real bug once
+// (background.js's blocklist was missing 'chatFilterRules', so a value under
+// that key could reach chrome.storage.sync unsanitized) — this guard fails
+// the build the moment the two copies disagree.
+function checkUiSyncBlocklistParity() {
+  const utilsSrc = readFileSync(join(__dirname, 'src', 'lib', 'utils.js'), 'utf8')
+  const bgSrc = readFileSync(join(__dirname, 'chrome', 'background.js'), 'utf8')
+
+  function extractSet(src, name) {
+    const m = src.match(new RegExp(`const ${name}\\s*=\\s*new Set\\(\\[([\\s\\S]*?)\\]\\)`))
+    if (!m) return null
+    return m[1]
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .sort()
+      .join(',')
+  }
+  function extractObjectLiteral(src, name) {
+    const idx = src.search(new RegExp(`const ${name}\\s*=\\s*\\{`))
+    if (idx === -1) return null
+    const open = src.indexOf('{', idx)
+    let depth = 0
+    for (let i = open; i < src.length; i++) {
+      if (src[i] === '{') depth++
+      else if (src[i] === '}') {
+        depth--
+        if (depth === 0)
+          return src
+            .slice(open + 1, i)
+            .replace(/\s+/g, ' ')
+            .trim()
+      }
+    }
+    return null
+  }
+  function extractConstNumber(src, name) {
+    const m = src.match(new RegExp(`const ${name}\\s*=\\s*(\\d+)`))
+    return m ? m[1] : null
+  }
+
+  const checks = [
+    ['UI_SYNC_BLOCKLIST', extractSet(utilsSrc, 'UI_SYNC_BLOCKLIST'), extractSet(bgSrc, 'UI_SYNC_BLOCKLIST')],
+    ['DEVICE_LOCAL_KEYS', extractSet(utilsSrc, 'DEVICE_LOCAL_KEYS'), extractSet(bgSrc, 'DEVICE_LOCAL_KEYS')],
+    [
+      'OVERFLOW_MIRROR_KEYS',
+      extractObjectLiteral(utilsSrc, 'OVERFLOW_MIRROR_KEYS'),
+      extractObjectLiteral(bgSrc, 'OVERFLOW_MIRROR_KEYS'),
+    ],
+    [
+      'LARGE_KEY_SYNC_MAX',
+      extractConstNumber(utilsSrc, 'LARGE_KEY_SYNC_MAX'),
+      extractConstNumber(bgSrc, 'LARGE_KEY_SYNC_MAX'),
+    ],
+  ]
+
+  for (const [label, a, b] of checks) {
+    if (!a || !b) throw new Error(`checkUiSyncBlocklistParity: could not extract ${label} from both files`)
+    if (a !== b) {
+      throw new Error(
+        `checkUiSyncBlocklistParity: ${label} drift detected\n  src/lib/utils.js: ${a}\n  chrome/background.js: ${b}`,
+      )
+    }
+  }
+
+  console.log('  UI-sync blocklist parity: utils.js ⇄ background.js match ✓')
+}
+
+// Guard 7: escapeHtml coverage parity.
 // Three local copies of escapeHtml exist (src/lib/utils.js, chrome/chat-injector.js,
 // chrome/heatsync-button.js). Each must escape all five dangerous HTML chars.
 // This guard fails the build if any copy drops an escape — preventing XSS regressions.
@@ -828,6 +900,7 @@ checkVersionSync()
 checkManifestParity()
 checkScopeCollisions()
 checkErrorReporterParity()
+checkUiSyncBlocklistParity()
 checkEscapeHtmlCoverage()
 runTests(args)
 console.log()

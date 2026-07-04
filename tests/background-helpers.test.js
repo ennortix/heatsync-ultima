@@ -251,6 +251,65 @@ describe('bgIrcParseLine — reply-parent-user-id threading (background.js live 
   })
 })
 
+// ── splitIncomingUiState (server ui-state fanout → sync vs overflow split) ──
+//
+// background.js's own duplicate of sanitizeUiSettings/UI_SYNC_BLOCKLIST/
+// DEVICE_LOCAL_KEYS/OVERFLOW_MIRROR_KEYS/LARGE_KEY_SYNC_MAX (kept in parity
+// with src/lib/utils.js by build.js's checkUiSyncBlocklistParity guard) feeds
+// this splitter, used by the ui-state:update / settings:patch handlers to
+// route large blocklist prefs (keywordHighlights/chatFilterRules) to their
+// chrome.storage.local overflow keys instead of chrome.storage.sync.
+
+const splitIncomingUiStateSrc =
+  sliceBetween('const UI_SYNC_BLOCKLIST =', 'function splitIncomingUiState(') +
+  extractFn('splitIncomingUiState') +
+  '\nreturn { splitIncomingUiState }'
+const { splitIncomingUiState } = new Function(splitIncomingUiStateSrc)()
+
+describe('splitIncomingUiState', () => {
+  test('ordinary sync-scope keys go to `sync`', () => {
+    const { sync, overflow } = splitIncomingUiState({ zebra: true, timestamps: false })
+    expect(sync).toEqual({ zebra: true, timestamps: false })
+    expect(overflow).toEqual({})
+  })
+
+  test('keywordHighlights/chatFilterRules go to `overflow` under their mirror key names', () => {
+    const { sync, overflow } = splitIncomingUiState({
+      zebra: true,
+      keywordHighlights: 'foo\nbar',
+      chatFilterRules: '[]',
+    })
+    expect(sync).toEqual({ zebra: true })
+    expect(overflow).toEqual({ keyword_highlights: 'foo\nbar', chat_filter_rules: '[]' })
+  })
+
+  test('platformFilters (device-local) is dropped entirely — not in sync or overflow', () => {
+    const { sync, overflow } = splitIncomingUiState({ zebra: true, platformFilters: { tab1: { twitch: false } } })
+    expect(sync).toEqual({ zebra: true })
+    expect(overflow).toEqual({})
+  })
+
+  test('oversized large-key value is dropped, not adopted', () => {
+    const { overflow } = splitIncomingUiState({ keywordHighlights: 'x'.repeat(32769) })
+    expect(overflow).toEqual({})
+  })
+
+  test('value exactly at the 32768 cap is kept', () => {
+    const { overflow } = splitIncomingUiState({ chatFilterRules: 'x'.repeat(32768) })
+    expect(overflow).toEqual({ chat_filter_rules: 'x'.repeat(32768) })
+  })
+
+  test('non-object input returns empty sync/overflow (no throw)', () => {
+    expect(splitIncomingUiState(null)).toEqual({ sync: {}, overflow: {} })
+    expect(splitIncomingUiState('nope')).toEqual({ sync: {}, overflow: {} })
+  })
+
+  test('sync half is still sanitized (prototype pollution / numeric keys stripped)', () => {
+    const { sync } = splitIncomingUiState({ zebra: true, __proto__: { evil: 1 }, 0: 'bad' })
+    expect(Object.keys(sync)).toEqual(['zebra'])
+  })
+})
+
 describe('bgIrcRecordToExt — reply-parent-user-id threading (server EventSub-relay path)', () => {
   test('rec.replyTo.userId is carried through to ext.replyTo.userId', () => {
     const ext = bgIrcRecordToExt(

@@ -252,11 +252,35 @@ function userSetMatches(set, username, platform, aliasKeys) {
 
 // Storage hygiene — sanitize ui_settings before merging into chrome.storage
 // .sync. Strips numeric-string keys (corruption marker), prototype-pollution
-// keys, blocklist keys (platformFilters / keywordHighlights belong in local),
-// oversized strings (>4 KB) and oversized values (JSON >6 KB). Mirrors the
-// canonical implementation in src/lib/utils.js — duplicated here because the
-// service worker is not bundled with the lib.
-const UI_SYNC_BLOCKLIST = new Set(['platformFilters', 'keywordHighlights'])
+// keys, blocklist keys (platformFilters / keywordHighlights / chatFilterRules
+// belong in local), oversized strings (>4 KB) and oversized values (JSON
+// >6 KB). Mirrors the canonical implementation in src/lib/utils.js —
+// duplicated here because the service worker is not bundled with the lib
+// (parity enforced at build time by build.js's checkUiSyncBlocklistParity).
+const UI_SYNC_BLOCKLIST = new Set(['platformFilters', 'keywordHighlights', 'chatFilterRules'])
+// Subset of UI_SYNC_BLOCKLIST that never leaves the device at all — see
+// src/lib/utils.js for the full rationale. keywordHighlights/chatFilterRules
+// are real prefs and DO ride the server ui-state channel (size-capped);
+// platformFilters is per-device tab-layout state and never does.
+const DEVICE_LOCAL_KEYS = new Set(['platformFilters'])
+// registry key → chrome.storage.local key name — must match src/lib/utils.js
+// OVERFLOW_MIRROR_KEYS exactly (parity-checked at build time).
+const OVERFLOW_MIRROR_KEYS = {
+  platformFilters: 'platform_filters',
+  keywordHighlights: 'keyword_highlights',
+  chatFilterRules: 'chat_filter_rules',
+}
+// Per-key cap for blocklist keys riding the server channel — must match
+// src/lib/utils.js LARGE_KEY_SYNC_MAX.
+const LARGE_KEY_SYNC_MAX = 32768
+function estimateSettingSize(value) {
+  if (typeof value === 'string') return value.length
+  try {
+    return JSON.stringify(value).length
+  } catch {
+    return Infinity
+  }
+}
 function sanitizeUiSettings(obj) {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return {}
   const out = {}
@@ -280,6 +304,33 @@ function sanitizeUiSettings(obj) {
     out[key] = v
   }
   return out
+}
+
+// Splits a server-fanned ui-state blob (full state or partial patch) into:
+//   sync     → sanitizeUiSettings-cleaned keys destined for chrome.storage
+//              .sync.ui_settings (existing RMW path, unchanged)
+//   overflow → blocklist keys that are real cross-device prefs (not
+//              DEVICE_LOCAL_KEYS) and fit under LARGE_KEY_SYNC_MAX, keyed by
+//              their chrome.storage.local mirror name — NEVER written to
+//              chrome.storage.sync. Oversized or device-local entries are
+//              silently dropped (server should already enforce the cap; this
+//              is defense in depth against a stale/misbehaving server build).
+function splitIncomingUiState(obj) {
+  const sync = {}
+  const overflow = {}
+  if (obj && typeof obj === 'object') {
+    for (const key in obj) {
+      if (!Object.hasOwn(obj, key)) continue
+      if (DEVICE_LOCAL_KEYS.has(key)) continue
+      if (UI_SYNC_BLOCKLIST.has(key)) {
+        const mirrorKey = OVERFLOW_MIRROR_KEYS[key]
+        if (mirrorKey && estimateSettingSize(obj[key]) <= LARGE_KEY_SYNC_MAX) overflow[mirrorKey] = obj[key]
+        continue
+      }
+      sync[key] = obj[key]
+    }
+  }
+  return { sync: sanitizeUiSettings(sync), overflow }
 }
 
 // Serialized read-modify-write for ui_settings in sync storage.
@@ -4671,24 +4722,36 @@ function handleWSMessage(msg) {
         }
         break
 
-      case 'ui-state:update':
+      case 'ui-state:update': {
         // Cross-surface UI prefs sync — server merged a patch from another
         // client and is fanning out the full state. Mirror into chrome.storage
         // .sync.ui_settings so the existing storage.onChanged listener applies
-        // every key live (zebra/timestamps/avatars/active tab/etc).
+        // every key live (zebra/timestamps/avatars/active tab/etc). Large
+        // blocklist prefs (keywordHighlights/chatFilterRules) split off into
+        // their chrome.storage.local overflow keys instead — the SAME onChanged
+        // listener already reacts to those (keyword_highlights/chat_filter_rules)
+        // for the local-mirror write path, so no new plumbing is needed.
         // Sanitize the patch first — never trust server-fanned-out state. A
         // single malformed payload here will otherwise corrupt every client of
         // this user permanently (sync replicates everywhere; once bad data is
         // in, every tab and the heatsync.org chat-tile inherit it).
         if (msg.state && typeof msg.state === 'object') {
-          const cleanState = sanitizeUiSettings(msg.state)
+          const { sync: cleanState, overflow } = splitIncomingUiState(msg.state)
           const cleanKeys = Object.keys(cleanState)
-          if (cleanKeys.length === 0) break
-          log(' 🎛️  ui-state sync received:', cleanKeys.length, 'keys')
-          uiSettingsRmw((ui) => sanitizeUiSettings({ ...ui, ...cleanState }))
+          const overflowKeys = Object.keys(overflow)
+          if (cleanKeys.length === 0 && overflowKeys.length === 0) break
+          if (cleanKeys.length) {
+            log(' 🎛️  ui-state sync received:', cleanKeys.length, 'keys')
+            uiSettingsRmw((ui) => sanitizeUiSettings({ ...ui, ...cleanState }))
+          }
+          if (overflowKeys.length) {
+            log(' 🎛️  ui-state sync received (overflow):', overflowKeys.length, 'keys')
+            browser.storage.local.set(overflow).catch(() => {})
+          }
           broadcastToTabs({ type: 'ui_state_update', state: cleanState })
         }
         break
+      }
 
       case 'multichat:config':
         // Cross-device sync: server sent updated multichat config
@@ -5283,10 +5346,18 @@ function handleWSMessage(msg) {
       // cover incremental edits from /api/settings on heatsync.org.
       case 'settings:patch': {
         if (msg.patches && typeof msg.patches === 'object') {
-          const cleanPatch = sanitizeUiSettings(msg.patches)
-          if (Object.keys(cleanPatch).length > 0) {
-            log(' settings:patch received:', Object.keys(cleanPatch))
+          const { sync: cleanPatch, overflow } = splitIncomingUiState(msg.patches)
+          const patchKeys = Object.keys(cleanPatch)
+          const overflowKeys = Object.keys(overflow)
+          if (patchKeys.length > 0) {
+            log(' settings:patch received:', patchKeys)
             uiSettingsRmw((ui) => sanitizeUiSettings({ ...ui, ...cleanPatch }))
+          }
+          if (overflowKeys.length > 0) {
+            log(' settings:patch received (overflow):', overflowKeys)
+            browser.storage.local.set(overflow).catch(() => {})
+          }
+          if (patchKeys.length > 0 || overflowKeys.length > 0) {
             broadcastToTabs({ type: 'ui_state_update', state: cleanPatch })
           }
         }
@@ -5297,11 +5368,16 @@ function handleWSMessage(msg) {
         const delKey = typeof msg.key === 'string' ? msg.key : null
         if (delKey && delKey.length > 0 && delKey.length <= 64) {
           log(' settings:delete received:', delKey)
-          uiSettingsRmw((ui) => {
-            const copy = sanitizeUiSettings(ui)
-            delete copy[delKey]
-            return copy
-          })
+          const mirrorKey = UI_SYNC_BLOCKLIST.has(delKey) ? OVERFLOW_MIRROR_KEYS[delKey] : null
+          if (mirrorKey) {
+            browser.storage.local.remove(mirrorKey).catch(() => {})
+          } else {
+            uiSettingsRmw((ui) => {
+              const copy = sanitizeUiSettings(ui)
+              delete copy[delKey]
+              return copy
+            })
+          }
           broadcastToTabs({ type: 'settings_key_deleted', key: delKey })
         }
         break

@@ -365,9 +365,61 @@ function parseYtGiftCount(systemText) {
 // Keys that must NEVER be stored in chrome.storage.sync — they're either
 // unbounded (per-tab maps, free-form text) or simply too large for the
 // 8 KB QUOTA_BYTES_PER_ITEM ceiling. These move to chrome.storage.local
-// (we hold the unlimitedStorage permission) and are not part of cross-
-// device sync. Server-backed sync (ws ui-state:sync) also excludes them.
+// (we hold the unlimitedStorage permission) instead.
+//
+// NOT all of them are device-local, though — keywordHighlights and
+// chatFilterRules are real cross-device preferences (chatterino's #1 sync
+// complaint is exactly "my highlight words don't follow me"), just too big
+// for chrome.storage.sync. They DO ride the server-backed ws ui-state
+// channel (which has no 8 KB ceiling), size-capped per key — see
+// LARGE_KEY_SYNC_MAX. Only DEVICE_LOCAL_KEYS below are excluded from that
+// channel too.
 const UI_SYNC_BLOCKLIST = new Set(['platformFilters', 'keywordHighlights', 'chatFilterRules'])
+
+// Subset of UI_SYNC_BLOCKLIST that is genuinely per-device UI state, not a
+// preference — platformFilters is keyed by this device's own multichat tab
+// ids (§ src/multichat/main.js loadPlatformFilters) and would be meaningless
+// (or actively wrong) replayed onto a different device's tab layout. Never
+// sent to, or adopted from, the server ui-state channel.
+const DEVICE_LOCAL_KEYS = new Set(['platformFilters'])
+
+// registry key → chrome.storage.local key name, for every UI_SYNC_BLOCKLIST
+// entry. Single source for the overflow-bucket names so main.js and
+// background.js route a synced/received value to the same local slot.
+const OVERFLOW_MIRROR_KEYS = {
+  platformFilters: 'platform_filters',
+  keywordHighlights: 'keyword_highlights',
+  chatFilterRules: 'chat_filter_rules',
+}
+
+// Per-key cap for the two blocklist keys that DO ride the server ui-state
+// channel. The server has no 8 KB ceiling, but "no limit" isn't a real
+// limit — this keeps one runaway textarea from blowing an unbounded hole in
+// the account's synced-state payload. Oversized values simply stay
+// device-local: never truncated, never dropped from local storage — just
+// not sent to (or adopted from) the server.
+const LARGE_KEY_SYNC_MAX = 32768
+
+// Serialized size of a value — char length for strings (settings text is
+// effectively 1 byte/char in practice), JSON length for everything else.
+// Returns Infinity for anything unmeasurable (circular refs, etc.) so
+// callers fail closed (treat as oversized) instead of throwing.
+function estimateSettingSize(value) {
+  if (typeof value === 'string') return value.length
+  try {
+    return JSON.stringify(value).length
+  } catch {
+    return Infinity
+  }
+}
+
+// True when `key` is a UI_SYNC_BLOCKLIST member that's a real cross-device
+// preference (not in DEVICE_LOCAL_KEYS) and `value` fits under
+// LARGE_KEY_SYNC_MAX — i.e. eligible to ride the server ws ui-state channel
+// even though it can never enter chrome.storage.sync directly.
+function isLargeKeySyncEligible(key, value) {
+  return UI_SYNC_BLOCKLIST.has(key) && !DEVICE_LOCAL_KEYS.has(key) && estimateSettingSize(value) <= LARGE_KEY_SYNC_MAX
+}
 
 /**
  * Sanitize a ui_settings-shaped object before merging into chrome.storage.sync
@@ -442,6 +494,11 @@ const utils = {
   // Storage hygiene
   sanitizeUiSettings,
   UI_SYNC_BLOCKLIST,
+  DEVICE_LOCAL_KEYS,
+  OVERFLOW_MIRROR_KEYS,
+  LARGE_KEY_SYNC_MAX,
+  estimateSettingSize,
+  isLargeKeySyncEligible,
 }
 
 // Global export
@@ -456,12 +513,17 @@ export {
   classifyYtMembership,
   classifyYtRendererType,
   createElement,
+  DEVICE_LOCAL_KEYS,
   debounce,
   error,
   escapeHtml,
+  estimateSettingSize,
   findComponent,
   getFiber,
+  isLargeKeySyncEligible,
+  LARGE_KEY_SYNC_MAX,
   log,
+  OVERFLOW_MIRROR_KEYS,
   parseYtGiftCount,
   safeUrl,
   sanitizeUiSettings,

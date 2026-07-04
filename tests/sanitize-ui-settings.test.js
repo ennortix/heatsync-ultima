@@ -1,5 +1,13 @@
 import { describe, expect, test } from 'bun:test'
-import { sanitizeUiSettings, UI_SYNC_BLOCKLIST } from '../src/lib/utils.js'
+import {
+  DEVICE_LOCAL_KEYS,
+  estimateSettingSize,
+  isLargeKeySyncEligible,
+  LARGE_KEY_SYNC_MAX,
+  OVERFLOW_MIRROR_KEYS,
+  sanitizeUiSettings,
+  UI_SYNC_BLOCKLIST,
+} from '../src/lib/utils.js'
 
 // ── edge inputs: must not throw ───────────────────────────────────────────────
 
@@ -316,4 +324,71 @@ test('out-of-range number is NOT clamped (clamping is schema job, not sanitize)'
   // but sanitizeUiSettings passes it through — it only guards size, not range.
   const out = sanitizeUiSettings({ mentionSoundVolume: 99 })
   expect(out).toHaveProperty('mentionSoundVolume', 99)
+})
+
+// ── large-key server sync eligibility ────────────────────────────────────────
+// keywordHighlights/chatFilterRules are UI_SYNC_BLOCKLIST members (never enter
+// chrome.storage.sync) that ARE real cross-device prefs and ride the
+// server-backed ws ui-state channel, size-capped. platformFilters is the one
+// blocklist member that's genuinely per-device and excluded from that channel
+// entirely — see DEVICE_LOCAL_KEYS.
+
+describe('DEVICE_LOCAL_KEYS', () => {
+  test('is a subset of UI_SYNC_BLOCKLIST', () => {
+    for (const k of DEVICE_LOCAL_KEYS) expect(UI_SYNC_BLOCKLIST.has(k)).toBe(true)
+  })
+
+  test('platformFilters is device-local; keywordHighlights/chatFilterRules are not', () => {
+    expect(DEVICE_LOCAL_KEYS.has('platformFilters')).toBe(true)
+    expect(DEVICE_LOCAL_KEYS.has('keywordHighlights')).toBe(false)
+    expect(DEVICE_LOCAL_KEYS.has('chatFilterRules')).toBe(false)
+  })
+})
+
+describe('OVERFLOW_MIRROR_KEYS', () => {
+  test('has exactly one mirror entry per UI_SYNC_BLOCKLIST member', () => {
+    for (const k of UI_SYNC_BLOCKLIST) expect(OVERFLOW_MIRROR_KEYS).toHaveProperty(k)
+    expect(Object.keys(OVERFLOW_MIRROR_KEYS).sort()).toEqual([...UI_SYNC_BLOCKLIST].sort())
+  })
+
+  test('mirror names match the known chrome.storage.local overflow keys', () => {
+    expect(OVERFLOW_MIRROR_KEYS.platformFilters).toBe('platform_filters')
+    expect(OVERFLOW_MIRROR_KEYS.keywordHighlights).toBe('keyword_highlights')
+    expect(OVERFLOW_MIRROR_KEYS.chatFilterRules).toBe('chat_filter_rules')
+  })
+})
+
+describe('estimateSettingSize', () => {
+  test('measures string length', () => {
+    expect(estimateSettingSize('x'.repeat(100))).toBe(100)
+  })
+  test('measures JSON length for objects/arrays', () => {
+    expect(estimateSettingSize(['a', 'b'])).toBe(JSON.stringify(['a', 'b']).length)
+  })
+  test('circular reference is Infinity (fail closed)', () => {
+    const circular = {}
+    circular.self = circular
+    expect(estimateSettingSize(circular)).toBe(Infinity)
+  })
+})
+
+describe('isLargeKeySyncEligible', () => {
+  test('keywordHighlights under the cap is eligible', () => {
+    expect(isLargeKeySyncEligible('keywordHighlights', 'foo\nbar')).toBe(true)
+  })
+  test('chatFilterRules under the cap is eligible', () => {
+    expect(isLargeKeySyncEligible('chatFilterRules', '[]')).toBe(true)
+  })
+  test('keywordHighlights over LARGE_KEY_SYNC_MAX is not eligible', () => {
+    expect(isLargeKeySyncEligible('keywordHighlights', 'x'.repeat(LARGE_KEY_SYNC_MAX + 1))).toBe(false)
+  })
+  test('value exactly at the cap is eligible (boundary)', () => {
+    expect(isLargeKeySyncEligible('chatFilterRules', 'x'.repeat(LARGE_KEY_SYNC_MAX))).toBe(true)
+  })
+  test('platformFilters is never eligible regardless of size (device-local)', () => {
+    expect(isLargeKeySyncEligible('platformFilters', { a: 1 })).toBe(false)
+  })
+  test('a non-blocklist key is never "eligible" (it syncs via chrome.storage.sync directly, not this path)', () => {
+    expect(isLargeKeySyncEligible('zebra', true)).toBe(false)
+  })
 })

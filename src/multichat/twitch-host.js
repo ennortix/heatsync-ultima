@@ -230,7 +230,24 @@ function setupTwitchTopNavObserver() {
 // destroyed, so the visible panel keeps showing live messages without
 // a single empty frame.
 function softTwitchNav(prevLiveCh) {
-  const container = document.getElementById('hs-mc-container')
+  let container = document.getElementById('hs-mc-container')
+  // Twitch commits the chat-shell unmount BEFORE pushState on channel →
+  // /directory style transitions — by the time the nav event fires the panel
+  // is already detached and getElementById can't see it. The module reference
+  // still holds the live node (feed state, IRC, scroll pos intact): re-adopt
+  // it onto body so this nav behaves like the normal pre-emptive migrate.
+  if (!container && typeof _hsMcContainerNode !== 'undefined' && _hsMcContainerNode) {
+    container = _hsMcContainerNode
+    document.body.appendChild(container)
+  }
+  if (!container) {
+    // No panel and no reference (never mounted on this page) — rebuild from
+    // scratch, mirroring softKickNav's null-container fallback.
+    try {
+      fullSpaReinit()
+    } catch (_) {}
+    return
+  }
   // SPA nav changes the URL channel — only the LIVE tab cache becomes
   // stale (it follows getLiveChannel()). Per-channel tab caches stay
   // valid since their data is keyed by channel buffer, not URL.

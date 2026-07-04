@@ -4817,6 +4817,8 @@
   let _isResizingC = false
   let _cHandlePanelObs = null
   let _cHandlePanelObsTarget = null
+  // Panel node reference — see getOrCreateHsContainer / softTwitchNav.
+  let _hsMcContainerNode = null
   // Mount-retry: on hard loads of no-channel pages the first position pass can
   // run before #hs-mc-container even EXISTS — the ResizeObserver has nothing to
   // attach to, so nothing ever re-shows the bar. Bounded ladder re-polls until
@@ -8582,6 +8584,11 @@
     if (container && document.contains(container)) return container
     container = document.createElement('div')
     container.id = 'hs-mc-container'
+    // Keep a live reference: twitch commits the chat-shell unmount BEFORE
+    // pushState on some SPA transitions (channel → /directory), so by the time
+    // the nav event fires the panel is detached and invisible to
+    // getElementById. softTwitchNav re-adopts this node with its state intact.
+    _hsMcContainerNode = container
     // On Kick: insert as SIBLING of #channel-chatroom (not child!) to avoid
     // breaking Kick's React virtual scroll. React's reconciliation errors
     // corrupt native chat when our container is inside its managed tree.

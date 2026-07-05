@@ -1076,6 +1076,31 @@
         )
         return
       }
+      // Explicit operation allowlist. gql.hashes auto-caches every operation
+      // Twitch's own page fires, so without this a forged message (the nonce
+      // can't be secret in MAIN world) could proxy ANY of them with the user's
+      // OAuth+integrity token. Restrict to exactly what the extension calls.
+      const ALLOWED_GQL_OPS = [
+        'CommunityPointsContext',
+        'ChannelPointsContext',
+        'RedeemCommunityPointsCustomReward',
+        'ClaimCommunityPoints',
+        'VotePoll',
+        'Chat_ShareResub_UseResubToken',
+        'MakePrediction',
+        'SetFollowersOnlyModeSetting',
+        'FollowButton_FollowUser',
+        'FollowButton_UnfollowUser',
+      ]
+      const gqlOps = req.batch ? req.batch.map((o) => o && o.operation) : [req.operation]
+      if (!gqlOps.length || !gqlOps.every((op) => ALLOWED_GQL_OPS.includes(op))) {
+        log('heatsync-gql-request: operation not allowed — ' + gqlOps.join(','))
+        window.postMessage(
+          { type: 'heatsync-gql-response', id: req.id, error: 'operation not allowed' },
+          location.origin,
+        )
+        return
+      }
       if (gql.hashes[req.operation]) {
         executeGqlProxy(req)
       } else {

@@ -6728,9 +6728,14 @@
         // miss/failure (no blank gap). Unifies with the kick/yt path below.
         avatarHtml = avatarFallbackHtml(m.user, userKey, true)
         fetchAvatar(userKey)
+      } else if (m.platform === 'kick') {
+        // Kick real avatars ride the cosmetics pipeline (flushKickNameLookups
+        // caches the profile_pic from the same v1/users fetch that resolves
+        // cosmetics). Tag the placeholder with data-user so that swap can find
+        // and replace it in place — same zero-shift mechanism as twitch.
+        avatarHtml = avatarFallbackHtml(m.user, userKey, true)
       } else {
-        // Kick/YouTube without a cached avatar — neutral initials placeholder so
-        // the avatar column doesn't have an empty gap (no fetch path for these).
+        // YouTube without an inline avatar — neutral initials, no swap path.
         avatarHtml = avatarFallbackHtml(m.user, userKey, false)
       }
     }

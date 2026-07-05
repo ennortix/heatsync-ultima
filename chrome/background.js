@@ -2160,6 +2160,11 @@ const TWITCH_ID_CACHE_MAX = 1000
 const kickChannelIdCache = new Map()
 const kickChatroomIdCache = new Map()
 const kickUsernameToIdCache = new Map()
+// Kick chatter profile_pic (username → url), captured from the SAME v1/users
+// fetch that resolves the kick user_id — so real avatars cost zero extra
+// requests. Populated in lockstep with kickUsernameToIdCache (both set only when
+// v1/users runs), so an id-cache hit always implies a pfp-cache hit.
+const kickUsernameToPfpCache = new Map()
 // kick channel slug (lowercased) → numeric kick user id. 7TV's /v3/users/kick/{id}
 // needs the numeric id; the initial fetch resolves it via GQL, the poll reuses it.
 const channelOwnerKickId = new Map()
@@ -7859,6 +7864,7 @@ async function handleMessage(message, sender, sendResponse) {
               badge: cached.badge,
               twitchId: cached.twitchId || null,
               ...(cached.kickId ? { kickId: cached.kickId } : {}),
+              avatar: kickUsernameToPfpCache.get(username) || null,
             }
             return
           }
@@ -7884,6 +7890,18 @@ async function handleMessage(message, sender, sendResponse) {
                 kickUsernameToIdCache.delete(kickUsernameToIdCache.keys().next().value)
               }
               kickUsernameToIdCache.set(username, kickUserId)
+              // Capture the real avatar from the same response (free — no extra
+              // fetch). Kept parallel to the id cache so it's available even when
+              // a later request skips v1/users on an id-cache hit. NOTE: v1/users
+              // spells it `profilepic` (no underscore) — v2/channels uses
+              // `profile_pic`; accept both to be safe.
+              const _pfp = userData?.profilepic || userData?.profile_pic
+              if (_pfp) {
+                if (kickUsernameToPfpCache.size >= 1000) {
+                  kickUsernameToPfpCache.delete(kickUsernameToPfpCache.keys().next().value)
+                }
+                kickUsernameToPfpCache.set(username, _pfp)
+              }
             }
             // Step 2 — kick user_id → 7TV cosmetics + twitch connection
             const resp = await fetchWithTimeout(`https://7tv.io/v3/users/kick/${kickUserId}`)
@@ -7908,7 +7926,7 @@ async function handleMessage(message, sender, sendResponse) {
               ? { ...cosmetic, twitchId, twitchUsername, kickId: kickUserId }
               : { paint: null, badge: null, twitchId, twitchUsername, kickId: kickUserId }
             setUserCosmetic(cacheKey, full)
-            result[username] = full
+            result[username] = { ...full, avatar: kickUsernameToPfpCache.get(username) || null }
           } catch (e) {
             setUserCosmetic(cacheKey, null)
             result[username] = null

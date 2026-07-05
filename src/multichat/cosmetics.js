@@ -349,6 +349,25 @@ async function flushKickNameLookups() {
     const paintUid = c?.kickId ? `kick_${c.kickId}` : null
     kickNamePaintUid.set(key, paintUid)
     if (paintUid && typeof queuePaintLookup === 'function') queuePaintLookup(paintUid)
+    // Real avatar (profile_pic, free from the same v1/users fetch). Cache it and
+    // swap the rendered kick rows' initials placeholder in place — same zero-shift
+    // mechanism twitch's fetchAvatar uses. Runs regardless of 7TV cosmetics.
+    const av = c?.avatar ? safeUrl(c.avatar) : null
+    if (av && !avatarCache.has(key)) {
+      avatarCache.set(key, av)
+      if (avatarCache.size > 500) avatarCache.delete(avatarCache.keys().next().value)
+      if (avatarsEnabled) {
+        for (const el of document.querySelectorAll(`.hs-mc-avatar[data-user="${CSS.escape(key)}"]`)) {
+          const img = document.createElement('img')
+          img.className = 'hs-mc-avatar'
+          img.src = av
+          img.alt = ''
+          img.loading = 'lazy'
+          img.decoding = 'async'
+          el.replaceWith(img)
+        }
+      }
+    }
     if (!tid && !paintUid) continue
     if (tid) {
       // Fold the {paint, badge} into the twitch-id-keyed cosmetics cache so the

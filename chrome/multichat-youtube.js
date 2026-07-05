@@ -20687,8 +20687,11 @@ function showEmotePicker(tab = null) {
         pendingMessage = input.value
       }
       input.focus()
-      picker.classList.remove('visible')
-      adjustOverlayForPicker(false)
+      // Stay open + flash, matching the input.js paste path for owned/global/
+      // channel emotes — this delegate now only receives remote search results
+      // (input.js eats every other state), and closing on those made search
+      // multi-add feel broken next to grid multi-add.
+      flashAllEmotes(name, 'hs-flash-paste')
     })
 
     // Provider search results land asynchronously — re-render when each one
@@ -35251,6 +35254,13 @@ function initInput() {
         // position; intercepting would silently re-paste the same emote on
         // every cursor placement, which is hostile.
         if (e.target.closest('#hs-mc-input') && emoteInfo.state !== 'blocked') return
+
+        // Remote provider search result — owned by the picker delegate in
+        // emotes.js (optimistic inventory seed + server add + paste). This
+        // handler has no remote branch, so swallowing the event here turned
+        // every search-result click into a silent dead click (preventDefault +
+        // stopPropagation below, then no matching state). Let it bubble.
+        if (emoteInfo.state === 'remote') return
 
         e.preventDefault()
         e.stopPropagation()

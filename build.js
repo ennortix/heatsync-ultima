@@ -497,6 +497,7 @@ const MULTICHAT_MODULES = [
   'mod-toolbar.js',
   'resize.js',
   'settings-ui.js',
+  'channel-mgmt.js',
 ]
 
 // native-tap.js reads Twitch's React fiber tree — twitch-only, exclude on kick/youtube

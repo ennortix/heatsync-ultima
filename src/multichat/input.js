@@ -1606,11 +1606,20 @@ function hsRelPeek(username, platform) {
   return c?.profile || null
 }
 
-async function hsFollowFromMenu(username, platform) {
+async function hsFollowFromMenu(username, platform, ids = {}) {
   if (typeof resolveIdentity !== 'function') return
   const ri = await resolveIdentity(username, { platform })
   const p = ri?.profile
-  const id = p?.id || p?.userId
+  let id = p?.id || p?.userId
+  // BUG 1c — no heatsync profile: fall back to the same kick/yt resolution
+  // the profile card uses (resolveFollowTargetId, profile-card.js) instead of
+  // giving up. Kick hits the public kick.com API for a real numeric id; YT
+  // uses a UC channel id already known from chat (ids.youtubeChannelId, or a
+  // buffer scan when the ctx-menu didn't have one to hand).
+  if (!id && typeof resolveFollowTargetId === 'function' && (platform === 'kick' || platform === 'youtube' || platform === 'yt')) {
+    const target = await resolveFollowTargetId(platform, username, ids)
+    if (target?.id) id = target.id
+  }
   if (!id) {
     const msg = ri?.transient
       ? ri.status === 429
@@ -1620,7 +1629,7 @@ async function hsFollowFromMenu(username, platform) {
     showToast(msg, 'error')
     return
   }
-  pcToggleFollow(id, username, !!(p.relationship?.youFollow || p.relationship?.isFollowing))
+  pcToggleFollow(id, username, !!(p?.relationship?.youFollow || p?.relationship?.isFollowing))
 }
 
 async function hsBlockFromMenu(username, platform) {
@@ -1659,8 +1668,18 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
       ? isUserBlocked(username, platform)
       : blockedUsers.has(String(username).toLowerCase()))
   const isMuted = typeof isUserMuted === 'function' ? isUserMuted(username, platform) : mutedUsers.has(username)
+  // The clicked row's paint uid already carries a yt_<UCid> for YT chatters
+  // (main.js stamps m.hsPaintUid onto dataset.hsPaintUid at render time) — a
+  // free, exact UC id hand-off into the follow resolver (BUG 1c), no buffer
+  // re-scan needed.
+  const rowPaintUid = msg?.dataset?.hsPaintUid || ''
+  const followIds = rowPaintUid.startsWith('yt_') ? { youtubeChannelId: rowPaintUid.slice(3) } : {}
   const items = [
-    { key: 'follow', label: youFollow ? 'unfollow' : 'follow', fn: () => hsFollowFromMenu(username, platform) },
+    {
+      key: 'follow',
+      label: youFollow ? 'unfollow' : 'follow',
+      fn: () => hsFollowFromMenu(username, platform, followIds),
+    },
     {
       key: 'block',
       label: youBlock ? 'unblock' : 'block',
@@ -1749,6 +1768,24 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
       fn: () => hsNoteOpenEditor(username, platform, x, y),
     },
   )
+  // Twitch-native actions we don't reimplement (report, gift sub) — the
+  // official viewer-card popout carries both. Twitch rows with a known
+  // channel only; window.open keeps twitch's own auth/session context.
+  if ((platform || 'twitch') === 'twitch') {
+    const vcChannel = msg?.dataset?.msgChannel || (typeof getLiveChannel === 'function' ? getLiveChannel() : null)
+    if (vcChannel) {
+      items.push({
+        label: 'report / gift sub',
+        fn: () => {
+          const u = encodeURIComponent(String(username).toLowerCase())
+          const c = encodeURIComponent(String(vcChannel).toLowerCase())
+          try {
+            window.open(`https://www.twitch.tv/popout/${c}/viewercard/${u}`, '_blank', 'noopener,width=400,height=600')
+          } catch {}
+        },
+      })
+    }
+  }
   // Filter the live buffer to just this user — sets the search bar to @name.
   // Only on a live/channel tab (where local filtering applies) and a real row.
   if (msg && typeof isLiveSearchTab === 'function' && isLiveSearchTab(currentTab)) {

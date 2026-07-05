@@ -203,7 +203,12 @@ async function _twitchFollow(targetID, follow, disableNotifications, _targetSlug
 async function propagateFollow(follow, target) {
   if (!target) return { kick: { skipped: 'no target' } }
   const settings = await _crossFollowSettings()
-  const out = { twitch: { skipped: 'no twitch id' }, kick: { skipped: 'no kick username' } }
+  // Distinct skip reasons — a user-disabled toggle is not a privacy signal
+  // and callers (pcToggleFollow's skip toast) must never conflate the two.
+  const out = {
+    twitch: { skipped: settings.twitch ? 'no twitch id' : 'disabled' },
+    kick: { skipped: settings.kick ? 'no kick username' : 'disabled' },
+  }
 
   if (settings.twitch && target.twitch_id) {
     const verb = follow ? 'follow' : 'unfollow'

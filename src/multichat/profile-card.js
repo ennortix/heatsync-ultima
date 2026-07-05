@@ -212,6 +212,11 @@ async function openProfileCard(username, platform) {
       // Build a synthetic profile from Kick data so the card has something useful
       // instead of "no profile" — bio, socials, pfp, cross-link to twitch.
       activeProfileCard.data = pcSynthFromKickEnrich(username, kickEnrich)
+    } else if (platform === 'youtube' || platform === 'yt') {
+      // No enrichment API for YT (BUG 1b) — fall back to a UC id scraped off
+      // one of this chatter's own messages, if we've seen one this session.
+      const ucId = pcFindYtChannelId(username)
+      activeProfileCard.data = ucId ? pcSynthFromYtContext(username, ucId) : { error: true, username }
     } else {
       activeProfileCard.data = { error: true, username }
     }
@@ -290,6 +295,13 @@ function pcMergeKickEnrich(profile, kickEnrich) {
 
 function pcSynthFromKickEnrich(username, kickEnrich) {
   return {
+    // kick_<id> lets the follow button resolve a profileId even though this
+    // chatter has no heatsync account — POST /api/follow/kick_<id> with the
+    // ?kickUsername= hint (added in pcToggleFollow) materializes a shadow
+    // user server-side. Without this the card had bio/pfp/socials but the
+    // follow button stayed permanently disabled (BUG 1a).
+    id: kickEnrich.kick_user_id ? `kick_${kickEnrich.kick_user_id}` : null,
+    kick_user_id: kickEnrich.kick_user_id || null,
     display_name: kickEnrich.kick_username || username,
     kick_username: kickEnrich.kick_username || username,
     kick_profile_pic: kickEnrich.kick_profile_pic || null,
@@ -304,6 +316,59 @@ function pcSynthFromKickEnrich(username, kickEnrich) {
     _linked_twitch_username: kickEnrich.linked_twitch_username,
     _synth_kick_only: true,
   }
+}
+
+// YouTube has no public "resolve username → channel id" API reachable client-
+// side (no app-token shortcut like Kick's public API), so the only source of
+// a UC channel id for an unregistered YT chatter is one we already saw scrape
+// off their own chat message. social.js stamps `hsPaintUid: 'yt_<UCid>'` on
+// every YT message with a well-formed author channel id (see the UC regex
+// there) and main.js copies it onto the rendered row's `dataset.hsPaintUid` —
+// callers with a live DOM row (ctx-menu) should prefer that over this scan.
+function pcFindYtChannelId(username) {
+  try {
+    const recent = getRecentMessagesFromUser(username)
+    for (const m of recent) {
+      if (m.platform === 'youtube' && typeof m.hsPaintUid === 'string' && m.hsPaintUid.startsWith('yt_')) {
+        return m.hsPaintUid.slice(3)
+      }
+    }
+  } catch {}
+  return null
+}
+
+// Symmetric to pcSynthFromKickEnrich (BUG 1b) — no bio/socials available for
+// YT (no enrichment API), but a known UC id is enough to synthesize a
+// followable profileId. Server materializes the yt_<UCid> shadow user on
+// POST /api/follow — self-verifying scrape, no hint needed (unlike Kick).
+function pcSynthFromYtContext(username, ucId) {
+  return {
+    id: `yt_${ucId}`,
+    display_name: username,
+    youtube_channel_id: ucId,
+    _synth_yt_only: true,
+  }
+}
+
+// Shared follow-target resolver — BUG 1c. Both the profile-card follow button
+// (via openProfileCard's synth paths above) and the right-click follow-from-
+// menu path (hsFollowFromMenu in input.js) need to resolve a followable id
+// for a chatter with no heatsync profile. Keeping it in one place means a fix
+// to one surface can't drift from the other.
+//   platform: 'kick' | 'youtube' | 'yt' — anything else returns null.
+//   ids.youtubeChannelId: an already-known UC id (e.g. off the clicked
+//     message's dataset.hsPaintUid) — skips the buffer scan when present.
+async function resolveFollowTargetId(platform, username, ids = {}) {
+  if (!username) return null
+  const u = String(username).toLowerCase()
+  if (platform === 'kick') {
+    const enrich = await pcFetchKickEnrich(u).catch(() => null)
+    if (enrich?.kick_user_id) return { id: `kick_${enrich.kick_user_id}` }
+  } else if (platform === 'youtube' || platform === 'yt') {
+    const ucId = ids.youtubeChannelId || pcFindYtChannelId(u)
+    if (ucId) return { id: `yt_${ucId}` }
+  }
+  return null
 }
 
 function closeProfileCard() {
@@ -1282,6 +1347,21 @@ async function pcToggleMute(username) {
 // menu's hsRelPeek, tooltip rehover, profile card reopen) see fresh state.
 // Without this, after pcToggleFollow the cached profile keeps the pre-toggle
 // youFollow and the next right-click still says "follow".
+// Best-effort lookup of whatever profile data we already have cached for a
+// username — the open card's data, or a prior hover/ctx-menu resolveIdentity
+// hit sharing _profileCache. Used only to decide whether a cross-platform
+// follow-propagation skip is "expected" (BUG 2) — never trust this for
+// anything privacy-sensitive, it's a UX heuristic, not a source of truth.
+function _pcKnownCrossLinks(username) {
+  if (activeProfileCard?.data && !activeProfileCard.data.error) return activeProfileCard.data
+  if (typeof _profileCache === 'undefined' || !username) return {}
+  const u = String(username).toLowerCase()
+  for (const [k, v] of _profileCache) {
+    if (k.endsWith(':' + u)) return v?.profile || {}
+  }
+  return {}
+}
+
 function _patchProfileCacheRel(username, patch) {
   if (typeof _profileCache === 'undefined' || !_profileCache) return
   const u = String(username).toLowerCase()
@@ -1336,7 +1416,28 @@ async function pcToggleFollow(profileId, username, currentlyFollowing) {
     // on success. Fire and forget; failures queue locally for next platform tab.
     const tgt = resp?.data?.target || resp?.target || null
     if (tgt && typeof propagateFollow === 'function') {
-      propagateFollow(targetFollowing, tgt).catch(() => {})
+      propagateFollow(targetFollowing, tgt)
+        .then((res) => {
+          // BUG 2 — the server redacts a private cross-platform linkage by
+          // simply omitting it from `tgt`, so propagateFollow's skip is
+          // silent by design (privacy decision: keep the redaction). But
+          // when WE already know (client-side, pre-follow) this chatter has
+          // an account on another platform — a plain profile field, or
+          // Kick's public-API cross-link — and propagation still skipped,
+          // that's a real sync gap the user should hear about. Only on a
+          // fresh follow, never unfollow; never for a plain same-platform
+          // follow (the platform just followed is excluded from "expected").
+          if (!targetFollowing || !res || typeof showToast !== 'function') return
+          const known = _pcKnownCrossLinks(username)
+          const contextPlat = activeProfileCard?.platform
+          const expectTwitch = contextPlat !== 'twitch' && !!(known.twitch_username || known._linked_twitch_username)
+          const expectKick = contextPlat !== 'kick' && !!known.kick_username
+          const skippedPrivate =
+            (expectTwitch && res.twitch?.skipped === 'no twitch id') ||
+            (expectKick && res.kick?.skipped === 'no kick username')
+          if (skippedPrivate) showToast('followed on heatsync — cross-platform sync unavailable', 'info')
+        })
+        .catch(() => {})
     }
   } catch (e) {
     if (activeProfileCard?.data?.relationship) {

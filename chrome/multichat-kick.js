@@ -20317,24 +20317,26 @@ function clearChunkStore() {
   }
 }
 
+// Fill one chunk placeholder from its stored emote data. Returns true if filled.
+function _fillChunk(el) {
+  const key = el.dataset.chunkKey
+  const data = _chunkStore.get(key)
+  if (!data) return false
+  el.innerHTML = data.map(emoteImgHtml).join('')
+  el.style.minHeight = ''
+  el.classList.add('hs-mc-chunk-ready')
+  _chunkStore.delete(key)
+  return true
+}
+
 function ensureChunkObserver(scrollRoot) {
   if (_chunkObserver) return _chunkObserver
   _chunkObserver = new IntersectionObserver(
     (entries) => {
       for (const e of entries) {
         if (!e.isIntersecting) continue
-        const el = e.target
-        const key = el.dataset.chunkKey
-        const data = _chunkStore.get(key)
-        if (!data) {
-          _chunkObserver.unobserve(el)
-          continue
-        }
-        el.innerHTML = data.map(emoteImgHtml).join('')
-        el.style.minHeight = ''
-        el.classList.add('hs-mc-chunk-ready')
-        _chunkStore.delete(key)
-        _chunkObserver.unobserve(el)
+        _fillChunk(e.target)
+        _chunkObserver.unobserve(e.target)
       }
     },
     { root: scrollRoot, rootMargin: '300px 0px', threshold: 0 },
@@ -20343,10 +20345,32 @@ function ensureChunkObserver(scrollRoot) {
   return _chunkObserver
 }
 
+// The IntersectionObserver never fires while the tab is hidden/occluded (a
+// background OBS popout, an unfocused window), so a picker opened there stayed
+// blank forever. Immediately fill every chunk already within the scroll
+// viewport (+ lookahead) on open, so the picker is never empty regardless of IO
+// timing or visibility; the observer still lazy-fills the rest on scroll. Capped
+// so a not-yet-laid-out grid can't force a full synchronous render.
+function renderVisibleChunks(scope) {
+  const scrollRoot = scope.querySelector('.hs-mc-picker-scroll') || scope
+  const vh = scrollRoot.clientHeight
+  if (!vh) return // no layout yet — the observer covers it once shown
+  const cutoff = (scrollRoot.scrollTop || 0) + vh + 400
+  let filled = 0
+  for (const el of scope.querySelectorAll('.hs-mc-picker-chunk:not(.hs-mc-chunk-ready)')) {
+    if (el.offsetTop > cutoff) continue
+    if (_fillChunk(el)) {
+      _chunkObserver?.unobserve(el)
+      if (++filled >= 16) break
+    }
+  }
+}
+
 function attachChunkObserver(scope) {
   const scrollRoot = scope.querySelector('.hs-mc-picker-scroll') || scope
   const obs = ensureChunkObserver(scrollRoot)
   scope.querySelectorAll('.hs-mc-picker-chunk:not(.hs-mc-chunk-ready)').forEach((el) => obs.observe(el))
+  renderVisibleChunks(scope)
 }
 
 function estimateChunkHeight(count) {
@@ -20555,6 +20579,9 @@ function showEmotePicker(tab = null) {
     const barHeight = bar && inputBarVisible ? bar.offsetHeight : 0
     picker.style.bottom = barHeight + 'px'
     adjustOverlayForPicker(true)
+    // Now that the picker has layout, fill any chunks the IntersectionObserver
+    // never got to (first open in a hidden/occluded tab — IO doesn't fire there).
+    renderVisibleChunks(picker)
     if (pickerTab === 'twitch') renderTwitchTab()
     attachPickerCloseHandler(picker)
     return
@@ -20810,6 +20837,9 @@ function showEmotePicker(tab = null) {
   const barHeight = bar && inputBarVisible ? bar.offsetHeight : 0
   picker.style.bottom = barHeight + 'px'
   adjustOverlayForPicker(true)
+  // Picker now has layout — force-fill the visible chunks so a first open in a
+  // hidden/occluded tab (where the IntersectionObserver never fires) isn't blank.
+  renderVisibleChunks(picker)
 
   if (pickerTab === 'twitch') renderTwitchTab()
 
@@ -35312,8 +35342,9 @@ async function hsBlockFromMenu(username, platform) {
 async function _ctxMod(action, channel, platform, target, msgId, durationSec, label) {
   const r = await dispatchModAction({ channel, platform, action, target, durationSec, msgId })
   if (action === 'delete') {
+    const derr = (r?.tResp || r?.kResp || r?.yResp)?.error
     showToast(
-      r?.anyOk ? 'deleted message' : `delete failed: ${(r?.tResp || r?.kResp)?.error || 'unknown'}`,
+      r?.anyOk ? 'deleted message' : `delete failed: ${derr === 'not_moderator' ? 'not a youtube mod here' : derr || 'unknown'}`,
       r?.anyOk ? 'success' : 'error',
     )
   } else {
@@ -35356,7 +35387,10 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
   // (single — no cross-platform noise; a twitch chatter ≠ the same-named kick
   // user). Twitch gates on GQL mod-state, Kick on kick_mod_status. Targets the
   // LOGIN (display-name ≠ login for non-Latin users → ban would miss).
-  if (msg && (typeof isModForSync === 'function' || typeof isKickModForSync === 'function')) {
+  if (
+    msg &&
+    (typeof isModForSync === 'function' || typeof isKickModForSync === 'function' || typeof isYtModForSync === 'function')
+  ) {
     const msgCh = msg.dataset?.msgChannel || ''
     const msgPlat = msg.dataset?.msgPlatform || 'twitch'
     const msgLogin = (msg.dataset?.msgLogin || msg.dataset?.msgUser || username || '').toLowerCase()
@@ -35367,15 +35401,20 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
         ? (msgPlat === 'kick' ? lookup.kick.get(msgCh) : lookup.twitch.get(msgCh)) || lookup.byId.get(msgCh)
         : null
     const isKick = msgPlat === 'kick'
-    // The channel key for the action + gate: kick slug for kick rows, twitch login otherwise.
-    const modCh = isKick ? entry?.kick || msgCh : entry?.twitch || msgCh
+    const isYt = msgPlat === 'youtube' || msgPlat === 'yt'
+    // The channel key for the action + gate: kick slug for kick rows, twitch
+    // login otherwise. YT actions are message-scoped (msgId), so any truthy
+    // channel just satisfies the gate — the dispatch uses msgId, not the channel.
+    const modCh = isYt ? msgCh || 'yt' : isKick ? entry?.kick || msgCh : entry?.twitch || msgCh
     // currentUsername is a display name; compare against BOTH the login and the
     // display name so a non-Latin-named mod can't be shown self-mod actions.
     const _selfRef = typeof currentUsername !== 'undefined' && currentUsername ? currentUsername.toLowerCase() : null
     const notSelf = !_selfRef || (msgLogin !== _selfRef && (msg.dataset?.msgUser || '').toLowerCase() !== _selfRef)
-    const amMod = isKick
-      ? typeof isKickModForSync === 'function' && isKickModForSync(modCh)
-      : typeof isModForSync === 'function' && isModForSync(modCh)
+    const amMod = isYt
+      ? typeof isYtModForSync === 'function' && isYtModForSync()
+      : isKick
+        ? typeof isKickModForSync === 'function' && isKickModForSync(modCh)
+        : typeof isModForSync === 'function' && isModForSync(modCh)
     if (modCh && notSelf) {
       if (amMod) {
         const mod = []
@@ -35387,8 +35426,9 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
           })
         mod.push(
           {
-            label: 'timeout 10m',
-            fn: () => _ctxMod('timeout', msgCh, msgPlat, msgLogin, msgId, 600, 'timed out 600s'),
+            // YouTube's timeout is a fixed-duration hide (no 10m choice).
+            label: isYt ? 'timeout' : 'timeout 10m',
+            fn: () => _ctxMod('timeout', msgCh, msgPlat, msgLogin, msgId, 600, 'timed out'),
           },
           { label: 'ban', danger: true, fn: () => _ctxMod('ban', msgCh, msgPlat, msgLogin, msgId, 0, 'banned') },
           { label: 'unban', fn: () => _ctxMod('unban', msgCh, msgPlat, msgLogin, msgId, 0, 'unbanned') },
@@ -44021,6 +44061,27 @@ function prefetchKickModFor(slug) {
   if (!_kickModStateCache.has(s) && !_kickModStatePending.has(s)) isKickModFor(s)
 }
 
+// YouTube mod-status — youtube-content.js probes YT's OWN message context menu
+// on the first message (a mod item present ⇒ this account can moderate here) and
+// writes hs_yt_mod_status to storage. Mirror it into memory so the overlay
+// ctx-menu can gate its yt mod items synchronously. A yt tab watches one live
+// chat, so a single boolean suffices (no per-channel keying). Fails closed.
+let _ytModState = false
+function isYtModForSync() {
+  return _ytModState === true
+}
+try {
+  chrome.storage.local.get('hs_yt_mod_status', (v) => {
+    void chrome.runtime.lastError
+    _ytModState = !!(v && v.hs_yt_mod_status && v.hs_yt_mod_status.isMod)
+  })
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.hs_yt_mod_status) {
+      _ytModState = !!(changes.hs_yt_mod_status.newValue && changes.hs_yt_mod_status.newValue.isMod)
+    }
+  })
+} catch (_) {}
+
 // Singleton toolbar — built once, moved between rows.
 let _modToolbar = null
 let _modRow = null
@@ -44333,6 +44394,23 @@ async function dispatchModAction({ channel, platform, action, target, durationSe
       if (res.reason) reason = res.reason
     }
   }
+  // YouTube: a message-scoped action driven through YT's own moderation flow in
+  // the live_chat content script (needs the message id, not a channel slug). YT
+  // "timeout" is a fixed-duration hide, so durationSec is not used. Fixed 4-verb
+  // parity with twitch/kick: delete / timeout / ban (hide user) / unban (unhide).
+  if (platform === 'youtube' || platform === 'yt') {
+    const yTgt = String(target || '').replace(/^@/, '')
+    if (!msgId) return { tResp: null, kResp: null, yResp: { ok: false, error: 'no_message' }, twitchName: null, kickSlug: null, anyOk: false }
+    const yResp = await safeSendMessage({ type: 'youtube_mod_action', action, msgId, target: yTgt })
+    return {
+      tResp: null,
+      kResp: null,
+      yResp: yResp || { ok: false, error: 'no_response' },
+      twitchName: null,
+      kickSlug: null,
+      anyOk: !!yResp?.ok,
+    }
+  }
   const { twitchName, kickSlug } = _resolveModTargets(channel, platform)
   // No resolvable platform (aggregate tab, empty/garbage channel) — fail clean
   // rather than firing a doomed API call with the tab id as a channel name.
@@ -44440,11 +44518,9 @@ function showModResultToast(label, target, r) {
       showToast(`${label} failed: twitch ${tResp.error || '?'} / kick ${kResp.error || '?'}`, 'error')
       return
     }
-    const only = tResp || kResp
-    showToast(
-      only?.ok ? `${label} ${target}` : `${label} failed: ${only?.error || 'unknown'}`,
-      only?.ok ? 'success' : 'error',
-    )
+    const only = tResp || kResp || r?.yResp
+    const errText = only?.error === 'not_moderator' ? 'not a youtube mod here' : only?.error || 'unknown'
+    showToast(only?.ok ? `${label} ${target}` : `${label} failed: ${errText}`, only?.ok ? 'success' : 'error')
   } catch (_) {}
 }
 try {
@@ -44495,7 +44571,9 @@ function wireModToolbarHover(messagesEl) {
         return
       }
       const plat = row.dataset.msgPlatform
-      if (plat === 'youtube' || plat === 'yt') return // no YT mod actions
+      // YT mod actions live on the right-click menu (message-scoped, driven via
+      // YT's own moderation flow) — the hover toolbar stays twitch/kick only.
+      if (plat === 'youtube' || plat === 'yt') return
       const channel = row.dataset.msgChannel
       const user = row.dataset.msgUser
       const login = row.dataset.msgLogin || row.dataset.msgUser

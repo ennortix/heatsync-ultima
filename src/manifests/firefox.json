@@ -125,7 +125,7 @@
         "https://heatsync.org/*"
       ],
       "js": [
-        "emoji-data.js",
+        "emoji-data.iso.js",
         "shared-utils.js",
         "platform-detector.js",
         "chat-injector.js",
@@ -152,6 +152,7 @@
         "https://*.twitch.tv/*"
       ],
       "js": [
+        "emoji-data.iso.js",
         "shared-utils.js",
         "multichat-twitch.js"
       ],
@@ -163,6 +164,7 @@
         "https://*.kick.com/*"
       ],
       "js": [
+        "emoji-data.iso.js",
         "shared-utils.js",
         "multichat-kick.js"
       ],
@@ -173,7 +175,7 @@
         "https://www.youtube.com/*"
       ],
       "js": [
-        "emoji-data.js",
+        "emoji-data.iso.js",
         "shared-utils.js",
         "multichat-youtube.js"
       ],
@@ -184,7 +186,7 @@
         "https://www.youtube.com/live_chat*"
       ],
       "js": [
-        "emoji-data.js",
+        "emoji-data.iso.js",
         "shared-utils.js",
         "platform-detector.js"
       ],

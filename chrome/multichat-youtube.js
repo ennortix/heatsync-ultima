@@ -36799,7 +36799,7 @@ function handleInputChange(e) {
       if (em.closest('.hs-input-stack')) continue
       if (em.getAttribute('contenteditable') !== 'false') em.setAttribute('contenteditable', 'false')
       const name = em.dataset.emojiName || em.getAttribute('data-emoji-name')
-      const want = name && typeof _emojiMap !== 'undefined' ? _emojiMap.get(name) : null
+      const want = name ? _ensureEmojiMap().get(name) : null
       const full = em.textContent || ''
       if (want && full !== want && full.startsWith(want)) {
         const extra = full.slice(want.length)
@@ -36842,7 +36842,7 @@ function handleInputChange(e) {
   }
 
   // Live emoji conversion in contenteditable: :shortcode: → emoji span
-  if (wysiwygEnabled && _emojiMap.size > 0) {
+  if (wysiwygEnabled && _ensureEmojiMap().size > 0) {
     const input = document.getElementById('hs-mc-input')
     if (input?.isContentEditable) {
       const sel = window.getSelection()
@@ -37166,10 +37166,10 @@ function tryOverlayOnZero(input) {
     if (resolved?.isOverlay) {
       // (1)/(3) emote overlay
       overlayEl = typeof createInputEmoteImg === 'function' ? createInputEmoteImg(word) : null
-    } else if (word.startsWith(':') && word.endsWith(':0') && word.length > 3 && typeof _emojiMap !== 'undefined') {
+    } else if (word.startsWith(':') && word.endsWith(':0') && word.length > 3) {
       // (4) literal ":smile:0" that never span-converted → build emoji overlay
       const ename = word.slice(1, -2)
-      const echar = _emojiMap.get(ename)
+      const echar = _ensureEmojiMap().get(ename)
       if (echar) {
         const span = document.createElement('span')
         span.className = 'hs-mc-emoji'
@@ -38583,7 +38583,7 @@ function getEmojiColonContext(input) {
 }
 
 function filterEmoji(query) {
-  if (_emojiMap.size === 0) return []
+  if (_ensureEmojiMap().size === 0) return []
   const results = []
   const q = query.toLowerCase()
   for (const entry of EMOJI_DATA) {
@@ -38818,15 +38818,23 @@ async function getTwitchAuthTokenAsync() {
 }
 
 // Send message to current tab's channel
-// Build emoji lookup map (once)
+// Emoji lookup map — LAZY. emoji-data.js is a sibling content script; the
+// manifest lists it before the bundle in the same entry (same-block order IS
+// guaranteed; cross-block order is not — 43f297b bet on it and silently
+// killed twitch/kick emoji autocomplete). The lazy retry makes any residual
+// ordering weirdness self-heal on first use instead of freezing empty forever.
 const _emojiMap = new Map()
-if (typeof EMOJI_DATA !== 'undefined') {
-  for (const e of EMOJI_DATA) _emojiMap.set(e.name, e.emoji)
+function _ensureEmojiMap() {
+  if (_emojiMap.size === 0 && typeof EMOJI_DATA !== 'undefined') {
+    for (const e of EMOJI_DATA) _emojiMap.set(e.name, e.emoji)
+  }
+  return _emojiMap
 }
+_ensureEmojiMap()
 
 // Replace :shortcode: patterns with emoji characters
 function convertEmojiShortcodes(text) {
-  if (_emojiMap.size === 0) return text
+  if (_ensureEmojiMap().size === 0) return text
   return text.replace(/:([a-z0-9_]+):/g, (match, name) => _emojiMap.get(name) || match)
 }
 

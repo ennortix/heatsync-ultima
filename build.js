@@ -699,6 +699,16 @@ function build(browser) {
   }
   console.log(`  Copied ${COPY_FILES.filter((f) => existsSync(join(chromeDir, f))).length} files`)
 
+  // emoji-data.iso.js: byte-identical copy of emoji-data.js for ISOLATED-world
+  // content_scripts entries. Chrome injects a given FILE once per frame — on
+  // twitch, the MAIN-world registration of emoji-data.js (autocomplete-hook
+  // block) wins that dedupe and every ISOLATED entry listing the same filename
+  // is silently skipped, leaving EMOJI_DATA undefined in the multichat world
+  // (all consumers are typeof-guarded, so emoji autocomplete just vanished —
+  // no error). Distinct filename per world sidesteps the dedupe while keeping
+  // the single-parse win that 43f297b's unbundling was after.
+  cpSync(join(chromeDir, 'emoji-data.js'), join(outDir, 'emoji-data.iso.js'))
+
   // Copy assets
   for (const file of ASSETS) {
     const srcPath = join(chromeDir, file)

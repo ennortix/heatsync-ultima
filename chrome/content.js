@@ -6460,6 +6460,17 @@
   // the base (skipping overlays), and chain multiplicatively (w! w! = 4x wide).
   function applyModifiersAcrossMessage(messageElement) {
     if (!messageElement || !messageElement.isConnected) return
+    // Modifiers can only ever attach to an emote; a message with no emote
+    // candidates (wrapper or emote-CDN img — mirrors the timeline filter
+    // below; badge imgs live on /badges paths and don't match) is a
+    // guaranteed no-op — skip the full element+text TreeWalk (~most
+    // plain-text messages on a busy channel) for one cheap selector probe.
+    if (
+      !messageElement.querySelector(
+        '.heatsync-emote-wrapper, img[src*="/emoticons/"], img[src*="cdn.7tv.app"], img[src*="cdn.betterttv.net"], img[src*="cdn.frankerfacez.com"]',
+      )
+    )
+      return
     const walker = document.createTreeWalker(messageElement, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT)
     const timeline = []
     let n = walker.nextNode()

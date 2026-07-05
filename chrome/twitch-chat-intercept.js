@@ -36,11 +36,10 @@
     return Date.now() - beat < BEAT_TTL
   }
 
-  function getFiber(el) {
-    if (!el) return null
-    const key = Object.keys(el).find((k) => k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$'))
-    return key ? el[key] : null
-  }
+  // Defined in autocomplete-hook.js (same MAIN-world content_scripts entry,
+  // loaded first per manifest.json js[] order) — reused here instead of a
+  // second copy of the fiber-walk.
+  const getFiber = window.__hsGetFiber
 
   function findHandlerApi() {
     const el = document.querySelector(

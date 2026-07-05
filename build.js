@@ -844,7 +844,15 @@ function buildSourceZip() {
     'BACKEND-ASKS.md',
   ].filter((p) => existsSync(join(__dirname, p)))
 
-  const excludes = ['chrome/multichat.js', 'dist/*', 'node_modules/*', '.git/*', '*/.DS_Store']
+  const excludes = [
+    'chrome/multichat-twitch.js',
+    'chrome/multichat-kick.js',
+    'chrome/multichat-youtube.js',
+    'dist/*',
+    'node_modules/*',
+    '.git/*',
+    '*/.DS_Store',
+  ]
   const args = ['-rq', zipPath, ...include]
   for (const ex of excludes) args.push('-x', ex)
   execFileSync('zip', args, { cwd: __dirname, stdio: 'inherit' })

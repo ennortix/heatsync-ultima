@@ -818,6 +818,10 @@
     const key = Object.keys(el).find((k) => k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$'))
     return key ? el[key] : null
   }
+  // Exposed for twitch-chat-intercept.js (same MAIN-world content_scripts
+  // entry, loaded second per manifest.json js[] order) so it doesn't need
+  // its own copy of this walk.
+  window.__hsGetFiber = getFiber
 
   // Find React ChatInput instance
   function findChatInput() {

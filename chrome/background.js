@@ -7946,7 +7946,12 @@ async function handleMessage(message, sender, sendResponse) {
     // per-id TTL cache + in-flight promise sharing so concurrent overlapping
     // batches (multi-tab, rapid chat) don't each re-fire the same ids.
     const ids = Array.from(
-      new Set((message.userIds || []).filter((id) => typeof id === 'string' && /^[a-zA-Z0-9_]{1,50}$/.test(id))),
+      // Allow '-': yt paint uids are `yt_<UCid>` and UC channel ids are
+      // base64url, so a hyphen is common (kson = yt_UC9ruVYPv7yJmV0Rh0NKA-Lw).
+      // The old no-hyphen guard silently dropped ~half of yt paint lookups.
+      // Matches the server /api/paints ID_RE (paint.ts). twitch/kick/heatsync
+      // ids are unaffected (no hyphens).
+      new Set((message.userIds || []).filter((id) => typeof id === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(id))),
     ).slice(0, 50)
     ;(async () => {
       if (!ids.length) {

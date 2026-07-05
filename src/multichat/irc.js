@@ -1003,6 +1003,10 @@ class KickChat {
           targetUserId: message.targetUserId || '',
           targetMsgId: message.targetMsgId || '',
           banDuration: message.banDuration || 0,
+          // Kick's AI moderation deletes messages constantly — a visible line per
+          // deletion would flood chat, and the dim already conveys it. So a delete
+          // is dim-only (hidden line); bans/timeouts/unbans keep their system line.
+          hidden: action === 'delete',
         })
         return
       }

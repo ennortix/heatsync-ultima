@@ -11813,6 +11813,43 @@
       if (isEnabled('mentions')) scanExistingMentions()
     }, 2000)
 
+    // CLEARCHAT/CLEARMSG-style live DOM dimming for a mod-action notice —
+    // shared by BOTH the twitch (irc) and kick (kickChat) message handlers, so
+    // kick bans/timeouts/deletes reflect identically. Buffer entries are already
+    // flagged `cleared` at the source (twitch IRC client / irc.js kick handler)
+    // so future re-renders persist; this patches the currently-rendered rows.
+    function _applyModNoticeDim(msg) {
+      if (!msg || msg.type !== 'notice') return
+      const msgsEl = document.getElementById('hs-mc-messages')
+      if (!msgsEl) return
+      const samePlat = (row) => !(msg.platform && row.dataset.msgPlatform && msg.platform !== row.dataset.msgPlatform)
+      if ((msg.noticeType === 'ban_success' || msg.noticeType === 'timeout_success') && msg.targetUser) {
+        const targetLc = msg.targetUser.toLowerCase()
+        for (const row of msgsEl.querySelectorAll('.hs-mc-msg[data-msg-user]')) {
+          if ((row.dataset.msgUser || '').toLowerCase() !== targetLc || !samePlat(row)) continue
+          if (dimTimeouts) row.classList.add('hs-mc-msg-cleared')
+          row.title = msg.banDuration ? `timed out (${msg.banDuration}s)` : 'banned'
+        }
+      } else if (msg.noticeType === 'delete_message_success' && msg.targetMsgId) {
+        const safe = CSS.escape ? CSS.escape(msg.targetMsgId) : msg.targetMsgId.replace(/"/g, '\\"')
+        const row = msgsEl.querySelector(`.hs-mc-msg[data-msg-id="${safe}"]`)
+        if (row) {
+          if (dimTimeouts) row.classList.add('hs-mc-msg-cleared')
+          row.title = 'deleted'
+        }
+      } else if (msg.noticeType === 'unban_success' && msg.targetUser) {
+        // Lift a prior ban/timeout dim (not a delete) when the user is unbanned.
+        const targetLc = msg.targetUser.toLowerCase()
+        for (const row of msgsEl.querySelectorAll('.hs-mc-msg[data-msg-user]')) {
+          if ((row.dataset.msgUser || '').toLowerCase() !== targetLc || !samePlat(row)) continue
+          if (row.title === 'banned' || /timed out/.test(row.title || '')) {
+            row.classList.remove('hs-mc-msg-cleared')
+            row.removeAttribute('title')
+          }
+        }
+      }
+    }
+
     // Handle incoming IRC messages
     irc.on('message', (msg) => {
       // Share-claim dedupe: a real resub/milestone USERNOTICE from Twitch
@@ -11865,32 +11902,7 @@
       // CLEARCHAT/CLEARMSG → live-dim already-rendered DOM rows from the offender.
       // Buffer entries were already flagged with `cleared=true` inside the IRC client,
       // so future re-renders pick it up via the renderer; this just patches the visible DOM.
-      if (
-        msg.type === 'notice' &&
-        (msg.noticeType === 'ban_success' || msg.noticeType === 'timeout_success') &&
-        msg.targetUser
-      ) {
-        const targetLc = msg.targetUser.toLowerCase()
-        const msgsEl = document.getElementById('hs-mc-messages')
-        const rows = msgsEl?.querySelectorAll(`.hs-mc-msg[data-msg-user]`) || []
-        for (const row of rows) {
-          if ((row.dataset.msgUser || '').toLowerCase() !== targetLc) continue
-          // Don't cross-dim a same-named user on another platform (kick ban must
-          // not dim a twitch "bob"). Skip only when BOTH platforms are known.
-          if (msg.platform && row.dataset.msgPlatform && msg.platform !== row.dataset.msgPlatform) continue
-          if (dimTimeouts) row.classList.add('hs-mc-msg-cleared')
-          row.title = msg.banDuration ? `timed out (${msg.banDuration}s)` : 'banned'
-        }
-      }
-      if (msg.type === 'notice' && msg.noticeType === 'delete_message_success' && msg.targetMsgId) {
-        const safe = CSS.escape ? CSS.escape(msg.targetMsgId) : msg.targetMsgId.replace(/"/g, '\\"')
-        const msgsEl = document.getElementById('hs-mc-messages')
-        const row = msgsEl?.querySelector(`.hs-mc-msg[data-msg-id="${safe}"]`)
-        if (row) {
-          if (dimTimeouts) row.classList.add('hs-mc-msg-cleared')
-          row.title = 'deleted'
-        }
-      }
+      _applyModNoticeDim(msg)
       // Track sub tenure from IRC badge-info
       if (msg.subMonths && msg.channel) {
         trackSubTenure(msg.channel, msg.user, msg.subMonths)
@@ -12002,6 +12014,10 @@
     kickChat.on('message', (msg) => {
       // Record Kick mod-action notices into the mod-action log (no-op otherwise).
       pushModLogEntry(modActionLog, modLogEntryFromNotice(msg))
+      // Reflect kick ban/timeout/delete/unban notices in the live DOM (same
+      // shared path twitch uses) — this handler, not irc.on('message'), is where
+      // kick notices land.
+      _applyModNoticeDim(msg)
       // Lazy-resolve username → 7TV cosmetics + twitchId. First sighting per
       // session triggers one /users/kick/{name} fetch; result is cached and
       // backfilled into the rendered DOM so paints/badges paint in place.

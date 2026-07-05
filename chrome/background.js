@@ -2265,7 +2265,8 @@ async function resolveYtChannelId(channelName, hint = null) {
     const m = html.match(/"externalId":"(UC[\w-]{20,})"/)
     const id = m?.[1] || null
     if (id) {
-      if (ytChannelIdCache.size >= YT_CHANNEL_ID_CACHE_MAX) ytChannelIdCache.delete(ytChannelIdCache.keys().next().value)
+      if (ytChannelIdCache.size >= YT_CHANNEL_ID_CACHE_MAX)
+        ytChannelIdCache.delete(ytChannelIdCache.keys().next().value)
       ytChannelIdCache.set(key, id)
     }
     return id

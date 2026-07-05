@@ -10904,6 +10904,10 @@
     // Combine all emote sources: personal inventory + global + channel
     const allEmotes = []
     const seen = new Set()
+    // Don't leak blocked emotes into the native tab-complete bridge. The kick/YT
+    // hooks already filter blocked; twitch was the gap — a blocked emote could be
+    // tab-completed and sent. Block by name (all tiers) or by specific hash.
+    const isBridgeBlocked = (e) => localBlockedEmoteNames.has(e.name) || (e.hash && blockedEmotes.has(e.hash))
 
     // tier rides on each emote (0=channel, 1=own inventory, 2=global) so the MAIN-world
     // Twitch autocomplete hook can rank channel > own > global. Channel emotes are
@@ -10913,6 +10917,7 @@
     // Channel emotes (highest priority). source rides along so the autocomplete
     // hook can show WHO sees each emote (7tv/bttv users vs heatsync-only).
     for (const e of channelEmotes) {
+      if (isBridgeBlocked(e)) continue
       if (!seen.has(e.name)) {
         seen.add(e.name)
         allEmotes.push({ name: e.name, hash: e.hash, url: e.url, zeroWidth: e.zeroWidth, tier: 0, source: e.source })
@@ -10921,6 +10926,7 @@
 
     // Personal inventory
     for (const e of emoteInventory) {
+      if (isBridgeBlocked(e)) continue
       if (!seen.has(e.name)) {
         seen.add(e.name)
         allEmotes.push({ name: e.name, hash: e.hash, url: e.url, zeroWidth: e.zeroWidth, tier: 1, source: e.source })
@@ -10929,6 +10935,7 @@
 
     // Global emotes
     for (const e of globalEmotes) {
+      if (isBridgeBlocked(e)) continue
       if (!seen.has(e.name)) {
         seen.add(e.name)
         allEmotes.push({ name: e.name, hash: e.hash, url: e.url, zeroWidth: e.zeroWidth, tier: 2, source: e.source })

@@ -30868,10 +30868,14 @@ function renderFeed() {
   if (feedFromHotFallback) {
     const banner = document.createElement('div')
     banner.className = 'hs-mc-feed-fallback-banner'
+    // 13px + integer line-height: Cozette is bitmap-native at 13px — 12px
+    // rescales the glyphs (blurry), and 1.5 leading lands rows off the pixel
+    // grid. No faux-bold either (synthetic bold double-strikes bitmap glyphs);
+    // the #fff vs #bbb contrast carries the hierarchy.
     banner.style.cssText =
-      'padding:8px 10px;background:#1a1408;border-left:2px solid #808080;color:#e6e6e6;font-size:12px;margin-bottom:4px;line-height:1.5'
+      'padding:8px 10px;background:#1a1408;border-left:2px solid #808080;color:#e6e6e6;font-size:13px;margin-bottom:4px;line-height:18px'
     const head = document.createElement('div')
-    head.style.cssText = 'color:#fff;font-weight:600;margin-bottom:2px'
+    head.style.cssText = 'color:#fff;margin-bottom:2px'
     head.textContent = 'no posts from your follows'
     const sub = document.createElement('div')
     sub.style.cssText = 'color:#bbb'

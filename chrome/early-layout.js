@@ -189,6 +189,18 @@ ${
     body.classList.add('hs-tabs-' + tabPosition)
     body.classList.add('hs-chat-' + chatPosition)
     if (isPopout) body.classList.add('hs-popout')
+    // Twitch: pre-arm the native-chat takeover before Twitch mounts chat, so
+    // the history backlog never renders into the hidden column (it was the
+    // last untrimmed native DOM left after the takeover shipped). Consent is
+    // the localStorage mirror native-tap.js writes on every suppress decision
+    // — only pages where the overlay actually took over last time pre-arm.
+    // Bulletproof: the beat set here is a one-shot; if the overlay fails to
+    // boot and take ownership, the 45s dead-man TTL lapses and Twitch renders
+    // normally. Overlay-disabled users have the mirror at '0'.
+    if (platform === 'twitch' && readLS('nativeTakeover', '0') === '1') {
+      body.dataset.hsSuppressNative = '1'
+      body.dataset.hsSuppressBeat = String(Date.now())
+    }
     return true
   }
 

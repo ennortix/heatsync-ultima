@@ -150,7 +150,12 @@
 
   // The api object is recreated on SPA nav / theatre remounts — cheap
   // re-check (one querySelector + ≤40 fiber hops when unhooked, a property
-  // read when hooked).
+  // read when hooked). First 30s polls fast: the sooner the hook lands after
+  // chat mounts, the fewer backlog rows twitch renders before takeover.
   hook()
-  setInterval(hook, 3000)
+  const fast = setInterval(hook, 1000)
+  setTimeout(() => {
+    clearInterval(fast)
+    setInterval(hook, 3000)
+  }, 30000)
 })()

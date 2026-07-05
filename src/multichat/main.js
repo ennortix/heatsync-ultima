@@ -167,6 +167,24 @@
     try {
       document.body.classList.toggle('hs-ext-hidden', document.hidden)
     } catch (_) {}
+    // Hidden: shed most of the live chat DOM (rows + their image refs) — the
+    // buffers hold everything, and the visible transition below rebuilds the
+    // full cap. Setting the skip flag makes that rebuild unconditional, so a
+    // trim with zero messages arriving while hidden still restores itself.
+    if (document.hidden) {
+      try {
+        // Chat surfaces only: feed/settings/social tabs and open profile
+        // cards hold interactive state (drafts, scroll pos) a trim+rebuild
+        // would wipe. Chat rows are pure render output — safe to shed.
+        const staticTabs = new Set(['settings', 'feed', 'whispers', 'discover', 'pinned'])
+        const cardOpen = typeof activeProfileCard !== 'undefined' && activeProfileCard
+        const msgsEl = document.getElementById('hs-mc-messages')
+        if (msgsEl && msgsEl.childElementCount > 100 && !staticTabs.has(currentTab) && !cardOpen) {
+          trimMessagesEl(msgsEl, 100)
+          _hiddenSkippedAppend = true
+        }
+      } catch (_) {}
+    }
     // Catch up after a hidden stretch: one rebuild from buffers replaces the
     // N per-message appends we skipped. renderMessages self-guards for the
     // settings tab and open profile cards, so no state checks needed here.

@@ -264,6 +264,12 @@ function _updateNativeSuppress() {
   } else if (ds.hsSuppressNative) {
     ds.hsSuppressNative = '0'
   }
+  // Mirror the decision for early-layout.js's next-load pre-arm (twitch
+  // renders its history backlog before the overlay boots; the mirror lets
+  // document_start suppress it on pages that took over last time).
+  try {
+    localStorage.setItem('hs_layout_nativeTakeover', on ? '1' : '0')
+  } catch (_) {}
 }
 
 // Stage counters, window-exposed (isolated world only — invisible to the

@@ -9685,11 +9685,11 @@ function bgIrcFetchRobotty(ch) {
   return p
 }
 
-// justlog (logs.ivr.fi) — public Twitch chat archive going back years for any
-// opted-in channel. ~50k popular channels covered. Pulls a few hours of recent
-// msgs in raw IRC format (parseable by our existing parser). Caps at logs'
-// response size. Channels not in the archive 404 cleanly — non-fatal.
-const JUSTLOG_INSTANCES = ['https://logs.ivr.fi', 'https://logs.zonian.dev', 'https://logs.spanix.team']
+// justlog — public Twitch chat archive going back years for any opted-in channel
+// (~50k popular channels). Pulls the most recent msgs in raw IRC format (parseable
+// by our existing parser). Fetched through heatsync.org/api/justlog/:ch — a
+// first-party proxy that walks the justlog forks server-side, so a chatter's IP
+// never touches a third party. Channels not in any archive return {messages:[]}.
 const BG_IRC_JUSTLOG_COOLDOWN_MS = 5 * 60 * 1000
 function bgIrcFetchJustlog(ch) {
   ch = (ch || '').toLowerCase()
@@ -9700,56 +9700,48 @@ function bgIrcFetchJustlog(ch) {
   BG_IRC.lastJustlogAt.set(ch, Date.now())
   pruneMap(BG_IRC.lastJustlogAt, COOLDOWN_TS_MAX_CHANNELS)
   return (async () => {
-    for (const base of JUSTLOG_INSTANCES) {
-      try {
-        const ctrl = new AbortController()
-        const timer = setTimeout(() => ctrl.abort(), 15000)
-        // /channel/{name}?json=true — most recent ~1000 msgs (instance-dependent).
-        // Universal across justlog forks. Each entry has a .raw field holding
-        // the full IRC line (tags + PRIVMSG/USERNOTICE).
-        // No &reverse — that flag truncates to ~tens of msgs on every fork
-        // tested (ivr 41, spanix 7). Default returns hundreds-to-thousands.
-        const resp = await fetch(`${base}/channel/${encodeURIComponent(ch)}?json=true`, {
-          signal: ctrl.signal,
-          credentials: 'omit',
-        })
-        clearTimeout(timer)
-        if (!resp.ok) continue
-        const data = await resp.json()
-        const list = Array.isArray(data?.messages) ? data.messages : []
-        if (list.length === 0) continue
-        const buf = BG_IRC.channels.get(ch)
-        if (!buf) return
-        const existing = buf.getAll()
-        const existingIds = new Set(existing.filter((m) => m.id).map((m) => m.id))
-        const fpKey = (m) => `${m.user}|${m.time}|${(m.text || '').slice(0, 60)}`
-        const existingFp = new Set(existing.filter((m) => !m.id).map(fpKey))
-        const toAdd = []
-        for (const item of list) {
-          const raw = typeof item === 'string' ? item : item?.raw || ''
-          if (!raw) continue
-          const msg = bgIrcParseLine(raw, ch)
-          if (!msg) continue
-          if (msg.type === 'roomstate' || msg.type === 'userstate' || msg.type === 'whisper') continue
-          msg.isHistory = true
-          if (msg.id && existingIds.has(msg.id)) continue
-          if (!msg.id && existingFp.has(fpKey(msg))) continue
-          existingIds.add(msg.id)
-          if (!msg.id) existingFp.add(fpKey(msg))
-          toAdd.push(msg)
-        }
-        if (toAdd.length === 0) return
-        const all = [...existing, ...toAdd].sort((a, b) => (a.time || 0) - (b.time || 0))
-        buf.clear()
-        for (const m of all) buf.push(m)
-        bgIrcReconcileCleared(buf)
-        bgIrcPersistChannel(ch)
-        bgIrcBroadcast({ type: 'bg_irc_history_merged', channel: ch, count: toAdd.length })
-        log('BG IRC justlog merged', toAdd.length, 'msgs for', ch, 'via', base)
-        return
-      } catch (e) {
-        log('BG IRC justlog', base, 'failed for', ch, ':', e?.message)
+    try {
+      const ctrl = new AbortController()
+      const timer = setTimeout(() => ctrl.abort(), 15000)
+      const resp = await fetch(`https://heatsync.org/api/justlog/${encodeURIComponent(ch)}`, {
+        signal: ctrl.signal,
+        credentials: 'omit',
+      })
+      clearTimeout(timer)
+      if (!resp.ok) return
+      const data = await resp.json()
+      const list = Array.isArray(data?.messages) ? data.messages : []
+      if (list.length === 0) return
+      const buf = BG_IRC.channels.get(ch)
+      if (!buf) return
+      const existing = buf.getAll()
+      const existingIds = new Set(existing.filter((m) => m.id).map((m) => m.id))
+      const fpKey = (m) => `${m.user}|${m.time}|${(m.text || '').slice(0, 60)}`
+      const existingFp = new Set(existing.filter((m) => !m.id).map(fpKey))
+      const toAdd = []
+      for (const item of list) {
+        const raw = typeof item === 'string' ? item : item?.raw || ''
+        if (!raw) continue
+        const msg = bgIrcParseLine(raw, ch)
+        if (!msg) continue
+        if (msg.type === 'roomstate' || msg.type === 'userstate' || msg.type === 'whisper') continue
+        msg.isHistory = true
+        if (msg.id && existingIds.has(msg.id)) continue
+        if (!msg.id && existingFp.has(fpKey(msg))) continue
+        existingIds.add(msg.id)
+        if (!msg.id) existingFp.add(fpKey(msg))
+        toAdd.push(msg)
       }
+      if (toAdd.length === 0) return
+      const all = [...existing, ...toAdd].sort((a, b) => (a.time || 0) - (b.time || 0))
+      buf.clear()
+      for (const m of all) buf.push(m)
+      bgIrcReconcileCleared(buf)
+      bgIrcPersistChannel(ch)
+      bgIrcBroadcast({ type: 'bg_irc_history_merged', channel: ch, count: toAdd.length })
+      log('BG IRC justlog merged', toAdd.length, 'msgs for', ch)
+    } catch (e) {
+      log('BG IRC justlog fetch failed for', ch, ':', e?.message)
     }
   })()
 }

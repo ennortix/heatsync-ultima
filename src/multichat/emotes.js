@@ -635,24 +635,26 @@ function clearChunkStore() {
   }
 }
 
+// Fill one chunk placeholder from its stored emote data. Returns true if filled.
+function _fillChunk(el) {
+  const key = el.dataset.chunkKey
+  const data = _chunkStore.get(key)
+  if (!data) return false
+  el.innerHTML = data.map(emoteImgHtml).join('')
+  el.style.minHeight = ''
+  el.classList.add('hs-mc-chunk-ready')
+  _chunkStore.delete(key)
+  return true
+}
+
 function ensureChunkObserver(scrollRoot) {
   if (_chunkObserver) return _chunkObserver
   _chunkObserver = new IntersectionObserver(
     (entries) => {
       for (const e of entries) {
         if (!e.isIntersecting) continue
-        const el = e.target
-        const key = el.dataset.chunkKey
-        const data = _chunkStore.get(key)
-        if (!data) {
-          _chunkObserver.unobserve(el)
-          continue
-        }
-        el.innerHTML = data.map(emoteImgHtml).join('')
-        el.style.minHeight = ''
-        el.classList.add('hs-mc-chunk-ready')
-        _chunkStore.delete(key)
-        _chunkObserver.unobserve(el)
+        _fillChunk(e.target)
+        _chunkObserver.unobserve(e.target)
       }
     },
     { root: scrollRoot, rootMargin: '300px 0px', threshold: 0 },
@@ -661,10 +663,32 @@ function ensureChunkObserver(scrollRoot) {
   return _chunkObserver
 }
 
+// The IntersectionObserver never fires while the tab is hidden/occluded (a
+// background OBS popout, an unfocused window), so a picker opened there stayed
+// blank forever. Immediately fill every chunk already within the scroll
+// viewport (+ lookahead) on open, so the picker is never empty regardless of IO
+// timing or visibility; the observer still lazy-fills the rest on scroll. Capped
+// so a not-yet-laid-out grid can't force a full synchronous render.
+function renderVisibleChunks(scope) {
+  const scrollRoot = scope.querySelector('.hs-mc-picker-scroll') || scope
+  const vh = scrollRoot.clientHeight
+  if (!vh) return // no layout yet — the observer covers it once shown
+  const cutoff = (scrollRoot.scrollTop || 0) + vh + 400
+  let filled = 0
+  for (const el of scope.querySelectorAll('.hs-mc-picker-chunk:not(.hs-mc-chunk-ready)')) {
+    if (el.offsetTop > cutoff) continue
+    if (_fillChunk(el)) {
+      _chunkObserver?.unobserve(el)
+      if (++filled >= 16) break
+    }
+  }
+}
+
 function attachChunkObserver(scope) {
   const scrollRoot = scope.querySelector('.hs-mc-picker-scroll') || scope
   const obs = ensureChunkObserver(scrollRoot)
   scope.querySelectorAll('.hs-mc-picker-chunk:not(.hs-mc-chunk-ready)').forEach((el) => obs.observe(el))
+  renderVisibleChunks(scope)
 }
 
 function estimateChunkHeight(count) {
@@ -873,6 +897,9 @@ function showEmotePicker(tab = null) {
     const barHeight = bar && inputBarVisible ? bar.offsetHeight : 0
     picker.style.bottom = barHeight + 'px'
     adjustOverlayForPicker(true)
+    // Now that the picker has layout, fill any chunks the IntersectionObserver
+    // never got to (first open in a hidden/occluded tab — IO doesn't fire there).
+    renderVisibleChunks(picker)
     if (pickerTab === 'twitch') renderTwitchTab()
     attachPickerCloseHandler(picker)
     return
@@ -1128,6 +1155,9 @@ function showEmotePicker(tab = null) {
   const barHeight = bar && inputBarVisible ? bar.offsetHeight : 0
   picker.style.bottom = barHeight + 'px'
   adjustOverlayForPicker(true)
+  // Picker now has layout — force-fill the visible chunks so a first open in a
+  // hidden/occluded tab (where the IntersectionObserver never fires) isn't blank.
+  renderVisibleChunks(picker)
 
   if (pickerTab === 'twitch') renderTwitchTab()
 

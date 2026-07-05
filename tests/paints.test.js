@@ -262,29 +262,46 @@ describe('splitHsLettersHtml — escapes each glyph individually', () => {
 
 // ── ID-space guard: structural invariant, not a value-based check ───────────
 //
-// Paints are keyed by heatsync-side TWITCH user ids, which collide in value
-// with kick/YouTube's own id spaces (see heatsync_userid_collision_kick_twitch
-// in project memory — both are bare numeric, indistinguishable by shape). The
-// safety here is architectural: queuePaintLookup must be called from exactly
-// ONE place — queueMcCosmeticsLookup — the same already-audited choke point
-// 7TV cosmetics uses, which only ever receives a RESOLVED twitch id (native
-// for twitch chatters, linked-twitch-id for kick/YouTube via
-// flushKickNameLookups/flushYtNameLookups). A second call site would be a
-// silent way to reintroduce the collision trap, so this is asserted directly
-// against the source rather than left to convention.
+// Paints are keyed by heatsync-side ids in per-platform NAMESPACES: bare
+// numeric ids are twitch-space; kick-origin ids are `kick_<kickid>` (server
+// migration 200, 2026-07-05). Bare kick/twitch numeric ids collide in VALUE
+// (see heatsync_userid_collision_kick_twitch in project memory — both are
+// bare numeric, indistinguishable by shape), so the safety here is
+// architectural: queuePaintLookup must be called from exactly TWO places —
+// queueMcCosmeticsLookup (twitch-space: native twitch id, or a RESOLVED
+// linked-twitch-id for kick/YouTube via flushYtNameLookups — never a bare
+// kick/yt id) and flushKickNameLookups (kick-space: always the `kick_`-
+// namespaced string, never the bare numeric kick id on its own). A third
+// call site, or either of these two accepting an unnamespaced platform-native
+// id, would be a silent way to reintroduce the collision trap — asserted
+// directly against the source rather than left to convention.
 describe('paint lookup id-space guard — structural invariant', () => {
-  // queueMcCosmeticsLookup (the sole caller) moved to cosmetics.js (split out of main.js)
+  // Both call sites live in cosmetics.js (split out of main.js)
   const cosmeticsJs = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'cosmetics.js'), 'utf8')
 
-  test('queuePaintLookup is called from exactly one place in cosmetics.js', () => {
+  test('queuePaintLookup is called from exactly two places in cosmetics.js', () => {
     const calls = cosmeticsJs.match(/\bqueuePaintLookup\(/g) || []
-    expect(calls.length).toBe(1)
+    expect(calls.length).toBe(2)
   })
 
-  test('that one call site is inside queueMcCosmeticsLookup, the same choke point 7TV cosmetics uses', () => {
+  test('one call site is inside queueMcCosmeticsLookup, the same choke point 7TV cosmetics uses', () => {
     const fnStart = cosmeticsJs.indexOf('function queueMcCosmeticsLookup(')
     expect(fnStart).toBeGreaterThan(-1)
     const fnBody = cosmeticsJs.slice(fnStart, fnStart + 600)
     expect(fnBody).toContain('queuePaintLookup(userId)')
+  })
+
+  test('the other call site is inside flushKickNameLookups and only ever queues a kick_-namespaced id', () => {
+    const fnStart = cosmeticsJs.indexOf('async function flushKickNameLookups(')
+    const fnEnd = cosmeticsJs.indexOf('function queueMcCosmeticsLookup(')
+    expect(fnStart).toBeGreaterThan(-1)
+    expect(fnEnd).toBeGreaterThan(fnStart)
+    const fnBody = cosmeticsJs.slice(fnStart, fnEnd)
+    expect(fnBody).toContain('queuePaintLookup(paintUid)')
+    // The raw numeric kick id must never reach queuePaintLookup on its own —
+    // only wrapped in the kick_ namespace template literal.
+    expect(fnBody).not.toMatch(/queuePaintLookup\(c\.kickId\)/)
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: asserting literal source text (the kick_ template literal), not writing a real template string
+    expect(fnBody).toContain('`kick_${c.kickId}`')
   })
 })

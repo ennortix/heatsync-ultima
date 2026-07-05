@@ -7,28 +7,29 @@
 // are already free variables in this scope by the time these functions run).
 //
 // ID-SPACE SAFETY (read before touching call sites): paints are keyed by
-// HEATSYNC-side TWITCH user ids. Kick and YouTube have their own numeric/string
-// id spaces that COLLIDE with twitch ids (a kick numeric id can equal an
-// unrelated twitch numeric id — see heatsync_userid_collision_kick_twitch in
-// project memory). There is no way to tell twitch-space and kick-space apart
-// from the id VALUE alone, so the guard here is structural, not a value check:
-// queuePaintLookup is ONLY ever called from queueMcCosmeticsLookup (main.js),
-// the exact same choke point already used for 7TV cosmetics — which has the
-// identical collision risk and is already correct: kick/YouTube chatters only
-// ever reach that function with a RESOLVED twitch id (see flushKickNameLookups /
-// flushYtNameLookups in main.js, which set m.userId to the linked twitch id
-// returned by the 7TV kick/youtube lookup — never the bare kick/yt id). Twitch
-// chatters reach it with their native twitch id directly (also safe — that IS
-// twitch-id-space). Do not add a second call site that queues a paint lookup
-// directly from a raw platform-native id.
-//
-// UNLOCK (server migration 200, 2026-07-05): kick-origin users.id rows are now
-// namespaced `kick_<kickid>`, so a kick chatter's paint CAN be looked up
-// directly as `kick_` + raw kick id — no twitch link needed. The site already
-// does this (client/utils/paint-spec.js isPaintLookupSafeId resolves kick ->
-// kick_<id>). Wiring that here = a new namespaced call path at the
-// queueMcCosmeticsLookup choke point (cosmetics.js) — feature pass, mirror the
-// site's resolver, never pass the bare numeric.
+// HEATSYNC-side ids, which live in per-platform NAMESPACES: bare numeric ids
+// are twitch-space; kick-origin ids are `kick_<kickid>` (server migration 200,
+// 2026-07-05). Kick and Twitch numeric ids COLLIDE (a kick numeric id can
+// equal an unrelated twitch numeric id — see heatsync_userid_collision_kick_twitch
+// in project memory), so the guard here is structural, not a value check: the
+// bare/raw platform-native id must NEVER reach queuePaintLookup — every id it
+// receives must already be either a resolved twitch id or a `kick_`-prefixed
+// namespaced id. There are exactly two call sites, both already correct:
+//   1. queueMcCosmeticsLookup (main.js) — the same choke point 7TV cosmetics
+//      uses. Twitch chatters reach it with their native twitch id (that IS
+//      twitch-id-space). Kick/YouTube chatters reach it only with a RESOLVED
+//      twitch id (see flushYtNameLookups in main.js, which sets m.userId to
+//      the linked twitch id returned by the 7TV youtube lookup) — never a
+//      bare kick/yt id.
+//   2. flushKickNameLookups (cosmetics.js) — mints `kick_` + the numeric kick
+//      id returned by BG's get_kick_user_cosmetics and calls queuePaintLookup
+//      directly with that namespaced string, bypassing queueMcCosmeticsLookup
+//      entirely (that function is twitch-space only; sending it a `kick_` id
+//      would misroute it into the 7TV/twitch cosmetics pipeline). The bare
+//      numeric kick id from that response is used ONLY to build the
+//      namespaced string — it never reaches queuePaintLookup on its own.
+// Do not add a third call site, and never widen either of the two above to
+// accept an unnamespaced platform-native id.
 //
 // Pipeline:
 //   1. queuePaintLookup(uid) batches ids (debounced, <=50/batch) and asks the

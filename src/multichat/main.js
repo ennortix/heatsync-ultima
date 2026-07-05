@@ -6603,6 +6603,15 @@
       if (cached) m.userId = cached
       else if (cached === undefined) queueKickNameToCosmetics(m.user)
     }
+    // Kick-space paint uid (kick_<kickid>) — set independent of whether the
+    // twitch lookup above resolved (a kick-origin HeatSync account can have
+    // its own paint with or without a linked twitch account). Cache-hit path
+    // only; a cold lookup lands this via flushKickNameLookups' patchBuf once
+    // the batch resolves.
+    if (!m.hsPaintUid && m.platform === 'kick' && m.user) {
+      const paintUid = kickNamePaintUid.get((m.user || '').toLowerCase())
+      if (paintUid) m.hsPaintUid = paintUid
+    }
     if (m.userId) {
       badges += renderThirdPartyBadges(m.userId)
       if (!mcUserCosmetics.has(m.userId)) queueMcCosmeticsLookup(m.userId)
@@ -6629,8 +6638,12 @@
     // (cheermote rendering is applied inline in processedText via renderCheermotesInText)
     // HeatSync paint (own-platform cosmetic) takes precedence over 7TV — see
     // hsPaintRender in paints.js. Returns null (falls through to the existing
-    // 7TV/plain-color path) until/unless one is cached for this uid.
-    const hsPaint = m.userId ? hsPaintRender(m.userId, m.user) : null
+    // 7TV/plain-color path) until/unless one is cached for this uid. A kick
+    // chatter's own kick-space uid (m.hsPaintUid, kick_<id>) is a fallback
+    // behind their resolved twitch uid — see the ID-SPACE SAFETY note in
+    // paints.js: a kick-origin HeatSync account can exist with or without a
+    // twitch link, so try twitch first, then the kick-namespaced id.
+    const hsPaint = hsPaintRender(m.userId, m.user) || (m.hsPaintUid ? hsPaintRender(m.hsPaintUid, m.user) : null)
     const paintStyle = hsPaint ? '' : m.userId ? getMcPaintStyle(m.userId) : ''
     // Build the channel link for the username. YouTube usernames arrive
     // prefixed with "@" so we strip it before concatenating to avoid
@@ -6696,6 +6709,10 @@
     div.className = cls
     div._hsMsg = m // back-ref for reprocessEmoteTextInPlace (GC'd with the row)
     if (m.userId) div.dataset.uid = m.userId
+    // Kick-space paint uid — parallel to data-uid, never a substitute for it
+    // (m.userId/data-uid stay twitch-id-space only). Lets a kick-namespaced
+    // HS paint resolution find this row in-place (updateHsPaintsInPlace).
+    if (m.hsPaintUid) div.dataset.hsPaintUid = m.hsPaintUid
     if (isSuperChat && m.scColor) {
       const safeBg = sanitizeColor(m.scColor)
       div.style.background = safeBg + '22'

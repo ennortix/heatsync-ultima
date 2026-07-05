@@ -206,6 +206,12 @@ async function flushYtNameLookups() {
 // accounts gets the same paint/badge across both platforms.
 const kickNameResolved = new Map() // kickHandle → twitchId | null
 const kickNameToTwitchUsername = new Map() // kickHandle → twitchUsername | null
+// kickHandle → `kick_<kickid>` | null — the namespaced HeatSync paint lookup
+// id (see the ID-SPACE SAFETY note in paints.js). Populated alongside
+// kickNameResolved, same eviction, independent of whether a twitch link
+// exists — a kick-origin HeatSync account can have its own paint with or
+// without a linked twitch account.
+const kickNamePaintUid = new Map()
 const kickNameLookupPending = new Set()
 let kickNameLookupTimer = null
 const KICK_NAME_BATCH = 8
@@ -216,6 +222,7 @@ function evictKickNameCache() {
     const oldest = kickNameResolved.keys().next().value
     kickNameResolved.delete(oldest)
     kickNameToTwitchUsername.delete(oldest)
+    kickNamePaintUid.delete(oldest)
   }
 }
 
@@ -270,30 +277,42 @@ async function flushKickNameLookups() {
     const tid = c?.twitchId ? String(c.twitchId) : null
     kickNameResolved.set(key, tid)
     kickNameToTwitchUsername.set(key, c?.twitchUsername || null)
-    if (!tid) continue
-    // Fold the {paint, badge} into the twitch-id-keyed cosmetics cache so the
-    // existing updateCosmeticsInPlace pipeline paints by uid.
-    setMcCosmetic(tid, { paint: c.paint || null, badge: c.badge || null })
-    changedIds.push(tid)
-    // Backfill data-uid on rendered Kick msgs by lowercase username so
-    // updateCosmeticsInPlace finds the right rows.
+    // Namespaced kick paint uid — independent of whether a twitch link
+    // resolved. Queued directly (never via queueMcCosmeticsLookup, which is
+    // twitch-space only) — see the ID-SPACE SAFETY note in paints.js.
+    const paintUid = c?.kickId ? `kick_${c.kickId}` : null
+    kickNamePaintUid.set(key, paintUid)
+    if (paintUid && typeof queuePaintLookup === 'function') queuePaintLookup(paintUid)
+    if (!tid && !paintUid) continue
+    if (tid) {
+      // Fold the {paint, badge} into the twitch-id-keyed cosmetics cache so the
+      // existing updateCosmeticsInPlace pipeline paints by uid.
+      setMcCosmetic(tid, { paint: c.paint || null, badge: c.badge || null })
+      changedIds.push(tid)
+    }
+    // Backfill data-uid (twitch) / data-hs-paint-uid (kick paint) on rendered
+    // Kick msgs by lowercase username so updateCosmeticsInPlace / the HS-paint
+    // in-place repaint find the right rows.
     const container = document.getElementById('hs-mc-messages')
     if (container) {
       const sel = `.hs-mc-msg .hs-mc-user[data-platform="kick"][data-username="${CSS.escape(key)}"]`
       for (const userEl of container.querySelectorAll(sel)) {
         const div = userEl.closest('.hs-mc-msg')
-        if (div && !div.dataset.uid) div.dataset.uid = tid
+        if (!div) continue
+        if (tid && !div.dataset.uid) div.dataset.uid = tid
+        if (paintUid) div.dataset.hsPaintUid = paintUid
       }
     }
-    // Patch buffered Kick messages so the next render picks up userId and
-    // walks the cosmetics-aware path.
+    // Patch buffered Kick messages so the next render picks up userId/paint
+    // uid and walks the cosmetics-aware path.
     const patchBuf = (buf) => {
       if (!buf || (!Array.isArray(buf) && !(buf && typeof buf[Symbol.iterator] === 'function'))) return
       for (const m of buf) {
         if (m && m.platform === 'kick' && m.user) {
           const mk = m.user.toLowerCase()
           if (mk === key) {
-            m.userId = tid
+            if (tid) m.userId = tid
+            if (paintUid) m.hsPaintUid = paintUid
             m._renderedHtml = null
           }
         }
@@ -386,18 +405,31 @@ function retryOrHideBadgeImg(img) {
 // In-place repaint for HeatSync name paints (paints.js) — the counterpart
 // to updateCosmeticsInPlace below, fired from its own independent batch
 // (queuePaintLookup/flushHsPaintBatch in paints.js) once a paint resolves.
-// Repaints both the sender username div (_uidIndex) and any inline
-// @mention/reply-context anchors (_mentionIndex) for this uid.
+// Repaints both the sender username div (_uidIndex for a twitch-space uid, or
+// a data-hs-paint-uid query for a kick-space `kick_<id>` uid — see
+// flushKickNameLookups) and any inline @mention/reply-context anchors
+// (_mentionIndex) for this uid.
 function updateHsPaintsInPlace(userIds) {
-  if (!document.getElementById('hs-mc-messages')) return
+  const container = document.getElementById('hs-mc-messages')
+  if (!container) return
   for (const uid of userIds) {
     const mentionSet = _mentionIndex.get(uid)
     if (mentionSet) {
       for (const el of mentionSet) applyHsPaintToElement(el, uid)
     }
-    const divSet = _uidIndex.get(uid)
-    if (!divSet) continue
-    for (const div of divSet) {
+    const isKickUid = uid.startsWith('kick_')
+    // A kick-space paint uid is never in data-uid (that attribute stays
+    // twitch-id-space only — see the ID-SPACE SAFETY note in paints.js) so
+    // it's never in _uidIndex either; find its rows via the parallel
+    // data-hs-paint-uid attribute flushKickNameLookups stamps instead.
+    const divs = isKickUid ? container.querySelectorAll(`[data-hs-paint-uid="${CSS.escape(uid)}"]`) : _uidIndex.get(uid)
+    if (!divs) continue
+    for (const div of divs) {
+      // The row's primary (twitch) uid resolving its own HS paint outranks
+      // this kick-space fallback — matches buildMessageDiv's
+      // hsPaintRender(m.userId) || hsPaintRender(m.hsPaintUid) precedence,
+      // so a later-resolving kick paint can't clobber an applied twitch one.
+      if (isKickUid && hasResolvedHsPaint(div._hsMsg?.userId)) continue
       const userLink = div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
       if (userLink) applyHsPaintToElement(userLink, uid)
     }

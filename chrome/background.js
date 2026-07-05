@@ -7690,7 +7690,14 @@ async function handleMessage(message, sender, sendResponse) {
           const isNegative = cached && !cached.paint && !cached.badge
           const ttl = isNegative ? COSMETICS_NEGATIVE_TTL : USER_COSMETICS_TTL
           if (cached && Date.now() - cached.fetchedAt < ttl) {
-            result[username] = { paint: cached.paint, badge: cached.badge, twitchId: cached.twitchId || null }
+            // kickId is absent on cache entries written before this field
+            // existed — omit it rather than force a re-fetch (graceful).
+            result[username] = {
+              paint: cached.paint,
+              badge: cached.badge,
+              twitchId: cached.twitchId || null,
+              ...(cached.kickId ? { kickId: cached.kickId } : {}),
+            }
             return
           }
           try {
@@ -7730,9 +7737,14 @@ async function handleMessage(message, sender, sendResponse) {
             const twitchConn = data?.user?.connections?.find((c) => c.platform === 'TWITCH')
             const twitchId = twitchConn?.id || null
             const twitchUsername = twitchConn?.username || null
+            // kickUserId is the raw numeric kick id — safe to hand back here
+            // (this response only ever feeds cosmetics.js's kickId field,
+            // never a paint lookup directly; see queuePaintLookup's ID-SPACE
+            // SAFETY note in src/multichat/paints.js for the namespacing rule
+            // callers must apply before using it for a paint lookup).
             const full = cosmetic
-              ? { ...cosmetic, twitchId, twitchUsername }
-              : { paint: null, badge: null, twitchId, twitchUsername }
+              ? { ...cosmetic, twitchId, twitchUsername, kickId: kickUserId }
+              : { paint: null, badge: null, twitchId, twitchUsername, kickId: kickUserId }
             setUserCosmetic(cacheKey, full)
             result[username] = full
           } catch (e) {

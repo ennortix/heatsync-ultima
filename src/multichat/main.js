@@ -11102,6 +11102,12 @@
       // optimistic toggles if storage lagged the user action.
       if (changes.blocked_emotes) {
         applyBlockedHashDelta(changes.blocked_emotes.newValue || [])
+        // applyBlockedHashDelta patches chat rows + input chips but NOT the cached
+        // picker grid/search tiles — mark it dirty so the next open re-derives each
+        // tile's state from the now-current blockedEmoteNames. Without this a
+        // cross-tab/device block left the picker tile clickable+pasteable (it reads
+        // state straight off the stale tile dataset), a real bypass not just cosmetic.
+        if (typeof markPickerDirty === 'function') markPickerDirty()
       }
 
       // Emote/emoji scale changes from options page propagate live.

@@ -1085,7 +1085,13 @@ function showEmotePicker(tab = null) {
       // user still sees the emote (server sync re-evaluates next load).
       if (img.dataset.state === 'remote') {
         const remote = mcRemoteEmoteIndex.get(name)
-        if (remote) {
+        // Race-guard rapid double-clicks: addEmoteToInventory tracks in-flight adds
+        // in pendingEmoteOps, so skip the optimistic-add + POST if one is already
+        // running for this name — otherwise a fast second click fires a second
+        // concurrent add POST (this was the only add entry point missing the guard).
+        // The paste below still runs, so multi-click still inserts the emote each time.
+        const _addInFlight = typeof pendingEmoteOps !== 'undefined' && pendingEmoteOps.has(name)
+        if (remote && !_addInFlight) {
           const _optimistic = !viewerPersonalEmotes.has(name)
           if (_optimistic) {
             viewerPersonalEmotes.set(name, {

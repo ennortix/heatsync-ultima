@@ -5823,8 +5823,29 @@ function autoAddInputEmotes(text) {
     if (typeof viewerPersonalEmotes !== 'undefined' && !viewerPersonalEmotes.has(word)) {
       viewerPersonalEmotes.set(word, { url: rec.url, source: rec.source, state: 'owned', zeroWidth: !!rec.zeroWidth })
     }
-    if (typeof addEmoteToInventory === 'function')
-      addEmoteToInventory(word, rec.url, rec.source, undefined, !!rec.zeroWidth, /* silent */ true)
+    if (typeof addEmoteToInventory === 'function') {
+      // Roll back the optimistic own-set entry if the server add fails (offline,
+      // logged out, 4xx). Without this, a never-owned emote stays phantom-"owned"
+      // for the whole tab session — picker, tab-complete and the own-echo all
+      // resolve it via viewerPersonalEmotes first, and nothing ever clears it
+      // because a FAILED add never writes emote_inventory to fire the reload.
+      // Mirrors the picker click handler's _rollback (emotes.js).
+      const _rollbackWord = word
+      const _rollback = () => {
+        if (
+          typeof viewerPersonalEmotes !== 'undefined' &&
+          typeof inventoryEmotes !== 'undefined' &&
+          !inventoryEmotes.has(_rollbackWord)
+        ) {
+          viewerPersonalEmotes.delete(_rollbackWord)
+        }
+      }
+      Promise.resolve(addEmoteToInventory(word, rec.url, rec.source, undefined, !!rec.zeroWidth, /* silent */ true))
+        .then((ok) => {
+          if (!ok) _rollback()
+        })
+        .catch(_rollback)
+    }
   }
 }
 

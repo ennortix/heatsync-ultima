@@ -43989,7 +43989,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         if (getPlatformFilter(tabId)[k] === false) return true
       } catch {}
     }
-    const msgKeyStr = `${_renderEpoch}:${stableMsgId(msg)}`
+    const msgKeyStr = msgKeyOf(msg)
     if (cache.msgKeyIndex.has(msgKeyStr)) return true
     let div
     try {
@@ -54744,7 +54744,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     // grammar, not attribute-value grammar, so a key like "3:@user:t:Tr" was
     // producing a selector that didn't match the literal dataset value and
     // the guard silently failed.
-    const msgKeyStr = `${_renderEpoch}:${stableMsgId(msg)}`
+    const msgKeyStr = msgKeyOf(msg)
     if (_msgKeyIndex.has(msgKeyStr)) return true
 
     const div = buildMessageDiv(msg, tabId)
@@ -54986,6 +54986,28 @@ const STORAGE_KEY = 'heatsync_multichat'
     const ka = stableMsgId(a),
       kb = stableMsgId(b)
     return ka < kb ? -1 : ka > kb ? 1 : 0
+  }
+  // Epoch-tagged msgKey memo (layers on stableMsgId's _sid memo). appendMessage,
+  // appendToCachedTab and renderMessages all rebuild the same `${epoch}:${sid}`
+  // string — on a 500-row tab rendering at rAF cadence that was 500 template
+  // concats per frame. Recomputes only when _renderEpoch bumps (full rebuild).
+  function msgKeyOf(m) {
+    if (m._hsKeyEpoch === _renderEpoch && m._hsKey) return m._hsKey
+    m._hsKeyEpoch = _renderEpoch
+    m._hsKey = `${_renderEpoch}:${stableMsgId(m)}`
+    return m._hsKey
+  }
+  // Reused render-pass buffers: renderMessages is synchronous and never
+  // re-enters itself mid-body, so per-run collections are safe to pool.
+  const _rmDesiredKeys = []
+  const _rmDesiredSet = new Set()
+  const _rmExistingByKey = new Map()
+  const _rmInsertedKeys = new Set()
+  function zebraOfInsert(m, prevDiv) {
+    if (!zebraEnabled || !prevDiv) return false
+    if (m.type === 'stream-event' || m.type === 'feed-post' || m.type === 'inline-dm' || m.type === 'moment')
+      return false
+    return !prevDiv.classList.contains('hs-mc-zebra')
   }
 
   // ─── Multistream auto-detect banner ─────────────────────────────────────
@@ -55356,8 +55378,17 @@ const STORAGE_KEY = 'heatsync_multichat'
     // already chronological from fairMerge, and `missing` is tiny, so
     // binary-insert each at its position instead of re-sorting the whole buffer.
     if (id !== 'mentions' && activityEvents.length > 0 && msgs.length > 0) {
-      const existingTexts = new Set(msgs.filter((m) => m.type === 'stream-event').map((m) => m.text))
-      const missing = activityEvents.filter((e) => e.eventClass?.includes('event-follow') && !existingTexts.has(e.text))
+      // Cheap pre-filter first: only scan msgs for existing stream-event texts
+      // when there actually are follow-class events to merge — activityEvents
+      // is usually all non-follow, and the msgs scan is O(buffer) per render.
+      let followEvents = null
+      for (const e of activityEvents) {
+        if (e.eventClass?.includes('event-follow')) (followEvents ??= []).push(e)
+      }
+      const existingTexts = followEvents
+        ? new Set(msgs.filter((m) => m.type === 'stream-event').map((m) => m.text))
+        : null
+      const missing = followEvents ? followEvents.filter((e) => !existingTexts.has(e.text)) : []
       for (const e of missing) {
         let lo = 0
         let hi = msgs.length
@@ -55483,22 +55514,17 @@ const STORAGE_KEY = 'heatsync_multichat'
     // existing DOM nodes stay put. new msgs slot in at chronologically
     // correct positions (because `toRender` is already chrono-sorted by
     // fairMerge below). no shuffling. no rebuild-from-prefix flash.
-    // Shares stableMsgId's per-object memo — byte-identical to the old inline
-    // fallback, only the _renderEpoch prefix is re-applied each render.
-    const msgKey = (m) => `${_renderEpoch}:${stableMsgId(m)}`
-    const desiredKeys = toRender.map(msgKey)
-    const desiredSet = new Set(desiredKeys)
-
-    // Neighbor-based zebra: each new insert flips from its DOM-prev sibling. Existing
-    // DOM nodes keep their assigned class (no flicker), and the insert-only diff above
-    // means tail appends always alternate cleanly. Mid-inserts may briefly double up at
-    // the boundary but won't ripple to other msgs.
-    const zebraOfInsert = (m, prevDiv) => {
-      if (!zebraEnabled) return false
-      if (m.type === 'stream-event' || m.type === 'feed-post' || m.type === 'inline-dm' || m.type === 'moment')
-        return false
-      if (!prevDiv) return false
-      return !prevDiv.classList.contains('hs-mc-zebra')
+    // Shares msgKeyOf's per-object epoch memo — byte-identical to the old inline
+    // template, recomputed only when _renderEpoch bumps. Collections are pooled
+    // (_rm* buffers above stableMsgId); zebra logic lives in zebraOfInsert there.
+    const desiredKeys = _rmDesiredKeys
+    const desiredSet = _rmDesiredSet
+    desiredKeys.length = 0
+    desiredSet.clear()
+    for (let j = 0; j < toRender.length; j++) {
+      const k = msgKeyOf(toRender[j])
+      desiredKeys.push(k)
+      desiredSet.add(k)
     }
 
     // PASS 0: capture expanded emote stacks (mostly relevant for full rebuilds
@@ -55526,7 +55552,8 @@ const STORAGE_KEY = 'heatsync_multichat'
     // eliminates the brief "reorder shimmer" from fairMerge proportions
     // shifting after new msgs arrived during the user's absence.
     if (justRestored) {
-      const insertedKeys = new Set()
+      const insertedKeys = _rmInsertedKeys
+      insertedKeys.clear()
       for (let j = 0; j < toRender.length; j++) {
         const key = desiredKeys[j]
         if (insertedKeys.has(key)) continue
@@ -55598,7 +55625,8 @@ const STORAGE_KEY = 'heatsync_multichat'
     // desiredSet. Pre-existing dupes can exist when a prior buggy diff (or
     // a code path that bypassed the diff) inserted twice — heal them here so
     // the renderer is self-correcting across reloads of buggy state.
-    const existingByKey = new Map()
+    const existingByKey = _rmExistingByKey
+    existingByKey.clear()
     const detachedExtras = []
     for (const c of [...msgsEl.children]) {
       if (c.dataset?.hsYtStatus && c.dataset?.hsYtStatusTab === String(id)) {
@@ -55634,7 +55662,8 @@ const STORAGE_KEY = 'heatsync_multichat'
     // Per-render insertedKeys set — even if two buffer entries collide on
     // stableMsgId (rare: same user, same ms post-pacer-commit, same text-
     // prefix), the second occurrence is skipped so DOM stays one-per-key.
-    const insertedKeys = new Set()
+    const insertedKeys = _rmInsertedKeys
+    insertedKeys.clear()
     let domIdx = 0
     for (let j = 0; j < toRender.length; j++) {
       const key = desiredKeys[j]
@@ -59138,14 +59167,27 @@ const STORAGE_KEY = 'heatsync_multichat'
     if (location.pathname.match(/^\/(popout|embed)\//)) return
 
     let wasOffline = null
+    // Element caches: checkOffline fires on every player-region React flush
+    // (rAF-coalesced) + the polls below; two full-document querySelectors per
+    // call added up. Re-query only when the cached node left the DOM — same
+    // semantics (a removed indicator/video re-queries and correctly reads
+    // offline; a connected one means live either way). Per-mount scope, so
+    // SPA nav resets both naturally.
+    let _playerEl = null
+    let _liveEl = null
 
     function checkOffline() {
-      const playerOffline = !!document.querySelector('.channel-root__player--offline')
-      const isLive =
-        !playerOffline &&
-        !!document.querySelector(
+      if (!_playerEl || !_playerEl.isConnected) _playerEl = document.querySelector('.channel-root__player')
+      const playerOffline = _playerEl
+        ? _playerEl.classList.contains('channel-root__player--offline')
+        : !!document.querySelector('.channel-root__player--offline')
+      if (_liveEl && !_liveEl.isConnected) _liveEl = null
+      if (!playerOffline && !_liveEl) {
+        _liveEl = document.querySelector(
           '[class*="stream-type-indicator"], [data-a-target="player-overlay-click-handler"] video, .video-player video',
         )
+      }
+      const isLive = !playerOffline && !!_liveEl
       const isOffline = !isLive
       document.body.classList.toggle('hs-offline', isOffline)
       // On state change, recalculate player width
@@ -59168,8 +59210,15 @@ const STORAGE_KEY = 'heatsync_multichat'
     // Steady-state polling
     cleanup.setIntervalIfVisible(checkOffline, 5000)
 
-    // MutationObserver for instant transitions
-    const root = document.querySelector('[class*="channel-root"]')
+    // MutationObserver for instant transitions. Narrowed to the player region
+    // (parent of .channel-root__player, so a wholesale player-node swap is
+    // still a visible childList mutation) — observing the full channel-root
+    // subtree meant record generation on every React flush anywhere on the
+    // page (~2500 nodes) when only the player (~200) matters here. The 1s/5s
+    // polls above remain the correctness backstop if the region itself is
+    // replaced mid-view.
+    const _playerForObs = document.querySelector('.channel-root__player')
+    const root = _playerForObs?.parentElement || document.querySelector('[class*="channel-root"]')
     if (root) {
       // Coalesce to one check per frame — Twitch's React reconciler mutates this
       // subtree continuously; an unthrottled callback burns CPU on every flush.

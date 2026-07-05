@@ -36132,7 +36132,7 @@ async function _toggleMcMute(username, platform) {
     const exp = Date.now() + 86400000
     for (const k of aliasKeys) safeSendMessage({ type: 'mute_user', username: k, expiresAt: exp })
   }
-  chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] })
+  persistMcMuted()
   if (wasUnmute) {
     // restoreMcUnmutedDom matches by bare DOM text — use bare aliases here.
     for (const a of aliases) restoreMcUnmutedDom(a)
@@ -39465,7 +39465,7 @@ async function handleSlashCommand(text, input) {
       return true
     }
     for (const k of aliasKeys) mutedUsers.add(k)
-    chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] }).catch((e) => log('mute persist failed:', e))
+    persistMcMuted()
     const exp = Date.now() + 86400000
     for (const k of aliasKeys) safeSendMessage({ type: 'mute_user', username: k, expiresAt: exp })
     const aliasNote = aliasKeys.length > 1 ? ` (+@${aliasKeys[1]})` : ''
@@ -39487,7 +39487,7 @@ async function handleSlashCommand(text, input) {
       return true
     }
     for (const k of aliasKeys) mutedUsers.delete(k)
-    chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] })
+    persistMcMuted()
     for (const k of aliasKeys) safeSendMessage({ type: 'unmute_user', username: k })
     showToast(`unmuted ${u}`, 'success')
     renderMessages(currentTab)
@@ -41721,7 +41721,7 @@ async function pcToggleMute(username) {
     const exp = Date.now() + 86400000
     for (const k of aliasKeys) safeSendMessage({ type: 'mute_user', username: k, expiresAt: exp })
   }
-  chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] })
+  persistMcMuted()
   renderProfileCardView()
 }
 
@@ -47631,6 +47631,13 @@ function renderAddChannelForm(msgsEl) {
     if (ytVal) {
       youtubeLinks.set(id, { url: ytVal, videoId: '', channelName: '' })
       chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytVal, channelId: id }).catch(() => {})
+      // 7TV/BTTV YouTube channel emotes — channelId is a hint (the typed
+      // url/handle), background.js resolves the real UC... id itself.
+      try {
+        chrome.runtime.sendMessage({ type: 'join_channel', platform: 'youtube', channel: id, channelId: ytVal })
+      } catch (e) {
+        /* context invalidated */
+      }
     }
 
     updateTabBar()
@@ -48076,6 +48083,9 @@ function showEditChannelForm(tabId) {
     if (ytVal && ytVal !== oldYt) {
       youtubeLinks.set(newId, { url: ytVal, videoId: '', channelName: '' })
       chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytVal, channelId: newId }).catch(() => {})
+      try {
+        chrome.runtime.sendMessage({ type: 'join_channel', platform: 'youtube', channel: newId, channelId: ytVal })
+      } catch (e) {}
     }
 
     updateTabBar()
@@ -48986,6 +48996,23 @@ const STORAGE_KEY = 'heatsync_multichat'
 
   // Muted users (right-click to hide) — loaded async from chrome.storage.local
   const mutedUsers = new Set()
+  // Single persist path for the mute list — every toggle site routes here so
+  // a storage failure (quota, mid-reload context death) surfaces as a toast
+  // instead of dying in the MC_DEBUG-gated logger after the success toast
+  // already fired. Mirrors the ui_settings save path's fail-loud convention.
+  function persistMcMuted() {
+    try {
+      chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] }).catch(() => {
+        try {
+          showToast('mute list not saved — storage error', 'error')
+        } catch (_) {}
+      })
+    } catch (_) {
+      try {
+        showToast('mute list not saved — storage error', 'error')
+      } catch (_) {}
+    }
+  }
   // Blocked users (right-click → block) — fully hidden, not just stripped like mute.
   // Synced with background's block_user/unblock_user (shared with content.js).
   const blockedUsers = new Set()
@@ -57677,6 +57704,9 @@ const STORAGE_KEY = 'heatsync_multichat'
         try {
           chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: entry.youtube, channelId: entry.id })
         } catch {}
+        try {
+          chrome.runtime.sendMessage({ type: 'join_channel', platform: 'youtube', channel: entry.id, channelId: entry.youtube })
+        } catch {}
       }
 
       try {
@@ -57710,6 +57740,9 @@ const STORAGE_KEY = 'heatsync_multichat'
         } catch {}
         try {
           chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytUrl, channelId: entry.id })
+        } catch {}
+        try {
+          chrome.runtime.sendMessage({ type: 'join_channel', platform: 'youtube', channel: entry.id, channelId: ytUrl })
         } catch {}
       }
       if (mutated) {
@@ -57972,6 +58005,11 @@ const STORAGE_KEY = 'heatsync_multichat'
           chrome.runtime
             .sendMessage({ type: 'youtube_ws_subscribe', url: ch.youtube, channelId: ch.id })
             .catch(() => {})
+          // 7TV/BTTV YouTube channel emotes for this tab — channelId is a hint
+          // (the stored youtube URL/handle); background resolves the real UC id.
+          try {
+            chrome.runtime.sendMessage({ type: 'join_channel', platform: 'youtube', channel: ch.id, channelId: ch.youtube })
+          } catch (e) {}
         }
       }
     } catch (e) {}
@@ -59795,6 +59833,9 @@ const STORAGE_KEY = 'heatsync_multichat'
                 chrome.runtime
                   .sendMessage({ type: 'youtube_ws_subscribe', url: ch.youtube, channelId: id })
                   .catch(() => {})
+                try {
+                  chrome.runtime.sendMessage({ type: 'join_channel', platform: 'youtube', channel: id, channelId: ch.youtube })
+                } catch (e) {}
               }
             }
           }
@@ -60430,6 +60471,15 @@ const STORAGE_KEY = 'heatsync_multichat'
               channelId: '__live_yt_auto__',
             })
             .catch(() => {})
+          // Fetch this channel's 7TV/BTTV YouTube emote set. `channel` is the
+          // same bare identifier used for the Twitch/Kick joins above so a
+          // linked multi-platform channel's emotes merge into one bucket
+          // (_buildChannelEmoteCache keys by bare channel name); `channelId` is
+          // just a hint — background.js resolves the real UC... id itself
+          // (from ytUrl if it carries one, else a handle/videoId lookup).
+          try {
+            chrome.runtime.sendMessage({ type: 'join_channel', platform: 'youtube', channel: currentChannel, channelId: ytUrl || null })
+          } catch (e) {}
         }
         log('Auto-joined current channel:', currentChannel, 'platforms:', twitchCh, kickCh, ytUrl || '(no yt link)')
       }

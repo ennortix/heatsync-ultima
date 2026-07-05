@@ -1649,8 +1649,9 @@ async function hsBlockFromMenu(username, platform) {
 async function _ctxMod(action, channel, platform, target, msgId, durationSec, label) {
   const r = await dispatchModAction({ channel, platform, action, target, durationSec, msgId })
   if (action === 'delete') {
+    const derr = (r?.tResp || r?.kResp || r?.yResp)?.error
     showToast(
-      r?.anyOk ? 'deleted message' : `delete failed: ${(r?.tResp || r?.kResp)?.error || 'unknown'}`,
+      r?.anyOk ? 'deleted message' : `delete failed: ${derr === 'not_moderator' ? 'not a youtube mod here' : derr || 'unknown'}`,
       r?.anyOk ? 'success' : 'error',
     )
   } else {
@@ -1693,7 +1694,10 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
   // (single — no cross-platform noise; a twitch chatter ≠ the same-named kick
   // user). Twitch gates on GQL mod-state, Kick on kick_mod_status. Targets the
   // LOGIN (display-name ≠ login for non-Latin users → ban would miss).
-  if (msg && (typeof isModForSync === 'function' || typeof isKickModForSync === 'function')) {
+  if (
+    msg &&
+    (typeof isModForSync === 'function' || typeof isKickModForSync === 'function' || typeof isYtModForSync === 'function')
+  ) {
     const msgCh = msg.dataset?.msgChannel || ''
     const msgPlat = msg.dataset?.msgPlatform || 'twitch'
     const msgLogin = (msg.dataset?.msgLogin || msg.dataset?.msgUser || username || '').toLowerCase()
@@ -1704,15 +1708,20 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
         ? (msgPlat === 'kick' ? lookup.kick.get(msgCh) : lookup.twitch.get(msgCh)) || lookup.byId.get(msgCh)
         : null
     const isKick = msgPlat === 'kick'
-    // The channel key for the action + gate: kick slug for kick rows, twitch login otherwise.
-    const modCh = isKick ? entry?.kick || msgCh : entry?.twitch || msgCh
+    const isYt = msgPlat === 'youtube' || msgPlat === 'yt'
+    // The channel key for the action + gate: kick slug for kick rows, twitch
+    // login otherwise. YT actions are message-scoped (msgId), so any truthy
+    // channel just satisfies the gate — the dispatch uses msgId, not the channel.
+    const modCh = isYt ? msgCh || 'yt' : isKick ? entry?.kick || msgCh : entry?.twitch || msgCh
     // currentUsername is a display name; compare against BOTH the login and the
     // display name so a non-Latin-named mod can't be shown self-mod actions.
     const _selfRef = typeof currentUsername !== 'undefined' && currentUsername ? currentUsername.toLowerCase() : null
     const notSelf = !_selfRef || (msgLogin !== _selfRef && (msg.dataset?.msgUser || '').toLowerCase() !== _selfRef)
-    const amMod = isKick
-      ? typeof isKickModForSync === 'function' && isKickModForSync(modCh)
-      : typeof isModForSync === 'function' && isModForSync(modCh)
+    const amMod = isYt
+      ? typeof isYtModForSync === 'function' && isYtModForSync()
+      : isKick
+        ? typeof isKickModForSync === 'function' && isKickModForSync(modCh)
+        : typeof isModForSync === 'function' && isModForSync(modCh)
     if (modCh && notSelf) {
       if (amMod) {
         const mod = []
@@ -1724,8 +1733,9 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
           })
         mod.push(
           {
-            label: 'timeout 10m',
-            fn: () => _ctxMod('timeout', msgCh, msgPlat, msgLogin, msgId, 600, 'timed out 600s'),
+            // YouTube's timeout is a fixed-duration hide (no 10m choice).
+            label: isYt ? 'timeout' : 'timeout 10m',
+            fn: () => _ctxMod('timeout', msgCh, msgPlat, msgLogin, msgId, 600, 'timed out'),
           },
           { label: 'ban', danger: true, fn: () => _ctxMod('ban', msgCh, msgPlat, msgLogin, msgId, 0, 'banned') },
           { label: 'unban', fn: () => _ctxMod('unban', msgCh, msgPlat, msgLogin, msgId, 0, 'unbanned') },

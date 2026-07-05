@@ -152,6 +152,27 @@ function prefetchKickModFor(slug) {
   if (!_kickModStateCache.has(s) && !_kickModStatePending.has(s)) isKickModFor(s)
 }
 
+// YouTube mod-status — youtube-content.js probes YT's OWN message context menu
+// on the first message (a mod item present ⇒ this account can moderate here) and
+// writes hs_yt_mod_status to storage. Mirror it into memory so the overlay
+// ctx-menu can gate its yt mod items synchronously. A yt tab watches one live
+// chat, so a single boolean suffices (no per-channel keying). Fails closed.
+let _ytModState = false
+function isYtModForSync() {
+  return _ytModState === true
+}
+try {
+  chrome.storage.local.get('hs_yt_mod_status', (v) => {
+    void chrome.runtime.lastError
+    _ytModState = !!(v && v.hs_yt_mod_status && v.hs_yt_mod_status.isMod)
+  })
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.hs_yt_mod_status) {
+      _ytModState = !!(changes.hs_yt_mod_status.newValue && changes.hs_yt_mod_status.newValue.isMod)
+    }
+  })
+} catch (_) {}
+
 // Singleton toolbar — built once, moved between rows.
 let _modToolbar = null
 let _modRow = null
@@ -464,6 +485,23 @@ async function dispatchModAction({ channel, platform, action, target, durationSe
       if (res.reason) reason = res.reason
     }
   }
+  // YouTube: a message-scoped action driven through YT's own moderation flow in
+  // the live_chat content script (needs the message id, not a channel slug). YT
+  // "timeout" is a fixed-duration hide, so durationSec is not used. Fixed 4-verb
+  // parity with twitch/kick: delete / timeout / ban (hide user) / unban (unhide).
+  if (platform === 'youtube' || platform === 'yt') {
+    const yTgt = String(target || '').replace(/^@/, '')
+    if (!msgId) return { tResp: null, kResp: null, yResp: { ok: false, error: 'no_message' }, twitchName: null, kickSlug: null, anyOk: false }
+    const yResp = await safeSendMessage({ type: 'youtube_mod_action', action, msgId, target: yTgt })
+    return {
+      tResp: null,
+      kResp: null,
+      yResp: yResp || { ok: false, error: 'no_response' },
+      twitchName: null,
+      kickSlug: null,
+      anyOk: !!yResp?.ok,
+    }
+  }
   const { twitchName, kickSlug } = _resolveModTargets(channel, platform)
   // No resolvable platform (aggregate tab, empty/garbage channel) — fail clean
   // rather than firing a doomed API call with the tab id as a channel name.
@@ -571,11 +609,9 @@ function showModResultToast(label, target, r) {
       showToast(`${label} failed: twitch ${tResp.error || '?'} / kick ${kResp.error || '?'}`, 'error')
       return
     }
-    const only = tResp || kResp
-    showToast(
-      only?.ok ? `${label} ${target}` : `${label} failed: ${only?.error || 'unknown'}`,
-      only?.ok ? 'success' : 'error',
-    )
+    const only = tResp || kResp || r?.yResp
+    const errText = only?.error === 'not_moderator' ? 'not a youtube mod here' : only?.error || 'unknown'
+    showToast(only?.ok ? `${label} ${target}` : `${label} failed: ${errText}`, only?.ok ? 'success' : 'error')
   } catch (_) {}
 }
 try {
@@ -626,7 +662,9 @@ function wireModToolbarHover(messagesEl) {
         return
       }
       const plat = row.dataset.msgPlatform
-      if (plat === 'youtube' || plat === 'yt') return // no YT mod actions
+      // YT mod actions live on the right-click menu (message-scoped, driven via
+      // YT's own moderation flow) — the hover toolbar stays twitch/kick only.
+      if (plat === 'youtube' || plat === 'yt') return
       const channel = row.dataset.msgChannel
       const user = row.dataset.msgUser
       const login = row.dataset.msgLogin || row.dataset.msgUser

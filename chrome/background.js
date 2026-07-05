@@ -7557,6 +7557,45 @@ async function handleMessage(message, sender, sendResponse) {
       }
     })()
     return true
+  } else if (message.type === 'youtube_mod_action') {
+    // Forward a mod action to the YouTube tab's live_chat content script, which
+    // drives YT's own moderation flow. Mirrors youtube_send_message's tab
+    // resolution (sender tab → active YT tab → any YT tab).
+    ;(async () => {
+      try {
+        const { action, msgId, target } = message
+        if (!action || !msgId) {
+          sendResponse({ ok: false, error: 'missing params' })
+          return
+        }
+        const senderTabId = sender?.tab?.id
+        let targetTabId = null
+        if (senderTabId) {
+          const t = await browser.tabs.get(senderTabId).catch(() => null)
+          if (t && /youtube\.com/.test(t.url || '')) targetTabId = senderTabId
+        }
+        if (!targetTabId) {
+          const active = await browser.tabs
+            .query({ active: true, currentWindow: true, url: '*://www.youtube.com/*' })
+            .catch(() => [])
+          if (active && active.length > 0) targetTabId = active[0].id
+        }
+        if (!targetTabId) {
+          const tabs = await browser.tabs.query({ url: '*://www.youtube.com/*' })
+          if (!tabs || tabs.length === 0) {
+            sendResponse({ ok: false, error: 'no_youtube_tab' })
+            return
+          }
+          targetTabId = tabs[0].id
+        }
+        const result = await browser.tabs.sendMessage(targetTabId, { type: 'youtube_mod_relay', action, msgId, target })
+        sendResponse(result || { ok: false, error: 'no response from tab' })
+      } catch (e) {
+        log('youtube_mod_action error:', e.message)
+        sendResponse({ ok: false, error: e.message })
+      }
+    })()
+    return true
   } else if (message.type === 'youtube_send_message') {
     ;(async () => {
       try {

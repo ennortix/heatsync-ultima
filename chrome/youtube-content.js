@@ -178,6 +178,19 @@
       handleInsertEmote(msg.emoteName)
       sendResponse({ ok: true })
       return true
+    } else if (msg.type === 'youtube_mod_relay') {
+      handleYtModAction(msg)
+        .then((result) => {
+          try {
+            sendResponse(result || { ok: false, error: 'no_result' })
+          } catch {}
+        })
+        .catch((e) => {
+          try {
+            sendResponse({ ok: false, error: e?.message || 'yt_mod_failed' })
+          } catch {}
+        })
+      return true
     }
   }
   chrome.runtime.onMessage.addListener(ytInventoryListener)
@@ -772,6 +785,9 @@
     const msg = extractMessage(node)
     if (!msg) return
 
+    // First real message → probe whether this account can moderate (deduped).
+    if (!_ytModProbed) probeYtMod()
+
     const msgType = classifyYtRendererType(node.tagName)
 
     // Emote overlay — replace emote text with images in the message element
@@ -1321,6 +1337,176 @@
     observer?.disconnect()
     if (ytUsername === null) return { ok: false, error: 'send_not_confirmed' }
     return { ok: true, ytUsername: ytUsername || undefined }
+  }
+
+  // ─── Moderation Relay ───────────────────────────────────────────────────────────
+  //
+  // YouTube has no simple "ban user id" API — every mod action is an opaque,
+  // per-message token minted by YT's own context-menu endpoint, and it only
+  // returns those tokens to accounts that actually moderate the channel. So we
+  // drive YT's OWN moderation flow (get_item_context_menu → moderate), exactly
+  // as youtube.com does: correct-by-construction (a non-mod simply gets no mod
+  // items) and permission-safe. Config is read from the page HTML rather than
+  // the `ytcfg` MAIN-world global so this works whichever world we run in.
+  //
+  // BULLETPROOF CONTRACT: this NEVER reports success unless YT accepted the
+  // moderate call. No matching menu item (not a mod / YT changed shape) →
+  // { ok:false, error:'not_moderator' }, surfaced to the user — it can never
+  // silently fail to moderate.
+
+  let _ytCfgCache = null
+  function _ytModConfig() {
+    if (_ytCfgCache) return _ytCfgCache
+    const html = document.documentElement.innerHTML
+    const apiKey = (html.match(/"INNERTUBE_API_KEY":"([^"]+)"/) || [])[1]
+    const clientVersion =
+      (html.match(/"INNERTUBE_CONTEXT_CLIENT_VERSION":"([^"]+)"/) || html.match(/"clientVersion":"([\d.]+)"/) || [])[1]
+    const visitorData = (html.match(/"visitorData":"([^"]+)"/) || [])[1]
+    if (!apiKey || !clientVersion) return null
+    _ytCfgCache = { apiKey, context: { client: { clientName: 'WEB', clientVersion, visitorData, hl: 'en' } } }
+    return _ytCfgCache
+  }
+
+  async function _ytSapisidHash() {
+    const ck = document.cookie
+    const get = (n) => {
+      const m = ck.match(new RegExp('(?:^|; )' + n + '=([^;]+)'))
+      return m ? m[1] : null
+    }
+    const sapisid = get('SAPISID') || get('__Secure-3PAPISID') || get('__Secure-1PAPISID')
+    if (!sapisid) return null
+    const ts = Math.floor(Date.now() / 1000)
+    const buf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(`${ts} ${sapisid} https://www.youtube.com`))
+    const hash = [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('')
+    return `SAPISIDHASH ${ts}_${hash}`
+  }
+
+  async function _ytInnertube(apiUrl, cfg, params) {
+    const auth = await _ytSapisidHash()
+    if (!auth) throw new Error('not_signed_in')
+    const resp = await fetch(`${apiUrl}?key=${cfg.apiKey}&prettyPrint=false`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: auth,
+        'X-Origin': 'https://www.youtube.com',
+        'X-Goog-AuthUser': '0',
+      },
+      body: JSON.stringify({ context: cfg.context, params }),
+    })
+    return resp.json()
+  }
+
+  // Map our action → the YT context-menu item that performs it. Matched on the
+  // locale-independent iconType first (text is an English fallback only). YT's
+  // live-chat mod menu items: Remove (DELETE), Put user in timeout (HOURGLASS…),
+  // Hide user on this channel (REMOVE_CIRCLE), Unhide user (ADD_CIRCLE).
+  const YT_MOD_ICONS = {
+    delete: ['DELETE', 'TRASH', 'REMOVE'],
+    timeout: ['HOURGLASS', 'HOURGLASS_FLOWING', 'HOURGLASS_TOP', 'HOURGLASS_BOTTOM', 'WATCH_LATER', 'SCHEDULE', 'CLOCK'],
+    ban: ['REMOVE_CIRCLE', 'NOT_INTERESTED', 'BLOCK', 'PERSON_OFF'],
+    unban: ['ADD_CIRCLE', 'PERSON_ADD'],
+  }
+  const YT_MOD_TEXT = {
+    delete: /^remove$/i,
+    timeout: /timeout/i,
+    ban: /hide user/i,
+    unban: /unhide/i,
+  }
+
+  async function handleYtModAction(msg) {
+    const { action, msgId } = msg
+    try {
+      const cfg = _ytModConfig()
+      if (!cfg) return { ok: false, error: 'no_config' }
+      const rows = [
+        ...document.querySelectorAll(
+          'yt-live-chat-text-message-renderer, yt-live-chat-paid-message-renderer, yt-live-chat-membership-item-renderer',
+        ),
+      ]
+      const row = rows.find((r) => r.data?.id === msgId)
+      if (!row) return { ok: false, error: 'message_not_found' }
+      const menuParams = row.data?.contextMenuEndpoint?.liveChatItemContextMenuEndpoint?.params
+      if (!menuParams) return { ok: false, error: 'no_context_menu' }
+
+      const menu = await _ytInnertube('/youtubei/v1/live_chat/get_item_context_menu', cfg, menuParams)
+      const items = menu?.liveChatItemContextMenuSupportedRenderers?.menuRenderer?.items || []
+      const wantIcons = YT_MOD_ICONS[action] || []
+      const wantText = YT_MOD_TEXT[action]
+      let ep = null
+      for (const it of items) {
+        const m = it.menuServiceItemRenderer
+        if (!m?.serviceEndpoint) continue
+        const icon = m.icon?.iconType || ''
+        const text = m.text?.runs?.[0]?.text || m.text?.simpleText || ''
+        if (wantIcons.includes(icon) || (wantText && wantText.test(text))) {
+          ep = m.serviceEndpoint
+          break
+        }
+      }
+      if (!ep) {
+        // Log the real menu shape so the first mod who uses this reveals ground
+        // truth (icon types) if YT ever diverges from the mapping above.
+        log(
+          'yt mod: no item for "' + action + '"; menu icons=',
+          items.map((it) => it.menuServiceItemRenderer?.icon?.iconType).join(','),
+        )
+        return { ok: false, error: 'not_moderator' }
+      }
+
+      // Fire the endpoint at the apiUrl YT specifies for it (robust to YT
+      // renaming the moderate endpoint). Unwrap a confirm-dialog if present —
+      // the user already confirmed in HeatSync's own ban dialog.
+      const confirmEp = ep.confirmDialogEndpoint?.confirmDialogRenderer?.confirmButton?.buttonRenderer?.serviceEndpoint
+      const fireEp = confirmEp || ep
+      const apiUrl = fireEp.commandMetadata?.webCommandMetadata?.apiUrl || '/youtubei/v1/live_chat/moderate'
+      const actParams = fireEp.moderateEndpoint?.params || fireEp.liveChatActionEndpoint?.params
+      if (!actParams) return { ok: false, error: 'no_action_params' }
+      const res = await _ytInnertube(apiUrl, cfg, actParams)
+      // A successful moderate returns actions/no error; an auth/permission fail
+      // returns an error block. Treat any error field as failure (fail loud).
+      if (res?.error || res?.responseContext?.errors) return { ok: false, error: 'yt_rejected' }
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: e?.message || 'yt_mod_failed' }
+    }
+  }
+
+  // One-shot mod-status probe: ask YT's own context menu whether THIS account
+  // can moderate this chat (a mod item present ⇒ mod). Cached in storage so the
+  // overlay's ctx-menu can gate its yt mod items synchronously. Cheap (one
+  // authed call per channel), silent on any failure (defaults to non-mod).
+  const _YT_MOD_ICONS_ANY = new Set([
+    ...YT_MOD_ICONS.delete,
+    ...YT_MOD_ICONS.timeout,
+    ...YT_MOD_ICONS.ban,
+    ...YT_MOD_ICONS.unban,
+  ])
+  let _ytModProbed = false
+  async function probeYtMod() {
+    if (_ytModProbed) return
+    try {
+      const cfg = _ytModConfig()
+      if (!cfg) return
+      const row = [...document.querySelectorAll('yt-live-chat-text-message-renderer')].find(
+        (r) => r.data?.contextMenuEndpoint?.liveChatItemContextMenuEndpoint?.params,
+      )
+      const params = row?.data?.contextMenuEndpoint?.liveChatItemContextMenuEndpoint?.params
+      if (!params) return // no message yet — try again on the next batch
+      _ytModProbed = true
+      const menu = await _ytInnertube('/youtubei/v1/live_chat/get_item_context_menu', cfg, params)
+      const items = menu?.liveChatItemContextMenuSupportedRenderers?.menuRenderer?.items || []
+      const icons = items.map((it) => it.menuServiceItemRenderer?.icon?.iconType).filter(Boolean)
+      const isMod = icons.some((i) => _YT_MOD_ICONS_ANY.has(i))
+      // Ground-truth for the icon mapping: if a real mod ever sees isMod=false
+      // here, the logged icon set reveals which iconTypes YT actually uses so
+      // YT_MOD_ICONS can be corrected. (log() is gated by the debug setting.)
+      log('yt mod probe: isMod=' + isMod + ' icons=' + icons.join(','))
+      chrome.storage.local.set({ hs_yt_mod_status: { isMod, ts: Date.now() } }, () => void chrome.runtime.lastError)
+    } catch {
+      _ytModProbed = false // let a later message retry
+    }
   }
 
   // ─── Init ─────────────────────────────────────────────────────────────────────

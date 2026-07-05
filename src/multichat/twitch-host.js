@@ -75,6 +75,16 @@ function pinTwitchPersistentPlayer() {
       // Same offline guard inside the style observer — Twitch's React may
       // re-render mid-session (live → offline) and we'd otherwise re-pin.
       if (document.querySelector('.channel-root--home')) return
+      // Same mini-player guard as the mount path: browsing away from a live
+      // stream floats the player bottom-right with Twitch's own top offset
+      // (> 200px by design). Re-pinning it here shoved the mini-player above
+      // the viewport, putting its close button out of reach. Clear any pin
+      // we already applied so the float lands where Twitch wants it.
+      if (!document.querySelector('.channel-root, [class*="channel-root"]')) {
+        if (pp.style.top === '0px') pp.style.removeProperty('top')
+        if (pp.style.left === '0px') pp.style.removeProperty('left')
+        return
+      }
       const r = parseFloat(getComputedStyle(pp).top) || 0
       if (r > 200) {
         pp.style.setProperty('top', '0', 'important')

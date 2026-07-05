@@ -7068,6 +7068,34 @@ async function handleMessage(message, sender, sendResponse) {
       sendResponse({ received: true })
     })()
     return true // Keep channel open for async response
+  } else if (message.type === 'yt_ensure_channel_emotes') {
+    // Native yt live_chat surface (youtube-content.js). join_channel only
+    // fires for channels added to the multichat overlay, so a viewer just
+    // watching youtube.com never loaded the streamer's 7TV/BTTV set. Resolve
+    // videoId → UC id and fetch; the channel_emotes_update broadcast feeds
+    // the iframe's listener. Deliberately NOT joinChannel(): no tabChannels
+    // write (would clobber the overlay's primary-channel tracking for the
+    // tab) and no WS room join.
+    // Channel key: the iframe's ?v= when present (popout chat), else derive
+    // from the sender tab's URL — embedded watch-page chat iframes only carry
+    // ?continuation=, so the top frame's watch?v=/@handle is the identity.
+    // sender.tab.url is browser-provided (not page-controlled).
+    const ytVid = String(message.videoId || '')
+    const ytTabUrl = String(sender?.tab?.url || '')
+    const ytChanKey = /^[\w-]{11}$/.test(ytVid)
+      ? ytVid
+      : (ytTabUrl.match(/[?&]v=([\w-]{11})/)?.[1] ??
+        (ytTabUrl.match(/youtube\.com\/@([\w.-]{3,30})/) ? `@${ytTabUrl.match(/youtube\.com\/@([\w.-]{3,30})/)[1]}` : null))
+    if (ytChanKey) {
+      ;(async () => {
+        if (initPromise) await initPromise
+        fetchChannelOwnerEmotes(ytChanKey, null, 'youtube').catch(() => {})
+      })()
+      sendResponse({ received: true })
+    } else {
+      sendResponse({ received: false, error: 'no channel identity' })
+    }
+    return true
   } else if (message.type === 'update_channel_id') {
     // Content script late-discovered the Twitch channel ID via early-inject MAIN-world.
     // Cache it so subsequent fetches skip the GQL roundtrip; if current fetch is in flight

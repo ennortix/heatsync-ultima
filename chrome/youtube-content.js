@@ -1292,6 +1292,16 @@
     // Load emotes first, then start processing
     await loadEmoteInventory()
 
+    // Channel emotes for the native surface. join_channel only fires for
+    // channels the user added to the multichat overlay — a pure-yt viewer
+    // watching native chat never joins, so the streamer's 7TV/BTTV set never
+    // loaded here. Fire-and-forget: background resolves the channel (from
+    // videoId when the iframe URL has ?v=, else from the sender tab's
+    // watch?v=/@handle URL — embedded chat iframes only carry ?continuation=)
+    // and fetches; the channel_emotes_update broadcast lands in this file's
+    // listener and rebuilds the map.
+    safeSendMessage({ type: 'yt_ensure_channel_emotes', videoId })
+
     try {
       const container = await waitForContainer()
       log('found chat container')

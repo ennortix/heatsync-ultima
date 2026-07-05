@@ -958,6 +958,28 @@ const SETTINGS = [
     tip: 'when you follow on heatsync, also follow on kick if they have a linked kick account. needs a kick.com login; queues otherwise',
     control: 'pill',
   },
+  {
+    key: 'crossFollowTwitch',
+    type: 'bool',
+    default: true,
+    scope: 'sync',
+    category: 'notifs',
+    section: 'cross-platform follow',
+    label: 'also follow on twitch',
+    tip: 'when you follow on heatsync, also follow on twitch if they have a linked twitch account. needs an open twitch.tv tab; queues otherwise',
+    control: 'pill',
+  },
+  {
+    key: 'crossFollowTwitchNotify',
+    type: 'bool',
+    default: true,
+    scope: 'sync',
+    category: 'notifs',
+    section: 'cross-platform follow',
+    label: 'twitch follow with notifications',
+    tip: 'cross-platform twitch follows also turn on live notifications for that channel',
+    control: 'pill',
+  },
 
   // ── mod / mod toolbar ─────────────────────────────────────────────────
   // Hover actions on chat rows when you mod the channel. Option tags are

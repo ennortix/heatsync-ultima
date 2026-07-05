@@ -1971,7 +1971,7 @@ async function _toggleMcMute(username, platform) {
     const exp = Date.now() + 86400000
     for (const k of aliasKeys) safeSendMessage({ type: 'mute_user', username: k, expiresAt: exp })
   }
-  chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] })
+  persistMcMuted()
   if (wasUnmute) {
     // restoreMcUnmutedDom matches by bare DOM text — use bare aliases here.
     for (const a of aliases) restoreMcUnmutedDom(a)
@@ -5304,7 +5304,7 @@ async function handleSlashCommand(text, input) {
       return true
     }
     for (const k of aliasKeys) mutedUsers.add(k)
-    chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] }).catch((e) => log('mute persist failed:', e))
+    persistMcMuted()
     const exp = Date.now() + 86400000
     for (const k of aliasKeys) safeSendMessage({ type: 'mute_user', username: k, expiresAt: exp })
     const aliasNote = aliasKeys.length > 1 ? ` (+@${aliasKeys[1]})` : ''
@@ -5326,7 +5326,7 @@ async function handleSlashCommand(text, input) {
       return true
     }
     for (const k of aliasKeys) mutedUsers.delete(k)
-    chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] })
+    persistMcMuted()
     for (const k of aliasKeys) safeSendMessage({ type: 'unmute_user', username: k })
     showToast(`unmuted ${u}`, 'success')
     renderMessages(currentTab)

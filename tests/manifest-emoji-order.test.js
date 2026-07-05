@@ -31,6 +31,17 @@ for (const name of ['chrome.json', 'firefox.json']) {
     }
   })
 
+  test(`${name}: kick-autocomplete-hook entry carries emoji-data.iso.js first`, () => {
+    const m = JSON.parse(readFileSync(join(ROOT, 'src', 'manifests', name), 'utf8'))
+    const hookEntries = (m.content_scripts ?? []).filter((e) => (e.js ?? []).includes('kick-autocomplete-hook.js'))
+    expect(hookEntries.length).toBeGreaterThan(0)
+    for (const entry of hookEntries) {
+      const emojiIdx = entry.js.indexOf('emoji-data.iso.js')
+      expect(emojiIdx).toBeGreaterThanOrEqual(0)
+      expect(emojiIdx).toBeLessThan(entry.js.indexOf('kick-autocomplete-hook.js'))
+    }
+  })
+
   test(`${name}: no ISOLATED entry references plain emoji-data.js`, () => {
     const m = JSON.parse(readFileSync(join(ROOT, 'src', 'manifests', name), 'utf8'))
     for (const entry of m.content_scripts ?? []) {

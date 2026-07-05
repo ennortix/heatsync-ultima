@@ -18,7 +18,7 @@
  * "don't depend on bundled output" rationale as utils.test.js's fuzzyScore.
  */
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { beforeEach, describe, expect, setSystemTime, test } from 'bun:test'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 
@@ -176,14 +176,23 @@ describe('emote frecency store', () => {
   })
 
   test('unbump reverts a bump exactly — cycling PAST an emote leaves no trace', () => {
-    bumpEmoteFrecency('KKona')
-    const before = loadEmoteFrecency().get('KKona')
-    // cycle visits KKonaLand then moves on: bump + unbump must cancel out
-    bumpEmoteFrecency('KKonaLand')
-    unbumpEmoteFrecency('KKonaLand')
-    const f = loadEmoteFrecency()
-    expect(f.get('KKonaLand')).toBeUndefined()
-    expect(f.get('KKona')).toBeCloseTo(before, 10)
+    // Pin the clock: frecency scores decay with Date.now(), so the two
+    // loadEmoteFrecency() calls only agree to 1e-10 when they land on the
+    // SAME millisecond — un-pinned this failed ~1/10 runs on a ms tick
+    // (blocked a cw-land and a build gate on 2026-07-05).
+    setSystemTime(new Date('2026-07-05T00:00:00Z'))
+    try {
+      bumpEmoteFrecency('KKona')
+      const before = loadEmoteFrecency().get('KKona')
+      // cycle visits KKonaLand then moves on: bump + unbump must cancel out
+      bumpEmoteFrecency('KKonaLand')
+      unbumpEmoteFrecency('KKonaLand')
+      const f = loadEmoteFrecency()
+      expect(f.get('KKonaLand')).toBeUndefined()
+      expect(f.get('KKona')).toBeCloseTo(before, 10)
+    } finally {
+      setSystemTime()
+    }
   })
 
   test('unbump only removes one use — real habit survives a cycle-past', () => {

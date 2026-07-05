@@ -2095,8 +2095,35 @@ function sanitizeEmoteList(emotes) {
 }
 
 // Fetch BTTV channel emotes
-async function fetchBTTVChannelEmotes(channelName, channelId = null) {
+async function fetchBTTVChannelEmotes(channelName, channelId = null, platform = 'twitch') {
   try {
+    if (platform === 'youtube') {
+      // BTTV's YouTube endpoint (unlike 7TV's) is keyed under "youtube" and
+      // needs the real UC... channel id — no handle lookup here either.
+      if (!/^UC[\w-]{20,}$/i.test(String(channelId || ''))) {
+        log(' BTTV: No resolvable YouTube channel ID for', channelName, '- skipping')
+        return []
+      }
+      const ytResponse = await fetchWithTimeout(`https://api.betterttv.net/3/cached/users/youtube/${channelId}`)
+      if (ytResponse.status === 404) {
+        ytResponse.body?.cancel()
+        return [] // genuine: user has no BTTV
+      }
+      if (!ytResponse.ok) {
+        ytResponse.body?.cancel()
+        return null // transient: 5xx etc.
+      }
+      const ytData = await ytResponse.json()
+      const ytEmotes = [...(ytData.channelEmotes || []), ...(ytData.sharedEmotes || [])]
+      return sanitizeEmoteList(
+        ytEmotes.map((e) => ({
+          name: e.code,
+          url: `https://cdn.betterttv.net/emote/${e.id}/1x.webp`,
+          source: 'bttv',
+          hash: e.id,
+        })),
+      )
+    }
     // BTTV API requires numeric Twitch user ID, not username
     let twitchId = channelId
     if (!twitchId) {
@@ -2188,6 +2215,65 @@ const kickUsernameToIdCache = new Map()
 // kick channel slug (lowercased) → numeric kick user id. 7TV's /v3/users/kick/{id}
 // needs the numeric id; the initial fetch resolves it via GQL, the poll reuses it.
 const channelOwnerKickId = new Map()
+
+// channel-cache-key (lowercased, whatever "channel" string join_channel used —
+// a handle, a videoId, or a config tab id) → resolved YouTube UC... channel id.
+// Neither 7TV nor BTTV can look up YouTube channels by handle/videoId, only by
+// the real UC id, and YouTube's own oEmbed only ever hands back a handle — so
+// this is resolved once (scrape the channel page's canonical id) and cached.
+// Not persisted (mirrors kickChannelIdCache — session-scoped is fine, cheap to
+// re-resolve after a SW restart).
+const ytChannelIdCache = new Map()
+const YT_CHANNEL_ID_CACHE_MAX = 300
+
+// Resolve the real YouTube channel id (UC...) for a channel-emote fetch.
+// `channelName` is the cache key (handle/videoId/tab-id — whatever join_channel
+// was called with); `hint` is anything more specific the caller already has
+// (e.g. a stored `.../channel/UC.../` or `/@handle` URL). Never falls back to
+// guessing a Twitch/Kick identity — an unresolved id means "skip, no emotes."
+async function resolveYtChannelId(channelName, hint = null) {
+  const key = String(channelName || '').toLowerCase()
+  if (!key) return null
+  const cached = ytChannelIdCache.get(key)
+  if (cached) return cached
+
+  // Already have a UC id sitting in the hint or the channel name itself.
+  const direct = (String(hint || '').match(/UC[\w-]{20,}/) || String(channelName || '').match(/UC[\w-]{20,}/))?.[0]
+  if (direct) {
+    ytChannelIdCache.set(key, direct)
+    return direct
+  }
+
+  // Pull an @handle out of the hint/channelName; bare alnum strings (e.g. a
+  // manually-typed handle with no @) count too. A raw 11-char videoId won't
+  // match either pattern — resolve its handle via the existing oEmbed lookup
+  // first (getYtChannelHandle is already used for the WS-subscribe path).
+  const handleMatch = String(hint || channelName || '').match(/@([\w.-]+)/)
+  let handle = handleMatch ? handleMatch[1] : /^[\w.-]{3,30}$/.test(key) ? key : null
+  if (!handle && /^[\w-]{11}$/.test(key)) {
+    handle = await getYtChannelHandle(key)
+  }
+  if (!handle) return null // nothing to resolve from — skip quietly, no cross-platform guessing
+
+  try {
+    const resp = await fetchWithTimeout(`https://www.youtube.com/@${encodeURIComponent(handle)}`, {}, 6000)
+    if (!resp.ok) {
+      resp.body?.cancel()
+      return null
+    }
+    const html = await resp.text()
+    const m = html.match(/"externalId":"(UC[\w-]{20,})"/)
+    const id = m?.[1] || null
+    if (id) {
+      if (ytChannelIdCache.size >= YT_CHANNEL_ID_CACHE_MAX) ytChannelIdCache.delete(ytChannelIdCache.keys().next().value)
+      ytChannelIdCache.set(key, id)
+    }
+    return id
+  } catch (e) {
+    log(' YouTube channel ID resolve failed for', handle, ':', e?.message)
+    return null
+  }
+}
 let twitchIdPersistTimer = null
 function persistTwitchIdCache() {
   if (twitchIdPersistTimer) return
@@ -2395,6 +2481,32 @@ async function fetch7TVChannelEmotes(channelName, channelId = null, platform = '
       }
       data = await response.json()
       log(' ✅ 7TV: Kick lookup succeeded (id:', kickId + ')')
+    } else if (platform === 'youtube') {
+      // 7TV files YouTube accounts under the "google" platform slug (YouTube
+      // sign-in is Google OAuth), keyed by the real UC... channel id — there is
+      // no handle/username lookup on this endpoint. channelId must already be
+      // a resolved UC id by the time we get here (fetchChannelOwnerEmotes
+      // resolves it up front); if it isn't, we cannot safely identify the
+      // channel, so return no emotes rather than guess or fall through to a
+      // Twitch/username endpoint (that would be a cross-platform identity bleed).
+      if (!/^UC[\w-]{20,}$/i.test(String(channelId || ''))) {
+        log(' 7TV: No resolvable YouTube channel ID for', channelName, '- skipping (no cross-platform fallback)')
+        return []
+      }
+      identifier = channelId
+      log(' 7TV: Fetching YouTube channel emotes for:', channelName, '(id:', identifier + ')')
+      response = await fetchWithTimeout(`https://7tv.io/v3/users/google/${identifier}`, {}, 15000)
+      if (response.status === 404) {
+        response.body?.cancel()
+        return [] // genuine: user has no 7TV
+      }
+      if (!response.ok) {
+        response.body?.cancel()
+        log(' 7TV: YouTube lookup failed (' + response.status + ')')
+        return null // transient: 5xx etc.
+      }
+      data = await response.json()
+      log(' ✅ 7TV: YouTube lookup succeeded (id:', identifier + ')')
     } else {
       // Twitch: use channelId if available, otherwise lookup via GQL/first-party resolve
       identifier = channelId
@@ -2754,12 +2866,20 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
     // Show loading indicator
     broadcastToTabs({ type: 'loading_status', text: 'loading channel emotes...' })
 
-    // Fetch heatsync emotes + resolve Twitch ID in PARALLEL (both needed before third-party fetch)
+    // Fetch heatsync emotes + resolve the platform channel ID in PARALLEL (both
+    // needed before third-party fetch). IMPORTANT: each platform resolves its
+    // OWN identity system here — a Twitch username must never be looked up via
+    // lookupTwitchUserId for a Kick/YouTube channelName, that's a cross-platform
+    // identity bleed (wrong user's emotes/cosmetics attached to this channel).
     const [heatsyncResult, resolvedChannelId] = await Promise.all([
       fetchWithTimeout(withNsfwParam(`${API_URL}/api/emotes/user/${encodeURIComponent(channelName)}`)).catch(
         () => null,
       ),
-      platform !== 'kick' && !channelId ? lookupTwitchUserId(channelName) : Promise.resolve(channelId),
+      platform === 'twitch' && !channelId
+        ? lookupTwitchUserId(channelName)
+        : platform === 'youtube' && !/^UC[\w-]{20,}$/i.test(String(channelId || ''))
+          ? resolveYtChannelId(channelName, channelId)
+          : Promise.resolve(channelId),
     ])
     let heatsyncEmotes = []
     if (heatsyncResult?.status === 429) {
@@ -2804,9 +2924,9 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
     }
 
     const tasks = []
-    if (platform !== 'kick') {
+    if (platform === 'twitch') {
       tasks.push(
-        fetchBTTVChannelEmotes(channelName, channelId)
+        fetchBTTVChannelEmotes(channelName, channelId, platform)
           .then((e) => {
             if (e === null) failed.bttv = true
             slots.bttv = e || []
@@ -2836,6 +2956,20 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
           })
           .catch(() => {
             failed.twitch = true
+          }),
+      )
+    } else if (platform === 'youtube') {
+      // No FFZ (no YouTube support) and no Twitch-native calls — those would
+      // treat a YouTube handle/id as a Twitch identity.
+      tasks.push(
+        fetchBTTVChannelEmotes(channelName, channelId, platform)
+          .then((e) => {
+            if (e === null) failed.bttv = true
+            slots.bttv = e || []
+            broadcastCurrent()
+          })
+          .catch(() => {
+            failed.bttv = true
           }),
       )
     }
@@ -3795,6 +3929,13 @@ async function poll7TVEmoteSet() {
         const kid = channelOwnerKickId.get(channelName)
         if (!kid) continue
         response = await fetchWithTimeout(`https://7tv.io/v3/users/kick/${kid}`)
+      } else if (platform === 'youtube') {
+        // Only poll if we already resolved a real UC id for this exact key —
+        // never resolve fresh here (this is a fallback poll path; resolving on
+        // every cycle would hammer youtube.com). No id cached = skip, no bleed.
+        const ucid = ytChannelIdCache.get(channelName)
+        if (!ucid) continue
+        response = await fetchWithTimeout(`https://7tv.io/v3/users/google/${ucid}`)
       } else {
         const channelId = await lookupTwitchUserId(channelName)
         if (!channelId) continue
@@ -6907,9 +7048,13 @@ async function handleMessage(message, sender, sendResponse) {
     // Defence in depth: validate platform + channel before forwarding to WS server
     const VALID_PLATFORMS = new Set(['twitch', 'kick', 'youtube'])
     const safePlatform = VALID_PLATFORMS.has(message.platform) ? message.platform : null
+    // YouTube handles can contain periods (e.g. "@mr.beast") — allow them so the
+    // sanitized key still matches what the content script reads back via
+    // getCurrentChannel() (which doesn't strip periods). Twitch/Kick names never
+    // contain periods, so this is a no-op for those platforms.
     const safeChannel = String(message.channel || '')
       .toLowerCase()
-      .replace(/[^a-z0-9_-]/g, '')
+      .replace(/[^a-z0-9_.-]/g, '')
       .slice(0, 50)
     if (!safePlatform || !safeChannel) {
       sendResponse({ received: false, error: 'invalid platform/channel' })

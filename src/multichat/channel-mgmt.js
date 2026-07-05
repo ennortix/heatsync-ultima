@@ -177,6 +177,13 @@ function renderAddChannelForm(msgsEl) {
     if (ytVal) {
       youtubeLinks.set(id, { url: ytVal, videoId: '', channelName: '' })
       chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytVal, channelId: id }).catch(() => {})
+      // 7TV/BTTV YouTube channel emotes — channelId is a hint (the typed
+      // url/handle), background.js resolves the real UC... id itself.
+      try {
+        chrome.runtime.sendMessage({ type: 'join_channel', platform: 'youtube', channel: id, channelId: ytVal })
+      } catch (e) {
+        /* context invalidated */
+      }
     }
 
     updateTabBar()
@@ -622,6 +629,9 @@ function showEditChannelForm(tabId) {
     if (ytVal && ytVal !== oldYt) {
       youtubeLinks.set(newId, { url: ytVal, videoId: '', channelName: '' })
       chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytVal, channelId: newId }).catch(() => {})
+      try {
+        chrome.runtime.sendMessage({ type: 'join_channel', platform: 'youtube', channel: newId, channelId: ytVal })
+      } catch (e) {}
     }
 
     updateTabBar()

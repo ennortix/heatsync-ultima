@@ -111,3 +111,25 @@ t('all firefox content script files exist in dist', () => {
     expect(existsSync(join(DIST_FIREFOX, file))).toBe(true)
   }
 })
+
+// ── bare `cleanup` resolves in every bundle ──────────────────────────────────
+// cleanup.js is the one lib file whose state hides behind an IIFE (window-keyed
+// cross-bundle dedupe), so bundles need its explicit `const cleanup =
+// window.heatsyncCleanup` re-export. When that binding was missing, any bundle
+// using bare `cleanup.` threw ReferenceError at first use — silently (DEBUG-
+// gated catches): yt native chat was dead 04-27→07-05, heatsync-button lost
+// its SPA-nav/retry timers.
+
+const CLEANUP_BINDING = 'const cleanup = window.heatsyncCleanup'
+
+for (const dir of [DIST_CHROME, DIST_FIREFOX]) {
+  t(`every ${dir === DIST_CHROME ? 'chrome' : 'firefox'} bundle using cleanup has the binding`, () => {
+    const m = readManifest(dir)
+    for (const file of collectScripts(m)) {
+      const src = readFileSync(join(dir, file), 'utf8')
+      if (/\bcleanup\./.test(src)) {
+        expect(src.includes(CLEANUP_BINDING) || /const cleanup = \{/.test(src)).toBe(true)
+      }
+    }
+  })
+}

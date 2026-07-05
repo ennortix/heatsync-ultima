@@ -113,7 +113,11 @@ function checkManifestParity() {
 //            bootstrap.js (multichat, inner block) redeclares `function log` as the
 //            multichat-specific logger. The inner block scope means no JS SyntaxError,
 //            and the inner one takes precedence inside the block — intentional.
-const SCOPE_COLLISION_ALLOWLIST = new Set(['log'])
+//   'cleanup' — cleanup.js (lib) re-exports `const cleanup = window.heatsyncCleanup`
+//            so standalone bundles get a bare binding; bootstrap.js (multichat,
+//            inner block) declares its own AbortController-wired `const cleanup`
+//            that legally shadows it — intentional.
+const SCOPE_COLLISION_ALLOWLIST = new Set(['log', 'cleanup'])
 
 function checkScopeCollisions() {
   const DECL_RE = /^(?:export\s+)?(?:async\s+)?(?:function|const|let|var|class)\s+([A-Za-z0-9_$]+)/

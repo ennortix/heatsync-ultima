@@ -1398,10 +1398,22 @@
     return resp.json()
   }
 
-  // Map our action → the YT context-menu item that performs it. Matched on the
-  // locale-independent iconType first (text is an English fallback only). YT's
-  // live-chat mod menu items: Remove (DELETE), Put user in timeout (HOURGLASS…),
-  // Hide user on this channel (REMOVE_CIRCLE), Unhide user (ADD_CIRCLE).
+  // A menu item is a moderation action IFF its endpoint carries a moderate
+  // token — YT only mints those for accounts that can actually moderate this
+  // channel, so this is the ground-truth mod signal, independent of any
+  // iconType/text/locale guessing. Unwrap a confirm-dialog wrapper (used by
+  // ban/hide) down to the inner endpoint that actually holds the token.
+  function _ytItemModEp(m) {
+    const ep = m?.serviceEndpoint
+    if (!ep) return null
+    const confirm = ep.confirmDialogEndpoint?.confirmDialogRenderer?.confirmButton?.buttonRenderer?.serviceEndpoint
+    const target = confirm || ep
+    return target.moderateEndpoint || target.liveChatActionEndpoint ? target : null
+  }
+
+  // Which of our 4 verbs a moderation item is — labeled by iconType OR English
+  // text ("Remove" / "Put user in timeout" / "Hide user…" / "Unhide user…").
+  // Only used to route the 4 menu entries; detection never depends on it.
   const YT_MOD_ICONS = {
     delete: ['DELETE', 'TRASH', 'REMOVE'],
     timeout: ['HOURGLASS', 'HOURGLASS_FLOWING', 'HOURGLASS_TOP', 'HOURGLASS_BOTTOM', 'WATCH_LATER', 'SCHEDULE', 'CLOCK'],
@@ -1409,10 +1421,27 @@
     unban: ['ADD_CIRCLE', 'PERSON_ADD'],
   }
   const YT_MOD_TEXT = {
-    delete: /^remove$/i,
+    delete: /remove/i,
     timeout: /timeout/i,
     ban: /hide user/i,
     unban: /unhide/i,
+  }
+  function _ytItemText(m) {
+    return m?.text?.runs?.[0]?.text || m?.text?.simpleText || ''
+  }
+  function _ytActionMatches(action, m) {
+    const icon = m?.icon?.iconType || ''
+    return (
+      (YT_MOD_ICONS[action] || []).includes(icon) || (YT_MOD_TEXT[action] && YT_MOD_TEXT[action].test(_ytItemText(m)))
+    )
+  }
+  function _ytMenuDebug(items) {
+    return items
+      .map((it) => {
+        const m = it.menuServiceItemRenderer
+        return (m?.icon?.iconType || '?') + ':' + _ytItemText(m) + (_ytItemModEp(m) ? ':MOD' : '')
+      })
+      .join(' | ')
   }
 
   async function handleYtModAction(msg) {
@@ -1432,40 +1461,33 @@
 
       const menu = await _ytInnertube('/youtubei/v1/live_chat/get_item_context_menu', cfg, menuParams)
       const items = menu?.liveChatItemContextMenuSupportedRenderers?.menuRenderer?.items || []
-      const wantIcons = YT_MOD_ICONS[action] || []
-      const wantText = YT_MOD_TEXT[action]
-      let ep = null
+      // Consider only real moderation items (have a moderate token), then pick
+      // the one matching the requested verb.
+      let fireEp = null
+      let sawAnyMod = false
       for (const it of items) {
         const m = it.menuServiceItemRenderer
-        if (!m?.serviceEndpoint) continue
-        const icon = m.icon?.iconType || ''
-        const text = m.text?.runs?.[0]?.text || m.text?.simpleText || ''
-        if (wantIcons.includes(icon) || (wantText && wantText.test(text))) {
-          ep = m.serviceEndpoint
+        const modTarget = _ytItemModEp(m)
+        if (!modTarget) continue
+        sawAnyMod = true
+        if (_ytActionMatches(action, m)) {
+          fireEp = modTarget
           break
         }
       }
-      if (!ep) {
-        // Log the real menu shape so the first mod who uses this reveals ground
-        // truth (icon types) if YT ever diverges from the mapping above.
-        log(
-          'yt mod: no item for "' + action + '"; menu icons=',
-          items.map((it) => it.menuServiceItemRenderer?.icon?.iconType).join(','),
-        )
-        return { ok: false, error: 'not_moderator' }
+      if (!fireEp) {
+        // Not a mod (no moderate items at all) vs. mod but this verb didn't map
+        // (YT changed text/icon) — both fail loud; the log reveals ground truth.
+        log('yt mod: no "' + action + '" item (sawMod=' + sawAnyMod + '); menu=' + _ytMenuDebug(items))
+        return { ok: false, error: sawAnyMod ? 'action_unmapped' : 'not_moderator' }
       }
 
-      // Fire the endpoint at the apiUrl YT specifies for it (robust to YT
-      // renaming the moderate endpoint). Unwrap a confirm-dialog if present —
-      // the user already confirmed in HeatSync's own ban dialog.
-      const confirmEp = ep.confirmDialogEndpoint?.confirmDialogRenderer?.confirmButton?.buttonRenderer?.serviceEndpoint
-      const fireEp = confirmEp || ep
       const apiUrl = fireEp.commandMetadata?.webCommandMetadata?.apiUrl || '/youtubei/v1/live_chat/moderate'
       const actParams = fireEp.moderateEndpoint?.params || fireEp.liveChatActionEndpoint?.params
       if (!actParams) return { ok: false, error: 'no_action_params' }
       const res = await _ytInnertube(apiUrl, cfg, actParams)
-      // A successful moderate returns actions/no error; an auth/permission fail
-      // returns an error block. Treat any error field as failure (fail loud).
+      // Success returns actions/no error; auth/permission failure returns an
+      // error block. Any error field ⇒ failure (fail loud, never a false ok).
       if (res?.error || res?.responseContext?.errors) return { ok: false, error: 'yt_rejected' }
       return { ok: true }
     } catch (e) {
@@ -1474,15 +1496,10 @@
   }
 
   // One-shot mod-status probe: ask YT's own context menu whether THIS account
-  // can moderate this chat (a mod item present ⇒ mod). Cached in storage so the
-  // overlay's ctx-menu can gate its yt mod items synchronously. Cheap (one
-  // authed call per channel), silent on any failure (defaults to non-mod).
-  const _YT_MOD_ICONS_ANY = new Set([
-    ...YT_MOD_ICONS.delete,
-    ...YT_MOD_ICONS.timeout,
-    ...YT_MOD_ICONS.ban,
-    ...YT_MOD_ICONS.unban,
-  ])
+  // can moderate here — the presence of ANY moderate token ⇒ mod (ground truth,
+  // no iconType guessing). Cached in storage so the overlay ctx-menu can gate
+  // its yt mod items synchronously. Cheap (one authed call/channel), silent on
+  // any failure (defaults to non-mod).
   let _ytModProbed = false
   async function probeYtMod() {
     if (_ytModProbed) return
@@ -1497,12 +1514,10 @@
       _ytModProbed = true
       const menu = await _ytInnertube('/youtubei/v1/live_chat/get_item_context_menu', cfg, params)
       const items = menu?.liveChatItemContextMenuSupportedRenderers?.menuRenderer?.items || []
-      const icons = items.map((it) => it.menuServiceItemRenderer?.icon?.iconType).filter(Boolean)
-      const isMod = icons.some((i) => _YT_MOD_ICONS_ANY.has(i))
-      // Ground-truth for the icon mapping: if a real mod ever sees isMod=false
-      // here, the logged icon set reveals which iconTypes YT actually uses so
-      // YT_MOD_ICONS can be corrected. (log() is gated by the debug setting.)
-      log('yt mod probe: isMod=' + isMod + ' icons=' + icons.join(','))
+      const isMod = items.some((it) => _ytItemModEp(it.menuServiceItemRenderer))
+      // Ground-truth diagnostic: reveals YT's real item text/icons so the verb
+      // mapping can be corrected if YT ever diverges. (log() is debug-gated.)
+      log('yt mod probe: isMod=' + isMod + ' menu=' + _ytMenuDebug(items))
       chrome.storage.local.set({ hs_yt_mod_status: { isMod, ts: Date.now() } }, () => void chrome.runtime.lastError)
     } catch {
       _ytModProbed = false // let a later message retry

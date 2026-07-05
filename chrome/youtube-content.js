@@ -1398,48 +1398,14 @@
     return resp.json()
   }
 
-  // A menu item is a moderation action IFF its endpoint carries a moderate
-  // token — YT only mints those for accounts that can actually moderate this
-  // channel, so this is the ground-truth mod signal, independent of any
-  // iconType/text/locale guessing. Unwrap a confirm-dialog wrapper (used by
-  // ban/hide) down to the inner endpoint that actually holds the token.
-  function _ytItemModEp(m) {
-    const ep = m?.serviceEndpoint
-    if (!ep) return null
-    const confirm = ep.confirmDialogEndpoint?.confirmDialogRenderer?.confirmButton?.buttonRenderer?.serviceEndpoint
-    const target = confirm || ep
-    return target.moderateEndpoint || target.liveChatActionEndpoint ? target : null
-  }
-
-  // Which of our 4 verbs a moderation item is — labeled by iconType OR English
-  // text ("Remove" / "Put user in timeout" / "Hide user…" / "Unhide user…").
-  // Only used to route the 4 menu entries; detection never depends on it.
-  const YT_MOD_ICONS = {
-    delete: ['DELETE', 'TRASH', 'REMOVE'],
-    timeout: ['HOURGLASS', 'HOURGLASS_FLOWING', 'HOURGLASS_TOP', 'HOURGLASS_BOTTOM', 'WATCH_LATER', 'SCHEDULE', 'CLOCK'],
-    ban: ['REMOVE_CIRCLE', 'NOT_INTERESTED', 'BLOCK', 'PERSON_OFF'],
-    unban: ['ADD_CIRCLE', 'PERSON_ADD'],
-  }
-  const YT_MOD_TEXT = {
-    delete: /remove/i,
-    timeout: /timeout/i,
-    ban: /hide user/i,
-    unban: /unhide/i,
-  }
-  function _ytItemText(m) {
-    return m?.text?.runs?.[0]?.text || m?.text?.simpleText || ''
-  }
-  function _ytActionMatches(action, m) {
-    const icon = m?.icon?.iconType || ''
-    return (
-      (YT_MOD_ICONS[action] || []).includes(icon) || (YT_MOD_TEXT[action] && YT_MOD_TEXT[action].test(_ytItemText(m)))
-    )
-  }
+  // The pure action-matching + mod-detection logic lives in src/lib/utils.js
+  // (ytResolveModAction / ytHasModItems / ytItemModEndpoint / ytItemText) so it
+  // is unit-tested against realistic menu JSON — see tests/yt-moderation.test.js.
   function _ytMenuDebug(items) {
     return items
       .map((it) => {
         const m = it.menuServiceItemRenderer
-        return (m?.icon?.iconType || '?') + ':' + _ytItemText(m) + (_ytItemModEp(m) ? ':MOD' : '')
+        return (m?.icon?.iconType || '?') + ':' + ytItemText(m) + (ytItemModEndpoint(m) ? ':MOD' : '')
       })
       .join(' | ')
   }
@@ -1461,25 +1427,12 @@
 
       const menu = await _ytInnertube('/youtubei/v1/live_chat/get_item_context_menu', cfg, menuParams)
       const items = menu?.liveChatItemContextMenuSupportedRenderers?.menuRenderer?.items || []
-      // Consider only real moderation items (have a moderate token), then pick
-      // the one matching the requested verb.
-      let fireEp = null
-      let sawAnyMod = false
-      for (const it of items) {
-        const m = it.menuServiceItemRenderer
-        const modTarget = _ytItemModEp(m)
-        if (!modTarget) continue
-        sawAnyMod = true
-        if (_ytActionMatches(action, m)) {
-          fireEp = modTarget
-          break
-        }
-      }
+      const { fireEp, sawMod } = ytResolveModAction(items, action)
       if (!fireEp) {
         // Not a mod (no moderate items at all) vs. mod but this verb didn't map
         // (YT changed text/icon) — both fail loud; the log reveals ground truth.
-        log('yt mod: no "' + action + '" item (sawMod=' + sawAnyMod + '); menu=' + _ytMenuDebug(items))
-        return { ok: false, error: sawAnyMod ? 'action_unmapped' : 'not_moderator' }
+        log('yt mod: no "' + action + '" item (sawMod=' + sawMod + '); menu=' + _ytMenuDebug(items))
+        return { ok: false, error: sawMod ? 'action_unmapped' : 'not_moderator' }
       }
 
       const apiUrl = fireEp.commandMetadata?.webCommandMetadata?.apiUrl || '/youtubei/v1/live_chat/moderate'
@@ -1514,7 +1467,7 @@
       _ytModProbed = true
       const menu = await _ytInnertube('/youtubei/v1/live_chat/get_item_context_menu', cfg, params)
       const items = menu?.liveChatItemContextMenuSupportedRenderers?.menuRenderer?.items || []
-      const isMod = items.some((it) => _ytItemModEp(it.menuServiceItemRenderer))
+      const isMod = ytHasModItems(items)
       // Ground-truth diagnostic: reveals YT's real item text/icons so the verb
       // mapping can be corrected if YT ever diverges. (log() is debug-gated.)
       log('yt mod probe: isMod=' + isMod + ' menu=' + _ytMenuDebug(items))

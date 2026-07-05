@@ -1308,6 +1308,83 @@ function parseYtGiftCount(systemText) {
 }
 
 // ============================================
+// YOUTUBE LIVE CHAT MODERATION
+// ============================================
+// Pure logic for driving YouTube's OWN moderation flow (get_item_context_menu
+// → moderate). Lives here — not inside chrome/youtube-content.js's IIFE — so it
+// is unit-tested against realistic menu JSON (tests/yt-moderation.test.js). YT
+// moderation can't be self-verified live without a moderator account, so this
+// pure layer is where correctness is locked in.
+
+// Which of our 4 verbs a moderation menu item is — by locale-independent
+// iconType OR English text ("Remove" / "Put user in timeout" / "Hide user…" /
+// "Unhide user…"). Detection never depends on this; it only ROUTES the entries.
+const YT_MOD_ICONS = {
+  delete: ['DELETE', 'TRASH', 'REMOVE'],
+  timeout: ['HOURGLASS', 'HOURGLASS_FLOWING', 'HOURGLASS_TOP', 'HOURGLASS_BOTTOM', 'WATCH_LATER', 'SCHEDULE', 'CLOCK'],
+  ban: ['REMOVE_CIRCLE', 'NOT_INTERESTED', 'BLOCK', 'PERSON_OFF'],
+  unban: ['ADD_CIRCLE', 'PERSON_ADD'],
+}
+const YT_MOD_TEXT = {
+  delete: /remove/i,
+  timeout: /timeout/i,
+  ban: /hide user/i,
+  unban: /unhide/i,
+}
+
+// Text of a menu item (runs[0] or simpleText), '' when absent.
+function ytItemText(m) {
+  return m?.text?.runs?.[0]?.text || m?.text?.simpleText || ''
+}
+
+// A menu item is a moderation action IFF its endpoint carries a moderate token
+// — YouTube only mints those for accounts that can actually moderate this
+// channel, so this is the ground-truth mod signal, independent of any
+// iconType/text/locale guessing. Unwraps a confirm-dialog wrapper (used by
+// ban/hide) down to the inner endpoint that holds the token. Returns the
+// fireable endpoint object, or null.
+function ytItemModEndpoint(m) {
+  const ep = m?.serviceEndpoint
+  if (!ep) return null
+  const confirm = ep.confirmDialogEndpoint?.confirmDialogRenderer?.confirmButton?.buttonRenderer?.serviceEndpoint
+  const target = confirm || ep
+  return target.moderateEndpoint || target.liveChatActionEndpoint ? target : null
+}
+
+// True iff this menu item routes to our `action` verb (icon OR text).
+function ytMatchModAction(action, m) {
+  const icon = m?.icon?.iconType || ''
+  const inIcons = (YT_MOD_ICONS[action] || []).includes(icon)
+  const t = YT_MOD_TEXT[action]
+  return inIcons || (t ? t.test(ytItemText(m)) : false)
+}
+
+// From a get_item_context_menu `items` array, resolve the endpoint to fire for
+// `action` and whether ANY moderation item is present. `sawMod` alone answers
+// "is this account a moderator here?" (used by the mod-status probe); `fireEp`
+// is the endpoint to POST to /live_chat/moderate.
+function ytResolveModAction(items, action) {
+  let fireEp = null
+  let sawMod = false
+  for (const it of items || []) {
+    const m = it?.menuServiceItemRenderer
+    const modEp = ytItemModEndpoint(m)
+    if (!modEp) continue
+    sawMod = true
+    if (ytMatchModAction(action, m)) {
+      fireEp = modEp
+      break
+    }
+  }
+  return { fireEp, sawMod }
+}
+
+// Mod detection: any moderation item present ⇒ this account can moderate here.
+function ytHasModItems(items) {
+  return (items || []).some((it) => ytItemModEndpoint(it?.menuServiceItemRenderer))
+}
+
+// ============================================
 // UI SETTINGS SANITIZATION
 // ============================================
 
@@ -1429,6 +1506,13 @@ const utils = {
   classifyYtRendererType,
   classifyYtMembership,
   parseYtGiftCount,
+
+  // YouTube moderation
+  ytResolveModAction,
+  ytHasModItems,
+  ytItemModEndpoint,
+  ytMatchModAction,
+  ytItemText,
 
   // Rate limiting
   throttle,

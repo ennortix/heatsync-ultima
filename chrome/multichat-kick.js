@@ -10037,6 +10037,13 @@ function injectStyles() {
     }
     .hs-mc-emote-stack-emotes > .hs-mc-emote-wrapper:not(:first-child) {
       min-height: 0;
+      /* Cancel the adjacent-emote gap-pull (the -4px margin-left on
+         .hs-mc-emote-wrapper + .hs-mc-emote-wrapper above): overlay wrappers are
+         siblings of the base INSIDE the stack, so that rule matched them and
+         shifted every overlay ~2px left of the widest emote's centre. Here they
+         overlap via the grid's place-items:center, so any margin just decentres
+         them — pin it to 0 so the overlay centres exactly on the widest emote. */
+      margin-left: 0;
     }
     /* same bitmap-smear math for the badge family — any middle-aligned
        inline box taller than the strut grows the row's line box by a

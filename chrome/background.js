@@ -1637,7 +1637,6 @@ async function fetchFollowedUsers() {
 const LIVE_STATE_KEY = 'hs_live_status_state'
 const LIVE_NOTIFY_THROTTLE_MS = 30 * 60 * 1000 // 30 min between notifications for same creator
 const LIVE_FETCH_TIMEOUT_MS = 8000
-const LIVE_FETCH_CONCURRENCY = 5
 let _liveFollowedCount = 0
 let _liveStatusInitialized = false
 let _liveStatusState = { lastSeenLive: {}, lastNotifiedAt: {} }

@@ -1050,21 +1050,6 @@
       return
     }
 
-    // (bits-modal opening was attempted via fiber-invoke + DOM hacks but every
-    // path hit twitch's anti-bot or layout walls; replaced by popup-window
-    // approach in twitch-api.js — kept as no-op for backward compat if a
-    // content script ever fires the old message.)
-    if (e.data?.type === 'heatsync-open-bits-modal') {
-      window.postMessage(
-        {
-          type: 'heatsync-open-bits-modal-response',
-          id: e.data.id,
-          error: 'deprecated — bits now opens via popup window',
-        },
-        location.origin,
-      )
-      return
-    }
     // Content script requesting GQL proxy call
     if (e.data?.type === 'heatsync-gql-request') {
       if (!_hsNonce || e.data.nonce !== _hsNonce) {

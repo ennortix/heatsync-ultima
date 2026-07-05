@@ -5,7 +5,6 @@
 
 // Chat width state
 let chatWidth = 340 // Default width
-const DEFAULT_CHAT_WIDTH = 340
 // 10px floor ≈ the bar's invisible grab-zone (2px line + 4px each side) —
 // chat can shrink to just the handle so the player nearly fills the
 // viewport, but the handle stays grabbable to drag it back. No artificial

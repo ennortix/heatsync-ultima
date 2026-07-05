@@ -5583,7 +5583,8 @@
       const username = mention.textContent.replace('@', '').trim().toLowerCase()
       if (!username) continue
       const color = knownChatters.get(username) || '#fff'
-      mention.style.cssText = `color: ${color}; font-weight: bold; cursor: pointer; pointer-events: auto;`
+      const safeColor = COLOR_RE.test(color) ? color : '#fff'
+      mention.style.cssText = `color: ${safeColor}; font-weight: bold; cursor: pointer; pointer-events: auto;`
       mention.classList.add('hs-mention-colored')
       mention.dataset.hsUsername = username
     }

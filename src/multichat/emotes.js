@@ -2700,7 +2700,9 @@ function scanDomForEmotes() {
   // Evict oldest if exceeds 20
   const chKeys = Object.keys(channelEmoteCaches)
   if (chKeys.length > 20) {
-    delete channelEmoteCaches[chKeys[0]]
+    // never evict the active channel — deleting it then reading cache.size below throws
+    const old = chKeys[0]
+    if (old !== ch) delete channelEmoteCaches[old]
   }
   const cache = channelEmoteCaches[ch]
 

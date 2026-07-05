@@ -22315,7 +22315,9 @@ function scanDomForEmotes() {
   // Evict oldest if exceeds 20
   const chKeys = Object.keys(channelEmoteCaches)
   if (chKeys.length > 20) {
-    delete channelEmoteCaches[chKeys[0]]
+    // never evict the active channel — deleting it then reading cache.size below throws
+    const old = chKeys[0]
+    if (old !== ch) delete channelEmoteCaches[old]
   }
   const cache = channelEmoteCaches[ch]
 
@@ -26764,10 +26766,6 @@ const HS_CHEER_TIERS = [
 function hsCheerTier(amount) {
   for (const t of HS_CHEER_TIERS) if (amount >= t.min) return t
   return HS_CHEER_TIERS[HS_CHEER_TIERS.length - 1]
-}
-function hsCheermoteUrl(amount, scale) {
-  const t = hsCheerTier(amount)
-  return `https://d3aqoihi2n8ty8.cloudfront.net/actions/cheer/dark/animated/${t.tier}/${scale || 2}.gif`
 }
 // BULLETPROOF: only render a cheermote when twitch's IRC tagged the message
 // with bits=N (server-confirmed real cheer). No amount-cap heuristics, no
@@ -44548,7 +44546,6 @@ document.addEventListener(
 
 // Chat width state
 let chatWidth = 340 // Default width
-const DEFAULT_CHAT_WIDTH = 340
 // 10px floor ≈ the bar's invisible grab-zone (2px line + 4px each side) —
 // chat can shrink to just the handle so the player nearly fills the
 // viewport, but the handle stays grabbable to drag it back. No artificial

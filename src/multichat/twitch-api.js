@@ -2082,10 +2082,6 @@ function hsCheerTier(amount) {
   for (const t of HS_CHEER_TIERS) if (amount >= t.min) return t
   return HS_CHEER_TIERS[HS_CHEER_TIERS.length - 1]
 }
-function hsCheermoteUrl(amount, scale) {
-  const t = hsCheerTier(amount)
-  return `https://d3aqoihi2n8ty8.cloudfront.net/actions/cheer/dark/animated/${t.tier}/${scale || 2}.gif`
-}
 // BULLETPROOF: only render a cheermote when twitch's IRC tagged the message
 // with bits=N (server-confirmed real cheer). No amount-cap heuristics, no
 // loose "looks like a cheer" rendering — if the tag isn't there, the bit

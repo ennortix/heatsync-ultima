@@ -11,7 +11,6 @@
   "permissions": [
     "storage",
     "unlimitedStorage",
-    "tabs",
     "cookies",
     "alarms",
     "notifications"
@@ -26,7 +25,6 @@
     "https://api.betterttv.net/*",
     "https://api.frankerfacez.com/*",
     "https://7tv.io/*",
-    "https://events.7tv.io/*",
     "https://api.7tv.app/*",
     "https://logs.ivr.fi/*",
     "https://logs.zonian.dev/*",

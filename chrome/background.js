@@ -1321,61 +1321,11 @@ async function retrieveToken() {
   return null
 }
 
-// Map of hash -> real emote URL (populated when emotes are loaded)
-const emoteUrlMap = new Map()
-
-// Intercept requests to Twitch CDN with our FFZ-style IDs and redirect to real URLs
-// Format: __FFZ__999999::HASH__FFZ__ (numeric set ID for Twitch validation)
-// NOTE: This only works in Firefox (MV2). Chrome MV3 doesn't support blocking webRequest.
-try {
-  if (browser.webRequest?.onBeforeRequest) {
-    browser.webRequest.onBeforeRequest.addListener(
-      (details) => {
-        const url = details.url
-        const match = url.match(/__FFZ__999999::([a-f0-9]+)__FFZ__/)
-        if (!match) return
-
-        const hash = match[1]
-        const realUrl = emoteUrlMap.get(hash)
-        log(' 🎯 webRequest intercepted:', hash.substring(0, 12), '-> found:', !!realUrl)
-
-        if (realUrl) {
-          return { redirectUrl: realUrl }
-        }
-        return {}
-      },
-      { urls: ['*://static-cdn.jtvnw.net/emoticons/v2/__FFZ__999999*'] },
-      ['blocking'],
-    )
-    log(' 🔄 WebRequest interceptor installed (Firefox)')
-  }
-} catch (e) {
-  // Chrome MV3 doesn't support blocking webRequest - that's OK
-  log('[heatsync] webRequest not available (Chrome MV3) - using direct URLs')
-}
-
-// Update the emote URL map (capped at 10K entries to prevent memory growth)
-const MAX_EMOTE_URL_ENTRIES = 10000
-function updateEmoteUrlMap() {
-  emoteUrlMap.clear()
-  // Inventory + globals first (always kept)
-  for (const emote of emoteInventory) {
-    if (emote.hash && emote.url) emoteUrlMap.set(emote.hash, emote.url)
-  }
-  for (const emote of globalEmotes) {
-    if (emote.hash && emote.url) emoteUrlMap.set(emote.hash, emote.url)
-  }
-  // Channel emotes fill remaining capacity
-  for (const emotes of Object.values(channelEmotesMap)) {
-    if (!Array.isArray(emotes)) continue
-    for (const emote of emotes) {
-      if (emoteUrlMap.size >= MAX_EMOTE_URL_ENTRIES) break
-      if (emote.hash && emote.url) emoteUrlMap.set(emote.hash, emote.url)
-    }
-    if (emoteUrlMap.size >= MAX_EMOTE_URL_ENTRIES) break
-  }
-  log(' 📍 Updated emoteUrlMap:', emoteUrlMap.size, 'entries')
-}
+// HeatSync emotes are smuggled into native chat as fake FFZ-style CDN URLs
+// (__FFZ__999999::HASH__FFZ__) and rewritten to real URLs client-side by the
+// autocomplete-hook MutationObserver on both Chrome and Firefox. No background
+// hash→URL map or webRequest interception needed — the DOM-rewrite path is the
+// single cross-browser mechanism.
 
 // Get auth token (read from memory, storage, or httpOnly cookie via cookies API)
 async function getAuthCookie() {
@@ -1503,7 +1453,6 @@ function fetchEmoteInventory() {
 
       // Combine inventory + subscription emotes
       emoteInventory = sanitizeEmoteList([...inventoryEmotes, ...subEmotes])
-      updateEmoteUrlMap()
 
       log(' Loaded', inventoryEmotes.length, 'inventory emotes')
       log(' Loaded', subEmotes.length, 'subscription emotes')
@@ -3027,7 +2976,6 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
         }
       }
     }
-    updateEmoteUrlMap()
 
     // Update channelOwner in all tab entries that match this channel
     let ownerUpdated = false
@@ -3259,7 +3207,6 @@ function fetchGlobalEmotes() {
             zeroWidth: !!e.zeroWidth,
           })),
         )
-        updateEmoteUrlMap()
         log(' Loaded', globalEmotes.length, 'global emotes from server')
         log(
           ' Sample global emotes:',
@@ -3304,7 +3251,6 @@ function fetchGlobalEmotes() {
           ')',
         )
 
-        updateEmoteUrlMap()
         log('📊 Total global emotes:', globalEmotes.length)
 
         broadcastToTabs({ type: 'global_emotes_update', emotes: globalEmotes })
@@ -3321,7 +3267,6 @@ function fetchGlobalEmotes() {
       ])
 
       globalEmotes = [...bttv, ...ffz, ...sevenTV, ...twitchGlobal]
-      updateEmoteUrlMap()
       log(' Loaded', globalEmotes.length, 'global emotes (fallback)')
       broadcastToTabs({ type: 'global_emotes_update', emotes: globalEmotes })
     } catch (error) {
@@ -3840,7 +3785,6 @@ function handle7TVEmoteSetUpdate(updateData) {
   }
 
   if (updated) {
-    updateEmoteUrlMap()
 
     const updatedEmotes = Array.isArray(channelEmotesMap[key]) ? channelEmotesMap[key] : []
     broadcastToTabs({
@@ -3995,7 +3939,6 @@ async function poll7TVEmoteSet() {
       const updatedEmotes = chEmotes.filter((e) => e.source !== '7tv' || fetchedEmotes.has(e.hash))
       updatedEmotes.push(...added)
       channelEmotesMap[key] = updatedEmotes
-      updateEmoteUrlMap()
 
       // Only broadcast individual notifications after first successful poll this session
       // Prevents spammy "removed" notifications when diffing stale cache on startup
@@ -8382,7 +8325,6 @@ async function initialize() {
     }
     if (stored.channel_emotes_map && typeof stored.channel_emotes_map === 'object') {
       Object.assign(channelEmotesMap, stored.channel_emotes_map)
-      updateEmoteUrlMap()
       log(' ✓ Restored channelEmotesMap for', Object.keys(stored.channel_emotes_map).length, 'channels')
     }
     if (stored.seventv_emote_set_ids && typeof stored.seventv_emote_set_ids === 'object') {

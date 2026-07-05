@@ -38,33 +38,21 @@ function checkVersionSync() {
 
 // Guard 2: host permissions and content_scripts coverage must match between manifests.
 // Intentional MV2/MV3 structural differences allowed: background service_worker vs scripts,
-// action vs browser_action, web_accessible_resources format, and firefox-only
-// webRequest/webRequestBlocking.
+// action vs browser_action, and web_accessible_resources format. Host permission sets are
+// now identical across both — no browser-only exceptions.
 function checkManifestParity() {
   const chrome = JSON.parse(readFileSync(join(__dirname, 'src', 'manifests', 'chrome.json'), 'utf8'))
   const firefox = JSON.parse(readFileSync(join(__dirname, 'src', 'manifests', 'firefox.json'), 'utf8'))
 
   // --- host permissions ---
   // Chrome MV3: split into host_permissions[]. Firefox MV2: folded into permissions[].
-  // Firefox-only non-host perms (webRequest/webRequestBlocking) are intentional — allow them.
-  const FIREFOX_ONLY_PERMS = new Set(['webRequest', 'webRequestBlocking'])
-  // static-cdn.jtvnw.net is a host_permission only in Firefox (MV2 blocking
-  // webRequest redirect: fake FFZ emote id -> real Twitch CDN). Chrome MV3 reaches
-  // it via connect-src only — background.js fetch()es twitch profile pics for notif
-  // icons (toNotifIconDataUrl) and jtvnw serves them CORS-readable, so no chrome
-  // host permission is needed (avoids a host-perm re-grant prompt on update).
-  const FIREFOX_ONLY_HOSTS = new Set(['https://static-cdn.jtvnw.net/*'])
   const URL_PATTERN = /^https?:\/\//
 
   const chromeHosts = new Set([
     ...(chrome.host_permissions || []),
     ...(chrome.permissions || []).filter((p) => URL_PATTERN.test(p)),
   ])
-  const firefoxHosts = new Set(
-    (firefox.permissions || []).filter(
-      (p) => URL_PATTERN.test(p) && !FIREFOX_ONLY_PERMS.has(p) && !FIREFOX_ONLY_HOSTS.has(p),
-    ),
-  )
+  const firefoxHosts = new Set((firefox.permissions || []).filter((p) => URL_PATTERN.test(p)))
 
   const onlyInChrome = [...chromeHosts].filter((h) => !firefoxHosts.has(h))
   const onlyInFirefox = [...firefoxHosts].filter((h) => !chromeHosts.has(h))

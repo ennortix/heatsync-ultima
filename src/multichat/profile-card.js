@@ -1304,7 +1304,11 @@ async function pcToggleFollow(profileId, username, currentlyFollowing) {
   }
   _patchProfileCacheRel(username, { youFollow: targetFollowing, isFollowing: targetFollowing })
   try {
-    const resp = await apiFetch(`/api/follow/${encodeURIComponent(profileId)}`, { method, auth: true })
+    // kick_ ids need the username hint — the server can't resolve a kick id
+    // to a profile on its own (app-token API limitation); it verifies the pair.
+    const hint = method === 'POST' && username && /^kick_\d+$/.test(String(profileId))
+      ? `?kickUsername=${encodeURIComponent(username)}` : ''
+    const resp = await apiFetch(`/api/follow/${encodeURIComponent(profileId)}${hint}`, { method, auth: true })
     if (!resp?.ok) {
       const msg = String(resp?.error || '').toLowerCase()
       if (!msg.includes('already following') && !msg.includes('not following')) {

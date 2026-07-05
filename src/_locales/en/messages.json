@@ -682,21 +682,6 @@
   "mc_poll_optional": {
     "message": "optional"
   },
-  "mc_chat_mode_emote_only": {
-    "message": "emote-only"
-  },
-  "mc_chat_mode_follower": {
-    "message": "followers-only"
-  },
-  "mc_chat_mode_slow": {
-    "message": "slow mode"
-  },
-  "mc_chat_mode_sub_only": {
-    "message": "subscribers-only"
-  },
-  "mc_chat_mode_unique": {
-    "message": "unique chat"
-  },
   "mc_error_no_permission": {
     "message": "no permission"
   },
@@ -776,15 +761,6 @@
   },
   "mc_reward_redeem": {
     "message": "redeem"
-  },
-  "mc_chat_username_color": {
-    "message": "username color"
-  },
-  "mc_chat_hex_placeholder": {
-    "message": "#hex"
-  },
-  "mc_chat_modes": {
-    "message": "chat modes"
   },
   "mc_chat_hype_train": {
     "message": "hype train"

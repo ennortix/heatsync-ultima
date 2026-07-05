@@ -16700,6 +16700,7 @@ const HS_NOTE_MAX = 2000 // chars — bounded so storage can't be griefed by a p
 let _hsnNotes = new Map()
 let _hsnIndex = new Map()
 let _hsnLoaded = false
+let _hsnLoadPromise = null // resolves once the initial storage read completes
 
 function _hsnHasStorage() {
   return typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local
@@ -16756,28 +16757,67 @@ function _hsnPersist() {
 }
 
 function _hsnLoad() {
-  if (_hsnLoaded || !_hsnHasStorage()) {
+  if (_hsnLoadPromise) return _hsnLoadPromise
+  if (!_hsnHasStorage()) {
     _hsnLoaded = true
-    return
+    _hsnLoadPromise = Promise.resolve()
+    return _hsnLoadPromise
   }
-  try {
-    chrome.storage.local.get(HS_NOTES_KEY, (d) => {
-      const raw = d && d[HS_NOTES_KEY]
-      if (raw && typeof raw === 'object') {
-        if (raw.notes && typeof raw.notes === 'object') {
-          for (const [k, v] of Object.entries(raw.notes)) {
-            if (v && typeof v.text === 'string') _hsnNotes.set(k, { text: v.text, updatedAt: v.updatedAt || 0 })
+  _hsnLoadPromise = new Promise((resolve) => {
+    try {
+      chrome.storage.local.get(HS_NOTES_KEY, (d) => {
+        const raw = d && d[HS_NOTES_KEY]
+        if (raw && typeof raw === 'object') {
+          if (raw.notes && typeof raw.notes === 'object') {
+            for (const [k, v] of Object.entries(raw.notes)) {
+              if (v && typeof v.text === 'string') _hsnNotes.set(k, { text: v.text, updatedAt: v.updatedAt || 0 })
+            }
+          }
+          if (raw.index && typeof raw.index === 'object') {
+            for (const [k, v] of Object.entries(raw.index)) if (typeof v === 'string') _hsnIndex.set(k, v)
           }
         }
-        if (raw.index && typeof raw.index === 'object') {
-          for (const [k, v] of Object.entries(raw.index)) if (typeof v === 'string') _hsnIndex.set(k, v)
+        _hsnLoaded = true
+        resolve()
+      })
+    } catch {
+      _hsnLoaded = true
+      resolve()
+    }
+  })
+  return _hsnLoadPromise
+}
+
+// Cross-tab merge — chrome.storage.local has no per-key transactions, and
+// _hsnPersist writes a full snapshot of THIS tab's model. Without this, a tab
+// that saves a note before ever loading another tab's note persists a payload
+// missing that note, erasing it on the other tab's next read. Mirrors
+// mentions.js's onChanged wiring, adapted to merge a Map: last-write-wins per
+// note by updatedAt, and a remote note this tab has never seen is always
+// adopted. Deliberately never deletes a local note just because it's absent
+// from a remote payload — that payload only reflects the OTHER tab's (possibly
+// partial) view, so treating absence as "deleted" would just relocate the
+// wipe. (Trade-off: a delete can be resurrected by a tab that loaded the note
+// before the delete and saves later — no tombstone in the wire format yet.)
+if (typeof window !== 'undefined' && _hsnHasStorage() && !window._hsnOnChangedWired) {
+  window._hsnOnChangedWired = true
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local' || !changes[HS_NOTES_KEY]) return
+    const raw = changes[HS_NOTES_KEY].newValue
+    if (!raw || typeof raw !== 'object') return
+    if (raw.notes && typeof raw.notes === 'object') {
+      for (const [k, v] of Object.entries(raw.notes)) {
+        if (!v || typeof v.text !== 'string') continue
+        const local = _hsnNotes.get(k)
+        if (!local || (v.updatedAt || 0) >= (local.updatedAt || 0)) {
+          _hsnNotes.set(k, { text: v.text, updatedAt: v.updatedAt || 0 })
         }
       }
-      _hsnLoaded = true
-    })
-  } catch {
-    _hsnLoaded = true
-  }
+    }
+    if (raw.index && typeof raw.index === 'object') {
+      for (const [k, v] of Object.entries(raw.index)) if (typeof v === 'string') _hsnIndex.set(k, v)
+    }
+  })
 }
 
 // ── public API ──────────────────────────────────────────────────────────────
@@ -16801,6 +16841,7 @@ function hsNoteHas(username, platform) {
 
 /** Create/update a note. Async so it can pull the fullest alias set. Empty text deletes. */
 async function hsNoteSave(username, platform, text, nowMs) {
+  await _hsnLoad() // never build a snapshot from a model the initial read hasn't populated yet
   const clean = String(text == null ? '' : text)
     .slice(0, HS_NOTE_MAX)
     .trim()
@@ -16817,6 +16858,7 @@ async function hsNoteSave(username, platform, text, nowMs) {
 
 /** Delete a note and every alias pointer at it. */
 async function hsNoteDelete(username, platform) {
+  await _hsnLoad()
   const aliases = await _hsnAliasesAsync(username, platform)
   const canonical = _hsnCanonicalFor(aliases)
   if (!canonical) return false
@@ -16986,6 +17028,7 @@ function _hsNoteResetForTest() {
   _hsnNotes = new Map()
   _hsnIndex = new Map()
   _hsnLoaded = true
+  _hsnLoadPromise = Promise.resolve()
 }
 
 
@@ -18371,8 +18414,10 @@ class IRC {
                 reply_to_id: msg.replyTo?.id || null,
               },
             })
-            .catch(() => {})
-        } catch {}
+            .catch((e) => log('archive relay failed:', e?.message || e))
+        } catch (e) {
+          log('archive relay failed:', e?.message || e)
+        }
       }
       if (msg.type === 'notice') {
         // An unban retires any prior ban/timeout notice for this target so the
@@ -18852,7 +18897,7 @@ class KickChat {
         .map((m) => this._serializeMsg(m))
         .filter(Boolean)
       const p = chrome.storage.local.set({ [`hs_kick_${ch}`]: { msgs, ts: Date.now() } })
-      if (p && typeof p.catch === 'function') p.catch(() => {})
+      if (p && typeof p.catch === 'function') p.catch((e) => log('Kick history persist failed:', ch, e?.message || e))
     } catch {}
   }
 
@@ -21303,6 +21348,14 @@ async function _removeEmoteFromInventory(emoteName, targetEl) {
 }
 
 function handleRemoveSuccess(emoteName) {
+  // Capture BEFORE the delete below strips the entry — keeps this emote's
+  // history resolvable so the viewer's own past messages that used it still
+  // render the image (as unadded, not owned) instead of raw text after a
+  // refresh. Mirrors blockEmote's capture-before-mutate pattern; this entry
+  // is guaranteed present here since the only caller (input.js) gates the
+  // remove path on inventoryEmotes.has(emoteName).
+  const _re = viewerPersonalEmotes.get(emoteName)
+  if (_re?.url) rememberRemovedEmote(emoteName, _re.url, _re.source, _re.zeroWidth)
   inventoryEmotes.delete(emoteName)
   inventoryHashes.delete(emoteName)
   viewerPersonalEmotes.delete(emoteName)
@@ -21652,7 +21705,13 @@ async function syncBlockToAPI(emoteName, block) {
         hash: hash,
         emoteName: emoteName,
       })
-      .catch(() => {})
+      .catch((e) => {
+        log('block sync failed:', e?.message || e)
+        showToast(
+          `${block ? 'block' : 'unblock'} not saved to your account — will differ on other devices`,
+          'error',
+        )
+      })
     log('Synced', block ? 'block' : 'unblock', emoteName, '(hash:', hash.substring(0, 8) + '...) to API')
   } catch (e) {
     log('API sync error:', e)
@@ -24178,6 +24237,8 @@ async function showUserTooltip(targetEl, username, color, platform) {
       if (rTwitch && typeof renderBadges === 'function') nativeBadges += renderBadges(rTwitch.badges, rTwitch.channel)
       const rKick = recent.find((m) => m.platform === 'kick' && m.badges)
       if (rKick && typeof renderBadges === 'function') nativeBadges += renderBadges(rKick.badges, rKick.channel, 'kick')
+      const rYt = recent.find((m) => m.platform === 'youtube' && m.badges)
+      if (rYt && typeof renderBadges === 'function') nativeBadges += renderBadges(rYt.badges, rYt.channel, 'youtube')
     } catch {}
     const platRow =
       platform === 'kick'
@@ -24543,8 +24604,14 @@ function showLinkTooltip(e, url) {
   // Fetch from background
   _linkFetchInFlight = url
   safeSendMessage({ type: 'fetch_link_preview', url }).then((data) => {
-    _linkPreviewCache.set(url, data)
-    while (_linkPreviewCache.size > 500) _linkPreviewCache.delete(_linkPreviewCache.keys().next().value)
+    // Only cache a real hit. Caching `null` here would make one transient
+    // failure (timeout, network blip) permanently kill previews for this
+    // URL for the rest of the session — leave it uncached so the next hover
+    // just retries.
+    if (data) {
+      _linkPreviewCache.set(url, data)
+      while (_linkPreviewCache.size > 500) _linkPreviewCache.delete(_linkPreviewCache.keys().next().value)
+    }
     if (_linkFetchInFlight === url) _linkFetchInFlight = null
     if (_linkHoverUrl === url && tip.classList.contains('visible')) {
       renderLinkPreview(tip, data, url)
@@ -24559,8 +24626,12 @@ function prefetchLinkPreview(url) {
   if (!url || _linkPreviewCache.has(url)) return
   safeSendMessage({ type: 'fetch_link_preview', url })
     .then((data) => {
-      _linkPreviewCache.set(url, data)
-      while (_linkPreviewCache.size > 500) _linkPreviewCache.delete(_linkPreviewCache.keys().next().value)
+      // See showLinkTooltip: don't cache a failed lookup so a later real
+      // hover on this URL gets a fresh retry instead of a permanent miss.
+      if (data) {
+        _linkPreviewCache.set(url, data)
+        while (_linkPreviewCache.size > 500) _linkPreviewCache.delete(_linkPreviewCache.keys().next().value)
+      }
     })
     .catch(() => {})
 }
@@ -24762,7 +24833,6 @@ function renderQuickLinks() {
       show: true,
       items: [
         { action: 'sub', accent: '#e91916', icon: ICONS.sub, label: 'subscribe', direct: true },
-        { action: 'clip', accent: '#bf94ff', icon: ICONS.clip, label: 'create clip', direct: true, audience: 'mod' },
         { action: 'popout', accent: '#4a90d9', icon: ICONS.popout, label: 'popout chat', direct: true },
       ],
     },
@@ -24929,224 +24999,6 @@ function renderQuickLinks() {
   return wrap
 }
 
-// ═══ Chat Color Picker ═══
-
-const TWITCH_COLORS = [
-  { name: 'Red', hex: '#FF0000' },
-  { name: 'Blue', hex: '#0000FF' },
-  { name: 'Green', hex: '#00FF00' },
-  { name: 'FireBrick', hex: '#B22222' },
-  { name: 'Coral', hex: '#FF7F50' },
-  { name: 'YellowGreen', hex: '#9ACD32' },
-  { name: 'OrangeRed', hex: '#FF4500' },
-  { name: 'SeaGreen', hex: '#2E8B57' },
-  { name: 'GoldenRod', hex: '#DAA520' },
-  { name: 'Chocolate', hex: '#D2691E' },
-  { name: 'CadetBlue', hex: '#5F9EA0' },
-  { name: 'DodgerBlue', hex: '#1E90FF' },
-  { name: 'HotPink', hex: '#FF69B4' },
-  { name: 'BlueViolet', hex: '#8A2BE2' },
-  { name: 'SpringGreen', hex: '#00FF7F' },
-]
-
-function renderColorPicker() {
-  const section = document.createElement('div')
-  section.className = 'hs-mc-color-picker'
-
-  const header = document.createElement('div')
-  header.className = 'hs-mc-rewards-header'
-  const label = document.createElement('span')
-  label.className = 'hs-mc-rewards-label'
-  label.textContent = t('mc_chat_username_color')
-  header.appendChild(label)
-
-  const currentEl = document.createElement('span')
-  currentEl.className = 'hs-mc-color-current'
-  currentEl.id = 'hs-mc-current-color'
-  header.appendChild(currentEl)
-  section.appendChild(header)
-
-  const grid = document.createElement('div')
-  grid.className = 'hs-mc-color-grid'
-
-  for (const c of TWITCH_COLORS) {
-    const swatch = document.createElement('div')
-    swatch.className = 'hs-mc-color-swatch'
-    swatch.style.backgroundColor = c.hex
-    swatch.title = c.name
-    swatch.dataset.color = c.name
-    grid.appendChild(swatch)
-  }
-
-  // Custom hex input
-  const custom = document.createElement('div')
-  custom.className = 'hs-mc-color-custom'
-  const hexInput = document.createElement('input')
-  hexInput.type = 'text'
-  hexInput.placeholder = t('mc_chat_hex_placeholder')
-  hexInput.className = 'hs-mc-color-hex'
-  hexInput.id = 'hs-mc-color-hex-input'
-  hexInput.maxLength = 7
-  custom.appendChild(hexInput)
-  const hexBtn = document.createElement('div')
-  hexBtn.className = 'hs-mc-color-apply'
-  hexBtn.textContent = 'set'
-  hexBtn.id = 'hs-mc-color-hex-btn'
-  custom.appendChild(hexBtn)
-
-  section.appendChild(grid)
-  section.appendChild(custom)
-  return section
-}
-
-function attachColorHandlers() {
-  const container = document.getElementById('hs-mc-tab-twitch')
-  if (!container) return
-
-  // Fetch current color
-  helixRequest('https://api.twitch.tv/helix/chat/color?user_id={me}').then((resp) => {
-    if (resp.ok && resp.data?.data?.[0]?.color) {
-      const el = document.getElementById('hs-mc-current-color')
-      if (el) {
-        el.style.backgroundColor = resp.data.data[0].color
-        el.title = resp.data.data[0].color
-      }
-    }
-  })
-
-  // Preset swatches
-  container.querySelectorAll('.hs-mc-color-swatch').forEach((swatch) => {
-    swatch.addEventListener('click', async () => {
-      const color = swatch.dataset.color
-      const resp = await helixRequest(
-        `https://api.twitch.tv/helix/chat/color?user_id={me}&color=${encodeURIComponent(color)}`,
-        'PUT',
-      )
-      if (resp.ok) {
-        showToast('color: ' + color, 'success')
-        const el = document.getElementById('hs-mc-current-color')
-        if (el) {
-          el.style.backgroundColor = swatch.style.backgroundColor
-          el.title = color
-        }
-      } else {
-        showToast('color failed: ' + (resp.error || 'unknown'), 'error')
-      }
-    })
-  })
-
-  // Custom hex
-  const hexBtn = document.getElementById('hs-mc-color-hex-btn')
-  const hexInput = document.getElementById('hs-mc-color-hex-input')
-  if (hexBtn && hexInput) {
-    hexBtn.addEventListener('click', async () => {
-      const color = hexInput.value.trim()
-      if (!/^#[0-9a-f]{6}$/i.test(color)) {
-        showToast('invalid hex — use #RRGGBB', 'error')
-        return
-      }
-      const resp = await helixRequest(
-        `https://api.twitch.tv/helix/chat/color?user_id={me}&color=${encodeURIComponent(color)}`,
-        'PUT',
-      )
-      if (resp.ok) {
-        showToast('color: ' + color, 'success')
-        const el = document.getElementById('hs-mc-current-color')
-        if (el) {
-          el.style.backgroundColor = color
-          el.title = color
-        }
-      } else {
-        showToast('color failed: ' + (resp.error || 'color change failed'), 'error')
-      }
-    })
-  }
-}
-
-// ═══ Chat Modes (mod/broadcaster) ═══
-
-async function renderChatModes(channel) {
-  const section = document.createElement('div')
-  section.className = 'hs-mc-chat-modes'
-  section.id = 'hs-mc-chat-modes'
-
-  // Resolve broadcaster ID
-  const userResp = await helixRequest(`https://api.twitch.tv/helix/users?login=${encodeURIComponent(channel)}`)
-  if (!userResp.ok || !userResp.data?.data?.[0]) return null
-  const broadcasterId = userResp.data.data[0].id
-
-  // Fetch current settings (fails with 403 if not mod — that's expected)
-  const settingsResp = await helixRequest(
-    `https://api.twitch.tv/helix/chat/settings?broadcaster_id=${broadcasterId}&moderator_id={me}`,
-  )
-  if (!settingsResp.ok || !settingsResp.data?.data?.[0]) return null
-  const s = settingsResp.data.data[0]
-
-  const header = document.createElement('div')
-  header.className = 'hs-mc-rewards-header'
-  const label = document.createElement('span')
-  label.className = 'hs-mc-rewards-label'
-  label.textContent = t('mc_chat_modes')
-  header.appendChild(label)
-  section.appendChild(header)
-
-  const modes = [
-    { key: 'emote_mode', label: t('mc_chat_mode_emote_only'), field: 'emote_mode' },
-    { key: 'follower_mode', label: t('mc_chat_mode_follower'), field: 'follower_mode' },
-    { key: 'slow_mode', label: t('mc_chat_mode_slow'), field: 'slow_mode' },
-    { key: 'subscriber_mode', label: t('mc_chat_mode_sub_only'), field: 'subscriber_mode' },
-    { key: 'unique_chat_mode', label: t('mc_chat_mode_unique'), field: 'unique_chat_mode' },
-  ]
-
-  const grid = document.createElement('div')
-  grid.className = 'hs-mc-modes-grid'
-
-  for (const mode of modes) {
-    const btn = document.createElement('div')
-    btn.className = 'hs-mc-mode-btn' + (s[mode.field] ? ' active' : '')
-    btn.textContent = mode.label
-    btn.dataset.mode = mode.key
-    btn.dataset.broadcasterId = broadcasterId
-    btn.dataset.active = s[mode.field] ? '1' : '0'
-    grid.appendChild(btn)
-  }
-
-  section.appendChild(grid)
-  return section
-}
-
-function attachModeHandlers() {
-  const container = document.getElementById('hs-mc-tab-twitch')
-  if (!container) return
-
-  container.querySelectorAll('.hs-mc-mode-btn').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const mode = btn.dataset.mode
-      const broadcasterId = btn.dataset.broadcasterId
-      const newVal = btn.dataset.active !== '1'
-      const body = { [mode]: newVal }
-      if (mode === 'slow_mode' && newVal) body.slow_mode_wait_time = 3
-      if (mode === 'follower_mode' && newVal) body.follower_mode_duration = 10
-
-      const resp = await helixRequest(
-        `https://api.twitch.tv/helix/chat/settings?broadcaster_id=${broadcasterId}&moderator_id={me}`,
-        'PATCH',
-        body,
-      )
-      if (resp.ok) {
-        btn.dataset.active = newVal ? '1' : '0'
-        btn.classList.toggle('active', newVal)
-      } else {
-        showToast('mode failed: ' + (resp.error || 'unknown'), 'error')
-      }
-    })
-  })
-}
-
-// Set one or more Twitch chat modes (follower/slow/emote/subscriber/unique) via
-// Helix PATCH /chat/settings — same endpoint + scope the mode buttons use.
-// `body` is the raw Helix payload, e.g. { follower_mode: true, follower_mode_duration: 30 }.
-// Returns { ok } or { ok:false, error } so callers can toast uniformly.
 // Set twitch followers-only mode via GQL (SetFollowersOnlyModeSetting). The web
 // client can't call Helix /chat/settings (404), so we use the same GQL persisted
 // mutation twitch.tv itself fires. minutes: -1 = off, 0 = any follower, N = N min.
@@ -26397,9 +26249,6 @@ const HS_TW_ICON_BITS_PATHS = [
   'M13 9a1 1 0 0 0-1 1l7 7-14 5-3-3L7 5l3.438 3.438A2.998 2.998 0 0 1 13 7h2v2h-2Zm-5.18-.351-.725 2.03 3.762 7.106 2.572-.92-2.934-5.542L7.82 8.649Zm-2.976 8.334 1.235-3.458 2.67 5.012-2.592.926-1.313-2.48Z',
 ]
 const HS_TW_ICON_PRED_PATHS = ['M3 3h2v18H3V3Zm4 10h2v8H7v-8Zm4-6h2v14h-2V7Zm4 9h2v5h-2v-5Zm4-12h2v17h-2V4Z']
-const HS_TW_ICON_CHAT_PATHS = [
-  'M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z',
-]
 const HS_TW_ICON_LINKS_PATHS = ['M14 3h7v7h-2V6.41l-9.3 9.3-1.4-1.42L17.58 5H14V3Zm-4 3H4v14h14v-6h2v8H2V4h8v2Z']
 
 function hsTwBuildIconSvg(paths, size) {
@@ -26424,7 +26273,6 @@ function buildTwSubtabBar() {
   const items = [
     { id: 'predictions', label: 'events', paths: HS_TW_ICON_PRED_PATHS },
     { id: 'bits', label: 'bits', paths: HS_TW_ICON_BITS_PATHS },
-    { id: 'chat', label: 'chat tools', paths: HS_TW_ICON_CHAT_PATHS },
     { id: 'links', label: 'quick links', paths: HS_TW_ICON_LINKS_PATHS },
   ]
   for (const it of items) {
@@ -26481,21 +26329,6 @@ async function renderTwitchTab() {
 
   if (_hsTwSubtab === 'bits') {
     renderBitsSubtab(content, channel)
-    stopPredictionPoll()
-    return
-  }
-
-  if (_hsTwSubtab === 'chat') {
-    content.appendChild(renderColorPicker())
-    const modesSlot = document.createElement('div')
-    content.appendChild(modesSlot)
-    attachColorHandlers()
-    renderChatModes(channel).then((modesEl) => {
-      if (modesEl) {
-        modesSlot.appendChild(modesEl)
-        attachModeHandlers()
-      }
-    })
     stopPredictionPoll()
     return
   }
@@ -26827,31 +26660,6 @@ function triggerTwitchFeature(action) {
     return true
   }
 
-  if (action === 'clip') {
-    // Create clip via Helix API
-    ;(async () => {
-      const userResp = await helixRequest(`https://api.twitch.tv/helix/users?login=${encodeURIComponent(channel)}`)
-      if (!userResp.ok || !userResp.data?.data?.[0]) {
-        showToast('could not resolve channel', 'error')
-        return
-      }
-      const broadcasterId = userResp.data.data[0].id
-      const resp = await helixRequest(`https://api.twitch.tv/helix/clips?broadcaster_id=${broadcasterId}`, 'POST')
-      if (resp.ok && resp.data?.data?.[0]) {
-        const editUrl = resp.data.data[0].edit_url
-        const clipId = resp.data.data[0].id
-        showToast('clip created ' + clipId, 'success')
-        // Copy clip URL to clipboard
-        try {
-          await navigator.clipboard.writeText(editUrl || `https://clips.twitch.tv/${clipId}`)
-        } catch {}
-      } else {
-        showToast('clip failed: ' + (resp.error || 'stream must be live'), 'error')
-      }
-    })()
-    return true
-  }
-
   const actions = {
     popout: { url: `https://www.twitch.tv/popout/${channel}/chat?popout=`, opts: 'width=400,height=600' },
     mod: { url: `https://www.twitch.tv/moderator/${channel}`, opts: 'width=1200,height=800' },
@@ -27109,38 +26917,6 @@ window.addEventListener(
   },
   { signal: mcSignal },
 )
-
-// Send Helix API request through MAIN world (uses captured OAuth token)
-// URL can contain {me} which resolves to the logged-in user's ID
-function helixRequest(url, method, body) {
-  return new Promise((resolve) => {
-    const id = Math.random().toString(36).slice(2)
-    const ac = new AbortController()
-    const signal = mcSignal ? AbortSignal.any([mcSignal, ac.signal]) : ac.signal
-    const handler = (e) => {
-      if (e.source !== window || e.origin !== location.origin) return
-      if (e.data?.type === 'heatsync-helix-response' && e.data.id === id) {
-        ac.abort()
-        clearTimeout(timer)
-        resolve(e.data)
-      }
-    }
-    window.addEventListener('message', handler, { signal })
-    const msg = {
-      type: 'heatsync-helix',
-      id,
-      url,
-      method: method || 'GET',
-      nonce: window.HS?.getMainWorldNonce?.() || null,
-    }
-    if (body) msg.body = body
-    window.postMessage(msg, location.origin)
-    const timer = setTimeout(() => {
-      ac.abort()
-      resolve({ error: 'helix timeout — refresh the page' })
-    }, 15000)
-  })
-}
 
 // Send GQL request through MAIN world proxy (uses captured hashes + integrity)
 function gqlProxy(operation, variables, opts) {
@@ -39169,9 +38945,11 @@ async function handleSlashCommand(text, input) {
       showToast('usage: /mute <user>')
       return true
     }
-    // platform unknown from slash command — null platform → userKey returns bare
+    // platform unknown from slash command — expandUserAliasKeys does both the
+    // sync local-link fan-out AND the async server-linked-account fan-out, same
+    // as right-click mute (_toggleMcMute); null platform → userKey returns bare
     // key, so /mute stays global (correct: no platform context from bare name).
-    const aliasKeys = typeof getUserAliasKeys === 'function' ? getUserAliasKeys(u, null) : [u]
+    const aliasKeys = typeof expandUserAliasKeys === 'function' ? await expandUserAliasKeys(u, null) : [u]
     const already = typeof isUserMuted === 'function' ? isUserMuted(u, null) : mutedUsers.has(u)
     if (already) {
       showToast(`${u} already muted`)
@@ -39193,7 +38971,9 @@ async function handleSlashCommand(text, input) {
       showToast('usage: /unmute <user>')
       return true
     }
-    const aliasKeys = typeof getUserAliasKeys === 'function' ? getUserAliasKeys(u, null) : [u]
+    // Same async fan-out as /mute and right-click mute — covers server-linked
+    // accounts, not just sync-local links.
+    const aliasKeys = typeof expandUserAliasKeys === 'function' ? await expandUserAliasKeys(u, null) : [u]
     const wasMuted = typeof isUserMuted === 'function' ? isUserMuted(u, null) : mutedUsers.has(u)
     if (!wasMuted) {
       showToast(`${u} not muted`)
@@ -40337,7 +40117,10 @@ async function setUserNote(username, text) {
   for (const [k, v] of _userNotes) blob[k] = v
   try {
     await chrome.storage.local.set({ hs_user_notes: blob })
-  } catch {}
+  } catch (e) {
+    if (typeof showToast === 'function') showToast('note not saved — try again', 'error')
+    console.error('[heatsync] user note persist failed:', e)
+  }
 }
 
 async function openProfileCard(username, platform) {
@@ -45962,16 +45745,41 @@ function _renderBackupGroup() {
 // Reads chatFilterRules (JSON string) from getSetting, renders an editor with
 // per-rule rows + an add-rule form. Wired into the click/change handlers below.
 
+var _filterRulesCorrupted = false
+
 function _getRawFilterRules() {
   var raw = getSetting('chatFilterRules') || '[]'
-  var arr = []
+  var arr
   try {
     arr = JSON.parse(raw)
-  } catch {}
-  return Array.isArray(arr) ? arr : []
+  } catch (e) {
+    if (!_filterRulesCorrupted) {
+      _filterRulesCorrupted = true
+      console.error('[heatsync] chatFilterRules JSON parse failed:', e)
+      showToast('filter rules corrupted — editing disabled until reload', 'error')
+    }
+    return []
+  }
+  if (!Array.isArray(arr)) {
+    if (!_filterRulesCorrupted) {
+      _filterRulesCorrupted = true
+      console.error('[heatsync] chatFilterRules is not an array:', arr)
+      showToast('filter rules corrupted — editing disabled until reload', 'error')
+    }
+    return []
+  }
+  _filterRulesCorrupted = false
+  return arr
 }
 
 function _saveFilterRules(rules) {
+  // _getRawFilterRules() returns [] both for "no rules yet" and "corrupted
+  // JSON" — refuse to write in the corrupted case, or the next add/edit
+  // would silently persist over (and permanently lose) the unreadable blob.
+  if (_filterRulesCorrupted) {
+    showToast('filter rules corrupted — reload the page before editing', 'error')
+    return
+  }
   var json = JSON.stringify(rules)
   saveUiSetting('chatFilterRules', json)
   var parsed = []

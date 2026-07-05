@@ -655,8 +655,8 @@
 
   // ═══ Nonce-based request authentication ═══
   // content.js (ISOLATED world) generates a random nonce on load and sends it here via
-  // heatsync-init-nonce. All subsequent heatsync-gql-request / heatsync-helix /
-  // heatsync-apollo-mutate messages must carry a matching nonce field.
+  // heatsync-init-nonce. All subsequent heatsync-gql-request / heatsync-apollo-mutate
+  // messages must carry a matching nonce field.
   //
   // ARCHITECTURAL CONSTRAINT: this script runs in MAIN world (shared with the page), so
   // window.postMessage and the init-nonce message are observable by page JS. A nonce
@@ -671,12 +671,8 @@
 
   // Rate-limit state for privileged proxy handlers.
   // Window: 10 s, cap: 10 calls per window (legit use is occasional, user-driven).
-  // Separate rate buckets per proxy op: helix reads burst during multi-channel
-  // boot (per-channel users/settings/color lookups — a 10+ channel multichat can
-  // fire dozens in the first seconds), so it gets generous headroom that only a
-  // runaway exfil loop would hit. Apollo mutations are user-driven (mod/prediction
-  // actions) and rare, so they keep a tight cap to blunt spoofed-nonce spam.
-  const _helixRate = { ts: [], windowMs: 10000, max: 120 }
+  // Apollo mutations are user-driven (mod/prediction actions) and rare, so
+  // this keeps a tight cap to blunt spoofed-nonce spam.
   const _mutateRate = { ts: [], windowMs: 10000, max: 10 }
   function _proxyAllowed(bucket) {
     const now = Date.now()
@@ -925,126 +921,6 @@
         } catch (err) {
           log('apollo-mutate: exception=' + err.message)
           respond({ error: err.message })
-        }
-      })()
-      return
-    }
-
-    // Generic Helix API proxy — content scripts route through MAIN world for OAuth
-    if (e.data?.type === 'heatsync-helix') {
-      if (!_hsNonce || e.data.nonce !== _hsNonce) {
-        log('heatsync-helix: rejected — missing or invalid nonce')
-        window.postMessage({ type: 'heatsync-helix-response', id: e.data.id, error: 'invalid nonce' }, location.origin)
-        return
-      }
-      if (!_proxyAllowed(_helixRate)) {
-        log('heatsync-helix: rate limit exceeded')
-        window.postMessage(
-          { type: 'heatsync-helix-response', id: e.data.id, error: 'rate limit exceeded' },
-          location.origin,
-        )
-        return
-      }
-      const req = e.data
-      ;(async () => {
-        try {
-          // Explicit endpoint+method allowlist. The MAIN-world nonce can't be a
-          // true secret (this realm is shared with the page), so a co-resident
-          // hostile script could forge a proxy message. This caps the blast
-          // radius to exactly the calls the extension makes — a forged message
-          // cannot reach ban/delete/update-channel with the user's OAuth token.
-          const HELIX_ALLOW = [
-            ['GET', '/helix/chat/color'],
-            ['PUT', '/helix/chat/color'],
-            ['GET', '/helix/users'],
-            ['GET', '/helix/chat/settings'],
-            ['PATCH', '/helix/chat/settings'],
-            ['POST', '/helix/clips'],
-          ]
-          let reqUrl = null
-          try {
-            reqUrl = new URL(req.url)
-          } catch {}
-          const reqMethod = (req.method || 'GET').toUpperCase()
-          if (
-            !reqUrl ||
-            reqUrl.origin !== 'https://api.twitch.tv' ||
-            !HELIX_ALLOW.some(([m, p]) => m === reqMethod && reqUrl.pathname === p)
-          ) {
-            log('heatsync-helix: endpoint not allowed — ' + reqMethod + ' ' + (req.url || ''))
-            window.postMessage(
-              { type: 'heatsync-helix-response', id: req.id, error: 'endpoint not allowed' },
-              location.origin,
-            )
-            return
-          }
-          if (!getAuthToken()) {
-            window.postMessage(
-              { type: 'heatsync-helix-response', id: req.id, error: 'not logged into twitch' },
-              location.origin,
-            )
-            return
-          }
-          const cid = gql.clientId || 'kimne78kx3ncx6brgo4mv6wki5h1ko'
-
-          // Resolve {me} placeholder in URL to cached user ID
-          let url = req.url
-          if (url.includes('{me}')) {
-            if (!gql.userId) {
-              // Use GQL (same-origin) instead of Helix (cross-origin, blocked by CORS)
-              try {
-                const gqlResp = await origFetch('https://gql.twitch.tv/gql', {
-                  method: 'POST',
-                  headers: buildGqlHeaders(),
-                  body: JSON.stringify({ query: '{ currentUser { id login } }' }),
-                })
-                if (gqlResp.ok) {
-                  const gqlData = await gqlResp.json()
-                  const cu = gqlData?.data?.currentUser
-                  if (cu?.id) {
-                    gql.userId = cu.id
-                    gql.userLogin = cu.login
-                    if (cu.id && cu.login) setChannelId(cu.id, cu.login.toLowerCase())
-                  }
-                }
-              } catch {}
-            }
-            if (!gql.userId) {
-              window.postMessage(
-                { type: 'heatsync-helix-response', id: req.id, error: 'could not resolve user ID' },
-                location.origin,
-              )
-              return
-            }
-            url = url.replace(/\{me\}/g, gql.userId)
-          }
-
-          const hdrs = { Authorization: 'Bearer ' + getAuthToken(), 'Client-Id': cid }
-          if (req.body) hdrs['Content-Type'] = 'application/json'
-          const resp = await origFetch(url, {
-            method: req.method || 'GET',
-            headers: hdrs,
-            body: req.body ? JSON.stringify(req.body) : undefined,
-          })
-          if (resp.status === 204) {
-            window.postMessage({ type: 'heatsync-helix-response', id: req.id, ok: true }, location.origin)
-          } else {
-            const data = await resp.json().catch(() => null)
-            if (resp.ok) {
-              window.postMessage({ type: 'heatsync-helix-response', id: req.id, ok: true, data }, location.origin)
-            } else {
-              window.postMessage(
-                {
-                  type: 'heatsync-helix-response',
-                  id: req.id,
-                  error: `${resp.status}: ${data?.message || JSON.stringify(data)}`,
-                },
-                location.origin,
-              )
-            }
-          }
-        } catch (err) {
-          window.postMessage({ type: 'heatsync-helix-response', id: req.id, error: err.message }, location.origin)
         }
       })()
       return

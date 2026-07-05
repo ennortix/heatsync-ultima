@@ -10067,12 +10067,11 @@ function injectStyles() {
       inset: 4px;
       border-radius: 0;
       opacity: 0;
-      /* Opacity stays untransitioned (kept snappy on cross-highlight class
-         toggles); background-color fades 0.25s so block↔unblock during
-         hover smoothly cross-fades. z-index 0 + img positioned above
-         (rule below) means the rect sits BEHIND the emote — white hover
-         bg with the emote on top, matching project hover convention. */
-      transition: background-color 0.25s ease-out;
+      /* Instant, no fade — the block/state tint must appear the moment you
+         hover, not ease in over 0.25s. z-index 0 + img positioned above (rule
+         below) means the rect sits BEHIND the emote — white hover bg with the
+         emote on top, matching project hover convention. */
+      transition: none;
       z-index: 0;
       pointer-events: none;
     }
@@ -10133,7 +10132,7 @@ function injectStyles() {
     .hs-mc-emote-wrapper.hs-state-stale > img {
       opacity: 0.55;
       filter: saturate(0.45);
-      transition: opacity 0.2s ease-out, filter 0.2s ease-out;
+      transition: none;
     }
     .hs-mc-emote-wrapper.hs-state-stale:hover > img {
       opacity: 1;
@@ -23206,34 +23205,32 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
 
     // FFZ semantic: modifier attaches to the IMMEDIATELY PRECEDING emote.
     // Kappa RainTime w! → wide RainTime (not Kappa).
+    // FFZ modifiers attach to the IMMEDIATELY PRECEDING emote. If there's no
+    // emote in the current stack to attach to (e.g. the base failed to resolve
+    // from a cold cache after a refresh), the modifier is ORPHANED — it must
+    // render as literal text, NOT be silently swallowed. Swallowing it into
+    // pendingMods (the old behavior) dropped it entirely when no following emote
+    // consumed it — the reported "WideBirdge ffzW ..." → plain "WideBirdge"
+    // repeated, every ffzW eaten. So each modifier branch only consumes the token
+    // when _lastItem() exists; otherwise it falls through to the text path below.
     const modKind = HS_MC_MODS[word]
-    if (modKind) {
-      const last = _lastItem()
-      if (last) last.mods.push(modKind)
-      else pendingMods.push(modKind)
+    if (modKind && _lastItem()) {
+      _lastItem().mods.push(modKind)
       pendingWhitespace = ''
       continue
     }
     const cMatchTok = word.match(HS_MC_C_RE)
-    if (cMatchTok) {
-      const hue = _hsMcHexToHue(cMatchTok[1])
-      const last = _lastItem()
-      if (last) last.hue = hue
-      else pendingHue = hue
+    if (cMatchTok && _lastItem()) {
+      _lastItem().hue = _hsMcHexToHue(cMatchTok[1])
       pendingWhitespace = ''
       continue
     }
     // Peel chained modifier word (e.g. "w!h!ffzX" or "w!c!#888h!")
-    const _hsPeel = hsModPeelChain(word)
+    const _hsPeel = _lastItem() ? hsModPeelChain(word) : null
     if (_hsPeel) {
       const last = _lastItem()
-      if (last) {
-        for (const m of _hsPeel.mods) last.mods.push(m)
-        if (_hsPeel.hue != null) last.hue = _hsPeel.hue
-      } else {
-        for (const m of _hsPeel.mods) pendingMods.push(m)
-        if (_hsPeel.hue != null) pendingHue = _hsPeel.hue
-      }
+      for (const m of _hsPeel.mods) last.mods.push(m)
+      if (_hsPeel.hue != null) last.hue = _hsPeel.hue
       pendingWhitespace = ''
       continue
     }

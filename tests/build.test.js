@@ -120,16 +120,28 @@ t('all firefox content script files exist in dist', () => {
 // gated catches): yt native chat was dead 04-27→07-05, heatsync-button lost
 // its SPA-nav/retry timers.
 
-const CLEANUP_BINDING = 'const cleanup = window.heatsyncCleanup'
-
+// Minification-tolerant: release CI verifies MINIFIED dist, where the local
+// binding may be renamed — but the window.heatsyncCleanup property access
+// always survives, and every cleanup consumer is lib-bundled (COPY_FILES
+// scripts use no cleanup), so its presence proves the lib (and with it the
+// scope binding) is in the bundle.
 for (const dir of [DIST_CHROME, DIST_FIREFOX]) {
-  t(`every ${dir === DIST_CHROME ? 'chrome' : 'firefox'} bundle using cleanup has the binding`, () => {
+  t(`every ${dir === DIST_CHROME ? 'chrome' : 'firefox'} bundle using cleanup carries the lib`, () => {
     const m = readManifest(dir)
     for (const file of collectScripts(m)) {
       const src = readFileSync(join(dir, file), 'utf8')
       if (/\bcleanup\./.test(src)) {
-        expect(src.includes(CLEANUP_BINDING) || /const cleanup = \{/.test(src)).toBe(true)
+        expect(/window\.heatsyncCleanup/.test(src)).toBe(true)
       }
     }
   })
 }
+
+// Source-level: the binding line itself must stay in cleanup.js — without it,
+// bare `cleanup` is a ReferenceError in every bundle that doesn't declare its
+// own (the 04-27→07-05 dead-yt-surface bug). Not gated on HS_VERIFY_DIST:
+// this reads source, not build output.
+test('src/lib/cleanup.js re-exports the bundle-scope cleanup binding', () => {
+  const src = readFileSync(join(ROOT, 'src', 'lib', 'cleanup.js'), 'utf8')
+  expect(/\nconst cleanup = window\.heatsyncCleanup\s*$/m.test(src)).toBe(true)
+})

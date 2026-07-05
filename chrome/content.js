@@ -2301,6 +2301,12 @@
     width: auto !important;
     height: auto !important;
     z-index: 2 !important;
+    /* Cancel the adjacent-emote -3px gap-pull above: the overlay is a
+       .heatsync-emote-wrapper sibling of the base, so that rule matched it and
+       shifted it 3px left of centre (on an absolutely-positioned box the margin
+       applies as a full-px offset, not halved). Centring is done by left:50% +
+       translate, so any margin just de-centres it. */
+    margin-left: 0 !important;
     /* pointer-events: auto so wide overlays can be hovered directly */
     pointer-events: auto !important;
   }

@@ -9772,6 +9772,13 @@ function injectStyles() {
       width: auto;
       height: auto;
       max-height: var(--hs-emote-size, 32px);
+      /* The host page (Twitch/Kick) sets a global img{max-width:100%}. When the
+         wrapper carries a pinned width (wAttr from the box-width cache), that 100%
+         resolves against the pinned width and a WIDE emote gets scaled down to fit
+         it — the reported "chillWide renders squished". Clear it so a wide emote
+         always draws at its true width, exactly like .hs-mc-overlay-emote already
+         does. Harmless for normal emotes (never wider than their clamped height). */
+      max-width: none;
       vertical-align: middle;
       margin: 0;
       padding: 2px;
@@ -22751,7 +22758,10 @@ function hsSnapEmoteBox(img) {
     // Read every width first, then write — one layout pass per frame.
     for (const it of items) it.w = Math.ceil(it.box.getBoundingClientRect().width)
     for (const it of items) {
-      if (!it.w) continue
+      // Skip a mid-flight / fallback-swapping image: measuring + caching its box
+      // now would pin a width from a transitional (or not-yet-decoded) asset under
+      // the stable emote-url key, and a later render would apply that wrong width.
+      if (!it.w || !it.im.complete || !it.im.naturalWidth) continue
       const px = it.w + 'px'
       if (it.box.style.width !== px) it.box.style.width = px
       // Don't cache overlay emote URLs — the measured box is the outer stack

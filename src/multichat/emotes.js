@@ -2891,7 +2891,10 @@ function hsSnapEmoteBox(img) {
     // Read every width first, then write — one layout pass per frame.
     for (const it of items) it.w = Math.ceil(it.box.getBoundingClientRect().width)
     for (const it of items) {
-      if (!it.w) continue
+      // Skip a mid-flight / fallback-swapping image: measuring + caching its box
+      // now would pin a width from a transitional (or not-yet-decoded) asset under
+      // the stable emote-url key, and a later render would apply that wrong width.
+      if (!it.w || !it.im.complete || !it.im.naturalWidth) continue
       const px = it.w + 'px'
       if (it.box.style.width !== px) it.box.style.width = px
       // Don't cache overlay emote URLs — the measured box is the outer stack

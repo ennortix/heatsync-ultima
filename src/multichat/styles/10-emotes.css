@@ -2,6 +2,13 @@
       width: auto;
       height: auto;
       max-height: var(--hs-emote-size, 32px);
+      /* The host page (Twitch/Kick) sets a global img{max-width:100%}. When the
+         wrapper carries a pinned width (wAttr from the box-width cache), that 100%
+         resolves against the pinned width and a WIDE emote gets scaled down to fit
+         it — the reported "chillWide renders squished". Clear it so a wide emote
+         always draws at its true width, exactly like .hs-mc-overlay-emote already
+         does. Harmless for normal emotes (never wider than their clamped height). */
+      max-width: none;
       vertical-align: middle;
       margin: 0;
       padding: 2px;

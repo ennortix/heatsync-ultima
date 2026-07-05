@@ -13,12 +13,12 @@
 // equal an unrelated twitch numeric id — see heatsync_userid_collision_kick_twitch
 // in project memory), so the guard here is structural, not a value check: the
 // bare/raw platform-native id must NEVER reach queuePaintLookup — every id it
-// receives must already be either a resolved twitch id or a `kick_`-prefixed
-// namespaced id. There are exactly two call sites, both already correct:
+// receives must already be either a resolved twitch id or a `kick_`/`yt_`-
+// prefixed namespaced id. There are exactly three call sites, all correct:
 //   1. queueMcCosmeticsLookup (main.js) — the same choke point 7TV cosmetics
 //      uses. Twitch chatters reach it with their native twitch id (that IS
-//      twitch-id-space). Kick/YouTube chatters reach it only with a RESOLVED
-//      twitch id (see flushYtNameLookups in main.js, which sets m.userId to
+//      twitch-id-space). Kick chatters reach it only with a RESOLVED twitch
+//      id (see flushYtNameLookups in cosmetics.js, which sets m.userId to
 //      the linked twitch id returned by the 7TV youtube lookup) — never a
 //      bare kick/yt id.
 //   2. flushKickNameLookups (cosmetics.js) — mints `kick_` + the numeric kick
@@ -28,7 +28,14 @@
 //      would misroute it into the 7TV/twitch cosmetics pipeline). The bare
 //      numeric kick id from that response is used ONLY to build the
 //      namespaced string — it never reaches queuePaintLookup on its own.
-// Do not add a third call site, and never widen either of the two above to
+//   3. social.js's youtube_chat_message handler — mints `yt_` + the author's
+//      UC… channel id directly off the incoming message (msg.authorChannelId)
+//      and calls queuePaintLookup with that namespaced string as soon as the
+//      message arrives, before any twitch-link resolution. This is why
+//      flushYtNameLookups' own 7TV-cosmetics fallback (cosmetics.js) reuses
+//      the exact same `yt_<UCid>` string as its mcUserCosmetics key instead
+//      of minting a second namespace for the same identity.
+// Do not add a fourth call site, and never widen any of the three above to
 // accept an unnamespaced platform-native id.
 //
 // Pipeline:

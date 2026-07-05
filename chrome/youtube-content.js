@@ -268,9 +268,12 @@
   const YT_COSMETICS_MAX = 500
   const YT_COSMETICS_PENDING_MAX = 8
 
-  // username → { paint, badge, fetchedAt } | null (null = no profile/no cosmetics)
+  // username → { paint, badge, fetchedAt } | null (null = no profile/no cosmetics
+  // via twitch AND no cosmetics via the yt-google fallback)
   const ytCosmeticsCache = new Map()
-  const ytCosmeticsPending = new Set()
+  // username → channelId (UC id, or null if not yet seen) — carried from queue
+  // time to flush time so the google-id fallback has something to look up.
+  const ytCosmeticsPending = new Map()
   let ytCosmeticsBatchTimer = null
 
   function get7TVBadgeUrl(badge) {
@@ -368,12 +371,12 @@
     }
   }
 
-  function queueYtCosmeticsLookup(username) {
+  function queueYtCosmeticsLookup(username, channelId) {
     if (!username) return
     const cached = ytCosmeticsCache.get(username)
     if (cached !== undefined && Date.now() - (cached?.fetchedAt ?? 0) < YT_COSMETICS_TTL) return
     if (ytCosmeticsPending.has(username)) return
-    ytCosmeticsPending.add(username)
+    ytCosmeticsPending.set(username, channelId || null)
     if (ytCosmeticsPending.size >= YT_COSMETICS_PENDING_MAX) {
       if (ytCosmeticsBatchTimer) {
         clearTimeout(ytCosmeticsBatchTimer)
@@ -411,13 +414,13 @@
 
   async function flushYtCosmeticsBatch() {
     if (ytCosmeticsPending.size === 0) return
-    const batch = [...ytCosmeticsPending].slice(0, YT_COSMETICS_PENDING_MAX)
-    batch.forEach((u) => ytCosmeticsPending.delete(u))
+    const entries = [...ytCosmeticsPending].slice(0, YT_COSMETICS_PENDING_MAX)
+    entries.forEach(([u]) => ytCosmeticsPending.delete(u))
 
     const now = Date.now()
 
     await Promise.all(
-      batch.map(async (username) => {
+      entries.map(async ([username, channelId]) => {
         try {
           // Step 1: resolve heatsync profile → twitch_id
           const profileResp = await safeSendMessage({
@@ -426,25 +429,46 @@
             method: 'GET',
           })
           const twitchId = profileResp?.data?.twitch_id || profileResp?.twitch_id || null
-          if (!twitchId) {
-            // Cache null so we don't refetch for 30min
+          if (twitchId) {
+            // Step 2a: fetch 7TV cosmetics via the twitch-id path
+            const cosmeticResp = await safeSendMessage({
+              type: 'get_user_cosmetics',
+              twitchIds: [twitchId],
+            })
+            const cosmetic = cosmeticResp?.cosmetics?.[twitchId] || null
             evictYtCache()
-            ytCosmeticsCache.set(username, { paint: null, badge: null, fetchedAt: now })
+            ytCosmeticsCache.set(username, {
+              paint: cosmetic?.paint || null,
+              badge: cosmetic?.badge || null,
+              fetchedAt: now,
+            })
             return
           }
 
-          // Step 2: fetch 7TV cosmetics via existing background handler
-          const cosmeticResp = await safeSendMessage({
-            type: 'get_user_cosmetics',
-            twitchIds: [twitchId],
-          })
-          const cosmetic = cosmeticResp?.cosmetics?.[twitchId] || null
+          // No linked Twitch account — fall back to 7TV's YouTube/"google" id
+          // space so yt-only chatters still get their paint/badge. A missing
+          // twitch_id must never get cached as a bare negative here; it has
+          // to fall through to this lookup every time before landing on a
+          // real result (positive or genuine double-negative).
+          if (channelId) {
+            const googleResp = await safeSendMessage({
+              type: 'get_youtube_user_cosmetics',
+              channelIds: [channelId],
+            })
+            const cosmetic = googleResp?.cosmetics?.[channelId] || null
+            evictYtCache()
+            ytCosmeticsCache.set(username, {
+              paint: cosmetic?.paint || null,
+              badge: cosmetic?.badge || null,
+              fetchedAt: now,
+            })
+            return
+          }
+
+          // Neither twitch_id nor a resolvable channel id — genuinely nothing
+          // to look up. Cache null so we don't refetch for 30min.
           evictYtCache()
-          ytCosmeticsCache.set(username, {
-            paint: cosmetic?.paint || null,
-            badge: cosmetic?.badge || null,
-            fetchedAt: now,
-          })
+          ytCosmeticsCache.set(username, { paint: null, badge: null, fetchedAt: now })
         } catch (e) {
           log('yt cosmetics fetch failed for', username, e?.message)
           evictYtCache()
@@ -454,7 +478,7 @@
     )
 
     // Apply to any already-rendered messages waiting on cosmetics
-    applyPendingYtCosmetics(batch)
+    applyPendingYtCosmetics(entries.map(([u]) => u))
 
     // Drain remainder if any
     if (ytCosmeticsPending.size > 0 && !ytCosmeticsBatchTimer) {
@@ -631,6 +655,17 @@
     return badges.length > 0 ? badges : undefined
   }
 
+  // YT's live-chat renderer elements bind the raw innertube renderer JSON to
+  // a `.data` property (not a DOM attribute) — `authorExternalChannelId` is
+  // the message author's real UC... channel id. Verified live: it's present
+  // on text/paid-message/membership renderers alike. UC ids are base64url
+  // (can contain '-'/'_'), so validate with the same regex background.js
+  // uses for the 7TV google-id lookup — never a no-hyphen guard.
+  function extractAuthorChannelId(el) {
+    const id = el.data?.authorExternalChannelId
+    return typeof id === 'string' && /^UC[\w-]{20,}$/i.test(id) ? id : null
+  }
+
   function extractMessage(el) {
     const authorEl = el.querySelector('#author-name')
     // Fall through selectors and prefer the first one with non-whitespace
@@ -655,6 +690,7 @@
     const color = extractColor(authorEl)
     const avatar = extractAvatar(el)
     const badges = extractBadges(el)
+    const channelId = extractAuthorChannelId(el)
 
     let text = ''
     const emotes = []
@@ -676,7 +712,7 @@
     text = text.trim()
     if (!text) return null
 
-    return { user, text, emotes, color, avatar, badges }
+    return { user, text, emotes, color, avatar, badges, channelId }
   }
 
   const SUPPORTED_RENDERERS = new Set([
@@ -754,7 +790,7 @@
         if (cached.paint || cached.badge) applyYtCosmeticsToMessage(node, msg.user)
       } else {
         // Queue a profile lookup (deduped, batched)
-        queueYtCosmeticsLookup(msg.user)
+        queueYtCosmeticsLookup(msg.user, msg.channelId)
       }
     }
 
@@ -775,6 +811,10 @@
       emotes: msg.emotes.length > 0 ? msg.emotes : undefined,
       avatar: msg.avatar || undefined,
       badges: msg.badges,
+      // Author's real UC… channel id — social.js uses this for the yt_<UCid>
+      // HeatSync paint uid AND (see cosmetics.js flushYtNameLookups) the 7TV
+      // google-id cosmetics fallback for chatters with no linked Twitch.
+      authorChannelId: msg.channelId || undefined,
     }
 
     if (msgType === 'superchat') {

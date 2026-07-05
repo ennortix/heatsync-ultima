@@ -109,6 +109,45 @@ function ytNameKey(user) {
   return (user || '').toLowerCase().replace(/^@/, '')
 }
 
+// Recover a yt username's UC… channel id without threading it through
+// main.js's queueYtNameToTwitchId call site (main.js is off-limits for this
+// change). The id is already riding every yt message as social.js's
+// `yt_<UCid>` hsPaintUid — read it back off whichever rendered row or
+// buffered message this username last appeared in, same lookup shape as the
+// data-uid backfill below.
+function findYtChannelIdForUser(key) {
+  const fromPaintUid = (puid) => (typeof puid === 'string' && puid.startsWith('yt_') ? puid.slice(3) : null)
+  const container = document.getElementById('hs-mc-messages')
+  if (container) {
+    const sel = `.hs-mc-msg .hs-mc-user[data-platform="yt"][data-username="${CSS.escape('@' + key)}"], .hs-mc-msg .hs-mc-user[data-platform="yt"][data-username="${CSS.escape(key)}"]`
+    for (const userEl of container.querySelectorAll(sel)) {
+      const found = fromPaintUid(userEl.closest('.hs-mc-msg')?.dataset.hsPaintUid)
+      if (found) return found
+    }
+  }
+  const scanBuf = (buf) => {
+    if (!buf) return null
+    for (const m of buf) {
+      if (m && m.platform === 'youtube' && m.user && ytNameKey(m.user) === key) {
+        const found = fromPaintUid(m.hsPaintUid)
+        if (found) return found
+      }
+    }
+    return null
+  }
+  if (typeof channelYtMessages !== 'undefined') {
+    for (const buf of channelYtMessages.values()) {
+      const found = scanBuf(buf)
+      if (found) return found
+    }
+  }
+  if (typeof mentionsBuffer !== 'undefined') {
+    const found = scanBuf(mentionsBuffer)
+    if (found) return found
+  }
+  return null
+}
+
 function queueYtNameToTwitchId(user) {
   const key = ytNameKey(user)
   if (!key) return
@@ -183,6 +222,33 @@ async function flushYtNameLookups() {
         // Now feed through the existing cosmetics pipeline; it will resolve
         // 7TV paint/badge and call updateCosmeticsInPlace which paints by uid.
         if (!mcUserCosmetics.has(tidStr)) queueMcCosmeticsLookup(tidStr)
+        return
+      }
+
+      // No linked Twitch account — a twitch-miss must never mask a possible
+      // 7TV google-id hit, so fall back to 7TV's YouTube/"google" id space
+      // right here rather than caching a bare negative and stopping. The
+      // uid stays namespaced (`yt_<UCid>`) and never touches the twitch-space
+      // _uidIndex/data-uid path (ID-SPACE SAFETY, see paints.js) — it applies
+      // via the same data-hs-paint-uid rows social.js already stamps.
+      // Best-effort: by flush time the triggering message is virtually always
+      // already rendered/buffered (this only fires once per username — see
+      // ytNameToTwitchId.has(key) above — so there's no later retry if the
+      // scan comes up empty on a very fast-scrolling chat).
+      const channelId = findYtChannelIdForUser(key)
+      if (!channelId) return
+      const ytUid = `yt_${channelId}`
+      if (mcUserCosmetics.has(ytUid)) return
+      let googleResp = null
+      try {
+        googleResp = await safeSendMessage({ type: 'get_youtube_user_cosmetics', channelIds: [channelId] })
+      } catch {
+        googleResp = null
+      }
+      const cosmetic = googleResp?.cosmetics?.[channelId]
+      if (cosmetic) {
+        setMcCosmetic(ytUid, cosmetic)
+        updateCosmeticsInPlace([ytUid])
       }
     } catch {
       evictYtNameCache()
@@ -441,7 +507,8 @@ function updateHsPaintsInPlace(userIds) {
 // the full message container — at 25-user batches × 500 children that was
 // 50 full DOM scans per cosmetic flush.
 function updateCosmeticsInPlace(userIds) {
-  if (!document.getElementById('hs-mc-messages')) return
+  const container = document.getElementById('hs-mc-messages')
+  if (!container) return
   for (const uid of userIds) {
     const cosmetic = mcUserCosmetics.get(uid)
     if (!cosmetic) continue
@@ -458,7 +525,14 @@ function updateCosmeticsInPlace(userIds) {
         for (const mention of mentionSet) mention.setAttribute('style', paintStyle)
       }
     }
-    const divSet = _uidIndex.get(uid)
+    // A `yt_<UCid>` uid (flushYtNameLookups' google-id fallback for yt
+    // chatters with no linked Twitch) is never in data-uid — that attribute
+    // stays twitch-id-space only (ID-SPACE SAFETY, paints.js) — so it's never
+    // in _uidIndex either. Find its rows via the parallel data-hs-paint-uid
+    // attribute social.js already stamps, same technique updateHsPaintsInPlace
+    // uses for kick_ ids.
+    const isNamespacedUid = uid.startsWith('yt_')
+    const divSet = isNamespacedUid ? container.querySelectorAll(`[data-hs-paint-uid="${CSS.escape(uid)}"]`) : _uidIndex.get(uid)
     if (!divSet) continue
     for (const div of divSet) {
       // Update paint on the SENDER's username link — exclude the reply

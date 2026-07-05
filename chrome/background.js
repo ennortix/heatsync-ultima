@@ -7879,6 +7879,55 @@ async function handleMessage(message, sender, sendResponse) {
       sendResponse({ cosmetics: result })
     })()
     return true
+  } else if (message.type === 'get_youtube_user_cosmetics') {
+    // Per-chatter 7TV cosmetics for YouTube-only accounts (no linked Twitch).
+    // 7TV files YouTube under the "google" platform slug keyed by the real UC
+    // channel id (see fetch7TVChannelEmotes's youtube branch for the id-format
+    // rationale). Mirrors get_kick_user_cosmetics: direct-to-7TV from the BG SW
+    // (no server proxy exists for non-twitch platforms — cosmetics.ts only
+    // validates numeric twitch ids), same cache/TTL posture, own key prefix so
+    // it can never collide with a twitch_id or a kick_id.
+    const channelIds = Array.from(
+      new Set((message.channelIds || []).filter((id) => /^UC[\w-]{20,}$/i.test(String(id || '')))),
+    ).slice(0, 25)
+    ;(async () => {
+      const result = {}
+      await Promise.all(
+        channelIds.map(async (ucid) => {
+          const cacheKey = `yt:${ucid}`
+          const cached = userCosmeticsCache.get(cacheKey)
+          const isNegative = cached && !cached.paint && !cached.badge
+          const ttl = isNegative ? COSMETICS_NEGATIVE_TTL : USER_COSMETICS_TTL
+          if (cached && Date.now() - cached.fetchedAt < ttl) {
+            result[ucid] = { paint: cached.paint, badge: cached.badge }
+            return
+          }
+          try {
+            const resp = await fetchWithTimeout(`https://7tv.io/v3/users/google/${ucid}`)
+            if (resp.status === 404) {
+              resp.body?.cancel?.()
+              setUserCosmetic(cacheKey, null) // genuine: no 7TV account
+              result[ucid] = null
+              return
+            }
+            if (!resp.ok) {
+              resp.body?.cancel?.()
+              result[ucid] = null // transient: don't cache 5xx
+              return
+            }
+            const data = await resp.json()
+            const ids7tv = extract7TVCosmeticIds(data)
+            const cosmetic = await resolve7TVCosmeticIds(ids7tv)
+            setUserCosmetic(cacheKey, cosmetic)
+            result[ucid] = cosmetic
+          } catch (e) {
+            result[ucid] = null // transient: network/timeout — don't cache
+          }
+        }),
+      )
+      sendResponse({ cosmetics: result })
+    })()
+    return true
   } else if (message.type === 'fetch_paints') {
     // Relay for GET /api/paints?ids=... (public, ≤50/batch) — CRITICAL: this
     // must stay a BG fetch, never a content-script one. Cross-origin

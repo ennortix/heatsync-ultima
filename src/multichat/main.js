@@ -11874,10 +11874,12 @@
         const msgsEl = document.getElementById('hs-mc-messages')
         const rows = msgsEl?.querySelectorAll(`.hs-mc-msg[data-msg-user]`) || []
         for (const row of rows) {
-          if ((row.dataset.msgUser || '').toLowerCase() === targetLc) {
-            if (dimTimeouts) row.classList.add('hs-mc-msg-cleared')
-            row.title = msg.banDuration ? `timed out (${msg.banDuration}s)` : 'banned'
-          }
+          if ((row.dataset.msgUser || '').toLowerCase() !== targetLc) continue
+          // Don't cross-dim a same-named user on another platform (kick ban must
+          // not dim a twitch "bob"). Skip only when BOTH platforms are known.
+          if (msg.platform && row.dataset.msgPlatform && msg.platform !== row.dataset.msgPlatform) continue
+          if (dimTimeouts) row.classList.add('hs-mc-msg-cleared')
+          row.title = msg.banDuration ? `timed out (${msg.banDuration}s)` : 'banned'
         }
       }
       if (msg.type === 'notice' && msg.noticeType === 'delete_message_success' && msg.targetMsgId) {

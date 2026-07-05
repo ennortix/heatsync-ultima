@@ -18938,6 +18938,80 @@ class KickChat {
         this.emit('message', msg)
       }
 
+      // Kick moderation (ban/timeout/delete/unban) observed on the Pusher tap —
+      // reflect it like Twitch's CLEARCHAT/CLEARMSG: flag the offender's buffer
+      // entries `cleared` (so re-renders keep the dim) and emit a notice-shaped
+      // message so main.js's irc.on('message') dims the live DOM, prints the
+      // system line, and records the mod-action log — all shared, platform-blind.
+      if (message.type === 'kick_moderation' && message.channel) {
+        const channel = message.channel.toLowerCase()
+        if (!this.channels.has(channel)) return
+        const buf = this.channels.get(channel)
+        const action = message.action
+        const targetLc = (message.targetUser || '').toLowerCase()
+        if ((action === 'ban' || action === 'timeout') && targetLc) {
+          const reason = message.banDuration ? `timed out (${message.banDuration}s)` : 'banned'
+          for (const m of buf.getAll()) {
+            if (!m.cleared && (m.user || '').toLowerCase() === targetLc) {
+              m.cleared = true
+              m.clearedReason = reason
+            }
+          }
+        } else if (action === 'delete' && message.targetMsgId) {
+          for (const m of buf.getAll()) {
+            if (m.id === message.targetMsgId && !m.cleared) {
+              m.cleared = true
+              m.clearedReason = 'deleted'
+              break
+            }
+          }
+        } else if (action === 'unban' && targetLc) {
+          // Best-effort un-dim: only lift ban/timeout dims (not deletes).
+          for (const m of buf.getAll()) {
+            if (m.cleared && (m.user || '').toLowerCase() === targetLc && m.clearedReason !== 'deleted') {
+              m.cleared = false
+              delete m.clearedReason
+            }
+          }
+        }
+        this.persistBuffer(channel)
+        const target = message.targetUser || ''
+        const noticeType =
+          action === 'delete'
+            ? 'delete_message_success'
+            : action === 'unban'
+              ? 'unban_success'
+              : action === 'timeout'
+                ? 'timeout_success'
+                : 'ban_success'
+        const text =
+          action === 'delete'
+            ? `a message was deleted`
+            : action === 'unban'
+              ? `${target} was unbanned`
+              : action === 'timeout'
+                ? `${target} timed out for ${message.banDuration}s`
+                : `${target} was banned`
+        this.emit('message', {
+          type: 'notice',
+          noticeType,
+          platform: 'kick',
+          channel,
+          user: 'system',
+          text,
+          systemMsg: text,
+          color: '#808080',
+          badges: '',
+          time: Date.now(),
+          id: `kickmod-${channel}-${target || message.targetMsgId || ''}-${noticeType}-${Date.now()}`,
+          targetUser: target,
+          targetUserId: message.targetUserId || '',
+          targetMsgId: message.targetMsgId || '',
+          banDuration: message.banDuration || 0,
+        })
+        return
+      }
+
       // KICKs gifted events (Kick's equivalent of Twitch Bits)
       if (message.type === 'kick_kicks_event') {
         const channel = message.channel?.toLowerCase()
@@ -60972,10 +61046,12 @@ const STORAGE_KEY = 'heatsync_multichat'
         const msgsEl = document.getElementById('hs-mc-messages')
         const rows = msgsEl?.querySelectorAll(`.hs-mc-msg[data-msg-user]`) || []
         for (const row of rows) {
-          if ((row.dataset.msgUser || '').toLowerCase() === targetLc) {
-            if (dimTimeouts) row.classList.add('hs-mc-msg-cleared')
-            row.title = msg.banDuration ? `timed out (${msg.banDuration}s)` : 'banned'
-          }
+          if ((row.dataset.msgUser || '').toLowerCase() !== targetLc) continue
+          // Don't cross-dim a same-named user on another platform (kick ban must
+          // not dim a twitch "bob"). Skip only when BOTH platforms are known.
+          if (msg.platform && row.dataset.msgPlatform && msg.platform !== row.dataset.msgPlatform) continue
+          if (dimTimeouts) row.classList.add('hs-mc-msg-cleared')
+          row.title = msg.banDuration ? `timed out (${msg.banDuration}s)` : 'banned'
         }
       }
       if (msg.type === 'notice' && msg.noticeType === 'delete_message_success' && msg.targetMsgId) {

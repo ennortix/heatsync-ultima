@@ -10526,6 +10526,12 @@ function _kpConnect() {
       for (const id of _kpChannels.values()) _kpSubscribe(id) // (re)assert all subs
     } else if (typeof d.event === 'string' && d.event.includes('ChatMessageEvent')) {
       _kpHandleChatEvent(d)
+    } else if (typeof d.event === 'string' && d.event.includes('MessageDeletedEvent')) {
+      _kpHandleModEvent(d, 'delete')
+    } else if (typeof d.event === 'string' && d.event.includes('UserBannedEvent')) {
+      _kpHandleModEvent(d, 'ban')
+    } else if (typeof d.event === 'string' && d.event.includes('UserUnbannedEvent')) {
+      _kpHandleModEvent(d, 'unban')
     }
   }
   _kpWs.onclose = () => {
@@ -10570,9 +10576,59 @@ function _kpHandleChatEvent(d) {
       badges: ev.sender?.identity?.badges || [],
       timestamp: ev.created_at ? Date.parse(ev.created_at) || Date.now() : Date.now(),
       id: ev.id || '',
-      replyTo: null,
+      // Kick threads a reply via metadata.original_sender/original_message — the
+      // server relay already forwards this; the Pusher tap used to drop it (every
+      // tapped reply rendered flat). Match the relay's replyTo shape.
+      replyTo: ev.metadata?.original_message
+        ? {
+            username: ev.metadata.original_sender?.username || 'unknown',
+            content: ev.metadata.original_message.content || '',
+            id: ev.metadata.original_message.id || '',
+          }
+        : null,
     },
   })
+}
+
+// Kick broadcasts moderation on the same chatroom Pusher channel as chat. Mirror
+// Twitch's CLEARCHAT/CLEARMSG so bans/timeouts/deletes by the streamer or ANY
+// mod reflect in the ext (dim the offender's messages + a system line), not just
+// self-actions. Emits a notice-shaped payload the overlay's platform-agnostic
+// mod handler already understands (irc.js → irc.on('message')).
+function _kpHandleModEvent(d, kind) {
+  let ev
+  try {
+    ev = typeof d.data === 'string' ? JSON.parse(d.data) : d.data
+  } catch {
+    return
+  }
+  if (!ev) return
+  const m = /chatrooms\.(\d+)\.v2/.exec(d.channel || '')
+  const slug = m ? _kpSlugForChatroom(Number(m[1])) : null
+  if (!slug) return
+  if (kind === 'delete') {
+    const targetMsgId = ev.message?.id || ev.id || ''
+    if (!targetMsgId) return
+    broadcastToTabs({ type: 'kick_moderation', action: 'delete', channel: slug, targetMsgId: String(targetMsgId) })
+  } else if (kind === 'ban') {
+    const targetUser = ev.user?.username || ''
+    if (!targetUser) return
+    // expires_at present + still future ⇒ timeout; otherwise a permanent ban.
+    const expMs = ev.expires_at ? Date.parse(ev.expires_at) : 0
+    const isTimeout = !!expMs && expMs > Date.now()
+    broadcastToTabs({
+      type: 'kick_moderation',
+      action: isTimeout ? 'timeout' : 'ban',
+      channel: slug,
+      targetUser,
+      targetUserId: ev.user?.id != null ? String(ev.user.id) : '',
+      banDuration: isTimeout ? Math.max(1, Math.round((expMs - Date.now()) / 1000)) : 0,
+    })
+  } else if (kind === 'unban') {
+    const targetUser = ev.user?.username || ''
+    if (!targetUser) return
+    broadcastToTabs({ type: 'kick_moderation', action: 'unban', channel: slug, targetUser })
+  }
 }
 async function kickPusherJoin(slug) {
   if (!KICK_PUSHER_TAP) return

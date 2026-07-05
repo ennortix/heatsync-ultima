@@ -1644,6 +1644,7 @@ const SETTINGS = [
       'tab-complete': true,
       'picker-button': true,
       'right-click-block': true,
+      'native-takeover': true,
     },
     options: [
       {
@@ -1749,6 +1750,14 @@ const SETTINGS = [
         applies: 'live',
         label: 'right-click emote block',
         tip: 'right-click any emote to instantly block it',
+      },
+      {
+        value: 'native-takeover',
+        default: true,
+        color: '#9146ff',
+        applies: 'live',
+        label: 'native chat takeover',
+        tip: 'while the overlay covers twitch chat, stop twitch rendering its hidden copy — big ram save on busy channels. fails open: overlay dies → twitch chat comes back on its own.',
       },
     ],
   },

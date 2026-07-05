@@ -89,7 +89,8 @@
       ],
       "js": [
         "emoji-data.js",
-        "autocomplete-hook.js"
+        "autocomplete-hook.js",
+        "twitch-chat-intercept.js"
       ],
       "run_at": "document_end",
       "world": "MAIN"

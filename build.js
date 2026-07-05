@@ -411,6 +411,7 @@ const COPY_FILES = [
   'popup.js',
   'popup.html',
   'early-inject-main.js',
+  'twitch-chat-intercept.js',
   'kick-nav-watcher.js',
   'youtube-keyboard-guard.js',
   'platform-detector.js',

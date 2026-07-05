@@ -3094,6 +3094,7 @@ const SETTINGS = [
       'tab-complete': true,
       'picker-button': true,
       'right-click-block': true,
+      'native-takeover': true,
     },
     options: [
       {
@@ -3199,6 +3200,14 @@ const SETTINGS = [
         applies: 'live',
         label: 'right-click emote block',
         tip: 'right-click any emote to instantly block it',
+      },
+      {
+        value: 'native-takeover',
+        default: true,
+        color: '#9146ff',
+        applies: 'live',
+        label: 'native chat takeover',
+        tip: 'while the overlay covers twitch chat, stop twitch rendering its hidden copy — big ram save on busy channels. fails open: overlay dies → twitch chat comes back on its own.',
       },
     ],
   },
@@ -19314,6 +19323,114 @@ function startNativeTap(channel) {
       const c = _tapFindContainer()
       if (c && c !== _tapContainer) _tapBind()
     }, 5000)
+  _nsStart()
+}
+
+// ── native chat takeover ─────────────────────────────────────────────────
+// Partner of twitch-chat-intercept.js (MAIN world). While the overlay covers
+// twitch chat, the MAIN-world hook swallows plain chat messages before
+// Twitch's React renders them (the hidden column otherwise piles up untrimmed
+// rows — measured +118MB on a busy channel) and relays each one here via
+// postMessage. This side (a) feeds relayed messages through the same
+// irc._handleMsg path as the DOM tap, and (b) owns the takeover signal: a
+// body-dataset flag plus a heartbeat the MAIN world treats as a dead-man
+// switch — beat goes stale for 45s → Twitch resumes rendering natively.
+// The beat interval deliberately uses cleanup.setInterval, NOT the
+// visibility-gated variant: a hidden tab must KEEP suppressing (that's the
+// biggest RAM case), and overlay teardown clears the interval anyway, which
+// stales the beat and fails open.
+let _nsBeatTimer = null
+let _nsRxBound = false
+
+function _nsTakeoverEnabled() {
+  try {
+    return getSetting('subsystems')?.['native-takeover'] !== false
+  } catch (_) {
+    return true
+  }
+}
+
+function _nsNativeChatVisible() {
+  const c = _tapFindContainer()
+  if (!c) return false
+  try {
+    if (typeof c.checkVisibility === 'function') return c.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })
+  } catch (_) {}
+  return c.getClientRects().length > 0
+}
+
+function _updateNativeSuppress() {
+  const ds = document.body?.dataset
+  if (!ds) return
+  let on = false
+  try {
+    // Suppress only while the overlay exists AND twitch's own chat is
+    // actually invisible — the moment the user reveals native chat (overlay
+    // hidden, position modes that show it, teardown) rendering hands back.
+    on = _nsTakeoverEnabled() && !!document.getElementById('hs-mc-overlay') && !_nsNativeChatVisible()
+  } catch (_) {}
+  if (on) {
+    ds.hsSuppressNative = '1'
+    ds.hsSuppressBeat = String(Date.now())
+  } else if (ds.hsSuppressNative) {
+    ds.hsSuppressNative = '0'
+  }
+}
+
+// Stage counters, window-exposed (isolated world only — invisible to the
+// page) so field debugging can read them over CDP/devtools without a rebuild.
+const _nsStats = { rx: 0, dropOrigin: 0, dropShape: 0, dropNoCh: 0, dropRich: 0, nullMsg: 0, fed: 0, feedErr: 0 }
+try {
+  window.__hsNsStats = _nsStats
+} catch (_) {}
+
+function _nsStart() {
+  if (!_nsRxBound) {
+    _nsRxBound = true
+    cleanup.addEventListener(window, 'message', (e) => {
+      const d = e.data
+      if (!d || d.__hsNativeMsg !== 1 || !d.m) return
+      _nsStats.rx++
+      if (e.source !== window || e.origin !== location.origin) {
+        _nsStats.dropOrigin++
+        return
+      }
+      // channel resolved at receive time — same SPA-nav rationale as the tap
+      let ch = ''
+      try {
+        ch = (getCurrentChannel() || _tapChannel || '').toLowerCase()
+      } catch (_) {}
+      if (!ch) {
+        _nsStats.dropNoCh++
+        return
+      }
+      // richness guard, same as the DOM tap: healthy IRC delivers richer
+      // copies (replies/bits/highlights) — let its copy win the id-dedup.
+      try {
+        const ts = irc?._lastLiveAt?.get?.(ch)
+        if (Array.isArray(ts) && ts.length >= 3 && Date.now() - ts[ts.length - 3] < 10_000) {
+          _nsStats.dropRich++
+          return
+        }
+      } catch (_) {}
+      const msg = _tapToMsg(d.m, ch)
+      if (!msg) {
+        _nsStats.nullMsg++
+        return
+      }
+      _tapStats.mined++
+      try {
+        irc?._handleMsg?.(msg)
+        _nsStats.fed++
+      } catch (_) {
+        _nsStats.feedErr++
+      }
+    })
+  }
+  if (!_nsBeatTimer) {
+    _updateNativeSuppress()
+    _nsBeatTimer = cleanup.setInterval(_updateNativeSuppress, 15000)
+  }
 }
 
 

@@ -36420,6 +36420,20 @@ function handleInputKeydown(e) {
     if (acState.active && acState.matches.length > 0) {
       // Already cycling - next (Tab) or previous (Shift+Tab)
       const len = acState.matches.length
+      // Forward past the last match: if 7TV/BTTV/FFZ hits are still coming (in
+      // flight, or not yet fetched), HOLD instead of wrapping to 1 — the user
+      // asked to keep cycling into remote (13/13 → 14/99), not loop. Once they
+      // append + re-sort (position preserved), the next Tab advances into them.
+      const atEnd = !e.shiftKey && acState.index + 1 >= len
+      const remoteMayCome =
+        acState.remotePending || (!acState.remoteDone && acState.search && acState.search.length >= 2)
+      if (atEnd && remoteMayCome) {
+        if (!acState.remoteDone && !acState.remotePending && acState.search) {
+          fetchRemoteEmoteMatches(acState.search)
+        }
+        showCycleTooltip()
+        return
+      }
       acState.index = (acState.index + (e.shiftKey ? len - 1 : 1)) % len
       insertCompletionKeepOpen(acState.matches[acState.index])
       // Lazy 7TV/BTTV/FFZ search: when you LAND on the last local match (cycling

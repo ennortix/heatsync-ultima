@@ -2029,9 +2029,35 @@
             e.stopImmediatePropagation()
 
             // On FIRST Tab (justCycled false): insert first match (index 0)
-            // On subsequent Tabs: cycle to next match
+            // On subsequent Tabs: cycle to the next match.
             if (justCycled) {
-              cycleState.index = (cycleState.index + 1) % cycleState.matches.length
+              const atEnd = cycleState.index + 1 >= cycleState.matches.length
+              // Could more 7TV catalog hits still arrive? (a fetch is in flight,
+              // or we haven't fetched yet for a fetchable term). If so, DON'T wrap
+              // to the top on reaching the end — the user asked to keep cycling
+              // into 7tv (13/13 → 14/99), not loop back to 1.
+              const remoteMayCome =
+                cycleState.remotePending ||
+                (!cycleState.remoteFetched &&
+                  cycleState.localCount > 0 &&
+                  cycleState.searchTerm &&
+                  cycleState.searchTerm.length >= 2 &&
+                  !cycleState.searchTerm.startsWith(':') &&
+                  !cycleState.searchTerm.startsWith('@'))
+              if (atEnd && remoteMayCome) {
+                // Kick off (or keep waiting on) the 7TV fetch and HOLD here — the
+                // current emote stays inserted; the next Tab, once results have
+                // appended + re-sorted (preserving this position), advances into
+                // 14/99 instead of looping back to 1.
+                if (!cycleState.remoteFetched) {
+                  cycleState.remoteFetched = true
+                  fetch7tvCycleMatches(cycleState.searchTerm)
+                }
+                cycleState.lastTime = now
+                showCycleTooltip(cycleState.index + 1, cycleState.matches.length, cycleState.matches[cycleState.index])
+                return
+              }
+              cycleState.index = atEnd ? 0 : cycleState.index + 1
             } else {
               cycleState.index = 0 // First Tab - start at first match
             }
@@ -2048,9 +2074,10 @@
               justCycled ? '(cycling)' : '(first)',
             )
             showCycleTooltip(cycleState.index + 1, cycleState.matches.length, nextEmote)
-            // Lazy 7TV: once you forward-cycle to the last LOCAL match, pull catalog
-            // hits so the next Tab keeps cycling into 7tv — local matches never hit
-            // the network. Fires once; zero-local words fetch eagerly on rebuild.
+            // Lazy 7TV pre-fetch: fire as soon as you forward-cycle ONTO the last
+            // local match, so catalog hits are usually ready by the Tab that needs
+            // them (the end-of-list hold above is the fallback if you out-tab the
+            // fetch). Fires once; zero-local words fetch eagerly on rebuild.
             if (
               justCycled &&
               !cycleState.remoteFetched &&

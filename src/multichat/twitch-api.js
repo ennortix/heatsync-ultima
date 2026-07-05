@@ -1278,6 +1278,8 @@ let _hypeTrainActive = null // { level, startedAt }
 let _bannerFingerprint = '' // avoid rebuilding if nothing changed
 const _seenPredChannels = new Set() // channels we've fetched at least once
 const _broadcastedPredIds = new Map() // channel → last broadcast pred id
+const _seenPollChannels = new Set() // poll equivalents of the above
+const _broadcastedPollIds = new Map()
 
 // Emit a chat line when a new prediction starts. Suppresses on first observation
 // per channel so opening a tab mid-prediction doesn't spam old events.
@@ -1299,6 +1301,35 @@ function maybeBroadcastNewPrediction(channel, pred) {
         eventType: 'prediction-start',
         channel: ch,
         data: { title: pred.title || '', id: pred.id },
+      },
+      location.origin,
+    )
+  } catch {}
+}
+
+// Polls previously only got the passive chat banner — predictions also fired a
+// "new prediction up" alert line, so a viewer who hid the native poll widget (or
+// just missed the banner) never knew a poll opened. Mirror the prediction alert:
+// dedup per channel, skip the very first fetch (so we don't alert on polls that
+// were already live when you arrived), only fire for ACTIVE polls.
+function maybeBroadcastNewPoll(channel, pollData) {
+  if (!channel) return
+  const ch = String(channel).toLowerCase()
+  const wasSeen = _seenPollChannels.has(ch)
+  _seenPollChannels.add(ch)
+  const newId = pollData?.id || null
+  const prevId = _broadcastedPollIds.get(ch) || null
+  if (newId === prevId) return
+  _broadcastedPollIds.set(ch, newId)
+  if (!wasSeen) return
+  if (!pollData || pollData.status !== 'ACTIVE') return
+  try {
+    window.postMessage(
+      {
+        type: 'heatsync-hermes-event',
+        eventType: 'poll-start',
+        channel: ch,
+        data: { title: pollData.title || '', id: pollData.id },
       },
       location.origin,
     )
@@ -1801,6 +1832,7 @@ async function refreshPollSlot() {
   if (container.querySelector('.hs-mc-poll-create-form[style*="flex"]')) return
   const result = await fetchPoll(channel)
   _lastPollData = result?.poll || result
+  maybeBroadcastNewPoll(channel, _lastPollData)
   updateChatBanners(_lastPredResult, _lastPollData)
 
   let slot = container.querySelector('[data-poll-slot]')

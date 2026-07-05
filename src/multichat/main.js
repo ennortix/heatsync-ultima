@@ -12334,6 +12334,11 @@
           eventClass = 'event-pred'
           const title = data?.title ? ' — ' + escapeHtml(data.title) : ''
           text = `[${escapeHtml(channel)}] ◆ new prediction up${title}`
+        } else if (eventType === 'poll-start') {
+          toggleKey = 'poll'
+          eventClass = 'event-poll'
+          const title = data?.title ? ' — ' + escapeHtml(data.title) : ''
+          text = `[${escapeHtml(channel)}] ◆ new poll up${title}`
         } else return
 
         if (!hermesToggles[toggleKey]) return

@@ -7085,7 +7085,9 @@ async function handleMessage(message, sender, sendResponse) {
     const ytChanKey = /^[\w-]{11}$/.test(ytVid)
       ? ytVid
       : (ytTabUrl.match(/[?&]v=([\w-]{11})/)?.[1] ??
-        (ytTabUrl.match(/youtube\.com\/@([\w.-]{3,30})/) ? `@${ytTabUrl.match(/youtube\.com\/@([\w.-]{3,30})/)[1]}` : null))
+        (ytTabUrl.match(/youtube\.com\/@([\w.-]{3,30})/)
+          ? `@${ytTabUrl.match(/youtube\.com\/@([\w.-]{3,30})/)[1]}`
+          : null))
     if (ytChanKey) {
       ;(async () => {
         if (initPromise) await initPromise

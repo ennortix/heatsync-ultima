@@ -8686,8 +8686,10 @@
           try {
             // kick_ ids need the username hint — the server can't resolve a
             // kick id to a profile on its own; it verifies the pair.
-            const hint = method === 'POST' && username && /^kick_\d+$/.test(String(profileId))
-              ? `?kickUsername=${encodeURIComponent(username)}` : ''
+            const hint =
+              method === 'POST' && username && /^kick_\d+$/.test(String(profileId))
+                ? `?kickUsername=${encodeURIComponent(username)}`
+                : ''
             await HS.apiFetch(`/api/follow/${encodeURIComponent(profileId)}${hint}`, { method, auth: true })
             following = targetFollowing
           } catch (e) {

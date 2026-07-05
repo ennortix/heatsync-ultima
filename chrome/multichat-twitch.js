@@ -30696,7 +30696,12 @@ function listenForSocialEvents() {
         avatar: msg.avatar || undefined,
         badges: msg.badges || undefined,
         systemMsg: msg.systemMsg || undefined,
+        // Namespaced heatsync paint uid from the author's UC… id. Same contract
+        // as kick's kickNamePaintUid path: NEVER via queueMcCosmeticsLookup
+        // (twitch-space only) — queued directly below.
+        hsPaintUid: /^UC[A-Za-z0-9_-]{22}$/.test(msg.authorChannelId || '') ? `yt_${msg.authorChannelId}` : undefined,
       }
+      if (ytMsg.hsPaintUid && typeof queuePaintLookup === 'function') queuePaintLookup(ytMsg.hsPaintUid)
 
       // Echo dedup + host-platform badge attribution (matches IRC/kick
       // handlers). Without this, a triple-target send would render TWO

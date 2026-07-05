@@ -5155,6 +5155,10 @@ function handleWSMessage(msg) {
             avatar: ytMsg.avatar || undefined,
             badges: ytMsg.badges || undefined,
             systemMsg: ytMsg.systemMsg || undefined,
+            // author's UC… channel id — yt_<id> paint/identity lookups. NEVER
+            // put this in userId (twitch-space only, see paints.js ID-SPACE
+            // SAFETY) — it rides its own field.
+            authorChannelId: ytMsg.authorChannelId || undefined,
             source: 'server',
             replay: isReplay,
           })

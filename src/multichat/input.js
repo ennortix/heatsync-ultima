@@ -3723,14 +3723,21 @@ function scanAndApplyModifiersInInput(input) {
 //   4. shorter prefix-match > longer        (Kap → Kappa before KappaPride)
 //   5. recency for @user matches, then alpha
 function compareAcMatches(a, b, searchLower, frecency) {
-  const al = a.remote ? 1 : 0,
-    bl = b.remote ? 1 : 0
-  if (al !== bl) return al - bl
   const an = a.name || '',
     bn = b.name || ''
+  // Exact-name match wins over EVERYTHING — even above the local/remote split.
+  // A channel 7TV emote often surfaces as a remote search result (before/instead
+  // of the pre-loaded channel map); if exact ranked below local, a local
+  // different-name prefix match would beat the exact one the user actually
+  // typed. You typed the full name → you get that emote. Two exacts tie here and
+  // fall through to local-before-remote + tier, so a local exact still beats a
+  // remote exact.
   const ae = an.toLowerCase() === searchLower ? 0 : 1
   const be = bn.toLowerCase() === searchLower ? 0 : 1
   if (ae !== be) return ae - be
+  const al = a.remote ? 1 : 0,
+    bl = b.remote ? 1 : 0
+  if (al !== bl) return al - bl
   const at = a.tier ?? 9,
     bt = b.tier ?? 9
   const af = frecency.get(an) || 0,

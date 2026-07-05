@@ -643,12 +643,12 @@ var FR_TYPE_LABELS = {
   expr: 'expr',
 }
 var FR_SCOPE_BTN =
-  'background:#000;color:#808080;border:1px solid #444;padding:1px 5px;font-size:11px;cursor:pointer;font-family:inherit;line-height:1.4'
+  'background:#000;color:#808080;border:1px solid #444;padding:1px 5px;font-size:13px;cursor:pointer;font-family:inherit;line-height:1.4'
 var FR_BTN =
-  'background:#000;color:#fff;border:1px solid #808080;padding:1px 6px;font-size:11px;cursor:pointer;font-family:inherit;line-height:1.4'
-var FR_SEL = 'background:#000;color:#fff;border:1px solid #808080;padding:1px 3px;font-size:12px;font-family:inherit'
+  'background:#000;color:#fff;border:1px solid #808080;padding:1px 6px;font-size:13px;cursor:pointer;font-family:inherit;line-height:1.4'
+var FR_SEL = 'background:#000;color:#fff;border:1px solid #808080;padding:1px 3px;font-size:13px;font-family:inherit'
 var FR_INPUT =
-  'background:#000;color:#fff;border:1px solid #808080;padding:1px 4px;font-size:12px;font-family:inherit;flex:1;min-width:60px'
+  'background:#000;color:#fff;border:1px solid #808080;padding:1px 4px;font-size:13px;font-family:inherit;flex:1;min-width:60px'
 
 function _renderFilterRuleRow(r) {
   var on = !!r.enabled
@@ -673,7 +673,7 @@ function _renderFilterRuleRow(r) {
     '" data-fr-action="toggle" data-fr-id="' +
     id +
     '" style="flex-shrink:0"><span class="hs-mc-toggle-knob"></span></button>' +
-    '<span style="color:#808080;font-size:11px;min-width:28px;flex-shrink:0">' +
+    '<span style="color:#808080;font-size:13px;min-width:28px;flex-shrink:0">' +
     typeLabel +
     '</span>' +
     '<span style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1" title="' +
@@ -729,7 +729,7 @@ function _renderFilterRuleAddForm() {
       .join('')
   return (
     '<div class="hs-mc-setting-row hs-mc-setting-row-block hs-mc-fr-addform" style="padding:4px 4px 6px">' +
-    '<div style="font-size:11px;color:#808080;margin-bottom:4px">add rule</div>' +
+    '<div style="font-size:13px;color:#808080;margin-bottom:4px">add rule</div>' +
     '<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">' +
     '<select data-fr-field="type" style="' +
     FR_SEL +
@@ -760,7 +760,7 @@ function _renderFilterRuleAddForm() {
     '<option value="knock">knock</option>' +
     '<option value="chime">chime</option>' +
     '</select>' +
-    '<label style="display:flex;align-items:center;gap:2px;color:#808080;font-size:11px;cursor:pointer;flex-shrink:0" title="case-sensitive match">' +
+    '<label style="display:flex;align-items:center;gap:2px;color:#808080;font-size:13px;cursor:pointer;flex-shrink:0" title="case-sensitive match">' +
     '<input type="checkbox" data-fr-field="cs" style="margin:0;cursor:pointer">Aa</label>' +
     '<select data-fr-field="scope" style="' +
     FR_SEL +
@@ -771,7 +771,7 @@ function _renderFilterRuleAddForm() {
     FR_BTN +
     ';background:#222">+ add</button>' +
     '</div>' +
-    '<div style="font-size:10px;color:#666;margin-top:4px;line-height:1.4">' +
+    '<div style="font-size:13px;color:#808080;margin-top:4px;line-height:1.4">' +
     'expr: compose with &amp;&amp; || ! and ( ). fields user: badge: type: contains: regex: · flags first action reply cheer · bits&gt;100. ' +
     'e.g. <code style="color:#808080">first &amp;&amp; !badge:subscriber</code>' +
     '</div>' +

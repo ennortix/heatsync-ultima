@@ -151,7 +151,10 @@ async function setUserNote(username, text) {
   for (const [k, v] of _userNotes) blob[k] = v
   try {
     await chrome.storage.local.set({ hs_user_notes: blob })
-  } catch {}
+  } catch (e) {
+    if (typeof showToast === 'function') showToast('note not saved — try again', 'error')
+    console.error('[heatsync] user note persist failed:', e)
+  }
 }
 
 async function openProfileCard(username, platform) {

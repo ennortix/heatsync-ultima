@@ -515,8 +515,10 @@ class IRC {
                 reply_to_id: msg.replyTo?.id || null,
               },
             })
-            .catch(() => {})
-        } catch {}
+            .catch((e) => log('archive relay failed:', e?.message || e))
+        } catch (e) {
+          log('archive relay failed:', e?.message || e)
+        }
       }
       if (msg.type === 'notice') {
         // An unban retires any prior ban/timeout notice for this target so the
@@ -996,7 +998,7 @@ class KickChat {
         .map((m) => this._serializeMsg(m))
         .filter(Boolean)
       const p = chrome.storage.local.set({ [`hs_kick_${ch}`]: { msgs, ts: Date.now() } })
-      if (p && typeof p.catch === 'function') p.catch(() => {})
+      if (p && typeof p.catch === 'function') p.catch((e) => log('Kick history persist failed:', ch, e?.message || e))
     } catch {}
   }
 

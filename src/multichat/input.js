@@ -5309,9 +5309,11 @@ async function handleSlashCommand(text, input) {
       showToast('usage: /mute <user>')
       return true
     }
-    // platform unknown from slash command — null platform → userKey returns bare
+    // platform unknown from slash command — expandUserAliasKeys does both the
+    // sync local-link fan-out AND the async server-linked-account fan-out, same
+    // as right-click mute (_toggleMcMute); null platform → userKey returns bare
     // key, so /mute stays global (correct: no platform context from bare name).
-    const aliasKeys = typeof getUserAliasKeys === 'function' ? getUserAliasKeys(u, null) : [u]
+    const aliasKeys = typeof expandUserAliasKeys === 'function' ? await expandUserAliasKeys(u, null) : [u]
     const already = typeof isUserMuted === 'function' ? isUserMuted(u, null) : mutedUsers.has(u)
     if (already) {
       showToast(`${u} already muted`)
@@ -5333,7 +5335,9 @@ async function handleSlashCommand(text, input) {
       showToast('usage: /unmute <user>')
       return true
     }
-    const aliasKeys = typeof getUserAliasKeys === 'function' ? getUserAliasKeys(u, null) : [u]
+    // Same async fan-out as /mute and right-click mute — covers server-linked
+    // accounts, not just sync-local links.
+    const aliasKeys = typeof expandUserAliasKeys === 'function' ? await expandUserAliasKeys(u, null) : [u]
     const wasMuted = typeof isUserMuted === 'function' ? isUserMuted(u, null) : mutedUsers.has(u)
     if (!wasMuted) {
       showToast(`${u} not muted`)

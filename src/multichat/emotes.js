@@ -1688,6 +1688,14 @@ async function _removeEmoteFromInventory(emoteName, targetEl) {
 }
 
 function handleRemoveSuccess(emoteName) {
+  // Capture BEFORE the delete below strips the entry — keeps this emote's
+  // history resolvable so the viewer's own past messages that used it still
+  // render the image (as unadded, not owned) instead of raw text after a
+  // refresh. Mirrors blockEmote's capture-before-mutate pattern; this entry
+  // is guaranteed present here since the only caller (input.js) gates the
+  // remove path on inventoryEmotes.has(emoteName).
+  const _re = viewerPersonalEmotes.get(emoteName)
+  if (_re?.url) rememberRemovedEmote(emoteName, _re.url, _re.source, _re.zeroWidth)
   inventoryEmotes.delete(emoteName)
   inventoryHashes.delete(emoteName)
   viewerPersonalEmotes.delete(emoteName)
@@ -2037,7 +2045,13 @@ async function syncBlockToAPI(emoteName, block) {
         hash: hash,
         emoteName: emoteName,
       })
-      .catch(() => {})
+      .catch((e) => {
+        log('block sync failed:', e?.message || e)
+        showToast(
+          `${block ? 'block' : 'unblock'} not saved to your account — will differ on other devices`,
+          'error',
+        )
+      })
     log('Synced', block ? 'block' : 'unblock', emoteName, '(hash:', hash.substring(0, 8) + '...) to API')
   } catch (e) {
     log('API sync error:', e)

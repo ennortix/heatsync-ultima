@@ -1198,6 +1198,8 @@ async function showUserTooltip(targetEl, username, color, platform) {
       if (rTwitch && typeof renderBadges === 'function') nativeBadges += renderBadges(rTwitch.badges, rTwitch.channel)
       const rKick = recent.find((m) => m.platform === 'kick' && m.badges)
       if (rKick && typeof renderBadges === 'function') nativeBadges += renderBadges(rKick.badges, rKick.channel, 'kick')
+      const rYt = recent.find((m) => m.platform === 'youtube' && m.badges)
+      if (rYt && typeof renderBadges === 'function') nativeBadges += renderBadges(rYt.badges, rYt.channel, 'youtube')
     } catch {}
     const platRow =
       platform === 'kick'
@@ -1563,8 +1565,14 @@ function showLinkTooltip(e, url) {
   // Fetch from background
   _linkFetchInFlight = url
   safeSendMessage({ type: 'fetch_link_preview', url }).then((data) => {
-    _linkPreviewCache.set(url, data)
-    while (_linkPreviewCache.size > 500) _linkPreviewCache.delete(_linkPreviewCache.keys().next().value)
+    // Only cache a real hit. Caching `null` here would make one transient
+    // failure (timeout, network blip) permanently kill previews for this
+    // URL for the rest of the session — leave it uncached so the next hover
+    // just retries.
+    if (data) {
+      _linkPreviewCache.set(url, data)
+      while (_linkPreviewCache.size > 500) _linkPreviewCache.delete(_linkPreviewCache.keys().next().value)
+    }
     if (_linkFetchInFlight === url) _linkFetchInFlight = null
     if (_linkHoverUrl === url && tip.classList.contains('visible')) {
       renderLinkPreview(tip, data, url)
@@ -1579,8 +1587,12 @@ function prefetchLinkPreview(url) {
   if (!url || _linkPreviewCache.has(url)) return
   safeSendMessage({ type: 'fetch_link_preview', url })
     .then((data) => {
-      _linkPreviewCache.set(url, data)
-      while (_linkPreviewCache.size > 500) _linkPreviewCache.delete(_linkPreviewCache.keys().next().value)
+      // See showLinkTooltip: don't cache a failed lookup so a later real
+      // hover on this URL gets a fresh retry instead of a permanent miss.
+      if (data) {
+        _linkPreviewCache.set(url, data)
+        while (_linkPreviewCache.size > 500) _linkPreviewCache.delete(_linkPreviewCache.keys().next().value)
+      }
     })
     .catch(() => {})
 }

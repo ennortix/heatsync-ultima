@@ -22,6 +22,7 @@
   let followedUsers = new Set() // Users the current user follows
   const injectedMessages = new Set() // Track injected message IDs to prevent duplicates
   let chatReady = false
+  let _containerMissingWarned = false // one-time ping if the container selector goes stale mid-session
 
   // Set up message listener IMMEDIATELY (not inside async init)
   // Named reference so we can removeListener before re-adding on SPA navigation
@@ -315,6 +316,14 @@
 
     const container = document.querySelector(selectors.container)
     if (!container) {
+      if (!_containerMissingWarned) {
+        _containerMissingWarned = true
+        console.error(
+          '[heatsync] chat-injector: container selector matched nothing (' +
+            selectors.container +
+            ') — OP message injection is silently disabled for this page load',
+        )
+      }
       return
     }
 

@@ -37723,19 +37723,18 @@ function scanAndApplyModifiersInInput(input) {
 //
 // Order (most-correct first):
 //   0. local > remote                       (channel / own / globals beat catalog)
-//   1. strong exact — full-name match that's channel/own tier OR personally
-//      used. Typing the whole name is the intent signal: "clap" → Clap.
+//   1. exact full-name match — UNCONDITIONAL. Typing the whole name is the
+//      intent: "nam" → NaM (global, maybe never used) before the channel's
+//      NAMarrive. Reverses the old "tier beats never-used exact" call —
+//      precision over channel culture when the user typed the entire name.
 //   2. used-before > never-used             (frecency; personal habit is the
 //      strongest non-exact signal: "kko" → your KKona, never the channel's
 //      untouched KKonaLand)
 //      within used:   prefix > substring, then frecency score, then tier
-//      within unused: tier, exact, prefix > substring, sub emote > non-sub
+//      within unused: tier, prefix > substring, sub emote > non-sub
 //   3. remote catalog order (_ai: FFZ-by-uses → BTTV → 7TV)
 //   4. shorter prefix-match > longer        (Kap → Kappa before KappaPride)
 //   5. recency for @user matches, then alpha
-// Tier still outranks a NEVER-USED exact match (user call): typing "hug"
-// surfaces the channel's peepoHug over a coincidental global "HuG" — that
-// one has no frecency entry, so it doesn't qualify as strong.
 function compareAcMatches(a, b, searchLower, frecency) {
   const al = a.remote ? 1 : 0,
     bl = b.remote ? 1 : 0
@@ -37744,13 +37743,11 @@ function compareAcMatches(a, b, searchLower, frecency) {
     bn = b.name || ''
   const ae = an.toLowerCase() === searchLower ? 0 : 1
   const be = bn.toLowerCase() === searchLower ? 0 : 1
+  if (ae !== be) return ae - be
   const at = a.tier ?? 9,
     bt = b.tier ?? 9
   const af = frecency.get(an) || 0,
     bf = frecency.get(bn) || 0
-  const as = ae === 0 && (at <= 1 || af > 0) ? 0 : 1
-  const bs = be === 0 && (bt <= 1 || bf > 0) ? 0 : 1
-  if (as !== bs) return as - bs
   if (af > 0 !== bf > 0) return af > 0 ? -1 : 1
   if (af > 0) {
     // both used — they typed a prefix, respect it; then habit strength
@@ -37760,7 +37757,6 @@ function compareAcMatches(a, b, searchLower, frecency) {
   } else {
     // neither used — channel culture leads
     if (at !== bt) return at - bt
-    if (ae !== be) return ae - be
     if (a.priority !== b.priority) return a.priority - b.priority
     if (!!a.sub !== !!b.sub) return a.sub ? -1 : 1
   }
@@ -43255,6 +43251,16 @@ function pinTwitchPersistentPlayer() {
       // Same offline guard inside the style observer — Twitch's React may
       // re-render mid-session (live → offline) and we'd otherwise re-pin.
       if (document.querySelector('.channel-root--home')) return
+      // Same mini-player guard as the mount path: browsing away from a live
+      // stream floats the player bottom-right with Twitch's own top offset
+      // (> 200px by design). Re-pinning it here shoved the mini-player above
+      // the viewport, putting its close button out of reach. Clear any pin
+      // we already applied so the float lands where Twitch wants it.
+      if (!document.querySelector('.channel-root, [class*="channel-root"]')) {
+        if (pp.style.top === '0px') pp.style.removeProperty('top')
+        if (pp.style.left === '0px') pp.style.removeProperty('left')
+        return
+      }
       const r = parseFloat(getComputedStyle(pp).top) || 0
       if (r > 200) {
         pp.style.setProperty('top', '0', 'important')

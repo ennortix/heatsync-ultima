@@ -68,8 +68,8 @@ describe('compareAcMatches — never-used ordering (channel culture leads)', () 
     expect(rank([emote('KKona', 2), emote('KKonaLand', 0)], 'kko')).toEqual(['KKonaLand', 'KKona'])
   })
 
-  test('tier outranks a never-used coincidental exact: "hug" → channel peepoHug over global HuG', () => {
-    expect(rank([emote('HuG', 2, 0), emote('peepoHug', 0, 1)], 'hug')).toEqual(['peepoHug', 'HuG'])
+  test('exact beats tier even never-used: "hug" → global HuG over channel peepoHug (reversed call: "nam" → NaM)', () => {
+    expect(rank([emote('HuG', 2, 0), emote('peepoHug', 0, 1)], 'hug')).toEqual(['HuG', 'peepoHug'])
   })
 
   test('strong exact: a USED exact global escapes above channel fuzzy hits', () => {

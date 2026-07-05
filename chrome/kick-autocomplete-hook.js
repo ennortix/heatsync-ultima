@@ -159,27 +159,18 @@
       }
     }
 
-    // Tier outranks match-type: a channel substring match beats a global prefix
-    // match. The array is grouped exact→prefix→contains, and Array.sort is stable,
-    // so a tier-only key preserves that match-type order WITHIN each tier.
-    // Strong exact — a full-name match that's channel/own tier OR used before
-    // (shared 'hs-mc-recent-emotes' MRU with the multichat picker) leads
-    // outright: typing the whole name is the intent signal ("clap" → Clap
-    // first). A never-used coincidental global exact ("HuG") has no MRU entry
-    // and still loses to channel emotes per the tier rule.
-    let recentSet
-    try {
-      const r = JSON.parse(localStorage.getItem('hs-mc-recent-emotes'))
-      recentSet = new Set(Array.isArray(r) ? r : [])
-    } catch (_) {
-      recentSet = new Set()
-    }
+    // Exact full-name match leads UNCONDITIONALLY — typing the whole name is
+    // the intent ("nam" → NaM even never-used vs a channel NAMarrive; reverses
+    // the old strong-exact/tier call, keep in lockstep with input.js
+    // compareAcMatches + autocomplete-hook.js). Below exact, tier outranks
+    // match-type: the array is grouped exact→prefix→contains and Array.sort
+    // is stable, so a tier-only key preserves match-type order WITHIN a tier.
     return [...exact, ...prefix, ...contains].sort((a, b) => {
+      const ax = a.lower === q ? 0 : 1,
+        bx = b.lower === q ? 0 : 1
+      if (ax !== bx) return ax - bx
       const at = a.tier ?? 2,
         bt = b.tier ?? 2
-      const as = a.lower === q && (at <= 1 || recentSet.has(a.name)) ? 0 : 1
-      const bs = b.lower === q && (bt <= 1 || recentSet.has(b.name)) ? 0 : 1
-      if (as !== bs) return as - bs
       return at !== bt ? at - bt : 0
     })
   }

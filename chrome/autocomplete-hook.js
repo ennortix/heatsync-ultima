@@ -1246,13 +1246,11 @@
           // sub emotes are channel-tier (0).
           r._tier = r._tier ?? (r._isSub ? 0 : 2)
           r._frec = frec.get(name) || 0
-          // Strong exact: the typed word IS this emote's full name AND it's
-          // channel/own tier or one the user has actually inserted before.
-          // Leads outright — typing the whole name is the intent signal
-          // ("clap" → Clap first, not 5th behind channel fuzzy hits). A
-          // never-used global that only coincidentally case-matches (the
-          // "HuG" case) has no frecency entry and still loses to channel emotes.
-          r._strong = r._sortKey === searchLower && (r._tier <= 1 || r._frec > 0)
+          // Exact: the typed word IS this emote's full name. Leads outright,
+          // UNCONDITIONALLY — typing the whole name is the intent ("nam" →
+          // NaM even if never used and the channel has a NAMarrive). Reverses
+          // the old "tier beats never-used exact" call: precision wins.
+          r._exact = r._sortKey === searchLower
         }
         // Same ranking as the multichat comparator (input.js compareAcMatches)
         // — keep the two in lockstep so native chat and the overlay never
@@ -1264,8 +1262,8 @@
           // Usernames: alphabetical only
           if (a._sortType === 1) return a._sortKey.localeCompare(b._sortKey)
 
-          // Used-before (or channel/own) full-name exact match beats everything.
-          if (a._strong !== b._strong) return a._strong ? -1 : 1
+          // Full-name exact match beats everything.
+          if (a._exact !== b._exact) return a._exact ? -1 : 1
 
           // Personal habit beats structure: an emote the user actually sends
           // wins over tier ("kko" → their KKona, never the channel's untouched
@@ -1282,13 +1280,9 @@
             if (a._frec !== b._frec) return b._frec - a._frec
             if (a._tier !== b._tier) return a._tier - b._tier
           } else {
-            // neither used — channel culture leads (tier, user call: "hug" →
-            // peepoHug over a coincidental global "HuG"), then exact > prefix
-            // > contains > sub emote
+            // neither used — channel culture leads (tier), then prefix >
+            // contains > sub emote (exact already ranked above, absolutely)
             if (a._tier !== b._tier) return a._tier - b._tier
-            const aExact = a._sortKey === searchLower
-            const bExact = b._sortKey === searchLower
-            if (aExact !== bExact) return aExact ? -1 : 1
             if (aPrefix !== bPrefix) return aPrefix ? -1 : 1
             if (a._isSub !== b._isSub) return a._isSub ? -1 : 1
           }
@@ -1304,7 +1298,7 @@
           delete r._heatsyncSub
           delete r._tier
           delete r._frec
-          delete r._strong
+          delete r._exact
         }
 
         if (results.length > 0) {

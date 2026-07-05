@@ -28,7 +28,7 @@ the heatsync extension collects the following data:
 - **real-time chat:** channel names are sent to the heatsync WebSocket to enable live emote broadcasts
 - **multichat routing:** YouTube video IDs help route live chat messages to the correct channel in your multichat panel
 
-all processing is read-only. the extension does not modify your accounts or settings on any third-party platform.
+the extension acts on a third-party platform only when *you* explicitly initiate it — sending a chat message, setting your username color, creating a clip, following a channel, or (if you are a moderator) moderation actions like timeouts. it never acts autonomously or in the background, and never changes account settings you did not trigger.
 
 ## where it's stored
 

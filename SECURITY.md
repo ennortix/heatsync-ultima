@@ -21,6 +21,28 @@ because a nonce cannot be kept secret in a realm shared with the page, the privi
 
 extension-side processing happens locally in the browser tab. the extension communicates with heatsync.org for emote sync, and with 7TV/FFZ/BTTV/decapi.me for cosmetics — see [docs/PRIVACY.md](docs/PRIVACY.md) for the full data flow.
 
+## permissions — and what we deliberately don't request
+
+every permission maps to a specific feature; we request the minimum for a
+cross-platform chat extension and nothing speculative.
+
+| permission | why |
+|---|---|
+| `storage`, `unlimitedStorage` | store settings, emote inventory, and blocked-emote list locally (inventory can exceed the sync-storage per-item quota) |
+| `cookies` | read your *own* httpOnly auth token on heatsync.org / twitch / kick to act on your behalf (send chat, follow, set color); content scripts cannot read httpOnly cookies, so this is the only mechanism |
+| `tabs` | coordinate the multichat websocket across your open tabs and open notification links |
+| `alarms` | keep the background service worker's periodic tasks (emote refresh, live polling) alive after the SW is evicted |
+| `notifications` | live-stream alerts you opt into |
+| host permissions | inject the chat UI and fetch emote/cosmetic data on the platforms this extension is built for (twitch, kick, youtube, 7tv, ffz, bttv, heatsync.org) |
+
+**we deliberately do NOT request:**
+
+- `<all_urls>` — host access is an explicit allowlist, never "every site"
+- `scripting` — no programmatic code injection; every content script is statically declared in the manifest and auditable
+- `webRequest` — we never intercept, read, or modify your network traffic
+- `management` — we cannot see or disable your other extensions
+- `history`, `bookmarks`, `geolocation`, `clipboardRead` — none requested
+
 ## content-script defenses
 
 - **`escapeHtml()`** wraps every user-supplied value (chat text, display names, emote names, profile fields, feed metadata) before it can reach `innerHTML` or `insertAdjacentHTML`. enforced in `src/lib/utils.js`. exception: feed post body text is HTML-escaped server-side before storage and is rendered as-is — re-escaping would double-encode entities.

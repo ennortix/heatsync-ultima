@@ -24,7 +24,6 @@
 //   - any throw inside the wrapper falls through to Twitch's original
 //     handler.
 ;(() => {
-  'use strict'
   if (window.__hsChatIntercept) return
   window.__hsChatIntercept = true
 

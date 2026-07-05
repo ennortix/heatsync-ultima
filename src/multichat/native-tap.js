@@ -242,7 +242,8 @@ function _nsNativeChatVisible() {
   const c = _tapFindContainer()
   if (!c) return false
   try {
-    if (typeof c.checkVisibility === 'function') return c.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })
+    if (typeof c.checkVisibility === 'function')
+      return c.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })
   } catch (_) {}
   return c.getClientRects().length > 0
 }

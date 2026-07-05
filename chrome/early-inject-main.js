@@ -948,10 +948,32 @@
       const req = e.data
       ;(async () => {
         try {
-          const allowedPrefixes = ['https://api.twitch.tv/helix/', 'https://gql.twitch.tv/']
-          if (!req.url || !allowedPrefixes.some((p) => req.url.startsWith(p))) {
+          // Explicit endpoint+method allowlist. The MAIN-world nonce can't be a
+          // true secret (this realm is shared with the page), so a co-resident
+          // hostile script could forge a proxy message. This caps the blast
+          // radius to exactly the calls the extension makes — a forged message
+          // cannot reach ban/delete/update-channel with the user's OAuth token.
+          const HELIX_ALLOW = [
+            ['GET', '/helix/chat/color'],
+            ['PUT', '/helix/chat/color'],
+            ['GET', '/helix/users'],
+            ['GET', '/helix/chat/settings'],
+            ['PATCH', '/helix/chat/settings'],
+            ['POST', '/helix/clips'],
+          ]
+          let reqUrl = null
+          try {
+            reqUrl = new URL(req.url)
+          } catch {}
+          const reqMethod = (req.method || 'GET').toUpperCase()
+          if (
+            !reqUrl ||
+            reqUrl.origin !== 'https://api.twitch.tv' ||
+            !HELIX_ALLOW.some(([m, p]) => m === reqMethod && reqUrl.pathname === p)
+          ) {
+            log('heatsync-helix: endpoint not allowed — ' + reqMethod + ' ' + (req.url || ''))
             window.postMessage(
-              { type: e.data.type + '-error', error: 'URL not allowed', requestId: e.data.requestId },
+              { type: 'heatsync-helix-response', id: req.id, error: 'endpoint not allowed' },
               location.origin,
             )
             return

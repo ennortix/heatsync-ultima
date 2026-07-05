@@ -924,6 +924,47 @@ const shouldDeploy = flags.has('--deploy')
 const shouldMinify = flags.has('--minify') || shouldPackage || shouldDeploy
 const shouldSource = flags.has('--source') || shouldPackage
 
+// Zero-supply-chain gate: the extension ships hand-written vanilla JS with no
+// runtime dependencies. Any runtime dep is a supply-chain attack surface, so
+// fail the build to keep the invariant from silently regressing.
+function checkNoRuntimeDeps() {
+  const pkg = JSON.parse(readFileSync(join(__dirname, 'package.json'), 'utf8'))
+  const deps = Object.keys(pkg.dependencies || {})
+  if (deps.length) {
+    throw new Error(
+      `checkNoRuntimeDeps: ${deps.length} runtime dependency(ies) present (${deps.join(', ')}); extension ships zero runtime deps`,
+    )
+  }
+  console.log('  Zero runtime dependencies ✓')
+}
+
+// No-dynamic-code gate: we ship no eval()/new Function(). Extension-page CSP
+// blocks eval, but MAIN-world scripts run under the host page's CSP, so enforce
+// it at build time too. Comments are stripped before scanning.
+function checkNoDynamicCode() {
+  const offenders = []
+  const walk = (dir) => {
+    for (const ent of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, ent.name)
+      if (ent.isDirectory()) walk(p)
+      else if (ent.name.endsWith('.js')) {
+        const code = readFileSync(p, 'utf8')
+          .replace(/\/\*[\s\S]*?\*\//g, '')
+          .replace(/\/\/[^\n]*/g, '')
+        if (/\beval\s*\(|\bnew\s+Function\s*\(/.test(code)) offenders.push(p)
+      }
+    }
+  }
+  for (const r of ['chrome', 'src']) {
+    const root = join(__dirname, r)
+    if (existsSync(root)) walk(root)
+  }
+  if (offenders.length) {
+    throw new Error(`checkNoDynamicCode: dynamic code execution found in:\n  ${offenders.join('\n  ')}`)
+  }
+  console.log('  No eval()/new Function() ✓')
+}
+
 console.log('Building heatsync extension...\n')
 
 // ── Pre-build gate ────────────────────────────────────────────────────────────
@@ -934,6 +975,8 @@ checkScopeCollisions()
 checkErrorReporterParity()
 checkUiSyncBlocklistParity()
 checkEscapeHtmlCoverage()
+checkNoRuntimeDeps()
+checkNoDynamicCode()
 runTests(args)
 console.log()
 

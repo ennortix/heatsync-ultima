@@ -13,7 +13,9 @@ please don't open a public GitHub issue for security bugs. we'll acknowledge wit
 
 ## known design trade-offs
 
-**MAIN world script** — `early-inject-main.js` runs at `document_start` in the page's JavaScript context (not the extension's isolated context) on twitch.tv. this is required to intercept twitch internals before react mounts. it means the script shares the page's JS scope and has no isolation from page scripts. we treat it as a known, intentional trade-off. the script is minimal and read-only — it does not exfiltrate data or modify auth state.
+**MAIN world script** — `early-inject-main.js` runs at `document_start` in the page's JavaScript context (not the extension's isolated context) on twitch.tv. this is required to intercept twitch internals before react mounts. it means the script shares the page's JS scope and has no isolation from page scripts. we treat it as a known, intentional trade-off.
+
+because a nonce cannot be kept secret in a realm shared with the page, the privileged proxies this script exposes (twitch Helix + Apollo GraphQL — used for chat color, chat modes, clip creation, and a fixed set of chat mutations) are each constrained by an **explicit endpoint+method / mutation-name allowlist plus a rate limit**. a message forged by a co-resident page script can therefore only replay the extension's own operations with the user's token — it cannot reach arbitrary Helix endpoints (ban / delete / channel-update). the Helix proxy allowlist lives in `chrome/early-inject-main.js`.
 
 ## scope
 

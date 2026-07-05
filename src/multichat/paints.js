@@ -22,6 +22,14 @@
 // twitch-id-space). Do not add a second call site that queues a paint lookup
 // directly from a raw platform-native id.
 //
+// UNLOCK (server migration 200, 2026-07-05): kick-origin users.id rows are now
+// namespaced `kick_<kickid>`, so a kick chatter's paint CAN be looked up
+// directly as `kick_` + raw kick id — no twitch link needed. The site already
+// does this (client/utils/paint-spec.js isPaintLookupSafeId resolves kick ->
+// kick_<id>). Wiring that here = a new namespaced call path at the
+// queueMcCosmeticsLookup choke point (cosmetics.js) — feature pass, mirror the
+// site's resolver, never pass the bare numeric.
+//
 // Pipeline:
 //   1. queuePaintLookup(uid) batches ids (debounced, <=50/batch) and asks the
 //      BG service worker (fetch_paints) — content scripts never fetch

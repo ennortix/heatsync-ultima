@@ -40112,7 +40112,10 @@ async function sendMessage() {
     // before, never a failure.
     let kickReply = null
     if (replyParentId && kickChat?.channels?.get(slug)) {
-      const parent = kickChat.channels.get(slug).getAll().find((m) => m?.id === replyParentId)
+      const parent = kickChat.channels
+        .get(slug)
+        .getAll()
+        .find((m) => m?.id === replyParentId)
       if (parent?.id) {
         kickReply = {
           id: parent.id,

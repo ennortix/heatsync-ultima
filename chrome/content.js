@@ -4364,20 +4364,19 @@
     // Reply-shaped when the caller carries a parent ref (kick's own client
     // payload shape: type 'reply' + original_message/original_sender metadata).
     // kick-send.js falls back to a flat send if kick 4xxes the reply shape.
-    const _kickBody =
-      message.reply?.id
-        ? {
-            content: message.content,
-            type: 'reply',
-            metadata: {
-              original_message: { id: message.reply.id, content: message.reply.content || '' },
-              original_sender: {
-                id: message.reply.senderId != null ? Number(message.reply.senderId) : 0,
-                username: message.reply.senderUsername || '',
-              },
+    const _kickBody = message.reply?.id
+      ? {
+          content: message.content,
+          type: 'reply',
+          metadata: {
+            original_message: { id: message.reply.id, content: message.reply.content || '' },
+            original_sender: {
+              id: message.reply.senderId != null ? Number(message.reply.senderId) : 0,
+              username: message.reply.senderUsername || '',
             },
-          }
-        : { content: message.content, type: 'message' }
+          },
+        }
+      : { content: message.content, type: 'message' }
     fetch(`https://kick.com/api/v2/messages/send/${message.channelId}`, {
       method: 'POST',
       headers: {

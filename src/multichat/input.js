@@ -1424,6 +1424,13 @@ function initInput() {
         // every cursor placement, which is hostile.
         if (e.target.closest('#hs-mc-input') && emoteInfo.state !== 'blocked') return
 
+        // Remote provider search result — owned by the picker delegate in
+        // emotes.js (optimistic inventory seed + server add + paste). This
+        // handler has no remote branch, so swallowing the event here turned
+        // every search-result click into a silent dead click (preventDefault +
+        // stopPropagation below, then no matching state). Let it bubble.
+        if (emoteInfo.state === 'remote') return
+
         e.preventDefault()
         e.stopPropagation()
 

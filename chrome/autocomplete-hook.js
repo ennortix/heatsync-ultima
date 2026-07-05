@@ -2303,6 +2303,17 @@
           return
         }
 
+        // CRITICAL: Ignore clicks inside the multichat overlay — its emote picker
+        // renders bttv/7tv/ffz imgs that pass the src check below, and the
+        // closest('div[class*="Layout"]') item fallback resolves to the whole
+        // twitch chat column the overlay sits in. Without this bail the
+        // preventDefault + stopImmediatePropagation below eats the picker's own
+        // click delegate (dead click) and mis-inserts into twitch's hidden
+        // native input. Multichat owns every click inside its DOM.
+        if (target.closest('[id^="hs-mc-"], [class*="hs-mc-"]')) {
+          return
+        }
+
         // CRITICAL: Ignore clicks on emotes already in the input field (not dropdown)
         const isInInputField =
           e.target.closest('.chat-wysiwyg-input__editor') ||

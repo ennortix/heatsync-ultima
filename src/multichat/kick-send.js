@@ -22,7 +22,7 @@ async function resolveKickChannelId(slug) {
   return null
 }
 
-function _kickSendOnce(channelId, text) {
+function _kickSendOnce(channelId, text, reply = null) {
   return new Promise((resolve) => {
     let settled = false
     const timer = setTimeout(() => {
@@ -30,7 +30,7 @@ function _kickSendOnce(channelId, text) {
       settled = true
       resolve({ ok: false, error: 'timeout' })
     }, KICK_SEND_TIMEOUT_MS)
-    safeSendMessage({ type: 'kick_send_message', channelId, content: text })
+    safeSendMessage({ type: 'kick_send_message', channelId, content: text, reply })
       .then((resp) => {
         if (settled) return
         settled = true
@@ -46,16 +46,24 @@ function _kickSendOnce(channelId, text) {
   })
 }
 
-async function sendKickMessage(kickSlug, text) {
+async function sendKickMessage(kickSlug, text, reply = null) {
   const channelId = await resolveKickChannelId(kickSlug)
   if (!channelId) return 'no_channel'
   let lastErr = 'send_failed'
+  let replyRef = reply
   for (let attempt = 0; attempt <= KICK_SEND_RETRY_BACKOFF_MS.length; attempt++) {
     try {
-      const resp = await _kickSendOnce(channelId, text)
+      const resp = await _kickSendOnce(channelId, text, replyRef)
       if (resp?.ok) return true
       const err = resp?.error || 'send_failed'
       lastErr = err
+      // Reply-shaped send rejected by kick (4xx) → the message itself is fine,
+      // only the threading ref was refused. Deliver flat rather than fail.
+      if (replyRef && /^4\d\d:/.test(err)) {
+        replyRef = null
+        attempt-- // the flat resend shouldn't consume a retry slot
+        continue
+      }
       if (KICK_FATAL_SEND_ERRORS.has(err)) return err
       if (attempt < KICK_SEND_RETRY_BACKOFF_MS.length) {
         await new Promise((r) => setTimeout(r, KICK_SEND_RETRY_BACKOFF_MS[attempt]))

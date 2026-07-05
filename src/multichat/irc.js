@@ -909,6 +909,10 @@ class KickChat {
           channel,
           time: d.timestamp || Date.now(),
           platform: 'kick',
+          // numeric kick USER id (pusher tap + server relay both forward it);
+          // setKnownColor below already read msg.userId — it was undefined
+          // for every kick message until this landed
+          userId: d.senderId != null ? String(d.senderId) : '',
           replyTo: d.replyTo
             ? {
                 user: d.replyTo.username || 'unknown',

@@ -7408,6 +7408,7 @@ async function handleMessage(message, sender, sendResponse) {
           type: 'kick_send_relay',
           channelId,
           content,
+          reply: message.reply || null,
           xsrfToken: cookie.value,
         })
         sendResponse(result || { ok: false, error: 'no response from tab' })
@@ -10532,6 +10533,8 @@ function _kpHandleChatEvent(d) {
       channel: slug,
       username: ev.sender?.username || 'unknown',
       displayName: ev.sender?.username || 'Unknown',
+      // kick numeric USER id — reply-threading + kick_<id> identity lookups
+      senderId: ev.sender?.id ?? null,
       content: ev.content || '',
       color: ev.sender?.identity?.color || '#53fc18',
       badges: ev.sender?.identity?.badges || [],

@@ -5920,7 +5920,23 @@ async function sendMessage() {
   // --- Kick send path (single, dual, or triple including YT) ---
   if (sendToKick) {
     const slug = kickSlug || targetChannel
-    const kickPromise = sendKickMessage(slug, restText)
+    // Reply-threading: resolve the parent from the kick buffer (id + content +
+    // sender) — the relay sends kick's reply-shaped payload; a missing parent
+    // (scrolled out of buffer) or sender id degrades to a flat send exactly as
+    // before, never a failure.
+    let kickReply = null
+    if (replyParentId && kickChat?.channels?.get(slug)) {
+      const parent = kickChat.channels.get(slug).getAll().find((m) => m?.id === replyParentId)
+      if (parent?.id) {
+        kickReply = {
+          id: parent.id,
+          content: parent.text || '',
+          senderId: parent.userId || null,
+          senderUsername: parent.user || '',
+        }
+      }
+    }
+    const kickPromise = sendKickMessage(slug, restText, kickReply)
     const twitchPromise = sendToTwitch
       ? getTwitchAuthTokenAsync().then(({ token: tok, username: twitchNick }) =>
           sendIrcMessage(twitchName, twitchText, tok, replyParentId, twitchNick),

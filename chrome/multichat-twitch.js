@@ -43311,731 +43311,731 @@ function applyHsPaintToElement(el, userId) {
 // already live in paints.js — this file only holds the main.js-resident
 // cosmetics cluster (7TV + native + third-party badges + avatar).
 
-  // Third-party cosmetics state (BTTV/FFZ/Chatterino badges, 7TV paints+badges)
-  let mcBttvBadgeMap = new Map()
-  let mcFfzBadgeMap = new Map()
-  let mcChatterinoBadgeMap = new Map()
-  const mcUserCosmetics = new Map()
-  // A channel buffer renders ~1500-2000 distinct users; caps below must clear
-  // that or a full-buffer rebuild silently drops most cosmetic lookups. (500/100
-  // meant switching to a busy/restored channel resolved only the first ~100
-  // users — everyone after, paints included, rendered plain.)
-  const MC_COSMETICS_MAX = 3000
-  function setMcCosmetic(uid, c) {
-    mcUserCosmetics.set(uid, c)
-    if (mcUserCosmetics.size > MC_COSMETICS_MAX) {
-      mcUserCosmetics.delete(mcUserCosmetics.keys().next().value)
-    }
+// Third-party cosmetics state (BTTV/FFZ/Chatterino badges, 7TV paints+badges)
+let mcBttvBadgeMap = new Map()
+let mcFfzBadgeMap = new Map()
+let mcChatterinoBadgeMap = new Map()
+const mcUserCosmetics = new Map()
+// A channel buffer renders ~1500-2000 distinct users; caps below must clear
+// that or a full-buffer rebuild silently drops most cosmetic lookups. (500/100
+// meant switching to a busy/restored channel resolved only the first ~100
+// users — everyone after, paints included, rendered plain.)
+const MC_COSMETICS_MAX = 3000
+function setMcCosmetic(uid, c) {
+  mcUserCosmetics.set(uid, c)
+  if (mcUserCosmetics.size > MC_COSMETICS_MAX) {
+    mcUserCosmetics.delete(mcUserCosmetics.keys().next().value)
   }
-  const MC_COSMETICS_PENDING_MAX = 3000
-  const mcCosmeticsPending = new Set()
-  let mcCosmeticsTimer = null
+}
+const MC_COSMETICS_PENDING_MAX = 3000
+const mcCosmeticsPending = new Set()
+let mcCosmeticsTimer = null
 
-  // Avatar URL cache: username → CDN URL (fetched via BG resolveAvatarUrl)
-  const avatarCache = new Map()
-  const avatarFetching = new Set() // prevent duplicate fetches
-  let _activeAvatarFetches = 0
-  const MAX_AVATAR_FETCHES = 5
-  // Neutral initials avatar. Renders immediately so the fixed 18px avatar box
-  // is reserved from first paint — the real pfp (fetched async via first-party
-  // GQL (BG resolveAvatarUrl) for twitch, carried inline for yt, absent for kick)
-  // then swaps in IN PLACE with
-  // zero layout shift instead of popping the row sideways on arrival. A failed
-  // or absent fetch simply stays as the initial — no blank gap. `withDataUser`
-  // tags the twitch placeholder so fetchAvatar can find and replace it.
-  function avatarFallbackHtml(user, key, withDataUser) {
-    const initial = (user || '?').charAt(0).toUpperCase()
-    const palette = ['#808080', '#5f87ff', '#00d65a', '#ffff00', '#ff4f4d', '#af87ff']
-    let h = 0
-    for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0
-    const du = withDataUser ? ` data-user="${escapeHtml(key)}"` : ''
-    return `<span class="hs-mc-avatar hs-mc-avatar-fallback"${du} style="background:${palette[h % palette.length]};color:#000">${escapeHtml(initial)}</span>`
-  }
-  function fetchAvatar(username) {
-    const key = username.toLowerCase()
-    if (avatarCache.has(key) || avatarFetching.has(key)) return
-    if (_activeAvatarFetches >= MAX_AVATAR_FETCHES) return
-    avatarFetching.add(key)
-    _activeAvatarFetches++
-    chrome.runtime
-      .sendMessage({ type: 'resolve_avatar_url', username: key, platform: 'twitch' })
-      .then((resp) => {
-        avatarFetching.delete(key)
-        _activeAvatarFetches--
-        const safe = safeUrl((resp?.url || '').trim())
-        if (!safe) return
-        avatarCache.set(key, safe)
-        if (avatarCache.size > 500) {
-          avatarCache.delete(avatarCache.keys().next().value)
-        }
-        // Swap each initials placeholder for the real avatar img IN PLACE. The
-        // placeholder span already holds the 18px box, so replacing it with an
-        // equally-sized img produces zero layout shift (no pop).
-        if (avatarsEnabled) {
-          const safeSrc = avatarCache.get(key)
-          document.querySelectorAll(`.hs-mc-avatar[data-user="${CSS.escape(key)}"]`).forEach((el) => {
-            const img = document.createElement('img')
-            img.className = 'hs-mc-avatar'
-            img.src = safeSrc
-            img.alt = ''
-            img.loading = 'lazy'
-            img.decoding = 'async'
-            el.replaceWith(img)
-          })
-        }
-      })
-      .catch(() => {
-        avatarFetching.delete(key)
-        _activeAvatarFetches--
-      })
-  }
-
-  // YT-name → twitch_id resolver. YouTube chat doesn't expose channel IDs in
-  // the DOM, so we look the user up on heatsync to get a twitchId, then feed
-  // that into the existing 7TV cosmetics pipeline. The map caches both hits
-  // (twitch_id) and misses (null) — LRU-evicted at YT_NAME_CACHE_MAX so a
-  // long stream session can't grow it without bound.
-  const ytNameToTwitchId = new Map() // ytUserKey → twitchId | null
-  const ytNameToTwitchUsername = new Map() // ytUserKey → twitchUsername | null (cross-platform alias)
-  const ytNameLookupPending = new Set()
-  let ytNameLookupTimer = null
-  const YT_NAME_BATCH = 8
-  const YT_NAME_CACHE_MAX = 1000
-
-  function evictYtNameCache() {
-    if (ytNameToTwitchId.size >= YT_NAME_CACHE_MAX) {
-      const oldest = ytNameToTwitchId.keys().next().value
-      ytNameToTwitchId.delete(oldest)
-      ytNameToTwitchUsername.delete(oldest)
-    }
-  }
-
-  function ytNameKey(user) {
-    return (user || '').toLowerCase().replace(/^@/, '')
-  }
-
-  function queueYtNameToTwitchId(user) {
-    const key = ytNameKey(user)
-    if (!key) return
-    if (ytNameToTwitchId.has(key)) return
-    if (ytNameLookupPending.has(key)) return
-    ytNameLookupPending.add(key)
-    if (ytNameLookupPending.size >= YT_NAME_BATCH) {
-      if (ytNameLookupTimer) {
-        cleanup.clearTimeout(ytNameLookupTimer)
-        ytNameLookupTimer = null
+// Avatar URL cache: username → CDN URL (fetched via BG resolveAvatarUrl)
+const avatarCache = new Map()
+const avatarFetching = new Set() // prevent duplicate fetches
+let _activeAvatarFetches = 0
+const MAX_AVATAR_FETCHES = 5
+// Neutral initials avatar. Renders immediately so the fixed 18px avatar box
+// is reserved from first paint — the real pfp (fetched async via first-party
+// GQL (BG resolveAvatarUrl) for twitch, carried inline for yt, absent for kick)
+// then swaps in IN PLACE with
+// zero layout shift instead of popping the row sideways on arrival. A failed
+// or absent fetch simply stays as the initial — no blank gap. `withDataUser`
+// tags the twitch placeholder so fetchAvatar can find and replace it.
+function avatarFallbackHtml(user, key, withDataUser) {
+  const initial = (user || '?').charAt(0).toUpperCase()
+  const palette = ['#808080', '#5f87ff', '#00d65a', '#ffff00', '#ff4f4d', '#af87ff']
+  let h = 0
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0
+  const du = withDataUser ? ` data-user="${escapeHtml(key)}"` : ''
+  return `<span class="hs-mc-avatar hs-mc-avatar-fallback"${du} style="background:${palette[h % palette.length]};color:#000">${escapeHtml(initial)}</span>`
+}
+function fetchAvatar(username) {
+  const key = username.toLowerCase()
+  if (avatarCache.has(key) || avatarFetching.has(key)) return
+  if (_activeAvatarFetches >= MAX_AVATAR_FETCHES) return
+  avatarFetching.add(key)
+  _activeAvatarFetches++
+  chrome.runtime
+    .sendMessage({ type: 'resolve_avatar_url', username: key, platform: 'twitch' })
+    .then((resp) => {
+      avatarFetching.delete(key)
+      _activeAvatarFetches--
+      const safe = safeUrl((resp?.url || '').trim())
+      if (!safe) return
+      avatarCache.set(key, safe)
+      if (avatarCache.size > 500) {
+        avatarCache.delete(avatarCache.keys().next().value)
       }
-      flushYtNameLookups()
-      return
-    }
-    if (!ytNameLookupTimer) {
-      ytNameLookupTimer = cleanup.setTimeout(() => {
-        ytNameLookupTimer = null
-        flushYtNameLookups()
-      }, 800)
-    }
-  }
-
-  async function flushYtNameLookups() {
-    if (!ytNameLookupPending.size) return
-    const batch = [...ytNameLookupPending].slice(0, YT_NAME_BATCH)
-    batch.forEach((k) => ytNameLookupPending.delete(k))
-    // Serialize — Promise.all over the batch was firing 8 concurrent
-    // /api/profile/X requests that monopolized the SW's heatsync slot pool
-    // and starved channel-emote / cosmetics fetches. YT cosmetics aren't
-    // time-critical; a slower-but-quieter walk is the right trade.
-    const lookupOne = async (key) => {
-      try {
-        const resp = await safeSendMessage({
-          type: 'api_fetch',
-          path: '/api/profile/' + encodeURIComponent(key),
-          method: 'GET',
+      // Swap each initials placeholder for the real avatar img IN PLACE. The
+      // placeholder span already holds the 18px box, so replacing it with an
+      // equally-sized img produces zero layout shift (no pop).
+      if (avatarsEnabled) {
+        const safeSrc = avatarCache.get(key)
+        document.querySelectorAll(`.hs-mc-avatar[data-user="${CSS.escape(key)}"]`).forEach((el) => {
+          const img = document.createElement('img')
+          img.className = 'hs-mc-avatar'
+          img.src = safeSrc
+          img.alt = ''
+          img.loading = 'lazy'
+          img.decoding = 'async'
+          el.replaceWith(img)
         })
-        const tid = resp?.data?.twitch_id || resp?.twitch_id || null
-        const tuser = resp?.data?.twitch_username || resp?.twitch_username || null
-        evictYtNameCache()
-        ytNameToTwitchId.set(key, tid ? String(tid) : null)
-        ytNameToTwitchUsername.set(key, tuser ? String(tuser).toLowerCase() : null)
-        if (tid) {
-          const tidStr = String(tid)
-          // Backfill: stamp data-uid on all currently-rendered YT msgs by this
-          // user so updateCosmeticsInPlace can find them once cosmetics resolve.
-          const container = document.getElementById('hs-mc-messages')
-          if (container) {
-            const sel = `.hs-mc-msg .hs-mc-user[data-platform="yt"][data-username="${CSS.escape('@' + key)}"], .hs-mc-msg .hs-mc-user[data-platform="yt"][data-username="${CSS.escape(key)}"]`
-            for (const userEl of container.querySelectorAll(sel)) {
-              const div = userEl.closest('.hs-mc-msg')
-              if (div && !div.dataset.uid) div.dataset.uid = tidStr
-            }
+      }
+    })
+    .catch(() => {
+      avatarFetching.delete(key)
+      _activeAvatarFetches--
+    })
+}
+
+// YT-name → twitch_id resolver. YouTube chat doesn't expose channel IDs in
+// the DOM, so we look the user up on heatsync to get a twitchId, then feed
+// that into the existing 7TV cosmetics pipeline. The map caches both hits
+// (twitch_id) and misses (null) — LRU-evicted at YT_NAME_CACHE_MAX so a
+// long stream session can't grow it without bound.
+const ytNameToTwitchId = new Map() // ytUserKey → twitchId | null
+const ytNameToTwitchUsername = new Map() // ytUserKey → twitchUsername | null (cross-platform alias)
+const ytNameLookupPending = new Set()
+let ytNameLookupTimer = null
+const YT_NAME_BATCH = 8
+const YT_NAME_CACHE_MAX = 1000
+
+function evictYtNameCache() {
+  if (ytNameToTwitchId.size >= YT_NAME_CACHE_MAX) {
+    const oldest = ytNameToTwitchId.keys().next().value
+    ytNameToTwitchId.delete(oldest)
+    ytNameToTwitchUsername.delete(oldest)
+  }
+}
+
+function ytNameKey(user) {
+  return (user || '').toLowerCase().replace(/^@/, '')
+}
+
+function queueYtNameToTwitchId(user) {
+  const key = ytNameKey(user)
+  if (!key) return
+  if (ytNameToTwitchId.has(key)) return
+  if (ytNameLookupPending.has(key)) return
+  ytNameLookupPending.add(key)
+  if (ytNameLookupPending.size >= YT_NAME_BATCH) {
+    if (ytNameLookupTimer) {
+      cleanup.clearTimeout(ytNameLookupTimer)
+      ytNameLookupTimer = null
+    }
+    flushYtNameLookups()
+    return
+  }
+  if (!ytNameLookupTimer) {
+    ytNameLookupTimer = cleanup.setTimeout(() => {
+      ytNameLookupTimer = null
+      flushYtNameLookups()
+    }, 800)
+  }
+}
+
+async function flushYtNameLookups() {
+  if (!ytNameLookupPending.size) return
+  const batch = [...ytNameLookupPending].slice(0, YT_NAME_BATCH)
+  batch.forEach((k) => ytNameLookupPending.delete(k))
+  // Serialize — Promise.all over the batch was firing 8 concurrent
+  // /api/profile/X requests that monopolized the SW's heatsync slot pool
+  // and starved channel-emote / cosmetics fetches. YT cosmetics aren't
+  // time-critical; a slower-but-quieter walk is the right trade.
+  const lookupOne = async (key) => {
+    try {
+      const resp = await safeSendMessage({
+        type: 'api_fetch',
+        path: '/api/profile/' + encodeURIComponent(key),
+        method: 'GET',
+      })
+      const tid = resp?.data?.twitch_id || resp?.twitch_id || null
+      const tuser = resp?.data?.twitch_username || resp?.twitch_username || null
+      evictYtNameCache()
+      ytNameToTwitchId.set(key, tid ? String(tid) : null)
+      ytNameToTwitchUsername.set(key, tuser ? String(tuser).toLowerCase() : null)
+      if (tid) {
+        const tidStr = String(tid)
+        // Backfill: stamp data-uid on all currently-rendered YT msgs by this
+        // user so updateCosmeticsInPlace can find them once cosmetics resolve.
+        const container = document.getElementById('hs-mc-messages')
+        if (container) {
+          const sel = `.hs-mc-msg .hs-mc-user[data-platform="yt"][data-username="${CSS.escape('@' + key)}"], .hs-mc-msg .hs-mc-user[data-platform="yt"][data-username="${CSS.escape(key)}"]`
+          for (const userEl of container.querySelectorAll(sel)) {
+            const div = userEl.closest('.hs-mc-msg')
+            if (div && !div.dataset.uid) div.dataset.uid = tidStr
           }
-          // Patch buffered messages so the next render picks up the userId and
-          // walks the cosmetics-aware path (otherwise the cached _renderedHtml
-          // keeps the paint-less version forever).
-          const patchBuf = (buf) => {
-            if (!Array.isArray(buf) && !(buf && typeof buf[Symbol.iterator] === 'function')) return
-            for (const m of buf) {
-              if (m && m.platform === 'youtube' && m.user) {
-                const mk = m.user.toLowerCase().replace(/^@/, '')
-                if (mk === key) {
-                  m.userId = tidStr
-                  m._renderedHtml = null
-                }
+        }
+        // Patch buffered messages so the next render picks up the userId and
+        // walks the cosmetics-aware path (otherwise the cached _renderedHtml
+        // keeps the paint-less version forever).
+        const patchBuf = (buf) => {
+          if (!Array.isArray(buf) && !(buf && typeof buf[Symbol.iterator] === 'function')) return
+          for (const m of buf) {
+            if (m && m.platform === 'youtube' && m.user) {
+              const mk = m.user.toLowerCase().replace(/^@/, '')
+              if (mk === key) {
+                m.userId = tidStr
+                m._renderedHtml = null
               }
             }
           }
-          if (typeof channelYtMessages !== 'undefined') channelYtMessages.forEach(patchBuf)
-          if (typeof mentionsBuffer !== 'undefined') patchBuf(mentionsBuffer)
-          // Now feed through the existing cosmetics pipeline; it will resolve
-          // 7TV paint/badge and call updateCosmeticsInPlace which paints by uid.
-          if (!mcUserCosmetics.has(tidStr)) queueMcCosmeticsLookup(tidStr)
         }
-      } catch {
-        evictYtNameCache()
-        ytNameToTwitchId.set(key, null)
-        ytNameToTwitchUsername.set(key, null)
+        if (typeof channelYtMessages !== 'undefined') channelYtMessages.forEach(patchBuf)
+        if (typeof mentionsBuffer !== 'undefined') patchBuf(mentionsBuffer)
+        // Now feed through the existing cosmetics pipeline; it will resolve
+        // 7TV paint/badge and call updateCosmeticsInPlace which paints by uid.
+        if (!mcUserCosmetics.has(tidStr)) queueMcCosmeticsLookup(tidStr)
       }
-    }
-    for (const key of batch) await lookupOne(key)
-    if (ytNameLookupPending.size > 0 && !ytNameLookupTimer) {
-      ytNameLookupTimer = cleanup.setTimeout(() => {
-        ytNameLookupTimer = null
-        flushYtNameLookups()
-      }, 1500)
-    }
-  }
-
-  // ─── Kick username → 7TV cosmetics + twitchId lookup ───
-  // Kick chat WS doesn't propagate user_id to the panel, but 7TV's /users/kick/{username}
-  // endpoint accepts the kick handle directly and returns the linked twitch connection.
-  // We use the returned twitchId as the cosmetics cache key so a chatter with linked
-  // accounts gets the same paint/badge across both platforms.
-  const kickNameResolved = new Map() // kickHandle → twitchId | null
-  const kickNameToTwitchUsername = new Map() // kickHandle → twitchUsername | null
-  const kickNameLookupPending = new Set()
-  let kickNameLookupTimer = null
-  const KICK_NAME_BATCH = 8
-  const KICK_NAME_CACHE_MAX = 1000
-
-  function evictKickNameCache() {
-    if (kickNameResolved.size >= KICK_NAME_CACHE_MAX) {
-      const oldest = kickNameResolved.keys().next().value
-      kickNameResolved.delete(oldest)
-      kickNameToTwitchUsername.delete(oldest)
-    }
-  }
-
-  // Exposed for profile-card.js / tooltips.js cross-platform identity render.
-  // Returns the linked twitch username if known, else null. Triggers a lookup
-  // when first asked so the second hover/right-click picks up the answer.
-  function getKickLinkedTwitch(kickUsername) {
-    if (!kickUsername) return null
-    const k = String(kickUsername).toLowerCase()
-    if (kickNameToTwitchUsername.has(k)) return kickNameToTwitchUsername.get(k)
-    queueKickNameToCosmetics(k)
-    return null
-  }
-
-  function queueKickNameToCosmetics(user) {
-    const key = (user || '').toLowerCase()
-    if (!key) return
-    if (kickNameResolved.has(key)) return
-    if (kickNameLookupPending.has(key)) return
-    kickNameLookupPending.add(key)
-    if (kickNameLookupPending.size >= KICK_NAME_BATCH) {
-      if (kickNameLookupTimer) {
-        cleanup.clearTimeout(kickNameLookupTimer)
-        kickNameLookupTimer = null
-      }
-      flushKickNameLookups()
-      return
-    }
-    if (!kickNameLookupTimer) {
-      kickNameLookupTimer = cleanup.setTimeout(() => {
-        kickNameLookupTimer = null
-        flushKickNameLookups()
-      }, 800)
-    }
-  }
-
-  async function flushKickNameLookups() {
-    if (!kickNameLookupPending.size) return
-    const batch = [...kickNameLookupPending].slice(0, KICK_NAME_BATCH)
-    batch.forEach((k) => kickNameLookupPending.delete(k))
-    let resp = null
-    try {
-      resp = await safeSendMessage({ type: 'get_kick_user_cosmetics', kickUsernames: batch })
     } catch {
-      resp = null
+      evictYtNameCache()
+      ytNameToTwitchId.set(key, null)
+      ytNameToTwitchUsername.set(key, null)
     }
-    const cosmetics = resp?.cosmetics || {}
-    const changedIds = []
-    for (const key of batch) {
-      const c = cosmetics[key]
-      evictKickNameCache()
-      const tid = c?.twitchId ? String(c.twitchId) : null
-      kickNameResolved.set(key, tid)
-      kickNameToTwitchUsername.set(key, c?.twitchUsername || null)
-      if (!tid) continue
-      // Fold the {paint, badge} into the twitch-id-keyed cosmetics cache so the
-      // existing updateCosmeticsInPlace pipeline paints by uid.
-      setMcCosmetic(tid, { paint: c.paint || null, badge: c.badge || null })
-      changedIds.push(tid)
-      // Backfill data-uid on rendered Kick msgs by lowercase username so
-      // updateCosmeticsInPlace finds the right rows.
-      const container = document.getElementById('hs-mc-messages')
-      if (container) {
-        const sel = `.hs-mc-msg .hs-mc-user[data-platform="kick"][data-username="${CSS.escape(key)}"]`
-        for (const userEl of container.querySelectorAll(sel)) {
-          const div = userEl.closest('.hs-mc-msg')
-          if (div && !div.dataset.uid) div.dataset.uid = tid
-        }
+  }
+  for (const key of batch) await lookupOne(key)
+  if (ytNameLookupPending.size > 0 && !ytNameLookupTimer) {
+    ytNameLookupTimer = cleanup.setTimeout(() => {
+      ytNameLookupTimer = null
+      flushYtNameLookups()
+    }, 1500)
+  }
+}
+
+// ─── Kick username → 7TV cosmetics + twitchId lookup ───
+// Kick chat WS doesn't propagate user_id to the panel, but 7TV's /users/kick/{username}
+// endpoint accepts the kick handle directly and returns the linked twitch connection.
+// We use the returned twitchId as the cosmetics cache key so a chatter with linked
+// accounts gets the same paint/badge across both platforms.
+const kickNameResolved = new Map() // kickHandle → twitchId | null
+const kickNameToTwitchUsername = new Map() // kickHandle → twitchUsername | null
+const kickNameLookupPending = new Set()
+let kickNameLookupTimer = null
+const KICK_NAME_BATCH = 8
+const KICK_NAME_CACHE_MAX = 1000
+
+function evictKickNameCache() {
+  if (kickNameResolved.size >= KICK_NAME_CACHE_MAX) {
+    const oldest = kickNameResolved.keys().next().value
+    kickNameResolved.delete(oldest)
+    kickNameToTwitchUsername.delete(oldest)
+  }
+}
+
+// Exposed for profile-card.js / tooltips.js cross-platform identity render.
+// Returns the linked twitch username if known, else null. Triggers a lookup
+// when first asked so the second hover/right-click picks up the answer.
+function getKickLinkedTwitch(kickUsername) {
+  if (!kickUsername) return null
+  const k = String(kickUsername).toLowerCase()
+  if (kickNameToTwitchUsername.has(k)) return kickNameToTwitchUsername.get(k)
+  queueKickNameToCosmetics(k)
+  return null
+}
+
+function queueKickNameToCosmetics(user) {
+  const key = (user || '').toLowerCase()
+  if (!key) return
+  if (kickNameResolved.has(key)) return
+  if (kickNameLookupPending.has(key)) return
+  kickNameLookupPending.add(key)
+  if (kickNameLookupPending.size >= KICK_NAME_BATCH) {
+    if (kickNameLookupTimer) {
+      cleanup.clearTimeout(kickNameLookupTimer)
+      kickNameLookupTimer = null
+    }
+    flushKickNameLookups()
+    return
+  }
+  if (!kickNameLookupTimer) {
+    kickNameLookupTimer = cleanup.setTimeout(() => {
+      kickNameLookupTimer = null
+      flushKickNameLookups()
+    }, 800)
+  }
+}
+
+async function flushKickNameLookups() {
+  if (!kickNameLookupPending.size) return
+  const batch = [...kickNameLookupPending].slice(0, KICK_NAME_BATCH)
+  batch.forEach((k) => kickNameLookupPending.delete(k))
+  let resp = null
+  try {
+    resp = await safeSendMessage({ type: 'get_kick_user_cosmetics', kickUsernames: batch })
+  } catch {
+    resp = null
+  }
+  const cosmetics = resp?.cosmetics || {}
+  const changedIds = []
+  for (const key of batch) {
+    const c = cosmetics[key]
+    evictKickNameCache()
+    const tid = c?.twitchId ? String(c.twitchId) : null
+    kickNameResolved.set(key, tid)
+    kickNameToTwitchUsername.set(key, c?.twitchUsername || null)
+    if (!tid) continue
+    // Fold the {paint, badge} into the twitch-id-keyed cosmetics cache so the
+    // existing updateCosmeticsInPlace pipeline paints by uid.
+    setMcCosmetic(tid, { paint: c.paint || null, badge: c.badge || null })
+    changedIds.push(tid)
+    // Backfill data-uid on rendered Kick msgs by lowercase username so
+    // updateCosmeticsInPlace finds the right rows.
+    const container = document.getElementById('hs-mc-messages')
+    if (container) {
+      const sel = `.hs-mc-msg .hs-mc-user[data-platform="kick"][data-username="${CSS.escape(key)}"]`
+      for (const userEl of container.querySelectorAll(sel)) {
+        const div = userEl.closest('.hs-mc-msg')
+        if (div && !div.dataset.uid) div.dataset.uid = tid
       }
-      // Patch buffered Kick messages so the next render picks up userId and
-      // walks the cosmetics-aware path.
-      const patchBuf = (buf) => {
-        if (!buf || (!Array.isArray(buf) && !(buf && typeof buf[Symbol.iterator] === 'function'))) return
-        for (const m of buf) {
-          if (m && m.platform === 'kick' && m.user) {
-            const mk = m.user.toLowerCase()
-            if (mk === key) {
-              m.userId = tid
-              m._renderedHtml = null
-            }
+    }
+    // Patch buffered Kick messages so the next render picks up userId and
+    // walks the cosmetics-aware path.
+    const patchBuf = (buf) => {
+      if (!buf || (!Array.isArray(buf) && !(buf && typeof buf[Symbol.iterator] === 'function'))) return
+      for (const m of buf) {
+        if (m && m.platform === 'kick' && m.user) {
+          const mk = m.user.toLowerCase()
+          if (mk === key) {
+            m.userId = tid
+            m._renderedHtml = null
           }
         }
       }
-      if (typeof kickChat !== 'undefined' && kickChat?.channels) {
-        for (const ch of kickChat.channels.keys()) patchBuf(kickChat.getMessages(ch))
-      }
-      if (typeof mentionsBuffer !== 'undefined') patchBuf(mentionsBuffer)
     }
-    if (changedIds.length) updateCosmeticsInPlace(changedIds)
-    if (kickNameLookupPending.size > 0 && !kickNameLookupTimer) {
-      kickNameLookupTimer = cleanup.setTimeout(() => {
-        kickNameLookupTimer = null
-        flushKickNameLookups()
-      }, 1500)
+    if (typeof kickChat !== 'undefined' && kickChat?.channels) {
+      for (const ch of kickChat.channels.keys()) patchBuf(kickChat.getMessages(ch))
     }
+    if (typeof mentionsBuffer !== 'undefined') patchBuf(mentionsBuffer)
   }
-
-  // 7TV cosmetics queue — batch lookups to avoid per-message requests
-  function queueMcCosmeticsLookup(userId) {
-    if (!userId) return
-    // HeatSync paints ride the exact same choke point as 7TV cosmetics —
-    // every call site here already only ever passes a resolved twitch-space
-    // id (see the ID-SPACE SAFETY note atop paints.js). Independent cache/
-    // dedup (hsPaintCache), so this is unconditional even when the 7TV lookup
-    // below short-circuits on an already-cached (possibly negative) entry.
-    queuePaintLookup(userId)
-    if (mcUserCosmetics.has(userId)) return
-    if (mcCosmeticsPending.size >= MC_COSMETICS_PENDING_MAX) return
-    mcCosmeticsPending.add(userId)
-    if (!mcCosmeticsTimer) {
-      mcCosmeticsTimer = cleanup.setTimeout(() => {
-        mcCosmeticsTimer = null
-        flushMcCosmeticsBatch()
-      }, 100)
-    }
+  if (changedIds.length) updateCosmeticsInPlace(changedIds)
+  if (kickNameLookupPending.size > 0 && !kickNameLookupTimer) {
+    kickNameLookupTimer = cleanup.setTimeout(() => {
+      kickNameLookupTimer = null
+      flushKickNameLookups()
+    }, 1500)
   }
+}
 
-  function flushMcCosmeticsBatch() {
-    if (!mcCosmeticsPending.size) return
-    // Drain newest-queued first: messages queue oldest→newest, but the user is
-    // looking at the bottom (newest) of the buffer, so the visible viewport
-    // resolves in the first batch instead of last. Off-screen/scrolled-away
-    // users still fill in as the queue drains.
-    const batch = [...mcCosmeticsPending].slice(-25)
-    batch.forEach((id) => mcCosmeticsPending.delete(id))
-    safeSendMessage({ type: 'get_user_cosmetics', twitchIds: batch })
-      .then((resp) => {
-        if (!resp?.cosmetics) return
-        const changedIds = []
-        for (const [uid, c] of Object.entries(resp.cosmetics)) {
-          if (c) {
-            setMcCosmetic(uid, c)
-            changedIds.push(uid)
-          }
+// 7TV cosmetics queue — batch lookups to avoid per-message requests
+function queueMcCosmeticsLookup(userId) {
+  if (!userId) return
+  // HeatSync paints ride the exact same choke point as 7TV cosmetics —
+  // every call site here already only ever passes a resolved twitch-space
+  // id (see the ID-SPACE SAFETY note atop paints.js). Independent cache/
+  // dedup (hsPaintCache), so this is unconditional even when the 7TV lookup
+  // below short-circuits on an already-cached (possibly negative) entry.
+  queuePaintLookup(userId)
+  if (mcUserCosmetics.has(userId)) return
+  if (mcCosmeticsPending.size >= MC_COSMETICS_PENDING_MAX) return
+  mcCosmeticsPending.add(userId)
+  if (!mcCosmeticsTimer) {
+    mcCosmeticsTimer = cleanup.setTimeout(() => {
+      mcCosmeticsTimer = null
+      flushMcCosmeticsBatch()
+    }, 100)
+  }
+}
+
+function flushMcCosmeticsBatch() {
+  if (!mcCosmeticsPending.size) return
+  // Drain newest-queued first: messages queue oldest→newest, but the user is
+  // looking at the bottom (newest) of the buffer, so the visible viewport
+  // resolves in the first batch instead of last. Off-screen/scrolled-away
+  // users still fill in as the queue drains.
+  const batch = [...mcCosmeticsPending].slice(-25)
+  batch.forEach((id) => mcCosmeticsPending.delete(id))
+  safeSendMessage({ type: 'get_user_cosmetics', twitchIds: batch })
+    .then((resp) => {
+      if (!resp?.cosmetics) return
+      const changedIds = []
+      for (const [uid, c] of Object.entries(resp.cosmetics)) {
+        if (c) {
+          setMcCosmetic(uid, c)
+          changedIds.push(uid)
         }
-        if (changedIds.length) updateCosmeticsInPlace(changedIds)
-      })
-      .catch(() => {})
-    if (mcCosmeticsPending.size > 0) {
-      mcCosmeticsTimer = cleanup.setTimeout(() => {
-        mcCosmeticsTimer = null
-        flushMcCosmeticsBatch()
-      }, 500)
+      }
+      if (changedIds.length) updateCosmeticsInPlace(changedIds)
+    })
+    .catch(() => {})
+  if (mcCosmeticsPending.size > 0) {
+    mcCosmeticsTimer = cleanup.setTimeout(() => {
+      mcCosmeticsTimer = null
+      flushMcCosmeticsBatch()
+    }, 500)
+  }
+}
+
+// 7TV badge imgs sometimes fail at insert-time: a burst of cdn.7tv.app
+// requests races HTTP/3 and the CDN drops a few. The URL is valid (a fresh
+// fetch succeeds), so retry up to 2x — cache-busted + staggered — before
+// hiding, instead of leaving a permanent broken-image icon.
+function retryOrHideBadgeImg(img) {
+  if (!(img instanceof HTMLImageElement) || !img.classList.contains('hs-mc-badge-img')) return
+  const n = +img.dataset.hsRetry || 0
+  if (n >= 2) {
+    img.style.display = 'none'
+    return
+  }
+  img.dataset.hsRetry = String(n + 1)
+  const base = img.dataset.hsSrc || (img.dataset.hsSrc = img.src.replace(/[?&]hsr=\d+$/, ''))
+  cleanup.setTimeout(
+    () => {
+      img.src = base + (base.includes('?') ? '&' : '?') + 'hsr=' + img.dataset.hsRetry
+    },
+    200 * (n + 1),
+  )
+}
+
+// In-place repaint for HeatSync name paints (paints.js) — the counterpart
+// to updateCosmeticsInPlace below, fired from its own independent batch
+// (queuePaintLookup/flushHsPaintBatch in paints.js) once a paint resolves.
+// Repaints both the sender username div (_uidIndex) and any inline
+// @mention/reply-context anchors (_mentionIndex) for this uid.
+function updateHsPaintsInPlace(userIds) {
+  if (!document.getElementById('hs-mc-messages')) return
+  for (const uid of userIds) {
+    const mentionSet = _mentionIndex.get(uid)
+    if (mentionSet) {
+      for (const el of mentionSet) applyHsPaintToElement(el, uid)
+    }
+    const divSet = _uidIndex.get(uid)
+    if (!divSet) continue
+    for (const div of divSet) {
+      const userLink = div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
+      if (userLink) applyHsPaintToElement(userLink, uid)
     }
   }
+}
 
-  // 7TV badge imgs sometimes fail at insert-time: a burst of cdn.7tv.app
-  // requests races HTTP/3 and the CDN drops a few. The URL is valid (a fresh
-  // fetch succeeds), so retry up to 2x — cache-busted + staggered — before
-  // hiding, instead of leaving a permanent broken-image icon.
-  function retryOrHideBadgeImg(img) {
-    if (!(img instanceof HTMLImageElement) || !img.classList.contains('hs-mc-badge-img')) return
-    const n = +img.dataset.hsRetry || 0
-    if (n >= 2) {
-      img.style.display = 'none'
-      return
-    }
-    img.dataset.hsRetry = String(n + 1)
-    const base = img.dataset.hsSrc || (img.dataset.hsSrc = img.src.replace(/[?&]hsr=\d+$/, ''))
-    cleanup.setTimeout(
-      () => {
-        img.src = base + (base.includes('?') ? '&' : '?') + 'hsr=' + img.dataset.hsRetry
-      },
-      200 * (n + 1),
-    )
-  }
-
-  // In-place repaint for HeatSync name paints (paints.js) — the counterpart
-  // to updateCosmeticsInPlace below, fired from its own independent batch
-  // (queuePaintLookup/flushHsPaintBatch in paints.js) once a paint resolves.
-  // Repaints both the sender username div (_uidIndex) and any inline
-  // @mention/reply-context anchors (_mentionIndex) for this uid.
-  function updateHsPaintsInPlace(userIds) {
-    if (!document.getElementById('hs-mc-messages')) return
-    for (const uid of userIds) {
+// Update cosmetics (badges + paint) in-place without full re-render.
+// O(1) lookup via _uidIndex / _mentionIndex instead of querySelectorAll over
+// the full message container — at 25-user batches × 500 children that was
+// 50 full DOM scans per cosmetic flush.
+function updateCosmeticsInPlace(userIds) {
+  if (!document.getElementById('hs-mc-messages')) return
+  for (const uid of userIds) {
+    const cosmetic = mcUserCosmetics.get(uid)
+    if (!cosmetic) continue
+    // Precedence: a HeatSync paint (this user's own choice on our platform)
+    // always wins over their 7TV paint. If one is already resolved for this
+    // uid, skip the 7TV inline style entirely — applyHsPaintToElement (via
+    // updateHsPaintsInPlace) owns painting this element from here on,
+    // whichever batch (7TV or HS) resolves first or last.
+    const paintStyle = hasResolvedHsPaint(uid) ? '' : getMcPaintStyle(uid)
+    // Repaint inline @mentions of this user across all visible messages
+    if (paintStyle) {
       const mentionSet = _mentionIndex.get(uid)
       if (mentionSet) {
-        for (const el of mentionSet) applyHsPaintToElement(el, uid)
-      }
-      const divSet = _uidIndex.get(uid)
-      if (!divSet) continue
-      for (const div of divSet) {
-        const userLink = div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
-        if (userLink) applyHsPaintToElement(userLink, uid)
+        for (const mention of mentionSet) mention.setAttribute('style', paintStyle)
       }
     }
-  }
-
-  // Update cosmetics (badges + paint) in-place without full re-render.
-  // O(1) lookup via _uidIndex / _mentionIndex instead of querySelectorAll over
-  // the full message container — at 25-user batches × 500 children that was
-  // 50 full DOM scans per cosmetic flush.
-  function updateCosmeticsInPlace(userIds) {
-    if (!document.getElementById('hs-mc-messages')) return
-    for (const uid of userIds) {
-      const cosmetic = mcUserCosmetics.get(uid)
-      if (!cosmetic) continue
-      // Precedence: a HeatSync paint (this user's own choice on our platform)
-      // always wins over their 7TV paint. If one is already resolved for this
-      // uid, skip the 7TV inline style entirely — applyHsPaintToElement (via
-      // updateHsPaintsInPlace) owns painting this element from here on,
-      // whichever batch (7TV or HS) resolves first or last.
-      const paintStyle = hasResolvedHsPaint(uid) ? '' : getMcPaintStyle(uid)
-      // Repaint inline @mentions of this user across all visible messages
-      if (paintStyle) {
-        const mentionSet = _mentionIndex.get(uid)
-        if (mentionSet) {
-          for (const mention of mentionSet) mention.setAttribute('style', paintStyle)
+    const divSet = _uidIndex.get(uid)
+    if (!divSet) continue
+    for (const div of divSet) {
+      // Update paint on the SENDER's username link — exclude the reply
+      // target (.hs-mc-reply-user) which also has .hs-mc-user but is a
+      // different person and would get the wrong paint/badge.
+      const userLink = div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
+      if (userLink) {
+        if (paintStyle) {
+          userLink.setAttribute('style', paintStyle)
         }
       }
-      const divSet = _uidIndex.get(uid)
-      if (!divSet) continue
-      for (const div of divSet) {
-        // Update paint on the SENDER's username link — exclude the reply
-        // target (.hs-mc-reply-user) which also has .hs-mc-user but is a
-        // different person and would get the wrong paint/badge.
-        const userLink = div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
-        if (userLink) {
-          if (paintStyle) {
-            userLink.setAttribute('style', paintStyle)
-          }
-        }
-        // Add 7TV badge if not already present and cosmetic has one
-        if (cosmetic.badge && !div.querySelector('.hs-mc-7tv-badge')) {
-          const files = cosmetic.badge.host?.files || []
-          const file =
-            files.find((f) => f.name?.endsWith('.webp')) || files.find((f) => f.name?.endsWith('.avif')) || files[0]
-          if (file) {
-            const base = cosmetic.badge.host?.url || ''
-            // 7TV returns protocol-relative URLs (//cdn.7tv.app/...) — promote
-            // to https before validation so safeUrl doesn't drop them.
-            const absBase = base.startsWith('//') ? 'https:' + base : base
-            const rawUrl = (absBase.endsWith('/') ? absBase : absBase + '/') + file.name
-            const url = safeUrl(rawUrl)
-            if (url) {
-              const img = document.createElement('img')
-              img.className = 'hs-mc-badge-img hs-mc-7tv-badge'
-              img.alt = '7TV'
-              img.title = cosmetic.badge.tooltip || '7TV'
-              img.style.cssText = 'width:18px;height:18px;'
-              img.dataset.hsSrc = url
-              // Insert FIRST, then set src — so an immediate QUIC-drop error
-              // fires while the img is already under msgsEl and the capture-phase
-              // error handler (→ retryOrHideBadgeImg) catches it.
-              if (userLink) userLink.parentNode.insertBefore(img, userLink)
-              img.src = url
-            }
+      // Add 7TV badge if not already present and cosmetic has one
+      if (cosmetic.badge && !div.querySelector('.hs-mc-7tv-badge')) {
+        const files = cosmetic.badge.host?.files || []
+        const file =
+          files.find((f) => f.name?.endsWith('.webp')) || files.find((f) => f.name?.endsWith('.avif')) || files[0]
+        if (file) {
+          const base = cosmetic.badge.host?.url || ''
+          // 7TV returns protocol-relative URLs (//cdn.7tv.app/...) — promote
+          // to https before validation so safeUrl doesn't drop them.
+          const absBase = base.startsWith('//') ? 'https:' + base : base
+          const rawUrl = (absBase.endsWith('/') ? absBase : absBase + '/') + file.name
+          const url = safeUrl(rawUrl)
+          if (url) {
+            const img = document.createElement('img')
+            img.className = 'hs-mc-badge-img hs-mc-7tv-badge'
+            img.alt = '7TV'
+            img.title = cosmetic.badge.tooltip || '7TV'
+            img.style.cssText = 'width:18px;height:18px;'
+            img.dataset.hsSrc = url
+            // Insert FIRST, then set src — so an immediate QUIC-drop error
+            // fires while the img is already under msgsEl and the capture-phase
+            // error handler (→ retryOrHideBadgeImg) catches it.
+            if (userLink) userLink.parentNode.insertBefore(img, userLink)
+            img.src = url
           }
         }
       }
     }
   }
+}
 
-  // In-place third-party badge injection (BTTV/FFZ/Chatterino). Mirrors
-  // updateCosmeticsInPlace's 7TV-badge path: when the bulk badge maps arrive
-  // late (cold service worker, or the ~24h cosmetics_update broadcast), patch
-  // the badges into already-rendered rows via _uidIndex (keyed by twitch uid,
-  // same key renderThirdPartyBadges uses) instead of bumpRenderEpoch()+full
-  // rebuild — that rebuild tore down every row and reloaded every avatar/emote
-  // image = the "loads then shifts" flash on channel switch. Per-provider class
-  // dedups so a warm row (built after the maps populated) isn't double-badged.
-  // Anchor = before the avatar (or username when avatars are off) so injected
-  // badges land exactly where buildMessageDiv's ${badges} sits: after native
-  // badges, before ${avatarHtml}${userLink}.
-  function updateThirdPartyBadgesInPlace() {
-    if (!document.getElementById('hs-mc-messages')) return
-    const wantBttv = getSetting('bttvBadges')
-    const wantFfz = getSetting('ffzBadges')
-    const wantChat = getSetting('chatterinoBadges')
-    if (!wantBttv && !wantFfz && !wantChat) return
-    const mkBadge = (cls, url, title, bg) => {
-      const safe = safeUrl(url)
-      if (!safe) return null
+// In-place third-party badge injection (BTTV/FFZ/Chatterino). Mirrors
+// updateCosmeticsInPlace's 7TV-badge path: when the bulk badge maps arrive
+// late (cold service worker, or the ~24h cosmetics_update broadcast), patch
+// the badges into already-rendered rows via _uidIndex (keyed by twitch uid,
+// same key renderThirdPartyBadges uses) instead of bumpRenderEpoch()+full
+// rebuild — that rebuild tore down every row and reloaded every avatar/emote
+// image = the "loads then shifts" flash on channel switch. Per-provider class
+// dedups so a warm row (built after the maps populated) isn't double-badged.
+// Anchor = before the avatar (or username when avatars are off) so injected
+// badges land exactly where buildMessageDiv's ${badges} sits: after native
+// badges, before ${avatarHtml}${userLink}.
+function updateThirdPartyBadgesInPlace() {
+  if (!document.getElementById('hs-mc-messages')) return
+  const wantBttv = getSetting('bttvBadges')
+  const wantFfz = getSetting('ffzBadges')
+  const wantChat = getSetting('chatterinoBadges')
+  if (!wantBttv && !wantFfz && !wantChat) return
+  const mkBadge = (cls, url, title, bg) => {
+    const safe = safeUrl(url)
+    if (!safe) return null
+    const img = document.createElement('img')
+    img.className = 'hs-mc-badge-img ' + cls
+    img.alt = title || ''
+    img.title = title || ''
+    img.decoding = 'async'
+    img.width = 18
+    img.height = 18
+    img.style.cssText = 'width:18px;height:18px;' + (bg ? `background:${bg};border-radius:2px;` : '')
+    // Insert FIRST, then set src (caller) — so an immediate QUIC-drop error
+    // fires while the img is already under msgsEl and the capture-phase error
+    // handler (retryOrHideBadgeImg) catches it. Mirrors updateCosmeticsInPlace.
+    img.dataset.hsSrc = safe
+    return img
+  }
+  for (const [uid, divSet] of _uidIndex) {
+    const bttv = wantBttv ? mcBttvBadgeMap.get(uid) : null
+    const ffzList = wantFfz ? mcFfzBadgeMap.get(uid) : null
+    const chat = wantChat ? mcChatterinoBadgeMap.get(uid) : null
+    if (!bttv && !ffzList && !chat) continue
+    for (const div of divSet) {
+      const anchor = div.querySelector('.hs-mc-avatar') || div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
+      if (!anchor) continue
+      const insert = (img) => {
+        if (img) {
+          anchor.parentNode.insertBefore(img, anchor)
+          img.src = img.dataset.hsSrc
+        }
+      }
+      if (bttv && !div.querySelector('.hs-mc-bttv-badge')) {
+        insert(mkBadge('hs-mc-bttv-badge', bttv.url, bttv.description))
+      }
+      if (ffzList && !div.querySelector('.hs-mc-ffz-badge')) {
+        for (const b of ffzList) {
+          const safeColor = /^#[0-9a-fA-F]{3,8}$/.test(b.color) ? b.color : ''
+          insert(mkBadge('hs-mc-ffz-badge', b.url, b.title, safeColor))
+        }
+      }
+      if (chat && !div.querySelector('.hs-mc-chatterino-badge')) {
+        insert(mkBadge('hs-mc-chatterino-badge', chat.url, chat.tooltip || 'Chatterino'))
+      }
+    }
+  }
+}
+
+// Patch native Twitch/Kick badge imgs into already-rendered rows when
+// fetchGlobalBadges, fetchChannelBadges, or fetchKickChannelBadges resolve
+// late (cold-load race). Mirrors updateThirdPartyBadgesInPlace: no
+// _renderEpoch bump, no full rebuild, no image-reload flash. renderBadges
+// now stamps data-badge="name/version" on every badge element (both imgs
+// and text-fallback spans) so we can find each slot precisely via
+// querySelector.
+//
+// Dedup: if an img with the correct data-badge already exists (row built
+// after badges loaded), we update its src in case a better URL is now
+// available (e.g. channel-specific sub badge overrides the global star).
+// If only a text-fallback span exists, we replace it with the img.
+// If neither exists (badge had no URL + no BADGE_STYLES at render time),
+// we insert a new img before the avatar/username anchor — same position
+// as build-time.
+//
+// Per-row patch body — factored out so it can run against BOTH the live
+// #hs-mc-messages DOM and every snapshotted (inactive-tab) DocumentFragment
+// sitting in _tabCache. Backfill/history rows for a channel that finished
+// rendering (join()'s history hydration, which resolves fast off BG's
+// in-memory cache) BEFORE fetchGlobalBadges/fetchChannelBadges/
+// fetchKickChannelBadges resolve (real network round-trips, reliably
+// slower) always lose that race — this in-place patch is what upgrades
+// them afterward. Without also covering _tabCache, only whichever tab
+// happened to be the live/active one at resolve-time got fixed; any other
+// tab the user had already switched away from (snapshotted, detached from
+// the document — querySelectorAll on #hs-mc-messages can't see it) stayed
+// on stale text-fallback badges until something forced a full rebuild.
+function _patchBadgesInRoot(root, channelLogin) {
+  for (const div of root.querySelectorAll('.hs-mc-msg')) {
+    const m = div._hsMsg
+    if (!m?.badges || typeof m.badges !== 'string') continue
+    // YouTube badge arrays are not in twitchBadgeUrls — skip
+    if (m.platform === 'youtube') continue
+    // Channel-specific update: only touch rows for the fetched channel
+    if (channelLogin && m.channel !== channelLogin) continue
+    const ch = m.channel || null
+    const isKick = (m.badgePlatform || m.platform) === 'kick'
+    const anchor = div.querySelector('.hs-mc-avatar') || div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
+    if (!anchor) continue
+    for (const badge of m.badges.split(',')) {
+      const sep = badge.indexOf('/')
+      if (sep < 1) continue
+      const name = badge.slice(0, sep)
+      const version = badge.slice(sep + 1)
+      // Same priority chain renderBadges uses at initial render — shared via
+      // resolveBadgeImageUrl (twitch-api.js) so the two can never drift apart.
+      const url = resolveBadgeImageUrl(isKick, ch, name, version)
+      if (!url) continue
+      const safeU = safeUrl(url)
+      if (!safeU) continue
+      const key = `${name}/${version}`
+      // Dedup: img already present — update src if a better URL is available
+      const existingImg = div.querySelector(`img.hs-mc-badge-img[data-badge="${key}"]`)
+      if (existingImg) {
+        if (existingImg.getAttribute('src') !== safeU) {
+          existingImg.dataset.hsSrc = safeU
+          existingImg.src = safeU
+        }
+        continue
+      }
+      // Build replacement img matching renderBadges output
+      const isFFZ = ch && ffzBadgeKeys.has(`${ch}:${name}`)
       const img = document.createElement('img')
-      img.className = 'hs-mc-badge-img ' + cls
-      img.alt = title || ''
-      img.title = title || ''
+      img.className = 'hs-mc-badge-img'
+      img.dataset.badge = key
+      img.alt = name
+      img.title = BADGE_STYLES[name]?.label || name
       img.decoding = 'async'
       img.width = 18
       img.height = 18
-      img.style.cssText = 'width:18px;height:18px;' + (bg ? `background:${bg};border-radius:2px;` : '')
-      // Insert FIRST, then set src (caller) — so an immediate QUIC-drop error
-      // fires while the img is already under msgsEl and the capture-phase error
-      // handler (retryOrHideBadgeImg) catches it. Mirrors updateCosmeticsInPlace.
-      img.dataset.hsSrc = safe
-      return img
-    }
-    for (const [uid, divSet] of _uidIndex) {
-      const bttv = wantBttv ? mcBttvBadgeMap.get(uid) : null
-      const ffzList = wantFfz ? mcFfzBadgeMap.get(uid) : null
-      const chat = wantChat ? mcChatterinoBadgeMap.get(uid) : null
-      if (!bttv && !ffzList && !chat) continue
-      for (const div of divSet) {
-        const anchor = div.querySelector('.hs-mc-avatar') || div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
-        if (!anchor) continue
-        const insert = (img) => {
-          if (img) {
-            anchor.parentNode.insertBefore(img, anchor)
-            img.src = img.dataset.hsSrc
-          }
-        }
-        if (bttv && !div.querySelector('.hs-mc-bttv-badge')) {
-          insert(mkBadge('hs-mc-bttv-badge', bttv.url, bttv.description))
-        }
-        if (ffzList && !div.querySelector('.hs-mc-ffz-badge')) {
-          for (const b of ffzList) {
-            const safeColor = /^#[0-9a-fA-F]{3,8}$/.test(b.color) ? b.color : ''
-            insert(mkBadge('hs-mc-ffz-badge', b.url, b.title, safeColor))
-          }
-        }
-        if (chat && !div.querySelector('.hs-mc-chatterino-badge')) {
-          insert(mkBadge('hs-mc-chatterino-badge', chat.url, chat.tooltip || 'Chatterino'))
-        }
+      img.style.cssText = `width:18px;height:18px;${badgeBgStyle(name, isFFZ)}`
+      img.dataset.hsSrc = safeU
+      // Replace text-fallback span if present; else insert before anchor.
+      // Set src after DOM insertion so the capture-phase retryOrHideBadgeImg
+      // error handler fires while the img is already attached.
+      const existingSpan = div.querySelector(`span.hs-mc-badge[data-badge="${key}"]`)
+      if (existingSpan) {
+        existingSpan.parentNode.replaceChild(img, existingSpan)
+      } else {
+        anchor.parentNode.insertBefore(img, anchor)
       }
+      img.src = safeU
     }
   }
+}
 
-  // Patch native Twitch/Kick badge imgs into already-rendered rows when
-  // fetchGlobalBadges, fetchChannelBadges, or fetchKickChannelBadges resolve
-  // late (cold-load race). Mirrors updateThirdPartyBadgesInPlace: no
-  // _renderEpoch bump, no full rebuild, no image-reload flash. renderBadges
-  // now stamps data-badge="name/version" on every badge element (both imgs
-  // and text-fallback spans) so we can find each slot precisely via
-  // querySelector.
-  //
-  // Dedup: if an img with the correct data-badge already exists (row built
-  // after badges loaded), we update its src in case a better URL is now
-  // available (e.g. channel-specific sub badge overrides the global star).
-  // If only a text-fallback span exists, we replace it with the img.
-  // If neither exists (badge had no URL + no BADGE_STYLES at render time),
-  // we insert a new img before the avatar/username anchor — same position
-  // as build-time.
-  //
-  // Per-row patch body — factored out so it can run against BOTH the live
-  // #hs-mc-messages DOM and every snapshotted (inactive-tab) DocumentFragment
-  // sitting in _tabCache. Backfill/history rows for a channel that finished
-  // rendering (join()'s history hydration, which resolves fast off BG's
-  // in-memory cache) BEFORE fetchGlobalBadges/fetchChannelBadges/
-  // fetchKickChannelBadges resolve (real network round-trips, reliably
-  // slower) always lose that race — this in-place patch is what upgrades
-  // them afterward. Without also covering _tabCache, only whichever tab
-  // happened to be the live/active one at resolve-time got fixed; any other
-  // tab the user had already switched away from (snapshotted, detached from
-  // the document — querySelectorAll on #hs-mc-messages can't see it) stayed
-  // on stale text-fallback badges until something forced a full rebuild.
-  function _patchBadgesInRoot(root, channelLogin) {
-    for (const div of root.querySelectorAll('.hs-mc-msg')) {
-      const m = div._hsMsg
-      if (!m?.badges || typeof m.badges !== 'string') continue
-      // YouTube badge arrays are not in twitchBadgeUrls — skip
-      if (m.platform === 'youtube') continue
-      // Channel-specific update: only touch rows for the fetched channel
-      if (channelLogin && m.channel !== channelLogin) continue
-      const ch = m.channel || null
-      const isKick = (m.badgePlatform || m.platform) === 'kick'
-      const anchor = div.querySelector('.hs-mc-avatar') || div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
-      if (!anchor) continue
-      for (const badge of m.badges.split(',')) {
-        const sep = badge.indexOf('/')
-        if (sep < 1) continue
-        const name = badge.slice(0, sep)
-        const version = badge.slice(sep + 1)
-        // Same priority chain renderBadges uses at initial render — shared via
-        // resolveBadgeImageUrl (twitch-api.js) so the two can never drift apart.
-        const url = resolveBadgeImageUrl(isKick, ch, name, version)
-        if (!url) continue
-        const safeU = safeUrl(url)
-        if (!safeU) continue
-        const key = `${name}/${version}`
-        // Dedup: img already present — update src if a better URL is available
-        const existingImg = div.querySelector(`img.hs-mc-badge-img[data-badge="${key}"]`)
-        if (existingImg) {
-          if (existingImg.getAttribute('src') !== safeU) {
-            existingImg.dataset.hsSrc = safeU
-            existingImg.src = safeU
-          }
-          continue
-        }
-        // Build replacement img matching renderBadges output
-        const isFFZ = ch && ffzBadgeKeys.has(`${ch}:${name}`)
-        const img = document.createElement('img')
-        img.className = 'hs-mc-badge-img'
-        img.dataset.badge = key
-        img.alt = name
-        img.title = BADGE_STYLES[name]?.label || name
-        img.decoding = 'async'
-        img.width = 18
-        img.height = 18
-        img.style.cssText = `width:18px;height:18px;${badgeBgStyle(name, isFFZ)}`
-        img.dataset.hsSrc = safeU
-        // Replace text-fallback span if present; else insert before anchor.
-        // Set src after DOM insertion so the capture-phase retryOrHideBadgeImg
-        // error handler fires while the img is already attached.
-        const existingSpan = div.querySelector(`span.hs-mc-badge[data-badge="${key}"]`)
-        if (existingSpan) {
-          existingSpan.parentNode.replaceChild(img, existingSpan)
-        } else {
-          anchor.parentNode.insertBefore(img, anchor)
-        }
-        img.src = safeU
-      }
-    }
+// channelLogin: null  = global badges just loaded (update all rows)
+//               string = channel badges for that specific channel only
+function updateNativeBadgesInPlace(channelLogin) {
+  const msgsEl = document.getElementById('hs-mc-messages')
+  if (msgsEl) _patchBadgesInRoot(msgsEl, channelLogin)
+  // Also patch every OTHER tab's snapshotted fragment (see _patchBadgesInRoot's
+  // comment) instead of the old approach of just _dropAllTabCaches()-ing them —
+  // that forced a full rebuild (avatar/emote/badge image reload flash) on next
+  // visit just to fix a handful of badge imgs. A DocumentFragment supports the
+  // same querySelectorAll surface as a live Element, so this is exactly as cheap.
+  for (const cache of _tabCache.values()) {
+    if (cache?.frag) _patchBadgesInRoot(cache.frag, channelLogin)
   }
+}
 
-  // channelLogin: null  = global badges just loaded (update all rows)
-  //               string = channel badges for that specific channel only
-  function updateNativeBadgesInPlace(channelLogin) {
-    const msgsEl = document.getElementById('hs-mc-messages')
-    if (msgsEl) _patchBadgesInRoot(msgsEl, channelLogin)
-    // Also patch every OTHER tab's snapshotted fragment (see _patchBadgesInRoot's
-    // comment) instead of the old approach of just _dropAllTabCaches()-ing them —
-    // that forced a full rebuild (avatar/emote/badge image reload flash) on next
-    // visit just to fix a handful of badge imgs. A DocumentFragment supports the
-    // same querySelectorAll surface as a live Element, so this is exactly as cheap.
-    for (const cache of _tabCache.values()) {
-      if (cache?.frag) _patchBadgesInRoot(cache.frag, channelLogin)
+// 7TV paint → CSS style string
+// 7TV paint → CSS is static per paint object but getMcPaintStyle runs per
+// sender + per @mention + inside updateCosmeticsInPlace, re-deriving the same
+// gradient/shadow string (map/join/toFixed churn) every render. Memoize on the
+// paint object: a WeakMap auto-evicts when the cosmetic is dropped, and keying
+// on identity means a replaced paint recomputes with no manual invalidation.
+const _mcPaintStyleCache = new WeakMap()
+function getMcPaintStyle(userId) {
+  if (!getSetting('sevenTvPaints')) return ''
+  const cosmetic = mcUserCosmetics.get(userId)
+  const paint = cosmetic?.paint
+  if (!paint || !paint.function) return ''
+  const cached = _mcPaintStyleCache.get(paint)
+  if (cached !== undefined) return cached
+  const style = _computeMcPaintStyle(paint)
+  _mcPaintStyleCache.set(paint, style)
+  return style
+}
+function _computeMcPaintStyle(paint) {
+  const fn = paint.function.toLowerCase()
+  if (fn === 'url' && paint.image_url) {
+    if (!/^https:\/\//.test(paint.image_url)) return ''
+    const safeCssUrl = paint.image_url.replace(/[()'"\\;{}]/g, encodeURIComponent)
+    let style = `background-image:url(${safeCssUrl});background-size:cover;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text`
+    if (paint.shadows?.length) {
+      style +=
+        ';filter:' +
+        paint.shadows
+          .map((s) => {
+            const r = (s.color >>> 24) & 0xff
+            const g = (s.color >>> 16) & 0xff
+            const b = (s.color >>> 8) & 0xff
+            const a = (s.color & 0xff) / 255
+            return `drop-shadow(${Number(s.x_offset) || 0}px ${Number(s.y_offset) || 0}px ${Number(s.radius) || 0}px rgba(${r},${g},${b},${a.toFixed(2)}))`
+          })
+          .join(' ')
     }
-  }
-
-  // 7TV paint → CSS style string
-  // 7TV paint → CSS is static per paint object but getMcPaintStyle runs per
-  // sender + per @mention + inside updateCosmeticsInPlace, re-deriving the same
-  // gradient/shadow string (map/join/toFixed churn) every render. Memoize on the
-  // paint object: a WeakMap auto-evicts when the cosmetic is dropped, and keying
-  // on identity means a replaced paint recomputes with no manual invalidation.
-  const _mcPaintStyleCache = new WeakMap()
-  function getMcPaintStyle(userId) {
-    if (!getSetting('sevenTvPaints')) return ''
-    const cosmetic = mcUserCosmetics.get(userId)
-    const paint = cosmetic?.paint
-    if (!paint || !paint.function) return ''
-    const cached = _mcPaintStyleCache.get(paint)
-    if (cached !== undefined) return cached
-    const style = _computeMcPaintStyle(paint)
-    _mcPaintStyleCache.set(paint, style)
     return style
   }
-  function _computeMcPaintStyle(paint) {
-    const fn = paint.function.toLowerCase()
-    if (fn === 'url' && paint.image_url) {
-      if (!/^https:\/\//.test(paint.image_url)) return ''
-      const safeCssUrl = paint.image_url.replace(/[()'"\\;{}]/g, encodeURIComponent)
-      let style = `background-image:url(${safeCssUrl});background-size:cover;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text`
-      if (paint.shadows?.length) {
-        style +=
-          ';filter:' +
-          paint.shadows
-            .map((s) => {
-              const r = (s.color >>> 24) & 0xff
-              const g = (s.color >>> 16) & 0xff
-              const b = (s.color >>> 8) & 0xff
-              const a = (s.color & 0xff) / 255
-              return `drop-shadow(${Number(s.x_offset) || 0}px ${Number(s.y_offset) || 0}px ${Number(s.radius) || 0}px rgba(${r},${g},${b},${a.toFixed(2)}))`
-            })
-            .join(' ')
-      }
-      return style
+  if (
+    (fn === 'linear-gradient' || fn === 'radial-gradient' || fn === 'linear_gradient' || fn === 'radial_gradient') &&
+    paint.stops?.length
+  ) {
+    const stops = paint.stops
+      .map((s) => {
+        const r = (s.color >>> 24) & 0xff
+        const g = (s.color >>> 16) & 0xff
+        const b = (s.color >>> 8) & 0xff
+        const a = (s.color & 0xff) / 255
+        return `rgba(${r},${g},${b},${a.toFixed(2)}) ${Math.round(s.at * 100)}%`
+      })
+      .join(', ')
+    const safeAngle = Number.isFinite(Number(paint.angle)) ? Number(paint.angle) : 0
+    const safeShape = /^(circle|ellipse)$/.test(paint.shape) ? paint.shape : 'circle'
+    const grad =
+      fn === 'linear-gradient' || fn === 'linear_gradient'
+        ? `linear-gradient(${safeAngle}deg, ${stops})`
+        : `radial-gradient(${safeShape}, ${stops})`
+    let style = `background:${grad};-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text`
+    if (paint.shadows?.length) {
+      style +=
+        ';filter:' +
+        paint.shadows
+          .map((s) => {
+            const r = (s.color >>> 24) & 0xff
+            const g = (s.color >>> 16) & 0xff
+            const b = (s.color >>> 8) & 0xff
+            const a = (s.color & 0xff) / 255
+            return `drop-shadow(${Number(s.x_offset) || 0}px ${Number(s.y_offset) || 0}px ${Number(s.radius) || 0}px rgba(${r},${g},${b},${a.toFixed(2)}))`
+          })
+          .join(' ')
     }
-    if (
-      (fn === 'linear-gradient' || fn === 'radial-gradient' || fn === 'linear_gradient' || fn === 'radial_gradient') &&
-      paint.stops?.length
-    ) {
-      const stops = paint.stops
-        .map((s) => {
-          const r = (s.color >>> 24) & 0xff
-          const g = (s.color >>> 16) & 0xff
-          const b = (s.color >>> 8) & 0xff
-          const a = (s.color & 0xff) / 255
-          return `rgba(${r},${g},${b},${a.toFixed(2)}) ${Math.round(s.at * 100)}%`
-        })
-        .join(', ')
-      const safeAngle = Number.isFinite(Number(paint.angle)) ? Number(paint.angle) : 0
-      const safeShape = /^(circle|ellipse)$/.test(paint.shape) ? paint.shape : 'circle'
-      const grad =
-        fn === 'linear-gradient' || fn === 'linear_gradient'
-          ? `linear-gradient(${safeAngle}deg, ${stops})`
-          : `radial-gradient(${safeShape}, ${stops})`
-      let style = `background:${grad};-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text`
-      if (paint.shadows?.length) {
-        style +=
-          ';filter:' +
-          paint.shadows
-            .map((s) => {
-              const r = (s.color >>> 24) & 0xff
-              const g = (s.color >>> 16) & 0xff
-              const b = (s.color >>> 8) & 0xff
-              const a = (s.color & 0xff) / 255
-              return `drop-shadow(${Number(s.x_offset) || 0}px ${Number(s.y_offset) || 0}px ${Number(s.radius) || 0}px rgba(${r},${g},${b},${a.toFixed(2)}))`
-            })
-            .join(' ')
-      }
-      return style
-    }
-    if (paint.color) {
-      const r = (paint.color >>> 24) & 0xff
-      const g = (paint.color >>> 16) & 0xff
-      const b = (paint.color >>> 8) & 0xff
-      const a = (paint.color & 0xff) / 255
-      return `color:rgba(${r},${g},${b},${a.toFixed(2)})`
-    }
-    return ''
+    return style
   }
+  if (paint.color) {
+    const r = (paint.color >>> 24) & 0xff
+    const g = (paint.color >>> 16) & 0xff
+    const b = (paint.color >>> 8) & 0xff
+    const a = (paint.color & 0xff) / 255
+    return `color:rgba(${r},${g},${b},${a.toFixed(2)})`
+  }
+  return ''
+}
 
-  // Resolve a 7TV paint CSS string for any username surface (reply context,
-  // whispers, DMs, profile cards). Prefers an explicit Twitch userId; falls
-  // back to the lowercase-name → uid map (same path as inline @mentions).
-  // Queues a cosmetics lookup when the uid is known but not yet cached, so the
-  // paint lands on the next render/in-place repaint. Returns '' when no paint
-  // is available — callers fall back to their plain color.
-  function userPaintStyle(uid, lower, platform) {
-    if (!uid && lower) uid = knownUserIds.get(userKey(lower, platform)) || ''
-    if (!uid) return ''
-    if (!mcUserCosmetics.has(uid)) queueMcCosmeticsLookup(uid)
-    return getMcPaintStyle(uid)
-  }
+// Resolve a 7TV paint CSS string for any username surface (reply context,
+// whispers, DMs, profile cards). Prefers an explicit Twitch userId; falls
+// back to the lowercase-name → uid map (same path as inline @mentions).
+// Queues a cosmetics lookup when the uid is known but not yet cached, so the
+// paint lands on the next render/in-place repaint. Returns '' when no paint
+// is available — callers fall back to their plain color.
+function userPaintStyle(uid, lower, platform) {
+  if (!uid && lower) uid = knownUserIds.get(userKey(lower, platform)) || ''
+  if (!uid) return ''
+  if (!mcUserCosmetics.has(uid)) queueMcCosmeticsLookup(uid)
+  return getMcPaintStyle(uid)
+}
 
 
 // --- multichat/mod-toolbar.js ---
@@ -44043,701 +44043,700 @@ function applyHsPaintToElement(el, userId) {
 // Hover toolbar UI, hotkeys, and the unified ban/timeout/unban/delete dispatch
 // backbone shared by every mod-action surface (toolbar/hotkey/slash/ctx/card).
 
-  // =====================================================================
-  // MOD TOOLBAR — singleton element moved row→row on hover. Mirrors the
-  // heatsync.org website spec (mod-toolbar.js + mod-toolbar.css).
-  // Twitch only — GQL APIs already in twitch-api.js. No re-build on hover;
-  // only the per-row gate runs to show/hide individual buttons.
-  // =====================================================================
-  const MOD_BUTTON_CATALOG = {
-    delete_message: {
-      label: 'x',
-      title: 'delete this message',
-      action: 'delete',
-      durationSec: null,
-      needsMsgId: true,
-      hotkey: 'x',
-    },
-    timeout_1m: {
-      label: '1m',
-      title: 'timeout 1 minute',
-      action: 'timeout',
-      durationSec: 60,
-      needsMsgId: false,
-      hotkey: null,
-    },
-    timeout_10m: {
-      label: '10m',
-      title: 'timeout 10 minutes',
-      action: 'timeout',
-      durationSec: 600,
-      needsMsgId: false,
-      hotkey: 't',
-    },
-    timeout_1h: {
-      label: '1h',
-      title: 'timeout 1 hour',
-      action: 'timeout',
-      durationSec: 3600,
-      needsMsgId: false,
-      hotkey: null,
-    },
-    timeout_24h: {
-      label: '24h',
-      title: 'timeout 24 hours',
-      action: 'timeout',
-      durationSec: 86400,
-      needsMsgId: false,
-      hotkey: null,
-    },
-    timeout_7d: {
-      label: '7d',
-      title: 'timeout 7 days',
-      action: 'timeout',
-      durationSec: 604800,
-      needsMsgId: false,
-      hotkey: null,
-    },
-    purge: {
-      label: 'purge',
-      title: 'purge — clear this user’s messages (1s timeout)',
-      action: 'timeout',
-      durationSec: 1,
-      needsMsgId: false,
-      hotkey: null,
-    },
-    ban: { label: '⛔', title: 'permanent ban', action: 'ban', durationSec: null, needsMsgId: false, hotkey: 'b' },
-    unban: { label: '✓', title: 'unban user', action: 'unban', durationSec: null, needsMsgId: false, hotkey: null },
-  }
-  // Hover toolbar is fully opt-in: NO buttons default-on. Even the X
-  // (delete-this-message) is hidden until the user enables it in settings →
-  // mod toolbar. Timeouts/bans live on the profile-card mod row instead —
-  // left-click username surfaces the full set at the top of the card.
-  const DEFAULT_MOD_BUTTONS = []
-  let modToolbarButtons = [...DEFAULT_MOD_BUTTONS]
+// =====================================================================
+// MOD TOOLBAR — singleton element moved row→row on hover. Mirrors the
+// heatsync.org website spec (mod-toolbar.js + mod-toolbar.css).
+// Twitch only — GQL APIs already in twitch-api.js. No re-build on hover;
+// only the per-row gate runs to show/hide individual buttons.
+// =====================================================================
+const MOD_BUTTON_CATALOG = {
+  delete_message: {
+    label: 'x',
+    title: 'delete this message',
+    action: 'delete',
+    durationSec: null,
+    needsMsgId: true,
+    hotkey: 'x',
+  },
+  timeout_1m: {
+    label: '1m',
+    title: 'timeout 1 minute',
+    action: 'timeout',
+    durationSec: 60,
+    needsMsgId: false,
+    hotkey: null,
+  },
+  timeout_10m: {
+    label: '10m',
+    title: 'timeout 10 minutes',
+    action: 'timeout',
+    durationSec: 600,
+    needsMsgId: false,
+    hotkey: 't',
+  },
+  timeout_1h: {
+    label: '1h',
+    title: 'timeout 1 hour',
+    action: 'timeout',
+    durationSec: 3600,
+    needsMsgId: false,
+    hotkey: null,
+  },
+  timeout_24h: {
+    label: '24h',
+    title: 'timeout 24 hours',
+    action: 'timeout',
+    durationSec: 86400,
+    needsMsgId: false,
+    hotkey: null,
+  },
+  timeout_7d: {
+    label: '7d',
+    title: 'timeout 7 days',
+    action: 'timeout',
+    durationSec: 604800,
+    needsMsgId: false,
+    hotkey: null,
+  },
+  purge: {
+    label: 'purge',
+    title: 'purge — clear this user’s messages (1s timeout)',
+    action: 'timeout',
+    durationSec: 1,
+    needsMsgId: false,
+    hotkey: null,
+  },
+  ban: { label: '⛔', title: 'permanent ban', action: 'ban', durationSec: null, needsMsgId: false, hotkey: 'b' },
+  unban: { label: '✓', title: 'unban user', action: 'unban', durationSec: null, needsMsgId: false, hotkey: null },
+}
+// Hover toolbar is fully opt-in: NO buttons default-on. Even the X
+// (delete-this-message) is hidden until the user enables it in settings →
+// mod toolbar. Timeouts/bans live on the profile-card mod row instead —
+// left-click username surfaces the full set at the top of the card.
+const DEFAULT_MOD_BUTTONS = []
+let modToolbarButtons = [...DEFAULT_MOD_BUTTONS]
 
-  // Per-channel mod state. Pre-fetch on tab/render so first hover doesn't lag.
-  const _modStateCache = new Map()
-  const _modStatePending = new Map()
-  async function isModFor(channel) {
-    if (!channel) return false
-    channel = channel.toLowerCase()
-    if (_modStateCache.has(channel)) return _modStateCache.get(channel)
-    if (_modStatePending.has(channel)) return _modStatePending.get(channel)
-    const p = (async () => {
-      try {
-        const safe = channel.replace(/[^a-z0-9_]/g, '')
-        if (!safe) return false
-        const data = await twitchGql(`{ user(login: "${safe}") { self { isModerator } } }`)
-        const isMod = !!data?.data?.user?.self?.isModerator
-        _modStateCache.set(channel, isMod)
-        return isMod
-      } catch (_) {
-        return false
-      } finally {
-        _modStatePending.delete(channel)
-      }
-    })()
-    _modStatePending.set(channel, p)
-    return p
-  }
-  function isModForSync(channel) {
-    if (!channel) return false
-    const c = channel.toLowerCase()
-    return _modStateCache.get(c) === true
-  }
-  function prefetchModFor(channel) {
-    if (!channel) return
-    const c = channel.toLowerCase()
-    if (!_modStateCache.has(c) && !_modStatePending.has(c)) isModFor(c)
-  }
-
-  // Kick mod-status — same shape as the twitch trio, backed by the kick_mod_status
-  // background handler (credentialed GET on the kick channel → viewer's role).
-  // Gates the kick mod UI so kick-only channels surface right-click/hover/profile
-  // mod actions. Fails closed (false) on any error — UI just doesn't appear.
-  const _kickModStateCache = new Map()
-  const _kickModStatePending = new Map()
-  async function isKickModFor(slug) {
-    if (!slug) return false
-    slug = slug.toLowerCase()
-    if (_kickModStateCache.has(slug)) return _kickModStateCache.get(slug)
-    if (_kickModStatePending.has(slug)) return _kickModStatePending.get(slug)
-    const p = (async () => {
-      try {
-        const res = await safeSendMessage({ type: 'kick_mod_status', slug })
-        const isMod = !!(res?.ok && res?.isMod)
-        // Only cache a CONFIRMED answer. safeSendMessage returns {ok:false}
-        // (never throws) on a BG-restart/early-load race — caching that false
-        // would permanently kill kick mod actions for the session. Leave it
-        // uncached so the next interaction retries (mirrors the twitch side,
-        // which is immune only because twitchGql throws on error).
-        if (res?.ok) _kickModStateCache.set(slug, isMod)
-        return isMod
-      } catch (_) {
-        return false
-      } finally {
-        _kickModStatePending.delete(slug)
-      }
-    })()
-    _kickModStatePending.set(slug, p)
-    return p
-  }
-  function isKickModForSync(slug) {
-    if (!slug) return false
-    return _kickModStateCache.get(slug.toLowerCase()) === true
-  }
-  function prefetchKickModFor(slug) {
-    if (!slug) return
-    const s = slug.toLowerCase()
-    if (!_kickModStateCache.has(s) && !_kickModStatePending.has(s)) isKickModFor(s)
-  }
-
-  // Singleton toolbar — built once, moved between rows.
-  let _modToolbar = null
-  let _modRow = null
-  let _modCtx = null
-  let _modHideTimer = null
-
-  function buildModToolbarOnce() {
-    if (_modToolbar) return _modToolbar
-    const bar = document.createElement('div')
-    bar.className = 'hs-mod-toolbar'
-    bar.setAttribute('role', 'toolbar')
-    bar.setAttribute('aria-label', 'message moderation actions')
-    bar.addEventListener('mousedown', (e) => e.stopPropagation())
-    bar.addEventListener('click', (e) => e.stopPropagation())
-    _modToolbar = bar
-    rebuildModToolbarButtons()
-    return bar
-  }
-  function rebuildModToolbarButtons() {
-    if (!_modToolbar) return
-    _modToolbar.textContent = ''
-    for (const id of modToolbarButtons) {
-      const def = MOD_BUTTON_CATALOG[id]
-      if (!def) continue
-      const b = document.createElement('button')
-      b.className = 'hs-mod-btn hs-mod-' + def.action
-      b.type = 'button'
-      b.textContent = def.label
-      b.title = def.title + (def.hotkey ? ` (${def.hotkey.toUpperCase()})` : '')
-      b.dataset.modBtn = id
-      b.tabIndex = -1
-      b.addEventListener('mousedown', (e) => {
-        e.preventDefault()
-        e.stopPropagation()
-      })
-      b.addEventListener('click', (e) => {
-        e.preventDefault()
-        e.stopPropagation()
-        runModAction(id)
-      })
-      _modToolbar.appendChild(b)
-    }
-  }
-  function gateModButtons(ctx) {
-    if (!_modToolbar) return false
-    let anyVisible = false
-    for (const btn of _modToolbar.querySelectorAll('.hs-mod-btn')) {
-      const def = MOD_BUTTON_CATALOG[btn.dataset.modBtn]
-      let ok = !!def
-      if (ok && def.needsMsgId && !ctx.msgId) ok = false
-      if (ok && !ctx.user) ok = false
-      btn.style.display = ok ? '' : 'none'
-      if (ok) anyVisible = true
-    }
-    return anyVisible
-  }
-  function attachToRow(row) {
-    if (_modRow === row && _modToolbar?.parentElement === row) return
-    const bar = buildModToolbarOnce()
-    const replyBtn = row.querySelector('.hs-mc-reply-btn')
-    if (replyBtn) row.insertBefore(bar, replyBtn)
-    else row.appendChild(bar)
-    _modRow = row
-  }
-  function detachModToolbar() {
-    if (_modHideTimer) {
-      clearTimeout(_modHideTimer)
-      _modHideTimer = null
-    }
-    if (_modToolbar?.parentElement) _modToolbar.parentElement.removeChild(_modToolbar)
-    _modRow = null
-    _modCtx = null
-  }
-  function cancelModHide() {
-    if (_modHideTimer) {
-      clearTimeout(_modHideTimer)
-      _modHideTimer = null
-    }
-  }
-  function scheduleModHide() {
-    cancelModHide()
-    // 0ms: detach on next task tick — cancelable by an adjacent-row mouseover
-    // firing in the same event-loop turn (sibling row, mod button inside row,
-    // or overlay row via the wiring in ensureStackOverlay*). 200ms felt laggy.
-    _modHideTimer = setTimeout(detachModToolbar, 0)
-  }
-  // ===== Unified mod-action backbone =====
-  // Mod actions never echo back uniformly: Twitch ban/timeout/delete arrive
-  // ~1-3s later as actor-less IRC CLEARCHAT/CLEARMSG; unban/untimeout never echo
-  // (GQL, no channel.moderate sub); Kick echoes nothing at all. So every surface
-  // (slash, right-click, hover toolbar, profile card) routes through ONE
-  // dispatcher that fans a user-action out to the right platform(s) and injects
-  // an instant actor-attributed gray notice the moment each side confirms.
-  // Duplicate-proof: irc.js collapses the Twitch copy against the real IRC one
-  // (first-wins, synthetic-aware window); Kick has no competing transport so its
-  // line is the only one.
-  function _modActor() {
-    return (currentUsername || (typeof authState !== 'undefined' && authState?.nick) || '').toLowerCase()
-  }
-  function _modNoticeFields(action, actor, tgt, durationSec) {
-    const a = actor || tgt
-    if (action === 'ban')
-      return { noticeType: 'ban_success', systemMsg: a ? `${a} banned ${tgt}` : `${tgt} was permanently banned` }
-    if (action === 'timeout') {
-      const d = Math.max(1, durationSec | 0)
-      return {
-        noticeType: 'timeout_success',
-        systemMsg: a ? `${a} timed out ${tgt} for ${d}s` : `${tgt} timed out for ${d}s`,
-      }
-    }
-    if (action === 'unban' || action === 'untimeout')
-      return { noticeType: 'unban_success', systemMsg: a ? `${a} unbanned ${tgt}` : `${tgt} is no longer banned` }
-    if (action === 'delete')
-      return {
-        noticeType: 'delete_message_success',
-        systemMsg: a
-          ? `${a} deleted a message${tgt ? ` from ${tgt}` : ''}`
-          : tgt
-            ? `${tgt}'s message deleted`
-            : 'message deleted',
-      }
-    return null
-  }
-  // Twitch — route through irc._handleMsg (dedup + buffer + render).
-  function _injectTwitchModNotice({ channel, action, target, durationSec, msgId }) {
+// Per-channel mod state. Pre-fetch on tab/render so first hover doesn't lag.
+const _modStateCache = new Map()
+const _modStatePending = new Map()
+async function isModFor(channel) {
+  if (!channel) return false
+  channel = channel.toLowerCase()
+  if (_modStateCache.has(channel)) return _modStateCache.get(channel)
+  if (_modStatePending.has(channel)) return _modStatePending.get(channel)
+  const p = (async () => {
     try {
-      const ch = String(channel || '')
-        .toLowerCase()
-        .replace(/^#/, '')
-      if (!ch || !irc?.channels?.has(ch)) return
-      const tgt = String(target || '').replace(/^@/, '')
-      const tgtLc = tgt.toLowerCase()
-      const f = _modNoticeFields(action, _modActor(), tgt, durationSec)
-      if (!f) return
-      irc._handleMsg?.({
-        type: 'notice',
-        noticeType: f.noticeType,
-        user: 'system',
-        text: f.systemMsg,
-        systemMsg: f.systemMsg,
-        color: '#808080',
-        badges: '',
-        channel: ch,
-        time: Date.now(),
-        id: `hs-synth-mod-${f.noticeType}-${ch}-${tgtLc || msgId || ''}-${Date.now()}`,
-        targetUser: tgtLc,
-        targetMsgId: action === 'delete' ? msgId || '' : undefined,
-        banDuration: action === 'timeout' ? Math.max(1, durationSec | 0) : 0,
-        isSynthetic: true,
-      })
-    } catch (_) {}
-  }
-  // Kick — KickChat has no _handleMsg; push to its buffer + emit directly. No
-  // competing Kick transport, so no dedup needed.
-  function _injectKickModNotice({ channel, action, target, durationSec, msgId }) {
-    try {
-      const slug = String(channel || '')
-        .toLowerCase()
-        .replace(/^#/, '')
-      const buf = kickChat?.channels?.get(slug)
-      if (!buf) return
-      const tgt = String(target || '').replace(/^@/, '')
-      const tgtLc = tgt.toLowerCase()
-      const f = _modNoticeFields(action, _modActor(), tgt, durationSec)
-      if (!f) return
-      const m = {
-        type: 'notice',
-        noticeType: f.noticeType,
-        user: 'system',
-        text: f.systemMsg,
-        systemMsg: f.systemMsg,
-        color: '#808080',
-        badges: '',
-        channel: slug,
-        time: Date.now(),
-        platform: 'kick',
-        id: `hs-synth-kick-mod-${f.noticeType}-${slug}-${tgtLc || msgId || ''}-${Date.now()}`,
-        targetUser: tgtLc,
-        isSynthetic: true,
-      }
-      buf.push(m)
-      try {
-        kickChat.emit('message', m)
-      } catch (_) {}
-    } catch (_) {}
-  }
-  try {
-    globalThis.__hsInjectModNotice = _injectTwitchModNotice
-  } catch (_) {}
-
-  // Resolve a channel descriptor (tab id, twitch login, or kick slug) to its
-  // linked twitch login + kick slug via the O(1) channel lookup.
-  function _resolveModTargets(channel, platform) {
-    const lookup = typeof getChannelLookup === 'function' ? getChannelLookup() : null
-    const raw = String(channel || '').replace(/^#/, '')
-    const lc = raw.toLowerCase()
-    let entry = null
-    if (lookup && raw) {
-      entry =
-        lookup.byId?.get(raw) ||
-        lookup.byId?.get(lc) ||
-        lookup.twitch?.get(raw) ||
-        lookup.twitch?.get(lc) ||
-        lookup.kick?.get(raw) ||
-        lookup.kick?.get(lc) ||
-        null
+      const safe = channel.replace(/[^a-z0-9_]/g, '')
+      if (!safe) return false
+      const data = await twitchGql(`{ user(login: "${safe}") { self { isModerator } } }`)
+      const isMod = !!data?.data?.user?.self?.isModerator
+      _modStateCache.set(channel, isMod)
+      return isMod
+    } catch (_) {
+      return false
+    } finally {
+      _modStatePending.delete(channel)
     }
-    // Trust a found entry: if it's kick-only, twitchName stays null (don't fire a
-    // bogus Twitch call with the tab id). Only fall back to the raw channel
-    // string when NO entry exists at all (unregistered/anon channel).
-    const twitchName = entry ? entry.twitch || null : platform !== 'kick' && lc ? lc : null
-    const kickSlug = entry ? entry.kick || null : platform === 'kick' && lc ? lc : null
-    return { twitchName, kickSlug }
-  }
+  })()
+  _modStatePending.set(channel, p)
+  return p
+}
+function isModForSync(channel) {
+  if (!channel) return false
+  const c = channel.toLowerCase()
+  return _modStateCache.get(c) === true
+}
+function prefetchModFor(channel) {
+  if (!channel) return
+  const c = channel.toLowerCase()
+  if (!_modStateCache.has(c) && !_modStatePending.has(c)) isModFor(c)
+}
 
-  // THE unified dispatch. ban/timeout/unban target a user; delete targets one
-  // message (lives on one platform). `fanout` (slash /ban) hits every linked
-  // platform; without it (click surfaces) only the clicked platform is touched,
-  // so a twitch-only mod never sees "kick failed: not a mod" noise. Returns
-  // { tResp, kResp, twitchName, kickSlug, anyOk } for the caller's toast.
-  // Minimal square confirm modal — Promise<boolean>. Keyboard-first (Esc=cancel,
-  // Enter=confirm), backdrop-click cancels, mounted in the overlay root so it
-  // works in the popout too. Reusable for any destructive action.
-  // Resolves to { ok, reason }. `reasons` (optional) renders selectable chips;
-  // the chosen one is returned (empty if none / cancelled).
-  function hsConfirm(message, confirmLabel = 'confirm', reasons = []) {
-    return new Promise((resolve) => {
-      const root = document.getElementById('hs-mc-overlay') || document.body
-      const overlay = document.createElement('div')
-      overlay.className = 'hs-mc-confirm-overlay'
-      const box = document.createElement('div')
-      box.className = 'hs-mc-confirm-box'
-      const msg = document.createElement('div')
-      msg.className = 'hs-mc-confirm-msg'
-      msg.textContent = message
-      let selectedReason = ''
-      const btns = document.createElement('div')
-      btns.className = 'hs-mc-confirm-btns'
-      const cancelBtn = document.createElement('button')
-      cancelBtn.className = 'hs-mc-confirm-cancel'
-      cancelBtn.textContent = 'cancel'
-      const okBtn = document.createElement('button')
-      okBtn.className = 'hs-mc-confirm-ok'
-      okBtn.textContent = confirmLabel
-      const done = (v) => {
-        overlay.remove()
-        document.removeEventListener('keydown', onKey, true)
-        resolve({ ok: v, reason: v ? selectedReason : '' })
-      }
-      const onKey = (e) => {
-        if (e.key === 'Escape') {
-          e.preventDefault()
-          e.stopPropagation()
-          done(false)
-        } else if (e.key === 'Enter') {
-          e.preventDefault()
-          e.stopPropagation()
-          done(true)
-        }
-      }
-      cancelBtn.addEventListener('click', () => done(false))
-      okBtn.addEventListener('click', () => done(true))
-      overlay.addEventListener('click', (e) => {
-        if (e.target === overlay) done(false)
-      })
-      document.addEventListener('keydown', onKey, true)
-      box.append(msg)
-      if (Array.isArray(reasons) && reasons.length) {
-        const chips = document.createElement('div')
-        chips.className = 'hs-mc-confirm-reasons'
-        for (const rsn of reasons) {
-          const chip = document.createElement('button')
-          chip.className = 'hs-mc-confirm-reason'
-          chip.textContent = rsn
-          chip.addEventListener('click', () => {
-            const wasSel = chip.classList.contains('sel')
-            for (const c of chips.querySelectorAll('.hs-mc-confirm-reason')) c.classList.remove('sel')
-            if (wasSel) {
-              selectedReason = ''
-            } else {
-              selectedReason = rsn
-              chip.classList.add('sel')
-            }
-          })
-          chips.appendChild(chip)
-        }
-        box.append(chips)
-      }
-      box.append(btns)
-      btns.append(cancelBtn, okBtn)
-      overlay.append(box)
-      root.appendChild(overlay)
-      okBtn.focus()
+// Kick mod-status — same shape as the twitch trio, backed by the kick_mod_status
+// background handler (credentialed GET on the kick channel → viewer's role).
+// Gates the kick mod UI so kick-only channels surface right-click/hover/profile
+// mod actions. Fails closed (false) on any error — UI just doesn't appear.
+const _kickModStateCache = new Map()
+const _kickModStatePending = new Map()
+async function isKickModFor(slug) {
+  if (!slug) return false
+  slug = slug.toLowerCase()
+  if (_kickModStateCache.has(slug)) return _kickModStateCache.get(slug)
+  if (_kickModStatePending.has(slug)) return _kickModStatePending.get(slug)
+  const p = (async () => {
+    try {
+      const res = await safeSendMessage({ type: 'kick_mod_status', slug })
+      const isMod = !!(res?.ok && res?.isMod)
+      // Only cache a CONFIRMED answer. safeSendMessage returns {ok:false}
+      // (never throws) on a BG-restart/early-load race — caching that false
+      // would permanently kill kick mod actions for the session. Leave it
+      // uncached so the next interaction retries (mirrors the twitch side,
+      // which is immune only because twitchGql throws on error).
+      if (res?.ok) _kickModStateCache.set(slug, isMod)
+      return isMod
+    } catch (_) {
+      return false
+    } finally {
+      _kickModStatePending.delete(slug)
+    }
+  })()
+  _kickModStatePending.set(slug, p)
+  return p
+}
+function isKickModForSync(slug) {
+  if (!slug) return false
+  return _kickModStateCache.get(slug.toLowerCase()) === true
+}
+function prefetchKickModFor(slug) {
+  if (!slug) return
+  const s = slug.toLowerCase()
+  if (!_kickModStateCache.has(s) && !_kickModStatePending.has(s)) isKickModFor(s)
+}
+
+// Singleton toolbar — built once, moved between rows.
+let _modToolbar = null
+let _modRow = null
+let _modCtx = null
+let _modHideTimer = null
+
+function buildModToolbarOnce() {
+  if (_modToolbar) return _modToolbar
+  const bar = document.createElement('div')
+  bar.className = 'hs-mod-toolbar'
+  bar.setAttribute('role', 'toolbar')
+  bar.setAttribute('aria-label', 'message moderation actions')
+  bar.addEventListener('mousedown', (e) => e.stopPropagation())
+  bar.addEventListener('click', (e) => e.stopPropagation())
+  _modToolbar = bar
+  rebuildModToolbarButtons()
+  return bar
+}
+function rebuildModToolbarButtons() {
+  if (!_modToolbar) return
+  _modToolbar.textContent = ''
+  for (const id of modToolbarButtons) {
+    const def = MOD_BUTTON_CATALOG[id]
+    if (!def) continue
+    const b = document.createElement('button')
+    b.className = 'hs-mod-btn hs-mod-' + def.action
+    b.type = 'button'
+    b.textContent = def.label
+    b.title = def.title + (def.hotkey ? ` (${def.hotkey.toUpperCase()})` : '')
+    b.dataset.modBtn = id
+    b.tabIndex = -1
+    b.addEventListener('mousedown', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
     })
+    b.addEventListener('click', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      runModAction(id)
+    })
+    _modToolbar.appendChild(b)
   }
-
-  async function dispatchModAction({ channel, platform, action, target, durationSec, msgId, reason, fanout }) {
-    // Opt-in ban dialog: confirm (misclick guard) and/or reason chips. Every
-    // surface routes through here, so one gate covers toolbar/hotkey/slash/ctx/
-    // card. Shows when confirm is on OR ban reasons are configured.
-    if (action === 'ban') {
-      const banReasons = String(modBanReasons || '')
-        .split('\n')
-        .map((s) => s.trim())
-        .filter(Boolean)
-      if (modConfirmBan || banReasons.length) {
-        const tgtName = String(target || '').replace(/^@/, '')
-        const res = await hsConfirm(`ban ${tgtName} in #${String(channel || '').replace(/^#/, '')}?`, 'ban', banReasons)
-        if (!res.ok)
-          return { tResp: null, kResp: null, twitchName: null, kickSlug: null, anyOk: false, cancelled: true }
-        if (res.reason) reason = res.reason
-      }
-    }
-    const { twitchName, kickSlug } = _resolveModTargets(channel, platform)
-    // No resolvable platform (aggregate tab, empty/garbage channel) — fail clean
-    // rather than firing a doomed API call with the tab id as a channel name.
-    if (!twitchName && !kickSlug) return { tResp: null, kResp: null, twitchName: null, kickSlug: null, anyOk: false }
-    const tgt = String(target || '').replace(/^@/, '')
-    const sec = Math.max(1, durationSec | 0)
-    const runTwitch = () =>
-      action === 'ban'
-        ? banTwitchUser(twitchName, tgt, reason || '')
-        : action === 'timeout'
-          ? timeoutTwitchUser(twitchName, tgt, sec, reason || '')
-          : action === 'unban'
-            ? unbanTwitchUser(twitchName, tgt)
-            : action === 'delete'
-              ? deleteTwitchMessage(twitchName, msgId)
-              : Promise.resolve(null)
-    const runKick = () =>
-      safeSendMessage({
-        type: 'kick_mod_action',
-        action,
-        slug: kickSlug,
-        username: tgt,
-        durationMin: action === 'timeout' ? Math.max(1, Math.round(sec / 60)) : 0,
-        reason: reason || '',
-        messageId: action === 'delete' ? msgId || '' : '',
-      })
-
-    if (action === 'delete') {
-      // A message exists on exactly one platform. Known platform → only there;
-      // unknown (e.g. /delete <id>) → twitch-first then kick fallback.
-      let resp = null,
-        plat = null
-      if (platform === 'kick' && kickSlug) {
-        plat = 'kick'
-        resp = await runKick()
-      } else if (platform === 'twitch' && twitchName) {
-        plat = 'twitch'
-        resp = await runTwitch()
-      } else if (twitchName) {
-        plat = 'twitch'
-        resp = await runTwitch()
-        if (!resp?.ok && kickSlug) {
-          plat = 'kick'
-          resp = await runKick()
-        }
-      } else if (kickSlug) {
-        plat = 'kick'
-        resp = await runKick()
-      }
-      if (resp?.ok) {
-        if (plat === 'kick') _injectKickModNotice({ channel: kickSlug, action, target: tgt, msgId })
-        else _injectTwitchModNotice({ channel: twitchName, action, target: tgt, msgId })
-      }
-      return {
-        tResp: plat === 'twitch' ? resp : null,
-        kResp: plat === 'kick' ? resp : null,
-        twitchName,
-        kickSlug,
-        anyOk: !!resp?.ok,
-      }
-    }
-
-    // ban / timeout / unban
-    let doTwitch, doKick
-    if (fanout) {
-      doTwitch = !!twitchName
-      doKick = !!kickSlug
-    } else if (platform === 'kick') {
-      doKick = !!kickSlug
-      doTwitch = !doKick && !!twitchName
-    } else {
-      doTwitch = !!twitchName
-      doKick = !doTwitch && !!kickSlug
-    }
-    const [tResp, kResp] = await Promise.all([doTwitch ? runTwitch() : null, doKick ? runKick() : null])
-    if (tResp?.ok) _injectTwitchModNotice({ channel: twitchName, action, target: tgt, durationSec: sec })
-    if (kResp?.ok) _injectKickModNotice({ channel: kickSlug, action, target: tgt, durationSec: sec })
-    return { tResp, kResp, twitchName, kickSlug, anyOk: !!(tResp?.ok || kResp?.ok) }
+}
+function gateModButtons(ctx) {
+  if (!_modToolbar) return false
+  let anyVisible = false
+  for (const btn of _modToolbar.querySelectorAll('.hs-mod-btn')) {
+    const def = MOD_BUTTON_CATALOG[btn.dataset.modBtn]
+    let ok = !!def
+    if (ok && def.needsMsgId && !ctx.msgId) ok = false
+    if (ok && !ctx.user) ok = false
+    btn.style.display = ok ? '' : 'none'
+    if (ok) anyVisible = true
   }
+  return anyVisible
+}
+function attachToRow(row) {
+  if (_modRow === row && _modToolbar?.parentElement === row) return
+  const bar = buildModToolbarOnce()
+  const replyBtn = row.querySelector('.hs-mc-reply-btn')
+  if (replyBtn) row.insertBefore(bar, replyBtn)
+  else row.appendChild(bar)
+  _modRow = row
+}
+function detachModToolbar() {
+  if (_modHideTimer) {
+    clearTimeout(_modHideTimer)
+    _modHideTimer = null
+  }
+  if (_modToolbar?.parentElement) _modToolbar.parentElement.removeChild(_modToolbar)
+  _modRow = null
+  _modCtx = null
+}
+function cancelModHide() {
+  if (_modHideTimer) {
+    clearTimeout(_modHideTimer)
+    _modHideTimer = null
+  }
+}
+function scheduleModHide() {
+  cancelModHide()
+  // 0ms: detach on next task tick — cancelable by an adjacent-row mouseover
+  // firing in the same event-loop turn (sibling row, mod button inside row,
+  // or overlay row via the wiring in ensureStackOverlay*). 200ms felt laggy.
+  _modHideTimer = setTimeout(detachModToolbar, 0)
+}
+// ===== Unified mod-action backbone =====
+// Mod actions never echo back uniformly: Twitch ban/timeout/delete arrive
+// ~1-3s later as actor-less IRC CLEARCHAT/CLEARMSG; unban/untimeout never echo
+// (GQL, no channel.moderate sub); Kick echoes nothing at all. So every surface
+// (slash, right-click, hover toolbar, profile card) routes through ONE
+// dispatcher that fans a user-action out to the right platform(s) and injects
+// an instant actor-attributed gray notice the moment each side confirms.
+// Duplicate-proof: irc.js collapses the Twitch copy against the real IRC one
+// (first-wins, synthetic-aware window); Kick has no competing transport so its
+// line is the only one.
+function _modActor() {
+  return (currentUsername || (typeof authState !== 'undefined' && authState?.nick) || '').toLowerCase()
+}
+function _modNoticeFields(action, actor, tgt, durationSec) {
+  const a = actor || tgt
+  if (action === 'ban')
+    return { noticeType: 'ban_success', systemMsg: a ? `${a} banned ${tgt}` : `${tgt} was permanently banned` }
+  if (action === 'timeout') {
+    const d = Math.max(1, durationSec | 0)
+    return {
+      noticeType: 'timeout_success',
+      systemMsg: a ? `${a} timed out ${tgt} for ${d}s` : `${tgt} timed out for ${d}s`,
+    }
+  }
+  if (action === 'unban' || action === 'untimeout')
+    return { noticeType: 'unban_success', systemMsg: a ? `${a} unbanned ${tgt}` : `${tgt} is no longer banned` }
+  if (action === 'delete')
+    return {
+      noticeType: 'delete_message_success',
+      systemMsg: a
+        ? `${a} deleted a message${tgt ? ` from ${tgt}` : ''}`
+        : tgt
+          ? `${tgt}'s message deleted`
+          : 'message deleted',
+    }
+  return null
+}
+// Twitch — route through irc._handleMsg (dedup + buffer + render).
+function _injectTwitchModNotice({ channel, action, target, durationSec, msgId }) {
   try {
-    globalThis.__hsDispatchMod = dispatchModAction
+    const ch = String(channel || '')
+      .toLowerCase()
+      .replace(/^#/, '')
+    if (!ch || !irc?.channels?.has(ch)) return
+    const tgt = String(target || '').replace(/^@/, '')
+    const tgtLc = tgt.toLowerCase()
+    const f = _modNoticeFields(action, _modActor(), tgt, durationSec)
+    if (!f) return
+    irc._handleMsg?.({
+      type: 'notice',
+      noticeType: f.noticeType,
+      user: 'system',
+      text: f.systemMsg,
+      systemMsg: f.systemMsg,
+      color: '#808080',
+      badges: '',
+      channel: ch,
+      time: Date.now(),
+      id: `hs-synth-mod-${f.noticeType}-${ch}-${tgtLc || msgId || ''}-${Date.now()}`,
+      targetUser: tgtLc,
+      targetMsgId: action === 'delete' ? msgId || '' : undefined,
+      banDuration: action === 'timeout' ? Math.max(1, durationSec | 0) : 0,
+      isSynthetic: true,
+    })
   } catch (_) {}
-
-  // One consistent result toast for every surface.
-  function showModResultToast(label, target, r) {
-    if (r?.cancelled) return // user cancelled the confirm dialog — no result toast
+}
+// Kick — KickChat has no _handleMsg; push to its buffer + emit directly. No
+// competing Kick transport, so no dedup needed.
+function _injectKickModNotice({ channel, action, target, durationSec, msgId }) {
+  try {
+    const slug = String(channel || '')
+      .toLowerCase()
+      .replace(/^#/, '')
+    const buf = kickChat?.channels?.get(slug)
+    if (!buf) return
+    const tgt = String(target || '').replace(/^@/, '')
+    const tgtLc = tgt.toLowerCase()
+    const f = _modNoticeFields(action, _modActor(), tgt, durationSec)
+    if (!f) return
+    const m = {
+      type: 'notice',
+      noticeType: f.noticeType,
+      user: 'system',
+      text: f.systemMsg,
+      systemMsg: f.systemMsg,
+      color: '#808080',
+      badges: '',
+      channel: slug,
+      time: Date.now(),
+      platform: 'kick',
+      id: `hs-synth-kick-mod-${f.noticeType}-${slug}-${tgtLc || msgId || ''}-${Date.now()}`,
+      targetUser: tgtLc,
+      isSynthetic: true,
+    }
+    buf.push(m)
     try {
-      const tResp = r?.tResp,
-        kResp = r?.kResp
-      const tOk = tResp?.ok,
-        kOk = kResp?.ok
-      if (tResp && kResp) {
-        if (tOk && kOk) {
-          showToast(`${label} ${target} (twitch+kick)`, 'success')
-          return
-        }
-        if (tOk) {
-          showToast(`${label} ${target} on twitch — kick failed: ${kResp.error || 'unknown'}`, 'error')
-          return
-        }
-        if (kOk) {
-          showToast(`${label} ${target} on kick — twitch failed: ${tResp.error || 'unknown'}`, 'error')
-          return
-        }
-        showToast(`${label} failed: twitch ${tResp.error || '?'} / kick ${kResp.error || '?'}`, 'error')
+      kickChat.emit('message', m)
+    } catch (_) {}
+  } catch (_) {}
+}
+try {
+  globalThis.__hsInjectModNotice = _injectTwitchModNotice
+} catch (_) {}
+
+// Resolve a channel descriptor (tab id, twitch login, or kick slug) to its
+// linked twitch login + kick slug via the O(1) channel lookup.
+function _resolveModTargets(channel, platform) {
+  const lookup = typeof getChannelLookup === 'function' ? getChannelLookup() : null
+  const raw = String(channel || '').replace(/^#/, '')
+  const lc = raw.toLowerCase()
+  let entry = null
+  if (lookup && raw) {
+    entry =
+      lookup.byId?.get(raw) ||
+      lookup.byId?.get(lc) ||
+      lookup.twitch?.get(raw) ||
+      lookup.twitch?.get(lc) ||
+      lookup.kick?.get(raw) ||
+      lookup.kick?.get(lc) ||
+      null
+  }
+  // Trust a found entry: if it's kick-only, twitchName stays null (don't fire a
+  // bogus Twitch call with the tab id). Only fall back to the raw channel
+  // string when NO entry exists at all (unregistered/anon channel).
+  const twitchName = entry ? entry.twitch || null : platform !== 'kick' && lc ? lc : null
+  const kickSlug = entry ? entry.kick || null : platform === 'kick' && lc ? lc : null
+  return { twitchName, kickSlug }
+}
+
+// THE unified dispatch. ban/timeout/unban target a user; delete targets one
+// message (lives on one platform). `fanout` (slash /ban) hits every linked
+// platform; without it (click surfaces) only the clicked platform is touched,
+// so a twitch-only mod never sees "kick failed: not a mod" noise. Returns
+// { tResp, kResp, twitchName, kickSlug, anyOk } for the caller's toast.
+// Minimal square confirm modal — Promise<boolean>. Keyboard-first (Esc=cancel,
+// Enter=confirm), backdrop-click cancels, mounted in the overlay root so it
+// works in the popout too. Reusable for any destructive action.
+// Resolves to { ok, reason }. `reasons` (optional) renders selectable chips;
+// the chosen one is returned (empty if none / cancelled).
+function hsConfirm(message, confirmLabel = 'confirm', reasons = []) {
+  return new Promise((resolve) => {
+    const root = document.getElementById('hs-mc-overlay') || document.body
+    const overlay = document.createElement('div')
+    overlay.className = 'hs-mc-confirm-overlay'
+    const box = document.createElement('div')
+    box.className = 'hs-mc-confirm-box'
+    const msg = document.createElement('div')
+    msg.className = 'hs-mc-confirm-msg'
+    msg.textContent = message
+    let selectedReason = ''
+    const btns = document.createElement('div')
+    btns.className = 'hs-mc-confirm-btns'
+    const cancelBtn = document.createElement('button')
+    cancelBtn.className = 'hs-mc-confirm-cancel'
+    cancelBtn.textContent = 'cancel'
+    const okBtn = document.createElement('button')
+    okBtn.className = 'hs-mc-confirm-ok'
+    okBtn.textContent = confirmLabel
+    const done = (v) => {
+      overlay.remove()
+      document.removeEventListener('keydown', onKey, true)
+      resolve({ ok: v, reason: v ? selectedReason : '' })
+    }
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        e.stopPropagation()
+        done(false)
+      } else if (e.key === 'Enter') {
+        e.preventDefault()
+        e.stopPropagation()
+        done(true)
+      }
+    }
+    cancelBtn.addEventListener('click', () => done(false))
+    okBtn.addEventListener('click', () => done(true))
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) done(false)
+    })
+    document.addEventListener('keydown', onKey, true)
+    box.append(msg)
+    if (Array.isArray(reasons) && reasons.length) {
+      const chips = document.createElement('div')
+      chips.className = 'hs-mc-confirm-reasons'
+      for (const rsn of reasons) {
+        const chip = document.createElement('button')
+        chip.className = 'hs-mc-confirm-reason'
+        chip.textContent = rsn
+        chip.addEventListener('click', () => {
+          const wasSel = chip.classList.contains('sel')
+          for (const c of chips.querySelectorAll('.hs-mc-confirm-reason')) c.classList.remove('sel')
+          if (wasSel) {
+            selectedReason = ''
+          } else {
+            selectedReason = rsn
+            chip.classList.add('sel')
+          }
+        })
+        chips.appendChild(chip)
+      }
+      box.append(chips)
+    }
+    box.append(btns)
+    btns.append(cancelBtn, okBtn)
+    overlay.append(box)
+    root.appendChild(overlay)
+    okBtn.focus()
+  })
+}
+
+async function dispatchModAction({ channel, platform, action, target, durationSec, msgId, reason, fanout }) {
+  // Opt-in ban dialog: confirm (misclick guard) and/or reason chips. Every
+  // surface routes through here, so one gate covers toolbar/hotkey/slash/ctx/
+  // card. Shows when confirm is on OR ban reasons are configured.
+  if (action === 'ban') {
+    const banReasons = String(modBanReasons || '')
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean)
+    if (modConfirmBan || banReasons.length) {
+      const tgtName = String(target || '').replace(/^@/, '')
+      const res = await hsConfirm(`ban ${tgtName} in #${String(channel || '').replace(/^#/, '')}?`, 'ban', banReasons)
+      if (!res.ok) return { tResp: null, kResp: null, twitchName: null, kickSlug: null, anyOk: false, cancelled: true }
+      if (res.reason) reason = res.reason
+    }
+  }
+  const { twitchName, kickSlug } = _resolveModTargets(channel, platform)
+  // No resolvable platform (aggregate tab, empty/garbage channel) — fail clean
+  // rather than firing a doomed API call with the tab id as a channel name.
+  if (!twitchName && !kickSlug) return { tResp: null, kResp: null, twitchName: null, kickSlug: null, anyOk: false }
+  const tgt = String(target || '').replace(/^@/, '')
+  const sec = Math.max(1, durationSec | 0)
+  const runTwitch = () =>
+    action === 'ban'
+      ? banTwitchUser(twitchName, tgt, reason || '')
+      : action === 'timeout'
+        ? timeoutTwitchUser(twitchName, tgt, sec, reason || '')
+        : action === 'unban'
+          ? unbanTwitchUser(twitchName, tgt)
+          : action === 'delete'
+            ? deleteTwitchMessage(twitchName, msgId)
+            : Promise.resolve(null)
+  const runKick = () =>
+    safeSendMessage({
+      type: 'kick_mod_action',
+      action,
+      slug: kickSlug,
+      username: tgt,
+      durationMin: action === 'timeout' ? Math.max(1, Math.round(sec / 60)) : 0,
+      reason: reason || '',
+      messageId: action === 'delete' ? msgId || '' : '',
+    })
+
+  if (action === 'delete') {
+    // A message exists on exactly one platform. Known platform → only there;
+    // unknown (e.g. /delete <id>) → twitch-first then kick fallback.
+    let resp = null,
+      plat = null
+    if (platform === 'kick' && kickSlug) {
+      plat = 'kick'
+      resp = await runKick()
+    } else if (platform === 'twitch' && twitchName) {
+      plat = 'twitch'
+      resp = await runTwitch()
+    } else if (twitchName) {
+      plat = 'twitch'
+      resp = await runTwitch()
+      if (!resp?.ok && kickSlug) {
+        plat = 'kick'
+        resp = await runKick()
+      }
+    } else if (kickSlug) {
+      plat = 'kick'
+      resp = await runKick()
+    }
+    if (resp?.ok) {
+      if (plat === 'kick') _injectKickModNotice({ channel: kickSlug, action, target: tgt, msgId })
+      else _injectTwitchModNotice({ channel: twitchName, action, target: tgt, msgId })
+    }
+    return {
+      tResp: plat === 'twitch' ? resp : null,
+      kResp: plat === 'kick' ? resp : null,
+      twitchName,
+      kickSlug,
+      anyOk: !!resp?.ok,
+    }
+  }
+
+  // ban / timeout / unban
+  let doTwitch, doKick
+  if (fanout) {
+    doTwitch = !!twitchName
+    doKick = !!kickSlug
+  } else if (platform === 'kick') {
+    doKick = !!kickSlug
+    doTwitch = !doKick && !!twitchName
+  } else {
+    doTwitch = !!twitchName
+    doKick = !doTwitch && !!kickSlug
+  }
+  const [tResp, kResp] = await Promise.all([doTwitch ? runTwitch() : null, doKick ? runKick() : null])
+  if (tResp?.ok) _injectTwitchModNotice({ channel: twitchName, action, target: tgt, durationSec: sec })
+  if (kResp?.ok) _injectKickModNotice({ channel: kickSlug, action, target: tgt, durationSec: sec })
+  return { tResp, kResp, twitchName, kickSlug, anyOk: !!(tResp?.ok || kResp?.ok) }
+}
+try {
+  globalThis.__hsDispatchMod = dispatchModAction
+} catch (_) {}
+
+// One consistent result toast for every surface.
+function showModResultToast(label, target, r) {
+  if (r?.cancelled) return // user cancelled the confirm dialog — no result toast
+  try {
+    const tResp = r?.tResp,
+      kResp = r?.kResp
+    const tOk = tResp?.ok,
+      kOk = kResp?.ok
+    if (tResp && kResp) {
+      if (tOk && kOk) {
+        showToast(`${label} ${target} (twitch+kick)`, 'success')
         return
       }
-      const only = tResp || kResp
-      showToast(
-        only?.ok ? `${label} ${target}` : `${label} failed: ${only?.error || 'unknown'}`,
-        only?.ok ? 'success' : 'error',
-      )
-    } catch (_) {}
-  }
-  try {
-    globalThis.__hsModToast = showModResultToast
-  } catch (_) {}
-
-  async function runModAction(id) {
-    const def = MOD_BUTTON_CATALOG[id]
-    if (!def || !_modCtx) return
-    const { channel, user, login, msgId, row } = _modCtx
-    const target = login || user
-    const wasOp = row?.style?.opacity
-    if (row) row.style.opacity = '0.5'
-    // Act on the row's own platform (twitch or kick), single-platform.
-    const r = await dispatchModAction({
-      channel,
-      platform: _modCtx.platform || 'twitch',
-      action: def.action,
-      target,
-      durationSec: def.durationSec,
-      msgId,
-    }).catch((e) => ({ anyOk: false, tResp: { error: e?.message || 'error' } }))
-    if (row) row.style.opacity = wasOp || ''
-    if (r?.anyOk && def.action === 'delete' && row && dimTimeouts) row.classList.add('hs-mc-msg-cleared')
-    const label =
-      def.action === 'timeout'
-        ? `timed out ${def.durationSec}s`
-        : def.action === 'ban'
-          ? 'banned'
-          : def.action === 'unban'
-            ? 'unbanned'
-            : def.action === 'delete'
-              ? 'deleted'
-              : def.action
-    showModResultToast(label, target, r)
-    detachModToolbar()
-  }
-  function wireModToolbarHover(messagesEl) {
-    if (!messagesEl || messagesEl._hsModToolbarWired) return
-    messagesEl._hsModToolbarWired = true
-    messagesEl.addEventListener(
-      'mouseover',
-      (e) => {
-        const row = e.target.closest('.hs-mc-msg')
-        if (!row) return
-        if (row === _modRow) {
-          cancelModHide()
-          return
-        }
-        const plat = row.dataset.msgPlatform
-        if (plat === 'youtube' || plat === 'yt') return // no YT mod actions
-        const channel = row.dataset.msgChannel
-        const user = row.dataset.msgUser
-        const login = row.dataset.msgLogin || row.dataset.msgUser
-        const msgId = row.dataset.msgId
-        if (!channel || !user) return
-        // Skip own messages — mod actions on yourself are nonsense UX. Use the
-        // data-msg-self flag set at build time (currentUsername may be null at
-        // hover time during pre-auth bootstrap); fall back to live compare.
-        if (row.dataset.msgSelf === '1') return
-        if (currentUsername && user.toLowerCase() === currentUsername.toLowerCase()) return
-        // Sync gate per platform: twitch via GQL mod-state, kick via kick_mod_status.
-        // Pre-fetch the right one so the next hover in this channel is instant.
-        const isKick = plat === 'kick'
-        const amMod = isKick ? isKickModForSync(channel) : isModForSync(channel)
-        if (!amMod) {
-          ;(isKick ? prefetchKickModFor : prefetchModFor)(channel)
-          return
-        }
-        const ctx = { channel, user, login, msgId, row, platform: plat || 'twitch' }
-        _modCtx = ctx
-        buildModToolbarOnce()
-        if (!gateModButtons(ctx)) return
-        attachToRow(row)
-        cancelModHide()
-      },
-      true,
-    )
-    messagesEl.addEventListener(
-      'mouseout',
-      (e) => {
-        if (!_modRow) return
-        const to = e.relatedTarget
-        if (to && _modRow.contains(to)) return
-        scheduleModHide()
-      },
-      true,
-    )
-    // Only do work when a toolbar is actually open — the common case is
-    // scrolling with none attached, where this must stay a cheap no-op.
-    messagesEl.addEventListener(
-      'scroll',
-      () => {
-        if (_modRow || _modHideTimer) detachModToolbar()
-      },
-      { passive: true },
-    )
-  }
-
-  // Hotkeys — x (delete), t (10m timeout), b (ban). Hold while hovering a row.
-  document.addEventListener(
-    'keydown',
-    (e) => {
-      if (!_modCtx) return
-      const t = e.target
-      const typing = t && (t.isContentEditable || ['INPUT', 'TEXTAREA'].includes(t.tagName))
-      if (typing) return
-      if (e.ctrlKey || e.metaKey || e.altKey) return
-      const key = (e.key || '').toLowerCase()
-      for (const id of modToolbarButtons) {
-        const def = MOD_BUTTON_CATALOG[id]
-        if (def?.hotkey === key) {
-          e.preventDefault()
-          runModAction(id)
-          return
-        }
+      if (tOk) {
+        showToast(`${label} ${target} on twitch — kick failed: ${kResp.error || 'unknown'}`, 'error')
+        return
       }
+      if (kOk) {
+        showToast(`${label} ${target} on kick — twitch failed: ${tResp.error || 'unknown'}`, 'error')
+        return
+      }
+      showToast(`${label} failed: twitch ${tResp.error || '?'} / kick ${kResp.error || '?'}`, 'error')
+      return
+    }
+    const only = tResp || kResp
+    showToast(
+      only?.ok ? `${label} ${target}` : `${label} failed: ${only?.error || 'unknown'}`,
+      only?.ok ? 'success' : 'error',
+    )
+  } catch (_) {}
+}
+try {
+  globalThis.__hsModToast = showModResultToast
+} catch (_) {}
+
+async function runModAction(id) {
+  const def = MOD_BUTTON_CATALOG[id]
+  if (!def || !_modCtx) return
+  const { channel, user, login, msgId, row } = _modCtx
+  const target = login || user
+  const wasOp = row?.style?.opacity
+  if (row) row.style.opacity = '0.5'
+  // Act on the row's own platform (twitch or kick), single-platform.
+  const r = await dispatchModAction({
+    channel,
+    platform: _modCtx.platform || 'twitch',
+    action: def.action,
+    target,
+    durationSec: def.durationSec,
+    msgId,
+  }).catch((e) => ({ anyOk: false, tResp: { error: e?.message || 'error' } }))
+  if (row) row.style.opacity = wasOp || ''
+  if (r?.anyOk && def.action === 'delete' && row && dimTimeouts) row.classList.add('hs-mc-msg-cleared')
+  const label =
+    def.action === 'timeout'
+      ? `timed out ${def.durationSec}s`
+      : def.action === 'ban'
+        ? 'banned'
+        : def.action === 'unban'
+          ? 'unbanned'
+          : def.action === 'delete'
+            ? 'deleted'
+            : def.action
+  showModResultToast(label, target, r)
+  detachModToolbar()
+}
+function wireModToolbarHover(messagesEl) {
+  if (!messagesEl || messagesEl._hsModToolbarWired) return
+  messagesEl._hsModToolbarWired = true
+  messagesEl.addEventListener(
+    'mouseover',
+    (e) => {
+      const row = e.target.closest('.hs-mc-msg')
+      if (!row) return
+      if (row === _modRow) {
+        cancelModHide()
+        return
+      }
+      const plat = row.dataset.msgPlatform
+      if (plat === 'youtube' || plat === 'yt') return // no YT mod actions
+      const channel = row.dataset.msgChannel
+      const user = row.dataset.msgUser
+      const login = row.dataset.msgLogin || row.dataset.msgUser
+      const msgId = row.dataset.msgId
+      if (!channel || !user) return
+      // Skip own messages — mod actions on yourself are nonsense UX. Use the
+      // data-msg-self flag set at build time (currentUsername may be null at
+      // hover time during pre-auth bootstrap); fall back to live compare.
+      if (row.dataset.msgSelf === '1') return
+      if (currentUsername && user.toLowerCase() === currentUsername.toLowerCase()) return
+      // Sync gate per platform: twitch via GQL mod-state, kick via kick_mod_status.
+      // Pre-fetch the right one so the next hover in this channel is instant.
+      const isKick = plat === 'kick'
+      const amMod = isKick ? isKickModForSync(channel) : isModForSync(channel)
+      if (!amMod) {
+        ;(isKick ? prefetchKickModFor : prefetchModFor)(channel)
+        return
+      }
+      const ctx = { channel, user, login, msgId, row, platform: plat || 'twitch' }
+      _modCtx = ctx
+      buildModToolbarOnce()
+      if (!gateModButtons(ctx)) return
+      attachToRow(row)
+      cancelModHide()
     },
-    { signal: mcSignal },
+    true,
   )
+  messagesEl.addEventListener(
+    'mouseout',
+    (e) => {
+      if (!_modRow) return
+      const to = e.relatedTarget
+      if (to && _modRow.contains(to)) return
+      scheduleModHide()
+    },
+    true,
+  )
+  // Only do work when a toolbar is actually open — the common case is
+  // scrolling with none attached, where this must stay a cheap no-op.
+  messagesEl.addEventListener(
+    'scroll',
+    () => {
+      if (_modRow || _modHideTimer) detachModToolbar()
+    },
+    { passive: true },
+  )
+}
+
+// Hotkeys — x (delete), t (10m timeout), b (ban). Hold while hovering a row.
+document.addEventListener(
+  'keydown',
+  (e) => {
+    if (!_modCtx) return
+    const t = e.target
+    const typing = t && (t.isContentEditable || ['INPUT', 'TEXTAREA'].includes(t.tagName))
+    if (typing) return
+    if (e.ctrlKey || e.metaKey || e.altKey) return
+    const key = (e.key || '').toLowerCase()
+    for (const id of modToolbarButtons) {
+      const def = MOD_BUTTON_CATALOG[id]
+      if (def?.hotkey === key) {
+        e.preventDefault()
+        runModAction(id)
+        return
+      }
+    }
+  },
+  { signal: mcSignal },
+)
 
 
 // --- multichat/resize.js ---
@@ -44746,833 +44745,832 @@ function applyHsPaintToElement(el, userId) {
 // already live in twitch-host.js/kick-host.js/youtube-host.js (platform
 // modules) — see the "moved to X-host.js" markers below for the boundary.
 
-  // Chat width state
-  let chatWidth = 340 // Default width
-  const DEFAULT_CHAT_WIDTH = 340
-  // 10px floor ≈ the bar's invisible grab-zone (2px line + 4px each side) —
-  // chat can shrink to just the handle so the player nearly fills the
-  // viewport, but the handle stays grabbable to drag it back. No artificial
-  // "minimum usable size"
-  // — user explicitly wants pixel-level freedom.
-  const MIN_CHAT_WIDTH = 10
-  const MAX_CHAT_WIDTH = 800
-  // YouTube enforces #primary { min-width: 640px } — never let chat encroach
-  // on the video player. The +20px fudge covers column-gap and scrollbar
-  // gutter so we don't trip a 1px viewport overflow at the boundary.
-  const YT_MIN_PRIMARY_WIDTH = 660
-  // YT suggestions strip (opt-in ytShowSuggestions → body.hs-yt-suggestions):
-  // a fixed column beside the player on left/right dock. Single source of truth
-  // for both the player-sizing arithmetic below AND the stylesheet — published
-  // as --hs-yt-sugg-w so the CSS fallback (300px) is only a pre-JS placeholder.
-  const YT_SUGG_STRIP_W = 300
-  // Twitch: when .channel-root__main shrinks below this, Twitch flips to its
-  // narrow-stack layout — .persistent-player gets re-positioned absolute at
-  // the bottom of the about section (y > 2000px), so the video falls below
-  // the fold and the empty player slot at the top shows the "?" placeholder.
-  // Cap chat-col width so main stays above this threshold.
-  const TWITCH_MIN_MAIN_WIDTH = 600
-  const TWITCH_SIDE_NAV_WIDTH = 50 // left rail when collapsed; conservative
-  const TWITCH_TOP_NAV_HEIGHT = 50 // .top-nav strip; hidden in theatre mode
+// Chat width state
+let chatWidth = 340 // Default width
+const DEFAULT_CHAT_WIDTH = 340
+// 10px floor ≈ the bar's invisible grab-zone (2px line + 4px each side) —
+// chat can shrink to just the handle so the player nearly fills the
+// viewport, but the handle stays grabbable to drag it back. No artificial
+// "minimum usable size"
+// — user explicitly wants pixel-level freedom.
+const MIN_CHAT_WIDTH = 10
+const MAX_CHAT_WIDTH = 800
+// YouTube enforces #primary { min-width: 640px } — never let chat encroach
+// on the video player. The +20px fudge covers column-gap and scrollbar
+// gutter so we don't trip a 1px viewport overflow at the boundary.
+const YT_MIN_PRIMARY_WIDTH = 660
+// YT suggestions strip (opt-in ytShowSuggestions → body.hs-yt-suggestions):
+// a fixed column beside the player on left/right dock. Single source of truth
+// for both the player-sizing arithmetic below AND the stylesheet — published
+// as --hs-yt-sugg-w so the CSS fallback (300px) is only a pre-JS placeholder.
+const YT_SUGG_STRIP_W = 300
+// Twitch: when .channel-root__main shrinks below this, Twitch flips to its
+// narrow-stack layout — .persistent-player gets re-positioned absolute at
+// the bottom of the about section (y > 2000px), so the video falls below
+// the fold and the empty player slot at the top shows the "?" placeholder.
+// Cap chat-col width so main stays above this threshold.
+const TWITCH_MIN_MAIN_WIDTH = 600
+const TWITCH_SIDE_NAV_WIDTH = 50 // left rail when collapsed; conservative
+const TWITCH_TOP_NAV_HEIGHT = 50 // .top-nav strip; hidden in theatre mode
 
-  // getYtMaxChatWidth moved to youtube-host.js (platform module)
+// getYtMaxChatWidth moved to youtube-host.js (platform module)
 
-  // Twitch: max chat width that keeps .channel-root__main >= TWITCH_MIN_MAIN_WIDTH.
-  // Vertical tab strip eats +90 from the right-column total, so subtract it
-  // from the chat budget too. The 600 min only matters for chat-right —
-  // there the right-column is part of Twitch's flex layout, and pushing
-  // .channel-root__main below 600 trips Twitch's narrow-layout breakpoint
-  // and teleports the persistent-player off-screen. For chat-left our panel
-  // is a fixed-position overlay; it doesn't shrink channel-root, so the
-  // breakpoint doesn't fire — applying 600 there just collapses the resize
-  // range to a few px on narrow viewports. Use a much smaller player floor
-  // (300) to keep a usable video area without crippling drag.
-  function getTwitchMaxChatWidth() {
-    if (hostPlatform !== 'twitch') return MAX_CHAT_WIDTH
-    const vw = window.innerWidth || document.documentElement.clientWidth || 1280
-    const tabStrip = tabPosition === 'left' || tabPosition === 'right' ? 90 : 0
-    const floor = chatPosition && chatPosition !== 'right' ? 300 : TWITCH_MIN_MAIN_WIDTH
-    const navW = typeof _twitchSideNavW === 'number' && _twitchSideNavW > 0 ? _twitchSideNavW : TWITCH_SIDE_NAV_WIDTH
-    const max = vw - navW - floor - tabStrip
-    return Math.max(MIN_CHAT_WIDTH, Math.min(MAX_CHAT_WIDTH, max))
+// Twitch: max chat width that keeps .channel-root__main >= TWITCH_MIN_MAIN_WIDTH.
+// Vertical tab strip eats +90 from the right-column total, so subtract it
+// from the chat budget too. The 600 min only matters for chat-right —
+// there the right-column is part of Twitch's flex layout, and pushing
+// .channel-root__main below 600 trips Twitch's narrow-layout breakpoint
+// and teleports the persistent-player off-screen. For chat-left our panel
+// is a fixed-position overlay; it doesn't shrink channel-root, so the
+// breakpoint doesn't fire — applying 600 there just collapses the resize
+// range to a few px on narrow viewports. Use a much smaller player floor
+// (300) to keep a usable video area without crippling drag.
+function getTwitchMaxChatWidth() {
+  if (hostPlatform !== 'twitch') return MAX_CHAT_WIDTH
+  const vw = window.innerWidth || document.documentElement.clientWidth || 1280
+  const tabStrip = tabPosition === 'left' || tabPosition === 'right' ? 90 : 0
+  const floor = chatPosition && chatPosition !== 'right' ? 300 : TWITCH_MIN_MAIN_WIDTH
+  const navW = typeof _twitchSideNavW === 'number' && _twitchSideNavW > 0 ? _twitchSideNavW : TWITCH_SIDE_NAV_WIDTH
+  const max = vw - navW - floor - tabStrip
+  return Math.max(MIN_CHAT_WIDTH, Math.min(MAX_CHAT_WIDTH, max))
+}
+
+/**
+ * Setup resize handle for dragging chat width
+ *
+ * Buttery-smooth strategy: during drag we DO NOT change rightCol's width.
+ * Twitch packs ~2500 Layout-sc-* React components inside right-column, and
+ * every width change triggers React reconciliation across all of them — that
+ * was the lag. Instead, we render a fixed-positioned ghost div as a live
+ * boundary preview. The ghost moves at compositor speed (no layout, no
+ * reconciles, no mutations). On release we commit the real width once,
+ * giving the player and Twitch's React tree exactly one reflow.
+ */
+// Shared drag-ghost style — identical across the twitch/kick/yt resize
+// handles. One spec to keep in sync (orange tint, 3px left edge, z 99998).
+const buildGhostCss = (rect, w0) =>
+  `position:fixed;top:${rect.top}px;right:0;height:${rect.height}px;width:${w0}px;background:rgba(255,255,255,0.06);border-left:3px solid #fff;pointer-events:none;z-index:99998;will-change:width;`
+function setupResizeHandle() {
+  const rightCol = document.querySelector('.right-column.right-column--beside')
+  if (!rightCol || document.getElementById('hs-mc-resize-handle')) return
+
+  const handle = document.createElement('div')
+  handle.id = 'hs-mc-resize-handle'
+  handle.style.touchAction = 'none'
+  rightCol.insertBefore(handle, rightCol.firstChild)
+
+  let isResizing = false
+  let startX = 0
+  let startWidth = 0
+  let rafId = 0
+  let pendingWidth = 0
+  let lastGhostWidth = 0
+  let activePointerId = -1
+  let overlay = null
+  let ghost = null
+  const isVertical = () => tabPosition === 'left' || tabPosition === 'right'
+
+  function applyResize() {
+    rafId = 0
+    if (pendingWidth === lastGhostWidth) return
+    lastGhostWidth = pendingWidth
+    chatWidth = pendingWidth
+    // Compositor-only update — no layout, no React reconcile
+    if (ghost) ghost.style.width = pendingWidth + (isVertical() ? 90 : 0) + 'px'
   }
 
-  /**
-   * Setup resize handle for dragging chat width
-   *
-   * Buttery-smooth strategy: during drag we DO NOT change rightCol's width.
-   * Twitch packs ~2500 Layout-sc-* React components inside right-column, and
-   * every width change triggers React reconciliation across all of them — that
-   * was the lag. Instead, we render a fixed-positioned ghost div as a live
-   * boundary preview. The ghost moves at compositor speed (no layout, no
-   * reconciles, no mutations). On release we commit the real width once,
-   * giving the player and Twitch's React tree exactly one reflow.
-   */
-  // Shared drag-ghost style — identical across the twitch/kick/yt resize
-  // handles. One spec to keep in sync (orange tint, 3px left edge, z 99998).
-  const buildGhostCss = (rect, w0) =>
-    `position:fixed;top:${rect.top}px;right:0;height:${rect.height}px;width:${w0}px;background:rgba(255,255,255,0.06);border-left:3px solid #fff;pointer-events:none;z-index:99998;will-change:width;`
-  function setupResizeHandle() {
-    const rightCol = document.querySelector('.right-column.right-column--beside')
-    if (!rightCol || document.getElementById('hs-mc-resize-handle')) return
-
-    const handle = document.createElement('div')
-    handle.id = 'hs-mc-resize-handle'
-    handle.style.touchAction = 'none'
-    rightCol.insertBefore(handle, rightCol.firstChild)
-
-    let isResizing = false
-    let startX = 0
-    let startWidth = 0
-    let rafId = 0
-    let pendingWidth = 0
-    let lastGhostWidth = 0
-    let activePointerId = -1
-    let overlay = null
-    let ghost = null
-    const isVertical = () => tabPosition === 'left' || tabPosition === 'right'
-
-    function applyResize() {
-      rafId = 0
-      if (pendingWidth === lastGhostWidth) return
-      lastGhostWidth = pendingWidth
-      chatWidth = pendingWidth
-      // Compositor-only update — no layout, no React reconcile
-      if (ghost) ghost.style.width = pendingWidth + (isVertical() ? 90 : 0) + 'px'
-    }
-
-    handle.addEventListener(
-      'pointerdown',
-      (e) => {
-        if (e.button !== 0) return
-        isResizing = true
-        activePointerId = e.pointerId
-        try {
-          handle.setPointerCapture(e.pointerId)
-        } catch (_) {}
-        startX = e.clientX
-        startWidth = chatWidth
-        const rect = rightCol.getBoundingClientRect()
-        const w0 = Math.round(rect.width)
-        pendingWidth = chatWidth
-        lastGhostWidth = w0
-
-        document.body.style.cursor = 'ew-resize'
-        document.body.style.userSelect = 'none'
-
-        // Live boundary preview — fixed-positioned, pointer-events:none, will-change:width
-        // for the compositor. Visual: subtle orange tint with a 3px left edge.
-        ghost = document.createElement('div')
-        ghost.id = 'hs-resize-ghost'
-        ghost.style.cssText = buildGhostCss(rect, w0)
-        document.body.appendChild(ghost)
-
-        overlay = document.createElement('div')
-        overlay.id = 'hs-resize-overlay'
-        overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;cursor:ew-resize'
-        document.body.appendChild(overlay)
-        e.preventDefault()
-      },
-      { signal: mcSignal },
-    )
-
-    handle.addEventListener(
-      'pointermove',
-      (e) => {
-        if (!isResizing || e.pointerId !== activePointerId) return
-        const delta = startX - e.clientX
-        const max = Math.min(MAX_CHAT_WIDTH, getTwitchMaxChatWidth())
-        pendingWidth = Math.min(max, Math.max(MIN_CHAT_WIDTH, startWidth + delta))
-        if (!rafId) rafId = requestAnimationFrame(applyResize)
-      },
-      { signal: mcSignal },
-    )
-
-    function endDrag(e) {
-      if (!isResizing || (e && e.pointerId !== activePointerId)) return
-      isResizing = false
-      activePointerId = -1
-      if (rafId) {
-        cancelAnimationFrame(rafId)
-        rafId = 0
-      }
-      chatWidth = pendingWidth || chatWidth
-      if (ghost) {
-        ghost.remove()
-        ghost = null
-      }
-      // Single real width commit — player reflows exactly once here
-      applyChatWidth(rightCol)
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
-      if (overlay) {
-        overlay.remove()
-        overlay = null
-      }
-      // Force Twitch's player + ad layer (.video-ad-display, IMA iframe) to
-      // re-measure. Without this, ad video keeps its pre-resize dimensions.
+  handle.addEventListener(
+    'pointerdown',
+    (e) => {
+      if (e.button !== 0) return
+      isResizing = true
+      activePointerId = e.pointerId
       try {
-        window.dispatchEvent(new Event('resize'))
+        handle.setPointerCapture(e.pointerId)
       } catch (_) {}
-      // Re-pin scroll: the single reflow shifts msgsEl.scrollHeight (taller
-      // wrapped lines on shrink, shorter on expand). Without this, a
-      // bottom-pinned user sees their viewport slide up after the drag.
-      // Helper self-bails if isScrolledUp.
-      const m = document.getElementById('hs-mc-messages')
-      if (m)
-        try {
-          scrollMsgsToBottom(m)
-        } catch (_) {}
-      saveChatWidth()
-    }
-    handle.addEventListener('pointerup', endDrag, { signal: mcSignal })
-    handle.addEventListener('pointercancel', endDrag, { signal: mcSignal })
+      startX = e.clientX
+      startWidth = chatWidth
+      const rect = rightCol.getBoundingClientRect()
+      const w0 = Math.round(rect.width)
+      pendingWidth = chatWidth
+      lastGhostWidth = w0
 
-    loadChatWidth()
-    loadChatHeight()
+      document.body.style.cursor = 'ew-resize'
+      document.body.style.userSelect = 'none'
+
+      // Live boundary preview — fixed-positioned, pointer-events:none, will-change:width
+      // for the compositor. Visual: subtle orange tint with a 3px left edge.
+      ghost = document.createElement('div')
+      ghost.id = 'hs-resize-ghost'
+      ghost.style.cssText = buildGhostCss(rect, w0)
+      document.body.appendChild(ghost)
+
+      overlay = document.createElement('div')
+      overlay.id = 'hs-resize-overlay'
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;cursor:ew-resize'
+      document.body.appendChild(overlay)
+      e.preventDefault()
+    },
+    { signal: mcSignal },
+  )
+
+  handle.addEventListener(
+    'pointermove',
+    (e) => {
+      if (!isResizing || e.pointerId !== activePointerId) return
+      const delta = startX - e.clientX
+      const max = Math.min(MAX_CHAT_WIDTH, getTwitchMaxChatWidth())
+      pendingWidth = Math.min(max, Math.max(MIN_CHAT_WIDTH, startWidth + delta))
+      if (!rafId) rafId = requestAnimationFrame(applyResize)
+    },
+    { signal: mcSignal },
+  )
+
+  function endDrag(e) {
+    if (!isResizing || (e && e.pointerId !== activePointerId)) return
+    isResizing = false
+    activePointerId = -1
+    if (rafId) {
+      cancelAnimationFrame(rafId)
+      rafId = 0
+    }
+    chatWidth = pendingWidth || chatWidth
+    if (ghost) {
+      ghost.remove()
+      ghost = null
+    }
+    // Single real width commit — player reflows exactly once here
+    applyChatWidth(rightCol)
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+    if (overlay) {
+      overlay.remove()
+      overlay = null
+    }
+    // Force Twitch's player + ad layer (.video-ad-display, IMA iframe) to
+    // re-measure. Without this, ad video keeps its pre-resize dimensions.
+    try {
+      window.dispatchEvent(new Event('resize'))
+    } catch (_) {}
+    // Re-pin scroll: the single reflow shifts msgsEl.scrollHeight (taller
+    // wrapped lines on shrink, shorter on expand). Without this, a
+    // bottom-pinned user sees their viewport slide up after the drag.
+    // Helper self-bails if isScrolledUp.
+    const m = document.getElementById('hs-mc-messages')
+    if (m)
+      try {
+        scrollMsgsToBottom(m)
+      } catch (_) {}
+    saveChatWidth()
   }
+  handle.addEventListener('pointerup', endDrag, { signal: mcSignal })
+  handle.addEventListener('pointercancel', endDrag, { signal: mcSignal })
 
-  function applyChatWidth(cachedRightCol) {
-    // Native chat shown: don't resize the right-column (races native chat layout).
-    if (typeof getSetting === 'function' && getSetting('nativeVisible')) return
-    const rightCol = cachedRightCol || document.querySelector('.right-column')
-    if (!rightCol) return
-    // No-channel pages (/videos, /directory, …) body-mount the panel as a
-    // fixed overlay, so Twitch's flex .right-column slot is dead space. Zero
-    // it so twilight-main reclaims the width — otherwise users see a 306px
-    // gap between page content and the floating chat.
-    if (document.body.classList.contains('hs-twitch-no-channel')) {
-      rightCol.style.setProperty('width', '0', 'important')
-      rightCol.style.setProperty('min-width', '0', 'important')
-      rightCol.style.setProperty('max-width', '0', 'important')
-      return
-    }
-    // C button took chat off the right edge — don't restore native width here
-    // or the right-column reclaims its 340px and the player snaps back.
-    if (chatPosition && chatPosition !== 'right') {
-      rightCol.style.setProperty('width', '0', 'important')
-      rightCol.style.setProperty('min-width', '0', 'important')
-      rightCol.style.setProperty('max-width', '0', 'important')
-      return
-    }
-    const collapsed = rightCol.classList.contains('right-column--collapsed')
+  loadChatWidth()
+  loadChatHeight()
+}
 
-    if (collapsed) {
-      rightCol.style.removeProperty('width')
-      rightCol.style.removeProperty('min-width')
-      rightCol.style.removeProperty('flex-shrink')
-      // Force parent wrapper (Twitch sets inline width: fit-content) to 0
-      // overflow must be visible so the collapse/expand arrow can render
-      const parent = rightCol.parentElement
-      if (parent && parent !== document.body) {
-        parent.style.setProperty('width', '0px', 'important')
-        parent.style.setProperty('min-width', '0px', 'important')
-        parent.style.setProperty('overflow', 'visible', 'important')
-      }
-      return
-    }
+function applyChatWidth(cachedRightCol) {
+  // Native chat shown: don't resize the right-column (races native chat layout).
+  if (typeof getSetting === 'function' && getSetting('nativeVisible')) return
+  const rightCol = cachedRightCol || document.querySelector('.right-column')
+  if (!rightCol) return
+  // No-channel pages (/videos, /directory, …) body-mount the panel as a
+  // fixed overlay, so Twitch's flex .right-column slot is dead space. Zero
+  // it so twilight-main reclaims the width — otherwise users see a 306px
+  // gap between page content and the floating chat.
+  if (document.body.classList.contains('hs-twitch-no-channel')) {
+    rightCol.style.setProperty('width', '0', 'important')
+    rightCol.style.setProperty('min-width', '0', 'important')
+    rightCol.style.setProperty('max-width', '0', 'important')
+    return
+  }
+  // C button took chat off the right edge — don't restore native width here
+  // or the right-column reclaims its 340px and the player snaps back.
+  if (chatPosition && chatPosition !== 'right') {
+    rightCol.style.setProperty('width', '0', 'important')
+    rightCol.style.setProperty('min-width', '0', 'important')
+    rightCol.style.setProperty('max-width', '0', 'important')
+    return
+  }
+  const collapsed = rightCol.classList.contains('right-column--collapsed')
 
-    // Restore parent when expanded
+  if (collapsed) {
+    rightCol.style.removeProperty('width')
+    rightCol.style.removeProperty('min-width')
+    rightCol.style.removeProperty('flex-shrink')
+    // Force parent wrapper (Twitch sets inline width: fit-content) to 0
+    // overflow must be visible so the collapse/expand arrow can render
     const parent = rightCol.parentElement
     if (parent && parent !== document.body) {
-      parent.style.removeProperty('width')
-      parent.style.removeProperty('min-width')
-      parent.style.removeProperty('overflow')
+      parent.style.setProperty('width', '0px', 'important')
+      parent.style.setProperty('min-width', '0px', 'important')
+      parent.style.setProperty('overflow', 'visible', 'important')
     }
-
-    // Clamp against viewport-aware max so a too-wide saved value (or the
-    // user dragging on a wider window then resizing it down) can't push
-    // .channel-root__main below Twitch's narrow-layout threshold and
-    // teleport the persistent-player off-screen.
-    const tMax = getTwitchMaxChatWidth()
-    if (chatWidth > tMax) chatWidth = tMax
-    const isVertical = tabPosition === 'left' || tabPosition === 'right'
-    const colWidth = chatWidth + (isVertical ? 90 : 0)
-
-    rightCol.style.setProperty('width', colWidth + 'px', 'important')
-    rightCol.style.setProperty('min-width', colWidth + 'px', 'important')
-    rightCol.style.setProperty('flex-shrink', '0', 'important')
-
-    const innerCol = rightCol.querySelector('.channel-root__right-column')
-    if (innerCol) {
-      innerCol.style.setProperty('width', '100%', 'important')
-    }
+    return
   }
 
-  let _saveChatWidthTimer = null
-  function saveChatWidth() {
-    // Mirror to localStorage immediately for early-layout.js to read at
-    // document_start. chrome.storage write is debounced; localStorage isn't.
-    try {
-      localStorage.setItem('hs_layout_chatWidth', String(chatWidth))
-    } catch {}
-    if (_saveChatWidthTimer) cleanup.clearTimeout(_saveChatWidthTimer)
-    _saveChatWidthTimer = cleanup.setTimeout(() => {
-      _saveChatWidthTimer = null
-      chrome.storage.local.set({ hs_chat_width: chatWidth })
-      log('Saved chat width:', chatWidth)
-    }, 250)
+  // Restore parent when expanded
+  const parent = rightCol.parentElement
+  if (parent && parent !== document.body) {
+    parent.style.removeProperty('width')
+    parent.style.removeProperty('min-width')
+    parent.style.removeProperty('overflow')
   }
 
-  // ============================================
-  // CHAT HEIGHT — for top/bottom chatPosition. Persisted in chrome.storage
-  // alongside chatWidth so the C button's drag handle survives reloads.
-  // ============================================
-  const MIN_CHAT_HEIGHT = 10
-  function getMaxChatHeight() {
-    return Math.max(MIN_CHAT_HEIGHT, window.innerHeight - 10)
-  }
-  // Clamp to MIN so a tiny window at module-load doesn't trap the user with
-  // a default below the legal range.
-  let chatHeight = Math.max(MIN_CHAT_HEIGHT, Math.round(window.innerHeight * 0.35))
-  let _saveChatHeightTimer = null
-  function saveChatHeight() {
-    try {
-      localStorage.setItem('hs_layout_chatHeight', String(chatHeight))
-    } catch {}
-    if (_saveChatHeightTimer) cleanup.clearTimeout(_saveChatHeightTimer)
-    _saveChatHeightTimer = cleanup.setTimeout(() => {
-      _saveChatHeightTimer = null
-      chrome.storage.local.set({ hs_chat_height: chatHeight })
-      log('Saved chat height:', chatHeight)
-    }, 250)
-  }
-  async function loadChatHeight() {
-    try {
-      const data = await chrome.storage.local.get(['hs_chat_height'])
-      if (data.hs_chat_height) {
-        chatHeight = Math.max(MIN_CHAT_HEIGHT, Math.min(getMaxChatHeight(), data.hs_chat_height))
-        // Mirror loadChatWidth: push CSS var + reposition the unified handle so
-        // the panel + orange bar render at the saved height on first paint.
-        document.documentElement.style.setProperty('--hs-chat-h', chatHeight + 'px')
-        try {
-          positionChatResizeHandle()
-        } catch {}
-      }
-    } catch (_) {}
-  }
+  // Clamp against viewport-aware max so a too-wide saved value (or the
+  // user dragging on a wider window then resizing it down) can't push
+  // .channel-root__main below Twitch's narrow-layout threshold and
+  // teleport the persistent-player off-screen.
+  const tMax = getTwitchMaxChatWidth()
+  if (chatWidth > tMax) chatWidth = tMax
+  const isVertical = tabPosition === 'left' || tabPosition === 'right'
+  const colWidth = chatWidth + (isVertical ? 90 : 0)
 
-  // ============================================
-  // UNIFIED CHAT RESIZE HANDLE — bulletproof across all 4 chatPosition
-  // values × all 3 platforms × theatre mode. Single #hs-c-resize-handle on
-  // body, position:fixed, repositioned by positionChatResizeHandle() which
-  // is called from applyChatPosition. Drags chatWidth (left/right) or
-  // chatHeight (top/bottom). Hides itself when chatPosition='right' and
-  // delegates to existing per-platform handles for the default layout.
-  // White #fff, 2px thin + invisible grab, no text — matches the
-  // --hs-resize-thickness token in styles.js (and heatsync.org's .hs-resizer).
-  // ============================================
-  const HS_RESIZE_PX = 4 // visible thickness — mirrors --hs-resize-thickness
-  let _isResizingC = false
-  let _cHandlePanelObs = null
-  let _cHandlePanelObsTarget = null
-  // Panel node reference — see getOrCreateHsContainer / softTwitchNav.
-  let _hsMcContainerNode = null
-  // Mount-retry: on hard loads of no-channel pages the first position pass can
-  // run before #hs-mc-container even EXISTS — the ResizeObserver has nothing to
-  // attach to, so nothing ever re-shows the bar. Bounded ladder re-polls until
-  // the panel mounts (or gives up on genuinely panel-less pages, e.g. logged out).
-  let _cHandleRetryTimer = null
-  let _cHandleRetryCount = 0
-  function _armCHandleMountRetry() {
-    if (_cHandleRetryTimer || _cHandleRetryCount >= 20) return
-    _cHandleRetryTimer = cleanup.setTimeout(
-      () => {
-        _cHandleRetryTimer = null
-        _cHandleRetryCount++
-        try {
-          positionChatResizeHandle()
-        } catch (_) {}
-      },
-      300,
-      'c-handle-mount-retry',
-    )
+  rightCol.style.setProperty('width', colWidth + 'px', 'important')
+  rightCol.style.setProperty('min-width', colWidth + 'px', 'important')
+  rightCol.style.setProperty('flex-shrink', '0', 'important')
+
+  const innerCol = rightCol.querySelector('.channel-root__right-column')
+  if (innerCol) {
+    innerCol.style.setProperty('width', '100%', 'important')
   }
-  function ensureChatResizeHandle() {
-    let handle = document.getElementById('hs-c-resize-handle')
-    if (handle) return handle
-    handle = document.createElement('div')
-    handle.id = 'hs-c-resize-handle'
-    // background/opacity/transition come from the #hs-c-resize-handle
-    // stylesheet rule — inline copies here silently overrode stylesheet
-    // changes (the 0.9-idle bump never applied to this handle).
-    Object.assign(handle.style, {
-      position: 'fixed',
-      userSelect: 'none',
-      touchAction: 'none',
-      display: 'none',
-      pointerEvents: 'auto',
-    })
-    // z-index: YT needs max-int to beat its own modal stacking contexts (chrome
-    // bottom bar, settings menu). On twitch/kick the bar overlaps the panel's
-    // left-edge pixels, and the no-channel panel is z-1500 — 999 painted the
-    // bar BEHIND the panel (present but invisible). 1501 sits above the panel
-    // and still below twitch's popup layers (balloon 2000 / overlay 3000 /
-    // modal 5000), so it can't cover sign-in or toast modals.
-    handle.style.setProperty('z-index', hostPlatform === 'yt' ? '2147483647' : '1501', 'important')
-    document.body.appendChild(cleanup.trackNode(handle))
-    handle.addEventListener('mouseenter', () => {
-      handle.style.opacity = '1'
-    })
-    handle.addEventListener('mouseleave', () => {
-      if (!_isResizingC) handle.style.opacity = '' // clear inline — stylesheet owns the idle value
-    })
+}
 
-    // Window-level reflow: WM fullscreen (dwl mod-e, sway/i3 fullscreen),
-    // browser zoom, devtools toggle all change viewport without firing the
-    // platform-internal layout signals (Twitch theatre attr, YT flexy attr).
-    // Without this the orange bar's inline px from getBoundingClientRect goes
-    // stale and floats over wrong pixels until the user moves the cursor.
-    // Suppressed during the live drag (drag dispatches resize itself for the
-    // player to re-layout — we don't want recursion).
-    let _resizeReflowTimer = null
-    window.addEventListener(
-      'resize',
-      () => {
-        if (_isResizingC) return
-        if (_resizeReflowTimer) cleanup.clearTimeout(_resizeReflowTimer)
-        _resizeReflowTimer = cleanup.setTimeout(() => {
-          _resizeReflowTimer = null
-          try {
-            positionChatResizeHandle()
-          } catch {}
-          try {
-            _updateMcLayout()
-          } catch {}
-        }, 60)
-      },
-      { passive: true, signal: mcSignal },
-    )
+let _saveChatWidthTimer = null
+function saveChatWidth() {
+  // Mirror to localStorage immediately for early-layout.js to read at
+  // document_start. chrome.storage write is debounced; localStorage isn't.
+  try {
+    localStorage.setItem('hs_layout_chatWidth', String(chatWidth))
+  } catch {}
+  if (_saveChatWidthTimer) cleanup.clearTimeout(_saveChatWidthTimer)
+  _saveChatWidthTimer = cleanup.setTimeout(() => {
+    _saveChatWidthTimer = null
+    chrome.storage.local.set({ hs_chat_width: chatWidth })
+    log('Saved chat width:', chatWidth)
+  }, 250)
+}
 
-    // Live drag: chat + player resize on every pointermove (rAF-throttled).
-    // We suppress the YT window-resize dispatch during drag so IMA SDK / html5
-    // player don't re-decode the video on every frame. CSS handles smooth
-    // visual scaling; one final resize event fires on pointerup so the player
-    // re-measures cleanly (and ad <video> elements snap to final dimensions).
-    let startX = 0,
-      startY = 0,
-      startW = 0,
-      startH = 0,
-      axis = 'x',
-      activePid = -1
-    let pendingW = 0,
-      pendingH = 0,
-      overlay = null,
-      ghost = null
-    let liveRaf = 0
-    // Panel anchor edges captured at pointerdown — the edges that DON'T
-    // move during the drag. See positionChatResizeHandle for the static
-    // (non-drag) equivalent that DOES read rect.
-    let panelTop = 0,
-      panelLeft = 0,
-      panelRight = 0,
-      panelBottom = 0
-    handle.addEventListener(
-      'pointerdown',
-      (e) => {
-        if (e.button !== 0) return
-        // Stop YT's player-level pointer handlers from also catching this
-        // event. At narrow viewports the player extends under the chat
-        // overlay (single-column layout) and YT's pointermove/down listeners
-        // can intercept events even though our handle has higher z-index.
-        e.stopImmediatePropagation()
-        _isResizingC = true
-        activePid = e.pointerId
-        try {
-          handle.setPointerCapture(e.pointerId)
-        } catch (_) {}
-        startX = e.clientX
-        startY = e.clientY
-        startW = chatWidth
-        startH = chatHeight
-        pendingW = chatWidth
-        pendingH = chatHeight
-        axis = chatPosition === 'left' || chatPosition === 'right' ? 'x' : 'y'
-        // Capture the panel's actual rendered edges. Container is position:
-        // fixed but transformed ancestors (Twitch top-nav) can shift it from
-        // the viewport's true (0,0) origin — the bar must track the panel's
-        // true edge, not raw chat dimensions.
-        const cont = document.getElementById('hs-mc-container')
-        const r = cont
-          ? cont.getBoundingClientRect()
-          : { top: 0, left: 0, right: window.innerWidth, bottom: window.innerHeight }
-        panelTop = r.top
-        panelLeft = r.left
-        panelRight = r.right
-        panelBottom = r.bottom
-        document.body.style.cursor = axis === 'x' ? 'col-resize' : 'row-resize'
-        document.body.style.userSelect = 'none'
-        handle.style.opacity = '1'
-        // Full-viewport overlay: captures pointer events even when crossing
-        // iframes (YT player iframe steals events otherwise).
-        overlay = document.createElement('div')
-        overlay.id = 'hs-c-resize-overlay'
-        overlay.style.cssText = `position:fixed;inset:0;z-index:99998;cursor:${axis === 'x' ? 'col-resize' : 'row-resize'};`
-        document.body.appendChild(overlay)
-        // Ghost preview — fixed-positioned, pointer-events:none, will-change
-        // for the compositor. Mirrors the per-platform handles' approach
-        // (#hs-mc-resize-handle, #hs-kick-resize-handle, #hs-yt-resize-handle).
-        // Memory rule: never touch the actual chat width/player layout during
-        // the live drag — Twitch right-column has ~2500 React Layout nodes
-        // and inline-style writes on YT player wrappers thrash IMA SDK.
-        ghost = document.createElement('div')
-        ghost.id = 'hs-c-resize-ghost'
-        const baseStyle = 'position:fixed;background:rgba(255,255,255,0.06);pointer-events:none;z-index:99997;'
-        if (chatPosition === 'right') {
-          ghost.style.cssText =
-            baseStyle +
-            `top:${panelTop}px;right:0;height:${panelBottom - panelTop}px;width:${pendingW}px;border-left:3px solid #fff;will-change:width;`
-        } else if (chatPosition === 'left') {
-          ghost.style.cssText =
-            baseStyle +
-            `top:${panelTop}px;left:0;height:${panelBottom - panelTop}px;width:${pendingW}px;border-right:3px solid #fff;will-change:width;`
-        } else if (chatPosition === 'top') {
-          ghost.style.cssText =
-            baseStyle + `top:0;left:0;right:0;height:${pendingH}px;border-bottom:3px solid #fff;will-change:height;`
-        } else if (chatPosition === 'bottom') {
-          ghost.style.cssText =
-            baseStyle + `bottom:0;left:0;right:0;height:${pendingH}px;border-top:3px solid #fff;will-change:height;`
-        }
-        document.body.appendChild(ghost)
-        e.preventDefault()
-      },
-      { signal: mcSignal },
-    )
-    handle.addEventListener(
-      'pointermove',
-      (e) => {
-        if (!_isResizingC || e.pointerId !== activePid) return
-        // Full pixel-freedom drag — bounded only by viewport-10 so the
-        // handle stays grabbable on either extreme.
-        const maxW = Math.max(MIN_CHAT_WIDTH, window.innerWidth - 10)
-        if (chatPosition === 'right') {
-          pendingW = Math.max(MIN_CHAT_WIDTH, Math.min(maxW, startW + (startX - e.clientX)))
-        } else if (chatPosition === 'left') {
-          pendingW = Math.max(MIN_CHAT_WIDTH, Math.min(maxW, startW + (e.clientX - startX)))
-        } else if (chatPosition === 'top') {
-          pendingH = Math.max(MIN_CHAT_HEIGHT, Math.min(getMaxChatHeight(), startH + (e.clientY - startY)))
-        } else if (chatPosition === 'bottom') {
-          pendingH = Math.max(MIN_CHAT_HEIGHT, Math.min(getMaxChatHeight(), startH + (startY - e.clientY)))
-        }
-        // Compositor-only update during drag — no layout, no React reconcile,
-        // no inline-style writes on player wrappers. Just move the orange bar
-        // and resize the ghost preview. Final commit happens on pointerup.
-        if (!liveRaf) {
-          liveRaf = requestAnimationFrame(() => {
-            liveRaf = 0
-            if (chatPosition === 'right') {
-              handle.style.left = panelRight - pendingW + 'px'
-              if (ghost) ghost.style.width = pendingW + 'px'
-            } else if (chatPosition === 'left') {
-              handle.style.left = panelLeft + pendingW - 10 + 'px'
-              if (ghost) ghost.style.width = pendingW + 'px'
-            } else if (chatPosition === 'top') {
-              handle.style.top = panelTop + pendingH - 10 + 'px'
-              if (ghost) ghost.style.height = pendingH + 'px'
-            } else if (chatPosition === 'bottom') {
-              handle.style.top = panelBottom - pendingH + 'px'
-              if (ghost) ghost.style.height = pendingH + 'px'
-            }
-          })
-        }
-      },
-      { signal: mcSignal },
-    )
-    const endDrag = (e) => {
-      if (!_isResizingC || (e && e.pointerId !== activePid)) return
-      _isResizingC = false
-      activePid = -1
-      if (liveRaf) {
-        cancelAnimationFrame(liveRaf)
-        liveRaf = 0
-      }
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
-      handle.style.opacity = '' // clear inline — stylesheet owns the idle value
-      if (overlay) {
-        overlay.remove()
-        overlay = null
-      }
-      if (ghost) {
-        ghost.remove()
-        ghost = null
-      }
-      // Final commit — single reflow for the player + React tree.
-      if (axis === 'x') chatWidth = pendingW
-      else chatHeight = pendingH
-      document.documentElement.style.setProperty('--hs-chat-w', chatWidth + 'px')
+// ============================================
+// CHAT HEIGHT — for top/bottom chatPosition. Persisted in chrome.storage
+// alongside chatWidth so the C button's drag handle survives reloads.
+// ============================================
+const MIN_CHAT_HEIGHT = 10
+function getMaxChatHeight() {
+  return Math.max(MIN_CHAT_HEIGHT, window.innerHeight - 10)
+}
+// Clamp to MIN so a tiny window at module-load doesn't trap the user with
+// a default below the legal range.
+let chatHeight = Math.max(MIN_CHAT_HEIGHT, Math.round(window.innerHeight * 0.35))
+let _saveChatHeightTimer = null
+function saveChatHeight() {
+  try {
+    localStorage.setItem('hs_layout_chatHeight', String(chatHeight))
+  } catch {}
+  if (_saveChatHeightTimer) cleanup.clearTimeout(_saveChatHeightTimer)
+  _saveChatHeightTimer = cleanup.setTimeout(() => {
+    _saveChatHeightTimer = null
+    chrome.storage.local.set({ hs_chat_height: chatHeight })
+    log('Saved chat height:', chatHeight)
+  }, 250)
+}
+async function loadChatHeight() {
+  try {
+    const data = await chrome.storage.local.get(['hs_chat_height'])
+    if (data.hs_chat_height) {
+      chatHeight = Math.max(MIN_CHAT_HEIGHT, Math.min(getMaxChatHeight(), data.hs_chat_height))
+      // Mirror loadChatWidth: push CSS var + reposition the unified handle so
+      // the panel + orange bar render at the saved height on first paint.
       document.documentElement.style.setProperty('--hs-chat-h', chatHeight + 'px')
-      applyChatPosition()
-      requestAnimationFrame(() => {
-        try {
-          publishPanelWidth()
-        } catch (_) {}
-      })
-      // applyChatPosition strips inline width on #secondary for YT chat-right
-      // and relies on "next reflow" to repopulate it — force it now.
-      if (hostPlatform === 'yt') {
-        try {
-          applyYouTubeChatWidth()
-        } catch {}
-      }
-      // Force every platform's player (including ad layers — Twitch
-      // .video-ad-display, YT IMA SDK, Kick video.js) to re-measure.
       try {
-        window.dispatchEvent(new Event('resize'))
-      } catch (_) {}
-      // Re-pin scroll: width change re-wraps messages, scrollHeight shifts.
-      // Helper self-bails if isScrolledUp.
-      const m = document.getElementById('hs-mc-messages')
-      if (m)
-        try {
-          scrollMsgsToBottom(m)
-        } catch (_) {}
-      saveChatWidth()
-      saveChatHeight()
+        positionChatResizeHandle()
+      } catch {}
     }
-    handle.addEventListener('pointerup', endDrag, { signal: mcSignal })
-    handle.addEventListener('pointercancel', endDrag, { signal: mcSignal })
-    return handle
-  }
-  function positionChatResizeHandle() {
-    // Native chat shown: leave the resize handle alone — CSS hides it
-    // (body.hs-native-visible). If we set display:none here during the collapse,
-    // it'd persist as a stale inline style after toggling back to HS mode.
-    if (typeof getSetting === 'function' && getSetting('nativeVisible')) return
-    const handle = ensureChatResizeHandle()
-    ;['top', 'bottom', 'left', 'right', 'width', 'height'].forEach((p) => handle.style.removeProperty(p))
-    // For YT, chat-right is now position:fixed so the unified handle
-    // owns ALL four positions. For Twitch/Kick, chat-right uses the
-    // existing per-platform handles (which have ghost-preview perf
-    // optimisations worth keeping) — UNLESS the platform anchor is
-    // missing (Twitch /directory, Kick non-channel pages), in which
-    // case the unified handle takes over so the panel is still
-    // resizeable.
-    if ((chatPosition === 'right' || !chatPosition) && hostPlatform !== 'yt') {
-      // In no-channel / clipped-chat mode the per-platform handle lives inside
-      // a broken/missing chat-shell and can't be reached — always use the
-      // unified body-mounted handle.
-      const noChannelMode =
-        document.body.classList.contains('hs-twitch-no-channel') ||
-        document.body.classList.contains('hs-kick-no-channel')
-      const platformAnchor = noChannelMode
-        ? null
-        : hostPlatform === 'kick'
-          ? document.getElementById('channel-chatroom')
-          : document.querySelector('.right-column.right-column--beside')
-      if (platformAnchor) {
-        handle.style.display = 'none'
-        return
-      }
-    }
-    // Anchor the bar to the panel container's ACTUAL rendered edges via
-    // getBoundingClientRect. The handle is position:fixed on body, but
-    // the panel container's own position:fixed can be shifted by a
-    // transformed ancestor (Twitch's top-nav transforms put chat-top at
-    // viewport y≈50 even though it's "fixed; top: 0"). Reading the rect
-    // makes the bar track the panel's true edge regardless of those
-    // offsets — otherwise the bar overlays tabbar/inputbar content.
-    const cont = document.getElementById('hs-mc-container')
-    if (cont) _cHandleRetryCount = 0 // panel exists — future mount-retries start fresh
-    // On no-channel pages (twitch /directory, kick browse) this runs while the
-    // panel is still 0×0 mid-mount, hides the bar via the rect guard below, and
-    // nothing later re-triggers it — the bar stayed missing until a window
-    // resize. Track the panel's rendered size and re-position on change.
-    if (cont && typeof ResizeObserver !== 'undefined' && _cHandlePanelObsTarget !== cont) {
-      if (_cHandlePanelObs) {
-        try {
-          _cHandlePanelObs.disconnect()
-        } catch (_) {}
-        cleanup.untrackObserver(_cHandlePanelObs)
-      }
-      _cHandlePanelObs = new ResizeObserver(() => {
-        if (_isResizingC) return // drag owns geometry; endDrag re-positions
-        try {
-          positionChatResizeHandle()
-        } catch (_) {}
-      })
-      _cHandlePanelObs.observe(cont)
-      cleanup.trackObserver(_cHandlePanelObs)
-      _cHandlePanelObsTarget = cont
-    }
-    const r = cont ? cont.getBoundingClientRect() : null
-    // No chat panel (e.g. logged out → the platform's login modal): a null
-    // rect would strand the bar at the viewport fallback (a full-height
-    // orange line with no chat). Hide it until a real chat panel exists.
-    if (!r || r.width < 2 || r.height < 2) {
-      handle.style.display = 'none'
-      _armCHandleMountRetry() // panel missing or pre-layout — re-check shortly
-      return
-    }
-    handle.style.display = 'block'
-    const cTop = r ? r.top : 0
-    const cLeft = r ? r.left : 0
-    const cRight = r ? r.right : window.innerWidth
-    const cBottom = r ? r.bottom : window.innerHeight
-    const cWidth = r ? r.width : window.innerWidth
-    const cHeight = r ? r.height : window.innerHeight
-    if (chatPosition === 'right') {
-      handle.style.top = cTop + 'px'
-      handle.style.left = cLeft + 'px'
-      handle.style.height = cHeight + 'px'
-      handle.style.width = HS_RESIZE_PX + 'px'
-      handle.style.cursor = 'col-resize'
-    } else if (chatPosition === 'left') {
-      handle.style.top = cTop + 'px'
-      handle.style.left = cRight - HS_RESIZE_PX + 'px'
-      handle.style.height = cHeight + 'px'
-      handle.style.width = HS_RESIZE_PX + 'px'
-      handle.style.cursor = 'col-resize'
-    } else if (chatPosition === 'top') {
-      handle.style.top = cBottom - HS_RESIZE_PX + 'px'
-      handle.style.left = cLeft + 'px'
-      handle.style.width = cWidth + 'px'
-      handle.style.height = HS_RESIZE_PX + 'px'
-      handle.style.cursor = 'row-resize'
-    } else if (chatPosition === 'bottom') {
-      handle.style.top = cTop + 'px'
-      handle.style.left = cLeft + 'px'
-      handle.style.width = cWidth + 'px'
-      handle.style.height = HS_RESIZE_PX + 'px'
-      handle.style.cursor = 'row-resize'
-    }
-  }
-  function hidePlatformResizeHandles(hide) {
-    // hide=true: set display:none + mark as hidden-by-us. hide=false: only
-    // restore display if we previously hid it (platforms like YT manage
-    // their own display:none for theatre mode — don't clobber that).
-    for (const id of ['hs-mc-resize-handle', 'hs-kick-resize-handle', 'hs-yt-resize-handle']) {
-      const el = document.getElementById(id)
-      if (!el) continue
-      if (hide) {
-        el.dataset._hsCHidden = '1'
-        el.style.setProperty('display', 'none', 'important')
-      } else if (el.dataset._hsCHidden === '1') {
-        delete el.dataset._hsCHidden
-        el.style.removeProperty('display')
-      }
-    }
-  }
+  } catch (_) {}
+}
 
-  async function loadChatWidth() {
-    try {
-      const data = await chrome.storage.local.get(['hs_chat_width'])
-      if (data.hs_chat_width) {
-        chatWidth = data.hs_chat_width
-        // Sync the CSS var driving every chat-position rule + reposition the
-        // unified resize handle. Without this, the panel renders at the default
-        // 340px until the first applyChatPosition fires (theatre toggle, drag
-        // end, etc) — at which point the panel + bar visibly jump to the saved
-        // width. That's the "first-load teleport" the user reports.
-        document.documentElement.style.setProperty('--hs-chat-w', chatWidth + 'px')
-        applyChatWidth()
+// ============================================
+// UNIFIED CHAT RESIZE HANDLE — bulletproof across all 4 chatPosition
+// values × all 3 platforms × theatre mode. Single #hs-c-resize-handle on
+// body, position:fixed, repositioned by positionChatResizeHandle() which
+// is called from applyChatPosition. Drags chatWidth (left/right) or
+// chatHeight (top/bottom). Hides itself when chatPosition='right' and
+// delegates to existing per-platform handles for the default layout.
+// White #fff, 2px thin + invisible grab, no text — matches the
+// --hs-resize-thickness token in styles.js (and heatsync.org's .hs-resizer).
+// ============================================
+const HS_RESIZE_PX = 4 // visible thickness — mirrors --hs-resize-thickness
+let _isResizingC = false
+let _cHandlePanelObs = null
+let _cHandlePanelObsTarget = null
+// Panel node reference — see getOrCreateHsContainer / softTwitchNav.
+let _hsMcContainerNode = null
+// Mount-retry: on hard loads of no-channel pages the first position pass can
+// run before #hs-mc-container even EXISTS — the ResizeObserver has nothing to
+// attach to, so nothing ever re-shows the bar. Bounded ladder re-polls until
+// the panel mounts (or gives up on genuinely panel-less pages, e.g. logged out).
+let _cHandleRetryTimer = null
+let _cHandleRetryCount = 0
+function _armCHandleMountRetry() {
+  if (_cHandleRetryTimer || _cHandleRetryCount >= 20) return
+  _cHandleRetryTimer = cleanup.setTimeout(
+    () => {
+      _cHandleRetryTimer = null
+      _cHandleRetryCount++
+      try {
+        positionChatResizeHandle()
+      } catch (_) {}
+    },
+    300,
+    'c-handle-mount-retry',
+  )
+}
+function ensureChatResizeHandle() {
+  let handle = document.getElementById('hs-c-resize-handle')
+  if (handle) return handle
+  handle = document.createElement('div')
+  handle.id = 'hs-c-resize-handle'
+  // background/opacity/transition come from the #hs-c-resize-handle
+  // stylesheet rule — inline copies here silently overrode stylesheet
+  // changes (the 0.9-idle bump never applied to this handle).
+  Object.assign(handle.style, {
+    position: 'fixed',
+    userSelect: 'none',
+    touchAction: 'none',
+    display: 'none',
+    pointerEvents: 'auto',
+  })
+  // z-index: YT needs max-int to beat its own modal stacking contexts (chrome
+  // bottom bar, settings menu). On twitch/kick the bar overlaps the panel's
+  // left-edge pixels, and the no-channel panel is z-1500 — 999 painted the
+  // bar BEHIND the panel (present but invisible). 1501 sits above the panel
+  // and still below twitch's popup layers (balloon 2000 / overlay 3000 /
+  // modal 5000), so it can't cover sign-in or toast modals.
+  handle.style.setProperty('z-index', hostPlatform === 'yt' ? '2147483647' : '1501', 'important')
+  document.body.appendChild(cleanup.trackNode(handle))
+  handle.addEventListener('mouseenter', () => {
+    handle.style.opacity = '1'
+  })
+  handle.addEventListener('mouseleave', () => {
+    if (!_isResizingC) handle.style.opacity = '' // clear inline — stylesheet owns the idle value
+  })
+
+  // Window-level reflow: WM fullscreen (dwl mod-e, sway/i3 fullscreen),
+  // browser zoom, devtools toggle all change viewport without firing the
+  // platform-internal layout signals (Twitch theatre attr, YT flexy attr).
+  // Without this the orange bar's inline px from getBoundingClientRect goes
+  // stale and floats over wrong pixels until the user moves the cursor.
+  // Suppressed during the live drag (drag dispatches resize itself for the
+  // player to re-layout — we don't want recursion).
+  let _resizeReflowTimer = null
+  window.addEventListener(
+    'resize',
+    () => {
+      if (_isResizingC) return
+      if (_resizeReflowTimer) cleanup.clearTimeout(_resizeReflowTimer)
+      _resizeReflowTimer = cleanup.setTimeout(() => {
+        _resizeReflowTimer = null
         try {
           positionChatResizeHandle()
         } catch {}
-        log('Loaded chat width:', chatWidth)
+        try {
+          _updateMcLayout()
+        } catch {}
+      }, 60)
+    },
+    { passive: true, signal: mcSignal },
+  )
+
+  // Live drag: chat + player resize on every pointermove (rAF-throttled).
+  // We suppress the YT window-resize dispatch during drag so IMA SDK / html5
+  // player don't re-decode the video on every frame. CSS handles smooth
+  // visual scaling; one final resize event fires on pointerup so the player
+  // re-measures cleanly (and ad <video> elements snap to final dimensions).
+  let startX = 0,
+    startY = 0,
+    startW = 0,
+    startH = 0,
+    axis = 'x',
+    activePid = -1
+  let pendingW = 0,
+    pendingH = 0,
+    overlay = null,
+    ghost = null
+  let liveRaf = 0
+  // Panel anchor edges captured at pointerdown — the edges that DON'T
+  // move during the drag. See positionChatResizeHandle for the static
+  // (non-drag) equivalent that DOES read rect.
+  let panelTop = 0,
+    panelLeft = 0,
+    panelRight = 0,
+    panelBottom = 0
+  handle.addEventListener(
+    'pointerdown',
+    (e) => {
+      if (e.button !== 0) return
+      // Stop YT's player-level pointer handlers from also catching this
+      // event. At narrow viewports the player extends under the chat
+      // overlay (single-column layout) and YT's pointermove/down listeners
+      // can intercept events even though our handle has higher z-index.
+      e.stopImmediatePropagation()
+      _isResizingC = true
+      activePid = e.pointerId
+      try {
+        handle.setPointerCapture(e.pointerId)
+      } catch (_) {}
+      startX = e.clientX
+      startY = e.clientY
+      startW = chatWidth
+      startH = chatHeight
+      pendingW = chatWidth
+      pendingH = chatHeight
+      axis = chatPosition === 'left' || chatPosition === 'right' ? 'x' : 'y'
+      // Capture the panel's actual rendered edges. Container is position:
+      // fixed but transformed ancestors (Twitch top-nav) can shift it from
+      // the viewport's true (0,0) origin — the bar must track the panel's
+      // true edge, not raw chat dimensions.
+      const cont = document.getElementById('hs-mc-container')
+      const r = cont
+        ? cont.getBoundingClientRect()
+        : { top: 0, left: 0, right: window.innerWidth, bottom: window.innerHeight }
+      panelTop = r.top
+      panelLeft = r.left
+      panelRight = r.right
+      panelBottom = r.bottom
+      document.body.style.cursor = axis === 'x' ? 'col-resize' : 'row-resize'
+      document.body.style.userSelect = 'none'
+      handle.style.opacity = '1'
+      // Full-viewport overlay: captures pointer events even when crossing
+      // iframes (YT player iframe steals events otherwise).
+      overlay = document.createElement('div')
+      overlay.id = 'hs-c-resize-overlay'
+      overlay.style.cssText = `position:fixed;inset:0;z-index:99998;cursor:${axis === 'x' ? 'col-resize' : 'row-resize'};`
+      document.body.appendChild(overlay)
+      // Ghost preview — fixed-positioned, pointer-events:none, will-change
+      // for the compositor. Mirrors the per-platform handles' approach
+      // (#hs-mc-resize-handle, #hs-kick-resize-handle, #hs-yt-resize-handle).
+      // Memory rule: never touch the actual chat width/player layout during
+      // the live drag — Twitch right-column has ~2500 React Layout nodes
+      // and inline-style writes on YT player wrappers thrash IMA SDK.
+      ghost = document.createElement('div')
+      ghost.id = 'hs-c-resize-ghost'
+      const baseStyle = 'position:fixed;background:rgba(255,255,255,0.06);pointer-events:none;z-index:99997;'
+      if (chatPosition === 'right') {
+        ghost.style.cssText =
+          baseStyle +
+          `top:${panelTop}px;right:0;height:${panelBottom - panelTop}px;width:${pendingW}px;border-left:3px solid #fff;will-change:width;`
+      } else if (chatPosition === 'left') {
+        ghost.style.cssText =
+          baseStyle +
+          `top:${panelTop}px;left:0;height:${panelBottom - panelTop}px;width:${pendingW}px;border-right:3px solid #fff;will-change:width;`
+      } else if (chatPosition === 'top') {
+        ghost.style.cssText =
+          baseStyle + `top:0;left:0;right:0;height:${pendingH}px;border-bottom:3px solid #fff;will-change:height;`
+      } else if (chatPosition === 'bottom') {
+        ghost.style.cssText =
+          baseStyle + `bottom:0;left:0;right:0;height:${pendingH}px;border-top:3px solid #fff;will-change:height;`
       }
-    } catch (e) {
-      log('Error loading chat width:', e)
+      document.body.appendChild(ghost)
+      e.preventDefault()
+    },
+    { signal: mcSignal },
+  )
+  handle.addEventListener(
+    'pointermove',
+    (e) => {
+      if (!_isResizingC || e.pointerId !== activePid) return
+      // Full pixel-freedom drag — bounded only by viewport-10 so the
+      // handle stays grabbable on either extreme.
+      const maxW = Math.max(MIN_CHAT_WIDTH, window.innerWidth - 10)
+      if (chatPosition === 'right') {
+        pendingW = Math.max(MIN_CHAT_WIDTH, Math.min(maxW, startW + (startX - e.clientX)))
+      } else if (chatPosition === 'left') {
+        pendingW = Math.max(MIN_CHAT_WIDTH, Math.min(maxW, startW + (e.clientX - startX)))
+      } else if (chatPosition === 'top') {
+        pendingH = Math.max(MIN_CHAT_HEIGHT, Math.min(getMaxChatHeight(), startH + (e.clientY - startY)))
+      } else if (chatPosition === 'bottom') {
+        pendingH = Math.max(MIN_CHAT_HEIGHT, Math.min(getMaxChatHeight(), startH + (startY - e.clientY)))
+      }
+      // Compositor-only update during drag — no layout, no React reconcile,
+      // no inline-style writes on player wrappers. Just move the orange bar
+      // and resize the ghost preview. Final commit happens on pointerup.
+      if (!liveRaf) {
+        liveRaf = requestAnimationFrame(() => {
+          liveRaf = 0
+          if (chatPosition === 'right') {
+            handle.style.left = panelRight - pendingW + 'px'
+            if (ghost) ghost.style.width = pendingW + 'px'
+          } else if (chatPosition === 'left') {
+            handle.style.left = panelLeft + pendingW - 10 + 'px'
+            if (ghost) ghost.style.width = pendingW + 'px'
+          } else if (chatPosition === 'top') {
+            handle.style.top = panelTop + pendingH - 10 + 'px'
+            if (ghost) ghost.style.height = pendingH + 'px'
+          } else if (chatPosition === 'bottom') {
+            handle.style.top = panelBottom - pendingH + 'px'
+            if (ghost) ghost.style.height = pendingH + 'px'
+          }
+        })
+      }
+    },
+    { signal: mcSignal },
+  )
+  const endDrag = (e) => {
+    if (!_isResizingC || (e && e.pointerId !== activePid)) return
+    _isResizingC = false
+    activePid = -1
+    if (liveRaf) {
+      cancelAnimationFrame(liveRaf)
+      liveRaf = 0
     }
-  }
-
-  // getKickSidebarWidth, syncKickSidebarVar, applyKickChatWidth, setupKickResizeHandle moved to kick-host.js (platform module)
-
-  /**
-   * Apply chat width to YouTube's #secondary sidebar
-   */
-  function applyYouTubeChatWidth() {
-    const secondary = document.querySelector('#secondary, ytd-watch-flexy #secondary')
-    if (!secondary) return
-    // Only modify #secondary on actual watch pages — home/search/channel
-    // have their OWN #secondary (the recommended-sidebar wrapper inside
-    // ytd-two-column-browse-results-renderer) that we must not touch.
-    // Without this guard, after a watch → home SPA back, #secondary on
-    // the home grid stays clamped at the chat width and #primary collapses
-    // to (parent − chatWidth) ≈ 334px, breaking the grid wrap.
-    // `:not([hidden])` matters: ytd-watch-flexy stays in the DOM with
-    // `hidden` attr on non-watch pages — bare `ytd-watch-flexy` selector
-    // returns true on home and we'd clamp #secondary anyway.
-    // hs-offline = panel hidden on this YT page (non-live, no opt-in). Restore
-    // #secondary (related videos) to its natural width — don't reserve the chat
-    // strip for a hidden panel. Same clearing as the non-watch-page path.
-    const onWatchPage = !!document.querySelector('ytd-watch-flexy:not([hidden])')
-    if (!onWatchPage || document.body.classList.contains('hs-offline')) {
-      secondary.style.removeProperty('width')
-      secondary.style.removeProperty('min-width')
-      secondary.style.removeProperty('max-width')
-      secondary.style.removeProperty('flex')
-      const handle = document.getElementById('hs-yt-resize-handle')
-      if (handle) handle.style.display = 'none'
-      return
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+    handle.style.opacity = '' // clear inline — stylesheet owns the idle value
+    if (overlay) {
+      overlay.remove()
+      overlay = null
     }
-    // Reflow var: attach the below-top observer from here too — applyYouTube-
-    // ChatWidth reliably runs on every YT watch render (it sizes #secondary),
-    // whereas applyPlatformPositionOverrides' YT branch can be skipped on a
-    // fresh single-column load, leaving --hs-yt-below-top unset (#below pinned
-    // over the video). Self-retry inside handles the player not existing yet.
+    if (ghost) {
+      ghost.remove()
+      ghost = null
+    }
+    // Final commit — single reflow for the player + React tree.
+    if (axis === 'x') chatWidth = pendingW
+    else chatHeight = pendingH
+    document.documentElement.style.setProperty('--hs-chat-w', chatWidth + 'px')
+    document.documentElement.style.setProperty('--hs-chat-h', chatHeight + 'px')
+    applyChatPosition()
+    requestAnimationFrame(() => {
+      try {
+        publishPanelWidth()
+      } catch (_) {}
+    })
+    // applyChatPosition strips inline width on #secondary for YT chat-right
+    // and relies on "next reflow" to repopulate it — force it now.
     if (hostPlatform === 'yt') {
       try {
-        _hsEnsureYtBelowObserver()
+        applyYouTubeChatWidth()
+      } catch {}
+    }
+    // Force every platform's player (including ad layers — Twitch
+    // .video-ad-display, YT IMA SDK, Kick video.js) to re-measure.
+    try {
+      window.dispatchEvent(new Event('resize'))
+    } catch (_) {}
+    // Re-pin scroll: width change re-wraps messages, scrollHeight shifts.
+    // Helper self-bails if isScrolledUp.
+    const m = document.getElementById('hs-mc-messages')
+    if (m)
+      try {
+        scrollMsgsToBottom(m)
       } catch (_) {}
-    }
-    // C button took chat off the right edge — collapse #secondary to 0 so
-    // the freed width goes back to the player; don't run the native width
-    // sizer which would re-claim the sidebar.
-    if (chatPosition && chatPosition !== 'right') {
-      secondary.style.setProperty('width', '0', 'important')
-      secondary.style.setProperty('min-width', '0', 'important')
-      secondary.style.setProperty('max-width', '0', 'important')
-      secondary.style.setProperty('flex', '0 0 0', 'important')
-      const handle = document.getElementById('hs-yt-resize-handle')
-      if (handle) handle.style.display = 'none'
+    saveChatWidth()
+    saveChatHeight()
+  }
+  handle.addEventListener('pointerup', endDrag, { signal: mcSignal })
+  handle.addEventListener('pointercancel', endDrag, { signal: mcSignal })
+  return handle
+}
+function positionChatResizeHandle() {
+  // Native chat shown: leave the resize handle alone — CSS hides it
+  // (body.hs-native-visible). If we set display:none here during the collapse,
+  // it'd persist as a stale inline style after toggling back to HS mode.
+  if (typeof getSetting === 'function' && getSetting('nativeVisible')) return
+  const handle = ensureChatResizeHandle()
+  ;['top', 'bottom', 'left', 'right', 'width', 'height'].forEach((p) => handle.style.removeProperty(p))
+  // For YT, chat-right is now position:fixed so the unified handle
+  // owns ALL four positions. For Twitch/Kick, chat-right uses the
+  // existing per-platform handles (which have ghost-preview perf
+  // optimisations worth keeping) — UNLESS the platform anchor is
+  // missing (Twitch /directory, Kick non-channel pages), in which
+  // case the unified handle takes over so the panel is still
+  // resizeable.
+  if ((chatPosition === 'right' || !chatPosition) && hostPlatform !== 'yt') {
+    // In no-channel / clipped-chat mode the per-platform handle lives inside
+    // a broken/missing chat-shell and can't be reached — always use the
+    // unified body-mounted handle.
+    const noChannelMode =
+      document.body.classList.contains('hs-twitch-no-channel') || document.body.classList.contains('hs-kick-no-channel')
+    const platformAnchor = noChannelMode
+      ? null
+      : hostPlatform === 'kick'
+        ? document.getElementById('channel-chatroom')
+        : document.querySelector('.right-column.right-column--beside')
+    if (platformAnchor) {
+      handle.style.display = 'none'
       return
     }
-    // Theater (cinema) and fullscreen mode rearrange the watch layout so that
-    // #secondary sits BELOW the player at full row width. Our fixed-px width
-    // would fight that reflow, so just clear our overrides and let YT's CSS
-    // run unmodified. Also hide the left-edge resize handle since the panel
-    // no longer has a left edge to drag against.
-    const flexy = document.querySelector('ytd-watch-flexy:not([hidden])')
-    const isTheater = !!flexy?.hasAttribute('theater') || !!flexy?.hasAttribute('fullscreen')
+  }
+  // Anchor the bar to the panel container's ACTUAL rendered edges via
+  // getBoundingClientRect. The handle is position:fixed on body, but
+  // the panel container's own position:fixed can be shifted by a
+  // transformed ancestor (Twitch's top-nav transforms put chat-top at
+  // viewport y≈50 even though it's "fixed; top: 0"). Reading the rect
+  // makes the bar track the panel's true edge regardless of those
+  // offsets — otherwise the bar overlays tabbar/inputbar content.
+  const cont = document.getElementById('hs-mc-container')
+  if (cont) _cHandleRetryCount = 0 // panel exists — future mount-retries start fresh
+  // On no-channel pages (twitch /directory, kick browse) this runs while the
+  // panel is still 0×0 mid-mount, hides the bar via the rect guard below, and
+  // nothing later re-triggers it — the bar stayed missing until a window
+  // resize. Track the panel's rendered size and re-position on change.
+  if (cont && typeof ResizeObserver !== 'undefined' && _cHandlePanelObsTarget !== cont) {
+    if (_cHandlePanelObs) {
+      try {
+        _cHandlePanelObs.disconnect()
+      } catch (_) {}
+      cleanup.untrackObserver(_cHandlePanelObs)
+    }
+    _cHandlePanelObs = new ResizeObserver(() => {
+      if (_isResizingC) return // drag owns geometry; endDrag re-positions
+      try {
+        positionChatResizeHandle()
+      } catch (_) {}
+    })
+    _cHandlePanelObs.observe(cont)
+    cleanup.trackObserver(_cHandlePanelObs)
+    _cHandlePanelObsTarget = cont
+  }
+  const r = cont ? cont.getBoundingClientRect() : null
+  // No chat panel (e.g. logged out → the platform's login modal): a null
+  // rect would strand the bar at the viewport fallback (a full-height
+  // orange line with no chat). Hide it until a real chat panel exists.
+  if (!r || r.width < 2 || r.height < 2) {
+    handle.style.display = 'none'
+    _armCHandleMountRetry() // panel missing or pre-layout — re-check shortly
+    return
+  }
+  handle.style.display = 'block'
+  const cTop = r ? r.top : 0
+  const cLeft = r ? r.left : 0
+  const cRight = r ? r.right : window.innerWidth
+  const cBottom = r ? r.bottom : window.innerHeight
+  const cWidth = r ? r.width : window.innerWidth
+  const cHeight = r ? r.height : window.innerHeight
+  if (chatPosition === 'right') {
+    handle.style.top = cTop + 'px'
+    handle.style.left = cLeft + 'px'
+    handle.style.height = cHeight + 'px'
+    handle.style.width = HS_RESIZE_PX + 'px'
+    handle.style.cursor = 'col-resize'
+  } else if (chatPosition === 'left') {
+    handle.style.top = cTop + 'px'
+    handle.style.left = cRight - HS_RESIZE_PX + 'px'
+    handle.style.height = cHeight + 'px'
+    handle.style.width = HS_RESIZE_PX + 'px'
+    handle.style.cursor = 'col-resize'
+  } else if (chatPosition === 'top') {
+    handle.style.top = cBottom - HS_RESIZE_PX + 'px'
+    handle.style.left = cLeft + 'px'
+    handle.style.width = cWidth + 'px'
+    handle.style.height = HS_RESIZE_PX + 'px'
+    handle.style.cursor = 'row-resize'
+  } else if (chatPosition === 'bottom') {
+    handle.style.top = cTop + 'px'
+    handle.style.left = cLeft + 'px'
+    handle.style.width = cWidth + 'px'
+    handle.style.height = HS_RESIZE_PX + 'px'
+    handle.style.cursor = 'row-resize'
+  }
+}
+function hidePlatformResizeHandles(hide) {
+  // hide=true: set display:none + mark as hidden-by-us. hide=false: only
+  // restore display if we previously hid it (platforms like YT manage
+  // their own display:none for theatre mode — don't clobber that).
+  for (const id of ['hs-mc-resize-handle', 'hs-kick-resize-handle', 'hs-yt-resize-handle']) {
+    const el = document.getElementById(id)
+    if (!el) continue
+    if (hide) {
+      el.dataset._hsCHidden = '1'
+      el.style.setProperty('display', 'none', 'important')
+    } else if (el.dataset._hsCHidden === '1') {
+      delete el.dataset._hsCHidden
+      el.style.removeProperty('display')
+    }
+  }
+}
+
+async function loadChatWidth() {
+  try {
+    const data = await chrome.storage.local.get(['hs_chat_width'])
+    if (data.hs_chat_width) {
+      chatWidth = data.hs_chat_width
+      // Sync the CSS var driving every chat-position rule + reposition the
+      // unified resize handle. Without this, the panel renders at the default
+      // 340px until the first applyChatPosition fires (theatre toggle, drag
+      // end, etc) — at which point the panel + bar visibly jump to the saved
+      // width. That's the "first-load teleport" the user reports.
+      document.documentElement.style.setProperty('--hs-chat-w', chatWidth + 'px')
+      applyChatWidth()
+      try {
+        positionChatResizeHandle()
+      } catch {}
+      log('Loaded chat width:', chatWidth)
+    }
+  } catch (e) {
+    log('Error loading chat width:', e)
+  }
+}
+
+// getKickSidebarWidth, syncKickSidebarVar, applyKickChatWidth, setupKickResizeHandle moved to kick-host.js (platform module)
+
+/**
+ * Apply chat width to YouTube's #secondary sidebar
+ */
+function applyYouTubeChatWidth() {
+  const secondary = document.querySelector('#secondary, ytd-watch-flexy #secondary')
+  if (!secondary) return
+  // Only modify #secondary on actual watch pages — home/search/channel
+  // have their OWN #secondary (the recommended-sidebar wrapper inside
+  // ytd-two-column-browse-results-renderer) that we must not touch.
+  // Without this guard, after a watch → home SPA back, #secondary on
+  // the home grid stays clamped at the chat width and #primary collapses
+  // to (parent − chatWidth) ≈ 334px, breaking the grid wrap.
+  // `:not([hidden])` matters: ytd-watch-flexy stays in the DOM with
+  // `hidden` attr on non-watch pages — bare `ytd-watch-flexy` selector
+  // returns true on home and we'd clamp #secondary anyway.
+  // hs-offline = panel hidden on this YT page (non-live, no opt-in). Restore
+  // #secondary (related videos) to its natural width — don't reserve the chat
+  // strip for a hidden panel. Same clearing as the non-watch-page path.
+  const onWatchPage = !!document.querySelector('ytd-watch-flexy:not([hidden])')
+  if (!onWatchPage || document.body.classList.contains('hs-offline')) {
+    secondary.style.removeProperty('width')
+    secondary.style.removeProperty('min-width')
+    secondary.style.removeProperty('max-width')
+    secondary.style.removeProperty('flex')
     const handle = document.getElementById('hs-yt-resize-handle')
-    if (isTheater) {
-      secondary.style.removeProperty('width')
-      secondary.style.removeProperty('min-width')
-      secondary.style.removeProperty('max-width')
-      secondary.style.removeProperty('flex')
-      const container = document.getElementById('hs-mc-container')
-      if (container) container.style.removeProperty('width')
-      if (handle) handle.style.display = 'none'
-      return
-    }
-    // Note: NOT setting handle.style.display — the unified resize handle
-    // (#hs-c-resize-handle) owns ALL chat positions on YT, so the platform
-    // handle stays hidden by hidePlatformResizeHandles. Clearing display
-    // here would un-hide it and render two orange bars.
-    // Full freedom — only clamp to viewport so the chat can't escape it.
-    const ytMax = Math.max(MIN_CHAT_WIDTH, window.innerWidth - 10)
-    chatWidth = Math.min(ytMax, Math.max(MIN_CHAT_WIDTH, chatWidth))
-    secondary.style.setProperty('width', chatWidth + 'px', 'important')
-    secondary.style.setProperty('min-width', chatWidth + 'px', 'important')
-    secondary.style.setProperty('max-width', chatWidth + 'px', 'important')
-    secondary.style.setProperty('flex', 'none', 'important')
-    // Note: NOT setting width on #hs-mc-container — chat-right now uses
-    // position:fixed via CSS (body.hs-platform-yt.hs-chat-right #hs-mc-container)
-    // so the container's width is owned by var(--hs-chat-w). Setting inline
-    // width here would beat that CSS and stretch chat across full viewport.
+    if (handle) handle.style.display = 'none'
+    return
+  }
+  // Reflow var: attach the below-top observer from here too — applyYouTube-
+  // ChatWidth reliably runs on every YT watch render (it sizes #secondary),
+  // whereas applyPlatformPositionOverrides' YT branch can be skipped on a
+  // fresh single-column load, leaving --hs-yt-below-top unset (#below pinned
+  // over the video). Self-retry inside handles the player not existing yet.
+  if (hostPlatform === 'yt') {
+    try {
+      _hsEnsureYtBelowObserver()
+    } catch (_) {}
+  }
+  // C button took chat off the right edge — collapse #secondary to 0 so
+  // the freed width goes back to the player; don't run the native width
+  // sizer which would re-claim the sidebar.
+  if (chatPosition && chatPosition !== 'right') {
+    secondary.style.setProperty('width', '0', 'important')
+    secondary.style.setProperty('min-width', '0', 'important')
+    secondary.style.setProperty('max-width', '0', 'important')
+    secondary.style.setProperty('flex', '0 0 0', 'important')
+    const handle = document.getElementById('hs-yt-resize-handle')
+    if (handle) handle.style.display = 'none'
+    return
+  }
+  // Theater (cinema) and fullscreen mode rearrange the watch layout so that
+  // #secondary sits BELOW the player at full row width. Our fixed-px width
+  // would fight that reflow, so just clear our overrides and let YT's CSS
+  // run unmodified. Also hide the left-edge resize handle since the panel
+  // no longer has a left edge to drag against.
+  const flexy = document.querySelector('ytd-watch-flexy:not([hidden])')
+  const isTheater = !!flexy?.hasAttribute('theater') || !!flexy?.hasAttribute('fullscreen')
+  const handle = document.getElementById('hs-yt-resize-handle')
+  if (isTheater) {
+    secondary.style.removeProperty('width')
+    secondary.style.removeProperty('min-width')
+    secondary.style.removeProperty('max-width')
+    secondary.style.removeProperty('flex')
     const container = document.getElementById('hs-mc-container')
     if (container) container.style.removeProperty('width')
+    if (handle) handle.style.display = 'none'
+    return
   }
+  // Note: NOT setting handle.style.display — the unified resize handle
+  // (#hs-c-resize-handle) owns ALL chat positions on YT, so the platform
+  // handle stays hidden by hidePlatformResizeHandles. Clearing display
+  // here would un-hide it and render two orange bars.
+  // Full freedom — only clamp to viewport so the chat can't escape it.
+  const ytMax = Math.max(MIN_CHAT_WIDTH, window.innerWidth - 10)
+  chatWidth = Math.min(ytMax, Math.max(MIN_CHAT_WIDTH, chatWidth))
+  secondary.style.setProperty('width', chatWidth + 'px', 'important')
+  secondary.style.setProperty('min-width', chatWidth + 'px', 'important')
+  secondary.style.setProperty('max-width', chatWidth + 'px', 'important')
+  secondary.style.setProperty('flex', 'none', 'important')
+  // Note: NOT setting width on #hs-mc-container — chat-right now uses
+  // position:fixed via CSS (body.hs-platform-yt.hs-chat-right #hs-mc-container)
+  // so the container's width is owned by var(--hs-chat-w). Setting inline
+  // width here would beat that CSS and stretch chat across full viewport.
+  const container = document.getElementById('hs-mc-container')
+  if (container) container.style.removeProperty('width')
+}
 
-  // pinTwitchPersistentPlayer, watchTwitchPersistentPlayer moved to twitch-host.js (platform module)
+// pinTwitchPersistentPlayer, watchTwitchPersistentPlayer moved to twitch-host.js (platform module)
 
-  // watchYtLayoutAttrs, watchYtFlexyMount moved to youtube-host.js (platform module)
+// watchYtLayoutAttrs, watchYtFlexyMount moved to youtube-host.js (platform module)
 
-  // watchYtViewportClamp moved to youtube-host.js (platform module)
+// watchYtViewportClamp moved to youtube-host.js (platform module)
 
-  // watchKickViewportClamp moved to kick-host.js (platform module)
+// watchKickViewportClamp moved to kick-host.js (platform module)
 
-  // setupYouTubeResizeHandle moved to youtube-host.js (platform module)
+// setupYouTubeResizeHandle moved to youtube-host.js (platform module)
 
 
 // --- multichat/settings-ui.js ---
@@ -45582,1815 +45580,1814 @@ function applyHsPaintToElement(el, userId) {
 // ENGINE (getSetting/setSetting, schema wiring, storage sync/broadcast) stays in
 // main.js — this file only builds and drives the tab's DOM.
 
-  // Active settings sub-tab — persisted across re-renders
-  let _settingsSubtab = 'display'
+// Active settings sub-tab — persisted across re-renders
+let _settingsSubtab = 'display'
 
-  // ─── settings sub-tab helpers ────────────────────────────────────────────
+// ─── settings sub-tab helpers ────────────────────────────────────────────
 
-  // SVG icons for the settings sub-tabs (16x16 stroke, no fill)
-  const _SET_SUBTAB_ICONS = {
-    display:
-      '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="2" width="14" height="10" rx="1"/><line x1="5" y1="14" x2="11" y2="14"/><line x1="8" y1="12" x2="8" y2="14"/></svg>',
-    chat: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H6l-3 2v-2H3a1 1 0 0 1-1-1V3z"/></svg>',
-    notifs:
-      '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2a5 5 0 0 1 5 5v3l1 1H2l1-1V7a5 5 0 0 1 5-5z"/><line x1="6.5" y1="13" x2="9.5" y2="13"/></svg>',
-    mod: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1.5l5 2.5v4c0 3-2.5 5.5-5 6.5C5.5 13.5 3 11 3 8V4l5-2.5z"/></svg>',
-    filters:
-      '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M4 8h8M6 12h4"/></svg>',
-    tweaks:
-      '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h3l1-2h4l1 2h3M2 8h12M2 12h3l1 2h4l1-2h3"/></svg>',
-    system:
-      '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.42 1.42M11.53 11.53l1.42 1.42M3.05 12.95l1.42-1.42M11.53 4.47l1.42-1.42"/></svg>',
-  }
-  const _SET_SUBTAB_ORDER = ['display', 'chat', 'notifs', 'mod', 'filters', 'tweaks', 'system']
+// SVG icons for the settings sub-tabs (16x16 stroke, no fill)
+const _SET_SUBTAB_ICONS = {
+  display:
+    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="2" width="14" height="10" rx="1"/><line x1="5" y1="14" x2="11" y2="14"/><line x1="8" y1="12" x2="8" y2="14"/></svg>',
+  chat: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H6l-3 2v-2H3a1 1 0 0 1-1-1V3z"/></svg>',
+  notifs:
+    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2a5 5 0 0 1 5 5v3l1 1H2l1-1V7a5 5 0 0 1 5-5z"/><line x1="6.5" y1="13" x2="9.5" y2="13"/></svg>',
+  mod: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1.5l5 2.5v4c0 3-2.5 5.5-5 6.5C5.5 13.5 3 11 3 8V4l5-2.5z"/></svg>',
+  filters:
+    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M4 8h8M6 12h4"/></svg>',
+  tweaks:
+    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h3l1-2h4l1 2h3M2 8h12M2 12h3l1 2h4l1-2h3"/></svg>',
+  system:
+    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.42 1.42M11.53 11.53l1.42 1.42M3.05 12.95l1.42-1.42M11.53 4.47l1.42-1.42"/></svg>',
+}
+const _SET_SUBTAB_ORDER = ['display', 'chat', 'notifs', 'mod', 'filters', 'tweaks', 'system']
 
-  // Tweaks (twitch ui noise toggles) render straight from the registry
-  // (`tweak: true` entries); content.js applyUiSettings owns the CSS rules.
-  function _renderSetSubtabBar() {
-    return (
-      '<div class="hs-mc-set-subtabs">' +
-      _SET_SUBTAB_ORDER
-        .map(
-          (id) =>
-            '<button class="hs-mc-set-subtab' +
-            (_settingsSubtab === id ? ' active' : '') +
-            '" data-set-subtab="' +
-            id +
-            '" title="' +
-            id +
-            '">' +
-            _SET_SUBTAB_ICONS[id] +
-            '</button>',
-        )
-        .join('') +
-      '</div>'
-    )
-  }
+// Tweaks (twitch ui noise toggles) render straight from the registry
+// (`tweak: true` entries); content.js applyUiSettings owns the CSS rules.
+function _renderSetSubtabBar() {
+  return (
+    '<div class="hs-mc-set-subtabs">' +
+    _SET_SUBTAB_ORDER
+      .map(
+        (id) =>
+          '<button class="hs-mc-set-subtab' +
+          (_settingsSubtab === id ? ' active' : '') +
+          '" data-set-subtab="' +
+          id +
+          '" title="' +
+          id +
+          '">' +
+          _SET_SUBTAB_ICONS[id] +
+          '</button>',
+      )
+      .join('') +
+    '</div>'
+  )
+}
 
-  // ─── registry-driven settings renderer ───────────────────────────────
-  // Every registry entry renders through one emitter per control type,
-  // reusing the existing DOM/CSS vocabulary (setting-row, toggle-pill,
-  // size-btns, locale-select, textarea). Categories compose registry
-  // sections with the few hand-rendered islands (mod toolbar, language,
-  // muted users, crash log, backup, defaults).
+// ─── registry-driven settings renderer ───────────────────────────────
+// Every registry entry renders through one emitter per control type,
+// reusing the existing DOM/CSS vocabulary (setting-row, toggle-pill,
+// size-btns, locale-select, textarea). Categories compose registry
+// sections with the few hand-rendered islands (mod toolbar, language,
+// muted users, crash log, backup, defaults).
 
-  let _setQuery = ''
-  const _setCollapsed = new Set() // '<category>|<section title>'
-  let _setFocusRow = null // data-set-row id of keyboard focus
-  let _setPaneCtx = '' // pane identity for scroll preservation
-  let _setHelpOpen = false // '?' keybinding overlay
-  ;(function _loadCollapsedSections() {
-    try {
-      chrome.storage.local.get('hs_set_collapsed', (d) => {
-        if (Array.isArray(d?.hs_set_collapsed)) {
-          for (const id of d.hs_set_collapsed) _setCollapsed.add(String(id))
-        }
-      })
-    } catch (_) {}
-  })()
-  function _saveCollapsedSections() {
-    try {
-      chrome.storage.local.set({ hs_set_collapsed: [..._setCollapsed] })
-    } catch (_) {}
-  }
-
-  function _setLabel(def) {
-    return def.labelKey ? t(def.labelKey) : def.label || def.key
-  }
-  function _setTip(def) {
-    return def.tipKey ? t(def.tipKey) : def.tip || ''
-  }
-  function _setSectionTitle(def) {
-    return def.sectionKey ? t(def.sectionKey) : def.section || ''
-  }
-  function _optLabel(o) {
-    return o.labelKey ? t(o.labelKey) : o.label !== undefined ? o.label : String(o.value)
-  }
-
-  function _setLabelSpan(def, extraHtml) {
-    var tip = _setTip(def)
-    var tipAttr = tip ? ' data-tip="' + escapeHtml(tip) + '"' : ''
-    return (
-      '<span class="hs-mc-setting-label"' + tipAttr + '>' + (extraHtml || '') + escapeHtml(_setLabel(def)) + '</span>'
-    )
-  }
-
-  function _depSatisfied(def) {
-    if (!def.dependsOn) return true
-    var v = getSetting(def.dependsOn.key)
-    return 'equals' in def.dependsOn ? v === def.dependsOn.equals : !!v
-  }
-
-  // One renderable row = {id, html, hay}. boolmap/multiselect entries
-  // expand to one row per option so search and keyboard nav see each.
-  // Boot-time values for entries that need a reload to apply (reloadApply
-  // schema field) — snapshot in loadAllSettings, drives the [reload] chip.
-  const _bootVals = {}
-
-  // Does this row's current value differ from its default? (noReset entries
-  // never show modified — they have no working reset.)
-  function _rowModified(def, opt) {
-    if (def.noReset) return false
-    const cur = getSetting(def.key)
-    if (def.type === 'boolmap' && opt) return (cur[opt.value] !== false) !== (opt.default !== false)
-    if (def.type === 'multiselect' && opt) return cur.includes(opt.value) !== def.default.includes(opt.value)
-    return JSON.stringify(cur) !== JSON.stringify(def.default)
-  }
-
-  // Does this row need a page reload before its current value takes effect?
-  function _reloadPending(def, opt) {
-    if (def.key === 'subsystems' && opt && opt.applies === 'reload' && _gatesAtBoot) {
-      return (getSetting('subsystems')[opt.value] !== false) !== (_gatesAtBoot[opt.value] !== false)
-    }
-    if (def.reloadApply && def.key in _bootVals) {
-      return JSON.stringify(getSetting(def.key)) !== JSON.stringify(_bootVals[def.key])
-    }
-    return false
-  }
-
-  // In-place update of the modified edge + the section's orange counter
-  // after a control change (no full re-render needed for plain pills).
-  function _syncRowModEdge(el, def, opt) {
-    const row = el.closest('.hs-mc-setting-row')
-    if (!row) return
-    row.classList.toggle('hs-mc-set-mod', _rowModified(def, opt))
-    const group = row.closest('.hs-mc-settings-group')
-    const title = group && group.querySelector('[data-set-fold]')
-    if (!title) return
-    const count = group.querySelectorAll('.hs-mc-setting-row.hs-mc-set-mod').length
-    let cnt = title.querySelector('.hs-mc-set-modcnt')
-    if (!count) {
-      if (cnt) cnt.remove()
-      return
-    }
-    if (!cnt) {
-      cnt = document.createElement('span')
-      cnt.className = 'hs-mc-set-modcnt'
-      title.appendChild(document.createTextNode(' '))
-      title.appendChild(cnt)
-    }
-    cnt.textContent = count + '*'
-  }
-
-  function _rowsForDef(def) {
-    var rows = []
-    // Custom-rendered entries (e.g. filter rules editor) skip auto-row generation.
-    if (def.control === 'custom') return rows
-    var base = (
-      _setLabel(def) +
-      ' ' +
-      _setTip(def) +
-      ' ' +
-      _setSectionTitle(def) +
-      ' ' +
-      def.category +
-      ' ' +
-      def.key +
-      ' ' +
-      (def.alias || '')
-    ).toLowerCase()
-    var child = def.dependsOn ? ' hs-mc-set-child' : ''
-    var glyph = def.dependsOn ? '<span class="hs-mc-set-child-glyph">└ </span>' : ''
-
-    if (def.type === 'boolmap') {
-      for (const o of def.options) {
-        var on = !!getSetting(def.key)[o.value]
-        var prefix = '<span style="color:' + o.color + '">' + (o.tag || '◆') + '</span> '
-        var lbl = _optLabel(o)
-        if (o.tag) lbl = lbl.replace(o.tag, '').trim()
-        var oTip = o.tipKey ? t(o.tipKey) : o.tip || ''
-        var oMod = _rowModified(def, o)
-        var oChip = _reloadPending(def, o) ? '<button class="hs-mc-set-reload" data-set-reload>reload</button>' : ''
-        rows.push({
-          id: def.key + ':' + o.value,
-          mod: oMod,
-          hay: (base + ' ' + lbl + ' ' + oTip + ' ' + o.value).toLowerCase(),
-          html:
-            '<div class="hs-mc-setting-row' +
-            child +
-            (oMod ? ' hs-mc-set-mod' : '') +
-            '" data-set-row="' +
-            def.key +
-            ':' +
-            o.value +
-            '">' +
-            glyph +
-            '<button class="hs-mc-toggle-pill' +
-            (on ? ' active' : '') +
-            '" data-set-key="' +
-            def.key +
-            '" data-set-sub="' +
-            o.value +
-            '"><span class="hs-mc-toggle-knob"></span></button>' +
-            '<span class="hs-mc-setting-label"' +
-            (oTip ? ' data-tip="' + escapeHtml(oTip) + '"' : '') +
-            '>' +
-            prefix +
-            escapeHtml(lbl) +
-            '</span>' +
-            oChip +
-            '</div>',
-        })
+let _setQuery = ''
+const _setCollapsed = new Set() // '<category>|<section title>'
+let _setFocusRow = null // data-set-row id of keyboard focus
+let _setPaneCtx = '' // pane identity for scroll preservation
+let _setHelpOpen = false // '?' keybinding overlay
+;(function _loadCollapsedSections() {
+  try {
+    chrome.storage.local.get('hs_set_collapsed', (d) => {
+      if (Array.isArray(d?.hs_set_collapsed)) {
+        for (const id of d.hs_set_collapsed) _setCollapsed.add(String(id))
       }
-      return rows
-    }
+    })
+  } catch (_) {}
+})()
+function _saveCollapsedSections() {
+  try {
+    chrome.storage.local.set({ hs_set_collapsed: [..._setCollapsed] })
+  } catch (_) {}
+}
 
-    if (def.type === 'multiselect') {
-      for (const o of def.options) {
-        var member = getSetting(def.key).includes(o.value)
-        var active = def.invertDisplay ? !member : member
-        var mMod = _rowModified(def, o)
-        var mTag = o.tag
-          ? '<span style="font-family:monospace;color:#fff;margin-right:6px;min-width:34px;display:inline-block">' +
-            escapeHtml(o.tag) +
-            '</span>'
-          : ''
-        rows.push({
-          id: def.key + ':' + o.value,
-          mod: mMod,
-          hay: (base + ' ' + _optLabel(o) + ' ' + o.value).toLowerCase(),
-          html:
-            '<div class="hs-mc-setting-row' +
-            child +
-            (mMod ? ' hs-mc-set-mod' : '') +
-            '" data-set-row="' +
-            def.key +
-            ':' +
-            o.value +
-            '">' +
-            glyph +
-            '<button class="hs-mc-toggle-pill' +
-            (active ? ' active' : '') +
+function _setLabel(def) {
+  return def.labelKey ? t(def.labelKey) : def.label || def.key
+}
+function _setTip(def) {
+  return def.tipKey ? t(def.tipKey) : def.tip || ''
+}
+function _setSectionTitle(def) {
+  return def.sectionKey ? t(def.sectionKey) : def.section || ''
+}
+function _optLabel(o) {
+  return o.labelKey ? t(o.labelKey) : o.label !== undefined ? o.label : String(o.value)
+}
+
+function _setLabelSpan(def, extraHtml) {
+  var tip = _setTip(def)
+  var tipAttr = tip ? ' data-tip="' + escapeHtml(tip) + '"' : ''
+  return (
+    '<span class="hs-mc-setting-label"' + tipAttr + '>' + (extraHtml || '') + escapeHtml(_setLabel(def)) + '</span>'
+  )
+}
+
+function _depSatisfied(def) {
+  if (!def.dependsOn) return true
+  var v = getSetting(def.dependsOn.key)
+  return 'equals' in def.dependsOn ? v === def.dependsOn.equals : !!v
+}
+
+// One renderable row = {id, html, hay}. boolmap/multiselect entries
+// expand to one row per option so search and keyboard nav see each.
+// Boot-time values for entries that need a reload to apply (reloadApply
+// schema field) — snapshot in loadAllSettings, drives the [reload] chip.
+const _bootVals = {}
+
+// Does this row's current value differ from its default? (noReset entries
+// never show modified — they have no working reset.)
+function _rowModified(def, opt) {
+  if (def.noReset) return false
+  const cur = getSetting(def.key)
+  if (def.type === 'boolmap' && opt) return (cur[opt.value] !== false) !== (opt.default !== false)
+  if (def.type === 'multiselect' && opt) return cur.includes(opt.value) !== def.default.includes(opt.value)
+  return JSON.stringify(cur) !== JSON.stringify(def.default)
+}
+
+// Does this row need a page reload before its current value takes effect?
+function _reloadPending(def, opt) {
+  if (def.key === 'subsystems' && opt && opt.applies === 'reload' && _gatesAtBoot) {
+    return (getSetting('subsystems')[opt.value] !== false) !== (_gatesAtBoot[opt.value] !== false)
+  }
+  if (def.reloadApply && def.key in _bootVals) {
+    return JSON.stringify(getSetting(def.key)) !== JSON.stringify(_bootVals[def.key])
+  }
+  return false
+}
+
+// In-place update of the modified edge + the section's orange counter
+// after a control change (no full re-render needed for plain pills).
+function _syncRowModEdge(el, def, opt) {
+  const row = el.closest('.hs-mc-setting-row')
+  if (!row) return
+  row.classList.toggle('hs-mc-set-mod', _rowModified(def, opt))
+  const group = row.closest('.hs-mc-settings-group')
+  const title = group && group.querySelector('[data-set-fold]')
+  if (!title) return
+  const count = group.querySelectorAll('.hs-mc-setting-row.hs-mc-set-mod').length
+  let cnt = title.querySelector('.hs-mc-set-modcnt')
+  if (!count) {
+    if (cnt) cnt.remove()
+    return
+  }
+  if (!cnt) {
+    cnt = document.createElement('span')
+    cnt.className = 'hs-mc-set-modcnt'
+    title.appendChild(document.createTextNode(' '))
+    title.appendChild(cnt)
+  }
+  cnt.textContent = count + '*'
+}
+
+function _rowsForDef(def) {
+  var rows = []
+  // Custom-rendered entries (e.g. filter rules editor) skip auto-row generation.
+  if (def.control === 'custom') return rows
+  var base = (
+    _setLabel(def) +
+    ' ' +
+    _setTip(def) +
+    ' ' +
+    _setSectionTitle(def) +
+    ' ' +
+    def.category +
+    ' ' +
+    def.key +
+    ' ' +
+    (def.alias || '')
+  ).toLowerCase()
+  var child = def.dependsOn ? ' hs-mc-set-child' : ''
+  var glyph = def.dependsOn ? '<span class="hs-mc-set-child-glyph">└ </span>' : ''
+
+  if (def.type === 'boolmap') {
+    for (const o of def.options) {
+      var on = !!getSetting(def.key)[o.value]
+      var prefix = '<span style="color:' + o.color + '">' + (o.tag || '◆') + '</span> '
+      var lbl = _optLabel(o)
+      if (o.tag) lbl = lbl.replace(o.tag, '').trim()
+      var oTip = o.tipKey ? t(o.tipKey) : o.tip || ''
+      var oMod = _rowModified(def, o)
+      var oChip = _reloadPending(def, o) ? '<button class="hs-mc-set-reload" data-set-reload>reload</button>' : ''
+      rows.push({
+        id: def.key + ':' + o.value,
+        mod: oMod,
+        hay: (base + ' ' + lbl + ' ' + oTip + ' ' + o.value).toLowerCase(),
+        html:
+          '<div class="hs-mc-setting-row' +
+          child +
+          (oMod ? ' hs-mc-set-mod' : '') +
+          '" data-set-row="' +
+          def.key +
+          ':' +
+          o.value +
+          '">' +
+          glyph +
+          '<button class="hs-mc-toggle-pill' +
+          (on ? ' active' : '') +
+          '" data-set-key="' +
+          def.key +
+          '" data-set-sub="' +
+          o.value +
+          '"><span class="hs-mc-toggle-knob"></span></button>' +
+          '<span class="hs-mc-setting-label"' +
+          (oTip ? ' data-tip="' + escapeHtml(oTip) + '"' : '') +
+          '>' +
+          prefix +
+          escapeHtml(lbl) +
+          '</span>' +
+          oChip +
+          '</div>',
+      })
+    }
+    return rows
+  }
+
+  if (def.type === 'multiselect') {
+    for (const o of def.options) {
+      var member = getSetting(def.key).includes(o.value)
+      var active = def.invertDisplay ? !member : member
+      var mMod = _rowModified(def, o)
+      var mTag = o.tag
+        ? '<span style="font-family:monospace;color:#fff;margin-right:6px;min-width:34px;display:inline-block">' +
+          escapeHtml(o.tag) +
+          '</span>'
+        : ''
+      rows.push({
+        id: def.key + ':' + o.value,
+        mod: mMod,
+        hay: (base + ' ' + _optLabel(o) + ' ' + o.value).toLowerCase(),
+        html:
+          '<div class="hs-mc-setting-row' +
+          child +
+          (mMod ? ' hs-mc-set-mod' : '') +
+          '" data-set-row="' +
+          def.key +
+          ':' +
+          o.value +
+          '">' +
+          glyph +
+          '<button class="hs-mc-toggle-pill' +
+          (active ? ' active' : '') +
+          '" data-set-key="' +
+          def.key +
+          '" data-set-value="' +
+          escapeHtml(String(o.value)) +
+          '"><span class="hs-mc-toggle-knob"></span></button>' +
+          '<span class="hs-mc-setting-label">' +
+          mTag +
+          escapeHtml(_optLabel(o)) +
+          '</span>' +
+          '</div>',
+      })
+    }
+    return rows
+  }
+
+  var inner = ''
+  var split = true
+  var block = false
+  var val = getSetting(def.key)
+
+  if (def.type === 'bool') {
+    split = false
+    inner =
+      '<button class="hs-mc-toggle-pill' +
+      (val ? ' active' : '') +
+      '" data-set-key="' +
+      def.key +
+      '"><span class="hs-mc-toggle-knob"></span></button>' +
+      _setLabelSpan(def)
+  } else if (def.type === 'enum' && (def.control === 'sizebtns' || def.options.length <= 3)) {
+    inner =
+      _setLabelSpan(def) +
+      '<div class="hs-mc-size-btns">' +
+      def.options
+        .map(
+          (o) =>
+            '<button class="hs-mc-size-btn' +
+            (o.value === val ? ' active' : '') +
             '" data-set-key="' +
             def.key +
             '" data-set-value="' +
             escapeHtml(String(o.value)) +
-            '"><span class="hs-mc-toggle-knob"></span></button>' +
-            '<span class="hs-mc-setting-label">' +
-            mTag +
+            '">' +
             escapeHtml(_optLabel(o)) +
-            '</span>' +
-            '</div>',
-        })
-      }
-      return rows
-    }
-
-    var inner = ''
-    var split = true
-    var block = false
-    var val = getSetting(def.key)
-
-    if (def.type === 'bool') {
-      split = false
-      inner =
-        '<button class="hs-mc-toggle-pill' +
-        (val ? ' active' : '') +
-        '" data-set-key="' +
-        def.key +
-        '"><span class="hs-mc-toggle-knob"></span></button>' +
-        _setLabelSpan(def)
-    } else if (def.type === 'enum' && (def.control === 'sizebtns' || def.options.length <= 3)) {
-      inner =
-        _setLabelSpan(def) +
-        '<div class="hs-mc-size-btns">' +
-        def.options
-          .map(
-            (o) =>
-              '<button class="hs-mc-size-btn' +
-              (o.value === val ? ' active' : '') +
-              '" data-set-key="' +
-              def.key +
-              '" data-set-value="' +
-              escapeHtml(String(o.value)) +
-              '">' +
-              escapeHtml(_optLabel(o)) +
-              '</button>',
-          )
-          .join('') +
-        '</div>'
-    } else if (def.type === 'enum') {
-      inner =
-        _setLabelSpan(def) +
-        '<select class="hs-mc-locale-select" data-set-key="' +
-        def.key +
-        '" style="max-width:55%">' +
-        def.options
-          .map(
-            (o) =>
-              '<option value="' +
-              escapeHtml(String(o.value)) +
-              '"' +
-              (o.value === val ? ' selected' : '') +
-              '>' +
-              escapeHtml(_optLabel(o)) +
-              '</option>',
-          )
-          .join('') +
-        '</select>'
-    } else if (def.type === 'range') {
-      var scale = def.displayScale || 1
-      inner =
-        _setLabelSpan(def) +
-        '<div style="display:flex;align-items:center;gap:6px">' +
-        '<input class="hs-mc-set-range" type="range" min="' +
-        def.options.min * scale +
-        '" max="' +
-        def.options.max * scale +
-        '" step="' +
-        def.options.step * scale +
-        '" value="' +
-        Math.round(val * scale) +
-        '" data-set-key="' +
-        def.key +
-        '">' +
-        '<span class="hs-mc-set-range-val">' +
-        Math.round(val * scale) +
-        '</span>' +
-        '</div>'
-    } else if (def.control === 'textarea') {
-      block = true
-      split = false
-      var ph = def.placeholderKey ? t(def.placeholderKey) : def.placeholder || ''
-      inner =
-        _setLabelSpan(def) +
-        '<textarea class="hs-mc-setting-textarea" data-set-key="' +
-        def.key +
-        '" placeholder="' +
-        escapeHtml(ph) +
-        '" rows="3">' +
-        escapeHtml(val) +
-        '</textarea>'
-    } else {
-      // text
-      inner =
-        _setLabelSpan(def) +
-        '<input class="hs-mc-set-text-input" data-set-key="' +
-        def.key +
-        '" type="text" value="' +
-        escapeHtml(val) +
-        '" style="width:140px">'
-    }
-
-    var sMod = _rowModified(def)
-    var sChip = _reloadPending(def) ? '<button class="hs-mc-set-reload" data-set-reload>reload</button>' : ''
-    rows.push({
-      id: def.key,
-      mod: sMod,
-      hay:
-        base +
-        ' ' +
-        (def.type === 'enum'
-          ? def.options
-              .map((o) => _optLabel(o) + ' ' + o.value)
-              .join(' ')
-              .toLowerCase()
-          : ''),
-      html:
-        '<div class="hs-mc-setting-row' +
-        (split ? ' hs-mc-setting-row-split' : '') +
-        (block ? ' hs-mc-setting-row-block' : '') +
-        child +
-        (sMod ? ' hs-mc-set-mod' : '') +
-        '" data-set-row="' +
-        def.key +
-        '">' +
-        glyph +
-        inner +
-        sChip +
-        '</div>',
-    })
-    return rows
-  }
-
-  function _setQueryTokens() {
-    return _setQuery.toLowerCase().split(/\s+/).filter(Boolean)
-  }
-  function _rowMatches(hay, tokens) {
-    return tokens.every((tk) => hay.indexOf(tk) !== -1)
-  }
-
-  // Render the registry sections of one category. opts.only limits to the
-  // named sections (lets system interleave hand-rendered islands).
-  function _regSections(cat, only) {
-    var sections = []
-    var byTitle = new Map()
-    for (const def of SETTINGS) {
-      if (def.category !== cat || !_depSatisfied(def)) continue
-      var title = _setSectionTitle(def)
-      if (only && only.indexOf(def.section) === -1) continue
-      var s = byTitle.get(title)
-      if (!s) {
-        s = { title: title, rows: [] }
-        byTitle.set(title, s)
-        sections.push(s)
-      }
-      s.rows.push.apply(s.rows, _rowsForDef(def))
-    }
-    return sections
-      .map((s) => {
-        var fold = _setCollapsed.has(_settingsSubtab + '|' + s.title)
-        var modCount = s.rows.filter((r) => r.mod).length
-        var counts = fold
-          ? ' <span class="hs-mc-set-cnt">(' +
-            s.rows.length +
-            (modCount ? ' · <span class="hs-mc-set-modcnt">' + modCount + '*</span>' : '') +
-            ')</span>'
-          : modCount
-            ? ' <span class="hs-mc-set-modcnt">' + modCount + '*</span>'
-            : ''
-        return (
-          '<div class="hs-mc-settings-group">' +
-          '<div class="hs-mc-settings-group-title" data-set-fold="' +
-          escapeHtml(s.title) +
-          '">' +
-          (fold ? '▸ ' : '▾ ') +
-          escapeHtml(s.title) +
-          counts +
-          '</div>' +
-          (fold ? '' : s.rows.map((r) => r.html).join('')) +
-          '</div>'
+            '</button>',
         )
-      })
-      .join('')
+        .join('') +
+      '</div>'
+  } else if (def.type === 'enum') {
+    inner =
+      _setLabelSpan(def) +
+      '<select class="hs-mc-locale-select" data-set-key="' +
+      def.key +
+      '" style="max-width:55%">' +
+      def.options
+        .map(
+          (o) =>
+            '<option value="' +
+            escapeHtml(String(o.value)) +
+            '"' +
+            (o.value === val ? ' selected' : '') +
+            '>' +
+            escapeHtml(_optLabel(o)) +
+            '</option>',
+        )
+        .join('') +
+      '</select>'
+  } else if (def.type === 'range') {
+    var scale = def.displayScale || 1
+    inner =
+      _setLabelSpan(def) +
+      '<div style="display:flex;align-items:center;gap:6px">' +
+      '<input class="hs-mc-set-range" type="range" min="' +
+      def.options.min * scale +
+      '" max="' +
+      def.options.max * scale +
+      '" step="' +
+      def.options.step * scale +
+      '" value="' +
+      Math.round(val * scale) +
+      '" data-set-key="' +
+      def.key +
+      '">' +
+      '<span class="hs-mc-set-range-val">' +
+      Math.round(val * scale) +
+      '</span>' +
+      '</div>'
+  } else if (def.control === 'textarea') {
+    block = true
+    split = false
+    var ph = def.placeholderKey ? t(def.placeholderKey) : def.placeholder || ''
+    inner =
+      _setLabelSpan(def) +
+      '<textarea class="hs-mc-setting-textarea" data-set-key="' +
+      def.key +
+      '" placeholder="' +
+      escapeHtml(ph) +
+      '" rows="3">' +
+      escapeHtml(val) +
+      '</textarea>'
+  } else {
+    // text
+    inner =
+      _setLabelSpan(def) +
+      '<input class="hs-mc-set-text-input" data-set-key="' +
+      def.key +
+      '" type="text" value="' +
+      escapeHtml(val) +
+      '" style="width:140px">'
   }
 
-  // Search across ALL categories — matched rows grouped under clickable
-  // "category · section" headers (click = jump to that pane + section).
-  // Current-category groups list first.
-  function _renderSearchResults() {
-    var tokens = _setQueryTokens()
-    var groups = []
-    var byKey = new Map()
-    var total = 0
-    var count = 0
-    for (const def of SETTINGS) {
-      if (!_depSatisfied(def)) continue
-      var rows = _rowsForDef(def)
-      total += rows.length
-      var matched = rows.filter((r) => _rowMatches(r.hay, tokens))
-      if (!matched.length) continue
-      count += matched.length
-      var section = _setSectionTitle(def)
-      var gk = def.category + '|' + section
-      var g = byKey.get(gk)
-      if (!g) {
-        g = { cat: def.category, section: section, rows: [] }
-        byKey.set(gk, g)
-        groups.push(g)
-      }
-      g.rows.push.apply(g.rows, matched)
+  var sMod = _rowModified(def)
+  var sChip = _reloadPending(def) ? '<button class="hs-mc-set-reload" data-set-reload>reload</button>' : ''
+  rows.push({
+    id: def.key,
+    mod: sMod,
+    hay:
+      base +
+      ' ' +
+      (def.type === 'enum'
+        ? def.options
+            .map((o) => _optLabel(o) + ' ' + o.value)
+            .join(' ')
+            .toLowerCase()
+        : ''),
+    html:
+      '<div class="hs-mc-setting-row' +
+      (split ? ' hs-mc-setting-row-split' : '') +
+      (block ? ' hs-mc-setting-row-block' : '') +
+      child +
+      (sMod ? ' hs-mc-set-mod' : '') +
+      '" data-set-row="' +
+      def.key +
+      '">' +
+      glyph +
+      inner +
+      sChip +
+      '</div>',
+  })
+  return rows
+}
+
+function _setQueryTokens() {
+  return _setQuery.toLowerCase().split(/\s+/).filter(Boolean)
+}
+function _rowMatches(hay, tokens) {
+  return tokens.every((tk) => hay.indexOf(tk) !== -1)
+}
+
+// Render the registry sections of one category. opts.only limits to the
+// named sections (lets system interleave hand-rendered islands).
+function _regSections(cat, only) {
+  var sections = []
+  var byTitle = new Map()
+  for (const def of SETTINGS) {
+    if (def.category !== cat || !_depSatisfied(def)) continue
+    var title = _setSectionTitle(def)
+    if (only && only.indexOf(def.section) === -1) continue
+    var s = byTitle.get(title)
+    if (!s) {
+      s = { title: title, rows: [] }
+      byTitle.set(title, s)
+      sections.push(s)
     }
-    groups.sort((a, b) => (a.cat === _settingsSubtab ? 0 : 1) - (b.cat === _settingsSubtab ? 0 : 1))
-    var html = groups
-      .map(
-        (g) =>
-          '<div class="hs-mc-settings-group">' +
-          '<div class="hs-mc-set-search-hdr" data-set-jump="' +
-          escapeHtml(g.cat + '|' + g.section) +
-          '">' +
-          escapeHtml(g.cat + ' · ' + g.section) +
-          '</div>' +
-          g.rows.map((r) => r.html).join('') +
-          '</div>',
-      )
-      .join('')
-    // action rows (export/import/defaults) — searchable buttons
-    var actions = _SET_ACTION_ROWS.filter((a) => _rowMatches(a.hay, tokens))
-    total += _SET_ACTION_ROWS.length
-    if (actions.length) {
-      count += actions.length
-      html +=
+    s.rows.push.apply(s.rows, _rowsForDef(def))
+  }
+  return sections
+    .map((s) => {
+      var fold = _setCollapsed.has(_settingsSubtab + '|' + s.title)
+      var modCount = s.rows.filter((r) => r.mod).length
+      var counts = fold
+        ? ' <span class="hs-mc-set-cnt">(' +
+          s.rows.length +
+          (modCount ? ' · <span class="hs-mc-set-modcnt">' + modCount + '*</span>' : '') +
+          ')</span>'
+        : modCount
+          ? ' <span class="hs-mc-set-modcnt">' + modCount + '*</span>'
+          : ''
+      return (
         '<div class="hs-mc-settings-group">' +
-        '<div class="hs-mc-set-search-hdr" data-set-jump="system|backup / restore">system · backup / restore</div>' +
-        actions.map((a) => a.html).join('') +
+        '<div class="hs-mc-settings-group-title" data-set-fold="' +
+        escapeHtml(s.title) +
+        '">' +
+        (fold ? '▸ ' : '▾ ') +
+        escapeHtml(s.title) +
+        counts +
+        '</div>' +
+        (fold ? '' : s.rows.map((r) => r.html).join('')) +
         '</div>'
+      )
+    })
+    .join('')
+}
+
+// Search across ALL categories — matched rows grouped under clickable
+// "category · section" headers (click = jump to that pane + section).
+// Current-category groups list first.
+function _renderSearchResults() {
+  var tokens = _setQueryTokens()
+  var groups = []
+  var byKey = new Map()
+  var total = 0
+  var count = 0
+  for (const def of SETTINGS) {
+    if (!_depSatisfied(def)) continue
+    var rows = _rowsForDef(def)
+    total += rows.length
+    var matched = rows.filter((r) => _rowMatches(r.hay, tokens))
+    if (!matched.length) continue
+    count += matched.length
+    var section = _setSectionTitle(def)
+    var gk = def.category + '|' + section
+    var g = byKey.get(gk)
+    if (!g) {
+      g = { cat: def.category, section: section, rows: [] }
+      byKey.set(gk, g)
+      groups.push(g)
     }
-    if (!count) html = '<div class="hs-mc-setting-row" style="color:#808080">no matches</div>'
-    return { html: html, count: count, total: total }
+    g.rows.push.apply(g.rows, matched)
   }
-
-  // ── hand-rendered islands ────────────────────────────────────────────
-
-  function _renderMutedGroup() {
-    return (
-      '<div class="hs-mc-settings-group">' +
-      '<div class="hs-mc-settings-group-title">' +
-      t('mc_settings_muted_users') +
-      '</div>' +
-      (mutedUsers.size === 0
-        ? '<div class="hs-mc-setting-row" style="color:#808080;font-size:13px">' + t('mc_settings_no_muted') + '</div>'
-        : Array.from(mutedUsers)
-            .sort()
-            .map((u) => {
-              // Display bare username; data-username keeps the full key for deletion.
-              const displayU = u.includes(':') ? u.split(':')[1] : u
-              return (
-                '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
-                '<span class="hs-mc-setting-label" style="font-size:13px">' +
-                escapeHtml(displayU) +
-                '</span>' +
-                '<button class="hs-mc-unmute-btn" data-username="' +
-                escapeHtml(u) +
-                '" style="background:none;border:1px solid #808080;color:#808080;font-size:13px;cursor:pointer;padding:1px 6px;line-height:1.4" title="' +
-                t('mc_settings_unmute') +
-                '">✕</button>' +
-                '</div>'
-              )
-            })
-            .join('')) +
-      '</div>'
-    )
-  }
-
-  function _renderCrashLogBlock() {
-    var crash = !!getSetting('crashTelemetry')
-    return (
-      '<div class="hs-mc-setting-row hs-mc-setting-row-block" id="hs-set-crashlog-row"' +
-      (!crash ? ' style="display:none"' : '') +
-      '>' +
-      '<div style="display:flex;justify-content:space-between;align-items:center;width:100%">' +
-      '<span class="hs-mc-setting-label">recent errors</span>' +
-      '<div style="display:flex;gap:4px">' +
-      '<button id="hs-set-crash-copy" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 8px;font-size:11px;cursor:pointer;font-family:inherit">copy</button>' +
-      '<button id="hs-set-crash-clear" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 8px;font-size:11px;cursor:pointer;font-family:inherit">clear</button>' +
-      '</div>' +
-      '</div>' +
-      '<pre id="hs-set-crash-pre" class="hs-mc-set-crash-pre">(loading...)</pre>' +
-      '</div>'
-    )
-  }
-
-  // Action rows — buttons, not settings, but people search for them.
-  // Shared between the system pane (_renderBackupGroup) and search results.
-  const _SET_ACTION_ROWS = [
-    {
-      hay: 'export settings backup download json save system',
-      html:
-        '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
-        '<span class="hs-mc-setting-label" data-tip="dump ui_settings + all hs_* keys to a JSON file. portable across devices and browsers.">export settings</span>' +
-        '<button class="hs-mc-settings-btn" data-action="export-settings" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">download .json</button>' +
+  groups.sort((a, b) => (a.cat === _settingsSubtab ? 0 : 1) - (b.cat === _settingsSubtab ? 0 : 1))
+  var html = groups
+    .map(
+      (g) =>
+        '<div class="hs-mc-settings-group">' +
+        '<div class="hs-mc-set-search-hdr" data-set-jump="' +
+        escapeHtml(g.cat + '|' + g.section) +
+        '">' +
+        escapeHtml(g.cat + ' · ' + g.section) +
+        '</div>' +
+        g.rows.map((r) => r.html).join('') +
         '</div>',
-    },
-    {
-      hay: 'import settings restore load json system',
-      html:
-        '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
-        '<span class="hs-mc-setting-label" data-tip="restore from a previously-exported JSON file. merges into existing settings.">import settings</span>' +
-        '<button class="hs-mc-settings-btn" data-action="import-settings" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">load .json</button>' +
-        '</div>',
-    },
-    {
-      hay: 'default reset all settings factory system',
-      html:
-        '<div class="hs-mc-setting-row" style="justify-content:flex-end">' +
-        '<button class="hs-mc-defaults-btn" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">default</button>' +
-        '</div>',
-    },
-  ]
-
-  function _renderBackupGroup() {
-    return (
-      '<div class="hs-mc-settings-group">' +
-      '<div class="hs-mc-settings-group-title">backup / restore</div>' +
-      _SET_ACTION_ROWS[0].html +
-      _SET_ACTION_ROWS[1].html +
-      '</div>' +
-      '<div class="hs-mc-settings-group">' +
-      _SET_ACTION_ROWS[2].html +
-      '</div>'
     )
+    .join('')
+  // action rows (export/import/defaults) — searchable buttons
+  var actions = _SET_ACTION_ROWS.filter((a) => _rowMatches(a.hay, tokens))
+  total += _SET_ACTION_ROWS.length
+  if (actions.length) {
+    count += actions.length
+    html +=
+      '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-set-search-hdr" data-set-jump="system|backup / restore">system · backup / restore</div>' +
+      actions.map((a) => a.html).join('') +
+      '</div>'
   }
+  if (!count) html = '<div class="hs-mc-setting-row" style="color:#808080">no matches</div>'
+  return { html: html, count: count, total: total }
+}
 
-  // ── filter rules custom settings UI ────────────────────────────────────────
-  // Reads chatFilterRules (JSON string) from getSetting, renders an editor with
-  // per-rule rows + an add-rule form. Wired into the click/change handlers below.
+// ── hand-rendered islands ────────────────────────────────────────────
 
-  function _getRawFilterRules() {
-    var raw = getSetting('chatFilterRules') || '[]'
-    var arr = []
-    try {
-      arr = JSON.parse(raw)
-    } catch {}
-    return Array.isArray(arr) ? arr : []
-  }
+function _renderMutedGroup() {
+  return (
+    '<div class="hs-mc-settings-group">' +
+    '<div class="hs-mc-settings-group-title">' +
+    t('mc_settings_muted_users') +
+    '</div>' +
+    (mutedUsers.size === 0
+      ? '<div class="hs-mc-setting-row" style="color:#808080;font-size:13px">' + t('mc_settings_no_muted') + '</div>'
+      : Array.from(mutedUsers)
+          .sort()
+          .map((u) => {
+            // Display bare username; data-username keeps the full key for deletion.
+            const displayU = u.includes(':') ? u.split(':')[1] : u
+            return (
+              '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
+              '<span class="hs-mc-setting-label" style="font-size:13px">' +
+              escapeHtml(displayU) +
+              '</span>' +
+              '<button class="hs-mc-unmute-btn" data-username="' +
+              escapeHtml(u) +
+              '" style="background:none;border:1px solid #808080;color:#808080;font-size:13px;cursor:pointer;padding:1px 6px;line-height:1.4" title="' +
+              t('mc_settings_unmute') +
+              '">✕</button>' +
+              '</div>'
+            )
+          })
+          .join('')) +
+    '</div>'
+  )
+}
 
-  function _saveFilterRules(rules) {
-    var json = JSON.stringify(rules)
-    saveUiSetting('chatFilterRules', json)
-    var parsed = []
-    try {
-      parsed = JSON.parse(json)
-    } catch {}
-    compileFilterRules(parsed)
-    renderMessages(currentTab)
-    if (currentTab === 'settings') renderSettingsTab()
-  }
+function _renderCrashLogBlock() {
+  var crash = !!getSetting('crashTelemetry')
+  return (
+    '<div class="hs-mc-setting-row hs-mc-setting-row-block" id="hs-set-crashlog-row"' +
+    (!crash ? ' style="display:none"' : '') +
+    '>' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;width:100%">' +
+    '<span class="hs-mc-setting-label">recent errors</span>' +
+    '<div style="display:flex;gap:4px">' +
+    '<button id="hs-set-crash-copy" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 8px;font-size:11px;cursor:pointer;font-family:inherit">copy</button>' +
+    '<button id="hs-set-crash-clear" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 8px;font-size:11px;cursor:pointer;font-family:inherit">clear</button>' +
+    '</div>' +
+    '</div>' +
+    '<pre id="hs-set-crash-pre" class="hs-mc-set-crash-pre">(loading...)</pre>' +
+    '</div>'
+  )
+}
 
-  var FR_TYPE_LABELS = {
-    keyword: 'kw',
-    regex: 'rx',
-    user: 'user',
-    badge: 'badge',
-    msgtype: 'type',
-    expr: 'expr',
-  }
-  var FR_SCOPE_BTN =
-    'background:#000;color:#808080;border:1px solid #444;padding:1px 5px;font-size:11px;cursor:pointer;font-family:inherit;line-height:1.4'
-  var FR_BTN =
-    'background:#000;color:#fff;border:1px solid #808080;padding:1px 6px;font-size:11px;cursor:pointer;font-family:inherit;line-height:1.4'
-  var FR_SEL = 'background:#000;color:#fff;border:1px solid #808080;padding:1px 3px;font-size:12px;font-family:inherit'
-  var FR_INPUT =
-    'background:#000;color:#fff;border:1px solid #808080;padding:1px 4px;font-size:12px;font-family:inherit;flex:1;min-width:60px'
+// Action rows — buttons, not settings, but people search for them.
+// Shared between the system pane (_renderBackupGroup) and search results.
+const _SET_ACTION_ROWS = [
+  {
+    hay: 'export settings backup download json save system',
+    html:
+      '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
+      '<span class="hs-mc-setting-label" data-tip="dump ui_settings + all hs_* keys to a JSON file. portable across devices and browsers.">export settings</span>' +
+      '<button class="hs-mc-settings-btn" data-action="export-settings" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">download .json</button>' +
+      '</div>',
+  },
+  {
+    hay: 'import settings restore load json system',
+    html:
+      '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
+      '<span class="hs-mc-setting-label" data-tip="restore from a previously-exported JSON file. merges into existing settings.">import settings</span>' +
+      '<button class="hs-mc-settings-btn" data-action="import-settings" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">load .json</button>' +
+      '</div>',
+  },
+  {
+    hay: 'default reset all settings factory system',
+    html:
+      '<div class="hs-mc-setting-row" style="justify-content:flex-end">' +
+      '<button class="hs-mc-defaults-btn" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">default</button>' +
+      '</div>',
+  },
+]
 
-  function _renderFilterRuleRow(r) {
-    var on = !!r.enabled
-    var typeLabel = FR_TYPE_LABELS[r.match && r.match.type] || '?'
-    var val = r.match && r.match.value ? escapeHtml(String(r.match.value)) : ''
-    var aLabel = r.action === 'hide' ? 'hide' : 'hl'
-    var aColor = r.action === 'highlight' && r.color ? escapeHtml(r.color) : ''
-    var swatch = aColor
+function _renderBackupGroup() {
+  return (
+    '<div class="hs-mc-settings-group">' +
+    '<div class="hs-mc-settings-group-title">backup / restore</div>' +
+    _SET_ACTION_ROWS[0].html +
+    _SET_ACTION_ROWS[1].html +
+    '</div>' +
+    '<div class="hs-mc-settings-group">' +
+    _SET_ACTION_ROWS[2].html +
+    '</div>'
+  )
+}
+
+// ── filter rules custom settings UI ────────────────────────────────────────
+// Reads chatFilterRules (JSON string) from getSetting, renders an editor with
+// per-rule rows + an add-rule form. Wired into the click/change handlers below.
+
+function _getRawFilterRules() {
+  var raw = getSetting('chatFilterRules') || '[]'
+  var arr = []
+  try {
+    arr = JSON.parse(raw)
+  } catch {}
+  return Array.isArray(arr) ? arr : []
+}
+
+function _saveFilterRules(rules) {
+  var json = JSON.stringify(rules)
+  saveUiSetting('chatFilterRules', json)
+  var parsed = []
+  try {
+    parsed = JSON.parse(json)
+  } catch {}
+  compileFilterRules(parsed)
+  renderMessages(currentTab)
+  if (currentTab === 'settings') renderSettingsTab()
+}
+
+var FR_TYPE_LABELS = {
+  keyword: 'kw',
+  regex: 'rx',
+  user: 'user',
+  badge: 'badge',
+  msgtype: 'type',
+  expr: 'expr',
+}
+var FR_SCOPE_BTN =
+  'background:#000;color:#808080;border:1px solid #444;padding:1px 5px;font-size:11px;cursor:pointer;font-family:inherit;line-height:1.4'
+var FR_BTN =
+  'background:#000;color:#fff;border:1px solid #808080;padding:1px 6px;font-size:11px;cursor:pointer;font-family:inherit;line-height:1.4'
+var FR_SEL = 'background:#000;color:#fff;border:1px solid #808080;padding:1px 3px;font-size:12px;font-family:inherit'
+var FR_INPUT =
+  'background:#000;color:#fff;border:1px solid #808080;padding:1px 4px;font-size:12px;font-family:inherit;flex:1;min-width:60px'
+
+function _renderFilterRuleRow(r) {
+  var on = !!r.enabled
+  var typeLabel = FR_TYPE_LABELS[r.match && r.match.type] || '?'
+  var val = r.match && r.match.value ? escapeHtml(String(r.match.value)) : ''
+  var aLabel = r.action === 'hide' ? 'hide' : 'hl'
+  var aColor = r.action === 'highlight' && r.color ? escapeHtml(r.color) : ''
+  var swatch = aColor
+    ? '<span style="display:inline-block;width:10px;height:10px;background:' +
+      aColor +
+      ';border:1px solid #444;vertical-align:middle;margin-left:2px"></span>'
+    : ''
+  var scopeLabel = r.scope && r.scope !== 'all' ? escapeHtml(String(r.scope)) : 'all'
+  var id = escapeHtml(String(r.id))
+  return (
+    '<div class="hs-mc-setting-row hs-mc-setting-row-split" data-fr-row="' +
+    id +
+    '" style="gap:4px">' +
+    '<div style="display:flex;align-items:center;gap:4px;flex:1;min-width:0;overflow:hidden">' +
+    '<button class="hs-mc-toggle-pill' +
+    (on ? ' active' : '') +
+    '" data-fr-action="toggle" data-fr-id="' +
+    id +
+    '" style="flex-shrink:0"><span class="hs-mc-toggle-knob"></span></button>' +
+    '<span style="color:#808080;font-size:11px;min-width:28px;flex-shrink:0">' +
+    typeLabel +
+    '</span>' +
+    '<span style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1" title="' +
+    val +
+    '">' +
+    val +
+    '</span>' +
+    '<span style="color:#aaa;font-size:11px;flex-shrink:0">▶' +
+    aLabel +
+    '</span>' +
+    (aColor
       ? '<span style="display:inline-block;width:10px;height:10px;background:' +
         aColor +
-        ';border:1px solid #444;vertical-align:middle;margin-left:2px"></span>'
-      : ''
-    var scopeLabel = r.scope && r.scope !== 'all' ? escapeHtml(String(r.scope)) : 'all'
-    var id = escapeHtml(String(r.id))
-    return (
-      '<div class="hs-mc-setting-row hs-mc-setting-row-split" data-fr-row="' +
-      id +
-      '" style="gap:4px">' +
-      '<div style="display:flex;align-items:center;gap:4px;flex:1;min-width:0;overflow:hidden">' +
-      '<button class="hs-mc-toggle-pill' +
-      (on ? ' active' : '') +
-      '" data-fr-action="toggle" data-fr-id="' +
-      id +
-      '" style="flex-shrink:0"><span class="hs-mc-toggle-knob"></span></button>' +
-      '<span style="color:#808080;font-size:11px;min-width:28px;flex-shrink:0">' +
-      typeLabel +
-      '</span>' +
-      '<span style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1" title="' +
-      val +
-      '">' +
-      val +
-      '</span>' +
-      '<span style="color:#aaa;font-size:11px;flex-shrink:0">▶' +
-      aLabel +
-      '</span>' +
-      (aColor
-        ? '<span style="display:inline-block;width:10px;height:10px;background:' +
-          aColor +
-          ';border:1px solid #444;flex-shrink:0"></span>'
-        : '') +
-      (r.action === 'highlight' && r.sound
-        ? '<span style="color:#808080;font-size:11px;flex-shrink:0" title="sound: ' +
-          escapeHtml(String(r.sound)) +
-          '">♪</span>'
-        : '') +
-      '<span style="color:#666;font-size:11px;flex-shrink:0">' +
-      scopeLabel +
-      '</span>' +
-      '</div>' +
-      '<button data-fr-action="up" data-fr-id="' +
-      id +
-      '" style="' +
-      FR_BTN +
-      ';color:#808080;flex-shrink:0;padding:1px 4px" title="move up (higher priority — first match wins)">▲</button>' +
-      '<button data-fr-action="down" data-fr-id="' +
-      id +
-      '" style="' +
-      FR_BTN +
-      ';color:#808080;flex-shrink:0;padding:1px 4px" title="move down">▼</button>' +
-      '<button data-fr-action="delete" data-fr-id="' +
-      id +
-      '" style="' +
-      FR_BTN +
-      ';color:#808080;flex-shrink:0" title="delete rule">✕</button>' +
-      '</div>'
-    )
-  }
+        ';border:1px solid #444;flex-shrink:0"></span>'
+      : '') +
+    (r.action === 'highlight' && r.sound
+      ? '<span style="color:#808080;font-size:11px;flex-shrink:0" title="sound: ' +
+        escapeHtml(String(r.sound)) +
+        '">♪</span>'
+      : '') +
+    '<span style="color:#666;font-size:11px;flex-shrink:0">' +
+    scopeLabel +
+    '</span>' +
+    '</div>' +
+    '<button data-fr-action="up" data-fr-id="' +
+    id +
+    '" style="' +
+    FR_BTN +
+    ';color:#808080;flex-shrink:0;padding:1px 4px" title="move up (higher priority — first match wins)">▲</button>' +
+    '<button data-fr-action="down" data-fr-id="' +
+    id +
+    '" style="' +
+    FR_BTN +
+    ';color:#808080;flex-shrink:0;padding:1px 4px" title="move down">▼</button>' +
+    '<button data-fr-action="delete" data-fr-id="' +
+    id +
+    '" style="' +
+    FR_BTN +
+    ';color:#808080;flex-shrink:0" title="delete rule">✕</button>' +
+    '</div>'
+  )
+}
 
-  function _renderFilterRuleAddForm() {
-    var channels = typeof config !== 'undefined' && config && config.channels ? config.channels : []
-    var chOptions =
-      '<option value="all">all channels</option>' +
-      channels
-        .map((ch) => {
-          var label = ch.twitch || ch.kick || ch.id || ''
-          return '<option value="' + escapeHtml(ch.id) + '">' + escapeHtml(label) + '</option>'
-        })
-        .join('')
-    return (
-      '<div class="hs-mc-setting-row hs-mc-setting-row-block hs-mc-fr-addform" style="padding:4px 4px 6px">' +
-      '<div style="font-size:11px;color:#808080;margin-bottom:4px">add rule</div>' +
-      '<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">' +
-      '<select data-fr-field="type" style="' +
-      FR_SEL +
-      ';width:60px">' +
-      '<option value="keyword">keyword</option>' +
-      '<option value="regex">regex</option>' +
-      '<option value="user">user</option>' +
-      '<option value="badge">badge</option>' +
-      '<option value="msgtype">msgtype</option>' +
-      '<option value="expr">expr</option>' +
-      '</select>' +
-      '<input type="text" data-fr-field="value" placeholder="value..." style="' +
-      FR_INPUT +
-      '">' +
-      '<select data-fr-field="action" style="' +
-      FR_SEL +
-      ';width:68px">' +
-      '<option value="highlight">highlight</option>' +
-      '<option value="hide">hide</option>' +
-      '</select>' +
-      '<input type="color" data-fr-field="color" value="#ffff00" style="width:28px;height:22px;border:1px solid #808080;background:#000;padding:1px;cursor:pointer;flex-shrink:0" title="highlight color">' +
-      '<select data-fr-field="sound" style="' +
-      FR_SEL +
-      ';width:62px" title="highlight sound (highlight action only)">' +
-      '<option value="none">silent</option>' +
-      '<option value="ping">ping</option>' +
-      '<option value="blip">blip</option>' +
-      '<option value="knock">knock</option>' +
-      '<option value="chime">chime</option>' +
-      '</select>' +
-      '<label style="display:flex;align-items:center;gap:2px;color:#808080;font-size:11px;cursor:pointer;flex-shrink:0" title="case-sensitive match">' +
-      '<input type="checkbox" data-fr-field="cs" style="margin:0;cursor:pointer">Aa</label>' +
-      '<select data-fr-field="scope" style="' +
-      FR_SEL +
-      ';max-width:80px">' +
-      chOptions +
-      '</select>' +
-      '<button data-fr-action="add" style="' +
-      FR_BTN +
-      ';background:#222">+ add</button>' +
-      '</div>' +
-      '<div style="font-size:10px;color:#666;margin-top:4px;line-height:1.4">' +
-      'expr: compose with &amp;&amp; || ! and ( ). fields user: badge: type: contains: regex: · flags first action reply cheer · bits&gt;100. ' +
-      'e.g. <code style="color:#808080">first &amp;&amp; !badge:subscriber</code>' +
-      '</div>' +
-      '</div>'
-    )
-  }
-
-  function _renderFilterRulesGroup() {
-    var fold = _setCollapsed.has('filters|rules')
-    var rules = _getRawFilterRules()
-    var ruleRows =
-      rules.length === 0
-        ? '<div class="hs-mc-setting-row" style="color:#808080;font-size:13px">no rules — add one below</div>'
-        : rules.map(_renderFilterRuleRow).join('')
-    return (
-      '<div class="hs-mc-settings-group">' +
-      '<div class="hs-mc-settings-group-title" data-set-fold="rules">' +
-      (fold ? '▸ ' : '▾ ') +
-      'filter rules' +
-      (rules.length ? ' <span class="hs-mc-set-cnt">(' + rules.length + ')</span>' : '') +
-      '</div>' +
-      (fold ? '' : ruleRows + _renderFilterRuleAddForm()) +
-      '</div>'
-    )
-  }
-
-  function _handleFilterRuleAction(el, panelRoot) {
-    var action = el.dataset.frAction
-    var id = el.dataset.frId
-    var rules = _getRawFilterRules()
-
-    if (action === 'toggle' && id) {
-      var toggleRule = rules.find((r) => String(r.id) === id)
-      if (toggleRule) {
-        toggleRule.enabled = !toggleRule.enabled
-        _saveFilterRules(rules)
-      }
-      return
-    }
-
-    if (action === 'delete' && id) {
-      var delIdx = rules.findIndex((r) => String(r.id) === id)
-      if (delIdx !== -1) {
-        rules.splice(delIdx, 1)
-        _saveFilterRules(rules)
-      }
-      return
-    }
-
-    if ((action === 'up' || action === 'down') && id) {
-      // Reorder = priority. evaluateFilterRules is first-match-wins (hide
-      // short-circuits; first highlight's color+sound win), so moving a rule up
-      // makes it take precedence.
-      var mvIdx = rules.findIndex((r) => String(r.id) === id)
-      if (mvIdx === -1) return
-      var swapIdx = action === 'up' ? mvIdx - 1 : mvIdx + 1
-      if (swapIdx < 0 || swapIdx >= rules.length) return
-      var tmp = rules[mvIdx]
-      rules[mvIdx] = rules[swapIdx]
-      rules[swapIdx] = tmp
-      _saveFilterRules(rules)
-      return
-    }
-
-    if (action === 'add') {
-      var form = el.closest('.hs-mc-fr-addform')
-      if (!form) return
-      var typeEl = form.querySelector('[data-fr-field="type"]')
-      var valEl = form.querySelector('[data-fr-field="value"]')
-      var actEl = form.querySelector('[data-fr-field="action"]')
-      var colEl = form.querySelector('[data-fr-field="color"]')
-      var soundEl = form.querySelector('[data-fr-field="sound"]')
-      var csEl = form.querySelector('[data-fr-field="cs"]')
-      var scopeEl = form.querySelector('[data-fr-field="scope"]')
-      var ruleType = typeEl ? typeEl.value : 'keyword'
-      var ruleVal = valEl ? valEl.value.trim() : ''
-      var ruleAct = actEl ? actEl.value : 'highlight'
-      var ruleCol = colEl ? colEl.value : '#ffff00'
-      var ruleSound = soundEl ? soundEl.value : 'none'
-      var ruleCs = csEl ? !!csEl.checked : false
-      var ruleScope = scopeEl ? scopeEl.value : 'all'
-      if (!ruleVal) {
-        showToast('rule value is empty', 'error')
-        return
-      }
-      // Validate expr syntax up front so a malformed rule toasts instead of
-      // silently compiling to nothing (the parser lives in the same bundle).
-      if (ruleType === 'expr' && typeof _frParseExpr === 'function' && !_frParseExpr(_frTokenizeExpr(ruleVal))) {
-        showToast('invalid expression', 'error')
-        return
-      }
-      var newRule = {
-        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
-        enabled: true,
-        scope: ruleScope,
-        match: { type: ruleType, value: ruleVal, caseSensitive: ruleCs },
-        action: ruleAct,
-      }
-      if (ruleAct === 'highlight') {
-        newRule.color = ruleCol
-        if (ruleSound && ruleSound !== 'none') newRule.sound = ruleSound
-      }
-      rules.push(newRule)
-      _saveFilterRules(rules)
-      return
-    }
-  }
-
-  // Compose one category pane: registry sections + that category's islands.
-  function _renderCategoryPane(cat) {
-    if (cat === 'mod') return _regSections(cat)
-    if (cat === 'filters') {
-      // 'rules' section is custom-rendered; exclude it from auto-sections
-      return _regSections(cat, ['content', 'messages']) + _renderFilterRulesGroup()
-    }
-    if (cat === 'tweaks') {
-      return (
-        '<div class="hs-mc-set-keyhint" style="padding-top:8px">twitch.tv only — kick/youtube unaffected</div>' +
-        _regSections(cat)
-      )
-    }
-    if (cat === 'system') {
-      // crash log block nests inside the advanced section, after its pill
-      var adv = _regSections(cat, ['advanced'])
-      var advFolded = _setCollapsed.has(cat + '|advanced')
-      if (!advFolded && adv.endsWith('</div>')) {
-        adv = adv.slice(0, -6) + _renderCrashLogBlock() + '</div>'
-      }
-      return _regSections(cat, ['tabs', 'subsystems', 'language']) + _renderMutedGroup() + adv + _renderBackupGroup()
-    }
-    return _regSections(cat)
-  }
-
-  // ─── settings export / import ────────────────────────────────────────────
-  // Export: dumps ui_settings (sync) + all hs_* keys (local) into a single
-  // JSON. Import: file picker → JSON parse → schema-validate → merge into
-  // storage. Both areas restored. Errors toast, don't throw.
-  async function _exportAllSettings() {
-    try {
-      var syncObj = await chrome.storage.sync.get(null)
-      var localObj = await chrome.storage.local.get(null)
-      var hsLocal = {}
-      Object.keys(localObj).forEach((k) => {
-        if (k.indexOf('hs_') === 0 || k.indexOf('viewer_') === 0) hsLocal[k] = localObj[k]
+function _renderFilterRuleAddForm() {
+  var channels = typeof config !== 'undefined' && config && config.channels ? config.channels : []
+  var chOptions =
+    '<option value="all">all channels</option>' +
+    channels
+      .map((ch) => {
+        var label = ch.twitch || ch.kick || ch.id || ''
+        return '<option value="' + escapeHtml(ch.id) + '">' + escapeHtml(label) + '</option>'
       })
-      var bundle = {
-        kind: 'heatsync-settings',
-        version: 1,
-        exportedAt: new Date().toISOString(),
-        sync: { ui_settings: syncObj.ui_settings || {} },
-        local: hsLocal,
-      }
-      var blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' })
-      var url = URL.createObjectURL(blob)
-      var a = document.createElement('a')
-      a.href = url
-      a.download = 'heatsync-settings-' + new Date().toISOString().slice(0, 10) + '.json'
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      setTimeout(() => {
-        URL.revokeObjectURL(url)
-      }, 1000)
-      showToast('settings exported', 'info')
-    } catch (err) {
-      showToast('export failed: ' + (err && err.message ? err.message : 'unknown'), 'error')
+      .join('')
+  return (
+    '<div class="hs-mc-setting-row hs-mc-setting-row-block hs-mc-fr-addform" style="padding:4px 4px 6px">' +
+    '<div style="font-size:11px;color:#808080;margin-bottom:4px">add rule</div>' +
+    '<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">' +
+    '<select data-fr-field="type" style="' +
+    FR_SEL +
+    ';width:60px">' +
+    '<option value="keyword">keyword</option>' +
+    '<option value="regex">regex</option>' +
+    '<option value="user">user</option>' +
+    '<option value="badge">badge</option>' +
+    '<option value="msgtype">msgtype</option>' +
+    '<option value="expr">expr</option>' +
+    '</select>' +
+    '<input type="text" data-fr-field="value" placeholder="value..." style="' +
+    FR_INPUT +
+    '">' +
+    '<select data-fr-field="action" style="' +
+    FR_SEL +
+    ';width:68px">' +
+    '<option value="highlight">highlight</option>' +
+    '<option value="hide">hide</option>' +
+    '</select>' +
+    '<input type="color" data-fr-field="color" value="#ffff00" style="width:28px;height:22px;border:1px solid #808080;background:#000;padding:1px;cursor:pointer;flex-shrink:0" title="highlight color">' +
+    '<select data-fr-field="sound" style="' +
+    FR_SEL +
+    ';width:62px" title="highlight sound (highlight action only)">' +
+    '<option value="none">silent</option>' +
+    '<option value="ping">ping</option>' +
+    '<option value="blip">blip</option>' +
+    '<option value="knock">knock</option>' +
+    '<option value="chime">chime</option>' +
+    '</select>' +
+    '<label style="display:flex;align-items:center;gap:2px;color:#808080;font-size:11px;cursor:pointer;flex-shrink:0" title="case-sensitive match">' +
+    '<input type="checkbox" data-fr-field="cs" style="margin:0;cursor:pointer">Aa</label>' +
+    '<select data-fr-field="scope" style="' +
+    FR_SEL +
+    ';max-width:80px">' +
+    chOptions +
+    '</select>' +
+    '<button data-fr-action="add" style="' +
+    FR_BTN +
+    ';background:#222">+ add</button>' +
+    '</div>' +
+    '<div style="font-size:10px;color:#666;margin-top:4px;line-height:1.4">' +
+    'expr: compose with &amp;&amp; || ! and ( ). fields user: badge: type: contains: regex: · flags first action reply cheer · bits&gt;100. ' +
+    'e.g. <code style="color:#808080">first &amp;&amp; !badge:subscriber</code>' +
+    '</div>' +
+    '</div>'
+  )
+}
+
+function _renderFilterRulesGroup() {
+  var fold = _setCollapsed.has('filters|rules')
+  var rules = _getRawFilterRules()
+  var ruleRows =
+    rules.length === 0
+      ? '<div class="hs-mc-setting-row" style="color:#808080;font-size:13px">no rules — add one below</div>'
+      : rules.map(_renderFilterRuleRow).join('')
+  return (
+    '<div class="hs-mc-settings-group">' +
+    '<div class="hs-mc-settings-group-title" data-set-fold="rules">' +
+    (fold ? '▸ ' : '▾ ') +
+    'filter rules' +
+    (rules.length ? ' <span class="hs-mc-set-cnt">(' + rules.length + ')</span>' : '') +
+    '</div>' +
+    (fold ? '' : ruleRows + _renderFilterRuleAddForm()) +
+    '</div>'
+  )
+}
+
+function _handleFilterRuleAction(el, panelRoot) {
+  var action = el.dataset.frAction
+  var id = el.dataset.frId
+  var rules = _getRawFilterRules()
+
+  if (action === 'toggle' && id) {
+    var toggleRule = rules.find((r) => String(r.id) === id)
+    if (toggleRule) {
+      toggleRule.enabled = !toggleRule.enabled
+      _saveFilterRules(rules)
     }
+    return
   }
 
-  async function _importAllSettings() {
-    return new Promise((resolve) => {
-      var input = document.createElement('input')
-      input.type = 'file'
-      input.accept = 'application/json,.json'
-      input.style.display = 'none'
-      input.onchange = async () => {
-        var file = input.files && input.files[0]
-        input.remove()
-        if (!file) {
-          resolve(false)
-          return
-        }
-        if (file.size > 2 * 1024 * 1024) {
-          showToast('file too large (>2MB)', 'error')
-          resolve(false)
-          return
-        }
-        try {
-          var txt = await file.text()
-          var data = JSON.parse(txt)
-          if (!data || data.kind !== 'heatsync-settings') {
-            showToast('not a heatsync settings file', 'error')
-            resolve(false)
-            return
-          }
-          var writes = []
-          if (data.sync && data.sync.ui_settings && typeof data.sync.ui_settings === 'object') {
-            // Merge — preserve any keys absent from the import. sanitize via
-            // existing util so corrupt fields don't leak in.
-            var stored = await chrome.storage.sync.get(['ui_settings'])
-            var merged = sanitizeUiSettings(Object.assign({}, stored.ui_settings || {}, data.sync.ui_settings))
-            writes.push(chrome.storage.sync.set({ ui_settings: merged }))
-          }
-          if (data.local && typeof data.local === 'object') {
-            var safeLocal = {}
-            Object.keys(data.local).forEach((k) => {
-              if (k.length < 1 || k.length > 128) return
-              if (k.indexOf('hs_') !== 0 && k.indexOf('viewer_') !== 0) return
-              safeLocal[k] = data.local[k]
-            })
-            if (Object.keys(safeLocal).length) writes.push(chrome.storage.local.set(safeLocal))
-          }
-          await Promise.all(writes)
-          showToast('settings imported — reloading…', 'info')
-          setTimeout(() => {
-            try {
-              location.reload()
-            } catch (_) {}
-          }, 800)
-          resolve(true)
-        } catch (err) {
-          showToast('import failed: ' + (err && err.message ? err.message : 'parse error'), 'error')
-          resolve(false)
-        }
+  if (action === 'delete' && id) {
+    var delIdx = rules.findIndex((r) => String(r.id) === id)
+    if (delIdx !== -1) {
+      rules.splice(delIdx, 1)
+      _saveFilterRules(rules)
+    }
+    return
+  }
+
+  if ((action === 'up' || action === 'down') && id) {
+    // Reorder = priority. evaluateFilterRules is first-match-wins (hide
+    // short-circuits; first highlight's color+sound win), so moving a rule up
+    // makes it take precedence.
+    var mvIdx = rules.findIndex((r) => String(r.id) === id)
+    if (mvIdx === -1) return
+    var swapIdx = action === 'up' ? mvIdx - 1 : mvIdx + 1
+    if (swapIdx < 0 || swapIdx >= rules.length) return
+    var tmp = rules[mvIdx]
+    rules[mvIdx] = rules[swapIdx]
+    rules[swapIdx] = tmp
+    _saveFilterRules(rules)
+    return
+  }
+
+  if (action === 'add') {
+    var form = el.closest('.hs-mc-fr-addform')
+    if (!form) return
+    var typeEl = form.querySelector('[data-fr-field="type"]')
+    var valEl = form.querySelector('[data-fr-field="value"]')
+    var actEl = form.querySelector('[data-fr-field="action"]')
+    var colEl = form.querySelector('[data-fr-field="color"]')
+    var soundEl = form.querySelector('[data-fr-field="sound"]')
+    var csEl = form.querySelector('[data-fr-field="cs"]')
+    var scopeEl = form.querySelector('[data-fr-field="scope"]')
+    var ruleType = typeEl ? typeEl.value : 'keyword'
+    var ruleVal = valEl ? valEl.value.trim() : ''
+    var ruleAct = actEl ? actEl.value : 'highlight'
+    var ruleCol = colEl ? colEl.value : '#ffff00'
+    var ruleSound = soundEl ? soundEl.value : 'none'
+    var ruleCs = csEl ? !!csEl.checked : false
+    var ruleScope = scopeEl ? scopeEl.value : 'all'
+    if (!ruleVal) {
+      showToast('rule value is empty', 'error')
+      return
+    }
+    // Validate expr syntax up front so a malformed rule toasts instead of
+    // silently compiling to nothing (the parser lives in the same bundle).
+    if (ruleType === 'expr' && typeof _frParseExpr === 'function' && !_frParseExpr(_frTokenizeExpr(ruleVal))) {
+      showToast('invalid expression', 'error')
+      return
+    }
+    var newRule = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+      enabled: true,
+      scope: ruleScope,
+      match: { type: ruleType, value: ruleVal, caseSensitive: ruleCs },
+      action: ruleAct,
+    }
+    if (ruleAct === 'highlight') {
+      newRule.color = ruleCol
+      if (ruleSound && ruleSound !== 'none') newRule.sound = ruleSound
+    }
+    rules.push(newRule)
+    _saveFilterRules(rules)
+    return
+  }
+}
+
+// Compose one category pane: registry sections + that category's islands.
+function _renderCategoryPane(cat) {
+  if (cat === 'mod') return _regSections(cat)
+  if (cat === 'filters') {
+    // 'rules' section is custom-rendered; exclude it from auto-sections
+    return _regSections(cat, ['content', 'messages']) + _renderFilterRulesGroup()
+  }
+  if (cat === 'tweaks') {
+    return (
+      '<div class="hs-mc-set-keyhint" style="padding-top:8px">twitch.tv only — kick/youtube unaffected</div>' +
+      _regSections(cat)
+    )
+  }
+  if (cat === 'system') {
+    // crash log block nests inside the advanced section, after its pill
+    var adv = _regSections(cat, ['advanced'])
+    var advFolded = _setCollapsed.has(cat + '|advanced')
+    if (!advFolded && adv.endsWith('</div>')) {
+      adv = adv.slice(0, -6) + _renderCrashLogBlock() + '</div>'
+    }
+    return _regSections(cat, ['tabs', 'subsystems', 'language']) + _renderMutedGroup() + adv + _renderBackupGroup()
+  }
+  return _regSections(cat)
+}
+
+// ─── settings export / import ────────────────────────────────────────────
+// Export: dumps ui_settings (sync) + all hs_* keys (local) into a single
+// JSON. Import: file picker → JSON parse → schema-validate → merge into
+// storage. Both areas restored. Errors toast, don't throw.
+async function _exportAllSettings() {
+  try {
+    var syncObj = await chrome.storage.sync.get(null)
+    var localObj = await chrome.storage.local.get(null)
+    var hsLocal = {}
+    Object.keys(localObj).forEach((k) => {
+      if (k.indexOf('hs_') === 0 || k.indexOf('viewer_') === 0) hsLocal[k] = localObj[k]
+    })
+    var bundle = {
+      kind: 'heatsync-settings',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      sync: { ui_settings: syncObj.ui_settings || {} },
+      local: hsLocal,
+    }
+    var blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' })
+    var url = URL.createObjectURL(blob)
+    var a = document.createElement('a')
+    a.href = url
+    a.download = 'heatsync-settings-' + new Date().toISOString().slice(0, 10) + '.json'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => {
+      URL.revokeObjectURL(url)
+    }, 1000)
+    showToast('settings exported', 'info')
+  } catch (err) {
+    showToast('export failed: ' + (err && err.message ? err.message : 'unknown'), 'error')
+  }
+}
+
+async function _importAllSettings() {
+  return new Promise((resolve) => {
+    var input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'application/json,.json'
+    input.style.display = 'none'
+    input.onchange = async () => {
+      var file = input.files && input.files[0]
+      input.remove()
+      if (!file) {
+        resolve(false)
+        return
       }
-      document.body.appendChild(input)
-      input.click()
+      if (file.size > 2 * 1024 * 1024) {
+        showToast('file too large (>2MB)', 'error')
+        resolve(false)
+        return
+      }
+      try {
+        var txt = await file.text()
+        var data = JSON.parse(txt)
+        if (!data || data.kind !== 'heatsync-settings') {
+          showToast('not a heatsync settings file', 'error')
+          resolve(false)
+          return
+        }
+        var writes = []
+        if (data.sync && data.sync.ui_settings && typeof data.sync.ui_settings === 'object') {
+          // Merge — preserve any keys absent from the import. sanitize via
+          // existing util so corrupt fields don't leak in.
+          var stored = await chrome.storage.sync.get(['ui_settings'])
+          var merged = sanitizeUiSettings(Object.assign({}, stored.ui_settings || {}, data.sync.ui_settings))
+          writes.push(chrome.storage.sync.set({ ui_settings: merged }))
+        }
+        if (data.local && typeof data.local === 'object') {
+          var safeLocal = {}
+          Object.keys(data.local).forEach((k) => {
+            if (k.length < 1 || k.length > 128) return
+            if (k.indexOf('hs_') !== 0 && k.indexOf('viewer_') !== 0) return
+            safeLocal[k] = data.local[k]
+          })
+          if (Object.keys(safeLocal).length) writes.push(chrome.storage.local.set(safeLocal))
+        }
+        await Promise.all(writes)
+        showToast('settings imported — reloading…', 'info')
+        setTimeout(() => {
+          try {
+            location.reload()
+          } catch (_) {}
+        }, 800)
+        resolve(true)
+      } catch (err) {
+        showToast('import failed: ' + (err && err.message ? err.message : 'parse error'), 'error')
+        resolve(false)
+      }
+    }
+    document.body.appendChild(input)
+    input.click()
+  })
+}
+
+// _loadServerFilters removed in v1.6 audit pass — fetched /api/user/settings
+// expecting a JSONB `settings` blob that the server never produced. The
+// 11 toggles it populated were unwired (server didn't read those keys),
+// so removing it has no functional change. See _SERVER_FILTER_DEFS deletion.
+
+// Load recent errors + diag snapshot into the system sub-tab pre element.
+// Reads hs_errors directly (single source of truth — written by lib/error-reporter).
+async function _loadCrashLog() {
+  var pre = document.getElementById('hs-set-crash-pre')
+  if (!pre) return
+  try {
+    var cur = await new Promise((r) => {
+      chrome.storage.local.get('hs_errors', r)
+    })
+    var log = Array.isArray(cur && cur.hs_errors) ? cur.hs_errors : []
+    var diag = null
+    try {
+      diag = (await chrome.runtime.sendMessage({ type: 'get_diag' }))?.diag || null
+    } catch (_) {}
+    function fmtTs(ts) {
+      var d = new Date(ts)
+      return d.toISOString().replace('T', ' ').slice(0, 19)
+    }
+    var head = diag ? '--- diag ---\n' + JSON.stringify(diag, null, 2) + '\n\n' : ''
+    if (log.length === 0) {
+      pre.textContent = head + '(no errors recorded)'
+      return
+    }
+    pre.textContent =
+      head +
+      log
+        .slice()
+        .reverse()
+        .map(
+          (entry) =>
+            '[' +
+            fmtTs(entry.ts) +
+            '] ' +
+            (entry.plat || entry.type || '?') +
+            ': ' +
+            (entry.msg || '') +
+            '\n' +
+            (entry.stack || '') +
+            '\n',
+        )
+        .join('\n')
+  } catch (err) {
+    pre.textContent = '(unable to read log)'
+  }
+}
+
+// ─── presets ("builds") — sparse diffs over defaults ─────────────────
+// Built-ins live in settings-schema.js (SETTINGS_PRESETS); customs are
+// diff-vs-defaults snapshots in ui_settings.customPresets (synced, and
+// sharable via the existing settings export/import). Applying always
+// goes through a diff-confirm panel; one-shot undo restores the prior
+// values of exactly the keys the preset touched.
+let _customPresets = []
+let _lastPresetUndo = null
+let _presetPending = null // {label, diff} or {savePrompt:true}
+
+function _presetIsActive(p) {
+  return Object.keys(p.diff).every((k) => JSON.stringify(getSetting(k)) === JSON.stringify(p.diff[k]))
+}
+function _presetChanges(diff) {
+  const out = []
+  for (const k in diff) {
+    const def = _SETTINGS_BY_KEY.get(k)
+    if (!def) continue
+    const from = getSetting(k)
+    if (JSON.stringify(from) !== JSON.stringify(diff[k])) out.push({ key: k, def: def, from: from, to: diff[k] })
+  }
+  return out
+}
+function _fmtPresetVal(def, v) {
+  if (def.type === 'bool') return v ? 'on' : 'off'
+  if (def.type === 'boolmap') {
+    const offs = Object.keys(v).filter((k) => v[k] === false)
+    return offs.length ? 'off: ' + offs.join(', ') : 'all on'
+  }
+  if (def.type === 'multiselect') return v.length ? v.join(', ') : 'none'
+  return String(v)
+}
+function _applyPresetDiff(label, diff) {
+  const changes = _presetChanges(diff)
+  _presetPending = null
+  if (!changes.length) {
+    showToast('already matching ' + label, 'info')
+    renderSettingsTab()
+    return
+  }
+  const undo = {}
+  for (const c of changes) undo[c.key] = c.from
+  _lastPresetUndo = { label: label, diff: undo }
+  for (const c of changes) setSetting(c.key, c.to)
+  showToast('applied ' + label + ' — ' + changes.length + ' change' + (changes.length === 1 ? '' : 's'), 'info')
+  renderSettingsTab()
+}
+function _saveCustomPreset(name) {
+  name = (name || '').trim().slice(0, 24)
+  if (!name) {
+    showToast('preset needs a name', 'error')
+    return
+  }
+  const diff = {}
+  for (const def of SETTINGS) {
+    if (def.noReset) continue
+    const cur = getSetting(def.key)
+    if (JSON.stringify(cur) !== JSON.stringify(def.default)) diff[def.key] = cur
+  }
+  const entry = { id: 'c_' + Date.now().toString(36), name: name, diff: diff, createdAt: Date.now() }
+  const next = _customPresets
+    .filter((p) => p.name !== name)
+    .concat(entry)
+    .slice(-8)
+  if (JSON.stringify(next).length > 5000) {
+    showToast('presets storage full — delete one first', 'error')
+    return
+  }
+  _customPresets = next
+  saveUiSetting('customPresets', next)
+  _presetPending = null
+  showToast('saved preset: ' + name, 'info')
+  renderSettingsTab()
+}
+function _deleteCustomPreset(id) {
+  _customPresets = _customPresets.filter((p) => p.id !== id)
+  saveUiSetting('customPresets', _customPresets)
+  showToast('preset deleted', 'info')
+}
+function _openPresetMenu(anchorEl) {
+  const r = anchorEl.getBoundingClientRect()
+  const items = []
+  for (const p of SETTINGS_PRESETS) {
+    items.push({
+      label: (_presetIsActive(p) ? '■ ' : '□ ') + p.label,
+      fn: ((preset) => () => {
+        _presetPending = { label: preset.label, diff: preset.diff }
+        renderSettingsTab()
+      })(p),
     })
   }
-
-  // _loadServerFilters removed in v1.6 audit pass — fetched /api/user/settings
-  // expecting a JSONB `settings` blob that the server never produced. The
-  // 11 toggles it populated were unwired (server didn't read those keys),
-  // so removing it has no functional change. See _SERVER_FILTER_DEFS deletion.
-
-  // Load recent errors + diag snapshot into the system sub-tab pre element.
-  // Reads hs_errors directly (single source of truth — written by lib/error-reporter).
-  async function _loadCrashLog() {
-    var pre = document.getElementById('hs-set-crash-pre')
-    if (!pre) return
-    try {
-      var cur = await new Promise((r) => {
-        chrome.storage.local.get('hs_errors', r)
-      })
-      var log = Array.isArray(cur && cur.hs_errors) ? cur.hs_errors : []
-      var diag = null
-      try {
-        diag = (await chrome.runtime.sendMessage({ type: 'get_diag' }))?.diag || null
-      } catch (_) {}
-      function fmtTs(ts) {
-        var d = new Date(ts)
-        return d.toISOString().replace('T', ' ').slice(0, 19)
-      }
-      var head = diag ? '--- diag ---\n' + JSON.stringify(diag, null, 2) + '\n\n' : ''
-      if (log.length === 0) {
-        pre.textContent = head + '(no errors recorded)'
-        return
-      }
-      pre.textContent =
-        head +
-        log
-          .slice()
-          .reverse()
-          .map(
-            (entry) =>
-              '[' +
-              fmtTs(entry.ts) +
-              '] ' +
-              (entry.plat || entry.type || '?') +
-              ': ' +
-              (entry.msg || '') +
-              '\n' +
-              (entry.stack || '') +
-              '\n',
-          )
-          .join('\n')
-    } catch (err) {
-      pre.textContent = '(unable to read log)'
-    }
-  }
-
-  // ─── presets ("builds") — sparse diffs over defaults ─────────────────
-  // Built-ins live in settings-schema.js (SETTINGS_PRESETS); customs are
-  // diff-vs-defaults snapshots in ui_settings.customPresets (synced, and
-  // sharable via the existing settings export/import). Applying always
-  // goes through a diff-confirm panel; one-shot undo restores the prior
-  // values of exactly the keys the preset touched.
-  let _customPresets = []
-  let _lastPresetUndo = null
-  let _presetPending = null // {label, diff} or {savePrompt:true}
-
-  function _presetIsActive(p) {
-    return Object.keys(p.diff).every((k) => JSON.stringify(getSetting(k)) === JSON.stringify(p.diff[k]))
-  }
-  function _presetChanges(diff) {
-    const out = []
-    for (const k in diff) {
-      const def = _SETTINGS_BY_KEY.get(k)
-      if (!def) continue
-      const from = getSetting(k)
-      if (JSON.stringify(from) !== JSON.stringify(diff[k])) out.push({ key: k, def: def, from: from, to: diff[k] })
-    }
-    return out
-  }
-  function _fmtPresetVal(def, v) {
-    if (def.type === 'bool') return v ? 'on' : 'off'
-    if (def.type === 'boolmap') {
-      const offs = Object.keys(v).filter((k) => v[k] === false)
-      return offs.length ? 'off: ' + offs.join(', ') : 'all on'
-    }
-    if (def.type === 'multiselect') return v.length ? v.join(', ') : 'none'
-    return String(v)
-  }
-  function _applyPresetDiff(label, diff) {
-    const changes = _presetChanges(diff)
-    _presetPending = null
-    if (!changes.length) {
-      showToast('already matching ' + label, 'info')
-      renderSettingsTab()
-      return
-    }
-    const undo = {}
-    for (const c of changes) undo[c.key] = c.from
-    _lastPresetUndo = { label: label, diff: undo }
-    for (const c of changes) setSetting(c.key, c.to)
-    showToast('applied ' + label + ' — ' + changes.length + ' change' + (changes.length === 1 ? '' : 's'), 'info')
-    renderSettingsTab()
-  }
-  function _saveCustomPreset(name) {
-    name = (name || '').trim().slice(0, 24)
-    if (!name) {
-      showToast('preset needs a name', 'error')
-      return
-    }
-    const diff = {}
-    for (const def of SETTINGS) {
-      if (def.noReset) continue
-      const cur = getSetting(def.key)
-      if (JSON.stringify(cur) !== JSON.stringify(def.default)) diff[def.key] = cur
-    }
-    const entry = { id: 'c_' + Date.now().toString(36), name: name, diff: diff, createdAt: Date.now() }
-    const next = _customPresets
-      .filter((p) => p.name !== name)
-      .concat(entry)
-      .slice(-8)
-    if (JSON.stringify(next).length > 5000) {
-      showToast('presets storage full — delete one first', 'error')
-      return
-    }
-    _customPresets = next
-    saveUiSetting('customPresets', next)
-    _presetPending = null
-    showToast('saved preset: ' + name, 'info')
-    renderSettingsTab()
-  }
-  function _deleteCustomPreset(id) {
-    _customPresets = _customPresets.filter((p) => p.id !== id)
-    saveUiSetting('customPresets', _customPresets)
-    showToast('preset deleted', 'info')
-  }
-  function _openPresetMenu(anchorEl) {
-    const r = anchorEl.getBoundingClientRect()
-    const items = []
-    for (const p of SETTINGS_PRESETS) {
+  if (_customPresets.length) {
+    items.push('sep')
+    for (const p of _customPresets) {
       items.push({
-        label: (_presetIsActive(p) ? '■ ' : '□ ') + p.label,
+        label: (_presetIsActive(p) ? '■ ' : '□ ') + p.name,
         fn: ((preset) => () => {
-          _presetPending = { label: preset.label, diff: preset.diff }
+          _presetPending = { label: preset.name, diff: preset.diff }
           renderSettingsTab()
         })(p),
       })
     }
-    if (_customPresets.length) {
-      items.push('sep')
-      for (const p of _customPresets) {
-        items.push({
-          label: (_presetIsActive(p) ? '■ ' : '□ ') + p.name,
-          fn: ((preset) => () => {
-            _presetPending = { label: preset.name, diff: preset.diff }
-            renderSettingsTab()
-          })(p),
-        })
-      }
-      items.push({
-        label: 'delete a preset…',
-        danger: true,
-        fn: () => {
-          const delItems = _customPresets.map((p) => ({
-            label: '✕ ' + p.name,
-            danger: true,
-            fn: () => {
-              _deleteCustomPreset(p.id)
-            },
-          }))
-          showHsCtxMenu(r.left, r.bottom + 4, 'delete preset', delItems)
-        },
-      })
-    }
-    items.push('sep')
     items.push({
-      label: 'save current as…',
+      label: 'delete a preset…',
+      danger: true,
       fn: () => {
-        _presetPending = { savePrompt: true }
-        renderSettingsTab()
+        const delItems = _customPresets.map((p) => ({
+          label: '✕ ' + p.name,
+          danger: true,
+          fn: () => {
+            _deleteCustomPreset(p.id)
+          },
+        }))
+        showHsCtxMenu(r.left, r.bottom + 4, 'delete preset', delItems)
       },
     })
-    if (_lastPresetUndo) {
-      items.push({
-        label: 'undo: ' + _lastPresetUndo.label,
-        fn: () => {
-          const u = _lastPresetUndo
-          _lastPresetUndo = null
-          _applyPresetDiff('undo ' + u.label, u.diff)
-        },
-      })
-    }
-    showHsCtxMenu(r.left, r.bottom + 4, 'presets', items)
   }
-  function _renderPresetPanel() {
-    if (_presetPending.savePrompt) {
-      return (
-        '<div class="hs-mc-settings-group">' +
-        '<div class="hs-mc-settings-group-title">save current as preset</div>' +
-        '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
-        '<input class="hs-mc-set-text-input" id="hs-preset-name" type="text" placeholder="preset name" maxlength="24" style="flex:1">' +
-        '<div style="display:flex;gap:4px">' +
-        '<button class="hs-mc-settings-btn" data-preset-action="save-custom" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">save</button>' +
-        '<button class="hs-mc-settings-btn" data-preset-action="cancel" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">cancel</button>' +
-        '</div>' +
-        '</div>' +
-        '<div class="hs-mc-set-keyhint">snapshots every setting that differs from defaults — sharable via export settings</div>' +
-        '</div>'
-      )
-    }
-    const changes = _presetChanges(_presetPending.diff)
-    let rows = ''
-    if (!changes.length) {
-      rows = '<div class="hs-mc-setting-row" style="color:#808080">already matching — nothing to change</div>'
-    }
-    for (const c of changes) {
-      rows +=
-        '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
-        '<span class="hs-mc-setting-label">' +
-        escapeHtml(_setLabel(c.def)) +
-        '</span>' +
-        '<span style="font-size:13px;flex-shrink:0"><span style="color:#808080">' +
-        escapeHtml(_fmtPresetVal(c.def, c.from)) +
-        '</span>' +
-        ' → <span style="color:#fff">' +
-        escapeHtml(_fmtPresetVal(c.def, c.to)) +
-        '</span></span>' +
-        '</div>'
-    }
+  items.push('sep')
+  items.push({
+    label: 'save current as…',
+    fn: () => {
+      _presetPending = { savePrompt: true }
+      renderSettingsTab()
+    },
+  })
+  if (_lastPresetUndo) {
+    items.push({
+      label: 'undo: ' + _lastPresetUndo.label,
+      fn: () => {
+        const u = _lastPresetUndo
+        _lastPresetUndo = null
+        _applyPresetDiff('undo ' + u.label, u.diff)
+      },
+    })
+  }
+  showHsCtxMenu(r.left, r.bottom + 4, 'presets', items)
+}
+function _renderPresetPanel() {
+  if (_presetPending.savePrompt) {
     return (
       '<div class="hs-mc-settings-group">' +
-      '<div class="hs-mc-settings-group-title">apply preset: ' +
-      escapeHtml(_presetPending.label) +
-      '</div>' +
-      rows +
-      '<div class="hs-mc-setting-row" style="justify-content:flex-end;gap:4px">' +
-      (changes.length
-        ? '<button class="hs-mc-settings-btn" data-preset-action="apply" style="background:#fff;color:#000;border:none;padding:2px 12px;font-size:13px;cursor:pointer;font-family:inherit">apply</button>'
-        : '') +
+      '<div class="hs-mc-settings-group-title">save current as preset</div>' +
+      '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
+      '<input class="hs-mc-set-text-input" id="hs-preset-name" type="text" placeholder="preset name" maxlength="24" style="flex:1">' +
+      '<div style="display:flex;gap:4px">' +
+      '<button class="hs-mc-settings-btn" data-preset-action="save-custom" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">save</button>' +
       '<button class="hs-mc-settings-btn" data-preset-action="cancel" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">cancel</button>' +
       '</div>' +
-      '</div>'
-    )
-  }
-
-  // '?' keybinding overlay — square, two-column key grid; vim block only
-  // when vi mode is on. Click anywhere on it (or Esc / ?) closes.
-  function _renderHelpOverlay() {
-    var always = [
-      ['/', 'search'],
-      ['1-7', 'category'],
-      ['↑ ↓', 'move'],
-      ['← →', 'adjust'],
-      ['enter', 'toggle'],
-      ['bksp', 'reset row'],
-      ['esc', 'close / clear'],
-      ['?', 'this help'],
-    ]
-    var vim = [
-      ['j k', 'move'],
-      ['h l', 'adjust'],
-      ['gg G', 'first / last'],
-      ['za', 'fold section'],
-      ['d', 'reset row'],
-      ['p', 'presets'],
-      ['H L', 'prev / next category'],
-    ]
-    function grid(pairs) {
-      return pairs
-        .map(
-          (kv) =>
-            '<span class="hs-mc-set-help-key">' + escapeHtml(kv[0]) + '</span><span>' + escapeHtml(kv[1]) + '</span>',
-        )
-        .join('')
-    }
-    return (
-      '<div class="hs-mc-set-help">' +
-      '<div class="hs-mc-set-help-grid">' +
-      grid(always) +
       '</div>' +
-      (viModeEnabled
-        ? '<div class="hs-mc-set-help-title">vi</div><div class="hs-mc-set-help-grid">' + grid(vim) + '</div>'
-        : '') +
+      '<div class="hs-mc-set-keyhint">snapshots every setting that differs from defaults — sharable via export settings</div>' +
       '</div>'
     )
   }
+  const changes = _presetChanges(_presetPending.diff)
+  let rows = ''
+  if (!changes.length) {
+    rows = '<div class="hs-mc-setting-row" style="color:#808080">already matching — nothing to change</div>'
+  }
+  for (const c of changes) {
+    rows +=
+      '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
+      '<span class="hs-mc-setting-label">' +
+      escapeHtml(_setLabel(c.def)) +
+      '</span>' +
+      '<span style="font-size:13px;flex-shrink:0"><span style="color:#808080">' +
+      escapeHtml(_fmtPresetVal(c.def, c.from)) +
+      '</span>' +
+      ' → <span style="color:#fff">' +
+      escapeHtml(_fmtPresetVal(c.def, c.to)) +
+      '</span></span>' +
+      '</div>'
+  }
+  return (
+    '<div class="hs-mc-settings-group">' +
+    '<div class="hs-mc-settings-group-title">apply preset: ' +
+    escapeHtml(_presetPending.label) +
+    '</div>' +
+    rows +
+    '<div class="hs-mc-setting-row" style="justify-content:flex-end;gap:4px">' +
+    (changes.length
+      ? '<button class="hs-mc-settings-btn" data-preset-action="apply" style="background:#fff;color:#000;border:none;padding:2px 12px;font-size:13px;cursor:pointer;font-family:inherit">apply</button>'
+      : '') +
+    '<button class="hs-mc-settings-btn" data-preset-action="cancel" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">cancel</button>' +
+    '</div>' +
+    '</div>'
+  )
+}
 
-  // ─── settings keyboard nav — roving focus, vim-first ────────────────
-  // One document-level listener (bound once). Bare-letter motions
-  // (j/k/h/l/g/G/d/z) gate on viModeEnabled; arrows, Enter, /, Esc and
-  // Backspace always work. Letters typed into the search box stay there.
-  let _setKeysBound = false
-  let _setPendingKey = ''
-  function _setVisibleRows() {
-    const msgsEl = document.getElementById('hs-mc-messages')
-    return msgsEl ? [...msgsEl.querySelectorAll('[data-set-row]')] : []
+// '?' keybinding overlay — square, two-column key grid; vim block only
+// when vi mode is on. Click anywhere on it (or Esc / ?) closes.
+function _renderHelpOverlay() {
+  var always = [
+    ['/', 'search'],
+    ['1-7', 'category'],
+    ['↑ ↓', 'move'],
+    ['← →', 'adjust'],
+    ['enter', 'toggle'],
+    ['bksp', 'reset row'],
+    ['esc', 'close / clear'],
+    ['?', 'this help'],
+  ]
+  var vim = [
+    ['j k', 'move'],
+    ['h l', 'adjust'],
+    ['gg G', 'first / last'],
+    ['za', 'fold section'],
+    ['d', 'reset row'],
+    ['p', 'presets'],
+    ['H L', 'prev / next category'],
+  ]
+  function grid(pairs) {
+    return pairs
+      .map(
+        (kv) =>
+          '<span class="hs-mc-set-help-key">' + escapeHtml(kv[0]) + '</span><span>' + escapeHtml(kv[1]) + '</span>',
+      )
+      .join('')
   }
-  function _setFocusMove(rows, i) {
-    if (!rows.length) return
-    const next = Math.max(0, Math.min(rows.length - 1, i))
-    rows.forEach((r) => {
-      r.classList.remove('hs-mc-set-row-focus')
-    })
-    rows[next].classList.add('hs-mc-set-row-focus')
-    _setFocusRow = rows[next].dataset.setRow
-    rows[next].scrollIntoView({ block: 'nearest' })
+  return (
+    '<div class="hs-mc-set-help">' +
+    '<div class="hs-mc-set-help-grid">' +
+    grid(always) +
+    '</div>' +
+    (viModeEnabled
+      ? '<div class="hs-mc-set-help-title">vi</div><div class="hs-mc-set-help-grid">' + grid(vim) + '</div>'
+      : '') +
+    '</div>'
+  )
+}
+
+// ─── settings keyboard nav — roving focus, vim-first ────────────────
+// One document-level listener (bound once). Bare-letter motions
+// (j/k/h/l/g/G/d/z) gate on viModeEnabled; arrows, Enter, /, Esc and
+// Backspace always work. Letters typed into the search box stay there.
+let _setKeysBound = false
+let _setPendingKey = ''
+function _setVisibleRows() {
+  const msgsEl = document.getElementById('hs-mc-messages')
+  return msgsEl ? [...msgsEl.querySelectorAll('[data-set-row]')] : []
+}
+function _setFocusMove(rows, i) {
+  if (!rows.length) return
+  const next = Math.max(0, Math.min(rows.length - 1, i))
+  rows.forEach((r) => {
+    r.classList.remove('hs-mc-set-row-focus')
+  })
+  rows[next].classList.add('hs-mc-set-row-focus')
+  _setFocusRow = rows[next].dataset.setRow
+  rows[next].scrollIntoView({ block: 'nearest' })
+}
+function _setRowDef(row) {
+  const key = (row.dataset.setRow || '').split(':')[0]
+  return _SETTINGS_BY_KEY.get(key)
+}
+function _setRowActivate(row) {
+  const pill = row.querySelector('button.hs-mc-toggle-pill[data-set-key]')
+  if (pill) {
+    pill.click()
+    return
   }
-  function _setRowDef(row) {
-    const key = (row.dataset.setRow || '').split(':')[0]
-    return _SETTINGS_BY_KEY.get(key)
+  const seg = row.querySelector('.hs-mc-size-btn[data-set-key]')
+  if (seg) {
+    _setRowAdjust(row, 1)
+    return
   }
-  function _setRowActivate(row) {
-    const pill = row.querySelector('button.hs-mc-toggle-pill[data-set-key]')
-    if (pill) {
-      pill.click()
-      return
-    }
-    const seg = row.querySelector('.hs-mc-size-btn[data-set-key]')
-    if (seg) {
-      _setRowAdjust(row, 1)
-      return
-    }
-    const ctl = row.querySelector('select[data-set-key], input[data-set-key], textarea[data-set-key]')
-    if (ctl) ctl.focus()
-  }
-  function _setRowAdjust(row, dir) {
-    const def = _setRowDef(row)
-    if (!def) return
-    if (def.type === 'enum') {
-      const i = def.options.findIndex((o) => o.value === getSetting(def.key))
-      const o = def.options[(i + dir + def.options.length) % def.options.length]
-      setSetting(def.key, o.value)
-      renderSettingsTab()
-    } else if (def.type === 'range') {
-      const v = getSetting(def.key) + dir * def.options.step
-      setSetting(def.key, v)
-      renderSettingsTab()
-    }
-  }
-  function _setRowReset(row) {
-    const def = _setRowDef(row)
-    if (!def || def.noReset) return
-    // sub-rows (boolmap/multiselect options) reset exactly that option,
-    // not the whole map
-    const sub = (row.dataset.setRow || '').split(':')[1]
-    if (def.type === 'boolmap' && sub !== undefined) {
-      const opt = def.options.find((o) => String(o.value) === sub)
-      if (opt) {
-        const map = Object.assign({}, getSetting(def.key))
-        map[opt.value] = opt.default
-        setSetting(def.key, map)
-      }
-    } else if (def.type === 'multiselect' && sub !== undefined) {
-      const cur = getSetting(def.key)
-      const inDefault = def.default.includes(sub)
-      setSetting(def.key, inDefault ? (cur.includes(sub) ? cur : cur.concat(sub)) : cur.filter((x) => x !== sub))
-    } else {
-      setSetting(def.key, def.default)
-    }
+  const ctl = row.querySelector('select[data-set-key], input[data-set-key], textarea[data-set-key]')
+  if (ctl) ctl.focus()
+}
+function _setRowAdjust(row, dir) {
+  const def = _setRowDef(row)
+  if (!def) return
+  if (def.type === 'enum') {
+    const i = def.options.findIndex((o) => o.value === getSetting(def.key))
+    const o = def.options[(i + dir + def.options.length) % def.options.length]
+    setSetting(def.key, o.value)
+    renderSettingsTab()
+  } else if (def.type === 'range') {
+    const v = getSetting(def.key) + dir * def.options.step
+    setSetting(def.key, v)
     renderSettingsTab()
   }
-  function _bindSettingsKeyboard() {
-    if (_setKeysBound) return
-    _setKeysBound = true
-    document.addEventListener(
-      'keydown',
-      (e) => {
-        if (currentTab !== 'settings') return
-        const msgsEl = document.getElementById('hs-mc-messages')
-        if (!msgsEl || !msgsEl.querySelector('.hs-mc-settings-panel')) return
-        if (e.ctrlKey || e.metaKey || e.altKey) return
-        const searchEl = msgsEl.querySelector('input.hs-mc-set-search')
-        const t = e.target
-        const inSearch = t === searchEl
-        const typing = t && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))
-        const rows = _setVisibleRows()
-        const idx = rows.findIndex((r) => r.dataset.setRow === _setFocusRow)
-
-        if (inSearch) {
-          if (e.key === 'Escape') {
-            e.preventDefault()
-            _setQuery = ''
-            renderSettingsTab()
-          } else if (e.key === 'Enter' || e.key === 'ArrowDown') {
-            e.preventDefault()
-            searchEl.blur()
-            _setFocusMove(rows, 0)
-          }
-          return // everything else is query text
-        }
-        if (typing) return // free typing in textareas / inputs / selects
-
-        const vim = viModeEnabled
-        const k = e.key
-        if (k === '/') {
-          e.preventDefault()
-          if (searchEl) searchEl.focus()
-          return
-        }
-        if (k === '?') {
-          e.preventDefault()
-          _setHelpOpen = !_setHelpOpen
-          renderSettingsTab()
-          return
-        }
-        if (k === 'Escape') {
-          if (_setHelpOpen) {
-            _setHelpOpen = false
-            renderSettingsTab()
-            return
-          }
-          if (_setQuery) {
-            _setQuery = ''
-            renderSettingsTab()
-            return
-          }
-          rows.forEach((r) => {
-            r.classList.remove('hs-mc-set-row-focus')
-          })
-          _setFocusRow = null
-          return
-        }
-        // 1-7 jump straight to a category
-        if (k.length === 1 && k >= '1' && k <= '7') {
-          e.preventDefault()
-          _settingsSubtab = _SET_SUBTAB_ORDER[+k - 1]
-          _setFocusRow = null
-          renderSettingsTab()
-          return
-        }
-        if (k === 'ArrowLeft' && idx >= 0) {
-          e.preventDefault()
-          _setRowAdjust(rows[idx], -1)
-          return
-        }
-        if (k === 'ArrowRight' && idx >= 0) {
-          e.preventDefault()
-          _setRowAdjust(rows[idx], 1)
-          return
-        }
-        if (k === 'ArrowDown' || (vim && k === 'j')) {
-          e.preventDefault()
-          _setFocusMove(rows, idx + 1)
-          _setPendingKey = ''
-          return
-        }
-        if (k === 'ArrowUp' || (vim && k === 'k')) {
-          e.preventDefault()
-          _setFocusMove(rows, idx - 1)
-          _setPendingKey = ''
-          return
-        }
-        if ((k === 'Enter' || k === ' ') && idx >= 0) {
-          e.preventDefault()
-          _setRowActivate(rows[idx])
-          return
-        }
-        if (k === 'Backspace' && idx >= 0) {
-          e.preventDefault()
-          _setRowReset(rows[idx])
-          return
-        }
-        if (!vim) return
-        if (k === 'g') {
-          if (_setPendingKey === 'g') {
-            _setPendingKey = ''
-            e.preventDefault()
-            _setFocusMove(rows, 0)
-          } else _setPendingKey = 'g'
-          return
-        }
-        if (k === 'G') {
-          e.preventDefault()
-          _setPendingKey = ''
-          _setFocusMove(rows, rows.length - 1)
-          return
-        }
-        if (k === 'h' && idx >= 0) {
-          e.preventDefault()
-          _setRowAdjust(rows[idx], -1)
-          return
-        }
-        if (k === 'l' && idx >= 0) {
-          e.preventDefault()
-          _setRowAdjust(rows[idx], 1)
-          return
-        }
-        if (k === 'H' || k === 'L') {
-          e.preventDefault()
-          const cur = _SET_SUBTAB_ORDER.indexOf(_settingsSubtab)
-          const len = _SET_SUBTAB_ORDER.length
-          _settingsSubtab = _SET_SUBTAB_ORDER[(cur + (k === 'L' ? 1 : len - 1)) % len]
-          _setFocusRow = null
-          renderSettingsTab()
-          return
-        }
-        if (k === 'd' && idx >= 0) {
-          e.preventDefault()
-          _setRowReset(rows[idx])
-          return
-        }
-        if (k === 'p') {
-          const btn = msgsEl.querySelector('.hs-mc-set-presets-btn')
-          if (btn) {
-            e.preventDefault()
-            _openPresetMenu(btn)
-          }
-          return
-        }
-        if (k === 'z') {
-          _setPendingKey = 'z'
-          return
-        }
-        if (k === 'a' && _setPendingKey === 'z') {
-          _setPendingKey = ''
-          if (idx >= 0) {
-            const fold = rows[idx].closest('.hs-mc-settings-group')
-            const title = fold && fold.querySelector('[data-set-fold]')
-            if (title) {
-              e.preventDefault()
-              title.click()
-            }
-          }
-          return
-        }
-        _setPendingKey = ''
-      },
-      { signal: mcSignal },
-    )
+}
+function _setRowReset(row) {
+  const def = _setRowDef(row)
+  if (!def || def.noReset) return
+  // sub-rows (boolmap/multiselect options) reset exactly that option,
+  // not the whole map
+  const sub = (row.dataset.setRow || '').split(':')[1]
+  if (def.type === 'boolmap' && sub !== undefined) {
+    const opt = def.options.find((o) => String(o.value) === sub)
+    if (opt) {
+      const map = Object.assign({}, getSetting(def.key))
+      map[opt.value] = opt.default
+      setSetting(def.key, map)
+    }
+  } else if (def.type === 'multiselect' && sub !== undefined) {
+    const cur = getSetting(def.key)
+    const inDefault = def.default.includes(sub)
+    setSetting(def.key, inDefault ? (cur.includes(sub) ? cur : cur.concat(sub)) : cur.filter((x) => x !== sub))
+  } else {
+    setSetting(def.key, def.default)
   }
+  renderSettingsTab()
+}
+function _bindSettingsKeyboard() {
+  if (_setKeysBound) return
+  _setKeysBound = true
+  document.addEventListener(
+    'keydown',
+    (e) => {
+      if (currentTab !== 'settings') return
+      const msgsEl = document.getElementById('hs-mc-messages')
+      if (!msgsEl || !msgsEl.querySelector('.hs-mc-settings-panel')) return
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      const searchEl = msgsEl.querySelector('input.hs-mc-set-search')
+      const t = e.target
+      const inSearch = t === searchEl
+      const typing = t && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))
+      const rows = _setVisibleRows()
+      const idx = rows.findIndex((r) => r.dataset.setRow === _setFocusRow)
 
-  function renderSettingsTab() {
-    var msgsEl = document.getElementById('hs-mc-messages')
-    if (!msgsEl) return
-
-    _clearMessageIndices()
-
-    // Scroll preservation — #hs-mc-messages is the actual scroll parent
-    // (the panel grows inside it); keep its scroll across re-renders of
-    // the same logical pane (toggle/applier-triggered rebuilds)
-    var hadPanel = !!msgsEl.querySelector('.hs-mc-settings-panel')
-    var paneCtx = _settingsSubtab + '|' + _setQuery + '|' + !!_presetPending
-    var keepScroll = hadPanel && paneCtx === _setPaneCtx ? msgsEl.scrollTop : 0
-
-    var searchActive = _setQueryTokens().length > 0
-    var bodyContent
-    var countLabel = ''
-    if (_presetPending) {
-      bodyContent = _renderPresetPanel()
-    } else if (searchActive) {
-      var res = _renderSearchResults()
-      bodyContent = res.html
-      countLabel = res.count + '/' + res.total
-    } else {
-      bodyContent = _renderCategoryPane(_settingsSubtab)
-    }
-
-    // All values in the template are from module state or escapeHtml'd -- no raw user input
-    msgsEl.innerHTML =
-      '<div class="hs-mc-settings-panel">' +
-      _renderSetSubtabBar() +
-      '<div class="hs-mc-set-searchbar">' +
-      '<input class="hs-mc-set-search" type="search" placeholder="/ search settings..." value="' +
-      escapeHtml(_setQuery) +
-      '">' +
-      '<span class="hs-mc-set-search-count">' +
-      countLabel +
-      '</span>' +
-      '<button class="hs-mc-set-presets-btn">presets</button>' +
-      '<button class="hs-mc-set-help-btn" title="keybindings">?</button>' +
-      '</div>' +
-      '<div class="hs-mc-set-subtab-body">' +
-      bodyContent +
-      '</div>' +
-      (_setHelpOpen ? _renderHelpOverlay() : '') +
-      '</div>'
-
-    // Controls render with live values inline (getSetting); only the crash
-    // log pre needs an async fill, and keyboard focus needs restoring.
-    if (_settingsSubtab === 'system' && !searchActive && getSetting('crashTelemetry')) _loadCrashLog()
-    if (_setFocusRow) {
-      var fr = msgsEl.querySelector('[data-set-row="' + CSS.escape(_setFocusRow) + '"]')
-      if (fr) fr.classList.add('hs-mc-set-row-focus')
-      else _setFocusRow = null
-    }
-    _setPaneCtx = paneCtx
-    if (keepScroll) msgsEl.scrollTop = keepScroll
-
-    // Wire up toggles via event delegation
-    if (msgsEl._hsSettingsClick) msgsEl.removeEventListener('click', msgsEl._hsSettingsClick)
-    msgsEl._hsSettingsClick = function settingsClick(e) {
-      // Sub-tab navigation
-      var subtabBtn = e.target.closest('.hs-mc-set-subtab[data-set-subtab]')
-      if (subtabBtn) {
-        var next = subtabBtn.dataset.setSubtab
-        if (next && next !== _settingsSubtab) {
-          _settingsSubtab = next
+      if (inSearch) {
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          _setQuery = ''
           renderSettingsTab()
+        } else if (e.key === 'Enter' || e.key === 'ArrowDown') {
+          e.preventDefault()
+          searchEl.blur()
+          _setFocusMove(rows, 0)
         }
+        return // everything else is query text
+      }
+      if (typing) return // free typing in textareas / inputs / selects
+
+      const vim = viModeEnabled
+      const k = e.key
+      if (k === '/') {
+        e.preventDefault()
+        if (searchEl) searchEl.focus()
         return
       }
-
-      // Settings export / import buttons
-      var settingsActionBtn = e.target.closest('.hs-mc-settings-btn[data-action]')
-      if (settingsActionBtn) {
-        var action = settingsActionBtn.dataset.action
-        if (action === 'export-settings') {
-          _exportAllSettings()
-        } else if (action === 'import-settings') {
-          _importAllSettings()
-        }
-        return
-      }
-
-      // '?' help — button toggles, clicking the overlay closes
-      if (e.target.closest('.hs-mc-set-help-btn')) {
+      if (k === '?') {
+        e.preventDefault()
         _setHelpOpen = !_setHelpOpen
         renderSettingsTab()
         return
       }
-      if (e.target.closest('.hs-mc-set-help')) {
-        _setHelpOpen = false
-        renderSettingsTab()
+      if (k === 'Escape') {
+        if (_setHelpOpen) {
+          _setHelpOpen = false
+          renderSettingsTab()
+          return
+        }
+        if (_setQuery) {
+          _setQuery = ''
+          renderSettingsTab()
+          return
+        }
+        rows.forEach((r) => {
+          r.classList.remove('hs-mc-set-row-focus')
+        })
+        _setFocusRow = null
         return
       }
-
-      // [reload] chip — value differs from the boot snapshot; apply it now
-      if (e.target.closest('[data-set-reload]')) {
-        location.reload()
-        return
-      }
-
-      // search result header — jump to that category + section
-      var jumpHdr = e.target.closest('[data-set-jump]')
-      if (jumpHdr) {
-        var jump = jumpHdr.dataset.setJump.split('|')
-        _settingsSubtab = jump[0]
-        _setQuery = ''
+      // 1-7 jump straight to a category
+      if (k.length === 1 && k >= '1' && k <= '7') {
+        e.preventDefault()
+        _settingsSubtab = _SET_SUBTAB_ORDER[+k - 1]
         _setFocusRow = null
         renderSettingsTab()
-        var tgt = [...msgsEl.querySelectorAll('[data-set-fold]')].find((el2) => el2.dataset.setFold === jump[1])
-        if (tgt) tgt.scrollIntoView({ block: 'start' })
         return
       }
-
-      // Presets dropdown + diff-confirm actions
-      var presetsBtn = e.target.closest('.hs-mc-set-presets-btn')
-      if (presetsBtn) {
-        _openPresetMenu(presetsBtn)
+      if (k === 'ArrowLeft' && idx >= 0) {
+        e.preventDefault()
+        _setRowAdjust(rows[idx], -1)
         return
       }
-      var presetAction = e.target.closest('[data-preset-action]')
-      if (presetAction) {
-        var pAct = presetAction.dataset.presetAction
-        if (pAct === 'apply' && _presetPending) _applyPresetDiff(_presetPending.label, _presetPending.diff)
-        else if (pAct === 'save-custom') _saveCustomPreset(msgsEl.querySelector('#hs-preset-name')?.value)
-        else if (pAct === 'cancel') {
-          _presetPending = null
-          renderSettingsTab()
-        }
+      if (k === 'ArrowRight' && idx >= 0) {
+        e.preventDefault()
+        _setRowAdjust(rows[idx], 1)
         return
       }
-
-      // Section fold/unfold
-      var foldTitle = e.target.closest('.hs-mc-settings-group-title[data-set-fold]')
-      if (foldTitle) {
-        var foldId = _settingsSubtab + '|' + foldTitle.dataset.setFold
-        if (_setCollapsed.has(foldId)) _setCollapsed.delete(foldId)
-        else _setCollapsed.add(foldId)
-        _saveCollapsedSections()
+      if (k === 'ArrowDown' || (vim && k === 'j')) {
+        e.preventDefault()
+        _setFocusMove(rows, idx + 1)
+        _setPendingKey = ''
+        return
+      }
+      if (k === 'ArrowUp' || (vim && k === 'k')) {
+        e.preventDefault()
+        _setFocusMove(rows, idx - 1)
+        _setPendingKey = ''
+        return
+      }
+      if ((k === 'Enter' || k === ' ') && idx >= 0) {
+        e.preventDefault()
+        _setRowActivate(rows[idx])
+        return
+      }
+      if (k === 'Backspace' && idx >= 0) {
+        e.preventDefault()
+        _setRowReset(rows[idx])
+        return
+      }
+      if (!vim) return
+      if (k === 'g') {
+        if (_setPendingKey === 'g') {
+          _setPendingKey = ''
+          e.preventDefault()
+          _setFocusMove(rows, 0)
+        } else _setPendingKey = 'g'
+        return
+      }
+      if (k === 'G') {
+        e.preventDefault()
+        _setPendingKey = ''
+        _setFocusMove(rows, rows.length - 1)
+        return
+      }
+      if (k === 'h' && idx >= 0) {
+        e.preventDefault()
+        _setRowAdjust(rows[idx], -1)
+        return
+      }
+      if (k === 'l' && idx >= 0) {
+        e.preventDefault()
+        _setRowAdjust(rows[idx], 1)
+        return
+      }
+      if (k === 'H' || k === 'L') {
+        e.preventDefault()
+        const cur = _SET_SUBTAB_ORDER.indexOf(_settingsSubtab)
+        const len = _SET_SUBTAB_ORDER.length
+        _settingsSubtab = _SET_SUBTAB_ORDER[(cur + (k === 'L' ? 1 : len - 1)) % len]
+        _setFocusRow = null
         renderSettingsTab()
         return
       }
-
-      // Filter rule actions (toggle/delete/add) — data-fr-action
-      var frEl = e.target.closest('[data-fr-action]')
-      if (frEl && !/^(SELECT|INPUT|TEXTAREA)$/.test(frEl.tagName)) {
-        _handleFilterRuleAction(frEl, msgsEl)
+      if (k === 'd' && idx >= 0) {
+        e.preventDefault()
+        _setRowReset(rows[idx])
         return
       }
-
-      // Registry controls — data-set-key (registry-rendered) covers every
-      // pill, size button, and multiselect chip; selects/inputs/textareas
-      // are handled by the change/input listeners below.
-      var regCtl = e.target.closest('[data-set-key]')
-      if (regCtl && !/^(SELECT|INPUT|TEXTAREA)$/.test(regCtl.tagName)) {
-        handleRegistryControl(regCtl)
-        return
-      }
-
-      var unmuteBtn = e.target.closest('.hs-mc-unmute-btn[data-username]')
-      if (unmuteBtn) {
-        var username = unmuteBtn.dataset.username
-        if (username) {
-          // data-username stores the full namespaced key (e.g. twitch:alice); also
-          // clear legacy bare form so old storage entries don't linger.
-          var unmuteBare = username.includes(':') ? username.split(':')[1] : username
-          mutedUsers.delete(username)
-          if (unmuteBare !== username) mutedUsers.delete(unmuteBare)
-          safeSendMessage({ type: 'unmute_user', username: username })
-          restoreMcUnmutedDom(unmuteBare)
-          renderMessages(currentTab)
-          renderSettingsTab()
+      if (k === 'p') {
+        const btn = msgsEl.querySelector('.hs-mc-set-presets-btn')
+        if (btn) {
+          e.preventDefault()
+          _openPresetMenu(btn)
         }
         return
       }
-
-      // Crash log buttons
-      if (e.target.id === 'hs-set-crash-copy') {
-        var pre = document.getElementById('hs-set-crash-pre')
-        if (pre && pre.textContent) {
-          navigator.clipboard.writeText(pre.textContent).catch(() => {})
-          var copyBtn = e.target
-          copyBtn.textContent = 'copied'
-          cleanup.setTimeout(() => {
-            copyBtn.textContent = 'copy'
-          }, 1500)
-        }
+      if (k === 'z') {
+        _setPendingKey = 'z'
         return
       }
-      if (e.target.id === 'hs-set-crash-clear') {
-        chrome.storage.local.remove('hs_errors', () => {
-          void chrome.runtime.lastError
-        })
-        _loadCrashLog()
-        return
-      }
-
-      var defaultsBtn = e.target.closest('.hs-mc-defaults-btn')
-      if (defaultsBtn) {
-        resetSettingsToDefaults()
-        return
-      }
-    }
-    msgsEl.addEventListener('click', msgsEl._hsSettingsClick)
-
-    // Input handler — search box, registry text/textarea (debounced) + range
-    if (msgsEl._hsSettingsInput) msgsEl.removeEventListener('input', msgsEl._hsSettingsInput)
-    var _setInputDebounce = {}
-    var _setSearchDebounce = null
-    msgsEl._hsSettingsInput = function settingsInput(e) {
-      var search = e.target.closest('input.hs-mc-set-search')
-      if (search) {
-        if (_setSearchDebounce) cleanup.clearTimeout(_setSearchDebounce)
-        _setSearchDebounce = cleanup.setTimeout(() => {
-          _setQuery = search.value
-          renderSettingsTab()
-          // re-render replaced the input — restore focus + caret
-          var fresh = msgsEl.querySelector('input.hs-mc-set-search')
-          if (fresh) {
-            fresh.focus()
-            fresh.setSelectionRange(fresh.value.length, fresh.value.length)
+      if (k === 'a' && _setPendingKey === 'z') {
+        _setPendingKey = ''
+        if (idx >= 0) {
+          const fold = rows[idx].closest('.hs-mc-settings-group')
+          const title = fold && fold.querySelector('[data-set-fold]')
+          if (title) {
+            e.preventDefault()
+            title.click()
           }
-        }, 150)
+        }
         return
       }
-      var regInput = e.target.closest('[data-set-key]')
-      if (regInput) {
-        var def = _SETTINGS_BY_KEY.get(regInput.dataset.setKey)
-        if (!def) return
-        if (def.type === 'range') {
-          var scale = def.displayScale || 1
-          setSetting(def.key, parseFloat(regInput.value) / scale)
-          var valEl = regInput.parentElement.querySelector('.hs-mc-set-range-val')
-          if (valEl) valEl.textContent = regInput.value
-          _syncRowModEdge(regInput, def)
-          return
-        }
-        if (def.type === 'text') {
-          if (_setInputDebounce[def.key]) cleanup.clearTimeout(_setInputDebounce[def.key])
-          _setInputDebounce[def.key] = cleanup.setTimeout(() => {
-            setSetting(def.key, regInput.value)
-            _syncRowModEdge(regInput, def)
-          }, 400)
-          return
-        }
-      }
-    }
-    msgsEl.addEventListener('input', msgsEl._hsSettingsInput)
+      _setPendingKey = ''
+    },
+    { signal: mcSignal },
+  )
+}
 
-    // Change handler — registry selects
-    if (msgsEl._hsSettingsChange) msgsEl.removeEventListener('change', msgsEl._hsSettingsChange)
-    msgsEl._hsSettingsChange = function settingsChange(e) {
-      var regSel = e.target.closest('select[data-set-key]')
-      if (regSel) {
-        var selKey = regSel.dataset.setKey
-        if (selKey === 'fontFamily') {
-          // Bitmap fonts render crisp at their native size only — snap the
-          // size to the font's design size. silent: the fontFamily write
-          // below runs the (shared) fonts applier once with both values.
-          var fam = regSel.value
-          var nativeSize = fam === 'GohuFont' ? 14 : fam === 'CozetteVector' || fam === 'twitch' ? 13 : null
-          if (nativeSize) setSetting('fontSize', nativeSize, { silent: true })
-          setSetting('fontFamily', fam) // fonts applier + settings re-render
-          return
-        }
-        setSetting(selKey, regSel.value)
-        return
-      }
-    }
-    msgsEl.addEventListener('change', msgsEl._hsSettingsChange)
+function renderSettingsTab() {
+  var msgsEl = document.getElementById('hs-mc-messages')
+  if (!msgsEl) return
 
-    _bindSettingsKeyboard()
+  _clearMessageIndices()
 
-    // Custom tooltip for settings labels (native title attribute blocked in content scripts)
-    var tip = document.getElementById('hs-settings-tip')
-    if (!tip) {
-      tip = document.createElement('div')
-      tip.id = 'hs-settings-tip'
-      document.body.appendChild(cleanup.trackNode(tip))
-    }
-    if (!msgsEl._hsSettingsTipBound) {
-      msgsEl._hsSettingsTipBound = true
-      msgsEl.addEventListener(
-        'mouseenter',
-        (e) => {
-          var label = e.target.closest('.hs-mc-setting-label[data-tip]')
-          if (!label) return
-          var tipEl = document.getElementById('hs-settings-tip')
-          if (!tipEl) return
-          tipEl.textContent = label.dataset.tip
-          var rect = label.getBoundingClientRect()
-          tipEl.style.left = rect.left + 'px'
-          tipEl.style.top = rect.bottom + 4 + 'px'
-          tipEl.classList.add('visible')
-        },
-        { capture: true, signal: mcSignal },
-      )
-      msgsEl.addEventListener(
-        'mouseleave',
-        (e) => {
-          var label = e.target.closest('.hs-mc-setting-label[data-tip]')
-          if (label) {
-            var tipEl = document.getElementById('hs-settings-tip')
-            if (tipEl) tipEl.classList.remove('visible')
-          }
-        },
-        { capture: true, signal: mcSignal },
-      )
-    }
+  // Scroll preservation — #hs-mc-messages is the actual scroll parent
+  // (the panel grows inside it); keep its scroll across re-renders of
+  // the same logical pane (toggle/applier-triggered rebuilds)
+  var hadPanel = !!msgsEl.querySelector('.hs-mc-settings-panel')
+  var paneCtx = _settingsSubtab + '|' + _setQuery + '|' + !!_presetPending
+  var keepScroll = hadPanel && paneCtx === _setPaneCtx ? msgsEl.scrollTop : 0
+
+  var searchActive = _setQueryTokens().length > 0
+  var bodyContent
+  var countLabel = ''
+  if (_presetPending) {
+    bodyContent = _renderPresetPanel()
+  } else if (searchActive) {
+    var res = _renderSearchResults()
+    bodyContent = res.html
+    countLabel = res.count + '/' + res.total
+  } else {
+    bodyContent = _renderCategoryPane(_settingsSubtab)
   }
 
+  // All values in the template are from module state or escapeHtml'd -- no raw user input
+  msgsEl.innerHTML =
+    '<div class="hs-mc-settings-panel">' +
+    _renderSetSubtabBar() +
+    '<div class="hs-mc-set-searchbar">' +
+    '<input class="hs-mc-set-search" type="search" placeholder="/ search settings..." value="' +
+    escapeHtml(_setQuery) +
+    '">' +
+    '<span class="hs-mc-set-search-count">' +
+    countLabel +
+    '</span>' +
+    '<button class="hs-mc-set-presets-btn">presets</button>' +
+    '<button class="hs-mc-set-help-btn" title="keybindings">?</button>' +
+    '</div>' +
+    '<div class="hs-mc-set-subtab-body">' +
+    bodyContent +
+    '</div>' +
+    (_setHelpOpen ? _renderHelpOverlay() : '') +
+    '</div>'
+
+  // Controls render with live values inline (getSetting); only the crash
+  // log pre needs an async fill, and keyboard focus needs restoring.
+  if (_settingsSubtab === 'system' && !searchActive && getSetting('crashTelemetry')) _loadCrashLog()
+  if (_setFocusRow) {
+    var fr = msgsEl.querySelector('[data-set-row="' + CSS.escape(_setFocusRow) + '"]')
+    if (fr) fr.classList.add('hs-mc-set-row-focus')
+    else _setFocusRow = null
+  }
+  _setPaneCtx = paneCtx
+  if (keepScroll) msgsEl.scrollTop = keepScroll
+
+  // Wire up toggles via event delegation
+  if (msgsEl._hsSettingsClick) msgsEl.removeEventListener('click', msgsEl._hsSettingsClick)
+  msgsEl._hsSettingsClick = function settingsClick(e) {
+    // Sub-tab navigation
+    var subtabBtn = e.target.closest('.hs-mc-set-subtab[data-set-subtab]')
+    if (subtabBtn) {
+      var next = subtabBtn.dataset.setSubtab
+      if (next && next !== _settingsSubtab) {
+        _settingsSubtab = next
+        renderSettingsTab()
+      }
+      return
+    }
+
+    // Settings export / import buttons
+    var settingsActionBtn = e.target.closest('.hs-mc-settings-btn[data-action]')
+    if (settingsActionBtn) {
+      var action = settingsActionBtn.dataset.action
+      if (action === 'export-settings') {
+        _exportAllSettings()
+      } else if (action === 'import-settings') {
+        _importAllSettings()
+      }
+      return
+    }
+
+    // '?' help — button toggles, clicking the overlay closes
+    if (e.target.closest('.hs-mc-set-help-btn')) {
+      _setHelpOpen = !_setHelpOpen
+      renderSettingsTab()
+      return
+    }
+    if (e.target.closest('.hs-mc-set-help')) {
+      _setHelpOpen = false
+      renderSettingsTab()
+      return
+    }
+
+    // [reload] chip — value differs from the boot snapshot; apply it now
+    if (e.target.closest('[data-set-reload]')) {
+      location.reload()
+      return
+    }
+
+    // search result header — jump to that category + section
+    var jumpHdr = e.target.closest('[data-set-jump]')
+    if (jumpHdr) {
+      var jump = jumpHdr.dataset.setJump.split('|')
+      _settingsSubtab = jump[0]
+      _setQuery = ''
+      _setFocusRow = null
+      renderSettingsTab()
+      var tgt = [...msgsEl.querySelectorAll('[data-set-fold]')].find((el2) => el2.dataset.setFold === jump[1])
+      if (tgt) tgt.scrollIntoView({ block: 'start' })
+      return
+    }
+
+    // Presets dropdown + diff-confirm actions
+    var presetsBtn = e.target.closest('.hs-mc-set-presets-btn')
+    if (presetsBtn) {
+      _openPresetMenu(presetsBtn)
+      return
+    }
+    var presetAction = e.target.closest('[data-preset-action]')
+    if (presetAction) {
+      var pAct = presetAction.dataset.presetAction
+      if (pAct === 'apply' && _presetPending) _applyPresetDiff(_presetPending.label, _presetPending.diff)
+      else if (pAct === 'save-custom') _saveCustomPreset(msgsEl.querySelector('#hs-preset-name')?.value)
+      else if (pAct === 'cancel') {
+        _presetPending = null
+        renderSettingsTab()
+      }
+      return
+    }
+
+    // Section fold/unfold
+    var foldTitle = e.target.closest('.hs-mc-settings-group-title[data-set-fold]')
+    if (foldTitle) {
+      var foldId = _settingsSubtab + '|' + foldTitle.dataset.setFold
+      if (_setCollapsed.has(foldId)) _setCollapsed.delete(foldId)
+      else _setCollapsed.add(foldId)
+      _saveCollapsedSections()
+      renderSettingsTab()
+      return
+    }
+
+    // Filter rule actions (toggle/delete/add) — data-fr-action
+    var frEl = e.target.closest('[data-fr-action]')
+    if (frEl && !/^(SELECT|INPUT|TEXTAREA)$/.test(frEl.tagName)) {
+      _handleFilterRuleAction(frEl, msgsEl)
+      return
+    }
+
+    // Registry controls — data-set-key (registry-rendered) covers every
+    // pill, size button, and multiselect chip; selects/inputs/textareas
+    // are handled by the change/input listeners below.
+    var regCtl = e.target.closest('[data-set-key]')
+    if (regCtl && !/^(SELECT|INPUT|TEXTAREA)$/.test(regCtl.tagName)) {
+      handleRegistryControl(regCtl)
+      return
+    }
+
+    var unmuteBtn = e.target.closest('.hs-mc-unmute-btn[data-username]')
+    if (unmuteBtn) {
+      var username = unmuteBtn.dataset.username
+      if (username) {
+        // data-username stores the full namespaced key (e.g. twitch:alice); also
+        // clear legacy bare form so old storage entries don't linger.
+        var unmuteBare = username.includes(':') ? username.split(':')[1] : username
+        mutedUsers.delete(username)
+        if (unmuteBare !== username) mutedUsers.delete(unmuteBare)
+        safeSendMessage({ type: 'unmute_user', username: username })
+        restoreMcUnmutedDom(unmuteBare)
+        renderMessages(currentTab)
+        renderSettingsTab()
+      }
+      return
+    }
+
+    // Crash log buttons
+    if (e.target.id === 'hs-set-crash-copy') {
+      var pre = document.getElementById('hs-set-crash-pre')
+      if (pre && pre.textContent) {
+        navigator.clipboard.writeText(pre.textContent).catch(() => {})
+        var copyBtn = e.target
+        copyBtn.textContent = 'copied'
+        cleanup.setTimeout(() => {
+          copyBtn.textContent = 'copy'
+        }, 1500)
+      }
+      return
+    }
+    if (e.target.id === 'hs-set-crash-clear') {
+      chrome.storage.local.remove('hs_errors', () => {
+        void chrome.runtime.lastError
+      })
+      _loadCrashLog()
+      return
+    }
+
+    var defaultsBtn = e.target.closest('.hs-mc-defaults-btn')
+    if (defaultsBtn) {
+      resetSettingsToDefaults()
+      return
+    }
+  }
+  msgsEl.addEventListener('click', msgsEl._hsSettingsClick)
+
+  // Input handler — search box, registry text/textarea (debounced) + range
+  if (msgsEl._hsSettingsInput) msgsEl.removeEventListener('input', msgsEl._hsSettingsInput)
+  var _setInputDebounce = {}
+  var _setSearchDebounce = null
+  msgsEl._hsSettingsInput = function settingsInput(e) {
+    var search = e.target.closest('input.hs-mc-set-search')
+    if (search) {
+      if (_setSearchDebounce) cleanup.clearTimeout(_setSearchDebounce)
+      _setSearchDebounce = cleanup.setTimeout(() => {
+        _setQuery = search.value
+        renderSettingsTab()
+        // re-render replaced the input — restore focus + caret
+        var fresh = msgsEl.querySelector('input.hs-mc-set-search')
+        if (fresh) {
+          fresh.focus()
+          fresh.setSelectionRange(fresh.value.length, fresh.value.length)
+        }
+      }, 150)
+      return
+    }
+    var regInput = e.target.closest('[data-set-key]')
+    if (regInput) {
+      var def = _SETTINGS_BY_KEY.get(regInput.dataset.setKey)
+      if (!def) return
+      if (def.type === 'range') {
+        var scale = def.displayScale || 1
+        setSetting(def.key, parseFloat(regInput.value) / scale)
+        var valEl = regInput.parentElement.querySelector('.hs-mc-set-range-val')
+        if (valEl) valEl.textContent = regInput.value
+        _syncRowModEdge(regInput, def)
+        return
+      }
+      if (def.type === 'text') {
+        if (_setInputDebounce[def.key]) cleanup.clearTimeout(_setInputDebounce[def.key])
+        _setInputDebounce[def.key] = cleanup.setTimeout(() => {
+          setSetting(def.key, regInput.value)
+          _syncRowModEdge(regInput, def)
+        }, 400)
+        return
+      }
+    }
+  }
+  msgsEl.addEventListener('input', msgsEl._hsSettingsInput)
+
+  // Change handler — registry selects
+  if (msgsEl._hsSettingsChange) msgsEl.removeEventListener('change', msgsEl._hsSettingsChange)
+  msgsEl._hsSettingsChange = function settingsChange(e) {
+    var regSel = e.target.closest('select[data-set-key]')
+    if (regSel) {
+      var selKey = regSel.dataset.setKey
+      if (selKey === 'fontFamily') {
+        // Bitmap fonts render crisp at their native size only — snap the
+        // size to the font's design size. silent: the fontFamily write
+        // below runs the (shared) fonts applier once with both values.
+        var fam = regSel.value
+        var nativeSize = fam === 'GohuFont' ? 14 : fam === 'CozetteVector' || fam === 'twitch' ? 13 : null
+        if (nativeSize) setSetting('fontSize', nativeSize, { silent: true })
+        setSetting('fontFamily', fam) // fonts applier + settings re-render
+        return
+      }
+      setSetting(selKey, regSel.value)
+      return
+    }
+  }
+  msgsEl.addEventListener('change', msgsEl._hsSettingsChange)
+
+  _bindSettingsKeyboard()
+
+  // Custom tooltip for settings labels (native title attribute blocked in content scripts)
+  var tip = document.getElementById('hs-settings-tip')
+  if (!tip) {
+    tip = document.createElement('div')
+    tip.id = 'hs-settings-tip'
+    document.body.appendChild(cleanup.trackNode(tip))
+  }
+  if (!msgsEl._hsSettingsTipBound) {
+    msgsEl._hsSettingsTipBound = true
+    msgsEl.addEventListener(
+      'mouseenter',
+      (e) => {
+        var label = e.target.closest('.hs-mc-setting-label[data-tip]')
+        if (!label) return
+        var tipEl = document.getElementById('hs-settings-tip')
+        if (!tipEl) return
+        tipEl.textContent = label.dataset.tip
+        var rect = label.getBoundingClientRect()
+        tipEl.style.left = rect.left + 'px'
+        tipEl.style.top = rect.bottom + 4 + 'px'
+        tipEl.classList.add('visible')
+      },
+      { capture: true, signal: mcSignal },
+    )
+    msgsEl.addEventListener(
+      'mouseleave',
+      (e) => {
+        var label = e.target.closest('.hs-mc-setting-label[data-tip]')
+        if (label) {
+          var tipEl = document.getElementById('hs-settings-tip')
+          if (tipEl) tipEl.classList.remove('visible')
+        }
+      },
+      { capture: true, signal: mcSignal },
+    )
+  }
+}
 
 
 // --- multichat/channel-mgmt.js ---
@@ -47400,648 +47397,644 @@ function applyHsPaintToElement(el, userId) {
 // and getLivePlatformNames/save+loadLivePlatformMap (read by the render engine
 // and init, not just this UI) stay in main.js.
 
-  function renderAddChannelForm(msgsEl) {
-    _clearMessageIndices()
-    msgsEl.textContent = ''
-    const wrapper = document.createElement('div')
-    wrapper.style.cssText =
-      'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:#a8a8a8;font-size:13px;padding:20px;box-sizing:border-box;'
+function renderAddChannelForm(msgsEl) {
+  _clearMessageIndices()
+  msgsEl.textContent = ''
+  const wrapper = document.createElement('div')
+  wrapper.style.cssText =
+    'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:#a8a8a8;font-size:13px;padding:20px;box-sizing:border-box;'
 
-    const title = document.createElement('div')
-    title.textContent = t('mc_add_channel')
-    title.style.cssText = 'font-size:17px;font-weight:700;color:#ffffff;letter-spacing:.5px;'
-    wrapper.appendChild(title)
+  const title = document.createElement('div')
+  title.textContent = t('mc_add_channel')
+  title.style.cssText = 'font-size:17px;font-weight:700;color:#ffffff;letter-spacing:.5px;'
+  wrapper.appendChild(title)
 
-    const desc = document.createElement('div')
-    desc.textContent = t('mc_enter_platform')
-    desc.style.cssText = 'font-size:13px;color:#808080;margin-bottom:2px;'
-    wrapper.appendChild(desc)
+  const desc = document.createElement('div')
+  desc.textContent = t('mc_enter_platform')
+  desc.style.cssText = 'font-size:13px;color:#808080;margin-bottom:2px;'
+  wrapper.appendChild(desc)
 
-    const makeRow = (label, placeholder) => {
-      const row = document.createElement('div')
-      row.style.cssText = 'display:flex;align-items:center;gap:8px;width:100%;max-width:300px;'
-      const lbl = document.createElement('span')
-      lbl.textContent = label
-      lbl.style.cssText = 'font-size:13px;font-weight:600;min-width:56px;color:#949494;text-transform:lowercase;'
-      const input = document.createElement('input')
-      input.type = 'text'
-      input.className = 'hs-mc-ch-input'
-      input.placeholder = placeholder
-      // The visible label is a separate <span>, so the input itself is unlabeled
-      // to assistive tech — name it explicitly (label is 'twitch'/'kick'/'youtube').
-      input.setAttribute('aria-label', label)
-      input.style.cssText =
-        'flex:1;background:#000;color:#fff;border:1px solid #808080;padding:6px 10px;border-radius:0;font-size:14px;outline:none;font-family:inherit;'
-      // Stop YouTube/Kick keyboard shortcuts from stealing keystrokes
-      input.addEventListener('keydown', (e) => e.stopPropagation())
-      row.appendChild(lbl)
-      row.appendChild(input)
-      return { row, input }
-    }
-
-    const twitch = makeRow('twitch', t('mc_username_placeholder'))
-    const kick = makeRow('kick', t('mc_username_placeholder'))
-    const yt = makeRow('youtube', t('mc_username_url_placeholder'))
-
-    wrapper.appendChild(twitch.row)
-    wrapper.appendChild(kick.row)
-    wrapper.appendChild(yt.row)
-
-    // Error message (between inputs and buttons)
-    const errEl = document.createElement('div')
-    errEl.style.cssText = 'font-size:13px;color:#ff0000;display:none;'
-    errEl.setAttribute('role', 'alert')
-    wrapper.appendChild(errEl)
-
-    const btnRow = document.createElement('div')
-    btnRow.style.cssText = 'display:flex;gap:8px;margin-top:4px;'
-
-    const makeMcBtn = (text, primary) => {
-      const btn = document.createElement('button')
-      btn.textContent = text
-      const base = primary
-        ? 'background:transparent;color:#ffffff;border:1px solid #ffffff;'
-        : 'background:transparent;color:#808080;border:1px solid #808080;'
-      btn.style.cssText =
-        base +
-        'padding:6px 22px;border-radius:0;cursor:pointer;font-weight:600;font-size:14px;font-family:inherit;min-width:80px;transition:all .15s;'
-      btn.addEventListener('mouseenter', () => {
-        btn.style.background = '#ffffff'
-        btn.style.color = '#000000'
-      })
-      btn.addEventListener('mouseleave', () => {
-        btn.style.background = 'transparent'
-        btn.style.color = primary ? '#ffffff' : '#808080'
-      })
-      return btn
-    }
-
-    const addBtn = makeMcBtn('add', true)
-    const cancelBtn = makeMcBtn('cancel', false)
-
-    btnRow.appendChild(addBtn)
-    btnRow.appendChild(cancelBtn)
-    wrapper.appendChild(btnRow)
-
-    msgsEl.appendChild(wrapper)
-
-    cancelBtn.addEventListener('click', () => switchTab('live'))
-
-    const showErr = (msg) => {
-      errEl.textContent = msg
-      errEl.style.display = 'block'
-    }
-
-    // Parse a typed/pasted value into a clean platform slug: strip a leading
-    // @, and if the user pasted a platform URL (twitch.tv/xqc, kick.com/xqc,
-    // popout/mod links) reduce it to just the slug. Without this, pasting a URL
-    // or a name with trailing junk created a permanent dead tab that forever
-    // showed nothing (Bug #9). A malformed remainder is rejected by the charset
-    // check below — a name with spaces/slashes can never be a real channel.
-    const parseTwitchLogin = (raw) => {
-      let v = (raw || '').trim().replace(/^@/, '')
-      const m = v.match(/twitch\.tv\/(?:popout\/|moderator\/)?([^/?#\s]+)/i)
-      if (m) v = m[1]
-      return v.toLowerCase()
-    }
-    const parseKickSlug = (raw) => {
-      let v = (raw || '').trim().replace(/^@/, '')
-      const m = v.match(/kick\.com\/([^/?#\s]+)/i)
-      if (m) v = m[1]
-      return v.toLowerCase()
-    }
-
-    const doAdd = () => {
-      errEl.style.display = 'none'
-      const twitchVal = parseTwitchLogin(twitch.input.value)
-      const kickVal = parseKickSlug(kick.input.value)
-      const ytVal = yt.input.value.trim() ? normalizeYtUrl(yt.input.value.trim()) : ''
-
-      if (!twitchVal && !kickVal && !ytVal) {
-        showErr(t('mc_enter_platform'))
-        return
-      }
-
-      // Charset gate — a slug outside the platform's allowed character set can
-      // never resolve to a real channel (twitch [a-z0-9_], kick adds '-'), so a
-      // typo with spaces or a half-parsed URL is rejected here instead of
-      // becoming a silent dead tab. Real channel names always pass.
-      if (twitchVal && !/^[a-z0-9_]{1,25}$/.test(twitchVal)) {
-        showErr(t('mc_invalid_name'))
-        return
-      }
-      if (kickVal && !/^[a-z0-9_-]{1,25}$/.test(kickVal)) {
-        showErr(t('mc_invalid_name'))
-        return
-      }
-
-      const id = twitchVal || kickVal || 'yt-' + Date.now()
-      const reserved = ['live', 'feed', 'mentions', 'whispers', 'discover', 'pinned', 'modlog', 'add', 'settings']
-      if (reserved.includes(id)) {
-        showErr(t('mc_reserved_name'))
-        return
-      }
-      if (config.channels.some((c) => c.id === id)) {
-        showErr(t('mc_channel_exists'))
-        return
-      }
-      // Check duplicate Twitch/Kick username across channels
-      if (twitchVal && config.channels.some((c) => c.twitch === twitchVal)) {
-        showErr(t('mc_twitch_exists'))
-        return
-      }
-      if (kickVal && config.channels.some((c) => c.kick === kickVal)) {
-        showErr(t('mc_kick_exists'))
-        return
-      }
-
-      const channel = { id, twitch: twitchVal, kick: kickVal, youtube: ytVal }
-      config.channels.push(channel)
-      saveConfig()
-
-      if (twitchVal) {
-        irc?.join(twitchVal)
-        try {
-          chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchVal })
-        } catch (e) {
-          /* context invalidated */
-        }
-      }
-      if (kickVal) {
-        kickChat?.join(kickVal)
-      }
-      if (ytVal) {
-        youtubeLinks.set(id, { url: ytVal, videoId: '', channelName: '' })
-        chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytVal, channelId: id }).catch(() => {})
-      }
-
-      updateTabBar()
-      switchTab(id)
-    }
-
-    addBtn.addEventListener('click', doAdd)
-    // Tab cycles inputs, Enter submits, Escape cancels
-    const inputs = [twitch.input, kick.input, yt.input]
-    inputs.forEach((inp, i) => {
-      inp.addEventListener('keydown', (e) => {
-        if (e.key === 'Tab') {
-          e.preventDefault()
-          inputs[(i + (e.shiftKey ? inputs.length - 1 : 1)) % inputs.length].focus()
-        }
-        if (e.key === 'Enter') doAdd()
-        if (e.key === 'Escape') switchTab('live')
-      })
-      // Track user edits per-field so autofill never overwrites typed input
-      inp.addEventListener('input', () => {
-        inp.dataset.userEdited = '1'
-      })
-    })
-
-    // Heatsync linkage status indicator (between rows and error)
-    const linkStatus = document.createElement('div')
-    linkStatus.style.cssText = 'font-size:13px;color:#808080;min-height:14px;font-family:ui-monospace,monospace;'
-    wrapper.insertBefore(linkStatus, errEl)
-
-    // Debounced autofill — when user types in any field, look up that name on
-    // heatsync and prefill the OTHER fields if they haven't been edited.
-    let _autofillGen = 0
-    let _autofillTimer = null
-    const _autofillCancelable = (handler) => {
-      if (_autofillTimer) cleanup.clearTimeout(_autofillTimer)
-      _autofillTimer = cleanup.setTimeout(handler, 500)
-    }
-
-    async function autofillFromName(name, sourcePlatform) {
-      if (!name) {
-        linkStatus.textContent = ''
-        return
-      }
-      const gen = ++_autofillGen
-      linkStatus.textContent = 'checking heatsync…'
-      linkStatus.style.color = '#808080'
-      const res =
-        typeof resolveIdentity === 'function'
-          ? await resolveIdentity(name, { platform: sourcePlatform })
-          : { ok: false }
-      if (gen !== _autofillGen) return
-      if (!res?.ok) {
-        linkStatus.textContent = res?.notFound ? 'no heatsync profile — fill manually' : "couldn't reach heatsync"
-        linkStatus.style.color = '#666'
-        return
-      }
-      const id = res.identity
-      const platforms = []
-      // Fill ONLY empty + non-user-edited fields
-      const fillIfBlank = (input, value, label) => {
-        if (!value) return
-        if (input.dataset.userEdited === '1' && input.value.trim()) return
-        if (input.value.trim()) return
-        input.value = value
-        platforms.push(label)
-      }
-      fillIfBlank(twitch.input, id.twitch, 't')
-      fillIfBlank(kick.input, id.kick, 'k')
-      fillIfBlank(yt.input, id.youtube, 'yt')
-      const linkedLabels = []
-      if (id.twitch) linkedLabels.push('t')
-      if (id.kick) linkedLabels.push('k')
-      if (id.youtube) linkedLabels.push('yt')
-      const liveLabels = res.liveOn?.length
-        ? ` · live on ${res.liveOn.map((p) => (p === 'twitch' ? 't' : p === 'kick' ? 'k' : p)).join(',')}`
-        : ''
-      linkStatus.style.color = '#53fc18'
-      linkStatus.textContent = `✓ matched ${id.heatsync || name} on heatsync — linked: ${linkedLabels.join(',') || 'none'}${liveLabels}${platforms.length ? ` · autofilled: ${platforms.join(',')}` : ''}`
-    }
-
-    twitch.input.addEventListener('input', () => {
-      const v = twitch.input.value.trim().replace(/^@/, '')
-      if (v.length >= 2) _autofillCancelable(() => autofillFromName(v, 'twitch'))
-    })
-    kick.input.addEventListener('input', () => {
-      const v = kick.input.value.trim().replace(/^@/, '')
-      if (v.length >= 2) _autofillCancelable(() => autofillFromName(v, 'kick'))
-    })
-
-    // Auto-focus twitch input
-    cleanup.raf(() => twitch.input.focus())
+  const makeRow = (label, placeholder) => {
+    const row = document.createElement('div')
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;width:100%;max-width:300px;'
+    const lbl = document.createElement('span')
+    lbl.textContent = label
+    lbl.style.cssText = 'font-size:13px;font-weight:600;min-width:56px;color:#949494;text-transform:lowercase;'
+    const input = document.createElement('input')
+    input.type = 'text'
+    input.className = 'hs-mc-ch-input'
+    input.placeholder = placeholder
+    // The visible label is a separate <span>, so the input itself is unlabeled
+    // to assistive tech — name it explicitly (label is 'twitch'/'kick'/'youtube').
+    input.setAttribute('aria-label', label)
+    input.style.cssText =
+      'flex:1;background:#000;color:#fff;border:1px solid #808080;padding:6px 10px;border-radius:0;font-size:14px;outline:none;font-family:inherit;'
+    // Stop YouTube/Kick keyboard shortcuts from stealing keystrokes
+    input.addEventListener('keydown', (e) => e.stopPropagation())
+    row.appendChild(lbl)
+    row.appendChild(input)
+    return { row, input }
   }
 
-  function removeChannel(tabId) {
-    const ch = getChannelById(tabId)
-    config.channels = config.channels.filter((c) => c.id !== tabId)
+  const twitch = makeRow('twitch', t('mc_username_placeholder'))
+  const kick = makeRow('kick', t('mc_username_placeholder'))
+  const yt = makeRow('youtube', t('mc_username_url_placeholder'))
+
+  wrapper.appendChild(twitch.row)
+  wrapper.appendChild(kick.row)
+  wrapper.appendChild(yt.row)
+
+  // Error message (between inputs and buttons)
+  const errEl = document.createElement('div')
+  errEl.style.cssText = 'font-size:13px;color:#ff0000;display:none;'
+  errEl.setAttribute('role', 'alert')
+  wrapper.appendChild(errEl)
+
+  const btnRow = document.createElement('div')
+  btnRow.style.cssText = 'display:flex;gap:8px;margin-top:4px;'
+
+  const makeMcBtn = (text, primary) => {
+    const btn = document.createElement('button')
+    btn.textContent = text
+    const base = primary
+      ? 'background:transparent;color:#ffffff;border:1px solid #ffffff;'
+      : 'background:transparent;color:#808080;border:1px solid #808080;'
+    btn.style.cssText =
+      base +
+      'padding:6px 22px;border-radius:0;cursor:pointer;font-weight:600;font-size:14px;font-family:inherit;min-width:80px;transition:all .15s;'
+    btn.addEventListener('mouseenter', () => {
+      btn.style.background = '#ffffff'
+      btn.style.color = '#000000'
+    })
+    btn.addEventListener('mouseleave', () => {
+      btn.style.background = 'transparent'
+      btn.style.color = primary ? '#ffffff' : '#808080'
+    })
+    return btn
+  }
+
+  const addBtn = makeMcBtn('add', true)
+  const cancelBtn = makeMcBtn('cancel', false)
+
+  btnRow.appendChild(addBtn)
+  btnRow.appendChild(cancelBtn)
+  wrapper.appendChild(btnRow)
+
+  msgsEl.appendChild(wrapper)
+
+  cancelBtn.addEventListener('click', () => switchTab('live'))
+
+  const showErr = (msg) => {
+    errEl.textContent = msg
+    errEl.style.display = 'block'
+  }
+
+  // Parse a typed/pasted value into a clean platform slug: strip a leading
+  // @, and if the user pasted a platform URL (twitch.tv/xqc, kick.com/xqc,
+  // popout/mod links) reduce it to just the slug. Without this, pasting a URL
+  // or a name with trailing junk created a permanent dead tab that forever
+  // showed nothing (Bug #9). A malformed remainder is rejected by the charset
+  // check below — a name with spaces/slashes can never be a real channel.
+  const parseTwitchLogin = (raw) => {
+    let v = (raw || '').trim().replace(/^@/, '')
+    const m = v.match(/twitch\.tv\/(?:popout\/|moderator\/)?([^/?#\s]+)/i)
+    if (m) v = m[1]
+    return v.toLowerCase()
+  }
+  const parseKickSlug = (raw) => {
+    let v = (raw || '').trim().replace(/^@/, '')
+    const m = v.match(/kick\.com\/([^/?#\s]+)/i)
+    if (m) v = m[1]
+    return v.toLowerCase()
+  }
+
+  const doAdd = () => {
+    errEl.style.display = 'none'
+    const twitchVal = parseTwitchLogin(twitch.input.value)
+    const kickVal = parseKickSlug(kick.input.value)
+    const ytVal = yt.input.value.trim() ? normalizeYtUrl(yt.input.value.trim()) : ''
+
+    if (!twitchVal && !kickVal && !ytVal) {
+      showErr(t('mc_enter_platform'))
+      return
+    }
+
+    // Charset gate — a slug outside the platform's allowed character set can
+    // never resolve to a real channel (twitch [a-z0-9_], kick adds '-'), so a
+    // typo with spaces or a half-parsed URL is rejected here instead of
+    // becoming a silent dead tab. Real channel names always pass.
+    if (twitchVal && !/^[a-z0-9_]{1,25}$/.test(twitchVal)) {
+      showErr(t('mc_invalid_name'))
+      return
+    }
+    if (kickVal && !/^[a-z0-9_-]{1,25}$/.test(kickVal)) {
+      showErr(t('mc_invalid_name'))
+      return
+    }
+
+    const id = twitchVal || kickVal || 'yt-' + Date.now()
+    const reserved = ['live', 'feed', 'mentions', 'whispers', 'discover', 'pinned', 'modlog', 'add', 'settings']
+    if (reserved.includes(id)) {
+      showErr(t('mc_reserved_name'))
+      return
+    }
+    if (config.channels.some((c) => c.id === id)) {
+      showErr(t('mc_channel_exists'))
+      return
+    }
+    // Check duplicate Twitch/Kick username across channels
+    if (twitchVal && config.channels.some((c) => c.twitch === twitchVal)) {
+      showErr(t('mc_twitch_exists'))
+      return
+    }
+    if (kickVal && config.channels.some((c) => c.kick === kickVal)) {
+      showErr(t('mc_kick_exists'))
+      return
+    }
+
+    const channel = { id, twitch: twitchVal, kick: kickVal, youtube: ytVal }
+    config.channels.push(channel)
     saveConfig()
-    _dropTabCache(tabId)
 
-    const twitchName = ch?.twitch
-    if (twitchName) irc?.part(twitchName)
+    if (twitchVal) {
+      irc?.join(twitchVal)
+      try {
+        chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchVal })
+      } catch (e) {
+        /* context invalidated */
+      }
+    }
+    if (kickVal) {
+      kickChat?.join(kickVal)
+    }
+    if (ytVal) {
+      youtubeLinks.set(id, { url: ytVal, videoId: '', channelName: '' })
+      chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytVal, channelId: id }).catch(() => {})
+    }
 
-    const kickName = ch?.kick
-    if (kickName) kickChat?.part(kickName)
+    updateTabBar()
+    switchTab(id)
+  }
 
-    // Clean up per-channel sub tenure data to prevent stale map growth
-    if (twitchName) subTenureMap.delete(twitchName.toLowerCase())
-    if (kickName) subTenureMap.delete(kickName.toLowerCase())
+  addBtn.addEventListener('click', doAdd)
+  // Tab cycles inputs, Enter submits, Escape cancels
+  const inputs = [twitch.input, kick.input, yt.input]
+  inputs.forEach((inp, i) => {
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab') {
+        e.preventDefault()
+        inputs[(i + (e.shiftKey ? inputs.length - 1 : 1)) % inputs.length].focus()
+      }
+      if (e.key === 'Enter') doAdd()
+      if (e.key === 'Escape') switchTab('live')
+    })
+    // Track user edits per-field so autofill never overwrites typed input
+    inp.addEventListener('input', () => {
+      inp.dataset.userEdited = '1'
+    })
+  })
 
-    // Unsubscribe per-channel YouTube (pass URL as fallback if videoId not yet received)
-    if (ch && ch.youtube) {
-      const link = youtubeLinks.get(tabId)
+  // Heatsync linkage status indicator (between rows and error)
+  const linkStatus = document.createElement('div')
+  linkStatus.style.cssText = 'font-size:13px;color:#808080;min-height:14px;font-family:ui-monospace,monospace;'
+  wrapper.insertBefore(linkStatus, errEl)
+
+  // Debounced autofill — when user types in any field, look up that name on
+  // heatsync and prefill the OTHER fields if they haven't been edited.
+  let _autofillGen = 0
+  let _autofillTimer = null
+  const _autofillCancelable = (handler) => {
+    if (_autofillTimer) cleanup.clearTimeout(_autofillTimer)
+    _autofillTimer = cleanup.setTimeout(handler, 500)
+  }
+
+  async function autofillFromName(name, sourcePlatform) {
+    if (!name) {
+      linkStatus.textContent = ''
+      return
+    }
+    const gen = ++_autofillGen
+    linkStatus.textContent = 'checking heatsync…'
+    linkStatus.style.color = '#808080'
+    const res =
+      typeof resolveIdentity === 'function' ? await resolveIdentity(name, { platform: sourcePlatform }) : { ok: false }
+    if (gen !== _autofillGen) return
+    if (!res?.ok) {
+      linkStatus.textContent = res?.notFound ? 'no heatsync profile — fill manually' : "couldn't reach heatsync"
+      linkStatus.style.color = '#666'
+      return
+    }
+    const id = res.identity
+    const platforms = []
+    // Fill ONLY empty + non-user-edited fields
+    const fillIfBlank = (input, value, label) => {
+      if (!value) return
+      if (input.dataset.userEdited === '1' && input.value.trim()) return
+      if (input.value.trim()) return
+      input.value = value
+      platforms.push(label)
+    }
+    fillIfBlank(twitch.input, id.twitch, 't')
+    fillIfBlank(kick.input, id.kick, 'k')
+    fillIfBlank(yt.input, id.youtube, 'yt')
+    const linkedLabels = []
+    if (id.twitch) linkedLabels.push('t')
+    if (id.kick) linkedLabels.push('k')
+    if (id.youtube) linkedLabels.push('yt')
+    const liveLabels = res.liveOn?.length
+      ? ` · live on ${res.liveOn.map((p) => (p === 'twitch' ? 't' : p === 'kick' ? 'k' : p)).join(',')}`
+      : ''
+    linkStatus.style.color = '#53fc18'
+    linkStatus.textContent = `✓ matched ${id.heatsync || name} on heatsync — linked: ${linkedLabels.join(',') || 'none'}${liveLabels}${platforms.length ? ` · autofilled: ${platforms.join(',')}` : ''}`
+  }
+
+  twitch.input.addEventListener('input', () => {
+    const v = twitch.input.value.trim().replace(/^@/, '')
+    if (v.length >= 2) _autofillCancelable(() => autofillFromName(v, 'twitch'))
+  })
+  kick.input.addEventListener('input', () => {
+    const v = kick.input.value.trim().replace(/^@/, '')
+    if (v.length >= 2) _autofillCancelable(() => autofillFromName(v, 'kick'))
+  })
+
+  // Auto-focus twitch input
+  cleanup.raf(() => twitch.input.focus())
+}
+
+function removeChannel(tabId) {
+  const ch = getChannelById(tabId)
+  config.channels = config.channels.filter((c) => c.id !== tabId)
+  saveConfig()
+  _dropTabCache(tabId)
+
+  const twitchName = ch?.twitch
+  if (twitchName) irc?.part(twitchName)
+
+  const kickName = ch?.kick
+  if (kickName) kickChat?.part(kickName)
+
+  // Clean up per-channel sub tenure data to prevent stale map growth
+  if (twitchName) subTenureMap.delete(twitchName.toLowerCase())
+  if (kickName) subTenureMap.delete(kickName.toLowerCase())
+
+  // Unsubscribe per-channel YouTube (pass URL as fallback if videoId not yet received)
+  if (ch && ch.youtube) {
+    const link = youtubeLinks.get(tabId)
+    chrome.runtime
+      .sendMessage({
+        type: 'youtube_ws_unsubscribe',
+        videoId: link?.videoId || '',
+        url: ch.youtube,
+        channelId: tabId,
+      })
+      .catch(() => {})
+    youtubeLinks.delete(tabId)
+    channelYtMessages.delete(tabId)
+    // Clear YT watchdog state too — otherwise the 180s rejoin loop resurrects
+    // a removed channel forever and periodically force-reconnects the shared
+    // WS that every channel rides on.
+    ytChanLastSeen.delete(tabId)
+    ytChanRejoinAttempts.delete(tabId)
+    ytSubscribedUrls.delete(tabId)
+  }
+
+  // Drop per-tab platform filter state so it can't leak across channel adds/removes
+  if (platformFilters && platformFilters[tabId]) {
+    delete platformFilters[tabId]
+    saveUiSetting('platformFilters', platformFilters)
+  }
+
+  updateTabBar()
+  if (currentTab === tabId) switchTab('live')
+}
+
+// Apply live platform overrides — join the correct channels on each platform
+function applyLivePlatformOverrides() {
+  const names = getLivePlatformNames()
+  if (names.twitch) irc?.join(names.twitch)
+  if (names.kick) kickChat?.join(names.kick)
+  if (names.youtube) {
+    ytSubscribedUrls.set('__live_yt_auto__', names.youtube)
+    ytChanLastSeen.set('__live_yt_auto__', Date.now())
+    chrome.runtime
+      .sendMessage({
+        type: 'youtube_ws_subscribe',
+        url: names.youtube,
+        channelId: '__live_yt_auto__',
+      })
+      .catch(() => {})
+  }
+  renderMessages(currentTab)
+}
+
+function showEditLivePlatforms() {
+  const urlCh = getCurrentChannel()?.toLowerCase()
+  if (!urlCh) return
+  editingChannel = true
+  const names = getLivePlatformNames()
+
+  const msgsEl = document.getElementById('hs-mc-messages')
+  if (!msgsEl) return
+  _clearMessageIndices()
+  msgsEl.textContent = ''
+
+  const wrapper = document.createElement('div')
+  wrapper.style.cssText =
+    'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:#a8a8a8;font-size:13px;padding:20px;box-sizing:border-box;'
+
+  const title = document.createElement('div')
+  title.textContent = `edit live — ${urlCh}`
+  title.style.cssText = 'font-size:17px;font-weight:700;color:#ffffff;letter-spacing:.5px;'
+  wrapper.appendChild(title)
+
+  const makeRow = (label, placeholder, value) => {
+    const row = document.createElement('div')
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;width:100%;max-width:300px;'
+    const lbl = document.createElement('span')
+    lbl.textContent = label
+    lbl.style.cssText = 'font-size:13px;font-weight:600;min-width:56px;color:#949494;text-transform:lowercase;'
+    const input = document.createElement('input')
+    input.type = 'text'
+    input.className = 'hs-mc-ch-input'
+    input.placeholder = placeholder
+    input.value = value || ''
+    input.style.cssText =
+      'flex:1;background:#000;color:#fff;border:1px solid #808080;padding:6px 10px;border-radius:0;font-size:14px;outline:none;font-family:inherit;'
+    input.addEventListener('keydown', (e) => e.stopPropagation())
+    row.appendChild(lbl)
+    row.appendChild(input)
+    return { row, input }
+  }
+
+  const twitch = makeRow('twitch', 'username', names.twitch)
+  const kick = makeRow('kick', 'username', names.kick)
+  const yt = makeRow('youtube', 'url or @handle', names.youtube)
+  wrapper.appendChild(twitch.row)
+  wrapper.appendChild(kick.row)
+  wrapper.appendChild(yt.row)
+
+  const btnRow = document.createElement('div')
+  btnRow.style.cssText = 'display:flex;gap:8px;margin-top:4px;'
+
+  const makeMcBtn = (text, primary) => {
+    const btn = document.createElement('button')
+    btn.textContent = text
+    const base = primary
+      ? 'background:transparent;color:#ffffff;border:1px solid #ffffff;'
+      : 'background:transparent;color:#808080;border:1px solid #808080;'
+    btn.style.cssText =
+      base +
+      'padding:6px 22px;border-radius:0;cursor:pointer;font-weight:600;font-size:14px;font-family:inherit;min-width:80px;transition:all .15s;'
+    btn.addEventListener('mouseenter', () => {
+      btn.style.background = '#ffffff'
+      btn.style.color = '#000000'
+    })
+    btn.addEventListener('mouseleave', () => {
+      btn.style.background = 'transparent'
+      btn.style.color = primary ? '#ffffff' : '#808080'
+    })
+    return btn
+  }
+
+  const saveBtn = makeMcBtn('save', true)
+  const cancelBtn = makeMcBtn('cancel', false)
+  const resetBtn = makeMcBtn('reset', false)
+  btnRow.appendChild(saveBtn)
+  btnRow.appendChild(cancelBtn)
+  btnRow.appendChild(resetBtn)
+  wrapper.appendChild(btnRow)
+  msgsEl.appendChild(wrapper)
+
+  cancelBtn.addEventListener('click', () => {
+    editingChannel = false
+    switchTab('live')
+  })
+
+  resetBtn.addEventListener('click', () => {
+    delete livePlatformMap[urlCh]
+    saveLivePlatformMap()
+    editingChannel = false
+    applyLivePlatformOverrides()
+    switchTab('live')
+  })
+
+  const doSave = () => {
+    const tw = twitch.input.value.trim().toLowerCase().replace(/^@/, '')
+    const ki = kick.input.value.trim().toLowerCase().replace(/^@/, '')
+    const ytVal = yt.input.value.trim() ? normalizeYtUrl(yt.input.value.trim()) : ''
+
+    livePlatformMap[urlCh] = { twitch: tw, kick: ki, youtube: ytVal }
+    saveLivePlatformMap()
+    editingChannel = false
+    applyLivePlatformOverrides()
+    switchTab('live')
+  }
+
+  saveBtn.addEventListener('click', doSave)
+  // Enter in any input saves
+  ;[twitch.input, kick.input, yt.input].forEach((inp) => {
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        doSave()
+      }
+    })
+  })
+  // Esc cancels
+  wrapper.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      editingChannel = false
+      switchTab('live')
+    }
+  })
+  twitch.input.focus()
+}
+
+function showEditChannelForm(tabId) {
+  const ch = getChannelById(tabId)
+  if (!ch) return
+  editingChannel = true
+
+  const msgsEl = document.getElementById('hs-mc-messages')
+  if (!msgsEl) return
+  _clearMessageIndices()
+  msgsEl.textContent = ''
+
+  const wrapper = document.createElement('div')
+  wrapper.style.cssText =
+    'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:#a8a8a8;font-size:13px;padding:20px;box-sizing:border-box;'
+
+  const title = document.createElement('div')
+  title.textContent = t('mc_edit_channel', [tabId])
+  title.style.cssText = 'font-size:17px;font-weight:700;color:#ffffff;letter-spacing:.5px;'
+  wrapper.appendChild(title)
+
+  const makeRow = (label, placeholder, value) => {
+    const row = document.createElement('div')
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;width:100%;max-width:300px;'
+    const lbl = document.createElement('span')
+    lbl.textContent = label
+    lbl.style.cssText = 'font-size:13px;font-weight:600;min-width:56px;color:#949494;text-transform:lowercase;'
+    const input = document.createElement('input')
+    input.type = 'text'
+    input.className = 'hs-mc-ch-input'
+    input.placeholder = placeholder
+    input.value = value || ''
+    input.style.cssText =
+      'flex:1;background:#000;color:#fff;border:1px solid #808080;padding:6px 10px;border-radius:0;font-size:14px;outline:none;font-family:inherit;'
+    // Stop YouTube/Kick keyboard shortcuts from stealing keystrokes
+    input.addEventListener('keydown', (e) => e.stopPropagation())
+    row.appendChild(lbl)
+    row.appendChild(input)
+    return { row, input }
+  }
+
+  const twitch = makeRow('twitch', t('mc_username_placeholder'), ch.twitch)
+  const kick = makeRow('kick', t('mc_username_placeholder'), ch.kick)
+  const yt = makeRow('youtube', t('mc_username_url_placeholder'), ch.youtube)
+  wrapper.appendChild(twitch.row)
+  wrapper.appendChild(kick.row)
+  wrapper.appendChild(yt.row)
+
+  const errEl = document.createElement('div')
+  errEl.style.cssText = 'font-size:13px;color:#ff0000;display:none;'
+  errEl.setAttribute('role', 'alert')
+  wrapper.appendChild(errEl)
+
+  const btnRow = document.createElement('div')
+  btnRow.style.cssText = 'display:flex;gap:8px;margin-top:4px;'
+
+  const makeMcBtn = (text, primary) => {
+    const btn = document.createElement('button')
+    btn.textContent = text
+    const base = primary
+      ? 'background:transparent;color:#ffffff;border:1px solid #ffffff;'
+      : 'background:transparent;color:#808080;border:1px solid #808080;'
+    btn.style.cssText =
+      base +
+      'padding:6px 22px;border-radius:0;cursor:pointer;font-weight:600;font-size:14px;font-family:inherit;min-width:80px;transition:all .15s;'
+    btn.addEventListener('mouseenter', () => {
+      btn.style.background = '#ffffff'
+      btn.style.color = '#000000'
+    })
+    btn.addEventListener('mouseleave', () => {
+      btn.style.background = 'transparent'
+      btn.style.color = primary ? '#ffffff' : '#808080'
+    })
+    return btn
+  }
+
+  const saveBtn = makeMcBtn('save', true)
+  const cancelBtn = makeMcBtn('cancel', false)
+  btnRow.appendChild(saveBtn)
+  btnRow.appendChild(cancelBtn)
+  wrapper.appendChild(btnRow)
+  msgsEl.appendChild(wrapper)
+
+  cancelBtn.addEventListener('click', () => switchTab(tabId))
+  const showErr = (msg) => {
+    errEl.textContent = msg
+    errEl.style.display = 'block'
+  }
+
+  const doSave = () => {
+    errEl.style.display = 'none'
+    const twitchVal = twitch.input.value.trim().toLowerCase().replace(/^@/, '')
+    const kickVal = kick.input.value.trim().toLowerCase().replace(/^@/, '')
+    const ytVal = yt.input.value.trim() ? normalizeYtUrl(yt.input.value.trim()) : ''
+
+    if (!twitchVal && !kickVal && !ytVal) {
+      showErr(t('mc_enter_platform'))
+      return
+    }
+
+    // Check duplicate twitch/kick (excluding self)
+    if (twitchVal && config.channels.some((c) => c !== ch && c.twitch === twitchVal)) {
+      showErr(t('mc_twitch_exists'))
+      return
+    }
+    if (kickVal && config.channels.some((c) => c !== ch && c.kick === kickVal)) {
+      showErr(t('mc_kick_exists'))
+      return
+    }
+
+    // Part old channels if changed
+    const oldTwitch = ch.twitch
+    const oldKick = ch.kick
+    const oldYt = ch.youtube
+
+    if (oldTwitch && oldTwitch !== twitchVal) irc?.part(oldTwitch)
+    if (oldKick && oldKick !== kickVal) kickChat?.part(oldKick)
+
+    // Unsubscribe old YouTube if changed
+    if (oldYt && oldYt !== ytVal) {
+      const oldLink = youtubeLinks.get(tabId)
       chrome.runtime
         .sendMessage({
           type: 'youtube_ws_unsubscribe',
-          videoId: link?.videoId || '',
-          url: ch.youtube,
+          videoId: oldLink?.videoId || '',
+          url: oldYt,
           channelId: tabId,
         })
         .catch(() => {})
       youtubeLinks.delete(tabId)
       channelYtMessages.delete(tabId)
-      // Clear YT watchdog state too — otherwise the 180s rejoin loop resurrects
-      // a removed channel forever and periodically force-reconnects the shared
-      // WS that every channel rides on.
-      ytChanLastSeen.delete(tabId)
-      ytChanRejoinAttempts.delete(tabId)
-      ytSubscribedUrls.delete(tabId)
     }
 
-    // Drop per-tab platform filter state so it can't leak across channel adds/removes
-    if (platformFilters && platformFilters[tabId]) {
-      delete platformFilters[tabId]
-      saveUiSetting('platformFilters', platformFilters)
+    // Update channel config
+    ch.twitch = twitchVal
+    ch.kick = kickVal
+    ch.youtube = ytVal
+
+    // Update id to match primary platform
+    const newId = twitchVal || kickVal || ch.id
+    if (newId !== ch.id) {
+      // Migrate maps keyed by old id
+      const ytData = youtubeLinks.get(tabId)
+      const ytMsgs = channelYtMessages.get(tabId)
+      if (ytData) {
+        youtubeLinks.delete(tabId)
+        youtubeLinks.set(newId, ytData)
+      }
+      if (ytMsgs) {
+        channelYtMessages.delete(tabId)
+        channelYtMessages.set(newId, ytMsgs)
+      }
+      ch.id = newId
+    }
+    saveConfig()
+
+    // Join new channels if changed
+    if (twitchVal && twitchVal !== oldTwitch) {
+      irc?.join(twitchVal)
+      try {
+        chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchVal })
+      } catch (e) {}
+    }
+    if (kickVal && kickVal !== oldKick) kickChat?.join(kickVal)
+    if (ytVal && ytVal !== oldYt) {
+      youtubeLinks.set(newId, { url: ytVal, videoId: '', channelName: '' })
+      chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytVal, channelId: newId }).catch(() => {})
     }
 
     updateTabBar()
-    if (currentTab === tabId) switchTab('live')
+    switchTab(newId)
   }
 
-
-  // Apply live platform overrides — join the correct channels on each platform
-  function applyLivePlatformOverrides() {
-    const names = getLivePlatformNames()
-    if (names.twitch) irc?.join(names.twitch)
-    if (names.kick) kickChat?.join(names.kick)
-    if (names.youtube) {
-      ytSubscribedUrls.set('__live_yt_auto__', names.youtube)
-      ytChanLastSeen.set('__live_yt_auto__', Date.now())
-      chrome.runtime
-        .sendMessage({
-          type: 'youtube_ws_subscribe',
-          url: names.youtube,
-          channelId: '__live_yt_auto__',
-        })
-        .catch(() => {})
-    }
-    renderMessages(currentTab)
-  }
-
-  function showEditLivePlatforms() {
-    const urlCh = getCurrentChannel()?.toLowerCase()
-    if (!urlCh) return
-    editingChannel = true
-    const names = getLivePlatformNames()
-
-    const msgsEl = document.getElementById('hs-mc-messages')
-    if (!msgsEl) return
-    _clearMessageIndices()
-    msgsEl.textContent = ''
-
-    const wrapper = document.createElement('div')
-    wrapper.style.cssText =
-      'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:#a8a8a8;font-size:13px;padding:20px;box-sizing:border-box;'
-
-    const title = document.createElement('div')
-    title.textContent = `edit live — ${urlCh}`
-    title.style.cssText = 'font-size:17px;font-weight:700;color:#ffffff;letter-spacing:.5px;'
-    wrapper.appendChild(title)
-
-    const makeRow = (label, placeholder, value) => {
-      const row = document.createElement('div')
-      row.style.cssText = 'display:flex;align-items:center;gap:8px;width:100%;max-width:300px;'
-      const lbl = document.createElement('span')
-      lbl.textContent = label
-      lbl.style.cssText = 'font-size:13px;font-weight:600;min-width:56px;color:#949494;text-transform:lowercase;'
-      const input = document.createElement('input')
-      input.type = 'text'
-      input.className = 'hs-mc-ch-input'
-      input.placeholder = placeholder
-      input.value = value || ''
-      input.style.cssText =
-        'flex:1;background:#000;color:#fff;border:1px solid #808080;padding:6px 10px;border-radius:0;font-size:14px;outline:none;font-family:inherit;'
-      input.addEventListener('keydown', (e) => e.stopPropagation())
-      row.appendChild(lbl)
-      row.appendChild(input)
-      return { row, input }
-    }
-
-    const twitch = makeRow('twitch', 'username', names.twitch)
-    const kick = makeRow('kick', 'username', names.kick)
-    const yt = makeRow('youtube', 'url or @handle', names.youtube)
-    wrapper.appendChild(twitch.row)
-    wrapper.appendChild(kick.row)
-    wrapper.appendChild(yt.row)
-
-    const btnRow = document.createElement('div')
-    btnRow.style.cssText = 'display:flex;gap:8px;margin-top:4px;'
-
-    const makeMcBtn = (text, primary) => {
-      const btn = document.createElement('button')
-      btn.textContent = text
-      const base = primary
-        ? 'background:transparent;color:#ffffff;border:1px solid #ffffff;'
-        : 'background:transparent;color:#808080;border:1px solid #808080;'
-      btn.style.cssText =
-        base +
-        'padding:6px 22px;border-radius:0;cursor:pointer;font-weight:600;font-size:14px;font-family:inherit;min-width:80px;transition:all .15s;'
-      btn.addEventListener('mouseenter', () => {
-        btn.style.background = '#ffffff'
-        btn.style.color = '#000000'
-      })
-      btn.addEventListener('mouseleave', () => {
-        btn.style.background = 'transparent'
-        btn.style.color = primary ? '#ffffff' : '#808080'
-      })
-      return btn
-    }
-
-    const saveBtn = makeMcBtn('save', true)
-    const cancelBtn = makeMcBtn('cancel', false)
-    const resetBtn = makeMcBtn('reset', false)
-    btnRow.appendChild(saveBtn)
-    btnRow.appendChild(cancelBtn)
-    btnRow.appendChild(resetBtn)
-    wrapper.appendChild(btnRow)
-    msgsEl.appendChild(wrapper)
-
-    cancelBtn.addEventListener('click', () => {
-      editingChannel = false
-      switchTab('live')
+  saveBtn.addEventListener('click', doSave)
+  const inputs = [twitch.input, kick.input, yt.input]
+  inputs.forEach((inp, i) => {
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab') {
+        e.preventDefault()
+        inputs[(i + (e.shiftKey ? inputs.length - 1 : 1)) % inputs.length].focus()
+      }
+      if (e.key === 'Enter') doSave()
+      if (e.key === 'Escape') switchTab(tabId)
     })
-
-    resetBtn.addEventListener('click', () => {
-      delete livePlatformMap[urlCh]
-      saveLivePlatformMap()
-      editingChannel = false
-      applyLivePlatformOverrides()
-      switchTab('live')
-    })
-
-    const doSave = () => {
-      const tw = twitch.input.value.trim().toLowerCase().replace(/^@/, '')
-      const ki = kick.input.value.trim().toLowerCase().replace(/^@/, '')
-      const ytVal = yt.input.value.trim() ? normalizeYtUrl(yt.input.value.trim()) : ''
-
-      livePlatformMap[urlCh] = { twitch: tw, kick: ki, youtube: ytVal }
-      saveLivePlatformMap()
-      editingChannel = false
-      applyLivePlatformOverrides()
-      switchTab('live')
-    }
-
-    saveBtn.addEventListener('click', doSave)
-    // Enter in any input saves
-    ;[twitch.input, kick.input, yt.input].forEach((inp) => {
-      inp.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault()
-          doSave()
-        }
-      })
-    })
-    // Esc cancels
-    wrapper.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        editingChannel = false
-        switchTab('live')
-      }
-    })
-    twitch.input.focus()
-  }
-
-  function showEditChannelForm(tabId) {
-    const ch = getChannelById(tabId)
-    if (!ch) return
-    editingChannel = true
-
-    const msgsEl = document.getElementById('hs-mc-messages')
-    if (!msgsEl) return
-    _clearMessageIndices()
-    msgsEl.textContent = ''
-
-    const wrapper = document.createElement('div')
-    wrapper.style.cssText =
-      'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:#a8a8a8;font-size:13px;padding:20px;box-sizing:border-box;'
-
-    const title = document.createElement('div')
-    title.textContent = t('mc_edit_channel', [tabId])
-    title.style.cssText = 'font-size:17px;font-weight:700;color:#ffffff;letter-spacing:.5px;'
-    wrapper.appendChild(title)
-
-    const makeRow = (label, placeholder, value) => {
-      const row = document.createElement('div')
-      row.style.cssText = 'display:flex;align-items:center;gap:8px;width:100%;max-width:300px;'
-      const lbl = document.createElement('span')
-      lbl.textContent = label
-      lbl.style.cssText = 'font-size:13px;font-weight:600;min-width:56px;color:#949494;text-transform:lowercase;'
-      const input = document.createElement('input')
-      input.type = 'text'
-      input.className = 'hs-mc-ch-input'
-      input.placeholder = placeholder
-      input.value = value || ''
-      input.style.cssText =
-        'flex:1;background:#000;color:#fff;border:1px solid #808080;padding:6px 10px;border-radius:0;font-size:14px;outline:none;font-family:inherit;'
-      // Stop YouTube/Kick keyboard shortcuts from stealing keystrokes
-      input.addEventListener('keydown', (e) => e.stopPropagation())
-      row.appendChild(lbl)
-      row.appendChild(input)
-      return { row, input }
-    }
-
-    const twitch = makeRow('twitch', t('mc_username_placeholder'), ch.twitch)
-    const kick = makeRow('kick', t('mc_username_placeholder'), ch.kick)
-    const yt = makeRow('youtube', t('mc_username_url_placeholder'), ch.youtube)
-    wrapper.appendChild(twitch.row)
-    wrapper.appendChild(kick.row)
-    wrapper.appendChild(yt.row)
-
-    const errEl = document.createElement('div')
-    errEl.style.cssText = 'font-size:13px;color:#ff0000;display:none;'
-    errEl.setAttribute('role', 'alert')
-    wrapper.appendChild(errEl)
-
-    const btnRow = document.createElement('div')
-    btnRow.style.cssText = 'display:flex;gap:8px;margin-top:4px;'
-
-    const makeMcBtn = (text, primary) => {
-      const btn = document.createElement('button')
-      btn.textContent = text
-      const base = primary
-        ? 'background:transparent;color:#ffffff;border:1px solid #ffffff;'
-        : 'background:transparent;color:#808080;border:1px solid #808080;'
-      btn.style.cssText =
-        base +
-        'padding:6px 22px;border-radius:0;cursor:pointer;font-weight:600;font-size:14px;font-family:inherit;min-width:80px;transition:all .15s;'
-      btn.addEventListener('mouseenter', () => {
-        btn.style.background = '#ffffff'
-        btn.style.color = '#000000'
-      })
-      btn.addEventListener('mouseleave', () => {
-        btn.style.background = 'transparent'
-        btn.style.color = primary ? '#ffffff' : '#808080'
-      })
-      return btn
-    }
-
-    const saveBtn = makeMcBtn('save', true)
-    const cancelBtn = makeMcBtn('cancel', false)
-    btnRow.appendChild(saveBtn)
-    btnRow.appendChild(cancelBtn)
-    wrapper.appendChild(btnRow)
-    msgsEl.appendChild(wrapper)
-
-    cancelBtn.addEventListener('click', () => switchTab(tabId))
-    const showErr = (msg) => {
-      errEl.textContent = msg
-      errEl.style.display = 'block'
-    }
-
-    const doSave = () => {
-      errEl.style.display = 'none'
-      const twitchVal = twitch.input.value.trim().toLowerCase().replace(/^@/, '')
-      const kickVal = kick.input.value.trim().toLowerCase().replace(/^@/, '')
-      const ytVal = yt.input.value.trim() ? normalizeYtUrl(yt.input.value.trim()) : ''
-
-      if (!twitchVal && !kickVal && !ytVal) {
-        showErr(t('mc_enter_platform'))
-        return
-      }
-
-      // Check duplicate twitch/kick (excluding self)
-      if (twitchVal && config.channels.some((c) => c !== ch && c.twitch === twitchVal)) {
-        showErr(t('mc_twitch_exists'))
-        return
-      }
-      if (kickVal && config.channels.some((c) => c !== ch && c.kick === kickVal)) {
-        showErr(t('mc_kick_exists'))
-        return
-      }
-
-      // Part old channels if changed
-      const oldTwitch = ch.twitch
-      const oldKick = ch.kick
-      const oldYt = ch.youtube
-
-      if (oldTwitch && oldTwitch !== twitchVal) irc?.part(oldTwitch)
-      if (oldKick && oldKick !== kickVal) kickChat?.part(oldKick)
-
-      // Unsubscribe old YouTube if changed
-      if (oldYt && oldYt !== ytVal) {
-        const oldLink = youtubeLinks.get(tabId)
-        chrome.runtime
-          .sendMessage({
-            type: 'youtube_ws_unsubscribe',
-            videoId: oldLink?.videoId || '',
-            url: oldYt,
-            channelId: tabId,
-          })
-          .catch(() => {})
-        youtubeLinks.delete(tabId)
-        channelYtMessages.delete(tabId)
-      }
-
-      // Update channel config
-      ch.twitch = twitchVal
-      ch.kick = kickVal
-      ch.youtube = ytVal
-
-      // Update id to match primary platform
-      const newId = twitchVal || kickVal || ch.id
-      if (newId !== ch.id) {
-        // Migrate maps keyed by old id
-        const ytData = youtubeLinks.get(tabId)
-        const ytMsgs = channelYtMessages.get(tabId)
-        if (ytData) {
-          youtubeLinks.delete(tabId)
-          youtubeLinks.set(newId, ytData)
-        }
-        if (ytMsgs) {
-          channelYtMessages.delete(tabId)
-          channelYtMessages.set(newId, ytMsgs)
-        }
-        ch.id = newId
-      }
-      saveConfig()
-
-      // Join new channels if changed
-      if (twitchVal && twitchVal !== oldTwitch) {
-        irc?.join(twitchVal)
-        try {
-          chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchVal })
-        } catch (e) {}
-      }
-      if (kickVal && kickVal !== oldKick) kickChat?.join(kickVal)
-      if (ytVal && ytVal !== oldYt) {
-        youtubeLinks.set(newId, { url: ytVal, videoId: '', channelName: '' })
-        chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytVal, channelId: newId }).catch(() => {})
-      }
-
-      updateTabBar()
-      switchTab(newId)
-    }
-
-    saveBtn.addEventListener('click', doSave)
-    const inputs = [twitch.input, kick.input, yt.input]
-    inputs.forEach((inp, i) => {
-      inp.addEventListener('keydown', (e) => {
-        if (e.key === 'Tab') {
-          e.preventDefault()
-          inputs[(i + (e.shiftKey ? inputs.length - 1 : 1)) % inputs.length].focus()
-        }
-        if (e.key === 'Enter') doSave()
-        if (e.key === 'Escape') switchTab(tabId)
-      })
-    })
-    cleanup.raf(() => twitch.input.focus())
-  }
-
+  })
+  cleanup.raf(() => twitch.input.focus())
+}
 
 
 // --- multichat/spa-nav.js ---
@@ -48053,144 +48046,80 @@ function applyHsPaintToElement(el, userId) {
 // STARTUP trigger) stay in main.js — too interwoven with boot glue to cut
 // cleanly; only the two self-contained nav/reinit functions moved.
 
-  // SPA navigation handler — event-driven via early-inject-main.js history hooks
-  let lastPath = location.pathname
-  // For YT: /watch?v=A → /watch?v=B keeps the same pathname so we also track
-  // the full search string to catch video-to-video hops.
-  let lastSearch = location.search
-  let spaReinitializing = false
-  // softTwitchNav moved to twitch-host.js (platform module)
+// SPA navigation handler — event-driven via early-inject-main.js history hooks
+let lastPath = location.pathname
+// For YT: /watch?v=A → /watch?v=B keeps the same pathname so we also track
+// the full search string to catch video-to-video hops.
+let lastSearch = location.search
+let spaReinitializing = false
+// softTwitchNav moved to twitch-host.js (platform module)
 
-  // softKickNav moved to kick-host.js (platform module)
+// softKickNav moved to kick-host.js (platform module)
 
-  function handleMcNav() {
-    // On YouTube, /watch?v=A → /watch?v=B keeps the same pathname — detect
-    // the video change via the full search string so the YT soft-nav block
-    // runs and swaps the WS subscription to the new video. YT-only: Twitch
-    // (?t=, clip params) and Kick (?category=) churn search via replaceState
-    // without a channel change — comparing search there would fire spurious
-    // soft-navs (part+join on the live channel) on every param flip.
-    const newSearch = location.search
-    if (location.pathname === lastPath && (hostPlatform !== 'yt' || newSearch === lastSearch)) return
-    // Bug #3: capture the old live channel before updating lastPath so
-    // soft-nav can part it and avoid an unbounded irc.channels accumulation.
-    // NON_CHANNEL_PATHS filter mirrors getCurrentChannel — without it a nav
-    // away from /settings would call irc.part('settings').
-    const prevLiveCh = (() => {
-      try {
-        const m = lastPath.match(/^\/(?:popout\/|embed\/)?([a-zA-Z0-9_-]+)/)
-        const slug = m?.[1]?.toLowerCase() || null
-        return slug && !NON_CHANNEL_PATHS.has(slug) ? slug : null
-      } catch {
-        return null
-      }
-    })()
-    lastPath = location.pathname
-    lastSearch = newSearch
-    log('Navigation detected, reinitializing...')
-    // Re-evaluate body-mount overlay state for the new URL before teardown so
-    // CSS rules flip ahead of the panel reappearing on the new page.
+function handleMcNav() {
+  // On YouTube, /watch?v=A → /watch?v=B keeps the same pathname — detect
+  // the video change via the full search string so the YT soft-nav block
+  // runs and swaps the WS subscription to the new video. YT-only: Twitch
+  // (?t=, clip params) and Kick (?category=) churn search via replaceState
+  // without a channel change — comparing search there would fire spurious
+  // soft-navs (part+join on the live channel) on every param flip.
+  const newSearch = location.search
+  if (location.pathname === lastPath && (hostPlatform !== 'yt' || newSearch === lastSearch)) return
+  // Bug #3: capture the old live channel before updating lastPath so
+  // soft-nav can part it and avoid an unbounded irc.channels accumulation.
+  // NON_CHANNEL_PATHS filter mirrors getCurrentChannel — without it a nav
+  // away from /settings would call irc.part('settings').
+  const prevLiveCh = (() => {
     try {
-      updateTwitchNoChannelClass()
+      const m = lastPath.match(/^\/(?:popout\/|embed\/)?([a-zA-Z0-9_-]+)/)
+      const slug = m?.[1]?.toLowerCase() || null
+      return slug && !NON_CHANNEL_PATHS.has(slug) ? slug : null
+    } catch {
+      return null
+    }
+  })()
+  lastPath = location.pathname
+  lastSearch = newSearch
+  log('Navigation detected, reinitializing...')
+  // Re-evaluate body-mount overlay state for the new URL before teardown so
+  // CSS rules flip ahead of the panel reappearing on the new page.
+  try {
+    updateTwitchNoChannelClass()
+  } catch (_) {}
+  if (isKick) {
+    try {
+      updateKickNoChannelClass()
     } catch (_) {}
-    if (isKick) {
-      try {
-        updateKickNoChannelClass()
-      } catch (_) {}
-    }
-
-    // Twitch SPA nav: skip the destroy+rebuild path entirely. The panel
-    // (and IRC, and feed state) all survive intact — see softTwitchNav.
-    // Popout chat is exempt since it never SPA-navigates between URLs.
-    if (hostPlatform === 'twitch' && !document.body.classList.contains('hs-popout')) {
-      softTwitchNav(prevLiveCh)
-      return
-    }
-
-    // Kick SPA nav: same soft path as Twitch. Panel + kickChat persist;
-    // body class refreshes for the new URL.
-    if (isKick && !document.body.classList.contains('hs-popout')) {
-      softKickNav(prevLiveCh)
-      return
-    }
-
-    // YouTube SPA nav: panel is body-mounted and survives across URLs.
-    // Same rationale as Twitch — destroying + waiting 1s for init left a
-    // visible blank gap when the user clicked back from a stream. Just
-    // refresh per-page WS subs, re-apply layout. The 4s checkYtLive
-    // interval already refreshes hs-offline class within 4s.
-    if (hostPlatform === 'yt') {
-      // Mark transition so the CSS guard absorbs any flash from YT's primary
-      // column reflow (watch ↔ home swaps #primary width, recommendeds visible
-      // /hidden, chatframe iframe mount). 300ms covers the full page-state
-      // pivot; same pattern as Twitch/Kick soft-nav.
-      document.body.classList.add('hs-mc-navigating')
-      // Unsubscribe the auto-YT route for the previous page so the new
-      // page gets a clean __live_yt_auto__ binding (videoId differs).
-      chrome.runtime
-        .sendMessage({
-          type: 'youtube_ws_unsubscribe',
-          channelId: '__live_yt_auto__',
-        })
-        .catch(() => {})
-      channelYtMessages.delete('__live_yt_auto__')
-      // Bug #2: clear the watchdog entry for the old video so the 30s
-      // interval does not keep force-reconnecting a subscription that no
-      // longer exists (ended stream re-subscribe loop).
-      ytChanLastSeen.delete('__live_yt_auto__')
-      ytChanRejoinAttempts.delete('__live_yt_auto__')
-      ytSubscribedUrls.delete('__live_yt_auto__')
-      _autoYtVideoId = null
-      // Re-apply layout so destructive overrides re-evaluate against the
-      // new pathname (watch ↔ home).
-      try {
-        applyChatPosition()
-      } catch {}
-      try {
-        applyYouTubeChatWidth()
-      } catch {}
-      // Nudge YT's responsive code so it recomputes --ytd-rich-grid-width
-      // and #primary widths against the new page. Without this the home
-      // grid stays clamped at the previous page's width until the user
-      // wiggles the resize handle.
-      try {
-        window.dispatchEvent(new Event('resize'))
-      } catch {}
-      // Resume sticky-bottom on the persistent panel — without this the new
-      // page inherits whatever scroll position the previous video left.
-      isScrolledUp = false
-      newMessageCount = 0
-      const newBtn = document.getElementById('hs-mc-new-msgs')
-      if (newBtn) newBtn.style.display = 'none'
-      const msgsEl = document.getElementById('hs-mc-messages')
-      if (msgsEl)
-        try {
-          scrollMsgsToBottom(msgsEl)
-        } catch (_) {}
-      cleanup.setTimeout(
-        () => {
-          document.body.classList.remove('hs-mc-navigating')
-        },
-        300,
-        'yt-soft-nav-release',
-      )
-      return
-    }
-
-    fullSpaReinit()
   }
 
-  // Full destroy+rebuild SPA path — shared by handleMcNav's fallback branch
-  // and softKickNav's null-container recovery so both tear down identically.
-  function fullSpaReinit() {
-    // Flag prevents layout watcher from re-injecting elements we're about to remove
-    spaReinitializing = true
-    _layoutWatcherStarted = false
+  // Twitch SPA nav: skip the destroy+rebuild path entirely. The panel
+  // (and IRC, and feed state) all survive intact — see softTwitchNav.
+  // Popout chat is exempt since it never SPA-navigates between URLs.
+  if (hostPlatform === 'twitch' && !document.body.classList.contains('hs-popout')) {
+    softTwitchNav(prevLiveCh)
+    return
+  }
 
-    // Unsubscribe auto-YouTube from previous channel AND every per-channel
-    // YT subscription so init() can cleanly re-subscribe each. Otherwise the
-    // server sees duplicate youtube:subscribe events on every SPA navigation
-    // and may re-deliver buffered messages.
+  // Kick SPA nav: same soft path as Twitch. Panel + kickChat persist;
+  // body class refreshes for the new URL.
+  if (isKick && !document.body.classList.contains('hs-popout')) {
+    softKickNav(prevLiveCh)
+    return
+  }
+
+  // YouTube SPA nav: panel is body-mounted and survives across URLs.
+  // Same rationale as Twitch — destroying + waiting 1s for init left a
+  // visible blank gap when the user clicked back from a stream. Just
+  // refresh per-page WS subs, re-apply layout. The 4s checkYtLive
+  // interval already refreshes hs-offline class within 4s.
+  if (hostPlatform === 'yt') {
+    // Mark transition so the CSS guard absorbs any flash from YT's primary
+    // column reflow (watch ↔ home swaps #primary width, recommendeds visible
+    // /hidden, chatframe iframe mount). 300ms covers the full page-state
+    // pivot; same pattern as Twitch/Kick soft-nav.
+    document.body.classList.add('hs-mc-navigating')
+    // Unsubscribe the auto-YT route for the previous page so the new
+    // page gets a clean __live_yt_auto__ binding (videoId differs).
     chrome.runtime
       .sendMessage({
         type: 'youtube_ws_unsubscribe',
@@ -48198,116 +48127,180 @@ function applyHsPaintToElement(el, userId) {
       })
       .catch(() => {})
     channelYtMessages.delete('__live_yt_auto__')
-    // Bug #2: clear watchdog entries for all unsubscribed YT channels so
-    // the 30s watchdog doesn't keep force-reconnecting dead subscriptions.
+    // Bug #2: clear the watchdog entry for the old video so the 30s
+    // interval does not keep force-reconnecting a subscription that no
+    // longer exists (ended stream re-subscribe loop).
     ytChanLastSeen.delete('__live_yt_auto__')
     ytChanRejoinAttempts.delete('__live_yt_auto__')
     ytSubscribedUrls.delete('__live_yt_auto__')
-    for (const ch of config.channels) {
-      if (!ch.youtube) continue
-      const link = youtubeLinks.get(ch.id)
-      chrome.runtime
-        .sendMessage({
-          type: 'youtube_ws_unsubscribe',
-          channelId: ch.id,
-          url: ch.youtube,
-          videoId: link?.videoId || '',
-        })
-        .catch(() => {})
-      youtubeLinks.delete(ch.id)
-      ytChanLastSeen.delete(ch.id)
-      ytChanRejoinAttempts.delete(ch.id)
-      ytSubscribedUrls.delete(ch.id)
-    }
-
-    // Close old read-only IRC to prevent zombie WebSocket reconnect loops
-    // NOTE: auth IRC (for sending) is NOT killed here — it survives SPA navigation
-    if (irc) {
-      irc.destroy()
-    }
-    irc = null
-
-    // Destroy old KickChat to prevent stale message listeners
-    if (kickChat) {
-      kickChat.destroy()
-      kickChat = null
-    }
-
-    // Clean up — remove entire container (our elements are inside it)
-    document.getElementById('hs-mc-container')?.remove()
-    tabBarElement = null
-    overlayElement = null
-    inputBarElement = null
-    if (resizeObserver) {
-      resizeObserver.disconnect()
-      resizeObserver = null
-    }
-    // Disconnect all tracked observers from previous channel to prevent accumulation
-    _timers.observers.forEach((o) => {
-      try {
-        o.disconnect()
-      } catch {}
-    })
-    _timers.observers.length = 0
-    // Drain per-channel intervals/timeouts too. init() unconditionally re-registers
-    // its pollers (offline 5s/1s, YT-live 1.5s, kick 10s, YT watchdog 30s, ctx-death
-    // 1s, layout reinject 500ms) on every reinit; without this they stack one full
-    // live set per channel hop and never stop firing (unbounded leak). Persistent
-    // ids (bootstrap's module-load ctx-death detector) are kept — they're not
-    // re-registered by init(). The spa-reinit setTimeout below is registered AFTER
-    // this drain, so it survives.
-    _timers.intervals = _timers.intervals.filter((id) => {
-      if (_timers.persistent.has(id)) return true
-      try {
-        clearInterval(id)
-      } catch {}
-      return false
-    })
-    _timers.timeouts = _timers.timeouts.filter((id) => {
-      if (_timers.persistent.has(id)) return true
-      try {
-        clearTimeout(id)
-      } catch {}
-      return false
-    })
-    // Null the sentinels whose observers/timers were just disconnected/cleared
-    // above. Their "already running" guards (if (columnObserver) return,
-    // if (!mcCosmeticsTimer), if (_persistMentionsState.timer) return, etc.)
-    // would otherwise stay truthy forever, so after the first channel switch
-    // the column watcher, 7TV cosmetics flush, mention/YT persistence, and
-    // resub-callout observer are never recreated. dirty Sets are intentionally
-    // kept — the next message reschedules a flush that still includes pre-nav data.
-    columnObserver = null
-    _hsCalloutCloseObs = null
-    mcCosmeticsTimer = null
-    _persistMentionsState.timer = null
-    _persistYtTimers.clear()
-    _persistTabSeenTimer = null
-    mcInitialized = false // Allow init() to run again
-
-    // Reset social tab state (stale on nav)
-    feedLoaded = false
-    feedLoading = false
-    feedMessages = []
-    feedPage = 1
-    feedHasMore = true
-    feedLastFetch = 0
-    activeThread = null
     _autoYtVideoId = null
-    // Reset feed scroll listener flag (new DOM element)
-    const oldMsgs = document.getElementById('hs-mc-messages')
-    if (oldMsgs) oldMsgs._hsFeedScroll = false
-
-    // Reinitialize after short delay
+    // Re-apply layout so destructive overrides re-evaluate against the
+    // new pathname (watch ↔ home).
+    try {
+      applyChatPosition()
+    } catch {}
+    try {
+      applyYouTubeChatWidth()
+    } catch {}
+    // Nudge YT's responsive code so it recomputes --ytd-rich-grid-width
+    // and #primary widths against the new page. Without this the home
+    // grid stays clamped at the previous page's width until the user
+    // wiggles the resize handle.
+    try {
+      window.dispatchEvent(new Event('resize'))
+    } catch {}
+    // Resume sticky-bottom on the persistent panel — without this the new
+    // page inherits whatever scroll position the previous video left.
+    isScrolledUp = false
+    newMessageCount = 0
+    const newBtn = document.getElementById('hs-mc-new-msgs')
+    if (newBtn) newBtn.style.display = 'none'
+    const msgsEl = document.getElementById('hs-mc-messages')
+    if (msgsEl)
+      try {
+        scrollMsgsToBottom(msgsEl)
+      } catch (_) {}
     cleanup.setTimeout(
       () => {
-        spaReinitializing = false
-        init()
+        document.body.classList.remove('hs-mc-navigating')
       },
-      1000,
-      'spa-reinit',
+      300,
+      'yt-soft-nav-release',
     )
+    return
   }
+
+  fullSpaReinit()
+}
+
+// Full destroy+rebuild SPA path — shared by handleMcNav's fallback branch
+// and softKickNav's null-container recovery so both tear down identically.
+function fullSpaReinit() {
+  // Flag prevents layout watcher from re-injecting elements we're about to remove
+  spaReinitializing = true
+  _layoutWatcherStarted = false
+
+  // Unsubscribe auto-YouTube from previous channel AND every per-channel
+  // YT subscription so init() can cleanly re-subscribe each. Otherwise the
+  // server sees duplicate youtube:subscribe events on every SPA navigation
+  // and may re-deliver buffered messages.
+  chrome.runtime
+    .sendMessage({
+      type: 'youtube_ws_unsubscribe',
+      channelId: '__live_yt_auto__',
+    })
+    .catch(() => {})
+  channelYtMessages.delete('__live_yt_auto__')
+  // Bug #2: clear watchdog entries for all unsubscribed YT channels so
+  // the 30s watchdog doesn't keep force-reconnecting dead subscriptions.
+  ytChanLastSeen.delete('__live_yt_auto__')
+  ytChanRejoinAttempts.delete('__live_yt_auto__')
+  ytSubscribedUrls.delete('__live_yt_auto__')
+  for (const ch of config.channels) {
+    if (!ch.youtube) continue
+    const link = youtubeLinks.get(ch.id)
+    chrome.runtime
+      .sendMessage({
+        type: 'youtube_ws_unsubscribe',
+        channelId: ch.id,
+        url: ch.youtube,
+        videoId: link?.videoId || '',
+      })
+      .catch(() => {})
+    youtubeLinks.delete(ch.id)
+    ytChanLastSeen.delete(ch.id)
+    ytChanRejoinAttempts.delete(ch.id)
+    ytSubscribedUrls.delete(ch.id)
+  }
+
+  // Close old read-only IRC to prevent zombie WebSocket reconnect loops
+  // NOTE: auth IRC (for sending) is NOT killed here — it survives SPA navigation
+  if (irc) {
+    irc.destroy()
+  }
+  irc = null
+
+  // Destroy old KickChat to prevent stale message listeners
+  if (kickChat) {
+    kickChat.destroy()
+    kickChat = null
+  }
+
+  // Clean up — remove entire container (our elements are inside it)
+  document.getElementById('hs-mc-container')?.remove()
+  tabBarElement = null
+  overlayElement = null
+  inputBarElement = null
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+    resizeObserver = null
+  }
+  // Disconnect all tracked observers from previous channel to prevent accumulation
+  _timers.observers.forEach((o) => {
+    try {
+      o.disconnect()
+    } catch {}
+  })
+  _timers.observers.length = 0
+  // Drain per-channel intervals/timeouts too. init() unconditionally re-registers
+  // its pollers (offline 5s/1s, YT-live 1.5s, kick 10s, YT watchdog 30s, ctx-death
+  // 1s, layout reinject 500ms) on every reinit; without this they stack one full
+  // live set per channel hop and never stop firing (unbounded leak). Persistent
+  // ids (bootstrap's module-load ctx-death detector) are kept — they're not
+  // re-registered by init(). The spa-reinit setTimeout below is registered AFTER
+  // this drain, so it survives.
+  _timers.intervals = _timers.intervals.filter((id) => {
+    if (_timers.persistent.has(id)) return true
+    try {
+      clearInterval(id)
+    } catch {}
+    return false
+  })
+  _timers.timeouts = _timers.timeouts.filter((id) => {
+    if (_timers.persistent.has(id)) return true
+    try {
+      clearTimeout(id)
+    } catch {}
+    return false
+  })
+  // Null the sentinels whose observers/timers were just disconnected/cleared
+  // above. Their "already running" guards (if (columnObserver) return,
+  // if (!mcCosmeticsTimer), if (_persistMentionsState.timer) return, etc.)
+  // would otherwise stay truthy forever, so after the first channel switch
+  // the column watcher, 7TV cosmetics flush, mention/YT persistence, and
+  // resub-callout observer are never recreated. dirty Sets are intentionally
+  // kept — the next message reschedules a flush that still includes pre-nav data.
+  columnObserver = null
+  _hsCalloutCloseObs = null
+  mcCosmeticsTimer = null
+  _persistMentionsState.timer = null
+  _persistYtTimers.clear()
+  _persistTabSeenTimer = null
+  mcInitialized = false // Allow init() to run again
+
+  // Reset social tab state (stale on nav)
+  feedLoaded = false
+  feedLoading = false
+  feedMessages = []
+  feedPage = 1
+  feedHasMore = true
+  feedLastFetch = 0
+  activeThread = null
+  _autoYtVideoId = null
+  // Reset feed scroll listener flag (new DOM element)
+  const oldMsgs = document.getElementById('hs-mc-messages')
+  if (oldMsgs) oldMsgs._hsFeedScroll = false
+
+  // Reinitialize after short delay
+  cleanup.setTimeout(
+    () => {
+      spaReinitializing = false
+      init()
+    },
+    1000,
+    'spa-reinit',
+  )
+}
 
 
 // --- multichat/twitch-host.js ---

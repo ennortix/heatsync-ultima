@@ -488,6 +488,11 @@
   // alongside the error ring buffer. DOM-probes peer extensions (7TV/FFZ/BTTV/Chatterino)
   // because their injected DOM is the #1 source of repro-only-on-some-users breakage.
   // (Unhandled errors are captured by lib/error-reporter.js writing hs_errors directly.)
+  // Cached peer-ext presence — refreshed by _writeDiagPage (2s/8s/URL change).
+  // Gates native-chat cosmetic injection: when the real 7TV/BTTV/FFZ extension
+  // is co-installed it renders its own badges/paints on native rows — injecting
+  // ours too produces visible duplicates.
+  let _peerExts = []
   function _detectPeerExts() {
     const c = []
     try {
@@ -513,11 +518,12 @@
           : window.location.hostname.includes('twitch.tv')
             ? 'twitch'
             : 'other'
+      _peerExts = _detectPeerExts()
       const snap = {
         ts: Date.now(),
         plat,
         channel: getPageChannel(),
-        conflicts: _detectPeerExts(),
+        conflicts: _peerExts,
       }
       chrome.storage.local.set({ hs_diag_page: snap }, () => {
         void chrome.runtime.lastError
@@ -5102,6 +5108,8 @@
   let dimTimeoutsEnabled = true // dim timed-out/banned messages instead of hiding
   const originalMessageBodies = new Map() // msg-id → cloned childNodes array (for restoring on timeout)
   const cosmeticsCache = new Map()
+  const chatterTwitchIds = new Map() // lowerUser → twitch uid (mention cosmetics lookup)
+  const CHATTER_IDS_MAX = 500
   let _selfTwitchIdRegistered = false
   const COSMETICS_TTL = 30 * 60 * 1000
   // Re-fetch null-cosmetic users every 5min so newly-added 7TV badges/paints
@@ -5558,6 +5566,7 @@
           span.style.cssText = `color: ${safeColor}; font-weight: bold; cursor: pointer;`
           span.textContent = word
           span.dataset.hsUsername = cleanWord
+          applyMentionCosmetics(span, cleanWord)
           newNodes.push(span)
           hasMatch = true
         } else {
@@ -5585,11 +5594,33 @@
       if (mention.classList.contains('hs-mention-colored')) continue
       const username = mention.textContent.replace('@', '').trim().toLowerCase()
       if (!username) continue
-      const color = knownChatters.get(username) || '#fff'
+      const color = knownChatters.get(username) || heatsyncColorMap.get(username) || '#fff'
       const safeColor = COLOR_RE.test(color) ? color : '#fff'
       mention.style.cssText = `color: ${safeColor}; font-weight: bold; cursor: pointer; pointer-events: auto;`
       mention.classList.add('hs-mention-colored')
       mention.dataset.hsUsername = username
+      applyMentionCosmetics(mention, username)
+    }
+  }
+
+  // Mentions carry the mentioned user's 7TV paint, same as their username
+  // element does. Paint may arrive after the mention rendered — the
+  // data-hs-cosmetic-mention stamp lets applyPendingCosmetics catch up.
+  function applyMentionCosmetics(el, username) {
+    if (!cosmeticsEnabled) return
+    if (isKick) {
+      const c = kickCosmeticsCache.get(username)
+      if (c?.paint && !el.dataset.hsPaintApplied) applyPaintToElement(el, c.paint)
+      return
+    }
+    const uid = chatterTwitchIds.get(username)
+    if (!uid) return
+    el.dataset.hsCosmeticMention = uid
+    const c = cosmeticsCache.get(uid)
+    if (c?.paint) {
+      if (!el.dataset.hsPaintApplied) applyPaintToElement(el, c.paint)
+    } else if (!c) {
+      queueCosmeticsLookup(uid)
     }
   }
 
@@ -5983,6 +6014,11 @@
       twitchUid = getTwitchUserId(messageElement) || ''
       if (twitchUid) {
         messageElement.dataset.hsCosmeticUserId = twitchUid
+        if (!chatterTwitchIds.has(lowerUser)) {
+          chatterTwitchIds.set(lowerUser, twitchUid)
+          while (chatterTwitchIds.size > CHATTER_IDS_MAX)
+            chatterTwitchIds.delete(chatterTwitchIds.keys().next().value)
+        }
         // Lazy-fetch this sender's heatsync + personal emote set (persistent
         // overlay) so their added emotes resolve in native chat, not just during
         // a live broadcast. Deduped/cached — fires at most once per sender.
@@ -9403,7 +9439,7 @@
     if (!nameEl) return
 
     // BTTV badge — dataset flag avoids querySelector
-    if (!el.dataset.hsBttvDone && bttvBadgeMap.has(userId)) {
+    if (!el.dataset.hsBttvDone && !_peerExts.includes('bttv') && bttvBadgeMap.has(userId)) {
       const b = bttvBadgeMap.get(userId)
       const img = document.createElement('img')
       img.className = 'hs-bttv-badge hs-cosmetic-badge'
@@ -9415,7 +9451,7 @@
     }
 
     // FFZ badges
-    if (!el.dataset.hsFfzDone && ffzBadgeMap.has(userId)) {
+    if (!el.dataset.hsFfzDone && !_peerExts.includes('ffz') && ffzBadgeMap.has(userId)) {
       for (const b of ffzBadgeMap.get(userId)) {
         const img = document.createElement('img')
         img.className = 'hs-ffz-badge hs-cosmetic-badge'
@@ -9440,8 +9476,10 @@
       el.dataset.hsChatterinoDone = '1'
     }
 
-    // 7TV cosmetics — diff-update so cosmetics_invalidated swaps cleanly
-    const cosmetic = cosmeticsCache.get(userId)
+    // 7TV cosmetics — diff-update so cosmetics_invalidated swaps cleanly.
+    // Skipped when the real 7TV extension is co-installed: it paints/badges
+    // native rows itself and doubling up renders duplicates.
+    const cosmetic = _peerExts.includes('7tv') ? null : cosmeticsCache.get(userId)
     if (cosmetic) {
       if (cosmetic.badge) {
         const url = get7TVBadgeUrl(cosmetic.badge)
@@ -9544,6 +9582,14 @@
       if (el.dataset.hsCosmeticDone === '1') return
       const uid = el.dataset.hsCosmeticUserId
       if (idSet.has(uid)) applyCosmeticsToMessage(el, uid)
+    })
+    // Late-arriving paints for @mention / colored-username spans
+    container.querySelectorAll('[data-hs-cosmetic-mention]').forEach((el) => {
+      if (el.dataset.hsPaintApplied) return
+      const uid = el.dataset.hsCosmeticMention
+      if (!idSet.has(uid)) return
+      const paint = cosmeticsCache.get(uid)?.paint
+      if (paint) applyPaintToElement(el, paint)
     })
   }
 
@@ -9775,8 +9821,8 @@
     const cosmetic = kickCosmeticsCache.get(kickSlug)
     if (!cosmetic) return
 
-    // 7TV badge
-    if (cosmetic.badge && !el.querySelector('.hs-7tv-badge')) {
+    // 7TV badge (skip when the real 7TV ext is co-installed — duplicate render)
+    if (cosmetic.badge && !_peerExts.includes('7tv') && !el.querySelector('.hs-7tv-badge')) {
       const url = get7TVBadgeUrl(cosmetic.badge)
       if (url) {
         const img = document.createElement('img')
@@ -9791,7 +9837,7 @@
     // BTTV + FFZ badges (Kick users with a linked Twitch account)
     const twitchId = cosmetic.twitchId
     if (twitchId) {
-      if (!el.dataset.hsBttvDone && bttvBadgeMap.has(twitchId)) {
+      if (!el.dataset.hsBttvDone && !_peerExts.includes('bttv') && bttvBadgeMap.has(twitchId)) {
         const b = bttvBadgeMap.get(twitchId)
         const img = document.createElement('img')
         img.className = 'hs-bttv-badge hs-cosmetic-badge'
@@ -9801,7 +9847,7 @@
         nameEl.parentNode.insertBefore(img, nameEl)
         el.dataset.hsBttvDone = '1'
       }
-      if (!el.dataset.hsFfzDone && ffzBadgeMap.has(twitchId)) {
+      if (!el.dataset.hsFfzDone && !_peerExts.includes('ffz') && ffzBadgeMap.has(twitchId)) {
         for (const b of ffzBadgeMap.get(twitchId)) {
           const img = document.createElement('img')
           img.className = 'hs-ffz-badge hs-cosmetic-badge'
@@ -9815,8 +9861,8 @@
       }
     }
 
-    // 7TV paint
-    if (cosmetic.paint && !nameEl.dataset.hsPaintApplied) {
+    // 7TV paint (same co-install skip as the badge above)
+    if (cosmetic.paint && !_peerExts.includes('7tv') && !nameEl.dataset.hsPaintApplied) {
       applyPaintToElement(nameEl, cosmetic.paint)
     }
     el.dataset.hsCosmeticDone = '1'

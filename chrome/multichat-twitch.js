@@ -888,6 +888,16 @@ if (typeof window !== 'undefined') {
   }
 })()
 
+// Bundle-scope binding. Every other lib file exposes flat top-level
+// declarations, but cleanup.js hides its state behind an IIFE (window-keyed
+// so bundles sharing a world reuse one instance) — without this re-export,
+// bare `cleanup` is a ReferenceError in any bundle that doesn't declare its
+// own. youtube-content + heatsync-button shipped that way (04-27→07-05): yt
+// native chat died at init, the button lost its SPA-nav/retry timers, all
+// silent behind DEBUG-gated catches. Nested bundles (content.js, multichat
+// bootstrap) legally shadow this with their own `const cleanup`.
+const cleanup = window.heatsyncCleanup
+
 
 // --- user-key.js ---
 // User block/mute keys — namespaced by platform.
@@ -41768,7 +41778,11 @@ async function pcToggleFollow(profileId, username, currentlyFollowing) {
   }
   _patchProfileCacheRel(username, { youFollow: targetFollowing, isFollowing: targetFollowing })
   try {
-    const resp = await apiFetch(`/api/follow/${encodeURIComponent(profileId)}`, { method, auth: true })
+    // kick_ ids need the username hint — the server can't resolve a kick id
+    // to a profile on its own (app-token API limitation); it verifies the pair.
+    const hint = method === 'POST' && username && /^kick_\d+$/.test(String(profileId))
+      ? `?kickUsername=${encodeURIComponent(username)}` : ''
+    const resp = await apiFetch(`/api/follow/${encodeURIComponent(profileId)}${hint}`, { method, auth: true })
     if (!resp?.ok) {
       const msg = String(resp?.error || '').toLowerCase()
       if (!msg.includes('already following') && !msg.includes('not following')) {

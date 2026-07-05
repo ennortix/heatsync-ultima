@@ -273,17 +273,18 @@ describe('splitHsLettersHtml — escapes each glyph individually', () => {
 // silent way to reintroduce the collision trap, so this is asserted directly
 // against the source rather than left to convention.
 describe('paint lookup id-space guard — structural invariant', () => {
-  const mainJs = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'main.js'), 'utf8')
+  // queueMcCosmeticsLookup (the sole caller) moved to cosmetics.js (split out of main.js)
+  const cosmeticsJs = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'cosmetics.js'), 'utf8')
 
-  test('queuePaintLookup is called from exactly one place in main.js', () => {
-    const calls = mainJs.match(/\bqueuePaintLookup\(/g) || []
+  test('queuePaintLookup is called from exactly one place in cosmetics.js', () => {
+    const calls = cosmeticsJs.match(/\bqueuePaintLookup\(/g) || []
     expect(calls.length).toBe(1)
   })
 
   test('that one call site is inside queueMcCosmeticsLookup, the same choke point 7TV cosmetics uses', () => {
-    const fnStart = mainJs.indexOf('function queueMcCosmeticsLookup(')
+    const fnStart = cosmeticsJs.indexOf('function queueMcCosmeticsLookup(')
     expect(fnStart).toBeGreaterThan(-1)
-    const fnBody = mainJs.slice(fnStart, fnStart + 600)
+    const fnBody = cosmeticsJs.slice(fnStart, fnStart + 600)
     expect(fnBody).toContain('queuePaintLookup(userId)')
   })
 })

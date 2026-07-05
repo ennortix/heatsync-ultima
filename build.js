@@ -493,6 +493,7 @@ const MULTICHAT_MODULES = [
   'chat-logs.js',
   'vim-buffer.js',
   'paints.js',
+  'cosmetics.js',
   'mod-toolbar.js',
   'resize.js',
 ]

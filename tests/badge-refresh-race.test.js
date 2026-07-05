@@ -175,24 +175,25 @@ describe('badge refresh mechanism — structural invariants', () => {
   })
 })
 
-describe('badge refresh mechanism — main.js in-place patch covers cached (inactive) tabs too', () => {
-  const MAIN_SRC = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'main.js'), 'utf8')
+describe('badge refresh mechanism — cosmetics.js in-place patch covers cached (inactive) tabs too', () => {
+  // updateNativeBadgesInPlace / _patchBadgesInRoot moved to cosmetics.js (split out of main.js)
+  const COSMETICS_SRC = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'cosmetics.js'), 'utf8')
 
   test('updateNativeBadgesInPlace patches the live DOM AND every _tabCache fragment, not just the active tab', () => {
-    const fnStart = MAIN_SRC.indexOf('function updateNativeBadgesInPlace(')
+    const fnStart = COSMETICS_SRC.indexOf('function updateNativeBadgesInPlace(')
     expect(fnStart).toBeGreaterThan(-1)
-    const fnEnd = MAIN_SRC.indexOf('\n  }', fnStart)
-    const body = MAIN_SRC.slice(fnStart, fnEnd)
+    const fnEnd = COSMETICS_SRC.indexOf('\n  }', fnStart)
+    const body = COSMETICS_SRC.slice(fnStart, fnEnd)
     expect(body).toContain('_patchBadgesInRoot(msgsEl, channelLogin)')
     expect(body).toContain('_tabCache.values()')
     expect(body).toContain('_patchBadgesInRoot(cache.frag, channelLogin)')
   })
 
-  test('_patchBadgesInRoot and main.js also delegate to the shared resolveBadgeImageUrl (no duplicated priority chain left behind)', () => {
-    const fnStart = MAIN_SRC.indexOf('function _patchBadgesInRoot(')
+  test('_patchBadgesInRoot and cosmetics.js also delegate to the shared resolveBadgeImageUrl (no duplicated priority chain left behind)', () => {
+    const fnStart = COSMETICS_SRC.indexOf('function _patchBadgesInRoot(')
     expect(fnStart).toBeGreaterThan(-1)
-    const fnEnd = MAIN_SRC.indexOf('\n  }', fnStart)
-    const body = MAIN_SRC.slice(fnStart, fnEnd)
+    const fnEnd = COSMETICS_SRC.indexOf('\n  }', fnStart)
+    const body = COSMETICS_SRC.slice(fnStart, fnEnd)
     expect(body).toContain('resolveBadgeImageUrl(isKick, ch, name, version)')
   })
 })

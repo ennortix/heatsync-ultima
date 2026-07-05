@@ -13,6 +13,8 @@ import { join } from 'path'
 
 const API = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'twitch-api.js'), 'utf8')
 const MAIN = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'main.js'), 'utf8')
+// _patchBadgesInRoot / updateThirdPartyBadgesInPlace live in cosmetics.js (split out of main.js)
+const COSMETICS = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'cosmetics.js'), 'utf8')
 
 // every line that builds a badge img (class hs-mc-badge-img) must not carry lazy
 function badgeImgLines(src) {
@@ -37,9 +39,9 @@ describe('badge imgs are never lazy', () => {
     // _patchBadgesInRoot + updateThirdPartyBadgesInPlace build hs-mc-badge-img
     // via createElement — ensure neither block sets img.loading = 'lazy'
     for (const marker of ['function _patchBadgesInRoot', 'function updateThirdPartyBadgesInPlace']) {
-      const start = MAIN.indexOf(marker)
+      const start = COSMETICS.indexOf(marker)
       expect(start).toBeGreaterThan(-1)
-      const block = MAIN.slice(start, start + 2600)
+      const block = COSMETICS.slice(start, start + 2600)
       // if it builds a badge img here, it must not mark it lazy
       if (block.includes("className = 'hs-mc-badge-img") || block.includes("'hs-mc-badge-img '")) {
         expect(block).not.toContain("img.loading = 'lazy'")
@@ -76,6 +78,6 @@ describe('badgeBgStyle — semantic bg fallback', () => {
   })
   test('both render paths route through badgeBgStyle', () => {
     expect(API).toContain('badgeBgStyle(name, isFFZ)')
-    expect(MAIN).toContain('badgeBgStyle(name, isFFZ)')
+    expect(COSMETICS).toContain('badgeBgStyle(name, isFFZ)')
   })
 })

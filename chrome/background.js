@@ -4999,6 +4999,7 @@ function handleWSMessage(msg) {
             type: 'youtube_chat_message',
             videoId: msg.videoId,
             channelId,
+            id: ytMsg.id || undefined, // innertube id — end-to-end yt dedup key
             user: ytMsg.user,
             text: ytMsg.text,
             color: ytMsg.color || '#ff0000',

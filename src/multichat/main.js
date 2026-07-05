@@ -10038,15 +10038,26 @@
   }
 
   // Dedup helper: check against actual message buffers (survives WS reconnects)
-  function isYtDuplicate(user, text, channelId) {
+  function isYtDuplicate(user, text, channelId, id) {
+    const needle = `${user}:${text.slice(0, 50)}`
+    // When both sides carry the server's innertube id, identity is exact —
+    // same id = duplicate, different id = genuinely repeated text (a user
+    // legitimately spamming the same line must NOT be collapsed). Only the
+    // id-less legacy path falls back to the user:text heuristic.
+    const isDup = (m) => (id && m.id ? m.id === id : `${m.user}:${(m.text || '').slice(0, 50)}` === needle)
+    // Pace queue FIRST: duplicates re-delivered inside the 60-400ms pacing
+    // window used to race past the committed-buffer check below, then drain
+    // sequentially — the "3 identical copies in a row" bug.
+    const q = _ytPaceQueue.get(channelId)
+    if (q) {
+      for (const m of q) if (isDup(m)) return true
+    }
     const buf = channelYtMessages.get(channelId)
     if (!buf || buf.length === 0) return false
     // check last 200 messages in buffer (matches server recentMessages cap)
     const start = Math.max(0, buf.length - 200)
-    const needle = `${user}:${text.slice(0, 50)}`
     for (let i = buf.length - 1; i >= start; i--) {
-      const m = buf[i]
-      if (`${m.user}:${m.text.slice(0, 50)}` === needle) return true
+      if (isDup(buf[i])) return true
     }
     return false
   }

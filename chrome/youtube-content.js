@@ -753,6 +753,10 @@
       type: 'youtube_chat_message',
       videoId,
       channelId: videoId,
+      // renderer id attribute = youtube's own per-message id — same identity
+      // space as the server relay's innertube id, so the overlay's id-exact
+      // dedup collapses DOM-scraped and server-relayed copies of one message
+      id: node.id || undefined,
       user: msg.user,
       text: msg.text,
       msgType,

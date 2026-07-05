@@ -753,8 +753,9 @@ function listenForSocialEvents() {
         return
       }
 
-      // Dedup against message buffer (survives WS reconnects unlike 5s hash)
-      if (targetChannelId && isYtDuplicate(msg.user, msg.text, targetChannelId)) return
+      // Dedup against message buffer + pace queue (survives WS reconnects
+      // unlike 5s hash; id-exact when the server's innertube id is present)
+      if (targetChannelId && isYtDuplicate(msg.user, msg.text, targetChannelId, msg.id)) return
 
       // Resolve a Twitch-channel name for emote lookup. YT-relayed messages
       // belong to a streamer who likely also has Twitch/Kick channel emotes
@@ -768,6 +769,10 @@ function listenForSocialEvents() {
       }
 
       const ytMsg = {
+        // innertube message id when the server relays one — gives yt messages
+        // a REAL identity: stableMsgId stops falling back to user:time:text
+        // (whose time gets rewritten per pace-commit, defeating render dedup)
+        id: msg.id || undefined,
         user: msg.user,
         text: msg.text,
         color: msg.color || '#ff0000',

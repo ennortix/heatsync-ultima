@@ -275,6 +275,23 @@ function checkErrorReporterParity() {
 // (background.js's blocklist was missing 'chatFilterRules', so a value under
 // that key could reach chrome.storage.sync unsanitized) — this guard fails
 // the build the moment the two copies disagree.
+// Extract a top-level `function name(...){...}` body, whitespace-normalized,
+// for cross-file parity diffing (SW + standalone files can't share imports).
+function extractFnBody(src, name) {
+  const i = src.search(new RegExp(`function ${name}\\s*\\(`))
+  if (i < 0) return null
+  const open = src.indexOf('{', i)
+  let depth = 0
+  for (let j = open; j < src.length; j++) {
+    if (src[j] === '{') depth++
+    else if (src[j] === '}') {
+      depth--
+      if (depth === 0) return src.slice(open + 1, j).replace(/\s+/g, ' ').trim()
+    }
+  }
+  return null
+}
+
 function checkUiSyncBlocklistParity() {
   const utilsSrc = readFileSync(join(__dirname, 'src', 'lib', 'utils.js'), 'utf8')
   const bgSrc = readFileSync(join(__dirname, 'chrome', 'background.js'), 'utf8')
@@ -325,6 +342,9 @@ function checkUiSyncBlocklistParity() {
       extractConstNumber(utilsSrc, 'LARGE_KEY_SYNC_MAX'),
       extractConstNumber(bgSrc, 'LARGE_KEY_SYNC_MAX'),
     ],
+    // the consumers of those literals must also stay in lockstep (byte-identical, ungated until now)
+    ['estimateSettingSize', extractFnBody(utilsSrc, 'estimateSettingSize'), extractFnBody(bgSrc, 'estimateSettingSize')],
+    ['sanitizeUiSettings', extractFnBody(utilsSrc, 'sanitizeUiSettings'), extractFnBody(bgSrc, 'sanitizeUiSettings')],
   ]
 
   for (const [label, a, b] of checks) {
@@ -336,7 +356,31 @@ function checkUiSyncBlocklistParity() {
     }
   }
 
-  console.log('  UI-sync blocklist parity: utils.js ⇄ background.js match ✓')
+  console.log('  UI-sync parity: blocklist + estimateSettingSize/sanitizeUiSettings match ✓')
+}
+
+// Guard: userKey / userSetMatches are inlined in 3 files (src/lib/user-key.js,
+// chrome/background.js, chrome/content.js) — the SW can't import and content.js
+// must load standalone. A drift here would ship silently. Fail the build.
+function checkUserKeyParity() {
+  const files = [
+    ['src/lib/user-key.js', readFileSync(join(__dirname, 'src', 'lib', 'user-key.js'), 'utf8')],
+    ['chrome/background.js', readFileSync(join(__dirname, 'chrome', 'background.js'), 'utf8')],
+    ['chrome/content.js', readFileSync(join(__dirname, 'chrome', 'content.js'), 'utf8')],
+  ]
+  for (const name of ['userKey', 'userSetMatches']) {
+    const bodies = files.map(([label, src]) => [label, extractFnBody(src, name)])
+    for (const [label, body] of bodies) {
+      if (!body) throw new Error(`checkUserKeyParity: could not extract ${name} from ${label}`)
+    }
+    if (new Set(bodies.map(([, b]) => b)).size !== 1) {
+      throw new Error(
+        `checkUserKeyParity: ${name} drift across copies:\n` +
+          bodies.map(([label, b]) => `  ${label}: ${b}`).join('\n'),
+      )
+    }
+  }
+  console.log('  user-key parity: user-key.js ⇄ background.js ⇄ content.js match ✓')
 }
 
 // Guard 7: escapeHtml coverage parity.
@@ -974,6 +1018,7 @@ checkManifestParity()
 checkScopeCollisions()
 checkErrorReporterParity()
 checkUiSyncBlocklistParity()
+checkUserKeyParity()
 checkEscapeHtmlCoverage()
 checkNoRuntimeDeps()
 checkNoDynamicCode()

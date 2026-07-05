@@ -2557,6 +2557,15 @@
             ),
           },
           {
+            label: 'poll',
+            key: 'poll',
+            fn: () => {
+              const el = document.querySelector('[data-test-selector*="poll"i] button, [aria-label*="Poll"i]')
+              if (el) el.click()
+            },
+            disabled: !document.querySelector('[data-test-selector*="poll"i] button, [aria-label*="Poll"i]'),
+          },
+          {
             label: 'hype chat',
             key: 'hype',
             fn: () => {
@@ -8415,9 +8424,15 @@
     const urlCh = getCurrentChannel()?.toLowerCase()
     if (!urlCh) return { twitch: '', kick: '', youtube: '' }
     const overrides = livePlatformMap[urlCh]
+    // Same-name fallback is only safe between twitch↔kick. On a YouTube page
+    // urlCh is a video id or @handle — guessing it as a twitch/kick channel
+    // joins junk channels (bogus IRC joins + external history fetches) and can
+    // bleed a real same-named twitch/kick chat into this stream. Mirror of the
+    // yt-handle-guess rule below: cross-platform on yt pages is explicit-only.
+    const sameNameOk = hostPlatform !== 'yt'
     return {
-      twitch: overrides?.twitch ?? urlCh,
-      kick: overrides?.kick ?? urlCh,
+      twitch: overrides?.twitch ?? (sameNameOk ? urlCh : ''),
+      kick: overrides?.kick ?? (sameNameOk ? urlCh : ''),
       // No YT fallback: a guessed youtube.com/@<urlCh>/live resolves to whoever
       // owns that handle (often a different person) and bleeds their live chat
       // into this channel. YouTube must be linked explicitly — same-name across

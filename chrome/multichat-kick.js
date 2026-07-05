@@ -2418,6 +2418,28 @@ const SETTINGS = [
     tip: 'when you follow on heatsync, also follow on kick if they have a linked kick account. needs a kick.com login; queues otherwise',
     control: 'pill',
   },
+  {
+    key: 'crossFollowTwitch',
+    type: 'bool',
+    default: true,
+    scope: 'sync',
+    category: 'notifs',
+    section: 'cross-platform follow',
+    label: 'also follow on twitch',
+    tip: 'when you follow on heatsync, also follow on twitch if they have a linked twitch account. needs an open twitch.tv tab; queues otherwise',
+    control: 'pill',
+  },
+  {
+    key: 'crossFollowTwitchNotify',
+    type: 'bool',
+    default: true,
+    scope: 'sync',
+    category: 'notifs',
+    section: 'cross-platform follow',
+    label: 'twitch follow with notifications',
+    tip: 'cross-platform twitch follows also turn on live notifications for that channel',
+    control: 'pill',
+  },
 
   // ── mod / mod toolbar ─────────────────────────────────────────────────
   // Hover actions on chat rows when you mod the channel. Option tags are
@@ -33581,7 +33603,12 @@ async function _twitchFollow(targetID, follow, disableNotifications, _targetSlug
 async function propagateFollow(follow, target) {
   if (!target) return { kick: { skipped: 'no target' } }
   const settings = await _crossFollowSettings()
-  const out = { twitch: { skipped: 'no twitch id' }, kick: { skipped: 'no kick username' } }
+  // Distinct skip reasons — a user-disabled toggle is not a privacy signal
+  // and callers (pcToggleFollow's skip toast) must never conflate the two.
+  const out = {
+    twitch: { skipped: settings.twitch ? 'no twitch id' : 'disabled' },
+    kick: { skipped: settings.kick ? 'no kick username' : 'disabled' },
+  }
 
   if (settings.twitch && target.twitch_id) {
     const verb = follow ? 'follow' : 'unfollow'
@@ -35242,11 +35269,20 @@ function hsRelPeek(username, platform) {
   return c?.profile || null
 }
 
-async function hsFollowFromMenu(username, platform) {
+async function hsFollowFromMenu(username, platform, ids = {}) {
   if (typeof resolveIdentity !== 'function') return
   const ri = await resolveIdentity(username, { platform })
   const p = ri?.profile
-  const id = p?.id || p?.userId
+  let id = p?.id || p?.userId
+  // BUG 1c — no heatsync profile: fall back to the same kick/yt resolution
+  // the profile card uses (resolveFollowTargetId, profile-card.js) instead of
+  // giving up. Kick hits the public kick.com API for a real numeric id; YT
+  // uses a UC channel id already known from chat (ids.youtubeChannelId, or a
+  // buffer scan when the ctx-menu didn't have one to hand).
+  if (!id && typeof resolveFollowTargetId === 'function' && (platform === 'kick' || platform === 'youtube' || platform === 'yt')) {
+    const target = await resolveFollowTargetId(platform, username, ids)
+    if (target?.id) id = target.id
+  }
   if (!id) {
     const msg = ri?.transient
       ? ri.status === 429
@@ -35256,7 +35292,7 @@ async function hsFollowFromMenu(username, platform) {
     showToast(msg, 'error')
     return
   }
-  pcToggleFollow(id, username, !!(p.relationship?.youFollow || p.relationship?.isFollowing))
+  pcToggleFollow(id, username, !!(p?.relationship?.youFollow || p?.relationship?.isFollowing))
 }
 
 async function hsBlockFromMenu(username, platform) {
@@ -35295,8 +35331,18 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
       ? isUserBlocked(username, platform)
       : blockedUsers.has(String(username).toLowerCase()))
   const isMuted = typeof isUserMuted === 'function' ? isUserMuted(username, platform) : mutedUsers.has(username)
+  // The clicked row's paint uid already carries a yt_<UCid> for YT chatters
+  // (main.js stamps m.hsPaintUid onto dataset.hsPaintUid at render time) — a
+  // free, exact UC id hand-off into the follow resolver (BUG 1c), no buffer
+  // re-scan needed.
+  const rowPaintUid = msg?.dataset?.hsPaintUid || ''
+  const followIds = rowPaintUid.startsWith('yt_') ? { youtubeChannelId: rowPaintUid.slice(3) } : {}
   const items = [
-    { key: 'follow', label: youFollow ? 'unfollow' : 'follow', fn: () => hsFollowFromMenu(username, platform) },
+    {
+      key: 'follow',
+      label: youFollow ? 'unfollow' : 'follow',
+      fn: () => hsFollowFromMenu(username, platform, followIds),
+    },
     {
       key: 'block',
       label: youBlock ? 'unblock' : 'block',
@@ -35385,6 +35431,24 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
       fn: () => hsNoteOpenEditor(username, platform, x, y),
     },
   )
+  // Twitch-native actions we don't reimplement (report, gift sub) — the
+  // official viewer-card popout carries both. Twitch rows with a known
+  // channel only; window.open keeps twitch's own auth/session context.
+  if ((platform || 'twitch') === 'twitch') {
+    const vcChannel = msg?.dataset?.msgChannel || (typeof getLiveChannel === 'function' ? getLiveChannel() : null)
+    if (vcChannel) {
+      items.push({
+        label: 'report / gift sub',
+        fn: () => {
+          const u = encodeURIComponent(String(username).toLowerCase())
+          const c = encodeURIComponent(String(vcChannel).toLowerCase())
+          try {
+            window.open(`https://www.twitch.tv/popout/${c}/viewercard/${u}`, '_blank', 'noopener,width=400,height=600')
+          } catch {}
+        },
+      })
+    }
+  }
   // Filter the live buffer to just this user — sets the search bar to @name.
   // Only on a live/channel tab (where local filtering applies) and a real row.
   if (msg && typeof isLiveSearchTab === 'function' && isLiveSearchTab(currentTab)) {
@@ -40178,6 +40242,11 @@ async function openProfileCard(username, platform) {
       // Build a synthetic profile from Kick data so the card has something useful
       // instead of "no profile" — bio, socials, pfp, cross-link to twitch.
       activeProfileCard.data = pcSynthFromKickEnrich(username, kickEnrich)
+    } else if (platform === 'youtube' || platform === 'yt') {
+      // No enrichment API for YT (BUG 1b) — fall back to a UC id scraped off
+      // one of this chatter's own messages, if we've seen one this session.
+      const ucId = pcFindYtChannelId(username)
+      activeProfileCard.data = ucId ? pcSynthFromYtContext(username, ucId) : { error: true, username }
     } else {
       activeProfileCard.data = { error: true, username }
     }
@@ -40256,6 +40325,13 @@ function pcMergeKickEnrich(profile, kickEnrich) {
 
 function pcSynthFromKickEnrich(username, kickEnrich) {
   return {
+    // kick_<id> lets the follow button resolve a profileId even though this
+    // chatter has no heatsync account — POST /api/follow/kick_<id> with the
+    // ?kickUsername= hint (added in pcToggleFollow) materializes a shadow
+    // user server-side. Without this the card had bio/pfp/socials but the
+    // follow button stayed permanently disabled (BUG 1a).
+    id: kickEnrich.kick_user_id ? `kick_${kickEnrich.kick_user_id}` : null,
+    kick_user_id: kickEnrich.kick_user_id || null,
     display_name: kickEnrich.kick_username || username,
     kick_username: kickEnrich.kick_username || username,
     kick_profile_pic: kickEnrich.kick_profile_pic || null,
@@ -40270,6 +40346,59 @@ function pcSynthFromKickEnrich(username, kickEnrich) {
     _linked_twitch_username: kickEnrich.linked_twitch_username,
     _synth_kick_only: true,
   }
+}
+
+// YouTube has no public "resolve username → channel id" API reachable client-
+// side (no app-token shortcut like Kick's public API), so the only source of
+// a UC channel id for an unregistered YT chatter is one we already saw scrape
+// off their own chat message. social.js stamps `hsPaintUid: 'yt_<UCid>'` on
+// every YT message with a well-formed author channel id (see the UC regex
+// there) and main.js copies it onto the rendered row's `dataset.hsPaintUid` —
+// callers with a live DOM row (ctx-menu) should prefer that over this scan.
+function pcFindYtChannelId(username) {
+  try {
+    const recent = getRecentMessagesFromUser(username)
+    for (const m of recent) {
+      if (m.platform === 'youtube' && typeof m.hsPaintUid === 'string' && m.hsPaintUid.startsWith('yt_')) {
+        return m.hsPaintUid.slice(3)
+      }
+    }
+  } catch {}
+  return null
+}
+
+// Symmetric to pcSynthFromKickEnrich (BUG 1b) — no bio/socials available for
+// YT (no enrichment API), but a known UC id is enough to synthesize a
+// followable profileId. Server materializes the yt_<UCid> shadow user on
+// POST /api/follow — self-verifying scrape, no hint needed (unlike Kick).
+function pcSynthFromYtContext(username, ucId) {
+  return {
+    id: `yt_${ucId}`,
+    display_name: username,
+    youtube_channel_id: ucId,
+    _synth_yt_only: true,
+  }
+}
+
+// Shared follow-target resolver — BUG 1c. Both the profile-card follow button
+// (via openProfileCard's synth paths above) and the right-click follow-from-
+// menu path (hsFollowFromMenu in input.js) need to resolve a followable id
+// for a chatter with no heatsync profile. Keeping it in one place means a fix
+// to one surface can't drift from the other.
+//   platform: 'kick' | 'youtube' | 'yt' — anything else returns null.
+//   ids.youtubeChannelId: an already-known UC id (e.g. off the clicked
+//     message's dataset.hsPaintUid) — skips the buffer scan when present.
+async function resolveFollowTargetId(platform, username, ids = {}) {
+  if (!username) return null
+  const u = String(username).toLowerCase()
+  if (platform === 'kick') {
+    const enrich = await pcFetchKickEnrich(u).catch(() => null)
+    if (enrich?.kick_user_id) return { id: `kick_${enrich.kick_user_id}` }
+  } else if (platform === 'youtube' || platform === 'yt') {
+    const ucId = ids.youtubeChannelId || pcFindYtChannelId(u)
+    if (ucId) return { id: `yt_${ucId}` }
+  }
+  return null
 }
 
 function closeProfileCard() {
@@ -41248,6 +41377,21 @@ async function pcToggleMute(username) {
 // menu's hsRelPeek, tooltip rehover, profile card reopen) see fresh state.
 // Without this, after pcToggleFollow the cached profile keeps the pre-toggle
 // youFollow and the next right-click still says "follow".
+// Best-effort lookup of whatever profile data we already have cached for a
+// username — the open card's data, or a prior hover/ctx-menu resolveIdentity
+// hit sharing _profileCache. Used only to decide whether a cross-platform
+// follow-propagation skip is "expected" (BUG 2) — never trust this for
+// anything privacy-sensitive, it's a UX heuristic, not a source of truth.
+function _pcKnownCrossLinks(username) {
+  if (activeProfileCard?.data && !activeProfileCard.data.error) return activeProfileCard.data
+  if (typeof _profileCache === 'undefined' || !username) return {}
+  const u = String(username).toLowerCase()
+  for (const [k, v] of _profileCache) {
+    if (k.endsWith(':' + u)) return v?.profile || {}
+  }
+  return {}
+}
+
 function _patchProfileCacheRel(username, patch) {
   if (typeof _profileCache === 'undefined' || !_profileCache) return
   const u = String(username).toLowerCase()
@@ -41302,7 +41446,28 @@ async function pcToggleFollow(profileId, username, currentlyFollowing) {
     // on success. Fire and forget; failures queue locally for next platform tab.
     const tgt = resp?.data?.target || resp?.target || null
     if (tgt && typeof propagateFollow === 'function') {
-      propagateFollow(targetFollowing, tgt).catch(() => {})
+      propagateFollow(targetFollowing, tgt)
+        .then((res) => {
+          // BUG 2 — the server redacts a private cross-platform linkage by
+          // simply omitting it from `tgt`, so propagateFollow's skip is
+          // silent by design (privacy decision: keep the redaction). But
+          // when WE already know (client-side, pre-follow) this chatter has
+          // an account on another platform — a plain profile field, or
+          // Kick's public-API cross-link — and propagation still skipped,
+          // that's a real sync gap the user should hear about. Only on a
+          // fresh follow, never unfollow; never for a plain same-platform
+          // follow (the platform just followed is excluded from "expected").
+          if (!targetFollowing || !res || typeof showToast !== 'function') return
+          const known = _pcKnownCrossLinks(username)
+          const contextPlat = activeProfileCard?.platform
+          const expectTwitch = contextPlat !== 'twitch' && !!(known.twitch_username || known._linked_twitch_username)
+          const expectKick = contextPlat !== 'kick' && !!known.kick_username
+          const skippedPrivate =
+            (expectTwitch && res.twitch?.skipped === 'no twitch id') ||
+            (expectKick && res.kick?.skipped === 'no kick username')
+          if (skippedPrivate) showToast('followed on heatsync — cross-platform sync unavailable', 'info')
+        })
+        .catch(() => {})
     }
   } catch (e) {
     if (activeProfileCard?.data?.relationship) {
@@ -42479,12 +42644,12 @@ class HsOverlayVisual {
 // equal an unrelated twitch numeric id — see heatsync_userid_collision_kick_twitch
 // in project memory), so the guard here is structural, not a value check: the
 // bare/raw platform-native id must NEVER reach queuePaintLookup — every id it
-// receives must already be either a resolved twitch id or a `kick_`-prefixed
-// namespaced id. There are exactly two call sites, both already correct:
+// receives must already be either a resolved twitch id or a `kick_`/`yt_`-
+// prefixed namespaced id. There are exactly three call sites, all correct:
 //   1. queueMcCosmeticsLookup (main.js) — the same choke point 7TV cosmetics
 //      uses. Twitch chatters reach it with their native twitch id (that IS
-//      twitch-id-space). Kick/YouTube chatters reach it only with a RESOLVED
-//      twitch id (see flushYtNameLookups in main.js, which sets m.userId to
+//      twitch-id-space). Kick chatters reach it only with a RESOLVED twitch
+//      id (see flushYtNameLookups in cosmetics.js, which sets m.userId to
 //      the linked twitch id returned by the 7TV youtube lookup) — never a
 //      bare kick/yt id.
 //   2. flushKickNameLookups (cosmetics.js) — mints `kick_` + the numeric kick
@@ -42494,7 +42659,14 @@ class HsOverlayVisual {
 //      would misroute it into the 7TV/twitch cosmetics pipeline). The bare
 //      numeric kick id from that response is used ONLY to build the
 //      namespaced string — it never reaches queuePaintLookup on its own.
-// Do not add a third call site, and never widen either of the two above to
+//   3. social.js's youtube_chat_message handler — mints `yt_` + the author's
+//      UC… channel id directly off the incoming message (msg.authorChannelId)
+//      and calls queuePaintLookup with that namespaced string as soon as the
+//      message arrives, before any twitch-link resolution. This is why
+//      flushYtNameLookups' own 7TV-cosmetics fallback (cosmetics.js) reuses
+//      the exact same `yt_<UCid>` string as its mcUserCosmetics key instead
+//      of minting a second namespace for the same identity.
+// Do not add a fourth call site, and never widen any of the three above to
 // accept an unnamespaced platform-native id.
 //
 // Pipeline:
@@ -42964,6 +43136,45 @@ function ytNameKey(user) {
   return (user || '').toLowerCase().replace(/^@/, '')
 }
 
+// Recover a yt username's UC… channel id without threading it through
+// main.js's queueYtNameToTwitchId call site (main.js is off-limits for this
+// change). The id is already riding every yt message as social.js's
+// `yt_<UCid>` hsPaintUid — read it back off whichever rendered row or
+// buffered message this username last appeared in, same lookup shape as the
+// data-uid backfill below.
+function findYtChannelIdForUser(key) {
+  const fromPaintUid = (puid) => (typeof puid === 'string' && puid.startsWith('yt_') ? puid.slice(3) : null)
+  const container = document.getElementById('hs-mc-messages')
+  if (container) {
+    const sel = `.hs-mc-msg .hs-mc-user[data-platform="yt"][data-username="${CSS.escape('@' + key)}"], .hs-mc-msg .hs-mc-user[data-platform="yt"][data-username="${CSS.escape(key)}"]`
+    for (const userEl of container.querySelectorAll(sel)) {
+      const found = fromPaintUid(userEl.closest('.hs-mc-msg')?.dataset.hsPaintUid)
+      if (found) return found
+    }
+  }
+  const scanBuf = (buf) => {
+    if (!buf) return null
+    for (const m of buf) {
+      if (m && m.platform === 'youtube' && m.user && ytNameKey(m.user) === key) {
+        const found = fromPaintUid(m.hsPaintUid)
+        if (found) return found
+      }
+    }
+    return null
+  }
+  if (typeof channelYtMessages !== 'undefined') {
+    for (const buf of channelYtMessages.values()) {
+      const found = scanBuf(buf)
+      if (found) return found
+    }
+  }
+  if (typeof mentionsBuffer !== 'undefined') {
+    const found = scanBuf(mentionsBuffer)
+    if (found) return found
+  }
+  return null
+}
+
 function queueYtNameToTwitchId(user) {
   const key = ytNameKey(user)
   if (!key) return
@@ -43038,6 +43249,33 @@ async function flushYtNameLookups() {
         // Now feed through the existing cosmetics pipeline; it will resolve
         // 7TV paint/badge and call updateCosmeticsInPlace which paints by uid.
         if (!mcUserCosmetics.has(tidStr)) queueMcCosmeticsLookup(tidStr)
+        return
+      }
+
+      // No linked Twitch account — a twitch-miss must never mask a possible
+      // 7TV google-id hit, so fall back to 7TV's YouTube/"google" id space
+      // right here rather than caching a bare negative and stopping. The
+      // uid stays namespaced (`yt_<UCid>`) and never touches the twitch-space
+      // _uidIndex/data-uid path (ID-SPACE SAFETY, see paints.js) — it applies
+      // via the same data-hs-paint-uid rows social.js already stamps.
+      // Best-effort: by flush time the triggering message is virtually always
+      // already rendered/buffered (this only fires once per username — see
+      // ytNameToTwitchId.has(key) above — so there's no later retry if the
+      // scan comes up empty on a very fast-scrolling chat).
+      const channelId = findYtChannelIdForUser(key)
+      if (!channelId) return
+      const ytUid = `yt_${channelId}`
+      if (mcUserCosmetics.has(ytUid)) return
+      let googleResp = null
+      try {
+        googleResp = await safeSendMessage({ type: 'get_youtube_user_cosmetics', channelIds: [channelId] })
+      } catch {
+        googleResp = null
+      }
+      const cosmetic = googleResp?.cosmetics?.[channelId]
+      if (cosmetic) {
+        setMcCosmetic(ytUid, cosmetic)
+        updateCosmeticsInPlace([ytUid])
       }
     } catch {
       evictYtNameCache()
@@ -43296,7 +43534,8 @@ function updateHsPaintsInPlace(userIds) {
 // the full message container — at 25-user batches × 500 children that was
 // 50 full DOM scans per cosmetic flush.
 function updateCosmeticsInPlace(userIds) {
-  if (!document.getElementById('hs-mc-messages')) return
+  const container = document.getElementById('hs-mc-messages')
+  if (!container) return
   for (const uid of userIds) {
     const cosmetic = mcUserCosmetics.get(uid)
     if (!cosmetic) continue
@@ -43313,7 +43552,14 @@ function updateCosmeticsInPlace(userIds) {
         for (const mention of mentionSet) mention.setAttribute('style', paintStyle)
       }
     }
-    const divSet = _uidIndex.get(uid)
+    // A `yt_<UCid>` uid (flushYtNameLookups' google-id fallback for yt
+    // chatters with no linked Twitch) is never in data-uid — that attribute
+    // stays twitch-id-space only (ID-SPACE SAFETY, paints.js) — so it's never
+    // in _uidIndex either. Find its rows via the parallel data-hs-paint-uid
+    // attribute social.js already stamps, same technique updateHsPaintsInPlace
+    // uses for kick_ ids.
+    const isNamespacedUid = uid.startsWith('yt_')
+    const divSet = isNamespacedUid ? container.querySelectorAll(`[data-hs-paint-uid="${CSS.escape(uid)}"]`) : _uidIndex.get(uid)
     if (!divSet) continue
     for (const div of divSet) {
       // Update paint on the SENDER's username link — exclude the reply
@@ -50838,6 +51084,15 @@ const STORAGE_KEY = 'heatsync_multichat'
             ),
           },
           {
+            label: 'poll',
+            key: 'poll',
+            fn: () => {
+              const el = document.querySelector('[data-test-selector*="poll"i] button, [aria-label*="Poll"i]')
+              if (el) el.click()
+            },
+            disabled: !document.querySelector('[data-test-selector*="poll"i] button, [aria-label*="Poll"i]'),
+          },
+          {
             label: 'hype chat',
             key: 'hype',
             fn: () => {
@@ -56696,9 +56951,15 @@ const STORAGE_KEY = 'heatsync_multichat'
     const urlCh = getCurrentChannel()?.toLowerCase()
     if (!urlCh) return { twitch: '', kick: '', youtube: '' }
     const overrides = livePlatformMap[urlCh]
+    // Same-name fallback is only safe between twitch↔kick. On a YouTube page
+    // urlCh is a video id or @handle — guessing it as a twitch/kick channel
+    // joins junk channels (bogus IRC joins + external history fetches) and can
+    // bleed a real same-named twitch/kick chat into this stream. Mirror of the
+    // yt-handle-guess rule below: cross-platform on yt pages is explicit-only.
+    const sameNameOk = hostPlatform !== 'yt'
     return {
-      twitch: overrides?.twitch ?? urlCh,
-      kick: overrides?.kick ?? urlCh,
+      twitch: overrides?.twitch ?? (sameNameOk ? urlCh : ''),
+      kick: overrides?.kick ?? (sameNameOk ? urlCh : ''),
       // No YT fallback: a guessed youtube.com/@<urlCh>/live resolves to whoever
       // owns that handle (often a different person) and bleeds their live chat
       // into this channel. YouTube must be linked explicitly — same-name across

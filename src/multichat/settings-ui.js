@@ -588,16 +588,41 @@ function _renderBackupGroup() {
 // Reads chatFilterRules (JSON string) from getSetting, renders an editor with
 // per-rule rows + an add-rule form. Wired into the click/change handlers below.
 
+var _filterRulesCorrupted = false
+
 function _getRawFilterRules() {
   var raw = getSetting('chatFilterRules') || '[]'
-  var arr = []
+  var arr
   try {
     arr = JSON.parse(raw)
-  } catch {}
-  return Array.isArray(arr) ? arr : []
+  } catch (e) {
+    if (!_filterRulesCorrupted) {
+      _filterRulesCorrupted = true
+      console.error('[heatsync] chatFilterRules JSON parse failed:', e)
+      showToast('filter rules corrupted — editing disabled until reload', 'error')
+    }
+    return []
+  }
+  if (!Array.isArray(arr)) {
+    if (!_filterRulesCorrupted) {
+      _filterRulesCorrupted = true
+      console.error('[heatsync] chatFilterRules is not an array:', arr)
+      showToast('filter rules corrupted — editing disabled until reload', 'error')
+    }
+    return []
+  }
+  _filterRulesCorrupted = false
+  return arr
 }
 
 function _saveFilterRules(rules) {
+  // _getRawFilterRules() returns [] both for "no rules yet" and "corrupted
+  // JSON" — refuse to write in the corrupted case, or the next add/edit
+  // would silently persist over (and permanently lose) the unreadable blob.
+  if (_filterRulesCorrupted) {
+    showToast('filter rules corrupted — reload the page before editing', 'error')
+    return
+  }
   var json = JSON.stringify(rules)
   saveUiSetting('chatFilterRules', json)
   var parsed = []

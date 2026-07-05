@@ -21,6 +21,7 @@ const HS_NOTE_MAX = 2000 // chars — bounded so storage can't be griefed by a p
 let _hsnNotes = new Map()
 let _hsnIndex = new Map()
 let _hsnLoaded = false
+let _hsnLoadPromise = null // resolves once the initial storage read completes
 
 function _hsnHasStorage() {
   return typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local
@@ -77,28 +78,67 @@ function _hsnPersist() {
 }
 
 function _hsnLoad() {
-  if (_hsnLoaded || !_hsnHasStorage()) {
+  if (_hsnLoadPromise) return _hsnLoadPromise
+  if (!_hsnHasStorage()) {
     _hsnLoaded = true
-    return
+    _hsnLoadPromise = Promise.resolve()
+    return _hsnLoadPromise
   }
-  try {
-    chrome.storage.local.get(HS_NOTES_KEY, (d) => {
-      const raw = d && d[HS_NOTES_KEY]
-      if (raw && typeof raw === 'object') {
-        if (raw.notes && typeof raw.notes === 'object') {
-          for (const [k, v] of Object.entries(raw.notes)) {
-            if (v && typeof v.text === 'string') _hsnNotes.set(k, { text: v.text, updatedAt: v.updatedAt || 0 })
+  _hsnLoadPromise = new Promise((resolve) => {
+    try {
+      chrome.storage.local.get(HS_NOTES_KEY, (d) => {
+        const raw = d && d[HS_NOTES_KEY]
+        if (raw && typeof raw === 'object') {
+          if (raw.notes && typeof raw.notes === 'object') {
+            for (const [k, v] of Object.entries(raw.notes)) {
+              if (v && typeof v.text === 'string') _hsnNotes.set(k, { text: v.text, updatedAt: v.updatedAt || 0 })
+            }
+          }
+          if (raw.index && typeof raw.index === 'object') {
+            for (const [k, v] of Object.entries(raw.index)) if (typeof v === 'string') _hsnIndex.set(k, v)
           }
         }
-        if (raw.index && typeof raw.index === 'object') {
-          for (const [k, v] of Object.entries(raw.index)) if (typeof v === 'string') _hsnIndex.set(k, v)
+        _hsnLoaded = true
+        resolve()
+      })
+    } catch {
+      _hsnLoaded = true
+      resolve()
+    }
+  })
+  return _hsnLoadPromise
+}
+
+// Cross-tab merge — chrome.storage.local has no per-key transactions, and
+// _hsnPersist writes a full snapshot of THIS tab's model. Without this, a tab
+// that saves a note before ever loading another tab's note persists a payload
+// missing that note, erasing it on the other tab's next read. Mirrors
+// mentions.js's onChanged wiring, adapted to merge a Map: last-write-wins per
+// note by updatedAt, and a remote note this tab has never seen is always
+// adopted. Deliberately never deletes a local note just because it's absent
+// from a remote payload — that payload only reflects the OTHER tab's (possibly
+// partial) view, so treating absence as "deleted" would just relocate the
+// wipe. (Trade-off: a delete can be resurrected by a tab that loaded the note
+// before the delete and saves later — no tombstone in the wire format yet.)
+if (typeof window !== 'undefined' && _hsnHasStorage() && !window._hsnOnChangedWired) {
+  window._hsnOnChangedWired = true
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local' || !changes[HS_NOTES_KEY]) return
+    const raw = changes[HS_NOTES_KEY].newValue
+    if (!raw || typeof raw !== 'object') return
+    if (raw.notes && typeof raw.notes === 'object') {
+      for (const [k, v] of Object.entries(raw.notes)) {
+        if (!v || typeof v.text !== 'string') continue
+        const local = _hsnNotes.get(k)
+        if (!local || (v.updatedAt || 0) >= (local.updatedAt || 0)) {
+          _hsnNotes.set(k, { text: v.text, updatedAt: v.updatedAt || 0 })
         }
       }
-      _hsnLoaded = true
-    })
-  } catch {
-    _hsnLoaded = true
-  }
+    }
+    if (raw.index && typeof raw.index === 'object') {
+      for (const [k, v] of Object.entries(raw.index)) if (typeof v === 'string') _hsnIndex.set(k, v)
+    }
+  })
 }
 
 // ── public API ──────────────────────────────────────────────────────────────
@@ -122,6 +162,7 @@ function hsNoteHas(username, platform) {
 
 /** Create/update a note. Async so it can pull the fullest alias set. Empty text deletes. */
 async function hsNoteSave(username, platform, text, nowMs) {
+  await _hsnLoad() // never build a snapshot from a model the initial read hasn't populated yet
   const clean = String(text == null ? '' : text)
     .slice(0, HS_NOTE_MAX)
     .trim()
@@ -138,6 +179,7 @@ async function hsNoteSave(username, platform, text, nowMs) {
 
 /** Delete a note and every alias pointer at it. */
 async function hsNoteDelete(username, platform) {
+  await _hsnLoad()
   const aliases = await _hsnAliasesAsync(username, platform)
   const canonical = _hsnCanonicalFor(aliases)
   if (!canonical) return false
@@ -307,6 +349,7 @@ function _hsNoteResetForTest() {
   _hsnNotes = new Map()
   _hsnIndex = new Map()
   _hsnLoaded = true
+  _hsnLoadPromise = Promise.resolve()
 }
 
 export {

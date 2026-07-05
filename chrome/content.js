@@ -4696,6 +4696,9 @@
       let inserted = 0
 
       for (const msg of data.messages) {
+        // skip malformed cache entries (legacy/partial blobs) instead of letting
+        // one bad item throw and abort the whole scrollback restore
+        if (!msg || typeof msg.user !== 'string' || typeof msg.text !== 'string') continue
         if (msg.id && existingIds.has(msg.id)) continue
         const dedupKey = `${msg.user.toLowerCase()}:${msg.text.substring(0, 80)}`
         if (existingTexts.has(dedupKey)) continue

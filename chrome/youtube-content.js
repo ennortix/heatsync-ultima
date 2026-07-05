@@ -152,8 +152,8 @@
         .catch((e) => log('storage read failed (channel_emotes_update):', e?.message))
     } else if (msg.type === 'youtube_send_relay') {
       // When awaitConfirm is set (server-relay path), wait for the message to
-      // appear in the chat list before acking. Without it, fire-and-forget for
-      // backwards compat with the earlier multichat-internal caller.
+      // appear in the chat list before acking. Either way, forward the real
+      // relay result — never report a dropped/failed send as "sent".
       if (msg.awaitConfirm) {
         handleSendRelay(msg).then((result) => {
           try {
@@ -163,7 +163,16 @@
         return true
       }
       handleSendRelay(msg)
-      sendResponse({ ok: true })
+        .then((result) => {
+          try {
+            sendResponse(result || { ok: false, error: 'no_result' })
+          } catch {}
+        })
+        .catch((e) => {
+          try {
+            sendResponse({ ok: false, error: e?.message || 'send_failed' })
+          } catch {}
+        })
       return true
     } else if (msg.type === 'youtube_insert_emote') {
       handleInsertEmote(msg.emoteName)

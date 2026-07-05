@@ -366,7 +366,10 @@
       background: #7a4400;
     }
 
-    /* Blocked emotes: hide img (keeps natural dimensions), dashed line via ::before */
+    /* Blocked emotes: hide img (keeps natural dimensions), dashed line via ::before.
+       inset:0 + border-box = the dashed rect is EXACTLY the emote's box with
+       the 2px drawn inside — nothing around it moves. (The base ::before
+       inset:4px is the hover plate's geometry, not this state's.) */
     .hs-mc-emote-wrapper.hs-state-blocked > img {
       visibility: hidden;
     }
@@ -374,6 +377,8 @@
       opacity: 1;
       background: none;
       border: 2px dashed #808080;
+      inset: 0;
+      box-sizing: border-box;
     }
     .hs-mc-emote-stack.expanded .hs-mc-emote-wrapper.hs-state-blocked::before {
       border-color: #fff;

@@ -10019,7 +10019,10 @@ function injectStyles() {
       background: #7a4400;
     }
 
-    /* Blocked emotes: hide img (keeps natural dimensions), dashed line via ::before */
+    /* Blocked emotes: hide img (keeps natural dimensions), dashed line via ::before.
+       inset:0 + border-box = the dashed rect is EXACTLY the emote's box with
+       the 2px drawn inside — nothing around it moves. (The base ::before
+       inset:4px is the hover plate's geometry, not this state's.) */
     .hs-mc-emote-wrapper.hs-state-blocked > img {
       visibility: hidden;
     }
@@ -10027,6 +10030,8 @@ function injectStyles() {
       opacity: 1;
       background: none;
       border: 2px dashed #808080;
+      inset: 0;
+      box-sizing: border-box;
     }
     .hs-mc-emote-stack.expanded .hs-mc-emote-wrapper.hs-state-blocked::before {
       border-color: #fff;
@@ -20542,6 +20547,9 @@ function groupEmotes(allEmotes) {
 // as it nears the viewport. All emote name/url/source strings remain
 // escapeHtml'd inside emoteImgHtml() at populate time.
 const CHUNK_SIZE = 96
+// Per-bundle-eval token for the picker click re-attach guard (see the
+// picker.addEventListener block) — unique every content-script context.
+const _HS_PICKER_CLICK_CTX = `ctx_${Math.random().toString(36).slice(2)}`
 const _chunkStore = new Map()
 let _chunkObserver = null
 
@@ -20944,12 +20952,16 @@ function showEmotePicker(tab = null) {
   })
 
   // Event delegation for emote clicks (single handler, works for chunked rendering).
-  // Bumped to v3 — the old `_hsDelegated` boolean property survives extension
-  // reload (page owns the DOM), but the listener it tracked is destroyed with
-  // the previous content-script context. Versioning forces re-attach when this
-  // bundle's flag is missing. (v3: cold-start import CTA branch.)
-  if (picker.dataset.hsClickVersion !== '3') {
-    picker.dataset.hsClickVersion = '3'
+  // Re-attach guard: must compare a PER-CONTEXT token, not a static version.
+  // dataset lives on the shared DOM and survives an extension reload while
+  // the listener's isolated world dies with the old context — a static
+  // version check made the fresh context skip re-attach and every picker
+  // click went dead until a full page refresh (hit live 2026-07-05 after a
+  // night of dev reloads). The token is minted once per bundle eval, so a
+  // new context always differs (re-attaches) and the same context never
+  // double-attaches — robust regardless of expando/world visibility quirks.
+  if (picker._hsClickCtx !== _HS_PICKER_CLICK_CTX) {
+    picker._hsClickCtx = _HS_PICKER_CLICK_CTX
     picker.addEventListener('click', (e) => {
       // Cold-start import CTA (empty inventory) — one-click channel import.
       const coldBtn = e.target.closest('.hs-mc-cold-start-import')
@@ -55191,7 +55203,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       div.style.cursor = 'pointer'
       const ch = m.momentChannel
       const plat = m.momentPlatform || 'twitch'
-      div.title = `open ${plat}/${ch}`
+      div.title = `open ${ch} chat`
       div.addEventListener('click', (e) => {
         const permaEl = e.target.closest?.('a.hs-mc-moment-perma')
         if (permaEl && e.shiftKey) {
@@ -55212,6 +55224,24 @@ const STORAGE_KEY = 'heatsync_multichat'
           return
         }
         if (e.target.closest('a')) return
+        // A spike row lands you in the CHAT ROOM, not the stream page: the
+        // relevance filter (handleMomentSpike) only surfaces spikes for
+        // channels in your tabs or the one you're watching, so a chat tab
+        // exists in almost every case — switch to it. The currently-watched
+        // channel maps to the live tab. Only a spike with no tab anywhere
+        // falls back to opening the stream in a new tab.
+        const chLc = (ch || '').toLowerCase()
+        const tabCh = (config?.channels || []).find((c) =>
+          plat === 'kick' ? c?.kick?.toLowerCase() === chLc : c?.twitch?.toLowerCase() === chLc,
+        )
+        if (tabCh?.id) {
+          switchTab(tabCh.id)
+          return
+        }
+        if (typeof getCurrentChannel === 'function' && (getCurrentChannel() || '').toLowerCase() === chLc) {
+          switchTab('live')
+          return
+        }
         const url = plat === 'kick' ? `https://kick.com/${ch}` : `https://www.twitch.tv/${ch}`
         try {
           window.open(url, '_blank', 'noopener')

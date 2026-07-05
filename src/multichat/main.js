@@ -6415,7 +6415,7 @@
       div.style.cursor = 'pointer'
       const ch = m.momentChannel
       const plat = m.momentPlatform || 'twitch'
-      div.title = `open ${plat}/${ch}`
+      div.title = `open ${ch} chat`
       div.addEventListener('click', (e) => {
         const permaEl = e.target.closest?.('a.hs-mc-moment-perma')
         if (permaEl && e.shiftKey) {
@@ -6436,6 +6436,24 @@
           return
         }
         if (e.target.closest('a')) return
+        // A spike row lands you in the CHAT ROOM, not the stream page: the
+        // relevance filter (handleMomentSpike) only surfaces spikes for
+        // channels in your tabs or the one you're watching, so a chat tab
+        // exists in almost every case — switch to it. The currently-watched
+        // channel maps to the live tab. Only a spike with no tab anywhere
+        // falls back to opening the stream in a new tab.
+        const chLc = (ch || '').toLowerCase()
+        const tabCh = (config?.channels || []).find((c) =>
+          plat === 'kick' ? c?.kick?.toLowerCase() === chLc : c?.twitch?.toLowerCase() === chLc,
+        )
+        if (tabCh?.id) {
+          switchTab(tabCh.id)
+          return
+        }
+        if (typeof getCurrentChannel === 'function' && (getCurrentChannel() || '').toLowerCase() === chLc) {
+          switchTab('live')
+          return
+        }
         const url = plat === 'kick' ? `https://kick.com/${ch}` : `https://www.twitch.tv/${ch}`
         try {
           window.open(url, '_blank', 'noopener')

@@ -493,6 +493,7 @@ const MULTICHAT_MODULES = [
   'chat-logs.js',
   'vim-buffer.js',
   'paints.js',
+  'mod-toolbar.js',
 ]
 
 // native-tap.js reads Twitch's React fiber tree — twitch-only, exclude on kick/youtube

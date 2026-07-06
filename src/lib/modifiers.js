@@ -211,7 +211,11 @@ function hsModBuildStyleAttr(mods, hue) {
   const filter = hsModComposeFilter(mods, hue)
   let style = ''
   if (sx !== 1 || sy !== 1) {
-    style += `transform:scale(${sx}, ${sy}) !important;transform-origin:center !important;`
+    // display:inline-block is REQUIRED — the emote wrapper is display:inline by
+    // default, and CSS transforms are silently ignored on inline non-replaced
+    // elements, so scale()/flip would never render. (This is why w!/ffzW looked
+    // like it worked only while a buggy cached width was inflating the box.)
+    style += `display:inline-block !important;transform:scale(${sx}, ${sy}) !important;transform-origin:center !important;`
     const fx = Math.abs(sx),
       fy = Math.abs(sy)
     if (fx > 1) {

@@ -7372,11 +7372,53 @@
   // ffzW") overlapping. Enqueue every already-complete emote img so the snap
   // runs; non-cached imgs still snap via their load event. hsSnapEmoteBox is
   // rAF-batched + idempotent, so this is cheap even in a bulk rebuild.
+  // Reserve horizontal/vertical space for a wide/tall-modified emote sized to its
+  // REAL width (fixes runs of "Cabge ffzW" overlapping). offsetWidth is the
+  // untransformed layout width; the visual is that × scale, so each side needs
+  // width*(scale-1)/2. Overrides the static 28px-based fallback margins.
+  function _reserveModWrap(wrap) {
+    const sx = Math.abs(parseFloat(wrap.dataset.hsModSx) || 1)
+    const sy = Math.abs(parseFloat(wrap.dataset.hsModSy) || 1)
+    const w = wrap.offsetWidth
+    const h = wrap.offsetHeight
+    if (sx > 1 && w) {
+      const m = Math.round((w * (sx - 1)) / 2) + 'px'
+      wrap.style.setProperty('margin-left', m, 'important')
+      wrap.style.setProperty('margin-right', m, 'important')
+    }
+    if (sy > 1 && h) {
+      const m = Math.round((h * (sy - 1)) / 2) + 'px'
+      wrap.style.setProperty('margin-top', m, 'important')
+      wrap.style.setProperty('margin-bottom', m, 'important')
+    }
+  }
+  let _hsModReserveRO = null
   function _snapCompleteEmotes(root) {
-    if (!root || typeof hsSnapEmoteBox !== 'function') return
-    const imgs = root.querySelectorAll('img.hs-mc-emote')
-    for (const eimg of imgs) {
-      if (eimg.complete && eimg.naturalWidth) hsSnapEmoteBox(eimg)
+    if (!root || !root.querySelectorAll) return
+    if (typeof hsSnapEmoteBox === 'function') {
+      for (const eimg of root.querySelectorAll('img.hs-mc-emote')) {
+        if (eimg.complete && eimg.naturalWidth) hsSnapEmoteBox(eimg)
+      }
+    }
+    // Modifier reservation via ResizeObserver — fires exactly when the wrapper
+    // gets a real size (img decoded, incl. cached imgs whose `load` never fires),
+    // so it never depends on the load event or which render path mounted the row.
+    const mods = root.querySelectorAll('.hs-mc-emote-wrapper[data-hs-mod-sx]')
+    if (!mods.length) return
+    if (!_hsModReserveRO && typeof ResizeObserver !== 'undefined') {
+      _hsModReserveRO = new ResizeObserver((entries) => {
+        for (const e of entries) {
+          if (e.target.offsetWidth) {
+            _reserveModWrap(e.target)
+            _hsModReserveRO.unobserve(e.target)
+          }
+        }
+      })
+      if (typeof cleanup !== 'undefined' && cleanup.trackObserver) cleanup.trackObserver(_hsModReserveRO)
+    }
+    for (const wrap of mods) {
+      _reserveModWrap(wrap) // immediate if already sized
+      if (_hsModReserveRO) _hsModReserveRO.observe(wrap) // and again once it is
     }
   }
 
@@ -8263,6 +8305,7 @@
         if (zebraOfInsert(m, prev)) div.classList.add('hs-mc-zebra')
         msgsEl.appendChild(div)
         _indexMessageDiv(div, key)
+        _snapCompleteEmotes(div)
       }
       if (msgsEl.children.length > toRender.length) trimMessagesEl(msgsEl, toRender.length)
       applyMcMutes()

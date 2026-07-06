@@ -2373,6 +2373,13 @@ function showHsCtxMenu(x, y, header, items) {
   }, 0)
 }
 function applyMcMutes() {
+  // No muted users → nothing to strip. Skip the full-DOM scan entirely (this runs
+  // on every renderMessages — up to 500 rows × a nested querySelector each — and is
+  // pure waste for the vast majority of viewers who've muted nobody). Fresh rows are
+  // built un-muted and live appends mute themselves in appendMessage, so there's no
+  // stale muted state to clear when the set is empty. isUserMuted only ever returns
+  // true for a name in (or aliased into) mutedUsers, so size 0 = no mutes.
+  if (typeof mutedUsers === 'undefined' || mutedUsers.size === 0) return
   document.querySelectorAll('.hs-mc-msg').forEach((msg) => {
     const userEl = msg.querySelector('.hs-mc-user')
     const username = userEl?.textContent?.trim()?.toLowerCase()

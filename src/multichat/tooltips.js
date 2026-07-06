@@ -258,6 +258,12 @@ function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg, own
     const scale = fitPreviewScale(baseW, baseH)
     img.style.width = baseW * scale + 'px'
     img.style.height = baseH * scale + 'px'
+    // A w!/ffzW/h! emote is stretched by its transform, and we sized the box to
+    // that stretched footprint above — so FILL it. The CSS default is
+    // object-fit:contain, which would letterbox the base-aspect image inside the
+    // wide/tall box (the reported "small version inside the hovered one"). Plain
+    // emotes keep contain.
+    img.style.objectFit = hoveredImg?.closest?.('.hs-mc-emote-wrapper')?.dataset?.hsModSx ? 'fill' : ''
     img.alt = emoteName
     const hiResUrl = getHighResUrl(emoteUrl)
     if (hiResUrl !== emoteUrl && _hiResLoaded.has(hiResUrl)) {

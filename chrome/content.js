@@ -13,6 +13,19 @@
 
   const isKick = window.location.hostname.includes('kick.com')
 
+  // The overlay (#hs-mc-container) fully replaces + hides native chat once mounted.
+  // After that, all native-chat-row DOM enhancement (per-message emote render,
+  // cosmetics, coloring, heat borders, timeout-dim, msg cache, the native emote
+  // bridge, existing-message re-sweeps) is invisible dead work on a display:none
+  // subtree. Gate those paths on this. Latches true once the container is seen (it
+  // persists), so it's a single O(1) check thereafter. Safe-degradation: if the
+  // overlay ever fails to mount, this stays false → native processing runs as a
+  // fallback, so gating can't blank the screen.
+  let _hsOverlayActive = false
+  function isOverlayActive() {
+    return _hsOverlayActive || (_hsOverlayActive = !!document.getElementById('hs-mc-container'))
+  }
+
   // --- user-key helpers (content script) ---
   // Inlined because lib/ is bundled into other targets only.
   // Canonical source: src/lib/user-key.js — keep in sync if either changes.
@@ -4534,6 +4547,9 @@
 
   // Process existing chat messages
   function processExistingMessages() {
+    // Overlay up → native rows are hidden; skip the full re-sweep (fires on channel
+    // switch + every inventory/emote change).
+    if (isOverlayActive()) return
     const startTime = performance.now()
     const chatContainer = findChatContainer()
     log(' 🔍 processExistingMessages: chatContainer=', chatContainer ? 'FOUND' : 'NULL')
@@ -10221,20 +10237,10 @@
   let messageObserver = null
   let observedContainer = null
   let watchRetryCount = 0
-  // The overlay (#hs-mc-container) fully replaces + hides native chat once it
-  // mounts. After that, every native-chat-row DOM enhancement below (emote render,
-  // cosmetics, username coloring, heat borders, timeout-dim, msg cache) is invisible
-  // dead work on a display:none subtree — pure per-message CPU/memory waste. Gate it
-  // off. Latches true once the container is seen (it persists), so it's a single
-  // O(1) check thereafter. Self-twitch-id registration doesn't depend on this path
-  // (it fires at boot from localStorage['twilight.user'], content.js ~5307).
-  let _hsOverlayActive = false
-  function isOverlayActive() {
-    return _hsOverlayActive || (_hsOverlayActive = !!document.getElementById('hs-mc-container'))
-  }
-
   function watchForNewMessages() {
-    // Overlay is up → native chat is hidden → skip wiring the dead message pipeline.
+    // Overlay is up → native chat is hidden → skip wiring the dead message pipeline
+    // (isOverlayActive defined at the top of the IIFE). self-twitch-id still registers
+    // at boot from localStorage['twilight.user'] (~5307), not this observer.
     if (isOverlayActive()) return
     const chatContainer = findChatContainer()
     if (!chatContainer) {
@@ -10981,6 +10987,10 @@
   let _emoteBridgeDebounce = null
   let _bridgeVersion = 0
   function updateEmoteBridgeImmediate() {
+    // The bridge feeds the native Slate-input autocomplete (hidden under the overlay).
+    // Skip rebuilding it when the overlay is up — this is separate from the LIVE
+    // sub-emote export (autocomplete-hook.js exportNativeEmotes), which we keep.
+    if (isOverlayActive()) return
     const bridge = document.getElementById('heatsync-emote-bridge')
     if (!bridge) return
     // Combine all emote sources: personal inventory + global + channel

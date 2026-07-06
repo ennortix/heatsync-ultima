@@ -36108,17 +36108,18 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
       },
     })
   }
-  // Chat-log items — twitch + kick (yt has no relay)
+  // Chat-log viewer — twitch + kick (yt has no relay). One entry: opens
+  // channel-scoped when we know the channel (the viewer has its own #channel↔all
+  // scope toggle), else all-channels. Was two entries doing what one + the
+  // in-view toggle already covers.
   const logPlatform = platform || 'twitch'
   if (logPlatform === 'twitch' || logPlatform === 'kick') {
     const msgChannel = msg?.dataset?.msgChannel || (typeof getLiveChannel === 'function' ? getLiveChannel() : null)
-    if (msgChannel) {
-      items.push({
-        label: `chat logs in #${msgChannel}`,
-        fn: () => openChatLogsView(username, { platform: logPlatform, channel: msgChannel }),
-      })
-    }
-    items.push({ label: 'chat logs (all channels)', fn: () => openChatLogsView(username, { platform: logPlatform }) })
+    items.push({
+      label: 'chat logs',
+      fn: () =>
+        openChatLogsView(username, msgChannel ? { platform: logPlatform, channel: msgChannel } : { platform: logPlatform }),
+    })
   }
   items.push('sep', {
     label: 'copy name',

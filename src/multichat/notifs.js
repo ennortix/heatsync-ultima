@@ -615,15 +615,25 @@ const HsNotifs = (() => {
       const el = document.createElement('span')
       el.className = 'hs-notif-toast-text hs-notif-toast-warn'
       const reasonMap = {
-        no_echo: 'twitch did not confirm — may not have posted',
         auth_failed: 'twitch auth failed',
         no_user: 'no twitch username',
         connect_failed: 'connection failed',
+        send_failed: 'send failed',
         kick_not_logged_in: 'kick not logged in',
         no_kick_tab: 'no kick tab open',
         no_channel: 'kick channel not found',
+        'missing params': 'kick send rejected',
+        no_youtube_tab: 'no youtube tab open',
       }
-      const why = reasonMap[data.reason] || data.reason || 'send may have failed'
+      let why
+      if (data.reason === 'no_echo') {
+        // Name the platform(s) that never confirmed (markPendingFailed sends
+        // the awaiting set) — a kick or yt no-echo used to blame twitch.
+        const plat = (data.platforms || []).map((p) => (p === 'yt' ? 'youtube' : p)).join('+')
+        why = `${plat || 'platform'} did not confirm — may not have posted`
+      } else {
+        why = reasonMap[data.reason] || data.reason || 'send may have failed'
+      }
       const snippet = String(data.text || '').slice(0, 60)
       el.textContent = `${why}: "${snippet}${data.text?.length > 60 ? '…' : ''}"`
       return el

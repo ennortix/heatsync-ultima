@@ -411,6 +411,9 @@ function markPendingFailed(synthId, reason) {
       text: entry.text,
       channel: entry.channel,
       reason,
+      // Unconfirmed platforms at failure time — lets the notif name WHICH
+      // platform didn't confirm instead of always blaming twitch.
+      platforms: [...entry.awaiting],
     })
   } catch (_) {}
 }

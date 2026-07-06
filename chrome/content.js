@@ -3521,7 +3521,7 @@
   // after refresh, not just while they're actively posting. Twitch-only: the
   // endpoint + 7TV/BTTV fetches need a numeric platform id, which getTwitchUserId
   // provides but Kick's DOM path does not. Mirrors the cosmetics fetch machinery.
-  const senderHeatsyncEmotes = new Map() // "twitch:<id>" -> Map<name, {name,url,hash,zeroWidth,source}> | null (fetched-empty)
+  const senderHeatsyncEmotes = new Map() // "twitch:<id>" / "kick:<username>" -> Map<name, {name,url,hash,zeroWidth,source}> | null (fetched-empty)
   const SENDER_EMOTE_MAX = 500
   const senderEmotePending = new Set()
   const SENDER_EMOTE_PENDING_MAX = 10
@@ -6041,7 +6041,7 @@
       }
     }
 
-    // Resolve the sender's Twitch id once — drives BOTH cosmetics and the
+    // Resolve the sender's id once — drives BOTH cosmetics and the
     // sender-emote overlay. Tagging + the emote fetch run regardless of the
     // cosmetics toggle so disabling cosmetics never stops emotes from resolving.
     let twitchUid = ''
@@ -6057,8 +6057,15 @@
         // Lazy-fetch this sender's heatsync + personal emote set (persistent
         // overlay) so their added emotes resolve in native chat, not just during
         // a live broadcast. Deduped/cached — fires at most once per sender.
-        queueSenderEmotes(twitchUid)
+        queueSenderEmotes(`twitch:${twitchUid}`)
       }
+    } else if (isKick && username) {
+      // Kick native rows have no numeric id in the DOM — the BG resolves
+      // kick:<username> (7TV /users/kick/{name} + server batch endpoint),
+      // same as the overlay's cross-user path. Stamp the dataset here (not
+      // only in the cosmetics branch) so retro-render works with cosmetics off.
+      messageElement.dataset.hsCosmeticKickUser = lowerUser
+      queueSenderEmotes(`kick:${lowerUser}`)
     }
 
     // Apply third-party cosmetics (BTTV/FFZ badges + 7TV paints/badges)
@@ -6120,10 +6127,18 @@
     let allEmotes
     const currentUser = getCurrentUsername()
     const isOwnMessage = currentUser && lowerUser && lowerUser === currentUser.toLowerCase()
-    // Sender's persistent heatsync/personal set (Twitch only; null until fetched or
+    // Sender's persistent heatsync/personal set (null until fetched or
     // fetched-empty). Skipped for own messages — our own inventory is authoritative.
-    const senderUid = !isKick && !isOwnMessage ? messageElement.dataset.hsCosmeticUserId : ''
-    const senderSet = senderUid ? senderHeatsyncEmotes.get(`twitch:${senderUid}`) : null
+    let senderKey = ''
+    if (!isOwnMessage) {
+      if (isKick) {
+        const ku = messageElement.dataset.hsCosmeticKickUser
+        if (ku) senderKey = `kick:${ku}`
+      } else if (messageElement.dataset.hsCosmeticUserId) {
+        senderKey = `twitch:${messageElement.dataset.hsCosmeticUserId}`
+      }
+    }
+    const senderSet = senderKey ? senderHeatsyncEmotes.get(senderKey) : null
     // Live 10s broadcast overlay (highest priority, freshest).
     let userBroadcasts = null
     if (pendingEmoteBroadcasts.size > 0 && username && !isOwnMessage) {
@@ -9630,10 +9645,10 @@
 
   // Queue a one-time fetch of a sender's heatsync + personal emote set. Deduped via
   // the cache (presence = fetched), batched + jittered like cosmetics so 30k tabs
-  // don't fan out in lockstep. Twitch numeric ids only.
-  function queueSenderEmotes(userId) {
-    if (isKick || !userId || !/^\d+$/.test(userId)) return
-    const key = `twitch:${userId}`
+  // don't fan out in lockstep. Keys are platform-prefixed: twitch:<numeric id>
+  // (from React internals) or kick:<username> (kick DOM carries no numeric id).
+  function queueSenderEmotes(key) {
+    if (!key || !/^twitch:\d+$|^kick:[\w-]+$/.test(key)) return
     if (senderEmotePending.has(key)) return
     const fetchedAt = senderEmoteFetchedAt.get(key)
     if (fetchedAt && Date.now() - fetchedAt < SENDER_EMOTE_REFETCH_MS) return
@@ -9701,12 +9716,27 @@
     if (!senderKeys || senderKeys.length === 0) return
     const container = findChatContainer()
     if (!container) return
-    const idSet = new Set(senderKeys.map((k) => k.slice(k.indexOf(':') + 1)))
-    container.querySelectorAll('[data-hs-cosmetic-user-id]').forEach((el) => {
-      if (!idSet.has(el.dataset.hsCosmeticUserId)) return
-      el.dataset.heatsyncGeneration = ''
-      processMessage(el)
-    })
+    const twitchIds = new Set()
+    const kickUsers = new Set()
+    for (const k of senderKeys) {
+      const id = k.slice(k.indexOf(':') + 1)
+      if (k.startsWith('kick:')) kickUsers.add(id)
+      else twitchIds.add(id)
+    }
+    if (twitchIds.size) {
+      container.querySelectorAll('[data-hs-cosmetic-user-id]').forEach((el) => {
+        if (!twitchIds.has(el.dataset.hsCosmeticUserId)) return
+        el.dataset.heatsyncGeneration = ''
+        processMessage(el)
+      })
+    }
+    if (kickUsers.size) {
+      container.querySelectorAll('[data-hs-cosmetic-kick-user]').forEach((el) => {
+        if (!kickUsers.has(el.dataset.hsCosmeticKickUser)) return
+        el.dataset.heatsyncGeneration = ''
+        processMessage(el)
+      })
+    }
   }
 
   // Apply HeatSync API colors to existing messages in the chat container

@@ -3127,6 +3127,19 @@
     for (const k of Object.keys(_uiPrefs)) {
       if (settings[k] !== undefined) _uiPrefs[k] = !!settings[k]
     }
+    // These native chat-column elements live inside chat-room__content, which the
+    // overlay hides entirely — so their per-element toggles were dead UI clutter and
+    // were removed from the settings schema. Force-hide them unconditionally: this
+    // still guards each element during the brief cold-boot / SPA-nav flash before
+    // hs-native-hidden engages, at zero settings-UI cost. (hideChatHeader stays
+    // default-on via its own `!== false` gate below.)
+    for (const k of [
+      'hideChannelPoints', 'hideHypeTrain', 'hideHypeChat', 'hidePinnedHypeChats',
+      'hideCombos', 'hideBitsBtns', 'hideCharity', 'hideDrops', 'hidePolls',
+      'hidePredictions', 'hideGiftBanner', 'hideCommunityHighlights', 'hideSharedChatBanner',
+    ]) {
+      settings[k] = true
+    }
     // Toggle deleted-message visibility CSS
     document.documentElement.classList.toggle('hs-show-cleared', !!_uiPrefs.showClearedMessages)
     // Anon-mode flag — read by typing/presence interceptors

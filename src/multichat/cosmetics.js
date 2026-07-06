@@ -551,7 +551,9 @@ function updateCosmeticsInPlace(userIds) {
     // attribute social.js already stamps, same technique updateHsPaintsInPlace
     // uses for kick_ ids.
     const isNamespacedUid = uid.startsWith('yt_')
-    const divSet = isNamespacedUid ? container.querySelectorAll(`[data-hs-paint-uid="${CSS.escape(uid)}"]`) : _uidIndex.get(uid)
+    const divSet = isNamespacedUid
+      ? container.querySelectorAll(`[data-hs-paint-uid="${CSS.escape(uid)}"]`)
+      : _uidIndex.get(uid)
     if (!divSet) continue
     for (const div of divSet) {
       // Update paint on the SENDER's username link — exclude the reply

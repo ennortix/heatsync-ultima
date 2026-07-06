@@ -3147,9 +3147,19 @@
     // hs-native-hidden engages, at zero settings-UI cost. (hideChatHeader stays
     // default-on via its own `!== false` gate below.)
     for (const k of [
-      'hideChannelPoints', 'hideHypeTrain', 'hideHypeChat', 'hidePinnedHypeChats',
-      'hideCombos', 'hideBitsBtns', 'hideCharity', 'hideDrops', 'hidePolls',
-      'hidePredictions', 'hideGiftBanner', 'hideCommunityHighlights', 'hideSharedChatBanner',
+      'hideChannelPoints',
+      'hideHypeTrain',
+      'hideHypeChat',
+      'hidePinnedHypeChats',
+      'hideCombos',
+      'hideBitsBtns',
+      'hideCharity',
+      'hideDrops',
+      'hidePolls',
+      'hidePredictions',
+      'hideGiftBanner',
+      'hideCommunityHighlights',
+      'hideSharedChatBanner',
     ]) {
       settings[k] = true
     }
@@ -6051,8 +6061,7 @@
         messageElement.dataset.hsCosmeticUserId = twitchUid
         if (!chatterTwitchIds.has(lowerUser)) {
           chatterTwitchIds.set(lowerUser, twitchUid)
-          while (chatterTwitchIds.size > CHATTER_IDS_MAX)
-            chatterTwitchIds.delete(chatterTwitchIds.keys().next().value)
+          while (chatterTwitchIds.size > CHATTER_IDS_MAX) chatterTwitchIds.delete(chatterTwitchIds.keys().next().value)
         }
         // Lazy-fetch this sender's heatsync + personal emote set (persistent
         // overlay) so their added emotes resolve in native chat, not just during

@@ -1,11 +1,5 @@
-import { expect, test, describe } from 'bun:test'
-import {
-  ytResolveModAction,
-  ytHasModItems,
-  ytItemModEndpoint,
-  ytMatchModAction,
-  ytItemText,
-} from '../src/lib/utils.js'
+import { describe, expect, test } from 'bun:test'
+import { ytHasModItems, ytItemModEndpoint, ytItemText, ytMatchModAction, ytResolveModAction } from '../src/lib/utils.js'
 
 // Fixtures model YouTube's live_chat get_item_context_menu response. A real mod
 // gets Remove / Put user in timeout / Hide user / Unhide user (each with a
@@ -115,7 +109,9 @@ describe('ytMatchModAction (icon OR text)', () => {
   })
   test('non-English text still routes via iconType', () => {
     // e.g. a Spanish-locale mod: unknown text, but DELETE icon still matches.
-    expect(ytMatchModAction('delete', { icon: { iconType: 'DELETE' }, text: { runs: [{ text: 'Quitar' }] } })).toBe(true)
+    expect(ytMatchModAction('delete', { icon: { iconType: 'DELETE' }, text: { runs: [{ text: 'Quitar' }] } })).toBe(
+      true,
+    )
   })
   test('does not cross verbs (timeout icon ≠ delete)', () => {
     expect(ytMatchModAction('delete', { icon: { iconType: 'HOURGLASS' } })).toBe(false)

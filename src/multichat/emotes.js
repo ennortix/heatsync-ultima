@@ -2083,10 +2083,7 @@ async function syncBlockToAPI(emoteName, block) {
       })
       .catch((e) => {
         log('block sync failed:', e?.message || e)
-        showToast(
-          `${block ? 'block' : 'unblock'} not saved to your account — will differ on other devices`,
-          'error',
-        )
+        showToast(`${block ? 'block' : 'unblock'} not saved to your account — will differ on other devices`, 'error')
       })
     log('Synced', block ? 'block' : 'unblock', emoteName, '(hash:', hash.substring(0, 8) + '...) to API')
   } catch (e) {

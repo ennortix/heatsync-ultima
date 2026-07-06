@@ -1359,8 +1359,9 @@
     if (_ytCfgCache) return _ytCfgCache
     const html = document.documentElement.innerHTML
     const apiKey = (html.match(/"INNERTUBE_API_KEY":"([^"]+)"/) || [])[1]
-    const clientVersion =
-      (html.match(/"INNERTUBE_CONTEXT_CLIENT_VERSION":"([^"]+)"/) || html.match(/"clientVersion":"([\d.]+)"/) || [])[1]
+    const clientVersion = (html.match(/"INNERTUBE_CONTEXT_CLIENT_VERSION":"([^"]+)"/) ||
+      html.match(/"clientVersion":"([\d.]+)"/) ||
+      [])[1]
     const visitorData = (html.match(/"visitorData":"([^"]+)"/) || [])[1]
     if (!apiKey || !clientVersion) return null
     _ytCfgCache = { apiKey, context: { client: { clientName: 'WEB', clientVersion, visitorData, hl: 'en' } } }
@@ -1376,7 +1377,10 @@
     const sapisid = get('SAPISID') || get('__Secure-3PAPISID') || get('__Secure-1PAPISID')
     if (!sapisid) return null
     const ts = Math.floor(Date.now() / 1000)
-    const buf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(`${ts} ${sapisid} https://www.youtube.com`))
+    const buf = await crypto.subtle.digest(
+      'SHA-1',
+      new TextEncoder().encode(`${ts} ${sapisid} https://www.youtube.com`),
+    )
     const hash = [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('')
     return `SAPISIDHASH ${ts}_${hash}`
   }

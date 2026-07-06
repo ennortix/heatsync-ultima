@@ -30546,9 +30546,27 @@ function listenForSocialEvents() {
       // hint, processEmotes only sees globals + the user's heatsync inventory,
       // missing per-channel emotes for the linked streamer.
       let ytChannelHint = null
+      // Channel-emote cache key when the display hint can't double as one.
+      // A yt-ONLY channel's emotes are broadcast under the CONFIG id —
+      // join_channel sends { channel: id } and channel_emotes_update echoes
+      // it back as channelOwner — and auto-live is keyed by the BG's
+      // yt_ensure_channel_emotes derivation: videoId, else @handle from the
+      // page URL (channel /live pages carry no ?v=). Neither is fit to
+      // display (raw video/config id), so it rides a separate emoteChannel
+      // field; the old twitch||kick||null hint left these messages on the
+      // dead 'youtube' key and channel emotes never resolved. Lowercased to
+      // match _buildChannelEmoteCache's key normalization.
+      let ytEmoteKey = null
       if (targetChannelId && targetChannelId !== '__live_yt_auto__') {
         const linkedCh = config.channels.find((c) => c.id === targetChannelId)
-        if (linkedCh) ytChannelHint = linkedCh.twitch || linkedCh.kick || null
+        if (linkedCh) {
+          ytChannelHint = linkedCh.twitch || linkedCh.kick || null
+          if (!ytChannelHint) ytEmoteKey = String(linkedCh.id).toLowerCase()
+        }
+      } else if (targetChannelId === '__live_yt_auto__') {
+        const vid = msg.videoId || _autoYtVideoId || ''
+        const handle = location.href.match(/youtube\.com\/@([\w.-]{3,30})/)?.[1]
+        ytEmoteKey = (vid || (handle ? `@${handle}` : '')).toLowerCase() || null
       }
 
       const ytMsg = {
@@ -30560,6 +30578,9 @@ function listenForSocialEvents() {
         text: msg.text,
         color: msg.color || '#ff0000',
         channel: ytChannelHint || 'youtube',
+        // Cache key for channel-emote lookup when channel itself isn't one
+        // (yt-only config channels + auto-live). Render uses it over channel.
+        emoteChannel: ytEmoteKey || undefined,
         time: msg.time,
         platform: 'youtube',
         emotes: msg.emotes || [],
@@ -34145,7 +34166,10 @@ function trackSentMessage(text, hostOverride, synthId, echoes) {
   // sync latency easily wins the race against the ~100-300ms platform
   // chat round-trip.
   try {
-    chrome.storage.local.set({ [RECENT_SENT_KEY]: _recentSentMessages })
+    // Strip per-tab echo counters before persisting: each tab receives its own
+    // echo stream and must count independently — a leaked counter would make
+    // another tab suppress its FIRST (only rendered) copy of the message.
+    chrome.storage.local.set({ [RECENT_SENT_KEY]: _recentSentMessages.map(({ suppressed, ...rest }) => rest) })
   } catch (_) {}
 }
 
@@ -34184,12 +34208,15 @@ try {
       if (area !== 'local' || !changes[RECENT_SENT_KEY]) return
       const incoming = changes[RECENT_SENT_KEY].newValue
       if (!Array.isArray(incoming)) return
-      // Merge our local writes with the incoming snapshot — last-write-wins
-      // by (text, second-bucketed time). Survives the rare two-tab-send race.
+      // Merge our local writes with the incoming snapshot, keyed by
+      // (text, exact time, synthId) so two rapid same-text sends stay two
+      // entries — the old 1s time bucket collapsed them and broke echo
+      // accounting. On a key tie the LOCAL entry wins (it's spread first and
+      // ties don't replace), preserving this tab's own suppressed counters.
       const merged = new Map()
       for (const e of [..._recentSentMessages, ...incoming]) {
         if (!e || !e.text) continue
-        const k = `${e.text}:${Math.floor((e.time || 0) / 1000)}`
+        const k = `${e.text}:${e.time || 0}:${e.synthId || ''}`
         const existing = merged.get(k)
         if (!existing || (existing.time || 0) < (e.time || 0)) merged.set(k, e)
       }
@@ -34202,28 +34229,29 @@ try {
 
 function isSentEcho(msgText, _msgPlatform) {
   const cutoff = Date.now() - SENT_DEDUP_WINDOW
-  for (let i = _recentSentMessages.length - 1; i >= 0; i--) {
+  // FIFO oldest-first: each echo is claimed by the OLDEST send whose expected
+  // echo count isn't exhausted. The old newest-first scan locked two same-text
+  // sends onto one entry, so the 2nd send's only echo was counted as the 1st
+  // send's dual-send duplicate and silently dropped.
+  for (let i = 0; i < _recentSentMessages.length; i++) {
     const entry = _recentSentMessages[i]
     // continue (not break): a cross-tab merge can briefly leave the array out
-    // of time order, so an old entry early doesn't mean all earlier are old.
+    // of time order, so one stale entry doesn't mean the rest are stale too.
     if (entry.time < cutoff) continue
-    if (entry.text === msgText) {
-      // First echo displays; second (dual-send duplicate) is suppressed.
-      // Host-platform badge attribution happens separately via peekSentHost,
-      // so we don't suppress on host mismatch — that would drop the only
-      // echo when sending from one platform to a single-platform channel
-      // on a different host (e.g. kick.com → twitch-only mellen).
-      entry.suppressed = (entry.suppressed || 0) + 1
-      if (entry.suppressed >= 2) {
-        // Suppress every echo after the first. Remove the entry only once all
-        // expected echoes have arrived (one per target platform) — a triple
-        // send (twitch+kick+youtube) produces 3 echoes; removing after the 2nd
-        // let the 3rd render as a duplicate of the user's own message.
-        if (entry.suppressed >= (entry.echoes || 2)) _recentSentMessages.splice(i, 1)
-        return true
-      }
-      return false
-    }
+    if (entry.text !== msgText) continue
+    const seen = entry.suppressed || 0
+    // Exhausted: this send already accounted for one echo per target platform;
+    // let a later same-text send claim this echo instead.
+    if (seen >= (entry.echoes || 1)) continue
+    // Host-platform badge attribution happens separately via peekSentHost,
+    // so we don't suppress on host mismatch — that would drop the only
+    // echo when sending from one platform to a single-platform channel
+    // on a different host (e.g. kick.com → twitch-only mellen).
+    entry.suppressed = seen + 1
+    // First echo of a send displays; its per-platform duplicates (dual/triple
+    // send) are suppressed. The entry is kept (skipped once exhausted, pruned
+    // at the 24h window) so peekSentHost can still attribute badges.
+    return seen >= 1
   }
   return false
 }
@@ -40021,13 +40049,29 @@ async function sendMessage() {
   const twitchName = ch?.twitch
   const anonLive = currentTab === 'live' && !ch
 
-  const sendToKick = !!kickSlug || (anonLive && hostPlatform === 'kick')
+  // Orphan slash command: starts with /word but nothing here consumed it
+  // (handleSlashCommand returned false / explicit pass-through) and it isn't
+  // /me. Twitch parses slash commands server-side so passing it through is
+  // correct there, but Kick/YouTube sends are plain REST posts — "/announce
+  // hi" would land as literal chat text. Gate those platforms off; /me is
+  // exempt (each platform gets its wire form below).
+  const orphanSlash = /^\/[a-zA-Z]/.test(text) && !/^\/me\b/i.test(text)
+
+  const sendToKick = (!!kickSlug || (anonLive && hostPlatform === 'kick')) && !orphanSlash
   const sendToTwitch = !!twitchName || (anonLive && hostPlatform === 'twitch')
 
   const ytUrl = ch?.youtube
   const isLiveYt = currentTab === 'live' && hostPlatform === 'yt'
-  const sendToYoutube = !!ytUrl || isLiveYt
+  const sendToYoutube = (!!ytUrl || isLiveYt) && !orphanSlash
   const isDualSend = sendToKick && sendToTwitch
+
+  // Orphan slash with no twitch leg = nothing left to send (kick/yt-only
+  // target). Fail loud and keep the input so the text isn't lost.
+  if (orphanSlash && !sendToTwitch) {
+    showToast('unknown command', 'error')
+    flashInputError(input)
+    return
+  }
 
   // /me action — give each platform the right wire form for an action message.
   // Twitch IRC carries actions as a CTCP ACTION (\x01ACTION text\x01) — the same
@@ -55219,7 +55263,10 @@ const STORAGE_KEY = 'heatsync_multichat'
     // — invalid HTML5 that browsers "fix" by auto-closing the outer anchor
     // empty, leaving a permanently blank username node next to its painted
     // sibling. See processEmotes' skipMentions doc comment (emotes.js).
-    let processedText = processEmotes(escapeHtml(m.text), m.channel, twitchExtra, senderEmotes, m.time, true)
+    // m.emoteChannel: explicit channel-emote cache key for messages whose
+    // channel is display-only (yt-only config channels + yt auto-live key by
+    // config id / videoId, not a twitch/kick name). See social.js ytEmoteKey.
+    let processedText = processEmotes(escapeHtml(m.text), m.emoteChannel || m.channel, twitchExtra, senderEmotes, m.time, true)
     if (m.emotes && m.emotes.length > 0) {
       processedText = processYtEmotes(processedText, m.emotes, true)
     }
@@ -59634,7 +59681,17 @@ const STORAGE_KEY = 'heatsync_multichat'
         if (msg.type === 'channel_emotes_update' && msg.channelOwner && Array.isArray(msg.emotes)) {
           // platform tag lets the panel keep both sets for a same-name twitch+kick
           // simulcast instead of one overwriting the other (merge-per-platform).
-          _buildChannelEmoteCache(msg.channelOwner.toLowerCase(), msg.emotes, msg.platform)
+          const _ownerKey = msg.channelOwner.toLowerCase()
+          _buildChannelEmoteCache(_ownerKey, msg.emotes, msg.platform)
+          if (msg.platform === 'youtube') {
+            // Alias the SAME Map under the shapes getCurrentChannel() yields on
+            // yt pages — raw-case videoId (watch?v=) and bare handle (no @) —
+            // so picker/lookup fallbacks hit. yt cache keys are videoId/@handle
+            // (BG yt_ensure_channel_emotes derivation), never a channel name.
+            for (const a of [msg.channelOwner, _ownerKey.replace(/^@/, '')]) {
+              if (a && a !== _ownerKey) channelEmoteCaches[a] = channelEmoteCaches[_ownerKey]
+            }
+          }
           markPickerDirty()
         }
         // Cold-start (first emote payload for this scope) needs clear+rerender

@@ -6112,7 +6112,14 @@
     // m.emoteChannel: explicit channel-emote cache key for messages whose
     // channel is display-only (yt-only config channels + yt auto-live key by
     // config id / videoId, not a twitch/kick name). See social.js ytEmoteKey.
-    let processedText = processEmotes(escapeHtml(m.text), m.emoteChannel || m.channel, twitchExtra, senderEmotes, m.time, true)
+    let processedText = processEmotes(
+      escapeHtml(m.text),
+      m.emoteChannel || m.channel,
+      twitchExtra,
+      senderEmotes,
+      m.time,
+      true,
+    )
     if (m.emotes && m.emotes.length > 0) {
       processedText = processYtEmotes(processedText, m.emotes, true)
     }

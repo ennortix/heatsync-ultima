@@ -1623,7 +1623,11 @@ async function hsFollowFromMenu(username, platform, ids = {}) {
   // giving up. Kick hits the public kick.com API for a real numeric id; YT
   // uses a UC channel id already known from chat (ids.youtubeChannelId, or a
   // buffer scan when the ctx-menu didn't have one to hand).
-  if (!id && typeof resolveFollowTargetId === 'function' && (platform === 'kick' || platform === 'youtube' || platform === 'yt')) {
+  if (
+    !id &&
+    typeof resolveFollowTargetId === 'function' &&
+    (platform === 'kick' || platform === 'youtube' || platform === 'yt')
+  ) {
     const target = await resolveFollowTargetId(platform, username, ids)
     if (target?.id) id = target.id
   }
@@ -1658,7 +1662,9 @@ async function _ctxMod(action, channel, platform, target, msgId, durationSec, la
   if (action === 'delete') {
     const derr = (r?.tResp || r?.kResp || r?.yResp)?.error
     showToast(
-      r?.anyOk ? 'deleted message' : `delete failed: ${derr === 'not_moderator' ? 'not a youtube mod here' : derr || 'unknown'}`,
+      r?.anyOk
+        ? 'deleted message'
+        : `delete failed: ${derr === 'not_moderator' ? 'not a youtube mod here' : derr || 'unknown'}`,
       r?.anyOk ? 'success' : 'error',
     )
   } else {
@@ -1703,7 +1709,9 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
   // LOGIN (display-name ≠ login for non-Latin users → ban would miss).
   if (
     msg &&
-    (typeof isModForSync === 'function' || typeof isKickModForSync === 'function' || typeof isYtModForSync === 'function')
+    (typeof isModForSync === 'function' ||
+      typeof isKickModForSync === 'function' ||
+      typeof isYtModForSync === 'function')
   ) {
     const msgCh = msg.dataset?.msgChannel || ''
     const msgPlat = msg.dataset?.msgPlatform || 'twitch'
@@ -1827,7 +1835,10 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
     items.push({
       label: 'chat logs',
       fn: () =>
-        openChatLogsView(username, msgChannel ? { platform: logPlatform, channel: msgChannel } : { platform: logPlatform }),
+        openChatLogsView(
+          username,
+          msgChannel ? { platform: logPlatform, channel: msgChannel } : { platform: logPlatform },
+        ),
     })
   }
   items.push('sep', {

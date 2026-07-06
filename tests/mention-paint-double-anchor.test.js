@@ -180,13 +180,15 @@ describe('processEmotes + highlightMentionsInHtml double-render (blank painted u
 // call site.
 describe('computeMessageText call-site guard — structural invariant', () => {
   test('the processEmotes call inside computeMessageText passes skipMentions=true', () => {
+    // Whitespace-insensitive: the formatter may wrap this call across lines.
+    const flat = MAIN_SRC.replace(/\s+/g, ' ')
     const marker =
-      'let processedText = processEmotes(escapeHtml(m.text), m.emoteChannel || m.channel, twitchExtra, senderEmotes, m.time, true)'
-    expect(MAIN_SRC).toContain(marker)
+      'let processedText = processEmotes( escapeHtml(m.text), m.emoteChannel || m.channel, twitchExtra, senderEmotes, m.time, true, )'
+    expect(flat.includes(marker) || flat.includes(marker.replace('( ', '(').replace(', )', ')'))).toBe(true)
   })
 
   test('highlightMentionsInHtml still runs right after, in the same function (mention rendering is not silently dropped)', () => {
-    const idx = MAIN_SRC.indexOf('let processedText = processEmotes(escapeHtml(m.text)')
+    const idx = MAIN_SRC.indexOf('let processedText = processEmotes(')
     const nextChunk = MAIN_SRC.slice(idx, idx + 800)
     expect(nextChunk).toContain('highlightMentionsInHtml(processedText, m.platform)')
   })

@@ -3790,7 +3790,6 @@ function handle7TVEmoteSetUpdate(updateData) {
   }
 
   if (updated) {
-
     const updatedEmotes = Array.isArray(channelEmotesMap[key]) ? channelEmotesMap[key] : []
     broadcastToTabs({
       type: 'channel_emotes_update',

@@ -491,7 +491,15 @@ async function dispatchModAction({ channel, platform, action, target, durationSe
   // parity with twitch/kick: delete / timeout / ban (hide user) / unban (unhide).
   if (platform === 'youtube' || platform === 'yt') {
     const yTgt = String(target || '').replace(/^@/, '')
-    if (!msgId) return { tResp: null, kResp: null, yResp: { ok: false, error: 'no_message' }, twitchName: null, kickSlug: null, anyOk: false }
+    if (!msgId)
+      return {
+        tResp: null,
+        kResp: null,
+        yResp: { ok: false, error: 'no_message' },
+        twitchName: null,
+        kickSlug: null,
+        anyOk: false,
+      }
     const yResp = await safeSendMessage({ type: 'youtube_mod_action', action, msgId, target: yTgt })
     return {
       tResp: null,

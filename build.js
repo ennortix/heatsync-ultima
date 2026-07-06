@@ -274,7 +274,11 @@ function extractFnBody(src, name) {
     if (src[j] === '{') depth++
     else if (src[j] === '}') {
       depth--
-      if (depth === 0) return src.slice(open + 1, j).replace(/\s+/g, ' ').trim()
+      if (depth === 0)
+        return src
+          .slice(open + 1, j)
+          .replace(/\s+/g, ' ')
+          .trim()
     }
   }
   return null
@@ -331,7 +335,11 @@ function checkUiSyncBlocklistParity() {
       extractConstNumber(bgSrc, 'LARGE_KEY_SYNC_MAX'),
     ],
     // the consumers of those literals must also stay in lockstep (byte-identical, ungated until now)
-    ['estimateSettingSize', extractFnBody(utilsSrc, 'estimateSettingSize'), extractFnBody(bgSrc, 'estimateSettingSize')],
+    [
+      'estimateSettingSize',
+      extractFnBody(utilsSrc, 'estimateSettingSize'),
+      extractFnBody(bgSrc, 'estimateSettingSize'),
+    ],
     ['sanitizeUiSettings', extractFnBody(utilsSrc, 'sanitizeUiSettings'), extractFnBody(bgSrc, 'sanitizeUiSettings')],
   ]
 

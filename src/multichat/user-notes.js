@@ -86,7 +86,9 @@ function _hsnLoad() {
   }
   _hsnLoadPromise = new Promise((resolve) => {
     try {
-      chrome.storage.local.get(HS_NOTES_KEY, (d) => {
+      // 'hs_user_notes' (no _v1) is the retired profile-card-local store —
+      // migrated below on first load, then removed.
+      chrome.storage.local.get([HS_NOTES_KEY, 'hs_user_notes'], (d) => {
         const raw = d && d[HS_NOTES_KEY]
         if (raw && typeof raw === 'object') {
           if (raw.notes && typeof raw.notes === 'object') {
@@ -96,6 +98,38 @@ function _hsnLoad() {
           }
           if (raw.index && typeof raw.index === 'object') {
             for (const [k, v] of Object.entries(raw.index)) if (typeof v === 'string') _hsnIndex.set(k, v)
+          }
+        }
+        // One-time legacy migration. v1 wins on conflict (it's what the user
+        // has been editing since the popover shipped); a legacy-only username
+        // is adopted as its own canonical. The old key is removed ONLY after
+        // the merged snapshot persists — a failed write must not lose notes.
+        const legacy = d && d.hs_user_notes
+        if (legacy && typeof legacy === 'object') {
+          let migrated = 0
+          for (const [k, v] of Object.entries(legacy)) {
+            const key = String(k).toLowerCase()
+            if (!v || typeof v.text !== 'string' || !v.text.trim()) continue
+            if (_hsnNotes.has(key) || _hsnNotes.has(_hsnIndex.get(key) || '')) continue
+            _hsnNotes.set(key, { text: v.text.slice(0, 500), updatedAt: v.ts || Date.now() })
+            _hsnIndex.set(key, key)
+            migrated++
+          }
+          const _removeLegacy = () => {
+            try {
+              chrome.storage.local.remove('hs_user_notes', () => void chrome.runtime?.lastError)
+            } catch {}
+          }
+          if (migrated) {
+            const payload = { notes: Object.fromEntries(_hsnNotes), index: Object.fromEntries(_hsnIndex) }
+            try {
+              chrome.storage.local.set({ [HS_NOTES_KEY]: payload }, () => {
+                if (!chrome.runtime?.lastError) _removeLegacy()
+              })
+            } catch {}
+          } else {
+            // Nothing worth keeping (empty/all-duplicates) — safe to drop now.
+            _removeLegacy()
           }
         }
         _hsnLoaded = true
@@ -345,11 +379,14 @@ function hsNoteRenderCardSection(username, platform, mkSection) {
 _hsnLoad()
 
 // Test-only reset so specs start from a clean model.
-function _hsNoteResetForTest() {
+function _hsNoteResetForTest(reload = false) {
   _hsnNotes = new Map()
   _hsnIndex = new Map()
-  _hsnLoaded = true
-  _hsnLoadPromise = Promise.resolve()
+  // reload=true re-arms _hsnLoad so tests can exercise the storage-read path
+  // (incl. the legacy hs_user_notes migration) against an injected fake
+  // chrome.storage; default keeps the old "already loaded" behavior.
+  _hsnLoaded = !reload
+  _hsnLoadPromise = reload ? null : Promise.resolve()
 }
 
 export {

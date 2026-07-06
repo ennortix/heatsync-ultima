@@ -97,3 +97,72 @@ test('save is case-insensitive on the handle', async () => {
   expect(hsNoteGet('bob', 'twitch')?.text).toBe('mixedcase')
   expect(hsNoteGet('BOB', 'twitch')?.text).toBe('mixedcase')
 })
+
+// ── legacy hs_user_notes migration (profile-card's retired local store) ──────
+
+function fakeStorage(initial) {
+  const store = { ...initial }
+  const calls = { set: [], removed: [] }
+  globalThis.chrome = {
+    runtime: {},
+    storage: {
+      local: {
+        get: (keys, cb) => {
+          const out = {}
+          for (const k of Array.isArray(keys) ? keys : [keys]) {
+            if (k in store) out[k] = store[k]
+          }
+          cb(out)
+        },
+        set: (obj, cb) => {
+          Object.assign(store, obj)
+          calls.set.push(obj)
+          if (cb) cb()
+        },
+        remove: (key, cb) => {
+          delete store[key]
+          calls.removed.push(key)
+          if (cb) cb()
+        },
+      },
+    },
+  }
+  return { store, calls }
+}
+
+afterEach(() => {
+  delete globalThis.chrome
+})
+
+test('legacy notes migrate into v1 on first load, old key removed after persist', async () => {
+  const { store, calls } = fakeStorage({
+    hs_user_notes: { bob: { text: 'known evader', ts: 42 } },
+  })
+  _hsNoteResetForTest(true)
+  await hsNoteSave('someoneelse', 'twitch', 'unrelated') // triggers _hsnLoad
+  const n = hsNoteGet('bob', 'twitch')
+  expect(n?.text).toBe('known evader')
+  expect(n?.updatedAt).toBe(42)
+  expect(calls.removed).toContain('hs_user_notes')
+  expect(store.hs_user_notes).toBeUndefined()
+  expect(store.hs_user_notes_v1.notes.bob.text).toBe('known evader')
+})
+
+test('migration never clobbers an existing v1 note (v1 wins)', async () => {
+  const { store } = fakeStorage({
+    hs_user_notes_v1: { notes: { bob: { text: 'v1 truth', updatedAt: 100 } }, index: { bob: 'bob' } },
+    hs_user_notes: { bob: { text: 'stale legacy', ts: 42 } },
+  })
+  _hsNoteResetForTest(true)
+  await hsNoteSave('someoneelse', 'twitch', 'unrelated')
+  expect(hsNoteGet('bob', 'twitch')?.text).toBe('v1 truth')
+  expect(store.hs_user_notes).toBeUndefined()
+})
+
+test('empty legacy blob is dropped without a persist', async () => {
+  const { store, calls } = fakeStorage({ hs_user_notes: {} })
+  _hsNoteResetForTest(true)
+  await hsNoteSave('x', 'twitch', 'y')
+  expect(calls.removed).toContain('hs_user_notes')
+  expect(store.hs_user_notes).toBeUndefined()
+})

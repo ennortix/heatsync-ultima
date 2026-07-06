@@ -960,9 +960,10 @@ function renderProfileCard(p, platform) {
 
   // Private note (local) — surfaced on hover so a mod sees their annotation
   // without opening the full card. Top row for at-a-glance; truncated with the
-  // full text in the title. getUserNote lives in profile-card.js (same bundle).
+  // full text in the title. hsNoteGet lives in user-notes.js (same bundle) —
+  // alias-aware, so a note saved on any linked platform identity surfaces.
   const _noteUser = p.username || p.twitch_username || p.kick_username || ''
-  const _note = typeof getUserNote === 'function' ? getUserNote(_noteUser) : ''
+  const _note = (typeof hsNoteGet === 'function' && hsNoteGet(_noteUser, null)?.text) || ''
   if (_note) {
     const _short = _note.length > 60 ? _note.slice(0, 60) + '…' : _note
     sheetRows.push(

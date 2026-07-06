@@ -5954,13 +5954,29 @@ async function sendMessage() {
   const twitchName = ch?.twitch
   const anonLive = currentTab === 'live' && !ch
 
-  const sendToKick = !!kickSlug || (anonLive && hostPlatform === 'kick')
+  // Orphan slash command: starts with /word but nothing here consumed it
+  // (handleSlashCommand returned false / explicit pass-through) and it isn't
+  // /me. Twitch parses slash commands server-side so passing it through is
+  // correct there, but Kick/YouTube sends are plain REST posts — "/announce
+  // hi" would land as literal chat text. Gate those platforms off; /me is
+  // exempt (each platform gets its wire form below).
+  const orphanSlash = /^\/[a-zA-Z]/.test(text) && !/^\/me\b/i.test(text)
+
+  const sendToKick = (!!kickSlug || (anonLive && hostPlatform === 'kick')) && !orphanSlash
   const sendToTwitch = !!twitchName || (anonLive && hostPlatform === 'twitch')
 
   const ytUrl = ch?.youtube
   const isLiveYt = currentTab === 'live' && hostPlatform === 'yt'
-  const sendToYoutube = !!ytUrl || isLiveYt
+  const sendToYoutube = (!!ytUrl || isLiveYt) && !orphanSlash
   const isDualSend = sendToKick && sendToTwitch
+
+  // Orphan slash with no twitch leg = nothing left to send (kick/yt-only
+  // target). Fail loud and keep the input so the text isn't lost.
+  if (orphanSlash && !sendToTwitch) {
+    showToast('unknown command', 'error')
+    flashInputError(input)
+    return
+  }
 
   // /me action — give each platform the right wire form for an action message.
   // Twitch IRC carries actions as a CTCP ACTION (\x01ACTION text\x01) — the same

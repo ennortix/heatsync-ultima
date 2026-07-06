@@ -2206,66 +2206,6 @@ const SETTINGS = [
   // ── chat / native chat — the platform's own chat input + messages ─────
   // Consumed by heatsync-button.js + autocomplete-hook.js (via the
   // localStorage mirror) — same ui_settings keys the picker popup writes.
-  {
-    key: 'emoteWysiwyg',
-    type: 'bool',
-    default: true,
-    scope: 'sync',
-    category: 'chat',
-    section: 'native chat',
-    label: 'show emotes as images while typing',
-    tip: 'render emotes as images inside the native chat input (wysiwyg)',
-    control: 'pill',
-  },
-  {
-    key: 'emoteSpaceAfter',
-    type: 'bool',
-    default: true,
-    scope: 'sync',
-    category: 'chat',
-    section: 'native chat',
-    label: 'space after emote',
-    tip: 'insert a space after tab-completing an emote',
-    control: 'pill',
-  },
-  {
-    key: 'compactChatInput',
-    type: 'bool',
-    default: true,
-    scope: 'sync',
-    category: 'chat',
-    section: 'native chat',
-    label: 'compact chat input',
-    tip: 'tighter native chat input row',
-    control: 'pill',
-  },
-  {
-    key: 'highlightMentions',
-    type: 'bool',
-    default: true,
-    scope: 'sync',
-    category: 'chat',
-    section: 'native chat',
-    label: 'highlight @mentions',
-    tip: 'tint native chat rows that mention you',
-    control: 'pill',
-  },
-  {
-    key: 'rightClickBlockMode',
-    type: 'enum',
-    default: 'menu',
-    scope: 'sync',
-    category: 'chat',
-    section: 'native chat',
-    label: 'emote right-click',
-    tip: 'menu = context menu with open/copy/block · instant = block immediately · off = native right-click',
-    control: 'sizebtns',
-    options: [
-      { value: 'menu', label: 'menu' },
-      { value: 'instant', label: 'instant' },
-      { value: 'off', label: 'off' },
-    ],
-  },
 
   // ── notifs / inline notifications ─────────────────────────────────────
   {
@@ -3056,17 +2996,6 @@ const SETTINGS = [
   },
 
   // ── mod / native chat ─────────────────────────────────────────────────
-  {
-    key: 'showClearedMessages',
-    type: 'bool',
-    default: false,
-    scope: 'sync',
-    category: 'mod',
-    section: 'native chat',
-    label: 'show deleted messages',
-    tip: 'keep deleted/timed-out messages visible (struck through) in native twitch chat',
-    control: 'pill',
-  },
 
   // ── tweaks / native chat chrome ───────────────────────────────────────
   {

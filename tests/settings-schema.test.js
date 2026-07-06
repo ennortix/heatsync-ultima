@@ -156,13 +156,16 @@ test('cw entries carry complete server-patch sub-shapes', () => {
   }
 })
 
-test('tweak entries: 27 sync bools (hideChatHeader is the only default-on)', () => {
+test('tweak entries: 13 sync bools, all default-off (chat-column tweaks removed)', () => {
   const tweaks = SETTINGS.filter((d) => d.tweak)
-  expect(tweaks.length).toBe(27)
+  expect(tweaks.length).toBe(13)
   for (const def of tweaks) {
     expect(def.type).toBe('bool')
     expect(def.scope).toBe('sync')
-    expect(def.default).toBe(def.key === 'hideChatHeader')
+    // the 14 native-chat-column tweaks (incl. the only default-on hideChatHeader)
+    // were removed + forced always-on in content.js; every remaining page/player
+    // tweak shows its target by default and hides it only when toggled on.
+    expect(def.default).toBe(false)
   }
 })
 

@@ -22710,6 +22710,17 @@ function _hsMcApplyMods(html, mods, hue) {
   if (imgFilter && hasImg) {
     out = out.replace(/<img(\s)/, `<img style="filter:${imgFilter} !important;"$1`)
   }
+  // Stamp the scale factors so the load-time snap can reserve horizontal/vertical
+  // space sized to the emote's REAL width (hsModBuildStyleAttr's static margins
+  // assume a 28px base and under-reserve for natively-wide emotes like WideBirdge:
+  // scaleX(2) makes an 88px emote 176px but only ~28px is reserved → it overflows
+  // and overlaps its neighbours). Parsed from the transform we just built.
+  const _scaleM = wrapperStyle.match(/transform:\s*scale\(\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\)/)
+  if (_scaleM && (Math.abs(+_scaleM[1]) > 1 || Math.abs(+_scaleM[2]) > 1)) {
+    out = out.replace(/^(<span\b[^>]*?)(>)/, (m, p1, gt) =>
+      / data-hs-mod-sx=/.test(p1) ? m : `${p1} data-hs-mod-sx="${_scaleM[1]}" data-hs-mod-sy="${_scaleM[2]}"${gt}`,
+    )
+  }
   // Stash wire words on the wrapper so left-clicking a nested emote can
   // round-trip modifiers ("w! h! c!#888") into the input on paste.
   const wireWords = hsModWordsFromState(mods, hue).join(' ')
@@ -22763,7 +22774,17 @@ function hsSnapEmoteBox(img) {
     // off-screen after refresh"). offsetWidth is the untransformed layout width,
     // which is also what the following text actually flows after (transforms don't
     // move siblings), so it's the correct measure for the box-reservation too.
-    for (const it of items) it.w = it.box.offsetWidth
+    for (const it of items) {
+      it.w = it.box.offsetWidth
+      // A modifier scale (w!/ffzW/h!) must reserve space sized to the emote's
+      // REAL untransformed width — capture its own wrapper's box now, apply below.
+      const mw = it.im.closest('.hs-mc-emote-wrapper')
+      if (mw && mw.dataset.hsModSx) {
+        it.modWrap = mw
+        it.modW = mw.offsetWidth
+        it.modH = mw.offsetHeight
+      }
+    }
     for (const it of items) {
       // Skip a mid-flight / fallback-swapping image: measuring + caching its box
       // now would pin a width from a transitional (or not-yet-decoded) asset under
@@ -22771,6 +22792,26 @@ function hsSnapEmoteBox(img) {
       if (!it.w || !it.im.complete || !it.im.naturalWidth) continue
       const px = it.w + 'px'
       if (it.box.style.width !== px) it.box.style.width = px
+      // Accurate modifier space reservation: the static margins in
+      // hsModBuildStyleAttr assume a 28px base, so a natively-wide emote scaled
+      // by w!/ffzW overflows + overlaps. Now that the emote is loaded we know its
+      // real width — reserve exactly (width * (scale-1) / 2) on each side so a run
+      // of wide/tall-modified emotes tiles cleanly instead of stacking on top of
+      // each other. Overrides the fallback margins (setProperty important).
+      if (it.modWrap) {
+        const sx = Math.abs(parseFloat(it.modWrap.dataset.hsModSx) || 1)
+        const sy = Math.abs(parseFloat(it.modWrap.dataset.hsModSy) || 1)
+        if (sx > 1 && it.modW) {
+          const m = Math.round((it.modW * (sx - 1)) / 2) + 'px'
+          it.modWrap.style.setProperty('margin-left', m, 'important')
+          it.modWrap.style.setProperty('margin-right', m, 'important')
+        }
+        if (sy > 1 && it.modH) {
+          const m = Math.round((it.modH * (sy - 1)) / 2) + 'px'
+          it.modWrap.style.setProperty('margin-top', m, 'important')
+          it.modWrap.style.setProperty('margin-bottom', m, 'important')
+        }
+      }
       // Don't cache overlay emote URLs — the measured box is the outer stack
       // (not the overlay wrapper), so the cached value is the stack/base width,
       // not the overlay's own width. Using it as wAttr in renderEmoteStack would
@@ -49471,6 +49512,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     if (!cache) return false
     const msgsEl = document.getElementById('hs-mc-messages')
     if (!msgsEl) return false
+    _snapCompleteEmotes(cache.frag)
     msgsEl.appendChild(cache.frag)
     _cacheJustRestored = true
     for (const k of cache.msgKeyIndex) _msgKeyIndex.add(k)
@@ -52812,6 +52854,7 @@ const STORAGE_KEY = 'heatsync_multichat'
 
       frag.appendChild(div)
     }
+    _snapCompleteEmotes(frag)
     msgsEl.appendChild(frag)
   }
 
@@ -56253,6 +56296,21 @@ const STORAGE_KEY = 'heatsync_multichat'
   }
   const _lastMsgTextByTab = new Map()
 
+  // Cached emote imgs are already `complete` when a row mounts, so their `load`
+  // event never fires and the msgsEl load listener never snaps them — meaning
+  // hsSnapEmoteBox's integer-width pin AND its modifier space reservation are
+  // skipped, leaving wide/tall-modified cached emotes (e.g. a channel "Cabge
+  // ffzW") overlapping. Enqueue every already-complete emote img so the snap
+  // runs; non-cached imgs still snap via their load event. hsSnapEmoteBox is
+  // rAF-batched + idempotent, so this is cheap even in a bulk rebuild.
+  function _snapCompleteEmotes(root) {
+    if (!root || typeof hsSnapEmoteBox !== 'function') return
+    const imgs = root.querySelectorAll('img.hs-mc-emote')
+    for (const eimg of imgs) {
+      if (eimg.complete && eimg.naturalWidth) hsSnapEmoteBox(eimg)
+    }
+  }
+
   function appendMessage(msg, tabId) {
     if (editingChannel) return false
     // Hidden by share-dedupe (real USERNOTICE replaced our synthetic)
@@ -56335,6 +56393,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     }
     msgsEl.appendChild(div)
     _indexMessageDiv(div, msgKeyStr)
+    _snapCompleteEmotes(div)
 
     // Trim oldest rows beyond the live-DOM cap (data buffer keeps more).
     // Hysteresis: let the append hot path overshoot the cap by 50 rows, then

@@ -2843,6 +2843,17 @@ function _hsMcApplyMods(html, mods, hue) {
   if (imgFilter && hasImg) {
     out = out.replace(/<img(\s)/, `<img style="filter:${imgFilter} !important;"$1`)
   }
+  // Stamp the scale factors so the load-time snap can reserve horizontal/vertical
+  // space sized to the emote's REAL width (hsModBuildStyleAttr's static margins
+  // assume a 28px base and under-reserve for natively-wide emotes like WideBirdge:
+  // scaleX(2) makes an 88px emote 176px but only ~28px is reserved → it overflows
+  // and overlaps its neighbours). Parsed from the transform we just built.
+  const _scaleM = wrapperStyle.match(/transform:\s*scale\(\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\)/)
+  if (_scaleM && (Math.abs(+_scaleM[1]) > 1 || Math.abs(+_scaleM[2]) > 1)) {
+    out = out.replace(/^(<span\b[^>]*?)(>)/, (m, p1, gt) =>
+      / data-hs-mod-sx=/.test(p1) ? m : `${p1} data-hs-mod-sx="${_scaleM[1]}" data-hs-mod-sy="${_scaleM[2]}"${gt}`,
+    )
+  }
   // Stash wire words on the wrapper so left-clicking a nested emote can
   // round-trip modifiers ("w! h! c!#888") into the input on paste.
   const wireWords = hsModWordsFromState(mods, hue).join(' ')
@@ -2896,7 +2907,17 @@ function hsSnapEmoteBox(img) {
     // off-screen after refresh"). offsetWidth is the untransformed layout width,
     // which is also what the following text actually flows after (transforms don't
     // move siblings), so it's the correct measure for the box-reservation too.
-    for (const it of items) it.w = it.box.offsetWidth
+    for (const it of items) {
+      it.w = it.box.offsetWidth
+      // A modifier scale (w!/ffzW/h!) must reserve space sized to the emote's
+      // REAL untransformed width — capture its own wrapper's box now, apply below.
+      const mw = it.im.closest('.hs-mc-emote-wrapper')
+      if (mw && mw.dataset.hsModSx) {
+        it.modWrap = mw
+        it.modW = mw.offsetWidth
+        it.modH = mw.offsetHeight
+      }
+    }
     for (const it of items) {
       // Skip a mid-flight / fallback-swapping image: measuring + caching its box
       // now would pin a width from a transitional (or not-yet-decoded) asset under
@@ -2904,6 +2925,26 @@ function hsSnapEmoteBox(img) {
       if (!it.w || !it.im.complete || !it.im.naturalWidth) continue
       const px = it.w + 'px'
       if (it.box.style.width !== px) it.box.style.width = px
+      // Accurate modifier space reservation: the static margins in
+      // hsModBuildStyleAttr assume a 28px base, so a natively-wide emote scaled
+      // by w!/ffzW overflows + overlaps. Now that the emote is loaded we know its
+      // real width — reserve exactly (width * (scale-1) / 2) on each side so a run
+      // of wide/tall-modified emotes tiles cleanly instead of stacking on top of
+      // each other. Overrides the fallback margins (setProperty important).
+      if (it.modWrap) {
+        const sx = Math.abs(parseFloat(it.modWrap.dataset.hsModSx) || 1)
+        const sy = Math.abs(parseFloat(it.modWrap.dataset.hsModSy) || 1)
+        if (sx > 1 && it.modW) {
+          const m = Math.round((it.modW * (sx - 1)) / 2) + 'px'
+          it.modWrap.style.setProperty('margin-left', m, 'important')
+          it.modWrap.style.setProperty('margin-right', m, 'important')
+        }
+        if (sy > 1 && it.modH) {
+          const m = Math.round((it.modH * (sy - 1)) / 2) + 'px'
+          it.modWrap.style.setProperty('margin-top', m, 'important')
+          it.modWrap.style.setProperty('margin-bottom', m, 'important')
+        }
+      }
       // Don't cache overlay emote URLs — the measured box is the outer stack
       // (not the overlay wrapper), so the cached value is the stack/base width,
       // not the overlay's own width. Using it as wAttr in renderEmoteStack would

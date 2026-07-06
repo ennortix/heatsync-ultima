@@ -581,6 +581,7 @@
     if (!cache) return false
     const msgsEl = document.getElementById('hs-mc-messages')
     if (!msgsEl) return false
+    _snapCompleteEmotes(cache.frag)
     msgsEl.appendChild(cache.frag)
     _cacheJustRestored = true
     for (const k of cache.msgKeyIndex) _msgKeyIndex.add(k)
@@ -3922,6 +3923,7 @@
 
       frag.appendChild(div)
     }
+    _snapCompleteEmotes(frag)
     msgsEl.appendChild(frag)
   }
 
@@ -7363,6 +7365,21 @@
   }
   const _lastMsgTextByTab = new Map()
 
+  // Cached emote imgs are already `complete` when a row mounts, so their `load`
+  // event never fires and the msgsEl load listener never snaps them — meaning
+  // hsSnapEmoteBox's integer-width pin AND its modifier space reservation are
+  // skipped, leaving wide/tall-modified cached emotes (e.g. a channel "Cabge
+  // ffzW") overlapping. Enqueue every already-complete emote img so the snap
+  // runs; non-cached imgs still snap via their load event. hsSnapEmoteBox is
+  // rAF-batched + idempotent, so this is cheap even in a bulk rebuild.
+  function _snapCompleteEmotes(root) {
+    if (!root || typeof hsSnapEmoteBox !== 'function') return
+    const imgs = root.querySelectorAll('img.hs-mc-emote')
+    for (const eimg of imgs) {
+      if (eimg.complete && eimg.naturalWidth) hsSnapEmoteBox(eimg)
+    }
+  }
+
   function appendMessage(msg, tabId) {
     if (editingChannel) return false
     // Hidden by share-dedupe (real USERNOTICE replaced our synthetic)
@@ -7445,6 +7462,7 @@
     }
     msgsEl.appendChild(div)
     _indexMessageDiv(div, msgKeyStr)
+    _snapCompleteEmotes(div)
 
     // Trim oldest rows beyond the live-DOM cap (data buffer keeps more).
     // Hysteresis: let the append hot path overshoot the cap by 50 rows, then

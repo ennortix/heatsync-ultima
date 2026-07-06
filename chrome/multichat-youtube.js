@@ -51551,6 +51551,32 @@ const STORAGE_KEY = 'heatsync_multichat'
   // updates skip clearRenderedHtmlCache so old messages keep their rendering
   // even when emotes are removed — "history is sacred" UX.
   const _emoteFirstLoad = new Set()
+  const _emoteFirstLoadAt = new Map() // scope → first-seen ms
+  // Cold-load re-render window. The BG fires ONE channel_emotes_update per provider
+  // (bttv / ffz / 7tv / native) during the initial channel fetch, so a channel
+  // emote that lives in a LATE-resolving provider (e.g. a 7TV "Cabge"/"speed0" when
+  // 7tv lands after bttv) arrives AFTER the first payload. A first-payload-only gate
+  // would then never upgrade the plain-text history rows for it — the reported
+  // "7TV emotes render as text after refresh (but fine live)". Treat every payload
+  // within this window of a scope's first as still cold-loading so late providers
+  // still swap text→image; a genuine live add/remove (7TV EventAPI) lands long
+  // after and correctly stays in the history-preserving (no re-render) path.
+  const EMOTE_COLD_LOAD_MS = 25000
+  function _emoteColdLoad(scopes) {
+    const now = Date.now()
+    let cold = false
+    for (const s of scopes) {
+      const at = _emoteFirstLoadAt.get(s)
+      if (at == null) {
+        _emoteFirstLoadAt.set(s, now)
+        _emoteFirstLoad.add(s)
+        cold = true
+      } else if (now - at < EMOTE_COLD_LOAD_MS) {
+        cold = true
+      }
+    }
+    return cold
+  }
   // Scopes that arrived since the last debounce flush. Collected across
   // progressive broadcasts (BTTV/FFZ/7TV/Twitch arrive separately for the
   // same channel) so the eventual loadEmotes() knows every scope to
@@ -59361,17 +59387,11 @@ const STORAGE_KEY = 'heatsync_multichat'
           _pendingEmoteScopes = new Set()
           loadEmotes()
             .then(() => {
-              let firstLoad = false
-              for (const s of pending) {
-                if (!_emoteFirstLoad.has(s)) {
-                  _emoteFirstLoad.add(s)
-                  firstLoad = true
-                }
-              }
-              // First emote payload for this scope: plain-text history rows need to
+              // Cold-load (first payload for the scope, OR a late provider still
+              // within the initial-load window): plain-text history rows need to
               // pick up the now-renderable emotes. In-place text swap instead of
               // clearRenderedHtmlCache()→epoch bump→full rebuild (the flash).
-              if (firstLoad) reloadEmotesInPlace()
+              if (_emoteColdLoad(pending)) reloadEmotesInPlace()
             })
             .catch((e) => log('[heatsync-mc] loadEmotes error:', e))
         }, 300)
@@ -59900,17 +59920,10 @@ const STORAGE_KEY = 'heatsync_multichat'
           _pendingEmoteScopes = new Set()
           loadEmotes()
             .then(() => {
-              let firstLoad = false
-              for (const s of pending) {
-                if (!_emoteFirstLoad.has(s)) {
-                  _emoteFirstLoad.add(s)
-                  firstLoad = true
-                }
-              }
-              // firstLoad: in-place text swap (no rebuild flash), skipping the
-              // visible-row swap when scrolled up. non-firstLoad emote edits render
+              // cold-load: in-place text swap (no rebuild flash), skipping the
+              // visible-row swap when scrolled up. non-cold emote edits render
               // now (only when at/near bottom, to not yank a scrolled-up reader).
-              if (firstLoad) reloadEmotesInPlace(!isScrolledUp)
+              if (_emoteColdLoad(pending)) reloadEmotesInPlace(!isScrolledUp)
               else if (!isScrolledUp) renderMessages(currentTab)
             })
             .catch((e) => log('[heatsync-mc] loadEmotes error:', e))

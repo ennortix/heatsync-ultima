@@ -421,6 +421,15 @@
       // Clear cosmetics caches so cross-video bleed can't happen on next mount
       ytCosmeticsCache.clear()
       ytCosmeticsPending.clear()
+      // HS spec-paint state too (sheet node is cleanup-tracked separately)
+      if (ytHsPaintTimer) {
+        cleanup.clearTimeout(ytHsPaintTimer)
+        ytHsPaintTimer = null
+      }
+      ytHsPaintCache.clear()
+      ytHsPaintPending.clear()
+      ytHsPaintHashes.clear()
+      ytHsPaintSheet = null
     },
     { once: true },
   )
@@ -508,6 +517,167 @@
     if (ytCosmeticsCache.size >= YT_COSMETICS_MAX) {
       ytCosmeticsCache.delete(ytCosmeticsCache.keys().next().value)
     }
+  }
+
+  // ─── HeatSync spec paints (bought paints, yt_<UCid> id-space) ────────────────
+  // Mirrors the overlay pipeline (src/multichat/paints.js): batch fetch_paints
+  // via the BG SW (content scripts never fetch heatsync.org — CF 503s them),
+  // compile each distinct spec ONCE via the embedded lib/paint-spec.js
+  // compiler (build.js appends it to this bundle's lib — behavior parity with
+  // the overlay/site is the whole point), inject per-hash CSS into one sheet,
+  // apply as an .hsp-<hash> class. HS paint outranks the 7TV paint: the 7TV
+  // branch keys off nameEl.dataset.hsPaintApplied, and applying clears the
+  // inline style 7TV may have set (inline beats class in the cascade).
+  const YT_HSPAINT_BATCH = 50
+  const YT_HSPAINT_DELAY = 250
+  const YT_HSPAINT_CACHE_MAX = 500
+  const ytHsPaintCache = new Map() // uid -> { spec: object|null, hash: string|null }
+  const ytHsPaintPending = new Set()
+  const ytHsPaintHashes = new Set()
+  let ytHsPaintTimer = null
+  let ytHsPaintSheet = null
+
+  // The compiler comes from the build-time paint-spec.js embed; typeof-guard
+  // every entry point so a bundle built without it degrades to no HS paints
+  // instead of a ReferenceError killing the whole content script.
+  function ytHsPaintReady() {
+    return (
+      typeof compilePaintCss === 'function' &&
+      typeof hashPaintSpec === 'function' &&
+      typeof paintNeedsLetterSplit === 'function'
+    )
+  }
+
+  function ensureYtHsPaintSheet() {
+    if (ytHsPaintSheet?.isConnected) return ytHsPaintSheet
+    ytHsPaintSheet = document.getElementById('hs-yt-paints')
+    if (!ytHsPaintSheet) {
+      ytHsPaintSheet = document.createElement('style')
+      ytHsPaintSheet.id = 'hs-yt-paints'
+      // Same base rules as the overlay sheet (paints.js ensureHsPaintSheet):
+      // one reduced-motion kill-switch + the hover freeze (plain white/black
+      // chip, transform:none so rotation effects don't freeze edge-on).
+      ytHsPaintSheet.textContent =
+        '@media (prefers-reduced-motion: reduce){[class*="hsp-"],[class*="hsp-"] *{animation-play-state:paused !important;}}' +
+        '[class*="hsp-"]:hover,[class*="hsp-"]:hover span{animation-play-state:paused !important;background:#fff !important;-webkit-background-clip:border-box !important;background-clip:border-box !important;color:#000 !important;transform:none !important;}'
+      document.head.appendChild(cleanup.trackNode ? cleanup.trackNode(ytHsPaintSheet) : ytHsPaintSheet)
+    }
+    return ytHsPaintSheet
+  }
+
+  function queueYtHsPaint(uid) {
+    if (!uid || !ytHsPaintReady()) return
+    if (ytHsPaintCache.has(uid) || ytHsPaintPending.has(uid)) return
+    ytHsPaintPending.add(uid)
+    if (ytHsPaintPending.size >= YT_HSPAINT_BATCH) {
+      if (ytHsPaintTimer) {
+        cleanup.clearTimeout(ytHsPaintTimer)
+        ytHsPaintTimer = null
+      }
+      flushYtHsPaintBatch()
+      return
+    }
+    if (!ytHsPaintTimer && !signal.aborted) {
+      ytHsPaintTimer = cleanup.setTimeout(() => {
+        ytHsPaintTimer = null
+        if (!signal.aborted) flushYtHsPaintBatch()
+      }, YT_HSPAINT_DELAY)
+    }
+  }
+
+  async function flushYtHsPaintBatch() {
+    if (!ytHsPaintPending.size) return
+    const batch = [...ytHsPaintPending].slice(0, YT_HSPAINT_BATCH)
+    batch.forEach((id) => ytHsPaintPending.delete(id))
+    let paints = null
+    try {
+      const resp = await safeSendMessage({ type: 'fetch_paints', userIds: batch })
+      if (resp?.paints && typeof resp.paints === 'object') paints = resp.paints
+    } catch (_) {}
+    const changed = []
+    if (paints) {
+      // BG only includes CONFIRMED answers (spec or null). An absent key is a
+      // transient failure — requeue it, never cache a false negative.
+      for (const id of batch) {
+        if (!Object.hasOwn(paints, id)) {
+          ytHsPaintPending.add(id)
+          continue
+        }
+        const spec = paints[id]
+        let hash = null
+        if (spec) {
+          try {
+            hash = hashPaintSpec(spec)
+            if (hash && !ytHsPaintHashes.has(hash)) {
+              const css = compilePaintCss(spec, `.hsp-${hash}`, { hash })
+              if (css) {
+                ensureYtHsPaintSheet().textContent += css
+                ytHsPaintHashes.add(hash)
+              } else hash = null
+            }
+          } catch (_) {
+            hash = null
+          }
+        }
+        if (ytHsPaintCache.size >= YT_HSPAINT_CACHE_MAX) {
+          ytHsPaintCache.delete(ytHsPaintCache.keys().next().value)
+        }
+        ytHsPaintCache.set(id, { spec: hash ? spec : null, hash })
+        if (hash) changed.push(id)
+      }
+    } else {
+      for (const id of batch) ytHsPaintPending.add(id)
+    }
+    // Retro-apply to rows already rendered before the fetch resolved.
+    if (changed.length) {
+      const container = document.querySelector('yt-live-chat-item-list-renderer #items')
+      if (container) {
+        const uidSet = new Set(changed)
+        container.querySelectorAll('[data-hs-yt-paint-uid]').forEach((node) => {
+          if (!uidSet.has(node.dataset.hsYtPaintUid)) return
+          applyYtHsPaint(node.querySelector('#author-name'), node.dataset.hsYtPaintUid)
+        })
+      }
+    }
+    if (ytHsPaintPending.size && !ytHsPaintTimer && !signal.aborted) {
+      ytHsPaintTimer = cleanup.setTimeout(() => {
+        ytHsPaintTimer = null
+        if (!signal.aborted) flushYtHsPaintBatch()
+      }, YT_HSPAINT_DELAY * 5)
+    }
+  }
+
+  /** Apply a cached HS paint to the author-name element. Returns true when a
+   * paint class was applied (caller/7TV branch must then leave it alone). */
+  function applyYtHsPaint(nameEl, uid) {
+    if (!nameEl || !uid || !ytHsPaintReady()) return false
+    const entry = ytHsPaintCache.get(uid)
+    if (!entry?.hash) return false
+    const cls = `hsp-${entry.hash}`
+    if (!nameEl.classList.contains(cls)) {
+      for (const c of [...nameEl.classList]) if (c.startsWith('hsp-')) nameEl.classList.remove(c)
+      nameEl.classList.add(cls)
+    }
+    // Inline style (yt's own color, or a 7TV paint applied earlier) has higher
+    // specificity than any class rule — clear it or the paint silently loses.
+    if (nameEl.hasAttribute('style')) nameEl.removeAttribute('style')
+    if (paintNeedsLetterSplit(entry.spec) && !nameEl.dataset.hsPaintSplit && nameEl.textContent) {
+      // DOM-built per-glyph spans (--i/--mid drive the effect delays) — same
+      // output shape as the overlay's splitHsLettersHtml, no innerHTML.
+      const chars = [...nameEl.textContent]
+      const mid = (chars.length - 1) / 2
+      nameEl.textContent = ''
+      chars.forEach((ch, i) => {
+        const s = document.createElement('span')
+        s.style.setProperty('--i', i)
+        s.style.setProperty('--mid', mid)
+        s.textContent = ch
+        nameEl.appendChild(s)
+      })
+      nameEl.dataset.hsPaintSplit = '1'
+    }
+    nameEl.dataset.hsPaintApplied = '1'
+    return true
   }
 
   function applyPendingYtCosmetics(usernames) {
@@ -794,6 +964,18 @@
     const messageEl = node.querySelector('#message')
     if (messageEl && emoteMap.size > 0) {
       replaceEmotesInElement(messageEl)
+    }
+
+    // HeatSync spec paint — yt_<UCid> id-space (same minting as the overlay's
+    // social.js). Applied/queued BEFORE 7TV so the hsPaintApplied stamp wins.
+    if (msg.channelId) {
+      const paintUid = `yt_${msg.channelId}`
+      node.dataset.hsYtPaintUid = paintUid
+      if (ytHsPaintCache.has(paintUid)) {
+        applyYtHsPaint(node.querySelector('#author-name'), paintUid)
+      } else {
+        queueYtHsPaint(paintUid)
+      }
     }
 
     // 7TV cosmetics via heatsync profile linkage

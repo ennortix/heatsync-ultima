@@ -730,7 +730,19 @@ function build(browser) {
       console.log(`  Skip ${file} (not found)`)
       continue
     }
-    const bundled = bundleContentScript(srcPath, lib, null)
+    // youtube-content renders HeatSync spec paints on the NATIVE yt surface,
+    // so it gets the paint-spec compiler appended to its lib — same embed the
+    // multichat bundles use (readMultichatModules). Other content scripts
+    // don't pay for it; youtube-content typeof-guards the compiler so a
+    // missing embed degrades to no paints, never a ReferenceError.
+    let libFor = lib
+    if (file === 'youtube-content.js') {
+      const paintSpecPath = join(SRC_DIR, 'lib', 'paint-spec.js')
+      if (existsSync(paintSpecPath)) {
+        libFor = `${lib}\n// --- lib/paint-spec.js ---\n${stripExports(readFileSync(paintSpecPath, 'utf8'))}\n`
+      }
+    }
+    const bundled = bundleContentScript(srcPath, libFor, null)
     writeFileSync(join(outDir, file), bundled)
     console.log(`  Bundled ${file}`)
   }

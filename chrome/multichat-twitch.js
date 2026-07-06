@@ -6715,15 +6715,25 @@ const HsNotifs = (() => {
       const el = document.createElement('span')
       el.className = 'hs-notif-toast-text hs-notif-toast-warn'
       const reasonMap = {
-        no_echo: 'twitch did not confirm — may not have posted',
         auth_failed: 'twitch auth failed',
         no_user: 'no twitch username',
         connect_failed: 'connection failed',
+        send_failed: 'send failed',
         kick_not_logged_in: 'kick not logged in',
         no_kick_tab: 'no kick tab open',
         no_channel: 'kick channel not found',
+        'missing params': 'kick send rejected',
+        no_youtube_tab: 'no youtube tab open',
       }
-      const why = reasonMap[data.reason] || data.reason || 'send may have failed'
+      let why
+      if (data.reason === 'no_echo') {
+        // Name the platform(s) that never confirmed (markPendingFailed sends
+        // the awaiting set) — a kick or yt no-echo used to blame twitch.
+        const plat = (data.platforms || []).map((p) => (p === 'yt' ? 'youtube' : p)).join('+')
+        why = `${plat || 'platform'} did not confirm — may not have posted`
+      } else {
+        why = reasonMap[data.reason] || data.reason || 'send may have failed'
+      }
       const snippet = String(data.text || '').slice(0, 60)
       el.textContent = `${why}: "${snippet}${data.text?.length > 60 ? '…' : ''}"`
       return el
@@ -22048,10 +22058,7 @@ async function syncBlockToAPI(emoteName, block) {
       })
       .catch((e) => {
         log('block sync failed:', e?.message || e)
-        showToast(
-          `${block ? 'block' : 'unblock'} not saved to your account — will differ on other devices`,
-          'error',
-        )
+        showToast(`${block ? 'block' : 'unblock'} not saved to your account — will differ on other devices`, 'error')
       })
     log('Synced', block ? 'block' : 'unblock', emoteName, '(hash:', hash.substring(0, 8) + '...) to API')
   } catch (e) {
@@ -34506,6 +34513,9 @@ function markPendingFailed(synthId, reason) {
       text: entry.text,
       channel: entry.channel,
       reason,
+      // Unconfirmed platforms at failure time — lets the notif name WHICH
+      // platform didn't confirm instead of always blaming twitch.
+      platforms: [...entry.awaiting],
     })
   } catch (_) {}
 }
@@ -35718,7 +35728,11 @@ async function hsFollowFromMenu(username, platform, ids = {}) {
   // giving up. Kick hits the public kick.com API for a real numeric id; YT
   // uses a UC channel id already known from chat (ids.youtubeChannelId, or a
   // buffer scan when the ctx-menu didn't have one to hand).
-  if (!id && typeof resolveFollowTargetId === 'function' && (platform === 'kick' || platform === 'youtube' || platform === 'yt')) {
+  if (
+    !id &&
+    typeof resolveFollowTargetId === 'function' &&
+    (platform === 'kick' || platform === 'youtube' || platform === 'yt')
+  ) {
     const target = await resolveFollowTargetId(platform, username, ids)
     if (target?.id) id = target.id
   }
@@ -35753,7 +35767,9 @@ async function _ctxMod(action, channel, platform, target, msgId, durationSec, la
   if (action === 'delete') {
     const derr = (r?.tResp || r?.kResp || r?.yResp)?.error
     showToast(
-      r?.anyOk ? 'deleted message' : `delete failed: ${derr === 'not_moderator' ? 'not a youtube mod here' : derr || 'unknown'}`,
+      r?.anyOk
+        ? 'deleted message'
+        : `delete failed: ${derr === 'not_moderator' ? 'not a youtube mod here' : derr || 'unknown'}`,
       r?.anyOk ? 'success' : 'error',
     )
   } else {
@@ -35798,7 +35814,9 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
   // LOGIN (display-name ≠ login for non-Latin users → ban would miss).
   if (
     msg &&
-    (typeof isModForSync === 'function' || typeof isKickModForSync === 'function' || typeof isYtModForSync === 'function')
+    (typeof isModForSync === 'function' ||
+      typeof isKickModForSync === 'function' ||
+      typeof isYtModForSync === 'function')
   ) {
     const msgCh = msg.dataset?.msgChannel || ''
     const msgPlat = msg.dataset?.msgPlatform || 'twitch'
@@ -35922,7 +35940,10 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
     items.push({
       label: 'chat logs',
       fn: () =>
-        openChatLogsView(username, msgChannel ? { platform: logPlatform, channel: msgChannel } : { platform: logPlatform }),
+        openChatLogsView(
+          username,
+          msgChannel ? { platform: logPlatform, channel: msgChannel } : { platform: logPlatform },
+        ),
     })
   }
   items.push('sep', {
@@ -44086,7 +44107,9 @@ function updateCosmeticsInPlace(userIds) {
     // attribute social.js already stamps, same technique updateHsPaintsInPlace
     // uses for kick_ ids.
     const isNamespacedUid = uid.startsWith('yt_')
-    const divSet = isNamespacedUid ? container.querySelectorAll(`[data-hs-paint-uid="${CSS.escape(uid)}"]`) : _uidIndex.get(uid)
+    const divSet = isNamespacedUid
+      ? container.querySelectorAll(`[data-hs-paint-uid="${CSS.escape(uid)}"]`)
+      : _uidIndex.get(uid)
     if (!divSet) continue
     for (const div of divSet) {
       // Update paint on the SENDER's username link — exclude the reply
@@ -44887,7 +44910,15 @@ async function dispatchModAction({ channel, platform, action, target, durationSe
   // parity with twitch/kick: delete / timeout / ban (hide user) / unban (unhide).
   if (platform === 'youtube' || platform === 'yt') {
     const yTgt = String(target || '').replace(/^@/, '')
-    if (!msgId) return { tResp: null, kResp: null, yResp: { ok: false, error: 'no_message' }, twitchName: null, kickSlug: null, anyOk: false }
+    if (!msgId)
+      return {
+        tResp: null,
+        kResp: null,
+        yResp: { ok: false, error: 'no_message' },
+        twitchName: null,
+        kickSlug: null,
+        anyOk: false,
+      }
     const yResp = await safeSendMessage({ type: 'youtube_mod_action', action, msgId, target: yTgt })
     return {
       tResp: null,
@@ -55266,7 +55297,14 @@ const STORAGE_KEY = 'heatsync_multichat'
     // m.emoteChannel: explicit channel-emote cache key for messages whose
     // channel is display-only (yt-only config channels + yt auto-live key by
     // config id / videoId, not a twitch/kick name). See social.js ytEmoteKey.
-    let processedText = processEmotes(escapeHtml(m.text), m.emoteChannel || m.channel, twitchExtra, senderEmotes, m.time, true)
+    let processedText = processEmotes(
+      escapeHtml(m.text),
+      m.emoteChannel || m.channel,
+      twitchExtra,
+      senderEmotes,
+      m.time,
+      true,
+    )
     if (m.emotes && m.emotes.length > 0) {
       processedText = processYtEmotes(processedText, m.emotes, true)
     }

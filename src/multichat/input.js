@@ -71,7 +71,10 @@ function trackSentMessage(text, hostOverride, synthId, echoes) {
   // sync latency easily wins the race against the ~100-300ms platform
   // chat round-trip.
   try {
-    chrome.storage.local.set({ [RECENT_SENT_KEY]: _recentSentMessages })
+    // Strip per-tab echo counters before persisting: each tab receives its own
+    // echo stream and must count independently — a leaked counter would make
+    // another tab suppress its FIRST (only rendered) copy of the message.
+    chrome.storage.local.set({ [RECENT_SENT_KEY]: _recentSentMessages.map(({ suppressed, ...rest }) => rest) })
   } catch (_) {}
 }
 
@@ -110,12 +113,15 @@ try {
       if (area !== 'local' || !changes[RECENT_SENT_KEY]) return
       const incoming = changes[RECENT_SENT_KEY].newValue
       if (!Array.isArray(incoming)) return
-      // Merge our local writes with the incoming snapshot — last-write-wins
-      // by (text, second-bucketed time). Survives the rare two-tab-send race.
+      // Merge our local writes with the incoming snapshot, keyed by
+      // (text, exact time, synthId) so two rapid same-text sends stay two
+      // entries — the old 1s time bucket collapsed them and broke echo
+      // accounting. On a key tie the LOCAL entry wins (it's spread first and
+      // ties don't replace), preserving this tab's own suppressed counters.
       const merged = new Map()
       for (const e of [..._recentSentMessages, ...incoming]) {
         if (!e || !e.text) continue
-        const k = `${e.text}:${Math.floor((e.time || 0) / 1000)}`
+        const k = `${e.text}:${e.time || 0}:${e.synthId || ''}`
         const existing = merged.get(k)
         if (!existing || (existing.time || 0) < (e.time || 0)) merged.set(k, e)
       }
@@ -128,28 +134,29 @@ try {
 
 function isSentEcho(msgText, _msgPlatform) {
   const cutoff = Date.now() - SENT_DEDUP_WINDOW
-  for (let i = _recentSentMessages.length - 1; i >= 0; i--) {
+  // FIFO oldest-first: each echo is claimed by the OLDEST send whose expected
+  // echo count isn't exhausted. The old newest-first scan locked two same-text
+  // sends onto one entry, so the 2nd send's only echo was counted as the 1st
+  // send's dual-send duplicate and silently dropped.
+  for (let i = 0; i < _recentSentMessages.length; i++) {
     const entry = _recentSentMessages[i]
     // continue (not break): a cross-tab merge can briefly leave the array out
-    // of time order, so an old entry early doesn't mean all earlier are old.
+    // of time order, so one stale entry doesn't mean the rest are stale too.
     if (entry.time < cutoff) continue
-    if (entry.text === msgText) {
-      // First echo displays; second (dual-send duplicate) is suppressed.
-      // Host-platform badge attribution happens separately via peekSentHost,
-      // so we don't suppress on host mismatch — that would drop the only
-      // echo when sending from one platform to a single-platform channel
-      // on a different host (e.g. kick.com → twitch-only mellen).
-      entry.suppressed = (entry.suppressed || 0) + 1
-      if (entry.suppressed >= 2) {
-        // Suppress every echo after the first. Remove the entry only once all
-        // expected echoes have arrived (one per target platform) — a triple
-        // send (twitch+kick+youtube) produces 3 echoes; removing after the 2nd
-        // let the 3rd render as a duplicate of the user's own message.
-        if (entry.suppressed >= (entry.echoes || 2)) _recentSentMessages.splice(i, 1)
-        return true
-      }
-      return false
-    }
+    if (entry.text !== msgText) continue
+    const seen = entry.suppressed || 0
+    // Exhausted: this send already accounted for one echo per target platform;
+    // let a later same-text send claim this echo instead.
+    if (seen >= (entry.echoes || 1)) continue
+    // Host-platform badge attribution happens separately via peekSentHost,
+    // so we don't suppress on host mismatch — that would drop the only
+    // echo when sending from one platform to a single-platform channel
+    // on a different host (e.g. kick.com → twitch-only mellen).
+    entry.suppressed = seen + 1
+    // First echo of a send displays; its per-platform duplicates (dual/triple
+    // send) are suppressed. The entry is kept (skipped once exhausted, pruned
+    // at the 24h window) so peekSentHost can still attribute badges.
+    return seen >= 1
   }
   return false
 }

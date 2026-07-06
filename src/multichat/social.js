@@ -763,9 +763,27 @@ function listenForSocialEvents() {
       // hint, processEmotes only sees globals + the user's heatsync inventory,
       // missing per-channel emotes for the linked streamer.
       let ytChannelHint = null
+      // Channel-emote cache key when the display hint can't double as one.
+      // A yt-ONLY channel's emotes are broadcast under the CONFIG id —
+      // join_channel sends { channel: id } and channel_emotes_update echoes
+      // it back as channelOwner — and auto-live is keyed by the BG's
+      // yt_ensure_channel_emotes derivation: videoId, else @handle from the
+      // page URL (channel /live pages carry no ?v=). Neither is fit to
+      // display (raw video/config id), so it rides a separate emoteChannel
+      // field; the old twitch||kick||null hint left these messages on the
+      // dead 'youtube' key and channel emotes never resolved. Lowercased to
+      // match _buildChannelEmoteCache's key normalization.
+      let ytEmoteKey = null
       if (targetChannelId && targetChannelId !== '__live_yt_auto__') {
         const linkedCh = config.channels.find((c) => c.id === targetChannelId)
-        if (linkedCh) ytChannelHint = linkedCh.twitch || linkedCh.kick || null
+        if (linkedCh) {
+          ytChannelHint = linkedCh.twitch || linkedCh.kick || null
+          if (!ytChannelHint) ytEmoteKey = String(linkedCh.id).toLowerCase()
+        }
+      } else if (targetChannelId === '__live_yt_auto__') {
+        const vid = msg.videoId || _autoYtVideoId || ''
+        const handle = location.href.match(/youtube\.com\/@([\w.-]{3,30})/)?.[1]
+        ytEmoteKey = (vid || (handle ? `@${handle}` : '')).toLowerCase() || null
       }
 
       const ytMsg = {
@@ -777,6 +795,9 @@ function listenForSocialEvents() {
         text: msg.text,
         color: msg.color || '#ff0000',
         channel: ytChannelHint || 'youtube',
+        // Cache key for channel-emote lookup when channel itself isn't one
+        // (yt-only config channels + auto-live). Render uses it over channel.
+        emoteChannel: ytEmoteKey || undefined,
         time: msg.time,
         platform: 'youtube',
         emotes: msg.emotes || [],

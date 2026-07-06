@@ -181,13 +181,13 @@ describe('processEmotes + highlightMentionsInHtml double-render (blank painted u
 describe('computeMessageText call-site guard — structural invariant', () => {
   test('the processEmotes call inside computeMessageText passes skipMentions=true', () => {
     const marker =
-      'let processedText = processEmotes(escapeHtml(m.text), m.channel, twitchExtra, senderEmotes, m.time, true)'
+      'let processedText = processEmotes(escapeHtml(m.text), m.emoteChannel || m.channel, twitchExtra, senderEmotes, m.time, true)'
     expect(MAIN_SRC).toContain(marker)
   })
 
   test('highlightMentionsInHtml still runs right after, in the same function (mention rendering is not silently dropped)', () => {
     const idx = MAIN_SRC.indexOf('let processedText = processEmotes(escapeHtml(m.text)')
-    const nextChunk = MAIN_SRC.slice(idx, idx + 600)
+    const nextChunk = MAIN_SRC.slice(idx, idx + 800)
     expect(nextChunk).toContain('highlightMentionsInHtml(processedText, m.platform)')
   })
 })

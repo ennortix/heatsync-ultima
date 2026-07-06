@@ -6109,7 +6109,10 @@
     // — invalid HTML5 that browsers "fix" by auto-closing the outer anchor
     // empty, leaving a permanently blank username node next to its painted
     // sibling. See processEmotes' skipMentions doc comment (emotes.js).
-    let processedText = processEmotes(escapeHtml(m.text), m.channel, twitchExtra, senderEmotes, m.time, true)
+    // m.emoteChannel: explicit channel-emote cache key for messages whose
+    // channel is display-only (yt-only config channels + yt auto-live key by
+    // config id / videoId, not a twitch/kick name). See social.js ytEmoteKey.
+    let processedText = processEmotes(escapeHtml(m.text), m.emoteChannel || m.channel, twitchExtra, senderEmotes, m.time, true)
     if (m.emotes && m.emotes.length > 0) {
       processedText = processYtEmotes(processedText, m.emotes, true)
     }
@@ -10524,7 +10527,17 @@
         if (msg.type === 'channel_emotes_update' && msg.channelOwner && Array.isArray(msg.emotes)) {
           // platform tag lets the panel keep both sets for a same-name twitch+kick
           // simulcast instead of one overwriting the other (merge-per-platform).
-          _buildChannelEmoteCache(msg.channelOwner.toLowerCase(), msg.emotes, msg.platform)
+          const _ownerKey = msg.channelOwner.toLowerCase()
+          _buildChannelEmoteCache(_ownerKey, msg.emotes, msg.platform)
+          if (msg.platform === 'youtube') {
+            // Alias the SAME Map under the shapes getCurrentChannel() yields on
+            // yt pages — raw-case videoId (watch?v=) and bare handle (no @) —
+            // so picker/lookup fallbacks hit. yt cache keys are videoId/@handle
+            // (BG yt_ensure_channel_emotes derivation), never a channel name.
+            for (const a of [msg.channelOwner, _ownerKey.replace(/^@/, '')]) {
+              if (a && a !== _ownerKey) channelEmoteCaches[a] = channelEmoteCaches[_ownerKey]
+            }
+          }
           markPickerDirty()
         }
         // Cold-start (first emote payload for this scope) needs clear+rerender

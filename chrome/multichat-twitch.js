@@ -23088,8 +23088,15 @@ function hsSnapEmoteBox(img) {
       if (box && box.isConnected) items.push({ box, im })
     }
     _hsSnapQueue.clear()
-    // Read every width first, then write — one layout pass per frame.
-    for (const it of items) it.w = Math.ceil(it.box.getBoundingClientRect().width)
+    // Read every width first, then write — one layout pass per frame. Use
+    // offsetWidth, NOT getBoundingClientRect: a wide/tall modifier (w!/ffzW/h!)
+    // applies a CSS transform:scale to the box, and getBoundingClientRect INCLUDES
+    // that scale. Pinning the scaled value as style.width would re-scale it every
+    // render (2x → 4x → runs off-screen — the reported "WideBirdge ffzW even more
+    // off-screen after refresh"). offsetWidth is the untransformed layout width,
+    // which is also what the following text actually flows after (transforms don't
+    // move siblings), so it's the correct measure for the box-reservation too.
+    for (const it of items) it.w = it.box.offsetWidth
     for (const it of items) {
       // Skip a mid-flight / fallback-swapping image: measuring + caching its box
       // now would pin a width from a transitional (or not-yet-decoded) asset under

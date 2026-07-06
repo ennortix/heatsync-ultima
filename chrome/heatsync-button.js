@@ -5101,6 +5101,16 @@
       document.querySelectorAll('#heatsync-loading-status').forEach((el) => el.remove())
     }
 
+    // The overlay (#hs-mc-container) has its own emote picker + input and hides the
+    // native chat column, where this "H" button + panel inject — so they render
+    // inside a display:none ancestor (invisible). Skip the whole module (button,
+    // panel, emote preload, 2s retry interval) when the overlay is up: pure dead
+    // CPU/memory otherwise. Latches once seen.
+    let _hsOverlayUp = false
+    function isOverlayActive() {
+      return _hsOverlayUp || (_hsOverlayUp = !!document.getElementById('hs-mc-container'))
+    }
+
     // Initialize
     async function init() {
       // picker-button subsystem gate — off = no button, no preload, no panel
@@ -5111,6 +5121,10 @@
           return
         }
       } catch (_) {}
+      if (isOverlayActive()) {
+        log(' overlay active — native picker button/panel not needed, skipping module')
+        return
+      }
       log(' 🔥 Initializing button module on:', window.location.href)
       cleanupOrphanedElements()
       injectPreconnectHints()
@@ -5133,6 +5147,8 @@
       // Re-try periodically (chat might load later)
       cleanup.setInterval(
         () => {
+          // Overlay mounted after us → native button is invisible; stop re-injecting.
+          if (isOverlayActive()) return
           if (!document.getElementById(BUTTON_ID)) {
             buttonInjected = false
           }

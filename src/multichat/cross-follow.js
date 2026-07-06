@@ -212,7 +212,7 @@ async function propagateFollow(follow, target) {
 
   if (settings.twitch && target.twitch_id) {
     const verb = follow ? 'follow' : 'unfollow'
-    const r = await _twitchFollow(target.twitch_id, follow, false, target.twitch_username)
+    const r = await _twitchFollow(target.twitch_id, follow, !settings.twitchNotifyTarget, target.twitch_username)
     if (r?.ok) {
       out.twitch = { ok: true, idempotent: !!r.idempotent }
       await _dequeueMatching('twitch', String(target.twitch_id))

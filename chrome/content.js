@@ -10221,7 +10221,21 @@
   let messageObserver = null
   let observedContainer = null
   let watchRetryCount = 0
+  // The overlay (#hs-mc-container) fully replaces + hides native chat once it
+  // mounts. After that, every native-chat-row DOM enhancement below (emote render,
+  // cosmetics, username coloring, heat borders, timeout-dim, msg cache) is invisible
+  // dead work on a display:none subtree — pure per-message CPU/memory waste. Gate it
+  // off. Latches true once the container is seen (it persists), so it's a single
+  // O(1) check thereafter. Self-twitch-id registration doesn't depend on this path
+  // (it fires at boot from localStorage['twilight.user'], content.js ~5307).
+  let _hsOverlayActive = false
+  function isOverlayActive() {
+    return _hsOverlayActive || (_hsOverlayActive = !!document.getElementById('hs-mc-container'))
+  }
+
   function watchForNewMessages() {
+    // Overlay is up → native chat is hidden → skip wiring the dead message pipeline.
+    if (isOverlayActive()) return
     const chatContainer = findChatContainer()
     if (!chatContainer) {
       if (++watchRetryCount > 60) return
@@ -10269,6 +10283,9 @@
     const cosmeticRefresh = []
     messageObserver = cleanup.trackObserver(
       new MutationObserver((mutations) => {
+        // Overlay mounted after we wired this observer → native chat is now hidden;
+        // stop doing per-message work on it (see isOverlayActive above).
+        if (isOverlayActive()) return
         ensureEmoteStyles()
         newColoringMessages.length = 0
         cosmeticRefresh.length = 0

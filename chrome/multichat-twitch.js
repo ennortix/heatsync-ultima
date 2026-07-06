@@ -23916,8 +23916,13 @@ function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg, own
     img.style.display = ''
     // Same fit-to-viewport cap as the composite path: a lone wide/tall emote
     // (up to 384×128) blown to 4× is 1536×512 — scale down if it would clip.
-    const baseW = hoveredImg?.offsetWidth || 28
-    const baseH = hoveredImg?.offsetHeight || 28
+    // Use the VISUAL (transformed) size so a w!/ffzW/h!-modified emote previews at
+    // its modified proportions. offsetWidth ignores the CSS transform, so a wide
+    // emote's hover preview would otherwise shrink back to the un-modified base
+    // square while the in-chat copies stay wide (reported "shows the base image").
+    const _vRect = hoveredImg?.getBoundingClientRect()
+    const baseW = (_vRect && _vRect.width) || hoveredImg?.offsetWidth || 28
+    const baseH = (_vRect && _vRect.height) || hoveredImg?.offsetHeight || 28
     const scale = fitPreviewScale(baseW, baseH)
     img.style.width = baseW * scale + 'px'
     img.style.height = baseH * scale + 'px'

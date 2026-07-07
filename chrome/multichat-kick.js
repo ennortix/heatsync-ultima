@@ -50120,9 +50120,10 @@ const STORAGE_KEY = 'heatsync_multichat'
       // youtube-only chatters). hsPaintUid carries it as `yt_<UCid>` (stamped
       // by social.js off the raw message); authorChannelId is a plain fallback
       // if it ever rides the message directly.
-      const channelId = (typeof m.hsPaintUid === 'string' && m.hsPaintUid.startsWith('yt_'))
-        ? m.hsPaintUid.slice(3)
-        : (m.authorChannelId || null)
+      const channelId =
+        typeof m.hsPaintUid === 'string' && m.hsPaintUid.startsWith('yt_')
+          ? m.hsPaintUid.slice(3)
+          : m.authorChannelId || null
       if (channelId) return `ytc:${channelId}`
       // Last resort: display-name key when no channel id is known yet.
       const ytKey = (m.user || '').toLowerCase().replace(/^@/, '')

@@ -380,7 +380,13 @@ ensureAlarm('keepalive', { periodInMinutes: 0.5 })
 ensureAlarm('refresh-global-emotes', { delayInMinutes: 1440 + Math.random() * 60, periodInMinutes: 1440 })
 ensureAlarm('refresh-emote-inventory', { delayInMinutes: 1 + Math.random(), periodInMinutes: 1 })
 ensureAlarm('prune-expired-mutes', { periodInMinutes: 1 })
-ensureAlarm('live-poll', { delayInMinutes: 1 + Math.random(), periodInMinutes: 1 })
+// Twitch rides the WS follow:stream:* push (near-instant) + the
+// follow:live:snapshot on connect, so the poll is a pure reconcile belt there.
+// But Kick/YouTube have NO push path — the poll is still their ONLY live
+// detection, so it can't go as slow as a pure-backstop would allow. 2min is
+// the compromise: ~halves the old 60s load while keeping Kick/YouTube
+// "went live" latency acceptable (5min was too slow for a live product).
+ensureAlarm('live-poll', { delayInMinutes: 2 + Math.random(), periodInMinutes: 2 })
 // Followed-users refresh — the feed filter's followedUsers cache otherwise only
 // updates on login/SW boot, so follows made on heatsync.org (or another device)
 // stay invisible until SW eviction. 5 min matches the server's 300s cache TTL.
@@ -1739,11 +1745,35 @@ async function pollFollowedLive() {
   }
 }
 
+// Add or update one entry in the live-followed snapshot (badge count + popup
+// list). Keyed by platform:username so a creator on twitch+kick keeps two
+// rows, matching pollFollowedLive's semantics.
+function upsertLiveSnapshotEntry(entry) {
+  const key = `${entry.platform}:${entry.username}`
+  const full = { ...entry, key }
+  const idx = _liveFollowedSnapshot.findIndex((s) => s.key === key)
+  if (idx >= 0) _liveFollowedSnapshot[idx] = { ..._liveFollowedSnapshot[idx], ...full }
+  else _liveFollowedSnapshot.push(full)
+  _liveFollowedSnapshot.sort((a, b) => b.viewers - a.viewers)
+  _liveFollowedCount = new Set(_liveFollowedSnapshot.map((s) => s.username)).size
+}
+
+function removeLiveSnapshotEntry(platform, username) {
+  const key = `${platform}:${username}`
+  const before = _liveFollowedSnapshot.length
+  _liveFollowedSnapshot = _liveFollowedSnapshot.filter((s) => s.key !== key)
+  if (_liveFollowedSnapshot.length !== before) {
+    _liveFollowedCount = new Set(_liveFollowedSnapshot.map((s) => s.username)).size
+  }
+}
+
 // Handle a WS follow:stream:* event: 60s in-mem dedup + persistent lastSeenLive
-// gate, then cache + broadcast. On WS reconnect / SW restart the server replays
-// the entire live-followed snapshot as follow:stream:online events; the in-mem
-// dedup is cleared on SW eviction, so we additionally suppress online events for
-// channels we already knew were live (persisted via pollFollowedLive). Genuine
+// gate, then cache + broadcast. This is the FAST PATH for Twitch (the only
+// platform the server currently pushes stream events for) — it drives the
+// same badge/snapshot/notification pipeline pollFollowedLive does, so the
+// 2-min poll alarm only needs to be a reconcile backstop. The in-mem dedup
+// is cleared on SW eviction, so we additionally suppress online events for
+// channels we already knew were live (persisted via lastSeenLive). Genuine
 // off→on transitions still pass (lastSeenLive cleared on offline / poll absence).
 function handleFollowStreamEvent(msg) {
   const now = Date.now()
@@ -1764,11 +1794,41 @@ function handleFollowStreamEvent(msg) {
     if (!_liveStatusState.lastSeenLive) _liveStatusState.lastSeenLive = {}
     _liveStatusState.lastSeenLive[liveKey] = true
     saveLiveStatusState().catch(() => {})
+
+    upsertLiveSnapshotEntry({
+      username: channel,
+      platform,
+      viewers: 0,
+      displayName: channel,
+      profileImageUrl: '',
+    })
+    recomputeBadge()
+    updateLiveBadgeTooltip()
+    broadcastToTabs({ type: 'live_followed_updated', snapshot: _liveFollowedSnapshot })
+
+    // Same 30-min re-notify throttle pollFollowedLive uses. Skip entirely
+    // before persisted state has loaded (cold SW boot) — otherwise a burst
+    // of "already live" pushes on first connect would fire a notification
+    // storm for everything, same guard as pollFollowedLive's wasFirstPoll.
+    if (_liveStatusInitialized) {
+      const lastNotif = _liveStatusState.lastNotifiedAt?.[liveKey] || 0
+      if (now - lastNotif > LIVE_NOTIFY_THROTTLE_MS) {
+        if (!_liveStatusState.lastNotifiedAt) _liveStatusState.lastNotifiedAt = {}
+        _liveStatusState.lastNotifiedAt[liveKey] = now
+        fireLiveNotificationFromStream({ title: msg.title || '', game: msg.game || '' }, channel, platform).catch(
+          () => {},
+        )
+      }
+    }
   } else if (msg.type === 'follow:stream:offline') {
     if (_liveStatusState.lastSeenLive?.[liveKey]) {
       delete _liveStatusState.lastSeenLive[liveKey]
       saveLiveStatusState().catch(() => {})
     }
+    removeLiveSnapshotEntry(platform, channel)
+    recomputeBadge()
+    updateLiveBadgeTooltip()
+    broadcastToTabs({ type: 'live_followed_updated', snapshot: _liveFollowedSnapshot })
   }
 
   if (!cachedFollowHistory) cachedFollowHistory = []
@@ -1795,6 +1855,43 @@ function handleFollowStreamEvent(msg) {
     prevTitle: msg.prevTitle || '',
     color: msg.color || '',
   })
+}
+
+// One-shot catch-up sent by the server right after WS authenticate: the
+// cross-platform live-following state (Twitch + Kick + YouTube) that existed
+// before this connection, read from the same 30s Redis cache /api/live/following
+// uses. Union-merge ONLY — never removes/marks-offline anything, so a cold
+// cache (server sends nothing) or a partial cache can't wrongly wipe out state
+// we already knew from a previous session. Removals still flow through explicit
+// follow:stream:offline pushes (Twitch) and the 2-min poll backstop (all
+// platforms). Never fires notifications — this is catch-up, not a transition.
+function handleFollowLiveSnapshot(msg) {
+  const streams = Array.isArray(msg.streams) ? msg.streams : []
+  if (streams.length === 0) return
+  if (!_liveStatusState.lastSeenLive) _liveStatusState.lastSeenLive = {}
+  let changed = false
+  for (const s of streams) {
+    const username = String(s?.username || '').toLowerCase()
+    const platform = String(s?.platform || '').toLowerCase()
+    if (!username || !platform) continue
+    const key = `${platform}:${username}`
+    if (!_liveStatusState.lastSeenLive[key]) {
+      _liveStatusState.lastSeenLive[key] = true
+      changed = true
+    }
+    upsertLiveSnapshotEntry({
+      username,
+      platform,
+      viewers: Number(s.viewerCount || s.viewer_count || 0) || 0,
+      displayName: s.heatsyncDisplayName || s.displayName || s.display_name || username,
+      profileImageUrl: s.profileImageUrl || s.profile_image_url || '',
+      stream: s,
+    })
+  }
+  if (changed) saveLiveStatusState().catch(() => {})
+  recomputeBadge()
+  updateLiveBadgeTooltip()
+  broadcastToTabs({ type: 'live_followed_updated', snapshot: _liveFollowedSnapshot })
 }
 
 // Set browser action title (icon hover tooltip) — top live followed names.
@@ -5579,6 +5676,10 @@ function handleWSMessage(msg) {
           type: 'follow_history',
           events: cachedFollowHistory,
         })
+        break
+
+      case 'follow:live:snapshot':
+        handleFollowLiveSnapshot(msg)
         break
 
       case 'user:heat_batch_update': {

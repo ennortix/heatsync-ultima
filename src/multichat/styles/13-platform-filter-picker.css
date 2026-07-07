@@ -78,6 +78,47 @@
       border-color: #fff !important;
     }
 
+    /* Composer send-target chips — one small pill per linked platform,
+       shown only when the active channel tab has >1 linked platform (see
+       renderSendTargetChips, input.js). Sits between the input and the
+       emote button; same colors/interaction as .hs-mc-pf-btn so "send to"
+       state reads consistently with the view-side filter chips. */
+    #hs-mc-sendtargets {
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 2px;
+      margin: 0 4px;
+    }
+    #hs-mc-sendtargets:empty { display: none; margin: 0; }
+    .hs-mc-st-btn {
+      background: transparent;
+      border: 1px solid;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 3px 6px;
+      cursor: pointer;
+      font-family: inherit;
+      line-height: 1;
+      box-sizing: border-box;
+      min-width: 16px;
+      text-align: center;
+    }
+    .hs-mc-st-btn.hs-mc-st-twitch { border-color: #9146ff !important; background: #9146ff !important; color: #fff !important; }
+    .hs-mc-st-btn.hs-mc-st-kick { border-color: #53fc18 !important; background: #53fc18 !important; color: #000 !important; }
+    .hs-mc-st-btn.hs-mc-st-youtube { border-color: #ff0000 !important; background: #ff0000 !important; color: #fff !important; }
+    .hs-mc-st-btn.off {
+      background: #000 !important;
+      color: #fff !important;
+      border-color: #333 !important;
+    }
+    .hs-mc-st-btn:hover { background: #fff !important; color: #000 !important; border-color: #fff !important; }
+    .hs-mc-st-btn.off:hover {
+      background: #fff !important;
+      color: #000 !important;
+      border-color: #fff !important;
+    }
+
     /* Emote picker panel — full-width section above inputbar */
     #hs-mc-emote-picker {
       display: none;

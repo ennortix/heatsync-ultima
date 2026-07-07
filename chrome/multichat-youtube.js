@@ -6097,6 +6097,63 @@ const cleanup = {
 }
 
 
+// --- multichat/send-targets.js ---
+// send-targets.js — pure helpers deciding which linked platforms a chat
+// message should be sent to for a given multichat channel config.
+//
+// No import/export: this file is concatenated (not module-loaded) into the
+// multichat-<platform>.js bundle alongside input.js/main.js/channel-mgmt.js
+// (see build.js MULTICHAT_MODULES) — plain top-level function declarations
+// are shared globals across the whole bundle.
+
+/**
+ * @param {{twitch?: boolean, kick?: boolean, youtube?: boolean}|null|undefined} sendTargets
+ *   Per-channel override, as persisted on config.channels[].sendTargets. A
+ *   platform key that is absent/undefined defaults to ON — a channel with no
+ *   sendTargets config behaves identically to before this feature existed.
+ * @param {{twitch?: boolean, kick?: boolean, youtube?: boolean}} linkedPlatforms
+ *   Which platforms are actually linked to this channel (sendTargets can't
+ *   turn on a platform that isn't linked).
+ * @returns {{twitch: boolean, kick: boolean, youtube: boolean}}
+ */
+function resolveSendTargets(sendTargets, linkedPlatforms) {
+  const linked = ['twitch', 'kick', 'youtube'].filter((p) => !!linkedPlatforms?.[p])
+  const out = { twitch: false, kick: false, youtube: false }
+  for (const p of linked) {
+    out[p] = !sendTargets || sendTargets[p] !== false
+  }
+  // Bulletproof: a corrupted/emptied config can't silently swallow every
+  // send — fall back to "all linked" rather than a message that goes nowhere.
+  if (linked.length && !linked.some((p) => out[p])) {
+    for (const p of linked) out[p] = true
+  }
+  return out
+}
+
+/**
+ * Compute the next sendTargets object after toggling one platform on/off.
+ * Seeds from "all currently linked platforms" the first time a channel's
+ * sendTargets is touched, so flipping one platform never implicitly turns
+ * off a platform the user hasn't interacted with (including one linked
+ * later). Refuses to produce a config that disables every linked platform —
+ * returns null in that case, which callers must treat as a no-op.
+ * @param {{twitch?: boolean, kick?: boolean, youtube?: boolean}|null|undefined} currentSendTargets
+ * @param {{twitch?: boolean, kick?: boolean, youtube?: boolean}} linkedPlatforms
+ * @param {'twitch'|'kick'|'youtube'} platform
+ * @param {boolean} enabled
+ * @returns {{twitch?: boolean, kick?: boolean, youtube?: boolean}|null}
+ */
+function nextSendTargets(currentSendTargets, linkedPlatforms, platform, enabled) {
+  if (!linkedPlatforms?.[platform]) return currentSendTargets || null
+  const seeded = currentSendTargets
+    ? { ...currentSendTargets }
+    : Object.fromEntries(['twitch', 'kick', 'youtube'].filter((p) => linkedPlatforms[p]).map((p) => [p, true]))
+  const next = { ...seeded, [platform]: enabled }
+  const anyOn = ['twitch', 'kick', 'youtube'].some((p) => linkedPlatforms[p] && next[p] !== false)
+  return anyOn ? next : null
+}
+
+
 // --- multichat/notifs.js ---
 // Notifs — central notification system for multichat.
 //
@@ -11052,6 +11109,47 @@ function injectStyles() {
     }
     .hs-mc-pf-btn:hover { background: #fff !important; color: #000 !important; border-color: #fff !important; }
     .hs-mc-pf-btn.off:hover {
+      background: #fff !important;
+      color: #000 !important;
+      border-color: #fff !important;
+    }
+
+    /* Composer send-target chips — one small pill per linked platform,
+       shown only when the active channel tab has >1 linked platform (see
+       renderSendTargetChips, input.js). Sits between the input and the
+       emote button; same colors/interaction as .hs-mc-pf-btn so "send to"
+       state reads consistently with the view-side filter chips. */
+    #hs-mc-sendtargets {
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 2px;
+      margin: 0 4px;
+    }
+    #hs-mc-sendtargets:empty { display: none; margin: 0; }
+    .hs-mc-st-btn {
+      background: transparent;
+      border: 1px solid;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 3px 6px;
+      cursor: pointer;
+      font-family: inherit;
+      line-height: 1;
+      box-sizing: border-box;
+      min-width: 16px;
+      text-align: center;
+    }
+    .hs-mc-st-btn.hs-mc-st-twitch { border-color: #9146ff !important; background: #9146ff !important; color: #fff !important; }
+    .hs-mc-st-btn.hs-mc-st-kick { border-color: #53fc18 !important; background: #53fc18 !important; color: #000 !important; }
+    .hs-mc-st-btn.hs-mc-st-youtube { border-color: #ff0000 !important; background: #ff0000 !important; color: #fff !important; }
+    .hs-mc-st-btn.off {
+      background: #000 !important;
+      color: #fff !important;
+      border-color: #333 !important;
+    }
+    .hs-mc-st-btn:hover { background: #fff !important; color: #000 !important; border-color: #fff !important; }
+    .hs-mc-st-btn.off:hover {
       background: #fff !important;
       color: #000 !important;
       border-color: #fff !important;
@@ -34569,12 +34667,14 @@ function createInputBar() {
 
   bar.innerHTML = `
     ${inputHtml}
+    <span id="hs-mc-sendtargets"></span>
     <button id="hs-mc-emote-btn"><img src="${iconUrl}" data-src="${iconUrl}" data-src-black="${iconBlackUrl}" alt="hs"></button>
   `
 
   // Initialize input after DOM insertion
   setTimeout(() => {
     initInput()
+    renderSendTargetChips()
     const btn = bar.querySelector('#hs-mc-emote-btn')
     const img = btn?.querySelector('img')
     if (btn && img) {
@@ -34587,6 +34687,51 @@ function createInputBar() {
     }
   }, 0)
   return bar
+}
+
+/**
+ * Render the composer's per-platform send-target toggle chips for the
+ * active channel tab. Empty (no chips) on 0/1-linked-platform tabs and on
+ * non-channel tabs (live/feed/whispers/mentions/settings/add) — those have
+ * no persisted per-channel sendTargets config to toggle. Mirrors
+ * renderPlatformFilterButtons' shape (main.js) but drives SEND routing
+ * rather than a view-side message filter.
+ */
+function renderSendTargetChips() {
+  const group = document.getElementById('hs-mc-sendtargets')
+  if (!group) return
+  while (group.firstChild) group.removeChild(group.firstChild)
+  const ch = config.channels.find((c) => c.id === currentTab)
+  if (!ch) return
+  const linked = { twitch: !!ch.twitch, kick: !!ch.kick, youtube: !!ch.youtube }
+  if (Object.values(linked).filter(Boolean).length < 2) return
+  const resolved = resolveSendTargets(ch.sendTargets, linked)
+  const meta = [
+    { key: 'twitch', label: 't' },
+    { key: 'kick', label: 'k' },
+    { key: 'youtube', label: 'y' },
+  ]
+  for (const p of meta) {
+    if (!linked[p.key]) continue
+    const on = resolved[p.key]
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = 'hs-mc-st-btn hs-mc-st-' + p.key
+    btn.classList.toggle('off', !on)
+    btn.textContent = p.label
+    btn.title = `send to ${p.key}: ${on ? 'on' : 'off'}`
+    // Chip click must never steal focus from the composer input.
+    btn.addEventListener('mousedown', (e) => e.preventDefault())
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      const next = nextSendTargets(ch.sendTargets, linked, p.key, !on)
+      if (!next) return // refuse to disable the last active target
+      ch.sendTargets = next
+      saveConfig()
+      renderSendTargetChips()
+    })
+    group.appendChild(btn)
+  }
 }
 
 // Get text from input (handles both input and contenteditable)
@@ -39848,12 +39993,22 @@ async function sendMessage() {
   // exempt (each platform gets its wire form below).
   const orphanSlash = /^\/[a-zA-Z]/.test(text) && !/^\/me\b/i.test(text)
 
-  const sendToKick = (!!kickSlug || (anonLive && hostPlatform === 'kick')) && !orphanSlash
-  const sendToTwitch = !!twitchName || (anonLive && hostPlatform === 'twitch')
-
   const ytUrl = ch?.youtube
   const isLiveYt = currentTab === 'live' && hostPlatform === 'yt'
-  const sendToYoutube = (!!ytUrl || isLiveYt) && !orphanSlash
+
+  // Per-channel sendTargets override (composer chips). Only applies to
+  // configured channels — anonLive has no persisted config to read, so it
+  // keeps the unconditional host-platform-only behavior above untouched.
+  // Absent ch.sendTargets resolves every linked platform ON, so an
+  // unconfigured channel fans out exactly as before this feature existed.
+  const sendTargets = ch
+    ? resolveSendTargets(ch.sendTargets, { twitch: !!twitchName, kick: !!kickSlug, youtube: !!ytUrl })
+    : null
+
+  const sendToKick =
+    (!!kickSlug || (anonLive && hostPlatform === 'kick')) && !orphanSlash && (!sendTargets || sendTargets.kick)
+  const sendToTwitch = (!!twitchName || (anonLive && hostPlatform === 'twitch')) && (!sendTargets || sendTargets.twitch)
+  const sendToYoutube = (!!ytUrl || isLiveYt) && !orphanSlash && (!sendTargets || sendTargets.youtube)
   const isDualSend = sendToKick && sendToTwitch
 
   // Orphan slash with no twitch leg = nothing left to send (kick/yt-only
@@ -49820,6 +49975,7 @@ const STORAGE_KEY = 'heatsync_multichat'
   // sender is re-validated once per session (picks up adds made since last visit).
   const senderEmoteFetchedAt = new Map() // senderKey -> ts
   const SENDER_EMOTE_REFETCH_MS = 5 * 60 * 1000
+  const SENDER_EMOTE_NEGATIVE_REFETCH_MS = 90 * 1000
   // Keep this freshness map bounded to the SAME cap as the backing emote store
   // (emotes.js senderEmoteSets / SENDER_EMOTE_LRU_MAX — shared multichat block
   // scope). Otherwise it grows unbounded AND diverges: once the store LRU-evicts
@@ -49856,8 +50012,12 @@ const STORAGE_KEY = 'heatsync_multichat'
     // Re-fetch when stale (or never validated this session) so emotes a sender
     // adds later propagate. The cached set is still used for rendering meanwhile;
     // mergeSenderEmotes layers any new names on top without dropping the old.
+    // Misses re-validate on the short ttl: an empty set is the window where a
+    // sender's brand-new emote renders as text if the live broadcast was missed.
     const fetchedAt = senderEmoteFetchedAt.get(senderKey)
-    if (fetchedAt && Date.now() - fetchedAt < SENDER_EMOTE_REFETCH_MS) return
+    const known = typeof senderEmoteSets !== 'undefined' ? senderEmoteSets.get(senderKey) : null
+    const refetchMs = known && Object.keys(known).length > 0 ? SENDER_EMOTE_REFETCH_MS : SENDER_EMOTE_NEGATIVE_REFETCH_MS
+    if (fetchedAt && Date.now() - fetchedAt < refetchMs) return
     senderEmotePending.add(senderKey)
     if (senderEmotePending.size >= SENDER_EMOTE_BATCH) {
       if (senderEmoteTimer) {
@@ -54572,6 +54732,7 @@ const STORAGE_KEY = 'heatsync_multichat'
 
     // Refresh platform filter buttons for the new tab
     renderPlatformFilterButtons()
+    renderSendTargetChips()
 
     // Update tab bar active state
     if (tabBarElement) {
@@ -59535,6 +59696,28 @@ const STORAGE_KEY = 'heatsync_multichat'
       if (msg.type === 'emote_added_broadcast') {
         try {
           if (typeof senderEmoteFetchedAt !== 'undefined') senderEmoteFetchedAt.clear()
+          // Freshness alone only helps FUTURE renders — if chat is quiet,
+          // nothing re-renders and the already-painted rows stay text.
+          // Actively re-queue the senders of recent buffered rows (same
+          // buffers the removal path walks); the flush path's
+          // upgradeMessagesForSenders() re-renders whatever changed.
+          const requeue = (buf) => {
+            if (!buf) return
+            const arr = Array.isArray(buf) ? buf : (typeof buf.values === 'function' ? [...buf.values()] : null)
+            if (!arr) return
+            let queued = 0
+            for (let i = arr.length - 1; i >= 0 && queued < 60; i--, queued++) {
+              const m = arr[i]
+              const key = m && typeof resolveSenderEmoteKey === 'function' ? resolveSenderEmoteKey(m) : null
+              if (key) queueSenderEmoteFetch(key, m)
+            }
+          }
+          try {
+            for (const ch of irc?.channels?.keys?.() || []) requeue(irc.getMessages(ch))
+          } catch (_) {}
+          try {
+            for (const ch of kickChat?.channels?.keys?.() || []) requeue(kickChat.getMessages(ch))
+          } catch (_) {}
         } catch (_) {}
       }
 

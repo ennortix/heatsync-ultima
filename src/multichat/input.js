@@ -745,12 +745,14 @@ function createInputBar() {
 
   bar.innerHTML = `
     ${inputHtml}
+    <span id="hs-mc-sendtargets"></span>
     <button id="hs-mc-emote-btn"><img src="${iconUrl}" data-src="${iconUrl}" data-src-black="${iconBlackUrl}" alt="hs"></button>
   `
 
   // Initialize input after DOM insertion
   setTimeout(() => {
     initInput()
+    renderSendTargetChips()
     const btn = bar.querySelector('#hs-mc-emote-btn')
     const img = btn?.querySelector('img')
     if (btn && img) {
@@ -763,6 +765,51 @@ function createInputBar() {
     }
   }, 0)
   return bar
+}
+
+/**
+ * Render the composer's per-platform send-target toggle chips for the
+ * active channel tab. Empty (no chips) on 0/1-linked-platform tabs and on
+ * non-channel tabs (live/feed/whispers/mentions/settings/add) — those have
+ * no persisted per-channel sendTargets config to toggle. Mirrors
+ * renderPlatformFilterButtons' shape (main.js) but drives SEND routing
+ * rather than a view-side message filter.
+ */
+function renderSendTargetChips() {
+  const group = document.getElementById('hs-mc-sendtargets')
+  if (!group) return
+  while (group.firstChild) group.removeChild(group.firstChild)
+  const ch = config.channels.find((c) => c.id === currentTab)
+  if (!ch) return
+  const linked = { twitch: !!ch.twitch, kick: !!ch.kick, youtube: !!ch.youtube }
+  if (Object.values(linked).filter(Boolean).length < 2) return
+  const resolved = resolveSendTargets(ch.sendTargets, linked)
+  const meta = [
+    { key: 'twitch', label: 't' },
+    { key: 'kick', label: 'k' },
+    { key: 'youtube', label: 'y' },
+  ]
+  for (const p of meta) {
+    if (!linked[p.key]) continue
+    const on = resolved[p.key]
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = 'hs-mc-st-btn hs-mc-st-' + p.key
+    btn.classList.toggle('off', !on)
+    btn.textContent = p.label
+    btn.title = `send to ${p.key}: ${on ? 'on' : 'off'}`
+    // Chip click must never steal focus from the composer input.
+    btn.addEventListener('mousedown', (e) => e.preventDefault())
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      const next = nextSendTargets(ch.sendTargets, linked, p.key, !on)
+      if (!next) return // refuse to disable the last active target
+      ch.sendTargets = next
+      saveConfig()
+      renderSendTargetChips()
+    })
+    group.appendChild(btn)
+  }
 }
 
 // Get text from input (handles both input and contenteditable)
@@ -6024,12 +6071,22 @@ async function sendMessage() {
   // exempt (each platform gets its wire form below).
   const orphanSlash = /^\/[a-zA-Z]/.test(text) && !/^\/me\b/i.test(text)
 
-  const sendToKick = (!!kickSlug || (anonLive && hostPlatform === 'kick')) && !orphanSlash
-  const sendToTwitch = !!twitchName || (anonLive && hostPlatform === 'twitch')
-
   const ytUrl = ch?.youtube
   const isLiveYt = currentTab === 'live' && hostPlatform === 'yt'
-  const sendToYoutube = (!!ytUrl || isLiveYt) && !orphanSlash
+
+  // Per-channel sendTargets override (composer chips). Only applies to
+  // configured channels — anonLive has no persisted config to read, so it
+  // keeps the unconditional host-platform-only behavior above untouched.
+  // Absent ch.sendTargets resolves every linked platform ON, so an
+  // unconfigured channel fans out exactly as before this feature existed.
+  const sendTargets = ch
+    ? resolveSendTargets(ch.sendTargets, { twitch: !!twitchName, kick: !!kickSlug, youtube: !!ytUrl })
+    : null
+
+  const sendToKick =
+    (!!kickSlug || (anonLive && hostPlatform === 'kick')) && !orphanSlash && (!sendTargets || sendTargets.kick)
+  const sendToTwitch = (!!twitchName || (anonLive && hostPlatform === 'twitch')) && (!sendTargets || sendTargets.twitch)
+  const sendToYoutube = (!!ytUrl || isLiveYt) && !orphanSlash && (!sendTargets || sendTargets.youtube)
   const isDualSend = sendToKick && sendToTwitch
 
   // Orphan slash with no twitch leg = nothing left to send (kick/yt-only

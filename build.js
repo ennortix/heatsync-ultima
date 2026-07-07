@@ -510,6 +510,7 @@ function readLib() {
 // Read multichat module files (only bundled into multichat-<platform>.js)
 const MULTICHAT_MODULES = [
   'bootstrap.js',
+  'send-targets.js',
   'notifs.js',
   'styles.js',
   'seen-state.js',

@@ -5495,10 +5495,12 @@ function handleWSMessage(msg) {
             } else if (!text || typeof text !== 'string' || text.length === 0 || text.length > 200) {
               error = 'invalid_text'
             } else {
-              // Prefer a tab whose URL carries this videoId — works for both
-              // /watch?v= and /live_chat?v= (live_chat is the chat iframe URL).
+              // MUST match this exact videoId — youtube send is DOM-injected
+              // into the targeted tab, so the wrong tab would post into a
+              // DIFFERENT stream's chat. No fallback to tabs[0] (unlike kick,
+              // whose send is channel-parameterized by session, tab-agnostic).
               const tabs = await browser.tabs.query({ url: '*://*.youtube.com/*' }).catch(() => [])
-              const matching = tabs.find((t) => (t.url || '').includes(`v=${videoId}`)) || tabs[0]
+              const matching = tabs.find((t) => (t.url || '').includes(`v=${videoId}`))
               if (!matching) {
                 error = 'no_youtube_tab'
               } else {

@@ -60236,7 +60236,12 @@ const STORAGE_KEY = 'heatsync_multichat'
         const frameEl = document.querySelector('ytd-live-chat-frame#chat')
         const chatSrc = frameEl?.querySelector('iframe')?.getAttribute('src') || ''
         const isReplayChat = chatSrc.includes('live_chat_replay')
-        const hasLiveChat = !!frameEl && !isReplayChat
+        // Require a RESOLVED src before treating this as live: the frame mounts
+        // for both live and VOD before its iframe src populates, and an empty
+        // src is not yet 'live_chat_replay' — so a bare !isReplayChat would
+        // flash chat onto a VOD during that window. Empty src = inconclusive,
+        // let the default hs-offline hold until the src truly resolves.
+        const hasLiveChat = !!frameEl && !!chatSrc && !isReplayChat
         const isLive = hasLiveChat || !!_autoYtVideoId
         const liveTab = tabBarElement?.querySelector('[data-tab="live"]')
         if (liveTab) liveTab.dataset.live = String(isLive)

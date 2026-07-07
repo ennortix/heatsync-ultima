@@ -2168,6 +2168,52 @@ async function fetchFFZChannelEmotes(channelName) {
 const twitchIdCache = new Map()
 const TWITCH_ID_CACHE_MAX = 1000
 const kickChannelIdCache = new Map()
+
+// Kick channel slug → numeric channelId, LRU-cached (cap 100). Shared by the
+// kick_resolve_channel runtime-message handler, the kick_send_message flow,
+// and the kick:relay_send ws path (server-relayed sends from heatsync.org).
+async function resolveKickChannelIdBg(slug) {
+  if (!slug) return { error: 'no slug' }
+  const cached = kickChannelIdCache.get(slug)
+  if (cached) return { channelId: cached }
+  try {
+    const resp = await fetchWithTimeout(`https://kick.com/api/v2/channels/${encodeURIComponent(slug)}`)
+    if (!resp.ok) return { error: `kick api ${resp.status}` }
+    const data = await resp.json()
+    const channelId = data?.id
+    if (!channelId) return { error: 'no channel id' }
+    if (kickChannelIdCache.size >= 100) {
+      const oldest = kickChannelIdCache.keys().next().value
+      kickChannelIdCache.delete(oldest)
+    }
+    kickChannelIdCache.set(slug, channelId)
+    return { channelId }
+  } catch (e) {
+    return { error: e.message }
+  }
+}
+
+// Send a Kick chat message via a kick.com tab's session cookies. Any kick.com
+// tab works as the messaging origin — the send is parameterized by channelId
+// + XSRF token, not by which channel the tab happens to be viewing. Shared by
+// the kick_send_message runtime-message handler and the kick:relay_send ws
+// path.
+async function sendKickMessageViaTab(channelId, content, reply = null) {
+  if (!channelId || !content) return { ok: false, error: 'missing params' }
+  const cookie = await browser.cookies.get({ url: 'https://kick.com', name: 'XSRF-TOKEN' })
+  if (!cookie?.value) return { ok: false, error: 'kick_not_logged_in' }
+  const tabs = await browser.tabs.query({ url: '*://*.kick.com/*' })
+  if (!tabs || tabs.length === 0) return { ok: false, error: 'no_kick_tab' }
+  const result = await browser.tabs.sendMessage(tabs[0].id, {
+    type: 'kick_send_relay',
+    channelId,
+    content,
+    reply: reply || null,
+    xsrfToken: cookie.value,
+  })
+  return result || { ok: false, error: 'no response from tab' }
+}
+
 const kickChatroomIdCache = new Map()
 const kickUsernameToIdCache = new Map()
 // Kick chatter profile_pic (username → url), captured from the SAME v1/users
@@ -5379,6 +5425,42 @@ function handleWSMessage(msg) {
         })()
         break
 
+      case 'kick:relay_send':
+        // Server is asking us to send a chat message through a kick.com tab.
+        // Unlike the YouTube relay above, Kick send is channel-parameterized
+        // (channelId + session XSRF cookie) — the tab does NOT need to be on
+        // that channel's page, so ANY kick.com tab works as the messaging
+        // origin. Reuses the same resolve/send helpers as the local
+        // kick_resolve_channel / kick_send_message runtime-message flow.
+        ;(async () => {
+          const reqId = msg.reqId
+          const channel = msg.channel
+          const text = msg.text
+          let ok = false
+          let error
+          try {
+            if (!channel || typeof channel !== 'string') {
+              error = 'invalid_channel'
+            } else if (!text || typeof text !== 'string' || text.length === 0 || text.length > 500) {
+              error = 'invalid_text'
+            } else {
+              const resolved = await resolveKickChannelIdBg(channel.toLowerCase())
+              if (!resolved.channelId) {
+                error = 'no_channel'
+              } else {
+                const result = await sendKickMessageViaTab(resolved.channelId, text)
+                ok = !!result?.ok
+                error = result?.error
+              }
+            }
+          } catch (e) {
+            error = e?.message || 'unknown'
+          } finally {
+            wsSendDirect({ type: 'kick:relay_ack', reqId, ok, error })
+          }
+        })()
+        break
+
       case 'kick-sub-event':
         // Relay Kick subscription events to content scripts
         broadcastToTabs({
@@ -7308,70 +7390,15 @@ async function handleMessage(message, sender, sendResponse) {
   } else if (message.type === 'kick_resolve_channel') {
     // Resolve Kick channel slug → numeric channelId
     ;(async () => {
-      try {
-        const slug = message.slug?.toLowerCase()
-        if (!slug) {
-          sendResponse({ ok: false, error: 'no slug' })
-          return
-        }
-        const cached = kickChannelIdCache.get(slug)
-        if (cached) {
-          sendResponse({ channelId: cached })
-          return
-        }
-        const resp = await fetchWithTimeout(`https://kick.com/api/v2/channels/${encodeURIComponent(slug)}`)
-        if (!resp.ok) {
-          sendResponse({ ok: false, error: `kick api ${resp.status}` })
-          return
-        }
-        const data = await resp.json()
-        const channelId = data?.id
-        if (!channelId) {
-          sendResponse({ ok: false, error: 'no channel id' })
-          return
-        }
-        // LRU cache (cap 100)
-        if (kickChannelIdCache.size >= 100) {
-          const oldest = kickChannelIdCache.keys().next().value
-          kickChannelIdCache.delete(oldest)
-        }
-        kickChannelIdCache.set(slug, channelId)
-        sendResponse({ channelId })
-      } catch (e) {
-        sendResponse({ ok: false, error: e.message })
-      }
+      const slug = message.slug?.toLowerCase()
+      sendResponse(await resolveKickChannelIdBg(slug))
     })()
     return true
   } else if (message.type === 'kick_send_message') {
     // Route Kick chat send through a kick.com tab (same-origin cookies)
     ;(async () => {
       try {
-        const { channelId, content } = message
-        if (!channelId || !content) {
-          sendResponse({ ok: false, error: 'missing params' })
-          return
-        }
-        // Get XSRF token from Kick cookies
-        const cookie = await browser.cookies.get({ url: 'https://kick.com', name: 'XSRF-TOKEN' })
-        if (!cookie?.value) {
-          sendResponse({ ok: false, error: 'kick_not_logged_in' })
-          return
-        }
-        // Find a kick.com tab to relay through
-        const tabs = await browser.tabs.query({ url: '*://*.kick.com/*' })
-        if (!tabs || tabs.length === 0) {
-          sendResponse({ ok: false, error: 'no_kick_tab' })
-          return
-        }
-        // Relay to first kick.com tab
-        const result = await browser.tabs.sendMessage(tabs[0].id, {
-          type: 'kick_send_relay',
-          channelId,
-          content,
-          reply: message.reply || null,
-          xsrfToken: cookie.value,
-        })
-        sendResponse(result || { ok: false, error: 'no response from tab' })
+        sendResponse(await sendKickMessageViaTab(message.channelId, message.content, message.reply))
       } catch (e) {
         log('kick_send_message error:', e.message)
         sendResponse({ ok: false, error: e.message })

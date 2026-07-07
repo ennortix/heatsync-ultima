@@ -72,6 +72,13 @@
     // Announce presence so the site's install nudge can detect the ext.
     // ISOLATED world shares the DOM — page main-world JS reads dataset.hsExt.
     document.documentElement.dataset.hsExt = '1'
+    // Kick-send-via-relay capability beacon — this content.js version wires
+    // chat:send_kick / kick:relay_send / kick:relay_ack in background.js, so
+    // any install running this code supports it. Same dataset-on-shared-DOM
+    // mechanism as hsExt above (a page-injected window global isn't visible
+    // across the isolated/main world boundary). heatsync.org's chips UI
+    // feature-detects via document.documentElement.dataset.hsKickRelay === '1'.
+    document.documentElement.dataset.hsKickRelay = '1'
     try {
       const urlParams = new URLSearchParams(window.location.search)
       const urlToken = urlParams.get('auth_token')

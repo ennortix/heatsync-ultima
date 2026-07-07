@@ -2177,7 +2177,10 @@ function rememberBlockedEmote(name, url, source, zeroWidth) {
 const viewerBadgesPerChannel = new Map()
 // Per-sender fetched 7TV/BTTV personal sets — write-once-per-(key, name), persistent across sessions.
 // Map<"platform:platform_user_id", Map<name, emoteData>>. Empty inner Map = sender has no personal set (cached miss).
-// Platform prefixes: "twitch:", "kick:", "yt:" (yt uses resolved twitch_id when available).
+// Platform prefixes: "twitch:", "kick:", "ytc:" (youtube, keyed by UC… channel
+// id — resolves the sender's own set even before twitch-link completes),
+// "yt:" (display-name fallback, only when no channel id is known yet). A
+// youtube sender uses "twitch:" instead of either once cross-platform link resolves.
 // Loaded fully at boot from chrome.storage.local["sender_emote_sets"] BEFORE first render → survives hard refresh.
 const senderEmoteSets = new Map()
 // LRU cap. Was 5000 which dominated heap growth on xqc-tier channels

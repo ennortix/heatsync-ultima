@@ -483,8 +483,21 @@
       right: 0 !important;
       width: auto !important;
     }
-    body.hs-platform-yt:not(.hs-offline).hs-chat-top #masthead-container,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-masthead {
+    /* Top layout only: push-down is NOT gated on :not(.hs-offline) like the
+       left/right variants above. hs-offline flips async (checkYtLive /
+       detectOfflineState resolve after the initial paint, and can re-settle
+       independently across a YT soft-nav), while #hs-mc-container's own
+       fixed/full-width/z-index:9999 top positioning (17-platform-position.css
+       ~line 98) is NOT gated on hs-offline either. During that window the
+       panel can sit pinned over the masthead's search/account/notification
+       controls with nothing pushing them down — eating clicks (had to
+       popout to escape). Keying this rule off the same unconditional
+       .hs-chat-top state the container itself uses closes that gap: the
+       masthead is never occluded, full stop. Cost: a dead strip under the
+       masthead while genuinely offline+top-configured — acceptable, the
+       panel is hidden then anyway so nothing is fighting for that space. */
+    body.hs-platform-yt.hs-chat-top #masthead-container,
+    body.hs-platform-yt.hs-chat-top ytd-masthead {
       top: calc(var(--hs-chat-h, 35vh) + 5px) !important;
     }
     /* YT's responsive @media rules use viewport width, but our masthead

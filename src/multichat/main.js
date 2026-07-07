@@ -1160,9 +1160,19 @@
       return id ? `kick:${id}` : null
     }
     if (m.platform === 'youtube') {
-      // For YT, prefer resolved twitch_id (lets us reuse the twitch 7tv set) but
-      // fall back to YT user key when twitch resolution hasn't completed yet.
+      // For YT, prefer resolved twitch_id (lets us reuse the twitch 7tv set).
       if (m.userId) return `twitch:${m.userId}`
+      // Otherwise key off the sender's real UC… channel id (server resolves
+      // youtube senders by channel id, not display name — a display-name key
+      // never matches, which is why sender emotes never rendered for
+      // youtube-only chatters). hsPaintUid carries it as `yt_<UCid>` (stamped
+      // by social.js off the raw message); authorChannelId is a plain fallback
+      // if it ever rides the message directly.
+      const channelId = (typeof m.hsPaintUid === 'string' && m.hsPaintUid.startsWith('yt_'))
+        ? m.hsPaintUid.slice(3)
+        : (m.authorChannelId || null)
+      if (channelId) return `ytc:${channelId}`
+      // Last resort: display-name key when no channel id is known yet.
       const ytKey = (m.user || '').toLowerCase().replace(/^@/, '')
       return ytKey ? `yt:${ytKey}` : null
     }
@@ -9200,13 +9210,26 @@
 
     // Only show channels that are actually live; dedupe same name across platforms (twitch > kick > youtube)
     const priority = { twitch: 3, kick: 2, youtube: 1 }
+    // Unlike twitch/kick, a "watching" youtube entry is only a URL-shape match
+    // (tab sitting on /@handle/live, /live/<id>, /watch?v=<id>) — background.js
+    // has no way to tell a live broadcast from a tab that's still parked on
+    // that URL after the stream ended (YT swaps live→replay in-place, no
+    // navigation). So it's never real evidence the way a helix/kick API hit
+    // is. Treat it as a live candidate ONLY when nothing else confirmed-live
+    // exists this round — a stale youtube tab must never outrank (or get
+    // auto-selected over) an actually-live twitch/kick channel.
+    const anyRealLive = watching.some(
+      (w) =>
+        (w.platform === 'twitch' && twitchLive.has(w.name.toLowerCase())) ||
+        (w.platform === 'kick' && kickLive.has(w.name.toLowerCase())),
+    )
     const byName = new Map()
     for (const w of watching) {
       const ch = w.name.toLowerCase()
       let isLive = false
       if (w.platform === 'twitch') isLive = twitchLive.has(ch)
       else if (w.platform === 'kick') isLive = kickLive.has(ch)
-      else if (w.platform === 'youtube') isLive = true
+      else if (w.platform === 'youtube') isLive = !anyRealLive
       if (!isLive) continue
       const existing = byName.get(ch)
       if (!existing || priority[w.platform] > priority[existing.platform]) {

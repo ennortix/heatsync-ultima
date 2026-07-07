@@ -14894,8 +14894,21 @@ function injectStyles() {
       right: 0 !important;
       width: auto !important;
     }
-    body.hs-platform-yt:not(.hs-offline).hs-chat-top #masthead-container,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-masthead {
+    /* Top layout only: push-down is NOT gated on :not(.hs-offline) like the
+       left/right variants above. hs-offline flips async (checkYtLive /
+       detectOfflineState resolve after the initial paint, and can re-settle
+       independently across a YT soft-nav), while #hs-mc-container's own
+       fixed/full-width/z-index:9999 top positioning (17-platform-position.css
+       ~line 98) is NOT gated on hs-offline either. During that window the
+       panel can sit pinned over the masthead's search/account/notification
+       controls with nothing pushing them down — eating clicks (had to
+       popout to escape). Keying this rule off the same unconditional
+       .hs-chat-top state the container itself uses closes that gap: the
+       masthead is never occluded, full stop. Cost: a dead strip under the
+       masthead while genuinely offline+top-configured — acceptable, the
+       panel is hidden then anyway so nothing is fighting for that space. */
+    body.hs-platform-yt.hs-chat-top #masthead-container,
+    body.hs-platform-yt.hs-chat-top ytd-masthead {
       top: calc(var(--hs-chat-h, 35vh) + 5px) !important;
     }
     /* YT's responsive @media rules use viewport width, but our masthead
@@ -21971,7 +21984,10 @@ function rememberBlockedEmote(name, url, source, zeroWidth) {
 const viewerBadgesPerChannel = new Map()
 // Per-sender fetched 7TV/BTTV personal sets — write-once-per-(key, name), persistent across sessions.
 // Map<"platform:platform_user_id", Map<name, emoteData>>. Empty inner Map = sender has no personal set (cached miss).
-// Platform prefixes: "twitch:", "kick:", "yt:" (yt uses resolved twitch_id when available).
+// Platform prefixes: "twitch:", "kick:", "ytc:" (youtube, keyed by UC… channel
+// id — resolves the sender's own set even before twitch-link completes),
+// "yt:" (display-name fallback, only when no channel id is known yet). A
+// youtube sender uses "twitch:" instead of either once cross-platform link resolves.
 // Loaded fully at boot from chrome.storage.local["sender_emote_sets"] BEFORE first render → survives hard refresh.
 const senderEmoteSets = new Map()
 // LRU cap. Was 5000 which dominated heap growth on xqc-tier channels
@@ -49996,9 +50012,19 @@ const STORAGE_KEY = 'heatsync_multichat'
       return id ? `kick:${id}` : null
     }
     if (m.platform === 'youtube') {
-      // For YT, prefer resolved twitch_id (lets us reuse the twitch 7tv set) but
-      // fall back to YT user key when twitch resolution hasn't completed yet.
+      // For YT, prefer resolved twitch_id (lets us reuse the twitch 7tv set).
       if (m.userId) return `twitch:${m.userId}`
+      // Otherwise key off the sender's real UC… channel id (server resolves
+      // youtube senders by channel id, not display name — a display-name key
+      // never matches, which is why sender emotes never rendered for
+      // youtube-only chatters). hsPaintUid carries it as `yt_<UCid>` (stamped
+      // by social.js off the raw message); authorChannelId is a plain fallback
+      // if it ever rides the message directly.
+      const channelId = (typeof m.hsPaintUid === 'string' && m.hsPaintUid.startsWith('yt_'))
+        ? m.hsPaintUid.slice(3)
+        : (m.authorChannelId || null)
+      if (channelId) return `ytc:${channelId}`
+      // Last resort: display-name key when no channel id is known yet.
       const ytKey = (m.user || '').toLowerCase().replace(/^@/, '')
       return ytKey ? `yt:${ytKey}` : null
     }
@@ -58036,13 +58062,26 @@ const STORAGE_KEY = 'heatsync_multichat'
 
     // Only show channels that are actually live; dedupe same name across platforms (twitch > kick > youtube)
     const priority = { twitch: 3, kick: 2, youtube: 1 }
+    // Unlike twitch/kick, a "watching" youtube entry is only a URL-shape match
+    // (tab sitting on /@handle/live, /live/<id>, /watch?v=<id>) — background.js
+    // has no way to tell a live broadcast from a tab that's still parked on
+    // that URL after the stream ended (YT swaps live→replay in-place, no
+    // navigation). So it's never real evidence the way a helix/kick API hit
+    // is. Treat it as a live candidate ONLY when nothing else confirmed-live
+    // exists this round — a stale youtube tab must never outrank (or get
+    // auto-selected over) an actually-live twitch/kick channel.
+    const anyRealLive = watching.some(
+      (w) =>
+        (w.platform === 'twitch' && twitchLive.has(w.name.toLowerCase())) ||
+        (w.platform === 'kick' && kickLive.has(w.name.toLowerCase())),
+    )
     const byName = new Map()
     for (const w of watching) {
       const ch = w.name.toLowerCase()
       let isLive = false
       if (w.platform === 'twitch') isLive = twitchLive.has(ch)
       else if (w.platform === 'kick') isLive = kickLive.has(ch)
-      else if (w.platform === 'youtube') isLive = true
+      else if (w.platform === 'youtube') isLive = !anyRealLive
       if (!isLive) continue
       const existing = byName.get(ch)
       if (!existing || priority[w.platform] > priority[existing.platform]) {

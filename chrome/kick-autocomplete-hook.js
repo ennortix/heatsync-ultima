@@ -613,7 +613,8 @@
           try {
             const rc = typeof window.heatsyncGetRecentChatters === 'function' ? window.heatsyncGetRecentChatters() : []
             for (const c of rc) {
-              if (c.l?.startsWith(mentionQuery)) results.push({ name: c.name, url: null, isChatter: true, isMention: true })
+              if (c.l?.startsWith(mentionQuery))
+                results.push({ name: c.name, url: null, isChatter: true, isMention: true })
             }
           } catch (_) {}
           if (activeInput) showEmoteDropdown(activeInput, results.slice(0, MAX_RESULTS))

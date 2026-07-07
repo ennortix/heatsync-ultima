@@ -66,7 +66,9 @@ test('nextSendTargets seeds from linked platforms on first toggle', () => {
 })
 
 test('nextSendTargets refuses to disable the last active linked target', () => {
-  expect(nextSendTargets({ twitch: false, kick: true }, { twitch: true, kick: true, youtube: false }, 'kick', false)).toBeNull()
+  expect(
+    nextSendTargets({ twitch: false, kick: true }, { twitch: true, kick: true, youtube: false }, 'kick', false),
+  ).toBeNull()
 })
 
 test('nextSendTargets ignores a toggle on a platform that is not linked', () => {
@@ -76,7 +78,9 @@ test('nextSendTargets ignores a toggle on a platform that is not linked', () => 
 })
 
 test('nextSendTargets allows re-enabling a previously disabled platform', () => {
-  expect(nextSendTargets({ twitch: false, kick: true }, { twitch: true, kick: true, youtube: false }, 'twitch', true)).toEqual({
+  expect(
+    nextSendTargets({ twitch: false, kick: true }, { twitch: true, kick: true, youtube: false }, 'twitch', true),
+  ).toEqual({
     twitch: true,
     kick: true,
   })

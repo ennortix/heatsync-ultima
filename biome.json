@@ -48,8 +48,8 @@
       "tests/**/*.js",
       "tools/**/*.js",
       "build.js",
-      "!dist/**",
-      "!node_modules/**",
+      "!dist",
+      "!node_modules",
       "!chrome/emoji-data.js"
     ]
   }

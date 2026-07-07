@@ -50016,7 +50016,8 @@ const STORAGE_KEY = 'heatsync_multichat'
     // sender's brand-new emote renders as text if the live broadcast was missed.
     const fetchedAt = senderEmoteFetchedAt.get(senderKey)
     const known = typeof senderEmoteSets !== 'undefined' ? senderEmoteSets.get(senderKey) : null
-    const refetchMs = known && Object.keys(known).length > 0 ? SENDER_EMOTE_REFETCH_MS : SENDER_EMOTE_NEGATIVE_REFETCH_MS
+    const refetchMs =
+      known && Object.keys(known).length > 0 ? SENDER_EMOTE_REFETCH_MS : SENDER_EMOTE_NEGATIVE_REFETCH_MS
     if (fetchedAt && Date.now() - fetchedAt < refetchMs) return
     senderEmotePending.add(senderKey)
     if (senderEmotePending.size >= SENDER_EMOTE_BATCH) {
@@ -59703,7 +59704,7 @@ const STORAGE_KEY = 'heatsync_multichat'
           // upgradeMessagesForSenders() re-renders whatever changed.
           const requeue = (buf) => {
             if (!buf) return
-            const arr = Array.isArray(buf) ? buf : (typeof buf.values === 'function' ? [...buf.values()] : null)
+            const arr = Array.isArray(buf) ? buf : typeof buf.values === 'function' ? [...buf.values()] : null
             if (!arr) return
             let queued = 0
             for (let i = arr.length - 1; i >= 0 && queued < 60; i--, queued++) {

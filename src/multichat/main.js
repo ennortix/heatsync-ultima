@@ -1139,6 +1139,7 @@
   // sender is re-validated once per session (picks up adds made since last visit).
   const senderEmoteFetchedAt = new Map() // senderKey -> ts
   const SENDER_EMOTE_REFETCH_MS = 5 * 60 * 1000
+  const SENDER_EMOTE_NEGATIVE_REFETCH_MS = 90 * 1000
   // Keep this freshness map bounded to the SAME cap as the backing emote store
   // (emotes.js senderEmoteSets / SENDER_EMOTE_LRU_MAX — shared multichat block
   // scope). Otherwise it grows unbounded AND diverges: once the store LRU-evicts
@@ -1175,8 +1176,12 @@
     // Re-fetch when stale (or never validated this session) so emotes a sender
     // adds later propagate. The cached set is still used for rendering meanwhile;
     // mergeSenderEmotes layers any new names on top without dropping the old.
+    // Misses re-validate on the short ttl: an empty set is the window where a
+    // sender's brand-new emote renders as text if the live broadcast was missed.
     const fetchedAt = senderEmoteFetchedAt.get(senderKey)
-    if (fetchedAt && Date.now() - fetchedAt < SENDER_EMOTE_REFETCH_MS) return
+    const known = typeof senderEmoteSets !== 'undefined' ? senderEmoteSets.get(senderKey) : null
+    const refetchMs = known && Object.keys(known).length > 0 ? SENDER_EMOTE_REFETCH_MS : SENDER_EMOTE_NEGATIVE_REFETCH_MS
+    if (fetchedAt && Date.now() - fetchedAt < refetchMs) return
     senderEmotePending.add(senderKey)
     if (senderEmotePending.size >= SENDER_EMOTE_BATCH) {
       if (senderEmoteTimer) {
@@ -10854,6 +10859,28 @@
       if (msg.type === 'emote_added_broadcast') {
         try {
           if (typeof senderEmoteFetchedAt !== 'undefined') senderEmoteFetchedAt.clear()
+          // Freshness alone only helps FUTURE renders — if chat is quiet,
+          // nothing re-renders and the already-painted rows stay text.
+          // Actively re-queue the senders of recent buffered rows (same
+          // buffers the removal path walks); the flush path's
+          // upgradeMessagesForSenders() re-renders whatever changed.
+          const requeue = (buf) => {
+            if (!buf) return
+            const arr = Array.isArray(buf) ? buf : (typeof buf.values === 'function' ? [...buf.values()] : null)
+            if (!arr) return
+            let queued = 0
+            for (let i = arr.length - 1; i >= 0 && queued < 60; i--, queued++) {
+              const m = arr[i]
+              const key = m && typeof resolveSenderEmoteKey === 'function' ? resolveSenderEmoteKey(m) : null
+              if (key) queueSenderEmoteFetch(key, m)
+            }
+          }
+          try {
+            for (const ch of irc?.channels?.keys?.() || []) requeue(irc.getMessages(ch))
+          } catch (_) {}
+          try {
+            for (const ch of kickChat?.channels?.keys?.() || []) requeue(kickChat.getMessages(ch))
+          } catch (_) {}
         } catch (_) {}
       }
 

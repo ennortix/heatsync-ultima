@@ -9666,8 +9666,12 @@
   function queueSenderEmotes(key) {
     if (!key || !/^twitch:\d+$|^kick:[\w-]+$/.test(key)) return
     if (senderEmotePending.has(key)) return
+    // Misses re-validate on a short ttl — an empty set is the window where a
+    // sender's brand-new emote renders as text if the live broadcast was missed.
     const fetchedAt = senderEmoteFetchedAt.get(key)
-    if (fetchedAt && Date.now() - fetchedAt < SENDER_EMOTE_REFETCH_MS) return
+    const knownSet = senderHeatsyncEmotes.get(key)
+    const refetchMs = knownSet && Object.keys(knownSet).length > 0 ? SENDER_EMOTE_REFETCH_MS : 90 * 1000
+    if (fetchedAt && Date.now() - fetchedAt < refetchMs) return
     senderEmotePending.add(key)
     if (senderEmotePending.size >= SENDER_EMOTE_PENDING_MAX) {
       if (senderEmoteBatchTimer) {

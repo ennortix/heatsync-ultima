@@ -8142,6 +8142,15 @@ async function handleMessage(message, sender, sendResponse) {
       if (!globalThis.__senderEmoteCache) globalThis.__senderEmoteCache = new Map()
       const cache = globalThis.__senderEmoteCache
       const SENDER_EMOTE_CACHE_TTL = 300000 // 5min — short so a sender's newly-added heatsync emotes reach viewers; panel re-fetches on the same cadence
+      // Misses expire much sooner: an empty cached set is the exact window
+      // where a sender's brand-new emote renders as plain text for this
+      // viewer if the live emote:broadcast was missed. 90s bounds it.
+      const SENDER_EMOTE_NEGATIVE_TTL = 90000
+      const cacheFresh = (h) => {
+        if (!h) return false
+        const ttl = h.emotes && Object.keys(h.emotes).length > 0 ? SENDER_EMOTE_CACHE_TTL : SENDER_EMOTE_NEGATIVE_TTL
+        return Date.now() - h.ts < ttl
+      }
       // Batch-fetch heatsync sets for all numeric ids that aren't cache-fresh, in ONE
       // request. Per-id /api/users/:id calls fired ~15-parallel per flush tripped
       // Cloudflare's 429; one batched call keeps it well under. credentials:'omit' so
@@ -8149,10 +8158,7 @@ async function handleMessage(message, sender, sendResponse) {
       const _missKeys = [
         ...new Set(
           senderKeys
-            .filter((k) => {
-              const h = cache.get(k)
-              return !(h && Date.now() - h.ts < SENDER_EMOTE_CACHE_TTL)
-            })
+            .filter((k) => !cacheFresh(cache.get(k)))
             .filter((k) => {
               const c = k.indexOf(':')
               return c >= 0 && k.slice(c + 1).length > 0
@@ -8174,7 +8180,7 @@ async function handleMessage(message, sender, sendResponse) {
       await Promise.all(
         senderKeys.map(async (key) => {
           const hit = cache.get(key)
-          if (hit && Date.now() - hit.ts < SENDER_EMOTE_CACHE_TTL) {
+          if (cacheFresh(hit)) {
             result[key] = hit.emotes
             return
           }

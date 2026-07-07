@@ -498,6 +498,16 @@
     for (let i = 0; i < deleteCount; i++) {
       sel.modify('extend', 'backward', 'character')
     }
+    // @-mention rows carry isMention (see the '@' branch in handleInput) —
+    // the query itself never keeps the '@' (stripped for the chatter lookup),
+    // so restore it here on insert. Not an emote usage, so no MRU bump.
+    if (match.isMention) {
+      // textContent-safe: usernames are alphanumeric + underscore
+      document.execCommand('insertText', false, '@' + match.name + ' ')
+      hideEmoteDropdown()
+      log('inserted mention', match.name)
+      return
+    }
     // textContent-safe: emote names are alphanumeric + limited punctuation
     document.execCommand('insertText', false, match.name + ' ')
     hideEmoteDropdown()
@@ -588,6 +598,29 @@
     const wordMatch = text.match(/(?:^|[ \t])([^\s:]{2,})$/)
     if (wordMatch) {
       const query = wordMatch[1]
+
+      // '@' branch: dedicated mention dropdown. searchEmotes() never matches
+      // '@'-prefixed queries (no emote name starts with '@'), and the
+      // recent-chatter lead below explicitly skips them too — so without this
+      // branch "@so" showed an empty/junk emote dropdown. Recent chatters
+      // only, same source + ranking (newest-first, time-windowed) as the
+      // chatter lead, just not gated behind an emote match this time.
+      if (query[0] === '@') {
+        const mentionQuery = query.slice(1).toLowerCase()
+        emoteDebounceTimer = setTimeout(() => {
+          if (sig.aborted) return
+          let results = []
+          try {
+            const rc = typeof window.heatsyncGetRecentChatters === 'function' ? window.heatsyncGetRecentChatters() : []
+            for (const c of rc) {
+              if (c.l?.startsWith(mentionQuery)) results.push({ name: c.name, url: null, isChatter: true, isMention: true })
+            }
+          } catch (_) {}
+          if (activeInput) showEmoteDropdown(activeInput, results.slice(0, MAX_RESULTS))
+        }, 60)
+        return
+      }
+
       emoteDebounceTimer = setTimeout(() => {
         if (sig.aborted) return
         refreshEmotes(getCurrentChannel())

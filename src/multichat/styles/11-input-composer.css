@@ -165,8 +165,10 @@
     .hs-mc-emoji {
       font-variant-emoji: emoji;
     }
-    /* Emoji autocomplete dropdown */
-    #hs-mc-emoji-dropdown {
+    /* Colon (emote + emoji) and @-mention autocomplete dropdowns — same
+       chrome, reused for both so a new trigger never needs new CSS. */
+    #hs-mc-emoji-dropdown,
+    #hs-mc-mention-dropdown {
       display: none;
       position: absolute;
       bottom: 100%;
@@ -199,13 +201,28 @@
       text-align: center;
       font-variant-emoji: emoji;
     }
+    /* Emote row preview image — same 24px slot the emoji preview reserves so
+       columns line up whether a row renders a unicode emoji or an emote. */
+    .hs-mc-emote-preview {
+      width: 24px;
+      height: 20px;
+      object-fit: contain;
+      flex-shrink: 0;
+    }
     .hs-mc-emoji-name {
       color: #aaa;
       font-size: 13px;
     }
+    /* !important: mention rows set a per-user inline color (sync-cached
+       username color) directly on this span — inline style beats any plain
+       class rule, so without !important a bright/dark user color would ride
+       straight through hover and land white-on-white or unreadable against
+       the white hover background. This is the one place that's allowed to
+       fight an inline style, since "white bg, black text on hover" is a
+       universal, no-exceptions rule. */
     .hs-mc-emoji-row.selected .hs-mc-emoji-name,
     .hs-mc-emoji-row:hover .hs-mc-emoji-name {
-      color: #fff;
+      color: #000 !important;
     }
     #hs-mc-slash-dropdown {
       display: none;

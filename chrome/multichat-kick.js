@@ -10329,8 +10329,10 @@ function injectStyles() {
     .hs-mc-emoji {
       font-variant-emoji: emoji;
     }
-    /* Emoji autocomplete dropdown */
-    #hs-mc-emoji-dropdown {
+    /* Colon (emote + emoji) and @-mention autocomplete dropdowns — same
+       chrome, reused for both so a new trigger never needs new CSS. */
+    #hs-mc-emoji-dropdown,
+    #hs-mc-mention-dropdown {
       display: none;
       position: absolute;
       bottom: 100%;
@@ -10363,13 +10365,28 @@ function injectStyles() {
       text-align: center;
       font-variant-emoji: emoji;
     }
+    /* Emote row preview image — same 24px slot the emoji preview reserves so
+       columns line up whether a row renders a unicode emoji or an emote. */
+    .hs-mc-emote-preview {
+      width: 24px;
+      height: 20px;
+      object-fit: contain;
+      flex-shrink: 0;
+    }
     .hs-mc-emoji-name {
       color: #aaa;
       font-size: 13px;
     }
+    /* !important: mention rows set a per-user inline color (sync-cached
+       username color) directly on this span — inline style beats any plain
+       class rule, so without !important a bright/dark user color would ride
+       straight through hover and land white-on-white or unreadable against
+       the white hover background. This is the one place that's allowed to
+       fight an inline style, since "white bg, black text on hover" is a
+       universal, no-exceptions rule. */
     .hs-mc-emoji-row.selected .hs-mc-emoji-name,
     .hs-mc-emoji-row:hover .hs-mc-emoji-name {
-      color: #fff;
+      color: #000 !important;
     }
     #hs-mc-slash-dropdown {
       display: none;
@@ -34429,15 +34446,32 @@ async function fetchRemoteEmoteMatches(search) {
   showCycleTooltip() // refresh the N/M denominator
 }
 
-// Emoji dropdown autocomplete state
+// Colon-triggered dropdown state (":kap" — emotes + emoji, chatterino parity).
+// matches holds findEmoteMatches() results (type 'emote' | 'emoji'), already
+// ranked by the shared compareAcMatches comparator — same ranking Tab-cycle
+// uses, just rendered as a live list instead of one-at-a-time.
 const emojiAcState = {
   active: false,
   matches: [],
   index: 0,
   query: '',
-  colonPos: -1, // position of the triggering ':'
 }
 let _emojiAcDebounce = null
+// Cap the visible list — findEmoteMatches can return dozens of hits; the
+// dropdown scrolls (max-height in CSS) but there's no value in rendering
+// hundreds of offscreen rows.
+const EMOJI_DROPDOWN_MAX = 30
+
+// @-triggered username dropdown state ("@so" — recent chatters first, then
+// the rest of usernameCache). Same shape/lifecycle as emojiAcState above.
+const mentionAcState = {
+  active: false,
+  matches: [],
+  index: 0,
+  query: '',
+}
+let _mentionAcDebounce = null
+const MENTION_DROPDOWN_MAX = 20
 
 // Slash command autocomplete dropdown — shows command list when input begins
 // with /<word>. Heatsync-owned + common pass-through Twitch/Kick mod commands.
@@ -34718,6 +34752,7 @@ function initInput() {
   input.addEventListener('blur', () => {
     setTimeout(hideAutocomplete, 150)
     setTimeout(hideEmojiDropdown, 150)
+    setTimeout(hideMentionDropdown, 150)
     setTimeout(hideSlashDropdown, 150)
     // Hide input bar after blur if empty (delay to allow click-to-emote-picker)
     // Skip if window lost focus — prevents hiding when switching apps
@@ -36320,7 +36355,10 @@ function handleInputKeydown(e) {
     }
   }
 
-  // Emoji dropdown navigation — intercept before other handlers
+  // Colon dropdown (emotes + emoji) navigation — intercept before other
+  // handlers. Selection routes through insertEmojiFromDropdown, which hands
+  // off to acState so subsequent Tabs keep cycling the same ranked list —
+  // see that function for why no separate "wire up cycling" code lives here.
   if (emojiAcState.active) {
     if (e.key === 'ArrowDown') {
       e.preventDefault()
@@ -36336,45 +36374,43 @@ function handleInputKeydown(e) {
     }
     if (e.key === 'Enter' || e.key === 'Tab') {
       e.preventDefault()
-      const emojiMatch = emojiAcState.matches[emojiAcState.index]
-      // Build full match list for Tab cycling (emotes + emojis matching the query)
-      const allMatches = findEmoteMatches(':' + emojiAcState.query)
-      insertEmojiFromDropdown(emojiMatch)
-      // Set up acState so subsequent Tabs cycle through all matches
-      if (e.key === 'Tab' && allMatches.length > 1) {
-        acState.matches = allMatches
-        // Find the inserted emoji's index in the full match list
-        acState.index = allMatches.findIndex((m) => m.type === 'emoji' && m.emoji === emojiMatch.emoji)
-        if (acState.index === -1) acState.index = 0
-        acState.active = true
-        // For plain text input, set wordStart/afterText so cycling works
-        if (!wysiwygEnabled && input.value !== undefined) {
-          const val = input.value
-          const cursor = input.selectionStart
-          // The emoji was just inserted — find where it starts
-          acState.wordStart = cursor - emojiMatch.emoji.length
-          // afterText is everything after cursor
-          acState.afterText = val.slice(cursor)
-        }
-        // For WYSIWYG, mark the inserted emoji span as cycling element.
-        // insertEmojiFromDropdown wraps the emoji in span.hs-mc-emoji — find
-        // the most-recently inserted one and tag it for cycling.
-        if (wysiwygEnabled) {
-          const inputEl = document.getElementById('hs-mc-input')
-          const spans = inputEl?.querySelectorAll('span.hs-mc-emoji[data-emoji-name="' + emojiMatch.name + '"]')
-          const span = spans?.[spans.length - 1]
-          if (span) {
-            span.classList.add('hs-cycling-text')
-            span.dataset.completionName = emojiMatch.name
-          }
-        }
-        showCycleTooltip()
-      }
+      insertEmojiFromDropdown(emojiAcState.matches[emojiAcState.index])
+      showCycleTooltip()
       return
     }
     if (e.key === 'Escape') {
       e.preventDefault()
       hideEmojiDropdown()
+      return
+    }
+  }
+
+  // @-mention dropdown navigation — same shape as the colon dropdown above.
+  // Only intercepts keys while genuinely open (a real "@word" is at the
+  // caret with matches); Enter never gets swallowed when it's closed, so
+  // Enter=send is untouched the rest of the time.
+  if (mentionAcState.active) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      mentionAcState.index = (mentionAcState.index + 1) % mentionAcState.matches.length
+      showMentionDropdown(mentionAcState.matches, mentionAcState.index)
+      return
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      mentionAcState.index = (mentionAcState.index - 1 + mentionAcState.matches.length) % mentionAcState.matches.length
+      showMentionDropdown(mentionAcState.matches, mentionAcState.index)
+      return
+    }
+    if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault()
+      insertMentionFromDropdown(mentionAcState.matches[mentionAcState.index])
+      showCycleTooltip()
+      return
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      hideMentionDropdown()
       return
     }
   }
@@ -36523,18 +36559,8 @@ function handleInputKeydown(e) {
         acState.remoteDone = false
         acState.remotePending = false
 
-        if (!wysiwygEnabled && input.value !== undefined) {
-          // Calculate positions for text input cycling (textarea only)
-          const text = input.value
-          const pos = input.selectionStart
-          const before = text.slice(0, pos)
-          const wordStart = before.search(/\S+$/)
-          acState.wordStart = wordStart >= 0 ? wordStart : pos
-          // Skip past rest of word after cursor
-          let wordEnd = pos
-          while (wordEnd < text.length && !/\s/.test(text[wordEnd])) wordEnd++
-          acState.afterText = text.slice(wordEnd)
-        }
+        // Calculate positions for text input cycling (textarea only)
+        if (!wysiwygEnabled && input.value !== undefined) captureAcWordBounds(input)
 
         if (matches.length > 0) {
           insertCompletionKeepOpen(matches[0])
@@ -36920,9 +36946,11 @@ function handleInputChange(e) {
   // Slash command autocomplete — synchronous, only matches "/word" at start
   checkSlashAutocomplete()
 
-  // Debounced emoji dropdown autocomplete
+  // Debounced colon (emote/emoji) + @-mention dropdown autocomplete
   if (_emojiAcDebounce) cleanup.clearTimeout(_emojiAcDebounce)
   _emojiAcDebounce = cleanup.setTimeout(checkEmojiAutocomplete, 80)
+  if (_mentionAcDebounce) cleanup.clearTimeout(_mentionAcDebounce)
+  _mentionAcDebounce = cleanup.setTimeout(checkMentionAutocomplete, 80)
 
   // Reset autocomplete cycling on any text change
   if (acState.active) {
@@ -37411,6 +37439,21 @@ function updateCharCount() {
   }
 }
 
+// Compute acState.wordStart/afterText for the CURRENT caret position in a
+// plain-text (non-wysiwyg) input — the exact calculation the first Tab-press
+// uses (Tab keydown handler above). Shared so a colon/@ dropdown selection
+// replaces the identical span Tab-cycle would, instead of re-deriving it.
+function captureAcWordBounds(input) {
+  const text = input.value
+  const pos = input.selectionStart
+  const before = text.slice(0, pos)
+  const wordStart = before.search(/\S+$/)
+  acState.wordStart = wordStart >= 0 ? wordStart : pos
+  let wordEnd = pos
+  while (wordEnd < text.length && !/\s/.test(text[wordEnd])) wordEnd++
+  acState.afterText = text.slice(wordEnd)
+}
+
 function getCurrentWord(input) {
   if (!input) return ''
   if (input.contentEditable === 'true') {
@@ -37672,7 +37715,13 @@ function findEmoteMatches(search) {
 
   // Check if searching for username (starts with @)
   const isUserSearch = search.startsWith('@')
-  const searchTerm = isUserSearch ? search.slice(1) : search
+  // Colon-triggered dropdown search (":kap") — strip the leading ':' so the
+  // emote-name matching below sees the bare query, exactly like the bare-word
+  // Tab-cycle path sees "kap". Without this, ":kap" only ever matched unicode
+  // emoji shortcodes (see the dedicated ":prefix" block further down) because
+  // no emote name literally starts with ':'.
+  const isColonSearch = !isUserSearch && search.startsWith(':')
+  const searchTerm = isUserSearch || isColonSearch ? search.slice(1) : search
   const searchLower = searchTerm.toLowerCase()
 
   // Username completion ONLY when explicit @prefix. Bare words never surface
@@ -38647,56 +38696,37 @@ function hideAutocomplete() {
   }
 }
 
-// --- Emoji dropdown autocomplete ---
+// --- Colon dropdown (emotes + emoji) and @-mention dropdown ---
+// Both share one shape: detect a live "<trigger><query>" run touching the
+// caret, list ranked matches, let arrow/Enter/Tab/click pick one, and hand
+// the pick off to acState so Tab-cycle can keep refining it from there.
+// getTriggerContext is the only DOM-cursor logic (wysiwyg vs plain-text) —
+// everything mode-specific lives there once instead of twice.
 
-function getEmojiColonContext(input) {
-  // Returns { query, colonPos } if user is typing :shortcode, else null
+function getTriggerContext(input, triggerChar, minLen) {
+  const re = new RegExp(triggerChar + '([a-z0-9_]{' + minLen + ',})$', 'i')
   if (wysiwygEnabled) {
     const sel = window.getSelection()
     if (!sel?.rangeCount) return null
     const range = sel.getRangeAt(0)
     const node = range.startContainer
     if (node?.nodeType !== Node.TEXT_NODE) return null
-    const text = node.textContent
-    const cursor = range.startOffset
-    const before = text.slice(0, cursor)
-    // Find last unmatched ':' — must not contain spaces or a closing ':'
-    const match = before.match(/:([a-z0-9_]{2,})$/)
-    if (!match) return null
-    // Make sure this ':' isn't part of a completed :shortcode:
-    const colonIdx = before.lastIndexOf(':')
-    return { query: match[1], colonPos: colonIdx, textNode: node }
+    const before = node.textContent.slice(0, range.startOffset)
+    const match = before.match(re)
+    return match ? { query: match[1] } : null
   }
-  // Standard input
   const text = input.value
-  const cursor = input.selectionStart
-  const before = text.slice(0, cursor)
-  const match = before.match(/:([a-z0-9_]{2,})$/)
-  if (!match) return null
-  const colonIdx = before.lastIndexOf(':')
-  return { query: match[1], colonPos: colonIdx, textNode: null }
+  const before = text.slice(0, input.selectionStart)
+  const match = before.match(re)
+  return match ? { query: match[1] } : null
 }
 
-function filterEmoji(query) {
-  if (_ensureEmojiMap().size === 0) return []
-  const results = []
-  const q = query.toLowerCase()
-  for (const entry of EMOJI_DATA) {
-    if (results.length >= 8) break
-    if (entry.name.startsWith(q)) {
-      results.push(entry)
-    }
-  }
-  // If we have room, add substring matches
-  if (results.length < 8) {
-    for (const entry of EMOJI_DATA) {
-      if (results.length >= 8) break
-      if (!entry.name.startsWith(q) && entry.name.includes(q)) {
-        results.push(entry)
-      }
-    }
-  }
-  return results
+function getEmojiColonContext(input) {
+  return getTriggerContext(input, ':', 2)
+}
+
+function getMentionContext(input) {
+  return getTriggerContext(input, '@', 1)
 }
 
 function showEmojiDropdown(matches, selectedIndex) {
@@ -38712,20 +38742,29 @@ function showEmojiDropdown(matches, selectedIndex) {
     row.className = 'hs-mc-emoji-row' + (i === selectedIndex ? ' selected' : '')
     row.dataset.index = i
 
-    const emojiSpan = document.createElement('span')
-    emojiSpan.className = 'hs-mc-emoji-preview'
-    emojiSpan.textContent = entry.emoji
+    if (entry.type === 'emoji') {
+      const emojiSpan = document.createElement('span')
+      emojiSpan.className = 'hs-mc-emoji-preview'
+      emojiSpan.textContent = entry.emoji
+      row.appendChild(emojiSpan)
+    } else if (entry.url) {
+      const img = document.createElement('img')
+      img.className = 'hs-mc-emote-preview'
+      img.src = entry.url
+      img.alt = entry.name
+      img.loading = 'lazy'
+      row.appendChild(img)
+    }
 
     const nameSpan = document.createElement('span')
     nameSpan.className = 'hs-mc-emoji-name'
-    nameSpan.textContent = ':' + entry.name + ':'
-
-    row.appendChild(emojiSpan)
+    nameSpan.textContent = entry.type === 'emoji' ? ':' + entry.name + ':' : entry.name
     row.appendChild(nameSpan)
 
     row.addEventListener('mousedown', (e) => {
       e.preventDefault()
       insertEmojiFromDropdown(entry)
+      showCycleTooltip()
     })
 
     dd.appendChild(row)
@@ -38738,95 +38777,29 @@ function hideEmojiDropdown() {
   emojiAcState.matches = []
   emojiAcState.index = 0
   emojiAcState.query = ''
-  emojiAcState.colonPos = -1
   const dd = document.getElementById('hs-mc-emoji-dropdown')
   if (dd) dd.style.display = 'none'
 }
 
-function insertEmojiFromDropdown(entry) {
+// Route the pick through the exact insertion path Tab-cycle uses (chip vs
+// plain text, overlay stacking, frecency bump, blocked-emote outline) — see
+// insertCompletionKeepOpen/insertCompletionWysiwyg — then hand off to
+// acState so further Tab presses keep cycling this same ranked list. A
+// dropdown pick becomes indistinguishable from typing the word + Tab once.
+function insertEmojiFromDropdown(match) {
   const input = document.getElementById('hs-mc-input')
-  if (!input) return
+  if (!input || !match) return
+  if (!wysiwygEnabled) captureAcWordBounds(input)
+  insertCompletionKeepOpen(match)
 
-  if (wysiwygEnabled) {
-    // Find the text node with the :query and replace it
-    const sel = window.getSelection()
-    if (!sel?.rangeCount) {
-      hideEmojiDropdown()
-      return
-    }
-    const range = sel.getRangeAt(0)
-    const node = range.startContainer
-    if (node?.nodeType !== Node.TEXT_NODE) {
-      hideEmojiDropdown()
-      return
-    }
-    const text = node.textContent
-    const cursor = range.startOffset
-    const before = text.slice(0, cursor)
-    const colonIdx = before.lastIndexOf(':')
-    if (colonIdx === -1) {
-      hideEmojiDropdown()
-      return
-    }
+  acState.matches = emojiAcState.matches
+  acState.index = emojiAcState.matches.indexOf(match)
+  if (acState.index === -1) acState.index = 0
+  acState.active = true
+  acState.search = ':' + emojiAcState.query
+  acState.remoteDone = false
+  acState.remotePending = false
 
-    // Wrap emoji in a span so the caret has an unambiguous boundary. Setting
-    // a caret offset past a U+FE0F variation selector inside a plain text
-    // node confuses Chrome's keyboard handler — the next typed char snaps to
-    // *before* the grapheme.
-    const span = document.createElement('span')
-    span.className = 'hs-mc-emoji'
-    span.textContent = entry.emoji
-    span.title = ':' + entry.name + ':'
-    span.setAttribute('data-emoji-name', entry.name)
-    span.setAttribute('contenteditable', 'false') // atomic — caret can't enter
-    const tail = text.slice(cursor)
-    const head = text.slice(0, colonIdx)
-    // Trailing space keeps emote-name boundaries intact downstream.
-    const trailing = !/^\s/.test(tail) ? ' ' : ''
-    // Leading space when this emoji lands right after an existing chip (no
-    // plain-text gap). Without it the input event triggers chip-merge
-    // safeguards that collapse adjacent chips back to plain text.
-    let leading = ''
-    if (!head) {
-      const prev = node.previousSibling
-      const prevIsChip =
-        prev?.nodeType === Node.ELEMENT_NODE &&
-        ((prev.tagName === 'IMG' && (prev.classList?.contains('hs-input-emote') || prev.dataset?.emoteName)) ||
-          prev.classList?.contains('hs-input-stack') ||
-          prev.classList?.contains('hs-mc-emoji') ||
-          prev.classList?.contains('hs-mc-user'))
-      if (prevIsChip) leading = ' '
-    }
-    const beforeNode = document.createTextNode(leading + head)
-    const afterNode = document.createTextNode(trailing + tail)
-    const parent = node.parentNode
-    parent.insertBefore(beforeNode, node)
-    parent.insertBefore(span, node)
-    parent.insertBefore(afterNode, node)
-    parent.removeChild(node)
-    const newRange = document.createRange()
-    newRange.setStart(afterNode, Math.min(trailing.length, afterNode.textContent.length))
-    newRange.collapse(true)
-    sel.removeAllRanges()
-    sel.addRange(newRange)
-  } else {
-    const text = input.value
-    const cursor = input.selectionStart
-    const before = text.slice(0, cursor)
-    const colonIdx = before.lastIndexOf(':')
-    if (colonIdx === -1) {
-      hideEmojiDropdown()
-      return
-    }
-    const tail = text.slice(cursor)
-    const space = !/^\s/.test(tail) ? ' ' : ''
-    input.value = text.slice(0, colonIdx) + entry.emoji + space + tail
-    const newPos = colonIdx + entry.emoji.length + space.length
-    input.selectionStart = input.selectionEnd = newPos
-  }
-
-  pendingMessage = getInputText()
-  updateCharCount()
   hideEmojiDropdown()
   input.focus()
 }
@@ -38841,7 +38814,11 @@ function checkEmojiAutocomplete() {
     return
   }
 
-  const matches = filterEmoji(ctx.query)
+  // Same match + rank logic Tab-cycle uses (findEmoteMatches + the shared
+  // compareAcMatches comparator) — own inventory, channel emotes, cached
+  // 7tv/bttv/ffz sets, and unicode emoji. Local-cache reads only, so this is
+  // safe to run on every debounced keystroke (no network in the hot path).
+  const matches = findEmoteMatches(':' + ctx.query).slice(0, EMOJI_DROPDOWN_MAX)
   if (matches.length === 0) {
     if (emojiAcState.active) hideEmojiDropdown()
     return
@@ -38850,9 +38827,96 @@ function checkEmojiAutocomplete() {
   emojiAcState.active = true
   emojiAcState.matches = matches
   emojiAcState.query = ctx.query
-  emojiAcState.colonPos = ctx.colonPos
   emojiAcState.index = 0
   showEmojiDropdown(matches, 0)
+}
+
+function showMentionDropdown(matches, selectedIndex) {
+  let dd = document.getElementById('hs-mc-mention-dropdown')
+  if (!dd) {
+    dd = document.createElement('div')
+    dd.id = 'hs-mc-mention-dropdown'
+    document.getElementById('hs-mc-inputbar')?.appendChild(dd)
+  }
+  dd.textContent = ''
+  matches.forEach((entry, i) => {
+    const row = document.createElement('div')
+    row.className = 'hs-mc-emoji-row' + (i === selectedIndex ? ' selected' : '')
+    row.dataset.index = i
+
+    const nameSpan = document.createElement('span')
+    nameSpan.className = 'hs-mc-emoji-name'
+    nameSpan.textContent = entry.name
+    // Sync-cache color only — zero per-row network fetch in the dropdown;
+    // the async color fetch (if still unknown) happens on actual insert via
+    // the same path bare-mention chips already use.
+    const lower = entry.name.replace(/^@/, '').toLowerCase()
+    const cached = (typeof knownColors !== 'undefined' && knownColors.get(lower)) || _hsUserColorCache.get(lower)
+    if (cached) nameSpan.style.color = typeof sanitizeColor === 'function' ? sanitizeColor(cached) : cached
+    row.appendChild(nameSpan)
+
+    row.addEventListener('mousedown', (e) => {
+      e.preventDefault()
+      insertMentionFromDropdown(entry)
+      showCycleTooltip()
+    })
+
+    dd.appendChild(row)
+  })
+  dd.style.display = 'block'
+}
+
+function hideMentionDropdown() {
+  mentionAcState.active = false
+  mentionAcState.matches = []
+  mentionAcState.index = 0
+  mentionAcState.query = ''
+  const dd = document.getElementById('hs-mc-mention-dropdown')
+  if (dd) dd.style.display = 'none'
+}
+
+function insertMentionFromDropdown(match) {
+  const input = document.getElementById('hs-mc-input')
+  if (!input || !match) return
+  if (!wysiwygEnabled) captureAcWordBounds(input)
+  insertCompletionKeepOpen(match)
+
+  acState.matches = mentionAcState.matches
+  acState.index = mentionAcState.matches.indexOf(match)
+  if (acState.index === -1) acState.index = 0
+  acState.active = true
+  acState.search = '@' + mentionAcState.query
+  acState.remoteDone = false
+  acState.remotePending = false
+
+  hideMentionDropdown()
+  input.focus()
+}
+
+function checkMentionAutocomplete() {
+  const input = document.getElementById('hs-mc-input')
+  if (!input) return
+
+  const ctx = getMentionContext(input)
+  if (!ctx) {
+    if (mentionAcState.active) hideMentionDropdown()
+    return
+  }
+
+  // findEmoteMatches('@'+query) already ranks current-channel recent
+  // chatters (getRecencyMap) ahead of the rest of usernameCache — the same
+  // comparator Tab-cycle uses for an explicit @-search.
+  const matches = findEmoteMatches('@' + ctx.query).slice(0, MENTION_DROPDOWN_MAX)
+  if (matches.length === 0) {
+    if (mentionAcState.active) hideMentionDropdown()
+    return
+  }
+
+  mentionAcState.active = true
+  mentionAcState.matches = matches
+  mentionAcState.query = ctx.query
+  mentionAcState.index = 0
+  showMentionDropdown(matches, 0)
 }
 
 // Reply state management
@@ -38935,6 +38999,7 @@ function convertEmojiShortcodes(text) {
 
 function clearInput(input) {
   hideEmojiDropdown()
+  hideMentionDropdown()
   hideSlashDropdown()
   if (wysiwygEnabled) input.textContent = ''
   else input.value = ''

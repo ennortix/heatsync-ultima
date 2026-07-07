@@ -381,6 +381,10 @@ ensureAlarm('refresh-global-emotes', { delayInMinutes: 1440 + Math.random() * 60
 ensureAlarm('refresh-emote-inventory', { delayInMinutes: 1 + Math.random(), periodInMinutes: 1 })
 ensureAlarm('prune-expired-mutes', { periodInMinutes: 1 })
 ensureAlarm('live-poll', { delayInMinutes: 1 + Math.random(), periodInMinutes: 1 })
+// Followed-users refresh — the feed filter's followedUsers cache otherwise only
+// updates on login/SW boot, so follows made on heatsync.org (or another device)
+// stay invisible until SW eviction. 5 min matches the server's 300s cache TTL.
+ensureAlarm('refresh-followed-users', { delayInMinutes: 5 + Math.random(), periodInMinutes: 5 })
 // WS watchdog — survives SW eviction. setInterval timers inside onopen die
 // when the SW is terminated; this alarm wakes the SW and either reconnects,
 // kills a zombie, or sends a heartbeat. Each fire is 30s (chrome.alarms min).
@@ -420,6 +424,10 @@ browser.alarms?.onAlarm?.addListener(async (alarm) => {
         pollFollowedLive().catch(() => {})
       } catch {}
     }
+  } else if (alarm.name === 'refresh-followed-users') {
+    fetchFollowedUsers().catch((err) =>
+      console.warn('[heatsync-ext] fetchFollowedUsers refresh failed:', err && err.message),
+    )
   } else if (alarm.name === 'hs-ws-watchdog') {
     // Three states to handle:
     //   1) WS not open: kick a fresh connect (no-op if already connecting)
@@ -1559,7 +1567,9 @@ async function fetchFollowedUsers() {
 
     if (!response.ok) {
       response.body?.cancel()
-      followedUsers = []
+      // 401 means the session is gone — clear. Anything else is transient
+      // (5xx, ratelimit): keep the previous list, stale beats empty.
+      if (response.status === 401) followedUsers = []
       return
     }
 
@@ -1571,8 +1581,8 @@ async function fetchFollowedUsers() {
     // for the next 1-min alarm tick.
     if (typeof pollFollowedLive === 'function') pollFollowedLive().catch(() => {})
   } catch (error) {
+    // Transient failure (network, timeout): keep the previous list.
     console.error('[heatsync] fetchFollowedUsers failed:', error.message || error)
-    followedUsers = []
   }
 }
 

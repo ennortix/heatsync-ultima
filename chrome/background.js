@@ -5070,6 +5070,12 @@ function handleWSMessage(msg) {
         scheduleInventoryRefresh()
         break
 
+      case 'profile:color':
+        // A user changed their heatsync name color — forward to content
+        // scripts so the overlay recolors that user's visible rows live.
+        broadcastToTabs({ type: 'profile_color', userId: msg.userId, usernames: msg.usernames, color: msg.color })
+        break
+
       case 'emote:blocked':
         // Skip if user just unblocked locally — late WS echo would otherwise re-add.
         if (recentBlockToggleState(msg.hash) === 'unblocked') break

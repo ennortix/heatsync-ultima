@@ -1105,6 +1105,50 @@
     }
   }
 
+  // Live username-color sync — another client (heatsync.org, another ext
+  // instance) just saved a new name color. background.js relays the server's
+  // `profile:color` WS broadcast as `profile_color` (same translation
+  // pattern as seen_update in seen-state.js). Updates knownColors so future
+  // @mentions/replies pick it up for free, and recolors this user's
+  // currently-visible rows in place — no refetch, no full re-render. Old
+  // rows already scrolled past keep their prior color (matches Twitch/Kick).
+  //
+  // NOTE: this listener only fires once background.js forwards the event —
+  // that one-line case in handleWSMessage() is NOT added by this change
+  // (background.js is off-limits here). Needs, once, elsewhere:
+  //   case 'profile:color':
+  //     broadcastToTabs({ type: 'profile_color', userId: msg.userId, usernames: msg.usernames, color: msg.color })
+  //     break
+  function applyLiveProfileColor(usernames, color) {
+    if (typeof color !== 'string' || !/^#[0-9a-f]{6}$/i.test(color)) return
+    const names = Array.isArray(usernames)
+      ? usernames.filter((u) => typeof u === 'string' && u).map((u) => u.toLowerCase())
+      : []
+    if (!names.length) return
+
+    for (const name of names) setKnownColor(name, color)
+
+    const msgsEl = document.getElementById('hs-mc-messages')
+    if (!msgsEl) return
+    const nameSet = new Set(names)
+    const spans = msgsEl.querySelectorAll('.hs-mc-user[data-username]')
+    for (const el of spans) {
+      if (!nameSet.has(el.dataset.username)) continue
+      // A HeatSync paint owns the fill via its hsp-<hash> class — never override it.
+      if ([...el.classList].some((c) => c.startsWith('hsp-'))) continue
+      el.style.color = color
+    }
+  }
+  if (!window._hsMcProfileColorListener) {
+    window._hsMcProfileColorListener = true
+    try {
+      cleanup.addListener(chrome.runtime?.onMessage, (msg) => {
+        if (msg?.type !== 'profile_color') return
+        applyLiveProfileColor(msg.usernames, msg.color)
+      })
+    } catch {}
+  }
+
   // ═══ Sender-perma emote queue ═══
   // Lazy-fetch each unseen sender's 7TV/BTTV personal set ONCE, cache write-once-per-(sender, name) forever.
   /**

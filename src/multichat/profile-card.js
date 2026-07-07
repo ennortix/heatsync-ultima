@@ -692,6 +692,10 @@ function renderProfileCardView() {
       applyHsPaintToElement(titleEl, idUid)
     } else if (idPaint) {
       titleEl.style.cssText += ';' + idPaint
+    } else if (data?.color) {
+      // No paint — fall back to the user's saved HeatSync name color instead
+      // of leaving the header uncolored.
+      titleEl.style.color = sanitizeColor(data.color)
     }
   }
 

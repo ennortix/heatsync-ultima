@@ -54773,6 +54773,78 @@ const STORAGE_KEY = 'heatsync_multichat'
     } catch (_) {}
   }
 
+  // Render-success gate for native-tap.js's suppression decision (point 1)
+  // and this file's own dead-man watchdog (below). Flips true only after a
+  // full ensureUIElements/switchTab/startLayoutWatcher pass completes without
+  // throwing — see the waitForMount/tryHookReact call sites. A throw resets
+  // it to false so both mechanisms fail open to native chat being visible.
+  let _hsOverlayRenderOk = false
+  function _markOverlayRenderOk(ok) {
+    _hsOverlayRenderOk = !!ok
+    try {
+      if (typeof setOverlayRenderOk === 'function') setOverlayRenderOk(!!ok)
+    } catch (_) {}
+    // A successful mount pass proves this boot didn't hit the failure loop —
+    // reset early-layout.js's pre-arm retry budget so the NEXT load gets a
+    // clean slate (see chrome/early-layout.js's takeoverArms gate).
+    if (ok) {
+      try {
+        localStorage.setItem('hs_layout_takeoverArms', '0')
+      } catch (_) {}
+    }
+  }
+
+  // Runs one ensureUIElements/switchTab/startLayoutWatcher mount pass. These
+  // used to run unguarded with `done=true` set beforehand — a throw anywhere
+  // in the triplet left the overlay container present but empty AND native
+  // chat already hidden, with nothing to ever undo either. Any throw here
+  // must fail OPEN: mark render-not-ok (native-tap.js stops suppressing),
+  // force native chat visible again, and clear the takeover mirror so
+  // early-layout.js's next-load pre-arm doesn't re-arm suppression blind.
+  function _runOverlayMountPass(label, fn) {
+    try {
+      fn()
+      _markOverlayRenderOk(true)
+    } catch (e) {
+      console.warn('[heatsync-ext] overlay mount pass threw:', label, e?.message || e)
+      _markOverlayRenderOk(false)
+      try {
+        setNativeChatHidden(false)
+      } catch (_) {}
+      try {
+        localStorage.setItem('hs_layout_nativeTakeover', '0')
+      } catch (_) {}
+    }
+  }
+
+  // Dead-man switch for setNativeChatHidden(true): once `.hs-native-hidden`
+  // was applied it persisted regardless of whether the overlay kept
+  // rendering. Poll the heartbeat native-tap.js writes (hsSuppressBeat) plus
+  // our own render-success flag; force native chat back the moment either
+  // goes stale so it VISUALLY returns, not just resumes internal message
+  // flow. Twitch-only — that's the only platform the suppress dataset and
+  // native-tap.js apply to.
+  let _nativeHiddenWatchdogStarted = false
+  function startNativeHiddenWatchdog() {
+    if (_nativeHiddenWatchdogStarted || hostPlatform !== 'twitch') return
+    _nativeHiddenWatchdogStarted = true
+    cleanup.setInterval(() => {
+      const ds = document.body?.dataset
+      if (!ds || ds.hsSuppressNative !== '1') return
+      const beat = parseInt(ds.hsSuppressBeat, 10)
+      const stale = !Number.isFinite(beat) || Date.now() - beat > 45000
+      if (!stale && _hsOverlayRenderOk) return
+      console.warn(
+        '[heatsync-ext] native-hidden watchdog: suppression stale or overlay render not confirmed — restoring native chat',
+      )
+      setNativeChatHidden(false)
+      ds.hsSuppressNative = '0'
+      try {
+        localStorage.setItem('hs_layout_nativeTakeover', '0')
+      } catch (_) {}
+    }, 15000)
+  }
+
   /**
    * Toggle native Twitch chat visibility (FFZ-style)
    * Adds class to parent container rather than relying on :has() selector
@@ -60277,6 +60349,11 @@ const STORAGE_KEY = 'heatsync_multichat'
     detectOfflineState()
     if (isPopout) document.body.classList.add('hs-popout')
     currentUsername = getCurrentUsername()
+    // Independent of whether native-tap starts below (subsystem could be
+    // disabled) — early-layout.js can pre-arm hsSuppressNative purely from
+    // last session's localStorage mirror, so the dead-man needs to watch
+    // regardless of this session's gating.
+    startNativeHiddenWatchdog()
 
     // ── PHASE 1: warm caches in parallel ──────────────────────────────────
     // Prime ui_settings cache so the 18+ load* functions all pull from one
@@ -61643,9 +61720,11 @@ const STORAGE_KEY = 'heatsync_multichat'
       if (mcSignal?.aborted) return
       const inject = () => {
         if (mcSignal?.aborted) return
-        ensureUIElements()
-        switchTab(_savedActiveTab || 'live')
-        startLayoutWatcher()
+        _runOverlayMountPass(label || 'waitForMount', () => {
+          ensureUIElements()
+          switchTab(_savedActiveTab || 'live')
+          startLayoutWatcher()
+        })
       }
       if (find()) {
         inject()
@@ -61673,9 +61752,11 @@ const STORAGE_KEY = 'heatsync_multichat'
       // so there's no DOM mount point to wait on. Inject immediately; any
       // late-mounting live chatframe is hidden separately by the chatframe
       // observer in getOrCreateHsContainer + the SPA nav handler.
-      ensureUIElements()
-      switchTab(_savedActiveTab || 'live')
-      startLayoutWatcher()
+      _runOverlayMountPass('yt body-mount', () => {
+        ensureUIElements()
+        switchTab(_savedActiveTab || 'live')
+        startLayoutWatcher()
+      })
       // YT computes grid items-per-row + #primary widths from window-keyed
       // ResizeObservers; our layout overrides happen mid-cycle and YT
       // doesn't re-measure until something fires `resize`. One synthetic
@@ -61725,9 +61806,11 @@ const STORAGE_KEY = 'heatsync_multichat'
       const segMatch = location.pathname.match(/^\/([a-zA-Z0-9_-]+)\/?$/)
       const couldBeChannel = !!segMatch && !KICK_RESERVED_PATHS.has(segMatch[1].toLowerCase()) && !isPopout
       if (!couldBeChannel) {
-        ensureUIElements()
-        switchTab(_savedActiveTab || 'live')
-        startLayoutWatcher()
+        _runOverlayMountPass('kick non-channel body-mount', () => {
+          ensureUIElements()
+          switchTab(_savedActiveTab || 'live')
+          startLayoutWatcher()
+        })
       } else {
         waitForMount(
           () => document.getElementById('channel-chatroom') || document.querySelector('[id*="chatroom"]'),
@@ -61760,19 +61843,23 @@ const STORAGE_KEY = 'heatsync_multichat'
       if (!onChannel && !isPopout) {
         done = true
         log('Twitch non-channel page — body-mount overlay')
-        ensureUIElements()
-        switchTab(_savedActiveTab || 'live')
-        startLayoutWatcher()
+        _runOverlayMountPass('twitch non-channel body-mount', () => {
+          ensureUIElements()
+          switchTab(_savedActiveTab || 'live')
+          startLayoutWatcher()
+        })
         return true
       }
       const chatRoom = findChatRoomComponent()
       if (chatRoom) {
         done = true
         log('Found chat room component')
-        patchChatRoomRender(chatRoom)
-        ensureUIElements()
-        switchTab(_savedActiveTab || 'live')
-        startLayoutWatcher()
+        _runOverlayMountPass('twitch react hook', () => {
+          patchChatRoomRender(chatRoom)
+          ensureUIElements()
+          switchTab(_savedActiveTab || 'live')
+          startLayoutWatcher()
+        })
         return true
       }
       const chatContainer =
@@ -61784,9 +61871,11 @@ const STORAGE_KEY = 'heatsync_multichat'
       if (chatContainer) {
         done = true
         log('Using fallback DOM injection')
-        ensureUIElements()
-        switchTab(_savedActiveTab || 'live')
-        startLayoutWatcher()
+        _runOverlayMountPass('twitch fallback dom injection', () => {
+          ensureUIElements()
+          switchTab(_savedActiveTab || 'live')
+          startLayoutWatcher()
+        })
         return true
       }
       return false

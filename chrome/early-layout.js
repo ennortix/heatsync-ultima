@@ -197,9 +197,21 @@ ${
     // Bulletproof: the beat set here is a one-shot; if the overlay fails to
     // boot and take ownership, the 45s dead-man TTL lapses and Twitch renders
     // normally. Overlay-disabled users have the mirror at '0'.
+    // Retry budget on top of that: main.js resets takeoverArms to 0 the
+    // moment an overlay mount pass actually completes (see _markOverlayRenderOk
+    // in main.js). If it's still >0 next load, the previous boot never
+    // confirmed success — 2 unconfirmed pre-arms in a row means something is
+    // reliably breaking (not a one-off timing blip), so stop re-arming and
+    // let native chat show from frame one until a boot succeeds again.
     if (platform === 'twitch' && readLS('nativeTakeover', '0') === '1') {
-      body.dataset.hsSuppressNative = '1'
-      body.dataset.hsSuppressBeat = String(Date.now())
+      const arms = parseInt(readLS('takeoverArms', '0'), 10) || 0
+      if (arms < 2) {
+        body.dataset.hsSuppressNative = '1'
+        body.dataset.hsSuppressBeat = String(Date.now())
+        try {
+          localStorage.setItem('hs_layout_takeoverArms', String(arms + 1))
+        } catch (_) {}
+      }
     }
     return true
   }

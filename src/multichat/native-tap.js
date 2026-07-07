@@ -230,6 +230,18 @@ function startNativeTap(channel) {
 let _nsBeatTimer = null
 let _nsRxBound = false
 
+// Render-success gate: `#hs-mc-overlay` existing in the DOM is NOT proof it
+// painted anything — a thrown ensureUIElements/switchTab/startLayoutWatcher
+// pass (see main.js's tryHookReact/waitForMount) can leave a dead, empty
+// husk that still passes `getElementById`. main.js flips this via
+// setOverlayRenderOk() only after a render pass completes without throwing.
+// Starts false so a not-yet-rendered or failed overlay never suppresses
+// native chat — fail-open is the point.
+let _nsOverlayRenderOk = false
+function setOverlayRenderOk(ok) {
+  _nsOverlayRenderOk = !!ok
+}
+
 function _nsTakeoverEnabled() {
   try {
     return getSetting('subsystems')?.['native-takeover'] !== false
@@ -253,10 +265,15 @@ function _updateNativeSuppress() {
   if (!ds) return
   let on = false
   try {
-    // Suppress only while the overlay exists AND twitch's own chat is
-    // actually invisible — the moment the user reveals native chat (overlay
-    // hidden, position modes that show it, teardown) rendering hands back.
-    on = _nsTakeoverEnabled() && !!document.getElementById('hs-mc-overlay') && !_nsNativeChatVisible()
+    // Suppress only while the overlay exists AND actually rendered (not just
+    // present-but-empty) AND twitch's own chat is actually invisible — the
+    // moment the user reveals native chat (overlay hidden, position modes
+    // that show it, teardown) rendering hands back.
+    on =
+      _nsTakeoverEnabled() &&
+      !!document.getElementById('hs-mc-overlay') &&
+      _nsOverlayRenderOk &&
+      !_nsNativeChatVisible()
   } catch (_) {}
   if (on) {
     ds.hsSuppressNative = '1'

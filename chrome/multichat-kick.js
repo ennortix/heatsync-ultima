@@ -9860,6 +9860,15 @@ function injectStyles() {
        Scoped to .hs-mc-msg so picker/tooltip layouts keep middle. */
     .hs-mc-msg .hs-mc-emote-wrapper {
       vertical-align: text-bottom;
+      /* Center the img inside the reserved min-height box. A small native emote
+         (e.g. twitch ':)' at ~28px) is display:block and was top-anchored in
+         the taller reserved box, so it hugged the top of the line while
+         normal-sized emotes filled it. inline-flex centers it vertically
+         without changing the wrapper's own text-bottom baseline vs adjacent
+         text (so the crisp-text fix stays intact). */
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       /* Reserve the emote's full box height from first paint so a lazy-loading
          emote can't grow its row on arrival and shove every row below it down
          (the measured layout-shift jank). A bare wrapper holds a 0-height img
@@ -35708,7 +35717,41 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
     },
     { label: isMuted ? 'unmute' : 'mute (24h)', danger: !isMuted, fn: () => _toggleMcMute(username, platform) },
     'sep',
+    {
+      label: 'copy name',
+      fn: () => mcCopyToClipboard(username, 'name copied'),
+    },
   ]
+  // Copy/quote lead the menu (right after follow/block/mute) so they're never
+  // buried under mod actions or the social-action wall below — this is the
+  // #1 thing right-click gets used for, it shouldn't take scrolling to find.
+  if (msg) {
+    items.push({
+      label: 'copy message',
+      fn: () => mcCopyToClipboard(_extractMcMsgText(msg), 'message copied'),
+    })
+    items.push({
+      label: 'quote → input',
+      fn: () => mcQuoteToInput(_extractMcMsgText(msg)),
+    })
+  }
+  if (feedDiv && typeof getActiveThreadCopyText === 'function') {
+    const threadTxt = getActiveThreadCopyText()
+    if (threadTxt)
+      items.push({
+        label: 'copy thread',
+        fn: () => mcCopyToClipboard(threadTxt, 'thread copied'),
+      })
+  }
+  if (msg) {
+    const chainTxt = _extractMcChainText(msg)
+    if (chainTxt)
+      items.push({
+        label: 'copy thread',
+        fn: () => mcCopyToClipboard(chainTxt, 'thread copied'),
+      })
+  }
+  items.push('sep')
   // ─── Mod actions ─── gated on, and acting on, the CLICKED message's platform
   // (single — no cross-platform noise; a twitch chatter ≠ the same-named kick
   // user). Twitch gates on GQL mod-state, Kick on kick_mod_status. Targets the
@@ -35846,36 +35889,6 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
           msgChannel ? { platform: logPlatform, channel: msgChannel } : { platform: logPlatform },
         ),
     })
-  }
-  items.push('sep', {
-    label: 'copy name',
-    fn: () => mcCopyToClipboard(username, 'name copied'),
-  })
-  if (msg) {
-    items.push({
-      label: 'copy message',
-      fn: () => mcCopyToClipboard(_extractMcMsgText(msg), 'message copied'),
-    })
-    items.push({
-      label: 'quote → input',
-      fn: () => mcQuoteToInput(_extractMcMsgText(msg)),
-    })
-  }
-  if (feedDiv && typeof getActiveThreadCopyText === 'function') {
-    const threadTxt = getActiveThreadCopyText()
-    if (threadTxt)
-      items.push({
-        label: 'copy thread',
-        fn: () => mcCopyToClipboard(threadTxt, 'thread copied'),
-      })
-  }
-  if (msg) {
-    const chainTxt = _extractMcChainText(msg)
-    if (chainTxt)
-      items.push({
-        label: 'copy thread',
-        fn: () => mcCopyToClipboard(chainTxt, 'thread copied'),
-      })
   }
   if (feedMsg && typeof isOwnFeedPost === 'function' && isOwnFeedPost(feedMsg)) {
     items.push('sep')

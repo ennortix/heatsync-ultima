@@ -258,6 +258,15 @@
        Scoped to .hs-mc-msg so picker/tooltip layouts keep middle. */
     .hs-mc-msg .hs-mc-emote-wrapper {
       vertical-align: text-bottom;
+      /* Center the img inside the reserved min-height box. A small native emote
+         (e.g. twitch ':)' at ~28px) is display:block and was top-anchored in
+         the taller reserved box, so it hugged the top of the line while
+         normal-sized emotes filled it. inline-flex centers it vertically
+         without changing the wrapper's own text-bottom baseline vs adjacent
+         text (so the crisp-text fix stays intact). */
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       /* Reserve the emote's full box height from first paint so a lazy-loading
          emote can't grow its row on arrival and shove every row below it down
          (the measured layout-shift jank). A bare wrapper holds a 0-height img

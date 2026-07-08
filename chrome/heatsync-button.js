@@ -492,7 +492,15 @@
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
         z-index: 4999;
         overflow: hidden;
-        font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+        /* CozetteVector bitmap @ 13px with smoothing off — crisp, matches the
+           overlay. Inter was soft/blurry against the rest of the house font.
+           Cozette only stays sharp at 13px (or 26px), so children use 13px. */
+        font-family: 'CozetteVector', monospace;
+        font-size: 13px;
+        -webkit-font-smoothing: none;
+        font-smooth: never;
+        font-synthesis: none;
+        text-rendering: optimizeSpeed;
         display: flex;
         flex-direction: column;
       }
@@ -508,7 +516,7 @@
       }
 
       .heatsync-panel-title {
-        font-size: 14px;
+        font-size: 13px;
         font-weight: 600;
         color: #fff;
         display: flex;
@@ -696,7 +704,7 @@
         border: 1px solid rgba(255,255,255,0.12);
         border-radius: 0;
         color: #fff;
-        font-size: 12px;
+        font-size: 13px;
         padding: 5px 8px;
         outline: none;
         font-family: inherit;
@@ -995,7 +1003,7 @@
         padding: 28px 20px;
         text-align: center;
       }
-      .hs-coldstart-title { color: #fff; font-size: 14px; font-weight: 600; }
+      .hs-coldstart-title { color: #fff; font-size: 13px; font-weight: 600; }
       .hs-coldstart-sub { color: #a0a0a0; font-size: 13px; max-width: 260px; line-height: 1.4; }
       .hs-coldstart .hs-import-channel-btn { flex: none; padding: 6px 14px; }
 
@@ -1190,7 +1198,7 @@
         border: none;
         border-radius: 0;
         color: #000;
-        font-size: 14px;
+        font-size: 13px;
         font-weight: 600;
         cursor: pointer;
         transition: none;
@@ -1286,7 +1294,7 @@
         border: none;
         border-radius: 0;
         color: #808080;
-        font-size: 12px;
+        font-size: 13px;
         cursor: pointer;
         text-align: center;
         text-decoration: none;
@@ -1304,7 +1312,7 @@
         padding: 2px 6px;
         background: rgba(255,255,255,0.08);
         border-radius: 0;
-        font-size: 12px;
+        font-size: 13px;
         color: #808080;
         margin-left: 8px;
       }
@@ -1431,7 +1439,7 @@
         background: rgba(145, 71, 255, 0.15);
         border-bottom: 1px solid #9147ff;
         color: #bf94ff;
-        font-size: 12px;
+        font-size: 13px;
       }
 
       .heatsync-auth-banner a {
@@ -1463,7 +1471,7 @@
       }
 
       .heatsync-error-msg {
-        font-size: 14px;
+        font-size: 13px;
         margin-bottom: 16px;
         color: #ff6b6b;
       }
@@ -1601,7 +1609,7 @@
         border: 1px solid #808080;
         border-radius: 2px;
         color: #fff;
-        font-size: 12px;
+        font-size: 13px;
         outline: none;
       }
       .hs-emote-ctx-input:focus { border-color: #fff; }
@@ -1614,7 +1622,7 @@
         border: none;
         border-radius: 2px;
         color: #000;
-        font-size: 12px;
+        font-size: 13px;
         font-weight: 600;
         cursor: pointer;
         text-align: center;

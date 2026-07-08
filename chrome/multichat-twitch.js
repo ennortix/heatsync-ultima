@@ -3933,9 +3933,12 @@ const HS_FX = Object.freeze({
   rotateR: { rotate: 90 },
   cursed:  { filter: 'grayscale(1) brightness(0.7) contrast(2.5)' },
   hyper:   { filter: 'brightness(0.2) sepia(1) brightness(2.2) contrast(3) saturate(8)', anim: 'hyper' },
-  party:   { anim: 'party' },
+  // rainbow/party drive hue via a registered custom prop referenced INSIDE the
+  // composed filter, so the animated hue STACKS with a static filter (cursed)
+  // instead of the keyframe replacing it. Defaults to 0deg until animated.
+  party:   { filter: 'sepia(0.5) saturate(2.5) hue-rotate(var(--hs-fx-hue,0deg))', anim: 'party' },
   shake:   { anim: 'shake' },
-  rainbow: { anim: 'rainbow' },
+  rainbow: { filter: 'hue-rotate(var(--hs-fx-hue,0deg))', anim: 'rainbow' },
   bounce:  { anim: 'bounce' },
   jam:     { anim: 'jam' },
   spin:    { anim: 'spin' },
@@ -10256,14 +10259,15 @@ function injectStyles() {
    Animations drive the INDIVIDUAL translate/rotate/scale/filter props so they
    compose with the inline transform (w! ffzSpin = wide AND spinning). Kept in
    sync with the site (public/css/modules/emotes.css). */
+/* Registered so it interpolates; the composed filter references it as
+   hue-rotate(var(--hs-fx-hue)) so an animated hue STACKS with a static filter
+   (cursed) instead of the keyframe replacing the filter. */
+@property --hs-fx-hue { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
 img.hs-fx-rainbow { animation: hs-fx-rainbow 2s linear infinite; }
-@keyframes hs-fx-rainbow { from { filter: hue-rotate(0deg); } to { filter: hue-rotate(360deg); } }
+@keyframes hs-fx-rainbow { from { --hs-fx-hue: 0deg; } to { --hs-fx-hue: 360deg; } }
 
 img.hs-fx-party { animation: hs-fx-party 1.5s linear infinite; }
-@keyframes hs-fx-party {
-  0%   { filter: sepia(.5) hue-rotate(0deg) saturate(2.5); }
-  100% { filter: sepia(.5) hue-rotate(360deg) saturate(2.5); }
-}
+@keyframes hs-fx-party { from { --hs-fx-hue: 0deg; } to { --hs-fx-hue: 360deg; } }
 
 img.hs-fx-spin { animation: hs-fx-spin 1.5s linear infinite; }
 @keyframes hs-fx-spin { from { rotate: 0deg; } to { rotate: 360deg; } }
@@ -10299,8 +10303,8 @@ img.hs-fx-jam { animation: hs-fx-jam 0.6s linear infinite; }
   100%{translate:-2px -2px;rotate:-5deg}
 }
 
-img.hs-fx-slide { animation: hs-fx-slide 1.5s ease-in-out infinite; }
-@keyframes hs-fx-slide { 0%,100%{translate:-30% 0}50%{translate:30% 0} }
+img.hs-fx-slide { animation: hs-fx-slide 1.5s linear infinite; }
+@keyframes hs-fx-slide { from{translate:-50% 0} to{translate:50% 0} }
 
 img.hs-fx-arrive { animation: hs-fx-arrive 3s linear infinite; }
 @keyframes hs-fx-arrive {

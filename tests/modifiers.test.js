@@ -280,6 +280,12 @@ describe('animated effects', () => {
     expect(r.filter).toContain('sepia(1)')
     expect(r.anims).toContain('hyper')
   })
+  test('rainbow var-hue STACKS with cursed static filter', () => {
+    const r = hsModComposeAll(['cursed', 'rainbow'], null)
+    expect(r.filter).toContain('grayscale(1)')
+    expect(r.filter).toContain('hue-rotate(var(--hs-fx-hue,0deg))')
+    expect(r.anims).toContain('rainbow')
+  })
   test('static mods emit no anim classes', () => {
     expect(hsModComposeAnimClasses(['wide', 'flipH', 'cursed'])).toEqual([])
   })

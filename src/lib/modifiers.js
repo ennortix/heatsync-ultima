@@ -24,9 +24,12 @@ const HS_FX = Object.freeze({
   rotateR: { rotate: 90 },
   cursed:  { filter: 'grayscale(1) brightness(0.7) contrast(2.5)' },
   hyper:   { filter: 'brightness(0.2) sepia(1) brightness(2.2) contrast(3) saturate(8)', anim: 'hyper' },
-  party:   { anim: 'party' },
+  // rainbow/party drive hue via a registered custom prop referenced INSIDE the
+  // composed filter, so the animated hue STACKS with a static filter (cursed)
+  // instead of the keyframe replacing it. Defaults to 0deg until animated.
+  party:   { filter: 'sepia(0.5) saturate(2.5) hue-rotate(var(--hs-fx-hue,0deg))', anim: 'party' },
   shake:   { anim: 'shake' },
-  rainbow: { anim: 'rainbow' },
+  rainbow: { filter: 'hue-rotate(var(--hs-fx-hue,0deg))', anim: 'rainbow' },
   bounce:  { anim: 'bounce' },
   jam:     { anim: 'jam' },
   spin:    { anim: 'spin' },

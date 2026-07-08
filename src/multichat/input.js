@@ -1911,34 +1911,24 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
   }
   items.push('sep', {
     label: 'copy name',
-    fn: () => {
-      try {
-        navigator.clipboard.writeText(username).catch(() => {})
-      } catch {}
-    },
+    fn: () => mcCopyToClipboard(username, 'name copied'),
   })
-  if (msg)
+  if (msg) {
     items.push({
       label: 'copy message',
-      fn: () => {
-        try {
-          navigator.clipboard.writeText(_extractMcMsgText(msg)).catch(() => {})
-        } catch {}
-      },
+      fn: () => mcCopyToClipboard(_extractMcMsgText(msg), 'message copied'),
     })
+    items.push({
+      label: 'quote → input',
+      fn: () => mcQuoteToInput(_extractMcMsgText(msg)),
+    })
+  }
   if (feedDiv && typeof getActiveThreadCopyText === 'function') {
     const threadTxt = getActiveThreadCopyText()
     if (threadTxt)
       items.push({
         label: 'copy thread',
-        fn: () => {
-          try {
-            navigator.clipboard
-              .writeText(threadTxt)
-              .then(() => showToast('thread copied', 'success'))
-              .catch(() => {})
-          } catch {}
-        },
+        fn: () => mcCopyToClipboard(threadTxt, 'thread copied'),
       })
   }
   if (msg) {
@@ -1946,14 +1936,7 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
     if (chainTxt)
       items.push({
         label: 'copy thread',
-        fn: () => {
-          try {
-            navigator.clipboard
-              .writeText(chainTxt)
-              .then(() => showToast('thread copied', 'success'))
-              .catch(() => {})
-          } catch {}
-        },
+        fn: () => mcCopyToClipboard(chainTxt, 'thread copied'),
       })
   }
   if (feedMsg && typeof isOwnFeedPost === 'function' && isOwnFeedPost(feedMsg)) {
@@ -2173,6 +2156,57 @@ function _formatMcChainLine(m) {
   const user = m.displayName || m.user || m.username || 'anon'
   const text = (m.text || m.message || m.body || '').replace(/\s+/g, ' ').trim()
   return `${user}: ${text}`
+}
+
+// Robust clipboard copy: navigator.clipboard silently rejects in a content
+// script when the doc isn't focused (the exact "why can't i copy" case), so
+// fall back to a temp-textarea execCommand and always toast either way.
+function mcCopyFallback(text) {
+  try {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0'
+    document.body.appendChild(ta)
+    ta.focus()
+    ta.select()
+    const ok = document.execCommand('copy')
+    ta.remove()
+    return ok
+  } catch {
+    return false
+  }
+}
+function mcCopyToClipboard(text, okMsg = 'copied') {
+  if (!text) return
+  const done = () => {
+    try {
+      showToast(okMsg, 'success')
+    } catch {}
+  }
+  try {
+    navigator.clipboard.writeText(text).then(done, () => {
+      if (mcCopyFallback(text)) done()
+    })
+  } catch {
+    if (mcCopyFallback(text)) done()
+  }
+}
+// Drop a message's text into the input box (quote/reply-by-paste).
+function mcQuoteToInput(text) {
+  if (!text) return
+  const input = document.getElementById('hs-mc-input')
+  if (!input) return
+  if (typeof showInputBar === 'function') showInputBar()
+  input.focus()
+  const toInsert = text + ' '
+  if (input.isContentEditable) {
+    if (!document.execCommand('insertText', false, toInsert)) {
+      input.textContent = (input.textContent || '') + toInsert
+    }
+  } else {
+    input.value = (input.value || '') + toInsert
+  }
+  input.dispatchEvent(new Event('input', { bubbles: true }))
 }
 
 function _extractMcMsgText(msg) {

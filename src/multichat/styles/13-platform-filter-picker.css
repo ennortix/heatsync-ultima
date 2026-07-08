@@ -337,9 +337,11 @@
     .hs-mc-src-chip[data-src="7tv"]  { color: #29d8f6; border-color: rgba(41,216,246,0.5); }
     .hs-mc-src-chip[data-src="bttv"] { color: #d50014; border-color: rgba(213,0,20,0.5); }
     .hs-mc-src-chip[data-src="ffz"]  { color: #0086c8; border-color: rgba(0,134,200,0.5); }
+    .hs-mc-src-chip[data-src="hs"]   { color: #ff8700; border-color: rgba(255,135,0,0.5); }
     .hs-mc-src-chip.active[data-src="7tv"]  { background: #29d8f6; color: #000; border-color: #29d8f6; }
     .hs-mc-src-chip.active[data-src="bttv"] { background: #d50014; color: #fff; border-color: #d50014; }
     .hs-mc-src-chip.active[data-src="ffz"]  { background: #0086c8; color: #fff; border-color: #0086c8; }
+    .hs-mc-src-chip.active[data-src="hs"]   { background: #ff8700; color: #000; border-color: #ff8700; }
     .hs-mc-src-chip:hover { background: #fff !important; color: #000 !important; border-color: #fff !important; }
     /* Exact-match filter chip — orange (HeatSync) accent, distinct from the
        brand-colored provider chips. Same square metrics. */

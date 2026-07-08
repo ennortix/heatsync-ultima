@@ -14,29 +14,33 @@ const mcPickerSources = (() => {
       }
     }
   } catch (_) {}
-  return new Set(['7tv', 'bttv', 'ffz'])
+  return new Set(['7tv', 'bttv', 'ffz', 'hs'])
 })()
 function mcSaveSources() {
   try {
     localStorage.setItem('hs-mc-picker-sources', JSON.stringify([...mcPickerSources]))
   } catch (_) {}
 }
+// Remote search providers, in one place so the fetch/render loops can't drift.
+// 'hs' is the native HeatSync emote directory (heatsync.org/api/emote-search).
+const MC_REMOTE_SOURCES = ['7tv', 'bttv', 'ffz', 'hs']
 function mcHasExternalSource() {
-  return mcPickerSources.has('7tv') || mcPickerSources.has('bttv') || mcPickerSources.has('ffz')
+  return MC_REMOTE_SOURCES.some((s) => mcPickerSources.has(s))
 }
 
 // Per-provider result caches keyed per-query. AbortController cancels stale
 // in-flight requests on each keystroke. Results ACCUMULATE across pages
 // (load-more appends), so a buried emote past the first page is reachable.
-const mcProviderResults = { '7tv': [], bttv: [], ffz: [] }
-const mcProviderLastQuery = { '7tv': '', bttv: '', ffz: '' }
-const mcProviderInFlight = { '7tv': false, bttv: false, ffz: false }
-const mcProviderPage = { '7tv': 0, bttv: 0, ffz: 0 } // pages loaded so far (0 = none)
-const mcProviderExhausted = { '7tv': false, bttv: false, ffz: false }
-const mcProviderSeenIds = { '7tv': new Set(), bttv: new Set(), ffz: new Set() }
-// A page shorter than the provider's page size means we hit the tail.
-const MC_PAGE_SIZE = { '7tv': 60, bttv: 100, ffz: 200 }
-const _mcProviderAborts = { '7tv': null, bttv: null, ffz: null }
+const mcProviderResults = { '7tv': [], bttv: [], ffz: [], hs: [] }
+const mcProviderLastQuery = { '7tv': '', bttv: '', ffz: '', hs: '' }
+const mcProviderInFlight = { '7tv': false, bttv: false, ffz: false, hs: false }
+const mcProviderPage = { '7tv': 0, bttv: 0, ffz: 0, hs: 0 } // pages loaded so far (0 = none)
+const mcProviderExhausted = { '7tv': false, bttv: false, ffz: false, hs: false }
+const mcProviderSeenIds = { '7tv': new Set(), bttv: new Set(), ffz: new Set(), hs: new Set() }
+// A page shorter than the provider's page size means we hit the tail. 'hs' is
+// single-page (the endpoint returns top-100 by popularity, no pagination).
+const MC_PAGE_SIZE = { '7tv': 60, bttv: 100, ffz: 200, hs: 100 }
+const _mcProviderAborts = { '7tv': null, bttv: null, ffz: null, hs: null }
 let mcCurrentQuery = ''
 // Exact-match filter — when on, picker search shows only emotes whose name
 // equals the query (drops prefix + substring), so a common stem like "xd"
@@ -118,7 +122,7 @@ function mcRerenderSearch(query) {
   // already reflects popularity (7TV TOP_ALL_TIME / FFZ count-desc), preserved
   // via `pop`. Same-name dups collapse to the first (one tile per name —
   // inventory is name-keyed, so a viewer can only hold one image per name).
-  for (const p of ['7tv', 'bttv', 'ffz']) {
+  for (const p of MC_REMOTE_SOURCES) {
     if (!mcPickerSources.has(p)) continue
     if (mcProviderLastQuery[p] !== query) continue
     for (const r of mcProviderResults[p]) {
@@ -130,7 +134,10 @@ function mcRerenderSearch(query) {
       // addEmoteToInventory to persist. Auto-add-on-send also commits the slot.
       entries.push({
         name: r.name,
-        emote: { source: p, state: 'remote', url: r.url, provider: r.provider },
+        // source tracks the emote's real provider (r.provider), which equals the
+        // bucket key p for third-party but is 'heatsync' for the 'hs' directory —
+        // keeps source/provider aligned for state + tooltip + re-add.
+        emote: { source: r.provider || p, state: 'remote', url: r.url, provider: r.provider },
         mq,
         loc: 3,
         pop: pop++,
@@ -157,7 +164,7 @@ function mcRerenderSearch(query) {
   const canLoadMore =
     entries.length > 0 &&
     !mcExactMatch &&
-    ['7tv', 'bttv', 'ffz'].some((p) => mcPickerSources.has(p) && !mcProviderExhausted[p])
+    MC_REMOTE_SOURCES.some((p) => mcPickerSources.has(p) && !mcProviderExhausted[p])
   if (canLoadMore) {
     const more = document.createElement('button')
     more.type = 'button'
@@ -258,6 +265,42 @@ async function mcSearchFfzApi(q, signal, opts) {
   })
 }
 
+// Native HeatSync emote directory. Unlike the third-party providers this hits
+// heatsync.org's own search endpoint (moderation-gated: native uploads only,
+// provably-scanned, popularity-ranked). Single-page by design — the endpoint
+// returns the top ~100 in one shot, so page>1 resolves empty and trips the
+// exhausted flag, killing load-more cleanly (no infinite same-page refetch).
+async function mcSearchHsApi(q, signal, opts) {
+  const page = opts && Number.isFinite(opts.page) ? opts.page : 1
+  if (page > 1) return [] // no server-side pagination — tail after page 1
+  const r = await fetch(`https://heatsync.org/api/emote-search?q=${encodeURIComponent(q)}&p=hs`, {
+    signal,
+    credentials: 'omit',
+  })
+  if (!r.ok) throw new Error(`hs ${r.status}`)
+  const data = await r.json()
+  const items = (data && data.results && Array.isArray(data.results.hs) && data.results.hs) || []
+  return items.map((e) => ({
+    name: e.name,
+    url: e.url, // already an absolute cdn.heatsync.org url
+    // 'heatsync' is the ext's canonical source name (detectEmoteSource,
+    // getEmoteState, .src-heatsync) — the 'hs' key is only the search wire
+    // protocol (chip + endpoint param), so the rendered emote stays consistent.
+    provider: 'heatsync',
+    id: e.id,
+    animated: !!e.animated,
+  }))
+}
+
+// Provider → page-fetcher. Add a provider here + to MC_REMOTE_SOURCES and every
+// loop below picks it up — no scattered ternaries to update.
+const MC_PROVIDER_FETCHERS = {
+  '7tv': mcSearch7tvApi,
+  bttv: mcSearchBttvApi,
+  ffz: mcSearchFfzApi,
+  hs: mcSearchHsApi,
+}
+
 function mcResetProvider(p) {
   mcProviderResults[p] = []
   mcProviderSeenIds[p].clear()
@@ -277,7 +320,11 @@ function mcFetchProviderPage(p, q) {
   const ac = new AbortController()
   _mcProviderAborts[p] = ac
   mcProviderInFlight[p] = true
-  const fn = p === '7tv' ? mcSearch7tvApi : p === 'bttv' ? mcSearchBttvApi : mcSearchFfzApi
+  const fn = MC_PROVIDER_FETCHERS[p]
+  if (!fn) {
+    mcProviderInFlight[p] = false
+    return
+  }
   fn(q, ac.signal, { page })
     .then((items) => {
       if (ac.signal.aborted || mcCurrentQuery !== q) return
@@ -309,7 +356,7 @@ function mcFetchProviderPage(p, q) {
 // for this exact query is a cache hit (skipped), so re-toggling a chip or
 // re-opening the picker doesn't refetch.
 function mcTriggerProviderSearches(q) {
-  for (const p of ['7tv', 'bttv', 'ffz']) {
+  for (const p of MC_REMOTE_SOURCES) {
     if (!q) {
       if (_mcProviderAborts[p]) {
         try {
@@ -350,7 +397,7 @@ function mcTriggerProviderSearches(q) {
 function mcLoadMoreSearch() {
   const q = mcCurrentQuery
   if (!q) return
-  for (const p of ['7tv', 'bttv', 'ffz']) mcFetchProviderPage(p, q)
+  for (const p of MC_REMOTE_SOURCES) mcFetchProviderPage(p, q)
 }
 
 const UNICODE_EMOJI_RE = /^[\p{Extended_Pictographic}\p{Emoji_Presentation}\uFE0F\u200D]+$/u
@@ -949,7 +996,7 @@ function showEmotePicker(tab = null) {
     const chipBar = document.createElement('div')
     chipBar.className = 'hs-mc-src-chips visible'
     chipBar.title = 'toggle which providers to search'
-    for (const src of ['7tv', 'bttv', 'ffz']) {
+    for (const src of MC_REMOTE_SOURCES) {
       const btn = document.createElement('button')
       btn.className = 'hs-mc-src-chip' + (mcPickerSources.has(src) ? ' active' : '')
       btn.dataset.src = src

@@ -6564,7 +6564,10 @@
       const tsVal = timestampsEnabled ? formatTimeFromTs(m.time) : ''
       const tsSpan = tsVal ? `<span class="hs-mc-ts">${tsVal}</span>` : ''
       const labelColor = m.inlineNotifColor || INLINE_NOTIF_TYPES.dm.color
-      const label = `<span style="color:${labelColor};font-size:13px;font-weight:700;margin-right:3px">[DM]</span>`
+      // twitch = whisper, heatsync = native DM — distinct labels so the row
+      // says what it actually is (both used to render [DM], which was wrong)
+      const labelText = m.platform === 'twitch' ? '[whisper]' : '[DM]'
+      const label = `<span style="color:${labelColor};font-size:13px;font-weight:700;margin-right:3px">${labelText}</span>`
       const platBadge =
         m.platform === 'twitch'
           ? '<span style="color:#9146ff;font-size:13px;font-weight:700;margin-right:3px">[T]</span>'

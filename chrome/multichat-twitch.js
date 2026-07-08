@@ -19441,6 +19441,23 @@ function _tapToMsg(m, channel) {
       .join(',')
   }
 
+  // Reply context: twitch's message model carries a `reply` object (mirrors the
+  // IRC reply-parent-* tags in irc.js). Without this, native-tapped replies —
+  // the dominant source in popout / on throttled IPs — render with no "Replying
+  // to" bar. Shapes drift across twitch builds, so every field is read
+  // defensively with the known aliases.
+  let replyTo = null
+  const rp = m.reply || m.replyParent || null
+  if (rp && (rp.parentDisplayName || rp.parentUserLogin || rp.parentMsgId)) {
+    replyTo = {
+      user: rp.parentDisplayName || rp.parentUserLogin || '',
+      text: rp.parentMessageBody || rp.parentMsgBody || '',
+      id: rp.parentMsgId || '',
+      userId: String(rp.parentUid || rp.parentUserID || rp.parentUserId || ''),
+      threadId: rp.threadParentMsgId || rp.parentMsgId || '',
+    }
+  }
+
   const msg = {
     user: display,
     login: (u.userLogin || u.login || display).toLowerCase(),
@@ -19451,7 +19468,7 @@ function _tapToMsg(m, channel) {
     channel,
     time: typeof m.timestamp === 'number' && m.timestamp > 1e12 ? m.timestamp : Date.now(),
     id: m.id,
-    replyTo: null,
+    replyTo,
     fromNativeTap: true,
   }
   if (Object.keys(emotes).length) msg.twitchEmotes = emotes
@@ -55979,7 +55996,10 @@ const STORAGE_KEY = 'heatsync_multichat'
       const tsVal = timestampsEnabled ? formatTimeFromTs(m.time) : ''
       const tsSpan = tsVal ? `<span class="hs-mc-ts">${tsVal}</span>` : ''
       const labelColor = m.inlineNotifColor || INLINE_NOTIF_TYPES.dm.color
-      const label = `<span style="color:${labelColor};font-size:13px;font-weight:700;margin-right:3px">[DM]</span>`
+      // twitch = whisper, heatsync = native DM — distinct labels so the row
+      // says what it actually is (both used to render [DM], which was wrong)
+      const labelText = m.platform === 'twitch' ? '[whisper]' : '[DM]'
+      const label = `<span style="color:${labelColor};font-size:13px;font-weight:700;margin-right:3px">${labelText}</span>`
       const platBadge =
         m.platform === 'twitch'
           ? '<span style="color:#9146ff;font-size:13px;font-weight:700;margin-right:3px">[T]</span>'

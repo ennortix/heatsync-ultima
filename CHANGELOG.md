@@ -1,5 +1,11 @@
 # changelog
 
+## [1.7.20] — 2026-07-08
+
+### fixed
+- **reply context in popout chat** — replies now show the "replying to" bar in popout and on throttled connections (the native-chat tap was dropping the reply parent).
+- **whisper vs dm label** — inline twitch whispers read `[whisper]`; heatsync dms stay `[DM]` (both used to say `[DM]`).
+
 ## [1.7.13] — 2026-07-02
 
 ### added

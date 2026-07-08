@@ -2890,6 +2890,16 @@ function _hsMcApplyMods(html, mods, hue) {
   if (imgFilter && hasImg) {
     out = out.replace(/<img(\s)/, `<img style="filter:${imgFilter} !important;"$1`)
   }
+  // Animated effects (party/shake/rainbow/bounce/jam/spin/slide/arrive/leave)
+  // ride on hs-fx-* classes (keyframes in the emote CSS) so they compose with
+  // the static transform/filter above. Merge into the img's existing class.
+  const animClasses = hsModComposeAnimClasses(mods)
+  if (animClasses.length && hasImg) {
+    const cls = animClasses.join(' ')
+    out = /<img\b[^>]*\sclass="/.test(out)
+      ? out.replace(/(<img\b[^>]*\sclass=")/, `$1${cls} `)
+      : out.replace(/<img\b/, `<img class="${cls}"`)
+  }
   // Stamp the scale factors so the load-time snap can reserve horizontal/vertical
   // space sized to the emote's REAL width (hsModBuildStyleAttr's static margins
   // assume a 28px base and under-reserve for natively-wide emotes like WideBirdge:

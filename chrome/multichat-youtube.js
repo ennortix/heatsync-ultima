@@ -3908,68 +3908,112 @@ if (typeof window !== 'undefined') {
 
 // --- modifiers.js ---
 // @ts-check
-// FFZ/BTTV-style modifier system — single source of truth.
-// Bundled into every content script via build.js readLib(). No exports.
+// BTTV/FFZ-style emote modifier system — single source of truth.
+// Bundled into every content script via build.js readLib(). Kept byte-identical
+// with the site's client/utils/hs-modifiers.js so chat renders the same on
+// Twitch native chat, the multichat overlay, and heatsync.org.
 //
-// Surfaces consuming this module:
-//   chrome/content.js          (Twitch native chat output + input preview)
-//   src/multichat/emotes.js    (multichat overlay chat output)
-//   src/multichat/input.js     (multichat overlay input box)
-//
-// Semantics:
-// - A modifier token attaches to the IMMEDIATELY PRECEDING emote (base or overlay)
-// - Multiset compounding: "Kappa w! w!" → 4x wide
-// - Each axis clamped to ±MAX_SCALE (chat layout breaks past)
-// - Chained shorthand: "w!h!ffzX" peels into [wide, tall, hflip]
+// Canonical semantics (from the REAL night/betterttv + FrankerFaceZ source):
+// - A modifier token attaches to the IMMEDIATELY PRECEDING emote (base/overlay)
+// - Scale mods compound: "Kappa w! w!" → 4× wide (clamped ±MAX_SCALE)
+// - Rotations add: "l! l!" → -180°
+// - Animated effects (party/shake/rainbow/bounce/jam/spin/slide/arrive/leave)
+//   emit a `hs-fx-*` CLASS whose @keyframes live in the emote CSS
+// - Chained shorthand: "w!h!ffzX" peels into [wide, flipH, flipH]
 // - Color: "c!#888" tints via hue-rotate (peel-friendly: "w!c!#888h!")
-// - Prefix completion: "w" → "w!", "ffzx" → "ffzX"
+// - Prefix completion: "w" → "w!", "ffzrai" → "ffzRainbow"
+
+// canonical effect name → how it renders
+const HS_FX = Object.freeze({
+  wide:    { scale: [2, 1] },
+  tall:    { scale: [1, 2] },
+  flipH:   { scale: [-1, 1] },
+  flipV:   { scale: [1, -1] },
+  rotateL: { rotate: -90 },
+  rotateR: { rotate: 90 },
+  cursed:  { filter: 'grayscale(1) brightness(0.7) contrast(2.5)' },
+  hyper:   { filter: 'brightness(0.2) sepia(1) brightness(2.2) contrast(3) saturate(8)', anim: 'hyper' },
+  party:   { anim: 'party' },
+  shake:   { anim: 'shake' },
+  rainbow: { anim: 'rainbow' },
+  bounce:  { anim: 'bounce' },
+  jam:     { anim: 'jam' },
+  spin:    { anim: 'spin' },
+  slide:   { anim: 'slide' },
+  arrive:  { anim: 'arrive' },
+  leave:   { anim: 'leave' },
+  zeroWidth: { zero: true },
+})
 
 const HS_MOD_TOKENS = Object.freeze({
+  // BTTV `!` modifiers
   'w!': 'wide',
-  'h!': 'tall',
-  'v!': 'vmirror',
-  'l!': 'hflip',
+  'h!': 'flipH',
+  'v!': 'flipV',
+  'z!': 'zeroWidth',
   'c!': 'cursed',
-  'z!': 'wide',
-  'x!': 'hflip',
-  'y!': 'vmirror',
-  ffzX: 'hflip',
-  ffzY: 'vmirror',
+  'l!': 'rotateL',
+  'r!': 'rotateR',
+  'p!': 'party',
+  's!': 'shake',
+  'x!': 'flipH',
+  'y!': 'flipV',
+  // FFZ effect emotes (static)
+  ffzX: 'flipH',
+  ffzY: 'flipV',
   ffzW: 'wide',
   ffzWide: 'wide',
   ffzTall: 'tall',
   ffzCursed: 'cursed',
+  // FFZ effect emotes (animated)
+  ffzHyper: 'hyper',
+  ffzRainbow: 'rainbow',
+  ffzBounce: 'bounce',
+  ffzJam: 'jam',
+  ffzSlide: 'slide',
+  ffzArrive: 'arrive',
+  ffzLeave: 'leave',
+  ffzSpin: 'spin',
 })
 
 const HS_MOD_TOKEN_KEYS = Object.keys(HS_MOD_TOKENS)
 const HS_MOD_KEYS_BY_LEN = HS_MOD_TOKEN_KEYS.slice().sort((a, b) => b.length - a.length)
 
-// Reverse map (mod-class → preferred wire token for serialization)
 const HS_MOD_CLASS_TO_TOKEN = Object.freeze({
   wide: 'w!',
-  tall: 'h!',
-  hflip: 'ffzX',
-  vmirror: 'ffzY',
+  tall: 'ffzTall',
+  flipH: 'h!',
+  flipV: 'v!',
+  rotateL: 'l!',
+  rotateR: 'r!',
   cursed: 'c!',
+  hyper: 'ffzHyper',
+  party: 'p!',
+  shake: 's!',
+  rainbow: 'ffzRainbow',
+  bounce: 'ffzBounce',
+  jam: 'ffzJam',
+  spin: 'ffzSpin',
+  slide: 'ffzSlide',
+  arrive: 'ffzArrive',
+  leave: 'ffzLeave',
+  zeroWidth: 'z!',
 })
 
 const HS_MOD_C_HEX_RE = /^c!#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
 const HS_MOD_C_HEX_PEEL_RE = /^c!#?([0-9a-fA-F]{6}|[0-9a-fA-F]{3})/
 const HS_MOD_MAX_SCALE = 4
 
-// Convert hex (3 or 6 chars, with or without #) to hue degrees [0, 359]
+const HS_FX_ANIM_CLASSES = Object.freeze(
+  [...new Set(Object.values(HS_FX).map(f => f.anim).filter(Boolean))].map(a => `hs-fx-${a}`)
+)
+
 function hsModHexToHue(hex) {
-  if (hex.length === 3)
-    hex = hex
-      .split('')
-      .map((c) => c + c)
-      .join('')
+  if (hex.length === 3) hex = hex.split('').map(c => c + c).join('')
   const r = parseInt(hex.slice(0, 2), 16) / 255
   const g = parseInt(hex.slice(2, 4), 16) / 255
   const b = parseInt(hex.slice(4, 6), 16) / 255
-  const max = Math.max(r, g, b),
-    min = Math.min(r, g, b),
-    d = max - min
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min
   let h = 0
   if (d) {
     if (max === r) h = ((g - b) / d) % 6
@@ -3981,8 +4025,6 @@ function hsModHexToHue(hex) {
   return Math.round(h)
 }
 
-// Resolve a possibly-partial typed shorthand to its canonical token.
-// "w" → "w!", "ffzx" → "ffzX", "ffzwide" → "ffzWide". Null if ambiguous.
 function hsModResolvePrefix(word) {
   if (!word) return null
   if (HS_MOD_TOKENS[word]) return word
@@ -3991,11 +4033,10 @@ function hsModResolvePrefix(word) {
   for (const tok of HS_MOD_TOKEN_KEYS) {
     if (tok.toLowerCase() === lower) return tok
   }
-  const matches = HS_MOD_TOKEN_KEYS.filter((k) => k.toLowerCase().startsWith(lower))
+  const matches = HS_MOD_TOKEN_KEYS.filter(k => k.toLowerCase().startsWith(lower))
   return matches.length === 1 ? matches[0] : null
 }
 
-// Peel concatenated chain like "w!h!ffzX" → { mods, hue, words } or null
 function hsModPeelChain(word) {
   if (!word) return null
   const mods = []
@@ -4003,7 +4044,6 @@ function hsModPeelChain(word) {
   let hue = null
   let rem = word
   while (rem.length > 0) {
-    // try color form first — c!#hex must win over bare c! (cursed) token
     const cm = rem.match(HS_MOD_C_HEX_PEEL_RE)
     if (cm) {
       hue = hsModHexToHue(cm[1])
@@ -4024,12 +4064,9 @@ function hsModPeelChain(word) {
     if (matched) continue
     return null
   }
-  return mods.length || hue != null ? { mods, hue, words } : null
+  return (mods.length || hue != null) ? { mods, hue, words } : null
 }
 
-// Universal classifier — combines exact, color, peel, optional prefix logic.
-// Returns: { kind: 'modifier', mods: [...], hue: number|null, words: [...] }
-//        | { kind: 'plain' }
 function hsModClassify(word, opts) {
   if (!word) return { kind: 'plain' }
   const allowPrefix = opts && opts.allowPrefix
@@ -4049,61 +4086,71 @@ function hsModClassify(word, opts) {
   return { kind: 'plain' }
 }
 
-// Multiset compose → transform { sx, sy }, clamped to ±MAX_SCALE
-function hsModComposeTransform(mods) {
-  let sx = 1,
-    sy = 1
-  if (mods)
-    for (const m of mods) {
-      if (m === 'wide') sx *= 2
-      else if (m === 'tall') sy *= 2
-      else if (m === 'hflip') sx *= -1
-      else if (m === 'vmirror') sy *= -1
-    }
+function hsModComposeAll(mods, hue) {
+  let sx = 1, sy = 1, rotate = 0, zero = false
+  const filters = []
+  const anims = []
+  if (mods) for (const m of mods) {
+    const fx = HS_FX[m]
+    if (!fx) continue
+    if (fx.scale) { sx *= fx.scale[0]; sy *= fx.scale[1] }
+    if (fx.rotate) rotate += fx.rotate
+    if (fx.filter) filters.push(fx.filter)
+    if (fx.anim && !anims.includes(fx.anim)) anims.push(fx.anim)
+    if (fx.zero) zero = true
+  }
   sx = Math.min(Math.max(sx, -HS_MOD_MAX_SCALE), HS_MOD_MAX_SCALE)
   sy = Math.min(Math.max(sy, -HS_MOD_MAX_SCALE), HS_MOD_MAX_SCALE)
-  return { sx, sy }
+  if (hue != null) filters.push(`hue-rotate(${hue}deg) saturate(1.6)`)
+  return { sx, sy, rotate, filter: filters.join(' ').trim(), anims, zero }
 }
 
-// CSS filter string from mods + hue
+function hsModComposeTransform(mods) {
+  const { sx, sy, rotate } = hsModComposeAll(mods, null)
+  return { sx, sy, rotate }
+}
+
 function hsModComposeFilter(mods, hue) {
-  let f = ''
-  if (mods && mods.includes('cursed')) f += ' hue-rotate(45deg) saturate(2)'
-  if (hue != null) f += ` hue-rotate(${hue}deg) saturate(1.6)`
-  return f.trim()
+  return hsModComposeAll(mods, hue).filter
 }
 
-// Read accumulated mod state from a DOM element's dataset
+function hsModComposeAnimClasses(mods) {
+  return hsModComposeAll(mods, null).anims.map(a => `hs-fx-${a}`)
+}
+
 function hsModRead(el) {
   if (!el || !el.dataset) return { mods: [], hue: null, words: [] }
   return {
     mods: el.dataset.hsMods ? el.dataset.hsMods.split(',').filter(Boolean) : [],
     hue: el.dataset.hsHue != null && el.dataset.hsHue !== '' ? Number(el.dataset.hsHue) : null,
-    words: el.dataset.hsWords ? el.dataset.hsWords.split(/\s+/).filter(Boolean) : [],
+    words: el.dataset.hsWords ? el.dataset.hsWords.split(/\s+/).filter(Boolean) : []
   }
 }
 
-// Apply mods/hue/words to an img element — sets dataset + inline transform/filter.
-// additive (default true): append to existing instead of replacing.
+function hsModTransformStr(sx, sy, rotate) {
+  let t = ''
+  if (sx !== 1 || sy !== 1) t += `scale(${sx}, ${sy})`
+  if (rotate) t += `${t ? ' ' : ''}rotate(${rotate}deg)`
+  return t
+}
+
 function hsModApplyToImg(img, addMods, addHue, addWords, opts) {
   if (!img) return
   const additive = !opts || opts.additive !== false
   const cur = hsModRead(img)
-  const finalMods = additive ? cur.mods.concat(addMods || []) : addMods || []
-  const finalWords = additive ? cur.words.concat(addWords || []) : addWords || []
+  const finalMods = additive ? cur.mods.concat(addMods || []) : (addMods || [])
+  const finalWords = additive ? cur.words.concat(addWords || []) : (addWords || [])
   let finalHue = addHue
   if (finalHue == null && additive) finalHue = cur.hue
   img.dataset.hsMods = finalMods.join(',')
   img.dataset.hsWords = finalWords.join(' ')
-  if (finalHue != null) img.dataset.hsHue = String(finalHue)
-  else delete img.dataset.hsHue
-  const { sx, sy } = hsModComposeTransform(finalMods)
-  const filter = hsModComposeFilter(finalMods, finalHue)
-  if (sx !== 1 || sy !== 1) {
-    img.style.setProperty('transform', `scale(${sx}, ${sy})`, 'important')
+  if (finalHue != null) img.dataset.hsHue = String(finalHue); else delete img.dataset.hsHue
+  const { sx, sy, rotate, filter, anims, zero } = hsModComposeAll(finalMods, finalHue)
+  const transform = hsModTransformStr(sx, sy, rotate)
+  if (transform) {
+    img.style.setProperty('transform', transform, 'important')
     img.style.setProperty('transform-origin', 'center', 'important')
-    const fx = Math.abs(sx),
-      fy = Math.abs(sy)
+    const fx = Math.abs(sx)
     img.style.setProperty('margin', `0 calc(0.5em * ${Math.max(0, fx - 1)})`, 'important')
   } else {
     img.style.removeProperty('transform')
@@ -4112,21 +4159,18 @@ function hsModApplyToImg(img, addMods, addHue, addWords, opts) {
   }
   if (filter) img.style.setProperty('filter', filter, 'important')
   else img.style.removeProperty('filter')
+  for (const c of HS_FX_ANIM_CLASSES) img.classList.remove(c)
+  for (const a of anims) img.classList.add(`hs-fx-${a}`)
+  img.classList.toggle('hs-fx-zero', zero)
 }
 
-// Build inline style attribute string for HTML-rendered emotes (multichat output)
 function hsModBuildStyleAttr(mods, hue) {
-  const { sx, sy } = hsModComposeTransform(mods)
-  const filter = hsModComposeFilter(mods, hue)
+  const { sx, sy, rotate, filter } = hsModComposeAll(mods, hue)
+  const transform = hsModTransformStr(sx, sy, rotate)
   let style = ''
-  if (sx !== 1 || sy !== 1) {
-    // display:inline-block is REQUIRED — the emote wrapper is display:inline by
-    // default, and CSS transforms are silently ignored on inline non-replaced
-    // elements, so scale()/flip would never render. (This is why w!/ffzW looked
-    // like it worked only while a buggy cached width was inflating the box.)
-    style += `display:inline-block !important;transform:scale(${sx}, ${sy}) !important;transform-origin:center !important;`
-    const fx = Math.abs(sx),
-      fy = Math.abs(sy)
+  if (transform) {
+    style += `transform:${transform} !important;transform-origin:center !important;`
+    const fx = Math.abs(sx), fy = Math.abs(sy)
     if (fx > 1) {
       const halfX = `calc(var(--hs-emote-width,28px) * ${(fx - 1) / 2})`
       style += `margin-left:${halfX} !important;margin-right:${halfX} !important;`
@@ -4140,7 +4184,13 @@ function hsModBuildStyleAttr(mods, hue) {
   return style
 }
 
-// Inject a style attribute into the OUTERMOST <span ...> in an HTML string.
+// The `hs-fx-*` animation classes to add to a rendered emote img className (for
+// the string-render path, which can't carry an inline style-only animation).
+function hsModAnimClassAttr(mods) {
+  const classes = hsModComposeAnimClasses(mods)
+  return classes.length ? ' ' + classes.join(' ') : ''
+}
+
 // Used by multichat string-render to attach modifier styles to emote wrappers.
 function hsModInjectWrapperStyle(html, styleStr) {
   if (!styleStr) return html
@@ -4150,7 +4200,6 @@ function hsModInjectWrapperStyle(html, styleStr) {
   })
 }
 
-
 // Convert mod-class array back to wire tokens for sending. Hue lossy → c!#hex
 // can't recover original hex (we only stored degrees). Recipient still tints.
 function hsModWordsFromState(mods, hue) {
@@ -4159,51 +4208,22 @@ function hsModWordsFromState(mods, hue) {
     out.push(HS_MOD_CLASS_TO_TOKEN[m] || '?' + m)
   }
   if (hue != null) {
-    // Convert hue degrees back to a hex (saturation/lightness fixed) for transport
     const h = ((hue % 360) + 360) % 360
     const c = 1
     const x = 1 - Math.abs(((h / 60) % 2) - 1)
-    let r = 0,
-      g = 0,
-      b = 0
-    if (h < 60) {
-      r = c
-      g = x
-      b = 0
-    } else if (h < 120) {
-      r = x
-      g = c
-      b = 0
-    } else if (h < 180) {
-      r = 0
-      g = c
-      b = x
-    } else if (h < 240) {
-      r = 0
-      g = x
-      b = c
-    } else if (h < 300) {
-      r = x
-      g = 0
-      b = c
-    } else {
-      r = c
-      g = 0
-      b = x
-    }
-    const hex =
-      '#' +
-      [r, g, b]
-        .map((v) =>
-          Math.round(v * 255)
-            .toString(16)
-            .padStart(2, '0'),
-        )
-        .join('')
+    let r = 0, g = 0, b = 0
+    if (h < 60)       { r = c; g = x; b = 0 }
+    else if (h < 120) { r = x; g = c; b = 0 }
+    else if (h < 180) { r = 0; g = c; b = x }
+    else if (h < 240) { r = 0; g = x; b = c }
+    else if (h < 300) { r = x; g = 0; b = c }
+    else              { r = c; g = 0; b = x }
+    const hex = '#' + [r, g, b].map(v => Math.round(v * 255).toString(16).padStart(2, '0')).join('')
     out.push('c!' + hex)
   }
   return out
 }
+
 
 
 // --- undo-manager.js ---
@@ -10229,6 +10249,74 @@ function injectStyles() {
       font-size: 13px;
     }
 
+
+/* ── BTTV/FFZ emote modifier EFFECTS ─────────────────────────────────────
+   Animated modifiers applied via hs-fx-* classes by src/lib/modifiers.js
+   (hsModApplyToImg / _hsMcApplyMods). Canonical night/betterttv + FFZ values.
+   Animations drive the INDIVIDUAL translate/rotate/scale/filter props so they
+   compose with the inline transform (w! ffzSpin = wide AND spinning). Kept in
+   sync with the site (public/css/modules/emotes.css). */
+img.hs-fx-rainbow { animation: hs-fx-rainbow 2s linear infinite; }
+@keyframes hs-fx-rainbow { from { filter: hue-rotate(0deg); } to { filter: hue-rotate(360deg); } }
+
+img.hs-fx-party { animation: hs-fx-party 1.5s linear infinite; }
+@keyframes hs-fx-party {
+  0%   { filter: sepia(.5) hue-rotate(0deg) saturate(2.5); }
+  100% { filter: sepia(.5) hue-rotate(360deg) saturate(2.5); }
+}
+
+img.hs-fx-spin { animation: hs-fx-spin 1.5s linear infinite; }
+@keyframes hs-fx-spin { from { rotate: 0deg; } to { rotate: 360deg; } }
+
+img.hs-fx-shake { animation: hs-fx-shake 500ms step-start infinite; }
+@keyframes hs-fx-shake {
+  0%{translate:0 1px}10%{translate:2px 0}20%{translate:1px -2px}30%{translate:-2px 1px}
+  40%{translate:0 -1px}50%{translate:2px 2px}60%{translate:-1px -1px}70%{translate:-2px 2px}
+  80%{translate:2px 1px}90%{translate:-1px -2px}100%{translate:1px 0}
+}
+
+img.hs-fx-hyper { animation: hs-fx-hyper 0.1s linear infinite; }
+@keyframes hs-fx-hyper {
+  0%{translate:1px 1px}10%{translate:-1px -2px}20%{translate:-3px 0}30%{translate:3px 2px}
+  40%{translate:1px -1px}50%{translate:-1px 2px}60%{translate:-3px 1px}70%{translate:3px 1px}
+  80%{translate:-1px -1px}90%{translate:1px 2px}100%{translate:1px -2px}
+}
+
+img.hs-fx-bounce { transform-origin: bottom center; animation: hs-fx-bounce 0.5s linear infinite; }
+@keyframes hs-fx-bounce {
+  0%{scale:.8 1}10%{scale:.9 .8}20%{scale:1 .4}25%{scale:1.2 .3}30%{scale:1 .4}
+  40%{scale:.9 .8}50%{scale:.8 1}60%{scale:.9 .8}70%{scale:1 .4}75%{scale:1.2 .3}
+  80%{scale:1 .4}90%{scale:.9 .8}100%{scale:.8 1}
+}
+
+img.hs-fx-jam { animation: hs-fx-jam 0.6s linear infinite; }
+@keyframes hs-fx-jam {
+  0%{translate:-2px -2px;rotate:-6deg}10%{translate:-1.5px -2px;rotate:-8deg}
+  20%{translate:1px -1.5px;rotate:-8deg}30%{translate:3px 2.5px;rotate:-6deg}
+  40%{translate:3px 4px;rotate:-2deg}50%{translate:2px 4px;rotate:3deg}
+  60%{translate:1px 4px;rotate:3deg}70%{translate:-.5px 3px;rotate:2deg}
+  80%{translate:-1.25px 1px;rotate:0deg}90%{translate:-1.75px -.5px;rotate:-2deg}
+  100%{translate:-2px -2px;rotate:-5deg}
+}
+
+img.hs-fx-slide { animation: hs-fx-slide 1.5s ease-in-out infinite; }
+@keyframes hs-fx-slide { 0%,100%{translate:-30% 0}50%{translate:30% 0} }
+
+img.hs-fx-arrive { animation: hs-fx-arrive 3s linear infinite; }
+@keyframes hs-fx-arrive {
+  0%{translate:-18px 0;scale:.1}20%{translate:-18px 0;scale:.1}
+  45%{translate:0 0;scale:1}100%{translate:0 0;scale:1}
+}
+
+img.hs-fx-leave { animation: hs-fx-leave 3s linear infinite; }
+@keyframes hs-fx-leave {
+  0%{translate:0 0;scale:1}55%{translate:0 0;scale:1}
+  80%{translate:18px 0;scale:.1}100%{translate:18px 0;scale:.1}
+}
+
+img.hs-fx-zero { margin-left: -4px; }
+
+@media (prefers-reduced-motion: reduce) { img[class*="hs-fx-"] { animation: none !important; } }
     /* Input styles (used in #hs-mc-inputbar) */
     #hs-mc-input {
       flex: 1;
@@ -22708,6 +22796,16 @@ function _hsMcApplyMods(html, mods, hue) {
   if (wrapperStyle) out = hsModInjectWrapperStyle(out, wrapperStyle)
   if (imgFilter && hasImg) {
     out = out.replace(/<img(\s)/, `<img style="filter:${imgFilter} !important;"$1`)
+  }
+  // Animated effects (party/shake/rainbow/bounce/jam/spin/slide/arrive/leave)
+  // ride on hs-fx-* classes (keyframes in the emote CSS) so they compose with
+  // the static transform/filter above. Merge into the img's existing class.
+  const animClasses = hsModComposeAnimClasses(mods)
+  if (animClasses.length && hasImg) {
+    const cls = animClasses.join(' ')
+    out = /<img\b[^>]*\sclass="/.test(out)
+      ? out.replace(/(<img\b[^>]*\sclass=")/, `$1${cls} `)
+      : out.replace(/<img\b/, `<img class="${cls}"`)
   }
   // Stamp the scale factors so the load-time snap can reserve horizontal/vertical
   // space sized to the emote's REAL width (hsModBuildStyleAttr's static margins

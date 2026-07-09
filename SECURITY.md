@@ -30,7 +30,6 @@ cross-platform chat extension and nothing speculative.
 |---|---|
 | `storage`, `unlimitedStorage` | store settings, emote inventory, and blocked-emote list locally (inventory can exceed the sync-storage per-item quota) |
 | `cookies` | read your *own* httpOnly auth token on heatsync.org / twitch / kick to act on your behalf (send chat, follow, set color); content scripts cannot read httpOnly cookies, so this is the only mechanism |
-| `tabs` | coordinate the multichat websocket across your open tabs and open notification links |
 | `alarms` | keep the background service worker's periodic tasks (emote refresh, live polling) alive after the SW is evicted |
 | `notifications` | live-stream alerts you opt into |
 | host permissions | inject the chat UI and fetch emote/cosmetic data on the platforms this extension is built for (twitch, kick, youtube, 7tv, ffz, bttv, heatsync.org) |
@@ -40,6 +39,7 @@ cross-platform chat extension and nothing speculative.
 - `<all_urls>` — host access is an explicit allowlist, never "every site"
 - `scripting` — no programmatic code injection; every content script is statically declared in the manifest and auditable
 - `webRequest` — we never intercept, read, or modify your network traffic
+- `tabs` — we call the tabs API only to message our own content scripts and open notification links; we do **not** hold the `tabs` permission. reading a tab's url/title is granted by our host allowlist alone, so we can never see tabs outside twitch/kick/youtube/heatsync.
 - `management` — we cannot see or disable your other extensions
 - `history`, `bookmarks`, `geolocation`, `clipboardRead` — none requested
 

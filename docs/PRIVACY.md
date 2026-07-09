@@ -24,8 +24,9 @@ the heatsync extension collects the following data:
 
 - **emote sync:** your token is sent to heatsync.org to fetch your emotes and sync blocks across devices
 - **cosmetics:** emote names and user IDs are sent to 7TV, FFZ, and BTTV to fetch visual styles and badges
-- **username resolution:** channel or streamer names are sent to decapi.me (Twitch public API wrapper) to resolve usernames to numeric IDs for cosmetic lookups
+- **username resolution:** channel or streamer names are sent to heatsync.org, which resolves them to numeric Twitch IDs server-side for cosmetic lookups
 - **real-time chat:** channel names are sent to the heatsync WebSocket to enable live emote broadcasts
+- **kick live chat:** your Kick chatroom ID is sent to Pusher (`wss://ws-us2.pusher.com`), Kick's real-time chat transport, to receive live messages
 - **multichat routing:** YouTube video IDs help route live chat messages to the correct channel in your multichat panel
 
 the extension acts on a third-party platform only when *you* explicitly initiate it — sending a chat message, setting your username color, creating a clip, following a channel, or (if you are a moderator) moderation actions like timeouts. it never acts autonomously or in the background, and never changes account settings you did not trigger.
@@ -35,7 +36,7 @@ the extension acts on a third-party platform only when *you* explicitly initiate
 - **browser storage:** encrypted token, emote inventory, blocked emotes, channel names, video IDs, preferences — all stored in your browser's local extension storage using `browser.storage.local`
 - **heatsync.org:** your account profile, emote inventory, and blocked emotes list (encrypted at rest)
 - **7tv.io, frankerfacez.com, betterttv.net:** no storage — their APIs return cosmetics on-demand only
-- **decapi.me:** no storage — stateless username→ID lookup
+- **pusher (ws-us2.pusher.com):** no storage — Kick's real-time chat transport; receives your Kick chatroom ID to subscribe to live messages
 - **twitch, kick:** no data collected — the extension reads Twitch/Kick's public chat DOM only
 - **www.youtube.com:** YouTube channel handles and video IDs are sent only to fetch live-page metadata (oembed) so live-chat messages route to the correct multichat tab — no message content or viewer data is collected
 
@@ -52,10 +53,8 @@ the extension communicates with the following services. **no personal data is so
 | api.7tv.app | search query string | resolve unknown emote names typed in tab-complete |
 | frankerfacez.com (FFZ) | emote names (batch query) | fetch badge metadata |
 | betterttv.net (BTTV) | emote names (batch query) | fetch badge metadata |
-| decapi.me | channel names (streamer usernames) | resolve to Twitch ID for cosmetics lookups |
-| recent-messages.robotty.de | channel names | fetch recent Twitch chat history on join |
-| logs.ivr.fi, logs.spanix.team, logs.zonian.dev | channel names + usernames | fetch extended Twitch chat history and per-user log search on join |
-| api.chatterino.com | none (public GET, no personal data) | fetch Chatterino contributor badges |
+| heatsync.org | channel / streamer names, usernames | first-party proxy — resolves usernames→Twitch ID, fetches recent chat history, per-user log history, and Chatterino contributor badges server-side, so these requests aren't made from your IP (previously direct to decapi.me / robotty / ivr.fi / chatterino) |
+| pusher (ws-us2.pusher.com) | Kick chatroom ID | Kick's real-time chat transport — receive live Kick chat messages |
 | twitch.tv, kick.com | none — extension reads DOM only | display overlays in chat |
 | www.youtube.com | YouTube channel handles + video IDs | fetch live-page metadata (oembed) to resolve channels and route live-chat messages |
 

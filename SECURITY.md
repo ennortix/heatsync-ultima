@@ -15,11 +15,11 @@ please don't open a public GitHub issue for security bugs. we'll acknowledge wit
 
 **MAIN world script** — `early-inject-main.js` runs at `document_start` in the page's JavaScript context (not the extension's isolated context) on twitch.tv. this is required to intercept twitch internals before react mounts. it means the script shares the page's JS scope and has no isolation from page scripts. we treat it as a known, intentional trade-off.
 
-because a nonce cannot be kept secret in a realm shared with the page, the privileged proxies this script exposes (twitch Helix + Apollo GraphQL — used for chat color, chat modes, clip creation, and a fixed set of chat mutations) are each constrained by an **explicit endpoint+method / mutation-name allowlist plus a rate limit**. a message forged by a co-resident page script can therefore only replay the extension's own operations with the user's token — it cannot reach arbitrary Helix endpoints (ban / delete / channel-update). the Helix proxy allowlist lives in `chrome/early-inject-main.js`.
+because a nonce cannot be kept secret in a realm shared with the page, the init nonce is frozen after its first setter (a page script cannot overwrite it to authenticate its own messages) and the privileged GraphQL proxies this script exposes are each constrained by an **explicit operation-name allowlist plus a per-window rate limit**. the allowlist covers only the extension's own actions — chat modes, send, ban / unban / delete, follow / unfollow, whisper, predictions, polls, and point redeems. a message forged by a co-resident page script can therefore only replay one of those allowlisted operations, rate-limited, with the user's token — it cannot run an arbitrary GraphQL query or reach any operation outside the allowlist. every one of those actions is still gated server-side by the user's own session and permissions (a ban only lands if the user is already a mod in that channel), so a replay can do nothing the user couldn't already do by hand. the operation allowlists (GQL + Apollo) live in `chrome/early-inject-main.js`. clip creation is not part of this proxy — it goes through heatsync.org's own authenticated API.
 
 ## scope
 
-extension-side processing happens locally in the browser tab. the extension communicates with heatsync.org for emote sync, and with 7TV/FFZ/BTTV/decapi.me for cosmetics — see [docs/PRIVACY.md](docs/PRIVACY.md) for the full data flow.
+extension-side processing happens locally in the browser tab. the extension communicates with heatsync.org (emote sync, plus first-party proxying of username→id, recent-messages, and chatterino-badge lookups), directly with 7TV / FFZ / BTTV for cosmetics, and with pusher (`wss://ws-us2.pusher.com`) for kick's live-chat transport — see [docs/PRIVACY.md](docs/PRIVACY.md) for the full data flow.
 
 ## permissions — and what we deliberately don't request
 
@@ -46,10 +46,10 @@ cross-platform chat extension and nothing speculative.
 ## content-script defenses
 
 - **`escapeHtml()`** wraps every user-supplied value (chat text, display names, emote names, profile fields, feed metadata) before it can reach `innerHTML` or `insertAdjacentHTML`. enforced in `src/lib/utils.js`. exception: feed post body text is HTML-escaped server-side before storage and is rendered as-is — re-escaping would double-encode entities.
-- **`safeUrl()`** validates urls before assigning them to `href` / `src`; only `http(s):` schemes pass.
+- **`safeUrl()`** gates every url assigned to a link `href` or an iframe / embed `src` — the sinks where a `javascript:` / `data:` scheme could execute; only `http(s):` passes. media (`img` / `video`) `src` additionally pass through `escapeHtml()`.
 - **`sanitizeColor()`** restricts user-supplied colors to `#rrggbb` / `#rgb` hex.
 - **CSP**: extension pages declare `script-src 'self'; object-src 'none'` in both MV3 (`extension_pages`) and MV2 manifests — no inline eval, no remote scripts.
-- **trusted origins** allowlist in `src/lib/utils.js` gates any url passed to background.
+- **SSRF guard**: urls the content script asks the background to fetch (link previews, feed embeds) are validated in `chrome/background.js` (`fetch_link_preview` / `fetch_embed_resolve`) — `http(s):`-only, with a localhost / private-IP blocklist so the proxy can't be aimed at the local network.
 
 ## build pipeline guards
 

@@ -43260,6 +43260,58 @@ const hsPaintPending = new Set()
 let hsPaintBatchTimer = null
 let hsPaintSheetEl = null
 
+// ── picked name colour (users.color) ────────────────────────────────────────
+// Rides the same /api/paints batch (server now returns a `colors` map). Applied
+// to youtube + kick names ONLY — never twitch, whose custom name colour is the
+// prime/turbo paid perk (overriding it would free-trump twitch's model, same
+// reasoning as not free-trumping 7TV's paid paints). A resolved HS paint still
+// wins over any colour. Youtube (no native colour) also gets a deterministic
+// djb2 palette colour at render time so its names aren't monochrome red.
+const hsColorCache = new Map() // uid (yt_<UCid> / kick_<id>) -> "#RRGGBB" | null
+
+// djb2 → palette. MUST stay byte-identical to the website
+// (client/utils/color-utils.js usernameColor + server chat-log-permalinks.ts)
+// so a chatter is the same colour in the extension, on heatsync.org, and on
+// SSR /logs pages.
+const HS_USERNAME_PALETTE = [
+  '#ff7a7a',
+  '#ff9d4d',
+  '#ffd24d',
+  '#b3e833',
+  '#5fd75f',
+  '#33d9b2',
+  '#5fbfd7',
+  '#69a8ff',
+  '#a675ff',
+  '#d76bcb',
+  '#ff6e9c',
+  '#ff8fc0',
+  '#e57373',
+  '#f0a23a',
+  '#7bc46c',
+]
+function hsUsernameColor(username) {
+  let h = 5381
+  const s = String(username || '').toLowerCase()
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0
+  return HS_USERNAME_PALETTE[Math.abs(h) % HS_USERNAME_PALETTE.length]
+}
+
+const HS_HEX_RE = /^#[0-9a-fA-F]{6}$/
+function setHsColorEntry(uid, color) {
+  if (!hsColorCache.has(uid)) evictOldestPaintEntry(hsColorCache, HS_PAINT_CACHE_MAX)
+  // Validate here so every cached colour is a safe #RRGGBB — callers can then
+  // apply it to style.color without re-sanitizing (sanitizeColor is scoped to
+  // main.js and not reachable from cosmetics.js).
+  hsColorCache.set(uid, typeof color === 'string' && HS_HEX_RE.test(color) ? color : null)
+}
+
+/** @returns {string|null} the user's picked #hex colour, or null if none / not
+ * yet resolved. Callers treat null as "no picked colour". */
+function getHsPickedColor(uid) {
+  return hsColorCache.get(uid) ?? null
+}
+
 // ── pure helpers (unit-testable without DOM/network) ────────────────────────
 
 /**
@@ -43490,6 +43542,20 @@ function queuePaintLookup(userId) {
   if (!hsPaintBatchTimer) hsPaintBatchTimer = cleanup.setTimeout(flushHsPaintBatch, HS_PAINT_BATCH_DELAY)
 }
 
+/**
+ * Queue a youtube/kick uid for its PICKED name colour. Un-gated by the paint
+ * setting — a picked colour is a base colour, not a cosmetic paint, so it must
+ * resolve even with name-paints off. Rides the same batch/flush as paints
+ * (colours piggyback on the /api/paints response). Deduped via hsColorCache.
+ */
+function queueNameColorLookup(uid) {
+  if (!uid) return
+  if (hsColorCache.has(uid)) return
+  if (hsPaintPending.size >= HS_PAINT_PENDING_MAX) return
+  hsPaintPending.add(uid)
+  if (!hsPaintBatchTimer) hsPaintBatchTimer = cleanup.setTimeout(flushHsPaintBatch, HS_PAINT_BATCH_DELAY)
+}
+
 async function flushHsPaintBatch() {
   hsPaintBatchTimer = null
   if (!hsPaintPending.size) return
@@ -43498,11 +43564,27 @@ async function flushHsPaintBatch() {
   for (const id of rest) hsPaintPending.add(id)
 
   let paints = null
+  let colors = null
   try {
     const resp = await safeSendMessage({ type: 'fetch_paints', userIds: batch })
     if (resp && resp.paints && typeof resp.paints === 'object') paints = resp.paints
+    if (resp && resp.colors && typeof resp.colors === 'object') colors = resp.colors
   } catch (e) {
     paints = null
+  }
+
+  // Picked name colours ride the same response. Cache + apply independently of
+  // the paint path (colour resolves even with paints off). Only the confirmed
+  // batch is cached here; ids absent from `colors` simply have no picked colour.
+  if (colors) {
+    const colorChanged = []
+    for (const id of batch) {
+      if (!hsColorCache.has(id)) {
+        setHsColorEntry(id, colors[id] || null)
+        if (colors[id]) colorChanged.push(id)
+      }
+    }
+    if (colorChanged.length && typeof updateHsColorsInPlace === 'function') updateHsColorsInPlace(colorChanged)
   }
 
   if (paints) {
@@ -44107,6 +44189,30 @@ function updateHsPaintsInPlace(userIds) {
       if (isKickUid && hasResolvedHsPaint(div._hsMsg?.userId)) continue
       const userLink = div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
       if (userLink) applyHsPaintToElement(userLink, uid)
+    }
+  }
+}
+
+// Apply a resolved PICKED name colour to visible youtube/kick rows in place.
+// youtube + kick uids are namespaced (yt_<UCid> / kick_<id>) so their rows
+// carry data-hs-paint-uid, never data-uid — same lookup updateHsPaintsInPlace
+// uses. NEVER twitch (its rows use data-uid and its colour is the prime perk).
+// A resolved HS paint owns the fill, so skip painted names.
+function updateHsColorsInPlace(userIds) {
+  const container = document.getElementById('hs-mc-messages')
+  if (!container) return
+  for (const uid of userIds) {
+    // Cached colour is already validated #RRGGBB (setHsColorEntry), safe for
+    // style.color without re-sanitizing.
+    const colour = getHsPickedColor(uid)
+    if (!colour) continue
+    const divs = container.querySelectorAll(`[data-hs-paint-uid="${CSS.escape(uid)}"]`)
+    for (const div of divs) {
+      // A row's own resolved paint (twitch-uid or this namespaced uid) wins.
+      if (hasResolvedHsPaint(div._hsMsg?.userId) || hasResolvedHsPaint(uid)) continue
+      const userLink = div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
+      // paint class (hsp-) owns the fill via CSS — don't overwrite with a colour.
+      if (userLink && !userLink.className.includes('hsp-')) userLink.style.color = colour
     }
   }
 }
@@ -55933,6 +56039,19 @@ const STORAGE_KEY = 'heatsync_multichat'
     // twitch link, so try twitch first, then the kick-namespaced id.
     const hsPaint = hsPaintRender(m.userId, m.user) || (m.hsPaintUid ? hsPaintRender(m.hsPaintUid, m.user) : null)
     const paintStyle = hsPaint ? '' : m.userId ? getMcPaintStyle(m.userId) : ''
+    // Name colour (when no HS/7TV paint owns the fill): the user's PICKED
+    // heatsync colour on youtube + kick ONLY — never twitch, whose custom name
+    // colour is the prime/turbo paid perk. YouTube has no native colour, so its
+    // names fall back to a deterministic djb2 palette colour (identical to
+    // heatsync.org) instead of a flat red. Picked colour resolves async via the
+    // same batch as paints (updateHsColorsInPlace repaints in place).
+    let hsNameColor = m.color
+    if (plat === 'yt' || plat === 'kick') {
+      if (m.hsPaintUid) queueNameColorLookup(m.hsPaintUid)
+      const picked = m.hsPaintUid ? getHsPickedColor(m.hsPaintUid) : null
+      if (picked) hsNameColor = picked
+      else if (plat === 'yt') hsNameColor = hsUsernameColor(m.user)
+    }
     // Build the channel link for the username. YouTube usernames arrive
     // prefixed with "@" so we strip it before concatenating to avoid
     // youtube.com/@/%40handle-style double-encoding.
@@ -55947,7 +56066,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     } else {
       userHref = `https://twitch.tv/${encodeURIComponent(m.user)}`
     }
-    const userLink = `<a href="${userHref}" target="_blank" rel="noopener noreferrer" class="hs-mc-user${hsPaint ? ' ' + hsPaint.cls : ''}" data-username="${escapeHtml(m.user.toLowerCase())}" data-platform="${plat}"${hsPaint ? hsPaint.splitAttr : ''} style="${hsPaint ? '' : paintStyle || 'color:' + sanitizeColor(m.color || '#fff')}">${hsPaint ? hsPaint.html : escapeHtml(m.user)}</a>`
+    const userLink = `<a href="${userHref}" target="_blank" rel="noopener noreferrer" class="hs-mc-user${hsPaint ? ' ' + hsPaint.cls : ''}" data-username="${escapeHtml(m.user.toLowerCase())}" data-platform="${plat}"${hsPaint ? hsPaint.splitAttr : ''} style="${hsPaint ? '' : paintStyle || 'color:' + sanitizeColor(hsNameColor || '#fff')}">${hsPaint ? hsPaint.html : escapeHtml(m.user)}</a>`
     let avatarHtml = ''
     if (avatarsEnabled) {
       const userKey = m.user.toLowerCase()

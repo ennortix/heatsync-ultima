@@ -6871,6 +6871,19 @@
     // twitch link, so try twitch first, then the kick-namespaced id.
     const hsPaint = hsPaintRender(m.userId, m.user) || (m.hsPaintUid ? hsPaintRender(m.hsPaintUid, m.user) : null)
     const paintStyle = hsPaint ? '' : m.userId ? getMcPaintStyle(m.userId) : ''
+    // Name colour (when no HS/7TV paint owns the fill): the user's PICKED
+    // heatsync colour on youtube + kick ONLY — never twitch, whose custom name
+    // colour is the prime/turbo paid perk. YouTube has no native colour, so its
+    // names fall back to a deterministic djb2 palette colour (identical to
+    // heatsync.org) instead of a flat red. Picked colour resolves async via the
+    // same batch as paints (updateHsColorsInPlace repaints in place).
+    let hsNameColor = m.color
+    if (plat === 'yt' || plat === 'kick') {
+      if (m.hsPaintUid) queueNameColorLookup(m.hsPaintUid)
+      const picked = m.hsPaintUid ? getHsPickedColor(m.hsPaintUid) : null
+      if (picked) hsNameColor = picked
+      else if (plat === 'yt') hsNameColor = hsUsernameColor(m.user)
+    }
     // Build the channel link for the username. YouTube usernames arrive
     // prefixed with "@" so we strip it before concatenating to avoid
     // youtube.com/@/%40handle-style double-encoding.
@@ -6885,7 +6898,7 @@
     } else {
       userHref = `https://twitch.tv/${encodeURIComponent(m.user)}`
     }
-    const userLink = `<a href="${userHref}" target="_blank" rel="noopener noreferrer" class="hs-mc-user${hsPaint ? ' ' + hsPaint.cls : ''}" data-username="${escapeHtml(m.user.toLowerCase())}" data-platform="${plat}"${hsPaint ? hsPaint.splitAttr : ''} style="${hsPaint ? '' : paintStyle || 'color:' + sanitizeColor(m.color || '#fff')}">${hsPaint ? hsPaint.html : escapeHtml(m.user)}</a>`
+    const userLink = `<a href="${userHref}" target="_blank" rel="noopener noreferrer" class="hs-mc-user${hsPaint ? ' ' + hsPaint.cls : ''}" data-username="${escapeHtml(m.user.toLowerCase())}" data-platform="${plat}"${hsPaint ? hsPaint.splitAttr : ''} style="${hsPaint ? '' : paintStyle || 'color:' + sanitizeColor(hsNameColor || '#fff')}">${hsPaint ? hsPaint.html : escapeHtml(m.user)}</a>`
     let avatarHtml = ''
     if (avatarsEnabled) {
       const userKey = m.user.toLowerCase()

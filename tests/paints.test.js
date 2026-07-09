@@ -8,10 +8,41 @@ import {
   computeHsLetterSpans,
   evictOldestPaintEntry,
   getHsPaintClass,
+  getHsPickedColor,
+  hsUsernameColor,
   partitionPaintBatch,
+  setHsColorEntry,
   setHsPaintEntry,
   splitHsLettersHtml,
 } from '../src/multichat/paints.js'
+
+// Reference copy of the SHARED djb2 username-colour contract (website
+// client/utils/color-utils.js usernameColor + server chat-log-permalinks.ts).
+// The extension copy MUST match byte-for-byte so a chatter is the same colour
+// in the overlay, on heatsync.org, and on SSR /logs pages.
+const REF_USERNAME_PALETTE = [
+  '#ff7a7a',
+  '#ff9d4d',
+  '#ffd24d',
+  '#b3e833',
+  '#5fd75f',
+  '#33d9b2',
+  '#5fbfd7',
+  '#69a8ff',
+  '#a675ff',
+  '#d76bcb',
+  '#ff6e9c',
+  '#ff8fc0',
+  '#e57373',
+  '#f0a23a',
+  '#7bc46c',
+]
+function refUsernameColor(username) {
+  let h = 5381
+  const s = String(username || '').toLowerCase()
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0
+  return REF_USERNAME_PALETTE[Math.abs(h) % REF_USERNAME_PALETTE.length]
+}
 
 // Most of this file unit-tests pure/stateless helpers only — queuePaintLookup,
 // flushHsPaintBatch, ensureHsPaintSheet etc. reach into the shared multichat
@@ -303,5 +334,36 @@ describe('paint lookup id-space guard — structural invariant', () => {
     expect(fnBody).not.toMatch(/queuePaintLookup\(c\.kickId\)/)
     // biome-ignore lint/suspicious/noTemplateCurlyInString: asserting literal source text (the kick_ template literal), not writing a real template string
     expect(fnBody).toContain('`kick_${c.kickId}`')
+  })
+})
+
+describe('picked name colour + youtube hash fallback', () => {
+  test('hsUsernameColor matches the shared website/server contract', () => {
+    for (const name of ['mellen', 'xQc', 'ASKITTLEZ', 'a', 'UC1234567890abcdefghijkl', '日本語user', '']) {
+      expect(hsUsernameColor(name)).toBe(refUsernameColor(name))
+    }
+  })
+
+  test('hsUsernameColor is case-insensitive and always a palette colour', () => {
+    expect(hsUsernameColor('MELLEN')).toBe(hsUsernameColor('mellen'))
+    expect(REF_USERNAME_PALETTE).toContain(hsUsernameColor('somechatter'))
+  })
+
+  test('hsUsernameColor handles null/undefined without throwing', () => {
+    expect(REF_USERNAME_PALETTE).toContain(hsUsernameColor(undefined))
+    expect(REF_USERNAME_PALETTE).toContain(hsUsernameColor(null))
+  })
+
+  test('setHsColorEntry only stores valid #RRGGBB, else null', () => {
+    setHsColorEntry('yt_UCaaaaaaaaaaaaaaaaaaaaaa', '#FF8700')
+    expect(getHsPickedColor('yt_UCaaaaaaaaaaaaaaaaaaaaaa')).toBe('#FF8700')
+    setHsColorEntry('kick_999', 'red; content:url(x)')
+    expect(getHsPickedColor('kick_999')).toBeNull()
+    setHsColorEntry('kick_998', null)
+    expect(getHsPickedColor('kick_998')).toBeNull()
+  })
+
+  test('getHsPickedColor returns null for an unseen uid', () => {
+    expect(getHsPickedColor('yt_UCneverseen00000000000')).toBeNull()
   })
 })

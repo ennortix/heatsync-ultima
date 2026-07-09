@@ -521,6 +521,30 @@ function updateHsPaintsInPlace(userIds) {
   }
 }
 
+// Apply a resolved PICKED name colour to visible youtube/kick rows in place.
+// youtube + kick uids are namespaced (yt_<UCid> / kick_<id>) so their rows
+// carry data-hs-paint-uid, never data-uid — same lookup updateHsPaintsInPlace
+// uses. NEVER twitch (its rows use data-uid and its colour is the prime perk).
+// A resolved HS paint owns the fill, so skip painted names.
+function updateHsColorsInPlace(userIds) {
+  const container = document.getElementById('hs-mc-messages')
+  if (!container) return
+  for (const uid of userIds) {
+    // Cached colour is already validated #RRGGBB (setHsColorEntry), safe for
+    // style.color without re-sanitizing.
+    const colour = getHsPickedColor(uid)
+    if (!colour) continue
+    const divs = container.querySelectorAll(`[data-hs-paint-uid="${CSS.escape(uid)}"]`)
+    for (const div of divs) {
+      // A row's own resolved paint (twitch-uid or this namespaced uid) wins.
+      if (hasResolvedHsPaint(div._hsMsg?.userId) || hasResolvedHsPaint(uid)) continue
+      const userLink = div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
+      // paint class (hsp-) owns the fill via CSS — don't overwrite with a colour.
+      if (userLink && !userLink.className.includes('hsp-')) userLink.style.color = colour
+    }
+  }
+}
+
 // Update cosmetics (badges + paint) in-place without full re-render.
 // O(1) lookup via _uidIndex / _mentionIndex instead of querySelectorAll over
 // the full message container — at 25-user batches × 500 children that was

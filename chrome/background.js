@@ -2843,11 +2843,14 @@ function setUserCosmetic(twitchId, cosmetic) {
   debounceSaveCosmetics()
 }
 
-function setPaintCache(twitchId, spec) {
+function setPaintCache(twitchId, spec, color = null) {
   if (_paintsCache.size >= PAINTS_CACHE_MAX) {
     _paintsCache.delete(_paintsCache.keys().next().value)
   }
-  _paintsCache.set(twitchId, { spec: spec ?? null, fetchedAt: Date.now() })
+  // color = the user's picked name colour (users.color), rides the same
+  // /api/paints response. Cached alongside the spec so the fetch_paints reply
+  // can return a parallel colors map without a second request/inflight chain.
+  _paintsCache.set(twitchId, { spec: spec ?? null, color: color ?? null, fetchedAt: Date.now() })
 }
 
 async function fetchBulkBadges() {
@@ -8148,7 +8151,7 @@ async function handleMessage(message, sender, sendResponse) {
     ).slice(0, 50)
     ;(async () => {
       if (!ids.length) {
-        sendResponse({ paints: {} })
+        sendResponse({ paints: {}, colors: {} })
         return
       }
       const result = {}
@@ -8189,9 +8192,10 @@ async function handleMessage(message, sender, sendResponse) {
             if (resp.ok) {
               const data = await resp.json().catch(() => null)
               if (data && data.paints && typeof data.paints === 'object') {
+                const dataColors = data.colors && typeof data.colors === 'object' ? data.colors : {}
                 for (const id of toFetch) {
                   const spec = data.paints[id] ?? null
-                  setPaintCache(id, spec)
+                  setPaintCache(id, spec, dataColors[id] ?? null)
                   out[id] = spec
                 }
               }
@@ -8234,7 +8238,15 @@ async function handleMessage(message, sender, sendResponse) {
       // `result` only has keys for CONFIRMED ids (positive spec, or a
       // confirmed negative) — an id with no answer yet is simply absent, and
       // paints.js (content script) treats an absent key as "retry next flush".
-      sendResponse({ paints: result })
+      // Picked name colours ride along: read them from the cache for every
+      // resolved id (inflight-shared ids were cached by their owning batch
+      // before their promise resolved, so the colour is present by now).
+      const colors = {}
+      for (const id of Object.keys(result)) {
+        const c = _paintsCache.get(id)?.color
+        if (c) colors[id] = c
+      }
+      sendResponse({ paints: result, colors })
     })()
     return true
   } else if (message.type === 'get_sender_emotes') {

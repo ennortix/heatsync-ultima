@@ -99,7 +99,7 @@ const HS_MOD_C_HEX_PEEL_RE = /^c!#?([0-9a-fA-F]{6}|[0-9a-fA-F]{3})/
 const HS_MOD_MAX_SCALE = 4
 
 const HS_FX_ANIM_CLASSES = Object.freeze(
-  [...new Set(Object.values(HS_FX).map(f => f.anim).filter(Boolean))].map(a => `hs-fx-${a}`)
+  [...new Set(Object.values(HS_FX).map(f => /** @type {{anim?: string}} */ (f).anim).filter(Boolean))].map(a => `hs-fx-${a}`)
 )
 
 function hsModHexToHue(hex) {

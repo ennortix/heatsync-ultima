@@ -3925,26 +3925,26 @@ if (typeof window !== 'undefined') {
 
 // canonical effect name → how it renders
 const HS_FX = Object.freeze({
-  wide:    { scale: [2, 1] },
-  tall:    { scale: [1, 2] },
-  flipH:   { scale: [-1, 1] },
-  flipV:   { scale: [1, -1] },
+  wide: { scale: [2, 1] },
+  tall: { scale: [1, 2] },
+  flipH: { scale: [-1, 1] },
+  flipV: { scale: [1, -1] },
   rotateL: { rotate: -90 },
   rotateR: { rotate: 90 },
-  cursed:  { filter: 'grayscale(1) brightness(0.7) contrast(2.5)' },
-  hyper:   { filter: 'brightness(0.2) sepia(1) brightness(2.2) contrast(3) saturate(8)', anim: 'hyper' },
+  cursed: { filter: 'grayscale(1) brightness(0.7) contrast(2.5)' },
+  hyper: { filter: 'brightness(0.2) sepia(1) brightness(2.2) contrast(3) saturate(8)', anim: 'hyper' },
   // rainbow/party drive hue via a registered custom prop referenced INSIDE the
   // composed filter, so the animated hue STACKS with a static filter (cursed)
   // instead of the keyframe replacing it. Defaults to 0deg until animated.
-  party:   { filter: 'sepia(0.5) saturate(2.5) hue-rotate(var(--hs-fx-hue,0deg))', anim: 'party' },
-  shake:   { anim: 'shake' },
+  party: { filter: 'sepia(0.5) saturate(2.5) hue-rotate(var(--hs-fx-hue,0deg))', anim: 'party' },
+  shake: { anim: 'shake' },
   rainbow: { filter: 'hue-rotate(var(--hs-fx-hue,0deg))', anim: 'rainbow' },
-  bounce:  { anim: 'bounce' },
-  jam:     { anim: 'jam' },
-  spin:    { anim: 'spin' },
-  slide:   { anim: 'slide' },
-  arrive:  { anim: 'arrive' },
-  leave:   { anim: 'leave' },
+  bounce: { anim: 'bounce' },
+  jam: { anim: 'jam' },
+  spin: { anim: 'spin' },
+  slide: { anim: 'slide' },
+  arrive: { anim: 'arrive' },
+  leave: { anim: 'leave' },
   zeroWidth: { zero: true },
 })
 
@@ -4008,15 +4008,27 @@ const HS_MOD_C_HEX_PEEL_RE = /^c!#?([0-9a-fA-F]{6}|[0-9a-fA-F]{3})/
 const HS_MOD_MAX_SCALE = 4
 
 const HS_FX_ANIM_CLASSES = Object.freeze(
-  [...new Set(Object.values(HS_FX).map(f => /** @type {{anim?: string}} */ (f).anim).filter(Boolean))].map(a => `hs-fx-${a}`)
+  [
+    ...new Set(
+      Object.values(HS_FX)
+        .map((f) => /** @type {{anim?: string}} */ (f).anim)
+        .filter(Boolean),
+    ),
+  ].map((a) => `hs-fx-${a}`),
 )
 
 function hsModHexToHue(hex) {
-  if (hex.length === 3) hex = hex.split('').map(c => c + c).join('')
+  if (hex.length === 3)
+    hex = hex
+      .split('')
+      .map((c) => c + c)
+      .join('')
   const r = parseInt(hex.slice(0, 2), 16) / 255
   const g = parseInt(hex.slice(2, 4), 16) / 255
   const b = parseInt(hex.slice(4, 6), 16) / 255
-  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min
+  const max = Math.max(r, g, b),
+    min = Math.min(r, g, b),
+    d = max - min
   let h = 0
   if (d) {
     if (max === r) h = ((g - b) / d) % 6
@@ -4036,7 +4048,7 @@ function hsModResolvePrefix(word) {
   for (const tok of HS_MOD_TOKEN_KEYS) {
     if (tok.toLowerCase() === lower) return tok
   }
-  const matches = HS_MOD_TOKEN_KEYS.filter(k => k.toLowerCase().startsWith(lower))
+  const matches = HS_MOD_TOKEN_KEYS.filter((k) => k.toLowerCase().startsWith(lower))
   return matches.length === 1 ? matches[0] : null
 }
 
@@ -4067,7 +4079,7 @@ function hsModPeelChain(word) {
     if (matched) continue
     return null
   }
-  return (mods.length || hue != null) ? { mods, hue, words } : null
+  return mods.length || hue != null ? { mods, hue, words } : null
 }
 
 function hsModClassify(word, opts) {
@@ -4090,18 +4102,25 @@ function hsModClassify(word, opts) {
 }
 
 function hsModComposeAll(mods, hue) {
-  let sx = 1, sy = 1, rotate = 0, zero = false
+  let sx = 1,
+    sy = 1,
+    rotate = 0,
+    zero = false
   const filters = []
   const anims = []
-  if (mods) for (const m of mods) {
-    const fx = HS_FX[m]
-    if (!fx) continue
-    if (fx.scale) { sx *= fx.scale[0]; sy *= fx.scale[1] }
-    if (fx.rotate) rotate += fx.rotate
-    if (fx.filter) filters.push(fx.filter)
-    if (fx.anim && !anims.includes(fx.anim)) anims.push(fx.anim)
-    if (fx.zero) zero = true
-  }
+  if (mods)
+    for (const m of mods) {
+      const fx = HS_FX[m]
+      if (!fx) continue
+      if (fx.scale) {
+        sx *= fx.scale[0]
+        sy *= fx.scale[1]
+      }
+      if (fx.rotate) rotate += fx.rotate
+      if (fx.filter) filters.push(fx.filter)
+      if (fx.anim && !anims.includes(fx.anim)) anims.push(fx.anim)
+      if (fx.zero) zero = true
+    }
   sx = Math.min(Math.max(sx, -HS_MOD_MAX_SCALE), HS_MOD_MAX_SCALE)
   sy = Math.min(Math.max(sy, -HS_MOD_MAX_SCALE), HS_MOD_MAX_SCALE)
   if (hue != null) filters.push(`hue-rotate(${hue}deg) saturate(1.6)`)
@@ -4118,7 +4137,7 @@ function hsModComposeFilter(mods, hue) {
 }
 
 function hsModComposeAnimClasses(mods) {
-  return hsModComposeAll(mods, null).anims.map(a => `hs-fx-${a}`)
+  return hsModComposeAll(mods, null).anims.map((a) => `hs-fx-${a}`)
 }
 
 function hsModRead(el) {
@@ -4126,7 +4145,7 @@ function hsModRead(el) {
   return {
     mods: el.dataset.hsMods ? el.dataset.hsMods.split(',').filter(Boolean) : [],
     hue: el.dataset.hsHue != null && el.dataset.hsHue !== '' ? Number(el.dataset.hsHue) : null,
-    words: el.dataset.hsWords ? el.dataset.hsWords.split(/\s+/).filter(Boolean) : []
+    words: el.dataset.hsWords ? el.dataset.hsWords.split(/\s+/).filter(Boolean) : [],
   }
 }
 
@@ -4141,13 +4160,14 @@ function hsModApplyToImg(img, addMods, addHue, addWords, opts) {
   if (!img) return
   const additive = !opts || opts.additive !== false
   const cur = hsModRead(img)
-  const finalMods = additive ? cur.mods.concat(addMods || []) : (addMods || [])
-  const finalWords = additive ? cur.words.concat(addWords || []) : (addWords || [])
+  const finalMods = additive ? cur.mods.concat(addMods || []) : addMods || []
+  const finalWords = additive ? cur.words.concat(addWords || []) : addWords || []
   let finalHue = addHue
   if (finalHue == null && additive) finalHue = cur.hue
   img.dataset.hsMods = finalMods.join(',')
   img.dataset.hsWords = finalWords.join(' ')
-  if (finalHue != null) img.dataset.hsHue = String(finalHue); else delete img.dataset.hsHue
+  if (finalHue != null) img.dataset.hsHue = String(finalHue)
+  else delete img.dataset.hsHue
   const { sx, sy, rotate, filter, anims, zero } = hsModComposeAll(finalMods, finalHue)
   const transform = hsModTransformStr(sx, sy, rotate)
   if (transform) {
@@ -4173,7 +4193,8 @@ function hsModBuildStyleAttr(mods, hue) {
   let style = ''
   if (transform) {
     style += `transform:${transform} !important;transform-origin:center !important;`
-    const fx = Math.abs(sx), fy = Math.abs(sy)
+    const fx = Math.abs(sx),
+      fy = Math.abs(sy)
     if (fx > 1) {
       const halfX = `calc(var(--hs-emote-width,28px) * ${(fx - 1) / 2})`
       style += `margin-left:${halfX} !important;margin-right:${halfX} !important;`
@@ -4214,14 +4235,43 @@ function hsModWordsFromState(mods, hue) {
     const h = ((hue % 360) + 360) % 360
     const c = 1
     const x = 1 - Math.abs(((h / 60) % 2) - 1)
-    let r = 0, g = 0, b = 0
-    if (h < 60)       { r = c; g = x; b = 0 }
-    else if (h < 120) { r = x; g = c; b = 0 }
-    else if (h < 180) { r = 0; g = c; b = x }
-    else if (h < 240) { r = 0; g = x; b = c }
-    else if (h < 300) { r = x; g = 0; b = c }
-    else              { r = c; g = 0; b = x }
-    const hex = '#' + [r, g, b].map(v => Math.round(v * 255).toString(16).padStart(2, '0')).join('')
+    let r = 0,
+      g = 0,
+      b = 0
+    if (h < 60) {
+      r = c
+      g = x
+      b = 0
+    } else if (h < 120) {
+      r = x
+      g = c
+      b = 0
+    } else if (h < 180) {
+      r = 0
+      g = c
+      b = x
+    } else if (h < 240) {
+      r = 0
+      g = x
+      b = c
+    } else if (h < 300) {
+      r = x
+      g = 0
+      b = c
+    } else {
+      r = c
+      g = 0
+      b = x
+    }
+    const hex =
+      '#' +
+      [r, g, b]
+        .map((v) =>
+          Math.round(v * 255)
+            .toString(16)
+            .padStart(2, '0'),
+        )
+        .join('')
     out.push('c!' + hex)
   }
   return out
@@ -48093,7 +48143,10 @@ function renderSettingsTab() {
   }
   _setPaneCtx = paneCtx
   // Restore onto the freshly-rebuilt inner body (innerHTML replaced the old one).
-  if (keepScroll) { var newBody = msgsEl.querySelector('.hs-mc-set-subtab-body'); if (newBody) newBody.scrollTop = keepScroll }
+  if (keepScroll) {
+    var newBody = msgsEl.querySelector('.hs-mc-set-subtab-body')
+    if (newBody) newBody.scrollTop = keepScroll
+  }
 
   // Wire up toggles via event delegation
   if (msgsEl._hsSettingsClick) msgsEl.removeEventListener('click', msgsEl._hsSettingsClick)

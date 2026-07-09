@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 import {
+  HS_FX_ANIM_CLASSES,
   HS_MOD_CLASS_TO_TOKEN,
   HS_MOD_MAX_SCALE,
   HS_MOD_TOKENS,
-  HS_FX_ANIM_CLASSES,
   hsModAnimClassAttr,
   hsModBuildStyleAttr,
   hsModClassify,
@@ -332,7 +332,10 @@ describe('hsModInjectWrapperStyle', () => {
     expect(out).toContain('style="transform:scale(2, 1) !important;"')
   })
   test('merges with existing style', () => {
-    const out = hsModInjectWrapperStyle('<span class="hs-emote" style="color:red">img</span>', 'transform:scale(2, 1) !important;')
+    const out = hsModInjectWrapperStyle(
+      '<span class="hs-emote" style="color:red">img</span>',
+      'transform:scale(2, 1) !important;',
+    )
     expect(out).toContain('color:red')
     expect(out).toContain('transform:scale(2, 1)')
   })

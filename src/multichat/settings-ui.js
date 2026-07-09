@@ -1587,7 +1587,10 @@ function renderSettingsTab() {
   }
   _setPaneCtx = paneCtx
   // Restore onto the freshly-rebuilt inner body (innerHTML replaced the old one).
-  if (keepScroll) { var newBody = msgsEl.querySelector('.hs-mc-set-subtab-body'); if (newBody) newBody.scrollTop = keepScroll }
+  if (keepScroll) {
+    var newBody = msgsEl.querySelector('.hs-mc-set-subtab-body')
+    if (newBody) newBody.scrollTop = keepScroll
+  }
 
   // Wire up toggles via event delegation
   if (msgsEl._hsSettingsClick) msgsEl.removeEventListener('click', msgsEl._hsSettingsClick)

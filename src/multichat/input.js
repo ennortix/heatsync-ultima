@@ -1784,7 +1784,7 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
       fn: () => mcCopyToClipboard(_extractMcMsgText(msg), 'message copied'),
     })
     items.push({
-      label: 'quote → input',
+      label: 'copy → input',
       fn: () => mcQuoteToInput(_extractMcMsgText(msg)),
     })
   }

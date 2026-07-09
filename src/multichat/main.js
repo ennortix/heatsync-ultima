@@ -4239,10 +4239,17 @@
         changed = true
       }
     }
-    // add ephemerals for newly opened streams not already configured
+    // add ephemerals for newly opened streams not already configured.
+    // HARD CAP: never let auto-tabs run away — a stale/buggy open-channel set
+    // (e.g. the 22-tab report: a long idle session accumulating entries) must not
+    // spawn a wall of tabs. 8 is well past any real "streams open at once".
+    const MAX_EPHEMERAL_TABS = 8
+    let ephemeralCount = config.channels.filter((c) => c?.ephemeral).length
     for (const ch of openSet) {
       const exists = config.channels.some((c) => c?.twitch && c.twitch.toLowerCase() === ch)
       if (exists) continue
+      if (ephemeralCount >= MAX_EPHEMERAL_TABS) break
+      ephemeralCount++
       config.channels.push({ id: `auto_${ch}`, twitch: ch, ephemeral: true })
       try {
         irc?.join?.(ch)

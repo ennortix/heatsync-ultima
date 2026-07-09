@@ -1538,7 +1538,11 @@ function renderSettingsTab() {
   // the same logical pane (toggle/applier-triggered rebuilds)
   var hadPanel = !!msgsEl.querySelector('.hs-mc-settings-panel')
   var paneCtx = _settingsSubtab + '|' + _setQuery + '|' + !!_presetPending
-  var keepScroll = hadPanel && paneCtx === _setPaneCtx ? msgsEl.scrollTop : 0
+  // The panel is position:absolute inset:0 and ONLY .hs-mc-set-subtab-body
+  // scrolls — #hs-mc-messages itself never does, so preserving its scrollTop was
+  // always 0 and every toggle reset the view to the top. Capture the inner body.
+  var oldBody = msgsEl.querySelector('.hs-mc-set-subtab-body')
+  var keepScroll = hadPanel && paneCtx === _setPaneCtx && oldBody ? oldBody.scrollTop : 0
 
   var searchActive = _setQueryTokens().length > 0
   var bodyContent
@@ -1582,7 +1586,8 @@ function renderSettingsTab() {
     else _setFocusRow = null
   }
   _setPaneCtx = paneCtx
-  if (keepScroll) msgsEl.scrollTop = keepScroll
+  // Restore onto the freshly-rebuilt inner body (innerHTML replaced the old one).
+  if (keepScroll) { var newBody = msgsEl.querySelector('.hs-mc-set-subtab-body'); if (newBody) newBody.scrollTop = keepScroll }
 
   // Wire up toggles via event delegation
   if (msgsEl._hsSettingsClick) msgsEl.removeEventListener('click', msgsEl._hsSettingsClick)

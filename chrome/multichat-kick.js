@@ -9023,7 +9023,9 @@ function injectStyles() {
       -webkit-text-fill-color: #999 !important;
     }
     .hs-mc-msg.hs-first-msg {
-      box-shadow: inset 2px 0 0 #ffff00;
+      /* first-message glow — brand orange bar + a subtle inset orange glow (was a
+         flat yellow bar; the setting is called "glow", so it now actually glows). */
+      box-shadow: inset 2px 0 0 #ff8700, inset 0 0 10px -2px rgba(255, 135, 0, 0.35);
     }
     .hs-mc-msg.hs-kw-match {
       background: rgba(255, 255, 0, 0.14);
@@ -35883,7 +35885,7 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
       fn: () => mcCopyToClipboard(_extractMcMsgText(msg), 'message copied'),
     })
     items.push({
-      label: 'quote → input',
+      label: 'copy → input',
       fn: () => mcQuoteToInput(_extractMcMsgText(msg)),
     })
   }
@@ -47569,7 +47571,11 @@ function renderSettingsTab() {
   // the same logical pane (toggle/applier-triggered rebuilds)
   var hadPanel = !!msgsEl.querySelector('.hs-mc-settings-panel')
   var paneCtx = _settingsSubtab + '|' + _setQuery + '|' + !!_presetPending
-  var keepScroll = hadPanel && paneCtx === _setPaneCtx ? msgsEl.scrollTop : 0
+  // The panel is position:absolute inset:0 and ONLY .hs-mc-set-subtab-body
+  // scrolls — #hs-mc-messages itself never does, so preserving its scrollTop was
+  // always 0 and every toggle reset the view to the top. Capture the inner body.
+  var oldBody = msgsEl.querySelector('.hs-mc-set-subtab-body')
+  var keepScroll = hadPanel && paneCtx === _setPaneCtx && oldBody ? oldBody.scrollTop : 0
 
   var searchActive = _setQueryTokens().length > 0
   var bodyContent
@@ -47613,7 +47619,8 @@ function renderSettingsTab() {
     else _setFocusRow = null
   }
   _setPaneCtx = paneCtx
-  if (keepScroll) msgsEl.scrollTop = keepScroll
+  // Restore onto the freshly-rebuilt inner body (innerHTML replaced the old one).
+  if (keepScroll) { var newBody = msgsEl.querySelector('.hs-mc-set-subtab-body'); if (newBody) newBody.scrollTop = keepScroll }
 
   // Wire up toggles via event delegation
   if (msgsEl._hsSettingsClick) msgsEl.removeEventListener('click', msgsEl._hsSettingsClick)
@@ -53394,10 +53401,17 @@ const STORAGE_KEY = 'heatsync_multichat'
         changed = true
       }
     }
-    // add ephemerals for newly opened streams not already configured
+    // add ephemerals for newly opened streams not already configured.
+    // HARD CAP: never let auto-tabs run away — a stale/buggy open-channel set
+    // (e.g. the 22-tab report: a long idle session accumulating entries) must not
+    // spawn a wall of tabs. 8 is well past any real "streams open at once".
+    const MAX_EPHEMERAL_TABS = 8
+    let ephemeralCount = config.channels.filter((c) => c?.ephemeral).length
     for (const ch of openSet) {
       const exists = config.channels.some((c) => c?.twitch && c.twitch.toLowerCase() === ch)
       if (exists) continue
+      if (ephemeralCount >= MAX_EPHEMERAL_TABS) break
+      ephemeralCount++
       config.channels.push({ id: `auto_${ch}`, twitch: ch, ephemeral: true })
       try {
         irc?.join?.(ch)

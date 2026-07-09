@@ -51,7 +51,10 @@
   window.addEventListener(
     'message',
     (event) => {
-      if (event.origin !== location.origin) return
+      // event.source===window: a same-origin twitch subframe (popout/clip) can
+      // post here too; without this a co-resident frame could force a destructive
+      // state reset (thrash). Mirrors every sibling postMessage guard.
+      if (event.source !== window || event.origin !== location.origin) return
       if (event.data?.type === 'heatsync-nav') {
         chatReady = false
         injectedMessages.clear()

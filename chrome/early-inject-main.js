@@ -693,6 +693,14 @@
 
     // Accept nonce from content script (ISOLATED world) on initialisation
     if (e.data?.type === 'heatsync-init-nonce' && typeof e.data.nonce === 'string') {
+      // Freeze on first set. In MAIN world the nonce can't be kept secret, but
+      // without this a co-resident page script could OVERWRITE it at will and then
+      // forge privileged apollo/gql mutations carrying the matching nonce. Freezing
+      // means only the first setter (content.js, which posts exactly once per
+      // injection) wins; any later overwrite attempt is ignored. Pre-empting the
+      // first set is still theoretically possible but far harder than
+      // overwrite-anytime — the operation allowlist + rate limit remain the backstop.
+      if (_hsNonce) return
       _hsNonce = e.data.nonce
       return
     }
@@ -773,7 +781,7 @@
         // — also missed; without it the predictions tab wedged on the ToS step.
         'AcceptPredictionTerms',
       ]
-      if (e.data.searchTerm && !ALLOWED_MUTATIONS.some((m) => e.data.searchTerm.includes(m))) {
+      if (e.data.searchTerm && !ALLOWED_MUTATIONS.includes(e.data.searchTerm)) {
         log('heatsync-apollo-mutate: rejected — searchTerm not in allowlist:', e.data.searchTerm)
         window.postMessage(
           { type: 'heatsync-apollo-mutate-error', error: 'mutation not allowed', requestId: e.data.requestId },

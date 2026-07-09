@@ -180,470 +180,480 @@ function _hsBuildDbg() {
     kickPendingLookups: kickPending,
   }
 }
-// MAIN-world bridge: dispatchEvent('hs-dbg-probe') from page → content script
-// writes JSON snapshot to documentElement.dataset.hsDbg → MAIN reads.
-document.addEventListener(
-  'hs-dbg-probe',
-  () => {
-    try {
-      document.documentElement.dataset.hsDbg = JSON.stringify(_hsBuildDbg())
-    } catch (e) {
-      document.documentElement.dataset.hsDbg = 'err:' + (e?.message || 'unknown')
-    }
-  },
-  { capture: true, signal: mcSignal },
-)
-// hs-dbg-test-token → tests getTwitchAuthTokenAsync without exposing the
-// token value. Surfaces whether the BG cookie fetch is returning a token.
-// hs-dbg-test-send → invoke sendMessage() from isolated world with the test
-// text from event.detail.text. Times the call + reports whether IRC state
-// changed afterward. The event.detail.text is REAL text — caller is
-// responsible (only used by automation against safe channels).
-// hs-dbg-twitch-badges-lookup → resolve a specific (channel, name, version)
-// combo so we can see WHY a particular badge renders as text — is the URL
-// missing from the Map, or is renderBadges using a wrong key?
-document.addEventListener(
-  'hs-dbg-twitch-badges-lookup',
-  (e) => {
-    try {
-      const channel = e?.detail?.channel || 'nl_kripp'
-      const name = e?.detail?.name || 'moderator'
-      const version = e?.detail?.version || '1'
-      const directChannel = twitchBadgeUrls.get(`${channel}:${name}/${version}`)
-      let nearestVer = null
-      let nearestUrl = null
+// hs-dbg-* diagnostics — DEV BUILDS ONLY. These CustomEvent listeners are
+// page-reachable (document.dispatchEvent crosses the isolated-world boundary)
+// and expose privileged actions (real authenticated chat send via
+// hs-dbg-test-send) plus private state (channel / mute / block lists, username,
+// IRC state via documentElement.dataset). __HS_DEV_BUILD__ folds to false in
+// every packaged/store build, so esbuild dead-code-eliminates this whole block —
+// no listeners registered, zero attack surface for real users. The identifier is
+// undefined in unpacked dev builds → the tools stay on for local debugging.
+if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
+  // MAIN-world bridge: dispatchEvent('hs-dbg-probe') from page → content script
+  // writes JSON snapshot to documentElement.dataset.hsDbg → MAIN reads.
+  document.addEventListener(
+    'hs-dbg-probe',
+    () => {
       try {
-        nearestVer = findNearestChannelBadgeVersion(channel, name, version)
-        if (nearestVer) nearestUrl = twitchBadgeUrls.get(`${channel}:${name}/${nearestVer}`)
-      } catch {}
-      const globalExact = twitchBadgeUrls.get(`${name}/${version}`)
-      const globalOne = twitchBadgeUrls.get(`${name}/1`)
-      // Enumerate any keys containing the name
-      const relatedKeys = [...twitchBadgeUrls.keys()].filter((k) => k.includes(name)).slice(0, 20)
-      document.documentElement.dataset.hsDbgTwitchBadgesLookup = JSON.stringify({
-        channel,
-        name,
-        version,
-        directChannelHit: !!directChannel,
-        nearestVer,
-        nearestHit: !!nearestUrl,
-        globalExactHit: !!globalExact,
-        globalOneHit: !!globalOne,
-        relatedKeys,
-        mapTotal: twitchBadgeUrls.size,
-      })
-    } catch (err) {
-      document.documentElement.dataset.hsDbgTwitchBadgesLookup = 'err:' + (err?.message || 'unknown')
-    }
-  },
-  { capture: true, signal: mcSignal },
-)
-// hs-dbg-twitch-badges → returns twitchBadgeUrls Map stats so we can see if
-// global + channel badges have populated. Helps diagnose "MOD/SUB as text"
-// regressions when running off-twitch.
-document.addEventListener(
-  'hs-dbg-twitch-badges',
-  () => {
-    try {
-      const urls = typeof twitchBadgeUrls !== 'undefined' ? [...twitchBadgeUrls.entries()] : null
-      const fetched = typeof badgesFetchedChannels !== 'undefined' ? [...badgesFetchedChannels] : null
-      const globalDone = typeof globalBadgesFetched !== 'undefined' ? globalBadgesFetched : null
-      const sample = urls?.slice(0, 30).map(([k, v]) => [k, v?.slice(0, 50)])
-      const modKeys = urls?.filter(([k]) => k.includes('moderator') || k.includes('broadcaster') || k.includes('vip'))
-      document.documentElement.dataset.hsDbgTwitchBadges = JSON.stringify({
-        total: urls?.length ?? null,
-        globalDone,
-        fetchedChannels: fetched,
-        modVipBroadcasterKeys: modKeys?.length ?? null,
-        sample,
-      })
-    } catch (e) {
-      document.documentElement.dataset.hsDbgTwitchBadges = 'err:' + (e?.message || 'unknown')
-    }
-  },
-  { capture: true, signal: mcSignal },
-)
-// hs-dbg-test-irc-connect → invoke connectAuthIrc directly to test if the
-// IRC WebSocket can open from this origin. No PRIVMSG sent — just connect.
-document.addEventListener(
-  'hs-dbg-test-irc-connect',
-  () => {
-    ;(async () => {
-      try {
-        const tokenFn = typeof getTwitchAuthTokenAsync === 'function' ? getTwitchAuthTokenAsync : null
-        const connectFn = typeof connectAuthIrc === 'function' ? connectAuthIrc : null
-        if (!tokenFn || !connectFn) {
-          document.documentElement.dataset.hsDbgTestIrcConnect = JSON.stringify({ err: 'no fn(s)' })
-          return
-        }
-        const t0 = Date.now()
-        const { token, username } = await tokenFn()
-        if (!token) {
-          document.documentElement.dataset.hsDbgTestIrcConnect = JSON.stringify({ err: 'no token' })
-          return
-        }
-        const nick = username || (typeof currentUsername !== 'undefined' ? currentUsername : null)
-        if (!nick) {
-          document.documentElement.dataset.hsDbgTestIrcConnect = JSON.stringify({ err: 'no nick' })
-          return
-        }
-        const result = await Promise.race([
-          connectFn(token, nick),
-          new Promise((r) => setTimeout(() => r('timeout-5s'), 5000)),
-        ])
-        const wsState =
-          typeof authState !== 'undefined' && authState?.ws
-            ? ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][authState.ws.readyState]
-            : 'no ws'
-        document.documentElement.dataset.hsDbgTestIrcConnect = JSON.stringify({
-          result: typeof result === 'boolean' ? result : String(result),
-          ready: typeof authState !== 'undefined' ? !!authState.ready : null,
-          wsState,
-          elapsed: Date.now() - t0,
-        })
+        document.documentElement.dataset.hsDbg = JSON.stringify(_hsBuildDbg())
       } catch (e) {
-        document.documentElement.dataset.hsDbgTestIrcConnect = JSON.stringify({ err: e?.message })
+        document.documentElement.dataset.hsDbg = 'err:' + (e?.message || 'unknown')
       }
-    })()
-  },
-  { capture: true, signal: mcSignal },
-)
-document.addEventListener(
-  'hs-dbg-test-send',
-  (e) => {
-    document.documentElement.dataset.hsDbgTestSendStart = String(Date.now())
-    ;(async () => {
+    },
+    { capture: true, signal: mcSignal },
+  )
+  // hs-dbg-test-token → tests getTwitchAuthTokenAsync without exposing the
+  // token value. Surfaces whether the BG cookie fetch is returning a token.
+  // hs-dbg-test-send → invoke sendMessage() from isolated world with the test
+  // text from event.detail.text. Times the call + reports whether IRC state
+  // changed afterward. The event.detail.text is REAL text — caller is
+  // responsible (only used by automation against safe channels).
+  // hs-dbg-twitch-badges-lookup → resolve a specific (channel, name, version)
+  // combo so we can see WHY a particular badge renders as text — is the URL
+  // missing from the Map, or is renderBadges using a wrong key?
+  document.addEventListener(
+    'hs-dbg-twitch-badges-lookup',
+    (e) => {
       try {
-        const input = document.getElementById('hs-mc-input')
-        const text = String(e?.detail?.text || '')
-        if (!input) {
-          document.documentElement.dataset.hsDbgTestSend = JSON.stringify({ err: 'no input' })
-          return
-        }
-        if (input.tagName === 'DIV') input.textContent = text
-        else input.value = text
-        const beforeReady = typeof authState !== 'undefined' ? !!authState.ready : null
-        const t0 = Date.now()
-        if (typeof sendMessage !== 'function') {
-          document.documentElement.dataset.hsDbgTestSend = JSON.stringify({ err: 'no sendMessage fn' })
-          return
-        }
+        const channel = e?.detail?.channel || 'nl_kripp'
+        const name = e?.detail?.name || 'moderator'
+        const version = e?.detail?.version || '1'
+        const directChannel = twitchBadgeUrls.get(`${channel}:${name}/${version}`)
+        let nearestVer = null
+        let nearestUrl = null
         try {
-          sendMessage()
-        } catch (sendErr) {
-          document.documentElement.dataset.hsDbgTestSend = JSON.stringify({
-            err: 'sendMessage threw: ' + sendErr?.message,
-          })
-          return
-        }
-        // Wait for async send pipeline
-        await new Promise((r) => setTimeout(r, 2000))
-        const afterReady = typeof authState !== 'undefined' ? !!authState.ready : null
-        const wsState =
-          typeof authState !== 'undefined' && authState?.ws
-            ? ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][authState.ws.readyState]
-            : 'no ws'
-        const queueLen = typeof authState !== 'undefined' ? (authState.sendQueue?.length ?? null) : null
-        document.documentElement.dataset.hsDbgTestSend = JSON.stringify({
-          textLen: text.length,
-          beforeReady,
-          afterReady,
-          wsState,
-          queueLen,
-          elapsed: Date.now() - t0,
-          inputCleared: (input.tagName === 'DIV' ? input.textContent : input.value) === '',
+          nearestVer = findNearestChannelBadgeVersion(channel, name, version)
+          if (nearestVer) nearestUrl = twitchBadgeUrls.get(`${channel}:${name}/${nearestVer}`)
+        } catch {}
+        const globalExact = twitchBadgeUrls.get(`${name}/${version}`)
+        const globalOne = twitchBadgeUrls.get(`${name}/1`)
+        // Enumerate any keys containing the name
+        const relatedKeys = [...twitchBadgeUrls.keys()].filter((k) => k.includes(name)).slice(0, 20)
+        document.documentElement.dataset.hsDbgTwitchBadgesLookup = JSON.stringify({
+          channel,
+          name,
+          version,
+          directChannelHit: !!directChannel,
+          nearestVer,
+          nearestHit: !!nearestUrl,
+          globalExactHit: !!globalExact,
+          globalOneHit: !!globalOne,
+          relatedKeys,
+          mapTotal: twitchBadgeUrls.size,
         })
       } catch (err) {
-        document.documentElement.dataset.hsDbgTestSend = JSON.stringify({ err: err?.message })
+        document.documentElement.dataset.hsDbgTwitchBadgesLookup = 'err:' + (err?.message || 'unknown')
       }
-    })()
-  },
-  { capture: true, signal: mcSignal },
-)
-document.addEventListener(
-  'hs-dbg-test-token',
-  () => {
-    ;(async () => {
+    },
+    { capture: true, signal: mcSignal },
+  )
+  // hs-dbg-twitch-badges → returns twitchBadgeUrls Map stats so we can see if
+  // global + channel badges have populated. Helps diagnose "MOD/SUB as text"
+  // regressions when running off-twitch.
+  document.addEventListener(
+    'hs-dbg-twitch-badges',
+    () => {
       try {
-        const fn = typeof getTwitchAuthTokenAsync === 'function' ? getTwitchAuthTokenAsync : null
-        if (!fn) {
-          document.documentElement.dataset.hsDbgTestToken = JSON.stringify({ err: 'no fn' })
-          return
-        }
-        const t0 = Date.now()
-        // Race against 3s timeout so a hung await is observable
-        const TIMEOUT = new Promise((_, rej) => setTimeout(() => rej(new Error('timeout 3s')), 3000))
-        let result
-        try {
-          result = await Promise.race([fn(), TIMEOUT])
-        } catch (raceErr) {
-          document.documentElement.dataset.hsDbgTestToken = JSON.stringify({
-            err: raceErr?.message || 'race-fail',
-            elapsed: Date.now() - t0,
-          })
-          return
-        }
-        const elapsed = Date.now() - t0
-        document.documentElement.dataset.hsDbgTestToken = JSON.stringify({
-          hasToken: !!result?.token,
-          tokenLen: result?.token ? result.token.length : 0,
-          hasUsername: !!result?.username,
-          elapsed,
+        const urls = typeof twitchBadgeUrls !== 'undefined' ? [...twitchBadgeUrls.entries()] : null
+        const fetched = typeof badgesFetchedChannels !== 'undefined' ? [...badgesFetchedChannels] : null
+        const globalDone = typeof globalBadgesFetched !== 'undefined' ? globalBadgesFetched : null
+        const sample = urls?.slice(0, 30).map(([k, v]) => [k, v?.slice(0, 50)])
+        const modKeys = urls?.filter(([k]) => k.includes('moderator') || k.includes('broadcaster') || k.includes('vip'))
+        document.documentElement.dataset.hsDbgTwitchBadges = JSON.stringify({
+          total: urls?.length ?? null,
+          globalDone,
+          fetchedChannels: fetched,
+          modVipBroadcasterKeys: modKeys?.length ?? null,
+          sample,
         })
       } catch (e) {
-        document.documentElement.dataset.hsDbgTestToken = JSON.stringify({ err: e?.message })
+        document.documentElement.dataset.hsDbgTwitchBadges = 'err:' + (e?.message || 'unknown')
       }
-    })()
-  },
-  { capture: true, signal: mcSignal },
-)
-// hs-dbg-auth-irc → returns Twitch IRC auth/WS state. Diagnoses cross-origin
-// send failures (kick.com viewer trying to send to a Twitch channel tab).
-document.addEventListener(
-  'hs-dbg-auth-irc',
-  () => {
-    try {
-      const wsState =
-        typeof authState !== 'undefined' && authState?.ws
-          ? ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][authState.ws.readyState]
-          : 'no ws'
-      const out = {
-        hasAuthState: typeof authState !== 'undefined',
-        ready: typeof authState !== 'undefined' ? !!authState.ready : null,
-        wsState,
-        joined: typeof authState !== 'undefined' ? [...(authState.joined || [])] : null,
-        sendQueueLen: typeof authState !== 'undefined' ? (authState.sendQueue?.length ?? null) : null,
-        currentUsername: typeof currentUsername !== 'undefined' ? currentUsername : null,
-        hostPlatform: typeof hostPlatform !== 'undefined' ? hostPlatform : null,
-      }
-      document.documentElement.dataset.hsDbgAuthIrc = JSON.stringify(out)
-    } catch (e) {
-      document.documentElement.dataset.hsDbgAuthIrc = 'err:' + (e?.message || 'unknown')
-    }
-  },
-  { capture: true, signal: mcSignal },
-)
-// hs-dbg-kick-badge-urls → returns kickBadgeUrls Map state so we can verify
-// fetchKickChannelBadges populated entries for the current Kick channel(s).
-document.addEventListener(
-  'hs-dbg-kick-badge-urls',
-  () => {
-    try {
-      const urls = typeof kickBadgeUrls !== 'undefined' ? [...kickBadgeUrls.entries()] : null
-      const fetched = typeof kickBadgesFetchedChannels !== 'undefined' ? [...kickBadgesFetchedChannels] : null
-      const failed = typeof kickBadgesFailedAt !== 'undefined' ? [...kickBadgesFailedAt.entries()] : null
-      const inflight = typeof kickBadgesInFlight !== 'undefined' ? [...kickBadgesInFlight] : null
-      document.documentElement.dataset.hsDbgKickBadgeUrls = JSON.stringify({
-        urlsCount: urls?.length ?? null,
-        urlsSample: urls?.slice(0, 12),
-        fetched,
-        failed,
-        inflight,
-      })
-    } catch (e) {
-      document.documentElement.dataset.hsDbgKickBadgeUrls = 'err:' + (e?.message || 'unknown')
-    }
-  },
-  { capture: true, signal: mcSignal },
-)
-// hs-dbg-kick-badges → returns a sample of recent kick msgs with their .badges
-// string so we can see whether the WS payload actually carries badge types.
-document.addEventListener(
-  'hs-dbg-kick-badges',
-  () => {
-    try {
-      const out = []
-      if (typeof kickChat !== 'undefined' && kickChat?.channels) {
-        for (const [ch, buf] of kickChat.channels) {
-          const all = buf?.getAll?.() || []
-          for (const m of all.slice(-30)) {
-            if (m?.badges && m.badges.length > 0) {
-              out.push({ ch, u: m.user, badges: m.badges })
-              if (out.length >= 12) break
-            }
+    },
+    { capture: true, signal: mcSignal },
+  )
+  // hs-dbg-test-irc-connect → invoke connectAuthIrc directly to test if the
+  // IRC WebSocket can open from this origin. No PRIVMSG sent — just connect.
+  document.addEventListener(
+    'hs-dbg-test-irc-connect',
+    () => {
+      ;(async () => {
+        try {
+          const tokenFn = typeof getTwitchAuthTokenAsync === 'function' ? getTwitchAuthTokenAsync : null
+          const connectFn = typeof connectAuthIrc === 'function' ? connectAuthIrc : null
+          if (!tokenFn || !connectFn) {
+            document.documentElement.dataset.hsDbgTestIrcConnect = JSON.stringify({ err: 'no fn(s)' })
+            return
           }
-          if (out.length >= 12) break
+          const t0 = Date.now()
+          const { token, username } = await tokenFn()
+          if (!token) {
+            document.documentElement.dataset.hsDbgTestIrcConnect = JSON.stringify({ err: 'no token' })
+            return
+          }
+          const nick = username || (typeof currentUsername !== 'undefined' ? currentUsername : null)
+          if (!nick) {
+            document.documentElement.dataset.hsDbgTestIrcConnect = JSON.stringify({ err: 'no nick' })
+            return
+          }
+          const result = await Promise.race([
+            connectFn(token, nick),
+            new Promise((r) => setTimeout(() => r('timeout-5s'), 5000)),
+          ])
+          const wsState =
+            typeof authState !== 'undefined' && authState?.ws
+              ? ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][authState.ws.readyState]
+              : 'no ws'
+          document.documentElement.dataset.hsDbgTestIrcConnect = JSON.stringify({
+            result: typeof result === 'boolean' ? result : String(result),
+            ready: typeof authState !== 'undefined' ? !!authState.ready : null,
+            wsState,
+            elapsed: Date.now() - t0,
+          })
+        } catch (e) {
+          document.documentElement.dataset.hsDbgTestIrcConnect = JSON.stringify({ err: e?.message })
         }
-      }
-      document.documentElement.dataset.hsDbgKickBadges = JSON.stringify(out)
-    } catch (e) {
-      document.documentElement.dataset.hsDbgKickBadges = 'err:' + (e?.message || 'unknown')
-    }
-  },
-  { capture: true, signal: mcSignal },
-)
-// hs-dbg-alias-probe → returns getUserAliases() + mute/block state for a test
-// user. Lets MAIN-world verify the cross-platform alias resolution end-to-end.
-document.addEventListener(
-  'hs-dbg-alias-probe',
-  (e) => {
-    try {
-      const username = e?.detail?.username || ''
-      const platform = e?.detail?.platform || null
-      const aliases = typeof getUserAliases === 'function' ? getUserAliases(username, platform) : null
-      const muted = typeof isUserMuted === 'function' ? isUserMuted(username, platform) : null
-      const blocked = typeof isUserBlocked === 'function' ? isUserBlocked(username, platform) : null
-      const mutedAll = typeof mutedUsers !== 'undefined' && mutedUsers instanceof Set ? [...mutedUsers] : null
-      const blockedAll = typeof blockedUsers !== 'undefined' && blockedUsers instanceof Set ? [...blockedUsers] : null
-      document.documentElement.dataset.hsDbgAlias = JSON.stringify({
-        username,
-        platform,
-        aliases,
-        muted,
-        blocked,
-        mutedCount: mutedAll?.length ?? null,
-        blockedCount: blockedAll?.length ?? null,
-        mutedAll: mutedAll?.slice(-20),
-        blockedAll: blockedAll?.slice(-20),
-      })
-    } catch (err) {
-      document.documentElement.dataset.hsDbgAlias = 'err:' + (err?.message || 'unknown')
-    }
-  },
-  { capture: true, signal: mcSignal },
-)
-document.addEventListener(
-  'hs-dbg-render-trace',
-  (e) => {
-    try {
-      const id = (e?.detail?.id || '').toLowerCase()
-      const ch = typeof getChannelById === 'function' ? getChannelById(id) : null
-      const tw = ch?.twitch
-      const kk = ch?.kick
-      const ircMsgs = tw && typeof irc !== 'undefined' ? irc?.getMessages(tw) || [] : []
-      const kickMsgs = kk && typeof kickChat !== 'undefined' ? kickChat?.getMessages(kk) || [] : []
-      const ytMsgs = typeof channelYtMessages !== 'undefined' ? channelYtMessages.get(id) || [] : []
-      const filt = typeof getPlatformFilter === 'function' ? getPlatformFilter(id) : null
-      const out = {
-        id,
-        ch_twitch: tw,
-        ch_kick: kk,
-        ircMsgs_len: ircMsgs.length,
-        kickMsgs_len: kickMsgs.length,
-        ytMsgs_len: ytMsgs.length,
-        filt,
-        ircTimes: ircMsgs.slice(-3).map((m) => ({ u: m.user, t: m.time, txt: (m.text || '').slice(0, 30) })),
-        ytTimes: ytMsgs.slice(-3).map((m) => ({ u: m.user, t: m.time, txt: (m.text || '').slice(0, 30) })),
-        ircHidden: ircMsgs.filter((m) => m?.hidden).length,
-      }
-      document.documentElement.dataset.hsDbg3 = JSON.stringify(out)
-    } catch (err) {
-      document.documentElement.dataset.hsDbg3 = 'err:' + (err?.message || 'unknown')
-    }
-  },
-  { capture: true, signal: mcSignal },
-)
-document.addEventListener(
-  'hs-dbg-emotes',
-  (e) => {
-    try {
-      const ch = (e?.detail?.ch || '').toLowerCase()
-      const out = {
-        globalCacheSize: typeof emoteCache !== 'undefined' ? emoteCache.size : -1,
-        viewerPersonalSize: typeof viewerPersonalEmotes !== 'undefined' ? viewerPersonalEmotes.size : -1,
-        channelKeys: typeof channelEmoteCaches !== 'undefined' ? Object.keys(channelEmoteCaches) : null,
-        channelSizes: {},
-        sampleNames: {},
-      }
-      if (typeof channelEmoteCaches !== 'undefined') {
-        for (const [k, v] of Object.entries(channelEmoteCaches)) {
-          out.channelSizes[k] = v?.size || 0
-          if (k === ch) out.sampleNames[k] = [...v.keys()].slice(0, 12)
+      })()
+    },
+    { capture: true, signal: mcSignal },
+  )
+  document.addEventListener(
+    'hs-dbg-test-send',
+    (e) => {
+      document.documentElement.dataset.hsDbgTestSendStart = String(Date.now())
+      ;(async () => {
+        try {
+          const input = document.getElementById('hs-mc-input')
+          const text = String(e?.detail?.text || '')
+          if (!input) {
+            document.documentElement.dataset.hsDbgTestSend = JSON.stringify({ err: 'no input' })
+            return
+          }
+          if (input.tagName === 'DIV') input.textContent = text
+          else input.value = text
+          const beforeReady = typeof authState !== 'undefined' ? !!authState.ready : null
+          const t0 = Date.now()
+          if (typeof sendMessage !== 'function') {
+            document.documentElement.dataset.hsDbgTestSend = JSON.stringify({ err: 'no sendMessage fn' })
+            return
+          }
+          try {
+            sendMessage()
+          } catch (sendErr) {
+            document.documentElement.dataset.hsDbgTestSend = JSON.stringify({
+              err: 'sendMessage threw: ' + sendErr?.message,
+            })
+            return
+          }
+          // Wait for async send pipeline
+          await new Promise((r) => setTimeout(r, 2000))
+          const afterReady = typeof authState !== 'undefined' ? !!authState.ready : null
+          const wsState =
+            typeof authState !== 'undefined' && authState?.ws
+              ? ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][authState.ws.readyState]
+              : 'no ws'
+          const queueLen = typeof authState !== 'undefined' ? (authState.sendQueue?.length ?? null) : null
+          document.documentElement.dataset.hsDbgTestSend = JSON.stringify({
+            textLen: text.length,
+            beforeReady,
+            afterReady,
+            wsState,
+            queueLen,
+            elapsed: Date.now() - t0,
+            inputCleared: (input.tagName === 'DIV' ? input.textContent : input.value) === '',
+          })
+        } catch (err) {
+          document.documentElement.dataset.hsDbgTestSend = JSON.stringify({ err: err?.message })
         }
+      })()
+    },
+    { capture: true, signal: mcSignal },
+  )
+  document.addEventListener(
+    'hs-dbg-test-token',
+    () => {
+      ;(async () => {
+        try {
+          const fn = typeof getTwitchAuthTokenAsync === 'function' ? getTwitchAuthTokenAsync : null
+          if (!fn) {
+            document.documentElement.dataset.hsDbgTestToken = JSON.stringify({ err: 'no fn' })
+            return
+          }
+          const t0 = Date.now()
+          // Race against 3s timeout so a hung await is observable
+          const TIMEOUT = new Promise((_, rej) => setTimeout(() => rej(new Error('timeout 3s')), 3000))
+          let result
+          try {
+            result = await Promise.race([fn(), TIMEOUT])
+          } catch (raceErr) {
+            document.documentElement.dataset.hsDbgTestToken = JSON.stringify({
+              err: raceErr?.message || 'race-fail',
+              elapsed: Date.now() - t0,
+            })
+            return
+          }
+          const elapsed = Date.now() - t0
+          document.documentElement.dataset.hsDbgTestToken = JSON.stringify({
+            hasToken: !!result?.token,
+            tokenLen: result?.token ? result.token.length : 0,
+            hasUsername: !!result?.username,
+            elapsed,
+          })
+        } catch (e) {
+          document.documentElement.dataset.hsDbgTestToken = JSON.stringify({ err: e?.message })
+        }
+      })()
+    },
+    { capture: true, signal: mcSignal },
+  )
+  // hs-dbg-auth-irc → returns Twitch IRC auth/WS state. Diagnoses cross-origin
+  // send failures (kick.com viewer trying to send to a Twitch channel tab).
+  document.addEventListener(
+    'hs-dbg-auth-irc',
+    () => {
+      try {
+        const wsState =
+          typeof authState !== 'undefined' && authState?.ws
+            ? ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][authState.ws.readyState]
+            : 'no ws'
+        const out = {
+          hasAuthState: typeof authState !== 'undefined',
+          ready: typeof authState !== 'undefined' ? !!authState.ready : null,
+          wsState,
+          joined: typeof authState !== 'undefined' ? [...(authState.joined || [])] : null,
+          sendQueueLen: typeof authState !== 'undefined' ? (authState.sendQueue?.length ?? null) : null,
+          currentUsername: typeof currentUsername !== 'undefined' ? currentUsername : null,
+          hostPlatform: typeof hostPlatform !== 'undefined' ? hostPlatform : null,
+        }
+        document.documentElement.dataset.hsDbgAuthIrc = JSON.stringify(out)
+      } catch (e) {
+        document.documentElement.dataset.hsDbgAuthIrc = 'err:' + (e?.message || 'unknown')
       }
-      out.emoteFirstLoad = typeof _emoteFirstLoad !== 'undefined' ? [..._emoteFirstLoad] : null
-      document.documentElement.dataset.hsDbgEmotes = JSON.stringify(out)
-    } catch (err) {
-      document.documentElement.dataset.hsDbgEmotes = 'err:' + (err?.message || 'unknown')
-    }
-  },
-  { capture: true, signal: mcSignal },
-)
-document.addEventListener(
-  'hs-dbg-render-deep',
-  (e) => {
-    try {
-      const id = (e?.detail?.id || '').toLowerCase()
-      const ch = typeof getChannelById === 'function' ? getChannelById(id) : null
-      const tw = ch?.twitch
-      const kk = ch?.kick
-      const ircMsgs = tw && typeof irc !== 'undefined' ? irc?.getMessages(tw) || [] : []
-      const kickMsgs = kk && typeof kickChat !== 'undefined' ? kickChat?.getMessages(kk) || [] : []
-      const ytMsgs = typeof channelYtMessages !== 'undefined' ? channelYtMessages.get(id) || [] : []
-      const autoYt = typeof channelYtMessages !== 'undefined' ? channelYtMessages.get('__live_yt_auto__') || [] : []
-      // per-channel tabs no longer merge __live_yt_auto__ (mirrors renderMessages — bleed fix)
-      const ytAutoMerged = false
-      const filt = typeof getPlatformFilter === 'function' ? getPlatformFilter(id) : null
-      const fmInput = [filt?.twitch ? ircMsgs : [], filt?.kick ? kickMsgs : [], filt?.youtube ? ytMsgs : []]
-      const merged = typeof fairMerge === 'function' ? fairMerge(fmInput) : []
-      const out = {
-        id,
-        tw,
-        kk,
-        ircMsgs_len: ircMsgs.length,
-        kickMsgs_len: kickMsgs.length,
-        ytMsgs_len: ytMsgs.length,
-        autoYt_len: autoYt.length,
-        ytAutoMerged,
-        filt,
-        fmInputLens: fmInput.map((s) => s.length),
-        merged_len: merged.length,
-        mergedSampleTop: merged
-          .slice(0, 3)
-          .map((m) => ({ u: m.user, t: m.time, type: m.type, txt: (m.text || '').slice(0, 30) })),
-        mergedSampleBottom: merged
-          .slice(-3)
-          .map((m) => ({ u: m.user, t: m.time, type: m.type, txt: (m.text || '').slice(0, 30) })),
-        isMultiPlat: typeof isMultiPlatformTab === 'function' ? isMultiPlatformTab(id) : null,
-        domRenderCap: typeof DOM_RENDER_CAP !== 'undefined' ? DOM_RENDER_CAP : null,
-        currentTab: typeof currentTab !== 'undefined' ? currentTab : null,
-        renderEpoch: typeof _renderEpoch !== 'undefined' ? _renderEpoch : null,
+    },
+    { capture: true, signal: mcSignal },
+  )
+  // hs-dbg-kick-badge-urls → returns kickBadgeUrls Map state so we can verify
+  // fetchKickChannelBadges populated entries for the current Kick channel(s).
+  document.addEventListener(
+    'hs-dbg-kick-badge-urls',
+    () => {
+      try {
+        const urls = typeof kickBadgeUrls !== 'undefined' ? [...kickBadgeUrls.entries()] : null
+        const fetched = typeof kickBadgesFetchedChannels !== 'undefined' ? [...kickBadgesFetchedChannels] : null
+        const failed = typeof kickBadgesFailedAt !== 'undefined' ? [...kickBadgesFailedAt.entries()] : null
+        const inflight = typeof kickBadgesInFlight !== 'undefined' ? [...kickBadgesInFlight] : null
+        document.documentElement.dataset.hsDbgKickBadgeUrls = JSON.stringify({
+          urlsCount: urls?.length ?? null,
+          urlsSample: urls?.slice(0, 12),
+          fetched,
+          failed,
+          inflight,
+        })
+      } catch (e) {
+        document.documentElement.dataset.hsDbgKickBadgeUrls = 'err:' + (e?.message || 'unknown')
       }
-      document.documentElement.dataset.hsDbgDeep = JSON.stringify(out)
-    } catch (err) {
-      document.documentElement.dataset.hsDbgDeep = 'err:' + (err?.message || 'unknown')
-    }
-  },
-  { capture: true, signal: mcSignal },
-)
-document.addEventListener(
-  'hs-dbg-twitch-sample',
-  (e) => {
-    try {
-      const ch = (e?.detail?.ch || '').toLowerCase()
-      const buf = typeof irc !== 'undefined' ? irc?.channels?.get(ch) : null
-      if (!buf) {
-        document.documentElement.dataset.hsDbg2 = JSON.stringify({ err: 'no buf' })
-        return
+    },
+    { capture: true, signal: mcSignal },
+  )
+  // hs-dbg-kick-badges → returns a sample of recent kick msgs with their .badges
+  // string so we can see whether the WS payload actually carries badge types.
+  document.addEventListener(
+    'hs-dbg-kick-badges',
+    () => {
+      try {
+        const out = []
+        if (typeof kickChat !== 'undefined' && kickChat?.channels) {
+          for (const [ch, buf] of kickChat.channels) {
+            const all = buf?.getAll?.() || []
+            for (const m of all.slice(-30)) {
+              if (m?.badges && m.badges.length > 0) {
+                out.push({ ch, u: m.user, badges: m.badges })
+                if (out.length >= 12) break
+              }
+            }
+            if (out.length >= 12) break
+          }
+        }
+        document.documentElement.dataset.hsDbgKickBadges = JSON.stringify(out)
+      } catch (e) {
+        document.documentElement.dataset.hsDbgKickBadges = 'err:' + (e?.message || 'unknown')
       }
-      const all = buf.getAll()
-      const times = all.map((m) => m.time || 0).filter((t) => t)
-      const minT = times.length ? Math.min(...times) : 0
-      const maxT = times.length ? Math.max(...times) : 0
-      const sample = all.slice(-3).map((m) => ({
-        user: m.user,
-        time: m.time,
-        text: m.text?.slice(0, 40),
-        platform: m.platform,
-        hidden: m.hidden,
-        isHistory: m.isHistory,
-        type: m.type,
-      }))
-      document.documentElement.dataset.hsDbg2 = JSON.stringify({
-        total: all.length,
-        noTime: all.length - times.length,
-        minT,
-        maxT,
-        minISO: minT ? new Date(minT).toISOString() : null,
-        maxISO: maxT ? new Date(maxT).toISOString() : null,
-        sample,
-      })
-    } catch (err) {
-      document.documentElement.dataset.hsDbg2 = 'err:' + (err?.message || 'unknown')
-    }
-  },
-  { capture: true, signal: mcSignal },
-)
+    },
+    { capture: true, signal: mcSignal },
+  )
+  // hs-dbg-alias-probe → returns getUserAliases() + mute/block state for a test
+  // user. Lets MAIN-world verify the cross-platform alias resolution end-to-end.
+  document.addEventListener(
+    'hs-dbg-alias-probe',
+    (e) => {
+      try {
+        const username = e?.detail?.username || ''
+        const platform = e?.detail?.platform || null
+        const aliases = typeof getUserAliases === 'function' ? getUserAliases(username, platform) : null
+        const muted = typeof isUserMuted === 'function' ? isUserMuted(username, platform) : null
+        const blocked = typeof isUserBlocked === 'function' ? isUserBlocked(username, platform) : null
+        const mutedAll = typeof mutedUsers !== 'undefined' && mutedUsers instanceof Set ? [...mutedUsers] : null
+        const blockedAll = typeof blockedUsers !== 'undefined' && blockedUsers instanceof Set ? [...blockedUsers] : null
+        document.documentElement.dataset.hsDbgAlias = JSON.stringify({
+          username,
+          platform,
+          aliases,
+          muted,
+          blocked,
+          mutedCount: mutedAll?.length ?? null,
+          blockedCount: blockedAll?.length ?? null,
+          mutedAll: mutedAll?.slice(-20),
+          blockedAll: blockedAll?.slice(-20),
+        })
+      } catch (err) {
+        document.documentElement.dataset.hsDbgAlias = 'err:' + (err?.message || 'unknown')
+      }
+    },
+    { capture: true, signal: mcSignal },
+  )
+  document.addEventListener(
+    'hs-dbg-render-trace',
+    (e) => {
+      try {
+        const id = (e?.detail?.id || '').toLowerCase()
+        const ch = typeof getChannelById === 'function' ? getChannelById(id) : null
+        const tw = ch?.twitch
+        const kk = ch?.kick
+        const ircMsgs = tw && typeof irc !== 'undefined' ? irc?.getMessages(tw) || [] : []
+        const kickMsgs = kk && typeof kickChat !== 'undefined' ? kickChat?.getMessages(kk) || [] : []
+        const ytMsgs = typeof channelYtMessages !== 'undefined' ? channelYtMessages.get(id) || [] : []
+        const filt = typeof getPlatformFilter === 'function' ? getPlatformFilter(id) : null
+        const out = {
+          id,
+          ch_twitch: tw,
+          ch_kick: kk,
+          ircMsgs_len: ircMsgs.length,
+          kickMsgs_len: kickMsgs.length,
+          ytMsgs_len: ytMsgs.length,
+          filt,
+          ircTimes: ircMsgs.slice(-3).map((m) => ({ u: m.user, t: m.time, txt: (m.text || '').slice(0, 30) })),
+          ytTimes: ytMsgs.slice(-3).map((m) => ({ u: m.user, t: m.time, txt: (m.text || '').slice(0, 30) })),
+          ircHidden: ircMsgs.filter((m) => m?.hidden).length,
+        }
+        document.documentElement.dataset.hsDbg3 = JSON.stringify(out)
+      } catch (err) {
+        document.documentElement.dataset.hsDbg3 = 'err:' + (err?.message || 'unknown')
+      }
+    },
+    { capture: true, signal: mcSignal },
+  )
+  document.addEventListener(
+    'hs-dbg-emotes',
+    (e) => {
+      try {
+        const ch = (e?.detail?.ch || '').toLowerCase()
+        const out = {
+          globalCacheSize: typeof emoteCache !== 'undefined' ? emoteCache.size : -1,
+          viewerPersonalSize: typeof viewerPersonalEmotes !== 'undefined' ? viewerPersonalEmotes.size : -1,
+          channelKeys: typeof channelEmoteCaches !== 'undefined' ? Object.keys(channelEmoteCaches) : null,
+          channelSizes: {},
+          sampleNames: {},
+        }
+        if (typeof channelEmoteCaches !== 'undefined') {
+          for (const [k, v] of Object.entries(channelEmoteCaches)) {
+            out.channelSizes[k] = v?.size || 0
+            if (k === ch) out.sampleNames[k] = [...v.keys()].slice(0, 12)
+          }
+        }
+        out.emoteFirstLoad = typeof _emoteFirstLoad !== 'undefined' ? [..._emoteFirstLoad] : null
+        document.documentElement.dataset.hsDbgEmotes = JSON.stringify(out)
+      } catch (err) {
+        document.documentElement.dataset.hsDbgEmotes = 'err:' + (err?.message || 'unknown')
+      }
+    },
+    { capture: true, signal: mcSignal },
+  )
+  document.addEventListener(
+    'hs-dbg-render-deep',
+    (e) => {
+      try {
+        const id = (e?.detail?.id || '').toLowerCase()
+        const ch = typeof getChannelById === 'function' ? getChannelById(id) : null
+        const tw = ch?.twitch
+        const kk = ch?.kick
+        const ircMsgs = tw && typeof irc !== 'undefined' ? irc?.getMessages(tw) || [] : []
+        const kickMsgs = kk && typeof kickChat !== 'undefined' ? kickChat?.getMessages(kk) || [] : []
+        const ytMsgs = typeof channelYtMessages !== 'undefined' ? channelYtMessages.get(id) || [] : []
+        const autoYt = typeof channelYtMessages !== 'undefined' ? channelYtMessages.get('__live_yt_auto__') || [] : []
+        // per-channel tabs no longer merge __live_yt_auto__ (mirrors renderMessages — bleed fix)
+        const ytAutoMerged = false
+        const filt = typeof getPlatformFilter === 'function' ? getPlatformFilter(id) : null
+        const fmInput = [filt?.twitch ? ircMsgs : [], filt?.kick ? kickMsgs : [], filt?.youtube ? ytMsgs : []]
+        const merged = typeof fairMerge === 'function' ? fairMerge(fmInput) : []
+        const out = {
+          id,
+          tw,
+          kk,
+          ircMsgs_len: ircMsgs.length,
+          kickMsgs_len: kickMsgs.length,
+          ytMsgs_len: ytMsgs.length,
+          autoYt_len: autoYt.length,
+          ytAutoMerged,
+          filt,
+          fmInputLens: fmInput.map((s) => s.length),
+          merged_len: merged.length,
+          mergedSampleTop: merged
+            .slice(0, 3)
+            .map((m) => ({ u: m.user, t: m.time, type: m.type, txt: (m.text || '').slice(0, 30) })),
+          mergedSampleBottom: merged
+            .slice(-3)
+            .map((m) => ({ u: m.user, t: m.time, type: m.type, txt: (m.text || '').slice(0, 30) })),
+          isMultiPlat: typeof isMultiPlatformTab === 'function' ? isMultiPlatformTab(id) : null,
+          domRenderCap: typeof DOM_RENDER_CAP !== 'undefined' ? DOM_RENDER_CAP : null,
+          currentTab: typeof currentTab !== 'undefined' ? currentTab : null,
+          renderEpoch: typeof _renderEpoch !== 'undefined' ? _renderEpoch : null,
+        }
+        document.documentElement.dataset.hsDbgDeep = JSON.stringify(out)
+      } catch (err) {
+        document.documentElement.dataset.hsDbgDeep = 'err:' + (err?.message || 'unknown')
+      }
+    },
+    { capture: true, signal: mcSignal },
+  )
+  document.addEventListener(
+    'hs-dbg-twitch-sample',
+    (e) => {
+      try {
+        const ch = (e?.detail?.ch || '').toLowerCase()
+        const buf = typeof irc !== 'undefined' ? irc?.channels?.get(ch) : null
+        if (!buf) {
+          document.documentElement.dataset.hsDbg2 = JSON.stringify({ err: 'no buf' })
+          return
+        }
+        const all = buf.getAll()
+        const times = all.map((m) => m.time || 0).filter((t) => t)
+        const minT = times.length ? Math.min(...times) : 0
+        const maxT = times.length ? Math.max(...times) : 0
+        const sample = all.slice(-3).map((m) => ({
+          user: m.user,
+          time: m.time,
+          text: m.text?.slice(0, 40),
+          platform: m.platform,
+          hidden: m.hidden,
+          isHistory: m.isHistory,
+          type: m.type,
+        }))
+        document.documentElement.dataset.hsDbg2 = JSON.stringify({
+          total: all.length,
+          noTime: all.length - times.length,
+          minT,
+          maxT,
+          minISO: minT ? new Date(minT).toISOString() : null,
+          maxISO: maxT ? new Date(maxT).toISOString() : null,
+          sample,
+        })
+      } catch (err) {
+        document.documentElement.dataset.hsDbg2 = 'err:' + (err?.message || 'unknown')
+      }
+    },
+    { capture: true, signal: mcSignal },
+  )
+}
 
 // Fast context-death detector. chrome.runtime.id becomes undefined sync on
 // extension reload. Tear down lifecycle immediately, then defer reload to

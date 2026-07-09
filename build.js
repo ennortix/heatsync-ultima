@@ -967,6 +967,18 @@ function minifyDist(outDir) {
       'build: content.js still references __HS_DEV_BUILD__ after minify — dev-reload guard not folded; refusing to ship a build that could enable nonce-less reload for store users',
     )
   }
+  // Fail-closed: the page-reachable hs-dbg-* diagnostic listeners (real authed
+  // chat send via hs-dbg-test-send + private-state dumps) MUST be dead-code-
+  // eliminated from every packaged multichat bundle. If the __HS_DEV_BUILD__ fold
+  // failed, the sentinel string survives — refuse to ship rather than expose it.
+  for (const f of Object.keys(MULTICHAT_PLATFORM_DEFINE)) {
+    const p = join(outDir, f)
+    if (existsSync(p) && readFileSync(p, 'utf8').includes('hs-dbg-test-send')) {
+      throw new Error(
+        `build: ${f} still contains hs-dbg-test-send after minify — dev-only diagnostic listeners not stripped; refusing to ship a bundle that lets any page script send chat as the user`,
+      )
+    }
+  }
   if (bytesBefore > 0) {
     const pct = ((1 - bytesAfter / bytesBefore) * 100).toFixed(1)
     console.log(

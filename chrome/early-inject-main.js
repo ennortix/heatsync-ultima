@@ -674,6 +674,9 @@
   // Apollo mutations are user-driven (mod/prediction actions) and rare, so
   // this keeps a tight cap to blunt spoofed-nonce spam.
   const _mutateRate = { ts: [], windowMs: 10000, max: 10 }
+  // Separate bucket for the gql-request (Helix-style) proxy's mutation subset, so
+  // follows/redeems/predictions don't share budget with apollo-proxy mod actions.
+  const _gqlMutateRate = { ts: [], windowMs: 10000, max: 10 }
   function _proxyAllowed(bucket) {
     const now = Date.now()
     bucket.ts = bucket.ts.filter((t) => now - t < bucket.windowMs)
@@ -968,6 +971,9 @@
         'FollowButton_FollowUser',
         'FollowButton_UnfollowUser',
       ]
+      // Reads (points/context) stay unlimited so legit channel-load bursts never
+      // throttle; everything else mutates and spends the user's token.
+      const GQL_READ_OPS = new Set(['CommunityPointsContext', 'ChannelPointsContext'])
       const gqlOps = req.batch ? req.batch.map((o) => o && o.operation) : [req.operation]
       if (!gqlOps.length || !gqlOps.every((op) => ALLOWED_GQL_OPS.includes(op))) {
         log('heatsync-gql-request: operation not allowed — ' + gqlOps.join(','))
@@ -975,6 +981,15 @@
           { type: 'heatsync-gql-response', id: req.id, error: 'operation not allowed' },
           location.origin,
         )
+        return
+      }
+      // Rate-limit the mutation subset — matches the "allowlist + rate limit"
+      // guarantee in SECURITY.md. A forged message (nonce is observable in MAIN
+      // world) can therefore replay a mutation at most _gqlMutateRate.max / window.
+      const isMutatingGql = gqlOps.some((op) => !GQL_READ_OPS.has(op))
+      if (isMutatingGql && !_proxyAllowed(_gqlMutateRate)) {
+        log('heatsync-gql-request: rate limit exceeded — ' + gqlOps.join(','))
+        window.postMessage({ type: 'heatsync-gql-response', id: req.id, error: 'rate limit exceeded' }, location.origin)
         return
       }
       if (gql.hashes[req.operation]) {

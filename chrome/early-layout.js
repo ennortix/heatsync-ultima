@@ -40,7 +40,9 @@
   const chatWidth = parseInt(readLS('chatWidth', '340'), 10) || 340
   const chatHeight = parseInt(readLS('chatHeight', ''), 10) || null
 
-  const isPopout = platform === 'twitch' && /^\/(popout|embed)\/[a-zA-Z0-9_]+\/chat/.test(location.pathname)
+  const isPopout =
+    (platform === 'twitch' && /^\/(popout|embed)\/[a-zA-Z0-9_]+\/chat/.test(location.pathname)) ||
+    (platform === 'yt' && location.pathname.startsWith('/live_chat'))
 
   // Only prepaint where chat will actually mount — otherwise the black bar
   // shows for up to 4s on home/directory/browse/search/shorts/etc. while the
@@ -99,11 +101,14 @@
       ].includes(m[1].toLowerCase())
     }
     if (platform === 'yt') {
-      // No YT prepaint: at document_start we can't tell a livestream from a VOD
-      // (the live_chat iframe loads later), and the panel now defaults to hidden
-      // on non-live pages — prepainting a black bar there would flash for ~4s on
-      // every VOD. The overlay docks into #secondary post-mount; the cold-boot
-      // flash YT prepaint saved is minor vs a wrong VOD black bar.
+      // The /live_chat pop-out IS the chat surface — a dedicated window the
+      // overlay fills edge-to-edge. Prepaint it (full-window black, below) so
+      // there's no flash of native YT chat before our overlay mounts.
+      if (isPopout) return true
+      // No prepaint on watch/VOD: at document_start we can't tell a livestream
+      // from a VOD (the live_chat iframe loads later), and the panel defaults to
+      // hidden on non-live pages — prepainting a black bar there would flash for
+      // ~4s on every VOD. The overlay docks into #secondary post-mount.
       return false
     }
     return false
@@ -121,7 +126,12 @@
   // with this pseudo (overlay opacity 0→1, prepaint opacity 1→0) so the
   // transition is invisible.
   let prepaintRect
-  if (chatPosition === 'left') {
+  if (isPopout) {
+    // Pop-out window: the overlay fills the whole window (see the
+    // body.hs-popout fill rule in styles). Prepaint the full window black so
+    // there's no docked-bar flash before the bundle mounts.
+    prepaintRect = `top:0; left:0; right:0; bottom:0;`
+  } else if (chatPosition === 'left') {
     prepaintRect = `top:0; left:0; bottom:0; width:${chatWidth}px;`
   } else if (chatPosition === 'top') {
     prepaintRect = `top:0; left:0; right:0; height:${chatHeight || 280}px;`

@@ -13547,6 +13547,23 @@ img.hs-fx-zero { margin-left: -4px; }
       z-index: 9999 !important;
       background: #000 !important;
     }
+    /* YouTube /live_chat pop-out: the YT position rule (17-platform-position)
+       fixes the container to a ~336px right dock and TIES the generic hs-popout
+       fill on specificity, winning by load order. Re-assert full-window fill for
+       the YT popout with enough specificity (extra :not(.hs-offline)) to beat it,
+       so the overlay fills the whole popout window instead of hugging the edge. */
+    body.hs-popout.hs-platform-yt:not(.hs-offline) #hs-mc-container {
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      width: auto !important;
+      max-width: none !important;
+      height: auto !important;
+      z-index: 9999 !important;
+      background: #000 !important;
+    }
 
     /* ---- FEED MESSAGE CARDS ---- */
     .hs-feed-msg {
@@ -49754,6 +49771,13 @@ const STORAGE_KEY = 'heatsync_multichat'
           ? 'yt'
           : 'twitch'
 
+  // A standalone youtube.com/live_chat TOP window = a HeatSync pop-out chat
+  // window. multichat-youtube.js only runs in the top frame, so /live_chat here
+  // can only be a popout (never the watch-page's embedded chat iframe, which is
+  // a child frame the bundle never touches). Treat it like the twitch/kick
+  // popout: fill the window, single stream, native chat hidden, boot to 'live'.
+  const isYtPopout = hostPlatform === 'yt' && location.pathname.startsWith('/live_chat')
+
   // Whether the user has chosen to show native platform chat alongside HS.
   // Persisted via settings registry (key: nativeVisible). Default false = same
   // behaviour as before this feature existed.
@@ -60968,7 +60992,10 @@ const STORAGE_KEY = 'heatsync_multichat'
         const ytAutoLiveMsgs =
           typeof channelYtMessages !== 'undefined' ? channelYtMessages.get('__live_yt_auto__')?.length || 0 : 0
         const showYtChat =
-          liveChatFramePresent || ytAutoLiveMsgs > 0 || document.body.classList.contains('hs-yt-nonlive-chat')
+          isYtPopout ||
+          liveChatFramePresent ||
+          ytAutoLiveMsgs > 0 ||
+          document.body.classList.contains('hs-yt-nonlive-chat')
         document.body.classList.toggle('hs-offline', !showYtChat)
         // Watch-page detection: ytd-watch-flexy stays in DOM with `hidden`
         // attr off-watch — only count it as a watch page when visible.
@@ -61079,6 +61106,9 @@ const STORAGE_KEY = 'heatsync_multichat'
       // The destructive layout overrides (#secondary collapse, recommendeds
       // hidden) are gated separately on `:not(.hs-offline)` so non-live
       // pages keep YouTube's native layout intact.
+      // A /live_chat top window is a pop-out → fill-window layout (same
+      // hs-popout path twitch/kick use).
+      isPopout = isYtPopout
     } else if (isKick) {
       // Kick: persistent overlay across every URL — channel, browse,
       // categories, search, following, settings — so the panel survives
@@ -61150,7 +61180,8 @@ const STORAGE_KEY = 'heatsync_multichat'
     // on first paint for VOD viewers. checkYtLive() removes the class once
     // it detects a live chatframe; if it's actually a livestream, native
     // YT live chat is shown briefly until our override kicks in.
-    if (hostPlatform === 'yt') document.body.classList.add('hs-offline')
+    // …except a /live_chat pop-out, which IS the live chat — never pre-hide it.
+    if (hostPlatform === 'yt' && !isYtPopout) document.body.classList.add('hs-offline')
     detectOfflineState()
     if (isPopout) document.body.classList.add('hs-popout')
     currentUsername = getCurrentUsername()
@@ -61433,6 +61464,23 @@ const STORAGE_KEY = 'heatsync_multichat'
       // Twitch deprecated WHISPER over IRC in Feb 2023 — receive via EventSub instead.
       // Works on any host (the ESW socket is independent of the chat IRC).
       if (gateAtBoot('whispers')) startEventSubWhispers()
+
+      // /live_chat pop-out: subscribe to THIS window's stream (?v=<id>) and open
+      // the auto-live render gate immediately. The auto-join below is skipped on
+      // a bare /live_chat path (getCurrentChannel() is empty), so the popout's
+      // own videoId is wired here.
+      if (isYtPopout && gYt) {
+        const _popVid = new URLSearchParams(location.search).get('v') || ''
+        if (/^[a-zA-Z0-9_-]{11}$/.test(_popVid)) {
+          _autoYtVideoId = _popVid
+          const _popUrl = `https://youtube.com/watch?v=${_popVid}`
+          ytSubscribedUrls.set('__live_yt_auto__', _popUrl)
+          ytChanLastSeen.set('__live_yt_auto__', Date.now())
+          chrome.runtime
+            .sendMessage({ type: 'youtube_ws_subscribe', url: _popUrl, channelId: '__live_yt_auto__' })
+            .catch(() => {})
+        }
+      }
 
       // Auto-join current channel on all platforms (using overrides if set)
       const currentChannel = getCurrentChannel()
@@ -62541,6 +62589,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     const bootActiveTab = () => {
       const path = location.pathname + location.search
       const onStreamPage =
+        isYtPopout ||
         (hostPlatform === 'yt' && /\/watch|\/live\//.test(path)) ||
         (hostPlatform !== 'yt' &&
           !isKick &&

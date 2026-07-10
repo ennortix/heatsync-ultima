@@ -323,4 +323,21 @@
       z-index: 9999 !important;
       background: #000 !important;
     }
+    /* YouTube /live_chat pop-out: the YT position rule (17-platform-position)
+       fixes the container to a ~336px right dock and TIES the generic hs-popout
+       fill on specificity, winning by load order. Re-assert full-window fill for
+       the YT popout with enough specificity (extra :not(.hs-offline)) to beat it,
+       so the overlay fills the whole popout window instead of hugging the edge. */
+    body.hs-popout.hs-platform-yt:not(.hs-offline) #hs-mc-container {
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      width: auto !important;
+      max-width: none !important;
+      height: auto !important;
+      z-index: 9999 !important;
+      background: #000 !important;
+    }
 

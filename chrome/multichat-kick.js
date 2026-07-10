@@ -29891,6 +29891,7 @@ function attachFeedFallbacks(root) {
 // --- multichat/social.js ---
 // Social - feed, notifications, activity, heatsync API
 let _autoYtVideoId = null // videoId for this tab's __live_yt_auto__ subscription (cross-tab filter)
+let _dbgAutoYtLogged = false // one-time diagnostic: did auto-live YT chat reach the render gate + pass
 
 // YT POLL SMOOTHING: server polls YouTube every ~5s and dispatches the whole
 // batch back-to-back over WS. Without smoothing, 10 msgs land in one rAF
@@ -30625,11 +30626,24 @@ function listenForSocialEvents() {
       try {
         touchYtChannel(targetChannelId)
       } catch {}
-      // Filter __live_yt_auto__ messages: only accept if videoId matches this tab's subscription
-      // (prevents cross-tab leaking — e.g., lofigirl YouTube showing on a Twitch tab)
+      // Filter __live_yt_auto__ messages: only accept this stream's chat
+      // (prevents cross-tab leak — e.g. a stale videoId's chat bleeding in).
+      // Derive the allowed videoId straight from the page URL when we're ON a
+      // youtube watch/live page — that's authoritative and always available, so
+      // the gate no longer depends on a status-echo or a subscribe-time var that
+      // can be missed (which left it shut and the 'live' tab empty). Falls back
+      // to _autoYtVideoId off-page. The videoId-match still blocks other streams.
       if (targetChannelId === '__live_yt_auto__') {
-        if (!_autoYtVideoId) return // no confirmed subscription yet — reject
-        if (msg.videoId && msg.videoId !== _autoYtVideoId) return // wrong video
+        const pageVid =
+          (location.href.match(/[?&]v=([a-zA-Z0-9_-]{11})/) ||
+            location.href.match(/\/live\/([a-zA-Z0-9_-]{11})/))?.[1] || _autoYtVideoId
+        if (!_dbgAutoYtLogged) {
+          _dbgAutoYtLogged = true
+          console.log('[hs-yt] first auto-live msg — pageVid:', pageVid, 'msgVid:', msg.videoId, 'render:', !!pageVid && (!msg.videoId || msg.videoId === pageVid))
+        }
+        if (!pageVid) return // not on a watch page and no confirmed sub — reject
+        if (msg.videoId && msg.videoId !== pageVid) return // wrong stream
+        if (!_autoYtVideoId) _autoYtVideoId = pageVid // heal for downstream reads
       }
       // Event renderers (superchat/supersticker/membership/gift purchase) skip
       // the normal chat-row path entirely and go out as toggleable stream-event

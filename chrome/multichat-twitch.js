@@ -30325,7 +30325,6 @@ function attachFeedFallbacks(root) {
 // --- multichat/social.js ---
 // Social - feed, notifications, activity, heatsync API
 let _autoYtVideoId = null // videoId for this tab's __live_yt_auto__ subscription (cross-tab filter)
-let _dbgAutoYtLogged = false // one-time diagnostic: did auto-live YT chat reach the render gate + pass
 
 // YT POLL SMOOTHING: server polls YouTube every ~5s and dispatches the whole
 // batch back-to-back over WS. Without smoothing, 10 msgs land in one rAF
@@ -31053,10 +31052,6 @@ function listenForSocialEvents() {
     }
     if (msg.type === 'youtube_chat_message') {
       const targetChannelId = msg.channelId
-      if (!_dbgAutoYtLogged) {
-        _dbgAutoYtLogged = true
-        console.log('[hs-yt] first youtube_chat_message reached overlay — channelId:', targetChannelId, 'videoId:', msg.videoId, 'text:', (msg.text || '').slice(0, 30))
-      }
       // Touch the YT watchdog clock on every chat message regardless of
       // dedup/filter outcome — even rejected msgs prove the BG-server pipe
       // is alive for this channel, which is the only thing the watchdog
@@ -63028,13 +63023,29 @@ const STORAGE_KEY = 'heatsync_multichat'
     // perceived load lag) — content scripts run at document_idle, and the
     // chat container often mounts within 50-150ms of that. 15s safety
     // fallback timer in case the observer never fires (SPA bug, slow page).
+    // The tab to activate on mount. When we're on an actual stream/channel watch
+    // page, the "live" tab (the stream you're looking at) is what you want — NOT
+    // a stale last-used channel tab. Restoring _savedActiveTab there is exactly
+    // why heatsync-on-youtube read as "no chat": it dropped you on a saved
+    // channel (nl_kripp) instead of the lofi stream on screen. Off a stream page
+    // (directory / home / search), restore the saved tab as before.
+    const bootActiveTab = () => {
+      const path = location.pathname + location.search
+      const onStreamPage =
+        (hostPlatform === 'yt' && /\/watch|\/live\//.test(path)) ||
+        (hostPlatform !== 'yt' &&
+          !isKick &&
+          !!document.querySelector('.channel-root, [class*="channel-root"]')) ||
+        (isKick && !!(document.getElementById('channel-chatroom') || document.querySelector('[id*="chatroom"]')))
+      return onStreamPage ? 'live' : _savedActiveTab || 'live'
+    }
     const waitForMount = (find, label) => {
       if (mcSignal?.aborted) return
       const inject = () => {
         if (mcSignal?.aborted) return
         _runOverlayMountPass(label || 'waitForMount', () => {
           ensureUIElements()
-          switchTab(_savedActiveTab || 'live')
+          switchTab(bootActiveTab())
           startLayoutWatcher()
         })
       }
@@ -63066,7 +63077,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       // observer in getOrCreateHsContainer + the SPA nav handler.
       _runOverlayMountPass('yt body-mount', () => {
         ensureUIElements()
-        switchTab(_savedActiveTab || 'live')
+        switchTab(bootActiveTab())
         startLayoutWatcher()
       })
       // YT computes grid items-per-row + #primary widths from window-keyed
@@ -63120,7 +63131,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       if (!couldBeChannel) {
         _runOverlayMountPass('kick non-channel body-mount', () => {
           ensureUIElements()
-          switchTab(_savedActiveTab || 'live')
+          switchTab(bootActiveTab())
           startLayoutWatcher()
         })
       } else {
@@ -63157,7 +63168,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         log('Twitch non-channel page — body-mount overlay')
         _runOverlayMountPass('twitch non-channel body-mount', () => {
           ensureUIElements()
-          switchTab(_savedActiveTab || 'live')
+          switchTab(bootActiveTab())
           startLayoutWatcher()
         })
         return true
@@ -63169,7 +63180,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         _runOverlayMountPass('twitch react hook', () => {
           patchChatRoomRender(chatRoom)
           ensureUIElements()
-          switchTab(_savedActiveTab || 'live')
+          switchTab(bootActiveTab())
           startLayoutWatcher()
         })
         return true
@@ -63185,7 +63196,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         log('Using fallback DOM injection')
         _runOverlayMountPass('twitch fallback dom injection', () => {
           ensureUIElements()
-          switchTab(_savedActiveTab || 'live')
+          switchTab(bootActiveTab())
           startLayoutWatcher()
         })
         return true

@@ -1,6 +1,5 @@
 // Social - feed, notifications, activity, heatsync API
 let _autoYtVideoId = null // videoId for this tab's __live_yt_auto__ subscription (cross-tab filter)
-let _dbgAutoYtLogged = false // one-time diagnostic: did auto-live YT chat reach the render gate + pass
 
 // YT POLL SMOOTHING: server polls YouTube every ~5s and dispatches the whole
 // batch back-to-back over WS. Without smoothing, 10 msgs land in one rAF
@@ -728,10 +727,6 @@ function listenForSocialEvents() {
     }
     if (msg.type === 'youtube_chat_message') {
       const targetChannelId = msg.channelId
-      if (!_dbgAutoYtLogged) {
-        _dbgAutoYtLogged = true
-        console.log('[hs-yt] first youtube_chat_message reached overlay — channelId:', targetChannelId, 'videoId:', msg.videoId, 'text:', (msg.text || '').slice(0, 30))
-      }
       // Touch the YT watchdog clock on every chat message regardless of
       // dedup/filter outcome — even rejected msgs prove the BG-server pipe
       // is alive for this channel, which is the only thing the watchdog

@@ -40846,7 +40846,26 @@ async function sendMessage() {
   // echoes = one per platform whose chat stream loops the message back, so the
   // dedup entry survives until the last echo (twitch + kick + youtube triple).
   const _echoCount = (sendToTwitch ? 1 : 0) + (sendToKick ? 1 : 0) + (sendToYoutube ? 1 : 0)
-  trackSentMessage(restText, undefined, _synthId, _echoCount || 1)
+  // Badge attribution: prefer "the platform you're viewing FROM" (the host page)
+  // — but ONLY when the message actually went there. On a YouTube page sending
+  // to a twitch+kick channel (no YT leg), the host badge [Y] is a lie: the
+  // message never touched YouTube. Fall back to a real send target so an own-echo
+  // shows [T]/[K] for a twitch/kick send instead of a phantom [Y].
+  const _echoHost =
+    hostPlatform === 'yt' && sendToYoutube
+      ? 'yt'
+      : hostPlatform === 'twitch' && sendToTwitch
+        ? 'twitch'
+        : hostPlatform === 'kick' && sendToKick
+          ? 'kick'
+          : sendToTwitch
+            ? 'twitch'
+            : sendToKick
+              ? 'kick'
+              : sendToYoutube
+                ? 'yt'
+                : hostPlatform
+  trackSentMessage(restText, _echoHost, _synthId, _echoCount || 1)
 
   // Push to message history (dedup consecutive, cap at max)
   if (mcMessageHistory[0] !== text) {

@@ -33651,10 +33651,21 @@ async function sendTwitchWhisper(toUserId, message) {
   const respStatus = Number(serverResp?.status) || 0
   const respError = String(serverResp?.error || '')
   const isAuthFail = respStatus === 401 && /no twitch token|not authenticated|re-login/i.test(respError)
+  // Distinct from auth: the account is logged in but its twitch OAuth is missing
+  // the user:manage:whispers scope. The server flags this structurally — the old
+  // regex missed it (says "re-link", not "re-login"), so it fell through to a
+  // generic "retry" that just re-hit the same failing endpoint forever. Needs a
+  // relink-with-scope CTA, not a retry.
+  const needsRelink = respStatus === 401 && (serverResp?.relink_required || serverResp?.scope_pack === 'whispers')
 
   // Off twitch.tv: direct GQL can't get integrity, so don't pretend to retry.
   // Surface the real proxy error — actionable for the user.
   if (!onTwitch) {
+    if (needsRelink) {
+      const emsg = respError || 'twitch whispers not enabled — re-link on heatsync.org'
+      showToast(emsg, 'error')
+      return { ok: false, error: emsg, errorKind: 'relink' }
+    }
     if (isAuthFail) {
       showToast(t('mc_whisper_login'), 'error')
       return { ok: false, error: 'log in to heatsync.org to send whispers', errorKind: 'auth' }
@@ -33747,7 +33758,7 @@ async function sendWhisperMessage(key, text) {
 // Auto-retry queued auth-failed whispers when auth comes back online.
 // Bound to storage.onChanged on first call; safe to call repeatedly.
 function retryAuthFailedWhispers() {
-  const failed = whisperTimeline.filter((m) => m.status === 'failed' && m.errorKind === 'auth' && m.sendId)
+  const failed = whisperTimeline.filter((m) => m.status === 'failed' && (m.errorKind === 'auth' || m.errorKind === 'relink') && m.sendId)
   if (!failed.length) return
   log(`[whispers] auth restored — retrying ${failed.length} queued send(s)`)
   // Stagger retries so we don't burst the helix endpoint.
@@ -33905,7 +33916,9 @@ function renderWhispersTab() {
     } else if (m.status === 'failed') {
       const errSafe = escapeHtml(m.error || 'failed')
       const idSafe = escapeHtml(m.sendId || '')
-      if (m.errorKind === 'auth') {
+      if (m.errorKind === 'relink') {
+        statusHtml = ` <a href="https://heatsync.org/api/auth/login?scopes=whispers&return_to=%2Fhome%2Fhot" target="_blank" rel="noopener noreferrer" class="hs-whisper-status hs-whisper-relogin" title="${errSafe} — click to grant the twitch whisper permission on heatsync">⚠ enable twitch whispers — re-link</a>`
+      } else if (m.errorKind === 'auth') {
         statusHtml = ` <a href="https://heatsync.org/api/auth/login?return_to=%2Fhome%2Fhot" target="_blank" rel="noopener noreferrer" class="hs-whisper-status hs-whisper-relogin" title="${errSafe} — click to log in on heatsync">⚠ log in on heatsync to send</a>`
       } else {
         statusHtml = ` <span class="hs-whisper-status hs-whisper-retry" title="click to retry" data-retry="${idSafe}">⚠ ${errSafe} — retry</span>`
@@ -36796,6 +36809,11 @@ function _extractMcMsgText(msg) {
 function _prefillMcInput(text) {
   const input = document.getElementById('hs-mc-input')
   if (!input) return
+  // Un-hide the composer first: switchTab auto-hides it when the input is empty,
+  // so prefilling a still-hidden bar is why whisper/DM compose "won't reopen
+  // without a refresh" (showInputBar early-returns on the session inputBarVisible
+  // flag, only reset by a full reload). Mirror _mentionInMcInput.
+  if (typeof showInputBar === 'function') showInputBar()
   if (input.tagName === 'INPUT' || input.tagName === 'TEXTAREA') {
     input.value = text
     input.focus()

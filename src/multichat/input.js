@@ -2268,6 +2268,11 @@ function _extractMcMsgText(msg) {
 function _prefillMcInput(text) {
   const input = document.getElementById('hs-mc-input')
   if (!input) return
+  // Un-hide the composer first: switchTab auto-hides it when the input is empty,
+  // so prefilling a still-hidden bar is why whisper/DM compose "won't reopen
+  // without a refresh" (showInputBar early-returns on the session inputBarVisible
+  // flag, only reset by a full reload). Mirror _mentionInMcInput.
+  if (typeof showInputBar === 'function') showInputBar()
   if (input.tagName === 'INPUT' || input.tagName === 'TEXTAREA') {
     input.value = text
     input.focus()

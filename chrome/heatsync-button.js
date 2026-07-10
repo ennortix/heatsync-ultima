@@ -1825,8 +1825,8 @@
         log(' 🔴 INJECTING RED BACKGROUND CSS FOR MENTIONS')
 
         // Primary rule: entire message line gets dark blood-red bg so full-color usernames read on top
-        rules.push('.chat-line__message.hs-mentioned { background-color: #330808 !important; }')
-        rules.push('.hs-mentioned.chat-line__message { background-color: #330808 !important; }')
+        rules.push('.chat-line__message.hs-mentioned { background-color: #5c1212 !important; }')
+        rules.push('.hs-mentioned.chat-line__message { background-color: #5c1212 !important; }')
 
         // All children must be transparent so red shows through
         rules.push(
@@ -1834,7 +1834,7 @@
         )
 
         // Generic fallback if class is on wrong element
-        rules.push('.hs-mentioned { background-color: #330808 !important; }')
+        rules.push('.hs-mentioned { background-color: #5c1212 !important; }')
         rules.push('.hs-mentioned * { background-color: transparent !important; background: transparent !important; }')
       }
 

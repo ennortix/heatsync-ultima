@@ -460,14 +460,14 @@
        dark enough to let full-color Twitch usernames render on top without
        the bg drowning them. Mirrors heatsync.org messages.css. */
     .hs-mc-msg.mention {
-      background: #330808;
+      background: #5c1212;
     }
     /* Zebra striping for consecutive mentions — leverages the existing
        neighbor-flip .hs-mc-zebra cadence so adjacent mention rows alternate
        without looking like a wall of identical red. Darker red maintains
        the mention semantic while distinguishing rows. */
     .hs-mc-msg.mention.hs-mc-zebra {
-      background: #1a0404;
+      background: #380b0b;
     }
     /* Row base color white for non-colored text (gray timestamps, plain
        message body) — inline user colors override naturally. No star-cascade

@@ -2273,8 +2273,8 @@
   div.hs-mentioned,
   [class*="chat-line"].hs-mentioned,
   .chat-scrollable-area__message-container .hs-mentioned {
-    background-color: #330808 !important;
-    background: #330808 !important;
+    background-color: #5c1212 !important;
+    background: #5c1212 !important;
   }
 
   /* Emojis — scaled by --hs-emoji-scale (1/2/4x) from hs_emoji_size storage. */

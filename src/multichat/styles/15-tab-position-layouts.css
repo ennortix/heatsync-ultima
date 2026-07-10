@@ -340,4 +340,13 @@
       z-index: 9999 !important;
       background: #000 !important;
     }
+    /* Kill the native YouTube chat in the /live_chat pop-out. Our overlay
+       REPLACES it (reading from the server relay, not this window's DOM), so
+       the native yt-live-chat-app is pure redundant duplicate — without this
+       it renders underneath and shows through the edges = two chats stacked.
+       Safe: the pop-out never reads native chat, only the WS __live_yt_auto__
+       feed, so removing it from layout costs nothing. */
+    body.hs-popout.hs-platform-yt yt-live-chat-app {
+      display: none !important;
+    }
 

@@ -13547,12 +13547,14 @@ img.hs-fx-zero { margin-left: -4px; }
       z-index: 9999 !important;
       background: #000 !important;
     }
-    /* YouTube /live_chat pop-out: the YT position rule (17-platform-position)
-       fixes the container to a ~336px right dock and TIES the generic hs-popout
-       fill on specificity, winning by load order. Re-assert full-window fill for
-       the YT popout with enough specificity (extra :not(.hs-offline)) to beat it,
-       so the overlay fills the whole popout window instead of hugging the edge. */
-    body.hs-popout.hs-platform-yt:not(.hs-offline) #hs-mc-container {
+    /* YouTube /live_chat pop-out: the YT right-dock rule in 17-platform-position
+       (body.hs-platform-yt:not(.hs-offline).hs-chat-right #hs-mc-container) is
+       (1,3,1) — it TIES a plain hs-popout+platform-yt fill and wins by load
+       order (17 after 15), docking the overlay to a ~336px strip. Double the
+       .hs-popout class (house idiom, cf. the ×4 .hs-native-visible bump) to
+       reach (1,4,1) and win outright, so the overlay fills the whole pop-out
+       window edge-to-edge regardless of chat-position class or load order. */
+    body.hs-popout.hs-popout.hs-platform-yt:not(.hs-offline) #hs-mc-container {
       position: fixed !important;
       top: 0 !important;
       left: 0 !important;
@@ -13564,13 +13566,15 @@ img.hs-fx-zero { margin-left: -4px; }
       z-index: 9999 !important;
       background: #000 !important;
     }
-    /* Kill the native YouTube chat in the /live_chat pop-out. Our overlay
-       REPLACES it (reading from the server relay, not this window's DOM), so
-       the native yt-live-chat-app is pure redundant duplicate — without this
-       it renders underneath and shows through the edges = two chats stacked.
-       Safe: the pop-out never reads native chat, only the WS __live_yt_auto__
-       feed, so removing it from layout costs nothing. */
-    body.hs-popout.hs-platform-yt yt-live-chat-app {
+    /* Kill the native YouTube chat in the /live_chat pop-out — our overlay
+       REPLACES it (reading the server relay, not this window's DOM), so native
+       yt-live-chat-app is a redundant duplicate that shows through any gap = two
+       chats stacked. Gate it on our overlay actually being present AND shown
+       (:has(#hs-mc-container) + :not(.hs-offline)): if the overlay ever fails to
+       mount or gets hidden, native falls back into view instead of leaving a
+       white void. Safe: the pop-out never reads native chat, only the WS
+       __live_yt_auto__ feed, so hiding it costs nothing. */
+    body.hs-popout.hs-platform-yt:not(.hs-offline):has(#hs-mc-container) yt-live-chat-app {
       display: none !important;
     }
 

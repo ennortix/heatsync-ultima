@@ -2965,6 +2965,11 @@
 
   function hideInputBar() {
     if (!autoHideInput) return
+    // Dedicated pop-out window: never auto-hide the composer. A hidden (blurred)
+    // input means keystrokes land on the host page, where `f`/`t`/etc. trigger
+    // browser find-as-you-type or a link-hint extension instead of typing. Keep
+    // it visible + focused so every key goes into chat.
+    if (isYtPopout) return
     if (!inputBarVisible) return
     const input = document.getElementById('hs-mc-input')
     const hasText = input ? (input.value || input.textContent || '').trim().length > 0 : false
@@ -5727,8 +5732,8 @@
     // Ensure input bar exists
     if (!inputBarElement || !document.contains(inputBarElement)) {
       inputBarElement = createInputBar()
-      // Start hidden — typing reveals it
-      if (autoHideInput) {
+      // Start hidden — typing reveals it (never in the pop-out: it stays put + focused)
+      if (autoHideInput && !isYtPopout) {
         inputBarElement.classList.add('hs-hidden')
         inputBarVisible = false
       }
@@ -6020,7 +6025,7 @@
       if (id === 'add' || id === 'settings' || id === 'discover' || id === 'pinned' || id === 'modlog') {
         inputBarElement.classList.add('hs-hidden')
         inputBarVisible = false
-      } else if (autoHideInput && !pickerOpen) {
+      } else if (autoHideInput && !isYtPopout && !pickerOpen) {
         const input = document.getElementById('hs-mc-input')
         const hasContent =
           input &&
@@ -12074,6 +12079,19 @@
             .sendMessage({ type: 'youtube_ws_subscribe', url: _popUrl, channelId: '__live_yt_auto__' })
             .catch(() => {})
         }
+      }
+
+      // Pop-out is a dedicated chat window — land + keep focus in the composer so
+      // keystrokes type into chat instead of leaking to the host page (where an
+      // f/t/etc. fires browser find or a link-hint extension). Refocus when the
+      // window regains focus (alt-tab back) so it never drifts to <body>.
+      if (isYtPopout) {
+        const focusComposer = () => {
+          const inp = document.getElementById('hs-mc-input')
+          if (inp && document.activeElement !== inp) inp.focus()
+        }
+        cleanup.setTimeout(focusComposer, 300)
+        cleanup.addEventListener(window, 'focus', focusComposer)
       }
 
       // Auto-join current channel on all platforms (using overrides if set)

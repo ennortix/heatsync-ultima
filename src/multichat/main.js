@@ -1857,11 +1857,18 @@
         { type: 'heatsync-settings-changed', nonce: window.HS?.getMainWorldNonce?.() || null, settings: { viMode: v } },
         location.origin,
       )
+      // Auto-hide is force-off under vi mode (see canAutoHideInput) — a hidden
+      // composer breaks vi. Reflect the toggle now: reveal the bar when vi turns
+      // on; when it turns off, let auto-hide reclaim it (hideInputBar re-checks).
+      if (v) showInputBar()
+      else hideInputBar()
     },
     autoHide: (v) => {
       const bar = document.getElementById('hs-mc-inputbar')
       const pickerOpen = document.getElementById('hs-mc-emote-picker')?.classList.contains('visible') || false
-      if (v) {
+      // Honor the vi-mode / pop-out override — never actually hide there even if
+      // the setting is switched on (canAutoHideInput would keep it off anyway).
+      if (v && !viModeEnabled && !isYtPopout) {
         if (bar) bar.classList.add('hs-hidden')
         inputBarVisible = false
       } else {
@@ -2864,6 +2871,15 @@
   // Input bar auto-hide — hidden when empty, shown on first keystroke
   let autoHideInput = false
   let inputBarVisible = true
+  // …but only when a hidden composer is actually safe. Two contexts make it
+  // harmful, so auto-hide is force-off in them regardless of the setting:
+  //   • vi mode — a hidden (blurred) composer drops keys into normal-mode
+  //     motions ('f' = find-char, not typing) and reveals the mode/focus confusion
+  //   • the /live_chat pop-out — a blurred composer sends f/t/etc. to the host
+  //     page's find-as-you-type or a link-hint extension instead of chat
+  // Evaluated live (function, not cached) so toggling vi mode takes effect with
+  // no reload.
+  const canAutoHideInput = () => autoHideInput && !viModeEnabled && !isYtPopout
 
   // First-time chatter highlight — orange edge on first message from a user this session (default on)
   let firstChatterGlow = true
@@ -2964,12 +2980,7 @@
   }
 
   function hideInputBar() {
-    if (!autoHideInput) return
-    // Dedicated pop-out window: never auto-hide the composer. A hidden (blurred)
-    // input means keystrokes land on the host page, where `f`/`t`/etc. trigger
-    // browser find-as-you-type or a link-hint extension instead of typing. Keep
-    // it visible + focused so every key goes into chat.
-    if (isYtPopout) return
+    if (!canAutoHideInput()) return
     if (!inputBarVisible) return
     const input = document.getElementById('hs-mc-input')
     const hasText = input ? (input.value || input.textContent || '').trim().length > 0 : false
@@ -5732,8 +5743,8 @@
     // Ensure input bar exists
     if (!inputBarElement || !document.contains(inputBarElement)) {
       inputBarElement = createInputBar()
-      // Start hidden — typing reveals it (never in the pop-out: it stays put + focused)
-      if (autoHideInput && !isYtPopout) {
+      // Start hidden — typing reveals it (never with vi mode / in the pop-out: it stays put + focused)
+      if (canAutoHideInput()) {
         inputBarElement.classList.add('hs-hidden')
         inputBarVisible = false
       }
@@ -6025,7 +6036,7 @@
       if (id === 'add' || id === 'settings' || id === 'discover' || id === 'pinned' || id === 'modlog') {
         inputBarElement.classList.add('hs-hidden')
         inputBarVisible = false
-      } else if (autoHideInput && !isYtPopout && !pickerOpen) {
+      } else if (canAutoHideInput() && !pickerOpen) {
         const input = document.getElementById('hs-mc-input')
         const hasContent =
           input &&

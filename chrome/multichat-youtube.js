@@ -61530,17 +61530,41 @@ const STORAGE_KEY = 'heatsync_multichat'
         }
       }
 
-      // Pop-out is a dedicated chat window — land + keep focus in the composer so
-      // keystrokes type into chat instead of leaking to the host page (where an
-      // f/t/etc. fires browser find or a link-hint extension). Refocus when the
-      // window regains focus (alt-tab back) so it never drifts to <body>.
+      // Pop-out is a dedicated chat window — the composer must stay focused so
+      // every keystroke types into chat instead of leaking to the host page
+      // (where f/t/etc. fires browser find or a link-hint extension). Keeping it
+      // focused is also what makes typing CONSISTENT: whether you just clicked a
+      // message to read or the input already had focus, pressing a letter types.
       if (isYtPopout) {
         const focusComposer = () => {
           const inp = document.getElementById('hs-mc-input')
           if (inp && document.activeElement !== inp) inp.focus()
         }
         cleanup.setTimeout(focusComposer, 300)
+        // Refocus when the window regains focus (alt-tab back) so it never
+        // drifts to <body>.
         cleanup.addEventListener(window, 'focus', focusComposer)
+        // Clicking the messages area to read/scroll blurs the composer to
+        // <body> — refocus it after the click so the next letter still types.
+        // Skip when the click was on an interactive control (username, link,
+        // button, tab, the composer itself) or when the user is selecting text
+        // to copy — those intentionally own focus / the selection.
+        cleanup.addEventListener(
+          document,
+          'click',
+          (e) => {
+            const sel = window.getSelection && window.getSelection()
+            if (sel && String(sel).length > 0) return
+            if (
+              e.target.closest(
+                'input, textarea, [contenteditable], button, a, select, [role="button"], .hs-mc-user, .hs-mc-tab, #hs-mc-emote-picker, #hs-mc-inputbar',
+              )
+            )
+              return
+            focusComposer()
+          },
+          { signal: mcSignal },
+        )
       }
 
       // Auto-join current channel on all platforms (using overrides if set)

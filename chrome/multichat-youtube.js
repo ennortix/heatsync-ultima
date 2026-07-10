@@ -60937,10 +60937,19 @@ const STORAGE_KEY = 'heatsync_multichat'
         // panel (hs-offline → display:none). Ground truth instead: the server
         // only relays __live_yt_auto__ chat for a genuinely-live stream, so once
         // messages are flowing for THIS page it IS live, iframe src be damned.
+        // The old gate required the live-chat iframe's `src` to be a populated
+        // `/live_chat` url — but current YouTube leaves that src EMPTY on live
+        // streams, so it hid the panel on EVERY livestream. Relax it: a chat
+        // frame that is present and NOT a replay is a livestream (empty src =
+        // not-yet-replay = live; a VOD's src resolves to `live_chat_replay` and
+        // flips this off). Show immediately, no wait. Two more signals keep it
+        // honest: chat actively flowing (server only relays for live) and the
+        // non-live opt-in.
+        const liveChatFramePresent = !!frameEl && !isReplayChat
         const ytAutoLiveMsgs =
           typeof channelYtMessages !== 'undefined' ? channelYtMessages.get('__live_yt_auto__')?.length || 0 : 0
         const showYtChat =
-          hasLiveChat || ytAutoLiveMsgs > 0 || document.body.classList.contains('hs-yt-nonlive-chat')
+          liveChatFramePresent || ytAutoLiveMsgs > 0 || document.body.classList.contains('hs-yt-nonlive-chat')
         document.body.classList.toggle('hs-offline', !showYtChat)
         // Watch-page detection: ytd-watch-flexy stays in DOM with `hidden`
         // attr off-watch — only count it as a watch page when visible.

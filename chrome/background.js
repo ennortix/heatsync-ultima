@@ -6336,6 +6336,61 @@ async function _removeFromInventoryImpl(emoteHash, emoteName) {
   }
 }
 
+// ========== YOUTUBE SEND BRIDGE ==========
+//
+// YouTube has no send API usable at scale (Data API ≈ 50 msgs/day per project),
+// so a send drives a real, logged-in youtube.com tab. When the user has none
+// open, we silently open a hidden, pinned live_chat tab for the EXACT stream —
+// it inherits their YouTube login cookies, so send "just works" whenever they're
+// signed into YouTube in Chrome. We only ever open a tab for a concrete videoId
+// (never a guess) so we can never send to the wrong stream. Tabs are cached per
+// videoId and reused; cleaned up when closed.
+const ytBridgeTabs = new Map() // videoId → tabId
+
+browser.tabs.onRemoved.addListener((tabId) => {
+  for (const [vid, tid] of ytBridgeTabs) if (tid === tabId) ytBridgeTabs.delete(vid)
+})
+
+function pingYtBridge(tabId) {
+  return browser.tabs.sendMessage(tabId, { type: 'youtube_bridge_ping' }).catch(() => null)
+}
+
+// Ensure a sendable live_chat tab exists for videoId; resolve when its chat
+// input is present AND enabled. Returns { tabId } on ready, { tabId, error } when
+// present-but-not-sendable (e.g. logged-out → 'chat_disabled'), or { error }.
+async function ensureYoutubeBridgeTab(videoId) {
+  if (!/^[a-zA-Z0-9_-]{11}$/.test(videoId || '')) return { error: 'no_video' }
+  let tabId = ytBridgeTabs.get(videoId)
+  if (tabId != null) {
+    const t = await browser.tabs.get(tabId).catch(() => null)
+    if (!t) {
+      ytBridgeTabs.delete(videoId)
+      tabId = null
+    }
+  }
+  if (tabId == null) {
+    const created = await browser.tabs
+      .create({ url: `https://www.youtube.com/live_chat?v=${videoId}`, active: false, pinned: true })
+      .catch(() => null)
+    if (!created?.id) return { error: 'no_youtube_tab' }
+    tabId = created.id
+    ytBridgeTabs.set(videoId, tabId)
+  }
+  // Poll for readiness — the YT SPA + auth-cookie load takes a couple seconds.
+  const deadline = Date.now() + 12000
+  let sawInput = false
+  while (Date.now() < deadline) {
+    const ping = await pingYtBridge(tabId)
+    if (ping?.ok && ping.hasInput) {
+      sawInput = true
+      if (!ping.disabled) return { tabId }
+      return { tabId, error: 'chat_disabled' } // present but logged-out / restricted
+    }
+    await new Promise((r) => setTimeout(r, 400))
+  }
+  return { tabId, error: sawInput ? 'chat_disabled' : 'bridge_timeout' }
+}
+
 // ========== COSMETICS ==========
 
 // Handle messages from content scripts
@@ -7756,34 +7811,66 @@ async function handleMessage(message, sender, sendResponse) {
   } else if (message.type === 'youtube_send_message') {
     ;(async () => {
       try {
-        const { text } = message
+        const { text, videoId } = message
         if (!text) {
           sendResponse({ ok: false, error: 'missing params' })
           return
         }
-        // Prefer the sender's own tab — multichat usually lives on the same
-        // YouTube tab whose iframe owns the live_chat. Falls back to the
-        // active YouTube tab in the focused window, then any YouTube tab.
-        const senderTabId = sender?.tab?.id
         let targetTabId = null
-        if (senderTabId) {
-          const t = await browser.tabs.get(senderTabId).catch(() => null)
-          if (t && /youtube\.com/.test(t.url || '')) targetTabId = senderTabId
-        }
-        if (!targetTabId) {
-          const active = await browser.tabs
-            .query({ active: true, currentWindow: true, url: '*://www.youtube.com/*' })
-            .catch(() => [])
-          if (active && active.length > 0) targetTabId = active[0].id
-        }
-        if (!targetTabId) {
-          const tabs = await browser.tabs.query({ url: '*://www.youtube.com/*' })
-          if (!tabs || tabs.length === 0) {
-            sendResponse({ ok: false, error: 'no_youtube_tab' })
-            return
+
+        if (videoId && /^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
+          // Path A — exact stream known. Only ever drive a tab on THIS videoId
+          // (a cached bridge tab → a matching open tab → an auto-opened bridge
+          // tab). Never falls back to an unrelated tab, so a send can't land in
+          // the wrong stream's chat.
+          const bridged = ytBridgeTabs.get(videoId)
+          if (bridged != null && (await browser.tabs.get(bridged).catch(() => null))) {
+            targetTabId = bridged
           }
-          targetTabId = tabs[0].id
+          if (!targetTabId) {
+            const ytTabs = await browser.tabs.query({ url: '*://www.youtube.com/*' }).catch(() => [])
+            const match = ytTabs.find((t) => (t.url || '').includes(videoId))
+            if (match) targetTabId = match.id
+          }
+          if (!targetTabId) {
+            const bridge = await ensureYoutubeBridgeTab(videoId)
+            if (bridge.tabId && !bridge.error) {
+              targetTabId = bridge.tabId
+            } else {
+              // Provisioned but not sendable (usually logged-out) — surface the
+              // tab so the user can sign in, and report why.
+              if (bridge.tabId && bridge.error === 'chat_disabled') {
+                await browser.tabs.update(bridge.tabId, { active: true }).catch(() => {})
+              }
+              sendResponse({ ok: false, error: bridge.error || 'no_youtube_tab' })
+              return
+            }
+          }
+        } else {
+          // Path B — no concrete videoId (legacy): the send is contextual to a
+          // tab the user already has open. Sender's own YouTube tab → active
+          // YouTube tab in the focused window → any YouTube tab.
+          const senderTabId = sender?.tab?.id
+          if (senderTabId) {
+            const t = await browser.tabs.get(senderTabId).catch(() => null)
+            if (t && /youtube\.com/.test(t.url || '')) targetTabId = senderTabId
+          }
+          if (!targetTabId) {
+            const active = await browser.tabs
+              .query({ active: true, currentWindow: true, url: '*://www.youtube.com/*' })
+              .catch(() => [])
+            if (active && active.length > 0) targetTabId = active[0].id
+          }
+          if (!targetTabId) {
+            const tabs = await browser.tabs.query({ url: '*://www.youtube.com/*' }).catch(() => [])
+            if (!tabs || tabs.length === 0) {
+              sendResponse({ ok: false, error: 'no_youtube_tab' })
+              return
+            }
+            targetTabId = tabs[0].id
+          }
         }
+
         const result = await browser.tabs.sendMessage(targetTabId, {
           type: 'youtube_send_relay',
           text,

@@ -52,3 +52,45 @@ function nextSendTargets(currentSendTargets, linkedPlatforms, platform, enabled)
   const anyOn = ['twitch', 'kick', 'youtube'].some((p) => linkedPlatforms[p] && next[p] !== false)
   return anyOn ? next : null
 }
+
+/**
+ * Pull the 11-char YouTube video id out of a watch / live / youtu.be url.
+ * Returns '' for a bare channel url (/@handle, /channel/UC…, /@handle/live) —
+ * those have NO fixed video id, and we must never hand background a guessed id
+ * that could open (and send to) the wrong stream's chat. Only a concrete video
+ * id ever comes back.
+ * @param {string} url
+ * @returns {string}
+ */
+function extractYoutubeVideoId(url) {
+  const m = String(url || '').match(/(?:[?&]v=|\/live\/|\/shorts\/|youtu\.be\/|\/embed\/)([a-zA-Z0-9_-]{11})(?![a-zA-Z0-9_-])/)
+  return m ? m[1] : ''
+}
+
+/**
+ * Map a YouTube send-relay error code → a short, lowercase, actionable line.
+ * YouTube has no send API usable at scale (Data API ≈ 50 msgs/day per project),
+ * so every send drives a real logged-in youtube.com tab; each failure is about
+ * that tab — missing, logged-out, still loading, or YT refusing the message.
+ * @param {string} err
+ * @returns {string}
+ */
+function youtubeSendErrorMessage(err) {
+  switch (err) {
+    case 'no_youtube_tab':
+    case 'no_video':
+      return 'open the youtube stream to send'
+    case 'chat_disabled':
+      return 'log into youtube to send'
+    case 'no_input':
+      return 'youtube chat still loading — try again'
+    case 'send_disabled':
+      return 'youtube blocked the send (slow mode?)'
+    case 'send_not_confirmed':
+      return 'youtube didn’t confirm the send'
+    case 'bridge_timeout':
+      return 'couldn’t reach youtube chat — try again'
+    default:
+      return 'youtube send failed'
+  }
+}

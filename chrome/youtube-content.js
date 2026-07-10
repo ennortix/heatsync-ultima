@@ -191,6 +191,22 @@
           } catch {}
         })
       return true
+    } else if (msg.type === 'youtube_bridge_ping') {
+      // Background polls this on an auto-opened live_chat bridge tab to learn
+      // when it's actually ready to send: chat input present AND not disabled.
+      // A logged-out / members-only / slow-mode box is present-but-disabled, so
+      // we report both flags and never claim "ready" until the send would land.
+      try {
+        const inputRenderer = document.querySelector('yt-live-chat-text-input-field-renderer')
+        const input = inputRenderer?.querySelector('div#input[contenteditable]')
+        const disabled = input ? input.getAttribute('aria-disabled') === 'true' : false
+        sendResponse({ ok: true, hasInput: !!input, disabled })
+      } catch (e) {
+        try {
+          sendResponse({ ok: false, error: e?.message || 'ping_failed' })
+        } catch {}
+      }
+      return true
     }
   }
   chrome.runtime.onMessage.addListener(ytInventoryListener)

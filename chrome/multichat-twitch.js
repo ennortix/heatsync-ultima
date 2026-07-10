@@ -6236,6 +6236,48 @@ function nextSendTargets(currentSendTargets, linkedPlatforms, platform, enabled)
   return anyOn ? next : null
 }
 
+/**
+ * Pull the 11-char YouTube video id out of a watch / live / youtu.be url.
+ * Returns '' for a bare channel url (/@handle, /channel/UC…, /@handle/live) —
+ * those have NO fixed video id, and we must never hand background a guessed id
+ * that could open (and send to) the wrong stream's chat. Only a concrete video
+ * id ever comes back.
+ * @param {string} url
+ * @returns {string}
+ */
+function extractYoutubeVideoId(url) {
+  const m = String(url || '').match(/(?:[?&]v=|\/live\/|\/shorts\/|youtu\.be\/|\/embed\/)([a-zA-Z0-9_-]{11})(?![a-zA-Z0-9_-])/)
+  return m ? m[1] : ''
+}
+
+/**
+ * Map a YouTube send-relay error code → a short, lowercase, actionable line.
+ * YouTube has no send API usable at scale (Data API ≈ 50 msgs/day per project),
+ * so every send drives a real logged-in youtube.com tab; each failure is about
+ * that tab — missing, logged-out, still loading, or YT refusing the message.
+ * @param {string} err
+ * @returns {string}
+ */
+function youtubeSendErrorMessage(err) {
+  switch (err) {
+    case 'no_youtube_tab':
+    case 'no_video':
+      return 'open the youtube stream to send'
+    case 'chat_disabled':
+      return 'log into youtube to send'
+    case 'no_input':
+      return 'youtube chat still loading — try again'
+    case 'send_disabled':
+      return 'youtube blocked the send (slow mode?)'
+    case 'send_not_confirmed':
+      return 'youtube didn’t confirm the send'
+    case 'bridge_timeout':
+      return 'couldn’t reach youtube chat — try again'
+    default:
+      return 'youtube send failed'
+  }
+}
+
 
 // --- multichat/notifs.js ---
 // Notifs — central notification system for multichat.
@@ -40671,6 +40713,9 @@ async function sendMessage() {
     (!!kickSlug || (anonLive && hostPlatform === 'kick')) && !orphanSlash && (!sendTargets || sendTargets.kick)
   const sendToTwitch = (!!twitchName || (anonLive && hostPlatform === 'twitch')) && (!sendTargets || sendTargets.twitch)
   const sendToYoutube = (!!ytUrl || isLiveYt) && !orphanSlash && (!sendTargets || sendTargets.youtube)
+  // Exact stream video id (or '' if not concretely known) — lets background
+  // auto-open a login-inheriting live_chat bridge tab when no YT tab is open.
+  const ytVideoId = sendToYoutube ? currentYoutubeVideoId(ytUrl) : ''
   const isDualSend = sendToKick && sendToTwitch
 
   // Orphan slash with no twitch leg = nothing left to send (kick/yt-only
@@ -40875,7 +40920,7 @@ async function sendMessage() {
 
   // --- YouTube-only send path (no Twitch, no Kick) ---
   if (sendToYoutube && !sendToKick && !sendToTwitch) {
-    sendYoutubeMessage(restText)
+    sendYoutubeMessage(restText, ytVideoId)
       .then((result) => {
         if (result === true) {
           // YT echoes don't loop back through our IRC handlers, so the timer
@@ -40885,6 +40930,7 @@ async function sendMessage() {
         } else {
           const reason = result === 'no_youtube_tab' ? 'no_youtube_tab' : 'send_failed'
           markPendingFailed(_synthId, reason)
+          showToast(youtubeSendErrorMessage(result), 'error')
         }
       })
       .catch((err) => {
@@ -40895,10 +40941,10 @@ async function sendMessage() {
   }
   // Twitch + YouTube (and no Kick) — fire YouTube as best-effort alongside Twitch send below
   if (sendToYoutube && sendToTwitch && !sendToKick) {
-    sendYoutubeMessage(restText)
+    sendYoutubeMessage(restText, ytVideoId)
       .then((result) => {
         if (result !== true && result !== 'no_youtube_tab') {
-          showToast('youtube send failed', 'error')
+          showToast(youtubeSendErrorMessage(result), 'error')
         }
       })
       .catch(() => showToast('youtube send failed', 'error'))
@@ -40952,9 +40998,28 @@ async function sendMessage() {
     })
 }
 
-async function sendYoutubeMessage(text) {
+// The exact live video id for the stream currently being composed to, from the
+// same poller-fed source the popout trusts (youtubeLinks[currentTab].videoId).
+// Falls back to a concrete watch?v= id in the channel's saved YT url. NEVER a
+// guess: a channel-only url resolves to '' so background won't auto-open a tab
+// to the wrong stream. `ytUrl` is ch?.youtube.
+function currentYoutubeVideoId(ytUrl) {
   try {
-    const resp = await safeSendMessage({ type: 'youtube_send_message', text })
+    if (typeof youtubeLinks !== 'undefined' && typeof currentTab !== 'undefined') {
+      const vid = youtubeLinks.get(currentTab)?.videoId
+      if (vid && /^[a-zA-Z0-9_-]{11}$/.test(vid)) return vid
+    }
+  } catch (_) {}
+  return extractYoutubeVideoId(ytUrl)
+}
+
+// Drive a YouTube send. `videoId` (when known) lets background auto-open a
+// hidden, pinned live_chat bridge tab if the user has no youtube.com tab open —
+// the tab inherits their YouTube login cookies, so send "just works" whenever
+// they're signed into YouTube in Chrome. Returns true, or an error code string.
+async function sendYoutubeMessage(text, videoId) {
+  try {
+    const resp = await safeSendMessage({ type: 'youtube_send_message', text, videoId: videoId || undefined })
     if (resp?.ok) return true
     return resp?.error || 'send_failed'
   } catch (e) {

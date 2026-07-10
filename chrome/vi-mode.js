@@ -712,11 +712,17 @@
     // can only mean "start typing this message" — never a normal-mode motion.
     // Without this, an empty composer left in normal mode (after Escape, or the
     // ~150ms window before focusout detaches on auto-hide) ate the key: e.g. `f`
-    // began a find-char instead of typing an `f`. Drop to insert and let it type.
+    // began a find-char instead of typing an `f`. Drop to insert AND type the
+    // char ourselves — must still blockEvent so the key can't leak to other
+    // handlers (browser find, link-hint extensions, host-page `f`/`t` shortcuts)
+    // and fire e.g. link hints alongside the typed character.
     if (len === 0 && !pendingCmd && !operator && !count && key.length === 1) {
+      blockEvent(e)
       mode = 'insert'
       updateVisual()
-      return // no blockEvent — let the keystroke fall through and type
+      insertText(el, cursor, key)
+      cursor = getCursorPos(el)
+      return
     }
 
     // Block everything else from reaching other handlers

@@ -6475,7 +6475,12 @@
         if (!userColor && chLc && irc?.channels) {
           for (const [, buf] of irc.channels) {
             const msgs = buf.getAll()
-            for (let i = msgs.length - 1; i >= 0; i--) {
+            // Bound the scan: a stream-event fires rarely but this used to walk
+            // EVERY message of EVERY channel (O(channels×msgs)) — a burst on a busy
+            // multi-channel setup scanned tens of thousands. A color from >300 msgs
+            // ago is stale; cap the lookback so the fallback stays cheap.
+            const floor = Math.max(0, msgs.length - 300)
+            for (let i = msgs.length - 1; i >= floor; i--) {
               if (msgs[i].user?.toLowerCase() === chLc) {
                 userColor = msgs[i].color || ''
                 break
@@ -7577,10 +7582,14 @@
   // untransformed layout width; the visual is that × scale, so each side needs
   // width*(scale-1)/2. Overrides the static 28px-based fallback margins.
   function _reserveModWrap(wrap) {
+    _reserveModWrapSized(wrap, wrap.offsetWidth, wrap.offsetHeight)
+  }
+  // Same reservation but with pre-read dimensions — lets the batch caller read all
+  // sizes first, THEN write all margins, instead of read→write→read→write (which
+  // forces a layout reflow per wrapper on the per-message append hot path).
+  function _reserveModWrapSized(wrap, w, h) {
     const sx = Math.abs(parseFloat(wrap.dataset.hsModSx) || 1)
     const sy = Math.abs(parseFloat(wrap.dataset.hsModSy) || 1)
-    const w = wrap.offsetWidth
-    const h = wrap.offsetHeight
     if (sx > 1 && w) {
       const m = Math.round((w * (sx - 1)) / 2) + 'px'
       wrap.style.setProperty('margin-left', m, 'important')
@@ -7616,8 +7625,12 @@
       })
       if (typeof cleanup !== 'undefined' && cleanup.trackObserver) cleanup.trackObserver(_hsModReserveRO)
     }
-    for (const wrap of mods) {
-      _reserveModWrap(wrap) // immediate if already sized
+    // Batch: read every wrapper's size FIRST (one reflow), then write all margins
+    // + observe — never interleave a layout read after a style write in the loop.
+    const sized = []
+    for (const wrap of mods) sized.push([wrap, wrap.offsetWidth, wrap.offsetHeight])
+    for (const [wrap, w, h] of sized) {
+      _reserveModWrapSized(wrap, w, h) // immediate if already sized
       if (_hsModReserveRO) _hsModReserveRO.observe(wrap) // and again once it is
     }
   }

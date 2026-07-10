@@ -708,6 +708,17 @@
       return
     }
 
+    // Empty composer → there's nothing to navigate or edit, so a printable key
+    // can only mean "start typing this message" — never a normal-mode motion.
+    // Without this, an empty composer left in normal mode (after Escape, or the
+    // ~150ms window before focusout detaches on auto-hide) ate the key: e.g. `f`
+    // began a find-char instead of typing an `f`. Drop to insert and let it type.
+    if (len === 0 && !pendingCmd && !operator && !count && key.length === 1) {
+      mode = 'insert'
+      updateVisual()
+      return // no blockEvent — let the keystroke fall through and type
+    }
+
     // Block everything else from reaching other handlers
     blockEvent(e)
 

@@ -60520,16 +60520,23 @@ const STORAGE_KEY = 'heatsync_multichat'
     } else if (platform === 'kick') {
       url = `https://kick.com/popout/${ctx.kick}/chat`
     } else if (platform === 'youtube') {
-      // youtube live_chat needs a videoId — pull from cached youtubeLinks
-      // if the active tab is in there; else fall back to channel-page redirect.
+      // A YouTube pop-out is CHAT-ONLY (youtube.com/live_chat) — never the whole
+      // watch page. Resolve a concrete live videoId from every source we trust,
+      // tab-scoped first: the poller-cached link for this tab, then a watch/live
+      // url stored in ctx.youtube, then (only when we're on a youtube page) the
+      // current page url or the auto-live stream. A channel/handle url has NO
+      // videoId → nothing to pop out; show that instead of opening a full page
+      // with the video + title + description (which is not a chat pop-out).
       const link = youtubeLinks.get(currentTab)
-      if (link?.videoId) {
-        url = `https://www.youtube.com/live_chat?v=${link.videoId}&is_popout=1`
-      } else {
-        // ctx.youtube is the original watch URL — open it in a small window
-        // so the user can use yt's own popout-chat from there.
-        url = ctx.youtube
+      const videoId =
+        link?.videoId ||
+        extractYoutubeVideoId(ctx.youtube) ||
+        (hostPlatform === 'yt' ? extractYoutubeVideoId(location.href) || _autoYtVideoId || '' : '')
+      if (!videoId) {
+        showToast('no live youtube stream to pop out', 'info')
+        return
       }
+      url = `https://www.youtube.com/live_chat?v=${videoId}&is_popout=1`
     }
     try {
       window.open(url, `hs-popout-${platform}-${ctx.name}`, features)

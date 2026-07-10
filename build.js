@@ -511,6 +511,7 @@ function readLib() {
 const MULTICHAT_MODULES = [
   'bootstrap.js',
   'send-targets.js',
+  'tab-messages.js',
   'notifs.js',
   'styles.js',
   'seen-state.js',

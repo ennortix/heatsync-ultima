@@ -8248,6 +8248,10 @@
     }
 
     let msgs = []
+    // Set when a tab has messages but its T/K/Y filter hides ALL of them, so the
+    // empty state can say so + offer a one-click reveal instead of a dead blank
+    // panel (a filter must never make a tab look broken). See tab-messages.js.
+    let _tabFilterHidden = null
 
     if (id === 'mentions') {
       msgs = mentionsBuffer
@@ -8282,8 +8286,9 @@
         const linkedYt = config.channels.find((ch) => (ch.twitch === curCh || ch.kick === curCh) && ch.youtube)
         if (linkedYt) ytMsgs = channelYtMessages.get(linkedYt.id) || []
       }
-      const filt = getPlatformFilter('live')
-      msgs = fairMerge([filt.twitch ? ircMsgs : [], filt.kick ? kickMsgs : [], filt.youtube ? ytMsgs : []])
+      const sel = selectTabSources({ twitch: ircMsgs, kick: kickMsgs, youtube: ytMsgs }, getPlatformFilter('live'))
+      _tabFilterHidden = sel.hiddenByFilter ? sel : null
+      msgs = fairMerge(sel.included)
     } else {
       // Channel tab — merge IRC + Kick + per-channel YouTube messages
       const ch = getChannelById(id)
@@ -8299,8 +8304,9 @@
       // alone. Explicitly-linked channels already get their YT via
       // channelYtMessages[id]. See [[heatsync_yt_handle_guess_bleed]].
       const ytMsgs = channelYtMessages.get(id) || []
-      const filt = getPlatformFilter(id)
-      msgs = fairMerge([filt.twitch ? ircMsgs : [], filt.kick ? kickMsgs : [], filt.youtube ? ytMsgs : []])
+      const sel = selectTabSources({ twitch: ircMsgs, kick: kickMsgs, youtube: ytMsgs }, getPlatformFilter(id))
+      _tabFilterHidden = sel.hiddenByFilter ? sel : null
+      msgs = fairMerge(sel.included)
     }
 
     // Merge follow stream events into channel + live tabs (went live,
@@ -8362,6 +8368,33 @@
         } catch (_) {}
         empty.appendChild(title)
         empty.appendChild(sub)
+        // (falls through to the add-channel button appended below)
+        empty.appendChild(btn)
+      } else if (_tabFilterHidden) {
+        // Messages exist but the tab's T/K/Y filter is hiding every one of them.
+        // Say so + offer a one-click reveal — NEVER a silent blank that reads as
+        // "no chat" (that exact failure swallowed a debugging night).
+        const plats = _tabFilterHidden.availablePlatforms.map((p) => p.toUpperCase()).join('/')
+        const n = _tabFilterHidden.hiddenCount
+        const line = document.createElement('div')
+        line.style.cssText = 'opacity:.75;margin-bottom:10px'
+        line.textContent = `${n} ${plats} message${n === 1 ? '' : 's'} hidden by filter`
+        const btn = document.createElement('button')
+        btn.style.cssText =
+          'cursor:pointer;padding:6px 12px;border:1px solid currentColor;background:transparent;color:inherit;font:inherit'
+        btn.textContent = 'show all'
+        try {
+          cleanup.addEventListener(btn, 'click', () => {
+            try {
+              for (const p of _tabFilterHidden.availablePlatforms) {
+                if (!getPlatformFilter(id)[p]) togglePlatformFilter(id, p)
+              }
+              renderPlatformFilterButtons()
+              renderMessages(id)
+            } catch (_) {}
+          })
+        } catch (_) {}
+        empty.appendChild(line)
         empty.appendChild(btn)
       } else {
         empty.textContent = t('mc_no_messages')

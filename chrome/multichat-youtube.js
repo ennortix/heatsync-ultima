@@ -6279,6 +6279,73 @@ function youtubeSendErrorMessage(err) {
 }
 
 
+// --- multichat/tab-messages.js ---
+// tab-messages.js — the single source of truth for WHICH platform message
+// arrays a chat tab renders, given the per-tab T/K/Y source filter.
+//
+// No import/export: concatenated into the multichat-<platform>.js bundle (see
+// build.js MULTICHAT_MODULES) as plain top-level functions, same as
+// send-targets.js. Tested in isolation via tests/tab-messages.test.js.
+//
+// Why this exists: the live/channel tabs used to inline
+// `fairMerge([filt.twitch?a:[], filt.kick?b:[], filt.youtube?c:[]])`. On a page
+// where a tab's ONLY populated source is filtered off (e.g. a bare youtube.com
+// watch page with the Y filter hidden), that silently produced an EMPTY merge —
+// a dead, blank panel with no hint why. That exact failure mode swallowed a full
+// debugging night. Routing every tab through selectTabSources() makes the
+// distinction explicit: `hiddenByFilter` lets callers show an honest, actionable
+// empty state ("N messages hidden — show all") instead of a silent blank, and a
+// filter can never make a tab look broken.
+
+/**
+ * @param {{twitch?: any[], kick?: any[], youtube?: any[]}} sources
+ *   The three platform message arrays for a tab (any may be empty/absent).
+ * @param {{twitch?: boolean, kick?: boolean, youtube?: boolean}|null|undefined} filter
+ *   The tab's platform filter; a key that is absent/undefined counts as ON
+ *   (matches getPlatformFilter's `!== false` default), so a tab with no filter
+ *   config behaves exactly as before this module existed.
+ * @returns {{
+ *   included: any[][],           // arrays to hand to fairMerge (filtered)
+ *   hiddenByFilter: boolean,     // messages exist but the filter excluded ALL of them
+ *   hiddenCount: number,         // how many messages the filter is hiding
+ *   filter: {twitch: boolean, kick: boolean, youtube: boolean}, // resolved (defaults applied)
+ *   availablePlatforms: Array<'twitch'|'kick'|'youtube'>,  // platforms that HAVE messages
+ * }}
+ */
+function selectTabSources(sources, filter) {
+  const twitch = Array.isArray(sources?.twitch) ? sources.twitch : []
+  const kick = Array.isArray(sources?.kick) ? sources.kick : []
+  const youtube = Array.isArray(sources?.youtube) ? sources.youtube : []
+
+  const f = {
+    twitch: filter?.twitch !== false,
+    kick: filter?.kick !== false,
+    youtube: filter?.youtube !== false,
+  }
+
+  const included = [f.twitch ? twitch : [], f.kick ? kick : [], f.youtube ? youtube : []]
+
+  const total = twitch.length + kick.length + youtube.length
+  const shown = (f.twitch ? twitch.length : 0) + (f.kick ? kick.length : 0) + (f.youtube ? youtube.length : 0)
+  const hiddenCount = total - shown
+
+  const availablePlatforms = []
+  if (twitch.length) availablePlatforms.push('twitch')
+  if (kick.length) availablePlatforms.push('kick')
+  if (youtube.length) availablePlatforms.push('youtube')
+
+  return {
+    included,
+    // There ARE messages for this tab, but the active filter excluded every one
+    // of them — the caller must render an actionable notice, never a blank panel.
+    hiddenByFilter: total > 0 && shown === 0,
+    hiddenCount,
+    filter: f,
+    availablePlatforms,
+  }
+}
+
+
 // --- multichat/notifs.js ---
 // Notifs — central notification system for multichat.
 //
@@ -57576,6 +57643,10 @@ const STORAGE_KEY = 'heatsync_multichat'
     }
 
     let msgs = []
+    // Set when a tab has messages but its T/K/Y filter hides ALL of them, so the
+    // empty state can say so + offer a one-click reveal instead of a dead blank
+    // panel (a filter must never make a tab look broken). See tab-messages.js.
+    let _tabFilterHidden = null
 
     if (id === 'mentions') {
       msgs = mentionsBuffer
@@ -57610,8 +57681,9 @@ const STORAGE_KEY = 'heatsync_multichat'
         const linkedYt = config.channels.find((ch) => (ch.twitch === curCh || ch.kick === curCh) && ch.youtube)
         if (linkedYt) ytMsgs = channelYtMessages.get(linkedYt.id) || []
       }
-      const filt = getPlatformFilter('live')
-      msgs = fairMerge([filt.twitch ? ircMsgs : [], filt.kick ? kickMsgs : [], filt.youtube ? ytMsgs : []])
+      const sel = selectTabSources({ twitch: ircMsgs, kick: kickMsgs, youtube: ytMsgs }, getPlatformFilter('live'))
+      _tabFilterHidden = sel.hiddenByFilter ? sel : null
+      msgs = fairMerge(sel.included)
     } else {
       // Channel tab — merge IRC + Kick + per-channel YouTube messages
       const ch = getChannelById(id)
@@ -57627,8 +57699,9 @@ const STORAGE_KEY = 'heatsync_multichat'
       // alone. Explicitly-linked channels already get their YT via
       // channelYtMessages[id]. See [[heatsync_yt_handle_guess_bleed]].
       const ytMsgs = channelYtMessages.get(id) || []
-      const filt = getPlatformFilter(id)
-      msgs = fairMerge([filt.twitch ? ircMsgs : [], filt.kick ? kickMsgs : [], filt.youtube ? ytMsgs : []])
+      const sel = selectTabSources({ twitch: ircMsgs, kick: kickMsgs, youtube: ytMsgs }, getPlatformFilter(id))
+      _tabFilterHidden = sel.hiddenByFilter ? sel : null
+      msgs = fairMerge(sel.included)
     }
 
     // Merge follow stream events into channel + live tabs (went live,
@@ -57690,6 +57763,33 @@ const STORAGE_KEY = 'heatsync_multichat'
         } catch (_) {}
         empty.appendChild(title)
         empty.appendChild(sub)
+        // (falls through to the add-channel button appended below)
+        empty.appendChild(btn)
+      } else if (_tabFilterHidden) {
+        // Messages exist but the tab's T/K/Y filter is hiding every one of them.
+        // Say so + offer a one-click reveal — NEVER a silent blank that reads as
+        // "no chat" (that exact failure swallowed a debugging night).
+        const plats = _tabFilterHidden.availablePlatforms.map((p) => p.toUpperCase()).join('/')
+        const n = _tabFilterHidden.hiddenCount
+        const line = document.createElement('div')
+        line.style.cssText = 'opacity:.75;margin-bottom:10px'
+        line.textContent = `${n} ${plats} message${n === 1 ? '' : 's'} hidden by filter`
+        const btn = document.createElement('button')
+        btn.style.cssText =
+          'cursor:pointer;padding:6px 12px;border:1px solid currentColor;background:transparent;color:inherit;font:inherit'
+        btn.textContent = 'show all'
+        try {
+          cleanup.addEventListener(btn, 'click', () => {
+            try {
+              for (const p of _tabFilterHidden.availablePlatforms) {
+                if (!getPlatformFilter(id)[p]) togglePlatformFilter(id, p)
+              }
+              renderPlatformFilterButtons()
+              renderMessages(id)
+            } catch (_) {}
+          })
+        } catch (_) {}
+        empty.appendChild(line)
         empty.appendChild(btn)
       } else {
         empty.textContent = t('mc_no_messages')

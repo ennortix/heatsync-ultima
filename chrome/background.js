@@ -7000,13 +7000,17 @@ async function handleMessage(message, sender, sendResponse) {
         if (storedState) {
           // One-time: always consume regardless of match
           await browser.storage.local.remove('hs_login_state')
-          // Enforce ONLY when the backend echoed state back. During rollout
-          // (backend not yet deploying the state echo) message.state is absent
-          // — fall through to the /api/auth/me verify + identity-switch confirm
-          // below so logins don't break. Once the backend echoes state, a forged
-          // auth_token URL can't supply a matching nonce → rejected.
-          if (message.state && message.state !== storedState) {
-            log(' ⚠ set_auth_token rejected — state nonce mismatch')
+          // A pending login (storedState present) means THIS extension opened
+          // the flow with ext_state=nonce (see heatsync-button.js), and the
+          // backend echoes it back — so a legit callback ALWAYS carries a
+          // matching state. Require it: reject a MISSING or mismatched state.
+          // Closes the window where an attacker's crafted heatsync.org/?auth_token=
+          // link (no / forged ext_state) lands while a login is pending.
+          // (A token arriving with NO pending login is still accepted after the
+          // /api/auth/me check below; fully closing that needs every login entry
+          // point to seed a nonce — tracked separately.)
+          if (message.state !== storedState) {
+            log(' ⚠ set_auth_token rejected — missing or mismatched state nonce')
             sendResponse({ ok: false, error: 'state mismatch' })
             return
           }

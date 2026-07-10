@@ -61317,6 +61317,17 @@ const STORAGE_KEY = 'heatsync_multichat'
         if (gYt && autoYtUrl) {
           ytSubscribedUrls.set('__live_yt_auto__', autoYtUrl)
           ytChanLastSeen.set('__live_yt_auto__', Date.now())
+          // Open the auto-live render gate (social.js `_autoYtVideoId`) NOW, from
+          // the videoId we're on — don't wait for the youtube:status 'connected'
+          // echo. That echo is missed whenever the server poller already exists
+          // for a popular stream (it fires per-poller-start, and a busy stream is
+          // already being polled), which left social.js:739 rejecting EVERY live
+          // message and the "live" tab permanently empty. We only do this with a
+          // concrete on-page videoId (currentChannel is the 11-char id on a
+          // /watch|/live page), so the videoId-match cross-tab guard still holds;
+          // the channel-mirror case (autoYtUrl = ytUrl, no id yet) still defers to
+          // the status echo. spa-nav resets it to null on navigation.
+          if (onYtVideoPage && currentChannel) _autoYtVideoId = currentChannel
           chrome.runtime
             .sendMessage({
               type: 'youtube_ws_subscribe',

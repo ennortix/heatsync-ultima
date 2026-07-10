@@ -61030,7 +61030,17 @@ const STORAGE_KEY = 'heatsync_multichat'
         // so this single signal hides the panel on VODs/home/search by default.
         // Use hasLiveChat (THIS page, live-not-replay) — NOT isLive, which is true
         // whenever any tracked YT channel is live and would surface it on a VOD.
-        const showYtChat = hasLiveChat || document.body.classList.contains('hs-yt-nonlive-chat')
+        // hasLiveChat relies on the live-chat iframe's `src` attribute — but
+        // current YouTube leaves that src EMPTY on live streams (the frame mounts
+        // and loads its chat without ever populating the src attr), so the src
+        // check alone mis-flagged live streams as offline and hid the ENTIRE
+        // panel (hs-offline → display:none). Ground truth instead: the server
+        // only relays __live_yt_auto__ chat for a genuinely-live stream, so once
+        // messages are flowing for THIS page it IS live, iframe src be damned.
+        const ytAutoLiveMsgs =
+          typeof channelYtMessages !== 'undefined' ? channelYtMessages.get('__live_yt_auto__')?.length || 0 : 0
+        const showYtChat =
+          hasLiveChat || ytAutoLiveMsgs > 0 || document.body.classList.contains('hs-yt-nonlive-chat')
         document.body.classList.toggle('hs-offline', !showYtChat)
         // Watch-page detection: ytd-watch-flexy stays in DOM with `hidden`
         // attr off-watch — only count it as a watch page when visible.

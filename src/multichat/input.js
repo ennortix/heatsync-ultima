@@ -1625,6 +1625,10 @@ function initInput() {
         const feedDiv = e.target.closest('.hs-feed-msg')
         const msg = e.target.closest('.hs-mc-msg')
         if (!userEl && !feedDiv && !msg) return
+        // Composer mention chips are editable text, not an author reference —
+        // right-clicking one keeps the native menu (cut/copy), never the
+        // follow/block user menu (which would target yourself when you @self).
+        if (userEl && userEl.closest('#hs-mc-input')) return
         // Right-clicking a real link/embed (not a username) → keep native menu.
         if (
           !userEl &&

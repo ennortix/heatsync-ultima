@@ -16,6 +16,11 @@
     if (!userEl) return null
     if (target.closest('[data-pcard-pill]')) return null
     if (userEl.classList.contains('hs-mc-reply-user')) return null
+    // Mention chips inside the composer (#hs-mc-input) share .hs-mc-user for
+    // color/hover, but they're EDITABLE text — clicking one must place the caret
+    // to edit, never open a profile card (that was pulling up your own profile
+    // the moment you @-mentioned yourself while typing).
+    if (userEl.closest('#hs-mc-input')) return null
     return userEl
   }
 

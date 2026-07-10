@@ -1480,6 +1480,9 @@ function setupProfileCardHandlers() {
       if (!userEl) return
       if (e.target.closest('[data-pcard-pill]')) return
       if (userEl.classList.contains('hs-mc-reply-user')) return
+      // Composer mention chips (#hs-mc-input) are editable text, not an author
+      // reference — clicking one places the caret to edit, never opens a card.
+      if (userEl.closest('#hs-mc-input')) return
       e.preventDefault()
       e.stopPropagation()
       e.stopImmediatePropagation()
@@ -1500,6 +1503,9 @@ function setupProfileCardHandlers() {
       if (!userEl) return
       if (e.target.closest('[data-pcard-pill]')) return
       if (userEl.classList.contains('hs-mc-reply-user')) return
+      // Composer mention chips are editable — don't swallow their mousedown, or
+      // the caret can't land in the input to edit the @mention you're typing.
+      if (userEl.closest('#hs-mc-input')) return
       e.stopPropagation()
       e.stopImmediatePropagation()
     },

@@ -11766,6 +11766,33 @@
   // ============================================
 
   let mcInitialized = false
+  // Re-arm the __live_yt_auto__ binding for the CURRENT yt video page.
+  // Called from yt soft-nav (spa-nav.js), which unsubscribes the previous
+  // video's binding on every navigation — init()'s auto-join sibling below
+  // (~12240) only runs on full page load, so without this, SPA-navigating
+  // into a live stream left the multichat dead until refresh. Video-page
+  // subset only: the channel-mirror (explicit yt link) case stays init-time.
+  function autoYtSubscribeForPage() {
+    if (hostPlatform !== 'yt') return
+    if (gateAtBoot('chat-youtube') === false) return
+    const vid = getCurrentChannel()
+    if (!vid) return
+    if (!/\/watch|\/live\//.test(location.pathname + location.search)) return
+    const autoYtUrl = `https://youtube.com/watch?v=${vid}`
+    ytSubscribedUrls.set('__live_yt_auto__', autoYtUrl)
+    ytChanLastSeen.set('__live_yt_auto__', Date.now())
+    // Concrete on-page videoId — open the render gate now (same rationale as
+    // the init-time sibling: the poller's 'connected' echo is missed on
+    // already-polled popular streams).
+    _autoYtVideoId = vid
+    chrome.runtime
+      .sendMessage({ type: 'youtube_ws_subscribe', url: autoYtUrl, channelId: '__live_yt_auto__' })
+      .catch(() => {})
+    try {
+      chrome.runtime.sendMessage({ type: 'join_channel', platform: 'youtube', channel: vid, channelId: null })
+    } catch (_) {}
+  }
+
   // The tab to activate on mount. When we're on an actual stream/channel watch
   // page, the "live" tab (the stream you're looking at) is what you want — NOT
   // a stale last-used channel tab. Restoring _savedActiveTab there is exactly

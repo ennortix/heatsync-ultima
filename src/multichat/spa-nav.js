@@ -94,6 +94,19 @@ function handleMcNav() {
     ytChanRejoinAttempts.delete('__live_yt_auto__')
     ytSubscribedUrls.delete('__live_yt_auto__')
     _autoYtVideoId = null
+    // Re-arm for the NEW page. Teardown above without this left SPA-nav into
+    // a live stream (channel page → click live) with the stream playing and a
+    // dead multichat until a hard refresh — init() only auto-subscribes on
+    // full page load. Delay one tick so location reflects the completed nav.
+    cleanup.setTimeout(
+      () => {
+        try {
+          autoYtSubscribeForPage()
+        } catch (_) {}
+      },
+      50,
+      'yt-soft-nav-resub',
+    )
     // Re-apply layout so destructive overrides re-evaluate against the
     // new pathname (watch ↔ home).
     try {

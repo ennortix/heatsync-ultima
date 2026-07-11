@@ -39,6 +39,11 @@ claims drift — **recheck anything marked ⏳ before publishing**, ours are sta
 | users | 2,000,000+ (CWS display tier), 4.5★ / 8.1K ratings | CWS listing |
 | multichat | none in the extension (chatterino7 is a separate desktop app) | CWS listing + github.com/SevenTV |
 | social layer | none — site is emote/cosmetic management | 7tv.app |
+| subscription | €3.99/mo · €39.99/yr | 7tv.app/store (rendered in-browser, first-party) |
+| personal emotes | subscriber perk, not free (benefits list: animated pfp, personal emotes, nametag paints, sub badge) | 7tv.app/store |
+
+note: do NOT claim 7tv zero-width emotes are paid — not in their listed sub benefits,
+unconfirmed. channel zero-width appears free. blogs saying otherwise were wrong.
 
 ## the pitch skeleton
 

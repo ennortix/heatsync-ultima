@@ -3561,14 +3561,24 @@ let _ctxInvalidatedLogged = false
 let _storageMissingLogged = false
 function _warnStorageMissing() {
   if (_storageMissingLogged) return
+  // Storage being absent is usually benign: MAIN-world injection
+  // (autocomplete-hook, etc.) where chrome.* never exists by design, and
+  // fresh-boot/teardown races while the context is still valid. Diagnosing
+  // those as "context invalidated" was misdiagnosis noise on every boot.
+  // Only warn when a runtime object exists but its id is gone — the actual
+  // invalidation signal (accessing .id can also throw then).
+  let invalidated = false
+  try {
+    invalidated = !!rawApi?.runtime && !rawApi.runtime.id
+  } catch {
+    invalidated = true
+  }
+  if (!invalidated) return
   _storageMissingLogged = true
-  console.warn('[heatsync] Storage API not available (extension context likely invalidated — page reload needed)')
-  // NOTE: do NOT arm a reload here. This warning ALSO fires on MAIN-world
-  // injection (autocomplete-hook, etc.) where chrome.* APIs simply don't
-  // exist by design — that's not ctx-death, that's the world model. The
-  // canonical "ctx is actually dead" signal is the "Extension context
-  // invalidated" error thrown by runtime.sendMessage; reload-arming lives
-  // there instead.
+  console.warn('[heatsync] Storage API not available (extension context invalidated — page reload needed)')
+  // NOTE: do NOT arm a reload here. The canonical reload trigger is the
+  // "Extension context invalidated" error thrown by runtime.sendMessage;
+  // reload-arming lives there instead.
 }
 
 /**
@@ -7317,6 +7327,15 @@ function injectStyles() {
     .hs-mc-tab.has-mentions:not(.active):hover {
       background: #fff !important;
       color: #ff3333 !important;
+    }
+    /* Whispers — cyan when unseen. A DM is personal: the generic has-new
+       white state was easy to miss ("whispers should be more obvious"). */
+    .hs-mc-tab.has-whispers {
+      color: #00ffff !important;
+    }
+    .hs-mc-tab.has-whispers:not(.active):hover {
+      background: #fff !important;
+      color: #00aaaa !important;
     }
     /* Active — focused tab. Weight stays at 400: Cozette ships only the
        regular face, and font-synthesis:none in the bitmap block tells the
@@ -16597,7 +16616,7 @@ function refreshSeenBadges() {
   if (!tabBarElement) return
   const map = {
     mentions: { selector: '[data-tab="mentions"]', cls: 'has-mentions' },
-    whispers: { selector: '[data-tab="whispers"]', cls: 'has-new' },
+    whispers: { selector: '[data-tab="whispers"]', cls: 'has-whispers' },
     live: { selector: '[data-tab="feed"]', cls: 'has-new' },
   }
   for (const surface of SEEN_SURFACES) {
@@ -18369,6 +18388,12 @@ function parseTags(tagStr) {
 // when this map is populated.
 function parseTwitchEmotesTag(emotesTag, text) {
   if (!emotesTag) return null
+  // Twitch emote positions count UNICODE CODE POINTS; String#slice counts
+  // UTF-16 code units. Any astral char (emoji) before an emote shifts the
+  // boundaries and slices a garbage name. Fast path: no surrogates → the two
+  // index spaces coincide, keep the zero-alloc slice. Otherwise split once
+  // into code points and slice that.
+  const cps = /[\uD800-\uDFFF]/.test(text) ? Array.from(text) : null
   const out = {}
   for (const part of emotesTag.split('/')) {
     const [emoteId, posStr] = part.split(':')
@@ -18376,7 +18401,7 @@ function parseTwitchEmotesTag(emotesTag, text) {
     const firstPos = posStr.split(',')[0]
     const [start, end] = firstPos.split('-').map(Number)
     if (isNaN(start) || isNaN(end)) continue
-    const name = text.slice(start, end + 1)
+    const name = cps ? cps.slice(start, end + 1).join('') : text.slice(start, end + 1)
     if (name && !out[name]) {
       out[name] = `https://static-cdn.jtvnw.net/emoticons/v2/${emoteId}/default/dark/2.0`
     }
@@ -34196,7 +34221,11 @@ function renderWhispersTab() {
         m.platform,
       ),
     )
-    div.innerHTML = `${tsHtml}<span style="color:${platColor};font-size:13px;font-weight:700">[${platTag}]</span> ${senderLink} <span style="color:#808080">-&gt;</span> ${recipientLink}: ${whisperBody}${statusHtml}`
+    // Reply affordance — clicking arms /r at the input so nobody has to
+    // remember the command ("I keep forgetting to type /r"). Keyed per row:
+    // replying to an older conversation retargets lastWhisperKey to it.
+    const replyBtn = `<button class="hs-mc-reply-btn hs-whisper-reply" data-wkey="${escapeHtml(m.key)}" title="reply (${escapeHtml(them)})">↩</button>`
+    div.innerHTML = `${tsHtml}<span style="color:${platColor};font-size:13px;font-weight:700">[${platTag}]</span> ${senderLink} <span style="color:#808080">-&gt;</span> ${recipientLink}: ${whisperBody}${statusHtml}${replyBtn}`
     frag.appendChild(div)
   }
 
@@ -34209,6 +34238,23 @@ function renderWhispersTab() {
       e.stopPropagation()
       const id = el.getAttribute('data-retry')
       if (id) retryWhisperSend(id)
+    })
+  })
+
+  msgsEl.querySelectorAll('.hs-whisper-reply').forEach((el) => {
+    el.addEventListener('click', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      const key = el.getAttribute('data-wkey')
+      if (!key || !whisperUsers.has(key)) return
+      lastWhisperKey = key
+      whisperSaveDebounced()
+      if (typeof _prefillMcInput === 'function') _prefillMcInput('/r ')
+      if (typeof updateInputPlaceholder === 'function') {
+        try {
+          updateInputPlaceholder()
+        } catch {}
+      }
     })
   })
 }
@@ -35337,6 +35383,36 @@ function trackCompletionForAutoAdd(match) {
   }
 }
 
+// Native twitch chat parity: autocomplete-hook.js (MAIN world) relays remote
+// 7TV completions the user actually SENT through native chat. That world has
+// no nonce access (same constraint as content.js's heatsync-native-emotes
+// handler) — strict payload validation instead: emote-CDN-only urls, safe
+// name charset, provider allowlist, hard cap. Validated entries route through
+// recentRemoteCompletions + autoAddInputEmotes, so the exact owned/blocked/
+// pending/global guards, optimistic own-set entry, and failure rollback the
+// overlay send path uses apply here too.
+if (/(^|\.)twitch\.tv$/.test(location.hostname)) {
+  window.addEventListener('message', (event) => {
+    if (event.source !== window || event.origin !== location.origin) return
+    if (event.data?.type !== 'heatsync-remote-completion-used' || !Array.isArray(event.data.emotes)) return
+    const CDN_RE = /^https:\/\/(cdn\.7tv\.app|cdn\.betterttv\.net|cdn\.frankerfacez\.com)\//
+    const NAME_RE = /^[A-Za-z0-9_:\-()]+$/
+    const names = []
+    for (const e of event.data.emotes.slice(0, 20)) {
+      if (!e || typeof e.name !== 'string' || e.name.length < 2 || e.name.length > 64) continue
+      if (!NAME_RE.test(e.name) || typeof e.url !== 'string' || !CDN_RE.test(e.url)) continue
+      if (e.source !== '7tv' && e.source !== 'bttv' && e.source !== 'ffz') continue
+      recentRemoteCompletions.delete(e.name)
+      recentRemoteCompletions.set(e.name, { url: e.url, source: e.source, zeroWidth: false })
+      names.push(e.name)
+    }
+    while (recentRemoteCompletions.size > REMOTE_COMPLETION_CAP) {
+      recentRemoteCompletions.delete(recentRemoteCompletions.keys().next().value)
+    }
+    if (names.length) autoAddInputEmotes(names.join(' '))
+  })
+}
+
 // Infinite Tab-cycle: once local matches run out, pull more from the cross-provider
 // search APIs and append. Aborts stale fetches so rapid re-triggering never
 // merges results from an old search term.
@@ -35352,11 +35428,19 @@ function trackCompletionForAutoAdd(match) {
 // Local substring matches still surface via findEmoteMatches.
 let _acRemoteAbort = null
 let _acRemoteToken = 0
+// Searches the remote catalog will never serve: @user, :emoji, modifier
+// tokens, short fragments. Shared with the Tab-cycle hold-at-end check —
+// without this, @/: cycles held at the last match forever waiting on a
+// remote fetch that always bails (bare-emote cycling wrapped, these didn't).
+function acRemoteEligible(search) {
+  if (!search || search.length < 2) return false
+  if (search.startsWith('@') || search.startsWith(':')) return false
+  if (hsModClassify(search, { allowPrefix: false }).kind === 'modifier') return false
+  return true
+}
 async function fetchRemoteEmoteMatches(search) {
   // Emote-only: skip @user, :emoji, modifier tokens, and short fragments.
-  if (!search || search.length < 2) return
-  if (search.startsWith('@') || search.startsWith(':')) return
-  if (hsModClassify(search, { allowPrefix: false }).kind === 'modifier') return
+  if (!acRemoteEligible(search)) return
   const token = ++_acRemoteToken
   acState.remotePending = true
   if (_acRemoteAbort) {
@@ -36555,6 +36639,18 @@ async function hsBlockFromMenu(username, platform) {
 // Right-click mod action — single platform (the clicked message's), targeting
 // the login. Delete gets a bespoke toast; the rest use the shared combined one.
 async function _ctxMod(action, channel, platform, target, msgId, durationSec, label) {
+  // Logged-out Twitch: the GQL channel-id resolve fails and mislabels the
+  // result "<action> failed: channel not found". Surface plain-send's sticky
+  // not-logged-in cue instead (same check as the slash-command dispatch).
+  if (platform === 'twitch') {
+    const { token } = await getTwitchAuthTokenAsync()
+    if (!token) {
+      try {
+        HsNotifs.emit('twitch-auth-required', { text: t('mc_input_not_logged_in') || 'log into twitch.tv to chat' })
+      } catch (_) {}
+      return
+    }
+  }
   const r = await dispatchModAction({ channel, platform, action, target, durationSec, msgId })
   if (action === 'delete') {
     const derr = (r?.tResp || r?.kResp || r?.yResp)?.error
@@ -37631,8 +37727,7 @@ function handleInputKeydown(e) {
       // asked to keep cycling into remote (13/13 → 14/99), not loop. Once they
       // append + re-sort (position preserved), the next Tab advances into them.
       const atEnd = !e.shiftKey && acState.index + 1 >= len
-      const remoteMayCome =
-        acState.remotePending || (!acState.remoteDone && acState.search && acState.search.length >= 2)
+      const remoteMayCome = acState.remotePending || (!acState.remoteDone && acRemoteEligible(acState.search))
       if (atEnd && remoteMayCome) {
         if (!acState.remoteDone && !acState.remotePending && acState.search) {
           fetchRemoteEmoteMatches(acState.search)
@@ -40553,6 +40648,22 @@ async function handleSlashCommand(text, input) {
   // Dual-platform dispatch + per-platform notice injection + combined toast all
   // live in the shared backbone (main.js dispatchModAction / showModResultToast).
 
+  // Logged-out Twitch on a twitch-only tab: dispatch would die deep in the GQL
+  // channel-id resolve and surface a misleading "<action> failed: channel not
+  // found" toast. Root cause is unauthenticated, not a missing channel — show
+  // plain-send's sticky not-logged-in cue instead and never dispatch. A
+  // kick-capable tab still dispatches (its kick leg may be authed; the twitch
+  // side's error then surfaces in the combined toast).
+  const _twitchModAuthOk = async () => {
+    if (!_twitchModName || _kickModSlug) return true
+    const { token } = await getTwitchAuthTokenAsync()
+    if (token) return true
+    try {
+      HsNotifs.emit('twitch-auth-required', { text: t('mc_input_not_logged_in') || 'log into twitch.tv to chat' })
+    } catch (_) {}
+    return false
+  }
+
   if (cmd === 'ban' || cmd === 'timeout' || cmd === 'unban') {
     if (!modChannel) {
       showToast(`/${cmd} needs a channel tab (not live/mentions/posts)`, 'error')
@@ -40562,6 +40673,7 @@ async function handleSlashCommand(text, input) {
       showToast(`/${cmd} needs a twitch or kick channel`, 'error')
       return true
     }
+    if (!(await _twitchModAuthOk())) return true
     if (cmd === 'ban') {
       const m = rest.match(/^@?(\S+)(?:\s+(.+))?$/)
       if (!m) {
@@ -40621,6 +40733,7 @@ async function handleSlashCommand(text, input) {
       showToast('/delete needs a twitch or kick channel', 'error')
       return true
     }
+    if (!(await _twitchModAuthOk())) return true
     // Raw id → platform unknown; dispatcher tries Twitch first, then Kick.
     const r = await dispatchModAction({ channel: modChannel, action: 'delete', msgId: messageID })
     const err = (r?.tResp || r?.kResp)?.error || 'unknown'
@@ -40643,6 +40756,7 @@ async function handleSlashCommand(text, input) {
       showToast('/nuke needs a twitch or kick channel', 'error')
       return true
     }
+    if (!(await _twitchModAuthOk())) return true
     const NUKE_MAX = 100 // never delete more than this in one invocation
     const NUKE_MAX_WINDOW = 300 // seconds — furthest lookback allowed
     const nm = rest.trim().match(/^(.+?)(?:\s+(\d+))?$/)
@@ -50405,10 +50519,16 @@ const STORAGE_KEY = 'heatsync_multichat'
         // Chat surfaces only: feed/settings/social tabs and open profile
         // cards hold interactive state (drafts, scroll pos) a trim+rebuild
         // would wipe. Chat rows are pure render output — safe to shed.
+        // Scroll-paused readers are NOT safe to shed: isScrolledUp means the
+        // user deliberately scrolled up to read history; trimming to the
+        // newest 100 rows destroys the rows (and scroll anchor) they're
+        // parked on, and the rebuild-on-visible below renders the buffer
+        // tail — their place is gone. Skip the shed while paused; the
+        // scroll-pause gate in renderMessages keeps the DOM stable on return.
         const staticTabs = new Set(['settings', 'feed', 'whispers', 'discover', 'pinned'])
         const cardOpen = typeof activeProfileCard !== 'undefined' && activeProfileCard
         const msgsEl = document.getElementById('hs-mc-messages')
-        if (msgsEl && msgsEl.childElementCount > 100 && !staticTabs.has(currentTab) && !cardOpen) {
+        if (msgsEl && msgsEl.childElementCount > 100 && !staticTabs.has(currentTab) && !cardOpen && !isScrolledUp) {
           trimMessagesEl(msgsEl, 100)
           _hiddenSkippedAppend = true
         }
@@ -56494,7 +56614,12 @@ const STORAGE_KEY = 'heatsync_multichat'
           const alt = typeof lookupEmote === 'function' ? lookupEmote(name) : null
           if (alt && (alt.state === 'owned' || alt.state === 'global' || alt.state === 'channel')) state = 'global'
         }
-        twitchExtra.set(name, { url, source: 'twitch', state, zeroWidth: false })
+        // Key by the HTML-ESCAPED name: processEmotes below receives
+        // escapeHtml(m.text), so its per-word lookups see escaped tokens.
+        // Native emote names can contain HTML specials (`<3`, `:-&` style
+        // smilies) — a raw-name key never matches `&lt;3` and the emote
+        // renders as text. escapeHtml is identity for names without specials.
+        twitchExtra.set(escapeHtml(name), { url, source: 'twitch', state, zeroWidth: false })
       }
     }
     // Sender-perma emote resolution: own → viewerPersonalEmotes, others →

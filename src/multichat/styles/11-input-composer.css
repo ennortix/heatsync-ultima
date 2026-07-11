@@ -21,10 +21,13 @@
       font-family: inherit;
       outline: none;
       position: relative;
-      /* pre-wrap preserves trailing whitespace (the auto-space after Tab
-         completion stays visible + backspace-able) AND wraps long lines so
-         text doesn't escape the inputbar into the tab area. */
-      white-space: pre-wrap;
+      /* break-spaces (not pre-wrap): pre-wrap lets a trailing space HANG
+         invisibly at end-of-content in chromium contenteditable, so the
+         auto-space after Tab completion looked like it may or may not exist.
+         break-spaces gives every preserved space real width — visible caret
+         position after it, one predictable backspace — and still wraps long
+         lines so text doesn't escape the inputbar into the tab area. */
+      white-space: break-spaces;
       overflow-wrap: anywhere;
     }
     #hs-mc-input:focus {
@@ -280,7 +283,10 @@
       padding: 5px 12px;
       font-size: 13px;
       font-family: inherit;
-      white-space: pre;
+      /* Same value as #hs-mc-input — the glyph-for-glyph mirror only holds
+         if both wrap identically (was 'pre': no wrapping = red overlay
+         drifted off the typed text on any wrapped line). */
+      white-space: break-spaces;
       overflow: hidden;
       pointer-events: none;
       border: 1px solid transparent;

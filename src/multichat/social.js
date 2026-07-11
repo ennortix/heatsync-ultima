@@ -2246,7 +2246,7 @@ function renderDiscoverProfileRow(profile, username, rank, maxHeat, showRank = t
   if (profile.twitch_username) {
     const t = document.createElement('a')
     t.className = 'hs-plat hs-plat-t'
-    t.textContent = 't'
+    t.textContent = 'T'
     t.href = `https://www.twitch.tv/${encodeURIComponent(profile.twitch_username)}`
     t.target = '_blank'
     t.rel = 'noopener noreferrer'
@@ -2258,7 +2258,7 @@ function renderDiscoverProfileRow(profile, username, rank, maxHeat, showRank = t
   if (profile.kick_username) {
     const k = document.createElement('a')
     k.className = 'hs-plat hs-plat-k'
-    k.textContent = 'k'
+    k.textContent = 'K'
     k.href = `https://kick.com/${encodeURIComponent(profile.kick_username)}`
     k.target = '_blank'
     k.rel = 'noopener noreferrer'
@@ -2423,7 +2423,7 @@ function renderDiscoverPostRow(m) {
     const plat = document.createElement('span')
     const code = m.platform === 'twitch' ? 't' : m.platform === 'kick' ? 'k' : m.platform === 'youtube' ? 'yt' : 'h'
     plat.className = `hs-plat hs-plat-${code} hs-discover-post-plat`
-    plat.textContent = code
+    plat.textContent = code === 'yt' ? 'Y' : code.toUpperCase()
     meta.appendChild(plat)
   }
 

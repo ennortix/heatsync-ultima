@@ -865,9 +865,9 @@ function renderSendTargetChips() {
   if (Object.values(linked).filter(Boolean).length < 2) return
   const resolved = resolveSendTargets(ch.sendTargets, linked)
   const meta = [
-    { key: 'twitch', label: 't' },
-    { key: 'kick', label: 'k' },
-    { key: 'youtube', label: 'y' },
+    { key: 'twitch', label: 'T' },
+    { key: 'kick', label: 'K' },
+    { key: 'youtube', label: 'Y' },
   ]
   for (const p of meta) {
     if (!linked[p.key]) continue
@@ -1001,6 +1001,16 @@ function initInput() {
   input.addEventListener('keydown', handleInputKeydown)
   input.addEventListener('input', handleInputChange)
   input.addEventListener('input', updateCharCount)
+  // Draft guard: ctrl+w (delete-word muscle memory) is a reserved browser
+  // shortcut that closes the tab even with an input focused — pages can't
+  // cancel the shortcut itself, but a beforeunload prompt while a draft is
+  // in the composer turns the insta-close into a confirm dialog.
+  if (!window._hsDraftGuard) {
+    window._hsDraftGuard = (e) => {
+      if (getInputText().trim()) { e.preventDefault(); e.returnValue = '' }
+    }
+    window.addEventListener('beforeunload', window._hsDraftGuard)
+  }
   // Unified undo/redo — same module as the website. installUndoManager
   // attaches a manager to input._undoManager and wires Ctrl+Z hotkeys
   // (capture phase) + auto-capture on input events. Per-keystroke for

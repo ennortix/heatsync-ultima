@@ -45333,7 +45333,10 @@ function updateHsPaintsInPlace(userIds) {
       // this kick-space fallback — matches buildMessageDiv's
       // hsPaintRender(m.userId) || hsPaintRender(m.hsPaintUid) precedence,
       // so a later-resolving kick paint can't clobber an applied twitch one.
-      if (isKickUid && hasResolvedHsPaint(div._hsMsg?.userId)) continue
+      // (was `isKickUid` — an undeclared name that threw a ReferenceError on
+      // the FIRST row and killed the whole in-place pass: restored history
+      // rows of every painted user stayed on the static fallback color.)
+      if (isNamespacedUid && hasResolvedHsPaint(div._hsMsg?.userId)) continue
       const userLink = div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
       if (userLink) applyHsPaintToElement(userLink, uid)
     }

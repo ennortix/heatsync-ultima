@@ -11619,6 +11619,13 @@
       // themselves) — gates the symmetric restore in checkYtLive.
       let _hsCollapsedNativeYt = false
       function checkYtLive() {
+        // Keep theatre state honest from the same 1.5s tick — the attribute
+        // observer has been seen missing the [theater] flip (body stuck on
+        // hs-mode-normal inside theatre), which strands every .hs-mode-theatre
+        // rule. detectTheatreMode no-ops when nothing changed.
+        try {
+          detectTheatreMode()
+        } catch (_) {}
         // A LIVE stream mounts ytd-live-chat-frame#chat with a LIVE chat iframe
         // (/live_chat). A VOD of a past stream mounts the SAME element but with a
         // chat-REPLAY iframe (/live_chat_replay) — so frame-presence alone wrongly

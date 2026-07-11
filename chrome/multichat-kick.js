@@ -15746,10 +15746,10 @@ img.hs-fx-zero { margin-left: -4px; }
     /* --- YOUTUBE: collapse #secondary; pad #primary ---
        Gated on  — on VODs (non-live), keep YT's native
        sidebar so recommended/related videos remain visible to the viewer. */
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #secondary,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #secondary,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #secondary,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #secondary {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #secondary,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy:not([theater]):not([fullscreen]) #secondary,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy:not([theater]):not([fullscreen]) #secondary,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #secondary {
       width: 0 !important;
       min-width: 0 !important;
       max-width: 0 !important;
@@ -15763,31 +15763,31 @@ img.hs-fx-zero { margin-left: -4px; }
        hidden separately by the native-chat-hiding block above (it's body-
        mounted now, not nested in #chat-container), so it's swept up here
        too. */
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #related,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #related,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #related,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #related,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy ytd-watch-next-secondary-results-renderer,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy ytd-watch-next-secondary-results-renderer,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy ytd-watch-next-secondary-results-renderer,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy ytd-watch-next-secondary-results-renderer,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #secondary-inner > *,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #secondary-inner > *,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #secondary-inner > *,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #secondary-inner > * {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #related,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy:not([theater]):not([fullscreen]) #related,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy:not([theater]):not([fullscreen]) #related,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #related,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) ytd-watch-next-secondary-results-renderer,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy:not([theater]):not([fullscreen]) ytd-watch-next-secondary-results-renderer,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy:not([theater]):not([fullscreen]) ytd-watch-next-secondary-results-renderer,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) ytd-watch-next-secondary-results-renderer,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #secondary-inner > *,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy:not([theater]):not([fullscreen]) #secondary-inner > *,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy:not([theater]):not([fullscreen]) #secondary-inner > *,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #secondary-inner > * {
       display: none !important;
     }
     /* Default 'right' position — give up on YT's flex layout entirely
        and pin primary-inner to viewport-left with explicit width. Sibling
        battles with #secondary flex were giving primary negative x.
        Live-only — VODs keep YT's native two-column flex. */
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #primary {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #primary {
       margin: 0 !important;
       flex: 0 0 0 !important;
       width: 0 !important;
       overflow: visible !important;
     }
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #primary-inner {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #primary-inner {
       position: fixed !important;
       top: 0 !important;
       left: 0 !important;
@@ -15795,38 +15795,38 @@ img.hs-fx-zero { margin-left: -4px; }
       width: auto !important;
       height: 100vh !important;
     }
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) {
       --ytd-watch-flexy-side-menu-margin: 0 !important;
       --ytd-watch-flexy-non-player-width: var(--hs-chat-w, 340px) !important;
     }
     /* Force the player containers to fill #primary's inner width — kills
        the YT-side-menu-margin gap (right) AND the YT-non-player-width gap
        (left). For top/bottom the JS-driven inline width owns sizing. */
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #player-container,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #player-container-outer,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #player-container-inner,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy ytd-player,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #player,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #player-container,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #player-container-outer,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #player-container-inner,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy ytd-player,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #player {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #player-container,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #player-container-outer,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #player-container-inner,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) ytd-player,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #player,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #player-container,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #player-container-outer,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #player-container-inner,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) ytd-player,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #player {
       width: 100% !important;
     }
     /* chat-left: same gutter-kill as chat-right so YT computes the player
        width as primary's full width (708px) instead of vw - 450 (= 598). */
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) {
       --ytd-watch-flexy-side-menu-margin: 0 !important;
       --ytd-watch-flexy-non-player-width: var(--hs-chat-w, 340px) !important;
     }
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #primary {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #primary {
       margin: 0 !important;
       flex: 0 0 0 !important;
       width: 0 !important;
       overflow: visible !important;
     }
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #primary-inner {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #primary-inner {
       position: fixed !important;
       top: 0 !important;
       left: var(--hs-chat-w, 340px) !important;
@@ -15836,17 +15836,17 @@ img.hs-fx-zero { margin-left: -4px; }
     }
     /* Kill the secondary's residual 16px (its own padding/margin still
        takes layout space even with width:0). Live-only. */
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #secondary,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #secondary,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #secondary {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #secondary,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy:not([theater]):not([fullscreen]) #secondary,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy:not([theater]):not([fullscreen]) #secondary {
       padding: 0 !important;
       margin: 0 !important;
     }
-    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #primary {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy:not([theater]):not([fullscreen]) #primary {
       margin-top: var(--hs-chat-h, 35vh) !important;
       padding-top: 0 !important;
     }
-    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #primary {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy:not([theater]):not([fullscreen]) #primary {
       margin-bottom: var(--hs-chat-h, 35vh) !important;
       padding-top: 0 !important;
     }
@@ -15861,12 +15861,12 @@ img.hs-fx-zero { margin-left: -4px; }
     }
     /* primary clips to viewport height; primary-inner scrolls so video info
        below the player is reachable. Live-only. */
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #primary {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #primary {
       height: 100vh !important;
       max-height: 100vh !important;
       overflow: hidden !important;
     }
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #primary-inner {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #primary-inner {
       height: 100vh !important;
       max-height: 100vh !important;
       overflow-y: auto !important;
@@ -15875,7 +15875,7 @@ img.hs-fx-zero { margin-left: -4px; }
        mount-time inline height cached from the original live-chat-frame
        (~500-600px). #secondary-inner extends so the freed sidebar slot
        doesn't cap height. (#chat-container is display:none now.) */
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #secondary-inner {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #secondary-inner {
       height: 100vh !important;
       max-height: 100vh !important;
     }
@@ -15891,10 +15891,10 @@ img.hs-fx-zero { margin-left: -4px; }
        keeps its full 16:9 height and the metadata block sits BELOW it,
        scrolling out of view via primary-inner's overflow-y:auto when the
        total exceeds 100vh. Live-only (chat-right + chat-left). */
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #primary-inner > #player,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #primary-inner > #below,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #primary-inner > #player,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #primary-inner > #below {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #primary-inner > #player,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #primary-inner > #below,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #primary-inner > #player,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #primary-inner > #below {
       flex-shrink: 0 !important;
       flex-basis: auto !important;
     }
@@ -15919,7 +15919,7 @@ img.hs-fx-zero { margin-left: -4px; }
     #hs-mc-emote-btn {
       flex: 0 0 auto !important;
     }
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #primary-inner {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #primary-inner {
       display: flex !important;
       flex-direction: column !important;
       align-items: center !important;
@@ -15931,33 +15931,33 @@ img.hs-fx-zero { margin-left: -4px; }
        that var by chat-strip height makes YT shrink the player itself,
        which keeps the 16:9 aspect ratio (no distortion, no clipping).
        Live-only — VOD viewers expect full-height YT layout. */
-    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy:not([theater]):not([fullscreen]),
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy:not([theater]):not([fullscreen]) {
       --ytd-watch-flexy-non-player-height: calc(56px + 12px + 92px + var(--hs-chat-h, 35vh)) !important;
       --ytd-watch-flexy-min-player-height: 200px !important;
     }
     /* Belt-and-braces: cap player container too, in case YT's JS doesn't
        re-read the var on every chat-height change. */
-    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #player-container,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #player-container-outer,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #player-container,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #player-container-outer {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy:not([theater]):not([fullscreen]) #player-container,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy:not([theater]):not([fullscreen]) #player-container-outer,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy:not([theater]):not([fullscreen]) #player-container,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy:not([theater]):not([fullscreen]) #player-container-outer {
       max-height: calc(100vh - var(--hs-chat-h, 35vh) - 60px) !important;
     }
     /* Show video info below player (title, channel, description) like Twitch/Kick.
        Hide only comments — noisy, not the focus. #below gets width:100% so it
        fills primary-inner even when align-items:center is in effect.
        Live-only — VOD viewers want comments and native description sizing. */
-    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy ytd-comments,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy ytd-comments,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy ytd-comments,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy ytd-comments {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy:not([theater]):not([fullscreen]) ytd-comments,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy:not([theater]):not([fullscreen]) ytd-comments,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) ytd-comments,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) ytd-comments {
       display: none !important;
     }
-    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #below,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #below,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #below,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #below {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy:not([theater]):not([fullscreen]) #below,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy:not([theater]):not([fullscreen]) #below,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #below,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #below {
       width: 100% !important;
       max-width: 100% !important;
       overflow-x: hidden !important;
@@ -15965,19 +15965,19 @@ img.hs-fx-zero { margin-left: -4px; }
     /* Top/bottom: player is sized inline to fill availH, just need
        horizontal centering. Don't add min-height — primary has margin-top
        for chat-top, so 100vh would push content off the bottom. */
-    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #primary-inner,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #primary-inner {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy:not([theater]):not([fullscreen]) #primary-inner,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy:not([theater]):not([fullscreen]) #primary-inner {
       display: flex !important;
       flex-direction: column !important;
       align-items: center !important;
       justify-content: flex-start !important;
     }
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #primary {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #primary {
       height: 100vh !important;
       max-height: 100vh !important;
       overflow: hidden !important;
     }
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #primary-inner {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #primary-inner {
       height: 100vh !important;
       max-height: 100vh !important;
       overflow-y: auto !important;
@@ -15986,9 +15986,9 @@ img.hs-fx-zero { margin-left: -4px; }
       align-items: center !important;
       justify-content: flex-start !important;
     }
-    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #player,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #player,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #player {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy:not([theater]):not([fullscreen]) #player,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy:not([theater]):not([fullscreen]) #player,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #player {
       margin-left: auto !important;
       margin-right: auto !important;
     }
@@ -16038,27 +16038,27 @@ img.hs-fx-zero { margin-left: -4px; }
        only — never #below or a wildcard. the color property inherits, so a broad rule tints
        YT's action-bar icons (like/share/subscribe) grey via currentColor; scoping
        to title/channel/description/info leaves the icon subtree untouched. */
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #below #title, body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #below #title *,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #below h1, body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #below h1 *,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #below #title, body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #below #title *,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #below h1, body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #below h1 * {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #below #title, body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #below #title *,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #below h1, body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #below h1 *,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #below #title, body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #below #title *,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #below h1, body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #below h1 * {
       color: #ffffff !important;
       -webkit-text-fill-color: #ffffff !important;
     }
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #below #description, body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #below #description *,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #below ytd-channel-name, body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #below ytd-channel-name *,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #below #info, body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #below #info *,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #below #description, body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #below #description *,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #below ytd-channel-name, body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #below ytd-channel-name *,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #below #info, body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #below #info * {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #below #description, body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #below #description *,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #below ytd-channel-name, body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #below ytd-channel-name *,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #below #info, body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #below #info *,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #below #description, body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #below #description *,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #below ytd-channel-name, body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #below ytd-channel-name *,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #below #info, body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #below #info * {
       color: #e6e6e6 !important;
       -webkit-text-fill-color: #e6e6e6 !important;
     }
     /* links stay heatsync-orange — out-specify the #description * rule above */
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #below a,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #below #description a,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #below a,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #below #description a {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #below a,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #below #description a,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #below a,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #below #description a {
       color: #fff !important;
       -webkit-text-fill-color: #fff !important;
     }
@@ -16106,8 +16106,8 @@ img.hs-fx-zero { margin-left: -4px; }
       box-sizing: border-box !important;
       z-index: 1 !important;
     }
-    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #secondary { right: var(--hs-chat-w, 340px) !important; left: auto !important; }
-    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #secondary { right: 0 !important; left: auto !important; }
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #secondary { right: var(--hs-chat-w, 340px) !important; left: auto !important; }
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #secondary { right: 0 !important; left: auto !important; }
     /* reveal the related list the base "nuke suggestions sidebar" rule above
        sets display:none. that hide uses the full dock-class chain
        (body.hs-platform-yt:not(.hs-offline).hs-chat-{right,left} … #related and
@@ -16117,23 +16117,23 @@ img.hs-fx-zero { margin-left: -4px; }
        and add .hs-yt-suggestions → (1,4,1) wins. #related ONLY — never
        #secondary-inner > * (that would un-hide the native chat frame, playlist
        and donation shelf back into the strip). */
-    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #secondary,
-    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #secondary,
-    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #secondary-inner,
-    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #secondary-inner,
-    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #related,
-    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #related,
-    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy ytd-watch-next-secondary-results-renderer,
-    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy ytd-watch-next-secondary-results-renderer {
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #secondary,
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #secondary,
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #secondary-inner,
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #secondary-inner,
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #related,
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #related,
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) ytd-watch-next-secondary-results-renderer,
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) ytd-watch-next-secondary-results-renderer {
       display: block !important;
     }
-    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline) ytd-watch-flexy #secondary-inner {
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline) ytd-watch-flexy:not([theater]):not([fullscreen]) #secondary-inner {
       width: 100% !important; max-width: 100% !important; height: auto !important; max-height: none !important;
     }
     /* high-contrast text in the strip */
-    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline) ytd-watch-flexy #secondary,
-    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline) ytd-watch-flexy #secondary * { color: #e6e6e6 !important; }
-    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline) ytd-watch-flexy #secondary a { color: #ffffff !important; }
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline) ytd-watch-flexy:not([theater]):not([fullscreen]) #secondary,
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline) ytd-watch-flexy:not([theater]):not([fullscreen]) #secondary * { color: #e6e6e6 !important; }
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline) ytd-watch-flexy:not([theater]):not([fullscreen]) #secondary a { color: #ffffff !important; }
 
     /* ============================================
        SINGLE-COLUMN RESCUE
@@ -61548,6 +61548,13 @@ const STORAGE_KEY = 'heatsync_multichat'
       // themselves) — gates the symmetric restore in checkYtLive.
       let _hsCollapsedNativeYt = false
       function checkYtLive() {
+        // Keep theatre state honest from the same 1.5s tick — the attribute
+        // observer has been seen missing the [theater] flip (body stuck on
+        // hs-mode-normal inside theatre), which strands every .hs-mode-theatre
+        // rule. detectTheatreMode no-ops when nothing changed.
+        try {
+          detectTheatreMode()
+        } catch (_) {}
         // A LIVE stream mounts ytd-live-chat-frame#chat with a LIVE chat iframe
         // (/live_chat). A VOD of a past stream mounts the SAME element but with a
         // chat-REPLAY iframe (/live_chat_replay) — so frame-presence alone wrongly

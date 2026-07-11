@@ -9133,17 +9133,7 @@
     }
 
     // Build canonical YouTube URL: prefer @handle, fall back to channel id.
-    const buildYtUrl = () => {
-      const handle = profile?.youtube_username
-      const chanId = profile?.youtube_channel_id
-      if (handle) return `https://www.youtube.com/@${String(handle).replace(/^@/, '')}/live`
-      if (chanId) return `https://www.youtube.com/channel/${chanId}/live`
-      // Fallback: identity.youtube may be either; UC-prefixed 24-char strings are channel ids.
-      const yt = identity?.youtube
-      if (!yt) return ''
-      if (/^UC[\w-]{20,}$/.test(yt)) return `https://www.youtube.com/channel/${yt}/live`
-      return `https://www.youtube.com/@${String(yt).replace(/^@/, '')}/live`
-    }
+    const buildYtUrl = () => (typeof identityYtLiveUrl === 'function' ? identityYtLiveUrl({ identity, profile }) : '')
 
     // Optimistic fallback: when heatsync has no linkage (shadow profile / unknown
     // streamer), assume the same username on every platform. Most streamers

@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { isValidTwitchLogin, resolveYtLiveLabel } from '../src/lib/utils.js'
+import { identityYtLiveUrl, isValidTwitchLogin, resolveYtLiveLabel } from '../src/lib/utils.js'
 
 // ── isValidTwitchLogin ────────────────────────────────────────────────────────
 // reconcileAutoTabs gate: BG's open-channel set is twitch IRC interest —
@@ -69,4 +69,36 @@ test('resolveYtLiveLabel: 11-char name off a video page is left alone', () => {
 test('resolveYtLiveLabel: empty/null channel yields empty string', () => {
   expect(resolveYtLiveLabel(null, { isYtVideoPage: true, autoVideoId: null, resolvedName: 'x' })).toBe('')
   expect(resolveYtLiveLabel('', { isYtVideoPage: false, autoVideoId: null, resolvedName: '' })).toBe('')
+})
+
+// ── identityYtLiveUrl ─────────────────────────────────────────────────────────
+// config.channels youtube slots hold full URLs, never bare handles/ids —
+// pcAddAsChannel used to store identity.youtube raw, breaking ws-subscribe.
+
+test('identityYtLiveUrl: profile @handle wins, @ stripped once', () => {
+  expect(identityYtLiveUrl({ profile: { youtube_username: '@Kripparrian' } })).toBe(
+    'https://www.youtube.com/@Kripparrian/live',
+  )
+  expect(identityYtLiveUrl({ profile: { youtube_username: 'Kripparrian' } })).toBe(
+    'https://www.youtube.com/@Kripparrian/live',
+  )
+})
+
+test('identityYtLiveUrl: profile channel id when no handle (hyphens survive)', () => {
+  expect(identityYtLiveUrl({ profile: { youtube_channel_id: 'UCC-uu-OXVVAasgmBLKKGnOg' } })).toBe(
+    'https://www.youtube.com/channel/UCC-uu-OXVVAasgmBLKKGnOg/live',
+  )
+})
+
+test('identityYtLiveUrl: identity.youtube fallback disambiguates UC id vs handle', () => {
+  expect(identityYtLiveUrl({ identity: { youtube: 'UCC-uu-OXVVAasgmBLKKGnOg' } })).toBe(
+    'https://www.youtube.com/channel/UCC-uu-OXVVAasgmBLKKGnOg/live',
+  )
+  expect(identityYtLiveUrl({ identity: { youtube: 'kripparrian' } })).toBe('https://www.youtube.com/@kripparrian/live')
+})
+
+test('identityYtLiveUrl: no linkage yields empty string, never a guessed URL', () => {
+  expect(identityYtLiveUrl(null)).toBe('')
+  expect(identityYtLiveUrl({})).toBe('')
+  expect(identityYtLiveUrl({ identity: { twitch: 'nl_kripp' }, profile: {} })).toBe('')
 })

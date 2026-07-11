@@ -1614,17 +1614,29 @@ async function pcAddAsChannel(username) {
   if (activeProfileCard?.data && !activeProfileCard.data.error) {
     res = shapeIdentity(activeProfileCard.data)
   } else if (typeof resolveIdentity === 'function') {
-    res = await resolveIdentity(username)
+    const plat = activeProfileCard?.platform
+    res = await resolveIdentity(username, plat ? { platform: plat } : {})
   }
 
   // Fallback when no heatsync profile: assume the typed name is twitch (consistent
   // with prior behaviour when adding e.g. a Twitch-only channel from chat).
+  // EXCEPT from a youtube card: a yt author name is not a twitch login — same
+  // explicit-only rule as resolveLiveCandidateToTab (kripparrian's yt vs
+  // twitch nl_kripp; the guess joins/sends to a stranger's channel).
+  const fromYt = activeProfileCard?.platform === 'youtube'
   const id2 = res?.identity?.heatsync?.toLowerCase() || id
   const channel = {
     id: id2,
-    twitch: (res?.identity?.twitch || username).toLowerCase(),
+    twitch: (res?.identity?.twitch || (fromYt ? '' : username)).toLowerCase(),
     kick: (res?.identity?.kick || '').toLowerCase(),
-    youtube: res?.identity?.youtube || '',
+    youtube: typeof identityYtLiveUrl === 'function' ? identityYtLiveUrl(res) : '',
+  }
+  if (!channel.twitch && !channel.kick && !channel.youtube) {
+    // yt card with no heatsync linkage — nothing safe to bind. Fail loud,
+    // never push a dead tab or guess a twitch channel.
+    if (typeof showToast === 'function') showToast(`no linked channels found for ${username}`, 'error')
+    closeProfileCard()
+    return
   }
 
   config.channels.push(channel)

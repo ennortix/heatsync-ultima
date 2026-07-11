@@ -587,6 +587,25 @@ function resolveYtLiveLabel(channel, { isYtVideoPage, autoVideoId, resolvedName 
   return resolvedName || ''
 }
 
+/**
+ * Canonical YouTube live URL from a resolveIdentity() result. config.channels
+ * youtube slots hold full URLs, never bare handles/ids — a bare value breaks
+ * youtube_ws_subscribe and the tab-label handle parse. Prefer the profile's
+ * @handle, then channel id, then whichever form identity.youtube holds.
+ * @param {{identity?: object|null, profile?: object|null}|null} res
+ * @returns {string} live URL or ''
+ */
+function identityYtLiveUrl(res) {
+  const handle = res?.profile?.youtube_username
+  const chanId = res?.profile?.youtube_channel_id
+  if (handle) return `https://www.youtube.com/@${String(handle).replace(/^@/, '')}/live`
+  if (chanId) return `https://www.youtube.com/channel/${chanId}/live`
+  const yt = res?.identity?.youtube
+  if (!yt) return ''
+  if (/^UC[\w-]{20,}$/.test(yt)) return `https://www.youtube.com/channel/${yt}/live`
+  return `https://www.youtube.com/@${String(yt).replace(/^@/, '')}/live`
+}
+
 // Export
 const utils = {
   // XSS
@@ -631,6 +650,7 @@ const utils = {
   // Identity validation
   isValidTwitchLogin,
   resolveYtLiveLabel,
+  identityYtLiveUrl,
 
   // Storage hygiene
   sanitizeUiSettings,
@@ -661,6 +681,7 @@ export {
   estimateSettingSize,
   findComponent,
   getFiber,
+  identityYtLiveUrl,
   isLargeKeySyncEligible,
   isValidTwitchLogin,
   LARGE_KEY_SYNC_MAX,

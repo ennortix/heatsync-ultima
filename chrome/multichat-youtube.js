@@ -1550,6 +1550,25 @@ function resolveYtLiveLabel(channel, { isYtVideoPage, autoVideoId, resolvedName 
   return resolvedName || ''
 }
 
+/**
+ * Canonical YouTube live URL from a resolveIdentity() result. config.channels
+ * youtube slots hold full URLs, never bare handles/ids — a bare value breaks
+ * youtube_ws_subscribe and the tab-label handle parse. Prefer the profile's
+ * @handle, then channel id, then whichever form identity.youtube holds.
+ * @param {{identity?: object|null, profile?: object|null}|null} res
+ * @returns {string} live URL or ''
+ */
+function identityYtLiveUrl(res) {
+  const handle = res?.profile?.youtube_username
+  const chanId = res?.profile?.youtube_channel_id
+  if (handle) return `https://www.youtube.com/@${String(handle).replace(/^@/, '')}/live`
+  if (chanId) return `https://www.youtube.com/channel/${chanId}/live`
+  const yt = res?.identity?.youtube
+  if (!yt) return ''
+  if (/^UC[\w-]{20,}$/.test(yt)) return `https://www.youtube.com/channel/${yt}/live`
+  return `https://www.youtube.com/@${String(yt).replace(/^@/, '')}/live`
+}
+
 // Export
 const utils = {
   // XSS
@@ -1594,6 +1613,7 @@ const utils = {
   // Identity validation
   isValidTwitchLogin,
   resolveYtLiveLabel,
+  identityYtLiveUrl,
 
   // Storage hygiene
   sanitizeUiSettings,
@@ -42985,17 +43005,29 @@ async function pcAddAsChannel(username) {
   if (activeProfileCard?.data && !activeProfileCard.data.error) {
     res = shapeIdentity(activeProfileCard.data)
   } else if (typeof resolveIdentity === 'function') {
-    res = await resolveIdentity(username)
+    const plat = activeProfileCard?.platform
+    res = await resolveIdentity(username, plat ? { platform: plat } : {})
   }
 
   // Fallback when no heatsync profile: assume the typed name is twitch (consistent
   // with prior behaviour when adding e.g. a Twitch-only channel from chat).
+  // EXCEPT from a youtube card: a yt author name is not a twitch login — same
+  // explicit-only rule as resolveLiveCandidateToTab (kripparrian's yt vs
+  // twitch nl_kripp; the guess joins/sends to a stranger's channel).
+  const fromYt = activeProfileCard?.platform === 'youtube'
   const id2 = res?.identity?.heatsync?.toLowerCase() || id
   const channel = {
     id: id2,
-    twitch: (res?.identity?.twitch || username).toLowerCase(),
+    twitch: (res?.identity?.twitch || (fromYt ? '' : username)).toLowerCase(),
     kick: (res?.identity?.kick || '').toLowerCase(),
-    youtube: res?.identity?.youtube || '',
+    youtube: typeof identityYtLiveUrl === 'function' ? identityYtLiveUrl(res) : '',
+  }
+  if (!channel.twitch && !channel.kick && !channel.youtube) {
+    // yt card with no heatsync linkage — nothing safe to bind. Fail loud,
+    // never push a dead tab or guess a twitch channel.
+    if (typeof showToast === 'function') showToast(`no linked channels found for ${username}`, 'error')
+    closeProfileCard()
+    return
   }
 
   config.channels.push(channel)
@@ -58770,17 +58802,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     }
 
     // Build canonical YouTube URL: prefer @handle, fall back to channel id.
-    const buildYtUrl = () => {
-      const handle = profile?.youtube_username
-      const chanId = profile?.youtube_channel_id
-      if (handle) return `https://www.youtube.com/@${String(handle).replace(/^@/, '')}/live`
-      if (chanId) return `https://www.youtube.com/channel/${chanId}/live`
-      // Fallback: identity.youtube may be either; UC-prefixed 24-char strings are channel ids.
-      const yt = identity?.youtube
-      if (!yt) return ''
-      if (/^UC[\w-]{20,}$/.test(yt)) return `https://www.youtube.com/channel/${yt}/live`
-      return `https://www.youtube.com/@${String(yt).replace(/^@/, '')}/live`
-    }
+    const buildYtUrl = () => (typeof identityYtLiveUrl === 'function' ? identityYtLiveUrl({ identity, profile }) : '')
 
     // Optimistic fallback: when heatsync has no linkage (shadow profile / unknown
     // streamer), assume the same username on every platform. Most streamers

@@ -88,6 +88,15 @@
       background: #fff !important;
       color: #ff3333 !important;
     }
+    /* Whispers — cyan when unseen. A DM is personal: the generic has-new
+       white state was easy to miss ("whispers should be more obvious"). */
+    .hs-mc-tab.has-whispers {
+      color: #00ffff !important;
+    }
+    .hs-mc-tab.has-whispers:not(.active):hover {
+      background: #fff !important;
+      color: #00aaaa !important;
+    }
     /* Active — focused tab. Weight stays at 400: Cozette ships only the
        regular face, and font-synthesis:none in the bitmap block tells the
        browser not to fake-bold — but requesting 600 against a single-weight

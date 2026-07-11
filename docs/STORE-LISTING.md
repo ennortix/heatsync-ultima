@@ -3,6 +3,8 @@
 Paste-ready copy + the per-store gotchas. Keep in sync with `chrome/_locales/en/messages.json`
 (`manifest_name`, `manifest_description`) and the live dashboards. See
 [AMO-REVIEW-NOTES.md](./AMO-REVIEW-NOTES.md) for reviewer notes + permission justifications.
+Competitive claims (slots, size, platform gaps vs 7tv/bttv/ffz) come from
+[POSITIONING.md](./POSITIONING.md) — verified facts only, recheck externals before use.
 
 ## Name (localized — `manifest_name`)
 ```
@@ -59,7 +61,7 @@ chat, streaming, twitch, kick, youtube, emotes, 7tv
   Machine-authored from each locale's existing vocabulary — a native spot-check on the
   non-Latin scripts (ar, he, hi, th) before the tag is prudent but not blocking.
   `manifest_name` is intentionally bare "heatsync" in non-en (toolbar name) — left as-is.
-- AMO listed version is behind: submit **1.7.5** (listing was on 1.6.8).
+- AMO listed version is behind: submit **current release** (1.7.21 as of 2026-07-11; listing was on 1.6.8).
 
 ## Pre-release / pre-submit checklist
 - [ ] `bun run build.js --package` green (build + node --check + zips + source zip + tests) — verified 1.7.5: 552 tests pass.

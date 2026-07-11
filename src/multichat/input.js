@@ -1792,6 +1792,18 @@ async function hsBlockFromMenu(username, platform) {
 // Right-click mod action — single platform (the clicked message's), targeting
 // the login. Delete gets a bespoke toast; the rest use the shared combined one.
 async function _ctxMod(action, channel, platform, target, msgId, durationSec, label) {
+  // Logged-out Twitch: the GQL channel-id resolve fails and mislabels the
+  // result "<action> failed: channel not found". Surface plain-send's sticky
+  // not-logged-in cue instead (same check as the slash-command dispatch).
+  if (platform === 'twitch') {
+    const { token } = await getTwitchAuthTokenAsync()
+    if (!token) {
+      try {
+        HsNotifs.emit('twitch-auth-required', { text: t('mc_input_not_logged_in') || 'log into twitch.tv to chat' })
+      } catch (_) {}
+      return
+    }
+  }
   const r = await dispatchModAction({ channel, platform, action, target, durationSec, msgId })
   if (action === 'delete') {
     const derr = (r?.tResp || r?.kResp || r?.yResp)?.error
@@ -5789,6 +5801,22 @@ async function handleSlashCommand(text, input) {
   // Dual-platform dispatch + per-platform notice injection + combined toast all
   // live in the shared backbone (main.js dispatchModAction / showModResultToast).
 
+  // Logged-out Twitch on a twitch-only tab: dispatch would die deep in the GQL
+  // channel-id resolve and surface a misleading "<action> failed: channel not
+  // found" toast. Root cause is unauthenticated, not a missing channel — show
+  // plain-send's sticky not-logged-in cue instead and never dispatch. A
+  // kick-capable tab still dispatches (its kick leg may be authed; the twitch
+  // side's error then surfaces in the combined toast).
+  const _twitchModAuthOk = async () => {
+    if (!_twitchModName || _kickModSlug) return true
+    const { token } = await getTwitchAuthTokenAsync()
+    if (token) return true
+    try {
+      HsNotifs.emit('twitch-auth-required', { text: t('mc_input_not_logged_in') || 'log into twitch.tv to chat' })
+    } catch (_) {}
+    return false
+  }
+
   if (cmd === 'ban' || cmd === 'timeout' || cmd === 'unban') {
     if (!modChannel) {
       showToast(`/${cmd} needs a channel tab (not live/mentions/posts)`, 'error')
@@ -5798,6 +5826,7 @@ async function handleSlashCommand(text, input) {
       showToast(`/${cmd} needs a twitch or kick channel`, 'error')
       return true
     }
+    if (!(await _twitchModAuthOk())) return true
     if (cmd === 'ban') {
       const m = rest.match(/^@?(\S+)(?:\s+(.+))?$/)
       if (!m) {
@@ -5857,6 +5886,7 @@ async function handleSlashCommand(text, input) {
       showToast('/delete needs a twitch or kick channel', 'error')
       return true
     }
+    if (!(await _twitchModAuthOk())) return true
     // Raw id → platform unknown; dispatcher tries Twitch first, then Kick.
     const r = await dispatchModAction({ channel: modChannel, action: 'delete', msgId: messageID })
     const err = (r?.tResp || r?.kResp)?.error || 'unknown'
@@ -5879,6 +5909,7 @@ async function handleSlashCommand(text, input) {
       showToast('/nuke needs a twitch or kick channel', 'error')
       return true
     }
+    if (!(await _twitchModAuthOk())) return true
     const NUKE_MAX = 100 // never delete more than this in one invocation
     const NUKE_MAX_WINDOW = 300 // seconds — furthest lookback allowed
     const nm = rest.trim().match(/^(.+?)(?:\s+(\d+))?$/)

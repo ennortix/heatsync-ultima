@@ -2300,6 +2300,18 @@ const SETTINGS = [
 
   // ── notifs / inline notifications ─────────────────────────────────────
   {
+    key: 'whisperToast',
+    type: 'bool',
+    default: true,
+    scope: 'sync',
+    category: 'notifs',
+    section: 'whispers',
+    label: 'whisper toast',
+    tip: 'popup toast when a whisper or dm arrives while you are on another tab — click it to jump to whispers',
+    control: 'pill',
+    runtimeVar: 'whisperToastEnabled',
+  },
+  {
     key: 'inlineNotifs',
     type: 'boolmap',
     scope: 'sync',
@@ -6924,6 +6936,38 @@ const HsNotifs = (() => {
       const el = document.createElement('span')
       el.textContent = count > 1 ? `${base} ×${count}` : base
       el.className = `hs-notif-toast-text hs-notif-toast-${level}`
+      return el
+    },
+  })
+
+  // Whisper/DM receipt — popup toast while the user is NOT on the whispers
+  // tab. The has-whispers tab badge alone was easy to miss (wollip missed
+  // whispers entirely). Click jumps to the whispers tab; wrapper
+  // clickToDismiss then clears the toast. Per-sender dedupe collapses a
+  // burst into one toast with the latest snippet and a ×N counter.
+  registerType('whisper-receipt', {
+    layer: 'toast-stack',
+    timeout: 6000,
+    clickToDismiss: true,
+    dedupeKey: ({ platform, user }) => `whisper:${platform}:${String(user || '').toLowerCase()}`,
+    onDedupe: (existing, next) => {
+      existing.text = next.text
+      existing._count = (existing._count || 1) + 1
+    },
+    render: ({ data }) => {
+      const el = document.createElement('span')
+      el.className = 'hs-notif-toast-text hs-notif-whisper'
+      const who = document.createElement('strong')
+      who.textContent = data.user || '?'
+      if (data.color) who.style.color = data.color
+      const count = data._count | 0
+      const snippet = String(data.text || '').slice(0, 80)
+      el.append(who, ` whispered: ${snippet}${count > 1 ? ` ×${count}` : ''}`)
+      el.addEventListener('click', () => {
+        try {
+          if (typeof switchTab === 'function') switchTab('whispers')
+        } catch (_) {}
+      })
       return el
     },
   })
@@ -33527,6 +33571,9 @@ function handleIncomingWhisper(msg) {
       time: msg.time,
       platform: 'twitch',
     })
+    if (whisperToastEnabled && typeof HsNotifs !== 'undefined') {
+      HsNotifs.emit('whisper-receipt', { user: msg.user, text: msg.text, color: msg.color, platform: 'twitch' })
+    }
   }
   whisperSaveDebounced()
 }
@@ -33568,6 +33615,14 @@ function handleIncomingDm(data) {
       time,
       platform: 'heatsync',
     })
+    if (whisperToastEnabled && typeof HsNotifs !== 'undefined') {
+      HsNotifs.emit('whisper-receipt', {
+        user: data.from_display_name,
+        text: data.content,
+        color: data.from_color || '#fff',
+        platform: 'heatsync',
+      })
+    }
   }
   whisperSaveDebounced()
 }
@@ -38749,8 +38804,15 @@ function findEmoteMatches(search) {
       acEmotes.set(k, v)
       tierByName.set(k, 1)
     }
-    const acChCache = channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()]
-    if (acChCache)
+    // activeTabEmotePools resolves the tab's twitch/kick slot names + yt
+    // handle — pools are keyed by fetched owner name, and the raw tab id is
+    // NOT a pool key on merged-identity/yt tabs (the kripparrian-vs-nl_kripp
+    // trap; see emotes.js activeTabEmotePools).
+    const acPools =
+      typeof activeTabEmotePools === 'function'
+        ? activeTabEmotePools()
+        : [channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()]].filter(Boolean)
+    for (const acChCache of acPools)
       for (const [k, v] of acChCache) {
         acEmotes.set(k, v)
         tierByName.set(k, 0)
@@ -39728,7 +39790,10 @@ function getEmojiColonContext(input) {
 }
 
 function getMentionContext(input) {
-  return getTriggerContext(input, '@', 1)
+  // minLen 0: a bare '@' pops the dropdown immediately with recent chatters
+  // ranked first (mellen's ask — see the visible-dropdown request). Typing
+  // narrows; Escape or a space dismisses.
+  return getTriggerContext(input, '@', 0)
 }
 
 function showEmojiDropdown(matches, selectedIndex) {
@@ -51534,6 +51599,12 @@ const STORAGE_KEY = 'heatsync_multichat'
         zebraEnabled = v
       },
     },
+    whisperToastEnabled: {
+      get: () => whisperToastEnabled,
+      set: (v) => {
+        whisperToastEnabled = v
+      },
+    },
     // setter also feeds the window flag content.js reads for timestamp paint
     timestampsEnabled: {
       get: () => timestampsEnabled,
@@ -52671,6 +52742,11 @@ const STORAGE_KEY = 'heatsync_multichat'
 
   // Zebra striping — alternate row backgrounds (default on)
   let zebraEnabled = true
+
+  // Toast on incoming whisper/DM while not on the whispers tab (default on) —
+  // the has-whispers tab badge alone was easy to miss (wollip kept missing
+  // whispers entirely).
+  let whisperToastEnabled = true
 
   // Util row collapsed — hides C/T/F-/F+/⚙ for clean single-line tabs
 

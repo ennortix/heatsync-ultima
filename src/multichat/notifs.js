@@ -464,6 +464,38 @@ const HsNotifs = (() => {
     },
   })
 
+  // Whisper/DM receipt — popup toast while the user is NOT on the whispers
+  // tab. The has-whispers tab badge alone was easy to miss (wollip missed
+  // whispers entirely). Click jumps to the whispers tab; wrapper
+  // clickToDismiss then clears the toast. Per-sender dedupe collapses a
+  // burst into one toast with the latest snippet and a ×N counter.
+  registerType('whisper-receipt', {
+    layer: 'toast-stack',
+    timeout: 6000,
+    clickToDismiss: true,
+    dedupeKey: ({ platform, user }) => `whisper:${platform}:${String(user || '').toLowerCase()}`,
+    onDedupe: (existing, next) => {
+      existing.text = next.text
+      existing._count = (existing._count || 1) + 1
+    },
+    render: ({ data }) => {
+      const el = document.createElement('span')
+      el.className = 'hs-notif-toast-text hs-notif-whisper'
+      const who = document.createElement('strong')
+      who.textContent = data.user || '?'
+      if (data.color) who.style.color = data.color
+      const count = data._count | 0
+      const snippet = String(data.text || '').slice(0, 80)
+      el.append(who, ` whispered: ${snippet}${count > 1 ? ` ×${count}` : ''}`)
+      el.addEventListener('click', () => {
+        try {
+          if (typeof switchTab === 'function') switchTab('whispers')
+        } catch (_) {}
+      })
+      return el
+    },
+  })
+
   // Emote-loading — transient progress line shown while content.js fetches
   // third-party emotes (BTTV/FFZ/7TV). Persistent (no timeout): content.js
   // dismisses it via dismissByKey when loading finishes. Single fixed key so

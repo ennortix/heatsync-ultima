@@ -4202,8 +4202,15 @@ function findEmoteMatches(search) {
       acEmotes.set(k, v)
       tierByName.set(k, 1)
     }
-    const acChCache = channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()]
-    if (acChCache)
+    // activeTabEmotePools resolves the tab's twitch/kick slot names + yt
+    // handle — pools are keyed by fetched owner name, and the raw tab id is
+    // NOT a pool key on merged-identity/yt tabs (the kripparrian-vs-nl_kripp
+    // trap; see emotes.js activeTabEmotePools).
+    const acPools =
+      typeof activeTabEmotePools === 'function'
+        ? activeTabEmotePools()
+        : [channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()]].filter(Boolean)
+    for (const acChCache of acPools)
       for (const [k, v] of acChCache) {
         acEmotes.set(k, v)
         tierByName.set(k, 0)
@@ -5181,7 +5188,10 @@ function getEmojiColonContext(input) {
 }
 
 function getMentionContext(input) {
-  return getTriggerContext(input, '@', 1)
+  // minLen 0: a bare '@' pops the dropdown immediately with recent chatters
+  // ranked first (mellen's ask — see the visible-dropdown request). Typing
+  // narrows; Escape or a space dismisses.
+  return getTriggerContext(input, '@', 0)
 }
 
 function showEmojiDropdown(matches, selectedIndex) {

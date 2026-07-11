@@ -665,6 +665,18 @@ const SETTINGS = [
 
   // ── notifs / inline notifications ─────────────────────────────────────
   {
+    key: 'whisperToast',
+    type: 'bool',
+    default: true,
+    scope: 'sync',
+    category: 'notifs',
+    section: 'whispers',
+    label: 'whisper toast',
+    tip: 'popup toast when a whisper or dm arrives while you are on another tab — click it to jump to whispers',
+    control: 'pill',
+    runtimeVar: 'whisperToastEnabled',
+  },
+  {
     key: 'inlineNotifs',
     type: 'boolmap',
     scope: 'sync',

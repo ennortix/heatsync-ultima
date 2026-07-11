@@ -250,6 +250,9 @@ function handleIncomingWhisper(msg) {
       time: msg.time,
       platform: 'twitch',
     })
+    if (whisperToastEnabled && typeof HsNotifs !== 'undefined') {
+      HsNotifs.emit('whisper-receipt', { user: msg.user, text: msg.text, color: msg.color, platform: 'twitch' })
+    }
   }
   whisperSaveDebounced()
 }
@@ -291,6 +294,14 @@ function handleIncomingDm(data) {
       time,
       platform: 'heatsync',
     })
+    if (whisperToastEnabled && typeof HsNotifs !== 'undefined') {
+      HsNotifs.emit('whisper-receipt', {
+        user: data.from_display_name,
+        text: data.content,
+        color: data.from_color || '#fff',
+        platform: 'heatsync',
+      })
+    }
   }
   whisperSaveDebounced()
 }

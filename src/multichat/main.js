@@ -1719,6 +1719,12 @@
         zebraEnabled = v
       },
     },
+    whisperToastEnabled: {
+      get: () => whisperToastEnabled,
+      set: (v) => {
+        whisperToastEnabled = v
+      },
+    },
     // setter also feeds the window flag content.js reads for timestamp paint
     timestampsEnabled: {
       get: () => timestampsEnabled,
@@ -2856,6 +2862,11 @@
 
   // Zebra striping — alternate row backgrounds (default on)
   let zebraEnabled = true
+
+  // Toast on incoming whisper/DM while not on the whispers tab (default on) —
+  // the has-whispers tab badge alone was easy to miss (wollip kept missing
+  // whispers entirely).
+  let whisperToastEnabled = true
 
   // Util row collapsed — hides C/T/F-/F+/⚙ for clean single-line tabs
 

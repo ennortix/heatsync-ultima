@@ -57,10 +57,12 @@ chat, streaming, twitch, kick, youtube, emotes, 7tv
 ```
 
 ## Known issues / decisions
-- **AMO listing APPROVED + live (2026-07-11):** `addons.mozilla.org/.../heatsync-chat/` returns 200.
-  Listed version still 1.6.8 — upload 1.7.21 as a *listed* version. Live AMO tags are
-  `chat, streaming, twitch, youtube` — add `kick` + `emotes` (+ `7tv` if the picker allows).
-  Live AMO description predates the refined copy above — paste it in.
+- **AMO listing APPROVED + live; copy applied 2026-07-11:** refined en-US summary +
+  description above are LIVE on the public page (verified). Tags = `chat, social media,
+  streaming, twitch, youtube` — AMO tags are a fixed vocabulary; `kick`/`emotes`/`7tv`
+  don't exist, this is the best available set. Non-en AMO summaries still carry the older
+  framing (only en-US updated). Listed version still 1.6.8 — upload 1.7.21 as a *listed*
+  version (triggers review; bundle with next release).
 - **Locale drift (RESOLVED 2026-06-23):** all 33 non-en `manifest_description` strings
   realigned to the wedge-first (emote-first) framing, matching en. Each verified ≤132 chars,
   valid JSON, brand tokens present (Twitch/Kick/YouTube/7TV/BTTV/FFZ/5000), build passes.

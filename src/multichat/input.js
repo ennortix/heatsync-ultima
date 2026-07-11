@@ -551,11 +551,19 @@ function trackCompletionForAutoAdd(match) {
 // Local substring matches still surface via findEmoteMatches.
 let _acRemoteAbort = null
 let _acRemoteToken = 0
+// Searches the remote catalog will never serve: @user, :emoji, modifier
+// tokens, short fragments. Shared with the Tab-cycle hold-at-end check —
+// without this, @/: cycles held at the last match forever waiting on a
+// remote fetch that always bails (bare-emote cycling wrapped, these didn't).
+function acRemoteEligible(search) {
+  if (!search || search.length < 2) return false
+  if (search.startsWith('@') || search.startsWith(':')) return false
+  if (hsModClassify(search, { allowPrefix: false }).kind === 'modifier') return false
+  return true
+}
 async function fetchRemoteEmoteMatches(search) {
   // Emote-only: skip @user, :emoji, modifier tokens, and short fragments.
-  if (!search || search.length < 2) return
-  if (search.startsWith('@') || search.startsWith(':')) return
-  if (hsModClassify(search, { allowPrefix: false }).kind === 'modifier') return
+  if (!acRemoteEligible(search)) return
   const token = ++_acRemoteToken
   acState.remotePending = true
   if (_acRemoteAbort) {
@@ -2830,8 +2838,7 @@ function handleInputKeydown(e) {
       // asked to keep cycling into remote (13/13 → 14/99), not loop. Once they
       // append + re-sort (position preserved), the next Tab advances into them.
       const atEnd = !e.shiftKey && acState.index + 1 >= len
-      const remoteMayCome =
-        acState.remotePending || (!acState.remoteDone && acState.search && acState.search.length >= 2)
+      const remoteMayCome = acState.remotePending || (!acState.remoteDone && acRemoteEligible(acState.search))
       if (atEnd && remoteMayCome) {
         if (!acState.remoteDone && !acState.remotePending && acState.search) {
           fetchRemoteEmoteMatches(acState.search)

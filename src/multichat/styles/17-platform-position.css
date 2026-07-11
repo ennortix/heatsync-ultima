@@ -444,24 +444,26 @@
        the chat strip in BOTH single-column and two-column modes. The
        wrapper inline-sizing in applyPlatformPositionOverrides is a
        complementary belt-and-suspenders. */
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #primary,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #primary {
+    /* :not([theater]):not([fullscreen]) — theatre/fullscreen rearrange the
+       watch layout to a full-width player row; applyYouTubeChatWidth already
+       clears its INLINE overrides there, but these !important caps kept
+       fighting the reflow: the video stayed narrow with a dead strip where
+       the normal-mode chat column would be. Same source of truth as the JS
+       theatre branch (the flexy attributes). */
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #primary {
       max-width: calc(100% - var(--hs-chat-w, 340px)) !important;
       width: calc(100% - var(--hs-chat-w, 340px)) !important;
     }
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #primary,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #primary {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #primary {
       max-width: calc(100% - var(--hs-chat-w, 340px)) !important;
       width: calc(100% - var(--hs-chat-w, 340px)) !important;
       margin-left: var(--hs-chat-w, 340px) !important;
     }
-    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #primary,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #primary {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy:not([theater]):not([fullscreen]) #primary {
       margin-top: var(--hs-chat-h, 35vh) !important;
       max-height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
     }
-    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #primary,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #primary {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy:not([theater]):not([fullscreen]) #primary {
       max-height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
     }
     /* YT's masthead is position:fixed with width:100% (viewport-anchored).

@@ -4425,6 +4425,13 @@
       { key: 'youtube', label: 'Y', show: hasYt },
     ]
 
+    // 'show:' / 'send:' labels disambiguate the two T K Y groups — filter
+    // (here) vs send targets (composer) — which are otherwise identical.
+    const lbl = document.createElement('span')
+    lbl.className = 'hs-mc-group-label'
+    lbl.textContent = 'show:'
+    group.appendChild(lbl)
+
     for (const p of meta) {
       if (!p.show) continue
       const btn = document.createElement('button')

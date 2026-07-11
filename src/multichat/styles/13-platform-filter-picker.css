@@ -91,6 +91,15 @@
       margin: 0 4px;
     }
     #hs-mc-sendtargets:empty { display: none; margin: 0; }
+    /* 'show:' / 'send:' group labels — disambiguate the twin T K Y clusters */
+    .hs-mc-group-label {
+      color: #777;
+      font-size: 13px;
+      line-height: 1;
+      align-self: center;
+      margin-right: 1px;
+      user-select: none;
+    }
     .hs-mc-st-btn {
       background: transparent;
       border: 1px solid;

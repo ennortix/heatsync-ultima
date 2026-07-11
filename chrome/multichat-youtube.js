@@ -11584,6 +11584,15 @@ img.hs-fx-zero { margin-left: -4px; }
       margin: 0 4px;
     }
     #hs-mc-sendtargets:empty { display: none; margin: 0; }
+    /* 'show:' / 'send:' group labels — disambiguate the twin T K Y clusters */
+    .hs-mc-group-label {
+      color: #777;
+      font-size: 13px;
+      line-height: 1;
+      align-self: center;
+      margin-right: 1px;
+      user-select: none;
+    }
     .hs-mc-st-btn {
       background: transparent;
       border: 1px solid;
@@ -35471,6 +35480,12 @@ function renderSendTargetChips() {
     { key: 'kick', label: 'K' },
     { key: 'youtube', label: 'Y' },
   ]
+  // 'send:' label — pairs with the tab strip's 'show:' filter group so the
+  // two T K Y clusters can't be mistaken for each other.
+  const lbl = document.createElement('span')
+  lbl.className = 'hs-mc-group-label'
+  lbl.textContent = 'send:'
+  group.appendChild(lbl)
   for (const p of meta) {
     if (!linked[p.key]) continue
     const on = resolved[p.key]
@@ -54217,6 +54232,13 @@ const STORAGE_KEY = 'heatsync_multichat'
       { key: 'kick', label: 'K', show: hasKick },
       { key: 'youtube', label: 'Y', show: hasYt },
     ]
+
+    // 'show:' / 'send:' labels disambiguate the two T K Y groups — filter
+    // (here) vs send targets (composer) — which are otherwise identical.
+    const lbl = document.createElement('span')
+    lbl.className = 'hs-mc-group-label'
+    lbl.textContent = 'show:'
+    group.appendChild(lbl)
 
     for (const p of meta) {
       if (!p.show) continue

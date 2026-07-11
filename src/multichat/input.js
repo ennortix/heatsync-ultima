@@ -869,6 +869,12 @@ function renderSendTargetChips() {
     { key: 'kick', label: 'K' },
     { key: 'youtube', label: 'Y' },
   ]
+  // 'send:' label — pairs with the tab strip's 'show:' filter group so the
+  // two T K Y clusters can't be mistaken for each other.
+  const lbl = document.createElement('span')
+  lbl.className = 'hs-mc-group-label'
+  lbl.textContent = 'send:'
+  group.appendChild(lbl)
   for (const p of meta) {
     if (!linked[p.key]) continue
     const on = resolved[p.key]

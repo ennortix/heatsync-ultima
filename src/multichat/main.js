@@ -176,10 +176,16 @@
         // Chat surfaces only: feed/settings/social tabs and open profile
         // cards hold interactive state (drafts, scroll pos) a trim+rebuild
         // would wipe. Chat rows are pure render output — safe to shed.
+        // Scroll-paused readers are NOT safe to shed: isScrolledUp means the
+        // user deliberately scrolled up to read history; trimming to the
+        // newest 100 rows destroys the rows (and scroll anchor) they're
+        // parked on, and the rebuild-on-visible below renders the buffer
+        // tail — their place is gone. Skip the shed while paused; the
+        // scroll-pause gate in renderMessages keeps the DOM stable on return.
         const staticTabs = new Set(['settings', 'feed', 'whispers', 'discover', 'pinned'])
         const cardOpen = typeof activeProfileCard !== 'undefined' && activeProfileCard
         const msgsEl = document.getElementById('hs-mc-messages')
-        if (msgsEl && msgsEl.childElementCount > 100 && !staticTabs.has(currentTab) && !cardOpen) {
+        if (msgsEl && msgsEl.childElementCount > 100 && !staticTabs.has(currentTab) && !cardOpen && !isScrolledUp) {
           trimMessagesEl(msgsEl, 100)
           _hiddenSkippedAppend = true
         }

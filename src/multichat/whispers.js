@@ -449,7 +449,9 @@ async function sendWhisperMessage(key, text) {
 // Auto-retry queued auth-failed whispers when auth comes back online.
 // Bound to storage.onChanged on first call; safe to call repeatedly.
 function retryAuthFailedWhispers() {
-  const failed = whisperTimeline.filter((m) => m.status === 'failed' && (m.errorKind === 'auth' || m.errorKind === 'relink') && m.sendId)
+  const failed = whisperTimeline.filter(
+    (m) => m.status === 'failed' && (m.errorKind === 'auth' || m.errorKind === 'relink') && m.sendId,
+  )
   if (!failed.length) return
   log(`[whispers] auth restored — retrying ${failed.length} queued send(s)`)
   // Stagger retries so we don't burst the helix endpoint.

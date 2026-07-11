@@ -13,7 +13,7 @@ import { join } from 'path'
 function loadSendTargets() {
   const src = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'send-targets.js'), 'utf8')
   const fn = new Function(
-    `${src}; return { resolveSendTargets, nextSendTargets, extractYoutubeVideoId, youtubeSendErrorMessage }`
+    `${src}; return { resolveSendTargets, nextSendTargets, extractYoutubeVideoId, youtubeSendErrorMessage }`,
   )
   return fn()
 }

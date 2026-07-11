@@ -13238,9 +13238,7 @@
       const onStreamPage =
         isYtPopout ||
         (hostPlatform === 'yt' && /\/watch|\/live\//.test(path)) ||
-        (hostPlatform !== 'yt' &&
-          !isKick &&
-          !!document.querySelector('.channel-root, [class*="channel-root"]')) ||
+        (hostPlatform !== 'yt' && !isKick && !!document.querySelector('.channel-root, [class*="channel-root"]')) ||
         (isKick && !!(document.getElementById('channel-chatroom') || document.querySelector('[id*="chatroom"]')))
       return onStreamPage ? 'live' : _savedActiveTab || 'live'
     }

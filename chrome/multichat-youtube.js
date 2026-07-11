@@ -6246,7 +6246,9 @@ function nextSendTargets(currentSendTargets, linkedPlatforms, platform, enabled)
  * @returns {string}
  */
 function extractYoutubeVideoId(url) {
-  const m = String(url || '').match(/(?:[?&]v=|\/live\/|\/shorts\/|youtu\.be\/|\/embed\/)([a-zA-Z0-9_-]{11})(?![a-zA-Z0-9_-])/)
+  const m = String(url || '').match(
+    /(?:[?&]v=|\/live\/|\/shorts\/|youtu\.be\/|\/embed\/)([a-zA-Z0-9_-]{11})(?![a-zA-Z0-9_-])/,
+  )
   return m ? m[1] : ''
 }
 
@@ -33539,7 +33541,9 @@ async function sendWhisperMessage(key, text) {
 // Auto-retry queued auth-failed whispers when auth comes back online.
 // Bound to storage.onChanged on first call; safe to call repeatedly.
 function retryAuthFailedWhispers() {
-  const failed = whisperTimeline.filter((m) => m.status === 'failed' && (m.errorKind === 'auth' || m.errorKind === 'relink') && m.sendId)
+  const failed = whisperTimeline.filter(
+    (m) => m.status === 'failed' && (m.errorKind === 'auth' || m.errorKind === 'relink') && m.sendId,
+  )
   if (!failed.length) return
   log(`[whispers] auth restored — retrying ${failed.length} queued send(s)`)
   // Stagger retries so we don't burst the helix endpoint.
@@ -62687,9 +62691,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       const onStreamPage =
         isYtPopout ||
         (hostPlatform === 'yt' && /\/watch|\/live\//.test(path)) ||
-        (hostPlatform !== 'yt' &&
-          !isKick &&
-          !!document.querySelector('.channel-root, [class*="channel-root"]')) ||
+        (hostPlatform !== 'yt' && !isKick && !!document.querySelector('.channel-root, [class*="channel-root"]')) ||
         (isKick && !!(document.getElementById('channel-chatroom') || document.querySelector('[id*="chatroom"]')))
       return onStreamPage ? 'live' : _savedActiveTab || 'live'
     }

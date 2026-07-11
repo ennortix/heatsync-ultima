@@ -63,7 +63,9 @@ function nextSendTargets(currentSendTargets, linkedPlatforms, platform, enabled)
  * @returns {string}
  */
 function extractYoutubeVideoId(url) {
-  const m = String(url || '').match(/(?:[?&]v=|\/live\/|\/shorts\/|youtu\.be\/|\/embed\/)([a-zA-Z0-9_-]{11})(?![a-zA-Z0-9_-])/)
+  const m = String(url || '').match(
+    /(?:[?&]v=|\/live\/|\/shorts\/|youtu\.be\/|\/embed\/)([a-zA-Z0-9_-]{11})(?![a-zA-Z0-9_-])/,
+  )
   return m ? m[1] : ''
 }
 

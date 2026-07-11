@@ -6271,7 +6271,12 @@
           const alt = typeof lookupEmote === 'function' ? lookupEmote(name) : null
           if (alt && (alt.state === 'owned' || alt.state === 'global' || alt.state === 'channel')) state = 'global'
         }
-        twitchExtra.set(name, { url, source: 'twitch', state, zeroWidth: false })
+        // Key by the HTML-ESCAPED name: processEmotes below receives
+        // escapeHtml(m.text), so its per-word lookups see escaped tokens.
+        // Native emote names can contain HTML specials (`<3`, `:-&` style
+        // smilies) — a raw-name key never matches `&lt;3` and the emote
+        // renders as text. escapeHtml is identity for names without specials.
+        twitchExtra.set(escapeHtml(name), { url, source: 'twitch', state, zeroWidth: false })
       }
     }
     // Sender-perma emote resolution: own → viewerPersonalEmotes, others →

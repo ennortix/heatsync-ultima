@@ -5563,6 +5563,10 @@
           ? parent
           : messageElement
 
+      // One notification per message: emote re-sweeps re-run this on rows
+      // already marked — re-sending mention_detected spams notifications.
+      if (targetElement.classList.contains('hs-mentioned')) return
+
       // Add the class (CSS handles the rest with high specificity)
       targetElement.classList.add('hs-mentioned')
 
@@ -5598,49 +5602,52 @@
     for (const fragment of textFragments) {
       // Skip if already has our colored spans (check for our marker class)
       if (fragment.querySelector('.hs-username-colored')) continue
-
-      // Skip if text already contains our spans (React may have re-wrapped)
-      const text = fragment.textContent
-      if (!text) continue
-
-      // Split text into words while preserving structure
-      const words = text.split(HS_WS_SPLIT) // Keep whitespace
-      const newNodes = []
-      let hasMatch = false
-
-      for (const word of words) {
-        const cleanWord = word
-          .replace(/[@,.:!?]/g, '')
-          .trim()
-          .toLowerCase()
-
-        // Check if this word is a known chatter
-        if (cleanWord && knownChatters.has(cleanWord)) {
-          const color = knownChatters.get(cleanWord)
-          const span = document.createElement('span')
-          span.className = 'hs-username-colored'
-          const safeColor = COLOR_RE.test(color) ? color : '#ffffff'
-          span.style.cssText = `color: ${safeColor}; font-weight: bold; cursor: pointer;`
-          span.textContent = word
-          span.dataset.hsUsername = cleanWord
-          applyMentionCosmetics(span, cleanWord)
-          newNodes.push(span)
-          hasMatch = true
-        } else {
-          newNodes.push(document.createTextNode(word))
-        }
-      }
-
-      // Only modify DOM if we found matches
-      if (!hasMatch) continue
-
-      // Validate fragment is still in DOM
+      if (!fragment.textContent) continue
       if (!document.contains(fragment)) continue
 
-      try {
-        fragment.replaceChildren(...newNodes)
-      } catch (e) {
-        // Silently skip on React conflict
+      // Rewrite TEXT NODES only. The fragment may already contain rendered
+      // emote <img>s (our injection pass runs first) — the old
+      // textContent-split + replaceChildren flattened the whole fragment and
+      // destroyed them (emotes reverted to text/vanished whenever the same
+      // fragment also named a known chatter). Element children stay put.
+      const textNodes = []
+      for (const n of fragment.childNodes) {
+        if (n.nodeType === Node.TEXT_NODE && n.nodeValue) textNodes.push(n)
+      }
+      for (const tn of textNodes) {
+        const words = tn.nodeValue.split(HS_WS_SPLIT) // Keep whitespace
+        const newNodes = []
+        let hasMatch = false
+
+        for (const word of words) {
+          const cleanWord = word
+            .replace(/[@,.:!?]/g, '')
+            .trim()
+            .toLowerCase()
+
+          // Check if this word is a known chatter
+          if (cleanWord && knownChatters.has(cleanWord)) {
+            const color = knownChatters.get(cleanWord)
+            const span = document.createElement('span')
+            span.className = 'hs-username-colored'
+            const safeColor = COLOR_RE.test(color) ? color : '#ffffff'
+            span.style.cssText = `color: ${safeColor}; font-weight: bold; cursor: pointer;`
+            span.textContent = word
+            span.dataset.hsUsername = cleanWord
+            applyMentionCosmetics(span, cleanWord)
+            newNodes.push(span)
+            hasMatch = true
+          } else {
+            newNodes.push(document.createTextNode(word))
+          }
+        }
+
+        if (!hasMatch) continue
+        try {
+          tn.replaceWith(...newNodes)
+        } catch (e) {
+          // Silently skip on React conflict
+        }
       }
     }
 

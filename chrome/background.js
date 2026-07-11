@@ -7948,8 +7948,7 @@ async function handleMessage(message, sender, sendResponse) {
           // collapses native chat, which unloads the iframe youtube-content.js
           // lives in, so there is no receiver. With a concrete videoId, fall
           // back to a bridge tab instead of failing the send.
-          const canBridge =
-            videoId && /^[a-zA-Z0-9_-]{11}$/.test(videoId) && targetTabId !== ytBridgeTabs.get(videoId)
+          const canBridge = videoId && /^[a-zA-Z0-9_-]{11}$/.test(videoId) && targetTabId !== ytBridgeTabs.get(videoId)
           if (!canBridge) throw relayErr
           const bridge = await ensureYoutubeBridgeTab(videoId)
           if (!bridge.tabId || bridge.error) {

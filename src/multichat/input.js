@@ -5718,7 +5718,15 @@ async function handleSlashCommand(text, input) {
   // an unmute reports success while the entry keeps hiding the user.
   const _muteKeyForms = (bare, aliasKeys) =>
     Array.from(
-      new Set([bare, `twitch:${bare}`, `kick:${bare}`, `youtube:${bare}`, `yt:${bare}`, `heatsync:${bare}`, ...(aliasKeys || [])]),
+      new Set([
+        bare,
+        `twitch:${bare}`,
+        `kick:${bare}`,
+        `youtube:${bare}`,
+        `yt:${bare}`,
+        `heatsync:${bare}`,
+        ...(aliasKeys || []),
+      ]),
     )
 
   if (cmd === 'mute') {

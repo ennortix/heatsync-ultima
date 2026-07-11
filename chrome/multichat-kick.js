@@ -987,6 +987,23 @@ function escapeHtml(str) {
 }
 
 /**
+ * Exact inverse of escapeHtml — recover the raw string from a token that was
+ * escaped for innerHTML. Only the five entities escapeHtml produces; &amp;
+ * last so double-escaped input isn't over-collapsed.
+ * @param {string} str - Output of escapeHtml
+ * @returns {string} Raw string
+ */
+function unescapeHtml(str) {
+  if (str == null) return ''
+  return String(str)
+    .replace(/&#x27;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&gt;/g, '>')
+    .replace(/&lt;/g, '<')
+    .replace(/&amp;/g, '&')
+}
+
+/**
  * Validate URL — only http/https protocols allowed.
  * Returns the URL string if safe, empty string otherwise.
  * Use before assigning user/third-party data to img.src or a.href.
@@ -1537,6 +1554,7 @@ function resolveYtLiveLabel(channel, { isYtVideoPage, autoVideoId, resolvedName 
 const utils = {
   // XSS
   escapeHtml,
+  unescapeHtml,
   safeUrl,
   createElement,
 
@@ -9025,6 +9043,14 @@ function injectStyles() {
       background: #fff;
     }
     .hs-mc-msg[data-msg-id]:hover .hs-mc-reply-btn {
+      display: block;
+    }
+    /* whisper rows have no data-msg-id, so the rule above never matches —
+       mirror it for the whisper-row marker class instead */
+    .hs-whisper-msg {
+      position: relative;
+    }
+    .hs-whisper-msg:hover .hs-mc-reply-btn {
       display: block;
     }
     /* Mod toolbar — singleton bar inserted into the hovered row as a sibling
@@ -19143,6 +19169,10 @@ class KickChat {
     this._SYNC_BACKUP_MAX = 200
     this._pendingChannels = new Set()
     this._recentLiveIds = new Set() // Kick message-id dedup across server-relay + Pusher-tap sources
+    // Self-inflicted mod actions (toolbar/slash) inject a synthetic notice
+    // immediately; the Pusher tap then reflects the same action back —
+    // without this index every self-mod on a tapped channel prints twice.
+    this._selfModIndex = new Map() // `${slug}|${noticeType}|${target}` → ts
     // Per-channel watchdog. Kick traffic flows BG → runtime.sendMessage →
     // this._listener; if anything between us and the heatsync server drops
     // a sub silently (BG WS reconnected before our ws_send made it through,
@@ -19155,6 +19185,26 @@ class KickChat {
     // chrome.storage.local debounce gap that was eating ~5s of pre-reload chat.
     this._pagehideHandler = () => this._flushPendingSync()
     window.addEventListener('pagehide', this._pagehideHandler)
+  }
+
+  // Record a self-inflicted mod action so the Pusher-tap reflection of the
+  // same action is collapsed instead of printing a second system line.
+  noteSelfMod(slug, noticeType, target) {
+    const key = `${(slug || '').toLowerCase()}|${noticeType}|${(target || '').toLowerCase()}`
+    const now = Date.now()
+    for (const [k, ts] of this._selfModIndex) if (now - ts > 10000) this._selfModIndex.delete(k)
+    if (this._selfModIndex.size >= 50) this._selfModIndex.delete(this._selfModIndex.keys().next().value)
+    this._selfModIndex.set(key, now)
+  }
+
+  // Consume a matching self-mod record (±10s). One-shot: a match deletes the
+  // entry so a genuine repeat action a moment later still prints.
+  _consumeSelfMod(slug, noticeType, target) {
+    const key = `${(slug || '').toLowerCase()}|${noticeType}|${(target || '').toLowerCase()}`
+    const ts = this._selfModIndex.get(key)
+    if (ts === undefined) return false
+    this._selfModIndex.delete(key)
+    return Date.now() - ts <= 10000
   }
 
   _serializeMsg(m) {
@@ -19355,6 +19405,10 @@ class KickChat {
               : action === 'timeout'
                 ? 'timeout_success'
                 : 'ban_success'
+        // Self-mod dedup: the toolbar already injected a synthetic notice for
+        // this exact action — the buffer dim above still applies, but a second
+        // system line (and duplicate mod-log entry) must not.
+        if (this._consumeSelfMod(channel, noticeType, action === 'delete' ? message.targetMsgId : targetLc)) return
         const text =
           action === 'delete'
             ? `a message was deleted`
@@ -23404,10 +23458,13 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
       const finalUrl = useCachedUrl ? cached.url : kickUrl
       const provider = cached?.source || 'kick'
       const isOverlay = !!cached?.zeroWidth || (cached && zeroWidthFromAnyCache(emoteName))
-      const isBlocked = blockedEmoteNames.has(emoteName)
+      // emoteName is extracted from escaped text — check raw form against the
+      // raw-keyed blocked/inventory stores and escape from raw (no double).
+      const rawEmoteName = unescapeHtml(emoteName)
+      const isBlocked = blockedEmoteNames.has(emoteName) || blockedEmoteNames.has(rawEmoteName)
       let state = isBlocked ? 'blocked' : cached?.state || 'channel'
-      if (state === 'unadded' && inventoryEmotes.has(emoteName)) state = 'owned'
-      const safeName = escapeHtml(emoteName)
+      if (state === 'unadded' && (inventoryEmotes.has(emoteName) || inventoryEmotes.has(rawEmoteName))) state = 'owned'
+      const safeName = escapeHtml(rawEmoteName)
       const chatUrl = getChatResUrl(finalUrl)
       const safeUrlAttr = escapeHtml(chatUrl)
       const safeSrc = escapeHtml(staticEmoteSrc(chatUrl))
@@ -23531,18 +23588,22 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
       }
     }
     if (emote) {
-      const isBlocked = blockedEmoteNames.has(word)
+      // `word` is an already-escaped token (&lt;3 for <3). Blocked/inventory
+      // stores hold RAW names (picker/server side), so check the raw form too
+      // — and escape from raw so attrs aren't double-escaped (&amp;lt;3 alt).
+      const rawWord = unescapeHtml(word)
+      const isBlocked = blockedEmoteNames.has(word) || blockedEmoteNames.has(rawWord)
       let state = isBlocked ? 'blocked' : emote.state || 'global'
       // Upgrade 'unadded' → 'owned' when the viewer actually has this name
       // in their inventory. Visually identical under 2-state, but downstream
       // auto-add-on-send + cross-user rendering gates read dataset.state.
-      if (state === 'unadded' && inventoryEmotes.has(word)) state = 'owned'
+      if (state === 'unadded' && (inventoryEmotes.has(word) || inventoryEmotes.has(rawWord))) state = 'owned'
       const source = escapeHtml(emote.source || 'unknown')
       const rawChatUrl = getChatResUrl(emote.url)
       const imgSrc = escapeHtml(rawChatUrl)
       const staticSrc = escapeHtml(staticEmoteSrc(rawChatUrl))
       const safeHash = emote.hash ? escapeHtml(emote.hash) : ''
-      const displayName = escapeHtml(word)
+      const displayName = escapeHtml(rawWord)
       const ownerAttr = emote.ownerDisplay ? ` data-owner="${escapeHtml(emote.ownerDisplay)}"` : ''
       // Stale-emote ghost: an emote is stale only if THIS message's channel
       // removed it AND it isn't in the channel's current set. The live set is
@@ -29205,16 +29266,11 @@ async function resolveTwitchChannelId(channelLogin) {
     }
   } catch (_) {}
   try {
-    // 4s ceiling: fallback in the mod-action hot path; a hang here would stall
-    // every ban/timeout/unban behind the browser's default TCP timeout (60s+).
-    // Time out fast.
-    const r = await fetch(`https://heatsync.org/api/resolve/twitch/${encodeURIComponent(lc)}`, {
-      credentials: 'omit',
-      signal: AbortSignal.timeout(4000),
-    })
-    if (!r.ok) return null
-    const data = await r.json()
-    const id = data?.id
+    // Relay via the background SW — a direct heatsync.org fetch from this
+    // ISOLATED content-script context gets 503'd by the CF edge bot-check
+    // (the origin never sees it), so the fallback would always dead-end.
+    const resp = await chrome.runtime.sendMessage({ type: 'resolve_twitch_id', login: lc })
+    const id = resp?.id
     if (id && /^\d+$/.test(String(id))) {
       _cacheChannelId(String(id))
       return String(id)
@@ -33300,6 +33356,10 @@ function whisperUsersSet(key, value) {
   }
 }
 let lastWhisperKey = null // for /r — last person involved in a whisper
+// Explicitly armed via the ↩ reply button. /r prefers this over lastWhisperKey
+// and, unlike lastWhisperKey, is never overwritten by an incoming whisper —
+// only by a new ↩ click or by clearing once the armed /r send resolves.
+let armedReplyKey = null
 let whisperDmsLoaded = false
 let selfWhisperColor = null // current user's Twitch color
 
@@ -33781,7 +33841,7 @@ function renderWhispersTab() {
 
   for (const m of toRender) {
     const div = document.createElement('div')
-    let cls = m.self ? 'hs-mc-msg hs-whisper-self' : 'hs-mc-msg'
+    let cls = m.self ? 'hs-mc-msg hs-whisper-self hs-whisper-msg' : 'hs-mc-msg hs-whisper-msg'
     if (m.status === 'pending') cls += ' hs-whisper-pending'
     else if (m.status === 'failed') cls += ' hs-whisper-failed'
     div.className = cls
@@ -33837,7 +33897,10 @@ function renderWhispersTab() {
       const errSafe = escapeHtml(m.error || 'failed')
       const idSafe = escapeHtml(m.sendId || '')
       if (m.errorKind === 'relink') {
-        statusHtml = ` <a href="https://heatsync.org/api/auth/login?scopes=whispers&return_to=%2Fhome%2Fhot" target="_blank" rel="noopener noreferrer" class="hs-whisper-status hs-whisper-relogin" title="${errSafe} — click to grant the twitch whisper permission on heatsync">⚠ enable twitch whispers — re-link</a>`
+        // relink can't auto-retry (retryAuthFailedWhispers only fires on a
+        // logged-out→logged-in transition; this happens while already
+        // authed) — keep manual retry available alongside the re-link link
+        statusHtml = ` <a href="https://heatsync.org/api/auth/login?scopes=whispers&return_to=%2Fhome%2Fhot" target="_blank" rel="noopener noreferrer" class="hs-whisper-status hs-whisper-relogin" title="${errSafe} — click to grant the twitch whisper permission on heatsync">⚠ enable twitch whispers — re-link</a> <span class="hs-whisper-status hs-whisper-retry" title="click to retry" data-retry="${idSafe}">retry</span>`
       } else if (m.errorKind === 'auth') {
         statusHtml = ` <a href="https://heatsync.org/api/auth/login?return_to=%2Fhome%2Fhot" target="_blank" rel="noopener noreferrer" class="hs-whisper-status hs-whisper-relogin" title="${errSafe} — click to log in on heatsync">⚠ log in on heatsync to send</a>`
       } else {
@@ -33883,6 +33946,9 @@ function renderWhispersTab() {
       const key = el.getAttribute('data-wkey')
       if (!key || !whisperUsers.has(key)) return
       lastWhisperKey = key
+      // arm — /r targets this row's person until the send resolves or another
+      // ↩ is clicked, immune to incoming whispers overwriting lastWhisperKey
+      armedReplyKey = key
       whisperSaveDebounced()
       if (typeof _prefillMcInput === 'function') _prefillMcInput('/r ')
       if (typeof updateInputPlaceholder === 'function') {
@@ -36643,14 +36709,16 @@ async function _toggleMcMute(username, platform) {
   const wasUnmute = wasMuted
   if (wasMuted) {
     for (const k of aliasKeys) mutedUsers.delete(k)
-    // Also clear any legacy bare entry (pre-namespace storage) so unmute always lands
-    // even if the Set was populated before namespacing was introduced.
+    // Also clear legacy forms: bare (pre-namespace), yt: (pre-canonPlatform —
+    // enforcement matches it, so leaving it = unmute that doesn't unmute),
+    // and heatsync: (heatsync-platform rows) so unmute always lands.
     const bareLower = String(username == null ? '' : username)
       .toLowerCase()
       .replace(/^@/, '')
-    if (bareLower) mutedUsers.delete(bareLower)
+    const legacy = bareLower ? [bareLower, `yt:${bareLower}`, `heatsync:${bareLower}`] : []
+    for (const k of legacy) mutedUsers.delete(k)
     showToast(`unmuted ${username}`, 'success')
-    for (const k of aliasKeys) safeSendMessage({ type: 'unmute_user', username: k })
+    for (const k of [...aliasKeys, ...legacy]) safeSendMessage({ type: 'unmute_user', username: k })
   } else {
     for (const k of aliasKeys) mutedUsers.add(k)
     const otherAlias = aliases.slice(1).filter((a) => a !== primary)
@@ -36838,15 +36906,27 @@ function _prefillMcInput(text) {
   // without a refresh" (showInputBar early-returns on the session inputBarVisible
   // flag, only reset by a full reload). Mirror _mentionInMcInput.
   if (typeof showInputBar === 'function') showInputBar()
+  input.focus()
   if (input.tagName === 'INPUT' || input.tagName === 'TEXTAREA') {
     input.value = text
-    input.focus()
     try {
       input.setSelectionRange(text.length, text.length)
     } catch {}
+    input.dispatchEvent(new Event('input', { bubbles: true }))
   } else {
-    input.textContent = text
-    input.focus()
+    // mirror mcQuoteToInput: select-all + execCommand insertText replaces the
+    // content, fires the input event, and leaves the caret at the end —
+    // plain textContent assignment does none of that (caret stuck at 0, no
+    // event, so char count / undo miss the change)
+    const sel = window.getSelection()
+    const range = document.createRange()
+    range.selectNodeContents(input)
+    sel.removeAllRanges()
+    sel.addRange(range)
+    if (!document.execCommand('insertText', false, text)) {
+      input.textContent = text
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    }
   }
 }
 
@@ -37143,7 +37223,10 @@ function updateInputPlaceholder() {
     const channel = getCurrentChannel()
     placeholder = channel ? t('mc_input_send_channel', [channel]) : t('mc_input_send_message')
   } else if (currentTab === 'whispers') {
-    const lastUser = lastWhisperKey ? whisperUsers.get(lastWhisperKey) : null
+    // armed target names the placeholder and must not flip when an incoming
+    // whisper retargets lastWhisperKey out from under it
+    const targetKey = (typeof armedReplyKey !== 'undefined' && armedReplyKey) || lastWhisperKey
+    const lastUser = targetKey ? whisperUsers.get(targetKey) : null
     placeholder = lastUser ? `/r to reply to ${lastUser.displayName}` : t('mc_whisper_hint')
   } else if (currentTab === 'add') {
     placeholder = ''
@@ -38565,11 +38648,16 @@ function _isBlockedAnyPlat(name) {
     .toLowerCase()
     .replace(/^@/, '')
   if (!u || typeof blockedUsers === 'undefined' || !blockedUsers.size) return false
+  // yt: = legacy short form still matched by enforcement; heatsync: = blocks
+  // made from heatsync-platform rows. Missing either let a blocked user keep
+  // tab-completing.
   return (
     blockedUsers.has(u) ||
     blockedUsers.has(`twitch:${u}`) ||
     blockedUsers.has(`kick:${u}`) ||
-    blockedUsers.has(`youtube:${u}`)
+    blockedUsers.has(`youtube:${u}`) ||
+    blockedUsers.has(`yt:${u}`) ||
+    blockedUsers.has(`heatsync:${u}`)
   )
 }
 
@@ -40113,12 +40201,19 @@ async function handleSlashCommand(text, input) {
       showToast('usage: /r <message>')
       return true
     }
-    if (!lastWhisperKey) {
+    // armed (↩-clicked) target takes priority and survives incoming whispers
+    // retargeting lastWhisperKey; plain /r without arming falls back to it
+    const target = typeof armedReplyKey !== 'undefined' && armedReplyKey ? armedReplyKey : lastWhisperKey
+    if (!target) {
       showToast('no one to reply to', 'error')
       return true
     }
     if (currentTab !== 'whispers') switchTab('whispers')
-    await sendWhisperMessage(lastWhisperKey, rest.trim())
+    try {
+      await sendWhisperMessage(target, rest.trim())
+    } finally {
+      if (typeof armedReplyKey !== 'undefined' && armedReplyKey === target) armedReplyKey = null
+    }
     clearInput(input)
     return true
   }
@@ -40165,8 +40260,22 @@ async function handleSlashCommand(text, input) {
   // Every namespace form of a bare name — right-click/profile mutes store
   // platform-scoped keys (twitch:alice), but slash commands have no platform,
   // so match/clear across all of them plus any profile-linked alias keys.
+  // `yt:` is the legacy short form (canonPlatform now writes `youtube:` but
+  // old storage still carries it and enforcement matches it); `heatsync:`
+  // comes from muting on a heatsync-platform row. Both must be clearable or
+  // an unmute reports success while the entry keeps hiding the user.
   const _muteKeyForms = (bare, aliasKeys) =>
-    Array.from(new Set([bare, `twitch:${bare}`, `kick:${bare}`, `youtube:${bare}`, ...(aliasKeys || [])]))
+    Array.from(
+      new Set([
+        bare,
+        `twitch:${bare}`,
+        `kick:${bare}`,
+        `youtube:${bare}`,
+        `yt:${bare}`,
+        `heatsync:${bare}`,
+        ...(aliasKeys || []),
+      ]),
+    )
 
   if (cmd === 'mute') {
     const u = rest.trim().replace(/^@/, '').toLowerCase()
@@ -40917,9 +41026,11 @@ async function sendMessage() {
       : Promise.resolve(null)
 
     // Best-effort YouTube — fire alongside Kick/Twitch so a triple-link
-    // channel (twitch+kick+youtube) actually mirrors to all three.
+    // channel (twitch+kick+youtube) actually mirrors to all three. Carry the
+    // tab's videoId like the other two yt legs — without it the BG falls back
+    // to "any youtube tab" and can post into an unrelated stream's chat.
     if (sendToYoutube) {
-      sendYoutubeMessage(restText)
+      sendYoutubeMessage(restText, ytVideoId)
         .then((result) => {
           if (result !== true && result !== 'no_youtube_tab') {
             showToast('youtube send failed', 'error')
@@ -42531,9 +42642,14 @@ async function pcToggleMute(username) {
   const wasMuted = typeof isUserMuted === 'function' ? isUserMuted(username, platform) : mutedUsers.has(username)
   if (wasMuted) {
     for (const k of aliasKeys) mutedUsers.delete(k)
-    // Also clear any legacy bare entry so unmute always lands on pre-namespace storage.
-    mutedUsers.delete(username)
-    for (const k of aliasKeys) safeSendMessage({ type: 'unmute_user', username: k })
+    // Also clear legacy forms: bare (pre-namespace), yt: (pre-canonPlatform,
+    // still matched by enforcement), heatsync: — so unmute always lands.
+    const _bare = String(username || '')
+      .toLowerCase()
+      .replace(/^@/, '')
+    const _legacy = _bare ? [_bare, `yt:${_bare}`, `heatsync:${_bare}`] : []
+    for (const k of _legacy) mutedUsers.delete(k)
+    for (const k of [...aliasKeys, ..._legacy]) safeSendMessage({ type: 'unmute_user', username: k })
   } else {
     for (const k of aliasKeys) mutedUsers.add(k)
     const exp = Date.now() + 86400000
@@ -45517,8 +45633,9 @@ function _injectTwitchModNotice({ channel, action, target, durationSec, msgId })
     })
   } catch (_) {}
 }
-// Kick — KickChat has no _handleMsg; push to its buffer + emit directly. No
-// competing Kick transport, so no dedup needed.
+// Kick — KickChat has no _handleMsg; push to its buffer + emit directly. The
+// Pusher tap reflects mod actions back (kick_moderation), so self-actions are
+// registered via noteSelfMod and the reflected line is collapsed there.
 function _injectKickModNotice({ channel, action, target, durationSec, msgId }) {
   try {
     const slug = String(channel || '')
@@ -45530,6 +45647,11 @@ function _injectKickModNotice({ channel, action, target, durationSec, msgId }) {
     const tgtLc = tgt.toLowerCase()
     const f = _modNoticeFields(action, _modActor(), tgt, durationSec)
     if (!f) return
+    // Arm the Pusher-tap dedup: the tap reflects this same action back within
+    // seconds — kickChat drops that reflected system line, keeps the dim.
+    try {
+      kickChat.noteSelfMod?.(slug, f.noticeType, action === 'delete' ? msgId : tgtLc)
+    } catch (_) {}
     const m = {
       type: 'notice',
       noticeType: f.noticeType,
@@ -50285,7 +50407,9 @@ const STORAGE_KEY = 'heatsync_multichat'
   // can only be a popout (never the watch-page's embedded chat iframe, which is
   // a child frame the bundle never touches). Treat it like the twitch/kick
   // popout: fill the window, single stream, native chat hidden, boot to 'live'.
-  const isYtPopout = hostPlatform === 'yt' && location.pathname.startsWith('/live_chat')
+  // NOT /live_chat_replay — that's yt's native VOD-chat popout; taking it over
+  // would hide the replay chat behind a live overlay with nothing to show.
+  const isYtPopout = hostPlatform === 'yt' && /^\/live_chat(?!_replay)/.test(location.pathname)
 
   // Whether the user has chosen to show native platform chat alongside HS.
   // Persisted via settings registry (key: nativeVisible). Default false = same
@@ -51208,12 +51332,20 @@ const STORAGE_KEY = 'heatsync_multichat'
     safeSendMessage({ type: 'get_sender_emotes', senderKeys: batch })
       .then((resp) => {
         const emotes = resp?.emotes || {}
+        const errored = new Set(resp?.errored || [])
         const changedKeys = []
         // Stamp freshness for EVERY batch key (even empty ones) so we don't re-fetch
         // until the TTL elapses — without this, senders with no personal set re-queue
         // on every render and loop render→fetch→re-render on busy chats.
         const now = Date.now()
         for (const key of batch) {
+          // BG-flagged errored key: the fetch blipped, the value is partial —
+          // replacing would clobber a good cached set and re-render the
+          // sender's emotes as raw text. Keep what we have; stamp keeps pacing.
+          if (errored.has(key)) {
+            markSenderEmoteFetched(key, now)
+            continue
+          }
           // resp arrived — treat the value as authoritative and replace the cached
           // set entirely. Use replace (not merge) so names removed on the server
           // also disappear here; merge was the bleed: removed emotes lingered
@@ -52608,14 +52740,15 @@ const STORAGE_KEY = 'heatsync_multichat'
       const tab = e.target.closest('.hs-mc-tab')
       if (!tab) return
       const tabId = tab.dataset.tab
-      // Right-click any tab clears all unread indicators (mentions, new, stream-event)
+      // Right-click any tab clears all unread indicators (mentions, new, stream-event, whispers)
       if (
         tab.classList.contains('has-mentions') ||
         tab.classList.contains('has-new') ||
-        tab.classList.contains('has-stream-event')
+        tab.classList.contains('has-stream-event') ||
+        tab.classList.contains('has-whispers')
       ) {
         e.preventDefault()
-        tab.classList.remove('has-mentions', 'has-new', 'has-stream-event')
+        tab.classList.remove('has-mentions', 'has-new', 'has-stream-event', 'has-whispers')
         // Sync server-backed seen state so the dot doesn't reappear and
         // every other client clears via WS broadcast.
         if (tabId === 'mentions') bumpSeen('mentions')
@@ -61286,6 +61419,40 @@ const STORAGE_KEY = 'heatsync_multichat'
 
       if (area !== 'local') return
 
+      // Registry-driven rehydration for local-scope settings — same loop as
+      // the sync branch above. Without it every scope:'local' setting (mute
+      // keywords, emote size, notifications, …) was a dead toggle across
+      // tabs: the writing tab applied it, every other tab ignored the change.
+      {
+        let needsRender = false
+        for (const def of SETTINGS) {
+          if (def.scope !== 'local' || changes[def.key] === undefined) continue
+          const v = coerceSettingValue(def, changes[def.key].newValue)
+          if (v === undefined || !validateSettingValue(def, v)) continue
+          const changed = JSON.stringify(v) !== JSON.stringify(getSetting(def.key))
+          _settingsCache[def.key] = v
+          if (!changed) continue
+          const bridge = _bridgeFor(def)
+          if (bridge) bridge.set(v)
+          if (def.apply && !def.syncSilent) {
+            const applier = _APPLIERS[def.apply]
+            if (applier) {
+              try {
+                applier(v, def, false, true)
+              } catch (e) {
+                warn('local applier failed:', def.apply, e)
+              }
+            }
+          }
+          if (def.rerender) needsRender = true
+        }
+        if (needsRender) {
+          bumpRenderEpoch()
+          renderMessages(currentTab)
+          if (currentTab === 'settings') renderSettingsTab()
+        }
+      }
+
       // Overflow bucket — large/per-tab UI prefs that bypass the 8 KB sync
       // ceiling. Local-only, so cross-device sync intentionally skips them.
       if (changes.keyword_highlights) {
@@ -62482,10 +62649,15 @@ const STORAGE_KEY = 'heatsync_multichat'
           // user's TWITCH nick once auth-irc has connected — works cross-
           // origin too. Also accept a peekSentHost text hit (cross-tab-
           // synced via storage) as a final own-msg signal.
-          const isOwnUser =
-            (currentUsername && u === currentUsername.toLowerCase()) ||
-            (typeof authState !== 'undefined' && authState?.nick && u === authState.nick.toLowerCase()) ||
-            (typeof peekSentHost === 'function' && !!peekSentHost(msg.text))
+          const _twNick = typeof authState !== 'undefined' && authState?.nick ? authState.nick.toLowerCase() : ''
+          // When the twitch identity IS known (auth-irc handshake), the sender
+          // name is authoritative — a stranger repeating your text must not
+          // drain the pending tracker (false confirm = a genuinely dropped
+          // send never retries). Text-hit fallback only when no nick exists.
+          const isOwnUser = _twNick
+            ? u === _twNick
+            : (currentUsername && u === currentUsername.toLowerCase()) ||
+              (typeof peekSentHost === 'function' && !!peekSentHost(msg.text))
           if (isOwnUser) _pendId = findPendingByChannelFifo(msg.channel)
         }
         if (_pendId) confirmPending(_pendId, 'twitch')
@@ -62502,9 +62674,14 @@ const STORAGE_KEY = 'heatsync_multichat'
       // peekSentHost only matches ext-input sends, so a hit IS the ownership
       // signal — and it works cross-origin (youtube.com/kick.com popout)
       // where currentUsername is null and a name guard would skip the retag,
-      // leaving the yt-popout's own echo painted [T].
+      // leaving the yt-popout's own echo painted [T]. But when the twitch
+      // nick IS known, a mismatched sender is definitively someone else —
+      // without that gate any stranger repeating your recent text got their
+      // message retagged to your send host.
       {
-        const sentHost = peekSentHost(msg.text)
+        const _twNickRt = typeof authState !== 'undefined' && authState?.nick ? authState.nick.toLowerCase() : ''
+        const notOwn = _twNickRt && msg.user && msg.user.toLowerCase() !== _twNickRt
+        const sentHost = notOwn ? null : peekSentHost(msg.text)
         if (sentHost) {
           // IRC origin — badges are Twitch namespace regardless of [K] retag.
           msg.badgePlatform = 'twitch'

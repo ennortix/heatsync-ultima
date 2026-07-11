@@ -17886,8 +17886,16 @@ let _mentionReKey = ''
 function getMentionTargets() {
   const out = []
   if (currentUsername) out.push(currentUsername)
+  // currentUsername is null on cross-origin tabs (youtube.com/kick.com popout
+  // — twitch storage unreachable). authState.nick is the twitch nick from the
+  // auth-irc handshake and works everywhere; without it, "@you" tags on the
+  // yt popout never highlight. Same hardening as the echo-confirm fallback.
+  if (typeof authState !== 'undefined' && authState?.nick) {
+    const n = authState.nick.toLowerCase()
+    if (!out.includes(n)) out.push(n)
+  }
   for (const a of mentionAliases) {
-    if (a && a !== currentUsername) out.push(a)
+    if (a && !out.includes(a)) out.push(a)
   }
   return out
 }
@@ -33441,7 +33449,12 @@ async function sendTwitchWhisper(toUserId, message) {
   // regex missed it (says "re-link", not "re-login"), so it fell through to a
   // generic "retry" that just re-hit the same failing endpoint forever. Needs a
   // relink-with-scope CTA, not a retry.
-  const needsRelink = respStatus === 401 && (serverResp?.relink_required || serverResp?.scope_pack === 'whispers')
+  // Belt-and-braces: also classify by error text — live responses have carried
+  // the "re-link" message without the structural flag (and non-401 statuses),
+  // which fell through to the dead-end generic retry span.
+  const needsRelink =
+    (respStatus === 401 && (serverResp?.relink_required || serverResp?.scope_pack === 'whispers')) ||
+    /re-?link/i.test(respError)
 
   // Off twitch.tv: direct GQL can't get integrity, so don't pretend to retry.
   // Surface the real proxy error — actionable for the user.
@@ -38172,7 +38185,16 @@ function getRecencyMap() {
   let ch = currentTab
   if (currentTab === 'live' && typeof getLiveChannel === 'function') ch = getLiveChannel()
   const ircMsgs = (ch && typeof irc !== 'undefined' && irc?.channels?.get(ch.toLowerCase())?.getAll?.()) || []
-  const ytMsgs = (typeof channelYtMessages !== 'undefined' && channelYtMessages.get(currentTab)) || []
+  // YT buffers are keyed by channel-entry id, never 'live' — on the live tab
+  // the auto-followed stream lives under '__live_yt_auto__' (same merge
+  // bootstrap's live hydration does). Without this, yt chatters never rank
+  // in recency on the live tab / popout.
+  let ytMsgs = (typeof channelYtMessages !== 'undefined' && channelYtMessages.get(currentTab)) || []
+  if (currentTab === 'live' && typeof channelYtMessages !== 'undefined') {
+    const autoYt = channelYtMessages.get('__live_yt_auto__') || []
+    if (autoYt.length)
+      ytMsgs = ytMsgs.length ? [...ytMsgs, ...autoYt].sort((a, b) => (a.time || 0) - (b.time || 0)) : autoYt
+  }
   // Absolute floor: chatters active in the last 10 REAL minutes. tmi-sent-ts is
   // Twitch server time (≈ real time), so a quiet/just-opened channel correctly
   // surfaces nobody instead of leading with whoever talked before it went quiet.
@@ -38188,7 +38210,9 @@ function getRecencyMap() {
     const t = pickIrc ? a : b
     if (t > 0 && t < floor) break
     const msg = pickIrc ? ircMsgs[i--] : ytMsgs[j--]
-    const u = (msg?.user || '').toLowerCase()
+    // Strip yt's leading '@' so recency keys align with the bare-name keys
+    // every completion path matches against.
+    const u = (msg?.user || '').toLowerCase().replace(/^@/, '')
     if (!u || out.has(u)) continue
     // Blocked users never tab-complete — drop them at this one chokepoint so
     // both the recent-chatter and @-mention recency paths stay clean.
@@ -38351,15 +38375,19 @@ function findEmoteMatches(search) {
     for (const username of usernameCache) {
       if (!username) continue
       const userLower = username.toLowerCase()
+      // YouTube usernames arrive as "@handle" — match and insert on the bare
+      // name or yt chatters can never @-complete (typed query has no leading
+      // @ after the trigger slice, and '@' + '@handle' would insert '@@').
+      const bare = userLower.startsWith('@') ? userLower.slice(1) : userLower
       // Blocked users never surface as an @-completion suggestion (and don't
       // trigger a color prefetch for them).
-      if (typeof isUserBlocked === 'function' && isUserBlocked(userLower)) continue
+      if (typeof isUserBlocked === 'function' && isUserBlocked(bare)) continue
       let color = (typeof knownColors !== 'undefined' && knownColors.get(userLower)) || null
       if (!color && _hsUserColorCache.has(userLower)) color = _hsUserColorCache.get(userLower) || null
-      if (!color) _hsPrefetchList.push(userLower)
-      const recencyRank = recency.get(userLower)
-      if (userLower.startsWith(searchLower)) {
-        matches.push({ name: '@' + username, url: null, priority: 0, type: 'user', recencyRank })
+      if (!color) _hsPrefetchList.push(bare)
+      const recencyRank = recency.get(bare)
+      if (bare.startsWith(searchLower)) {
+        matches.push({ name: '@' + username.replace(/^@/, ''), url: null, priority: 0, type: 'user', recencyRank })
       }
     }
     if (_hsPrefetchList.length) {
@@ -38462,8 +38490,11 @@ function findEmoteMatches(search) {
   // stays untouched.
   const recentChatters = []
   if (!isUserSearch && !search.startsWith(':') && searchLower.length > 0 && typeof getRecencyMap === 'function') {
+    // Key display names by bare lower name — yt entries in usernameCache carry
+    // a leading '@' that recency keys (bare) would otherwise never hit.
     const _ucDisplay = new Map()
-    if (typeof usernameCache !== 'undefined') for (const u of usernameCache) if (u) _ucDisplay.set(u.toLowerCase(), u)
+    if (typeof usernameCache !== 'undefined')
+      for (const u of usernameCache) if (u) _ucDisplay.set(u.toLowerCase().replace(/^@/, ''), u)
     for (const [userLower, rank] of getRecencyMap()) {
       if (!userLower.startsWith(searchLower)) continue
       recentChatters.push({
@@ -38476,7 +38507,7 @@ function findEmoteMatches(search) {
     }
     recentChatters.sort((a, b) => a.recencyRank - b.recencyRank)
   }
-  const _recentSeen = new Set(recentChatters.map((m) => m.name.toLowerCase()))
+  const _recentSeen = new Set(recentChatters.map((m) => m.name.toLowerCase().replace(/^@/, '')))
 
   // Bare-word username fallback — when nothing emote-y matched, scan
   // usernameCache for everyone NOT already surfaced as a recent chatter. Only
@@ -38487,7 +38518,8 @@ function findEmoteMatches(search) {
   if (!isUserSearch && !search.startsWith(':') && matches.length === 0 && typeof usernameCache !== 'undefined') {
     for (const username of usernameCache) {
       if (!username) continue
-      const userLower = username.toLowerCase()
+      // Bare-name matching — yt cache entries carry a leading '@'.
+      const userLower = username.toLowerCase().replace(/^@/, '')
       if (_recentSeen.has(userLower)) continue
       if (typeof isUserBlocked === 'function' && isUserBlocked(userLower)) continue
       if (userLower.startsWith(searchLower)) {
@@ -61183,6 +61215,25 @@ const STORAGE_KEY = 'heatsync_multichat'
   // ============================================
 
   let mcInitialized = false
+  // The tab to activate on mount. When we're on an actual stream/channel watch
+  // page, the "live" tab (the stream you're looking at) is what you want — NOT
+  // a stale last-used channel tab. Restoring _savedActiveTab there is exactly
+  // why heatsync-on-youtube read as "no chat": it dropped you on a saved
+  // channel (nl_kripp) instead of the lofi stream on screen. Off a stream page
+  // (directory / home / search), restore the saved tab as before.
+  // MODULE scope — tryHookReact()'s mount passes call this too; defining it
+  // inside init() made every twitch react-hook mount throw a ReferenceError
+  // and strand fresh viewers on the empty saved tab.
+  const bootActiveTab = () => {
+    const path = location.pathname + location.search
+    const onStreamPage =
+      isYtPopout ||
+      (hostPlatform === 'yt' && /\/watch|\/live\//.test(path)) ||
+      (hostPlatform !== 'yt' && !isKick && !!document.querySelector('.channel-root, [class*="channel-root"]')) ||
+      (isKick && !!(document.getElementById('channel-chatroom') || document.querySelector('[id*="chatroom"]')))
+    return onStreamPage ? 'live' : _savedActiveTab || 'live'
+  }
+
   async function init() {
     let isPopout = false
     if (hostPlatform === 'yt') {
@@ -62707,21 +62758,6 @@ const STORAGE_KEY = 'heatsync_multichat'
     // perceived load lag) — content scripts run at document_idle, and the
     // chat container often mounts within 50-150ms of that. 15s safety
     // fallback timer in case the observer never fires (SPA bug, slow page).
-    // The tab to activate on mount. When we're on an actual stream/channel watch
-    // page, the "live" tab (the stream you're looking at) is what you want — NOT
-    // a stale last-used channel tab. Restoring _savedActiveTab there is exactly
-    // why heatsync-on-youtube read as "no chat": it dropped you on a saved
-    // channel (nl_kripp) instead of the lofi stream on screen. Off a stream page
-    // (directory / home / search), restore the saved tab as before.
-    const bootActiveTab = () => {
-      const path = location.pathname + location.search
-      const onStreamPage =
-        isYtPopout ||
-        (hostPlatform === 'yt' && /\/watch|\/live\//.test(path)) ||
-        (hostPlatform !== 'yt' && !isKick && !!document.querySelector('.channel-root, [class*="channel-root"]')) ||
-        (isKick && !!(document.getElementById('channel-chatroom') || document.querySelector('[id*="chatroom"]')))
-      return onStreamPage ? 'live' : _savedActiveTab || 'live'
-    }
     const waitForMount = (find, label) => {
       if (mcSignal?.aborted) return
       const inject = () => {

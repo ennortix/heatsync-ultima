@@ -15,12 +15,23 @@
 //
 // Pure + dependency-free so it can be unit-tested in isolation.
 
+// Canonical platform namespace. Callers pass BOTH forms for YouTube — 'yt'
+// (render/row short form via data-platform) and 'youtube' (message model) —
+// which used to produce disjoint keys: a mute written as `yt:alice` never
+// matched enforcement checking `youtube:alice`, so yt mutes/blocks were
+// silent no-ops. One writer normalizes; the matcher also accepts the other
+// form for keys persisted before normalization.
+function canonPlatform(platform) {
+  return platform === 'yt' ? 'youtube' : platform
+}
+
 export function userKey(username, platform) {
   const u = String(username == null ? '' : username)
     .toLowerCase()
     .replace(/^@/, '')
   if (!u) return ''
-  return platform ? `${platform}:${u}` : u
+  const p = canonPlatform(platform)
+  return p ? `${p}:${u}` : u
 }
 
 // True if `set` contains this user for this platform. Order:
@@ -35,6 +46,9 @@ export function userSetMatches(set, username, platform, aliasKeys) {
   if (!u) return false
   if (set.has(u)) return true
   if (set.has(userKey(u, platform))) return true
+  // Legacy short-form keys: entries stored as `yt:<name>` before platform
+  // canonicalization must keep matching youtube rows.
+  if (canonPlatform(platform) === 'youtube' && set.has(`yt:${u}`)) return true
   if (aliasKeys) {
     for (const k of aliasKeys) {
       if (k && set.has(k)) return true

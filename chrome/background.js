@@ -227,12 +227,16 @@ const browser = globalThis.browser || chrome
 // --- user-key.js (service worker) ---
 // Inlined here because lib/ is bundled into content scripts only.
 // Canonical source: src/lib/user-key.js — keep in sync if either changes.
+function canonPlatform(platform) {
+  return platform === 'yt' ? 'youtube' : platform
+}
 function userKey(username, platform) {
   const u = String(username == null ? '' : username)
     .toLowerCase()
     .replace(/^@/, '')
   if (!u) return ''
-  return platform ? `${platform}:${u}` : u
+  const p = canonPlatform(platform)
+  return p ? `${p}:${u}` : u
 }
 function userSetMatches(set, username, platform, aliasKeys) {
   if (!set || set.size === 0) return false
@@ -242,6 +246,7 @@ function userSetMatches(set, username, platform, aliasKeys) {
   if (!u) return false
   if (set.has(u)) return true
   if (set.has(userKey(u, platform))) return true
+  if (canonPlatform(platform) === 'youtube' && set.has(`yt:${u}`)) return true
   if (aliasKeys) {
     for (const k of aliasKeys) {
       if (k && set.has(k)) return true

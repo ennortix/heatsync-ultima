@@ -137,3 +137,23 @@ test("cosmetics: unknown platform for a known name never falls back to a strange
   const knownUserIds = new Map([[userKey('bob', 'kick'), '333']])
   expect(knownUserIds.get(userKey('bob', 'twitch'))).toBeUndefined()
 })
+
+test('yt/youtube canonicalization: both forms produce the same key', () => {
+  expect(userKey('alice', 'yt')).toBe('youtube:alice')
+  expect(userKey('alice', 'youtube')).toBe('youtube:alice')
+})
+
+test('mute written from a yt row (short form) is enforced against youtube messages', () => {
+  // row anchors stamp data-platform="yt"; the message model carries 'youtube'.
+  const set = new Set([userKey('alice', 'yt')])
+  expect(userSetMatches(set, 'alice', 'youtube')).toBe(true)
+  expect(userSetMatches(set, 'alice', 'yt')).toBe(true)
+  expect(userSetMatches(set, 'alice', 'twitch')).toBe(false)
+})
+
+test("legacy stored 'yt:' keys (pre-canonicalization) still match youtube rows", () => {
+  const set = new Set(['yt:alice'])
+  expect(userSetMatches(set, 'alice', 'youtube')).toBe(true)
+  expect(userSetMatches(set, 'alice', 'yt')).toBe(true)
+  expect(userSetMatches(set, 'alice', 'kick')).toBe(false)
+})

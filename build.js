@@ -108,7 +108,6 @@ function checkManifestParity() {
 const SCOPE_COLLISION_ALLOWLIST = new Set(['log', 'cleanup'])
 
 function checkScopeCollisions() {
-  const DECL_RE = /^(?:export\s+)?(?:async\s+)?(?:function|const|let|var|class)\s+([A-Za-z0-9_$]+)/
   const LIB_FILES = [
     'error-reporter.js',
     'config.js',

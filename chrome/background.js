@@ -2221,18 +2221,39 @@ async function fetchBTTVChannelEmotes(channelName, channelId = null, platform = 
   }
 }
 
+// Negative cache for FFZ room 404s — a channel with no FFZ room 404s on
+// EVERY visit, and the orchestrator's failure backdating (any sibling
+// provider failing shortens the retry window to ~60s) was re-fetching the
+// same dead room several times a minute. Session-scoped Map like
+// ytChannelIdCache — cheap to rebuild after a SW restart.
+const ffzRoom404At = new Map() // room key (lowercase) → ms timestamp of the 404
+const FFZ_ROOM_404_TTL = 30 * 60 * 1000 // matches CHANNEL_EMOTES_TTL — new FFZ rooms are rare
+const FFZ_ROOM_404_MAX = 500
+
 // Fetch FFZ channel emotes
 async function fetchFFZChannelEmotes(channelName) {
+  const roomKey = String(channelName || '').toLowerCase()
+  // FFZ rooms are TWITCH rooms only. YouTube identities — UC… channel ids,
+  // @handles, hyphenated 11-char videoIds — contain chars a Twitch login
+  // ([a-z0-9_], ≤25) never can, and lowercase videoIds that DO look like
+  // logins are caught by ytChannelIdCache (populated the moment the yt flow
+  // resolves them). Both guarantee a 404 per visit — skip the fetch outright.
+  if (!/^[a-z0-9_]{1,25}$/.test(roomKey) || ytChannelIdCache.has(roomKey)) return []
+  const negAt = ffzRoom404At.get(roomKey)
+  if (negAt && Date.now() - negAt < FFZ_ROOM_404_TTL) return []
   try {
-    const response = await fetchWithTimeout(`https://api.frankerfacez.com/v1/room/${channelName}`)
+    const response = await fetchWithTimeout(`https://api.frankerfacez.com/v1/room/${roomKey}`)
     if (response.status === 404) {
       response.body?.cancel()
+      if (ffzRoom404At.size >= FFZ_ROOM_404_MAX) ffzRoom404At.delete(ffzRoom404At.keys().next().value)
+      ffzRoom404At.set(roomKey, Date.now())
       return []
     } // genuine: channel has no FFZ
     if (!response.ok) {
       response.body?.cancel()
       return null
     } // transient: 5xx etc.
+    ffzRoom404At.delete(roomKey) // room exists (again) — drop any expired negative entry
 
     const data = await response.json()
     const emotes = []

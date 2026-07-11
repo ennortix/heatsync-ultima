@@ -27,6 +27,12 @@ function parseTags(tagStr) {
 // when this map is populated.
 function parseTwitchEmotesTag(emotesTag, text) {
   if (!emotesTag) return null
+  // Twitch emote positions count UNICODE CODE POINTS; String#slice counts
+  // UTF-16 code units. Any astral char (emoji) before an emote shifts the
+  // boundaries and slices a garbage name. Fast path: no surrogates → the two
+  // index spaces coincide, keep the zero-alloc slice. Otherwise split once
+  // into code points and slice that.
+  const cps = /[\uD800-\uDFFF]/.test(text) ? Array.from(text) : null
   const out = {}
   for (const part of emotesTag.split('/')) {
     const [emoteId, posStr] = part.split(':')
@@ -34,7 +40,7 @@ function parseTwitchEmotesTag(emotesTag, text) {
     const firstPos = posStr.split(',')[0]
     const [start, end] = firstPos.split('-').map(Number)
     if (isNaN(start) || isNaN(end)) continue
-    const name = text.slice(start, end + 1)
+    const name = cps ? cps.slice(start, end + 1).join('') : text.slice(start, end + 1)
     if (name && !out[name]) {
       out[name] = `https://static-cdn.jtvnw.net/emoticons/v2/${emoteId}/default/dark/2.0`
     }

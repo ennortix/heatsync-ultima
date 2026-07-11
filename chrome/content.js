@@ -5987,16 +5987,26 @@
   // wrap each bare text-node child in its own span and run the existing emote
   // machinery on the span only — native <img> are siblings outside the spans and
   // are never touched. Pure-text leaves (all of Twitch) never hit this path.
-  // Idempotent: re-entry finds spans (not bare text nodes) and no-ops.
+  // Re-entry (retro pass after a sender's emote set resolves) finds the
+  // hs-textfrag spans from the first pass and re-runs the machinery on the
+  // still-unresolved ones — spans that already hold a wrapper are skipped
+  // (same guard the pure-leaf path uses), so nothing double-wraps.
   function replaceEmotesPreservingImgs(leaf, allEmotes) {
     // Snapshot — replaceWith mutates the live childNodes list mid-iteration.
     for (const node of Array.from(leaf.childNodes)) {
-      if (node.nodeType !== 3 || !node.nodeValue || !node.nodeValue.trim()) continue
-      const span = document.createElement('span')
-      span.className = 'hs-textfrag'
-      span.textContent = node.nodeValue
-      node.replaceWith(span)
-      replaceEmotesWithStacking(span, allEmotes)
+      if (node.nodeType === 3) {
+        if (!node.nodeValue || !node.nodeValue.trim()) continue
+        const span = document.createElement('span')
+        span.className = 'hs-textfrag'
+        span.textContent = node.nodeValue
+        node.replaceWith(span)
+        replaceEmotesWithStacking(span, allEmotes)
+      } else if (node.nodeType === 1 && node.classList.contains('hs-textfrag')) {
+        // Retro-upgrade: text was wrapped on a prior pass but its emotes
+        // hadn't resolved yet (kick sender sets arrive after first render).
+        if (node.querySelector('.heatsync-emote-wrapper')) continue
+        replaceEmotesWithStacking(node, allEmotes)
+      }
     }
   }
 
@@ -6237,6 +6247,15 @@
     // Process ALL text fragments with overlay stacking support
     if (!messageElement.isConnected) return
     for (const textElement of textElements) {
+      // Mixed leaf from a PRIOR pass (kick) — hs-textfrag spans mark it. Must
+      // route BEFORE the leaf-level wrapper guard: one resolved span would
+      // otherwise strand its still-text siblings, so kick rows rendered before
+      // the sender's set arrived never retro-upgraded. Per-span guard lives
+      // inside replaceEmotesPreservingImgs.
+      if (textElement.querySelector('.hs-textfrag')) {
+        replaceEmotesPreservingImgs(textElement, allEmotes)
+        continue
+      }
       if (textElement.querySelector('.heatsync-emote-wrapper')) continue
 
       // Mixed leaf (native platform emote <img> inline with text, e.g. Kick) —

@@ -96,10 +96,29 @@ test('parseTwitchEmotesTag: non-numeric range yields NaN and is skipped', () => 
   expect(out).toBeNull()
 })
 
-test('parseTwitchEmotesTag: unicode text — emote index range is UTF-16 code-unit based', () => {
-  // "❤️Kappa" — heart+VS16 is 2 UTF-16 code units, Kappa starts at index 2
+test('parseTwitchEmotesTag: BMP unicode text — code-point and code-unit indices coincide', () => {
+  // "❤️Kappa" — heart+VS16 is 2 code units AND 2 code points, Kappa starts at 2
   const text = '❤️Kappa'
   const out = parseTwitchEmotesTag('25:2-6', text)
+  expect(out.Kappa).toBe('https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/2.0')
+})
+
+test('parseTwitchEmotesTag: astral emoji before emote — indices are CODE POINTS, not UTF-16 units', () => {
+  // "😂 Kappa" — 😂 is 1 code point (2 UTF-16 units). Twitch counts code
+  // points: 😂=0, space=1, Kappa=2-6. A UTF-16 slice(2, 7) would yield
+  // "\uDE02 Kap" — the pre-fix bug.
+  const out = parseTwitchEmotesTag('25:2-6', '😂 Kappa')
+  expect(out).toEqual({ Kappa: 'https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/2.0' })
+})
+
+test('parseTwitchEmotesTag: multiple astral chars + multiple emotes all resolve by code point', () => {
+  // code points: 😂=0, 🎉=1, space=2, Kappa=3-7, space=8, PogChamp=9-16
+  const out = parseTwitchEmotesTag('25:3-7/1902:9-16', '😂🎉 Kappa PogChamp')
+  expect(Object.keys(out).sort()).toEqual(['Kappa', 'PogChamp'])
+})
+
+test('parseTwitchEmotesTag: astral chars AFTER the emote do not affect its range', () => {
+  const out = parseTwitchEmotesTag('25:0-4', 'Kappa 😂😂')
   expect(out.Kappa).toBe('https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/2.0')
 })
 

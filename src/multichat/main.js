@@ -11615,6 +11615,9 @@
     // there is the most reliable "is live" signal we can get without polling
     // the InnerTube API.
     if (hostPlatform === 'yt') {
+      // True while WE collapsed yt's native chat (vs the user having done it
+      // themselves) — gates the symmetric restore in checkYtLive.
+      let _hsCollapsedNativeYt = false
       function checkYtLive() {
         // A LIVE stream mounts ytd-live-chat-frame#chat with a LIVE chat iframe
         // (/live_chat). A VOD of a past stream mounts the SAME element but with a
@@ -11674,6 +11677,27 @@
         // replay visible rather than blanking it with nothing.
         if (showYtChat && frameEl && frameEl.style.display !== 'none') {
           frameEl.style.display = 'none'
+        }
+        // display:none alone never releases YT's LAYOUT reservation: flexy
+        // sizes the player off its own chat-collapsed state, not CSS
+        // visibility — so theatre kept the video ~300px narrow with a dead
+        // gap where yt still reserved its chat column (live-verified: click
+        // yt's own collapse → collapsed attr → player snaps to full row).
+        // Drive yt's real collapse; the attr guard makes this a one-shot.
+        if (showYtChat && frameEl && !frameEl.hasAttribute('collapsed')) {
+          try {
+            frameEl.querySelector('#show-hide-button button')?.click()
+            _hsCollapsedNativeYt = true
+          } catch (_) {}
+        }
+        // Symmetric restore — if the panel goes away (opt-out flip, stream
+        // ends) and WE collapsed native chat, give it back expanded.
+        if (!showYtChat && frameEl && _hsCollapsedNativeYt && frameEl.hasAttribute('collapsed')) {
+          try {
+            if (frameEl.style.display === 'none') frameEl.style.removeProperty('display')
+            frameEl.querySelector('#show-hide-button button')?.click()
+            _hsCollapsedNativeYt = false
+          } catch (_) {}
         }
       }
       checkYtLive()

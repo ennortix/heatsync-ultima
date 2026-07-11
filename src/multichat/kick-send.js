@@ -6,7 +6,11 @@ const KICK_CHANNEL_ID_CACHE_MAX = 200
 // Failures we never retry — they're user-actionable, not transient.
 const KICK_FATAL_SEND_ERRORS = new Set(['no_channel', 'no_kick_tab', 'kick_not_logged_in', 'missing params'])
 
-const KICK_SEND_TIMEOUT_MS = 5000
+// MUST exceed the relay POST's own AbortSignal.timeout (10s in content.js
+// kick_send_relay). Kick's send API has no idempotency key, so a retry fired
+// while the first POST is still in flight double-posts. Waiting past the POST
+// abort guarantees the first attempt is dead before we retry (bulletproof).
+const KICK_SEND_TIMEOUT_MS = 11000
 const KICK_SEND_RETRY_BACKOFF_MS = [750, 1500]
 
 async function resolveKickChannelId(slug) {

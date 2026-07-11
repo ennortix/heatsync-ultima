@@ -535,6 +535,41 @@ function sanitizeUiSettings(obj) {
   return out
 }
 
+/**
+ * Whether a string is a plausible (lowercased) twitch login: 1-25 chars of
+ * [a-z0-9_]. Yt videoIds (11 chars, may carry '-' / uppercase) and other
+ * junk that leaks into channel sets must never be treated as twitch
+ * channels — reconcileAutoTabs uses this to refuse ghost `auto_<videoId>`
+ * tabs from stale open-channel state. NOTE: a hyphen-free videoId still
+ * passes (indistinguishable from a login) — the real guard is upstream:
+ * yt URL channels are never IRC-joined.
+ * @param {*} ch
+ * @returns {boolean}
+ */
+function isValidTwitchLogin(ch) {
+  return typeof ch === 'string' && /^[a-z0-9_]{1,25}$/.test(ch)
+}
+
+/**
+ * Live-tab composer label on a yt host page. The URL "channel" on a yt
+ * video page is the raw 11-char videoId — swap it for the channel name the
+ * youtube_status connected echo resolved, or '' while unresolved / for a
+ * dead stream (caller falls back to its generic prompt). Named channels
+ * (@handle pages, explicit live overrides) pass through untouched.
+ * @param {string|null} channel     current live-channel string (may be a videoId)
+ * @param {object}      opts
+ * @param {boolean}     opts.isYtVideoPage  URL is /watch, /live/<id> or /live_chat
+ * @param {string|null} opts.autoVideoId    _autoYtVideoId gate value
+ * @param {string}      opts.resolvedName   channelName from youtube_status
+ * @returns {string}
+ */
+function resolveYtLiveLabel(channel, { isYtVideoPage, autoVideoId, resolvedName }) {
+  if (!channel) return ''
+  if (!/^[a-zA-Z0-9_-]{11}$/.test(channel)) return channel
+  if (channel !== autoVideoId && !isYtVideoPage) return channel
+  return resolvedName || ''
+}
+
 // Export
 const utils = {
   // XSS
@@ -575,6 +610,10 @@ const utils = {
   error,
   DEBUG,
 
+  // Identity validation
+  isValidTwitchLogin,
+  resolveYtLiveLabel,
+
   // Storage hygiene
   sanitizeUiSettings,
   UI_SYNC_BLOCKLIST,
@@ -605,10 +644,12 @@ export {
   findComponent,
   getFiber,
   isLargeKeySyncEligible,
+  isValidTwitchLogin,
   LARGE_KEY_SYNC_MAX,
   log,
   OVERFLOW_MIRROR_KEYS,
   parseYtGiftCount,
+  resolveYtLiveLabel,
   safeUrl,
   sanitizeUiSettings,
   throttle,

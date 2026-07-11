@@ -4269,6 +4269,11 @@
     const MAX_EPHEMERAL_TABS = 8
     let ephemeralCount = config.channels.filter((c) => c?.ephemeral).length
     for (const ch of openSet) {
+      // BG's open-channel set is twitch IRC interest — anything that isn't a
+      // plausible twitch login (yt videoIds leaked in here pre-fix; they can
+      // carry '-' and are meaningless as twitch channels) must never become
+      // a tab. Guards against stale BG SW state from before the yt-join fix.
+      if (!isValidTwitchLogin(ch)) continue
       const exists = config.channels.some((c) => c?.twitch && c.twitch.toLowerCase() === ch)
       if (exists) continue
       if (ephemeralCount >= MAX_EPHEMERAL_TABS) break
@@ -8298,9 +8303,13 @@
     } else if (id === 'live') {
       const curCh = getLiveChannel()
       const platNames = getLivePlatformNames()
-      // Use platform-specific names (may differ from curCh if overridden)
-      const twitchCh = platNames.twitch || curCh
-      const kickCh = platNames.kick || curCh
+      // Use platform-specific names (may differ from curCh if overridden).
+      // yt: no same-name fallback — curCh is a videoId/@handle, not a
+      // twitch/kick channel (same rule as the boot auto-join; falling back
+      // here silently re-joined the ghost videoId channel on every render).
+      const urlChFallback = hostPlatform === 'yt' ? '' : curCh
+      const twitchCh = platNames.twitch || urlChFallback
+      const kickCh = platNames.kick || urlChFallback
       // Ensure channels are joined + history loaded
       if (twitchCh && irc && !irc.channels.has(twitchCh.toLowerCase())) irc.join(twitchCh)
       if (kickCh && kickChat && !kickChat.channels.has(kickCh.toLowerCase())) kickChat.join(kickCh)
@@ -12133,8 +12142,17 @@
       const currentChannel = getCurrentChannel()
       if (currentChannel) {
         const platNames = getLivePlatformNames()
-        const twitchCh = platNames.twitch || currentChannel
-        const kickCh = platNames.kick || currentChannel
+        // On yt pages the URL channel is a videoId or @handle — NEVER a
+        // twitch/kick identity (getLivePlatformNames already refuses the
+        // same-name guess there, see its sameNameOk note). Falling back to
+        // currentChannel re-introduced exactly that: the raw videoId got
+        // IRC-joined as a bogus twitch channel, BG registered it in the
+        // open-channel set, and every multichat spawned a ghost
+        // `auto_<videoId>` ephemeral tab — even for dead streams, even on
+        // twitch pages (wollip's ghost-tab report). Explicit links only.
+        const urlChFallback = hostPlatform === 'yt' ? '' : currentChannel
+        const twitchCh = platNames.twitch || urlChFallback
+        const kickCh = platNames.kick || urlChFallback
         // Only bind YouTube when we KNOW this channel's YT identity (an explicit
         // cross-platform link). Guessing youtube.com/@<twitchname>/live resolves
         // to whoever owns that handle — usually a DIFFERENT person — and bleeds a
@@ -12142,11 +12160,12 @@
         // identity guessing.
         const ytUrl = platNames.youtube || null
 
-        if (gTwitch) irc.join(twitchCh)
-        if (gKick) kickChat.join(kickCh)
-        // Also join the URL channel name if different (for native platform messages)
-        if (gTwitch && twitchCh !== currentChannel) irc.join(currentChannel)
-        if (gKick && kickCh !== currentChannel) kickChat.join(currentChannel)
+        if (gTwitch && twitchCh) irc.join(twitchCh)
+        if (gKick && kickCh) kickChat.join(kickCh)
+        // Also join the URL channel name if different (for native platform
+        // messages) — twitch/kick hosts only (urlChFallback is '' on yt).
+        if (gTwitch && urlChFallback && twitchCh !== urlChFallback) irc.join(urlChFallback)
+        if (gKick && urlChFallback && kickCh !== urlChFallback) kickChat.join(urlChFallback)
 
         // Subscribe YouTube. On a YT watch/live URL getCurrentChannel returns the
         // 11-char videoId — feeding that to `@${id}/live` produces a bogus

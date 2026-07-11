@@ -536,6 +536,36 @@ function trackCompletionForAutoAdd(match) {
   }
 }
 
+// Native twitch chat parity: autocomplete-hook.js (MAIN world) relays remote
+// 7TV completions the user actually SENT through native chat. That world has
+// no nonce access (same constraint as content.js's heatsync-native-emotes
+// handler) — strict payload validation instead: emote-CDN-only urls, safe
+// name charset, provider allowlist, hard cap. Validated entries route through
+// recentRemoteCompletions + autoAddInputEmotes, so the exact owned/blocked/
+// pending/global guards, optimistic own-set entry, and failure rollback the
+// overlay send path uses apply here too.
+if (/(^|\.)twitch\.tv$/.test(location.hostname)) {
+  window.addEventListener('message', (event) => {
+    if (event.source !== window || event.origin !== location.origin) return
+    if (event.data?.type !== 'heatsync-remote-completion-used' || !Array.isArray(event.data.emotes)) return
+    const CDN_RE = /^https:\/\/(cdn\.7tv\.app|cdn\.betterttv\.net|cdn\.frankerfacez\.com)\//
+    const NAME_RE = /^[A-Za-z0-9_:\-()]+$/
+    const names = []
+    for (const e of event.data.emotes.slice(0, 20)) {
+      if (!e || typeof e.name !== 'string' || e.name.length < 2 || e.name.length > 64) continue
+      if (!NAME_RE.test(e.name) || typeof e.url !== 'string' || !CDN_RE.test(e.url)) continue
+      if (e.source !== '7tv' && e.source !== 'bttv' && e.source !== 'ffz') continue
+      recentRemoteCompletions.delete(e.name)
+      recentRemoteCompletions.set(e.name, { url: e.url, source: e.source, zeroWidth: false })
+      names.push(e.name)
+    }
+    while (recentRemoteCompletions.size > REMOTE_COMPLETION_CAP) {
+      recentRemoteCompletions.delete(recentRemoteCompletions.keys().next().value)
+    }
+    if (names.length) autoAddInputEmotes(names.join(' '))
+  })
+}
+
 // Infinite Tab-cycle: once local matches run out, pull more from the cross-provider
 // search APIs and append. Aborts stale fetches so rapid re-triggering never
 // merges results from an old search term.

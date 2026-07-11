@@ -43,18 +43,16 @@ test('resolveYtLiveLabel: videoId swaps to resolved channel name', () => {
 })
 
 test('resolveYtLiveLabel: unresolved videoId yields empty (generic prompt), never the raw id', () => {
-  expect(
-    resolveYtLiveLabel('jfKfPfyJRdk', { isYtVideoPage: true, autoVideoId: 'jfKfPfyJRdk', resolvedName: '' }),
-  ).toBe('')
+  expect(resolveYtLiveLabel('jfKfPfyJRdk', { isYtVideoPage: true, autoVideoId: 'jfKfPfyJRdk', resolvedName: '' })).toBe(
+    '',
+  )
   // dead/unplayable stream: no _autoYtVideoId gate, but still a /watch page
   expect(resolveYtLiveLabel('jfKfPfyJRdk', { isYtVideoPage: true, autoVideoId: null, resolvedName: '' })).toBe('')
 })
 
 test('resolveYtLiveLabel: named channels pass through untouched', () => {
   // @handle page — handle, not a videoId shape
-  expect(resolveYtLiveLabel('lofigirl', { isYtVideoPage: false, autoVideoId: null, resolvedName: '' })).toBe(
-    'lofigirl',
-  )
+  expect(resolveYtLiveLabel('lofigirl', { isYtVideoPage: false, autoVideoId: null, resolvedName: '' })).toBe('lofigirl')
   // explicit live override that happens to be long
   expect(
     resolveYtLiveLabel('some_channel_name', { isYtVideoPage: true, autoVideoId: 'jfKfPfyJRdk', resolvedName: 'x' }),

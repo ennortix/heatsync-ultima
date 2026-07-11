@@ -780,6 +780,10 @@ class KickChat {
     this._SYNC_BACKUP_MAX = 200
     this._pendingChannels = new Set()
     this._recentLiveIds = new Set() // Kick message-id dedup across server-relay + Pusher-tap sources
+    // Self-inflicted mod actions (toolbar/slash) inject a synthetic notice
+    // immediately; the Pusher tap then reflects the same action back —
+    // without this index every self-mod on a tapped channel prints twice.
+    this._selfModIndex = new Map() // `${slug}|${noticeType}|${target}` → ts
     // Per-channel watchdog. Kick traffic flows BG → runtime.sendMessage →
     // this._listener; if anything between us and the heatsync server drops
     // a sub silently (BG WS reconnected before our ws_send made it through,
@@ -792,6 +796,26 @@ class KickChat {
     // chrome.storage.local debounce gap that was eating ~5s of pre-reload chat.
     this._pagehideHandler = () => this._flushPendingSync()
     window.addEventListener('pagehide', this._pagehideHandler)
+  }
+
+  // Record a self-inflicted mod action so the Pusher-tap reflection of the
+  // same action is collapsed instead of printing a second system line.
+  noteSelfMod(slug, noticeType, target) {
+    const key = `${(slug || '').toLowerCase()}|${noticeType}|${(target || '').toLowerCase()}`
+    const now = Date.now()
+    for (const [k, ts] of this._selfModIndex) if (now - ts > 10000) this._selfModIndex.delete(k)
+    if (this._selfModIndex.size >= 50) this._selfModIndex.delete(this._selfModIndex.keys().next().value)
+    this._selfModIndex.set(key, now)
+  }
+
+  // Consume a matching self-mod record (±10s). One-shot: a match deletes the
+  // entry so a genuine repeat action a moment later still prints.
+  _consumeSelfMod(slug, noticeType, target) {
+    const key = `${(slug || '').toLowerCase()}|${noticeType}|${(target || '').toLowerCase()}`
+    const ts = this._selfModIndex.get(key)
+    if (ts === undefined) return false
+    this._selfModIndex.delete(key)
+    return Date.now() - ts <= 10000
   }
 
   _serializeMsg(m) {
@@ -992,6 +1016,10 @@ class KickChat {
               : action === 'timeout'
                 ? 'timeout_success'
                 : 'ban_success'
+        // Self-mod dedup: the toolbar already injected a synthetic notice for
+        // this exact action — the buffer dim above still applies, but a second
+        // system line (and duplicate mod-log entry) must not.
+        if (this._consumeSelfMod(channel, noticeType, action === 'delete' ? message.targetMsgId : targetLc)) return
         const text =
           action === 'delete'
             ? `a message was deleted`

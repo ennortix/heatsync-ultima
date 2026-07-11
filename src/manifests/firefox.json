@@ -179,6 +179,17 @@
         "https://www.youtube.com/live_chat*"
       ],
       "js": [
+        "yt-data-bridge.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": true
+    },
+    {
+      "matches": [
+        "https://www.youtube.com/live_chat*"
+      ],
+      "js": [
         "emoji-data.iso.js",
         "shared-utils.js",
         "platform-detector.js"

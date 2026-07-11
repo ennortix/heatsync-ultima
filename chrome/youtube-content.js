@@ -861,8 +861,24 @@
   // (can contain '-'/'_'), so validate with the same regex background.js
   // uses for the 7TV google-id lookup — never a no-hyphen guard.
   function extractAuthorChannelId(el) {
-    const id = el.data?.authorExternalChannelId
+    // el.data is a page-world Polymer property — invisible from this ISOLATED
+    // world (reads undefined). The MAIN-world yt-data-bridge.js mirrors the id
+    // onto a DOM attribute, which does cross worlds; keep the direct read
+    // first in case worlds ever merge (it costs nothing and is authoritative).
+    const id = el.data?.authorExternalChannelId || el.getAttribute('data-hs-author-id')
     return typeof id === 'string' && /^UC[\w-]{20,}$/i.test(id) ? id : null
+  }
+
+  // Paint stamp + fetch for one row — shared by the immediate path (bridge
+  // already stamped the author id) and the late retry (Polymer bound after us).
+  function stampYtHsPaint(node, ucid) {
+    const paintUid = `yt_${ucid}`
+    node.dataset.hsYtPaintUid = paintUid
+    if (ytHsPaintCache.has(paintUid)) {
+      applyYtHsPaint(node.querySelector('#author-name'), paintUid)
+    } else {
+      queueYtHsPaint(paintUid)
+    }
   }
 
   function extractMessage(el) {
@@ -985,13 +1001,20 @@
     // HeatSync spec paint — yt_<UCid> id-space (same minting as the overlay's
     // social.js). Applied/queued BEFORE 7TV so the hsPaintApplied stamp wins.
     if (msg.channelId) {
-      const paintUid = `yt_${msg.channelId}`
-      node.dataset.hsYtPaintUid = paintUid
-      if (ytHsPaintCache.has(paintUid)) {
-        applyYtHsPaint(node.querySelector('#author-name'), paintUid)
-      } else {
-        queueYtHsPaint(paintUid)
-      }
+      stampYtHsPaint(node, msg.channelId)
+    } else {
+      // The MAIN-world yt-data-bridge mirrors el.data.authorExternalChannelId
+      // onto data-hs-author-id, but Polymer can bind after our observer fires —
+      // retry once after the bridge's own retry window.
+      setTimeout(() => {
+        const late = extractAuthorChannelId(node)
+        if (late) {
+          stampYtHsPaint(node, late)
+          if (msg.user && !ytCosmeticsPending.has(msg.user) && ytCosmeticsCache.get(msg.user) === undefined) {
+            queueYtCosmeticsLookup(msg.user, late)
+          }
+        }
+      }, 300)
     }
 
     // 7TV cosmetics via heatsync profile linkage

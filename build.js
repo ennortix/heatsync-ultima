@@ -458,6 +458,7 @@ const COPY_FILES = [
   'twitch-chat-intercept.js',
   'kick-nav-watcher.js',
   'youtube-keyboard-guard.js',
+  'yt-data-bridge.js',
   'platform-detector.js',
   'shared-utils.js',
   'emoji-data.js',

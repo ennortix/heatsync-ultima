@@ -1613,10 +1613,12 @@ function renderFeedContent(content, emoteRefs) {
   // (?<![\/\w.]) on the bare-domain branch prevents matching inside an already-linkified URL path.
   if (linksEnabled) {
     html = html.replace(/(https?:\/\/[^\s<"]+|(?<![/\w.])[a-z0-9-]+(?:\.[a-z0-9-]+)+\/[^\s<"]*)/gi, (match) => {
+      // `match` is already server-escaped (renderFeedContent runs on
+      // pre-escaped content) — re-escaping turned &amp; into &amp;amp; (broken
+      // href param + visible &amp;). The regex excludes <"/space so it's
+      // attribute-safe verbatim. Only add the protocol for a bare domain.
       const url = /^https?:\/\//i.test(match) ? match : 'https://' + match
-      const text = escapeHtml(match)
-      const href = escapeHtml(url)
-      return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="hs-mc-link">${text}</a>`
+      return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="hs-mc-link">${match}</a>`
     })
   }
   // Text formatting (bold, italic, spoilers, etc.) — skip <a>...</a> blocks so URL underscores aren't italicized.

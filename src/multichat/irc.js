@@ -726,6 +726,13 @@ class IRC {
     return this.channels.get(ch?.toLowerCase())?.getAll() || []
   }
 
+  // O(1) message count — isMultiPlatformTab only needs "any messages?" on the
+  // per-message hot path; getMessages().length materialized ~6000-element
+  // arrays per live message at Kripp scale (busy 3000-cap buffers).
+  getCount(ch) {
+    return this.channels.get(ch?.toLowerCase())?.size || 0
+  }
+
   on(e, fn) {
     if (!this.handlers.has(e)) this.handlers.set(e, new Set())
     this.handlers.get(e).add(fn)
@@ -1332,6 +1339,11 @@ class KickChat {
 
   getMessages(kickUsername) {
     return this.channels.get(kickUsername?.toLowerCase())?.getAll() || []
+  }
+
+  // O(1) count — see IRC.getCount (hot-path buffer-copy avoidance).
+  getCount(kickUsername) {
+    return this.channels.get(kickUsername?.toLowerCase())?.size || 0
   }
 
   on(e, fn) {

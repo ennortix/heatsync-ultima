@@ -330,7 +330,7 @@ function confirmPending(synthId, platform) {
   if (entry.timer) cleanup.clearTimeout(entry.timer)
   pendingSends.delete(synthId)
   try {
-    HsNotifs.dismissByKey('send-pending', synthId)
+    HsNotifs.dismissByKey('send-pending', `send-pending:${synthId}`)
   } catch (_) {}
   return true
 }
@@ -453,7 +453,7 @@ function clearPendingByChannel(channel) {
       if (entry.timer) cleanup.clearTimeout(entry.timer)
       pendingSends.delete(id)
       try {
-        HsNotifs.dismissByKey('send-pending', id)
+        HsNotifs.dismissByKey('send-pending', `send-pending:${id}`)
       } catch (_) {}
       cleared++
     }
@@ -470,7 +470,7 @@ function retryPendingSend(synthId) {
   // Drop the failed entry; sendMessage will register a fresh one.
   pendingSends.delete(synthId)
   try {
-    HsNotifs.dismissByKey('send-pending', synthId)
+    HsNotifs.dismissByKey('send-pending', `send-pending:${synthId}`)
   } catch (_) {}
   const input = document.getElementById('hs-mc-input')
   if (!input) return
@@ -520,6 +520,10 @@ const REMOTE_COMPLETION_CAP = 300
 // owned/blocked/pending are filtered later in autoAddInputEmotes.
 function trackCompletionForAutoAdd(match) {
   if (!match || match.type !== 'emote' || !match.name || !match.url) return
+  // A synthesized "name0" overlay carries the BASE emote's url — auto-adding it
+  // persisted a bogus literal "name0" emote server-side, burning an inventory
+  // slot. The base emote is tracked on its own; the "0" is a render convention.
+  if (match._synthOverlay) return
   const src = match.source
   if (src !== '7tv' && src !== 'bttv' && src !== 'ffz') return
   recentRemoteCompletions.delete(match.name)
@@ -3891,7 +3895,7 @@ function getRecencyMap() {
     if (!u || out.has(u)) continue
     // Blocked users never tab-complete — drop them at this one chokepoint so
     // both the recent-chatter and @-mention recency paths stay clean.
-    if (typeof isUserBlocked === 'function' && isUserBlocked(u)) continue
+    if (_isBlockedAnyPlat(u)) continue
     out.set(u, rank++)
   }
   return out
@@ -4021,6 +4025,23 @@ function compareAcMatches(a, b, searchLower, frecency) {
   return an.localeCompare(bn)
 }
 
+// Block enforcement for tab-complete/mention candidates that have no platform
+// context: a namespaced block (twitch:alice) never matched isUserBlocked(name)
+// with platform=undefined, so a blocked user still surfaced as a completion.
+// You blocked them — don't suggest them on ANY platform namespace.
+function _isBlockedAnyPlat(name) {
+  const u = String(name || '')
+    .toLowerCase()
+    .replace(/^@/, '')
+  if (!u || typeof blockedUsers === 'undefined' || !blockedUsers.size) return false
+  return (
+    blockedUsers.has(u) ||
+    blockedUsers.has(`twitch:${u}`) ||
+    blockedUsers.has(`kick:${u}`) ||
+    blockedUsers.has(`youtube:${u}`)
+  )
+}
+
 function findEmoteMatches(search) {
   const matches = []
 
@@ -4056,7 +4077,7 @@ function findEmoteMatches(search) {
       const bare = userLower.startsWith('@') ? userLower.slice(1) : userLower
       // Blocked users never surface as an @-completion suggestion (and don't
       // trigger a color prefetch for them).
-      if (typeof isUserBlocked === 'function' && isUserBlocked(bare)) continue
+      if (_isBlockedAnyPlat(bare)) continue
       let color = (typeof knownColors !== 'undefined' && knownColors.get(userLower)) || null
       if (!color && _hsUserColorCache.has(userLower)) color = _hsUserColorCache.get(userLower) || null
       if (!color) _hsPrefetchList.push(bare)
@@ -4104,9 +4125,27 @@ function findEmoteMatches(search) {
       const sub = !!emote.subscription
       const tier = tierByName.get(name) ?? 2
       if (name.toLowerCase().startsWith(searchLower)) {
-        matches.push({ name, url: emote.url, source: emote.source, priority: 0, tier, type: 'emote', sub })
+        matches.push({
+          name,
+          url: emote.url,
+          source: emote.source,
+          priority: 0,
+          tier,
+          type: 'emote',
+          sub,
+          zeroWidth: !!emote.zeroWidth,
+        })
       } else if (name.toLowerCase().includes(searchLower)) {
-        matches.push({ name, url: emote.url, source: emote.source, priority: 1, tier, type: 'emote', sub })
+        matches.push({
+          name,
+          url: emote.url,
+          source: emote.source,
+          priority: 1,
+          tier,
+          type: 'emote',
+          sub,
+          zeroWidth: !!emote.zeroWidth,
+        })
       }
     }
     // 7TV "name0" overlay convention: a trailing "0" turns an emote into a
@@ -4139,6 +4178,7 @@ function findEmoteMatches(search) {
             tier,
             type: 'emote',
             sub: !!emote.subscription,
+            _synthOverlay: true,
           })
         } else if (nl.startsWith(baseLower)) {
           matches.push({
@@ -4149,6 +4189,7 @@ function findEmoteMatches(search) {
             tier,
             type: 'emote',
             sub: !!emote.subscription,
+            _synthOverlay: true,
           })
         }
       }
@@ -4196,7 +4237,7 @@ function findEmoteMatches(search) {
       // Bare-name matching — yt cache entries carry a leading '@'.
       const userLower = username.toLowerCase().replace(/^@/, '')
       if (_recentSeen.has(userLower)) continue
-      if (typeof isUserBlocked === 'function' && isUserBlocked(userLower)) continue
+      if (_isBlockedAnyPlat(userLower)) continue
       if (userLower.startsWith(searchLower)) {
         matches.push({ name: username, url: null, priority: 0, type: 'user' })
       } else if (userLower.includes(searchLower)) {
@@ -5816,7 +5857,12 @@ async function handleSlashCommand(text, input) {
     // if over the cap (keep the oldest so a raid's leading edge is cleared).
     const seenIds = new Set()
     const targets = []
-    for (const buf of [irc?.channels?.get(modChannel), kickChat?.channels?.get(modChannel)]) {
+    // Buffers are keyed by twitch login / kick slug, NOT the tab id — a
+    // dual-linked tab (kick slug != twitch login) or an ephemeral auto_ tab
+    // matched nothing. Use the resolved channel names, same as /ban dispatch.
+    const _tw = irc?.channels?.get((_twitchModName || modChannel).toLowerCase())
+    const _kk = kickChat?.channels?.get((_kickModSlug || modChannel).toLowerCase())
+    for (const buf of [_tw, _kk]) {
       if (!buf?.getAll) continue
       for (const m of buf.getAll()) {
         if (!m?.id || typeof m.text !== 'string') continue

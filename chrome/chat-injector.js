@@ -527,7 +527,12 @@
     })
 
   function parseTwitchEmotes(text) {
-    let result = escapeHtml(text)
+    // `text` is a heatsync feed post (WS new-message from a followed user) —
+    // stored PRE-ESCAPED by the server (sanitizeMessageContent → escapeHtml).
+    // Re-escaping turned &amp;→&amp;amp; AND broke the &lt;3 heart match below
+    // (stored &lt;3 would become &amp;lt;3). Use it as-is; the regex img
+    // insertions below only add known-CDN <img> tags.
+    let result = String(text == null ? '' : text)
 
     // Handle &lt;3 (escaped <3)
     result = result.replace(

@@ -10479,10 +10479,15 @@
 
               const processOne = (msg) => {
                 try {
-                  processMessage(msg)
+                  // Cache BEFORE processMessage: it replaces emote words with
+                  // <img> (no textContent) and inserts stack '×'/'⊘' glyphs, so
+                  // capturing after serialized a corrupted body that dropped
+                  // every emote and leaked the button chars. Snapshot raw text
+                  // first (mirrors the timeout-restore cache ordering).
                   if (!msg.dataset.heatsyncCached && !msg.dataset.heatsyncBackfill) {
                     captureMessageToCache(msg)
                   }
+                  processMessage(msg)
                 } catch (e) {
                   log(' ❌ processMessage error:', e.message)
                 }
@@ -10538,7 +10543,10 @@
               }
               for (const msg of visible) {
                 msg.dataset.heatsyncUsernamesColored = '1'
-                highlightUserMentions(msg)
+                // Gate on the setting — processMessage's own call is gated, but
+                // this observer path ran unconditionally, so turning
+                // highlightMentions off had no effect (dead toggle).
+                if (_uiPrefs.highlightMentions) highlightUserMentions(msg)
                 colorUsernameMentions(msg)
                 if (msg.dataset.heatsyncGeneration != emoteGeneration) {
                   stackAdjacentOverlayEmotes(msg, allEmotes)

@@ -3008,6 +3008,11 @@ function hsSnapEmoteBox(img) {
       // pin the wrapper too narrow and cause the overlay img to bleed left past
       // the base emote. Overlays always render inline-unconstrained via renderEmoteStack.
       if (it.im.classList.contains('hs-mc-overlay-emote')) continue
+      // Never cache a width measured off a STACK box: it's the widest child
+      // (an overlay wider than the base), so caching it under the BASE emote's
+      // url pinned every later SOLO render of that emote too wide. Only the
+      // bare `.hs-mc-emote-wrapper` measurement is the emote's own solo width.
+      if (it.box.classList.contains('hs-mc-emote-stack')) continue
       const url = it.im.closest('.hs-mc-emote-wrapper')?.dataset?.emoteUrl || it.im.getAttribute('src')
       if (url) {
         _hsEmoteBoxW.set(url, it.w)

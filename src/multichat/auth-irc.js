@@ -310,7 +310,7 @@ async function drainSendQueue() {
   // so the queued message would otherwise drain into an unjoined channel. This
   // is the authoritative guard regardless of what got rejoined.
   while (authState.sendQueue.length && authIrcAlive()) {
-    const { channel, text } = authState.sendQueue[0] // peek; shift only on success
+    const { channel, text, replyParentId } = authState.sendQueue[0] // peek; shift only on success
     if (!authState.joined.has(channel)) {
       const joined = await joinChannel(channel)
       // joinChannel awaits the JOIN ack (or 2s timeout). Bail if the socket died
@@ -319,7 +319,8 @@ async function drainSendQueue() {
       if (!authIrcAlive() || !joined) break
     }
     try {
-      authState.ws.send(`PRIVMSG #${channel} :${text}\r\n`)
+      const qPrefix = replyParentId ? `@reply-parent-msg-id=${replyParentId} ` : ''
+      authState.ws.send(`${qPrefix}PRIVMSG #${channel} :${text}\r\n`)
       authState.sendQueue.shift()
       log('Drained queued msg to #' + channel)
     } catch {
@@ -341,7 +342,7 @@ async function sendIrcMessage(channel, text, token, replyParentId, overrideNick)
         if (result === 'auth_failed') return 'auth_failed'
         if (!result) {
           if (attempt < 2) continue
-          if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text })
+          if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text, replyParentId })
           scheduleReconnect([channel])
           log('Queued message for reconnect')
           // Return 'queued' so the caller can show a yellow "queued" cue
@@ -356,7 +357,7 @@ async function sendIrcMessage(channel, text, token, replyParentId, overrideNick)
         // than PRIVMSG into a never-joined channel (twitch drops it silently).
         if (!joined) {
           if (attempt < 2) continue
-          if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text })
+          if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text, replyParentId })
           if (typeof showToast === 'function') showToast(`couldn't join #${channel} chat — queued`, 'error')
           return 'queued'
         }
@@ -366,7 +367,7 @@ async function sendIrcMessage(channel, text, token, replyParentId, overrideNick)
           cleanupAuthIrc()
           continue
         }
-        if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text })
+        if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text, replyParentId })
         scheduleReconnect([channel])
         return 'queued'
       }
@@ -384,7 +385,7 @@ async function sendIrcMessage(channel, text, token, replyParentId, overrideNick)
       log('Send error attempt', attempt, ':', e.message || e)
       cleanupAuthIrc()
       if (attempt === 2) {
-        if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text })
+        if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text, replyParentId })
         scheduleReconnect([channel])
         return 'queued'
       }

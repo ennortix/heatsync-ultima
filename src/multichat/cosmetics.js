@@ -508,12 +508,15 @@ function updateHsPaintsInPlace(userIds) {
     if (mentionSet) {
       for (const el of mentionSet) applyHsPaintToElement(el, uid)
     }
-    const isKickUid = uid.startsWith('kick_')
-    // A kick-space paint uid is never in data-uid (that attribute stays
-    // twitch-id-space only — see the ID-SPACE SAFETY note in paints.js) so
-    // it's never in _uidIndex either; find its rows via the parallel
-    // data-hs-paint-uid attribute flushKickNameLookups stamps instead.
-    const divs = isKickUid ? container.querySelectorAll(`[data-hs-paint-uid="${CSS.escape(uid)}"]`) : _uidIndex.get(uid)
+    // kick_ AND yt_ paint uids are namespaced — never in data-uid/_uidIndex
+    // (that stays twitch-id-space only, ID-SPACE SAFETY in paints.js). Find
+    // their rows via the parallel data-hs-paint-uid attribute (kick via
+    // flushKickNameLookups, yt via social.js). Without the yt_ case a resolved
+    // youtube paint applied to nothing (updateCosmeticsInPlace already handles it).
+    const isNamespacedUid = uid.startsWith('kick_') || uid.startsWith('yt_')
+    const divs = isNamespacedUid
+      ? container.querySelectorAll(`[data-hs-paint-uid="${CSS.escape(uid)}"]`)
+      : _uidIndex.get(uid)
     if (!divs) continue
     for (const div of divs) {
       // The row's primary (twitch) uid resolving its own HS paint outranks

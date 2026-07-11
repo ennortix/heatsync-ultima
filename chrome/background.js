@@ -2480,6 +2480,12 @@ async function resolveAvatarUrl(username, platform) {
         const j = await r.json()
         url = j?.user?.profile_pic || ''
       } else r.body?.cancel?.()
+    } else if (platform === 'youtube' || platform === 'yt') {
+      // No twitch GQL for a youtube identity — a yt handle that happens to
+      // match an unrelated twitch login would return THAT user's avatar as the
+      // toast icon. No cheap unauthenticated yt avatar endpoint, so leave blank
+      // (toast falls back to the platform mark).
+      url = ''
     } else {
       // Twitch GQL — same client-id as the website, unauthenticated, no rate limit.
       const r = await fetchWithTimeout(
@@ -8421,10 +8427,37 @@ async function handleMessage(message, sender, sendResponse) {
             return
           }
           const collected = {}
-          // 7TV — twitch + kick supported by /users/{platform}/{id}; "yt" key falls
-          // back to twitch-id which arrives once ytNameToTwitchId resolves.
-          const sevenTvPath =
-            platform === 'kick' ? `kick/${encodeURIComponent(id)}` : `twitch/${encodeURIComponent(id)}`
+          // 7TV — twitch by id; kick by NUMERIC kick user_id (NOT the username:
+          // /users/kick/{username} 404s user_not_found). content.js queues
+          // kick:<username>, so resolve username→id via kick.com/api/v1/users
+          // (cached, same resolver get_kick_user_cosmetics uses) before the
+          // fetch; no id → skip the 7TV leg (hs personal set still resolves).
+          let sevenTvPath
+          if (platform === 'kick') {
+            let kid = kickUsernameToIdCache.get(id)
+            if (kid === undefined) {
+              try {
+                const ur = await fetchWithTimeout(`https://kick.com/api/v1/users/${encodeURIComponent(id)}`)
+                if (ur.ok) {
+                  const uj = await ur.json()
+                  kid = uj?.id != null ? String(uj.id) : null
+                } else {
+                  ur.body?.cancel?.()
+                  kid = null
+                }
+              } catch {
+                kid = null
+              }
+              if (kid) {
+                if (kickUsernameToIdCache.size >= 1000)
+                  kickUsernameToIdCache.delete(kickUsernameToIdCache.keys().next().value)
+                kickUsernameToIdCache.set(id, kid)
+              }
+            }
+            sevenTvPath = kid ? `kick/${encodeURIComponent(kid)}` : null
+          } else {
+            sevenTvPath = `twitch/${encodeURIComponent(id)}`
+          }
           const isNumericId = /^\d+$/.test(id)
           // Per-id inflight dedup for 7TV/BTTV — chat rebuild can flush 30 keys in
           // <1s; without this each one fires its own pair. Shared promise per
@@ -8432,13 +8465,16 @@ async function handleMessage(message, sender, sendResponse) {
           // 5min cache below handles the longer-window case.
           const stv7tvInflight = (globalThis.__stv7tvInflight ??= new Map())
           const bttvInflight = (globalThis.__bttvInflight ??= new Map())
-          let stvP = stv7tvInflight.get(sevenTvPath)
-          if (!stvP) {
-            stvP = fetchWithTimeout(`https://7tv.io/v3/users/${sevenTvPath}`)
-              .then((r) => (r.ok ? r.json() : null))
-              .catch(() => SENDER_FETCH_ERR)
-            stv7tvInflight.set(sevenTvPath, stvP)
-            stvP.finally(() => stv7tvInflight.delete(sevenTvPath))
+          let stvP = null
+          if (sevenTvPath) {
+            stvP = stv7tvInflight.get(sevenTvPath)
+            if (!stvP) {
+              stvP = fetchWithTimeout(`https://7tv.io/v3/users/${sevenTvPath}`)
+                .then((r) => (r.ok ? r.json() : null))
+                .catch(() => SENDER_FETCH_ERR)
+              stv7tvInflight.set(sevenTvPath, stvP)
+              stvP.finally(() => stv7tvInflight.delete(sevenTvPath))
+            }
           }
           // BTTV — only twitch-id endpoint. Skip for kick/yt.
           let bttvP

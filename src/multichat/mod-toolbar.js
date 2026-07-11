@@ -726,6 +726,10 @@ document.addEventListener(
   'keydown',
   (e) => {
     if (!_modCtx) return
+    // OS key-repeat (~30Hz after ~500ms) fired many concurrent async
+    // dispatches for one held key before the first cleared _modCtx — a burst
+    // of error toasts (delete) or stacked confirm overlays (ban). One per press.
+    if (e.repeat) return
     const t = e.target
     const typing = t && (t.isContentEditable || ['INPUT', 'TEXTAREA'].includes(t.tagName))
     if (typing) return

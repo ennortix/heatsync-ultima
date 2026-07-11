@@ -50,7 +50,8 @@
       "build.js",
       "!dist",
       "!node_modules",
-      "!chrome/emoji-data.js"
+      "!chrome/emoji-data.js",
+      "!chrome/emoji-data.iso.js"
     ]
   }
 }

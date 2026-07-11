@@ -6465,6 +6465,7 @@
         'event-sub': 'sub',
         'event-redeem': 'redeem',
         'event-pred': 'pred',
+        'event-poll': 'poll',
         'event-yt-superchat': 'ytSuperchat',
         'event-yt-supersticker': 'ytSupersticker',
         'event-yt-membership': 'ytMembership',
@@ -7540,14 +7541,14 @@
     if (tabId === 'live') {
       const curCh = getLiveChannel()
       let count = 0
-      if (curCh && irc?.getMessages(curCh)?.length) count++
-      if (curCh && kickChat?.getMessages(curCh)?.length) count++
+      if (curCh && irc?.getCount(curCh)) count++
+      if (curCh && kickChat?.getCount(curCh)) count++
       if (channelYtMessages.get('__live_yt_auto__')?.length || 0) count++
       if (count < 2) {
         // Also check config-linked platforms (O(1) via the prebuilt lookup)
         const lk = getChannelLookup()
         const linked = lk.twitch.get(curCh) || lk.kick.get(curCh)
-        if (linked?.kick && kickChat?.getMessages(linked.kick)?.length) count++
+        if (linked?.kick && kickChat?.getCount(linked.kick)) count++
         if (linked?.youtube && channelYtMessages.get(linked.id)?.length) count++
       }
       return count > 1
@@ -7555,8 +7556,8 @@
     const ch = getChannelById(tabId)
     if (!ch) return false
     let count = 0
-    if (ch.twitch && irc?.getMessages(ch.twitch)?.length) count++
-    if (ch.kick && kickChat?.getMessages(ch.kick)?.length) count++
+    if (ch.twitch && irc?.getCount(ch.twitch)) count++
+    if (ch.kick && kickChat?.getCount(ch.kick)) count++
     // own linked YT only — __live_yt_auto__ no longer merges into per-channel
     // tabs (mirrors renderMessages bleed fix)
     const ytMsgs = channelYtMessages.get(tabId)?.length || 0
@@ -7916,7 +7917,12 @@
     if (active.length === 0) return []
     if (active.length === 1) {
       const s = active[0]
-      return s.length <= limit ? s : s.slice(-limit)
+      // ALWAYS return a copy — the follow-event merge below splices into the
+      // returned array in place. IRC/Kick getMessages already copy, but YT
+      // sources are the raw channelYtMessages arrays; returning one by ref let
+      // the splice permanently insert "X went live" events into that buffer,
+      // which persistYt then serialized as fake chat history.
+      return s.length <= limit ? s.slice() : s.slice(-limit)
     }
 
     // Co-live detection. When every source's newest msg lands within ~10 min

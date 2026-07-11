@@ -767,6 +767,11 @@ function build(browser) {
   // no error). Distinct filename per world sidesteps the dedupe while keeping
   // the single-parse win that 43f297b's unbundling was after.
   cpSync(join(chromeDir, 'emoji-data.js'), join(outDir, 'emoji-data.iso.js'))
+  // Also write the iso copy into chrome/ — manifest.json (mirrored below for
+  // the unpacked dev extension) references emoji-data.iso.js in its
+  // content_scripts entries; without it the dev-loaded chrome/ dir is
+  // un-loadable.
+  if (browser === 'chrome') cpSync(join(chromeDir, 'emoji-data.js'), join(chromeDir, 'emoji-data.iso.js'))
 
   // Copy assets
   for (const file of ASSETS) {

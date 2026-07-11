@@ -536,6 +536,36 @@ function trackCompletionForAutoAdd(match) {
   }
 }
 
+// Native twitch chat parity: autocomplete-hook.js (MAIN world) relays remote
+// 7TV completions the user actually SENT through native chat. That world has
+// no nonce access (same constraint as content.js's heatsync-native-emotes
+// handler) — strict payload validation instead: emote-CDN-only urls, safe
+// name charset, provider allowlist, hard cap. Validated entries route through
+// recentRemoteCompletions + autoAddInputEmotes, so the exact owned/blocked/
+// pending/global guards, optimistic own-set entry, and failure rollback the
+// overlay send path uses apply here too.
+if (/(^|\.)twitch\.tv$/.test(location.hostname)) {
+  window.addEventListener('message', (event) => {
+    if (event.source !== window || event.origin !== location.origin) return
+    if (event.data?.type !== 'heatsync-remote-completion-used' || !Array.isArray(event.data.emotes)) return
+    const CDN_RE = /^https:\/\/(cdn\.7tv\.app|cdn\.betterttv\.net|cdn\.frankerfacez\.com)\//
+    const NAME_RE = /^[A-Za-z0-9_:\-()]+$/
+    const names = []
+    for (const e of event.data.emotes.slice(0, 20)) {
+      if (!e || typeof e.name !== 'string' || e.name.length < 2 || e.name.length > 64) continue
+      if (!NAME_RE.test(e.name) || typeof e.url !== 'string' || !CDN_RE.test(e.url)) continue
+      if (e.source !== '7tv' && e.source !== 'bttv' && e.source !== 'ffz') continue
+      recentRemoteCompletions.delete(e.name)
+      recentRemoteCompletions.set(e.name, { url: e.url, source: e.source, zeroWidth: false })
+      names.push(e.name)
+    }
+    while (recentRemoteCompletions.size > REMOTE_COMPLETION_CAP) {
+      recentRemoteCompletions.delete(recentRemoteCompletions.keys().next().value)
+    }
+    if (names.length) autoAddInputEmotes(names.join(' '))
+  })
+}
+
 // Infinite Tab-cycle: once local matches run out, pull more from the cross-provider
 // search APIs and append. Aborts stale fetches so rapid re-triggering never
 // merges results from an old search term.
@@ -551,11 +581,19 @@ function trackCompletionForAutoAdd(match) {
 // Local substring matches still surface via findEmoteMatches.
 let _acRemoteAbort = null
 let _acRemoteToken = 0
+// Searches the remote catalog will never serve: @user, :emoji, modifier
+// tokens, short fragments. Shared with the Tab-cycle hold-at-end check —
+// without this, @/: cycles held at the last match forever waiting on a
+// remote fetch that always bails (bare-emote cycling wrapped, these didn't).
+function acRemoteEligible(search) {
+  if (!search || search.length < 2) return false
+  if (search.startsWith('@') || search.startsWith(':')) return false
+  if (hsModClassify(search, { allowPrefix: false }).kind === 'modifier') return false
+  return true
+}
 async function fetchRemoteEmoteMatches(search) {
   // Emote-only: skip @user, :emoji, modifier tokens, and short fragments.
-  if (!search || search.length < 2) return
-  if (search.startsWith('@') || search.startsWith(':')) return
-  if (hsModClassify(search, { allowPrefix: false }).kind === 'modifier') return
+  if (!acRemoteEligible(search)) return
   const token = ++_acRemoteToken
   acState.remotePending = true
   if (_acRemoteAbort) {
@@ -1754,6 +1792,18 @@ async function hsBlockFromMenu(username, platform) {
 // Right-click mod action — single platform (the clicked message's), targeting
 // the login. Delete gets a bespoke toast; the rest use the shared combined one.
 async function _ctxMod(action, channel, platform, target, msgId, durationSec, label) {
+  // Logged-out Twitch: the GQL channel-id resolve fails and mislabels the
+  // result "<action> failed: channel not found". Surface plain-send's sticky
+  // not-logged-in cue instead (same check as the slash-command dispatch).
+  if (platform === 'twitch') {
+    const { token } = await getTwitchAuthTokenAsync()
+    if (!token) {
+      try {
+        HsNotifs.emit('twitch-auth-required', { text: t('mc_input_not_logged_in') || 'log into twitch.tv to chat' })
+      } catch (_) {}
+      return
+    }
+  }
   const r = await dispatchModAction({ channel, platform, action, target, durationSec, msgId })
   if (action === 'delete') {
     const derr = (r?.tResp || r?.kResp || r?.yResp)?.error
@@ -2830,8 +2880,7 @@ function handleInputKeydown(e) {
       // asked to keep cycling into remote (13/13 → 14/99), not loop. Once they
       // append + re-sort (position preserved), the next Tab advances into them.
       const atEnd = !e.shiftKey && acState.index + 1 >= len
-      const remoteMayCome =
-        acState.remotePending || (!acState.remoteDone && acState.search && acState.search.length >= 2)
+      const remoteMayCome = acState.remotePending || (!acState.remoteDone && acRemoteEligible(acState.search))
       if (atEnd && remoteMayCome) {
         if (!acState.remoteDone && !acState.remotePending && acState.search) {
           fetchRemoteEmoteMatches(acState.search)
@@ -5752,6 +5801,22 @@ async function handleSlashCommand(text, input) {
   // Dual-platform dispatch + per-platform notice injection + combined toast all
   // live in the shared backbone (main.js dispatchModAction / showModResultToast).
 
+  // Logged-out Twitch on a twitch-only tab: dispatch would die deep in the GQL
+  // channel-id resolve and surface a misleading "<action> failed: channel not
+  // found" toast. Root cause is unauthenticated, not a missing channel — show
+  // plain-send's sticky not-logged-in cue instead and never dispatch. A
+  // kick-capable tab still dispatches (its kick leg may be authed; the twitch
+  // side's error then surfaces in the combined toast).
+  const _twitchModAuthOk = async () => {
+    if (!_twitchModName || _kickModSlug) return true
+    const { token } = await getTwitchAuthTokenAsync()
+    if (token) return true
+    try {
+      HsNotifs.emit('twitch-auth-required', { text: t('mc_input_not_logged_in') || 'log into twitch.tv to chat' })
+    } catch (_) {}
+    return false
+  }
+
   if (cmd === 'ban' || cmd === 'timeout' || cmd === 'unban') {
     if (!modChannel) {
       showToast(`/${cmd} needs a channel tab (not live/mentions/posts)`, 'error')
@@ -5761,6 +5826,7 @@ async function handleSlashCommand(text, input) {
       showToast(`/${cmd} needs a twitch or kick channel`, 'error')
       return true
     }
+    if (!(await _twitchModAuthOk())) return true
     if (cmd === 'ban') {
       const m = rest.match(/^@?(\S+)(?:\s+(.+))?$/)
       if (!m) {
@@ -5820,6 +5886,7 @@ async function handleSlashCommand(text, input) {
       showToast('/delete needs a twitch or kick channel', 'error')
       return true
     }
+    if (!(await _twitchModAuthOk())) return true
     // Raw id → platform unknown; dispatcher tries Twitch first, then Kick.
     const r = await dispatchModAction({ channel: modChannel, action: 'delete', msgId: messageID })
     const err = (r?.tResp || r?.kResp)?.error || 'unknown'
@@ -5842,6 +5909,7 @@ async function handleSlashCommand(text, input) {
       showToast('/nuke needs a twitch or kick channel', 'error')
       return true
     }
+    if (!(await _twitchModAuthOk())) return true
     const NUKE_MAX = 100 // never delete more than this in one invocation
     const NUKE_MAX_WINDOW = 300 // seconds — furthest lookback allowed
     const nm = rest.trim().match(/^(.+?)(?:\s+(\d+))?$/)

@@ -1358,7 +1358,41 @@
   // Track when dropdown was last visible (for insertReplacement check)
   let lastDropdownVisibleTime = 0
 
-  // (lastEnterPressTime removed — Enter is never touched by this module)
+  // (lastEnterPressTime removed — Enter is never intercepted by this module;
+  // the send-flush below only OBSERVES Enter, it never prevents/stops it.)
+
+  // Remote-search (7TV catalog) completions inserted this session: name →
+  // {url, source}. On send, any still present in the outgoing input is relayed
+  // to the ISOLATED world (input.js), which routes it through the same
+  // auto-add-on-send guards the overlay input uses — so a remote emote
+  // tab-completed in NATIVE twitch chat joins the viewer's set exactly like
+  // one completed in the overlay (parity: input.js trackCompletionForAutoAdd).
+  // Send-time presence check (not add-on-insert) so cycling PAST a remote
+  // emote, or completing then deleting it, never burns an inventory slot.
+  const _remoteCompletions = new Map()
+  const REMOTE_COMPLETION_CAP = 100
+  function trackRemoteCompletion(m) {
+    if (!m?.remote || !m.name || !m.url || m.source !== '7tv') return
+    _remoteCompletions.delete(m.name)
+    _remoteCompletions.set(m.name, { url: m.url, source: m.source })
+    while (_remoteCompletions.size > REMOTE_COMPLETION_CAP) {
+      _remoteCompletions.delete(_remoteCompletions.keys().next().value)
+    }
+  }
+  function flushRemoteCompletionsOnSend(inputEl) {
+    if (!_remoteCompletions.size || !inputEl) return
+    // Emotes live as void Slate nodes (img alt) in wysiwyg mode and as plain
+    // words in text mode — collect both before Twitch clears the input.
+    const present = new Set((inputEl.textContent || '').split(/\s+/))
+    for (const img of inputEl.querySelectorAll('img[alt]')) present.add(img.alt)
+    const used = []
+    for (const [name, rec] of _remoteCompletions) {
+      if (present.has(name)) used.push({ name, url: rec.url, source: rec.source })
+    }
+    if (!used.length) return
+    for (const u of used) _remoteCompletions.delete(u.name)
+    window.postMessage({ type: 'heatsync-remote-completion-used', emotes: used.slice(0, 20) }, location.origin)
+  }
 
   // Track preloaded emote names (Image() preloading disabled — ORB blocks in content scripts)
   const preloadedImages = new Map()
@@ -1747,6 +1781,8 @@
     // record unless a cycle wrapped back onto the emote it already credited
     if (!isCycling || _frecSessionBumped !== matchedEmote.name) recordRecentEmoteMru(matchedEmote.name)
     _frecSessionBumped = matchedEmote.name
+    // Remote 7TV catalog hit — register for auto-add-on-send (flushed on Enter)
+    trackRemoteCompletion(matchedEmote)
     lastInsertedEmote = matchedEmote.name
     insertionCount++
 
@@ -1770,6 +1806,17 @@
       'keydown',
       (e) => {
         // ONLY intercept Tab. NEVER touch Enter — let Twitch handle sending.
+        // Enter is passively OBSERVED (capture fires before Twitch clears the
+        // input) to flush remote-completion auto-add; the event is untouched.
+        if (e.key === 'Enter' && !e.shiftKey && _remoteCompletions.size) {
+          const enterInput = getInputElement()
+          if (enterInput && (enterInput.contains(e.target) || e.target === enterInput)) {
+            try {
+              flushRemoteCompletionsOnSend(enterInput)
+            } catch (_) {}
+          }
+          return
+        }
         if (e.key !== 'Tab') return
         log('🔑 TAB PRESSED! target:', e.target?.tagName, e.target?.className)
 

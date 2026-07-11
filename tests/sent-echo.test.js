@@ -15,10 +15,9 @@ import { join } from 'path'
  * out of the source and evaluated standalone (same rationale as
  * mod-dedup.test.js / tab-complete-order.test.js).
  */
-function loadIsSentEcho() {
-  const src = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'input.js'), 'utf8')
-  const start = src.indexOf('function isSentEcho')
-  if (start < 0) throw new Error('isSentEcho not found in input.js')
+function carve(src, name) {
+  const start = src.indexOf(`function ${name}`)
+  if (start < 0) throw new Error(`${name} not found in input.js`)
   let i = src.indexOf('{', start)
   let depth = 0
   let end = -1
@@ -32,7 +31,13 @@ function loadIsSentEcho() {
       }
     }
   }
-  const body = src.slice(start, end)
+  return src.slice(start, end)
+}
+
+function loadIsSentEcho() {
+  const src = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'input.js'), 'utf8')
+  // isSentEcho calls _echoTextMatches (reply-prefix tolerance) — carve both.
+  const body = `${carve(src, '_echoTextMatches')}\n${carve(src, 'isSentEcho')}`
   // Bind the module-scoped state the function closes over.
   return (entries) =>
     new Function('_recentSentMessages', 'SENT_DEDUP_WINDOW', `${body}; return isSentEcho`)(entries, 10000)
@@ -76,6 +81,23 @@ test('dual-send twice: exactly two copies render out of four echoes', () => {
   const isSentEcho = makeIsSentEcho(entries)
   const results = ['twitch', 'kick', 'twitch', 'kick'].map((p) => isSentEcho('gg', p))
   expect(results.filter((suppressed) => !suppressed).length).toBe(2)
+})
+
+test('REGRESSION: reply dual-send — twitch echo carries "@login " prefix, still dedups', () => {
+  // Typed "theres no way lol" as a reply, dual-send twitch+yt. Twitch echoes
+  // "@coaoaba theres no way lol" (server-side prefix); yt echoes the raw text.
+  // Pre-fix the prefixed echo missed the entry → BOTH rows rendered.
+  const entries = [{ text: 'theres no way lol', time: now(), synthId: 'a', echoes: 2, reply: true }]
+  const isSentEcho = makeIsSentEcho(entries)
+  expect(isSentEcho('@coaoaba theres no way lol', 'twitch')).toBe(false) // first echo renders
+  expect(isSentEcho('theres no way lol', 'youtube')).toBe(true) // yt duplicate suppressed
+})
+
+test('non-reply entry never strips a stranger\'s "@you " prefix', () => {
+  const entries = [{ text: 'same text', time: now(), synthId: 'a', echoes: 1 }]
+  const isSentEcho = makeIsSentEcho(entries)
+  expect(isSentEcho('@mellen same text', 'twitch')).toBe(false) // stranger's reply renders
+  expect(entries[0].suppressed).toBeUndefined() // and never touched the entry
 })
 
 test('entries outside the 10s window are ignored', () => {

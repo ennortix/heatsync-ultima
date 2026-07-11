@@ -34389,8 +34389,25 @@ function _pruneRecent(arr) {
   return arr.filter((e) => e && e.time >= cutoff)
 }
 
-function trackSentMessage(text, hostOverride, synthId, echoes) {
-  _recentSentMessages.push({ text, time: Date.now(), host: hostOverride || hostPlatform, synthId, echoes: echoes || 1 })
+// Twitch prepends "@<login> " to reply echoes server-side, so a reply's echo
+// text never equals the typed text. Entries flagged reply:true also match the
+// echo with one leading @token stripped. Scoped to reply entries only — a
+// non-reply entry never strips, so a stranger's "@you <same text>" can't get
+// eaten unless YOUR send was itself a reply within the dedup window.
+function _echoTextMatches(entry, msgText) {
+  if (entry.text === msgText) return true
+  return !!entry.reply && msgText.replace(/^@\S+\s+/, '') === entry.text
+}
+
+function trackSentMessage(text, hostOverride, synthId, echoes, reply) {
+  _recentSentMessages.push({
+    text,
+    time: Date.now(),
+    host: hostOverride || hostPlatform,
+    synthId,
+    echoes: echoes || 1,
+    reply: !!reply,
+  })
   _recentSentMessages = _pruneRecent(_recentSentMessages)
   // Cross-tab sync: kick.com tab and twitch.tv tab live in different
   // content-script contexts, so they each have their own array. Storage
@@ -34471,7 +34488,7 @@ function isSentEcho(msgText, _msgPlatform) {
     // continue (not break): a cross-tab merge can briefly leave the array out
     // of time order, so one stale entry doesn't mean the rest are stale too.
     if (entry.time < cutoff) continue
-    if (entry.text !== msgText) continue
+    if (!_echoTextMatches(entry, msgText)) continue
     const seen = entry.suppressed || 0
     // Exhausted: this send already accounted for one echo per target platform;
     // let a later same-text send claim this echo instead.
@@ -34505,7 +34522,7 @@ function peekSentHost(msgText) {
     // time order, so a stale entry early in the reverse scan must not abort the
     // search before a valid newer match (mirrors isSentEcho). Array is capped.
     if (entry.time < cutoff) continue
-    if (entry.text === msgText) return entry.host || null
+    if (_echoTextMatches(entry, msgText)) return entry.host || null
   }
   return null
 }
@@ -34655,7 +34672,7 @@ function findPendingByEchoText(text) {
   if (!text || !pendingSends.size) return null
   for (const [id, entry] of pendingSends) {
     if (entry.state !== 'pending') continue
-    if (entry.text === text) return id
+    if (_echoTextMatches({ text: entry.text, reply: !!entry.replyParentId }, text)) return id
   }
   const norm = (s) =>
     String(s)
@@ -34666,6 +34683,9 @@ function findPendingByEchoText(text) {
   for (const [id, entry] of pendingSends) {
     if (entry.state !== 'pending') continue
     if (norm(entry.text) === wantN) return id
+    // Reply echoes carry twitch's server-side "@login " prefix — match the
+    // normalized remainder too (mirrors _echoTextMatches, reply entries only).
+    if (entry.replyParentId && norm(text.replace(/^@\S+\s+/, '')) === norm(entry.text)) return id
   }
   if (MC_DEBUG)
     try {
@@ -40538,7 +40558,7 @@ async function sendMessage() {
               : sendToYoutube
                 ? 'yt'
                 : hostPlatform
-  trackSentMessage(restText, _echoHost, _synthId, _echoCount || 1)
+  trackSentMessage(restText, _echoHost, _synthId, _echoCount || 1, !!replyState?.msgId)
 
   // Push to message history (dedup consecutive, cap at max)
   if (mcMessageHistory[0] !== text) {

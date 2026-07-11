@@ -909,13 +909,20 @@ function _renderCategoryPane(cat) {
 // Export: dumps ui_settings (sync) + all hs_* keys (local) into a single
 // JSON. Import: file picker → JSON parse → schema-validate → merge into
 // storage. Both areas restored. Errors toast, don't throw.
+// Private stores that must NEVER ride an export (the preset panel calls
+// exports "sharable"): mention/chat buffers, per-user notes, whispers, crash
+// ring ("captured locally only"). Import skips the same set so a crafted file
+// can't overwrite them either.
+var _SETTINGS_PRIVATE_KEY_RE = /^hs_(mentions_v2|user_notes|errors|irc_|kick_|yt_|whisper)/
 async function _exportAllSettings() {
   try {
     var syncObj = await chrome.storage.sync.get(null)
     var localObj = await chrome.storage.local.get(null)
     var hsLocal = {}
     Object.keys(localObj).forEach((k) => {
-      if (k.indexOf('hs_') === 0 || k.indexOf('viewer_') === 0) hsLocal[k] = localObj[k]
+      if (k.indexOf('hs_') !== 0 && k.indexOf('viewer_') !== 0) return
+      if (_SETTINGS_PRIVATE_KEY_RE.test(k)) return
+      hsLocal[k] = localObj[k]
     })
     var bundle = {
       kind: 'heatsync-settings',
@@ -980,6 +987,7 @@ async function _importAllSettings() {
           Object.keys(data.local).forEach((k) => {
             if (k.length < 1 || k.length > 128) return
             if (k.indexOf('hs_') !== 0 && k.indexOf('viewer_') !== 0) return
+            if (_SETTINGS_PRIVATE_KEY_RE.test(k)) return
             safeLocal[k] = data.local[k]
           })
           if (Object.keys(safeLocal).length) writes.push(chrome.storage.local.set(safeLocal))

@@ -3473,11 +3473,13 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
         const hasProtocol = /^https?:\/\//i.test(word)
         const fullUrl = hasProtocol ? word : `https://${word}`
         if (/^https?:\/\//i.test(fullUrl)) {
-          result.push(
-            `<a href="${escapeHtml(fullUrl)}" target="_blank" rel="noopener noreferrer" class="hs-mc-link">${escapeHtml(word)}</a>`,
-          )
+          // word arrives PRE-ESCAPED (every caller runs escapeHtml first — see
+          // the raw push in the else branch below). Escaping again turned a
+          // url's &amp; into &amp;amp;: corrupted href params + visible &amp;
+          // in the link text. Entities inside an href attr decode correctly.
+          result.push(`<a href="${fullUrl}" target="_blank" rel="noopener noreferrer" class="hs-mc-link">${word}</a>`)
         } else {
-          result.push(escapeHtml(word))
+          result.push(word)
         }
       } else {
         result.push(word)

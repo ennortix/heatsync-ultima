@@ -299,6 +299,16 @@ function clearHsPaintSheet() {
   hsPaintInjectedHashes.clear()
 }
 
+// Toggle-on recovery: rebuild the sheet from every cached spec. clearHsPaintSheet
+// dropped the rules but kept the cache (and rows still carry the hsp-<hash> class
+// via getHsPaintClass), so without re-injecting, painted names render UNSTYLED
+// after off->on until a fresh fetch — which never comes for already-cached uids.
+function reinjectHsPaintSheet() {
+  for (const entry of hsPaintCache.values()) {
+    if (entry?.spec && entry.hash) ensureHsPaintRule(entry.spec, entry.hash)
+  }
+}
+
 // ── public cache API ─────────────────────────────────────────────────────────
 
 /** @returns {string} the `hsp-<hash>` class to add to the element, or '' if none. */
@@ -487,6 +497,7 @@ export {
   partitionPaintBatch,
   queueNameColorLookup,
   queuePaintLookup,
+  reinjectHsPaintSheet,
   setHsColorEntry,
   setHsPaintEntry,
   splitHsLettersHtml,

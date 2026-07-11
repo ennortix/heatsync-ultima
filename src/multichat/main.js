@@ -1849,6 +1849,9 @@
       // hsp-* class to any element). Cache entries are kept; a later toggle-on
       // recompiles fresh from the same spec.
       if (!v) clearHsPaintSheet()
+      // toggle ON: cached specs kept their hsp-<hash> class on rows but the
+      // sheet was dropped — re-inject so painted names aren't left unstyled.
+      else if (typeof reinjectHsPaintSheet === 'function') reinjectHsPaintSheet()
     },
     viMode: (v) => {
       // mirror to localStorage + notify MAIN-world vi-mode.js
@@ -11027,7 +11030,7 @@
         }
         if (changed) {
           restoreMcUnmutedDom(bare || u)
-          renderMessages(currentTab)
+          renderMessages(currentTab, { bypassScrollPause: true })
         }
       }
       // Server cleared the entire mute list (e.g. user clicked "clear all" on heatsync.org)
@@ -11038,7 +11041,7 @@
           restoreMcUnmutedDom(bare)
         }
         mutedUsers.clear()
-        renderMessages(currentTab)
+        renderMessages(currentTab, { bypassScrollPause: true })
       }
       // Cross-surface block sync (content.js, other tabs). Full re-render so blocked
       // users drop out / reappear (buildMessageDiv filters them).
@@ -11046,7 +11049,7 @@
         const u = msg.username?.toLowerCase()
         if (u && !blockedUsers.has(u)) {
           blockedUsers.add(u)
-          renderMessages(currentTab)
+          renderMessages(currentTab, { bypassScrollPause: true })
         }
       }
       if (msg.type === 'user_unblocked') {
@@ -11054,7 +11057,7 @@
         const u = msg.username?.toLowerCase()
         const bare = u && u.includes(':') ? u.split(':')[1] : null
         const had = (u && blockedUsers.delete(u)) | (bare && blockedUsers.delete(bare))
-        if (had) renderMessages(currentTab)
+        if (had) renderMessages(currentTab, { bypassScrollPause: true })
       }
 
       // A different user added an emote to their set. Drop the freshness
@@ -12714,12 +12717,12 @@
           eventClass = 'event-offline'
         } else if (msg.eventType === 'stream:redeem') {
           if (!hermesToggles?.redeem) return
-          text = `\u25C6 redeemed "${escapeHtml(msg.title)}"`
+          text = `\u25C6 redeemed "${String(msg.title ?? '')}"`
           if (msg.cost) text += ` (${msg.cost})`
           eventClass = 'event-redeem'
         } else if (msg.eventType === 'stream:raid') {
           if (!hermesToggles?.raid) return
-          text = `[${channel}] \u25C6 raided ${escapeHtml(msg.target)} with ${msg.viewers || 0} viewers`
+          text = `[${channel}] \u25C6 raided ${String(msg.target ?? '')} with ${msg.viewers || 0} viewers`
           eventClass = 'event-raid'
         } else if (msg.eventType === 'stream:hype-start') {
           if (!hermesToggles?.hype) return
@@ -12731,7 +12734,7 @@
           eventClass = 'event-hype'
         } else if (msg.eventType === 'stream:sub-gift') {
           if (!hermesToggles?.sub) return
-          text = `[${channel}] \u25C6 ${escapeHtml(msg.user)} gifted ${msg.count || 0} subs`
+          text = `[${channel}] \u25C6 ${String(msg.user ?? '')} gifted ${msg.count || 0} subs`
           eventClass = 'event-sub'
         }
         if (!text) return
@@ -12851,25 +12854,25 @@
         if (eventType === 'raid') {
           toggleKey = 'raid'
           eventClass = 'event-raid'
-          text = `[${escapeHtml(channel)}] \u25C6 raided ${escapeHtml(data.target)} with ${Number(data.viewers) || 0} viewers`
+          text = `[${channel}] \u25C6 raided ${String(data.target ?? '')} with ${Number(data.viewers) || 0} viewers`
         } else if (eventType === 'hype-train-start') {
           toggleKey = 'hype'
           eventClass = 'event-hype'
-          text = `[${escapeHtml(channel)}] \u25C6 hype train started`
+          text = `[${channel}] \u25C6 hype train started`
           if (typeof onHypeTrainStart === 'function') onHypeTrainStart(data.level)
         } else if (eventType === 'hype-train-end') {
           toggleKey = 'hype'
           eventClass = 'event-hype'
-          text = `[${escapeHtml(channel)}] \u25C6 hype train ended at level ${Number(data.level) || 0}`
+          text = `[${channel}] \u25C6 hype train ended at level ${Number(data.level) || 0}`
           if (typeof onHypeTrainEnd === 'function') onHypeTrainEnd()
         } else if (eventType === 'sub-gift') {
           toggleKey = 'sub'
           eventClass = 'event-sub'
-          text = `[${escapeHtml(channel)}] \u25C6 ${t('mc_irc_gift_subs', [escapeHtml(data.user), String(Number(data.count) || 0), escapeHtml(channel)])}`
+          text = `[${channel}] \u25C6 ${t('mc_irc_gift_subs', [String(data.user ?? ''), String(Number(data.count) || 0), channel])}`
         } else if (eventType === 'redeem') {
           toggleKey = 'redeem'
           eventClass = 'event-redeem'
-          text = `\u25C6 redeemed "${escapeHtml(data.title)}"`
+          text = `\u25C6 redeemed "${String(data.title ?? '')}"`
           if (data.rewardId) {
             redeemTitleMap.set(data.rewardId, { title: data.title, cost: data.cost })
             if (redeemTitleMap.size > 200) redeemTitleMap.delete(redeemTitleMap.keys().next().value)
@@ -12877,13 +12880,13 @@
         } else if (eventType === 'prediction-start') {
           toggleKey = 'pred'
           eventClass = 'event-pred'
-          const title = data?.title ? ' — ' + escapeHtml(data.title) : ''
-          text = `[${escapeHtml(channel)}] ◆ new prediction up${title}`
+          const title = data?.title ? ' — ' + String(data.title) : ''
+          text = `[${channel}] ◆ new prediction up${title}`
         } else if (eventType === 'poll-start') {
           toggleKey = 'poll'
           eventClass = 'event-poll'
-          const title = data?.title ? ' — ' + escapeHtml(data.title) : ''
-          text = `[${escapeHtml(channel)}] ◆ new poll up${title}`
+          const title = data?.title ? ' — ' + String(data.title) : ''
+          text = `[${channel}] ◆ new poll up${title}`
         } else return
 
         if (!hermesToggles[toggleKey]) return

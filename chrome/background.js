@@ -8381,7 +8381,13 @@ async function handleMessage(message, sender, sendResponse) {
             }),
         ),
       ]
+      // Sentinel so an errored fetch (null from .catch) is distinguishable from
+      // an authoritative empty ({} / 404). Poisoning the cache with an empty
+      // set on a transient failure made a sender's emotes render as raw text
+      // (even the 90s negative TTL is a lie for a network blip) after recovery.
+      const SENDER_FETCH_ERR = (globalThis.__senderFetchErr ??= Symbol('sender-fetch-err'))
       let hsBatch = {}
+      let _hsBatchErrored = false
       if (_missKeys.length) {
         // Send platform-prefixed keys (e.g. twitch:12345, kick:username) so the server
         // can resolve all platforms. Response is keyed by the same prefixed strings.
@@ -8390,8 +8396,11 @@ async function handleMessage(message, sender, sendResponse) {
           { credentials: 'omit', noBackoff: true },
         )
           .then((r) => (r.ok ? r.json() : null))
-          .catch(() => null)
-        hsBatch = hb?.sets || {}
+          .catch(() => SENDER_FETCH_ERR)
+        // Distinguish a transient failure (network/timeout → don't poison the
+        // cache with an empty set) from a legit empty response.
+        hsBatch = hb === SENDER_FETCH_ERR ? {} : hb?.sets || {}
+        if (hb === SENDER_FETCH_ERR) _hsBatchErrored = true
       }
       await Promise.all(
         senderKeys.map(async (key) => {
@@ -8427,7 +8436,7 @@ async function handleMessage(message, sender, sendResponse) {
           if (!stvP) {
             stvP = fetchWithTimeout(`https://7tv.io/v3/users/${sevenTvPath}`)
               .then((r) => (r.ok ? r.json() : null))
-              .catch(() => null)
+              .catch(() => SENDER_FETCH_ERR)
             stv7tvInflight.set(sevenTvPath, stvP)
             stvP.finally(() => stv7tvInflight.delete(sevenTvPath))
           }
@@ -8438,7 +8447,7 @@ async function handleMessage(message, sender, sendResponse) {
             if (!bttvP) {
               bttvP = fetchWithTimeout(`https://api.betterttv.net/3/cached/users/twitch/${id}`)
                 .then((r) => (r.ok ? r.json() : null))
-                .catch(() => null)
+                .catch(() => SENDER_FETCH_ERR)
               bttvInflight.set(id, bttvP)
               bttvP.finally(() => bttvInflight.delete(id))
             }
@@ -8459,7 +8468,11 @@ async function handleMessage(message, sender, sendResponse) {
           // HeatSync set comes from the single batched fetch above (hsBatch), keyed by
           // platform-prefixed key (e.g. twitch:12345, kick:username).
           const hs = { emotes: hsBatch[key] || [] }
-          const [stv, bttv] = await Promise.all([stvP, bttvP])
+          const [stvRaw, bttvRaw] = await Promise.all([stvP, bttvP])
+          const stvErrored = stvRaw === SENDER_FETCH_ERR
+          const bttvErrored = bttvRaw === SENDER_FETCH_ERR
+          const stv = stvErrored ? null : stvRaw
+          const bttv = bttvErrored ? null : bttvRaw
           // 7TV active channel set (a useful proxy; TRUE personal sets merge below)
           const stvEmotes = stv?.emote_set?.emotes || []
           for (const e of stvEmotes) {
@@ -8531,11 +8544,20 @@ async function handleMessage(message, sender, sendResponse) {
               nsfw: !!e.nsfw, // v1.6 — cyan dashed border in chat + picker
             }
           }
-          cache.set(key, { emotes: collected, ts: Date.now() })
-          // LRU evict: keep most-recent 500. Each entry holds a sender's full
-          // 7TV+BTTV personal set (potentially 100+ emote objects) — 5000 was
-          // overkill for any realistic chatroom and bloated the SW heap.
-          if (cache.size > 500) cache.delete(cache.keys().next().value)
+          // Only cache when the result is trustworthy: a transient fetch error
+          // must NOT be cached — even the 90s negative TTL wrongly blanks this
+          // sender after the network recovers. A partial result (one provider
+          // errored, another delivered) is also not cached — next flush retries
+          // the failed leg. Error-free results (empty or not) cache normally;
+          // cacheFresh picks the 5min/90s TTL by emptiness.
+          const anyErrored = stvErrored || bttvErrored || _hsBatchErrored
+          if (!anyErrored) {
+            cache.set(key, { emotes: collected, ts: Date.now() })
+            // LRU evict: keep most-recent 500. Each entry holds a sender's full
+            // 7TV+BTTV personal set (potentially 100+ emote objects) — 5000 was
+            // overkill for any realistic chatroom and bloated the SW heap.
+            if (cache.size > 500) cache.delete(cache.keys().next().value)
+          }
           result[key] = collected
         }),
       )

@@ -2128,7 +2128,10 @@ async function _toggleMcMute(username, platform) {
     // restoreMcUnmutedDom matches by bare DOM text — use bare aliases here.
     for (const a of aliases) restoreMcUnmutedDom(a)
   }
-  renderMessages(currentTab)
+  // bypassScrollPause: a mute applied while scrolled up must still strip the
+  // rows now — renderMessages otherwise no-ops (scroll-pause) and the muted
+  // user stays visible under a "muted" toast until the reader hits bottom.
+  renderMessages(currentTab, { bypassScrollPause: true })
 }
 
 async function _toggleMcBlock(username, platform) {
@@ -2156,7 +2159,9 @@ async function _toggleMcBlock(username, platform) {
     for (const k of aliasKeys) safeSendMessage({ type: 'block_user', username: k })
   }
   // buildMessageDiv filters blocked users, so a full re-render hides/restores them.
-  renderMessages(currentTab)
+  // bypassScrollPause so a block applied while scrolled up takes effect now
+  // instead of silently waiting until the reader returns to the bottom.
+  renderMessages(currentTab, { bypassScrollPause: true })
 }
 
 // Build the plain-text dump of a chat reply chain (ancestors + this + descendants)
@@ -5585,6 +5590,12 @@ async function handleSlashCommand(text, input) {
     return true
   }
 
+  // Every namespace form of a bare name — right-click/profile mutes store
+  // platform-scoped keys (twitch:alice), but slash commands have no platform,
+  // so match/clear across all of them plus any profile-linked alias keys.
+  const _muteKeyForms = (bare, aliasKeys) =>
+    Array.from(new Set([bare, `twitch:${bare}`, `kick:${bare}`, `youtube:${bare}`, ...(aliasKeys || [])]))
+
   if (cmd === 'mute') {
     const u = rest.trim().replace(/^@/, '').toLowerCase()
     if (!u) {
@@ -5596,7 +5607,7 @@ async function handleSlashCommand(text, input) {
     // as right-click mute (_toggleMcMute); null platform → userKey returns bare
     // key, so /mute stays global (correct: no platform context from bare name).
     const aliasKeys = typeof expandUserAliasKeys === 'function' ? await expandUserAliasKeys(u, null) : [u]
-    const already = typeof isUserMuted === 'function' ? isUserMuted(u, null) : mutedUsers.has(u)
+    const already = _muteKeyForms(u, aliasKeys).some((k) => mutedUsers.has(k))
     if (already) {
       showToast(`${u} already muted`)
       return true
@@ -5620,12 +5631,13 @@ async function handleSlashCommand(text, input) {
     // Same async fan-out as /mute and right-click mute — covers server-linked
     // accounts, not just sync-local links.
     const aliasKeys = typeof expandUserAliasKeys === 'function' ? await expandUserAliasKeys(u, null) : [u]
-    const wasMuted = typeof isUserMuted === 'function' ? isUserMuted(u, null) : mutedUsers.has(u)
+    const forms = _muteKeyForms(u, aliasKeys)
+    const wasMuted = forms.some((k) => mutedUsers.has(k))
     if (!wasMuted) {
       showToast(`${u} not muted`)
       return true
     }
-    for (const k of aliasKeys) mutedUsers.delete(k)
+    for (const k of forms) mutedUsers.delete(k)
     persistMcMuted()
     for (const k of aliasKeys) safeSendMessage({ type: 'unmute_user', username: k })
     showToast(`unmuted ${u}`, 'success')

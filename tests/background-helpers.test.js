@@ -350,3 +350,122 @@ describe('bgIrcRecordToExt — reply-parent-user-id threading (server EventSub-r
     expect(ext.replyTo).toBeNull()
   })
 })
+
+// ── fetchFFZChannelEmotes — yt-identity skip + room-404 negative cache ───────
+//
+// Extracted with its two sibling consts + the negative-cache Map so each test
+// gets a FRESH cache instance. Dependencies (fetchWithTimeout,
+// ytChannelIdCache, sanitizeEmoteList, log) are injected as Function params —
+// the real ones are SW-global; stubbing them per-instance keeps the tests
+// hermetic and lets us count outbound fetches.
+const ffzSrc = sliceBetween('// Negative cache for FFZ room 404s', '// Cache Twitch user IDs')
+
+function makeFfzHarness({ responses = [] } = {}) {
+  const calls = []
+  const queue = [...responses]
+  const fetchWithTimeout = async (url) => {
+    calls.push(url)
+    const next = queue.length > 1 ? queue.shift() : queue[0]
+    if (!next) throw new Error('ffz test harness: no stub response left')
+    return next
+  }
+  const ytChannelIdCache = new Map()
+  const harness = new Function(
+    'fetchWithTimeout',
+    'ytChannelIdCache',
+    'sanitizeEmoteList',
+    'log',
+    `${ffzSrc}\nreturn { fetchFFZChannelEmotes, ffzRoom404At, FFZ_ROOM_404_TTL }`,
+  )(fetchWithTimeout, ytChannelIdCache, (l) => l, () => {})
+  return { ...harness, calls, ytChannelIdCache }
+}
+
+const ffz404 = () => ({ status: 404, ok: false, body: { cancel() {} } })
+const ffz500 = () => ({ status: 500, ok: false, body: { cancel() {} } })
+const ffzOk = (sets) => ({ status: 200, ok: true, body: { cancel() {} }, json: async () => ({ sets }) })
+
+describe('fetchFFZChannelEmotes — YouTube identities never hit the FFZ room API', () => {
+  test('UC… channel id is skipped without a fetch', async () => {
+    const h = makeFfzHarness()
+    expect(await h.fetchFFZChannelEmotes('UCq-Fj5jknLsUf-MWSy4_brA')).toEqual([])
+    expect(h.calls.length).toBe(0)
+  })
+  test('@handle is skipped without a fetch', async () => {
+    const h = makeFfzHarness()
+    expect(await h.fetchFFZChannelEmotes('@mr.beast')).toEqual([])
+    expect(h.calls.length).toBe(0)
+  })
+  test('hyphenated 11-char videoId is skipped without a fetch', async () => {
+    const h = makeFfzHarness()
+    expect(await h.fetchFFZChannelEmotes('dQw4-9WgXcQ')).toEqual([])
+    expect(h.calls.length).toBe(0)
+  })
+  test('login-shaped videoId already resolved as YouTube is skipped via ytChannelIdCache', async () => {
+    const h = makeFfzHarness()
+    h.ytChannelIdCache.set('iobf5g_hwhm', 'UCsomething12345678901234')
+    expect(await h.fetchFFZChannelEmotes('iobf5g_hwhm')).toEqual([])
+    expect(h.calls.length).toBe(0)
+  })
+  test('11-char twitch login (kripparrian shape) still fetches — NOT shape-blocked', async () => {
+    const h = makeFfzHarness({ responses: [ffz404()] })
+    await h.fetchFFZChannelEmotes('kripparrian')
+    expect(h.calls.length).toBe(1)
+    expect(h.calls[0]).toContain('/v1/room/kripparrian')
+  })
+})
+
+describe('fetchFFZChannelEmotes — room 404 negative cache', () => {
+  test('404 is fetched once, then served from the negative cache', async () => {
+    const h = makeFfzHarness({ responses: [ffz404()] })
+    expect(await h.fetchFFZChannelEmotes('deadroom')).toEqual([])
+    expect(await h.fetchFFZChannelEmotes('deadroom')).toEqual([])
+    expect(await h.fetchFFZChannelEmotes('deadroom')).toEqual([])
+    expect(h.calls.length).toBe(1)
+  })
+  test('negative cache entry expires after FFZ_ROOM_404_TTL', async () => {
+    const h = makeFfzHarness({ responses: [ffz404()] })
+    await h.fetchFFZChannelEmotes('deadroom')
+    h.ffzRoom404At.set('deadroom', Date.now() - h.FFZ_ROOM_404_TTL - 1)
+    await h.fetchFFZChannelEmotes('deadroom')
+    expect(h.calls.length).toBe(2)
+  })
+  test('a later 200 clears the expired negative entry', async () => {
+    const h = makeFfzHarness({ responses: [ffz404(), ffzOk({})] })
+    await h.fetchFFZChannelEmotes('newroom')
+    h.ffzRoom404At.set('newroom', Date.now() - h.FFZ_ROOM_404_TTL - 1)
+    await h.fetchFFZChannelEmotes('newroom')
+    expect(h.ffzRoom404At.has('newroom')).toBe(false)
+  })
+  test('transient 5xx returns null and is NOT negative-cached', async () => {
+    const h = makeFfzHarness({ responses: [ffz500()] })
+    expect(await h.fetchFFZChannelEmotes('flakyroom')).toBeNull()
+    expect(h.ffzRoom404At.has('flakyroom')).toBe(false)
+    await h.fetchFFZChannelEmotes('flakyroom')
+    expect(h.calls.length).toBe(2)
+  })
+  test('mixed-case login is normalized — one cache entry, one fetch', async () => {
+    const h = makeFfzHarness({ responses: [ffz404()] })
+    await h.fetchFFZChannelEmotes('DeadRoom')
+    await h.fetchFFZChannelEmotes('deadroom')
+    expect(h.calls.length).toBe(1)
+    expect(h.calls[0]).toContain('/v1/room/deadroom')
+  })
+})
+
+describe('fetchFFZChannelEmotes — success path still parses sets', () => {
+  test('emoticons map to name/url/source/hash, modifiers skipped', async () => {
+    const sets = {
+      1: {
+        emoticons: [
+          { id: 7, name: 'ffzCool', urls: { 1: '//cdn.frankerfacez.com/emote/7/1' } },
+          { id: 8, name: 'ffzW', modifier: true, urls: { 1: '//cdn.frankerfacez.com/emote/8/1' } },
+        ],
+      },
+    }
+    const h = makeFfzHarness({ responses: [ffzOk(sets)] })
+    const out = await h.fetchFFZChannelEmotes('goodroom')
+    expect(out).toEqual([
+      { name: 'ffzCool', url: 'https://cdn.frankerfacez.com/emote/7/1', source: 'ffz', hash: 'ffz-7' },
+    ])
+  })
+})

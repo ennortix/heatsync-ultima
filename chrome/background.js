@@ -2235,10 +2235,11 @@ async function fetchFFZChannelEmotes(channelName) {
   const roomKey = String(channelName || '').toLowerCase()
   // FFZ rooms are TWITCH rooms only. YouTube identities — UC… channel ids,
   // @handles, hyphenated 11-char videoIds — contain chars a Twitch login
-  // ([a-z0-9_], ≤25) never can, and lowercase videoIds that DO look like
-  // logins are caught by ytChannelIdCache (populated the moment the yt flow
-  // resolves them). Both guarantee a 404 per visit — skip the fetch outright.
-  if (!/^[a-z0-9_]{1,25}$/.test(roomKey) || ytChannelIdCache.has(roomKey)) return []
+  // ([a-z0-9_], ≤25) never can. Do NOT also gate on ytChannelIdCache: linked
+  // twitch channels resolve their yt id under the SAME bare-login key, so
+  // that check silently killed FFZ for every twitch channel with a linked
+  // youtube. A rare login-shaped videoId just 404s into ffzRoom404At.
+  if (!/^[a-z0-9_]{1,25}$/.test(roomKey)) return []
   const negAt = ffzRoom404At.get(roomKey)
   if (negAt && Date.now() - negAt < FFZ_ROOM_404_TTL) return []
   try {
@@ -6391,7 +6392,17 @@ function pingYtBridge(tabId) {
 // Ensure a sendable live_chat tab exists for videoId; resolve when its chat
 // input is present AND enabled. Returns { tabId } on ready, { tabId, error } when
 // present-but-not-sendable (e.g. logged-out → 'chat_disabled'), or { error }.
-async function ensureYoutubeBridgeTab(videoId) {
+// Inflight-deduped: concurrent sends for one videoId must share one creation —
+// racing tabs.create calls each opened a pinned tab and orphaned the loser.
+const _ytBridgeInflight = new Map() // videoId → Promise
+function ensureYoutubeBridgeTab(videoId) {
+  const inflight = _ytBridgeInflight.get(videoId)
+  if (inflight) return inflight
+  const p = _ensureYoutubeBridgeTab(videoId).finally(() => _ytBridgeInflight.delete(videoId))
+  _ytBridgeInflight.set(videoId, p)
+  return p
+}
+async function _ensureYoutubeBridgeTab(videoId) {
   if (!/^[a-zA-Z0-9_-]{11}$/.test(videoId || '')) return { error: 'no_video' }
   let tabId = ytBridgeTabs.get(videoId)
   if (tabId != null) {
@@ -7920,7 +7931,7 @@ async function handleMessage(message, sender, sendResponse) {
           }
         }
 
-        const result = await browser.tabs.sendMessage(targetTabId, {
+        const relayPayload = {
           type: 'youtube_send_relay',
           text,
           // awaitConfirm makes the relay run the 2.5s observer race in
@@ -7928,7 +7939,25 @@ async function handleMessage(message, sender, sendResponse) {
           // accepted the send (rate-limit / slow-mode / disabled button
           // would otherwise return ok:true after the click animation).
           awaitConfirm: true,
-        })
+        }
+        let result = null
+        try {
+          result = await browser.tabs.sendMessage(targetTabId, relayPayload)
+        } catch (relayErr) {
+          // A URL-matched watch tab can have NO live_chat frame — the overlay
+          // collapses native chat, which unloads the iframe youtube-content.js
+          // lives in, so there is no receiver. With a concrete videoId, fall
+          // back to a bridge tab instead of failing the send.
+          const canBridge =
+            videoId && /^[a-zA-Z0-9_-]{11}$/.test(videoId) && targetTabId !== ytBridgeTabs.get(videoId)
+          if (!canBridge) throw relayErr
+          const bridge = await ensureYoutubeBridgeTab(videoId)
+          if (!bridge.tabId || bridge.error) {
+            sendResponse({ ok: false, error: bridge.error || relayErr.message })
+            return
+          }
+          result = await browser.tabs.sendMessage(bridge.tabId, relayPayload)
+        }
         sendResponse(result || { ok: false, error: 'no response from tab' })
       } catch (e) {
         log('youtube_send_message error:', e.message)
@@ -8398,6 +8427,9 @@ async function handleMessage(message, sender, sendResponse) {
     const senderKeys = (message.senderKeys || []).slice(0, 30)
     ;(async () => {
       const result = {}
+      // Keys whose providers errored this round — clients must NOT replace
+      // their cached set with this partial/empty result (raw-text regression)
+      const erroredKeys = []
       // Cache hits inside this background instance (cross-tab dedupe). 6h TTL.
       // Per-name perma is enforced on the content side via mergeSenderEmotes.
       if (!globalThis.__senderEmoteCache) globalThis.__senderEmoteCache = new Map()
@@ -8632,11 +8664,13 @@ async function handleMessage(message, sender, sendResponse) {
             // 7TV+BTTV personal set (potentially 100+ emote objects) — 5000 was
             // overkill for any realistic chatroom and bloated the SW heap.
             if (cache.size > 500) cache.delete(cache.keys().next().value)
+          } else {
+            erroredKeys.push(key)
           }
           result[key] = collected
         }),
       )
-      sendResponse({ emotes: result })
+      sendResponse({ emotes: result, errored: erroredKeys })
     })()
     return true
   } else if (message.type === 'get_bulk_badges') {
@@ -9304,6 +9338,9 @@ function bgIrcSanitizeColor(c) {
 
 function bgIrcParseEmotesTag(emotesTag, text) {
   if (!emotesTag) return null
+  // Twitch positions count code points; slice counts UTF-16 units. Parity
+  // copy of src/multichat/irc.js parseTwitchEmotesTag — keep in sync.
+  const cps = /[\uD800-\uDFFF]/.test(text) ? Array.from(text) : null
   const out = {}
   for (const part of emotesTag.split('/')) {
     const [emoteId, posStr] = part.split(':')
@@ -9311,7 +9348,7 @@ function bgIrcParseEmotesTag(emotesTag, text) {
     const firstPos = posStr.split(',')[0]
     const [start, end] = firstPos.split('-').map(Number)
     if (isNaN(start) || isNaN(end)) continue
-    const name = text.slice(start, end + 1)
+    const name = cps ? cps.slice(start, end + 1).join('') : text.slice(start, end + 1)
     if (name && !out[name]) {
       out[name] = `https://static-cdn.jtvnw.net/emoticons/v2/${emoteId}/default/dark/2.0`
     }

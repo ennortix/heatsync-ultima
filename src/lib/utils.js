@@ -24,6 +24,23 @@ function escapeHtml(str) {
 }
 
 /**
+ * Exact inverse of escapeHtml — recover the raw string from a token that was
+ * escaped for innerHTML. Only the five entities escapeHtml produces; &amp;
+ * last so double-escaped input isn't over-collapsed.
+ * @param {string} str - Output of escapeHtml
+ * @returns {string} Raw string
+ */
+function unescapeHtml(str) {
+  if (str == null) return ''
+  return String(str)
+    .replace(/&#x27;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&gt;/g, '>')
+    .replace(/&lt;/g, '<')
+    .replace(/&amp;/g, '&')
+}
+
+/**
  * Validate URL — only http/https protocols allowed.
  * Returns the URL string if safe, empty string otherwise.
  * Use before assigning user/third-party data to img.src or a.href.
@@ -574,6 +591,7 @@ function resolveYtLiveLabel(channel, { isYtVideoPage, autoVideoId, resolvedName 
 const utils = {
   // XSS
   escapeHtml,
+  unescapeHtml,
   safeUrl,
   createElement,
 
@@ -640,6 +658,7 @@ export {
   debounce,
   error,
   escapeHtml,
+  unescapeHtml,
   estimateSettingSize,
   findComponent,
   getFiber,

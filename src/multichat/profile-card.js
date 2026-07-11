@@ -1222,9 +1222,14 @@ async function pcToggleMute(username) {
   const wasMuted = typeof isUserMuted === 'function' ? isUserMuted(username, platform) : mutedUsers.has(username)
   if (wasMuted) {
     for (const k of aliasKeys) mutedUsers.delete(k)
-    // Also clear any legacy bare entry so unmute always lands on pre-namespace storage.
-    mutedUsers.delete(username)
-    for (const k of aliasKeys) safeSendMessage({ type: 'unmute_user', username: k })
+    // Also clear legacy forms: bare (pre-namespace), yt: (pre-canonPlatform,
+    // still matched by enforcement), heatsync: — so unmute always lands.
+    const _bare = String(username || '')
+      .toLowerCase()
+      .replace(/^@/, '')
+    const _legacy = _bare ? [_bare, `yt:${_bare}`, `heatsync:${_bare}`] : []
+    for (const k of _legacy) mutedUsers.delete(k)
+    for (const k of [...aliasKeys, ..._legacy]) safeSendMessage({ type: 'unmute_user', username: k })
   } else {
     for (const k of aliasKeys) mutedUsers.add(k)
     const exp = Date.now() + 86400000

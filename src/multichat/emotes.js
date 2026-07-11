@@ -3179,10 +3179,13 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
       const finalUrl = useCachedUrl ? cached.url : kickUrl
       const provider = cached?.source || 'kick'
       const isOverlay = !!cached?.zeroWidth || (cached && zeroWidthFromAnyCache(emoteName))
-      const isBlocked = blockedEmoteNames.has(emoteName)
+      // emoteName is extracted from escaped text — check raw form against the
+      // raw-keyed blocked/inventory stores and escape from raw (no double).
+      const rawEmoteName = unescapeHtml(emoteName)
+      const isBlocked = blockedEmoteNames.has(emoteName) || blockedEmoteNames.has(rawEmoteName)
       let state = isBlocked ? 'blocked' : cached?.state || 'channel'
-      if (state === 'unadded' && inventoryEmotes.has(emoteName)) state = 'owned'
-      const safeName = escapeHtml(emoteName)
+      if (state === 'unadded' && (inventoryEmotes.has(emoteName) || inventoryEmotes.has(rawEmoteName))) state = 'owned'
+      const safeName = escapeHtml(rawEmoteName)
       const chatUrl = getChatResUrl(finalUrl)
       const safeUrlAttr = escapeHtml(chatUrl)
       const safeSrc = escapeHtml(staticEmoteSrc(chatUrl))
@@ -3306,18 +3309,22 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
       }
     }
     if (emote) {
-      const isBlocked = blockedEmoteNames.has(word)
+      // `word` is an already-escaped token (&lt;3 for <3). Blocked/inventory
+      // stores hold RAW names (picker/server side), so check the raw form too
+      // — and escape from raw so attrs aren't double-escaped (&amp;lt;3 alt).
+      const rawWord = unescapeHtml(word)
+      const isBlocked = blockedEmoteNames.has(word) || blockedEmoteNames.has(rawWord)
       let state = isBlocked ? 'blocked' : emote.state || 'global'
       // Upgrade 'unadded' → 'owned' when the viewer actually has this name
       // in their inventory. Visually identical under 2-state, but downstream
       // auto-add-on-send + cross-user rendering gates read dataset.state.
-      if (state === 'unadded' && inventoryEmotes.has(word)) state = 'owned'
+      if (state === 'unadded' && (inventoryEmotes.has(word) || inventoryEmotes.has(rawWord))) state = 'owned'
       const source = escapeHtml(emote.source || 'unknown')
       const rawChatUrl = getChatResUrl(emote.url)
       const imgSrc = escapeHtml(rawChatUrl)
       const staticSrc = escapeHtml(staticEmoteSrc(rawChatUrl))
       const safeHash = emote.hash ? escapeHtml(emote.hash) : ''
-      const displayName = escapeHtml(word)
+      const displayName = escapeHtml(rawWord)
       const ownerAttr = emote.ownerDisplay ? ` data-owner="${escapeHtml(emote.ownerDisplay)}"` : ''
       // Stale-emote ghost: an emote is stale only if THIS message's channel
       // removed it AND it isn't in the channel's current set. The live set is

@@ -405,11 +405,12 @@ describe('fetchFFZChannelEmotes — YouTube identities never hit the FFZ room AP
     expect(await h.fetchFFZChannelEmotes('dQw4-9WgXcQ')).toEqual([])
     expect(h.calls.length).toBe(0)
   })
-  test('login-shaped videoId already resolved as YouTube is skipped via ytChannelIdCache', async () => {
-    const h = makeFfzHarness()
-    h.ytChannelIdCache.set('iobf5g_hwhm', 'UCsomething12345678901234')
-    expect(await h.fetchFFZChannelEmotes('iobf5g_hwhm')).toEqual([])
-    expect(h.calls.length).toBe(0)
+  test('login-shaped key in ytChannelIdCache STILL fetches — linked twitch channels resolve their yt id under the bare login, and gating on the cache killed FFZ for every linked channel', async () => {
+    const h = makeFfzHarness({ responses: [ffz404()] })
+    h.ytChannelIdCache.set('ludwig', 'UCsomething12345678901234')
+    expect(await h.fetchFFZChannelEmotes('ludwig')).toEqual([])
+    expect(h.calls.length).toBe(1)
+    expect(h.calls[0]).toContain('/v1/room/ludwig')
   })
   test('11-char twitch login (kripparrian shape) still fetches — NOT shape-blocked', async () => {
     const h = makeFfzHarness({ responses: [ffz404()] })

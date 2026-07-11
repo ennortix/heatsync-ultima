@@ -2161,14 +2161,16 @@ async function _toggleMcMute(username, platform) {
   const wasUnmute = wasMuted
   if (wasMuted) {
     for (const k of aliasKeys) mutedUsers.delete(k)
-    // Also clear any legacy bare entry (pre-namespace storage) so unmute always lands
-    // even if the Set was populated before namespacing was introduced.
+    // Also clear legacy forms: bare (pre-namespace), yt: (pre-canonPlatform —
+    // enforcement matches it, so leaving it = unmute that doesn't unmute),
+    // and heatsync: (heatsync-platform rows) so unmute always lands.
     const bareLower = String(username == null ? '' : username)
       .toLowerCase()
       .replace(/^@/, '')
-    if (bareLower) mutedUsers.delete(bareLower)
+    const legacy = bareLower ? [bareLower, `yt:${bareLower}`, `heatsync:${bareLower}`] : []
+    for (const k of legacy) mutedUsers.delete(k)
     showToast(`unmuted ${username}`, 'success')
-    for (const k of aliasKeys) safeSendMessage({ type: 'unmute_user', username: k })
+    for (const k of [...aliasKeys, ...legacy]) safeSendMessage({ type: 'unmute_user', username: k })
   } else {
     for (const k of aliasKeys) mutedUsers.add(k)
     const otherAlias = aliases.slice(1).filter((a) => a !== primary)
@@ -2356,15 +2358,27 @@ function _prefillMcInput(text) {
   // without a refresh" (showInputBar early-returns on the session inputBarVisible
   // flag, only reset by a full reload). Mirror _mentionInMcInput.
   if (typeof showInputBar === 'function') showInputBar()
+  input.focus()
   if (input.tagName === 'INPUT' || input.tagName === 'TEXTAREA') {
     input.value = text
-    input.focus()
     try {
       input.setSelectionRange(text.length, text.length)
     } catch {}
+    input.dispatchEvent(new Event('input', { bubbles: true }))
   } else {
-    input.textContent = text
-    input.focus()
+    // mirror mcQuoteToInput: select-all + execCommand insertText replaces the
+    // content, fires the input event, and leaves the caret at the end —
+    // plain textContent assignment does none of that (caret stuck at 0, no
+    // event, so char count / undo miss the change)
+    const sel = window.getSelection()
+    const range = document.createRange()
+    range.selectNodeContents(input)
+    sel.removeAllRanges()
+    sel.addRange(range)
+    if (!document.execCommand('insertText', false, text)) {
+      input.textContent = text
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    }
   }
 }
 
@@ -2661,7 +2675,10 @@ function updateInputPlaceholder() {
     const channel = getCurrentChannel()
     placeholder = channel ? t('mc_input_send_channel', [channel]) : t('mc_input_send_message')
   } else if (currentTab === 'whispers') {
-    const lastUser = lastWhisperKey ? whisperUsers.get(lastWhisperKey) : null
+    // armed target names the placeholder and must not flip when an incoming
+    // whisper retargets lastWhisperKey out from under it
+    const targetKey = (typeof armedReplyKey !== 'undefined' && armedReplyKey) || lastWhisperKey
+    const lastUser = targetKey ? whisperUsers.get(targetKey) : null
     placeholder = lastUser ? `/r to reply to ${lastUser.displayName}` : t('mc_whisper_hint')
   } else if (currentTab === 'add') {
     placeholder = ''
@@ -4083,11 +4100,16 @@ function _isBlockedAnyPlat(name) {
     .toLowerCase()
     .replace(/^@/, '')
   if (!u || typeof blockedUsers === 'undefined' || !blockedUsers.size) return false
+  // yt: = legacy short form still matched by enforcement; heatsync: = blocks
+  // made from heatsync-platform rows. Missing either let a blocked user keep
+  // tab-completing.
   return (
     blockedUsers.has(u) ||
     blockedUsers.has(`twitch:${u}`) ||
     blockedUsers.has(`kick:${u}`) ||
-    blockedUsers.has(`youtube:${u}`)
+    blockedUsers.has(`youtube:${u}`) ||
+    blockedUsers.has(`yt:${u}`) ||
+    blockedUsers.has(`heatsync:${u}`)
   )
 }
 
@@ -5631,12 +5653,19 @@ async function handleSlashCommand(text, input) {
       showToast('usage: /r <message>')
       return true
     }
-    if (!lastWhisperKey) {
+    // armed (↩-clicked) target takes priority and survives incoming whispers
+    // retargeting lastWhisperKey; plain /r without arming falls back to it
+    const target = typeof armedReplyKey !== 'undefined' && armedReplyKey ? armedReplyKey : lastWhisperKey
+    if (!target) {
       showToast('no one to reply to', 'error')
       return true
     }
     if (currentTab !== 'whispers') switchTab('whispers')
-    await sendWhisperMessage(lastWhisperKey, rest.trim())
+    try {
+      await sendWhisperMessage(target, rest.trim())
+    } finally {
+      if (typeof armedReplyKey !== 'undefined' && armedReplyKey === target) armedReplyKey = null
+    }
     clearInput(input)
     return true
   }
@@ -5683,8 +5712,14 @@ async function handleSlashCommand(text, input) {
   // Every namespace form of a bare name — right-click/profile mutes store
   // platform-scoped keys (twitch:alice), but slash commands have no platform,
   // so match/clear across all of them plus any profile-linked alias keys.
+  // `yt:` is the legacy short form (canonPlatform now writes `youtube:` but
+  // old storage still carries it and enforcement matches it); `heatsync:`
+  // comes from muting on a heatsync-platform row. Both must be clearable or
+  // an unmute reports success while the entry keeps hiding the user.
   const _muteKeyForms = (bare, aliasKeys) =>
-    Array.from(new Set([bare, `twitch:${bare}`, `kick:${bare}`, `youtube:${bare}`, ...(aliasKeys || [])]))
+    Array.from(
+      new Set([bare, `twitch:${bare}`, `kick:${bare}`, `youtube:${bare}`, `yt:${bare}`, `heatsync:${bare}`, ...(aliasKeys || [])]),
+    )
 
   if (cmd === 'mute') {
     const u = rest.trim().replace(/^@/, '').toLowerCase()
@@ -6435,9 +6470,11 @@ async function sendMessage() {
       : Promise.resolve(null)
 
     // Best-effort YouTube — fire alongside Kick/Twitch so a triple-link
-    // channel (twitch+kick+youtube) actually mirrors to all three.
+    // channel (twitch+kick+youtube) actually mirrors to all three. Carry the
+    // tab's videoId like the other two yt legs — without it the BG falls back
+    // to "any youtube tab" and can post into an unrelated stream's chat.
     if (sendToYoutube) {
-      sendYoutubeMessage(restText)
+      sendYoutubeMessage(restText, ytVideoId)
         .then((result) => {
           if (result !== true && result !== 'no_youtube_tab') {
             showToast('youtube send failed', 'error')

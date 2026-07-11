@@ -9730,7 +9730,14 @@
     try {
       const resp = await safeSendMessage({ type: 'get_sender_emotes', senderKeys: batch })
       const emotes = resp?.emotes || {}
+      // BG-flagged errored keys: partial result — replacing would clobber a
+      // good cached set (raw-text regression). Keep current data + stamp.
+      const errored = new Set(resp?.errored || [])
       for (const key of batch) {
+        if (errored.has(key)) {
+          senderEmoteFetchedAt.set(key, Date.now())
+          continue
+        }
         const nameToData = emotes[key] || {}
         let inner = null
         for (const [name, data] of Object.entries(nameToData)) {

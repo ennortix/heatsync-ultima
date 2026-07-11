@@ -356,7 +356,9 @@
   // can only be a popout (never the watch-page's embedded chat iframe, which is
   // a child frame the bundle never touches). Treat it like the twitch/kick
   // popout: fill the window, single stream, native chat hidden, boot to 'live'.
-  const isYtPopout = hostPlatform === 'yt' && location.pathname.startsWith('/live_chat')
+  // NOT /live_chat_replay — that's yt's native VOD-chat popout; taking it over
+  // would hide the replay chat behind a live overlay with nothing to show.
+  const isYtPopout = hostPlatform === 'yt' && /^\/live_chat(?!_replay)/.test(location.pathname)
 
   // Whether the user has chosen to show native platform chat alongside HS.
   // Persisted via settings registry (key: nativeVisible). Default false = same
@@ -1279,12 +1281,20 @@
     safeSendMessage({ type: 'get_sender_emotes', senderKeys: batch })
       .then((resp) => {
         const emotes = resp?.emotes || {}
+        const errored = new Set(resp?.errored || [])
         const changedKeys = []
         // Stamp freshness for EVERY batch key (even empty ones) so we don't re-fetch
         // until the TTL elapses — without this, senders with no personal set re-queue
         // on every render and loop render→fetch→re-render on busy chats.
         const now = Date.now()
         for (const key of batch) {
+          // BG-flagged errored key: the fetch blipped, the value is partial —
+          // replacing would clobber a good cached set and re-render the
+          // sender's emotes as raw text. Keep what we have; stamp keeps pacing.
+          if (errored.has(key)) {
+            markSenderEmoteFetched(key, now)
+            continue
+          }
           // resp arrived — treat the value as authoritative and replace the cached
           // set entirely. Use replace (not merge) so names removed on the server
           // also disappear here; merge was the bleed: removed emotes lingered
@@ -2679,14 +2689,15 @@
       const tab = e.target.closest('.hs-mc-tab')
       if (!tab) return
       const tabId = tab.dataset.tab
-      // Right-click any tab clears all unread indicators (mentions, new, stream-event)
+      // Right-click any tab clears all unread indicators (mentions, new, stream-event, whispers)
       if (
         tab.classList.contains('has-mentions') ||
         tab.classList.contains('has-new') ||
-        tab.classList.contains('has-stream-event')
+        tab.classList.contains('has-stream-event') ||
+        tab.classList.contains('has-whispers')
       ) {
         e.preventDefault()
-        tab.classList.remove('has-mentions', 'has-new', 'has-stream-event')
+        tab.classList.remove('has-mentions', 'has-new', 'has-stream-event', 'has-whispers')
         // Sync server-backed seen state so the dot doesn't reappear and
         // every other client clears via WS broadcast.
         if (tabId === 'mentions') bumpSeen('mentions')
@@ -11357,6 +11368,40 @@
 
       if (area !== 'local') return
 
+      // Registry-driven rehydration for local-scope settings — same loop as
+      // the sync branch above. Without it every scope:'local' setting (mute
+      // keywords, emote size, notifications, …) was a dead toggle across
+      // tabs: the writing tab applied it, every other tab ignored the change.
+      {
+        let needsRender = false
+        for (const def of SETTINGS) {
+          if (def.scope !== 'local' || changes[def.key] === undefined) continue
+          const v = coerceSettingValue(def, changes[def.key].newValue)
+          if (v === undefined || !validateSettingValue(def, v)) continue
+          const changed = JSON.stringify(v) !== JSON.stringify(getSetting(def.key))
+          _settingsCache[def.key] = v
+          if (!changed) continue
+          const bridge = _bridgeFor(def)
+          if (bridge) bridge.set(v)
+          if (def.apply && !def.syncSilent) {
+            const applier = _APPLIERS[def.apply]
+            if (applier) {
+              try {
+                applier(v, def, false, true)
+              } catch (e) {
+                warn('local applier failed:', def.apply, e)
+              }
+            }
+          }
+          if (def.rerender) needsRender = true
+        }
+        if (needsRender) {
+          bumpRenderEpoch()
+          renderMessages(currentTab)
+          if (currentTab === 'settings') renderSettingsTab()
+        }
+      }
+
       // Overflow bucket — large/per-tab UI prefs that bypass the 8 KB sync
       // ceiling. Local-only, so cross-device sync intentionally skips them.
       if (changes.keyword_highlights) {
@@ -12553,10 +12598,15 @@
           // user's TWITCH nick once auth-irc has connected — works cross-
           // origin too. Also accept a peekSentHost text hit (cross-tab-
           // synced via storage) as a final own-msg signal.
-          const isOwnUser =
-            (currentUsername && u === currentUsername.toLowerCase()) ||
-            (typeof authState !== 'undefined' && authState?.nick && u === authState.nick.toLowerCase()) ||
-            (typeof peekSentHost === 'function' && !!peekSentHost(msg.text))
+          const _twNick = typeof authState !== 'undefined' && authState?.nick ? authState.nick.toLowerCase() : ''
+          // When the twitch identity IS known (auth-irc handshake), the sender
+          // name is authoritative — a stranger repeating your text must not
+          // drain the pending tracker (false confirm = a genuinely dropped
+          // send never retries). Text-hit fallback only when no nick exists.
+          const isOwnUser = _twNick
+            ? u === _twNick
+            : (currentUsername && u === currentUsername.toLowerCase()) ||
+              (typeof peekSentHost === 'function' && !!peekSentHost(msg.text))
           if (isOwnUser) _pendId = findPendingByChannelFifo(msg.channel)
         }
         if (_pendId) confirmPending(_pendId, 'twitch')
@@ -12573,9 +12623,14 @@
       // peekSentHost only matches ext-input sends, so a hit IS the ownership
       // signal — and it works cross-origin (youtube.com/kick.com popout)
       // where currentUsername is null and a name guard would skip the retag,
-      // leaving the yt-popout's own echo painted [T].
+      // leaving the yt-popout's own echo painted [T]. But when the twitch
+      // nick IS known, a mismatched sender is definitively someone else —
+      // without that gate any stranger repeating your recent text got their
+      // message retagged to your send host.
       {
-        const sentHost = peekSentHost(msg.text)
+        const _twNickRt = typeof authState !== 'undefined' && authState?.nick ? authState.nick.toLowerCase() : ''
+        const notOwn = _twNickRt && msg.user && msg.user.toLowerCase() !== _twNickRt
+        const sentHost = notOwn ? null : peekSentHost(msg.text)
         if (sentHost) {
           // IRC origin — badges are Twitch namespace regardless of [K] retag.
           msg.badgePlatform = 'twitch'

@@ -9269,14 +9269,16 @@ function injectStyles() {
     /* Dark blood-red — saturated enough to read as "you got mentioned" but
        dark enough to let full-color Twitch usernames render on top without
        the bg drowning them. Mirrors heatsync.org messages.css. */
-    .hs-mc-msg.mention {
+    .hs-mc-msg.mention,
+    .hs-feed-msg.mention {
       background: #5c1212;
     }
     /* Zebra striping for consecutive mentions — leverages the existing
        neighbor-flip .hs-mc-zebra cadence so adjacent mention rows alternate
        without looking like a wall of identical red. Darker red maintains
        the mention semantic while distinguishing rows. */
-    .hs-mc-msg.mention.hs-mc-zebra {
+    .hs-mc-msg.mention.hs-mc-zebra,
+    .hs-feed-msg.mention.hs-mc-zebra {
       background: #380b0b;
     }
     /* Row base color white for non-colored text (gray timestamps, plain
@@ -31921,6 +31923,17 @@ function renderFeed() {
 function buildFeedMessageDiv(m, opUsername) {
   const div = document.createElement('div')
   div.className = 'hs-feed-msg'
+  // Feed posts never ran mention detection — a post saying your name showed
+  // as a plain row while the same text in chat went mention-red. Same
+  // isMention pipeline (aliases incl. heatsync name, blocked-sender gate).
+  try {
+    if (
+      typeof isMention === 'function' &&
+      !isOwnFeedPost(m) &&
+      isMention({ user: m.username || '', text: String(m.content || ''), platform: 'heatsync' })
+    )
+      div.classList.add('mention')
+  } catch (_) {}
   div.dataset.msgId = m.base36_id
 
   const time = formatRelativeTime(m.created_at)

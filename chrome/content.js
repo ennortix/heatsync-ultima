@@ -48,6 +48,8 @@
     if (!u) return false
     if (set.has(u)) return true
     if (set.has(userKey(u, platform))) return true
+    // Legacy short-form keys: entries stored as `yt:<name>` before platform
+    // canonicalization must keep matching youtube rows.
     if (canonPlatform(platform) === 'youtube' && set.has(`yt:${u}`)) return true
     if (aliasKeys) {
       for (const k of aliasKeys) {

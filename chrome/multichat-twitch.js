@@ -917,12 +917,23 @@ const cleanup = window.heatsyncCleanup
 //
 // Pure + dependency-free so it can be unit-tested in isolation.
 
+// Canonical platform namespace. Callers pass BOTH forms for YouTube — 'yt'
+// (render/row short form via data-platform) and 'youtube' (message model) —
+// which used to produce disjoint keys: a mute written as `yt:alice` never
+// matched enforcement checking `youtube:alice`, so yt mutes/blocks were
+// silent no-ops. One writer normalizes; the matcher also accepts the other
+// form for keys persisted before normalization.
+function canonPlatform(platform) {
+  return platform === 'yt' ? 'youtube' : platform
+}
+
 function userKey(username, platform) {
   const u = String(username == null ? '' : username)
     .toLowerCase()
     .replace(/^@/, '')
   if (!u) return ''
-  return platform ? `${platform}:${u}` : u
+  const p = canonPlatform(platform)
+  return p ? `${p}:${u}` : u
 }
 
 // True if `set` contains this user for this platform. Order:
@@ -937,6 +948,9 @@ function userSetMatches(set, username, platform, aliasKeys) {
   if (!u) return false
   if (set.has(u)) return true
   if (set.has(userKey(u, platform))) return true
+  // Legacy short-form keys: entries stored as `yt:<name>` before platform
+  // canonicalization must keep matching youtube rows.
+  if (canonPlatform(platform) === 'youtube' && set.has(`yt:${u}`)) return true
   if (aliasKeys) {
     for (const k of aliasKeys) {
       if (k && set.has(k)) return true
@@ -10556,10 +10570,13 @@ img.hs-fx-zero { margin-left: -4px; }
       font-family: inherit;
       outline: none;
       position: relative;
-      /* pre-wrap preserves trailing whitespace (the auto-space after Tab
-         completion stays visible + backspace-able) AND wraps long lines so
-         text doesn't escape the inputbar into the tab area. */
-      white-space: pre-wrap;
+      /* break-spaces (not pre-wrap): pre-wrap lets a trailing space HANG
+         invisibly at end-of-content in chromium contenteditable, so the
+         auto-space after Tab completion looked like it may or may not exist.
+         break-spaces gives every preserved space real width — visible caret
+         position after it, one predictable backspace — and still wraps long
+         lines so text doesn't escape the inputbar into the tab area. */
+      white-space: break-spaces;
       overflow-wrap: anywhere;
     }
     #hs-mc-input:focus {
@@ -10815,7 +10832,10 @@ img.hs-fx-zero { margin-left: -4px; }
       padding: 5px 12px;
       font-size: 13px;
       font-family: inherit;
-      white-space: pre;
+      /* Same value as #hs-mc-input — the glyph-for-glyph mirror only holds
+         if both wrap identically (was 'pre': no wrapping = red overlay
+         drifted off the typed text on any wrapped line). */
+      white-space: break-spaces;
       overflow: hidden;
       pointer-events: none;
       border: 1px solid transparent;
@@ -19048,6 +19068,13 @@ class IRC {
     return this.channels.get(ch?.toLowerCase())?.getAll() || []
   }
 
+  // O(1) message count — isMultiPlatformTab only needs "any messages?" on the
+  // per-message hot path; getMessages().length materialized ~6000-element
+  // arrays per live message at Kripp scale (busy 3000-cap buffers).
+  getCount(ch) {
+    return this.channels.get(ch?.toLowerCase())?.size || 0
+  }
+
   on(e, fn) {
     if (!this.handlers.has(e)) this.handlers.set(e, new Set())
     this.handlers.get(e).add(fn)
@@ -19654,6 +19681,11 @@ class KickChat {
 
   getMessages(kickUsername) {
     return this.channels.get(kickUsername?.toLowerCase())?.getAll() || []
+  }
+
+  // O(1) count — see IRC.getCount (hot-path buffer-copy avoidance).
+  getCount(kickUsername) {
+    return this.channels.get(kickUsername?.toLowerCase())?.size || 0
   }
 
   on(e, fn) {
@@ -20354,7 +20386,7 @@ async function drainSendQueue() {
   // so the queued message would otherwise drain into an unjoined channel. This
   // is the authoritative guard regardless of what got rejoined.
   while (authState.sendQueue.length && authIrcAlive()) {
-    const { channel, text } = authState.sendQueue[0] // peek; shift only on success
+    const { channel, text, replyParentId } = authState.sendQueue[0] // peek; shift only on success
     if (!authState.joined.has(channel)) {
       const joined = await joinChannel(channel)
       // joinChannel awaits the JOIN ack (or 2s timeout). Bail if the socket died
@@ -20363,7 +20395,8 @@ async function drainSendQueue() {
       if (!authIrcAlive() || !joined) break
     }
     try {
-      authState.ws.send(`PRIVMSG #${channel} :${text}\r\n`)
+      const qPrefix = replyParentId ? `@reply-parent-msg-id=${replyParentId} ` : ''
+      authState.ws.send(`${qPrefix}PRIVMSG #${channel} :${text}\r\n`)
       authState.sendQueue.shift()
       log('Drained queued msg to #' + channel)
     } catch {
@@ -20385,7 +20418,7 @@ async function sendIrcMessage(channel, text, token, replyParentId, overrideNick)
         if (result === 'auth_failed') return 'auth_failed'
         if (!result) {
           if (attempt < 2) continue
-          if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text })
+          if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text, replyParentId })
           scheduleReconnect([channel])
           log('Queued message for reconnect')
           // Return 'queued' so the caller can show a yellow "queued" cue
@@ -20400,7 +20433,7 @@ async function sendIrcMessage(channel, text, token, replyParentId, overrideNick)
         // than PRIVMSG into a never-joined channel (twitch drops it silently).
         if (!joined) {
           if (attempt < 2) continue
-          if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text })
+          if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text, replyParentId })
           if (typeof showToast === 'function') showToast(`couldn't join #${channel} chat — queued`, 'error')
           return 'queued'
         }
@@ -20410,7 +20443,7 @@ async function sendIrcMessage(channel, text, token, replyParentId, overrideNick)
           cleanupAuthIrc()
           continue
         }
-        if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text })
+        if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text, replyParentId })
         scheduleReconnect([channel])
         return 'queued'
       }
@@ -20428,7 +20461,7 @@ async function sendIrcMessage(channel, text, token, replyParentId, overrideNick)
       log('Send error attempt', attempt, ':', e.message || e)
       cleanupAuthIrc()
       if (attempt === 2) {
-        if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text })
+        if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text, replyParentId })
         scheduleReconnect([channel])
         return 'queued'
       }
@@ -20447,7 +20480,11 @@ const KICK_CHANNEL_ID_CACHE_MAX = 200
 // Failures we never retry — they're user-actionable, not transient.
 const KICK_FATAL_SEND_ERRORS = new Set(['no_channel', 'no_kick_tab', 'kick_not_logged_in', 'missing params'])
 
-const KICK_SEND_TIMEOUT_MS = 5000
+// MUST exceed the relay POST's own AbortSignal.timeout (10s in content.js
+// kick_send_relay). Kick's send API has no idempotency key, so a retry fired
+// while the first POST is still in flight double-posts. Waiting past the POST
+// abort guarantees the first attempt is dead before we retry (bulletproof).
+const KICK_SEND_TIMEOUT_MS = 11000
 const KICK_SEND_RETRY_BACKOFF_MS = [750, 1500]
 
 async function resolveKickChannelId(slug) {
@@ -23536,6 +23573,11 @@ function hsSnapEmoteBox(img) {
       // pin the wrapper too narrow and cause the overlay img to bleed left past
       // the base emote. Overlays always render inline-unconstrained via renderEmoteStack.
       if (it.im.classList.contains('hs-mc-overlay-emote')) continue
+      // Never cache a width measured off a STACK box: it's the widest child
+      // (an overlay wider than the base), so caching it under the BASE emote's
+      // url pinned every later SOLO render of that emote too wide. Only the
+      // bare `.hs-mc-emote-wrapper` measurement is the emote's own solo width.
+      if (it.box.classList.contains('hs-mc-emote-stack')) continue
       const url = it.im.closest('.hs-mc-emote-wrapper')?.dataset?.emoteUrl || it.im.getAttribute('src')
       if (url) {
         _hsEmoteBoxW.set(url, it.w)
@@ -24001,11 +24043,13 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
         const hasProtocol = /^https?:\/\//i.test(word)
         const fullUrl = hasProtocol ? word : `https://${word}`
         if (/^https?:\/\//i.test(fullUrl)) {
-          result.push(
-            `<a href="${escapeHtml(fullUrl)}" target="_blank" rel="noopener noreferrer" class="hs-mc-link">${escapeHtml(word)}</a>`,
-          )
+          // word arrives PRE-ESCAPED (every caller runs escapeHtml first — see
+          // the raw push in the else branch below). Escaping again turned a
+          // url's &amp; into &amp;amp;: corrupted href params + visible &amp;
+          // in the link text. Entities inside an href attr decode correctly.
+          result.push(`<a href="${fullUrl}" target="_blank" rel="noopener noreferrer" class="hs-mc-link">${word}</a>`)
         } else {
-          result.push(escapeHtml(word))
+          result.push(word)
         }
       } else {
         result.push(word)
@@ -32017,10 +32061,12 @@ function renderFeedContent(content, emoteRefs) {
   // (?<![\/\w.]) on the bare-domain branch prevents matching inside an already-linkified URL path.
   if (linksEnabled) {
     html = html.replace(/(https?:\/\/[^\s<"]+|(?<![/\w.])[a-z0-9-]+(?:\.[a-z0-9-]+)+\/[^\s<"]*)/gi, (match) => {
+      // `match` is already server-escaped (renderFeedContent runs on
+      // pre-escaped content) — re-escaping turned &amp; into &amp;amp; (broken
+      // href param + visible &amp;). The regex excludes <"/space so it's
+      // attribute-safe verbatim. Only add the protocol for a bare domain.
       const url = /^https?:\/\//i.test(match) ? match : 'https://' + match
-      const text = escapeHtml(match)
-      const href = escapeHtml(url)
-      return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="hs-mc-link">${text}</a>`
+      return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="hs-mc-link">${match}</a>`
     })
   }
   // Text formatting (bold, italic, spoilers, etc.) — skip <a>...</a> blocks so URL underscores aren't italicized.
@@ -35085,7 +35131,7 @@ function confirmPending(synthId, platform) {
   if (entry.timer) cleanup.clearTimeout(entry.timer)
   pendingSends.delete(synthId)
   try {
-    HsNotifs.dismissByKey('send-pending', synthId)
+    HsNotifs.dismissByKey('send-pending', `send-pending:${synthId}`)
   } catch (_) {}
   return true
 }
@@ -35208,7 +35254,7 @@ function clearPendingByChannel(channel) {
       if (entry.timer) cleanup.clearTimeout(entry.timer)
       pendingSends.delete(id)
       try {
-        HsNotifs.dismissByKey('send-pending', id)
+        HsNotifs.dismissByKey('send-pending', `send-pending:${id}`)
       } catch (_) {}
       cleared++
     }
@@ -35225,7 +35271,7 @@ function retryPendingSend(synthId) {
   // Drop the failed entry; sendMessage will register a fresh one.
   pendingSends.delete(synthId)
   try {
-    HsNotifs.dismissByKey('send-pending', synthId)
+    HsNotifs.dismissByKey('send-pending', `send-pending:${synthId}`)
   } catch (_) {}
   const input = document.getElementById('hs-mc-input')
   if (!input) return
@@ -35275,6 +35321,10 @@ const REMOTE_COMPLETION_CAP = 300
 // owned/blocked/pending are filtered later in autoAddInputEmotes.
 function trackCompletionForAutoAdd(match) {
   if (!match || match.type !== 'emote' || !match.name || !match.url) return
+  // A synthesized "name0" overlay carries the BASE emote's url — auto-adding it
+  // persisted a bogus literal "name0" emote server-side, burning an inventory
+  // slot. The base emote is tracked on its own; the "0" is a render convention.
+  if (match._synthOverlay) return
   const src = match.source
   if (src !== '7tv' && src !== 'bttv' && src !== 'ffz') return
   recentRemoteCompletions.delete(match.name)
@@ -36883,7 +36933,10 @@ async function _toggleMcMute(username, platform) {
     // restoreMcUnmutedDom matches by bare DOM text — use bare aliases here.
     for (const a of aliases) restoreMcUnmutedDom(a)
   }
-  renderMessages(currentTab)
+  // bypassScrollPause: a mute applied while scrolled up must still strip the
+  // rows now — renderMessages otherwise no-ops (scroll-pause) and the muted
+  // user stays visible under a "muted" toast until the reader hits bottom.
+  renderMessages(currentTab, { bypassScrollPause: true })
 }
 
 async function _toggleMcBlock(username, platform) {
@@ -36911,7 +36964,9 @@ async function _toggleMcBlock(username, platform) {
     for (const k of aliasKeys) safeSendMessage({ type: 'block_user', username: k })
   }
   // buildMessageDiv filters blocked users, so a full re-render hides/restores them.
-  renderMessages(currentTab)
+  // bypassScrollPause so a block applied while scrolled up takes effect now
+  // instead of silently waiting until the reader returns to the bottom.
+  renderMessages(currentTab, { bypassScrollPause: true })
 }
 
 // Build the plain-text dump of a chat reply chain (ancestors + this + descendants)
@@ -38641,7 +38696,7 @@ function getRecencyMap() {
     if (!u || out.has(u)) continue
     // Blocked users never tab-complete — drop them at this one chokepoint so
     // both the recent-chatter and @-mention recency paths stay clean.
-    if (typeof isUserBlocked === 'function' && isUserBlocked(u)) continue
+    if (_isBlockedAnyPlat(u)) continue
     out.set(u, rank++)
   }
   return out
@@ -38771,6 +38826,23 @@ function compareAcMatches(a, b, searchLower, frecency) {
   return an.localeCompare(bn)
 }
 
+// Block enforcement for tab-complete/mention candidates that have no platform
+// context: a namespaced block (twitch:alice) never matched isUserBlocked(name)
+// with platform=undefined, so a blocked user still surfaced as a completion.
+// You blocked them — don't suggest them on ANY platform namespace.
+function _isBlockedAnyPlat(name) {
+  const u = String(name || '')
+    .toLowerCase()
+    .replace(/^@/, '')
+  if (!u || typeof blockedUsers === 'undefined' || !blockedUsers.size) return false
+  return (
+    blockedUsers.has(u) ||
+    blockedUsers.has(`twitch:${u}`) ||
+    blockedUsers.has(`kick:${u}`) ||
+    blockedUsers.has(`youtube:${u}`)
+  )
+}
+
 function findEmoteMatches(search) {
   const matches = []
 
@@ -38806,7 +38878,7 @@ function findEmoteMatches(search) {
       const bare = userLower.startsWith('@') ? userLower.slice(1) : userLower
       // Blocked users never surface as an @-completion suggestion (and don't
       // trigger a color prefetch for them).
-      if (typeof isUserBlocked === 'function' && isUserBlocked(bare)) continue
+      if (_isBlockedAnyPlat(bare)) continue
       let color = (typeof knownColors !== 'undefined' && knownColors.get(userLower)) || null
       if (!color && _hsUserColorCache.has(userLower)) color = _hsUserColorCache.get(userLower) || null
       if (!color) _hsPrefetchList.push(bare)
@@ -38854,9 +38926,27 @@ function findEmoteMatches(search) {
       const sub = !!emote.subscription
       const tier = tierByName.get(name) ?? 2
       if (name.toLowerCase().startsWith(searchLower)) {
-        matches.push({ name, url: emote.url, source: emote.source, priority: 0, tier, type: 'emote', sub })
+        matches.push({
+          name,
+          url: emote.url,
+          source: emote.source,
+          priority: 0,
+          tier,
+          type: 'emote',
+          sub,
+          zeroWidth: !!emote.zeroWidth,
+        })
       } else if (name.toLowerCase().includes(searchLower)) {
-        matches.push({ name, url: emote.url, source: emote.source, priority: 1, tier, type: 'emote', sub })
+        matches.push({
+          name,
+          url: emote.url,
+          source: emote.source,
+          priority: 1,
+          tier,
+          type: 'emote',
+          sub,
+          zeroWidth: !!emote.zeroWidth,
+        })
       }
     }
     // 7TV "name0" overlay convention: a trailing "0" turns an emote into a
@@ -38889,6 +38979,7 @@ function findEmoteMatches(search) {
             tier,
             type: 'emote',
             sub: !!emote.subscription,
+            _synthOverlay: true,
           })
         } else if (nl.startsWith(baseLower)) {
           matches.push({
@@ -38899,6 +38990,7 @@ function findEmoteMatches(search) {
             tier,
             type: 'emote',
             sub: !!emote.subscription,
+            _synthOverlay: true,
           })
         }
       }
@@ -38946,7 +39038,7 @@ function findEmoteMatches(search) {
       // Bare-name matching — yt cache entries carry a leading '@'.
       const userLower = username.toLowerCase().replace(/^@/, '')
       if (_recentSeen.has(userLower)) continue
-      if (typeof isUserBlocked === 'function' && isUserBlocked(userLower)) continue
+      if (_isBlockedAnyPlat(userLower)) continue
       if (userLower.startsWith(searchLower)) {
         matches.push({ name: username, url: null, priority: 0, type: 'user' })
       } else if (userLower.includes(searchLower)) {
@@ -40340,6 +40432,12 @@ async function handleSlashCommand(text, input) {
     return true
   }
 
+  // Every namespace form of a bare name — right-click/profile mutes store
+  // platform-scoped keys (twitch:alice), but slash commands have no platform,
+  // so match/clear across all of them plus any profile-linked alias keys.
+  const _muteKeyForms = (bare, aliasKeys) =>
+    Array.from(new Set([bare, `twitch:${bare}`, `kick:${bare}`, `youtube:${bare}`, ...(aliasKeys || [])]))
+
   if (cmd === 'mute') {
     const u = rest.trim().replace(/^@/, '').toLowerCase()
     if (!u) {
@@ -40351,7 +40449,7 @@ async function handleSlashCommand(text, input) {
     // as right-click mute (_toggleMcMute); null platform → userKey returns bare
     // key, so /mute stays global (correct: no platform context from bare name).
     const aliasKeys = typeof expandUserAliasKeys === 'function' ? await expandUserAliasKeys(u, null) : [u]
-    const already = typeof isUserMuted === 'function' ? isUserMuted(u, null) : mutedUsers.has(u)
+    const already = _muteKeyForms(u, aliasKeys).some((k) => mutedUsers.has(k))
     if (already) {
       showToast(`${u} already muted`)
       return true
@@ -40375,12 +40473,13 @@ async function handleSlashCommand(text, input) {
     // Same async fan-out as /mute and right-click mute — covers server-linked
     // accounts, not just sync-local links.
     const aliasKeys = typeof expandUserAliasKeys === 'function' ? await expandUserAliasKeys(u, null) : [u]
-    const wasMuted = typeof isUserMuted === 'function' ? isUserMuted(u, null) : mutedUsers.has(u)
+    const forms = _muteKeyForms(u, aliasKeys)
+    const wasMuted = forms.some((k) => mutedUsers.has(k))
     if (!wasMuted) {
       showToast(`${u} not muted`)
       return true
     }
-    for (const k of aliasKeys) mutedUsers.delete(k)
+    for (const k of forms) mutedUsers.delete(k)
     persistMcMuted()
     for (const k of aliasKeys) safeSendMessage({ type: 'unmute_user', username: k })
     showToast(`unmuted ${u}`, 'success')
@@ -40559,7 +40658,12 @@ async function handleSlashCommand(text, input) {
     // if over the cap (keep the oldest so a raid's leading edge is cleared).
     const seenIds = new Set()
     const targets = []
-    for (const buf of [irc?.channels?.get(modChannel), kickChat?.channels?.get(modChannel)]) {
+    // Buffers are keyed by twitch login / kick slug, NOT the tab id — a
+    // dual-linked tab (kick slug != twitch login) or an ephemeral auto_ tab
+    // matched nothing. Use the resolved channel names, same as /ban dispatch.
+    const _tw = irc?.channels?.get((_twitchModName || modChannel).toLowerCase())
+    const _kk = kickChat?.channels?.get((_kickModSlug || modChannel).toLowerCase())
+    for (const buf of [_tw, _kk]) {
       if (!buf?.getAll) continue
       for (const m of buf.getAll()) {
         if (!m?.id || typeof m.text !== 'string') continue
@@ -44254,6 +44358,16 @@ function clearHsPaintSheet() {
   hsPaintInjectedHashes.clear()
 }
 
+// Toggle-on recovery: rebuild the sheet from every cached spec. clearHsPaintSheet
+// dropped the rules but kept the cache (and rows still carry the hsp-<hash> class
+// via getHsPaintClass), so without re-injecting, painted names render UNSTYLED
+// after off->on until a fresh fetch — which never comes for already-cached uids.
+function reinjectHsPaintSheet() {
+  for (const entry of hsPaintCache.values()) {
+    if (entry?.spec && entry.hash) ensureHsPaintRule(entry.spec, entry.hash)
+  }
+}
+
 // ── public cache API ─────────────────────────────────────────────────────────
 
 /** @returns {string} the `hsp-<hash>` class to add to the element, or '' if none. */
@@ -44829,7 +44943,13 @@ async function flushKickNameLookups() {
         if (m && m.platform === 'kick' && m.user) {
           const mk = m.user.toLowerCase()
           if (mk === key) {
-            if (tid) m.userId = tid
+            if (tid) {
+              m.userId = tid
+              // marks userId as twitch-space: the render path refuses to feed
+              // kick rows' userId into twitch-keyed badge/cosmetic/paint maps
+              // until this stamp exists (raw numeric kick ids collide there)
+              m._uidTwitch = tid
+            }
             if (paintUid) m.hsPaintUid = paintUid
             m._renderedHtml = null
           }
@@ -44935,12 +45055,15 @@ function updateHsPaintsInPlace(userIds) {
     if (mentionSet) {
       for (const el of mentionSet) applyHsPaintToElement(el, uid)
     }
-    const isKickUid = uid.startsWith('kick_')
-    // A kick-space paint uid is never in data-uid (that attribute stays
-    // twitch-id-space only — see the ID-SPACE SAFETY note in paints.js) so
-    // it's never in _uidIndex either; find its rows via the parallel
-    // data-hs-paint-uid attribute flushKickNameLookups stamps instead.
-    const divs = isKickUid ? container.querySelectorAll(`[data-hs-paint-uid="${CSS.escape(uid)}"]`) : _uidIndex.get(uid)
+    // kick_ AND yt_ paint uids are namespaced — never in data-uid/_uidIndex
+    // (that stays twitch-id-space only, ID-SPACE SAFETY in paints.js). Find
+    // their rows via the parallel data-hs-paint-uid attribute (kick via
+    // flushKickNameLookups, yt via social.js). Without the yt_ case a resolved
+    // youtube paint applied to nothing (updateCosmeticsInPlace already handles it).
+    const isNamespacedUid = uid.startsWith('kick_') || uid.startsWith('yt_')
+    const divs = isNamespacedUid
+      ? container.querySelectorAll(`[data-hs-paint-uid="${CSS.escape(uid)}"]`)
+      : _uidIndex.get(uid)
     if (!divs) continue
     for (const div of divs) {
       // The row's primary (twitch) uid resolving its own HS paint outranks
@@ -46046,6 +46169,10 @@ document.addEventListener(
   'keydown',
   (e) => {
     if (!_modCtx) return
+    // OS key-repeat (~30Hz after ~500ms) fired many concurrent async
+    // dispatches for one held key before the first cleared _modCtx — a burst
+    // of error toasts (delete) or stacked confirm overlays (ban). One per press.
+    if (e.repeat) return
     const t = e.target
     const typing = t && (t.isContentEditable || ['INPUT', 'TEXTAREA'].includes(t.tagName))
     if (typing) return
@@ -47809,13 +47936,20 @@ function _renderCategoryPane(cat) {
 // Export: dumps ui_settings (sync) + all hs_* keys (local) into a single
 // JSON. Import: file picker → JSON parse → schema-validate → merge into
 // storage. Both areas restored. Errors toast, don't throw.
+// Private stores that must NEVER ride an export (the preset panel calls
+// exports "sharable"): mention/chat buffers, per-user notes, whispers, crash
+// ring ("captured locally only"). Import skips the same set so a crafted file
+// can't overwrite them either.
+var _SETTINGS_PRIVATE_KEY_RE = /^hs_(mentions_v2|user_notes|errors|irc_|kick_|yt_|whisper)/
 async function _exportAllSettings() {
   try {
     var syncObj = await chrome.storage.sync.get(null)
     var localObj = await chrome.storage.local.get(null)
     var hsLocal = {}
     Object.keys(localObj).forEach((k) => {
-      if (k.indexOf('hs_') === 0 || k.indexOf('viewer_') === 0) hsLocal[k] = localObj[k]
+      if (k.indexOf('hs_') !== 0 && k.indexOf('viewer_') !== 0) return
+      if (_SETTINGS_PRIVATE_KEY_RE.test(k)) return
+      hsLocal[k] = localObj[k]
     })
     var bundle = {
       kind: 'heatsync-settings',
@@ -47880,6 +48014,7 @@ async function _importAllSettings() {
           Object.keys(data.local).forEach((k) => {
             if (k.length < 1 || k.length > 128) return
             if (k.indexOf('hs_') !== 0 && k.indexOf('viewer_') !== 0) return
+            if (_SETTINGS_PRIVATE_KEY_RE.test(k)) return
             safeLocal[k] = data.local[k]
           })
           if (Object.keys(safeLocal).length) writes.push(chrome.storage.local.set(safeLocal))
@@ -51301,8 +51436,12 @@ const STORAGE_KEY = 'heatsync_multichat'
   function resolveSenderEmoteKey(m) {
     if (!m) return null
     if (m.platform === 'kick') {
-      const id = m.userId || (m.user && m.user.toLowerCase())
-      return id ? `kick:${id}` : null
+      // ALWAYS the username slug: /api/users/emotes/batch resolves kick keys
+      // by kick_username only — pusher/relay messages carry a numeric kick
+      // userId, and `kick:<numeric>` never matches (sender emotes silently
+      // missing).
+      const slug = m.user && m.user.toLowerCase()
+      return slug ? `kick:${slug}` : null
     }
     if (m.platform === 'youtube') {
       // For YT, prefer resolved twitch_id (lets us reuse the twitch 7tv set).
@@ -51939,6 +52078,9 @@ const STORAGE_KEY = 'heatsync_multichat'
       // hsp-* class to any element). Cache entries are kept; a later toggle-on
       // recompiles fresh from the same spec.
       if (!v) clearHsPaintSheet()
+      // toggle ON: cached specs kept their hsp-<hash> class on rows but the
+      // sheet was dropped — re-inject so painted names aren't left unstyled.
+      else if (typeof reinjectHsPaintSheet === 'function') reinjectHsPaintSheet()
     },
     viMode: (v) => {
       // mirror to localStorage + notify MAIN-world vi-mode.js
@@ -56552,6 +56694,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         'event-sub': 'sub',
         'event-redeem': 'redeem',
         'event-pred': 'pred',
+        'event-poll': 'poll',
         'event-yt-superchat': 'ytSuperchat',
         'event-yt-supersticker': 'ytSupersticker',
         'event-yt-membership': 'ytMembership',
@@ -56947,14 +57090,19 @@ const STORAGE_KEY = 'heatsync_multichat'
       if (cached) m.userId = cached
       else if (cached === undefined) queueYtNameToTwitchId(m.user)
     }
-    // Kick: panel sees usernames only — resolve via 7TV/v3/users/kick/{name}
-    // which also returns the linked twitch_id when present. Hoist into m.userId
-    // so the existing cosmetics pipeline applies.
-    if (!m.userId && m.platform === 'kick' && m.user) {
+    // Kick: resolve via 7TV/v3/users/kick/{name} which also returns the linked
+    // twitch_id when present. Hoist into m.userId + m._uidTwitch so the
+    // existing cosmetics pipeline applies. Gated on !m._uidTwitch (NOT
+    // !m.userId): pusher/relay kick messages always carry the numeric KICK id,
+    // which is a different id-space — only the _uidTwitch stamp marks a
+    // resolved twitch identity.
+    if (m.platform === 'kick' && m.user && !m._uidTwitch) {
       const kKey = (m.user || '').toLowerCase()
       const cached = kickNameResolved.get(kKey)
-      if (cached) m.userId = cached
-      else if (cached === undefined) queueKickNameToCosmetics(m.user)
+      if (cached) {
+        m.userId = cached
+        m._uidTwitch = cached
+      } else if (cached === undefined) queueKickNameToCosmetics(m.user)
     }
     // Kick-space paint uid (kick_<kickid>) — set independent of whether the
     // twitch lookup above resolved (a kick-origin HeatSync account can have
@@ -56965,9 +57113,16 @@ const STORAGE_KEY = 'heatsync_multichat'
       const paintUid = kickNamePaintUid.get((m.user || '').toLowerCase())
       if (paintUid) m.hsPaintUid = paintUid
     }
-    if (m.userId) {
-      badges += renderThirdPartyBadges(m.userId)
-      if (!mcUserCosmetics.has(m.userId)) queueMcCosmeticsLookup(m.userId)
+    // ID-SPACE SAFETY: a kick row's userId is the raw numeric KICK id until
+    // the hoist above / flushKickNameLookups patches in the linked twitch id
+    // (m._uidTwitch). The badge maps, 7TV cosmetics and paint caches below are
+    // all TWITCH id-space — a bare kick id collides with an unrelated twitch
+    // user's entry, painting the wrong person. Kick rows resolve through the
+    // name-keyed kick pipeline (kickNamePaintUid + queueKickNameToCosmetics).
+    const uidTwitch = (m.platform === 'kick' ? m._uidTwitch : m.userId) || ''
+    if (uidTwitch) {
+      badges += renderThirdPartyBadges(uidTwitch)
+      if (!mcUserCosmetics.has(uidTwitch)) queueMcCosmeticsLookup(uidTwitch)
     }
     const plat =
       m.platform === 'youtube'
@@ -56996,8 +57151,12 @@ const STORAGE_KEY = 'heatsync_multichat'
     // behind their resolved twitch uid — see the ID-SPACE SAFETY note in
     // paints.js: a kick-origin HeatSync account can exist with or without a
     // twitch link, so try twitch first, then the kick-namespaced id.
-    const hsPaint = hsPaintRender(m.userId, m.user) || (m.hsPaintUid ? hsPaintRender(m.hsPaintUid, m.user) : null)
-    const paintStyle = hsPaint ? '' : m.userId ? getMcPaintStyle(m.userId) : ''
+    // uidTwitch (not raw m.userId): paint caches are twitch-space — a kick
+    // row's numeric kick id would fetch/render an unrelated twitch user's paint.
+    const hsPaint =
+      (uidTwitch ? hsPaintRender(uidTwitch, m.user) : null) ||
+      (m.hsPaintUid ? hsPaintRender(m.hsPaintUid, m.user) : null)
+    const paintStyle = hsPaint ? '' : uidTwitch ? getMcPaintStyle(uidTwitch) : ''
     // Name colour (when no HS/7TV paint owns the fill): the user's PICKED
     // heatsync colour on youtube + kick ONLY — never twitch, whose custom name
     // colour is the prime/turbo paid perk. YouTube has no native colour, so its
@@ -57079,9 +57238,13 @@ const STORAGE_KEY = 'heatsync_multichat'
     const div = document.createElement('div')
     div.className = cls
     div._hsMsg = m // back-ref for reprocessEmoteTextInPlace (GC'd with the row)
-    if (m.userId) div.dataset.uid = m.userId
+    // uidTwitch, never raw m.userId: data-uid is twitch-id-space only (feeds
+    // _uidIndex / updateCosmeticsInPlace). A kick row's numeric kick id here
+    // would both collide with an unrelated twitch user's repaint AND block
+    // flushKickNameLookups' backfill (it only stamps when data-uid is empty).
+    if (uidTwitch) div.dataset.uid = uidTwitch
     // Kick-space paint uid — parallel to data-uid, never a substitute for it
-    // (m.userId/data-uid stay twitch-id-space only). Lets a kick-namespaced
+    // (data-uid stays twitch-id-space only). Lets a kick-namespaced
     // HS paint resolution find this row in-place (updateHsPaintsInPlace).
     if (m.hsPaintUid) div.dataset.hsPaintUid = m.hsPaintUid
     if (isSuperChat && m.scColor) {
@@ -57607,14 +57770,14 @@ const STORAGE_KEY = 'heatsync_multichat'
     if (tabId === 'live') {
       const curCh = getLiveChannel()
       let count = 0
-      if (curCh && irc?.getMessages(curCh)?.length) count++
-      if (curCh && kickChat?.getMessages(curCh)?.length) count++
+      if (curCh && irc?.getCount(curCh)) count++
+      if (curCh && kickChat?.getCount(curCh)) count++
       if (channelYtMessages.get('__live_yt_auto__')?.length || 0) count++
       if (count < 2) {
         // Also check config-linked platforms (O(1) via the prebuilt lookup)
         const lk = getChannelLookup()
         const linked = lk.twitch.get(curCh) || lk.kick.get(curCh)
-        if (linked?.kick && kickChat?.getMessages(linked.kick)?.length) count++
+        if (linked?.kick && kickChat?.getCount(linked.kick)) count++
         if (linked?.youtube && channelYtMessages.get(linked.id)?.length) count++
       }
       return count > 1
@@ -57622,8 +57785,8 @@ const STORAGE_KEY = 'heatsync_multichat'
     const ch = getChannelById(tabId)
     if (!ch) return false
     let count = 0
-    if (ch.twitch && irc?.getMessages(ch.twitch)?.length) count++
-    if (ch.kick && kickChat?.getMessages(ch.kick)?.length) count++
+    if (ch.twitch && irc?.getCount(ch.twitch)) count++
+    if (ch.kick && kickChat?.getCount(ch.kick)) count++
     // own linked YT only — __live_yt_auto__ no longer merges into per-channel
     // tabs (mirrors renderMessages bleed fix)
     const ytMsgs = channelYtMessages.get(tabId)?.length || 0
@@ -57983,7 +58146,12 @@ const STORAGE_KEY = 'heatsync_multichat'
     if (active.length === 0) return []
     if (active.length === 1) {
       const s = active[0]
-      return s.length <= limit ? s : s.slice(-limit)
+      // ALWAYS return a copy — the follow-event merge below splices into the
+      // returned array in place. IRC/Kick getMessages already copy, but YT
+      // sources are the raw channelYtMessages arrays; returning one by ref let
+      // the splice permanently insert "X went live" events into that buffer,
+      // which persistYt then serialized as fake chat history.
+      return s.length <= limit ? s.slice() : s.slice(-limit)
     }
 
     // Co-live detection. When every source's newest msg lands within ~10 min
@@ -59294,8 +59462,13 @@ const STORAGE_KEY = 'heatsync_multichat'
     // Optimistic fallback: when heatsync has no linkage (shadow profile / unknown
     // streamer), assume the same username on every platform. Most streamers
     // use one handle everywhere; the user can edit the tab if the guess is wrong.
-    const twitchName = (identity?.twitch || lower).toLowerCase()
-    const kickName = (identity?.kick || lower).toLowerCase()
+    // EXCEPT when the anchor IS a youtube identity: a yt @handle is not a
+    // twitch/kick name (kripparrian's yt vs twitch nl_kripp — the guess filled
+    // all 3 slots and joined/sent to a STRANGER's twitch channel). Same rule
+    // as getLivePlatformNames: cross-platform from yt is explicit-only.
+    const fromYt = platform === 'youtube'
+    const twitchName = (identity?.twitch || (fromYt ? '' : lower)).toLowerCase()
+    const kickName = (identity?.kick || (fromYt ? '' : lower)).toLowerCase()
     // Twitch/Kick same-name guessing is safe (handles match across those platforms).
     // YouTube is NOT: a fabricated youtube.com/@<name>/live resolves to whoever owns
     // that handle — usually a STRANGER who happens to be live — and bleeds their chat
@@ -61092,7 +61265,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         }
         if (changed) {
           restoreMcUnmutedDom(bare || u)
-          renderMessages(currentTab)
+          renderMessages(currentTab, { bypassScrollPause: true })
         }
       }
       // Server cleared the entire mute list (e.g. user clicked "clear all" on heatsync.org)
@@ -61103,7 +61276,7 @@ const STORAGE_KEY = 'heatsync_multichat'
           restoreMcUnmutedDom(bare)
         }
         mutedUsers.clear()
-        renderMessages(currentTab)
+        renderMessages(currentTab, { bypassScrollPause: true })
       }
       // Cross-surface block sync (content.js, other tabs). Full re-render so blocked
       // users drop out / reappear (buildMessageDiv filters them).
@@ -61111,7 +61284,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         const u = msg.username?.toLowerCase()
         if (u && !blockedUsers.has(u)) {
           blockedUsers.add(u)
-          renderMessages(currentTab)
+          renderMessages(currentTab, { bypassScrollPause: true })
         }
       }
       if (msg.type === 'user_unblocked') {
@@ -61119,7 +61292,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         const u = msg.username?.toLowerCase()
         const bare = u && u.includes(':') ? u.split(':')[1] : null
         const had = (u && blockedUsers.delete(u)) | (bare && blockedUsers.delete(bare))
-        if (had) renderMessages(currentTab)
+        if (had) renderMessages(currentTab, { bypassScrollPause: true })
       }
 
       // A different user added an emote to their set. Drop the freshness
@@ -62631,7 +62804,11 @@ const STORAGE_KEY = 'heatsync_multichat'
       // Lazy-resolve username → 7TV cosmetics + twitchId. First sighting per
       // session triggers one /users/kick/{name} fetch; result is cached and
       // backfilled into the rendered DOM so paints/badges paint in place.
-      if (msg.user && !msg.userId) queueKickNameToCosmetics(msg.user)
+      // NOT gated on !msg.userId: pusher/relay kick messages always carry the
+      // numeric KICK id now, and that gate starved this pipeline entirely
+      // (no kick avatars/paints/linked-twitch cosmetics). Dedup lives inside
+      // queueKickNameToCosmetics (kickNameResolved/pending).
+      if (msg.user) queueKickNameToCosmetics(msg.user)
       // Echo confirmation for pending-send tracker. Runs before isSentEcho
       // for the same reason as the IRC handler above.
       // Pass 'kick' platform so per-platform awaiting set drains correctly.
@@ -62775,12 +62952,12 @@ const STORAGE_KEY = 'heatsync_multichat'
           eventClass = 'event-offline'
         } else if (msg.eventType === 'stream:redeem') {
           if (!hermesToggles?.redeem) return
-          text = `\u25C6 redeemed "${escapeHtml(msg.title)}"`
+          text = `\u25C6 redeemed "${String(msg.title ?? '')}"`
           if (msg.cost) text += ` (${msg.cost})`
           eventClass = 'event-redeem'
         } else if (msg.eventType === 'stream:raid') {
           if (!hermesToggles?.raid) return
-          text = `[${channel}] \u25C6 raided ${escapeHtml(msg.target)} with ${msg.viewers || 0} viewers`
+          text = `[${channel}] \u25C6 raided ${String(msg.target ?? '')} with ${msg.viewers || 0} viewers`
           eventClass = 'event-raid'
         } else if (msg.eventType === 'stream:hype-start') {
           if (!hermesToggles?.hype) return
@@ -62792,7 +62969,7 @@ const STORAGE_KEY = 'heatsync_multichat'
           eventClass = 'event-hype'
         } else if (msg.eventType === 'stream:sub-gift') {
           if (!hermesToggles?.sub) return
-          text = `[${channel}] \u25C6 ${escapeHtml(msg.user)} gifted ${msg.count || 0} subs`
+          text = `[${channel}] \u25C6 ${String(msg.user ?? '')} gifted ${msg.count || 0} subs`
           eventClass = 'event-sub'
         }
         if (!text) return
@@ -62912,25 +63089,25 @@ const STORAGE_KEY = 'heatsync_multichat'
         if (eventType === 'raid') {
           toggleKey = 'raid'
           eventClass = 'event-raid'
-          text = `[${escapeHtml(channel)}] \u25C6 raided ${escapeHtml(data.target)} with ${Number(data.viewers) || 0} viewers`
+          text = `[${channel}] \u25C6 raided ${String(data.target ?? '')} with ${Number(data.viewers) || 0} viewers`
         } else if (eventType === 'hype-train-start') {
           toggleKey = 'hype'
           eventClass = 'event-hype'
-          text = `[${escapeHtml(channel)}] \u25C6 hype train started`
+          text = `[${channel}] \u25C6 hype train started`
           if (typeof onHypeTrainStart === 'function') onHypeTrainStart(data.level)
         } else if (eventType === 'hype-train-end') {
           toggleKey = 'hype'
           eventClass = 'event-hype'
-          text = `[${escapeHtml(channel)}] \u25C6 hype train ended at level ${Number(data.level) || 0}`
+          text = `[${channel}] \u25C6 hype train ended at level ${Number(data.level) || 0}`
           if (typeof onHypeTrainEnd === 'function') onHypeTrainEnd()
         } else if (eventType === 'sub-gift') {
           toggleKey = 'sub'
           eventClass = 'event-sub'
-          text = `[${escapeHtml(channel)}] \u25C6 ${t('mc_irc_gift_subs', [escapeHtml(data.user), String(Number(data.count) || 0), escapeHtml(channel)])}`
+          text = `[${channel}] \u25C6 ${t('mc_irc_gift_subs', [String(data.user ?? ''), String(Number(data.count) || 0), channel])}`
         } else if (eventType === 'redeem') {
           toggleKey = 'redeem'
           eventClass = 'event-redeem'
-          text = `\u25C6 redeemed "${escapeHtml(data.title)}"`
+          text = `\u25C6 redeemed "${String(data.title ?? '')}"`
           if (data.rewardId) {
             redeemTitleMap.set(data.rewardId, { title: data.title, cost: data.cost })
             if (redeemTitleMap.size > 200) redeemTitleMap.delete(redeemTitleMap.keys().next().value)
@@ -62938,13 +63115,13 @@ const STORAGE_KEY = 'heatsync_multichat'
         } else if (eventType === 'prediction-start') {
           toggleKey = 'pred'
           eventClass = 'event-pred'
-          const title = data?.title ? ' — ' + escapeHtml(data.title) : ''
-          text = `[${escapeHtml(channel)}] ◆ new prediction up${title}`
+          const title = data?.title ? ' — ' + String(data.title) : ''
+          text = `[${channel}] ◆ new prediction up${title}`
         } else if (eventType === 'poll-start') {
           toggleKey = 'poll'
           eventClass = 'event-poll'
-          const title = data?.title ? ' — ' + escapeHtml(data.title) : ''
-          text = `[${escapeHtml(channel)}] ◆ new poll up${title}`
+          const title = data?.title ? ' — ' + String(data.title) : ''
+          text = `[${channel}] ◆ new poll up${title}`
         } else return
 
         if (!hermesToggles[toggleKey]) return

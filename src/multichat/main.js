@@ -1253,9 +1253,11 @@
     // Misses re-validate on the short ttl: an empty set is the window where a
     // sender's brand-new emote renders as text if the live broadcast was missed.
     const fetchedAt = senderEmoteFetchedAt.get(senderKey)
+    // senderEmoteSets values are Maps — Object.keys(Map) is always [], which
+    // silently put EVERY sender on the 90s negative cadence instead of 5min
+    // (pure over-fetch; sets still rendered fine).
     const known = typeof senderEmoteSets !== 'undefined' ? senderEmoteSets.get(senderKey) : null
-    const refetchMs =
-      known && Object.keys(known).length > 0 ? SENDER_EMOTE_REFETCH_MS : SENDER_EMOTE_NEGATIVE_REFETCH_MS
+    const refetchMs = known && known.size > 0 ? SENDER_EMOTE_REFETCH_MS : SENDER_EMOTE_NEGATIVE_REFETCH_MS
     if (fetchedAt && Date.now() - fetchedAt < refetchMs) return
     senderEmotePending.add(senderKey)
     if (senderEmotePending.size >= SENDER_EMOTE_BATCH) {

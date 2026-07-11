@@ -6460,6 +6460,22 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }, 50)
     return true
   }
+  if (message.type === 'resolve_twitch_id') {
+    // login → numeric twitch id for content scripts. They must not fetch
+    // heatsync.org themselves — CF edge bot-checks 503 cross-origin
+    // content-script requests (the origin never sees them); SW fetches pass.
+    ;(async () => {
+      const login = String(message.login || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9_]/g, '')
+      try {
+        sendResponse({ id: login ? await lookupTwitchUserId(login) : null })
+      } catch {
+        sendResponse({ id: null })
+      }
+    })()
+    return true
+  }
   if (message.type === 'ping') {
     sendResponse({ ok: true })
     return true
@@ -9626,10 +9642,17 @@ async function bgIrcRestoreFromStorage() {
       return
     }
     let n = 0
+    const expired = []
     for (const [k, v] of Object.entries(all)) {
       if (!k.startsWith('hs_irc_') || k.startsWith('hs_irc_sync_') || k === 'hs_irc_parser_version') continue
       const ch = k.slice('hs_irc_'.length)
-      if (!ch || !v?.msgs?.length || Date.now() - v.ts >= 86400000) continue
+      // Missing/invalid ts counts as stale — unknown-age data fails safe.
+      if (!ch || !v?.msgs?.length || !(Date.now() - (v.ts || 0) < 86400000)) {
+        // Skipped buffers were previously left in storage forever — every
+        // channel ever watched kept its full ring in storage.local unbounded.
+        expired.push(k)
+        continue
+      }
       const buf = new BGCircularBuffer(BG_IRC_PERSIST_MAX)
       // Purge non-renderable types from legacy persisted buffers. Earlier
       // backfill paths pushed ROOMSTATE/USERSTATE/WHISPER into the ring;
@@ -9641,7 +9664,8 @@ async function bgIrcRestoreFromStorage() {
       BG_IRC.channels.set(ch, buf)
       n++
     }
-    log('BG IRC restored', n, 'channels from storage')
+    if (expired.length) await chrome.storage.local.remove(expired).catch(() => {})
+    log('BG IRC restored', n, 'channels from storage', expired.length ? `(purged ${expired.length} stale)` : '')
   } catch (e) {
     log('BG IRC restore failed:', e.message)
   }

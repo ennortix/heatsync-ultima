@@ -3723,16 +3723,11 @@ async function resolveTwitchChannelId(channelLogin) {
     }
   } catch (_) {}
   try {
-    // 4s ceiling: fallback in the mod-action hot path; a hang here would stall
-    // every ban/timeout/unban behind the browser's default TCP timeout (60s+).
-    // Time out fast.
-    const r = await fetch(`https://heatsync.org/api/resolve/twitch/${encodeURIComponent(lc)}`, {
-      credentials: 'omit',
-      signal: AbortSignal.timeout(4000),
-    })
-    if (!r.ok) return null
-    const data = await r.json()
-    const id = data?.id
+    // Relay via the background SW — a direct heatsync.org fetch from this
+    // ISOLATED content-script context gets 503'd by the CF edge bot-check
+    // (the origin never sees it), so the fallback would always dead-end.
+    const resp = await chrome.runtime.sendMessage({ type: 'resolve_twitch_id', login: lc })
+    const id = resp?.id
     if (id && /^\d+$/.test(String(id))) {
       _cacheChannelId(String(id))
       return String(id)

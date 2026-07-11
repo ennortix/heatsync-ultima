@@ -30820,7 +30820,9 @@ function listenForSocialEvents() {
       // PLUS the unfiltered YT echo. peekSentHost ensures the badge
       // reflects where the user actually typed FROM.
       if (isSentEcho(ytMsg.text, 'youtube')) return
-      if (ytMsg.user?.toLowerCase() === currentUsername?.toLowerCase()) {
+      // Gated on peekSentHost alone — currentUsername is null on cross-origin
+      // tabs (youtube.com/kick.com popout), matching the IRC/kick handlers.
+      {
         const sentHost = peekSentHost(ytMsg.text)
         if (sentHost) ytMsg.platform = sentHost === 'yt' ? 'youtube' : sentHost
       }
@@ -61978,7 +61980,11 @@ const STORAGE_KEY = 'heatsync_multichat'
       // originating from elsewhere (e.g. heatsync.org website) keep
       // whatever platform tag the server attached — leaving room for a
       // server-emitted [H] tag without us clobbering it.
-      if (msg.user?.toLowerCase() === currentUsername?.toLowerCase()) {
+      // peekSentHost only matches ext-input sends, so a hit IS the ownership
+      // signal — and it works cross-origin (youtube.com/kick.com popout)
+      // where currentUsername is null and a name guard would skip the retag,
+      // leaving the yt-popout's own echo painted [T].
+      {
         const sentHost = peekSentHost(msg.text)
         if (sentHost) {
           // IRC origin — badges are Twitch namespace regardless of [K] retag.
@@ -62069,8 +62075,9 @@ const STORAGE_KEY = 'heatsync_multichat'
       if (isSentEcho(msg.text, 'kick')) return
       // Own-message badge: only override for ext-tracked sends (matches
       // IRC handler comment above). Untracked echoes keep msg.platform='kick'
-      // which already renders as [K].
-      if (msg.user?.toLowerCase() === currentUsername?.toLowerCase()) {
+      // which already renders as [K]. Gated on peekSentHost alone — same
+      // cross-origin-null currentUsername reasoning as the IRC handler.
+      {
         const sentHost = peekSentHost(msg.text)
         if (sentHost) {
           // Kick origin — badges look up in kickBadgeUrls.

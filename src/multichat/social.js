@@ -830,7 +830,9 @@ function listenForSocialEvents() {
       // PLUS the unfiltered YT echo. peekSentHost ensures the badge
       // reflects where the user actually typed FROM.
       if (isSentEcho(ytMsg.text, 'youtube')) return
-      if (ytMsg.user?.toLowerCase() === currentUsername?.toLowerCase()) {
+      // Gated on peekSentHost alone — currentUsername is null on cross-origin
+      // tabs (youtube.com/kick.com popout), matching the IRC/kick handlers.
+      {
         const sentHost = peekSentHost(ytMsg.text)
         if (sentHost) ytMsg.platform = sentHost === 'yt' ? 'youtube' : sentHost
       }

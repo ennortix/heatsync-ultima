@@ -396,7 +396,13 @@ async function flushKickNameLookups() {
         if (m && m.platform === 'kick' && m.user) {
           const mk = m.user.toLowerCase()
           if (mk === key) {
-            if (tid) m.userId = tid
+            if (tid) {
+              m.userId = tid
+              // marks userId as twitch-space: the render path refuses to feed
+              // kick rows' userId into twitch-keyed badge/cosmetic/paint maps
+              // until this stamp exists (raw numeric kick ids collide there)
+              m._uidTwitch = tid
+            }
             if (paintUid) m.hsPaintUid = paintUid
             m._renderedHtml = null
           }

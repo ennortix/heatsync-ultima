@@ -1207,8 +1207,12 @@
   function resolveSenderEmoteKey(m) {
     if (!m) return null
     if (m.platform === 'kick') {
-      const id = m.userId || (m.user && m.user.toLowerCase())
-      return id ? `kick:${id}` : null
+      // ALWAYS the username slug: /api/users/emotes/batch resolves kick keys
+      // by kick_username only — pusher/relay messages carry a numeric kick
+      // userId, and `kick:<numeric>` never matches (sender emotes silently
+      // missing).
+      const slug = m.user && m.user.toLowerCase()
+      return slug ? `kick:${slug}` : null
     }
     if (m.platform === 'youtube') {
       // For YT, prefer resolved twitch_id (lets us reuse the twitch 7tv set).
@@ -6853,14 +6857,19 @@
       if (cached) m.userId = cached
       else if (cached === undefined) queueYtNameToTwitchId(m.user)
     }
-    // Kick: panel sees usernames only — resolve via 7TV/v3/users/kick/{name}
-    // which also returns the linked twitch_id when present. Hoist into m.userId
-    // so the existing cosmetics pipeline applies.
-    if (!m.userId && m.platform === 'kick' && m.user) {
+    // Kick: resolve via 7TV/v3/users/kick/{name} which also returns the linked
+    // twitch_id when present. Hoist into m.userId + m._uidTwitch so the
+    // existing cosmetics pipeline applies. Gated on !m._uidTwitch (NOT
+    // !m.userId): pusher/relay kick messages always carry the numeric KICK id,
+    // which is a different id-space — only the _uidTwitch stamp marks a
+    // resolved twitch identity.
+    if (m.platform === 'kick' && m.user && !m._uidTwitch) {
       const kKey = (m.user || '').toLowerCase()
       const cached = kickNameResolved.get(kKey)
-      if (cached) m.userId = cached
-      else if (cached === undefined) queueKickNameToCosmetics(m.user)
+      if (cached) {
+        m.userId = cached
+        m._uidTwitch = cached
+      } else if (cached === undefined) queueKickNameToCosmetics(m.user)
     }
     // Kick-space paint uid (kick_<kickid>) — set independent of whether the
     // twitch lookup above resolved (a kick-origin HeatSync account can have
@@ -6871,9 +6880,16 @@
       const paintUid = kickNamePaintUid.get((m.user || '').toLowerCase())
       if (paintUid) m.hsPaintUid = paintUid
     }
-    if (m.userId) {
-      badges += renderThirdPartyBadges(m.userId)
-      if (!mcUserCosmetics.has(m.userId)) queueMcCosmeticsLookup(m.userId)
+    // ID-SPACE SAFETY: a kick row's userId is the raw numeric KICK id until
+    // the hoist above / flushKickNameLookups patches in the linked twitch id
+    // (m._uidTwitch). The badge maps, 7TV cosmetics and paint caches below are
+    // all TWITCH id-space — a bare kick id collides with an unrelated twitch
+    // user's entry, painting the wrong person. Kick rows resolve through the
+    // name-keyed kick pipeline (kickNamePaintUid + queueKickNameToCosmetics).
+    const uidTwitch = (m.platform === 'kick' ? m._uidTwitch : m.userId) || ''
+    if (uidTwitch) {
+      badges += renderThirdPartyBadges(uidTwitch)
+      if (!mcUserCosmetics.has(uidTwitch)) queueMcCosmeticsLookup(uidTwitch)
     }
     const plat =
       m.platform === 'youtube'
@@ -6902,8 +6918,12 @@
     // behind their resolved twitch uid — see the ID-SPACE SAFETY note in
     // paints.js: a kick-origin HeatSync account can exist with or without a
     // twitch link, so try twitch first, then the kick-namespaced id.
-    const hsPaint = hsPaintRender(m.userId, m.user) || (m.hsPaintUid ? hsPaintRender(m.hsPaintUid, m.user) : null)
-    const paintStyle = hsPaint ? '' : m.userId ? getMcPaintStyle(m.userId) : ''
+    // uidTwitch (not raw m.userId): paint caches are twitch-space — a kick
+    // row's numeric kick id would fetch/render an unrelated twitch user's paint.
+    const hsPaint =
+      (uidTwitch ? hsPaintRender(uidTwitch, m.user) : null) ||
+      (m.hsPaintUid ? hsPaintRender(m.hsPaintUid, m.user) : null)
+    const paintStyle = hsPaint ? '' : uidTwitch ? getMcPaintStyle(uidTwitch) : ''
     // Name colour (when no HS/7TV paint owns the fill): the user's PICKED
     // heatsync colour on youtube + kick ONLY — never twitch, whose custom name
     // colour is the prime/turbo paid perk. YouTube has no native colour, so its
@@ -6985,9 +7005,13 @@
     const div = document.createElement('div')
     div.className = cls
     div._hsMsg = m // back-ref for reprocessEmoteTextInPlace (GC'd with the row)
-    if (m.userId) div.dataset.uid = m.userId
+    // uidTwitch, never raw m.userId: data-uid is twitch-id-space only (feeds
+    // _uidIndex / updateCosmeticsInPlace). A kick row's numeric kick id here
+    // would both collide with an unrelated twitch user's repaint AND block
+    // flushKickNameLookups' backfill (it only stamps when data-uid is empty).
+    if (uidTwitch) div.dataset.uid = uidTwitch
     // Kick-space paint uid — parallel to data-uid, never a substitute for it
-    // (m.userId/data-uid stay twitch-id-space only). Lets a kick-namespaced
+    // (data-uid stays twitch-id-space only). Lets a kick-namespaced
     // HS paint resolution find this row in-place (updateHsPaintsInPlace).
     if (m.hsPaintUid) div.dataset.hsPaintUid = m.hsPaintUid
     if (isSuperChat && m.scColor) {
@@ -9200,8 +9224,13 @@
     // Optimistic fallback: when heatsync has no linkage (shadow profile / unknown
     // streamer), assume the same username on every platform. Most streamers
     // use one handle everywhere; the user can edit the tab if the guess is wrong.
-    const twitchName = (identity?.twitch || lower).toLowerCase()
-    const kickName = (identity?.kick || lower).toLowerCase()
+    // EXCEPT when the anchor IS a youtube identity: a yt @handle is not a
+    // twitch/kick name (kripparrian's yt vs twitch nl_kripp — the guess filled
+    // all 3 slots and joined/sent to a STRANGER's twitch channel). Same rule
+    // as getLivePlatformNames: cross-platform from yt is explicit-only.
+    const fromYt = platform === 'youtube'
+    const twitchName = (identity?.twitch || (fromYt ? '' : lower)).toLowerCase()
+    const kickName = (identity?.kick || (fromYt ? '' : lower)).toLowerCase()
     // Twitch/Kick same-name guessing is safe (handles match across those platforms).
     // YouTube is NOT: a fabricated youtube.com/@<name>/live resolves to whoever owns
     // that handle — usually a STRANGER who happens to be live — and bleeds their chat
@@ -12537,7 +12566,11 @@
       // Lazy-resolve username → 7TV cosmetics + twitchId. First sighting per
       // session triggers one /users/kick/{name} fetch; result is cached and
       // backfilled into the rendered DOM so paints/badges paint in place.
-      if (msg.user && !msg.userId) queueKickNameToCosmetics(msg.user)
+      // NOT gated on !msg.userId: pusher/relay kick messages always carry the
+      // numeric KICK id now, and that gate starved this pipeline entirely
+      // (no kick avatars/paints/linked-twitch cosmetics). Dedup lives inside
+      // queueKickNameToCosmetics (kickNameResolved/pending).
+      if (msg.user) queueKickNameToCosmetics(msg.user)
       // Echo confirmation for pending-send tracker. Runs before isSentEcho
       // for the same reason as the IRC handler above.
       // Pass 'kick' platform so per-platform awaiting set drains correctly.

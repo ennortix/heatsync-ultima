@@ -971,6 +971,14 @@ function listenForSocialEvents() {
           link.channelName = msg.channelName || ''
           youtubeLinks.set(targetChannelId, link)
           log('YouTube connected for channel', targetChannelId, ':', link.channelName)
+          // Retro-label the live composer: it booted with the raw videoId as
+          // its only identity ("send to #<videoId>") — now that the server
+          // resolved the channel name, repaint the placeholder with it.
+          if (targetChannelId === '__live_yt_auto__' && currentTab === 'live') {
+            try {
+              updateInputPlaceholder()
+            } catch {}
+          }
         }
         // Reflect status onto the channel tab button so YT-only channels get a
         // live dot and a human-readable label (otherwise YT-only tabs sit dark

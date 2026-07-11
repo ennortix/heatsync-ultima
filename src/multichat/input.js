@@ -2585,7 +2585,18 @@ function updateInputPlaceholder() {
   if (currentTab === 'feed') {
     placeholder = t('mc_input_post_heatsync')
   } else if (currentTab === 'live') {
-    const channel = getLiveChannel()
+    let channel = getLiveChannel()
+    // yt video page: getLiveChannel() is the raw 11-char videoId — meaningless
+    // as a label ("send to #jfKfPfyJRdk"). Show the channel name resolved by
+    // the youtube_status connected echo instead; until it arrives (or for a
+    // dead stream, where it never does) fall back to the generic prompt.
+    if (typeof hostPlatform !== 'undefined' && hostPlatform === 'yt') {
+      channel = resolveYtLiveLabel(channel, {
+        isYtVideoPage: /\/watch|\/live\/|\/live_chat/.test(location.pathname + location.search),
+        autoVideoId: typeof _autoYtVideoId !== 'undefined' ? _autoYtVideoId : null,
+        resolvedName: (typeof youtubeLinks !== 'undefined' && youtubeLinks.get('__live_yt_auto__')?.channelName) || '',
+      })
+    }
     placeholder = channel ? t('mc_input_send_channel', [channel]) : t('mc_input_send_message')
   } else if (currentTab === 'mentions') {
     const channel = getCurrentChannel()

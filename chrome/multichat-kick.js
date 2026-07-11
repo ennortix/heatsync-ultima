@@ -47511,7 +47511,7 @@ const _SET_ACTION_ROWS = [
     hay: 'default reset all settings factory system',
     html:
       '<div class="hs-mc-setting-row" style="justify-content:flex-end">' +
-      '<button class="hs-mc-defaults-btn" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">default</button>' +
+      '<button class="hs-mc-defaults-btn" title="reset every setting on every page" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">all defaults</button>' +
       '</div>',
   },
 ]
@@ -47826,14 +47826,29 @@ function _handleFilterRuleAction(el, panelRoot) {
 }
 
 // Compose one category pane: registry sections + that category's islands.
+// Per-page reset — mirrors the site's per-section-header `default` button so
+// one click restores THIS page's registry settings without touching the rest.
+// (System keeps the all-settings button in _SET_ACTION_ROWS; this one is
+// page-scoped.)
+function _renderPageDefaultsRow(cat) {
+  return (
+    '<div class="hs-mc-setting-row" style="justify-content:flex-end;padding-top:6px">' +
+    '<button class="hs-mc-pagedefaults-btn" data-set-cat="' +
+    escapeHtml(cat) +
+    '" title="reset this page to defaults" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">default</button>' +
+    '</div>'
+  )
+}
+
 function _renderCategoryPane(cat) {
-  if (cat === 'mod') return _regSections(cat)
+  if (cat === 'mod') return _renderPageDefaultsRow(cat) + _regSections(cat)
   if (cat === 'filters') {
     // 'rules' section is custom-rendered; exclude it from auto-sections
-    return _regSections(cat, ['content', 'messages']) + _renderFilterRulesGroup()
+    return _renderPageDefaultsRow(cat) + _regSections(cat, ['content', 'messages']) + _renderFilterRulesGroup()
   }
   if (cat === 'tweaks') {
     return (
+      _renderPageDefaultsRow(cat) +
       '<div class="hs-mc-set-keyhint" style="padding-top:8px">twitch.tv only — kick/youtube unaffected</div>' +
       _regSections(cat)
     )
@@ -47847,7 +47862,7 @@ function _renderCategoryPane(cat) {
     }
     return _regSections(cat, ['tabs', 'subsystems', 'language']) + _renderMutedGroup() + adv + _renderBackupGroup()
   }
-  return _regSections(cat)
+  return _renderPageDefaultsRow(cat) + _regSections(cat)
 }
 
 // ─── settings export / import ────────────────────────────────────────────
@@ -48688,6 +48703,14 @@ function renderSettingsTab() {
     var defaultsBtn = e.target.closest('.hs-mc-defaults-btn')
     if (defaultsBtn) {
       resetSettingsToDefaults()
+      if (typeof showToast === 'function') showToast('all settings restored to defaults', 'success')
+      return
+    }
+    var pageDefaultsBtn = e.target.closest('.hs-mc-pagedefaults-btn')
+    if (pageDefaultsBtn) {
+      var _pdCat = pageDefaultsBtn.dataset.setCat
+      resetSettingsToDefaults(_pdCat)
+      if (typeof showToast === 'function') showToast(_pdCat + ' restored to defaults', 'success')
       return
     }
   }
@@ -52365,9 +52388,12 @@ const STORAGE_KEY = 'heatsync_multichat'
   // normal setSetting path (storage write + bridge + applier). noReset
   // entries (server-coupled content-warning prefs) are left untouched.
   // Sync writes coalesce into one debounced ui_settings patch.
-  function resetSettingsToDefaults() {
+  // Optional `cat` scopes the reset to one settings page (per-page default
+  // button); no arg = everything (system page's all-settings button).
+  function resetSettingsToDefaults(cat) {
     for (const def of SETTINGS) {
       if (def.noReset) continue
+      if (cat && def.category !== cat) continue
       setSetting(def.key, def.default)
     }
     renderSettingsTab()

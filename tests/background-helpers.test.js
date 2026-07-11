@@ -376,7 +376,12 @@ function makeFfzHarness({ responses = [] } = {}) {
     'sanitizeEmoteList',
     'log',
     `${ffzSrc}\nreturn { fetchFFZChannelEmotes, ffzRoom404At, FFZ_ROOM_404_TTL }`,
-  )(fetchWithTimeout, ytChannelIdCache, (l) => l, () => {})
+  )(
+    fetchWithTimeout,
+    ytChannelIdCache,
+    (l) => l,
+    () => {},
+  )
   return { ...harness, calls, ytChannelIdCache }
 }
 

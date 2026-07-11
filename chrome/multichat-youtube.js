@@ -35306,6 +35306,24 @@ const SLASH_COMMANDS = [
   { cmd: 'unique', args: '[off]', desc: 'unique-chat/r9k (twitch mod)' },
 ]
 const slashAcState = { active: false, matches: [], index: 0 }
+
+// vi-mode (chrome/vi-mode.js, same isolated world) asks this before treating
+// Escape as enter-normal-mode. Every composer overlay closes on Escape via
+// its own handler — vi's window-capture intercept starved them all: the
+// dropdown stayed open, the user got dumped into normal mode mid-message,
+// and the next letters silently ran as vim motions. Any new Escape-owning
+// overlay must add its open-state here.
+window.__hsEscOwned = () => {
+  try {
+    if (emojiAcState.active || mentionAcState.active || slashAcState.active || acState.active) return true
+    if (typeof replyState !== 'undefined' && replyState) return true
+    const picker = document.getElementById('hs-mc-emote-picker')
+    if (picker && picker.offsetParent !== null) return true
+    if (document.getElementById('hs-mc-msg-ctx')) return true
+  } catch (_) {}
+  return false
+}
+
 function rebuildInput() {
   const bar = document.getElementById('hs-mc-inputbar')
   if (!bar) return

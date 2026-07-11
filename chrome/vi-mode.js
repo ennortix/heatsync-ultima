@@ -685,6 +685,14 @@
   function handleInsertMode(e) {
     // Only intercept Escape in insert mode
     if (e.key === 'Escape') {
+      // A composer overlay owns this Escape (autocomplete dropdown, emote
+      // picker, ctx menu, armed reply) — pass it through so the overlay's
+      // own handler closes it. Intercepting here starved them all AND
+      // dumped the user into normal mode mid-message, where the next
+      // letters silently ran as motions instead of typing.
+      try {
+        if (window.__hsEscOwned?.()) return
+      } catch (_) {}
       e.preventDefault()
       e.stopImmediatePropagation()
       // Finalize . repeat recording
@@ -731,6 +739,15 @@
     // key.length === 1 doesn't catch 'Dead'/'Process' or an in-progress
     // composition, so they fell through to blockEvent and got eaten.
     if (key === 'Dead' || key === 'Process' || e.isComposing) return
+
+    // Overlay-owned Escape (dropdown/picker/ctx/reply) closes the overlay —
+    // same pass-through as insert mode; blocking it here stranded open
+    // overlays whenever the user was in normal mode.
+    if (key === 'Escape' && !pendingCmd && !operator) {
+      try {
+        if (window.__hsEscOwned?.()) return
+      } catch (_) {}
+    }
 
     // Empty composer → there's nothing to navigate or edit, so a printable key
     // can only mean "start typing this message" — never a normal-mode motion.

@@ -249,10 +249,29 @@
 
   function insertText(el, pos, text) {
     if (!el || !text) return
-    setCursorPos(el, pos)
     if (isCE(el)) {
-      document.execCommand('insertText', false, text)
+      el.focus()
+      if (getContentNodes(el).length) {
+        setCursorPos(el, pos)
+      } else {
+        // empty CE: no content nodes for setCursorPos to anchor a range to,
+        // and the composer may be blurred (nothing anchors the document
+        // selection there) — collapse a selection into the element itself
+        // so execCommand inserts here instead of wherever a stale page
+        // selection was left.
+        const sel = window.getSelection()
+        const range = document.createRange()
+        range.selectNodeContents(el)
+        range.collapse(true)
+        sel.removeAllRanges()
+        sel.addRange(range)
+      }
+      if (!document.execCommand('insertText', false, text)) {
+        el.textContent = (el.textContent || '') + text
+        el.dispatchEvent(new Event('input', { bubbles: true }))
+      }
     } else {
+      setCursorPos(el, pos)
       const v = el.value
       el.value = v.slice(0, pos) + text + v.slice(pos)
       el.setSelectionRange(pos + text.length, pos + text.length)
@@ -707,6 +726,11 @@
       updateVisual()
       return
     }
+
+    // IME composition (accented/CJK compose sequences) is never a vim motion —
+    // key.length === 1 doesn't catch 'Dead'/'Process' or an in-progress
+    // composition, so they fell through to blockEvent and got eaten.
+    if (key === 'Dead' || key === 'Process' || e.isComposing) return
 
     // Empty composer → there's nothing to navigate or edit, so a printable key
     // can only mean "start typing this message" — never a normal-mode motion.

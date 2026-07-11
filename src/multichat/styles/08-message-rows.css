@@ -243,6 +243,14 @@
     .hs-mc-msg[data-msg-id]:hover .hs-mc-reply-btn {
       display: block;
     }
+    /* whisper rows have no data-msg-id, so the rule above never matches —
+       mirror it for the whisper-row marker class instead */
+    .hs-whisper-msg {
+      position: relative;
+    }
+    .hs-whisper-msg:hover .hs-mc-reply-btn {
+      display: block;
+    }
     /* Mod toolbar — singleton bar inserted into the hovered row as a sibling
        of .hs-mc-reply-btn. Pure CSS positioning: absolute, flush against the
        left edge of the reply button. Shared 1px #808080 dividers between

@@ -78,6 +78,10 @@ function whisperUsersSet(key, value) {
   }
 }
 let lastWhisperKey = null // for /r — last person involved in a whisper
+// Explicitly armed via the ↩ reply button. /r prefers this over lastWhisperKey
+// and, unlike lastWhisperKey, is never overwritten by an incoming whisper —
+// only by a new ↩ click or by clearing once the armed /r send resolves.
+let armedReplyKey = null
 let whisperDmsLoaded = false
 let selfWhisperColor = null // current user's Twitch color
 
@@ -559,7 +563,7 @@ function renderWhispersTab() {
 
   for (const m of toRender) {
     const div = document.createElement('div')
-    let cls = m.self ? 'hs-mc-msg hs-whisper-self' : 'hs-mc-msg'
+    let cls = m.self ? 'hs-mc-msg hs-whisper-self hs-whisper-msg' : 'hs-mc-msg hs-whisper-msg'
     if (m.status === 'pending') cls += ' hs-whisper-pending'
     else if (m.status === 'failed') cls += ' hs-whisper-failed'
     div.className = cls
@@ -615,7 +619,10 @@ function renderWhispersTab() {
       const errSafe = escapeHtml(m.error || 'failed')
       const idSafe = escapeHtml(m.sendId || '')
       if (m.errorKind === 'relink') {
-        statusHtml = ` <a href="https://heatsync.org/api/auth/login?scopes=whispers&return_to=%2Fhome%2Fhot" target="_blank" rel="noopener noreferrer" class="hs-whisper-status hs-whisper-relogin" title="${errSafe} — click to grant the twitch whisper permission on heatsync">⚠ enable twitch whispers — re-link</a>`
+        // relink can't auto-retry (retryAuthFailedWhispers only fires on a
+        // logged-out→logged-in transition; this happens while already
+        // authed) — keep manual retry available alongside the re-link link
+        statusHtml = ` <a href="https://heatsync.org/api/auth/login?scopes=whispers&return_to=%2Fhome%2Fhot" target="_blank" rel="noopener noreferrer" class="hs-whisper-status hs-whisper-relogin" title="${errSafe} — click to grant the twitch whisper permission on heatsync">⚠ enable twitch whispers — re-link</a> <span class="hs-whisper-status hs-whisper-retry" title="click to retry" data-retry="${idSafe}">retry</span>`
       } else if (m.errorKind === 'auth') {
         statusHtml = ` <a href="https://heatsync.org/api/auth/login?return_to=%2Fhome%2Fhot" target="_blank" rel="noopener noreferrer" class="hs-whisper-status hs-whisper-relogin" title="${errSafe} — click to log in on heatsync">⚠ log in on heatsync to send</a>`
       } else {
@@ -661,6 +668,9 @@ function renderWhispersTab() {
       const key = el.getAttribute('data-wkey')
       if (!key || !whisperUsers.has(key)) return
       lastWhisperKey = key
+      // arm — /r targets this row's person until the send resolves or another
+      // ↩ is clicked, immune to incoming whispers overwriting lastWhisperKey
+      armedReplyKey = key
       whisperSaveDebounced()
       if (typeof _prefillMcInput === 'function') _prefillMcInput('/r ')
       if (typeof updateInputPlaceholder === 'function') {

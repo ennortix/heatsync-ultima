@@ -39,14 +39,24 @@ let _ctxInvalidatedLogged = false
 let _storageMissingLogged = false
 function _warnStorageMissing() {
   if (_storageMissingLogged) return
+  // Storage being absent is usually benign: MAIN-world injection
+  // (autocomplete-hook, etc.) where chrome.* never exists by design, and
+  // fresh-boot/teardown races while the context is still valid. Diagnosing
+  // those as "context invalidated" was misdiagnosis noise on every boot.
+  // Only warn when a runtime object exists but its id is gone — the actual
+  // invalidation signal (accessing .id can also throw then).
+  let invalidated = false
+  try {
+    invalidated = !!rawApi?.runtime && !rawApi.runtime.id
+  } catch {
+    invalidated = true
+  }
+  if (!invalidated) return
   _storageMissingLogged = true
-  console.warn('[heatsync] Storage API not available (extension context likely invalidated — page reload needed)')
-  // NOTE: do NOT arm a reload here. This warning ALSO fires on MAIN-world
-  // injection (autocomplete-hook, etc.) where chrome.* APIs simply don't
-  // exist by design — that's not ctx-death, that's the world model. The
-  // canonical "ctx is actually dead" signal is the "Extension context
-  // invalidated" error thrown by runtime.sendMessage; reload-arming lives
-  // there instead.
+  console.warn('[heatsync] Storage API not available (extension context invalidated — page reload needed)')
+  // NOTE: do NOT arm a reload here. The canonical reload trigger is the
+  // "Extension context invalidated" error thrown by runtime.sendMessage;
+  // reload-arming lives there instead.
 }
 
 /**

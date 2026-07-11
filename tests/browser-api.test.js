@@ -119,6 +119,22 @@ describe('browser-api: null-API graceful handling (Bun env = no chrome/browser)'
     expect(result).toEqual({})
   })
 
+  test('missing storage API stays quiet when no runtime exists (not ctx-death)', async () => {
+    // rawApi is null here — the MAIN-world / fresh-boot shape. Warning about
+    // "context invalidated" in this state was misdiagnosis noise; the warn
+    // must only fire when a runtime object exists with its id gone.
+    const origWarn = console.warn
+    const warns = []
+    console.warn = (...args) => warns.push(args.join(' '))
+    try {
+      await storage.local.get('someKey')
+      await storage.local.set({ foo: 'bar' })
+    } finally {
+      console.warn = origWarn
+    }
+    expect(warns.filter((w) => w.includes('Storage API not available'))).toEqual([])
+  })
+
   test('storage.local.get with array key returns {}', async () => {
     const result = await storage.local.get(['a', 'b'])
     expect(result).toEqual({})

@@ -409,6 +409,8 @@ ensureAlarm('hs-7tv-watchdog', { periodInMinutes: 2 })
 // Server kill-switch poll — recovers from a broken release without forcing a
 // CWS update push. delayInMinutes jitter spreads 30k clients' first hit.
 ensureAlarm('hs-health-poll', { delayInMinutes: 0.25 + Math.random() * 0.5, periodInMinutes: 5 })
+// Reap idle yt send-bridge tabs (see sweepYtBridgeTabs).
+ensureAlarm('hs-yt-bridge-sweep', { periodInMinutes: 5 })
 // async is safe here: unlike onMessage, alarms ignore the return value
 browser.alarms?.onAlarm?.addListener(async (alarm) => {
   if (alarm.name === 'keepalive') {
@@ -468,6 +470,8 @@ browser.alarms?.onAlarm?.addListener(async (alarm) => {
     } catch (e) {
       log('hs-ws-watchdog error:', e?.message)
     }
+  } else if (alarm.name === 'hs-yt-bridge-sweep') {
+    sweepYtBridgeTabs().catch(() => {})
   } else if (alarm.name === 'hs-health-poll') {
     fetchHealth().catch(() => {})
   } else if (alarm.name === 'hs-7tv-watchdog') {
@@ -6380,9 +6384,37 @@ async function _removeFromInventoryImpl(emoteHash, emoteName) {
 // (never a guess) so we can never send to the wrong stream. Tabs are cached per
 // videoId and reused; cleaned up when closed.
 const ytBridgeTabs = new Map() // videoId → tabId
+// Bridge tabs used to live forever (one pinned tab per videoId ever sent to,
+// surviving stream end). Stamp use on ensure + relay; the sweep alarm removes
+// idle ones. Map loss on SW restart is fine — the sweep then closes on sight.
+const ytBridgeLastUsed = new Map() // videoId → ms timestamp
+const YT_BRIDGE_IDLE_MS = 20 * 60 * 1000
+async function sweepYtBridgeTabs() {
+  const now = Date.now()
+  for (const [vid, tid] of [...ytBridgeTabs]) {
+    const last = ytBridgeLastUsed.get(vid) || 0
+    if (now - last < YT_BRIDGE_IDLE_MS) continue
+    ytBridgeTabs.delete(vid)
+    ytBridgeLastUsed.delete(vid)
+    await browser.tabs.remove(tid).catch(() => {})
+  }
+  // Orphans: #hs-bridge-marked tabs the map doesn't know (SW restarted since
+  // creation). An actively-used one gets re-adopted into the map by the send
+  // path's URL match before the next sweep; anything still untracked is dead.
+  const tracked = new Set(ytBridgeTabs.values())
+  const marked = await browser.tabs.query({ url: '*://www.youtube.com/live_chat*' }).catch(() => [])
+  for (const t of marked) {
+    if ((t.url || '').includes('#hs-bridge') && !tracked.has(t.id)) await browser.tabs.remove(t.id).catch(() => {})
+  }
+}
 
 browser.tabs.onRemoved.addListener((tabId) => {
-  for (const [vid, tid] of ytBridgeTabs) if (tid === tabId) ytBridgeTabs.delete(vid)
+  for (const [vid, tid] of ytBridgeTabs) {
+    if (tid === tabId) {
+      ytBridgeTabs.delete(vid)
+      ytBridgeLastUsed.delete(vid)
+    }
+  }
 })
 
 function pingYtBridge(tabId) {
@@ -6413,13 +6445,20 @@ async function _ensureYoutubeBridgeTab(videoId) {
     }
   }
   if (tabId == null) {
+    // #hs-bridge marks this tab as OURS: the multichat bundle sees the hash
+    // and skips its entire boot. Without the marker the bridge booted a full
+    // hidden popout overlay — it rebound the single __live_yt_auto__ slot to
+    // the bridge's videoId (killing the watch tab's feed on WS reconnect) and
+    // its overlay hid the native chat, so the "sign in here" tab we surface
+    // on chat_disabled had no visible login UI.
     const created = await browser.tabs
-      .create({ url: `https://www.youtube.com/live_chat?v=${videoId}`, active: false, pinned: true })
+      .create({ url: `https://www.youtube.com/live_chat?v=${videoId}#hs-bridge`, active: false, pinned: true })
       .catch(() => null)
     if (!created?.id) return { error: 'no_youtube_tab' }
     tabId = created.id
     ytBridgeTabs.set(videoId, tabId)
   }
+  ytBridgeLastUsed.set(videoId, Date.now())
   // Poll for readiness — the YT SPA + auth-cookie load takes a couple seconds.
   const deadline = Date.now() + 12000
   let sawInput = false
@@ -7835,14 +7874,29 @@ async function handleMessage(message, sender, sendResponse) {
     // resolution (sender tab → active YT tab → any YT tab).
     ;(async () => {
       try {
-        const { action, msgId, target } = message
+        const { action, msgId, target, videoId } = message
         if (!action || !msgId) {
           sendResponse({ ok: false, error: 'missing params' })
           return
         }
-        const senderTabId = sender?.tab?.id
+        const vidOk = videoId && /^[a-zA-Z0-9_-]{11}$/.test(videoId)
         let targetTabId = null
-        if (senderTabId) {
+        // With a concrete videoId, prefer THIS stream's tabs (bridge, then
+        // URL match) — same discipline as the send path.
+        if (vidOk) {
+          const bridged = ytBridgeTabs.get(videoId)
+          if (bridged != null && (await browser.tabs.get(bridged).catch(() => null))) {
+            targetTabId = bridged
+            ytBridgeLastUsed.set(videoId, Date.now())
+          }
+          if (!targetTabId) {
+            const ytTabs = await browser.tabs.query({ url: '*://www.youtube.com/*' }).catch(() => [])
+            const match = ytTabs.find((t) => (t.url || '').includes(videoId))
+            if (match) targetTabId = match.id
+          }
+        }
+        const senderTabId = sender?.tab?.id
+        if (!targetTabId && senderTabId) {
           const t = await browser.tabs.get(senderTabId).catch(() => null)
           if (t && /youtube\.com/.test(t.url || '')) targetTabId = senderTabId
         }
@@ -7860,7 +7914,24 @@ async function handleMessage(message, sender, sendResponse) {
           }
           targetTabId = tabs[0].id
         }
-        const result = await browser.tabs.sendMessage(targetTabId, { type: 'youtube_mod_relay', action, msgId, target })
+        const relayMsg = { type: 'youtube_mod_relay', action, msgId, target }
+        let result = null
+        try {
+          result = await browser.tabs.sendMessage(targetTabId, relayMsg)
+        } catch (relayErr) {
+          // Watch tab with collapsed native chat has NO live_chat frame — no
+          // receiver. With a videoId, fall back to a bridge tab (its chat
+          // frame carries recent history, so message-scoped actions usually
+          // still resolve).
+          const canBridge = vidOk && targetTabId !== ytBridgeTabs.get(videoId)
+          if (!canBridge) throw relayErr
+          const bridge = await ensureYoutubeBridgeTab(videoId)
+          if (!bridge.tabId || bridge.error) {
+            sendResponse({ ok: false, error: bridge.error || relayErr.message })
+            return
+          }
+          result = await browser.tabs.sendMessage(bridge.tabId, relayMsg)
+        }
         sendResponse(result || { ok: false, error: 'no response from tab' })
       } catch (e) {
         log('youtube_mod_action error:', e.message)
@@ -7886,11 +7957,20 @@ async function handleMessage(message, sender, sendResponse) {
           const bridged = ytBridgeTabs.get(videoId)
           if (bridged != null && (await browser.tabs.get(bridged).catch(() => null))) {
             targetTabId = bridged
+            ytBridgeLastUsed.set(videoId, Date.now())
           }
           if (!targetTabId) {
             const ytTabs = await browser.tabs.query({ url: '*://www.youtube.com/*' }).catch(() => [])
             const match = ytTabs.find((t) => (t.url || '').includes(videoId))
-            if (match) targetTabId = match.id
+            if (match) {
+              targetTabId = match.id
+              // Re-adopt a bridge tab the map forgot (SW restart) — without
+              // this the orphan sweep would close it mid-use.
+              if ((match.url || '').includes('#hs-bridge')) {
+                ytBridgeTabs.set(videoId, match.id)
+                ytBridgeLastUsed.set(videoId, Date.now())
+              }
+            }
           }
           if (!targetTabId) {
             const bridge = await ensureYoutubeBridgeTab(videoId)

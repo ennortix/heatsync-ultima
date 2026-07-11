@@ -40,9 +40,11 @@
   const chatWidth = parseInt(readLS('chatWidth', '340'), 10) || 340
   const chatHeight = parseInt(readLS('chatHeight', ''), 10) || null
 
+  // #hs-bridge = BG send-bridge tab: the multichat never boots there, so a
+  // popout prepaint would be a permanent black screen over the native chat.
   const isPopout =
     (platform === 'twitch' && /^\/(popout|embed)\/[a-zA-Z0-9_]+\/chat/.test(location.pathname)) ||
-    (platform === 'yt' && location.pathname.startsWith('/live_chat'))
+    (platform === 'yt' && location.pathname.startsWith('/live_chat') && !location.hash.includes('hs-bridge'))
 
   // Only prepaint where chat will actually mount — otherwise the black bar
   // shows for up to 4s on home/directory/browse/search/shorts/etc. while the

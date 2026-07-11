@@ -45814,7 +45814,20 @@ async function dispatchModAction({ channel, platform, action, target, durationSe
         kickSlug: null,
         anyOk: false,
       }
-    const yResp = await safeSendMessage({ type: 'youtube_mod_action', action, msgId, target: yTgt })
+    // Carry the tab's videoId (same plumbing as the send path) so BG can
+    // target the right stream's live_chat frame — and bridge-fallback when
+    // the watch tab's collapsed chat has no frame to relay through.
+    let yVid = ''
+    try {
+      const lkRaw = String(channel || '').replace(/^#/, '')
+      const lkEntry =
+        getChannelLookup().byId?.get(lkRaw) ||
+        getChannelLookup().twitch?.get(lkRaw.toLowerCase()) ||
+        getChannelLookup().kick?.get(lkRaw.toLowerCase()) ||
+        null
+      yVid = typeof currentYoutubeVideoId === 'function' ? currentYoutubeVideoId(lkEntry?.youtube || '') || '' : ''
+    } catch (_) {}
+    const yResp = await safeSendMessage({ type: 'youtube_mod_action', action, msgId, target: yTgt, videoId: yVid })
     return {
       tResp: null,
       kResp: null,
@@ -61614,6 +61627,8 @@ const STORAGE_KEY = 'heatsync_multichat'
       // True while WE collapsed yt's native chat (vs the user having done it
       // themselves) — gates the symmetric restore in checkYtLive.
       let _hsCollapsedNativeYt = false
+      let _hsHidNativeYt = false
+      let _hsYtFrameEmptySince = 0
       function checkYtLive() {
         // Keep theatre state honest from the same 1.5s tick — the attribute
         // observer has been seen missing the [theater] flip (body stuck on
@@ -61637,7 +61652,12 @@ const STORAGE_KEY = 'heatsync_multichat'
         // flash chat onto a VOD during that window. Empty src = inconclusive,
         // let the default hs-offline hold until the src truly resolves.
         const hasLiveChat = !!frameEl && !!chatSrc && !isReplayChat
-        const isLive = hasLiveChat || !!_autoYtVideoId
+        const _ytFlowing =
+          typeof channelYtMessages !== 'undefined' ? channelYtMessages.get('__live_yt_auto__')?.length || 0 : 0
+        // Live dot needs a CONFIRMED signal: resolved live src or messages
+        // actually flowing. _autoYtVideoId is just the render gate — it's set
+        // on EVERY /watch page, so counting it lit the dot on plain VODs.
+        const isLive = hasLiveChat || _ytFlowing > 0
         const liveTab = tabBarElement?.querySelector('[data-tab="live"]')
         if (liveTab) liveTab.dataset.live = String(isLive)
         // Show the multichat panel on YT only when THIS page has its own LIVE
@@ -61663,8 +61683,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         // honest: chat actively flowing (server only relays for live) and the
         // non-live opt-in.
         const liveChatFramePresent = !!frameEl && !isReplayChat
-        const ytAutoLiveMsgs =
-          typeof channelYtMessages !== 'undefined' ? channelYtMessages.get('__live_yt_auto__')?.length || 0 : 0
+        const ytAutoLiveMsgs = _ytFlowing
         const showYtChat =
           isYtPopout ||
           liveChatFramePresent ||
@@ -61675,11 +61694,28 @@ const STORAGE_KEY = 'heatsync_multichat'
         // attr off-watch — only count it as a watch page when visible.
         const onWatch = !!document.querySelector('ytd-watch-flexy:not([hidden])')
         document.body.classList.toggle('hs-yt-watch', onWatch)
+        // CONFIRMED live only (resolved live src, messages flowing, or src
+        // still empty after a grace window) — the destructive actions below
+        // must never fire on the inconclusive empty-src window: collapsing
+        // there UNLOADS the iframe, so a VOD's src can never resolve to
+        // live_chat_replay and the page stays permanently misclassified as
+        // live with its replay chat destroyed. A VOD's replay src populates
+        // within a couple seconds of mount; live streams often leave it empty
+        // FOREVER — so empty-past-8s counts as live (covers quiet streams
+        // where no relayed message arrives to confirm).
+        if (frameEl && !chatSrc) {
+          if (!_hsYtFrameEmptySince) _hsYtFrameEmptySince = Date.now()
+        } else {
+          _hsYtFrameEmptySince = 0
+        }
+        const _emptySrcAged = _hsYtFrameEmptySince && Date.now() - _hsYtFrameEmptySince > 8000
+        const confirmedLive = hasLiveChat || ytAutoLiveMsgs > 0 || !!_emptySrcAged
         // Hide native YT chat once it mounts — but ONLY when we're showing our
-        // panel in its place. On a replay VOD (no opt-in) we leave YT's chat
-        // replay visible rather than blanking it with nothing.
-        if (showYtChat && frameEl && frameEl.style.display !== 'none') {
+        // panel in its place AND the page is confirmed live. On a replay VOD
+        // (no opt-in) we leave YT's chat replay visible.
+        if (showYtChat && confirmedLive && frameEl && frameEl.style.display !== 'none') {
           frameEl.style.display = 'none'
+          _hsHidNativeYt = true
         }
         // display:none alone never releases YT's LAYOUT reservation: flexy
         // sizes the player off its own chat-collapsed state, not CSS
@@ -61687,14 +61723,19 @@ const STORAGE_KEY = 'heatsync_multichat'
         // gap where yt still reserved its chat column (live-verified: click
         // yt's own collapse → collapsed attr → player snaps to full row).
         // Drive yt's real collapse; the attr guard makes this a one-shot.
-        if (showYtChat && frameEl && !frameEl.hasAttribute('collapsed')) {
+        if (showYtChat && confirmedLive && frameEl && !frameEl.hasAttribute('collapsed')) {
           try {
             frameEl.querySelector('#show-hide-button button')?.click()
             _hsCollapsedNativeYt = true
           } catch (_) {}
         }
         // Symmetric restore — if the panel goes away (opt-out flip, stream
-        // ends) and WE collapsed native chat, give it back expanded.
+        // ends, or the page resolved to a VOD) and WE hid/collapsed native
+        // chat, give it back.
+        if (!showYtChat && frameEl && _hsHidNativeYt && frameEl.style.display === 'none') {
+          frameEl.style.removeProperty('display')
+          _hsHidNativeYt = false
+        }
         if (!showYtChat && frameEl && _hsCollapsedNativeYt && frameEl.hasAttribute('collapsed')) {
           try {
             if (frameEl.style.display === 'none') frameEl.style.removeProperty('display')
@@ -61840,6 +61881,13 @@ const STORAGE_KEY = 'heatsync_multichat'
   }
 
   async function init() {
+    // BG-created send-bridge tab (#hs-bridge on the live_chat url): stay
+    // completely silent. Booting the multichat here rebound the single
+    // __live_yt_auto__ WS slot to the bridge's videoId (killing the watch
+    // tab's live feed on reconnect) and its popout overlay hid the native
+    // chat — the tab BG activates for youtube sign-in showed no login UI.
+    // youtube-content.js (the actual relay) runs regardless of this guard.
+    if (hostPlatform === 'yt' && location.hash.includes('hs-bridge')) return
     let isPopout = false
     if (hostPlatform === 'yt') {
       // YouTube: persistent overlay across every URL — home, watch, search,

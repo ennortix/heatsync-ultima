@@ -506,7 +506,20 @@ async function dispatchModAction({ channel, platform, action, target, durationSe
         kickSlug: null,
         anyOk: false,
       }
-    const yResp = await safeSendMessage({ type: 'youtube_mod_action', action, msgId, target: yTgt })
+    // Carry the tab's videoId (same plumbing as the send path) so BG can
+    // target the right stream's live_chat frame — and bridge-fallback when
+    // the watch tab's collapsed chat has no frame to relay through.
+    let yVid = ''
+    try {
+      const lkRaw = String(channel || '').replace(/^#/, '')
+      const lkEntry =
+        getChannelLookup().byId?.get(lkRaw) ||
+        getChannelLookup().twitch?.get(lkRaw.toLowerCase()) ||
+        getChannelLookup().kick?.get(lkRaw.toLowerCase()) ||
+        null
+      yVid = typeof currentYoutubeVideoId === 'function' ? currentYoutubeVideoId(lkEntry?.youtube || '') || '' : ''
+    } catch (_) {}
+    const yResp = await safeSendMessage({ type: 'youtube_mod_action', action, msgId, target: yTgt, videoId: yVid })
     return {
       tResp: null,
       kResp: null,

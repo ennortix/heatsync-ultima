@@ -16364,87 +16364,7 @@ img.hs-fx-zero { margin-left: -4px; }
       opacity: 1; color: #fff;
     }
 
-  /* buffer-vim: mode-line, visual range selection, hint labels, toast.
-   Square / terminal palette / no radius — mirrors the website's buffer-vim. */
-
-.hs-vim-modeline {
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  z-index: 2147483646;
-  font-family: 'CozetteVector', monospace;
-  font-size: 13px;
-  line-height: 1;
-  padding: 3px 8px;
-  background: #000;
-  color: #808080;
-  border: 1px solid #808080;
-  border-left: 0;
-  border-bottom: 0;
-  border-radius: 0;
-  letter-spacing: 0.5px;
-  pointer-events: none;
-  white-space: nowrap;
-  user-select: none;
-}
-.hs-vim-modeline[data-mode='visual'] { color: #fff; border-color: #fff; }
-.hs-vim-modeline[data-mode='hint'] { color: #00afff; border-color: #00afff; }
-.hs-vim-modeline-count { color: #fff; margin-left: 8px; }
-
-.hs-mc-msg.hs-vim-sel {
-  background: rgba(255, 255, 255, 0.12) !important;
-  box-shadow: inset 3px 0 0 #fff !important;
-  border-radius: 0 !important;
-}
-.hs-mc-msg.hs-vim-cursor {
-  background: rgba(255, 255, 255, 0.24) !important;
-  box-shadow: inset 3px 0 0 #fff, inset 0 0 0 1px rgba(255,255,255,0.3) !important;
-  border-radius: 0 !important;
-}
-
-.hs-vim-hint-layer {
-  position: fixed;
-  inset: 0;
-  z-index: 2147483647;
-  pointer-events: none;
-}
-.hs-vim-hint {
-  position: absolute;
-  font-family: 'CozetteVector', monospace;
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1;
-  padding: 1px 3px;
-  background: #fff;
-  color: #000;
-  border: 1px solid #000;
-  border-radius: 0;
-  text-transform: lowercase;
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
-  white-space: nowrap;
-}
-.hs-vim-hint-typed { color: #808080; }
-.hs-vim-hint--inactive { opacity: 0.25; }
-
-.hs-vim-toast {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  z-index: 2147483646;
-  font-family: 'CozetteVector', monospace;
-  font-size: 13px;
-  line-height: 1;
-  padding: 3px 8px;
-  background: #000;
-  color: #fff;
-  border: 1px solid #fff;
-  border-right: 0;
-  border-bottom: 0;
-  border-radius: 0;
-  pointer-events: none;
-  white-space: nowrap;
-}
-`
+  `
   const cozetteUrl =
     typeof chrome !== 'undefined' && chrome.runtime?.getURL ? chrome.runtime.getURL('fonts/CozetteVector.woff2') : ''
   const gohuUrl =
@@ -43648,310 +43568,6 @@ document.addEventListener(
 )
 
 
-// --- multichat/vim-buffer.js ---
-// Buffer-vim for the overlay — the website's buffer-vim (client/vim/*) ported
-// to the multichat overlay, adapted to its constraints:
-//   • HOVER-scoped + cooperative — only acts while the overlay is hovered and
-//     consumes only matched keys, so it never hijacks the host page (twitch
-//     space=pause, f=fullscreen) or collides with input-vi (it bails on typing).
-//   • SNAPSHOT-on-enter — the live chat churns (rows append / 500-cap evict), so
-//     visual mode captures the row list once on `v`; indices can't drift mid-range.
-//   • viModeEnabled-gated — only opted-in power users ever see it.
-//
-// Concatenated (no imports); main.js wires the keydown + injects operators.
-// All names Hs-prefixed to stay clear of the shared bundle scope.
-
-const HS_VIM_ALPHABET = 'fjdkslaghrueiwoqptyvncmxzb'
-
-// ─── mode-line (btop-style, only while in a modal mode) ───────────────────────
-// `export` keeps biome from flagging these as unused (they're consumed in
-// main.js via the concat bundle); build.js strips `export` before bundling.
-class HsOverlayModeLine {
-  constructor(root) {
-    this.root = root
-    this.el = null
-  }
-  set(mode, extra) {
-    if (mode === 'normal' || !mode) {
-      this.el?.remove()
-      this.el = null
-      return
-    }
-    if (!this.el) {
-      this.el = document.createElement('div')
-      this.el.className = 'hs-vim-modeline'
-      this.root.appendChild(this.el)
-    }
-    this.el.dataset.mode = mode
-    this.el.textContent = `-- ${mode.toUpperCase()} --`
-    if (extra) {
-      const c = document.createElement('span')
-      c.className = 'hs-vim-modeline-count'
-      c.textContent = extra
-      this.el.appendChild(c)
-    }
-  }
-}
-
-// ─── hint mode (vimium-style keyboard clicking) ───────────────────────────────
-function hsVimMakeLabels(n) {
-  const a = HS_VIM_ALPHABET.split('')
-  if (n <= a.length) return a.slice(0, n)
-  const out = []
-  for (const x of a)
-    for (const y of a) {
-      out.push(x + y)
-      if (out.length >= n) return out
-    }
-  return out
-}
-
-class HsOverlayHint {
-  constructor({ root, modeLine, selector }) {
-    this.root = root
-    this.modeLine = modeLine
-    this.selector = selector
-    this.active = false
-    this.typed = ''
-    this.targets = []
-    this.layer = null
-  }
-  _visible(el) {
-    const r = el.getBoundingClientRect()
-    if (r.width <= 1 || r.height <= 1) return false
-    if (r.bottom < 0 || r.top > innerHeight || r.right < 0 || r.left > innerWidth) return false
-    return el.offsetParent !== null || getComputedStyle(el).position === 'fixed'
-  }
-  enter({ newTab = false } = {}) {
-    if (this.active) this.exit()
-    const els = Array.from(this.root.querySelectorAll(this.selector)).filter((e) => this._visible(e))
-    const set = new Set(els)
-    const leaves = els.filter((el) => !els.some((o) => o !== el && el.contains(o) && set.has(o)))
-    if (!leaves.length) return false
-    const labels = hsVimMakeLabels(leaves.length)
-    this.active = true
-    this.newTab = newTab
-    this.typed = ''
-    this.targets = leaves.map((el, i) => ({ el, label: labels[i] }))
-    this.layer = document.createElement('div')
-    this.layer.className = 'hs-vim-hint-layer'
-    for (const t of this.targets) {
-      const r = t.el.getBoundingClientRect()
-      const chip = document.createElement('span')
-      chip.className = 'hs-vim-hint'
-      chip.textContent = t.label
-      chip.style.left = `${Math.max(0, r.left)}px`
-      chip.style.top = `${Math.max(0, r.top)}px`
-      t.chip = chip
-      this.layer.appendChild(chip)
-    }
-    document.body.appendChild(this.layer)
-    this.modeLine?.set('hint')
-    return true
-  }
-  handleKey(e) {
-    if (!this.active) return false
-    const k = e.key
-    if (k === 'Escape') {
-      this.exit()
-      return true
-    }
-    if (k === 'Backspace') {
-      this.typed = this.typed.slice(0, -1)
-      this._repaint()
-      return true
-    }
-    if (k.length !== 1 || !HS_VIM_ALPHABET.includes(k.toLowerCase())) {
-      this.exit()
-      return true
-    }
-    this.typed += k.toLowerCase()
-    const exact = this.targets.find((t) => t.label === this.typed)
-    if (exact) {
-      const el = exact.el
-      this.exit()
-      this._fire(el)
-      return true
-    }
-    if (!this.targets.some((t) => t.label.startsWith(this.typed))) {
-      this.exit()
-      return true
-    }
-    this._repaint()
-    return true
-  }
-  _fire(el) {
-    if (this.newTab) {
-      const href = el.getAttribute?.('href') || el.closest?.('a[href]')?.getAttribute('href')
-      if (href) {
-        window.open(href, '_blank', 'noopener')
-        return
-      }
-    }
-    el.click()
-  }
-  _repaint() {
-    for (const t of this.targets) {
-      if (!t.chip) continue
-      const match = t.label.startsWith(this.typed)
-      t.chip.classList.toggle('hs-vim-hint--inactive', !match)
-      if (match && this.typed) {
-        t.chip.textContent = ''
-        const s = document.createElement('span')
-        s.className = 'hs-vim-hint-typed'
-        s.textContent = this.typed
-        t.chip.appendChild(s)
-        t.chip.appendChild(document.createTextNode(t.label.slice(this.typed.length)))
-      }
-    }
-  }
-  exit() {
-    if (!this.active) return
-    this.active = false
-    this.layer?.remove()
-    this.layer = null
-    this.targets = []
-    this.typed = ''
-    this.modeLine?.set('normal')
-  }
-}
-
-// ─── visual mode (range-select over a frozen snapshot of rows) ─────────────────
-class HsOverlayVisual {
-  constructor({ rowData, modeLine, notify, onQuote, onEnter, onExit }) {
-    this.rowData = rowData
-    this.modeLine = modeLine
-    this.notify = notify || (() => {})
-    this.onQuote = onQuote
-    this.onEnter = onEnter
-    this.onExit = onExit
-    this.active = false
-    this.rows = []
-    this.anchor = 0
-    this.cursor = 0
-    this.count = ''
-  }
-  enter(rows) {
-    if (!rows?.length) {
-      this.notify('no messages')
-      return false
-    }
-    this.active = true
-    this.rows = rows // snapshot — churn can't shift these
-    this.anchor = rows.length - 1 // newest row (bottom)
-    this.cursor = rows.length - 1
-    this.count = ''
-    this._render() // render first so the cursor shows on `v`
-    try {
-      this.onEnter?.()
-    } catch {} // best-effort side-effect, never blocks render
-    return true
-  }
-  _range() {
-    return [Math.min(this.anchor, this.cursor), Math.max(this.anchor, this.cursor)]
-  }
-  _selected() {
-    const [a, b] = this._range()
-    return this.rows.slice(a, b + 1)
-  }
-  _takeCount() {
-    const n = this.count ? parseInt(this.count, 10) : 1
-    this.count = ''
-    return Math.max(1, Math.min(n, 9999))
-  }
-  handleKey(e) {
-    if (!this.active) return false
-    const k = e.key
-    const last = this.rows.length - 1
-    if (k === 'Escape' || k === 'v') {
-      this.exit()
-      return true
-    }
-    if ((k >= '1' && k <= '9') || (k === '0' && this.count)) {
-      this.count += k
-      return true
-    }
-    if (k === 'j' || k === 'ArrowDown') {
-      this.cursor = Math.min(last, this.cursor + this._takeCount())
-      this._render()
-      return true
-    }
-    if (k === 'k' || k === 'ArrowUp') {
-      this.cursor = Math.max(0, this.cursor - this._takeCount())
-      this._render()
-      return true
-    }
-    if (k === 'g') {
-      this.cursor = 0
-      this._render()
-      return true
-    }
-    if (k === 'G') {
-      this.cursor = last
-      this._render()
-      return true
-    }
-    if (k === 'o') {
-      ;[this.anchor, this.cursor] = [this.cursor, this.anchor]
-      this._render()
-      return true
-    }
-    const sel = this._selected().map((el) => this.rowData(el))
-    if (k === 'y')
-      return this._copy(
-        sel
-          .map((s) => s.text)
-          .filter(Boolean)
-          .join('\n'),
-        `copied ${sel.length}`,
-      )
-    if (k === 'a')
-      return this._copy(
-        sel
-          .map((s) => s.permalink)
-          .filter(Boolean)
-          .join('\n'),
-        `copied ${sel.length} link${sel.length > 1 ? 's' : ''}`,
-      )
-    if (k === 'q') {
-      const f = sel[0]
-      if (f?.id) this.onQuote?.(f.id)
-      this.exit()
-      return true
-    }
-    return true // swallow stray keys, stay in visual
-  }
-  _copy(text, msg) {
-    if (text) {
-      navigator.clipboard?.writeText(text)
-      this.notify(msg)
-    } else this.notify('nothing to copy')
-    this.exit()
-    return true
-  }
-  _render() {
-    for (const r of this.rows) r.classList.remove('hs-vim-sel', 'hs-vim-cursor')
-    const [a, b] = this._range()
-    for (let i = a; i <= b && i < this.rows.length; i++) this.rows[i].classList.add('hs-vim-sel')
-    const cur = this.rows[this.cursor]
-    if (cur) {
-      cur.classList.add('hs-vim-cursor')
-      cur.scrollIntoView?.({ block: 'nearest' })
-    }
-    this.modeLine?.set('visual', `${b - a + 1} sel`)
-  }
-  exit() {
-    if (!this.active) return
-    this.active = false
-    this.count = ''
-    for (const r of this.rows) r.classList.remove('hs-vim-sel', 'hs-vim-cursor')
-    this.rows = []
-    this.modeLine?.set('normal')
-    this.onExit?.()
-  }
-}
-
-
 // --- multichat/paints.js ---
 // HeatSync-native name paints — batch fetch + single injected stylesheet.
 //
@@ -52001,18 +51617,13 @@ const STORAGE_KEY = 'heatsync_multichat'
         { type: 'heatsync-settings-changed', nonce: window.HS?.getMainWorldNonce?.() || null, settings: { viMode: v } },
         location.origin,
       )
-      // Auto-hide is force-off under vi mode (see canAutoHideInput) — a hidden
-      // composer breaks vi. Reflect the toggle now: reveal the bar when vi turns
-      // on; when it turns off, let auto-hide reclaim it (hideInputBar re-checks).
-      if (v) showInputBar()
-      else hideInputBar()
     },
     autoHide: (v) => {
       const bar = document.getElementById('hs-mc-inputbar')
       const pickerOpen = document.getElementById('hs-mc-emote-picker')?.classList.contains('visible') || false
-      // Honor the vi-mode / pop-out override — never actually hide there even if
-      // the setting is switched on (canAutoHideInput would keep it off anyway).
-      if (v && !viModeEnabled && !isYtPopout) {
+      // Honor the pop-out override — never actually hide there even if the
+      // setting is switched on (canAutoHideInput would keep it off anyway).
+      if (v && !isYtPopout) {
         if (bar) bar.classList.add('hs-hidden')
         inputBarVisible = false
       } else {
@@ -53019,15 +52630,12 @@ const STORAGE_KEY = 'heatsync_multichat'
   // Input bar auto-hide — hidden when empty, shown on first keystroke
   let autoHideInput = false
   let inputBarVisible = true
-  // …but only when a hidden composer is actually safe. Two contexts make it
-  // harmful, so auto-hide is force-off in them regardless of the setting:
-  //   • vi mode — a hidden (blurred) composer drops keys into normal-mode
-  //     motions ('f' = find-char, not typing) and reveals the mode/focus confusion
-  //   • the /live_chat pop-out — a blurred composer sends f/t/etc. to the host
-  //     page's find-as-you-type or a link-hint extension instead of chat
-  // Evaluated live (function, not cached) so toggling vi mode takes effect with
-  // no reload.
-  const canAutoHideInput = () => autoHideInput && !viModeEnabled && !isYtPopout
+  // …except in the /live_chat pop-out — a blurred composer there sends f/t/etc.
+  // to the host page's find-as-you-type or a link-hint extension instead of chat.
+  // Works WITH vi mode: input-vi only acts while the composer is focused (and
+  // types the first printable key into an empty composer even in normal mode),
+  // so a hidden composer never eats keys — the type-to-reveal handler wins.
+  const canAutoHideInput = () => autoHideInput && !isYtPopout
 
   // First-time chatter highlight — orange edge on first message from a user this session (default on)
   let firstChatterGlow = true
@@ -54287,108 +53895,6 @@ const STORAGE_KEY = 'heatsync_multichat'
       switchTab(ids[next])
     },
     { signal: mcSignal },
-  )
-
-  // ── buffer-vim: visual range-select + hint mode + mode-line ──────────────────
-  // Hover-scoped + capture-phase: only acts while the overlay is hovered and only
-  // consumes matched keys, so it never hijacks the host page (twitch f=fullscreen)
-  // and never collides with input-vi (it bails on typing). viModeEnabled-gated.
-  let _hsBufVim = null
-  function _ensureBufferVim() {
-    if (_hsBufVim) return _hsBufVim
-    const overlay = document.getElementById('hs-mc-overlay')
-    if (!overlay) return null
-    const notify = (msg) => {
-      let t = overlay.querySelector('.hs-vim-toast')
-      if (!t) {
-        t = document.createElement('div')
-        t.className = 'hs-vim-toast'
-        overlay.appendChild(t)
-      }
-      t.textContent = msg
-      cleanup.clearTimeout(t._hsT)
-      t._hsT = cleanup.setTimeout(() => t.remove(), 1400)
-    }
-    const modeLine = new HsOverlayModeLine(overlay)
-    const hint = new HsOverlayHint({
-      root: overlay,
-      modeLine,
-      selector:
-        '.hs-mc-msg .hs-mc-user:not(.hs-mc-reply-user), .hs-mc-text a[href], .hs-mc-emote-wrapper, .hs-mc-emote',
-    })
-    const visual = new HsOverlayVisual({
-      rowData: (row) => {
-        const id = row.dataset.msgId || ''
-        return {
-          el: row,
-          id,
-          user: row.dataset.msgUser || '',
-          text: (row.querySelector(':scope > .hs-mc-text')?.textContent || '').trim(),
-          permalink: id ? `https://heatsync.org/m/${id}` : '',
-        }
-      },
-      modeLine,
-      notify,
-      onQuote: (id) => {
-        setReplyState({ msgId: id })
-        document.getElementById('hs-mc-input')?.focus()
-      },
-      // (autoscroll-pause on enter deferred: setPaused is scoped to the scroll
-      // setup, not reachable here; snapshot-on-enter already keeps the range correct.)
-    })
-    _hsBufVim = { overlay, hint, visual }
-    return _hsBufVim
-  }
-  document.addEventListener(
-    'keydown',
-    (e) => {
-      if (!viModeEnabled) return
-      const bv = _ensureBufferVim()
-      if (!bv) return
-      // While a modal mode is active it owns the keyboard (block host + mod hotkeys).
-      if (bv.hint.active) {
-        if (e.ctrlKey || e.metaKey || e.altKey) return
-        if (bv.hint.handleKey(e)) {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-        }
-        return
-      }
-      if (bv.visual.active) {
-        if (e.ctrlKey || e.metaKey || e.altKey) return
-        if (bv.visual.handleKey(e)) {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-        }
-        return
-      }
-      // Entry: only when hovering the overlay, not typing, no modifier, not in settings.
-      const t = e.target
-      if (t && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))) return
-      if (e.ctrlKey || e.metaKey || e.altKey) return
-      if (currentTab === 'settings') return
-      // Active when the overlay is hovered (mouse) OR holds focus (keyboard) —
-      // a keyboard-first feature can't require the mouse to be parked on it.
-      if (!bv.overlay.matches(':hover') && !bv.overlay.contains(document.activeElement)) return
-      if (e.key === 'f') {
-        if (bv.hint.enter({ newTab: false })) {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-        }
-      } else if (e.key === 'F') {
-        if (bv.hint.enter({ newTab: true })) {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-        }
-      } else if (e.key === 'v') {
-        const rows = Array.from(document.querySelectorAll('#hs-mc-messages .hs-mc-msg'))
-        if (bv.visual.enter(rows)) {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-        }
-      }
-    },
-    { capture: true, signal: mcSignal },
   )
 
   // (automod moved to automod.js)
@@ -55896,7 +55402,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     // Ensure input bar exists
     if (!inputBarElement || !document.contains(inputBarElement)) {
       inputBarElement = createInputBar()
-      // Start hidden — typing reveals it (never with vi mode / in the pop-out: it stays put + focused)
+      // Start hidden — typing reveals it (never in the pop-out: it stays put + focused)
       if (canAutoHideInput()) {
         inputBarElement.classList.add('hs-hidden')
         inputBarVisible = false

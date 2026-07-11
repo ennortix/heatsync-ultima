@@ -538,7 +538,6 @@ const MULTICHAT_MODULES = [
   'input.js',
   'profile-card.js',
   'chat-logs.js',
-  'vim-buffer.js',
   'paints.js',
   'cosmetics.js',
   'mod-toolbar.js',

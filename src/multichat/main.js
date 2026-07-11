@@ -1880,18 +1880,13 @@
         { type: 'heatsync-settings-changed', nonce: window.HS?.getMainWorldNonce?.() || null, settings: { viMode: v } },
         location.origin,
       )
-      // Auto-hide is force-off under vi mode (see canAutoHideInput) — a hidden
-      // composer breaks vi. Reflect the toggle now: reveal the bar when vi turns
-      // on; when it turns off, let auto-hide reclaim it (hideInputBar re-checks).
-      if (v) showInputBar()
-      else hideInputBar()
     },
     autoHide: (v) => {
       const bar = document.getElementById('hs-mc-inputbar')
       const pickerOpen = document.getElementById('hs-mc-emote-picker')?.classList.contains('visible') || false
-      // Honor the vi-mode / pop-out override — never actually hide there even if
-      // the setting is switched on (canAutoHideInput would keep it off anyway).
-      if (v && !viModeEnabled && !isYtPopout) {
+      // Honor the pop-out override — never actually hide there even if the
+      // setting is switched on (canAutoHideInput would keep it off anyway).
+      if (v && !isYtPopout) {
         if (bar) bar.classList.add('hs-hidden')
         inputBarVisible = false
       } else {
@@ -2898,15 +2893,12 @@
   // Input bar auto-hide — hidden when empty, shown on first keystroke
   let autoHideInput = false
   let inputBarVisible = true
-  // …but only when a hidden composer is actually safe. Two contexts make it
-  // harmful, so auto-hide is force-off in them regardless of the setting:
-  //   • vi mode — a hidden (blurred) composer drops keys into normal-mode
-  //     motions ('f' = find-char, not typing) and reveals the mode/focus confusion
-  //   • the /live_chat pop-out — a blurred composer sends f/t/etc. to the host
-  //     page's find-as-you-type or a link-hint extension instead of chat
-  // Evaluated live (function, not cached) so toggling vi mode takes effect with
-  // no reload.
-  const canAutoHideInput = () => autoHideInput && !viModeEnabled && !isYtPopout
+  // …except in the /live_chat pop-out — a blurred composer there sends f/t/etc.
+  // to the host page's find-as-you-type or a link-hint extension instead of chat.
+  // Works WITH vi mode: input-vi only acts while the composer is focused (and
+  // types the first printable key into an empty composer even in normal mode),
+  // so a hidden composer never eats keys — the type-to-reveal handler wins.
+  const canAutoHideInput = () => autoHideInput && !isYtPopout
 
   // First-time chatter highlight — orange edge on first message from a user this session (default on)
   let firstChatterGlow = true
@@ -4166,108 +4158,6 @@
       switchTab(ids[next])
     },
     { signal: mcSignal },
-  )
-
-  // ── buffer-vim: visual range-select + hint mode + mode-line ──────────────────
-  // Hover-scoped + capture-phase: only acts while the overlay is hovered and only
-  // consumes matched keys, so it never hijacks the host page (twitch f=fullscreen)
-  // and never collides with input-vi (it bails on typing). viModeEnabled-gated.
-  let _hsBufVim = null
-  function _ensureBufferVim() {
-    if (_hsBufVim) return _hsBufVim
-    const overlay = document.getElementById('hs-mc-overlay')
-    if (!overlay) return null
-    const notify = (msg) => {
-      let t = overlay.querySelector('.hs-vim-toast')
-      if (!t) {
-        t = document.createElement('div')
-        t.className = 'hs-vim-toast'
-        overlay.appendChild(t)
-      }
-      t.textContent = msg
-      cleanup.clearTimeout(t._hsT)
-      t._hsT = cleanup.setTimeout(() => t.remove(), 1400)
-    }
-    const modeLine = new HsOverlayModeLine(overlay)
-    const hint = new HsOverlayHint({
-      root: overlay,
-      modeLine,
-      selector:
-        '.hs-mc-msg .hs-mc-user:not(.hs-mc-reply-user), .hs-mc-text a[href], .hs-mc-emote-wrapper, .hs-mc-emote',
-    })
-    const visual = new HsOverlayVisual({
-      rowData: (row) => {
-        const id = row.dataset.msgId || ''
-        return {
-          el: row,
-          id,
-          user: row.dataset.msgUser || '',
-          text: (row.querySelector(':scope > .hs-mc-text')?.textContent || '').trim(),
-          permalink: id ? `https://heatsync.org/m/${id}` : '',
-        }
-      },
-      modeLine,
-      notify,
-      onQuote: (id) => {
-        setReplyState({ msgId: id })
-        document.getElementById('hs-mc-input')?.focus()
-      },
-      // (autoscroll-pause on enter deferred: setPaused is scoped to the scroll
-      // setup, not reachable here; snapshot-on-enter already keeps the range correct.)
-    })
-    _hsBufVim = { overlay, hint, visual }
-    return _hsBufVim
-  }
-  document.addEventListener(
-    'keydown',
-    (e) => {
-      if (!viModeEnabled) return
-      const bv = _ensureBufferVim()
-      if (!bv) return
-      // While a modal mode is active it owns the keyboard (block host + mod hotkeys).
-      if (bv.hint.active) {
-        if (e.ctrlKey || e.metaKey || e.altKey) return
-        if (bv.hint.handleKey(e)) {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-        }
-        return
-      }
-      if (bv.visual.active) {
-        if (e.ctrlKey || e.metaKey || e.altKey) return
-        if (bv.visual.handleKey(e)) {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-        }
-        return
-      }
-      // Entry: only when hovering the overlay, not typing, no modifier, not in settings.
-      const t = e.target
-      if (t && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))) return
-      if (e.ctrlKey || e.metaKey || e.altKey) return
-      if (currentTab === 'settings') return
-      // Active when the overlay is hovered (mouse) OR holds focus (keyboard) —
-      // a keyboard-first feature can't require the mouse to be parked on it.
-      if (!bv.overlay.matches(':hover') && !bv.overlay.contains(document.activeElement)) return
-      if (e.key === 'f') {
-        if (bv.hint.enter({ newTab: false })) {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-        }
-      } else if (e.key === 'F') {
-        if (bv.hint.enter({ newTab: true })) {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-        }
-      } else if (e.key === 'v') {
-        const rows = Array.from(document.querySelectorAll('#hs-mc-messages .hs-mc-msg'))
-        if (bv.visual.enter(rows)) {
-          e.preventDefault()
-          e.stopImmediatePropagation()
-        }
-      }
-    },
-    { capture: true, signal: mcSignal },
   )
 
   // (automod moved to automod.js)
@@ -5775,7 +5665,7 @@
     // Ensure input bar exists
     if (!inputBarElement || !document.contains(inputBarElement)) {
       inputBarElement = createInputBar()
-      // Start hidden — typing reveals it (never with vi mode / in the pop-out: it stays put + focused)
+      // Start hidden — typing reveals it (never in the pop-out: it stays put + focused)
       if (canAutoHideInput()) {
         inputBarElement.classList.add('hs-hidden')
         inputBarVisible = false

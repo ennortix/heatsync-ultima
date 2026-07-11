@@ -3851,7 +3851,8 @@ function getRecencyMap() {
   let ytMsgs = (typeof channelYtMessages !== 'undefined' && channelYtMessages.get(currentTab)) || []
   if (currentTab === 'live' && typeof channelYtMessages !== 'undefined') {
     const autoYt = channelYtMessages.get('__live_yt_auto__') || []
-    if (autoYt.length) ytMsgs = ytMsgs.length ? [...ytMsgs, ...autoYt].sort((a, b) => (a.time || 0) - (b.time || 0)) : autoYt
+    if (autoYt.length)
+      ytMsgs = ytMsgs.length ? [...ytMsgs, ...autoYt].sort((a, b) => (a.time || 0) - (b.time || 0)) : autoYt
   }
   // Absolute floor: chatters active in the last 10 REAL minutes. tmi-sent-ts is
   // Twitch server time (≈ real time), so a quiet/just-opened channel correctly

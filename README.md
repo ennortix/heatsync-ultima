@@ -21,14 +21,9 @@ your emotes in twitch and kick chat — any channel, no streamer approval, no su
 
 ### firefox
 
-firefox add-ons listing is in review — install manually in 60 seconds:
+**[install from firefox add-ons](https://addons.mozilla.org/firefox/addon/heatsync-chat/)** — one click, auto-updates.
 
-1. download **[heatsync-firefox.xpi](https://github.com/mellen9999/heatsync-extension/releases/latest/download/heatsync-firefox.xpi)**
-2. paste `about:debugging#/runtime/this-firefox` into the address bar
-3. click **load temporary add-on…** → pick the `.xpi` file
-4. open twitch, kick, or a youtube live stream — done
-
-firefox unloads temporary add-ons on restart — will become one-click once approved on addons.mozilla.org
+alternative: download the AMO-signed **[heatsync-firefox.xpi](https://github.com/mellen9999/heatsync-extension/releases/latest/download/heatsync-firefox.xpi)** and open it with firefox — installs permanently.
 
 ## build from source
 

@@ -1007,7 +1007,10 @@ function initInput() {
   // in the composer turns the insta-close into a confirm dialog.
   if (!window._hsDraftGuard) {
     window._hsDraftGuard = (e) => {
-      if (getInputText().trim()) { e.preventDefault(); e.returnValue = '' }
+      if (getInputText().trim()) {
+        e.preventDefault()
+        e.returnValue = ''
+      }
     }
     window.addEventListener('beforeunload', window._hsDraftGuard)
   }

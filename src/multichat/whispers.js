@@ -634,7 +634,11 @@ function renderWhispersTab() {
         m.platform,
       ),
     )
-    div.innerHTML = `${tsHtml}<span style="color:${platColor};font-size:13px;font-weight:700">[${platTag}]</span> ${senderLink} <span style="color:#808080">-&gt;</span> ${recipientLink}: ${whisperBody}${statusHtml}`
+    // Reply affordance — clicking arms /r at the input so nobody has to
+    // remember the command ("I keep forgetting to type /r"). Keyed per row:
+    // replying to an older conversation retargets lastWhisperKey to it.
+    const replyBtn = `<button class="hs-mc-reply-btn hs-whisper-reply" data-wkey="${escapeHtml(m.key)}" title="reply (${escapeHtml(them)})">↩</button>`
+    div.innerHTML = `${tsHtml}<span style="color:${platColor};font-size:13px;font-weight:700">[${platTag}]</span> ${senderLink} <span style="color:#808080">-&gt;</span> ${recipientLink}: ${whisperBody}${statusHtml}${replyBtn}`
     frag.appendChild(div)
   }
 
@@ -647,6 +651,23 @@ function renderWhispersTab() {
       e.stopPropagation()
       const id = el.getAttribute('data-retry')
       if (id) retryWhisperSend(id)
+    })
+  })
+
+  msgsEl.querySelectorAll('.hs-whisper-reply').forEach((el) => {
+    el.addEventListener('click', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      const key = el.getAttribute('data-wkey')
+      if (!key || !whisperUsers.has(key)) return
+      lastWhisperKey = key
+      whisperSaveDebounced()
+      if (typeof _prefillMcInput === 'function') _prefillMcInput('/r ')
+      if (typeof updateInputPlaceholder === 'function') {
+        try {
+          updateInputPlaceholder()
+        } catch {}
+      }
     })
   })
 }

@@ -182,7 +182,7 @@ function refreshSeenBadges() {
   if (!tabBarElement) return
   const map = {
     mentions: { selector: '[data-tab="mentions"]', cls: 'has-mentions' },
-    whispers: { selector: '[data-tab="whispers"]', cls: 'has-new' },
+    whispers: { selector: '[data-tab="whispers"]', cls: 'has-whispers' },
     live: { selector: '[data-tab="feed"]', cls: 'has-new' },
   }
   for (const surface of SEEN_SURFACES) {

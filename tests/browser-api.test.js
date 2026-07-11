@@ -20,7 +20,7 @@
  * It is documented in POTENTIAL_NOTE below.
  */
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'bun:test'
 import api, {
   bidiDir,
   getI18nLocale,

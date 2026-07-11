@@ -347,7 +347,12 @@ async function sendTwitchWhisper(toUserId, message) {
   // regex missed it (says "re-link", not "re-login"), so it fell through to a
   // generic "retry" that just re-hit the same failing endpoint forever. Needs a
   // relink-with-scope CTA, not a retry.
-  const needsRelink = respStatus === 401 && (serverResp?.relink_required || serverResp?.scope_pack === 'whispers')
+  // Belt-and-braces: also classify by error text — live responses have carried
+  // the "re-link" message without the structural flag (and non-401 statuses),
+  // which fell through to the dead-end generic retry span.
+  const needsRelink =
+    (respStatus === 401 && (serverResp?.relink_required || serverResp?.scope_pack === 'whispers')) ||
+    /re-?link/i.test(respError)
 
   // Off twitch.tv: direct GQL can't get integrity, so don't pretend to retry.
   // Surface the real proxy error — actionable for the user.

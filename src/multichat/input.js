@@ -3844,7 +3844,15 @@ function getRecencyMap() {
   let ch = currentTab
   if (currentTab === 'live' && typeof getLiveChannel === 'function') ch = getLiveChannel()
   const ircMsgs = (ch && typeof irc !== 'undefined' && irc?.channels?.get(ch.toLowerCase())?.getAll?.()) || []
-  const ytMsgs = (typeof channelYtMessages !== 'undefined' && channelYtMessages.get(currentTab)) || []
+  // YT buffers are keyed by channel-entry id, never 'live' — on the live tab
+  // the auto-followed stream lives under '__live_yt_auto__' (same merge
+  // bootstrap's live hydration does). Without this, yt chatters never rank
+  // in recency on the live tab / popout.
+  let ytMsgs = (typeof channelYtMessages !== 'undefined' && channelYtMessages.get(currentTab)) || []
+  if (currentTab === 'live' && typeof channelYtMessages !== 'undefined') {
+    const autoYt = channelYtMessages.get('__live_yt_auto__') || []
+    if (autoYt.length) ytMsgs = ytMsgs.length ? [...ytMsgs, ...autoYt].sort((a, b) => (a.time || 0) - (b.time || 0)) : autoYt
+  }
   // Absolute floor: chatters active in the last 10 REAL minutes. tmi-sent-ts is
   // Twitch server time (≈ real time), so a quiet/just-opened channel correctly
   // surfaces nobody instead of leading with whoever talked before it went quiet.
@@ -3860,7 +3868,9 @@ function getRecencyMap() {
     const t = pickIrc ? a : b
     if (t > 0 && t < floor) break
     const msg = pickIrc ? ircMsgs[i--] : ytMsgs[j--]
-    const u = (msg?.user || '').toLowerCase()
+    // Strip yt's leading '@' so recency keys align with the bare-name keys
+    // every completion path matches against.
+    const u = (msg?.user || '').toLowerCase().replace(/^@/, '')
     if (!u || out.has(u)) continue
     // Blocked users never tab-complete — drop them at this one chokepoint so
     // both the recent-chatter and @-mention recency paths stay clean.
@@ -4023,15 +4033,19 @@ function findEmoteMatches(search) {
     for (const username of usernameCache) {
       if (!username) continue
       const userLower = username.toLowerCase()
+      // YouTube usernames arrive as "@handle" — match and insert on the bare
+      // name or yt chatters can never @-complete (typed query has no leading
+      // @ after the trigger slice, and '@' + '@handle' would insert '@@').
+      const bare = userLower.startsWith('@') ? userLower.slice(1) : userLower
       // Blocked users never surface as an @-completion suggestion (and don't
       // trigger a color prefetch for them).
-      if (typeof isUserBlocked === 'function' && isUserBlocked(userLower)) continue
+      if (typeof isUserBlocked === 'function' && isUserBlocked(bare)) continue
       let color = (typeof knownColors !== 'undefined' && knownColors.get(userLower)) || null
       if (!color && _hsUserColorCache.has(userLower)) color = _hsUserColorCache.get(userLower) || null
-      if (!color) _hsPrefetchList.push(userLower)
-      const recencyRank = recency.get(userLower)
-      if (userLower.startsWith(searchLower)) {
-        matches.push({ name: '@' + username, url: null, priority: 0, type: 'user', recencyRank })
+      if (!color) _hsPrefetchList.push(bare)
+      const recencyRank = recency.get(bare)
+      if (bare.startsWith(searchLower)) {
+        matches.push({ name: '@' + username.replace(/^@/, ''), url: null, priority: 0, type: 'user', recencyRank })
       }
     }
     if (_hsPrefetchList.length) {
@@ -4134,8 +4148,11 @@ function findEmoteMatches(search) {
   // stays untouched.
   const recentChatters = []
   if (!isUserSearch && !search.startsWith(':') && searchLower.length > 0 && typeof getRecencyMap === 'function') {
+    // Key display names by bare lower name — yt entries in usernameCache carry
+    // a leading '@' that recency keys (bare) would otherwise never hit.
     const _ucDisplay = new Map()
-    if (typeof usernameCache !== 'undefined') for (const u of usernameCache) if (u) _ucDisplay.set(u.toLowerCase(), u)
+    if (typeof usernameCache !== 'undefined')
+      for (const u of usernameCache) if (u) _ucDisplay.set(u.toLowerCase().replace(/^@/, ''), u)
     for (const [userLower, rank] of getRecencyMap()) {
       if (!userLower.startsWith(searchLower)) continue
       recentChatters.push({
@@ -4148,7 +4165,7 @@ function findEmoteMatches(search) {
     }
     recentChatters.sort((a, b) => a.recencyRank - b.recencyRank)
   }
-  const _recentSeen = new Set(recentChatters.map((m) => m.name.toLowerCase()))
+  const _recentSeen = new Set(recentChatters.map((m) => m.name.toLowerCase().replace(/^@/, '')))
 
   // Bare-word username fallback — when nothing emote-y matched, scan
   // usernameCache for everyone NOT already surfaced as a recent chatter. Only
@@ -4159,7 +4176,8 @@ function findEmoteMatches(search) {
   if (!isUserSearch && !search.startsWith(':') && matches.length === 0 && typeof usernameCache !== 'undefined') {
     for (const username of usernameCache) {
       if (!username) continue
-      const userLower = username.toLowerCase()
+      // Bare-name matching — yt cache entries carry a leading '@'.
+      const userLower = username.toLowerCase().replace(/^@/, '')
       if (_recentSeen.has(userLower)) continue
       if (typeof isUserBlocked === 'function' && isUserBlocked(userLower)) continue
       if (userLower.startsWith(searchLower)) {

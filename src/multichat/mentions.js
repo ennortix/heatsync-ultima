@@ -13,8 +13,16 @@ let _mentionReKey = ''
 function getMentionTargets() {
   const out = []
   if (currentUsername) out.push(currentUsername)
+  // currentUsername is null on cross-origin tabs (youtube.com/kick.com popout
+  // — twitch storage unreachable). authState.nick is the twitch nick from the
+  // auth-irc handshake and works everywhere; without it, "@you" tags on the
+  // yt popout never highlight. Same hardening as the echo-confirm fallback.
+  if (typeof authState !== 'undefined' && authState?.nick) {
+    const n = authState.nick.toLowerCase()
+    if (!out.includes(n)) out.push(n)
+  }
   for (const a of mentionAliases) {
-    if (a && a !== currentUsername) out.push(a)
+    if (a && !out.includes(a)) out.push(a)
   }
   return out
 }

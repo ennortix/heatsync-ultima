@@ -11708,6 +11708,25 @@
   // ============================================
 
   let mcInitialized = false
+  // The tab to activate on mount. When we're on an actual stream/channel watch
+  // page, the "live" tab (the stream you're looking at) is what you want — NOT
+  // a stale last-used channel tab. Restoring _savedActiveTab there is exactly
+  // why heatsync-on-youtube read as "no chat": it dropped you on a saved
+  // channel (nl_kripp) instead of the lofi stream on screen. Off a stream page
+  // (directory / home / search), restore the saved tab as before.
+  // MODULE scope — tryHookReact()'s mount passes call this too; defining it
+  // inside init() made every twitch react-hook mount throw a ReferenceError
+  // and strand fresh viewers on the empty saved tab.
+  const bootActiveTab = () => {
+    const path = location.pathname + location.search
+    const onStreamPage =
+      isYtPopout ||
+      (hostPlatform === 'yt' && /\/watch|\/live\//.test(path)) ||
+      (hostPlatform !== 'yt' && !isKick && !!document.querySelector('.channel-root, [class*="channel-root"]')) ||
+      (isKick && !!(document.getElementById('channel-chatroom') || document.querySelector('[id*="chatroom"]')))
+    return onStreamPage ? 'live' : _savedActiveTab || 'live'
+  }
+
   async function init() {
     let isPopout = false
     if (hostPlatform === 'yt') {
@@ -13232,21 +13251,6 @@
     // perceived load lag) — content scripts run at document_idle, and the
     // chat container often mounts within 50-150ms of that. 15s safety
     // fallback timer in case the observer never fires (SPA bug, slow page).
-    // The tab to activate on mount. When we're on an actual stream/channel watch
-    // page, the "live" tab (the stream you're looking at) is what you want — NOT
-    // a stale last-used channel tab. Restoring _savedActiveTab there is exactly
-    // why heatsync-on-youtube read as "no chat": it dropped you on a saved
-    // channel (nl_kripp) instead of the lofi stream on screen. Off a stream page
-    // (directory / home / search), restore the saved tab as before.
-    const bootActiveTab = () => {
-      const path = location.pathname + location.search
-      const onStreamPage =
-        isYtPopout ||
-        (hostPlatform === 'yt' && /\/watch|\/live\//.test(path)) ||
-        (hostPlatform !== 'yt' && !isKick && !!document.querySelector('.channel-root, [class*="channel-root"]')) ||
-        (isKick && !!(document.getElementById('channel-chatroom') || document.querySelector('[id*="chatroom"]')))
-      return onStreamPage ? 'live' : _savedActiveTab || 'live'
-    }
     const waitForMount = (find, label) => {
       if (mcSignal?.aborted) return
       const inject = () => {

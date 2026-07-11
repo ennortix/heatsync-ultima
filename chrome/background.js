@@ -2036,21 +2036,20 @@ async function fetchUserInfo() {
 
     if (!response.ok) {
       response.body?.cancel()
-      browser.storage.local.remove('user_info')
+      // Only an explicit auth rejection means "logged out" — wipe. A 5xx/429/
+      // gateway blip is transient: keep stale user_info so mention aliases +
+      // display identity survive instead of silently dying until next refetch.
+      if (response.status === 401 || response.status === 403) browser.storage.local.remove('user_info')
       return
     }
 
     const bodyText = await response.text()
-    if (!bodyText) {
-      browser.storage.local.remove('user_info')
-      return
-    }
+    if (!bodyText) return // empty 200 = server anomaly — keep stale identity
     let user
     try {
       user = JSON.parse(bodyText)
     } catch {
-      browser.storage.local.remove('user_info')
-      return
+      return // unparseable = transient — keep stale identity
     }
     if (!user) {
       browser.storage.local.remove('user_info')

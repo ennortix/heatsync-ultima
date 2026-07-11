@@ -561,6 +561,18 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
           }
         }
         out.emoteFirstLoad = typeof _emoteFirstLoad !== 'undefined' ? [..._emoteFirstLoad] : null
+        // probe: resolve a single name through the real lookup chains — proves
+        // the active tab actually sees a channel emote, not just that a pool
+        // exists under some key.
+        const probe = e?.detail?.probe
+        if (probe && typeof lookupEmote === 'function') {
+          out.probe = {
+            name: probe,
+            lookup: !!lookupEmote(probe),
+            renderOrder: typeof lookupEmoteRenderOrder === 'function' ? !!lookupEmoteRenderOrder(probe) : null,
+            pools: typeof activeTabEmotePools === 'function' ? activeTabEmotePools().map((m) => m.size) : null,
+          }
+        }
         document.documentElement.dataset.hsDbgEmotes = JSON.stringify(out)
       } catch (err) {
         document.documentElement.dataset.hsDbgEmotes = 'err:' + (err?.message || 'unknown')

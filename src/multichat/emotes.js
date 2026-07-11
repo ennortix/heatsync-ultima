@@ -72,8 +72,7 @@ function mcRerenderSearch(query) {
     _mcSearchRenderedQuery = ''
     const allMap = new Map()
     for (const [k, v] of viewerPersonalEmotes) allMap.set(k, v)
-    const cc = channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()]
-    if (cc) for (const [k, v] of cc) if (!allMap.has(k)) allMap.set(k, v)
+    for (const cc of activeTabEmotePools()) for (const [k, v] of cc) if (!allMap.has(k)) allMap.set(k, v)
     for (const [k, v] of emoteCache) if (!allMap.has(k)) allMap.set(k, v)
     grid.innerHTML = renderEmoteSections(groupEmotes(allMap))
     attachChunkObserver(grid)
@@ -98,8 +97,7 @@ function mcRerenderSearch(query) {
       pool.set(k, v)
       localLoc.set(k, 0)
     }
-    const sc = channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()]
-    if (sc)
+    for (const sc of activeTabEmotePools())
       for (const [k, v] of sc)
         if (!pool.has(k)) {
           pool.set(k, v)
@@ -2420,6 +2418,46 @@ async function loadSenderEmoteSets() {
   }
 }
 
+// Channel-emote pools for the ACTIVE TAB. Pools are keyed by the FETCHED
+// owner name (e.g. 'nl_kripp'), but a merged-identity tab's id is the
+// heatsync handle (e.g. 'kripparrian') and on yt pages currentTab/currentChannel
+// are a videoId/@handle — none of which are pool keys. Every currentTab-keyed
+// lookup (picker grid, input preview chip, tab-complete, hover) silently lost
+// the ENTIRE channel set on those tabs (kripp's 1051-emote pool sat unused
+// under 'nl_kripp' while the chain probed 'kripparrian'). Resolve the tab's
+// twitch/kick slot names + yt handle as pool keys, deduped, empties skipped.
+function activeTabEmotePools() {
+  const pools = []
+  const seen = new Set()
+  const push = (k) => {
+    if (!k) return
+    const m = channelEmoteCaches[k] || channelEmoteCaches[String(k).toLowerCase()]
+    if (m && m.size && !seen.has(m)) {
+      seen.add(m)
+      pools.push(m)
+    }
+  }
+  push(currentTab)
+  const ch = typeof getChannelById === 'function' ? getChannelById(currentTab) : null
+  push(ch?.twitch)
+  push(ch?.kick)
+  const ytHandle = typeof ch?.youtube === 'string' ? ch.youtube.match(/\/@([^/?]+)/)?.[1] : null
+  if (ytHandle) {
+    push(`@${ytHandle}`)
+    push(ytHandle)
+  }
+  push(typeof getLiveChannel === 'function' ? getLiveChannel() : null)
+  push(typeof getCurrentChannel === 'function' ? getCurrentChannel() : null)
+  return pools
+}
+function activeTabChannelEmote(name) {
+  for (const m of activeTabEmotePools()) {
+    const hit = m.get(name)
+    if (hit) return hit
+  }
+  return undefined
+}
+
 // Look up emote — viewer-perspective fallback chain (used by picker, hover preview, etc.)
 function lookupEmote(name) {
   // removed/blocked fallbacks last: keep a removed-or-blocked emote's URL
@@ -2428,9 +2466,7 @@ function lookupEmote(name) {
   return (
     viewerPersonalEmotes.get(name) ||
     emoteCache.get(name) ||
-    channelEmoteCaches[currentTab]?.get(name) ||
-    channelEmoteCaches[getLiveChannel()]?.get(name) ||
-    channelEmoteCaches[getCurrentChannel()]?.get(name) ||
+    activeTabChannelEmote(name) ||
     removedEmoteFallback.get(name) ||
     blockedEmoteFallback.get(name)
   )
@@ -2450,9 +2486,7 @@ function lookupOwnedEmote(name) {
 // blocked emote still resolves its real url for the dashed-box preview.
 function lookupEmoteRenderOrder(name) {
   return (
-    channelEmoteCaches[currentTab]?.get(name) ||
-    channelEmoteCaches[getLiveChannel()]?.get(name) ||
-    channelEmoteCaches[getCurrentChannel()]?.get(name) ||
+    activeTabChannelEmote(name) ||
     viewerPersonalEmotes.get(name) ||
     emoteCache.get(name) ||
     removedEmoteFallback.get(name) ||

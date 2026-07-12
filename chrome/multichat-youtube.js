@@ -15605,6 +15605,10 @@ img.hs-fx-zero { margin-left: -4px; }
        strip. Single-column pages (home grid, search results, channel)
        reflow naturally; watch pages let YT's own breakpoints handle the
        primary/secondary column collapse when space gets tight. */
+    /* :not(.hs-offline) — the panel is HIDDEN on pages with no live chat
+       (home, search, channel, non-live watch). Reserving the chat strip
+       there left a dead gap on the right and forced YT's grid to wrap at
+       half width (2 tiles instead of 4-5). No panel, no reserve. */
     /* Cap ytd-app ONLY (not page-manager too — page-manager nests inside
        ytd-app, so its 100% resolves against ytd-app's already-capped
        width and would subtract the chat strip a second time, leaving the
@@ -15613,14 +15617,14 @@ img.hs-fx-zero { margin-left: -4px; }
        chat panel is position:fixed and respects the inner viewport that
        excludes the scrollbar, so 100vw caps were 15px too wide.
        The chat-side padding is the orange resize bar's gutter. */
-    body.hs-platform-yt:not(.hs-yt-watch).hs-chat-right ytd-app {
+    body.hs-platform-yt:not(.hs-yt-watch):not(.hs-offline).hs-chat-right ytd-app {
       width: calc(100% - var(--hs-chat-w, 340px)) !important;
       max-width: calc(100% - var(--hs-chat-w, 340px)) !important;
       padding-right: var(--hs-resize-thickness) !important;
       box-sizing: border-box !important;
       overflow-x: hidden !important;
     }
-    body.hs-platform-yt:not(.hs-yt-watch).hs-chat-left ytd-app {
+    body.hs-platform-yt:not(.hs-yt-watch):not(.hs-offline).hs-chat-left ytd-app {
       width: calc(100% - var(--hs-chat-w, 340px)) !important;
       max-width: calc(100% - var(--hs-chat-w, 340px)) !important;
       margin-left: var(--hs-chat-w, 340px) !important;
@@ -15628,7 +15632,7 @@ img.hs-fx-zero { margin-left: -4px; }
       box-sizing: border-box !important;
       overflow-x: hidden !important;
     }
-    body.hs-platform-yt:not(.hs-yt-watch).hs-chat-top ytd-app {
+    body.hs-platform-yt:not(.hs-yt-watch):not(.hs-offline).hs-chat-top ytd-app {
       height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
       max-height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
       margin-top: var(--hs-chat-h, 35vh) !important;
@@ -15636,7 +15640,7 @@ img.hs-fx-zero { margin-left: -4px; }
       box-sizing: border-box !important;
       overflow-y: auto !important;
     }
-    body.hs-platform-yt:not(.hs-yt-watch).hs-chat-bottom ytd-app {
+    body.hs-platform-yt:not(.hs-yt-watch):not(.hs-offline).hs-chat-bottom ytd-app {
       height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
       max-height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
       padding-bottom: 5px !important;

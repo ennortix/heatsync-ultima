@@ -259,6 +259,9 @@ function softKickNav(prevLiveCh) {
   try {
     _dropTabCache('live')
   } catch {}
+  try {
+    rearmLiveYtAuto()
+  } catch (_) {}
   document.body.classList.add('hs-mc-navigating')
   if (container.parentElement && container.parentElement !== document.body) {
     document.body.appendChild(container)

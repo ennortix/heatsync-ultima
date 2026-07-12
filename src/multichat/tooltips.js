@@ -844,10 +844,6 @@ function ensureUserTooltip() {
   return userTooltip
 }
 
-function getHeatColor() {
-  return '#fff'
-}
-
 function formatCompact(n) {
   if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M'
   if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K'
@@ -1423,8 +1419,8 @@ function hideUserTooltip() {
 }
 
 function setupUserTooltipHandlers() {
-  if (window._hsUserTooltipSetup) return
-  window._hsUserTooltipSetup = true
+  if (window._hsMcUserTooltipSetup) return
+  window._hsMcUserTooltipSetup = true
 
   // 120ms hover-intent debounce: scrolling chat passes the cursor across
   // 10+ usernames in a single scroll-tick. Without debounce every one
@@ -1682,8 +1678,8 @@ function scheduleLinkHide(delay = 250) {
 }
 
 function setupLinkTooltipHandlers() {
-  if (window._hsLinkTooltipSetup) return
-  window._hsLinkTooltipSetup = true
+  if (window._hsMcLinkTooltipSetup) return
+  window._hsMcLinkTooltipSetup = true
 
   cleanup.addEventListener(
     document,

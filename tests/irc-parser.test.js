@@ -189,6 +189,24 @@ test('parseIrcLine: reply-parent tags build replyTo object with \\s unescaped', 
   })
 })
 
+test('parseIrcLine: reply body containing % is preserved, not URI-decoded or dropped', () => {
+  // Regression: decodeURIComponent threw URIError on bare '%' (dropping the
+  // whole message) and silently decoded '%20' to a space. Tag values are
+  // IRCv3 backslash-escaped, never percent-encoded.
+  const raw =
+    '@display-name=Bob;reply-parent-display-name=Alice;reply-parent-msg-body=im\\s100%\\ssure\\s%20\\sok;reply-parent-msg-id=m1 :bob!bob@bob.tmi.twitch.tv PRIVMSG #chan :agreed'
+  const msg = parseIrcLine(raw, 'chan')
+  expect(msg).not.toBeNull()
+  expect(msg.replyTo.text).toBe('im 100% sure %20 ok')
+})
+
+test('parseIrcLine: reply body unescapes \\: \\\\ \\r \\n per IRCv3', () => {
+  const raw =
+    '@display-name=Bob;reply-parent-display-name=Alice;reply-parent-msg-body=a\\:b\\\\c\\rd\\ne :bob!bob@bob.tmi.twitch.tv PRIVMSG #chan :reply'
+  const msg = parseIrcLine(raw, 'chan')
+  expect(msg.replyTo.text).toBe('a;b\\c\rd\ne')
+})
+
 test('parseIrcLine: no reply tags → replyTo is null', () => {
   const raw = '@display-name=Bob :bob!bob@bob.tmi.twitch.tv PRIVMSG #chan :plain text'
   const msg = parseIrcLine(raw, 'chan')

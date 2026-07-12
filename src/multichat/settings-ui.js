@@ -534,8 +534,8 @@ function _renderCrashLogBlock() {
     '<div style="display:flex;justify-content:space-between;align-items:center;width:100%">' +
     '<span class="hs-mc-setting-label">recent errors</span>' +
     '<div style="display:flex;gap:4px">' +
-    '<button id="hs-set-crash-copy" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 8px;font-size:11px;cursor:pointer;font-family:inherit">copy</button>' +
-    '<button id="hs-set-crash-clear" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 8px;font-size:11px;cursor:pointer;font-family:inherit">clear</button>' +
+    '<button id="hs-set-crash-copy" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 8px;font-size:13px;cursor:pointer;font-family:inherit">copy</button>' +
+    '<button id="hs-set-crash-clear" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 8px;font-size:13px;cursor:pointer;font-family:inherit">clear</button>' +
     '</div>' +
     '</div>' +
     '<pre id="hs-set-crash-pre" class="hs-mc-set-crash-pre">(loading...)</pre>' +
@@ -681,7 +681,7 @@ function _renderFilterRuleRow(r) {
     '">' +
     val +
     '</span>' +
-    '<span style="color:#aaa;font-size:11px;flex-shrink:0">▶' +
+    '<span style="color:#aaa;font-size:13px;flex-shrink:0">▶' +
     aLabel +
     '</span>' +
     (aColor
@@ -690,11 +690,11 @@ function _renderFilterRuleRow(r) {
         ';border:1px solid #444;flex-shrink:0"></span>'
       : '') +
     (r.action === 'highlight' && r.sound
-      ? '<span style="color:#808080;font-size:11px;flex-shrink:0" title="sound: ' +
+      ? '<span style="color:#808080;font-size:13px;flex-shrink:0" title="sound: ' +
         escapeHtml(String(r.sound)) +
         '">♪</span>'
       : '') +
-    '<span style="color:#666;font-size:11px;flex-shrink:0">' +
+    '<span style="color:#666;font-size:13px;flex-shrink:0">' +
     scopeLabel +
     '</span>' +
     '</div>' +
@@ -1738,9 +1738,15 @@ function renderSettingsTab() {
     if (e.target.id === 'hs-set-crash-copy') {
       var pre = document.getElementById('hs-set-crash-pre')
       if (pre && pre.textContent) {
-        navigator.clipboard.writeText(pre.textContent).catch(() => {})
         var copyBtn = e.target
-        copyBtn.textContent = 'copied'
+        navigator.clipboard.writeText(pre.textContent).then(
+          () => {
+            copyBtn.textContent = 'copied'
+          },
+          () => {
+            copyBtn.textContent = 'copy failed'
+          }
+        )
         cleanup.setTimeout(() => {
           copyBtn.textContent = 'copy'
         }, 1500)

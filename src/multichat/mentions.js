@@ -319,7 +319,7 @@ function notifyMention(msg) {
   if (!notificationsEnabled || !unfocused) return
   const channel = msg.channel ? ` in #${msg.channel}` : ''
   const title = `${msg.user}${channel}`
-  const body = msg.text.length > 200 ? msg.text.slice(0, 200) + '...' : msg.text
+  const body = msg.text.length > 200 ? truncateSafe(msg.text, 200) + '...' : msg.text
   resolveNotifIcon(msg.user, msg.platform, msg.avatar).then((icon) =>
     fireNotification(title, body, 'hs-mention-' + Date.now(), icon),
   )

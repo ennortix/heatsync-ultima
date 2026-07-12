@@ -9458,6 +9458,30 @@ function bgIrcParseTags(tagStr) {
   return tags
 }
 
+// IRCv3 tag-value unescape: \s→space, \:→";", \\→"\", \r→CR, \n→LF.
+// Tag values are backslash-escaped, NOT percent-encoded — decodeURIComponent
+// throws URIError on any bare '%' (e.g. "im 100% sure") and silently corrupts
+// valid-looking sequences like '%20'.
+function bgIrcTagUnescape(v) {
+  if (!v || v.indexOf('\\') === -1) return v
+  let out = ''
+  for (let i = 0; i < v.length; i++) {
+    const c = v[i]
+    if (c !== '\\') {
+      out += c
+      continue
+    }
+    const n = v[++i]
+    if (n === 's') out += ' '
+    else if (n === ':') out += ';'
+    else if (n === '\\') out += '\\'
+    else if (n === 'r') out += '\r'
+    else if (n === 'n') out += '\n'
+    else if (n !== undefined) out += n
+  }
+  return out
+}
+
 function bgIrcParseLine(raw, channelHint) {
   try {
     const tagsMatch = raw.match(/^@([^ ]+)/)
@@ -9489,10 +9513,8 @@ function bgIrcParseLine(raw, channelHint) {
         id: tags.id || '',
         replyTo: tags['reply-parent-display-name']
           ? {
-              user: decodeURIComponent(tags['reply-parent-display-name']),
-              text: tags['reply-parent-msg-body']
-                ? decodeURIComponent(tags['reply-parent-msg-body'].replace(/\\s/g, ' '))
-                : '',
+              user: bgIrcTagUnescape(tags['reply-parent-display-name']),
+              text: tags['reply-parent-msg-body'] ? bgIrcTagUnescape(tags['reply-parent-msg-body']) : '',
               id: tags['reply-parent-msg-id'] || '',
               // Twitch-resolved id — lets the multichat renderer paint the reply
               // target with their own cosmetic synchronously, without waiting on
@@ -9531,11 +9553,11 @@ function bgIrcParseLine(raw, channelHint) {
       const months = parseInt(tags['msg-param-cumulative-months']) || parseInt(tags['msg-param-months']) || 0
       const giftCount = parseInt(tags['msg-param-mass-gift-count']) || 0
       const recipient = tags['msg-param-recipient-display-name']
-        ? decodeURIComponent(tags['msg-param-recipient-display-name'].replace(/\\s/g, ' '))
+        ? bgIrcTagUnescape(tags['msg-param-recipient-display-name'])
         : ''
       const raidViewers = parseInt(tags['msg-param-viewerCount']) || 0
       const raidFrom = tags['msg-param-displayName']
-        ? decodeURIComponent(tags['msg-param-displayName'].replace(/\\s/g, ' '))
+        ? bgIrcTagUnescape(tags['msg-param-displayName'])
         : ''
       const announceColor = tags['msg-param-color'] || ''
       const bitsTier = parseInt(tags['msg-param-threshold']) || 0
@@ -9548,7 +9570,7 @@ function bgIrcParseLine(raw, channelHint) {
       return {
         user: displayName,
         text: userText,
-        systemMsg: decodeURIComponent((tags['system-msg'] || '').replace(/\\s/g, ' ')),
+        systemMsg: bgIrcTagUnescape(tags['system-msg'] || ''),
         color: bgIrcSanitizeColor(tags.color || '#fff'),
         badges: tags.badges || '',
         channel: channelHint || usernotice[1].toLowerCase(),

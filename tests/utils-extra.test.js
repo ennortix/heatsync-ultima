@@ -6,11 +6,12 @@ import {
   safeUrl,
   sanitizeUiSettings,
   throttle,
+  truncateSafe,
   UI_SYNC_BLOCKLIST,
 } from '../src/lib/utils.js'
 
 // DOM-dependent — covered by browser smoke test:
-//   createElement, $, $$, getFiber, findComponent
+//   createElement, getFiber, findComponent
 
 // ── escapeHtml edge cases (existing tests cover basic &<>"' and null/undefined/number) ──
 
@@ -482,4 +483,36 @@ describe('sanitizeUiSettings', () => {
   // but if the input's prototype is Object (normal case), inherited Object
   // keys like 'toString' are silently skipped. This is correct behavior,
   // but any caller using Object.create(someProto) may lose expected keys.
+})
+
+describe('truncateSafe', () => {
+  test('string at or under limit returned unchanged', () => {
+    expect(truncateSafe('abc', 3)).toBe('abc')
+    expect(truncateSafe('ab', 3)).toBe('ab')
+  })
+
+  test('plain over-limit string cut at n', () => {
+    expect(truncateSafe('abcdef', 4)).toBe('abcd')
+  })
+
+  test('surrogate pair straddling the boundary is dropped whole', () => {
+    const s = 'a'.repeat(3) + '😀' + 'b'
+    const out = truncateSafe(s, 4)
+    expect(out).toBe('aaa')
+    expect(out.isWellFormed()).toBe(true)
+  })
+
+  test('pair ending exactly at the boundary is kept', () => {
+    const s = 'a'.repeat(3) + '😀' + 'b'
+    const out = truncateSafe(s, 5)
+    expect(out).toBe('aaa😀')
+    expect(out.isWellFormed()).toBe(true)
+  })
+
+  test('emoji-only string never yields a lone surrogate', () => {
+    const s = '😀'.repeat(10)
+    for (let n = 1; n <= 20; n++) {
+      expect(truncateSafe(s, n).isWellFormed()).toBe(true)
+    }
+  })
 })

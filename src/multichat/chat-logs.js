@@ -41,16 +41,25 @@ function buildChatLogPermalink(r) {
 async function copyChatLogPermalink(btn, r) {
   const url = buildChatLogPermalink(r)
   if (!url) return
+  let ok = false
   try {
     await navigator.clipboard.writeText(url)
-    const prev = btn.textContent
-    btn.textContent = '✓'
-    btn.classList.add('hs-cl-permalink-copied')
-    setTimeout(() => {
-      btn.textContent = prev
-      btn.classList.remove('hs-cl-permalink-copied')
-    }, 1200)
-  } catch {}
+    ok = true
+  } catch {
+    ok = typeof mcCopyFallback === 'function' && mcCopyFallback(url)
+  }
+  if (!ok) {
+    try {
+      showToast('copy failed', 'error')
+    } catch {}
+  }
+  const prev = btn.textContent
+  btn.textContent = ok ? '✓' : '✗'
+  if (ok) btn.classList.add('hs-cl-permalink-copied')
+  setTimeout(() => {
+    btn.textContent = prev
+    btn.classList.remove('hs-cl-permalink-copied')
+  }, 1200)
 }
 
 async function openChatLogsView(username, opts = {}) {
@@ -82,7 +91,7 @@ function closeChatLogsView() {
   if (!activeChatLogs) return
   activeChatLogs = null
   if (_clLoadMoreObs) {
-    _clLoadMoreObs.disconnect()
+    cleanup.untrackObserver(_clLoadMoreObs)
     _clLoadMoreObs = null
   }
   const inputBar = document.getElementById('hs-mc-inputbar')
@@ -354,21 +363,21 @@ function renderChatLogsView() {
     // IntersectionObserver auto-fires when sentinel scrolls into view
     if (!loading && 'IntersectionObserver' in window) {
       if (_clLoadMoreObs) {
-        _clLoadMoreObs.disconnect()
+        cleanup.untrackObserver(_clLoadMoreObs)
         _clLoadMoreObs = null
       }
-      _clLoadMoreObs = new IntersectionObserver(
+      _clLoadMoreObs = cleanup.trackObserver(new IntersectionObserver(
         (entries) => {
           if (entries.some((e) => e.isIntersecting)) {
             if (_clLoadMoreObs) {
-              _clLoadMoreObs.disconnect()
+              cleanup.untrackObserver(_clLoadMoreObs)
               _clLoadMoreObs = null
             }
             fetchChatLogsPage()
           }
         },
         { root: list, rootMargin: '200px' },
-      )
+      ))
       _clLoadMoreObs.observe(sentinel)
     }
   }

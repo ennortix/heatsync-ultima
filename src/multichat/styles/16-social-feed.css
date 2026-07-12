@@ -872,7 +872,6 @@
       height: 5px;
       background: rgba(255,255,255,0.06);
       overflow: hidden;
-      border-radius: 1px;
     }
     .hs-discover-bar > i {
       display: block;
@@ -1095,7 +1094,8 @@
       cursor: pointer;
       line-height: 18px;
     }
-    .hs-pinned-row:hover { background: rgba(255,135,0,0.07); }
+    .hs-pinned-row:hover { background: #fff; }
+    .hs-pinned-row:hover * { color: #000 !important; }
     .hs-pinned-meta {
       display: flex;
       align-items: center;
@@ -1113,7 +1113,6 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .hs-pinned-row:hover .hs-pinned-body { color: #fff; }
 
     /* mod-action log (streamer/mod popout view) — per-action ANSI accents */
     .hs-modlog-row {

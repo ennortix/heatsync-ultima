@@ -20,6 +20,30 @@ function parseTags(tagStr) {
   return tags
 }
 
+// IRCv3 tag-value unescape: \s→space, \:→";", \\→"\", \r→CR, \n→LF.
+// Tag values are backslash-escaped, NOT percent-encoded — decodeURIComponent
+// throws URIError on any bare '%' (e.g. "im 100% sure") and silently corrupts
+// valid-looking sequences like '%20'.
+function ircTagUnescape(v) {
+  if (!v || v.indexOf('\\') === -1) return v
+  let out = ''
+  for (let i = 0; i < v.length; i++) {
+    const c = v[i]
+    if (c !== '\\') {
+      out += c
+      continue
+    }
+    const n = v[++i]
+    if (n === 's') out += ' '
+    else if (n === ':') out += ';'
+    else if (n === '\\') out += '\\'
+    else if (n === 'r') out += '\r'
+    else if (n === 'n') out += '\n'
+    else if (n !== undefined) out += n
+  }
+  return out
+}
+
 // Parse the IRC `emotes=` tag (emoteId:start-end,start-end/...) into a
 // { name: cdnUrl } map keyed off positions in the message text. Shared by
 // PRIVMSG and USERNOTICE — the latter's user-typed portion (e.g. a watchstreak
@@ -84,10 +108,8 @@ function parseIrcLine(raw, channel) {
         id: tags.id || '',
         replyTo: tags['reply-parent-display-name']
           ? {
-              user: decodeURIComponent(tags['reply-parent-display-name']),
-              text: tags['reply-parent-msg-body']
-                ? decodeURIComponent(tags['reply-parent-msg-body'].replace(/\\s/g, ' '))
-                : '',
+              user: ircTagUnescape(tags['reply-parent-display-name']),
+              text: tags['reply-parent-msg-body'] ? ircTagUnescape(tags['reply-parent-msg-body']) : '',
               id: tags['reply-parent-msg-id'] || '',
               userId: tags['reply-parent-user-id'] || '',
               threadId: tags['reply-thread-parent-msg-id'] || tags['reply-parent-msg-id'] || '',
@@ -138,11 +160,11 @@ function parseIrcLine(raw, channel) {
       const months = parseInt(tags['msg-param-cumulative-months']) || parseInt(tags['msg-param-months']) || 0
       const giftCount = parseInt(tags['msg-param-mass-gift-count']) || 0
       const recipient = tags['msg-param-recipient-display-name']
-        ? decodeURIComponent(tags['msg-param-recipient-display-name'].replace(/\\s/g, ' '))
+        ? ircTagUnescape(tags['msg-param-recipient-display-name'])
         : ''
       const raidViewers = parseInt(tags['msg-param-viewerCount']) || 0
       const raidFrom = tags['msg-param-displayName']
-        ? decodeURIComponent(tags['msg-param-displayName'].replace(/\\s/g, ' '))
+        ? ircTagUnescape(tags['msg-param-displayName'])
         : ''
       const announceColor = tags['msg-param-color'] || ''
       const bitsTier = parseInt(tags['msg-param-threshold']) || 0
@@ -163,7 +185,7 @@ function parseIrcLine(raw, channel) {
       return {
         user: displayName,
         text: userText,
-        systemMsg: decodeURIComponent((tags['system-msg'] || '').replace(/\\s/g, ' ')),
+        systemMsg: ircTagUnescape(tags['system-msg'] || ''),
         color: sanitizeColor(tags.color || '#fff'),
         badges: tags.badges || '',
         channel: channel || usernotice[1].toLowerCase(),
@@ -644,8 +666,21 @@ class IRC {
     // Route through safeSendMessage so cold-SW wake retries — direct sendMessage
     // here silently lost the join on SW eviction, BG never joined the channel,
     // own PRIVMSG echoes never returned, user had to refresh to recover.
+    // safeSendMessage never rejects (resolves {ok:false} on failure), so inspect
+    // the result and retry with backoff — a SW restart longer than its budget
+    // otherwise loses the join forever (channels.set above blocks re-entry).
+    const sendJoin = (attempt) => {
+      safeSendMessage({ type: 'bg_irc_join', channel: ch }).then((r) => {
+        if (r && r.ok !== false) return
+        if (attempt >= 3 || !this.channels.has(ch)) {
+          log('BG join failed for', ch)
+          return
+        }
+        setTimeout(() => sendJoin(attempt + 1), 2000 * (attempt + 1))
+      })
+    }
     try {
-      safeSendMessage({ type: 'bg_irc_join', channel: ch }).catch(() => {})
+      sendJoin(0)
     } catch {}
     // Pull initial buffer from BG (in-memory; instant on warm SW). Await the
     // sent-message storage hydration first so own-message [K]/[H]/[Y] badges

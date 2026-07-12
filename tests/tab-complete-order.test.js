@@ -125,7 +125,7 @@ globalThis.localStorage = {
   setItem: (k, v) => store.set(k, String(v)),
   removeItem: (k) => store.delete(k),
 }
-globalThis.cleanup = { setIntervalIfVisible: () => {} }
+globalThis.cleanup = { setIntervalIfVisible: () => {}, persistInterval: () => {} }
 const mods = await import('../src/lib/modifiers.js')
 globalThis.HS_MOD_TOKENS = mods.HS_MOD_TOKENS
 globalThis.hsModClassify = mods.hsModClassify

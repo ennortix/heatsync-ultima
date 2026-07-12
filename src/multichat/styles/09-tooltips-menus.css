@@ -50,7 +50,7 @@
       user-select: none;
     }
     .hs-note-editor-head {
-      padding: 4px 10px; font-size: 10px; color: #aaa;
+      padding: 4px 10px; font-size: 13px; color: #aaa;
       text-transform: uppercase; letter-spacing: 0.5px;
       background: #050505; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
@@ -66,10 +66,10 @@
       display: flex; align-items: center; justify-content: space-between;
       padding: 4px 10px; background: #050505; border-top: 1px solid #1a1a1a;
     }
-    .hs-note-editor-status { font-size: 10px; color: #808080; text-transform: uppercase; letter-spacing: 0.5px; }
+    .hs-note-editor-status { font-size: 13px; color: #808080; text-transform: uppercase; letter-spacing: 0.5px; }
     .hs-note-editor-del {
       background: transparent; color: #808080; border: 1px solid #333;
-      padding: 2px 8px; cursor: pointer; font-family: inherit; font-size: 11px;
+      padding: 2px 8px; cursor: pointer; font-family: inherit; font-size: 13px;
     }
     .hs-note-editor-del:hover { background: #ff5050; color: #000; border-color: #ff5050; }
     .hs-mc-ctx .hs-mc-em-header {

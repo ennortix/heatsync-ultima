@@ -1056,27 +1056,21 @@ function createElement(tag, text, className) {
 }
 
 // ============================================
-// DOM HELPERS
+// STRING HELPERS
 // ============================================
 
 /**
- * Query selector (first match)
- * @param {string} selector
- * @param {Element|Document} [parent=document]
- * @returns {Element|null}
+ * Truncate to at most n UTF-16 units without splitting a surrogate pair.
+ * A high surrogate left dangling at the cut is dropped so the result never
+ * ends in a lone surrogate (which renders as U+FFFD downstream).
+ * @param {string} str
+ * @param {number} n
+ * @returns {string}
  */
-function $(selector, parent = document) {
-  return parent.querySelector(selector)
-}
-
-/**
- * Query selector all
- * @param {string} selector
- * @param {Element|Document} [parent=document]
- * @returns {NodeListOf<Element>}
- */
-function $$(selector, parent = document) {
-  return parent.querySelectorAll(selector)
+function truncateSafe(str, n) {
+  if (str.length <= n) return str
+  const code = str.charCodeAt(n - 1)
+  return str.slice(0, code >= 0xd800 && code <= 0xdbff ? n - 1 : n)
 }
 
 // ============================================
@@ -1577,9 +1571,8 @@ const utils = {
   safeUrl,
   createElement,
 
-  // DOM
-  $,
-  $$,
+  // Strings
+  truncateSafe,
 
   // React
   getFiber,
@@ -6381,6 +6374,11 @@ const cleanup = {
     const i = _timers.intervals.indexOf(id)
     if (i !== -1) _timers.intervals.splice(i, 1)
   },
+  // Mark a module-load interval as surviving SPA reinit's drain — init()
+  // won't re-register it (see spa-nav.js).
+  persistInterval(id) {
+    _timers.persistent.add(id)
+  },
   setTimeout(fn, ms) {
     const w = _hsPerfWrap(fn, ms, 'timeout')
     const id = setTimeout(() => {
@@ -9701,7 +9699,7 @@ function injectStyles() {
       user-select: none;
     }
     .hs-note-editor-head {
-      padding: 4px 10px; font-size: 10px; color: #aaa;
+      padding: 4px 10px; font-size: 13px; color: #aaa;
       text-transform: uppercase; letter-spacing: 0.5px;
       background: #050505; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
@@ -9717,10 +9715,10 @@ function injectStyles() {
       display: flex; align-items: center; justify-content: space-between;
       padding: 4px 10px; background: #050505; border-top: 1px solid #1a1a1a;
     }
-    .hs-note-editor-status { font-size: 10px; color: #808080; text-transform: uppercase; letter-spacing: 0.5px; }
+    .hs-note-editor-status { font-size: 13px; color: #808080; text-transform: uppercase; letter-spacing: 0.5px; }
     .hs-note-editor-del {
       background: transparent; color: #808080; border: 1px solid #333;
-      padding: 2px 8px; cursor: pointer; font-family: inherit; font-size: 11px;
+      padding: 2px 8px; cursor: pointer; font-family: inherit; font-size: 13px;
     }
     .hs-note-editor-del:hover { background: #ff5050; color: #000; border-color: #ff5050; }
     .hs-mc-ctx .hs-mc-em-header {
@@ -14794,7 +14792,6 @@ img.hs-fx-zero { margin-left: -4px; }
       height: 5px;
       background: rgba(255,255,255,0.06);
       overflow: hidden;
-      border-radius: 1px;
     }
     .hs-discover-bar > i {
       display: block;
@@ -15017,7 +15014,8 @@ img.hs-fx-zero { margin-left: -4px; }
       cursor: pointer;
       line-height: 18px;
     }
-    .hs-pinned-row:hover { background: rgba(255,135,0,0.07); }
+    .hs-pinned-row:hover { background: #fff; }
+    .hs-pinned-row:hover * { color: #000 !important; }
     .hs-pinned-meta {
       display: flex;
       align-items: center;
@@ -15035,7 +15033,6 @@ img.hs-fx-zero { margin-left: -4px; }
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .hs-pinned-row:hover .hs-pinned-body { color: #fff; }
 
     /* mod-action log (streamer/mod popout view) — per-action ANSI accents */
     .hs-modlog-row {
@@ -17357,7 +17354,13 @@ function _hsnPersist() {
     index: Object.fromEntries(_hsnIndex),
   }
   try {
-    chrome.storage.local.set({ [HS_NOTES_KEY]: payload }, () => void chrome.runtime?.lastError)
+    chrome.storage.local.set({ [HS_NOTES_KEY]: payload }, () => {
+      if (chrome.runtime?.lastError) {
+        try {
+          showToast('note not saved — storage error', 'error')
+        } catch {}
+      }
+    })
   } catch {}
 }
 
@@ -17438,9 +17441,9 @@ function _hsnLoad() {
 // partial) view, so treating absence as "deleted" would just relocate the
 // wipe. (Trade-off: a delete can be resurrected by a tab that loaded the note
 // before the delete and saves later — no tombstone in the wire format yet.)
-if (typeof window !== 'undefined' && _hsnHasStorage() && !window._hsnOnChangedWired) {
-  window._hsnOnChangedWired = true
-  chrome.storage.onChanged.addListener((changes, area) => {
+if (typeof window !== 'undefined' && _hsnHasStorage() && !window._hsMcNotesOnChangedWired) {
+  window._hsMcNotesOnChangedWired = true
+  cleanup.addListener(chrome.storage.onChanged, (changes, area) => {
     if (area !== 'local' || !changes[HS_NOTES_KEY]) return
     const raw = changes[HS_NOTES_KEY].newValue
     if (!raw || typeof raw !== 'object') return
@@ -18458,7 +18461,7 @@ function notifyMention(msg) {
   if (!notificationsEnabled || !unfocused) return
   const channel = msg.channel ? ` in #${msg.channel}` : ''
   const title = `${msg.user}${channel}`
-  const body = msg.text.length > 200 ? msg.text.slice(0, 200) + '...' : msg.text
+  const body = msg.text.length > 200 ? truncateSafe(msg.text, 200) + '...' : msg.text
   resolveNotifIcon(msg.user, msg.platform, msg.avatar).then((icon) =>
     fireNotification(title, body, 'hs-mention-' + Date.now(), icon),
   )
@@ -18569,6 +18572,30 @@ function parseTags(tagStr) {
   return tags
 }
 
+// IRCv3 tag-value unescape: \s→space, \:→";", \\→"\", \r→CR, \n→LF.
+// Tag values are backslash-escaped, NOT percent-encoded — decodeURIComponent
+// throws URIError on any bare '%' (e.g. "im 100% sure") and silently corrupts
+// valid-looking sequences like '%20'.
+function ircTagUnescape(v) {
+  if (!v || v.indexOf('\\') === -1) return v
+  let out = ''
+  for (let i = 0; i < v.length; i++) {
+    const c = v[i]
+    if (c !== '\\') {
+      out += c
+      continue
+    }
+    const n = v[++i]
+    if (n === 's') out += ' '
+    else if (n === ':') out += ';'
+    else if (n === '\\') out += '\\'
+    else if (n === 'r') out += '\r'
+    else if (n === 'n') out += '\n'
+    else if (n !== undefined) out += n
+  }
+  return out
+}
+
 // Parse the IRC `emotes=` tag (emoteId:start-end,start-end/...) into a
 // { name: cdnUrl } map keyed off positions in the message text. Shared by
 // PRIVMSG and USERNOTICE — the latter's user-typed portion (e.g. a watchstreak
@@ -18633,10 +18660,8 @@ function parseIrcLine(raw, channel) {
         id: tags.id || '',
         replyTo: tags['reply-parent-display-name']
           ? {
-              user: decodeURIComponent(tags['reply-parent-display-name']),
-              text: tags['reply-parent-msg-body']
-                ? decodeURIComponent(tags['reply-parent-msg-body'].replace(/\\s/g, ' '))
-                : '',
+              user: ircTagUnescape(tags['reply-parent-display-name']),
+              text: tags['reply-parent-msg-body'] ? ircTagUnescape(tags['reply-parent-msg-body']) : '',
               id: tags['reply-parent-msg-id'] || '',
               userId: tags['reply-parent-user-id'] || '',
               threadId: tags['reply-thread-parent-msg-id'] || tags['reply-parent-msg-id'] || '',
@@ -18687,11 +18712,11 @@ function parseIrcLine(raw, channel) {
       const months = parseInt(tags['msg-param-cumulative-months']) || parseInt(tags['msg-param-months']) || 0
       const giftCount = parseInt(tags['msg-param-mass-gift-count']) || 0
       const recipient = tags['msg-param-recipient-display-name']
-        ? decodeURIComponent(tags['msg-param-recipient-display-name'].replace(/\\s/g, ' '))
+        ? ircTagUnescape(tags['msg-param-recipient-display-name'])
         : ''
       const raidViewers = parseInt(tags['msg-param-viewerCount']) || 0
       const raidFrom = tags['msg-param-displayName']
-        ? decodeURIComponent(tags['msg-param-displayName'].replace(/\\s/g, ' '))
+        ? ircTagUnescape(tags['msg-param-displayName'])
         : ''
       const announceColor = tags['msg-param-color'] || ''
       const bitsTier = parseInt(tags['msg-param-threshold']) || 0
@@ -18712,7 +18737,7 @@ function parseIrcLine(raw, channel) {
       return {
         user: displayName,
         text: userText,
-        systemMsg: decodeURIComponent((tags['system-msg'] || '').replace(/\\s/g, ' ')),
+        systemMsg: ircTagUnescape(tags['system-msg'] || ''),
         color: sanitizeColor(tags.color || '#fff'),
         badges: tags.badges || '',
         channel: channel || usernotice[1].toLowerCase(),
@@ -19193,8 +19218,21 @@ class IRC {
     // Route through safeSendMessage so cold-SW wake retries — direct sendMessage
     // here silently lost the join on SW eviction, BG never joined the channel,
     // own PRIVMSG echoes never returned, user had to refresh to recover.
+    // safeSendMessage never rejects (resolves {ok:false} on failure), so inspect
+    // the result and retry with backoff — a SW restart longer than its budget
+    // otherwise loses the join forever (channels.set above blocks re-entry).
+    const sendJoin = (attempt) => {
+      safeSendMessage({ type: 'bg_irc_join', channel: ch }).then((r) => {
+        if (r && r.ok !== false) return
+        if (attempt >= 3 || !this.channels.has(ch)) {
+          log('BG join failed for', ch)
+          return
+        }
+        setTimeout(() => sendJoin(attempt + 1), 2000 * (attempt + 1))
+      })
+    }
     try {
-      safeSendMessage({ type: 'bg_irc_join', channel: ch }).catch(() => {})
+      sendJoin(0)
     } catch {}
     // Pull initial buffer from BG (in-memory; instant on warm SW). Await the
     // sent-message storage hydration first so own-message [K]/[H]/[Y] badges
@@ -20916,6 +20954,7 @@ function getChatResUrl(url) {
   // Applied after the size rewrite so it isn't clobbered.
   if (HS_IS_FF && out.includes('cdn.7tv.app')) out = out.replace(/\.avif(\?|$)/i, '.webp$1')
   _resCache.set(url, out)
+  if (_resCache.size > 2000) _resCache.delete(_resCache.keys().next().value)
   return out
 }
 
@@ -23317,7 +23356,7 @@ function scanDomForEmotes() {
 }
 
 // Periodically scan for new emotes
-cleanup.setIntervalIfVisible(scanDomForEmotes, 10000)
+cleanup.persistInterval(cleanup.setIntervalIfVisible(scanDomForEmotes, 10000))
 
 // Process text and replace emote codes with images.
 // Supports 7TV zero-width (overlay) emotes that stack on base emotes.
@@ -24852,10 +24891,6 @@ function ensureUserTooltip() {
   return userTooltip
 }
 
-function getHeatColor() {
-  return '#fff'
-}
-
 function formatCompact(n) {
   if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M'
   if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K'
@@ -25431,8 +25466,8 @@ function hideUserTooltip() {
 }
 
 function setupUserTooltipHandlers() {
-  if (window._hsUserTooltipSetup) return
-  window._hsUserTooltipSetup = true
+  if (window._hsMcUserTooltipSetup) return
+  window._hsMcUserTooltipSetup = true
 
   // 120ms hover-intent debounce: scrolling chat passes the cursor across
   // 10+ usernames in a single scroll-tick. Without debounce every one
@@ -25690,8 +25725,8 @@ function scheduleLinkHide(delay = 250) {
 }
 
 function setupLinkTooltipHandlers() {
-  if (window._hsLinkTooltipSetup) return
-  window._hsLinkTooltipSetup = true
+  if (window._hsMcLinkTooltipSetup) return
+  window._hsMcLinkTooltipSetup = true
 
   cleanup.addEventListener(
     document,
@@ -27841,7 +27876,7 @@ const BADGE_STYLES = {
 function badgeBgStyle(name, isFFZ) {
   const s = BADGE_STYLES[name]
   if (!s) return ''
-  return isFFZ ? `background:${s.bg};padding:1px;border-radius:2px;` : `background:${s.bg};border-radius:2px;`
+  return isFFZ ? `background:${s.bg};padding:1px;` : `background:${s.bg};`
 }
 
 // Twitch badge image URLs: "setID/version" → image_url
@@ -29335,7 +29370,7 @@ function renderThirdPartyBadges(userId) {
   if (ffzList) {
     for (const b of ffzList) {
       const safeColor = /^#[0-9a-fA-F]{3,8}$/.test(b.color) ? b.color : ''
-      html += `<img class="hs-mc-badge-img hs-mc-ffz-badge" src="${escapeHtml(safeUrl(b.url) || '')}" alt="${escapeHtml(b.title)}" title="${escapeHtml(b.title)}" decoding="async" width="18" height="18" style="width:18px;height:18px;${safeColor ? 'background:' + safeColor + ';border-radius:2px;' : ''}">`
+      html += `<img class="hs-mc-badge-img hs-mc-ffz-badge" src="${escapeHtml(safeUrl(b.url) || '')}" alt="${escapeHtml(b.title)}" title="${escapeHtml(b.title)}" decoding="async" width="18" height="18" style="width:18px;height:18px;${safeColor ? 'background:' + safeColor + ';' : ''}">`
     }
   }
   const chat = getSetting('chatterinoBadges') ? mcChatterinoBadgeMap.get(userId) : null
@@ -30196,8 +30231,8 @@ function _buildFeedResolvedHtml(ph, data) {
   const safeUrlStr = attr(url)
   const safeTitle = attr(data.title || '')
   const safeAuthor = attr(data.author || '')
-  const safeThumb = attr(data.thumbnail || '')
-  const safeMedia = attr(data.mediaUrl || '')
+  const safeThumb = attr(safeUrl(data.thumbnail || ''))
+  const safeMedia = attr(safeUrl(data.mediaUrl || ''))
   const safePlat = attr(platform)
 
   if (data.type === 'image' && data.mediaUrl) {
@@ -30358,6 +30393,48 @@ function attachFeedFallbacks(root) {
 // --- multichat/social.js ---
 // Social - feed, notifications, activity, heatsync API
 let _autoYtVideoId = null // videoId for this tab's __live_yt_auto__ subscription (cross-tab filter)
+
+// Re-arm the __live_yt_auto__ binding for the current URL channel: drop the
+// previous channel's subscription/buffer/watchdog state, then re-subscribe
+// from getLivePlatformNames(). Shared by twitch/kick soft SPA nav — the yt
+// host has its own path in spa-nav.js (autoYtSubscribeForPage).
+function rearmLiveYtAuto() {
+  chrome.runtime
+    .sendMessage({
+      type: 'youtube_ws_unsubscribe',
+      channelId: '__live_yt_auto__',
+    })
+    .catch(() => {})
+  channelYtMessages.delete('__live_yt_auto__')
+  ytChanLastSeen.delete('__live_yt_auto__')
+  ytChanRejoinAttempts.delete('__live_yt_auto__')
+  ytSubscribedUrls.delete('__live_yt_auto__')
+  _autoYtVideoId = null
+  if (gateAtBoot('chat-youtube') === false) return
+  const names = getLivePlatformNames()
+  if (!names.youtube) return
+  ytSubscribedUrls.set('__live_yt_auto__', names.youtube)
+  ytChanLastSeen.set('__live_yt_auto__', Date.now())
+  chrome.runtime
+    .sendMessage({
+      type: 'youtube_ws_subscribe',
+      url: names.youtube,
+      channelId: '__live_yt_auto__',
+    })
+    .catch(() => {})
+  // Fetch the new channel's yt emote set too, keyed by the bare url-channel
+  // name so a linked channel's emotes merge into one bucket (mirrors init's
+  // sibling send after its own youtube_ws_subscribe).
+  const urlCh = getCurrentChannel()?.toLowerCase()
+  if (urlCh) {
+    safeSendMessage({
+      type: 'join_channel',
+      platform: 'youtube',
+      channel: urlCh,
+      channelId: names.youtube || null,
+    })
+  }
+}
 
 // YT POLL SMOOTHING: server polls YouTube every ~5s and dispatches the whole
 // batch back-to-back over WS. Without smoothing, 10 msgs land in one rAF
@@ -31207,7 +31284,7 @@ function listenForSocialEvents() {
       )
         return
       const isMent = isMention(ytMsg)
-      bumpStreamStats(ytMsg.channel, ytMsg, isMent)
+      bumpStreamStats(ytChannelHint || ytEmoteKey, ytMsg, isMent)
       if (isMent) {
         mentionsBuffer.push(ytMsg)
         if (mentionsBuffer.length > MAX_BUFFER + 50) mentionsBuffer.splice(0, mentionsBuffer.length - MAX_BUFFER)
@@ -35779,14 +35856,14 @@ function initInput() {
   // shortcut that closes the tab even with an input focused — pages can't
   // cancel the shortcut itself, but a beforeunload prompt while a draft is
   // in the composer turns the insta-close into a confirm dialog.
-  if (!window._hsDraftGuard) {
-    window._hsDraftGuard = (e) => {
+  if (!window._hsMcDraftGuard) {
+    window._hsMcDraftGuard = (e) => {
       if (getInputText().trim()) {
         e.preventDefault()
         e.returnValue = ''
       }
     }
-    window.addEventListener('beforeunload', window._hsDraftGuard)
+    window.addEventListener('beforeunload', window._hsMcDraftGuard, { signal: mcSignal })
   }
   // Unified undo/redo — same module as the website. installUndoManager
   // attaches a manager to input._undoManager and wires Ctrl+Z hotkeys
@@ -37206,7 +37283,7 @@ async function _quickOpToFeed(username, msg) {
     showToast('nothing to post', 'error')
     return
   }
-  const content = `@${username}: ${raw}`.slice(0, 500)
+  const content = truncateSafe(`@${username}: ${raw}`, 500)
   try {
     const resp = await apiFetch('/api/messages', { method: 'POST', auth: true, body: { content } })
     showToast(resp?.ok ? 'posted to feed' : 'post failed', resp?.ok ? 'success' : 'error')
@@ -38600,10 +38677,11 @@ function updateCharCount() {
         hl.textContent = ''
         const safeSpan = document.createElement('span')
         safeSpan.className = 'hl-safe'
-        safeSpan.textContent = text.slice(0, 500)
+        const safeText = truncateSafe(text, 500)
+        safeSpan.textContent = safeText
         const overSpan = document.createElement('span')
         overSpan.className = 'hl-over'
-        overSpan.textContent = text.slice(500)
+        overSpan.textContent = text.slice(safeText.length)
         hl.appendChild(safeSpan)
         hl.appendChild(overSpan)
         hl.scrollLeft = input.scrollLeft
@@ -43135,8 +43213,8 @@ function pcDoWhisper(username, platform) {
 }
 
 function setupProfileCardHandlers() {
-  if (window._hsProfileCardSetup) return
-  window._hsProfileCardSetup = true
+  if (window._hsMcProfileCardSetup) return
+  window._hsMcProfileCardSetup = true
 
   // Primary path — pcard-early.js (document_start) intercepts the click before
   // Twitch/Kick can react and dispatches this event.
@@ -43331,9 +43409,7 @@ async function pcAddAsChannel(username) {
   if (typeof updateTabBar === 'function') updateTabBar()
   if (channel.twitch) {
     irc?.join(channel.twitch)
-    try {
-      chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: channel.twitch })
-    } catch {}
+    safeSendMessage({ type: 'join_channel', platform: 'twitch', channel: channel.twitch })
   }
   if (channel.kick) kickChat?.join(channel.kick)
   if (channel.youtube) {
@@ -43391,16 +43467,25 @@ function buildChatLogPermalink(r) {
 async function copyChatLogPermalink(btn, r) {
   const url = buildChatLogPermalink(r)
   if (!url) return
+  let ok = false
   try {
     await navigator.clipboard.writeText(url)
-    const prev = btn.textContent
-    btn.textContent = '✓'
-    btn.classList.add('hs-cl-permalink-copied')
-    setTimeout(() => {
-      btn.textContent = prev
-      btn.classList.remove('hs-cl-permalink-copied')
-    }, 1200)
-  } catch {}
+    ok = true
+  } catch {
+    ok = typeof mcCopyFallback === 'function' && mcCopyFallback(url)
+  }
+  if (!ok) {
+    try {
+      showToast('copy failed', 'error')
+    } catch {}
+  }
+  const prev = btn.textContent
+  btn.textContent = ok ? '✓' : '✗'
+  if (ok) btn.classList.add('hs-cl-permalink-copied')
+  setTimeout(() => {
+    btn.textContent = prev
+    btn.classList.remove('hs-cl-permalink-copied')
+  }, 1200)
 }
 
 async function openChatLogsView(username, opts = {}) {
@@ -43432,7 +43517,7 @@ function closeChatLogsView() {
   if (!activeChatLogs) return
   activeChatLogs = null
   if (_clLoadMoreObs) {
-    _clLoadMoreObs.disconnect()
+    cleanup.untrackObserver(_clLoadMoreObs)
     _clLoadMoreObs = null
   }
   const inputBar = document.getElementById('hs-mc-inputbar')
@@ -43704,21 +43789,21 @@ function renderChatLogsView() {
     // IntersectionObserver auto-fires when sentinel scrolls into view
     if (!loading && 'IntersectionObserver' in window) {
       if (_clLoadMoreObs) {
-        _clLoadMoreObs.disconnect()
+        cleanup.untrackObserver(_clLoadMoreObs)
         _clLoadMoreObs = null
       }
-      _clLoadMoreObs = new IntersectionObserver(
+      _clLoadMoreObs = cleanup.trackObserver(new IntersectionObserver(
         (entries) => {
           if (entries.some((e) => e.isIntersecting)) {
             if (_clLoadMoreObs) {
-              _clLoadMoreObs.disconnect()
+              cleanup.untrackObserver(_clLoadMoreObs)
               _clLoadMoreObs = null
             }
             fetchChatLogsPage()
           }
         },
         { root: list, rootMargin: '200px' },
-      )
+      ))
       _clLoadMoreObs.observe(sentinel)
     }
   }
@@ -45193,7 +45278,7 @@ function updateThirdPartyBadgesInPlace() {
     img.decoding = 'async'
     img.width = 18
     img.height = 18
-    img.style.cssText = 'width:18px;height:18px;' + (bg ? `background:${bg};border-radius:2px;` : '')
+    img.style.cssText = 'width:18px;height:18px;' + (bg ? `background:${bg};` : '')
     // Insert FIRST, then set src (caller) — so an immediate QUIC-drop error
     // fires while the img is already under msgsEl and the capture-phase error
     // handler (retryOrHideBadgeImg) catches it. Mirrors updateCosmeticsInPlace.
@@ -47570,8 +47655,8 @@ function _renderCrashLogBlock() {
     '<div style="display:flex;justify-content:space-between;align-items:center;width:100%">' +
     '<span class="hs-mc-setting-label">recent errors</span>' +
     '<div style="display:flex;gap:4px">' +
-    '<button id="hs-set-crash-copy" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 8px;font-size:11px;cursor:pointer;font-family:inherit">copy</button>' +
-    '<button id="hs-set-crash-clear" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 8px;font-size:11px;cursor:pointer;font-family:inherit">clear</button>' +
+    '<button id="hs-set-crash-copy" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 8px;font-size:13px;cursor:pointer;font-family:inherit">copy</button>' +
+    '<button id="hs-set-crash-clear" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 8px;font-size:13px;cursor:pointer;font-family:inherit">clear</button>' +
     '</div>' +
     '</div>' +
     '<pre id="hs-set-crash-pre" class="hs-mc-set-crash-pre">(loading...)</pre>' +
@@ -47717,7 +47802,7 @@ function _renderFilterRuleRow(r) {
     '">' +
     val +
     '</span>' +
-    '<span style="color:#aaa;font-size:11px;flex-shrink:0">▶' +
+    '<span style="color:#aaa;font-size:13px;flex-shrink:0">▶' +
     aLabel +
     '</span>' +
     (aColor
@@ -47726,11 +47811,11 @@ function _renderFilterRuleRow(r) {
         ';border:1px solid #444;flex-shrink:0"></span>'
       : '') +
     (r.action === 'highlight' && r.sound
-      ? '<span style="color:#808080;font-size:11px;flex-shrink:0" title="sound: ' +
+      ? '<span style="color:#808080;font-size:13px;flex-shrink:0" title="sound: ' +
         escapeHtml(String(r.sound)) +
         '">♪</span>'
       : '') +
-    '<span style="color:#666;font-size:11px;flex-shrink:0">' +
+    '<span style="color:#666;font-size:13px;flex-shrink:0">' +
     scopeLabel +
     '</span>' +
     '</div>' +
@@ -48774,9 +48859,15 @@ function renderSettingsTab() {
     if (e.target.id === 'hs-set-crash-copy') {
       var pre = document.getElementById('hs-set-crash-pre')
       if (pre && pre.textContent) {
-        navigator.clipboard.writeText(pre.textContent).catch(() => {})
         var copyBtn = e.target
-        copyBtn.textContent = 'copied'
+        navigator.clipboard.writeText(pre.textContent).then(
+          () => {
+            copyBtn.textContent = 'copied'
+          },
+          () => {
+            copyBtn.textContent = 'copy failed'
+          }
+        )
         cleanup.setTimeout(() => {
           copyBtn.textContent = 'copy'
         }, 1500)
@@ -49082,11 +49173,7 @@ function renderAddChannelForm(msgsEl) {
 
     if (twitchVal) {
       irc?.join(twitchVal)
-      try {
-        chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchVal })
-      } catch (e) {
-        /* context invalidated */
-      }
+      safeSendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchVal })
     }
     if (kickVal) {
       kickChat?.join(kickVal)
@@ -49096,11 +49183,7 @@ function renderAddChannelForm(msgsEl) {
       chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytVal, channelId: id }).catch(() => {})
       // 7TV/BTTV YouTube channel emotes — channelId is a hint (the typed
       // url/handle), background.js resolves the real UC... id itself.
-      try {
-        chrome.runtime.sendMessage({ type: 'join_channel', platform: 'youtube', channel: id, channelId: ytVal })
-      } catch (e) {
-        /* context invalidated */
-      }
+      safeSendMessage({ type: 'join_channel', platform: 'youtube', channel: id, channelId: ytVal })
     }
 
     updateTabBar()
@@ -49510,6 +49593,9 @@ function showEditChannelForm(tabId) {
         .catch(() => {})
       youtubeLinks.delete(tabId)
       channelYtMessages.delete(tabId)
+      ytChanLastSeen.delete(tabId)
+      ytChanRejoinAttempts.delete(tabId)
+      ytSubscribedUrls.delete(tabId)
     }
 
     // Update channel config
@@ -49531,6 +49617,29 @@ function showEditChannelForm(tabId) {
         channelYtMessages.delete(tabId)
         channelYtMessages.set(newId, ytMsgs)
       }
+      for (const map of [ytChanLastSeen, ytChanRejoinAttempts, ytSubscribedUrls]) {
+        if (map.has(tabId)) {
+          map.set(newId, map.get(tabId))
+          map.delete(tabId)
+        }
+      }
+      if (ytVal && ytVal === oldYt) {
+        chrome.runtime
+          .sendMessage({
+            type: 'youtube_ws_unsubscribe',
+            videoId: ytData?.videoId || '',
+            url: ytVal,
+            channelId: tabId,
+          })
+          .catch(() => {})
+        chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytVal, channelId: newId }).catch(() => {})
+      }
+      if (platformFilters && platformFilters[tabId]) {
+        platformFilters[newId] = platformFilters[tabId]
+        delete platformFilters[tabId]
+        saveUiSetting('platformFilters', platformFilters)
+      }
+      _dropTabCache(tabId)
       ch.id = newId
     }
     saveConfig()
@@ -49538,17 +49647,15 @@ function showEditChannelForm(tabId) {
     // Join new channels if changed
     if (twitchVal && twitchVal !== oldTwitch) {
       irc?.join(twitchVal)
-      try {
-        chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchVal })
-      } catch (e) {}
+      safeSendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchVal })
     }
     if (kickVal && kickVal !== oldKick) kickChat?.join(kickVal)
     if (ytVal && ytVal !== oldYt) {
       youtubeLinks.set(newId, { url: ytVal, videoId: '', channelName: '' })
+      ytSubscribedUrls.set(newId, ytVal)
+      ytChanLastSeen.set(newId, Date.now())
       chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytVal, channelId: newId }).catch(() => {})
-      try {
-        chrome.runtime.sendMessage({ type: 'join_channel', platform: 'youtube', channel: newId, channelId: ytVal })
-      } catch (e) {}
+      safeSendMessage({ type: 'join_channel', platform: 'youtube', channel: newId, channelId: ytVal })
     }
 
     updateTabBar()
@@ -49793,9 +49900,9 @@ function fullSpaReinit() {
   // its pollers (offline 5s/1s, YT-live 1.5s, kick 10s, YT watchdog 30s, ctx-death
   // 1s, layout reinject 500ms) on every reinit; without this they stack one full
   // live set per channel hop and never stop firing (unbounded leak). Persistent
-  // ids (bootstrap's module-load ctx-death detector) are kept — they're not
-  // re-registered by init(). The spa-reinit setTimeout below is registered AFTER
-  // this drain, so it survives.
+  // ids (module-load registrations: bootstrap's ctx-death detector, emotes'
+  // DOM-scan poller) are kept — they're not re-registered by init(). The
+  // spa-reinit setTimeout below is registered AFTER this drain, so it survives.
   _timers.intervals = _timers.intervals.filter((id) => {
     if (_timers.persistent.has(id)) return true
     try {
@@ -50112,6 +50219,9 @@ function softKickNav(prevLiveCh) {
   try {
     _dropTabCache('live')
   } catch {}
+  try {
+    rearmLiveYtAuto()
+  } catch (_) {}
   document.body.classList.add('hs-mc-navigating')
   if (container.parentElement && container.parentElement !== document.body) {
     document.body.appendChild(container)
@@ -50535,9 +50645,9 @@ const STORAGE_KEY = 'heatsync_multichat'
   // expensive axis (~6 nodes/row), so we render far fewer than we remember.
   // content-visibility:auto already skips paint/layout for off-screen rows;
   // this trims the node count itself (~9.3k → ~3k nodes at a busy channel).
-  // 500 unifies the whole system (MAX_BUFFER, TAB_CACHE_DOM_CAP) on one number
-  // and matches the per-platform buffer, so a restored cached tab never exceeds
-  // the cap. ~3.3x Twitch native scrollback.
+  // 500 unifies the whole system (MAX_BUFFER) on one number and matches the
+  // per-platform buffer, so a restored cached tab never exceeds the cap.
+  // ~3.3x Twitch native scrollback.
   let DOM_RENDER_CAP = 500 // registry-managed (hs_dom_render_cap)
 
   // Upward scrollback: extra rows beyond DOM_RENDER_CAP to paint when the user
@@ -50706,13 +50816,11 @@ const STORAGE_KEY = 'heatsync_multichat'
   // ============================================
   // PER-TAB DOM CACHE — flash-free tab/channel switches
   // Snapshot the active tab's children + indexes into a DocumentFragment when
-  // leaving; restore when returning. New messages arriving for an inactive tab
-  // append to its cached fragment so on switch-back the content is already
-  // up-to-date — no teardown→rebuild cycle, no image-load flicker, no zebra
-  // resettle.
+  // leaving; restore when returning — no teardown→rebuild cycle, no image-load
+  // flicker, no zebra resettle. Messages that arrived while inactive are
+  // reconciled against the buffer on restore.
   // ============================================
   const _tabCache = new Map() // tabId → { frag, msgKeyIndex, uidIndex, mentionIndex }
-  const TAB_CACHE_DOM_CAP = 500
   try {
     document.documentElement.dataset.hsTabCacheV1 = '1'
   } catch {}
@@ -50851,129 +50959,6 @@ const STORAGE_KEY = 'heatsync_multichat'
       })
     }
     _tabCache.delete(tabId) // entry is now empty (children moved out); next snapshot rebuilds
-    return true
-  }
-
-  // Fan a stream event into every inactive tab whose channel matches, so
-  // their caches stay hot. Active tab is handled by the caller's normal
-  // appendMessage path.
-  function fanStreamEventToCaches(evt, channel) {
-    if (!evt || !channel) return
-    const ch = String(channel).toLowerCase()
-    try {
-      if (
-        currentTab !== 'live' &&
-        typeof isLiveChannelMessage === 'function' &&
-        isLiveChannelMessage({ channel: ch })
-      ) {
-        appendToCachedTab(evt, 'live')
-      }
-    } catch {}
-    if (!Array.isArray(config?.channels)) return
-    for (const c of config.channels) {
-      if (!c?.id || c.id === currentTab) continue
-      const tw = c.twitch?.toLowerCase()
-      const ki = c.kick?.toLowerCase()
-      if (tw === ch || ki === ch) appendToCachedTab(evt, c.id)
-    }
-  }
-
-  // Append a message to a tab that's NOT currently visible. Builds the div,
-  // inserts into the cached fragment, maintains cached indexes + cap.
-  // Returns true if cached, false if no cache exists (no-op — buffer holds it,
-  // first switch into the tab will full-build).
-  function appendToCachedTab(msg, tabId) {
-    if (!_isChatTab(tabId)) return false
-    if (tabId === currentTab) return false // active tab uses appendMessage
-    const cache = _tabCache.get(tabId)
-    if (!cache) return false
-    // Multi-platform tabs need fairMerge — raw appends break proportional
-    // interleave. Drop the cache; force full rebuild on next visit.
-    try {
-      if (typeof isMultiPlatformTab === 'function' && isMultiPlatformTab(tabId)) {
-        _tabCache.delete(tabId)
-        return true
-      }
-    } catch {}
-    if (msg.platform && typeof isPlatformFilterTab === 'function' && isPlatformFilterTab(tabId)) {
-      const k = msg.platform === 'youtube' ? 'youtube' : msg.platform
-      try {
-        if (getPlatformFilter(tabId)[k] === false) return true
-      } catch {}
-    }
-    const msgKeyStr = msgKeyOf(msg)
-    if (cache.msgKeyIndex.has(msgKeyStr)) return true
-    let div
-    try {
-      div = buildMessageDiv(msg, tabId)
-    } catch {
-      return false
-    }
-    if (!div) return false
-    div.dataset.msgKey = msgKeyStr
-    if (
-      zebraEnabled &&
-      msg.type !== 'stream-event' &&
-      msg.type !== 'feed-post' &&
-      msg.type !== 'inline-dm' &&
-      msg.type !== 'moment'
-    ) {
-      const prev = cache.frag.lastElementChild
-      const prevZ = prev?.classList.contains('hs-mc-zebra') === true
-      if (!prevZ) div.classList.add('hs-mc-zebra')
-    }
-    cache.frag.appendChild(div)
-    cache.msgKeyIndex.add(msgKeyStr)
-    const uid = div.dataset?.uid
-    if (uid) {
-      let s = cache.uidIndex.get(uid)
-      if (!s) {
-        s = new Set()
-        cache.uidIndex.set(uid, s)
-      }
-      s.add(div)
-    }
-    let mentions = div._hsMentionEls
-    if (!mentions) {
-      mentions = [...div.querySelectorAll('a.hs-mc-mention[data-uid], a.hs-mc-reply-user[data-uid]')]
-      div._hsMentionEls = mentions
-    }
-    for (const m of mentions) {
-      const muid = m.dataset.uid
-      if (!muid) continue
-      let ms = cache.mentionIndex.get(muid)
-      if (!ms) {
-        ms = new Set()
-        cache.mentionIndex.set(muid, ms)
-      }
-      ms.add(m)
-    }
-    while (cache.frag.children.length > TAB_CACHE_DOM_CAP) {
-      const old = cache.frag.firstElementChild
-      if (!old) break
-      const oldKey = old.dataset?.msgKey
-      if (oldKey) cache.msgKeyIndex.delete(oldKey)
-      const oldUid = old.dataset?.uid
-      if (oldUid) {
-        const s = cache.uidIndex.get(oldUid)
-        if (s) {
-          s.delete(old)
-          if (!s.size) cache.uidIndex.delete(oldUid)
-        }
-      }
-      const oldMentions =
-        old._hsMentionEls || old.querySelectorAll('a.hs-mc-mention[data-uid], a.hs-mc-reply-user[data-uid]')
-      for (const m of oldMentions) {
-        const muid = m.dataset.uid
-        if (!muid) continue
-        const ms = cache.mentionIndex.get(muid)
-        if (ms) {
-          ms.delete(m)
-          if (!ms.size) cache.mentionIndex.delete(muid)
-        }
-      }
-      old.remove()
-    }
     return true
   }
 
@@ -51837,14 +51822,10 @@ const STORAGE_KEY = 'heatsync_multichat'
         // account; server-backed covers Firefox + heatsync.org + signed-out
         // Chrome profiles using the same heatsync login. Only DEVICE_LOCAL_KEYS
         // (platformFilters) are omitted — genuinely per-device, not a pref.
-        try {
-          chrome.runtime.sendMessage({
-            type: 'ws_send',
-            data: { type: 'ui-state:sync', patch: wsPatch },
-          })
-        } catch (_) {
-          /* context invalidated */
-        }
+        safeSendMessage({
+          type: 'ws_send',
+          data: { type: 'ui-state:sync', patch: wsPatch },
+        })
       }
 
       if (Object.keys(_pendingLargeWsPatch).length) {
@@ -51853,14 +51834,10 @@ const STORAGE_KEY = 'heatsync_multichat'
           _largeWsPatchTimer = null
           const patch = _pendingLargeWsPatch
           _pendingLargeWsPatch = {}
-          try {
-            chrome.runtime.sendMessage({
-              type: 'ws_send',
-              data: { type: 'ui-state:sync', patch },
-            })
-          } catch (_) {
-            /* context invalidated */
-          }
+          safeSendMessage({
+            type: 'ws_send',
+            data: { type: 'ui-state:sync', patch },
+          })
         }, 1200)
       }
     }, 100)
@@ -54428,9 +54405,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       // this, everyone else's channel emotes render as raw text on auto-tabs
       // (own emotes still worked: inventory is global). same call the
       // manual add-channel path makes; bg caches+TTLs duplicates.
-      try {
-        chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: ch })
-      } catch (_) {}
+      safeSendMessage({ type: 'join_channel', platform: 'twitch', channel: ch })
       changed = true
     }
     if (changed) {
@@ -56216,8 +56191,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       else overlayElement.style.bottom = '0'
       // Restore cached fragment for the incoming tab if we have one. The
       // existing renderMessages diff then operates against pre-painted DOM —
-      // most diffs become no-ops (cache stayed hot via appendToCachedTab),
-      // worst case it adds a few late arrivals.
+      // it re-adds whatever arrived while the tab was inactive.
       restoreTabState(id)
       renderMessages(id)
     } else {
@@ -56349,7 +56323,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     refreshSeenBadges()
     if (!tabBarElement) return
     const mentionsTab = tabBarElement.querySelector('[data-tab="mentions"]')
-    if (mentionsTab) mentionsTab.textContent = 'mentions'
+    if (mentionsTab && mentionsTab.textContent !== 'mentions') mentionsTab.textContent = 'mentions'
   }
 
   // Dedup helper: check against actual message buffers (survives WS reconnects)
@@ -57678,15 +57652,6 @@ const STORAGE_KEY = 'heatsync_multichat'
     return parts.join('')
   }
 
-  // Show "new" button for static tabs (activity/feed) — points up since newest is at top
-  function showStaticNewButton() {
-    const newBtn = document.getElementById('hs-mc-new-msgs')
-    if (!newBtn) return
-    newMessageCount++
-    newBtn.innerHTML = `<span class="hs-arrow-down" style="transform:rotate(180deg)">▼</span> ${newMessageCount} new`
-    newBtn.style.display = 'flex'
-  }
-
   // Scroll helper — reused by both renderMessages and appendMessage
   function scrollMsgsToBottom(msgsEl) {
     const newBtn = document.getElementById('hs-mc-new-msgs')
@@ -57820,12 +57785,9 @@ const STORAGE_KEY = 'heatsync_multichat'
   // REAL width (fixes runs of "Cabge ffzW" overlapping). offsetWidth is the
   // untransformed layout width; the visual is that × scale, so each side needs
   // width*(scale-1)/2. Overrides the static 28px-based fallback margins.
-  function _reserveModWrap(wrap) {
-    _reserveModWrapSized(wrap, wrap.offsetWidth, wrap.offsetHeight)
-  }
-  // Same reservation but with pre-read dimensions — lets the batch caller read all
-  // sizes first, THEN write all margins, instead of read→write→read→write (which
-  // forces a layout reflow per wrapper on the per-message append hot path).
+  // Takes pre-read dimensions — lets the batch caller read all sizes first,
+  // THEN write all margins, instead of read→write→read→write (which forces a
+  // layout reflow per wrapper on the per-message append hot path).
   function _reserveModWrapSized(wrap, w, h) {
     const sx = Math.abs(parseFloat(wrap.dataset.hsModSx) || 1)
     const sy = Math.abs(parseFloat(wrap.dataset.hsModSy) || 1)
@@ -57856,8 +57818,11 @@ const STORAGE_KEY = 'heatsync_multichat'
     if (!_hsModReserveRO && typeof ResizeObserver !== 'undefined') {
       _hsModReserveRO = new ResizeObserver((entries) => {
         for (const e of entries) {
-          if (e.target.offsetWidth) {
-            _reserveModWrap(e.target)
+          const box = e.borderBoxSize?.[0]
+          const w = box ? box.inlineSize : e.contentRect.width
+          const h = box ? box.blockSize : e.contentRect.height
+          if (w) {
+            _reserveModWrapSized(e.target, w, h)
             _hsModReserveRO.unobserve(e.target)
           }
         }
@@ -57937,7 +57902,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     if (_msgKeyIndex.has(msgKeyStr)) return true
 
     const div = buildMessageDiv(msg, tabId)
-    if (!div) return false
+    if (!div) return true
     // Tag with the same msgKey renderMessages uses, so a later tab switch into a
     // multi-platform view can prefix-match this DOM and avoid a one-shot rebuild.
     div.dataset.msgKey = msgKeyStr
@@ -58014,23 +57979,6 @@ const STORAGE_KEY = 'heatsync_multichat'
   function bumpRenderEpoch() {
     _renderEpoch++
     _dropAllTabCaches()
-  }
-
-  // Coalesce the late-data rebuild renders. On cold load, channel badges + the
-  // BTTV/FFZ/Chatterino bulk badge maps + cosmetics arrive in rapid bursts, each
-  // doing bumpRenderEpoch()+renderMessages() = a full rebuild = an image-reload
-  // flash; 3 landed within 23ms on a busy channel (a visible strobe). Debounce so
-  // a burst collapses to ONE rebuild. The epoch still increments per bump, so the
-  // single coalesced render rebuilds with ALL the newly-arrived data.
-  let _coalescedRenderTimer = null
-  function scheduleCoalescedRender() {
-    if (_coalescedRenderTimer !== null) return
-    _coalescedRenderTimer = cleanup.setTimeout(() => {
-      _coalescedRenderTimer = null
-      try {
-        renderMessages(currentTab)
-      } catch {}
-    }, 120)
   }
 
   // Surgical invalidation for a block/unblock of specific emote(s). The full
@@ -58182,10 +58130,10 @@ const STORAGE_KEY = 'heatsync_multichat'
       kb = stableMsgId(b)
     return ka < kb ? -1 : ka > kb ? 1 : 0
   }
-  // Epoch-tagged msgKey memo (layers on stableMsgId's _sid memo). appendMessage,
-  // appendToCachedTab and renderMessages all rebuild the same `${epoch}:${sid}`
-  // string — on a 500-row tab rendering at rAF cadence that was 500 template
-  // concats per frame. Recomputes only when _renderEpoch bumps (full rebuild).
+  // Epoch-tagged msgKey memo (layers on stableMsgId's _sid memo). appendMessage
+  // and renderMessages both rebuild the same `${epoch}:${sid}` string — on a
+  // 500-row tab rendering at rAF cadence that was 500 template concats per
+  // frame. Recomputes only when _renderEpoch bumps (full rebuild).
   function msgKeyOf(m) {
     if (m._hsKeyEpoch === _renderEpoch && m._hsKey) return m._hsKey
     m._hsKeyEpoch = _renderEpoch
@@ -59024,6 +58972,7 @@ const STORAGE_KEY = 'heatsync_multichat'
   function updateTabIndicator(tabId) {
     const tab = tabBarElement?.querySelector(`[data-tab="${tabId}"]`)
     if (!tab || currentTab === tabId) return
+    if (tab.classList.contains('has-new') && (tabId !== 'mentions' || tab.classList.contains('has-mentions'))) return
 
     // Don't light up duplicate tabs showing the same channel
     // If on live, suppress channel tab indicator for the live channel
@@ -59469,9 +59418,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         try {
           irc?.join?.(entry.twitch)
         } catch {}
-        try {
-          chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: entry.twitch })
-        } catch {}
+        safeSendMessage({ type: 'join_channel', platform: 'twitch', channel: entry.twitch })
       }
       if (entry.kick) {
         try {
@@ -59483,16 +59430,16 @@ const STORAGE_KEY = 'heatsync_multichat'
           youtubeLinks.set(entry.id, { url: entry.youtube, videoId: '', channelName: '' })
         } catch {}
         try {
-          chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: entry.youtube, channelId: entry.id })
+          chrome.runtime
+            .sendMessage({ type: 'youtube_ws_subscribe', url: entry.youtube, channelId: entry.id })
+            .catch(() => {})
         } catch {}
-        try {
-          chrome.runtime.sendMessage({
-            type: 'join_channel',
-            platform: 'youtube',
-            channel: entry.id,
-            channelId: entry.youtube,
-          })
-        } catch {}
+        safeSendMessage({
+          type: 'join_channel',
+          platform: 'youtube',
+          channel: entry.id,
+          channelId: entry.youtube,
+        })
       }
 
       try {
@@ -59507,9 +59454,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         try {
           irc?.join?.(twitchName)
         } catch {}
-        try {
-          chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchName })
-        } catch {}
+        safeSendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchName })
       }
       if (!entry.kick && kickName) {
         entry.kick = kickName
@@ -59525,11 +59470,9 @@ const STORAGE_KEY = 'heatsync_multichat'
           youtubeLinks.set(entry.id, { url: ytUrl, videoId: '', channelName: '' })
         } catch {}
         try {
-          chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytUrl, channelId: entry.id })
+          chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytUrl, channelId: entry.id }).catch(() => {})
         } catch {}
-        try {
-          chrome.runtime.sendMessage({ type: 'join_channel', platform: 'youtube', channel: entry.id, channelId: ytUrl })
-        } catch {}
+        safeSendMessage({ type: 'join_channel', platform: 'youtube', channel: entry.id, channelId: ytUrl })
       }
       if (mutated) {
         try {
@@ -59806,14 +59749,12 @@ const STORAGE_KEY = 'heatsync_multichat'
             .catch(() => {})
           // 7TV/BTTV YouTube channel emotes for this tab — channelId is a hint
           // (the stored youtube URL/handle); background resolves the real UC id.
-          try {
-            chrome.runtime.sendMessage({
-              type: 'join_channel',
-              platform: 'youtube',
-              channel: ch.id,
-              channelId: ch.youtube,
-            })
-          } catch (e) {}
+          safeSendMessage({
+            type: 'join_channel',
+            platform: 'youtube',
+            channel: ch.id,
+            channelId: ch.youtube,
+          })
         }
       }
     } catch (e) {}
@@ -59833,14 +59774,10 @@ const STORAGE_KEY = 'heatsync_multichat'
       const persistable = { ...config, channels: (config.channels || []).filter((c) => !c?.ephemeral) }
       await chrome.storage.local.set({ [STORAGE_KEY]: persistable })
       // Sync to server for cross-device sync
-      try {
-        chrome.runtime.sendMessage({
-          type: 'ws_send',
-          data: { type: 'multichat:sync', channels: (config.channels || []).filter((c) => !c?.ephemeral) },
-        })
-      } catch (e) {
-        /* context invalidated */
-      }
+      safeSendMessage({
+        type: 'ws_send',
+        data: { type: 'multichat:sync', channels: (config.channels || []).filter((c) => !c?.ephemeral) },
+      })
     } catch (e) {
       console.warn('saveConfig failed:', e)
     }
@@ -61186,7 +61123,9 @@ const STORAGE_KEY = 'heatsync_multichat'
                         emoteUrl: em.url,
                         zeroWidth: true,
                       },
-                      () => {},
+                      () => {
+                        void chrome.runtime.lastError
+                      },
                     )
                   } catch (_) {}
                 } catch (_) {}
@@ -61686,9 +61625,7 @@ const STORAGE_KEY = 'heatsync_multichat'
               const twitchName = ch.twitch
               if (twitchName && isEnabled('irc-twitch')) {
                 irc?.join(twitchName)
-                try {
-                  chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchName })
-                } catch (e) {}
+                safeSendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchName })
               }
               const kickName = ch.kick
               if (kickName && isEnabled('chat-kick')) kickChat?.join(kickName)
@@ -61697,14 +61634,12 @@ const STORAGE_KEY = 'heatsync_multichat'
                 chrome.runtime
                   .sendMessage({ type: 'youtube_ws_subscribe', url: ch.youtube, channelId: id })
                   .catch(() => {})
-                try {
-                  chrome.runtime.sendMessage({
-                    type: 'join_channel',
-                    platform: 'youtube',
-                    channel: id,
-                    channelId: ch.youtube,
-                  })
-                } catch (e) {}
+                safeSendMessage({
+                  type: 'join_channel',
+                  platform: 'youtube',
+                  channel: id,
+                  channelId: ch.youtube,
+                })
               }
             }
           }
@@ -62059,9 +61994,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     chrome.runtime
       .sendMessage({ type: 'youtube_ws_subscribe', url: autoYtUrl, channelId: '__live_yt_auto__' })
       .catch(() => {})
-    try {
-      chrome.runtime.sendMessage({ type: 'join_channel', platform: 'youtube', channel: vid, channelId: null })
-    } catch (_) {}
+    safeSendMessage({ type: 'join_channel', platform: 'youtube', channel: vid, channelId: null })
   }
 
   // The tab to activate on mount. When we're on an actual stream/channel watch
@@ -62124,7 +62057,10 @@ const STORAGE_KEY = 'heatsync_multichat'
     try {
       const r = await new Promise((res) => {
         try {
-          chrome.runtime.sendMessage({ type: 'get_health' }, res)
+          chrome.runtime.sendMessage({ type: 'get_health' }, (r) => {
+            void chrome.runtime.lastError
+            res(r)
+          })
         } catch {
           res(null)
         }
@@ -62575,14 +62511,12 @@ const STORAGE_KEY = 'heatsync_multichat'
           // (_buildChannelEmoteCache keys by bare channel name); `channelId` is
           // just a hint — background.js resolves the real UC... id itself
           // (from ytUrl if it carries one, else a handle/videoId lookup).
-          try {
-            chrome.runtime.sendMessage({
-              type: 'join_channel',
-              platform: 'youtube',
-              channel: currentChannel,
-              channelId: ytUrl || null,
-            })
-          } catch (e) {}
+          safeSendMessage({
+            type: 'join_channel',
+            platform: 'youtube',
+            channel: currentChannel,
+            channelId: ytUrl || null,
+          })
         }
         log('Auto-joined current channel:', currentChannel, 'platforms:', twitchCh, kickCh, ytUrl || '(no yt link)')
       }
@@ -62616,9 +62550,7 @@ const STORAGE_KEY = 'heatsync_multichat'
               // delay the BG channel-emotes fetch indefinitely. Kick off both
               // independently; emote fetch only needs the channel name.
               irc.join(twitchName)
-              try {
-                chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchName })
-              } catch (e) {}
+              safeSendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchName })
             }
             if (gKick && kickName) {
               kickChat.join(kickName)

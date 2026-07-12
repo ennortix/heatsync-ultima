@@ -1,6 +1,48 @@
 // Social - feed, notifications, activity, heatsync API
 let _autoYtVideoId = null // videoId for this tab's __live_yt_auto__ subscription (cross-tab filter)
 
+// Re-arm the __live_yt_auto__ binding for the current URL channel: drop the
+// previous channel's subscription/buffer/watchdog state, then re-subscribe
+// from getLivePlatformNames(). Shared by twitch/kick soft SPA nav — the yt
+// host has its own path in spa-nav.js (autoYtSubscribeForPage).
+function rearmLiveYtAuto() {
+  chrome.runtime
+    .sendMessage({
+      type: 'youtube_ws_unsubscribe',
+      channelId: '__live_yt_auto__',
+    })
+    .catch(() => {})
+  channelYtMessages.delete('__live_yt_auto__')
+  ytChanLastSeen.delete('__live_yt_auto__')
+  ytChanRejoinAttempts.delete('__live_yt_auto__')
+  ytSubscribedUrls.delete('__live_yt_auto__')
+  _autoYtVideoId = null
+  if (gateAtBoot('chat-youtube') === false) return
+  const names = getLivePlatformNames()
+  if (!names.youtube) return
+  ytSubscribedUrls.set('__live_yt_auto__', names.youtube)
+  ytChanLastSeen.set('__live_yt_auto__', Date.now())
+  chrome.runtime
+    .sendMessage({
+      type: 'youtube_ws_subscribe',
+      url: names.youtube,
+      channelId: '__live_yt_auto__',
+    })
+    .catch(() => {})
+  // Fetch the new channel's yt emote set too, keyed by the bare url-channel
+  // name so a linked channel's emotes merge into one bucket (mirrors init's
+  // sibling send after its own youtube_ws_subscribe).
+  const urlCh = getCurrentChannel()?.toLowerCase()
+  if (urlCh) {
+    safeSendMessage({
+      type: 'join_channel',
+      platform: 'youtube',
+      channel: urlCh,
+      channelId: names.youtube || null,
+    })
+  }
+}
+
 // YT POLL SMOOTHING: server polls YouTube every ~5s and dispatches the whole
 // batch back-to-back over WS. Without smoothing, 10 msgs land in one rAF
 // frame and the chat flashes them all at once. We drip them per-channel using
@@ -849,7 +891,7 @@ function listenForSocialEvents() {
       )
         return
       const isMent = isMention(ytMsg)
-      bumpStreamStats(ytMsg.channel, ytMsg, isMent)
+      bumpStreamStats(ytChannelHint || ytEmoteKey, ytMsg, isMent)
       if (isMent) {
         mentionsBuffer.push(ytMsg)
         if (mentionsBuffer.length > MAX_BUFFER + 50) mentionsBuffer.splice(0, mentionsBuffer.length - MAX_BUFFER)

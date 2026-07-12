@@ -323,9 +323,9 @@
   // expensive axis (~6 nodes/row), so we render far fewer than we remember.
   // content-visibility:auto already skips paint/layout for off-screen rows;
   // this trims the node count itself (~9.3k → ~3k nodes at a busy channel).
-  // 500 unifies the whole system (MAX_BUFFER, TAB_CACHE_DOM_CAP) on one number
-  // and matches the per-platform buffer, so a restored cached tab never exceeds
-  // the cap. ~3.3x Twitch native scrollback.
+  // 500 unifies the whole system (MAX_BUFFER) on one number and matches the
+  // per-platform buffer, so a restored cached tab never exceeds the cap.
+  // ~3.3x Twitch native scrollback.
   let DOM_RENDER_CAP = 500 // registry-managed (hs_dom_render_cap)
 
   // Upward scrollback: extra rows beyond DOM_RENDER_CAP to paint when the user
@@ -494,13 +494,11 @@
   // ============================================
   // PER-TAB DOM CACHE — flash-free tab/channel switches
   // Snapshot the active tab's children + indexes into a DocumentFragment when
-  // leaving; restore when returning. New messages arriving for an inactive tab
-  // append to its cached fragment so on switch-back the content is already
-  // up-to-date — no teardown→rebuild cycle, no image-load flicker, no zebra
-  // resettle.
+  // leaving; restore when returning — no teardown→rebuild cycle, no image-load
+  // flicker, no zebra resettle. Messages that arrived while inactive are
+  // reconciled against the buffer on restore.
   // ============================================
   const _tabCache = new Map() // tabId → { frag, msgKeyIndex, uidIndex, mentionIndex }
-  const TAB_CACHE_DOM_CAP = 500
   try {
     document.documentElement.dataset.hsTabCacheV1 = '1'
   } catch {}
@@ -639,129 +637,6 @@
       })
     }
     _tabCache.delete(tabId) // entry is now empty (children moved out); next snapshot rebuilds
-    return true
-  }
-
-  // Fan a stream event into every inactive tab whose channel matches, so
-  // their caches stay hot. Active tab is handled by the caller's normal
-  // appendMessage path.
-  function fanStreamEventToCaches(evt, channel) {
-    if (!evt || !channel) return
-    const ch = String(channel).toLowerCase()
-    try {
-      if (
-        currentTab !== 'live' &&
-        typeof isLiveChannelMessage === 'function' &&
-        isLiveChannelMessage({ channel: ch })
-      ) {
-        appendToCachedTab(evt, 'live')
-      }
-    } catch {}
-    if (!Array.isArray(config?.channels)) return
-    for (const c of config.channels) {
-      if (!c?.id || c.id === currentTab) continue
-      const tw = c.twitch?.toLowerCase()
-      const ki = c.kick?.toLowerCase()
-      if (tw === ch || ki === ch) appendToCachedTab(evt, c.id)
-    }
-  }
-
-  // Append a message to a tab that's NOT currently visible. Builds the div,
-  // inserts into the cached fragment, maintains cached indexes + cap.
-  // Returns true if cached, false if no cache exists (no-op — buffer holds it,
-  // first switch into the tab will full-build).
-  function appendToCachedTab(msg, tabId) {
-    if (!_isChatTab(tabId)) return false
-    if (tabId === currentTab) return false // active tab uses appendMessage
-    const cache = _tabCache.get(tabId)
-    if (!cache) return false
-    // Multi-platform tabs need fairMerge — raw appends break proportional
-    // interleave. Drop the cache; force full rebuild on next visit.
-    try {
-      if (typeof isMultiPlatformTab === 'function' && isMultiPlatformTab(tabId)) {
-        _tabCache.delete(tabId)
-        return true
-      }
-    } catch {}
-    if (msg.platform && typeof isPlatformFilterTab === 'function' && isPlatformFilterTab(tabId)) {
-      const k = msg.platform === 'youtube' ? 'youtube' : msg.platform
-      try {
-        if (getPlatformFilter(tabId)[k] === false) return true
-      } catch {}
-    }
-    const msgKeyStr = msgKeyOf(msg)
-    if (cache.msgKeyIndex.has(msgKeyStr)) return true
-    let div
-    try {
-      div = buildMessageDiv(msg, tabId)
-    } catch {
-      return false
-    }
-    if (!div) return false
-    div.dataset.msgKey = msgKeyStr
-    if (
-      zebraEnabled &&
-      msg.type !== 'stream-event' &&
-      msg.type !== 'feed-post' &&
-      msg.type !== 'inline-dm' &&
-      msg.type !== 'moment'
-    ) {
-      const prev = cache.frag.lastElementChild
-      const prevZ = prev?.classList.contains('hs-mc-zebra') === true
-      if (!prevZ) div.classList.add('hs-mc-zebra')
-    }
-    cache.frag.appendChild(div)
-    cache.msgKeyIndex.add(msgKeyStr)
-    const uid = div.dataset?.uid
-    if (uid) {
-      let s = cache.uidIndex.get(uid)
-      if (!s) {
-        s = new Set()
-        cache.uidIndex.set(uid, s)
-      }
-      s.add(div)
-    }
-    let mentions = div._hsMentionEls
-    if (!mentions) {
-      mentions = [...div.querySelectorAll('a.hs-mc-mention[data-uid], a.hs-mc-reply-user[data-uid]')]
-      div._hsMentionEls = mentions
-    }
-    for (const m of mentions) {
-      const muid = m.dataset.uid
-      if (!muid) continue
-      let ms = cache.mentionIndex.get(muid)
-      if (!ms) {
-        ms = new Set()
-        cache.mentionIndex.set(muid, ms)
-      }
-      ms.add(m)
-    }
-    while (cache.frag.children.length > TAB_CACHE_DOM_CAP) {
-      const old = cache.frag.firstElementChild
-      if (!old) break
-      const oldKey = old.dataset?.msgKey
-      if (oldKey) cache.msgKeyIndex.delete(oldKey)
-      const oldUid = old.dataset?.uid
-      if (oldUid) {
-        const s = cache.uidIndex.get(oldUid)
-        if (s) {
-          s.delete(old)
-          if (!s.size) cache.uidIndex.delete(oldUid)
-        }
-      }
-      const oldMentions =
-        old._hsMentionEls || old.querySelectorAll('a.hs-mc-mention[data-uid], a.hs-mc-reply-user[data-uid]')
-      for (const m of oldMentions) {
-        const muid = m.dataset.uid
-        if (!muid) continue
-        const ms = cache.mentionIndex.get(muid)
-        if (ms) {
-          ms.delete(m)
-          if (!ms.size) cache.mentionIndex.delete(muid)
-        }
-      }
-      old.remove()
-    }
     return true
   }
 
@@ -1625,14 +1500,10 @@
         // account; server-backed covers Firefox + heatsync.org + signed-out
         // Chrome profiles using the same heatsync login. Only DEVICE_LOCAL_KEYS
         // (platformFilters) are omitted — genuinely per-device, not a pref.
-        try {
-          chrome.runtime.sendMessage({
-            type: 'ws_send',
-            data: { type: 'ui-state:sync', patch: wsPatch },
-          })
-        } catch (_) {
-          /* context invalidated */
-        }
+        safeSendMessage({
+          type: 'ws_send',
+          data: { type: 'ui-state:sync', patch: wsPatch },
+        })
       }
 
       if (Object.keys(_pendingLargeWsPatch).length) {
@@ -1641,14 +1512,10 @@
           _largeWsPatchTimer = null
           const patch = _pendingLargeWsPatch
           _pendingLargeWsPatch = {}
-          try {
-            chrome.runtime.sendMessage({
-              type: 'ws_send',
-              data: { type: 'ui-state:sync', patch },
-            })
-          } catch (_) {
-            /* context invalidated */
-          }
+          safeSendMessage({
+            type: 'ws_send',
+            data: { type: 'ui-state:sync', patch },
+          })
         }, 1200)
       }
     }, 100)
@@ -4216,9 +4083,7 @@
       // this, everyone else's channel emotes render as raw text on auto-tabs
       // (own emotes still worked: inventory is global). same call the
       // manual add-channel path makes; bg caches+TTLs duplicates.
-      try {
-        chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: ch })
-      } catch (_) {}
+      safeSendMessage({ type: 'join_channel', platform: 'twitch', channel: ch })
       changed = true
     }
     if (changed) {
@@ -6004,8 +5869,7 @@
       else overlayElement.style.bottom = '0'
       // Restore cached fragment for the incoming tab if we have one. The
       // existing renderMessages diff then operates against pre-painted DOM —
-      // most diffs become no-ops (cache stayed hot via appendToCachedTab),
-      // worst case it adds a few late arrivals.
+      // it re-adds whatever arrived while the tab was inactive.
       restoreTabState(id)
       renderMessages(id)
     } else {
@@ -6137,7 +6001,7 @@
     refreshSeenBadges()
     if (!tabBarElement) return
     const mentionsTab = tabBarElement.querySelector('[data-tab="mentions"]')
-    if (mentionsTab) mentionsTab.textContent = 'mentions'
+    if (mentionsTab && mentionsTab.textContent !== 'mentions') mentionsTab.textContent = 'mentions'
   }
 
   // Dedup helper: check against actual message buffers (survives WS reconnects)
@@ -7466,15 +7330,6 @@
     return parts.join('')
   }
 
-  // Show "new" button for static tabs (activity/feed) — points up since newest is at top
-  function showStaticNewButton() {
-    const newBtn = document.getElementById('hs-mc-new-msgs')
-    if (!newBtn) return
-    newMessageCount++
-    newBtn.innerHTML = `<span class="hs-arrow-down" style="transform:rotate(180deg)">▼</span> ${newMessageCount} new`
-    newBtn.style.display = 'flex'
-  }
-
   // Scroll helper — reused by both renderMessages and appendMessage
   function scrollMsgsToBottom(msgsEl) {
     const newBtn = document.getElementById('hs-mc-new-msgs')
@@ -7608,12 +7463,9 @@
   // REAL width (fixes runs of "Cabge ffzW" overlapping). offsetWidth is the
   // untransformed layout width; the visual is that × scale, so each side needs
   // width*(scale-1)/2. Overrides the static 28px-based fallback margins.
-  function _reserveModWrap(wrap) {
-    _reserveModWrapSized(wrap, wrap.offsetWidth, wrap.offsetHeight)
-  }
-  // Same reservation but with pre-read dimensions — lets the batch caller read all
-  // sizes first, THEN write all margins, instead of read→write→read→write (which
-  // forces a layout reflow per wrapper on the per-message append hot path).
+  // Takes pre-read dimensions — lets the batch caller read all sizes first,
+  // THEN write all margins, instead of read→write→read→write (which forces a
+  // layout reflow per wrapper on the per-message append hot path).
   function _reserveModWrapSized(wrap, w, h) {
     const sx = Math.abs(parseFloat(wrap.dataset.hsModSx) || 1)
     const sy = Math.abs(parseFloat(wrap.dataset.hsModSy) || 1)
@@ -7644,8 +7496,11 @@
     if (!_hsModReserveRO && typeof ResizeObserver !== 'undefined') {
       _hsModReserveRO = new ResizeObserver((entries) => {
         for (const e of entries) {
-          if (e.target.offsetWidth) {
-            _reserveModWrap(e.target)
+          const box = e.borderBoxSize?.[0]
+          const w = box ? box.inlineSize : e.contentRect.width
+          const h = box ? box.blockSize : e.contentRect.height
+          if (w) {
+            _reserveModWrapSized(e.target, w, h)
             _hsModReserveRO.unobserve(e.target)
           }
         }
@@ -7725,7 +7580,7 @@
     if (_msgKeyIndex.has(msgKeyStr)) return true
 
     const div = buildMessageDiv(msg, tabId)
-    if (!div) return false
+    if (!div) return true
     // Tag with the same msgKey renderMessages uses, so a later tab switch into a
     // multi-platform view can prefix-match this DOM and avoid a one-shot rebuild.
     div.dataset.msgKey = msgKeyStr
@@ -7802,23 +7657,6 @@
   function bumpRenderEpoch() {
     _renderEpoch++
     _dropAllTabCaches()
-  }
-
-  // Coalesce the late-data rebuild renders. On cold load, channel badges + the
-  // BTTV/FFZ/Chatterino bulk badge maps + cosmetics arrive in rapid bursts, each
-  // doing bumpRenderEpoch()+renderMessages() = a full rebuild = an image-reload
-  // flash; 3 landed within 23ms on a busy channel (a visible strobe). Debounce so
-  // a burst collapses to ONE rebuild. The epoch still increments per bump, so the
-  // single coalesced render rebuilds with ALL the newly-arrived data.
-  let _coalescedRenderTimer = null
-  function scheduleCoalescedRender() {
-    if (_coalescedRenderTimer !== null) return
-    _coalescedRenderTimer = cleanup.setTimeout(() => {
-      _coalescedRenderTimer = null
-      try {
-        renderMessages(currentTab)
-      } catch {}
-    }, 120)
   }
 
   // Surgical invalidation for a block/unblock of specific emote(s). The full
@@ -7970,10 +7808,10 @@
       kb = stableMsgId(b)
     return ka < kb ? -1 : ka > kb ? 1 : 0
   }
-  // Epoch-tagged msgKey memo (layers on stableMsgId's _sid memo). appendMessage,
-  // appendToCachedTab and renderMessages all rebuild the same `${epoch}:${sid}`
-  // string — on a 500-row tab rendering at rAF cadence that was 500 template
-  // concats per frame. Recomputes only when _renderEpoch bumps (full rebuild).
+  // Epoch-tagged msgKey memo (layers on stableMsgId's _sid memo). appendMessage
+  // and renderMessages both rebuild the same `${epoch}:${sid}` string — on a
+  // 500-row tab rendering at rAF cadence that was 500 template concats per
+  // frame. Recomputes only when _renderEpoch bumps (full rebuild).
   function msgKeyOf(m) {
     if (m._hsKeyEpoch === _renderEpoch && m._hsKey) return m._hsKey
     m._hsKeyEpoch = _renderEpoch
@@ -8812,6 +8650,7 @@
   function updateTabIndicator(tabId) {
     const tab = tabBarElement?.querySelector(`[data-tab="${tabId}"]`)
     if (!tab || currentTab === tabId) return
+    if (tab.classList.contains('has-new') && (tabId !== 'mentions' || tab.classList.contains('has-mentions'))) return
 
     // Don't light up duplicate tabs showing the same channel
     // If on live, suppress channel tab indicator for the live channel
@@ -9257,9 +9096,7 @@
         try {
           irc?.join?.(entry.twitch)
         } catch {}
-        try {
-          chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: entry.twitch })
-        } catch {}
+        safeSendMessage({ type: 'join_channel', platform: 'twitch', channel: entry.twitch })
       }
       if (entry.kick) {
         try {
@@ -9271,16 +9108,16 @@
           youtubeLinks.set(entry.id, { url: entry.youtube, videoId: '', channelName: '' })
         } catch {}
         try {
-          chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: entry.youtube, channelId: entry.id })
+          chrome.runtime
+            .sendMessage({ type: 'youtube_ws_subscribe', url: entry.youtube, channelId: entry.id })
+            .catch(() => {})
         } catch {}
-        try {
-          chrome.runtime.sendMessage({
-            type: 'join_channel',
-            platform: 'youtube',
-            channel: entry.id,
-            channelId: entry.youtube,
-          })
-        } catch {}
+        safeSendMessage({
+          type: 'join_channel',
+          platform: 'youtube',
+          channel: entry.id,
+          channelId: entry.youtube,
+        })
       }
 
       try {
@@ -9295,9 +9132,7 @@
         try {
           irc?.join?.(twitchName)
         } catch {}
-        try {
-          chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchName })
-        } catch {}
+        safeSendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchName })
       }
       if (!entry.kick && kickName) {
         entry.kick = kickName
@@ -9313,11 +9148,9 @@
           youtubeLinks.set(entry.id, { url: ytUrl, videoId: '', channelName: '' })
         } catch {}
         try {
-          chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytUrl, channelId: entry.id })
+          chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytUrl, channelId: entry.id }).catch(() => {})
         } catch {}
-        try {
-          chrome.runtime.sendMessage({ type: 'join_channel', platform: 'youtube', channel: entry.id, channelId: ytUrl })
-        } catch {}
+        safeSendMessage({ type: 'join_channel', platform: 'youtube', channel: entry.id, channelId: ytUrl })
       }
       if (mutated) {
         try {
@@ -9594,14 +9427,12 @@
             .catch(() => {})
           // 7TV/BTTV YouTube channel emotes for this tab — channelId is a hint
           // (the stored youtube URL/handle); background resolves the real UC id.
-          try {
-            chrome.runtime.sendMessage({
-              type: 'join_channel',
-              platform: 'youtube',
-              channel: ch.id,
-              channelId: ch.youtube,
-            })
-          } catch (e) {}
+          safeSendMessage({
+            type: 'join_channel',
+            platform: 'youtube',
+            channel: ch.id,
+            channelId: ch.youtube,
+          })
         }
       }
     } catch (e) {}
@@ -9621,14 +9452,10 @@
       const persistable = { ...config, channels: (config.channels || []).filter((c) => !c?.ephemeral) }
       await chrome.storage.local.set({ [STORAGE_KEY]: persistable })
       // Sync to server for cross-device sync
-      try {
-        chrome.runtime.sendMessage({
-          type: 'ws_send',
-          data: { type: 'multichat:sync', channels: (config.channels || []).filter((c) => !c?.ephemeral) },
-        })
-      } catch (e) {
-        /* context invalidated */
-      }
+      safeSendMessage({
+        type: 'ws_send',
+        data: { type: 'multichat:sync', channels: (config.channels || []).filter((c) => !c?.ephemeral) },
+      })
     } catch (e) {
       console.warn('saveConfig failed:', e)
     }
@@ -10974,7 +10801,9 @@
                         emoteUrl: em.url,
                         zeroWidth: true,
                       },
-                      () => {},
+                      () => {
+                        void chrome.runtime.lastError
+                      },
                     )
                   } catch (_) {}
                 } catch (_) {}
@@ -11474,9 +11303,7 @@
               const twitchName = ch.twitch
               if (twitchName && isEnabled('irc-twitch')) {
                 irc?.join(twitchName)
-                try {
-                  chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchName })
-                } catch (e) {}
+                safeSendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchName })
               }
               const kickName = ch.kick
               if (kickName && isEnabled('chat-kick')) kickChat?.join(kickName)
@@ -11485,14 +11312,12 @@
                 chrome.runtime
                   .sendMessage({ type: 'youtube_ws_subscribe', url: ch.youtube, channelId: id })
                   .catch(() => {})
-                try {
-                  chrome.runtime.sendMessage({
-                    type: 'join_channel',
-                    platform: 'youtube',
-                    channel: id,
-                    channelId: ch.youtube,
-                  })
-                } catch (e) {}
+                safeSendMessage({
+                  type: 'join_channel',
+                  platform: 'youtube',
+                  channel: id,
+                  channelId: ch.youtube,
+                })
               }
             }
           }
@@ -11847,9 +11672,7 @@
     chrome.runtime
       .sendMessage({ type: 'youtube_ws_subscribe', url: autoYtUrl, channelId: '__live_yt_auto__' })
       .catch(() => {})
-    try {
-      chrome.runtime.sendMessage({ type: 'join_channel', platform: 'youtube', channel: vid, channelId: null })
-    } catch (_) {}
+    safeSendMessage({ type: 'join_channel', platform: 'youtube', channel: vid, channelId: null })
   }
 
   // The tab to activate on mount. When we're on an actual stream/channel watch
@@ -11912,7 +11735,10 @@
     try {
       const r = await new Promise((res) => {
         try {
-          chrome.runtime.sendMessage({ type: 'get_health' }, res)
+          chrome.runtime.sendMessage({ type: 'get_health' }, (r) => {
+            void chrome.runtime.lastError
+            res(r)
+          })
         } catch {
           res(null)
         }
@@ -12363,14 +12189,12 @@
           // (_buildChannelEmoteCache keys by bare channel name); `channelId` is
           // just a hint — background.js resolves the real UC... id itself
           // (from ytUrl if it carries one, else a handle/videoId lookup).
-          try {
-            chrome.runtime.sendMessage({
-              type: 'join_channel',
-              platform: 'youtube',
-              channel: currentChannel,
-              channelId: ytUrl || null,
-            })
-          } catch (e) {}
+          safeSendMessage({
+            type: 'join_channel',
+            platform: 'youtube',
+            channel: currentChannel,
+            channelId: ytUrl || null,
+          })
         }
         log('Auto-joined current channel:', currentChannel, 'platforms:', twitchCh, kickCh, ytUrl || '(no yt link)')
       }
@@ -12404,9 +12228,7 @@
               // delay the BG channel-emotes fetch indefinitely. Kick off both
               // independently; emote fetch only needs the channel name.
               irc.join(twitchName)
-              try {
-                chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchName })
-              } catch (e) {}
+              safeSendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchName })
             }
             if (gKick && kickName) {
               kickChat.join(kickName)

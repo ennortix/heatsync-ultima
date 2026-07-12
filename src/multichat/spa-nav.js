@@ -219,9 +219,9 @@ function fullSpaReinit() {
   // its pollers (offline 5s/1s, YT-live 1.5s, kick 10s, YT watchdog 30s, ctx-death
   // 1s, layout reinject 500ms) on every reinit; without this they stack one full
   // live set per channel hop and never stop firing (unbounded leak). Persistent
-  // ids (bootstrap's module-load ctx-death detector) are kept — they're not
-  // re-registered by init(). The spa-reinit setTimeout below is registered AFTER
-  // this drain, so it survives.
+  // ids (module-load registrations: bootstrap's ctx-death detector, emotes'
+  // DOM-scan poller) are kept — they're not re-registered by init(). The
+  // spa-reinit setTimeout below is registered AFTER this drain, so it survives.
   _timers.intervals = _timers.intervals.filter((id) => {
     if (_timers.persistent.has(id)) return true
     try {

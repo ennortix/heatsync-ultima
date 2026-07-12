@@ -699,7 +699,7 @@ function updateThirdPartyBadgesInPlace() {
     img.decoding = 'async'
     img.width = 18
     img.height = 18
-    img.style.cssText = 'width:18px;height:18px;' + (bg ? `background:${bg};border-radius:2px;` : '')
+    img.style.cssText = 'width:18px;height:18px;' + (bg ? `background:${bg};` : '')
     // Insert FIRST, then set src (caller) — so an immediate QUIC-drop error
     // fires while the img is already under msgsEl and the capture-phase error
     // handler (retryOrHideBadgeImg) catches it. Mirrors updateCosmeticsInPlace.

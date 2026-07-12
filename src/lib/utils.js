@@ -93,27 +93,21 @@ function createElement(tag, text, className) {
 }
 
 // ============================================
-// DOM HELPERS
+// STRING HELPERS
 // ============================================
 
 /**
- * Query selector (first match)
- * @param {string} selector
- * @param {Element|Document} [parent=document]
- * @returns {Element|null}
+ * Truncate to at most n UTF-16 units without splitting a surrogate pair.
+ * A high surrogate left dangling at the cut is dropped so the result never
+ * ends in a lone surrogate (which renders as U+FFFD downstream).
+ * @param {string} str
+ * @param {number} n
+ * @returns {string}
  */
-function $(selector, parent = document) {
-  return parent.querySelector(selector)
-}
-
-/**
- * Query selector all
- * @param {string} selector
- * @param {Element|Document} [parent=document]
- * @returns {NodeListOf<Element>}
- */
-function $$(selector, parent = document) {
-  return parent.querySelectorAll(selector)
+function truncateSafe(str, n) {
+  if (str.length <= n) return str
+  const code = str.charCodeAt(n - 1)
+  return str.slice(0, code >= 0xd800 && code <= 0xdbff ? n - 1 : n)
 }
 
 // ============================================
@@ -614,9 +608,8 @@ const utils = {
   safeUrl,
   createElement,
 
-  // DOM
-  $,
-  $$,
+  // Strings
+  truncateSafe,
 
   // React
   getFiber,
@@ -668,8 +661,6 @@ if (typeof window !== 'undefined') {
 }
 
 export {
-  $,
-  $$,
   boostReadability,
   classifyYtMembership,
   classifyYtRendererType,
@@ -692,6 +683,7 @@ export {
   safeUrl,
   sanitizeUiSettings,
   throttle,
+  truncateSafe,
   UI_SYNC_BLOCKLIST,
   unescapeHtml,
   warn,

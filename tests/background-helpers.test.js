@@ -223,7 +223,7 @@ describe('sanitizeEmoteList', () => {
 // as parseIrcLine already does.
 
 const { bgIrcParseLine, bgIrcRecordToExt } = new Function(
-  `${extractConstLine('BG_IRC_COLOR_RE')}\n${extractFn('bgIrcParseTags')}\n${extractFn('bgIrcSanitizeColor')}\n${extractFn('bgIrcParseEmotesTag')}\n${extractFn('bgIrcParseLine')}\n${extractFn('bgIrcRecordToExt')}\nreturn { bgIrcParseLine, bgIrcRecordToExt }`,
+  `${extractConstLine('BG_IRC_COLOR_RE')}\n${extractFn('bgIrcTagUnescape')}\n${extractFn('bgIrcParseTags')}\n${extractFn('bgIrcSanitizeColor')}\n${extractFn('bgIrcParseEmotesTag')}\n${extractFn('bgIrcParseLine')}\n${extractFn('bgIrcRecordToExt')}\nreturn { bgIrcParseLine, bgIrcRecordToExt }`,
 )()
 
 describe('bgIrcParseLine — reply-parent-user-id threading (background.js live IRC path)', () => {

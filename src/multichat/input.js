@@ -1011,14 +1011,14 @@ function initInput() {
   // shortcut that closes the tab even with an input focused — pages can't
   // cancel the shortcut itself, but a beforeunload prompt while a draft is
   // in the composer turns the insta-close into a confirm dialog.
-  if (!window._hsDraftGuard) {
-    window._hsDraftGuard = (e) => {
+  if (!window._hsMcDraftGuard) {
+    window._hsMcDraftGuard = (e) => {
       if (getInputText().trim()) {
         e.preventDefault()
         e.returnValue = ''
       }
     }
-    window.addEventListener('beforeunload', window._hsDraftGuard)
+    window.addEventListener('beforeunload', window._hsMcDraftGuard, { signal: mcSignal })
   }
   // Unified undo/redo — same module as the website. installUndoManager
   // attaches a manager to input._undoManager and wires Ctrl+Z hotkeys
@@ -2438,7 +2438,7 @@ async function _quickOpToFeed(username, msg) {
     showToast('nothing to post', 'error')
     return
   }
-  const content = `@${username}: ${raw}`.slice(0, 500)
+  const content = truncateSafe(`@${username}: ${raw}`, 500)
   try {
     const resp = await apiFetch('/api/messages', { method: 'POST', auth: true, body: { content } })
     showToast(resp?.ok ? 'posted to feed' : 'post failed', resp?.ok ? 'success' : 'error')
@@ -3832,10 +3832,11 @@ function updateCharCount() {
         hl.textContent = ''
         const safeSpan = document.createElement('span')
         safeSpan.className = 'hl-safe'
-        safeSpan.textContent = text.slice(0, 500)
+        const safeText = truncateSafe(text, 500)
+        safeSpan.textContent = safeText
         const overSpan = document.createElement('span')
         overSpan.className = 'hl-over'
-        overSpan.textContent = text.slice(500)
+        overSpan.textContent = text.slice(safeText.length)
         hl.appendChild(safeSpan)
         hl.appendChild(overSpan)
         hl.scrollLeft = input.scrollLeft

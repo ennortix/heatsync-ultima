@@ -627,6 +627,7 @@
       rebuildUserColorMap(changes.hs_user_colors.newValue)
       applyUserColorsToVisibleMessages()
     }
+    if (changes.hs_dim_timeouts) dimTimeoutsEnabled = changes.hs_dim_timeouts.newValue !== false
     // User notes — refresh the native cache when the overlay (or another tab) writes.
     if (changes[HS_NOTE_STORE_KEY]) _noteSetBlob(changes[HS_NOTE_STORE_KEY].newValue)
   }

@@ -54,7 +54,7 @@ globalThis.escapeHtml = escapeHtml
 // reference a handful of main.js-scope globals as free variables (same
 // pattern as tests/emote-precedence.test.js) — must be set BEFORE import
 // since emotes.js calls cleanup.setIntervalIfVisible at module top level.
-globalThis.cleanup = { setIntervalIfVisible: () => {} }
+globalThis.cleanup = { setIntervalIfVisible: () => {}, persistInterval: () => {} }
 for (const [k, v] of Object.entries(mods)) globalThis[k] = v
 globalThis.HS_MOD_C_HEX_RE = /^c!#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
 globalThis.currentTab = 'chan-a'

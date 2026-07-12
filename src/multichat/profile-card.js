@@ -1448,8 +1448,8 @@ function pcDoWhisper(username, platform) {
 }
 
 function setupProfileCardHandlers() {
-  if (window._hsProfileCardSetup) return
-  window._hsProfileCardSetup = true
+  if (window._hsMcProfileCardSetup) return
+  window._hsMcProfileCardSetup = true
 
   // Primary path — pcard-early.js (document_start) intercepts the click before
   // Twitch/Kick can react and dispatches this event.
@@ -1644,9 +1644,7 @@ async function pcAddAsChannel(username) {
   if (typeof updateTabBar === 'function') updateTabBar()
   if (channel.twitch) {
     irc?.join(channel.twitch)
-    try {
-      chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: channel.twitch })
-    } catch {}
+    safeSendMessage({ type: 'join_channel', platform: 'twitch', channel: channel.twitch })
   }
   if (channel.kick) kickChat?.join(channel.kick)
   if (channel.youtube) {

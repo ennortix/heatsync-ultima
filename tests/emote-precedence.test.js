@@ -17,7 +17,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import * as mods from '../src/lib/modifiers.js'
 
-globalThis.cleanup = { setIntervalIfVisible: () => {} }
+globalThis.cleanup = { setIntervalIfVisible: () => {}, persistInterval: () => {} }
 globalThis.HS_MOD_TOKENS = mods.HS_MOD_TOKENS
 globalThis.hsModClassify = mods.hsModClassify
 globalThis.hsModBuildStyleAttr = mods.hsModBuildStyleAttr

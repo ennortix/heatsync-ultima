@@ -264,6 +264,9 @@ function softTwitchNav(prevLiveCh) {
   try {
     _dropTabCache('live')
   } catch {}
+  try {
+    rearmLiveYtAuto()
+  } catch (_) {}
   // Mark body for the entire transition window so the CSS guard hides any
   // native chat-shell children that paint during Twitch's teardown/remount.
   document.body.classList.add('hs-mc-navigating')

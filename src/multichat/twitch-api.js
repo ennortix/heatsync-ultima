@@ -2104,7 +2104,7 @@ const BADGE_STYLES = {
 function badgeBgStyle(name, isFFZ) {
   const s = BADGE_STYLES[name]
   if (!s) return ''
-  return isFFZ ? `background:${s.bg};padding:1px;border-radius:2px;` : `background:${s.bg};border-radius:2px;`
+  return isFFZ ? `background:${s.bg};padding:1px;` : `background:${s.bg};`
 }
 
 // Twitch badge image URLs: "setID/version" → image_url
@@ -3598,7 +3598,7 @@ function renderThirdPartyBadges(userId) {
   if (ffzList) {
     for (const b of ffzList) {
       const safeColor = /^#[0-9a-fA-F]{3,8}$/.test(b.color) ? b.color : ''
-      html += `<img class="hs-mc-badge-img hs-mc-ffz-badge" src="${escapeHtml(safeUrl(b.url) || '')}" alt="${escapeHtml(b.title)}" title="${escapeHtml(b.title)}" decoding="async" width="18" height="18" style="width:18px;height:18px;${safeColor ? 'background:' + safeColor + ';border-radius:2px;' : ''}">`
+      html += `<img class="hs-mc-badge-img hs-mc-ffz-badge" src="${escapeHtml(safeUrl(b.url) || '')}" alt="${escapeHtml(b.title)}" title="${escapeHtml(b.title)}" decoding="async" width="18" height="18" style="width:18px;height:18px;${safeColor ? 'background:' + safeColor + ';' : ''}">`
     }
   }
   const chat = getSetting('chatterinoBadges') ? mcChatterinoBadgeMap.get(userId) : null

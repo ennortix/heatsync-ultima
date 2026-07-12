@@ -165,11 +165,7 @@ function renderAddChannelForm(msgsEl) {
 
     if (twitchVal) {
       irc?.join(twitchVal)
-      try {
-        chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchVal })
-      } catch (e) {
-        /* context invalidated */
-      }
+      safeSendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchVal })
     }
     if (kickVal) {
       kickChat?.join(kickVal)
@@ -179,11 +175,7 @@ function renderAddChannelForm(msgsEl) {
       chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytVal, channelId: id }).catch(() => {})
       // 7TV/BTTV YouTube channel emotes — channelId is a hint (the typed
       // url/handle), background.js resolves the real UC... id itself.
-      try {
-        chrome.runtime.sendMessage({ type: 'join_channel', platform: 'youtube', channel: id, channelId: ytVal })
-      } catch (e) {
-        /* context invalidated */
-      }
+      safeSendMessage({ type: 'join_channel', platform: 'youtube', channel: id, channelId: ytVal })
     }
 
     updateTabBar()
@@ -593,6 +585,9 @@ function showEditChannelForm(tabId) {
         .catch(() => {})
       youtubeLinks.delete(tabId)
       channelYtMessages.delete(tabId)
+      ytChanLastSeen.delete(tabId)
+      ytChanRejoinAttempts.delete(tabId)
+      ytSubscribedUrls.delete(tabId)
     }
 
     // Update channel config
@@ -614,6 +609,29 @@ function showEditChannelForm(tabId) {
         channelYtMessages.delete(tabId)
         channelYtMessages.set(newId, ytMsgs)
       }
+      for (const map of [ytChanLastSeen, ytChanRejoinAttempts, ytSubscribedUrls]) {
+        if (map.has(tabId)) {
+          map.set(newId, map.get(tabId))
+          map.delete(tabId)
+        }
+      }
+      if (ytVal && ytVal === oldYt) {
+        chrome.runtime
+          .sendMessage({
+            type: 'youtube_ws_unsubscribe',
+            videoId: ytData?.videoId || '',
+            url: ytVal,
+            channelId: tabId,
+          })
+          .catch(() => {})
+        chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytVal, channelId: newId }).catch(() => {})
+      }
+      if (platformFilters && platformFilters[tabId]) {
+        platformFilters[newId] = platformFilters[tabId]
+        delete platformFilters[tabId]
+        saveUiSetting('platformFilters', platformFilters)
+      }
+      _dropTabCache(tabId)
       ch.id = newId
     }
     saveConfig()
@@ -621,17 +639,15 @@ function showEditChannelForm(tabId) {
     // Join new channels if changed
     if (twitchVal && twitchVal !== oldTwitch) {
       irc?.join(twitchVal)
-      try {
-        chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchVal })
-      } catch (e) {}
+      safeSendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchVal })
     }
     if (kickVal && kickVal !== oldKick) kickChat?.join(kickVal)
     if (ytVal && ytVal !== oldYt) {
       youtubeLinks.set(newId, { url: ytVal, videoId: '', channelName: '' })
+      ytSubscribedUrls.set(newId, ytVal)
+      ytChanLastSeen.set(newId, Date.now())
       chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytVal, channelId: newId }).catch(() => {})
-      try {
-        chrome.runtime.sendMessage({ type: 'join_channel', platform: 'youtube', channel: newId, channelId: ytVal })
-      } catch (e) {}
+      safeSendMessage({ type: 'join_channel', platform: 'youtube', channel: newId, channelId: ytVal })
     }
 
     updateTabBar()

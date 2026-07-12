@@ -73,7 +73,13 @@ function _hsnPersist() {
     index: Object.fromEntries(_hsnIndex),
   }
   try {
-    chrome.storage.local.set({ [HS_NOTES_KEY]: payload }, () => void chrome.runtime?.lastError)
+    chrome.storage.local.set({ [HS_NOTES_KEY]: payload }, () => {
+      if (chrome.runtime?.lastError) {
+        try {
+          showToast('note not saved — storage error', 'error')
+        } catch {}
+      }
+    })
   } catch {}
 }
 
@@ -154,9 +160,9 @@ function _hsnLoad() {
 // partial) view, so treating absence as "deleted" would just relocate the
 // wipe. (Trade-off: a delete can be resurrected by a tab that loaded the note
 // before the delete and saves later — no tombstone in the wire format yet.)
-if (typeof window !== 'undefined' && _hsnHasStorage() && !window._hsnOnChangedWired) {
-  window._hsnOnChangedWired = true
-  chrome.storage.onChanged.addListener((changes, area) => {
+if (typeof window !== 'undefined' && _hsnHasStorage() && !window._hsMcNotesOnChangedWired) {
+  window._hsMcNotesOnChangedWired = true
+  cleanup.addListener(chrome.storage.onChanged, (changes, area) => {
     if (area !== 'local' || !changes[HS_NOTES_KEY]) return
     const raw = changes[HS_NOTES_KEY].newValue
     if (!raw || typeof raw !== 'object') return

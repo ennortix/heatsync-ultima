@@ -507,8 +507,8 @@ function _buildFeedResolvedHtml(ph, data) {
   const safeUrlStr = attr(url)
   const safeTitle = attr(data.title || '')
   const safeAuthor = attr(data.author || '')
-  const safeThumb = attr(data.thumbnail || '')
-  const safeMedia = attr(data.mediaUrl || '')
+  const safeThumb = attr(safeUrl(data.thumbnail || ''))
+  const safeMedia = attr(safeUrl(data.mediaUrl || ''))
   const safePlat = attr(platform)
 
   if (data.type === 'image' && data.mediaUrl) {

@@ -477,6 +477,7 @@ function getChatResUrl(url) {
   // Applied after the size rewrite so it isn't clobbered.
   if (HS_IS_FF && out.includes('cdn.7tv.app')) out = out.replace(/\.avif(\?|$)/i, '.webp$1')
   _resCache.set(url, out)
+  if (_resCache.size > 2000) _resCache.delete(_resCache.keys().next().value)
   return out
 }
 
@@ -2878,7 +2879,7 @@ function scanDomForEmotes() {
 }
 
 // Periodically scan for new emotes
-cleanup.setIntervalIfVisible(scanDomForEmotes, 10000)
+cleanup.persistInterval(cleanup.setIntervalIfVisible(scanDomForEmotes, 10000))
 
 // Process text and replace emote codes with images.
 // Supports 7TV zero-width (overlay) emotes that stack on base emotes.

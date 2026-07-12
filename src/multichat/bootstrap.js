@@ -891,6 +891,11 @@ const cleanup = {
     const i = _timers.intervals.indexOf(id)
     if (i !== -1) _timers.intervals.splice(i, 1)
   },
+  // Mark a module-load interval as surviving SPA reinit's drain — init()
+  // won't re-register it (see spa-nav.js).
+  persistInterval(id) {
+    _timers.persistent.add(id)
+  },
   setTimeout(fn, ms) {
     const w = _hsPerfWrap(fn, ms, 'timeout')
     const id = setTimeout(() => {

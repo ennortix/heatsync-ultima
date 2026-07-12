@@ -27,7 +27,7 @@ function sliceBetween(startMarker, endMarker) {
   return MAIN_SRC.slice(s, e)
 }
 
-const fnSrc = sliceBetween('function highlightThreadRefsInHtml(html) {', '\n  // Show "new" button for static tabs')
+const fnSrc = sliceBetween('function highlightThreadRefsInHtml(html) {', '\n  // Scroll helper — reused by both')
 
 const { highlightThreadRefsInHtml } = new Function(
   `function highlightThreadRefsInHtml(html) {${fnSrc.slice(fnSrc.indexOf('{') + 1)}\nreturn { highlightThreadRefsInHtml }`,

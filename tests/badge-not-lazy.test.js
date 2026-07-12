@@ -70,8 +70,8 @@ describe('badgeBgStyle — semantic bg fallback', () => {
     expect(css).toContain('background:#00ad03')
     expect(css).not.toContain('padding')
   })
-  test('FFZ mod badge keeps the padded chip (unchanged — no xqc regression)', () => {
-    expect(badgeBgStyle('moderator', true)).toBe('background:#00ad03;padding:1px;border-radius:2px;')
+  test('FFZ mod badge keeps the padded chip (square — no border-radius)', () => {
+    expect(badgeBgStyle('moderator', true)).toBe('background:#00ad03;padding:1px;')
   })
   test('unknown/third-party badge type gets no bg', () => {
     expect(badgeBgStyle('bttv-custom', false)).toBe('')

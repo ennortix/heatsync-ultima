@@ -61,8 +61,10 @@ chat, streaming, twitch, kick, youtube, emotes, 7tv
   description above are LIVE on the public page (verified). Tags = `chat, social media,
   streaming, twitch, youtube` — AMO tags are a fixed vocabulary; `kick`/`emotes`/`7tv`
   don't exist, this is the best available set. Non-en AMO summaries still carry the older
-  framing (only en-US updated). Listed version still 1.6.8 — upload 1.7.21 as a *listed*
-  version (triggers review; bundle with next release).
+  framing (only en-US updated). Listed version still 1.6.8. **GOTCHA:** release.yml signs
+  every tag on the *unlisted* channel, and AMO version numbers are unique across channels —
+  1.7.22 (signed unlisted) can never become the listed version. To refresh the listing,
+  submit the NEXT version as *listed* via devhub BEFORE tagging it, or rework release.yml.
 - **Locale drift (RESOLVED 2026-06-23):** all 33 non-en `manifest_description` strings
   realigned to the wedge-first (emote-first) framing, matching en. Each verified ≤132 chars,
   valid JSON, brand tokens present (Twitch/Kick/YouTube/7TV/BTTV/FFZ/5000), build passes.

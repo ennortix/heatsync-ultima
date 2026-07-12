@@ -15,6 +15,7 @@
     "build:chrome": "bun run build.js chrome",
     "build:firefox": "bun run build.js firefox",
     "package": "bun run build.js --package",
+    "publish": "bun scripts/publish.js",
     "typecheck": "tsc --noEmit",
     "lint": "biome check src/ chrome/ tests/ build.js",
     "lint:fix": "biome check --write src/ chrome/ tests/ build.js",

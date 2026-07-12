@@ -410,7 +410,6 @@ describe('picked name colour + youtube hash fallback', () => {
   })
 })
 
-
 // The viewer's own name used to render the djb2 placeholder colour and wait
 // behind the whole channel's backlog for its paint ("why is my name pink while
 // it loads"). Priming seeds the picked colour synchronously and puts every id

@@ -40,6 +40,43 @@ bun run build.js --package # both + signed zips + source zip
 
 push a `v*` tag and `.github/workflows/release.yml` does the rest — build, package, attach versioned zips + versionless aliases + source zip to a new GitHub release. README install links resolve to the latest tag automatically.
 
-## license
+## releasing
+
+`scripts/publish.js` is the one-command publisher for the chrome web store and amo (firefox, listed channel). safe by default: without `--publish`, nothing is ever uploaded.
+
+```bash
+bun scripts/publish.js                                # dry-run, current version, both stores
+bun scripts/publish.js --version 1.7.24 --publish      # bump + build + publish both
+bun scripts/publish.js --chrome-only --publish
+bun scripts/publish.js --firefox-only --publish
+bun scripts/publish.js --dry-run                       # force no-network even with --publish
+```
+
+### one-time credential setup
+
+credentials live in `~/.config/heatsync/publish.env` (chmod 600, never committed). running `bun scripts/publish.js` with the file missing prints this exact checklist:
+
+```
+AMO_JWT_ISSUER=...
+AMO_JWT_SECRET=...
+CWS_CLIENT_ID=...
+CWS_CLIENT_SECRET=...
+CWS_REFRESH_TOKEN=...
+```
+
+1. **amo (firefox) api keys** — [addons.mozilla.org → Developer Hub → Manage API Keys](https://addons.mozilla.org/en-US/developers/addon/api/key/). generate credentials, paste the JWT issuer/secret into `AMO_JWT_ISSUER` / `AMO_JWT_SECRET`.
+2. **chrome web store api**:
+   - Google Cloud Console → pick/create a project → enable **Chrome Web Store API**
+   - APIs & Services → Credentials → Create Credentials → OAuth client ID → type **Desktop app**
+   - paste the Client ID / Client Secret into `CWS_CLIENT_ID` / `CWS_CLIENT_SECRET`
+   - run `bun scripts/publish.js --cws-auth` — it prints a google consent url, you paste the code back, and it writes `CWS_REFRESH_TOKEN` into the file for you (the secret is never printed to the terminal)
+3. `chmod 600 ~/.config/heatsync/publish.env`
+
+### what it does
+
+- bumps `package.json` + both manifests when `--version` is passed, then runs the normal `build.js --package` build (which also syncs the built `chrome/manifest.json`)
+- **chrome**: refreshes an oauth access token, `PUT`s the zip to the Chrome Web Store upload endpoint, then publishes the item. pending review is hours-to-days.
+- **firefox**: uploads the zip to amo's `listed` channel (this is deliberate — unlisted/self uploads don't reach the public listing), polls validation, creates a new version with release notes (auto-composed from `git log` since the last tag) and approval notes (exact reproducible build steps for reviewers), then attaches the source zip. pending review is typically a few days.
+- prints a final summary of what was uploaded where and what's still pending.
 
 [MIT](LICENSE)

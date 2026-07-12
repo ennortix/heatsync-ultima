@@ -18,6 +18,7 @@
 import { execFileSync } from 'node:child_process'
 import { createHmac } from 'node:crypto'
 import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { createServer } from 'node:http'
 import { homedir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { createInterface } from 'node:readline/promises'
@@ -48,6 +49,7 @@ function parseArgs(argv) {
     dryRun: flags.has('--dry-run'),
     publish: flags.has('--publish'),
     cwsAuth: flags.has('--cws-auth'),
+    setCreds: flags.has('--set-creds'),
   }
   if (opts.chromeOnly && opts.firefoxOnly) {
     console.error('error: --chrome-only and --firefox-only are mutually exclusive')
@@ -135,6 +137,65 @@ function writeCredValue(path, key, value) {
   chmodSync(path, 0o600)
 }
 
+// ── set-creds: masked entry, so a secret never lands in a shell transcript ───
+
+/** Prompt without echoing the typed characters. */
+function promptSecret(label) {
+  return new Promise((resolve) => {
+    process.stdout.write(label)
+    const stdin = process.stdin
+    const wasRaw = stdin.isRaw
+    stdin.setRawMode?.(true)
+    stdin.resume()
+    stdin.setEncoding('utf8')
+    let buf = ''
+    const done = (value) => {
+      stdin.setRawMode?.(wasRaw ?? false)
+      stdin.pause()
+      stdin.off('data', onData)
+      process.stdout.write('\n')
+      resolve(value)
+    }
+    const onData = (ch) => {
+      if (ch === '\r' || ch === '\n' || ch === '\u0004') return done(buf.trim())
+      if (ch === '\u0003') {
+        // ctrl-c
+        stdin.setRawMode?.(wasRaw ?? false)
+        process.stdout.write('\n')
+        process.exit(130)
+      }
+      if (ch === '\u007f' || ch === '\b') {
+        buf = buf.slice(0, -1)
+        return
+      }
+      // ignore other control chars (arrows/escape sequences) — no echo either way
+      if (ch >= ' ') buf += ch
+    }
+    stdin.on('data', onData)
+  })
+}
+
+/** Interactively fill the creds file. Values are never echoed or logged. */
+async function setCredsFlow() {
+  const path = credsPath()
+  const existing = parseEnvFile(path) || {}
+  const keys = ['AMO_JWT_ISSUER', 'AMO_JWT_SECRET', 'CWS_CLIENT_ID', 'CWS_CLIENT_SECRET']
+  console.log(`writing to ${path} (chmod 600). input is hidden; blank keeps the current value.\n`)
+  for (const key of keys) {
+    const have = existing[key] ? ' [set]' : ''
+    const value = await promptSecret(`${key}${have}: `)
+    if (value) writeCredValue(path, key, value)
+  }
+  const after = parseEnvFile(path) || {}
+  const still = keys.filter((k) => !after[k])
+  console.log(still.length ? `\nstill missing: ${still.join(', ')}` : '\nall 4 keys set.')
+  console.log(
+    after.CWS_REFRESH_TOKEN
+      ? 'CWS_REFRESH_TOKEN already present — you are ready to publish.'
+      : 'next: bun scripts/publish.js --cws-auth   (gets CWS_REFRESH_TOKEN)',
+  )
+}
+
 // ── cws-auth: one-time oauth code exchange, writes CWS_REFRESH_TOKEN ─────────
 
 async function cwsAuthFlow() {
@@ -147,7 +208,10 @@ async function cwsAuthFlow() {
     process.exit(1)
   }
 
-  const redirectUri = 'urn:ietf:wg:oauth:2.0:oob'
+  // Loopback, NOT urn:ietf:wg:oauth:2.0:oob — Google blocked the out-of-band
+  // copy-paste-the-code flow (desktop clients must redirect to 127.0.0.1).
+  const port = 8976
+  const redirectUri = `http://127.0.0.1:${port}`
   const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${new URLSearchParams({
     client_id: map.CWS_CLIENT_ID,
     redirect_uri: redirectUri,
@@ -157,16 +221,31 @@ async function cwsAuthFlow() {
     prompt: 'consent',
   })}`
 
-  console.log('\nopen this url, approve access, then paste the code below:\n')
+  console.log(`\nadd this EXACT redirect uri to the OAuth client first:\n  ${redirectUri}\n`)
+  console.log('then open this url and approve access:\n')
   console.log(`  ${authUrl}\n`)
+  console.log(`waiting for the redirect on ${redirectUri} …  (ctrl-c to abort)`)
 
-  const rl = createInterface({ input: process.stdin, output: process.stdout })
-  const code = (await rl.question('code: ')).trim()
-  rl.close()
-  if (!code) {
-    console.error('no code entered')
+  const code = await new Promise((resolve, reject) => {
+    const server = createServer((req, res) => {
+      const url = new URL(req.url, redirectUri)
+      const got = url.searchParams.get('code')
+      const err = url.searchParams.get('error')
+      res.writeHead(200, { 'Content-Type': 'text/plain' })
+      res.end(got ? 'ok — code received. close this tab.' : `failed: ${err || 'no code'}`)
+      server.close()
+      got ? resolve(got) : reject(new Error(err || 'no code in redirect'))
+    })
+    server.on('error', reject)
+    server.listen(port, '127.0.0.1')
+    setTimeout(() => {
+      server.close()
+      reject(new Error('timed out after 5min waiting for the oauth redirect'))
+    }, 300_000).unref?.()
+  }).catch((e) => {
+    console.error(`oauth failed: ${e.message}`)
     process.exit(1)
-  }
+  })
 
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
@@ -484,6 +563,7 @@ function printSummary(ver, results, willPublish) {
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2))
+  if (opts.setCreds) return setCredsFlow()
   if (opts.cwsAuth) return cwsAuthFlow()
 
   const creds = loadCreds()

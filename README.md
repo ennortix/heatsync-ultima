@@ -64,13 +64,13 @@ CWS_CLIENT_SECRET=...
 CWS_REFRESH_TOKEN=...
 ```
 
-1. **amo (firefox) api keys** — [addons.mozilla.org → Developer Hub → Manage API Keys](https://addons.mozilla.org/en-US/developers/addon/api/key/). generate credentials, paste the JWT issuer/secret into `AMO_JWT_ISSUER` / `AMO_JWT_SECRET`.
+1. **amo (firefox) api keys** — [addons.mozilla.org → Developer Hub → Manage API Keys](https://addons.mozilla.org/en-US/developers/addon/api/key/). generate credentials; keep the tab open, the secret is shown once.
 2. **chrome web store api**:
    - Google Cloud Console → pick/create a project → enable **Chrome Web Store API**
-   - APIs & Services → Credentials → Create Credentials → OAuth client ID → type **Desktop app**
-   - paste the Client ID / Client Secret into `CWS_CLIENT_ID` / `CWS_CLIENT_SECRET`
-   - run `bun scripts/publish.js --cws-auth` — it prints a google consent url, you paste the code back, and it writes `CWS_REFRESH_TOKEN` into the file for you (the secret is never printed to the terminal)
-3. `chmod 600 ~/.config/heatsync/publish.env`
+   - APIs & Services → Credentials → Create Credentials → OAuth client ID → type **Web application**
+   - add `http://127.0.0.1:8976` as an **Authorized redirect URI** (google blocked the old copy-paste "oob" flow, so the token exchange redirects to a local port instead)
+3. `bun scripts/publish.js --set-creds` — prompts for all four values with **hidden input** and writes them to `~/.config/heatsync/publish.env` (chmod 600). nothing is echoed, so a secret never lands in a shell transcript.
+4. `bun scripts/publish.js --cws-auth` — opens the google consent flow, catches the redirect on `127.0.0.1:8976`, and writes `CWS_REFRESH_TOKEN` for you (never printed).
 
 ### what it does
 

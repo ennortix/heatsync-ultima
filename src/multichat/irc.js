@@ -163,9 +163,7 @@ function parseIrcLine(raw, channel) {
         ? ircTagUnescape(tags['msg-param-recipient-display-name'])
         : ''
       const raidViewers = parseInt(tags['msg-param-viewerCount']) || 0
-      const raidFrom = tags['msg-param-displayName']
-        ? ircTagUnescape(tags['msg-param-displayName'])
-        : ''
+      const raidFrom = tags['msg-param-displayName'] ? ircTagUnescape(tags['msg-param-displayName']) : ''
       const announceColor = tags['msg-param-color'] || ''
       const bitsTier = parseInt(tags['msg-param-threshold']) || 0
       const category = tags['msg-param-category'] || ''

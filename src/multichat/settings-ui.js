@@ -1745,7 +1745,7 @@ function renderSettingsTab() {
           },
           () => {
             copyBtn.textContent = 'copy failed'
-          }
+          },
         )
         cleanup.setTimeout(() => {
           copyBtn.textContent = 'copy'

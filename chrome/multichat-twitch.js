@@ -18715,9 +18715,7 @@ function parseIrcLine(raw, channel) {
         ? ircTagUnescape(tags['msg-param-recipient-display-name'])
         : ''
       const raidViewers = parseInt(tags['msg-param-viewerCount']) || 0
-      const raidFrom = tags['msg-param-displayName']
-        ? ircTagUnescape(tags['msg-param-displayName'])
-        : ''
+      const raidFrom = tags['msg-param-displayName'] ? ircTagUnescape(tags['msg-param-displayName']) : ''
       const announceColor = tags['msg-param-color'] || ''
       const bitsTier = parseInt(tags['msg-param-threshold']) || 0
       const category = tags['msg-param-category'] || ''
@@ -44159,18 +44157,20 @@ function renderChatLogsView() {
         cleanup.untrackObserver(_clLoadMoreObs)
         _clLoadMoreObs = null
       }
-      _clLoadMoreObs = cleanup.trackObserver(new IntersectionObserver(
-        (entries) => {
-          if (entries.some((e) => e.isIntersecting)) {
-            if (_clLoadMoreObs) {
-              cleanup.untrackObserver(_clLoadMoreObs)
-              _clLoadMoreObs = null
+      _clLoadMoreObs = cleanup.trackObserver(
+        new IntersectionObserver(
+          (entries) => {
+            if (entries.some((e) => e.isIntersecting)) {
+              if (_clLoadMoreObs) {
+                cleanup.untrackObserver(_clLoadMoreObs)
+                _clLoadMoreObs = null
+              }
+              fetchChatLogsPage()
             }
-            fetchChatLogsPage()
-          }
-        },
-        { root: list, rootMargin: '200px' },
-      ))
+          },
+          { root: list, rootMargin: '200px' },
+        ),
+      )
       _clLoadMoreObs.observe(sentinel)
     }
   }
@@ -49233,7 +49233,7 @@ function renderSettingsTab() {
           },
           () => {
             copyBtn.textContent = 'copy failed'
-          }
+          },
         )
         cleanup.setTimeout(() => {
           copyBtn.textContent = 'copy'

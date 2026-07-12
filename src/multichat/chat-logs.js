@@ -366,18 +366,20 @@ function renderChatLogsView() {
         cleanup.untrackObserver(_clLoadMoreObs)
         _clLoadMoreObs = null
       }
-      _clLoadMoreObs = cleanup.trackObserver(new IntersectionObserver(
-        (entries) => {
-          if (entries.some((e) => e.isIntersecting)) {
-            if (_clLoadMoreObs) {
-              cleanup.untrackObserver(_clLoadMoreObs)
-              _clLoadMoreObs = null
+      _clLoadMoreObs = cleanup.trackObserver(
+        new IntersectionObserver(
+          (entries) => {
+            if (entries.some((e) => e.isIntersecting)) {
+              if (_clLoadMoreObs) {
+                cleanup.untrackObserver(_clLoadMoreObs)
+                _clLoadMoreObs = null
+              }
+              fetchChatLogsPage()
             }
-            fetchChatLogsPage()
-          }
-        },
-        { root: list, rootMargin: '200px' },
-      ))
+          },
+          { root: list, rootMargin: '200px' },
+        ),
+      )
       _clLoadMoreObs.observe(sentinel)
     }
   }

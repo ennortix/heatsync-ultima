@@ -526,6 +526,17 @@
       text-decoration: none;
       cursor: pointer;
     }
+    /* plus tenure token — "+5mo"/"+3y" beside a Plus member's name (the "+" is
+       the plus brand mark). Mirrors the site's .hs-plus-tenure (public/css/core/
+       base.css): square, no border-radius, bare color-graded text sitting
+       inline after the name. Colour is set inline per-tenure (warm ramp). */
+    .hs-plus-tenure {
+      display: inline-block;
+      margin: 0 2px 0 4px;
+      font-weight: 700;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
     .hs-mc-link {
       color: var(--hs-link);
       text-decoration: none;

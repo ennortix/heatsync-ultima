@@ -829,7 +829,7 @@ const EMBED_RESOLVE_TTL = 60 * 60 * 1000 // 1 hour
 // no point holding it any longer client-side since the server refreshes at the
 // same cadence. In-memory only (unlike userCosmeticsCache) — paints are cheap,
 // low-stakes to refetch, and don't need to survive an SW restart.
-const _paintsCache = new Map() // twitchUserId → { spec: object|null, fetchedAt }
+const _paintsCache = new Map() // twitchUserId → { spec: object|null, color: string|null, plus: string|null, fetchedAt }
 const PAINTS_TTL = 60 * 1000
 const PAINTS_CACHE_MAX = 500
 // Channel banner / accent across platforms — Twitch GQL (public client id),
@@ -2881,14 +2881,15 @@ function setUserCosmetic(twitchId, cosmetic) {
   debounceSaveCosmetics()
 }
 
-function setPaintCache(twitchId, spec, color = null) {
+function setPaintCache(twitchId, spec, color = null, plus = null) {
   if (_paintsCache.size >= PAINTS_CACHE_MAX) {
     _paintsCache.delete(_paintsCache.keys().next().value)
   }
-  // color = the user's picked name colour (users.color), rides the same
-  // /api/paints response. Cached alongside the spec so the fetch_paints reply
-  // can return a parallel colors map without a second request/inflight chain.
-  _paintsCache.set(twitchId, { spec: spec ?? null, color: color ?? null, fetchedAt: Date.now() })
+  // color = the user's picked name colour (users.color); plus = their ISO
+  // plus_since (active HeatSync Plus tenure) — both ride the same
+  // /api/paints response, cached alongside the spec so the fetch_paints reply
+  // can return parallel colors/plus maps without a second request/inflight chain.
+  _paintsCache.set(twitchId, { spec: spec ?? null, color: color ?? null, plus: plus ?? null, fetchedAt: Date.now() })
 }
 
 async function fetchBulkBadges() {
@@ -8399,7 +8400,7 @@ async function handleMessage(message, sender, sendResponse) {
     ).slice(0, 50)
     ;(async () => {
       if (!ids.length) {
-        sendResponse({ paints: {}, colors: {} })
+        sendResponse({ paints: {}, colors: {}, plus: {} })
         return
       }
       const result = {}
@@ -8441,9 +8442,10 @@ async function handleMessage(message, sender, sendResponse) {
               const data = await resp.json().catch(() => null)
               if (data && data.paints && typeof data.paints === 'object') {
                 const dataColors = data.colors && typeof data.colors === 'object' ? data.colors : {}
+                const dataPlus = data.plus && typeof data.plus === 'object' ? data.plus : {}
                 for (const id of toFetch) {
                   const spec = data.paints[id] ?? null
-                  setPaintCache(id, spec, dataColors[id] ?? null)
+                  setPaintCache(id, spec, dataColors[id] ?? null, dataPlus[id] ?? null)
                   out[id] = spec
                 }
               }
@@ -8486,15 +8488,18 @@ async function handleMessage(message, sender, sendResponse) {
       // `result` only has keys for CONFIRMED ids (positive spec, or a
       // confirmed negative) — an id with no answer yet is simply absent, and
       // paints.js (content script) treats an absent key as "retry next flush".
-      // Picked name colours ride along: read them from the cache for every
-      // resolved id (inflight-shared ids were cached by their owning batch
-      // before their promise resolved, so the colour is present by now).
+      // Picked name colours + plus tenure ride along: read them from the
+      // cache for every resolved id (inflight-shared ids were cached by
+      // their owning batch before their promise resolved, so both are
+      // present by now).
       const colors = {}
+      const plus = {}
       for (const id of Object.keys(result)) {
-        const c = _paintsCache.get(id)?.color
-        if (c) colors[id] = c
+        const cached = _paintsCache.get(id)
+        if (cached?.color) colors[id] = cached.color
+        if (cached?.plus) plus[id] = cached.plus
       }
-      sendResponse({ paints: result, colors })
+      sendResponse({ paints: result, colors, plus })
     })()
     return true
   } else if (message.type === 'get_sender_emotes') {

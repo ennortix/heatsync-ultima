@@ -66,6 +66,13 @@ const hsPaintPending = new Set()
 let hsPaintBatchTimer = null
 let hsPaintSheetEl = null
 
+// ── plus tenure ("+5mo" / "+3y" beside an active Plus member's name) ───────
+// Rides the same /api/paints batch (server now returns a `plus` map of
+// per-id ISO plus_since). Identity signal, not a cosmetic — resolves
+// regardless of the showNamePaints setting, mirrors queueNameColorLookup's
+// un-gated queueing below. See lib/plus-tenure.js for the token itself.
+const hsPlusCache = new Map() // uid -> ISO plus_since string | null (cached-negative)
+
 // ── picked name colour (users.color) ────────────────────────────────────────
 // Rides the same /api/paints batch (server now returns a `colors` map). Applied
 // to youtube + kick names ONLY — never twitch, whose custom name colour is the
@@ -116,6 +123,19 @@ function setHsColorEntry(uid, color) {
  * yet resolved. Callers treat null as "no picked colour". */
 function getHsPickedColor(uid) {
   return hsColorCache.get(uid) ?? null
+}
+
+function setHsPlusEntry(uid, since) {
+  if (!hsPlusCache.has(uid)) evictOldestPaintEntry(hsPlusCache, HS_PAINT_CACHE_MAX)
+  hsPlusCache.set(uid, since || null)
+}
+
+/** @returns {string|undefined|null} ISO plus_since if `uid` is an active Plus
+ * member, null if looked-up-and-not, undefined if not yet looked up. Callers
+ * use undefined to decide whether to trigger an async lookup (queuePlusTenureLookup). */
+function getHsPlusTenureSince(uid) {
+  if (!hsPlusCache.has(uid)) return undefined
+  return hsPlusCache.get(uid)
 }
 
 // ── pure helpers (unit-testable without DOM/network) ────────────────────────
@@ -178,8 +198,12 @@ function ensureHsPaintSheet() {
     hsPaintSheetEl.id = 'hs-mc-paints'
     // Single kill-switch: every hsp_* animation pauses under reduced motion,
     // regardless of how many per-hash rules get appended after this.
+    // animation-delay:0s too: paints are paused-not-removed under reduced
+    // motion, and the phase-lock delay (--hsp-t fold, see lib/paint-spec.js
+    // syncDelayCalc) would otherwise freeze each copy at a different
+    // mid-cycle pose — zeroing it pins every paused paint at frame 0.
     hsPaintSheetEl.textContent =
-      '@media (prefers-reduced-motion: reduce){[class*="hsp-"],[class*="hsp-"] *{animation-play-state:paused !important;}}' +
+      '@media (prefers-reduced-motion: reduce){[class*="hsp-"],[class*="hsp-"] *{animation-play-state:paused !important;animation-delay:0s !important;}}' +
       // Hover freeze: pause the paint animation and swap to a plain white/black
       // chip so the name stays fully readable while the pointer is over it.
       // background-clip goes back to border-box (was `text`, see compilePaintCss)
@@ -372,6 +396,20 @@ function queueNameColorLookup(uid) {
   if (!hsPaintBatchTimer) hsPaintBatchTimer = cleanup.setTimeout(flushHsPaintBatch, HS_PAINT_BATCH_DELAY)
 }
 
+/**
+ * Queue a uid for a PLUS TENURE lookup. Un-gated by the name-paint setting —
+ * tenure is a membership badge, not a cosmetic, so it must resolve even with
+ * paints off (mirrors queueNameColorLookup). Rides the same batch/flush as
+ * paints + picked colour (all three ride the same /api/paints response).
+ */
+function queuePlusTenureLookup(uid) {
+  if (!uid) return
+  if (hsPlusCache.has(uid)) return
+  if (hsPaintPending.size >= HS_PAINT_PENDING_MAX) return
+  hsPaintPending.add(uid)
+  if (!hsPaintBatchTimer) hsPaintBatchTimer = cleanup.setTimeout(flushHsPaintBatch, HS_PAINT_BATCH_DELAY)
+}
+
 async function flushHsPaintBatch() {
   hsPaintBatchTimer = null
   if (!hsPaintPending.size) return
@@ -381,10 +419,12 @@ async function flushHsPaintBatch() {
 
   let paints = null
   let colors = null
+  let plus = null
   try {
     const resp = await safeSendMessage({ type: 'fetch_paints', userIds: batch })
     if (resp && resp.paints && typeof resp.paints === 'object') paints = resp.paints
     if (resp && resp.colors && typeof resp.colors === 'object') colors = resp.colors
+    if (resp && resp.plus && typeof resp.plus === 'object') plus = resp.plus
   } catch (e) {
     paints = null
   }
@@ -401,6 +441,20 @@ async function flushHsPaintBatch() {
       }
     }
     if (colorChanged.length && typeof updateHsColorsInPlace === 'function') updateHsColorsInPlace(colorChanged)
+  }
+
+  // Plus tenure rides the same response too — identity signal, cached +
+  // applied independently of the paint/colour outcome. Only the confirmed
+  // batch is cached; ids absent from `plus` simply aren't active Plus members.
+  if (plus) {
+    const plusChanged = []
+    for (const id of batch) {
+      if (!hsPlusCache.has(id)) {
+        setHsPlusEntry(id, plus[id] || null)
+        if (plus[id]) plusChanged.push(id)
+      }
+    }
+    if (plusChanged.length && typeof applyHsPlusTenureToVisible === 'function') applyHsPlusTenureToVisible(plusChanged)
   }
 
   if (paints) {
@@ -471,6 +525,12 @@ function applyHsPaintToElement(el, userId) {
     }
     el.classList.add(cls)
   }
+  // Preserve any already-stamped mount time across the style-attribute clear
+  // below — a second resolution of the same uid on an already-painted element
+  // (e.g. a background cache refresh re-running this) must not re-phase an
+  // already-mounted copy out of sync with its siblings (lib/paint-spec.js
+  // syncDelayCalc folds --hsp-t onto every compiled animation's cycle).
+  const existingPhase = el.style ? el.style.getPropertyValue('--hsp-t') : ''
   if (el.hasAttribute('style')) el.removeAttribute('style')
   // Belt-and-suspenders against any future race that hands us an element
   // whose text was already cleared/moved by something else (e.g. a nested-
@@ -480,6 +540,14 @@ function applyHsPaintToElement(el, userId) {
   if (paintNeedsLetterSplit(spec) && !el.dataset.hsPaintSplit && el.textContent) {
     el.innerHTML = splitHsLettersHtml(el.textContent)
     el.dataset.hsPaintSplit = '1'
+  }
+  // Mount stamp for phase-locking — restore the preserved value, or stamp a
+  // fresh one for an element that never had one (in-place resolve, hover-
+  // freeze repaint, restored history; a synchronous render-path element
+  // already carries one from buildMessageDiv/mention/reply-bar, so this is
+  // idempotent for it too).
+  if (el.style) {
+    el.style.setProperty('--hsp-t', existingPhase || paintPhaseNow())
   }
 }
 
@@ -491,14 +559,17 @@ export {
   getHsPaintClass,
   getHsPaintSpec,
   getHsPickedColor,
+  getHsPlusTenureSince,
   hasResolvedHsPaint,
   hsPaintRender,
   hsUsernameColor,
   partitionPaintBatch,
   queueNameColorLookup,
   queuePaintLookup,
+  queuePlusTenureLookup,
   reinjectHsPaintSheet,
   setHsColorEntry,
   setHsPaintEntry,
+  setHsPlusEntry,
   splitHsLettersHtml,
 }

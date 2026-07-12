@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { readFileSync } from 'fs'
 import { join } from 'path'
-import { compilePaintCss, hashPaintSpec, paintNeedsLetterSplit } from '../src/lib/paint-spec.js'
+import { compilePaintCss, hashPaintSpec, paintNeedsLetterSplit, paintPhaseNow } from '../src/lib/paint-spec.js'
 import { escapeHtml } from '../src/lib/utils.js'
 import {
   applyHsPaintToElement,
@@ -72,6 +72,7 @@ beforeEach(() => {
   globalThis.compilePaintCss = compilePaintCss
   globalThis.hashPaintSpec = hashPaintSpec
   globalThis.paintNeedsLetterSplit = paintNeedsLetterSplit
+  globalThis.paintPhaseNow = paintPhaseNow
   globalThis.document = {
     getElementById: () => null,
     createElement: () => ({ id: '', textContent: '' }),
@@ -83,31 +84,48 @@ afterEach(() => {
   globalThis.compilePaintCss = undefined
   globalThis.hashPaintSpec = undefined
   globalThis.paintNeedsLetterSplit = undefined
+  globalThis.paintPhaseNow = undefined
   globalThis.document = undefined
 })
 
 // Minimal duck-typed stand-in for an Anchor element — only the surface
-// applyHsPaintToElement actually touches.
+// applyHsPaintToElement actually touches. `.style` is a tiny CSSStyleDeclaration
+// look-alike backed by a Map, matching real DOM semantics closely enough for
+// this file's purposes: setProperty/removeAttribute both live-reflect into the
+// same backing store, so hasAttribute('style') tracks it exactly like a real
+// element (a setProperty call after removeAttribute('style') DOES bring the
+// attribute back — that's real browser behavior, not a test artifact).
 function fakeAnchor(textContent, { existingClasses = [], style = null, splitAttr } = {}) {
   const classes = new Set(existingClasses)
   const dataset = {}
   if (splitAttr) dataset.hsPaintSplit = splitAttr
+  const styleProps = new Map()
+  if (style) {
+    for (const decl of style.split(';')) {
+      const [k, v] = decl.split(':')
+      if (k && v) styleProps.set(k.trim(), v.trim())
+    }
+  }
   return {
     textContent,
     innerHTML: textContent,
     dataset,
-    _style: style,
     classList: {
       contains: (c) => classes.has(c),
       add: (c) => classes.add(c),
       remove: (c) => classes.delete(c),
       [Symbol.iterator]: () => classes[Symbol.iterator](),
     },
+    style: {
+      getPropertyValue: (k) => styleProps.get(k) || '',
+      setProperty: (k, v) => styleProps.set(k, v),
+      removeProperty: (k) => styleProps.delete(k),
+    },
     hasAttribute(name) {
-      return name === 'style' && this._style != null
+      return name === 'style' && styleProps.size > 0
     },
     removeAttribute(name) {
-      if (name === 'style') this._style = null
+      if (name === 'style') styleProps.clear()
     },
   }
 }
@@ -141,12 +159,35 @@ describe('applyHsPaintToElement — in-place DOM application (BUG #3 hardening)'
     expect(el.innerHTML).toBe('@mellen')
   })
 
-  test('clears a pre-existing inline style attribute (precedence: class-based paint must win)', () => {
+  test('clears a pre-existing inline color decl (precedence: class-based paint must win), but re-adds the phase-lock mount stamp', () => {
     setHsPaintEntry(UID, SOLID_SPEC)
     const el = fakeAnchor('@mellen', { style: 'color:#fff' })
     expect(el.hasAttribute('style')).toBe(true)
     applyHsPaintToElement(el, UID)
-    expect(el.hasAttribute('style')).toBe(false)
+    // The old inline color decl is gone — the class owns the fill now.
+    expect(el.style.getPropertyValue('color')).toBe('')
+    // But the style attribute isn't actually empty: applyHsPaintToElement
+    // stamps --hsp-t (paint-spec.js syncDelayCalc) so this copy phase-locks
+    // to the same wall-clock frame as every other copy of the paint — real
+    // DOM semantics reflect that setProperty call right back into the
+    // attribute, same as the site (client/chat/paint-cosmetics.js).
+    expect(el.hasAttribute('style')).toBe(true)
+    expect(el.style.getPropertyValue('--hsp-t')).toMatch(/^\d+(\.\d+)?s$/)
+  })
+
+  test('stamps --hsp-t (phase-lock mount time) on an element with no pre-existing style', () => {
+    setHsPaintEntry(UID, SOLID_SPEC)
+    const el = fakeAnchor('@mellen')
+    applyHsPaintToElement(el, UID)
+    expect(el.style.getPropertyValue('--hsp-t')).toMatch(/^\d+(\.\d+)?s$/)
+  })
+
+  test('never overwrites an already-stamped --hsp-t (idempotent mount time — a repaint must not re-phase an already-mounted copy)', () => {
+    setHsPaintEntry(UID, SOLID_SPEC)
+    const el = fakeAnchor('@mellen')
+    el.style.setProperty('--hsp-t', '123.456s')
+    applyHsPaintToElement(el, UID)
+    expect(el.style.getPropertyValue('--hsp-t')).toBe('123.456s')
   })
 
   test('no-ops entirely when el is null/undefined', () => {

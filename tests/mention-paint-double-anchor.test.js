@@ -64,6 +64,9 @@ globalThis.linksEnabled = false
 globalThis.knownColors = new Map()
 globalThis.sanitizeColor = (c) => c || '#fff'
 globalThis.mentionColor = () => '#fff' // shared stub — both processEmotes' fallback branch and highlightMentionsInHtml call this
+// Deterministic stub — real paintPhaseNow (lib/paint-spec.js) is Date.now()-based,
+// which this file doesn't test (see tests/paint-spec.test.js for that).
+globalThis.paintPhaseNow = () => '1720000000.000s'
 
 // ── processEmotes (real import — emotes.js is already ESM-importable) ───────
 const { channelEmoteCaches, emoteCache, processEmotes } = await import('../src/multichat/emotes.js')
@@ -97,6 +100,12 @@ globalThis.userKey = userKey
 globalThis.mcUserCosmetics = new Map()
 globalThis.queueMcCosmeticsLookup = () => {}
 globalThis.getMcPaintStyle = () => null
+// Plus tenure ("+5mo"/"+3y") rides the same mention render site but is a
+// separate signal — no active tenure in these double-anchor-bug tests
+// (covered by the dedicated plus-tenure test file).
+globalThis.getHsPlusTenureSince = () => null
+globalThis.queuePlusTenureLookup = () => {}
+globalThis.renderPlusTenureToken = () => ''
 
 const TEST_UID = '73266147'
 const TEST_LOWER = 'mellen'

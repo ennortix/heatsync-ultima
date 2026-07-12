@@ -557,6 +557,46 @@ function updateHsColorsInPlace(userIds) {
   }
 }
 
+// Idempotent single-token placement — skips an anchor that already has a
+// `.hs-plus-tenure` next sibling (a second resolution of the same batch, or a
+// re-render that already inlined the token synchronously).
+function _placeHsPlusTenureToken(el, since) {
+  if (!el) return
+  const next = el.nextElementSibling
+  if (next && next.classList.contains('hs-plus-tenure')) return
+  const token = buildPlusTenureToken(since)
+  if (token) el.insertAdjacentElement('afterend', token)
+}
+
+// Apply a resolved PLUS TENURE token beside visible rows in place — the
+// counterpart to updateHsPaintsInPlace above, fired from its own independent
+// batch (queuePlusTenureLookup/flushHsPaintBatch in paints.js) once tenure
+// resolves. Repaints both the sender username anchor (_uidIndex for a
+// twitch-space uid, or a data-hs-paint-uid query for a kick/yt-space uid —
+// same lookup updateHsPaintsInPlace uses) and any inline @mention/reply-
+// context anchors (_mentionIndex) for this uid.
+function applyHsPlusTenureToVisible(userIds) {
+  const container = document.getElementById('hs-mc-messages')
+  if (!container) return
+  for (const uid of userIds) {
+    const since = getHsPlusTenureSince(uid)
+    if (!since) continue
+    const mentionSet = _mentionIndex.get(uid)
+    if (mentionSet) {
+      for (const el of mentionSet) _placeHsPlusTenureToken(el, since)
+    }
+    const isNamespacedUid = uid.startsWith('kick_') || uid.startsWith('yt_')
+    const divs = isNamespacedUid
+      ? container.querySelectorAll(`[data-hs-paint-uid="${CSS.escape(uid)}"]`)
+      : _uidIndex.get(uid)
+    if (!divs) continue
+    for (const div of divs) {
+      const userLink = div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
+      _placeHsPlusTenureToken(userLink, since)
+    }
+  }
+}
+
 // Update cosmetics (badges + paint) in-place without full re-render.
 // O(1) lookup via _uidIndex / _mentionIndex instead of querySelectorAll over
 // the full message container — at 25-user batches × 500 children that was

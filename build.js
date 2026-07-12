@@ -581,6 +581,15 @@ function readMultichatModules(platform) {
     combined += `\n// --- lib/paint-spec.js ---\n${stripExports(readFileSync(paintSpecPath, 'utf8'))}\n`
   }
 
+  // Plus-tenure token helpers (src/lib/plus-tenure.js) — same reasoning as
+  // paint-spec.js above: only the multichat overlay renders the token, and
+  // paints.js (below, in the modules loop) calls buildPlusTenureToken /
+  // renderPlusTenureToken, so this must land in the bundle before it.
+  const plusTenurePath = join(SRC_DIR, 'lib', 'plus-tenure.js')
+  if (existsSync(plusTenurePath)) {
+    combined += `\n// --- lib/plus-tenure.js ---\n${stripExports(readFileSync(plusTenurePath, 'utf8'))}\n`
+  }
+
   const modules = PLATFORM_MODULES[platform] ?? MULTICHAT_MODULES
   for (const file of modules) {
     const filePath = join(mcDir, file)

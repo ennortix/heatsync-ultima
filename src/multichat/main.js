@@ -6367,7 +6367,9 @@
     const cls = `hs-mc-user hs-mc-mention${hsPaint ? ' ' + hsPaint.cls : ''}`
     const uidAttr = uid ? ` data-uid="${escapeHtml(uid)}"` : ''
     const splitAttr = hsPaint ? hsPaint.splitAttr : ''
-    const style = hsPaint ? '' : paintStyle || `color:${sanitizeColor(color || '#fff')}`
+    // Mount stamp (not a color decl) when painted — phase-locks this copy to
+    // the same wall-clock frame as every other copy of the paint.
+    const style = hsPaint ? `--hsp-t:${paintPhaseNow()};` : paintStyle || `color:${sanitizeColor(color || '#fff')}`
     const inner = hsPaint ? hsPaint.html : escapeHtml(name)
     return `<a href="https://heatsync.org/user/${encodeURIComponent(name)}" target="_blank" rel="noopener noreferrer" class="${cls}" data-username="${escapeHtml(lower)}"${uidAttr}${splitAttr} style="${style}">${inner}</a>`
   }
@@ -6520,11 +6522,18 @@
       if (feedUid && !feedHsPaint && !mcUserCosmetics.has(feedUid)) queueMcCosmeticsLookup(feedUid)
       const feedPaintStyle = feedHsPaint ? '' : feedUid ? getMcPaintStyle(feedUid) : ''
       const userLink = buildFeedQuoteUserLink(m.feedUser, feedUid, feedHsPaint, feedPaintStyle, m.color)
+      // Plus tenure — same uid this row's paint already resolved above.
+      let feedPlusHtml = ''
+      if (feedUid) {
+        const feedSince = getHsPlusTenureSince(feedUid)
+        if (feedSince === undefined) queuePlusTenureLookup(feedUid)
+        else if (feedSince) feedPlusHtml = renderPlusTenureToken(feedSince)
+      }
       const content = renderFeedContent(m.text, m.emote_refs)
       // Canonical heat: formatHeat + ° suffix (≥10) + tier color/glow/breathe via heatSpanHtml
       const heatHtml = (m.heat || 0) > 0 ? ' ' + heatSpanHtml(m.heat) : ''
       // All values sanitized — safe innerHTML (heat is numeric, emoji/color are hardcoded)
-      div.innerHTML = `${tsSpan}${threadLink}${typeTag}${userLink}${heatHtml}: <span class="hs-feed-body">${content}</span>`
+      div.innerHTML = `${tsSpan}${threadLink}${typeTag}${userLink}${feedPlusHtml}${heatHtml}: <span class="hs-feed-body">${content}</span>`
       div.addEventListener('click', (e) => {
         const spoiler = e.target.closest('.hs-spoiler')
         if (spoiler) {
@@ -6863,6 +6872,17 @@
       (uidTwitch ? hsPaintRender(uidTwitch, m.user) : null) ||
       (m.hsPaintUid ? hsPaintRender(m.hsPaintUid, m.user) : null)
     const paintStyle = hsPaint ? '' : uidTwitch ? getMcPaintStyle(uidTwitch) : ''
+    // Plus tenure ("+5mo"/"+3y" beside an active Plus member's name) — an
+    // identity signal, not a cosmetic, so it resolves regardless of the
+    // showNamePaints setting. Same uid precedence as hsPaint above: resolved
+    // twitch-space uid first, kick/yt-namespaced hsPaintUid fallback.
+    const hsPlusUid = uidTwitch || m.hsPaintUid || ''
+    let hsPlusHtml = ''
+    if (hsPlusUid) {
+      const since = getHsPlusTenureSince(hsPlusUid)
+      if (since === undefined) queuePlusTenureLookup(hsPlusUid)
+      else if (since) hsPlusHtml = renderPlusTenureToken(since)
+    }
     // Name colour (when no HS/7TV paint owns the fill): the user's PICKED
     // heatsync colour on youtube + kick ONLY — never twitch, whose custom name
     // colour is the prime/turbo paid perk. YouTube has no native colour, so its
@@ -6890,7 +6910,10 @@
     } else {
       userHref = `https://twitch.tv/${encodeURIComponent(m.user)}`
     }
-    const userLink = `<a href="${userHref}" target="_blank" rel="noopener noreferrer" class="hs-mc-user${hsPaint ? ' ' + hsPaint.cls : ''}" data-username="${escapeHtml(m.user.toLowerCase())}" data-platform="${plat}"${hsPaint ? hsPaint.splitAttr : ''} style="${hsPaint ? '' : paintStyle || 'color:' + sanitizeColor(hsNameColor || '#fff')}">${hsPaint ? hsPaint.html : escapeHtml(m.user)}</a>`
+    // When painted, drop the inline color decl (the class owns the paint
+    // fill) and carry the mount stamp instead so every copy of the paint
+    // phase-locks to the wall clock (lib/paint-spec.js syncDelayCalc).
+    const userLink = `<a href="${userHref}" target="_blank" rel="noopener noreferrer" class="hs-mc-user${hsPaint ? ' ' + hsPaint.cls : ''}" data-username="${escapeHtml(m.user.toLowerCase())}" data-platform="${plat}"${hsPaint ? hsPaint.splitAttr : ''} style="${hsPaint ? `--hsp-t:${paintPhaseNow()};` : paintStyle || 'color:' + sanitizeColor(hsNameColor || '#fff')}">${hsPaint ? hsPaint.html : escapeHtml(m.user)}</a>`
     let avatarHtml = ''
     if (avatarsEnabled) {
       const userKey = m.user.toLowerCase()
@@ -7010,11 +7033,21 @@
     // sender username above.
     const replyHsPaint = replyUid ? hsPaintRender(replyUid, '@' + (m.replyTo?.user || '')) : null
     const replyPaint = replyHsPaint ? '' : replyUid ? userPaintStyle(replyUid, replyLower, m.platform) : ''
-    const replyStyle = replyHsPaint ? '' : replyPaint || `color:${mentionColor(replyLower)}`
+    // Mount stamp (not a color decl) when painted — phase-locks this copy to
+    // the same wall-clock frame as every other copy of the paint.
+    const replyStyle = replyHsPaint ? `--hsp-t:${paintPhaseNow()};` : replyPaint || `color:${mentionColor(replyLower)}`
     const replyUidAttr = replyUid ? ` data-uid="${escapeHtml(replyUid)}"` : ''
     const replyUserCls = `hs-mc-user hs-mc-reply-user${replyHsPaint ? ' ' + replyHsPaint.cls : ''}`
     const replyUserSplitAttr = replyHsPaint ? replyHsPaint.splitAttr : ''
     const replyUserHtml = replyHsPaint ? replyHsPaint.html : '@' + escapeHtml(m.replyTo?.user || '')
+    // Plus tenure ("+5mo"/"+3y") — identity signal, resolves regardless of
+    // the paint setting. Same replyUid the reply-bar paint already resolved.
+    let replyPlusHtml = ''
+    if (replyUid) {
+      const replySince = getHsPlusTenureSince(replyUid)
+      if (replySince === undefined) queuePlusTenureLookup(replyUid)
+      else if (replySince) replyPlusHtml = renderPlusTenureToken(replySince)
+    }
     // A blocked user's name + message snippet must not leak through a reply
     // context bar when someone else replies to them. Show a neutral marker
     // with no name, no text, no profile link.
@@ -7022,7 +7055,7 @@
     const replyBar = replyBlocked
       ? `<div class="hs-mc-reply-ctx">&#8618; Replying to [blocked]</div>`
       : m.replyTo && m.replyTo.user
-        ? `<div class="hs-mc-reply-ctx" title="${escapeHtml(m.replyTo.user)}: ${escapeHtml(m.replyTo.text || '')}">&#8618; Replying to <a href="https://heatsync.org/user/${encodeURIComponent(m.replyTo.user)}" target="_blank" rel="noopener noreferrer" class="${replyUserCls}" data-username="${escapeHtml(replyLower)}"${replyUidAttr}${replyUserSplitAttr} style="${replyStyle}">${replyUserHtml}</a>${m.replyTo.text ? ': ' + escapeHtml(m.replyTo.text.length > 80 ? m.replyTo.text.slice(0, 80) + '...' : m.replyTo.text) : ''}</div>`
+        ? `<div class="hs-mc-reply-ctx" title="${escapeHtml(m.replyTo.user)}: ${escapeHtml(m.replyTo.text || '')}">&#8618; Replying to <a href="https://heatsync.org/user/${encodeURIComponent(m.replyTo.user)}" target="_blank" rel="noopener noreferrer" class="${replyUserCls}" data-username="${escapeHtml(replyLower)}"${replyUidAttr}${replyUserSplitAttr} style="${replyStyle}">${replyUserHtml}</a>${replyPlusHtml}${m.replyTo.text ? ': ' + escapeHtml(m.replyTo.text.length > 80 ? m.replyTo.text.slice(0, 80) + '...' : m.replyTo.text) : ''}</div>`
         : ''
     // Redeem label — look up reward title from Hermes cache
     let redeemLabel = ''
@@ -7049,8 +7082,8 @@
         : m.type === 'notice'
           ? `${tsHtml}<span class="hs-mc-text">${processedText}</span>`
           : m.isAction
-            ? `${tsHtml}${systemLine}${platformBadge}${scBadge}${bitsBadge}${badges}${avatarHtml}${userLink}${channelSpan} <span class="hs-mc-text" style="color:${sanitizeColor(m.color || '#fff')};font-style:italic">${processedText}</span>${stickerHtml}`
-            : `${tsHtml}${systemLine}${platformBadge}${scBadge}${bitsBadge}${badges}${avatarHtml}${userLink}${channelSpan}: <span class="hs-mc-text">${processedText}</span>${stickerHtml}`
+            ? `${tsHtml}${systemLine}${platformBadge}${scBadge}${bitsBadge}${badges}${avatarHtml}${userLink}${hsPlusHtml}${channelSpan} <span class="hs-mc-text" style="color:${sanitizeColor(m.color || '#fff')};font-style:italic">${processedText}</span>${stickerHtml}`
+            : `${tsHtml}${systemLine}${platformBadge}${scBadge}${bitsBadge}${badges}${avatarHtml}${userLink}${hsPlusHtml}${channelSpan}: <span class="hs-mc-text">${processedText}</span>${stickerHtml}`
     div.innerHTML = `${replyBar}${msgBody}`
     // Correct emote states based on current inventory + blocked (cached HTML
     // may have stale states). String-includes gate skips the querySelectorAll
@@ -7339,13 +7372,23 @@
               mentionCls += ` ${hsPaint.cls}`
               splitAttr = hsPaint.splitAttr
               inner = hsPaint.html
-              style = ''
+              // Mount stamp instead of a color decl — phase-locks this copy
+              // to the same wall-clock frame as every other copy of the paint.
+              style = `--hsp-t:${paintPhaseNow()};`
             } else {
               const paint = getMcPaintStyle(uid)
               if (paint) style = paint
             }
           }
-          return `${lead}<a href="https://heatsync.org/user/${encodeURIComponent(lower)}" target="_blank" rel="noopener noreferrer" class="${mentionCls}" data-username="${safeLower}"${uidAttr}${splitAttr} style="${style}">${inner}</a>`
+          // Plus tenure ("+5mo"/"+3y") — identity signal, resolves regardless
+          // of the paint setting. Same uid this mention already resolved above.
+          let plusHtml = ''
+          if (uid) {
+            const since = getHsPlusTenureSince(uid)
+            if (since === undefined) queuePlusTenureLookup(uid)
+            else if (since) plusHtml = renderPlusTenureToken(since)
+          }
+          return `${lead}<a href="https://heatsync.org/user/${encodeURIComponent(lower)}" target="_blank" rel="noopener noreferrer" class="${mentionCls}" data-username="${safeLower}"${uidAttr}${splitAttr} style="${style}">${inner}</a>${plusHtml}`
         },
       )
     }
@@ -8576,16 +8619,25 @@
       // restored rows (reload, tab-switch-back) stay unpainted forever: the
       // cache-restored fast path returns below and never calls
       // buildMessageDiv, which is the only other place that applies a paint.
+      // Plus tenure has the exact same restored-fragment gap as HeatSync
+      // paints above — a cached fragment predates this session's tenure
+      // resolution, so an already-active Plus member's restored rows never
+      // show the token without this pass.
       const _restoredCosUids = []
       const _restoredPaintUids = []
+      const _restoredPlusUids = []
       for (const m of toRender) {
         if (!m.userId) continue
         if (mcUserCosmetics.has(m.userId)) _restoredCosUids.push(m.userId)
         else queueMcCosmeticsLookup(m.userId)
         if (hasResolvedHsPaint(m.userId)) _restoredPaintUids.push(m.userId)
+        const since = getHsPlusTenureSince(m.userId)
+        if (since) _restoredPlusUids.push(m.userId)
+        else if (since === undefined) queuePlusTenureLookup(m.userId)
       }
       if (_restoredCosUids.length) updateCosmeticsInPlace([...new Set(_restoredCosUids)])
       if (_restoredPaintUids.length) updateHsPaintsInPlace([...new Set(_restoredPaintUids)])
+      if (_restoredPlusUids.length) applyHsPlusTenureToVisible([...new Set(_restoredPlusUids)])
       cleanup.raf(() => {
         isProgrammaticScroll = false
       })

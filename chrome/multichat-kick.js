@@ -30491,6 +30491,9 @@ async function loadHsUsername() {
     if (ui?.kick_username) mentionAliases.add(ui.kick_username.toLowerCase())
     if (ui?.youtube_username) mentionAliases.add(ui.youtube_username.toLowerCase())
     if (ui?.twitch_username) mentionAliases.add(ui.twitch_username.toLowerCase())
+    // Your own paint/tenure/colour jump the cosmetics queue and your picked
+    // colour seeds now — otherwise your name waits behind the whole channel.
+    primeSelfHsCosmetics(ui)
   } catch (e) {
     hsCurrentUsername = null
     hsCurrentUserId = null
@@ -30640,6 +30643,7 @@ async function loadHsAuth() {
         if (ui?.kick_username) mentionAliases.add(ui.kick_username.toLowerCase())
         if (ui?.youtube_username) mentionAliases.add(ui.youtube_username.toLowerCase())
         if (ui?.twitch_username) mentionAliases.add(ui.twitch_username.toLowerCase())
+        primeSelfHsCosmetics(ui)
       }
       if (changes.auth_token_encrypted || changes.auth_token) {
         const wasAuthed = hsAuthToken
@@ -43950,10 +43954,21 @@ const HS_PAINT_BATCH_DELAY = 100
 // can queue unique uids faster than the batch drain rate; cap so the pending
 // Set can't grow unbounded between flushes.
 const HS_PAINT_PENDING_MAX = 3000
+// Backlog pacing. A firehose channel queues hundreds of distinct chatters, and
+// a 500ms gap between batches left the tail of the queue waiting ~10s — names
+// sat on their djb2 placeholder colour and paints "took forever to load". The
+// API caches each uid 60s server-side, so 50 uids per 120ms is cheap and
+// drains the same backlog ~3x faster.
+const HS_PAINT_BACKLOG_DELAY = 120
 
 const hsPaintCache = new Map() // uid -> { spec: object|null, hash: string|null }
 const hsPaintInjectedHashes = new Set()
 const hsPaintPending = new Set()
+// Priority lane — the viewer's OWN identities (primeSelfHsCosmetics). Drained
+// before hsPaintPending and exempt from HS_PAINT_PENDING_MAX: plain FIFO left
+// your own name unpainted behind every stranger in the channel, and once the
+// pending cap was hit your uid was dropped outright.
+const hsPaintPriority = new Set()
 let hsPaintBatchTimer = null
 let hsPaintSheetEl = null
 
@@ -44301,10 +44316,38 @@ function queuePlusTenureLookup(uid) {
   if (!hsPaintBatchTimer) hsPaintBatchTimer = cleanup.setTimeout(flushHsPaintBatch, HS_PAINT_BATCH_DELAY)
 }
 
+/**
+ * Prime the VIEWER'S OWN cosmetics as soon as the heatsync identity is known,
+ * before the channel's backlog floods the queue. Seeds the picked colour from
+ * the stored user_info (so your own name never renders the placeholder colour
+ * and then flips), and puts every id you can speak as into the priority lane.
+ * @param {object} ui  storage user_info (background fetchUserInfo)
+ */
+function primeSelfHsCosmetics(ui) {
+  if (!ui) return
+  const ids = new Set()
+  if (ui.id) ids.add(String(ui.id))
+  if (ui.twitch_id) ids.add(String(ui.twitch_id))
+  if (ui.kick_id) ids.add(`kick_${ui.kick_id}`)
+  if (ui.youtube_channel_id) ids.add(`yt_${ui.youtube_channel_id}`)
+  for (const id of ids) {
+    // Server truth overwrites on flush; this only covers the pre-flush window.
+    if (!hsColorCache.has(id)) setHsColorEntry(id, ui.color || null)
+    if (hsPaintCache.has(id)) continue
+    hsPaintPending.delete(id)
+    hsPaintPriority.add(id)
+  }
+  if (hsPaintPriority.size && !hsPaintBatchTimer) {
+    hsPaintBatchTimer = cleanup.setTimeout(flushHsPaintBatch, HS_PAINT_BATCH_DELAY)
+  }
+}
+
 async function flushHsPaintBatch() {
   hsPaintBatchTimer = null
-  if (!hsPaintPending.size) return
-  const { batch, rest } = partitionPaintBatch(hsPaintPending, HS_PAINT_BATCH_SIZE)
+  if (!hsPaintPending.size && !hsPaintPriority.size) return
+  // Own identities drain first — see hsPaintPriority.
+  const { batch, rest } = partitionPaintBatch([...hsPaintPriority, ...hsPaintPending], HS_PAINT_BATCH_SIZE)
+  hsPaintPriority.clear()
   hsPaintPending.clear()
   for (const id of rest) hsPaintPending.add(id)
 
@@ -44370,8 +44413,8 @@ async function flushHsPaintBatch() {
     for (const id of batch) hsPaintPending.add(id)
   }
 
-  if (hsPaintPending.size > 0 && !hsPaintBatchTimer) {
-    hsPaintBatchTimer = cleanup.setTimeout(flushHsPaintBatch, HS_PAINT_BATCH_DELAY * 5)
+  if ((hsPaintPending.size > 0 || hsPaintPriority.size > 0) && !hsPaintBatchTimer) {
+    hsPaintBatchTimer = cleanup.setTimeout(flushHsPaintBatch, HS_PAINT_BACKLOG_DELAY)
   }
 }
 

@@ -2068,6 +2068,11 @@ async function fetchUserInfo() {
     }
 
     const userInfo = {
+      // Identity ids — the paint/colour/tenure lookups are keyed by them
+      // (primeSelfHsCosmetics), and social.js's hsCurrentUserId reads .id.
+      id: user.id != null ? String(user.id) : '',
+      twitch_id: user.twitch_id != null ? String(user.twitch_id) : '',
+      kick_id: user.kick_id != null ? String(user.kick_id) : '',
       display_name: user.display_name || user.twitch_username || user.kick_username || '',
       username: user.username || user.twitch_username || '',
       twitch_username: user.twitch_username || '',

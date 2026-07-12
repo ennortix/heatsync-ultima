@@ -137,6 +137,9 @@ async function loadHsUsername() {
     if (ui?.kick_username) mentionAliases.add(ui.kick_username.toLowerCase())
     if (ui?.youtube_username) mentionAliases.add(ui.youtube_username.toLowerCase())
     if (ui?.twitch_username) mentionAliases.add(ui.twitch_username.toLowerCase())
+    // Your own paint/tenure/colour jump the cosmetics queue and your picked
+    // colour seeds now — otherwise your name waits behind the whole channel.
+    primeSelfHsCosmetics(ui)
   } catch (e) {
     hsCurrentUsername = null
     hsCurrentUserId = null
@@ -286,6 +289,7 @@ async function loadHsAuth() {
         if (ui?.kick_username) mentionAliases.add(ui.kick_username.toLowerCase())
         if (ui?.youtube_username) mentionAliases.add(ui.youtube_username.toLowerCase())
         if (ui?.twitch_username) mentionAliases.add(ui.twitch_username.toLowerCase())
+        primeSelfHsCosmetics(ui)
       }
       if (changes.auth_token_encrypted || changes.auth_token) {
         const wasAuthed = hsAuthToken

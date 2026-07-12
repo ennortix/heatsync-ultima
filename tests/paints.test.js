@@ -11,6 +11,7 @@ import {
   getHsPickedColor,
   hsUsernameColor,
   partitionPaintBatch,
+  primeSelfHsCosmetics,
   setHsColorEntry,
   setHsPaintEntry,
   splitHsLettersHtml,
@@ -406,5 +407,47 @@ describe('picked name colour + youtube hash fallback', () => {
 
   test('getHsPickedColor returns null for an unseen uid', () => {
     expect(getHsPickedColor('yt_UCneverseen00000000000')).toBeNull()
+  })
+})
+
+
+// The viewer's own name used to render the djb2 placeholder colour and wait
+// behind the whole channel's backlog for its paint ("why is my name pink while
+// it loads"). Priming seeds the picked colour synchronously and puts every id
+// you can speak as into the priority lane.
+describe('primeSelfHsCosmetics — own identity seeds instantly', () => {
+  beforeEach(() => {
+    // paints.js resolves `cleanup` from the bundle scope; stub it for the
+    // standalone-module import used by these tests.
+    globalThis.cleanup = { setTimeout: () => 0 }
+  })
+
+  test('seeds the picked name colour with no network round trip', () => {
+    primeSelfHsCosmetics({ id: 'self-seed-1', color: '#ff8700' })
+    expect(getHsPickedColor('self-seed-1')).toBe('#ff8700')
+  })
+
+  test('primes every identity under its own paint-id namespace', () => {
+    primeSelfHsCosmetics({
+      id: 'yt_UCbbbbbbbbbbbbbbbbbbbbbb',
+      twitch_id: '90210001',
+      kick_id: '90210002',
+      youtube_channel_id: 'UCbbbbbbbbbbbbbbbbbbbbbb',
+      color: '#00ff87',
+    })
+    expect(getHsPickedColor('90210001')).toBe('#00ff87')
+    expect(getHsPickedColor('kick_90210002')).toBe('#00ff87')
+    expect(getHsPickedColor('yt_UCbbbbbbbbbbbbbbbbbbbbbb')).toBe('#00ff87')
+  })
+
+  test('never clobbers a colour the server already resolved', () => {
+    setHsColorEntry('self-seed-2', '#d70000')
+    primeSelfHsCosmetics({ id: 'self-seed-2', color: '#ffffff' })
+    expect(getHsPickedColor('self-seed-2')).toBe('#d70000')
+  })
+
+  test('no identity ids — no throw, no seed', () => {
+    expect(() => primeSelfHsCosmetics({})).not.toThrow()
+    expect(() => primeSelfHsCosmetics(null)).not.toThrow()
   })
 })

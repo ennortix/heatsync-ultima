@@ -369,6 +369,16 @@ async function refreshChromeAccessToken(creds) {
   })
   const data = await res.json()
   if (!res.ok || !data.access_token) {
+    // invalid_grant on a token that used to work = google expired it. Refresh
+    // tokens live only 7 days while the OAuth consent screen is in "Testing";
+    // publishing the consent screen to production makes them permanent.
+    if (data.error === 'invalid_grant') {
+      throw new Error(
+        'chrome token refresh failed: refresh token expired or revoked.\n' +
+          '  re-mint it:  bun scripts/publish.js --cws-auth\n' +
+          '  permanent fix: set the OAuth consent screen to "In production" (Testing expires tokens every 7 days)',
+      )
+    }
     throw new Error(
       `chrome token refresh failed: ${res.status} ${data.error || ''} ${data.error_description || ''}`.trim(),
     )

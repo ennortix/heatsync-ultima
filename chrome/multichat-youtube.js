@@ -4996,6 +4996,26 @@ function effectDuration(effectId, speed) {
   return Math.round(seconds * 1000) / 1000
 }
 
+/** Phase-lock delay for a paint animation. Elements carry `--hsp-t` (their
+ * mount wall-time in seconds — see paintPhaseNow), and mod() folds it onto
+ * this animation's full visual cycle, so every copy of the same name lands on
+ * the same frame regardless of when it mounted. `period` must be the FULL
+ * cycle: duration ×2 for alternate-direction animations (odd iterations run
+ * reversed — duration alone would sync half the copies mirror-phased).
+ * Elements without the var (or browsers without mod()) resolve to 0s — the
+ * old per-mount unsynced behavior, never a broken paint. */
+function syncDelayCalc(period) {
+  const p = Math.round(period * 1000) / 1000
+  return `calc(-1 * mod(var(--hsp-t, 0s), ${p}s))`
+}
+
+/** Inline stamp for `--hsp-t`: the element's mount wall-time in seconds.
+ * Callers put it in the username element's style so syncDelayCalc can
+ * phase-lock every instance of a paint to the shared wall clock. */
+function paintPhaseNow() {
+  return `${(Date.now() / 1000).toFixed(3)}s`
+}
+
 function gradientStopsCss(stops) {
   return stops.map((s) => `${s.color} ${s.pos}%`).join(', ')
 }
@@ -5076,9 +5096,11 @@ function buildPaintEffectCss(effectId, speed, base, stops, hash) {
   if (THEMED_PAINT[effectId]) {
     const t = THEMED_PAINT[effectId]
     const decls = `background:${t.gradient};background-size:${t.size};-webkit-background-clip:text;background-clip:text;color:transparent;`
+    const sync = syncDelayCalc(t.direction === 'alternate' ? duration * 2 : duration)
     return {
       decls,
       animShorthand: `${animName} ${duration}s ${t.timing} infinite ${t.direction}`,
+      sync,
       keyframes: t.keyframes(animName),
     }
   }
@@ -5092,7 +5114,12 @@ function buildPaintEffectCss(effectId, speed, base, stops, hash) {
     const image = `linear-gradient(${angle}deg, ${gradientStopsCss(wrapStops)})`
     const decls = `background:${image};background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;`
     const kf = `@keyframes ${animName}{to{background-position:300% 0;}}`
-    return { decls, animShorthand: `${animName} ${duration}s linear infinite`, keyframes: kf }
+    return {
+      decls,
+      animShorthand: `${animName} ${duration}s linear infinite`,
+      sync: syncDelayCalc(duration),
+      keyframes: kf,
+    }
   }
 
   if (effectId === 'conic') {
@@ -5106,7 +5133,12 @@ function buildPaintEffectCss(effectId, speed, base, stops, hash) {
     const kf =
       `@property ${angleVar}{syntax:"<angle>";initial-value:0deg;inherits:false;}` +
       `@keyframes ${animName}{to{${angleVar}:360deg;}}`
-    return { decls, animShorthand: `${animName} ${duration}s linear infinite`, keyframes: kf }
+    return {
+      decls,
+      animShorthand: `${animName} ${duration}s linear infinite`,
+      sync: syncDelayCalc(duration),
+      keyframes: kf,
+    }
   }
 
   if (effectId === 'hue') {
@@ -5114,7 +5146,12 @@ function buildPaintEffectCss(effectId, speed, base, stops, hash) {
     // of how base painted the text.
     const baseCss = buildBaseCss(base, stops)
     const kf = `@keyframes ${animName}{to{filter:hue-rotate(360deg);}}`
-    return { decls: baseCss.decl, animShorthand: `${animName} ${duration}s linear infinite`, keyframes: kf }
+    return {
+      decls: baseCss.decl,
+      animShorthand: `${animName} ${duration}s linear infinite`,
+      sync: syncDelayCalc(duration),
+      keyframes: kf,
+    }
   }
 
   if (effectId === 'glint') {
@@ -5122,7 +5159,12 @@ function buildPaintEffectCss(effectId, speed, base, stops, hash) {
     const image = `linear-gradient(115deg, transparent 38%, #ffffffcc 50%, transparent 62%) no-repeat, ${baseCss.cssImage}`
     const decls = `background:${image};background-size:250% 100%, 100% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;`
     const kf = `@keyframes ${animName}{0%{background-position:210% 0, 0 0;}100%{background-position:-110% 0, 0 0;}}`
-    return { decls, animShorthand: `${animName} ${duration}s ease-in-out infinite`, keyframes: kf }
+    return {
+      decls,
+      animShorthand: `${animName} ${duration}s ease-in-out infinite`,
+      sync: syncDelayCalc(duration),
+      keyframes: kf,
+    }
   }
 
   if (effectId === 'reveal') {
@@ -5130,7 +5172,12 @@ function buildPaintEffectCss(effectId, speed, base, stops, hash) {
     const mask = 'linear-gradient(90deg, #000 30%, #0003 50%, #000 70%)'
     const decls = `${baseCss.decl}-webkit-mask-image:${mask};mask-image:${mask};-webkit-mask-size:300% 100%;mask-size:300% 100%;`
     const kf = `@keyframes ${animName}{from{-webkit-mask-position:130% 0;mask-position:130% 0;}to{-webkit-mask-position:-130% 0;mask-position:-130% 0;}}`
-    return { decls, animShorthand: `${animName} ${duration}s linear infinite`, keyframes: kf }
+    return {
+      decls,
+      animShorthand: `${animName} ${duration}s linear infinite`,
+      sync: syncDelayCalc(duration),
+      keyframes: kf,
+    }
   }
 
   return null
@@ -5154,7 +5201,7 @@ function buildLetterMotionCss(effectId, speed, selector, hash) {
       return {
         decls: '',
         animShorthand: `${animName} ${duration}s ease-in-out infinite`,
-        delayExpr: `calc(var(--i) * ${(0.09 / safeSpeed(speed)).toFixed(4)}s)`,
+        delayExpr: `calc(var(--i) * ${(0.09 / safeSpeed(speed)).toFixed(4)}s - mod(var(--hsp-t, 0s), ${duration}s))`,
         keyframes: kf,
       }
     }
@@ -5163,7 +5210,7 @@ function buildLetterMotionCss(effectId, speed, selector, hash) {
       return {
         decls: '',
         animShorthand: `${animName} ${duration}s linear infinite`,
-        delayExpr: `calc(var(--i) * -${(0.18 / safeSpeed(speed)).toFixed(4)}s)`,
+        delayExpr: `calc(var(--i) * -${(0.18 / safeSpeed(speed)).toFixed(4)}s - mod(var(--hsp-t, 0s), ${duration}s))`,
         keyframes: kf,
       }
     }
@@ -5172,7 +5219,7 @@ function buildLetterMotionCss(effectId, speed, selector, hash) {
       return {
         decls: 'transform-style:preserve-3d;',
         animShorthand: `${animName} ${duration}s cubic-bezier(.5,0,.5,1) infinite`,
-        delayExpr: `calc(var(--i) * ${(0.12 / safeSpeed(speed)).toFixed(4)}s)`,
+        delayExpr: `calc(var(--i) * ${(0.12 / safeSpeed(speed)).toFixed(4)}s - mod(var(--hsp-t, 0s), ${duration}s))`,
         keyframes: kf,
         extraRule: `${selector}{perspective:300px;}`,
       }
@@ -5194,32 +5241,32 @@ function buildMotionEffectCss(effectId, speed, selector, hash, glow) {
 
   switch (effectId) {
     case 'coin': {
-      const rule = `${selector}{animation:${animName} ${duration}s cubic-bezier(.6,0,.4,1) infinite;transform-style:preserve-3d;}`
+      const rule = `${selector}{animation:${animName} ${duration}s cubic-bezier(.6,0,.4,1) infinite;animation-delay:${syncDelayCalc(duration)};transform-style:preserve-3d;}`
       const kf = `@keyframes ${animName}{0%,55%{transform:rotateY(0);}75%{transform:rotateY(180deg);}95%,100%{transform:rotateY(360deg);}}`
       return rule + kf
     }
     case 'heli': {
-      const rule = `${selector}{animation:${animName} ${duration}s linear infinite;}`
+      const rule = `${selector}{animation:${animName} ${duration}s linear infinite;animation-delay:${syncDelayCalc(duration)};}`
       const kf = `@keyframes ${animName}{to{transform:rotate(360deg);}}`
       return rule + kf
     }
     case 'float': {
-      const rule = `${selector}{animation:${animName} ${duration}s ease-in-out infinite;}`
+      const rule = `${selector}{animation:${animName} ${duration}s ease-in-out infinite;animation-delay:${syncDelayCalc(duration)};}`
       const kf = `@keyframes ${animName}{0%,100%{transform:translateY(1.5px) rotate(-1.6deg);}50%{transform:translateY(-2.5px) rotate(1.6deg);}}`
       return rule + kf
     }
     case 'heart': {
-      const rule = `${selector}{animation:${animName} ${duration}s ease-out infinite;}`
+      const rule = `${selector}{animation:${animName} ${duration}s ease-out infinite;animation-delay:${syncDelayCalc(duration)};}`
       const kf = `@keyframes ${animName}{0%,28%,100%{transform:scale(1);}10%{transform:scale(1.11);}20%{transform:scale(1.04);}}`
       return rule + kf
     }
     case 'wobble': {
-      const rule = `${selector}{animation:${animName} ${duration}s ease-in-out infinite;}`
+      const rule = `${selector}{animation:${animName} ${duration}s ease-in-out infinite;animation-delay:${syncDelayCalc(duration)};}`
       const kf = `@keyframes ${animName}{0%,100%{transform:scaleX(1);}50%{transform:scaleX(1.09);}}`
       return rule + kf
     }
     case 'swing': {
-      const rule = `${selector}{transform-origin:50% -60%;animation:${animName} ${duration}s ease-in-out infinite;}`
+      const rule = `${selector}{transform-origin:50% -60%;animation:${animName} ${duration}s ease-in-out infinite;animation-delay:${syncDelayCalc(duration)};}`
       const kf = `@keyframes ${animName}{0%,100%{transform:rotate(4.5deg);}50%{transform:rotate(-4.5deg);}}`
       return rule + kf
     }
@@ -5231,7 +5278,7 @@ function buildMotionEffectCss(effectId, speed, selector, hash, glow) {
       const r1b = Math.round(6 * scale),
         r2b = Math.round(22 * scale),
         r3b = Math.round(40 * scale)
-      const rule = `${selector}{animation:${animName} ${duration}s ease-in-out infinite;}`
+      const rule = `${selector}{animation:${animName} ${duration}s ease-in-out infinite;animation-delay:${syncDelayCalc(duration)};}`
       const kf = `@keyframes ${animName}{0%,100%{text-shadow:0 0 ${r1}px ${color}80, 0 0 ${r2}px ${color}40;}50%{text-shadow:0 0 ${r1b}px ${color}cc, 0 0 ${r2b}px ${color}88, 0 0 ${r3b}px ${color}44;}}`
       return rule + kf
     }
@@ -5304,7 +5351,7 @@ function compilePaintCss(spec, selector, opts = {}) {
       if (p) {
         spanDecls += p.decls
         animList.push(p.animShorthand)
-        delayList.push('0s')
+        delayList.push(p.sync)
         css += p.keyframes
       }
     }
@@ -5329,7 +5376,7 @@ function compilePaintCss(spec, selector, opts = {}) {
   } else {
     if (paintEffect) {
       const p = buildPaintEffectCss(paintEffect.id, paintEffect.speed, base, stops, hash)
-      if (p) css += `${paintTarget}{${p.decls}animation:${p.animShorthand};}${p.keyframes}`
+      if (p) css += `${paintTarget}{${p.decls}animation:${p.animShorthand};animation-delay:${p.sync};}${p.keyframes}`
     }
     for (const e of motionEffects) {
       css += buildMotionEffectCss(e.id, e.speed, selector, hash, spec.glow)
@@ -5347,6 +5394,97 @@ function compilePaintCss(spec, selector, opts = {}) {
   return css
 }
 
+
+
+// --- lib/plus-tenure.js ---
+/**
+ * plus-tenure.js — the HeatSync Plus tenure token, ported for the extension.
+ *
+ * SYNCED COPY of the heatsync monorepo's client/utils/plus-tenure.js — keep
+ * byte-close to the source of truth (see the cross-repo auto-apply rule in
+ * project memory). A small text badge shown next to an ACTIVE Plus member's
+ * name: the "+" Plus mark plus how long they've been subscribed ("+5mo",
+ * "+3y"). Tenure rides the same warm ramp as heat (longer = warmer), which
+ * also happens to be the Plus brand hue (orange); it stops below warn-yellow,
+ * and only 5y+ legends reach medal gold.
+ *
+ * Data source: `plus_since` (an ISO timestamp), which the server exposes ONLY
+ * while the user is currently entitled (GET /api/paints `plus` map — see
+ * chrome/background.js fetch_paints). A null/undefined `since` means "not an
+ * active Plus member" → no token. Inputs are date/number coerced, so the
+ * output needs no escaping.
+ *
+ * Pure-data module (no DOM in the ratio helpers) — bundled into the
+ * multichat overlay only, alongside lib/paint-spec.js (see build.js's
+ * readMultichatModules).
+ */
+
+const MONTH_MS = 2629746000 // average gregorian month (365.2425/12 days)
+
+/** Whole months a member has been on Plus, from their first-subscribed date. */
+function plusTenureMonths(since) {
+  if (!since) return 0
+  const t = since instanceof Date ? since.getTime() : Date.parse(since)
+  if (!Number.isFinite(t)) return 0
+  return Math.max(0, Math.floor((Date.now() - t) / MONTH_MS))
+}
+
+/** Warm ramp; caps below warn-yellow, 5y+ earns medal gold. Mirrors the heat ramp. */
+function plusTenureColor(months) {
+  const m = Number(months) || 0
+  if (m >= 60) return '#ffd700' // 5y+  — medal gold
+  if (m >= 36) return '#ffaf00' // 3y+  — amber
+  if (m >= 12) return '#ff8700' // 1y+  — brand orange
+  if (m >= 6) return '#ff5f00' // 6mo+ — ember
+  return '#d75f00' // 1-5mo — dim ember
+}
+
+/** Compact duration; "5mo" / "3y". Empty under a month (the "+" mark stands alone). */
+function formatPlusTenure(months) {
+  const m = Number(months) || 0
+  if (m < 1) return ''
+  return m < 12 ? `${m}mo` : `${Math.floor(m / 12)}y`
+}
+
+/** Hover text, no middot. "3 years on heatsync plus" / "heatsync plus member". */
+function plusTenureTitle(months) {
+  const m = Number(months) || 0
+  if (m < 1) return 'heatsync plus member'
+  if (m < 12) return `${m} month${m === 1 ? '' : 's'} on heatsync plus`
+  const y = Math.floor(m / 12)
+  const r = m % 12
+  const yr = `${y} year${y === 1 ? '' : 's'}`
+  return r > 0 ? `${yr} ${r}mo on heatsync plus` : `${yr} on heatsync plus`
+}
+
+/**
+ * The token, ready to drop beside a username. Empty string when `since` is
+ * absent (not an active Plus member). The leading "+" is the Plus brand mark
+ * so a bare number never reads as ambiguous. Injection-safe: only date/
+ * number-derived text reaches the HTML.
+ */
+function renderPlusTenureToken(since) {
+  if (!since) return ''
+  const m = plusTenureMonths(since)
+  return `<span class="hs-plus-tenure" style="color:${plusTenureColor(m)}" title="${plusTenureTitle(m)}">+${formatPlusTenure(m)}</span>`
+}
+
+/**
+ * Same token as an HTMLElement, built via safe DOM setters (textContent/style/
+ * title — never innerHTML). Use for live DOM injection so no HTML-string sink
+ * is involved at all. Returns null when `since` is absent. Browser-only (uses
+ * document); the string form above covers initial-render/SSR-style embeds.
+ */
+function buildPlusTenureToken(since) {
+  if (!since) return null
+  const m = plusTenureMonths(since)
+  const el = document.createElement('span')
+  el.className = 'hs-plus-tenure'
+  el.style.color = plusTenureColor(m)
+  el.title = plusTenureTitle(m)
+  el.textContent = `+${formatPlusTenure(m)}`
+  return el
+}
 
 
 // --- multichat/bootstrap.js ---
@@ -9403,6 +9541,17 @@ function injectStyles() {
       font-weight: 600;
       text-decoration: none;
       cursor: pointer;
+    }
+    /* plus tenure token — "+5mo"/"+3y" beside a Plus member's name (the "+" is
+       the plus brand mark). Mirrors the site's .hs-plus-tenure (public/css/core/
+       base.css): square, no border-radius, bare color-graded text sitting
+       inline after the name. Colour is set inline per-tenure (warm ramp). */
+    .hs-plus-tenure {
+      display: inline-block;
+      margin: 0 2px 0 4px;
+      font-weight: 700;
+      vertical-align: middle;
+      white-space: nowrap;
     }
     .hs-mc-link {
       color: var(--hs-link);
@@ -43808,6 +43957,13 @@ const hsPaintPending = new Set()
 let hsPaintBatchTimer = null
 let hsPaintSheetEl = null
 
+// ── plus tenure ("+5mo" / "+3y" beside an active Plus member's name) ───────
+// Rides the same /api/paints batch (server now returns a `plus` map of
+// per-id ISO plus_since). Identity signal, not a cosmetic — resolves
+// regardless of the showNamePaints setting, mirrors queueNameColorLookup's
+// un-gated queueing below. See lib/plus-tenure.js for the token itself.
+const hsPlusCache = new Map() // uid -> ISO plus_since string | null (cached-negative)
+
 // ── picked name colour (users.color) ────────────────────────────────────────
 // Rides the same /api/paints batch (server now returns a `colors` map). Applied
 // to youtube + kick names ONLY — never twitch, whose custom name colour is the
@@ -43858,6 +44014,19 @@ function setHsColorEntry(uid, color) {
  * yet resolved. Callers treat null as "no picked colour". */
 function getHsPickedColor(uid) {
   return hsColorCache.get(uid) ?? null
+}
+
+function setHsPlusEntry(uid, since) {
+  if (!hsPlusCache.has(uid)) evictOldestPaintEntry(hsPlusCache, HS_PAINT_CACHE_MAX)
+  hsPlusCache.set(uid, since || null)
+}
+
+/** @returns {string|undefined|null} ISO plus_since if `uid` is an active Plus
+ * member, null if looked-up-and-not, undefined if not yet looked up. Callers
+ * use undefined to decide whether to trigger an async lookup (queuePlusTenureLookup). */
+function getHsPlusTenureSince(uid) {
+  if (!hsPlusCache.has(uid)) return undefined
+  return hsPlusCache.get(uid)
 }
 
 // ── pure helpers (unit-testable without DOM/network) ────────────────────────
@@ -43920,8 +44089,12 @@ function ensureHsPaintSheet() {
     hsPaintSheetEl.id = 'hs-mc-paints'
     // Single kill-switch: every hsp_* animation pauses under reduced motion,
     // regardless of how many per-hash rules get appended after this.
+    // animation-delay:0s too: paints are paused-not-removed under reduced
+    // motion, and the phase-lock delay (--hsp-t fold, see lib/paint-spec.js
+    // syncDelayCalc) would otherwise freeze each copy at a different
+    // mid-cycle pose — zeroing it pins every paused paint at frame 0.
     hsPaintSheetEl.textContent =
-      '@media (prefers-reduced-motion: reduce){[class*="hsp-"],[class*="hsp-"] *{animation-play-state:paused !important;}}' +
+      '@media (prefers-reduced-motion: reduce){[class*="hsp-"],[class*="hsp-"] *{animation-play-state:paused !important;animation-delay:0s !important;}}' +
       // Hover freeze: pause the paint animation and swap to a plain white/black
       // chip so the name stays fully readable while the pointer is over it.
       // background-clip goes back to border-box (was `text`, see compilePaintCss)
@@ -44114,6 +44287,20 @@ function queueNameColorLookup(uid) {
   if (!hsPaintBatchTimer) hsPaintBatchTimer = cleanup.setTimeout(flushHsPaintBatch, HS_PAINT_BATCH_DELAY)
 }
 
+/**
+ * Queue a uid for a PLUS TENURE lookup. Un-gated by the name-paint setting —
+ * tenure is a membership badge, not a cosmetic, so it must resolve even with
+ * paints off (mirrors queueNameColorLookup). Rides the same batch/flush as
+ * paints + picked colour (all three ride the same /api/paints response).
+ */
+function queuePlusTenureLookup(uid) {
+  if (!uid) return
+  if (hsPlusCache.has(uid)) return
+  if (hsPaintPending.size >= HS_PAINT_PENDING_MAX) return
+  hsPaintPending.add(uid)
+  if (!hsPaintBatchTimer) hsPaintBatchTimer = cleanup.setTimeout(flushHsPaintBatch, HS_PAINT_BATCH_DELAY)
+}
+
 async function flushHsPaintBatch() {
   hsPaintBatchTimer = null
   if (!hsPaintPending.size) return
@@ -44123,10 +44310,12 @@ async function flushHsPaintBatch() {
 
   let paints = null
   let colors = null
+  let plus = null
   try {
     const resp = await safeSendMessage({ type: 'fetch_paints', userIds: batch })
     if (resp && resp.paints && typeof resp.paints === 'object') paints = resp.paints
     if (resp && resp.colors && typeof resp.colors === 'object') colors = resp.colors
+    if (resp && resp.plus && typeof resp.plus === 'object') plus = resp.plus
   } catch (e) {
     paints = null
   }
@@ -44143,6 +44332,20 @@ async function flushHsPaintBatch() {
       }
     }
     if (colorChanged.length && typeof updateHsColorsInPlace === 'function') updateHsColorsInPlace(colorChanged)
+  }
+
+  // Plus tenure rides the same response too — identity signal, cached +
+  // applied independently of the paint/colour outcome. Only the confirmed
+  // batch is cached; ids absent from `plus` simply aren't active Plus members.
+  if (plus) {
+    const plusChanged = []
+    for (const id of batch) {
+      if (!hsPlusCache.has(id)) {
+        setHsPlusEntry(id, plus[id] || null)
+        if (plus[id]) plusChanged.push(id)
+      }
+    }
+    if (plusChanged.length && typeof applyHsPlusTenureToVisible === 'function') applyHsPlusTenureToVisible(plusChanged)
   }
 
   if (paints) {
@@ -44213,6 +44416,12 @@ function applyHsPaintToElement(el, userId) {
     }
     el.classList.add(cls)
   }
+  // Preserve any already-stamped mount time across the style-attribute clear
+  // below — a second resolution of the same uid on an already-painted element
+  // (e.g. a background cache refresh re-running this) must not re-phase an
+  // already-mounted copy out of sync with its siblings (lib/paint-spec.js
+  // syncDelayCalc folds --hsp-t onto every compiled animation's cycle).
+  const existingPhase = el.style ? el.style.getPropertyValue('--hsp-t') : ''
   if (el.hasAttribute('style')) el.removeAttribute('style')
   // Belt-and-suspenders against any future race that hands us an element
   // whose text was already cleared/moved by something else (e.g. a nested-
@@ -44222,6 +44431,14 @@ function applyHsPaintToElement(el, userId) {
   if (paintNeedsLetterSplit(spec) && !el.dataset.hsPaintSplit && el.textContent) {
     el.innerHTML = splitHsLettersHtml(el.textContent)
     el.dataset.hsPaintSplit = '1'
+  }
+  // Mount stamp for phase-locking — restore the preserved value, or stamp a
+  // fresh one for an element that never had one (in-place resolve, hover-
+  // freeze repaint, restored history; a synchronous render-path element
+  // already carries one from buildMessageDiv/mention/reply-bar, so this is
+  // idempotent for it too).
+  if (el.style) {
+    el.style.setProperty('--hsp-t', existingPhase || paintPhaseNow())
   }
 }
 
@@ -44783,6 +45000,46 @@ function updateHsColorsInPlace(userIds) {
       const userLink = div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
       // paint class (hsp-) owns the fill via CSS — don't overwrite with a colour.
       if (userLink && !userLink.className.includes('hsp-')) userLink.style.color = colour
+    }
+  }
+}
+
+// Idempotent single-token placement — skips an anchor that already has a
+// `.hs-plus-tenure` next sibling (a second resolution of the same batch, or a
+// re-render that already inlined the token synchronously).
+function _placeHsPlusTenureToken(el, since) {
+  if (!el) return
+  const next = el.nextElementSibling
+  if (next && next.classList.contains('hs-plus-tenure')) return
+  const token = buildPlusTenureToken(since)
+  if (token) el.insertAdjacentElement('afterend', token)
+}
+
+// Apply a resolved PLUS TENURE token beside visible rows in place — the
+// counterpart to updateHsPaintsInPlace above, fired from its own independent
+// batch (queuePlusTenureLookup/flushHsPaintBatch in paints.js) once tenure
+// resolves. Repaints both the sender username anchor (_uidIndex for a
+// twitch-space uid, or a data-hs-paint-uid query for a kick/yt-space uid —
+// same lookup updateHsPaintsInPlace uses) and any inline @mention/reply-
+// context anchors (_mentionIndex) for this uid.
+function applyHsPlusTenureToVisible(userIds) {
+  const container = document.getElementById('hs-mc-messages')
+  if (!container) return
+  for (const uid of userIds) {
+    const since = getHsPlusTenureSince(uid)
+    if (!since) continue
+    const mentionSet = _mentionIndex.get(uid)
+    if (mentionSet) {
+      for (const el of mentionSet) _placeHsPlusTenureToken(el, since)
+    }
+    const isNamespacedUid = uid.startsWith('kick_') || uid.startsWith('yt_')
+    const divs = isNamespacedUid
+      ? container.querySelectorAll(`[data-hs-paint-uid="${CSS.escape(uid)}"]`)
+      : _uidIndex.get(uid)
+    if (!divs) continue
+    for (const div of divs) {
+      const userLink = div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
+      _placeHsPlusTenureToken(userLink, since)
     }
   }
 }
@@ -56175,7 +56432,9 @@ const STORAGE_KEY = 'heatsync_multichat'
     const cls = `hs-mc-user hs-mc-mention${hsPaint ? ' ' + hsPaint.cls : ''}`
     const uidAttr = uid ? ` data-uid="${escapeHtml(uid)}"` : ''
     const splitAttr = hsPaint ? hsPaint.splitAttr : ''
-    const style = hsPaint ? '' : paintStyle || `color:${sanitizeColor(color || '#fff')}`
+    // Mount stamp (not a color decl) when painted — phase-locks this copy to
+    // the same wall-clock frame as every other copy of the paint.
+    const style = hsPaint ? `--hsp-t:${paintPhaseNow()};` : paintStyle || `color:${sanitizeColor(color || '#fff')}`
     const inner = hsPaint ? hsPaint.html : escapeHtml(name)
     return `<a href="https://heatsync.org/user/${encodeURIComponent(name)}" target="_blank" rel="noopener noreferrer" class="${cls}" data-username="${escapeHtml(lower)}"${uidAttr}${splitAttr} style="${style}">${inner}</a>`
   }
@@ -56328,11 +56587,18 @@ const STORAGE_KEY = 'heatsync_multichat'
       if (feedUid && !feedHsPaint && !mcUserCosmetics.has(feedUid)) queueMcCosmeticsLookup(feedUid)
       const feedPaintStyle = feedHsPaint ? '' : feedUid ? getMcPaintStyle(feedUid) : ''
       const userLink = buildFeedQuoteUserLink(m.feedUser, feedUid, feedHsPaint, feedPaintStyle, m.color)
+      // Plus tenure — same uid this row's paint already resolved above.
+      let feedPlusHtml = ''
+      if (feedUid) {
+        const feedSince = getHsPlusTenureSince(feedUid)
+        if (feedSince === undefined) queuePlusTenureLookup(feedUid)
+        else if (feedSince) feedPlusHtml = renderPlusTenureToken(feedSince)
+      }
       const content = renderFeedContent(m.text, m.emote_refs)
       // Canonical heat: formatHeat + ° suffix (≥10) + tier color/glow/breathe via heatSpanHtml
       const heatHtml = (m.heat || 0) > 0 ? ' ' + heatSpanHtml(m.heat) : ''
       // All values sanitized — safe innerHTML (heat is numeric, emoji/color are hardcoded)
-      div.innerHTML = `${tsSpan}${threadLink}${typeTag}${userLink}${heatHtml}: <span class="hs-feed-body">${content}</span>`
+      div.innerHTML = `${tsSpan}${threadLink}${typeTag}${userLink}${feedPlusHtml}${heatHtml}: <span class="hs-feed-body">${content}</span>`
       div.addEventListener('click', (e) => {
         const spoiler = e.target.closest('.hs-spoiler')
         if (spoiler) {
@@ -56671,6 +56937,17 @@ const STORAGE_KEY = 'heatsync_multichat'
       (uidTwitch ? hsPaintRender(uidTwitch, m.user) : null) ||
       (m.hsPaintUid ? hsPaintRender(m.hsPaintUid, m.user) : null)
     const paintStyle = hsPaint ? '' : uidTwitch ? getMcPaintStyle(uidTwitch) : ''
+    // Plus tenure ("+5mo"/"+3y" beside an active Plus member's name) — an
+    // identity signal, not a cosmetic, so it resolves regardless of the
+    // showNamePaints setting. Same uid precedence as hsPaint above: resolved
+    // twitch-space uid first, kick/yt-namespaced hsPaintUid fallback.
+    const hsPlusUid = uidTwitch || m.hsPaintUid || ''
+    let hsPlusHtml = ''
+    if (hsPlusUid) {
+      const since = getHsPlusTenureSince(hsPlusUid)
+      if (since === undefined) queuePlusTenureLookup(hsPlusUid)
+      else if (since) hsPlusHtml = renderPlusTenureToken(since)
+    }
     // Name colour (when no HS/7TV paint owns the fill): the user's PICKED
     // heatsync colour on youtube + kick ONLY — never twitch, whose custom name
     // colour is the prime/turbo paid perk. YouTube has no native colour, so its
@@ -56698,7 +56975,10 @@ const STORAGE_KEY = 'heatsync_multichat'
     } else {
       userHref = `https://twitch.tv/${encodeURIComponent(m.user)}`
     }
-    const userLink = `<a href="${userHref}" target="_blank" rel="noopener noreferrer" class="hs-mc-user${hsPaint ? ' ' + hsPaint.cls : ''}" data-username="${escapeHtml(m.user.toLowerCase())}" data-platform="${plat}"${hsPaint ? hsPaint.splitAttr : ''} style="${hsPaint ? '' : paintStyle || 'color:' + sanitizeColor(hsNameColor || '#fff')}">${hsPaint ? hsPaint.html : escapeHtml(m.user)}</a>`
+    // When painted, drop the inline color decl (the class owns the paint
+    // fill) and carry the mount stamp instead so every copy of the paint
+    // phase-locks to the wall clock (lib/paint-spec.js syncDelayCalc).
+    const userLink = `<a href="${userHref}" target="_blank" rel="noopener noreferrer" class="hs-mc-user${hsPaint ? ' ' + hsPaint.cls : ''}" data-username="${escapeHtml(m.user.toLowerCase())}" data-platform="${plat}"${hsPaint ? hsPaint.splitAttr : ''} style="${hsPaint ? `--hsp-t:${paintPhaseNow()};` : paintStyle || 'color:' + sanitizeColor(hsNameColor || '#fff')}">${hsPaint ? hsPaint.html : escapeHtml(m.user)}</a>`
     let avatarHtml = ''
     if (avatarsEnabled) {
       const userKey = m.user.toLowerCase()
@@ -56818,11 +57098,21 @@ const STORAGE_KEY = 'heatsync_multichat'
     // sender username above.
     const replyHsPaint = replyUid ? hsPaintRender(replyUid, '@' + (m.replyTo?.user || '')) : null
     const replyPaint = replyHsPaint ? '' : replyUid ? userPaintStyle(replyUid, replyLower, m.platform) : ''
-    const replyStyle = replyHsPaint ? '' : replyPaint || `color:${mentionColor(replyLower)}`
+    // Mount stamp (not a color decl) when painted — phase-locks this copy to
+    // the same wall-clock frame as every other copy of the paint.
+    const replyStyle = replyHsPaint ? `--hsp-t:${paintPhaseNow()};` : replyPaint || `color:${mentionColor(replyLower)}`
     const replyUidAttr = replyUid ? ` data-uid="${escapeHtml(replyUid)}"` : ''
     const replyUserCls = `hs-mc-user hs-mc-reply-user${replyHsPaint ? ' ' + replyHsPaint.cls : ''}`
     const replyUserSplitAttr = replyHsPaint ? replyHsPaint.splitAttr : ''
     const replyUserHtml = replyHsPaint ? replyHsPaint.html : '@' + escapeHtml(m.replyTo?.user || '')
+    // Plus tenure ("+5mo"/"+3y") — identity signal, resolves regardless of
+    // the paint setting. Same replyUid the reply-bar paint already resolved.
+    let replyPlusHtml = ''
+    if (replyUid) {
+      const replySince = getHsPlusTenureSince(replyUid)
+      if (replySince === undefined) queuePlusTenureLookup(replyUid)
+      else if (replySince) replyPlusHtml = renderPlusTenureToken(replySince)
+    }
     // A blocked user's name + message snippet must not leak through a reply
     // context bar when someone else replies to them. Show a neutral marker
     // with no name, no text, no profile link.
@@ -56830,7 +57120,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     const replyBar = replyBlocked
       ? `<div class="hs-mc-reply-ctx">&#8618; Replying to [blocked]</div>`
       : m.replyTo && m.replyTo.user
-        ? `<div class="hs-mc-reply-ctx" title="${escapeHtml(m.replyTo.user)}: ${escapeHtml(m.replyTo.text || '')}">&#8618; Replying to <a href="https://heatsync.org/user/${encodeURIComponent(m.replyTo.user)}" target="_blank" rel="noopener noreferrer" class="${replyUserCls}" data-username="${escapeHtml(replyLower)}"${replyUidAttr}${replyUserSplitAttr} style="${replyStyle}">${replyUserHtml}</a>${m.replyTo.text ? ': ' + escapeHtml(m.replyTo.text.length > 80 ? m.replyTo.text.slice(0, 80) + '...' : m.replyTo.text) : ''}</div>`
+        ? `<div class="hs-mc-reply-ctx" title="${escapeHtml(m.replyTo.user)}: ${escapeHtml(m.replyTo.text || '')}">&#8618; Replying to <a href="https://heatsync.org/user/${encodeURIComponent(m.replyTo.user)}" target="_blank" rel="noopener noreferrer" class="${replyUserCls}" data-username="${escapeHtml(replyLower)}"${replyUidAttr}${replyUserSplitAttr} style="${replyStyle}">${replyUserHtml}</a>${replyPlusHtml}${m.replyTo.text ? ': ' + escapeHtml(m.replyTo.text.length > 80 ? m.replyTo.text.slice(0, 80) + '...' : m.replyTo.text) : ''}</div>`
         : ''
     // Redeem label — look up reward title from Hermes cache
     let redeemLabel = ''
@@ -56857,8 +57147,8 @@ const STORAGE_KEY = 'heatsync_multichat'
         : m.type === 'notice'
           ? `${tsHtml}<span class="hs-mc-text">${processedText}</span>`
           : m.isAction
-            ? `${tsHtml}${systemLine}${platformBadge}${scBadge}${bitsBadge}${badges}${avatarHtml}${userLink}${channelSpan} <span class="hs-mc-text" style="color:${sanitizeColor(m.color || '#fff')};font-style:italic">${processedText}</span>${stickerHtml}`
-            : `${tsHtml}${systemLine}${platformBadge}${scBadge}${bitsBadge}${badges}${avatarHtml}${userLink}${channelSpan}: <span class="hs-mc-text">${processedText}</span>${stickerHtml}`
+            ? `${tsHtml}${systemLine}${platformBadge}${scBadge}${bitsBadge}${badges}${avatarHtml}${userLink}${hsPlusHtml}${channelSpan} <span class="hs-mc-text" style="color:${sanitizeColor(m.color || '#fff')};font-style:italic">${processedText}</span>${stickerHtml}`
+            : `${tsHtml}${systemLine}${platformBadge}${scBadge}${bitsBadge}${badges}${avatarHtml}${userLink}${hsPlusHtml}${channelSpan}: <span class="hs-mc-text">${processedText}</span>${stickerHtml}`
     div.innerHTML = `${replyBar}${msgBody}`
     // Correct emote states based on current inventory + blocked (cached HTML
     // may have stale states). String-includes gate skips the querySelectorAll
@@ -57147,13 +57437,23 @@ const STORAGE_KEY = 'heatsync_multichat'
               mentionCls += ` ${hsPaint.cls}`
               splitAttr = hsPaint.splitAttr
               inner = hsPaint.html
-              style = ''
+              // Mount stamp instead of a color decl — phase-locks this copy
+              // to the same wall-clock frame as every other copy of the paint.
+              style = `--hsp-t:${paintPhaseNow()};`
             } else {
               const paint = getMcPaintStyle(uid)
               if (paint) style = paint
             }
           }
-          return `${lead}<a href="https://heatsync.org/user/${encodeURIComponent(lower)}" target="_blank" rel="noopener noreferrer" class="${mentionCls}" data-username="${safeLower}"${uidAttr}${splitAttr} style="${style}">${inner}</a>`
+          // Plus tenure ("+5mo"/"+3y") — identity signal, resolves regardless
+          // of the paint setting. Same uid this mention already resolved above.
+          let plusHtml = ''
+          if (uid) {
+            const since = getHsPlusTenureSince(uid)
+            if (since === undefined) queuePlusTenureLookup(uid)
+            else if (since) plusHtml = renderPlusTenureToken(since)
+          }
+          return `${lead}<a href="https://heatsync.org/user/${encodeURIComponent(lower)}" target="_blank" rel="noopener noreferrer" class="${mentionCls}" data-username="${safeLower}"${uidAttr}${splitAttr} style="${style}">${inner}</a>${plusHtml}`
         },
       )
     }
@@ -58384,16 +58684,25 @@ const STORAGE_KEY = 'heatsync_multichat'
       // restored rows (reload, tab-switch-back) stay unpainted forever: the
       // cache-restored fast path returns below and never calls
       // buildMessageDiv, which is the only other place that applies a paint.
+      // Plus tenure has the exact same restored-fragment gap as HeatSync
+      // paints above — a cached fragment predates this session's tenure
+      // resolution, so an already-active Plus member's restored rows never
+      // show the token without this pass.
       const _restoredCosUids = []
       const _restoredPaintUids = []
+      const _restoredPlusUids = []
       for (const m of toRender) {
         if (!m.userId) continue
         if (mcUserCosmetics.has(m.userId)) _restoredCosUids.push(m.userId)
         else queueMcCosmeticsLookup(m.userId)
         if (hasResolvedHsPaint(m.userId)) _restoredPaintUids.push(m.userId)
+        const since = getHsPlusTenureSince(m.userId)
+        if (since) _restoredPlusUids.push(m.userId)
+        else if (since === undefined) queuePlusTenureLookup(m.userId)
       }
       if (_restoredCosUids.length) updateCosmeticsInPlace([...new Set(_restoredCosUids)])
       if (_restoredPaintUids.length) updateHsPaintsInPlace([...new Set(_restoredPaintUids)])
+      if (_restoredPlusUids.length) applyHsPlusTenureToVisible([...new Set(_restoredPlusUids)])
       cleanup.raf(() => {
         isProgrammaticScroll = false
       })

@@ -4,6 +4,7 @@ import {
   EFFECTS,
   hashPaintSpec,
   paintNeedsLetterSplit,
+  paintPhaseNow,
   validatePaintSpec,
 } from '../src/lib/paint-spec.js'
 
@@ -335,7 +336,7 @@ describe('compilePaintCss — structural checks', () => {
   // the fire gradient rendered fully static, only the wave transform ran).
   // The fix combines every span-targeted animation into ONE rule with
   // comma-listed animation/animation-delay.
-  test('fire (paint) + wave (motion): one span rule, two comma-listed animations, paint delay 0s', () => {
+  test('fire (paint) + wave (motion): one span rule, two comma-listed animations, paint delay phase-locked', () => {
     const spec = baseSpec({
       base: {
         type: 'linear',
@@ -355,7 +356,10 @@ describe('compilePaintCss — structural checks', () => {
     expect(spanRules.length).toBe(1)
     const rule = spanRules[0]
     expect(rule).toMatch(/animation:hsp_fw_fire[^,]*, hsp_fw_wave[^;]*;/)
-    expect(rule).toMatch(/animation-delay:0s, calc\(var\(--i\)[^;]*\);/)
+    // paint slot delay = wall-clock phase fold; motion slot keeps the --i stagger plus the fold
+    expect(rule).toMatch(
+      /animation-delay:calc\(-1 \* mod\(var\(--hsp-t, 0s\), [\d.]+s\)\), calc\(var\(--i\)[^;]*mod\(var\(--hsp-t, 0s\)[^;]*\);/,
+    )
     // Paint decls (background/clip) must still be present — not clobbered.
     expect(rule).toContain('background:linear-gradient(0deg, #870000')
     expect(rule).toContain('background-clip:text')
@@ -380,7 +384,9 @@ describe('compilePaintCss — structural checks', () => {
     const spanRules = css.match(/\.hsp-wr span\{[^}]*\}/g) || []
     expect(spanRules.length).toBe(1)
     expect(spanRules[0]).toMatch(/animation:hsp_wr_wave[^,]*, hsp_wr_ripple[^;]*;/)
-    expect(spanRules[0]).toMatch(/animation-delay:calc\(var\(--i\) \* 0\.0900s\), calc\(var\(--i\) \* -0\.1800s\);/)
+    expect(spanRules[0]).toMatch(
+      /animation-delay:calc\(var\(--i\) \* 0\.0900s - mod\(var\(--hsp-t, 0s\), [\d.]+s\)\), calc\(var\(--i\) \* -0\.1800s - mod\(var\(--hsp-t, 0s\), [\d.]+s\)\);/,
+    )
   })
 
   test('pan (paint) + tumble (motion): one span rule; tumble perspective stays a separate parent rule', () => {
@@ -402,7 +408,9 @@ describe('compilePaintCss — structural checks', () => {
     const spanRules = css.match(/\.hsp-pt span\{[^}]*\}/g) || []
     expect(spanRules.length).toBe(1)
     expect(spanRules[0]).toMatch(/animation:hsp_pt_pan[^,]*, hsp_pt_tumble[^;]*;/)
-    expect(spanRules[0]).toMatch(/animation-delay:0s, calc\(var\(--i\)[^;]*\);/)
+    expect(spanRules[0]).toMatch(
+      /animation-delay:calc\(-1 \* mod\(var\(--hsp-t, 0s\), [\d.]+s\)\), calc\(var\(--i\)[^;]*mod\(var\(--hsp-t, 0s\)[^;]*\);/,
+    )
     expect(spanRules[0]).toContain('transform-style:preserve-3d;')
     expect(css).toContain('.hsp-pt{perspective:300px;}')
   })
@@ -535,5 +543,49 @@ describe('EFFECTS enum — exactly the 20 phase-1 effects, correctly classified'
       .map(([id]) => id)
       .sort()
     expect(lumIds).toEqual(['hue', 'neon', 'ripple'])
+  })
+})
+
+// Phase-lock: every animated rule folds the element's mount stamp (--hsp-t)
+// onto its cycle so all copies of a name animate in the same phase. The fold
+// period must be the FULL visual cycle — 2× the duration for
+// alternate-direction animations, or odd/even iterations run mirrored.
+describe('wall-clock phase sync (--hsp-t)', () => {
+  const baseOnly = {
+    v: 1,
+    base: {
+      type: 'linear',
+      angle: 90,
+      stops: [
+        { color: '#ff8700', pos: 0 },
+        { color: '#d70000', pos: 100 },
+      ],
+    },
+    glow: null,
+  }
+
+  test('alternate-direction paint (fire) folds over 2x its duration', () => {
+    const css = compilePaintCss({ ...baseOnly, effects: [{ id: 'fire', speed: 1 }] }, '.hsp-f', { hash: 'f' })
+    const dur = Number(css.match(/animation:hsp_f_fire ([\d.]+)s/)[1])
+    const period = Number(css.match(/mod\(var\(--hsp-t, 0s\), ([\d.]+)s\)/)[1])
+    expect(period).toBeCloseTo(dur * 2, 3)
+  })
+
+  test('normal-direction paint (pan) folds over exactly its duration', () => {
+    const css = compilePaintCss({ ...baseOnly, effects: [{ id: 'pan', speed: 1 }] }, '.hsp-p', { hash: 'p' })
+    const dur = Number(css.match(/animation:hsp_p_pan ([\d.]+)s/)[1])
+    const period = Number(css.match(/mod\(var\(--hsp-t, 0s\), ([\d.]+)s\)/)[1])
+    expect(period).toBeCloseTo(dur, 3)
+  })
+
+  test('whole-name motion (coin) carries the fold on its own rule', () => {
+    const css = compilePaintCss({ ...baseOnly, effects: [{ id: 'coin', speed: 1 }] }, '.hsp-c', { hash: 'c' })
+    expect(css).toMatch(
+      /animation:hsp_c_coin [\d.]+s[^;]*;animation-delay:calc\(-1 \* mod\(var\(--hsp-t, 0s\), [\d.]+s\)\);/,
+    )
+  })
+
+  test('paintPhaseNow returns a seconds stamp usable as a CSS time', () => {
+    expect(paintPhaseNow()).toMatch(/^\d+\.\d{3}s$/)
   })
 })

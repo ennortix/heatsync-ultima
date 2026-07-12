@@ -395,6 +395,26 @@ function effectDuration(effectId, speed) {
   return Math.round(seconds * 1000) / 1000
 }
 
+/** Phase-lock delay for a paint animation. Elements carry `--hsp-t` (their
+ * mount wall-time in seconds — see paintPhaseNow), and mod() folds it onto
+ * this animation's full visual cycle, so every copy of the same name lands on
+ * the same frame regardless of when it mounted. `period` must be the FULL
+ * cycle: duration ×2 for alternate-direction animations (odd iterations run
+ * reversed — duration alone would sync half the copies mirror-phased).
+ * Elements without the var (or browsers without mod()) resolve to 0s — the
+ * old per-mount unsynced behavior, never a broken paint. */
+function syncDelayCalc(period) {
+  const p = Math.round(period * 1000) / 1000
+  return `calc(-1 * mod(var(--hsp-t, 0s), ${p}s))`
+}
+
+/** Inline stamp for `--hsp-t`: the element's mount wall-time in seconds.
+ * Callers put it in the username element's style so syncDelayCalc can
+ * phase-lock every instance of a paint to the shared wall clock. */
+export function paintPhaseNow() {
+  return `${(Date.now() / 1000).toFixed(3)}s`
+}
+
 function gradientStopsCss(stops) {
   return stops.map((s) => `${s.color} ${s.pos}%`).join(', ')
 }
@@ -475,9 +495,11 @@ function buildPaintEffectCss(effectId, speed, base, stops, hash) {
   if (THEMED_PAINT[effectId]) {
     const t = THEMED_PAINT[effectId]
     const decls = `background:${t.gradient};background-size:${t.size};-webkit-background-clip:text;background-clip:text;color:transparent;`
+    const sync = syncDelayCalc(t.direction === 'alternate' ? duration * 2 : duration)
     return {
       decls,
       animShorthand: `${animName} ${duration}s ${t.timing} infinite ${t.direction}`,
+      sync,
       keyframes: t.keyframes(animName),
     }
   }
@@ -491,7 +513,12 @@ function buildPaintEffectCss(effectId, speed, base, stops, hash) {
     const image = `linear-gradient(${angle}deg, ${gradientStopsCss(wrapStops)})`
     const decls = `background:${image};background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;`
     const kf = `@keyframes ${animName}{to{background-position:300% 0;}}`
-    return { decls, animShorthand: `${animName} ${duration}s linear infinite`, keyframes: kf }
+    return {
+      decls,
+      animShorthand: `${animName} ${duration}s linear infinite`,
+      sync: syncDelayCalc(duration),
+      keyframes: kf,
+    }
   }
 
   if (effectId === 'conic') {
@@ -505,7 +532,12 @@ function buildPaintEffectCss(effectId, speed, base, stops, hash) {
     const kf =
       `@property ${angleVar}{syntax:"<angle>";initial-value:0deg;inherits:false;}` +
       `@keyframes ${animName}{to{${angleVar}:360deg;}}`
-    return { decls, animShorthand: `${animName} ${duration}s linear infinite`, keyframes: kf }
+    return {
+      decls,
+      animShorthand: `${animName} ${duration}s linear infinite`,
+      sync: syncDelayCalc(duration),
+      keyframes: kf,
+    }
   }
 
   if (effectId === 'hue') {
@@ -513,7 +545,12 @@ function buildPaintEffectCss(effectId, speed, base, stops, hash) {
     // of how base painted the text.
     const baseCss = buildBaseCss(base, stops)
     const kf = `@keyframes ${animName}{to{filter:hue-rotate(360deg);}}`
-    return { decls: baseCss.decl, animShorthand: `${animName} ${duration}s linear infinite`, keyframes: kf }
+    return {
+      decls: baseCss.decl,
+      animShorthand: `${animName} ${duration}s linear infinite`,
+      sync: syncDelayCalc(duration),
+      keyframes: kf,
+    }
   }
 
   if (effectId === 'glint') {
@@ -521,7 +558,12 @@ function buildPaintEffectCss(effectId, speed, base, stops, hash) {
     const image = `linear-gradient(115deg, transparent 38%, #ffffffcc 50%, transparent 62%) no-repeat, ${baseCss.cssImage}`
     const decls = `background:${image};background-size:250% 100%, 100% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;`
     const kf = `@keyframes ${animName}{0%{background-position:210% 0, 0 0;}100%{background-position:-110% 0, 0 0;}}`
-    return { decls, animShorthand: `${animName} ${duration}s ease-in-out infinite`, keyframes: kf }
+    return {
+      decls,
+      animShorthand: `${animName} ${duration}s ease-in-out infinite`,
+      sync: syncDelayCalc(duration),
+      keyframes: kf,
+    }
   }
 
   if (effectId === 'reveal') {
@@ -529,7 +571,12 @@ function buildPaintEffectCss(effectId, speed, base, stops, hash) {
     const mask = 'linear-gradient(90deg, #000 30%, #0003 50%, #000 70%)'
     const decls = `${baseCss.decl}-webkit-mask-image:${mask};mask-image:${mask};-webkit-mask-size:300% 100%;mask-size:300% 100%;`
     const kf = `@keyframes ${animName}{from{-webkit-mask-position:130% 0;mask-position:130% 0;}to{-webkit-mask-position:-130% 0;mask-position:-130% 0;}}`
-    return { decls, animShorthand: `${animName} ${duration}s linear infinite`, keyframes: kf }
+    return {
+      decls,
+      animShorthand: `${animName} ${duration}s linear infinite`,
+      sync: syncDelayCalc(duration),
+      keyframes: kf,
+    }
   }
 
   return null
@@ -553,7 +600,7 @@ function buildLetterMotionCss(effectId, speed, selector, hash) {
       return {
         decls: '',
         animShorthand: `${animName} ${duration}s ease-in-out infinite`,
-        delayExpr: `calc(var(--i) * ${(0.09 / safeSpeed(speed)).toFixed(4)}s)`,
+        delayExpr: `calc(var(--i) * ${(0.09 / safeSpeed(speed)).toFixed(4)}s - mod(var(--hsp-t, 0s), ${duration}s))`,
         keyframes: kf,
       }
     }
@@ -562,7 +609,7 @@ function buildLetterMotionCss(effectId, speed, selector, hash) {
       return {
         decls: '',
         animShorthand: `${animName} ${duration}s linear infinite`,
-        delayExpr: `calc(var(--i) * -${(0.18 / safeSpeed(speed)).toFixed(4)}s)`,
+        delayExpr: `calc(var(--i) * -${(0.18 / safeSpeed(speed)).toFixed(4)}s - mod(var(--hsp-t, 0s), ${duration}s))`,
         keyframes: kf,
       }
     }
@@ -571,7 +618,7 @@ function buildLetterMotionCss(effectId, speed, selector, hash) {
       return {
         decls: 'transform-style:preserve-3d;',
         animShorthand: `${animName} ${duration}s cubic-bezier(.5,0,.5,1) infinite`,
-        delayExpr: `calc(var(--i) * ${(0.12 / safeSpeed(speed)).toFixed(4)}s)`,
+        delayExpr: `calc(var(--i) * ${(0.12 / safeSpeed(speed)).toFixed(4)}s - mod(var(--hsp-t, 0s), ${duration}s))`,
         keyframes: kf,
         extraRule: `${selector}{perspective:300px;}`,
       }
@@ -593,32 +640,32 @@ function buildMotionEffectCss(effectId, speed, selector, hash, glow) {
 
   switch (effectId) {
     case 'coin': {
-      const rule = `${selector}{animation:${animName} ${duration}s cubic-bezier(.6,0,.4,1) infinite;transform-style:preserve-3d;}`
+      const rule = `${selector}{animation:${animName} ${duration}s cubic-bezier(.6,0,.4,1) infinite;animation-delay:${syncDelayCalc(duration)};transform-style:preserve-3d;}`
       const kf = `@keyframes ${animName}{0%,55%{transform:rotateY(0);}75%{transform:rotateY(180deg);}95%,100%{transform:rotateY(360deg);}}`
       return rule + kf
     }
     case 'heli': {
-      const rule = `${selector}{animation:${animName} ${duration}s linear infinite;}`
+      const rule = `${selector}{animation:${animName} ${duration}s linear infinite;animation-delay:${syncDelayCalc(duration)};}`
       const kf = `@keyframes ${animName}{to{transform:rotate(360deg);}}`
       return rule + kf
     }
     case 'float': {
-      const rule = `${selector}{animation:${animName} ${duration}s ease-in-out infinite;}`
+      const rule = `${selector}{animation:${animName} ${duration}s ease-in-out infinite;animation-delay:${syncDelayCalc(duration)};}`
       const kf = `@keyframes ${animName}{0%,100%{transform:translateY(1.5px) rotate(-1.6deg);}50%{transform:translateY(-2.5px) rotate(1.6deg);}}`
       return rule + kf
     }
     case 'heart': {
-      const rule = `${selector}{animation:${animName} ${duration}s ease-out infinite;}`
+      const rule = `${selector}{animation:${animName} ${duration}s ease-out infinite;animation-delay:${syncDelayCalc(duration)};}`
       const kf = `@keyframes ${animName}{0%,28%,100%{transform:scale(1);}10%{transform:scale(1.11);}20%{transform:scale(1.04);}}`
       return rule + kf
     }
     case 'wobble': {
-      const rule = `${selector}{animation:${animName} ${duration}s ease-in-out infinite;}`
+      const rule = `${selector}{animation:${animName} ${duration}s ease-in-out infinite;animation-delay:${syncDelayCalc(duration)};}`
       const kf = `@keyframes ${animName}{0%,100%{transform:scaleX(1);}50%{transform:scaleX(1.09);}}`
       return rule + kf
     }
     case 'swing': {
-      const rule = `${selector}{transform-origin:50% -60%;animation:${animName} ${duration}s ease-in-out infinite;}`
+      const rule = `${selector}{transform-origin:50% -60%;animation:${animName} ${duration}s ease-in-out infinite;animation-delay:${syncDelayCalc(duration)};}`
       const kf = `@keyframes ${animName}{0%,100%{transform:rotate(4.5deg);}50%{transform:rotate(-4.5deg);}}`
       return rule + kf
     }
@@ -630,7 +677,7 @@ function buildMotionEffectCss(effectId, speed, selector, hash, glow) {
       const r1b = Math.round(6 * scale),
         r2b = Math.round(22 * scale),
         r3b = Math.round(40 * scale)
-      const rule = `${selector}{animation:${animName} ${duration}s ease-in-out infinite;}`
+      const rule = `${selector}{animation:${animName} ${duration}s ease-in-out infinite;animation-delay:${syncDelayCalc(duration)};}`
       const kf = `@keyframes ${animName}{0%,100%{text-shadow:0 0 ${r1}px ${color}80, 0 0 ${r2}px ${color}40;}50%{text-shadow:0 0 ${r1b}px ${color}cc, 0 0 ${r2b}px ${color}88, 0 0 ${r3b}px ${color}44;}}`
       return rule + kf
     }
@@ -703,7 +750,7 @@ export function compilePaintCss(spec, selector, opts = {}) {
       if (p) {
         spanDecls += p.decls
         animList.push(p.animShorthand)
-        delayList.push('0s')
+        delayList.push(p.sync)
         css += p.keyframes
       }
     }
@@ -728,7 +775,7 @@ export function compilePaintCss(spec, selector, opts = {}) {
   } else {
     if (paintEffect) {
       const p = buildPaintEffectCss(paintEffect.id, paintEffect.speed, base, stops, hash)
-      if (p) css += `${paintTarget}{${p.decls}animation:${p.animShorthand};}${p.keyframes}`
+      if (p) css += `${paintTarget}{${p.decls}animation:${p.animShorthand};animation-delay:${p.sync};}${p.keyframes}`
     }
     for (const e of motionEffects) {
       css += buildMotionEffectCss(e.id, e.speed, selector, hash, spec.glow)

@@ -3220,9 +3220,9 @@
     }
 
     if (settings.hideStreamTitle) {
-      // Twitch stream info/title bar
+      // Twitch stream title only — NOT .channel-info-content (that container
+      // holds subscribe/share/viewer-count/about too; hiding it nukes the bar)
       rules.push('[data-a-target="stream-title"] { display: none !important; }')
-      rules.push('.channel-info-content { display: none !important; }')
       // Kick
       rules.push('.stream-username-wrapper { display: none !important; }')
     }
@@ -3291,18 +3291,26 @@
       )
     }
     if (settings.hideRecommendedChannels) {
+      // 2026 twitch renamed the shelves: "Live Channels" + "<name> Viewers Also
+      // Watch" — the section div's aria-label is the only stable hook (no
+      // data-a-target / data-test-selector on it). English-locale only, like
+      // every aria selector in this block. Legacy selectors kept for
+      // logged-out / older DOM.
       rules.push(
-        '[aria-label*="Recommended Channels"i], [data-a-target="recommended-channels"], [data-test-selector="recommended-channels"] { display: none !important; }',
+        '.side-nav-section[aria-label="Live Channels"], .side-nav-section[aria-label*="Viewers Also Watch"i], [aria-label*="Recommended Channels"i], [data-a-target="recommended-channels"], [data-test-selector="recommended-channels"] { display: none !important; }',
       )
     }
     if (settings.hideStories) {
+      // storiesLeftNavSection* covers collapsed + expanded left-nav entries
       rules.push(
-        '[aria-label*="Stories"i], [class*="stories-rail"], [class*="story-rail"] { display: none !important; }',
+        '[aria-label*="Stories"i], [class*="storiesLeftNavSection"], [class*="stories-rail"], [class*="story-rail"] { display: none !important; }',
       )
     }
     if (settings.hideLiveNotifBtn) {
+      // channel bell has no data-a-target in 2026 DOM — aria-label
+      // "Modify channel notification preferences" is the only hook
       rules.push(
-        '[data-a-target="live-notifications-toggle"], button[aria-label*="Subscribe to notifications"i] { display: none !important; }',
+        'button[aria-label*="channel notification"i], [data-a-target="live-notifications-toggle"], button[aria-label*="Subscribe to notifications"i] { display: none !important; }',
       )
     }
     if (settings.hideUnfollowBtn) {
@@ -3325,7 +3333,10 @@
       )
     }
     if (settings.hideDiscoverLuna) {
-      rules.push('a[href*="discoverluna"i], [class*="discover-luna"] { display: none !important; }')
+      // real promo links point at luna.amazon.com — old discoverluna kept as legacy
+      rules.push(
+        'a[href*="luna.amazon"i], a[href*="discoverluna"i], [class*="discover-luna"] { display: none !important; }',
+      )
     }
     if (settings.hideCombos) {
       rules.push(

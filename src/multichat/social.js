@@ -1465,7 +1465,7 @@ function buildFeedMessageDiv(m, opUsername) {
   const inThread = !!opUsername
   const linkId = escapeHtml(m.base36_id || '')
   const threadLink = inThread
-    ? `<span class="hs-feed-thread-link hs-quote-insert" data-quote-id="${escapeHtml(shortId)}" data-id="${linkId}" style="color:#ff8700;cursor:pointer">${escapeHtml(shortId)}</span>`
+    ? `<span class="hs-feed-thread-link hs-quote-insert" data-quote-id="${escapeHtml(shortId)}" data-id="${linkId}" style="color:#ffff00;cursor:pointer">${escapeHtml(shortId)}</span>`
     : `<span class="hs-feed-thread-link hs-thread-toggle" data-id="${linkId}" style="cursor:pointer">&gt;&gt;${escapeHtml(shortId)}</span>`
 
   // Post type tag: [OP] red = original post, [OP] magenta = OP replying in own thread, [RE] = reply

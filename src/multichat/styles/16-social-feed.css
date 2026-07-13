@@ -41,7 +41,7 @@
       cursor: pointer !important;
     }
     .hs-feed-thread-link {
-      color: #ff8700;
+      color: #ffff00;
       font-size: 13px;
       font-weight: 700;
       margin-right: 3px;
@@ -126,7 +126,7 @@
       font-family: ui-monospace, SFMono-Regular, monospace;
     }
     .hs-post-link {
-      color: #ff8700;
+      color: #ffff00;
       font-weight: 700;
       cursor: pointer;
     }

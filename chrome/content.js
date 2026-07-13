@@ -3332,12 +3332,6 @@
         '[class*="turbo-upsell"], [class*="turbo-cta"], [aria-label*="Twitch Turbo"i] { display: none !important; }',
       )
     }
-    if (settings.hideDiscoverLuna) {
-      // real promo links point at luna.amazon.com — old discoverluna kept as legacy
-      rules.push(
-        'a[href*="luna.amazon"i], a[href*="discoverluna"i], [class*="discover-luna"] { display: none !important; }',
-      )
-    }
     if (settings.hideCombos) {
       rules.push(
         '[data-a-target="combo-button"], [class*="combo-button"], [class*="combos-bar"] { display: none !important; }',

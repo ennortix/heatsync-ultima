@@ -1240,18 +1240,6 @@ const SETTINGS = [
     tip: 'seasonal subscription gradient banners',
   },
   {
-    key: 'hideDiscoverLuna',
-    type: 'bool',
-    default: false,
-    scope: 'sync',
-    category: 'tweaks',
-    section: 'sidebar / chrome',
-    tweak: true,
-    control: 'pill',
-    label: 'discover luna promo',
-    tip: 'external app promo link',
-  },
-  {
     key: 'hideLiveNotifBtn',
     type: 'bool',
     default: false,

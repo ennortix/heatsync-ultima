@@ -156,9 +156,11 @@ test('cw entries carry complete server-patch sub-shapes', () => {
   }
 })
 
-test('tweak entries: 13 sync bools, all default-off (chat-column tweaks removed)', () => {
+test('tweak entries: 12 sync bools, all default-off (chat-column tweaks removed)', () => {
   const tweaks = SETTINGS.filter((d) => d.tweak)
-  expect(tweaks.length).toBe(13)
+  // 12 after hideDiscoverLuna removal — twitch dropped the luna promo entirely,
+  // a toggle with no matching element is dead UI
+  expect(tweaks.length).toBe(12)
   for (const def of tweaks) {
     expect(def.type).toBe('bool')
     expect(def.scope).toBe('sync')

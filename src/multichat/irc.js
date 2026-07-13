@@ -853,7 +853,12 @@ class KickChat {
 
   _serializeMsg(m) {
     if (m?.type === 'moment') return null // ephemeral alert — broken after restore (loses click target)
+    // id/userId/cleared must survive persistence — the BG SW writes the same
+    // hs_kick_ key with full msgs, and restored rows without ids break id-dedup
+    // (backfill duplicates), moderation dimming, and reply-parent lookup.
     return {
+      id: m.id || undefined,
+      userId: m.userId || undefined,
       user: m.user,
       text: m.text,
       color: m.color,
@@ -865,6 +870,8 @@ class KickChat {
       systemMsg: m.systemMsg || undefined,
       replyTo: m.replyTo || undefined,
       kicksEvent: m.kicksEvent || undefined,
+      cleared: m.cleared || undefined,
+      clearedReason: m.clearedReason || undefined,
     }
   }
 
@@ -1238,7 +1245,7 @@ class KickChat {
 
     if (!chromeMsgs && !syncMsgs) return
 
-    // Kick messages have no global id; merge by user+time+text fingerprint.
+    // Merge by user+time+text fingerprint — works for id-less legacy rows too.
     const seen = new Set()
     const all = []
     const fp = (m) => `${m.user || ''}|${m.time || 0}|${(m.text || '').slice(0, 80)}`

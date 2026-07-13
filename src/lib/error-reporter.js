@@ -171,10 +171,10 @@
     _writeTimer = setTimeout(_flush, WRITE_DEBOUNCE_MS)
   }
 
-  function _flush() {
-    _writeTimer = null
-    if (_pending.length === 0) return
-    const batch = _pending.splice(0, _pending.length)
+  // Direct get→concat→set. Unserialized: two content scripts (or the SW) flushing
+  // at once read the same base array and the last set() drops the other's batch.
+  // Fallback only — see _flush.
+  function _writeDirect(batch) {
     try {
       const storage = chrome?.storage?.local
       if (!storage) return
@@ -189,6 +189,26 @@
         } catch (_) {}
       })
     } catch (_) {}
+  }
+
+  // Append via the service worker — it owns a serialized chain for this key, so
+  // concurrent flushes from N tabs queue instead of clobbering each other.
+  // Direct write only when messaging is unavailable (MAIN world, dead context,
+  // SW unreachable): a raced append still beats a lost error report.
+  function _flush() {
+    _writeTimer = null
+    if (_pending.length === 0) return
+    const batch = _pending.splice(0, _pending.length)
+    try {
+      const p = chrome?.runtime?.id && chrome?.runtime?.sendMessage?.({ type: 'report_error', errors: batch })
+      if (p && typeof p.then === 'function') {
+        p.then((resp) => {
+          if (!resp || resp.ok !== true) _writeDirect(batch)
+        }).catch(() => _writeDirect(batch))
+        return
+      }
+    } catch (_) {}
+    _writeDirect(batch)
   }
 
   // Host pages (Twitch/Kick/YouTube) throw their own errors constantly — keep them

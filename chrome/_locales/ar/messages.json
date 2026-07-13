@@ -17,111 +17,17 @@
   "common_retry": {
     "message": "إعادة المحاولة"
   },
-  "common_cancel": {
-    "message": "إلغاء"
-  },
-  "common_save": {
-    "message": "حفظ"
-  },
-  "common_add": {
-    "message": "إضافة"
-  },
-  "common_edit": {
-    "message": "تعديل"
-  },
-  "common_remove": {
-    "message": "إزالة"
-  },
-  "common_done": {
-    "message": "تم"
-  },
-  "common_ended": {
-    "message": "انتهى"
-  },
-  "common_vote": {
-    "message": "صوّت"
-  },
-  "common_set": {
-    "message": "تعيين"
-  },
-  "common_default": {
-    "message": "افتراضي"
-  },
-  "common_mention": {
-    "message": "إشارة"
-  },
   "common_user_not_found": {
     "message": "المستخدم غير موجود"
   },
-  "popup_title": {
-    "message": "heatsync"
-  },
-  "popup_status_checking": {
-    "message": "جارٍ التحقق..."
-  },
-  "popup_status_connected": {
-    "message": "متصل"
-  },
-  "popup_status_api_error": {
-    "message": "خطأ في api"
-  },
-  "popup_status_offline": {
-    "message": "غير متصل"
-  },
-  "popup_user_stats": {
-    "message": "$EMOTES$ إيموتس · $GLOBALS$ عام",
-    "placeholders": {
-      "emotes": {
-        "content": "$1"
-      },
-      "globals": {
-        "content": "$2"
-      }
-    }
-  },
-  "popup_user_stats_heat": {
-    "message": "$EMOTES$ إيموتس · $GLOBALS$ عام · $HEAT$ heat",
-    "placeholders": {
-      "emotes": {
-        "content": "$1"
-      },
-      "globals": {
-        "content": "$2"
-      },
-      "heat": {
-        "content": "$3"
-      }
-    }
-  },
-  "popup_btn_emotes": {
-    "message": "إيموتس"
-  },
-  "popup_btn_refresh": {
-    "message": "تحديث"
-  },
-  "popup_btn_site": {
-    "message": "الموقع"
-  },
-  "popup_btn_done": {
-    "message": "تم"
-  },
-  "popup_btn_logout": {
-    "message": "تسجيل خروج"
-  },
   "btn_recent": {
     "message": "الأخيرة"
-  },
-  "popup_login_prompt": {
-    "message": "سجّل دخول لمزامنة الإيموتس"
   },
   "popup_channel_placeholder": {
     "message": "القناة"
   },
   "popup_btn_popout": {
     "message": "نافذة منفصلة"
-  },
-  "popup_hint": {
-    "message": "إعدادات الإيموتس في لوحة المنتقي بالدردشة"
   },
   "welcome_title": {
     "message": "مرحبًا بك في heatsync"
@@ -150,9 +56,6 @@
   "btn_tab_emoji": {
     "message": "إيموجي"
   },
-  "btn_search_placeholder": {
-    "message": "ابحث عن إيموتس..."
-  },
   "btn_rotate_title": {
     "message": "تدوير موضع شريط التبويبات"
   },
@@ -167,29 +70,6 @@
   },
   "btn_cached": {
     "message": "مخزّن مؤقتًا"
-  },
-  "btn_loading_emotes": {
-    "message": "تحميل الإيموتس"
-  },
-  "btn_no_third_party": {
-    "message": "لم يُعثر على إيموتس خارجية"
-  },
-  "btn_no_emotes_import": {
-    "message": "لا إيموتس للاستيراد"
-  },
-  "btn_import_count": {
-    "message": "استيراد $COUNT$ إيموتس",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "btn_failed_load": {
-    "message": "فشل تحميل الإيموتس"
-  },
-  "btn_retry_loading": {
-    "message": "إعادة المحاولة"
   },
   "btn_ctx_block": {
     "message": "حظر الإيموت"
@@ -239,12 +119,6 @@
   "btn_settings_space_after": {
     "message": "مسافة بعد الإيموت"
   },
-  "btn_settings_placeholder_mode": {
-    "message": "وضع العناصر النائبة"
-  },
-  "btn_settings_placeholder_desc": {
-    "message": "إظهار مربعات ملوّنة"
-  },
   "btn_settings_hide_header": {
     "message": "إخفاء الرأس"
   },
@@ -283,9 +157,6 @@
   },
   "btn_size_4x": {
     "message": "4x"
-  },
-  "btn_expand": {
-    "message": "توسيع"
   },
   "btn_collapse": {
     "message": "طي"
@@ -400,22 +271,6 @@
       }
     }
   },
-  "content_card_follows_channel": {
-    "message": "يتابع $CHANNEL$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_card_not_following": {
-    "message": "لا يتابع $CHANNEL$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
   "content_card_followed_by": {
     "message": "يتابعه $CHANNEL$",
     "placeholders": {
@@ -463,12 +318,6 @@
   "content_view_on_heatsync": {
     "message": "عرض على heatsync"
   },
-  "content_in_your_set": {
-    "message": "في مجموعتك"
-  },
-  "content_blocked_click_unblock": {
-    "message": "محظور (اضغط لإلغاء الحظر)"
-  },
   "mc_tab_feed": {
     "message": "موجز"
   },
@@ -477,9 +326,6 @@
   },
   "mc_tab_mentions": {
     "message": "إشارات"
-  },
-  "mc_tab_activity": {
-    "message": "النشاط"
   },
   "mc_tab_live": {
     "message": "مباشر"
@@ -512,9 +358,6 @@
   "mc_no_messages": {
     "message": "لا رسائل بعد"
   },
-  "mc_no_activity": {
-    "message": "لا نشاط بعد"
-  },
   "mc_add_channel": {
     "message": "إضافة قناة"
   },
@@ -546,12 +389,6 @@
         "content": "$1"
       }
     }
-  },
-  "mc_no_channel_detected": {
-    "message": "لم تُكتشف قناة"
-  },
-  "mc_settings_display": {
-    "message": "العرض"
   },
   "mc_settings_emote_size": {
     "message": "حجم الإيموت"
@@ -667,23 +504,11 @@
   "mc_settings_poll_banner_desc": {
     "message": "لافتة استطلاع نشط، صوّت مباشرة"
   },
-  "mc_settings_pinned_messages": {
-    "message": "الرسائل المثبّتة"
-  },
-  "mc_settings_pinned_messages_desc": {
-    "message": "لافتة ثابتة للرسائل المثبتة من المشرفين"
-  },
   "mc_settings_dim_timeouts": {
     "message": "تعتيم رسائل الـ timeout"
   },
   "mc_settings_dim_timeouts_desc": {
     "message": "شفافية 50% بدلاً من الإخفاء"
-  },
-  "mc_settings_smart_completion": {
-    "message": "إكمال Tab ذكي"
-  },
-  "mc_settings_smart_completion_desc": {
-    "message": "المحادثون الأخيرون/الإيموتات تظهر أولاً"
   },
   "mc_settings_first_chatter": {
     "message": "توهّج أول رسالة"
@@ -699,9 +524,6 @@
   },
   "mc_settings_keyword_highlights_placeholder": {
     "message": "كلمة مفتاحية لكل سطر"
-  },
-  "mc_settings_features": {
-    "message": "ميزات"
   },
   "mc_settings_auto_claim": {
     "message": "جمع تلقائي لنقاط القناة"
@@ -748,12 +570,6 @@
   "mc_pred_winner": {
     "message": "الفائز"
   },
-  "mc_pred_won": {
-    "message": " فاز"
-  },
-  "mc_pred_lost": {
-    "message": " خسر"
-  },
   "mc_pred_lock_betting": {
     "message": "إغلاق الرهان"
   },
@@ -763,55 +579,8 @@
   "mc_pred_pick_winner": {
     "message": "اختر الفائز"
   },
-  "mc_pred_pick_winner_your_bet": {
-    "message": "اختر الفائز (رهانك)"
-  },
-  "mc_pred_failed_load": {
-    "message": "تعذّر تحميل التوقعات"
-  },
-  "mc_pred_bet_own": {
-    "message": "لا يمكنك المراهنة على توقعك"
-  },
-  "mc_pred_try_again": {
-    "message": "حاول مجددًا"
-  },
   "mc_pred_ended": {
     "message": "انتهى التوقع"
-  },
-  "mc_pred_betting_locked": {
-    "message": "الرهان مغلق"
-  },
-  "mc_pred_not_enough": {
-    "message": "نقاط غير كافية"
-  },
-  "mc_pred_already_bet": {
-    "message": "راهنت بالفعل"
-  },
-  "mc_pred_no_permission": {
-    "message": "لا صلاحية"
-  },
-  "mc_pred_failed": {
-    "message": "فشل"
-  },
-  "mc_pred_no_event": {
-    "message": "لا حدث"
-  },
-  "mc_pred_no_outcome": {
-    "message": "لا نتيجة"
-  },
-  "mc_pred_closing": {
-    "message": "جاري الإغلاق..."
-  },
-  "mc_pred_you_bet": {
-    "message": "راهنت بـ $POINTS$ على $OUTCOME$ — اختر الفائز الفعلي",
-    "placeholders": {
-      "points": {
-        "content": "$1"
-      },
-      "outcome": {
-        "content": "$2"
-      }
-    }
   },
   "mc_poll_new": {
     "message": "+ استطلاع جديد"
@@ -827,41 +596,11 @@
       }
     }
   },
-  "mc_poll_choice_optional": {
-    "message": "خيار $NUM$ (اختياري)",
-    "placeholders": {
-      "num": {
-        "content": "$1"
-      }
-    }
-  },
   "mc_poll_create": {
     "message": "إنشاء استطلاع"
   },
   "mc_poll_end": {
     "message": "إنهاء الاستطلاع"
-  },
-  "mc_poll_votes": {
-    "message": "$COUNT$ صوت",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_poll_vote_single": {
-    "message": "$COUNT$ صوت",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_poll_already_active": {
-    "message": "استطلاع نشط بالفعل"
-  },
-  "mc_poll_not_logged_in": {
-    "message": "غير مسجّل"
   },
   "mc_reward_rewards": {
     "message": "المكافآت"
@@ -875,51 +614,11 @@
   "mc_reward_out_of_stock": {
     "message": "نفدت"
   },
-  "mc_reward_cooldown_min": {
-    "message": "تهدئة $MIN$ د",
-    "placeholders": {
-      "min": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_reward_cooldown_sec": {
-    "message": "تهدئة $SEC$ ث",
-    "placeholders": {
-      "sec": {
-        "content": "$1"
-      }
-    }
-  },
   "mc_reward_enter_text": {
     "message": "أدخل نصًا..."
   },
   "mc_reward_redeem": {
     "message": "استبدل"
-  },
-  "mc_chat_username_color": {
-    "message": "لون اسم المستخدم"
-  },
-  "mc_chat_hex_placeholder": {
-    "message": "#hex"
-  },
-  "mc_chat_modes": {
-    "message": "أوضاع الدردشة"
-  },
-  "mc_chat_emote_only": {
-    "message": "إيموتس فقط"
-  },
-  "mc_chat_follower": {
-    "message": "متابع"
-  },
-  "mc_chat_slow": {
-    "message": "بطيء"
-  },
-  "mc_chat_sub_only": {
-    "message": "مشتركون فقط"
-  },
-  "mc_chat_unique": {
-    "message": "فريد"
   },
   "mc_chat_hype_train": {
     "message": "hype train"
@@ -960,35 +659,11 @@
   "mc_input_not_logged_in": {
     "message": "غير مسجّل"
   },
-  "mc_input_login_kick": {
-    "message": "سجّل دخول على kick.com أولًا"
-  },
-  "mc_input_open_kick": {
-    "message": "افتح kick.com في تبويب"
-  },
-  "mc_input_kick_not_found": {
-    "message": "قناة Kick غير موجودة"
-  },
-  "mc_input_send_failed": {
-    "message": "فشل الإرسال"
-  },
-  "mc_input_no_username": {
-    "message": "لم يُكتشف اسم مستخدم"
-  },
   "mc_input_auth_failed": {
     "message": "فشل التوثيق — أعد تسجيل الدخول إلى Twitch"
   },
-  "mc_input_connection_failed": {
-    "message": "فشل الاتصال — حاول مجددًا"
-  },
-  "mc_input_send_failed_retry": {
-    "message": "فشل الإرسال — حاول مجددًا"
-  },
   "mc_social_back": {
     "message": "<- رجوع"
-  },
-  "mc_social_no_posts": {
-    "message": "لا منشورات بعد"
   },
   "mc_social_loading_feed": {
     "message": "جارٍ التحميل..."
@@ -1001,9 +676,6 @@
   },
   "mc_social_login_first": {
     "message": "سجّل دخول على heatsync.org أولًا"
-  },
-  "mc_social_login_activity": {
-    "message": "سجّل دخول على heatsync.org لرؤية النشاط"
   },
   "mc_social_failed_feed_auth": {
     "message": "فشل تحميل الفيد — سجّل دخول على heatsync.org"
@@ -1025,52 +697,6 @@
   },
   "mc_tip_emoji": {
     "message": "إيموجي"
-  },
-  "mc_tip_subbed": {
-    "message": "اشتراك بـ $CHANNEL$ $TENURE$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      },
-      "tenure": {
-        "content": "$2"
-      }
-    }
-  },
-  "mc_tip_following": {
-    "message": "يتابع $CHANNEL$ $AGE$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      },
-      "age": {
-        "content": "$2"
-      }
-    }
-  },
-  "mc_tip_not_following": {
-    "message": "لا يتابع $CHANNEL$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_tip_followed_by": {
-    "message": "يتابعه $CHANNEL$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_tip_followers": {
-    "message": "$COUNT$ متابع",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
   },
   "mc_whisper_hint": {
     "message": "/w مستخدم رسالة · /dm مستخدم رسالة · /r رسالة"
@@ -1122,17 +748,6 @@
       }
     }
   },
-  "mc_yt_connected": {
-    "message": "youtube متصل: $CHANNEL$ — في انتظار الرسائل...",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_yt_error": {
-    "message": "خطأ اتصال youtube"
-  },
   "mc_emote_search_placeholder": {
     "message": "ابحث عن إيموتس..."
   },
@@ -1144,35 +759,5 @@
   },
   "mc_emote_blocked": {
     "message": "محظور (اضغط لإلغاء الحظر)"
-  },
-  "content_toast_unknown_error": {
-    "message": "خطأ غير معروف"
-  },
-  "content_toast_loading_emotes": {
-    "message": "جارٍ تحميل الإيموتس..."
-  },
-  "content_toast_fetching_emotes": {
-    "message": "جارٍ جلب الإيموتس..."
-  },
-  "content_card_action_ban": {
-    "message": "حظر"
-  },
-  "content_card_action_unban": {
-    "message": "إلغاء الحظر"
-  },
-  "content_card_action_block": {
-    "message": "حجب"
-  },
-  "btn_close": {
-    "message": "إغلاق"
-  },
-  "btn_error_channel": {
-    "message": "فشل تحميل إيموتس القناة"
-  },
-  "btn_error_global": {
-    "message": "فشل تحميل الإيموتس العامة"
-  },
-  "btn_error_inventory": {
-    "message": "فشل تحميل إيموتسك"
   }
 }

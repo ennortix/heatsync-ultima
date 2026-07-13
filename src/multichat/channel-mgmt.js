@@ -172,6 +172,8 @@ function renderAddChannelForm(msgsEl) {
     }
     if (ytVal) {
       youtubeLinks.set(id, { url: ytVal, videoId: '', channelName: '' })
+      ytSubscribedUrls.set(id, ytVal)
+      ytChanLastSeen.set(id, Date.now())
       chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytVal, channelId: id }).catch(() => {})
       // 7TV/BTTV YouTube channel emotes — channelId is a hint (the typed
       // url/handle), background.js resolves the real UC... id itself.
@@ -294,6 +296,7 @@ function removeChannel(tabId) {
         channelId: tabId,
       })
       .catch(() => {})
+    clearYtPace(tabId)
     youtubeLinks.delete(tabId)
     channelYtMessages.delete(tabId)
     // Clear YT watchdog state too — otherwise the 180s rejoin loop resurrects
@@ -583,6 +586,7 @@ function showEditChannelForm(tabId) {
           channelId: tabId,
         })
         .catch(() => {})
+      clearYtPace(tabId)
       youtubeLinks.delete(tabId)
       channelYtMessages.delete(tabId)
       ytChanLastSeen.delete(tabId)
@@ -624,6 +628,9 @@ function showEditChannelForm(tabId) {
             channelId: tabId,
           })
           .catch(() => {})
+        // Pacer state is keyed by channelId — the old key is orphaned by the
+        // id migration, so its queued drip would never flush.
+        clearYtPace(tabId)
         chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytVal, channelId: newId }).catch(() => {})
       }
       if (platformFilters && platformFilters[tabId]) {

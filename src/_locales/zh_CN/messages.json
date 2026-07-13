@@ -17,111 +17,17 @@
   "common_retry": {
     "message": "重试"
   },
-  "common_cancel": {
-    "message": "取消"
-  },
-  "common_save": {
-    "message": "保存"
-  },
-  "common_add": {
-    "message": "添加"
-  },
-  "common_edit": {
-    "message": "编辑"
-  },
-  "common_remove": {
-    "message": "移除"
-  },
-  "common_done": {
-    "message": "完成"
-  },
-  "common_ended": {
-    "message": "已结束"
-  },
-  "common_vote": {
-    "message": "投票"
-  },
-  "common_set": {
-    "message": "设置"
-  },
-  "common_default": {
-    "message": "默认"
-  },
-  "common_mention": {
-    "message": "提及"
-  },
   "common_user_not_found": {
     "message": "找不到用户"
   },
-  "popup_title": {
-    "message": "heatsync"
-  },
-  "popup_status_checking": {
-    "message": "检查中..."
-  },
-  "popup_status_connected": {
-    "message": "已连接"
-  },
-  "popup_status_api_error": {
-    "message": "api 错误"
-  },
-  "popup_status_offline": {
-    "message": "离线"
-  },
-  "popup_user_stats": {
-    "message": "$EMOTES$ 个表情 · $GLOBALS$ 个全局",
-    "placeholders": {
-      "emotes": {
-        "content": "$1"
-      },
-      "globals": {
-        "content": "$2"
-      }
-    }
-  },
-  "popup_user_stats_heat": {
-    "message": "$EMOTES$ 个表情 · $GLOBALS$ 个全局 · $HEAT$ heat",
-    "placeholders": {
-      "emotes": {
-        "content": "$1"
-      },
-      "globals": {
-        "content": "$2"
-      },
-      "heat": {
-        "content": "$3"
-      }
-    }
-  },
-  "popup_btn_emotes": {
-    "message": "表情"
-  },
-  "popup_btn_refresh": {
-    "message": "刷新"
-  },
-  "popup_btn_site": {
-    "message": "网站"
-  },
-  "popup_btn_done": {
-    "message": "完成"
-  },
-  "popup_btn_logout": {
-    "message": "登出"
-  },
   "btn_recent": {
     "message": "最近"
-  },
-  "popup_login_prompt": {
-    "message": "登录以同步表情"
   },
   "popup_channel_placeholder": {
     "message": "频道"
   },
   "popup_btn_popout": {
     "message": "弹出"
-  },
-  "popup_hint": {
-    "message": "在聊天的选择器面板中设置表情"
   },
   "welcome_title": {
     "message": "欢迎使用 heatsync"
@@ -150,9 +56,6 @@
   "btn_tab_emoji": {
     "message": "表情符号"
   },
-  "btn_search_placeholder": {
-    "message": "搜索表情..."
-  },
   "btn_rotate_title": {
     "message": "切换标签栏位置"
   },
@@ -167,29 +70,6 @@
   },
   "btn_cached": {
     "message": "已缓存"
-  },
-  "btn_loading_emotes": {
-    "message": "加载表情中"
-  },
-  "btn_no_third_party": {
-    "message": "未找到第三方表情"
-  },
-  "btn_no_emotes_import": {
-    "message": "没有可导入的表情"
-  },
-  "btn_import_count": {
-    "message": "导入 $COUNT$ 个表情",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "btn_failed_load": {
-    "message": "表情加载失败"
-  },
-  "btn_retry_loading": {
-    "message": "重新加载"
   },
   "btn_ctx_block": {
     "message": "屏蔽表情"
@@ -239,12 +119,6 @@
   "btn_settings_space_after": {
     "message": "表情后加空格"
   },
-  "btn_settings_placeholder_mode": {
-    "message": "占位符模式"
-  },
-  "btn_settings_placeholder_desc": {
-    "message": "显示彩色方块"
-  },
   "btn_settings_hide_header": {
     "message": "隐藏标题栏"
   },
@@ -283,9 +157,6 @@
   },
   "btn_size_4x": {
     "message": "4x"
-  },
-  "btn_expand": {
-    "message": "展开"
   },
   "btn_collapse": {
     "message": "折叠"
@@ -400,22 +271,6 @@
       }
     }
   },
-  "content_card_follows_channel": {
-    "message": "关注 $CHANNEL$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_card_not_following": {
-    "message": "未关注 $CHANNEL$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
   "content_card_followed_by": {
     "message": "被 $CHANNEL$ 关注",
     "placeholders": {
@@ -463,12 +318,6 @@
   "content_view_on_heatsync": {
     "message": "在 heatsync 查看"
   },
-  "content_in_your_set": {
-    "message": "已在套装中"
-  },
-  "content_blocked_click_unblock": {
-    "message": "已屏蔽 (点击解除)"
-  },
   "mc_tab_feed": {
     "message": "动态"
   },
@@ -477,9 +326,6 @@
   },
   "mc_tab_mentions": {
     "message": "提及"
-  },
-  "mc_tab_activity": {
-    "message": "活动"
   },
   "mc_tab_live": {
     "message": "直播"
@@ -512,9 +358,6 @@
   "mc_no_messages": {
     "message": "暂无消息"
   },
-  "mc_no_activity": {
-    "message": "暂无动态"
-  },
   "mc_add_channel": {
     "message": "添加频道"
   },
@@ -546,12 +389,6 @@
         "content": "$1"
       }
     }
-  },
-  "mc_no_channel_detected": {
-    "message": "未检测到频道"
-  },
-  "mc_settings_display": {
-    "message": "显示"
   },
   "mc_settings_emote_size": {
     "message": "表情大小"
@@ -667,23 +504,11 @@
   "mc_settings_poll_banner_desc": {
     "message": "活跃投票横幅，直接投票"
   },
-  "mc_settings_pinned_messages": {
-    "message": "置顶消息"
-  },
-  "mc_settings_pinned_messages_desc": {
-    "message": "版主置顶消息的固定横幅"
-  },
   "mc_settings_dim_timeouts": {
     "message": "淡化超时消息"
   },
   "mc_settings_dim_timeouts_desc": {
     "message": "50% 透明度而非隐藏"
-  },
-  "mc_settings_smart_completion": {
-    "message": "智能 Tab 补全"
-  },
-  "mc_settings_smart_completion_desc": {
-    "message": "最近聊天者/表情优先显示"
   },
   "mc_settings_first_chatter": {
     "message": "首条消息高亮"
@@ -699,9 +524,6 @@
   },
   "mc_settings_keyword_highlights_placeholder": {
     "message": "每行一个关键词"
-  },
-  "mc_settings_features": {
-    "message": "功能"
   },
   "mc_settings_auto_claim": {
     "message": "自动领取频道积分"
@@ -748,12 +570,6 @@
   "mc_pred_winner": {
     "message": "获胜者"
   },
-  "mc_pred_won": {
-    "message": " 赢了"
-  },
-  "mc_pred_lost": {
-    "message": " 输了"
-  },
   "mc_pred_lock_betting": {
     "message": "锁定下注"
   },
@@ -763,55 +579,8 @@
   "mc_pred_pick_winner": {
     "message": "选择获胜者"
   },
-  "mc_pred_pick_winner_your_bet": {
-    "message": "选择获胜者 (你的下注)"
-  },
-  "mc_pred_failed_load": {
-    "message": "无法加载预测"
-  },
-  "mc_pred_bet_own": {
-    "message": "不能在自己的直播中下注"
-  },
-  "mc_pred_try_again": {
-    "message": "再试一次"
-  },
   "mc_pred_ended": {
     "message": "预测已结束"
-  },
-  "mc_pred_betting_locked": {
-    "message": "下注已锁定"
-  },
-  "mc_pred_not_enough": {
-    "message": "积分不足"
-  },
-  "mc_pred_already_bet": {
-    "message": "已下注"
-  },
-  "mc_pred_no_permission": {
-    "message": "无权限"
-  },
-  "mc_pred_failed": {
-    "message": "失败"
-  },
-  "mc_pred_no_event": {
-    "message": "没有事件"
-  },
-  "mc_pred_no_outcome": {
-    "message": "没有结果"
-  },
-  "mc_pred_closing": {
-    "message": "关闭中..."
-  },
-  "mc_pred_you_bet": {
-    "message": "你在 $OUTCOME$ 下注了 $POINTS$ — 请选择实际获胜者",
-    "placeholders": {
-      "points": {
-        "content": "$1"
-      },
-      "outcome": {
-        "content": "$2"
-      }
-    }
   },
   "mc_poll_new": {
     "message": "+ 新建投票"
@@ -827,41 +596,11 @@
       }
     }
   },
-  "mc_poll_choice_optional": {
-    "message": "选项 $NUM$ (可选)",
-    "placeholders": {
-      "num": {
-        "content": "$1"
-      }
-    }
-  },
   "mc_poll_create": {
     "message": "创建投票"
   },
   "mc_poll_end": {
     "message": "结束投票"
-  },
-  "mc_poll_votes": {
-    "message": "$COUNT$ 票",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_poll_vote_single": {
-    "message": "$COUNT$ 票",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_poll_already_active": {
-    "message": "已有进行中的投票"
-  },
-  "mc_poll_not_logged_in": {
-    "message": "未登录"
   },
   "mc_reward_rewards": {
     "message": "奖励"
@@ -875,51 +614,11 @@
   "mc_reward_out_of_stock": {
     "message": "已售罄"
   },
-  "mc_reward_cooldown_min": {
-    "message": "$MIN$ 分钟冷却",
-    "placeholders": {
-      "min": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_reward_cooldown_sec": {
-    "message": "$SEC$ 秒冷却",
-    "placeholders": {
-      "sec": {
-        "content": "$1"
-      }
-    }
-  },
   "mc_reward_enter_text": {
     "message": "输入文字..."
   },
   "mc_reward_redeem": {
     "message": "兑换"
-  },
-  "mc_chat_username_color": {
-    "message": "用户名颜色"
-  },
-  "mc_chat_hex_placeholder": {
-    "message": "#hex"
-  },
-  "mc_chat_modes": {
-    "message": "聊天模式"
-  },
-  "mc_chat_emote_only": {
-    "message": "仅表情"
-  },
-  "mc_chat_follower": {
-    "message": "粉丝"
-  },
-  "mc_chat_slow": {
-    "message": "慢速"
-  },
-  "mc_chat_sub_only": {
-    "message": "仅订阅者"
-  },
-  "mc_chat_unique": {
-    "message": "唯一"
   },
   "mc_chat_hype_train": {
     "message": "炒作列车"
@@ -960,35 +659,11 @@
   "mc_input_not_logged_in": {
     "message": "未登录"
   },
-  "mc_input_login_kick": {
-    "message": "请先在 kick.com 登录"
-  },
-  "mc_input_open_kick": {
-    "message": "在标签页中打开 kick.com"
-  },
-  "mc_input_kick_not_found": {
-    "message": "找不到 kick 频道"
-  },
-  "mc_input_send_failed": {
-    "message": "发送失败"
-  },
-  "mc_input_no_username": {
-    "message": "未检测到用户名"
-  },
   "mc_input_auth_failed": {
     "message": "认证失败 — 请重新登录 twitch"
   },
-  "mc_input_connection_failed": {
-    "message": "连接失败 — 请重试"
-  },
-  "mc_input_send_failed_retry": {
-    "message": "发送失败 — 请重试"
-  },
   "mc_social_back": {
     "message": "<- 返回"
-  },
-  "mc_social_no_posts": {
-    "message": "暂无帖子"
   },
   "mc_social_loading_feed": {
     "message": "加载中..."
@@ -1001,9 +676,6 @@
   },
   "mc_social_login_first": {
     "message": "请先在 heatsync.org 登录"
-  },
-  "mc_social_login_activity": {
-    "message": "登录 heatsync.org 以查看动态"
   },
   "mc_social_failed_feed_auth": {
     "message": "加载动态失败 — 请在 heatsync.org 登录"
@@ -1025,52 +697,6 @@
   },
   "mc_tip_emoji": {
     "message": "表情符号"
-  },
-  "mc_tip_subbed": {
-    "message": "订阅 $CHANNEL$ $TENURE$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      },
-      "tenure": {
-        "content": "$2"
-      }
-    }
-  },
-  "mc_tip_following": {
-    "message": "关注 $CHANNEL$ $AGE$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      },
-      "age": {
-        "content": "$2"
-      }
-    }
-  },
-  "mc_tip_not_following": {
-    "message": "未关注 $CHANNEL$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_tip_followed_by": {
-    "message": "被 $CHANNEL$ 关注",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_tip_followers": {
-    "message": "$COUNT$ 个粉丝",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
   },
   "mc_whisper_hint": {
     "message": "/w 用户 消息 · /dm 用户 消息 · /r 消息"
@@ -1122,17 +748,6 @@
       }
     }
   },
-  "mc_yt_connected": {
-    "message": "YouTube 已连接: $CHANNEL$ — 等待消息...",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_yt_error": {
-    "message": "YouTube 连接错误"
-  },
   "mc_emote_search_placeholder": {
     "message": "搜索表情..."
   },
@@ -1144,35 +759,5 @@
   },
   "mc_emote_blocked": {
     "message": "已屏蔽 (点击解除)"
-  },
-  "content_toast_unknown_error": {
-    "message": "未知错误"
-  },
-  "content_toast_loading_emotes": {
-    "message": "加载表情中..."
-  },
-  "content_toast_fetching_emotes": {
-    "message": "获取表情中..."
-  },
-  "content_card_action_ban": {
-    "message": "封禁"
-  },
-  "content_card_action_unban": {
-    "message": "解除封禁"
-  },
-  "content_card_action_block": {
-    "message": "屏蔽"
-  },
-  "btn_close": {
-    "message": "关闭"
-  },
-  "btn_error_channel": {
-    "message": "加载频道表情失败"
-  },
-  "btn_error_global": {
-    "message": "加载全局表情失败"
-  },
-  "btn_error_inventory": {
-    "message": "加载你的表情失败"
   }
 }

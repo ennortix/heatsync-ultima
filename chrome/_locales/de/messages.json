@@ -17,111 +17,17 @@
   "common_retry": {
     "message": "erneut versuchen"
   },
-  "common_cancel": {
-    "message": "abbrechen"
-  },
-  "common_save": {
-    "message": "speichern"
-  },
-  "common_add": {
-    "message": "hinzufügen"
-  },
-  "common_edit": {
-    "message": "bearbeiten"
-  },
-  "common_remove": {
-    "message": "entfernen"
-  },
-  "common_done": {
-    "message": "fertig"
-  },
-  "common_ended": {
-    "message": "beendet"
-  },
-  "common_vote": {
-    "message": "abstimmen"
-  },
-  "common_set": {
-    "message": "setzen"
-  },
-  "common_default": {
-    "message": "standard"
-  },
-  "common_mention": {
-    "message": "erwähnung"
-  },
   "common_user_not_found": {
     "message": "nutzer nicht gefunden"
   },
-  "popup_title": {
-    "message": "heatsync"
-  },
-  "popup_status_checking": {
-    "message": "wird geprüft..."
-  },
-  "popup_status_connected": {
-    "message": "verbunden"
-  },
-  "popup_status_api_error": {
-    "message": "api-fehler"
-  },
-  "popup_status_offline": {
-    "message": "offline"
-  },
-  "popup_user_stats": {
-    "message": "$EMOTES$ Emotes · $GLOBALS$ global",
-    "placeholders": {
-      "emotes": {
-        "content": "$1"
-      },
-      "globals": {
-        "content": "$2"
-      }
-    }
-  },
-  "popup_user_stats_heat": {
-    "message": "$EMOTES$ Emotes · $GLOBALS$ global · $HEAT$ heat",
-    "placeholders": {
-      "emotes": {
-        "content": "$1"
-      },
-      "globals": {
-        "content": "$2"
-      },
-      "heat": {
-        "content": "$3"
-      }
-    }
-  },
-  "popup_btn_emotes": {
-    "message": "Emotes"
-  },
-  "popup_btn_refresh": {
-    "message": "aktualisieren"
-  },
-  "popup_btn_site": {
-    "message": "website"
-  },
-  "popup_btn_done": {
-    "message": "fertig"
-  },
-  "popup_btn_logout": {
-    "message": "Abmelden"
-  },
   "btn_recent": {
     "message": "kürzlich"
-  },
-  "popup_login_prompt": {
-    "message": "einloggen um Emotes zu synchronisieren"
   },
   "popup_channel_placeholder": {
     "message": "Kanal"
   },
   "popup_btn_popout": {
     "message": "ausklappen"
-  },
-  "popup_hint": {
-    "message": "Emote-Einstellungen im Picker-Panel im Chat"
   },
   "welcome_title": {
     "message": "willkommen bei heatsync"
@@ -150,9 +56,6 @@
   "btn_tab_emoji": {
     "message": "Emoji"
   },
-  "btn_search_placeholder": {
-    "message": "Emotes suchen..."
-  },
   "btn_rotate_title": {
     "message": "Tab-Leisten-Position rotieren"
   },
@@ -167,29 +70,6 @@
   },
   "btn_cached": {
     "message": "gecacht"
-  },
-  "btn_loading_emotes": {
-    "message": "Emotes werden geladen"
-  },
-  "btn_no_third_party": {
-    "message": "keine Drittanbieter-Emotes gefunden"
-  },
-  "btn_no_emotes_import": {
-    "message": "keine Emotes zum Importieren"
-  },
-  "btn_import_count": {
-    "message": "$COUNT$ Emotes importieren",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "btn_failed_load": {
-    "message": "Emotes konnten nicht geladen werden"
-  },
-  "btn_retry_loading": {
-    "message": "erneut laden"
   },
   "btn_ctx_block": {
     "message": "Emote blockieren"
@@ -239,12 +119,6 @@
   "btn_settings_space_after": {
     "message": "Leerzeichen nach Emote"
   },
-  "btn_settings_placeholder_mode": {
-    "message": "platzhalter-modus"
-  },
-  "btn_settings_placeholder_desc": {
-    "message": "farbige Boxen anzeigen"
-  },
   "btn_settings_hide_header": {
     "message": "header ausblenden"
   },
@@ -283,9 +157,6 @@
   },
   "btn_size_4x": {
     "message": "4x"
-  },
-  "btn_expand": {
-    "message": "erweitern"
   },
   "btn_collapse": {
     "message": "einklappen"
@@ -400,22 +271,6 @@
       }
     }
   },
-  "content_card_follows_channel": {
-    "message": "folgt $CHANNEL$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_card_not_following": {
-    "message": "folgt $CHANNEL$ nicht",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
   "content_card_followed_by": {
     "message": "gefolgt von $CHANNEL$",
     "placeholders": {
@@ -463,12 +318,6 @@
   "content_view_on_heatsync": {
     "message": "auf heatsync ansehen"
   },
-  "content_in_your_set": {
-    "message": "in deinem Set"
-  },
-  "content_blocked_click_unblock": {
-    "message": "blockiert (klicken zum Entsperren)"
-  },
   "mc_tab_feed": {
     "message": "feed"
   },
@@ -477,9 +326,6 @@
   },
   "mc_tab_mentions": {
     "message": "erwähnungen"
-  },
-  "mc_tab_activity": {
-    "message": "aktivität"
   },
   "mc_tab_live": {
     "message": "live"
@@ -512,9 +358,6 @@
   "mc_no_messages": {
     "message": "noch keine Nachrichten"
   },
-  "mc_no_activity": {
-    "message": "noch keine Aktivität"
-  },
   "mc_add_channel": {
     "message": "channel hinzufügen"
   },
@@ -546,12 +389,6 @@
         "content": "$1"
       }
     }
-  },
-  "mc_no_channel_detected": {
-    "message": "kein channel erkannt"
-  },
-  "mc_settings_display": {
-    "message": "anzeige"
   },
   "mc_settings_emote_size": {
     "message": "Emote-Größe"
@@ -667,23 +504,11 @@
   "mc_settings_poll_banner_desc": {
     "message": "Aktiver Umfrage-Banner, direkt abstimmen"
   },
-  "mc_settings_pinned_messages": {
-    "message": "angeheftete Nachrichten"
-  },
-  "mc_settings_pinned_messages_desc": {
-    "message": "Dauerhafter Banner für von Mods gepinnte Nachrichten"
-  },
   "mc_settings_dim_timeouts": {
     "message": "Timeouts ausgrauen"
   },
   "mc_settings_dim_timeouts_desc": {
     "message": "50% Deckkraft statt ausblenden"
-  },
-  "mc_settings_smart_completion": {
-    "message": "intelligente Tab-Vervollständigung"
-  },
-  "mc_settings_smart_completion_desc": {
-    "message": "Aktuelle Chatter/Emotes erscheinen zuerst"
   },
   "mc_settings_first_chatter": {
     "message": "Erstmaliger-Chatter-Glow"
@@ -699,9 +524,6 @@
   },
   "mc_settings_keyword_highlights_placeholder": {
     "message": "ein Keyword pro Zeile"
-  },
-  "mc_settings_features": {
-    "message": "funktionen"
   },
   "mc_settings_auto_claim": {
     "message": "channel points automatisch einlösen"
@@ -748,12 +570,6 @@
   "mc_pred_winner": {
     "message": "gewinner"
   },
-  "mc_pred_won": {
-    "message": " gewonnen"
-  },
-  "mc_pred_lost": {
-    "message": " verloren"
-  },
   "mc_pred_lock_betting": {
     "message": "Wetten sperren"
   },
@@ -763,55 +579,8 @@
   "mc_pred_pick_winner": {
     "message": "Gewinner wählen"
   },
-  "mc_pred_pick_winner_your_bet": {
-    "message": "Gewinner wählen (dein Einsatz)"
-  },
-  "mc_pred_failed_load": {
-    "message": "Predictions konnten nicht geladen werden"
-  },
-  "mc_pred_bet_own": {
-    "message": "kann nicht auf eigene wetten"
-  },
-  "mc_pred_try_again": {
-    "message": "erneut versuchen"
-  },
   "mc_pred_ended": {
     "message": "Prediction beendet"
-  },
-  "mc_pred_betting_locked": {
-    "message": "Wetten gesperrt"
-  },
-  "mc_pred_not_enough": {
-    "message": "nicht genug Punkte"
-  },
-  "mc_pred_already_bet": {
-    "message": "bereits gewettet"
-  },
-  "mc_pred_no_permission": {
-    "message": "keine Berechtigung"
-  },
-  "mc_pred_failed": {
-    "message": "fehlgeschlagen"
-  },
-  "mc_pred_no_event": {
-    "message": "kein Event"
-  },
-  "mc_pred_no_outcome": {
-    "message": "kein Ergebnis"
-  },
-  "mc_pred_closing": {
-    "message": "wird geschlossen..."
-  },
-  "mc_pred_you_bet": {
-    "message": "du hast $POINTS$ auf $OUTCOME$ gewettet — wähle den echten Gewinner",
-    "placeholders": {
-      "points": {
-        "content": "$1"
-      },
-      "outcome": {
-        "content": "$2"
-      }
-    }
   },
   "mc_poll_new": {
     "message": "+ neue Umfrage"
@@ -827,41 +596,11 @@
       }
     }
   },
-  "mc_poll_choice_optional": {
-    "message": "option $NUM$ (optional)",
-    "placeholders": {
-      "num": {
-        "content": "$1"
-      }
-    }
-  },
   "mc_poll_create": {
     "message": "Umfrage erstellen"
   },
   "mc_poll_end": {
     "message": "Umfrage beenden"
-  },
-  "mc_poll_votes": {
-    "message": "$COUNT$ Stimmen",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_poll_vote_single": {
-    "message": "$COUNT$ Stimme",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_poll_already_active": {
-    "message": "Umfrage bereits aktiv"
-  },
-  "mc_poll_not_logged_in": {
-    "message": "nicht eingeloggt"
   },
   "mc_reward_rewards": {
     "message": "belohnungen"
@@ -875,51 +614,11 @@
   "mc_reward_out_of_stock": {
     "message": "ausverkauft"
   },
-  "mc_reward_cooldown_min": {
-    "message": "$MIN$ Min. Cooldown",
-    "placeholders": {
-      "min": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_reward_cooldown_sec": {
-    "message": "$SEC$ Sek. Cooldown",
-    "placeholders": {
-      "sec": {
-        "content": "$1"
-      }
-    }
-  },
   "mc_reward_enter_text": {
     "message": "Text eingeben..."
   },
   "mc_reward_redeem": {
     "message": "einlösen"
-  },
-  "mc_chat_username_color": {
-    "message": "benutzernamen-farbe"
-  },
-  "mc_chat_hex_placeholder": {
-    "message": "#hex"
-  },
-  "mc_chat_modes": {
-    "message": "chat-modi"
-  },
-  "mc_chat_emote_only": {
-    "message": "nur Emotes"
-  },
-  "mc_chat_follower": {
-    "message": "Follower"
-  },
-  "mc_chat_slow": {
-    "message": "langsam"
-  },
-  "mc_chat_sub_only": {
-    "message": "nur subs"
-  },
-  "mc_chat_unique": {
-    "message": "einzigartig"
   },
   "mc_chat_hype_train": {
     "message": "Hype Train"
@@ -960,35 +659,11 @@
   "mc_input_not_logged_in": {
     "message": "nicht eingeloggt"
   },
-  "mc_input_login_kick": {
-    "message": "zuerst bei kick.com einloggen"
-  },
-  "mc_input_open_kick": {
-    "message": "kick.com in einem Tab öffnen"
-  },
-  "mc_input_kick_not_found": {
-    "message": "Kick-Channel nicht gefunden"
-  },
-  "mc_input_send_failed": {
-    "message": "senden fehlgeschlagen"
-  },
-  "mc_input_no_username": {
-    "message": "kein Benutzername erkannt"
-  },
   "mc_input_auth_failed": {
     "message": "auth fehlgeschlagen — erneut bei Twitch einloggen"
   },
-  "mc_input_connection_failed": {
-    "message": "verbindung fehlgeschlagen — erneut versuchen"
-  },
-  "mc_input_send_failed_retry": {
-    "message": "senden fehlgeschlagen — erneut versuchen"
-  },
   "mc_social_back": {
     "message": "<- zurück"
-  },
-  "mc_social_no_posts": {
-    "message": "noch keine Beiträge"
   },
   "mc_social_loading_feed": {
     "message": "lädt..."
@@ -1001,9 +676,6 @@
   },
   "mc_social_login_first": {
     "message": "zuerst auf heatsync.org einloggen"
-  },
-  "mc_social_login_activity": {
-    "message": "auf heatsync.org einloggen um Aktivität zu sehen"
   },
   "mc_social_failed_feed_auth": {
     "message": "feed konnte nicht geladen werden — auf heatsync.org einloggen"
@@ -1025,52 +697,6 @@
   },
   "mc_tip_emoji": {
     "message": "Emoji"
-  },
-  "mc_tip_subbed": {
-    "message": "sub bei $CHANNEL$ $TENURE$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      },
-      "tenure": {
-        "content": "$2"
-      }
-    }
-  },
-  "mc_tip_following": {
-    "message": "folgt $CHANNEL$ $AGE$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      },
-      "age": {
-        "content": "$2"
-      }
-    }
-  },
-  "mc_tip_not_following": {
-    "message": "folgt $CHANNEL$ nicht",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_tip_followed_by": {
-    "message": "gefolgt von $CHANNEL$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_tip_followers": {
-    "message": "$COUNT$ Follower",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
   },
   "mc_whisper_hint": {
     "message": "/w Nutzer Nachricht · /dm Nutzer Nachricht · /r Nachricht"
@@ -1122,17 +748,6 @@
       }
     }
   },
-  "mc_yt_connected": {
-    "message": "YouTube verbunden: $CHANNEL$ — warte auf Nachrichten...",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_yt_error": {
-    "message": "YouTube-Verbindungsfehler"
-  },
   "mc_emote_search_placeholder": {
     "message": "Emotes suchen..."
   },
@@ -1144,35 +759,5 @@
   },
   "mc_emote_blocked": {
     "message": "blockiert (klicken zum Entsperren)"
-  },
-  "content_toast_unknown_error": {
-    "message": "unbekannter Fehler"
-  },
-  "content_toast_loading_emotes": {
-    "message": "Emotes werden geladen..."
-  },
-  "content_toast_fetching_emotes": {
-    "message": "Emotes werden abgerufen..."
-  },
-  "content_card_action_ban": {
-    "message": "bannen"
-  },
-  "content_card_action_unban": {
-    "message": "entbannen"
-  },
-  "content_card_action_block": {
-    "message": "blockieren"
-  },
-  "btn_close": {
-    "message": "schließen"
-  },
-  "btn_error_channel": {
-    "message": "Channel-Emotes konnten nicht geladen werden"
-  },
-  "btn_error_global": {
-    "message": "Globale Emotes konnten nicht geladen werden"
-  },
-  "btn_error_inventory": {
-    "message": "Deine Emotes konnten nicht geladen werden"
   }
 }

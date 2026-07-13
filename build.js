@@ -64,12 +64,17 @@ function checkManifestParity() {
   }
 
   // --- content_scripts coverage ---
-  // Canonicalize: sort each entry by sorted(matches)+sorted(js) key, then compare.
-  // Order-independent set comparison — only js+matches coverage matters, not ordering.
+  // Canonicalize each entry to a key of matches+js+css+world+run_at+all_frames
+  // (defaults normalized so absent == explicit default), then compare as sets.
+  // Order-independent — coverage matters, not entry ordering.
   function csKey(entry) {
     const matches = [...(entry.matches || [])].sort().join('|')
     const js = [...(entry.js || [])].sort().join('|')
-    return `${matches}::${js}`
+    const css = [...(entry.css || [])].sort().join('|')
+    const world = entry.world || 'ISOLATED'
+    const runAt = entry.run_at || 'document_idle'
+    const allFrames = entry.all_frames === true
+    return `${matches}::${js}::${css}::${world}::${runAt}::${allFrames}`
   }
 
   const chromeKeys = new Set((chrome.content_scripts || []).map(csKey))

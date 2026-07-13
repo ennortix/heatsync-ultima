@@ -17,111 +17,17 @@
   "common_retry": {
     "message": "पुनः प्रयास"
   },
-  "common_cancel": {
-    "message": "रद्द करें"
-  },
-  "common_save": {
-    "message": "सहेजें"
-  },
-  "common_add": {
-    "message": "जोड़ें"
-  },
-  "common_edit": {
-    "message": "संपादित करें"
-  },
-  "common_remove": {
-    "message": "हटाएं"
-  },
-  "common_done": {
-    "message": "हो गया"
-  },
-  "common_ended": {
-    "message": "समाप्त"
-  },
-  "common_vote": {
-    "message": "वोट करें"
-  },
-  "common_set": {
-    "message": "सेट करें"
-  },
-  "common_default": {
-    "message": "डिफ़ॉल्ट"
-  },
-  "common_mention": {
-    "message": "मेन्शन"
-  },
   "common_user_not_found": {
     "message": "उपयोगकर्ता नहीं मिला"
   },
-  "popup_title": {
-    "message": "heatsync"
-  },
-  "popup_status_checking": {
-    "message": "जांच रहे हैं..."
-  },
-  "popup_status_connected": {
-    "message": "जुड़ा हुआ"
-  },
-  "popup_status_api_error": {
-    "message": "api त्रुटि"
-  },
-  "popup_status_offline": {
-    "message": "ऑफ़लाइन"
-  },
-  "popup_user_stats": {
-    "message": "$EMOTES$ इमोट · $GLOBALS$ ग्लोबल",
-    "placeholders": {
-      "emotes": {
-        "content": "$1"
-      },
-      "globals": {
-        "content": "$2"
-      }
-    }
-  },
-  "popup_user_stats_heat": {
-    "message": "$EMOTES$ इमोट · $GLOBALS$ ग्लोबल · $HEAT$ heat",
-    "placeholders": {
-      "emotes": {
-        "content": "$1"
-      },
-      "globals": {
-        "content": "$2"
-      },
-      "heat": {
-        "content": "$3"
-      }
-    }
-  },
-  "popup_btn_emotes": {
-    "message": "इमोट"
-  },
-  "popup_btn_refresh": {
-    "message": "रिफ्रेश"
-  },
-  "popup_btn_site": {
-    "message": "साइट"
-  },
-  "popup_btn_done": {
-    "message": "हो गया"
-  },
-  "popup_btn_logout": {
-    "message": "लॉगआउट"
-  },
   "btn_recent": {
     "message": "हाल के"
-  },
-  "popup_login_prompt": {
-    "message": "इमोट सिंक करने के लिए लॉगिन करें"
   },
   "popup_channel_placeholder": {
     "message": "चैनल"
   },
   "popup_btn_popout": {
     "message": "अलग विंडो"
-  },
-  "popup_hint": {
-    "message": "इमोट सेटिंग्स चैट के picker पैनल में"
   },
   "welcome_title": {
     "message": "heatsync में आपका स्वागत है"
@@ -150,9 +56,6 @@
   "btn_tab_emoji": {
     "message": "इमोजी"
   },
-  "btn_search_placeholder": {
-    "message": "इमोट खोजें..."
-  },
   "btn_rotate_title": {
     "message": "टैब बार की स्थिति घुमाएं"
   },
@@ -167,29 +70,6 @@
   },
   "btn_cached": {
     "message": "कैश से"
-  },
-  "btn_loading_emotes": {
-    "message": "इमोट लोड हो रहे हैं"
-  },
-  "btn_no_third_party": {
-    "message": "तृतीय-पक्ष इमोट नहीं मिले"
-  },
-  "btn_no_emotes_import": {
-    "message": "आयात करने के लिए कोई इमोट नहीं"
-  },
-  "btn_import_count": {
-    "message": "$COUNT$ इमोट आयात करें",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "btn_failed_load": {
-    "message": "इमोट लोड नहीं हो सके"
-  },
-  "btn_retry_loading": {
-    "message": "फिर लोड करें"
   },
   "btn_ctx_block": {
     "message": "इमोट ब्लॉक करें"
@@ -239,12 +119,6 @@
   "btn_settings_space_after": {
     "message": "इमोट के बाद स्पेस"
   },
-  "btn_settings_placeholder_mode": {
-    "message": "placeholder मोड"
-  },
-  "btn_settings_placeholder_desc": {
-    "message": "रंगीन बक्से दिखाएं"
-  },
   "btn_settings_hide_header": {
     "message": "हेडर छिपाएं"
   },
@@ -283,9 +157,6 @@
   },
   "btn_size_4x": {
     "message": "4x"
-  },
-  "btn_expand": {
-    "message": "विस्तार करें"
   },
   "btn_collapse": {
     "message": "समेटें"
@@ -400,22 +271,6 @@
       }
     }
   },
-  "content_card_follows_channel": {
-    "message": "$CHANNEL$ फ़ॉलो",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_card_not_following": {
-    "message": "$CHANNEL$ फ़ॉलो नहीं",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
   "content_card_followed_by": {
     "message": "$CHANNEL$ द्वारा फ़ॉलो",
     "placeholders": {
@@ -463,12 +318,6 @@
   "content_view_on_heatsync": {
     "message": "heatsync पर देखें"
   },
-  "content_in_your_set": {
-    "message": "आपके सेट में"
-  },
-  "content_blocked_click_unblock": {
-    "message": "ब्लॉक (अनब्लॉक के लिए क्लिक)"
-  },
   "mc_tab_feed": {
     "message": "फ़ीड"
   },
@@ -477,9 +326,6 @@
   },
   "mc_tab_mentions": {
     "message": "मेन्शन"
-  },
-  "mc_tab_activity": {
-    "message": "गतिविधि"
   },
   "mc_tab_live": {
     "message": "लाइव"
@@ -512,9 +358,6 @@
   "mc_no_messages": {
     "message": "अभी कोई संदेश नहीं"
   },
-  "mc_no_activity": {
-    "message": "अभी कोई गतिविधि नहीं"
-  },
   "mc_add_channel": {
     "message": "चैनल जोड़ें"
   },
@@ -546,12 +389,6 @@
         "content": "$1"
       }
     }
-  },
-  "mc_no_channel_detected": {
-    "message": "कोई चैनल नहीं मिला"
-  },
-  "mc_settings_display": {
-    "message": "प्रदर्शन"
   },
   "mc_settings_emote_size": {
     "message": "इमोट साइज़"
@@ -667,23 +504,11 @@
   "mc_settings_poll_banner_desc": {
     "message": "सक्रिय पोल बैनर, सीधे वोट करें"
   },
-  "mc_settings_pinned_messages": {
-    "message": "पिन किए गए संदेश"
-  },
-  "mc_settings_pinned_messages_desc": {
-    "message": "मॉड-पिन्ड संदेशों के लिए स्थायी बैनर"
-  },
   "mc_settings_dim_timeouts": {
     "message": "टाइमआउट संदेशों को धुंधला करें"
   },
   "mc_settings_dim_timeouts_desc": {
     "message": "छुपाने की बजाय 50% अपारदर्शिता"
-  },
-  "mc_settings_smart_completion": {
-    "message": "स्मार्ट टैब कम्पलीशन"
-  },
-  "mc_settings_smart_completion_desc": {
-    "message": "हाल के चैटर्स/इमोट्स पहले दिखते हैं"
   },
   "mc_settings_first_chatter": {
     "message": "पहले संदेश की चमक"
@@ -699,9 +524,6 @@
   },
   "mc_settings_keyword_highlights_placeholder": {
     "message": "प्रति पंक्ति एक कीवर्ड"
-  },
-  "mc_settings_features": {
-    "message": "सुविधाएं"
   },
   "mc_settings_auto_claim": {
     "message": "चैनल पॉइंट ऑटो-क्लेम"
@@ -748,12 +570,6 @@
   "mc_pred_winner": {
     "message": "विजेता"
   },
-  "mc_pred_won": {
-    "message": " जीता"
-  },
-  "mc_pred_lost": {
-    "message": " हारा"
-  },
   "mc_pred_lock_betting": {
     "message": "बेटिंग लॉक करें"
   },
@@ -763,55 +579,8 @@
   "mc_pred_pick_winner": {
     "message": "विजेता चुनें"
   },
-  "mc_pred_pick_winner_your_bet": {
-    "message": "विजेता चुनें (आपकी बेट)"
-  },
-  "mc_pred_failed_load": {
-    "message": "भविष्यवाणियाँ लोड नहीं हो सकीं"
-  },
-  "mc_pred_bet_own": {
-    "message": "खुद पर बेट नहीं लगा सकते"
-  },
-  "mc_pred_try_again": {
-    "message": "पुनः प्रयास"
-  },
   "mc_pred_ended": {
     "message": "भविष्यवाणी समाप्त"
-  },
-  "mc_pred_betting_locked": {
-    "message": "बेटिंग लॉक"
-  },
-  "mc_pred_not_enough": {
-    "message": "पर्याप्त पॉइंट नहीं"
-  },
-  "mc_pred_already_bet": {
-    "message": "पहले से बेट लगी"
-  },
-  "mc_pred_no_permission": {
-    "message": "अनुमति नहीं"
-  },
-  "mc_pred_failed": {
-    "message": "विफल"
-  },
-  "mc_pred_no_event": {
-    "message": "कोई इवेंट नहीं"
-  },
-  "mc_pred_no_outcome": {
-    "message": "कोई परिणाम नहीं"
-  },
-  "mc_pred_closing": {
-    "message": "बंद हो रहा है..."
-  },
-  "mc_pred_you_bet": {
-    "message": "आपने $POINTS$ $OUTCOME$ पर लगाए — असली विजेता चुनें",
-    "placeholders": {
-      "points": {
-        "content": "$1"
-      },
-      "outcome": {
-        "content": "$2"
-      }
-    }
   },
   "mc_poll_new": {
     "message": "+ नया पोल"
@@ -827,41 +596,11 @@
       }
     }
   },
-  "mc_poll_choice_optional": {
-    "message": "विकल्प $NUM$ (वैकल्पिक)",
-    "placeholders": {
-      "num": {
-        "content": "$1"
-      }
-    }
-  },
   "mc_poll_create": {
     "message": "पोल बनाएं"
   },
   "mc_poll_end": {
     "message": "पोल समाप्त करें"
-  },
-  "mc_poll_votes": {
-    "message": "$COUNT$ वोट",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_poll_vote_single": {
-    "message": "$COUNT$ वोट",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_poll_already_active": {
-    "message": "पोल पहले से सक्रिय"
-  },
-  "mc_poll_not_logged_in": {
-    "message": "लॉग इन नहीं"
   },
   "mc_reward_rewards": {
     "message": "इनाम"
@@ -875,51 +614,11 @@
   "mc_reward_out_of_stock": {
     "message": "समाप्त"
   },
-  "mc_reward_cooldown_min": {
-    "message": "cooldown $MIN$मि",
-    "placeholders": {
-      "min": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_reward_cooldown_sec": {
-    "message": "cooldown $SEC$से",
-    "placeholders": {
-      "sec": {
-        "content": "$1"
-      }
-    }
-  },
   "mc_reward_enter_text": {
     "message": "टेक्स्ट दर्ज करें..."
   },
   "mc_reward_redeem": {
     "message": "रिडीम करें"
-  },
-  "mc_chat_username_color": {
-    "message": "उपयोगकर्ता नाम का रंग"
-  },
-  "mc_chat_hex_placeholder": {
-    "message": "#hex"
-  },
-  "mc_chat_modes": {
-    "message": "चैट मोड"
-  },
-  "mc_chat_emote_only": {
-    "message": "केवल इमोट"
-  },
-  "mc_chat_follower": {
-    "message": "फ़ॉलोअर"
-  },
-  "mc_chat_slow": {
-    "message": "धीमा"
-  },
-  "mc_chat_sub_only": {
-    "message": "केवल सब"
-  },
-  "mc_chat_unique": {
-    "message": "अद्वितीय"
   },
   "mc_chat_hype_train": {
     "message": "hype train"
@@ -960,35 +659,11 @@
   "mc_input_not_logged_in": {
     "message": "लॉग इन नहीं"
   },
-  "mc_input_login_kick": {
-    "message": "पहले kick.com पर लॉगिन करें"
-  },
-  "mc_input_open_kick": {
-    "message": "kick.com को टैब में खोलें"
-  },
-  "mc_input_kick_not_found": {
-    "message": "Kick चैनल नहीं मिला"
-  },
-  "mc_input_send_failed": {
-    "message": "भेजना विफल"
-  },
-  "mc_input_no_username": {
-    "message": "कोई उपयोगकर्ता नाम नहीं मिला"
-  },
   "mc_input_auth_failed": {
     "message": "प्रमाणीकरण विफल — Twitch पर पुनः लॉगिन करें"
   },
-  "mc_input_connection_failed": {
-    "message": "कनेक्शन विफल — पुनः प्रयास करें"
-  },
-  "mc_input_send_failed_retry": {
-    "message": "भेजना विफल — पुनः प्रयास करें"
-  },
   "mc_social_back": {
     "message": "<- वापस"
-  },
-  "mc_social_no_posts": {
-    "message": "अभी तक कोई पोस्ट नहीं"
   },
   "mc_social_loading_feed": {
     "message": "लोड हो रहा है..."
@@ -1001,9 +676,6 @@
   },
   "mc_social_login_first": {
     "message": "पहले heatsync.org पर लॉगिन करें"
-  },
-  "mc_social_login_activity": {
-    "message": "गतिविधि देखने के लिए heatsync.org पर लॉगिन करें"
   },
   "mc_social_failed_feed_auth": {
     "message": "फ़ीड लोड विफल — heatsync.org पर लॉगिन करें"
@@ -1025,52 +697,6 @@
   },
   "mc_tip_emoji": {
     "message": "इमोजी"
-  },
-  "mc_tip_subbed": {
-    "message": "$CHANNEL$ पर सब $TENURE$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      },
-      "tenure": {
-        "content": "$2"
-      }
-    }
-  },
-  "mc_tip_following": {
-    "message": "$CHANNEL$ को फ़ॉलो $AGE$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      },
-      "age": {
-        "content": "$2"
-      }
-    }
-  },
-  "mc_tip_not_following": {
-    "message": "$CHANNEL$ फ़ॉलो नहीं",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_tip_followed_by": {
-    "message": "$CHANNEL$ द्वारा फ़ॉलो",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_tip_followers": {
-    "message": "$COUNT$ फ़ॉलोअर",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
   },
   "mc_whisper_hint": {
     "message": "/w उपयोगकर्ता संदेश · /dm उपयोगकर्ता संदेश · /r संदेश"
@@ -1122,17 +748,6 @@
       }
     }
   },
-  "mc_yt_connected": {
-    "message": "youtube जुड़ा: $CHANNEL$ — संदेशों की प्रतीक्षा...",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_yt_error": {
-    "message": "youtube कनेक्शन त्रुटि"
-  },
   "mc_emote_search_placeholder": {
     "message": "इमोट खोजें..."
   },
@@ -1144,35 +759,5 @@
   },
   "mc_emote_blocked": {
     "message": "ब्लॉक (अनब्लॉक के लिए क्लिक)"
-  },
-  "content_toast_unknown_error": {
-    "message": "अज्ञात त्रुटि"
-  },
-  "content_toast_loading_emotes": {
-    "message": "इमोट लोड हो रहे हैं..."
-  },
-  "content_toast_fetching_emotes": {
-    "message": "इमोट प्राप्त कर रहे हैं..."
-  },
-  "content_card_action_ban": {
-    "message": "ban"
-  },
-  "content_card_action_unban": {
-    "message": "unban"
-  },
-  "content_card_action_block": {
-    "message": "ब्लॉक"
-  },
-  "btn_close": {
-    "message": "बंद करें"
-  },
-  "btn_error_channel": {
-    "message": "चैनल इमोट लोड विफल"
-  },
-  "btn_error_global": {
-    "message": "ग्लोबल इमोट लोड विफल"
-  },
-  "btn_error_inventory": {
-    "message": "आपके इमोट लोड विफल"
   }
 }

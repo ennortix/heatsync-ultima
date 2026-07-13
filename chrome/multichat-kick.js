@@ -178,10 +178,10 @@ if (typeof window !== 'undefined' && typeof window.name === 'string' && window.n
     _writeTimer = setTimeout(_flush, WRITE_DEBOUNCE_MS)
   }
 
-  function _flush() {
-    _writeTimer = null
-    if (_pending.length === 0) return
-    const batch = _pending.splice(0, _pending.length)
+  // Direct get→concat→set. Unserialized: two content scripts (or the SW) flushing
+  // at once read the same base array and the last set() drops the other's batch.
+  // Fallback only — see _flush.
+  function _writeDirect(batch) {
     try {
       const storage = chrome?.storage?.local
       if (!storage) return
@@ -196,6 +196,26 @@ if (typeof window !== 'undefined' && typeof window.name === 'string' && window.n
         } catch (_) {}
       })
     } catch (_) {}
+  }
+
+  // Append via the service worker — it owns a serialized chain for this key, so
+  // concurrent flushes from N tabs queue instead of clobbering each other.
+  // Direct write only when messaging is unavailable (MAIN world, dead context,
+  // SW unreachable): a raced append still beats a lost error report.
+  function _flush() {
+    _writeTimer = null
+    if (_pending.length === 0) return
+    const batch = _pending.splice(0, _pending.length)
+    try {
+      const p = chrome?.runtime?.id && chrome?.runtime?.sendMessage?.({ type: 'report_error', errors: batch })
+      if (p && typeof p.then === 'function') {
+        p.then((resp) => {
+          if (!resp || resp.ok !== true) _writeDirect(batch)
+        }).catch(() => _writeDirect(batch))
+        return
+      }
+    } catch (_) {}
+    _writeDirect(batch)
   }
 
   // Host pages (Twitch/Kick/YouTube) throw their own errors constantly — keep them
@@ -2664,6 +2684,7 @@ const SETTINGS = [
     tip: 'emotes flagged for sexual content (≥ 70%) are hidden by default. shown with a dashed border when on.',
     control: 'pill',
     apply: 'cwServerPatch',
+    syncSilent: true,
     noReset: true,
     cw: { stateKey: 'sexual', serverBody: 'show_sexual_emotes', noun: 'sexual emotes setting' },
   },
@@ -2678,6 +2699,7 @@ const SETTINGS = [
     tip: 'emotes flagged for violence/gore (≥ 70%) are hidden by default. shown with a dashed border when on.',
     control: 'pill',
     apply: 'cwServerPatch',
+    syncSilent: true,
     noReset: true,
     cw: { stateKey: 'gore', serverBody: 'show_gore_emotes', noun: 'gore emotes setting' },
   },
@@ -2692,6 +2714,7 @@ const SETTINGS = [
     tip: 'emotes flagged for weapons imagery. on by default.',
     control: 'pill',
     apply: 'cwServerPatch',
+    syncSilent: true,
     noReset: true,
     cw: { stateKey: 'weapon', serverBody: 'show_weapon_emotes', noun: 'weapons setting' },
   },
@@ -2706,6 +2729,7 @@ const SETTINGS = [
     tip: 'emotes flagged for drug imagery. on by default.',
     control: 'pill',
     apply: 'cwServerPatch',
+    syncSilent: true,
     noReset: true,
     cw: { stateKey: 'drug', serverBody: 'show_drug_emotes', noun: 'drugs setting' },
   },
@@ -2720,6 +2744,7 @@ const SETTINGS = [
     tip: 'emotes flagged for hate imagery. on by default.',
     control: 'pill',
     apply: 'cwServerPatch',
+    syncSilent: true,
     noReset: true,
     cw: { stateKey: 'hate', serverBody: 'show_hate_emotes', noun: 'hate setting' },
   },
@@ -2981,6 +3006,7 @@ const SETTINGS = [
       { value: 'whispers', labelKey: 'mc_tab_whispers' },
       { value: 'mentions', labelKey: 'mc_tab_mentions' },
       { value: 'pinned', labelKey: 'mc_tab_pinned' },
+      { value: 'modlog', labelKey: 'mc_tab_modlog' },
     ],
   },
 
@@ -3313,6 +3339,7 @@ const SETTINGS_PRESETS = [
         'tab-complete': true,
         'picker-button': true,
         'right-click-block': true,
+        'native-takeover': true,
       },
     },
   },
@@ -3359,6 +3386,7 @@ const SETTINGS_PRESETS = [
         'tab-complete': true,
         'picker-button': true,
         'right-click-block': true,
+        'native-takeover': true,
       },
     },
   },
@@ -3549,6 +3577,15 @@ function lintSettings(syncBlocklist) {
       }
       if (!validateSettingValue(target, preset.diff[dk])) {
         problems.push('preset ' + preset.id + ' has invalid value for: ' + dk)
+      }
+      // boolmap diffs must carry every option key — coerce merges partial
+      // maps over defaults, silently reverting user-toggled missing keys
+      if (target.type === 'boolmap') {
+        for (var bk in target.default) {
+          if (!(bk in preset.diff[dk])) {
+            problems.push('preset ' + preset.id + ' boolmap diff missing key: ' + dk + '.' + bk)
+          }
+        }
       }
     }
   }
@@ -3906,18 +3943,37 @@ function t(key, substitutions) {
   }
 }
 
+async function _i18nFetchLocale(loc) {
+  if (!loc) return null
+  try {
+    const url = rawApi?.runtime?.getURL?.(`_locales/${loc}/messages.json`)
+    if (!url) return null
+    const res = await fetch(url)
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  }
+}
+
 async function initI18n() {
   if (_i18nInitPromise) return _i18nInitPromise
   _i18nInitPromise = (async () => {
     try {
       const data = await storage.local.get(I18N_STORAGE_KEY)
       const loc = data?.[I18N_STORAGE_KEY]
-      if (!loc) return
-      const url = rawApi?.runtime?.getURL?.(`_locales/${loc}/messages.json`)
-      if (!url) return
-      const res = await fetch(url)
-      if (!res.ok) return
-      _i18nOverride = await res.json()
+      if (!loc) {
+        // chrome reports Filipino as fil but the catalog ships as tl, so chrome.i18n never matches it
+        let ui = ''
+        try {
+          ui = rawApi?.i18n?.getUILanguage?.() || ''
+        } catch {}
+        if (/^fil([-_]|$)/.test(ui)) _i18nOverride = await _i18nFetchLocale('tl')
+        return
+      }
+      const catalog = await _i18nFetchLocale(loc)
+      if (!catalog) return
+      _i18nOverride = catalog
       _i18nOverrideLocale = loc
     } catch {}
   })()
@@ -19405,7 +19461,12 @@ class KickChat {
 
   _serializeMsg(m) {
     if (m?.type === 'moment') return null // ephemeral alert — broken after restore (loses click target)
+    // id/userId/cleared must survive persistence — the BG SW writes the same
+    // hs_kick_ key with full msgs, and restored rows without ids break id-dedup
+    // (backfill duplicates), moderation dimming, and reply-parent lookup.
     return {
+      id: m.id || undefined,
+      userId: m.userId || undefined,
       user: m.user,
       text: m.text,
       color: m.color,
@@ -19417,6 +19478,8 @@ class KickChat {
       systemMsg: m.systemMsg || undefined,
       replyTo: m.replyTo || undefined,
       kicksEvent: m.kicksEvent || undefined,
+      cleared: m.cleared || undefined,
+      clearedReason: m.clearedReason || undefined,
     }
   }
 
@@ -19790,7 +19853,7 @@ class KickChat {
 
     if (!chromeMsgs && !syncMsgs) return
 
-    // Kick messages have no global id; merge by user+time+text fingerprint.
+    // Merge by user+time+text fingerprint — works for id-less legacy rows too.
     const seen = new Set()
     const all = []
     const fp = (m) => `${m.user || ''}|${m.time || 0}|${(m.text || '').slice(0, 80)}`
@@ -23743,6 +23806,7 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
     // intact. Without this, others' messages diverged from the viewer's own.
     let emote = null
     let isOverlayEmote = false
+    let overlayBaseName = null
     const endsWithZero = word.endsWith('0') && word.length > 1
     emote =
       (channel && channelEmoteCaches[channel]?.get(word)) ||
@@ -23775,7 +23839,10 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
         extraCache?.get(baseName) ||
         emoteCache.get(baseName) ||
         _rfGate(_rf?.get(baseName))
-      if (emote) isOverlayEmote = true
+      if (emote) {
+        isOverlayEmote = true
+        overlayBaseName = baseName
+      }
     }
     // FFZ-style fallback: token like "Kappaw!" or "KappaffzX" — when the
     // upstream send pipeline strips the space between emote and modifier,
@@ -23823,7 +23890,13 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
       // stores hold RAW names (picker/server side), so check the raw form too
       // — and escape from raw so attrs aren't double-escaped (&amp;lt;3 alt).
       const rawWord = unescapeHtml(word)
-      const isBlocked = blockedEmoteNames.has(word) || blockedEmoteNames.has(rawWord)
+      // trailing-0 overlay resolved from the BASE name — a block on the base
+      // must hide the overlay too ("name0" itself is never in the block set)
+      const isBlocked =
+        blockedEmoteNames.has(word) ||
+        blockedEmoteNames.has(rawWord) ||
+        (overlayBaseName !== null &&
+          (blockedEmoteNames.has(overlayBaseName) || blockedEmoteNames.has(unescapeHtml(overlayBaseName))))
       let state = isBlocked ? 'blocked' : emote.state || 'global'
       // Upgrade 'unadded' → 'owned' when the viewer actually has this name
       // in their inventory. Visually identical under 2-state, but downstream
@@ -30397,12 +30470,20 @@ let _autoYtVideoId = null // videoId for this tab's __live_yt_auto__ subscriptio
 // from getLivePlatformNames(). Shared by twitch/kick soft SPA nav — the yt
 // host has its own path in spa-nav.js (autoYtSubscribeForPage).
 function rearmLiveYtAuto() {
+  // Capture videoId/url BEFORE nulling — the BG needs at least one of them
+  // to send the server-side youtube:unsubscribe (channelId alone only
+  // cleans local storage and leaves the old stream's poller running).
+  const prevVid = _autoYtVideoId
+  const prevUrl = ytSubscribedUrls.get('__live_yt_auto__')
   chrome.runtime
     .sendMessage({
       type: 'youtube_ws_unsubscribe',
       channelId: '__live_yt_auto__',
+      videoId: prevVid || '',
+      url: prevUrl || '',
     })
     .catch(() => {})
+  clearYtPace('__live_yt_auto__')
   channelYtMessages.delete('__live_yt_auto__')
   ytChanLastSeen.delete('__live_yt_auto__')
   ytChanRejoinAttempts.delete('__live_yt_auto__')
@@ -30446,6 +30527,17 @@ const YT_PACE_BURST_MAX = 1500 // total projected backlog cap; overflow flushes 
 const _ytPaceQueue = new Map() // channelId → ytMsg[] (in real-time order)
 const _ytPaceTimer = new Map() // channelId → timer handle
 const _ytPaceLastEmit = new Map() // channelId → { time: ms, msgTime: real msg.time }
+
+// Drop all pacer state for a channel. MUST be called on every unsubscribe/
+// teardown path — a pending drain timer would otherwise resurrect the deleted
+// buffer and bleed the old stream's queued msgs into the re-armed channel.
+function clearYtPace(channelId) {
+  const t = _ytPaceTimer.get(channelId)
+  if (t !== undefined) cleanup.clearTimeout(t)
+  _ytPaceTimer.delete(channelId)
+  _ytPaceQueue.delete(channelId)
+  _ytPaceLastEmit.delete(channelId)
+}
 
 // Heat tier display — big scaling numbers + color glow + row effects, no emoji
 // Matches website colors.js: #444 → #888 → #aaa → #ccc → #eee → #fff
@@ -31164,13 +31256,6 @@ function listenForSocialEvents() {
     }
     if (msg.type === 'youtube_chat_message') {
       const targetChannelId = msg.channelId
-      // Touch the YT watchdog clock on every chat message regardless of
-      // dedup/filter outcome — even rejected msgs prove the BG-server pipe
-      // is alive for this channel, which is the only thing the watchdog
-      // cares about.
-      try {
-        touchYtChannel(targetChannelId)
-      } catch {}
       // Filter __live_yt_auto__ messages: only accept this stream's chat
       // (prevents cross-tab leak — e.g. a stale videoId's chat bleeding in).
       // Derive the allowed videoId straight from the page URL when we're ON a
@@ -31186,6 +31271,13 @@ function listenForSocialEvents() {
         if (msg.videoId && msg.videoId !== pageVid) return // wrong stream
         if (!_autoYtVideoId) _autoYtVideoId = pageVid // heal for downstream reads
       }
+      // Touch the YT watchdog clock AFTER the videoId gate but before dedup —
+      // dup msgs still prove the BG-server pipe is alive, but a stale stream's
+      // rejected traffic must not keep the watchdog fed (it would mask a new
+      // subscription that failed and never let the 180s rescue fire).
+      try {
+        touchYtChannel(targetChannelId)
+      } catch {}
       // Event renderers (superchat/supersticker/membership/gift purchase) skip
       // the normal chat-row path entirely and go out as toggleable stream-event
       // banners instead — see dispatchYtStreamEvent for what's excluded and why.
@@ -34645,21 +34737,35 @@ async function _writeQueue(arr) {
   } catch {}
 }
 
+// Queue writes are read→modify→write on shared storage; overlapping RMWs
+// (fire-and-forget propagateFollow calls, drains) would clobber each other's
+// entries. Chain them so each RMW sees the previous one's write.
+let _queueChain = Promise.resolve()
+function _queueTask(fn) {
+  const run = _queueChain.then(fn)
+  _queueChain = run.catch(() => {})
+  return run
+}
+
 // Insert / replace. If a previous entry for the same {platform, target}
 // exists, the newer one supersedes it — last write wins, so follow/unfollow
 // rapid toggles collapse rather than queueing both.
 async function _enqueue(item) {
   if (!item?.platform || !item?.target) return
-  const q = await _readQueue()
-  const filtered = q.filter((x) => !(x.platform === item.platform && x.target === item.target))
-  filtered.push({ ...item, ts: Date.now() })
-  await _writeQueue(filtered.slice(-HS_PENDING_MAX))
+  return _queueTask(async () => {
+    const q = await _readQueue()
+    const filtered = q.filter((x) => !(x.platform === item.platform && x.target === item.target))
+    filtered.push({ ...item, ts: Date.now() })
+    await _writeQueue(filtered.slice(-HS_PENDING_MAX))
+  })
 }
 
 async function _dequeueMatching(platform, target) {
-  const q = await _readQueue()
-  const filtered = q.filter((x) => !(x.platform === platform && x.target === target))
-  if (filtered.length !== q.length) await _writeQueue(filtered)
+  return _queueTask(async () => {
+    const q = await _readQueue()
+    const filtered = q.filter((x) => !(x.platform === platform && x.target === target))
+    if (filtered.length !== q.length) await _writeQueue(filtered)
+  })
 }
 
 // Drain all pending items for a platform. Called from background SW after it
@@ -35399,7 +35505,7 @@ if (/(^|\.)twitch\.tv$/.test(location.hostname)) {
       if (!NAME_RE.test(e.name) || typeof e.url !== 'string' || !CDN_RE.test(e.url)) continue
       if (e.source !== '7tv' && e.source !== 'bttv' && e.source !== 'ffz') continue
       recentRemoteCompletions.delete(e.name)
-      recentRemoteCompletions.set(e.name, { url: e.url, source: e.source, zeroWidth: false })
+      recentRemoteCompletions.set(e.name, { url: e.url, source: e.source, zeroWidth: !!e.zeroWidth })
       names.push(e.name)
     }
     while (recentRemoteCompletions.size > REMOTE_COMPLETION_CAP) {
@@ -38928,8 +39034,9 @@ function scanAndApplyModifiersInInput(input) {
 //      within used:   prefix > substring, then frecency score, then tier
 //      within unused: tier, prefix > substring, sub emote > non-sub
 //   3. remote catalog order (_ai: FFZ-by-uses → BTTV → 7TV)
-//   4. shorter prefix-match > longer        (Kap → Kappa before KappaPride)
-//   5. recency for @user matches, then alpha
+//   4. recency for @user matches            (who just talked beats name length)
+//   5. shorter prefix-match > longer        (Kap → Kappa before KappaPride),
+//      then alpha
 function compareAcMatches(a, b, searchLower, frecency) {
   const an = a.name || '',
     bn = b.name || ''
@@ -38963,12 +39070,12 @@ function compareAcMatches(a, b, searchLower, frecency) {
     if (!!a.sub !== !!b.sub) return a.sub ? -1 : 1
   }
   if (a.remote && b.remote) return (a._ai || 0) - (b._ai || 0)
-  if (a.priority === 0 && an.length !== bn.length) return an.length - bn.length
   if (a.type === 'user' && b.type === 'user') {
     const arr = a.recencyRank ?? Infinity,
       brr = b.recencyRank ?? Infinity
     if (arr !== brr) return arr - brr
   }
+  if (a.priority === 0 && an.length !== bn.length) return an.length - bn.length
   return an.localeCompare(bn)
 }
 
@@ -39517,7 +39624,9 @@ function insertCompletionWysiwyg(match) {
     if (
       match.name &&
       typeof blockedEmoteNames !== 'undefined' &&
-      blockedEmoteNames.has(match.name) &&
+      // synth trailing-0 overlays carry "name0" but the block set holds the
+      // base name — check the stripped base too
+      (blockedEmoteNames.has(match.name) || (match._synthOverlay && blockedEmoteNames.has(match.name.slice(0, -1)))) &&
       typeof markInputEmoteBlocked === 'function'
     ) {
       markInputEmoteBlocked(img, true)
@@ -43412,6 +43521,10 @@ async function pcAddAsChannel(username) {
   if (channel.kick) kickChat?.join(channel.kick)
   if (channel.youtube) {
     youtubeLinks.set(channel.id, { url: channel.youtube, videoId: '', channelName: '' })
+    // Arm the watchdog — it reads ytChanLastSeen/ytSubscribedUrls, so a sub
+    // added without them is never re-subscribed when the stream goes silent.
+    ytSubscribedUrls.set(channel.id, channel.youtube)
+    ytChanLastSeen.set(channel.id, Date.now())
     try {
       chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: channel.youtube, channelId: channel.id })
     } catch {}
@@ -48042,21 +48155,25 @@ function _renderCategoryPane(cat) {
 }
 
 // ─── settings export / import ────────────────────────────────────────────
-// Export: dumps ui_settings (sync) + all hs_* keys (local) into a single
-// JSON. Import: file picker → JSON parse → schema-validate → merge into
+// Export: dumps ui_settings (sync) + all hs_*/viewer_* keys and registry
+// local-mirror keys (local) into a single JSON. Import: file picker → JSON parse → schema-validate → merge into
 // storage. Both areas restored. Errors toast, don't throw.
 // Private stores that must NEVER ride an export (the preset panel calls
 // exports "sharable"): mention/chat buffers, per-user notes, whispers, crash
 // ring ("captured locally only"). Import skips the same set so a crafted file
 // can't overwrite them either.
 var _SETTINGS_PRIVATE_KEY_RE = /^hs_(mentions_v2|user_notes|errors|irc_|kick_|yt_|whisper)/
+// local-mirror settings (keyword highlights, filter rules) live under
+// unprefixed mirror keys — allowlist them alongside the hs_/viewer_ namespaces
+// or the export silently drops them (derived from the registry, never hand-listed)
+var _SETTINGS_MIRROR_KEYS = new Set(SETTINGS.filter((d) => d.mirrorKey).map((d) => d.mirrorKey))
 async function _exportAllSettings() {
   try {
     var syncObj = await chrome.storage.sync.get(null)
     var localObj = await chrome.storage.local.get(null)
     var hsLocal = {}
     Object.keys(localObj).forEach((k) => {
-      if (k.indexOf('hs_') !== 0 && k.indexOf('viewer_') !== 0) return
+      if (k.indexOf('hs_') !== 0 && k.indexOf('viewer_') !== 0 && !_SETTINGS_MIRROR_KEYS.has(k)) return
       if (_SETTINGS_PRIVATE_KEY_RE.test(k)) return
       hsLocal[k] = localObj[k]
     })
@@ -48112,17 +48229,20 @@ async function _importAllSettings() {
         }
         var writes = []
         if (data.sync && data.sync.ui_settings && typeof data.sync.ui_settings === 'object') {
-          // Merge — preserve any keys absent from the import. sanitize via
-          // existing util so corrupt fields don't leak in.
-          var stored = await chrome.storage.sync.get(['ui_settings'])
-          var merged = sanitizeUiSettings(Object.assign({}, stored.ui_settings || {}, data.sync.ui_settings))
-          writes.push(chrome.storage.sync.set({ ui_settings: merged }))
+          // Merge — preserve any keys absent from the import. The SW's serialized
+          // rmw chain owns the write (and sanitizes it, so corrupt fields don't
+          // leak in); a local get→merge→set would race concurrent writes.
+          writes.push(
+            writeUiSettings(data.sync.ui_settings).then((ok) => {
+              if (!ok) throw new Error('ui_settings write failed')
+            }),
+          )
         }
         if (data.local && typeof data.local === 'object') {
           var safeLocal = {}
           Object.keys(data.local).forEach((k) => {
             if (k.length < 1 || k.length > 128) return
-            if (k.indexOf('hs_') !== 0 && k.indexOf('viewer_') !== 0) return
+            if (k.indexOf('hs_') !== 0 && k.indexOf('viewer_') !== 0 && !_SETTINGS_MIRROR_KEYS.has(k)) return
             if (_SETTINGS_PRIVATE_KEY_RE.test(k)) return
             safeLocal[k] = data.local[k]
           })
@@ -49180,6 +49300,8 @@ function renderAddChannelForm(msgsEl) {
     }
     if (ytVal) {
       youtubeLinks.set(id, { url: ytVal, videoId: '', channelName: '' })
+      ytSubscribedUrls.set(id, ytVal)
+      ytChanLastSeen.set(id, Date.now())
       chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytVal, channelId: id }).catch(() => {})
       // 7TV/BTTV YouTube channel emotes — channelId is a hint (the typed
       // url/handle), background.js resolves the real UC... id itself.
@@ -49302,6 +49424,7 @@ function removeChannel(tabId) {
         channelId: tabId,
       })
       .catch(() => {})
+    clearYtPace(tabId)
     youtubeLinks.delete(tabId)
     channelYtMessages.delete(tabId)
     // Clear YT watchdog state too — otherwise the 180s rejoin loop resurrects
@@ -49591,6 +49714,7 @@ function showEditChannelForm(tabId) {
           channelId: tabId,
         })
         .catch(() => {})
+      clearYtPace(tabId)
       youtubeLinks.delete(tabId)
       channelYtMessages.delete(tabId)
       ytChanLastSeen.delete(tabId)
@@ -49632,6 +49756,9 @@ function showEditChannelForm(tabId) {
             channelId: tabId,
           })
           .catch(() => {})
+        // Pacer state is keyed by channelId — the old key is orphaned by the
+        // id migration, so its queued drip would never flush.
+        clearYtPace(tabId)
         chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytVal, channelId: newId }).catch(() => {})
       }
       if (platformFilters && platformFilters[tabId]) {
@@ -49761,12 +49888,20 @@ function handleMcNav() {
     document.body.classList.add('hs-mc-navigating')
     // Unsubscribe the auto-YT route for the previous page so the new
     // page gets a clean __live_yt_auto__ binding (videoId differs).
+    // Capture videoId/url BEFORE nulling — the BG needs at least one of them
+    // to send the server-side youtube:unsubscribe (channelId alone only
+    // cleans local storage and leaves the old stream's poller running).
+    const prevAutoVid = _autoYtVideoId
+    const prevAutoUrl = ytSubscribedUrls.get('__live_yt_auto__')
     chrome.runtime
       .sendMessage({
         type: 'youtube_ws_unsubscribe',
         channelId: '__live_yt_auto__',
+        videoId: prevAutoVid || '',
+        url: prevAutoUrl || '',
       })
       .catch(() => {})
+    clearYtPace('__live_yt_auto__')
     channelYtMessages.delete('__live_yt_auto__')
     // Bug #2: clear the watchdog entry for the old video so the 30s
     // interval does not keep force-reconnecting a subscription that no
@@ -49838,18 +49973,27 @@ function fullSpaReinit() {
   // YT subscription so init() can cleanly re-subscribe each. Otherwise the
   // server sees duplicate youtube:subscribe events on every SPA navigation
   // and may re-deliver buffered messages.
+  // Capture videoId/url BEFORE nulling — the BG needs at least one of them
+  // to send the server-side youtube:unsubscribe (channelId alone only
+  // cleans local storage and leaves the old stream's poller running).
+  const prevAutoVid = _autoYtVideoId
+  const prevAutoUrl = ytSubscribedUrls.get('__live_yt_auto__')
   chrome.runtime
     .sendMessage({
       type: 'youtube_ws_unsubscribe',
       channelId: '__live_yt_auto__',
+      videoId: prevAutoVid || '',
+      url: prevAutoUrl || '',
     })
     .catch(() => {})
+  clearYtPace('__live_yt_auto__')
   channelYtMessages.delete('__live_yt_auto__')
   // Bug #2: clear watchdog entries for all unsubscribed YT channels so
   // the 30s watchdog doesn't keep force-reconnecting dead subscriptions.
   ytChanLastSeen.delete('__live_yt_auto__')
   ytChanRejoinAttempts.delete('__live_yt_auto__')
   ytSubscribedUrls.delete('__live_yt_auto__')
+  _autoYtVideoId = null
   for (const ch of config.channels) {
     if (!ch.youtube) continue
     const link = youtubeLinks.get(ch.id)
@@ -49861,6 +50005,7 @@ function fullSpaReinit() {
         videoId: link?.videoId || '',
       })
       .catch(() => {})
+    clearYtPace(ch.id)
     youtubeLinks.delete(ch.id)
     ytChanLastSeen.delete(ch.id)
     ytChanRejoinAttempts.delete(ch.id)
@@ -51740,6 +51885,23 @@ const STORAGE_KEY = 'heatsync_multichat'
     })
   }
 
+  // THE ui_settings writer. Every sync-scope write goes through the SW's
+  // serialized rmw chain — a content-script get→merge→set races that chain (and
+  // every other tab's), and the loser's keys vanish with no error. Direct write
+  // only as a last resort: when the SW is unreachable (context invalidated), a
+  // raced write still beats a silently dropped setting.
+  async function writeUiSettings(patch) {
+    const resp = await safeSendMessage({ type: 'ui_settings_rmw', patch })
+    if (resp?.ok) return true
+    try {
+      const s = await chrome.storage.sync.get(['ui_settings'])
+      await chrome.storage.sync.set({ ui_settings: sanitizeUiSettings({ ...(s.ui_settings || {}), ...patch }) })
+      return true
+    } catch (_) {
+      return false
+    }
+  }
+
   function saveUiSetting(key, value) {
     if (!_pendingSettings) _pendingSettings = {}
     _pendingSettings[key] = value
@@ -51795,8 +51957,7 @@ const STORAGE_KEY = 'heatsync_multichat'
 
       if (Object.keys(syncPatch).length) {
         invalidateUiSettingsCache()
-        chrome.storage.sync.get(['ui_settings']).then(async (s) => {
-          const merged = sanitizeUiSettings({ ...s.ui_settings, ...syncPatch })
+        ;(async () => {
           // Quota guard: chrome.storage.sync caps each key at 8192 bytes.
           // Check usage before writing — warn + toast if near the ceiling.
           try {
@@ -51808,11 +51969,11 @@ const STORAGE_KEY = 'heatsync_multichat'
           } catch (_) {
             /* getBytesInUse unavailable (Firefox MV2) — skip check */
           }
-          chrome.storage.sync.set({ ui_settings: merged }).catch((err) => {
-            warn('ui_settings write failed:', err?.message)
+          if (!(await writeUiSettings(syncPatch))) {
+            warn('ui_settings write failed')
             showToast('settings failed to save — storage quota exceeded', 'error')
-          })
-        })
+          }
+        })()
       }
 
       if (Object.keys(wsPatch).length) {
@@ -52405,10 +52566,12 @@ const STORAGE_KEY = 'heatsync_multichat'
         }
       }
       // retired-key migration (e.g. bigEmoji false → emoji size 1x)
+      let legacyAdopted = false
       if (raw === undefined && def.legacy) {
         try {
           raw = def.legacy(ui, local)
         } catch (_) {}
+        legacyAdopted = raw !== undefined
       }
       // first run for self-announcing local keys: persist the default so
       // other surfaces (options page) render the real state
@@ -52416,6 +52579,14 @@ const STORAGE_KEY = 'heatsync_multichat'
 
       const v = raw === undefined ? def.default : coerceSettingValue(def, raw)
       const value = v !== undefined && validateSettingValue(def, v) ? v : def.default
+      // Persist the adopted legacy value — without this only this surface sees
+      // the migration (in-memory), while every other reader of the real key
+      // still gets the default (bigEmoji false → overlay 1x but native 2x).
+      // One-shot: the write makes raw defined next boot, so legacy never re-fires.
+      if (legacyAdopted) {
+        if (def.scope === 'local') chrome.storage.local.set({ [def.key]: value }).catch(() => {})
+        else saveUiSetting(def.key, value)
+      }
       _settingsCache[def.key] = value
       const bridge = _bridgeFor(def)
       if (bridge) bridge.set(value)
@@ -52680,8 +52851,10 @@ const STORAGE_KEY = 'heatsync_multichat'
 
   // Normalize YouTube URL — accepts full URLs or bare username
   const normalizeYtUrl = (raw) => {
-    // Bare username (no slashes, no dots) → /@name/live
-    if (/^@?[\w-]+$/.test(raw)) {
+    // Bare UC channel id → /channel/<id>/live (mirrors identityYtLiveUrl)
+    if (/^UC[\w-]{20,}$/.test(raw)) return 'https://www.youtube.com/channel/' + raw + '/live'
+    // Bare username (no slashes; handles allow . _ -) → /@name/live
+    if (/^@?[\w.-]{3,30}$/.test(raw)) {
       const name = raw.startsWith('@') ? raw.slice(1) : raw
       return 'https://www.youtube.com/@' + name + '/live'
     }
@@ -59428,6 +59601,10 @@ const STORAGE_KEY = 'heatsync_multichat'
       if (entry.youtube) {
         try {
           youtubeLinks.set(entry.id, { url: entry.youtube, videoId: '', channelName: '' })
+          // Arm the watchdog — it reads ytChanLastSeen/ytSubscribedUrls, so a
+          // sub added without them is never re-subscribed when it goes silent.
+          ytSubscribedUrls.set(entry.id, entry.youtube)
+          ytChanLastSeen.set(entry.id, Date.now())
         } catch {}
         try {
           chrome.runtime
@@ -59468,6 +59645,8 @@ const STORAGE_KEY = 'heatsync_multichat'
         mutated = true
         try {
           youtubeLinks.set(entry.id, { url: ytUrl, videoId: '', channelName: '' })
+          ytSubscribedUrls.set(entry.id, ytUrl)
+          ytChanLastSeen.set(entry.id, Date.now())
         } catch {}
         try {
           chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytUrl, channelId: entry.id }).catch(() => {})
@@ -59609,11 +59788,9 @@ const STORAGE_KEY = 'heatsync_multichat'
         menu.remove()
         // Popout mode keeps URL navigation — each popout window is locked to one channel.
         if (document.body.classList.contains('hs-popout') && ch.name.toLowerCase() !== urlCh) {
+          // Must land before the navigation below — awaited, not fire-and-forget.
           try {
-            const s = await chrome.storage.sync.get(['ui_settings'])
-            await chrome.storage.sync.set({
-              ui_settings: sanitizeUiSettings({ ...s.ui_settings, activeTab: 'live', liveChannel: ch.name }),
-            })
+            await writeUiSettings({ activeTab: 'live', liveChannel: ch.name })
           } catch {}
           if (ch.platform === 'twitch' || hostPlatform === 'twitch') {
             location.href = `/popout/${ch.name}/chat?popout=`
@@ -61631,6 +61808,10 @@ const STORAGE_KEY = 'heatsync_multichat'
               if (kickName && isEnabled('chat-kick')) kickChat?.join(kickName)
               if (ch.youtube && isEnabled('chat-youtube')) {
                 youtubeLinks.set(id, { url: ch.youtube, videoId: '', channelName: '' })
+                // Arm the watchdog — it reads ytChanLastSeen/ytSubscribedUrls,
+                // so a sub added without them is never re-subscribed on silence.
+                ytSubscribedUrls.set(id, ch.youtube)
+                ytChanLastSeen.set(id, Date.now())
                 chrome.runtime
                   .sendMessage({ type: 'youtube_ws_subscribe', url: ch.youtube, channelId: id })
                   .catch(() => {})
@@ -62312,16 +62493,14 @@ const STORAGE_KEY = 'heatsync_multichat'
         }
 
         if (Object.keys(syncState).length) {
-          const stored = await chrome.storage.sync.get(['ui_settings'])
-          // Sanitize the merged blob before persisting — `remote` is server-fanned
-          // state (accumulated across every client/version that ever PATCHed this
+          // writeUiSettings routes through the SW's serialized rmw chain, which
+          // sanitizes the merged blob — `remote` is server-fanned state
+          // (accumulated across every client/version that ever PATCHed this
           // account) and must NOT be trusted into the cross-device sync key raw.
-          // Every sibling write sanitizes (main.js:1760/5736, bg ui-state:update);
-          // this seed was the lone bypass. Skipping it let numeric-key/oversized/
-          // __proto__ garbage replicate to all devices + push the record past the
-          // 8KB quota, after which all future pref writes silently fail.
-          const merged = sanitizeUiSettings({ ...(stored.ui_settings || {}), ...syncState })
-          await chrome.storage.sync.set({ ui_settings: merged })
+          // Unsanitized, numeric-key/oversized/__proto__ garbage replicates to
+          // every device and pushes the record past the 8KB quota, after which
+          // all future pref writes silently fail.
+          await writeUiSettings(syncState)
         }
         if (Object.keys(localOverflow).length) {
           invalidateUiOverflowCache()

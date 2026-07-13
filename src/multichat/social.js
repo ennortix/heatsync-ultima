@@ -6,12 +6,20 @@ let _autoYtVideoId = null // videoId for this tab's __live_yt_auto__ subscriptio
 // from getLivePlatformNames(). Shared by twitch/kick soft SPA nav — the yt
 // host has its own path in spa-nav.js (autoYtSubscribeForPage).
 function rearmLiveYtAuto() {
+  // Capture videoId/url BEFORE nulling — the BG needs at least one of them
+  // to send the server-side youtube:unsubscribe (channelId alone only
+  // cleans local storage and leaves the old stream's poller running).
+  const prevVid = _autoYtVideoId
+  const prevUrl = ytSubscribedUrls.get('__live_yt_auto__')
   chrome.runtime
     .sendMessage({
       type: 'youtube_ws_unsubscribe',
       channelId: '__live_yt_auto__',
+      videoId: prevVid || '',
+      url: prevUrl || '',
     })
     .catch(() => {})
+  clearYtPace('__live_yt_auto__')
   channelYtMessages.delete('__live_yt_auto__')
   ytChanLastSeen.delete('__live_yt_auto__')
   ytChanRejoinAttempts.delete('__live_yt_auto__')
@@ -55,6 +63,17 @@ const YT_PACE_BURST_MAX = 1500 // total projected backlog cap; overflow flushes 
 const _ytPaceQueue = new Map() // channelId → ytMsg[] (in real-time order)
 const _ytPaceTimer = new Map() // channelId → timer handle
 const _ytPaceLastEmit = new Map() // channelId → { time: ms, msgTime: real msg.time }
+
+// Drop all pacer state for a channel. MUST be called on every unsubscribe/
+// teardown path — a pending drain timer would otherwise resurrect the deleted
+// buffer and bleed the old stream's queued msgs into the re-armed channel.
+function clearYtPace(channelId) {
+  const t = _ytPaceTimer.get(channelId)
+  if (t !== undefined) cleanup.clearTimeout(t)
+  _ytPaceTimer.delete(channelId)
+  _ytPaceQueue.delete(channelId)
+  _ytPaceLastEmit.delete(channelId)
+}
 
 // Heat tier display — big scaling numbers + color glow + row effects, no emoji
 // Matches website colors.js: #444 → #888 → #aaa → #ccc → #eee → #fff
@@ -773,13 +792,6 @@ function listenForSocialEvents() {
     }
     if (msg.type === 'youtube_chat_message') {
       const targetChannelId = msg.channelId
-      // Touch the YT watchdog clock on every chat message regardless of
-      // dedup/filter outcome — even rejected msgs prove the BG-server pipe
-      // is alive for this channel, which is the only thing the watchdog
-      // cares about.
-      try {
-        touchYtChannel(targetChannelId)
-      } catch {}
       // Filter __live_yt_auto__ messages: only accept this stream's chat
       // (prevents cross-tab leak — e.g. a stale videoId's chat bleeding in).
       // Derive the allowed videoId straight from the page URL when we're ON a
@@ -795,6 +807,13 @@ function listenForSocialEvents() {
         if (msg.videoId && msg.videoId !== pageVid) return // wrong stream
         if (!_autoYtVideoId) _autoYtVideoId = pageVid // heal for downstream reads
       }
+      // Touch the YT watchdog clock AFTER the videoId gate but before dedup —
+      // dup msgs still prove the BG-server pipe is alive, but a stale stream's
+      // rejected traffic must not keep the watchdog fed (it would mask a new
+      // subscription that failed and never let the 180s rescue fire).
+      try {
+        touchYtChannel(targetChannelId)
+      } catch {}
       // Event renderers (superchat/supersticker/membership/gift purchase) skip
       // the normal chat-row path entirely and go out as toggleable stream-event
       // banners instead — see dispatchYtStreamEvent for what's excluded and why.

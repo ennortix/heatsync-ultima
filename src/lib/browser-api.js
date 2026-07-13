@@ -341,18 +341,37 @@ function t(key, substitutions) {
   }
 }
 
+async function _i18nFetchLocale(loc) {
+  if (!loc) return null
+  try {
+    const url = rawApi?.runtime?.getURL?.(`_locales/${loc}/messages.json`)
+    if (!url) return null
+    const res = await fetch(url)
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  }
+}
+
 async function initI18n() {
   if (_i18nInitPromise) return _i18nInitPromise
   _i18nInitPromise = (async () => {
     try {
       const data = await storage.local.get(I18N_STORAGE_KEY)
       const loc = data?.[I18N_STORAGE_KEY]
-      if (!loc) return
-      const url = rawApi?.runtime?.getURL?.(`_locales/${loc}/messages.json`)
-      if (!url) return
-      const res = await fetch(url)
-      if (!res.ok) return
-      _i18nOverride = await res.json()
+      if (!loc) {
+        // chrome reports Filipino as fil but the catalog ships as tl, so chrome.i18n never matches it
+        let ui = ''
+        try {
+          ui = rawApi?.i18n?.getUILanguage?.() || ''
+        } catch {}
+        if (/^fil([-_]|$)/.test(ui)) _i18nOverride = await _i18nFetchLocale('tl')
+        return
+      }
+      const catalog = await _i18nFetchLocale(loc)
+      if (!catalog) return
+      _i18nOverride = catalog
       _i18nOverrideLocale = loc
     } catch {}
   })()

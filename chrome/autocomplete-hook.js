@@ -624,7 +624,7 @@
   const SEVEN_TV_GQL = `query SearchEmotes($query: String!, $page: Int!, $perPage: Int!) {
     emotes {
       search(query: $query, sort: { sortBy: TOP_ALL_TIME, order: DESCENDING }, page: $page, perPage: $perPage) {
-        items { id defaultName flags { animated } }
+        items { id defaultName flags { animated defaultZeroWidth } }
       }
     }
   }`
@@ -692,7 +692,14 @@
       if (!name || have.has(name)) continue
       have.add(name)
       const nl = name.toLowerCase()
-      add.push({ name, nameLower: nl, url: `https://cdn.7tv.app/emote/${it.id}/1x.webp`, remote: true, source: '7tv' })
+      add.push({
+        name,
+        nameLower: nl,
+        url: `https://cdn.7tv.app/emote/${it.id}/1x.webp`,
+        remote: true,
+        source: '7tv',
+        zeroWidth: !!it.flags?.defaultZeroWidth,
+      })
     }
     if (!add.length) {
       _doneRemote()
@@ -714,12 +721,15 @@
     }
     const prev = cycleState.matches[cycleState.index]
     cycleState.matches.push(...add)
-    // Own/channel emotes first, then remote 7TV — used-before (frecency) leads
-    // within each block, mirroring the getMatches sort above and the multichat
-    // comparator (input.js compareAcMatches) so a remote merge can never
-    // reorder what the local pass already ranked. Never-used items: prefix
-    // before substring, then 7TV popularity (most-used first); channel/owned
-    // 7TV emotes inherit the global rank so they don't order alphabetically.
+    // Full-name exact match beats everything UNCONDITIONALLY (even the
+    // local-before-remote split — a remote exact hit is what the user typed).
+    // Then own/channel emotes first, then remote 7TV — used-before (frecency)
+    // leads within each block, mirroring the getMatches sort above and the
+    // multichat comparator (input.js compareAcMatches) so a remote merge can
+    // never reorder what the local pass already ranked. Never-used items:
+    // prefix before substring, then 7TV popularity (most-used first);
+    // channel/owned 7TV emotes inherit the global rank so they don't order
+    // alphabetically.
     const prefixOf = (m) => ((m.nameLower || (m.name || '').toLowerCase()).startsWith(searchLower) ? 0 : 1)
     const rankOf = (m) => {
       const r = popRank.get((m.name || '').toLowerCase())
@@ -727,7 +737,11 @@
     }
     const frecCycle = readEmoteFrecency()
     const frecOf = (m) => frecCycle.get(m.name || '') || 0
+    const exactOf = (m) => ((m.nameLower || (m.name || '').toLowerCase()) === searchLower ? 0 : 1)
     cycleState.matches.sort((a, b) => {
+      const ax = exactOf(a),
+        bx = exactOf(b)
+      if (ax !== bx) return ax - bx
       const al = a.remote ? 1 : 0,
         bl = b.remote ? 1 : 0
       if (al !== bl) return al - bl
@@ -1374,7 +1388,7 @@
   function trackRemoteCompletion(m) {
     if (!m?.remote || !m.name || !m.url || m.source !== '7tv') return
     _remoteCompletions.delete(m.name)
-    _remoteCompletions.set(m.name, { url: m.url, source: m.source })
+    _remoteCompletions.set(m.name, { url: m.url, source: m.source, zeroWidth: !!m.zeroWidth })
     while (_remoteCompletions.size > REMOTE_COMPLETION_CAP) {
       _remoteCompletions.delete(_remoteCompletions.keys().next().value)
     }
@@ -1387,7 +1401,7 @@
     for (const img of inputEl.querySelectorAll('img[alt]')) present.add(img.alt)
     const used = []
     for (const [name, rec] of _remoteCompletions) {
-      if (present.has(name)) used.push({ name, url: rec.url, source: rec.source })
+      if (present.has(name)) used.push({ name, url: rec.url, source: rec.source, zeroWidth: !!rec.zeroWidth })
     }
     if (!used.length) return
     for (const u of used) _remoteCompletions.delete(u.name)
@@ -1983,21 +1997,20 @@
               }
             }
             // Same ranking as everywhere else (input.js compareAcMatches / the
-            // getMatches sort above): strong exact, then used-before (frecency
-            // — "kko" → your KKona, never the channel's untouched KKonaLand),
-            // then never-used by tier (channel culture, emoji last) > exact >
-            // prefix > substring > sub emote; shorter > alpha tail.
+            // getMatches sort above): full-name exact match beats everything
+            // UNCONDITIONALLY, then used-before (frecency — "kko" → your KKona,
+            // never the channel's untouched KKonaLand), then never-used by tier
+            // (channel culture, emoji last) > prefix > substring > sub emote;
+            // shorter > alpha tail.
             const frecCyc = readEmoteFrecency()
             matches.sort((a, b) => {
               const at = a.tier ?? 2,
                 bt = b.tier ?? 2
               const ae = a.nameLower === emoteSearch,
                 be = b.nameLower === emoteSearch
+              if (ae !== be) return ae ? -1 : 1
               const af = frecCyc.get(a.name || '') || 0,
                 bf = frecCyc.get(b.name || '') || 0
-              const as = ae && (at <= 1 || af > 0),
-                bs = be && (bt <= 1 || bf > 0)
-              if (as !== bs) return as ? -1 : 1
               if (af > 0 !== bf > 0) return af > 0 ? -1 : 1
               if (af > 0) {
                 // both used — typed prefix first, then habit strength, then tier
@@ -2008,7 +2021,6 @@
                 // neither used — tier outranks match-type so a channel substring
                 // match beats a global prefix match ("hug" → peepoHug over "HuG")
                 if (at !== bt) return at - bt
-                if (ae !== be) return ae ? -1 : 1
                 if (a._isPrefix !== b._isPrefix) return a._isPrefix ? -1 : 1
                 const aSub = a.sub ? 0 : 1,
                   bSub = b.sub ? 0 : 1

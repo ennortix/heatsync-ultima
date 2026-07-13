@@ -116,6 +116,12 @@ describe('compareAcMatches — @user matches', () => {
     expect(rank([u('@kkonafanB', 5), u('@kkonafanA', 1)], 'kkonafan')).toEqual(['@kkonafanA', '@kkonafanB'])
     expect(rank([u('@kkonafanB'), u('@kkonafanA')], 'kkonafan')).toEqual(['@kkonafanA', '@kkonafanB'])
   })
+
+  test('recency outranks the shorter-name rule: longer recent chatter beats short stale name', () => {
+    const u = (name, recencyRank) => ({ name, priority: 0, type: 'user', recencyRank })
+    expect(rank([u('@asher'), u('@ashrubberyboi', 0)], 'as')).toEqual(['@ashrubberyboi', '@asher'])
+    expect(rank([u('@bob'), u('@carl'), u('@recentlongname', 0)], '')).toEqual(['@recentlongname', '@bob', '@carl'])
+  })
 })
 
 // ── frecency store (emotes.js) ──────────────────────────────────────────────

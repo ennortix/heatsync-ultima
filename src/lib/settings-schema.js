@@ -1036,6 +1036,7 @@ const SETTINGS = [
     tip: 'emotes flagged for sexual content (≥ 70%) are hidden by default. shown with a dashed border when on.',
     control: 'pill',
     apply: 'cwServerPatch',
+    syncSilent: true,
     noReset: true,
     cw: { stateKey: 'sexual', serverBody: 'show_sexual_emotes', noun: 'sexual emotes setting' },
   },
@@ -1050,6 +1051,7 @@ const SETTINGS = [
     tip: 'emotes flagged for violence/gore (≥ 70%) are hidden by default. shown with a dashed border when on.',
     control: 'pill',
     apply: 'cwServerPatch',
+    syncSilent: true,
     noReset: true,
     cw: { stateKey: 'gore', serverBody: 'show_gore_emotes', noun: 'gore emotes setting' },
   },
@@ -1064,6 +1066,7 @@ const SETTINGS = [
     tip: 'emotes flagged for weapons imagery. on by default.',
     control: 'pill',
     apply: 'cwServerPatch',
+    syncSilent: true,
     noReset: true,
     cw: { stateKey: 'weapon', serverBody: 'show_weapon_emotes', noun: 'weapons setting' },
   },
@@ -1078,6 +1081,7 @@ const SETTINGS = [
     tip: 'emotes flagged for drug imagery. on by default.',
     control: 'pill',
     apply: 'cwServerPatch',
+    syncSilent: true,
     noReset: true,
     cw: { stateKey: 'drug', serverBody: 'show_drug_emotes', noun: 'drugs setting' },
   },
@@ -1092,6 +1096,7 @@ const SETTINGS = [
     tip: 'emotes flagged for hate imagery. on by default.',
     control: 'pill',
     apply: 'cwServerPatch',
+    syncSilent: true,
     noReset: true,
     cw: { stateKey: 'hate', serverBody: 'show_hate_emotes', noun: 'hate setting' },
   },
@@ -1353,6 +1358,7 @@ const SETTINGS = [
       { value: 'whispers', labelKey: 'mc_tab_whispers' },
       { value: 'mentions', labelKey: 'mc_tab_mentions' },
       { value: 'pinned', labelKey: 'mc_tab_pinned' },
+      { value: 'modlog', labelKey: 'mc_tab_modlog' },
     ],
   },
 
@@ -1685,6 +1691,7 @@ const SETTINGS_PRESETS = [
         'tab-complete': true,
         'picker-button': true,
         'right-click-block': true,
+        'native-takeover': true,
       },
     },
   },
@@ -1731,6 +1738,7 @@ const SETTINGS_PRESETS = [
         'tab-complete': true,
         'picker-button': true,
         'right-click-block': true,
+        'native-takeover': true,
       },
     },
   },
@@ -1921,6 +1929,15 @@ function lintSettings(syncBlocklist) {
       }
       if (!validateSettingValue(target, preset.diff[dk])) {
         problems.push('preset ' + preset.id + ' has invalid value for: ' + dk)
+      }
+      // boolmap diffs must carry every option key — coerce merges partial
+      // maps over defaults, silently reverting user-toggled missing keys
+      if (target.type === 'boolmap') {
+        for (var bk in target.default) {
+          if (!(bk in preset.diff[dk])) {
+            problems.push('preset ' + preset.id + ' boolmap diff missing key: ' + dk + '.' + bk)
+          }
+        }
       }
     }
   }

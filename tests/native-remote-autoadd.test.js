@@ -67,12 +67,26 @@ describe('flushRemoteCompletionsOnSend — presence-gated relay', () => {
     expect(posted.length).toBe(1)
     expect(posted[0].data.type).toBe('heatsync-remote-completion-used')
     expect(posted[0].data.emotes).toEqual([
-      { name: 'peepoSad', url: 'https://cdn.7tv.app/emote/peepoSad/1x.webp', source: '7tv' },
+      { name: 'peepoSad', url: 'https://cdn.7tv.app/emote/peepoSad/1x.webp', source: '7tv', zeroWidth: false },
     ])
     expect(posted[0].origin).toBe('https://www.twitch.tv')
     // consumed — a second send never re-relays
     flushRemoteCompletionsOnSend(fakeInput('again ', ['peepoSad']))
     expect(posted.length).toBe(1)
+  })
+
+  test('7TV overlay flag survives register → relay (zeroWidth not dropped)', () => {
+    trackRemoteCompletion({
+      remote: true,
+      name: 'wavE',
+      url: 'https://cdn.7tv.app/emote/wavE/1x.webp',
+      source: '7tv',
+      zeroWidth: true,
+    })
+    flushRemoteCompletionsOnSend(fakeInput('hi ', ['wavE']))
+    expect(posted[0].data.emotes).toEqual([
+      { name: 'wavE', url: 'https://cdn.7tv.app/emote/wavE/1x.webp', source: '7tv', zeroWidth: true },
+    ])
   })
 
   test('emote present as plain text word is relayed (text mode)', () => {

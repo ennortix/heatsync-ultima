@@ -128,22 +128,37 @@ const browser = globalThis.browser || chrome
       reentry = false
     }
   }
+  // Serialize get→concat→set flushes — overlapping flushes would read the
+  // same base array and the later set() would drop the earlier batch.
+  let flushChain = Promise.resolve()
   function flush() {
     timer = null
     if (pending.length === 0) return
     const batch = pending.splice(0, pending.length)
-    try {
-      browser.storage.local.get(KEY, (cur) => {
-        try {
-          if (browser.runtime.lastError) return
-          const existing = Array.isArray(cur?.[KEY]) ? cur[KEY] : []
-          const next = existing.concat(batch).slice(-MAX)
-          browser.storage.local.set({ [KEY]: next }, () => {
-            void browser.runtime.lastError
-          })
-        } catch (_) {}
-      })
-    } catch (_) {}
+    flushChain = flushChain
+      .then(
+        () =>
+          new Promise((resolve) => {
+            try {
+              browser.storage.local.get(KEY, (cur) => {
+                try {
+                  if (browser.runtime.lastError) return resolve()
+                  const existing = Array.isArray(cur?.[KEY]) ? cur[KEY] : []
+                  const next = existing.concat(batch).slice(-MAX)
+                  browser.storage.local.set({ [KEY]: next }, () => {
+                    void browser.runtime.lastError
+                    resolve()
+                  })
+                } catch (_) {
+                  resolve()
+                }
+              })
+            } catch (_) {
+              resolve()
+            }
+          }),
+      )
+      .catch(() => {})
   }
   try {
     self.addEventListener('error', (e) => {
@@ -349,15 +364,29 @@ function splitIncomingUiState(obj) {
 // Three message handlers (ui-state:sync/update, settings:patch, settings:delete)
 // can race on concurrent WS events. Chain all writes through this so each sees
 // the previous write's result before merging.
-let _uiSettingsRmwChain = Promise.resolve()
+// Resolves to {ok} — never rejects, so a failed write can't poison the chain
+// for every write queued behind it. Callers that surface failures (the
+// ui_settings_rmw message handler → content-script quota toast) read .ok.
+let _uiSettingsRmwChain = Promise.resolve({ ok: true })
 function uiSettingsRmw(mergeFn) {
   _uiSettingsRmwChain = _uiSettingsRmwChain
     .then(async () => {
       const s = await browser.storage.sync.get(['ui_settings'])
       const merged = mergeFn(s.ui_settings || {})
-      await browser.storage.sync.set({ ui_settings: merged })
+      try {
+        await browser.storage.sync.set({ ui_settings: merged })
+      } catch (e) {
+        // retry once — sync.set write-op throttling is transient; quota
+        // overflows will still fail and must be surfaced, never swallowed
+        await new Promise((r) => setTimeout(r, 1000))
+        await browser.storage.sync.set({ ui_settings: merged })
+      }
+      return { ok: true }
     })
-    .catch(() => {})
+    .catch((e) => {
+      console.warn('[heatsync] ui_settings sync write failed:', e?.message || e)
+      return { ok: false, error: e?.message || String(e) }
+    })
   return _uiSettingsRmwChain
 }
 
@@ -444,6 +473,10 @@ browser.alarms?.onAlarm?.addListener(async (alarm) => {
       console.warn('[heatsync-ext] fetchFollowedUsers refresh failed:', err && err.message),
     )
   } else if (alarm.name === 'hs-ws-watchdog') {
+    // Kick Pusher tap liveness rides the same alarm (see _kpWatchdogCheck).
+    try {
+      if (typeof _kpWatchdogCheck === 'function') _kpWatchdogCheck()
+    } catch {}
     // Three states to handle:
     //   1) WS not open: kick a fresh connect (no-op if already connecting)
     //   2) WS open + zombie (no data received for 45s): close → reconnect
@@ -454,6 +487,10 @@ browser.alarms?.onAlarm?.addListener(async (alarm) => {
       if (!isSocketOpen()) {
         // Idle-closed on purpose — don't resurrect a socket nobody needs
         if (typeof hsWsIdleClosed !== 'undefined' && hsWsIdleClosed) return
+        // Auth failed — reconnecting just replays the dead cookie and loops
+        // authenticate → authentication_failed every 30s. Only a fresh login
+        // (cookies.onChanged 'set' / set_auth_token) clears the block.
+        if (typeof authFailedBlock !== 'undefined' && authFailedBlock) return
         if (typeof connectWebSocket === 'function') connectWebSocket().catch(() => {})
         return
       }
@@ -910,7 +947,11 @@ let cachedFollowHistory = null // Cache follow:history for late-loading content 
 const wsStreamEventDedup = new Map() // Dedup stream events across stream:* and follow:stream:*
 let cachedFollowColors = null // Cache follow:colors for late-loading content scripts
 let activeYoutubeVideoId = null // Currently subscribed YouTube videoId (for WS reconnect)
-const ytVideoToChannel = new Map() // videoId → channelId (for per-channel YouTube routing)
+// videoId → Set<channelId> (per-channel YouTube routing). Multi-valued: the
+// same stream can be bound to the live tab (__live_yt_auto__/global) AND a
+// config channel at once — chat must fan out to every binding, or the losing
+// tab goes silent and its watchdog force-reconnects the shared WS.
+const ytVideoToChannel = new Map()
 const youtubeChannelUrls = {} // channelId → url (in-memory source of truth, persisted to storage)
 // Pending subscriptions whose URL doesn't carry a videoId (e.g. https://youtube.com/@user/live).
 // We can't pre-populate ytVideoToChannel for these, so we track them here. When the WS server
@@ -961,20 +1002,48 @@ function persistYtVideoMap() {
   if (_ytVideoMapPersistTimer) return
   _ytVideoMapPersistTimer = setTimeout(() => {
     _ytVideoMapPersistTimer = null
-    browser.storage.local.set({ yt_video_to_channel: Object.fromEntries(ytVideoToChannel) }).catch(() => {})
+    browser.storage.local
+      .set({ yt_video_to_channel: Object.fromEntries([...ytVideoToChannel].map(([v, s]) => [v, [...s]])) })
+      .catch(() => {})
   }, 500)
 }
+// Broadcast target used when a videoId has no channel binding yet. It is NOT a
+// channel — it must never sit in the Set alongside a real binding, or every
+// message for that video fans out once per entry (duplicate chat).
+const YT_FALLBACK_CHANNEL = 'global'
+function ytChannelsFor(videoId) {
+  const s = ytVideoToChannel.get(videoId)
+  return s ? [...s] : []
+}
+// Fallback/real bindings are mutually exclusive: a real channelId evicts the
+// fallback, and the fallback is never added once a real binding exists.
 function setYtVideoChannel(videoId, channelId) {
+  const set = ytVideoToChannel.get(videoId) || new Set()
+  if (channelId === YT_FALLBACK_CHANNEL) {
+    for (const c of set) if (c !== YT_FALLBACK_CHANNEL) return
+  } else {
+    set.delete(YT_FALLBACK_CHANNEL)
+  }
   ytVideoToChannel.delete(videoId) // Re-insert for LRU ordering
-  ytVideoToChannel.set(videoId, channelId)
+  set.add(channelId)
+  ytVideoToChannel.set(videoId, set)
   if (ytVideoToChannel.size > MAX_YT_VIDEO_ENTRIES) {
     const oldest = ytVideoToChannel.keys().next().value
     ytVideoToChannel.delete(oldest)
   }
   persistYtVideoMap()
 }
-function deleteYtVideoChannel(videoId) {
-  if (ytVideoToChannel.delete(videoId)) persistYtVideoMap()
+// channelId given → unbind just that channel; omitted → drop every binding
+function deleteYtVideoChannel(videoId, channelId) {
+  const set = ytVideoToChannel.get(videoId)
+  if (!set) return
+  if (channelId !== undefined) {
+    if (!set.delete(channelId)) return
+    if (set.size === 0) ytVideoToChannel.delete(videoId)
+  } else {
+    ytVideoToChannel.delete(videoId)
+  }
+  persistYtVideoMap()
 }
 
 let authToken = null // Will be set by content script or loaded from storage
@@ -2018,9 +2087,22 @@ async function fireLiveCoalescedNotification(transitions) {
   }
 }
 
+// OS notifications outlive the SW — a click can wake a fresh SW whose
+// _liveNotificationUrls map is empty. The id encodes the target
+// (hs-live-${platform}-${username}-${ts}), so rebuild the URL from it.
+function _liveNotificationUrlFromId(id) {
+  if (id.startsWith('hs-live-batch-')) return `${API_URL}/?tab=following`
+  const m = /^hs-live-(twitch|kick|youtube)-(.+)-\d+$/.exec(id)
+  if (!m) return null
+  const [, platform, username] = m
+  if (platform === 'twitch') return `https://www.twitch.tv/${username}`
+  if (platform === 'kick') return `https://kick.com/${username}`
+  return `https://www.youtube.com/${username.startsWith('UC') ? 'channel/' + username : '@' + username}`
+}
+
 if (browser.notifications?.onClicked) {
   browser.notifications.onClicked.addListener((id) => {
-    const url = _liveNotificationUrls.get(id)
+    const url = _liveNotificationUrls.get(id) || _liveNotificationUrlFromId(id)
     if (url) {
       browser.tabs.create({ url }).catch(() => {})
       _liveNotificationUrls.delete(id)
@@ -4832,6 +4914,10 @@ async function connectWebSocket() {
             const [platform, channel] = entry.channel.split('/')
             burst.push({ type: 'channel:join', platform, channel })
             rejoinedChannels.add(entry.channel)
+            // Rejoin the Pusher tap too — tap-only kick channels have NO
+            // server relay, so the server join alone leaves them silent.
+            // Idempotent (_kpChannels.has guard).
+            if (platform === 'kick') kickPusherJoin(channel)
           }
         }
         for (const key of joinedExtraChannels) {
@@ -4840,6 +4926,7 @@ async function connectWebSocket() {
           if (!platform || !channel) continue
           burst.push({ type: 'channel:join', platform, channel })
           rejoinedChannels.add(key)
+          if (platform === 'kick') kickPusherJoin(channel)
         }
         try {
           for (const ch of BG_IRC.channels.keys()) {
@@ -4979,8 +5066,11 @@ function wsSend(msg) {
     messageQueue.shift() // Remove oldest
   }
 
-  // Trigger connection if not already connecting
-  if (wsState === WS_STATE.DISCONNECTED) {
+  // Trigger connection if not already connecting. Auth failed — reconnecting
+  // just replays the dead cookie and loops authenticate → authentication_failed.
+  // Only a fresh login (cookies.onChanged 'set' / set_auth_token) clears the
+  // block. Same guard the ws watchdog uses.
+  if (wsState === WS_STATE.DISCONNECTED && !authFailedBlock) {
     connectWebSocket().catch((err) => log(' WS connect failed:', err?.message))
   }
 
@@ -5262,24 +5352,29 @@ function handleWSMessage(msg) {
       case 'youtube:chat':
         // Relay YouTube chat messages to all Twitch/Kick tabs
         if (msg.messages && Array.isArray(msg.messages) && msg.messages.length > 0) {
-          // Use server-echoed channelId, fall back to local map.
-          // Same pending-subscribe fallback as youtube:status — covers the case
-          // where the first chat batch races ahead of the status event.
-          let channelId = msg.channelId || ytVideoToChannel.get(msg.videoId)
+          // Union of server-echoed channelId and every local binding — the
+          // server's per-socket map is single-valued, so its echo alone would
+          // miss a second binding to the same stream.
+          const bound = new Set(ytChannelsFor(msg.videoId))
+          if (msg.channelId) {
+            bound.add(msg.channelId)
+            if (msg.videoId) setYtVideoChannel(msg.videoId, msg.channelId)
+          }
           // Pending-subscribe attribution is ambiguous when multiple subscribes are
           // in flight (server may resolve them in any order). Only attribute when
           // exactly one is pending — otherwise fall through to 'global' and let
           // the eventual youtube:status event correct the mapping. This trades a
           // brief routing miss for the much worse cross-channel chat leak that
           // happens when LIFO pop guesses wrong.
-          if (!channelId && msg.videoId && pendingYtSubscribes.length === 1) {
+          if (!bound.size && msg.videoId && pendingYtSubscribes.length === 1) {
             const pend = pendingYtSubscribes.shift()
-            channelId = pend.channelId
-            setYtVideoChannel(msg.videoId, channelId)
+            bound.add(pend.channelId)
+            setYtVideoChannel(msg.videoId, pend.channelId)
           }
-          if (!channelId) channelId = 'global'
-          // Update local map if server provided channelId
-          if (msg.channelId && msg.videoId) setYtVideoChannel(msg.videoId, msg.channelId)
+          // A stale fallback binding (persisted by an older build) alongside a
+          // real one would fan every message out twice.
+          if (bound.size > 1) bound.delete(YT_FALLBACK_CHANNEL)
+          const channelIds = bound.size ? [...bound] : [YT_FALLBACK_CHANNEL]
 
           // Use real ytMsg.timestamp for both replay and live. Mellen's
           // ordering rule: every msg lands at its true chronological position
@@ -5289,7 +5384,7 @@ function handleWSMessage(msg) {
           // accuracy: msgs from 30 min ago slot into the chat at 30 min ago.
           const sorted = msg.messages.slice().sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0))
           const isReplay = !!msg.replay
-          const buildPayload = (ytMsg) => ({
+          const buildPayload = (ytMsg, channelId) => ({
             type: 'youtube_chat_message',
             videoId: msg.videoId,
             channelId,
@@ -5318,11 +5413,13 @@ function handleWSMessage(msg) {
           //   replay → ingestReplayYtMsg (bulk-buffer + 1 microtask render)
           //   live   → enqueueYtForPacing (per-channel 60-400ms cadence)
           for (const ytMsg of sorted) {
-            const payload = buildPayload(ytMsg)
-            try {
-              bgYtIngest(payload)
-            } catch {}
-            broadcastToTabs(payload)
+            for (const channelId of channelIds) {
+              const payload = buildPayload(ytMsg, channelId)
+              try {
+                bgYtIngest(payload)
+              } catch {}
+              broadcastToTabs(payload)
+            }
           }
         }
         break
@@ -5334,17 +5431,20 @@ function handleWSMessage(msg) {
         // Fallback: server may not echo channelId for @user/live subscribes,
         // so attribute via pending-subscribe LIFO when status carries a fresh
         // videoId we haven't seen yet.
-        let resolvedChannelId = msg.channelId || ytVideoToChannel.get(msg.videoId)
+        const bound = new Set(ytChannelsFor(msg.videoId))
+        if (msg.channelId) bound.add(msg.channelId)
         // Same ambiguity as youtube:chat — only fall back when exactly one pending.
-        if (!resolvedChannelId && msg.status === 'connected' && msg.videoId && pendingYtSubscribes.length === 1) {
+        if (!bound.size && msg.status === 'connected' && msg.videoId && pendingYtSubscribes.length === 1) {
           const pend = pendingYtSubscribes.shift()
-          resolvedChannelId = pend.channelId
-          setYtVideoChannel(msg.videoId, resolvedChannelId)
+          bound.add(pend.channelId)
         }
-        if (!resolvedChannelId) resolvedChannelId = 'global'
+        // A stale fallback binding (persisted by an older build) alongside a
+        // real one would fan every broadcast out twice.
+        if (bound.size > 1) bound.delete(YT_FALLBACK_CHANNEL)
+        const channelIds = bound.size ? [...bound] : [YT_FALLBACK_CHANNEL]
         if (msg.status === 'connected') {
           activeYoutubeVideoId = msg.videoId
-          if (msg.videoId) setYtVideoChannel(msg.videoId, resolvedChannelId)
+          if (msg.videoId) for (const cid of channelIds) setYtVideoChannel(msg.videoId, cid)
         } else if (msg.status === 'ended') {
           if (activeYoutubeVideoId === msg.videoId) activeYoutubeVideoId = null
           deleteYtVideoChannel(msg.videoId)
@@ -5354,15 +5454,17 @@ function handleWSMessage(msg) {
           // means resumed chat lands on the right tab instead of falling to 'global'.
           if (activeYoutubeVideoId === msg.videoId) activeYoutubeVideoId = null
         }
-        broadcastToTabs({
-          type: 'youtube_status',
-          videoId: msg.videoId,
-          channelId: resolvedChannelId,
-          status: msg.status,
-          channelName: msg.channelName || '',
-          title: msg.title || '',
-          error: msg.error || '',
-        })
+        for (const channelId of channelIds) {
+          broadcastToTabs({
+            type: 'youtube_status',
+            videoId: msg.videoId,
+            channelId,
+            status: msg.status,
+            channelName: msg.channelName || '',
+            title: msg.title || '',
+            error: msg.error || '',
+          })
+        }
         break
       }
 
@@ -5479,6 +5581,7 @@ function handleWSMessage(msg) {
                   user: data.username || data.displayName || data.user || 'unknown',
                   text: data.content || data.message || data.text || '',
                   color: data.color || '#53fc18',
+                  userId: data.senderId != null ? String(data.senderId) : '',
                   badges: badgeStr,
                   channel: ch,
                   time: data.timestamp || data.time || Date.now(),
@@ -6488,7 +6591,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const isFromPopup = !sender?.tab // popup/options pages have no tab
   // Reject messages from other extensions — must originate from this extension's
   // content scripts (sender.id matches) or our own popup/options (no tab).
-  const isOwnExtension = !sender?.id || sender.id === browser.runtime.id
+  const isOwnExtension = sender?.id === browser.runtime.id
   const isValidOrigin =
     isFromPopup || /^https:\/\/([a-z0-9-]+\.)*(twitch\.tv|kick\.com|heatsync\.org|youtube\.com)(\/|$)/.test(senderUrl)
   const isValidSender = isOwnExtension && isValidOrigin
@@ -6533,6 +6636,49 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   }
   if (message.type === 'ping') {
+    sendResponse({ ok: true })
+    return true
+  }
+
+  // Serialized ui_settings patch. Content scripts must NOT get→merge→set the
+  // key themselves — they race this SW's uiSettingsRmw chain (and each other),
+  // and the loser's write is silently overwritten. Keys are governed by the
+  // settings registry via sanitizeUiSettings, so only the shape is checked here.
+  if (message.type === 'ui_settings_rmw') {
+    const patch = message.patch
+    if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
+      sendResponse({ ok: false, error: 'patch must be a plain object' })
+      return true
+    }
+    uiSettingsRmw((ui) => sanitizeUiSettings({ ...ui, ...patch }))
+      .then((r) => sendResponse(r?.ok ? { ok: true } : { ok: false, error: r?.error || 'write failed' }))
+      .catch((err) => sendResponse({ ok: false, error: String(err?.message || err) }))
+    return true
+  }
+
+  // Content-script error appends. Same rationale as ui_settings_rmw: the SW
+  // owns the serialized hs_errors get→concat→set chain, so unserialized
+  // content-script writes would drop whole batches.
+  if (message.type === 'report_error') {
+    try {
+      const rep = globalThis.__hsErrorReporterSw
+      const errs = Array.isArray(message.errors) ? message.errors.slice(0, 50) : []
+      const str = (v, n) => (typeof v === 'string' ? v.slice(0, n) : '')
+      for (const r of errs) {
+        if (!r || typeof r !== 'object' || Array.isArray(r)) continue
+        rep?.capture({
+          ts: typeof r.ts === 'number' ? r.ts : Date.now(),
+          type: str(r.type, 20) || 'error',
+          plat: str(r.plat, 20) || 'other',
+          ver: str(r.ver, 20) || 'unknown',
+          url: str(r.url, 200),
+          msg: str(r.msg, 500),
+          stack: str(r.stack, 2000),
+          file: str(r.file, 200),
+          line: typeof r.line === 'number' ? r.line : 0,
+        })
+      }
+    } catch (_) {}
     sendResponse({ ok: true })
     return true
   }
@@ -6596,13 +6742,16 @@ async function handleMessage(message, sender, sendResponse) {
   // messages bucket under a videoId key that no tab is listening on.
   if (message.type === 'youtube_chat_message' && !message.source) {
     const vId = message.videoId
-    const mapped = ytVideoToChannel.get(vId) || (vId && vId === activeYoutubeVideoId ? '__live_yt_auto__' : null)
-    const relay = mapped && mapped !== message.channelId ? { ...message, channelId: mapped } : message
+    let mapped = ytChannelsFor(vId)
+    if (!mapped.length && vId && vId === activeYoutubeVideoId) mapped = ['__live_yt_auto__']
+    const relays = mapped.length
+      ? mapped.map((cid) => (cid !== message.channelId ? { ...message, channelId: cid } : message))
+      : [message]
     browser.tabs
       .query({ url: ['*://*.twitch.tv/*', '*://*.kick.com/*'] })
       .then((tabs) => {
         for (const tab of tabs) {
-          browser.tabs.sendMessage(tab.id, relay).catch(() => {})
+          for (const relay of relays) browser.tabs.sendMessage(tab.id, relay).catch(() => {})
         }
       })
       .catch(() => {})
@@ -6612,14 +6761,16 @@ async function handleMessage(message, sender, sendResponse) {
 
   // YouTube moderator deletion — relay to all extension tabs so they can dim
   if (message.type === 'youtube_msg_deleted') {
-    const channelId = ytVideoToChannel.get(message.videoId) || 'global'
-    broadcastToTabs({
-      type: 'youtube_msg_deleted',
-      videoId: message.videoId,
-      channelId,
-      user: message.user,
-      reason: message.reason || '',
-    })
+    const bound = ytChannelsFor(message.videoId)
+    for (const channelId of bound.length ? bound : ['global']) {
+      broadcastToTabs({
+        type: 'youtube_msg_deleted',
+        videoId: message.videoId,
+        channelId,
+        user: message.user,
+        reason: message.reason || '',
+      })
+    }
     sendResponse({ ok: true })
     return true
   }
@@ -6634,10 +6785,12 @@ async function handleMessage(message, sender, sendResponse) {
     // Block internal/private URLs from being proxied through the server
     try {
       const parsed = new URL(url)
+      // hostname keeps IPv6 brackets ([::1]) — strip so the v6 checks match
+      const host = parsed.hostname.replace(/^\[|\]$/g, '').toLowerCase()
       if (
-        /^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(parsed.hostname) ||
-        parsed.hostname === '0.0.0.0' ||
-        parsed.hostname === '::1'
+        /^(localhost|127\.|0\.|10\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(host) ||
+        /^(::1$|::ffff:|fe[89ab][0-9a-f]:|f[cd][0-9a-f]{2}:)/.test(host) ||
+        /^(\d+|0x[0-9a-f]+)$/.test(host)
       ) {
         sendResponse(null)
         return true
@@ -7057,11 +7210,13 @@ async function handleMessage(message, sender, sendResponse) {
         message.url.match(/youtu\.be\/([^?&]+)/)
       if (vidMatch) videoId = vidMatch[1]
     }
-    if (videoId && isSocketOpen()) {
-      wsSend({ type: 'youtube:unsubscribe', videoId })
-    }
     if (videoId) {
-      deleteYtVideoChannel(videoId)
+      deleteYtVideoChannel(videoId, channelId)
+      // Only tear down the server poller when no other channel is still bound
+      // to this video — the same stream can back multiple bindings.
+      if (!ytVideoToChannel.has(videoId) && isSocketOpen()) {
+        wsSend({ type: 'youtube:unsubscribe', videoId })
+      }
       if (activeYoutubeVideoId === videoId) activeYoutubeVideoId = null
     }
     // Clean up storage
@@ -8305,12 +8460,16 @@ async function handleMessage(message, sender, sendResponse) {
                 kickUsernameToPfpCache.set(username, _pfp)
               }
             }
-            // Step 2 — kick user_id → 7TV cosmetics + twitch connection
+            // Step 2 — kick user_id → 7TV cosmetics + twitch connection.
+            // Most kick chatters have no 7TV account (404) — the resolved
+            // kickId + avatar must still flow back so kick-origin heatsync
+            // paints and real avatars render without a 7TV account.
             const resp = await fetchWithTimeout(`https://7tv.io/v3/users/kick/${kickUserId}`)
             if (!resp.ok) {
               resp.body?.cancel?.()
-              setUserCosmetic(cacheKey, null)
-              result[username] = null
+              const bare = { paint: null, badge: null, twitchId: null, twitchUsername: null, kickId: kickUserId }
+              if (resp.status === 404) setUserCosmetic(cacheKey, bare) // genuine: no 7TV account
+              result[username] = { ...bare, avatar: kickUsernameToPfpCache.get(username) || null }
               return
             }
             const data = await resp.json()
@@ -8330,8 +8489,7 @@ async function handleMessage(message, sender, sendResponse) {
             setUserCosmetic(cacheKey, full)
             result[username] = { ...full, avatar: kickUsernameToPfpCache.get(username) || null }
           } catch (e) {
-            setUserCosmetic(cacheKey, null)
-            result[username] = null
+            result[username] = null // transient: network/timeout — don't cache
           }
         }),
       )
@@ -9003,16 +9161,20 @@ async function initialize() {
       // Skip __live_yt_auto__ targets — that binding is no longer restored, so
       // routing a video to it would orphan (or resurrect) a stale stream's chat.
       let _ytMapPoisoned = false
-      for (const [vid, cid] of Object.entries(stored.yt_video_to_channel)) {
-        if (cid === '__live_yt_auto__') {
-          _ytMapPoisoned = true
-          continue
+      for (const [vid, cids] of Object.entries(stored.yt_video_to_channel)) {
+        // Accept both shapes: current array-of-channelIds and the legacy
+        // single-string value written before the map went multi-valued.
+        for (const cid of Array.isArray(cids) ? cids : [cids]) {
+          if (cid === '__live_yt_auto__') {
+            _ytMapPoisoned = true
+            continue
+          }
+          const set = ytVideoToChannel.get(vid) || new Set()
+          set.add(cid)
+          ytVideoToChannel.set(vid, set)
         }
-        ytVideoToChannel.set(vid, cid)
       }
-      if (_ytMapPoisoned) {
-        browser.storage.local.set({ yt_video_to_channel: Object.fromEntries(ytVideoToChannel) })
-      }
+      if (_ytMapPoisoned) persistYtVideoMap()
       log(' ✓ Restored ytVideoToChannel for', ytVideoToChannel.size, 'videos')
     }
     if (Array.isArray(stored.joined_extra_channels)) {
@@ -9029,7 +9191,13 @@ async function initialize() {
       // multichat re-init.
       for (const key of joinedExtraChannels) {
         const [platform, channel] = key.split('/')
-        if (platform && channel) wsSend({ type: 'channel:join', platform, channel })
+        if (platform && channel) {
+          wsSend({ type: 'channel:join', platform, channel })
+          // _kpChannels is a non-persisted Map — after SW eviction the Pusher
+          // tap has forgotten every channel, and tap-only kick channels have
+          // no other live source. Idempotent.
+          if (platform === 'kick') kickPusherJoin(channel)
+        }
       }
       // Also refetch channel owner emotes for every restored channel — the
       // WS rejoin above only subscribes to live broadcasts, it doesn't
@@ -9060,6 +9228,7 @@ async function initialize() {
             joinedExtraChannels.add(key)
             wsSend({ type: 'channel:join', platform: 'kick', channel: ch.kick.toLowerCase() })
           }
+          kickPusherJoin(ch.kick.toLowerCase())
         }
       }
       saveJoinedExtraChannels()
@@ -9125,6 +9294,19 @@ async function initialize() {
         if (validIds.has(id)) tabChannels.set(id, entry)
       }
       log(' ✓ Restored', tabChannels.size, 'tab channels from session storage')
+      // Replay joins on the WS now — same race as joinedExtraChannels above:
+      // connectWebSocket() was kicked off at the start of init, so the connect
+      // burst may have ALREADY iterated an empty tabChannels Map. wsSend
+      // queues if the socket isn't open yet; server tolerates duplicate joins.
+      const replayedTabJoins = new Set()
+      for (const entry of tabChannels.values()) {
+        if (!entry.channel || replayedTabJoins.has(entry.channel)) continue
+        replayedTabJoins.add(entry.channel)
+        const [platform, channel] = entry.channel.split('/')
+        if (!platform || !channel) continue
+        wsSend({ type: 'channel:join', platform, channel })
+        if (platform === 'kick') kickPusherJoin(channel)
+      }
     }
     if (Array.isArray(session?.joined_extra_channels)) {
       // Migration path — old code persisted to session. Pull anything still
@@ -9265,7 +9447,10 @@ async function buildDiagSnapshot() {
 // WEB PUSH SUBSCRIPTION
 // ============================================
 // MV3: service workers support PushManager via self.registration.pushManager.
-// Firefox MV2 background pages also support PushManager (FF 109+).
+// Firefox has NO push here: MV2 background pages run in a Window (no
+// self.registration), and FF doesn't support the Push API in extension
+// contexts at all — subscribeToPush no-ops there by design. FF's persistent
+// background page keeps the WS alive, which covers live notifications.
 // Notification.permission check is skipped — extensions have implicit grant
 // via the 'notifications' manifest permission.
 
@@ -10095,7 +10280,13 @@ function bgIrcDupModNotice(buf, msg) {
 function bgIrcHandleLine(line) {
   const msg = bgIrcParseLine(line)
   if (!msg) return
-  if (msg.channel) BG_IRC.chanLastSeen.set(msg.channel, Date.now())
+  if (msg.channel) {
+    BG_IRC.chanLastSeen.set(msg.channel, Date.now())
+    // Healthy traffic clears the rejoin strike count — without this, two
+    // historical lulls escalate the next quiet spell straight to a full
+    // reconnect of every joined channel.
+    BG_IRC.chanRejoinAttempts.delete(msg.channel)
+  }
 
   if (msg.type === 'roomstate') {
     const prev = BG_IRC.roomstates.get(msg.channel) || {}
@@ -10780,7 +10971,16 @@ async function bgKickRestoreFromStorage() {
       const ch = k.slice('hs_kick_'.length)
       if (!ch || !v?.msgs?.length || Date.now() - v.ts >= 86400000) continue
       const buf = new BGCircularBuffer(BG_KICK_PERSIST_MAX)
-      for (const m of v.msgs) buf.push(m)
+      // Live ingest may have created this buffer while get(null) was pending
+      // (boot doesn't await this restore) — merge stored history BEFORE the
+      // live messages instead of clobbering them.
+      const live = BG_KICK.channels.get(ch)?.getAll() || []
+      const liveIds = new Set(live.filter((m) => m.id).map((m) => m.id))
+      for (const m of v.msgs) {
+        if (m.id && liveIds.has(m.id)) continue
+        buf.push(m)
+      }
+      for (const m of live) buf.push(m)
       BG_KICK.channels.set(ch, buf)
       n++
     }
@@ -10801,7 +11001,14 @@ async function bgYtRestoreFromStorage() {
       const channelId = k.slice('hs_yt_'.length)
       if (!channelId || !v?.msgs?.length || Date.now() - v.ts >= 86400000) continue
       const buf = new BGCircularBuffer(BG_YT_PERSIST_MAX)
-      for (const m of v.msgs) buf.push(m)
+      // Same merge-not-clobber as the kick twin — boot doesn't await this.
+      const live = BG_YT.channels.get(channelId)?.getAll() || []
+      const liveIds = new Set(live.filter((m) => m.id).map((m) => m.id))
+      for (const m of v.msgs) {
+        if (m.id && liveIds.has(m.id)) continue
+        buf.push(m)
+      }
+      for (const m of live) buf.push(m)
       BG_YT.channels.set(channelId, buf)
       n++
     }
@@ -10843,11 +11050,28 @@ function bgYtPersistChannel(channelId) {
   )
 }
 
+// Cross-source live dedupe — the same Kick msg can arrive from the server
+// relay AND the Pusher tap (both call bgKickIngest). FIFO, mirrors _bgLiveIds.
+const _bgKickLiveIds = new Set()
+const _bgKickLiveIdOrder = []
+function bgKickSeenLiveId(id) {
+  if (!id) return false
+  if (_bgKickLiveIds.has(id)) return true
+  _bgKickLiveIds.add(id)
+  _bgKickLiveIdOrder.push(id)
+  if (_bgKickLiveIdOrder.length > 6000) {
+    for (let i = 0; i < 1000; i++) _bgKickLiveIds.delete(_bgKickLiveIdOrder[i])
+    _bgKickLiveIdOrder.splice(0, 1000)
+  }
+  return false
+}
+
 function bgKickIngest(data) {
-  // data shape from heatsync server kick-chat-message webhook → broadcast
-  // we hook into broadcastToTabs path; this fn is called there
+  // data shape from heatsync server kick-chat-message webhook → broadcast;
+  // called from the relay case AND the Pusher tap's _kpHandleChatEvent
   if (!data || !data.channel) return
   const ch = data.channel.toLowerCase()
+  if (data.id && bgKickSeenLiveId(`${ch}:${data.id}`)) return
   const isFirstSightOfChannel = !BG_KICK.channels.has(ch)
   if (isFirstSightOfChannel) {
     BG_KICK.channels.set(ch, new BGCircularBuffer(BG_KICK_PERSIST_MAX))
@@ -10866,6 +11090,10 @@ function bgKickIngest(data) {
     user: data.username || data.user || 'unknown',
     text: data.content || data.message || data.text || '',
     color: data.color || '#53fc18',
+    // kick numeric USER id → userId so hydrated history rows thread replies
+    // and resolve kick_<id> identity like live rows do (irc.js maps
+    // d.senderId → msg.userId on the live path)
+    userId: data.senderId != null ? String(data.senderId) : '',
     // Extract Kick badges from the live payload (mirrors kick-chat-backfill).
     // Was hardcoded '' — so BG-buffer history replay (_refreshFromBg) dropped
     // the sub/mod badges that were present when the message arrived live.
@@ -10985,6 +11213,8 @@ let _kpWs = null
 let _kpConnected = false
 let _kpReconnectMs = 1000
 let _kpReconnectTimer = null
+let _kpLastData = 0
+let _kpConnectingAt = 0
 const _kpChannels = new Map() // slug -> chatroomId (currently subscribed)
 const _kpChatroomCache = new Map() // slug -> chatroomId (resolved)
 
@@ -11030,18 +11260,27 @@ function _kpScheduleReconnect() {
 }
 function _kpConnect() {
   if (_kpWs || !KICK_PUSHER_TAP) return
+  // Capture the socket locally — a stale socket's late close/error/message
+  // events must never clobber a newer _kpWs (leave→join races spawn orphaned
+  // duplicate-subscribed sockets otherwise).
+  let ws
   try {
-    _kpWs = new WebSocket(
+    ws = new WebSocket(
       `wss://ws-us2.pusher.com/app/${KICK_PUSHER_APP_KEY}?protocol=7&client=js&version=8.4.0&flash=false`,
     )
   } catch {
     _kpScheduleReconnect()
     return
   }
-  _kpWs.onopen = () => {
-    _kpReconnectMs = 1000
+  _kpWs = ws
+  _kpConnectingAt = Date.now()
+  ws.onopen = () => {
+    if (_kpWs !== ws) return
+    _kpLastData = Date.now()
   }
-  _kpWs.onmessage = (e) => {
+  ws.onmessage = (e) => {
+    if (_kpWs !== ws) return
+    _kpLastData = Date.now()
     let d
     try {
       d = JSON.parse(e.data)
@@ -11050,7 +11289,15 @@ function _kpConnect() {
     }
     if (d.event === 'pusher:connection_established') {
       _kpConnected = true
+      // Reset backoff only on a fully-established session — resetting in
+      // onopen lets connect-then-drop failures (rotated app key, quota)
+      // retry at 1s forever.
+      _kpReconnectMs = 1000
       for (const id of _kpChannels.values()) _kpSubscribe(id) // (re)assert all subs
+    } else if (d.event === 'pusher:ping') {
+      try {
+        ws.send(JSON.stringify({ event: 'pusher:pong', data: {} }))
+      } catch {}
     } else if (typeof d.event === 'string' && d.event.includes('ChatMessageEvent')) {
       _kpHandleChatEvent(d)
     } else if (typeof d.event === 'string' && d.event.includes('MessageDeletedEvent')) {
@@ -11061,14 +11308,40 @@ function _kpConnect() {
       _kpHandleModEvent(d, 'unban')
     }
   }
-  _kpWs.onclose = () => {
+  ws.onclose = () => {
+    if (_kpWs !== ws) return
     _kpWs = null
     _kpConnected = false
     if (_kpChannels.size) _kpScheduleReconnect()
   }
-  _kpWs.onerror = () => {
+  ws.onerror = () => {
     try {
-      _kpWs?.close()
+      ws.close()
+    } catch {}
+  }
+}
+// Zombie/half-open detection — Pusher's protocol-level WS pings are answered
+// by the browser's network stack and never reach JS, so data silence is the
+// only liveness signal we can observe. Fired from the hs-ws-watchdog alarm.
+function _kpWatchdogCheck() {
+  if (!KICK_PUSHER_TAP || !_kpChannels.size) return
+  if (!_kpWs) {
+    if (!_kpReconnectTimer) _kpConnect()
+    return
+  }
+  if (_kpWs.readyState === WebSocket.CONNECTING) {
+    if (Date.now() - _kpConnectingAt > 30000) {
+      log('KP: connect stuck — closing')
+      try {
+        _kpWs.close()
+      } catch {}
+    }
+    return
+  }
+  if (_kpWs.readyState === WebSocket.OPEN && _kpLastData && Date.now() - _kpLastData > 240000) {
+    log('KP: zombie detected — reconnecting')
+    try {
+      _kpWs.close()
     } catch {}
   }
 }
@@ -11089,32 +11362,36 @@ function _kpHandleChatEvent(d) {
   if (!slug) return
   // Match the server webhook relay's data shape exactly (see kick-chat-webhooks
   // handleChatMessage) so the overlay renders identically + dedups by id.
-  broadcastToTabs({
-    type: 'kick_chat_message',
-    data: {
-      platform: 'kick',
-      channel: slug,
-      username: ev.sender?.username || 'unknown',
-      displayName: ev.sender?.username || 'Unknown',
-      // kick numeric USER id — reply-threading + kick_<id> identity lookups
-      senderId: ev.sender?.id ?? null,
-      content: ev.content || '',
-      color: ev.sender?.identity?.color || '#53fc18',
-      badges: ev.sender?.identity?.badges || [],
-      timestamp: ev.created_at ? Date.parse(ev.created_at) || Date.now() : Date.now(),
-      id: ev.id || '',
-      // Kick threads a reply via metadata.original_sender/original_message — the
-      // server relay already forwards this; the Pusher tap used to drop it (every
-      // tapped reply rendered flat). Match the relay's replyTo shape.
-      replyTo: ev.metadata?.original_message
-        ? {
-            username: ev.metadata.original_sender?.username || 'unknown',
-            content: ev.metadata.original_message.content || '',
-            id: ev.metadata.original_message.id || '',
-          }
-        : null,
-    },
-  })
+  const payload = {
+    platform: 'kick',
+    channel: slug,
+    username: ev.sender?.username || 'unknown',
+    displayName: ev.sender?.username || 'Unknown',
+    // kick numeric USER id — reply-threading + kick_<id> identity lookups
+    senderId: ev.sender?.id ?? null,
+    content: ev.content || '',
+    color: ev.sender?.identity?.color || '#53fc18',
+    badges: ev.sender?.identity?.badges || [],
+    timestamp: ev.created_at ? Date.parse(ev.created_at) || Date.now() : Date.now(),
+    id: ev.id || '',
+    // Kick threads a reply via metadata.original_sender/original_message — the
+    // server relay already forwards this; the Pusher tap used to drop it (every
+    // tapped reply rendered flat). Match the relay's replyTo shape.
+    replyTo: ev.metadata?.original_message
+      ? {
+          username: ev.metadata.original_sender?.username || 'unknown',
+          content: ev.metadata.original_message.content || '',
+          id: ev.metadata.original_message.id || '',
+        }
+      : null,
+  }
+  // Tee into the BG buffer — for tap-only channels this is the ONLY live
+  // source, so without it bg_kick_history serves the SW-boot-age snapshot.
+  // bgKickIngest dedups by id, so relay+tap doubles don't double-buffer.
+  try {
+    bgKickIngest(payload)
+  } catch {}
+  broadcastToTabs({ type: 'kick_chat_message', data: payload })
 }
 
 // Kick broadcasts moderation on the same chatroom Pusher channel as chat. Mirror
@@ -11174,12 +11451,20 @@ function kickPusherLeave(slug) {
   if (chatroomId == null) return
   _kpUnsubscribe(chatroomId)
   _kpChannels.delete(slug)
-  if (!_kpChannels.size && _kpWs) {
-    try {
-      _kpWs.close()
-    } catch {}
-    _kpWs = null
-    _kpConnected = false
+  if (!_kpChannels.size) {
+    // Kill any pending reconnect too — otherwise it opens a
+    // zero-subscription socket after the last channel leaves.
+    if (_kpReconnectTimer) {
+      clearTimeout(_kpReconnectTimer)
+      _kpReconnectTimer = null
+    }
+    if (_kpWs) {
+      try {
+        _kpWs.close()
+      } catch {}
+      _kpWs = null
+      _kpConnected = false
+    }
   }
 }
 

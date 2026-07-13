@@ -556,7 +556,7 @@ if (/(^|\.)twitch\.tv$/.test(location.hostname)) {
       if (!NAME_RE.test(e.name) || typeof e.url !== 'string' || !CDN_RE.test(e.url)) continue
       if (e.source !== '7tv' && e.source !== 'bttv' && e.source !== 'ffz') continue
       recentRemoteCompletions.delete(e.name)
-      recentRemoteCompletions.set(e.name, { url: e.url, source: e.source, zeroWidth: false })
+      recentRemoteCompletions.set(e.name, { url: e.url, source: e.source, zeroWidth: !!e.zeroWidth })
       names.push(e.name)
     }
     while (recentRemoteCompletions.size > REMOTE_COMPLETION_CAP) {
@@ -4085,8 +4085,9 @@ function scanAndApplyModifiersInInput(input) {
 //      within used:   prefix > substring, then frecency score, then tier
 //      within unused: tier, prefix > substring, sub emote > non-sub
 //   3. remote catalog order (_ai: FFZ-by-uses → BTTV → 7TV)
-//   4. shorter prefix-match > longer        (Kap → Kappa before KappaPride)
-//   5. recency for @user matches, then alpha
+//   4. recency for @user matches            (who just talked beats name length)
+//   5. shorter prefix-match > longer        (Kap → Kappa before KappaPride),
+//      then alpha
 function compareAcMatches(a, b, searchLower, frecency) {
   const an = a.name || '',
     bn = b.name || ''
@@ -4120,12 +4121,12 @@ function compareAcMatches(a, b, searchLower, frecency) {
     if (!!a.sub !== !!b.sub) return a.sub ? -1 : 1
   }
   if (a.remote && b.remote) return (a._ai || 0) - (b._ai || 0)
-  if (a.priority === 0 && an.length !== bn.length) return an.length - bn.length
   if (a.type === 'user' && b.type === 'user') {
     const arr = a.recencyRank ?? Infinity,
       brr = b.recencyRank ?? Infinity
     if (arr !== brr) return arr - brr
   }
+  if (a.priority === 0 && an.length !== bn.length) return an.length - bn.length
   return an.localeCompare(bn)
 }
 
@@ -4674,7 +4675,9 @@ function insertCompletionWysiwyg(match) {
     if (
       match.name &&
       typeof blockedEmoteNames !== 'undefined' &&
-      blockedEmoteNames.has(match.name) &&
+      // synth trailing-0 overlays carry "name0" but the block set holds the
+      // base name — check the stripped base too
+      (blockedEmoteNames.has(match.name) || (match._synthOverlay && blockedEmoteNames.has(match.name.slice(0, -1)))) &&
       typeof markInputEmoteBlocked === 'function'
     ) {
       markInputEmoteBlocked(img, true)

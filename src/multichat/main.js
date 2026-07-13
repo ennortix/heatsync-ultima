@@ -1418,6 +1418,23 @@
     })
   }
 
+  // THE ui_settings writer. Every sync-scope write goes through the SW's
+  // serialized rmw chain — a content-script get→merge→set races that chain (and
+  // every other tab's), and the loser's keys vanish with no error. Direct write
+  // only as a last resort: when the SW is unreachable (context invalidated), a
+  // raced write still beats a silently dropped setting.
+  async function writeUiSettings(patch) {
+    const resp = await safeSendMessage({ type: 'ui_settings_rmw', patch })
+    if (resp?.ok) return true
+    try {
+      const s = await chrome.storage.sync.get(['ui_settings'])
+      await chrome.storage.sync.set({ ui_settings: sanitizeUiSettings({ ...(s.ui_settings || {}), ...patch }) })
+      return true
+    } catch (_) {
+      return false
+    }
+  }
+
   function saveUiSetting(key, value) {
     if (!_pendingSettings) _pendingSettings = {}
     _pendingSettings[key] = value
@@ -1473,8 +1490,7 @@
 
       if (Object.keys(syncPatch).length) {
         invalidateUiSettingsCache()
-        chrome.storage.sync.get(['ui_settings']).then(async (s) => {
-          const merged = sanitizeUiSettings({ ...s.ui_settings, ...syncPatch })
+        ;(async () => {
           // Quota guard: chrome.storage.sync caps each key at 8192 bytes.
           // Check usage before writing — warn + toast if near the ceiling.
           try {
@@ -1486,11 +1502,11 @@
           } catch (_) {
             /* getBytesInUse unavailable (Firefox MV2) — skip check */
           }
-          chrome.storage.sync.set({ ui_settings: merged }).catch((err) => {
-            warn('ui_settings write failed:', err?.message)
+          if (!(await writeUiSettings(syncPatch))) {
+            warn('ui_settings write failed')
             showToast('settings failed to save — storage quota exceeded', 'error')
-          })
-        })
+          }
+        })()
       }
 
       if (Object.keys(wsPatch).length) {
@@ -2083,10 +2099,12 @@
         }
       }
       // retired-key migration (e.g. bigEmoji false → emoji size 1x)
+      let legacyAdopted = false
       if (raw === undefined && def.legacy) {
         try {
           raw = def.legacy(ui, local)
         } catch (_) {}
+        legacyAdopted = raw !== undefined
       }
       // first run for self-announcing local keys: persist the default so
       // other surfaces (options page) render the real state
@@ -2094,6 +2112,14 @@
 
       const v = raw === undefined ? def.default : coerceSettingValue(def, raw)
       const value = v !== undefined && validateSettingValue(def, v) ? v : def.default
+      // Persist the adopted legacy value — without this only this surface sees
+      // the migration (in-memory), while every other reader of the real key
+      // still gets the default (bigEmoji false → overlay 1x but native 2x).
+      // One-shot: the write makes raw defined next boot, so legacy never re-fires.
+      if (legacyAdopted) {
+        if (def.scope === 'local') chrome.storage.local.set({ [def.key]: value }).catch(() => {})
+        else saveUiSetting(def.key, value)
+      }
       _settingsCache[def.key] = value
       const bridge = _bridgeFor(def)
       if (bridge) bridge.set(value)
@@ -2358,8 +2384,10 @@
 
   // Normalize YouTube URL — accepts full URLs or bare username
   const normalizeYtUrl = (raw) => {
-    // Bare username (no slashes, no dots) → /@name/live
-    if (/^@?[\w-]+$/.test(raw)) {
+    // Bare UC channel id → /channel/<id>/live (mirrors identityYtLiveUrl)
+    if (/^UC[\w-]{20,}$/.test(raw)) return 'https://www.youtube.com/channel/' + raw + '/live'
+    // Bare username (no slashes; handles allow . _ -) → /@name/live
+    if (/^@?[\w.-]{3,30}$/.test(raw)) {
       const name = raw.startsWith('@') ? raw.slice(1) : raw
       return 'https://www.youtube.com/@' + name + '/live'
     }
@@ -9106,6 +9134,10 @@
       if (entry.youtube) {
         try {
           youtubeLinks.set(entry.id, { url: entry.youtube, videoId: '', channelName: '' })
+          // Arm the watchdog — it reads ytChanLastSeen/ytSubscribedUrls, so a
+          // sub added without them is never re-subscribed when it goes silent.
+          ytSubscribedUrls.set(entry.id, entry.youtube)
+          ytChanLastSeen.set(entry.id, Date.now())
         } catch {}
         try {
           chrome.runtime
@@ -9146,6 +9178,8 @@
         mutated = true
         try {
           youtubeLinks.set(entry.id, { url: ytUrl, videoId: '', channelName: '' })
+          ytSubscribedUrls.set(entry.id, ytUrl)
+          ytChanLastSeen.set(entry.id, Date.now())
         } catch {}
         try {
           chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytUrl, channelId: entry.id }).catch(() => {})
@@ -9287,11 +9321,9 @@
         menu.remove()
         // Popout mode keeps URL navigation — each popout window is locked to one channel.
         if (document.body.classList.contains('hs-popout') && ch.name.toLowerCase() !== urlCh) {
+          // Must land before the navigation below — awaited, not fire-and-forget.
           try {
-            const s = await chrome.storage.sync.get(['ui_settings'])
-            await chrome.storage.sync.set({
-              ui_settings: sanitizeUiSettings({ ...s.ui_settings, activeTab: 'live', liveChannel: ch.name }),
-            })
+            await writeUiSettings({ activeTab: 'live', liveChannel: ch.name })
           } catch {}
           if (ch.platform === 'twitch' || hostPlatform === 'twitch') {
             location.href = `/popout/${ch.name}/chat?popout=`
@@ -11309,6 +11341,10 @@
               if (kickName && isEnabled('chat-kick')) kickChat?.join(kickName)
               if (ch.youtube && isEnabled('chat-youtube')) {
                 youtubeLinks.set(id, { url: ch.youtube, videoId: '', channelName: '' })
+                // Arm the watchdog — it reads ytChanLastSeen/ytSubscribedUrls,
+                // so a sub added without them is never re-subscribed on silence.
+                ytSubscribedUrls.set(id, ch.youtube)
+                ytChanLastSeen.set(id, Date.now())
                 chrome.runtime
                   .sendMessage({ type: 'youtube_ws_subscribe', url: ch.youtube, channelId: id })
                   .catch(() => {})
@@ -11990,16 +12026,14 @@
         }
 
         if (Object.keys(syncState).length) {
-          const stored = await chrome.storage.sync.get(['ui_settings'])
-          // Sanitize the merged blob before persisting — `remote` is server-fanned
-          // state (accumulated across every client/version that ever PATCHed this
+          // writeUiSettings routes through the SW's serialized rmw chain, which
+          // sanitizes the merged blob — `remote` is server-fanned state
+          // (accumulated across every client/version that ever PATCHed this
           // account) and must NOT be trusted into the cross-device sync key raw.
-          // Every sibling write sanitizes (main.js:1760/5736, bg ui-state:update);
-          // this seed was the lone bypass. Skipping it let numeric-key/oversized/
-          // __proto__ garbage replicate to all devices + push the record past the
-          // 8KB quota, after which all future pref writes silently fail.
-          const merged = sanitizeUiSettings({ ...(stored.ui_settings || {}), ...syncState })
-          await chrome.storage.sync.set({ ui_settings: merged })
+          // Unsanitized, numeric-key/oversized/__proto__ garbage replicates to
+          // every device and pushes the record past the 8KB quota, after which
+          // all future pref writes silently fail.
+          await writeUiSettings(syncState)
         }
         if (Object.keys(localOverflow).length) {
           invalidateUiOverflowCache()

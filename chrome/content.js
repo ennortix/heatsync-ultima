@@ -1362,15 +1362,29 @@
           /^https:\/\/(static-cdn\.jtvnw\.net\/emoticons|cdn\.7tv\.app|cdn\.betterttv\.net|cdn\.frankerfacez\.com)\//
         const EMOTE_NAME_RE = /^[A-Za-z0-9_:\-()]+$/
         const raw = event.data.emotes.slice(0, 2000) // cap array to 2000 entries
-        const emotes = raw.filter(
-          (e) =>
-            e &&
-            typeof e.name === 'string' &&
-            e.name.length >= 1 &&
-            e.name.length <= 64 &&
-            EMOTE_NAME_RE.test(e.name) &&
-            (!e.url || (typeof e.url === 'string' && EMOTE_CDN_RE.test(e.url))),
-        )
+        const emotes = raw
+          .filter(
+            (e) =>
+              e &&
+              typeof e.name === 'string' &&
+              e.name.length >= 1 &&
+              e.name.length <= 64 &&
+              EMOTE_NAME_RE.test(e.name) &&
+              (!e.url || (typeof e.url === 'string' && e.url.length <= 300 && EMOTE_CDN_RE.test(e.url))),
+          )
+          // Rebuild fresh whitelisted objects — never store page-supplied objects
+          // verbatim (extra fields = storage bloat + fake owned-emote injection).
+          .map((e) => {
+            const out = { name: e.name }
+            if (e.url) out.url = e.url
+            if (typeof e.hash === 'string' && /^[\w-]{1,100}$/.test(e.hash)) out.hash = e.hash
+            if (typeof e.owner === 'string' && /^\w{1,25}$/.test(e.owner)) out.owner = e.owner
+            if (out.owner && typeof e.ownerDisplay === 'string' && e.ownerDisplay.length <= 50) {
+              out.ownerDisplay = e.ownerDisplay
+            }
+            if (typeof e.tier === 'string' && /^[a-z0-9]{1,16}$/i.test(e.tier)) out.tier = e.tier
+            return out
+          })
         log(' Received', emotes.length, 'native Twitch emotes from MAIN world')
         chrome.storage.local.set({ native_twitch_emotes: emotes })
       }
@@ -10456,7 +10470,14 @@
                 const msgId = msgEl.dataset.msgId || msgEl.getAttribute('data-msg-id')
                 if (msgId && originalMessageBodies.has(msgId)) {
                   const body = msgEl.querySelector('[data-a-target="chat-line-message-body"]')
-                  if (body && body.textContent.trim().toLowerCase().includes('message deleted')) {
+                  // Structural detection (locale-independent) — Twitch stamps a
+                  // deleted/moderated class on the line and/or swaps the body
+                  // for a placeholder. Never match on localized text.
+                  const isDeleted =
+                    msgEl.matches(
+                      '.chat-line__message--deleted, .chat-line__message--moderated, [class*="chat-line__message"][class*="deleted"]',
+                    ) || !!msgEl.querySelector('[data-a-target="chat-deleted-message-placeholder"]')
+                  if (body && isDeleted) {
                     restoreDeletedMessage(body, msgId)
                     msgEl.classList.add('hs-timed-out')
                     markCachedMessageTimedOut(msgId)
@@ -11505,6 +11526,7 @@
     allEmotesDirty = true
     rebuildEmoteMapIfDirty()
     detectAndJoinChannel()
+    setupAutoClaimPoints()
     watchRetryCount = 0
     interceptRetryCount = 0
     cleanup.setTimeout(
@@ -11648,8 +11670,10 @@
   // Auto-claim Twitch channel points bonus
   let autoClaimObserver = null
   let autoClaimEnabled = true
+  let autoClaimGen = 0
 
   function setupAutoClaimPoints() {
+    const gen = ++autoClaimGen
     if (autoClaimObserver) {
       autoClaimObserver.disconnect()
       cleanup.untrackObserver(autoClaimObserver)
@@ -11659,35 +11683,28 @@
 
     function tryClaimBonus(container) {
       if (!container) return
-      // The main button has aria-label "Bits and Points Balances" — any other button is the claim
-      const buttons = container.querySelectorAll('button')
-      for (const btn of buttons) {
-        const label = (btn.getAttribute('aria-label') || '').toLowerCase()
-        if (label.includes('bits and points') || label.includes('balance')) continue
-        // Also skip buttons that are part of dropdowns/menus
-        if (btn.closest('[role="dialog"]') || btn.closest('[role="menu"]')) continue
-        // This is likely the bonus claim button
-        log(' 🎁 Auto-claiming channel points bonus')
-        btn.click()
-        return
-      }
-      // Fallback: look for any claimable-bonus element
-      const claimable = container.querySelector('[class*="claimable"], [class*="click-claim"]')
-      if (claimable) {
-        log(' 🎁 Auto-claiming channel points bonus (fallback)')
-        claimable.click()
-      }
+      // Positively match the claim button — locale-independent class marker first,
+      // English aria-label as fallback. Never click unrecognized buttons.
+      const marker = container.querySelector('[class*="claimable"], [class*="click-claim"]')
+      const btn =
+        (marker && (marker.closest('button') || marker.querySelector('button') || marker)) ||
+        container.querySelector('button[aria-label*="claim" i]')
+      if (!btn) return
+      if (btn.closest('[role="dialog"]') || btn.closest('[role="menu"]')) return
+      log(' 🎁 Auto-claiming channel points bonus')
+      btn.click()
     }
 
     let attachAttempts = 0
     function attachObserver() {
-      if (!autoClaimEnabled) return
+      // Stale-cycle guard: a nav re-runs setupAutoClaimPoints; pending retry
+      // timers from the old cycle must not attach a second observer.
+      if (gen !== autoClaimGen || !autoClaimEnabled) return
       const container = document.querySelector('[data-test-selector="community-points-summary"]')
       if (!container) {
-        if (++attachAttempts >= 20) {
-          log(' ⚠️ Auto-claim: points container not found after 20 attempts, giving up')
-          return
-        }
+        // No permanent give-up — handleNavigation re-arms on SPA nav, so this
+        // cap only bounds retries within one page view (e.g. directory pages).
+        if (++attachAttempts >= 20) return
         cleanup.setTimeout(attachObserver, 3000)
         return
       }

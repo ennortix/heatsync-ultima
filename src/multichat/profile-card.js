@@ -1649,6 +1649,10 @@ async function pcAddAsChannel(username) {
   if (channel.kick) kickChat?.join(channel.kick)
   if (channel.youtube) {
     youtubeLinks.set(channel.id, { url: channel.youtube, videoId: '', channelName: '' })
+    // Arm the watchdog — it reads ytChanLastSeen/ytSubscribedUrls, so a sub
+    // added without them is never re-subscribed when the stream goes silent.
+    ytSubscribedUrls.set(channel.id, channel.youtube)
+    ytChanLastSeen.set(channel.id, Date.now())
     try {
       chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: channel.youtube, channelId: channel.id })
     } catch {}

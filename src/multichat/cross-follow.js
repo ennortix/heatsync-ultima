@@ -65,21 +65,35 @@ async function _writeQueue(arr) {
   } catch {}
 }
 
+// Queue writes are read→modify→write on shared storage; overlapping RMWs
+// (fire-and-forget propagateFollow calls, drains) would clobber each other's
+// entries. Chain them so each RMW sees the previous one's write.
+let _queueChain = Promise.resolve()
+function _queueTask(fn) {
+  const run = _queueChain.then(fn)
+  _queueChain = run.catch(() => {})
+  return run
+}
+
 // Insert / replace. If a previous entry for the same {platform, target}
 // exists, the newer one supersedes it — last write wins, so follow/unfollow
 // rapid toggles collapse rather than queueing both.
 async function _enqueue(item) {
   if (!item?.platform || !item?.target) return
-  const q = await _readQueue()
-  const filtered = q.filter((x) => !(x.platform === item.platform && x.target === item.target))
-  filtered.push({ ...item, ts: Date.now() })
-  await _writeQueue(filtered.slice(-HS_PENDING_MAX))
+  return _queueTask(async () => {
+    const q = await _readQueue()
+    const filtered = q.filter((x) => !(x.platform === item.platform && x.target === item.target))
+    filtered.push({ ...item, ts: Date.now() })
+    await _writeQueue(filtered.slice(-HS_PENDING_MAX))
+  })
 }
 
 async function _dequeueMatching(platform, target) {
-  const q = await _readQueue()
-  const filtered = q.filter((x) => !(x.platform === platform && x.target === target))
-  if (filtered.length !== q.length) await _writeQueue(filtered)
+  return _queueTask(async () => {
+    const q = await _readQueue()
+    const filtered = q.filter((x) => !(x.platform === platform && x.target === target))
+    if (filtered.length !== q.length) await _writeQueue(filtered)
+  })
 }
 
 // Drain all pending items for a platform. Called from background SW after it

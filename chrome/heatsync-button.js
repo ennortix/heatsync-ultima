@@ -1910,14 +1910,23 @@
       log(' saveExtensionSettings called with:', settings)
       try {
         cachedSettings = { ...sanitizeUiSettings(settings) }
-        // Save to chrome.storage.local (same key as popup.js)
-        chrome.storage.sync
-          .set({ ui_settings: cachedSettings })
-          .then(() => {
-            log(' Settings saved to storage')
+        // Route through the SW's serialized ui_settings rmw chain — writing the
+        // whole blob from here would clobber any key the SW/another tab changed
+        // since cachedSettings was loaded. Direct write only if the SW is
+        // unreachable (context invalidated).
+        chrome.runtime
+          .sendMessage({ type: 'ui_settings_rmw', patch: cachedSettings })
+          .then((resp) => {
+            if (resp?.ok === true) {
+              log(' Settings saved to storage')
+              return
+            }
+            return chrome.storage.sync.set({ ui_settings: cachedSettings })
           })
-          .catch((err) => {
-            console.error('[heatsync-button] Failed to save to storage:', err)
+          .catch(() => {
+            chrome.storage.sync.set({ ui_settings: cachedSettings }).catch((err) => {
+              console.error('[heatsync-button] Failed to save to storage:', err)
+            })
           })
         // ALSO save to localStorage so autocomplete-hook.js (page context) can read it
         try {

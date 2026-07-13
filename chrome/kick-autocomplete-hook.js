@@ -162,15 +162,28 @@
     // Exact full-name match leads UNCONDITIONALLY — typing the whole name is
     // the intent ("nam" → NaM even never-used vs a channel NAMarrive; reverses
     // the old strong-exact/tier call, keep in lockstep with input.js
-    // compareAcMatches + autocomplete-hook.js). Below exact, tier outranks
-    // match-type: the array is grouped exact→prefix→contains and Array.sort
-    // is stable, so a tier-only key preserves match-type order WITHIN a tier.
+    // compareAcMatches + autocomplete-hook.js). Then used-before (frecency —
+    // "kko" → your KKona, never the channel's untouched KKonaLand). Never-used:
+    // tier outranks match-type — the array is grouped exact→prefix→contains
+    // and Array.sort is stable, so a tier-only key preserves match-type order
+    // WITHIN a tier.
+    const frec = readEmoteFrecency()
     return [...exact, ...prefix, ...contains].sort((a, b) => {
       const ax = a.lower === q ? 0 : 1,
         bx = b.lower === q ? 0 : 1
       if (ax !== bx) return ax - bx
+      const af = frec.get(a.name) || 0,
+        bf = frec.get(b.name) || 0
+      if (af > 0 !== bf > 0) return af > 0 ? -1 : 1
       const at = a.tier ?? 2,
         bt = b.tier ?? 2
+      if (af > 0) {
+        // both used — typed prefix first, then habit strength, then tier
+        const ap = a.lower.startsWith(q) ? 0 : 1,
+          bp = b.lower.startsWith(q) ? 0 : 1
+        if (ap !== bp) return ap - bp
+        if (af !== bf) return bf - af
+      }
       return at !== bt ? at - bt : 0
     })
   }
@@ -511,26 +524,80 @@
     // textContent-safe: emote names are alphanumeric + limited punctuation
     document.execCommand('insertText', false, match.name + ' ')
     hideEmoteDropdown()
-    recordRecentEmoteMru(match.name)
+    // chatter rows aren't emote usage — keep usernames out of the shared signal
+    if (!match.isChatter) recordRecentEmoteMru(match.name)
     log('inserted emote', match.name)
   }
 
-  // Shared MRU with the multichat picker ('hs-mc-recent-emotes', same origin) —
-  // native-input completions feed the same usage signal that strong-exact
-  // ranking reads above.
+  // Shared usage signal with the multichat picker/tab-complete (emotes.js) —
+  // same origin, same localStorage keys, so kick-native completions feed the
+  // frecency ranking searchEmotes reads above. Two stores: the legacy MRU list
+  // (drives the picker's "recent" section) and the frecency map (use count
+  // with a one-week half-life). Logic MUST mirror emotes.js
+  // loadEmoteFrecency/bumpEmoteFrecency exactly (same as autocomplete-hook.js).
+  const HS_RECENT_EMOTES_KEY = 'hs-mc-recent-emotes'
+  const HS_FRECENCY_KEY = 'hs-mc-emote-frecency'
+  const HS_FRECENCY_CAP = 200
+  const HS_FRECENCY_HALF_LIFE_MS = 7 * 24 * 3600e3
+  function _hsFrecScore(entry, now) {
+    if (!entry || !(entry.n > 0)) return 0
+    const age = Math.max(0, now - (entry.t || 0))
+    return entry.n * 2 ** (-age / HS_FRECENCY_HALF_LIFE_MS)
+  }
+  function _hsFrecRaw() {
+    try {
+      const r = JSON.parse(localStorage.getItem(HS_FRECENCY_KEY))
+      if (r && typeof r === 'object' && !Array.isArray(r)) return r
+    } catch (_) {}
+    // First run: seed from the legacy MRU list (same migration as emotes.js).
+    const seeded = {}
+    try {
+      const legacy = JSON.parse(localStorage.getItem(HS_RECENT_EMOTES_KEY))
+      if (Array.isArray(legacy)) {
+        for (let i = 0; i < legacy.length; i++) seeded[legacy[i]] = { n: 1, t: Date.now() - i * 3600e3 }
+      }
+    } catch (_) {}
+    return seeded
+  }
+  /** name → decayed score (>0 means the user has actually inserted this) */
+  function readEmoteFrecency() {
+    const raw = _hsFrecRaw()
+    const now = Date.now()
+    const out = new Map()
+    for (const name of Object.keys(raw)) {
+      const s = _hsFrecScore(raw[name], now)
+      if (s > 0) out.set(name, s)
+    }
+    return out
+  }
+  function bumpEmoteFrecency(name) {
+    if (!name) return
+    try {
+      const raw = _hsFrecRaw()
+      const now = Date.now()
+      raw[name] = { n: _hsFrecScore(raw[name], now) + 1, t: now }
+      const names = Object.keys(raw)
+      if (names.length > HS_FRECENCY_CAP) {
+        names.sort((a, b) => _hsFrecScore(raw[a], now) - _hsFrecScore(raw[b], now))
+        for (const dead of names.slice(0, names.length - HS_FRECENCY_CAP)) delete raw[dead]
+      }
+      localStorage.setItem(HS_FRECENCY_KEY, JSON.stringify(raw))
+    } catch (_) {}
+  }
   function recordRecentEmoteMru(name) {
     if (!name) return
     try {
       let list = []
       try {
-        const r = JSON.parse(localStorage.getItem('hs-mc-recent-emotes'))
+        const r = JSON.parse(localStorage.getItem(HS_RECENT_EMOTES_KEY))
         list = Array.isArray(r) ? r : []
       } catch (_) {}
       list = list.filter((n) => n !== name)
       list.unshift(name)
       if (list.length > 24) list = list.slice(0, 24)
-      localStorage.setItem('hs-mc-recent-emotes', JSON.stringify(list))
+      localStorage.setItem(HS_RECENT_EMOTES_KEY, JSON.stringify(list))
     } catch (_) {}
+    bumpEmoteFrecency(name)
   }
 
   // Search emoji by prefix

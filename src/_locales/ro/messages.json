@@ -17,111 +17,17 @@
   "common_retry": {
     "message": "reîncearcă"
   },
-  "common_cancel": {
-    "message": "anulează"
-  },
-  "common_save": {
-    "message": "salvează"
-  },
-  "common_add": {
-    "message": "adaugă"
-  },
-  "common_edit": {
-    "message": "editează"
-  },
-  "common_remove": {
-    "message": "elimină"
-  },
-  "common_done": {
-    "message": "gata"
-  },
-  "common_ended": {
-    "message": "încheiat"
-  },
-  "common_vote": {
-    "message": "votează"
-  },
-  "common_set": {
-    "message": "setează"
-  },
-  "common_default": {
-    "message": "implicit"
-  },
-  "common_mention": {
-    "message": "mențiune"
-  },
   "common_user_not_found": {
     "message": "utilizator negăsit"
   },
-  "popup_title": {
-    "message": "heatsync"
-  },
-  "popup_status_checking": {
-    "message": "se verifică..."
-  },
-  "popup_status_connected": {
-    "message": "conectat"
-  },
-  "popup_status_api_error": {
-    "message": "eroare api"
-  },
-  "popup_status_offline": {
-    "message": "offline"
-  },
-  "popup_user_stats": {
-    "message": "$EMOTES$ emotes · $GLOBALS$ globale",
-    "placeholders": {
-      "emotes": {
-        "content": "$1"
-      },
-      "globals": {
-        "content": "$2"
-      }
-    }
-  },
-  "popup_user_stats_heat": {
-    "message": "$EMOTES$ emotes · $GLOBALS$ globale · $HEAT$ heat",
-    "placeholders": {
-      "emotes": {
-        "content": "$1"
-      },
-      "globals": {
-        "content": "$2"
-      },
-      "heat": {
-        "content": "$3"
-      }
-    }
-  },
-  "popup_btn_emotes": {
-    "message": "emotes"
-  },
-  "popup_btn_refresh": {
-    "message": "reîmprospătează"
-  },
-  "popup_btn_site": {
-    "message": "site"
-  },
-  "popup_btn_done": {
-    "message": "gata"
-  },
-  "popup_btn_logout": {
-    "message": "deconectare"
-  },
   "btn_recent": {
     "message": "recente"
-  },
-  "popup_login_prompt": {
-    "message": "autentifică-te pentru sincronizarea emotes"
   },
   "popup_channel_placeholder": {
     "message": "canal"
   },
   "popup_btn_popout": {
     "message": "fereastră separată"
-  },
-  "popup_hint": {
-    "message": "setări emote în panoul picker din chat"
   },
   "welcome_title": {
     "message": "bun venit la heatsync"
@@ -150,9 +56,6 @@
   "btn_tab_emoji": {
     "message": "emoji"
   },
-  "btn_search_placeholder": {
-    "message": "caută emotes..."
-  },
   "btn_rotate_title": {
     "message": "rotește poziția barei de tab"
   },
@@ -167,29 +70,6 @@
   },
   "btn_cached": {
     "message": "cache"
-  },
-  "btn_loading_emotes": {
-    "message": "se încarcă emotes"
-  },
-  "btn_no_third_party": {
-    "message": "nu s-au găsit emotes terțe"
-  },
-  "btn_no_emotes_import": {
-    "message": "nu sunt emotes de importat"
-  },
-  "btn_import_count": {
-    "message": "importă $COUNT$ emotes",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "btn_failed_load": {
-    "message": "încărcare emotes eșuată"
-  },
-  "btn_retry_loading": {
-    "message": "reîncarcă"
   },
   "btn_ctx_block": {
     "message": "blochează emote"
@@ -239,12 +119,6 @@
   "btn_settings_space_after": {
     "message": "spațiu după emote"
   },
-  "btn_settings_placeholder_mode": {
-    "message": "mod placeholder"
-  },
-  "btn_settings_placeholder_desc": {
-    "message": "afișează casete colorate"
-  },
   "btn_settings_hide_header": {
     "message": "ascunde header"
   },
@@ -283,9 +157,6 @@
   },
   "btn_size_4x": {
     "message": "4x"
-  },
-  "btn_expand": {
-    "message": "extinde"
   },
   "btn_collapse": {
     "message": "restrânge"
@@ -400,22 +271,6 @@
       }
     }
   },
-  "content_card_follows_channel": {
-    "message": "urmărește $CHANNEL$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_card_not_following": {
-    "message": "nu urmărește $CHANNEL$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
   "content_card_followed_by": {
     "message": "urmărit de $CHANNEL$",
     "placeholders": {
@@ -463,12 +318,6 @@
   "content_view_on_heatsync": {
     "message": "vezi pe heatsync"
   },
-  "content_in_your_set": {
-    "message": "în setul tău"
-  },
-  "content_blocked_click_unblock": {
-    "message": "blocat (apasă pentru a debloca)"
-  },
   "mc_tab_feed": {
     "message": "flux"
   },
@@ -477,9 +326,6 @@
   },
   "mc_tab_mentions": {
     "message": "mențiuni"
-  },
-  "mc_tab_activity": {
-    "message": "activitate"
   },
   "mc_tab_live": {
     "message": "live"
@@ -512,9 +358,6 @@
   "mc_no_messages": {
     "message": "încă fără mesaje"
   },
-  "mc_no_activity": {
-    "message": "încă fără activitate"
-  },
   "mc_add_channel": {
     "message": "adaugă canal"
   },
@@ -546,12 +389,6 @@
         "content": "$1"
       }
     }
-  },
-  "mc_no_channel_detected": {
-    "message": "niciun canal detectat"
-  },
-  "mc_settings_display": {
-    "message": "afișare"
   },
   "mc_settings_emote_size": {
     "message": "dimensiune emote"
@@ -667,23 +504,11 @@
   "mc_settings_poll_banner_desc": {
     "message": "banner sondaj activ, votează direct"
   },
-  "mc_settings_pinned_messages": {
-    "message": "mesaje fixate"
-  },
-  "mc_settings_pinned_messages_desc": {
-    "message": "banner fix pentru mesaje fixate de mods"
-  },
   "mc_settings_dim_timeouts": {
     "message": "atenuează mesajele cu timeout"
   },
   "mc_settings_dim_timeouts_desc": {
     "message": "50% opacitate în loc de ascundere"
-  },
-  "mc_settings_smart_completion": {
-    "message": "completare tab inteligentă"
-  },
-  "mc_settings_smart_completion_desc": {
-    "message": "chatterii/emotele recente apar primii"
   },
   "mc_settings_first_chatter": {
     "message": "strălucire primul mesaj"
@@ -699,9 +524,6 @@
   },
   "mc_settings_keyword_highlights_placeholder": {
     "message": "un cuvânt cheie pe linie"
-  },
-  "mc_settings_features": {
-    "message": "funcționalități"
   },
   "mc_settings_auto_claim": {
     "message": "auto-claim channel points"
@@ -748,12 +570,6 @@
   "mc_pred_winner": {
     "message": "câștigător"
   },
-  "mc_pred_won": {
-    "message": " câștigat"
-  },
-  "mc_pred_lost": {
-    "message": " pierdut"
-  },
   "mc_pred_lock_betting": {
     "message": "blochează pariurile"
   },
@@ -763,55 +579,8 @@
   "mc_pred_pick_winner": {
     "message": "alege câștigătorul"
   },
-  "mc_pred_pick_winner_your_bet": {
-    "message": "alege câștigătorul (pariul tău)"
-  },
-  "mc_pred_failed_load": {
-    "message": "nu s-au putut încărca predicțiile"
-  },
-  "mc_pred_bet_own": {
-    "message": "nu poți paria pe a ta"
-  },
-  "mc_pred_try_again": {
-    "message": "încearcă din nou"
-  },
   "mc_pred_ended": {
     "message": "predicție încheiată"
-  },
-  "mc_pred_betting_locked": {
-    "message": "pariuri blocate"
-  },
-  "mc_pred_not_enough": {
-    "message": "puncte insuficiente"
-  },
-  "mc_pred_already_bet": {
-    "message": "ai pariat deja"
-  },
-  "mc_pred_no_permission": {
-    "message": "fără permisiune"
-  },
-  "mc_pred_failed": {
-    "message": "eșec"
-  },
-  "mc_pred_no_event": {
-    "message": "fără eveniment"
-  },
-  "mc_pred_no_outcome": {
-    "message": "fără rezultat"
-  },
-  "mc_pred_closing": {
-    "message": "se închide..."
-  },
-  "mc_pred_you_bet": {
-    "message": "ai pariat $POINTS$ pe $OUTCOME$ — alege câștigătorul real",
-    "placeholders": {
-      "points": {
-        "content": "$1"
-      },
-      "outcome": {
-        "content": "$2"
-      }
-    }
   },
   "mc_poll_new": {
     "message": "+ sondaj nou"
@@ -827,41 +596,11 @@
       }
     }
   },
-  "mc_poll_choice_optional": {
-    "message": "opțiune $NUM$ (opțional)",
-    "placeholders": {
-      "num": {
-        "content": "$1"
-      }
-    }
-  },
   "mc_poll_create": {
     "message": "creează sondaj"
   },
   "mc_poll_end": {
     "message": "încheie sondaj"
-  },
-  "mc_poll_votes": {
-    "message": "$COUNT$ voturi",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_poll_vote_single": {
-    "message": "$COUNT$ vot",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_poll_already_active": {
-    "message": "sondaj deja activ"
-  },
-  "mc_poll_not_logged_in": {
-    "message": "nu ești autentificat"
   },
   "mc_reward_rewards": {
     "message": "recompense"
@@ -875,51 +614,11 @@
   "mc_reward_out_of_stock": {
     "message": "epuizat"
   },
-  "mc_reward_cooldown_min": {
-    "message": "cooldown $MIN$m",
-    "placeholders": {
-      "min": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_reward_cooldown_sec": {
-    "message": "cooldown $SEC$s",
-    "placeholders": {
-      "sec": {
-        "content": "$1"
-      }
-    }
-  },
   "mc_reward_enter_text": {
     "message": "introduce text..."
   },
   "mc_reward_redeem": {
     "message": "redeem"
-  },
-  "mc_chat_username_color": {
-    "message": "culoare nume utilizator"
-  },
-  "mc_chat_hex_placeholder": {
-    "message": "#hex"
-  },
-  "mc_chat_modes": {
-    "message": "moduri chat"
-  },
-  "mc_chat_emote_only": {
-    "message": "doar emotes"
-  },
-  "mc_chat_follower": {
-    "message": "follower"
-  },
-  "mc_chat_slow": {
-    "message": "lent"
-  },
-  "mc_chat_sub_only": {
-    "message": "doar subs"
-  },
-  "mc_chat_unique": {
-    "message": "unic"
   },
   "mc_chat_hype_train": {
     "message": "hype train"
@@ -960,35 +659,11 @@
   "mc_input_not_logged_in": {
     "message": "nu ești autentificat"
   },
-  "mc_input_login_kick": {
-    "message": "autentifică-te mai întâi pe kick.com"
-  },
-  "mc_input_open_kick": {
-    "message": "deschide kick.com într-un tab"
-  },
-  "mc_input_kick_not_found": {
-    "message": "canal Kick negăsit"
-  },
-  "mc_input_send_failed": {
-    "message": "trimitere eșuată"
-  },
-  "mc_input_no_username": {
-    "message": "niciun nume detectat"
-  },
   "mc_input_auth_failed": {
     "message": "autentificare eșuată — autentifică-te din nou pe Twitch"
   },
-  "mc_input_connection_failed": {
-    "message": "conexiune eșuată — încearcă din nou"
-  },
-  "mc_input_send_failed_retry": {
-    "message": "trimitere eșuată — încearcă din nou"
-  },
   "mc_social_back": {
     "message": "<- înapoi"
-  },
-  "mc_social_no_posts": {
-    "message": "încă fără postări"
   },
   "mc_social_loading_feed": {
     "message": "se încarcă..."
@@ -1001,9 +676,6 @@
   },
   "mc_social_login_first": {
     "message": "autentifică-te mai întâi pe heatsync.org"
-  },
-  "mc_social_login_activity": {
-    "message": "autentifică-te pe heatsync.org pentru a vedea activitatea"
   },
   "mc_social_failed_feed_auth": {
     "message": "încărcare feed eșuată — autentifică-te pe heatsync.org"
@@ -1025,52 +697,6 @@
   },
   "mc_tip_emoji": {
     "message": "emoji"
-  },
-  "mc_tip_subbed": {
-    "message": "subed la $CHANNEL$ $TENURE$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      },
-      "tenure": {
-        "content": "$2"
-      }
-    }
-  },
-  "mc_tip_following": {
-    "message": "urmărește $CHANNEL$ $AGE$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      },
-      "age": {
-        "content": "$2"
-      }
-    }
-  },
-  "mc_tip_not_following": {
-    "message": "nu urmărește $CHANNEL$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_tip_followed_by": {
-    "message": "urmărit de $CHANNEL$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_tip_followers": {
-    "message": "$COUNT$ urmăritori",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
   },
   "mc_whisper_hint": {
     "message": "/w utilizator mesaj · /dm utilizator mesaj · /r mesaj"
@@ -1122,17 +748,6 @@
       }
     }
   },
-  "mc_yt_connected": {
-    "message": "youtube conectat: $CHANNEL$ — în așteptarea mesajelor...",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_yt_error": {
-    "message": "eroare conexiune youtube"
-  },
   "mc_emote_search_placeholder": {
     "message": "caută emotes..."
   },
@@ -1144,35 +759,5 @@
   },
   "mc_emote_blocked": {
     "message": "blocat (apasă pentru a debloca)"
-  },
-  "content_toast_unknown_error": {
-    "message": "eroare necunoscută"
-  },
-  "content_toast_loading_emotes": {
-    "message": "se încarcă emotes..."
-  },
-  "content_toast_fetching_emotes": {
-    "message": "se preiau emotes..."
-  },
-  "content_card_action_ban": {
-    "message": "ban"
-  },
-  "content_card_action_unban": {
-    "message": "unban"
-  },
-  "content_card_action_block": {
-    "message": "blochează"
-  },
-  "btn_close": {
-    "message": "închide"
-  },
-  "btn_error_channel": {
-    "message": "încărcare emotes canal eșuată"
-  },
-  "btn_error_global": {
-    "message": "încărcare emotes globale eșuată"
-  },
-  "btn_error_inventory": {
-    "message": "încărcare emotes proprii eșuată"
   }
 }

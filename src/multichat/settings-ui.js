@@ -921,21 +921,25 @@ function _renderCategoryPane(cat) {
 }
 
 // ─── settings export / import ────────────────────────────────────────────
-// Export: dumps ui_settings (sync) + all hs_* keys (local) into a single
-// JSON. Import: file picker → JSON parse → schema-validate → merge into
+// Export: dumps ui_settings (sync) + all hs_*/viewer_* keys and registry
+// local-mirror keys (local) into a single JSON. Import: file picker → JSON parse → schema-validate → merge into
 // storage. Both areas restored. Errors toast, don't throw.
 // Private stores that must NEVER ride an export (the preset panel calls
 // exports "sharable"): mention/chat buffers, per-user notes, whispers, crash
 // ring ("captured locally only"). Import skips the same set so a crafted file
 // can't overwrite them either.
 var _SETTINGS_PRIVATE_KEY_RE = /^hs_(mentions_v2|user_notes|errors|irc_|kick_|yt_|whisper)/
+// local-mirror settings (keyword highlights, filter rules) live under
+// unprefixed mirror keys — allowlist them alongside the hs_/viewer_ namespaces
+// or the export silently drops them (derived from the registry, never hand-listed)
+var _SETTINGS_MIRROR_KEYS = new Set(SETTINGS.filter((d) => d.mirrorKey).map((d) => d.mirrorKey))
 async function _exportAllSettings() {
   try {
     var syncObj = await chrome.storage.sync.get(null)
     var localObj = await chrome.storage.local.get(null)
     var hsLocal = {}
     Object.keys(localObj).forEach((k) => {
-      if (k.indexOf('hs_') !== 0 && k.indexOf('viewer_') !== 0) return
+      if (k.indexOf('hs_') !== 0 && k.indexOf('viewer_') !== 0 && !_SETTINGS_MIRROR_KEYS.has(k)) return
       if (_SETTINGS_PRIVATE_KEY_RE.test(k)) return
       hsLocal[k] = localObj[k]
     })
@@ -991,17 +995,20 @@ async function _importAllSettings() {
         }
         var writes = []
         if (data.sync && data.sync.ui_settings && typeof data.sync.ui_settings === 'object') {
-          // Merge — preserve any keys absent from the import. sanitize via
-          // existing util so corrupt fields don't leak in.
-          var stored = await chrome.storage.sync.get(['ui_settings'])
-          var merged = sanitizeUiSettings(Object.assign({}, stored.ui_settings || {}, data.sync.ui_settings))
-          writes.push(chrome.storage.sync.set({ ui_settings: merged }))
+          // Merge — preserve any keys absent from the import. The SW's serialized
+          // rmw chain owns the write (and sanitizes it, so corrupt fields don't
+          // leak in); a local get→merge→set would race concurrent writes.
+          writes.push(
+            writeUiSettings(data.sync.ui_settings).then((ok) => {
+              if (!ok) throw new Error('ui_settings write failed')
+            }),
+          )
         }
         if (data.local && typeof data.local === 'object') {
           var safeLocal = {}
           Object.keys(data.local).forEach((k) => {
             if (k.length < 1 || k.length > 128) return
-            if (k.indexOf('hs_') !== 0 && k.indexOf('viewer_') !== 0) return
+            if (k.indexOf('hs_') !== 0 && k.indexOf('viewer_') !== 0 && !_SETTINGS_MIRROR_KEYS.has(k)) return
             if (_SETTINGS_PRIVATE_KEY_RE.test(k)) return
             safeLocal[k] = data.local[k]
           })

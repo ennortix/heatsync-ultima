@@ -80,12 +80,20 @@ function handleMcNav() {
     document.body.classList.add('hs-mc-navigating')
     // Unsubscribe the auto-YT route for the previous page so the new
     // page gets a clean __live_yt_auto__ binding (videoId differs).
+    // Capture videoId/url BEFORE nulling — the BG needs at least one of them
+    // to send the server-side youtube:unsubscribe (channelId alone only
+    // cleans local storage and leaves the old stream's poller running).
+    const prevAutoVid = _autoYtVideoId
+    const prevAutoUrl = ytSubscribedUrls.get('__live_yt_auto__')
     chrome.runtime
       .sendMessage({
         type: 'youtube_ws_unsubscribe',
         channelId: '__live_yt_auto__',
+        videoId: prevAutoVid || '',
+        url: prevAutoUrl || '',
       })
       .catch(() => {})
+    clearYtPace('__live_yt_auto__')
     channelYtMessages.delete('__live_yt_auto__')
     // Bug #2: clear the watchdog entry for the old video so the 30s
     // interval does not keep force-reconnecting a subscription that no
@@ -157,18 +165,27 @@ function fullSpaReinit() {
   // YT subscription so init() can cleanly re-subscribe each. Otherwise the
   // server sees duplicate youtube:subscribe events on every SPA navigation
   // and may re-deliver buffered messages.
+  // Capture videoId/url BEFORE nulling — the BG needs at least one of them
+  // to send the server-side youtube:unsubscribe (channelId alone only
+  // cleans local storage and leaves the old stream's poller running).
+  const prevAutoVid = _autoYtVideoId
+  const prevAutoUrl = ytSubscribedUrls.get('__live_yt_auto__')
   chrome.runtime
     .sendMessage({
       type: 'youtube_ws_unsubscribe',
       channelId: '__live_yt_auto__',
+      videoId: prevAutoVid || '',
+      url: prevAutoUrl || '',
     })
     .catch(() => {})
+  clearYtPace('__live_yt_auto__')
   channelYtMessages.delete('__live_yt_auto__')
   // Bug #2: clear watchdog entries for all unsubscribed YT channels so
   // the 30s watchdog doesn't keep force-reconnecting dead subscriptions.
   ytChanLastSeen.delete('__live_yt_auto__')
   ytChanRejoinAttempts.delete('__live_yt_auto__')
   ytSubscribedUrls.delete('__live_yt_auto__')
+  _autoYtVideoId = null
   for (const ch of config.channels) {
     if (!ch.youtube) continue
     const link = youtubeLinks.get(ch.id)
@@ -180,6 +197,7 @@ function fullSpaReinit() {
         videoId: link?.videoId || '',
       })
       .catch(() => {})
+    clearYtPace(ch.id)
     youtubeLinks.delete(ch.id)
     ytChanLastSeen.delete(ch.id)
     ytChanRejoinAttempts.delete(ch.id)

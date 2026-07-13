@@ -17,111 +17,17 @@
   "common_retry": {
     "message": "subukan ulit"
   },
-  "common_cancel": {
-    "message": "kanselahin"
-  },
-  "common_save": {
-    "message": "i-save"
-  },
-  "common_add": {
-    "message": "idagdag"
-  },
-  "common_edit": {
-    "message": "i-edit"
-  },
-  "common_remove": {
-    "message": "alisin"
-  },
-  "common_done": {
-    "message": "tapos na"
-  },
-  "common_ended": {
-    "message": "natapos"
-  },
-  "common_vote": {
-    "message": "bumoto"
-  },
-  "common_set": {
-    "message": "itakda"
-  },
-  "common_default": {
-    "message": "default"
-  },
-  "common_mention": {
-    "message": "mention"
-  },
   "common_user_not_found": {
     "message": "user hindi nahanap"
   },
-  "popup_title": {
-    "message": "heatsync"
-  },
-  "popup_status_checking": {
-    "message": "kinakapa..."
-  },
-  "popup_status_connected": {
-    "message": "konektado"
-  },
-  "popup_status_api_error": {
-    "message": "api error"
-  },
-  "popup_status_offline": {
-    "message": "offline"
-  },
-  "popup_user_stats": {
-    "message": "$EMOTES$ emotes · $GLOBALS$ global",
-    "placeholders": {
-      "emotes": {
-        "content": "$1"
-      },
-      "globals": {
-        "content": "$2"
-      }
-    }
-  },
-  "popup_user_stats_heat": {
-    "message": "$EMOTES$ emotes · $GLOBALS$ global · $HEAT$ heat",
-    "placeholders": {
-      "emotes": {
-        "content": "$1"
-      },
-      "globals": {
-        "content": "$2"
-      },
-      "heat": {
-        "content": "$3"
-      }
-    }
-  },
-  "popup_btn_emotes": {
-    "message": "emotes"
-  },
-  "popup_btn_refresh": {
-    "message": "i-refresh"
-  },
-  "popup_btn_site": {
-    "message": "site"
-  },
-  "popup_btn_done": {
-    "message": "tapos na"
-  },
-  "popup_btn_logout": {
-    "message": "mag-logout"
-  },
   "btn_recent": {
     "message": "kamakailan"
-  },
-  "popup_login_prompt": {
-    "message": "mag-login para mag-sync ng emotes"
   },
   "popup_channel_placeholder": {
     "message": "channel"
   },
   "popup_btn_popout": {
     "message": "hiwalay na window"
-  },
-  "popup_hint": {
-    "message": "settings ng emotes nasa picker panel ng chat"
   },
   "welcome_title": {
     "message": "welcome sa heatsync"
@@ -150,9 +56,6 @@
   "btn_tab_emoji": {
     "message": "emoji"
   },
-  "btn_search_placeholder": {
-    "message": "maghanap ng emotes..."
-  },
   "btn_rotate_title": {
     "message": "iikot ang posisyon ng tab bar"
   },
@@ -167,29 +70,6 @@
   },
   "btn_cached": {
     "message": "cached"
-  },
-  "btn_loading_emotes": {
-    "message": "naglo-load ng emotes"
-  },
-  "btn_no_third_party": {
-    "message": "walang nakitang third-party na emotes"
-  },
-  "btn_no_emotes_import": {
-    "message": "walang emotes na pwedeng i-import"
-  },
-  "btn_import_count": {
-    "message": "i-import ang $COUNT$ na emotes",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "btn_failed_load": {
-    "message": "hindi na-load ang emotes"
-  },
-  "btn_retry_loading": {
-    "message": "subukan ulit"
   },
   "btn_ctx_block": {
     "message": "i-block ang emote"
@@ -239,12 +119,6 @@
   "btn_settings_space_after": {
     "message": "space pagkatapos ng emote"
   },
-  "btn_settings_placeholder_mode": {
-    "message": "placeholder mode"
-  },
-  "btn_settings_placeholder_desc": {
-    "message": "ipakita ang colored boxes"
-  },
   "btn_settings_hide_header": {
     "message": "itago ang header"
   },
@@ -283,9 +157,6 @@
   },
   "btn_size_4x": {
     "message": "4x"
-  },
-  "btn_expand": {
-    "message": "palawakin"
   },
   "btn_collapse": {
     "message": "ipikit"
@@ -400,22 +271,6 @@
       }
     }
   },
-  "content_card_follows_channel": {
-    "message": "fina-follow ang $CHANNEL$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_card_not_following": {
-    "message": "hindi fina-follow ang $CHANNEL$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
   "content_card_followed_by": {
     "message": "fina-follow ng $CHANNEL$",
     "placeholders": {
@@ -463,12 +318,6 @@
   "content_view_on_heatsync": {
     "message": "tingnan sa heatsync"
   },
-  "content_in_your_set": {
-    "message": "nasa set mo"
-  },
-  "content_blocked_click_unblock": {
-    "message": "naka-block (i-click para i-unblock)"
-  },
   "mc_tab_feed": {
     "message": "feed"
   },
@@ -477,9 +326,6 @@
   },
   "mc_tab_mentions": {
     "message": "mentions"
-  },
-  "mc_tab_activity": {
-    "message": "aktibidad"
   },
   "mc_tab_live": {
     "message": "live"
@@ -512,9 +358,6 @@
   "mc_no_messages": {
     "message": "wala pang messages"
   },
-  "mc_no_activity": {
-    "message": "wala pang aktibidad"
-  },
   "mc_add_channel": {
     "message": "magdagdag ng channel"
   },
@@ -546,12 +389,6 @@
         "content": "$1"
       }
     }
-  },
-  "mc_no_channel_detected": {
-    "message": "walang nakitang channel"
-  },
-  "mc_settings_display": {
-    "message": "display"
   },
   "mc_settings_emote_size": {
     "message": "laki ng emote"
@@ -667,23 +504,11 @@
   "mc_settings_poll_banner_desc": {
     "message": "aktibong banner ng boto, bumoto nang direkta"
   },
-  "mc_settings_pinned_messages": {
-    "message": "pinned messages"
-  },
-  "mc_settings_pinned_messages_desc": {
-    "message": "nakadikit na banner para sa mga mensaheng na-pin ng mga mod"
-  },
   "mc_settings_dim_timeouts": {
     "message": "i-dim ang timed-out messages"
   },
   "mc_settings_dim_timeouts_desc": {
     "message": "50% opacity sa halip na itago"
-  },
-  "mc_settings_smart_completion": {
-    "message": "smart tab completion"
-  },
-  "mc_settings_smart_completion_desc": {
-    "message": "mga kamakailang chatter/emote ay lilitaw muna"
   },
   "mc_settings_first_chatter": {
     "message": "first-message glow"
@@ -699,9 +524,6 @@
   },
   "mc_settings_keyword_highlights_placeholder": {
     "message": "isang keyword bawat linya"
-  },
-  "mc_settings_features": {
-    "message": "features"
   },
   "mc_settings_auto_claim": {
     "message": "auto-claim ng channel points"
@@ -748,12 +570,6 @@
   "mc_pred_winner": {
     "message": "panalo"
   },
-  "mc_pred_won": {
-    "message": " nanalo"
-  },
-  "mc_pred_lost": {
-    "message": " natalo"
-  },
   "mc_pred_lock_betting": {
     "message": "i-lock ang betting"
   },
@@ -763,55 +579,8 @@
   "mc_pred_pick_winner": {
     "message": "piliin ang panalo"
   },
-  "mc_pred_pick_winner_your_bet": {
-    "message": "piliin ang panalo (taya mo)"
-  },
-  "mc_pred_failed_load": {
-    "message": "hindi na-load ang predictions"
-  },
-  "mc_pred_bet_own": {
-    "message": "hindi pwede magtaya sa sarili"
-  },
-  "mc_pred_try_again": {
-    "message": "subukan ulit"
-  },
   "mc_pred_ended": {
     "message": "natapos ang prediction"
-  },
-  "mc_pred_betting_locked": {
-    "message": "naka-lock ang betting"
-  },
-  "mc_pred_not_enough": {
-    "message": "kulang ang puntos"
-  },
-  "mc_pred_already_bet": {
-    "message": "nagtaya na"
-  },
-  "mc_pred_no_permission": {
-    "message": "walang permission"
-  },
-  "mc_pred_failed": {
-    "message": "hindi nagtagumpay"
-  },
-  "mc_pred_no_event": {
-    "message": "walang event"
-  },
-  "mc_pred_no_outcome": {
-    "message": "walang resulta"
-  },
-  "mc_pred_closing": {
-    "message": "isinasara..."
-  },
-  "mc_pred_you_bet": {
-    "message": "tinaya mo ang $POINTS$ sa $OUTCOME$ — piliin ang aktwal na panalo",
-    "placeholders": {
-      "points": {
-        "content": "$1"
-      },
-      "outcome": {
-        "content": "$2"
-      }
-    }
   },
   "mc_poll_new": {
     "message": "+ bagong poll"
@@ -827,41 +596,11 @@
       }
     }
   },
-  "mc_poll_choice_optional": {
-    "message": "pagpipilian $NUM$ (optional)",
-    "placeholders": {
-      "num": {
-        "content": "$1"
-      }
-    }
-  },
   "mc_poll_create": {
     "message": "gumawa ng poll"
   },
   "mc_poll_end": {
     "message": "tapusin ang poll"
-  },
-  "mc_poll_votes": {
-    "message": "$COUNT$ boto",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_poll_vote_single": {
-    "message": "$COUNT$ boto",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_poll_already_active": {
-    "message": "may aktibong poll na"
-  },
-  "mc_poll_not_logged_in": {
-    "message": "hindi naka-login"
   },
   "mc_reward_rewards": {
     "message": "mga reward"
@@ -875,51 +614,11 @@
   "mc_reward_out_of_stock": {
     "message": "naubos"
   },
-  "mc_reward_cooldown_min": {
-    "message": "$MIN$m cooldown",
-    "placeholders": {
-      "min": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_reward_cooldown_sec": {
-    "message": "$SEC$s cooldown",
-    "placeholders": {
-      "sec": {
-        "content": "$1"
-      }
-    }
-  },
   "mc_reward_enter_text": {
     "message": "magpasok ng text..."
   },
   "mc_reward_redeem": {
     "message": "i-redeem"
-  },
-  "mc_chat_username_color": {
-    "message": "kulay ng username"
-  },
-  "mc_chat_hex_placeholder": {
-    "message": "#hex"
-  },
-  "mc_chat_modes": {
-    "message": "chat modes"
-  },
-  "mc_chat_emote_only": {
-    "message": "emotes lang"
-  },
-  "mc_chat_follower": {
-    "message": "follower"
-  },
-  "mc_chat_slow": {
-    "message": "mabagal"
-  },
-  "mc_chat_sub_only": {
-    "message": "subs lang"
-  },
-  "mc_chat_unique": {
-    "message": "unique"
   },
   "mc_chat_hype_train": {
     "message": "hype train"
@@ -960,35 +659,11 @@
   "mc_input_not_logged_in": {
     "message": "hindi naka-login"
   },
-  "mc_input_login_kick": {
-    "message": "mag-login muna sa kick.com"
-  },
-  "mc_input_open_kick": {
-    "message": "buksan ang kick.com sa tab"
-  },
-  "mc_input_kick_not_found": {
-    "message": "Kick channel hindi nahanap"
-  },
-  "mc_input_send_failed": {
-    "message": "hindi naipadala"
-  },
-  "mc_input_no_username": {
-    "message": "walang nakitang username"
-  },
   "mc_input_auth_failed": {
     "message": "hindi nag-authenticate — mag-login ulit sa Twitch"
   },
-  "mc_input_connection_failed": {
-    "message": "hindi nag-connect — subukan ulit"
-  },
-  "mc_input_send_failed_retry": {
-    "message": "hindi naipadala — subukan ulit"
-  },
   "mc_social_back": {
     "message": "<- bumalik"
-  },
-  "mc_social_no_posts": {
-    "message": "wala pang posts"
   },
   "mc_social_loading_feed": {
     "message": "naglo-load..."
@@ -1001,9 +676,6 @@
   },
   "mc_social_login_first": {
     "message": "mag-login muna sa heatsync.org"
-  },
-  "mc_social_login_activity": {
-    "message": "mag-login sa heatsync.org para makita ang aktibidad"
   },
   "mc_social_failed_feed_auth": {
     "message": "hindi na-load ang feed — mag-login sa heatsync.org"
@@ -1025,52 +697,6 @@
   },
   "mc_tip_emoji": {
     "message": "emoji"
-  },
-  "mc_tip_subbed": {
-    "message": "sub sa $CHANNEL$ $TENURE$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      },
-      "tenure": {
-        "content": "$2"
-      }
-    }
-  },
-  "mc_tip_following": {
-    "message": "fina-follow ang $CHANNEL$ $AGE$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      },
-      "age": {
-        "content": "$2"
-      }
-    }
-  },
-  "mc_tip_not_following": {
-    "message": "hindi fina-follow ang $CHANNEL$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_tip_followed_by": {
-    "message": "fina-follow ng $CHANNEL$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_tip_followers": {
-    "message": "$COUNT$ followers",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
   },
   "mc_whisper_hint": {
     "message": "/w user mensahe · /dm user mensahe · /r mensahe"
@@ -1122,17 +748,6 @@
       }
     }
   },
-  "mc_yt_connected": {
-    "message": "youtube konektado: $CHANNEL$ — naghihintay ng messages...",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_yt_error": {
-    "message": "may error sa youtube connection"
-  },
   "mc_emote_search_placeholder": {
     "message": "maghanap ng emotes..."
   },
@@ -1144,35 +759,5 @@
   },
   "mc_emote_blocked": {
     "message": "naka-block (i-click para i-unblock)"
-  },
-  "content_toast_unknown_error": {
-    "message": "hindi kilalang error"
-  },
-  "content_toast_loading_emotes": {
-    "message": "naglo-load ng emotes..."
-  },
-  "content_toast_fetching_emotes": {
-    "message": "kinukuha ang emotes..."
-  },
-  "content_card_action_ban": {
-    "message": "ban"
-  },
-  "content_card_action_unban": {
-    "message": "unban"
-  },
-  "content_card_action_block": {
-    "message": "i-block"
-  },
-  "btn_close": {
-    "message": "isara"
-  },
-  "btn_error_channel": {
-    "message": "hindi na-load ang channel emotes"
-  },
-  "btn_error_global": {
-    "message": "hindi na-load ang global emotes"
-  },
-  "btn_error_inventory": {
-    "message": "hindi na-load ang emotes mo"
   }
 }

@@ -3268,6 +3268,7 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
     // intact. Without this, others' messages diverged from the viewer's own.
     let emote = null
     let isOverlayEmote = false
+    let overlayBaseName = null
     const endsWithZero = word.endsWith('0') && word.length > 1
     emote =
       (channel && channelEmoteCaches[channel]?.get(word)) ||
@@ -3300,7 +3301,10 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
         extraCache?.get(baseName) ||
         emoteCache.get(baseName) ||
         _rfGate(_rf?.get(baseName))
-      if (emote) isOverlayEmote = true
+      if (emote) {
+        isOverlayEmote = true
+        overlayBaseName = baseName
+      }
     }
     // FFZ-style fallback: token like "Kappaw!" or "KappaffzX" — when the
     // upstream send pipeline strips the space between emote and modifier,
@@ -3348,7 +3352,13 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
       // stores hold RAW names (picker/server side), so check the raw form too
       // — and escape from raw so attrs aren't double-escaped (&amp;lt;3 alt).
       const rawWord = unescapeHtml(word)
-      const isBlocked = blockedEmoteNames.has(word) || blockedEmoteNames.has(rawWord)
+      // trailing-0 overlay resolved from the BASE name — a block on the base
+      // must hide the overlay too ("name0" itself is never in the block set)
+      const isBlocked =
+        blockedEmoteNames.has(word) ||
+        blockedEmoteNames.has(rawWord) ||
+        (overlayBaseName !== null &&
+          (blockedEmoteNames.has(overlayBaseName) || blockedEmoteNames.has(unescapeHtml(overlayBaseName))))
       let state = isBlocked ? 'blocked' : emote.state || 'global'
       // Upgrade 'unadded' → 'owned' when the viewer actually has this name
       // in their inventory. Visually identical under 2-state, but downstream

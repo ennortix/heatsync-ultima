@@ -66,6 +66,9 @@
   "popup_detected_prefix": {
     "message": "on "
   },
+  "popup_privacy_link": {
+    "message": "no third-party tracking"
+  },
   "welcome_title": {
     "message": "heatsync"
   },

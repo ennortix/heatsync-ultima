@@ -17,111 +17,17 @@
   "common_retry": {
     "message": "נסה שוב"
   },
-  "common_cancel": {
-    "message": "בטל"
-  },
-  "common_save": {
-    "message": "שמור"
-  },
-  "common_add": {
-    "message": "הוסף"
-  },
-  "common_edit": {
-    "message": "ערוך"
-  },
-  "common_remove": {
-    "message": "הסר"
-  },
-  "common_done": {
-    "message": "סיום"
-  },
-  "common_ended": {
-    "message": "הסתיים"
-  },
-  "common_vote": {
-    "message": "הצבע"
-  },
-  "common_set": {
-    "message": "הגדר"
-  },
-  "common_default": {
-    "message": "ברירת מחדל"
-  },
-  "common_mention": {
-    "message": "אזכור"
-  },
   "common_user_not_found": {
     "message": "משתמש לא נמצא"
   },
-  "popup_title": {
-    "message": "heatsync"
-  },
-  "popup_status_checking": {
-    "message": "בודק..."
-  },
-  "popup_status_connected": {
-    "message": "מחובר"
-  },
-  "popup_status_api_error": {
-    "message": "שגיאת api"
-  },
-  "popup_status_offline": {
-    "message": "לא מקוון"
-  },
-  "popup_user_stats": {
-    "message": "$EMOTES$ אימוג'ים · $GLOBALS$ גלובליים",
-    "placeholders": {
-      "emotes": {
-        "content": "$1"
-      },
-      "globals": {
-        "content": "$2"
-      }
-    }
-  },
-  "popup_user_stats_heat": {
-    "message": "$EMOTES$ אימוג'ים · $GLOBALS$ גלובליים · $HEAT$ heat",
-    "placeholders": {
-      "emotes": {
-        "content": "$1"
-      },
-      "globals": {
-        "content": "$2"
-      },
-      "heat": {
-        "content": "$3"
-      }
-    }
-  },
-  "popup_btn_emotes": {
-    "message": "אימוג'ים"
-  },
-  "popup_btn_refresh": {
-    "message": "רענן"
-  },
-  "popup_btn_site": {
-    "message": "אתר"
-  },
-  "popup_btn_done": {
-    "message": "סיום"
-  },
-  "popup_btn_logout": {
-    "message": "התנתק"
-  },
   "btn_recent": {
     "message": "אחרונים"
-  },
-  "popup_login_prompt": {
-    "message": "התחבר כדי לסנכרן אימוג'ים"
   },
   "popup_channel_placeholder": {
     "message": "ערוץ"
   },
   "popup_btn_popout": {
     "message": "חלון נפרד"
-  },
-  "popup_hint": {
-    "message": "הגדרות אימוג'ים בלוח הבחירה בצ'אט"
   },
   "welcome_title": {
     "message": "ברוך הבא ל-heatsync"
@@ -150,9 +56,6 @@
   "btn_tab_emoji": {
     "message": "אימוג'י"
   },
-  "btn_search_placeholder": {
-    "message": "חפש אימוג'ים..."
-  },
   "btn_rotate_title": {
     "message": "סובב מיקום סרגל הלשוניות"
   },
@@ -167,29 +70,6 @@
   },
   "btn_cached": {
     "message": "במטמון"
-  },
-  "btn_loading_emotes": {
-    "message": "טוען אימוג'ים"
-  },
-  "btn_no_third_party": {
-    "message": "לא נמצאו אימוג'ים מצד שלישי"
-  },
-  "btn_no_emotes_import": {
-    "message": "אין אימוג'ים לייבא"
-  },
-  "btn_import_count": {
-    "message": "ייבא $COUNT$ אימוג'ים",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "btn_failed_load": {
-    "message": "טעינת האימוג'ים נכשלה"
-  },
-  "btn_retry_loading": {
-    "message": "נסה לטעון שוב"
   },
   "btn_ctx_block": {
     "message": "חסום אימוג'י"
@@ -239,12 +119,6 @@
   "btn_settings_space_after": {
     "message": "רווח אחרי אימוג'י"
   },
-  "btn_settings_placeholder_mode": {
-    "message": "מצב placeholder"
-  },
-  "btn_settings_placeholder_desc": {
-    "message": "הצג קופסאות צבעוניות"
-  },
   "btn_settings_hide_header": {
     "message": "הסתר כותרת"
   },
@@ -283,9 +157,6 @@
   },
   "btn_size_4x": {
     "message": "4x"
-  },
-  "btn_expand": {
-    "message": "הרחב"
   },
   "btn_collapse": {
     "message": "כווץ"
@@ -400,22 +271,6 @@
       }
     }
   },
-  "content_card_follows_channel": {
-    "message": "עוקב אחר $CHANNEL$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_card_not_following": {
-    "message": "לא עוקב אחר $CHANNEL$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
   "content_card_followed_by": {
     "message": "נעקב על ידי $CHANNEL$",
     "placeholders": {
@@ -463,12 +318,6 @@
   "content_view_on_heatsync": {
     "message": "צפה ב-heatsync"
   },
-  "content_in_your_set": {
-    "message": "בסט שלך"
-  },
-  "content_blocked_click_unblock": {
-    "message": "חסום (לחץ לביטול)"
-  },
   "mc_tab_feed": {
     "message": "פיד"
   },
@@ -477,9 +326,6 @@
   },
   "mc_tab_mentions": {
     "message": "אזכורים"
-  },
-  "mc_tab_activity": {
-    "message": "פעילות"
   },
   "mc_tab_live": {
     "message": "שידור"
@@ -512,9 +358,6 @@
   "mc_no_messages": {
     "message": "עדיין אין הודעות"
   },
-  "mc_no_activity": {
-    "message": "עדיין אין פעילות"
-  },
   "mc_add_channel": {
     "message": "הוסף ערוץ"
   },
@@ -546,12 +389,6 @@
         "content": "$1"
       }
     }
-  },
-  "mc_no_channel_detected": {
-    "message": "לא זוהה ערוץ"
-  },
-  "mc_settings_display": {
-    "message": "תצוגה"
   },
   "mc_settings_emote_size": {
     "message": "גודל אימוג'י"
@@ -667,23 +504,11 @@
   "mc_settings_poll_banner_desc": {
     "message": "באנר הצבעה פעיל, הצבע ישירות"
   },
-  "mc_settings_pinned_messages": {
-    "message": "הודעות נעוצות"
-  },
-  "mc_settings_pinned_messages_desc": {
-    "message": "באנר קבוע להודעות שנעוצו על ידי מנהלים"
-  },
   "mc_settings_dim_timeouts": {
     "message": "עמעם הודעות timeout"
   },
   "mc_settings_dim_timeouts_desc": {
     "message": "50% שקיפות במקום הסתרה"
-  },
-  "mc_settings_smart_completion": {
-    "message": "השלמת Tab חכמה"
-  },
-  "mc_settings_smart_completion_desc": {
-    "message": "משתמשים/אמוטים אחרונים מוצגים ראשונים"
   },
   "mc_settings_first_chatter": {
     "message": "זוהר הודעה ראשונה"
@@ -699,9 +524,6 @@
   },
   "mc_settings_keyword_highlights_placeholder": {
     "message": "מילת מפתח אחת בשורה"
-  },
-  "mc_settings_features": {
-    "message": "תכונות"
   },
   "mc_settings_auto_claim": {
     "message": "איסוף אוטומטי של channel points"
@@ -748,12 +570,6 @@
   "mc_pred_winner": {
     "message": "מנצח"
   },
-  "mc_pred_won": {
-    "message": " ניצח"
-  },
-  "mc_pred_lost": {
-    "message": " הפסיד"
-  },
   "mc_pred_lock_betting": {
     "message": "נעל הימורים"
   },
@@ -763,55 +579,8 @@
   "mc_pred_pick_winner": {
     "message": "בחר מנצח"
   },
-  "mc_pred_pick_winner_your_bet": {
-    "message": "בחר מנצח (ההימור שלך)"
-  },
-  "mc_pred_failed_load": {
-    "message": "טעינת תחזיות נכשלה"
-  },
-  "mc_pred_bet_own": {
-    "message": "אי אפשר להמר על שלך"
-  },
-  "mc_pred_try_again": {
-    "message": "נסה שוב"
-  },
   "mc_pred_ended": {
     "message": "התחזית הסתיימה"
-  },
-  "mc_pred_betting_locked": {
-    "message": "הימורים נעולים"
-  },
-  "mc_pred_not_enough": {
-    "message": "אין מספיק נקודות"
-  },
-  "mc_pred_already_bet": {
-    "message": "כבר הימרת"
-  },
-  "mc_pred_no_permission": {
-    "message": "אין הרשאה"
-  },
-  "mc_pred_failed": {
-    "message": "נכשל"
-  },
-  "mc_pred_no_event": {
-    "message": "אין אירוע"
-  },
-  "mc_pred_no_outcome": {
-    "message": "אין תוצאה"
-  },
-  "mc_pred_closing": {
-    "message": "סוגר..."
-  },
-  "mc_pred_you_bet": {
-    "message": "הימרת $POINTS$ על $OUTCOME$ — בחר את המנצח האמיתי",
-    "placeholders": {
-      "points": {
-        "content": "$1"
-      },
-      "outcome": {
-        "content": "$2"
-      }
-    }
   },
   "mc_poll_new": {
     "message": "+ סקר חדש"
@@ -827,41 +596,11 @@
       }
     }
   },
-  "mc_poll_choice_optional": {
-    "message": "בחירה $NUM$ (אופציונלי)",
-    "placeholders": {
-      "num": {
-        "content": "$1"
-      }
-    }
-  },
   "mc_poll_create": {
     "message": "צור סקר"
   },
   "mc_poll_end": {
     "message": "סיים סקר"
-  },
-  "mc_poll_votes": {
-    "message": "$COUNT$ קולות",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_poll_vote_single": {
-    "message": "$COUNT$ קול",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_poll_already_active": {
-    "message": "כבר יש סקר פעיל"
-  },
-  "mc_poll_not_logged_in": {
-    "message": "לא מחובר"
   },
   "mc_reward_rewards": {
     "message": "תגמולים"
@@ -875,51 +614,11 @@
   "mc_reward_out_of_stock": {
     "message": "אזל"
   },
-  "mc_reward_cooldown_min": {
-    "message": "cooldown $MIN$ד",
-    "placeholders": {
-      "min": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_reward_cooldown_sec": {
-    "message": "cooldown $SEC$ש",
-    "placeholders": {
-      "sec": {
-        "content": "$1"
-      }
-    }
-  },
   "mc_reward_enter_text": {
     "message": "הכנס טקסט..."
   },
   "mc_reward_redeem": {
     "message": "ממש"
-  },
-  "mc_chat_username_color": {
-    "message": "צבע שם המשתמש"
-  },
-  "mc_chat_hex_placeholder": {
-    "message": "#hex"
-  },
-  "mc_chat_modes": {
-    "message": "מצבי צ'אט"
-  },
-  "mc_chat_emote_only": {
-    "message": "רק אימוג'ים"
-  },
-  "mc_chat_follower": {
-    "message": "עוקב"
-  },
-  "mc_chat_slow": {
-    "message": "איטי"
-  },
-  "mc_chat_sub_only": {
-    "message": "רק subs"
-  },
-  "mc_chat_unique": {
-    "message": "ייחודי"
   },
   "mc_chat_hype_train": {
     "message": "hype train"
@@ -960,35 +659,11 @@
   "mc_input_not_logged_in": {
     "message": "לא מחובר"
   },
-  "mc_input_login_kick": {
-    "message": "התחבר תחילה ב-kick.com"
-  },
-  "mc_input_open_kick": {
-    "message": "פתח kick.com בלשונית"
-  },
-  "mc_input_kick_not_found": {
-    "message": "ערוץ Kick לא נמצא"
-  },
-  "mc_input_send_failed": {
-    "message": "שליחה נכשלה"
-  },
-  "mc_input_no_username": {
-    "message": "לא זוהה שם משתמש"
-  },
   "mc_input_auth_failed": {
     "message": "אימות נכשל — התחבר שוב ל-Twitch"
   },
-  "mc_input_connection_failed": {
-    "message": "חיבור נכשל — נסה שוב"
-  },
-  "mc_input_send_failed_retry": {
-    "message": "שליחה נכשלה — נסה שוב"
-  },
   "mc_social_back": {
     "message": "<- חזור"
-  },
-  "mc_social_no_posts": {
-    "message": "עדיין אין פוסטים"
   },
   "mc_social_loading_feed": {
     "message": "טוען..."
@@ -1001,9 +676,6 @@
   },
   "mc_social_login_first": {
     "message": "התחבר תחילה ב-heatsync.org"
-  },
-  "mc_social_login_activity": {
-    "message": "התחבר ב-heatsync.org כדי לראות פעילות"
   },
   "mc_social_failed_feed_auth": {
     "message": "טעינת פיד נכשלה — התחבר ב-heatsync.org"
@@ -1025,52 +697,6 @@
   },
   "mc_tip_emoji": {
     "message": "אימוג'י"
-  },
-  "mc_tip_subbed": {
-    "message": "מנוי ב-$CHANNEL$ $TENURE$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      },
-      "tenure": {
-        "content": "$2"
-      }
-    }
-  },
-  "mc_tip_following": {
-    "message": "עוקב אחר $CHANNEL$ $AGE$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      },
-      "age": {
-        "content": "$2"
-      }
-    }
-  },
-  "mc_tip_not_following": {
-    "message": "לא עוקב אחר $CHANNEL$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_tip_followed_by": {
-    "message": "נעקב על ידי $CHANNEL$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_tip_followers": {
-    "message": "$COUNT$ עוקבים",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
   },
   "mc_whisper_hint": {
     "message": "/w משתמש הודעה · /dm משתמש הודעה · /r הודעה"
@@ -1122,17 +748,6 @@
       }
     }
   },
-  "mc_yt_connected": {
-    "message": "youtube מחובר: $CHANNEL$ — ממתין להודעות...",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_yt_error": {
-    "message": "שגיאת חיבור youtube"
-  },
   "mc_emote_search_placeholder": {
     "message": "חפש אימוג'ים..."
   },
@@ -1144,35 +759,5 @@
   },
   "mc_emote_blocked": {
     "message": "חסום (לחץ לביטול)"
-  },
-  "content_toast_unknown_error": {
-    "message": "שגיאה לא ידועה"
-  },
-  "content_toast_loading_emotes": {
-    "message": "טוען אימוג'ים..."
-  },
-  "content_toast_fetching_emotes": {
-    "message": "מביא אימוג'ים..."
-  },
-  "content_card_action_ban": {
-    "message": "ban"
-  },
-  "content_card_action_unban": {
-    "message": "unban"
-  },
-  "content_card_action_block": {
-    "message": "חסום"
-  },
-  "btn_close": {
-    "message": "סגור"
-  },
-  "btn_error_channel": {
-    "message": "טעינת אימוג'י ערוץ נכשלה"
-  },
-  "btn_error_global": {
-    "message": "טעינת אימוג'ים גלובליים נכשלה"
-  },
-  "btn_error_inventory": {
-    "message": "טעינת האימוג'ים שלך נכשלה"
   }
 }

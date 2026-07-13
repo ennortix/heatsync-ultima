@@ -153,7 +153,12 @@
     initPromise = (async () => {
       overrideLocale = await getStoredLocale()
       if (!overrideLocale) {
-        override = null
+        // chrome reports Filipino as fil but the catalog ships as tl, so chrome.i18n never matches it
+        let ui = ''
+        try {
+          ui = api?.i18n?.getUILanguage() || ''
+        } catch {}
+        override = /^fil([-_]|$)/.test(ui) ? await fetchLocale('tl') : null
         return
       }
       const data = await fetchLocale(overrideLocale)

@@ -9732,35 +9732,59 @@ function injectStyles() {
       max-height: 72px;
       width: auto;
     }
-    /* live player: compact heights per provider; × floats top-right */
-    .hs-mc-media.hs-mc-media-playing {
-      position: relative;
+    /* docked mini-player — pinned to overlay bottom, outside the repaint zone */
+    #hs-mc-player-dock {
+      flex: none;
       width: 100%;
-      max-width: 100%;
-      cursor: default;
+      background: #000;
+      border-top: 1px solid #808080;
     }
-    .hs-mc-media-playing .hs-feed-embed-container {
+    #hs-mc-player-dock .hs-mc-player-dock-bar {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 0 2px 0 6px;
+      height: 18px;
+      background: #000;
+    }
+    #hs-mc-player-dock .hs-mc-player-dock-title {
+      flex: 1;
+      min-width: 0;
+      font-size: 13px;
+      line-height: 18px;
+      color: #808080;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #hs-mc-player-dock .hs-mc-player-dock-out {
+      flex: none;
+      width: 18px;
+      font-size: 13px;
+      line-height: 18px;
+      text-align: center;
+      color: #fff;
+      text-decoration: none;
+    }
+    #hs-mc-player-dock .hs-mc-player-dock-out:hover,
+    #hs-mc-player-dock .hs-mc-player-dock-out:active {
+      color: #000;
+      background: #fff;
+    }
+    #hs-mc-player-dock .hs-feed-embed-container {
       max-width: 100%;
     }
-    /* spotify/soundcloud players adapt to iframe size — force the compact ones */
-    .hs-mc-media-playing .hs-feed-embed-spotify {
+    /* spotify/soundcloud players adapt to iframe size — force compact */
+    #hs-mc-player-dock .hs-feed-embed-spotify,
+    #hs-mc-player-dock .hs-feed-embed-spotify iframe {
       height: 80px;
     }
-    .hs-mc-media-playing .hs-feed-embed-spotify iframe {
-      height: 80px;
-    }
-    .hs-mc-media-playing .hs-feed-embed-soundcloud {
+    #hs-mc-player-dock .hs-feed-embed-soundcloud,
+    #hs-mc-player-dock .hs-feed-embed-soundcloud iframe {
       height: 120px;
     }
-    /* video players keep 16:9 but stay capped in the narrow column */
-    .hs-mc-media-playing .hs-feed-embed-container:not(.hs-feed-embed-spotify):not(.hs-feed-embed-soundcloud) {
-      max-width: 320px;
-    }
     .hs-mc-player-close {
-      position: absolute;
-      top: 0;
-      right: 0;
-      z-index: 5;
+      flex: none;
       width: 18px;
       height: 18px;
       margin: 0;
@@ -30910,13 +30934,15 @@ function attachFeedFallbacks(root) {
   })
 }
 
-// ── CHAT CLICK-TO-PLAY ──────────────────────────────────────────────────────
-// Chat cards stay lightweight (the settled no-auto-iframe rule protects
-// low-RAM hardware at chat volume), but an EXPLICIT click upgrades a playable
-// card to the same live player the feed uses (parseFeedEmbed builders — one
-// code path, zero drift). Hard perf bound: a single live player globally; a
-// new play (or the × strip) tears the previous one down and restores its
-// card. Culled rows take their player with them (isConnected guard).
+// ── CHAT CLICK-TO-PLAY (docked mini-player) ────────────────────────────────
+// Chat cards stay lightweight (settled no-auto-iframe rule), but an explicit
+// click on a playable card opens the SAME live player the feed uses
+// (parseFeedEmbed builders — one code path) in a dock pinned to the overlay,
+// NOT inside the message row: chat full-repaints on every message batch, so
+// an in-row iframe dies mid-playback, scrolls away, and races the card's own
+// <a target=_blank> (real-mouse clicks were opening tabs instead of playing).
+// The dock lives outside #hs-mc-messages → survives repaints + tab switches.
+// One dock = one player, ever. Ctrl/cmd/middle-click keeps browser link-out.
 const _CHAT_PLAYER_RE =
   /(open\.spotify\.com\/(?:track|album|playlist|episode|show)\/|youtu\.be\/[\w-]{11}|youtube\.com\/(?:watch\?v=|shorts\/)[\w-]{11}|(?:www\.)?vimeo\.com\/\d|soundcloud\.com\/[\w-]+\/[\w-]+|clips\.twitch\.tv\/[\w-]|twitch\.tv\/[\w_]+\/clip\/|streamable\.com\/\w|giphy\.com\/gifs\/|tenor\.com\/view\/)/i
 
@@ -30924,58 +30950,69 @@ function chatUrlPlayable(url) {
   return _CHAT_PLAYER_RE.test(url || '')
 }
 
-let _hsChatPlayerWrap = null // wrap currently hosting the live player
-let _hsChatPlayerPrev = null // its pre-player childNodes, restored on close
-
-function _hsChatPlayerClose() {
-  const wrap = _hsChatPlayerWrap
-  if (wrap && wrap.isConnected && _hsChatPlayerPrev) {
-    while (wrap.firstChild) wrap.removeChild(wrap.firstChild)
-    for (const n of _hsChatPlayerPrev) wrap.appendChild(n)
-  }
-  if (wrap) wrap.classList.remove('hs-mc-media-playing')
-  _hsChatPlayerWrap = null
-  _hsChatPlayerPrev = null
+function _hsPlayerDockClose() {
+  document.getElementById('hs-mc-player-dock')?.remove()
 }
 
-function _hsChatPlayerOpen(wrap, url) {
+function _hsPlayerDockOpen(url, label) {
   const html = parseFeedEmbed(url)
   if (!html) return false
-  _hsChatPlayerClose() // singleton — never two live players
-  _hsChatPlayerPrev = Array.from(wrap.childNodes)
-  const tmp = document.createElement('div')
-  tmp.insertAdjacentHTML(
+  _hsPlayerDockClose()
+  const overlay = document.getElementById('hs-mc-overlay')
+  if (!overlay) return false
+  const dock = document.createElement('div')
+  dock.id = 'hs-mc-player-dock'
+  const safeu = safeUrl(url)
+  dock.insertAdjacentHTML(
     'afterbegin',
-    `<button class="hs-mc-player-close" type="button" title="close player">×</button>${html}`,
+    `<div class="hs-mc-player-dock-bar">` +
+      `<span class="hs-mc-player-dock-title">${escapeHtml(String(label || '').slice(0, 60))}</span>` +
+      (safeu
+        ? `<a class="hs-mc-player-dock-out" href="${attr(safeu)}" target="_blank" rel="noopener" title="open in new tab">↗</a>`
+        : '') +
+      `<button class="hs-mc-player-close" type="button" title="close player">×</button>` +
+      `</div>${html}`,
   )
-  while (wrap.firstChild) wrap.removeChild(wrap.firstChild)
-  while (tmp.firstChild) wrap.appendChild(tmp.firstChild)
-  wrap.classList.add('hs-mc-media-playing')
-  _hsChatPlayerWrap = wrap
+  overlay.appendChild(dock)
   return true
 }
 
 document.addEventListener(
   'click',
   (e) => {
-    const closeBtn = e.target?.closest?.('.hs-mc-player-close')
-    if (closeBtn) {
+    if (e.target?.closest?.('.hs-mc-player-close')) {
       e.preventDefault()
       e.stopPropagation()
-      _hsChatPlayerClose()
+      _hsPlayerDockClose()
       return
     }
+    // Modified clicks keep native browser behaviour (new tab / window).
+    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return
     const wrap = e.target?.closest?.('.hs-mc-media.hs-mc-playable')
-    if (!wrap || wrap.classList.contains('hs-mc-media-playing')) return
-    // Meta strip on resolved rich cards keeps normal link-out behaviour;
-    // thumb / pending area is the play surface.
-    if (e.target.closest('.hs-feed-embed-rich-meta')) return
+    if (!wrap) return
     const url = wrap.dataset.resolveUrl || (wrap.tagName === 'A' ? wrap.href : '')
     if (!url || !chatUrlPlayable(url)) return
-    if (_hsChatPlayerOpen(wrap, url)) {
+    // ENTIRE card plays — meta strip included (a 90%-meta compact card whose
+    // meta linked out instead of playing read as "play is broken").
+    const label = wrap.querySelector('.hs-feed-embed-rich-title')?.textContent || wrap.dataset.resolvePlatform || url
+    if (_hsPlayerDockOpen(url, label)) {
       e.preventDefault()
       e.stopPropagation()
     }
+  },
+  { signal: mcSignal, capture: true },
+)
+
+// Real mice fire mousedown-phase openers and anchor defaults before the click
+// handler settles — kill the default at pointerdown too so a playable card can
+// never navigate on a plain left press. (Modified clicks bail above; browsers
+// open ctrl-tabs from click default, which we don't touch here.)
+document.addEventListener(
+  'pointerdown',
+  (e) => {
+    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return
+    const wrap = e.target?.closest?.('.hs-mc-media.hs-mc-playable')
+    if (wrap) e.preventDefault()
   },
   { signal: mcSignal, capture: true },
 )

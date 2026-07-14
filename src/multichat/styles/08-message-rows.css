@@ -674,35 +674,59 @@
       max-height: 72px;
       width: auto;
     }
-    /* live player: compact heights per provider; × floats top-right */
-    .hs-mc-media.hs-mc-media-playing {
-      position: relative;
+    /* docked mini-player — pinned to overlay bottom, outside the repaint zone */
+    #hs-mc-player-dock {
+      flex: none;
       width: 100%;
-      max-width: 100%;
-      cursor: default;
+      background: #000;
+      border-top: 1px solid #808080;
     }
-    .hs-mc-media-playing .hs-feed-embed-container {
+    #hs-mc-player-dock .hs-mc-player-dock-bar {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 0 2px 0 6px;
+      height: 18px;
+      background: #000;
+    }
+    #hs-mc-player-dock .hs-mc-player-dock-title {
+      flex: 1;
+      min-width: 0;
+      font-size: 13px;
+      line-height: 18px;
+      color: #808080;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #hs-mc-player-dock .hs-mc-player-dock-out {
+      flex: none;
+      width: 18px;
+      font-size: 13px;
+      line-height: 18px;
+      text-align: center;
+      color: #fff;
+      text-decoration: none;
+    }
+    #hs-mc-player-dock .hs-mc-player-dock-out:hover,
+    #hs-mc-player-dock .hs-mc-player-dock-out:active {
+      color: #000;
+      background: #fff;
+    }
+    #hs-mc-player-dock .hs-feed-embed-container {
       max-width: 100%;
     }
-    /* spotify/soundcloud players adapt to iframe size — force the compact ones */
-    .hs-mc-media-playing .hs-feed-embed-spotify {
+    /* spotify/soundcloud players adapt to iframe size — force compact */
+    #hs-mc-player-dock .hs-feed-embed-spotify,
+    #hs-mc-player-dock .hs-feed-embed-spotify iframe {
       height: 80px;
     }
-    .hs-mc-media-playing .hs-feed-embed-spotify iframe {
-      height: 80px;
-    }
-    .hs-mc-media-playing .hs-feed-embed-soundcloud {
+    #hs-mc-player-dock .hs-feed-embed-soundcloud,
+    #hs-mc-player-dock .hs-feed-embed-soundcloud iframe {
       height: 120px;
     }
-    /* video players keep 16:9 but stay capped in the narrow column */
-    .hs-mc-media-playing .hs-feed-embed-container:not(.hs-feed-embed-spotify):not(.hs-feed-embed-soundcloud) {
-      max-width: 320px;
-    }
     .hs-mc-player-close {
-      position: absolute;
-      top: 0;
-      right: 0;
-      z-index: 5;
+      flex: none;
       width: 18px;
       height: 18px;
       margin: 0;

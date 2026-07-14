@@ -321,8 +321,9 @@
   // buffer 1500, persist 1500) which stay large for scrollback-data, sync and
   // reload restore — those are cheap plain objects. The DOM cap is the
   // expensive axis (~6 nodes/row), so we render far fewer than we remember.
-  // content-visibility:auto already skips paint/layout for off-screen rows;
-  // this trims the node count itself (~9.3k → ~3k nodes at a busy channel).
+  // Rows render fully (content-visibility:auto was dropped 2026-07-14 — the
+  // skipped→rendered flip left stale paint smears on scroll), so this cap is
+  // the only bound on both node count AND paint cost at a busy channel.
   // 500 unifies the whole system (MAX_BUFFER) on one number and matches the
   // per-platform buffer, so a restored cached tab never exceeds the cap.
   // ~3.3x Twitch native scrollback.

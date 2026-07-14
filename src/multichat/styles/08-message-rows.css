@@ -51,8 +51,8 @@
       max-width: 100%;
       box-sizing: border-box;
       color: #ffffff;
-      content-visibility: auto;
-      contain-intrinsic-size: auto 28px;
+      /* content-visibility:auto dropped 2026-07-14 — stale-paint smears
+         (see 03-overlay-container.css row rule) */
       unicode-bidi: plaintext;
     }
     .hs-feed-msg, .hs-mc-search-content, .hs-mc-post-body {
@@ -117,10 +117,6 @@
       background: #2e2e08 !important;
       box-shadow: none !important;
       margin: 0 !important;
-      /* override .hs-mc-msg's content-visibility:auto — we render at hover time
-         and rows must paint immediately, not be replaced by a 28px placeholder */
-      content-visibility: visible !important;
-      contain-intrinsic-size: auto !important;
       /* The olive overlays sit above the active row in fixed position. Letting
          text selection span overlay→chat created a two-plane multi-range
          clipboard mess ("copies both planes"). Right-click → copy thread is
@@ -216,8 +212,9 @@
       100% { background: transparent; }
     }
     .hs-mc-feed-inline, .hs-mc-stream-event {
-      content-visibility: auto;
-      contain-intrinsic-size: auto 32px;
+      /* content-visibility:auto dropped 2026-07-14 with .hs-mc-msg — these
+         interleave in the same chat list, same stale-paint smear */
+      contain: layout style paint;
     }
     .hs-mc-msg[data-msg-id] {
       position: relative;

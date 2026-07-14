@@ -83,15 +83,13 @@
          from re-flowing through us. */
       contain: layout style paint;
     }
-    /* Per-message rows: cheap containment + content-visibility:auto so the
-       browser can skip layout/paint for rows that aren't in (or near) the
-       viewport. The intrinsic-size keeps the scrollbar honest while rows
-       are skipped. ~22-26px tall typical; 32px is conservative so we
-       don't undercount and snap on scroll. */
+    /* Per-message rows: cheap containment only. content-visibility:auto was
+       dropped 2026-07-14 — skipped→rendered flips during scroll left stale
+       paint on screen (rows drawn over each other, healed by any hover-forced
+       repaint; worst in the yt popout). contain still isolates each row's
+       layout/paint so appends don't reflow neighbors. */
     #hs-mc-messages > .hs-mc-msg {
       contain: layout style paint;
-      content-visibility: auto;
-      contain-intrinsic-size: auto 32px;
     }
 
     /* Chat overlay banners (predictions + polls at top of messages) */

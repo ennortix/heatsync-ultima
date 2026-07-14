@@ -8129,15 +8129,13 @@ function injectStyles() {
          from re-flowing through us. */
       contain: layout style paint;
     }
-    /* Per-message rows: cheap containment + content-visibility:auto so the
-       browser can skip layout/paint for rows that aren't in (or near) the
-       viewport. The intrinsic-size keeps the scrollbar honest while rows
-       are skipped. ~22-26px tall typical; 32px is conservative so we
-       don't undercount and snap on scroll. */
+    /* Per-message rows: cheap containment only. content-visibility:auto was
+       dropped 2026-07-14 — skipped→rendered flips during scroll left stale
+       paint on screen (rows drawn over each other, healed by any hover-forced
+       repaint; worst in the yt popout). contain still isolates each row's
+       layout/paint so appends don't reflow neighbors. */
     #hs-mc-messages > .hs-mc-msg {
       contain: layout style paint;
-      content-visibility: auto;
-      contain-intrinsic-size: auto 32px;
     }
 
     /* Chat overlay banners (predictions + polls at top of messages) */
@@ -9150,8 +9148,8 @@ function injectStyles() {
       max-width: 100%;
       box-sizing: border-box;
       color: #ffffff;
-      content-visibility: auto;
-      contain-intrinsic-size: auto 28px;
+      /* content-visibility:auto dropped 2026-07-14 — stale-paint smears
+         (see 03-overlay-container.css row rule) */
       unicode-bidi: plaintext;
     }
     .hs-feed-msg, .hs-mc-search-content, .hs-mc-post-body {
@@ -9216,10 +9214,6 @@ function injectStyles() {
       background: #2e2e08 !important;
       box-shadow: none !important;
       margin: 0 !important;
-      /* override .hs-mc-msg's content-visibility:auto — we render at hover time
-         and rows must paint immediately, not be replaced by a 28px placeholder */
-      content-visibility: visible !important;
-      contain-intrinsic-size: auto !important;
       /* The olive overlays sit above the active row in fixed position. Letting
          text selection span overlay→chat created a two-plane multi-range
          clipboard mess ("copies both planes"). Right-click → copy thread is
@@ -9315,8 +9309,9 @@ function injectStyles() {
       100% { background: transparent; }
     }
     .hs-mc-feed-inline, .hs-mc-stream-event {
-      content-visibility: auto;
-      contain-intrinsic-size: auto 32px;
+      /* content-visibility:auto dropped 2026-07-14 with .hs-mc-msg — these
+         interleave in the same chat list, same stale-paint smear */
+      contain: layout style paint;
     }
     .hs-mc-msg[data-msg-id] {
       position: relative;
@@ -51153,8 +51148,9 @@ const STORAGE_KEY = 'heatsync_multichat'
   // buffer 1500, persist 1500) which stay large for scrollback-data, sync and
   // reload restore — those are cheap plain objects. The DOM cap is the
   // expensive axis (~6 nodes/row), so we render far fewer than we remember.
-  // content-visibility:auto already skips paint/layout for off-screen rows;
-  // this trims the node count itself (~9.3k → ~3k nodes at a busy channel).
+  // Rows render fully (content-visibility:auto was dropped 2026-07-14 — the
+  // skipped→rendered flip left stale paint smears on scroll), so this cap is
+  // the only bound on both node count AND paint cost at a busy channel.
   // 500 unifies the whole system (MAX_BUFFER) on one number and matches the
   // per-platform buffer, so a restored cached tab never exceeds the cap.
   // ~3.3x Twitch native scrollback.

@@ -31486,7 +31486,42 @@ function listenForSocialEvents() {
       if (currentTab === 'feed') renderFeed()
     }
     if (msg.type === 'youtube_chat_message') {
-      const targetChannelId = msg.channelId
+      let targetChannelId = msg.channelId
+      // Same-tab native-tap copies (youtube-content.js broadcasts reach this
+      // overlay directly, not just background) stamp channelId with the RAW
+      // 11-char videoId — they never went through background's videoId→channel
+      // map. Untreated, they land in an orphan buffer nothing renders AND
+      // consume an isSentEcho credit meant for the server relay copy (the
+      // yt-only own-message swallow). Retarget to the owning config channel —
+      // own messages then render instantly and the later server copy dies in
+      // isYtDuplicate (same bucket, same innertube id). Unowned videoIds are
+      // dropped BEFORE any credit/dedup state is touched.
+      if (
+        targetChannelId &&
+        targetChannelId !== '__live_yt_auto__' &&
+        /^[a-zA-Z0-9_-]{11}$/.test(targetChannelId) &&
+        !config.channels.some((c) => c.id === targetChannelId)
+      ) {
+        let mapped = null
+        try {
+          if (typeof youtubeLinks !== 'undefined') {
+            for (const [chId, link] of youtubeLinks) {
+              if (link?.videoId === targetChannelId) {
+                mapped = chId
+                break
+              }
+            }
+          }
+        } catch {}
+        if (!mapped) {
+          const byUrl = config.channels.find(
+            (c) => typeof c.youtube === 'string' && c.youtube.includes(targetChannelId),
+          )
+          if (byUrl) mapped = byUrl.id
+        }
+        if (!mapped) return
+        targetChannelId = mapped
+      }
       // Filter __live_yt_auto__ messages: only accept this stream's chat
       // (prevents cross-tab leak — e.g. a stale videoId's chat bleeding in).
       // Derive the allowed videoId straight from the page URL when we're ON a

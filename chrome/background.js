@@ -753,6 +753,26 @@ const tabChannels = new Map() // tabId → { channel, channelOwner }
 // On WS reconnect (incl. server restart) these must be re-joined or messages drop silently.
 const joinedExtraChannels = new Set() // "platform/channel" keys
 
+// Reserved site paths that must never become channels — the third copy of the
+// overlay blocklist (main.js NON_CHANNEL_PATHS, content.js TWITCH_EXCLUDED_PATHS).
+// BG needs its own because ghost keys persisted in joined_extra_channels replay
+// straight into WS joins + the kick Pusher tap on every SW boot, bypassing the
+// overlay-side purges ('login' is a REAL kick channel — the tap happily
+// subscribed chatroom 31705 to it). Keep the three lists in sync.
+const BG_NON_CHANNEL_PATHS = new Set([
+  'directory', 'settings', 'login', 'logout', 'signup', 'oauth', 'oauth2',
+  'activate', 'checkout', 'videos', 'moderator', 'subscriptions', 'search',
+  'help', 'about', 'jobs', 'contact', 'wallet', 'inventory', 'friends',
+  'admin', 'broadcast', 'drops', 'store', 'popout', 'embed', 'partners',
+  'turbo', 'prime', 'p', 'subs', 'turbo-faq', 'bits', 'browse', 'category',
+  'categories', 'community', 'clips', 'leaderboards', 'dashboard', 'vods',
+  'u', 'auth', 'authorize',
+])
+function isGhostChannelKey(key) {
+  const ch = String(key || '').split('/').pop()
+  return !ch || BG_NON_CHANNEL_PATHS.has(ch)
+}
+
 // Get the most recently set channel owner from any tab
 function getActiveChannelOwner() {
   let latest = null
@@ -2414,7 +2434,12 @@ async function resolveKickChannelIdBg(slug) {
     const resp = await fetchWithTimeout(`https://kick.com/api/v2/channels/${encodeURIComponent(slug)}`)
     if (!resp.ok) return { error: `kick api ${resp.status}` }
     const data = await resp.json()
-    const channelId = data?.id
+    // messages/send/{id} takes the CHATROOM id, not the channel id. Kick's
+    // backend stopped translating channel ids (2026-07): a channel-id send
+    // returns 200 but broadcasts to no one — the message lands in the void
+    // (proven live: send to channels.id silent, send to chatroom.id echoes
+    // on chatrooms.<id>.v2). Fall back to data.id only if chatroom is absent.
+    const channelId = data?.chatroom?.id || data?.id
     if (!channelId) return { error: 'no channel id' }
     if (kickChannelIdCache.size >= 100) {
       const oldest = kickChannelIdCache.keys().next().value
@@ -2432,20 +2457,47 @@ async function resolveKickChannelIdBg(slug) {
 // + XSRF token, not by which channel the tab happens to be viewing. Shared by
 // the kick_send_message runtime-message handler and the kick:relay_send ws
 // path.
+// Rank kick.com tabs by relay viability: a discarded tab has NO content
+// scripts (memory-saver unloads them) and a pre-reload tab holds an
+// invalidated context — both throw "Receiving end does not exist" on
+// tabs.sendMessage. Loaded+active tabs first; dead ones fail fast, so
+// walking the whole list costs ~ms per corpse.
+function rankKickRelayTabs(tabs) {
+  return [...tabs].sort(
+    (a, b) =>
+      (a.discarded === true) - (b.discarded === true) ||
+      (b.status === 'complete') - (a.status === 'complete') ||
+      (b.active === true) - (a.active === true),
+  )
+}
+
 async function sendKickMessageViaTab(channelId, content, reply = null) {
   if (!channelId || !content) return { ok: false, error: 'missing params' }
   const cookie = await browser.cookies.get({ url: 'https://kick.com', name: 'XSRF-TOKEN' })
   if (!cookie?.value) return { ok: false, error: 'kick_not_logged_in' }
+  // Kick's send API now demands Authorization: Bearer <session_token> — the
+  // laravel session cookie + XSRF alone 403s "User is not authenticated"
+  // (changed 2026-07). Cookie is non-httpOnly; absent = logged out.
+  const session = await browser.cookies.get({ url: 'https://kick.com', name: 'session_token' })
   const tabs = await browser.tabs.query({ url: '*://*.kick.com/*' })
   if (!tabs || tabs.length === 0) return { ok: false, error: 'no_kick_tab' }
-  const result = await browser.tabs.sendMessage(tabs[0].id, {
-    type: 'kick_send_relay',
-    channelId,
-    content,
-    reply: reply || null,
-    xsrfToken: cookie.value,
-  })
-  return result || { ok: false, error: 'no response from tab' }
+  let lastError = 'no response from tab'
+  for (const tab of rankKickRelayTabs(tabs)) {
+    try {
+      const result = await browser.tabs.sendMessage(tab.id, {
+        type: 'kick_send_relay',
+        channelId,
+        content,
+        reply: reply || null,
+        xsrfToken: cookie.value,
+        sessionToken: session?.value || '',
+      })
+      if (result) return result
+    } catch (e) {
+      lastError = e?.message || 'tab relay failed'
+    }
+  }
+  return { ok: false, error: lastError }
 }
 
 const kickChatroomIdCache = new Map()
@@ -5508,6 +5560,7 @@ function handleWSMessage(msg) {
         try {
           bgKickIngest(msg.data)
         } catch {}
+        _kickSrcBump(_kickSrcStats.relay, (msg.data?.channel || '').toLowerCase(), msg.data?.id)
         // Relay Kick chat messages (via server webhook) to content scripts
         broadcastToTabs({
           type: 'kick_chat_message',
@@ -6657,6 +6710,26 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({ ok: true })
     return true
   }
+  if (message.type === 'dbg_kick_tap') {
+    // Read-only tap/relay state snapshot — reachable only from our own content
+    // scripts (sender gate above); nothing secret, just routing liveness.
+    try {
+      sendResponse({
+        enabled: KICK_PUSHER_TAP,
+        wsState: _kpWs ? _kpWs.readyState : null,
+        connected: _kpConnected,
+        lastDataAgeMs: _kpLastData ? Date.now() - _kpLastData : null,
+        channels: [..._kpChannels.entries()],
+        chatroomCache: [..._kpChatroomCache.entries()],
+        tap: [..._kickSrcStats.tap.entries()],
+        relay: [..._kickSrcStats.relay.entries()],
+        tapUnmatched: _kickSrcStats.tapUnmatched,
+      })
+    } catch (e) {
+      sendResponse({ error: e?.message || 'unknown' })
+    }
+    return true
+  }
 
   // Serialized ui_settings patch. Content scripts must NOT get→merge→set the
   // key themselves — they race this SW's uiSettingsRmw chain (and each other),
@@ -7293,6 +7366,10 @@ async function handleMessage(message, sender, sendResponse) {
       // (server restarts, network blips, SW resume — any of these orphan the join).
       if (message.data.type === 'channel:join' && message.data.platform && message.data.channel) {
         const key = `${message.data.platform}/${message.data.channel.toLowerCase()}`
+        if (isGhostChannelKey(key)) {
+          sendResponse?.({ ok: false, error: 'reserved path' })
+          return true
+        }
         if (!joinedExtraChannels.has(key)) {
           joinedExtraChannels.add(key)
           saveJoinedExtraChannels()
@@ -7877,15 +7954,19 @@ async function handleMessage(message, sender, sendResponse) {
           sendResponse({ ok: false, error: 'kick_not_logged_in' })
           return
         }
+        // Bearer required since kick's 2026-07 auth change (see sendKickMessageViaTab)
+        const session = await browser.cookies.get({ url: 'https://kick.com', name: 'session_token' })
         const url = `https://kick.com/api/v2/channels/${encodeURIComponent(slug)}/follow`
+        const followHeaders = {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'X-XSRF-TOKEN': decodeURIComponent(cookie.value),
+        }
+        if (session?.value) followHeaders.Authorization = `Bearer ${decodeURIComponent(session.value)}`
         const resp = await fetchWithTimeout(url, {
           method: follow ? 'POST' : 'DELETE',
           credentials: 'include',
-          headers: {
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
-            'X-XSRF-TOKEN': decodeURIComponent(cookie.value),
-          },
+          headers: followHeaders,
         })
         // Kick returns 200/204 on success; treat "already following" / "not following"
         // signals as idempotent success. Other 4xx/5xx surface as errors.
@@ -7929,6 +8010,8 @@ async function handleMessage(message, sender, sendResponse) {
           sendResponse({ ok: false, error: 'kick_not_logged_in' })
           return
         }
+        // Bearer required since kick's 2026-07 auth change (see sendKickMessageViaTab)
+        const session = await browser.cookies.get({ url: 'https://kick.com', name: 'session_token' })
         const tabs = await browser.tabs.query({ url: '*://*.kick.com/*' })
         if (!tabs || tabs.length === 0) {
           sendResponse({ ok: false, error: 'no_kick_tab' })
@@ -7959,30 +8042,42 @@ async function handleMessage(message, sender, sendResponse) {
         // Prefer a tab actually on the target channel (most likely live + the
         // relevant session) over an arbitrary kick.com tab. The API call is
         // slug-parameterized and cookie-authed so any logged-in kick tab CAN
-        // execute it, but a frozen/unrelated tab is a worse bet.
-        const relayTab = tabs.find((t) => (t.url || '').toLowerCase().includes('/' + slug)) || tabs[0]
-        // Deadline: a hung renderer would otherwise leave tabs.sendMessage
-        // pending forever, hanging the mod command with no feedback. Fail loud.
-        const result = await Promise.race([
-          browser.tabs
-            .sendMessage(relayTab.id, {
-              type: 'kick_mod_relay',
-              action,
-              slug,
-              chatroomId,
-              username: message.username || '',
-              durationMin: message.durationMin || 0,
-              reason: message.reason || '',
-              messageId: message.messageId || '',
-              xsrfToken: cookie.value,
-              // .catch keeps a late rejection (tab port closes after the timeout
-              // already won the race) from becoming an unhandled promise rejection.
-            })
-            .catch((e) => ({ ok: false, error: e?.message || 'kick relay failed' })),
-          new Promise((res) =>
-            setTimeout(() => res({ ok: false, error: 'kick tab unresponsive — reload kick.com' }), 12000),
-          ),
-        ])
+        // execute it, but a frozen/unrelated tab is a worse bet. Then walk the
+        // health-ranked rest — a discarded/stale tab throws "Receiving end does
+        // not exist" instantly, so retrying siblings costs nothing (same trap
+        // as sendKickMessageViaTab).
+        const ranked = rankKickRelayTabs(tabs)
+        const onSlug = ranked.find((t) => (t.url || '').toLowerCase().includes('/' + slug))
+        const candidates = onSlug ? [onSlug, ...ranked.filter((t) => t !== onSlug)] : ranked
+        let result = null
+        for (const relayTab of candidates) {
+          // Deadline: a hung renderer would otherwise leave tabs.sendMessage
+          // pending forever, hanging the mod command with no feedback. Fail loud.
+          result = await Promise.race([
+            browser.tabs
+              .sendMessage(relayTab.id, {
+                type: 'kick_mod_relay',
+                action,
+                slug,
+                chatroomId,
+                username: message.username || '',
+                durationMin: message.durationMin || 0,
+                reason: message.reason || '',
+                messageId: message.messageId || '',
+                xsrfToken: cookie.value,
+                sessionToken: session?.value || '',
+                // .catch keeps a late rejection (tab port closes after the timeout
+                // already won the race) from becoming an unhandled promise rejection.
+              })
+              .catch((e) => ({ ok: false, error: e?.message || 'kick relay failed' })),
+            new Promise((res) =>
+              setTimeout(() => res({ ok: false, error: 'kick tab unresponsive — reload kick.com' }), 12000),
+            ),
+          ])
+          // ok:true or a real API response (e.g. kick 403) ends the walk — only
+          // relay-transport failures justify trying another tab.
+          if (result?.ok || (result && !/Receiving end|kick relay failed|unresponsive/.test(result.error || ''))) break
+        }
         sendResponse(result || { ok: false, error: 'no response from tab' })
       } catch (e) {
         log('kick_mod_action error:', e.message)
@@ -8011,9 +8106,15 @@ async function handleMessage(message, sender, sendResponse) {
           sendResponse({ ok: true, isMod: false })
           return
         } // not logged in
+        // Bearer so the response carries the VIEWER's chatroom_user role —
+        // without it kick treats the request as anon (2026-07 auth change)
+        // and mod status permanently fails closed.
+        const session = await browser.cookies.get({ url: 'https://kick.com', name: 'session_token' })
+        const statusHeaders = { Accept: 'application/json' }
+        if (session?.value) statusHeaders.Authorization = `Bearer ${decodeURIComponent(session.value)}`
         const resp = await fetchWithTimeout(
           `https://kick.com/api/v2/channels/${encodeURIComponent(slug)}`,
-          { credentials: 'include', headers: { Accept: 'application/json' } },
+          { credentials: 'include', headers: statusHeaders },
           5000,
         )
         if (!resp.ok) {
@@ -9199,7 +9300,15 @@ async function initialize() {
       // Restore Kick channel joins so the WS-connect handler replays them.
       // Survives extension reload (session storage didn't), so re-subscribes
       // fire automatically without waiting for a content-script re-init.
-      for (const key of stored.joined_extra_channels) joinedExtraChannels.add(key)
+      let _ghostsDropped = false
+      for (const key of stored.joined_extra_channels) {
+        if (isGhostChannelKey(key)) {
+          _ghostsDropped = true // persisted from the pre-blocklist era — purge
+          continue
+        }
+        joinedExtraChannels.add(key)
+      }
+      if (_ghostsDropped) saveJoinedExtraChannels()
       log(' ✓ Restored', joinedExtraChannels.size, 'extra channel joins from local storage')
       // Replay joins on the WS now — connectWebSocket() was kicked off at the
       // start of init, so by the time storage restore finishes, the WS connect
@@ -9329,7 +9438,9 @@ async function initialize() {
     if (Array.isArray(session?.joined_extra_channels)) {
       // Migration path — old code persisted to session. Pull anything still
       // there and bake it into the local-storage-backed Set on next save.
-      for (const key of session.joined_extra_channels) joinedExtraChannels.add(key)
+      for (const key of session.joined_extra_channels) {
+        if (!isGhostChannelKey(key)) joinedExtraChannels.add(key)
+      }
     }
   } catch (e) {
     console.warn('session storage restore failed:', e)
@@ -11235,6 +11346,17 @@ let _kpLastData = 0
 let _kpConnectingAt = 0
 const _kpChannels = new Map() // slug -> chatroomId (currently subscribed)
 const _kpChatroomCache = new Map() // slug -> chatroomId (resolved)
+// Per-source delivery counters — the tap and the server relay fail silently
+// (resolve miss, unmatched chatroom, dead socket); counters make "which source
+// delivered the last message for this slug" answerable from a live probe.
+const _kickSrcStats = { tap: new Map(), relay: new Map(), tapUnmatched: 0 } // slug -> {n, lastAt, lastId}
+function _kickSrcBump(map, slug, id) {
+  const e = map.get(slug) || { n: 0, lastAt: 0, lastId: '' }
+  e.n++
+  e.lastAt = Date.now()
+  e.lastId = id || ''
+  map.set(slug, e)
+}
 
 async function _kpResolveChatroomId(slug) {
   if (_kpChatroomCache.has(slug)) return _kpChatroomCache.get(slug)
@@ -11377,7 +11499,10 @@ function _kpHandleChatEvent(d) {
   if (!ev) return
   const m = /chatrooms\.(\d+)\.v2/.exec(d.channel || '')
   const slug = m ? _kpSlugForChatroom(Number(m[1])) : null
-  if (!slug) return
+  if (!slug) {
+    _kickSrcStats.tapUnmatched++
+    return
+  }
   // Match the server webhook relay's data shape exactly (see kick-chat-webhooks
   // handleChatMessage) so the overlay renders identically + dedups by id.
   const payload = {
@@ -11409,6 +11534,7 @@ function _kpHandleChatEvent(d) {
   try {
     bgKickIngest(payload)
   } catch {}
+  _kickSrcBump(_kickSrcStats.tap, slug, payload.id)
   broadcastToTabs({ type: 'kick_chat_message', data: payload })
 }
 
@@ -11456,6 +11582,10 @@ async function kickPusherJoin(slug) {
   if (!KICK_PUSHER_TAP) return
   slug = (slug || '').toLowerCase()
   if (!slug || _kpChannels.has(slug)) return
+  // 'login' etc. are REAL kick channels — a ghost join here streams a
+  // stranger's chat into the overlay. Last line of defense for callers that
+  // bypass the joinedExtraChannels gate.
+  if (BG_NON_CHANNEL_PATHS.has(slug)) return
   const chatroomId = await _kpResolveChatroomId(slug)
   if (!chatroomId) return // couldn't resolve -> leave this channel to the server relay
   _kpChannels.set(slug, chatroomId)

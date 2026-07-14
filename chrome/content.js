@@ -4490,12 +4490,16 @@
           },
         }
       : { content: message.content, type: 'message' }
+    const _kickSendHeaders = {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': decodeURIComponent(message.xsrfToken),
+    }
+    // Kick requires Authorization: Bearer <session_token> on sends now —
+    // cookies+XSRF alone 403 "User is not authenticated" (2026-07).
+    if (message.sessionToken) _kickSendHeaders.Authorization = `Bearer ${decodeURIComponent(message.sessionToken)}`
     fetch(`https://kick.com/api/v2/messages/send/${message.channelId}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-XSRF-TOKEN': decodeURIComponent(message.xsrfToken),
-      },
+      headers: _kickSendHeaders,
       credentials: 'include',
       body: JSON.stringify(_kickBody),
       signal: AbortSignal.timeout(10000),
@@ -4525,6 +4529,8 @@
       'Content-Type': 'application/json',
       'X-XSRF-TOKEN': xsrf,
     }
+    // Same bearer requirement as kick_send_relay (2026-07 kick auth change).
+    if (message.sessionToken) baseHeaders.Authorization = `Bearer ${decodeURIComponent(message.sessionToken)}`
     let url, method, body
     const slug = encodeURIComponent(String(message.slug || ''))
     const username = String(message.username || '').replace(/^@/, '')

@@ -183,6 +183,37 @@
     },
   }
 
+  // Twitch URL path segments that are NEVER channels. ONE list — the
+  // open-channel reporter fed 'login' (oauth redirect page) to the BG as a
+  // live channel on 2026-07-14, which IRC-joined it and spawned ghost tabs.
+  const TWITCH_EXCLUDED_PATHS = [
+    'login',
+    'logout',
+    'signup',
+    'oauth',
+    'oauth2',
+    'activate',
+    'checkout',
+    'directory',
+    'settings',
+    'downloads',
+    'p',
+    'videos',
+    'search',
+    'subscriptions',
+    'inventory',
+    'wallet',
+    'drops',
+    'prime',
+    'turbo',
+    'products',
+    'bits',
+    'u',
+    'moderator',
+    'broadcast',
+    'clip',
+  ]
+
   // Fast context-death detector. chrome.runtime.id becomes undefined sync on
   // extension reload. Once dead: tear down listeners immediately, then defer
   // the page reload to visibility — active tab reloads in 1–5s, background
@@ -4901,28 +4932,7 @@
     const channel = match?.[1]?.toLowerCase()
     if (!channel) return
 
-    const excludedPaths = [
-      'oauth2',
-      'directory',
-      'settings',
-      'downloads',
-      'p',
-      'videos',
-      'search',
-      'subscriptions',
-      'inventory',
-      'wallet',
-      'drops',
-      'prime',
-      'turbo',
-      'products',
-      'bits',
-      'u',
-      'moderator',
-      'broadcast',
-      'clip',
-    ]
-    if (excludedPaths.includes(channel)) return
+    if (TWITCH_EXCLUDED_PATHS.includes(channel)) return
 
     log(' 📜 Backfilling chat history for', channel)
 
@@ -10762,27 +10772,7 @@
       const match = url.match(/\/popout\/([^/]+)\/chat/) || url.match(/twitch\.tv\/([^/?]+)/)
       channelName = match ? match[1] : null
       // Exclude system paths that aren't actual channels
-      const excludedPaths = [
-        'oauth2',
-        'directory',
-        'settings',
-        'downloads',
-        'p',
-        'videos',
-        'search',
-        'subscriptions',
-        'inventory',
-        'wallet',
-        'drops',
-        'prime',
-        'turbo',
-        'products',
-        'bits',
-        'u',
-        'moderator',
-        'broadcast',
-        'clip',
-      ]
+      const excludedPaths = TWITCH_EXCLUDED_PATHS
       if (channelName && excludedPaths.includes(channelName.toLowerCase())) {
         log(' Skipping system path:', channelName)
         channelName = null

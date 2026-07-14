@@ -4099,6 +4099,9 @@
       // carry '-' and are meaningless as twitch channels) must never become
       // a tab. Guards against stale BG SW state from before the yt-join fix.
       if (!isValidTwitchLogin(ch)) continue
+      // Reserved URL slugs are shape-valid logins ('login', 'oauth2') — the
+      // oauth redirect pages leaked them into BG open-channel state.
+      if (NON_CHANNEL_PATHS.has(ch)) continue
       const exists = config.channels.some((c) => c?.twitch && c.twitch.toLowerCase() === ch)
       if (exists) continue
       if (ephemeralCount >= MAX_EPHEMERAL_TABS) break
@@ -8900,6 +8903,15 @@
     // shared
     'directory',
     'settings',
+    // auth-flow paths — the 3-account login odyssey (2026-07-14) created
+    // persisted ghost channels 'login'/'oauth2' with IRC joins + auto tabs
+    'login',
+    'logout',
+    'signup',
+    'oauth',
+    'oauth2',
+    'activate',
+    'checkout',
     'videos',
     'moderator',
     'subscriptions',
@@ -9423,6 +9435,14 @@
         )
         needsSave = true
       }
+      // Purge persisted ghost channels: reserved URL slugs that slipped in as
+      // channel names before they were blocklisted (login/oauth2 from oauth
+      // redirects). They IRC-join garbage, burn kick subscribe quota, and
+      // shuffle the tab bar. Shape-valid logins, so only the blocklist knows.
+      const _ghost = (name) => !!name && NON_CHANNEL_PATHS.has(String(name).toLowerCase())
+      const _prePurge = config.channels.length
+      config.channels = config.channels.filter((c) => !(_ghost(c.twitch) || _ghost(c.kick) || _ghost(c.id)))
+      if (config.channels.length !== _prePurge) needsSave = true
       if (needsSave) saveConfig()
       // First-run seed: no channels yet AND we're on a real Twitch/Kick channel
       // page → add the current channel so the panel opens with working chat

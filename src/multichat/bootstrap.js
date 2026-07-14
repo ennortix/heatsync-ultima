@@ -571,6 +571,13 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
             lookup: !!lookupEmote(probe),
             renderOrder: typeof lookupEmoteRenderOrder === 'function' ? !!lookupEmoteRenderOrder(probe) : null,
             pools: typeof activeTabEmotePools === 'function' ? activeTabEmotePools().map((m) => m.size) : null,
+            // raw pool rows — which map has it, and with what state (the
+            // autoAddInputEmotes global-state skip is invisible without this)
+            cacheEntry: typeof emoteCache !== 'undefined' ? emoteCache.get(probe) || null : null,
+            personalEntry: typeof viewerPersonalEmotes !== 'undefined' ? viewerPersonalEmotes.get(probe) || null : null,
+            trackedForAutoAdd:
+              typeof recentRemoteCompletions !== 'undefined' ? recentRemoteCompletions.has(probe) : null,
+            inventoryHas: typeof inventoryEmotes !== 'undefined' ? inventoryEmotes.has(probe) : null,
           }
         }
         document.documentElement.dataset.hsDbgEmotes = JSON.stringify(out)

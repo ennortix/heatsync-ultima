@@ -63,8 +63,12 @@ state: v1.7.24 published. tri-link (twitch+kick+yt on one account) e2e-verified
 
 ## P2 — deferred tech debt (queued with reasons, don't rush)
 
-- **omegaverify 79-confirmed queue** — remaining audited findings from 07-06;
-  work through in focused passes.
+- ~~**omegaverify 79-confirmed queue**~~ — DRAINED 07-14: re-verified the open
+  tail against current code; 6/7 were already fixed by prior sessions, last
+  real one (stale persisted kick/yt buffers never purged) fixed in 8a10828.
+  yt own-echo swallow closed same pass (f728a39). remaining named deferrals
+  stay deferred: kick self-mod double-notice, native-yt cross-platform emote
+  merge, hidden-tab DOM shed (all fragile-surface, need their own sessions).
 - **yt-bridge design cluster** — deferred from 07-10 token burn; needs its own
   design session.
 - **@-mention native-hook port** — dropdown shipped on ext surfaces; native

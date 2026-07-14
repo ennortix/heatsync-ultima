@@ -6,25 +6,25 @@
 // "I sent it but it didn't post" symptom. The auth socket is the only socket
 // Twitch sends these NOTICEs to. Set from https://dev.twitch.tv/docs/irc/msg-id/.
 const TWITCH_SEND_REJECT_NOTICES = new Map([
-  ['msg_followersonly', 'followers-only mode — follow the channel to chat'],
-  ['msg_followersonly_followed', 'follow the channel a bit longer to chat'],
-  ['msg_followersonly_zero', 'followers-only — you need to follow first'],
-  ['msg_subsonly', 'subscribers-only — sub to chat here'],
-  ['msg_emoteonly', 'emote-only mode — message must be all emotes'],
-  ['msg_slowmode', 'slow mode — please wait a moment'],
-  ['msg_r9k', 'unique-chat mode — message must be unique'],
-  ['msg_duplicate', 'duplicate message — twitch rejected it'],
-  ['msg_banned', 'you are banned from this channel'],
-  ['msg_timedout', 'you are timed out'],
-  ['msg_rejected', 'AutoMod is checking your message'],
-  ['msg_rejected_mandatory', 'AutoMod blocked your message'],
-  ['msg_channel_suspended', 'channel is suspended'],
-  ['msg_channel_blocked', 'channel is blocking messages'],
-  ['msg_verified_email', 'channel requires a verified email to chat'],
-  ['msg_requires_verified_phone_number', 'channel requires a verified phone to chat'],
-  ['no_permission', 'no permission to do that here'],
-  ['unrecognized_cmd', 'twitch did not recognize that command'],
-  ['tos_ban', 'you are banned from twitch'],
+  ['msg_followersonly', 'mc_irc_notice_followersonly'],
+  ['msg_followersonly_followed', 'mc_irc_notice_followersonly_followed'],
+  ['msg_followersonly_zero', 'mc_irc_notice_followersonly_zero'],
+  ['msg_subsonly', 'mc_irc_notice_subsonly'],
+  ['msg_emoteonly', 'mc_irc_notice_emoteonly'],
+  ['msg_slowmode', 'mc_irc_notice_slowmode'],
+  ['msg_r9k', 'mc_irc_notice_r9k'],
+  ['msg_duplicate', 'mc_irc_notice_duplicate'],
+  ['msg_banned', 'mc_irc_notice_banned'],
+  ['msg_timedout', 'mc_irc_notice_timedout'],
+  ['msg_rejected', 'mc_irc_notice_rejected'],
+  ['msg_rejected_mandatory', 'mc_irc_notice_rejected_mandatory'],
+  ['msg_channel_suspended', 'mc_irc_notice_channel_suspended'],
+  ['msg_channel_blocked', 'mc_irc_notice_channel_blocked'],
+  ['msg_verified_email', 'mc_irc_notice_verified_email'],
+  ['msg_requires_verified_phone_number', 'mc_irc_notice_verified_phone'],
+  ['no_permission', 'mc_irc_notice_no_permission'],
+  ['unrecognized_cmd', 'mc_irc_notice_unrecognized_cmd'],
+  ['tos_ban', 'mc_irc_notice_tos_ban'],
 ])
 
 function parseNoticeMsgId(line) {
@@ -136,7 +136,7 @@ function handleAuthIrcMessage(event) {
     if (line.includes(' NOTICE ')) {
       const msgId = parseNoticeMsgId(line)
       if (msgId && TWITCH_SEND_REJECT_NOTICES.has(msgId)) {
-        if (typeof showToast === 'function') showToast(TWITCH_SEND_REJECT_NOTICES.get(msgId), 'error')
+        if (typeof showToast === 'function') showToast(t(TWITCH_SEND_REJECT_NOTICES.get(msgId)), 'error')
         // Drop pending-send tracker entries for the rejected channel so the
         // user doesn't get a second "no echo from platform" toast 20s later
         // on top of the specific reason toast above.
@@ -358,7 +358,7 @@ async function sendIrcMessage(channel, text, token, replyParentId, overrideNick)
         if (!joined) {
           if (attempt < 2) continue
           if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text, replyParentId })
-          if (typeof showToast === 'function') showToast(`couldn't join #${channel} chat — queued`, 'error')
+          if (typeof showToast === 'function') showToast(t('mc_irc_join_queued', [channel]), 'error')
           return 'queued'
         }
       }

@@ -81,18 +81,18 @@ function youtubeSendErrorMessage(err) {
   switch (err) {
     case 'no_youtube_tab':
     case 'no_video':
-      return 'open the youtube stream to send'
+      return t('mc_yt_send_open_stream')
     case 'chat_disabled':
-      return 'log into youtube to send'
+      return t('mc_yt_send_login')
     case 'no_input':
-      return 'youtube chat still loading — try again'
+      return t('mc_yt_send_loading')
     case 'send_disabled':
-      return 'youtube blocked the send (slow mode?)'
+      return t('mc_yt_send_blocked')
     case 'send_not_confirmed':
-      return 'youtube didn’t confirm the send'
+      return t('mc_yt_send_not_confirmed')
     case 'bridge_timeout':
-      return 'couldn’t reach youtube chat — try again'
+      return t('mc_yt_send_bridge_timeout')
     default:
-      return 'youtube send failed'
+      return t('mc_yt_send_failed')
   }
 }

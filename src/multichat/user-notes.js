@@ -76,7 +76,7 @@ function _hsnPersist() {
     chrome.storage.local.set({ [HS_NOTES_KEY]: payload }, () => {
       if (chrome.runtime?.lastError) {
         try {
-          showToast('note not saved — storage error', 'error')
+          showToast(t('mc_usernotes_save_failed'), 'error')
         } catch {}
       }
     })

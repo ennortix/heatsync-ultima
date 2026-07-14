@@ -230,7 +230,7 @@ function renderQuickLinks() {
           return
         }
         if (!ch) {
-          showToast('no twitch channel', 'error')
+          showToast(t('mc_twitchapi_no_channel'), 'error')
           return
         }
         try {
@@ -1736,16 +1736,16 @@ function renderBitsSubtab(parent, channel) {
       .toLowerCase()
       .replace(/[^a-z0-9_]/g, '')
     if (!safe) {
-      showToast('invalid channel', 'error')
+      showToast(t('mc_twitchapi_invalid_channel'), 'error')
       return
     }
     const url = `https://www.twitch.tv/popout/${safe}/chat?popout=`
     const w = window.open(url, `hs-cheer-${safe}`, 'width=400,height=620,resizable=yes,scrollbars=yes')
     if (!w) {
-      showToast('popup blocked — allow popups for twitch.tv to cheer', 'error')
+      showToast(t('mc_twitchapi_popup_blocked'), 'error')
       return
     }
-    showToast(`cheer window opened`, 'success')
+    showToast(t('mc_twitchapi_cheer_opened'), 'success')
   })
   panel.appendChild(launchBtn)
 

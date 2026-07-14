@@ -1373,7 +1373,7 @@ function initInput() {
           try {
             navigator.clipboard
               .writeText(`:${emoteName}:`)
-              .then(() => showToast('name copied', 'success'))
+              .then(() => showToast(t('mc_input_name_copied'), 'success'))
               .catch(() => {})
           } catch {}
         },
@@ -1384,7 +1384,7 @@ function initInput() {
           try {
             navigator.clipboard
               .writeText(hi)
-              .then(() => showToast('url copied', 'success'))
+              .then(() => showToast(t('mc_input_url_copied'), 'success'))
               .catch(() => {})
           } catch {}
         },
@@ -1411,7 +1411,7 @@ function initInput() {
           try {
             navigator.clipboard
               .writeText(`:${name}:`)
-              .then(() => showToast('name copied', 'success'))
+              .then(() => showToast(t('mc_input_name_copied'), 'success'))
               .catch(() => {})
           } catch {}
         },
@@ -1423,7 +1423,7 @@ function initInput() {
           try {
             navigator.clipboard
               .writeText(char)
-              .then(() => showToast('emoji copied', 'success'))
+              .then(() => showToast(t('mc_input_emoji_copied'), 'success'))
               .catch(() => {})
           } catch {}
         },
@@ -1548,7 +1548,7 @@ function initInput() {
             }
           }
           if (items.length === 0) {
-            if (hadUnpostableEmote) showToast(`nothing postable in stack`, 'error')
+            if (hadUnpostableEmote) showToast(t('mc_input_nothing_postable'), 'error')
             return
           }
           // Fire add-to-inventory for each unowned emote (don't block paste on the
@@ -1624,7 +1624,7 @@ function initInput() {
           // Foreign Twitch sub emote — viewer not subbed to this channel, can't
           // post it. Toast instead of paste (matches website post-b6f23bc8:
           // visually identical to other emotes, only click is gated).
-          showToast(`${emoteName} — not subbed to this channel`, 'error')
+          showToast(t('mc_input_not_subbed', [emoteName]), 'error')
           return
         }
         if (state === 'owned' || state === 'global' || state === 'channel' || state === 'unadded') {
@@ -1807,9 +1807,9 @@ async function hsFollowFromMenu(username, platform, ids = {}) {
   if (!id) {
     const msg = ri?.transient
       ? ri.status === 429
-        ? `rate limited — try in a sec`
-        : `couldn't reach server (${ri.status || 'net'})`
-      : `${username} isn't on heatsync`
+        ? t('mc_input_rate_limited')
+        : t('mc_input_server_unreachable', [String(ri.status || 'net')])
+      : t('mc_input_not_on_heatsync', [username])
     showToast(msg, 'error')
     return
   }
@@ -1848,8 +1848,10 @@ async function _ctxMod(action, channel, platform, target, msgId, durationSec, la
     const derr = (r?.tResp || r?.kResp || r?.yResp)?.error
     showToast(
       r?.anyOk
-        ? 'deleted message'
-        : `delete failed: ${derr === 'not_moderator' ? 'not a youtube mod here' : derr || 'unknown'}`,
+        ? t('mc_profile_deleted_message')
+        : t('mc_input_delete_failed', [
+            derr === 'not_moderator' ? t('mc_modtoolbar_not_youtube_mod') : derr || t('mc_common_unknown'),
+          ]),
       r?.anyOk ? 'success' : 'error',
     )
   } else {
@@ -1889,7 +1891,7 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
     'sep',
     {
       label: 'copy name',
-      fn: () => mcCopyToClipboard(username, 'name copied'),
+      fn: () => mcCopyToClipboard(username, t('mc_input_name_copied')),
     },
   ]
   // Copy/quote lead the menu (right after follow/block/mute) so they're never
@@ -1898,7 +1900,7 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
   if (msg) {
     items.push({
       label: 'copy message',
-      fn: () => mcCopyToClipboard(_extractMcMsgText(msg), 'message copied'),
+      fn: () => mcCopyToClipboard(_extractMcMsgText(msg), t('mc_input_message_copied')),
     })
     items.push({
       label: 'copy → input',
@@ -1910,7 +1912,7 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
     if (threadTxt)
       items.push({
         label: 'copy thread',
-        fn: () => mcCopyToClipboard(threadTxt, 'thread copied'),
+        fn: () => mcCopyToClipboard(threadTxt, t('mc_input_thread_copied')),
       })
   }
   if (msg) {
@@ -1918,7 +1920,7 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
     if (chainTxt)
       items.push({
         label: 'copy thread',
-        fn: () => mcCopyToClipboard(chainTxt, 'thread copied'),
+        fn: () => mcCopyToClipboard(chainTxt, t('mc_input_thread_copied')),
       })
   }
   items.push('sep')
@@ -2208,13 +2210,13 @@ async function _toggleMcMute(username, platform) {
       .replace(/^@/, '')
     const legacy = bareLower ? [bareLower, `yt:${bareLower}`, `heatsync:${bareLower}`] : []
     for (const k of legacy) mutedUsers.delete(k)
-    showToast(`unmuted ${username}`, 'success')
+    showToast(t('mc_input_unmuted', [username]), 'success')
     for (const k of [...aliasKeys, ...legacy]) safeSendMessage({ type: 'unmute_user', username: k })
   } else {
     for (const k of aliasKeys) mutedUsers.add(k)
     const otherAlias = aliases.slice(1).filter((a) => a !== primary)
     const aliasNote = otherAlias.length ? ` (+linked @${otherAlias.join(' @')})` : ''
-    showToast(`muted ${username}${aliasNote} (24h)`, 'success')
+    showToast(t('mc_input_muted', [username + aliasNote]), 'success')
     const exp = Date.now() + 86400000
     for (const k of aliasKeys) safeSendMessage({ type: 'mute_user', username: k, expiresAt: exp })
   }
@@ -2243,14 +2245,14 @@ async function _toggleMcBlock(username, platform) {
       .toLowerCase()
       .replace(/^@/, '')
     if (bareLower) blockedUsers.delete(bareLower)
-    showToast(`unblocked ${username}`, 'success')
+    showToast(t('mc_input_unblocked', [username]), 'success')
     for (const k of aliasKeys) safeSendMessage({ type: 'unblock_user', username: k })
   } else {
     for (const k of aliasKeys) blockedUsers.add(k)
     const primary = aliases[0] || String(username).toLowerCase()
     const other = aliases.slice(1).filter((a) => a !== primary)
     const aliasNote = other.length ? ` (+linked @${other.join(' @')})` : ''
-    showToast(`blocked ${username}${aliasNote}`, 'success')
+    showToast(t('mc_input_blocked', [username + aliasNote]), 'success')
     for (const k of aliasKeys) safeSendMessage({ type: 'block_user', username: k })
   }
   // buildMessageDiv filters blocked users, so a full re-render hides/restores them.
@@ -2304,7 +2306,7 @@ function mcCopyFallback(text) {
     return false
   }
 }
-function mcCopyToClipboard(text, okMsg = 'copied') {
+function mcCopyToClipboard(text, okMsg = t('mc_input_copied')) {
   if (!text) return
   const done = () => {
     try {
@@ -2437,15 +2439,15 @@ async function _quickOpToFeed(username, msg) {
   }
   const raw = ((typeof _extractMcMsgText === 'function' ? _extractMcMsgText(msg) : msg?.textContent) || '').trim()
   if (!raw) {
-    showToast('nothing to post', 'error')
+    showToast(t('mc_input_nothing_to_post'), 'error')
     return
   }
   const content = truncateSafe(`@${username}: ${raw}`, 500)
   try {
     const resp = await apiFetch('/api/messages', { method: 'POST', auth: true, body: { content } })
-    showToast(resp?.ok ? 'posted to feed' : 'post failed', resp?.ok ? 'success' : 'error')
+    showToast(resp?.ok ? t('mc_input_posted_to_feed') : t('mc_input_post_failed'), resp?.ok ? 'success' : 'error')
   } catch {
-    showToast('post failed', 'error')
+    showToast(t('mc_input_post_failed'), 'error')
   }
 }
 
@@ -2461,7 +2463,7 @@ async function _openWhisperFor(username, platform) {
       if (tw) {
         whisperName = tw
       } else {
-        showToast(`${username} has no twitch — try /dm instead`, 'error')
+        showToast(t('mc_input_no_twitch_try_dm', [username]), 'error')
         return
       }
     } catch {
@@ -2486,7 +2488,7 @@ async function _openDmFor(username, platform) {
       if (u) {
         hsName = u
       } else {
-        showToast(`${username} isn't on heatsync`, 'error')
+        showToast(t('mc_input_not_on_heatsync', [username]), 'error')
         return
       }
     } catch {
@@ -5671,15 +5673,15 @@ async function handleSlashCommand(text, input) {
 
   if (cmd === 'op') {
     if (!rest.trim()) {
-      showToast('usage: /op <text>')
+      showToast(t('mc_input_usage_op'))
       return true
     }
     if (!hsAuthToken) {
-      showToast('log in at heatsync.org first to /op', 'error')
+      showToast(t('mc_input_login_first_op'), 'error')
       return true
     }
     const ok = await postFeedMessage(rest.trim(), { topLevel: true })
-    showToast(ok ? 'success' : 'post failed', ok ? 'success' : 'error')
+    showToast(ok ? t('mc_input_success') : t('mc_input_post_failed'), ok ? 'success' : 'error')
     clearInput(input)
     return true
   }
@@ -5687,7 +5689,7 @@ async function handleSlashCommand(text, input) {
   if (cmd === 'w') {
     const match = rest.match(/^@?(\S+)\s+(.+)$/)
     if (!match) {
-      showToast('usage: /w <user> <message>')
+      showToast(t('mc_input_usage_w'))
       return true
     }
     const [, username, msg] = match
@@ -5698,7 +5700,7 @@ async function handleSlashCommand(text, input) {
   if (cmd === 'dm') {
     const match = rest.match(/^@?(\S+)\s+(.+)$/)
     if (!match) {
-      showToast('usage: /dm <user> <message>')
+      showToast(t('mc_input_usage_dm'))
       return true
     }
     const [, username, msg] = match
@@ -5708,14 +5710,14 @@ async function handleSlashCommand(text, input) {
 
   if (cmd === 'r') {
     if (!rest.trim()) {
-      showToast('usage: /r <message>')
+      showToast(t('mc_input_usage_r'))
       return true
     }
     // armed (↩-clicked) target takes priority and survives incoming whispers
     // retargeting lastWhisperKey; plain /r without arming falls back to it
     const target = typeof armedReplyKey !== 'undefined' && armedReplyKey ? armedReplyKey : lastWhisperKey
     if (!target) {
-      showToast('no one to reply to', 'error')
+      showToast(t('mc_input_no_one_to_reply'), 'error')
       return true
     }
     if (currentTab !== 'whispers') switchTab('whispers')
@@ -5731,11 +5733,11 @@ async function handleSlashCommand(text, input) {
   if (cmd === 'follow' || cmd === 'unfollow') {
     const u = rest.trim().replace(/^@/, '').toLowerCase()
     if (!u) {
-      showToast('usage: /' + cmd + ' <user>')
+      showToast(t('mc_input_usage_follow', [cmd]))
       return true
     }
     if (typeof resolveIdentity !== 'function') {
-      showToast('not ready', 'error')
+      showToast(t('mc_input_not_ready'), 'error')
       return true
     }
     const ri = await resolveIdentity(u, {})
@@ -5744,22 +5746,24 @@ async function handleSlashCommand(text, input) {
     if (!id) {
       if (ri?.transient) {
         showToast(
-          ri.status === 429 ? 'rate limited — try in a sec' : `couldn't reach server (${ri.status || 'net'})`,
+          ri.status === 429
+            ? t('mc_input_rate_limited')
+            : t('mc_input_server_unreachable', [String(ri.status || 'net')]),
           'error',
         )
       } else {
-        showToast(u + " isn't on heatsync", 'error')
+        showToast(t('mc_input_not_on_heatsync', [u]), 'error')
       }
       return true
     }
     const yf = !!(p.relationship?.youFollow || p.relationship?.isFollowing)
     const wantFollow = cmd === 'follow'
     if (wantFollow && yf) {
-      showToast('already following ' + u)
+      showToast(t('mc_input_already_following', [u]))
       return true
     }
     if (!wantFollow && !yf) {
-      showToast('not following ' + u)
+      showToast(t('mc_input_not_following', [u]))
       return true
     }
     // pcToggleFollow flips the current state — pass `yf` as currentlyFollowing
@@ -5790,7 +5794,7 @@ async function handleSlashCommand(text, input) {
   if (cmd === 'mute') {
     const u = rest.trim().replace(/^@/, '').toLowerCase()
     if (!u) {
-      showToast('usage: /mute <user>')
+      showToast(t('mc_input_usage_mute'))
       return true
     }
     // platform unknown from slash command — expandUserAliasKeys does both the
@@ -5800,7 +5804,7 @@ async function handleSlashCommand(text, input) {
     const aliasKeys = typeof expandUserAliasKeys === 'function' ? await expandUserAliasKeys(u, null) : [u]
     const already = _muteKeyForms(u, aliasKeys).some((k) => mutedUsers.has(k))
     if (already) {
-      showToast(`${u} already muted`)
+      showToast(t('mc_input_already_muted', [u]))
       return true
     }
     for (const k of aliasKeys) mutedUsers.add(k)
@@ -5808,7 +5812,7 @@ async function handleSlashCommand(text, input) {
     const exp = Date.now() + 86400000
     for (const k of aliasKeys) safeSendMessage({ type: 'mute_user', username: k, expiresAt: exp })
     const aliasNote = aliasKeys.length > 1 ? ` (+@${aliasKeys[1]})` : ''
-    showToast(`muted ${u}${aliasNote} (24h)`, 'success')
+    showToast(t('mc_input_muted', [u + aliasNote]), 'success')
     renderMessages(currentTab)
     return true
   }
@@ -5816,7 +5820,7 @@ async function handleSlashCommand(text, input) {
   if (cmd === 'unmute') {
     const u = rest.trim().replace(/^@/, '').toLowerCase()
     if (!u) {
-      showToast('usage: /unmute <user>')
+      showToast(t('mc_input_usage_unmute'))
       return true
     }
     // Same async fan-out as /mute and right-click mute — covers server-linked
@@ -5825,13 +5829,13 @@ async function handleSlashCommand(text, input) {
     const forms = _muteKeyForms(u, aliasKeys)
     const wasMuted = forms.some((k) => mutedUsers.has(k))
     if (!wasMuted) {
-      showToast(`${u} not muted`)
+      showToast(t('mc_input_not_muted', [u]))
       return true
     }
     for (const k of forms) mutedUsers.delete(k)
     persistMcMuted()
     for (const k of aliasKeys) safeSendMessage({ type: 'unmute_user', username: k })
-    showToast(`unmuted ${u}`, 'success')
+    showToast(t('mc_input_unmuted', [u]), 'success')
     renderMessages(currentTab)
     return true
   }
@@ -5859,7 +5863,7 @@ async function handleSlashCommand(text, input) {
       cleared++
     }
     renderMessages(currentTab)
-    showToast(cleared ? 'local buffer cleared' : 'nothing to clear here', cleared ? 'success' : undefined)
+    showToast(cleared ? t('mc_input_buffer_cleared') : t('mc_input_nothing_to_clear'), cleared ? 'success' : undefined)
     clearInput(input)
     return true
   }
@@ -5882,7 +5886,7 @@ async function handleSlashCommand(text, input) {
           ? currentTab
           : null
     if (!ch) {
-      showToast('/status needs a channel tab (or /status <name>)', 'error')
+      showToast(t('mc_input_status_needs_channel'), 'error')
       return true
     }
     clearInput(input)
@@ -5920,30 +5924,30 @@ async function handleSlashCommand(text, input) {
 
   if (cmd === 'ban' || cmd === 'timeout' || cmd === 'unban') {
     if (!modChannel) {
-      showToast(`/${cmd} needs a channel tab (not live/mentions/posts)`, 'error')
+      showToast(t('mc_input_mod_needs_channel_tab', [cmd]), 'error')
       return true
     }
     if (!_twitchModName && !_kickModSlug) {
-      showToast(`/${cmd} needs a twitch or kick channel`, 'error')
+      showToast(t('mc_input_mod_needs_platform_channel', [cmd]), 'error')
       return true
     }
     if (!(await _twitchModAuthOk())) return true
     if (cmd === 'ban') {
       const m = rest.match(/^@?(\S+)(?:\s+(.+))?$/)
       if (!m) {
-        showToast('usage: /ban <user> [reason]', 'error')
+        showToast(t('mc_input_usage_ban'), 'error')
         return true
       }
       const [, target, reason] = m
       const r = await dispatchModAction({ channel: modChannel, action: 'ban', target, reason, fanout: true })
-      showModResultToast('banned', target, r)
+      showModResultToast(t('mc_mod_label_banned'), target, r)
       if (r?.anyOk) clearInput(input)
       return true
     }
     if (cmd === 'timeout') {
       const m = rest.match(/^@?(\S+)(?:\s+(\d+))?(?:\s+(.+))?$/)
       if (!m) {
-        showToast('usage: /timeout <user> [seconds] [reason]', 'error')
+        showToast(t('mc_input_usage_timeout'), 'error')
         return true
       }
       const [, target, secStr, reason] = m
@@ -5956,18 +5960,18 @@ async function handleSlashCommand(text, input) {
         reason,
         fanout: true,
       })
-      showModResultToast(`timed out ${sec}s`, target, r)
+      showModResultToast(t('mc_mod_label_timed_out', [String(sec)]), target, r)
       if (r?.anyOk) clearInput(input)
       return true
     }
     if (cmd === 'unban') {
       const target = rest.trim().replace(/^@/, '')
       if (!target) {
-        showToast('usage: /unban <user>', 'error')
+        showToast(t('mc_input_usage_unban'), 'error')
         return true
       }
       const r = await dispatchModAction({ channel: modChannel, action: 'unban', target, fanout: true })
-      showModResultToast('unbanned', target, r)
+      showModResultToast(t('mc_mod_label_unbanned'), target, r)
       if (r?.anyOk) clearInput(input)
       return true
     }
@@ -5975,23 +5979,23 @@ async function handleSlashCommand(text, input) {
 
   if (cmd === 'delete') {
     if (!modChannel) {
-      showToast('/delete needs a channel tab', 'error')
+      showToast(t('mc_input_delete_needs_channel_tab'), 'error')
       return true
     }
     const messageID = rest.trim()
     if (!messageID) {
-      showToast('usage: /delete <message-id> (right-click a message)', 'error')
+      showToast(t('mc_input_usage_delete'), 'error')
       return true
     }
     if (!_twitchModName && !_kickModSlug) {
-      showToast('/delete needs a twitch or kick channel', 'error')
+      showToast(t('mc_input_delete_needs_platform_channel'), 'error')
       return true
     }
     if (!(await _twitchModAuthOk())) return true
     // Raw id → platform unknown; dispatcher tries Twitch first, then Kick.
     const r = await dispatchModAction({ channel: modChannel, action: 'delete', msgId: messageID })
-    const err = (r?.tResp || r?.kResp)?.error || 'unknown'
-    showToast(r?.anyOk ? 'deleted' : `delete failed: ${err}`, r?.anyOk ? 'success' : 'error')
+    const err = (r?.tResp || r?.kResp)?.error || t('mc_common_unknown')
+    showToast(r?.anyOk ? t('mc_mod_label_deleted') : t('mc_input_delete_failed', [err]), r?.anyOk ? 'success' : 'error')
     if (r?.anyOk) clearInput(input)
     return true
   }
@@ -6003,11 +6007,11 @@ async function handleSlashCommand(text, input) {
   // min 2-char term, hard match cap, and a confirm modal before anything fires.
   if (cmd === 'nuke') {
     if (!modChannel) {
-      showToast('/nuke needs a channel tab', 'error')
+      showToast(t('mc_input_nuke_needs_channel_tab'), 'error')
       return true
     }
     if (!_twitchModName && !_kickModSlug) {
-      showToast('/nuke needs a twitch or kick channel', 'error')
+      showToast(t('mc_input_nuke_needs_platform_channel'), 'error')
       return true
     }
     if (!(await _twitchModAuthOk())) return true
@@ -6016,7 +6020,7 @@ async function handleSlashCommand(text, input) {
     const nm = rest.trim().match(/^(.+?)(?:\s+(\d+))?$/)
     const term = nm ? nm[1].trim() : ''
     if (term.length < 2) {
-      showToast('usage: /nuke <term> [seconds] — term must be 2+ chars', 'error')
+      showToast(t('mc_input_usage_nuke'), 'error')
       return true
     }
     const windowSec = Math.min(NUKE_MAX_WINDOW, nm && nm[2] ? Math.max(1, parseInt(nm[2])) : 30)
@@ -6043,7 +6047,7 @@ async function handleSlashCommand(text, input) {
       }
     }
     if (targets.length === 0) {
-      showToast(`/nuke: no messages matching "${term}" in the last ${windowSec}s`, 'error')
+      showToast(t('mc_input_nuke_no_matches', [term, String(windowSec)]), 'error')
       return true
     }
     const capped = targets.length > NUKE_MAX
@@ -6059,7 +6063,7 @@ async function handleSlashCommand(text, input) {
       ),
     )
     const okCount = results.filter((r) => r.status === 'fulfilled' && r.value?.anyOk).length
-    showToast(`nuked ${okCount}/${batch.length} matching "${term}"`, okCount ? 'success' : 'error')
+    showToast(t('mc_input_nuke_done', [String(okCount), String(batch.length), term]), okCount ? 'success' : 'error')
     if (okCount) clearInput(input)
     return true
   }
@@ -6073,7 +6077,7 @@ async function handleSlashCommand(text, input) {
     // other modes (slow/emote/subs/unique) need their own captured GQL mutations
     // — Helix /chat/settings 404s for the web client, so don't pretend they work.
     if (cmd !== 'followers') {
-      showToast(`/${cmd} isn't wired yet — only /followers works for now`, 'error')
+      showToast(t('mc_input_mode_not_wired', [cmd]), 'error')
       return true
     }
     // Target the twitch channel you're moderating: a real channel tab's twitch
@@ -6082,7 +6086,7 @@ async function handleSlashCommand(text, input) {
     const twitchTarget =
       _modCh?.twitch || (hostPlatform === 'twitch' ? (getCurrentChannel() || '').toLowerCase().replace(/^#/, '') : null)
     if (!twitchTarget) {
-      showToast('/followers is twitch-only — open a twitch channel', 'error')
+      showToast(t('mc_input_followers_twitch_only'), 'error')
       return true
     }
     const arg = rest.trim().toLowerCase()
@@ -6094,19 +6098,23 @@ async function handleSlashCommand(text, input) {
     else {
       minutes = _parseModeDuration(arg, 'min')
       if (minutes == null) {
-        showToast('usage: /followers [mins] | off', 'error')
+        showToast(t('mc_input_usage_followers'), 'error')
         return true
       }
     }
     const resp = await setTwitchFollowersMode(twitchTarget, minutes)
     if (resp.ok) {
       showToast(
-        off ? 'followers-only off' : minutes ? `followers-only on (${minutes}m)` : 'followers-only on',
+        off
+          ? t('mc_input_followers_off')
+          : minutes
+            ? t('mc_input_followers_on_mins', [String(minutes)])
+            : t('mc_input_followers_on'),
         'success',
       )
       clearInput(input)
     } else {
-      showToast(`/followers failed: ${resp.error}`, 'error')
+      showToast(t('mc_input_followers_failed', [resp.error]), 'error')
     }
     return true
   }
@@ -6419,7 +6427,7 @@ async function sendMessage() {
   // Orphan slash with no twitch leg = nothing left to send (kick/yt-only
   // target). Fail loud and keep the input so the text isn't lost.
   if (orphanSlash && !sendToTwitch) {
-    showToast('unknown command', 'error')
+    showToast(t('mc_input_unknown_command'), 'error')
     flashInputError(input)
     return
   }
@@ -6543,10 +6551,10 @@ async function sendMessage() {
       sendYoutubeMessage(restText, ytVideoId)
         .then((result) => {
           if (result !== true && result !== 'no_youtube_tab') {
-            showToast('youtube send failed', 'error')
+            showToast(t('mc_yt_send_failed'), 'error')
           }
         })
-        .catch(() => showToast('youtube send failed', 'error'))
+        .catch(() => showToast(t('mc_yt_send_failed'), 'error'))
     }
 
     Promise.all([kickPromise, twitchPromise])
@@ -6666,7 +6674,7 @@ async function sendMessage() {
           showToast(youtubeSendErrorMessage(result), 'error')
         }
       })
-      .catch(() => showToast('youtube send failed', 'error'))
+      .catch(() => showToast(t('mc_yt_send_failed'), 'error'))
     // fall through to Twitch path
   }
 

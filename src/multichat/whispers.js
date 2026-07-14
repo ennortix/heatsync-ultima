@@ -373,7 +373,7 @@ async function sendTwitchWhisper(toUserId, message) {
   // Surface the real proxy error — actionable for the user.
   if (!onTwitch) {
     if (needsRelink) {
-      const emsg = respError || 'twitch whispers not enabled — re-link on heatsync.org'
+      const emsg = respError || t('mc_whisper_not_enabled')
       showToast(emsg, 'error')
       return { ok: false, error: emsg, errorKind: 'relink' }
     }
@@ -383,11 +383,11 @@ async function sendTwitchWhisper(toUserId, message) {
     }
     if (serverThrew || respStatus >= 500 || !serverResp) {
       const msg = 'heatsync server unreachable'
-      showToast('whisper failed: ' + msg, 'error')
+      showToast(t('mc_whisper_failed', [msg]), 'error')
       return { ok: false, error: msg, errorKind: 'server' }
     }
     const errText = respError || `twitch error ${respStatus}`
-    showToast('whisper failed: ' + errText, 'error')
+    showToast(t('mc_whisper_failed', [errText]), 'error')
     return { ok: false, error: errText }
   }
 
@@ -399,10 +399,10 @@ async function sendTwitchWhisper(toUserId, message) {
       showToast(t('mc_whisper_login'), 'error')
       return { ok: false, error: 'no twitch session', errorKind: 'auth' }
     }
-    showToast('whisper failed: ' + (direct.error || 'unknown'), 'error')
+    showToast(t('mc_whisper_failed', [direct.error || t('mc_common_unknown')]), 'error')
     return { ok: false, error: direct.error || 'unknown' }
   } catch (e) {
-    showToast('whisper failed: ' + e.message, 'error')
+    showToast(t('mc_whisper_failed', [e.message]), 'error')
     return { ok: false, error: e.message }
   }
 }
@@ -410,7 +410,7 @@ async function sendTwitchWhisper(toUserId, message) {
 async function sendWhisperMessage(key, text) {
   const userInfo = whisperUsers.get(key)
   if (!userInfo) {
-    showToast('unknown user — whisper someone first', 'error')
+    showToast(t('mc_whisper_unknown_user'), 'error')
     return
   }
 

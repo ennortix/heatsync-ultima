@@ -622,23 +622,35 @@ function showModResultToast(label, target, r) {
       kOk = kResp?.ok
     if (tResp && kResp) {
       if (tOk && kOk) {
-        showToast(`${label} ${target} (twitch+kick)`, 'success')
+        showToast(t('mc_modtoolbar_result_both', [label, target]), 'success')
         return
       }
       if (tOk) {
-        showToast(`${label} ${target} on twitch — kick failed: ${kResp.error || 'unknown'}`, 'error')
+        showToast(
+          t('mc_modtoolbar_result_twitch_kick_failed', [label, target, kResp.error || t('mc_common_unknown')]),
+          'error',
+        )
         return
       }
       if (kOk) {
-        showToast(`${label} ${target} on kick — twitch failed: ${tResp.error || 'unknown'}`, 'error')
+        showToast(
+          t('mc_modtoolbar_result_kick_twitch_failed', [label, target, tResp.error || t('mc_common_unknown')]),
+          'error',
+        )
         return
       }
-      showToast(`${label} failed: twitch ${tResp.error || '?'} / kick ${kResp.error || '?'}`, 'error')
+      showToast(t('mc_modtoolbar_result_both_failed', [label, tResp.error || '?', kResp.error || '?']), 'error')
       return
     }
     const only = tResp || kResp || r?.yResp
-    const errText = only?.error === 'not_moderator' ? 'not a youtube mod here' : only?.error || 'unknown'
-    showToast(only?.ok ? `${label} ${target}` : `${label} failed: ${errText}`, only?.ok ? 'success' : 'error')
+    const errText =
+      only?.error === 'not_moderator' ? t('mc_modtoolbar_not_youtube_mod') : only?.error || t('mc_common_unknown')
+    showToast(
+      only?.ok
+        ? t('mc_modtoolbar_result_single_ok', [label, target])
+        : t('mc_modtoolbar_result_single_failed', [label, errText]),
+      only?.ok ? 'success' : 'error',
+    )
   } catch (_) {}
 }
 try {
@@ -665,13 +677,13 @@ async function runModAction(id) {
   if (r?.anyOk && def.action === 'delete' && row && dimTimeouts) row.classList.add('hs-mc-msg-cleared')
   const label =
     def.action === 'timeout'
-      ? `timed out ${def.durationSec}s`
+      ? t('mc_mod_label_timed_out', [String(def.durationSec)])
       : def.action === 'ban'
-        ? 'banned'
+        ? t('mc_mod_label_banned')
         : def.action === 'unban'
-          ? 'unbanned'
+          ? t('mc_mod_label_unbanned')
           : def.action === 'delete'
-            ? 'deleted'
+            ? t('mc_mod_label_deleted')
             : def.action
   showModResultToast(label, target, r)
   detachModToolbar()

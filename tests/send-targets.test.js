@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test'
+import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 
@@ -9,6 +9,11 @@ import { join } from 'path'
  * bundle (see build.js MULTICHAT_MODULES) as plain global function
  * declarations, same rationale as sent-echo.test.js / tab-complete-order.test.js.
  * Loaded here via new Function so the test exercises the real source.
+ *
+ * youtubeSendErrorMessage calls the bundle-global `t()` (src/lib/browser-api.js
+ * in the real bundle) — stub it on globalThis before each test, resolving
+ * against the real en/messages.json so this also proves the i18n keys exist
+ * and match copy (matches the pattern in irc-parser.test.js).
  */
 function loadSendTargets() {
   const src = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'send-targets.js'), 'utf8')
@@ -19,6 +24,16 @@ function loadSendTargets() {
 }
 
 const { resolveSendTargets, nextSendTargets, extractYoutubeVideoId, youtubeSendErrorMessage } = loadSendTargets()
+
+const enMessages = JSON.parse(
+  readFileSync(join(import.meta.dir, '..', 'src', '_locales', 'en', 'messages.json'), 'utf8'),
+)
+beforeEach(() => {
+  globalThis.t = (key) => enMessages[key]?.message ?? key
+})
+afterEach(() => {
+  globalThis.t = undefined
+})
 
 test('resolveSendTargets defaults every linked platform on when absent', () => {
   expect(resolveSendTargets(undefined, { twitch: true, kick: true, youtube: false })).toEqual({

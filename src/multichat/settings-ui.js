@@ -599,7 +599,7 @@ function _getRawFilterRules() {
     if (!_filterRulesCorrupted) {
       _filterRulesCorrupted = true
       console.error('[heatsync] chatFilterRules JSON parse failed:', e)
-      showToast('filter rules corrupted — editing disabled until reload', 'error')
+      showToast(t('mc_settingsui_rules_corrupted'), 'error')
     }
     return []
   }
@@ -607,7 +607,7 @@ function _getRawFilterRules() {
     if (!_filterRulesCorrupted) {
       _filterRulesCorrupted = true
       console.error('[heatsync] chatFilterRules is not an array:', arr)
-      showToast('filter rules corrupted — editing disabled until reload', 'error')
+      showToast(t('mc_settingsui_rules_corrupted'), 'error')
     }
     return []
   }
@@ -620,7 +620,7 @@ function _saveFilterRules(rules) {
   // JSON" — refuse to write in the corrupted case, or the next add/edit
   // would silently persist over (and permanently lose) the unreadable blob.
   if (_filterRulesCorrupted) {
-    showToast('filter rules corrupted — reload the page before editing', 'error')
+    showToast(t('mc_settingsui_rules_corrupted_reload'), 'error')
     return
   }
   var json = JSON.stringify(rules)
@@ -854,13 +854,13 @@ function _handleFilterRuleAction(el, panelRoot) {
     var ruleCs = csEl ? !!csEl.checked : false
     var ruleScope = scopeEl ? scopeEl.value : 'all'
     if (!ruleVal) {
-      showToast('rule value is empty', 'error')
+      showToast(t('mc_settingsui_rule_value_empty'), 'error')
       return
     }
     // Validate expr syntax up front so a malformed rule toasts instead of
     // silently compiling to nothing (the parser lives in the same bundle).
     if (ruleType === 'expr' && typeof _frParseExpr === 'function' && !_frParseExpr(_frTokenizeExpr(ruleVal))) {
-      showToast('invalid expression', 'error')
+      showToast(t('mc_settingsui_invalid_expression'), 'error')
       return
     }
     var newRule = {
@@ -961,9 +961,9 @@ async function _exportAllSettings() {
     setTimeout(() => {
       URL.revokeObjectURL(url)
     }, 1000)
-    showToast('settings exported', 'info')
+    showToast(t('mc_settingsui_export_ok'), 'info')
   } catch (err) {
-    showToast('export failed: ' + (err && err.message ? err.message : 'unknown'), 'error')
+    showToast(t('mc_settingsui_export_failed', [err && err.message ? err.message : t('mc_common_unknown')]), 'error')
   }
 }
 
@@ -981,7 +981,7 @@ async function _importAllSettings() {
         return
       }
       if (file.size > 2 * 1024 * 1024) {
-        showToast('file too large (>2MB)', 'error')
+        showToast(t('mc_settingsui_file_too_large'), 'error')
         resolve(false)
         return
       }
@@ -989,7 +989,7 @@ async function _importAllSettings() {
         var txt = await file.text()
         var data = JSON.parse(txt)
         if (!data || data.kind !== 'heatsync-settings') {
-          showToast('not a heatsync settings file', 'error')
+          showToast(t('mc_settingsui_not_heatsync_file'), 'error')
           resolve(false)
           return
         }
@@ -1015,7 +1015,7 @@ async function _importAllSettings() {
           if (Object.keys(safeLocal).length) writes.push(chrome.storage.local.set(safeLocal))
         }
         await Promise.all(writes)
-        showToast('settings imported — reloading…', 'info')
+        showToast(t('mc_settingsui_import_ok'), 'info')
         setTimeout(() => {
           try {
             location.reload()
@@ -1023,7 +1023,10 @@ async function _importAllSettings() {
         }, 800)
         resolve(true)
       } catch (err) {
-        showToast('import failed: ' + (err && err.message ? err.message : 'parse error'), 'error')
+        showToast(
+          t('mc_settingsui_import_failed', [err && err.message ? err.message : t('mc_settingsui_parse_error')]),
+          'error',
+        )
         resolve(false)
       }
     }
@@ -1119,7 +1122,7 @@ function _applyPresetDiff(label, diff) {
   const changes = _presetChanges(diff)
   _presetPending = null
   if (!changes.length) {
-    showToast('already matching ' + label, 'info')
+    showToast(t('mc_settingsui_preset_already_matching', [label]), 'info')
     renderSettingsTab()
     return
   }
@@ -1127,13 +1130,14 @@ function _applyPresetDiff(label, diff) {
   for (const c of changes) undo[c.key] = c.from
   _lastPresetUndo = { label: label, diff: undo }
   for (const c of changes) setSetting(c.key, c.to)
-  showToast('applied ' + label + ' — ' + changes.length + ' change' + (changes.length === 1 ? '' : 's'), 'info')
+  const changeCount = changes.length + ' change' + (changes.length === 1 ? '' : 's')
+  showToast(t('mc_settingsui_preset_applied', [label, changeCount]), 'info')
   renderSettingsTab()
 }
 function _saveCustomPreset(name) {
   name = (name || '').trim().slice(0, 24)
   if (!name) {
-    showToast('preset needs a name', 'error')
+    showToast(t('mc_settingsui_preset_needs_name'), 'error')
     return
   }
   const diff = {}
@@ -1148,30 +1152,31 @@ function _saveCustomPreset(name) {
     .concat(entry)
     .slice(-8)
   if (JSON.stringify(next).length > 5000) {
-    showToast('presets storage full — delete one first', 'error')
+    showToast(t('mc_settingsui_presets_storage_full'), 'error')
     return
   }
   _customPresets = next
   saveUiSetting('customPresets', next)
   _presetPending = null
-  showToast('saved preset: ' + name, 'info')
+  showToast(t('mc_settingsui_preset_saved', [name]), 'info')
   renderSettingsTab()
 }
 function _deleteCustomPreset(id) {
   _customPresets = _customPresets.filter((p) => p.id !== id)
   saveUiSetting('customPresets', _customPresets)
-  showToast('preset deleted', 'info')
+  showToast(t('mc_settingsui_preset_deleted'), 'info')
 }
 function _openPresetMenu(anchorEl) {
   const r = anchorEl.getBoundingClientRect()
   const items = []
   for (const p of SETTINGS_PRESETS) {
+    const pLabel = p.labelKey ? t(p.labelKey) : p.label
     items.push({
-      label: (_presetIsActive(p) ? '■ ' : '□ ') + p.label,
-      fn: ((preset) => () => {
-        _presetPending = { label: preset.label, diff: preset.diff }
+      label: (_presetIsActive(p) ? '■ ' : '□ ') + pLabel,
+      fn: ((preset, lbl) => () => {
+        _presetPending = { label: lbl, diff: preset.diff }
         renderSettingsTab()
-      })(p),
+      })(p, pLabel),
     })
   }
   if (_customPresets.length) {
@@ -1771,14 +1776,14 @@ function renderSettingsTab() {
     var defaultsBtn = e.target.closest('.hs-mc-defaults-btn')
     if (defaultsBtn) {
       resetSettingsToDefaults()
-      if (typeof showToast === 'function') showToast('all settings restored to defaults', 'success')
+      if (typeof showToast === 'function') showToast(t('mc_settingsui_reset_all'), 'success')
       return
     }
     var pageDefaultsBtn = e.target.closest('.hs-mc-pagedefaults-btn')
     if (pageDefaultsBtn) {
       var _pdCat = pageDefaultsBtn.dataset.setCat
       resetSettingsToDefaults(_pdCat)
-      if (typeof showToast === 'function') showToast(_pdCat + ' restored to defaults', 'success')
+      if (typeof showToast === 'function') showToast(t('mc_settingsui_reset_category', [_pdCat]), 'success')
       return
     }
   }

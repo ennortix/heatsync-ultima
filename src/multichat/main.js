@@ -212,12 +212,12 @@
     try {
       chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] }).catch(() => {
         try {
-          showToast('mute list not saved — storage error', 'error')
+          showToast(t('mc_main_mute_save_failed'), 'error')
         } catch (_) {}
       })
     } catch (_) {
       try {
-        showToast('mute list not saved — storage error', 'error')
+        showToast(t('mc_main_mute_save_failed'), 'error')
       } catch (_) {}
     }
   }
@@ -1497,14 +1497,14 @@
             const used = await chrome.storage.sync.getBytesInUse('ui_settings')
             if (used > 7000) {
               warn('ui_settings quota near limit:', used, '/ 8192 bytes')
-              showToast('settings storage near limit — some preferences may not save across devices', 'error')
+              showToast(t('mc_main_quota_near_limit'), 'error')
             }
           } catch (_) {
             /* getBytesInUse unavailable (Firefox MV2) — skip check */
           }
           if (!(await writeUiSettings(syncPatch))) {
             warn('ui_settings write failed')
-            showToast('settings failed to save — storage quota exceeded', 'error')
+            showToast(t('mc_main_settings_save_failed'), 'error')
           }
         })()
       }
@@ -1945,7 +1945,7 @@
     document.querySelectorAll('.hs-mc-toggle-pill[data-set-key="' + def.key + '"]').forEach((pill) => {
       pill.classList.toggle('active', !attempted)
     })
-    showToast('failed to save ' + def.cw.noun + ' — try again', 'error')
+    showToast(t('mc_main_cw_save_failed', [def.cw.noun]), 'error')
   }
 
   // Resolve the legacy runtime binding for an entry (entries without one
@@ -4894,7 +4894,7 @@
   // Celebration failed AFTER the text was consumed — never let the user's
   // message vanish: surface the failure and send the text as plain chat.
   async function _resubShareTextRescue(channel, text) {
-    showToast('celebration share failed — sending your message to chat', 'error')
+    showToast(t('mc_main_celebration_share_failed'), 'error')
     if (!text) return
     try {
       const token = getTwitchAuthToken()
@@ -4903,7 +4903,7 @@
         if (res === true || res === 'queued') return
       }
     } catch (_) {}
-    showToast('message could not be sent — it is still shown in your celebration row', 'error')
+    showToast(t('mc_main_message_not_sent'), 'error')
   }
 
   // Programmatic-click escape hatch so consume() can fire the native Twitch
@@ -4975,12 +4975,7 @@
         try {
           clicked = nativeClickFallback()
         } catch (_) {}
-        showToast(
-          clicked
-            ? 'no share token — celebration sent without text, your message goes to chat'
-            : 'share unavailable — sending your message to chat',
-          'error',
-        )
+        showToast(clicked ? t('mc_main_no_share_token') : t('mc_main_share_unavailable'), 'error')
         return false
       }
 
@@ -10520,7 +10515,7 @@
         extractYoutubeVideoId(ctx.youtube) ||
         (hostPlatform === 'yt' ? extractYoutubeVideoId(location.href) || _autoYtVideoId || '' : '')
       if (!videoId) {
-        showToast('no live youtube stream to pop out', 'info')
+        showToast(t('mc_main_no_yt_stream'), 'info')
         return
       }
       url = `https://www.youtube.com/live_chat?v=${videoId}&is_popout=1`

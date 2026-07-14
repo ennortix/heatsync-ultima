@@ -636,12 +636,18 @@ function pcBuildModActions(username) {
         if (a.action === 'delete') {
           if (typeof showToast === 'function')
             showToast(
-              r?.anyOk ? 'deleted message' : `delete failed: ${(r?.tResp || r?.kResp)?.error || 'unknown'}`,
+              r?.anyOk
+                ? t('mc_profile_deleted_message')
+                : t('mc_profile_delete_failed', [(r?.tResp || r?.kResp)?.error || t('mc_common_unknown')]),
               r?.anyOk ? 'success' : 'error',
             )
         } else {
           const label =
-            a.action === 'ban' ? 'banned' : a.action === 'unban' ? 'unbanned' : `timed out ${a.durationSec}s`
+            a.action === 'ban'
+              ? t('mc_mod_label_banned')
+              : a.action === 'unban'
+                ? t('mc_mod_label_unbanned')
+                : t('mc_mod_label_timed_out', [String(a.durationSec)])
           if (typeof showModResultToast === 'function') showModResultToast(label, target, r)
         }
         b.disabled = a.need === 'msg' && !msgId
@@ -1275,7 +1281,7 @@ function _patchProfileCacheRel(username, patch) {
 
 async function pcToggleFollow(profileId, username, currentlyFollowing) {
   if (!profileId) {
-    if (typeof showToast === 'function') showToast('not registered on heatsync', 'error')
+    if (typeof showToast === 'function') showToast(t('mc_profile_not_registered'), 'error')
     return
   }
   const targetFollowing = !currentlyFollowing
@@ -1303,12 +1309,13 @@ async function pcToggleFollow(profileId, username, currentlyFollowing) {
           renderProfileCardView()
         }
         _patchProfileCacheRel(username, { youFollow: currentlyFollowing, isFollowing: currentlyFollowing })
-        if (typeof showToast === 'function') showToast('follow failed: ' + (resp?.error || 'unknown'), 'error')
+        if (typeof showToast === 'function')
+          showToast(t('mc_profile_follow_failed', [resp?.error || t('mc_common_unknown')]), 'error')
         return
       }
     }
     if (typeof showToast === 'function')
-      showToast(targetFollowing ? `following ${username}` : `unfollowed ${username}`, 'success')
+      showToast(t(targetFollowing ? 'mc_profile_following' : 'mc_profile_unfollowed', [username]), 'success')
     // Tell background to refetch followedUsers — pollFollowedLive runs after,
     // so live notifications + badge include the new follow within ~60s.
     safeSendMessage({ type: 'refresh_followed_users' })
@@ -1335,7 +1342,7 @@ async function pcToggleFollow(profileId, username, currentlyFollowing) {
           const skippedPrivate =
             (expectTwitch && res.twitch?.skipped === 'no twitch id') ||
             (expectKick && res.kick?.skipped === 'no kick username')
-          if (skippedPrivate) showToast('followed on heatsync — cross-platform sync unavailable', 'info')
+          if (skippedPrivate) showToast(t('mc_profile_cross_sync_unavailable'), 'info')
         })
         .catch(() => {})
     }
@@ -1345,7 +1352,8 @@ async function pcToggleFollow(profileId, username, currentlyFollowing) {
       renderProfileCardView()
     }
     _patchProfileCacheRel(username, { youFollow: currentlyFollowing, isFollowing: currentlyFollowing })
-    if (typeof showToast === 'function') showToast('follow failed: ' + (e?.message || 'unknown'), 'error')
+    if (typeof showToast === 'function')
+      showToast(t('mc_profile_follow_failed', [e?.message || t('mc_common_unknown')]), 'error')
   }
 }
 
@@ -1355,7 +1363,7 @@ async function pcToggleFollow(profileId, username, currentlyFollowing) {
 // that in the relationship object.
 async function pcToggleBlock(profileId, username, currentlyBlocked) {
   if (!profileId) {
-    if (typeof showToast === 'function') showToast('not registered on heatsync', 'error')
+    if (typeof showToast === 'function') showToast(t('mc_profile_not_registered'), 'error')
     return
   }
   const targetBlocked = !currentlyBlocked
@@ -1393,12 +1401,13 @@ async function pcToggleBlock(profileId, username, currentlyBlocked) {
           renderProfileCardView()
         }
         _patchProfileCacheRel(username, { youBlock: currentlyBlocked, isBlocked: currentlyBlocked })
-        if (typeof showToast === 'function') showToast('block failed: ' + (resp?.error || 'unknown'), 'error')
+        if (typeof showToast === 'function')
+          showToast(t('mc_profile_block_failed', [resp?.error || t('mc_common_unknown')]), 'error')
         return
       }
     }
     if (typeof showToast === 'function')
-      showToast(targetBlocked ? `blocked ${username}` : `unblocked ${username}`, 'success')
+      showToast(t(targetBlocked ? 'mc_profile_blocked' : 'mc_profile_unblocked', [username]), 'success')
     // Hide/restore the user's live messages immediately. block_user → bg →
     // user_blocked broadcast → main.js updates blockedUsers + re-renders. Mirrors
     // the chat right-click path; without it a profile-card block only took
@@ -1437,7 +1446,8 @@ async function pcToggleBlock(profileId, username, currentlyBlocked) {
       renderProfileCardView()
     }
     _patchProfileCacheRel(username, { youBlock: currentlyBlocked, isBlocked: currentlyBlocked })
-    if (typeof showToast === 'function') showToast('block failed: ' + (e?.message || 'unknown'), 'error')
+    if (typeof showToast === 'function')
+      showToast(t('mc_profile_block_failed', [e?.message || t('mc_common_unknown')]), 'error')
   }
 }
 
@@ -1634,7 +1644,7 @@ async function pcAddAsChannel(username) {
   if (!channel.twitch && !channel.kick && !channel.youtube) {
     // yt card with no heatsync linkage — nothing safe to bind. Fail loud,
     // never push a dead tab or guess a twitch channel.
-    if (typeof showToast === 'function') showToast(`no linked channels found for ${username}`, 'error')
+    if (typeof showToast === 'function') showToast(t('mc_profile_no_linked_channels', [username]), 'error')
     closeProfileCard()
     return
   }

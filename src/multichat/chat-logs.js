@@ -50,7 +50,7 @@ async function copyChatLogPermalink(btn, r) {
   }
   if (!ok) {
     try {
-      showToast('copy failed', 'error')
+      showToast(t('mc_chatlogs_copy_failed'), 'error')
     } catch {}
   }
   const prev = btn.textContent

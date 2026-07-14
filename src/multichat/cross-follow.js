@@ -137,9 +137,15 @@ async function drainPendingFollows(platform) {
     const sample = drainedItems[0]?.username || drainedItems[0]?.target || ''
     const verb = drainedItems[0]?.action === 'unfollow' ? 'unfollowed' : 'followed'
     if (drained === 1 && sample) {
-      showToast(`${verb} ${sample} on ${platform}`, 'success')
+      showToast(
+        t(verb === 'unfollowed' ? 'mc_crossfollow_drain_one_unfollow' : 'mc_crossfollow_drain_one_follow', [
+          sample,
+          platform,
+        ]),
+        'success',
+      )
     } else {
-      showToast(`synced ${drained} pending ${platform} follow(s)`, 'success')
+      showToast(t('mc_crossfollow_drain_synced', [String(drained), platform]), 'success')
     }
   }
   return { ok: true, drained }
@@ -243,7 +249,7 @@ async function propagateFollow(follow, target) {
       }
       // Surface 2fa requirement — user has to satisfy it on twitch.tv
       if (r?.error === '2fa_required' && typeof showToast === 'function') {
-        showToast(`twitch ${verb} blocked: 2FA required — complete on twitch.tv`, 'info')
+        showToast(t(verb === 'follow' ? 'mc_crossfollow_2fa_follow' : 'mc_crossfollow_2fa_unfollow'), 'info')
       }
     }
   }
@@ -266,7 +272,10 @@ async function propagateFollow(follow, target) {
       // Surface only login-needed; treat other transient kick errors as silent
       // (heatsync follow already toasted; we don't want noise on each follow).
       if (r?.error === 'kick_not_logged_in' && typeof showToast === 'function') {
-        showToast(`kick ${verb} queued — will sync when you log in to kick.com`, 'info')
+        showToast(
+          t(verb === 'follow' ? 'mc_crossfollow_kick_queued_follow' : 'mc_crossfollow_kick_queued_unfollow'),
+          'info',
+        )
       }
     }
   }

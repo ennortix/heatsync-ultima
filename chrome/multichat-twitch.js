@@ -1763,8 +1763,8 @@ const SETTINGS = [
     scope: 'sync',
     category: 'display',
     section: 'font',
-    label: 'font family',
-    tip: 'multichat font family',
+    labelKey: 'mc_settings_font_family',
+    tipKey: 'mc_settings_font_family_desc',
     control: 'select',
     alias: 'fontfamily',
     apply: 'fonts',
@@ -1785,7 +1785,7 @@ const SETTINGS = [
     scope: 'sync',
     category: 'display',
     section: 'font',
-    label: 'custom font name',
+    labelKey: 'mc_settings_custom_font_name',
     control: 'text',
     alias: 'customfontname',
     apply: 'fonts',
@@ -1800,8 +1800,8 @@ const SETTINGS = [
     scope: 'sync',
     category: 'display',
     section: 'font',
-    label: 'font size',
-    tip: 'chat font size in px — drag to taste (replaces the old F-/F+ buttons)',
+    labelKey: 'mc_settings_font_size',
+    tipKey: 'mc_settings_font_size_desc',
     control: 'range',
     alias: 'fontsize',
     apply: 'fonts',
@@ -1837,8 +1837,8 @@ const SETTINGS = [
     scope: 'local',
     category: 'display',
     section: 'chat messages',
-    label: 'emoji size',
-    tip: 'emoji size -- 1x native, 2x (default)/4x scale unicode emoji',
+    labelKey: 'mc_settings_emoji_size',
+    tipKey: 'mc_settings_emoji_size_desc',
     control: 'sizebtns',
     runtimeVar: 'emojiSize',
     apply: 'emojiSize',
@@ -1871,8 +1871,8 @@ const SETTINGS = [
     scope: 'sync',
     category: 'display',
     section: 'chat messages',
-    label: 'timestamp format',
-    tip: 'clock format for chat row timestamps',
+    labelKey: 'mc_settings_timestamp_format',
+    tipKey: 'mc_settings_timestamp_format_desc',
     control: 'sizebtns',
     rerender: true,
     dependsOn: { key: 'timestamps' },
@@ -1888,7 +1888,7 @@ const SETTINGS = [
     scope: 'sync',
     category: 'display',
     section: 'chat messages',
-    label: 'pfps',
+    labelKey: 'mc_settings_show_avatars',
     tipKey: 'mc_settings_avatars_desc',
     control: 'pill',
     alias: 'avatars',
@@ -1916,8 +1916,8 @@ const SETTINGS = [
     scope: 'local',
     category: 'display',
     section: 'chat messages',
-    label: 'fix dim usernames',
-    tip: "brighten dim username colors so they're readable on the black bg",
+    labelKey: 'mc_settings_readable_names',
+    tipKey: 'mc_settings_readable_names_desc',
     control: 'pill',
     alias: 'readablenames',
     runtimeVar: 'readableNamesEnabled',
@@ -1958,8 +1958,8 @@ const SETTINGS = [
     scope: 'sync',
     category: 'display',
     section: 'chat messages',
-    label: 'platform badges',
-    tip: '[T] [K] [Y] labels on messages',
+    labelKey: 'mc_settings_platform_badges',
+    tipKey: 'mc_settings_platform_badges_desc',
     control: 'pill',
     alias: 'showplatformbadges',
     runtimeVar: 'platformBadgesEnabled',
@@ -1977,8 +1977,8 @@ const SETTINGS = [
     scope: 'sync',
     category: 'display',
     section: 'layout',
-    label: 'tab bar position',
-    tip: 'which edge the multichat tab bar docks to',
+    labelKey: 'mc_settings_tab_position',
+    tipKey: 'mc_settings_tab_position_desc',
     control: 'sizebtns',
     runtimeVar: 'tabPosition',
     apply: 'tabPosition',
@@ -1997,8 +1997,8 @@ const SETTINGS = [
     scope: 'sync',
     category: 'display',
     section: 'layout',
-    label: 'chat dock side',
-    tip: 'which side of the player the chat panel docks to — hidden tucks it away (\\ key toggles)',
+    labelKey: 'mc_settings_chat_position',
+    tipKey: 'mc_settings_chat_position_desc',
     control: 'sizebtns',
     runtimeVar: 'chatPosition',
     apply: 'chatPosition',
@@ -2017,8 +2017,8 @@ const SETTINGS = [
     scope: 'sync',
     category: 'display',
     section: 'layout',
-    label: 'youtube: suggestions strip',
-    tip: 'show suggested videos in a vertical strip beside the title (youtube, left/right dock only) — off by default since the chat reclaims that space',
+    labelKey: 'mc_settings_yt_suggestions',
+    tipKey: 'mc_settings_yt_suggestions_desc',
     control: 'pill',
     apply: 'ytSuggestions',
     applyOnLoad: true,
@@ -2030,8 +2030,8 @@ const SETTINGS = [
     scope: 'sync',
     category: 'display',
     section: 'layout',
-    label: 'youtube: chat on non-live pages',
-    tip: 'show the multichat panel on youtube VODs, home and search too — off by default, so the panel only appears on livestreams (where there is live chat)',
+    labelKey: 'mc_settings_yt_chat_non_live',
+    tipKey: 'mc_settings_yt_chat_non_live_desc',
     control: 'pill',
     apply: 'ytNonLiveChat',
     applyOnLoad: true,
@@ -2045,8 +2045,8 @@ const SETTINGS = [
     scope: 'sync',
     category: 'display',
     section: 'density',
-    label: 'message density',
-    tip: 'row padding — compact is the classic tight look',
+    labelKey: 'mc_settings_message_density',
+    tipKey: 'mc_settings_message_density_desc',
     control: 'sizebtns',
     apply: 'density',
     applyOnLoad: true,
@@ -2062,8 +2062,8 @@ const SETTINGS = [
     scope: 'sync',
     category: 'display',
     section: 'density',
-    label: 'line height',
-    tip: 'chat row line height in px — 18 keeps bitmap fonts on the pixel grid',
+    labelKey: 'mc_settings_line_height',
+    tipKey: 'mc_settings_line_height_desc',
     control: 'sizebtns',
     apply: 'density',
     applyOnLoad: true,
@@ -2080,8 +2080,8 @@ const SETTINGS = [
     scope: 'local',
     category: 'display',
     section: 'density',
-    label: 'max visible messages',
-    tip: 'max chat rows kept as live DOM (data buffer stays 1500). lower = less ram on busy channels.',
+    labelKey: 'mc_settings_max_visible_messages',
+    tipKey: 'mc_settings_max_visible_messages_desc',
     control: 'range',
     runtimeVar: 'domRenderCap',
     apply: 'renderCap',
@@ -2096,8 +2096,8 @@ const SETTINGS = [
     scope: 'sync',
     category: 'display',
     section: 'cosmetics',
-    label: 'heatsync name paints',
-    tip: 'animated name paints from heatsync — takes precedence over a 7tv paint when a chatter has both',
+    labelKey: 'mc_settings_name_paints',
+    tipKey: 'mc_settings_name_paints_desc',
     control: 'pill',
     rerender: true,
     apply: 'namePaints',
@@ -2109,8 +2109,8 @@ const SETTINGS = [
     scope: 'sync',
     category: 'display',
     section: 'cosmetics',
-    label: '7tv paints + badges',
-    tip: 'name paints and 7tv badges on chatters',
+    labelKey: 'mc_settings_seventv_paints',
+    tipKey: 'mc_settings_seventv_paints_desc',
     control: 'pill',
     rerender: true,
   },
@@ -2121,8 +2121,8 @@ const SETTINGS = [
     scope: 'sync',
     category: 'display',
     section: 'cosmetics',
-    label: 'bttv badges',
-    tip: 'betterttv badges on chatters',
+    labelKey: 'mc_settings_bttv_badges',
+    tipKey: 'mc_settings_bttv_badges_desc',
     control: 'pill',
     rerender: true,
   },
@@ -2133,8 +2133,8 @@ const SETTINGS = [
     scope: 'sync',
     category: 'display',
     section: 'cosmetics',
-    label: 'ffz badges',
-    tip: 'frankerfacez badges on chatters',
+    labelKey: 'mc_settings_ffz_badges',
+    tipKey: 'mc_settings_ffz_badges_desc',
     control: 'pill',
     rerender: true,
   },
@@ -2145,8 +2145,8 @@ const SETTINGS = [
     scope: 'sync',
     category: 'display',
     section: 'cosmetics',
-    label: 'animate emotes',
-    tip: 'always plays animated emotes. hover shows static frames until the pointer is on a message — big cpu/ram saver on busy channels. never is fully static. multichat messages; picker stays animated.',
+    labelKey: 'mc_settings_animate_emotes',
+    tipKey: 'mc_settings_animate_emotes_desc',
     control: 'sizebtns',
     runtimeVar: 'emoteAnimationMode',
     apply: 'emoteAnimation',
@@ -2165,8 +2165,8 @@ const SETTINGS = [
     scope: 'sync',
     category: 'display',
     section: 'cosmetics',
-    label: 'chatterino badges',
-    tip: 'chatterino badges on chatters',
+    labelKey: 'mc_settings_chatterino_badges',
+    tipKey: 'mc_settings_chatterino_badges_desc',
     control: 'pill',
     rerender: true,
   },
@@ -2302,8 +2302,8 @@ const SETTINGS = [
     scope: 'sync',
     category: 'chat',
     section: 'privacy',
-    label: 'anonymous presence',
-    tip: "don't broadcast typing/presence signals to the platform",
+    labelKey: 'mc_settings_anon_chat',
+    tipKey: 'mc_settings_anon_chat_desc',
     control: 'pill',
   },
 
@@ -2319,8 +2319,8 @@ const SETTINGS = [
     scope: 'sync',
     category: 'notifs',
     section: 'whispers',
-    label: 'whisper toast',
-    tip: 'popup toast when a whisper or dm arrives while you are on another tab — click it to jump to whispers',
+    labelKey: 'mc_settings_whisper_toast',
+    tipKey: 'mc_settings_whisper_toast_desc',
     control: 'pill',
     runtimeVar: 'whisperToastEnabled',
   },
@@ -2330,7 +2330,7 @@ const SETTINGS = [
     scope: 'sync',
     category: 'notifs',
     sectionKey: 'mc_settings_inline_notifs',
-    label: 'inline notifications',
+    labelKey: 'mc_settings_inline_notifs',
     control: 'pill',
     runtimeVar: 'inlineNotifs',
     default: { op: true, mop: true, re: true, dm: false, moment: true },
@@ -2377,8 +2377,8 @@ const SETTINGS = [
         tag: '[🔥]',
         color: '#fff',
         borderColor: '#fff',
-        label: 'moment alerts',
-        tip: "a channel's chat suddenly explodes — heat spike detected server-side; click the row to open the stream",
+        labelKey: 'mc_settings_notif_moment',
+        tipKey: 'mc_settings_notif_moment_desc',
       },
     ],
   },
@@ -2390,7 +2390,7 @@ const SETTINGS = [
     scope: 'sync',
     category: 'notifs',
     sectionKey: 'mc_settings_twitch_events',
-    label: 'stream events',
+    labelKey: 'mc_settings_twitch_events',
     control: 'pill',
     runtimeVar: 'hermesToggles',
     default: {
@@ -2410,20 +2410,26 @@ const SETTINGS = [
       ytGiftMemberships: true,
     },
     options: [
-      { value: 'online', default: true, color: '#00ff7f', label: 'went live', tip: 'banner when a channel goes live' },
+      {
+        value: 'online',
+        default: true,
+        color: '#00ff7f',
+        labelKey: 'mc_settings_evt_online',
+        tipKey: 'mc_settings_evt_online_desc',
+      },
       {
         value: 'offline',
         default: false,
         color: '#808080',
-        label: 'went offline',
-        tip: 'banner when a channel goes offline (off by default — noisy)',
+        labelKey: 'mc_settings_evt_offline',
+        tipKey: 'mc_settings_evt_offline_desc',
       },
       {
         value: 'gameSwitch',
         default: true,
         color: '#ff00ff',
-        label: 'game switches',
-        tip: 'banner when a streamer changes the game',
+        labelKey: 'mc_settings_evt_game_switch',
+        tipKey: 'mc_settings_evt_game_switch_desc',
       },
       {
         value: 'raid',
@@ -2513,8 +2519,8 @@ const SETTINGS = [
     scope: 'local',
     category: 'notifs',
     section: 'when you get @mentioned',
-    label: 'browser notification',
-    tip: 'show a desktop notification when someone @s you',
+    labelKey: 'mc_settings_browser_notification',
+    tipKey: 'mc_settings_browser_notification_desc',
     control: 'pill',
     apply: 'notifPermission',
   },
@@ -2525,8 +2531,8 @@ const SETTINGS = [
     scope: 'sync',
     category: 'notifs',
     section: 'when you get @mentioned',
-    label: 'tab title flash',
-    tip: "pulse the browser tab title with the mentioner's name until you focus the tab",
+    labelKey: 'mc_settings_tab_title_flash',
+    tipKey: 'mc_settings_tab_title_flash_desc',
     control: 'pill',
   },
   {
@@ -2536,8 +2542,8 @@ const SETTINGS = [
     scope: 'sync',
     category: 'notifs',
     section: 'when you get @mentioned',
-    label: 'mention sound volume',
-    tip: 'audio ping volume on mention. 0 = silent. uses pure WebAudio tones, no asset shipped.',
+    labelKey: 'mc_settings_mention_volume',
+    tipKey: 'mc_settings_mention_volume_desc',
     control: 'range',
     alias: 'mentionsoundvolume',
     apply: 'mentionPing',
@@ -2554,8 +2560,8 @@ const SETTINGS = [
     scope: 'sync',
     category: 'notifs',
     section: 'cross-platform follow',
-    label: 'also follow on kick',
-    tip: 'when you follow on heatsync, also follow on kick if they have a linked kick account. needs a kick.com login; queues otherwise',
+    labelKey: 'mc_settings_cross_follow_kick',
+    tipKey: 'mc_settings_cross_follow_kick_desc',
     control: 'pill',
   },
   {
@@ -2565,8 +2571,8 @@ const SETTINGS = [
     scope: 'sync',
     category: 'notifs',
     section: 'cross-platform follow',
-    label: 'also follow on twitch',
-    tip: 'when you follow on heatsync, also follow on twitch if they have a linked twitch account. needs an open twitch.tv tab; queues otherwise',
+    labelKey: 'mc_settings_cross_follow_twitch',
+    tipKey: 'mc_settings_cross_follow_twitch_desc',
     control: 'pill',
   },
   {
@@ -2576,8 +2582,8 @@ const SETTINGS = [
     scope: 'sync',
     category: 'notifs',
     section: 'cross-platform follow',
-    label: 'twitch follow with notifications',
-    tip: 'cross-platform twitch follows also turn on live notifications for that channel',
+    labelKey: 'mc_settings_cross_follow_twitch_notify',
+    tipKey: 'mc_settings_cross_follow_twitch_notify_desc',
     control: 'pill',
   },
 
@@ -2593,22 +2599,22 @@ const SETTINGS = [
     scope: 'local',
     category: 'mod',
     section: 'mod toolbar',
-    label: 'mod toolbar buttons',
-    tip: 'hover actions on chat rows when you mod the channel — all off by default',
+    labelKey: 'mc_settings_mod_toolbar_buttons',
+    tipKey: 'mc_settings_mod_toolbar_buttons_desc',
     control: 'pill',
     runtimeVar: 'modToolbarButtons',
     apply: 'modToolbar',
     applyOnLoad: true,
     options: [
-      { value: 'delete_message', tag: 'x', label: 'delete this message' },
-      { value: 'timeout_1m', tag: '1m', label: 'timeout 1 minute' },
-      { value: 'timeout_10m', tag: '10m', label: 'timeout 10 minutes' },
-      { value: 'timeout_1h', tag: '1h', label: 'timeout 1 hour' },
-      { value: 'timeout_24h', tag: '24h', label: 'timeout 24 hours' },
-      { value: 'timeout_7d', tag: '7d', label: 'timeout 7 days' },
-      { value: 'purge', tag: 'purge', label: 'purge (clear messages, 1s)' },
-      { value: 'ban', tag: '⛔', label: 'permanent ban' },
-      { value: 'unban', tag: '✓', label: 'unban user' },
+      { value: 'delete_message', tag: 'x', labelKey: 'mc_settings_mod_btn_delete' },
+      { value: 'timeout_1m', tag: '1m', labelKey: 'mc_settings_mod_btn_timeout_1m' },
+      { value: 'timeout_10m', tag: '10m', labelKey: 'mc_settings_mod_btn_timeout_10m' },
+      { value: 'timeout_1h', tag: '1h', labelKey: 'mc_settings_mod_btn_timeout_1h' },
+      { value: 'timeout_24h', tag: '24h', labelKey: 'mc_settings_mod_btn_timeout_24h' },
+      { value: 'timeout_7d', tag: '7d', labelKey: 'mc_settings_mod_btn_timeout_7d' },
+      { value: 'purge', tag: 'purge', labelKey: 'mc_settings_mod_btn_purge' },
+      { value: 'ban', tag: '⛔', labelKey: 'mc_settings_mod_btn_ban' },
+      { value: 'unban', tag: '✓', labelKey: 'mc_settings_mod_btn_unban' },
     ],
   },
 
@@ -2619,8 +2625,8 @@ const SETTINGS = [
     scope: 'sync',
     category: 'mod',
     section: 'mod toolbar',
-    label: 'confirm before ban',
-    tip: 'show a confirm dialog before a permanent ban — guards against a misclick',
+    labelKey: 'mc_settings_confirm_ban',
+    tipKey: 'mc_settings_confirm_ban_desc',
     control: 'pill',
     runtimeVar: 'modConfirmBan',
     applyOnLoad: true,
@@ -2632,8 +2638,8 @@ const SETTINGS = [
     scope: 'sync',
     category: 'mod',
     section: 'mod toolbar',
-    label: 'ban reasons',
-    tip: 'one per line — shown as selectable chips in the ban dialog; the choice is sent with the ban',
+    labelKey: 'mc_settings_ban_reasons',
+    tipKey: 'mc_settings_ban_reasons_desc',
     control: 'textarea',
     runtimeVar: 'modBanReasons',
     applyOnLoad: true,
@@ -2647,8 +2653,8 @@ const SETTINGS = [
     scope: 'sync',
     category: 'mod',
     section: 'automod',
-    label: 'hide all-caps spam',
-    tip: 'hide messages over 10 chars that are mostly uppercase',
+    labelKey: 'mc_settings_automod_caps',
+    tipKey: 'mc_settings_automod_caps_desc',
     control: 'pill',
     apply: 'automod',
     applyOnLoad: true,
@@ -2660,9 +2666,9 @@ const SETTINGS = [
     scope: 'sync',
     category: 'mod',
     section: 'automod',
-    label: 'filter regex',
-    tip: 'one pattern per line, case-insensitive -- matching messages get hidden',
-    placeholder: 'bit\\.ly\nfree\\s+v[\\-]?bucks',
+    labelKey: 'mc_settings_automod_regex',
+    tipKey: 'mc_settings_automod_regex_desc',
+    placeholderKey: 'mc_settings_automod_regex_placeholder',
     control: 'textarea',
     alias: 'automodregex',
     apply: 'automod',
@@ -2680,8 +2686,8 @@ const SETTINGS = [
     scope: 'local',
     category: 'filters',
     section: 'content',
-    label: 'show sexual emotes',
-    tip: 'emotes flagged for sexual content (≥ 70%) are hidden by default. shown with a dashed border when on.',
+    labelKey: 'mc_settings_show_sexual',
+    tipKey: 'mc_settings_show_sexual_desc',
     control: 'pill',
     apply: 'cwServerPatch',
     syncSilent: true,
@@ -2695,8 +2701,8 @@ const SETTINGS = [
     scope: 'local',
     category: 'filters',
     section: 'content',
-    label: 'show gore emotes',
-    tip: 'emotes flagged for violence/gore (≥ 70%) are hidden by default. shown with a dashed border when on.',
+    labelKey: 'mc_settings_show_gore',
+    tipKey: 'mc_settings_show_gore_desc',
     control: 'pill',
     apply: 'cwServerPatch',
     syncSilent: true,
@@ -2710,8 +2716,8 @@ const SETTINGS = [
     scope: 'local',
     category: 'filters',
     section: 'content',
-    label: 'show weapons emotes',
-    tip: 'emotes flagged for weapons imagery. on by default.',
+    labelKey: 'mc_settings_show_weapon',
+    tipKey: 'mc_settings_show_weapon_desc',
     control: 'pill',
     apply: 'cwServerPatch',
     syncSilent: true,
@@ -2725,8 +2731,8 @@ const SETTINGS = [
     scope: 'local',
     category: 'filters',
     section: 'content',
-    label: 'show drugs emotes',
-    tip: 'emotes flagged for drug imagery. on by default.',
+    labelKey: 'mc_settings_show_drug',
+    tipKey: 'mc_settings_show_drug_desc',
     control: 'pill',
     apply: 'cwServerPatch',
     syncSilent: true,
@@ -2740,8 +2746,8 @@ const SETTINGS = [
     scope: 'local',
     category: 'filters',
     section: 'content',
-    label: 'show hate emotes',
-    tip: 'emotes flagged for hate imagery. on by default.',
+    labelKey: 'mc_settings_show_hate',
+    tipKey: 'mc_settings_show_hate_desc',
     control: 'pill',
     apply: 'cwServerPatch',
     syncSilent: true,
@@ -2759,8 +2765,8 @@ const SETTINGS = [
     scope: 'sync',
     category: 'filters',
     section: 'messages',
-    label: 'hide bots',
-    tip: 'hide messages from known chat bots (nightbot, streamelements, fossabot…)',
+    labelKey: 'mc_settings_hide_bots',
+    tipKey: 'mc_settings_hide_bots_desc',
     control: 'pill',
     rerender: true,
   },
@@ -2771,8 +2777,8 @@ const SETTINGS = [
     scope: 'sync',
     category: 'filters',
     section: 'messages',
-    label: 'hide !commands',
-    tip: 'hide messages that start with !',
+    labelKey: 'mc_settings_hide_commands',
+    tipKey: 'mc_settings_hide_commands_desc',
     control: 'pill',
     rerender: true,
   },
@@ -2783,8 +2789,8 @@ const SETTINGS = [
     scope: 'sync',
     category: 'filters',
     section: 'messages',
-    label: 'hide duplicates',
-    tip: 'collapse identical consecutive messages (spam waves) to the first one',
+    labelKey: 'mc_settings_hide_duplicates',
+    tipKey: 'mc_settings_hide_duplicates_desc',
     control: 'pill',
     rerender: true,
   },
@@ -2795,9 +2801,9 @@ const SETTINGS = [
     scope: 'local',
     category: 'filters',
     section: 'messages',
-    label: 'mute keywords',
-    tip: 'one term per line — messages containing any get hidden. distinct from keyword highlights.',
-    placeholder: 'spoiler\n!drops',
+    labelKey: 'mc_settings_mute_keywords',
+    tipKey: 'mc_settings_mute_keywords_desc',
+    placeholderKey: 'mc_settings_mute_keywords_placeholder',
     control: 'textarea',
     apply: 'muteKeywords',
     applyOnLoad: true,
@@ -2816,8 +2822,8 @@ const SETTINGS = [
     mirrorKey: 'chat_filter_rules',
     category: 'filters',
     section: 'rules',
-    label: 'filter rules',
-    tip: 'per-rule highlight/hide filters — keyword, regex, user, badge, or msgtype; managed via the rules editor',
+    labelKey: 'mc_settings_filter_rules',
+    tipKey: 'mc_settings_filter_rules_desc',
     control: 'custom',
     alias: 'filterrules highlight hide rules',
     apply: 'filterRules',
@@ -2836,8 +2842,8 @@ const SETTINGS = [
     section: 'sidebar / chrome',
     tweak: true,
     control: 'pill',
-    label: 'recommended channels',
-    tip: 'sidebar "Recommended Channels" section',
+    labelKey: 'mc_settings_hide_recommended',
+    tipKey: 'mc_settings_hide_recommended_desc',
   },
   {
     key: 'hideStories',
@@ -2848,8 +2854,8 @@ const SETTINGS = [
     section: 'sidebar / chrome',
     tweak: true,
     control: 'pill',
-    label: 'stories shelf',
-    tip: 'sidebar / top stories rail',
+    labelKey: 'mc_settings_hide_stories',
+    tipKey: 'mc_settings_hide_stories_desc',
   },
   {
     key: 'hidePrimeLoot',
@@ -2860,8 +2866,8 @@ const SETTINGS = [
     section: 'sidebar / chrome',
     tweak: true,
     control: 'pill',
-    label: 'prime gaming loot upsell',
-    tip: 'crown-icon prime loot button',
+    labelKey: 'mc_settings_hide_prime_loot',
+    tipKey: 'mc_settings_hide_prime_loot_desc',
   },
   {
     key: 'hideTwitchTurbo',
@@ -2872,8 +2878,8 @@ const SETTINGS = [
     section: 'sidebar / chrome',
     tweak: true,
     control: 'pill',
-    label: 'twitch turbo upsell',
-    tip: 'turbo cta links',
+    labelKey: 'mc_settings_hide_turbo',
+    tipKey: 'mc_settings_hide_turbo_desc',
   },
   {
     key: 'hideSubtember',
@@ -2884,8 +2890,8 @@ const SETTINGS = [
     section: 'sidebar / chrome',
     tweak: true,
     control: 'pill',
-    label: 'subtember / seasonal banners',
-    tip: 'seasonal subscription gradient banners',
+    labelKey: 'mc_settings_hide_subtember',
+    tipKey: 'mc_settings_hide_subtember_desc',
   },
   {
     key: 'hideLiveNotifBtn',
@@ -2896,8 +2902,8 @@ const SETTINGS = [
     section: 'sidebar / chrome',
     tweak: true,
     control: 'pill',
-    label: 'live notification toggle',
-    tip: 'subscribe-to-notifications bell button',
+    labelKey: 'mc_settings_hide_live_notif_btn',
+    tipKey: 'mc_settings_hide_live_notif_btn_desc',
   },
   {
     key: 'hideUnfollowBtn',
@@ -2908,8 +2914,8 @@ const SETTINGS = [
     section: 'sidebar / chrome',
     tweak: true,
     control: 'pill',
-    label: 'unfollow button',
-    tip: 'unfollow button (prevents misclicks)',
+    labelKey: 'mc_settings_hide_unfollow_btn',
+    tipKey: 'mc_settings_hide_unfollow_btn_desc',
   },
   {
     key: 'hideSubscribeBtn',
@@ -2920,8 +2926,8 @@ const SETTINGS = [
     section: 'sidebar / chrome',
     tweak: true,
     control: 'pill',
-    label: 'subscribe button',
-    tip: 'channel subscribe button',
+    labelKey: 'mc_settings_hide_subscribe_btn',
+    tipKey: 'mc_settings_hide_subscribe_btn_desc',
   },
   {
     key: 'hideOnscreenCelebrations',
@@ -2932,8 +2938,8 @@ const SETTINGS = [
     section: 'player overlay',
     tweak: true,
     control: 'pill',
-    label: 'onscreen celebrations',
-    tip: 'confetti / celebration overlays on video',
+    labelKey: 'mc_settings_hide_celebrations',
+    tipKey: 'mc_settings_hide_celebrations_desc',
   },
   {
     key: 'hidePlayerExtensions',
@@ -2944,8 +2950,8 @@ const SETTINGS = [
     section: 'player overlay',
     tweak: true,
     control: 'pill',
-    label: 'player extensions',
-    tip: 'overlay extensions covering the video',
+    labelKey: 'mc_settings_hide_player_ext',
+    tipKey: 'mc_settings_hide_player_ext_desc',
   },
 
   // ── mod / native chat ─────────────────────────────────────────────────
@@ -2960,8 +2966,8 @@ const SETTINGS = [
     section: 'sidebar / chrome',
     tweak: true,
     control: 'pill',
-    label: 'stream title',
-    tip: 'hide the stream title block under the player',
+    labelKey: 'mc_settings_hide_stream_title',
+    tipKey: 'mc_settings_hide_stream_title_desc',
   },
   {
     key: 'hideViewerCount',
@@ -2972,8 +2978,8 @@ const SETTINGS = [
     section: 'sidebar / chrome',
     tweak: true,
     control: 'pill',
-    label: 'viewer count',
-    tip: 'hide the live viewer counter',
+    labelKey: 'mc_settings_hide_viewer_count',
+    tipKey: 'mc_settings_hide_viewer_count_desc',
   },
 
   // ── system / tabs ─────────────────────────────────────────────────────
@@ -2984,7 +2990,7 @@ const SETTINGS = [
     scope: 'sync',
     category: 'system',
     section: 'tabs',
-    label: 'visible tabs',
+    labelKey: 'mc_settings_visible_tabs',
     control: 'pill',
     runtimeVar: 'hiddenTabs',
     apply: 'hiddenTabs',
@@ -3009,8 +3015,8 @@ const SETTINGS = [
     scope: 'local',
     category: 'system',
     section: 'language',
-    label: 'interface language',
-    tip: 'multichat ui language — relabels fully on reload',
+    labelKey: 'mc_settings_ui_locale',
+    tipKey: 'mc_settings_ui_locale_desc',
     control: 'select',
     apply: 'locale',
     reloadApply: true,
@@ -3064,7 +3070,7 @@ const SETTINGS = [
     scope: 'sync',
     category: 'system',
     section: 'subsystems',
-    label: 'subsystems',
+    labelKey: 'mc_settings_subsystems',
     apply: 'subsystemToggle',
     control: 'pill',
     default: {
@@ -3089,112 +3095,112 @@ const SETTINGS = [
         default: true,
         color: '#9146ff',
         applies: 'reload',
-        label: 'twitch chat feed',
-        tip: 'twitch irc connection + channel joins inside the overlay',
+        labelKey: 'mc_settings_sub_irc_twitch',
+        tipKey: 'mc_settings_sub_irc_twitch_desc',
       },
       {
         value: 'chat-kick',
         default: true,
         color: '#53fc18',
         applies: 'reload',
-        label: 'kick chat feed',
-        tip: 'kick websocket connection + channel joins inside the overlay',
+        labelKey: 'mc_settings_sub_chat_kick',
+        tipKey: 'mc_settings_sub_chat_kick_desc',
       },
       {
         value: 'chat-youtube',
         default: true,
         color: '#ff0000',
         applies: 'reload',
-        label: 'youtube chat feed',
-        tip: 'youtube live chat subscriptions inside the overlay',
+        labelKey: 'mc_settings_sub_chat_youtube',
+        tipKey: 'mc_settings_sub_chat_youtube_desc',
       },
       {
         value: 'cosmetics',
         default: true,
         color: '#00ffff',
         applies: 'reload',
-        label: 'third-party cosmetics',
-        tip: '7tv paints + bttv/ffz/chatterino badges. off saves ram on busy channels.',
+        labelKey: 'mc_settings_sub_cosmetics',
+        tipKey: 'mc_settings_sub_cosmetics_desc',
       },
       {
         value: 'feed',
         default: true,
         color: '#00ff7f',
         applies: 'reload',
-        label: 'feed',
-        tip: 'heatsync social feed tab + its event stream',
+        labelKey: 'mc_settings_sub_feed',
+        tipKey: 'mc_settings_sub_feed_desc',
       },
       {
         value: 'whispers',
         default: true,
         color: '#ffff00',
         applies: 'reload',
-        label: 'whispers',
-        tip: 'twitch whisper eventsub socket + whispers tab',
+        labelKey: 'mc_settings_sub_whispers',
+        tipKey: 'mc_settings_sub_whispers_desc',
       },
       {
         value: 'mentions',
         default: true,
         color: '#ff00ff',
         applies: 'live',
-        label: 'mentions',
-        tip: 'mention detection, mentions tab and pings',
+        labelKey: 'mc_settings_sub_mentions',
+        tipKey: 'mc_settings_sub_mentions_desc',
       },
       {
         value: 'stream-stats',
         default: true,
         color: '#387aff',
         applies: 'live',
-        label: 'stream stats',
-        tip: 'per-channel message-rate stats powering heat ranking',
+        labelKey: 'mc_settings_sub_stream_stats',
+        tipKey: 'mc_settings_sub_stream_stats_desc',
       },
       {
         value: 'profile-cards',
         default: true,
         color: '#00c853',
         applies: 'reload',
-        label: 'profile cards',
-        tip: 'click a username for the profile card popup',
+        labelKey: 'mc_settings_sub_profile_cards',
+        tipKey: 'mc_settings_sub_profile_cards_desc',
       },
       {
         value: 'emote-render',
         default: true,
         color: '#fff',
         applies: 'reload',
-        label: 'emotes in native chat',
-        tip: 'render heatsync emotes inside the platform’s own chat',
+        labelKey: 'mc_settings_sub_emote_render',
+        tipKey: 'mc_settings_sub_emote_render_desc',
       },
       {
         value: 'tab-complete',
         default: true,
         color: '#fff',
         applies: 'reload',
-        label: 'tab-complete in native chat',
-        tip: 'emote + username completion in the platform’s own input',
+        labelKey: 'mc_settings_sub_tab_complete',
+        tipKey: 'mc_settings_sub_tab_complete_desc',
       },
       {
         value: 'picker-button',
         default: true,
         color: '#fff',
         applies: 'reload',
-        label: 'emote picker button',
-        tip: 'the heatsync picker button beside the native chat input',
+        labelKey: 'mc_settings_sub_picker_button',
+        tipKey: 'mc_settings_sub_picker_button_desc',
       },
       {
         value: 'right-click-block',
         default: true,
         color: '#fff',
         applies: 'live',
-        label: 'right-click emote block',
-        tip: 'right-click any emote to instantly block it',
+        labelKey: 'mc_settings_sub_right_click_block',
+        tipKey: 'mc_settings_sub_right_click_block_desc',
       },
       {
         value: 'native-takeover',
         default: true,
         color: '#9146ff',
         applies: 'live',
-        label: 'native chat takeover',
-        tip: 'while the overlay covers twitch chat, stop twitch rendering its hidden copy — big ram save on busy channels. fails open: overlay dies → twitch chat comes back on its own.',
+        labelKey: 'mc_settings_sub_native_takeover',
+        tipKey: 'mc_settings_sub_native_takeover_desc',
       },
     ],
   },
@@ -3207,8 +3213,8 @@ const SETTINGS = [
     scope: 'sync',
     category: 'system',
     section: 'advanced',
-    label: 'show diagnostic errors',
-    tip: 'errors are captured locally only — never uploaded. this toggle just shows the diagnostic panel below.',
+    labelKey: 'mc_settings_diag_errors',
+    tipKey: 'mc_settings_diag_errors_desc',
     control: 'pill',
     rerenderSettings: true,
   },
@@ -3219,8 +3225,8 @@ const SETTINGS = [
     scope: 'sync',
     category: 'system',
     section: 'advanced',
-    label: 'debug logging',
-    tip: 'verbose console logging from all heatsync scripts — applies on next page load',
+    labelKey: 'mc_settings_debug_logging',
+    tipKey: 'mc_settings_debug_logging_desc',
     control: 'pill',
     reloadApply: true,
   },
@@ -3305,6 +3311,7 @@ const SETTINGS_PRESETS = [
   {
     id: 'minimal',
     label: 'minimal',
+    labelKey: 'mc_settings_preset_minimal',
     tip: 'just chat — no cosmetics, feed, stats or extra chrome',
     diff: {
       avatars: false,
@@ -3334,6 +3341,7 @@ const SETTINGS_PRESETS = [
   {
     id: 'power-user',
     label: 'power user',
+    labelKey: 'mc_settings_preset_power_user',
     tip: 'every tab on, timestamps, vi keys',
     diff: {
       viMode: true,
@@ -3344,6 +3352,7 @@ const SETTINGS_PRESETS = [
   {
     id: 'moderator',
     label: 'moderator',
+    labelKey: 'mc_settings_preset_moderator',
     tip: 'timestamps + readable names + all-caps automod',
     diff: {
       timestamps: true,
@@ -3354,6 +3363,7 @@ const SETTINGS_PRESETS = [
   {
     id: 'low-ram',
     label: 'low ram',
+    labelKey: 'mc_settings_preset_low_ram',
     tip: 'cosmetics, feed, whispers, stats and previews off; 1x emotes',
     diff: {
       hs_emote_size: 1,
@@ -6593,19 +6603,19 @@ function youtubeSendErrorMessage(err) {
   switch (err) {
     case 'no_youtube_tab':
     case 'no_video':
-      return 'open the youtube stream to send'
+      return t('mc_yt_send_open_stream')
     case 'chat_disabled':
-      return 'log into youtube to send'
+      return t('mc_yt_send_login')
     case 'no_input':
-      return 'youtube chat still loading — try again'
+      return t('mc_yt_send_loading')
     case 'send_disabled':
-      return 'youtube blocked the send (slow mode?)'
+      return t('mc_yt_send_blocked')
     case 'send_not_confirmed':
-      return 'youtube didn’t confirm the send'
+      return t('mc_yt_send_not_confirmed')
     case 'bridge_timeout':
-      return 'couldn’t reach youtube chat — try again'
+      return t('mc_yt_send_bridge_timeout')
     default:
-      return 'youtube send failed'
+      return t('mc_yt_send_failed')
   }
 }
 
@@ -17538,7 +17548,7 @@ function _hsnPersist() {
     chrome.storage.local.set({ [HS_NOTES_KEY]: payload }, () => {
       if (chrome.runtime?.lastError) {
         try {
-          showToast('note not saved — storage error', 'error')
+          showToast(t('mc_usernotes_save_failed'), 'error')
         } catch {}
       }
     })
@@ -20547,25 +20557,25 @@ function _nsStart() {
 // "I sent it but it didn't post" symptom. The auth socket is the only socket
 // Twitch sends these NOTICEs to. Set from https://dev.twitch.tv/docs/irc/msg-id/.
 const TWITCH_SEND_REJECT_NOTICES = new Map([
-  ['msg_followersonly', 'followers-only mode — follow the channel to chat'],
-  ['msg_followersonly_followed', 'follow the channel a bit longer to chat'],
-  ['msg_followersonly_zero', 'followers-only — you need to follow first'],
-  ['msg_subsonly', 'subscribers-only — sub to chat here'],
-  ['msg_emoteonly', 'emote-only mode — message must be all emotes'],
-  ['msg_slowmode', 'slow mode — please wait a moment'],
-  ['msg_r9k', 'unique-chat mode — message must be unique'],
-  ['msg_duplicate', 'duplicate message — twitch rejected it'],
-  ['msg_banned', 'you are banned from this channel'],
-  ['msg_timedout', 'you are timed out'],
-  ['msg_rejected', 'AutoMod is checking your message'],
-  ['msg_rejected_mandatory', 'AutoMod blocked your message'],
-  ['msg_channel_suspended', 'channel is suspended'],
-  ['msg_channel_blocked', 'channel is blocking messages'],
-  ['msg_verified_email', 'channel requires a verified email to chat'],
-  ['msg_requires_verified_phone_number', 'channel requires a verified phone to chat'],
-  ['no_permission', 'no permission to do that here'],
-  ['unrecognized_cmd', 'twitch did not recognize that command'],
-  ['tos_ban', 'you are banned from twitch'],
+  ['msg_followersonly', 'mc_irc_notice_followersonly'],
+  ['msg_followersonly_followed', 'mc_irc_notice_followersonly_followed'],
+  ['msg_followersonly_zero', 'mc_irc_notice_followersonly_zero'],
+  ['msg_subsonly', 'mc_irc_notice_subsonly'],
+  ['msg_emoteonly', 'mc_irc_notice_emoteonly'],
+  ['msg_slowmode', 'mc_irc_notice_slowmode'],
+  ['msg_r9k', 'mc_irc_notice_r9k'],
+  ['msg_duplicate', 'mc_irc_notice_duplicate'],
+  ['msg_banned', 'mc_irc_notice_banned'],
+  ['msg_timedout', 'mc_irc_notice_timedout'],
+  ['msg_rejected', 'mc_irc_notice_rejected'],
+  ['msg_rejected_mandatory', 'mc_irc_notice_rejected_mandatory'],
+  ['msg_channel_suspended', 'mc_irc_notice_channel_suspended'],
+  ['msg_channel_blocked', 'mc_irc_notice_channel_blocked'],
+  ['msg_verified_email', 'mc_irc_notice_verified_email'],
+  ['msg_requires_verified_phone_number', 'mc_irc_notice_verified_phone'],
+  ['no_permission', 'mc_irc_notice_no_permission'],
+  ['unrecognized_cmd', 'mc_irc_notice_unrecognized_cmd'],
+  ['tos_ban', 'mc_irc_notice_tos_ban'],
 ])
 
 function parseNoticeMsgId(line) {
@@ -20677,7 +20687,7 @@ function handleAuthIrcMessage(event) {
     if (line.includes(' NOTICE ')) {
       const msgId = parseNoticeMsgId(line)
       if (msgId && TWITCH_SEND_REJECT_NOTICES.has(msgId)) {
-        if (typeof showToast === 'function') showToast(TWITCH_SEND_REJECT_NOTICES.get(msgId), 'error')
+        if (typeof showToast === 'function') showToast(t(TWITCH_SEND_REJECT_NOTICES.get(msgId)), 'error')
         // Drop pending-send tracker entries for the rejected channel so the
         // user doesn't get a second "no echo from platform" toast 20s later
         // on top of the specific reason toast above.
@@ -20899,7 +20909,7 @@ async function sendIrcMessage(channel, text, token, replyParentId, overrideNick)
         if (!joined) {
           if (attempt < 2) continue
           if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text, replyParentId })
-          if (typeof showToast === 'function') showToast(`couldn't join #${channel} chat — queued`, 'error')
+          if (typeof showToast === 'function') showToast(t('mc_irc_join_queued', [channel]), 'error')
           return 'queued'
         }
       }
@@ -22792,10 +22802,10 @@ async function _removeEmoteFromInventory(emoteName, targetEl) {
     if (response?.success || (response?.error && /not found in your set/i.test(response.error))) {
       handleRemoveSuccess(emoteName)
     } else {
-      showToast(response?.error || `failed to remove: ${emoteName}`, 'error')
+      showToast(response?.error || t('mc_emote_remove_failed', [emoteName]), 'error')
     }
   } catch (e) {
-    showToast(`error removing: ${emoteName}`, 'error')
+    showToast(t('mc_emote_remove_error', [emoteName]), 'error')
   }
 }
 
@@ -22839,7 +22849,7 @@ function handleRemoveSuccess(emoteName) {
   // removed image. (typeof guards: these live in main.js, loaded after this module.)
   if (typeof invalidateRenderedForEmotes === 'function') invalidateRenderedForEmotes([emoteName])
   if (typeof reprocessEmoteTextInPlace === 'function') reprocessEmoteTextInPlace()
-  showToast(`removed: ${emoteName}`, 'success')
+  showToast(t('mc_emote_removed', [emoteName]), 'success')
 }
 
 function blockAllEmotesInStack(stack) {
@@ -22852,7 +22862,7 @@ function blockAllEmotesInStack(stack) {
       count++
     }
   })
-  if (count > 0) showToast(`blocked ${count} emotes`, 'success')
+  if (count > 0) showToast(t('mc_emote_blocked_count', [String(count)]), 'success')
   stack.classList.remove('expanded')
   stack.setAttribute('title', 'expand')
 }
@@ -22925,7 +22935,7 @@ function blockEmote(emoteName, clickedUrl, clickedSource) {
   applyInputEmoteBlockState(emoteName, true)
 
   refreshEmoteTooltip(emoteName, 'blocked')
-  showToast(`blocked: ${emoteName}`, 'success')
+  showToast(t('mc_emote_blocked', [emoteName]), 'success')
   flashAllEmotes(emoteName, 'hs-flash-block')
   // Surgical: only re-key messages that reference this emote (no epoch bump →
   // no whole-chat rebuild flash). Live DOM already updated in-place above.
@@ -23026,7 +23036,7 @@ function unblockEmote(emoteName) {
   applyInputEmoteBlockState(emoteName, false)
 
   refreshEmoteTooltip(emoteName, newState)
-  showToast(`unblocked: ${emoteName}`, 'success')
+  showToast(t('mc_emote_unblocked', [emoteName]), 'success')
   flashAllEmotes(emoteName, 'hs-flash-unblock')
   if (typeof invalidateRenderedForEmotes === 'function') invalidateRenderedForEmotes(emoteName)
 }
@@ -23048,7 +23058,7 @@ async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, targetEl, z
   // it would store a blank emote that renders empty forever (and the server
   // rejects non-https anyway). Reject early with a clear toast.
   if (!emoteUrl || !/^https?:\/\//i.test(emoteUrl)) {
-    if (!silent) showToast(`can't add ${emoteName} — image unavailable`, 'error')
+    if (!silent) showToast(t('mc_emote_add_unavailable', [emoteName]), 'error')
     return false
   }
   let _added = false
@@ -23120,7 +23130,7 @@ async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, targetEl, z
 
       refreshEmoteTooltip(emoteName, 'owned')
       if (!silent) {
-        showToast(`added: ${emoteName}`, 'success')
+        showToast(t('mc_emote_added', [emoteName]), 'success')
         flashAllEmotes(emoteName, 'hs-flash-add')
       }
     } else if (!silent) {
@@ -23128,16 +23138,16 @@ async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, targetEl, z
       // (statusbar dedupes to ×N) instead of a red per-emote error.
       const addErr = String(response?.error || '')
       if (/not logged in/i.test(addErr)) {
-        showToast('log in to heatsync.org to add emotes', 'info')
+        showToast(t('mc_emote_add_login'), 'info')
       } else {
-        showToast(addErr || `failed to add: ${emoteName}`, 'error')
+        showToast(addErr || t('mc_emote_add_failed', [emoteName]), 'error')
       }
     } else {
       log('Auto-add failed silently:', emoteName, response?.error || '(no error)')
     }
   } catch (e) {
     log('Add emote error:', e)
-    if (!silent) showToast(`error adding: ${emoteName}`, 'error')
+    if (!silent) showToast(t('mc_emote_add_error', [emoteName]), 'error')
   } finally {
     pendingEmoteOps.delete(emoteName)
   }
@@ -23159,7 +23169,7 @@ async function syncBlockToAPI(emoteName, block) {
       })
       .catch((e) => {
         log('block sync failed:', e?.message || e)
-        showToast(`${block ? 'block' : 'unblock'} not saved to your account — will differ on other devices`, 'error')
+        showToast(t(block ? 'mc_emote_block_sync_failed' : 'mc_emote_unblock_sync_failed'), 'error')
       })
     log('Synced', block ? 'block' : 'unblock', emoteName, '(hash:', hash.substring(0, 8) + '...) to API')
   } catch (e) {
@@ -26565,7 +26575,7 @@ function renderQuickLinks() {
           return
         }
         if (!ch) {
-          showToast('no twitch channel', 'error')
+          showToast(t('mc_twitchapi_no_channel'), 'error')
           return
         }
         try {
@@ -28071,16 +28081,16 @@ function renderBitsSubtab(parent, channel) {
       .toLowerCase()
       .replace(/[^a-z0-9_]/g, '')
     if (!safe) {
-      showToast('invalid channel', 'error')
+      showToast(t('mc_twitchapi_invalid_channel'), 'error')
       return
     }
     const url = `https://www.twitch.tv/popout/${safe}/chat?popout=`
     const w = window.open(url, `hs-cheer-${safe}`, 'width=400,height=620,resizable=yes,scrollbars=yes')
     if (!w) {
-      showToast('popup blocked — allow popups for twitch.tv to cheer', 'error')
+      showToast(t('mc_twitchapi_popup_blocked'), 'error')
       return
     }
-    showToast(`cheer window opened`, 'success')
+    showToast(t('mc_twitchapi_cheer_opened'), 'success')
   })
   panel.appendChild(launchBtn)
 
@@ -34608,7 +34618,7 @@ async function sendTwitchWhisper(toUserId, message) {
   // Surface the real proxy error — actionable for the user.
   if (!onTwitch) {
     if (needsRelink) {
-      const emsg = respError || 'twitch whispers not enabled — re-link on heatsync.org'
+      const emsg = respError || t('mc_whisper_not_enabled')
       showToast(emsg, 'error')
       return { ok: false, error: emsg, errorKind: 'relink' }
     }
@@ -34618,11 +34628,11 @@ async function sendTwitchWhisper(toUserId, message) {
     }
     if (serverThrew || respStatus >= 500 || !serverResp) {
       const msg = 'heatsync server unreachable'
-      showToast('whisper failed: ' + msg, 'error')
+      showToast(t('mc_whisper_failed', [msg]), 'error')
       return { ok: false, error: msg, errorKind: 'server' }
     }
     const errText = respError || `twitch error ${respStatus}`
-    showToast('whisper failed: ' + errText, 'error')
+    showToast(t('mc_whisper_failed', [errText]), 'error')
     return { ok: false, error: errText }
   }
 
@@ -34634,10 +34644,10 @@ async function sendTwitchWhisper(toUserId, message) {
       showToast(t('mc_whisper_login'), 'error')
       return { ok: false, error: 'no twitch session', errorKind: 'auth' }
     }
-    showToast('whisper failed: ' + (direct.error || 'unknown'), 'error')
+    showToast(t('mc_whisper_failed', [direct.error || t('mc_common_unknown')]), 'error')
     return { ok: false, error: direct.error || 'unknown' }
   } catch (e) {
-    showToast('whisper failed: ' + e.message, 'error')
+    showToast(t('mc_whisper_failed', [e.message]), 'error')
     return { ok: false, error: e.message }
   }
 }
@@ -34645,7 +34655,7 @@ async function sendTwitchWhisper(toUserId, message) {
 async function sendWhisperMessage(key, text) {
   const userInfo = whisperUsers.get(key)
   if (!userInfo) {
-    showToast('unknown user — whisper someone first', 'error')
+    showToast(t('mc_whisper_unknown_user'), 'error')
     return
   }
 
@@ -35390,9 +35400,15 @@ async function drainPendingFollows(platform) {
     const sample = drainedItems[0]?.username || drainedItems[0]?.target || ''
     const verb = drainedItems[0]?.action === 'unfollow' ? 'unfollowed' : 'followed'
     if (drained === 1 && sample) {
-      showToast(`${verb} ${sample} on ${platform}`, 'success')
+      showToast(
+        t(verb === 'unfollowed' ? 'mc_crossfollow_drain_one_unfollow' : 'mc_crossfollow_drain_one_follow', [
+          sample,
+          platform,
+        ]),
+        'success',
+      )
     } else {
-      showToast(`synced ${drained} pending ${platform} follow(s)`, 'success')
+      showToast(t('mc_crossfollow_drain_synced', [String(drained), platform]), 'success')
     }
   }
   return { ok: true, drained }
@@ -35496,7 +35512,7 @@ async function propagateFollow(follow, target) {
       }
       // Surface 2fa requirement — user has to satisfy it on twitch.tv
       if (r?.error === '2fa_required' && typeof showToast === 'function') {
-        showToast(`twitch ${verb} blocked: 2FA required — complete on twitch.tv`, 'info')
+        showToast(t(verb === 'follow' ? 'mc_crossfollow_2fa_follow' : 'mc_crossfollow_2fa_unfollow'), 'info')
       }
     }
   }
@@ -35519,7 +35535,10 @@ async function propagateFollow(follow, target) {
       // Surface only login-needed; treat other transient kick errors as silent
       // (heatsync follow already toasted; we don't want noise on each follow).
       if (r?.error === 'kick_not_logged_in' && typeof showToast === 'function') {
-        showToast(`kick ${verb} queued — will sync when you log in to kick.com`, 'info')
+        showToast(
+          t(verb === 'follow' ? 'mc_crossfollow_kick_queued_follow' : 'mc_crossfollow_kick_queued_unfollow'),
+          'info',
+        )
       }
     }
   }
@@ -36525,8 +36544,10 @@ function initInput() {
   input._hsInitialized = true
   log('✅ Initializing input handlers, WYSIWYG:', wysiwygEnabled)
 
-  // Restore pending message
-  if (pendingMessage) {
+  // Restore pending message — but never clobber content already in the
+  // input. Keystrokes can land before this runs (createInputBar defers via
+  // setTimeout(0)); rebuildInput also pre-restores its own savedText.
+  if (pendingMessage && !(input.value || input.textContent || '').trim() && !input.querySelector?.('img, span')) {
     if (wysiwygEnabled) {
       input.textContent = pendingMessage
     } else {
@@ -36901,7 +36922,7 @@ function initInput() {
           try {
             navigator.clipboard
               .writeText(`:${emoteName}:`)
-              .then(() => showToast('name copied', 'success'))
+              .then(() => showToast(t('mc_input_name_copied'), 'success'))
               .catch(() => {})
           } catch {}
         },
@@ -36912,7 +36933,7 @@ function initInput() {
           try {
             navigator.clipboard
               .writeText(hi)
-              .then(() => showToast('url copied', 'success'))
+              .then(() => showToast(t('mc_input_url_copied'), 'success'))
               .catch(() => {})
           } catch {}
         },
@@ -36939,7 +36960,7 @@ function initInput() {
           try {
             navigator.clipboard
               .writeText(`:${name}:`)
-              .then(() => showToast('name copied', 'success'))
+              .then(() => showToast(t('mc_input_name_copied'), 'success'))
               .catch(() => {})
           } catch {}
         },
@@ -36951,7 +36972,7 @@ function initInput() {
           try {
             navigator.clipboard
               .writeText(char)
-              .then(() => showToast('emoji copied', 'success'))
+              .then(() => showToast(t('mc_input_emoji_copied'), 'success'))
               .catch(() => {})
           } catch {}
         },
@@ -37076,7 +37097,7 @@ function initInput() {
             }
           }
           if (items.length === 0) {
-            if (hadUnpostableEmote) showToast(`nothing postable in stack`, 'error')
+            if (hadUnpostableEmote) showToast(t('mc_input_nothing_postable'), 'error')
             return
           }
           // Fire add-to-inventory for each unowned emote (don't block paste on the
@@ -37152,7 +37173,7 @@ function initInput() {
           // Foreign Twitch sub emote — viewer not subbed to this channel, can't
           // post it. Toast instead of paste (matches website post-b6f23bc8:
           // visually identical to other emotes, only click is gated).
-          showToast(`${emoteName} — not subbed to this channel`, 'error')
+          showToast(t('mc_input_not_subbed', [emoteName]), 'error')
           return
         }
         if (state === 'owned' || state === 'global' || state === 'channel' || state === 'unadded') {
@@ -37335,9 +37356,9 @@ async function hsFollowFromMenu(username, platform, ids = {}) {
   if (!id) {
     const msg = ri?.transient
       ? ri.status === 429
-        ? `rate limited — try in a sec`
-        : `couldn't reach server (${ri.status || 'net'})`
-      : `${username} isn't on heatsync`
+        ? t('mc_input_rate_limited')
+        : t('mc_input_server_unreachable', [String(ri.status || 'net')])
+      : t('mc_input_not_on_heatsync', [username])
     showToast(msg, 'error')
     return
   }
@@ -37376,8 +37397,10 @@ async function _ctxMod(action, channel, platform, target, msgId, durationSec, la
     const derr = (r?.tResp || r?.kResp || r?.yResp)?.error
     showToast(
       r?.anyOk
-        ? 'deleted message'
-        : `delete failed: ${derr === 'not_moderator' ? 'not a youtube mod here' : derr || 'unknown'}`,
+        ? t('mc_profile_deleted_message')
+        : t('mc_input_delete_failed', [
+            derr === 'not_moderator' ? t('mc_modtoolbar_not_youtube_mod') : derr || t('mc_common_unknown'),
+          ]),
       r?.anyOk ? 'success' : 'error',
     )
   } else {
@@ -37417,7 +37440,7 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
     'sep',
     {
       label: 'copy name',
-      fn: () => mcCopyToClipboard(username, 'name copied'),
+      fn: () => mcCopyToClipboard(username, t('mc_input_name_copied')),
     },
   ]
   // Copy/quote lead the menu (right after follow/block/mute) so they're never
@@ -37426,7 +37449,7 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
   if (msg) {
     items.push({
       label: 'copy message',
-      fn: () => mcCopyToClipboard(_extractMcMsgText(msg), 'message copied'),
+      fn: () => mcCopyToClipboard(_extractMcMsgText(msg), t('mc_input_message_copied')),
     })
     items.push({
       label: 'copy → input',
@@ -37438,7 +37461,7 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
     if (threadTxt)
       items.push({
         label: 'copy thread',
-        fn: () => mcCopyToClipboard(threadTxt, 'thread copied'),
+        fn: () => mcCopyToClipboard(threadTxt, t('mc_input_thread_copied')),
       })
   }
   if (msg) {
@@ -37446,7 +37469,7 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
     if (chainTxt)
       items.push({
         label: 'copy thread',
-        fn: () => mcCopyToClipboard(chainTxt, 'thread copied'),
+        fn: () => mcCopyToClipboard(chainTxt, t('mc_input_thread_copied')),
       })
   }
   items.push('sep')
@@ -37736,13 +37759,13 @@ async function _toggleMcMute(username, platform) {
       .replace(/^@/, '')
     const legacy = bareLower ? [bareLower, `yt:${bareLower}`, `heatsync:${bareLower}`] : []
     for (const k of legacy) mutedUsers.delete(k)
-    showToast(`unmuted ${username}`, 'success')
+    showToast(t('mc_input_unmuted', [username]), 'success')
     for (const k of [...aliasKeys, ...legacy]) safeSendMessage({ type: 'unmute_user', username: k })
   } else {
     for (const k of aliasKeys) mutedUsers.add(k)
     const otherAlias = aliases.slice(1).filter((a) => a !== primary)
     const aliasNote = otherAlias.length ? ` (+linked @${otherAlias.join(' @')})` : ''
-    showToast(`muted ${username}${aliasNote} (24h)`, 'success')
+    showToast(t('mc_input_muted', [username + aliasNote]), 'success')
     const exp = Date.now() + 86400000
     for (const k of aliasKeys) safeSendMessage({ type: 'mute_user', username: k, expiresAt: exp })
   }
@@ -37771,14 +37794,14 @@ async function _toggleMcBlock(username, platform) {
       .toLowerCase()
       .replace(/^@/, '')
     if (bareLower) blockedUsers.delete(bareLower)
-    showToast(`unblocked ${username}`, 'success')
+    showToast(t('mc_input_unblocked', [username]), 'success')
     for (const k of aliasKeys) safeSendMessage({ type: 'unblock_user', username: k })
   } else {
     for (const k of aliasKeys) blockedUsers.add(k)
     const primary = aliases[0] || String(username).toLowerCase()
     const other = aliases.slice(1).filter((a) => a !== primary)
     const aliasNote = other.length ? ` (+linked @${other.join(' @')})` : ''
-    showToast(`blocked ${username}${aliasNote}`, 'success')
+    showToast(t('mc_input_blocked', [username + aliasNote]), 'success')
     for (const k of aliasKeys) safeSendMessage({ type: 'block_user', username: k })
   }
   // buildMessageDiv filters blocked users, so a full re-render hides/restores them.
@@ -37832,7 +37855,7 @@ function mcCopyFallback(text) {
     return false
   }
 }
-function mcCopyToClipboard(text, okMsg = 'copied') {
+function mcCopyToClipboard(text, okMsg = t('mc_input_copied')) {
   if (!text) return
   const done = () => {
     try {
@@ -37965,15 +37988,15 @@ async function _quickOpToFeed(username, msg) {
   }
   const raw = ((typeof _extractMcMsgText === 'function' ? _extractMcMsgText(msg) : msg?.textContent) || '').trim()
   if (!raw) {
-    showToast('nothing to post', 'error')
+    showToast(t('mc_input_nothing_to_post'), 'error')
     return
   }
   const content = truncateSafe(`@${username}: ${raw}`, 500)
   try {
     const resp = await apiFetch('/api/messages', { method: 'POST', auth: true, body: { content } })
-    showToast(resp?.ok ? 'posted to feed' : 'post failed', resp?.ok ? 'success' : 'error')
+    showToast(resp?.ok ? t('mc_input_posted_to_feed') : t('mc_input_post_failed'), resp?.ok ? 'success' : 'error')
   } catch {
-    showToast('post failed', 'error')
+    showToast(t('mc_input_post_failed'), 'error')
   }
 }
 
@@ -37989,7 +38012,7 @@ async function _openWhisperFor(username, platform) {
       if (tw) {
         whisperName = tw
       } else {
-        showToast(`${username} has no twitch — try /dm instead`, 'error')
+        showToast(t('mc_input_no_twitch_try_dm', [username]), 'error')
         return
       }
     } catch {
@@ -38014,7 +38037,7 @@ async function _openDmFor(username, platform) {
       if (u) {
         hsName = u
       } else {
-        showToast(`${username} isn't on heatsync`, 'error')
+        showToast(t('mc_input_not_on_heatsync', [username]), 'error')
         return
       }
     } catch {
@@ -40412,6 +40435,11 @@ function insertCompletionWysiwyg(match) {
   if (!sel.rangeCount) return
 
   const range = sel.getRangeAt(0)
+  // The lazy 7TV/BTTV/FFZ fetch lands here ASYNC (wasEmpty auto-insert) — by
+  // then the selection can sit anywhere on the page (user clicked twitch's
+  // native chat, a rebuild moved focus). Never rewrite DOM outside the
+  // composer, and never wipe a word the caret is no longer touching.
+  if (!input.contains(range.startContainer)) return
   let container = range.startContainer
   let rangeOffset = range.startOffset
   // Resolve element boundary to preceding text node
@@ -41194,15 +41222,15 @@ async function handleSlashCommand(text, input) {
 
   if (cmd === 'op') {
     if (!rest.trim()) {
-      showToast('usage: /op <text>')
+      showToast(t('mc_input_usage_op'))
       return true
     }
     if (!hsAuthToken) {
-      showToast('log in at heatsync.org first to /op', 'error')
+      showToast(t('mc_input_login_first_op'), 'error')
       return true
     }
     const ok = await postFeedMessage(rest.trim(), { topLevel: true })
-    showToast(ok ? 'success' : 'post failed', ok ? 'success' : 'error')
+    showToast(ok ? t('mc_input_success') : t('mc_input_post_failed'), ok ? 'success' : 'error')
     clearInput(input)
     return true
   }
@@ -41210,7 +41238,7 @@ async function handleSlashCommand(text, input) {
   if (cmd === 'w') {
     const match = rest.match(/^@?(\S+)\s+(.+)$/)
     if (!match) {
-      showToast('usage: /w <user> <message>')
+      showToast(t('mc_input_usage_w'))
       return true
     }
     const [, username, msg] = match
@@ -41221,7 +41249,7 @@ async function handleSlashCommand(text, input) {
   if (cmd === 'dm') {
     const match = rest.match(/^@?(\S+)\s+(.+)$/)
     if (!match) {
-      showToast('usage: /dm <user> <message>')
+      showToast(t('mc_input_usage_dm'))
       return true
     }
     const [, username, msg] = match
@@ -41231,14 +41259,14 @@ async function handleSlashCommand(text, input) {
 
   if (cmd === 'r') {
     if (!rest.trim()) {
-      showToast('usage: /r <message>')
+      showToast(t('mc_input_usage_r'))
       return true
     }
     // armed (↩-clicked) target takes priority and survives incoming whispers
     // retargeting lastWhisperKey; plain /r without arming falls back to it
     const target = typeof armedReplyKey !== 'undefined' && armedReplyKey ? armedReplyKey : lastWhisperKey
     if (!target) {
-      showToast('no one to reply to', 'error')
+      showToast(t('mc_input_no_one_to_reply'), 'error')
       return true
     }
     if (currentTab !== 'whispers') switchTab('whispers')
@@ -41254,11 +41282,11 @@ async function handleSlashCommand(text, input) {
   if (cmd === 'follow' || cmd === 'unfollow') {
     const u = rest.trim().replace(/^@/, '').toLowerCase()
     if (!u) {
-      showToast('usage: /' + cmd + ' <user>')
+      showToast(t('mc_input_usage_follow', [cmd]))
       return true
     }
     if (typeof resolveIdentity !== 'function') {
-      showToast('not ready', 'error')
+      showToast(t('mc_input_not_ready'), 'error')
       return true
     }
     const ri = await resolveIdentity(u, {})
@@ -41267,22 +41295,24 @@ async function handleSlashCommand(text, input) {
     if (!id) {
       if (ri?.transient) {
         showToast(
-          ri.status === 429 ? 'rate limited — try in a sec' : `couldn't reach server (${ri.status || 'net'})`,
+          ri.status === 429
+            ? t('mc_input_rate_limited')
+            : t('mc_input_server_unreachable', [String(ri.status || 'net')]),
           'error',
         )
       } else {
-        showToast(u + " isn't on heatsync", 'error')
+        showToast(t('mc_input_not_on_heatsync', [u]), 'error')
       }
       return true
     }
     const yf = !!(p.relationship?.youFollow || p.relationship?.isFollowing)
     const wantFollow = cmd === 'follow'
     if (wantFollow && yf) {
-      showToast('already following ' + u)
+      showToast(t('mc_input_already_following', [u]))
       return true
     }
     if (!wantFollow && !yf) {
-      showToast('not following ' + u)
+      showToast(t('mc_input_not_following', [u]))
       return true
     }
     // pcToggleFollow flips the current state — pass `yf` as currentlyFollowing
@@ -41313,7 +41343,7 @@ async function handleSlashCommand(text, input) {
   if (cmd === 'mute') {
     const u = rest.trim().replace(/^@/, '').toLowerCase()
     if (!u) {
-      showToast('usage: /mute <user>')
+      showToast(t('mc_input_usage_mute'))
       return true
     }
     // platform unknown from slash command — expandUserAliasKeys does both the
@@ -41323,7 +41353,7 @@ async function handleSlashCommand(text, input) {
     const aliasKeys = typeof expandUserAliasKeys === 'function' ? await expandUserAliasKeys(u, null) : [u]
     const already = _muteKeyForms(u, aliasKeys).some((k) => mutedUsers.has(k))
     if (already) {
-      showToast(`${u} already muted`)
+      showToast(t('mc_input_already_muted', [u]))
       return true
     }
     for (const k of aliasKeys) mutedUsers.add(k)
@@ -41331,7 +41361,7 @@ async function handleSlashCommand(text, input) {
     const exp = Date.now() + 86400000
     for (const k of aliasKeys) safeSendMessage({ type: 'mute_user', username: k, expiresAt: exp })
     const aliasNote = aliasKeys.length > 1 ? ` (+@${aliasKeys[1]})` : ''
-    showToast(`muted ${u}${aliasNote} (24h)`, 'success')
+    showToast(t('mc_input_muted', [u + aliasNote]), 'success')
     renderMessages(currentTab)
     return true
   }
@@ -41339,7 +41369,7 @@ async function handleSlashCommand(text, input) {
   if (cmd === 'unmute') {
     const u = rest.trim().replace(/^@/, '').toLowerCase()
     if (!u) {
-      showToast('usage: /unmute <user>')
+      showToast(t('mc_input_usage_unmute'))
       return true
     }
     // Same async fan-out as /mute and right-click mute — covers server-linked
@@ -41348,13 +41378,13 @@ async function handleSlashCommand(text, input) {
     const forms = _muteKeyForms(u, aliasKeys)
     const wasMuted = forms.some((k) => mutedUsers.has(k))
     if (!wasMuted) {
-      showToast(`${u} not muted`)
+      showToast(t('mc_input_not_muted', [u]))
       return true
     }
     for (const k of forms) mutedUsers.delete(k)
     persistMcMuted()
     for (const k of aliasKeys) safeSendMessage({ type: 'unmute_user', username: k })
-    showToast(`unmuted ${u}`, 'success')
+    showToast(t('mc_input_unmuted', [u]), 'success')
     renderMessages(currentTab)
     return true
   }
@@ -41382,7 +41412,7 @@ async function handleSlashCommand(text, input) {
       cleared++
     }
     renderMessages(currentTab)
-    showToast(cleared ? 'local buffer cleared' : 'nothing to clear here', cleared ? 'success' : undefined)
+    showToast(cleared ? t('mc_input_buffer_cleared') : t('mc_input_nothing_to_clear'), cleared ? 'success' : undefined)
     clearInput(input)
     return true
   }
@@ -41405,7 +41435,7 @@ async function handleSlashCommand(text, input) {
           ? currentTab
           : null
     if (!ch) {
-      showToast('/status needs a channel tab (or /status <name>)', 'error')
+      showToast(t('mc_input_status_needs_channel'), 'error')
       return true
     }
     clearInput(input)
@@ -41443,30 +41473,30 @@ async function handleSlashCommand(text, input) {
 
   if (cmd === 'ban' || cmd === 'timeout' || cmd === 'unban') {
     if (!modChannel) {
-      showToast(`/${cmd} needs a channel tab (not live/mentions/posts)`, 'error')
+      showToast(t('mc_input_mod_needs_channel_tab', [cmd]), 'error')
       return true
     }
     if (!_twitchModName && !_kickModSlug) {
-      showToast(`/${cmd} needs a twitch or kick channel`, 'error')
+      showToast(t('mc_input_mod_needs_platform_channel', [cmd]), 'error')
       return true
     }
     if (!(await _twitchModAuthOk())) return true
     if (cmd === 'ban') {
       const m = rest.match(/^@?(\S+)(?:\s+(.+))?$/)
       if (!m) {
-        showToast('usage: /ban <user> [reason]', 'error')
+        showToast(t('mc_input_usage_ban'), 'error')
         return true
       }
       const [, target, reason] = m
       const r = await dispatchModAction({ channel: modChannel, action: 'ban', target, reason, fanout: true })
-      showModResultToast('banned', target, r)
+      showModResultToast(t('mc_mod_label_banned'), target, r)
       if (r?.anyOk) clearInput(input)
       return true
     }
     if (cmd === 'timeout') {
       const m = rest.match(/^@?(\S+)(?:\s+(\d+))?(?:\s+(.+))?$/)
       if (!m) {
-        showToast('usage: /timeout <user> [seconds] [reason]', 'error')
+        showToast(t('mc_input_usage_timeout'), 'error')
         return true
       }
       const [, target, secStr, reason] = m
@@ -41479,18 +41509,18 @@ async function handleSlashCommand(text, input) {
         reason,
         fanout: true,
       })
-      showModResultToast(`timed out ${sec}s`, target, r)
+      showModResultToast(t('mc_mod_label_timed_out', [String(sec)]), target, r)
       if (r?.anyOk) clearInput(input)
       return true
     }
     if (cmd === 'unban') {
       const target = rest.trim().replace(/^@/, '')
       if (!target) {
-        showToast('usage: /unban <user>', 'error')
+        showToast(t('mc_input_usage_unban'), 'error')
         return true
       }
       const r = await dispatchModAction({ channel: modChannel, action: 'unban', target, fanout: true })
-      showModResultToast('unbanned', target, r)
+      showModResultToast(t('mc_mod_label_unbanned'), target, r)
       if (r?.anyOk) clearInput(input)
       return true
     }
@@ -41498,23 +41528,23 @@ async function handleSlashCommand(text, input) {
 
   if (cmd === 'delete') {
     if (!modChannel) {
-      showToast('/delete needs a channel tab', 'error')
+      showToast(t('mc_input_delete_needs_channel_tab'), 'error')
       return true
     }
     const messageID = rest.trim()
     if (!messageID) {
-      showToast('usage: /delete <message-id> (right-click a message)', 'error')
+      showToast(t('mc_input_usage_delete'), 'error')
       return true
     }
     if (!_twitchModName && !_kickModSlug) {
-      showToast('/delete needs a twitch or kick channel', 'error')
+      showToast(t('mc_input_delete_needs_platform_channel'), 'error')
       return true
     }
     if (!(await _twitchModAuthOk())) return true
     // Raw id → platform unknown; dispatcher tries Twitch first, then Kick.
     const r = await dispatchModAction({ channel: modChannel, action: 'delete', msgId: messageID })
-    const err = (r?.tResp || r?.kResp)?.error || 'unknown'
-    showToast(r?.anyOk ? 'deleted' : `delete failed: ${err}`, r?.anyOk ? 'success' : 'error')
+    const err = (r?.tResp || r?.kResp)?.error || t('mc_common_unknown')
+    showToast(r?.anyOk ? t('mc_mod_label_deleted') : t('mc_input_delete_failed', [err]), r?.anyOk ? 'success' : 'error')
     if (r?.anyOk) clearInput(input)
     return true
   }
@@ -41526,11 +41556,11 @@ async function handleSlashCommand(text, input) {
   // min 2-char term, hard match cap, and a confirm modal before anything fires.
   if (cmd === 'nuke') {
     if (!modChannel) {
-      showToast('/nuke needs a channel tab', 'error')
+      showToast(t('mc_input_nuke_needs_channel_tab'), 'error')
       return true
     }
     if (!_twitchModName && !_kickModSlug) {
-      showToast('/nuke needs a twitch or kick channel', 'error')
+      showToast(t('mc_input_nuke_needs_platform_channel'), 'error')
       return true
     }
     if (!(await _twitchModAuthOk())) return true
@@ -41539,7 +41569,7 @@ async function handleSlashCommand(text, input) {
     const nm = rest.trim().match(/^(.+?)(?:\s+(\d+))?$/)
     const term = nm ? nm[1].trim() : ''
     if (term.length < 2) {
-      showToast('usage: /nuke <term> [seconds] — term must be 2+ chars', 'error')
+      showToast(t('mc_input_usage_nuke'), 'error')
       return true
     }
     const windowSec = Math.min(NUKE_MAX_WINDOW, nm && nm[2] ? Math.max(1, parseInt(nm[2])) : 30)
@@ -41566,7 +41596,7 @@ async function handleSlashCommand(text, input) {
       }
     }
     if (targets.length === 0) {
-      showToast(`/nuke: no messages matching "${term}" in the last ${windowSec}s`, 'error')
+      showToast(t('mc_input_nuke_no_matches', [term, String(windowSec)]), 'error')
       return true
     }
     const capped = targets.length > NUKE_MAX
@@ -41582,7 +41612,7 @@ async function handleSlashCommand(text, input) {
       ),
     )
     const okCount = results.filter((r) => r.status === 'fulfilled' && r.value?.anyOk).length
-    showToast(`nuked ${okCount}/${batch.length} matching "${term}"`, okCount ? 'success' : 'error')
+    showToast(t('mc_input_nuke_done', [String(okCount), String(batch.length), term]), okCount ? 'success' : 'error')
     if (okCount) clearInput(input)
     return true
   }
@@ -41596,7 +41626,7 @@ async function handleSlashCommand(text, input) {
     // other modes (slow/emote/subs/unique) need their own captured GQL mutations
     // — Helix /chat/settings 404s for the web client, so don't pretend they work.
     if (cmd !== 'followers') {
-      showToast(`/${cmd} isn't wired yet — only /followers works for now`, 'error')
+      showToast(t('mc_input_mode_not_wired', [cmd]), 'error')
       return true
     }
     // Target the twitch channel you're moderating: a real channel tab's twitch
@@ -41605,7 +41635,7 @@ async function handleSlashCommand(text, input) {
     const twitchTarget =
       _modCh?.twitch || (hostPlatform === 'twitch' ? (getCurrentChannel() || '').toLowerCase().replace(/^#/, '') : null)
     if (!twitchTarget) {
-      showToast('/followers is twitch-only — open a twitch channel', 'error')
+      showToast(t('mc_input_followers_twitch_only'), 'error')
       return true
     }
     const arg = rest.trim().toLowerCase()
@@ -41617,19 +41647,23 @@ async function handleSlashCommand(text, input) {
     else {
       minutes = _parseModeDuration(arg, 'min')
       if (minutes == null) {
-        showToast('usage: /followers [mins] | off', 'error')
+        showToast(t('mc_input_usage_followers'), 'error')
         return true
       }
     }
     const resp = await setTwitchFollowersMode(twitchTarget, minutes)
     if (resp.ok) {
       showToast(
-        off ? 'followers-only off' : minutes ? `followers-only on (${minutes}m)` : 'followers-only on',
+        off
+          ? t('mc_input_followers_off')
+          : minutes
+            ? t('mc_input_followers_on_mins', [String(minutes)])
+            : t('mc_input_followers_on'),
         'success',
       )
       clearInput(input)
     } else {
-      showToast(`/followers failed: ${resp.error}`, 'error')
+      showToast(t('mc_input_followers_failed', [resp.error]), 'error')
     }
     return true
   }
@@ -41942,7 +41976,7 @@ async function sendMessage() {
   // Orphan slash with no twitch leg = nothing left to send (kick/yt-only
   // target). Fail loud and keep the input so the text isn't lost.
   if (orphanSlash && !sendToTwitch) {
-    showToast('unknown command', 'error')
+    showToast(t('mc_input_unknown_command'), 'error')
     flashInputError(input)
     return
   }
@@ -42066,10 +42100,10 @@ async function sendMessage() {
       sendYoutubeMessage(restText, ytVideoId)
         .then((result) => {
           if (result !== true && result !== 'no_youtube_tab') {
-            showToast('youtube send failed', 'error')
+            showToast(t('mc_yt_send_failed'), 'error')
           }
         })
-        .catch(() => showToast('youtube send failed', 'error'))
+        .catch(() => showToast(t('mc_yt_send_failed'), 'error'))
     }
 
     Promise.all([kickPromise, twitchPromise])
@@ -42189,7 +42223,7 @@ async function sendMessage() {
           showToast(youtubeSendErrorMessage(result), 'error')
         }
       })
-      .catch(() => showToast('youtube send failed', 'error'))
+      .catch(() => showToast(t('mc_yt_send_failed'), 'error'))
     // fall through to Twitch path
   }
 
@@ -43089,12 +43123,18 @@ function pcBuildModActions(username) {
         if (a.action === 'delete') {
           if (typeof showToast === 'function')
             showToast(
-              r?.anyOk ? 'deleted message' : `delete failed: ${(r?.tResp || r?.kResp)?.error || 'unknown'}`,
+              r?.anyOk
+                ? t('mc_profile_deleted_message')
+                : t('mc_profile_delete_failed', [(r?.tResp || r?.kResp)?.error || t('mc_common_unknown')]),
               r?.anyOk ? 'success' : 'error',
             )
         } else {
           const label =
-            a.action === 'ban' ? 'banned' : a.action === 'unban' ? 'unbanned' : `timed out ${a.durationSec}s`
+            a.action === 'ban'
+              ? t('mc_mod_label_banned')
+              : a.action === 'unban'
+                ? t('mc_mod_label_unbanned')
+                : t('mc_mod_label_timed_out', [String(a.durationSec)])
           if (typeof showModResultToast === 'function') showModResultToast(label, target, r)
         }
         b.disabled = a.need === 'msg' && !msgId
@@ -43728,7 +43768,7 @@ function _patchProfileCacheRel(username, patch) {
 
 async function pcToggleFollow(profileId, username, currentlyFollowing) {
   if (!profileId) {
-    if (typeof showToast === 'function') showToast('not registered on heatsync', 'error')
+    if (typeof showToast === 'function') showToast(t('mc_profile_not_registered'), 'error')
     return
   }
   const targetFollowing = !currentlyFollowing
@@ -43756,12 +43796,13 @@ async function pcToggleFollow(profileId, username, currentlyFollowing) {
           renderProfileCardView()
         }
         _patchProfileCacheRel(username, { youFollow: currentlyFollowing, isFollowing: currentlyFollowing })
-        if (typeof showToast === 'function') showToast('follow failed: ' + (resp?.error || 'unknown'), 'error')
+        if (typeof showToast === 'function')
+          showToast(t('mc_profile_follow_failed', [resp?.error || t('mc_common_unknown')]), 'error')
         return
       }
     }
     if (typeof showToast === 'function')
-      showToast(targetFollowing ? `following ${username}` : `unfollowed ${username}`, 'success')
+      showToast(t(targetFollowing ? 'mc_profile_following' : 'mc_profile_unfollowed', [username]), 'success')
     // Tell background to refetch followedUsers — pollFollowedLive runs after,
     // so live notifications + badge include the new follow within ~60s.
     safeSendMessage({ type: 'refresh_followed_users' })
@@ -43788,7 +43829,7 @@ async function pcToggleFollow(profileId, username, currentlyFollowing) {
           const skippedPrivate =
             (expectTwitch && res.twitch?.skipped === 'no twitch id') ||
             (expectKick && res.kick?.skipped === 'no kick username')
-          if (skippedPrivate) showToast('followed on heatsync — cross-platform sync unavailable', 'info')
+          if (skippedPrivate) showToast(t('mc_profile_cross_sync_unavailable'), 'info')
         })
         .catch(() => {})
     }
@@ -43798,7 +43839,8 @@ async function pcToggleFollow(profileId, username, currentlyFollowing) {
       renderProfileCardView()
     }
     _patchProfileCacheRel(username, { youFollow: currentlyFollowing, isFollowing: currentlyFollowing })
-    if (typeof showToast === 'function') showToast('follow failed: ' + (e?.message || 'unknown'), 'error')
+    if (typeof showToast === 'function')
+      showToast(t('mc_profile_follow_failed', [e?.message || t('mc_common_unknown')]), 'error')
   }
 }
 
@@ -43808,7 +43850,7 @@ async function pcToggleFollow(profileId, username, currentlyFollowing) {
 // that in the relationship object.
 async function pcToggleBlock(profileId, username, currentlyBlocked) {
   if (!profileId) {
-    if (typeof showToast === 'function') showToast('not registered on heatsync', 'error')
+    if (typeof showToast === 'function') showToast(t('mc_profile_not_registered'), 'error')
     return
   }
   const targetBlocked = !currentlyBlocked
@@ -43846,12 +43888,13 @@ async function pcToggleBlock(profileId, username, currentlyBlocked) {
           renderProfileCardView()
         }
         _patchProfileCacheRel(username, { youBlock: currentlyBlocked, isBlocked: currentlyBlocked })
-        if (typeof showToast === 'function') showToast('block failed: ' + (resp?.error || 'unknown'), 'error')
+        if (typeof showToast === 'function')
+          showToast(t('mc_profile_block_failed', [resp?.error || t('mc_common_unknown')]), 'error')
         return
       }
     }
     if (typeof showToast === 'function')
-      showToast(targetBlocked ? `blocked ${username}` : `unblocked ${username}`, 'success')
+      showToast(t(targetBlocked ? 'mc_profile_blocked' : 'mc_profile_unblocked', [username]), 'success')
     // Hide/restore the user's live messages immediately. block_user → bg →
     // user_blocked broadcast → main.js updates blockedUsers + re-renders. Mirrors
     // the chat right-click path; without it a profile-card block only took
@@ -43890,7 +43933,8 @@ async function pcToggleBlock(profileId, username, currentlyBlocked) {
       renderProfileCardView()
     }
     _patchProfileCacheRel(username, { youBlock: currentlyBlocked, isBlocked: currentlyBlocked })
-    if (typeof showToast === 'function') showToast('block failed: ' + (e?.message || 'unknown'), 'error')
+    if (typeof showToast === 'function')
+      showToast(t('mc_profile_block_failed', [e?.message || t('mc_common_unknown')]), 'error')
   }
 }
 
@@ -44087,7 +44131,7 @@ async function pcAddAsChannel(username) {
   if (!channel.twitch && !channel.kick && !channel.youtube) {
     // yt card with no heatsync linkage — nothing safe to bind. Fail loud,
     // never push a dead tab or guess a twitch channel.
-    if (typeof showToast === 'function') showToast(`no linked channels found for ${username}`, 'error')
+    if (typeof showToast === 'function') showToast(t('mc_profile_no_linked_channels', [username]), 'error')
     closeProfileCard()
     return
   }
@@ -44168,7 +44212,7 @@ async function copyChatLogPermalink(btn, r) {
   }
   if (!ok) {
     try {
-      showToast('copy failed', 'error')
+      showToast(t('mc_chatlogs_copy_failed'), 'error')
     } catch {}
   }
   const prev = btn.textContent
@@ -46865,23 +46909,35 @@ function showModResultToast(label, target, r) {
       kOk = kResp?.ok
     if (tResp && kResp) {
       if (tOk && kOk) {
-        showToast(`${label} ${target} (twitch+kick)`, 'success')
+        showToast(t('mc_modtoolbar_result_both', [label, target]), 'success')
         return
       }
       if (tOk) {
-        showToast(`${label} ${target} on twitch — kick failed: ${kResp.error || 'unknown'}`, 'error')
+        showToast(
+          t('mc_modtoolbar_result_twitch_kick_failed', [label, target, kResp.error || t('mc_common_unknown')]),
+          'error',
+        )
         return
       }
       if (kOk) {
-        showToast(`${label} ${target} on kick — twitch failed: ${tResp.error || 'unknown'}`, 'error')
+        showToast(
+          t('mc_modtoolbar_result_kick_twitch_failed', [label, target, tResp.error || t('mc_common_unknown')]),
+          'error',
+        )
         return
       }
-      showToast(`${label} failed: twitch ${tResp.error || '?'} / kick ${kResp.error || '?'}`, 'error')
+      showToast(t('mc_modtoolbar_result_both_failed', [label, tResp.error || '?', kResp.error || '?']), 'error')
       return
     }
     const only = tResp || kResp || r?.yResp
-    const errText = only?.error === 'not_moderator' ? 'not a youtube mod here' : only?.error || 'unknown'
-    showToast(only?.ok ? `${label} ${target}` : `${label} failed: ${errText}`, only?.ok ? 'success' : 'error')
+    const errText =
+      only?.error === 'not_moderator' ? t('mc_modtoolbar_not_youtube_mod') : only?.error || t('mc_common_unknown')
+    showToast(
+      only?.ok
+        ? t('mc_modtoolbar_result_single_ok', [label, target])
+        : t('mc_modtoolbar_result_single_failed', [label, errText]),
+      only?.ok ? 'success' : 'error',
+    )
   } catch (_) {}
 }
 try {
@@ -46908,13 +46964,13 @@ async function runModAction(id) {
   if (r?.anyOk && def.action === 'delete' && row && dimTimeouts) row.classList.add('hs-mc-msg-cleared')
   const label =
     def.action === 'timeout'
-      ? `timed out ${def.durationSec}s`
+      ? t('mc_mod_label_timed_out', [String(def.durationSec)])
       : def.action === 'ban'
-        ? 'banned'
+        ? t('mc_mod_label_banned')
         : def.action === 'unban'
-          ? 'unbanned'
+          ? t('mc_mod_label_unbanned')
           : def.action === 'delete'
-            ? 'deleted'
+            ? t('mc_mod_label_deleted')
             : def.action
   showModResultToast(label, target, r)
   detachModToolbar()
@@ -48445,7 +48501,7 @@ function _getRawFilterRules() {
     if (!_filterRulesCorrupted) {
       _filterRulesCorrupted = true
       console.error('[heatsync] chatFilterRules JSON parse failed:', e)
-      showToast('filter rules corrupted — editing disabled until reload', 'error')
+      showToast(t('mc_settingsui_rules_corrupted'), 'error')
     }
     return []
   }
@@ -48453,7 +48509,7 @@ function _getRawFilterRules() {
     if (!_filterRulesCorrupted) {
       _filterRulesCorrupted = true
       console.error('[heatsync] chatFilterRules is not an array:', arr)
-      showToast('filter rules corrupted — editing disabled until reload', 'error')
+      showToast(t('mc_settingsui_rules_corrupted'), 'error')
     }
     return []
   }
@@ -48466,7 +48522,7 @@ function _saveFilterRules(rules) {
   // JSON" — refuse to write in the corrupted case, or the next add/edit
   // would silently persist over (and permanently lose) the unreadable blob.
   if (_filterRulesCorrupted) {
-    showToast('filter rules corrupted — reload the page before editing', 'error')
+    showToast(t('mc_settingsui_rules_corrupted_reload'), 'error')
     return
   }
   var json = JSON.stringify(rules)
@@ -48700,13 +48756,13 @@ function _handleFilterRuleAction(el, panelRoot) {
     var ruleCs = csEl ? !!csEl.checked : false
     var ruleScope = scopeEl ? scopeEl.value : 'all'
     if (!ruleVal) {
-      showToast('rule value is empty', 'error')
+      showToast(t('mc_settingsui_rule_value_empty'), 'error')
       return
     }
     // Validate expr syntax up front so a malformed rule toasts instead of
     // silently compiling to nothing (the parser lives in the same bundle).
     if (ruleType === 'expr' && typeof _frParseExpr === 'function' && !_frParseExpr(_frTokenizeExpr(ruleVal))) {
-      showToast('invalid expression', 'error')
+      showToast(t('mc_settingsui_invalid_expression'), 'error')
       return
     }
     var newRule = {
@@ -48807,9 +48863,9 @@ async function _exportAllSettings() {
     setTimeout(() => {
       URL.revokeObjectURL(url)
     }, 1000)
-    showToast('settings exported', 'info')
+    showToast(t('mc_settingsui_export_ok'), 'info')
   } catch (err) {
-    showToast('export failed: ' + (err && err.message ? err.message : 'unknown'), 'error')
+    showToast(t('mc_settingsui_export_failed', [err && err.message ? err.message : t('mc_common_unknown')]), 'error')
   }
 }
 
@@ -48827,7 +48883,7 @@ async function _importAllSettings() {
         return
       }
       if (file.size > 2 * 1024 * 1024) {
-        showToast('file too large (>2MB)', 'error')
+        showToast(t('mc_settingsui_file_too_large'), 'error')
         resolve(false)
         return
       }
@@ -48835,7 +48891,7 @@ async function _importAllSettings() {
         var txt = await file.text()
         var data = JSON.parse(txt)
         if (!data || data.kind !== 'heatsync-settings') {
-          showToast('not a heatsync settings file', 'error')
+          showToast(t('mc_settingsui_not_heatsync_file'), 'error')
           resolve(false)
           return
         }
@@ -48861,7 +48917,7 @@ async function _importAllSettings() {
           if (Object.keys(safeLocal).length) writes.push(chrome.storage.local.set(safeLocal))
         }
         await Promise.all(writes)
-        showToast('settings imported — reloading…', 'info')
+        showToast(t('mc_settingsui_import_ok'), 'info')
         setTimeout(() => {
           try {
             location.reload()
@@ -48869,7 +48925,10 @@ async function _importAllSettings() {
         }, 800)
         resolve(true)
       } catch (err) {
-        showToast('import failed: ' + (err && err.message ? err.message : 'parse error'), 'error')
+        showToast(
+          t('mc_settingsui_import_failed', [err && err.message ? err.message : t('mc_settingsui_parse_error')]),
+          'error',
+        )
         resolve(false)
       }
     }
@@ -48965,7 +49024,7 @@ function _applyPresetDiff(label, diff) {
   const changes = _presetChanges(diff)
   _presetPending = null
   if (!changes.length) {
-    showToast('already matching ' + label, 'info')
+    showToast(t('mc_settingsui_preset_already_matching', [label]), 'info')
     renderSettingsTab()
     return
   }
@@ -48973,13 +49032,14 @@ function _applyPresetDiff(label, diff) {
   for (const c of changes) undo[c.key] = c.from
   _lastPresetUndo = { label: label, diff: undo }
   for (const c of changes) setSetting(c.key, c.to)
-  showToast('applied ' + label + ' — ' + changes.length + ' change' + (changes.length === 1 ? '' : 's'), 'info')
+  const changeCount = changes.length + ' change' + (changes.length === 1 ? '' : 's')
+  showToast(t('mc_settingsui_preset_applied', [label, changeCount]), 'info')
   renderSettingsTab()
 }
 function _saveCustomPreset(name) {
   name = (name || '').trim().slice(0, 24)
   if (!name) {
-    showToast('preset needs a name', 'error')
+    showToast(t('mc_settingsui_preset_needs_name'), 'error')
     return
   }
   const diff = {}
@@ -48994,30 +49054,31 @@ function _saveCustomPreset(name) {
     .concat(entry)
     .slice(-8)
   if (JSON.stringify(next).length > 5000) {
-    showToast('presets storage full — delete one first', 'error')
+    showToast(t('mc_settingsui_presets_storage_full'), 'error')
     return
   }
   _customPresets = next
   saveUiSetting('customPresets', next)
   _presetPending = null
-  showToast('saved preset: ' + name, 'info')
+  showToast(t('mc_settingsui_preset_saved', [name]), 'info')
   renderSettingsTab()
 }
 function _deleteCustomPreset(id) {
   _customPresets = _customPresets.filter((p) => p.id !== id)
   saveUiSetting('customPresets', _customPresets)
-  showToast('preset deleted', 'info')
+  showToast(t('mc_settingsui_preset_deleted'), 'info')
 }
 function _openPresetMenu(anchorEl) {
   const r = anchorEl.getBoundingClientRect()
   const items = []
   for (const p of SETTINGS_PRESETS) {
+    const pLabel = p.labelKey ? t(p.labelKey) : p.label
     items.push({
-      label: (_presetIsActive(p) ? '■ ' : '□ ') + p.label,
-      fn: ((preset) => () => {
-        _presetPending = { label: preset.label, diff: preset.diff }
+      label: (_presetIsActive(p) ? '■ ' : '□ ') + pLabel,
+      fn: ((preset, lbl) => () => {
+        _presetPending = { label: lbl, diff: preset.diff }
         renderSettingsTab()
-      })(p),
+      })(p, pLabel),
     })
   }
   if (_customPresets.length) {
@@ -49617,14 +49678,14 @@ function renderSettingsTab() {
     var defaultsBtn = e.target.closest('.hs-mc-defaults-btn')
     if (defaultsBtn) {
       resetSettingsToDefaults()
-      if (typeof showToast === 'function') showToast('all settings restored to defaults', 'success')
+      if (typeof showToast === 'function') showToast(t('mc_settingsui_reset_all'), 'success')
       return
     }
     var pageDefaultsBtn = e.target.closest('.hs-mc-pagedefaults-btn')
     if (pageDefaultsBtn) {
       var _pdCat = pageDefaultsBtn.dataset.setCat
       resetSettingsToDefaults(_pdCat)
-      if (typeof showToast === 'function') showToast(_pdCat + ' restored to defaults', 'success')
+      if (typeof showToast === 'function') showToast(t('mc_settingsui_reset_category', [_pdCat]), 'success')
       return
     }
   }
@@ -51353,12 +51414,12 @@ const STORAGE_KEY = 'heatsync_multichat'
     try {
       chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] }).catch(() => {
         try {
-          showToast('mute list not saved — storage error', 'error')
+          showToast(t('mc_main_mute_save_failed'), 'error')
         } catch (_) {}
       })
     } catch (_) {
       try {
-        showToast('mute list not saved — storage error', 'error')
+        showToast(t('mc_main_mute_save_failed'), 'error')
       } catch (_) {}
     }
   }
@@ -52638,14 +52699,14 @@ const STORAGE_KEY = 'heatsync_multichat'
             const used = await chrome.storage.sync.getBytesInUse('ui_settings')
             if (used > 7000) {
               warn('ui_settings quota near limit:', used, '/ 8192 bytes')
-              showToast('settings storage near limit — some preferences may not save across devices', 'error')
+              showToast(t('mc_main_quota_near_limit'), 'error')
             }
           } catch (_) {
             /* getBytesInUse unavailable (Firefox MV2) — skip check */
           }
           if (!(await writeUiSettings(syncPatch))) {
             warn('ui_settings write failed')
-            showToast('settings failed to save — storage quota exceeded', 'error')
+            showToast(t('mc_main_settings_save_failed'), 'error')
           }
         })()
       }
@@ -53086,7 +53147,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     document.querySelectorAll('.hs-mc-toggle-pill[data-set-key="' + def.key + '"]').forEach((pill) => {
       pill.classList.toggle('active', !attempted)
     })
-    showToast('failed to save ' + def.cw.noun + ' — try again', 'error')
+    showToast(t('mc_main_cw_save_failed', [def.cw.noun]), 'error')
   }
 
   // Resolve the legacy runtime binding for an entry (entries without one
@@ -56035,7 +56096,7 @@ const STORAGE_KEY = 'heatsync_multichat'
   // Celebration failed AFTER the text was consumed — never let the user's
   // message vanish: surface the failure and send the text as plain chat.
   async function _resubShareTextRescue(channel, text) {
-    showToast('celebration share failed — sending your message to chat', 'error')
+    showToast(t('mc_main_celebration_share_failed'), 'error')
     if (!text) return
     try {
       const token = getTwitchAuthToken()
@@ -56044,7 +56105,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         if (res === true || res === 'queued') return
       }
     } catch (_) {}
-    showToast('message could not be sent — it is still shown in your celebration row', 'error')
+    showToast(t('mc_main_message_not_sent'), 'error')
   }
 
   // Programmatic-click escape hatch so consume() can fire the native Twitch
@@ -56116,12 +56177,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         try {
           clicked = nativeClickFallback()
         } catch (_) {}
-        showToast(
-          clicked
-            ? 'no share token — celebration sent without text, your message goes to chat'
-            : 'share unavailable — sending your message to chat',
-          'error',
-        )
+        showToast(clicked ? t('mc_main_no_share_token') : t('mc_main_share_unavailable'), 'error')
         return false
       }
 
@@ -56722,8 +56778,11 @@ const STORAGE_KEY = 'heatsync_multichat'
     // Ensure input bar exists
     if (!inputBarElement || !document.contains(inputBarElement)) {
       inputBarElement = createInputBar()
-      // Start hidden — typing reveals it (never in the pop-out: it stays put + focused)
-      if (canAutoHideInput()) {
+      // Start hidden — typing reveals it (never in the pop-out: it stays put +
+      // focused). A rebuild with a draft pending (twitch swapped the container
+      // mid-typing) must stay visible, or the restored draft hides with the
+      // bar and reads as "my message got eaten".
+      if (canAutoHideInput() && !pendingMessage.trim()) {
         inputBarElement.classList.add('hs-hidden')
         inputBarVisible = false
       }
@@ -56733,10 +56792,17 @@ const STORAGE_KEY = 'heatsync_multichat'
       container.appendChild(inputBarElement)
       log('Injected input bar into container')
 
-      // Restore pending message if any
+      // Wire handlers + restore the draft NOW — createInputBar defers its own
+      // initInput behind setTimeout(0), and keystrokes landing in that gap
+      // bypass pendingMessage tracking (the draft then vanishes on the next
+      // rebuild). initInput is idempotent, so the deferred call no-ops.
+      initInput()
+      // Restore pending message if any (skip if initInput already did, or the
+      // user typed into the fresh input first — never clobber live content)
       const input = document.getElementById('hs-mc-input')
-      if (input && pendingMessage) {
-        input.value = pendingMessage
+      if (input && pendingMessage && !(input.value || input.textContent || '').trim()) {
+        if (input.isContentEditable) input.textContent = pendingMessage
+        else input.value = pendingMessage
       }
     }
 
@@ -61651,7 +61717,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         extractYoutubeVideoId(ctx.youtube) ||
         (hostPlatform === 'yt' ? extractYoutubeVideoId(location.href) || _autoYtVideoId || '' : '')
       if (!videoId) {
-        showToast('no live youtube stream to pop out', 'info')
+        showToast(t('mc_main_no_yt_stream'), 'info')
         return
       }
       url = `https://www.youtube.com/live_chat?v=${videoId}&is_popout=1`

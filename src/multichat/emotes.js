@@ -1762,10 +1762,10 @@ async function _removeEmoteFromInventory(emoteName, targetEl) {
     if (response?.success || (response?.error && /not found in your set/i.test(response.error))) {
       handleRemoveSuccess(emoteName)
     } else {
-      showToast(response?.error || `failed to remove: ${emoteName}`, 'error')
+      showToast(response?.error || t('mc_emote_remove_failed', [emoteName]), 'error')
     }
   } catch (e) {
-    showToast(`error removing: ${emoteName}`, 'error')
+    showToast(t('mc_emote_remove_error', [emoteName]), 'error')
   }
 }
 
@@ -1809,7 +1809,7 @@ function handleRemoveSuccess(emoteName) {
   // removed image. (typeof guards: these live in main.js, loaded after this module.)
   if (typeof invalidateRenderedForEmotes === 'function') invalidateRenderedForEmotes([emoteName])
   if (typeof reprocessEmoteTextInPlace === 'function') reprocessEmoteTextInPlace()
-  showToast(`removed: ${emoteName}`, 'success')
+  showToast(t('mc_emote_removed', [emoteName]), 'success')
 }
 
 function blockAllEmotesInStack(stack) {
@@ -1822,7 +1822,7 @@ function blockAllEmotesInStack(stack) {
       count++
     }
   })
-  if (count > 0) showToast(`blocked ${count} emotes`, 'success')
+  if (count > 0) showToast(t('mc_emote_blocked_count', [String(count)]), 'success')
   stack.classList.remove('expanded')
   stack.setAttribute('title', 'expand')
 }
@@ -1895,7 +1895,7 @@ function blockEmote(emoteName, clickedUrl, clickedSource) {
   applyInputEmoteBlockState(emoteName, true)
 
   refreshEmoteTooltip(emoteName, 'blocked')
-  showToast(`blocked: ${emoteName}`, 'success')
+  showToast(t('mc_emote_blocked', [emoteName]), 'success')
   flashAllEmotes(emoteName, 'hs-flash-block')
   // Surgical: only re-key messages that reference this emote (no epoch bump →
   // no whole-chat rebuild flash). Live DOM already updated in-place above.
@@ -1996,7 +1996,7 @@ function unblockEmote(emoteName) {
   applyInputEmoteBlockState(emoteName, false)
 
   refreshEmoteTooltip(emoteName, newState)
-  showToast(`unblocked: ${emoteName}`, 'success')
+  showToast(t('mc_emote_unblocked', [emoteName]), 'success')
   flashAllEmotes(emoteName, 'hs-flash-unblock')
   if (typeof invalidateRenderedForEmotes === 'function') invalidateRenderedForEmotes(emoteName)
 }
@@ -2018,7 +2018,7 @@ async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, targetEl, z
   // it would store a blank emote that renders empty forever (and the server
   // rejects non-https anyway). Reject early with a clear toast.
   if (!emoteUrl || !/^https?:\/\//i.test(emoteUrl)) {
-    if (!silent) showToast(`can't add ${emoteName} — image unavailable`, 'error')
+    if (!silent) showToast(t('mc_emote_add_unavailable', [emoteName]), 'error')
     return false
   }
   let _added = false
@@ -2090,7 +2090,7 @@ async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, targetEl, z
 
       refreshEmoteTooltip(emoteName, 'owned')
       if (!silent) {
-        showToast(`added: ${emoteName}`, 'success')
+        showToast(t('mc_emote_added', [emoteName]), 'success')
         flashAllEmotes(emoteName, 'hs-flash-add')
       }
     } else if (!silent) {
@@ -2098,16 +2098,16 @@ async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, targetEl, z
       // (statusbar dedupes to ×N) instead of a red per-emote error.
       const addErr = String(response?.error || '')
       if (/not logged in/i.test(addErr)) {
-        showToast('log in to heatsync.org to add emotes', 'info')
+        showToast(t('mc_emote_add_login'), 'info')
       } else {
-        showToast(addErr || `failed to add: ${emoteName}`, 'error')
+        showToast(addErr || t('mc_emote_add_failed', [emoteName]), 'error')
       }
     } else {
       log('Auto-add failed silently:', emoteName, response?.error || '(no error)')
     }
   } catch (e) {
     log('Add emote error:', e)
-    if (!silent) showToast(`error adding: ${emoteName}`, 'error')
+    if (!silent) showToast(t('mc_emote_add_error', [emoteName]), 'error')
   } finally {
     pendingEmoteOps.delete(emoteName)
   }
@@ -2129,7 +2129,7 @@ async function syncBlockToAPI(emoteName, block) {
       })
       .catch((e) => {
         log('block sync failed:', e?.message || e)
-        showToast(`${block ? 'block' : 'unblock'} not saved to your account — will differ on other devices`, 'error')
+        showToast(t(block ? 'mc_emote_block_sync_failed' : 'mc_emote_unblock_sync_failed'), 'error')
       })
     log('Synced', block ? 'block' : 'unblock', emoteName, '(hash:', hash.substring(0, 8) + '...) to API')
   } catch (e) {

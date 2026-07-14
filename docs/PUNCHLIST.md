@@ -92,12 +92,26 @@ state: v1.7.24 published. tri-link (twitch+kick+yt on one account) e2e-verified
 
 ---
 
-## north star — design supremacy (unchanged)
+## north star — design supremacy (IN PROGRESS 07-14)
 
 beat X + reddit + 4chan combined on the social surfaces within the locked
 aesthetic (btop density, square everything, ANSI-256, white-bg+black-text
 hover/active, zero trendy motion, ≥13px cozette). out-platform, don't
-out-emote. every tier above exists to clear runway for it.
+out-emote.
+
+07-14 opening moves:
+- law audit across /, /live/hot, /chatter, /logs: HELD (0 motion, 0 rounded,
+  paints-gradients legit). one violation: `chat-tile-group-label` @12px.
+- **ssr vim keynav SHIPPED (site 3930a067)** — logs day pages, user log
+  pages, /chatter now drive like the spa hot view: j/k/g/G, o open, y yank ¶,
+  [/] pages, / search, ? help. clean-browser verified (white-invert select).
+  the seo landing surfaces are now the only keyboard-first chat logs on the
+  internet.
+- deferred (named): logs index + channel-listing + /archive search keynav —
+  their shared shells have no csp nonce plumbing (inline scripts would be
+  blocked); plumb nonce through logsPageShell next pass. 12px label bump.
+- note: mellen's browser has a dark-reader-class ext whose user-origin css
+  eats background overrides — test visuals in a clean profile.
 
 ## recommended sequence
 

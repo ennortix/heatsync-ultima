@@ -633,3 +633,40 @@
       color: #808080;
     }
 
+    /* ---- click-to-play chat players (feed-embed.js chat click-to-play) ---- */
+    .hs-mc-media.hs-mc-playable {
+      cursor: pointer;
+    }
+    .hs-mc-media.hs-mc-playable .hs-feed-embed-rich-thumb,
+    .hs-mc-media.hs-mc-playable .hs-feed-embed-rich-thumb-placeholder {
+      cursor: pointer;
+    }
+    .hs-mc-media.hs-mc-media-playing {
+      position: relative;
+      width: 100%;
+      max-width: 480px;
+      cursor: default;
+    }
+    .hs-mc-media.hs-mc-media-playing .hs-feed-embed-container {
+      max-width: 100%;
+    }
+    .hs-mc-player-close {
+      display: block;
+      width: 100%;
+      margin: 0 0 1px;
+      padding: 0 6px;
+      font: inherit;
+      font-size: 13px;
+      line-height: 16px;
+      text-align: right;
+      color: #fff;
+      background: #000;
+      border: 1px solid #808080;
+      border-radius: 0;
+      cursor: pointer;
+    }
+    .hs-mc-player-close:hover,
+    .hs-mc-player-close:active {
+      color: #000;
+      background: #fff;
+    }

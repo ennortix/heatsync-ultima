@@ -393,20 +393,23 @@ function chatEmbedForUrl(rawUrl) {
   if (ytId) {
     const id = sanitizeEmbedId(ytId)
     if (id)
-      return `<a href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener" class="hs-mc-media hs-feed-embed-yt-thumb">
+      return `<a href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener" class="hs-mc-media hs-mc-playable hs-feed-embed-yt-thumb">
       <img src="https://i.ytimg.com/vi/${id}/mqdefault.jpg" alt="" loading="lazy" decoding="async" data-fb="hide">
       <span class="hs-feed-embed-yt-play">▶</span>
     </a>`
   }
   // Providers the server resolver handles (oEmbed) → lightweight pending card.
   // Server returns image/video/audio/rich; unsupported → graceful link card.
-  // No iframes. data-resolve-url drives resolvePendingFeedEmbeds().
+  // No auto-loading iframes — playable providers upgrade to a live player on
+  // an explicit click (see the chat click-to-play block at file bottom).
+  // data-resolve-url drives resolvePendingFeedEmbeds() AND click-to-play.
   if (
     /(?:reddit\.com\/r\/|(?:twitter|x)\.com\/[\w_]+\/status\/|open\.spotify\.com\/(?:track|album|playlist|episode|show)\/|(?:www\.)?vimeo\.com\/\d|tiktok\.com\/@[\w.]+\/video\/|instagram\.com\/(?:p|reel)\/|soundcloud\.com\/[\w-]+\/[\w-]+|kick\.com\/[\w_-]+\/clips\/|clips\.twitch\.tv\/|streamable\.com\/\w)/i.test(
       cleanUrl,
     )
   ) {
-    return `<div class="hs-mc-media hs-feed-embed-pending" data-resolve-url="${attr(safe)}" data-resolve-platform="link"><span class="hs-feed-embed-pending-label">loading preview…</span></div>`
+    const playable = chatUrlPlayable(cleanUrl) ? ' hs-mc-playable' : ''
+    return `<div class="hs-mc-media hs-feed-embed-pending${playable}" data-resolve-url="${attr(safe)}" data-resolve-platform="link"><span class="hs-feed-embed-pending-label">loading preview…</span></div>`
   }
   return ''
 }
@@ -535,7 +538,10 @@ function _buildFeedResolvedHtml(ph, data) {
     const poster = safeThumb ? `poster="${safeThumb}"` : ''
     return `<video controls preload="metadata" ${poster} src="${safeMedia}" class="hs-feed-embed-rich-video"></video>`
   }
-  if (data.type === 'rich') {
+  // 'audio' (spotify/soundcloud oEmbed) renders the same art+meta card as
+  // 'rich' — the click-to-play upgrade supplies the actual player; the
+  // mediaUrl mp3 preview is deliberately unused (30s teaser, not the track).
+  if (data.type === 'rich' || data.type === 'audio') {
     const thumbHtml = safeThumb
       ? `<img src="${safeThumb}" alt="${safeTitle || safePlat}" class="hs-feed-embed-rich-thumb">`
       : `<div class="hs-feed-embed-rich-thumb-placeholder">[${safePlat}]</div>`
@@ -664,3 +670,73 @@ function attachFeedFallbacks(root) {
     )
   })
 }
+
+// ── CHAT CLICK-TO-PLAY ──────────────────────────────────────────────────────
+// Chat cards stay lightweight (the settled no-auto-iframe rule protects
+// low-RAM hardware at chat volume), but an EXPLICIT click upgrades a playable
+// card to the same live player the feed uses (parseFeedEmbed builders — one
+// code path, zero drift). Hard perf bound: a single live player globally; a
+// new play (or the × strip) tears the previous one down and restores its
+// card. Culled rows take their player with them (isConnected guard).
+const _CHAT_PLAYER_RE =
+  /(open\.spotify\.com\/(?:track|album|playlist|episode|show)\/|youtu\.be\/[\w-]{11}|youtube\.com\/(?:watch\?v=|shorts\/)[\w-]{11}|(?:www\.)?vimeo\.com\/\d|soundcloud\.com\/[\w-]+\/[\w-]+|clips\.twitch\.tv\/[\w-]|twitch\.tv\/[\w_]+\/clip\/|streamable\.com\/\w|giphy\.com\/gifs\/|tenor\.com\/view\/)/i
+
+function chatUrlPlayable(url) {
+  return _CHAT_PLAYER_RE.test(url || '')
+}
+
+let _hsChatPlayerWrap = null // wrap currently hosting the live player
+let _hsChatPlayerPrev = null // its pre-player childNodes, restored on close
+
+function _hsChatPlayerClose() {
+  const wrap = _hsChatPlayerWrap
+  if (wrap && wrap.isConnected && _hsChatPlayerPrev) {
+    while (wrap.firstChild) wrap.removeChild(wrap.firstChild)
+    for (const n of _hsChatPlayerPrev) wrap.appendChild(n)
+  }
+  if (wrap) wrap.classList.remove('hs-mc-media-playing')
+  _hsChatPlayerWrap = null
+  _hsChatPlayerPrev = null
+}
+
+function _hsChatPlayerOpen(wrap, url) {
+  const html = parseFeedEmbed(url)
+  if (!html) return false
+  _hsChatPlayerClose() // singleton — never two live players
+  _hsChatPlayerPrev = Array.from(wrap.childNodes)
+  const tmp = document.createElement('div')
+  tmp.insertAdjacentHTML(
+    'afterbegin',
+    `<button class="hs-mc-player-close" type="button" title="close player">×</button>${html}`,
+  )
+  while (wrap.firstChild) wrap.removeChild(wrap.firstChild)
+  while (tmp.firstChild) wrap.appendChild(tmp.firstChild)
+  wrap.classList.add('hs-mc-media-playing')
+  _hsChatPlayerWrap = wrap
+  return true
+}
+
+document.addEventListener(
+  'click',
+  (e) => {
+    const closeBtn = e.target?.closest?.('.hs-mc-player-close')
+    if (closeBtn) {
+      e.preventDefault()
+      e.stopPropagation()
+      _hsChatPlayerClose()
+      return
+    }
+    const wrap = e.target?.closest?.('.hs-mc-media.hs-mc-playable')
+    if (!wrap || wrap.classList.contains('hs-mc-media-playing')) return
+    // Meta strip on resolved rich cards keeps normal link-out behaviour;
+    // thumb / pending area is the play surface.
+    if (e.target.closest('.hs-feed-embed-rich-meta')) return
+    const url = wrap.dataset.resolveUrl || (wrap.tagName === 'A' ? wrap.href : '')
+    if (!url || !chatUrlPlayable(url)) return
+    if (_hsChatPlayerOpen(wrap, url)) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+  },
+  { signal: mcSignal, capture: true },
+)

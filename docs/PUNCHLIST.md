@@ -14,27 +14,31 @@ state: v1.7.24 published. tri-link (twitch+kick+yt on one account) e2e-verified
 
 ## P0 — open verification threads (close before next release)
 
-- **tab-complete eats typed word** — remote search intermittently swallows the
-  composer text (no chip, empty input). unreproducible with synthetic events;
-  needs a trusted-input repro session. the one live product bug.
-- **yt live-chat send e2e** — untested (channel wasn't live). blocks calling
-  yt-only persona first-class; retest next time a linked yt channel is live.
-- **opera gx cluster (wollip)** — blank overlay + video shoved to page bottom +
-  expand-chat btn gone (ISOLATED runs, MAIN/SW dead) + site popout login fails.
-  rule out uBlock; verify cross-browser; add physical expand btn.
-- **kripp-mission leaked secret** — memory flags ROTATE; verify rotation
-  actually happened, close the thread.
+- ~~**tab-complete eats typed word**~~ — CLOSED 07-14 (8023281): root cause was
+  a composer-rebuild race class (wysiwyg restore no-op, listener-attach gap,
+  unguarded async remote insert); trusted-CDP rig verified 12/12 restores,
+  0/70 fuzz eats.
+- **yt live-chat send e2e** — untested. yt channels ARE live server-side;
+  deferred because the send posts publicly under mellen's identity — run it
+  with mellen present.
+- **opera gx cluster (wollip)** — 07-14: platform gap REFUTED (linux GX 133 +
+  uBlock defaults: SW+MAIN+overlay all alive in local rig); hide-btn + restore
+  pill already shipped and rig-verified. remaining = wollip-side bisect: GX
+  built-in adblock → uBlock custom lists → reinstall ext. send him the steps.
+- **kripp-mission leaked secret** — VERIFIED NOT ROTATED 07-14 (prod .env
+  hash-identical to leaked value). mellen-gated: google cloud console rotation
+  + update /opt/heatsync/app/.env + restart. local transcript copies redacted.
 
 ## P1 — product gaps (in-hand, no design questions)
 
-- **i18n label backfill** — deferred from hydraaudit r2; missing en keys render
-  raw key strings.
+- **i18n label backfill** — in progress 07-14 (settings labels + toast strings
+  → t() with en entries; other locales stay en-fallback by design).
 - **plus e2e payment test** — page/checkout/portal/webhook all live; nobody has
   run a real payment through it.
 - **archive erasure follow-ups** — non-registered self-serve erasure + capture
   posture (policy shipped acf9ee29, these two remain).
-- **landing monochrome redesign** — drop white/yellow wordmark, monochrome +
-  semantic-ANSI like the ext debrand; confirm accent with mellen first.
+- ~~**landing monochrome redesign**~~ — stale entry: shipped 07-06 (a05ed639),
+  prod-verified 07-14 (zero yellow; only semantic youtube-red remains).
 
 ## P2 — deferred tech debt (queued with reasons, don't rush)
 

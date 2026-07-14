@@ -14,10 +14,13 @@ state: v1.7.24 published. tri-link (twitch+kick+yt on one account) e2e-verified
 
 ## P0 — open verification threads (close before next release)
 
-- **NEW: multichat scroll overlap** — reported 07-14 (mellen): scrolling
-  "freaks out", messages render OVERLAYING each other. undiagnosed. suspects:
-  insert-only row diff (bde31ec) vs repaint paths, dom render cap trims,
-  embed/card height changes mid-scroll. needs live repro + diagnose session.
+- **multichat scroll overlap** — FIX SHIPPED 07-14 (68a4d3b), awaiting
+  mellen's visual confirm in the yt popout. root cause: content-visibility:auto
+  chat rows (v1.3.0 "virtual scrolling") + a recent chrome update = stale-paint
+  smears on skipped→rendered flips; heals on hover (repaint) — layout was
+  always correct (rig rect-sweeps clean, 4000+ frames). cv dropped, contain
+  kept; site already dropped cv 07-12 independently. don't re-add cv to any
+  chat-row surface.
 - ~~**composer loses focus after send**~~ — CLOSED 07-14 (f423389 + e984a37):
   two-layer thief — sendMessage's own hideInputBar, then clearReplyState also
   hiding the bar (focus() can't land in a hidden bar). hide now only on

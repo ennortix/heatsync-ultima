@@ -7361,6 +7361,12 @@ async function handleMessage(message, sender, sendResponse) {
     } else {
       delete youtubeChannelUrls[channelId]
       browser.storage.local.set({ youtube_channel_urls: { ...youtubeChannelUrls } })
+      // Channel removed from config — drop its persisted history buffer too,
+      // else hs_yt_<channelId> storage entries accumulate forever across every
+      // channel the user has ever added and removed (BG_YT only caps total
+      // channel COUNT, it never ages one out on removal).
+      BG_YT.channels.delete(channelId)
+      chrome.storage.local.remove(`hs_yt_${channelId}`).catch(() => {})
     }
     log(' YouTube unsubscribe:', videoId || '(no videoId)', 'channel:', channelId)
     sendResponse({ ok: true })
@@ -7434,9 +7440,16 @@ async function handleMessage(message, sender, sendResponse) {
         const key = `${message.data.platform}/${message.data.channel.toLowerCase()}`
         if (joinedExtraChannels.delete(key)) saveJoinedExtraChannels()
         if (message.data.platform.toLowerCase() === 'kick') {
+          const kch = message.data.channel.toLowerCase()
           try {
-            kickPusherLeave(message.data.channel.toLowerCase())
+            kickPusherLeave(kch)
           } catch {}
+          // Channel removed from config — drop its persisted history buffer too,
+          // else hs_kick_<ch> storage entries accumulate forever across every
+          // channel the user has ever added and removed (BG_KICK only caps total
+          // channel COUNT, it never ages one out on removal).
+          BG_KICK.channels.delete(kch)
+          chrome.storage.local.remove(`hs_kick_${kch}`).catch(() => {})
         }
       }
       wsSend(message.data)
@@ -11139,10 +11152,23 @@ async function bgKickRestoreFromStorage() {
   BG_KICK.storageRestored = true
   try {
     const all = await chrome.storage.local.get(null)
+    // Channels no longer in the user's config never hit the live channel:leave
+    // cleanup (removed via another device, or before that handler existed) —
+    // sweep them here so hs_kick_* doesn't grow forever.
+    const kickKeep = new Set(
+      (all.heatsync_multichat?.channels || [])
+        .filter((c) => c && typeof c === 'object' && typeof c.kick === 'string' && c.kick)
+        .map((c) => c.kick.toLowerCase()),
+    )
+    const toPurge = []
     let n = 0
     for (const [k, v] of Object.entries(all)) {
       if (!k.startsWith('hs_kick_') || k.startsWith('hs_kick_sync_')) continue
       const ch = k.slice('hs_kick_'.length)
+      if (ch && !kickKeep.has(ch)) {
+        toPurge.push(k)
+        continue
+      }
       if (!ch || !v?.msgs?.length || Date.now() - v.ts >= 86400000) continue
       const buf = new BGCircularBuffer(BG_KICK_PERSIST_MAX)
       // Live ingest may have created this buffer while get(null) was pending
@@ -11158,7 +11184,8 @@ async function bgKickRestoreFromStorage() {
       BG_KICK.channels.set(ch, buf)
       n++
     }
-    log('BG KICK restored', n, 'channels')
+    if (toPurge.length) chrome.storage.local.remove(toPurge).catch(() => {})
+    log('BG KICK restored', n, `channels${toPurge.length ? `, purged ${toPurge.length} orphaned` : ''}`)
   } catch (e) {
     log('BG KICK restore failed:', e.message)
   }
@@ -11169,10 +11196,22 @@ async function bgYtRestoreFromStorage() {
   BG_YT.storageRestored = true
   try {
     const all = await chrome.storage.local.get(null)
+    // Same sweep as the Kick twin above — channels removed from config while
+    // this SW wasn't running never hit the live youtube_ws_unsubscribe cleanup.
+    const ytKeep = new Set(
+      (all.heatsync_multichat?.channels || [])
+        .filter((c) => c && typeof c === 'object' && c.youtube && typeof c.id === 'string')
+        .map((c) => c.id),
+    )
+    const toPurge = []
     let n = 0
     for (const [k, v] of Object.entries(all)) {
       if (!k.startsWith('hs_yt_') || k.startsWith('hs_yt_sync_')) continue
       const channelId = k.slice('hs_yt_'.length)
+      if (channelId && !ytKeep.has(channelId)) {
+        toPurge.push(k)
+        continue
+      }
       if (!channelId || !v?.msgs?.length || Date.now() - v.ts >= 86400000) continue
       const buf = new BGCircularBuffer(BG_YT_PERSIST_MAX)
       // Same merge-not-clobber as the kick twin — boot doesn't await this.
@@ -11186,7 +11225,8 @@ async function bgYtRestoreFromStorage() {
       BG_YT.channels.set(channelId, buf)
       n++
     }
-    log('BG YT restored', n, 'channels')
+    if (toPurge.length) chrome.storage.local.remove(toPurge).catch(() => {})
+    log('BG YT restored', n, `channels${toPurge.length ? `, purged ${toPurge.length} orphaned` : ''}`)
   } catch (e) {
     log('BG YT restore failed:', e.message)
   }

@@ -6600,6 +6600,13 @@ function extractYoutubeVideoId(url) {
  * @returns {string}
  */
 function youtubeSendErrorMessage(err) {
+  // "chat_restricted:<yt's human reason>" — reason travels on the code string
+  // (sendYoutubeMessage keeps the string protocol its callers compare against).
+  const s = String(err || '')
+  if (s.startsWith('chat_restricted')) {
+    const reason = s.includes(':') ? s.slice(s.indexOf(':') + 1) : ''
+    return reason ? t('mc_yt_send_restricted_reason', [reason.toLowerCase()]) : t('mc_yt_send_restricted')
+  }
   switch (err) {
     case 'no_youtube_tab':
     case 'no_video':
@@ -42297,6 +42304,11 @@ async function sendYoutubeMessage(text, videoId) {
   try {
     const resp = await safeSendMessage({ type: 'youtube_send_message', text, videoId: videoId || undefined })
     if (resp?.ok) return true
+    log('YouTube send failed:', resp?.error, resp?.reason || '')
+    // chat_restricted carries YT's human reason ("Subscribers-only mode") —
+    // ride it on the code string so the toast can show WHY instead of a
+    // generic failure. youtubeSendErrorMessage splits it back off.
+    if (resp?.error && resp?.reason) return resp.error + ':' + resp.reason
     return resp?.error || 'send_failed'
   } catch (e) {
     log('YouTube send error:', e.message)

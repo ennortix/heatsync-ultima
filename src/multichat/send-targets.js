@@ -78,6 +78,13 @@ function extractYoutubeVideoId(url) {
  * @returns {string}
  */
 function youtubeSendErrorMessage(err) {
+  // "chat_restricted:<yt's human reason>" — reason travels on the code string
+  // (sendYoutubeMessage keeps the string protocol its callers compare against).
+  const s = String(err || '')
+  if (s.startsWith('chat_restricted')) {
+    const reason = s.includes(':') ? s.slice(s.indexOf(':') + 1) : ''
+    return reason ? t('mc_yt_send_restricted_reason', [reason.toLowerCase()]) : t('mc_yt_send_restricted')
+  }
   switch (err) {
     case 'no_youtube_tab':
     case 'no_video':

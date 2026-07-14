@@ -6688,6 +6688,12 @@ async function _ensureYoutubeBridgeTab(videoId) {
       if (!ping.disabled) return { tabId }
       return { tabId, error: 'chat_disabled' } // present but logged-out / restricted
     }
+    // No input + a restricted-participation banner = a terminal state
+    // (subscribers-only / members-only), not "still loading" — fail fast with
+    // the human reason instead of burning the full 12s into bridge_timeout.
+    if (ping?.ok && !ping.hasInput && ping.restrictedMsg) {
+      return { tabId, error: 'chat_restricted', reason: ping.restrictedMsg }
+    }
     await new Promise((r) => setTimeout(r, 400))
   }
   return { tabId, error: sawInput ? 'chat_disabled' : 'bridge_timeout' }
@@ -8301,7 +8307,7 @@ async function handleMessage(message, sender, sendResponse) {
               if (bridge.tabId && bridge.error === 'chat_disabled') {
                 await browser.tabs.update(bridge.tabId, { active: true }).catch(() => {})
               }
-              sendResponse({ ok: false, error: bridge.error || 'no_youtube_tab' })
+              sendResponse({ ok: false, error: bridge.error || 'no_youtube_tab', reason: bridge.reason })
               return
             }
           }
@@ -8351,7 +8357,7 @@ async function handleMessage(message, sender, sendResponse) {
           if (!canBridge) throw relayErr
           const bridge = await ensureYoutubeBridgeTab(videoId)
           if (!bridge.tabId || bridge.error) {
-            sendResponse({ ok: false, error: bridge.error || relayErr.message })
+            sendResponse({ ok: false, error: bridge.error || relayErr.message, reason: bridge.reason })
             return
           }
           result = await browser.tabs.sendMessage(bridge.tabId, relayPayload)

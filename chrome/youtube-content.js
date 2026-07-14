@@ -200,7 +200,16 @@
         const inputRenderer = document.querySelector('yt-live-chat-text-input-field-renderer')
         const input = inputRenderer?.querySelector('div#input[contenteditable]')
         const disabled = input ? input.getAttribute('aria-disabled') === 'true' : false
-        sendResponse({ ok: true, hasInput: !!input, disabled })
+        // Restricted participation (subscribers-only / members-only) removes
+        // the input entirely — report the reason so background can fail fast
+        // with it instead of polling into a 12s bridge_timeout.
+        const restrictedMsg = input
+          ? null
+          : document
+              .querySelector('yt-live-chat-restricted-participation-renderer')
+              ?.querySelector('#message, yt-formatted-string')
+              ?.textContent?.trim() || null
+        sendResponse({ ok: true, hasInput: !!input, disabled, restrictedMsg })
       } catch (e) {
         try {
           sendResponse({ ok: false, error: e?.message || 'ping_failed' })
@@ -1482,9 +1491,17 @@
    */
   async function handleSendRelay(msg) {
     const inputRenderer = document.querySelector('yt-live-chat-text-input-field-renderer')
-    if (!inputRenderer) return { ok: false, error: 'no_input' }
+    // No input at all can mean YT is restricting participation (subscribers-only
+    // mode, members-only, follower age gates) — the restricted renderer carries
+    // the human reason. Surface it instead of a generic failure (lofigirl case:
+    // logged-in non-subscriber gets NO input, send died as an opaque toast).
+    if (!inputRenderer || !inputRenderer.querySelector('div#input[contenteditable]')) {
+      const restricted = document.querySelector('yt-live-chat-restricted-participation-renderer')
+      const reason = restricted?.querySelector('#message, yt-formatted-string')?.textContent?.trim()
+      if (reason) return { ok: false, error: 'chat_restricted', reason }
+      return { ok: false, error: 'no_input' }
+    }
     const input = inputRenderer.querySelector('div#input[contenteditable]')
-    if (!input) return { ok: false, error: 'no_input' }
     if (input.getAttribute('aria-disabled') === 'true') return { ok: false, error: 'chat_disabled' }
 
     // Pre-arm the chat-list observer BEFORE we click send — otherwise a fast

@@ -6748,6 +6748,11 @@ async function sendYoutubeMessage(text, videoId) {
   try {
     const resp = await safeSendMessage({ type: 'youtube_send_message', text, videoId: videoId || undefined })
     if (resp?.ok) return true
+    log('YouTube send failed:', resp?.error, resp?.reason || '')
+    // chat_restricted carries YT's human reason ("Subscribers-only mode") —
+    // ride it on the code string so the toast can show WHY instead of a
+    // generic failure. youtubeSendErrorMessage splits it back off.
+    if (resp?.error && resp?.reason) return resp.error + ':' + resp.reason
     return resp?.error || 'send_failed'
   } catch (e) {
     log('YouTube send error:', e.message)

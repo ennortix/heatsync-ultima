@@ -2281,5 +2281,16 @@
   },
   "mc_yt_send_open_stream": {
     "message": "open the youtube stream to send"
+  },
+  "mc_yt_send_restricted": {
+    "message": "yt chat is restricted for this stream"
+  },
+  "mc_yt_send_restricted_reason": {
+    "message": "yt: $REASON$ — can't chat here",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
   }
 }

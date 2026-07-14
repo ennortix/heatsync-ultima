@@ -31,8 +31,10 @@ state: v1.7.24 published. tri-link (twitch+kick+yt on one account) e2e-verified
 
 ## P1 — product gaps (in-hand, no design questions)
 
-- **i18n label backfill** — in progress 07-14 (settings labels + toast strings
-  → t() with en entries; other locales stay en-fallback by design).
+- ~~**i18n label backfill**~~ — DONE 07-14 (b2b7c54): 334 en keys, settings
+  labels/tips/placeholders + all toast strings through t(); verified live.
+  deferred remainder (named): 79 section-heading strings + ~30 trivial
+  single-word option captions — separate pass, low value.
 - **plus e2e payment test** — page/checkout/portal/webhook all live; nobody has
   run a real payment through it.
 - **archive erasure follow-ups** — non-registered self-serve erasure + capture

@@ -5581,8 +5581,11 @@
     // Ensure input bar exists
     if (!inputBarElement || !document.contains(inputBarElement)) {
       inputBarElement = createInputBar()
-      // Start hidden — typing reveals it (never in the pop-out: it stays put + focused)
-      if (canAutoHideInput()) {
+      // Start hidden — typing reveals it (never in the pop-out: it stays put +
+      // focused). A rebuild with a draft pending (twitch swapped the container
+      // mid-typing) must stay visible, or the restored draft hides with the
+      // bar and reads as "my message got eaten".
+      if (canAutoHideInput() && !pendingMessage.trim()) {
         inputBarElement.classList.add('hs-hidden')
         inputBarVisible = false
       }
@@ -5592,10 +5595,17 @@
       container.appendChild(inputBarElement)
       log('Injected input bar into container')
 
-      // Restore pending message if any
+      // Wire handlers + restore the draft NOW — createInputBar defers its own
+      // initInput behind setTimeout(0), and keystrokes landing in that gap
+      // bypass pendingMessage tracking (the draft then vanishes on the next
+      // rebuild). initInput is idempotent, so the deferred call no-ops.
+      initInput()
+      // Restore pending message if any (skip if initInput already did, or the
+      // user typed into the fresh input first — never clobber live content)
       const input = document.getElementById('hs-mc-input')
-      if (input && pendingMessage) {
-        input.value = pendingMessage
+      if (input && pendingMessage && !(input.value || input.textContent || '').trim()) {
+        if (input.isContentEditable) input.textContent = pendingMessage
+        else input.value = pendingMessage
       }
     }
 

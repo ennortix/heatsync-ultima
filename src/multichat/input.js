@@ -995,8 +995,10 @@ function initInput() {
   input._hsInitialized = true
   log('✅ Initializing input handlers, WYSIWYG:', wysiwygEnabled)
 
-  // Restore pending message
-  if (pendingMessage) {
+  // Restore pending message — but never clobber content already in the
+  // input. Keystrokes can land before this runs (createInputBar defers via
+  // setTimeout(0)); rebuildInput also pre-restores its own savedText.
+  if (pendingMessage && !(input.value || input.textContent || '').trim() && !input.querySelector?.('img, span')) {
     if (wysiwygEnabled) {
       input.textContent = pendingMessage
     } else {
@@ -4882,6 +4884,11 @@ function insertCompletionWysiwyg(match) {
   if (!sel.rangeCount) return
 
   const range = sel.getRangeAt(0)
+  // The lazy 7TV/BTTV/FFZ fetch lands here ASYNC (wasEmpty auto-insert) — by
+  // then the selection can sit anywhere on the page (user clicked twitch's
+  // native chat, a rebuild moved focus). Never rewrite DOM outside the
+  // composer, and never wipe a word the caret is no longer touching.
+  if (!input.contains(range.startContainer)) return
   let container = range.startContainer
   let rangeOffset = range.startOffset
   // Resolve element boundary to preceding text node

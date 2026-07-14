@@ -8559,10 +8559,18 @@
     // though the user logically was at-bottom.
     const isStaticRender = id === 'feed' || id === 'settings' || id === 'discover' || id === 'pinned' || id === 'modlog'
 
-    // PASS B: walk desired list, MOVE existing nodes into position or insert
-    // new ones. Crucially: when a desired key already lives in DOM at the
-    // wrong position, we MOVE its node — never build a second one. This is
-    // the bulletproof guarantee against duplicate-key accumulation.
+    // PASS B: walk desired list, insert NEW nodes at their sorted position.
+    // Existing nodes are NEVER moved — rule (1) above is literal: once the
+    // user has seen two rows in an order, that order is history and stays.
+    // The old code insertBefore'd an existing node whenever fairMerge's fresh
+    // sort disagreed with DOM order — but the co-live floor/rest split (and
+    // the yt pacer's commit-time stamps) can legally flip already-rendered
+    // neighbors between two renders, and each flip was a visible row shuffle
+    // (mellen's "order glitches after I post, heals in ~5s", 2026-07-14).
+    // Instead we DEFER: leave the node where it is and don't advance domIdx;
+    // the walk re-aligns when it reaches that node's actual DOM position.
+    // Duplicate-key accumulation is still impossible — dupes are healed in
+    // PASS A, and a found `existing` never builds a second div.
     // Per-render insertedKeys set — even if two buffer entries collide on
     // stableMsgId (rare: same user, same ms post-pacer-commit, same text-
     // prefix), the second occurrence is skipped so DOM stays one-per-key.
@@ -8577,13 +8585,13 @@
       const existing = existingByKey.get(key)
       if (existing) {
         existingByKey.delete(key)
-        if (cur !== existing) msgsEl.insertBefore(existing, cur || null)
         // Reused div skipped buildMessageDiv — re-queue its cosmetic so a prior
         // failed/absent lookup is retried (resolves on a later flush). Without
         // this, a frozen channel's restored buffer never re-attempts cosmetics.
         const _rm = toRender[j]
         if (_rm?.userId && !mcUserCosmetics.has(_rm.userId)) queueMcCosmeticsLookup(_rm.userId)
-        domIdx++
+        if (cur === existing) domIdx++ // aligned — consume the DOM slot
+        // else: deferred — node stays put, walk catches up to it later
         continue
       }
       // Build new msg div at correct position.

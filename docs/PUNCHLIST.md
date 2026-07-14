@@ -18,9 +18,11 @@ state: v1.7.24 published. tri-link (twitch+kick+yt on one account) e2e-verified
   a composer-rebuild race class (wysiwyg restore no-op, listener-attach gap,
   unguarded async remote insert); trusted-CDP rig verified 12/12 restores,
   0/70 fuzz eats.
-- **yt live-chat send e2e** — untested. yt channels ARE live server-side;
-  deferred because the send posts publicly under mellen's identity — run it
-  with mellen present.
+- ~~**yt live-chat send e2e**~~ — VERIFIED 07-14: composer → bg relay →
+  native yt chat delivery confirmed live (lofigirl X4V, @mellenpvp). bonus
+  fix dd935e8: restricted chats (subscribers-only etc.) now toast yt's real
+  reason instead of generic failure. still open (narrower): pure yt-only
+  persona send — needs a test account with no twitch link.
 - **opera gx cluster (wollip)** — 07-14: platform gap REFUTED (linux GX 133 +
   uBlock defaults: SW+MAIN+overlay all alive in local rig); hide-btn + restore
   pill already shipped and rig-verified. remaining = wollip-side bisect: GX

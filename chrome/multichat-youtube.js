@@ -38234,7 +38234,10 @@ function handleInputKeydown(e) {
 
   // Escape - cancel reply state and hide autocomplete
   if (e.key === 'Escape') {
-    if (replyState) clearReplyState()
+    if (replyState) {
+      clearReplyState()
+      hideInputBar() // explicit cancel — ok to re-hide an empty composer
+    }
     hideAutocomplete()
     return
   }
@@ -40656,7 +40659,10 @@ function setReplyState(state) {
   cancel.id = 'hs-mc-reply-cancel'
   cancel.textContent = '✕'
   cancel.title = t('mc_input_cancel_reply')
-  cancel.addEventListener('click', clearReplyState)
+  cancel.addEventListener('click', () => {
+    clearReplyState()
+    hideInputBar() // explicit cancel — ok to re-hide an empty composer
+  })
   indicator.appendChild(label)
   indicator.appendChild(cancel)
   bar.insertBefore(indicator, bar.firstChild)
@@ -40666,7 +40672,10 @@ function setReplyState(state) {
 function clearReplyState() {
   replyState = null
   document.getElementById('hs-mc-reply-indicator')?.remove()
-  hideInputBar()
+  // NO hideInputBar here — sendMessage clears reply state on EVERY send, and
+  // the hide nuked composer focus for auto-hide users (focus() can't reach an
+  // element inside a hidden bar). The two explicit cancel paths (✕ button,
+  // Escape) hide at their call sites instead.
 }
 
 // Get Twitch auth token from cookie

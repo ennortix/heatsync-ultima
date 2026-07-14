@@ -53,8 +53,10 @@ state: v1.7.24 published. tri-link (twitch+kick+yt on one account) e2e-verified
 - **moment detector CF exemption** — pending cloudflare rule.
 - **heat anti-abuse** — P1 badges, P2 bot-score (grid P0 shipped).
 - **ops/engagement** — W2/W3 pending (W1 deployed).
-- **strip dev probes before release** — hs-dbg-emotes (c734a78) +
-  hs-dbg-kick-tap (6da261e) are dev-only; confirm gating at release time.
+- ~~**strip dev probes before release**~~ — CONFIRMED 07-14: all hs-dbg-*
+  listeners sit behind `__HS_DEV_BUILD__` (esbuild DCE in packaged builds) and
+  build.js refuses to ship if the identifier survives minify. structural, no
+  per-release action needed.
 
 ## P3 — architecture (explicit sign-off before starting)
 

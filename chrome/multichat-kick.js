@@ -9692,31 +9692,83 @@ function injectStyles() {
     }
 
     /* ---- click-to-play chat players (feed-embed.js chat click-to-play) ---- */
+    /* chat column is tall + narrow — everything embed stays SMALL and dense.  */
     .hs-mc-media.hs-mc-playable {
       cursor: pointer;
     }
-    .hs-mc-media.hs-mc-playable .hs-feed-embed-rich-thumb,
-    .hs-mc-media.hs-mc-playable .hs-feed-embed-rich-thumb-placeholder {
+    /* rich/audio cards: slim horizontal strip — 36px art, one-line meta */
+    .hs-mc-media .hs-feed-embed-rich-card {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 2px 4px;
+      max-width: 100%;
+      min-height: 0;
+    }
+    .hs-mc-media .hs-feed-embed-rich-thumb,
+    .hs-mc-media .hs-feed-embed-rich-thumb-placeholder {
+      width: 36px;
+      height: 36px;
+      max-height: 36px;
+      object-fit: cover;
+      flex: none;
       cursor: pointer;
     }
+    .hs-mc-media .hs-feed-embed-rich-meta {
+      min-width: 0;
+      overflow: hidden;
+    }
+    .hs-mc-media .hs-feed-embed-rich-title,
+    .hs-mc-media .hs-feed-embed-rich-platform,
+    .hs-mc-media .hs-feed-embed-rich-author {
+      font-size: 13px;
+      line-height: 15px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    /* yt thumbnail card: short wide strip, not a 190px slab */
+    .hs-mc-media.hs-feed-embed-yt-thumb img {
+      max-height: 72px;
+      width: auto;
+    }
+    /* live player: compact heights per provider; × floats top-right */
     .hs-mc-media.hs-mc-media-playing {
       position: relative;
       width: 100%;
-      max-width: 480px;
+      max-width: 100%;
       cursor: default;
     }
-    .hs-mc-media.hs-mc-media-playing .hs-feed-embed-container {
+    .hs-mc-media-playing .hs-feed-embed-container {
       max-width: 100%;
     }
+    /* spotify/soundcloud players adapt to iframe size — force the compact ones */
+    .hs-mc-media-playing .hs-feed-embed-spotify {
+      height: 80px;
+    }
+    .hs-mc-media-playing .hs-feed-embed-spotify iframe {
+      height: 80px;
+    }
+    .hs-mc-media-playing .hs-feed-embed-soundcloud {
+      height: 120px;
+    }
+    /* video players keep 16:9 but stay capped in the narrow column */
+    .hs-mc-media-playing .hs-feed-embed-container:not(.hs-feed-embed-spotify):not(.hs-feed-embed-soundcloud) {
+      max-width: 320px;
+    }
     .hs-mc-player-close {
-      display: block;
-      width: 100%;
-      margin: 0 0 1px;
-      padding: 0 6px;
+      position: absolute;
+      top: 0;
+      right: 0;
+      z-index: 5;
+      width: 18px;
+      height: 18px;
+      margin: 0;
+      padding: 0;
       font: inherit;
       font-size: 13px;
       line-height: 16px;
-      text-align: right;
+      text-align: center;
       color: #fff;
       background: #000;
       border: 1px solid #808080;

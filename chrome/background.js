@@ -919,6 +919,13 @@ let lastInventoryFetch = 0 // Timestamp of last successful inventory fetch
 let inventoryRefreshTimer = null // Debounce WS-triggered inventory refreshes
 let inventoryFetchPromise = null // In-flight guard for fetchEmoteInventory
 let inventoryFetchOK = false // Last fetch succeeded — gate persist writes so transient failures don't store []
+// Consecutive auth failures (null cookie / 401 / 403) on inventory fetch.
+// The session JWT routinely crosses expiry between site visits; the site
+// rolls the cookie on the next request and cookies.onChanged refetches. A
+// single stale-token fetch in that gap must NOT strip every rendered emote
+// on every open tab — only wipe after 2 consecutive auth failures. (This
+// fix shipped 2026-06-04 and was silently dropped in a later rewrite.)
+let authConsecutiveFails = 0
 let pendingUserInfoToPersist = null // Buffered for batched init write
 let globalEmotesFetchPromise = null // In-flight guard for fetchGlobalEmotes
 
@@ -1474,9 +1481,14 @@ function fetchEmoteInventory() {
     try {
       const authToken = await getAuthCookie()
       if (!authToken) {
-        log(' No auth token for inventory fetch')
-        emoteInventory = []
+        authConsecutiveFails++
         inventoryFetchOK = false
+        if (authConsecutiveFails < 2) {
+          log(' No auth token for inventory fetch — keeping warm cache (fail 1/2)')
+          return
+        }
+        log(' No auth token for inventory fetch (consecutive) — clearing')
+        emoteInventory = []
         // Only broadcast empty once to prevent spam (every 60s poll was flooding console)
         if (!lastBroadcastWasEmpty) {
           broadcastToTabs({ type: 'inventory_update', emotes: emoteInventory })
@@ -1499,8 +1511,13 @@ function fetchEmoteInventory() {
         // otherwise a single cold-start hiccup broadcasts an empty inventory and
         // strips every rendered emote on every open Twitch/Kick tab.
         if (response.status === 401 || response.status === 403) {
-          emoteInventory = []
+          authConsecutiveFails++
           inventoryFetchOK = false
+          if (authConsecutiveFails < 2) {
+            log(' Inventory fetch ' + response.status + ' — keeping warm cache (auth fail 1/2)')
+            return
+          }
+          emoteInventory = []
           if (!lastBroadcastWasEmpty) {
             broadcastToTabs({ type: 'inventory_update', emotes: emoteInventory })
             lastBroadcastWasEmpty = true
@@ -1557,6 +1574,7 @@ function fetchEmoteInventory() {
         )
       }
       lastBroadcastWasEmpty = false // Reset - we have real emotes now
+      authConsecutiveFails = 0
       lastInventoryFetch = Date.now()
       inventoryFetchOK = true
       broadcastToTabs({ type: 'inventory_update', emotes: emoteInventory })

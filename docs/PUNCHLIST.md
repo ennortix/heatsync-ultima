@@ -43,8 +43,10 @@ state: v1.7.24 published. tri-link (twitch+kick+yt on one account) e2e-verified
   bonus: /plus now shows "plus active" + manage-first for subscribers
   (site 05e35b9d). untested (named): cancellation flow — same webhook pipe,
   stripe-side; verify whenever mellen actually cancels.
-- **archive erasure follow-ups** — non-registered self-serve erasure + capture
-  posture (policy shipped acf9ee29, these two remain).
+- **archive erasure follow-ups** — self-serve /erase SHIPPED 07-14 (fbe077ae:
+  oauth-proof without an account, prod-verified e2e). remaining: capture
+  posture (opt-out-by-default) — mellen design call, disclosure+recourse now
+  both in place.
 - ~~**landing monochrome redesign**~~ — stale entry: shipped 07-06 (a05ed639),
   prod-verified 07-14 (zero yellow; only semantic youtube-red remains).
 

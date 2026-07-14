@@ -44448,6 +44448,37 @@ document.addEventListener(
   { signal: mcSignal, capture: true },
 )
 
+// Close-button repaint-race guard — the chat-logs and profile-card views
+// full-repaint every time async data lands (fetch pages, enrich, live
+// status), replacing their × node. A real mouse click then computes its
+// target against the DETACHED old button and never reaches the direct click
+// listener — the × silently "does nothing" (worst on popout cold loads,
+// where everything is uncached and repaints stack up). Delegate on
+// pointerdown instead: its target is whatever node is live at press time,
+// so no repaint can outrun it. The direct listeners stay as backup; both
+// close fns are idempotent (null-guard) so double-fire is a no-op. The
+// paired click is swallowed once (350ms disarm) so whatever repaints in
+// under the cursor doesn't receive a stray click.
+document.addEventListener(
+  'pointerdown',
+  (e) => {
+    if (e.button !== 0) return
+    const x = e.target?.closest?.('.hs-cl-close, .hs-pcard-close')
+    if (!x) return
+    e.preventDefault()
+    e.stopPropagation()
+    const swallow = (c) => {
+      c.stopPropagation()
+      c.preventDefault()
+    }
+    document.addEventListener('click', swallow, { capture: true, once: true, signal: mcSignal })
+    cleanup.setTimeout(() => document.removeEventListener('click', swallow, { capture: true }), 350)
+    if (x.classList.contains('hs-cl-close')) closeChatLogsView()
+    else if (typeof closeProfileCard === 'function') closeProfileCard()
+  },
+  { signal: mcSignal, capture: true },
+)
+
 
 // --- multichat/paints.js ---
 // HeatSync-native name paints — batch fetch + single injected stylesheet.

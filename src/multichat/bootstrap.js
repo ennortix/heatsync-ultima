@@ -369,6 +369,23 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
     },
     { capture: true, signal: mcSignal },
   )
+  // hs-dbg-kick-tap → round-trip to BG for pusher-tap/relay routing state
+  // (subscribed chatrooms, per-slug delivery counters). Kick echo failures are
+  // silent — this makes "which source delivered what" observable.
+  document.addEventListener(
+    'hs-dbg-kick-tap',
+    () => {
+      ;(async () => {
+        try {
+          const resp = await chrome.runtime.sendMessage({ type: 'dbg_kick_tap' })
+          document.documentElement.dataset.hsDbgKickTap = JSON.stringify(resp)
+        } catch (e) {
+          document.documentElement.dataset.hsDbgKickTap = 'err:' + (e?.message || 'unknown')
+        }
+      })()
+    },
+    { capture: true, signal: mcSignal },
+  )
   document.addEventListener(
     'hs-dbg-test-token',
     () => {

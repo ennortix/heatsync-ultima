@@ -760,16 +760,55 @@ const joinedExtraChannels = new Set() // "platform/channel" keys
 // overlay-side purges ('login' is a REAL kick channel — the tap happily
 // subscribed chatroom 31705 to it). Keep the three lists in sync.
 const BG_NON_CHANNEL_PATHS = new Set([
-  'directory', 'settings', 'login', 'logout', 'signup', 'oauth', 'oauth2',
-  'activate', 'checkout', 'videos', 'moderator', 'subscriptions', 'search',
-  'help', 'about', 'jobs', 'contact', 'wallet', 'inventory', 'friends',
-  'admin', 'broadcast', 'drops', 'store', 'popout', 'embed', 'partners',
-  'turbo', 'prime', 'p', 'subs', 'turbo-faq', 'bits', 'browse', 'category',
-  'categories', 'community', 'clips', 'leaderboards', 'dashboard', 'vods',
-  'u', 'auth', 'authorize',
+  'directory',
+  'settings',
+  'login',
+  'logout',
+  'signup',
+  'oauth',
+  'oauth2',
+  'activate',
+  'checkout',
+  'videos',
+  'moderator',
+  'subscriptions',
+  'search',
+  'help',
+  'about',
+  'jobs',
+  'contact',
+  'wallet',
+  'inventory',
+  'friends',
+  'admin',
+  'broadcast',
+  'drops',
+  'store',
+  'popout',
+  'embed',
+  'partners',
+  'turbo',
+  'prime',
+  'p',
+  'subs',
+  'turbo-faq',
+  'bits',
+  'browse',
+  'category',
+  'categories',
+  'community',
+  'clips',
+  'leaderboards',
+  'dashboard',
+  'vods',
+  'u',
+  'auth',
+  'authorize',
 ])
 function isGhostChannelKey(key) {
-  const ch = String(key || '').split('/').pop()
+  const ch = String(key || '')
+    .split('/')
+    .pop()
   return !ch || BG_NON_CHANNEL_PATHS.has(ch)
 }
 

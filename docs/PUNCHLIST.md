@@ -14,6 +14,14 @@ state: v1.7.24 published. tri-link (twitch+kick+yt on one account) e2e-verified
 
 ## P0 — open verification threads (close before next release)
 
+- **NEW: multichat scroll overlap** — reported 07-14 (mellen): scrolling
+  "freaks out", messages render OVERLAYING each other. undiagnosed. suspects:
+  insert-only row diff (bde31ec) vs repaint paths, dom render cap trims,
+  embed/card height changes mid-scroll. needs live repro + diagnose session.
+- ~~**composer loses focus after send**~~ — CLOSED 07-14 (f423389 + e984a37):
+  two-layer thief — sendMessage's own hideInputBar, then clearReplyState also
+  hiding the bar (focus() can't land in a hidden bar). hide now only on
+  explicit cancel (× / escape); rig-verified with auto-hide ON.
 - ~~**tab-complete eats typed word**~~ — CLOSED 07-14 (8023281): root cause was
   a composer-rebuild race class (wysiwyg restore no-op, listener-attach gap,
   unguarded async remote insert); trusted-CDP rig verified 12/12 restores,

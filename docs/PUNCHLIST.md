@@ -45,8 +45,19 @@ state: v1.7.24 published. tri-link (twitch+kick+yt on one account) e2e-verified
   stripe-side; verify whenever mellen actually cancels.
 - **archive erasure follow-ups** — self-serve /erase SHIPPED 07-14 (fbe077ae:
   oauth-proof without an account, prod-verified e2e). remaining: capture
-  posture (opt-out-by-default) — mellen design call, disclosure+recourse now
-  both in place.
+  posture (opt-out-by-default) — mellen design call. decision brief:
+  - state: capture any channel a HS user watches; mitigations live = policy
+    §1a disclosure, /erase (no account needed), owner delist, durable ledger
+    + nightly cold scrub, 24h cache ceiling.
+  - A) keep opt-out default — max archive/SEO moat; OverRustle-class risk now
+    heavily mitigated (their fatal gap was NO recourse; ours is 1-click).
+  - B) owner opt-IN for archiving — near-zero legal surface, kills the logs
+    moat + seo loop.
+  - C) hybrid — capture all, public log pages only for channels over a size
+    threshold; long tail stays dark. complexity tax, fuzzy line.
+  - rec: A, plus a tripwire — watch /erase usage + takedown-mail rate monthly;
+    if a real streamer-community backlash forms, drop to C. revisit only on
+    signal, not fear.
 - ~~**landing monochrome redesign**~~ — stale entry: shipped 07-06 (a05ed639),
   prod-verified 07-14 (zero yellow; only semantic youtube-red remains).
 

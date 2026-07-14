@@ -42098,12 +42098,15 @@ async function sendMessage() {
   const replyParentId = replyState?.msgId || null
   clearReplyState()
 
-  // Clear input immediately
+  // Clear input immediately — and KEEP focus. Hiding the bar here (03-25 →
+  // 07-14 behavior) blurred the composer on every send, so rapid-fire chatting
+  // meant retyping into a dead cursor. Auto-hide still works: the input's blur
+  // handler hides the empty bar 200ms after the user actually clicks away.
   if (wysiwygEnabled) input.textContent = ''
   else input.value = ''
   pendingMessage = ''
   updateCharCount()
-  hideInputBar()
+  input.focus()
 
   // --- Kick send path (single, dual, or triple including YT) ---
   if (sendToKick) {

@@ -108,10 +108,10 @@ create/edit ${path} (chmod 600) with:
 `)
 }
 
-function loadCreds() {
+function loadCreds(required = REQUIRED_KEYS) {
   const path = credsPath()
   const map = parseEnvFile(path)
-  const missing = map ? REQUIRED_KEYS.filter((k) => !map[k]) : REQUIRED_KEYS
+  const missing = map ? required.filter((k) => !map[k]) : required
   if (!map || missing.length) {
     printChecklist(missing, !map)
     process.exit(1)
@@ -576,7 +576,14 @@ async function main() {
   if (opts.setCreds) return setCredsFlow()
   if (opts.cwsAuth) return cwsAuthFlow()
 
-  const creds = loadCreds()
+  // Only demand the keys for the store(s) actually being published — a
+  // chrome-only release must not block on absent AMO keys (and vice versa).
+  const requiredKeys = opts.chromeOnly
+    ? REQUIRED_KEYS.filter((k) => k.startsWith('CWS_'))
+    : opts.firefoxOnly
+      ? REQUIRED_KEYS.filter((k) => k.startsWith('AMO_'))
+      : REQUIRED_KEYS
+  const creds = loadCreds(requiredKeys)
   const willPublish = opts.publish && !opts.dryRun
   console.log(
     `mode: ${willPublish ? 'LIVE — will publish to stores' : 'dry-run — no store network calls'}` +

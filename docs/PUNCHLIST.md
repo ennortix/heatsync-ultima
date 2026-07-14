@@ -37,8 +37,12 @@ state: v1.7.24 published. tri-link (twitch+kick+yt on one account) e2e-verified
   labels/tips/placeholders + all toast strings through t(); verified live.
   deferred remainder (named): 79 section-heading strings + ~30 trivial
   single-word option captions — separate pass, low value.
-- **plus e2e payment test** — page/checkout/portal/webhook all live; nobody has
-  run a real payment through it.
+- ~~**plus e2e payment test**~~ — CLEARED 07-14 by mellen's own sub: trial
+  07-04 → paid renewal 07-08 (webhook + plus_events + expiry 08-11 all
+  db-verified), portal opens live stripe session, checkout 409s double-subs.
+  bonus: /plus now shows "plus active" + manage-first for subscribers
+  (site 05e35b9d). untested (named): cancellation flow — same webhook pipe,
+  stripe-side; verify whenever mellen actually cancels.
 - **archive erasure follow-ups** — non-registered self-serve erasure + capture
   posture (policy shipped acf9ee29, these two remain).
 - ~~**landing monochrome redesign**~~ — stale entry: shipped 07-06 (a05ed639),

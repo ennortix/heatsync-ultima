@@ -1231,8 +1231,12 @@ function initInput() {
           const ae = document.activeElement
           // Don't steal Tab from another real editable field.
           if (ae && ae !== inp && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return
-          const acOpen = acState.active || emojiAcState.active || mentionAcState.active || slashAcState.active
-          if (ae === inp && acOpen) return // let the dropdown handler cycle/select
+          // Composer already focused → its own keydown owns Tab entirely: it
+          // starts/cycles emote completion AND always preventDefaults, so Tab
+          // can never tab OUT. Deferring here is what keeps tab-complete alive —
+          // gating on an "autocomplete open" flag swallowed the FIRST Tab (which
+          // is what activates completion in the first place).
+          if (ae === inp) return
           e.preventDefault()
           e.stopImmediatePropagation()
           keepComposerOpen()

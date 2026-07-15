@@ -2553,6 +2553,34 @@ function detectEmoteSource(url, hint = null) {
   return hint || 'unknown'
 }
 
+// Oversized BTTV emotes — BTTV declares per-emote 1x height and native BTTV
+// renders taller-than-baseline emotes (NaM = 40px vs the 28px baseline) at
+// their true height. The BG stamps `os` (height/28, >1 only) on entries whose
+// fetch saw the height. Registry keyed by BTTV CDN id so copies of the same
+// emote arriving WITHOUT dimensions (heatsync-inventory adds, sender personal
+// sets) still resolve — the id in the url is the identity.
+const _hsBttvOversize = new Map() // bttv emote id → height/28 ratio (>1 only)
+function _hsBttvId(url) {
+  const m = /cdn\.betterttv\.net\/emote\/([^/]+)\//.exec(url || '')
+  return m ? m[1] : null
+}
+function _hsRegisterOversize(e) {
+  if (!(e?.os > 1)) return
+  const id = _hsBttvId(e.url)
+  if (id) _hsBttvOversize.set(id, e.os)
+}
+// Ratio for a pool entry (0 = normal). Falls back to the registry by CDN id,
+// and registers entries that carry their own os so later id-only copies hit.
+function _hsEmoteOversize(entry) {
+  if (!entry) return 0
+  if (entry.os > 1) {
+    _hsRegisterOversize(entry)
+    return entry.os
+  }
+  const id = _hsBttvId(entry.url)
+  return (id && _hsBttvOversize.get(id)) || 0
+}
+
 // Determine emote state: owned > global > unadded
 function getEmoteState(name, source) {
   if (inventoryEmotes.has(name)) return 'owned'
@@ -2594,7 +2622,8 @@ function _buildChannelEmoteCache(ch, emotes, platform) {
       continue
     const source = e.source || detectEmoteSource(e.url, '7tv')
     const state = inventoryEmotes.has(e.name) ? 'owned' : 'channel'
-    chCache.set(e.name, { url: e.url, source, state, zeroWidth: !!e.zeroWidth, _plat: platform })
+    _hsRegisterOversize(e)
+    chCache.set(e.name, { url: e.url, source, state, zeroWidth: !!e.zeroWidth, os: e.os, _plat: platform })
     if (e.hash) {
       emoteHashes.set(e.name, e.hash)
       hashToName.set(e.hash, e.name)
@@ -2720,7 +2749,8 @@ async function loadEmotes() {
         if (e.name && e.url) {
           const source = e.source || detectEmoteSource(e.url, 'heatsync')
           const state = getEmoteState(e.name, source)
-          emoteCache.set(e.name, { url: e.url, source, state, zeroWidth: !!e.zeroWidth, nsfw: !!e.nsfw })
+          _hsRegisterOversize(e)
+          emoteCache.set(e.name, { url: e.url, source, state, zeroWidth: !!e.zeroWidth, nsfw: !!e.nsfw, os: e.os })
           while (emoteCache.size > 2000) {
             emoteCache.delete(emoteCache.keys().next().value)
           }
@@ -3231,7 +3261,9 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
       const nsfwClass = cached?.nsfw ? ' hs-state-nsfw' : ''
       const _boxW = _hsEmoteBoxW.get(chatUrl)
       const wAttr = _boxW ? ` style="width:${_boxW}px"` : ''
-      const imgHtmlRaw = `<span class="hs-mc-emote-wrapper hs-state-${state}${nsfwClass}" data-emote-name="${safeName}" data-emote-url="${safeUrlAttr}" data-state="${state}" data-source="${safeProvider}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}${wAttr}><img src="${safeSrc}" alt="${safeName}" title="${titleAttr}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${safeName}" data-state="${state}" data-source="${safeProvider}"${ownerAttr} loading="lazy" decoding="async"></span>`
+      const _os = useCachedUrl ? _hsEmoteOversize(cached) : 0
+      const osAttr = _os ? ` style="--hs-os:${_os}"` : ''
+      const imgHtmlRaw = `<span class="hs-mc-emote-wrapper hs-state-${state}${nsfwClass}" data-emote-name="${safeName}" data-emote-url="${safeUrlAttr}" data-state="${state}" data-source="${safeProvider}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}${wAttr}><img src="${safeSrc}" alt="${safeName}" title="${titleAttr}" class="hs-mc-emote hs-emote-${state}"${osAttr} data-emote-name="${safeName}" data-state="${state}" data-source="${safeProvider}"${ownerAttr} loading="lazy" decoding="async"></span>`
       if (isOverlay && pendingStack) {
         const itemMods = pendingMods.slice()
         const itemHue = pendingHue
@@ -3401,7 +3433,9 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
       const nsfwClass = emote.nsfw ? ' hs-state-nsfw' : ''
       const _boxW = _hsEmoteBoxW.get(rawChatUrl)
       const wAttr = _boxW ? ` style="width:${_boxW}px"` : ''
-      const imgHtmlRaw = `<span class="hs-mc-emote-wrapper hs-state-${state}${staleClass}${nsfwClass}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}${staleAttr}${wAttr}><img src="${staticSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${displayName}" data-state="${state}" data-source="${source}"${ownerAttr} loading="lazy" decoding="async"></span>`
+      const _os = _hsEmoteOversize(emote)
+      const osAttr = _os ? ` style="--hs-os:${_os}"` : ''
+      const imgHtmlRaw = `<span class="hs-mc-emote-wrapper hs-state-${state}${staleClass}${nsfwClass}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}${staleAttr}${wAttr}><img src="${staticSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}"${osAttr} data-emote-name="${displayName}" data-state="${state}" data-source="${source}"${ownerAttr} loading="lazy" decoding="async"></span>`
 
       // Build the new item — inline-glued suffix mod attaches to THIS emote
       // (e.g. "RainTimew!" → wide RainTime, not wide whatever-was-base).

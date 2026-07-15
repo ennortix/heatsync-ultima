@@ -1,7 +1,12 @@
     .hs-mc-emote {
       width: auto;
       height: auto;
-      max-height: var(--hs-emote-size, 32px);
+      /* --hs-os = oversize ratio for BTTV emotes whose declared 1x height
+         exceeds the 28px baseline (NaM = 40/28). Raising the CLAMP (not
+         forcing a height) lets the asset draw at its true pixel size at
+         every size tier — 1x/2x/3x assets are exact multiples of the
+         baseline, so no resampling blur. Default 1 = unchanged. */
+      max-height: calc(var(--hs-emote-size, 32px) * var(--hs-os, 1));
       /* The host page (Twitch/Kick) sets a global img{max-width:100%}. When the
          wrapper carries a pinned width (wAttr from the box-width cache), that 100%
          resolves against the pinned width and a WIDE emote gets scaled down to fit

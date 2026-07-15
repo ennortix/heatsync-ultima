@@ -2313,6 +2313,14 @@ const EMOTE_CDN_PATTERN =
   /^https:\/\/(cdn\.(betterttv\.net|7tv\.app|frankerfacez\.com|heatsync\.org)|static-cdn\.jtvnw\.net|heatsync\.org|files\.kick\.com)\//
 const MAX_EMOTE_NAME_LEN = 100
 const MAX_EMOTES_PER_SOURCE = 5000
+// BTTV declares per-emote 1x width/height; most are 28px tall but some globals
+// (NaM = 38×40) are intentionally oversized and native BTTV renders them at
+// that height. Carry the height→baseline ratio so render can raise its clamp.
+// Clamped to 2× as a sanity bound against rogue API values.
+function bttvOversize(e) {
+  const h = Number(e?.height)
+  return h > 28 ? Math.min(2, +(h / 28).toFixed(3)) : undefined
+}
 function sanitizeEmote(e) {
   if (!e || typeof e.name !== 'string' || typeof e.url !== 'string') return null
   if (e.name.length > MAX_EMOTE_NAME_LEN || e.name.length === 0) return null
@@ -2349,6 +2357,7 @@ async function fetchBTTVChannelEmotes(channelName, channelId = null, platform = 
           name: e.code,
           url: `https://cdn.betterttv.net/emote/${e.id}/1x.webp`,
           source: 'bttv',
+          os: bttvOversize(e),
           hash: e.id,
         })),
       )
@@ -2381,6 +2390,7 @@ async function fetchBTTVChannelEmotes(channelName, channelId = null, platform = 
         url: `https://cdn.betterttv.net/emote/${e.id}/1x.webp`,
         source: 'bttv',
         hash: e.id,
+        os: bttvOversize(e),
       })),
     )
   } catch (error) {
@@ -3435,6 +3445,7 @@ async function fetchBTTVEmotes() {
         url: `https://cdn.betterttv.net/emote/${e.id}/1x.webp`,
         source: 'bttv',
         hash: e.id,
+        os: bttvOversize(e),
       })),
     )
   } catch (error) {
@@ -9034,6 +9045,7 @@ async function handleMessage(message, sender, sendResponse) {
                 state: 'global',
                 zeroWidth: false,
                 hash: e.id,
+                os: bttvOversize(e),
               }
             }
           }

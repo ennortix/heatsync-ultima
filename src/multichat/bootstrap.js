@@ -578,6 +578,20 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
           }
         }
         out.emoteFirstLoad = typeof _emoteFirstLoad !== 'undefined' ? [..._emoteFirstLoad] : null
+        out.dbgV = 3
+        // renderProbe: run the probe name through the REAL chat render pipeline
+        // and return the emitted html — proves what a live message would paint
+        // without waiting for one to arrive.
+        if (e?.detail?.renderProbe && typeof processEmotes === 'function') {
+          out.renderHtml = processEmotes(
+            String(e.detail.renderProbe),
+            (e.detail.ch || '').toLowerCase(),
+            null,
+            null,
+            Date.now(),
+            true,
+          )
+        }
         // probe: resolve a single name through the real lookup chains — proves
         // the active tab actually sees a channel emote, not just that a pool
         // exists under some key.
@@ -596,6 +610,14 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
               typeof recentRemoteCompletions !== 'undefined' ? recentRemoteCompletions.has(probe) : null,
             inventoryHas: typeof inventoryEmotes !== 'undefined' ? inventoryEmotes.has(probe) : null,
           }
+        }
+        // async tail: raw storage row for the probed name — distinguishes
+        // "BG persisted stale data" from "content ingestion dropped a field"
+        if (probe && chrome?.storage?.local) {
+          chrome.storage.local.get('global_emotes').then((st) => {
+            out.storageRow = (st.global_emotes || []).find((e) => e.name === probe) || null
+            document.documentElement.dataset.hsDbgEmotes = JSON.stringify(out)
+          })
         }
         document.documentElement.dataset.hsDbgEmotes = JSON.stringify(out)
       } catch (err) {

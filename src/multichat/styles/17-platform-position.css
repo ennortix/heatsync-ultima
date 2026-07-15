@@ -1408,6 +1408,18 @@
       left: 50% !important;
       transform: translateX(-50%) !important;
     }
+    /* YT miniplayer: fixed bottom-right at inline right/bottom:16px, z~2030 —
+       fully buried under a right/bottom-docked panel (z 9999), unwatchable
+       and unclickable. Clear the dock: shift left of a right dock, above a
+       bottom dock. Bare element selector (no [active]/visible-class gate —
+       those churned in the 2026 refresh); shifting a hidden miniplayer is
+       free. !important beats the inline style. */
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-miniplayer {
+      right: calc(var(--hs-chat-w, 340px) + 12px) !important;
+    }
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-miniplayer {
+      bottom: calc(var(--hs-chat-h, 35vh) + 12px) !important;
+    }
     /* YouTube theatre: ytd-watch-flexy[theater] makes the player full-row.
        The #full-bleed-container is what owns the player. Inset it.
        Live-only — VOD theatre keeps native YT layout. */

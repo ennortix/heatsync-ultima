@@ -47,7 +47,13 @@
   // popout prepaint would be a permanent black screen over the native chat.
   const isPopout =
     (platform === 'twitch' && /^\/(popout|embed)\/[a-zA-Z0-9_]+\/chat/.test(location.pathname)) ||
-    (platform === 'yt' && location.pathname.startsWith('/live_chat') && !location.hash.includes('hs-bridge'))
+    // /live_chat only — NOT /live_chat_replay (yt's native VOD-chat popout;
+    // the panel never takes it over, so a full-window prepaint there is a
+    // pure black flash on top of the replay)
+    (platform === 'yt' &&
+      location.pathname.startsWith('/live_chat') &&
+      !location.pathname.startsWith('/live_chat_replay') &&
+      !location.hash.includes('hs-bridge'))
 
   // Only prepaint where chat will actually mount — otherwise the black bar
   // shows for up to 4s on home/directory/browse/search/shorts/etc. while the
@@ -215,8 +221,12 @@ ${
     // checkYtLive re-toggles both from real signals, and dispatches a
     // synthetic resize on any later flip.
     if (platform === 'yt' && !isPopout) {
-      if (ytNonLive) body.classList.add('hs-yt-nonlive-chat')
-      else body.classList.add('hs-offline')
+      // live_chat_replay = yt's own VOD-chat popout, never panel territory
+      if (ytNonLive && !location.pathname.startsWith('/live_chat_replay')) {
+        body.classList.add('hs-yt-nonlive-chat')
+      } else {
+        body.classList.add('hs-offline')
+      }
     }
     // Twitch: pre-arm the native-chat takeover before Twitch mounts chat, so
     // the history backlog never renders into the hidden column (it was the

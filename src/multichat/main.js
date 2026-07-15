@@ -360,6 +360,10 @@
   // NOT /live_chat_replay — that's yt's native VOD-chat popout; taking it over
   // would hide the replay chat behind a live overlay with nothing to show.
   const isYtPopout = hostPlatform === 'yt' && /^\/live_chat(?!_replay)/.test(location.pathname)
+  // yt's native VOD-chat popout — never surface the panel there, even with
+  // chat-on-all-pages on: the page IS a chat surface, the panel would dock
+  // over the replay it exists to show.
+  const isYtReplayPopout = hostPlatform === 'yt' && /^\/live_chat_replay/.test(location.pathname)
 
   // Whether the user has chosen to show native platform chat alongside HS.
   // Persisted via settings registry (key: nativeVisible). Default false = same
@@ -11579,16 +11583,23 @@
         const liveChatFramePresent = !!frameEl && !isReplayChat
         const ytAutoLiveMsgs = _ytFlowing
         const showYtChat =
-          isYtPopout ||
-          liveChatFramePresent ||
-          ytAutoLiveMsgs > 0 ||
-          document.body.classList.contains('hs-yt-nonlive-chat')
-        document.body.classList.toggle('hs-offline', !showYtChat)
+          !isYtReplayPopout &&
+          (isYtPopout ||
+            liveChatFramePresent ||
+            ytAutoLiveMsgs > 0 ||
+            document.body.classList.contains('hs-yt-nonlive-chat'))
         // YT sizes its grids/columns from a width measured once per resize —
         // the panel's reserve appearing/vanishing without one strands a
         // squeezed layout (3-col home grid + dead column where the panel
         // was). Nudge a re-measure whenever panel visibility actually flips.
-        if (_hsPrevShowYtChat !== null && _hsPrevShowYtChat !== showYtChat) {
+        // First run compares against the early-layout BOOT stamp (the state
+        // YT first measured under), so a stale localStorage mirror still
+        // gets its correction resize.
+        if (_hsPrevShowYtChat === null) {
+          _hsPrevShowYtChat = !document.body.classList.contains('hs-offline')
+        }
+        document.body.classList.toggle('hs-offline', !showYtChat)
+        if (_hsPrevShowYtChat !== showYtChat) {
           try {
             window.dispatchEvent(new Event('resize'))
           } catch (_) {}
@@ -11874,8 +11885,14 @@
     // on first paint for VOD viewers. checkYtLive() removes the class once
     // it detects a live chatframe; if it's actually a livestream, native
     // YT live chat is shown briefly until our override kicks in.
-    // …except a /live_chat pop-out, which IS the live chat — never pre-hide it.
-    if (hostPlatform === 'yt' && !isYtPopout) document.body.classList.add('hs-offline')
+    // …except a /live_chat pop-out, which IS the live chat — never pre-hide it,
+    // and except chat-on-all-pages installs (early-layout stamped
+    // hs-yt-nonlive-chat at document_start) — pre-hiding there would undo the
+    // boot state YT already measured its layout under, for checkYtLive to
+    // flip it right back ~250ms later.
+    if (hostPlatform === 'yt' && !isYtPopout && !document.body.classList.contains('hs-yt-nonlive-chat')) {
+      document.body.classList.add('hs-offline')
+    }
     detectOfflineState()
     if (isPopout) document.body.classList.add('hs-popout')
     currentUsername = getCurrentUsername()

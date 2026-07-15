@@ -1219,6 +1219,27 @@ function initInput() {
     document.addEventListener(
       'keydown',
       (e) => {
+        // Tab jumps focus straight into the composer from anywhere on the page
+        // (revealing it if auto-hidden) — keyboard-first, no mouse needed to
+        // start typing. When the composer already has focus: an OPEN
+        // autocomplete/dropdown keeps Tab (cycle/select); otherwise we swallow
+        // it so Tab never tabs the composer OUT into the host page.
+        if (e.key === 'Tab' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
+          if (currentTab === 'add' || currentTab === 'settings') return
+          const inp = document.getElementById('hs-mc-input')
+          if (!inp) return
+          const ae = document.activeElement
+          // Don't steal Tab from another real editable field.
+          if (ae && ae !== inp && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return
+          const acOpen = acState.active || emojiAcState.active || mentionAcState.active || slashAcState.active
+          if (ae === inp && acOpen) return // let the dropdown handler cycle/select
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          keepComposerOpen()
+          showInputBar()
+          inp.focus()
+          return
+        }
         if (inputBarVisible) return
         if (currentTab === 'add' || currentTab === 'settings') return
         const input = document.getElementById('hs-mc-input')
@@ -6532,20 +6553,25 @@ async function sendMessage() {
   updateCharCount()
   keepComposerOpen()
   input.focus()
-  // Re-assert focus once the current task + echo render drain, but only if
-  // focus was lost to nothing (body) — never yank it back from a real control
-  // (emote picker, reply, another field) the user moved to on purpose.
-  setTimeout(() => {
+  // Re-assert focus across the async echo/render churn that can blur the
+  // now-empty composer (host-page focus grabs, own-echo DOM rebuild). A send
+  // means "keep typing here", so retry over several ticks — microtask, next
+  // frame, and two short timeouts — to catch a blur that lands after the first
+  // attempt. Back off ONLY if the user has since focused another editable field
+  // or opened the emote picker on purpose (never yank focus from those).
+  const _refocusAfterSend = () => {
     const live = document.getElementById('hs-mc-input')
+    if (!live || document.activeElement === live) return
     const ae = document.activeElement
-    if (
-      live &&
-      (!ae || ae === document.body) &&
-      !document.getElementById('hs-mc-inputbar')?.classList.contains('hs-hidden')
-    ) {
-      live.focus()
-    }
-  }, 0)
+    if (ae && ae !== live && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return
+    if (document.getElementById('hs-mc-inputbar')?.classList.contains('hs-hidden')) return
+    if (document.getElementById('hs-mc-emote-picker')?.classList.contains('visible')) return
+    live.focus()
+  }
+  queueMicrotask(_refocusAfterSend)
+  requestAnimationFrame(_refocusAfterSend)
+  cleanup.setTimeout(_refocusAfterSend, 100)
+  cleanup.setTimeout(_refocusAfterSend, 250)
 
   // --- Kick send path (single, dual, or triple including YT) ---
   if (sendToKick) {

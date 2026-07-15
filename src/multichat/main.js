@@ -2813,12 +2813,22 @@
   // Input bar auto-hide — hidden when empty, shown on first keystroke
   let autoHideInput = false
   let inputBarVisible = true
+  // Rapid-fire guard: sendMessage clears the composer (→ empty), so any blur
+  // during the async echo/send would otherwise let the empty-bar auto-hide
+  // collapse it to display:none — which blurs the focused input and kills the
+  // "type, Enter, type, Enter" flow. keepComposerOpen() suppresses auto-hide
+  // for a short window after an explicit send; every auto-hide path funnels
+  // through canAutoHideInput(), so this one gate covers all of them.
+  let _keepComposerOpenUntil = 0
+  function keepComposerOpen(ms) {
+    _keepComposerOpenUntil = performance.now() + (ms || 500)
+  }
   // …except in the /live_chat pop-out — a blurred composer there sends f/t/etc.
   // to the host page's find-as-you-type or a link-hint extension instead of chat.
   // Works WITH vi mode: input-vi only acts while the composer is focused (and
   // types the first printable key into an empty composer even in normal mode),
   // so a hidden composer never eats keys — the type-to-reveal handler wins.
-  const canAutoHideInput = () => autoHideInput && !isYtPopout
+  const canAutoHideInput = () => autoHideInput && !isYtPopout && performance.now() >= _keepComposerOpenUntil
 
   // First-time chatter highlight — orange edge on first message from a user this session (default on)
   let firstChatterGlow = true

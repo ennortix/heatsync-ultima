@@ -6520,11 +6520,32 @@ async function sendMessage() {
   // 07-14 behavior) blurred the composer on every send, so rapid-fire chatting
   // meant retyping into a dead cursor. Auto-hide still works: the input's blur
   // handler hides the empty bar 200ms after the user actually clicks away.
+  //
+  // The composer is now empty, so a transient blur during the async echo/send
+  // (host-page focus churn, own-echo render) could arm the empty-bar auto-hide
+  // and collapse it to display:none — silently blurring this input. keepComposerOpen()
+  // suppresses auto-hide for the rapid-fire window; the deferred re-focus below
+  // survives any blur that lands AFTER this synchronous focus() call.
   if (wysiwygEnabled) input.textContent = ''
   else input.value = ''
   pendingMessage = ''
   updateCharCount()
+  keepComposerOpen()
   input.focus()
+  // Re-assert focus once the current task + echo render drain, but only if
+  // focus was lost to nothing (body) — never yank it back from a real control
+  // (emote picker, reply, another field) the user moved to on purpose.
+  setTimeout(() => {
+    const live = document.getElementById('hs-mc-input')
+    const ae = document.activeElement
+    if (
+      live &&
+      (!ae || ae === document.body) &&
+      !document.getElementById('hs-mc-inputbar')?.classList.contains('hs-hidden')
+    ) {
+      live.focus()
+    }
+  }, 0)
 
   // --- Kick send path (single, dual, or triple including YT) ---
   if (sendToKick) {

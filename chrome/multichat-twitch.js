@@ -42183,11 +42183,32 @@ async function sendMessage() {
   // 07-14 behavior) blurred the composer on every send, so rapid-fire chatting
   // meant retyping into a dead cursor. Auto-hide still works: the input's blur
   // handler hides the empty bar 200ms after the user actually clicks away.
+  //
+  // The composer is now empty, so a transient blur during the async echo/send
+  // (host-page focus churn, own-echo render) could arm the empty-bar auto-hide
+  // and collapse it to display:none — silently blurring this input. keepComposerOpen()
+  // suppresses auto-hide for the rapid-fire window; the deferred re-focus below
+  // survives any blur that lands AFTER this synchronous focus() call.
   if (wysiwygEnabled) input.textContent = ''
   else input.value = ''
   pendingMessage = ''
   updateCharCount()
+  keepComposerOpen()
   input.focus()
+  // Re-assert focus once the current task + echo render drain, but only if
+  // focus was lost to nothing (body) — never yank it back from a real control
+  // (emote picker, reply, another field) the user moved to on purpose.
+  setTimeout(() => {
+    const live = document.getElementById('hs-mc-input')
+    const ae = document.activeElement
+    if (
+      live &&
+      (!ae || ae === document.body) &&
+      !document.getElementById('hs-mc-inputbar')?.classList.contains('hs-hidden')
+    ) {
+      live.focus()
+    }
+  }, 0)
 
   // --- Kick send path (single, dual, or triple including YT) ---
   if (sendToKick) {
@@ -54146,12 +54167,22 @@ const STORAGE_KEY = 'heatsync_multichat'
   // Input bar auto-hide — hidden when empty, shown on first keystroke
   let autoHideInput = false
   let inputBarVisible = true
+  // Rapid-fire guard: sendMessage clears the composer (→ empty), so any blur
+  // during the async echo/send would otherwise let the empty-bar auto-hide
+  // collapse it to display:none — which blurs the focused input and kills the
+  // "type, Enter, type, Enter" flow. keepComposerOpen() suppresses auto-hide
+  // for a short window after an explicit send; every auto-hide path funnels
+  // through canAutoHideInput(), so this one gate covers all of them.
+  let _keepComposerOpenUntil = 0
+  function keepComposerOpen(ms) {
+    _keepComposerOpenUntil = performance.now() + (ms || 500)
+  }
   // …except in the /live_chat pop-out — a blurred composer there sends f/t/etc.
   // to the host page's find-as-you-type or a link-hint extension instead of chat.
   // Works WITH vi mode: input-vi only acts while the composer is focused (and
   // types the first printable key into an empty composer even in normal mode),
   // so a hidden composer never eats keys — the type-to-reveal handler wins.
-  const canAutoHideInput = () => autoHideInput && !isYtPopout
+  const canAutoHideInput = () => autoHideInput && !isYtPopout && performance.now() >= _keepComposerOpenUntil
 
   // First-time chatter highlight — orange edge on first message from a user this session (default on)
   let firstChatterGlow = true

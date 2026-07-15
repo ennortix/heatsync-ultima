@@ -39,6 +39,9 @@
   const chatPosition = readLS('chatPosition', 'right')
   const chatWidth = parseInt(readLS('chatWidth', '340'), 10) || 340
   const chatHeight = parseInt(readLS('chatHeight', ''), 10) || null
+  // YT chat-on-all-pages (ytChatOnNonLive, default ON). String() — readLS
+  // JSON-parses, so '1' comes back as the number 1.
+  const ytNonLive = platform === 'yt' && String(readLS('ytNonLiveChat', '1')) === '1'
 
   // #hs-bridge = BG send-bridge tab: the multichat never boots there, so a
   // popout prepaint would be a permanent black screen over the native chat.
@@ -107,11 +110,12 @@
       // overlay fills edge-to-edge. Prepaint it (full-window black, below) so
       // there's no flash of native YT chat before our overlay mounts.
       if (isPopout) return true
-      // No prepaint on watch/VOD: at document_start we can't tell a livestream
-      // from a VOD (the live_chat iframe loads later), and the panel defaults to
-      // hidden on non-live pages — prepainting a black bar there would flash for
-      // ~4s on every VOD. The overlay docks into #secondary post-mount.
-      return false
+      // Chat-on-all-pages (ytChatOnNonLive, default ON, mirrored by its apply
+      // fn): the panel mounts on every YT page, so prepaint every page.
+      // Opted out ('0'): panel only appears on confirmed livestreams, which
+      // can't be told from a VOD at document_start — no prepaint, the overlay
+      // docks into #secondary post-mount like before.
+      return ytNonLive
     }
     return false
   }
@@ -201,6 +205,19 @@ ${
     body.classList.add('hs-tabs-' + tabPosition)
     body.classList.add('hs-chat-' + chatPosition)
     if (isPopout) body.classList.add('hs-popout')
+    // YT boot state must be RIGHT from the first frame: the layout CSS
+    // reserves the panel column via :not(.hs-offline), and YT measures its
+    // grid exactly once per resize — booting in the wrong state and flipping
+    // after checkYtLive runs strands a squeezed grid with a dead column
+    // (live-reported: 3-col home grid on a 1920px window). Panel-on-all-pages
+    // users get the reserve + nonlive class now; opted-out users get
+    // hs-offline now (no reserve anywhere until a livestream is confirmed).
+    // checkYtLive re-toggles both from real signals, and dispatches a
+    // synthetic resize on any later flip.
+    if (platform === 'yt' && !isPopout) {
+      if (ytNonLive) body.classList.add('hs-yt-nonlive-chat')
+      else body.classList.add('hs-offline')
+    }
     // Twitch: pre-arm the native-chat takeover before Twitch mounts chat, so
     // the history backlog never renders into the hidden column (it was the
     // last untrimmed native DOM left after the takeover shipped). Consent is

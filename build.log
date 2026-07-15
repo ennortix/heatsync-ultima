@@ -1,0 +1,1383 @@
+Building heatsync extension...
+
+Pre-build checks:
+  Version sync: 1.7.24 ✓
+  Manifest parity: 10 host perms, 16 content_script entries ✓
+  Scope collisions: none (allowlist: log, cleanup) ✓
+  Error reporter parity: scrub patterns match ✓
+  UI-sync parity: blocklist + estimateSettingSize/sanitizeUiSettings match ✓
+  user-key parity: user-key.js ⇄ background.js ⇄ content.js match ✓
+  EscapeHtml coverage: all 3 copies escape all 5 chars ✓
+  Zero runtime dependencies ✓
+  No eval()/new Function() ✓
+  Running tests...
+bun test v1.3.14-canary.1 (0d9b296a)
+
+tests/auth-state-nonce.test.js:
+(pass) set_auth_token state-nonce enforcement > the set_auth_token handler exists [0.53ms]
+(pass) set_auth_token state-nonce enforcement > it consumes and compares the stored login nonce [0.07ms]
+(pass) set_auth_token state-nonce enforcement > rejects a MISSING or mismatched state (no message.state-present short-circuit) [0.04ms]
+
+tests/automod.test.js:
+(pass) guard: bare nested quantifier (a+)+ flagged [0.14ms]
+(pass) guard: brace-quantified nested quantifier (a+){30} flagged [0.02ms]
+(pass) guard: brace-quantified nested quantifier (a+){2,} flagged
+(pass) guard: alternation blowup (a|a)+ flagged [0.02ms]
+(pass) guard: alternation with brace (a|a){20} flagged [0.03ms]
+(pass) guard: source length > 512 flagged [0.02ms]
+(pass) guard: safe literal pattern not flagged [0.01ms]
+(pass) guard: safe grouped pattern without inner quantifier not flagged
+(pass) shouldAutomod: completes quickly on long input with backtracking pattern [0.36ms]
+(pass) shouldAutomod: matches on short text still works after cap change [0.04ms]
+(pass) backstop: flags a known catastrophic regex [456.26ms]
+(pass) backstop: passes a safe regex [0.10ms]
+(pass) backstop: catches a catastrophic pattern that slips the static heuristic [517.90ms]
+[heatsync] automod pattern degraded to literal match (catastrophic-backtracking guard)
+(pass) backstop: compileAutomod degrades a heuristic-evading pattern to literal [517.31ms]
+
+tests/background-helpers.test.js:
+(pass) chKey (composite channelEmotesMap key) > joins platform + lowercased channel with / [0.03ms]
+(pass) chKey (composite channelEmotesMap key) > defaults platform to "twitch" when falsy [0.02ms]
+(pass) chKey (composite channelEmotesMap key) > defaults channel to empty string when falsy
+(pass) chKey (composite channelEmotesMap key) > kick platform is preserved (not defaulted away)
+(pass) splitChKey (inverse of chKey) > splits platform/channel on the first slash [0.04ms]
+(pass) splitChKey (inverse of chKey) > round-trips through chKey for every platform [0.05ms]
+(pass) splitChKey (inverse of chKey) > a channel name that itself contains a slash only splits on the FIRST slash [0.01ms]
+(pass) splitChKey (inverse of chKey) > no slash at all defaults to twitch with the whole string as channel
+(pass) splitChKey (inverse of chKey) > non-string input is coerced to string first
+(pass) absUrl (relative → absolute emote URL) > relative path is prefixed with API_URL [0.02ms]
+(pass) absUrl (relative → absolute emote URL) > already-absolute URL passes through unchanged
+(pass) absUrl (relative → absolute emote URL) > falsy input passes through unchanged (no crash on null/empty) [0.02ms]
+(pass) sanitizeEmote (validates 3rd-party API emote objects before caching) > valid emote from an allowlisted CDN passes through unchanged [0.06ms]
+(pass) sanitizeEmote (validates 3rd-party API emote objects before caching) > every allowlisted CDN host is accepted [0.04ms]
+(pass) sanitizeEmote (validates 3rd-party API emote objects before caching) > rejects a non-allowlisted host (e.g. an attacker-controlled CDN) [0.01ms]
+(pass) sanitizeEmote (validates 3rd-party API emote objects before caching) > rejects a host that merely CONTAINS an allowlisted substring (e.g. jtvnw.net.evil.com)
+(pass) sanitizeEmote (validates 3rd-party API emote objects before caching) > rejects non-https (protocol-relative or http downgrade) [0.01ms]
+(pass) sanitizeEmote (validates 3rd-party API emote objects before caching) > rejects javascript: URLs outright (not an allowlisted host)
+(pass) sanitizeEmote (validates 3rd-party API emote objects before caching) > rejects missing/non-string name or url [0.02ms]
+(pass) sanitizeEmote (validates 3rd-party API emote objects before caching) > rejects empty name
+(pass) sanitizeEmote (validates 3rd-party API emote objects before caching) > rejects name longer than 100 chars [0.01ms]
+(pass) sanitizeEmote (validates 3rd-party API emote objects before caching) > accepts name exactly 100 chars (boundary) [0.01ms]
+(pass) sanitizeEmoteList > filters out invalid entries, keeps valid ones [0.03ms]
+(pass) sanitizeEmoteList > caps to MAX_EMOTES_PER_SOURCE (5000) — DoS guard on a malicious/buggy API response [1.39ms]
+(pass) sanitizeEmoteList > empty list → empty list [0.03ms]
+(pass) bgIrcParseLine — reply-parent-user-id threading (background.js live IRC path) > reply-parent tags build a replyTo object including userId [0.48ms]
+(pass) bgIrcParseLine — reply-parent-user-id threading (background.js live IRC path) > no reply-parent-user-id tag → replyTo.userId is empty string, never undefined [0.03ms]
+(pass) bgIrcParseLine — reply-parent-user-id threading (background.js live IRC path) > no reply tags at all → replyTo is null [0.02ms]
+(pass) splitIncomingUiState > ordinary sync-scope keys go to `sync` [0.15ms]
+(pass) splitIncomingUiState > keywordHighlights/chatFilterRules go to `overflow` under their mirror key names [0.05ms]
+(pass) splitIncomingUiState > platformFilters (device-local) is dropped entirely — not in sync or overflow [0.02ms]
+(pass) splitIncomingUiState > oversized large-key value is dropped, not adopted [0.03ms]
+(pass) splitIncomingUiState > value exactly at the 32768 cap is kept [0.04ms]
+(pass) splitIncomingUiState > non-string large-key values are dropped — overflow bucket is string-only [0.02ms]
+(pass) splitIncomingUiState > numeric/boolean large-key values are dropped too [0.01ms]
+(pass) splitIncomingUiState > non-object input returns empty sync/overflow (no throw) [0.02ms]
+(pass) splitIncomingUiState > sync half is still sanitized (prototype pollution / numeric keys stripped) [0.03ms]
+(pass) bgIrcRecordToExt — reply-parent-user-id threading (server EventSub-relay path) > rec.replyTo.userId is carried through to ext.replyTo.userId [0.18ms]
+(pass) bgIrcRecordToExt — reply-parent-user-id threading (server EventSub-relay path) > rec.replyTo with no userId field → ext.replyTo.userId is empty string [0.03ms]
+(pass) bgIrcRecordToExt — reply-parent-user-id threading (server EventSub-relay path) > no rec.replyTo → ext.replyTo is null [0.01ms]
+(pass) fetchFFZChannelEmotes — YouTube identities never hit the FFZ room API > UC… channel id is skipped without a fetch [0.37ms]
+(pass) fetchFFZChannelEmotes — YouTube identities never hit the FFZ room API > @handle is skipped without a fetch [0.06ms]
+(pass) fetchFFZChannelEmotes — YouTube identities never hit the FFZ room API > hyphenated 11-char videoId is skipped without a fetch [0.05ms]
+(pass) fetchFFZChannelEmotes — YouTube identities never hit the FFZ room API > login-shaped key in ytChannelIdCache STILL fetches — linked twitch channels resolve their yt id under the bare login, and gating on the cache killed FFZ for every linked channel [0.10ms]
+(pass) fetchFFZChannelEmotes — YouTube identities never hit the FFZ room API > 11-char twitch login (kripparrian shape) still fetches — NOT shape-blocked [0.07ms]
+(pass) fetchFFZChannelEmotes — room 404 negative cache > 404 is fetched once, then served from the negative cache [0.07ms]
+(pass) fetchFFZChannelEmotes — room 404 negative cache > negative cache entry expires after FFZ_ROOM_404_TTL [0.06ms]
+(pass) fetchFFZChannelEmotes — room 404 negative cache > a later 200 clears the expired negative entry [0.09ms]
+(pass) fetchFFZChannelEmotes — room 404 negative cache > transient 5xx returns null and is NOT negative-cached [0.07ms]
+(pass) fetchFFZChannelEmotes — room 404 negative cache > mixed-case login is normalized — one cache entry, one fetch [0.05ms]
+(pass) fetchFFZChannelEmotes — success path still parses sets > emoticons map to name/url/source/hash, modifiers skipped [0.08ms]
+
+tests/badge-not-lazy.test.js:
+(pass) badge imgs are never lazy > twitch-api.js badge img strings drop loading="lazy" [0.40ms]
+(pass) badge imgs are never lazy > main.js badge img string drops loading="lazy" [0.93ms]
+(pass) badge imgs are never lazy > the retro-paint createElement badge imgs are not set lazy [0.05ms]
+(pass) badge imgs are never lazy > emotes still keep lazy (untouched) [0.14ms]
+(pass) badgeBgStyle — semantic bg fallback > native mod badge gets green bg (no padding), so history is never blank [0.03ms]
+(pass) badgeBgStyle — semantic bg fallback > FFZ mod badge keeps the padded chip (square — no border-radius)
+(pass) badgeBgStyle — semantic bg fallback > unknown/third-party badge type gets no bg
+(pass) badgeBgStyle — semantic bg fallback > both render paths route through badgeBgStyle [0.05ms]
+
+tests/badge-refresh-race.test.js:
+(pass) resolveBadgeImageUrl — badge fallback selection, loaded vs unloaded state > unloaded state (the initial backfill race): no maps populated yet → null (renderer falls back to TEXT chip) [0.18ms]
+(pass) resolveBadgeImageUrl — badge fallback selection, loaded vs unloaded state > loaded state, global-only: no channel-specific override yet, global "/1" star resolves [0.03ms]
+(pass) resolveBadgeImageUrl — badge fallback selection, loaded vs unloaded state > loaded state, channel-specific exact match wins over the global fallback [0.02ms]
+(pass) resolveBadgeImageUrl — badge fallback selection, loaded vs unloaded state > channel-specific nearest-tier sub badge: exact 5mo missing, channel only defines 0/3/6 → picks 3 [0.04ms]
+(pass) resolveBadgeImageUrl — badge fallback selection, loaded vs unloaded state > nearest-tier never crosses a sub tier boundary (2xxx vs 3xxx) [0.03ms]
+(pass) resolveBadgeImageUrl — badge fallback selection, loaded vs unloaded state > global exact match used when there is no channel entry at all [0.02ms]
+(pass) resolveBadgeImageUrl — badge fallback selection, loaded vs unloaded state > Kick: unloaded → null (never falls through to a Twitch URL, even if one exists for the same name/version) [0.05ms]
+(pass) resolveBadgeImageUrl — badge fallback selection, loaded vs unloaded state > Kick: loaded, exact month match [0.02ms]
+(pass) resolveBadgeImageUrl — badge fallback selection, loaded vs unloaded state > Kick: loaded, nearest-lower month when the exact month is missing [0.03ms]
+(pass) resolveBadgeImageUrl — badge fallback selection, loaded vs unloaded state > Kick: no channel given → null (never a bare-global Kick lookup) [0.02ms]
+(pass) badge refresh mechanism — structural invariants > fetchKickChannelBadges patches already-rendered rows on resolve (the exact gap that caused the bug) [0.04ms]
+(pass) badge refresh mechanism — structural invariants > renderBadges and the shared resolver stay in sync: renderBadges delegates to resolveBadgeImageUrl rather than re-implementing the priority chain [0.03ms]
+(pass) badge refresh mechanism — cosmetics.js in-place patch covers cached (inactive) tabs too > updateNativeBadgesInPlace patches the live DOM AND every _tabCache fragment, not just the active tab [0.02ms]
+(pass) badge refresh mechanism — cosmetics.js in-place patch covers cached (inactive) tabs too > _patchBadgesInRoot and cosmetics.js also delegate to the shared resolveBadgeImageUrl (no duplicated priority chain left behind) [0.02ms]
+
+tests/browser-api.test.js:
+(pass) browser-api: exports > default export is an object [0.02ms]
+(pass) browser-api: exports > named api export equals default export
+(pass) browser-api: exports > api has storage, runtime, tabs, platform, isContextValid, raw keys [0.02ms]
+(pass) browser-api: exports > all named function exports are functions [0.02ms]
+(pass) browser-api: platform > platform has isFirefox boolean
+(pass) browser-api: platform > platform has isChrome boolean
+(pass) browser-api: platform > platform has name string [0.01ms]
+(pass) browser-api: platform > platform has manifestVersion number
+(pass) browser-api: platform > isFirefox and isChrome are mutually exclusive
+(pass) browser-api: platform > platform.name matches the detected browser
+(pass) browser-api: platform > Firefox gets MV2, Chrome/default gets MV3
+(pass) browser-api: null-API graceful handling (Bun env = no chrome/browser) > isContextValid returns false [0.02ms]
+(pass) browser-api: null-API graceful handling (Bun env = no chrome/browser) > storage.local.get returns {} without throwing [0.04ms]
+(pass) browser-api: null-API graceful handling (Bun env = no chrome/browser) > missing storage API stays quiet when no runtime exists (not ctx-death) [0.11ms]
+(pass) browser-api: null-API graceful handling (Bun env = no chrome/browser) > storage.local.get with array key returns {} [0.04ms]
+(pass) browser-api: null-API graceful handling (Bun env = no chrome/browser) > storage.local.set returns undefined without throwing [0.03ms]
+(pass) browser-api: null-API graceful handling (Bun env = no chrome/browser) > storage.local.remove does not throw [0.04ms]
+(pass) browser-api: null-API graceful handling (Bun env = no chrome/browser) > storage.local.clear does not throw [0.04ms]
+(pass) browser-api: null-API graceful handling (Bun env = no chrome/browser) > storage.sync.get returns {} without throwing [0.04ms]
+(pass) browser-api: null-API graceful handling (Bun env = no chrome/browser) > storage.sync.set returns undefined without throwing [0.04ms]
+[heatsync] Runtime API not available
+(pass) browser-api: null-API graceful handling (Bun env = no chrome/browser) > runtime.sendMessage returns null without throwing [0.15ms]
+(pass) browser-api: null-API graceful handling (Bun env = no chrome/browser) > runtime.getURL returns path unchanged when no rawApi [0.02ms]
+(pass) browser-api: null-API graceful handling (Bun env = no chrome/browser) > runtime.id fallback is "heatsync-extension" [0.02ms]
+(pass) browser-api: null-API graceful handling (Bun env = no chrome/browser) > runtime.lastError is undefined/null when no rawApi [0.01ms]
+(pass) browser-api: null-API graceful handling (Bun env = no chrome/browser) > tabs.query returns [] without throwing [0.06ms]
+(pass) browser-api: null-API graceful handling (Bun env = no chrome/browser) > tabs.sendMessage returns null without throwing [0.08ms]
+(pass) browser-api: null-API graceful handling (Bun env = no chrome/browser) > tabs.create returns null without throwing [0.05ms]
+(pass) browser-api: event listener no-ops > storage.onChanged.addListener does not throw [0.03ms]
+(pass) browser-api: event listener no-ops > storage.onChanged.removeListener does not throw [0.02ms]
+(pass) browser-api: event listener no-ops > runtime.onMessage.addListener does not throw [0.02ms]
+(pass) browser-api: event listener no-ops > runtime.onMessage.removeListener does not throw [0.02ms]
+(pass) browser-api: t() pure behavior > t() returns key for unknown key (no rawApi, no override) [0.03ms]
+(pass) browser-api: t() pure behavior > t() returns empty string for empty string key
+(pass) browser-api: t() pure behavior > t() returns empty string for null key
+(pass) browser-api: t() pure behavior > t() returns empty string for undefined key
+(pass) browser-api: t() pure behavior > t() returns key for @@ prefix when no rawApi [0.01ms]
+(pass) browser-api: t() pure behavior > getI18nLocale returns empty string by default [0.01ms]
+(pass) browser-api: t() pure behavior > bidiDir returns "ltr" when no locale override and no rawApi [0.02ms]
+(pass) browser-api: I18N_LOCALE_NAMES > is an object
+(pass) browser-api: I18N_LOCALE_NAMES > has empty string key for auto
+(pass) browser-api: I18N_LOCALE_NAMES > has English entry
+(pass) browser-api: I18N_LOCALE_NAMES > has major languages present [0.04ms]
+(pass) browser-api: I18N_LOCALE_NAMES > has at least 20 entries (reasonably complete locale list) [0.02ms]
+
+tests/build.test.js:
+(skip) chrome dist has manifest.json
+(skip) firefox dist has manifest.json
+(skip) chrome dist has background.js
+(skip) firefox dist has background.js
+(skip) chrome dist has content.js
+(skip) firefox dist has content.js
+(skip) chrome dist has multichat-twitch.js
+(skip) firefox dist has multichat-twitch.js
+(skip) chrome dist has multichat-kick.js
+(skip) firefox dist has multichat-kick.js
+(skip) chrome dist has multichat-youtube.js
+(skip) firefox dist has multichat-youtube.js
+(skip) chrome dist has heatsync-button.js
+(skip) firefox dist has heatsync-button.js
+(skip) chrome dist has shared-utils.js
+(skip) firefox dist has shared-utils.js
+(skip) chrome dist has popup.html
+(skip) firefox dist has popup.html
+(skip) chrome dist has popup.js
+(skip) firefox dist has popup.js
+(skip) chrome dist has injected-message.css
+(skip) firefox dist has injected-message.css
+(skip) chrome manifest is valid json with required fields
+(skip) firefox manifest is valid json with required fields
+(skip) versions match across package.json and both manifests
+(skip) chrome manifest has CSP
+(skip) firefox manifest has CSP
+(skip) all chrome content script files exist in dist
+(skip) all firefox content script files exist in dist
+(skip) every chrome bundle using cleanup carries the lib
+(skip) every firefox bundle using cleanup carries the lib
+(pass) src/lib/cleanup.js re-exports the bundle-scope cleanup binding [0.07ms]
+
+tests/cleanup.test.js:
+(pass) cleanup — setInterval / clearInterval > setInterval calls global setInterval and returns the id [0.44ms]
+(pass) cleanup — setInterval / clearInterval > clearInterval calls global clearInterval with the tracked id [0.11ms]
+(pass) cleanup — setInterval / clearInterval > destroyAll calls clearInterval for every tracked interval [0.13ms]
+(pass) cleanup — setInterval / clearInterval > destroyAll empties interval tracking (no dangling refs) [0.04ms]
+(pass) cleanup — setInterval / clearInterval > clearInterval removes from tracking so destroyAll skips it [0.04ms]
+(pass) cleanup — setIntervalIfVisible > setIntervalIfVisible registers a tracked interval [0.06ms]
+(pass) cleanup — setIntervalIfVisible > destroyAll clears visible-only intervals too [0.04ms]
+(pass) cleanup — setTimeout / clearTimeout > setTimeout calls global setTimeout and returns the id [0.06ms]
+(pass) cleanup — setTimeout / clearTimeout > clearTimeout calls global clearTimeout with the tracked id [0.04ms]
+(pass) cleanup — setTimeout / clearTimeout > destroyAll calls clearTimeout for every pending timeout [0.04ms]
+(pass) cleanup — setTimeout / clearTimeout > destroyAll empties timeout tracking (no dangling refs) [0.03ms]
+(pass) cleanup — setTimeout / clearTimeout > auto-untrack: fired timeout is removed — destroyAll does not double-clear it [0.09ms]
+(pass) cleanup — setTimeout / clearTimeout > clearTimeout removes from tracking so destroyAll skips it [0.03ms]
+(pass) cleanup — MutationObserver (trackObserver / untrackObserver) > trackObserver returns the observer and does not call disconnect [0.04ms]
+(pass) cleanup — MutationObserver (trackObserver / untrackObserver) > untrackObserver calls disconnect and removes from tracking [0.03ms]
+(pass) cleanup — MutationObserver (trackObserver / untrackObserver) > destroyAll calls disconnect on every tracked observer [0.04ms]
+(pass) cleanup — MutationObserver (trackObserver / untrackObserver) > destroyAll empties observer set (no dangling refs) [0.03ms]
+(pass) cleanup — MutationObserver (trackObserver / untrackObserver) > untrackObserver before destroyAll prevents double-disconnect [0.02ms]
+(pass) cleanup — MutationObserver (trackObserver / untrackObserver) > untrackObserver with null/undefined is safe (no throw) [0.03ms]
+(pass) cleanup — MutationObserver (trackObserver / untrackObserver) > observer with throwing disconnect does not abort destroyAll [0.05ms]
+(pass) cleanup — addEventListener (trackListener / untrackListener) > trackListener calls target.addEventListener with the right args [0.07ms]
+(pass) cleanup — addEventListener (trackListener / untrackListener) > trackListener passes options through to addEventListener [0.03ms]
+(pass) cleanup — addEventListener (trackListener / untrackListener) > untrackListener calls removeEventListener with matching target/type/handler/options [0.06ms]
+(pass) cleanup — addEventListener (trackListener / untrackListener) > destroyAll calls removeEventListener on every tracked listener [0.03ms]
+(pass) cleanup — addEventListener (trackListener / untrackListener) > destroyAll empties listener array (no dangling refs) [0.03ms]
+(pass) cleanup — addEventListener (trackListener / untrackListener) > untrackListener removes only the matching entry when multiple are registered [0.03ms]
+(pass) cleanup — addEventListener (trackListener / untrackListener) > trackListener with null target/event/handler is a no-op (no throw) [0.04ms]
+(pass) cleanup — addEventListener (trackListener / untrackListener) > addEventListener alias works identically to trackListener [0.02ms]
+(pass) cleanup — addEventListener (trackListener / untrackListener) > removeEventListener alias works identically to untrackListener [0.02ms]
+(pass) cleanup — raf / cancelRaf > raf calls requestAnimationFrame and returns an id [0.06ms]
+(pass) cleanup — raf / cancelRaf > cancelRaf calls cancelAnimationFrame with the id [0.04ms]
+(pass) cleanup — raf / cancelRaf > destroyAll calls cancelAnimationFrame for pending rafs [0.04ms]
+(pass) cleanup — raf / cancelRaf > auto-untrack: fired rAF is removed — destroyAll does not double-cancel it [0.05ms]
+(pass) cleanup — raf / cancelRaf > destroyAll empties raf set (no dangling refs) [0.05ms]
+(pass) cleanup — destroyAll bulk + idempotency > destroyAll with no tracked resources is safe (no throw) [0.04ms]
+(pass) cleanup — destroyAll bulk + idempotency > double destroyAll is idempotent (no throw, no second calls) [0.08ms]
+(pass) cleanup — destroyAll bulk + idempotency > destroyAll clears ALL resource types in one call [0.06ms]
+(pass) cleanup — destroyAll bulk + idempotency > listener with throwing removeEventListener does not abort destroyAll [0.07ms]
+
+tests/config.test.js:
+(pass) config: exports > default export is an object [0.02ms]
+(pass) config: exports > named export CONFIG equals default export
+(pass) config: URL constants > API_URL is the heatsync.org origin (https)
+(pass) config: URL constants > WS_URL is wss://heatsync.org
+(pass) config: URL constants > LINK_PREVIEW_API starts with API_URL
+(pass) config: URL constants > LIVE_STATUS_API starts with API_URL
+(pass) config: URL constants > all CDN/API URLs are https or wss strings [0.04ms]
+(pass) config: TIMING > TIMING is an object [0.01ms]
+(pass) config: TIMING > TIMING.INVENTORY_REFRESH is a positive number [0.01ms]
+(pass) config: TIMING > TIMING.GLOBAL_EMOTES_REFRESH is a positive number
+(pass) config: TIMING > TIMING.CHANNEL_EMOTES_TTL is a positive number
+(pass) config: TIMING > TIMING.BADGES_TTL is a positive number
+(pass) config: TIMING > TIMING.WS_CONNECT_TIMEOUT is a positive number
+(pass) config: TIMING > TIMING.WS_HEARTBEAT_INTERVAL is a positive number
+(pass) config: TIMING > TIMING.WS_RECONNECT_MAX_DELAY is a positive number
+(pass) config: TIMING > TIMING.FETCH_TIMEOUT is a positive number
+(pass) config: TIMING > TIMING.TOAST_DURATION is a positive number
+(pass) config: TIMING > TIMING.MC_CONNECT_TIMEOUT is a positive number
+(pass) config: TIMING > TIMING.MC_FETCH_TIMEOUT is a positive number
+(pass) config: TIMING > TIMING.MUTE_PRUNE_INTERVAL is a positive number
+(pass) config: TIMING > TIMING.MSG_CACHE_SAVE_DEBOUNCE is a positive number
+(pass) config: TIMING > INVENTORY_REFRESH < GLOBAL_EMOTES_REFRESH (inventory refreshes more often)
+(pass) config: TIMING > WS_HEARTBEAT_INTERVAL < WS_RECONNECT_MAX_DELAY * 10 (sanity: heartbeat not absurdly long)
+(pass) config: LIMITS > LIMITS is an object
+(pass) config: LIMITS > LIMITS.MAX_EMOTE_NAME_LEN is a positive integer [0.02ms]
+(pass) config: LIMITS > LIMITS.MAX_EMOTES_PER_SOURCE is a positive integer
+(pass) config: LIMITS > LIMITS.MSG_CACHE_MAX is a positive integer
+(pass) config: LIMITS > LIMITS.MAX_SEND_QUEUE is a positive integer
+(pass) config: LIMITS > LIMITS.MC_CHANNEL_MSG_BUFFER is a positive integer
+(pass) config: LIMITS > LIMITS.MIN_CHAT_WIDTH is a positive integer
+(pass) config: LIMITS > LIMITS.MAX_CHAT_WIDTH is a positive integer
+(pass) config: LIMITS > LIMITS.MC_EMOTE_RENDER_CHUNK is a positive integer
+(pass) config: LIMITS > MAX_EMOTES_PER_SOURCE matches documented emote slot limit (5000)
+(pass) config: LIMITS > MIN_CHAT_WIDTH < MAX_CHAT_WIDTH
+(pass) config: LIMITS > MC_CHANNEL_MSG_BUFFER <= MSG_CACHE_MAX (buffer fits within global cache)
+(pass) config: SELECTORS > SELECTORS is an object
+(pass) config: SELECTORS > SELECTORS.TWITCH_CHAT_CONTAINER is a non-empty string [0.09ms]
+(pass) config: SELECTORS > SELECTORS.TWITCH_CHAT_MESSAGES is a non-empty string
+(pass) config: SELECTORS > SELECTORS.TWITCH_CHAT_ROOM is a non-empty string
+(pass) config: SELECTORS > SELECTORS.TWITCH_CHAT_INPUT is a non-empty string
+(pass) config: SELECTORS > SELECTORS.TWITCH_USERNAME is a non-empty string
+(pass) config: SELECTORS > SELECTORS.KICK_CHAT_CONTAINER is a non-empty string
+(pass) config: SELECTORS > SELECTORS.KICK_CHAT_MESSAGES is a non-empty string
+(pass) config: SELECTORS > SELECTORS.KICK_EDITOR_INPUT is a non-empty string
+(pass) config: SELECTORS > SELECTORS.YT_CHAT_CONTAINER is a non-empty string
+(pass) config: SELECTORS > SELECTORS.YT_MESSAGE is a non-empty string
+(pass) config: SELECTORS > SELECTORS.YT_CHAT_INPUT is a non-empty string
+(pass) config: SELECTORS > TWITCH_CHAT_INPUT contains [data-a-target]
+(pass) config: SELECTORS > YT_CHAT_CONTAINER references yt-live-chat elements
+(pass) config: CLASSES > CLASSES is an object
+(pass) config: CLASSES > CLASSES.EMOTE_WRAPPER is a non-empty string [0.01ms]
+(pass) config: CLASSES > CLASSES.EMOTE_IMG is a non-empty string
+(pass) config: CLASSES > CLASSES.EMOTE_OVERLAY is a non-empty string
+(pass) config: CLASSES > CLASSES.MC_CONTAINER is a non-empty string
+(pass) config: CLASSES > CLASSES.MC_INPUT is a non-empty string
+(pass) config: CLASSES > CLASSES.MC_TABBAR is a non-empty string
+(pass) config: CLASSES > CLASSES.MENTIONED is a non-empty string
+(pass) config: CLASSES > CLASSES.CHAT_COLLAPSED is a non-empty string
+(pass) config: CLASSES > CLASSES values do not contain spaces (CSS class names are single tokens) [0.06ms]
+(pass) config: Z_INDEX > Z_INDEX is an object [0.01ms]
+(pass) config: Z_INDEX > Z_INDEX.EMOTE_PREVIEW is a positive integer [0.02ms]
+(pass) config: Z_INDEX > Z_INDEX.TOAST is a positive integer
+(pass) config: Z_INDEX > Z_INDEX.AUTOCOMPLETE is a positive integer
+(pass) config: Z_INDEX > Z_INDEX.MC_PANEL is a positive integer
+(pass) config: Z_INDEX > Z_INDEX.MC_EMOTE_PICKER is a positive integer
+(pass) config: Z_INDEX > Z_INDEX.MC_CONTEXT_MENU is a positive integer
+(pass) config: Z_INDEX > Z_INDEX.MC_RESIZE_OVERLAY is a positive integer
+(pass) config: Z_INDEX > MC_CONTEXT_MENU z-index is among the highest (should be on top) [0.02ms]
+(pass) config: Z_INDEX > MC_RESIZE_OVERLAY z-index equals MC_CONTEXT_MENU (both need to be top-most)
+(pass) config: Z_INDEX > MC_PANEL z-index is below MC_EMOTE_PICKER (picker floats above panel) [0.01ms]
+
+tests/csp.test.js:
+(pass) chrome: default-src is 'self' (deny-by-default) [0.03ms]
+(pass) chrome: script-src is exactly 'self' — no unsafe-inline/eval/remote
+(pass) chrome: object-src is 'none' [0.01ms]
+(pass) chrome: no 'unsafe-eval' anywhere [0.01ms]
+(pass) chrome: 'unsafe-inline' only ever appears under style-src (never script) [0.03ms]
+(pass) chrome: connect-src/img-src use no plaintext http: and no lone wildcard [0.05ms]
+(pass) firefox: default-src is 'self' (deny-by-default)
+(pass) firefox: script-src is exactly 'self' — no unsafe-inline/eval/remote
+(pass) firefox: object-src is 'none'
+(pass) firefox: no 'unsafe-eval' anywhere
+(pass) firefox: 'unsafe-inline' only ever appears under style-src (never script)
+(pass) firefox: connect-src/img-src use no plaintext http: and no lone wildcard [0.02ms]
+(pass) chrome: enforces Trusted Types for scripts [0.03ms]
+(pass) chrome and firefox connect-src host sets stay in parity [0.14ms]
+
+tests/emote-precedence.test.js:
+(pass) detectEmoteSource > 7tv CDN url [0.09ms]
+(pass) detectEmoteSource > bttv CDN url [0.02ms]
+(pass) detectEmoteSource > ffz CDN url [0.01ms]
+(pass) detectEmoteSource > twitch CDN url [0.01ms]
+(pass) detectEmoteSource > kick url [0.01ms]
+(pass) detectEmoteSource > heatsync url
+(pass) detectEmoteSource > unknown url with no hint → "unknown" [0.01ms]
+(pass) detectEmoteSource > unknown url WITH hint → hint used
+(pass) detectEmoteSource > null url with hint → hint [0.01ms]
+(pass) detectEmoteSource > null url no hint → "unknown"
+(pass) getEmoteState > name in inventoryEmotes → "owned" regardless of source [0.03ms]
+(pass) getEmoteState > third-party source not owned → "global" [0.03ms]
+(pass) getEmoteState > heatsync source, not owned → "unadded" [0.02ms]
+(pass) getEmoteState > unknown source, not owned → "unadded" (falls through) [0.01ms]
+(pass) lookupEmote precedence > viewer personal (inventory) wins over everything else [0.05ms]
+(pass) lookupEmote precedence > global (emoteCache) wins over channel caches when not in inventory [0.02ms]
+(pass) lookupEmote precedence > falls through to currentTab channel cache [0.13ms]
+(pass) lookupEmote precedence > falls through to getLiveChannel() cache when currentTab cache misses [0.04ms]
+(pass) lookupEmote precedence > falls through to getCurrentChannel() cache when tab + live both miss [0.03ms]
+(pass) lookupEmote precedence > falls through to removedEmoteFallback when no live cache has it [0.03ms]
+(pass) lookupEmote precedence > blockedEmoteFallback is the last resort [0.02ms]
+(pass) lookupEmote precedence > removedEmoteFallback beats blockedEmoteFallback [0.02ms]
+(pass) lookupEmote precedence > unknown name resolves to undefined [0.03ms]
+(pass) lookupOwnedEmote only ever returns from viewerPersonalEmotes [0.04ms]
+(pass) lookupEmoteRenderOrder precedence (channel-first, diverges from lookupEmote) > channel cache wins over inventory — the key divergence from lookupEmote [0.05ms]
+(pass) lookupEmoteRenderOrder precedence (channel-first, diverges from lookupEmote) > inventory wins over global when no channel hit [0.02ms]
+(pass) lookupEmoteRenderOrder precedence (channel-first, diverges from lookupEmote) > global wins when neither channel nor inventory has it [0.01ms]
+(pass) lookupEmoteRenderOrder precedence (channel-first, diverges from lookupEmote) > removed/blocked fallbacks still apply last [0.01ms]
+(pass) zeroWidthFromAnyCache > false when name is in no cache [0.03ms]
+(pass) zeroWidthFromAnyCache > true when global emoteCache entry has zeroWidth [0.02ms]
+(pass) zeroWidthFromAnyCache > true when ANY channel cache entry has zeroWidth (scans all channels) [0.02ms]
+(pass) zeroWidthFromAnyCache > false when cache entry exists but zeroWidth is falsy [0.02ms]
+(pass) lookupEmoteWithOverlay > literal name hit with zeroWidth flag → isOverlay true, displayName unchanged [0.06ms]
+(pass) lookupEmoteWithOverlay > literal name hit WITHOUT zeroWidth flag but recoverable from another cache → isOverlay true [0.04ms]
+(pass) lookupEmoteWithOverlay > a REAL emote literally named "TriHard0" wins over the trailing-0 overlay heuristic [0.02ms]
+(pass) lookupEmoteWithOverlay > no literal "name0" hit → falls back to base-name overlay convention [0.02ms]
+(pass) lookupEmoteWithOverlay > no hit at all (literal or base) → null [0.01ms]
+(pass) lookupEmoteWithOverlay > name without trailing 0 and no hit → null (no base-name fallback attempted)
+(pass) lookupEmoteWithOverlay > single-char name "0" is never treated as an overlay candidate (length > 1 guard) [0.02ms]
+(pass) lookupEmoteWithOverlay > ownedOnly:true restricts resolution to viewerPersonalEmotes only [0.03ms]
+(pass) lookupEmoteWithOverlay > ownedOnly:true also restricts the name0 base-lookup to owned set [0.03ms]
+
+tests/error-reporter.test.js:
+(pass) installation > installs __hsErrorReporter on window [0.53ms]
+(pass) installation > exposes ver from manifest [0.05ms]
+(pass) installation > detects twitch platform from hostname [0.03ms]
+(pass) installation > detects kick platform from hostname [0.03ms]
+(pass) installation > detects youtube platform from hostname [0.03ms]
+(pass) installation > falls back to "other" for unknown host [0.03ms]
+(pass) installation > second load is a no-op (IIFE guard) [0.32ms]
+(pass) capture: entry shape > captured entry has expected fields [0.42ms]
+(pass) capture: entry shape > msg is truncated to 500 chars (via error handler) [0.34ms]
+(pass) capture: entry shape > stack is truncated to 2000 chars (via error handler) [0.30ms]
+(pass) capture: entry shape > url is truncated to 200 chars (via error handler) [0.09ms]
+(pass) capture: drop rules > drops entry with empty msg AND empty stack [0.05ms]
+(pass) capture: drop rules > does NOT drop entry with empty msg but non-empty stack [0.06ms]
+(pass) capture: drop rules > does NOT drop entry with non-empty msg but empty stack [0.05ms]
+(pass) capture: drop rules > drops "Script error." with no stack (cross-origin noise) [0.04ms]
+(pass) capture: drop rules > does NOT drop "Script error." when stack is present [0.04ms]
+(pass) ring buffer: in-memory cap at 50 > pushing 50 entries retains all 50 [0.23ms]
+(pass) ring buffer: in-memory cap at 50 > pushing 51 entries keeps only 50 — oldest evicted [0.18ms]
+(pass) ring buffer: in-memory cap at 50 > pushing 51 entries evicts msg-0 (the oldest) [0.19ms]
+(pass) ring buffer: in-memory cap at 50 > pushing 100 entries keeps only the most recent 50 [0.23ms]
+(pass) ring buffer: in-memory cap at 50 > ring buffer merges with existing entries from storage [0.20ms]
+(pass) privacy: URL handling > URL exactly 200 chars is stored as-is (via error handler) [0.09ms]
+(pass) privacy: URL handling > URL over 200 chars is truncated to exactly 200 (via error handler) [0.09ms]
+(pass) privacy: URL handling > access_token in URL query string is redacted to REDACTED [0.17ms]
+(pass) privacy: URL handling > token= param in URL is redacted, other params kept [0.09ms]
+(pass) privacy: URL handling > URL with no query params is stored unchanged [0.07ms]
+(pass) privacy: URL handling > Bearer token in msg is redacted to [REDACTED] [0.06ms]
+(pass) privacy: URL handling > JWT in msg is redacted to [REDACTED] [0.05ms]
+(pass) privacy: URL handling > long opaque secret (24+ chars) in msg is redacted [0.04ms]
+(pass) privacy: URL handling > normal prose message is NOT over-redacted [0.04ms]
+(pass) privacy: URL handling > normal stack frame text is NOT over-redacted [0.05ms]
+(pass) privacy: no network calls > fetch is never called after capturing errors [0.07ms]
+(pass) privacy: no network calls > fetch is never called after flush() [0.04ms]
+(pass) edge cases: must not throw > capture with null-like entry does not throw [0.05ms]
+(pass) edge cases: must not throw > flush with empty pending does not throw [0.06ms]
+(pass) edge cases: must not throw > flush writes nothing when pending is empty [0.05ms]
+(pass) edge cases: must not throw > capture is reentrant-safe — nested capture is dropped [0.09ms]
+(pass) read-back: entry ordering > entries are stored in insertion order (oldest first) [0.08ms]
+(pass) read-back: entry ordering > entries appended across two flush cycles maintain order [0.07ms]
+(pass) debounce: writes are deferred > multiple captures before timer fires produce a single storage.set call [0.09ms]
+(pass) global handlers registered > window.addEventListener called for "error" and "unhandledrejection" [0.04ms]
+(pass) global handlers registered > error handler filters non-extension errors (_isOurs) [0.08ms]
+(pass) global handlers registered > error handler captures extension errors (_isOurs matches chrome-extension://) [0.08ms]
+(pass) global handlers registered > rejection handler captures extension rejections [0.13ms]
+(pass) global handlers registered > noise: ResizeObserver loop errors are dropped [0.06ms]
+(pass) global handlers registered > noise: Extension context invalidated is dropped (not captured) [0.07ms]
+
+tests/feed-quote-paint.test.js:
+(pass) buildFeedQuoteUserLink — inline feed-post quote row username anchor > no uid, no paint: falls back to plain per-post color, name escaped [0.13ms]
+(pass) buildFeedQuoteUserLink — inline feed-post quote row username anchor > uid resolved but no paint cached yet: still plain color, but data-uid is present so a later paint retro-applies [0.02ms]
+(pass) buildFeedQuoteUserLink — inline feed-post quote row username anchor > HeatSync paint resolved: wins over color, adds the hsp-* class, clears inline style, uses paint html [0.02ms]
+(pass) buildFeedQuoteUserLink — inline feed-post quote row username anchor > 7TV paint style resolved but no HeatSync paint: 7TV style wins over the plain per-post color [0.01ms]
+(pass) buildFeedQuoteUserLink — inline feed-post quote row username anchor > HeatSync paint still wins even when a 7TV paintStyle is also present (precedence) [0.01ms]
+(pass) buildFeedQuoteUserLink — inline feed-post quote row username anchor > falls back to "anon" when feedUser is empty/missing [0.01ms]
+(pass) buildFeedQuoteUserLink — inline feed-post quote row username anchor > HTML-escapes a markup-shaped username (defense in depth) when unpainted [0.02ms]
+(pass) feed-post quote row wiring — structural invariants > the feed-post branch resolves uid through knownUserIds (the same chokepoint as the mention/reply-bar sites), never a new lookup path [0.08ms]
+(pass) feed-post quote row wiring — structural invariants > the feed-post branch never calls queuePaintLookup directly (queueMcCosmeticsLookup stays the sole choke point) [0.08ms]
+
+tests/filter-rules.test.js:
+(pass) compileFilterRules: empty array clears rules [0.24ms]
+(pass) compileFilterRules: null/undefined treated as empty [0.02ms]
+(pass) compileFilterRules: disabled rules are skipped [0.02ms]
+(pass) compileFilterRules: rules with empty value are skipped [0.02ms]
+(pass) compileFilterRules: rules with unknown match type are skipped [0.02ms]
+(pass) keyword: matches substring within word boundaries [0.09ms]
+(pass) keyword: case-insensitive by default [0.05ms]
+(pass) keyword: case-sensitive when set [0.04ms]
+(pass) keyword: no match on unrelated text [0.04ms]
+(pass) regex: matches user-supplied pattern [0.09ms]
+(pass) regex: dangerous pattern falls back gracefully (no hang) [0.04ms]
+(pass) regex: alternation catastrophic pattern falls back (no hang) [0.03ms]
+(pass) regex: brace-quantified nested quantifier falls back (no hang) [0.03ms]
+(pass) regex: brace-quantified alternation falls back (no hang) [0.03ms]
+(pass) regex: overlong source pattern is rejected (no hang) [0.14ms]
+(pass) regex: case-insensitive by default [0.04ms]
+(pass) user: exact case-insensitive match [0.03ms]
+(pass) user: no match on different user [0.02ms]
+(pass) user: case-sensitive match [0.02ms]
+(pass) badge: matches when badge present in comma-separated list [0.02ms]
+(pass) badge: no match when badge absent [0.02ms]
+(pass) badge: case-insensitive badge name [0.02ms]
+(pass) msgtype: first-message matches isFirstMsg=true [0.02ms]
+(pass) msgtype: action matches isAction=true [0.02ms]
+(pass) msgtype: reply matches when replyTo present [0.02ms]
+(pass) msgtype: cheer matches when bits > 0 [0.02ms]
+(pass) hide: returns hide=true on match [0.04ms]
+(pass) hide: short-circuits — no highlight collected after hide [0.07ms]
+(pass) no match: hide=false, highlight=null [0.05ms]
+(pass) scope: all-scope rule fires regardless of channelKey [0.04ms]
+(pass) scope: channel-scoped rule only fires for matching channelKey [0.03ms]
+(pass) scope: all-scope + channel-scope both apply on matching channel [0.05ms]
+(pass) highlight: first matching rule wins [0.05ms]
+(pass) additive: evaluateFilterRules has no side-effects on outside state [0.06ms]
+(pass) sound: valid sound on highlight rule is returned on match [0.04ms]
+(pass) sound: invalid/unknown sound compiles to null [0.04ms]
+(pass) sound: hide rule never carries a sound [0.03ms]
+(pass) sound: highlight rule without a sound returns null [0.03ms]
+(pass) sound: no-match result always has a null sound key [0.05ms]
+(pass) sound: first matching highlight wins for both color and sound [0.05ms]
+(pass) sound: all four presets are accepted [0.04ms]
+(pass) expr: bare flag matches first-message [0.36ms]
+(pass) expr: field term user:name [0.05ms]
+(pass) expr: AND requires both [0.06ms]
+(pass) expr: OR requires either [0.05ms]
+(pass) expr: NOT negates [0.05ms]
+(pass) expr: precedence — || is lower than && [0.07ms]
+(pass) expr: parentheses override precedence [0.09ms]
+(pass) expr: quoted value with spaces [0.07ms]
+(pass) expr: regex term is ReDoS-guarded and works [0.09ms]
+(pass) expr: bits comparison [0.08ms]
+(pass) expr: badge term [0.05ms]
+(pass) expr: operators are case-insensitive words [0.05ms]
+(pass) expr: malformed expressions are dropped (fail-safe, never hide) [0.12ms]
+(pass) expr: deep nesting does not crash (depth guard drops it) [0.04ms]
+(pass) expr: overlong expression is rejected [0.02ms]
+(pass) expr: highlight action returns color [0.03ms]
+
+tests/irc-parser.test.js:
+(pass) parseTags: splits key=value pairs on ; [0.09ms]
+(pass) parseTags: flag tag with no = gets empty string [0.03ms]
+(pass) parseTags: tag with = but empty value gets empty string [0.02ms]
+(pass) parseTags: value containing = is preserved (only first = splits) [0.01ms]
+(pass) parseTags: raw escaped values are NOT unescaped (caller responsibility) [0.01ms]
+(pass) parseTags: single empty part produces empty-string key [0.01ms]
+(pass) parseTwitchEmotesTag: null/empty tag returns null [0.07ms]
+(pass) parseTwitchEmotesTag: single emote maps name to CDN url [0.04ms]
+(pass) parseTwitchEmotesTag: multiple positions for same emote id, only first position used for name extraction [0.02ms]
+(pass) parseTwitchEmotesTag: multiple distinct emotes separated by / [0.02ms]
+(pass) parseTwitchEmotesTag: malformed part without colon is skipped [0.02ms]
+(pass) parseTwitchEmotesTag: non-numeric range yields NaN and is skipped [0.01ms]
+(pass) parseTwitchEmotesTag: BMP unicode text — code-point and code-unit indices coincide [0.02ms]
+(pass) parseTwitchEmotesTag: astral emoji before emote — indices are CODE POINTS, not UTF-16 units [0.09ms]
+(pass) parseTwitchEmotesTag: multiple astral chars + multiple emotes all resolve by code point [0.06ms]
+(pass) parseTwitchEmotesTag: astral chars AFTER the emote do not affect its range [0.03ms]
+(pass) parseTwitchEmotesTag: all positions out of range → no emotes found → null [0.02ms]
+(pass) parseIrcLine: PRIVMSG basic shape [0.32ms]
+(pass) parseIrcLine: PRIVMSG falls back to display-name when no login prefix match [0.05ms]
+(pass) parseIrcLine: PRIVMSG login is lowercase and independent of display-name casing [0.03ms]
+(pass) parseIrcLine: /me ACTION is unwrapped and isAction set [0.02ms]
+(pass) parseIrcLine: /me ACTION without trailing \x01 still strips prefix [0.02ms]
+(pass) parseIrcLine: plain message starting with literal word ACTION (no \x01) is not an action [0.02ms]
+(pass) parseIrcLine: reply-parent tags build replyTo object with \s unescaped [0.08ms]
+(pass) parseIrcLine: reply body containing % is preserved, not URI-decoded or dropped [0.04ms]
+(pass) parseIrcLine: reply body unescapes \: \\ \r \n per IRCv3 [0.02ms]
+(pass) parseIrcLine: no reply tags → replyTo is null [0.01ms]
+(pass) parseIrcLine: bits tag > 0 sets msg.bits [0.02ms]
+(pass) parseIrcLine: bits=0 or missing does not set msg.bits [0.02ms]
+(pass) parseIrcLine: custom-reward-id sets redeemed + rewardId [0.02ms]
+(pass) parseIrcLine: highlighted-message msg-id sets isHighlighted [0.02ms]
+(pass) parseIrcLine: first-msg=1 sets isFirstMsg, returning-chatter=1 sets isReturningChatter [0.02ms]
+(pass) parseIrcLine: badge-info subscriber/N sets subMonths [0.02ms]
+(pass) parseIrcLine: twitchEmotes tag attaches parsed emote map [0.04ms]
+(pass) parseIrcLine: channel falls back to the PRIVMSG target when none passed [0.02ms]
+(pass) parseIrcLine: no leading @tags returns null [0.02ms]
+(pass) parseIrcLine: garbage input returns null, never throws [0.26ms]
+(pass) parseIrcLine: raid USERNOTICE opens a raid window, then first-msg PRIVMSG in-window is flagged isRaider [0.10ms]
+(pass) parseIrcLine: first-msg PRIVMSG outside the raid window is not flagged isRaider [0.06ms]
+(pass) parseIrcLine: regular (non-first-msg) chatter during a raid window is not flagged [0.03ms]
+(pass) parseIrcLine: USERNOTICE sub tier 2000 maps to tier "2" [0.02ms]
+(pass) parseIrcLine: USERNOTICE Prime sub-plan maps to tier "prime" [0.02ms]
+(pass) parseIrcLine: USERNOTICE with no message body → empty text [0.02ms]
+(pass) parseIrcLine: USERNOTICE mass gift sets giftCount [0.02ms]
+(pass) parseIrcLine: watchstreak viewermilestone promoted to msgId watchstreak [0.02ms]
+(pass) parseIrcLine: viewermilestone with a DIFFERENT category is not promoted [0.02ms]
+(pass) parseIrcLine: USERNOTICE system-msg unescapes \s to spaces [0.02ms]
+(pass) parseIrcLine: NOTICE basic shape + deterministic id when server omits one [0.04ms]
+(pass) parseIrcLine: NOTICE with explicit id tag uses that id [0.02ms]
+(pass) parseIrcLine: ROOMSTATE parses all mode flags [0.05ms]
+(pass) parseIrcLine: ROOMSTATE with only partial tags leaves others null (not false/0) [0.04ms]
+(pass) parseIrcLine: USERSTATE collects badge names into a Set [0.04ms]
+(pass) parseIrcLine: CLEARCHAT with ban-duration → timeout notice [0.05ms]
+(pass) parseIrcLine: CLEARCHAT without ban-duration → permanent ban notice [0.04ms]
+(pass) parseIrcLine: CLEARCHAT with no target (chat cleared entirely) uses t() fallback text [0.03ms]
+(pass) parseIrcLine: CLEARMSG carries target-msg-id and login [0.04ms]
+(pass) parseIrcLine: WHISPER basic shape [0.05ms]
+(pass) CircularBuffer: push + getAll preserves insertion order under capacity [0.06ms]
+(pass) CircularBuffer: wraps and evicts oldest entries once at capacity [0.02ms]
+(pass) CircularBuffer: heavy wraparound keeps correct chronological order [0.02ms]
+(pass) CircularBuffer: clear() empties the buffer [0.02ms]
+(pass) CircularBuffer: default capacity is 1500 [0.01ms]
+(pass) CircularBuffer: getAll on empty buffer returns [] [0.01ms]
+
+tests/live-search.test.js:
+(pass) empty query: matches everything [0.09ms]
+(pass) plain text: matches message body [0.05ms]
+(pass) plain text: matches username [0.02ms]
+(pass) plain text: case-insensitive
+(pass) @name: matches user by prefix [0.02ms]
+(pass) @name: rejects different user [0.01ms]
+(pass) @name: does not match body containing the name
+(pass) @name: case-insensitive prefix match
+(pass) /regex/: anchored match on body [0.07ms]
+(pass) /regex/i: case-insensitive flag [0.02ms]
+(pass) /regex/: matches username too [0.02ms]
+(pass) /regex/: no flag = case-sensitive [0.02ms]
+(pass) catastrophic (a+)+ pattern: does not hang, falls back to literal [0.04ms]
+(pass) catastrophic (a|a)+ pattern: does not hang [0.02ms]
+(pass) invalid /[/ regex: falls back to literal without throwing [0.07ms]
+(pass) invalid /(?P<x>)/ regex: falls back without throwing [0.04ms]
+
+tests/main-world-proxy-guards.test.js:
+(pass) _proxyAllowed sliding-window limiter (extracted from real source) > the _proxyAllowed function is present in source [0.01ms]
+(pass) _proxyAllowed sliding-window limiter (extracted from real source) > allows exactly `max` calls per window, blocks the rest [0.09ms]
+(pass) _proxyAllowed sliding-window limiter (extracted from real source) > window slides — calls pass again once windowMs has elapsed [0.03ms]
+(pass) gql-request proxy mutation rate limit > _gqlMutateRate bucket exists with a numeric cap [0.03ms]
+(pass) gql-request proxy mutation rate limit > handler gates mutations through _proxyAllowed(_gqlMutateRate) [0.03ms]
+(pass) gql-request proxy mutation rate limit > the unthrottled read-bypass set contains no token-spending mutation [0.05ms]
+(pass) nonce freeze (blocks page-script overwrite → forged mutations) > init-nonce handler bails if _hsNonce is already set, before re-assigning [0.07ms]
+(pass) apollo-mutate allowlist exact match > no substring searchTerm.includes(m) bypass remains [0.02ms]
+(pass) apollo-mutate allowlist exact match > allowlist check uses ALLOWED_MUTATIONS.includes(searchTerm) [0.03ms]
+(pass) hs-dbg diagnostics dev-build gate > the guard precedes the dangerous hs-dbg-test-send listener registration [0.02ms]
+
+tests/manifest-emoji-order.test.js:
+(pass) chrome.json: multichat entries carry emoji-data.iso.js before the bundle [0.16ms]
+(pass) chrome.json: kick-autocomplete-hook entry carries emoji-data.iso.js first [0.09ms]
+(pass) chrome.json: no ISOLATED entry references plain emoji-data.js [0.06ms]
+(pass) firefox.json: multichat entries carry emoji-data.iso.js before the bundle [0.06ms]
+(pass) firefox.json: kick-autocomplete-hook entry carries emoji-data.iso.js first [0.03ms]
+(pass) firefox.json: no ISOLATED entry references plain emoji-data.js [0.02ms]
+
+tests/mention-paint-double-anchor.test.js:
+(pass) processEmotes + highlightMentionsInHtml double-render (blank painted username bug) > RED (documents the historical bug): calling processEmotes WITHOUT skipMentions before highlightMentionsInHtml nests anchors [1.03ms]
+(pass) processEmotes + highlightMentionsInHtml double-render (blank painted username bug) > GREEN (the fix): skipMentions=true means processEmotes never wraps @mentions, so highlightMentionsInHtml is the only anchor author and nesting is impossible [0.11ms]
+(pass) processEmotes + highlightMentionsInHtml double-render (blank painted username bug) > a plain unpainted @mention still renders through cleanly with the fix (no regression for the common case) [0.09ms]
+(pass) processEmotes + highlightMentionsInHtml double-render (blank painted username bug) > a message with no emotes loaded anywhere never even reaches the tokenizer (fast-path return) — @mention still gets exactly one anchor from highlightMentionsInHtml [0.05ms]
+(pass) computeMessageText call-site guard — structural invariant > the processEmotes call inside computeMessageText passes skipMentions=true [2.80ms]
+(pass) computeMessageText call-site guard — structural invariant > highlightMentionsInHtml still runs right after, in the same function (mention rendering is not silently dropped) [0.06ms]
+
+tests/mention-resolve-uid.test.js:
+(pass) hsResolveUserColor (input.js) — caches the Twitch uid from the same /api/profile/ lookup > extracts twitch_user_id (with twitch_id fallback) from the profile response [0.04ms]
+(pass) hsResolveUserColor (input.js) — caches the Twitch uid from the same /api/profile/ lookup > caches it in _hsUserIdCache, keyed by the same lower name as _hsUserColorCache [0.03ms]
+(pass) hsResolveUserColor (input.js) — caches the Twitch uid from the same /api/profile/ lookup > only one apiFetch call in the function — no second request added for the uid [0.04ms]
+(pass) hsResolveUserColor (input.js) — caches the Twitch uid from the same /api/profile/ lookup > _hsUserIdCache is declared at module scope (readable cross-file from main.js) [0.08ms]
+(pass) resolveMentionColor (main.js) — stamp + index + queue on resolve > reads the uid from _hsUserIdCache (same cache hsResolveUserColor populated, not a new lookup)
+(pass) resolveMentionColor (main.js) — stamp + index + queue on resolve > never re-stamps an anchor that already has a uid (render-time known, or already resolved once)
+(pass) resolveMentionColor (main.js) — stamp + index + queue on resolve > id-space guard: only stamps anchors belonging to a twitch-platform row [0.02ms]
+(pass) resolveMentionColor (main.js) — stamp + index + queue on resolve > stamps data-uid on the anchor
+(pass) resolveMentionColor (main.js) — stamp + index + queue on resolve > registers the anchor in _mentionIndex, mirroring _indexMessageDiv's Map<uid, Set<el>> convention [0.01ms]
+(pass) resolveMentionColor (main.js) — stamp + index + queue on resolve > keeps the row's cached _hsMentionEls list in sync so _unindexMessageDiv can find it later
+(pass) resolveMentionColor (main.js) — stamp + index + queue on resolve > populates knownUserIds via the existing platform-keyed setKnownColor, not a bespoke write
+(pass) resolveMentionColor (main.js) — stamp + index + queue on resolve > queues the paint/cosmetics batch via the sole choke point (queueMcCosmeticsLookup), never queuePaintLookup directly [0.01ms]
+(pass) resolveMentionColor (main.js) — stamp + index + queue on resolve > the color-repaint pass still guards against stomping a resolved HeatSync or 7TV paint [0.02ms]
+
+tests/mod-dedup.test.js:
+(pass) mod-dedup: a second identical timeout for the same target is a dup [0.09ms]
+(pass) mod-dedup: a bogus ban collapses against an existing timeout (the !vanish bug) [0.03ms]
+(pass) mod-dedup: case-insensitive target match [0.02ms]
+(pass) mod-dedup: first notice for a target is not a dup (empty buffer) [0.01ms]
+(pass) mod-dedup: different target is not a dup [0.01ms]
+(pass) mod-dedup: outside the 10s window is not a dup
+(pass) mod-dedup: a notice without a target is never a dup [0.01ms]
+(pass) mod-dedup: non-mod notices are ignored [0.02ms]
+
+tests/mod-log.test.js:
+(pass) isModNotice: true only for notice type + a mod noticeType [0.07ms]
+(pass) MOD_NOTICE_TYPES covers all four mod actions (+ untimeout) [0.02ms]
+(pass) modLogEntryFromNotice: maps noticeType → action [0.06ms]
+(pass) modLogEntryFromNotice: lowercases target + channel, carries fields [0.03ms]
+(pass) modLogEntryFromNotice: synthesizes a stable id when msg.id is absent [0.01ms]
+(pass) modLogEntryFromNotice: returns null for non-mod messages [0.02ms]
+(pass) modLogEntryFromNotice: defaults platform to twitch, duration to 0 [0.01ms]
+(pass) pushModLogEntry: appends entries [0.06ms]
+(pass) pushModLogEntry: dedupes by id (last-id short-circuit + scan) [0.03ms]
+(pass) pushModLogEntry: null entry is a no-op [0.02ms]
+(pass) pushModLogEntry: caps at max, trimming oldest first [0.04ms]
+(pass) formatDuration: compact human units, empty for 0 [0.05ms]
+(pass) modLogLine: human one-liner per action [0.06ms]
+(pass) filterModLog: by action and/or free-text query [0.10ms]
+
+tests/modifiers.test.js:
+(pass) HS_MOD_TOKENS > w! → wide [0.02ms]
+(pass) HS_MOD_TOKENS > h! → flipH (BTTV: flip-horizontal, NOT tall)
+(pass) HS_MOD_TOKENS > v! → flipV
+(pass) HS_MOD_TOKENS > l! → rotateL (BTTV: rotate-left)
+(pass) HS_MOD_TOKENS > r! → rotateR (BTTV: rotate-right)
+(pass) HS_MOD_TOKENS > c! → cursed
+(pass) HS_MOD_TOKENS > z! → zeroWidth (BTTV: zero-space)
+(pass) HS_MOD_TOKENS > p! → party
+(pass) HS_MOD_TOKENS > s! → shake
+(pass) HS_MOD_TOKENS > x! → flipH, y! → flipV [0.01ms]
+(pass) HS_MOD_TOKENS > ffzX → flipH, ffzY → flipV, ffzW → wide, ffzCursed → cursed [0.01ms]
+(pass) HS_MOD_TOKENS > animated FFZ effect emotes [0.02ms]
+(pass) HS_MOD_TOKENS > is frozen [0.01ms]
+(pass) HS_MOD_CLASS_TO_TOKEN > wide → w! [0.01ms]
+(pass) HS_MOD_CLASS_TO_TOKEN > flipH → h!
+(pass) HS_MOD_CLASS_TO_TOKEN > flipV → v!
+(pass) HS_MOD_CLASS_TO_TOKEN > rotateL → l!, rotateR → r!
+(pass) HS_MOD_CLASS_TO_TOKEN > cursed → c!, party → p!, shake → s! [0.01ms]
+(pass) HS_MOD_CLASS_TO_TOKEN > is frozen
+(pass) HS_MOD_MAX_SCALE is 4
+(pass) hsModHexToHue > pure red → 0° [0.05ms]
+(pass) hsModHexToHue > pure green → 120° [0.01ms]
+(pass) hsModHexToHue > pure blue → 240°
+(pass) hsModHexToHue > achromatic → 0° [0.01ms]
+(pass) hsModHexToHue > 3-char shorthand equals 6-char [0.03ms]
+(pass) hsModHexToHue > integer in [0,359] [0.03ms]
+(pass) hsModResolvePrefix > exact tokens resolve to self [0.04ms]
+(pass) hsModResolvePrefix > case-insensitive [0.03ms]
+(pass) hsModResolvePrefix > unique prefix [0.05ms]
+(pass) hsModResolvePrefix > ambiguous prefix → null [0.02ms]
+(pass) hsModResolvePrefix > empty/null/no-match → null [0.02ms]
+(pass) hsModResolvePrefix > valid c!#hex passes through
+(pass) hsModPeelChain > single token [0.07ms]
+(pass) hsModPeelChain > two-token flip chain h!v! [0.02ms]
+(pass) hsModPeelChain > chain w!c!ffzSpin [0.02ms]
+(pass) hsModPeelChain > c!#hex color modifier [0.02ms]
+(pass) hsModPeelChain > c!#hex hue matches hsModHexToHue [0.01ms]
+(pass) hsModPeelChain > w!c!#ff8700 → wide + color, no cursed [0.02ms]
+(pass) hsModPeelChain > c!#ff8700h! → color + flipH [0.01ms]
+(pass) hsModPeelChain > bare c! → cursed, hue null [0.01ms]
+(pass) hsModPeelChain > rotate chain l!r! [0.01ms]
+(pass) hsModPeelChain > c! followed by non-hex → null [0.01ms]
+(pass) hsModPeelChain > plain/empty/null → null [0.03ms]
+(pass) hsModClassify > plain/null → plain [0.06ms]
+(pass) hsModClassify > w! → [wide] [0.01ms]
+(pass) hsModClassify > h! → [flipH] [0.01ms]
+(pass) hsModClassify > l! → [rotateL], r! → [rotateR] [0.01ms]
+(pass) hsModClassify > v! → [flipV], c! → [cursed]
+(pass) hsModClassify > ffzX → [flipH], ffzSpin → [spin], ffzRainbow → [rainbow] [0.01ms]
+(pass) hsModClassify > c!#hex → modifier with hue [0.03ms]
+(pass) hsModClassify > allowPrefix resolves w → w! [0.03ms]
+(pass) hsModClassify > no allowPrefix → plain [0.01ms]
+(pass) hsModComposeTransform > empty/null → identity [0.07ms]
+(pass) hsModComposeTransform > wide/tall scale [0.02ms]
+(pass) hsModComposeTransform > flipH/flipV negate [0.01ms]
+(pass) hsModComposeTransform > rotateL/rotateR add degrees [0.02ms]
+(pass) hsModComposeTransform > wide compounds + clamps at MAX_SCALE [0.02ms]
+(pass) hsModComposeTransform > cursed/anim mods do not scale [0.02ms]
+(pass) hsModComposeFilter > empty → "" [0.01ms]
+(pass) hsModComposeFilter > cursed → grayscale/brightness/contrast (canonical) [0.02ms]
+(pass) hsModComposeFilter > hue → hue-rotate + saturate [0.01ms]
+(pass) hsModComposeFilter > wide alone → ""
+(pass) hsModComposeFilter > trimmed [0.01ms]
+(pass) animated effects > emits hs-fx-* classes [0.04ms]
+(pass) animated effects > hsModAnimClassAttr formats a leading-space class string [0.02ms]
+(pass) animated effects > hyper = filter + shake anim [0.01ms]
+(pass) animated effects > rainbow var-hue STACKS with cursed static filter [0.01ms]
+(pass) animated effects > static mods emit no anim classes [0.01ms]
+(pass) animated effects > z! sets zero flag [0.02ms]
+(pass) animated effects > HS_FX_ANIM_CLASSES lists animations [0.01ms]
+(pass) hsModBuildStyleAttr > empty → "" [0.07ms]
+(pass) hsModBuildStyleAttr > wide → transform:scale(2, 1) [0.03ms]
+(pass) hsModBuildStyleAttr > flipH → scale(-1, 1) [0.02ms]
+(pass) hsModBuildStyleAttr > rotateR → rotate(90deg) [0.02ms]
+(pass) hsModBuildStyleAttr > cursed → grayscale filter, no transform [0.02ms]
+(pass) hsModBuildStyleAttr > hue → filter [0.01ms]
+(pass) hsModInjectWrapperStyle > empty styleStr → unchanged [0.03ms]
+(pass) hsModInjectWrapperStyle > injects into span without style [0.04ms]
+(pass) hsModInjectWrapperStyle > merges with existing style [0.01ms]
+(pass) hsModInjectWrapperStyle > no double style attr [0.02ms]
+(pass) hsModWordsFromState > empty → [] [0.06ms]
+(pass) hsModWordsFromState > canonical effects → shortest token [0.03ms]
+(pass) hsModWordsFromState > hue → c!#hex [0.04ms]
+(pass) hsModWordsFromState > wide + hue → [w!, c!#hex] [0.02ms]
+(pass) hsModWordsFromState > unknown mod → ?prefixed
+(pass) hsModWordsFromState > hue round-trips within ±1° [0.02ms]
+(pass) end-to-end modifier pipeline > w! classify → transform → style [0.03ms]
+(pass) end-to-end modifier pipeline > w!h!ffzX: wide × flipH × flipH → two flips cancel [0.03ms]
+(pass) end-to-end modifier pipeline > w! w! multiset → 4x [0.02ms]
+(pass) end-to-end modifier pipeline > ffzSpin classifies + composes to spin anim [0.02ms]
+
+tests/native-emote-escape.test.js:
+(pass) computeMessageText twitchExtra — escape-aware native emote keys > plain name keys unchanged (escapeHtml is identity) [0.11ms]
+(pass) computeMessageText twitchExtra — escape-aware native emote keys > HTML-special name `<3` is keyed by its ESCAPED form — the token processEmotes sees [0.03ms]
+(pass) computeMessageText twitchExtra — escape-aware native emote keys > name containing & is keyed escaped [0.02ms]
+(pass) computeMessageText twitchExtra — escape-aware native emote keys > lock detection still receives the RAW name (lookupEmote contract unchanged) [0.04ms]
+(pass) computeMessageText twitchExtra — escape-aware native emote keys > no twitchEmotes → twitchExtra stays null
+
+tests/native-remote-autoadd.test.js:
+(pass) trackRemoteCompletion — only remote 7TV catalog hits register > remote 7tv match registers [0.05ms]
+(pass) trackRemoteCompletion — only remote 7TV catalog hits register > local (bridge/native) matches never register [0.02ms]
+(pass) flushRemoteCompletionsOnSend — presence-gated relay > emote present as wysiwyg img alt is relayed once, then cleared [0.14ms]
+(pass) flushRemoteCompletionsOnSend — presence-gated relay > 7TV overlay flag survives register → relay (zeroWidth not dropped) [0.04ms]
+(pass) flushRemoteCompletionsOnSend — presence-gated relay > emote present as plain text word is relayed (text mode) [0.02ms]
+(pass) flushRemoteCompletionsOnSend — presence-gated relay > cycled-past / deleted emotes are NOT relayed and stay registered [0.03ms]
+(pass) flushRemoteCompletionsOnSend — presence-gated relay > nothing registered or nothing present → no postMessage [0.02ms]
+
+tests/native-tap-normalize.test.js:
+(pass) _tapToMsg: basic message with plain-string messageParts [0.16ms]
+(pass) _tapToMsg: falls back to displayName when userDisplayName missing [0.03ms]
+(pass) _tapToMsg: no display name at all → null (can't render an anonymous native message) [0.01ms]
+(pass) _tapToMsg: login falls back to displayName lowercased when userLogin missing [0.02ms]
+(pass) _tapToMsg: emote part builds text via alt + registers twitchEmotes CDN url [0.03ms]
+(pass) _tapToMsg: repeated emote alt only registers the url once [0.02ms]
+(pass) _tapToMsg: mention part (recipient) prefixes @  [0.02ms]
+(pass) _tapToMsg: mention part (displayName field) prefixes @  [0.01ms]
+(pass) _tapToMsg: object part with plain .text field is appended [0.01ms]
+(pass) _tapToMsg: object part with .url field is appended [0.01ms]
+(pass) _tapToMsg: falls back to messageBody when messageParts absent [0.01ms]
+(pass) _tapToMsg: no resolvable text at all → null
+(pass) _tapToMsg: badges as array of {setID, version} joins to "id/version" csv [0.04ms]
+(pass) _tapToMsg: badges as array missing version defaults to /1 [0.02ms]
+(pass) _tapToMsg: badges as plain object map joins to csv [0.02ms]
+(pass) _tapToMsg: subscriber badge sets subMonths from badge string [0.02ms]
+(pass) _tapToMsg: messageType 1 or isAction flag sets isAction [0.03ms]
+(pass) _tapToMsg: numeric timestamp in ms (>1e12) is preserved verbatim [0.01ms]
+(pass) _tapToMsg: implausible small timestamp (not real ms epoch) falls back to Date.now() [0.02ms]
+(pass) _tapToMsg: missing color defaults to #fff [0.01ms]
+(pass) _tapToMsg: userId coerced to string, defaults to empty string [0.02ms]
+(pass) _tapToMsg: messageParts nested one level under m.message.messageParts is also read [0.01ms]
+
+tests/paint-precedence-restore.test.js:
+(pass) BUG #2 — resolveMentionColor must yield to a resolved HeatSync paint, not just a 7TV one > the mention-repaint guard checks hasResolvedHsPaint(uid) in addition to getMcPaintStyle(uid) [0.05ms]
+(pass) Item 3 — cache-restored rows must re-apply an already-resolved HeatSync paint > the justRestored fast path calls updateHsPaintsInPlace for uids with hasResolvedHsPaint [0.05ms]
+
+tests/paint-spec.test.js:
+(pass) validatePaintSpec — schema clamps > accepts a minimal valid spec [0.17ms]
+(pass) validatePaintSpec — schema clamps > rejects non-object input [0.03ms]
+(pass) validatePaintSpec — schema clamps > rejects v !== 1 [0.03ms]
+(pass) validatePaintSpec — schema clamps > rejects unknown base.type [0.02ms]
+(pass) validatePaintSpec — schema clamps > clamps base.angle to integer 0-360 [0.05ms]
+(pass) validatePaintSpec — schema clamps > requires 1-8 stops [0.07ms]
+(pass) validatePaintSpec — schema clamps > requires exactly 1 stop for solid type [0.03ms]
+(pass) validatePaintSpec — schema clamps > rejects stop.pos out of 0-100 range [0.02ms]
+(pass) validatePaintSpec — schema clamps > strict #rrggbb hex only — rejects shorthand, names, and non-hex [0.05ms]
+(pass) validatePaintSpec — schema clamps > rejects effects array over 3 entries [0.03ms]
+(pass) validatePaintSpec — schema clamps > rejects unknown effect id [0.07ms]
+(pass) validatePaintSpec — schema clamps > rejects duplicate effect ids [0.04ms]
+(pass) validatePaintSpec — schema clamps > rejects out-of-range speed [0.06ms]
+(pass) validatePaintSpec — schema clamps > accepts in-range speed [0.04ms]
+(pass) validatePaintSpec — schema clamps > rejects glow with bad color or strength [0.05ms]
+(pass) validatePaintSpec — layer/slot compatibility rules > rejects two paint-slot effects together [0.05ms]
+(pass) validatePaintSpec — layer/slot compatibility rules > allows exactly 1 paint-slot effect [0.07ms]
+(pass) validatePaintSpec — layer/slot compatibility rules > rejects 2 motion effects that animate the same property on the same target [0.04ms]
+(pass) validatePaintSpec — layer/slot compatibility rules > accepts 2 motion effects with distinct signatures [0.02ms]
+(pass) validatePaintSpec — layer/slot compatibility rules > accepts a paint effect + 2 compatible motion effects (max 3 total) [0.02ms]
+(pass) validatePaintSpec — luminance min-period enforcement (via compiler) > luminance effects never compile below a 1s animation period [0.79ms]
+(pass) paintNeedsLetterSplit > true for wave/ripple/tumble [0.04ms]
+(pass) paintNeedsLetterSplit > false for other effects and no effects [0.03ms]
+(pass) paintNeedsLetterSplit > false for null/undefined spec
+(pass) hashPaintSpec — stability > same spec produces the same hash [0.09ms]
+(pass) hashPaintSpec — stability > different specs produce different hashes [0.05ms]
+(pass) hashPaintSpec — stability > is insensitive to key insertion order in stop objects [0.04ms]
+(pass) hashPaintSpec — stability > hash is a short class/keyframe-name-safe string [0.03ms]
+(pass) compilePaintCss — structural checks > solid base with no effects compiles a plain color rule, no gradient/animation [0.03ms]
+(pass) compilePaintCss — structural checks > linear base + pan effect compiles a background-clip gradient with animation + keyframes [0.08ms]
+(pass) compilePaintCss — structural checks > themed preset (gold) ignores base stops entirely — fixed palette [0.04ms]
+(pass) compilePaintCss — structural checks > motion effect (heli) never touches background/color — layers transform only [0.02ms]
+(pass) compilePaintCss — structural checks > letter-split effect (wave) emits ONE `span` rule with --i delay [0.04ms]
+(pass) compilePaintCss — structural checks > fire (paint) + wave (motion): one span rule, two comma-listed animations, paint delay phase-locked [0.12ms]
+(pass) compilePaintCss — structural checks > wave + ripple (two per-letter motions, no paint): both animations combine, no paint slot [0.10ms]
+(pass) compilePaintCss — structural checks > pan (paint) + tumble (motion): one span rule; tumble perspective stays a separate parent rule [0.08ms]
+(pass) compilePaintCss — structural checks > split-without-paint (wave only): single animation, still fine, one rule [0.05ms]
+(pass) compilePaintCss — structural checks > non-split paint + whole-name motion (fire + coin) is untouched — separate rules, out of scope here [0.06ms]
+(pass) compilePaintCss — structural checks > conic effect namespaces its @property angle var per-hash (no cross-user collision) [0.06ms]
+(pass) compilePaintCss — structural checks > glow with no neon effect emits a static (non-animated) text-shadow [0.06ms]
+(pass) compilePaintCss — structural checks > returns empty string for invalid inputs rather than throwing [0.03ms]
+(pass) compilePaintCss — adversarial injection resistance > rejected color never reaches compiled CSS verbatim — validator blocks it first [0.03ms]
+(pass) compilePaintCss — adversarial injection resistance > compiler never emits the raw injected color even without validating first (defense in depth) [0.03ms]
+(pass) compilePaintCss — adversarial injection resistance > unknown/injected effect id is silently skipped, not interpolated [0.05ms]
+(pass) compilePaintCss — adversarial injection resistance > selector is echoed verbatim as CSS text, never parsed/executed [0.04ms]
+(pass) EFFECTS enum — exactly the 20 phase-1 effects, correctly classified > has exactly the 20 required ids, no more, no less [0.02ms]
+(pass) EFFECTS enum — exactly the 20 phase-1 effects, correctly classified > paint-slot ids are exactly pan/conic/hue/glint/chrome/gold/fire/matrix/holo/reveal [0.05ms]
+(pass) EFFECTS enum — exactly the 20 phase-1 effects, correctly classified > only hue/ripple/neon are classified as luminance-changing [0.03ms]
+(pass) wall-clock phase sync (--hsp-t) > alternate-direction paint (fire) folds over 2x its duration [0.10ms]
+(pass) wall-clock phase sync (--hsp-t) > normal-direction paint (pan) folds over exactly its duration [0.07ms]
+(pass) wall-clock phase sync (--hsp-t) > whole-name motion (coin) carries the fold on its own rule [0.06ms]
+(pass) wall-clock phase sync (--hsp-t) > paintPhaseNow returns a seconds stamp usable as a CSS time [0.03ms]
+
+tests/paints.test.js:
+(pass) applyHsPaintToElement — in-place DOM application (BUG #3 hardening) > splits letter-per-span and marks dataset.hsPaintSplit for a needs-split (wave) paint [0.53ms]
+(pass) applyHsPaintToElement — in-place DOM application (BUG #3 hardening) > does NOT split (no per-letter spans) for a solid paint that needs no split [0.07ms]
+(pass) applyHsPaintToElement — in-place DOM application (BUG #3 hardening) > clears a pre-existing inline color decl (precedence: class-based paint must win), but re-adds the phase-lock mount stamp [0.08ms]
+(pass) applyHsPaintToElement — in-place DOM application (BUG #3 hardening) > stamps --hsp-t (phase-lock mount time) on an element with no pre-existing style [0.03ms]
+(pass) applyHsPaintToElement — in-place DOM application (BUG #3 hardening) > never overwrites an already-stamped --hsp-t (idempotent mount time — a repaint must not re-phase an already-mounted copy) [0.03ms]
+(pass) applyHsPaintToElement — in-place DOM application (BUG #3 hardening) > no-ops entirely when el is null/undefined [0.03ms]
+(pass) applyHsPaintToElement — in-place DOM application (BUG #3 hardening) > no-ops when the uid has no resolved paint [0.02ms]
+(pass) applyHsPaintToElement — in-place DOM application (BUG #3 hardening) > BUG #3: never innerHTML-assigns when textContent is already empty — a split of "" must never permanently wipe a node [0.03ms]
+(pass) applyHsPaintToElement — in-place DOM application (BUG #3 hardening) > is idempotent — calling twice on an already-split element does not re-split or double-escape [0.04ms]
+(pass) evictOldestPaintEntry — pure LRU-ish eviction (mirrors monorepo evictOldest) > evicts the oldest (first-inserted) entry once at capacity [0.13ms]
+(pass) evictOldestPaintEntry — pure LRU-ish eviction (mirrors monorepo evictOldest) > does nothing below capacity [0.02ms]
+(pass) evictOldestPaintEntry — pure LRU-ish eviction (mirrors monorepo evictOldest) > no-ops on an empty map [0.03ms]
+(pass) partitionPaintBatch — pure batch/rest split, newest-queued first > drains the newest N (end of insertion order) as the batch [0.04ms]
+(pass) partitionPaintBatch — pure batch/rest split, newest-queued first > returns everything as batch when under the cap [0.02ms]
+(pass) partitionPaintBatch — pure batch/rest split, newest-queued first > accepts a Set as input (does not mutate it) [0.03ms]
+(pass) partitionPaintBatch — pure batch/rest split, newest-queued first > caps at the server's MAX_BATCH_IDS (50) [0.06ms]
+(pass) computeHsLetterSpans — pure per-letter split data > computes 0-based index per letter and midpoint = (len-1)/2 [0.03ms]
+(pass) computeHsLetterSpans — pure per-letter split data > handles a single character (mid = 0) [0.02ms]
+(pass) computeHsLetterSpans — pure per-letter split data > handles empty string [0.02ms]
+(pass) computeHsLetterSpans — pure per-letter split data > handles null/undefined gracefully [0.02ms]
+(pass) computeHsLetterSpans — pure per-letter split data > includes the leading @ as its own letter for mention/reply anchors [0.02ms]
+(pass) splitHsLettersHtml — escapes each glyph individually > wraps each character in a span with --i/--mid custom props [0.02ms]
+(pass) splitHsLettersHtml — escapes each glyph individually > HTML-escapes glyphs that are themselves markup-shaped (defense in depth) [0.02ms]
+(pass) paint lookup id-space guard — structural invariant > queuePaintLookup is called from exactly two places in cosmetics.js [0.05ms]
+(pass) paint lookup id-space guard — structural invariant > one call site is inside queueMcCosmeticsLookup, the same choke point 7TV cosmetics uses [0.02ms]
+(pass) paint lookup id-space guard — structural invariant > the other call site is inside flushKickNameLookups and only ever queues a kick_-namespaced id [0.04ms]
+(pass) picked name colour + youtube hash fallback > hsUsernameColor matches the shared website/server contract [0.08ms]
+(pass) picked name colour + youtube hash fallback > hsUsernameColor is case-insensitive and always a palette colour [0.02ms]
+(pass) picked name colour + youtube hash fallback > hsUsernameColor handles null/undefined without throwing [0.02ms]
+(pass) picked name colour + youtube hash fallback > setHsColorEntry only stores valid #RRGGBB, else null [0.04ms]
+(pass) picked name colour + youtube hash fallback > getHsPickedColor returns null for an unseen uid [0.01ms]
+(pass) primeSelfHsCosmetics — own identity seeds instantly > seeds the picked name colour with no network round trip [0.08ms]
+(pass) primeSelfHsCosmetics — own identity seeds instantly > primes every identity under its own paint-id namespace [0.03ms]
+(pass) primeSelfHsCosmetics — own identity seeds instantly > never clobbers a colour the server already resolved [0.03ms]
+(pass) primeSelfHsCosmetics — own identity seeds instantly > no identity ids — no throw, no seed [0.03ms]
+
+tests/safe-url.test.js:
+(pass) allow: http and https URLs > https basic [0.06ms]
+(pass) allow: http and https URLs > http basic [0.02ms]
+(pass) allow: http and https URLs > https with path [0.02ms]
+(pass) allow: http and https URLs > https with port, path, query, fragment
+(pass) allow: http and https URLs > https with percent-encoded path [0.01ms]
+(pass) allow: http and https URLs > https uppercase host is normalized to lowercase [0.01ms]
+(pass) allow: http and https URLs > https with credentials
+(pass) allow: http and https URLs > https with trailing whitespace stripped (trim) [0.01ms]
+(pass) allow: http and https URLs > https punycode IDN host [0.04ms]
+(pass) allow: http and https URLs > https unicode IDN host — normalized to punycode in u.href [0.02ms]
+(pass) allow: http and https URLs > twitch CDN URL
+(pass) allow: http and https URLs > 7tv CDN URL
+(pass) allow: http and https URLs > heatsync CDN URL
+(pass) block: deny-listed dangerous schemes > javascript: lowercase
+(pass) block: deny-listed dangerous schemes > javascript: mixed case — JavaScript:
+(pass) block: deny-listed dangerous schemes > javascript: all uppercase — JAVASCRIPT:
+(pass) block: deny-listed dangerous schemes > javascript: camelCase — JaVaScRiPt:
+(pass) block: deny-listed dangerous schemes > data: URI
+(pass) block: deny-listed dangerous schemes > data: uppercase — DATA:
+(pass) block: deny-listed dangerous schemes > vbscript: lowercase
+(pass) block: deny-listed dangerous schemes > vbscript: uppercase — VBSCRIPT:
+(pass) block: deny-listed dangerous schemes > blob: URL
+(pass) block: deny-listed dangerous schemes > blob: uppercase — BLOB:
+(pass) block: deny-listed dangerous schemes > file: lowercase
+(pass) block: deny-listed dangerous schemes > file: uppercase — FILE:
+(pass) block: deny-listed dangerous schemes > about:blank
+(pass) block: deny-listed dangerous schemes > about: uppercase — ABOUT:
+(pass) block: non-deny-listed schemes filtered by protocol allowlist > mailto: rejected by protocol check
+(pass) block: non-deny-listed schemes filtered by protocol allowlist > ftp: rejected by protocol check
+(pass) block: non-deny-listed schemes filtered by protocol allowlist > chrome: rejected by protocol check
+(pass) block: non-deny-listed schemes filtered by protocol allowlist > chrome-extension: rejected by protocol check
+(pass) block: non-deny-listed schemes filtered by protocol allowlist > ws: rejected by protocol check [0.01ms]
+(pass) block: non-deny-listed schemes filtered by protocol allowlist > wss: rejected by protocol check
+(pass) block: whitespace/encoding evasion > leading spaces before javascript: — trim() strips them, deny-list catches [0.01ms]
+(pass) block: whitespace/encoding evasion > leading tab before javascript: — trim() strips it, deny-list catches
+(pass) block: whitespace/encoding evasion > embedded tab inside scheme — java\tscript:
+(pass) block: whitespace/encoding evasion > embedded newline inside scheme — java\nscript: [0.01ms]
+(pass) block: whitespace/encoding evasion > embedded CR inside scheme — java\rscript: [0.01ms]
+(pass) block: whitespace/encoding evasion > leading null byte — \x00javascript:
+(pass) block: whitespace/encoding evasion > null byte mid-scheme — javascript\x00:
+(pass) block: whitespace/encoding evasion > zero-width space before javascript: — \u200b stripped, deny-list catches
+(pass) block: whitespace/encoding evasion > soft-hyphen before javascript: — \u00ad stripped, deny-list catches
+(pass) block: whitespace/encoding evasion > zero-width non-joiner inside scheme — java\u200cscript:
+(pass) block: whitespace/encoding evasion > zero-width joiner inside scheme — java\u200dscript:
+(pass) block: whitespace/encoding evasion > word joiner before data: — \u2060data:
+(pass) block: whitespace/encoding evasion > BOM before javascript: — \ufeffjavascript:
+(pass) block: whitespace/encoding evasion > null byte inside data: — dat\x00a: [0.01ms]
+(pass) block: whitespace/encoding evasion > multiple invisible chars before vbscript: — deny-list catches after strip
+(pass) block: whitespace/encoding evasion > invisible chars between scheme letters AND prefix — file: [0.01ms]
+(pass) block: deny-list bypass via long padding (defense-in-depth) > 31-char padding before javascript: — deny-list slice(0,32) misses scheme [0.02ms]
+(pass) block: deny-list bypass via long padding (defense-in-depth) > 32-char padding before javascript: — deny-list definitely misses; URL() still rejects [0.02ms]
+(pass) block: relative and ambiguous inputs > relative path /foo — new URL() requires base; throws → empty [0.04ms]
+(pass) block: relative and ambiguous inputs > protocol-relative //evil.com — new URL() throws without base → empty [0.01ms]
+(pass) block: relative and ambiguous inputs > bare word foo
+(pass) block: relative and ambiguous inputs > fragment-only #frag [0.01ms]
+(pass) block: relative and ambiguous inputs > whitespace-only string (trim → empty, !url guard)
+(pass) block: relative and ambiguous inputs > newline-only string
+(pass) block: relative and ambiguous inputs > null byte only \x00
+(pass) block: non-string and falsy inputs (must not throw) > null — typeof check returns empty
+(pass) block: non-string and falsy inputs (must not throw) > undefined — typeof check returns empty
+(pass) block: non-string and falsy inputs (must not throw) > empty string — falsy guard returns empty
+(pass) block: non-string and falsy inputs (must not throw) > number 42 — not a string
+(pass) block: non-string and falsy inputs (must not throw) > number 0 — not a string
+(pass) block: non-string and falsy inputs (must not throw) > boolean false — not a string [0.01ms]
+(pass) block: non-string and falsy inputs (must not throw) > boolean true — not a string
+(pass) block: non-string and falsy inputs (must not throw) > plain object {} — not a string
+(pass) block: non-string and falsy inputs (must not throw) > array with valid URL — not a string [0.01ms]
+
+tests/sanitize-color.test.js:
+(pass) sanitizeColor — real regex + boost + cache (src/multichat/main.js) > a valid 6-digit hex that is already readable passes through unchanged [0.24ms]
+(pass) sanitizeColor — real regex + boost + cache (src/multichat/main.js) > a valid 3-digit hex passes the regex [0.03ms]
+(pass) sanitizeColor — real regex + boost + cache (src/multichat/main.js) > malformed input falls back to the #ffffff default [0.03ms]
+(pass) sanitizeColor — real regex + boost + cache (src/multichat/main.js) > readableNamesEnabled=true boosts a low-luminance color (real boostReadability, not stubbed) [0.08ms]
+(pass) sanitizeColor — real regex + boost + cache (src/multichat/main.js) > readableNamesEnabled=false passes the raw color through with no boost [0.09ms]
+(pass) sanitizeColor — real regex + boost + cache (src/multichat/main.js) > caches by input color — boostReadability is not recomputed on a repeat call [0.06ms]
+(pass) sanitizeColor — real regex + boost + cache (src/multichat/main.js) > cache-clear behavior: toggling readableNamesEnabled invalidates the cached entry for the same color [0.06ms]
+(pass) sanitizeColor — real regex + boost + cache (src/multichat/main.js) > cache is capped at 500 entries (oldest evicted, does not grow unbounded) [1.03ms]
+
+tests/sanitize-ui-settings.test.js:
+(pass) edge inputs > null returns {} [0.06ms]
+(pass) edge inputs > undefined returns {} [0.01ms]
+(pass) edge inputs > number returns {}
+(pass) edge inputs > string returns {}
+(pass) edge inputs > array returns {}
+(pass) edge inputs > empty object returns {}
+(pass) edge inputs > does not mutate input [0.03ms]
+(pass) valid settings round-trip > bool setting passes through as-is [0.02ms]
+(pass) valid settings round-trip > numeric setting passes through as-is [0.01ms]
+(pass) valid settings round-trip > null value passes through (explicit opt-out)
+(pass) valid settings round-trip > array value passes through when under size limit [0.01ms]
+(pass) valid settings round-trip > multiple valid settings all pass through [0.02ms]
+(pass) valid settings round-trip > returns a new object (never the same reference) [0.01ms]
+(pass) blocklist keys > platformFilters is stripped [0.01ms]
+(pass) blocklist keys > keywordHighlights is stripped [0.01ms]
+(pass) blocklist keys > all UI_SYNC_BLOCKLIST members are stripped [0.03ms]
+(pass) prototype pollution keys > __proto__ key is stripped [0.02ms]
+(pass) prototype pollution keys > constructor key is stripped [0.02ms]
+(pass) prototype pollution keys > prototype key is stripped [0.02ms]
+(pass) numeric-string keys > key "0" is stripped [0.02ms]
+(pass) numeric-string keys > key "123" is stripped [0.01ms]
+(pass) numeric-string keys > alphanumeric key "v2" is kept (not pure digits) [0.01ms]
+(pass) key length limits > empty-string key is stripped [0.02ms]
+(pass) key length limits > 65-char key is stripped [0.02ms]
+(pass) key length limits > 64-char key is kept [0.01ms]
+(pass) non-data value types > function value is stripped [0.02ms]
+(pass) non-data value types > symbol value is stripped [0.02ms]
+(pass) oversized strings > string exactly at 4096 chars is kept [0.02ms]
+(pass) oversized strings > string at 4097 chars is stripped [0.03ms]
+(pass) oversized objects > object whose JSON is <=6144 bytes is kept [0.03ms]
+(pass) oversized objects > object whose JSON is >6144 bytes is stripped [0.03ms]
+(pass) oversized objects > non-serializable object (circular) is stripped [2.99ms]
+(pass) own-property filtering > inherited properties are not copied [0.03ms]
+(pass) real-world sync blob > full typical settings blob passes through cleanly [0.05ms]
+(pass) real-world sync blob > blob with mixed good/bad keys: only bad stripped [0.04ms]
+(pass) wrong-type value is NOT dropped (type coercion is schema job, not sanitize) [0.01ms]
+(pass) out-of-range number is NOT clamped (clamping is schema job, not sanitize)
+(pass) DEVICE_LOCAL_KEYS > is a subset of UI_SYNC_BLOCKLIST [0.02ms]
+(pass) DEVICE_LOCAL_KEYS > platformFilters is device-local; keywordHighlights/chatFilterRules are not [0.01ms]
+(pass) OVERFLOW_MIRROR_KEYS > has exactly one mirror entry per UI_SYNC_BLOCKLIST member [0.03ms]
+(pass) OVERFLOW_MIRROR_KEYS > mirror names match the known chrome.storage.local overflow keys [0.02ms]
+(pass) estimateSettingSize > measures string length [0.02ms]
+(pass) estimateSettingSize > measures JSON length for objects/arrays [0.01ms]
+(pass) estimateSettingSize > circular reference is Infinity (fail closed) [0.81ms]
+(pass) isLargeKeySyncEligible > keywordHighlights under the cap is eligible [0.03ms]
+(pass) isLargeKeySyncEligible > chatFilterRules under the cap is eligible [0.01ms]
+(pass) isLargeKeySyncEligible > keywordHighlights over LARGE_KEY_SYNC_MAX is not eligible [0.02ms]
+(pass) isLargeKeySyncEligible > value exactly at the cap is eligible (boundary) [0.01ms]
+(pass) isLargeKeySyncEligible > platformFilters is never eligible regardless of size (device-local) [0.01ms]
+(pass) isLargeKeySyncEligible > a non-blocklist key is never "eligible" (it syncs via chrome.storage.sync directly, not this path) [0.01ms]
+
+tests/send-targets.test.js:
+(pass) resolveSendTargets defaults every linked platform on when absent [0.11ms]
+(pass) resolveSendTargets defaults every linked platform on when null [0.02ms]
+(pass) resolveSendTargets respects an explicit false on a linked platform [0.02ms]
+(pass) resolveSendTargets cannot enable a platform that is not linked [0.02ms]
+(pass) resolveSendTargets falls back to all-linked-on if resolution would disable every target [0.01ms]
+(pass) nextSendTargets seeds from linked platforms on first toggle [0.10ms]
+(pass) nextSendTargets refuses to disable the last active linked target [0.02ms]
+(pass) nextSendTargets ignores a toggle on a platform that is not linked [0.01ms]
+(pass) nextSendTargets allows re-enabling a previously disabled platform [0.02ms]
+(pass) extractYoutubeVideoId pulls id from watch?v= url [0.06ms]
+(pass) extractYoutubeVideoId pulls id from watch url with extra params [0.02ms]
+(pass) extractYoutubeVideoId handles /live/<id>, youtu.be, /shorts/, /embed/ [0.02ms]
+(pass) extractYoutubeVideoId returns "" for channel-only urls (no fixed stream) [0.02ms]
+(pass) extractYoutubeVideoId rejects too-short / too-long ids at the boundary [0.01ms]
+(pass) youtubeSendErrorMessage maps known codes to actionable lines [0.07ms]
+(pass) youtubeSendErrorMessage falls back for unknown/undefined codes [0.02ms]
+
+tests/sent-echo.test.js:
+(pass) single send: first echo renders [0.12ms]
+(pass) dual-send: first echo renders, duplicate suppressed, third-party copy renders [0.03ms]
+(pass) REGRESSION: same text sent twice within 10s — BOTH echoes render [0.03ms]
+(pass) dual-send twice: exactly two copies render out of four echoes [0.04ms]
+(pass) REGRESSION: reply dual-send — twitch echo carries "@login " prefix, still dedups [0.03ms]
+(pass) non-reply entry never strips a stranger's "@you " prefix [0.02ms]
+(pass) entries outside the 10s window are ignored [0.02ms]
+(pass) stale entry early in the array does not abort the scan (cross-tab merge disorder) [0.03ms]
+(pass) legacy entry without echoes field defaults to 1 [0.03ms]
+(pass) exhausted entries stay in the array for peekSentHost badge attribution [0.02ms]
+
+tests/settings-schema.test.js:
+(pass) lintSettings: registry is clean [0.61ms]
+(pass) every default validates and coerces to itself (round-trip) [0.39ms]
+(pass) storage keys are verbatim legacy keys (no renames) [0.09ms]
+(pass) validate: bool rejects non-booleans [0.02ms]
+(pass) validate: enum rejects values outside options [0.02ms]
+(pass) validate: range enforces bounds and finiteness [0.02ms]
+(pass) validate: text enforces maxLen [0.02ms]
+(pass) validate: multiselect rejects unknown members [0.02ms]
+(pass) coerce: bool truthy/falsy normalization [0.01ms]
+(pass) coerce: enum tolerates string/number mismatch from DOM datasets [0.03ms]
+(pass) coerce: range clamps and parses [0.02ms]
+(pass) coerce: text truncates to maxLen [0.01ms]
+(pass) coerce: multiselect drops unknown members [0.02ms]
+(pass) coerce: rejects unknown def and nullish values
+(pass) validate: boolmap accepts partial maps of known subkeys [0.03ms]
+(pass) coerce: boolmap merges partial stored map over full defaults [0.03ms]
+(pass) cw entries carry complete server-patch sub-shapes [0.08ms]
+(pass) tweak entries: 12 sync bools, all default-off (chat-column tweaks removed) [0.06ms]
+(pass) lint: flags a duplicate key [0.25ms]
+(pass) lint: flags a sync key on the blocklist [0.16ms]
+
+tests/tab-complete-order.test.js:
+(pass) compareAcMatches — used-before beats structure > kko regression: habitual global KKona beats untouched channel KKonaLand [0.14ms]
+(pass) compareAcMatches — used-before beats structure > among used: typed prefix outranks used substring [0.03ms]
+(pass) compareAcMatches — used-before beats structure > among used prefix matches: higher frecency wins [0.02ms]
+(pass) compareAcMatches — never-used ordering (channel culture leads) > same tier, both prefix, neither used → shorter name first [0.02ms]
+(pass) compareAcMatches — never-used ordering (channel culture leads) > channel emote beats global when neither is used [0.01ms]
+(pass) compareAcMatches — never-used ordering (channel culture leads) > exact beats tier even never-used: "hug" → global HuG over channel peepoHug (reversed call: "nam" → NaM) [0.01ms]
+(pass) compareAcMatches — never-used ordering (channel culture leads) > strong exact: a USED exact global escapes above channel fuzzy hits [0.02ms]
+(pass) compareAcMatches — never-used ordering (channel culture leads) > exact channel/own emote is strong without any usage [0.01ms]
+(pass) compareAcMatches — never-used ordering (channel culture leads) > prefix beats substring within a tier [0.01ms]
+(pass) compareAcMatches — never-used ordering (channel culture leads) > sub emote beats non-sub on an otherwise-equal never-used tie [0.02ms]
+(pass) compareAcMatches — remote merge > every local beats every remote, remotes keep catalog (_ai) order [0.03ms]
+(pass) compareAcMatches — remote merge > a remote the user has actually used beats unused remotes [0.02ms]
+(pass) compareAcMatches — @user matches > recent chatter (lower recencyRank) first, alpha as fallback [0.25ms]
+(pass) compareAcMatches — @user matches > recency outranks the shorter-name rule: longer recent chatter beats short stale name [0.06ms]
+(pass) emote frecency store > repeated use beats a single later stray insert [0.20ms]
+(pass) emote frecency store > score halves per week since last use [0.04ms]
+(pass) emote frecency store > seeds from the legacy MRU list on first run, preserving its order [0.02ms]
+(pass) emote frecency store > caps the store at 200 names, evicting lowest scores [5.59ms]
+(pass) emote frecency store > unbump reverts a bump exactly — cycling PAST an emote leaves no trace [0.09ms]
+(pass) emote frecency store > unbump only removes one use — real habit survives a cycle-past [0.03ms]
+(pass) autocomplete-hook.js — stays in lockstep with the multichat > shares the frecency localStorage key and half-life with emotes.js [0.08ms]
+(pass) autocomplete-hook.js — stays in lockstep with the multichat > hook frecency math matches emotes.js (carved + behavior-compared) [0.08ms]
+(pass) autocomplete-hook.js — stays in lockstep with the multichat > all three sort sites consult frecency (used-before beats tier) [0.12ms]
+(pass) autocomplete-hook.js — stays in lockstep with the multichat > inserts keep feeding both stores (MRU list for the picker + frecency) [0.02ms]
+(pass) autocomplete-hook.js — stays in lockstep with the multichat > usage records where the user STOPS, not on every cycle step [0.24ms]
+(pass) moment ¶ shift-click paste (main.js) — in-chat visibility loop > shift-click pastes into the input, never auto-sends, and appends to a draft [0.08ms]
+
+tests/tab-cycle-wrap.test.js:
+(pass) acRemoteEligible — which searches the remote catalog can serve > bare emote search is eligible [0.04ms]
+(pass) acRemoteEligible — which searches the remote catalog can serve > @user search is never eligible (mentions wrap immediately) [0.01ms]
+(pass) acRemoteEligible — which searches the remote catalog can serve > :emoji search is never eligible (emoji wrap immediately)
+(pass) acRemoteEligible — which searches the remote catalog can serve > modifier shorthand is never eligible
+(pass) acRemoteEligible — which searches the remote catalog can serve > short fragments and empty are never eligible [0.01ms]
+(pass) hold-at-end vs wrap — remoteMayCome > @user cycle at end wraps (no hold): remoteMayCome false [0.02ms]
+(pass) hold-at-end vs wrap — remoteMayCome > :emoji cycle at end wraps (no hold): remoteMayCome false
+(pass) hold-at-end vs wrap — remoteMayCome > bare emote with remote not yet fetched holds at end
+(pass) hold-at-end vs wrap — remoteMayCome > bare emote with remote fetch in flight holds at end
+(pass) hold-at-end vs wrap — remoteMayCome > bare emote after remote done wraps
+
+tests/tab-messages.test.js:
+(pass) no filter = every platform included (undefined keys default ON) [0.08ms]
+(pass) empty filter object still defaults every platform ON [0.02ms]
+(pass) filtering one platform excludes only its array [0.02ms]
+(pass) youtube-only tab with Y filtered off = hiddenByFilter, NOT a silent blank [0.02ms]
+(pass) youtube-only tab with Y ON renders youtube [0.01ms]
+(pass) genuinely empty tab is NOT hiddenByFilter (nothing to hide) [0.01ms]
+(pass) all platforms present but ALL filtered off = hiddenByFilter [0.02ms]
+(pass) robust to missing/nonarray source keys [0.02ms]
+
+tests/telemetry.test.js:
+(pass) extension source ships zero third-party telemetry/analytics [89.45ms]
+(pass) telemetry scan actually covered the source tree [0.06ms]
+
+tests/thread-refs.test.js:
+(pass) highlightThreadRefsInHtml — >>id thread references in chat > escaped >>55 → yellow .hs-post-link span, padded data-id, stripped display [0.11ms]
+(pass) highlightThreadRefsInHtml — >>id thread references in chat > raw >> form also matches (belt-and-suspenders like the feed regex) [0.03ms]
+(pass) highlightThreadRefsInHtml — >>id thread references in chat > leading zeros stripped for display, preserved (padded) in the link id [0.02ms]
+(pass) highlightThreadRefsInHtml — >>id thread references in chat > multiple refs in one message [0.03ms]
+(pass) highlightThreadRefsInHtml — >>id thread references in chat > does NOT rewrite >> inside a tag/attribute (skips odd split segments) [0.01ms]
+(pass) highlightThreadRefsInHtml — >>id thread references in chat > lone >> with no following word char is not matched [0.01ms]
+(pass) highlightThreadRefsInHtml — >>id thread references in chat > text without any > is returned unchanged (early out)
+(pass) highlightThreadRefsInHtml — >>id thread references in chat > caps the id at 6 word chars (feed convention) [0.01ms]
+
+tests/undo-manager.test.js:
+(pass) UndoManager — constructor > constructs without throwing [0.82ms]
+(pass) UndoManager — constructor > initial stack has exactly one entry (the capture on construct) [0.09ms]
+(pass) UndoManager — constructor > default max is 100 [0.07ms]
+(pass) UndoManager — constructor > custom max option is respected [0.07ms]
+(pass) UndoManager — undo/redo basic sequence > undo returns false on a fresh single-entry stack [0.09ms]
+(pass) UndoManager — undo/redo basic sequence > redo returns false when at top of stack [0.07ms]
+(pass) UndoManager — undo/redo basic sequence > undo after one push returns true and decrements index [0.28ms]
+(pass) UndoManager — undo/redo basic sequence > redo after undo returns true and increments index [0.11ms]
+(pass) UndoManager — undo/redo basic sequence > redo at top of stack returns false [0.09ms]
+(pass) UndoManager — undo/redo basic sequence > three-step undo walks back to index 0 [0.11ms]
+(pass) UndoManager — redo invalidation after new push > new capture after undo truncates the redo stack [0.13ms]
+(pass) UndoManager — redo invalidation after new push > redo is unavailable after a new capture mid-history [0.11ms]
+(pass) UndoManager — stack cap > stack never grows beyond max [0.17ms]
+(pass) UndoManager — stack cap > stack at max still supports undo [0.15ms]
+(pass) UndoManager — deduplication (signature match) > identical consecutive capture() does not grow the stack [0.09ms]
+(pass) UndoManager — deduplication (signature match) > changed content does grow the stack [0.08ms]
+(pass) UndoManager — reset > reset clears stack and re-captures initial state [0.10ms]
+(pass) UndoManager — _restore side-effects > undo calls replaceChildren on the input element [0.11ms]
+(pass) UndoManager — _restore side-effects > undo dispatches an input event on the element [0.10ms]
+(pass) UndoManager — _restore side-effects > _suppress flag prevents double-capture during restore [0.08ms]
+(pass) installUndoManager > returns a UndoManager instance [0.10ms]
+(pass) installUndoManager > installs _undoManager property on the element [0.06ms]
+(pass) installUndoManager > calling installUndoManager twice returns the same instance [0.07ms]
+
+tests/user-key.test.js:
+(pass) userKey: platform-scoped, lowercased, @-stripped [0.04ms]
+(pass) userKey: null/empty platform → bare (legacy-global) key [0.02ms]
+(pass) userKey: empty/nullish username → empty string [0.01ms]
+(pass) no cross-platform collision: blocking twitch alice does NOT match kick alice [0.07ms]
+(pass) legacy bare entry matches on every platform (backward compat, no migration) [0.02ms]
+(pass) linked cross-platform identity matches via aliasKeys [0.03ms]
+(pass) empty set / empty username → no match (hot-path short-circuit safe) [0.02ms]
+(pass) @-prefixed lookup normalizes to stored key (youtube handles) [0.02ms]
+(pass) block scenario: overlay block (twitch:alice) hides message on twitch content.js [0.01ms]
+(pass) block scenario: twitch block does NOT hide unrelated kick user of same name [0.02ms]
+(pass) block scenario: legacy bare block still hides on all platforms (global-match) [0.01ms]
+(pass) mute scenario: overlay mute key (kick:bob) reaches kick native chat [0.03ms]
+(pass) unblock scenario: deleting namespaced key removes block [0.02ms]
+(pass) legacy unblock: deleting both namespaced + bare clears pre-namespace entry [0.01ms]
+(pass) cosmetics: bare-keyed map lets a kick chatter steal a twitch chatter's paint (the bug) [0.02ms]
+(pass) cosmetics: platform-scoped keys keep twitch alice and kick alice independent [0.02ms]
+(pass) cosmetics: mention/reply paint lookup resolves to the mentioning platform, not a same-name stranger [0.04ms]
+(pass) cosmetics: unknown platform for a known name never falls back to a stranger's id [0.01ms]
+(pass) yt/youtube canonicalization: both forms produce the same key [0.01ms]
+(pass) mute written from a yt row (short form) is enforced against youtube messages [0.02ms]
+(pass) legacy stored 'yt:' keys (pre-canonicalization) still match youtube rows [0.02ms]
+
+tests/user-notes.test.js:
+(pass) save + get roundtrip (single handle, no identity graph) [0.37ms]
+(pass) no note → get null, has false [0.02ms]
+(pass) note follows a person across platforms via the alias graph [0.17ms]
+(pass) notes made from two platforms merge to one canonical record [0.09ms]
+(pass) empty / whitespace text deletes the note [0.16ms]
+(pass) delete removes across every alias [0.08ms]
+(pass) text is trimmed and capped at HS_NOTE_MAX [0.07ms]
+(pass) updatedAt is recorded (explicit clock for determinism) [0.04ms]
+(pass) save is case-insensitive on the handle [0.06ms]
+(pass) legacy notes migrate into v1 on first load, old key removed after persist [0.34ms]
+(pass) migration never clobbers an existing v1 note (v1 wins) [0.11ms]
+(pass) empty legacy blob is dropped without a persist [0.09ms]
+
+tests/utils-extra.test.js:
+(pass) escapeHtml — additional edge cases > empty string returns empty string [0.02ms]
+(pass) escapeHtml — additional edge cases > all 5 entities in one string [0.02ms]
+(pass) escapeHtml — additional edge cases > already-escaped input is double-escaped (no smart-escaping)
+(pass) escapeHtml — additional edge cases > unicode passes through unchanged [0.02ms]
+(pass) escapeHtml — additional edge cases > very long string (1 MB) does not throw [0.16ms]
+(pass) escapeHtml — additional edge cases > boolean true coerces to "true" [0.01ms]
+(pass) escapeHtml — additional edge cases > zero coerces to "0" [0.01ms]
+(pass) escapeHtml — additional edge cases > nested injection payload fully escaped [0.05ms]
+(pass) safeUrl > valid https URL is returned as-is (normalized) [0.02ms]
+(pass) safeUrl > valid http URL is allowed [0.01ms]
+(pass) safeUrl > javascript: is blocked
+(pass) safeUrl > JAVASCRIPT: (uppercase) is blocked
+(pass) safeUrl > data: URI is blocked
+(pass) safeUrl > vbscript: is blocked
+(pass) safeUrl > blob: is blocked
+(pass) safeUrl > file: is blocked
+(pass) safeUrl > about:blank is blocked
+(pass) safeUrl > ftp:// is blocked (not http/https)
+(pass) safeUrl > empty string returns empty string
+(pass) safeUrl > non-string returns empty string [0.01ms]
+(pass) safeUrl > malformed URL (no protocol) returns empty string [0.01ms]
+(pass) safeUrl > whitespace-padded valid URL is accepted [0.01ms]
+(pass) boostReadability > non-string input is returned as-is [0.02ms]
+(pass) boostReadability > invalid hex format is returned unchanged [0.02ms]
+(pass) boostReadability > bright white #ffffff is already readable, returned as-is [0.01ms]
+(pass) boostReadability > pure blue #0000ff (WCAG relL ≈ 0.07) gets boosted [0.02ms]
+(pass) boostReadability > pure red #ff0000 (raw relL ≈ 0.213) gets boosted above 0.25 [0.01ms]
+(pass) boostReadability > 3-char shorthand #fff is handled
+(pass) boostReadability > 3-char shorthand dark color gets boosted [0.01ms]
+(pass) boostReadability > heatsync orange #ff8700 (relL ≈ 0.27) passes threshold
+(pass) boostReadability > custom minRelL=0 never boosts anything
+(pass) debounce > fn is not called immediately on first invoke [30.61ms]
+(pass) debounce > burst of calls collapses to one invocation [50.55ms]
+(pass) debounce > last arg wins after burst [50.58ms]
+(pass) debounce > two distinct bursts each fire once [81.99ms]
+(pass) debounce > default delay is ~100ms [120.82ms]
+(pass) throttle > first call fires immediately [0.15ms]
+(pass) throttle > second call within window is suppressed (but trailing fires) [70.20ms]
+(pass) throttle > rapid burst fires leading + one trailing [60.70ms]
+(pass) throttle > trailing call receives latest args [60.68ms]
+(pass) throttle > after window expires, next call fires immediately again [50.48ms]
+(pass) UI_SYNC_BLOCKLIST > is a Set [0.05ms]
+(pass) UI_SYNC_BLOCKLIST > is non-empty [0.01ms]
+(pass) UI_SYNC_BLOCKLIST > contains platformFilters (per-tab map — too large for sync quota) [0.02ms]
+(pass) UI_SYNC_BLOCKLIST > contains keywordHighlights (free-form text — too large for sync quota)
+(pass) UI_SYNC_BLOCKLIST > contains chatFilterRules (JSON array — too large for sync quota)
+(pass) UI_SYNC_BLOCKLIST > has exactly the documented entries (no silent additions)
+(pass) sanitizeUiSettings > returns {} for null [0.02ms]
+(pass) sanitizeUiSettings > returns {} for undefined
+(pass) sanitizeUiSettings > returns {} for array input [0.01ms]
+(pass) sanitizeUiSettings > returns {} for non-object primitives [0.01ms]
+(pass) sanitizeUiSettings > passes through valid plain keys [0.04ms]
+(pass) sanitizeUiSettings > strips numeric-string keys (corruption marker) [0.03ms]
+(pass) sanitizeUiSettings > strips __proto__ key (prototype pollution guard) [0.03ms]
+(pass) sanitizeUiSettings > strips constructor key with function value [0.03ms]
+(pass) sanitizeUiSettings > strips function values [0.02ms]
+(pass) sanitizeUiSettings > strips symbol values [0.02ms]
+(pass) sanitizeUiSettings > strips strings longer than 4096 chars [0.02ms]
+(pass) sanitizeUiSettings > allows strings at exactly 4096 chars [0.01ms]
+(pass) sanitizeUiSettings > strips objects whose JSON serialization exceeds 6144 bytes [0.02ms]
+(pass) sanitizeUiSettings > strips platformFilters (blocklisted) [0.02ms]
+(pass) sanitizeUiSettings > strips keywordHighlights (blocklisted) [0.01ms]
+(pass) sanitizeUiSettings > strips key with length > 64 chars [0.02ms]
+(pass) sanitizeUiSettings > strips empty string key [0.01ms]
+(pass) sanitizeUiSettings > does not mutate input object [0.02ms]
+(pass) sanitizeUiSettings > null value is preserved (falsy but valid data) [0.02ms]
+(pass) sanitizeUiSettings > passes through numeric and boolean values [0.01ms]
+(pass) truncateSafe > string at or under limit returned unchanged [0.04ms]
+(pass) truncateSafe > plain over-limit string cut at n [0.02ms]
+(pass) truncateSafe > surrogate pair straddling the boundary is dropped whole [0.02ms]
+(pass) truncateSafe > pair ending exactly at the boundary is kept [0.02ms]
+(pass) truncateSafe > emoji-only string never yields a lone surrogate [0.03ms]
+
+tests/utils.test.js:
+(pass) escapeHtml: escapes ampersand [0.03ms]
+(pass) escapeHtml: escapes less-than [0.01ms]
+(pass) escapeHtml: escapes greater-than
+(pass) escapeHtml: escapes double quote
+(pass) escapeHtml: escapes single quote
+(pass) escapeHtml: handles full xss payload [0.03ms]
+(pass) escapeHtml: returns empty string for null [0.01ms]
+(pass) escapeHtml: returns empty string for undefined
+(pass) escapeHtml: passes through plain text unchanged [0.01ms]
+(pass) escapeHtml: coerces numbers to string
+(pass) fuzzyScore: exact substring returns score > 2 [0.04ms]
+(pass) fuzzyScore: exact full match returns score > 2 [0.01ms]
+(pass) fuzzyScore: sequential char match returns 0 < score < 1 [0.01ms]
+(pass) fuzzyScore: no match returns 0
+(pass) fuzzyScore: case insensitive [0.01ms]
+(pass) fuzzyScore: longer query scores lower than shorter exact match [0.01ms]
+(pass) fuzzyScore: empty query matches anything with substring score
+
+tests/youtube-events.test.js:
+(pass) classifyYtRendererType: text message renderer falls to default text type [0.04ms]
+(pass) classifyYtRendererType: paid message renderer is superchat
+(pass) classifyYtRendererType: paid sticker renderer is supersticker
+(pass) classifyYtRendererType: membership item renderer is membership [0.01ms]
+(pass) classifyYtRendererType: gift purchase announcement renderer is giftpurchase
+(pass) classifyYtRendererType: gift redemption announcement renderer is giftredemption
+(pass) classifyYtRendererType: sponsorships header renderer is giftheader
+(pass) classifyYtRendererType: unknown/deleted-message renderer falls to default text type [0.01ms]
+(pass) classifyYtMembership: welcome text is a new-member join [0.06ms]
+(pass) classifyYtMembership: "member for N months/years" is a milestone [0.02ms]
+(pass) classifyYtMembership: bare duration mention without "member for" still counts as milestone [0.02ms]
+(pass) classifyYtMembership: empty/unrecognized text defaults to join (new member is the common case) [0.02ms]
+(pass) classifyYtMembership: is case-insensitive
+(pass) parseYtGiftCount: extracts count from "gifted N ... memberships" [0.05ms]
+(pass) parseYtGiftCount: falls back to any embedded number when "gifted N" pattern is absent [0.02ms]
+(pass) parseYtGiftCount: singular phrasing with no number defaults to 1
+(pass) parseYtGiftCount: empty/missing text defaults to 1 [0.01ms]
+(pass) parseYtGiftCount: zero or negative-looking numbers still coerce to a sane minimum of 1
+
+tests/yt-ghost-tab.test.js:
+(pass) isValidTwitchLogin: real twitch logins pass [0.04ms]
+(pass) isValidTwitchLogin: hyphenated yt videoIds are rejected [0.02ms]
+(pass) isValidTwitchLogin: junk is rejected [0.02ms]
+(pass) resolveYtLiveLabel: videoId swaps to resolved channel name [0.05ms]
+(pass) resolveYtLiveLabel: unresolved videoId yields empty (generic prompt), never the raw id [0.02ms]
+(pass) resolveYtLiveLabel: named channels pass through untouched [0.01ms]
+(pass) resolveYtLiveLabel: 11-char name off a video page is left alone
+(pass) resolveYtLiveLabel: empty/null channel yields empty string [0.02ms]
+(pass) identityYtLiveUrl: profile @handle wins, @ stripped once [0.05ms]
+(pass) identityYtLiveUrl: profile channel id when no handle (hyphens survive) [0.03ms]
+(pass) identityYtLiveUrl: identity.youtube fallback disambiguates UC id vs handle [0.02ms]
+(pass) identityYtLiveUrl: no linkage yields empty string, never a guessed URL [0.02ms]
+
+tests/yt-moderation.test.js:
+(pass) ytHasModItems (mod detection) > mod menu → true [0.07ms]
+(pass) ytHasModItems (mod detection) > non-mod menu (Report/Block only) → false [0.01ms]
+(pass) ytHasModItems (mod detection) > empty / null → false [0.02ms]
+(pass) ytHasModItems (mod detection) > a lone timeout item is enough [0.01ms]
+(pass) ytItemModEndpoint (moderate-token extraction) > direct moderateEndpoint item → its endpoint [0.01ms]
+(pass) ytItemModEndpoint (moderate-token extraction) > confirm-dialog-wrapped (hide/ban) → unwrapped inner endpoint
+(pass) ytItemModEndpoint (moderate-token extraction) > Report (no moderate token) → null
+(pass) ytItemModEndpoint (moderate-token extraction) > endpoint-less item → null (never throws) [0.02ms]
+(pass) ytResolveModAction (per-verb routing) > delete → Remove token [0.07ms]
+(pass) ytResolveModAction (per-verb routing) > timeout → Timeout token [0.03ms]
+(pass) ytResolveModAction (per-verb routing) > ban → Hide token (unwrapped from confirm dialog) [0.02ms]
+(pass) ytResolveModAction (per-verb routing) > unban → Unhide token [0.02ms]
+(pass) ytResolveModAction (per-verb routing) > non-mod menu → no endpoint, sawMod false (fail loud as not_moderator) [0.02ms]
+(pass) ytResolveModAction (per-verb routing) > mod present but verb absent → sawMod true, fireEp null (action_unmapped) [0.01ms]
+(pass) ytResolveModAction (per-verb routing) > never matches a non-moderation item even on a text/icon collision [0.02ms]
+(pass) ytMatchModAction (icon OR text) > matches by iconType (locale-independent) [0.01ms]
+(pass) ytMatchModAction (icon OR text) > matches by English text when icon is unknown [0.02ms]
+(pass) ytMatchModAction (icon OR text) > non-English text still routes via iconType [0.01ms]
+(pass) ytMatchModAction (icon OR text) > does not cross verbs (timeout icon ≠ delete) [0.02ms]
+(pass) ytItemText > runs[0] [0.01ms]
+(pass) ytItemText > simpleText fallback
+(pass) ytItemText > absent → empty string
+
+31 tests skipped:
+(skip) chrome dist has manifest.json
+(skip) firefox dist has manifest.json
+(skip) chrome dist has background.js
+(skip) firefox dist has background.js
+(skip) chrome dist has content.js
+(skip) firefox dist has content.js
+(skip) chrome dist has multichat-twitch.js
+(skip) firefox dist has multichat-twitch.js
+(skip) chrome dist has multichat-kick.js
+(skip) firefox dist has multichat-kick.js
+(skip) chrome dist has multichat-youtube.js
+(skip) firefox dist has multichat-youtube.js
+(skip) chrome dist has heatsync-button.js
+(skip) firefox dist has heatsync-button.js
+(skip) chrome dist has shared-utils.js
+(skip) firefox dist has shared-utils.js
+(skip) chrome dist has popup.html
+(skip) firefox dist has popup.html
+(skip) chrome dist has popup.js
+(skip) firefox dist has popup.js
+(skip) chrome dist has injected-message.css
+(skip) firefox dist has injected-message.css
+(skip) chrome manifest is valid json with required fields
+(skip) firefox manifest is valid json with required fields
+(skip) versions match across package.json and both manifests
+(skip) chrome manifest has CSP
+(skip) firefox manifest has CSP
+(skip) all chrome content script files exist in dist
+(skip) all firefox content script files exist in dist
+(skip) every chrome bundle using cleanup carries the lib
+(skip) every firefox bundle using cleanup carries the lib
+
+ 1180 pass
+ 31 skip
+ 0 fail
+ 2732 expect() calls
+Ran 1211 tests across 48 files. [2.34s]
+  Tests: passed ✓
+
+Settings registry: 81 entries clean
+Chrome:
+  Bundled multichat-twitch.js
+  Bundled multichat-kick.js
+  Bundled multichat-youtube.js
+  Bundled content.js
+  Bundled heatsync-button.js
+  Bundled autocomplete-hook.js
+  Bundled chat-injector.js
+  Bundled youtube-content.js
+  Copied 19 files
+  Copied 6 assets
+  Copied manifest (chrome)
+  Copied _locales
+  Copied fonts
+✓ Built chrome → /home/mellen/projects/heatsync-extension/.worktrees/260715-063454-343263/dist/chrome
+  Syntax check: 25 files clean
+
+Done!

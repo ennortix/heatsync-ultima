@@ -2026,7 +2026,11 @@ const SETTINGS = [
   {
     key: 'ytChatOnNonLive',
     type: 'bool',
-    default: false,
+    default: true,
+    // default flipped false→true (chat on all YT pages); one-shot migration
+    // so installs with a materialized `false` in the sync blob adopt the new
+    // default once — opting out afterwards sticks (guard key stamped)
+    migrate: 'ytChatOnNonLiveOn_v1',
     scope: 'sync',
     category: 'display',
     section: 'layout',
@@ -52690,11 +52694,18 @@ const STORAGE_KEY = 'heatsync_multichat'
       } catch (_) {}
     },
     ytNonLiveChat: (v) => {
-      // YT-only opt-in: when ON, show the panel on non-live pages too (VOD/home);
-      // default OFF hides it everywhere except livestreams (gated in CSS against
-      // hs-yt-has-livechat). Harmless off-YT (no match).
+      // YT-only, default ON: show the panel on every YT page (home/VOD/search),
+      // not just livestreams. Opting out hides it everywhere except livestreams.
+      // Harmless off-YT (no match).
       try {
         document.body.classList.toggle('hs-yt-nonlive-chat', !!v)
+      } catch (_) {}
+      // Mirror for early-layout.js: it stamps the boot body state (panel vs
+      // hs-offline) at document_start, before chrome.storage is readable —
+      // without this YT measures its grid during the wrong-state window and
+      // strands a squeezed layout. Runs on load + change (applyOnLoad).
+      try {
+        localStorage.setItem('hs_layout_ytNonLiveChat', v ? '1' : '0')
       } catch (_) {}
     },
     keywordRegex: () => {
@@ -62403,6 +62414,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       let _hsCollapsedNativeYt = false
       let _hsHidNativeYt = false
       let _hsYtFrameEmptySince = 0
+      let _hsPrevShowYtChat = null
       function checkYtLive() {
         // Keep theatre state honest from the same 1.5s tick — the attribute
         // observer has been seen missing the [theater] flip (body stuck on
@@ -62464,6 +62476,16 @@ const STORAGE_KEY = 'heatsync_multichat'
           ytAutoLiveMsgs > 0 ||
           document.body.classList.contains('hs-yt-nonlive-chat')
         document.body.classList.toggle('hs-offline', !showYtChat)
+        // YT sizes its grids/columns from a width measured once per resize —
+        // the panel's reserve appearing/vanishing without one strands a
+        // squeezed layout (3-col home grid + dead column where the panel
+        // was). Nudge a re-measure whenever panel visibility actually flips.
+        if (_hsPrevShowYtChat !== null && _hsPrevShowYtChat !== showYtChat) {
+          try {
+            window.dispatchEvent(new Event('resize'))
+          } catch (_) {}
+        }
+        _hsPrevShowYtChat = showYtChat
         // Watch-page detection: ytd-watch-flexy stays in DOM with `hidden`
         // attr off-watch — only count it as a watch page when visible.
         const onWatch = !!document.querySelector('ytd-watch-flexy:not([hidden])')

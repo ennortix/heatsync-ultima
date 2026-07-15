@@ -378,7 +378,11 @@ const SETTINGS = [
   {
     key: 'ytChatOnNonLive',
     type: 'bool',
-    default: false,
+    default: true,
+    // default flipped false→true (chat on all YT pages); one-shot migration
+    // so installs with a materialized `false` in the sync blob adopt the new
+    // default once — opting out afterwards sticks (guard key stamped)
+    migrate: 'ytChatOnNonLiveOn_v1',
     scope: 'sync',
     category: 'display',
     section: 'layout',

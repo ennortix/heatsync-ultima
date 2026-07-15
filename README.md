@@ -44,6 +44,8 @@ push a `v*` tag and `.github/workflows/release.yml` does the rest — build, pac
 
 `scripts/publish.js` is the one-command publisher for the chrome web store and amo (firefox, listed channel). safe by default: without `--publish`, nothing is ever uploaded.
 
+**order: stores first, tag second.** amo version numbers are single-use across channels — the store submission owns the clean `X.Y.Z`, and the tag-triggered self-dist workflow signs its unlisted xpi as `X.Y.Z.1` so the two never collide. run `publish.js --publish`, then push the tag.
+
 ```bash
 bun scripts/publish.js                                # dry-run, current version, both stores
 bun scripts/publish.js --version 1.7.24 --publish      # bump + build + publish both

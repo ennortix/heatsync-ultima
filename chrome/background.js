@@ -3612,6 +3612,7 @@ function fetchGlobalEmotes() {
             source: e.provider,
             hash: e.hash,
             zeroWidth: !!e.zeroWidth,
+            os: e.os > 1 ? Math.min(2, +e.os) : undefined,
           })),
         )
         log(' Loaded', globalEmotes.length, 'global emotes from server')

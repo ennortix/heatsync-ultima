@@ -1522,8 +1522,20 @@
             // Either the message renderer itself or a wrapper holding one
             const messageEl = node.querySelector?.('#message')
             if (!messageEl) continue
-            const txt = (messageEl.textContent || '').trim()
-            if (txt === msg.text || txt.startsWith(msg.text)) {
+            // Loose match: YouTube transforms emotes/emoji to <img> and
+            // normalizes whitespace, so an exact compare false-negatives on any
+            // emote/emoji-bearing send (the echo IS in chat, we just fail to
+            // recognize it → a bogus "didn't confirm" toast). Normalize
+            // whitespace and accept exact / either-direction prefix / a shared
+            // leading run, enough to recognize our own echo without over-matching
+            // an unrelated message.
+            const txt = (messageEl.textContent || '').replace(/\s+/g, ' ').trim()
+            const want = (msg.text || '').replace(/\s+/g, ' ').trim()
+            const lead = want.slice(0, Math.min(want.length, 12))
+            if (
+              want &&
+              (txt === want || txt.startsWith(want) || want.startsWith(txt) || (lead.length >= 4 && txt.startsWith(lead)))
+            ) {
               const authorEl = node.querySelector?.('#author-name')
               const ytUsername = (authorEl?.textContent || '').trim()
               seenResolve(ytUsername || '')
@@ -1555,7 +1567,9 @@
     input.dispatchEvent(new InputEvent('input', { bubbles: true, data: msg.text, inputType: 'insertText' }))
 
     // Brief delay so YouTube enables the send button after the input event.
-    await new Promise((r) => setTimeout(r, 120))
+    // 200ms (was 120): on slower machines/connections YT hadn't enabled the
+    // button yet, producing a spurious send_disabled.
+    await new Promise((r) => setTimeout(r, 200))
 
     const sendBtn =
       document.querySelector('#send-button button') || document.querySelector('yt-button-shape button[aria-label]')
@@ -1570,7 +1584,7 @@
       return { ok: true }
     }
 
-    const timeout = new Promise((resolve) => setTimeout(() => resolve(null), 2500))
+    const timeout = new Promise((resolve) => setTimeout(() => resolve(null), 4000))
     const ytUsername = await Promise.race([seenPromise, timeout])
     observer?.disconnect()
     if (ytUsername === null) return { ok: false, error: 'send_not_confirmed' }

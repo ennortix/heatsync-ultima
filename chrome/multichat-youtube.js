@@ -60237,17 +60237,11 @@ const STORAGE_KEY = 'heatsync_multichat'
     const channels = Array.from(byName.values())
 
     if (channels.length <= 1) {
-      // Popout: navigate to channel's popout URL when picking a different channel.
-      if (
-        channels.length === 1 &&
-        document.body.classList.contains('hs-popout') &&
-        channels[0].name.toLowerCase() !== urlCh
-      ) {
-        if (hostPlatform === 'twitch') location.href = `/popout/${channels[0].name}/chat?popout=`
-        else if (hostPlatform === 'kick') location.href = `/${channels[0].name}`
-        return
-      }
       if (channels.length === 1) {
+        // In-overlay switch everywhere, including popouts. The overlay renders
+        // chat from HS's own streams (independent of the native page underneath)
+        // and send resolves the target per-tab (relay/IRC, not the page URL), so
+        // a popout switches channels in place — no destructive reload/navigation.
         await resolveLiveCandidateToTab(channels[0])
         return
       }
@@ -60289,19 +60283,9 @@ const STORAGE_KEY = 'heatsync_multichat'
       })
       item.addEventListener('click', async () => {
         menu.remove()
-        // Popout mode keeps URL navigation — each popout window is locked to one channel.
-        if (document.body.classList.contains('hs-popout') && ch.name.toLowerCase() !== urlCh) {
-          // Must land before the navigation below — awaited, not fire-and-forget.
-          try {
-            await writeUiSettings({ activeTab: 'live', liveChannel: ch.name })
-          } catch {}
-          if (ch.platform === 'twitch' || hostPlatform === 'twitch') {
-            location.href = `/popout/${ch.name}/chat?popout=`
-          } else if (ch.platform === 'kick' || hostPlatform === 'kick') {
-            location.href = `/${ch.name}`
-          }
-          return
-        }
+        // In-overlay switch in every context, popout included — no navigation,
+        // no destructive reload, no spawned window. The overlay is self-sufficient
+        // (chat from HS streams, send per-tab), so picking a channel just switches.
         await resolveLiveCandidateToTab(ch)
       })
       menu.appendChild(item)

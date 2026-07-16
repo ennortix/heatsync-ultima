@@ -794,10 +794,6 @@ function renderProfileCardView() {
     a.href = `https://twitch.tv/${encodeURIComponent(linkedTwitch)}`
     a.target = '_blank'
     a.rel = 'noopener noreferrer'
-    // Mark as a deliberate external link, same as the platform pills — so the
-    // overlay's containment handlers let it open in a normal new tab instead of
-    // spawning a chromeless popup (which is what happened inside a popout window).
-    a.dataset.pcardPill = '1'
     a.style.cssText = 'color:#9146ff;font-weight:700;text-decoration:none;'
     a.textContent = '@' + linkedTwitch
     xref.appendChild(a)

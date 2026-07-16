@@ -251,6 +251,7 @@ function _hsSetYtBelowTop() {
 // known-good path that already fixes a drifted overlay. Cheap: one rect read +
 // a two-number compare per tick, DOM work only on a >1px delta.
 let _hsLastMpRect = null
+let _hsSettlingUntil = 0
 function _hsCheckYtPlayerMoved() {
   if (document.body.classList.contains('hs-offline')) {
     _hsLastMpRect = null // panel hidden — nothing to reposition
@@ -260,16 +261,17 @@ function _hsCheckYtPlayerMoved() {
   const b = mp && mp.getBoundingClientRect()
   if (!b || b.height === 0) return
   const last = _hsLastMpRect
-  _hsLastMpRect = { top: b.top, left: b.left }
+  _hsLastMpRect = { top: b.top, left: b.left } // always track, even while settling
   if (!last) return
+  // applyChatPosition() dispatches delayed resize nudges (+0/100/500/1500ms) that
+  // move the player themselves — during that settle window keep tracking the rect
+  // but don't re-trigger, so our own relayout isn't re-detected as fresh drift.
+  if (performance.now() < _hsSettlingUntil) return
   if (Math.abs(b.top - last.top) > 1 || Math.abs(b.left - last.left) > 1) {
     try {
       applyChatPosition()
     } catch (_) {}
-    // Re-baseline to the post-recompute rect so our own relayout can't be
-    // re-detected as fresh drift next tick (converges instead of oscillating).
-    const nb = mp.getBoundingClientRect()
-    if (nb && nb.height > 0) _hsLastMpRect = { top: nb.top, left: nb.left }
+    _hsSettlingUntil = performance.now() + 1700 // cover the +1500ms nudge tail
   }
 }
 function _hsEnsureYtBelowObserver(_tries) {

@@ -1165,6 +1165,23 @@ function initInput() {
   // Update placeholder based on current tab
   updateInputPlaceholder()
 
+  // Track whether the user's last pointer interaction landed inside the
+  // multichat overlay. Clicking a non-focusable chat row leaves document focus
+  // on whatever host-page element had it, so "click the overlay, press Tab"
+  // otherwise gets refused by the don't-steal-from-host-inputs guard below.
+  // This lets Tab snap to the composer when the user is clearly IN our overlay,
+  // while still respecting a host input they're actively typing in.
+  if (!window._hsMcPointerRegion) {
+    window._hsMcPointerRegion = true
+    document.addEventListener(
+      'pointerdown',
+      (e) => {
+        window._hsMcLastInOverlay = !!e.target?.closest?.('#hs-mc-container, #hs-mc-overlay')
+      },
+      { capture: true, passive: true, signal: mcSignal },
+    )
+  }
+
   // Global Tab key to focus input — only when multichat panel is active
   if (!window._hsMcTabHandler) {
     window._hsMcTabHandler = true
@@ -1176,16 +1193,20 @@ function initInput() {
         const active = document.activeElement
         const input = document.getElementById('hs-mc-input')
         if (!input) return
-        // Don't steal Tab from other inputs (except Twitch's chat input)
-        if (
-          active &&
-          active !== document.body &&
-          active.tagName === 'INPUT' &&
-          active.id !== 'hs-mc-input' &&
-          !active.dataset?.aTarget
-        )
-          return
-        if (active && active !== document.body && active.tagName === 'TEXTAREA' && active.id !== 'hs-mc-input') return
+        // Don't steal Tab from other real inputs (except Twitch's chat input) —
+        // UNLESS the user's last click was inside our overlay, in which case they
+        // clearly want the composer and the host focus is just stale.
+        if (!window._hsMcLastInOverlay) {
+          if (
+            active &&
+            active !== document.body &&
+            active.tagName === 'INPUT' &&
+            active.id !== 'hs-mc-input' &&
+            !active.dataset?.aTarget
+          )
+            return
+          if (active && active !== document.body && active.tagName === 'TEXTAREA' && active.id !== 'hs-mc-input') return
+        }
 
         // If not already in our input, reveal bar and focus it
         if (active !== input) {

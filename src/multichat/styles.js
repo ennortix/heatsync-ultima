@@ -12,9 +12,7 @@ function injectStyles() {
   const css = '__HS_STYLES_BUNDLE__'
   const cozetteUrl =
     typeof chrome !== 'undefined' && chrome.runtime?.getURL ? chrome.runtime.getURL('fonts/CozetteVector.woff2') : ''
-  const gohuUrl =
-    typeof chrome !== 'undefined' && chrome.runtime?.getURL ? chrome.runtime.getURL('fonts/GohuFont-14.woff2') : ''
-  style.textContent = css.replace(/__HS_FONT_COZETTE__/g, cozetteUrl).replace(/__HS_FONT_GOHU__/g, gohuUrl)
+  style.textContent = css.replace(/__HS_FONT_COZETTE__/g, cozetteUrl)
   document.head.appendChild(cleanup.trackNode(style))
   // Default to bitmap-mode on style inject — Cozette is the default font.
   // applyFontSettings() flips this off if the user picked a non-bitmap font.

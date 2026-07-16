@@ -1844,7 +1844,7 @@ function renderSettingsTab() {
         // size to the font's design size. silent: the fontFamily write
         // below runs the (shared) fonts applier once with both values.
         var fam = regSel.value
-        var nativeSize = fam === 'GohuFont' ? 14 : fam === 'CozetteVector' || fam === 'twitch' ? 13 : null
+        var nativeSize = fam === 'CozetteVector' || fam === 'twitch' ? 13 : null
         if (nativeSize) setSetting('fontSize', nativeSize, { silent: true })
         setSetting('fontFamily', fam) // fonts applier + settings re-render
         return

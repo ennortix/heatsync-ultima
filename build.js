@@ -809,7 +809,7 @@ function build(browser) {
     console.log(`  Copied _locales`)
   }
 
-  // Copy fonts (bundled bitmap fonts: CozetteVector, GohuFont-14)
+  // Copy fonts (bundled bitmap font: CozetteVector)
   const fontsDir = join(chromeDir, 'fonts')
   if (existsSync(fontsDir)) {
     cpSync(fontsDir, join(outDir, 'fonts'), { recursive: true })

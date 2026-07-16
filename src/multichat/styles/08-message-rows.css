@@ -552,7 +552,7 @@
     .hs-mc-platform-badge {
       /* Text badges follow the single font setting (family + size), not the
          emote-size scale — one appearance control drives every badge glyph.
-         Crispness on Cozette/Gohu comes from the .hs-font-bitmap block. */
+         Crispness on Cozette comes from the .hs-font-bitmap block. */
       font-family: var(--hs-mc-font, 'CozetteVector', 'Courier New', monospace);
       font-size: 13px;
       margin-right: 3px;

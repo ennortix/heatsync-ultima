@@ -262,8 +262,7 @@
     },
     {
       "resources": [
-        "fonts/CozetteVector.woff2",
-        "fonts/GohuFont-14.woff2"
+        "fonts/CozetteVector.woff2"
       ],
       "matches": [
         "https://*.twitch.tv/*",

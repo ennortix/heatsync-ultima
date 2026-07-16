@@ -4216,12 +4216,11 @@
   }
 
   // Font family + size — mirrors heatsync.org's appearance picker.
-  // CozetteVector + GohuFont are bundled bitmap fonts (chrome/fonts/);
+  // CozetteVector is the bundled bitmap font (chrome/fonts/);
   // 'monospace' uses host system, 'custom' uses settings.customFontName.
   // Apply via CSS vars on #hs-mc-container so storage.onChanged can flip
   // it live without rebuilding the panel.
   function resolveFontStack(family, customName) {
-    if (family === 'GohuFont') return "'GohuFont', 'Courier New', monospace"
     if (family === 'monospace') return 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
     if (family === 'twitch') return "Inter, 'Helvetica Neue', Helvetica, Arial, sans-serif"
     if (family === 'custom') {
@@ -4231,14 +4230,17 @@
     return "'CozetteVector', 'Courier New', monospace"
   }
   function applyFontSettings(fontFamily, fontSize, customFontName) {
+    // Migrate the removed GohuFont option → Cozette. Users who had it selected
+    // keep a crisp bitmap font instead of stranding on a now-missing face.
+    if (fontFamily === 'GohuFont') fontFamily = 'CozetteVector'
     // Bitmap-font mode flag — kills AA + faux-bold + hinting for crisp
-    // pixel-grid rendering. Cozette/Gohu only ship a single 400 master,
+    // pixel-grid rendering. CozetteVector only ships a single 400 master,
     // so any font-weight ≥500 in CSS would otherwise synthesize a blurry
     // bold. .hs-font-bitmap rule in styles.js sets font-synthesis:none.
     // Toggle on body+root FIRST (always available) — reply-stack/notif
     // overlays mount to <body> outside the container, so body is the
     // authoritative carrier. Container toggle below is belt-and-braces.
-    const isBitmap = fontFamily === 'CozetteVector' || fontFamily === 'GohuFont' || !fontFamily
+    const isBitmap = fontFamily === 'CozetteVector' || !fontFamily
     document.body.classList.toggle('hs-font-bitmap', isBitmap)
     document.documentElement.classList.toggle('hs-font-bitmap', isBitmap)
     // Set the vars on :root FIRST, unconditionally — the panel often mounts

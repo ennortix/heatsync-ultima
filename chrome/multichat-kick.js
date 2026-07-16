@@ -1779,7 +1779,6 @@ const SETTINGS = [
     rerenderSettings: true,
     options: [
       { value: 'CozetteVector', label: 'CozetteVector (13px)' },
-      { value: 'GohuFont', label: 'GohuFont (14px)' },
       { value: 'monospace', label: 'system monospace' },
       { value: 'twitch', label: 'platform default (Inter — twitch + kick)' },
       { value: 'custom', label: 'custom...' },
@@ -7514,16 +7513,9 @@ function injectStyles() {
       font-style: normal;
       font-display: block;
     }
-    @font-face {
-      font-family: 'GohuFont';
-      src: url('__HS_FONT_GOHU__') format('woff2');
-      font-weight: 400;
-      font-style: normal;
-      font-display: block;
-    }
 
     /* Bitmap-font mode — mirrors heatsync.org's base.css crisp-pixel block.
-       Toggled by applyFontSettings when CozetteVector or GohuFont is active.
+       Toggled by applyFontSettings when CozetteVector is active.
        The hidden killer was font-kerning + OpenType feature settings:
        kern/liga/clig/calt subpixel-position glyphs by fractional amounts
        based on adjacent character pairs, smearing bitmap text even when
@@ -9682,7 +9674,7 @@ function injectStyles() {
     .hs-mc-platform-badge {
       /* Text badges follow the single font setting (family + size), not the
          emote-size scale — one appearance control drives every badge glyph.
-         Crispness on Cozette/Gohu comes from the .hs-font-bitmap block. */
+         Crispness on Cozette comes from the .hs-font-bitmap block. */
       font-family: var(--hs-mc-font, 'CozetteVector', 'Courier New', monospace);
       font-size: 13px;
       margin-right: 3px;
@@ -16845,9 +16837,7 @@ img.hs-fx-zero { margin-left: -4px; }
   `
   const cozetteUrl =
     typeof chrome !== 'undefined' && chrome.runtime?.getURL ? chrome.runtime.getURL('fonts/CozetteVector.woff2') : ''
-  const gohuUrl =
-    typeof chrome !== 'undefined' && chrome.runtime?.getURL ? chrome.runtime.getURL('fonts/GohuFont-14.woff2') : ''
-  style.textContent = css.replace(/__HS_FONT_COZETTE__/g, cozetteUrl).replace(/__HS_FONT_GOHU__/g, gohuUrl)
+  style.textContent = css.replace(/__HS_FONT_COZETTE__/g, cozetteUrl)
   document.head.appendChild(cleanup.trackNode(style))
   // Default to bitmap-mode on style inject — Cozette is the default font.
   // applyFontSettings() flips this off if the user picked a non-bitmap font.
@@ -49613,7 +49603,7 @@ function renderSettingsTab() {
         // size to the font's design size. silent: the fontFamily write
         // below runs the (shared) fonts applier once with both values.
         var fam = regSel.value
-        var nativeSize = fam === 'GohuFont' ? 14 : fam === 'CozetteVector' || fam === 'twitch' ? 13 : null
+        var nativeSize = fam === 'CozetteVector' || fam === 'twitch' ? 13 : null
         if (nativeSize) setSetting('fontSize', nativeSize, { silent: true })
         setSetting('fontFamily', fam) // fonts applier + settings re-render
         return
@@ -55223,12 +55213,11 @@ const STORAGE_KEY = 'heatsync_multichat'
   }
 
   // Font family + size — mirrors heatsync.org's appearance picker.
-  // CozetteVector + GohuFont are bundled bitmap fonts (chrome/fonts/);
+  // CozetteVector is the bundled bitmap font (chrome/fonts/);
   // 'monospace' uses host system, 'custom' uses settings.customFontName.
   // Apply via CSS vars on #hs-mc-container so storage.onChanged can flip
   // it live without rebuilding the panel.
   function resolveFontStack(family, customName) {
-    if (family === 'GohuFont') return "'GohuFont', 'Courier New', monospace"
     if (family === 'monospace') return 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
     if (family === 'twitch') return "Inter, 'Helvetica Neue', Helvetica, Arial, sans-serif"
     if (family === 'custom') {
@@ -55238,14 +55227,17 @@ const STORAGE_KEY = 'heatsync_multichat'
     return "'CozetteVector', 'Courier New', monospace"
   }
   function applyFontSettings(fontFamily, fontSize, customFontName) {
+    // Migrate the removed GohuFont option → Cozette. Users who had it selected
+    // keep a crisp bitmap font instead of stranding on a now-missing face.
+    if (fontFamily === 'GohuFont') fontFamily = 'CozetteVector'
     // Bitmap-font mode flag — kills AA + faux-bold + hinting for crisp
-    // pixel-grid rendering. Cozette/Gohu only ship a single 400 master,
+    // pixel-grid rendering. CozetteVector only ships a single 400 master,
     // so any font-weight ≥500 in CSS would otherwise synthesize a blurry
     // bold. .hs-font-bitmap rule in styles.js sets font-synthesis:none.
     // Toggle on body+root FIRST (always available) — reply-stack/notif
     // overlays mount to <body> outside the container, so body is the
     // authoritative carrier. Container toggle below is belt-and-braces.
-    const isBitmap = fontFamily === 'CozetteVector' || fontFamily === 'GohuFont' || !fontFamily
+    const isBitmap = fontFamily === 'CozetteVector' || !fontFamily
     document.body.classList.toggle('hs-font-bitmap', isBitmap)
     document.documentElement.classList.toggle('hs-font-bitmap', isBitmap)
     // Set the vars on :root FIRST, unconditionally — the panel often mounts

@@ -124,7 +124,6 @@ const SETTINGS = [
     rerenderSettings: true,
     options: [
       { value: 'CozetteVector', label: 'CozetteVector (13px)' },
-      { value: 'GohuFont', label: 'GohuFont (14px)' },
       { value: 'monospace', label: 'system monospace' },
       { value: 'twitch', label: 'platform default (Inter — twitch + kick)' },
       { value: 'custom', label: 'custom...' },

@@ -242,6 +242,36 @@ function _hsSetYtBelowTop() {
   const b = mp && mp.getBoundingClientRect()
   if (b && b.height > 0) document.documentElement.style.setProperty('--hs-yt-below-top', Math.round(b.bottom) + 'px')
 }
+// YT shifts the player's POSITION without changing its SIZE — theater masthead
+// hide-on-scroll, description/comments panel expand-collapse, native miniplayer
+// dock, and the multi-pass load reflow all move #movie_player's top/left while
+// the ResizeObserver (size-only) stays silent, leaving the overlay stranded
+// (the "must disable/enable chat to fix" report). Poll the rect and, on a real
+// MOVE, run the SAME full recompute the manual chat hide/show ('\') runs — the
+// known-good path that already fixes a drifted overlay. Cheap: one rect read +
+// a two-number compare per tick, DOM work only on a >1px delta.
+let _hsLastMpRect = null
+function _hsCheckYtPlayerMoved() {
+  if (document.body.classList.contains('hs-offline')) {
+    _hsLastMpRect = null // panel hidden — nothing to reposition
+    return
+  }
+  const mp = document.querySelector('#movie_player') || document.querySelector('.html5-video-player')
+  const b = mp && mp.getBoundingClientRect()
+  if (!b || b.height === 0) return
+  const last = _hsLastMpRect
+  _hsLastMpRect = { top: b.top, left: b.left }
+  if (!last) return
+  if (Math.abs(b.top - last.top) > 1 || Math.abs(b.left - last.left) > 1) {
+    try {
+      applyChatPosition()
+    } catch (_) {}
+    // Re-baseline to the post-recompute rect so our own relayout can't be
+    // re-detected as fresh drift next tick (converges instead of oscillating).
+    const nb = mp.getBoundingClientRect()
+    if (nb && nb.height > 0) _hsLastMpRect = { top: nb.top, left: nb.left }
+  }
+}
 function _hsEnsureYtBelowObserver(_tries) {
   const mp = document.querySelector('#movie_player')
   // On fresh load applyPlatformPositionOverrides often runs before #movie_player
@@ -259,8 +289,8 @@ function _hsEnsureYtBelowObserver(_tries) {
     cleanup.trackObserver(_hsYtBelowRO)
   }
   // ResizeObserver only fires on SIZE changes — but YT shifts the player's
-  // POSITION during load (same height, different top), so the observed bottom
-  // goes stale. A light poll catches position shifts + keeps the var honest.
-  if (!_hsYtBelowPoll) _hsYtBelowPoll = cleanup.setInterval(_hsSetYtBelowTop, 500)
+  // POSITION without resizing it. The poll catches those pure moves and re-runs
+  // the full layout recompute (which also republishes --hs-yt-below-top).
+  if (!_hsYtBelowPoll) _hsYtBelowPoll = cleanup.setInterval(_hsCheckYtPlayerMoved, 500)
   _hsSetYtBelowTop()
 }

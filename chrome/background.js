@@ -8875,7 +8875,7 @@ async function handleMessage(message, sender, sendResponse) {
       // Per-name perma is enforced on the content side via mergeSenderEmotes.
       if (!globalThis.__senderEmoteCache) globalThis.__senderEmoteCache = new Map()
       const cache = globalThis.__senderEmoteCache
-      const SENDER_EMOTE_CACHE_TTL = 300000 // 5min — short so a sender's newly-added heatsync emotes reach viewers; panel re-fetches on the same cadence
+      const SENDER_EMOTE_CACHE_TTL = 120000 // 2min — matches the panel's re-fetch TTL so the fallback path is a consistent 2min end-to-end (the live emote:added broadcast busts this cache immediately, making this the miss/reconnect fallback, not the primary path)
       // Misses expire much sooner: an empty cached set is the exact window
       // where a sender's brand-new emote renders as plain text for this
       // viewer if the live emote:broadcast was missed. 90s bounds it.

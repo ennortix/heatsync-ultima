@@ -36374,6 +36374,14 @@ function initInput() {
     setTimeout(hideEmojiDropdown, 150)
     setTimeout(hideMentionDropdown, 150)
     setTimeout(hideSlashDropdown, 150)
+    // Sticky focus after a send: a blur that lands anywhere inside the rapid-fire
+    // window (late own-echo render churn, or the host page grabbing focus) must
+    // not drop the composer — reclaim it once the blur settles. reassertComposerFocus
+    // backs off if the user deliberately moved to our search/settings/picker.
+    if (performance.now() < _composerStickyUntil) {
+      requestAnimationFrame(reassertComposerFocus)
+      cleanup.setTimeout(reassertComposerFocus, 0)
+    }
     // Hide input bar after blur if empty (delay to allow click-to-emote-picker)
     // Skip if window lost focus — prevents hiding when switching apps
     setTimeout(() => {
@@ -41635,6 +41643,31 @@ function autoAddInputEmotes(text) {
   }
 }
 
+// Sticky-focus window after a send (ms). Inside it the composer reasserts focus
+// on any blur — covering late own-echo render churn AND host-page focus grabs so
+// rapid-fire chat never loses the cursor. Refreshed on every send.
+const COMPOSER_STICKY_MS = 1000
+let _composerStickyUntil = 0
+// Reclaim composer focus, UNLESS the user deliberately moved to another of OUR
+// editable fields (message search, settings) or opened the emote picker, or the
+// bar was auto-hidden. Our fields live under an #hs-mc-* container; host-page
+// inputs don't — so focus stolen by the host page IS reclaimed.
+function reassertComposerFocus() {
+  const live = document.getElementById('hs-mc-input')
+  if (!live || document.activeElement === live) return
+  if (document.getElementById('hs-mc-inputbar')?.classList.contains('hs-hidden')) return
+  if (document.getElementById('hs-mc-emote-picker')?.classList.contains('visible')) return
+  const ae = document.activeElement
+  if (
+    ae &&
+    ae !== live &&
+    (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable) &&
+    ae.closest('[id^="hs-mc-"]')
+  )
+    return
+  live.focus()
+}
+
 async function sendMessage() {
   const input = document.getElementById('hs-mc-input')
   if (!input) return
@@ -41851,27 +41884,18 @@ async function sendMessage() {
   else input.value = ''
   pendingMessage = ''
   updateCharCount()
-  keepComposerOpen()
+  // Open the sticky-focus window: the composer's blur handler reasserts focus
+  // for as long as this is open, so a blur at ANY latency in the send tail
+  // (network echo + own-echo DOM rebuild, often past a few hundred ms) can't
+  // drop the cursor. Refreshed on every send, so continuous rapid-fire —
+  // "type, Enter, type, Enter" — stays locked to the composer.
+  _composerStickyUntil = performance.now() + COMPOSER_STICKY_MS
+  keepComposerOpen(COMPOSER_STICKY_MS)
   input.focus()
-  // Re-assert focus across the async echo/render churn that can blur the
-  // now-empty composer (host-page focus grabs, own-echo DOM rebuild). A send
-  // means "keep typing here", so retry over several ticks — microtask, next
-  // frame, and two short timeouts — to catch a blur that lands after the first
-  // attempt. Back off ONLY if the user has since focused another editable field
-  // or opened the emote picker on purpose (never yank focus from those).
-  const _refocusAfterSend = () => {
-    const live = document.getElementById('hs-mc-input')
-    if (!live || document.activeElement === live) return
-    const ae = document.activeElement
-    if (ae && ae !== live && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return
-    if (document.getElementById('hs-mc-inputbar')?.classList.contains('hs-hidden')) return
-    if (document.getElementById('hs-mc-emote-picker')?.classList.contains('visible')) return
-    live.focus()
-  }
-  queueMicrotask(_refocusAfterSend)
-  requestAnimationFrame(_refocusAfterSend)
-  cleanup.setTimeout(_refocusAfterSend, 100)
-  cleanup.setTimeout(_refocusAfterSend, 250)
+  // Fast-path reasserts for the common early blur; the blur guard covers the rest.
+  queueMicrotask(reassertComposerFocus)
+  requestAnimationFrame(reassertComposerFocus)
+  cleanup.setTimeout(reassertComposerFocus, 120)
 
   // --- Kick send path (single, dual, or triple including YT) ---
   if (sendToKick) {

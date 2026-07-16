@@ -230,8 +230,10 @@
     return (
       /^ResizeObserver loop/.test(msg) ||
       /Document is not focused/.test(msg) || // Clipboard API when window unfocused
-      /^signal is aborted/i.test(msg) || // AbortController teardown
-      /Extension context invalidated/.test(msg) || // ext reload mid-call
+      /signal is aborted/i.test(msg) || // AbortController teardown / our own fetch timeout (unanchored — our errors are prefixed "[heatsync] X failed: …")
+      /context invalidated/i.test(msg) || // ext reload mid-call — incl. the lowercase JSON body {"error":"context invalidated"} from apiFetch/fetchFeed
+      /Failed to fetch/.test(msg) || // MV3 SW torn down mid-fetch, or a transient network blip — never actionable
+      /Feed fetch failed/.test(msg) || // downstream of the two above — same transient lifecycle causes
       /Could not establish connection.*Receiving end does not exist/.test(msg) || // cold SW wake — handled with retry
       /^Connection timeout$/.test(msg)
     ) // bg WS reconnect — scheduleReconnect handles recovery
@@ -363,6 +365,11 @@
             }
           })
           const msg = parts.filter((p) => p && p !== '[object Object]').join(' ')
+          // Apply the same noise filter the window error/rejection handlers use —
+          // console.error was bypassing it, so transient lifecycle spam (context
+          // invalidated, Failed to fetch, aborted) was still filling the buffer.
+          // Still prints to devtools; just not reported.
+          if (_isNoise(msg)) return origErr.apply(this, args)
           if (!derivedStack) derivedStack = _synthStack(2)
           _capture({
             ts: Date.now(),

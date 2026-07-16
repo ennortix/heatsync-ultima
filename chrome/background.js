@@ -219,6 +219,11 @@ const browser = globalThis.browser || chrome
             }
           })
           const msg = parts.filter((p) => p && p !== '[object Object]').join(' ')
+          // Drop transient MV3-lifecycle spam — the SW gets torn down mid-fetch
+          // (fetchFollowedUsers/fetchEmoteInventory "Failed to fetch" / "signal is
+          // aborted") and ext reloads ("context invalidated"). Not actionable, and
+          // it was filling the report buffer. Still prints to devtools.
+          if (/signal is aborted|Failed to fetch|context invalidated/i.test(msg)) return origErr.apply(this, args)
           if (!derivedStack) derivedStack = synthStack(2)
           capture({
             ts: Date.now(),

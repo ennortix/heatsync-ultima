@@ -34820,6 +34820,7 @@ async function sendWhisperMessage(key, text) {
   }
   if (currentTab === 'whispers') renderWhispersTab()
   whisperSaveDebounced()
+  return ok
 }
 
 // Auto-retry queued auth-failed whispers when auth comes back online.
@@ -41443,13 +41444,17 @@ async function handleSlashCommand(text, input) {
       showToast(t('mc_input_no_one_to_reply'), 'error')
       return true
     }
-    if (currentTab !== 'whispers') switchTab('whispers')
+    let ok = false
     try {
-      await sendWhisperMessage(target, rest.trim())
+      ok = await sendWhisperMessage(target, rest.trim())
     } finally {
       if (typeof armedReplyKey !== 'undefined' && armedReplyKey === target) armedReplyKey = null
     }
     clearInput(input)
+    // Same containment as /w: stay put on success, surface whispers on failure.
+    if (ok) showToast(t('mc_whisper_sent', [whisperUsers.get(target)?.displayName || '']), 'success')
+    else if (currentTab !== 'whispers') switchTab('whispers')
+    armComposerStickyFocus(input)
     return true
   }
 
@@ -41966,9 +41971,15 @@ async function sendSlashWhisper(platform, username, text, input) {
     })
   }
 
-  if (currentTab !== 'whispers') switchTab('whispers')
-  await sendWhisperMessage(key, text)
+  // Containment: a quick /w or /dm from a channel must NOT yank the view to the
+  // whispers tab. Send in place, toast to confirm, keep the composer focused for
+  // rapid-fire. Only on failure surface the whispers tab, where the failed
+  // message shows with its retry.
+  const ok = await sendWhisperMessage(key, text)
   clearInput(input)
+  if (ok) showToast(t('mc_whisper_sent', [username]), 'success')
+  else if (currentTab !== 'whispers') switchTab('whispers')
+  armComposerStickyFocus(input)
 }
 
 // Auto-add to the viewer's set any remote-searched (7TV/BTTV/FFZ) emote that's in
@@ -42051,6 +42062,20 @@ function reassertComposerFocus() {
   )
     return
   live.focus()
+}
+
+// Lock the composer to the cursor for the rapid-fire window after a send:
+// suppresses the empty-bar auto-hide and reasserts focus across any blur latency
+// (network echo, own-echo DOM rebuild). Shared by the normal-send tail and the
+// slash-whisper/reply paths so a /w or /r never drops the cursor.
+function armComposerStickyFocus(input) {
+  if (!input) return
+  _composerStickyUntil = performance.now() + COMPOSER_STICKY_MS
+  keepComposerOpen(COMPOSER_STICKY_MS)
+  input.focus()
+  queueMicrotask(reassertComposerFocus)
+  requestAnimationFrame(reassertComposerFocus)
+  cleanup.setTimeout(reassertComposerFocus, 120)
 }
 
 async function sendMessage() {
@@ -42274,13 +42299,7 @@ async function sendMessage() {
   // (network echo + own-echo DOM rebuild, often past a few hundred ms) can't
   // drop the cursor. Refreshed on every send, so continuous rapid-fire —
   // "type, Enter, type, Enter" — stays locked to the composer.
-  _composerStickyUntil = performance.now() + COMPOSER_STICKY_MS
-  keepComposerOpen(COMPOSER_STICKY_MS)
-  input.focus()
-  // Fast-path reasserts for the common early blur; the blur guard covers the rest.
-  queueMicrotask(reassertComposerFocus)
-  requestAnimationFrame(reassertComposerFocus)
-  cleanup.setTimeout(reassertComposerFocus, 120)
+  armComposerStickyFocus(input)
 
   // --- Kick send path (single, dual, or triple including YT) ---
   if (sendToKick) {
@@ -43505,6 +43524,10 @@ function renderProfileCardView() {
     a.href = `https://twitch.tv/${encodeURIComponent(linkedTwitch)}`
     a.target = '_blank'
     a.rel = 'noopener noreferrer'
+    // Mark as a deliberate external link, same as the platform pills — so the
+    // overlay's containment handlers let it open in a normal new tab instead of
+    // spawning a chromeless popup (which is what happened inside a popout window).
+    a.dataset.pcardPill = '1'
     a.style.cssText = 'color:#9146ff;font-weight:700;text-decoration:none;'
     a.textContent = '@' + linkedTwitch
     xref.appendChild(a)

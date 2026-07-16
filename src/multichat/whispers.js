@@ -464,6 +464,7 @@ async function sendWhisperMessage(key, text) {
   }
   if (currentTab === 'whispers') renderWhispersTab()
   whisperSaveDebounced()
+  return ok
 }
 
 // Auto-retry queued auth-failed whispers when auth comes back online.

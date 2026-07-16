@@ -860,6 +860,14 @@
       }
     }
   },
+  "mc_whisper_sent": {
+    "message": "sent to $USER$",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
   "mc_whisper_resolve_failed": {
     "message": "failed to resolve twitch user"
   },

@@ -1077,7 +1077,11 @@
   // entry is older than this; the empty in-memory map after a reload means every
   // sender is re-validated once per session (picks up adds made since last visit).
   const senderEmoteFetchedAt = new Map() // senderKey -> ts
-  const SENDER_EMOTE_REFETCH_MS = 5 * 60 * 1000
+  // 2min (was 5min): a sender who ADDS a personal emote mid-session left viewers
+  // who'd already cached their set rendering it as text for up to the TTL. There
+  // is no live-WS push for sender-emote adds (only channel emotes get one), so
+  // this window is the propagation floor — halved it. batch fetch is cheap.
+  const SENDER_EMOTE_REFETCH_MS = 2 * 60 * 1000
   const SENDER_EMOTE_NEGATIVE_REFETCH_MS = 90 * 1000
   // Keep this freshness map bounded to the SAME cap as the backing emote store
   // (emotes.js senderEmoteSets / SENDER_EMOTE_LRU_MAX — shared multichat block

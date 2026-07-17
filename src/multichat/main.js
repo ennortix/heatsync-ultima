@@ -84,6 +84,13 @@
   // stream, so a PROGRAMMATIC switch to a channel tab (the parent session's
   // saved nl_kripp bleeding in on boot) must be ignored — keep it on 'live'.
   let _userTabSwitch = false
+  // Every non-channel (built-in / util) tab id. Anything NOT here is a channel
+  // tab — used by the popout guard so it works even before config.channels has
+  // loaded (a switch can fire before the channel list is populated).
+  const NON_CHANNEL_TAB_IDS = new Set([
+    'live', 'feed', 'mentions', 'whispers', 'discover', 'pinned', 'modlog',
+    'add', 'settings', 'popout', 'collapse', 'native', 'actions',
+  ])
   let liveChannel = null // override channel for live tab (null = use URL channel)
   let livePlatformMap = {} // per-URL-channel platform overrides: { [urlCh]: { twitch, kick, youtube } }
   let liveChannelSet = new Set() // channels currently live (lowercase twitch names)
@@ -5770,7 +5777,7 @@
     // to a channel tab (the parent session's saved tab, e.g. nl_kripp, restored
     // on boot) must never steal the popout off its live stream — force 'live'.
     // Genuine user clicks (_userTabSwitch) are always honored.
-    if (isYtPopout && !_userTabSwitch && config.channels?.some((c) => c.id === id)) {
+    if (isYtPopout && !_userTabSwitch && !NON_CHANNEL_TAB_IDS.has(id)) {
       id = 'live'
     }
     // Leaving an edit form: drop the outgoing tab's cache and clear msgsEl so

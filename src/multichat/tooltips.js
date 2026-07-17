@@ -1111,6 +1111,25 @@ async function applyTooltipBanner(tooltip, profile, platform, username, gen) {
   if (banner.sourcePlatform) hero.dataset.source = banner.sourcePlatform
 }
 
+// Async pronoun fetch + apply for the hover tooltip — mirrors
+// applyTooltipBanner's fire-and-forget shape. Twitch-only (pronoundb has no
+// Kick/YouTube platform). Appends a chip into .hs-pc-header, next to the
+// native badges / name. Bails if the tooltip moved to a different user while
+// the fetch was in flight (gen check, same pattern as the rest of this file).
+async function applyTooltipPronouns(tooltip, twitchUserId, gen) {
+  if (!twitchUserId || typeof fetchPronouns !== 'function') return
+  const data = await fetchPronouns('twitch', twitchUserId)
+  if (gen !== _profileGen) return
+  const words = data?.pronouns
+  if (!words || !words.length) return
+  const header = tooltip.querySelector('.hs-pc-header')
+  if (!header || header.querySelector('.hs-pc-pronoun')) return
+  const chip = document.createElement('span')
+  chip.className = 'hs-pc-pronoun'
+  chip.textContent = words.join('/').toLowerCase()
+  header.appendChild(chip)
+}
+
 // Determine Twitch channel context for followage lookups
 // userPlatform: the platform of the user being looked up (from data-platform)
 function getTooltipChannelContext(userPlatform) {
@@ -1165,6 +1184,7 @@ async function showUserTooltip(targetEl, username, color, platform) {
     positionTooltipAtElement(tooltip, targetEl)
     fetchAndShowFollowage(tooltip, username, gen, platform)
     applyTooltipBanner(tooltip, cached.profile, platform, username, gen)
+    applyTooltipPronouns(tooltip, cached.profile?.twitch_user_id || cached.profile?.twitch_id, gen)
     return
   }
 
@@ -1195,6 +1215,7 @@ async function showUserTooltip(targetEl, username, color, platform) {
     positionTooltipAtElement(tooltip, targetEl)
     fetchAndShowFollowage(tooltip, username, gen, platform)
     applyTooltipBanner(tooltip, profile, platform, username, gen)
+    applyTooltipPronouns(tooltip, profile?.twitch_user_id || profile?.twitch_id, gen)
   } else {
     // Fallback — populated from client-only signals so kick chatters with
     // no heatsync acct still get a real card: chat badges from recent msgs,
@@ -1237,6 +1258,7 @@ async function showUserTooltip(targetEl, username, color, platform) {
     appendSubTenureBadge(tooltip, username, msgChannel)
     fetchAndShowFollowage(tooltip, username, gen, platform)
     applyTooltipBanner(tooltip, null, platform, username, gen)
+    applyTooltipPronouns(tooltip, fbUid, gen)
   }
 }
 

@@ -1607,6 +1607,12 @@
         platformBadgesEnabled = v
       },
     },
+    pronounsEnabled: {
+      get: () => pronounsEnabled,
+      set: (v) => {
+        pronounsEnabled = v
+      },
+    },
     zebraEnabled: {
       get: () => zebraEnabled,
       set: (v) => {
@@ -2826,6 +2832,10 @@
 
   // Platform badges [T]/[K]/[Y] on messages (default on)
   let platformBadgesEnabled = true
+
+  // Pronouns (pronoundb.org, twitch-only) on the profile card + hover
+  // tooltip (default on)
+  let pronounsEnabled = true
 
   // Zebra striping — alternate row backgrounds (default on)
   let zebraEnabled = true

@@ -227,6 +227,17 @@
       white-space: nowrap;
       color: #fff;
     }
+    /* Pronoun chip (pronoundb.org) — square, neutral ANSI cyan, no
+       hover/active state (static info, matches .hs-pcard-pronoun). Sizing
+       (font-size/padding/line-height) comes from the [class*="hs-pc-"] reset
+       above; only color/border/background need setting here. */
+    #hs-user-tooltip .hs-pc-pronoun {
+      border: 1px solid #333 !important;
+      background: #111;
+      color: #5fd7d7;
+      font-weight: 700 !important;
+      white-space: nowrap;
+    }
     #hs-user-tooltip .hs-pc-role {
       padding: 2px 3px;
       font-size: 13px;

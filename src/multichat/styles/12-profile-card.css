@@ -108,6 +108,15 @@
       font-size: 13px; line-height: 18px;
     }
     .hs-pcard-id-chips img.hs-mc-badge-img { width: 18px; height: 18px; }
+    /* Pronoun chip (pronoundb.org) — square, terminal-styled, neutral ANSI
+       cyan so it never competes with the platform brand colors on the pills
+       below it. No hover/active state — static info, not interactive. */
+    .hs-pcard-pronoun {
+      display: inline-flex; align-items: center;
+      padding: 1px 4px; border: 1px solid #333; background: #111;
+      color: #5fd7d7; font-size: 13px; font-weight: 700;
+      line-height: 16px; white-space: nowrap;
+    }
     .hs-pcard-name {
       font-size: 16px; font-weight: 700; color: #fff;
       display: flex; align-items: center; gap: 6px; line-height: 18px;

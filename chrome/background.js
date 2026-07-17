@@ -941,6 +941,13 @@ const PAINTS_CACHE_MAX = 500
 const _channelBannerCache = new Map()
 const CHANNEL_BANNER_TTL = 12 * 60 * 60 * 1000
 const CHANNEL_BANNER_MAX = 800
+// pronoundb.org self-declared pronouns — public GET, Twitch-only (their v2
+// API has no Kick/YouTube platform as of 2026-07). Keyed by twitch numeric
+// user id. 24h TTL — pronouns almost never change, so a stale value for a
+// day is harmless (unlike a stale banner/avatar).
+const _pronounCache = new Map()
+const PRONOUN_TTL = 24 * 60 * 60 * 1000
+const PRONOUN_CACHE_MAX = 500
 let followedUsers = [] // Users the current user follows
 let currentUsername = null // Logged-in user's username
 // v1.6 content filters. sexual + gore default OFF (hidden); weapons/drugs/hate
@@ -7284,6 +7291,44 @@ async function handleMessage(message, sender, sendResponse) {
       return true
     }
     sendResponse(null)
+    return true
+  }
+
+  // PronounDB lookup — self-declared pronouns for a Twitch numeric user id.
+  // Content scripts can't hit pronoundb.org directly (CSP connect-src is
+  // extension-declared, and cross-origin fetch from a page-world content
+  // script is blocked regardless) — this is the only fetch path. Response:
+  // { pronouns: string[] } | null. 24h LRU cache above absorbs repeat hovers.
+  if (message.type === 'fetch_pronouns') {
+    const platform = String(message.platform || '').toLowerCase()
+    const userId = String(message.userId || '').replace(/[^0-9]/g, '')
+    // pronoundb v2 supports discord/github/minecraft/twitch/twitter — no
+    // kick or youtube, so anything else is a guaranteed miss. Bail before
+    // spending a network round-trip.
+    if (platform !== 'twitch' || !userId) {
+      sendResponse(null)
+      return true
+    }
+    const cacheKey = `${platform}:${userId}`
+    const cached = _pronounCache.get(cacheKey)
+    if (cached && Date.now() - cached.ts < PRONOUN_TTL) {
+      sendResponse(cached.data)
+      return true
+    }
+    fetchWithTimeout(
+      `https://pronoundb.org/api/v2/lookup?platform=${platform}&ids=${encodeURIComponent(userId)}`,
+      { headers: { Accept: 'application/json' } },
+      5000,
+    )
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        const words = json?.[userId]?.sets?.en
+        const data = Array.isArray(words) && words.length ? { pronouns: words.slice(0, 3) } : null
+        _pronounCache.set(cacheKey, { data, ts: Date.now() })
+        if (_pronounCache.size > PRONOUN_CACHE_MAX) _pronounCache.delete(_pronounCache.keys().next().value)
+        sendResponse(data)
+      })
+      .catch(() => sendResponse(null))
     return true
   }
 

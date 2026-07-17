@@ -525,6 +525,18 @@ const SETTINGS = [
     control: 'pill',
     rerender: true,
   },
+  {
+    key: 'hs_show_pronouns',
+    type: 'bool',
+    default: true,
+    scope: 'sync',
+    category: 'display',
+    section: 'cosmetics',
+    labelKey: 'mc_settings_show_pronouns',
+    tipKey: 'mc_settings_show_pronouns_desc',
+    control: 'pill',
+    runtimeVar: 'pronounsEnabled',
+  },
 
   // ── chat / input ──────────────────────────────────────────────────────
   {

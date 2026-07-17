@@ -27,6 +27,31 @@ async function fetchChannelBanner(platform, login) {
   }
 }
 
+// In-page LRU for fetched pronouns — background SW caches authoritatively
+// (24h); this layer just avoids the SW round-trip for repeat hovers/opens.
+// Twitch-only: pronoundb.org has no Kick/YouTube platform.
+const _pronounCache = new Map()
+const PRONOUN_LOCAL_TTL = 10 * 60 * 1000
+
+// Resolve pronouns for a Twitch numeric user id via SW. Returns
+// { pronouns: string[] } or null. No-ops (no fetch, no cache write) when the
+// pronouns setting is off or the platform isn't twitch.
+async function fetchPronouns(platform, userId) {
+  if (typeof pronounsEnabled !== 'undefined' && !pronounsEnabled) return null
+  if (platform !== 'twitch' || !userId) return null
+  const key = `twitch:${userId}`
+  const hit = _pronounCache.get(key)
+  if (hit && Date.now() - hit.ts < PRONOUN_LOCAL_TTL) return hit.data
+  try {
+    const data = await safeSendMessage({ type: 'fetch_pronouns', platform: 'twitch', userId })
+    _pronounCache.set(key, { data: data || null, ts: Date.now() })
+    if (_pronounCache.size > 500) _pronounCache.delete(_pronounCache.keys().next().value)
+    return data || null
+  } catch {
+    return null
+  }
+}
+
 // Build the platform-preference chain for a profile + context. The context
 // platform always wins — a user's identity belongs to the platform you were
 // viewing them on. Cross-platform accent inheritance (a kick green ring on
@@ -1165,6 +1190,35 @@ function renderProfileCardView() {
   // applier mutates .hs-pcard-hero-img once a banner resolves.
   const chain = pickBannerChain(data, activeProfileCard.platform, username)
   if (chain.length) pcApplyBanner(card, chain)
+
+  // Pronouns — keyed off the same twitch numeric id the identity paint uses
+  // above, independent of context platform (a kick chatter with a linked
+  // heatsync/twitch identity still gets their pronoundb pronouns).
+  if (idUid) pcApplyPronouns(card, idUid)
+}
+
+// Async pronoun application — fetches via SW and drops a chip into the
+// identity chip row. Same no-gen-check tradeoff as pcApplyBanner: re-resolves
+// the live element off the messages root each call, so a closed/replaced
+// card is simply a no-op (querySelector on the new card's own chip row).
+async function pcApplyPronouns(card, twitchUserId) {
+  const data = await fetchPronouns('twitch', twitchUserId)
+  const words = data?.pronouns
+  if (!words || !words.length) return
+  const root = document.getElementById('hs-mc-messages')?.querySelector('.hs-pcard') || card
+  const idText = root.querySelector('.hs-pcard-id-text')
+  if (!idText) return
+  let chips = root.querySelector('.hs-pcard-id-chips')
+  if (!chips) {
+    chips = document.createElement('div')
+    chips.className = 'hs-pcard-id-chips'
+    idText.insertBefore(chips, idText.firstChild)
+  }
+  if (chips.querySelector('.hs-pcard-pronoun')) return
+  const chip = document.createElement('span')
+  chip.className = 'hs-pcard-pronoun'
+  chip.textContent = words.join('/').toLowerCase()
+  chips.appendChild(chip)
 }
 
 // Async banner application — walks the platform chain and applies the first

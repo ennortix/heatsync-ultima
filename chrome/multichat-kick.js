@@ -47710,7 +47710,17 @@ function hsConfirm(message, confirmLabel = 'confirm', reasons = []) {
   })
 }
 
-async function dispatchModAction({ channel, platform, action, target, durationSec, msgId, reason, fanout, skipConfirm }) {
+async function dispatchModAction({
+  channel,
+  platform,
+  action,
+  target,
+  durationSec,
+  msgId,
+  reason,
+  fanout,
+  skipConfirm,
+}) {
   // Opt-in ban dialog: confirm (misclick guard) and/or reason chips. Every
   // surface routes through here, so one gate covers toolbar/hotkey/slash/ctx/
   // card. Shows when confirm is on OR ban reasons are configured.

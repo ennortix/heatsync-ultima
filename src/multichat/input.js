@@ -5358,6 +5358,9 @@ function emoteCycleMeta(m) {
   const tier = m.tier ?? 2
   const cat = tier === 0 ? 'channel' : tier === 1 ? 'your set' : 'global'
   if (m.source === 'twitch') return { cat, vis: { t: 'all twitch', c: '#5fd75f' } }
+  // Kick-native channel/sub emotes are platform-native too — every Kick viewer
+  // sees them, no extension needed.
+  if (m.source === 'kick') return { cat, vis: { t: 'all kick', c: '#5fd75f' } }
   // Your personal set (tier 1) or a heatsync-hosted emote: others only see it via
   // heatsync's sender-set merge — non-heatsync viewers get plain text.
   if (tier === 1 || m.source === 'heatsync') return { cat, vis: { t: 'heatsync only', c: '#ff8700' } }

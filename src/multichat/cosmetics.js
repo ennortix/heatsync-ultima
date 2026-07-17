@@ -583,7 +583,13 @@ function applyHsPlusTenureToVisible(userIds) {
     if (!since) continue
     const mentionSet = _mentionIndex.get(uid)
     if (mentionSet) {
-      for (const el of mentionSet) _placeHsPlusTenureToken(el, since)
+      // The "+" tenure token is a sender-identity mark, not part of a name
+      // wherever it appears. Keep it on the reply-context anchor (a reply
+      // header), but NOT on inline @mentions inside message content — a name
+      // typed in someone's message shouldn't sprout a "+".
+      for (const el of mentionSet) {
+        if (el.classList.contains('hs-mc-reply-user')) _placeHsPlusTenureToken(el, since)
+      }
     }
     const isNamespacedUid = uid.startsWith('kick_') || uid.startsWith('yt_')
     const divs = isNamespacedUid

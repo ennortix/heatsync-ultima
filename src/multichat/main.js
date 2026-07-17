@@ -7308,15 +7308,11 @@
               if (paint) style = paint
             }
           }
-          // Plus tenure ("+5mo"/"+3y") — identity signal, resolves regardless
-          // of the paint setting. Same uid this mention already resolved above.
-          let plusHtml = ''
-          if (uid) {
-            const since = getHsPlusTenureSince(uid)
-            if (since === undefined) queuePlusTenureLookup(uid)
-            else if (since) plusHtml = renderPlusTenureToken(since)
-          }
-          return `${lead}<a href="https://heatsync.org/user/${encodeURIComponent(lower)}" target="_blank" rel="noopener noreferrer" class="${mentionCls}" data-username="${safeLower}"${uidAttr}${splitAttr} style="${style}">${inner}</a>${plusHtml}`
+          // No plus-tenure "+" on an inline @mention: the token is a
+          // sender-identity mark (shown beside the sender before the colon),
+          // not part of a name typed inside message content. The sender's own
+          // name and the reply-context header still carry it.
+          return `${lead}<a href="https://heatsync.org/user/${encodeURIComponent(lower)}" target="_blank" rel="noopener noreferrer" class="${mentionCls}" data-username="${safeLower}"${uidAttr}${splitAttr} style="${style}">${inner}</a>`
         },
       )
     }

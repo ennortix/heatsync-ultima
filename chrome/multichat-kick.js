@@ -10021,6 +10021,10 @@ function injectStyles() {
     .hs-mc-msg.hs-mc-notice-error     .hs-mc-system-text { color: #ff8080; }
     /* First-time chatter (Twitch first-msg=1) = Twitch magenta-purple */
     .hs-mc-msg.hs-mc-first-msg { border-left: 3px solid #bd5fff; padding-left: 8px; background: rgba(189, 95, 255, 0.12); }
+    /* n/N search-match cursor (live-tab filter) — HeatSync orange left-accent,
+       no animation, wins over notice-type coloring (same specificity, later
+       in source order) so the current match is always identifiable. */
+    .hs-mc-msg.hs-mc-search-current { border-left: 2px solid #ff8700 !important; background: rgba(255, 135, 0, 0.12) !important; }
     /* Cleared (timed out / banned / msg deleted) — Twitch-native dim + strikethrough.
        Username and badges stay visible so the reader can see who got hit; the body
        text and emotes get faded with a strikethrough. */
@@ -52690,6 +52694,14 @@ const STORAGE_KEY = 'heatsync_multichat'
   const SCROLLBACK_STEP = 250
   const SCROLLBACK_MAX = 1500 // hard ceiling on rendered rows (3x the live cap)
 
+  // n/N match cursor for the live-tab search filter — msgKey of the row
+  // currently marked .hs-mc-search-current, or null when inactive. Keyed by
+  // msgKey (not a DOM ref or array index) so it self-heals across renders:
+  // renderMessages just re-finds this key in the new toRender each pass.
+  // Reset on query change / query clear / tab switch (never bleeds across
+  // channels — same rule as the query itself).
+  let _liveSearchCurrentKey = null
+
   const isKick = typeof __HS_HOST__ !== 'undefined' ? __HS_HOST__ === 'kick' : location.hostname.includes('kick.com')
   const hostPlatform =
     typeof __HS_HOST__ !== 'undefined'
@@ -56284,6 +56296,8 @@ const STORAGE_KEY = 'heatsync_multichat'
               _searchTimer = null
             }
             searchSpinner.classList.remove('visible')
+            // Typing changes the match set, so any n/N cursor position is stale.
+            _clearLiveSearchCursor()
             // Debounce: renderMessages → fairMerge sorts up to ~4500 items + a
             // full DOM diff. Running that synchronously on every keystroke stalls
             // the frame on low-RAM hardware. 80ms coalesces a fast typist's burst
@@ -56460,6 +56474,28 @@ const STORAGE_KEY = 'heatsync_multichat'
       e.preventDefault()
       input.focus()
       input.select()
+    },
+    { signal: mcSignal },
+  )
+
+  // n / N — vim-style cycling through the live-tab search filter's matches.
+  // The filter already hides every non-matching row, so every .hs-mc-msg
+  // currently in msgsEl IS a match; this just walks that list and marks one
+  // "current". Same guards as '/': live tab, bar visible, not typing — plus
+  // a non-empty query (nothing to cycle through otherwise).
+  document.addEventListener(
+    'keydown',
+    (e) => {
+      if (e.key !== 'n' && e.key !== 'N') return
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      const t = e.target
+      if (t && (t.isContentEditable || ['INPUT', 'TEXTAREA'].includes(t.tagName))) return
+      if (!isLiveSearchTab(currentTab)) return
+      const bar = document.getElementById('hs-mc-search-bar')
+      if (!bar || !bar.classList.contains('visible')) return
+      if (!liveSearchQuery(currentTab)) return
+      e.preventDefault()
+      cycleLiveSearchMatch(e.key === 'n' ? 1 : -1)
     },
     { signal: mcSignal },
   )
@@ -60473,6 +60509,38 @@ const STORAGE_KEY = 'heatsync_multichat'
     return el ? el.value.trim() : ''
   }
 
+  // Clear the n/N match cursor (both the marked row and the remembered key).
+  // Called whenever the query changes/clears or the tab switches — the same
+  // "never bleeds across context" rule the filter query itself follows.
+  function _clearLiveSearchCursor() {
+    if (!_liveSearchCurrentKey) return
+    _liveSearchCurrentKey = null
+    const cur = document.querySelector('.hs-mc-search-current')
+    if (cur) cur.classList.remove('hs-mc-search-current')
+  }
+
+  // n/N cursor step. The filter already renders ONLY matching rows, so every
+  // .hs-mc-msg in msgsEl is a match — this just walks that list. Position is
+  // re-derived from the DOM each call (rows.indexOf(prev)) rather than trusted
+  // from stored state, so a re-render between keypresses (new msg arriving)
+  // can never leave the cursor pointing at a stale/removed row.
+  function cycleLiveSearchMatch(dir) {
+    const msgsEl = document.getElementById('hs-mc-messages')
+    if (!msgsEl) return
+    const rows = [...msgsEl.querySelectorAll('.hs-mc-msg[data-msg-key]')]
+    if (!rows.length) return
+    const prev = msgsEl.querySelector('.hs-mc-search-current')
+    if (prev) prev.classList.remove('hs-mc-search-current')
+    const prevIdx = prev ? rows.indexOf(prev) : -1
+    const idx = prevIdx === -1 ? (dir > 0 ? 0 : rows.length - 1) : (prevIdx + dir + rows.length) % rows.length
+    const row = rows[idx]
+    row.classList.add('hs-mc-search-current')
+    _liveSearchCurrentKey = row.dataset.msgKey
+    row.scrollIntoView({ behavior: 'instant', block: 'center' })
+    const countEl = document.getElementById('hs-mc-search-count')
+    if (countEl) countEl.textContent = `${idx + 1}/${rows.length}`
+  }
+
   // Upward infinite-scroll: when the user reaches the top, paint the next chunk
   // of OLDER buffered messages (already in the 3000-deep ring) by growing the
   // render window and re-running the SAME diff renderer — so indexing, zebra,
@@ -60822,7 +60890,16 @@ const STORAGE_KEY = 'heatsync_multichat'
     if (_liveMatcher) {
       toRender = toRender.filter((m) => _liveMatcher.test(m))
       if (_liveCountEl) {
-        _liveCountEl.textContent = String(toRender.length)
+        // Plain total normally; "i/N" while an n/N cursor is active. The
+        // cursor is keyed by msgKey (not a DOM ref), so its position is
+        // re-derived from the freshly filtered array on every render — if
+        // the current match dropped out of the filter (dedup, trim, edit),
+        // this naturally falls back to the plain total and drops the cursor.
+        const _curIdx = _liveSearchCurrentKey
+          ? toRender.findIndex((m) => msgKeyOf(m) === _liveSearchCurrentKey)
+          : -1
+        if (_liveSearchCurrentKey && _curIdx === -1) _liveSearchCurrentKey = null
+        _liveCountEl.textContent = _curIdx >= 0 ? `${_curIdx + 1}/${toRender.length}` : String(toRender.length)
         _liveCountEl.classList.add('visible')
       }
       if (toRender.length === 0) {
@@ -60836,6 +60913,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       }
     } else {
       if (_liveCountEl) _liveCountEl.classList.remove('visible')
+      _clearLiveSearchCursor()
     }
     // Live tail is always DOM_RENDER_CAP; _scrollbackWindow adds older rows
     // when the user has scrolled to the top (loadOlderScrollback). Capped at

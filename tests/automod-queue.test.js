@@ -176,6 +176,13 @@ describe('buildAutomodHoldContentHtml — escaping', () => {
     expect(textHtml).not.toContain('<img')
   })
 
+  test('escapes an automod category in the reason chip', () => {
+    const row = { reason: 'automod', category: '<b>evil</b>', level: 0 }
+    const { reasonHtml } = buildAutomodHoldContentHtml(row)
+    expect(reasonHtml).toBe('&lt;b&gt;evil&lt;/b&gt;')
+    expect(reasonHtml).not.toContain('<b>')
+  })
+
   test('quotes and ampersands are escaped (attribute-breakout safety)', () => {
     const row = { senderName: `"onmouseover="x`, text: `a & b " c ' d`, reason: 'automod', category: null }
     const { senderHtml, textHtml } = buildAutomodHoldContentHtml(row)

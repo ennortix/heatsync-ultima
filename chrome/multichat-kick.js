@@ -48610,7 +48610,11 @@ function resolveAutomodRow(broadcasterLogin, msgId, status, modLogin) {
 
 function handleAutomodActionClick(rowEl, action) {
   const msgId = rowEl?.dataset.msgId
-  const broadcasterLogin = rowEl?.dataset.msgChannel
+  // .toLowerCase() belt-and-braces: findAutomodChannel already lowercases
+  // internally (row insertion also always writes the dataset lowercase), but
+  // matching case explicitly at every lookup site is cheap and one less thing
+  // to get wrong if either side ever changes.
+  const broadcasterLogin = (rowEl?.dataset.msgChannel || '').toLowerCase()
   if (!msgId || !broadcasterLogin) return
   const row = findAutomodRow(broadcasterLogin, msgId)
   if (!row) return

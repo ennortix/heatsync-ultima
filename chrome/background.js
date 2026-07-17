@@ -12206,8 +12206,12 @@ function bgYtIngest(payload) {
       chrome.storage.local.remove(`hs_yt_${oldest}`).catch(() => {})
     }
   }
-  // Strip transient flags before storing
+  // Strip transient flags before storing. `id` (innertube) is NOT transient —
+  // it's the only cross-source-stable identity a yt message has. Without it a
+  // replayed buffer row can't be id-deduped by the surface, and the content
+  // fallback misses because the surface pacer rewrites live msg times.
   const msg = {
+    id: payload.id || undefined,
     user: payload.user,
     text: payload.text,
     color: payload.color,

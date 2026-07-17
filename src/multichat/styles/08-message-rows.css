@@ -212,9 +212,10 @@
       100% { background: transparent; }
     }
     .hs-mc-feed-inline, .hs-mc-stream-event {
-      /* content-visibility:auto dropped 2026-07-14 with .hs-mc-msg — these
-         interleave in the same chat list, same stale-paint smear */
-      contain: layout style paint;
+      /* interleave in the same chat list as .hs-mc-msg — match its containment
+         (layout style, NO paint) so they can't stale-paint over each other on
+         scroll. See 03-overlay-container.css for the full why. */
+      contain: layout style;
     }
     .hs-mc-msg[data-msg-id] {
       position: relative;

@@ -3273,15 +3273,22 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
     // returns so the user sees BTTV/FFZ instantly while 7TV resolves (avoids "no emotes
     // until everything's done"). Keep slots fixed so priority order is stable.
     broadcastToTabs({ type: 'loading_status', text: 'fetching third-party emotes...' })
-    const slots = { bttv: [], ffz: [], sevenTV: [], twitch: [] }
-    const failed = { bttv: false, ffz: false, sevenTV: false, twitch: false }
+    const slots = { bttv: [], ffz: [], sevenTV: [], twitch: [], kick: [] }
+    const failed = { bttv: false, ffz: false, sevenTV: false, twitch: false, kick: false }
     let sevenTVResult = null
     let coalesceTimer = null
     const broadcastCurrent = () => {
       clearTimeout(coalesceTimer)
       coalesceTimer = setTimeout(() => {
         coalesceTimer = null
-        const partial = [...heatsyncEmotes, ...slots.bttv, ...slots.ffz, ...slots.sevenTV, ...slots.twitch]
+        const partial = [
+          ...heatsyncEmotes,
+          ...slots.bttv,
+          ...slots.ffz,
+          ...slots.sevenTV,
+          ...slots.twitch,
+          ...slots.kick,
+        ]
         broadcastToTabs({ type: 'channel_emotes_update', emotes: partial, channelOwner: channelName, platform })
       }, 40)
     }
@@ -3319,6 +3326,20 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
           })
           .catch(() => {
             failed.twitch = true
+          }),
+      )
+    } else if (platform === 'kick') {
+      // No BTTV/FFZ for Kick (neither provider supports it). Kick-native
+      // channel + Global emotes join the same pool Twitch-native does.
+      tasks.push(
+        fetchKickChannelEmotes(channelName)
+          .then((e) => {
+            if (e === null) failed.kick = true
+            slots.kick = e || []
+            broadcastCurrent()
+          })
+          .catch(() => {
+            failed.kick = true
           }),
       )
     } else if (platform === 'youtube') {
@@ -3365,15 +3386,23 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
     const bttvEmotes = slots.bttv
     const ffzEmotes = slots.ffz
     const twitchChannelEmotes = slots.twitch
+    const kickChannelEmotes = slots.kick
     if (DEBUG)
       broadcastToTabs({
         type: 'debug_log',
-        msg: `${channelName} BTTV:${bttvEmotes.length} FFZ:${ffzEmotes.length} 7TV:${sevenTVEmotes.length} Twitch:${twitchChannelEmotes.length} HS:${heatsyncEmotes.length}`,
+        msg: `${channelName} BTTV:${bttvEmotes.length} FFZ:${ffzEmotes.length} 7TV:${sevenTVEmotes.length} Twitch:${twitchChannelEmotes.length} Kick:${kickChannelEmotes.length} HS:${heatsyncEmotes.length}`,
       })
 
     // Store emotes for this specific channel (prune old entries to bound memory)
-    const emotes = [...heatsyncEmotes, ...bttvEmotes, ...ffzEmotes, ...sevenTVEmotes, ...twitchChannelEmotes]
-    const anyFailed = failed.bttv || failed.ffz || failed.sevenTV || failed.twitch
+    const emotes = [
+      ...heatsyncEmotes,
+      ...bttvEmotes,
+      ...ffzEmotes,
+      ...sevenTVEmotes,
+      ...twitchChannelEmotes,
+      ...kickChannelEmotes,
+    ]
+    const anyFailed = failed.bttv || failed.ffz || failed.sevenTV || failed.twitch || failed.kick
     channelEmotesMap[key] = emotes
     // If any provider had a transient failure, backdate fetchedAt so the next
     // channel join refetches within ~60s (regardless of empty/non-empty TTL).
@@ -3404,7 +3433,7 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
       ' ✅ Channel emotes loaded for',
       channelName + ':',
       emotes.length,
-      `(heatsync: ${heatsyncEmotes.length}, bttv: ${bttvEmotes.length}, ffz: ${ffzEmotes.length}, 7tv: ${sevenTVEmotes.length})`,
+      `(heatsync: ${heatsyncEmotes.length}, bttv: ${bttvEmotes.length}, ffz: ${ffzEmotes.length}, 7tv: ${sevenTVEmotes.length}, twitch: ${twitchChannelEmotes.length}, kick: ${kickChannelEmotes.length})`,
     )
 
     // Hide loading indicator
@@ -3610,6 +3639,57 @@ async function fetchTwitchChannelEmotes(channelName) {
     )
   } catch (error) {
     log(' Twitch channel emotes error for', channelName, ':', error?.message)
+    return null // transient
+  }
+}
+
+// Fetch Kick channel-native emotes: the channel's own set + Kick's Global
+// set (Kick has no separate global-emote fetch cycle anywhere in this
+// codebase, so folding Global in here is the only way viewers ever see it —
+// same call already merges BTTV's channelEmotes+sharedEmotes above). The
+// "Emojis" set is Kick's built-in unicode-emoji reskin, not a real emote
+// provider — skipped like every other provider skips emoji.
+// Direct BG fetch, no tab relay: this is a public GET, same as
+// resolveKickChannelIdBg/kick_channel_badges above — Cloudflare only gates
+// credentialed kick.com mutations (those go through a kick.com tab for
+// session cookies), not public reads from the service worker.
+async function fetchKickChannelEmotes(channelName) {
+  try {
+    const response = await fetchWithTimeout(`https://kick.com/emotes/${encodeURIComponent(channelName)}`)
+    if (response.status === 404) {
+      response.body?.cancel()
+      return [] // genuine: channel has no Kick emote sets
+    }
+    if (!response.ok) {
+      response.body?.cancel()
+      log(' Kick channel emotes failed for', channelName, ':', response.status)
+      return null // transient: 5xx etc.
+    }
+
+    const data = await response.json()
+    if (!Array.isArray(data)) return []
+
+    const out = []
+    for (const set of data) {
+      if (set?.name === 'Emojis') continue
+      for (const e of set?.emotes || []) {
+        if (!e?.id || !e?.name) continue
+        out.push({
+          name: e.name,
+          url: `https://files.kick.com/emotes/${e.id}/fullsize`,
+          source: 'kick',
+          hash: String(e.id),
+          // Carried through so the client-side pool build can exclude these
+          // the same way it excludes tier-gated Twitch emotes — mirrors
+          // fetchTwitchChannelEmotes's tier/emote_type fields above.
+          subscribersOnly: !!e.subscribers_only,
+        })
+      }
+    }
+    log(' Loaded', out.length, 'Kick channel emotes for', channelName)
+    return sanitizeEmoteList(out)
+  } catch (error) {
+    log(' Kick channel emotes error for', channelName, ':', error?.message)
     return null // transient
   }
 }

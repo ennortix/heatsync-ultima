@@ -23779,6 +23779,10 @@ function _buildChannelEmoteCache(ch, emotes, platform) {
       (e.tier || e.emote_type === 'subscriptions' || e.emote_type === 'follower' || e.emote_type === 'bitstier')
     )
       continue
+    // Same gating for Kick: subscribers_only emotes can't be sent/rendered by
+    // non-subs, so they're excluded from the usable pool exactly like
+    // tier-gated Twitch emotes above (no per-viewer sub-status to check here).
+    if (e.source === 'kick' && e.subscribersOnly) continue
     const source = e.source || detectEmoteSource(e.url, '7tv')
     const state = inventoryEmotes.has(e.name) ? 'owned' : 'channel'
     _hsRegisterOversize(e)

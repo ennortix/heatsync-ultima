@@ -475,3 +475,125 @@ describe('fetchFFZChannelEmotes — success path still parses sets', () => {
     ])
   })
 })
+
+// ── fetchKickChannelEmotes — channel+Global sets merged, Emojis skipped ─────
+//
+// GET https://kick.com/emotes/{slug} — verified live (2026-07-17, real Chrome
+// tab against kick.com/emotes/xqc) to return an array of 3 sets: the
+// channel's own (no top-level "name" field — identified by slug/user
+// instead), "Global" ({id:"Global", name:"Global", emotes:[...]}), and
+// "Emojis" ({id:"Emoji", name:"Emojis", emotes:[...]}). Kick has no separate
+// global-emote fetch anywhere in this codebase, so channel + Global both
+// join the pool here (same precedent as fetchBTTVChannelEmotes's YouTube
+// branch merging channelEmotes + sharedEmotes above). subscribers_only is
+// carried through as subscribersOnly — gating on it happens downstream in
+// src/multichat/emotes.js's _buildChannelEmoteCache, not here (this function
+// just maps/merges, same division of labor as fetchTwitchChannelEmotes's
+// tier/emote_type fields).
+
+const kickChannelEmotesSrc = sliceBetween('async function fetchKickChannelEmotes', 'function fetchGlobalEmotes')
+
+function makeKickHarness({ responses = [] } = {}) {
+  const calls = []
+  const queue = [...responses]
+  const fetchWithTimeout = async (url) => {
+    calls.push(url)
+    const next = queue.length > 1 ? queue.shift() : queue[0]
+    if (!next) throw new Error('kick test harness: no stub response left')
+    return next
+  }
+  const harness = new Function(
+    'fetchWithTimeout',
+    'sanitizeEmoteList',
+    'log',
+    `${kickChannelEmotesSrc}\nreturn { fetchKickChannelEmotes }`,
+  )(
+    fetchWithTimeout,
+    (l) => l,
+    () => {},
+  )
+  return { ...harness, calls }
+}
+
+const kick404 = () => ({ status: 404, ok: false, body: { cancel() {} } })
+const kick500 = () => ({ status: 500, ok: false, body: { cancel() {} } })
+const kickOk = (data) => ({ status: 200, ok: true, body: { cancel() {} }, json: async () => data })
+
+describe('fetchKickChannelEmotes', () => {
+  test('fetches the public per-slug endpoint, no credentials', async () => {
+    const h = makeKickHarness({ responses: [kick404()] })
+    await h.fetchKickChannelEmotes('xqc')
+    expect(h.calls).toEqual(['https://kick.com/emotes/xqc'])
+  })
+  test('404 → genuine empty (channel has no Kick emote sets)', async () => {
+    const h = makeKickHarness({ responses: [kick404()] })
+    expect(await h.fetchKickChannelEmotes('nobody')).toEqual([])
+  })
+  test('5xx → null (transient, not empty — caller retries)', async () => {
+    const h = makeKickHarness({ responses: [kick500()] })
+    expect(await h.fetchKickChannelEmotes('flaky')).toBeNull()
+  })
+  test('non-array body → empty (defensive against API shape drift)', async () => {
+    const h = makeKickHarness({ responses: [kickOk({ not: 'an array' })] })
+    expect(await h.fetchKickChannelEmotes('weird')).toEqual([])
+  })
+  test('channel set (no top-level name) + Global set merge; Emojis set is skipped', async () => {
+    const sets = [
+      {
+        id: 668,
+        slug: 'somechan',
+        emotes: [{ id: 100, channel_id: 668, name: 'chanPog', subscribers_only: false }],
+      },
+      {
+        id: 'Global',
+        name: 'Global',
+        emotes: [{ id: 200, channel_id: null, name: 'kickHype', subscribers_only: false }],
+      },
+      {
+        id: 'Emoji',
+        name: 'Emojis',
+        emotes: [{ id: 300, channel_id: null, name: 'grinning', subscribers_only: false }],
+      },
+    ]
+    const h = makeKickHarness({ responses: [kickOk(sets)] })
+    const out = await h.fetchKickChannelEmotes('somechan')
+    expect(out).toEqual([
+      {
+        name: 'chanPog',
+        url: 'https://files.kick.com/emotes/100/fullsize',
+        source: 'kick',
+        hash: '100',
+        subscribersOnly: false,
+      },
+      {
+        name: 'kickHype',
+        url: 'https://files.kick.com/emotes/200/fullsize',
+        source: 'kick',
+        hash: '200',
+        subscribersOnly: false,
+      },
+    ])
+  })
+  test('subscribers_only carries through as subscribersOnly (gating happens downstream, not here)', async () => {
+    const sets = [{ id: 1, slug: 'somechan', emotes: [{ id: 101, name: 'subOnly', subscribers_only: true }] }]
+    const h = makeKickHarness({ responses: [kickOk(sets)] })
+    const out = await h.fetchKickChannelEmotes('somechan')
+    expect(out[0].subscribersOnly).toBe(true)
+  })
+  test('emote missing id or name is skipped', async () => {
+    const sets = [
+      {
+        id: 1,
+        slug: 'somechan',
+        emotes: [
+          { id: null, name: 'noId' },
+          { id: 1, name: '' },
+          { id: 5, name: 'valid' },
+        ],
+      },
+    ]
+    const h = makeKickHarness({ responses: [kickOk(sets)] })
+    const out = await h.fetchKickChannelEmotes('somechan')
+    expect(out.map((e) => e.name)).toEqual(['valid'])
+  })
+})

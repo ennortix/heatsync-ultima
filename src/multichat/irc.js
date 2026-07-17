@@ -588,48 +588,65 @@ class IRC {
   }
 
   // BG performed a robotty merge — reflect the updated buffer locally.
+  // Per-msg work is staged through hsSched.chunk: a fat bg buffer (up to 3000
+  // msgs/channel after hours of SW uptime) ingested in one synchronous loop
+  // froze the page ~0.5-1s on reload. Overlapping merges for the same channel
+  // coalesce via a busy/dirty pair instead of racing the buffer swap.
   async _refreshFromBg(ch) {
     if (!this.channels.has(ch)) return
+    this._refreshBusy ||= new Set()
+    this._refreshDirty ||= new Set()
+    if (this._refreshBusy.has(ch)) {
+      this._refreshDirty.add(ch)
+      return
+    }
+    this._refreshBusy.add(ch)
     try {
       const resp = await chrome.runtime.sendMessage({ type: 'bg_irc_history', channel: ch })
       if (!resp?.ok) return
-      const buf = this.channels.get(ch)
-      const wasSize = buf.size
-      // Snapshot live messages before clearing — any non-history message that
-      // arrived during the sendMessage await above would otherwise be buried
-      // behind history after the replay loop below.
-      const liveSnap = buf.getAll().filter((m) => !m.isHistory)
-      buf.clear()
+      const wasSize = this.channels.get(ch)?.size ?? 0
       try {
         if (typeof _recentSentHydrated !== 'undefined') await _recentSentHydrated
       } catch {}
-      for (const m of resp.msgs || []) {
-        if (m?.type === 'roomstate' || m?.type === 'userstate' || m?.type === 'whisper') continue
-        m.isHistory = true
-        if (m.user) {
-          try {
-            addUsername(m.user)
-          } catch {}
-          try {
-            setKnownColor(m.user.toLowerCase(), m.color, m.userId, 'twitch')
-          } catch {}
-        }
-        if (m.subMonths) {
-          try {
-            trackSubTenure(ch, m.user, m.subMonths)
-          } catch {}
-        }
-        try {
-          const sentHost = peekSentHost(m.text)
-          if (sentHost) {
-            m.badgePlatform = 'twitch'
-            m.platform = sentHost === 'yt' ? 'youtube' : sentHost
+      const staged = []
+      await hsSched.chunk(
+        resp.msgs || [],
+        (m) => {
+          if (m?.type === 'roomstate' || m?.type === 'userstate' || m?.type === 'whisper') return
+          m.isHistory = true
+          if (m.user) {
+            try {
+              addUsername(m.user)
+            } catch {}
+            try {
+              setKnownColor(m.user.toLowerCase(), m.color, m.userId, 'twitch')
+            } catch {}
           }
-        } catch {}
-        if (m.id) this._seenId(`${ch}:${m.id}`)
-        buf.push(m)
-      }
-      // Re-append live messages after history so they appear newest (correct order).
+          if (m.subMonths) {
+            try {
+              trackSubTenure(ch, m.user, m.subMonths)
+            } catch {}
+          }
+          try {
+            const sentHost = peekSentHost(m.text)
+            if (sentHost) {
+              m.badgePlatform = 'twitch'
+              m.platform = sentHost === 'yt' ? 'youtube' : sentHost
+            }
+          } catch {}
+          if (m.id) this._seenId(`${ch}:${m.id}`)
+          staged.push(m)
+        },
+        { budgetMs: 5, respectScroll: false },
+      )
+      const buf = this.channels.get(ch)
+      if (!buf) return // channel left during staging
+      // Snapshot live messages AFTER staging — anything that arrived while we
+      // yielded (or during the sendMessage await) stays newest, not buried
+      // behind history.
+      const liveSnap = buf.getAll().filter((m) => !m.isHistory)
+      buf.clear()
+      for (const m of staged) buf.push(m)
       for (const m of liveSnap) buf.push(m)
       try {
         _dropAllTabCaches()
@@ -644,6 +661,9 @@ class IRC {
       }
     } catch (e) {
       log('BG history refresh failed:', e?.message)
+    } finally {
+      this._refreshBusy.delete(ch)
+      if (this._refreshDirty.delete(ch)) this._refreshFromBg(ch)
     }
   }
 
@@ -1208,41 +1228,55 @@ class KickChat {
 
   // BG merged a server-side backfill — re-pull merged buffer into local
   // mirror. Mirrors IRC._refreshFromBg semantics: render when empty OR when
-  // the buffer grew meaningfully (real backfill).
+  // the buffer grew meaningfully (real backfill). Same chunked staging +
+  // busy/dirty coalescing as the twitch side — fat buffers froze reloads.
   async _refreshFromBg(ch) {
     ch = ch.toLowerCase()
     if (!this.channels.has(ch)) return
+    this._refreshBusy ||= new Set()
+    this._refreshDirty ||= new Set()
+    if (this._refreshBusy.has(ch)) {
+      this._refreshDirty.add(ch)
+      return
+    }
+    this._refreshBusy.add(ch)
     try {
       const resp = await chrome.runtime.sendMessage({ type: 'bg_kick_history', channel: ch })
       if (!resp?.ok || !Array.isArray(resp.msgs)) return
-      const buf = this.channels.get(ch)
-      const wasSize = buf.size
-      // Snapshot live messages before clearing — mirrors IRC._refreshFromBg.
-      const liveSnap = buf.getAll().filter((m) => !m.isHistory)
-      buf.clear()
+      const wasSize = this.channels.get(ch)?.size ?? 0
       try {
         if (typeof _recentSentHydrated !== 'undefined') await _recentSentHydrated
       } catch {}
-      for (const m of resp.msgs) {
-        m.isHistory = true
-        if (m.user) {
-          try {
-            addUsername(m.user)
-          } catch {}
-          try {
-            setKnownColor(m.user.toLowerCase(), m.color, m.userId, 'kick')
-          } catch {}
-        }
-        try {
-          const sentHost = peekSentHost(m.text)
-          if (sentHost) {
-            m.badgePlatform = 'kick'
-            m.platform = sentHost === 'yt' ? 'youtube' : sentHost
+      const staged = []
+      await hsSched.chunk(
+        resp.msgs,
+        (m) => {
+          m.isHistory = true
+          if (m.user) {
+            try {
+              addUsername(m.user)
+            } catch {}
+            try {
+              setKnownColor(m.user.toLowerCase(), m.color, m.userId, 'kick')
+            } catch {}
           }
-        } catch {}
-        buf.push(m)
-      }
-      // Re-append live messages after history so they appear newest (correct order).
+          try {
+            const sentHost = peekSentHost(m.text)
+            if (sentHost) {
+              m.badgePlatform = 'kick'
+              m.platform = sentHost === 'yt' ? 'youtube' : sentHost
+            }
+          } catch {}
+          staged.push(m)
+        },
+        { budgetMs: 5, respectScroll: false },
+      )
+      const buf = this.channels.get(ch)
+      if (!buf) return // channel left during staging
+      // Snapshot live messages AFTER staging so mid-ingest arrivals stay newest.
+      const liveSnap = buf.getAll().filter((m) => !m.isHistory)
+      buf.clear()
+      for (const m of staged) buf.push(m)
       for (const m of liveSnap) buf.push(m)
       try {
         _dropAllTabCaches()
@@ -1254,6 +1288,9 @@ class KickChat {
       }
     } catch (e) {
       log('Kick BG refresh failed:', e?.message)
+    } finally {
+      this._refreshBusy.delete(ch)
+      if (this._refreshDirty.delete(ch)) this._refreshFromBg(ch)
     }
   }
 

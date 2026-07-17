@@ -38307,7 +38307,13 @@ function handleInputKeydown(e) {
     // FFZ-style modifier on Tab — scans ENTIRE input (not just cursor) for any
     // modifier shorthand adjacent to an emote, applies them all in one shot.
     // Type `Kappa w` then Tab from any cursor position → wide Kappa.
-    if (!acState.active) {
+    // Completion intent wins first, though: when the caret sits on a
+    // completable word (>=2 chars — the first-Tab threshold), Tab means
+    // "complete THIS word". The sweep used to hijack the press — it would eat
+    // a stray modifier-lookalike token elsewhere in the input (a literal "Z"
+    // between two emotes) and return, so the completion never ran and the
+    // token silently vanished.
+    if (!acState.active && getCurrentWord(input).length < 2) {
       if (scanAndApplyModifiersInInput(input)) return
       // Tab also commits a pending "<emote>0" / "<emoji>0" overlay (parity with
       // the live typing path) — overlay onto the left, drop the trailing 0.
@@ -39450,6 +39456,22 @@ function scanAndApplyModifiersInInput(input) {
   if (!input) return false
   let appliedAny = false
   let prevEmote = null
+  // Bare-letter prefix forms ("w" → w!) only classify for the token the caret
+  // is in or just left ("Kappa w" + Tab, the active gesture). The sweep walks
+  // the WHOLE input, and letting every text token prefix-resolve meant a bare
+  // letter typed as CONTENT ("Z" between two emotes) was eaten as z! on an
+  // unrelated Tab press. Distant tokens must be unambiguous (w!, z!, chains,
+  // c!hex) to consume.
+  let caretNode = null
+  let caretOffset = -1
+  const _sel = typeof window !== 'undefined' && window.getSelection ? window.getSelection() : null
+  if (_sel?.rangeCount) {
+    const _r = _sel.getRangeAt(0)
+    if (_r.collapsed && input.contains(_r.startContainer)) {
+      caretNode = _r.startContainer
+      caretOffset = _r.startOffset
+    }
+  }
   for (const child of [...input.childNodes]) {
     if (child.nodeType === Node.ELEMENT_NODE) {
       const isAnchor =
@@ -39462,14 +39484,26 @@ function scanAndApplyModifiersInInput(input) {
     }
     if (child.nodeType !== Node.TEXT_NODE || !prevEmote) continue
     const tokens = child.textContent.split(/(\s+)/)
+    // Caret token = last non-whitespace token starting at or before the caret
+    // in this node (covers both "w|" and "w |" caret positions).
+    let caretTokIdx = -1
+    if (child === caretNode) {
+      let pos = 0
+      for (let i = 0; i < tokens.length; i++) {
+        const end = pos + tokens[i].length
+        if (tokens[i] && !/^\s*$/.test(tokens[i]) && pos <= caretOffset) caretTokIdx = i
+        pos = end
+      }
+    }
     const remaining = []
     let consumedHere = false
-    for (const tok of tokens) {
+    for (let i = 0; i < tokens.length; i++) {
+      const tok = tokens[i]
       if (!tok || /^\s*$/.test(tok)) {
         remaining.push(tok)
         continue
       }
-      const cls = hsModClassify(tok, { allowPrefix: true })
+      const cls = hsModClassify(tok, { allowPrefix: i === caretTokIdx })
       if (cls.kind !== 'modifier') {
         remaining.push(tok)
         continue

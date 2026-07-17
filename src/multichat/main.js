@@ -11807,7 +11807,7 @@
     // page's stream: being on lofigirl's page shouldn't override your nl_kripp
     // tab and dump lofigirl's chat in. A popout is single-channel — always live.
     const hasChannelTabs = !!(config.channels && config.channels.length)
-    return (isYtPopout || (onStreamPage && !hasChannelTabs)) ? 'live' : (_savedActiveTab || 'live')
+    return isYtPopout || (onStreamPage && !hasChannelTabs) ? 'live' : _savedActiveTab || 'live'
   }
 
   async function init() {

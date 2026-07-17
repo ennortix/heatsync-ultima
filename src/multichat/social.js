@@ -1080,10 +1080,14 @@ function listenForSocialEvents() {
             // a selection ("lofigirl"), not a blank tab with chat pouring in.
             // Runs regardless of the active tab (the label is always visible).
             if (typeof updateLiveTabLabel === 'function') {
-              try { updateLiveTabLabel() } catch {}
+              try {
+                updateLiveTabLabel()
+              } catch {}
             }
             if (currentTab === 'live') {
-              try { updateInputPlaceholder() } catch {}
+              try {
+                updateInputPlaceholder()
+              } catch {}
             }
           }
         }

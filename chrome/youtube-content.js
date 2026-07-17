@@ -1534,7 +1534,10 @@
             const lead = want.slice(0, Math.min(want.length, 12))
             if (
               want &&
-              (txt === want || txt.startsWith(want) || want.startsWith(txt) || (lead.length >= 4 && txt.startsWith(lead)))
+              (txt === want ||
+                txt.startsWith(want) ||
+                want.startsWith(txt) ||
+                (lead.length >= 4 && txt.startsWith(lead)))
             ) {
               const authorEl = node.querySelector?.('#author-name')
               const ytUsername = (authorEl?.textContent || '').trim()

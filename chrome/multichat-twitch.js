@@ -32211,10 +32211,14 @@ function listenForSocialEvents() {
             // a selection ("lofigirl"), not a blank tab with chat pouring in.
             // Runs regardless of the active tab (the label is always visible).
             if (typeof updateLiveTabLabel === 'function') {
-              try { updateLiveTabLabel() } catch {}
+              try {
+                updateLiveTabLabel()
+              } catch {}
             }
             if (currentTab === 'live') {
-              try { updateInputPlaceholder() } catch {}
+              try {
+                updateInputPlaceholder()
+              } catch {}
             }
           }
         }
@@ -63273,7 +63277,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     // page's stream: being on lofigirl's page shouldn't override your nl_kripp
     // tab and dump lofigirl's chat in. A popout is single-channel — always live.
     const hasChannelTabs = !!(config.channels && config.channels.length)
-    return (isYtPopout || (onStreamPage && !hasChannelTabs)) ? 'live' : (_savedActiveTab || 'live')
+    return isYtPopout || (onStreamPage && !hasChannelTabs) ? 'live' : _savedActiveTab || 'live'
   }
 
   async function init() {

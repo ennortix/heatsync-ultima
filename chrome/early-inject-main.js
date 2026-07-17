@@ -275,7 +275,7 @@
     const cid = gql.clientId || 'kimne78kx3ncx6brgo4mv6wki5h1ko'
     origFetch('https://gql.twitch.tv/gql', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Client-Id': cid, Authorization: 'OAuth ' + gql.authToken },
+      headers: { 'Content-Type': 'application/json', 'Client-Id': cid, Authorization: `OAuth ${gql.authToken}` },
       body: JSON.stringify({ query: '{ currentUser { id login displayName } }' }),
     })
       .then((r) => {
@@ -509,7 +509,7 @@
       const m = document.cookie.match(/(?:^|;\s*)unique_id=([^;]+)/)
       if (m) return m[1]
     } catch {}
-    if (!gql._fallbackDeviceId) gql._fallbackDeviceId = 'heatsync-' + Math.random().toString(36).slice(2, 18)
+    if (!gql._fallbackDeviceId) gql._fallbackDeviceId = `heatsync-${Math.random().toString(36).slice(2, 18)}`
     return gql._fallbackDeviceId
   }
 

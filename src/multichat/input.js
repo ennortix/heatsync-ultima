@@ -274,7 +274,7 @@ function isNonEchoingCommand(text) {
   return !!m && NON_ECHOING_CHAT_COMMANDS.has(m[1].toLowerCase())
 }
 
-function registerPendingSend({ text, channel, platforms, replyParentId, noEcho }) {
+function registerPendingSend({ text, channel, platforms, replyParentId, replyUser, noEcho }) {
   const synthId = makeSynthId()
   const entry = {
     synthId,
@@ -285,6 +285,9 @@ function registerPendingSend({ text, channel, platforms, replyParentId, noEcho }
     // dismissed when empty. Catches dual-send silent-drop of one platform.
     awaiting: new Set(platforms),
     replyParentId,
+    // Reply author survives into the retry path — the yt leg rebuilds its
+    // @mention from it (ytReplyText); msgId alone can't recover the name.
+    replyUser: replyUser || null,
     sentAt: Date.now(),
     state: 'pending',
     noEcho: !!noEcho,
@@ -480,7 +483,7 @@ function retryPendingSend(synthId) {
   // Restore reply state if the original was a reply
   if (entry.replyParentId) {
     try {
-      replyState = { msgId: entry.replyParentId }
+      replyState = { msgId: entry.replyParentId, user: entry.replyUser || undefined }
     } catch (_) {}
   }
   sendMessage()
@@ -6795,6 +6798,7 @@ async function sendMessage() {
     channel: targetChannel,
     platforms: _pendingPlatforms,
     replyParentId: replyState?.msgId || null,
+    replyUser: replyState?.user || null,
     noEcho: isNonEchoingCommand(text),
   })
 

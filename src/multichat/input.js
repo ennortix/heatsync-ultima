@@ -6530,10 +6530,18 @@ async function sendMessage() {
   const sendToKick =
     (!!kickSlug || (anonLive && hostPlatform === 'kick')) && !orphanSlash && (!sendTargets || sendTargets.kick)
   const sendToTwitch = (!!twitchName || (anonLive && hostPlatform === 'twitch')) && (!sendTargets || sendTargets.twitch)
-  const sendToYoutube = (!!ytUrl || isLiveYt) && !orphanSlash && (!sendTargets || sendTargets.youtube)
+  const ytWanted = (!!ytUrl || isLiveYt) && !orphanSlash && (!sendTargets || sendTargets.youtube)
   // Exact stream video id (or '' if not concretely known) — lets background
   // auto-open a login-inheriting live_chat bridge tab when no YT tab is open.
-  const ytVideoId = sendToYoutube ? currentYoutubeVideoId(ytUrl) : ''
+  const ytVideoId = ytWanted ? currentYoutubeVideoId(ytUrl) : ''
+  // FORT KNOX: only actually fan out to YouTube when we can target the EXACT
+  // stream — the Live tab (the sender page IS the stream you're on) or a
+  // concrete videoId. A channel tab with a youtube link but no RESOLVED live id
+  // must NOT send: background would fall back to the sender's own tab, which —
+  // when you're parked on a DIFFERENT stream's watch page — posts into that
+  // host page's chat (the "my message leaked into another tab's host chat"
+  // bug). Drop the youtube leg entirely; twitch/kick still go through.
+  const sendToYoutube = ytWanted && (isLiveYt || !!ytVideoId)
   const isDualSend = sendToKick && sendToTwitch
 
   // Orphan slash with no twitch leg = nothing left to send (kick/yt-only

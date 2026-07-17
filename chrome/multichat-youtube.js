@@ -48174,6 +48174,17 @@ function shouldProcessAutomodHold(seen, msgId, now) {
 const _automodSeenHolds = new Map() // msgId -> firstSeenAt
 const _automodExpireTimers = new Map() // msgId -> timeout id
 const _automodBroadcasterIdCache = new Map() // twitch login -> numeric id
+// One relink toast per page session — BG's own dedupe (_automodRelinkNotified)
+// is per-SW-lifetime, and MV3 kills/respawns the service worker independently
+// of any open tab, so BG can legitimately re-broadcast automod_relink more
+// than once across a single page's life (watch-sweep 401 at boot, a later
+// action-401 after a SW respawn resets BG's flag, etc). HsNotifs' dedupeKey
+// only collapses duplicates while an earlier toast with that key is still
+// on screen — a broadcast that arrives after the first toast was dismissed
+// is a fresh, non-duplicate emit as far as HsNotifs is concerned, so a
+// content-side "already shown" flag is the only place this can actually be
+// capped to one, regardless of how many times BG fires it.
+let _automodRelinkShown = false
 
 function findAutomodChannel(broadcasterLogin) {
   const lc = (broadcasterLogin || '').toLowerCase()
@@ -48395,6 +48406,8 @@ function initAutomodQueue() {
     }
     if (msg.type === 'automod_relink') {
       if (!isEnabled('automod-queue')) return
+      if (_automodRelinkShown) return
+      _automodRelinkShown = true
       try {
         HsNotifs.emit('automod-relink', {})
       } catch (_) {}

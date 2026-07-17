@@ -8541,9 +8541,7 @@
         // re-derived from the freshly filtered array on every render — if
         // the current match dropped out of the filter (dedup, trim, edit),
         // this naturally falls back to the plain total and drops the cursor.
-        const _curIdx = _liveSearchCurrentKey
-          ? toRender.findIndex((m) => msgKeyOf(m) === _liveSearchCurrentKey)
-          : -1
+        const _curIdx = _liveSearchCurrentKey ? toRender.findIndex((m) => msgKeyOf(m) === _liveSearchCurrentKey) : -1
         if (_liveSearchCurrentKey && _curIdx === -1) _liveSearchCurrentKey = null
         _liveCountEl.textContent = _curIdx >= 0 ? `${_curIdx + 1}/${toRender.length}` : String(toRender.length)
         _liveCountEl.classList.add('visible')

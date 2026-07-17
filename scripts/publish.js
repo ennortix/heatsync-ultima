@@ -325,10 +325,19 @@ function composeReleaseNotes() {
       .toString()
       .trim()
     if (!log) return placeholder
-    return log
+    const notes = log
       .split('\n')
       .map((l) => `- ${l.replace(/^[0-9a-f]+\s+/, '')}`)
       .join('\n')
+    // AMO caps release_notes at 3000 chars; a long release (dozens of commits)
+    // blows past it and 400s at version-create. Truncate at a line boundary,
+    // keeping the newest commits (git log is newest-first).
+    const AMO_NOTES_MAX = 3000
+    if (notes.length <= AMO_NOTES_MAX) return notes
+    const marker = '\n- …see the full changelog in the repo'
+    const budget = AMO_NOTES_MAX - marker.length
+    const kept = notes.slice(0, budget)
+    return kept.slice(0, kept.lastIndexOf('\n')) + marker
   } catch {
     return placeholder
   }

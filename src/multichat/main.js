@@ -5655,7 +5655,7 @@
       // the rows above the composer). Signature covers every input the
       // positioning + HsNotifs geometry read.
       const _containerEl = document.getElementById('hs-mc-container')
-      const _sig = `${tabPosition}|${tw}|${th}|${ih}|${_containerEl ? _containerEl.offsetHeight : 0}|${getActiveViewedChannels().join(',')}`
+      const _sig = `${tabPosition}|${tw}|${th}|${ih}|${_containerEl ? _containerEl.offsetHeight : 0}|${[...getActiveViewedChannels()].join(',')}`
       if (_sig === _lastMcLayoutSig) return
       _lastMcLayoutSig = _sig
 

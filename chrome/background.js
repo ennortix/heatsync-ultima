@@ -7445,8 +7445,15 @@ async function handleMessage(message, sender, sendResponse) {
       log(' YouTube subscribe:', url, 'channel:', channelId, isSocketOpen() ? '' : '(queued for reconnect)')
       // Fire-and-forget real-history backfill — _ytRecentFetched gates this to
       // once per channelId per SW lifetime (this handler re-fires on every
-      // reconnect/reload, unlike kick's join-gated _kpChannels check).
-      bgYtFetchRecentArchive(channelId, url).catch(() => {})
+      // reconnect/reload, unlike kick's join-gated _kpChannels check). After
+      // the fetch settles (or the one-shot no-ops), replay the buffer to the
+      // SUBSCRIBING tab so surfaces that boot after the one-shot still get
+      // history without a hard refresh.
+      const ytSubTabId = sender?.tab?.id
+      bgYtFetchRecentArchive(channelId, url)
+        .catch(() => {})
+        .then(() => bgYtReplayToTab(ytSubTabId, channelId))
+        .catch(() => {})
     }
     sendResponse({ ok: true })
     return
@@ -11638,28 +11645,43 @@ function mapRecentArchiveRow(platform, row) {
 }
 
 // Merge freshly-fetched archive rows into an existing message array. Pure —
-// dedup by id where present, else by (user, time, text-prefix) fingerprint
-// (mirrors bgKickFetchArchive/kick-chat-backfill's existing dedup). The local
-// buffer always wins a conflict — it carries richer live fields (userId,
-// live badges, etc.) than a re-derived archive row ever can — so `existing`
-// seeds the dedup sets before any archive row is considered. Returns the
-// rows actually appended (`toAdd`) and the full time-sorted merged array.
+// dedup by id first, then ALWAYS by a (user, ~time, text-prefix) content
+// fingerprint against every existing row. The double net matters: the server
+// serves the platform's own message id (kick uuid / yt id) since c81d5cd0,
+// which matches live-caught rows — but legacy archive rows, stale server
+// caches, and rows persisted from pre-c81d5cd0 fetches still carry DB row
+// ids, so the same message can arrive under two id namespaces. Content fp
+// bridges that. Time is bucketed to 10s with adjacent-bucket checks because
+// an archive row's ts (server ingest) and a live row's time (client receive)
+// differ by transport lag — never by more than a few seconds in practice.
+// Cost: an archived repeat of the same user+text within ~20s is dropped from
+// backfill — invisible next to rendering every overlap message twice.
+// The local buffer always wins a conflict — it carries richer live fields
+// (userId, live badges, etc.) than a re-derived archive row ever can — so
+// `existing` seeds the dedup sets before any archive row is considered.
+// Returns the rows actually appended (`toAdd`) and the time-sorted merge.
+const ARCHIVE_FP_BUCKET_MS = 10000
+function archiveFpAt(m, bucket) {
+  return `${(m.user || '').toLowerCase()}|${bucket}|${(m.text || '').slice(0, 60)}`
+}
 function mergeRecentArchiveRows(existing, rows, platform) {
-  const existingIds = new Set(existing.filter((m) => m.id).map((m) => m.id))
-  const fpOf = (m) => `${m.user}|${m.time}|${(m.text || '').slice(0, 60)}`
-  const existingFp = new Set(existing.filter((m) => !m.id).map(fpOf))
+  const existingIds = new Set(existing.filter((m) => m.id).map((m) => String(m.id)))
+  const existingFp = new Set()
+  for (const m of existing) existingFp.add(archiveFpAt(m, Math.floor((m.time || 0) / ARCHIVE_FP_BUCKET_MS)))
   const toAdd = []
   for (const row of rows) {
     const m = mapRecentArchiveRow(platform, row)
     if (!m) continue
-    if (m.id) {
-      if (existingIds.has(m.id)) continue
-      existingIds.add(m.id)
-    } else {
-      const fp = fpOf(m)
-      if (existingFp.has(fp)) continue
-      existingFp.add(fp)
-    }
+    if (m.id && existingIds.has(String(m.id))) continue
+    const bucket = Math.floor((m.time || 0) / ARCHIVE_FP_BUCKET_MS)
+    if (
+      existingFp.has(archiveFpAt(m, bucket)) ||
+      existingFp.has(archiveFpAt(m, bucket - 1)) ||
+      existingFp.has(archiveFpAt(m, bucket + 1))
+    )
+      continue
+    if (m.id) existingIds.add(String(m.id))
+    existingFp.add(archiveFpAt(m, bucket))
     toAdd.push(m)
   }
   const merged = toAdd.length ? [...existing, ...toAdd].sort((a, b) => (a.time || 0) - (b.time || 0)) : existing
@@ -11724,35 +11746,57 @@ async function bgYtFetchRecentArchive(channelId, hintUrl) {
   buf.clear()
   for (const m of merged) buf.push(m)
   bgYtPersistChannel(channelId)
-  // BG_YT has no front-end pull path today (bg_yt_history is dead code) — feed
-  // straight into the same replay pipeline the live relay's own history
+  // Feed straight into the same replay pipeline the live relay's own history
   // batches use (social.js's youtube_chat_message{replay:true} →
   // ingestReplayYtMsg), so rendering/paints/emotes/dedup all run through the
   // exact code the local buffer (channelYtMessages) already exercises. Rows
   // render PREPENDED into position by real timestamp — ingestReplayYtMsg
   // never reshuffles existing rows.
-  for (const m of toAdd) {
-    broadcastToTabs({
-      type: 'youtube_chat_message',
-      videoId: '',
-      channelId,
-      id: m.id || undefined,
-      user: m.user,
-      text: m.text,
-      color: m.color,
-      time: m.time,
-      platform: 'youtube',
-      emotes: [],
-      msgType: m.msgType,
-      amount: '',
-      scColor: '',
-      sticker: null,
-      badges: m.badges,
-      source: 'server',
-      replay: true,
-    })
-  }
+  for (const m of toAdd) broadcastToTabs(ytReplayMessageFor(channelId, m))
   log('BG YT recent-archive merged', toAdd.length, 'msgs for', channelId)
+}
+
+function ytReplayMessageFor(channelId, m) {
+  return {
+    type: 'youtube_chat_message',
+    videoId: '',
+    channelId,
+    id: m.id || undefined,
+    user: m.user,
+    text: m.text,
+    color: m.color,
+    time: m.time,
+    platform: 'youtube',
+    emotes: [],
+    msgType: m.msgType,
+    amount: '',
+    scColor: '',
+    sticker: null,
+    badges: m.badges,
+    source: 'server',
+    replay: true,
+  }
+}
+
+// Replay the BG_YT buffer to ONE tab — the surface that just subscribed.
+// The one-shot broadcast above only reaches surfaces alive at merge time;
+// a multichat that boots (or a popout opened) AFTER it saw nothing until a
+// hard refresh restored persisted storage. This closes that gap at the
+// single chokepoint every subscribe path funnels through, targeted so a
+// reconnecting surface never storms every other tab. ingestReplayYtMsg's
+// dedup absorbs the overlap for surfaces that already hold these rows.
+const YT_REPLAY_TO_TAB_MAX = 200
+async function bgYtReplayToTab(tabId, channelId) {
+  if (!tabId || !channelId || channelId === 'global') return
+  try {
+    if (!BG_YT.storageRestored) await bgYtRestoreFromStorage()
+    const buf = BG_YT.channels.get(channelId)
+    if (!buf) return
+    const msgs = buf.getAll().slice(-YT_REPLAY_TO_TAB_MAX)
+    for (const m of msgs) {
+      browser.tabs.sendMessage(tabId, ytReplayMessageFor(channelId, m)).catch(() => {})
+    }
+  } catch {}
 }
 
 // ─── Kick chat Pusher tap (client-side, anonymous) ──────────────────────────

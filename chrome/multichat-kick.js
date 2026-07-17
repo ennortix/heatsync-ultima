@@ -31357,8 +31357,25 @@ const _replayRenderPending = new Set() // tabIds awaiting coalesced render
 // Sidecar dedup index. O(1) lookup vs the previous O(n) buf.some() scan over
 // up to 1550 entries per replay msg — replay bursts at reconnect can be huge.
 const _replayDedupKeys = new Map() // channelId -> Set<dupKey>
+// Id sidecar alongside the content keys. Content keys alone can't catch a
+// replay of a message this surface already caught live: enqueueYtForPacing
+// REWRITES live msgs' time to the emit clock, while archive/relay replay rows
+// keep the real timestamp — same message, different 1s bucket, key miss.
+// Platform ids are stable across both sources (the server serves message_id
+// since c81d5cd0), so id equality is the reliable net; content keys remain
+// for id-less rows.
+const _replayDedupIds = new Map() // channelId -> Set<platform msg id>
 function _ytDupKey(m) {
   return `${m.user}|${(m.text || '').slice(0, 50)}|${Math.floor((m.time || 0) / 1000)}`
+}
+function _ytDedupIds(targetChannelId, buf) {
+  let ids = _replayDedupIds.get(targetChannelId)
+  if (!ids) {
+    ids = new Set()
+    for (const m of buf) if (m.id) ids.add(String(m.id))
+    _replayDedupIds.set(targetChannelId, ids)
+  }
+  return ids
 }
 function ingestReplayYtMsg(targetChannelId, ytMsg) {
   if (!channelYtMessages.has(targetChannelId)) channelYtMessages.set(targetChannelId, [])
@@ -31369,9 +31386,12 @@ function ingestReplayYtMsg(targetChannelId, ytMsg) {
     for (const m of buf) dedup.add(_ytDupKey(m))
     _replayDedupKeys.set(targetChannelId, dedup)
   }
+  const ids = _ytDedupIds(targetChannelId, buf)
+  if (ytMsg.id && ids.has(String(ytMsg.id))) return
   const dupKey = _ytDupKey(ytMsg)
   if (dedup.has(dupKey)) return
   dedup.add(dupKey)
+  if (ytMsg.id) ids.add(String(ytMsg.id))
   buf.push(ytMsg)
   if (ytMsg.user) {
     try {
@@ -31383,9 +31403,13 @@ function ingestReplayYtMsg(targetChannelId, ytMsg) {
     // backfill + live, not just newest-arrived.
     buf.sort((a, b) => (a.time || 0) - (b.time || 0))
     buf.splice(0, buf.length - MAX_BUFFER)
-    // Rebuild dedup set from surviving entries (splice dropped some).
+    // Rebuild dedup sets from surviving entries (splice dropped some).
     dedup.clear()
-    for (const m of buf) dedup.add(_ytDupKey(m))
+    ids.clear()
+    for (const m of buf) {
+      dedup.add(_ytDupKey(m))
+      if (m.id) ids.add(String(m.id))
+    }
   }
   persistYt(targetChannelId)
   const tabId = targetChannelId === '__live_yt_auto__' ? 'live' : targetChannelId
@@ -31519,15 +31543,23 @@ function commitPacedYtMsg(targetChannelId, ytMsg) {
       addUsername(ytMsg.user)
     } catch {}
   }
-  // Keep the replay-dedup index aligned with the buffer so a later replay msg
-  // doesn't get re-inserted as if the live one were missing.
+  // Keep the replay-dedup indexes aligned with the buffer so a later replay
+  // msg doesn't get re-inserted as if the live one were missing. The id index
+  // is the one that actually matches here — this path just rewrote msg.time,
+  // so the content key a future replay row computes will never equal ours.
   const dedup = _replayDedupKeys.get(targetChannelId)
   if (dedup) dedup.add(_ytDupKey(ytMsg))
+  const liveIds = _replayDedupIds.get(targetChannelId)
+  if (liveIds && ytMsg.id) liveIds.add(String(ytMsg.id))
   if (buf.length > MAX_BUFFER + 50) {
     buf.splice(0, buf.length - MAX_BUFFER)
     if (dedup) {
       dedup.clear()
       for (const m of buf) dedup.add(_ytDupKey(m))
+    }
+    if (liveIds) {
+      liveIds.clear()
+      for (const m of buf) if (m.id) liveIds.add(String(m.id))
     }
   }
   persistYt(targetChannelId)

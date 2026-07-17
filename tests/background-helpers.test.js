@@ -698,7 +698,7 @@ describe('kpModeChanges', () => {
 // fetchRecentArchiveRows below for the fail-soft fetch wrapper.
 
 const { mapRecentArchiveRow, mergeRecentArchiveRows } = new Function(
-  `${extractFn('mapRecentArchiveRow')}\n${extractFn('mergeRecentArchiveRows')}\nreturn { mapRecentArchiveRow, mergeRecentArchiveRows }`,
+  `${extractConstLine('ARCHIVE_FP_BUCKET_MS')}\n${extractFn('archiveFpAt')}\n${extractFn('mapRecentArchiveRow')}\n${extractFn('mergeRecentArchiveRows')}\nreturn { mapRecentArchiveRow, mergeRecentArchiveRows }`,
 )()
 
 describe('mapRecentArchiveRow', () => {
@@ -828,6 +828,33 @@ describe('mergeRecentArchiveRows', () => {
     const { toAdd, merged } = mergeRecentArchiveRows(existing, [], 'kick')
     expect(toAdd).toEqual([])
     expect(merged).toBe(existing)
+  })
+  test('cross-id-namespace dup: different ids, same user+text, ts within transport lag → dropped', () => {
+    // live-caught row (kick uuid) vs archive row that arrived under a DB row
+    // id (legacy row / stale v1 cache) 4s later — same message, id-dedup
+    // blind, content fingerprint must catch it
+    const existing = [{ id: '8fc26b02-80b1-4db7-a20c-5557846e2ec9', user: 'A', text: 'same message', time: 100000 }]
+    const rows = [{ id: '485216420', sender: 'a', display_name: 'A', text: 'same message', ts: 104000 }]
+    const { toAdd } = mergeRecentArchiveRows(existing, rows, 'kick')
+    expect(toAdd).toEqual([])
+  })
+  test('fingerprint window respects adjacent buckets (dup lands just across a 10s boundary)', () => {
+    const existing = [{ id: 'uuid-1', user: 'a', text: 'boundary msg', time: 9900 }]
+    const rows = [{ id: '99', sender: 'a', text: 'boundary msg', ts: 10100 }]
+    const { toAdd } = mergeRecentArchiveRows(existing, rows, 'kick')
+    expect(toAdd).toEqual([])
+  })
+  test('genuine repeat of the same text far apart in time is NOT deduped', () => {
+    const existing = [{ id: 'uuid-1', user: 'a', text: 'LUL', time: 0 }]
+    const rows = [{ id: '99', sender: 'a', text: 'LUL', ts: 60000 }]
+    const { toAdd } = mergeRecentArchiveRows(existing, rows, 'kick')
+    expect(toAdd.length).toBe(1)
+  })
+  test('fingerprint is case-insensitive on user (archive stores lowercase login, live may carry display case)', () => {
+    const existing = [{ id: 'uuid-1', user: 'BigChatter', text: 'yo', time: 5000 }]
+    const rows = [{ id: '77', sender: 'bigchatter', text: 'yo', ts: 5000 }]
+    const { toAdd } = mergeRecentArchiveRows(existing, rows, 'kick')
+    expect(toAdd).toEqual([])
   })
 })
 

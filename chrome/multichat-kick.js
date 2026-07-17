@@ -2180,6 +2180,18 @@ const SETTINGS = [
     control: 'pill',
     rerender: true,
   },
+  {
+    key: 'hs_show_pronouns',
+    type: 'bool',
+    default: true,
+    scope: 'sync',
+    category: 'display',
+    section: 'cosmetics',
+    labelKey: 'mc_settings_show_pronouns',
+    tipKey: 'mc_settings_show_pronouns_desc',
+    control: 'pill',
+    runtimeVar: 'pronounsEnabled',
+  },
 
   // ── chat / input ──────────────────────────────────────────────────────
   {
@@ -8957,7 +8969,6 @@ function injectStyles() {
       border-left: 3px solid var(--hs-notif-accent, #555);
       box-shadow: 0 6px 16px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.03) inset;
       animation: hs-notif-slide-in-right 120ms ease both;
-      will-change: opacity;
     }
     @keyframes hs-notif-fade-in {
       from { opacity: 0; }
@@ -9801,6 +9812,82 @@ function injectStyles() {
     }
     .hs-mod-btn:last-child { border-right: 0; }
     .hs-mod-btn:hover { background: #fff; color: #000; }
+    /* Bulk-select — clicking a row while selection mode is active toggles this.
+       "white bg, black text" is the universal selected/active treatment (see
+       .hs-mc-emoji-row.selected); orange left-bar ties it to the mod-action
+       accent. !important beats inline per-user username colors, same
+       precedent as .hs-mc-emoji-row.selected .hs-mc-emoji-name. */
+    .hs-mc-msg.hs-mc-row-selected {
+      background: #fff !important;
+      color: #000 !important;
+      box-shadow: inset 2px 0 0 #ff8700;
+    }
+    .hs-mc-msg.hs-mc-row-selected .hs-mc-user,
+    .hs-mc-msg.hs-mc-row-selected .hs-mc-system-text,
+    .hs-mc-msg.hs-mc-row-selected .hs-mc-channel,
+    .hs-mc-msg.hs-mc-row-selected .hs-mc-ts,
+    .hs-mc-msg.hs-mc-row-selected .hs-mc-reply-user {
+      color: #000 !important;
+      -webkit-text-fill-color: #000 !important;
+    }
+    /* Cursor affordance while selection mode is on — rows are click-targets,
+       not text. Reply/mod-toolbar buttons opt back out to their own cursor. */
+    body.hs-mc-bulk-select-active .hs-mc-msg[data-msg-id] {
+      cursor: pointer;
+    }
+    body.hs-mc-bulk-select-active .hs-mc-msg[data-msg-id] .hs-mc-reply-btn,
+    body.hs-mc-bulk-select-active .hs-mc-msg[data-msg-id] .hs-mod-toolbar {
+      cursor: default;
+    }
+    /* Bottom action bar — floats over #hs-mc-messages like #hs-mc-new-msgs,
+       brand-orange bg (the one non-monochrome accent per the mod palette),
+       square, zero motion. */
+    #hs-mc-bulk-bar {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 1006;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 8px;
+      background: #ff8700;
+      color: #000;
+      font: 13px/18px 'CozetteVector', monospace;
+      border-top: 1px solid #000;
+      box-sizing: border-box;
+    }
+    #hs-mc-bulk-count {
+      font-weight: 700;
+      margin-right: auto;
+    }
+    #hs-mc-bulk-bar button {
+      background: #000;
+      color: #fff;
+      border: 1px solid #000;
+      border-radius: 0;
+      padding: 3px 10px;
+      font: inherit;
+      cursor: pointer;
+    }
+    #hs-mc-bulk-bar button:hover {
+      background: #fff;
+      color: #000;
+    }
+    #hs-mc-bulk-bar button[data-bulk='ban'] {
+      border-color: #ff0000;
+      color: #ff5f5f;
+    }
+    #hs-mc-bulk-bar button[data-bulk='ban']:hover {
+      background: #ff5f5f;
+      color: #000;
+    }
+    #hs-mc-bulk-bar button[disabled] {
+      opacity: 0.5;
+      cursor: default;
+      pointer-events: none;
+    }
     #hs-mc-reply-indicator {
       flex: 1 0 100%;
       order: -1;
@@ -10485,6 +10572,17 @@ function injectStyles() {
       font-weight: 700;
       white-space: nowrap;
       color: #fff;
+    }
+    /* Pronoun chip (pronoundb.org) — square, neutral ANSI cyan, no
+       hover/active state (static info, matches .hs-pcard-pronoun). Sizing
+       (font-size/padding/line-height) comes from the [class*="hs-pc-"] reset
+       above; only color/border/background need setting here. */
+    #hs-user-tooltip .hs-pc-pronoun {
+      border: 1px solid #333 !important;
+      background: #111;
+      color: #5fd7d7;
+      font-weight: 700 !important;
+      white-space: nowrap;
     }
     #hs-user-tooltip .hs-pc-role {
       padding: 2px 3px;
@@ -12098,6 +12196,15 @@ img.hs-fx-zero { margin-left: -4px; }
       font-size: 13px; line-height: 18px;
     }
     .hs-pcard-id-chips img.hs-mc-badge-img { width: 18px; height: 18px; }
+    /* Pronoun chip (pronoundb.org) — square, terminal-styled, neutral ANSI
+       cyan so it never competes with the platform brand colors on the pills
+       below it. No hover/active state — static info, not interactive. */
+    .hs-pcard-pronoun {
+      display: inline-flex; align-items: center;
+      padding: 1px 4px; border: 1px solid #333; background: #111;
+      color: #5fd7d7; font-size: 13px; font-weight: 700;
+      line-height: 16px; white-space: nowrap;
+    }
     .hs-pcard-name {
       font-size: 16px; font-weight: 700; color: #fff;
       display: flex; align-items: center; gap: 6px; line-height: 18px;
@@ -25999,6 +26106,25 @@ async function applyTooltipBanner(tooltip, profile, platform, username, gen) {
   if (banner.sourcePlatform) hero.dataset.source = banner.sourcePlatform
 }
 
+// Async pronoun fetch + apply for the hover tooltip — mirrors
+// applyTooltipBanner's fire-and-forget shape. Twitch-only (pronoundb has no
+// Kick/YouTube platform). Appends a chip into .hs-pc-header, next to the
+// native badges / name. Bails if the tooltip moved to a different user while
+// the fetch was in flight (gen check, same pattern as the rest of this file).
+async function applyTooltipPronouns(tooltip, twitchUserId, gen) {
+  if (!twitchUserId || typeof fetchPronouns !== 'function') return
+  const data = await fetchPronouns('twitch', twitchUserId)
+  if (gen !== _profileGen) return
+  const words = data?.pronouns
+  if (!words || !words.length) return
+  const header = tooltip.querySelector('.hs-pc-header')
+  if (!header || header.querySelector('.hs-pc-pronoun')) return
+  const chip = document.createElement('span')
+  chip.className = 'hs-pc-pronoun'
+  chip.textContent = words.join('/').toLowerCase()
+  header.appendChild(chip)
+}
+
 // Determine Twitch channel context for followage lookups
 // userPlatform: the platform of the user being looked up (from data-platform)
 function getTooltipChannelContext(userPlatform) {
@@ -26053,6 +26179,7 @@ async function showUserTooltip(targetEl, username, color, platform) {
     positionTooltipAtElement(tooltip, targetEl)
     fetchAndShowFollowage(tooltip, username, gen, platform)
     applyTooltipBanner(tooltip, cached.profile, platform, username, gen)
+    applyTooltipPronouns(tooltip, cached.profile?.twitch_user_id || cached.profile?.twitch_id, gen)
     return
   }
 
@@ -26083,6 +26210,7 @@ async function showUserTooltip(targetEl, username, color, platform) {
     positionTooltipAtElement(tooltip, targetEl)
     fetchAndShowFollowage(tooltip, username, gen, platform)
     applyTooltipBanner(tooltip, profile, platform, username, gen)
+    applyTooltipPronouns(tooltip, profile?.twitch_user_id || profile?.twitch_id, gen)
   } else {
     // Fallback — populated from client-only signals so kick chatters with
     // no heatsync acct still get a real card: chat badges from recent msgs,
@@ -26125,6 +26253,7 @@ async function showUserTooltip(targetEl, username, color, platform) {
     appendSubTenureBadge(tooltip, username, msgChannel)
     fetchAndShowFollowage(tooltip, username, gen, platform)
     applyTooltipBanner(tooltip, null, platform, username, gen)
+    applyTooltipPronouns(tooltip, fbUid, gen)
   }
 }
 
@@ -38025,8 +38154,16 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
           },
           { label: 'ban', danger: true, fn: () => _ctxMod('ban', msgCh, msgPlat, msgLogin, msgId, 0, 'banned') },
           { label: 'unban', fn: () => _ctxMod('unban', msgCh, msgPlat, msgLogin, msgId, 0, 'unbanned') },
-          'sep',
         )
+        // Bulk-select entry — twitch/kick only (YT rows carry none of the
+        // dataset bulk-select needs, same reason the hover toolbar skips YT).
+        if (!isYt && typeof startBulkSelectFrom === 'function' && typeof isBulkSelectMode === 'function') {
+          mod.push({
+            label: isBulkSelectMode() ? 'exit select mode' : 'select mode',
+            fn: () => (isBulkSelectMode() ? exitBulkSelectMode() : startBulkSelectFrom(msg)),
+          })
+        }
+        mod.push('sep')
         items.push(...mod)
       } else {
         // Warm the right cache so the next right-click surfaces actions.
@@ -43248,6 +43385,31 @@ async function fetchChannelBanner(platform, login) {
   }
 }
 
+// In-page LRU for fetched pronouns — background SW caches authoritatively
+// (24h); this layer just avoids the SW round-trip for repeat hovers/opens.
+// Twitch-only: pronoundb.org has no Kick/YouTube platform.
+const _pronounCache = new Map()
+const PRONOUN_LOCAL_TTL = 10 * 60 * 1000
+
+// Resolve pronouns for a Twitch numeric user id via SW. Returns
+// { pronouns: string[] } or null. No-ops (no fetch, no cache write) when the
+// pronouns setting is off or the platform isn't twitch.
+async function fetchPronouns(platform, userId) {
+  if (typeof pronounsEnabled !== 'undefined' && !pronounsEnabled) return null
+  if (platform !== 'twitch' || !userId) return null
+  const key = `twitch:${userId}`
+  const hit = _pronounCache.get(key)
+  if (hit && Date.now() - hit.ts < PRONOUN_LOCAL_TTL) return hit.data
+  try {
+    const data = await safeSendMessage({ type: 'fetch_pronouns', platform: 'twitch', userId })
+    _pronounCache.set(key, { data: data || null, ts: Date.now() })
+    if (_pronounCache.size > 500) _pronounCache.delete(_pronounCache.keys().next().value)
+    return data || null
+  } catch {
+    return null
+  }
+}
+
 // Build the platform-preference chain for a profile + context. The context
 // platform always wins — a user's identity belongs to the platform you were
 // viewing them on. Cross-platform accent inheritance (a kick green ring on
@@ -44386,6 +44548,35 @@ function renderProfileCardView() {
   // applier mutates .hs-pcard-hero-img once a banner resolves.
   const chain = pickBannerChain(data, activeProfileCard.platform, username)
   if (chain.length) pcApplyBanner(card, chain)
+
+  // Pronouns — keyed off the same twitch numeric id the identity paint uses
+  // above, independent of context platform (a kick chatter with a linked
+  // heatsync/twitch identity still gets their pronoundb pronouns).
+  if (idUid) pcApplyPronouns(card, idUid)
+}
+
+// Async pronoun application — fetches via SW and drops a chip into the
+// identity chip row. Same no-gen-check tradeoff as pcApplyBanner: re-resolves
+// the live element off the messages root each call, so a closed/replaced
+// card is simply a no-op (querySelector on the new card's own chip row).
+async function pcApplyPronouns(card, twitchUserId) {
+  const data = await fetchPronouns('twitch', twitchUserId)
+  const words = data?.pronouns
+  if (!words || !words.length) return
+  const root = document.getElementById('hs-mc-messages')?.querySelector('.hs-pcard') || card
+  const idText = root.querySelector('.hs-pcard-id-text')
+  if (!idText) return
+  let chips = root.querySelector('.hs-pcard-id-chips')
+  if (!chips) {
+    chips = document.createElement('div')
+    chips.className = 'hs-pcard-id-chips'
+    idText.insertBefore(chips, idText.firstChild)
+  }
+  if (chips.querySelector('.hs-pcard-pronoun')) return
+  const chip = document.createElement('span')
+  chip.className = 'hs-pcard-pronoun'
+  chip.textContent = words.join('/').toLowerCase()
+  chips.appendChild(chip)
 }
 
 // Async banner application — walks the platform chain and applies the first
@@ -45714,7 +45905,11 @@ function ensureHsPaintSheet() {
       // .hsp-hover is the JS-synced twin of :hover — installHsPaintHoverSync
       // puts it on EVERY visible copy of the hovered user's name so they all
       // freeze together, not just the pointer target.
-      '[class*="hsp-"]:hover,[class*="hsp-"]:hover span,[class*="hsp-"].hsp-hover,[class*="hsp-"].hsp-hover span{animation-play-state:paused !important;background:#fff !important;-webkit-background-clip:border-box !important;background-clip:border-box !important;color:#000 !important;transform:none !important;}'
+      // .hs-mc-row-selected (bulk-select, mod-toolbar.js) reuses the same
+      // flatten: a gradient/clip-text paint left un-flattened would render
+      // invisible against the selected row's white bg (background:#fff would
+      // clip straight through transparent gradient text).
+      '[class*="hsp-"]:hover,[class*="hsp-"]:hover span,[class*="hsp-"].hsp-hover,[class*="hsp-"].hsp-hover span,.hs-mc-row-selected [class*="hsp-"],.hs-mc-row-selected [class*="hsp-"] span{animation-play-state:paused !important;background:#fff !important;-webkit-background-clip:border-box !important;background-clip:border-box !important;color:#000 !important;transform:none !important;}'
     const tracked =
       typeof cleanup !== 'undefined' && cleanup.trackNode ? cleanup.trackNode(hsPaintSheetEl) : hsPaintSheetEl
     document.head.appendChild(tracked)
@@ -47502,11 +47697,14 @@ function hsConfirm(message, confirmLabel = 'confirm', reasons = []) {
   })
 }
 
-async function dispatchModAction({ channel, platform, action, target, durationSec, msgId, reason, fanout }) {
+async function dispatchModAction({ channel, platform, action, target, durationSec, msgId, reason, fanout, skipConfirm }) {
   // Opt-in ban dialog: confirm (misclick guard) and/or reason chips. Every
   // surface routes through here, so one gate covers toolbar/hotkey/slash/ctx/
   // card. Shows when confirm is on OR ban reasons are configured.
-  if (action === 'ban') {
+  // skipConfirm: the bulk-select action bar already confirmed once for the
+  // whole batch ("ban 3 users?") — without this, each of the N per-user calls
+  // below would re-prompt its own "ban X in #channel?" dialog on top of it.
+  if (action === 'ban' && !skipConfirm) {
     const banReasons = String(modBanReasons || '')
       .split('\n')
       .map((s) => s.trim())
@@ -47715,9 +47913,251 @@ async function runModAction(id) {
   showModResultToast(label, target, r)
   detachModToolbar()
 }
+
+// ===== Bulk-select mode =====
+// Mods raid-cleaning a wall of spam select N rows and fire ban/timeout ONCE
+// per unique target, instead of hovering+clicking each row individually.
+// Twitch/kick only (mirrors the hover toolbar + ctx-menu mod gate) — YT rows
+// never carry the dataset (data-msg-id etc.) mod actions need, so they're
+// simply never selectable, same as they're invisible to the hover toolbar.
+let bulkSelectMode = false
+let _bulkAnchorRow = null
+const _bulkSelected = new Set() // Set<row Element> — visual selection, source of truth for the action bar
+
+function isBulkSelectMode() {
+  return bulkSelectMode
+}
+
+// Pure — no DOM. Row descriptors in, deduped-by-user target list out. Exposed
+// at module scope (not nested) so tests can extract it in isolation, same
+// pattern as bgIrcDupModNotice.
+function dedupeBulkTargets(rows) {
+  const seen = new Set()
+  const out = []
+  for (const r of rows || []) {
+    const login = String(r?.login || '')
+      .replace(/^@/, '')
+      .toLowerCase()
+    const channel = String(r?.channel || '')
+    if (!login || !channel) continue
+    const platform = r.platform || 'twitch'
+    const key = `${platform}|${channel.toLowerCase()}|${login}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push({ platform, channel, login })
+  }
+  return out
+}
+
+function _bulkRowDescriptor(row) {
+  return {
+    platform: row.dataset.msgPlatform || 'twitch',
+    channel: row.dataset.msgChannel || '',
+    login: row.dataset.msgLogin || row.dataset.msgUser || '',
+  }
+}
+
+// Same gate the hover toolbar and ctx-menu mod items use: sync per-platform
+// mod-state cache, keyed off the row's own channel (never re-resolved through
+// getChannelLookup — matches the existing per-row check exactly).
+function _isModForRow(row) {
+  const plat = row.dataset.msgPlatform || 'twitch'
+  const ch = row.dataset.msgChannel || ''
+  if (!ch) return false
+  return plat === 'kick' ? isKickModForSync(ch) : isModForSync(ch)
+}
+
+function _bulkRowSelectable(row) {
+  if (!row || !row.dataset) return false
+  const plat = row.dataset.msgPlatform || 'twitch'
+  if (plat === 'youtube' || plat === 'yt') return false
+  if (!row.dataset.msgId || !row.dataset.msgChannel || !(row.dataset.msgLogin || row.dataset.msgUser)) return false
+  if (row.dataset.msgSelf === '1') return false
+  return _isModForRow(row)
+}
+
+function _toggleBulkRow(row) {
+  if (_bulkSelected.has(row)) {
+    _bulkSelected.delete(row)
+    row.classList.remove('hs-mc-row-selected')
+  } else {
+    _bulkSelected.add(row)
+    row.classList.add('hs-mc-row-selected')
+  }
+}
+
+function _selectBulkRange(messagesEl, fromRow, toRow) {
+  const rows = [...messagesEl.querySelectorAll('.hs-mc-msg')]
+  const i1 = rows.indexOf(fromRow)
+  const i2 = rows.indexOf(toRow)
+  if (i1 < 0 || i2 < 0) {
+    if (_bulkRowSelectable(toRow)) _toggleBulkRow(toRow)
+    return
+  }
+  const lo = Math.min(i1, i2)
+  const hi = Math.max(i1, i2)
+  for (let i = lo; i <= hi; i++) {
+    const r = rows[i]
+    if (_bulkRowSelectable(r) && !_bulkSelected.has(r)) {
+      _bulkSelected.add(r)
+      r.classList.add('hs-mc-row-selected')
+    }
+  }
+}
+
+function _updateBulkBar() {
+  let bar = document.getElementById('hs-mc-bulk-bar')
+  if (!bulkSelectMode || _bulkSelected.size === 0) {
+    if (bar) bar.remove()
+    return
+  }
+  if (!bar) {
+    bar = document.createElement('div')
+    bar.id = 'hs-mc-bulk-bar'
+    bar.innerHTML =
+      '<span id="hs-mc-bulk-count"></span>' +
+      '<button type="button" data-bulk="timeout">timeout</button>' +
+      '<button type="button" data-bulk="ban">ban</button>' +
+      '<button type="button" data-bulk="cancel">cancel</button>'
+    bar.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-bulk]')
+      if (!btn || btn.disabled) return
+      e.preventDefault()
+      e.stopPropagation()
+      const act = btn.dataset.bulk
+      if (act === 'cancel') {
+        exitBulkSelectMode()
+        return
+      }
+      runBulkModAction(act)
+    })
+    const root = document.getElementById('hs-mc-overlay') || document.body
+    root.appendChild(bar)
+  }
+  const countEl = bar.querySelector('#hs-mc-bulk-count')
+  if (countEl) countEl.textContent = `${_bulkSelected.size} selected`
+}
+
+function enterBulkSelectMode() {
+  if (bulkSelectMode) return
+  bulkSelectMode = true
+  _bulkAnchorRow = null
+  try {
+    document.body.classList.add('hs-mc-bulk-select-active')
+  } catch (_) {}
+}
+
+function exitBulkSelectMode() {
+  if (!bulkSelectMode) return
+  bulkSelectMode = false
+  _bulkAnchorRow = null
+  for (const row of _bulkSelected) row.classList.remove('hs-mc-row-selected')
+  _bulkSelected.clear()
+  try {
+    document.body.classList.remove('hs-mc-bulk-select-active')
+  } catch (_) {}
+  _updateBulkBar()
+}
+
+// Public entry point — used by the mod ctx-menu's "select mode" item and the
+// hover hotkey. Idempotent enter + pre-selects the row that triggered it, so
+// starting from a specific spam message immediately arms the action bar.
+function startBulkSelectFrom(row) {
+  enterBulkSelectMode()
+  if (row && _bulkRowSelectable(row)) {
+    _toggleBulkRow(row)
+    _bulkAnchorRow = row
+  }
+  _updateBulkBar()
+}
+
+// Executes once per deduped target — REUSES dispatchModAction (the vetted
+// twitch+kick fan-out path), never a bespoke ban call. skipConfirm:true since
+// the batch-level confirm below already covered "are you sure".
+async function runBulkModAction(action) {
+  if (!_bulkSelected.size) return
+  const targets = dedupeBulkTargets([..._bulkSelected].map(_bulkRowDescriptor))
+  if (!targets.length) {
+    exitBulkSelectMode()
+    return
+  }
+  const verb = action === 'ban' ? 'ban' : 'timeout'
+  const names = targets.map((tg) => tg.login).join(', ')
+  const preview = names.length > 140 ? `${names.slice(0, 140)}…` : names
+  const res = await hsConfirm(`${verb} ${targets.length} user${targets.length === 1 ? '' : 's'}? (${preview})`, verb)
+  if (!res.ok) return
+  const bar = document.getElementById('hs-mc-bulk-bar')
+  if (bar) for (const b of bar.querySelectorAll('button')) b.disabled = true
+  let okCount = 0
+  for (const tg of targets) {
+    try {
+      const r = await dispatchModAction({
+        channel: tg.channel,
+        platform: tg.platform,
+        action,
+        target: tg.login,
+        durationSec: action === 'timeout' ? 600 : null,
+        skipConfirm: true,
+      })
+      if (r?.anyOk) okCount++
+    } catch (_) {}
+  }
+  showToast(
+    `${okCount}/${targets.length} ${verb === 'ban' ? 'banned' : 'timed out'}`,
+    okCount === targets.length ? 'success' : okCount > 0 ? 'error' : 'error',
+  )
+  exitBulkSelectMode()
+}
+
+// Row-click toggling — only wired on the primary scrollback (#hs-mc-messages),
+// never the transient reply-stack popovers (ephemeral views, not a sane bulk
+// surface). No-op while selection mode is off, so this never touches the hot
+// render/click path for the common (non-mod, non-selecting) case.
+function wireBulkSelectClicks(messagesEl) {
+  messagesEl.addEventListener(
+    'click',
+    (e) => {
+      if (!bulkSelectMode) return
+      const row = e.target.closest('.hs-mc-msg')
+      if (!row || !messagesEl.contains(row)) return
+      // Never hijack a real interactive control inside the row — only bare
+      // row surface toggles selection while the mode is active.
+      if (e.target.closest('a, button, .hs-mod-toolbar, .hs-mc-reply-btn, .hs-mc-reply-ctx')) return
+      if (!_bulkRowSelectable(row)) return
+      e.preventDefault()
+      e.stopPropagation()
+      if (e.shiftKey && _bulkAnchorRow && messagesEl.contains(_bulkAnchorRow)) {
+        _selectBulkRange(messagesEl, _bulkAnchorRow, row)
+      } else {
+        _toggleBulkRow(row)
+        _bulkAnchorRow = row
+      }
+      _updateBulkBar()
+    },
+    { capture: true, signal: mcSignal },
+  )
+}
+
+// Escape always exits selection mode — standard escape-hatch for any
+// modal-like interaction state. Harmless no-op when a confirm dialog's own
+// Escape handler also fires (it just closes the dialog on top of this).
+document.addEventListener(
+  'keydown',
+  (e) => {
+    if (!bulkSelectMode) return
+    if (e.key !== 'Escape') return
+    const tEl = e.target
+    if (tEl && (tEl.isContentEditable || ['INPUT', 'TEXTAREA'].includes(tEl.tagName))) return
+    exitBulkSelectMode()
+  },
+  { signal: mcSignal },
+)
+
 function wireModToolbarHover(messagesEl) {
   if (!messagesEl || messagesEl._hsModToolbarWired) return
   messagesEl._hsModToolbarWired = true
+  // Bulk-select click handling — primary scrollback only (see wireBulkSelectClicks).
+  if (messagesEl.id === 'hs-mc-messages') wireBulkSelectClicks(messagesEl)
   messagesEl.addEventListener(
     'mouseover',
     (e) => {
@@ -47779,7 +48219,8 @@ function wireModToolbarHover(messagesEl) {
   )
 }
 
-// Hotkeys — x (delete), t (10m timeout), b (ban). Hold while hovering a row.
+// Hotkeys — x (delete), t (10m timeout), b (ban), s (toggle bulk-select,
+// pre-selecting the hovered row). Hold while hovering a row.
 document.addEventListener(
   'keydown',
   (e) => {
@@ -47793,6 +48234,12 @@ document.addEventListener(
     if (typing) return
     if (e.ctrlKey || e.metaKey || e.altKey) return
     const key = (e.key || '').toLowerCase()
+    if (key === 's') {
+      e.preventDefault()
+      if (bulkSelectMode) exitBulkSelectMode()
+      else startBulkSelectFrom(_modCtx.row)
+      return
+    }
     for (const id of modToolbarButtons) {
       const def = MOD_BUTTON_CATALOG[id]
       if (def?.hotkey === key) {
@@ -53487,6 +53934,12 @@ const STORAGE_KEY = 'heatsync_multichat'
         platformBadgesEnabled = v
       },
     },
+    pronounsEnabled: {
+      get: () => pronounsEnabled,
+      set: (v) => {
+        pronounsEnabled = v
+      },
+    },
     zebraEnabled: {
       get: () => zebraEnabled,
       set: (v) => {
@@ -54706,6 +55159,10 @@ const STORAGE_KEY = 'heatsync_multichat'
 
   // Platform badges [T]/[K]/[Y] on messages (default on)
   let platformBadgesEnabled = true
+
+  // Pronouns (pronoundb.org, twitch-only) on the profile card + hover
+  // tooltip (default on)
+  let pronounsEnabled = true
 
   // Zebra striping — alternate row backgrounds (default on)
   let zebraEnabled = true

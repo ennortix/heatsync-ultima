@@ -712,6 +712,33 @@ const HsNotifs = (() => {
     },
   })
 
+  // AutoMod hold-queue lost its watch — background.js's automod-watch
+  // registration got a 401 relink_required from the server (missing/expired
+  // twitch OAuth scope). Fires at most once per SW lifetime (BG dedupes the
+  // broadcast); fixed dedupeKey collapses any stray duplicate here too.
+  registerType('automod-relink', {
+    layer: 'toast-stack',
+    dedupeKey: () => 'automod-relink',
+    render: () => {
+      const el = document.createElement('span')
+      el.className = 'hs-notif-toast-text hs-notif-toast-warn'
+      el.textContent = t('mc_automod_relink_toast')
+      return el
+    },
+    actions: {
+      primary: {
+        label: t('mc_automod_relink_action'),
+        onClick: () => {
+          try {
+            window.open('https://heatsync.org/api/auth/login?scopes=automod', '_blank', 'noopener')
+          } catch (_) {}
+          return true
+        },
+      },
+      dismiss: { label: '✕' },
+    },
+  })
+
   // Server-evaluated mention rule match — heatsync.org evaluated the user's
   // saved mention rules on the server and found a match in a channel message.
   // Shows as a toast; tap/click to dismiss. Deduplicated per channel+snippet

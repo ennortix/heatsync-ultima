@@ -547,6 +547,7 @@ const MULTICHAT_MODULES = [
   'paints.js',
   'cosmetics.js',
   'mod-toolbar.js',
+  'automod-queue.js',
   'resize.js',
   'settings-ui.js',
   'channel-mgmt.js',

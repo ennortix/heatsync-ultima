@@ -497,6 +497,54 @@
     .hs-mc-msg.hs-mc-msg-cleared .hs-mc-emote-stack img { filter: grayscale(1) brightness(0.7); }
     /* Strikethrough only the message body, not the user/badges/timestamp */
     .hs-mc-msg.hs-mc-msg-cleared > *:not(.hs-mc-ts):not(.hs-mc-user):not(.hs-mc-badge-img):not(.hs-mc-badge):not(.hs-mc-channel):not(.hs-mc-platform-badge):not(.hs-mc-reply-btn):not(.hs-mc-reply-ctx) { text-decoration: line-through; }
+    /* AutoMod hold-queue — yellow/warn accent (ANSI 11 family), square, terminal.
+       Own block (not part of the notice/noticeKind system above) since it
+       carries a mutable status + button pair instead of static system text. */
+    .hs-mc-msg.hs-mc-automod {
+      display: block;
+      border-left: 3px solid #ffd700;
+      background: rgba(255, 215, 0, 0.08);
+      padding: 4px 8px;
+    }
+    .hs-mc-msg.hs-mc-automod.hs-mc-automod-resolved { opacity: 0.6; }
+    .hs-mc-automod-badge {
+      display: inline-block;
+      background: #ffd700;
+      color: #000;
+      font-weight: 700;
+      font-size: 13px;
+      padding: 0 4px;
+      margin-right: 6px;
+      text-transform: lowercase;
+    }
+    .hs-mc-automod-chip {
+      display: inline-block;
+      color: #ffd700;
+      font-size: 13px;
+      border: 1px solid #ffd700;
+      padding: 0 4px;
+    }
+    .hs-mc-automod-body {
+      margin-top: 3px;
+      font-size: 13px;
+      word-break: break-word;
+    }
+    .hs-mc-automod-sender { font-weight: 700; color: #fff; }
+    .hs-mc-automod-text { color: #e0e0e0; }
+    .hs-mc-automod-actions { margin-top: 4px; display: flex; align-items: center; gap: 6px; }
+    .hs-mc-automod-btn {
+      background: #000;
+      color: #fff;
+      border: 1px solid #ffd700;
+      font: 13px/18px 'CozetteVector', monospace;
+      padding: 1px 8px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .hs-mc-automod-btn:hover,
+    .hs-mc-automod-btn:active { background: #fff; color: #000; }
+    .hs-mc-automod-status { font-size: 13px; color: #ffd700; }
+    .hs-mc-automod-status.hs-mc-automod-err { color: #ff4040; }
     .hs-mc-msg.hs-mc-redeemed {
       background: rgba(145, 71, 255, 0.15);
       border-left: 3px solid #9147ff;

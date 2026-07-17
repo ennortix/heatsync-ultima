@@ -1450,6 +1450,33 @@
   "mc_settings_sub_kick_native_tap_desc": {
     "message": "reads the current kick page's own chat stream as a backup. inert while the normal transports are healthy — only kicks in if they go quiet."
   },
+  "mc_settings_sub_automod_queue": {
+    "message": "automod hold queue"
+  },
+  "mc_settings_sub_automod_queue_desc": {
+    "message": "shows twitch automod holds inline in channels you mod, with allow/deny buttons — mirrors twitch's own review queue."
+  },
+  "mc_automod_label": {
+    "message": "automod hold"
+  },
+  "mc_automod_allow": {
+    "message": "allow"
+  },
+  "mc_automod_deny": {
+    "message": "deny"
+  },
+  "mc_automod_resolving": {
+    "message": "resolving…"
+  },
+  "mc_automod_error": {
+    "message": "action failed"
+  },
+  "mc_automod_relink_toast": {
+    "message": "automod queue needs a twitch relink"
+  },
+  "mc_automod_relink_action": {
+    "message": "relink"
+  },
   "mc_settings_diag_errors": {
     "message": "show diagnostic errors"
   },

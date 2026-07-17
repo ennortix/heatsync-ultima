@@ -1,0 +1,337 @@
+// AutoMod hold-queue — twitch AutoMod paused a viewer's message in a channel
+// this user moderates. Server (EventSub + Helix) does the real work and pushes
+// two message types over the existing authed heatsync.org websocket, relayed
+// here by background.js as runtime messages:
+//   automod_hold   { broadcasterId, broadcasterLogin, msgId, senderId,
+//                     senderLogin, senderName, text, heldAt, reason
+//                     ('automod'|'blocked_term'), category, level, terms }
+//   automod_update { broadcasterId, broadcasterLogin, msgId, status
+//                     ('approved'|'denied'|'expired'), modLogin }
+//   automod_relink { }  — server needs a fresh twitch OAuth grant to keep
+//                          watching; shown once as a toast (see notifs.js).
+// The row renders inline in the matching channel's tab via a dedicated
+// m.type === 'automod-hold' branch in main.js's buildMessageDiv (this module
+// owns the escaping + status text so that branch stays a thin renderer).
+
+// ── pure mappers (unit-tested; no chrome.*/DOM) ─────────────────────────────
+
+const AUTOMOD_HOLD_DEDUPE_TTL_MS = 10 * 60 * 1000
+const AUTOMOD_EXPIRE_MS = 6 * 60 * 1000
+const AUTOMOD_SWEEP_INTERVAL_MS = 25 * 60 * 1000
+
+// Wire payload (automod_hold, already coerced once by background.js) → the
+// row model buffered alongside normal chat messages. Never trust the wire
+// twice: re-coerce every field here too so a compromised/old BG build can't
+// hand this a non-string/object.
+function automodHoldToRowModel(payload) {
+  if (!payload || typeof payload !== 'object') return null
+  const msgId = String(payload.msgId || '').trim()
+  if (!msgId) return null
+  const broadcasterLogin = String(payload.broadcasterLogin || '').toLowerCase()
+  if (!broadcasterLogin) return null
+  const terms = Array.isArray(payload.terms)
+    ? payload.terms.map((t) => String(t)).filter(Boolean).slice(0, 10)
+    : null
+  const senderLogin = String(payload.senderLogin || '').toLowerCase()
+  const heldAt = Number(payload.heldAt) || Date.now()
+  return {
+    type: 'automod-hold',
+    msgId,
+    broadcasterId: String(payload.broadcasterId || ''),
+    broadcasterLogin,
+    senderId: String(payload.senderId || ''),
+    senderLogin,
+    senderName: String(payload.senderName || payload.senderLogin || 'unknown'),
+    text: String(payload.text || ''),
+    heldAt,
+    reason: payload.reason === 'blocked_term' ? 'blocked_term' : 'automod',
+    category: payload.category ? String(payload.category) : null,
+    level: Number(payload.level) || 0,
+    terms: terms && terms.length ? terms : null,
+    status: 'pending',
+    resolvedBy: null,
+    errorText: null,
+    // Generic buffer-compat fields — every renderer/sort/dedupe path in
+    // main.js expects .id/.time/.user/.channel/.platform on buffered rows.
+    id: `automod-${msgId}`,
+    time: heldAt,
+    user: String(payload.senderName || payload.senderLogin || 'unknown'),
+    channel: broadcasterLogin,
+    platform: 'twitch',
+  }
+}
+
+// reason + category/level/terms → the small chip text next to the row.
+// Plain text (untranslated) — mirrors irc.js's dynamic notice text
+// (e.g. CLEARCHAT's "banned"/"timed out for Ns"), which is also not routed
+// through t() since the content is inherently dynamic, not a fixed label.
+function automodReasonChipText(row) {
+  if (!row) return ''
+  if (row.reason === 'blocked_term') {
+    const term = row.terms && row.terms[0]
+    return term ? `blocked term: ${term}` : 'blocked term'
+  }
+  if (row.category) return row.level ? `${row.category} (level ${row.level})` : row.category
+  return 'automod'
+}
+
+// automod_update.status + modLogin → the text that replaces the buttons.
+// Same "dynamic content stays plain" reasoning as automodReasonChipText.
+function automodStatusText(status, modLogin) {
+  const mod = modLogin ? String(modLogin) : ''
+  if (status === 'approved') return mod ? `allowed by ${mod}` : 'allowed'
+  if (status === 'denied') return mod ? `denied by ${mod}` : 'denied'
+  if (status === 'expired') return 'expired'
+  return ''
+}
+
+// Row model → pre-escaped HTML fragments for the DOM branch in main.js.
+// Escaping lives HERE (not scattered across main.js) so the untrusted fields
+// (sender name, message text, automod terms) only ever get escaped once, in
+// one tested place. Depends on the repo's shared escapeHtml (utils.js) —
+// same global-scope trick every sibling multichat module uses.
+function buildAutomodHoldContentHtml(row) {
+  if (!row) return { senderHtml: '', textHtml: '', reasonHtml: '' }
+  return {
+    senderHtml: escapeHtml(row.senderName || row.senderLogin || 'unknown'),
+    textHtml: escapeHtml(row.text || ''),
+    reasonHtml: escapeHtml(automodReasonChipText(row)),
+  }
+}
+
+// Dedupe a hold by msgId with a rolling TTL — the same hold can arrive twice
+// (WS reconnect replay, multiple mod tabs). Mutates `seen` in place (pure with
+// respect to everything else: caller supplies the clock so this is testable
+// without Date.now()). Returns true the first time a msgId is seen.
+function shouldProcessAutomodHold(seen, msgId, now) {
+  if (!seen || !msgId) return false
+  for (const [id, ts] of seen) {
+    if (now - ts > AUTOMOD_HOLD_DEDUPE_TTL_MS) seen.delete(id)
+  }
+  if (seen.has(msgId)) return false
+  seen.set(msgId, now)
+  return true
+}
+
+// ── impure wiring (chrome.*/DOM) ────────────────────────────────────────────
+
+const _automodSeenHolds = new Map() // msgId -> firstSeenAt
+const _automodExpireTimers = new Map() // msgId -> timeout id
+const _automodBroadcasterIdCache = new Map() // twitch login -> numeric id
+
+function findAutomodChannel(broadcasterLogin) {
+  const lc = (broadcasterLogin || '').toLowerCase()
+  if (!lc) return null
+  return (config?.channels || []).find((c) => (c?.twitch || '').toLowerCase() === lc) || null
+}
+
+function findAutomodRow(broadcasterLogin, msgId) {
+  const ch = findAutomodChannel(broadcasterLogin)
+  if (!ch?.twitch) return null
+  const buf = irc?.channels?.get(ch.twitch.toLowerCase())
+  const all = buf?.getAll ? buf.getAll() : []
+  return all.find((m) => m.type === 'automod-hold' && m.msgId === msgId) || null
+}
+
+// Patches ONLY the actions sub-element of an already-rendered row (mirrors
+// _applyModNoticeDim's live-DOM-patch-without-rebuild approach). A future
+// tab switch re-renders from the buffer, which already carries the mutated
+// status, so this is a pure "don't make the user wait for a rebuild" nicety.
+function patchAutomodRowDom(row) {
+  if (!row) return
+  try {
+    const msgsEl = document.getElementById('hs-mc-messages')
+    if (!msgsEl) return
+    const safe = CSS.escape ? CSS.escape(row.msgId) : row.msgId.replace(/"/g, '\\"')
+    const rowEl = msgsEl.querySelector(`.hs-mc-automod[data-msg-id="${safe}"]`)
+    if (!rowEl) return
+    const actionsEl = rowEl.querySelector('.hs-mc-automod-actions')
+    if (actionsEl) actionsEl.innerHTML = renderAutomodHoldActionsHtml(row)
+    const resolved = row.status === 'approved' || row.status === 'denied' || row.status === 'expired'
+    rowEl.classList.toggle('hs-mc-automod-resolved', resolved)
+  } catch (_) {}
+}
+
+// Buttons/status text for the actions slot — depends on t()/escapeHtml
+// (impure, DOM-facing) so it lives next to patchAutomodRowDom rather than
+// in the pure-mapper section above.
+function renderAutomodHoldActionsHtml(row) {
+  if (!row) return ''
+  if (row.status === 'pending' || row.status === 'error') {
+    const errHtml =
+      row.status === 'error'
+        ? `<span class="hs-mc-automod-status hs-mc-automod-err">${escapeHtml(row.errorText || t('mc_automod_error'))}</span> `
+        : ''
+    return (
+      errHtml +
+      `<button type="button" class="hs-mc-automod-btn hs-mc-automod-allow">${escapeHtml(t('mc_automod_allow'))}</button>` +
+      `<button type="button" class="hs-mc-automod-btn hs-mc-automod-deny">${escapeHtml(t('mc_automod_deny'))}</button>`
+    )
+  }
+  if (row.status === 'resolving') {
+    return `<span class="hs-mc-automod-status">${escapeHtml(t('mc_automod_resolving'))}</span>`
+  }
+  return `<span class="hs-mc-automod-status">${escapeHtml(automodStatusText(row.status, row.resolvedBy))}</span>`
+}
+
+function clearAutomodExpiry(msgId) {
+  const id = _automodExpireTimers.get(msgId)
+  if (id != null) {
+    cleanup.clearTimeout(id)
+    _automodExpireTimers.delete(msgId)
+  }
+}
+
+// Twitch expires an unresolved hold server-side; if the automod:update never
+// arrives (dropped WS frame, server hiccup) this local fallback still moves
+// the row out of "pending" instead of leaving stale allow/deny buttons on a
+// message twitch already discarded.
+function scheduleAutomodExpiry(row) {
+  clearAutomodExpiry(row.msgId)
+  const id = cleanup.setTimeout(() => {
+    _automodExpireTimers.delete(row.msgId)
+    if (row.status !== 'pending' && row.status !== 'error' && row.status !== 'resolving') return
+    row.status = 'expired'
+    row.resolvedBy = null
+    patchAutomodRowDom(row)
+  }, AUTOMOD_EXPIRE_MS)
+  _automodExpireTimers.set(row.msgId, id)
+}
+
+function insertAutomodHoldRow(row) {
+  const ch = findAutomodChannel(row.broadcasterLogin)
+  if (!ch?.twitch) return // not a channel this ext has joined — drop
+  const buf = irc?.channels?.get(ch.twitch.toLowerCase())
+  if (!buf) return
+  buf.push(row)
+  if (currentTab === ch.id) {
+    try {
+      appendMessage(row, ch.id)
+    } catch (_) {}
+  }
+  scheduleAutomodExpiry(row)
+}
+
+function resolveAutomodRow(broadcasterLogin, msgId, status, modLogin) {
+  const row = findAutomodRow(broadcasterLogin, msgId)
+  if (!row) return // resolved a hold we never rendered (different mod tab, expired buffer) — ignore
+  row.status = status === 'approved' || status === 'denied' ? status : 'expired'
+  row.resolvedBy = modLogin ? String(modLogin) : null
+  row.errorText = null
+  clearAutomodExpiry(msgId)
+  patchAutomodRowDom(row)
+}
+
+// ── delegated button clicks ─────────────────────────────────────────────────
+
+function handleAutomodActionClick(rowEl, action) {
+  const msgId = rowEl?.dataset.msgId
+  const broadcasterLogin = rowEl?.dataset.msgChannel
+  if (!msgId || !broadcasterLogin) return
+  const row = findAutomodRow(broadcasterLogin, msgId)
+  if (!row) return
+  row.status = 'resolving'
+  row.errorText = null
+  patchAutomodRowDom(row)
+  safeSendMessage({ type: 'automod_action', msgId, action })
+    .then((res) => {
+      if (res?.ok) return // stays 'resolving' until the automod:update broadcast confirms
+      if (res?.error === 'gone') {
+        row.status = 'expired'
+        row.resolvedBy = null
+        clearAutomodExpiry(msgId)
+        patchAutomodRowDom(row)
+        return
+      }
+      row.status = 'error'
+      row.errorText = res?.error === 'relink_required' ? t('mc_automod_relink_toast') : t('mc_automod_error')
+      patchAutomodRowDom(row)
+    })
+    .catch(() => {
+      row.status = 'error'
+      row.errorText = t('mc_automod_error')
+      patchAutomodRowDom(row)
+    })
+}
+
+function installAutomodClickHandler() {
+  if (window._hsMcAutomodBtnHandler) return
+  window._hsMcAutomodBtnHandler = true
+  document.addEventListener(
+    'click',
+    (e) => {
+      const btn = e.target.closest('.hs-mc-automod-allow, .hs-mc-automod-deny')
+      if (!btn) return
+      const rowEl = btn.closest('.hs-mc-automod')
+      if (!rowEl) return
+      handleAutomodActionClick(rowEl, btn.classList.contains('hs-mc-automod-allow') ? 'allow' : 'deny')
+    },
+    { signal: mcSignal },
+  )
+}
+
+// ── watch registration sweep ─────────────────────────────────────────────────
+
+async function resolveAutomodBroadcasterId(login) {
+  if (_automodBroadcasterIdCache.has(login)) return _automodBroadcasterIdCache.get(login)
+  try {
+    const res = await safeSendMessage({ type: 'resolve_twitch_id', login })
+    const id = res?.id ? String(res.id) : null
+    if (id) _automodBroadcasterIdCache.set(login, id)
+    return id
+  } catch (_) {
+    return null
+  }
+}
+
+// Single periodic sweep over joined twitch channels the user mods — registers
+// (and, via background.js's own throttle, keeps alive) the server-side
+// AutoMod-hold watch for each. isModFor is the same cached/deduped check the
+// mod-toolbar hover uses, so repeated sweeps are cheap after the first pass.
+async function automodSweep() {
+  if (!isEnabled('automod-queue')) return
+  if (typeof config === 'undefined' || !Array.isArray(config?.channels)) return
+  for (const ch of config.channels) {
+    const login = (ch?.twitch || '').toLowerCase()
+    if (!login) continue
+    try {
+      const modded = typeof isModFor === 'function' && (await isModFor(login))
+      if (!modded) continue
+      const broadcasterId = await resolveAutomodBroadcasterId(login)
+      if (!broadcasterId) continue
+      await safeSendMessage({ type: 'automod_watch', broadcasterId })
+    } catch (_) {}
+  }
+}
+
+function initAutomodQueue() {
+  cleanup.addListener(chrome.runtime?.onMessage, (msg) => {
+    if (!msg || typeof msg !== 'object') return
+    if (msg.type === 'automod_hold') {
+      if (!isEnabled('automod-queue')) return
+      const row = automodHoldToRowModel(msg)
+      if (!row) return
+      if (!shouldProcessAutomodHold(_automodSeenHolds, row.msgId, Date.now())) return
+      insertAutomodHoldRow(row)
+      return
+    }
+    if (msg.type === 'automod_update') {
+      if (!isEnabled('automod-queue')) return
+      const broadcasterLogin = String(msg.broadcasterLogin || '').toLowerCase()
+      const msgId = String(msg.msgId || '')
+      if (!broadcasterLogin || !msgId) return
+      resolveAutomodRow(broadcasterLogin, msgId, msg.status, msg.modLogin)
+      return
+    }
+    if (msg.type === 'automod_relink') {
+      if (!isEnabled('automod-queue')) return
+      try {
+        HsNotifs.emit('automod-relink', {})
+      } catch (_) {}
+    }
+  })
+  installAutomodClickHandler()
+  // Give config/mod-state a moment to settle after boot rather than racing them.
+  cleanup.setTimeout(() => automodSweep(), 3000)
+  cleanup.setInterval(() => automodSweep(), AUTOMOD_SWEEP_INTERVAL_MS)
+}

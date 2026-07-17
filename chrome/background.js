@@ -2566,6 +2566,19 @@ async function sendKickMessageViaTab(channelId, content, reply = null) {
 
 const kickChatroomIdCache = new Map()
 const kickUsernameToIdCache = new Map()
+
+// AutoMod hold-queue — per-broadcaster watch-registration throttle. Ext
+// surfaces re-send automod_watch every ~25min as a keepalive; this caps the
+// actual heatsync.org call to once per window (the server's own last_active_at
+// bump is the real keepalive signal, not the HTTP call cadence).
+const AUTOMOD_WATCH_THROTTLE_MS = 30 * 60 * 1000
+const _automodWatchThrottle = new Map() // broadcasterId -> last-sent ts
+let _automodRelinkNotified = false // one 'automod_relink' broadcast per SW lifetime
+function notifyAutomodRelinkOnce() {
+  if (_automodRelinkNotified) return
+  _automodRelinkNotified = true
+  broadcastToTabs({ type: 'automod_relink' })
+}
 // Kick chatter profile_pic (username → url), captured from the SAME v1/users
 // fetch that resolves the kick user_id — so real avatars cost zero extra
 // requests. Populated in lockstep with kickUsernameToIdCache (both set only when
@@ -6313,6 +6326,42 @@ function handleWSMessage(msg) {
         break
       }
 
+      // AutoMod hold-queue — server pushes a held message for a channel this
+      // user moderates (EventSub AutoMod + Helix, server-side). Trim/coerce
+      // every field — never trust the wire — same discipline as eventsub:event.
+      case 'automod:hold': {
+        broadcastToTabs({
+          type: 'automod_hold',
+          broadcasterId: String(msg.broadcasterId || ''),
+          broadcasterLogin: String(msg.broadcasterLogin || '').toLowerCase(),
+          msgId: String(msg.msgId || ''),
+          senderId: String(msg.senderId || ''),
+          senderLogin: String(msg.senderLogin || '').toLowerCase(),
+          senderName: String(msg.senderName || msg.senderLogin || ''),
+          text: String(msg.text || ''),
+          heldAt: Number(msg.heldAt) || Date.now(),
+          reason: msg.reason === 'blocked_term' ? 'blocked_term' : 'automod',
+          category: msg.category ? String(msg.category) : null,
+          level: Number(msg.level) || 0,
+          terms: Array.isArray(msg.terms) ? msg.terms.map((t) => String(t)).slice(0, 10) : null,
+        })
+        break
+      }
+
+      // Resolution update for a held message — approved/denied/expired, by
+      // this mod or any other. Ext matches it to a rendered row by msgId.
+      case 'automod:update': {
+        broadcastToTabs({
+          type: 'automod_update',
+          broadcasterId: String(msg.broadcasterId || ''),
+          broadcasterLogin: String(msg.broadcasterLogin || '').toLowerCase(),
+          msgId: String(msg.msgId || ''),
+          status: msg.status === 'approved' || msg.status === 'denied' ? msg.status : 'expired',
+          modLogin: String(msg.modLogin || ''),
+        })
+        break
+      }
+
       case 'error':
         break
 
@@ -6868,6 +6917,99 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ id: login ? await lookupTwitchUserId(login) : null })
       } catch {
         sendResponse({ id: null })
+      }
+    })()
+    return true
+  }
+  if (message.type === 'automod_watch') {
+    // Register/keepalive the server-side AutoMod-hold watch for a channel this
+    // user moderates (automod-queue.js sweeps its joined+modded channels on an
+    // interval and calls this per channel). Throttled — see AUTOMOD_WATCH_THROTTLE_MS.
+    ;(async () => {
+      try {
+        const broadcasterId = String(message.broadcasterId || '').replace(/[^0-9]/g, '')
+        if (!broadcasterId) {
+          sendResponse({ ok: false, error: 'missing broadcasterId' })
+          return
+        }
+        const now = Date.now()
+        const last = _automodWatchThrottle.get(broadcasterId) || 0
+        if (now - last < AUTOMOD_WATCH_THROTTLE_MS) {
+          sendResponse({ ok: true, throttled: true })
+          return
+        }
+        const authToken = await getAuthCookie()
+        if (!authToken) {
+          sendResponse({ ok: false, error: 'not logged in' })
+          return
+        }
+        _automodWatchThrottle.set(broadcasterId, now)
+        const res = await fetchWithTimeout(`${API_URL}/api/mod/automod-watch`, {
+          method: 'POST',
+          credentials: 'omit', // Bearer-only → CSRF-exempt (matches every other heatsync.org mutation)
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+          body: JSON.stringify({ broadcaster_id: broadcasterId }),
+        })
+        if (res.ok) {
+          sendResponse({ ok: true })
+          return
+        }
+        if (res.status === 401) {
+          const data = await res.json().catch(() => null)
+          if (data?.error === 'relink_required') notifyAutomodRelinkOnce()
+          sendResponse({ ok: false, error: 'relink_required' })
+          return
+        }
+        log(' automod_watch failed:', res.status)
+        sendResponse({ ok: false, error: 'subscribe_failed' })
+      } catch (e) {
+        log(' automod_watch error:', e?.message)
+        sendResponse({ ok: false, error: e?.message || 'network error' })
+      }
+    })()
+    return true
+  }
+  if (message.type === 'automod_action') {
+    // Resolve a held message — allow/deny. automod-queue.js shows the
+    // optimistic 'resolving…' state; the confirming automod:update broadcast
+    // (any mod, any tab) is what actually flips the row to allowed/denied.
+    ;(async () => {
+      try {
+        const msgId = String(message.msgId || '')
+        const action = message.action === 'deny' ? 'deny' : message.action === 'allow' ? 'allow' : ''
+        if (!msgId || !action) {
+          sendResponse({ ok: false, error: 'missing params' })
+          return
+        }
+        const authToken = await getAuthCookie()
+        if (!authToken) {
+          sendResponse({ ok: false, error: 'relink_required' })
+          return
+        }
+        const res = await fetchWithTimeout(`${API_URL}/api/mod/automod-action`, {
+          method: 'POST',
+          credentials: 'omit',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+          body: JSON.stringify({ msg_id: msgId, action }),
+        })
+        if (res.ok) {
+          sendResponse({ ok: true })
+          return
+        }
+        if (res.status === 404) {
+          sendResponse({ ok: false, error: 'gone' })
+        } else if (res.status === 401) {
+          const data = await res.json().catch(() => null)
+          if (data?.error === 'relink_required') notifyAutomodRelinkOnce()
+          sendResponse({ ok: false, error: 'relink_required' })
+        } else if (res.status === 403) {
+          sendResponse({ ok: false, error: 'not_moderator' })
+        } else {
+          const data = await res.json().catch(() => null)
+          sendResponse({ ok: false, error: data?.error || `http ${res.status}` })
+        }
+      } catch (e) {
+        sendResponse({ ok: false, error: e?.message || 'network error' })
       }
     })()
     return true

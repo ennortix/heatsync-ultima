@@ -6696,6 +6696,30 @@
       return div
     }
 
+    // AutoMod hold-queue row — twitch automod paused a viewer's message in a
+    // channel this user moderates. Rendered on its own (not through the usual
+    // notice/noticeKind path — mutable status + buttons need custom content).
+    // Escaping happens in automod-queue.js's buildAutomodHoldContentHtml so
+    // nothing here touches the raw sender/text/terms payload.
+    if (m.type === 'automod-hold') {
+      const div = document.createElement('div')
+      div.className = 'hs-mc-msg hs-mc-automod'
+      div.dataset.msgId = m.msgId
+      div.dataset.msgChannel = m.broadcasterLogin || ''
+      const tsVal = timestampsEnabled ? formatTimeFromTs(m.heldAt) : ''
+      const tsSpan = tsVal ? `<span class="hs-mc-ts">${tsVal}</span>` : ''
+      const { senderHtml, textHtml, reasonHtml } = buildAutomodHoldContentHtml(m)
+      const actionsHtml = renderAutomodHoldActionsHtml(m)
+      const safeMsgId = escapeHtml(m.msgId || '')
+      // All values pre-escaped (buildAutomodHoldContentHtml) or hardcoded/numeric — safe innerHTML
+      div.innerHTML =
+        `${tsSpan}<span class="hs-mc-automod-badge">${escapeHtml(t('mc_automod_label'))}</span>` +
+        `<span class="hs-mc-automod-chip">${reasonHtml}</span>` +
+        `<div class="hs-mc-automod-body"><span class="hs-mc-automod-sender">${senderHtml}</span>: <span class="hs-mc-automod-text">${textHtml}</span></div>` +
+        `<div class="hs-mc-automod-actions" data-msg-id="${safeMsgId}">${actionsHtml}</div>`
+      return div
+    }
+
     // Guard against messages with no user (malformed IRC / system messages)
     if (!m.user) {
       if (m.text || m.systemMsg) {
@@ -7614,7 +7638,7 @@
     }
   }
   function isMsgFiltered(m, f) {
-    if (!m || m.type === 'stream-event' || m.inlineNotifType) return false
+    if (!m || m.type === 'stream-event' || m.type === 'automod-hold' || m.inlineNotifType) return false
     const u = m.user ? m.user.toLowerCase() : ''
     if (u && u === currentUsername) return false // never hide own messages
     if (u && f.bots && _BOT_NAMES.has(u)) return true
@@ -7764,7 +7788,8 @@
       msg.type !== 'stream-event' &&
       msg.type !== 'feed-post' &&
       msg.type !== 'inline-dm' &&
-      msg.type !== 'moment'
+      msg.type !== 'moment' &&
+      msg.type !== 'automod-hold'
     ) {
       const prev = msgsEl.lastElementChild
       const prevZ = prev?.classList.contains('hs-mc-zebra') === true
@@ -7999,7 +8024,13 @@
   const _rmInsertedKeys = new Set()
   function zebraOfInsert(m, prevDiv) {
     if (!zebraEnabled || !prevDiv) return false
-    if (m.type === 'stream-event' || m.type === 'feed-post' || m.type === 'inline-dm' || m.type === 'moment')
+    if (
+      m.type === 'stream-event' ||
+      m.type === 'feed-post' ||
+      m.type === 'inline-dm' ||
+      m.type === 'moment' ||
+      m.type === 'automod-hold'
+    )
       return false
     return !prevDiv.classList.contains('hs-mc-zebra')
   }
@@ -12372,6 +12403,12 @@
       // Twitch deprecated WHISPER over IRC in Feb 2023 — receive via EventSub instead.
       // Works on any host (the ESW socket is independent of the chat IRC).
       if (gateAtBoot('whispers')) startEventSubWhispers()
+
+      // AutoMod hold-queue — works on any host (channel tabs, not the current
+      // page, decide relevance). Registers unconditionally: isEnabled() is
+      // checked at event/sweep time so toggling the subsystem live (no
+      // reload) actually takes effect, unlike a boot-time gate here would.
+      if (typeof initAutomodQueue === 'function') initAutomodQueue()
 
       // /live_chat pop-out: subscribe to THIS window's stream (?v=<id>) and open
       // the auto-live render gate immediately. The auto-join below is skipped on

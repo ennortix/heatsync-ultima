@@ -1456,6 +1456,7 @@ const SETTINGS = [
       'right-click-block': true,
       'native-takeover': true,
       'kick-native-tap': true,
+      'automod-queue': true,
     },
     options: [
       {
@@ -1577,6 +1578,14 @@ const SETTINGS = [
         applies: 'live',
         labelKey: 'mc_settings_sub_kick_native_tap',
         tipKey: 'mc_settings_sub_kick_native_tap_desc',
+      },
+      {
+        value: 'automod-queue',
+        default: true,
+        color: '#ffd700',
+        applies: 'live',
+        labelKey: 'mc_settings_sub_automod_queue',
+        tipKey: 'mc_settings_sub_automod_queue_desc',
       },
     ],
   },
@@ -1712,6 +1721,7 @@ const SETTINGS_PRESETS = [
         'right-click-block': true,
         'native-takeover': true,
         'kick-native-tap': true,
+        'automod-queue': true,
       },
     },
   },
@@ -1763,6 +1773,7 @@ const SETTINGS_PRESETS = [
         'right-click-block': true,
         'native-takeover': true,
         'kick-native-tap': true,
+        'automod-queue': true,
       },
     },
   },

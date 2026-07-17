@@ -484,6 +484,10 @@
     .hs-mc-msg.hs-mc-notice-error     .hs-mc-system-text { color: #ff8080; }
     /* First-time chatter (Twitch first-msg=1) = Twitch magenta-purple */
     .hs-mc-msg.hs-mc-first-msg { border-left: 3px solid #bd5fff; padding-left: 8px; background: rgba(189, 95, 255, 0.12); }
+    /* n/N search-match cursor (live-tab filter) — HeatSync orange left-accent,
+       no animation, wins over notice-type coloring (same specificity, later
+       in source order) so the current match is always identifiable. */
+    .hs-mc-msg.hs-mc-search-current { border-left: 2px solid #ff8700 !important; background: rgba(255, 135, 0, 0.12) !important; }
     /* Cleared (timed out / banned / msg deleted) — Twitch-native dim + strikethrough.
        Username and badges stay visible so the reader can see who got hit; the body
        text and emotes get faded with a strikethrough. */

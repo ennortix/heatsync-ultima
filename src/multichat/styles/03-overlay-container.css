@@ -94,6 +94,19 @@
          retro emote upgrades) — a second writer racing ours, visible as
          rows jumping/overlapping "like virtual scrolling bugging out". */
       overflow-anchor: none;
+      /* Promote the WHOLE scroller to one owned GPU layer. Root cause of the
+         multi-day stale-paint smear: Chromium runs animated-emote (GIF/WebP)
+         frame raster and scroll offset as two independent compositor state
+         machines — a tile mid-re-raster for the next emote frame gets
+         scroll-repositioned before raster completes, so an old frame paints at
+         a stale spot (heals on hover because any repaint forces a synchronous
+         full re-raster). Promoting the scroller (NOT per-row — that reproduced
+         the smear) makes scroll a single layer-transform over one stable
+         backing, removing the per-tile "which frame vs where" race for the whole
+         region at once. Distinct from the dropped contain:paint (isolation/clip,
+         which was harmful); this is layer promotion. Reversible — delete to
+         revert. */
+      transform: translateZ(0);
     }
     /* Per-message rows: layout+style containment only — NO paint. content-
        visibility:auto was dropped 2026-07-14 for stale-paint smear (rows drawn

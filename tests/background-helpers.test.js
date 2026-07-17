@@ -689,3 +689,225 @@ describe('kpModeChanges', () => {
     expect(kpModeChanges({ slow: 5 }, { subsOnly: true })).toEqual(['sub-only mode on'])
   })
 })
+
+// ── mapRecentArchiveRow / mergeRecentArchiveRows (kick/yt real-history backfill) ──
+//
+// GET /api/recent/{platform}/{channel} (new, not-yet-deployed endpoint) rows
+// → our internal per-platform message shape, then merged/deduped against
+// whatever's already in the local buffer. Pure — no fetch, no chrome.* — see
+// fetchRecentArchiveRows below for the fail-soft fetch wrapper.
+
+const { mapRecentArchiveRow, mergeRecentArchiveRows } = new Function(
+  `${extractFn('mapRecentArchiveRow')}\n${extractFn('mergeRecentArchiveRows')}\nreturn { mapRecentArchiveRow, mergeRecentArchiveRows }`,
+)()
+
+describe('mapRecentArchiveRow', () => {
+  test('malformed row (null/non-object) → null', () => {
+    expect(mapRecentArchiveRow('kick', null)).toBeNull()
+    expect(mapRecentArchiveRow('kick', 'nope')).toBeNull()
+  })
+  test('row with no text → null (an empty chat line is useless, never rendered)', () => {
+    expect(mapRecentArchiveRow('kick', { id: '1', sender: 'a' })).toBeNull()
+  })
+  test('kick: basic mapping — display_name wins over sender, ts→time, platform/color stamped', () => {
+    const row = { id: '123', ts: 1700000000000, sender: 'rawuser', display_name: 'RawUser', text: 'hello' }
+    const m = mapRecentArchiveRow('kick', row)
+    expect(m).toMatchObject({
+      id: '123',
+      user: 'RawUser',
+      text: 'hello',
+      time: 1700000000000,
+      platform: 'kick',
+      color: '#53fc18',
+      isHistory: true,
+    })
+  })
+  test('kick: falls back to sender when display_name is absent', () => {
+    expect(mapRecentArchiveRow('kick', { sender: 'onlysender', text: 'hi' }).user).toBe('onlysender')
+  })
+  test('kick: missing id → empty string id (fingerprint-dedup path)', () => {
+    expect(mapRecentArchiveRow('kick', { sender: 'x', text: 'hi' }).id).toBe('')
+  })
+  test('kick: missing ts → time defaults to "now" (a finite timestamp), never crashes', () => {
+    const m = mapRecentArchiveRow('kick', { sender: 'x', text: 'hi' })
+    expect(typeof m.time).toBe('number')
+    expect(Number.isFinite(m.time)).toBe(true)
+  })
+  test('kick: emote_refs reconstructed into [emote:id:name] tokens at their offsets', () => {
+    const row = {
+      sender: 'x',
+      text: 'gg  nice',
+      emote_refs: [{ id: 555, name: 'PogKick', start: 2, end: 2 }],
+    }
+    expect(mapRecentArchiveRow('kick', row).text).toBe('gg[emote:555:PogKick]  nice')
+  })
+  test('kick: multiple emote_refs applied back-to-front so earlier offsets stay valid', () => {
+    const row = {
+      sender: 'x',
+      text: 'ab',
+      emote_refs: [
+        { id: 1, name: 'A', start: 0, end: 0 },
+        { id: 2, name: 'B', start: 2, end: 2 },
+      ],
+    }
+    expect(mapRecentArchiveRow('kick', row).text).toBe('[emote:1:A]ab[emote:2:B]')
+  })
+  test('kick: emote_refs skipped when text already carries [emote: markup', () => {
+    const row = { sender: 'x', text: 'already [emote:9:X] here', emote_refs: [{ id: 1, name: 'Y', start: 0, end: 0 }] }
+    expect(mapRecentArchiveRow('kick', row).text).toBe('already [emote:9:X] here')
+  })
+  test('kick: emote_refs without offsets are skipped, not reconstructed (named skip, no crash)', () => {
+    const row = { sender: 'x', text: 'plain text', emote_refs: [{ id: 1, name: 'NoOffsets' }] }
+    expect(mapRecentArchiveRow('kick', row).text).toBe('plain text')
+  })
+  test('kick: badges array of {type,version} joins to Twitch/Kick-style string', () => {
+    const row = { sender: 'x', text: 'hi', badges: [{ type: 'moderator', version: '1' }] }
+    expect(mapRecentArchiveRow('kick', row).badges).toBe('moderator/1')
+  })
+  test('kick: badges as a raw string pass through unchanged; missing badges → empty string', () => {
+    expect(mapRecentArchiveRow('kick', { sender: 'x', text: 'hi', badges: 'mod/1' }).badges).toBe('mod/1')
+    expect(mapRecentArchiveRow('kick', { sender: 'x', text: 'hi' }).badges).toBe('')
+  })
+  test('kick: reply_to object mapped to the same shape kick-chat-backfill uses', () => {
+    const row = { sender: 'x', text: 'reply', reply_to: { username: 'Alice', content: 'orig', id: 'm1' } }
+    expect(mapRecentArchiveRow('kick', row).replyTo).toEqual({
+      user: 'Alice',
+      text: 'orig',
+      id: 'm1',
+      threadId: 'm1',
+    })
+  })
+  test('kick: reply_to absent → replyTo is null', () => {
+    expect(mapRecentArchiveRow('kick', { sender: 'x', text: 'hi' }).replyTo).toBeNull()
+  })
+  test('youtube: badges array passes through as-is ({type,label,url} shape), never joined to a string', () => {
+    const badges = [{ type: 'moderator', label: 'Moderator', url: '' }]
+    const m = mapRecentArchiveRow('youtube', { sender: 'x', display_name: 'X', text: 'hi', badges })
+    expect(m.badges).toEqual(badges)
+    expect(m.platform).toBe('youtube')
+    expect(m.msgType).toBe('text')
+  })
+  test('youtube: reply_to is dropped entirely — no replyTo key on the mapped row (named skip)', () => {
+    const m = mapRecentArchiveRow('youtube', { sender: 'x', text: 'hi', reply_to: { id: '1' } })
+    expect('replyTo' in m).toBe(false)
+  })
+  test('youtube: missing badges → empty array, not undefined', () => {
+    expect(mapRecentArchiveRow('youtube', { sender: 'x', text: 'hi' }).badges).toEqual([])
+  })
+})
+
+describe('mergeRecentArchiveRows', () => {
+  test('dedups by id — existing buffer entry wins, archive dup is dropped', () => {
+    const existing = [{ id: 'm1', user: 'a', text: 'orig from live buffer', time: 100 }]
+    const rows = [{ id: 'm1', sender: 'a', text: 'stale archive copy', ts: 100 }]
+    const { toAdd, merged } = mergeRecentArchiveRows(existing, rows, 'kick')
+    expect(toAdd).toEqual([])
+    expect(merged).toEqual(existing)
+  })
+  test('dedups by (user, time, text-prefix) fingerprint when neither row has an id', () => {
+    const existing = [{ user: 'a', text: 'hello world', time: 500 }]
+    const rows = [{ sender: 'a', text: 'hello world', ts: 500 }]
+    const { toAdd } = mergeRecentArchiveRows(existing, rows, 'kick')
+    expect(toAdd).toEqual([])
+  })
+  test('new rows (distinct id) are appended and the merged array is time-sorted', () => {
+    const existing = [{ id: 'm2', user: 'a', text: 'second', time: 2000 }]
+    const rows = [{ id: 'm1', sender: 'b', text: 'first', ts: 1000 }]
+    const { toAdd, merged } = mergeRecentArchiveRows(existing, rows, 'kick')
+    expect(toAdd.length).toBe(1)
+    expect(merged.map((m) => m.id)).toEqual(['m1', 'm2'])
+  })
+  test('malformed rows in the batch are skipped without breaking the rest', () => {
+    const rows = [null, { id: 'm1', sender: 'a', text: 'ok', ts: 1 }, 'garbage']
+    const { toAdd } = mergeRecentArchiveRows([], rows, 'kick')
+    expect(toAdd.length).toBe(1)
+    expect(toAdd[0].id).toBe('m1')
+  })
+  test('empty existing + empty rows → no-op, merged is the same empty array', () => {
+    const existing = []
+    const { toAdd, merged } = mergeRecentArchiveRows(existing, [], 'kick')
+    expect(toAdd).toEqual([])
+    expect(merged).toBe(existing)
+  })
+})
+
+// ── fetchRecentArchiveRows (fail-soft fetch wrapper) ────────────────────────
+//
+// Every failure mode — 404, 5xx, timeout/network throw, malformed JSON body,
+// a non-array `messages` field — must degrade to an empty array, never throw.
+// bgKickFetchRecentArchive/bgYtFetchRecentArchive both early-return on an
+// empty array, which is exactly "keep current local-buffer behavior."
+
+const fetchRecentArchiveRowsSrc = sliceBetween(
+  'async function fetchRecentArchiveRows(',
+  'async function bgKickFetchRecentArchive(',
+)
+
+function makeRecentArchiveHarness({ responses = [], throwOn } = {}) {
+  const calls = []
+  const queue = [...responses]
+  const fetchWithTimeout = async (url) => {
+    calls.push(url)
+    if (throwOn?.(url)) throw new Error('network down')
+    const next = queue.length > 1 ? queue.shift() : queue[0]
+    if (!next) throw new Error('recent-archive test harness: no stub response left')
+    return next
+  }
+  const harness = new Function(
+    'API_URL',
+    'fetchWithTimeout',
+    `${fetchRecentArchiveRowsSrc}\nreturn { fetchRecentArchiveRows }`,
+  )('https://heatsync.org', fetchWithTimeout)
+  return { ...harness, calls }
+}
+
+const recent404 = () => ({ status: 404, ok: false })
+const recent500 = () => ({ status: 500, ok: false })
+const recentOk = (data) => ({ status: 200, ok: true, json: async () => data })
+const recentOkBadJson = () => ({
+  status: 200,
+  ok: true,
+  json: async () => {
+    throw new Error('invalid json')
+  },
+})
+
+describe('fetchRecentArchiveRows', () => {
+  test('builds the expected URL with platform/channel/limit', async () => {
+    const h = makeRecentArchiveHarness({ responses: [recent404()] })
+    await h.fetchRecentArchiveRows('kick', 'xqc', 200)
+    expect(h.calls).toEqual(['https://heatsync.org/api/recent/kick/xqc?limit=200'])
+  })
+  test('404 → empty array (endpoint not deployed yet — fail soft)', async () => {
+    const h = makeRecentArchiveHarness({ responses: [recent404()] })
+    expect(await h.fetchRecentArchiveRows('kick', 'xqc')).toEqual([])
+  })
+  test('5xx → empty array', async () => {
+    const h = makeRecentArchiveHarness({ responses: [recent500()] })
+    expect(await h.fetchRecentArchiveRows('youtube', 'UCabc')).toEqual([])
+  })
+  test('network throw (timeout/abort) → empty array, never rejects', async () => {
+    const h = makeRecentArchiveHarness({ responses: [], throwOn: () => true })
+    await expect(h.fetchRecentArchiveRows('kick', 'xqc')).resolves.toEqual([])
+  })
+  test('malformed JSON body → empty array', async () => {
+    const h = makeRecentArchiveHarness({ responses: [recentOkBadJson()] })
+    expect(await h.fetchRecentArchiveRows('kick', 'xqc')).toEqual([])
+  })
+  test('non-array messages field → empty array (defensive against API shape drift)', async () => {
+    const h = makeRecentArchiveHarness({ responses: [recentOk({ messages: 'not an array' })] })
+    expect(await h.fetchRecentArchiveRows('kick', 'xqc')).toEqual([])
+  })
+  test('ok response with a messages array is returned verbatim', async () => {
+    const rows = [{ id: '1', sender: 'a', text: 'hi', ts: 1 }]
+    const h = makeRecentArchiveHarness({ responses: [recentOk({ messages: rows })] })
+    expect(await h.fetchRecentArchiveRows('kick', 'xqc')).toEqual(rows)
+  })
+  test('limit is clamped to [1, 800]', async () => {
+    const h = makeRecentArchiveHarness({ responses: [recent404(), recent404()] })
+    await h.fetchRecentArchiveRows('kick', 'xqc', 5000)
+    await h.fetchRecentArchiveRows('kick', 'xqc', 0)
+    expect(h.calls[0]).toContain('limit=800')
+    expect(h.calls[1]).toContain('limit=1')
+  })
+})

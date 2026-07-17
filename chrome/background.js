@@ -7440,6 +7440,10 @@ async function handleMessage(message, sender, sendResponse) {
         browser.storage.local.set({ youtube_channel_urls: persistUrls })
       }
       log(' YouTube subscribe:', url, 'channel:', channelId, isSocketOpen() ? '' : '(queued for reconnect)')
+      // Fire-and-forget real-history backfill — _ytRecentFetched gates this to
+      // once per channelId per SW lifetime (this handler re-fires on every
+      // reconnect/reload, unlike kick's join-gated _kpChannels check).
+      bgYtFetchRecentArchive(channelId, url).catch(() => {})
     }
     sendResponse({ ok: true })
     return
@@ -11556,6 +11560,198 @@ async function bgKickFetchArchive(ch, beforeIso) {
   }
 }
 
+// ─── Real-history backfill from GET /api/recent/{platform}/{channel} ───────
+// New first-party endpoint (NOT YET DEPLOYED everywhere) that serves up to
+// 800 archived messages, newest-last, so a fresh kick/yt join backfills real
+// history instead of just replaying whatever the local ring buffer happened
+// to catch live. Every failure mode (404/5xx/timeout/malformed body) must
+// fail soft and leave the existing local-buffer/relay backfill untouched —
+// this is additive, never load-bearing.
+
+// Map one row from the /api/recent response into our internal per-platform
+// message shape. Pure — no fetch, no chrome.* — so it's directly unit
+// testable. `row` fields per the API contract: { id, ts, channel, sender,
+// display_name, text, badges?, emote_refs?, reply_to? } — every field is
+// optional/untrusted (server not yet deployed), so every access is guarded
+// and a malformed row degrades to plain text rather than throwing.
+function mapRecentArchiveRow(platform, row) {
+  if (!row || typeof row !== 'object') return null
+  const id = row.id != null ? String(row.id) : ''
+  const user = row.display_name || row.sender || 'unknown'
+  let text = typeof row.text === 'string' ? row.text : ''
+  const time = row.ts ? new Date(row.ts).getTime() || Date.now() : Date.now()
+  if (!text) return null
+  const base = { id, user, text, time, isHistory: true }
+  if (platform === 'kick') {
+    // Kick's native emotes render as literal [emote:ID:NAME] tokens inline in
+    // text (see src/multichat/emotes.js) — the existing /api/archive/search
+    // path already stores text with these tokens intact, so only reconstruct
+    // from emote_refs when text doesn't already carry them AND the refs carry
+    // explicit offsets. Refs without offsets can't be safely positioned —
+    // skip reconstruction for those rather than guess (named skip).
+    if (Array.isArray(row.emote_refs) && text.indexOf('[emote:') === -1) {
+      const refs = row.emote_refs
+        .filter(
+          (r) =>
+            r &&
+            r.id != null &&
+            r.name &&
+            Number.isFinite(r.start) &&
+            Number.isFinite(r.end) &&
+            r.end >= r.start &&
+            r.end <= text.length,
+        )
+        .sort((a, b) => b.start - a.start)
+      for (const r of refs) {
+        text = `${text.slice(0, r.start)}[emote:${r.id}:${r.name}]${text.slice(r.end)}`
+      }
+      base.text = text
+    }
+    base.color = '#53fc18'
+    base.badges = Array.isArray(row.badges)
+      ? row.badges.map((b) => `${b?.type || b?.name || 'badge'}/${b?.version || b?.count || '1'}`).join(',')
+      : typeof row.badges === 'string'
+        ? row.badges
+        : ''
+    base.platform = 'kick'
+    base.replyTo =
+      row.reply_to && typeof row.reply_to === 'object'
+        ? {
+            user: row.reply_to.user || row.reply_to.username || 'unknown',
+            text: row.reply_to.text || row.reply_to.content || '',
+            id: row.reply_to.id || '',
+            threadId: row.reply_to.thread_id || row.reply_to.id || '',
+          }
+        : null
+  } else if (platform === 'youtube') {
+    // reply_to intentionally dropped — the YT message pipeline (social.js's
+    // youtube_chat_message handler) has no reply-context field at all.
+    base.color = '#ff0000'
+    base.badges = Array.isArray(row.badges) ? row.badges : []
+    base.platform = 'youtube'
+    base.msgType = 'text'
+  }
+  return base
+}
+
+// Merge freshly-fetched archive rows into an existing message array. Pure —
+// dedup by id where present, else by (user, time, text-prefix) fingerprint
+// (mirrors bgKickFetchArchive/kick-chat-backfill's existing dedup). The local
+// buffer always wins a conflict — it carries richer live fields (userId,
+// live badges, etc.) than a re-derived archive row ever can — so `existing`
+// seeds the dedup sets before any archive row is considered. Returns the
+// rows actually appended (`toAdd`) and the full time-sorted merged array.
+function mergeRecentArchiveRows(existing, rows, platform) {
+  const existingIds = new Set(existing.filter((m) => m.id).map((m) => m.id))
+  const fpOf = (m) => `${m.user}|${m.time}|${(m.text || '').slice(0, 60)}`
+  const existingFp = new Set(existing.filter((m) => !m.id).map(fpOf))
+  const toAdd = []
+  for (const row of rows) {
+    const m = mapRecentArchiveRow(platform, row)
+    if (!m) continue
+    if (m.id) {
+      if (existingIds.has(m.id)) continue
+      existingIds.add(m.id)
+    } else {
+      const fp = fpOf(m)
+      if (existingFp.has(fp)) continue
+      existingFp.add(fp)
+    }
+    toAdd.push(m)
+  }
+  const merged = toAdd.length ? [...existing, ...toAdd].sort((a, b) => (a.time || 0) - (b.time || 0)) : existing
+  return { toAdd, merged }
+}
+
+// Fetch + parse the /api/recent/{platform}/{channel} response. Isolated from
+// state mutation so fail-soft behavior (404/5xx/timeout/malformed JSON → empty
+// rows, never throws) is directly testable via an injected fetch impl.
+async function fetchRecentArchiveRows(platform, channel, limit = 200) {
+  try {
+    const url = `${API_URL}/api/recent/${platform}/${encodeURIComponent(channel)}?limit=${Math.min(800, Math.max(1, limit))}`
+    const resp = await fetchWithTimeout(url, { credentials: 'omit' }, 8000)
+    if (!resp.ok) return []
+    const data = await resp.json().catch(() => null)
+    return Array.isArray(data?.messages) ? data.messages : []
+  } catch {
+    return [] // timeout/network/abort — fail soft, caller keeps current behavior
+  }
+}
+
+// One-shot fire-and-forget kick join backfill. Gated by _kpChannels.has()
+// being freshly-set (see kickPusherJoin) so this runs once per join, not on
+// every reconnect within the SW's lifetime.
+async function bgKickFetchRecentArchive(slug) {
+  slug = (slug || '').toLowerCase()
+  if (!slug) return
+  const rows = await fetchRecentArchiveRows('kick', slug, 200)
+  if (!rows.length) return
+  if (!BG_KICK.channels.has(slug)) BG_KICK.channels.set(slug, new BGCircularBuffer(BG_KICK_PERSIST_MAX))
+  const buf = BG_KICK.channels.get(slug)
+  const { toAdd, merged } = mergeRecentArchiveRows(buf.getAll(), rows, 'kick')
+  for (const m of toAdd) m.channel = slug
+  if (!toAdd.length) return
+  buf.clear()
+  for (const m of merged) buf.push(m)
+  bgKickPersistChannel(slug)
+  broadcastToTabs({ type: 'bg_kick_history_merged', channel: slug, count: toAdd.length })
+  log('BG KICK recent-archive merged', toAdd.length, 'msgs for', slug)
+}
+
+// One-shot fire-and-forget YT join backfill. `channelId` is the multichat
+// tab's config id (e.g. "yt-1234567890"), NOT a UC id — resolveYtChannelId
+// (already used for 7TV/BTTV channel-emote lookups) resolves the real UC...
+// id from the join hint URL, since the archive is keyed by UC id, not our
+// synthetic tab id. Gated by _ytRecentFetched so it runs once per channelId
+// per SW lifetime — youtube_ws_subscribe re-fires on every reconnect/reload,
+// unlike kick's join-gated _kpChannels check.
+const _ytRecentFetched = new Set()
+async function bgYtFetchRecentArchive(channelId, hintUrl) {
+  if (!channelId || channelId === 'global' || channelId === '__live_yt_auto__') return
+  if (_ytRecentFetched.has(channelId)) return
+  _ytRecentFetched.add(channelId)
+  const ucid = await resolveYtChannelId(channelId, hintUrl)
+  if (!ucid) return
+  const rows = await fetchRecentArchiveRows('youtube', ucid.toLowerCase(), 200)
+  if (!rows.length) return
+  if (!BG_YT.channels.has(channelId)) BG_YT.channels.set(channelId, new BGCircularBuffer(BG_YT_PERSIST_MAX))
+  const buf = BG_YT.channels.get(channelId)
+  const { toAdd, merged } = mergeRecentArchiveRows(buf.getAll(), rows, 'youtube')
+  if (!toAdd.length) return
+  buf.clear()
+  for (const m of merged) buf.push(m)
+  bgYtPersistChannel(channelId)
+  // BG_YT has no front-end pull path today (bg_yt_history is dead code) — feed
+  // straight into the same replay pipeline the live relay's own history
+  // batches use (social.js's youtube_chat_message{replay:true} →
+  // ingestReplayYtMsg), so rendering/paints/emotes/dedup all run through the
+  // exact code the local buffer (channelYtMessages) already exercises. Rows
+  // render PREPENDED into position by real timestamp — ingestReplayYtMsg
+  // never reshuffles existing rows.
+  for (const m of toAdd) {
+    broadcastToTabs({
+      type: 'youtube_chat_message',
+      videoId: '',
+      channelId,
+      id: m.id || undefined,
+      user: m.user,
+      text: m.text,
+      color: m.color,
+      time: m.time,
+      platform: 'youtube',
+      emotes: [],
+      msgType: m.msgType,
+      amount: '',
+      scColor: '',
+      sticker: null,
+      badges: m.badges,
+      source: 'server',
+      replay: true,
+    })
+  }
+  log('BG YT recent-archive merged', toAdd.length, 'msgs for', channelId)
+}
+
 // ─── Kick chat Pusher tap (client-side, anonymous) ──────────────────────────
 // Reads Kick chat straight from Kick's own Pusher stream instead of waiting on
 // the server webhook relay — lower latency, no per-app subscription cap, and it
@@ -11922,6 +12118,9 @@ async function kickPusherJoin(slug) {
   _kpChannels.set(slug, chatroomId)
   _kpConnect()
   _kpSubscribe(chatroomId)
+  // Fire-and-forget real-history backfill — the _kpChannels.has() guard above
+  // means this line only runs on a genuinely fresh join, not every reconnect.
+  bgKickFetchRecentArchive(slug).catch(() => {})
 }
 function kickPusherLeave(slug) {
   if (!KICK_PUSHER_TAP) return

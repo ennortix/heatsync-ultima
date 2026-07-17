@@ -25552,6 +25552,9 @@ function trackSubTenure(channel, username, months) {
   if (!channelMap) {
     channelMap = new Map()
     subTenureMap.set(channel, channelMap)
+    // Cap distinct channels — re-derived from IRC badge-info on next message, so
+    // evicting a cold channel is loss-free. Inner map stays capped at 500 below.
+    while (subTenureMap.size > 64) subTenureMap.delete(subTenureMap.keys().next().value)
   }
   channelMap.set(username.toLowerCase(), months)
   while (channelMap.size > 500) channelMap.delete(channelMap.keys().next().value)
@@ -31725,6 +31728,24 @@ const _replayDedupKeys = new Map() // channelId -> Set<dupKey>
 // since c81d5cd0), so id equality is the reliable net; content keys remain
 // for id-less rows.
 const _replayDedupIds = new Map() // channelId -> Set<platform msg id>
+// Cap distinct channels tracked. Both maps are keyed by channelId and rebuild
+// lazily from the live buffer on next ingest (see the `if (!dedup)` / `if (!ids)`
+// blocks below), so evicting a cold channel's sidecar is loss-free — it just
+// re-derives if that channel ever replays again. Without this the two maps grow
+// one permanent entry per YouTube channel ever seen in a long multistream session.
+const _YT_DEDUP_CHANNEL_CAP = 64
+function _trimYtDedup() {
+  while (_replayDedupKeys.size > _YT_DEDUP_CHANNEL_CAP) {
+    const oldest = _replayDedupKeys.keys().next().value
+    _replayDedupKeys.delete(oldest)
+    _replayDedupIds.delete(oldest)
+  }
+  while (_replayDedupIds.size > _YT_DEDUP_CHANNEL_CAP) {
+    const oldest = _replayDedupIds.keys().next().value
+    _replayDedupIds.delete(oldest)
+    _replayDedupKeys.delete(oldest)
+  }
+}
 function _ytDupKey(m) {
   return `${m.user}|${(m.text || '').slice(0, 50)}|${Math.floor((m.time || 0) / 1000)}`
 }
@@ -31734,6 +31755,7 @@ function _ytDedupIds(targetChannelId, buf) {
     ids = new Set()
     for (const m of buf) if (m.id) ids.add(String(m.id))
     _replayDedupIds.set(targetChannelId, ids)
+    _trimYtDedup()
   }
   return ids
 }
@@ -31745,6 +31767,7 @@ function ingestReplayYtMsg(targetChannelId, ytMsg) {
     dedup = new Set()
     for (const m of buf) dedup.add(_ytDupKey(m))
     _replayDedupKeys.set(targetChannelId, dedup)
+    _trimYtDedup()
   }
   const ids = _ytDedupIds(targetChannelId, buf)
   if (ytMsg.id && ids.has(String(ytMsg.id))) return

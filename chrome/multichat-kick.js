@@ -23251,6 +23251,10 @@ function zeroWidthForSameAsset(name, url) {
   const id = _hsEmoteAssetId(url)
   if (!id) return false
   const check = (e) => !!(e?.zeroWidth && _hsEmoteAssetId(e.url) === id)
+  // Own set too: auto-add-on-send and the picker DO stamp zeroWidth on
+  // viewerPersonalEmotes entries, so an inventory-only overlay (added via 7TV
+  // search, absent from the current channel's caches) still recovers.
+  if (check(viewerPersonalEmotes.get(name))) return true
   if (check(emoteCache.get(name))) return true
   for (const m of Object.values(channelEmoteCaches)) {
     if (m && typeof m.get === 'function' && check(m.get(name))) return true

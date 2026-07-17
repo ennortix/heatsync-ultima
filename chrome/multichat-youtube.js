@@ -31838,10 +31838,17 @@ function listenForSocialEvents() {
           // Retro-label the live composer: it booted with the raw videoId as
           // its only identity ("send to #<videoId>") — now that the server
           // resolved the channel name, repaint the placeholder with it.
-          if (targetChannelId === '__live_yt_auto__' && currentTab === 'live') {
-            try {
-              updateInputPlaceholder()
-            } catch {}
+          if (targetChannelId === '__live_yt_auto__') {
+            // Now that the channel name resolved, relabel the live tab from the
+            // generic "live" to the real channel — so the auto-live tab reads as
+            // a selection ("lofigirl"), not a blank tab with chat pouring in.
+            // Runs regardless of the active tab (the label is always visible).
+            if (typeof updateLiveTabLabel === 'function') {
+              try { updateLiveTabLabel() } catch {}
+            }
+            if (currentTab === 'live') {
+              try { updateInputPlaceholder() } catch {}
+            }
           }
         }
         // Reflect status onto the channel tab button so YT-only channels get a
@@ -41824,10 +41831,18 @@ async function sendMessage() {
   const sendToKick =
     (!!kickSlug || (anonLive && hostPlatform === 'kick')) && !orphanSlash && (!sendTargets || sendTargets.kick)
   const sendToTwitch = (!!twitchName || (anonLive && hostPlatform === 'twitch')) && (!sendTargets || sendTargets.twitch)
-  const sendToYoutube = (!!ytUrl || isLiveYt) && !orphanSlash && (!sendTargets || sendTargets.youtube)
+  const ytWanted = (!!ytUrl || isLiveYt) && !orphanSlash && (!sendTargets || sendTargets.youtube)
   // Exact stream video id (or '' if not concretely known) — lets background
   // auto-open a login-inheriting live_chat bridge tab when no YT tab is open.
-  const ytVideoId = sendToYoutube ? currentYoutubeVideoId(ytUrl) : ''
+  const ytVideoId = ytWanted ? currentYoutubeVideoId(ytUrl) : ''
+  // FORT KNOX: only actually fan out to YouTube when we can target the EXACT
+  // stream — the Live tab (the sender page IS the stream you're on) or a
+  // concrete videoId. A channel tab with a youtube link but no RESOLVED live id
+  // must NOT send: background would fall back to the sender's own tab, which —
+  // when you're parked on a DIFFERENT stream's watch page — posts into that
+  // host page's chat (the "my message leaked into another tab's host chat"
+  // bug). Drop the youtube leg entirely; twitch/kick still go through.
+  const sendToYoutube = ytWanted && (isLiveYt || !!ytVideoId)
   const isDualSend = sendToKick && sendToTwitch
 
   // Orphan slash with no twitch leg = nothing left to send (kick/yt-only
@@ -45807,7 +45822,13 @@ function applyHsPlusTenureToVisible(userIds) {
     if (!since) continue
     const mentionSet = _mentionIndex.get(uid)
     if (mentionSet) {
-      for (const el of mentionSet) _placeHsPlusTenureToken(el, since)
+      // The "+" tenure token is a sender-identity mark, not part of a name
+      // wherever it appears. Keep it on the reply-context anchor (a reply
+      // header), but NOT on inline @mentions inside message content — a name
+      // typed in someone's message shouldn't sprout a "+".
+      for (const el of mentionSet) {
+        if (el.classList.contains('hs-mc-reply-user')) _placeHsPlusTenureToken(el, since)
+      }
     }
     const isNamespacedUid = uid.startsWith('kick_') || uid.startsWith('yt_')
     const divs = isNamespacedUid
@@ -58253,15 +58274,11 @@ const STORAGE_KEY = 'heatsync_multichat'
               if (paint) style = paint
             }
           }
-          // Plus tenure ("+5mo"/"+3y") — identity signal, resolves regardless
-          // of the paint setting. Same uid this mention already resolved above.
-          let plusHtml = ''
-          if (uid) {
-            const since = getHsPlusTenureSince(uid)
-            if (since === undefined) queuePlusTenureLookup(uid)
-            else if (since) plusHtml = renderPlusTenureToken(since)
-          }
-          return `${lead}<a href="https://heatsync.org/user/${encodeURIComponent(lower)}" target="_blank" rel="noopener noreferrer" class="${mentionCls}" data-username="${safeLower}"${uidAttr}${splitAttr} style="${style}">${inner}</a>${plusHtml}`
+          // No plus-tenure "+" on an inline @mention: the token is a
+          // sender-identity mark (shown beside the sender before the colon),
+          // not part of a name typed inside message content. The sender's own
+          // name and the reply-context header still carry it.
+          return `${lead}<a href="https://heatsync.org/user/${encodeURIComponent(lower)}" target="_blank" rel="noopener noreferrer" class="${mentionCls}" data-username="${safeLower}"${uidAttr}${splitAttr} style="${style}">${inner}</a>`
         },
       )
     }
@@ -60023,17 +60040,28 @@ const STORAGE_KEY = 'heatsync_multichat'
     )
   }
 
-  /** Update the live tab button label to show selected channel */
+  /** Update the live tab button label to show the channel it's bound to, so the
+   *  tab reads as a real selection ("lofigirl") instead of a generic "live"
+   *  that looks unselected while its chat streams in on auto-live. */
   function updateLiveTabLabel() {
     const liveTab = tabBarElement?.querySelector('[data-tab="live"]')
     if (!liveTab) return
-    const ch = liveChannel
-    // Show channel name when overridden to a non-URL channel
-    if (ch && ch !== getCurrentChannel()?.toLowerCase()) {
-      liveTab.textContent = t('mc_tab_live_channel', [ch])
-    } else {
-      liveTab.textContent = t('mc_tab_live')
+    const cur = getCurrentChannel()?.toLowerCase()
+    const override = liveChannel
+    let name = ''
+    if (override && override !== cur) {
+      name = override
+    } else if (cur) {
+      // youtube: getCurrentChannel is the 11-char videoId — swap for the
+      // resolved channel name when we have it, else keep the generic label
+      // (never show a raw videoId as the tab name).
+      if (hostPlatform === 'yt') {
+        name = youtubeLinks.get('__live_yt_auto__')?.channelName || ''
+      } else {
+        name = cur
+      }
     }
+    liveTab.textContent = name ? t('mc_tab_live_channel', [name]) : t('mc_tab_live')
   }
 
   /** Query background script for all channels the user has open tabs for */
@@ -61055,7 +61083,10 @@ const STORAGE_KEY = 'heatsync_multichat'
       }
       const sec = document.querySelector('#secondary')
       if (sec) {
-        if (isRight) {
+        // 'hidden' (collapsed) restores #secondary too: with the chat gone there's
+        // nothing occupying the sidebar, so YT's recommended-videos list must come
+        // back. Squashing it to 0 here was hiding recommendations on collapse.
+        if (isRight || chatPosition === 'hidden') {
           sec.style.removeProperty('width')
           sec.style.removeProperty('min-width')
           sec.style.removeProperty('max-width')
@@ -62735,7 +62766,14 @@ const STORAGE_KEY = 'heatsync_multichat'
       (hostPlatform === 'yt' && /\/watch|\/live\//.test(path)) ||
       (hostPlatform !== 'yt' && !isKick && !!document.querySelector('.channel-root, [class*="channel-root"]')) ||
       (isKick && !!(document.getElementById('channel-chatroom') || document.querySelector('[id*="chatroom"]')))
-    return onStreamPage ? 'live' : _savedActiveTab || 'live'
+    // Force "live" (the on-screen stream) on a watch page ONLY for viewers with
+    // no channel tabs of their own — that's the "youtube read as no-chat" fix
+    // (a fresh viewer shouldn't land on an empty saved tab). A user who HAS
+    // tabs keeps their last-active one instead of being yanked onto the current
+    // page's stream: being on lofigirl's page shouldn't override your nl_kripp
+    // tab and dump lofigirl's chat in. A popout is single-channel — always live.
+    const hasChannelTabs = !!(config.channels && config.channels.length)
+    return (isYtPopout || (onStreamPage && !hasChannelTabs)) ? 'live' : (_savedActiveTab || 'live')
   }
 
   async function init() {

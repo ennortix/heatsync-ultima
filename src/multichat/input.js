@@ -1073,6 +1073,14 @@ function initInput() {
     if (hasText) showInputBar()
     else hideInputBar()
   })
+  // A mouse click is the one caret move that fires neither keydown nor input,
+  // so the Tab-cycle teardown in those handlers never runs. Finalize the cycle
+  // here — otherwise the next Tab from the clicked position rewrites the
+  // abandoned chip (see caretOnActiveCompletion). The caret lands after
+  // mousedown's default action, so tearing down first can't misplace it.
+  input.addEventListener('mousedown', () => {
+    if (acState.active) hideAutocomplete()
+  })
   input.addEventListener('blur', () => {
     setTimeout(hideAutocomplete, 150)
     setTimeout(hideEmojiDropdown, 150)
@@ -2974,6 +2982,18 @@ function handleInputKeydown(e) {
   if (e.key === 'Tab') {
     e.preventDefault()
 
+    // A Tab-cycle only makes sense while the caret still sits on the
+    // completion it's refining. The caret can move WITHOUT the keydown/input
+    // teardown ever firing (mouse click, programmatic focus reassert) —
+    // cycling then rewrites a chip far from the caret (wysiwyg finds the
+    // .hs-cycling-* marker ANYWHERE in the input) or, in plain mode, rebuilds
+    // the whole value from stale wordStart/afterText and erases everything
+    // typed since. Finalize the abandoned completion and let this Tab be a
+    // fresh first-Tab on the word under the caret.
+    if (acState.active && acState.matches.length > 0 && !caretOnActiveCompletion(input)) {
+      hideAutocomplete()
+    }
+
     // FFZ-style modifier on Tab — scans ENTIRE input (not just cursor) for any
     // modifier shorthand adjacent to an emote, applies them all in one shot.
     // Type `Kappa w` then Tab from any cursor position → wide Kappa.
@@ -3964,6 +3984,38 @@ function getCurrentWord(input) {
   return ''
 }
 
+// True while the caret still touches the completion acState is cycling.
+// WYSIWYG: caret on the cycling chip (or the stack it joined), inside it, or in
+// the text node directly following it (the auto-space the insert placed it in).
+// Plain input: caret within the span the completion occupies —
+// [wordStart .. wordStart+len+1] (the +1 is the auto-space the insert appends).
+// Used by the Tab handler to detect an ABANDONED cycle: a mouse click moves the
+// caret without any keydown/input teardown, and cycling from the new position
+// would rewrite the old chip instead of completing the word under the caret.
+function caretOnActiveCompletion(input) {
+  if (!input) return false
+  if (wysiwygEnabled && input.isContentEditable) {
+    const el = input.querySelector('.hs-cycling-emote, .hs-cycling-text, .hs-cycling-user')
+    if (!el) return false // marker gone (chip deleted/eaten) — nothing to cycle
+    const chip = el.closest('.hs-input-stack') || el
+    const sel = window.getSelection()
+    if (!sel?.rangeCount) return false
+    let node = sel.getRangeAt(0).startContainer
+    const offset = sel.getRangeAt(0).startOffset
+    if (node.nodeType === Node.ELEMENT_NODE && offset > 0) {
+      const child = node.childNodes[offset - 1]
+      if (child) node = child
+    }
+    if (node === chip || node === el || chip.contains(node)) return true
+    return node.nodeType === Node.TEXT_NODE && node.previousSibling === chip
+  }
+  if (typeof input.selectionStart !== 'number') return false
+  const m = acState.matches[acState.index]
+  const len = m ? (m.type === 'emoji' ? (m.emoji || '').length : (m.name || '').length) : 0
+  const pos = input.selectionStart
+  return pos >= acState.wordStart && pos <= acState.wordStart + len + 1
+}
+
 // WYSIWYG re-completion across a chip boundary. After Tab completes an emote it
 // becomes an atomic <img> chip; if the user backspaces the auto-space and types
 // more (e.g. SupHomie + "3"), the typed text is a separate node and getCurrentWord
@@ -4719,6 +4771,20 @@ function hsFetchUserColorAndApply(lower, span) {
 }
 
 // WYSIWYG emote insertion
+// Overlay (zero-width) decision for a completion match. The match's OWN flag
+// wins — it identifies the exact emote the user picked (local matches always
+// carry zeroWidth; remote 7TV hits carry it from the search result). The
+// name-based lookupEmoteWithOverlay result is only a fallback for matches with
+// no flag of their own (dropdown picks, emoji): a name collision across
+// providers must never stack a non-overlay pick onto the preceding chip (the
+// "second Tab-complete swallowed the previous emote" bug). Synth "name0"
+// matches are overlays by construction.
+function completionWantsOverlay(match, resolved) {
+  if (match._synthOverlay) return true
+  if (match.zeroWidth !== undefined) return !!match.zeroWidth
+  return !!resolved?.isOverlay
+}
+
 function insertCompletionWysiwyg(match) {
   const input = document.getElementById('hs-mc-input')
   if (!input) return
@@ -4756,10 +4822,7 @@ function insertCompletionWysiwyg(match) {
       // overlay state sticks — every cycle stays inside the stack span and
       // non-overlay matches appear to stack onto whatever's before them.
       const resolved = typeof lookupEmoteWithOverlay === 'function' ? lookupEmoteWithOverlay(match.name) : null
-      // Remote-only emotes (7TV cross-provider search hits) aren't in any local
-      // cache, so lookupEmoteWithOverlay can't resolve their zero-width flag —
-      // fall back to the flag carried on the match from the search result.
-      const wantsOverlay = !!resolved?.isOverlay || !!match.zeroWidth
+      const wantsOverlay = completionWantsOverlay(match, resolved)
       const stack = existingEmote.parentElement?.classList?.contains('hs-input-stack')
         ? existingEmote.parentElement
         : null
@@ -5029,9 +5092,7 @@ function insertCompletionWysiwyg(match) {
     // Zero-width / overlay: stack onto preceding emote so the input preview
     // matches how chat will render the same word sequence.
     const resolved = typeof lookupEmoteWithOverlay === 'function' ? lookupEmoteWithOverlay(match.name) : null
-    // Remote-only emotes aren't in any local cache (lookup returns null), so
-    // fall back to the zero-width flag the 7TV search carried on the match.
-    const wantsOverlay = !!resolved?.isOverlay || !!match.zeroWidth
+    const wantsOverlay = completionWantsOverlay(match, resolved)
     if (wantsOverlay && before.trim() === '') {
       let prev = textNode.previousSibling
       while (prev && prev.nodeType === Node.TEXT_NODE && prev.textContent.trim() === '') {

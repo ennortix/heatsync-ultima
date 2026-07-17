@@ -104,7 +104,7 @@
          the smear) makes scroll a single layer-transform over one stable
          backing, removing the per-tile "which frame vs where" race for the whole
          region at once.
-         NB: MUST be `will-change: transform`, NOT the old `translateZ(0)` hack —
+         NB: MUST be will-change:transform, NOT the old translateZ(0) hack —
          modern Chromium optimizes translateZ(0) away (it computes to flat 2D
          identity and promotes NO layer; verified live 07-17). will-change is the
          reliable, documented promotion. Distinct from the dropped contain:paint

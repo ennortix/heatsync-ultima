@@ -924,6 +924,16 @@ function renderProfileCard(p, platform) {
     : ''
   const bio = bioHtml ? `<div class="hs-pc-bio">${bioHtml}</div>` : ''
 
+  // Prior display names ("aka: ...") — same /api/profile response as
+  // everything else in this tooltip (server field `prior_names`, up to 5
+  // newest-first). Absent until the server ships it → renders nothing.
+  const aka =
+    (typeof nameHistoryEnabled === 'undefined' || nameHistoryEnabled) &&
+    Array.isArray(p.prior_names) &&
+    p.prior_names.length
+      ? `<div class="hs-pc-aka"><span class="hs-pc-aka-label">aka</span>: ${escapeHtml(p.prior_names.join(', '))}</div>`
+      : ''
+
   // Stats
   const stats = p.stats || {}
   const heat = stats.total_heat || 0
@@ -1059,6 +1069,7 @@ function renderProfileCard(p, platform) {
         <div class="hs-pc-info">
           <div class="hs-pc-header">${nativeBadges || `<span class="hs-pc-name${nameHsPaint ? ' ' + nameHsPaint.cls : ''}"${nameHsPaint ? nameHsPaint.splitAttr : ''} style="${nameHsPaint ? '' : namePaint}">${nameHsPaint ? nameHsPaint.html : escapeHtml(displayName)}</span>`}</div>
           ${bio}
+          ${aka}
           ${sheetHtml}
         </div>
       </div>`

@@ -2192,6 +2192,18 @@ const SETTINGS = [
     control: 'pill',
     runtimeVar: 'pronounsEnabled',
   },
+  {
+    key: 'hs_show_name_history',
+    type: 'bool',
+    default: true,
+    scope: 'sync',
+    category: 'display',
+    section: 'cosmetics',
+    labelKey: 'mc_settings_show_name_history',
+    tipKey: 'mc_settings_show_name_history_desc',
+    control: 'pill',
+    runtimeVar: 'nameHistoryEnabled',
+  },
 
   // ── chat / input ──────────────────────────────────────────────────────
   {
@@ -10637,6 +10649,14 @@ function injectStyles() {
     #hs-user-tooltip .hs-pc-bio-mention:hover { text-decoration: underline; }
     #hs-user-tooltip .hs-pc-bio-tag { color: #ff00ff; text-decoration: none; }
     #hs-user-tooltip .hs-pc-bio-tag:hover { text-decoration: underline; }
+    /* Prior display names — mirrors .hs-pcard-aka. Muted label, plain names. */
+    #hs-user-tooltip .hs-pc-aka {
+      font-size: 13px;
+      color: #d0d0d0;
+      line-height: 17px;
+      word-break: break-word;
+    }
+    #hs-user-tooltip .hs-pc-aka-label { color: #808080; }
     #hs-user-tooltip .hs-pc-stats {
       display: flex;
       gap: 6px;
@@ -12249,6 +12269,13 @@ img.hs-fx-zero { margin-left: -4px; }
     .hs-pcard-bio-mention:hover { text-decoration: underline; }
     .hs-pcard-bio-tag { color: #ff00ff; text-decoration: none; }
     .hs-pcard-bio-tag:hover { text-decoration: underline; }
+    /* Prior display names — muted label, plain-color names. Static info,
+       no hover/active state, matches the bio line's flow. */
+    .hs-pcard-aka {
+      font-size: 13px; color: #d0d0d0; line-height: 18px;
+      white-space: pre-wrap; word-break: break-word;
+    }
+    .hs-pcard-aka-label { color: #808080; }
     /* Property sheet — 2-col zebra list. The pcard surface uses system-sans
        by default (see body.hs-font-bitmap .hs-pcard counter-rule near top
        of styles.js), so the sheet must opt back into 13px CozetteVector +
@@ -25936,6 +25963,16 @@ function renderProfileCard(p, platform) {
     : ''
   const bio = bioHtml ? `<div class="hs-pc-bio">${bioHtml}</div>` : ''
 
+  // Prior display names ("aka: ...") — same /api/profile response as
+  // everything else in this tooltip (server field `prior_names`, up to 5
+  // newest-first). Absent until the server ships it → renders nothing.
+  const aka =
+    (typeof nameHistoryEnabled === 'undefined' || nameHistoryEnabled) &&
+    Array.isArray(p.prior_names) &&
+    p.prior_names.length
+      ? `<div class="hs-pc-aka"><span class="hs-pc-aka-label">aka</span>: ${escapeHtml(p.prior_names.join(', '))}</div>`
+      : ''
+
   // Stats
   const stats = p.stats || {}
   const heat = stats.total_heat || 0
@@ -26071,6 +26108,7 @@ function renderProfileCard(p, platform) {
         <div class="hs-pc-info">
           <div class="hs-pc-header">${nativeBadges || `<span class="hs-pc-name${nameHsPaint ? ' ' + nameHsPaint.cls : ''}"${nameHsPaint ? nameHsPaint.splitAttr : ''} style="${nameHsPaint ? '' : namePaint}">${nameHsPaint ? nameHsPaint.html : escapeHtml(displayName)}</span>`}</div>
           ${bio}
+          ${aka}
           ${sheetHtml}
         </div>
       </div>`
@@ -44182,6 +44220,25 @@ function renderProfileCardView() {
     idText.appendChild(bio)
   }
 
+  // Prior display names ("aka: ...") — off the same /api/profile response as
+  // everything else on this card (server field `prior_names`, up to 5 newest-
+  // first). The field is absent until the server ships it, so this renders
+  // nothing until then — no error, no empty "aka:", no separate fetch.
+  if (
+    (typeof nameHistoryEnabled === 'undefined' || nameHistoryEnabled) &&
+    Array.isArray(data?.prior_names) &&
+    data.prior_names.length
+  ) {
+    const aka = document.createElement('div')
+    aka.className = 'hs-pcard-aka'
+    const label = document.createElement('span')
+    label.className = 'hs-pcard-aka-label'
+    label.textContent = 'aka'
+    aka.appendChild(label)
+    aka.appendChild(document.createTextNode(': ' + data.prior_names.join(', ')))
+    idText.appendChild(aka)
+  }
+
   // Cross-platform link — "also @xqc on twitch" for Kick chatters whose 7TV
   // account links a Twitch handle. Surfaces the unified identity.
   const linkedTwitch = data?._linked_twitch_username || data?.twitch_username
@@ -53975,6 +54032,12 @@ const STORAGE_KEY = 'heatsync_multichat'
         pronounsEnabled = v
       },
     },
+    nameHistoryEnabled: {
+      get: () => nameHistoryEnabled,
+      set: (v) => {
+        nameHistoryEnabled = v
+      },
+    },
     zebraEnabled: {
       get: () => zebraEnabled,
       set: (v) => {
@@ -55198,6 +55261,10 @@ const STORAGE_KEY = 'heatsync_multichat'
   // Pronouns (pronoundb.org, twitch-only) on the profile card + hover
   // tooltip (default on)
   let pronounsEnabled = true
+
+  // Prior display names ("aka: ...") on the profile card + hover tooltip,
+  // sourced off the same /api/profile response (default on)
+  let nameHistoryEnabled = true
 
   // Zebra striping — alternate row backgrounds (default on)
   let zebraEnabled = true

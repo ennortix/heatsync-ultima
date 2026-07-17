@@ -807,6 +807,25 @@ function renderProfileCardView() {
     idText.appendChild(bio)
   }
 
+  // Prior display names ("aka: ...") — off the same /api/profile response as
+  // everything else on this card (server field `prior_names`, up to 5 newest-
+  // first). The field is absent until the server ships it, so this renders
+  // nothing until then — no error, no empty "aka:", no separate fetch.
+  if (
+    (typeof nameHistoryEnabled === 'undefined' || nameHistoryEnabled) &&
+    Array.isArray(data?.prior_names) &&
+    data.prior_names.length
+  ) {
+    const aka = document.createElement('div')
+    aka.className = 'hs-pcard-aka'
+    const label = document.createElement('span')
+    label.className = 'hs-pcard-aka-label'
+    label.textContent = 'aka'
+    aka.appendChild(label)
+    aka.appendChild(document.createTextNode(': ' + data.prior_names.join(', ')))
+    idText.appendChild(aka)
+  }
+
   // Cross-platform link — "also @xqc on twitch" for Kick chatters whose 7TV
   // account links a Twitch handle. Surfaces the unified identity.
   const linkedTwitch = data?._linked_twitch_username || data?.twitch_username

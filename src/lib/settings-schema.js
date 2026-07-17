@@ -537,6 +537,18 @@ const SETTINGS = [
     control: 'pill',
     runtimeVar: 'pronounsEnabled',
   },
+  {
+    key: 'hs_show_name_history',
+    type: 'bool',
+    default: true,
+    scope: 'sync',
+    category: 'display',
+    section: 'cosmetics',
+    labelKey: 'mc_settings_show_name_history',
+    tipKey: 'mc_settings_show_name_history_desc',
+    control: 'pill',
+    runtimeVar: 'nameHistoryEnabled',
+  },
 
   // ── chat / input ──────────────────────────────────────────────────────
   {

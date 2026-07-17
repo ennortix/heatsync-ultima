@@ -415,6 +415,31 @@
       border: none;
     }
 
+    /* CW-filtered emotes: the viewer's content filter hid this emote
+       server-side, so there is no img at all — the server sent a stub with
+       just the category. Paint a dashed cyan box with the category name
+       centered so the message reads "emote hidden here by your filter"
+       instead of silently degrading to raw text. #00ffff = ansi 51. */
+    .hs-mc-emote-wrapper.hs-mc-emote-cw {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: var(--hs-emote-size, 32px);
+      min-width: var(--hs-emote-size, 32px);
+      padding: 0 6px;
+      border: 2px dashed #00ffff;
+      box-sizing: border-box;
+      color: #00ffff;
+      font-size: 13px;
+      line-height: normal;
+      cursor: default;
+      user-select: none;
+    }
+    /* No hover plate / state fill — the box is informational, not clickable. */
+    .hs-mc-emote-wrapper.hs-mc-emote-cw::before {
+      display: none;
+    }
+
     /* Collapsed stack: unified hover ::before on the stack itself.
        Per-wrapper hover (cross-highlight) is suppressed — stack-level ::before
        paints one solid rectangle. Persistent blocked-dash per emote is kept

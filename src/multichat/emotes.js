@@ -2373,7 +2373,13 @@ function replaceSenderEmotes(senderKey, nameToEmote) {
       }
     }
     const prev = inner.get(name)
-    if (!prev || prev.url !== data.url || prev.state !== data.state || prev.source !== data.source) {
+    if (
+      !prev ||
+      prev.url !== data.url ||
+      prev.state !== data.state ||
+      prev.source !== data.source ||
+      prev.cw !== data.cw
+    ) {
       inner.set(name, data)
       changed = true
     }
@@ -3476,7 +3482,13 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
       const wAttr = _boxW ? ` style="width:${_boxW}px"` : ''
       const _os = _hsEmoteOversize(emote)
       const osAttr = _os ? ` style="--hs-os:${_os}"` : ''
-      const imgHtmlRaw = `<span class="hs-mc-emote-wrapper hs-state-${state}${staleClass}${nsfwClass}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}${staleAttr}${wAttr}><img src="${staticSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}"${osAttr} data-emote-name="${displayName}" data-state="${state}" data-source="${source}"${ownerAttr} loading="lazy" decoding="async"></span>`
+      // cw stub — server replaced a filter-hidden emote with {name, cw}. No
+      // img (there is no url); a labeled dashed-cyan box marks the spot so
+      // the message reads as "emote hidden here", not silently as raw text.
+      const cwCat = typeof emote.cw === 'string' && emote.cw ? escapeHtml(emote.cw) : ''
+      const imgHtmlRaw = cwCat
+        ? `<span class="hs-mc-emote-wrapper hs-mc-emote-cw" data-emote-name="${displayName}" data-cw="${cwCat}" data-state="cw" title="${displayName}">${cwCat}</span>`
+        : `<span class="hs-mc-emote-wrapper hs-state-${state}${staleClass}${nsfwClass}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}${staleAttr}${wAttr}><img src="${staticSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}"${osAttr} data-emote-name="${displayName}" data-state="${state}" data-source="${source}"${ownerAttr} loading="lazy" decoding="async"></span>`
 
       // Build the new item — inline-glued suffix mod attaches to THIS emote
       // (e.g. "RainTimew!" → wide RainTime, not wide whatever-was-base).

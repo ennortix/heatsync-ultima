@@ -10771,6 +10771,31 @@ function injectStyles() {
       border: none;
     }
 
+    /* CW-filtered emotes: the viewer's content filter hid this emote
+       server-side, so there is no img at all — the server sent a stub with
+       just the category. Paint a dashed cyan box with the category name
+       centered so the message reads "emote hidden here by your filter"
+       instead of silently degrading to raw text. #00ffff = ansi 51. */
+    .hs-mc-emote-wrapper.hs-mc-emote-cw {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: var(--hs-emote-size, 32px);
+      min-width: var(--hs-emote-size, 32px);
+      padding: 0 6px;
+      border: 2px dashed #00ffff;
+      box-sizing: border-box;
+      color: #00ffff;
+      font-size: 13px;
+      line-height: normal;
+      cursor: default;
+      user-select: none;
+    }
+    /* No hover plate / state fill — the box is informational, not clickable. */
+    .hs-mc-emote-wrapper.hs-mc-emote-cw::before {
+      display: none;
+    }
+
     /* Collapsed stack: unified hover ::before on the stack itself.
        Per-wrapper hover (cross-highlight) is suppressed — stack-level ::before
        paints one solid rectangle. Persistent blocked-dash per emote is kept
@@ -23106,7 +23131,13 @@ function replaceSenderEmotes(senderKey, nameToEmote) {
       }
     }
     const prev = inner.get(name)
-    if (!prev || prev.url !== data.url || prev.state !== data.state || prev.source !== data.source) {
+    if (
+      !prev ||
+      prev.url !== data.url ||
+      prev.state !== data.state ||
+      prev.source !== data.source ||
+      prev.cw !== data.cw
+    ) {
       inner.set(name, data)
       changed = true
     }
@@ -24209,7 +24240,13 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
       const wAttr = _boxW ? ` style="width:${_boxW}px"` : ''
       const _os = _hsEmoteOversize(emote)
       const osAttr = _os ? ` style="--hs-os:${_os}"` : ''
-      const imgHtmlRaw = `<span class="hs-mc-emote-wrapper hs-state-${state}${staleClass}${nsfwClass}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}${staleAttr}${wAttr}><img src="${staticSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}"${osAttr} data-emote-name="${displayName}" data-state="${state}" data-source="${source}"${ownerAttr} loading="lazy" decoding="async"></span>`
+      // cw stub — server replaced a filter-hidden emote with {name, cw}. No
+      // img (there is no url); a labeled dashed-cyan box marks the spot so
+      // the message reads as "emote hidden here", not silently as raw text.
+      const cwCat = typeof emote.cw === 'string' && emote.cw ? escapeHtml(emote.cw) : ''
+      const imgHtmlRaw = cwCat
+        ? `<span class="hs-mc-emote-wrapper hs-mc-emote-cw" data-emote-name="${displayName}" data-cw="${cwCat}" data-state="cw" title="${displayName}">${cwCat}</span>`
+        : `<span class="hs-mc-emote-wrapper hs-state-${state}${staleClass}${nsfwClass}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}${staleAttr}${wAttr}><img src="${staticSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}"${osAttr} data-emote-name="${displayName}" data-state="${state}" data-source="${source}"${ownerAttr} loading="lazy" decoding="async"></span>`
 
       // Build the new item — inline-glued suffix mod attaches to THIS emote
       // (e.g. "RainTimew!" → wide RainTime, not wide whatever-was-base).

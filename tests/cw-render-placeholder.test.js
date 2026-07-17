@@ -1,0 +1,105 @@
+/**
+ * cw placeholder render — processEmotes' imgHtmlRaw block (emotes.js).
+ *
+ * When an emote object carries `cw` (server filter stub — no url), the chat
+ * render must emit the dashed-cyan placeholder span (class hs-mc-emote-cw,
+ * data-cw + category as text content, NO <img>) instead of the normal emote
+ * wrapper. Everything else must keep producing the img wrapper unchanged.
+ *
+ * Source-slice harness: the emote-branch body is extracted from
+ * src/multichat/emotes.js via markers and evaluated with stubbed deps —
+ * marker drift fails loudly (pattern: tests/native-emote-escape.test.js).
+ */
+
+import { describe, expect, test } from 'bun:test'
+import { readFileSync } from 'fs'
+import { join } from 'path'
+import { escapeHtml, unescapeHtml } from '../src/lib/utils.js'
+
+const SRC = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'emotes.js'), 'utf8')
+
+function sliceBetween(startMarker, endMarker) {
+  const s = SRC.indexOf(startMarker)
+  if (s === -1) throw new Error(`sliceBetween: start marker not found: ${startMarker}`)
+  const e = SRC.indexOf(endMarker, s)
+  if (e === -1) throw new Error(`sliceBetween: end marker not found: ${endMarker}`)
+  return SRC.slice(s, e)
+}
+
+const branchSrc = sliceBetween('const rawWord = unescapeHtml(word)', '// Build the new item')
+
+const renderEmoteHtml = new Function(
+  'word',
+  'emote',
+  'channel',
+  'overlayBaseName',
+  'blockedEmoteNames',
+  'inventoryEmotes',
+  'channelEmoteCaches',
+  'unescapeHtml',
+  'escapeHtml',
+  'getChatResUrl',
+  'staticEmoteSrc',
+  '_hsEmoteBoxW',
+  '_hsEmoteOversize',
+  'window',
+  `${branchSrc}\nreturn imgHtmlRaw`,
+)
+
+function render(word, emote, overrides = {}) {
+  return renderEmoteHtml(
+    word,
+    emote,
+    'somechannel',
+    null,
+    overrides.blocked || new Set(),
+    overrides.inventory || new Set(),
+    {},
+    unescapeHtml,
+    escapeHtml,
+    (u) => u,
+    (u) => u,
+    new Map(),
+    () => 0,
+    { _hsStaleEmotes: null },
+  )
+}
+
+const URL = 'https://cdn.heatsync.org/uploads/abc.webp'
+
+describe('processEmotes — cw placeholder render', () => {
+  test('cw stub renders the placeholder span: class, data-cw, category text, no img', () => {
+    const html = render('BloodFest', { cw: 'gore', url: '', state: 'cw', source: 'heatsync' })
+    expect(html).toContain('hs-mc-emote-cw')
+    expect(html).toContain('data-cw="gore"')
+    expect(html).toContain('>gore</span>')
+    expect(html).not.toContain('<img')
+  })
+
+  test('placeholder keeps the emote name reachable via title/data-emote-name', () => {
+    const html = render('BloodFest', { cw: 'sexual', url: '' })
+    expect(html).toContain('data-emote-name="BloodFest"')
+    expect(html).toContain('title="BloodFest"')
+  })
+
+  test('category is escaped in attribute and text position', () => {
+    const html = render('Sneaky', { cw: '"><img src=x onerror=alert(1)>', url: '' })
+    expect(html).not.toContain('<img')
+    expect(html).toContain('&quot;&gt;&lt;img')
+  })
+
+  test('normal emote (no cw) still renders the img wrapper unchanged', () => {
+    const html = render('Kappa', { url: URL, state: 'global', source: '7tv', hash: 'h1' })
+    expect(html).toContain('<img')
+    expect(html).toContain('hs-state-global')
+    expect(html).not.toContain('hs-mc-emote-cw')
+  })
+
+  test('non-string / empty cw falls through to the normal wrapper', () => {
+    for (const cw of ['', 42, null]) {
+      const html = render('Kappa', { url: URL, state: 'global', source: '7tv', cw })
+      expect(html).toContain('<img')
+      expect(html).not.toContain('hs-mc-emote-cw')
+    }
+  })
+})

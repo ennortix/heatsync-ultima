@@ -9103,7 +9103,17 @@ async function handleMessage(message, sender, sendResponse) {
           const hsEmotes = hs?.emotes || []
           for (const e of hsEmotes) {
             const name = e?.custom_name || e?.name
-            if (!name || !e?.url) continue
+            if (!name) continue
+            // cw stub — the viewer's content filter hid this emote server-side
+            // (no url, just the category). Carry it through so chat paints the
+            // dashed cyan "hidden by filter" placeholder instead of raw text.
+            // Overrides any same-name 7TV/BTTV entry, matching the normal
+            // heatsync-set-wins precedence below.
+            if (!e?.url && typeof e?.cw === 'string' && e.cw) {
+              collected[name] = { url: '', source: 'heatsync', state: 'cw', cw: e.cw, zeroWidth: false, hash: '' }
+              continue
+            }
+            if (!e?.url) continue
             const u = e.url
             // Server stores source:'extension' for ext-added emotes — meaningless to
             // the UI. Derive the real provider from the CDN url for an accurate label.

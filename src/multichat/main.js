@@ -12263,6 +12263,14 @@
           startNativeTap(getCurrentChannel())
         } catch (_) {}
       }
+      // Kick page-level chat tap — third transport line for the current page
+      // channel, inert while the BG Pusher tap / server relay are delivering.
+      // typeof-guarded: the module is bundled for the kick host only.
+      if (hostPlatform === 'kick' && typeof initKickNativeTap === 'function') {
+        try {
+          initKickNativeTap()
+        } catch (_) {}
+      }
       // Auto-tabs: pull the current open-stream set once at boot — the bg
       // broadcast only fires on CHANGES, so a fresh tab would otherwise not
       // see streams that were already open before it loaded.

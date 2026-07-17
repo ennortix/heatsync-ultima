@@ -47,7 +47,8 @@
         "https://*.kick.com/*"
       ],
       "js": [
-        "kick-nav-watcher.js"
+        "kick-nav-watcher.js",
+        "kick-chat-intercept.js"
       ],
       "run_at": "document_start",
       "world": "MAIN"

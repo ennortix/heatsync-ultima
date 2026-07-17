@@ -6890,6 +6890,15 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   }
 
+  // Chatroom id for a kick slug — used by the page-side fallback pusher
+  // connection (kick-native-tap.js) so it can subscribe chatrooms.<id>.v2
+  // without its own kick API round-trip when BG already knows the answer.
+  if (message.type === 'kick_chatroom_id') {
+    const slug = (message.slug || '').toLowerCase()
+    sendResponse({ id: _kpChannels.get(slug) ?? _kpChatroomCache.get(slug) ?? null })
+    return true
+  }
+
   // Serialized ui_settings patch. Content scripts must NOT get→merge→set the
   // key themselves — they race this SW's uiSettingsRmw chain (and each other),
   // and the loser's write is silently overwritten. Keys are governed by the
@@ -6986,21 +6995,28 @@ async function handleMessage(message, sender, sendResponse) {
     return true
   }
 
-  // YouTube chat relay — forward to Twitch/Kick tabs only.
+  // YouTube chat relay — forward native-tap copies to every multichat host.
   // youtube-content.js scrapes the YT live_chat iframe and sends `channelId: videoId`.
   // Remap to the real extension channelId so the receiving tab can route — otherwise
   // messages bucket under a videoId key that no tab is listening on.
+  // youtube.com tabs are included (minus the SENDER tab, whose overlay already
+  // gets the same-tab copies directly) so a yt surface watching stream A still
+  // sees stream B's chat when the server relay goes quiet — the DOM tap is the
+  // yt resilience line, and innertube-id dedup drops the copies while the
+  // relay is healthy.
   if (message.type === 'youtube_chat_message' && !message.source) {
     const vId = message.videoId
+    const senderTabId = sender?.tab?.id
     let mapped = ytChannelsFor(vId)
     if (!mapped.length && vId && vId === activeYoutubeVideoId) mapped = ['__live_yt_auto__']
     const relays = mapped.length
       ? mapped.map((cid) => (cid !== message.channelId ? { ...message, channelId: cid } : message))
       : [message]
     browser.tabs
-      .query({ url: ['*://*.twitch.tv/*', '*://*.kick.com/*'] })
+      .query({ url: ['*://*.twitch.tv/*', '*://*.kick.com/*', '*://www.youtube.com/*'] })
       .then((tabs) => {
         for (const tab of tabs) {
+          if (tab.id === senderTabId) continue
           for (const relay of relays) browser.tabs.sendMessage(tab.id, relay).catch(() => {})
         }
       })

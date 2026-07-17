@@ -1438,6 +1438,12 @@
   "mc_settings_sub_native_takeover_desc": {
     "message": "while the overlay covers twitch chat, stop twitch rendering its hidden copy — big ram save on busy channels. fails open: overlay dies → twitch chat comes back on its own."
   },
+  "mc_settings_sub_kick_native_tap": {
+    "message": "kick chat fallback tap"
+  },
+  "mc_settings_sub_kick_native_tap_desc": {
+    "message": "reads the current kick page's own chat stream as a backup. inert while the normal transports are healthy — only kicks in if they go quiet."
+  },
   "mc_settings_diag_errors": {
     "message": "show diagnostic errors"
   },

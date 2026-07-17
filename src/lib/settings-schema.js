@@ -1443,6 +1443,7 @@ const SETTINGS = [
       'picker-button': true,
       'right-click-block': true,
       'native-takeover': true,
+      'kick-native-tap': true,
     },
     options: [
       {
@@ -1556,6 +1557,14 @@ const SETTINGS = [
         applies: 'live',
         labelKey: 'mc_settings_sub_native_takeover',
         tipKey: 'mc_settings_sub_native_takeover_desc',
+      },
+      {
+        value: 'kick-native-tap',
+        default: true,
+        color: '#53fc18',
+        applies: 'live',
+        labelKey: 'mc_settings_sub_kick_native_tap',
+        tipKey: 'mc_settings_sub_kick_native_tap_desc',
       },
     ],
   },
@@ -1690,6 +1699,7 @@ const SETTINGS_PRESETS = [
         'picker-button': true,
         'right-click-block': true,
         'native-takeover': true,
+        'kick-native-tap': true,
       },
     },
   },
@@ -1740,6 +1750,7 @@ const SETTINGS_PRESETS = [
         'picker-button': true,
         'right-click-block': true,
         'native-takeover': true,
+        'kick-native-tap': true,
       },
     },
   },

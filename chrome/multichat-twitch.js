@@ -3098,6 +3098,7 @@ const SETTINGS = [
       'picker-button': true,
       'right-click-block': true,
       'native-takeover': true,
+      'kick-native-tap': true,
     },
     options: [
       {
@@ -3211,6 +3212,14 @@ const SETTINGS = [
         applies: 'live',
         labelKey: 'mc_settings_sub_native_takeover',
         tipKey: 'mc_settings_sub_native_takeover_desc',
+      },
+      {
+        value: 'kick-native-tap',
+        default: true,
+        color: '#53fc18',
+        applies: 'live',
+        labelKey: 'mc_settings_sub_kick_native_tap',
+        tipKey: 'mc_settings_sub_kick_native_tap_desc',
       },
     ],
   },
@@ -3345,6 +3354,7 @@ const SETTINGS_PRESETS = [
         'picker-button': true,
         'right-click-block': true,
         'native-takeover': true,
+        'kick-native-tap': true,
       },
     },
   },
@@ -3395,6 +3405,7 @@ const SETTINGS_PRESETS = [
         'picker-button': true,
         'right-click-block': true,
         'native-takeover': true,
+        'kick-native-tap': true,
       },
     },
   },
@@ -19763,6 +19774,145 @@ class KickChat {
     if (this._chanRejoinAttempts.size) this._chanRejoinAttempts.delete(ch)
   }
 
+  // One kick chat payload (server-relay/BG-tap shape) → buffer + render emit.
+  // Extracted from the kick_chat_message listener so the page-level native
+  // tap (kick-native-tap.js) can feed the SAME path. opts.fromNativeTap
+  // skips the watchdog touch — tap traffic must not mask a dead primary
+  // (the watchdog's escalation rungs are what bring the primary back), and
+  // stamps the msg for provenance, mirroring twitch's native-tap flag.
+  ingestChatPayload(d, opts) {
+    const channel = d.channel?.toLowerCase()
+    const fromNativeTap = !!opts?.fromNativeTap
+    if (!fromNativeTap) this._touchChannel(channel)
+    if (!channel || !this.channels.has(channel)) return
+    // Dedup by Kick message id — the same message can arrive from the server
+    // webhook relay, the BG Pusher tap, AND the page-level native tap; keep
+    // only the first. (touchChannel above still ran so the watchdog sees
+    // primary liveness.)
+    if (d.id) {
+      if (this._recentLiveIds.has(d.id)) return
+      this._recentLiveIds.add(d.id)
+      if (this._recentLiveIds.size > 800) this._recentLiveIds.delete(this._recentLiveIds.values().next().value)
+    }
+    // Convert Kick badge objects to Twitch-style "name/version" string.
+    // Kick WS payload uses {type, text, count} per badge; some pass-through
+    // paths re-shape to {name, version}. Accept BOTH so type-shape payloads
+    // don't collapse to 'badge/1' (which has no BADGE_STYLES entry → blank).
+    const badgeStr = Array.isArray(d.badges)
+      ? d.badges.map((b) => `${b.type || b.name || 'badge'}/${b.version || b.count || '1'}`).join(',')
+      : ''
+    const msg = {
+      id: d.id || '',
+      user: d.username || 'unknown',
+      text: d.content || '',
+      color: d.color || '#53fc18',
+      badges: badgeStr,
+      channel,
+      time: d.timestamp || Date.now(),
+      platform: 'kick',
+      // numeric kick USER id (pusher tap + server relay both forward it);
+      // setKnownColor below already read msg.userId — it was undefined
+      // for every kick message until this landed
+      userId: d.senderId != null ? String(d.senderId) : '',
+      replyTo: d.replyTo
+        ? {
+            user: d.replyTo.username || 'unknown',
+            text: d.replyTo.content || '',
+            id: d.replyTo.id || d.replyTo.message_id || '',
+            threadId: d.replyTo.thread_id || d.replyTo.id || d.replyTo.message_id || '',
+          }
+        : null,
+    }
+    if (fromNativeTap) msg.fromNativeTap = true
+    this.channels.get(channel).push(msg)
+    if (msg.user) {
+      addUsername(msg.user)
+      setKnownColor(msg.user.toLowerCase(), msg.color, msg.userId, 'kick')
+    }
+    this.persistBuffer(channel)
+    this.emit('message', msg)
+  }
+
+  // One kick moderation event (ban/timeout/delete/unban) → buffer dims +
+  // notice emit. Extracted from the kick_moderation listener so the page-
+  // level native tap can feed the SAME path.
+  ingestModeration(message) {
+    const channel = message.channel.toLowerCase()
+    if (!this.channels.has(channel)) return
+    const buf = this.channels.get(channel)
+    const action = message.action
+    const targetLc = (message.targetUser || '').toLowerCase()
+    if ((action === 'ban' || action === 'timeout') && targetLc) {
+      const reason = message.banDuration ? `timed out (${message.banDuration}s)` : 'banned'
+      for (const m of buf.getAll()) {
+        if (!m.cleared && (m.user || '').toLowerCase() === targetLc) {
+          m.cleared = true
+          m.clearedReason = reason
+        }
+      }
+    } else if (action === 'delete' && message.targetMsgId) {
+      for (const m of buf.getAll()) {
+        if (m.id === message.targetMsgId && !m.cleared) {
+          m.cleared = true
+          m.clearedReason = 'deleted'
+          break
+        }
+      }
+    } else if (action === 'unban' && targetLc) {
+      // Best-effort un-dim: only lift ban/timeout dims (not deletes).
+      for (const m of buf.getAll()) {
+        if (m.cleared && (m.user || '').toLowerCase() === targetLc && m.clearedReason !== 'deleted') {
+          m.cleared = false
+          delete m.clearedReason
+        }
+      }
+    }
+    this.persistBuffer(channel)
+    const target = message.targetUser || ''
+    const noticeType =
+      action === 'delete'
+        ? 'delete_message_success'
+        : action === 'unban'
+          ? 'unban_success'
+          : action === 'timeout'
+            ? 'timeout_success'
+            : 'ban_success'
+    // Self-mod dedup: the toolbar already injected a synthetic notice for
+    // this exact action — the buffer dim above still applies, but a second
+    // system line (and duplicate mod-log entry) must not.
+    if (this._consumeSelfMod(channel, noticeType, action === 'delete' ? message.targetMsgId : targetLc)) return
+    const text =
+      action === 'delete'
+        ? `a message was deleted`
+        : action === 'unban'
+          ? `${target} was unbanned`
+          : action === 'timeout'
+            ? `${target} timed out for ${message.banDuration}s`
+            : `${target} was banned`
+    this.emit('message', {
+      type: 'notice',
+      noticeType,
+      platform: 'kick',
+      channel,
+      user: 'system',
+      text,
+      systemMsg: text,
+      color: '#808080',
+      badges: '',
+      time: Date.now(),
+      id: `kickmod-${channel}-${target || message.targetMsgId || ''}-${noticeType}-${Date.now()}`,
+      targetUser: target,
+      targetUserId: message.targetUserId || '',
+      targetMsgId: message.targetMsgId || '',
+      banDuration: message.banDuration || 0,
+      // Kick's AI moderation deletes messages constantly — a visible line per
+      // deletion would flood chat, and the dim already conveys it. So a delete
+      // is dim-only (hidden line); bans/timeouts/unbans keep their system line.
+      hidden: action === 'delete',
+    })
+    return
+  }
+
   _startWatchdog() {
     if (this._watchdogTimer) return
     this._watchdogTimer = cleanup.setInterval(() => {
@@ -19824,54 +19974,8 @@ class KickChat {
         return
       }
       if (message.type === 'kick_chat_message' && message.data) {
-        const d = message.data
-        const channel = d.channel?.toLowerCase()
-        this._touchChannel(channel)
-        if (!channel || !this.channels.has(channel)) return
-        // Dedup by Kick message id — the same message can arrive from BOTH the
-        // server webhook relay and the client-side Pusher tap; keep only the
-        // first. (touchChannel above still ran so the watchdog sees liveness.)
-        if (d.id) {
-          if (this._recentLiveIds.has(d.id)) return
-          this._recentLiveIds.add(d.id)
-          if (this._recentLiveIds.size > 800) this._recentLiveIds.delete(this._recentLiveIds.values().next().value)
-        }
-        // Convert Kick badge objects to Twitch-style "name/version" string.
-        // Kick WS payload uses {type, text, count} per badge; some pass-through
-        // paths re-shape to {name, version}. Accept BOTH so type-shape payloads
-        // don't collapse to 'badge/1' (which has no BADGE_STYLES entry → blank).
-        const badgeStr = Array.isArray(d.badges)
-          ? d.badges.map((b) => `${b.type || b.name || 'badge'}/${b.version || b.count || '1'}`).join(',')
-          : ''
-        const msg = {
-          id: d.id || '',
-          user: d.username || 'unknown',
-          text: d.content || '',
-          color: d.color || '#53fc18',
-          badges: badgeStr,
-          channel,
-          time: d.timestamp || Date.now(),
-          platform: 'kick',
-          // numeric kick USER id (pusher tap + server relay both forward it);
-          // setKnownColor below already read msg.userId — it was undefined
-          // for every kick message until this landed
-          userId: d.senderId != null ? String(d.senderId) : '',
-          replyTo: d.replyTo
-            ? {
-                user: d.replyTo.username || 'unknown',
-                text: d.replyTo.content || '',
-                id: d.replyTo.id || d.replyTo.message_id || '',
-                threadId: d.replyTo.thread_id || d.replyTo.id || d.replyTo.message_id || '',
-              }
-            : null,
-        }
-        this.channels.get(channel).push(msg)
-        if (msg.user) {
-          addUsername(msg.user)
-          setKnownColor(msg.user.toLowerCase(), msg.color, msg.userId, 'kick')
-        }
-        this.persistBuffer(channel)
-        this.emit('message', msg)
+        this.ingestChatPayload(message.data)
+        return
       }
 
       // Kick moderation (ban/timeout/delete/unban) observed on the Pusher tap —
@@ -19880,79 +19984,7 @@ class KickChat {
       // message so main.js's irc.on('message') dims the live DOM, prints the
       // system line, and records the mod-action log — all shared, platform-blind.
       if (message.type === 'kick_moderation' && message.channel) {
-        const channel = message.channel.toLowerCase()
-        if (!this.channels.has(channel)) return
-        const buf = this.channels.get(channel)
-        const action = message.action
-        const targetLc = (message.targetUser || '').toLowerCase()
-        if ((action === 'ban' || action === 'timeout') && targetLc) {
-          const reason = message.banDuration ? `timed out (${message.banDuration}s)` : 'banned'
-          for (const m of buf.getAll()) {
-            if (!m.cleared && (m.user || '').toLowerCase() === targetLc) {
-              m.cleared = true
-              m.clearedReason = reason
-            }
-          }
-        } else if (action === 'delete' && message.targetMsgId) {
-          for (const m of buf.getAll()) {
-            if (m.id === message.targetMsgId && !m.cleared) {
-              m.cleared = true
-              m.clearedReason = 'deleted'
-              break
-            }
-          }
-        } else if (action === 'unban' && targetLc) {
-          // Best-effort un-dim: only lift ban/timeout dims (not deletes).
-          for (const m of buf.getAll()) {
-            if (m.cleared && (m.user || '').toLowerCase() === targetLc && m.clearedReason !== 'deleted') {
-              m.cleared = false
-              delete m.clearedReason
-            }
-          }
-        }
-        this.persistBuffer(channel)
-        const target = message.targetUser || ''
-        const noticeType =
-          action === 'delete'
-            ? 'delete_message_success'
-            : action === 'unban'
-              ? 'unban_success'
-              : action === 'timeout'
-                ? 'timeout_success'
-                : 'ban_success'
-        // Self-mod dedup: the toolbar already injected a synthetic notice for
-        // this exact action — the buffer dim above still applies, but a second
-        // system line (and duplicate mod-log entry) must not.
-        if (this._consumeSelfMod(channel, noticeType, action === 'delete' ? message.targetMsgId : targetLc)) return
-        const text =
-          action === 'delete'
-            ? `a message was deleted`
-            : action === 'unban'
-              ? `${target} was unbanned`
-              : action === 'timeout'
-                ? `${target} timed out for ${message.banDuration}s`
-                : `${target} was banned`
-        this.emit('message', {
-          type: 'notice',
-          noticeType,
-          platform: 'kick',
-          channel,
-          user: 'system',
-          text,
-          systemMsg: text,
-          color: '#808080',
-          badges: '',
-          time: Date.now(),
-          id: `kickmod-${channel}-${target || message.targetMsgId || ''}-${noticeType}-${Date.now()}`,
-          targetUser: target,
-          targetUserId: message.targetUserId || '',
-          targetMsgId: message.targetMsgId || '',
-          banDuration: message.banDuration || 0,
-          // Kick's AI moderation deletes messages constantly — a visible line per
-          // deletion would flood chat, and the dim already conveys it. So a delete
-          // is dim-only (hidden line); bans/timeouts/unbans keep their system line.
-          hidden: action === 'delete',
-        })
+        this.ingestModeration(message)
         return
       }
 
@@ -64187,6 +64219,14 @@ const STORAGE_KEY = 'heatsync_multichat'
       if (gTwitch && hostPlatform === 'twitch') {
         try {
           startNativeTap(getCurrentChannel())
+        } catch (_) {}
+      }
+      // Kick page-level chat tap — third transport line for the current page
+      // channel, inert while the BG Pusher tap / server relay are delivering.
+      // typeof-guarded: the module is bundled for the kick host only.
+      if (hostPlatform === 'kick' && typeof initKickNativeTap === 'function') {
+        try {
+          initKickNativeTap()
         } catch (_) {}
       }
       // Auto-tabs: pull the current open-stream set once at boot — the bg

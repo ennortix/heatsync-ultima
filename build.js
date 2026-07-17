@@ -461,6 +461,7 @@ const COPY_FILES = [
   'early-inject-main.js',
   'twitch-chat-intercept.js',
   'kick-nav-watcher.js',
+  'kick-chat-intercept.js',
   'youtube-keyboard-guard.js',
   'yt-data-bridge.js',
   'platform-detector.js',
@@ -515,6 +516,7 @@ function readLib() {
 // Read multichat module files (only bundled into multichat-<platform>.js)
 const MULTICHAT_MODULES = [
   'bootstrap.js',
+  'kick-native-tap.js',
   'send-targets.js',
   'tab-messages.js',
   'notifs.js',
@@ -552,11 +554,12 @@ const MULTICHAT_MODULES = [
 ]
 
 // native-tap.js reads Twitch's React fiber tree — twitch-only, exclude on kick/youtube
+// kick-native-tap.js pairs with chrome/kick-chat-intercept.js — kick-only
 // kick-host.js / youtube-host.js / twitch-host.js: per-platform host DOM modules
 const PLATFORM_MODULES = {
-  twitch: [...MULTICHAT_MODULES, 'twitch-host.js'],
+  twitch: [...MULTICHAT_MODULES.filter((f) => f !== 'kick-native-tap.js'), 'twitch-host.js'],
   kick: [...MULTICHAT_MODULES.filter((f) => f !== 'native-tap.js'), 'kick-host.js'],
-  youtube: [...MULTICHAT_MODULES.filter((f) => f !== 'native-tap.js'), 'youtube-host.js'],
+  youtube: [...MULTICHAT_MODULES.filter((f) => f !== 'native-tap.js' && f !== 'kick-native-tap.js'), 'youtube-host.js'],
 }
 
 function readMultichatModules(platform) {

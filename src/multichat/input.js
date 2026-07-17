@@ -2106,8 +2106,16 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
           },
           { label: 'ban', danger: true, fn: () => _ctxMod('ban', msgCh, msgPlat, msgLogin, msgId, 0, 'banned') },
           { label: 'unban', fn: () => _ctxMod('unban', msgCh, msgPlat, msgLogin, msgId, 0, 'unbanned') },
-          'sep',
         )
+        // Bulk-select entry — twitch/kick only (YT rows carry none of the
+        // dataset bulk-select needs, same reason the hover toolbar skips YT).
+        if (!isYt && typeof startBulkSelectFrom === 'function' && typeof isBulkSelectMode === 'function') {
+          mod.push({
+            label: isBulkSelectMode() ? 'exit select mode' : 'select mode',
+            fn: () => (isBulkSelectMode() ? exitBulkSelectMode() : startBulkSelectFrom(msg)),
+          })
+        }
+        mod.push('sep')
         items.push(...mod)
       } else {
         // Warm the right cache so the next right-click surfaces actions.

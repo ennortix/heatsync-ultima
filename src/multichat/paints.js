@@ -227,7 +227,11 @@ function ensureHsPaintSheet() {
       // .hsp-hover is the JS-synced twin of :hover — installHsPaintHoverSync
       // puts it on EVERY visible copy of the hovered user's name so they all
       // freeze together, not just the pointer target.
-      '[class*="hsp-"]:hover,[class*="hsp-"]:hover span,[class*="hsp-"].hsp-hover,[class*="hsp-"].hsp-hover span{animation-play-state:paused !important;background:#fff !important;-webkit-background-clip:border-box !important;background-clip:border-box !important;color:#000 !important;transform:none !important;}'
+      // .hs-mc-row-selected (bulk-select, mod-toolbar.js) reuses the same
+      // flatten: a gradient/clip-text paint left un-flattened would render
+      // invisible against the selected row's white bg (background:#fff would
+      // clip straight through transparent gradient text).
+      '[class*="hsp-"]:hover,[class*="hsp-"]:hover span,[class*="hsp-"].hsp-hover,[class*="hsp-"].hsp-hover span,.hs-mc-row-selected [class*="hsp-"],.hs-mc-row-selected [class*="hsp-"] span{animation-play-state:paused !important;background:#fff !important;-webkit-background-clip:border-box !important;background-clip:border-box !important;color:#000 !important;transform:none !important;}'
     const tracked =
       typeof cleanup !== 'undefined' && cleanup.trackNode ? cleanup.trackNode(hsPaintSheetEl) : hsPaintSheetEl
     document.head.appendChild(tracked)

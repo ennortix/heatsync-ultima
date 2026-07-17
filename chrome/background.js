@@ -6330,6 +6330,12 @@ function handleWSMessage(msg) {
       // user moderates (EventSub AutoMod + Helix, server-side). Trim/coerce
       // every field — never trust the wire — same discipline as eventsub:event.
       case 'automod:hold': {
+        // heldAt arrives as an ISO 8601 string from the server (Helix
+        // timestamp shape) — Number() on that NaNs, which silently always
+        // fell back to Date.now(). Date.parse handles the string case;
+        // Number still covers a server that ever sends an epoch ms number.
+        const heldAtRaw = typeof msg.heldAt === 'string' ? Date.parse(msg.heldAt) : Number(msg.heldAt)
+        const heldAt = Number.isFinite(heldAtRaw) && heldAtRaw > 0 ? heldAtRaw : Date.now()
         broadcastToTabs({
           type: 'automod_hold',
           broadcasterId: String(msg.broadcasterId || ''),
@@ -6337,13 +6343,18 @@ function handleWSMessage(msg) {
           msgId: String(msg.msgId || ''),
           senderId: String(msg.senderId || ''),
           senderLogin: String(msg.senderLogin || '').toLowerCase(),
-          senderName: String(msg.senderName || msg.senderLogin || ''),
-          text: String(msg.text || ''),
-          heldAt: Number(msg.heldAt) || Date.now(),
+          senderName: String(msg.senderName || msg.senderLogin || '').slice(0, 100),
+          text: String(msg.text || '').slice(0, 2000),
+          heldAt,
           reason: msg.reason === 'blocked_term' ? 'blocked_term' : 'automod',
-          category: msg.category ? String(msg.category) : null,
+          category: msg.category ? String(msg.category).slice(0, 100) : null,
           level: Number(msg.level) || 0,
-          terms: Array.isArray(msg.terms) ? msg.terms.map((t) => String(t)).slice(0, 10) : null,
+          terms: Array.isArray(msg.terms)
+            ? msg.terms
+                .map((t) => String(t).slice(0, 100))
+                .filter(Boolean)
+                .slice(0, 10)
+            : null,
         })
         break
       }

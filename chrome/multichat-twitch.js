@@ -48648,6 +48648,11 @@ function resolveAutomodRow(broadcasterLogin, msgId, status, modLogin) {
 // ── delegated button clicks ─────────────────────────────────────────────────
 
 function handleAutomodActionClick(rowEl, action) {
+  // Audit-toggle rule: every toggle needs a reader on every action path, not
+  // just the render/sweep/message-listener gates — a row rendered before a
+  // mid-session disable would otherwise keep live, clickable allow/deny
+  // buttons after the user turned the subsystem off.
+  if (!isEnabled('automod-queue')) return
   const msgId = rowEl?.dataset.msgId
   // .toLowerCase() belt-and-braces: findAutomodChannel already lowercases
   // internally (row insertion also always writes the dataset lowercase), but
@@ -48718,17 +48723,22 @@ async function resolveAutomodBroadcasterId(login) {
 async function automodSweep() {
   if (!isEnabled('automod-queue')) return
   if (typeof config === 'undefined' || !Array.isArray(config?.channels)) return
-  for (const ch of config.channels) {
-    const login = (ch?.twitch || '').toLowerCase()
-    if (!login) continue
-    try {
-      const modded = typeof isModFor === 'function' && (await isModFor(login))
-      if (!modded) continue
-      const broadcasterId = await resolveAutomodBroadcasterId(login)
-      if (!broadcasterId) continue
-      await safeSendMessage({ type: 'automod_watch', broadcasterId })
-    } catch (_) {}
-  }
+  // Per-channel work is independent (own isModFor cache entry, own broadcaster
+  // id, own watch call) — run the sweep concurrently instead of serially
+  // awaiting each channel in turn.
+  await Promise.all(
+    config.channels.map(async (ch) => {
+      const login = (ch?.twitch || '').toLowerCase()
+      if (!login) return
+      try {
+        const modded = typeof isModFor === 'function' && (await isModFor(login))
+        if (!modded) return
+        const broadcasterId = await resolveAutomodBroadcasterId(login)
+        if (!broadcasterId) return
+        await safeSendMessage({ type: 'automod_watch', broadcasterId })
+      } catch (_) {}
+    }),
+  )
 }
 
 function initAutomodQueue() {

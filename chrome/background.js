@@ -3196,6 +3196,9 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
   const key = chKey(platform, channelName)
   // Skip if already fetched, or currently loading (sentinel prevents race)
   const cached = channelEmotesMap[key]
+  // Kept for the failure path: a failed refetch falls back to this instead of
+  // erasing the channel's emotes (stale beats missing).
+  const prevCached = Array.isArray(cached) ? cached : null
   if (cached === 'loading') {
     log(' Channel emotes currently loading for', channelName, '- skipping')
     return
@@ -3428,8 +3431,19 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
   } catch (error) {
     log(' ❌ Channel emotes fetch failed:', error.message || error)
     broadcastToTabs({ type: 'loading_status', done: true })
-    // Clear sentinel so retry works on next join_channel
-    delete channelEmotesMap[key]
+    // A failed REFETCH must fall back to the stale copy, not erase it — the
+    // old `delete` here threw away a restored cache on one transient 7TV/BTTV
+    // flake during the post-reload herd, leaving the channel emote-less for
+    // the whole session (and the deletion persisted on the next storage
+    // write). Stale emotes render; missing emotes don't. fetchedAt stays old,
+    // so the next join retries the refresh.
+    if (Array.isArray(prevCached)) {
+      channelEmotesMap[key] = prevCached
+      broadcastToTabs({ type: 'channel_emotes_update', emotes: prevCached, channelOwner: channelName, platform })
+    } else {
+      // Nothing to fall back to — clear the sentinel so the next join retries.
+      delete channelEmotesMap[key]
+    }
     seventvEmoteSetIds.delete(key)
   }
 }
@@ -7442,6 +7456,16 @@ async function handleMessage(message, sender, sendResponse) {
           joinedExtraChannels.add(key)
           saveJoinedExtraChannels()
         }
+        // Multichat extra channels get their emote sets HERE — this join is the
+        // only signal BG ever receives for them (content-side join_channel only
+        // fires for the page channel; the SW-boot refetch loop only covers
+        // channels known at boot). TTL-gating inside fetchChannelOwnerEmotes
+        // makes repeat joins cheap, and it re-broadcasts the cache immediately.
+        try {
+          fetchChannelOwnerEmotes(message.data.channel.toLowerCase(), null, message.data.platform.toLowerCase()).catch(
+            () => {},
+          )
+        } catch {}
         // Kick: pull deep archive from postgres alongside the server's 200-msg
         // ring backfill. Internal cooldown prevents duplicate fetches on
         // rapid switches.
@@ -7766,6 +7790,25 @@ async function handleMessage(message, sender, sendResponse) {
     // we return count:0 and the client's retry just spins. Async → return true.
     ;(async () => {
       if (initPromise) await initPromise
+      // Self-heal: any joined channel with no cache entry (evicted, wiped by a
+      // past failed refetch, never fetched) gets a fetch kicked off NOW — the
+      // result arrives via the progressive channel_emotes_update broadcasts.
+      // Without this, a missing channel stayed missing for the whole session:
+      // this handler only ever REPORTED the cache, and nothing else re-fetched.
+      try {
+        const wanted = new Set(joinedExtraChannels)
+        for (const t of tabChannels.values()) {
+          // tabChannels .channel is already a "platform/name" key (joinChannel)
+          if (t?.channel?.includes('/')) wanted.add(t.channel.toLowerCase())
+        }
+        for (const k of wanted) {
+          const state = channelEmotesMap[k]
+          if (!Array.isArray(state) && state !== 'loading') {
+            const { platform, channel } = splitChKey(k)
+            if (channel) fetchChannelOwnerEmotes(channel, null, platform).catch(() => {})
+          }
+        }
+      } catch {}
       const totalEmotes = Object.values(channelEmotesMap).reduce((sum, e) => sum + (Array.isArray(e) ? e.length : 0), 0)
       if (totalEmotes > 0) {
         browser.storage.local.set({

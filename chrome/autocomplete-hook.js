@@ -670,7 +670,6 @@
     // Chase: an all-duplicate page is not the end of the catalog — keep paging
     // a bounded number of times until something NEW appears or 7TV runs dry.
     let add = []
-    let lastItems = []
     for (let chase = 0; chase < HS_REMOTE_CHASE_PAGES; chase++) {
       const page = (cycleState._remotePage || 0) + 1
       let items
@@ -708,7 +707,6 @@
         return
       }
       cycleState._remotePage = page
-      lastItems = items
       // Short page → the catalog has no next page for this search.
       if (items.length < HS_REMOTE_PAGE) cycleState.remoteFetched = true
       // Dedupe by EXACT name (casing distinguishes emotes), matching the picker.
@@ -743,86 +741,19 @@
       // restarting at 0 would interleave it into page 1 on sort ties.
       m._ai = cycleState._aiSeq = (cycleState._aiSeq || 0) + 1
     })
-    // 7TV popularity rank by name — the search returns TOP_ALL_TIME order, so
-    // the item's page-offset index IS its rank (page 2 ranks after page 1).
-    // Accumulated across pages on cycleState so ranks page 1 handed to locals
-    // (which dedupe out of `add` but inherit a rank below) survive later
-    // merges — a re-sort must never reorder what an earlier merge ranked.
-    const popRank = cycleState._popRank || (cycleState._popRank = new Map())
-    let _rk = ((cycleState._remotePage || 1) - 1) * HS_REMOTE_PAGE
-    for (const it of lastItems) {
-      const nm = it.defaultName
-      if (!nm) continue
-      const k = nm.toLowerCase()
-      if (!popRank.has(k)) popRank.set(k, _rk++)
-    }
-    const prev = cycleState.matches[cycleState.index]
-    cycleState.matches.push(...add)
-    // Full-name exact match beats everything UNCONDITIONALLY (even the
-    // local-before-remote split — a remote exact hit is what the user typed).
-    // Then own/channel emotes first, then remote 7TV — used-before (frecency)
-    // leads within each block, mirroring the getMatches sort above and the
-    // multichat comparator (input.js compareAcMatches) so a remote merge can
-    // never reorder what the local pass already ranked. Never-used items:
-    // prefix before substring, then 7TV popularity (most-used first);
-    // channel/owned 7TV emotes inherit the global rank so they don't order
-    // alphabetically.
-    const prefixOf = (m) => ((m.nameLower || (m.name || '').toLowerCase()).startsWith(searchLower) ? 0 : 1)
-    const rankOf = (m) => {
-      const r = popRank.get((m.name || '').toLowerCase())
-      return r === undefined ? Infinity : r
-    }
-    const frecCycle = readEmoteFrecency()
-    const frecOf = (m) => frecCycle.get(m.name || '') || 0
-    const exactOf = (m) => ((m.nameLower || (m.name || '').toLowerCase()) === searchLower ? 0 : 1)
-    cycleState.matches.sort((a, b) => {
-      const ax = exactOf(a),
-        bx = exactOf(b)
+    // Append-only merge — NEVER re-sort the whole list mid-cycle. The old
+    // full-list re-sort let a remote exact-name hit jump above the user's
+    // position, running the tooltip BACKWARDS (4/4 -> 2/70) and reshuffling
+    // every ordinal they had already seen. Existing entries never move; the
+    // new block is ordered internally (exact match first, then 7TV
+    // TOP_ALL_TIME fetch order via the persistent _ai).
+    add.sort((a, b) => {
+      const ax = (a.nameLower || '') === searchLower ? 0 : 1
+      const bx = (b.nameLower || '') === searchLower ? 0 : 1
       if (ax !== bx) return ax - bx
-      const al = a.remote ? 1 : 0,
-        bl = b.remote ? 1 : 0
-      if (al !== bl) return al - bl
-      const af = frecOf(a),
-        bf = frecOf(b)
-      if (af > 0 !== bf > 0) return af > 0 ? -1 : 1
-      const ap = prefixOf(a),
-        bp = prefixOf(b)
-      if (af > 0) {
-        // both used — typed prefix first, then habit strength, then tier
-        if (ap !== bp) return ap - bp
-        if (af !== bf) return bf - af
-        if (!a.remote && !b.remote) {
-          const at = a.tier ?? 2,
-            bt = b.tier ?? 2
-          if (at !== bt) return at - bt
-        }
-      } else {
-        // neither used: channel > own > global outranks prefix/popularity, so a
-        // channel substring match beats a global prefix match (user call).
-        // Remotes have no tier (catalog).
-        if (!a.remote && !b.remote) {
-          const at = a.tier ?? 2,
-            bt = b.tier ?? 2
-          if (at !== bt) return at - bt
-        }
-        if (ap !== bp) return ap - bp
-        const ar = rankOf(a),
-          br = rankOf(b)
-        if (ar !== br) return ar - br
-      }
-      if (a.remote && b.remote) return (a._ai || 0) - (b._ai || 0)
-      const aSub = a.sub ? 0 : 1,
-        bSub = b.sub ? 0 : 1
-      if (aSub !== bSub) return aSub - bSub
-      const la = (a.name || '').length,
-        lb = (b.name || '').length
-      if (la !== lb) return la - lb
-      return (a.name || '').localeCompare(b.name || '')
+      return (a._ai || 0) - (b._ai || 0)
     })
-    if (prev) {
-      const ni = cycleState.matches.indexOf(prev)
-      if (ni >= 0) cycleState.index = ni
-    }
+    cycleState.matches.push(...add)
     // Clear the "searching…" flag and refresh the N/M denominator + readout.
     _doneRemote()
   }
@@ -2092,7 +2023,6 @@
             cycleState.remotePending = false
             cycleState._remotePage = 0
             cycleState._aiSeq = 0
-            cycleState._popRank = null
             hasMultipleMatches = cycleState.matches.length > 1
             // Lazy 7TV: with ≥2 local matches, DON'T hit the catalog yet — it fires
             // once you cycle near the last local match (see the advance branch). A

@@ -2777,6 +2777,10 @@
   // same channel) so the eventual loadEmotes() knows every scope to
   // first-load-clear in one shot. Drained when the timer fires.
   let _pendingEmoteScopes = new Set()
+  // Set when a channel_emotes_update payload contains names that weren't
+  // renderable before — drives the upgrade-only history heal even outside the
+  // cold-load window (late provider / deferred join / refetch payloads).
+  let _pendingEmoteAdds = false
   let newMessageCount = 0
   let isProgrammaticScroll = false // Flag to ignore programmatic scrolls
 
@@ -10757,6 +10761,20 @@
           // platform tag lets the panel keep both sets for a same-name twitch+kick
           // simulcast instead of one overwriting the other (merge-per-platform).
           const _ownerKey = msg.channelOwner.toLowerCase()
+          // Additive diff BEFORE the rebuild: does this payload make any name
+          // renderable that wasn't? Late payloads (a provider resolving after
+          // the 25s cold window — deferred joins, slow 7TV, a refetch landing
+          // minutes in) must still heal plain-text history rows; the time
+          // window alone missed them. Upgrade-only: removal payloads add no
+          // names, so they never trigger a history re-render ("history is
+          // sacred" — the stale-ghost registry handles removals).
+          const _prevCache = channelEmoteCaches[_ownerKey]
+          for (const _e of msg.emotes) {
+            if (_e?.name && _e.url && !(_prevCache instanceof Map && _prevCache.has(_e.name))) {
+              _pendingEmoteAdds = true
+              break
+            }
+          }
           _buildChannelEmoteCache(_ownerKey, msg.emotes, msg.platform)
           if (msg.platform === 'youtube') {
             // Alias the SAME Map under the shapes getCurrentChannel() yields on
@@ -10780,13 +10798,17 @@
         emoteReloadTimer = cleanup.setTimeout(() => {
           const pending = _pendingEmoteScopes
           _pendingEmoteScopes = new Set()
+          const hadAdds = _pendingEmoteAdds
+          _pendingEmoteAdds = false
           loadEmotes()
             .then(() => {
-              // Cold-load (first payload for the scope, OR a late provider still
-              // within the initial-load window): plain-text history rows need to
-              // pick up the now-renderable emotes. In-place text swap instead of
-              // clearRenderedHtmlCache()→epoch bump→full rebuild (the flash).
-              if (_emoteColdLoad(pending)) reloadEmotesInPlace()
+              // Heal plain-text history rows whenever this flush made new names
+              // renderable (additive diff), or during a scope's cold-load window
+              // (covers global/inventory scopes with no diff). In-place text
+              // swap instead of clearRenderedHtmlCache()→epoch bump→full
+              // rebuild (the flash). Additive-only outside the window, so a
+              // removal never re-renders history ("history is sacred").
+              if (hadAdds || _emoteColdLoad(pending)) reloadEmotesInPlace()
             })
             .catch((e) => log('[heatsync-mc] loadEmotes error:', e))
         }, 300)

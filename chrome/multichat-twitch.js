@@ -36415,9 +36415,14 @@ async function fetchRemoteEmoteMatches(search) {
     // FFZ's `uses` is real popularity — sort descending so the merged stream
     // leads with highest-use FFZ emotes first.
     rf.sort((a, b) => (b.uses || 0) - (a.uses || 0))
-    const items = [...rf, ...rb, ...r7]
+    // 7TV leads — its relevance ranking IS the culture ("pls" → the dancing
+    // XxxPls family), then BTTV, then FFZ-by-uses (the oldest catalog trails).
+    // The old FFZ-first + prefix-only combo made catalog cycling feel dead:
+    // every "…Pls"/"…JAM" suffix-named emote was filtered out and FFZ prefix
+    // junk led whatever survived.
+    const items = [...r7, ...rb, ...rf]
     // Lowercase dedupe (collapses 10x "Sadge" uploads to one — emote names are
-    // case-insensitive in practice; first-seen wins so FFZ's top result holds).
+    // case-insensitive in practice; first-seen wins so 7TV's top result holds).
     // Also dedupes against existing locals (already lowercased below).
     const have = new Set(acState.matches.map((m) => (m.name || '').toLowerCase()))
     const add = []
@@ -36425,8 +36430,10 @@ async function fetchRemoteEmoteMatches(search) {
       if (!it.name) continue
       const lower = it.name.toLowerCase()
       if (have.has(lower)) continue
-      // Prefix-only: catalog substring matches are noise.
-      if (!lower.startsWith(searchLower)) continue
+      // Substring is fine — the providers already relevance-matched the query;
+      // requiring a literal prefix dropped the suffix-named families users
+      // actually mean. Drop only fuzzy hits that don't contain the query.
+      if (!lower.includes(searchLower)) continue
       have.add(lower)
       const src = it.provider || '7tv'
       add.push({
@@ -36466,32 +36473,28 @@ async function fetchRemoteEmoteMatches(search) {
   showCycleTooltip() // refresh the N/M denominator / clear the searching state
 }
 
-// Append freshly-fetched catalog hits into the live cycle without moving the
-// user off the chip they're sitting on.
+// Append freshly-fetched catalog hits into the live cycle WITHOUT re-sorting
+// what the user has already cycled through. A full-list re-sort let a remote
+// exact-name hit jump above the current position — the tooltip ran BACKWARDS
+// (4/4 → 2/70) and every ordinal the user had seen reshuffled under them.
+// Append-only: existing entries never move, so N/M only ever grows forward;
+// the new block is ordered internally (exact match first, then fetch order:
+// FFZ-by-uses → BTTV → 7TV, pages in sequence via the persistent _ai).
 function _acMergeRemoteMatches(add, searchLower) {
   const wasEmpty = acState.matches.length === 0
-  const prev = acState.matches[acState.index]
+  add.sort((a, b) => {
+    const ax = (a.name || '').toLowerCase() === searchLower ? 0 : 1
+    const bx = (b.name || '').toLowerCase() === searchLower ? 0 : 1
+    if (ax !== bx) return ax - bx
+    return (a._ai || 0) - (b._ai || 0)
+  })
   acState.matches.push(...add.slice(0, Math.max(0, AC_REMOTE_MAX_MATCHES - acState.matches.length)))
-  // Merged sort — same comparator as the local sort (compareAcMatches), so
-  // remote expansion can never reorder differently than the local pass did.
-  // Remote items keep their pre-merge order via `_ai` (FFZ-by-uses → BTTV →
-  // 7TV), so cycling through remotes hits the highest quality first.
-  const _frec = typeof loadEmoteFrecency === 'function' ? loadEmoteFrecency() : new Map()
-  acState.matches.sort((a, b) => compareAcMatches(a, b, searchLower, _frec))
-  // Two cases land here:
-  //   • wasEmpty — no local match existed when Tab was pressed, so this remote
-  //     fetch fired immediately; insert the first remote hit now.
-  //   • lazy — local matches existed and the user cycled toward the end,
-  //     triggering this fetch; keep their committed chip pinned and only
-  //     re-point the index. Never async-swap a chip the user already cycled to
-  //     (see heatsync_tabcomplete_exact_locality: async re-insert sent the
-  //     wrong emote).
+  // wasEmpty — no local match existed when Tab was pressed, so this remote
+  // fetch fired immediately; insert the first remote hit now. (The lazy case
+  // needs nothing: append-only means the user's chip and index are untouched.)
   if (wasEmpty && acState.matches.length > 0) {
     acState.index = 0
     insertCompletionKeepOpen(acState.matches[0])
-  } else if (prev) {
-    const ni = acState.matches.indexOf(prev)
-    if (ni >= 0) acState.index = ni
   }
   showCycleTooltip() // refresh the N/M denominator
 }
@@ -54531,6 +54534,10 @@ const STORAGE_KEY = 'heatsync_multichat'
   // same channel) so the eventual loadEmotes() knows every scope to
   // first-load-clear in one shot. Drained when the timer fires.
   let _pendingEmoteScopes = new Set()
+  // Set when a channel_emotes_update payload contains names that weren't
+  // renderable before — drives the upgrade-only history heal even outside the
+  // cold-load window (late provider / deferred join / refetch payloads).
+  let _pendingEmoteAdds = false
   let newMessageCount = 0
   let isProgrammaticScroll = false // Flag to ignore programmatic scrolls
 
@@ -62511,6 +62518,20 @@ const STORAGE_KEY = 'heatsync_multichat'
           // platform tag lets the panel keep both sets for a same-name twitch+kick
           // simulcast instead of one overwriting the other (merge-per-platform).
           const _ownerKey = msg.channelOwner.toLowerCase()
+          // Additive diff BEFORE the rebuild: does this payload make any name
+          // renderable that wasn't? Late payloads (a provider resolving after
+          // the 25s cold window — deferred joins, slow 7TV, a refetch landing
+          // minutes in) must still heal plain-text history rows; the time
+          // window alone missed them. Upgrade-only: removal payloads add no
+          // names, so they never trigger a history re-render ("history is
+          // sacred" — the stale-ghost registry handles removals).
+          const _prevCache = channelEmoteCaches[_ownerKey]
+          for (const _e of msg.emotes) {
+            if (_e?.name && _e.url && !(_prevCache instanceof Map && _prevCache.has(_e.name))) {
+              _pendingEmoteAdds = true
+              break
+            }
+          }
           _buildChannelEmoteCache(_ownerKey, msg.emotes, msg.platform)
           if (msg.platform === 'youtube') {
             // Alias the SAME Map under the shapes getCurrentChannel() yields on
@@ -62534,13 +62555,17 @@ const STORAGE_KEY = 'heatsync_multichat'
         emoteReloadTimer = cleanup.setTimeout(() => {
           const pending = _pendingEmoteScopes
           _pendingEmoteScopes = new Set()
+          const hadAdds = _pendingEmoteAdds
+          _pendingEmoteAdds = false
           loadEmotes()
             .then(() => {
-              // Cold-load (first payload for the scope, OR a late provider still
-              // within the initial-load window): plain-text history rows need to
-              // pick up the now-renderable emotes. In-place text swap instead of
-              // clearRenderedHtmlCache()→epoch bump→full rebuild (the flash).
-              if (_emoteColdLoad(pending)) reloadEmotesInPlace()
+              // Heal plain-text history rows whenever this flush made new names
+              // renderable (additive diff), or during a scope's cold-load window
+              // (covers global/inventory scopes with no diff). In-place text
+              // swap instead of clearRenderedHtmlCache()→epoch bump→full
+              // rebuild (the flash). Additive-only outside the window, so a
+              // removal never re-renders history ("history is sacred").
+              if (hadAdds || _emoteColdLoad(pending)) reloadEmotesInPlace()
             })
             .catch((e) => log('[heatsync-mc] loadEmotes error:', e))
         }, 300)

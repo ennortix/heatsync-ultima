@@ -236,13 +236,16 @@ describe('autocomplete-hook.js — stays in lockstep with the multichat', () => 
     expect(hookScore({ n: 0, t: now }, now)).toBe(0)
   })
 
-  test('all three sort sites consult frecency (used-before beats tier)', () => {
+  test('both ranking sort sites consult frecency (used-before beats tier)', () => {
     // getMatches dropdown sort
     expect(HOOK_SRC).toContain('const aUsed = a._frec > 0')
-    // remote-merge cycle sort + local cycle rebuild sort
-    expect(HOOK_SRC.match(/readEmoteFrecency\(\)/g)?.length).toBeGreaterThanOrEqual(3)
-    expect(HOOK_SRC).toContain('const frecCycle = readEmoteFrecency()')
+    // local cycle rebuild sort
     expect(HOOK_SRC).toContain('const frecCyc = readEmoteFrecency()')
+    // The remote merge deliberately does NOT rank (so no frecency there): it
+    // is append-only, because a mid-cycle full re-sort reordered entries under
+    // the user and ran the tooltip backwards (4/4 → 2/70). Guard the invariant.
+    expect(HOOK_SRC).toContain('Append-only merge')
+    expect(HOOK_SRC).not.toContain('const frecCycle = readEmoteFrecency()')
   })
 
   test('inserts keep feeding both stores (MRU list for the picker + frecency)', () => {

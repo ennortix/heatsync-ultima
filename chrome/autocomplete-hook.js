@@ -630,9 +630,24 @@
   }`
   let _hsRemoteAbort = null
   let _hsRemoteToken = 0
+  // Paged catalog cycling (mirror of the overlay's fetchRemoteEmoteMatches):
+  // each call pulls the NEXT 7TV page; `remoteFetched` now means "catalog
+  // exhausted — no further fetch can help" and flips on a short page, an API
+  // error, or the cycle size cap. Popular prefixes need this: page 1 sorted
+  // by all-time top is mostly emotes already loaded locally, the dedupe
+  // dropped every hit, and the cycle wrapped back to 1/N as if 7TV had
+  // nothing left.
+  const HS_REMOTE_PAGE = 200
+  const HS_REMOTE_LOOKAHEAD = 5 // start fetching this many matches BEFORE the end
+  const HS_REMOTE_MAX_MATCHES = 1000
+  const HS_REMOTE_CHASE_PAGES = 4 // consecutive all-duplicate pages before giving up the trigger
   async function fetch7tvCycleMatches(search) {
     // Emote-only: skip :emoji, @user, and short fragments.
     if (!search || search.length < 2 || search.startsWith(':') || search.startsWith('@')) return
+    if (cycleState.matches.length >= HS_REMOTE_MAX_MATCHES) {
+      cycleState.remoteFetched = true
+      return
+    }
     const token = ++_hsRemoteToken
     cycleState.remotePending = true
     // Clear the "searching…" flag and refresh the tooltip — but only if a newer
@@ -652,68 +667,90 @@
     }
     const ac = new AbortController()
     _hsRemoteAbort = ac
-    let items
-    try {
-      const resp = await fetch('https://api.7tv.app/v4/gql', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: ac.signal,
-        body: JSON.stringify({
-          operationName: 'SearchEmotes',
-          query: SEVEN_TV_GQL,
-          variables: { query: search, page: 1, perPage: 200 },
-        }),
-      })
-      if (!resp.ok) {
+    // Chase: an all-duplicate page is not the end of the catalog — keep paging
+    // a bounded number of times until something NEW appears or 7TV runs dry.
+    let add = []
+    let lastItems = []
+    for (let chase = 0; chase < HS_REMOTE_CHASE_PAGES; chase++) {
+      const page = (cycleState._remotePage || 0) + 1
+      let items
+      try {
+        const resp = await fetch('https://api.7tv.app/v4/gql', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: ac.signal,
+          body: JSON.stringify({
+            operationName: 'SearchEmotes',
+            query: SEVEN_TV_GQL,
+            variables: { query: search, page, perPage: HS_REMOTE_PAGE },
+          }),
+        })
+        if (!resp.ok) {
+          // Retrying a failing API on every trigger helps nobody — stop here.
+          cycleState.remoteFetched = true
+          _doneRemote()
+          return
+        }
+        const data = await resp.json()
+        items = data?.data?.emotes?.search?.items || []
+      } catch (_) {
+        if (!ac.signal.aborted) cycleState.remoteFetched = true
         _doneRemote()
         return
       }
-      const data = await resp.json()
-      items = data?.data?.emotes?.search?.items || []
-    } catch (_) {
-      _doneRemote()
-      return
-    }
-    if (ac.signal.aborted || token !== _hsRemoteToken) {
-      _doneRemote()
-      return
-    }
-    // Cycle must still be on the search this fetch was issued for.
-    if (cycleState.searchTerm !== search) {
-      _doneRemote()
-      return
-    }
-    // Dedupe by EXACT name (casing distinguishes emotes), matching the picker.
-    const have = new Set(cycleState.matches.map((m) => m.name))
-    const searchLower = search.toLowerCase()
-    const add = []
-    for (const it of items) {
-      const name = it.defaultName
-      if (!name || have.has(name)) continue
-      have.add(name)
-      const nl = name.toLowerCase()
-      add.push({
-        name,
-        nameLower: nl,
-        url: `https://cdn.7tv.app/emote/${it.id}/1x.webp`,
-        remote: true,
-        source: '7tv',
-        zeroWidth: !!it.flags?.defaultZeroWidth,
-      })
+      if (ac.signal.aborted || token !== _hsRemoteToken) {
+        _doneRemote()
+        return
+      }
+      // Cycle must still be on the search this fetch was issued for.
+      if (cycleState.searchTerm !== search) {
+        _doneRemote()
+        return
+      }
+      cycleState._remotePage = page
+      lastItems = items
+      // Short page → the catalog has no next page for this search.
+      if (items.length < HS_REMOTE_PAGE) cycleState.remoteFetched = true
+      // Dedupe by EXACT name (casing distinguishes emotes), matching the picker.
+      const have = new Set(cycleState.matches.map((m) => m.name))
+      add = []
+      for (const it of items) {
+        const name = it.defaultName
+        if (!name || have.has(name)) continue
+        have.add(name)
+        const nl = name.toLowerCase()
+        add.push({
+          name,
+          nameLower: nl,
+          url: `https://cdn.7tv.app/emote/${it.id}/1x.webp`,
+          remote: true,
+          source: '7tv',
+          zeroWidth: !!it.flags?.defaultZeroWidth,
+        })
+      }
+      if (add.length) break // got new content; the next page fetches as the user nears the new end
+      if (cycleState.remoteFetched) break // drained with nothing new — the cycle wraps
     }
     if (!add.length) {
       _doneRemote()
       return
     }
-    add.forEach((m, i) => {
-      m._ai = i
+    const searchLower = search.toLowerCase()
+    add = add.slice(0, Math.max(0, HS_REMOTE_MAX_MATCHES - cycleState.matches.length))
+    if (cycleState.matches.length + add.length >= HS_REMOTE_MAX_MATCHES) cycleState.remoteFetched = true
+    add.forEach((m) => {
+      // Persistent sequence, NOT the per-merge index — page 2's counter
+      // restarting at 0 would interleave it into page 1 on sort ties.
+      m._ai = cycleState._aiSeq = (cycleState._aiSeq || 0) + 1
     })
-    // 7TV popularity rank by name — the search returns TOP_ALL_TIME order, so the
-    // item's index IS its rank. Built from the full result set so channel/owned 7TV
-    // emotes (which dedupe out of `add`) still inherit a popularity rank below.
-    const popRank = new Map()
-    let _rk = 0
-    for (const it of items) {
+    // 7TV popularity rank by name — the search returns TOP_ALL_TIME order, so
+    // the item's page-offset index IS its rank (page 2 ranks after page 1).
+    // Accumulated across pages on cycleState so ranks page 1 handed to locals
+    // (which dedupe out of `add` but inherit a rank below) survive later
+    // merges — a re-sort must never reorder what an earlier merge ranked.
+    const popRank = cycleState._popRank || (cycleState._popRank = new Map())
+    let _rk = ((cycleState._remotePage || 1) - 1) * HS_REMOTE_PAGE
+    for (const it of lastItems) {
       const nm = it.defaultName
       if (!nm) continue
       const k = nm.toLowerCase()
@@ -2053,14 +2090,16 @@
             cycleState.localCount = cycleFinal.length
             cycleState.remoteFetched = false
             cycleState.remotePending = false
+            cycleState._remotePage = 0
+            cycleState._aiSeq = 0
+            cycleState._popRank = null
             hasMultipleMatches = cycleState.matches.length > 1
             // Lazy 7TV: with ≥2 local matches, DON'T hit the catalog yet — it fires
-            // once you cycle to the last local match (see the advance branch). A word
-            // with ≤1 local match still searches immediately: it's the only way to
-            // complete a non-owned emote, and native cycling needs ≥2 entries to even
-            // engage (so a lone local could otherwise never reach the catalog).
+            // once you cycle near the last local match (see the advance branch). A
+            // word with ≤1 local match still searches immediately: it's the only way
+            // to complete a non-owned emote, and native cycling needs ≥2 entries to
+            // even engage (so a lone local could otherwise never reach the catalog).
             if (!emojiSearch && cycleFinal.length <= 1) {
-              cycleState.remoteFetched = true
               fetch7tvCycleMatches(currentSearch)
             }
             log(' 🔄 Rebuilt', cycleState.matches.length, 'matches for "' + currentSearch + '"')
@@ -2092,24 +2131,22 @@
             if (justCycled) {
               const atEnd = cycleState.index + 1 >= cycleState.matches.length
               // Could more 7TV catalog hits still arrive? (a fetch is in flight,
-              // or we haven't fetched yet for a fetchable term). If so, DON'T wrap
-              // to the top on reaching the end — the user asked to keep cycling
-              // into 7tv (13/13 → 14/99), not loop back to 1.
+              // or the catalog isn't exhausted for a fetchable term). If so, DON'T
+              // wrap to the top on reaching the end — the user asked to keep
+              // cycling into 7tv (13/13 → 14/99), not loop back to 1.
               const remoteMayCome =
                 cycleState.remotePending ||
                 (!cycleState.remoteFetched &&
-                  cycleState.localCount > 0 &&
                   cycleState.searchTerm &&
                   cycleState.searchTerm.length >= 2 &&
                   !cycleState.searchTerm.startsWith(':') &&
                   !cycleState.searchTerm.startsWith('@'))
               if (atEnd && remoteMayCome) {
-                // Kick off (or keep waiting on) the 7TV fetch and HOLD here — the
-                // current emote stays inserted; the next Tab, once results have
-                // appended + re-sorted (preserving this position), advances into
-                // 14/99 instead of looping back to 1.
-                if (!cycleState.remoteFetched) {
-                  cycleState.remoteFetched = true
+                // Kick off (or keep waiting on) the next catalog page and HOLD
+                // here — the current emote stays inserted; the next Tab, once
+                // results have appended + re-sorted (preserving this position),
+                // advances into 14/99 instead of looping back to 1.
+                if (!cycleState.remoteFetched && !cycleState.remotePending) {
                   fetch7tvCycleMatches(cycleState.searchTerm)
                 }
                 cycleState.lastTime = now
@@ -2133,17 +2170,18 @@
               justCycled ? '(cycling)' : '(first)',
             )
             showCycleTooltip(cycleState.index + 1, cycleState.matches.length, nextEmote)
-            // Lazy 7TV pre-fetch: fire as soon as you forward-cycle ONTO the last
-            // local match, so catalog hits are usually ready by the Tab that needs
-            // them (the end-of-list hold above is the fallback if you out-tab the
-            // fetch). Fires once; zero-local words fetch eagerly on rebuild.
+            // Lazy 7TV pre-fetch: fire as soon as you cycle WITHIN LOOKAHEAD of
+            // the end of the current list, so the next catalog page is usually
+            // merged by the Tab that needs it (the end-of-list hold above is the
+            // fallback if you out-tab the fetch). Each approach to the merged
+            // end pulls one more page until the catalog is exhausted or the
+            // cycle hits its size cap.
             if (
               justCycled &&
               !cycleState.remoteFetched &&
-              cycleState.localCount > 0 &&
-              cycleState.index >= cycleState.localCount - 1
+              !cycleState.remotePending &&
+              cycleState.index >= cycleState.matches.length - 1 - HS_REMOTE_LOOKAHEAD
             ) {
-              cycleState.remoteFetched = true
               fetch7tvCycleMatches(cycleState.searchTerm)
             }
 

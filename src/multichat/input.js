@@ -591,9 +591,23 @@ function acRemoteEligible(search) {
   if (hsModClassify(search, { allowPrefix: false }).kind === 'modifier') return false
   return true
 }
+// Paged catalog cycling: each call pulls the NEXT page from every provider
+// that still has one. remoteDone flips only when all providers are exhausted
+// (or the match list hits the cap) — until then the cycle holds at the end
+// instead of wrapping, and approaching the end pulls another page. Without
+// pagination, popular prefixes were a dead end: page 1 sorted by all-time top
+// is mostly emotes the user already has loaded, the dedupe dropped every hit,
+// and the cycle wrapped back to 1/N as if the catalog had nothing.
+const AC_REMOTE_LOOKAHEAD = 5 // start fetching this many matches BEFORE the end
+const AC_REMOTE_MAX_MATCHES = 1000 // total cycle size cap
+const AC_REMOTE_CHASE_PAGES = 4 // consecutive all-duplicate pages before giving up the trigger
 async function fetchRemoteEmoteMatches(search) {
   // Emote-only: skip @user, :emoji, modifier tokens, and short fragments.
   if (!acRemoteEligible(search)) return
+  if (acState.matches.length >= AC_REMOTE_MAX_MATCHES) {
+    acState.remoteDone = true
+    return
+  }
   const token = ++_acRemoteToken
   acState.remotePending = true
   if (_acRemoteAbort) {
@@ -603,64 +617,112 @@ async function fetchRemoteEmoteMatches(search) {
   }
   const ac = new AbortController()
   _acRemoteAbort = ac
-  const calls = []
-  if (typeof mcSearchFfzApi === 'function') calls.push(mcSearchFfzApi(search, ac.signal))
-  else calls.push(Promise.resolve([]))
-  if (typeof mcSearchBttvApi === 'function') calls.push(mcSearchBttvApi(search, ac.signal))
-  else calls.push(Promise.resolve([]))
-  if (typeof mcSearch7tvApi === 'function') calls.push(mcSearch7tvApi(search, ac.signal, { perPage: 60 }))
-  else calls.push(Promise.resolve([]))
-  const settled = await Promise.allSettled(calls)
+  // Per-provider page sizes must match what the mcSearch*Api calls request —
+  // a short page is the exhaustion signal (no next page worth asking for).
+  const sizes = typeof MC_PAGE_SIZE !== 'undefined' ? MC_PAGE_SIZE : { ffz: 200, bttv: 100 }
+  const ex = acState._remoteExhausted || (acState._remoteExhausted = { ffz: false, bttv: false, stv: false })
+  const searchLower = search.toLowerCase()
+  // Chase: an all-duplicate page (top catalog hits collide with loaded locals)
+  // is not the end of the catalog — keep paging a bounded number of times
+  // until something NEW appears or every provider runs dry.
+  for (let chase = 0; chase < AC_REMOTE_CHASE_PAGES; chase++) {
+    if (ex.ffz && ex.bttv && ex.stv) break
+    const page = (acState._remotePage || 0) + 1
+    const calls = [
+      !ex.ffz && typeof mcSearchFfzApi === 'function'
+        ? mcSearchFfzApi(search, ac.signal, { page })
+        : Promise.resolve(null),
+      !ex.bttv && typeof mcSearchBttvApi === 'function'
+        ? mcSearchBttvApi(search, ac.signal, { page })
+        : Promise.resolve(null),
+      !ex.stv && typeof mcSearch7tvApi === 'function'
+        ? mcSearch7tvApi(search, ac.signal, { page, perPage: 60 })
+        : Promise.resolve(null),
+    ]
+    const settled = await Promise.allSettled(calls)
+    if (ac.signal.aborted || token !== _acRemoteToken) return
+    // Cycling must still be on the same search the fetch was issued for.
+    if (!acState.active || acState.search !== search) {
+      acState.remotePending = false
+      return
+    }
+    acState._remotePage = page
+    // Short page → that provider has no next page for this search. Provider
+    // errors also stop that provider — retrying a failing API on every
+    // trigger helps nobody (the others keep paging).
+    const drain = (idx, key, pageSize) => {
+      if (ex[key]) return []
+      const s = settled[idx]
+      if (s?.status !== 'fulfilled' || !Array.isArray(s.value)) {
+        ex[key] = true
+        return []
+      }
+      if (s.value.length < pageSize) ex[key] = true
+      return s.value
+    }
+    const rf = drain(0, 'ffz', sizes.ffz || 200)
+    const rb = drain(1, 'bttv', sizes.bttv || 100)
+    const r7 = drain(2, 'stv', 60)
+    // FFZ's `uses` is real popularity — sort descending so the merged stream
+    // leads with highest-use FFZ emotes first.
+    rf.sort((a, b) => (b.uses || 0) - (a.uses || 0))
+    const items = [...rf, ...rb, ...r7]
+    // Lowercase dedupe (collapses 10x "Sadge" uploads to one — emote names are
+    // case-insensitive in practice; first-seen wins so FFZ's top result holds).
+    // Also dedupes against existing locals (already lowercased below).
+    const have = new Set(acState.matches.map((m) => (m.name || '').toLowerCase()))
+    const add = []
+    for (const it of items) {
+      if (!it.name) continue
+      const lower = it.name.toLowerCase()
+      if (have.has(lower)) continue
+      // Prefix-only: catalog substring matches are noise.
+      if (!lower.startsWith(searchLower)) continue
+      have.add(lower)
+      const src = it.provider || '7tv'
+      add.push({
+        name: it.name,
+        url: it.url,
+        source: src,
+        priority: 0,
+        type: 'emote',
+        remote: true,
+        zeroWidth: !!it.zeroWidth,
+        // Persistent sequence, NOT add.length — page 2's counter restarting
+        // at 0 would interleave it into page 1 on sort ties instead of after.
+        _ai: acState._aiSeq++,
+      })
+      // Remember for auto-add-on-send (only matters if the user actually sends it).
+      recentRemoteCompletions.delete(it.name)
+      recentRemoteCompletions.set(it.name, { url: it.url, source: src, zeroWidth: !!it.zeroWidth })
+      while (recentRemoteCompletions.size > REMOTE_COMPLETION_CAP) {
+        recentRemoteCompletions.delete(recentRemoteCompletions.keys().next().value)
+      }
+    }
+    if (add.length) {
+      _acMergeRemoteMatches(add, searchLower)
+      break // got new content; the next page fetches as the user nears the new end
+    }
+    // all duplicates — chase the next page
+  }
   // Clear the in-flight flag on every exit path so a bailed fetch can't leave
   // "searching 7tv…" stuck on — but only if a newer fetch hasn't taken over
   // (token bumped), in which case that fetch now owns the flag.
   if (token === _acRemoteToken) acState.remotePending = false
-  if (ac.signal.aborted || token !== _acRemoteToken) return
-  // Cycling must still be on the same search the fetch was issued for.
-  if (!acState.active || acState.search !== search) return
-  acState.remoteDone = true
-  const rf = settled[0]?.status === 'fulfilled' && Array.isArray(settled[0].value) ? settled[0].value : []
-  const rb = settled[1]?.status === 'fulfilled' && Array.isArray(settled[1].value) ? settled[1].value : []
-  const r7 = settled[2]?.status === 'fulfilled' && Array.isArray(settled[2].value) ? settled[2].value : []
-  // FFZ's `uses` is real popularity — sort descending so the merged stream
-  // leads with highest-use FFZ emotes first.
-  rf.sort((a, b) => (b.uses || 0) - (a.uses || 0))
-  const items = [...rf, ...rb, ...r7]
-  // Lowercase dedupe (collapses 10x "Sadge" uploads to one — emote names are
-  // case-insensitive in practice; first-seen wins so FFZ's top result holds).
-  // Also dedupes against existing locals (already lowercased below).
-  const have = new Set(acState.matches.map((m) => (m.name || '').toLowerCase()))
-  const searchLower = search.toLowerCase()
-  const add = []
-  for (const it of items) {
-    if (!it.name) continue
-    const lower = it.name.toLowerCase()
-    if (have.has(lower)) continue
-    // Prefix-only: catalog substring matches are noise.
-    if (!lower.startsWith(searchLower)) continue
-    have.add(lower)
-    const src = it.provider || '7tv'
-    add.push({
-      name: it.name,
-      url: it.url,
-      source: src,
-      priority: 0,
-      type: 'emote',
-      remote: true,
-      zeroWidth: !!it.zeroWidth,
-      _ai: add.length,
-    })
-    // Remember for auto-add-on-send (only matters if the user actually sends it).
-    recentRemoteCompletions.delete(it.name)
-    recentRemoteCompletions.set(it.name, { url: it.url, source: src, zeroWidth: !!it.zeroWidth })
-    while (recentRemoteCompletions.size > REMOTE_COMPLETION_CAP) {
-      recentRemoteCompletions.delete(recentRemoteCompletions.keys().next().value)
-    }
+  // Done only when there is truly nothing left to page through — the cycle
+  // then wraps at the end like any finite list.
+  if ((ex.ffz && ex.bttv && ex.stv) || acState.matches.length >= AC_REMOTE_MAX_MATCHES) {
+    acState.remoteDone = true
   }
-  if (!add.length) return
+  showCycleTooltip() // refresh the N/M denominator / clear the searching state
+}
+
+// Append freshly-fetched catalog hits into the live cycle without moving the
+// user off the chip they're sitting on.
+function _acMergeRemoteMatches(add, searchLower) {
   const wasEmpty = acState.matches.length === 0
   const prev = acState.matches[acState.index]
-  acState.matches.push(...add.slice(0, 80))
+  acState.matches.push(...add.slice(0, Math.max(0, AC_REMOTE_MAX_MATCHES - acState.matches.length)))
   // Merged sort — same comparator as the local sort (compareAcMatches), so
   // remote expansion can never reorder differently than the local pass did.
   // Remote items keep their pre-merge order via `_ai` (FFZ-by-uses → BTTV →
@@ -670,10 +732,11 @@ async function fetchRemoteEmoteMatches(search) {
   // Two cases land here:
   //   • wasEmpty — no local match existed when Tab was pressed, so this remote
   //     fetch fired immediately; insert the first remote hit now.
-  //   • lazy — local matches existed and the user cycled to the end, triggering
-  //     this fetch; keep their committed chip pinned and only re-point the index.
-  //     Never async-swap a chip the user already cycled to (see
-  //     heatsync_tabcomplete_exact_locality: async re-insert sent the wrong emote).
+  //   • lazy — local matches existed and the user cycled toward the end,
+  //     triggering this fetch; keep their committed chip pinned and only
+  //     re-point the index. Never async-swap a chip the user already cycled to
+  //     (see heatsync_tabcomplete_exact_locality: async re-insert sent the
+  //     wrong emote).
   if (wasEmpty && acState.matches.length > 0) {
     acState.index = 0
     insertCompletionKeepOpen(acState.matches[0])
@@ -3028,13 +3091,19 @@ function handleInputKeydown(e) {
       }
       acState.index = (acState.index + (e.shiftKey ? len - 1 : 1)) % len
       insertCompletionKeepOpen(acState.matches[acState.index])
-      // Lazy 7TV/BTTV/FFZ search: when you LAND on the last local match (cycling
-      // either direction — forward-Tab through, or Shift+Tab back to it), pull the
-      // catalog so the next forward Tab keeps cycling into remote hits. The common
-      // case (your channel/own/global emote is right there) never touches the
-      // network. Fires once per search. Triggered before the tooltip so it can show
-      // the live "searching 7tv…" state immediately.
-      if (!acState.remoteDone && !acState.remotePending && acState.index === len - 1 && acState.search) {
+      // Lazy 7TV/BTTV/FFZ search: when you get WITHIN AC_REMOTE_LOOKAHEAD of the
+      // end (cycling either direction), pull the next catalog page so the hits
+      // are already merged by the time you reach the last one — no hold, no
+      // wrap, 20/20 flows straight into 21/N. The common case (your channel/
+      // own/global emote is right there) never touches the network, and each
+      // approach to the merged end pulls one more page (up to the cap).
+      // Triggered before the tooltip so it can show "searching 7tv…" live.
+      if (
+        !acState.remoteDone &&
+        !acState.remotePending &&
+        acState.index >= len - 1 - AC_REMOTE_LOOKAHEAD &&
+        acState.search
+      ) {
         fetchRemoteEmoteMatches(acState.search)
       }
       showCycleTooltip()
@@ -3055,6 +3124,9 @@ function handleInputKeydown(e) {
         acState.search = word
         acState.remoteDone = false
         acState.remotePending = false
+        acState._remotePage = 0
+        acState._remoteExhausted = null
+        acState._aiSeq = 0
 
         // Calculate positions for text input cycling (textarea only)
         if (!wysiwygEnabled && input.value !== undefined) captureAcWordBounds(input)
@@ -5343,6 +5415,9 @@ function hideAutocomplete() {
   acState._frecBumped = null // session over — whatever was last bumped is the commit
   acState.remoteDone = false
   acState.remotePending = false
+  acState._remotePage = 0
+  acState._remoteExhausted = null
+  acState._aiSeq = 0
   _acRemoteToken++ // invalidate any in-flight 7TV fetch
   if (_acRemoteAbort) {
     try {

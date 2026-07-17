@@ -597,3 +597,95 @@ describe('fetchKickChannelEmotes', () => {
     expect(out.map((e) => e.name)).toEqual(['valid'])
   })
 })
+
+// ── kpNormalizeChatroomModes / kpModeChanges (Kick chat-mode banners) ──────
+//
+// Kick's Pusher chatroom channel emits ChatroomUpdatedEvent whenever a mod
+// changes slow/sub-only/emote-only/followers mode — mirrors Twitch's
+// ROOMSTATE→mode_change notice (bgIrcHandleLine, ~line 10571). These two
+// pure functions do the parse+diff; _kpHandleChatroomUpdated (not tested
+// here — it touches BG_KICK/broadcastToTabs) wires them to the join-replay
+// guard and the actual notice emission.
+
+const { kpNormalizeChatroomModes, kpModeChanges } = new Function(
+  `${extractFn('kpNormalizeChatroomModes')}\n${extractFn('kpModeChanges')}\nreturn { kpNormalizeChatroomModes, kpModeChanges }`,
+)()
+
+describe('kpNormalizeChatroomModes', () => {
+  test('maps slow_mode enabled → seconds', () => {
+    expect(kpNormalizeChatroomModes({ slow_mode: { enabled: true, message_interval: 5 } })).toEqual({ slow: 5 })
+  })
+  test('maps slow_mode disabled → 0', () => {
+    expect(kpNormalizeChatroomModes({ slow_mode: { enabled: false, message_interval: 5 } })).toEqual({ slow: 0 })
+  })
+  test('maps subscribers_mode / emotes_mode booleans', () => {
+    expect(kpNormalizeChatroomModes({ subscribers_mode: { enabled: true }, emotes_mode: { enabled: false } })).toEqual({
+      subsOnly: true,
+      emoteOnly: false,
+    })
+  })
+  test('maps followers_mode enabled → min_duration minutes', () => {
+    expect(kpNormalizeChatroomModes({ followers_mode: { enabled: true, min_duration: 30 } })).toEqual({
+      followersOnly: 30,
+    })
+  })
+  test('maps followers_mode enabled with no min_duration → 0 minutes (on, no wait)', () => {
+    expect(kpNormalizeChatroomModes({ followers_mode: { enabled: true } })).toEqual({ followersOnly: 0 })
+  })
+  test('maps followers_mode disabled → -1 (off, Twitch ROOMSTATE parity)', () => {
+    expect(kpNormalizeChatroomModes({ followers_mode: { enabled: false, min_duration: 30 } })).toEqual({
+      followersOnly: -1,
+    })
+  })
+  test('account_age / advanced_bot_protection are not mapped (no Twitch equivalent)', () => {
+    expect(
+      kpNormalizeChatroomModes({
+        account_age: { enabled: true, min_duration: 7 },
+        advanced_bot_protection: { enabled: true, remaining_time: 60 },
+      }),
+    ).toEqual({})
+  })
+  test('nested { chatroom: {...} } variant normalizes identically to the flat shape', () => {
+    const flat = kpNormalizeChatroomModes({ slow_mode: { enabled: true, message_interval: 10 } })
+    const nested = kpNormalizeChatroomModes({ chatroom: { slow_mode: { enabled: true, message_interval: 10 } } })
+    expect(nested).toEqual(flat)
+  })
+  test('missing/malformed fields are left unset, never crash', () => {
+    expect(kpNormalizeChatroomModes(null)).toEqual({})
+    expect(kpNormalizeChatroomModes(undefined)).toEqual({})
+    expect(kpNormalizeChatroomModes({})).toEqual({})
+    expect(kpNormalizeChatroomModes({ slow_mode: 'not an object' })).toEqual({})
+  })
+  test('partial payload only carries the fields it actually has', () => {
+    expect(kpNormalizeChatroomModes({ emotes_mode: { enabled: true } })).toEqual({ emoteOnly: true })
+  })
+})
+
+describe('kpModeChanges', () => {
+  test('all four modes changing produce all four Twitch-parity text lines', () => {
+    const prev = { slow: 0, subsOnly: false, emoteOnly: false, followersOnly: -1 }
+    const next = { slow: 10, subsOnly: true, emoteOnly: true, followersOnly: 15 }
+    expect(kpModeChanges(prev, next)).toEqual([
+      'slow mode on (10s)',
+      'sub-only mode on',
+      'emote-only mode on',
+      'follower-only mode on (15m)',
+    ])
+  })
+  test('no changes → empty array', () => {
+    const state = { slow: 5, subsOnly: true, emoteOnly: false, followersOnly: 0 }
+    expect(kpModeChanges(state, { ...state })).toEqual([])
+  })
+  test('slow mode off text when slow drops to 0', () => {
+    expect(kpModeChanges({ slow: 5 }, { slow: 0 })).toEqual(['slow mode off'])
+  })
+  test('follower-only 0 minutes renders "on" with no duration suffix', () => {
+    expect(kpModeChanges({ followersOnly: -1 }, { followersOnly: 0 })).toEqual(['follower-only mode on'])
+  })
+  test('follower-only off renders distinct text from on', () => {
+    expect(kpModeChanges({ followersOnly: 15 }, { followersOnly: -1 })).toEqual(['follower-only mode off'])
+  })
+  test('a field absent from `next` produces no change line even if it differs from prev', () => {
+    expect(kpModeChanges({ slow: 5 }, { subsOnly: true })).toEqual(['sub-only mode on'])
+  })
+})

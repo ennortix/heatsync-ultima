@@ -1092,6 +1092,20 @@ class KickChat {
         return
       }
 
+      // Kick chat-mode banners (slow/sub-only/emote-only/followers) — BG
+      // already converted the Pusher ChatroomUpdatedEvent into a mode_change
+      // notice shaped exactly like Twitch's ROOMSTATE→mode_change (see
+      // main.js's noticeKind mapping), platform-tagged kick.
+      if (message.type === 'kick_mode_change' && message.channel && message.msg) {
+        const channel = message.channel.toLowerCase()
+        if (!this.channels.has(channel)) return
+        const msg = message.msg
+        this.channels.get(channel).push(msg)
+        this.persistBuffer(channel)
+        this.emit('message', msg)
+        return
+      }
+
       // KICKs gifted events (Kick's equivalent of Twitch Bits)
       if (message.type === 'kick_kicks_event') {
         const channel = message.channel?.toLowerCase()

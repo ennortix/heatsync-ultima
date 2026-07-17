@@ -11676,6 +11676,8 @@ function _kpConnect() {
       _kpHandleModEvent(d, 'ban')
     } else if (typeof d.event === 'string' && d.event.includes('UserUnbannedEvent')) {
       _kpHandleModEvent(d, 'unban')
+    } else if (typeof d.event === 'string' && d.event.includes('ChatroomUpdatedEvent')) {
+      _kpHandleChatroomUpdated(d)
     }
   }
   ws.onclose = () => {
@@ -11719,6 +11721,105 @@ function _kpSlugForChatroom(chatroomId) {
   for (const [slug, id] of _kpChannels) if (id === chatroomId) return slug
   return null
 }
+
+// Kick chat-mode banners — Twitch parity (see bgIrcHandleLine's roomstate
+// branch, ~line 10571). Kick's Pusher chatroom channel emits ChatroomUpdatedEvent
+// whenever a mod changes slow/sub-only/emote-only/followers mode. Some
+// deployments nest the payload under `chatroom` — handle both. Parsed
+// defensively: any missing/malformed field is left unset (undefined) rather
+// than coerced to a wrong default, so a partial payload only diffs the fields
+// it actually carries.
+function kpNormalizeChatroomModes(raw) {
+  const src = raw && typeof raw.chatroom === 'object' && raw.chatroom ? raw.chatroom : raw
+  if (!src || typeof src !== 'object') return {}
+  const out = {}
+  if (src.slow_mode && typeof src.slow_mode === 'object') {
+    out.slow = src.slow_mode.enabled ? Math.max(0, Number(src.slow_mode.message_interval) || 0) : 0
+  }
+  if (src.subscribers_mode && typeof src.subscribers_mode === 'object') {
+    out.subsOnly = !!src.subscribers_mode.enabled
+  }
+  if (src.emotes_mode && typeof src.emotes_mode === 'object') {
+    out.emoteOnly = !!src.emotes_mode.enabled
+  }
+  if (src.followers_mode && typeof src.followers_mode === 'object') {
+    // Kick's min_duration is minutes already (unlike Twitch's seconds-based
+    // slow mode) — -1 mirrors Twitch's ROOMSTATE followers=-1 (off) encoding.
+    out.followersOnly = src.followers_mode.enabled ? Math.max(0, Number(src.followers_mode.min_duration) || 0) : -1
+  }
+  // account_age / advanced_bot_protection have no Twitch ROOMSTATE equivalent
+  // — intentionally not mapped (no banner surface for them yet).
+  return out
+}
+
+// Diff two mode-state snapshots into Twitch-parity notice text lines. `prev`
+// being {} means "first snapshot for this chatroom" (join replay) — callers
+// must skip emitting in that case, same guard Twitch's ROOMSTATE handler uses
+// (Object.keys(prev).length) to avoid a banner storm on join.
+function kpModeChanges(prev, next) {
+  const changes = []
+  if (next.slow != null && next.slow !== prev.slow) {
+    changes.push(next.slow > 0 ? `slow mode on (${next.slow}s)` : 'slow mode off')
+  }
+  if (next.subsOnly != null && next.subsOnly !== prev.subsOnly) {
+    changes.push(next.subsOnly ? 'sub-only mode on' : 'sub-only mode off')
+  }
+  if (next.emoteOnly != null && next.emoteOnly !== prev.emoteOnly) {
+    changes.push(next.emoteOnly ? 'emote-only mode on' : 'emote-only mode off')
+  }
+  if (next.followersOnly != null && next.followersOnly !== prev.followersOnly) {
+    if (next.followersOnly === -1) changes.push('follower-only mode off')
+    else if (next.followersOnly === 0) changes.push('follower-only mode on')
+    else changes.push(`follower-only mode on (${next.followersOnly}m)`)
+  }
+  return changes
+}
+
+// slug -> last known {slow, subsOnly, emoteOnly, followersOnly}. In-memory
+// only (mirrors BG_IRC.roomstates) — resets on SW restart, which correctly
+// re-arms the join-replay guard rather than misfiring stale banners.
+const _kpModes = new Map()
+
+function _kpHandleChatroomUpdated(d) {
+  let ev
+  try {
+    ev = typeof d.data === 'string' ? JSON.parse(d.data) : d.data
+  } catch {
+    return
+  }
+  if (!ev) return
+  const m = /chatrooms\.(\d+)\.v2/.exec(d.channel || '')
+  const slug = m ? _kpSlugForChatroom(Number(m[1])) : null
+  if (!slug) return
+  const next = kpNormalizeChatroomModes(ev)
+  const prev = _kpModes.get(slug) || {}
+  const hadPrev = Object.keys(prev).length > 0
+  const merged = { ...prev, ...next }
+  _kpModes.set(slug, merged)
+  if (!hadPrev) return // join replay — record baseline, don't banner-storm
+  const changes = kpModeChanges(prev, next)
+  if (!changes.length) return
+  const buf = BG_KICK.channels.get(slug)
+  for (const text of changes) {
+    const evt = {
+      type: 'notice',
+      noticeType: 'mode_change',
+      user: 'system',
+      text,
+      color: '#808080',
+      badges: '',
+      channel: slug,
+      time: Date.now(),
+      platform: 'kick',
+      id: `kickmode-${slug}-${Date.now()}-${text.slice(0, 16)}`,
+      systemMsg: text,
+    }
+    if (buf) buf.push(evt)
+    bgKickPersistChannel(slug)
+    broadcastToTabs({ type: 'kick_mode_change', channel: slug, msg: evt })
+  }
+}
+
 function _kpHandleChatEvent(d) {
   let ev
   try {
@@ -11829,6 +11930,7 @@ function kickPusherLeave(slug) {
   if (chatroomId == null) return
   _kpUnsubscribe(chatroomId)
   _kpChannels.delete(slug)
+  _kpModes.delete(slug)
   if (!_kpChannels.size) {
     // Kill any pending reconnect too — otherwise it opens a
     // zero-subscription socket after the last channel leaves.

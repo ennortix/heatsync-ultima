@@ -11789,7 +11789,14 @@
       (hostPlatform === 'yt' && /\/watch|\/live\//.test(path)) ||
       (hostPlatform !== 'yt' && !isKick && !!document.querySelector('.channel-root, [class*="channel-root"]')) ||
       (isKick && !!(document.getElementById('channel-chatroom') || document.querySelector('[id*="chatroom"]')))
-    return onStreamPage ? 'live' : _savedActiveTab || 'live'
+    // Force "live" (the on-screen stream) on a watch page ONLY for viewers with
+    // no channel tabs of their own — that's the "youtube read as no-chat" fix
+    // (a fresh viewer shouldn't land on an empty saved tab). A user who HAS
+    // tabs keeps their last-active one instead of being yanked onto the current
+    // page's stream: being on lofigirl's page shouldn't override your nl_kripp
+    // tab and dump lofigirl's chat in. A popout is single-channel — always live.
+    const hasChannelTabs = !!(config.channels && config.channels.length)
+    return (isYtPopout || (onStreamPage && !hasChannelTabs)) ? 'live' : (_savedActiveTab || 'live')
   }
 
   async function init() {

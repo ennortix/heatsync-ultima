@@ -1610,6 +1610,9 @@ function fetchEmoteInventory() {
         usage_count: emote.usage_count,
         zero_width: !!emote.zero_width, // 7TV overlay flag — drives stacking in chat
         nsfw: !!emote.nsfw, // v1.6 — cyan-dashed border + tooltip suffix
+        // Server CW annotation (own inventory is never filtered) — chat hides
+        // own flagged emotes at render when the owner's toggles say so.
+        cw_cats: Array.isArray(emote.cw_cats) && emote.cw_cats.length ? emote.cw_cats : undefined,
       }))
       log(' 🔍 Transformed inventory length:', inventoryEmotes.length)
       log(' 🔍 First transformed emote:', inventoryEmotes[0])

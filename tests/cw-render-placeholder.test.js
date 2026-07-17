@@ -27,6 +27,9 @@ function sliceBetween(startMarker, endMarker) {
 }
 
 const branchSrc = sliceBetween('const rawWord = unescapeHtml(word)', '// Build the new item')
+// Real own-toggle helper (HS_CW_SETTING_BY_CAT + hsOwnCwHiddenCat), so the
+// own-cwCats path is tested against production logic, not a stub.
+const helperSrc = sliceBetween('const HS_CW_SETTING_BY_CAT', 'function processEmotes(')
 
 const renderEmoteHtml = new Function(
   'word',
@@ -43,7 +46,8 @@ const renderEmoteHtml = new Function(
   '_hsEmoteBoxW',
   '_hsEmoteOversize',
   'window',
-  `${branchSrc}\nreturn imgHtmlRaw`,
+  'getSetting',
+  `${helperSrc}\n${branchSrc}\nreturn imgHtmlRaw`,
 )
 
 function render(word, emote, overrides = {}) {
@@ -62,6 +66,7 @@ function render(word, emote, overrides = {}) {
     new Map(),
     () => 0,
     { _hsStaleEmotes: null },
+    overrides.getSetting || (() => true),
   )
 }
 
@@ -101,5 +106,53 @@ describe('processEmotes — cw placeholder render', () => {
       expect(html).toContain('<img')
       expect(html).not.toContain('hs-mc-emote-cw')
     }
+  })
+})
+
+describe('processEmotes — own emotes honor the owner cw toggles (cwCats)', () => {
+  const settings = (off) => (key) => !off.includes(key)
+
+  test('own gore emote hides when viewer_show_gore is off', () => {
+    const html = render(
+      'BloodFest',
+      { url: URL, state: 'owned', source: 'heatsync', cwCats: ['gore'] },
+      { getSetting: settings(['viewer_show_gore']) },
+    )
+    expect(html).toContain('hs-mc-emote-cw')
+    expect(html).toContain('data-cw="gore"')
+    expect(html).not.toContain('<img')
+  })
+
+  test('own gore emote renders normally when the toggle is on', () => {
+    const html = render(
+      'BloodFest',
+      { url: URL, state: 'owned', source: 'heatsync', cwCats: ['gore'] },
+      { getSetting: settings([]) },
+    )
+    expect(html).toContain('<img')
+    expect(html).not.toContain('hs-mc-emote-cw')
+  })
+
+  test('plural server cats map to singular setting keys (weapons→viewer_show_weapon)', () => {
+    const html = render(
+      'Gun',
+      { url: URL, state: 'owned', cwCats: ['weapons'] },
+      { getSetting: settings(['viewer_show_weapon']) },
+    )
+    expect(html).toContain('data-cw="weapons"')
+  })
+
+  test('multi-cat: first HIDDEN category labels the box', () => {
+    const html = render(
+      'Mixed',
+      { url: URL, state: 'owned', cwCats: ['sexual', 'gore'] },
+      { getSetting: settings(['viewer_show_gore']) },
+    )
+    expect(html).toContain('data-cw="gore"')
+  })
+
+  test('unknown category never hides (forward-compat)', () => {
+    const html = render('Odd', { url: URL, state: 'owned', cwCats: ['newcat'] }, { getSetting: () => false })
+    expect(html).toContain('<img')
   })
 })

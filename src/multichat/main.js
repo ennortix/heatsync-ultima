@@ -1937,7 +1937,28 @@
     },
     cwServerPatch: (v, def) => {
       _cwPatch(def, v, false)
+      _cwRepaintOwnFlagged()
     },
+  }
+
+  // Own flagged emotes flip visibility instantly on a cw toggle: their rows
+  // render from viewerPersonalEmotes (cwCats annotation) checked against the
+  // toggles at render time — invalidate + repaint is all it takes. Cross-user
+  // stubs heal separately via the sender-set refetch after refresh_all.
+  function _cwRepaintOwnFlagged() {
+    const ownFlagged = []
+    if (typeof viewerPersonalEmotes !== 'undefined') {
+      for (const [name, e] of viewerPersonalEmotes) {
+        if (Array.isArray(e?.cwCats) && e.cwCats.length) ownFlagged.push(name)
+      }
+    }
+    if (!ownFlagged.length || typeof invalidateRenderedForEmotes !== 'function') return
+    invalidateRenderedForEmotes(ownFlagged)
+    if (!isScrolledUp && typeof renderMessages === 'function' && typeof currentTab !== 'undefined') {
+      try {
+        renderMessages(currentTab)
+      } catch {}
+    }
   }
 
   // Server PATCH for a content-warning toggle. Enabling an adult category
@@ -1987,6 +2008,9 @@
     document.querySelectorAll('.hs-mc-toggle-pill[data-set-key="' + def.key + '"]').forEach((pill) => {
       pill.classList.toggle('active', !attempted)
     })
+    // silent setSetting skips apply handlers — repaint own flagged rows here
+    // or a failed PATCH leaves them rendered under the reverted toggle.
+    _cwRepaintOwnFlagged()
     if (!declined) showToast(t('mc_main_cw_save_failed', [def.cw.noun]), 'error')
   }
 
@@ -10863,6 +10887,9 @@
                 hash: e.hash,
                 slot: e.slot,
                 zeroWidth: !!(e.zero_width ?? e.zeroWidth ?? zwFromAny),
+                // server CW annotation — own msgs hide these at render when
+                // the owner's own viewer_show_* toggles say so
+                cwCats: Array.isArray(e.cw_cats) && e.cw_cats.length ? e.cw_cats : null,
               })
             }
           }

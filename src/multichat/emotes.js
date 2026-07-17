@@ -2814,6 +2814,9 @@ async function loadEmotes() {
             subscription: !!e.subscription,
             slot: e.slot,
             nsfw: !!e.nsfw,
+            // server CW annotation — own msgs hide these at render when the
+            // owner's own viewer_show_* toggles say so (picker unaffected)
+            cwCats: Array.isArray(e.cw_cats) && e.cw_cats.length ? e.cw_cats : null,
           })
         }
       })
@@ -3159,6 +3162,30 @@ function hsSnapEmoteBox(img) {
 //   twitch-api.js prediction/outcome titles, main.js's compact/system-line
 //   render) must keep skipMentions=false — this function's own wrap is the
 //   only mention coloring those surfaces get.
+
+// Own-inventory emotes carry cwCats (server annotation — own sets are never
+// filtered or stubbed). At render, the OWNER's own viewer_show_* toggles
+// decide visibility: first hidden category wins and the emote paints the same
+// dashed-cyan placeholder as a cross-user cw stub. Setting keys are singular
+// for weapon/drug (settings-schema.js) while server categories are plural.
+const HS_CW_SETTING_BY_CAT = {
+  sexual: 'viewer_show_sexual',
+  gore: 'viewer_show_gore',
+  weapons: 'viewer_show_weapon',
+  drugs: 'viewer_show_drug',
+  hate: 'viewer_show_hate',
+}
+function hsOwnCwHiddenCat(emote) {
+  const cats = emote?.cwCats
+  if (!Array.isArray(cats) || cats.length === 0) return ''
+  if (typeof getSetting !== 'function') return ''
+  for (const cat of cats) {
+    const key = HS_CW_SETTING_BY_CAT[cat]
+    if (key && getSetting(key) === false) return cat
+  }
+  return ''
+}
+
 function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMentions = false) {
   if (emoteCache.size === 0 && !channelEmoteCaches[channel] && !extraCache?.size && !senderEmotes?.size) return text
   // Removed-emote render fallback applies ONLY to the viewer's own messages
@@ -3489,7 +3516,11 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
       // cw stub — server replaced a filter-hidden emote with {name, cw}. No
       // img (there is no url); a labeled dashed-cyan box marks the spot so
       // the message reads as "emote hidden here", not silently as raw text.
-      const cwCat = typeof emote.cw === 'string' && emote.cw ? escapeHtml(emote.cw) : ''
+      // Own-inventory entries are never stubbed (server annotates cwCats
+      // instead) — honor the OWNER's own toggles at render so their own
+      // posted emotes hide too. Picker/composer keep the real image.
+      const _cwRaw = (typeof emote.cw === 'string' && emote.cw) || hsOwnCwHiddenCat(emote)
+      const cwCat = _cwRaw ? escapeHtml(_cwRaw) : ''
       const imgHtmlRaw = cwCat
         ? `<span class="hs-mc-emote-wrapper hs-mc-emote-cw" data-emote-name="${displayName}" data-cw="${cwCat}" data-state="cw" title="${displayName}">${cwCat}</span>`
         : `<span class="hs-mc-emote-wrapper hs-state-${state}${staleClass}${nsfwClass}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}${staleAttr}${wAttr}><img src="${staticSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}"${osAttr} data-emote-name="${displayName}" data-state="${state}" data-source="${source}"${ownerAttr} loading="lazy" decoding="async"></span>`

@@ -6835,6 +6835,14 @@ async function sendMessage() {
   mcHistoryIndex = -1
 
   const replyParentId = replyState?.msgId || null
+  // YouTube has no reply-threading API — the @mention prepend is the only way
+  // a reply's context survives on that leg. Capture the author BEFORE
+  // clearReplyState() wipes replyState below; Twitch/Kick keep carrying the
+  // real replyParentId and never see this text.
+  const replyAuthor = replyState?.user || null
+  // Degraded reply text for the YouTube leg only — see ytReplyText
+  // (send-targets.js). Twitch/Kick below always send restText/twitchText.
+  const ytText = ytReplyText(restText, replyAuthor)
   clearReplyState()
 
   // Clear input immediately — and KEEP focus. Hiding the bar here (03-25 →
@@ -6892,7 +6900,7 @@ async function sendMessage() {
     // tab's videoId like the other two yt legs — without it the BG falls back
     // to "any youtube tab" and can post into an unrelated stream's chat.
     if (sendToYoutube) {
-      sendYoutubeMessage(restText, ytVideoId)
+      sendYoutubeMessage(ytText, ytVideoId)
         .then((result) => {
           if (result !== true && result !== 'no_youtube_tab') {
             showToast(t('mc_yt_send_failed'), 'error')
@@ -6991,7 +6999,7 @@ async function sendMessage() {
 
   // --- YouTube-only send path (no Twitch, no Kick) ---
   if (sendToYoutube && !sendToKick && !sendToTwitch) {
-    sendYoutubeMessage(restText, ytVideoId)
+    sendYoutubeMessage(ytText, ytVideoId)
       .then((result) => {
         if (result === true) {
           // YT echoes don't loop back through our IRC handlers, so the timer
@@ -7012,7 +7020,7 @@ async function sendMessage() {
   }
   // Twitch + YouTube (and no Kick) — fire YouTube as best-effort alongside Twitch send below
   if (sendToYoutube && sendToTwitch && !sendToKick) {
-    sendYoutubeMessage(restText, ytVideoId)
+    sendYoutubeMessage(ytText, ytVideoId)
       .then((result) => {
         if (result !== true && result !== 'no_youtube_tab') {
           showToast(youtubeSendErrorMessage(result), 'error')

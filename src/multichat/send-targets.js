@@ -69,6 +69,42 @@ function extractYoutubeVideoId(url) {
   return m ? m[1] : ''
 }
 
+// YouTube live chat's server-side message cap. Never confirmed via a public
+// spec, but 200 is the long-observed practical ceiling — exceeding it gets
+// the send rejected outright rather than truncated, so we treat it as a hard
+// wall and skip the prepend rather than risk the send itself failing.
+const YT_CHAT_MAX_LEN = 200
+
+/**
+ * YouTube live chat has no reply-threading API — sending the bare text drops
+ * the reply context entirely. Degrade gracefully with the standard YT-chat
+ * convention: prepend "@<author> " so the viewer sees who this was aimed at.
+ * Twitch/Kick carry real reply metadata and must NEVER pass through this —
+ * it's YT-leg-only.
+ *
+ * - No reply author → passthrough, untouched.
+ * - User already typed the mention at the start (any case) → don't double it.
+ * - Prepending would blow YouTube's length cap → skip the prepend rather than
+ *   truncate anything; the plain text still sends.
+ * @param {string} text
+ * @param {string|null|undefined} replyAuthor
+ * @returns {string}
+ */
+function ytReplyText(text, replyAuthor) {
+  const body = String(text || '')
+  const author = String(replyAuthor || '').trim()
+  if (!author) return body
+  const escapedAuthor = author.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const already = new RegExp(`^@${escapedAuthor}(?:\\s|$)`, 'i').test(body)
+  if (already) return body
+  const withMention = `@${author} ${body}`
+  if (withMention.length > YT_CHAT_MAX_LEN) {
+    log(`yt reply mention skipped — @${author} would push send over ${YT_CHAT_MAX_LEN} chars`)
+    return body
+  }
+  return withMention
+}
+
 /**
  * Map a YouTube send-relay error code → a short, lowercase, actionable line.
  * YouTube has no send API usable at scale (Data API ≈ 50 msgs/day per project),

@@ -18,21 +18,25 @@ import { join } from 'path'
 function loadSendTargets() {
   const src = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'send-targets.js'), 'utf8')
   const fn = new Function(
-    `${src}; return { resolveSendTargets, nextSendTargets, extractYoutubeVideoId, youtubeSendErrorMessage }`,
+    `${src}; return { resolveSendTargets, nextSendTargets, extractYoutubeVideoId, youtubeSendErrorMessage, ytReplyText }`,
   )
   return fn()
 }
 
-const { resolveSendTargets, nextSendTargets, extractYoutubeVideoId, youtubeSendErrorMessage } = loadSendTargets()
+const { resolveSendTargets, nextSendTargets, extractYoutubeVideoId, youtubeSendErrorMessage, ytReplyText } =
+  loadSendTargets()
 
 const enMessages = JSON.parse(
   readFileSync(join(import.meta.dir, '..', 'src', '_locales', 'en', 'messages.json'), 'utf8'),
 )
 beforeEach(() => {
   globalThis.t = (key) => enMessages[key]?.message ?? key
+  // ytReplyText calls the bundle-global log() on the length-cap skip path.
+  globalThis.log = () => {}
 })
 afterEach(() => {
   globalThis.t = undefined
+  globalThis.log = undefined
 })
 
 test('resolveSendTargets defaults every linked platform on when absent', () => {
@@ -150,4 +154,58 @@ test('youtubeSendErrorMessage maps known codes to actionable lines', () => {
 test('youtubeSendErrorMessage falls back for unknown/undefined codes', () => {
   expect(youtubeSendErrorMessage('send_failed')).toBe('youtube send failed')
   expect(youtubeSendErrorMessage(undefined)).toBe('youtube send failed')
+})
+
+// ─── ytReplyText ──────────────────────────────────────────────────────────────
+// YouTube live chat has no reply-threading API — a reply's context only
+// survives on the YT leg via a prepended "@author " mention.
+
+test('ytReplyText prepends the reply author', () => {
+  expect(ytReplyText('gg well played', 'coaoaba')).toBe('@coaoaba gg well played')
+})
+
+test('ytReplyText passes text through untouched when there is no reply author', () => {
+  expect(ytReplyText('just chatting', null)).toBe('just chatting')
+  expect(ytReplyText('just chatting', undefined)).toBe('just chatting')
+  expect(ytReplyText('just chatting', '')).toBe('just chatting')
+})
+
+test('ytReplyText does not double-prepend when the user already typed the mention', () => {
+  expect(ytReplyText('@coaoaba gg well played', 'coaoaba')).toBe('@coaoaba gg well played')
+})
+
+test('ytReplyText mention match is case-insensitive', () => {
+  expect(ytReplyText('@CoAoAba gg well played', 'coaoaba')).toBe('@CoAoAba gg well played')
+  expect(ytReplyText('@coaoaba gg well played', 'CoAoAba')).toBe('@coaoaba gg well played')
+})
+
+test('ytReplyText treats a bare "@author" with no trailing text as already-mentioned', () => {
+  expect(ytReplyText('@coaoaba', 'coaoaba')).toBe('@coaoaba')
+})
+
+test('ytReplyText does not treat "@authorxyz" as already mentioning "author"', () => {
+  expect(ytReplyText('@coaoabaXYZ gg', 'coaoaba')).toBe('@coaoaba @coaoabaXYZ gg')
+})
+
+test('ytReplyText skips the prepend (never truncates) when it would exceed the 200-char cap', () => {
+  const longAuthor = 'a'.repeat(50)
+  const body = 'b'.repeat(190) // + "@<50 a's> " prefix pushes well past 200
+  expect(ytReplyText(body, longAuthor)).toBe(body)
+})
+
+test('ytReplyText prepends right up to the 200-char boundary', () => {
+  const author = 'ab' // "@ab " = 4 chars
+  const body = 'c'.repeat(196) // 4 + 196 = 200, exactly at the cap
+  expect(ytReplyText(body, author)).toBe(`@${author} ${body}`)
+  expect(ytReplyText(body, author).length).toBe(200)
+})
+
+test('ytReplyText treats a whitespace-only author as absent', () => {
+  expect(ytReplyText('hey', '   ')).toBe('hey')
+})
+
+test('ytReplyText escapes regex-special characters in the author name', () => {
+  expect(ytReplyText('hi there', 'a.b+c')).toBe('@a.b+c hi there')
+  // Already-mentioned check must not let "." match any char
+  expect(ytReplyText('@aXb+c hi there', 'a.b+c')).toBe('@a.b+c @aXb+c hi there')
 })

@@ -93,6 +93,20 @@ test('REGRESSION: reply dual-send — twitch echo carries "@login " prefix, stil
   expect(isSentEcho('theres no way lol', 'youtube')).toBe(true) // yt duplicate suppressed
 })
 
+test('REGRESSION: yt reply leg carries a synthetic "@author " mention, still dedups', () => {
+  // Reply sent to twitch+yt: twitch echoes raw text (no server prefix on a
+  // plain PRIVMSG reply-tag path in this fixture), yt echoes back OUR OWN
+  // synthetic "@author " prepend (ytReplyText, send-targets.js) since YT has
+  // no native reply threading. The tracked entry.text is restText (no
+  // prefix) — the existing reply-aware strip (built for Twitch's server-side
+  // prefix) must also swallow our own synthetic one, or the yt echo renders
+  // as a second, unsuppressed copy of the message.
+  const entries = [{ text: 'gg well played', time: now(), synthId: 'a', echoes: 2, reply: true }]
+  const isSentEcho = makeIsSentEcho(entries)
+  expect(isSentEcho('gg well played', 'twitch')).toBe(false) // first echo renders
+  expect(isSentEcho('@coaoaba gg well played', 'youtube')).toBe(true) // yt duplicate suppressed
+})
+
 test('non-reply entry never strips a stranger\'s "@you " prefix', () => {
   const entries = [{ text: 'same text', time: now(), synthId: 'a', echoes: 1 }]
   const isSentEcho = makeIsSentEcho(entries)

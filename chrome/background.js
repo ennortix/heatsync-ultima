@@ -8342,27 +8342,20 @@ async function handleMessage(message, sender, sendResponse) {
             }
           }
         } else {
-          // Path B — no concrete videoId (legacy): the send is contextual to a
-          // tab the user already has open. Sender's own YouTube tab → active
-          // YouTube tab in the focused window → any YouTube tab.
+          // Path B — no concrete videoId. FORT KNOX: only ever drive the
+          // SENDER'S OWN YouTube tab (the page the user is actually typing on).
+          // The old active-tab / any-tab fallbacks routed a send into whatever
+          // YouTube tab happened to be open — so a message leaked into an
+          // unrelated stream's chat (e.g. a popped-out live_chat for a channel
+          // you're not even in). Never guess a tab; fail loud instead.
           const senderTabId = sender?.tab?.id
           if (senderTabId) {
             const t = await browser.tabs.get(senderTabId).catch(() => null)
             if (t && /youtube\.com/.test(t.url || '')) targetTabId = senderTabId
           }
           if (!targetTabId) {
-            const active = await browser.tabs
-              .query({ active: true, currentWindow: true, url: '*://www.youtube.com/*' })
-              .catch(() => [])
-            if (active && active.length > 0) targetTabId = active[0].id
-          }
-          if (!targetTabId) {
-            const tabs = await browser.tabs.query({ url: '*://www.youtube.com/*' }).catch(() => [])
-            if (!tabs || tabs.length === 0) {
-              sendResponse({ ok: false, error: 'no_youtube_tab' })
-              return
-            }
-            targetTabId = tabs[0].id
+            sendResponse({ ok: false, error: 'no_youtube_tab' })
+            return
           }
         }
 

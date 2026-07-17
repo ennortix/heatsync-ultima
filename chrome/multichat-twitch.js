@@ -38918,6 +38918,47 @@ function peelTrailingEmoji(s) {
   return { emoji: last, rest: graphemes.slice(0, -1).join('') }
 }
 
+// Resolve the element a zero-width completion should stack onto, looking LEFT
+// from `node`: skip whitespace-only text nodes; an emote img / stack / emoji
+// span is the base as-is; a text node ENDING in a raw unicode emoji gets that
+// emoji wrapped into an atomic .hs-mc-emoji span (splitting the text node) and
+// the span is the base. The split-node case is the one every caller used to
+// miss: picker inserts and contenteditable splits routinely leave the emoji
+// and the typed word in SEPARATE text nodes, the old prev-sibling scan only
+// accepted elements, and the old peel only read the SAME node's before-text —
+// so "🥔" + Tab-completed overlay landed standalone instead of stacking.
+// Returns the base element, or null (never the node itself).
+function resolveOverlayBaseLeft(node) {
+  let prev = node?.previousSibling
+  while (prev && prev.nodeType === Node.TEXT_NODE && prev.textContent.trim() === '') prev = prev.previousSibling
+  if (!prev) return null
+  if (prev.nodeType === Node.ELEMENT_NODE) {
+    if (
+      (prev.tagName === 'IMG' && prev.classList.contains('hs-input-emote')) ||
+      prev.classList?.contains('hs-input-stack') ||
+      prev.classList?.contains('hs-mc-emoji')
+    ) {
+      return prev
+    }
+    return null
+  }
+  if (prev.nodeType !== Node.TEXT_NODE) return null
+  const peeled = peelTrailingEmoji(prev.textContent.replace(/\s+$/, ''))
+  if (!peeled) return null
+  const parent = prev.parentNode
+  if (!parent) return null
+  // Wrap the emoji as an atomic span (same shape the :shortcode: converter
+  // builds) so stackInputEmote gets a real element base.
+  const span = document.createElement('span')
+  span.className = 'hs-mc-emoji'
+  span.textContent = peeled.emoji
+  span.setAttribute('contenteditable', 'false')
+  parent.insertBefore(span, prev.nextSibling)
+  if (peeled.rest) prev.textContent = peeled.rest
+  else prev.remove()
+  return span
+}
+
 // If the word being auto-converted starts at offset 0 of its text node and
 // the previous sibling is a chip with no whitespace separator, unwrap that
 // chip back to plain text and signal the caller to skip the conversion.
@@ -39324,13 +39365,19 @@ function handleInputChange(e) {
                 const bt = text.slice(0, cursor - match[0].length)
                 let stackable = false
                 if (bt.trim() === '') {
+                  // Non-mutating peek: element chip OR a preceding text node
+                  // ending in a raw emoji both count as a base (split-node
+                  // parity with resolveOverlayBaseLeft, which the insert path
+                  // uses to actually wrap+stack).
                   let p = node.previousSibling
                   while (p && p.nodeType === Node.TEXT_NODE && p.textContent.trim() === '') p = p.previousSibling
                   stackable = !!(
                     p &&
-                    ((p.tagName === 'IMG' && p.classList.contains('hs-input-emote')) ||
-                      p.classList?.contains('hs-input-stack') ||
-                      p.classList?.contains('hs-mc-emoji'))
+                    (p.nodeType === Node.ELEMENT_NODE
+                      ? (p.tagName === 'IMG' && p.classList.contains('hs-input-emote')) ||
+                        p.classList?.contains('hs-input-stack') ||
+                        p.classList?.contains('hs-mc-emoji')
+                      : p.nodeType === Node.TEXT_NODE && !!peelTrailingEmoji(p.textContent.replace(/\s+$/, '')))
                   )
                 } else {
                   stackable = !!peelTrailingEmoji(bt.replace(/\s+$/, ''))
@@ -39353,19 +39400,13 @@ function handleInputChange(e) {
                 const parent = node.parentNode
                 const isZeroWidth = resolved.isOverlay
 
-                // Zero-width: stack onto previous emote if possible
+                // Zero-width: stack onto previous emote if possible. The base
+                // may be an element chip OR a raw emoji at the end of a
+                // PRECEDING text node (split-node input — resolveOverlayBaseLeft
+                // wraps it into a span base).
                 if (isZeroWidth && beforeText.trim() === '') {
-                  // Look for emote element before this text node
-                  let prev = node.previousSibling
-                  while (prev && prev.nodeType === Node.TEXT_NODE && prev.textContent.trim() === '') {
-                    prev = prev.previousSibling
-                  }
-                  if (
-                    prev &&
-                    ((prev.tagName === 'IMG' && prev.classList.contains('hs-input-emote')) ||
-                      prev.classList?.contains('hs-input-stack') ||
-                      prev.classList?.contains('hs-mc-emoji'))
-                  ) {
+                  const prev = resolveOverlayBaseLeft(node)
+                  if (prev) {
                     // Remove whitespace text nodes between prev and current
                     let ws = prev.nextSibling
                     while (ws && ws !== node) {
@@ -40627,20 +40668,18 @@ function insertCompletionWysiwyg(match) {
         }
       } else if (!stack && wantsOverlay) {
         // Cycle landed on an overlay match while the cycling img is standalone.
-        // Find a preceding emote/stack and move the img into a stack on top.
-        let prev = existingEmote.previousSibling
-        while (prev && prev.nodeType === Node.TEXT_NODE && prev.textContent.trim() === '') {
-          const rm = prev
-          prev = prev.previousSibling
-          rm.remove()
-        }
-        if (
-          prev &&
-          prev.nodeType === Node.ELEMENT_NODE &&
-          ((prev.tagName === 'IMG' && prev.classList.contains('hs-input-emote')) ||
-            prev.classList?.contains('hs-input-stack') ||
-            prev.classList?.contains('hs-mc-emoji'))
-        ) {
+        // Find a preceding base — element chip or a raw emoji ending a
+        // preceding text node (resolveOverlayBaseLeft wraps it) — and move the
+        // img into a stack on top.
+        const prev = resolveOverlayBaseLeft(existingEmote)
+        if (prev) {
+          // Drop whitespace nodes between base and the cycling img
+          let ws = prev.nextSibling
+          while (ws && ws !== existingEmote) {
+            const rm = ws
+            ws = ws.nextSibling
+            rm.remove()
+          }
           stackInputEmote(prev, existingEmote)
         }
       }
@@ -40875,17 +40914,10 @@ function insertCompletionWysiwyg(match) {
     const resolved = typeof lookupEmoteWithOverlay === 'function' ? lookupEmoteWithOverlay(match.name) : null
     const wantsOverlay = completionWantsOverlay(match, resolved)
     if (wantsOverlay && before.trim() === '') {
-      let prev = textNode.previousSibling
-      while (prev && prev.nodeType === Node.TEXT_NODE && prev.textContent.trim() === '') {
-        prev = prev.previousSibling
-      }
-      if (
-        prev &&
-        prev.nodeType === Node.ELEMENT_NODE &&
-        ((prev.tagName === 'IMG' && prev.classList.contains('hs-input-emote')) ||
-          prev.classList?.contains('hs-input-stack') ||
-          prev.classList?.contains('hs-mc-emoji'))
-      ) {
+      // Base = element chip OR a raw emoji ending a PRECEDING text node
+      // (split-node input — resolveOverlayBaseLeft wraps it into a span).
+      const prev = resolveOverlayBaseLeft(textNode)
+      if (prev) {
         // Drop whitespace nodes between prev base and current text node
         let ws = prev.nextSibling
         while (ws && ws !== textNode) {

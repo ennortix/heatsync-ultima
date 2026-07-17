@@ -1950,6 +1950,12 @@
   "mc_irc_notice_verified_phone": {
     "message": "channel requires a verified phone to chat"
   },
+  "mc_main_age_confirm": {
+    "message": "confirm you are 18+ to enable adult content"
+  },
+  "mc_main_age_confirm_ok": {
+    "message": "i am 18+"
+  },
   "mc_main_celebration_share_failed": {
     "message": "celebration share failed — sending your message to chat"
   },

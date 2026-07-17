@@ -8446,7 +8446,7 @@ async function handleMessage(message, sender, sendResponse) {
           }
         }
         if (!resp.ok) {
-          sendResponse({ ok: false, status: resp.status, error: data?.error || `${resp.status}` })
+          sendResponse({ ok: false, status: resp.status, error: data?.error || `${resp.status}`, code: data?.code })
           return
         }
         sendResponse(data?.ok !== undefined ? data : { ok: true, data })

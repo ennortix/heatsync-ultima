@@ -53186,32 +53186,58 @@ const STORAGE_KEY = 'heatsync_multichat'
       if (currentTab === 'settings') renderSettingsTab()
     },
     cwServerPatch: (v, def) => {
-      safeSendMessage({
+      _cwPatch(def, v, false)
+    },
+  }
+
+  // Server PATCH for a content-warning toggle. Enabling an adult category
+  // (sexual/nsfw) 403s with AGE_REQUIRED until the account has a server-side
+  // 18+ affirmation — mirror the site flow: confirm dialog → POST
+  // /api/user/age-verify → retry the PATCH once. Decline rolls the pill back
+  // without the misleading "try again" toast.
+  async function _cwPatch(def, v, retried) {
+    let resp
+    try {
+      resp = await safeSendMessage({
         type: 'api_fetch',
         path: '/api/user/settings',
         method: 'PATCH',
         auth: true,
         body: { [def.cw.serverBody]: v },
       })
-        .then((resp) => {
-          if (!resp || !resp.ok) {
-            _cwRollback(def, v)
-            return
-          }
-          safeSendMessage({ type: 'refresh_all' }).catch(() => {})
-        })
-        .catch(() => {
-          _cwRollback(def, v)
-        })
-    },
+    } catch (_) {
+      resp = null
+    }
+    if (resp?.ok) {
+      safeSendMessage({ type: 'refresh_all' }).catch(() => {})
+      return
+    }
+    if (!retried && v === true && resp?.code === 'AGE_REQUIRED') {
+      const { ok } = await hsConfirm(t('mc_main_age_confirm'), t('mc_main_age_confirm_ok'))
+      if (!ok) {
+        _cwRollback(def, v, true)
+        return
+      }
+      const av = await safeSendMessage({
+        type: 'api_fetch',
+        path: '/api/user/age-verify',
+        method: 'POST',
+        auth: true,
+      }).catch(() => null)
+      if (av?.ok) {
+        _cwPatch(def, v, true)
+        return
+      }
+    }
+    _cwRollback(def, v, false)
   }
 
-  function _cwRollback(def, attempted) {
+  function _cwRollback(def, attempted, declined) {
     setSetting(def.key, !attempted, { silent: true })
     document.querySelectorAll('.hs-mc-toggle-pill[data-set-key="' + def.key + '"]').forEach((pill) => {
       pill.classList.toggle('active', !attempted)
     })
-    showToast(t('mc_main_cw_save_failed', [def.cw.noun]), 'error')
+    if (!declined) showToast(t('mc_main_cw_save_failed', [def.cw.noun]), 'error')
   }
 
   // Resolve the legacy runtime binding for an entry (entries without one

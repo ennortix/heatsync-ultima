@@ -6623,6 +6623,42 @@ function extractYoutubeVideoId(url) {
   return m ? m[1] : ''
 }
 
+// YouTube live chat's server-side message cap. Never confirmed via a public
+// spec, but 200 is the long-observed practical ceiling — exceeding it gets
+// the send rejected outright rather than truncated, so we treat it as a hard
+// wall and skip the prepend rather than risk the send itself failing.
+const YT_CHAT_MAX_LEN = 200
+
+/**
+ * YouTube live chat has no reply-threading API — sending the bare text drops
+ * the reply context entirely. Degrade gracefully with the standard YT-chat
+ * convention: prepend "@<author> " so the viewer sees who this was aimed at.
+ * Twitch/Kick carry real reply metadata and must NEVER pass through this —
+ * it's YT-leg-only.
+ *
+ * - No reply author → passthrough, untouched.
+ * - User already typed the mention at the start (any case) → don't double it.
+ * - Prepending would blow YouTube's length cap → skip the prepend rather than
+ *   truncate anything; the plain text still sends.
+ * @param {string} text
+ * @param {string|null|undefined} replyAuthor
+ * @returns {string}
+ */
+function ytReplyText(text, replyAuthor) {
+  const body = String(text || '')
+  const author = String(replyAuthor || '').trim()
+  if (!author) return body
+  const escapedAuthor = author.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const already = new RegExp(`^@${escapedAuthor}(?:\\s|$)`, 'i').test(body)
+  if (already) return body
+  const withMention = `@${author} ${body}`
+  if (withMention.length > YT_CHAT_MAX_LEN) {
+    log(`yt reply mention skipped — @${author} would push send over ${YT_CHAT_MAX_LEN} chars`)
+    return body
+  }
+  return withMention
+}
+
 /**
  * Map a YouTube send-relay error code → a short, lowercase, actionable line.
  * YouTube has no send API usable at scale (Data API ≈ 50 msgs/day per project),
@@ -19917,6 +19953,20 @@ class KickChat {
           // is dim-only (hidden line); bans/timeouts/unbans keep their system line.
           hidden: action === 'delete',
         })
+        return
+      }
+
+      // Kick chat-mode banners (slow/sub-only/emote-only/followers) — BG
+      // already converted the Pusher ChatroomUpdatedEvent into a mode_change
+      // notice shaped exactly like Twitch's ROOMSTATE→mode_change (see
+      // main.js's noticeKind mapping), platform-tagged kick.
+      if (message.type === 'kick_mode_change' && message.channel && message.msg) {
+        const channel = message.channel.toLowerCase()
+        if (!this.channels.has(channel)) return
+        const msg = message.msg
+        this.channels.get(channel).push(msg)
+        this.persistBuffer(channel)
+        this.emit('message', msg)
         return
       }
 
@@ -35697,7 +35747,7 @@ function isNonEchoingCommand(text) {
   return !!m && NON_ECHOING_CHAT_COMMANDS.has(m[1].toLowerCase())
 }
 
-function registerPendingSend({ text, channel, platforms, replyParentId, noEcho }) {
+function registerPendingSend({ text, channel, platforms, replyParentId, replyUser, noEcho }) {
   const synthId = makeSynthId()
   const entry = {
     synthId,
@@ -35708,6 +35758,9 @@ function registerPendingSend({ text, channel, platforms, replyParentId, noEcho }
     // dismissed when empty. Catches dual-send silent-drop of one platform.
     awaiting: new Set(platforms),
     replyParentId,
+    // Reply author survives into the retry path — the yt leg rebuilds its
+    // @mention from it (ytReplyText); msgId alone can't recover the name.
+    replyUser: replyUser || null,
     sentAt: Date.now(),
     state: 'pending',
     noEcho: !!noEcho,
@@ -35903,7 +35956,7 @@ function retryPendingSend(synthId) {
   // Restore reply state if the original was a reply
   if (entry.replyParentId) {
     try {
-      replyState = { msgId: entry.replyParentId }
+      replyState = { msgId: entry.replyParentId, user: entry.replyUser || undefined }
     } catch (_) {}
   }
   sendMessage()
@@ -40778,6 +40831,9 @@ function emoteCycleMeta(m) {
   const tier = m.tier ?? 2
   const cat = tier === 0 ? 'channel' : tier === 1 ? 'your set' : 'global'
   if (m.source === 'twitch') return { cat, vis: { t: 'all twitch', c: '#5fd75f' } }
+  // Kick-native channel/sub emotes are platform-native too — every Kick viewer
+  // sees them, no extension needed.
+  if (m.source === 'kick') return { cat, vis: { t: 'all kick', c: '#5fd75f' } }
   // Your personal set (tier 1) or a heatsync-hosted emote: others only see it via
   // heatsync's sender-set merge — non-heatsync viewers get plain text.
   if (tier === 1 || m.source === 'heatsync') return { cat, vis: { t: 'heatsync only', c: '#ff8700' } }
@@ -42218,6 +42274,7 @@ async function sendMessage() {
     channel: targetChannel,
     platforms: _pendingPlatforms,
     replyParentId: replyState?.msgId || null,
+    replyUser: replyState?.user || null,
     noEcho: isNonEchoingCommand(text),
   })
 
@@ -42258,6 +42315,14 @@ async function sendMessage() {
   mcHistoryIndex = -1
 
   const replyParentId = replyState?.msgId || null
+  // YouTube has no reply-threading API — the @mention prepend is the only way
+  // a reply's context survives on that leg. Capture the author BEFORE
+  // clearReplyState() wipes replyState below; Twitch/Kick keep carrying the
+  // real replyParentId and never see this text.
+  const replyAuthor = replyState?.user || null
+  // Degraded reply text for the YouTube leg only — see ytReplyText
+  // (send-targets.js). Twitch/Kick below always send restText/twitchText.
+  const ytText = ytReplyText(restText, replyAuthor)
   clearReplyState()
 
   // Clear input immediately — and KEEP focus. Hiding the bar here (03-25 →
@@ -42315,7 +42380,7 @@ async function sendMessage() {
     // tab's videoId like the other two yt legs — without it the BG falls back
     // to "any youtube tab" and can post into an unrelated stream's chat.
     if (sendToYoutube) {
-      sendYoutubeMessage(restText, ytVideoId)
+      sendYoutubeMessage(ytText, ytVideoId)
         .then((result) => {
           if (result !== true && result !== 'no_youtube_tab') {
             showToast(t('mc_yt_send_failed'), 'error')
@@ -42414,7 +42479,7 @@ async function sendMessage() {
 
   // --- YouTube-only send path (no Twitch, no Kick) ---
   if (sendToYoutube && !sendToKick && !sendToTwitch) {
-    sendYoutubeMessage(restText, ytVideoId)
+    sendYoutubeMessage(ytText, ytVideoId)
       .then((result) => {
         if (result === true) {
           // YT echoes don't loop back through our IRC handlers, so the timer
@@ -42435,7 +42500,7 @@ async function sendMessage() {
   }
   // Twitch + YouTube (and no Kick) — fire YouTube as best-effort alongside Twitch send below
   if (sendToYoutube && sendToTwitch && !sendToKick) {
-    sendYoutubeMessage(restText, ytVideoId)
+    sendYoutubeMessage(ytText, ytVideoId)
       .then((result) => {
         if (result !== true && result !== 'no_youtube_tab') {
           showToast(youtubeSendErrorMessage(result), 'error')

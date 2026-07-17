@@ -80,17 +80,6 @@
   let config = { channels: [], enabled: true }
   let currentTab = 'feed'
   let prevTab = 'feed'
-  // True only during a real user tab click. A YouTube popout is bound to ONE
-  // stream, so a PROGRAMMATIC switch to a channel tab (the parent session's
-  // saved nl_kripp bleeding in on boot) must be ignored — keep it on 'live'.
-  let _userTabSwitch = false
-  // Every non-channel (built-in / util) tab id. Anything NOT here is a channel
-  // tab — used by the popout guard so it works even before config.channels has
-  // loaded (a switch can fire before the channel list is populated).
-  const NON_CHANNEL_TAB_IDS = new Set([
-    'live', 'feed', 'mentions', 'whispers', 'discover', 'pinned', 'modlog',
-    'add', 'settings', 'popout', 'collapse', 'native', 'actions',
-  ])
   let liveChannel = null // override channel for live tab (null = use URL channel)
   let livePlatformMap = {} // per-URL-channel platform overrides: { [urlCh]: { twitch, kick, youtube } }
   let liveChannelSet = new Set() // channels currently live (lowercase twitch names)
@@ -2520,10 +2509,6 @@
     container.addEventListener('click', (e) => {
       const tab = e.target.closest('.hs-mc-tab')
       if (!tab) return
-      // Genuine user click — the popout guard in switchTab honors this (but
-      // still ignores boot-time programmatic switches to a channel tab).
-      _userTabSwitch = true
-      queueMicrotask(() => { _userTabSwitch = false })
 
       const tabId = tab.dataset.tab
       log('Tab clicked:', tabId)
@@ -5773,13 +5758,6 @@
 
   function switchTab(id) {
     log('switchTab called:', id)
-    // A YouTube popout is bound to one on-screen stream. A PROGRAMMATIC switch
-    // to a channel tab (the parent session's saved tab, e.g. nl_kripp, restored
-    // on boot) must never steal the popout off its live stream — force 'live'.
-    // Genuine user clicks (_userTabSwitch) are always honored.
-    if (isYtPopout && !_userTabSwitch && !NON_CHANNEL_TAB_IDS.has(id)) {
-      id = 'live'
-    }
     // Leaving an edit form: drop the outgoing tab's cache and clear msgsEl so
     // the upcoming snapshotTabState doesn't capture the form (which would then
     // be restored when switching back to the same channel id and look like

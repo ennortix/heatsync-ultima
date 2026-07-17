@@ -30,7 +30,10 @@ function automodHoldToRowModel(payload) {
   const broadcasterLogin = String(payload.broadcasterLogin || '').toLowerCase()
   if (!broadcasterLogin) return null
   const terms = Array.isArray(payload.terms)
-    ? payload.terms.map((t) => String(t)).filter(Boolean).slice(0, 10)
+    ? payload.terms
+        .map((t) => String(t))
+        .filter(Boolean)
+        .slice(0, 10)
     : null
   const senderLogin = String(payload.senderLogin || '').toLowerCase()
   const heldAt = Number(payload.heldAt) || Date.now()

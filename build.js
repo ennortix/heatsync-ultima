@@ -15,11 +15,11 @@
  *   bun run build.js --deploy           # Build + zip + rsync to server
  */
 
-import { execFileSync, execSync } from 'child_process'
+import { execFileSync } from 'node:child_process'
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { transformSync } from 'esbuild'
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
-import { dirname, join } from 'path'
-import { fileURLToPath } from 'url'
 
 // ── Pre-build guards ──────────────────────────────────────────────────────────
 // All four checks run before any bundling and fail the build loudly on violation.
@@ -194,7 +194,7 @@ function runTests(args) {
   console.log('  Running tests...')
   try {
     execFileSync('bun', ['test'], { stdio: 'inherit', cwd: __dirname })
-  } catch (e) {
+  } catch (_e) {
     throw new Error('runTests: test suite failed — fix before building')
   }
   console.log('  Tests: passed ✓')
@@ -624,7 +624,7 @@ function readMultichatModules(platform) {
         throw new Error('build: styles.js missing __HS_STYLES_BUNDLE__ placeholder')
       }
       // function replacement avoids $-pattern interpretation in the CSS
-      content = content.replace("'__HS_STYLES_BUNDLE__'", () => '`' + cssBody + '`')
+      content = content.replace("'__HS_STYLES_BUNDLE__'", () => `\`${cssBody}\``)
     }
     combined += `\n// --- multichat/${file} ---\n${stripExports(content)}\n`
   }
@@ -1129,7 +1129,7 @@ if (!target && !(flags.has('--no-test') && !shouldPackage)) {
       cwd: __dirname,
       env: { ...process.env, HS_VERIFY_DIST: '1' },
     })
-  } catch (e) {
+  } catch (_e) {
     throw new Error('post-build verification failed — dist output invalid')
   }
 }

@@ -864,15 +864,27 @@ function startBulkSelectFrom(row) {
 // the batch-level confirm below already covered "are you sure".
 async function runBulkModAction(action) {
   if (!_bulkSelected.size) return
-  const targets = dedupeBulkTargets([..._bulkSelected].map(_bulkRowDescriptor))
+  // Only fire on rows still in the live DOM. A row detached by an epoch rebuild
+  // (badge/emote/settings) or a tab switch keeps a valid dataset but lost its
+  // on-screen highlight — firing it would ban a user the mod can no longer see
+  // selected. isConnected filter keeps the batch == what's visibly highlighted.
+  const attached = [..._bulkSelected].filter((row) => row.isConnected)
+  const targets = dedupeBulkTargets(attached.map(_bulkRowDescriptor))
   if (!targets.length) {
     exitBulkSelectMode()
     return
   }
   const verb = action === 'ban' ? 'ban' : 'timeout'
+  // Surface channel scope — a batch can span platforms/channels within one tab
+  // (twitch+kick), so the mod must see WHERE this fires, not just who.
+  const chans = [...new Set(targets.map((tg) => `#${String(tg.channel).replace(/^#/, '')}`))]
+  const scope = chans.length === 1 ? ` in ${chans[0]}` : ` across ${chans.join(', ')}`
   const names = targets.map((tg) => tg.login).join(', ')
-  const preview = names.length > 140 ? `${names.slice(0, 140)}…` : names
-  const res = await hsConfirm(`${verb} ${targets.length} user${targets.length === 1 ? '' : 's'}? (${preview})`, verb)
+  const preview = names.length > 120 ? `${names.slice(0, 120)}…` : names
+  const res = await hsConfirm(
+    `${verb} ${targets.length} user${targets.length === 1 ? '' : 's'}${scope}? (${preview})`,
+    verb,
+  )
   if (!res.ok) return
   const bar = document.getElementById('hs-mc-bulk-bar')
   if (bar) for (const b of bar.querySelectorAll('button')) b.disabled = true

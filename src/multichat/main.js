@@ -5876,6 +5876,11 @@
       if (_msgsEl) _msgsEl.textContent = ''
     }
     editingChannel = false
+    // Bulk-select is per-tab: leaving a tab clears the selection + action bar so
+    // it can never persist invisibly into another channel and fire there.
+    try {
+      if (typeof exitBulkSelectMode === 'function') exitBulkSelectMode()
+    } catch (_) {}
     // Tab switch is the user telling us they care about live state right
     // now — kick a debounced refresh so any stale red dots on channel tabs
     // get corrected without waiting up to 30s for the next poll cycle.

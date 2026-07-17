@@ -1,5 +1,23 @@
 # changelog
 
+## [1.7.26] — 2026-07-17
+
+### added
+- **platform picker in the popout button** — pick twitch / kick / youtube for a bare channel name; a pasted url still auto-detects the platform.
+- **kick native channel emotes** now load into the channel pool, picker and tab-complete.
+- **kick & youtube history backfill** — joining a kick or youtube channel replays real recent chat from the heatsync archive.
+
+### changed
+- own posted emotes respect their owner's content warnings.
+- filter-hidden emotes render a labeled placeholder instead of raw text.
+- channel emotes survive an extension reload and rank higher in tab-complete; the emote catalog pages instead of wrapping.
+- the live tab is labeled with its channel, and auto-live reads as selected.
+
+### fixed
+- kick page-side fallback chat so a dropped socket keeps chat flowing and the youtube tap reaches every surface.
+- kick chat-mode banners (slow / sub-only / emote-only / followers).
+- tab / enter reliably keep composer focus for rapid-fire sending.
+
 ## [1.7.20] — 2026-07-08
 
 ### fixed

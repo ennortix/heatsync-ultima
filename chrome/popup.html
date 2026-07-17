@@ -71,6 +71,27 @@
     .btn:hover { background: #fff; color: #000; }
     .btn:active { background: #fff; color: #000; }
 
+    .plat-pick {
+      display: flex;
+      margin-bottom: 10px;
+      border: 1px solid #808080;
+    }
+    .plat {
+      flex: 1;
+      padding: 8px 0;
+      background: #000;
+      color: #808080;
+      border: none;
+      border-right: 1px solid #808080;
+      font-family: inherit;
+      font-size: 13px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .plat:last-child { border-right: none; }
+    .plat:hover { background: #fff; color: #000; }
+    .plat[aria-selected="true"] { background: #fff; color: #000; }
+
     .detected {
       margin-top: 12px;
       font-size: 13px;
@@ -136,6 +157,11 @@
   <div class="body">
     <div class="not-signed-in" id="not-signed-in" hidden>
       <span data-i18n="popup_not_signed_in">not signed in — </span><a href="#" id="setup-link" data-i18n="popup_setup_link">set up heatsync →</a>
+    </div>
+    <div class="plat-pick" id="plat-pick" role="tablist">
+      <button type="button" class="plat" data-plat="twitch" role="tab" aria-selected="true">twitch</button>
+      <button type="button" class="plat" data-plat="kick" role="tab" aria-selected="false">kick</button>
+      <button type="button" class="plat" data-plat="youtube" role="tab" aria-selected="false">youtube</button>
     </div>
     <input type="text" class="input" id="popout-input" placeholder="channel or url" data-i18n-ph="popup_channel_placeholder" spellcheck="false" autocomplete="off">
     <button class="btn" id="popout-btn" data-i18n="popup_btn_popout">popout chat</button>

@@ -21,8 +21,19 @@
   const input = document.getElementById('popout-input')
   const btn = document.getElementById('popout-btn')
   const detected = document.getElementById('detected')
+  const platPick = document.getElementById('plat-pick')
   let platform = 'twitch'
   let ytIsHandle = false
+
+  // Reflect the active platform on the segmented picker. A bare channel name is
+  // platform-ambiguous ("trainwreckstv" streams on both), so the segment is the
+  // authority for non-URL input; a pasted URL overrides it via setPlatform().
+  function setPlatform(p) {
+    platform = p
+    for (const el of platPick.querySelectorAll('.plat')) {
+      el.setAttribute('aria-selected', el.dataset.plat === p ? 'true' : 'false')
+    }
+  }
 
   function parseInput(raw) {
     const v = (raw || '').trim()
@@ -48,6 +59,9 @@
           if (vid) return { platform: 'youtube', channel: vid, isHandle: false }
         }
       } catch {}
+      // Looked like a URL but matched no channel — don't fall through to bare
+      // stripping (which would mangle the whole url into a junk channel name).
+      return null
     }
     const channel = v
       .replace(/^@/, '')
@@ -115,7 +129,7 @@
         const url = new URL(tab.url)
         const host = url.hostname.replace(/^www\./, '')
         if (host.endsWith('twitch.tv')) {
-          platform = 'twitch'
+          setPlatform('twitch')
           const m = url.pathname.match(/^\/(?:popout\/|embed\/)?([a-zA-Z0-9_]+)/)
           if (
             m &&
@@ -138,14 +152,14 @@
             setDetected('twitch', m[1].toLowerCase())
           }
         } else if (host.endsWith('kick.com')) {
-          platform = 'kick'
+          setPlatform('kick')
           const m = url.pathname.match(/^\/([a-zA-Z0-9_]+)/)
           if (m && !['categories', 'following', 'settings', 'search', 'browse'].includes(m[1].toLowerCase())) {
             input.value = m[1].toLowerCase()
             setDetected('kick', m[1].toLowerCase())
           }
         } else if (host.endsWith('youtube.com')) {
-          platform = 'youtube'
+          setPlatform('youtube')
           const handle = url.pathname.match(/^\/@([^/]+)/)
           if (handle) {
             input.value = handle[1].toLowerCase()
@@ -167,12 +181,34 @@
     })
   }
 
+  for (const el of platPick.querySelectorAll('.plat')) {
+    el.addEventListener('click', () => {
+      setPlatform(el.dataset.plat)
+      // bare input under youtube is a handle (/@name/live); video ids come via
+      // pasted URL, which parseInput handles authoritatively.
+      ytIsHandle = platform === 'youtube'
+      setDetected(null, null)
+      input.focus()
+    })
+  }
+
   btn.addEventListener('click', openPopout)
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') openPopout()
   })
   input.addEventListener('input', () => {
-    ytIsHandle = false
+    // A pasted URL is authoritative — sync the segment to it. Otherwise keep the
+    // chosen platform; a bare name under youtube is treated as a handle.
+    const raw = input.value.trim()
+    if (/^https?:\/\//i.test(raw)) {
+      const p = parseInput(raw)
+      if (p) {
+        setPlatform(p.platform)
+        ytIsHandle = !!p.isHandle
+        return
+      }
+    }
+    ytIsHandle = platform === 'youtube'
     setDetected(null, null)
   })
   input.addEventListener('focus', () => {

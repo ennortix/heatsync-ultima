@@ -8147,12 +8147,18 @@ function injectStyles() {
       word-break: break-word;
       max-width: 100%;
       box-sizing: border-box;
-      /* Isolate paint/layout from the host Twitch column. Without this,
+      /* Isolate layout/style from the host Twitch column. Without this,
          every panel mutation forced a style recalc walk up through the
-         2500-node React layout tree. paint clips repaints to this box,
-         style blocks inherited cascade leakage, layout blocks the host
-         from re-flowing through us. */
-      contain: layout style paint;
+         2500-node React layout tree — STYLE containment is what killed that
+         walk; layout blocks the host from re-flowing through us. Paint
+         containment was dropped 2026-07-17: an overflow:auto box already
+         clips descendant paint, so it bought nothing — while formal paint
+         isolation on a composited scroller full of ANIMATED emote images is
+         the known Chromium stale-invalidation shape behind "rows/emotes
+         drawn at the wrong spots until a hover forces a repaint" (the same
+         artifact class that killed content-visibility and per-row paint
+         containment before it; worst in the yt popout). */
+      contain: layout style;
       /* WE own bottom-pinning (scheduleScrollPin). The browser's native
          scroll anchoring picks its own anchor node and adjusts scrollTop
          whenever content above it changes height (image decode, row trim,
@@ -13589,8 +13595,9 @@ img.hs-fx-zero { margin-left: -4px; }
       /* Fill the #hs-mc-messages scroll box and own the scrolling internally:
          a flex column where ONLY the body scrolls, so the category bar +
          search bar are real headers above the scroll area and rows can never
-         bleed behind them. #hs-mc-messages has contain:layout paint, which
-         makes it the containing block, so inset:0 sizes us to it reliably. */
+         bleed behind them. #hs-mc-messages has contain:layout (paint dropped
+         2026-07-17 — see 03-overlay-container.css), and layout containment
+         alone makes it the containing block, so inset:0 sizes us reliably. */
       position: absolute;
       inset: 0;
       display: flex;

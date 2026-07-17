@@ -1,5 +1,14 @@
 # changelog
 
+## [1.7.28] — 2026-07-17
+
+### fixed
+- **chat no longer flickers or smears during scroll** — root-caused a gpu compositing race between animated emotes and scroll; the message list now paints on one stable layer.
+
+### added
+- **pronouns on the user card + hover** (via pronoundb).
+- **bulk moderation** — mods can select multiple messages and timeout/ban them in one action (select mode via right-click or the `s` hotkey, shift-click for a range, one confirm).
+
 ## [1.7.27] — 2026-07-17
 
 ### added

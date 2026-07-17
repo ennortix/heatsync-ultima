@@ -2195,7 +2195,7 @@ const SETTINGS = [
   {
     key: 'hs_show_name_history',
     type: 'bool',
-    default: true,
+    default: false,
     scope: 'sync',
     category: 'display',
     section: 'cosmetics',

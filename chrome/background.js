@@ -8225,8 +8225,11 @@ async function handleMessage(message, sender, sendResponse) {
     return true
   } else if (message.type === 'youtube_mod_action') {
     // Forward a mod action to the YouTube tab's live_chat content script, which
-    // drives YT's own moderation flow. Mirrors youtube_send_message's tab
-    // resolution (sender tab → active YT tab → any YT tab).
+    // drives YT's own moderation flow. FORT KNOX tab resolution, same as the
+    // send path: with a videoId only ever touch THAT stream's tabs (bridge →
+    // matching open tab → auto-opened bridge); without one, only the sender's
+    // own tab. Never a guessed active/any tab — a ban/delete must never land on
+    // the wrong stream's chat.
     ;(async () => {
       try {
         const { action, msgId, target, videoId } = message
@@ -8236,8 +8239,6 @@ async function handleMessage(message, sender, sendResponse) {
         }
         const vidOk = videoId && /^[a-zA-Z0-9_-]{11}$/.test(videoId)
         let targetTabId = null
-        // With a concrete videoId, prefer THIS stream's tabs (bridge, then
-        // URL match) — same discipline as the send path.
         if (vidOk) {
           const bridged = ytBridgeTabs.get(videoId)
           if (bridged != null && (await browser.tabs.get(bridged).catch(() => null))) {
@@ -8249,25 +8250,25 @@ async function handleMessage(message, sender, sendResponse) {
             const match = ytTabs.find((t) => (t.url || '').includes(videoId))
             if (match) targetTabId = match.id
           }
-        }
-        const senderTabId = sender?.tab?.id
-        if (!targetTabId && senderTabId) {
-          const t = await browser.tabs.get(senderTabId).catch(() => null)
-          if (t && /youtube\.com/.test(t.url || '')) targetTabId = senderTabId
-        }
-        if (!targetTabId) {
-          const active = await browser.tabs
-            .query({ active: true, currentWindow: true, url: '*://www.youtube.com/*' })
-            .catch(() => [])
-          if (active && active.length > 0) targetTabId = active[0].id
-        }
-        if (!targetTabId) {
-          const tabs = await browser.tabs.query({ url: '*://www.youtube.com/*' })
-          if (!tabs || tabs.length === 0) {
+          if (!targetTabId) {
+            const bridge = await ensureYoutubeBridgeTab(videoId)
+            if (bridge.tabId && !bridge.error) {
+              targetTabId = bridge.tabId
+            } else {
+              sendResponse({ ok: false, error: bridge.error || 'no_youtube_tab' })
+              return
+            }
+          }
+        } else {
+          const senderTabId = sender?.tab?.id
+          if (senderTabId) {
+            const t = await browser.tabs.get(senderTabId).catch(() => null)
+            if (t && /youtube\.com/.test(t.url || '')) targetTabId = senderTabId
+          }
+          if (!targetTabId) {
             sendResponse({ ok: false, error: 'no_youtube_tab' })
             return
           }
-          targetTabId = tabs[0].id
         }
         const relayMsg = { type: 'youtube_mod_relay', action, msgId, target }
         let result = null

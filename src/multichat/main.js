@@ -10106,7 +10106,10 @@
       }
       const sec = document.querySelector('#secondary')
       if (sec) {
-        if (isRight) {
+        // 'hidden' (collapsed) restores #secondary too: with the chat gone there's
+        // nothing occupying the sidebar, so YT's recommended-videos list must come
+        // back. Squashing it to 0 here was hiding recommendations on collapse.
+        if (isRight || chatPosition === 'hidden') {
           sec.style.removeProperty('width')
           sec.style.removeProperty('min-width')
           sec.style.removeProperty('max-width')

@@ -2507,6 +2507,30 @@ function zeroWidthFromAnyCache(name) {
   }
   return false
 }
+// Provider asset id parsed from a CDN url — the emote's identity across size
+// variants (1x/2x) and formats (.avif/.webp). Null for non-provider urls.
+function _hsEmoteAssetId(url) {
+  if (!url) return null
+  const m = /(?:cdn\.7tv\.app|cdn\.betterttv\.net|cdn\.frankerfacez\.com)\/emote\/([^/]+)/.exec(url)
+  return m ? m[1] : null
+}
+// Identity-checked zero-width recovery for a PICKED emote (name + url): true
+// only when a cache entry under this name carries zeroWidth AND is the same
+// provider asset as the pick. Owned/inventory copies have 7TV's zeroWidth flag
+// stripped (see zeroWidthFromAnyCache) — same asset id proves the flagged
+// channel/global entry IS the picked emote, so the flag is recoverable. A
+// same-NAME different-ASSET entry is a collision and must not stack the pick
+// onto the preceding chip.
+function zeroWidthForSameAsset(name, url) {
+  const id = _hsEmoteAssetId(url)
+  if (!id) return false
+  const check = (e) => !!(e?.zeroWidth && _hsEmoteAssetId(e.url) === id)
+  if (check(emoteCache.get(name))) return true
+  for (const m of Object.values(channelEmoteCaches)) {
+    if (m && typeof m.get === 'function' && check(m.get(name))) return true
+  }
+  return false
+}
 // Resolve a typed emote name to {emote, isOverlay, displayName}.
 // Handles zeroWidth flag AND the 7TV-style "name0" overlay convention
 // ("TriHard0" → looks up "TriHard" and treats as overlay) so the input

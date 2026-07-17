@@ -40,9 +40,11 @@ const caretSrc = carve('function caretOnActiveCompletion(', 'function mergeChipI
 const makeCaretFn = (acState) =>
   new Function('wysiwygEnabled', 'acState', `${caretSrc}; return caretOnActiveCompletion`)(false, acState)
 
-// --- completionWantsOverlay (pure) ---
+// --- completionWantsOverlay (pure; asset-recovery injectable) ---
 const overlaySrc = carve('function completionWantsOverlay(', 'function insertCompletionWysiwyg(')
-const completionWantsOverlay = new Function(`${overlaySrc}; return completionWantsOverlay`)()
+const makeOverlayFn = (assetRecovery) =>
+  new Function('zeroWidthForSameAsset', `${overlaySrc}; return completionWantsOverlay`)(assetRecovery)
+const completionWantsOverlay = makeOverlayFn(undefined)
 
 describe('caretOnActiveCompletion — plain input, completion "Kappa" at wordStart 6', () => {
   // "hello Kappa …" → completion occupies [6, 11], auto-space at 11, caret lands at 12
@@ -96,5 +98,19 @@ describe('completionWantsOverlay — the match flag beats the name lookup', () =
     expect(completionWantsOverlay({}, { isOverlay: true })).toBe(true)
     expect(completionWantsOverlay({}, { isOverlay: false })).toBe(false)
     expect(completionWantsOverlay({}, null)).toBe(false)
+  })
+
+  test('owned copy with STRIPPED flag + same-asset recovery → overlay (regression: owned "microwave")', () => {
+    // HS-inventory copies lose 7TV's zeroWidth flag; the flagged channel/global
+    // entry shares the same provider asset id → flag recoverable.
+    const fn = makeOverlayFn((name, url) => name === 'microwave' && url === 'https://cdn.7tv.app/emote/AB/1x.avif')
+    expect(fn({ name: 'microwave', url: 'https://cdn.7tv.app/emote/AB/1x.avif', zeroWidth: false }, null)).toBe(true)
+  })
+
+  test('same NAME, different asset (collision) → NOT stacked even with recovery wired', () => {
+    const fn = makeOverlayFn((name, url) => url === 'https://cdn.7tv.app/emote/AB/1x.avif')
+    expect(
+      fn({ name: 'microwave', url: 'https://cdn.7tv.app/emote/ZZ/1x.avif', zeroWidth: false }, { isOverlay: true }),
+    ).toBe(false)
   })
 })

@@ -23233,6 +23233,30 @@ function zeroWidthFromAnyCache(name) {
   }
   return false
 }
+// Provider asset id parsed from a CDN url — the emote's identity across size
+// variants (1x/2x) and formats (.avif/.webp). Null for non-provider urls.
+function _hsEmoteAssetId(url) {
+  if (!url) return null
+  const m = /(?:cdn\.7tv\.app|cdn\.betterttv\.net|cdn\.frankerfacez\.com)\/emote\/([^/]+)/.exec(url)
+  return m ? m[1] : null
+}
+// Identity-checked zero-width recovery for a PICKED emote (name + url): true
+// only when a cache entry under this name carries zeroWidth AND is the same
+// provider asset as the pick. Owned/inventory copies have 7TV's zeroWidth flag
+// stripped (see zeroWidthFromAnyCache) — same asset id proves the flagged
+// channel/global entry IS the picked emote, so the flag is recoverable. A
+// same-NAME different-ASSET entry is a collision and must not stack the pick
+// onto the preceding chip.
+function zeroWidthForSameAsset(name, url) {
+  const id = _hsEmoteAssetId(url)
+  if (!id) return false
+  const check = (e) => !!(e?.zeroWidth && _hsEmoteAssetId(e.url) === id)
+  if (check(emoteCache.get(name))) return true
+  for (const m of Object.values(channelEmoteCaches)) {
+    if (m && typeof m.get === 'function' && check(m.get(name))) return true
+  }
+  return false
+}
 // Resolve a typed emote name to {emote, isOverlay, displayName}.
 // Handles zeroWidth flag AND the 7TV-style "name0" overlay convention
 // ("TriHard0" → looks up "TriHard" and treats as overlay) so the input
@@ -40152,17 +40176,22 @@ function hsFetchUserColorAndApply(lower, span) {
 }
 
 // WYSIWYG emote insertion
-// Overlay (zero-width) decision for a completion match. The match's OWN flag
-// wins — it identifies the exact emote the user picked (local matches always
-// carry zeroWidth; remote 7TV hits carry it from the search result). The
-// name-based lookupEmoteWithOverlay result is only a fallback for matches with
-// no flag of their own (dropdown picks, emoji): a name collision across
-// providers must never stack a non-overlay pick onto the preceding chip (the
-// "second Tab-complete swallowed the previous emote" bug). Synth "name0"
-// matches are overlays by construction.
+// Overlay (zero-width) decision for a completion match.
+//   1. Synth "name0" matches are overlays by construction.
+//   2. The match's own truthy flag wins (remote 7TV hits carry it).
+//   3. A false/stripped flag is RECOVERABLE when a cache entry for the same
+//      provider ASSET (id parsed from the url) is flagged zero-width —
+//      owned/inventory copies lose 7TV's flag (zeroWidthFromAnyCache doc), so
+//      an owned overlay emote ("microwave") would otherwise Tab-complete as a
+//      standalone chip instead of stacking. Asset identity (not name) keeps
+//      the collision guarantee: a same-name different-asset overlay elsewhere
+//      must never stack a non-overlay pick onto the preceding chip.
+//   4. Flagless matches (dropdown picks, emoji) fall back to the name lookup.
 function completionWantsOverlay(match, resolved) {
   if (match._synthOverlay) return true
-  if (match.zeroWidth !== undefined) return !!match.zeroWidth
+  if (match.zeroWidth) return true
+  if (typeof zeroWidthForSameAsset === 'function' && zeroWidthForSameAsset(match.name, match.url)) return true
+  if (match.zeroWidth !== undefined) return false
   return !!resolved?.isOverlay
 }
 

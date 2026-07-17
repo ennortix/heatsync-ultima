@@ -1074,10 +1074,17 @@ function listenForSocialEvents() {
           // Retro-label the live composer: it booted with the raw videoId as
           // its only identity ("send to #<videoId>") — now that the server
           // resolved the channel name, repaint the placeholder with it.
-          if (targetChannelId === '__live_yt_auto__' && currentTab === 'live') {
-            try {
-              updateInputPlaceholder()
-            } catch {}
+          if (targetChannelId === '__live_yt_auto__') {
+            // Now that the channel name resolved, relabel the live tab from the
+            // generic "live" to the real channel — so the auto-live tab reads as
+            // a selection ("lofigirl"), not a blank tab with chat pouring in.
+            // Runs regardless of the active tab (the label is always visible).
+            if (typeof updateLiveTabLabel === 'function') {
+              try { updateLiveTabLabel() } catch {}
+            }
+            if (currentTab === 'live') {
+              try { updateInputPlaceholder() } catch {}
+            }
           }
         }
         // Reflect status onto the channel tab button so YT-only channels get a

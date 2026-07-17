@@ -9074,17 +9074,28 @@
     )
   }
 
-  /** Update the live tab button label to show selected channel */
+  /** Update the live tab button label to show the channel it's bound to, so the
+   *  tab reads as a real selection ("lofigirl") instead of a generic "live"
+   *  that looks unselected while its chat streams in on auto-live. */
   function updateLiveTabLabel() {
     const liveTab = tabBarElement?.querySelector('[data-tab="live"]')
     if (!liveTab) return
-    const ch = liveChannel
-    // Show channel name when overridden to a non-URL channel
-    if (ch && ch !== getCurrentChannel()?.toLowerCase()) {
-      liveTab.textContent = t('mc_tab_live_channel', [ch])
-    } else {
-      liveTab.textContent = t('mc_tab_live')
+    const cur = getCurrentChannel()?.toLowerCase()
+    const override = liveChannel
+    let name = ''
+    if (override && override !== cur) {
+      name = override
+    } else if (cur) {
+      // youtube: getCurrentChannel is the 11-char videoId — swap for the
+      // resolved channel name when we have it, else keep the generic label
+      // (never show a raw videoId as the tab name).
+      if (hostPlatform === 'yt') {
+        name = youtubeLinks.get('__live_yt_auto__')?.channelName || ''
+      } else {
+        name = cur
+      }
     }
+    liveTab.textContent = name ? t('mc_tab_live_channel', [name]) : t('mc_tab_live')
   }
 
   /** Query background script for all channels the user has open tabs for */

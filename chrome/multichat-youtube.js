@@ -8153,6 +8153,12 @@ function injectStyles() {
          style blocks inherited cascade leakage, layout blocks the host
          from re-flowing through us. */
       contain: layout style paint;
+      /* WE own bottom-pinning (scheduleScrollPin). The browser's native
+         scroll anchoring picks its own anchor node and adjusts scrollTop
+         whenever content above it changes height (image decode, row trim,
+         retro emote upgrades) — a second writer racing ours, visible as
+         rows jumping/overlapping "like virtual scrolling bugging out". */
+      overflow-anchor: none;
     }
     /* Per-message rows: layout+style containment only — NO paint. content-
        visibility:auto was dropped 2026-07-14 for stale-paint smear (rows drawn
@@ -23751,9 +23757,16 @@ function hsSnapEmoteBox(img) {
     // move siblings), so it's the correct measure for the box-reservation too.
     for (const it of items) {
       it.w = it.box.offsetWidth
+      // The img's own wrapper — inside a stack it's a grid item under
+      // place-items:center (shrink-to-fit), so its width IS the emote's solo
+      // width. Read it here for the stack-member caching below.
+      const mw = it.im.closest('.hs-mc-emote-wrapper')
+      if (mw) {
+        it.selfWrap = mw
+        it.selfW = mw.offsetWidth
+      }
       // A modifier scale (w!/ffzW/h!) must reserve space sized to the emote's
       // REAL untransformed width — capture its own wrapper's box now, apply below.
-      const mw = it.im.closest('.hs-mc-emote-wrapper')
       if (mw && mw.dataset.hsModSx) {
         it.modWrap = mw
         it.modW = mw.offsetWidth
@@ -23787,17 +23800,23 @@ function hsSnapEmoteBox(img) {
           it.modWrap.style.setProperty('margin-bottom', m, 'important')
         }
       }
-      // Don't cache overlay emote URLs — the measured box is the outer stack
-      // (not the overlay wrapper), so the cached value is the stack/base width,
-      // not the overlay's own width. Using it as wAttr in renderEmoteStack would
-      // pin the wrapper too narrow and cause the overlay img to bleed left past
-      // the base emote. Overlays always render inline-unconstrained via renderEmoteStack.
-      if (it.im.classList.contains('hs-mc-overlay-emote')) continue
-      // Never cache a width measured off a STACK box: it's the widest child
-      // (an overlay wider than the base), so caching it under the BASE emote's
-      // url pinned every later SOLO render of that emote too wide. Only the
-      // bare `.hs-mc-emote-wrapper` measurement is the emote's own solo width.
-      if (it.box.classList.contains('hs-mc-emote-stack')) continue
+      // Stack members (base AND overlay): the OUTER stack box width is the
+      // widest child, never cacheable under any single url. But each member's
+      // own wrapper (grid item, shrink-to-fit) IS that emote's solo width —
+      // cache it, so renderEmoteStack can reserve the stack's inline advance
+      // on the NEXT sighting before any decode (the emoji+overlay decode
+      // re-wrap was the reported chat jank). Skip mod-scaled wrappers: their
+      // margins distort the box.
+      if (it.box.classList.contains('hs-mc-emote-stack') || it.im.classList.contains('hs-mc-overlay-emote')) {
+        if (it.selfWrap && !it.selfWrap.dataset.hsModSx && it.selfW) {
+          const surl = it.selfWrap.dataset?.emoteUrl || it.im.getAttribute('src')
+          if (surl && !_hsEmoteBoxW.has(surl)) {
+            _hsEmoteBoxW.set(surl, it.selfW)
+            if (_hsEmoteBoxW.size > 2000) _hsEmoteBoxW.delete(_hsEmoteBoxW.keys().next().value)
+          }
+        }
+        continue
+      }
       const url = it.im.closest('.hs-mc-emote-wrapper')?.dataset?.emoteUrl || it.im.getAttribute('src')
       if (url) {
         _hsEmoteBoxW.set(url, it.w)
@@ -24326,7 +24345,25 @@ function renderEmoteStack(stack) {
     )
     .join('')
   const count = stack.overlays.length + 1
-  return `<span class="hs-mc-emote-stack" data-stack-count="${count}" title="expand"><span class="hs-mc-emote-stack-emotes">${stack.base}${overlayHtml}</span><span class="hs-mc-stack-collapse" title="collapse">\u00d7</span><span class="hs-mc-stack-block-all" title="block all">\u2298</span></span>`
+  // Reserve the stack's inline advance BEFORE any member decodes: the stack
+  // sizes to its widest member, and without a reservation the row's text
+  // re-wraps when a lazy overlay materializes width (worst with an emoji
+  // base: the box jumps from glyph-width to overlay-width \u2014 the reported
+  // "chat goes jank on emoji + overlay combos"). min-width, not width, so a
+  // first-sighting member (no cached measurement yet) can still grow the box
+  // once; hsSnapEmoteBox then pins the exact integer width on load.
+  let _reserve = 0
+  const _urlRe = /data-emote-url="([^"]+)"/g
+  for (const html of [stack.base, overlayHtml]) {
+    let m
+    while ((m = _urlRe.exec(html))) {
+      const w = _hsEmoteBoxW.get(m[1].replace(/&amp;/g, '&'))
+      if (w > _reserve) _reserve = w
+    }
+    _urlRe.lastIndex = 0
+  }
+  const _resAttr = _reserve ? ` style="min-width:${_reserve}px"` : ''
+  return `<span class="hs-mc-emote-stack" data-stack-count="${count}" title="expand"${_resAttr}><span class="hs-mc-emote-stack-emotes">${stack.base}${overlayHtml}</span><span class="hs-mc-stack-collapse" title="collapse">\u00d7</span><span class="hs-mc-stack-block-all" title="block all">\u2298</span></span>`
 }
 
 
@@ -54272,7 +54309,10 @@ const STORAGE_KEY = 'heatsync_multichat'
       const _stickyResizeObs = new ResizeObserver(() => {
         if (isScrolledUp) return
         if (isStaticTab()) return
-        scrollMsgsToBottom(msgsEl)
+        // Shared frame-coalesced pinner — see onImgLoadOrError. A direct
+        // scrollMsgsToBottom here was a second same-frame scrollTop writer
+        // racing the append path's pin.
+        scheduleScrollPin(msgsEl)
       })
       _stickyResizeObs.observe(msgsEl)
       cleanup.trackObserver(_stickyResizeObs)
@@ -54282,9 +54322,9 @@ const STORAGE_KEY = 'heatsync_multichat'
       // grows the row, pushing bottom past the viewport → "drifted up by a
       // few px for a few sec" on busy channels with many lazy assets per
       // message. ResizeObserver doesn't catch this (msgsEl's box stays
-      // constant). `load` doesn't bubble so capture phase is required. rAF
-      // coalesce so a 100-image burst still does one layout per frame.
-      let _imgLoadPinScheduled = false
+      // constant). `load` doesn't bubble so capture phase is required.
+      // Coalescing lives in scheduleScrollPin (shared with every other pin
+      // trigger) so a 100-image burst still does one layout per frame.
       const onImgLoadOrError = (e) => {
         // A cosmetic badge img failed (e.g. 7TV CDN QUIC drop under request
         // burst). The URL is valid, so retry before giving up — only hide after
@@ -54342,13 +54382,11 @@ const STORAGE_KEY = 'heatsync_multichat'
         }
         if (isScrolledUp) return
         if (isStaticTab()) return
-        if (_imgLoadPinScheduled) return
-        _imgLoadPinScheduled = true
-        cleanup.raf(() => {
-          _imgLoadPinScheduled = false
-          if (isScrolledUp || isStaticTab()) return
-          scrollMsgsToBottom(msgsEl)
-        })
+        // Route through the ONE frame-coalesced pinner. Every scroll-pin
+        // trigger (append, resize, image decode) must share a single
+        // scrollTop writer per frame — independent rAF writers raced each
+        // other and the rows visibly jumped ("virtual scrolling bugging out").
+        scheduleScrollPin(msgsEl)
       }
       msgsEl.addEventListener('load', onImgLoadOrError, { capture: true, passive: true, signal: mcSignal })
       msgsEl.addEventListener('error', onImgLoadOrError, { capture: true, passive: true, signal: mcSignal })
@@ -56705,6 +56743,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     // Adjust overlay/inputbar/tabbar geometry based on actual tabbar+inputbar
     // dimensions — handles multi-row tabbar wrapping AND vertical tab columns.
     // Single source of truth so CSS hardcodes don't drift from real layout.
+    let _lastMcLayoutSig = ''
     _updateMcLayout = () => {
       if (!tabBarElement || !overlayElement) return
       // Panel width (chat + tab strip) drives the chat-left player inset via
@@ -56716,6 +56755,16 @@ const STORAGE_KEY = 'heatsync_multichat'
       const tw = tabRect.width
       const th = tabRect.height
       const ih = inputBarElement ? inputBarElement.getBoundingClientRect().height : 0
+      // No-op when nothing that drives the insets changed. The ResizeObserver
+      // fires on every inputbar box mutation — while TYPING in the wysiwyg
+      // composer that's every keystroke, and the remove+reapply below
+      // invalidates layout for the whole overlay each time (visible churn on
+      // the rows above the composer). Signature covers every input the
+      // positioning + HsNotifs geometry read.
+      const _containerEl = document.getElementById('hs-mc-container')
+      const _sig = `${tabPosition}|${tw}|${th}|${ih}|${_containerEl ? _containerEl.offsetHeight : 0}|${getActiveViewedChannels().join(',')}`
+      if (_sig === _lastMcLayoutSig) return
+      _lastMcLayoutSig = _sig
 
       // Reset before re-applying to avoid stale rules between transitions
       for (const el of [overlayElement, inputBarElement, tabBarElement]) {

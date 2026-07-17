@@ -3031,9 +3031,16 @@ function hsSnapEmoteBox(img) {
     // move siblings), so it's the correct measure for the box-reservation too.
     for (const it of items) {
       it.w = it.box.offsetWidth
+      // The img's own wrapper — inside a stack it's a grid item under
+      // place-items:center (shrink-to-fit), so its width IS the emote's solo
+      // width. Read it here for the stack-member caching below.
+      const mw = it.im.closest('.hs-mc-emote-wrapper')
+      if (mw) {
+        it.selfWrap = mw
+        it.selfW = mw.offsetWidth
+      }
       // A modifier scale (w!/ffzW/h!) must reserve space sized to the emote's
       // REAL untransformed width — capture its own wrapper's box now, apply below.
-      const mw = it.im.closest('.hs-mc-emote-wrapper')
       if (mw && mw.dataset.hsModSx) {
         it.modWrap = mw
         it.modW = mw.offsetWidth
@@ -3067,17 +3074,23 @@ function hsSnapEmoteBox(img) {
           it.modWrap.style.setProperty('margin-bottom', m, 'important')
         }
       }
-      // Don't cache overlay emote URLs — the measured box is the outer stack
-      // (not the overlay wrapper), so the cached value is the stack/base width,
-      // not the overlay's own width. Using it as wAttr in renderEmoteStack would
-      // pin the wrapper too narrow and cause the overlay img to bleed left past
-      // the base emote. Overlays always render inline-unconstrained via renderEmoteStack.
-      if (it.im.classList.contains('hs-mc-overlay-emote')) continue
-      // Never cache a width measured off a STACK box: it's the widest child
-      // (an overlay wider than the base), so caching it under the BASE emote's
-      // url pinned every later SOLO render of that emote too wide. Only the
-      // bare `.hs-mc-emote-wrapper` measurement is the emote's own solo width.
-      if (it.box.classList.contains('hs-mc-emote-stack')) continue
+      // Stack members (base AND overlay): the OUTER stack box width is the
+      // widest child, never cacheable under any single url. But each member's
+      // own wrapper (grid item, shrink-to-fit) IS that emote's solo width —
+      // cache it, so renderEmoteStack can reserve the stack's inline advance
+      // on the NEXT sighting before any decode (the emoji+overlay decode
+      // re-wrap was the reported chat jank). Skip mod-scaled wrappers: their
+      // margins distort the box.
+      if (it.box.classList.contains('hs-mc-emote-stack') || it.im.classList.contains('hs-mc-overlay-emote')) {
+        if (it.selfWrap && !it.selfWrap.dataset.hsModSx && it.selfW) {
+          const surl = it.selfWrap.dataset?.emoteUrl || it.im.getAttribute('src')
+          if (surl && !_hsEmoteBoxW.has(surl)) {
+            _hsEmoteBoxW.set(surl, it.selfW)
+            if (_hsEmoteBoxW.size > 2000) _hsEmoteBoxW.delete(_hsEmoteBoxW.keys().next().value)
+          }
+        }
+        continue
+      }
       const url = it.im.closest('.hs-mc-emote-wrapper')?.dataset?.emoteUrl || it.im.getAttribute('src')
       if (url) {
         _hsEmoteBoxW.set(url, it.w)
@@ -3606,7 +3619,25 @@ function renderEmoteStack(stack) {
     )
     .join('')
   const count = stack.overlays.length + 1
-  return `<span class="hs-mc-emote-stack" data-stack-count="${count}" title="expand"><span class="hs-mc-emote-stack-emotes">${stack.base}${overlayHtml}</span><span class="hs-mc-stack-collapse" title="collapse">\u00d7</span><span class="hs-mc-stack-block-all" title="block all">\u2298</span></span>`
+  // Reserve the stack's inline advance BEFORE any member decodes: the stack
+  // sizes to its widest member, and without a reservation the row's text
+  // re-wraps when a lazy overlay materializes width (worst with an emoji
+  // base: the box jumps from glyph-width to overlay-width \u2014 the reported
+  // "chat goes jank on emoji + overlay combos"). min-width, not width, so a
+  // first-sighting member (no cached measurement yet) can still grow the box
+  // once; hsSnapEmoteBox then pins the exact integer width on load.
+  let _reserve = 0
+  const _urlRe = /data-emote-url="([^"]+)"/g
+  for (const html of [stack.base, overlayHtml]) {
+    let m
+    while ((m = _urlRe.exec(html))) {
+      const w = _hsEmoteBoxW.get(m[1].replace(/&amp;/g, '&'))
+      if (w > _reserve) _reserve = w
+    }
+    _urlRe.lastIndex = 0
+  }
+  const _resAttr = _reserve ? ` style="min-width:${_reserve}px"` : ''
+  return `<span class="hs-mc-emote-stack" data-stack-count="${count}" title="expand"${_resAttr}><span class="hs-mc-emote-stack-emotes">${stack.base}${overlayHtml}</span><span class="hs-mc-stack-collapse" title="collapse">\u00d7</span><span class="hs-mc-stack-block-all" title="block all">\u2298</span></span>`
 }
 
 export {

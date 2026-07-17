@@ -3202,7 +3202,10 @@
       const _stickyResizeObs = new ResizeObserver(() => {
         if (isScrolledUp) return
         if (isStaticTab()) return
-        scrollMsgsToBottom(msgsEl)
+        // Shared frame-coalesced pinner — see onImgLoadOrError. A direct
+        // scrollMsgsToBottom here was a second same-frame scrollTop writer
+        // racing the append path's pin.
+        scheduleScrollPin(msgsEl)
       })
       _stickyResizeObs.observe(msgsEl)
       cleanup.trackObserver(_stickyResizeObs)
@@ -3212,9 +3215,9 @@
       // grows the row, pushing bottom past the viewport → "drifted up by a
       // few px for a few sec" on busy channels with many lazy assets per
       // message. ResizeObserver doesn't catch this (msgsEl's box stays
-      // constant). `load` doesn't bubble so capture phase is required. rAF
-      // coalesce so a 100-image burst still does one layout per frame.
-      let _imgLoadPinScheduled = false
+      // constant). `load` doesn't bubble so capture phase is required.
+      // Coalescing lives in scheduleScrollPin (shared with every other pin
+      // trigger) so a 100-image burst still does one layout per frame.
       const onImgLoadOrError = (e) => {
         // A cosmetic badge img failed (e.g. 7TV CDN QUIC drop under request
         // burst). The URL is valid, so retry before giving up — only hide after
@@ -3272,13 +3275,11 @@
         }
         if (isScrolledUp) return
         if (isStaticTab()) return
-        if (_imgLoadPinScheduled) return
-        _imgLoadPinScheduled = true
-        cleanup.raf(() => {
-          _imgLoadPinScheduled = false
-          if (isScrolledUp || isStaticTab()) return
-          scrollMsgsToBottom(msgsEl)
-        })
+        // Route through the ONE frame-coalesced pinner. Every scroll-pin
+        // trigger (append, resize, image decode) must share a single
+        // scrollTop writer per frame — independent rAF writers raced each
+        // other and the rows visibly jumped ("virtual scrolling bugging out").
+        scheduleScrollPin(msgsEl)
       }
       msgsEl.addEventListener('load', onImgLoadOrError, { capture: true, passive: true, signal: mcSignal })
       msgsEl.addEventListener('error', onImgLoadOrError, { capture: true, passive: true, signal: mcSignal })
@@ -5635,6 +5636,7 @@
     // Adjust overlay/inputbar/tabbar geometry based on actual tabbar+inputbar
     // dimensions — handles multi-row tabbar wrapping AND vertical tab columns.
     // Single source of truth so CSS hardcodes don't drift from real layout.
+    let _lastMcLayoutSig = ''
     _updateMcLayout = () => {
       if (!tabBarElement || !overlayElement) return
       // Panel width (chat + tab strip) drives the chat-left player inset via
@@ -5646,6 +5648,16 @@
       const tw = tabRect.width
       const th = tabRect.height
       const ih = inputBarElement ? inputBarElement.getBoundingClientRect().height : 0
+      // No-op when nothing that drives the insets changed. The ResizeObserver
+      // fires on every inputbar box mutation — while TYPING in the wysiwyg
+      // composer that's every keystroke, and the remove+reapply below
+      // invalidates layout for the whole overlay each time (visible churn on
+      // the rows above the composer). Signature covers every input the
+      // positioning + HsNotifs geometry read.
+      const _containerEl = document.getElementById('hs-mc-container')
+      const _sig = `${tabPosition}|${tw}|${th}|${ih}|${_containerEl ? _containerEl.offsetHeight : 0}|${getActiveViewedChannels().join(',')}`
+      if (_sig === _lastMcLayoutSig) return
+      _lastMcLayoutSig = _sig
 
       // Reset before re-applying to avoid stale rules between transitions
       for (const el of [overlayElement, inputBarElement, tabBarElement]) {

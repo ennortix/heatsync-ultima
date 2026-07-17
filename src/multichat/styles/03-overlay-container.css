@@ -82,6 +82,12 @@
          style blocks inherited cascade leakage, layout blocks the host
          from re-flowing through us. */
       contain: layout style paint;
+      /* WE own bottom-pinning (scheduleScrollPin). The browser's native
+         scroll anchoring picks its own anchor node and adjusts scrollTop
+         whenever content above it changes height (image decode, row trim,
+         retro emote upgrades) — a second writer racing ours, visible as
+         rows jumping/overlapping "like virtual scrolling bugging out". */
+      overflow-anchor: none;
     }
     /* Per-message rows: layout+style containment only — NO paint. content-
        visibility:auto was dropped 2026-07-14 for stale-paint smear (rows drawn

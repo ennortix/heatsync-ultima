@@ -664,6 +664,9 @@ function trackSubTenure(channel, username, months) {
   if (!channelMap) {
     channelMap = new Map()
     subTenureMap.set(channel, channelMap)
+    // Cap distinct channels — re-derived from IRC badge-info on next message, so
+    // evicting a cold channel is loss-free. Inner map stays capped at 500 below.
+    while (subTenureMap.size > 64) subTenureMap.delete(subTenureMap.keys().next().value)
   }
   channelMap.set(username.toLowerCase(), months)
   while (channelMap.size > 500) channelMap.delete(channelMap.keys().next().value)

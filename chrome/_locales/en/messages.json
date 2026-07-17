@@ -1081,12 +1081,6 @@
   "mc_settings_show_pronouns_desc": {
     "message": "pronoundb.org pronouns on the profile card + hover tooltip (twitch only)"
   },
-  "mc_settings_show_name_history": {
-    "message": "prior names"
-  },
-  "mc_settings_show_name_history_desc": {
-    "message": "show prior display names (aka) on the profile card + hover tooltip"
-  },
   "mc_settings_anon_chat": {
     "message": "anonymous presence"
   },

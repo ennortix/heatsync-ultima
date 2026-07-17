@@ -1621,12 +1621,6 @@
         pronounsEnabled = v
       },
     },
-    nameHistoryEnabled: {
-      get: () => nameHistoryEnabled,
-      set: (v) => {
-        nameHistoryEnabled = v
-      },
-    },
     zebraEnabled: {
       get: () => zebraEnabled,
       set: (v) => {
@@ -2850,10 +2844,6 @@
   // Pronouns (pronoundb.org, twitch-only) on the profile card + hover
   // tooltip (default on)
   let pronounsEnabled = true
-
-  // Prior display names ("aka: ...") on the profile card + hover tooltip,
-  // sourced off the same /api/profile response (default on)
-  let nameHistoryEnabled = true
 
   // Zebra striping — alternate row backgrounds (default on)
   let zebraEnabled = true

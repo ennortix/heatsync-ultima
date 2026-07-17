@@ -274,14 +274,6 @@
     #hs-user-tooltip .hs-pc-bio-mention:hover { text-decoration: underline; }
     #hs-user-tooltip .hs-pc-bio-tag { color: #ff00ff; text-decoration: none; }
     #hs-user-tooltip .hs-pc-bio-tag:hover { text-decoration: underline; }
-    /* Prior display names — mirrors .hs-pcard-aka. Muted label, plain names. */
-    #hs-user-tooltip .hs-pc-aka {
-      font-size: 13px;
-      color: #d0d0d0;
-      line-height: 17px;
-      word-break: break-word;
-    }
-    #hs-user-tooltip .hs-pc-aka-label { color: #808080; }
     #hs-user-tooltip .hs-pc-stats {
       display: flex;
       gap: 6px;

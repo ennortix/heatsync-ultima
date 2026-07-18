@@ -9255,6 +9255,14 @@
       return null
     }
 
+    // Channel pages live on the apex/www/m hosts only. Sibling subdomains
+    // (dashboard.kick.com, dashboard.twitch.tv, help.*, dev.*) reuse
+    // channel-shaped paths — the kick creator dashboard's /moderation and
+    // /stream routes spoofed real channels here and fired FFZ/emote lookups
+    // for "moderation". A path blocklist can't keep up with their routes;
+    // gate on host instead.
+    if (!/^(www\.|m\.)?(twitch\.tv|kick\.com)$/.test(location.hostname)) return null
+
     // Match /username or /popout/username/chat or /embed/username/chat
     const match = location.pathname.match(/^\/(?:popout\/|embed\/)?([a-zA-Z0-9_-]+)/)
     if (match && match[1]) {

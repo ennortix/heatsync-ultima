@@ -12232,12 +12232,37 @@ function kpModeChanges(prev, next) {
   return changes
 }
 
-// slug -> last known {slow, subsOnly, emoteOnly, followersOnly}. In-memory
-// only (mirrors BG_IRC.roomstates) — resets on SW restart, which correctly
-// re-arms the join-replay guard rather than misfiring stale banners.
+// slug -> last known {slow, subsOnly, emoteOnly, followersOnly}. Mirrored to
+// storage.session: kick does NOT replay ChatroomUpdatedEvent on subscribe
+// (live-probed 2026-07-17 — subscription_succeeded carries {}), so a baseline
+// only ever forms from a real mode change. In-memory-only meant every MV3 SW
+// respawn wiped it and silently swallowed the NEXT real change per channel.
+// session scope (not local) still re-arms cleanly across browser restarts.
 const _kpModes = new Map()
+let _kpModesLoadPromise = null
+function _kpModesEnsureLoaded() {
+  // Memoized as a promise (not a bool): two events in one ws burst must BOTH
+  // wait for the seed, or the second reads an empty map and re-baselines.
+  _kpModesLoadPromise ??= (async () => {
+    try {
+      const stored = (await browser.storage.session?.get('kp_modes'))?.kp_modes
+      if (stored && typeof stored === 'object') {
+        // Seed only slugs a live event hasn't already written this SW lifetime.
+        for (const [slug, modes] of Object.entries(stored)) {
+          if (!_kpModes.has(slug) && modes && typeof modes === 'object') _kpModes.set(slug, modes)
+        }
+      }
+    } catch {}
+  })()
+  return _kpModesLoadPromise
+}
+function _kpModesPersist() {
+  try {
+    browser.storage.session?.set({ kp_modes: Object.fromEntries(_kpModes) }).catch(() => {})
+  } catch {}
+}
 
-function _kpHandleChatroomUpdated(d) {
+async function _kpHandleChatroomUpdated(d) {
   let ev
   try {
     ev = typeof d.data === 'string' ? JSON.parse(d.data) : d.data
@@ -12248,12 +12273,14 @@ function _kpHandleChatroomUpdated(d) {
   const m = /chatrooms\.(\d+)\.v2/.exec(d.channel || '')
   const slug = m ? _kpSlugForChatroom(Number(m[1])) : null
   if (!slug) return
+  await _kpModesEnsureLoaded()
   const next = kpNormalizeChatroomModes(ev)
   const prev = _kpModes.get(slug) || {}
   const hadPrev = Object.keys(prev).length > 0
   const merged = { ...prev, ...next }
   _kpModes.set(slug, merged)
-  if (!hadPrev) return // join replay — record baseline, don't banner-storm
+  _kpModesPersist()
+  if (!hadPrev) return // first sighting this browser session — baseline, no banner
   const changes = kpModeChanges(prev, next)
   if (!changes.length) return
   const buf = BG_KICK.channels.get(slug)

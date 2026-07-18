@@ -60641,6 +60641,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     // Tag with the same msgKey renderMessages uses, so a later tab switch into a
     // multi-platform view can prefix-match this DOM and avoid a one-shot rebuild.
     div.dataset.msgKey = msgKeyStr
+    div.dataset.hsEpoch = String(_renderEpoch)
     // Strict alternation: append flips from last sibling's zebra. Append-only path
     // always alternates cleanly. Bigger-tier than hash (which only ~50% alternates).
     if (
@@ -60684,9 +60685,9 @@ const STORAGE_KEY = 'heatsync_multichat'
   }
 
   // Render epoch — bumps when external state invalidates already-rendered DOM
-  // (emote data, settings that change visual output). Embedded in msgKey so the
-  // diff-aware render in renderMessages forces a full rebuild after a bump
-  // instead of treating identical content as already-rendered.
+  // (emote data, settings that change visual output). Each row is stamped with
+  // the epoch it was built at (data-hs-epoch); after a bump the diff render
+  // rebuilds stale rows in place — never a teardown, never a reorder.
   let _renderEpoch = 0
 
   // Full rebuild — used for tab switches, scroll resume, and initial load
@@ -60718,9 +60719,9 @@ const STORAGE_KEY = 'heatsync_multichat'
   }
 
   // Surgical invalidation for a block/unblock of specific emote(s). The full
-  // clearRenderedHtmlCache() bumps _renderEpoch, which re-keys EVERY message so
-  // the next render (constant on live chat) tears down and rebuilds the whole
-  // list — a visible whole-chat flash. block/unblockEmote already correct the
+  // clearRenderedHtmlCache() bumps _renderEpoch, which marks EVERY row stale so
+  // the next render rebuilds each one in place — order-safe, but still a full
+  // rebuild's worth of work + img churn. block/unblockEmote already correct the
   // live DOM in-place, so we only need to (a) drop cached _renderedHtml on the
   // messages that actually reference these emotes, so a LATER rebuild reprocesses
   // them with current block state, and (b) drop other tabs' cached fragments so
@@ -60866,15 +60867,16 @@ const STORAGE_KEY = 'heatsync_multichat'
       kb = stableMsgId(b)
     return ka < kb ? -1 : ka > kb ? 1 : 0
   }
-  // Epoch-tagged msgKey memo (layers on stableMsgId's _sid memo). appendMessage
-  // and renderMessages both rebuild the same `${epoch}:${sid}` string — on a
-  // 500-row tab rendering at rAF cadence that was 500 template concats per
-  // frame. Recomputes only when _renderEpoch bumps (full rebuild).
+  // Stable msgKey (rides stableMsgId's _sid memo). Deliberately EXCLUDES
+  // _renderEpoch: an epoch-in-the-key meant every bump re-keyed every row, so
+  // the diff saw 500 strangers, tore the list down and rebuilt it in fresh
+  // fairMerge order — a visible whole-chat flash AND a row reorder whenever
+  // the fresh sort disagreed with the never-move history order (mellen's
+  // "posts flicker/reorder sometimes", 2026-07-17). Staleness now lives on
+  // the row itself (data-hs-epoch); renderMessages rebuilds stale rows IN
+  // PLACE, so order and scroll survive a bump by construction.
   function msgKeyOf(m) {
-    if (m._hsKeyEpoch === _renderEpoch && m._hsKey) return m._hsKey
-    m._hsKeyEpoch = _renderEpoch
-    m._hsKey = `${_renderEpoch}:${stableMsgId(m)}`
-    return m._hsKey
+    return stableMsgId(m)
   }
   // Reused render-pass buffers: renderMessages is synchronous and never
   // re-enters itself mid-body, so per-run collections are safe to pool.
@@ -61475,10 +61477,10 @@ const STORAGE_KEY = 'heatsync_multichat'
     //
     // existing DOM nodes stay put. new msgs slot in at chronologically
     // correct positions (because `toRender` is already chrono-sorted by
-    // fairMerge below). no shuffling. no rebuild-from-prefix flash.
-    // Shares msgKeyOf's per-object epoch memo — byte-identical to the old inline
-    // template, recomputed only when _renderEpoch bumps. Collections are pooled
-    // (_rm* buffers above stableMsgId); zebra logic lives in zebraOfInsert there.
+    // fairMerge below). no shuffling. no rebuild-from-prefix flash. rows whose
+    // data-hs-epoch predates _renderEpoch are rebuilt via same-slot replaceChild
+    // in PASS B — even a full invalidation never moves a row. Collections are
+    // pooled (_rm* buffers above stableMsgId); zebra lives in zebraOfInsert.
     const desiredKeys = _rmDesiredKeys
     const desiredSet = _rmDesiredSet
     desiredKeys.length = 0
@@ -61525,6 +61527,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         const div = buildMessageDiv(m, id)
         if (!div) continue
         div.dataset.msgKey = key
+        div.dataset.hsEpoch = String(_renderEpoch)
         const prev = msgsEl.lastElementChild
         if (zebraOfInsert(m, prev)) div.classList.add('hs-mc-zebra')
         msgsEl.appendChild(div)
@@ -61653,11 +61656,35 @@ const STORAGE_KEY = 'heatsync_multichat'
       const existing = existingByKey.get(key)
       if (existing) {
         existingByKey.delete(key)
+        const _rm = toRender[j]
         // Reused div skipped buildMessageDiv — re-queue its cosmetic so a prior
         // failed/absent lookup is retried (resolves on a later flush). Without
         // this, a frozen channel's restored buffer never re-attempts cosmetics.
-        const _rm = toRender[j]
         if (_rm?.userId && !mcUserCosmetics.has(_rm.userId)) queueMcCosmeticsLookup(_rm.userId)
+        // Stale epoch → the row's rendered output is invalidated (emote
+        // animation toggle, rerender setting, badge bulk-load). Rebuild the
+        // div and swap it IN THE SAME SLOT — position, zebra stripe, and
+        // scroll geometry all survive. This replaces the old "epoch re-keys
+        // everything → teardown + fresh-sort rebuild" path that flashed and
+        // reordered the visible list.
+        if (existing.dataset.hsEpoch !== String(_renderEpoch)) {
+          const nd = buildMessageDiv(_rm, id)
+          if (nd) {
+            nd.dataset.msgKey = key
+            nd.dataset.hsEpoch = String(_renderEpoch)
+            // Recompute (not copy) zebra from the actual previous sibling: the
+            // walk replaces in DOM order, so alternation stays consistent — and
+            // a zebra toggle-OFF bump actually strips stripes from old rows.
+            if (zebraOfInsert(_rm, existing.previousElementSibling)) nd.classList.add('hs-mc-zebra')
+            _unindexMessageDiv(existing)
+            msgsEl.replaceChild(nd, existing)
+            _indexMessageDiv(nd, key)
+          } else {
+            // Message no longer renderable under new state — keep the old row
+            // (dropping it would move neighbors) and stop re-attempting.
+            existing.dataset.hsEpoch = String(_renderEpoch)
+          }
+        }
         if (cur === existing) domIdx++ // aligned — consume the DOM slot
         // else: deferred — node stays put, walk catches up to it later
         continue
@@ -61667,6 +61694,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       const div = buildMessageDiv(m, id)
       if (!div) continue
       div.dataset.msgKey = key
+      div.dataset.hsEpoch = String(_renderEpoch)
       const prevDiv = msgsEl.children[domIdx - 1] || null
       if (zebraOfInsert(m, prevDiv)) div.classList.add('hs-mc-zebra')
       msgsEl.insertBefore(div, cur || null)
@@ -62046,6 +62074,14 @@ const STORAGE_KEY = 'heatsync_multichat'
       if (liveMatch) return liveMatch[1]
       return null
     }
+
+    // Channel pages live on the apex/www/m hosts only. Sibling subdomains
+    // (dashboard.kick.com, dashboard.twitch.tv, help.*, dev.*) reuse
+    // channel-shaped paths — the kick creator dashboard's /moderation and
+    // /stream routes spoofed real channels here and fired FFZ/emote lookups
+    // for "moderation". A path blocklist can't keep up with their routes;
+    // gate on host instead.
+    if (!/^(www\.|m\.)?(twitch\.tv|kick\.com)$/.test(location.hostname)) return null
 
     // Match /username or /popout/username/chat or /embed/username/chat
     const match = location.pathname.match(/^\/(?:popout\/|embed\/)?([a-zA-Z0-9_-]+)/)
@@ -65319,13 +65355,27 @@ const STORAGE_KEY = 'heatsync_multichat'
 
       // Twitch deprecated WHISPER over IRC in Feb 2023 — receive via EventSub instead.
       // Works on any host (the ESW socket is independent of the chat IRC).
-      if (gateAtBoot('whispers')) startEventSubWhispers()
+      // Guarded: a sync throw here used to kill every init below it silently.
+      try {
+        if (gateAtBoot('whispers')) startEventSubWhispers()
+      } catch (e) {
+        log('whispers init failed:', e?.message)
+      }
 
       // AutoMod hold-queue — works on any host (channel tabs, not the current
       // page, decide relevance). Registers unconditionally: isEnabled() is
       // checked at event/sweep time so toggling the subsystem live (no
       // reload) actually takes effect, unlike a boot-time gate here would.
-      if (typeof initAutomodQueue === 'function') initAutomodQueue()
+      try {
+        if (typeof __HS_DEV_BUILD__ !== 'undefined' && __HS_DEV_BUILD__) document.documentElement.dataset.hsAutomodInit = 'reached'
+        if (typeof initAutomodQueue === 'function') initAutomodQueue()
+        if (typeof __HS_DEV_BUILD__ !== 'undefined' && __HS_DEV_BUILD__) document.documentElement.dataset.hsAutomodInit = 'done'
+      } catch (e) {
+        log('automod init failed:', e?.message)
+        try {
+          document.documentElement.dataset.hsAutomodInit = `err:${e?.message || 'unknown'}`
+        } catch (_) {}
+      }
 
       // /live_chat pop-out: subscribe to THIS window's stream (?v=<id>) and open
       // the auto-live render gate immediately. The auto-join below is skipped on

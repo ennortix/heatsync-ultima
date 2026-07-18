@@ -1,5 +1,10 @@
 // Mentions/notifications - keyword detection, browser notifications, scan existing chat
 
+// module scope resets on re-injection, so a fresh instance re-registers
+// after the old one's teardown; window-scope survives takeover and leaves
+// handlers dead until hard refresh
+const _onceGuardsMentions = {}
+
 function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
@@ -69,9 +74,9 @@ api.storage.local
     }
   })
   .catch(() => {})
-if (!window._hsMcNotifStorageListener) {
-  window._hsMcNotifStorageListener = true
-  api.storage.onChanged.addListener((changes) => {
+if (!_onceGuardsMentions.notifStorageListener) {
+  _onceGuardsMentions.notifStorageListener = true
+  cleanup.addListener(api.storage.onChanged, (changes) => {
     if (changes.hs_notifications) {
       notificationsEnabled = changes.hs_notifications.newValue === true
       if (notificationsEnabled && notificationPermission === 'default' && typeof Notification !== 'undefined') {
@@ -261,8 +266,8 @@ function _titleFlashStart(fromUser) {
   }, 1200)
 }
 // Restore title the moment the tab regains focus
-if (!window._hsMcTitleFlashFocusWired) {
-  window._hsMcTitleFlashFocusWired = true
+if (!_onceGuardsMentions.titleFlashFocusWired) {
+  _onceGuardsMentions.titleFlashFocusWired = true
   window.addEventListener('focus', _titleFlashStop, { signal: mcSignal })
   document.addEventListener(
     'visibilitychange',
@@ -270,14 +275,6 @@ if (!window._hsMcTitleFlashFocusWired) {
       if (!document.hidden) _titleFlashStop()
     },
     { signal: mcSignal },
-  )
-  // Clear install-once flag on lifecycle abort so next reinit can re-wire.
-  mcSignal.addEventListener(
-    'abort',
-    () => {
-      window._hsMcTitleFlashFocusWired = false
-    },
-    { once: true },
   )
 }
 
@@ -294,9 +291,9 @@ api.storage.sync
     if (typeof ui.mentionTitleFlash === 'boolean') mentionTitleFlash = ui.mentionTitleFlash
   })
   .catch(() => {})
-if (!window._hsMcMentionAudioStorageListener) {
-  window._hsMcMentionAudioStorageListener = true
-  api.storage.onChanged.addListener((changes, area) => {
+if (!_onceGuardsMentions.mentionAudioStorageListener) {
+  _onceGuardsMentions.mentionAudioStorageListener = true
+  cleanup.addListener(api.storage.onChanged, (changes, area) => {
     if (area === 'sync' && changes.ui_settings?.newValue) {
       const ui = changes.ui_settings.newValue
       if (typeof ui.mentionSoundVolume === 'number')

@@ -1,4 +1,10 @@
 // Social - feed, notifications, activity, heatsync API
+
+// module scope resets on re-injection, so a fresh instance re-registers
+// after the old one's teardown; window-scope survives takeover and leaves
+// handlers dead until hard refresh
+const _onceGuardsSocial = {}
+
 let _autoYtVideoId = null // videoId for this tab's __live_yt_auto__ subscription (cross-tab filter)
 
 // Re-arm the __live_yt_auto__ binding for the current URL channel: drop the
@@ -337,9 +343,9 @@ async function loadHsAuth() {
   loadHsUsername()
 
   // Watch for auth changes (login/logout on heatsync.org)
-  if (!window._hsMcAuthWatcher) {
-    window._hsMcAuthWatcher = true
-    api.storage.onChanged.addListener((changes, area) => {
+  if (!_onceGuardsSocial.authWatcher) {
+    _onceGuardsSocial.authWatcher = true
+    cleanup.addListener(api.storage.onChanged, (changes, area) => {
       if (area !== 'local') return
       if (changes.user_info) {
         const ui = changes.user_info.newValue
@@ -702,8 +708,8 @@ function enqueueYtForPacing(targetChannelId, ytMsg) {
 // Listen for social events from background (new messages, notifications)
 function listenForSocialEvents() {
   // Guard: only register once (survives SPA reinit via chrome listener persistence)
-  if (window._hsMcSocialListener) return
-  window._hsMcSocialListener = true
+  if (_onceGuardsSocial.socialListener) return
+  _onceGuardsSocial.socialListener = true
 
   cleanup.addListener(chrome.runtime?.onMessage, (msg) => {
     if (msg.type === 'chat_origin_broadcast' && msg.text) {
@@ -3086,8 +3092,8 @@ async function _feedMsgFetchReplies(id) {
 // Called once from feed init. Uses event delegation on document.body so it
 // works for dynamically-rendered rows without re-wiring on each renderFeed().
 function setupFeedPostLinkHover() {
-  if (window._hsMcFeedPostLinkHoverSetup) return
-  window._hsMcFeedPostLinkHoverSetup = true
+  if (_onceGuardsSocial.feedPostLinkHoverSetup) return
+  _onceGuardsSocial.feedPostLinkHoverSetup = true
 
   let _linkGen = 0
   let _currentLink = null

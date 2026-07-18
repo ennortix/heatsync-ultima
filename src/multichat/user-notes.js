@@ -12,6 +12,11 @@
 const HS_NOTES_KEY = 'hs_user_notes_v1'
 const HS_NOTE_MAX = 2000 // chars — bounded so storage can't be griefed by a paste
 
+// module scope resets on re-injection, so a fresh instance re-registers
+// after the old one's teardown; window-scope survives takeover and leaves
+// handlers dead until hard refresh
+const _onceGuardsUserNotes = {}
+
 // ── in-memory model (source of truth at runtime; storage is the mirror) ─────────
 // notes:  canonicalKey -> { text, updatedAt }
 // index:  aliasHandle  -> canonicalKey   (every known alias points at one note)
@@ -160,8 +165,8 @@ function _hsnLoad() {
 // partial) view, so treating absence as "deleted" would just relocate the
 // wipe. (Trade-off: a delete can be resurrected by a tab that loaded the note
 // before the delete and saves later — no tombstone in the wire format yet.)
-if (typeof window !== 'undefined' && _hsnHasStorage() && !window._hsMcNotesOnChangedWired) {
-  window._hsMcNotesOnChangedWired = true
+if (typeof window !== 'undefined' && _hsnHasStorage() && !_onceGuardsUserNotes.notesOnChangedWired) {
+  _onceGuardsUserNotes.notesOnChangedWired = true
   cleanup.addListener(chrome.storage.onChanged, (changes, area) => {
     if (area !== 'local' || !changes[HS_NOTES_KEY]) return
     const raw = changes[HS_NOTES_KEY].newValue

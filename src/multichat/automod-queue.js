@@ -13,6 +13,11 @@
 // m.type === 'automod-hold' branch in main.js's buildMessageDiv (this module
 // owns the escaping + status text so that branch stays a thin renderer).
 
+// module scope resets on re-injection, so a fresh instance re-registers
+// after the old one's teardown; window-scope survives takeover and leaves
+// handlers dead until hard refresh
+const _onceGuardsAutomod = {}
+
 // ── pure mappers (unit-tested; no chrome.*/DOM) ─────────────────────────────
 
 const AUTOMOD_HOLD_DEDUPE_TTL_MS = 10 * 60 * 1000
@@ -278,8 +283,8 @@ function handleAutomodActionClick(rowEl, action) {
 }
 
 function installAutomodClickHandler() {
-  if (window._hsMcAutomodBtnHandler) return
-  window._hsMcAutomodBtnHandler = true
+  if (_onceGuardsAutomod.automodBtnHandler) return
+  _onceGuardsAutomod.automodBtnHandler = true
   document.addEventListener(
     'click',
     (e) => {

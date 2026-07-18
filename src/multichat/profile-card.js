@@ -2,6 +2,11 @@
 // Triggered by clicking any username anywhere in the extension.
 // Replaces #hs-mc-messages content. ESC, tab switch, or close button restores chat.
 
+// module scope resets on re-injection, so a fresh instance re-registers
+// after the old one's teardown; window-scope survives takeover and leaves
+// handlers dead until hard refresh
+const _onceGuardsProfileCard = {}
+
 let activeProfileCard = null // { username, platform, data, ts }
 
 // In-page LRU for fetched banners — survives card open/close within a session.
@@ -1512,8 +1517,8 @@ function pcDoWhisper(username, platform) {
 }
 
 function setupProfileCardHandlers() {
-  if (window._hsMcProfileCardSetup) return
-  window._hsMcProfileCardSetup = true
+  if (_onceGuardsProfileCard.profileCardSetup) return
+  _onceGuardsProfileCard.profileCardSetup = true
 
   // Primary path — pcard-early.js (document_start) intercepts the click before
   // Twitch/Kick can react and dispatches this event.

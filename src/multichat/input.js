@@ -1,5 +1,10 @@
 // Input - chat input, autocomplete, send message, reply state
 
+// module scope resets on re-injection, so a fresh instance re-registers
+// after the old one's teardown; window-scope survives takeover and leaves
+// handlers dead until hard refresh
+const _onceGuardsInput = {}
+
 // Message history — up/down arrow recalls previously sent messages
 const mcMessageHistory = []
 const MC_HISTORY_MAX = 50
@@ -125,7 +130,7 @@ let _recentSentHydrated = null
   }
 }
 try {
-  if (!window._hsMcInputStorageListener) {
+  if (!_onceGuardsInput.inputStorageListener) {
     const _inputStorageHandler = (changes, area) => {
       if (area !== 'local' || !changes[RECENT_SENT_KEY]) return
       const incoming = changes[RECENT_SENT_KEY].newValue
@@ -145,7 +150,7 @@ try {
       _recentSentMessages = _pruneRecent([...merged.values()].sort((a, b) => a.time - b.time))
     }
     cleanup.addListener(chrome.storage.onChanged, _inputStorageHandler)
-    window._hsMcInputStorageListener = true
+    _onceGuardsInput.inputStorageListener = true
   }
 } catch (_) {}
 
@@ -1092,14 +1097,14 @@ function initInput() {
   // shortcut that closes the tab even with an input focused — pages can't
   // cancel the shortcut itself, but a beforeunload prompt while a draft is
   // in the composer turns the insta-close into a confirm dialog.
-  if (!window._hsMcDraftGuard) {
-    window._hsMcDraftGuard = (e) => {
+  if (!_onceGuardsInput.draftGuard) {
+    _onceGuardsInput.draftGuard = (e) => {
       if (getInputText().trim()) {
         e.preventDefault()
         e.returnValue = ''
       }
     }
-    window.addEventListener('beforeunload', window._hsMcDraftGuard, { signal: mcSignal })
+    window.addEventListener('beforeunload', _onceGuardsInput.draftGuard, { signal: mcSignal })
   }
   // Unified undo/redo — same module as the website. installUndoManager
   // attaches a manager to input._undoManager and wires Ctrl+Z hotkeys
@@ -1111,8 +1116,8 @@ function initInput() {
   // Tab clears emote :hover highlight in chat — mouse stuck over an emote
   // would otherwise hold the green rect lit while the user cycles autocomplete.
   // Body class restored on mousemove. Single global install via window flag.
-  if (!window._hsMcTabHoverInstalled) {
-    window._hsMcTabHoverInstalled = true
+  if (!_onceGuardsInput.tabHoverInstalled) {
+    _onceGuardsInput.tabHoverInstalled = true
     document.addEventListener(
       'keydown',
       (e) => {
@@ -1258,8 +1263,8 @@ function initInput() {
   // otherwise gets refused by the don't-steal-from-host-inputs guard below.
   // This lets Tab snap to the composer when the user is clearly IN our overlay,
   // while still respecting a host input they're actively typing in.
-  if (!window._hsMcPointerRegion) {
-    window._hsMcPointerRegion = true
+  if (!_onceGuardsInput.pointerRegion) {
+    _onceGuardsInput.pointerRegion = true
     document.addEventListener(
       'pointerdown',
       (e) => {
@@ -1270,8 +1275,8 @@ function initInput() {
   }
 
   // Global Tab key to focus input — only when multichat panel is active
-  if (!window._hsMcTabHandler) {
-    window._hsMcTabHandler = true
+  if (!_onceGuardsInput.tabHandler) {
+    _onceGuardsInput.tabHandler = true
     document.addEventListener(
       'keydown',
       (e) => {
@@ -1308,8 +1313,8 @@ function initInput() {
 
   // Global `\` toggle → hide/show chat. Mirrors heatsync.org keyboard shortcut.
   // Skip when input is focused so users can type `\` into chat normally.
-  if (!window._hsMcChatToggleHandler) {
-    window._hsMcChatToggleHandler = true
+  if (!_onceGuardsInput.chatToggleHandler) {
+    _onceGuardsInput.chatToggleHandler = true
     document.addEventListener(
       'keydown',
       (e) => {
@@ -1330,8 +1335,8 @@ function initInput() {
   }
 
   // Auto-reveal input bar when user starts typing anywhere
-  if (!window._hsMcTypeRevealHandler) {
-    window._hsMcTypeRevealHandler = true
+  if (!_onceGuardsInput.typeRevealHandler) {
+    _onceGuardsInput.typeRevealHandler = true
     document.addEventListener(
       'keydown',
       (e) => {
@@ -1574,8 +1579,8 @@ function initInput() {
   }
 
   // Global right-click handler for ALL emotes
-  if (!window._hsMcEmoteContextHandler) {
-    window._hsMcEmoteContextHandler = true
+  if (!_onceGuardsInput.emoteContextHandler) {
+    _onceGuardsInput.emoteContextHandler = true
     document.addEventListener(
       'contextmenu',
       (e) => {
@@ -1638,8 +1643,8 @@ function initInput() {
   }
 
   // Global left-click handler for ALL emotes
-  if (!window._hsMcEmoteClickHandler) {
-    window._hsMcEmoteClickHandler = true
+  if (!_onceGuardsInput.emoteClickHandler) {
+    _onceGuardsInput.emoteClickHandler = true
     document.addEventListener(
       'click',
       (e) => {
@@ -1814,8 +1819,8 @@ function initInput() {
   }
 
   // Spoiler click → toggle revealed
-  if (!window._hsMcSpoilerHandler) {
-    window._hsMcSpoilerHandler = true
+  if (!_onceGuardsInput.spoilerHandler) {
+    _onceGuardsInput.spoilerHandler = true
     document.addEventListener(
       'click',
       (e) => {
@@ -1829,8 +1834,8 @@ function initInput() {
   }
 
   // Reply button click → set reply state and focus input
-  if (!window._hsMcReplyHandler) {
-    window._hsMcReplyHandler = true
+  if (!_onceGuardsInput.replyHandler) {
+    _onceGuardsInput.replyHandler = true
     document.addEventListener(
       'click',
       (e) => {
@@ -1853,8 +1858,8 @@ function initInput() {
   // anywhere in the panel. follow=1, block=2 are always the top two items.
   // The emote menu (capture handler above) owns emote right-clicks; real
   // links/media fall through to the native menu so "copy link" still works.
-  if (!window._hsMcMsgContextHandler) {
-    window._hsMcMsgContextHandler = true
+  if (!_onceGuardsInput.msgContextHandler) {
+    _onceGuardsInput.msgContextHandler = true
     document.addEventListener(
       'contextmenu',
       (e) => {

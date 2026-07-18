@@ -12,6 +12,11 @@
   const STORAGE_KEY = 'heatsync_multichat'
   const LOG_PREFIX = '[heatsync-mc]'
 
+  // module scope resets on re-injection, so a fresh instance re-registers
+  // after the old one's teardown; window-scope survives takeover and leaves
+  // handlers dead until hard refresh
+  const _onceGuardsMain = {}
+
   // bidi direction for the user's locale (ltr/rtl) — applied to injected UI roots
   // host page (twitch/kick) keeps its own dir; we only flip our overlay.
   // Resolved fresh on each panel mount so a manual locale override (set in options)
@@ -1042,8 +1047,8 @@
       el.style.color = color
     }
   }
-  if (!window._hsMcProfileColorListener) {
-    window._hsMcProfileColorListener = true
+  if (!_onceGuardsMain.profileColorListener) {
+    _onceGuardsMain.profileColorListener = true
     try {
       cleanup.addListener(chrome.runtime?.onMessage, (msg) => {
         if (msg?.type !== 'profile_color') return
@@ -10921,8 +10926,8 @@
   }
 
   function listenForSettingsChanges() {
-    if (window._hsMcSettingsListener) return
-    window._hsMcSettingsListener = true
+    if (_onceGuardsMain.settingsListener) return
+    _onceGuardsMain.settingsListener = true
 
     // Listen for messages from popup — tracked through cleanup so SPA
     // reinit removes the prior handler and replaces it.
@@ -13030,8 +13035,8 @@
     const streamEventDedup = window._hsStreamEventDedup
 
     // Handle stream events (game switch, online/offline) from HeatSync WS
-    if (!window._hsMcStreamEventListener) {
-      window._hsMcStreamEventListener = true
+    if (!_onceGuardsMain.streamEventListener) {
+      _onceGuardsMain.streamEventListener = true
       cleanup.addListener(chrome.runtime?.onMessage, (msg) => {
         if (msg.type !== 'stream_event') return
         const channel = msg.channel?.toLowerCase()
@@ -13310,8 +13315,8 @@
     )
 
     // Handle follow-driven stream events (from followed channels not currently viewed)
-    if (!window._hsMcFollowStreamEventListener) {
-      window._hsMcFollowStreamEventListener = true
+    if (!_onceGuardsMain.followStreamEventListener) {
+      _onceGuardsMain.followStreamEventListener = true
       cleanup.addListener(chrome.runtime?.onMessage, (msg) => {
         if (msg.type !== 'follow_stream_event') return
         const channel = msg.channel?.toLowerCase()
@@ -13435,8 +13440,8 @@
     }
 
     // Handle color map from server (for persisted stream event history)
-    if (!window._hsMcFollowColorsListener) {
-      window._hsMcFollowColorsListener = true
+    if (!_onceGuardsMain.followColorsListener) {
+      _onceGuardsMain.followColorsListener = true
       cleanup.addListener(chrome.runtime?.onMessage, (msg) => {
         if (msg.type !== 'follow_colors') return
         processFollowColors(msg.colors)
@@ -13515,8 +13520,8 @@
     }
 
     // Handle real-time follow_history from background broadcast
-    if (!window._hsMcFollowHistoryListener) {
-      window._hsMcFollowHistoryListener = true
+    if (!_onceGuardsMain.followHistoryListener) {
+      _onceGuardsMain.followHistoryListener = true
       cleanup.addListener(chrome.runtime?.onMessage, (msg) => {
         if (msg.type !== 'follow_history') return
         processFollowHistory(msg.events)

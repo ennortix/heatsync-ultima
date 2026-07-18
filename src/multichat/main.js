@@ -12499,13 +12499,27 @@
 
       // Twitch deprecated WHISPER over IRC in Feb 2023 — receive via EventSub instead.
       // Works on any host (the ESW socket is independent of the chat IRC).
-      if (gateAtBoot('whispers')) startEventSubWhispers()
+      // Guarded: a sync throw here used to kill every init below it silently.
+      try {
+        if (gateAtBoot('whispers')) startEventSubWhispers()
+      } catch (e) {
+        log('whispers init failed:', e?.message)
+      }
 
       // AutoMod hold-queue — works on any host (channel tabs, not the current
       // page, decide relevance). Registers unconditionally: isEnabled() is
       // checked at event/sweep time so toggling the subsystem live (no
       // reload) actually takes effect, unlike a boot-time gate here would.
-      if (typeof initAutomodQueue === 'function') initAutomodQueue()
+      try {
+        if (typeof __HS_DEV_BUILD__ !== 'undefined' && __HS_DEV_BUILD__) document.documentElement.dataset.hsAutomodInit = 'reached'
+        if (typeof initAutomodQueue === 'function') initAutomodQueue()
+        if (typeof __HS_DEV_BUILD__ !== 'undefined' && __HS_DEV_BUILD__) document.documentElement.dataset.hsAutomodInit = 'done'
+      } catch (e) {
+        log('automod init failed:', e?.message)
+        try {
+          document.documentElement.dataset.hsAutomodInit = `err:${e?.message || 'unknown'}`
+        } catch (_) {}
+      }
 
       // /live_chat pop-out: subscribe to THIS window's stream (?v=<id>) and open
       // the auto-live render gate immediately. The auto-join below is skipped on

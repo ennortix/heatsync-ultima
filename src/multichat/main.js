@@ -1627,6 +1627,12 @@
         zebraEnabled = v
       },
     },
+    emoteProviderPriority: {
+      get: () => emoteProviderPriority,
+      set: (v) => {
+        emoteProviderPriority = v
+      },
+    },
     whisperToastEnabled: {
       get: () => whisperToastEnabled,
       set: (v) => {
@@ -1847,6 +1853,15 @@
         rules = JSON.parse(getSetting('chatFilterRules') || '[]')
       } catch {}
       compileFilterRules(Array.isArray(rules) ? rules : [])
+    },
+    // Live re-merge: loadEmotes() rebuilds channelEmoteCaches + emoteCache
+    // from storage, replaying the same 7tv/bttv/ffz collision resolver with
+    // the new priority — no reload needed. History rows keep their prior
+    // rendering ("history is sacred"); only new messages/picker/tab-complete
+    // pick up the new winner.
+    emoteProviderPriority: () => {
+      loadEmotes()
+      markPickerDirty()
     },
     nativeVisible: () => {
       // native-chat escape hatch removed — always keep native hidden + the

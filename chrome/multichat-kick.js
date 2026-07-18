@@ -1552,6 +1552,51 @@ function isValidTwitchLogin(ch) {
 }
 
 /**
+ * Third-party emote providers, in the pre-existing hardcoded merge order
+ * (chrome/background.js concatenates channel/global emote arrays as
+ * ...bttv, ...ffz, ...sevenTV — last-write-wins gives 7tv top priority,
+ * ffz over bttv). emoteProviderOrder()/resolveEmoteProviderWinner() let the
+ * emoteProviderPriority setting re-rank these three without touching tier
+ * order (CHANNEL > own > global), native twitch/kick emotes, or heatsync.
+ * @type {readonly ['7tv','ffz','bttv']}
+ */
+const EMOTE_THIRD_PARTY_PROVIDERS = ['7tv', 'ffz', 'bttv']
+
+/**
+ * Winner-first provider order for a same-tier, same-name collision between
+ * 7TV/BTTV/FFZ. `preferred` moves to the front; the other two keep their
+ * original relative order (ffz over bttv) — a non-default choice changes
+ * only what it has to. Unknown/missing preference falls back to the
+ * original hardcoded order (7tv wins).
+ * @param {string} preferred
+ * @returns {string[]}
+ */
+function emoteProviderOrder(preferred) {
+  if (!EMOTE_THIRD_PARTY_PROVIDERS.includes(preferred)) return EMOTE_THIRD_PARTY_PROVIDERS
+  return [preferred, ...EMOTE_THIRD_PARTY_PROVIDERS.filter((p) => p !== preferred)]
+}
+
+/**
+ * Resolve a same-name collision when merging an emote pool (channel or
+ * global tier). `existing`/`incoming` are pool entries carrying a `.source`.
+ * Only arbitrates when BOTH sides are distinct third-party providers
+ * (7tv/bttv/ffz) — any other pairing (heatsync, twitch, kick, or a refresh
+ * of the same provider) keeps the caller's default last-write-wins.
+ * @param {{source?: string}|null|undefined} existing
+ * @param {{source?: string}} incoming
+ * @param {string} preferred
+ * @returns {*} whichever of existing/incoming should occupy the pool slot
+ */
+function resolveEmoteProviderWinner(existing, incoming, preferred) {
+  if (!existing) return incoming
+  const order = emoteProviderOrder(preferred)
+  const exI = order.indexOf(existing.source)
+  const inI = order.indexOf(incoming.source)
+  if (exI === -1 || inI === -1 || existing.source === incoming.source) return incoming
+  return exI < inI ? existing : incoming
+}
+
+/**
  * Live-tab composer label on a yt host page. The URL "channel" on a yt
  * video page is the raw 11-char videoId — swap it for the channel name the
  * youtube_status connected echo resolved, or '' while unresolved / for a
@@ -1634,6 +1679,11 @@ const utils = {
   isValidTwitchLogin,
   resolveYtLiveLabel,
   identityYtLiveUrl,
+
+  // Emote provider priority
+  EMOTE_THIRD_PARTY_PROVIDERS,
+  emoteProviderOrder,
+  resolveEmoteProviderWinner,
 
   // Storage hygiene
   sanitizeUiSettings,
@@ -2179,6 +2229,34 @@ const SETTINGS = [
     tipKey: 'mc_settings_chatterino_badges_desc',
     control: 'pill',
     rerender: true,
+  },
+  {
+    // Which third-party provider wins when the same emote NAME exists in
+    // more than one (7TV/BTTV/FFZ) within a channel's or the global pool.
+    // Default '7tv' matches the pre-existing hardcoded winner (BTTV < FFZ <
+    // 7TV last-write-wins in the merge) — picking it changes nothing.
+    key: 'emoteProviderPriority',
+    type: 'enum',
+    default: '7tv',
+    scope: 'sync',
+    category: 'display',
+    section: 'cosmetics',
+    labelKey: 'mc_settings_emote_provider_priority',
+    tipKey: 'mc_settings_emote_provider_priority_desc',
+    control: 'select',
+    runtimeVar: 'emoteProviderPriority',
+    apply: 'emoteProviderPriority',
+    // loadAllSettings() hydrates this var concurrently with the init-time
+    // loadEmotes() call (Promise.allSettled race) — a non-default choice
+    // could lose that race on cold boot. applyOnLoad forces one more
+    // loadEmotes() pass strictly after hydration so the picked provider is
+    // never momentarily wrong.
+    applyOnLoad: true,
+    options: [
+      { value: '7tv', label: '7tv' },
+      { value: 'bttv', label: 'bttv' },
+      { value: 'ffz', label: 'ffz' },
+    ],
   },
   {
     key: 'hs_show_pronouns',
@@ -21409,6 +21487,13 @@ function mcHasExternalSource() {
   return MC_REMOTE_SOURCES.some((s) => mcPickerSources.has(s))
 }
 
+// Which third-party provider (7tv/bttv/ffz) wins a same-name collision within
+// a tier (channel or global). Bridged to the settings registry
+// (emoteProviderPriority, default '7tv' — matches the pre-existing hardcoded
+// winner) via _RUNTIME_BRIDGE in main.js. Read live by _buildChannelEmoteCache
+// and the global-emotes loader in loadEmotes() below.
+let emoteProviderPriority = '7tv'
+
 // Per-provider result caches keyed per-query. AbortController cancels stale
 // in-flight requests on each keystroke. Results ACCUMULATE across pages
 // (load-more appends), so a buried emote past the first page is reachable.
@@ -21500,8 +21585,10 @@ function mcRerenderSearch(query) {
   // Remote provider results — locality 3 (below all local). Provider order
   // already reflects popularity (7TV TOP_ALL_TIME / FFZ count-desc), preserved
   // via `pop`. Same-name dups collapse to the first (one tile per name —
-  // inventory is name-keyed, so a viewer can only hold one image per name).
-  for (const p of MC_REMOTE_SOURCES) {
+  // inventory is name-keyed, so a viewer can only hold one image per name) —
+  // iterate in emoteProviderPriority order so the collapse picks the same
+  // winner as the merged channel/global pools ('hs' stays last, unaffected).
+  for (const p of [...emoteProviderOrder(emoteProviderPriority), 'hs']) {
     if (!mcPickerSources.has(p)) continue
     if (mcProviderLastQuery[p] !== query) continue
     for (const r of mcProviderResults[p]) {
@@ -24042,7 +24129,12 @@ function _buildChannelEmoteCache(ch, emotes, platform) {
     const source = e.source || detectEmoteSource(e.url, '7tv')
     const state = inventoryEmotes.has(e.name) ? 'owned' : 'channel'
     _hsRegisterOversize(e)
-    chCache.set(e.name, { url: e.url, source, state, zeroWidth: !!e.zeroWidth, os: e.os, _plat: platform })
+    const entry = { url: e.url, source, state, zeroWidth: !!e.zeroWidth, os: e.os, _plat: platform }
+    // Same-name collision between two third-party providers (7tv/bttv/ffz):
+    // emoteProviderPriority decides the winner instead of plain array-order
+    // last-write-wins. Every other pairing (heatsync, twitch, kick, or a
+    // same-provider refresh) is untouched — see resolveEmoteProviderWinner.
+    chCache.set(e.name, resolveEmoteProviderWinner(chCache.get(e.name), entry, emoteProviderPriority))
     if (e.hash) {
       emoteHashes.set(e.name, e.hash)
       hashToName.set(e.hash, e.name)
@@ -24169,7 +24261,10 @@ async function loadEmotes() {
           const source = e.source || detectEmoteSource(e.url, 'heatsync')
           const state = getEmoteState(e.name, source)
           _hsRegisterOversize(e)
-          emoteCache.set(e.name, { url: e.url, source, state, zeroWidth: !!e.zeroWidth, nsfw: !!e.nsfw, os: e.os })
+          const entry = { url: e.url, source, state, zeroWidth: !!e.zeroWidth, nsfw: !!e.nsfw, os: e.os }
+          // See _buildChannelEmoteCache — same 7tv/bttv/ffz collision rule
+          // applied to the global-tier pool.
+          emoteCache.set(e.name, resolveEmoteProviderWinner(emoteCache.get(e.name), entry, emoteProviderPriority))
           while (emoteCache.size > 2000) {
             emoteCache.delete(emoteCache.keys().next().value)
           }
@@ -54452,6 +54547,12 @@ const STORAGE_KEY = 'heatsync_multichat'
         zebraEnabled = v
       },
     },
+    emoteProviderPriority: {
+      get: () => emoteProviderPriority,
+      set: (v) => {
+        emoteProviderPriority = v
+      },
+    },
     whisperToastEnabled: {
       get: () => whisperToastEnabled,
       set: (v) => {
@@ -54672,6 +54773,15 @@ const STORAGE_KEY = 'heatsync_multichat'
         rules = JSON.parse(getSetting('chatFilterRules') || '[]')
       } catch {}
       compileFilterRules(Array.isArray(rules) ? rules : [])
+    },
+    // Live re-merge: loadEmotes() rebuilds channelEmoteCaches + emoteCache
+    // from storage, replaying the same 7tv/bttv/ffz collision resolver with
+    // the new priority — no reload needed. History rows keep their prior
+    // rendering ("history is sacred"); only new messages/picker/tab-complete
+    // pick up the new winner.
+    emoteProviderPriority: () => {
+      loadEmotes()
+      markPickerDirty()
     },
     nativeVisible: () => {
       // native-chat escape hatch removed — always keep native hidden + the

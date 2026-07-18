@@ -28,6 +28,13 @@ function mcHasExternalSource() {
   return MC_REMOTE_SOURCES.some((s) => mcPickerSources.has(s))
 }
 
+// Which third-party provider (7tv/bttv/ffz) wins a same-name collision within
+// a tier (channel or global). Bridged to the settings registry
+// (emoteProviderPriority, default '7tv' — matches the pre-existing hardcoded
+// winner) via _RUNTIME_BRIDGE in main.js. Read live by _buildChannelEmoteCache
+// and the global-emotes loader in loadEmotes() below.
+let emoteProviderPriority = '7tv'
+
 // Per-provider result caches keyed per-query. AbortController cancels stale
 // in-flight requests on each keystroke. Results ACCUMULATE across pages
 // (load-more appends), so a buried emote past the first page is reachable.
@@ -119,8 +126,10 @@ function mcRerenderSearch(query) {
   // Remote provider results — locality 3 (below all local). Provider order
   // already reflects popularity (7TV TOP_ALL_TIME / FFZ count-desc), preserved
   // via `pop`. Same-name dups collapse to the first (one tile per name —
-  // inventory is name-keyed, so a viewer can only hold one image per name).
-  for (const p of MC_REMOTE_SOURCES) {
+  // inventory is name-keyed, so a viewer can only hold one image per name) —
+  // iterate in emoteProviderPriority order so the collapse picks the same
+  // winner as the merged channel/global pools ('hs' stays last, unaffected).
+  for (const p of [...emoteProviderOrder(emoteProviderPriority), 'hs']) {
     if (!mcPickerSources.has(p)) continue
     if (mcProviderLastQuery[p] !== query) continue
     for (const r of mcProviderResults[p]) {
@@ -2661,7 +2670,12 @@ function _buildChannelEmoteCache(ch, emotes, platform) {
     const source = e.source || detectEmoteSource(e.url, '7tv')
     const state = inventoryEmotes.has(e.name) ? 'owned' : 'channel'
     _hsRegisterOversize(e)
-    chCache.set(e.name, { url: e.url, source, state, zeroWidth: !!e.zeroWidth, os: e.os, _plat: platform })
+    const entry = { url: e.url, source, state, zeroWidth: !!e.zeroWidth, os: e.os, _plat: platform }
+    // Same-name collision between two third-party providers (7tv/bttv/ffz):
+    // emoteProviderPriority decides the winner instead of plain array-order
+    // last-write-wins. Every other pairing (heatsync, twitch, kick, or a
+    // same-provider refresh) is untouched — see resolveEmoteProviderWinner.
+    chCache.set(e.name, resolveEmoteProviderWinner(chCache.get(e.name), entry, emoteProviderPriority))
     if (e.hash) {
       emoteHashes.set(e.name, e.hash)
       hashToName.set(e.hash, e.name)
@@ -2788,7 +2802,10 @@ async function loadEmotes() {
           const source = e.source || detectEmoteSource(e.url, 'heatsync')
           const state = getEmoteState(e.name, source)
           _hsRegisterOversize(e)
-          emoteCache.set(e.name, { url: e.url, source, state, zeroWidth: !!e.zeroWidth, nsfw: !!e.nsfw, os: e.os })
+          const entry = { url: e.url, source, state, zeroWidth: !!e.zeroWidth, nsfw: !!e.nsfw, os: e.os }
+          // See _buildChannelEmoteCache — same 7tv/bttv/ffz collision rule
+          // applied to the global-tier pool.
+          emoteCache.set(e.name, resolveEmoteProviderWinner(emoteCache.get(e.name), entry, emoteProviderPriority))
           while (emoteCache.size > 2000) {
             emoteCache.delete(emoteCache.keys().next().value)
           }
@@ -3716,6 +3733,7 @@ function renderEmoteStack(stack) {
 }
 
 export {
+  _buildChannelEmoteCache,
   blockedEmoteFallback,
   bumpEmoteFrecency,
   channelEmoteCaches,

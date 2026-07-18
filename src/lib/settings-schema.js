@@ -526,6 +526,34 @@ const SETTINGS = [
     rerender: true,
   },
   {
+    // Which third-party provider wins when the same emote NAME exists in
+    // more than one (7TV/BTTV/FFZ) within a channel's or the global pool.
+    // Default '7tv' matches the pre-existing hardcoded winner (BTTV < FFZ <
+    // 7TV last-write-wins in the merge) — picking it changes nothing.
+    key: 'emoteProviderPriority',
+    type: 'enum',
+    default: '7tv',
+    scope: 'sync',
+    category: 'display',
+    section: 'cosmetics',
+    labelKey: 'mc_settings_emote_provider_priority',
+    tipKey: 'mc_settings_emote_provider_priority_desc',
+    control: 'select',
+    runtimeVar: 'emoteProviderPriority',
+    apply: 'emoteProviderPriority',
+    // loadAllSettings() hydrates this var concurrently with the init-time
+    // loadEmotes() call (Promise.allSettled race) — a non-default choice
+    // could lose that race on cold boot. applyOnLoad forces one more
+    // loadEmotes() pass strictly after hydration so the picked provider is
+    // never momentarily wrong.
+    applyOnLoad: true,
+    options: [
+      { value: '7tv', label: '7tv' },
+      { value: 'bttv', label: 'bttv' },
+      { value: 'ffz', label: 'ffz' },
+    ],
+  },
+  {
     key: 'hs_show_pronouns',
     type: 'bool',
     default: true,

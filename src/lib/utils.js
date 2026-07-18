@@ -562,6 +562,51 @@ function isValidTwitchLogin(ch) {
 }
 
 /**
+ * Third-party emote providers, in the pre-existing hardcoded merge order
+ * (chrome/background.js concatenates channel/global emote arrays as
+ * ...bttv, ...ffz, ...sevenTV — last-write-wins gives 7tv top priority,
+ * ffz over bttv). emoteProviderOrder()/resolveEmoteProviderWinner() let the
+ * emoteProviderPriority setting re-rank these three without touching tier
+ * order (CHANNEL > own > global), native twitch/kick emotes, or heatsync.
+ * @type {readonly ['7tv','ffz','bttv']}
+ */
+const EMOTE_THIRD_PARTY_PROVIDERS = ['7tv', 'ffz', 'bttv']
+
+/**
+ * Winner-first provider order for a same-tier, same-name collision between
+ * 7TV/BTTV/FFZ. `preferred` moves to the front; the other two keep their
+ * original relative order (ffz over bttv) — a non-default choice changes
+ * only what it has to. Unknown/missing preference falls back to the
+ * original hardcoded order (7tv wins).
+ * @param {string} preferred
+ * @returns {string[]}
+ */
+function emoteProviderOrder(preferred) {
+  if (!EMOTE_THIRD_PARTY_PROVIDERS.includes(preferred)) return EMOTE_THIRD_PARTY_PROVIDERS
+  return [preferred, ...EMOTE_THIRD_PARTY_PROVIDERS.filter((p) => p !== preferred)]
+}
+
+/**
+ * Resolve a same-name collision when merging an emote pool (channel or
+ * global tier). `existing`/`incoming` are pool entries carrying a `.source`.
+ * Only arbitrates when BOTH sides are distinct third-party providers
+ * (7tv/bttv/ffz) — any other pairing (heatsync, twitch, kick, or a refresh
+ * of the same provider) keeps the caller's default last-write-wins.
+ * @param {{source?: string}|null|undefined} existing
+ * @param {{source?: string}} incoming
+ * @param {string} preferred
+ * @returns {*} whichever of existing/incoming should occupy the pool slot
+ */
+function resolveEmoteProviderWinner(existing, incoming, preferred) {
+  if (!existing) return incoming
+  const order = emoteProviderOrder(preferred)
+  const exI = order.indexOf(existing.source)
+  const inI = order.indexOf(incoming.source)
+  if (exI === -1 || inI === -1 || existing.source === incoming.source) return incoming
+  return exI < inI ? existing : incoming
+}
+
+/**
  * Live-tab composer label on a yt host page. The URL "channel" on a yt
  * video page is the raw 11-char videoId — swap it for the channel name the
  * youtube_status connected echo resolved, or '' while unresolved / for a
@@ -645,6 +690,11 @@ const utils = {
   resolveYtLiveLabel,
   identityYtLiveUrl,
 
+  // Emote provider priority
+  EMOTE_THIRD_PARTY_PROVIDERS,
+  emoteProviderOrder,
+  resolveEmoteProviderWinner,
+
   // Storage hygiene
   sanitizeUiSettings,
   UI_SYNC_BLOCKLIST,
@@ -667,6 +717,8 @@ export {
   createElement,
   DEVICE_LOCAL_KEYS,
   debounce,
+  EMOTE_THIRD_PARTY_PROVIDERS,
+  emoteProviderOrder,
   error,
   escapeHtml,
   estimateSettingSize,
@@ -679,6 +731,7 @@ export {
   log,
   OVERFLOW_MIRROR_KEYS,
   parseYtGiftCount,
+  resolveEmoteProviderWinner,
   resolveYtLiveLabel,
   safeUrl,
   sanitizeUiSettings,

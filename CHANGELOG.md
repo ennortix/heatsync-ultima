@@ -1,5 +1,22 @@
 # changelog
 
+## [1.7.29] — 2026-07-18
+
+### added
+- **automod hold queue** — held messages appear inline in the channel tab with one-click allow/deny for mods (opt-in via relink).
+- **emote suggestions while typing** — matching emotes pop up on bare words, without a trigger character; enter/tab only navigate after you arrow into the list.
+- **emote provider priority setting** — choose which provider wins on name clashes (7tv / ffz / bttv).
+- **scroll-wheel volume** on the player.
+- **vim n/N cycling** through in-tab search matches.
+
+### fixed
+- **messages never reorder or flash** — settings changes (including ones synced from another tab) used to rebuild the whole chat list in a fresh order; rows now update in place and keep their position, scroll, and stripes.
+- kick chat-mode banners survive background restarts of the extension; the first flip after a browser start no longer goes missing twice.
+- youtube replies no longer double the author's @ in the mention.
+- extension pages of other kick/twitch subdomains (creator dashboard etc.) no longer get mistaken for channels.
+- history replay on reload is chunked — no more multi-second freeze on fat backlogs.
+- rapid-fire lifecycle races (per-instance listener guards, automod init resilience).
+
 ## [1.7.28] — 2026-07-17
 
 ### fixed

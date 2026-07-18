@@ -20,6 +20,11 @@
 const SEEN_SURFACES = ['mentions', 'whispers', 'live']
 const SEEN_STORAGE_KEY = 'hs_mc_seen_state_v1'
 
+// module scope resets on re-injection, so a fresh instance re-registers
+// after the old one's teardown; window-scope survives takeover and leaves
+// handlers dead until hard refresh
+const _onceGuardsSeenState = {}
+
 // Server-authoritative "last viewed at" for each surface (ms epoch).
 const seenAt = { mentions: 0, whispers: 0, live: 0 }
 // Local "latest event at" for each surface (ms epoch). Persisted.
@@ -119,8 +124,8 @@ async function bumpSeen(surface, at) {
 // transient network blips; one retry usually wins. No exponential backoff —
 // if it fails twice the user will clear again later (Map only holds latest
 // per surface anyway).
-if (!window._hsMcSeenRetryInstalled) {
-  window._hsMcSeenRetryInstalled = true
+if (!_onceGuardsSeenState.seenRetryInstalled) {
+  _onceGuardsSeenState.seenRetryInstalled = true
   try {
     cleanup.addEventListener(document, 'visibilitychange', () => {
       if (document.visibilityState !== 'visible') return
@@ -150,8 +155,8 @@ function applySeenUpdate(surface, at) {
 // stayed lit until the next event landed. seen-state.js is loaded before
 // social.js in the build concat, so module-level registration here is the
 // earliest possible point.
-if (!window._hsMcSeenUpdateListener) {
-  window._hsMcSeenUpdateListener = true
+if (!_onceGuardsSeenState.seenUpdateListener) {
+  _onceGuardsSeenState.seenUpdateListener = true
   try {
     cleanup.addListener(chrome.runtime?.onMessage, (msg) => {
       if (msg?.type === 'seen_update') applySeenUpdate(msg.surface, msg.at)

@@ -1,6 +1,11 @@
 // Tooltips - toast, emote tooltip, user profile card, link preview
 // Note: all innerHTML usage passes content through escapeHtml() first (see src/lib/utils.js)
 
+// module scope resets on re-injection, so a fresh instance re-registers
+// after the old one's teardown; window-scope survives takeover and leaves
+// handlers dead until hard refresh
+const _onceGuardsTooltips = {}
+
 function showToast(msg, type) {
   // Routed through HsNotifs (notifs.js) — single source of truth for layers,
   // dedup, lifecycle. Adding/removing notif types happens there.
@@ -422,8 +427,8 @@ function hideEmoteTooltip() {
 }
 
 function setupEmoteTooltipHandlers() {
-  if (window._hsEmoteTooltipSetup) return
-  window._hsEmoteTooltipSetup = true
+  if (_onceGuardsTooltips.emoteTooltipSetup) return
+  _onceGuardsTooltips.emoteTooltipSetup = true
 
   cleanup.addEventListener(
     document,
@@ -1444,8 +1449,8 @@ function hideUserTooltip() {
 }
 
 function setupUserTooltipHandlers() {
-  if (window._hsMcUserTooltipSetup) return
-  window._hsMcUserTooltipSetup = true
+  if (_onceGuardsTooltips.userTooltipSetup) return
+  _onceGuardsTooltips.userTooltipSetup = true
 
   // 120ms hover-intent debounce: scrolling chat passes the cursor across
   // 10+ usernames in a single scroll-tick. Without debounce every one
@@ -1703,8 +1708,8 @@ function scheduleLinkHide(delay = 250) {
 }
 
 function setupLinkTooltipHandlers() {
-  if (window._hsMcLinkTooltipSetup) return
-  window._hsMcLinkTooltipSetup = true
+  if (_onceGuardsTooltips.linkTooltipSetup) return
+  _onceGuardsTooltips.linkTooltipSetup = true
 
   cleanup.addEventListener(
     document,

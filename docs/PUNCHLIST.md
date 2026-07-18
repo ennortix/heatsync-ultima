@@ -11,18 +11,22 @@ BUT: active data loss (below). load 10 on 4 cores, 310Mi free.
 
 ---
 
-## P0 — prod data integrity (NEW tonight — archive is lossy RIGHT NOW)
+## P0 — prod data integrity (FIXED same night — 359cca30, watches below)
 
-- **archive ingest flush stall** — "[archive] ingest buffer over 20000 rows
-  — dropped 1 oldest" every 30-60s. rows silently lost. root-cause the
-  flush stall (db write perf? lock? pool starvation?). warn-flood =
-  data-loss alarm per cold-archive playbook.
-- **heatsync-archive-offload FAILED** — 6h timeout on 78M-row export,
-  died ~10h ago. restart with fix (chunked export / longer timeout), verify
-  completion. day-7 chat_archive_old drop is gated on clean offloads.
+- ~~archive ingest flush stall~~ — FIXED: root cause was max_wal_size=1GB
+  → back-to-back checkpoints → FPW amplification → IO saturation → 1.2s
+  inserts → one unbounded flush pass held flushRunning for hours. shipped:
+  bounded drain (2000/pass) + crash requeue + prepare guard + 30min
+  dead-man + regression test; pg tuned (wal 8GB, ckpt 15min, zstd).
+  verified: 0 overflow warns, 18k inserts/min.
+- ~~offload FAILED~~ — unit now 12h timeout + idle io; /usr/local/bin
+  script was STALE (missing pgbouncer bypass) — synced. WATCH: 04:41 UTC
+  run must complete the 78M-row w27 resume.
 - **kick-reap 429 starvation** (carried) — pacer at 8000ms gaps, 10min
   backoff per channel; batch-cap fix known. likely feeds the load-10.
 - **/heapstats refused** during check — verify route still up (admin/local?).
+- NEW P1: bulk multi-row INSERT in flushRows (~100× flush headroom) —
+  needs a real-db test harness first (tests mock sql).
 
 ## P0 — extension
 

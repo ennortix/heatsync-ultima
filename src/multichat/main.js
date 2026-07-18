@@ -1621,6 +1621,12 @@
         pronounsEnabled = v
       },
     },
+    inlineSuggestEnabled: {
+      get: () => inlineSuggestEnabled,
+      set: (v) => {
+        inlineSuggestEnabled = v
+      },
+    },
     zebraEnabled: {
       get: () => zebraEnabled,
       set: (v) => {
@@ -2865,6 +2871,10 @@
   // Pronouns (pronoundb.org, twitch-only) on the profile card + hover
   // tooltip (default on)
   let pronounsEnabled = true
+
+  // Trigger-less (frosty-style) emote suggestion popup while typing any bare
+  // word — no ':' needed (default on). Read in input.js checkBareWordSuggest.
+  let inlineSuggestEnabled = true
 
   // Zebra striping — alternate row backgrounds (default on)
   let zebraEnabled = true

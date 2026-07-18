@@ -2311,6 +2311,21 @@ const SETTINGS = [
 
   // ── chat / input ──────────────────────────────────────────────────────
   {
+    // Frosty-style trigger-less emote suggestions: any bare 3+ char word pops
+    // a prefix-match preview of the Tab-cycle list above the input. Passive
+    // (Enter still sends, Tab still cycles) until arrow-navigated.
+    key: 'inlineEmoteSuggest',
+    type: 'bool',
+    default: true,
+    scope: 'sync',
+    category: 'chat',
+    section: 'input',
+    labelKey: 'mc_settings_inline_emote_suggest',
+    tipKey: 'mc_settings_inline_emote_suggest_desc',
+    control: 'pill',
+    runtimeVar: 'inlineSuggestEnabled',
+  },
+  {
     key: 'wysiwygEnabled',
     type: 'bool',
     default: true,
@@ -37083,8 +37098,18 @@ const emojiAcState = {
   matches: [],
   index: 0,
   query: '',
+  // Trigger-less (frosty-style) mode: popup opened by a bare word, no ':'.
+  // Passive until arrow-navigated — Enter still sends, un-navigated Tab still
+  // runs the classic cycle (see the keydown branch).
+  bare: false,
+  navigated: false,
 }
 let _emojiAcDebounce = null
+// Escape on the bare-word popup remembers the dismissed query; the popup
+// stays hidden while the user keeps typing that same word (re-popping on
+// every keystroke after an explicit dismissal is the fastest way to make
+// someone turn the feature off). Cleared at the next word boundary.
+let _bareSuppress = ''
 // Cap the visible list — findEmoteMatches can return dozens of hits; the
 // dropdown scrolls (max-height in CSS) but there's no value in rendering
 // hundreds of offscreen rows.
@@ -39238,26 +39263,43 @@ function handleInputKeydown(e) {
   // off to acState so subsequent Tabs keep cycling the same ranked list —
   // see that function for why no separate "wire up cycling" code lives here.
   if (emojiAcState.active) {
+    // Bare-word mode starts at index -1 (no row highlighted — the popup is a
+    // passive preview); first ArrowDown/Up lands on the first/last row and
+    // flips it into navigated (engaged) mode.
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      emojiAcState.index = (emojiAcState.index + 1) % emojiAcState.matches.length
+      emojiAcState.navigated = true
+      emojiAcState.index = emojiAcState.index < 0 ? 0 : (emojiAcState.index + 1) % emojiAcState.matches.length
       showEmojiDropdown(emojiAcState.matches, emojiAcState.index)
       return
     }
     if (e.key === 'ArrowUp') {
       e.preventDefault()
-      emojiAcState.index = (emojiAcState.index - 1 + emojiAcState.matches.length) % emojiAcState.matches.length
+      emojiAcState.navigated = true
+      emojiAcState.index =
+        emojiAcState.index < 0
+          ? emojiAcState.matches.length - 1
+          : (emojiAcState.index - 1 + emojiAcState.matches.length) % emojiAcState.matches.length
       showEmojiDropdown(emojiAcState.matches, emojiAcState.index)
       return
     }
     if (e.key === 'Enter' || e.key === 'Tab') {
-      e.preventDefault()
-      insertEmojiFromDropdown(emojiAcState.matches[emojiAcState.index])
-      showCycleTooltip()
-      return
+      // Un-navigated bare popup swallows NOTHING: close it and fall through so
+      // Enter sends the message and Tab runs the classic cycle exactly as if
+      // the popup never existed. Once arrow-navigated (or in ':' mode, where
+      // typing ':' already declared intent), Enter/Tab accept the selection.
+      if (emojiAcState.bare && !emojiAcState.navigated) {
+        hideEmojiDropdown()
+      } else {
+        e.preventDefault()
+        insertEmojiFromDropdown(emojiAcState.matches[emojiAcState.index])
+        showCycleTooltip()
+        return
+      }
     }
     if (e.key === 'Escape') {
       e.preventDefault()
+      if (emojiAcState.bare) _bareSuppress = emojiAcState.query.toLowerCase()
       hideEmojiDropdown()
       return
     }
@@ -41821,6 +41863,14 @@ function getEmojiColonContext(input) {
   return getTriggerContext(input, ':', 2)
 }
 
+// Trigger-less (frosty-style) word context: any bare [a-z0-9_] word of 3+
+// chars at the caret. The '(?:^|\s)' "trigger" doubles as the guard — words
+// led by ':' or '@' (their own dropdowns) or glued to punctuation/chips never
+// match, because the char before the word must be whitespace or line start.
+function getBareWordContext(input) {
+  return getTriggerContext(input, '(?:^|\\s)', 3)
+}
+
 function getMentionContext(input) {
   // minLen 0: a bare '@' pops the dropdown immediately with recent chatters
   // ranked first (mellen's ask — see the visible-dropdown request). Typing
@@ -41876,6 +41926,8 @@ function hideEmojiDropdown() {
   emojiAcState.matches = []
   emojiAcState.index = 0
   emojiAcState.query = ''
+  emojiAcState.bare = false
+  emojiAcState.navigated = false
   const dd = document.getElementById('hs-mc-emoji-dropdown')
   if (dd) dd.style.display = 'none'
 }
@@ -41895,7 +41947,9 @@ function insertEmojiFromDropdown(match) {
   acState.index = emojiAcState.matches.indexOf(match)
   if (acState.index === -1) acState.index = 0
   acState.active = true
-  acState.search = ':' + emojiAcState.query
+  // Bare-word picks hand Tab-cycle the bare query — prefixing ':' would make
+  // the next Tab re-search emoji shortcodes instead of the word they typed.
+  acState.search = emojiAcState.bare ? emojiAcState.query : ':' + emojiAcState.query
   acState.remoteDone = false
   acState.remotePending = false
 
@@ -41909,7 +41963,7 @@ function checkEmojiAutocomplete() {
 
   const ctx = getEmojiColonContext(input)
   if (!ctx) {
-    if (emojiAcState.active) hideEmojiDropdown()
+    checkBareWordSuggest(input)
     return
   }
 
@@ -41924,10 +41978,50 @@ function checkEmojiAutocomplete() {
   }
 
   emojiAcState.active = true
+  emojiAcState.bare = false
+  emojiAcState.navigated = false
   emojiAcState.matches = matches
   emojiAcState.query = ctx.query
   emojiAcState.index = 0
   showEmojiDropdown(matches, 0)
+}
+
+// Trigger-less inline emote suggestions (frosty-style): a bare 3+ char word at
+// the caret previews the ranked Tab-cycle list in the same dropdown the ':'
+// search uses. PREFIX matches only — substring hits on everyday words would
+// pop this on half of everything typed (':' still searches substrings), and
+// filtering the shared sorted list (instead of re-ranking) keeps row 1 equal
+// to what an un-navigated Tab inserts, chatters-first ordering included.
+function checkBareWordSuggest(input) {
+  const off = typeof inlineSuggestEnabled !== 'undefined' && !inlineSuggestEnabled
+  const ctx = off ? null : getBareWordContext(input)
+  if (!ctx) {
+    _bareSuppress = ''
+    if (emojiAcState.active) hideEmojiDropdown()
+    return
+  }
+  // Escape dismissed this word — stay hidden while they keep typing it.
+  if (_bareSuppress && ctx.query.toLowerCase().startsWith(_bareSuppress)) {
+    if (emojiAcState.active) hideEmojiDropdown()
+    return
+  }
+  const matches = findEmoteMatches(ctx.query)
+    .filter((m) => m.priority === 0)
+    .slice(0, EMOJI_DROPDOWN_MAX)
+  if (matches.length === 0) {
+    if (emojiAcState.active) hideEmojiDropdown()
+    return
+  }
+
+  emojiAcState.active = true
+  emojiAcState.bare = true
+  emojiAcState.navigated = false
+  emojiAcState.matches = matches
+  emojiAcState.query = ctx.query
+  // -1 = no highlighted row: the popup is a passive preview until the user
+  // arrow-navigates into it (Enter/Tab stay untouched meanwhile).
+  emojiAcState.index = -1
+  showEmojiDropdown(matches, -1)
 }
 
 function showMentionDropdown(matches, selectedIndex) {
@@ -54613,6 +54707,12 @@ const STORAGE_KEY = 'heatsync_multichat'
         pronounsEnabled = v
       },
     },
+    inlineSuggestEnabled: {
+      get: () => inlineSuggestEnabled,
+      set: (v) => {
+        inlineSuggestEnabled = v
+      },
+    },
     zebraEnabled: {
       get: () => zebraEnabled,
       set: (v) => {
@@ -55857,6 +55957,10 @@ const STORAGE_KEY = 'heatsync_multichat'
   // Pronouns (pronoundb.org, twitch-only) on the profile card + hover
   // tooltip (default on)
   let pronounsEnabled = true
+
+  // Trigger-less (frosty-style) emote suggestion popup while typing any bare
+  // word — no ':' needed (default on). Read in input.js checkBareWordSuggest.
+  let inlineSuggestEnabled = true
 
   // Zebra striping — alternate row backgrounds (default on)
   let zebraEnabled = true

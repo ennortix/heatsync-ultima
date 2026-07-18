@@ -568,6 +568,21 @@ const SETTINGS = [
 
   // ── chat / input ──────────────────────────────────────────────────────
   {
+    // Frosty-style trigger-less emote suggestions: any bare 3+ char word pops
+    // a prefix-match preview of the Tab-cycle list above the input. Passive
+    // (Enter still sends, Tab still cycles) until arrow-navigated.
+    key: 'inlineEmoteSuggest',
+    type: 'bool',
+    default: true,
+    scope: 'sync',
+    category: 'chat',
+    section: 'input',
+    labelKey: 'mc_settings_inline_emote_suggest',
+    tipKey: 'mc_settings_inline_emote_suggest_desc',
+    control: 'pill',
+    runtimeVar: 'inlineSuggestEnabled',
+  },
+  {
     key: 'wysiwygEnabled',
     type: 'bool',
     default: true,

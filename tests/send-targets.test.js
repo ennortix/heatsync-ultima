@@ -164,7 +164,7 @@ test('ytReplyText prepends the reply author', () => {
   expect(ytReplyText('gg well played', 'coaoaba')).toBe('@coaoaba gg well played')
 })
 
-test('ytReplyText strips the author\'s own @ before prepending (yt handles carry it)', () => {
+test("ytReplyText strips the author's own @ before prepending (yt handles carry it)", () => {
   expect(ytReplyText('gg well played', '@coaoaba')).toBe('@coaoaba gg well played')
 })
 

@@ -12547,9 +12547,11 @@
       // checked at event/sweep time so toggling the subsystem live (no
       // reload) actually takes effect, unlike a boot-time gate here would.
       try {
-        if (typeof __HS_DEV_BUILD__ !== 'undefined' && __HS_DEV_BUILD__) document.documentElement.dataset.hsAutomodInit = 'reached'
+        if (typeof __HS_DEV_BUILD__ !== 'undefined' && __HS_DEV_BUILD__)
+          document.documentElement.dataset.hsAutomodInit = 'reached'
         if (typeof initAutomodQueue === 'function') initAutomodQueue()
-        if (typeof __HS_DEV_BUILD__ !== 'undefined' && __HS_DEV_BUILD__) document.documentElement.dataset.hsAutomodInit = 'done'
+        if (typeof __HS_DEV_BUILD__ !== 'undefined' && __HS_DEV_BUILD__)
+          document.documentElement.dataset.hsAutomodInit = 'done'
       } catch (e) {
         log('automod init failed:', e?.message)
         try {

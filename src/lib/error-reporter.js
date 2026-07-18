@@ -63,12 +63,12 @@
       function scrubPairs(str) {
         if (!str) return str
         return str.replace(/([^&=]+)=([^&]*)/g, (_, k, v) => {
-          return _SENSITIVE_PARAMS.test(decodeURIComponent(k).trim()) ? k + '=REDACTED' : k + '=' + v
+          return _SENSITIVE_PARAMS.test(decodeURIComponent(k).trim()) ? `${k}=REDACTED` : `${k}=${v}`
         })
       }
       let result = base
-      if (qPart) result += '?' + scrubPairs(qPart)
-      if (hPart) result += '#' + scrubPairs(hPart)
+      if (qPart) result += `?${scrubPairs(qPart)}`
+      if (hPart) result += `#${scrubPairs(hPart)}`
       return result
     } catch (_) {
       return url
@@ -214,7 +214,7 @@
   // Host pages (Twitch/Kick/YouTube) throw their own errors constantly — keep them
   // out of the buffer unless the stack or filename traces back to extension code.
   function _isOurs(stack, file) {
-    const s = (stack || '') + ' ' + (file || '')
+    const s = `${stack || ''} ${file || ''}`
     return (
       s.includes('chrome-extension://') ||
       s.includes('moz-extension://') ||

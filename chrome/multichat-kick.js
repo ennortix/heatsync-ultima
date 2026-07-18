@@ -70,12 +70,12 @@ if (typeof window !== 'undefined' && typeof window.name === 'string' && window.n
       function scrubPairs(str) {
         if (!str) return str
         return str.replace(/([^&=]+)=([^&]*)/g, (_, k, v) => {
-          return _SENSITIVE_PARAMS.test(decodeURIComponent(k).trim()) ? k + '=REDACTED' : k + '=' + v
+          return _SENSITIVE_PARAMS.test(decodeURIComponent(k).trim()) ? `${k}=REDACTED` : `${k}=${v}`
         })
       }
       let result = base
-      if (qPart) result += '?' + scrubPairs(qPart)
-      if (hPart) result += '#' + scrubPairs(hPart)
+      if (qPart) result += `?${scrubPairs(qPart)}`
+      if (hPart) result += `#${scrubPairs(hPart)}`
       return result
     } catch (_) {
       return url
@@ -221,7 +221,7 @@ if (typeof window !== 'undefined' && typeof window.name === 'string' && window.n
   // Host pages (Twitch/Kick/YouTube) throw their own errors constantly — keep them
   // out of the buffer unless the stack or filename traces back to extension code.
   function _isOurs(stack, file) {
-    const s = (stack || '') + ' ' + (file || '')
+    const s = `${stack || ''} ${file || ''}`
     return (
       s.includes('chrome-extension://') ||
       s.includes('moz-extension://') ||
@@ -7171,7 +7171,9 @@ function ytReplyText(text, replyAuthor) {
   const body = String(text || '')
   // yt authors arrive with their own @ (handle form) — strip it or the
   // prepend doubles to "@@name" (seen live 2026-07-18)
-  const author = String(replyAuthor || '').trim().replace(/^@+/, '')
+  const author = String(replyAuthor || '')
+    .trim()
+    .replace(/^@+/, '')
   if (!author) return body
   const escapedAuthor = author.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const already = new RegExp(`^@${escapedAuthor}(?:\\s|$)`, 'i').test(body)
@@ -65828,9 +65830,11 @@ const STORAGE_KEY = 'heatsync_multichat'
       // checked at event/sweep time so toggling the subsystem live (no
       // reload) actually takes effect, unlike a boot-time gate here would.
       try {
-        if (typeof __HS_DEV_BUILD__ !== 'undefined' && __HS_DEV_BUILD__) document.documentElement.dataset.hsAutomodInit = 'reached'
+        if (typeof __HS_DEV_BUILD__ !== 'undefined' && __HS_DEV_BUILD__)
+          document.documentElement.dataset.hsAutomodInit = 'reached'
         if (typeof initAutomodQueue === 'function') initAutomodQueue()
-        if (typeof __HS_DEV_BUILD__ !== 'undefined' && __HS_DEV_BUILD__) document.documentElement.dataset.hsAutomodInit = 'done'
+        if (typeof __HS_DEV_BUILD__ !== 'undefined' && __HS_DEV_BUILD__)
+          document.documentElement.dataset.hsAutomodInit = 'done'
       } catch (e) {
         log('automod init failed:', e?.message)
         try {

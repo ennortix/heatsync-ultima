@@ -94,7 +94,9 @@ function ytReplyText(text, replyAuthor) {
   const body = String(text || '')
   // yt authors arrive with their own @ (handle form) — strip it or the
   // prepend doubles to "@@name" (seen live 2026-07-18)
-  const author = String(replyAuthor || '').trim().replace(/^@+/, '')
+  const author = String(replyAuthor || '')
+    .trim()
+    .replace(/^@+/, '')
   if (!author) return body
   const escapedAuthor = author.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const already = new RegExp(`^@${escapedAuthor}(?:\\s|$)`, 'i').test(body)

@@ -1,0 +1,20 @@
+    /* ═══ Scroll-wheel volume OSD ═══ */
+    #hs-vol-osd {
+      position: fixed;
+      z-index: 2147483647;
+      transform: translate(-50%, 0);
+      background: #000;
+      color: #fff;
+      font-family: var(--hs-mc-font, 'CozetteVector'), 'Courier New', monospace;
+      font-size: 13px;
+      line-height: 1;
+      padding: 5px 8px;
+      border: 1px solid #fff;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s linear;
+      white-space: nowrap;
+    }
+    #hs-vol-osd.visible {
+      opacity: 1;
+    }

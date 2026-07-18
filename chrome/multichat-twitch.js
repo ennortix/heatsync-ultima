@@ -1100,6 +1100,40 @@ function truncateSafe(str, n) {
   return str.slice(0, code >= 0xd800 && code <= 0xdbff ? n - 1 : n)
 }
 
+/**
+ * BTTV-style scroll-wheel volume step. Positive step per upward tick
+ * (deltaY < 0), negative per downward tick, clamped to [0,1] and rounded to
+ * 2dp so repeated ticks never drift off the 0.05 grid on float error.
+ * @param {number} volume current video.volume
+ * @param {number} deltaY wheel event deltaY (negative = scroll up)
+ * @param {number} [step]
+ * @returns {number} next volume, clamped [0,1]
+ */
+function stepVolume(volume, deltaY, step = 0.05) {
+  const v = typeof volume === 'number' && !Number.isNaN(volume) ? volume : 0
+  const dir = deltaY < 0 ? 1 : deltaY > 0 ? -1 : 0
+  const next = v + dir * step
+  return Math.min(1, Math.max(0, Math.round(next * 100) / 100))
+}
+
+/**
+ * Resolve a wheel-over-player tick into the video's next {volume, muted}
+ * state. Scrolling up while muted unmutes first (classic BTTV behavior) —
+ * the same tick both unmutes AND applies the step. Scrolling down never
+ * touches `muted` (reaching 0 by scroll is not the same as clicking mute).
+ * @param {{volume: number, muted: boolean}} state current video state
+ * @param {number} deltaY wheel event deltaY
+ * @param {number} [step]
+ * @returns {{volume: number, muted: boolean}}
+ */
+function resolveVolumeWheelStep(state, deltaY, step = 0.05) {
+  const scrollingUp = deltaY < 0
+  return {
+    volume: stepVolume(state?.volume, deltaY, step),
+    muted: scrollingUp ? false : !!state?.muted,
+  }
+}
+
 // ============================================
 // REACT FIBER HELPERS (FFZ-style)
 // ============================================
@@ -1684,6 +1718,10 @@ const utils = {
   EMOTE_THIRD_PARTY_PROVIDERS,
   emoteProviderOrder,
   resolveEmoteProviderWinner,
+
+  // Scroll-wheel volume
+  stepVolume,
+  resolveVolumeWheelStep,
 
   // Storage hygiene
   sanitizeUiSettings,
@@ -3052,6 +3090,20 @@ const SETTINGS = [
     control: 'pill',
     labelKey: 'mc_settings_hide_player_ext',
     tipKey: 'mc_settings_hide_player_ext_desc',
+  },
+  {
+    // BTTV-style scroll-wheel volume — not a CSS-hide flag (no `tweak: true`),
+    // gated live by the wheel listener reading scrollWheelVolumeEnabled.
+    key: 'scrollWheelVolume',
+    type: 'bool',
+    default: true,
+    scope: 'sync',
+    category: 'tweaks',
+    section: 'player overlay',
+    control: 'pill',
+    runtimeVar: 'scrollWheelVolumeEnabled',
+    labelKey: 'mc_settings_scroll_wheel_volume',
+    tipKey: 'mc_settings_scroll_wheel_volume_desc',
   },
 
   // ── mod / native chat ─────────────────────────────────────────────────
@@ -17215,7 +17267,27 @@ img.hs-fx-zero { margin-left: -4px; }
       opacity: 1; color: #fff;
     }
 
-  `
+      /* ═══ Scroll-wheel volume OSD ═══ */
+    #hs-vol-osd {
+      position: fixed;
+      z-index: 2147483647;
+      transform: translate(-50%, 0);
+      background: #000;
+      color: #fff;
+      font-family: var(--hs-mc-font, 'CozetteVector'), 'Courier New', monospace;
+      font-size: 13px;
+      line-height: 1;
+      padding: 5px 8px;
+      border: 1px solid #fff;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s linear;
+      white-space: nowrap;
+    }
+    #hs-vol-osd.visible {
+      opacity: 1;
+    }
+`
   const cozetteUrl =
     typeof chrome !== 'undefined' && chrome.runtime?.getURL ? chrome.runtime.getURL('fonts/CozetteVector.woff2') : ''
   style.textContent = css.replace(/__HS_FONT_COZETTE__/g, cozetteUrl)
@@ -54660,6 +54732,12 @@ const STORAGE_KEY = 'heatsync_multichat'
         whisperToastEnabled = v
       },
     },
+    scrollWheelVolumeEnabled: {
+      get: () => scrollWheelVolumeEnabled,
+      set: (v) => {
+        scrollWheelVolumeEnabled = v
+      },
+    },
     // setter also feeds the window flag content.js reads for timestamp paint
     timestampsEnabled: {
       get: () => timestampsEnabled,
@@ -55888,6 +55966,10 @@ const STORAGE_KEY = 'heatsync_multichat'
   // the has-whispers tab badge alone was easy to miss (wollip kept missing
   // whispers entirely).
   let whisperToastEnabled = true
+
+  // Scroll-wheel volume on the player (classic BTTV behavior, default on) —
+  // read live by the document-level wheel listener (see setupScrollWheelVolume).
+  let scrollWheelVolumeEnabled = true
 
   // Util row collapsed — hides C/T/F-/F+/⚙ for clean single-line tabs
 
@@ -62946,6 +63028,62 @@ const STORAGE_KEY = 'heatsync_multichat'
 
   // updateKickNoChannelClass moved to kick-host.js (platform module)
 
+  // ── Scroll-wheel volume (BTTV-style) ────────────────────────────────────
+  // Wheel over the platform's <video> steps volume ±0.05/tick (clamped
+  // [0,1]); scrolling up while muted unmutes first. One delegated listener
+  // on document (target-checked via closest() at event time) — the player
+  // node gets torn down/rebuilt across SPA nav on all 3 platforms, so a
+  // single persistent listener beats re-observing a moving target. Gated
+  // live on scrollWheelVolumeEnabled (audit-toggle rule: read at event time,
+  // not just at listener-setup time) — off behaves exactly like the
+  // listener isn't there (native page scroll).
+  const HS_PLAYER_SELECTOR = {
+    twitch: '.video-player',
+    kick: '.channel-root__player, #injected-channel-player',
+    yt: '#movie_player, .html5-video-player',
+  }
+  let _hsVolOsdEl = null
+  let _hsVolOsdHideTimer = null
+  function _hsShowVolumeOsd(playerEl, video) {
+    if (!_hsVolOsdEl) {
+      _hsVolOsdEl = document.createElement('div')
+      _hsVolOsdEl.id = 'hs-vol-osd'
+      document.body.appendChild(cleanup.trackNode(_hsVolOsdEl))
+    }
+    _hsVolOsdEl.textContent = 'vol ' + Math.round(video.volume * 100) + '%'
+    const r = playerEl.getBoundingClientRect()
+    _hsVolOsdEl.style.left = Math.round(r.left + r.width / 2) + 'px'
+    _hsVolOsdEl.style.top = Math.round(r.top + 16) + 'px'
+    _hsVolOsdEl.classList.add('visible')
+    cleanup.clearTimeout(_hsVolOsdHideTimer)
+    _hsVolOsdHideTimer = cleanup.setTimeout(() => {
+      if (_hsVolOsdEl) _hsVolOsdEl.classList.remove('visible')
+    }, 800)
+  }
+  function setupScrollWheelVolume() {
+    const sel = HS_PLAYER_SELECTOR[hostPlatform]
+    if (!sel) return
+    document.addEventListener(
+      'wheel',
+      (e) => {
+        if (!scrollWheelVolumeEnabled) return
+        // Never hijack scroll over HeatSync's own UI — every floating HS
+        // surface (panel, picker, ctx menu, banners) uses an hs- prefixed id.
+        if (e.target.closest && e.target.closest('[id^="hs-"]')) return
+        const playerEl = e.target.closest(sel)
+        if (!playerEl) return
+        const video = playerEl.querySelector('video') || document.querySelector('video')
+        if (!video) return
+        e.preventDefault()
+        const next = resolveVolumeWheelStep({ volume: video.volume, muted: video.muted }, e.deltaY)
+        video.muted = next.muted
+        video.volume = next.volume
+        _hsShowVolumeOsd(playerEl, video)
+      },
+      { passive: false, signal: mcSignal },
+    )
+  }
+
   function setupTwitchSideNavObserver() {
     if (hostPlatform !== 'twitch') return
     document.documentElement.style.setProperty('--hs-twitch-sidenav-w', _twitchSideNavW + 'px')
@@ -65153,6 +65291,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     }
     detectOfflineState()
     if (isPopout) document.body.classList.add('hs-popout')
+    setupScrollWheelVolume()
     currentUsername = getCurrentUsername()
     // Independent of whether native-tap starts below (subsystem could be
     // disabled) — early-layout.js can pre-arm hsSuppressNative purely from

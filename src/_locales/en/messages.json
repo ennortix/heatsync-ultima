@@ -1342,6 +1342,12 @@
   "mc_settings_hide_player_ext_desc": {
     "message": "overlay extensions covering the video"
   },
+  "mc_settings_scroll_wheel_volume": {
+    "message": "scroll-wheel volume"
+  },
+  "mc_settings_scroll_wheel_volume_desc": {
+    "message": "scroll over the player to adjust volume"
+  },
   "mc_settings_hide_stream_title": {
     "message": "stream title"
   },

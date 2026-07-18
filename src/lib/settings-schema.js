@@ -1348,6 +1348,20 @@ const SETTINGS = [
     labelKey: 'mc_settings_hide_player_ext',
     tipKey: 'mc_settings_hide_player_ext_desc',
   },
+  {
+    // BTTV-style scroll-wheel volume — not a CSS-hide flag (no `tweak: true`),
+    // gated live by the wheel listener reading scrollWheelVolumeEnabled.
+    key: 'scrollWheelVolume',
+    type: 'bool',
+    default: true,
+    scope: 'sync',
+    category: 'tweaks',
+    section: 'player overlay',
+    control: 'pill',
+    runtimeVar: 'scrollWheelVolumeEnabled',
+    labelKey: 'mc_settings_scroll_wheel_volume',
+    tipKey: 'mc_settings_scroll_wheel_volume_desc',
+  },
 
   // ── mod / native chat ─────────────────────────────────────────────────
 

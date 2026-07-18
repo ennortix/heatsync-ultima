@@ -1639,6 +1639,12 @@
         whisperToastEnabled = v
       },
     },
+    scrollWheelVolumeEnabled: {
+      get: () => scrollWheelVolumeEnabled,
+      set: (v) => {
+        scrollWheelVolumeEnabled = v
+      },
+    },
     // setter also feeds the window flag content.js reads for timestamp paint
     timestampsEnabled: {
       get: () => timestampsEnabled,
@@ -2867,6 +2873,10 @@
   // the has-whispers tab badge alone was easy to miss (wollip kept missing
   // whispers entirely).
   let whisperToastEnabled = true
+
+  // Scroll-wheel volume on the player (classic BTTV behavior, default on) —
+  // read live by the document-level wheel listener (see setupScrollWheelVolume).
+  let scrollWheelVolumeEnabled = true
 
   // Util row collapsed — hides C/T/F-/F+/⚙ for clean single-line tabs
 
@@ -9925,6 +9935,62 @@
 
   // updateKickNoChannelClass moved to kick-host.js (platform module)
 
+  // ── Scroll-wheel volume (BTTV-style) ────────────────────────────────────
+  // Wheel over the platform's <video> steps volume ±0.05/tick (clamped
+  // [0,1]); scrolling up while muted unmutes first. One delegated listener
+  // on document (target-checked via closest() at event time) — the player
+  // node gets torn down/rebuilt across SPA nav on all 3 platforms, so a
+  // single persistent listener beats re-observing a moving target. Gated
+  // live on scrollWheelVolumeEnabled (audit-toggle rule: read at event time,
+  // not just at listener-setup time) — off behaves exactly like the
+  // listener isn't there (native page scroll).
+  const HS_PLAYER_SELECTOR = {
+    twitch: '.video-player',
+    kick: '.channel-root__player, #injected-channel-player',
+    yt: '#movie_player, .html5-video-player',
+  }
+  let _hsVolOsdEl = null
+  let _hsVolOsdHideTimer = null
+  function _hsShowVolumeOsd(playerEl, video) {
+    if (!_hsVolOsdEl) {
+      _hsVolOsdEl = document.createElement('div')
+      _hsVolOsdEl.id = 'hs-vol-osd'
+      document.body.appendChild(cleanup.trackNode(_hsVolOsdEl))
+    }
+    _hsVolOsdEl.textContent = 'vol ' + Math.round(video.volume * 100) + '%'
+    const r = playerEl.getBoundingClientRect()
+    _hsVolOsdEl.style.left = Math.round(r.left + r.width / 2) + 'px'
+    _hsVolOsdEl.style.top = Math.round(r.top + 16) + 'px'
+    _hsVolOsdEl.classList.add('visible')
+    cleanup.clearTimeout(_hsVolOsdHideTimer)
+    _hsVolOsdHideTimer = cleanup.setTimeout(() => {
+      if (_hsVolOsdEl) _hsVolOsdEl.classList.remove('visible')
+    }, 800)
+  }
+  function setupScrollWheelVolume() {
+    const sel = HS_PLAYER_SELECTOR[hostPlatform]
+    if (!sel) return
+    document.addEventListener(
+      'wheel',
+      (e) => {
+        if (!scrollWheelVolumeEnabled) return
+        // Never hijack scroll over HeatSync's own UI — every floating HS
+        // surface (panel, picker, ctx menu, banners) uses an hs- prefixed id.
+        if (e.target.closest && e.target.closest('[id^="hs-"]')) return
+        const playerEl = e.target.closest(sel)
+        if (!playerEl) return
+        const video = playerEl.querySelector('video') || document.querySelector('video')
+        if (!video) return
+        e.preventDefault()
+        const next = resolveVolumeWheelStep({ volume: video.volume, muted: video.muted }, e.deltaY)
+        video.muted = next.muted
+        video.volume = next.volume
+        _hsShowVolumeOsd(playerEl, video)
+      },
+      { passive: false, signal: mcSignal },
+    )
+  }
+
   function setupTwitchSideNavObserver() {
     if (hostPlatform !== 'twitch') return
     document.documentElement.style.setProperty('--hs-twitch-sidenav-w', _twitchSideNavW + 'px')
@@ -12132,6 +12198,7 @@
     }
     detectOfflineState()
     if (isPopout) document.body.classList.add('hs-popout')
+    setupScrollWheelVolume()
     currentUsername = getCurrentUsername()
     // Independent of whether native-tap starts below (subsystem could be
     // disabled) — early-layout.js can pre-arm hsSuppressNative purely from

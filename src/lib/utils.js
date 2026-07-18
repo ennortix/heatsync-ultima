@@ -110,6 +110,40 @@ function truncateSafe(str, n) {
   return str.slice(0, code >= 0xd800 && code <= 0xdbff ? n - 1 : n)
 }
 
+/**
+ * BTTV-style scroll-wheel volume step. Positive step per upward tick
+ * (deltaY < 0), negative per downward tick, clamped to [0,1] and rounded to
+ * 2dp so repeated ticks never drift off the 0.05 grid on float error.
+ * @param {number} volume current video.volume
+ * @param {number} deltaY wheel event deltaY (negative = scroll up)
+ * @param {number} [step]
+ * @returns {number} next volume, clamped [0,1]
+ */
+function stepVolume(volume, deltaY, step = 0.05) {
+  const v = typeof volume === 'number' && !Number.isNaN(volume) ? volume : 0
+  const dir = deltaY < 0 ? 1 : deltaY > 0 ? -1 : 0
+  const next = v + dir * step
+  return Math.min(1, Math.max(0, Math.round(next * 100) / 100))
+}
+
+/**
+ * Resolve a wheel-over-player tick into the video's next {volume, muted}
+ * state. Scrolling up while muted unmutes first (classic BTTV behavior) —
+ * the same tick both unmutes AND applies the step. Scrolling down never
+ * touches `muted` (reaching 0 by scroll is not the same as clicking mute).
+ * @param {{volume: number, muted: boolean}} state current video state
+ * @param {number} deltaY wheel event deltaY
+ * @param {number} [step]
+ * @returns {{volume: number, muted: boolean}}
+ */
+function resolveVolumeWheelStep(state, deltaY, step = 0.05) {
+  const scrollingUp = deltaY < 0
+  return {
+    volume: stepVolume(state?.volume, deltaY, step),
+    muted: scrollingUp ? false : !!state?.muted,
+  }
+}
+
 // ============================================
 // REACT FIBER HELPERS (FFZ-style)
 // ============================================
@@ -695,6 +729,10 @@ const utils = {
   emoteProviderOrder,
   resolveEmoteProviderWinner,
 
+  // Scroll-wheel volume
+  stepVolume,
+  resolveVolumeWheelStep,
+
   // Storage hygiene
   sanitizeUiSettings,
   UI_SYNC_BLOCKLIST,
@@ -732,9 +770,11 @@ export {
   OVERFLOW_MIRROR_KEYS,
   parseYtGiftCount,
   resolveEmoteProviderWinner,
+  resolveVolumeWheelStep,
   resolveYtLiveLabel,
   safeUrl,
   sanitizeUiSettings,
+  stepVolume,
   throttle,
   truncateSafe,
   UI_SYNC_BLOCKLIST,

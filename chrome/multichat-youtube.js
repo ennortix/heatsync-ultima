@@ -48679,8 +48679,14 @@ async function resolveAutomodBroadcasterId(login) {
 // AutoMod-hold watch for each. isModFor is the same cached/deduped check the
 // mod-toolbar hover uses, so repeated sweeps are cheap after the first pass.
 async function automodSweep() {
-  if (!isEnabled('automod-queue')) return
-  if (typeof config === 'undefined' || !Array.isArray(config?.channels)) return
+  if (!isEnabled('automod-queue')) {
+    _stampSweepTrace('subsystem-disabled')
+    return
+  }
+  if (typeof config === 'undefined' || !Array.isArray(config?.channels)) {
+    _stampSweepTrace('no-config')
+    return
+  }
   // Per-channel work is independent (own isModFor cache entry, own broadcaster
   // id, own watch call) — run the sweep concurrently instead of serially
   // awaiting each channel in turn.
@@ -48708,15 +48714,19 @@ async function automodSweep() {
       }
     }),
   )
-  // Dev-build sweep breadcrumb — the per-channel catch above swallows every
-  // failure silently, which cost a live-debug session (2026-07-18: own-channel
-  // watch never registered, zero signal anywhere). Read via
-  // document.documentElement.dataset.hsAutomodSweep.
-  if (typeof __HS_DEV_BUILD__ !== 'undefined' && __HS_DEV_BUILD__) {
-    try {
-      document.documentElement.dataset.hsAutomodSweep = trace.join(' ') || 'no-channels'
-    } catch (_) {}
-  }
+  _stampSweepTrace(trace.join(' ') || 'no-channels')
+}
+
+// Dev-build sweep breadcrumb — the per-channel catch in automodSweep swallows
+// every failure silently, which cost a live-debug session (2026-07-18:
+// own-channel watch never registered, zero signal anywhere). Every exit path
+// stamps, so "attr absent" can only mean the sweep never ran at all. Read via
+// document.documentElement.dataset.hsAutomodSweep.
+function _stampSweepTrace(text) {
+  if (typeof __HS_DEV_BUILD__ === 'undefined' || !__HS_DEV_BUILD__) return
+  try {
+    document.documentElement.dataset.hsAutomodSweep = `${new Date().toTimeString().slice(0, 8)} ${text}`
+  } catch (_) {}
 }
 
 function initAutomodQueue() {

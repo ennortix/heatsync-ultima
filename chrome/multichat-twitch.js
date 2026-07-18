@@ -49014,6 +49014,21 @@ function installAutomodClickHandler() {
 
 // ── watch registration sweep ─────────────────────────────────────────────────
 
+// Own-channel detection: GQL self.isModerator is FALSE for the broadcaster in
+// their own channel (broadcaster ≠ moderator role), which silently skipped
+// the user's own channel in the sweep — the one channel they always mod.
+let _automodSelfLogin = null
+async function automodSelfLogin() {
+  if (_automodSelfLogin !== null) return _automodSelfLogin
+  try {
+    const data = await twitchGql('{ currentUser { login } }')
+    _automodSelfLogin = (data?.data?.currentUser?.login || '').toLowerCase()
+  } catch (_) {
+    _automodSelfLogin = ''
+  }
+  return _automodSelfLogin
+}
+
 async function resolveAutomodBroadcasterId(login) {
   if (_automodBroadcasterIdCache.has(login)) return _automodBroadcasterIdCache.get(login)
   try {
@@ -49041,7 +49056,8 @@ async function automodSweep() {
       const login = (ch?.twitch || '').toLowerCase()
       if (!login) return
       try {
-        const modded = typeof isModFor === 'function' && (await isModFor(login))
+        const modded =
+          login === (await automodSelfLogin()) || (typeof isModFor === 'function' && (await isModFor(login)))
         if (!modded) return
         const broadcasterId = await resolveAutomodBroadcasterId(login)
         if (!broadcasterId) return

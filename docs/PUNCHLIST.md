@@ -1,131 +1,90 @@
-# heatsync punch list — 2026-07-14
+# heatsync punch list — 2026-07-17
 
-single prioritized backlog, rebuilt from verified state. supersedes the
-2026-06-22 list: its P0 nav cluster + P2 correctness items were closed by the
-hydraaudit sweeps (5690a55 39 fixes 07-12, 82516e4 54 fixes 07-13) and releases
-through v1.7.24 (all channels, cws+amo). old P1b server unblocks landed too:
-twitch follow import (server/services/twitch-follow-sync.ts), kick_ id
-migration (07-05), prefixed-id emote locks (f80944bc).
+single prioritized backlog, rebuilt from verified state. supersedes 07-14 list:
+its P0 verification threads closed (composer focus, tab-eat, yt send e2e,
+scroll smear root-caused to chrome paint bug — will-change fix bf43650), P1
+i18n + plus payment cleared, omegaverify queue drained.
 
-state: v1.7.24 published. tri-link (twitch+kick+yt on one account) e2e-verified
-07-14. kick send/auth rework live (4650278). branch merged to main, clean tree.
+state: 1.7.25 CWS/self-dist + 1.7.26 AMO published 07-15. since then (all
+merged to main, tests green): tri-platform god-tier sweep (kick native emote
+pool, yt reply @mention, kick mode banners, kick/yt archive backfill +
+id-dedup fix), automod hold-queue (server 57c48263 deployed + ext), kick
+page-side fallback tap, reload-freeze chunked-replay fix (merged 6f4e05a),
+scroll-wheel volume, emote provider priority, bare-word emote suggest popup.
+rumble parked (intel saved); aggregator recon: nobody competes viewer-side.
 
 ---
 
-## P0 — open verification threads (close before next release)
+## P0 — release 1.7.27 gate (human-in-loop checks, then ship)
 
-- **multichat scroll overlap** — FIX SHIPPED 07-14 (68a4d3b), awaiting
-  mellen's visual confirm in the yt popout. root cause: content-visibility:auto
-  chat rows (v1.3.0 "virtual scrolling") + a recent chrome update = stale-paint
-  smears on skipped→rendered flips; heals on hover (repaint) — layout was
-  always correct (rig rect-sweeps clean, 4000+ frames). cv dropped, contain
-  kept; site already dropped cv 07-12 independently. don't re-add cv to any
-  chat-row surface.
-- ~~**composer loses focus after send**~~ — CLOSED 07-14 (f423389 + e984a37):
-  two-layer thief — sendMessage's own hideInputBar, then clearReplyState also
-  hiding the bar (focus() can't land in a hidden bar). hide now only on
-  explicit cancel (× / escape); rig-verified with auto-hide ON.
-- ~~**tab-complete eats typed word**~~ — CLOSED 07-14 (8023281): root cause was
-  a composer-rebuild race class (wysiwyg restore no-op, listener-attach gap,
-  unguarded async remote insert); trusted-CDP rig verified 12/12 restores,
-  0/70 fuzz eats.
-- ~~**yt live-chat send e2e**~~ — VERIFIED 07-14: composer → bg relay →
-  native yt chat delivery confirmed live (lofigirl X4V, @mellenpvp). bonus
-  fix dd935e8: restricted chats (subscribers-only etc.) now toast yt's real
-  reason instead of generic failure. still open (narrower): pure yt-only
-  persona send — needs a test account with no twitch link.
-- **opera gx cluster (wollip)** — 07-14: platform gap REFUTED (linux GX 133 +
-  uBlock defaults: SW+MAIN+overlay all alive in local rig); hide-btn + restore
-  pill already shipped and rig-verified. remaining = wollip-side bisect: GX
-  built-in adblock → uBlock custom lists → reinstall ext. send him the steps.
-- **kripp-mission leaked secret** — VERIFIED NOT ROTATED 07-14 (prod .env
-  hash-identical to leaked value). mellen-gated: google cloud console rotation
-  + update /opt/heatsync/app/.env + restart. local transcript copies redacted.
+all code is on main; these are eyes-and-hands verifications before tagging.
 
-## P1 — product gaps (in-hand, no design questions)
+- **automod hold-queue live e2e** — relink with automod scope (toast →
+  /api/auth/login?scopes=automod), then confirm a real held message renders
+  inline with working allow/deny.
+- **archive backfill eyeballs** — archive-origin rows render on an ARCHIVED
+  kick channel tab (xqc/trainwreckstv/adinross/roshtein are candidates);
+  kick mode banner on a live mode flip; yt reply @mention on a real send.
+- **kick channel emotes** — visible in picker channel tab + tab-complete on a
+  kick tab (isTrusted-gated UI, needs real clicks).
+- **scroll-smear visual confirm** — will-change fix (bf43650) killed the
+  stale-paint artifact; if it recurs: per-emote will-change, then
+  emoteAnimationMode off. never re-add content-visibility.
+- **chrome restart** → verify hw video decode restored (chrome://gpu shows
+  hardware-accelerated, renderer CPU drops on streams). flags rewritten 07-17.
+- **kripp-mission leaked google secret** — STILL NOT ROTATED (verified 07-14).
+  mellen-gated: cloud console rotation + /opt/heatsync/app/.env + restart.
 
-- ~~**i18n label backfill**~~ — DONE 07-14 (b2b7c54): 334 en keys, settings
-  labels/tips/placeholders + all toast strings through t(); verified live.
-  deferred remainder (named): 79 section-heading strings + ~30 trivial
-  single-word option captions — separate pass, low value.
-- ~~**plus e2e payment test**~~ — CLEARED 07-14 by mellen's own sub: trial
-  07-04 → paid renewal 07-08 (webhook + plus_events + expiry 08-11 all
-  db-verified), portal opens live stripe session, checkout 409s double-subs.
-  bonus: /plus now shows "plus active" + manage-first for subscribers
-  (site 05e35b9d). untested (named): cancellation flow — same webhook pipe,
-  stripe-side; verify whenever mellen actually cancels.
-- **archive erasure follow-ups** — self-serve /erase SHIPPED 07-14 (fbe077ae:
-  oauth-proof without an account, prod-verified e2e). remaining: capture
-  posture (opt-out-by-default) — mellen design call. decision brief:
-  - state: capture any channel a HS user watches; mitigations live = policy
-    §1a disclosure, /erase (no account needed), owner delist, durable ledger
-    + nightly cold scrub, 24h cache ceiling.
-  - A) keep opt-out default — max archive/SEO moat; OverRustle-class risk now
-    heavily mitigated (their fatal gap was NO recourse; ours is 1-click).
-  - B) owner opt-IN for archiving — near-zero legal surface, kills the logs
-    moat + seo loop.
-  - C) hybrid — capture all, public log pages only for channels over a size
-    threshold; long tail stays dark. complexity tax, fuzzy line.
-  - rec: A, plus a tripwire — watch /erase usage + takedown-mail rate monthly;
-    if a real streamer-community backlash forms, drop to C. revisit only on
-    signal, not fear.
-- ~~**landing monochrome redesign**~~ — stale entry: shipped 07-06 (a05ed639),
-  prod-verified 07-14 (zero yellow; only semantic youtube-red remains).
+## P1 — product gaps (in-hand)
 
-## P2 — deferred tech debt (queued with reasons, don't rush)
+- **archive capture posture** — the one open design call from 07-14:
+  A) keep opt-out default (rec, + monthly /erase-rate tripwire) B) owner
+  opt-in C) hybrid size-threshold. decide on signal, not fear.
+- **native-tap resilience fallback kick/yt** — ranked #1 audit remainder
+  (twitch has irc+eventsub+fallback; kick/yt native taps have no equivalent).
+  big lift, own session.
+- **opera gx (wollip)** — send him the bisect steps (GX adblock → uBlock
+  lists → reinstall); platform gap already refuted in local rig.
+- **plus discoverability** — no nav link to /plus anywhere; payment pipeline
+  fully verified, nobody can find it.
+- **cross-platform follow bugs (07-05)** — right-click follow broken for
+  unregistered kick/yt users + silent propagation no-op. 3 named bugs, unfixed.
+- **play-approval execution** — on google approval email: tester banner,
+  recruitment kit, 12×14d tracking (playbook memory). AMO link swaps on
+  AMO approval.
+- **yt-only persona send e2e** — needs a test account with no twitch link.
 
-- ~~**omegaverify 79-confirmed queue**~~ — DRAINED 07-14: re-verified the open
-  tail against current code; 6/7 were already fixed by prior sessions, last
-  real one (stale persisted kick/yt buffers never purged) fixed in 8a10828.
-  yt own-echo swallow closed same pass (f728a39). remaining named deferrals
-  stay deferred: kick self-mod double-notice, native-yt cross-platform emote
-  merge, hidden-tab DOM shed (all fragile-surface, need their own sessions).
-- **yt-bridge design cluster** — deferred from 07-10 token burn; needs its own
-  design session.
-- **@-mention native-hook port** — dropdown shipped on ext surfaces; native
-  twitch input hook deferred.
-- **gql-data nonce gap** — MAIN→ISOLATED push carries no nonce; low-sev,
-  documented, deferred.
-- **moment detector CF exemption** — pending cloudflare rule.
-- **heat anti-abuse** — P1 badges, P2 bot-score (grid P0 shipped).
-- **ops/engagement** — W2/W3 pending (W1 deployed).
-- ~~**strip dev probes before release**~~ — CONFIRMED 07-14: all hs-dbg-*
-  listeners sit behind `__HS_DEV_BUILD__` (esbuild DCE in packaged builds) and
-  build.js refuses to ship if the identifier survives minify. structural, no
-  per-release action needed.
+## P2 — deferred tech debt (queued with reasons)
+
+- audit remainders (ranked): bulk-ban multi-select · cross-channel search
+  n/N · bot-command autocomplete · pronouns.
+- perf quartet (strictly-better): eventsub whispers→SW · active-tab
+  ordering · reprocessEmoteTextInPlace freeze · native-badge epoch jank
+  (last one is the remaining channel-switch reflow).
+- twitch chat-mode GQL hashes — /slow /emoteonly /subscribers /unique
+  (/followers shipped, pattern proven).
+- user_emotes.user_id VARCHAR migration (INTEGER crashes on shadow ids).
+- yt-bridge design cluster · @-mention native-hook port · gql-data nonce ·
+  moment CF exemption · heat anti-abuse P1 badges/P2 bot-score · ops W2/W3.
+- stream-event flash — probe armed, act only on capture.
+- warden-collect sudo cadence ≥60s (other session's collector, 2s storm).
 
 ## P3 — architecture (explicit sign-off before starting)
 
-- **tier-2 refactor + god-file splits** — main.js split, safe leaves first
-  (roadmap in ARCHITECTURE-REFACTOR-2026-06.md).
-- **@heatsync/chat-core subtree** — kill the ext↔site drift-bug class;
-  CHAT-CORE-EXTRACTION-PLAN.md.
+- tier-2 refactor + main.js god-split (ARCHITECTURE-REFACTOR-2026-06.md).
+- @heatsync/chat-core subtree (CHAT-CORE-EXTRACTION-PLAN.md).
 
 ---
 
-## north star — design supremacy (IN PROGRESS 07-14)
+## north star — design supremacy (unchanged)
 
-beat X + reddit + 4chan combined on the social surfaces within the locked
-aesthetic (btop density, square everything, ANSI-256, white-bg+black-text
-hover/active, zero trendy motion, ≥13px cozette). out-platform, don't
-out-emote.
-
-07-14 opening moves:
-- law audit across /, /live/hot, /chatter, /logs: HELD (0 motion, 0 rounded,
-  paints-gradients legit). one violation: `chat-tile-group-label` @12px.
-- **ssr vim keynav SHIPPED (site 3930a067)** — logs day pages, user log
-  pages, /chatter now drive like the spa hot view: j/k/g/G, o open, y yank ¶,
-  [/] pages, / search, ? help. clean-browser verified (white-invert select).
-  the seo landing surfaces are now the only keyboard-first chat logs on the
-  internet.
-- deferred (named): logs index + channel-listing + /archive search keynav —
-  their shared shells have no csp nonce plumbing (inline scripts would be
-  blocked); plumb nonce through logsPageShell next pass. 12px label bump.
-- note: mellen's browser has a dark-reader-class ext whose user-origin css
-  eats background overrides — test visuals in a clean profile.
+out-platform, don't out-emote. locked aesthetic held at 07-14 law audit.
+deferred: logs-index/channel-listing/archive-search keynav (needs csp nonce
+plumbing in logsPageShell), 12px group-label bump.
 
 ## recommended sequence
 
-1. P0 threads — cheap closes, they're all "verify + fix small".
-2. P1 plus-payment + i18n — ship-complete debts.
-3. north-star design track once the runway is clear.
+1. P0 gate → tag 1.7.27 (one release, full matrix first).
+2. capture-posture call (decision, not code).
+3. native-tap fallback session.
+4. north-star track.

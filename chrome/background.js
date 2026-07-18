@@ -3300,7 +3300,17 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
     const failed = { bttv: false, ffz: false, sevenTV: false, twitch: false, kick: false }
     let sevenTVResult = null
     let coalesceTimer = null
+    // Refresh-class fetch (an existing non-empty set is being revalidated —
+    // the 30min TTL or a post-SW-restart pass): suppress the per-provider
+    // partial broadcasts and ship ONLY the final consolidated set. The
+    // tab-side cache rebuilds from each payload as if it were complete, so a
+    // BTTV-only partial wiped the other providers' entries and made them look
+    // brand-new on the next partial — false hadAdds → full-row reprocess →
+    // the "random ~30min full-panel flash". Cold joins keep the progressive
+    // paints: nothing is rendered yet, so there is nothing to flash.
+    const isRefresh = Array.isArray(prevCached) && prevCached.length > 0
     const broadcastCurrent = () => {
+      if (isRefresh) return
       clearTimeout(coalesceTimer)
       coalesceTimer = setTimeout(() => {
         coalesceTimer = null

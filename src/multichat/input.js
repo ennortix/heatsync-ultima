@@ -2958,6 +2958,18 @@ function handleInputKeydown(e) {
       // the popup never existed. Once arrow-navigated (or in ':' mode, where
       // typing ':' already declared intent), Enter/Tab accept the selection.
       if (emojiAcState.bare && !emojiAcState.navigated) {
+        // Exact-match collect: the full emote name was typed while the passive
+        // popup previewed it, then sent. The word renders as an emote for the
+        // sender this session (live index) — without registering it here it
+        // never persists, so it painted as text for everyone else and after
+        // refresh. Registration only; insertion stays untouched, and
+        // autoAddInputEmotes still requires the word in the sent text.
+        if (e.key === 'Enter' && emojiAcState.query) {
+          const q = emojiAcState.query
+          const exact = emojiAcState.matches.find((m) => m.name === q) ||
+            emojiAcState.matches.find((m) => m.name.toLowerCase() === q.toLowerCase())
+          if (exact) trackCompletionForAutoAdd(exact)
+        }
         hideEmojiDropdown()
       } else {
         e.preventDefault()

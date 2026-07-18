@@ -11005,6 +11005,15 @@
         }
       }
       if (msg.type === 'debug_log' && MC_DEBUG) console.log('[hs-bg]', msg.msg)
+      if (msg.type === 'emote_add_failed') {
+        // BG's collect POST failed (logged out — common right after an ext
+        // reload — rate limit, server error). This was silent on the multichat
+        // surface: the emote kept rendering locally from the session index and
+        // vanished on refresh with no server row (the o7 bug). Fail loud.
+        try {
+          showToast(t('mc_main_emote_add_failed', [msg.emoteName || 'emote', msg.error || 'server error']), 'error')
+        } catch (e) {}
+      }
       if (msg.type === 'api_status') {
         try {
           showApiStatusBanner(msg.source, msg.state)

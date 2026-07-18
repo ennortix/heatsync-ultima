@@ -2030,6 +2030,13 @@
   "mc_main_message_not_sent": {
     "message": "message could not be sent — it is still shown in your celebration row"
   },
+  "mc_main_emote_add_failed": {
+    "message": "$EMOTE$ wasn't saved to your set — $REASON$",
+    "placeholders": {
+      "emote": { "content": "$1" },
+      "reason": { "content": "$2" }
+    }
+  },
   "mc_main_mute_save_failed": {
     "message": "mute list not saved — storage error"
   },

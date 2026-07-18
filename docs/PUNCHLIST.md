@@ -39,9 +39,13 @@ BUT: active data loss (below). load 10 on 4 cores, 310Mi free.
   ext reload) → toast wired; bare-word Enter now exact-match collects.
   deferred (named): retry-on-auth-restore queue. mellen: re-click o7 in
   picker while logged in — with the toast a failure is now visible.
-- **bug-hunt pass, >>2a class** — thread-view bug found by use, not audit.
-  short targeted sweep of feed/thread/quote-link + composer surfaces for
-  siblings before the growth push invites traffic.
+- ~~bug-hunt pass, >>2a class~~ — DONE: 2-agent sweep found 7 siblings,
+  all fixed + deployed (site 9c86aceb, ext 72f09c6): POST/WS media never
+  absolutized (live images broken for every ext viewer) · /hot + /pinned
+  media · ssr short >>refs dead text · bookmarked replies opened as
+  orphan fake-OPs · bookmark linkify. plus the ~30min emote-refresh
+  flash (TTL partial-broadcast race) — refreshes now broadcast once.
+  WATCH: flash fix needs a 30min-open window to prove.
 
 ## watches (no code until they fire)
 

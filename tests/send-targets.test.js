@@ -164,6 +164,14 @@ test('ytReplyText prepends the reply author', () => {
   expect(ytReplyText('gg well played', 'coaoaba')).toBe('@coaoaba gg well played')
 })
 
+test('ytReplyText strips the author\'s own @ before prepending (yt handles carry it)', () => {
+  expect(ytReplyText('gg well played', '@coaoaba')).toBe('@coaoaba gg well played')
+})
+
+test('ytReplyText @-author does not double when user already typed the mention', () => {
+  expect(ytReplyText('@coaoaba gg', '@coaoaba')).toBe('@coaoaba gg')
+})
+
 test('ytReplyText passes text through untouched when there is no reply author', () => {
   expect(ytReplyText('just chatting', null)).toBe('just chatting')
   expect(ytReplyText('just chatting', undefined)).toBe('just chatting')

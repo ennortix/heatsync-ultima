@@ -5792,7 +5792,7 @@ function setReplyState(state) {
   const indicator = document.createElement('div')
   indicator.id = 'hs-mc-reply-indicator'
   const label = document.createElement('span')
-  label.textContent = '\u21a9 ' + t('mc_input_replying_to', [state.user])
+  label.textContent = '\u21a9 ' + t('mc_input_replying_to', [String(state.user || '').replace(/^@+/, '')])
   const cancel = document.createElement('button')
   cancel.id = 'hs-mc-reply-cancel'
   cancel.textContent = '✕'

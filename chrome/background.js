@@ -7043,6 +7043,16 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
         tap: [..._kickSrcStats.tap.entries()],
         relay: [..._kickSrcStats.relay.entries()],
         tapUnmatched: _kickSrcStats.tapUnmatched,
+        // Mode-banner chain liveness — a swallowed ChatroomUpdatedEvent is
+        // otherwise invisible (the exact silent failure that cost this session
+        // a debug loop). events/broadcasts counters + last error surface it.
+        modes: {
+          slugs: [..._kpModes.keys()],
+          events: _kpModeStats.events,
+          broadcasts: _kpModeStats.broadcasts,
+          baselines: _kpModeStats.baselines,
+          lastError: _kpModeStats.lastError,
+        },
       })
     } catch (e) {
       sendResponse({ error: e?.message || 'unknown' })
@@ -12134,7 +12144,11 @@ function _kpConnect() {
     } else if (typeof d.event === 'string' && d.event.includes('UserUnbannedEvent')) {
       _kpHandleModEvent(d, 'unban')
     } else if (typeof d.event === 'string' && d.event.includes('ChatroomUpdatedEvent')) {
-      _kpHandleChatroomUpdated(d)
+      // Async (storage.session baseline load) — a rejection here is otherwise
+      // an invisible unhandled promise in the SW; pin it for dbg_kick_tap.
+      _kpHandleChatroomUpdated(d).catch((e) => {
+        _kpModeStats.lastError = e?.message || 'unknown'
+      })
     }
   }
   ws.onclose = () => {
@@ -12239,6 +12253,7 @@ function kpModeChanges(prev, next) {
 // respawn wiped it and silently swallowed the NEXT real change per channel.
 // session scope (not local) still re-arms cleanly across browser restarts.
 const _kpModes = new Map()
+const _kpModeStats = { events: 0, broadcasts: 0, baselines: 0, lastError: null }
 let _kpModesLoadPromise = null
 function _kpModesEnsureLoaded() {
   // Memoized as a promise (not a bool): two events in one ws burst must BOTH
@@ -12273,6 +12288,7 @@ async function _kpHandleChatroomUpdated(d) {
   const m = /chatrooms\.(\d+)\.v2/.exec(d.channel || '')
   const slug = m ? _kpSlugForChatroom(Number(m[1])) : null
   if (!slug) return
+  _kpModeStats.events++
   await _kpModesEnsureLoaded()
   const next = kpNormalizeChatroomModes(ev)
   const prev = _kpModes.get(slug) || {}
@@ -12280,9 +12296,13 @@ async function _kpHandleChatroomUpdated(d) {
   const merged = { ...prev, ...next }
   _kpModes.set(slug, merged)
   _kpModesPersist()
-  if (!hadPrev) return // first sighting this browser session — baseline, no banner
+  if (!hadPrev) {
+    _kpModeStats.baselines++
+    return // first sighting this browser session — baseline, no banner
+  }
   const changes = kpModeChanges(prev, next)
   if (!changes.length) return
+  _kpModeStats.broadcasts += changes.length
   const buf = BG_KICK.channels.get(slug)
   for (const text of changes) {
     const evt = {

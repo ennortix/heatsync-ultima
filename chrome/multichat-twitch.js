@@ -49104,20 +49104,39 @@ async function automodSweep() {
   // Per-channel work is independent (own isModFor cache entry, own broadcaster
   // id, own watch call) — run the sweep concurrently instead of serially
   // awaiting each channel in turn.
+  const trace = []
   await Promise.all(
     config.channels.map(async (ch) => {
       const login = (ch?.twitch || '').toLowerCase()
       if (!login) return
       try {
-        const modded =
-          login === (await automodSelfLogin()) || (typeof isModFor === 'function' && (await isModFor(login)))
-        if (!modded) return
+        const self = await automodSelfLogin()
+        const modded = login === self || (typeof isModFor === 'function' && (await isModFor(login)))
+        if (!modded) {
+          trace.push(`${login}:not-mod(self=${self || '?'})`)
+          return
+        }
         const broadcasterId = await resolveAutomodBroadcasterId(login)
-        if (!broadcasterId) return
+        if (!broadcasterId) {
+          trace.push(`${login}:no-id`)
+          return
+        }
         await safeSendMessage({ type: 'automod_watch', broadcasterId })
-      } catch (_) {}
+        trace.push(`${login}:watched`)
+      } catch (e) {
+        trace.push(`${login}:err(${e?.message || 'unknown'})`)
+      }
     }),
   )
+  // Dev-build sweep breadcrumb — the per-channel catch above swallows every
+  // failure silently, which cost a live-debug session (2026-07-18: own-channel
+  // watch never registered, zero signal anywhere). Read via
+  // document.documentElement.dataset.hsAutomodSweep.
+  if (typeof __HS_DEV_BUILD__ !== 'undefined' && __HS_DEV_BUILD__) {
+    try {
+      document.documentElement.dataset.hsAutomodSweep = trace.join(' ') || 'no-channels'
+    } catch (_) {}
+  }
 }
 
 function initAutomodQueue() {

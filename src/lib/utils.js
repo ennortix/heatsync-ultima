@@ -602,7 +602,7 @@ function isValidTwitchLogin(ch) {
  * ffz over bttv). emoteProviderOrder()/resolveEmoteProviderWinner() let the
  * emoteProviderPriority setting re-rank these three without touching tier
  * order (CHANNEL > own > global), native twitch/kick emotes, or heatsync.
- * @type {readonly ['7tv','ffz','bttv']}
+ * @type {readonly string[]}
  */
 const EMOTE_THIRD_PARTY_PROVIDERS = ['7tv', 'ffz', 'bttv']
 
@@ -616,7 +616,7 @@ const EMOTE_THIRD_PARTY_PROVIDERS = ['7tv', 'ffz', 'bttv']
  * @returns {string[]}
  */
 function emoteProviderOrder(preferred) {
-  if (!EMOTE_THIRD_PARTY_PROVIDERS.includes(preferred)) return EMOTE_THIRD_PARTY_PROVIDERS
+  if (!EMOTE_THIRD_PARTY_PROVIDERS.includes(preferred)) return [...EMOTE_THIRD_PARTY_PROVIDERS]
   return [preferred, ...EMOTE_THIRD_PARTY_PROVIDERS.filter((p) => p !== preferred)]
 }
 
@@ -634,8 +634,8 @@ function emoteProviderOrder(preferred) {
 function resolveEmoteProviderWinner(existing, incoming, preferred) {
   if (!existing) return incoming
   const order = emoteProviderOrder(preferred)
-  const exI = order.indexOf(existing.source)
-  const inI = order.indexOf(incoming.source)
+  const exI = order.indexOf(existing.source || '')
+  const inI = order.indexOf(incoming.source || '')
   if (exI === -1 || inI === -1 || existing.source === incoming.source) return incoming
   return exI < inI ? existing : incoming
 }

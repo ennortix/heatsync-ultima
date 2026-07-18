@@ -822,6 +822,9 @@
   "mc_social_no_replies": {
     "message": "no replies yet"
   },
+  "mc_social_thread_unavailable": {
+    "message": "thread unavailable — post may have been removed"
+  },
   "mc_social_login_first": {
     "message": "log in at heatsync.org first"
   },

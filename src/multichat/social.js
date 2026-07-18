@@ -1919,27 +1919,69 @@ function formatTimeFromTs(ts) {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
+// /api/thread media URLs are origin-relative (/uploads/...) — the ext renders
+// cross-origin, so a relative src silently 404s against twitch.tv/kick.com.
+// Prefix in place; absolute URLs pass through untouched.
+function _absolutizeThreadMedia(m) {
+  if (!m) return
+  for (const k of ['media_url', 'thumbnail_url']) {
+    if (typeof m[k] === 'string' && m[k].startsWith('/')) m[k] = `https://heatsync.org${m[k]}`
+  }
+  if (Array.isArray(m.media)) {
+    for (const med of m.media) {
+      if (!med) continue
+      for (const k of ['url', 'thumbnail_url']) {
+        if (typeof med[k] === 'string' && med[k].startsWith('/')) med[k] = `https://heatsync.org${med[k]}`
+      }
+    }
+  }
+}
+
 // Open thread view — replaces feed with OP + replies + reply input
 async function openThread(msgId, highlightId) {
-  // Find OP in feed or fetch it
+  // Instant paint from the feed cache when the OP is in it; the /api/thread
+  // fetch below replaces it with the authoritative copy either way. The cache
+  // only holds the newest ~150 OPs, so a >>ref clicked from chat routinely
+  // misses — the thread MUST render from the fetch alone, never the cache.
   const op = feedMessages.find((m) => m.base36_id === msgId)
   const thread = { id: msgId, op: op || null, replies: [], loading: true, highlightId: highlightId || null }
   activeThread = thread
   renderFeed()
   _renderFeedReplyChip(thread)
   if (typeof showInputBar === 'function') showInputBar()
+  // Land ready to type — entering a thread is an intent to read AND reply.
+  document.getElementById('hs-mc-input')?.focus()
 
-  const resp = await apiFetch(`/api/messages/${msgId}/replies`)
+  const resp = await apiFetch(`/api/thread/${encodeURIComponent(msgId)}`)
   // Bail if the user closed this thread or opened another during the fetch —
   // otherwise the unconditional writes below throw on null (closeThread /
   // remote-delete) or paint thread A's replies under thread B's header.
   if (activeThread !== thread) return
-  if (resp.ok) {
-    thread.replies = resp.data?.replies || []
+  if (resp.ok && resp.data?.original) {
+    const original = resp.data.original
+    // Clicked a >>ref that points at a reply: reroot to its thread so the OP
+    // and siblings show, with the clicked post highlighted. One hop only —
+    // roots carry no reply_to, so this can't loop.
+    if (original.reply_to && original.reply_to !== msgId) {
+      openThread(original.reply_to, highlightId || msgId)
+      return
+    }
+    _absolutizeThreadMedia(original)
+    thread.op = original
+    // /api/thread pages newest-first; the view reads top-down chronological.
+    thread.replies = (resp.data.replies || []).slice().reverse()
+    for (const r of thread.replies) _absolutizeThreadMedia(r)
+  } else if (!thread.op) {
+    // No cached OP and the fetch failed/404'd — without this flag the view
+    // renders as a bare "no replies yet" with no post at all.
+    thread.error = true
   }
   thread.loading = false
 
   renderFeed()
+  // Re-render the chip: the fetched OP corrects [OP]/[RE] state for threads
+  // that weren't in the feed cache when the chip first painted.
+  _renderFeedReplyChip(thread)
 
   // Scroll to and highlight the target post
   if (highlightId) {
@@ -2038,6 +2080,12 @@ function renderThreadView(msgsEl) {
     loading.textContent = 'loading...'
     loading.style.fontSize = '11px'
     container.appendChild(loading)
+  } else if (at.error) {
+    const err = document.createElement('div')
+    err.className = 'hs-mc-empty'
+    err.textContent = t('mc_social_thread_unavailable')
+    err.style.fontSize = '11px'
+    container.appendChild(err)
   } else if (at.replies.length === 0) {
     const empty = document.createElement('div')
     empty.className = 'hs-mc-empty'

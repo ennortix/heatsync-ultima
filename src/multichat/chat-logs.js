@@ -68,9 +68,11 @@ async function openChatLogsView(username, opts = {}) {
   const platform = (opts.platform || 'twitch').toLowerCase()
   const channel = opts.channel ? String(opts.channel).toLowerCase() : null
 
-  // Hide inputbar — no message composition in log view
+  // Hide inputbar — no message composition in log view. Flag must move with
+  // the class or showInputBar() early-returns forever (composer unreachable).
   const inputBar = document.getElementById('hs-mc-inputbar')
   if (inputBar) inputBar.classList.add('hs-hidden')
+  inputBarVisible = false
 
   activeChatLogs = {
     username,
@@ -97,7 +99,10 @@ function closeChatLogsView() {
   const inputBar = document.getElementById('hs-mc-inputbar')
   if (inputBar) {
     const hideOnTabs = ['add', 'settings', 'discover', 'pinned']
-    if (!hideOnTabs.includes(currentTab)) inputBar.classList.remove('hs-hidden')
+    if (!hideOnTabs.includes(currentTab)) {
+      inputBar.classList.remove('hs-hidden')
+      inputBarVisible = true
+    }
   }
   if (typeof renderMessages === 'function') renderMessages(currentTab)
 }

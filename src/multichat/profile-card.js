@@ -145,9 +145,13 @@ async function openProfileCard(username, platform) {
   if (!username) return
   username = String(username).toLowerCase()
 
-  // Hide input bar — typing makes no sense in card view
+  // Hide input bar — typing makes no sense in card view. Flag must move with
+  // the class: a class-only hide leaves inputBarVisible=true, which makes
+  // every later showInputBar() early-return — composer unreachable until a
+  // full reload ("no way to type").
   const inputBar = document.getElementById('hs-mc-inputbar')
   if (inputBar) inputBar.classList.add('hs-hidden')
+  inputBarVisible = false
 
   activeProfileCard = { username, platform: platform || null, data: null, ts: Date.now() }
   renderProfileCardView()
@@ -355,11 +359,15 @@ function closeProfileCard() {
   if (!activeProfileCard) return
   activeProfileCard = null
   // renderMessages will redo input visibility logic via switchTab? No, switchTab not called here.
-  // Restore input bar visibility based on currentTab
+  // Restore input bar visibility based on currentTab (flag moves with class —
+  // see hide site above)
   const inputBar = document.getElementById('hs-mc-inputbar')
   if (inputBar) {
     const hideOnTabs = ['add', 'settings', 'discover', 'pinned']
-    if (!hideOnTabs.includes(currentTab)) inputBar.classList.remove('hs-hidden')
+    if (!hideOnTabs.includes(currentTab)) {
+      inputBar.classList.remove('hs-hidden')
+      inputBarVisible = true
+    }
   }
   renderMessages(currentTab)
 }
@@ -1633,6 +1641,7 @@ function pcMention(name) {
   cleanup.setTimeout(() => {
     const inputBar = document.getElementById('hs-mc-inputbar')
     if (inputBar) inputBar.classList.remove('hs-hidden')
+    inputBarVisible = true
     const input = document.getElementById('hs-mc-input')
     if (!input) return
     const tag = '@' + name + ' '

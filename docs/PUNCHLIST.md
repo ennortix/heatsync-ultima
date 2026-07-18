@@ -1,114 +1,105 @@
-# heatsync punch list — 2026-07-17 (rev 2, post-incident)
+# heatsync punch list — 2026-07-18 (rev 3, post-1.7.29)
 
-07-18 overnight: prod death-spiral fixed (5 causes, server e6eb8e05+):
-per-msg WAL fsync storm → batched tx+async commit; chatter-rollup at
-02:30 UTC (US prime) orphan-stacking → lock+30min cap+09:30 UTC;
-unbounded archiver buffer → hard 20k bound; cold /logs day pages
-parsing whole bot-farm days per crawler hit → semaphore+16MB cap+async
-zstd; channel-overlap same → lock+cap+10:15 UTC. cgroup window
-narrowed (fast OOM-restart over 502-wedge). admin /api/dev/heapstats
-born. verify 09:30/10:15 UTC jobs run clean.
+state: 1.7.29 on main, repo clean, all worktrees merged, tests green.
+since rev 2: thread-view OP-fetch fix (the >>2a bug — /api/thread + media
+absolutize + composer desync), lint gate cleared on touched files, automod
+watches live (organic e2e pending), archive backfill + yt reply PROVEN.
+rev 2's 1.7.27 gate is history — 1.7.29 shipped.
 
-single prioritized backlog, rebuilt from verified state. supersedes 07-14 list:
-its P0 verification threads closed (composer focus, tab-eat, yt send e2e,
-scroll smear root-caused to chrome paint bug — will-change fix bf43650), P1
-i18n + plus payment cleared, omegaverify queue drained.
-
-state: 1.7.25 CWS/self-dist + 1.7.26 AMO published 07-15. since then (all
-merged to main, tests green): tri-platform god-tier sweep (kick native emote
-pool, yt reply @mention, kick mode banners, kick/yt archive backfill +
-id-dedup fix), automod hold-queue (server 57c48263 deployed + ext), kick
-page-side fallback tap, reload-freeze chunked-replay fix (merged 6f4e05a),
-scroll-wheel volume, emote provider priority, bare-word emote suggest popup.
-rumble parked (intel saved); aggregator recon: nobody competes viewer-side.
+prod check tonight (20:xx): both workers up, redis healthy, disk fine.
+BUT: active data loss (below). load 10 on 4 cores, 310Mi free.
 
 ---
 
-## P0 — release 1.7.27 gate (human-in-loop checks, then ship)
+## P0 — prod data integrity (NEW tonight — archive is lossy RIGHT NOW)
 
-all code is on main; these are eyes-and-hands verifications before tagging.
+- **archive ingest flush stall** — "[archive] ingest buffer over 20000 rows
+  — dropped 1 oldest" every 30-60s. rows silently lost. root-cause the
+  flush stall (db write perf? lock? pool starvation?). warn-flood =
+  data-loss alarm per cold-archive playbook.
+- **heatsync-archive-offload FAILED** — 6h timeout on 78M-row export,
+  died ~10h ago. restart with fix (chunked export / longer timeout), verify
+  completion. day-7 chat_archive_old drop is gated on clean offloads.
+- **kick-reap 429 starvation** (carried) — pacer at 8000ms gaps, 10min
+  backoff per channel; batch-cap fix known. likely feeds the load-10.
+- **/heapstats refused** during check — verify route still up (admin/local?).
 
-- **automod hold-queue live e2e** — 07-18: relink DONE (+ scope-drop auth
-  bug fixed 228a3f71), own-channel sweep bug fixed (2c47155 — gql
-  isModerator=false for broadcaster skipped own channel), watch + hold/update
-  webhooks LIVE and twitch-verified. sweep CONFIRMED working from active
-  tabs (2 watches: own channel + nl_kripp via mod status) — the next
-  automod hold in kripp's chat completes the e2e organically. footnotes:
-  eswFetchSelfUserId gets helix/users 404 (whispers bug, investigate);
-  background-only tabs stall startNetwork mid-join and never reach
-  automod init (minor).
-- ~~archive backfill~~ — PROVEN 07-18 (DOM ids ∩ /api/recent/kick/xqc,
-  0 dupes). ~~yt reply @mention~~ — VERIFIED 07-18 on lofigirl real send
-  (+ @@ double-mention bug found+fixed dccfff0). still open: kick mode
-  banner on a live mode flip.
-- **render-storm "twitching"** — NEW 07-18: hydration/tab-switch fires
-  consecutive full renderMessages rebuilds across frames (worse now that
-  replay ingest is chunked); mellen sees jumbled fly-in. fix: trailing
-  debounce collapsing consecutive full rebuilds into one paint. FIRST CODE
-  ITEM next session — fort-knox ui bar.
-- **ext handler-guard hardening** — SHIPPED 07-18 (56fdc47): 29 window
-  guards → module scope; 3 raw storage listeners now lifecycle-tracked.
-- **kick channel emotes** — 07-18 synthetic check: picker on a twitch-host
-  kripp tab shows NO channel/kick section (7tv/bttv/ffz/hs only) — either
-  gap or needs kick-host context. eyeball on a real kick page tab.
-- **scroll-smear visual confirm** — will-change fix (bf43650) killed the
-  stale-paint artifact; if it recurs: per-emote will-change, then
-  emoteAnimationMode off. never re-add content-visibility.
-- **chrome restart** → verify hw video decode restored (chrome://gpu shows
-  hardware-accelerated, renderer CPU drops on streams). flags rewritten 07-17.
-- **kripp-mission leaked google secret** — STILL NOT ROTATED (verified 07-14).
-  mellen-gated: cloud console rotation + /opt/heatsync/app/.env + restart.
+## P0 — extension
 
-## P1 — product gaps (in-hand)
+- **render-storm "twitching"** (carried, FIRST CODE ITEM) — hydration/
+  tab-switch fires consecutive full renderMessages rebuilds; trailing
+  debounce collapsing rebuilds into one paint.
+- **bug-hunt pass, >>2a class** — thread-view bug found by use, not audit.
+  short targeted sweep of feed/thread/quote-link + composer surfaces for
+  siblings before the growth push invites traffic.
 
-- **archive capture posture** — the one open design call from 07-14:
-  A) keep opt-out default (rec, + monthly /erase-rate tripwire) B) owner
-  opt-in C) hybrid size-threshold. decide on signal, not fear.
-- **native-tap resilience fallback kick/yt** — ranked #1 audit remainder
-  (twitch has irc+eventsub+fallback; kick/yt native taps have no equivalent).
-  big lift, own session.
-- **opera gx (wollip)** — send him the bisect steps (GX adblock → uBlock
-  lists → reinstall); platform gap already refuted in local rig.
-- **plus discoverability** — no nav link to /plus anywhere; payment pipeline
-  fully verified, nobody can find it.
-- **cross-platform follow bugs (07-05)** — right-click follow broken for
-  unregistered kick/yt users + silent propagation no-op. 3 named bugs, unfixed.
-- **play-approval execution** — on google approval email: tester banner,
-  recruitment kit, 12×14d tracking (playbook memory). AMO link swaps on
-  AMO approval.
-- **yt-only persona send e2e** — needs a test account with no twitch link.
+## watches (no code until they fire)
 
-## P2 — deferred tech debt (queued with reasons)
+- automod organic e2e — 2 watches live (own channel + nl_kripp); next real
+  hold completes it.
+- scroll-smear recurrence — will-change fix holding; escalation ladder in
+  rev 2 stands. never re-add content-visibility.
+- prod 09:30/10:15 UTC jobs — verify both run clean 2 consecutive days.
+- kick mode banner on a live mode flip.
 
-- audit remainders (ranked): bulk-ban multi-select · cross-channel search
+## mellen-gated (blocked on human)
+
+- **google oauth secret rotation** — STILL NOT ROTATED (leaked 07-05).
+  cloud console + /opt/heatsync/app/.env + restart.
+- kick picker channel-tab eyeball on a real kick page tab.
+- chrome restart → verify hw video decode restored (chrome://gpu).
+- play-approval execution on google email (playbook ready: banner,
+  recruitment kit, 12×14d).
+
+## P1 — product (in-hand)
+
+- **plus discoverability** — no nav link to /plus anywhere; payment works,
+  nobody can find it. ship BEFORE any growth push.
+- capture-posture design call (opt-out default + erase-rate tripwire rec).
+- native-tap resilience fallback kick/yt — #1 audit remainder, own session.
+- cross-platform follow bugs (07-05, 3 named, unfixed).
+- opera gx — send wollip the bisect steps.
+- yt-only persona send e2e (needs unlinked test account).
+- lint-debt sweep — daylight session, ~100 files, recipe in memory.
+
+## growth track — world domination (GATED on prod green)
+
+order matters: fix pipes → make findable → then shout.
+
+1. prod stable 48h (archive lossless, offload clean, load sane).
+2. plus nav link + archive SEO play #3 (per-channel best-of/leaderboard
+   pages — programmatic, plays #1/#2 shipped).
+3. **reddit/launch post** — NOT yet. posting while archive drops rows and
+   load sits at 10/4-cores burns the one first impression. gate: prod
+   green + plus findable. then it's time.
+4. play store 12×14d on approval → production listing.
+5. moments loop content cold-start needs real users — post drives this.
+
+## P2 — deferred tech debt (carried from rev 2, unchanged)
+
+- audit remainders ranked: bulk-ban multi-select · cross-channel search
   n/N · bot-command autocomplete · pronouns.
-- perf quartet (strictly-better): eventsub whispers→SW · active-tab
-  ordering · reprocessEmoteTextInPlace freeze · native-badge epoch jank
-  (last one is the remaining channel-switch reflow).
-- twitch chat-mode GQL hashes — /slow /emoteonly /subscribers /unique
-  (/followers shipped, pattern proven).
-- user_emotes.user_id VARCHAR migration (INTEGER crashes on shadow ids).
-- yt-bridge design cluster · @-mention native-hook port · gql-data nonce ·
-  moment CF exemption · heat anti-abuse P1 badges/P2 bot-score · ops W2/W3.
-- stream-event flash — probe armed, act only on capture.
-- warden-collect sudo cadence ≥60s (other session's collector, 2s storm).
+- perf quartet: eventsub whispers→SW · active-tab ordering ·
+  reprocessEmoteTextInPlace freeze · native-badge epoch jank.
+- twitch chat-mode GQL hashes (/slow /emoteonly /subscribers /unique).
+- user_emotes.user_id VARCHAR migration.
+- omegaverify P1 remainders: yt send any-tab fallback · cosmetics drift ·
+  whisper echo-dedup · processEmotes double-escape.
+- heat anti-abuse P1: badge-weighted heat · persist isFirstMsg · P2
+  bot-score to retire ARCHIVE_SKIP_CHANNELS.
+- W2/W3 megamission cluster · yt-bridge design · gql-data nonce ·
+  moment CF exemption · stream-event flash probe (act on capture only).
 
 ## P3 — architecture (explicit sign-off before starting)
 
-- tier-2 refactor + main.js god-split (ARCHITECTURE-REFACTOR-2026-06.md).
-- @heatsync/chat-core subtree (CHAT-CORE-EXTRACTION-PLAN.md).
+- tier-2 refactor + main.js god-split · @heatsync/chat-core subtree.
 
 ---
 
-## north star — design supremacy (unchanged)
-
-out-platform, don't out-emote. locked aesthetic held at 07-14 law audit.
-deferred: logs-index/channel-listing/archive-search keynav (needs csp nonce
-plumbing in logsPageShell), 12px group-label bump.
-
 ## recommended sequence
 
-1. P0 gate → tag 1.7.27 (one release, full matrix first).
-2. capture-posture call (decision, not code).
-3. native-tap fallback session.
-4. north-star track.
+1. prod archive stall + dead offload (tonight — it's losing data).
+2. render-storm debounce.
+3. >>2a-class bug sweep.
+4. plus nav link + lint sweep (daylight).
+5. growth gate check → reddit post.

@@ -1,4 +1,13 @@
-# heatsync punch list — 2026-07-17
+# heatsync punch list — 2026-07-17 (rev 2, post-incident)
+
+07-18 overnight: prod death-spiral fixed (5 causes, server e6eb8e05+):
+per-msg WAL fsync storm → batched tx+async commit; chatter-rollup at
+02:30 UTC (US prime) orphan-stacking → lock+30min cap+09:30 UTC;
+unbounded archiver buffer → hard 20k bound; cold /logs day pages
+parsing whole bot-farm days per crawler hit → semaphore+16MB cap+async
+zstd; channel-overlap same → lock+cap+10:15 UTC. cgroup window
+narrowed (fast OOM-restart over 502-wedge). admin /api/dev/heapstats
+born. verify 09:30/10:15 UTC jobs run clean.
 
 single prioritized backlog, rebuilt from verified state. supersedes 07-14 list:
 its P0 verification threads closed (composer focus, tab-eat, yt send e2e,
@@ -19,14 +28,26 @@ rumble parked (intel saved); aggregator recon: nobody competes viewer-side.
 
 all code is on main; these are eyes-and-hands verifications before tagging.
 
-- **automod hold-queue live e2e** — relink with automod scope (toast →
-  /api/auth/login?scopes=automod), then confirm a real held message renders
-  inline with working allow/deny.
-- **archive backfill eyeballs** — archive-origin rows render on an ARCHIVED
-  kick channel tab (xqc/trainwreckstv/adinross/roshtein are candidates);
-  kick mode banner on a live mode flip; yt reply @mention on a real send.
-- **kick channel emotes** — visible in picker channel tab + tab-complete on a
-  kick tab (isTrusted-gated UI, needs real clicks).
+- **automod hold-queue live e2e** — 07-18: relink DONE (+ scope-drop auth
+  bug fixed 228a3f71), own-channel sweep bug fixed (2c47155 — gql
+  isModerator=false for broadcaster skipped own channel), watch + hold/update
+  webhooks LIVE and twitch-verified. OPEN: ext-side sweep still not firing
+  (init breadcrumbs staged, needs reload read); then a real held message
+  (needs automod level>0 + non-mod sender — mellen declined settings change).
+- ~~archive backfill~~ — PROVEN 07-18 (DOM ids ∩ /api/recent/kick/xqc,
+  0 dupes). ~~yt reply @mention~~ — VERIFIED 07-18 on lofigirl real send
+  (+ @@ double-mention bug found+fixed dccfff0). still open: kick mode
+  banner on a live mode flip.
+- **render-storm "twitching"** — NEW 07-18: hydration/tab-switch fires
+  consecutive full renderMessages rebuilds across frames (worse now that
+  replay ingest is chunked); mellen sees jumbled fly-in. fix: trailing
+  debounce collapsing consecutive full rebuilds into one paint. FIRST CODE
+  ITEM next session — fort-knox ui bar.
+- **ext handler-guard hardening** — SHIPPED 07-18 (56fdc47): 29 window
+  guards → module scope; 3 raw storage listeners now lifecycle-tracked.
+- **kick channel emotes** — 07-18 synthetic check: picker on a twitch-host
+  kripp tab shows NO channel/kick section (7tv/bttv/ffz/hs only) — either
+  gap or needs kick-host context. eyeball on a real kick page tab.
 - **scroll-smear visual confirm** — will-change fix (bf43650) killed the
   stale-paint artifact; if it recurs: per-emote will-change, then
   emoteAnimationMode off. never re-add content-visibility.

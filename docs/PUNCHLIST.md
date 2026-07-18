@@ -31,9 +31,12 @@ all code is on main; these are eyes-and-hands verifications before tagging.
 - **automod hold-queue live e2e** — 07-18: relink DONE (+ scope-drop auth
   bug fixed 228a3f71), own-channel sweep bug fixed (2c47155 — gql
   isModerator=false for broadcaster skipped own channel), watch + hold/update
-  webhooks LIVE and twitch-verified. OPEN: ext-side sweep still not firing
-  (init breadcrumbs staged, needs reload read); then a real held message
-  (needs automod level>0 + non-mod sender — mellen declined settings change).
+  webhooks LIVE and twitch-verified. sweep CONFIRMED working from active
+  tabs (2 watches: own channel + nl_kripp via mod status) — the next
+  automod hold in kripp's chat completes the e2e organically. footnotes:
+  eswFetchSelfUserId gets helix/users 404 (whispers bug, investigate);
+  background-only tabs stall startNetwork mid-join and never reach
+  automod init (minor).
 - ~~archive backfill~~ — PROVEN 07-18 (DOM ids ∩ /api/recent/kick/xqc,
   0 dupes). ~~yt reply @mention~~ — VERIFIED 07-18 on lofigirl real send
   (+ @@ double-mention bug found+fixed dccfff0). still open: kick mode

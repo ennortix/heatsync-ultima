@@ -24,7 +24,7 @@ function attachInputEmoteErrorRecovery(img) {
       return
     }
     img.dataset.hsRetried = '1'
-    img.src = img.src + (img.src.includes('?') ? '&' : '?') + 'r=' + Date.now()
+    img.src = `${img.src}${img.src.includes('?') ? '&' : '?'}r=${Date.now()}`
   })
 }
 

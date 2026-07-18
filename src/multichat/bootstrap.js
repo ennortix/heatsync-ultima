@@ -819,7 +819,10 @@ function _hsPerfWrap(fn, ms, kind) {
     }
   } catch {}
   return function () {
-    if (!window.__hsPerfTrace) return fn.apply(this, arguments)
+    // localStorage gate so the tracer is togglable from the page world too —
+    // the isolated world's window.__hsPerfTrace is unreachable from devtools'
+    // default context and from automation.
+    if (!window.__hsPerfTrace && !localStorage.getItem('hs_perf_trace')) return fn.apply(this, arguments)
     const t = performance.now()
     try {
       return fn.apply(this, arguments)
@@ -828,6 +831,18 @@ function _hsPerfWrap(fn, ms, kind) {
       if (d > 50) {
         ;(window.__hsPerfLog ||= []).push({ side: 'mc', kind, ms, dur: Math.round(d), at: Math.round(t), src })
         if (window.__hsPerfLog.length > 300) window.__hsPerfLog.shift()
+        // Mirror into a DOM node — same reachability problem as the gate above.
+        try {
+          let n = document.getElementById('hs-perf-log')
+          if (!n) {
+            n = document.createElement('script')
+            n.type = 'text/hs-perf-log'
+            n.id = 'hs-perf-log'
+            document.documentElement.appendChild(n)
+          }
+          n.textContent += JSON.stringify({ kind, dur: Math.round(d), at: Math.round(t), src }) + '\n'
+          if (n.textContent.length > 40000) n.textContent = n.textContent.slice(-20000)
+        } catch {}
       }
     }
   }
@@ -958,14 +973,15 @@ const cleanup = {
     if (i !== -1) _timers.timeouts.splice(i, 1)
   },
   addEventListener(target, event, handler) {
-    target.addEventListener(event, handler, { signal: mcSignal })
+    target.addEventListener(event, _hsPerfWrap(handler, 0, `event:${event}`), { signal: mcSignal })
   },
   // For chrome.runtime.onMessage / chrome.storage.onChanged etc — APIs that
   // expose addListener/removeListener but ignore AbortSignal.
   addListener(target, fn) {
     if (!target?.addListener) return
-    target.addListener(fn)
-    _trackedListeners.push({ target, fn })
+    const w = _hsPerfWrap(fn, 0, 'listener')
+    target.addListener(w)
+    _trackedListeners.push({ target, fn: w })
   },
   trackObserver(obs) {
     _timers.observers.push(obs)

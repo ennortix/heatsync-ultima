@@ -7169,7 +7169,9 @@ const YT_CHAT_MAX_LEN = 200
  */
 function ytReplyText(text, replyAuthor) {
   const body = String(text || '')
-  const author = String(replyAuthor || '').trim()
+  // yt authors arrive with their own @ (handle form) — strip it or the
+  // prepend doubles to "@@name" (seen live 2026-07-18)
+  const author = String(replyAuthor || '').trim().replace(/^@+/, '')
   if (!author) return body
   const escapedAuthor = author.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const already = new RegExp(`^@${escapedAuthor}(?:\\s|$)`, 'i').test(body)
@@ -17684,6 +17686,11 @@ img.hs-fx-zero { margin-left: -4px; }
 const SEEN_SURFACES = ['mentions', 'whispers', 'live']
 const SEEN_STORAGE_KEY = 'hs_mc_seen_state_v1'
 
+// module scope resets on re-injection, so a fresh instance re-registers
+// after the old one's teardown; window-scope survives takeover and leaves
+// handlers dead until hard refresh
+const _onceGuardsSeenState = {}
+
 // Server-authoritative "last viewed at" for each surface (ms epoch).
 const seenAt = { mentions: 0, whispers: 0, live: 0 }
 // Local "latest event at" for each surface (ms epoch). Persisted.
@@ -17783,8 +17790,8 @@ async function bumpSeen(surface, at) {
 // transient network blips; one retry usually wins. No exponential backoff —
 // if it fails twice the user will clear again later (Map only holds latest
 // per surface anyway).
-if (!window._hsMcSeenRetryInstalled) {
-  window._hsMcSeenRetryInstalled = true
+if (!_onceGuardsSeenState.seenRetryInstalled) {
+  _onceGuardsSeenState.seenRetryInstalled = true
   try {
     cleanup.addEventListener(document, 'visibilitychange', () => {
       if (document.visibilityState !== 'visible') return
@@ -17814,8 +17821,8 @@ function applySeenUpdate(surface, at) {
 // stayed lit until the next event landed. seen-state.js is loaded before
 // social.js in the build concat, so module-level registration here is the
 // earliest possible point.
-if (!window._hsMcSeenUpdateListener) {
-  window._hsMcSeenUpdateListener = true
+if (!_onceGuardsSeenState.seenUpdateListener) {
+  _onceGuardsSeenState.seenUpdateListener = true
   try {
     cleanup.addListener(chrome.runtime?.onMessage, (msg) => {
       if (msg?.type === 'seen_update') applySeenUpdate(msg.surface, msg.at)
@@ -18338,6 +18345,11 @@ function _frTest(rule, m) {
 const HS_NOTES_KEY = 'hs_user_notes_v1'
 const HS_NOTE_MAX = 2000 // chars — bounded so storage can't be griefed by a paste
 
+// module scope resets on re-injection, so a fresh instance re-registers
+// after the old one's teardown; window-scope survives takeover and leaves
+// handlers dead until hard refresh
+const _onceGuardsUserNotes = {}
+
 // ── in-memory model (source of truth at runtime; storage is the mirror) ─────────
 // notes:  canonicalKey -> { text, updatedAt }
 // index:  aliasHandle  -> canonicalKey   (every known alias points at one note)
@@ -18486,8 +18498,8 @@ function _hsnLoad() {
 // partial) view, so treating absence as "deleted" would just relocate the
 // wipe. (Trade-off: a delete can be resurrected by a tab that loaded the note
 // before the delete and saves later — no tombstone in the wire format yet.)
-if (typeof window !== 'undefined' && _hsnHasStorage() && !window._hsMcNotesOnChangedWired) {
-  window._hsMcNotesOnChangedWired = true
+if (typeof window !== 'undefined' && _hsnHasStorage() && !_onceGuardsUserNotes.notesOnChangedWired) {
+  _onceGuardsUserNotes.notesOnChangedWired = true
   cleanup.addListener(chrome.storage.onChanged, (changes, area) => {
     if (area !== 'local' || !changes[HS_NOTES_KEY]) return
     const raw = changes[HS_NOTES_KEY].newValue
@@ -19187,6 +19199,11 @@ function renderStreamSummary(channel) {
 // --- multichat/mentions.js ---
 // Mentions/notifications - keyword detection, browser notifications, scan existing chat
 
+// module scope resets on re-injection, so a fresh instance re-registers
+// after the old one's teardown; window-scope survives takeover and leaves
+// handlers dead until hard refresh
+const _onceGuardsMentions = {}
+
 function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
@@ -19256,9 +19273,9 @@ api.storage.local
     }
   })
   .catch(() => {})
-if (!window._hsMcNotifStorageListener) {
-  window._hsMcNotifStorageListener = true
-  api.storage.onChanged.addListener((changes) => {
+if (!_onceGuardsMentions.notifStorageListener) {
+  _onceGuardsMentions.notifStorageListener = true
+  cleanup.addListener(api.storage.onChanged, (changes) => {
     if (changes.hs_notifications) {
       notificationsEnabled = changes.hs_notifications.newValue === true
       if (notificationsEnabled && notificationPermission === 'default' && typeof Notification !== 'undefined') {
@@ -19448,8 +19465,8 @@ function _titleFlashStart(fromUser) {
   }, 1200)
 }
 // Restore title the moment the tab regains focus
-if (!window._hsMcTitleFlashFocusWired) {
-  window._hsMcTitleFlashFocusWired = true
+if (!_onceGuardsMentions.titleFlashFocusWired) {
+  _onceGuardsMentions.titleFlashFocusWired = true
   window.addEventListener('focus', _titleFlashStop, { signal: mcSignal })
   document.addEventListener(
     'visibilitychange',
@@ -19457,14 +19474,6 @@ if (!window._hsMcTitleFlashFocusWired) {
       if (!document.hidden) _titleFlashStop()
     },
     { signal: mcSignal },
-  )
-  // Clear install-once flag on lifecycle abort so next reinit can re-wire.
-  mcSignal.addEventListener(
-    'abort',
-    () => {
-      window._hsMcTitleFlashFocusWired = false
-    },
-    { once: true },
   )
 }
 
@@ -19481,9 +19490,9 @@ api.storage.sync
     if (typeof ui.mentionTitleFlash === 'boolean') mentionTitleFlash = ui.mentionTitleFlash
   })
   .catch(() => {})
-if (!window._hsMcMentionAudioStorageListener) {
-  window._hsMcMentionAudioStorageListener = true
-  api.storage.onChanged.addListener((changes, area) => {
+if (!_onceGuardsMentions.mentionAudioStorageListener) {
+  _onceGuardsMentions.mentionAudioStorageListener = true
+  cleanup.addListener(api.storage.onChanged, (changes, area) => {
     if (area === 'sync' && changes.ui_settings?.newValue) {
       const ui = changes.ui_settings.newValue
       if (typeof ui.mentionSoundVolume === 'number')
@@ -25337,6 +25346,11 @@ function renderEmoteStack(stack) {
 // Tooltips - toast, emote tooltip, user profile card, link preview
 // Note: all innerHTML usage passes content through escapeHtml() first (see src/lib/utils.js)
 
+// module scope resets on re-injection, so a fresh instance re-registers
+// after the old one's teardown; window-scope survives takeover and leaves
+// handlers dead until hard refresh
+const _onceGuardsTooltips = {}
+
 function showToast(msg, type) {
   // Routed through HsNotifs (notifs.js) — single source of truth for layers,
   // dedup, lifecycle. Adding/removing notif types happens there.
@@ -25758,8 +25772,8 @@ function hideEmoteTooltip() {
 }
 
 function setupEmoteTooltipHandlers() {
-  if (window._hsEmoteTooltipSetup) return
-  window._hsEmoteTooltipSetup = true
+  if (_onceGuardsTooltips.emoteTooltipSetup) return
+  _onceGuardsTooltips.emoteTooltipSetup = true
 
   cleanup.addEventListener(
     document,
@@ -26780,8 +26794,8 @@ function hideUserTooltip() {
 }
 
 function setupUserTooltipHandlers() {
-  if (window._hsMcUserTooltipSetup) return
-  window._hsMcUserTooltipSetup = true
+  if (_onceGuardsTooltips.userTooltipSetup) return
+  _onceGuardsTooltips.userTooltipSetup = true
 
   // 120ms hover-intent debounce: scrolling chat passes the cursor across
   // 10+ usernames in a single scroll-tick. Without debounce every one
@@ -27039,8 +27053,8 @@ function scheduleLinkHide(delay = 250) {
 }
 
 function setupLinkTooltipHandlers() {
-  if (window._hsMcLinkTooltipSetup) return
-  window._hsMcLinkTooltipSetup = true
+  if (_onceGuardsTooltips.linkTooltipSetup) return
+  _onceGuardsTooltips.linkTooltipSetup = true
 
   cleanup.addEventListener(
     document,
@@ -31795,6 +31809,12 @@ document.addEventListener(
 
 // --- multichat/social.js ---
 // Social - feed, notifications, activity, heatsync API
+
+// module scope resets on re-injection, so a fresh instance re-registers
+// after the old one's teardown; window-scope survives takeover and leaves
+// handlers dead until hard refresh
+const _onceGuardsSocial = {}
+
 let _autoYtVideoId = null // videoId for this tab's __live_yt_auto__ subscription (cross-tab filter)
 
 // Re-arm the __live_yt_auto__ binding for the current URL channel: drop the
@@ -32133,9 +32153,9 @@ async function loadHsAuth() {
   loadHsUsername()
 
   // Watch for auth changes (login/logout on heatsync.org)
-  if (!window._hsMcAuthWatcher) {
-    window._hsMcAuthWatcher = true
-    api.storage.onChanged.addListener((changes, area) => {
+  if (!_onceGuardsSocial.authWatcher) {
+    _onceGuardsSocial.authWatcher = true
+    cleanup.addListener(api.storage.onChanged, (changes, area) => {
       if (area !== 'local') return
       if (changes.user_info) {
         const ui = changes.user_info.newValue
@@ -32498,8 +32518,8 @@ function enqueueYtForPacing(targetChannelId, ytMsg) {
 // Listen for social events from background (new messages, notifications)
 function listenForSocialEvents() {
   // Guard: only register once (survives SPA reinit via chrome listener persistence)
-  if (window._hsMcSocialListener) return
-  window._hsMcSocialListener = true
+  if (_onceGuardsSocial.socialListener) return
+  _onceGuardsSocial.socialListener = true
 
   cleanup.addListener(chrome.runtime?.onMessage, (msg) => {
     if (msg.type === 'chat_origin_broadcast' && msg.text) {
@@ -34882,8 +34902,8 @@ async function _feedMsgFetchReplies(id) {
 // Called once from feed init. Uses event delegation on document.body so it
 // works for dynamically-rendered rows without re-wiring on each renderFeed().
 function setupFeedPostLinkHover() {
-  if (window._hsMcFeedPostLinkHoverSetup) return
-  window._hsMcFeedPostLinkHoverSetup = true
+  if (_onceGuardsSocial.feedPostLinkHoverSetup) return
+  _onceGuardsSocial.feedPostLinkHoverSetup = true
 
   let _linkGen = 0
   let _currentLink = null
@@ -36389,6 +36409,11 @@ async function propagateFollow(follow, target) {
 // --- multichat/input.js ---
 // Input - chat input, autocomplete, send message, reply state
 
+// module scope resets on re-injection, so a fresh instance re-registers
+// after the old one's teardown; window-scope survives takeover and leaves
+// handlers dead until hard refresh
+const _onceGuardsInput = {}
+
 // Message history — up/down arrow recalls previously sent messages
 const mcMessageHistory = []
 const MC_HISTORY_MAX = 50
@@ -36408,7 +36433,7 @@ function attachInputEmoteErrorRecovery(img) {
       return
     }
     img.dataset.hsRetried = '1'
-    img.src = img.src + (img.src.includes('?') ? '&' : '?') + 'r=' + Date.now()
+    img.src = `${img.src}${img.src.includes('?') ? '&' : '?'}r=${Date.now()}`
   })
 }
 
@@ -36514,7 +36539,7 @@ let _recentSentHydrated = null
   }
 }
 try {
-  if (!window._hsMcInputStorageListener) {
+  if (!_onceGuardsInput.inputStorageListener) {
     const _inputStorageHandler = (changes, area) => {
       if (area !== 'local' || !changes[RECENT_SENT_KEY]) return
       const incoming = changes[RECENT_SENT_KEY].newValue
@@ -36534,7 +36559,7 @@ try {
       _recentSentMessages = _pruneRecent([...merged.values()].sort((a, b) => a.time - b.time))
     }
     cleanup.addListener(chrome.storage.onChanged, _inputStorageHandler)
-    window._hsMcInputStorageListener = true
+    _onceGuardsInput.inputStorageListener = true
   }
 } catch (_) {}
 
@@ -37481,14 +37506,14 @@ function initInput() {
   // shortcut that closes the tab even with an input focused — pages can't
   // cancel the shortcut itself, but a beforeunload prompt while a draft is
   // in the composer turns the insta-close into a confirm dialog.
-  if (!window._hsMcDraftGuard) {
-    window._hsMcDraftGuard = (e) => {
+  if (!_onceGuardsInput.draftGuard) {
+    _onceGuardsInput.draftGuard = (e) => {
       if (getInputText().trim()) {
         e.preventDefault()
         e.returnValue = ''
       }
     }
-    window.addEventListener('beforeunload', window._hsMcDraftGuard, { signal: mcSignal })
+    window.addEventListener('beforeunload', _onceGuardsInput.draftGuard, { signal: mcSignal })
   }
   // Unified undo/redo — same module as the website. installUndoManager
   // attaches a manager to input._undoManager and wires Ctrl+Z hotkeys
@@ -37500,8 +37525,8 @@ function initInput() {
   // Tab clears emote :hover highlight in chat — mouse stuck over an emote
   // would otherwise hold the green rect lit while the user cycles autocomplete.
   // Body class restored on mousemove. Single global install via window flag.
-  if (!window._hsMcTabHoverInstalled) {
-    window._hsMcTabHoverInstalled = true
+  if (!_onceGuardsInput.tabHoverInstalled) {
+    _onceGuardsInput.tabHoverInstalled = true
     document.addEventListener(
       'keydown',
       (e) => {
@@ -37647,8 +37672,8 @@ function initInput() {
   // otherwise gets refused by the don't-steal-from-host-inputs guard below.
   // This lets Tab snap to the composer when the user is clearly IN our overlay,
   // while still respecting a host input they're actively typing in.
-  if (!window._hsMcPointerRegion) {
-    window._hsMcPointerRegion = true
+  if (!_onceGuardsInput.pointerRegion) {
+    _onceGuardsInput.pointerRegion = true
     document.addEventListener(
       'pointerdown',
       (e) => {
@@ -37659,8 +37684,8 @@ function initInput() {
   }
 
   // Global Tab key to focus input — only when multichat panel is active
-  if (!window._hsMcTabHandler) {
-    window._hsMcTabHandler = true
+  if (!_onceGuardsInput.tabHandler) {
+    _onceGuardsInput.tabHandler = true
     document.addEventListener(
       'keydown',
       (e) => {
@@ -37697,8 +37722,8 @@ function initInput() {
 
   // Global `\` toggle → hide/show chat. Mirrors heatsync.org keyboard shortcut.
   // Skip when input is focused so users can type `\` into chat normally.
-  if (!window._hsMcChatToggleHandler) {
-    window._hsMcChatToggleHandler = true
+  if (!_onceGuardsInput.chatToggleHandler) {
+    _onceGuardsInput.chatToggleHandler = true
     document.addEventListener(
       'keydown',
       (e) => {
@@ -37719,8 +37744,8 @@ function initInput() {
   }
 
   // Auto-reveal input bar when user starts typing anywhere
-  if (!window._hsMcTypeRevealHandler) {
-    window._hsMcTypeRevealHandler = true
+  if (!_onceGuardsInput.typeRevealHandler) {
+    _onceGuardsInput.typeRevealHandler = true
     document.addEventListener(
       'keydown',
       (e) => {
@@ -37963,8 +37988,8 @@ function initInput() {
   }
 
   // Global right-click handler for ALL emotes
-  if (!window._hsMcEmoteContextHandler) {
-    window._hsMcEmoteContextHandler = true
+  if (!_onceGuardsInput.emoteContextHandler) {
+    _onceGuardsInput.emoteContextHandler = true
     document.addEventListener(
       'contextmenu',
       (e) => {
@@ -38027,8 +38052,8 @@ function initInput() {
   }
 
   // Global left-click handler for ALL emotes
-  if (!window._hsMcEmoteClickHandler) {
-    window._hsMcEmoteClickHandler = true
+  if (!_onceGuardsInput.emoteClickHandler) {
+    _onceGuardsInput.emoteClickHandler = true
     document.addEventListener(
       'click',
       (e) => {
@@ -38203,8 +38228,8 @@ function initInput() {
   }
 
   // Spoiler click → toggle revealed
-  if (!window._hsMcSpoilerHandler) {
-    window._hsMcSpoilerHandler = true
+  if (!_onceGuardsInput.spoilerHandler) {
+    _onceGuardsInput.spoilerHandler = true
     document.addEventListener(
       'click',
       (e) => {
@@ -38218,8 +38243,8 @@ function initInput() {
   }
 
   // Reply button click → set reply state and focus input
-  if (!window._hsMcReplyHandler) {
-    window._hsMcReplyHandler = true
+  if (!_onceGuardsInput.replyHandler) {
+    _onceGuardsInput.replyHandler = true
     document.addEventListener(
       'click',
       (e) => {
@@ -38242,8 +38267,8 @@ function initInput() {
   // anywhere in the panel. follow=1, block=2 are always the top two items.
   // The emote menu (capture handler above) owns emote right-clicks; real
   // links/media fall through to the native menu so "copy link" still works.
-  if (!window._hsMcMsgContextHandler) {
-    window._hsMcMsgContextHandler = true
+  if (!_onceGuardsInput.msgContextHandler) {
+    _onceGuardsInput.msgContextHandler = true
     document.addEventListener(
       'contextmenu',
       (e) => {
@@ -42176,7 +42201,7 @@ function setReplyState(state) {
   const indicator = document.createElement('div')
   indicator.id = 'hs-mc-reply-indicator'
   const label = document.createElement('span')
-  label.textContent = '\u21a9 ' + t('mc_input_replying_to', [state.user])
+  label.textContent = '\u21a9 ' + t('mc_input_replying_to', [String(state.user || '').replace(/^@+/, '')])
   const cancel = document.createElement('button')
   cancel.id = 'hs-mc-reply-cancel'
   cancel.textContent = '✕'
@@ -43780,6 +43805,11 @@ function setupMediaDropHandlers() {
 // Triggered by clicking any username anywhere in the extension.
 // Replaces #hs-mc-messages content. ESC, tab switch, or close button restores chat.
 
+// module scope resets on re-injection, so a fresh instance re-registers
+// after the old one's teardown; window-scope survives takeover and leaves
+// handlers dead until hard refresh
+const _onceGuardsProfileCard = {}
+
 let activeProfileCard = null // { username, platform, data, ts }
 
 // In-page LRU for fetched banners — survives card open/close within a session.
@@ -45290,8 +45320,8 @@ function pcDoWhisper(username, platform) {
 }
 
 function setupProfileCardHandlers() {
-  if (window._hsMcProfileCardSetup) return
-  window._hsMcProfileCardSetup = true
+  if (_onceGuardsProfileCard.profileCardSetup) return
+  _onceGuardsProfileCard.profileCardSetup = true
 
   // Primary path — pcard-early.js (document_start) intercepts the click before
   // Twitch/Kick can react and dispatches this event.
@@ -48711,6 +48741,11 @@ document.addEventListener(
 // m.type === 'automod-hold' branch in main.js's buildMessageDiv (this module
 // owns the escaping + status text so that branch stays a thin renderer).
 
+// module scope resets on re-injection, so a fresh instance re-registers
+// after the old one's teardown; window-scope survives takeover and leaves
+// handlers dead until hard refresh
+const _onceGuardsAutomod = {}
+
 // ── pure mappers (unit-tested; no chrome.*/DOM) ─────────────────────────────
 
 const AUTOMOD_HOLD_DEDUPE_TTL_MS = 10 * 60 * 1000
@@ -48976,8 +49011,8 @@ function handleAutomodActionClick(rowEl, action) {
 }
 
 function installAutomodClickHandler() {
-  if (window._hsMcAutomodBtnHandler) return
-  window._hsMcAutomodBtnHandler = true
+  if (_onceGuardsAutomod.automodBtnHandler) return
+  _onceGuardsAutomod.automodBtnHandler = true
   document.addEventListener(
     'click',
     (e) => {
@@ -48992,6 +49027,21 @@ function installAutomodClickHandler() {
 }
 
 // ── watch registration sweep ─────────────────────────────────────────────────
+
+// Own-channel detection: GQL self.isModerator is FALSE for the broadcaster in
+// their own channel (broadcaster ≠ moderator role), which silently skipped
+// the user's own channel in the sweep — the one channel they always mod.
+let _automodSelfLogin = null
+async function automodSelfLogin() {
+  if (_automodSelfLogin !== null) return _automodSelfLogin
+  try {
+    const data = await twitchGql('{ currentUser { login } }')
+    _automodSelfLogin = (data?.data?.currentUser?.login || '').toLowerCase()
+  } catch (_) {
+    _automodSelfLogin = ''
+  }
+  return _automodSelfLogin
+}
 
 async function resolveAutomodBroadcasterId(login) {
   if (_automodBroadcasterIdCache.has(login)) return _automodBroadcasterIdCache.get(login)
@@ -49020,7 +49070,8 @@ async function automodSweep() {
       const login = (ch?.twitch || '').toLowerCase()
       if (!login) return
       try {
-        const modded = typeof isModFor === 'function' && (await isModFor(login))
+        const modded =
+          login === (await automodSelfLogin()) || (typeof isModFor === 'function' && (await isModFor(login)))
         if (!modded) return
         const broadcasterId = await resolveAutomodBroadcasterId(login)
         if (!broadcasterId) return
@@ -53151,6 +53202,11 @@ function softKickNav(prevLiveCh) {
 const STORAGE_KEY = 'heatsync_multichat'
   const LOG_PREFIX = '[heatsync-mc]'
 
+  // module scope resets on re-injection, so a fresh instance re-registers
+  // after the old one's teardown; window-scope survives takeover and leaves
+  // handlers dead until hard refresh
+  const _onceGuardsMain = {}
+
   // bidi direction for the user's locale (ltr/rtl) — applied to injected UI roots
   // host page (twitch/kick) keeps its own dir; we only flip our overlay.
   // Resolved fresh on each panel mount so a manual locale override (set in options)
@@ -54181,8 +54237,8 @@ const STORAGE_KEY = 'heatsync_multichat'
       el.style.color = color
     }
   }
-  if (!window._hsMcProfileColorListener) {
-    window._hsMcProfileColorListener = true
+  if (!_onceGuardsMain.profileColorListener) {
+    _onceGuardsMain.profileColorListener = true
     try {
       cleanup.addListener(chrome.runtime?.onMessage, (msg) => {
         if (msg?.type !== 'profile_color') return
@@ -64060,8 +64116,8 @@ const STORAGE_KEY = 'heatsync_multichat'
   }
 
   function listenForSettingsChanges() {
-    if (window._hsMcSettingsListener) return
-    window._hsMcSettingsListener = true
+    if (_onceGuardsMain.settingsListener) return
+    _onceGuardsMain.settingsListener = true
 
     // Listen for messages from popup — tracked through cleanup so SPA
     // reinit removes the prior handler and replaces it.
@@ -66169,8 +66225,8 @@ const STORAGE_KEY = 'heatsync_multichat'
     const streamEventDedup = window._hsStreamEventDedup
 
     // Handle stream events (game switch, online/offline) from HeatSync WS
-    if (!window._hsMcStreamEventListener) {
-      window._hsMcStreamEventListener = true
+    if (!_onceGuardsMain.streamEventListener) {
+      _onceGuardsMain.streamEventListener = true
       cleanup.addListener(chrome.runtime?.onMessage, (msg) => {
         if (msg.type !== 'stream_event') return
         const channel = msg.channel?.toLowerCase()
@@ -66449,8 +66505,8 @@ const STORAGE_KEY = 'heatsync_multichat'
     )
 
     // Handle follow-driven stream events (from followed channels not currently viewed)
-    if (!window._hsMcFollowStreamEventListener) {
-      window._hsMcFollowStreamEventListener = true
+    if (!_onceGuardsMain.followStreamEventListener) {
+      _onceGuardsMain.followStreamEventListener = true
       cleanup.addListener(chrome.runtime?.onMessage, (msg) => {
         if (msg.type !== 'follow_stream_event') return
         const channel = msg.channel?.toLowerCase()
@@ -66574,8 +66630,8 @@ const STORAGE_KEY = 'heatsync_multichat'
     }
 
     // Handle color map from server (for persisted stream event history)
-    if (!window._hsMcFollowColorsListener) {
-      window._hsMcFollowColorsListener = true
+    if (!_onceGuardsMain.followColorsListener) {
+      _onceGuardsMain.followColorsListener = true
       cleanup.addListener(chrome.runtime?.onMessage, (msg) => {
         if (msg.type !== 'follow_colors') return
         processFollowColors(msg.colors)
@@ -66654,8 +66710,8 @@ const STORAGE_KEY = 'heatsync_multichat'
     }
 
     // Handle real-time follow_history from background broadcast
-    if (!window._hsMcFollowHistoryListener) {
-      window._hsMcFollowHistoryListener = true
+    if (!_onceGuardsMain.followHistoryListener) {
+      _onceGuardsMain.followHistoryListener = true
       cleanup.addListener(chrome.runtime?.onMessage, (msg) => {
         if (msg.type !== 'follow_history') return
         processFollowHistory(msg.events)

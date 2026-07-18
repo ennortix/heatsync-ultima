@@ -657,7 +657,7 @@ class IRC {
       const isCurrent = currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)
       const delta = buf.size - wasSize
       if (isCurrent && (isMsgsElEmpty() || delta >= 5)) {
-        renderMessages(currentTab)
+        scheduleRenderMessages()
       }
     } catch (e) {
       log('BG history refresh failed:', e?.message)
@@ -748,7 +748,7 @@ class IRC {
         // now has more (history below them) and must be reflected in DOM.
         const isCurrent = currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)
         if (isCurrent && resp.msgs.length > 0) {
-          renderMessages(currentTab)
+          scheduleRenderMessages()
         }
       }
     } catch (e) {
@@ -1284,7 +1284,7 @@ class KickChat {
       const isCurrent = currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)
       const delta = buf.size - wasSize
       if (isCurrent && (isMsgsElEmpty() || delta >= 5)) {
-        renderMessages(currentTab)
+        scheduleRenderMessages()
       }
     } catch (e) {
       log('Kick BG refresh failed:', e?.message)
@@ -1378,7 +1378,7 @@ class KickChat {
     // must reflect it.
     const isCurrent = currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)
     if (isCurrent && filtered.length > 0) {
-      renderMessages(currentTab)
+      scheduleRenderMessages()
     }
   }
 
@@ -1455,7 +1455,7 @@ class KickChat {
         } catch {}
         const isCurrent = currentTab === kickUsername || (currentTab === 'live' && getLiveChannel() === kickUsername)
         if (isCurrent && resp.msgs.length > 0) {
-          renderMessages(currentTab)
+          scheduleRenderMessages()
         }
       }
     } catch (e) {

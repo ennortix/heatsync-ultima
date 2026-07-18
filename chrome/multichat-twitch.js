@@ -19937,7 +19937,7 @@ class IRC {
       const isCurrent = currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)
       const delta = buf.size - wasSize
       if (isCurrent && (isMsgsElEmpty() || delta >= 5)) {
-        renderMessages(currentTab)
+        scheduleRenderMessages()
       }
     } catch (e) {
       log('BG history refresh failed:', e?.message)
@@ -20028,7 +20028,7 @@ class IRC {
         // now has more (history below them) and must be reflected in DOM.
         const isCurrent = currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)
         if (isCurrent && resp.msgs.length > 0) {
-          renderMessages(currentTab)
+          scheduleRenderMessages()
         }
       }
     } catch (e) {
@@ -20564,7 +20564,7 @@ class KickChat {
       const isCurrent = currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)
       const delta = buf.size - wasSize
       if (isCurrent && (isMsgsElEmpty() || delta >= 5)) {
-        renderMessages(currentTab)
+        scheduleRenderMessages()
       }
     } catch (e) {
       log('Kick BG refresh failed:', e?.message)
@@ -20658,7 +20658,7 @@ class KickChat {
     // must reflect it.
     const isCurrent = currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)
     if (isCurrent && filtered.length > 0) {
-      renderMessages(currentTab)
+      scheduleRenderMessages()
     }
   }
 
@@ -20735,7 +20735,7 @@ class KickChat {
         } catch {}
         const isCurrent = currentTab === kickUsername || (currentTab === 'live' && getLiveChannel() === kickUsername)
         if (isCurrent && resp.msgs.length > 0) {
-          renderMessages(currentTab)
+          scheduleRenderMessages()
         }
       }
     } catch (e) {
@@ -61690,6 +61690,31 @@ const STORAGE_KEY = 'heatsync_multichat'
     cleanup.raf(() => {
       isProgrammaticScroll = false
     })
+  }
+
+  // Trailing collapse for hydration-class FULL rebuilds. On reload, every
+  // per-channel history merge (twitch/kick/yt BG hydration) ends in its own
+  // renderMessages(currentTab); several land across consecutive frames and the
+  // back-to-back teardown+rebuild paints read as jumbled fly-in. Each request
+  // (re)arms one short trailing window and a single render fires after the
+  // last, capped at 400ms from the first request so a merge trickle can't
+  // starve the paint. currentTab is read at fire time; the render only fires
+  // for channel/live tabs — the old call sites' isCurrent guards never
+  // repainted own-renderer tabs (settings/feed/…) from hydration, and firing
+  // into them mid-interaction is the composer-rebuild bug class. User-driven
+  // renders (tab click, scrollback, send) stay synchronous — never route them
+  // through here.
+  let _renderCollapseTimer = null
+  let _renderCollapseFirstAt = 0
+  function scheduleRenderMessages() {
+    const now = Date.now()
+    if (_renderCollapseTimer === null) _renderCollapseFirstAt = now
+    else cleanup.clearTimeout(_renderCollapseTimer)
+    const wait = Math.min(80, Math.max(16, 400 - (now - _renderCollapseFirstAt)))
+    _renderCollapseTimer = cleanup.setTimeout(() => {
+      _renderCollapseTimer = null
+      if (currentTab === 'live' || getChannelById(currentTab)) renderMessages(currentTab)
+    }, wait)
   }
 
   function renderMessages(id, opts) {

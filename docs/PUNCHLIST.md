@@ -30,9 +30,15 @@ BUT: active data loss (below). load 10 on 4 cores, 310Mi free.
 
 ## P0 — extension
 
-- **render-storm "twitching"** (carried, FIRST CODE ITEM) — hydration/
-  tab-switch fires consecutive full renderMessages rebuilds; trailing
-  debounce collapsing rebuilds into one paint.
+- ~~render-storm "twitching"~~ — SHIPPED: scheduleRenderMessages()
+  trailing debounce (80ms window, 400ms max-wait, channel/live-only
+  fire guard); 5 irc.js hydration sites converted; chrome-verified,
+  needs mellen's eyeball on next natural reload.
+- ~~o7 emote-as-text~~ — root-caused + FIXED same night: collect POST
+  failed silent (no emote_add_failed listener; auth empty right after
+  ext reload) → toast wired; bare-word Enter now exact-match collects.
+  deferred (named): retry-on-auth-restore queue. mellen: re-click o7 in
+  picker while logged in — with the toast a failure is now visible.
 - **bug-hunt pass, >>2a class** — thread-view bug found by use, not audit.
   short targeted sweep of feed/thread/quote-link + composer surfaces for
   siblings before the growth push invites traffic.
@@ -72,7 +78,8 @@ order matters: fix pipes → make findable → then shout.
 
 1. prod stable 48h (archive lossless, offload clean, load sane).
 2. plus nav link + archive SEO play #3 (per-channel best-of/leaderboard
-   pages — programmatic, plays #1/#2 shipped).
+   pages — programmatic, plays #1/#2 shipped). landing+/compare
+   de-cringed 07-18: competitor table killed, real live panel — done.
 3. **reddit/launch post** — NOT yet. posting while archive drops rows and
    load sits at 10/4-cores burns the one first impression. gate: prod
    green + plus findable. then it's time.

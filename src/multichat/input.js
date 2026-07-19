@@ -7119,7 +7119,10 @@ async function sendMessage() {
           // explicit 'yt' platform so the per-platform awaiting set drains.
           confirmPending(_synthId, 'yt')
         } else {
-          const reason = result === 'no_youtube_tab' ? 'no_youtube_tab' : 'send_failed'
+          // Pass the rich code through (chat_restricted:<yt's reason>, no_input,
+          // chat_disabled…) — the persistent retry notif is what users actually
+          // read; collapsing to 'send_failed' here hid WHY on every gated chat.
+          const reason = String(result || 'send_failed')
           markPendingFailed(_synthId, reason)
           showToast(youtubeSendErrorMessage(result), 'error')
         }

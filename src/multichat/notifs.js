@@ -671,13 +671,24 @@ const HsNotifs = (() => {
         no_channel: 'kick channel not found',
         'missing params': 'kick send rejected',
         no_youtube_tab: 'no youtube tab open',
+        no_input: 'youtube chat still loading',
+        chat_disabled: 'log into youtube first',
+        send_disabled: 'youtube blocked the send',
+        send_not_confirmed: 'youtube did not confirm the send',
+        bridge_timeout: 'youtube chat bridge timed out',
       }
       let why
+      const _reasonStr = String(data.reason || '')
       if (data.reason === 'no_echo') {
         // Name the platform(s) that never confirmed (markPendingFailed sends
         // the awaiting set) — a kick or yt no-echo used to blame twitch.
         const plat = (data.platforms || []).map((p) => (p === 'yt' ? 'youtube' : p)).join('+')
         why = `${plat || 'platform'} did not confirm — may not have posted`
+      } else if (_reasonStr.startsWith('chat_restricted')) {
+        // "chat_restricted:<yt's human reason>" — surface yt's own words
+        // (subscribers-only mode, members-only, follower age gate).
+        const detail = _reasonStr.includes(':') ? _reasonStr.slice(_reasonStr.indexOf(':') + 1).toLowerCase() : ''
+        why = detail ? `chat restricted — ${detail}` : 'chat restricted'
       } else {
         why = reasonMap[data.reason] || data.reason || 'send may have failed'
       }

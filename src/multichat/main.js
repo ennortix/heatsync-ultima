@@ -1210,7 +1210,7 @@
           senderEmoteTimerUrgent = false
           flushSenderEmoteBatch()
         },
-        urgent ? 50 : 250
+        urgent ? 50 : 250,
       )
     }
   }

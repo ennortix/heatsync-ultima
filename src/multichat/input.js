@@ -847,6 +847,12 @@ window.__hsEscOwned = () => {
   return false
 }
 
+// Per-injection wiring token for DOM-expando install-once guards (composer
+// input, emote button). Each script evaluation mints its own; a node marked
+// with a DIFFERENT token was wired by a previous, now-dead extension context
+// (firefox AMO-update reinjection adopts the old DOM) and must be rewired.
+const MC_WIRE_CTX = `hs${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
+
 function rebuildInput() {
   const bar = document.getElementById('hs-mc-inputbar')
   if (!bar) return
@@ -913,20 +919,11 @@ function createInputBar() {
     <button id="hs-mc-emote-btn"><img src="${iconUrl}" data-src="${iconUrl}" data-src-black="${iconBlackUrl}" alt="hs"></button>
   `
 
-  // Initialize input after DOM insertion
+  // Initialize input after DOM insertion. Icon hover-swap lives in initInput's
+  // emote-btn block (single wiring source — survives rebuild/rewire paths).
   setTimeout(() => {
     initInput()
     renderSendTargetChips()
-    const btn = bar.querySelector('#hs-mc-emote-btn')
-    const img = btn?.querySelector('img')
-    if (btn && img) {
-      btn.addEventListener('mouseenter', () => {
-        img.src = img.dataset.srcBlack
-      })
-      btn.addEventListener('mouseleave', () => {
-        img.src = img.dataset.src
-      })
-    }
   }, 0)
   return bar
 }
@@ -1069,12 +1066,24 @@ function initInput() {
     setTimeout(initInput, 100)
     return
   }
-  // Mark input as initialized to avoid duplicate handlers
-  if (input._hsInitialized) {
+  // Mark input as initialized to avoid duplicate handlers. The mark is a
+  // per-injection token, NOT a boolean: on firefox, same-principal expandos
+  // outlive the sandbox that set them, so after an AMO auto-update reinjects
+  // us into an open tab, the adopted composer still wears the DEAD context's
+  // mark while its listeners are gone. The old boolean guard skipped rewiring
+  // and left Enter inserting newlines instead of sending. A foreign mark now
+  // means dead wiring — swap in a fresh node (sheds any stale listeners in
+  // one move) and let the re-entrant initInput wire it under our token.
+  if (input._hsInitialized === MC_WIRE_CTX) {
     log('⚠️ Input already initialized')
     return
   }
-  input._hsInitialized = true
+  if (input._hsInitialized) {
+    log('stale composer wiring from a previous extension context — rebuilding')
+    rebuildInput()
+    return
+  }
+  input._hsInitialized = MC_WIRE_CTX
   log('✅ Initializing input handlers, WYSIWYG:', wysiwygEnabled)
 
   // Restore pending message — but never clobber content already in the
@@ -1231,9 +1240,25 @@ function initInput() {
   updateCharCount()
 
   // Emote picker button (includes twitch features in tabs)
-  const emoteBtn = document.getElementById('hs-mc-emote-btn')
+  let emoteBtn = document.getElementById('hs-mc-emote-btn')
+  // Foreign mark = wired by a dead extension context (same firefox trap as the
+  // composer mark above). Clone-replace sheds the dead listeners, then rewire.
+  if (emoteBtn && emoteBtn._hsInitialized && emoteBtn._hsInitialized !== MC_WIRE_CTX) {
+    const fresh = emoteBtn.cloneNode(true)
+    emoteBtn.replaceWith(fresh)
+    emoteBtn = fresh
+  }
   if (emoteBtn && !emoteBtn._hsInitialized) {
-    emoteBtn._hsInitialized = true
+    emoteBtn._hsInitialized = MC_WIRE_CTX
+    const btnImg = emoteBtn.querySelector('img')
+    if (btnImg?.dataset.srcBlack) {
+      emoteBtn.addEventListener('mouseenter', () => {
+        btnImg.src = btnImg.dataset.srcBlack
+      })
+      emoteBtn.addEventListener('mouseleave', () => {
+        btnImg.src = btnImg.dataset.src
+      })
+    }
     emoteBtn.addEventListener('click', (e) => {
       e.preventDefault()
       e.stopPropagation()

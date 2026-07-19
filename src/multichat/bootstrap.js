@@ -13,6 +13,23 @@ try {
     window.__heatsyncMcLifecycle.abort()
   }
 } catch (_) {}
+// The previous sandbox may already be DEAD (firefox reinjects content scripts
+// into open tabs on AMO auto-update): abort() above then throws on a dead
+// object and the old cleanup listener never runs — but its _hsMc*/_hsEmote*
+// install-once flags survive on the shared window (same-principal expandos
+// outlive their sandbox), so this injection's gates would silently skip
+// re-binding and leave zombie UI (dead composer, dead handlers). Sweep the
+// flags unconditionally here; idempotent when the old abort DID run.
+_hsSweepInstallOnceFlags()
+function _hsSweepInstallOnceFlags() {
+  for (const k of Object.keys(window)) {
+    if (k.startsWith('_hsMc') || k.startsWith('_hsEmote')) {
+      try {
+        delete window[k]
+      } catch (_) {}
+    }
+  }
+}
 
 // Lifecycle controller — abort() tears down ALL listeners, timers, observers
 const lifecycle = new AbortController()
@@ -68,13 +85,8 @@ mcSignal.addEventListener('abort', () => {
   // skips — old listeners stay attached and capture the now-dead old IIFE
   // closure, leaking it. Wildcard avoids the maintenance burden of listing
   // every flag (some are added in feature files I don't always edit here).
-  for (const k of Object.keys(window)) {
-    if (k.startsWith('_hsMc') || k.startsWith('_hsEmote')) {
-      try {
-        delete window[k]
-      } catch {}
-    }
-  }
+  // Same sweep also runs at module load for the dead-sandbox takeover case.
+  _hsSweepInstallOnceFlags()
 })
 // Bug #4 (bfcache): only abort on REAL unloads. For bfcache-bound pagehide
 // (ev.persisted) the page is frozen intact and may be restored — the

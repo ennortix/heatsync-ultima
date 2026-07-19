@@ -5819,6 +5819,23 @@ try {
     window.__heatsyncMcLifecycle.abort()
   }
 } catch (_) {}
+// The previous sandbox may already be DEAD (firefox reinjects content scripts
+// into open tabs on AMO auto-update): abort() above then throws on a dead
+// object and the old cleanup listener never runs — but its _hsMc*/_hsEmote*
+// install-once flags survive on the shared window (same-principal expandos
+// outlive their sandbox), so this injection's gates would silently skip
+// re-binding and leave zombie UI (dead composer, dead handlers). Sweep the
+// flags unconditionally here; idempotent when the old abort DID run.
+_hsSweepInstallOnceFlags()
+function _hsSweepInstallOnceFlags() {
+  for (const k of Object.keys(window)) {
+    if (k.startsWith('_hsMc') || k.startsWith('_hsEmote')) {
+      try {
+        delete window[k]
+      } catch (_) {}
+    }
+  }
+}
 
 // Lifecycle controller — abort() tears down ALL listeners, timers, observers
 const lifecycle = new AbortController()
@@ -5874,13 +5891,8 @@ mcSignal.addEventListener('abort', () => {
   // skips — old listeners stay attached and capture the now-dead old IIFE
   // closure, leaking it. Wildcard avoids the maintenance burden of listing
   // every flag (some are added in feature files I don't always edit here).
-  for (const k of Object.keys(window)) {
-    if (k.startsWith('_hsMc') || k.startsWith('_hsEmote')) {
-      try {
-        delete window[k]
-      } catch {}
-    }
-  }
+  // Same sweep also runs at module load for the dead-sandbox takeover case.
+  _hsSweepInstallOnceFlags()
 })
 // Bug #4 (bfcache): only abort on REAL unloads. For bfcache-bound pagehide
 // (ev.persisted) the page is frozen intact and may be restored — the
@@ -37512,6 +37524,12 @@ window.__hsEscOwned = () => {
   return false
 }
 
+// Per-injection wiring token for DOM-expando install-once guards (composer
+// input, emote button). Each script evaluation mints its own; a node marked
+// with a DIFFERENT token was wired by a previous, now-dead extension context
+// (firefox AMO-update reinjection adopts the old DOM) and must be rewired.
+const MC_WIRE_CTX = `hs${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
+
 function rebuildInput() {
   const bar = document.getElementById('hs-mc-inputbar')
   if (!bar) return
@@ -37578,20 +37596,11 @@ function createInputBar() {
     <button id="hs-mc-emote-btn"><img src="${iconUrl}" data-src="${iconUrl}" data-src-black="${iconBlackUrl}" alt="hs"></button>
   `
 
-  // Initialize input after DOM insertion
+  // Initialize input after DOM insertion. Icon hover-swap lives in initInput's
+  // emote-btn block (single wiring source — survives rebuild/rewire paths).
   setTimeout(() => {
     initInput()
     renderSendTargetChips()
-    const btn = bar.querySelector('#hs-mc-emote-btn')
-    const img = btn?.querySelector('img')
-    if (btn && img) {
-      btn.addEventListener('mouseenter', () => {
-        img.src = img.dataset.srcBlack
-      })
-      btn.addEventListener('mouseleave', () => {
-        img.src = img.dataset.src
-      })
-    }
   }, 0)
   return bar
 }
@@ -37734,12 +37743,24 @@ function initInput() {
     setTimeout(initInput, 100)
     return
   }
-  // Mark input as initialized to avoid duplicate handlers
-  if (input._hsInitialized) {
+  // Mark input as initialized to avoid duplicate handlers. The mark is a
+  // per-injection token, NOT a boolean: on firefox, same-principal expandos
+  // outlive the sandbox that set them, so after an AMO auto-update reinjects
+  // us into an open tab, the adopted composer still wears the DEAD context's
+  // mark while its listeners are gone. The old boolean guard skipped rewiring
+  // and left Enter inserting newlines instead of sending. A foreign mark now
+  // means dead wiring — swap in a fresh node (sheds any stale listeners in
+  // one move) and let the re-entrant initInput wire it under our token.
+  if (input._hsInitialized === MC_WIRE_CTX) {
     log('⚠️ Input already initialized')
     return
   }
-  input._hsInitialized = true
+  if (input._hsInitialized) {
+    log('stale composer wiring from a previous extension context — rebuilding')
+    rebuildInput()
+    return
+  }
+  input._hsInitialized = MC_WIRE_CTX
   log('✅ Initializing input handlers, WYSIWYG:', wysiwygEnabled)
 
   // Restore pending message — but never clobber content already in the
@@ -37896,9 +37917,25 @@ function initInput() {
   updateCharCount()
 
   // Emote picker button (includes twitch features in tabs)
-  const emoteBtn = document.getElementById('hs-mc-emote-btn')
+  let emoteBtn = document.getElementById('hs-mc-emote-btn')
+  // Foreign mark = wired by a dead extension context (same firefox trap as the
+  // composer mark above). Clone-replace sheds the dead listeners, then rewire.
+  if (emoteBtn && emoteBtn._hsInitialized && emoteBtn._hsInitialized !== MC_WIRE_CTX) {
+    const fresh = emoteBtn.cloneNode(true)
+    emoteBtn.replaceWith(fresh)
+    emoteBtn = fresh
+  }
   if (emoteBtn && !emoteBtn._hsInitialized) {
-    emoteBtn._hsInitialized = true
+    emoteBtn._hsInitialized = MC_WIRE_CTX
+    const btnImg = emoteBtn.querySelector('img')
+    if (btnImg?.dataset.srcBlack) {
+      emoteBtn.addEventListener('mouseenter', () => {
+        btnImg.src = btnImg.dataset.srcBlack
+      })
+      emoteBtn.addEventListener('mouseleave', () => {
+        btnImg.src = btnImg.dataset.src
+      })
+    }
     emoteBtn.addEventListener('click', (e) => {
       e.preventDefault()
       e.stopPropagation()
@@ -54769,7 +54806,7 @@ const STORAGE_KEY = 'heatsync_multichat'
           senderEmoteTimerUrgent = false
           flushSenderEmoteBatch()
         },
-        urgent ? 50 : 250
+        urgent ? 50 : 250,
       )
     }
   }

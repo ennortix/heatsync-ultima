@@ -2966,7 +2966,8 @@ function handleInputKeydown(e) {
         // autoAddInputEmotes still requires the word in the sent text.
         if (e.key === 'Enter' && emojiAcState.query) {
           const q = emojiAcState.query
-          const exact = emojiAcState.matches.find((m) => m.name === q) ||
+          const exact =
+            emojiAcState.matches.find((m) => m.name === q) ||
             emojiAcState.matches.find((m) => m.name.toLowerCase() === q.toLowerCase())
           if (exact) trackCompletionForAutoAdd(exact)
         }

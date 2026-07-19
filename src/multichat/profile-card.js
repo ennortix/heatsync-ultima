@@ -775,12 +775,8 @@ function renderProfileCardView() {
     } catch {}
   }
   avatar.src =
-    safeUrl(
-      data?.twitch_profile_pic ||
-      data?.kick_profile_pic ||
-      data?.profile_image_url ||
-      ytAvatar,
-    ) || 'https://heatsync.org/anon.webp'
+    safeUrl(data?.twitch_profile_pic || data?.kick_profile_pic || data?.profile_image_url || ytAvatar) ||
+    'https://heatsync.org/anon.webp'
   avatar.alt = ''
   avatar.referrerPolicy = 'no-referrer'
   idRow.appendChild(avatar)

@@ -230,7 +230,7 @@ function initKickFallbackSocket() {
 
   setInterval(() => {
     stats.fbTicks = (stats.fbTicks || 0) + 1
-    if (typeof subsystems !== 'undefined' && subsystems['kick-native-tap'] === false) {
+    if (typeof isEnabled === 'function' && !isEnabled('kick-native-tap')) {
       stats.fbGate = 'toggle-off'
       close()
       return
@@ -290,7 +290,7 @@ function initKickNativeTap() {
       return
     }
     if (t !== 'heatsync-kick-tap') return
-    if (typeof subsystems !== 'undefined' && subsystems['kick-native-tap'] === false) return
+    if (typeof isEnabled === 'function' && !isEnabled('kick-native-tap')) return
     if (!boundChatroom || e.data.channel !== boundChatroom) {
       stats.unbound++
       return

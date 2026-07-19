@@ -478,6 +478,12 @@
   "mc_settings_clickable_links": {
     "message": "clickable links"
   },
+  "mc_settings_partial_links": {
+    "message": "partial links"
+  },
+  "mc_settings_partial_links_desc": {
+    "message": "also linkify partial and defanged links \u2014 bare watch?v= youtube refs and \"site (dot) com\" style domains chats use to dodge link filters."
+  },
   "mc_settings_link_previews": {
     "message": "link previews"
   },

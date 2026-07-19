@@ -1800,6 +1800,11 @@ function renderFeedContent(content, emoteRefs) {
       const url = /^https?:\/\//i.test(match) ? match : 'https://' + match
       return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="hs-mc-link">${match}</a>`
     })
+    // Partial/defanged links ("watch?v=…", "heatsync (dot) org") — same
+    // post-pass chat rows use; skips the anchors built above.
+    if (partialLinksEnabled) {
+      html = linkifyPartialLinks(html)
+    }
   }
   // Text formatting (bold, italic, spoilers, etc.) — skip <a>...</a> blocks so URL underscores aren't italicized.
   {

@@ -680,6 +680,57 @@ function identityYtLiveUrl(res) {
 }
 
 // Export
+// ── partial / defanged link detection ───────────────────────────────────────
+// Chat-borne links plain URL regexes miss: bare "watch?v=<id>" youtube refs
+// and defanged domains ("heatsync (dot) org", "site[.]com", "hxxps://x[.]y")
+// — chats defang because platforms block links for non-subs. Runs as an html
+// POST-pass after emotes/mentions render: only text between tags is scanned,
+// and existing <a>…</a> spans are skipped whole so links can never nest.
+// Input is pre-escaped html; matches exclude <>"' so the emitted href is
+// attribute-safe verbatim (same contract as the feed's linkify pass).
+// Known trade-off, gated behind partialLinksEnabled: the spaced " dot " form
+// can linkify prose like "the dot com era" — that's the price of "get all of
+// them"; the toggle is the escape hatch.
+
+const PARTIAL_YT_RE = /(?<![\w/.=-])watch\?v=([A-Za-z0-9_-]{11})(?![A-Za-z0-9_-])/g
+// separator between defanged labels: (dot) [dot] {dot} (.) [.] {.} — spaces
+// optional inside/around brackets — or the bare spaced word "dot".
+const DEFANG_SEP_SRC = String.raw`(?:\s*[([{]\s*(?:dot|\.)\s*[)\]}]\s*|\s+dot\s+)`
+const DEFANG_RE = new RegExp(
+  String.raw`(?<![\w.-])(h(?:xx|tt)ps?:\/\/)?([a-z0-9][a-z0-9-]*(?:${DEFANG_SEP_SRC}[a-z0-9][a-z0-9-]*)+)((?:\/[^\s<>"'()]*)?)`,
+  'gi',
+)
+const DEFANG_SPLIT_RE = new RegExp(DEFANG_SEP_SRC, 'gi')
+
+// "heatsync (dot) org" → "heatsync.org"; null when the tail label isn't
+// TLD-shaped (kills "3 dot 5"-style number prose).
+function defangedToHost(core) {
+  const labels = String(core).split(DEFANG_SPLIT_RE).filter(Boolean)
+  if (labels.length < 2) return null
+  if (!/^[a-z]{2,24}$/i.test(labels[labels.length - 1])) return null
+  return labels.join('.').toLowerCase()
+}
+
+function linkifyPartialLinks(html) {
+  // Odd indices = whole <a> spans or single tags — never transformed.
+  const parts = String(html).split(/(<a\s[^>]*>.*?<\/a>|<[^>]+>)/gis)
+  for (let i = 0; i < parts.length; i += 2) {
+    parts[i] = parts[i]
+      .replace(
+        PARTIAL_YT_RE,
+        (m0, id) =>
+          `<a href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener noreferrer" class="hs-mc-link">${m0}</a>`,
+      )
+      .replace(DEFANG_RE, (m0, scheme, core, path) => {
+        const host = defangedToHost(core)
+        if (!host) return m0
+        const proto = scheme ? scheme.toLowerCase().replace(/^hxx/, 'htt') : 'https://'
+        return `<a href="${proto}${host}${path || ''}" target="_blank" rel="noopener noreferrer" class="hs-mc-link">${m0}</a>`
+      })
+  }
+  return parts.join('')
+}
+
 const utils = {
   // XSS
   escapeHtml,
@@ -689,6 +740,10 @@ const utils = {
 
   // Strings
   truncateSafe,
+
+  // Links
+  linkifyPartialLinks,
+  defangedToHost,
 
   // React
   getFiber,

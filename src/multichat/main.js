@@ -1596,6 +1596,12 @@
         linksEnabled = v
       },
     },
+    partialLinksEnabled: {
+      get: () => partialLinksEnabled,
+      set: (v) => {
+        partialLinksEnabled = v
+      },
+    },
     linkPreviewsEnabled: {
       get: () => linkPreviewsEnabled,
       set: (v) => {
@@ -2859,6 +2865,9 @@
 
   // Clickable links in chat messages (default on)
   let linksEnabled = true
+
+  // Partial/defanged link detection — watch?v= refs + "(dot)"-style domains
+  let partialLinksEnabled = true
 
   // Link preview tooltip on hover (default on)
   let linkPreviewsEnabled = true
@@ -6327,6 +6336,11 @@
     // chat, mirroring the feed's >>id convention. Click opens the thread in the
     // overlay (wired per-row in buildMessageDiv), not a new tab.
     processedText = highlightThreadRefsInHtml(processedText)
+    // Partial/defanged links ("watch?v=…", "heatsync (dot) org") — html
+    // post-pass, skips existing anchors/tags. Rides the links master toggle.
+    if (linksEnabled && partialLinksEnabled) {
+      processedText = linkifyPartialLinks(processedText)
+    }
     // Cheermotes — only when twitch IRC tagged bits=N (server-confirmed cheer).
     if (m.bits) processedText = renderCheermotesInText(processedText, m.bits)
     m._renderedHtml = processedText

@@ -66,10 +66,7 @@ function harness({ activeThread = null } = {}) {
     showToast: () => {},
   }
   const names = Object.keys(stubs)
-  const factory = new Function(
-    ...names,
-    `${fnSrc}\nreturn postFeedMessage`,
-  )
+  const factory = new Function(...names, `${fnSrc}\nreturn postFeedMessage`)
   return { postFeedMessage: factory(...names.map((n) => stubs[n])), calls }
 }
 
@@ -101,7 +98,11 @@ describe('caller contracts (input.js source)', () => {
   })
 
   test('feed-tab plain send is contextual (no forced topLevel)', () => {
-    const feedBlock = sliceBetween(INPUT_SRC, '// Feed tab: plain text + media paste posts directly to home feed.', '// Whispers/mentions')
+    const feedBlock = sliceBetween(
+      INPUT_SRC,
+      '// Feed tab: plain text + media paste posts directly to home feed.',
+      '// Whispers/mentions',
+    )
     expect(feedBlock).toContain('postFeedMessage(text)')
     expect(feedBlock).not.toContain('topLevel: true')
   })

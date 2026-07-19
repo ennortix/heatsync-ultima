@@ -34146,8 +34146,10 @@ async function postFeedMessage(text, { topLevel = false } = {}) {
     body.media_url = mediaUrl
     body.media_type = mediaType
   }
-  // In thread view, global input posts as a reply to the active thread
-  if (activeThread) {
+  // In thread view, global input posts as a reply to the active thread —
+  // unless the caller explicitly forced a top-level post (topLevel: /op's
+  // whole purpose; it silently became a thread reply before this gate).
+  if (activeThread && !topLevel) {
     body.reply_to = activeThread.id
   }
 
@@ -43387,8 +43389,10 @@ async function sendMessage() {
 
   // Feed tab: plain text + media paste posts directly to home feed.
   // Slash commands are still respected (e.g. /op explicit, /w whisper).
+  // Contextual, not topLevel: with a thread open, typing here replies to
+  // that thread; only /op forces a top-level post from thread view.
   if (currentTab === 'feed') {
-    await postFeedMessage(text, { topLevel: true })
+    await postFeedMessage(text)
     return
   }
 

@@ -59432,7 +59432,13 @@ const STORAGE_KEY = 'heatsync_multichat'
       const m = div._hsMsg
       if (!span || !m) return
       const html = computeMessageText(m) // m._renderedHtml cleared by caller → recomputes
+      // No-op when the recompute produced identical HTML — innerHTML assignment
+      // recreates every <img> even for byte-identical markup, and a recreated
+      // emote paints its alt TEXT for a frame before the image decodes (the
+      // "emotes flash to text" jank on every emote-set broadcast).
+      if (div._hsAppliedText === html) return
       span.innerHTML = html
+      div._hsAppliedText = html
       if (html.includes('data-source="heatsync"')) reconcileHeatsyncEmoteStates(span)
       // The swap recreated mention anchors — re-index so updateCosmeticsInPlace
       // still finds them (stale refs would silently fail to repaint paints).
@@ -60128,6 +60134,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     const div = document.createElement('div')
     div.className = cls
     div._hsMsg = m // back-ref for reprocessEmoteTextInPlace (GC'd with the row)
+    div._hsAppliedText = processedText // baseline for reprocess's unchanged-skip
     // uidTwitch, never raw m.userId: data-uid is twitch-id-space only (feeds
     // _uidIndex / updateCosmeticsInPlace). A kick row's numeric kick id here
     // would both collide with an unrelated twitch user's repaint AND block

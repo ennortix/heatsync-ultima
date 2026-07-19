@@ -2201,8 +2201,10 @@ async function postFeedMessage(text, { topLevel = false } = {}) {
     body.media_url = mediaUrl
     body.media_type = mediaType
   }
-  // In thread view, global input posts as a reply to the active thread
-  if (activeThread) {
+  // In thread view, global input posts as a reply to the active thread —
+  // unless the caller explicitly forced a top-level post (topLevel: /op's
+  // whole purpose; it silently became a thread reply before this gate).
+  if (activeThread && !topLevel) {
     body.reply_to = activeThread.id
   }
 

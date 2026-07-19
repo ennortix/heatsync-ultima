@@ -6783,8 +6783,10 @@ async function sendMessage() {
 
   // Feed tab: plain text + media paste posts directly to home feed.
   // Slash commands are still respected (e.g. /op explicit, /w whisper).
+  // Contextual, not topLevel: with a thread open, typing here replies to
+  // that thread; only /op forces a top-level post from thread view.
   if (currentTab === 'feed') {
-    await postFeedMessage(text, { topLevel: true })
+    await postFeedMessage(text)
     return
   }
 

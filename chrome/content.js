@@ -7499,18 +7499,8 @@
         }
 
         const isBlocked = blockedEmotes.has(hash)
-        const inInventory = inventoryHashSet.has(hash) || inventoryNameSet.has(emoteName)
         // Check if this is a global emote - globals can only be blocked, not added/removed from your set
         const isGlobalEmote = wrapper.classList.contains('emote-overlay-global') || globalNameSet.has(emoteName)
-
-        // In a stack context, skip "remove from set" — go straight to block
-        const parentStack = wrapper.closest('.heatsync-emote-stack')
-        const inStack = !!parentStack
-
-        // Guard: lock expanded state before any mutation so nothing can collapse it
-        if (parentStack && parentStack.classList.contains('expanded')) {
-          lockStack(parentStack)
-        }
 
         if (isBlocked) {
           // BLOCKED → restored state — optimistic so the UI doesn't lag the server roundtrip
@@ -7538,15 +7528,8 @@
             showToast(t('content_toast_failed_unblock', [String(err.message)]), 'error')
           } finally {
             pendingOperations.delete(operationKey)
-            // Re-assert expanded — bulletproof against any async class removal
-            if (parentStack) {
-              parentStack.classList.add('expanded')
-              requestAnimationFrame(() => parentStack.classList.add('expanded'))
-            }
           }
         } else {
-          // Progressive tier degradation: if the active variant is from the user's
-          // inventory AND there's a lower-tier sibling still available (channel or
           // 2-state model: chat-row right-click only toggles block↔unblock.
           // The old "tier-drop on right-click" (DELETE the inventory variant so
           // the wrapper falls to its lower-tier sibling) was the same accidental-
@@ -7585,11 +7568,6 @@
             showToast(t('content_toast_failed_block', [String(err.message)]), 'error')
           } finally {
             pendingOperations.delete(operationKey)
-            // Re-assert expanded — bulletproof against any async class removal
-            if (parentStack) {
-              parentStack.classList.add('expanded')
-              requestAnimationFrame(() => parentStack.classList.add('expanded'))
-            }
           }
         }
       },

@@ -29898,6 +29898,7 @@ async function redeemChannelReward(channelId, rewardId, cost, title, textInput) 
       if (err) return { error: err.code || 'redemption failed' }
       return { ok: true }
     } catch (proxyErr) {
+      console.warn('[hs] redeem gql proxy failed, raw fallback:', proxyErr?.message || proxyErr)
       // Fallback to raw GQL mutation
       const resp = await fetch(TWITCH_GQL, {
         method: 'POST',
@@ -30048,6 +30049,7 @@ async function votePoll(pollId, choiceId) {
       if (err) return { error: err.code || 'vote failed' }
       return { ok: true }
     } catch (proxyErr) {
+      console.warn('[hs] votePoll gql proxy failed, raw fallback:', proxyErr?.message || proxyErr)
       // Fallback to raw GQL
       const resp = await fetch(TWITCH_GQL, {
         method: 'POST',

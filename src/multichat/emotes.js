@@ -2245,6 +2245,11 @@ const senderEmoteSets = new Map()
 // message (small API hit, big memory win). Heap growth on xqc dropped
 // from ~14 MB/sec to a fraction of that.
 const SENDER_EMOTE_LRU_MAX = 500
+// Blobs persisted before the fetch path switched from merge to authoritative
+// replace can carry names the sender never/no-longer owns (merge-era bleed) —
+// loading them paints wrong emotes for a fetch round-trip on every boot.
+// Bump to discard incompatible persisted data once; sets rebuild fresh.
+const SENDER_EMOTE_SETS_VERSION = 2
 let _senderEmotePersistTimer = null
 let _senderEmoteDirty = false
 
@@ -2268,7 +2273,7 @@ function _scheduleSenderEmotePersist() {
         out[k] = Object.fromEntries(m)
       }
       try {
-        chrome.storage.local.set({ sender_emote_sets: out })
+        chrome.storage.local.set({ sender_emote_sets: out, sender_emote_sets_v: SENDER_EMOTE_SETS_VERSION })
       } catch {}
     }
     if (typeof requestIdleCallback === 'function') {
@@ -2342,9 +2347,11 @@ function dropEmoteFromAllSenders(emoteName) {
 // cached names absent from the new data. Use ONLY when the response is
 // known good (HTTP 200, not a transient error). mergeSenderEmotes is the
 // additive sibling for cases where we don't trust empty responses.
-// Returns true if anything changed.
+// Returns { changed, dropped } — dropped means a cached name was REMOVED,
+// i.e. an already-painted row may be showing an emote the sender no longer
+// owns and needs an immediate (not debounced) downgrade to text.
 function replaceSenderEmotes(senderKey, nameToEmote) {
-  if (!senderKey) return false
+  if (!senderKey) return { changed: false, dropped: false }
   const fresh = nameToEmote || {}
   let inner = senderEmoteSets.get(senderKey)
   if (!inner) {
@@ -2359,11 +2366,13 @@ function replaceSenderEmotes(senderKey, nameToEmote) {
     senderEmoteSets.set(senderKey, inner)
   }
   let changed = false
+  let dropped = false
   // Drop stale names
   for (const name of [...inner.keys()]) {
     if (!(name in fresh)) {
       inner.delete(name)
       changed = true
+      dropped = true
     }
   }
   // Add/update fresh names
@@ -2377,7 +2386,10 @@ function replaceSenderEmotes(senderKey, nameToEmote) {
       let u = String(data.url)
       if (u.startsWith('//')) u = 'https:' + u
       if (!safeUrl(u)) {
-        if (inner.delete(name)) changed = true
+        if (inner.delete(name)) {
+          changed = true
+          dropped = true
+        }
         continue
       }
     }
@@ -2397,13 +2409,22 @@ function replaceSenderEmotes(senderKey, nameToEmote) {
     _senderEmoteDirty = true
     _scheduleSenderEmotePersist()
   }
-  return changed
+  return { changed, dropped }
 }
 
 async function loadSenderEmoteSets() {
   try {
-    const stored = await chrome.storage.local.get(['sender_emote_sets'])
+    const stored = await chrome.storage.local.get(['sender_emote_sets', 'sender_emote_sets_v'])
     senderEmoteSets.clear()
+    // Version gate — see SENDER_EMOTE_SETS_VERSION. A mismatched blob is
+    // discarded rather than rendered-then-corrected.
+    if (stored.sender_emote_sets && stored.sender_emote_sets_v !== SENDER_EMOTE_SETS_VERSION) {
+      try {
+        chrome.storage.local.remove(['sender_emote_sets'])
+      } catch {}
+      log('Discarded sender_emote_sets: version', stored.sender_emote_sets_v, '!=', SENDER_EMOTE_SETS_VERSION)
+      return
+    }
     // Load the persisted cache so senders render IMMEDIATELY on boot. Staleness
     // is handled non-destructively: the in-memory freshness map is empty after a
     // reload, so every sender is re-fetched once this session, and mergeSenderEmotes
@@ -3738,16 +3759,22 @@ export {
   bumpEmoteFrecency,
   channelEmoteCaches,
   detectEmoteSource,
+  dropEmoteFromAllSenders,
   emoteCache,
   getEmoteState,
+  getSenderEmotes,
   inventoryEmotes,
   loadEmoteFrecency,
+  loadSenderEmoteSets,
   lookupEmote,
   lookupEmoteRenderOrder,
   lookupEmoteWithOverlay,
   lookupOwnedEmote,
+  mergeSenderEmotes,
   processEmotes,
   removedEmoteFallback,
+  replaceSenderEmotes,
+  senderEmoteSets,
   unbumpEmoteFrecency,
   viewerPersonalEmotes,
   zeroWidthFromAnyCache,

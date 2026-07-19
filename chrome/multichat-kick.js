@@ -23986,6 +23986,11 @@ const senderEmoteSets = new Map()
 // message (small API hit, big memory win). Heap growth on xqc dropped
 // from ~14 MB/sec to a fraction of that.
 const SENDER_EMOTE_LRU_MAX = 500
+// Blobs persisted before the fetch path switched from merge to authoritative
+// replace can carry names the sender never/no-longer owns (merge-era bleed) —
+// loading them paints wrong emotes for a fetch round-trip on every boot.
+// Bump to discard incompatible persisted data once; sets rebuild fresh.
+const SENDER_EMOTE_SETS_VERSION = 2
 let _senderEmotePersistTimer = null
 let _senderEmoteDirty = false
 
@@ -24009,7 +24014,7 @@ function _scheduleSenderEmotePersist() {
         out[k] = Object.fromEntries(m)
       }
       try {
-        chrome.storage.local.set({ sender_emote_sets: out })
+        chrome.storage.local.set({ sender_emote_sets: out, sender_emote_sets_v: SENDER_EMOTE_SETS_VERSION })
       } catch {}
     }
     if (typeof requestIdleCallback === 'function') {
@@ -24083,9 +24088,11 @@ function dropEmoteFromAllSenders(emoteName) {
 // cached names absent from the new data. Use ONLY when the response is
 // known good (HTTP 200, not a transient error). mergeSenderEmotes is the
 // additive sibling for cases where we don't trust empty responses.
-// Returns true if anything changed.
+// Returns { changed, dropped } — dropped means a cached name was REMOVED,
+// i.e. an already-painted row may be showing an emote the sender no longer
+// owns and needs an immediate (not debounced) downgrade to text.
 function replaceSenderEmotes(senderKey, nameToEmote) {
-  if (!senderKey) return false
+  if (!senderKey) return { changed: false, dropped: false }
   const fresh = nameToEmote || {}
   let inner = senderEmoteSets.get(senderKey)
   if (!inner) {
@@ -24100,11 +24107,13 @@ function replaceSenderEmotes(senderKey, nameToEmote) {
     senderEmoteSets.set(senderKey, inner)
   }
   let changed = false
+  let dropped = false
   // Drop stale names
   for (const name of [...inner.keys()]) {
     if (!(name in fresh)) {
       inner.delete(name)
       changed = true
+      dropped = true
     }
   }
   // Add/update fresh names
@@ -24118,7 +24127,10 @@ function replaceSenderEmotes(senderKey, nameToEmote) {
       let u = String(data.url)
       if (u.startsWith('//')) u = 'https:' + u
       if (!safeUrl(u)) {
-        if (inner.delete(name)) changed = true
+        if (inner.delete(name)) {
+          changed = true
+          dropped = true
+        }
         continue
       }
     }
@@ -24138,13 +24150,22 @@ function replaceSenderEmotes(senderKey, nameToEmote) {
     _senderEmoteDirty = true
     _scheduleSenderEmotePersist()
   }
-  return changed
+  return { changed, dropped }
 }
 
 async function loadSenderEmoteSets() {
   try {
-    const stored = await chrome.storage.local.get(['sender_emote_sets'])
+    const stored = await chrome.storage.local.get(['sender_emote_sets', 'sender_emote_sets_v'])
     senderEmoteSets.clear()
+    // Version gate — see SENDER_EMOTE_SETS_VERSION. A mismatched blob is
+    // discarded rather than rendered-then-corrected.
+    if (stored.sender_emote_sets && stored.sender_emote_sets_v !== SENDER_EMOTE_SETS_VERSION) {
+      try {
+        chrome.storage.local.remove(['sender_emote_sets'])
+      } catch {}
+      log('Discarded sender_emote_sets: version', stored.sender_emote_sets_v, '!=', SENDER_EMOTE_SETS_VERSION)
+      return
+    }
     // Load the persisted cache so senders render IMMEDIATELY on boot. Staleness
     // is handled non-destructively: the in-memory freshness map is empty after a
     // reload, so every sender is re-fetched once this session, and mergeSenderEmotes
@@ -54519,6 +54540,7 @@ const STORAGE_KEY = 'heatsync_multichat'
   // Survives hard refresh because emotes.js loadSenderEmoteSets() runs at boot before render.
   const senderEmotePending = new Set()
   let senderEmoteTimer = null
+  let senderEmoteTimerUrgent = false
   const SENDER_EMOTE_BATCH = 15
   // Per-sender fetch freshness (in-memory, NOT persisted). A sender's set was
   // previously fetched once and never re-validated, so any emote they ADDED
@@ -54543,6 +54565,31 @@ const STORAGE_KEY = 'heatsync_multichat'
     if (senderEmoteFetchedAt.size > SENDER_EMOTE_LRU_MAX) {
       senderEmoteFetchedAt.delete(senderEmoteFetchedAt.keys().next().value)
     }
+  }
+  // Keys whose set got an authoritative replace this session. Distinct from
+  // senderEmoteFetchedAt, which is also stamped on ERRORED keys for pacing —
+  // this set answers "can the cached emotes be trusted", the map answers
+  // "when may we fetch again". Cleared wholesale at a generous cap: the only
+  // cost of forgetting is a slightly earlier retry after a failed fetch.
+  const senderEmoteVerified = new Set()
+  const SENDER_EMOTE_VERIFIED_MAX = 2000
+  const SENDER_EMOTE_ERROR_RETRY_MS = 15 * 1000
+  const senderEmoteFastRetried = new Set()
+  // Freshness stamp for a FAILED fetch. A verified sender keeps the full TTL
+  // (existing pacing, cache is trustworthy); an unverified one may be painting
+  // stale persisted emotes — back-date so the retry lands in ~15s instead of
+  // parking suspect images for the full TTL. ONE fast retry per key per
+  // session, then normal TTL pacing: BG forwards these to the real upstream
+  // API uncached on error (SENDER_FETCH_ERR is deliberately not cached), so
+  // an unbounded 15s cadence across every viewer would hammer upstream for
+  // the whole duration of an outage.
+  function erroredFetchStamp(key, now) {
+    if (senderEmoteVerified.has(key) || senderEmoteFastRetried.has(key)) return now
+    if (senderEmoteFastRetried.size > SENDER_EMOTE_VERIFIED_MAX) senderEmoteFastRetried.clear()
+    senderEmoteFastRetried.add(key)
+    const known = typeof senderEmoteSets !== 'undefined' ? senderEmoteSets.get(key) : null
+    const ttl = known && known.size > 0 ? SENDER_EMOTE_REFETCH_MS : SENDER_EMOTE_NEGATIVE_REFETCH_MS
+    return now - Math.max(0, ttl - SENDER_EMOTE_ERROR_RETRY_MS)
   }
 
   function resolveSenderEmoteKey(m) {
@@ -54597,15 +54644,31 @@ const STORAGE_KEY = 'heatsync_multichat'
       if (senderEmoteTimer) {
         cleanup.clearTimeout(senderEmoteTimer)
         senderEmoteTimer = null
+        senderEmoteTimerUrgent = false
       }
       flushSenderEmoteBatch()
       return
     }
+    // A non-empty cached set never verified this session is the one case where
+    // first paint may already be showing stale (since-removed) emotes — fetch
+    // on a 50ms tick instead of 250ms so the correction lands before the eye
+    // settles. Only ever SHORTENS an armed timer; batching is unaffected
+    // because same-tick renders queue their keys before any timer fires.
+    const urgent = !fetchedAt && !!(known && known.size > 0)
+    if (senderEmoteTimer && urgent && !senderEmoteTimerUrgent) {
+      cleanup.clearTimeout(senderEmoteTimer)
+      senderEmoteTimer = null
+    }
     if (!senderEmoteTimer) {
-      senderEmoteTimer = cleanup.setTimeout(() => {
-        senderEmoteTimer = null
-        flushSenderEmoteBatch()
-      }, 250)
+      senderEmoteTimerUrgent = urgent
+      senderEmoteTimer = cleanup.setTimeout(
+        () => {
+          senderEmoteTimer = null
+          senderEmoteTimerUrgent = false
+          flushSenderEmoteBatch()
+        },
+        urgent ? 50 : 250
+      )
     }
   }
 
@@ -54618,6 +54681,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         const emotes = resp?.emotes || {}
         const errored = new Set(resp?.errored || [])
         const changedKeys = []
+        let anyDropped = false
         // Stamp freshness for EVERY batch key (even empty ones) so we don't re-fetch
         // until the TTL elapses — without this, senders with no personal set re-queue
         // on every render and loop render→fetch→re-render on busy chats.
@@ -54625,31 +54689,38 @@ const STORAGE_KEY = 'heatsync_multichat'
         for (const key of batch) {
           // BG-flagged errored key: the fetch blipped, the value is partial —
           // replacing would clobber a good cached set and re-render the
-          // sender's emotes as raw text. Keep what we have; stamp keeps pacing.
+          // sender's emotes as raw text. Keep what we have; stamp keeps pacing
+          // (back-dated for unverified keys so suspect images retry soon).
           if (errored.has(key)) {
-            markSenderEmoteFetched(key, now)
+            markSenderEmoteFetched(key, erroredFetchStamp(key, now))
             continue
           }
           // resp arrived — treat the value as authoritative and replace the cached
           // set entirely. Use replace (not merge) so names removed on the server
           // also disappear here; merge was the bleed: removed emotes lingered
           // forever and rendered for other viewers until the cache was nuked.
-          const changed = replaceSenderEmotes(key, emotes[key] || {})
+          const { changed, dropped } = replaceSenderEmotes(key, emotes[key] || {})
+          if (senderEmoteVerified.size > SENDER_EMOTE_VERIFIED_MAX) senderEmoteVerified.clear()
+          senderEmoteVerified.add(key)
           markSenderEmoteFetched(key, now)
           if (changed) changedKeys.push(key)
+          if (dropped) anyDropped = true
         }
-        if (changedKeys.length) upgradeMessagesForSenders(changedKeys)
+        if (changedKeys.length) upgradeMessagesForSenders(changedKeys, { immediate: anyDropped })
       })
       .catch(() => {
         // Network/IPC failure — seed empty sentinel + freshness so the next render
-        // doesn't re-queue immediately (retries after the TTL).
+        // doesn't re-queue immediately (retries after the TTL; sooner when the
+        // cached set was never verified this session).
         const now = Date.now()
         for (const key of batch) {
+          const stamp = erroredFetchStamp(key, now)
           mergeSenderEmotes(key, {})
-          markSenderEmoteFetched(key, now)
+          markSenderEmoteFetched(key, stamp)
         }
       })
     if (senderEmotePending.size > 0) {
+      senderEmoteTimerUrgent = false
       senderEmoteTimer = cleanup.setTimeout(() => {
         senderEmoteTimer = null
         flushSenderEmoteBatch()
@@ -54667,7 +54738,26 @@ const STORAGE_KEY = 'heatsync_multichat'
   // at the tail of the boot burst replaces all of that.
   let _upgradeRenderTimer = null
   const _pendingUpgradeKeys = new Set()
-  function upgradeMessagesForSenders(senderKeys) {
+  // One in-place reprocess per animation frame, for corrections that can't
+  // wait out the 600ms debounce (a WRONG emote is already painted: sender-set
+  // downgrades, removal broadcasts). rAF-coalesced so boot bursts cost one
+  // pass per frame; scroll-safe because reprocess only swaps innerHTML on
+  // existing rows. The later debounced pass no-ops on these rows via the
+  // _hsAppliedText skip.
+  let _immediateReprocessQueued = false
+  function queueImmediateReprocess() {
+    if (_immediateReprocessQueued) return
+    _immediateReprocessQueued = true
+    cleanup.raf(() => {
+      _immediateReprocessQueued = false
+      if (typeof reprocessEmoteTextInPlace === 'function') {
+        try {
+          reprocessEmoteTextInPlace()
+        } catch {}
+      }
+    })
+  }
+  function upgradeMessagesForSenders(senderKeys, opts) {
     if (!senderKeys?.length) return
     for (const k of senderKeys) _pendingUpgradeKeys.add(k)
 
@@ -54707,6 +54797,10 @@ const STORAGE_KEY = 'heatsync_multichat'
         if (matches(div._hsMsg)) div._hsMsg._renderedHtml = null
       }
     }
+
+    // Downgrade correction (a dropped emote is already painted as an image)
+    // runs next frame instead of waiting out the debounce below.
+    if (opts?.immediate) queueImmediateReprocess()
 
     // Debounced re-render of active tab. Reset timer on every new batch so
     // the eventual render sees the FINAL invalidation set, not a partial mid-
@@ -64853,6 +64947,11 @@ const STORAGE_KEY = 'heatsync_multichat'
         const changed = typeof dropEmoteFromAllSenders === 'function' ? dropEmoteFromAllSenders(msg.emoteName) : false
         if (changed) {
           try {
+            // dropEmoteFromAllSenders strips by NAME from every cached set —
+            // an innocent sender who owns a same-named emote just lost it too.
+            // Bust freshness so their next render refetches and restores it
+            // (mirrors the add path above).
+            if (typeof senderEmoteFetchedAt !== 'undefined') senderEmoteFetchedAt.clear()
             const inv = (buf) => {
               if (!buf) return
               const arr = typeof buf.forEach === 'function' && !Array.isArray(buf) ? null : buf
@@ -64871,7 +64970,21 @@ const STORAGE_KEY = 'heatsync_multichat'
             } catch (_) {}
             if (typeof mentionsBuffer !== 'undefined') inv(mentionsBuffer)
             if (typeof channelYtMessages !== 'undefined') channelYtMessages.forEach(inv)
-            renderMessages(currentTab)
+            // Drawn rows can be orphaned from every buffer walked above (SPA
+            // nav reinits chat state) — invalidate through the _hsMsg back-ref
+            // too, same as upgradeMessagesForSenders, or they stay imagified
+            // forever.
+            const msgsEl = document.getElementById('hs-mc-messages')
+            if (msgsEl) {
+              for (const div of msgsEl.querySelectorAll('.hs-mc-msg[data-msg-key]')) {
+                const m = div._hsMsg
+                if (m && m.text && m.text.includes(msg.emoteName)) m._renderedHtml = null
+              }
+            }
+            // In-place swap reaches orphans and never touches scroll; the full
+            // re-render only when pinned to bottom (it snaps the viewport).
+            queueImmediateReprocess()
+            if (!isScrolledUp) renderMessages(currentTab)
           } catch (_) {}
         }
       }

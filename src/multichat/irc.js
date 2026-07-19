@@ -63,7 +63,7 @@ function parseTwitchEmotesTag(emotesTag, text) {
     if (!emoteId || !posStr) continue
     const firstPos = posStr.split(',')[0]
     const [start, end] = firstPos.split('-').map(Number)
-    if (isNaN(start) || isNaN(end)) continue
+    if (Number.isNaN(start) || Number.isNaN(end)) continue
     const name = cps ? cps.slice(start, end + 1).join('') : text.slice(start, end + 1)
     if (name && !out[name]) {
       out[name] = `https://static-cdn.jtvnw.net/emoticons/v2/${emoteId}/default/dark/2.0`
@@ -104,7 +104,7 @@ function parseIrcLine(raw, channel) {
         color: sanitizeColor(tags.color || '#fff'),
         badges: tags.badges || '',
         channel: channel || privmsg[1].toLowerCase(),
-        time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
+        time: parseInt(tags['tmi-sent-ts'], 10) || parseInt(tags['rm-received-ts'], 10) || Date.now(),
         id: tags.id || '',
         replyTo: tags['reply-parent-display-name']
           ? {
@@ -119,7 +119,7 @@ function parseIrcLine(raw, channel) {
       const twitchEmotes = parseTwitchEmotesTag(tags.emotes, text)
       if (twitchEmotes) msg.twitchEmotes = twitchEmotes
       if (isAction) msg.isAction = true
-      const bits = parseInt(tags.bits) || 0
+      const bits = parseInt(tags.bits, 10) || 0
       if (bits > 0) msg.bits = bits
       // No own-cheer fallbacks — the renderer is bulletproof-strict: only
       // server-confirmed `bits=N` tags from twitch's IRC count. If the user
@@ -145,7 +145,7 @@ function parseIrcLine(raw, channel) {
       const badgeInfo = tags['badge-info']
       if (badgeInfo) {
         const subMatch = badgeInfo.match(/subscriber\/(\d+)/)
-        if (subMatch) msg.subMonths = parseInt(subMatch[1])
+        if (subMatch) msg.subMonths = parseInt(subMatch[1], 10)
       }
       return msg
     }
@@ -157,15 +157,15 @@ function parseIrcLine(raw, channel) {
       const subPlan = tags['msg-param-sub-plan'] || ''
       const tier =
         subPlan === '2000' ? '2' : subPlan === '3000' ? '3' : subPlan === 'Prime' ? 'prime' : subPlan ? '1' : ''
-      const months = parseInt(tags['msg-param-cumulative-months']) || parseInt(tags['msg-param-months']) || 0
-      const giftCount = parseInt(tags['msg-param-mass-gift-count']) || 0
+      const months = parseInt(tags['msg-param-cumulative-months'], 10) || parseInt(tags['msg-param-months'], 10) || 0
+      const giftCount = parseInt(tags['msg-param-mass-gift-count'], 10) || 0
       const recipient = tags['msg-param-recipient-display-name']
         ? ircTagUnescape(tags['msg-param-recipient-display-name'])
         : ''
-      const raidViewers = parseInt(tags['msg-param-viewerCount']) || 0
+      const raidViewers = parseInt(tags['msg-param-viewerCount'], 10) || 0
       const raidFrom = tags['msg-param-displayName'] ? ircTagUnescape(tags['msg-param-displayName']) : ''
       const announceColor = tags['msg-param-color'] || ''
-      const bitsTier = parseInt(tags['msg-param-threshold']) || 0
+      const bitsTier = parseInt(tags['msg-param-threshold'], 10) || 0
       const category = tags['msg-param-category'] || ''
       const rawMsgId = tags['msg-id'] || ''
       // Watch-streak: Twitch ships it under viewermilestone w/ category=watch-streak.
@@ -176,7 +176,7 @@ function parseIrcLine(raw, channel) {
       // Open a raid window so the incoming wave's first messages get flagged.
       if (rawMsgId === 'raid') {
         const uncChannel = channel || usernotice[1].toLowerCase()
-        const uncTime = parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now()
+        const uncTime = parseInt(tags['tmi-sent-ts'], 10) || parseInt(tags['rm-received-ts'], 10) || Date.now()
         _raidWindows.set(uncChannel, uncTime + RAID_WINDOW_MS)
       }
       const twitchEmotes = parseTwitchEmotesTag(tags.emotes, userText)
@@ -187,7 +187,7 @@ function parseIrcLine(raw, channel) {
         color: sanitizeColor(tags.color || '#fff'),
         badges: tags.badges || '',
         channel: channel || usernotice[1].toLowerCase(),
-        time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
+        time: parseInt(tags['tmi-sent-ts'], 10) || parseInt(tags['rm-received-ts'], 10) || Date.now(),
         type: 'usernotice',
         msgId,
         subTier: tier,
@@ -209,7 +209,7 @@ function parseIrcLine(raw, channel) {
     const notice = raw.match(/NOTICE #([^ ]+) :(.+)$/)
     if (notice) {
       const ch = channel || notice[1].toLowerCase()
-      const time = parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now()
+      const time = parseInt(tags['tmi-sent-ts'], 10) || parseInt(tags['rm-received-ts'], 10) || Date.now()
       const noticeType = tags['msg-id'] || ''
       // Deterministic ID when server doesn't provide one — same notice from live IRC
       // and robotty history dedupes correctly (both share tmi-sent-ts).
@@ -237,10 +237,10 @@ function parseIrcLine(raw, channel) {
         type: 'roomstate',
         channel: ch,
         time: Date.now(),
-        slow: tags['slow'] != null ? parseInt(tags['slow']) : null,
+        slow: tags['slow'] != null ? parseInt(tags['slow'], 10) : null,
         subsOnly: tags['subs-only'] != null ? tags['subs-only'] === '1' : null,
         emoteOnly: tags['emote-only'] != null ? tags['emote-only'] === '1' : null,
-        followersOnly: tags['followers-only'] != null ? parseInt(tags['followers-only']) : null,
+        followersOnly: tags['followers-only'] != null ? parseInt(tags['followers-only'], 10) : null,
         r9k: tags['r9k'] != null ? tags['r9k'] === '1' : null,
       }
     }
@@ -272,7 +272,7 @@ function parseIrcLine(raw, channel) {
           : `${target} was permanently banned`
         : t('mc_irc_chat_cleared')
       const ch = channel || clearchat[1].toLowerCase()
-      const time = parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now()
+      const time = parseInt(tags['tmi-sent-ts'], 10) || parseInt(tags['rm-received-ts'], 10) || Date.now()
       // Deterministic ID — dedupes live CLEARCHAT vs robotty NOTICE replay of same event.
       const detId = `clearchat-${ch}-${target}-${duration || 'perma'}-${time}`
       return {
@@ -288,7 +288,7 @@ function parseIrcLine(raw, channel) {
         systemMsg: text,
         targetUser: target,
         targetUserId: tags['target-user-id'] || '',
-        banDuration: duration ? parseInt(duration) : 0,
+        banDuration: duration ? parseInt(duration, 10) : 0,
       }
     }
 
@@ -305,7 +305,7 @@ function parseIrcLine(raw, channel) {
         color: '#808080',
         badges: '',
         channel: channel || clearmsg[1].toLowerCase(),
-        time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
+        time: parseInt(tags['tmi-sent-ts'], 10) || parseInt(tags['rm-received-ts'], 10) || Date.now(),
         id: targetMsgId || `clearmsg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         systemMsg: t('mc_irc_msg_deleted', [tags.login || 'unknown']),
         targetUser: tags.login || '',
@@ -323,7 +323,7 @@ function parseIrcLine(raw, channel) {
         text: whisper[1],
         color: sanitizeColor(tags.color || '#fff'),
         badges: tags.badges || '',
-        time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
+        time: parseInt(tags['tmi-sent-ts'], 10) || parseInt(tags['rm-received-ts'], 10) || Date.now(),
         id: tags['message-id'] || '',
       }
     }

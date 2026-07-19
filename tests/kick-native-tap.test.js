@@ -5,8 +5,8 @@
 // KickChat's id-dedup drops relay/tap doubles.
 
 import { describe, expect, test } from 'bun:test'
-import { readFileSync } from 'fs'
-import { join } from 'path'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 const SRC = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'kick-native-tap.js'), 'utf8')
 

@@ -13,7 +13,7 @@
  */
 
 import { beforeEach, describe, expect, test } from 'bun:test'
-import { readFileSync } from 'fs'
+import { readFileSync } from 'node:fs'
 
 // IMPORTANT: this file must NOT mutate globalThis (setTimeout, window, etc).
 // bun runs every test file in one shared realm, concurrently — a stubbed

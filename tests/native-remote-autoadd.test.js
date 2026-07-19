@@ -15,8 +15,8 @@
  */
 
 import { beforeEach, describe, expect, test } from 'bun:test'
-import { readFileSync } from 'fs'
-import { join } from 'path'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 const HOOK_SRC = readFileSync(join(import.meta.dir, '..', 'chrome', 'autocomplete-hook.js'), 'utf8')
 const start = HOOK_SRC.indexOf('const _remoteCompletions')

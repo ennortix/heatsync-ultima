@@ -6,8 +6,8 @@
 // isolation, same pattern as tests/kick-native-tap.test.js.
 
 import { describe, expect, test } from 'bun:test'
-import { readFileSync } from 'fs'
-import { join } from 'path'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 const SRC = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'mod-toolbar.js'), 'utf8')
 

@@ -6102,7 +6102,7 @@
           const alt = img.alt || img.getAttribute('aria-label') || ''
           const match = alt.match(SUB_TENURE_RE)
           if (match) {
-            subTenureMap.set(lowerUser, parseInt(match[1]))
+            subTenureMap.set(lowerUser, parseInt(match[1], 10))
             while (subTenureMap.size > 500) subTenureMap.delete(subTenureMap.keys().next().value)
             break
           }
@@ -8654,7 +8654,7 @@
               const m = ts.textContent.match(/(\d{1,2}):(\d{2})/)
               if (m) {
                 const d = new Date()
-                d.setHours(parseInt(m[1]), parseInt(m[2]), 0, 0)
+                d.setHours(parseInt(m[1], 10), parseInt(m[2], 10), 0, 0)
                 time = d.getTime()
               }
             }

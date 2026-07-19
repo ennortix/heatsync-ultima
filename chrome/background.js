@@ -1320,7 +1320,7 @@ async function fetchWithTimeout(url, opts = {}, ms = 10000) {
     let waitMs = 5000
     if (retryAfter) {
       const n = parseInt(retryAfter, 10)
-      if (!isNaN(n) && n > 0) waitMs = Math.min(60000, n * 1000)
+      if (!Number.isNaN(n) && n > 0) waitMs = Math.min(60000, n * 1000)
     }
     const firstHit = Date.now() >= heatsyncBackoffUntil
     heatsyncBackoffUntil = Date.now() + waitMs
@@ -10201,7 +10201,7 @@ function bgIrcParseEmotesTag(emotesTag, text) {
     if (!emoteId || !posStr) continue
     const firstPos = posStr.split(',')[0]
     const [start, end] = firstPos.split('-').map(Number)
-    if (isNaN(start) || isNaN(end)) continue
+    if (Number.isNaN(start) || Number.isNaN(end)) continue
     const name = cps ? cps.slice(start, end + 1).join('') : text.slice(start, end + 1)
     if (name && !out[name]) {
       out[name] = `https://static-cdn.jtvnw.net/emoticons/v2/${emoteId}/default/dark/2.0`
@@ -10274,7 +10274,7 @@ function bgIrcParseLine(raw, channelHint) {
         color: bgIrcSanitizeColor(tags.color || '#fff'),
         badges: tags.badges || '',
         channel: channelHint || privmsg[1].toLowerCase(),
-        time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
+        time: parseInt(tags['tmi-sent-ts'], 10) || parseInt(tags['rm-received-ts'], 10) || Date.now(),
         id: tags.id || '',
         replyTo: tags['reply-parent-display-name']
           ? {
@@ -10293,7 +10293,7 @@ function bgIrcParseLine(raw, channelHint) {
       const twitchEmotes = bgIrcParseEmotesTag(tags.emotes, text)
       if (twitchEmotes) msg.twitchEmotes = twitchEmotes
       if (isAction) msg.isAction = true
-      const bits = parseInt(tags.bits) || 0
+      const bits = parseInt(tags.bits, 10) || 0
       if (bits > 0) msg.bits = bits
       if (tags['custom-reward-id']) {
         msg.redeemed = true
@@ -10304,7 +10304,7 @@ function bgIrcParseLine(raw, channelHint) {
       const badgeInfo = tags['badge-info']
       if (badgeInfo) {
         const subMatch = badgeInfo.match(/subscriber\/(\d+)/)
-        if (subMatch) msg.subMonths = parseInt(subMatch[1])
+        if (subMatch) msg.subMonths = parseInt(subMatch[1], 10)
       }
       return msg
     }
@@ -10315,15 +10315,15 @@ function bgIrcParseLine(raw, channelHint) {
       const subPlan = tags['msg-param-sub-plan'] || ''
       const tier =
         subPlan === '2000' ? '2' : subPlan === '3000' ? '3' : subPlan === 'Prime' ? 'prime' : subPlan ? '1' : ''
-      const months = parseInt(tags['msg-param-cumulative-months']) || parseInt(tags['msg-param-months']) || 0
-      const giftCount = parseInt(tags['msg-param-mass-gift-count']) || 0
+      const months = parseInt(tags['msg-param-cumulative-months'], 10) || parseInt(tags['msg-param-months'], 10) || 0
+      const giftCount = parseInt(tags['msg-param-mass-gift-count'], 10) || 0
       const recipient = tags['msg-param-recipient-display-name']
         ? bgIrcTagUnescape(tags['msg-param-recipient-display-name'])
         : ''
-      const raidViewers = parseInt(tags['msg-param-viewerCount']) || 0
+      const raidViewers = parseInt(tags['msg-param-viewerCount'], 10) || 0
       const raidFrom = tags['msg-param-displayName'] ? bgIrcTagUnescape(tags['msg-param-displayName']) : ''
       const announceColor = tags['msg-param-color'] || ''
-      const bitsTier = parseInt(tags['msg-param-threshold']) || 0
+      const bitsTier = parseInt(tags['msg-param-threshold'], 10) || 0
       const category = tags['msg-param-category'] || ''
       const rawMsgId = tags['msg-id'] || ''
       const msgId = rawMsgId === 'viewermilestone' && category === 'watch-streak' ? 'watchstreak' : rawMsgId
@@ -10337,7 +10337,7 @@ function bgIrcParseLine(raw, channelHint) {
         color: bgIrcSanitizeColor(tags.color || '#fff'),
         badges: tags.badges || '',
         channel: channelHint || usernotice[1].toLowerCase(),
-        time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
+        time: parseInt(tags['tmi-sent-ts'], 10) || parseInt(tags['rm-received-ts'], 10) || Date.now(),
         type: 'usernotice',
         msgId,
         subTier: tier,
@@ -10357,7 +10357,7 @@ function bgIrcParseLine(raw, channelHint) {
     const notice = raw.match(/NOTICE #([^ ]+) :(.+)$/)
     if (notice) {
       const ch = channelHint || notice[1].toLowerCase()
-      const time = parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now()
+      const time = parseInt(tags['tmi-sent-ts'], 10) || parseInt(tags['rm-received-ts'], 10) || Date.now()
       const noticeType = tags['msg-id'] || ''
       const detId = `notice-${ch}-${time}-${notice[2].slice(0, 64)}`
       return {
@@ -10381,10 +10381,10 @@ function bgIrcParseLine(raw, channelHint) {
         type: 'roomstate',
         channel: ch,
         time: Date.now(),
-        slow: tags['slow'] != null ? parseInt(tags['slow']) : null,
+        slow: tags['slow'] != null ? parseInt(tags['slow'], 10) : null,
         subsOnly: tags['subs-only'] != null ? tags['subs-only'] === '1' : null,
         emoteOnly: tags['emote-only'] != null ? tags['emote-only'] === '1' : null,
-        followersOnly: tags['followers-only'] != null ? parseInt(tags['followers-only']) : null,
+        followersOnly: tags['followers-only'] != null ? parseInt(tags['followers-only'], 10) : null,
         r9k: tags['r9k'] != null ? tags['r9k'] === '1' : null,
       }
     }
@@ -10414,7 +10414,7 @@ function bgIrcParseLine(raw, channelHint) {
           : `${target} was permanently banned`
         : 'chat cleared'
       const ch = channelHint || clearchat[1].toLowerCase()
-      const time = parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now()
+      const time = parseInt(tags['tmi-sent-ts'], 10) || parseInt(tags['rm-received-ts'], 10) || Date.now()
       const detId = `clearchat-${ch}-${target}-${duration || 'perma'}-${time}`
       return {
         type: 'notice',
@@ -10429,7 +10429,7 @@ function bgIrcParseLine(raw, channelHint) {
         systemMsg: text,
         targetUser: target,
         targetUserId: tags['target-user-id'] || '',
-        banDuration: duration ? parseInt(duration) : 0,
+        banDuration: duration ? parseInt(duration, 10) : 0,
       }
     }
 
@@ -10445,7 +10445,7 @@ function bgIrcParseLine(raw, channelHint) {
         color: '#808080',
         badges: '',
         channel: channelHint || clearmsg[1].toLowerCase(),
-        time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
+        time: parseInt(tags['tmi-sent-ts'], 10) || parseInt(tags['rm-received-ts'], 10) || Date.now(),
         id: targetMsgId || `clearmsg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         systemMsg: text,
         targetUser: tags.login || '',
@@ -11185,7 +11185,7 @@ function bgIrcRecordToExt(rec, channelHint) {
         if (!emoteId || !posStr) continue
         const firstPos = posStr.split(',')[0]
         const [start, end] = firstPos.split('-').map(Number)
-        if (isNaN(start) || isNaN(end)) continue
+        if (Number.isNaN(start) || Number.isNaN(end)) continue
         const name = content.slice(start, end + 1)
         if (name && !twitchEmotes[name]) {
           twitchEmotes[name] = `https://static-cdn.jtvnw.net/emoticons/v2/${emoteId}/default/dark/2.0`
@@ -11198,7 +11198,7 @@ function bgIrcRecordToExt(rec, channelHint) {
     if (rec.isFirstMsg) msg.isFirstMsg = true
     if (rec.isRedemption) msg.redeemed = true
     const subMatch = (rec.badgeInfo || '').match?.(/subscriber\/(\d+)/)
-    if (subMatch) msg.subMonths = parseInt(subMatch[1])
+    if (subMatch) msg.subMonths = parseInt(subMatch[1], 10)
     if (isAction) msg.isAction = true
     return msg
   }

@@ -142,7 +142,7 @@ function _tapToMsg(m, channel) {
   if (Object.keys(emotes).length) msg.twitchEmotes = emotes
   if (m.messageType === 1 || m.isAction) msg.isAction = true
   const subMatch = badgeStr.match(/subscriber\/(\d+)/)
-  if (subMatch) msg.subMonths = parseInt(subMatch[1])
+  if (subMatch) msg.subMonths = parseInt(subMatch[1], 10)
   return msg
 }
 

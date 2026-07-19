@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
-import { readFileSync } from 'fs'
-import { join } from 'path'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 // Extracts the SHIPPED `bgIrcDupModNotice` from chrome/background.js by name and
 // evals it in isolation, so this guards the real code (not a copy). It collapses

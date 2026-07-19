@@ -5486,9 +5486,9 @@
       // contain "stream", so explicit watchstreak check wins.
       const isWatchstreak = /watch[\s-]*streak/i.test(txt)
       const streakMatch = isWatchstreak ? txt.match(/(\d+)\s*stream/i) : null
-      const streakCount = streakMatch ? parseInt(streakMatch[1]) : 0
+      const streakCount = streakMatch ? parseInt(streakMatch[1], 10) : 0
       const monthMatch = !isWatchstreak ? txt.match(/(\d+)\s*month/i) : null
-      const months = monthMatch ? parseInt(monthMatch[1]) : 0
+      const months = monthMatch ? parseInt(monthMatch[1], 10) : 0
 
       if (isWatchstreak && streakCount) {
         if (_watchstreakAlreadySharedToday(ch)) {

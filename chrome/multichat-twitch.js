@@ -3597,7 +3597,7 @@ function validateSettingValue(def, v) {
     }
     case 'range': {
       const range = /** @type {{min:number,max:number,step:number}} */ (def.options)
-      return typeof v === 'number' && isFinite(v) && !!range && v >= range.min && v <= range.max
+      return typeof v === 'number' && Number.isFinite(v) && !!range && v >= range.min && v <= range.max
     }
     case 'text':
       return typeof v === 'string' && v.length <= (def.maxLen || 4096)
@@ -3662,7 +3662,7 @@ function coerceSettingValue(def, v) {
     case 'range': {
       const range = /** @type {{min:number,max:number,step:number}} */ (def.options)
       var n = typeof v === 'number' ? v : parseFloat(v)
-      if (!isFinite(n) || !range) return undefined
+      if (!Number.isFinite(n) || !range) return undefined
       return Math.min(range.max, Math.max(range.min, n))
     }
     case 'text': {
@@ -19343,7 +19343,7 @@ function parseTwitchEmotesTag(emotesTag, text) {
     if (!emoteId || !posStr) continue
     const firstPos = posStr.split(',')[0]
     const [start, end] = firstPos.split('-').map(Number)
-    if (isNaN(start) || isNaN(end)) continue
+    if (Number.isNaN(start) || Number.isNaN(end)) continue
     const name = cps ? cps.slice(start, end + 1).join('') : text.slice(start, end + 1)
     if (name && !out[name]) {
       out[name] = `https://static-cdn.jtvnw.net/emoticons/v2/${emoteId}/default/dark/2.0`
@@ -19384,7 +19384,7 @@ function parseIrcLine(raw, channel) {
         color: sanitizeColor(tags.color || '#fff'),
         badges: tags.badges || '',
         channel: channel || privmsg[1].toLowerCase(),
-        time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
+        time: parseInt(tags['tmi-sent-ts'], 10) || parseInt(tags['rm-received-ts'], 10) || Date.now(),
         id: tags.id || '',
         replyTo: tags['reply-parent-display-name']
           ? {
@@ -19399,7 +19399,7 @@ function parseIrcLine(raw, channel) {
       const twitchEmotes = parseTwitchEmotesTag(tags.emotes, text)
       if (twitchEmotes) msg.twitchEmotes = twitchEmotes
       if (isAction) msg.isAction = true
-      const bits = parseInt(tags.bits) || 0
+      const bits = parseInt(tags.bits, 10) || 0
       if (bits > 0) msg.bits = bits
       // No own-cheer fallbacks — the renderer is bulletproof-strict: only
       // server-confirmed `bits=N` tags from twitch's IRC count. If the user
@@ -19425,7 +19425,7 @@ function parseIrcLine(raw, channel) {
       const badgeInfo = tags['badge-info']
       if (badgeInfo) {
         const subMatch = badgeInfo.match(/subscriber\/(\d+)/)
-        if (subMatch) msg.subMonths = parseInt(subMatch[1])
+        if (subMatch) msg.subMonths = parseInt(subMatch[1], 10)
       }
       return msg
     }
@@ -19437,15 +19437,15 @@ function parseIrcLine(raw, channel) {
       const subPlan = tags['msg-param-sub-plan'] || ''
       const tier =
         subPlan === '2000' ? '2' : subPlan === '3000' ? '3' : subPlan === 'Prime' ? 'prime' : subPlan ? '1' : ''
-      const months = parseInt(tags['msg-param-cumulative-months']) || parseInt(tags['msg-param-months']) || 0
-      const giftCount = parseInt(tags['msg-param-mass-gift-count']) || 0
+      const months = parseInt(tags['msg-param-cumulative-months'], 10) || parseInt(tags['msg-param-months'], 10) || 0
+      const giftCount = parseInt(tags['msg-param-mass-gift-count'], 10) || 0
       const recipient = tags['msg-param-recipient-display-name']
         ? ircTagUnescape(tags['msg-param-recipient-display-name'])
         : ''
-      const raidViewers = parseInt(tags['msg-param-viewerCount']) || 0
+      const raidViewers = parseInt(tags['msg-param-viewerCount'], 10) || 0
       const raidFrom = tags['msg-param-displayName'] ? ircTagUnescape(tags['msg-param-displayName']) : ''
       const announceColor = tags['msg-param-color'] || ''
-      const bitsTier = parseInt(tags['msg-param-threshold']) || 0
+      const bitsTier = parseInt(tags['msg-param-threshold'], 10) || 0
       const category = tags['msg-param-category'] || ''
       const rawMsgId = tags['msg-id'] || ''
       // Watch-streak: Twitch ships it under viewermilestone w/ category=watch-streak.
@@ -19456,7 +19456,7 @@ function parseIrcLine(raw, channel) {
       // Open a raid window so the incoming wave's first messages get flagged.
       if (rawMsgId === 'raid') {
         const uncChannel = channel || usernotice[1].toLowerCase()
-        const uncTime = parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now()
+        const uncTime = parseInt(tags['tmi-sent-ts'], 10) || parseInt(tags['rm-received-ts'], 10) || Date.now()
         _raidWindows.set(uncChannel, uncTime + RAID_WINDOW_MS)
       }
       const twitchEmotes = parseTwitchEmotesTag(tags.emotes, userText)
@@ -19467,7 +19467,7 @@ function parseIrcLine(raw, channel) {
         color: sanitizeColor(tags.color || '#fff'),
         badges: tags.badges || '',
         channel: channel || usernotice[1].toLowerCase(),
-        time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
+        time: parseInt(tags['tmi-sent-ts'], 10) || parseInt(tags['rm-received-ts'], 10) || Date.now(),
         type: 'usernotice',
         msgId,
         subTier: tier,
@@ -19489,7 +19489,7 @@ function parseIrcLine(raw, channel) {
     const notice = raw.match(/NOTICE #([^ ]+) :(.+)$/)
     if (notice) {
       const ch = channel || notice[1].toLowerCase()
-      const time = parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now()
+      const time = parseInt(tags['tmi-sent-ts'], 10) || parseInt(tags['rm-received-ts'], 10) || Date.now()
       const noticeType = tags['msg-id'] || ''
       // Deterministic ID when server doesn't provide one — same notice from live IRC
       // and robotty history dedupes correctly (both share tmi-sent-ts).
@@ -19517,10 +19517,10 @@ function parseIrcLine(raw, channel) {
         type: 'roomstate',
         channel: ch,
         time: Date.now(),
-        slow: tags['slow'] != null ? parseInt(tags['slow']) : null,
+        slow: tags['slow'] != null ? parseInt(tags['slow'], 10) : null,
         subsOnly: tags['subs-only'] != null ? tags['subs-only'] === '1' : null,
         emoteOnly: tags['emote-only'] != null ? tags['emote-only'] === '1' : null,
-        followersOnly: tags['followers-only'] != null ? parseInt(tags['followers-only']) : null,
+        followersOnly: tags['followers-only'] != null ? parseInt(tags['followers-only'], 10) : null,
         r9k: tags['r9k'] != null ? tags['r9k'] === '1' : null,
       }
     }
@@ -19552,7 +19552,7 @@ function parseIrcLine(raw, channel) {
           : `${target} was permanently banned`
         : t('mc_irc_chat_cleared')
       const ch = channel || clearchat[1].toLowerCase()
-      const time = parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now()
+      const time = parseInt(tags['tmi-sent-ts'], 10) || parseInt(tags['rm-received-ts'], 10) || Date.now()
       // Deterministic ID — dedupes live CLEARCHAT vs robotty NOTICE replay of same event.
       const detId = `clearchat-${ch}-${target}-${duration || 'perma'}-${time}`
       return {
@@ -19568,7 +19568,7 @@ function parseIrcLine(raw, channel) {
         systemMsg: text,
         targetUser: target,
         targetUserId: tags['target-user-id'] || '',
-        banDuration: duration ? parseInt(duration) : 0,
+        banDuration: duration ? parseInt(duration, 10) : 0,
       }
     }
 
@@ -19585,7 +19585,7 @@ function parseIrcLine(raw, channel) {
         color: '#808080',
         badges: '',
         channel: channel || clearmsg[1].toLowerCase(),
-        time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
+        time: parseInt(tags['tmi-sent-ts'], 10) || parseInt(tags['rm-received-ts'], 10) || Date.now(),
         id: targetMsgId || `clearmsg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         systemMsg: t('mc_irc_msg_deleted', [tags.login || 'unknown']),
         targetUser: tags.login || '',
@@ -19603,7 +19603,7 @@ function parseIrcLine(raw, channel) {
         text: whisper[1],
         color: sanitizeColor(tags.color || '#fff'),
         badges: tags.badges || '',
-        time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
+        time: parseInt(tags['tmi-sent-ts'], 10) || parseInt(tags['rm-received-ts'], 10) || Date.now(),
         id: tags['message-id'] || '',
       }
     }
@@ -20935,7 +20935,7 @@ function _tapToMsg(m, channel) {
   if (Object.keys(emotes).length) msg.twitchEmotes = emotes
   if (m.messageType === 1 || m.isAction) msg.isAction = true
   const subMatch = badgeStr.match(/subscriber\/(\d+)/)
-  if (subMatch) msg.subMonths = parseInt(subMatch[1])
+  if (subMatch) msg.subMonths = parseInt(subMatch[1], 10)
   return msg
 }
 
@@ -23454,7 +23454,7 @@ function handleRemoveSuccess(emoteName) {
       const count = sec.querySelector('.hs-mc-picker-section-count')
       if (count) {
         const n = parseInt(count.textContent, 10)
-        if (!isNaN(n) && n > 0) count.textContent = String(n - 1)
+        if (!Number.isNaN(n) && n > 0) count.textContent = String(n - 1)
       }
     }
   } catch {}
@@ -26247,7 +26247,7 @@ function formatCompact(n) {
 function getAccountAge(dateStr) {
   if (!dateStr) return null
   const d = new Date(dateStr)
-  if (isNaN(d.getTime())) return null
+  if (Number.isNaN(d.getTime())) return null
   const now = new Date()
   const y = now.getFullYear() - d.getFullYear()
   const m = now.getMonth() - d.getMonth()
@@ -27147,7 +27147,7 @@ function parsePoints(str) {
   if (!str) return 0
   str = str.trim().toLowerCase()
   const m = str.match(/^(\d+(?:\.\d+)?)\s*(k|m)?$/)
-  if (!m) return parseInt(str) || 0
+  if (!m) return parseInt(str, 10) || 0
   const num = parseFloat(m[1])
   if (m[2] === 'k') return Math.floor(num * 1000)
   if (m[2] === 'm') return Math.floor(num * 1000000)
@@ -27933,7 +27933,7 @@ function attachRewardHandlers() {
           const result = await redeemChannelReward(
             card.dataset.channelId,
             card.dataset.rewardId,
-            parseInt(card.dataset.cost),
+            parseInt(card.dataset.cost, 10),
             card.dataset.title,
             text,
           )
@@ -27961,7 +27961,7 @@ function attachRewardHandlers() {
       const result = await redeemChannelReward(
         card.dataset.channelId,
         card.dataset.rewardId,
-        parseInt(card.dataset.cost),
+        parseInt(card.dataset.cost, 10),
         card.dataset.title,
       )
       if (result.error) {
@@ -27982,7 +27982,7 @@ function attachRewardHandlers() {
 
   // Cooldown timers
   container.querySelectorAll('.hs-mc-reward-reason[data-cooldown-ends]').forEach((el) => {
-    const endsAt = parseInt(el.dataset.cooldownEnds)
+    const endsAt = parseInt(el.dataset.cooldownEnds, 10)
     const iv = cleanup.setIntervalIfVisible(() => {
       if (!el.isConnected) {
         cleanup.clearInterval(iv)
@@ -28022,7 +28022,7 @@ function optimisticBetUpdate(container, outcomeId, points) {
     const voterMatch = text.match(/(\d+)\s*bettor/)
     const betMatch = text.match(/your bet:\s*([\d,.]+[KMB]?)/i)
     const currentPts = ptsMatch ? parsePoints(ptsMatch[1]) : 0
-    const currentVoters = voterMatch ? parseInt(voterMatch[1]) : 0
+    const currentVoters = voterMatch ? parseInt(voterMatch[1], 10) : 0
     const existingBet = betMatch ? parsePoints(betMatch[1]) : 0
 
     const newPts = currentPts + points
@@ -28096,7 +28096,7 @@ function attachPredictionHandlers() {
       if (!eventId) return
       btn.disabled = true
       btn.textContent = '...'
-      const betPoints = parseInt(btn.dataset.points)
+      const betPoints = parseInt(btn.dataset.points, 10)
       const result = await placePredictionBet(eventId, btn.dataset.outcome, betPoints)
       if (result.error) {
         btn.textContent = predErrorMsg(result.error)
@@ -28347,7 +28347,7 @@ function attachPredictionHandlers() {
         return
       }
       const durBtn = form.querySelector('.hs-mc-pred-create-dur-active')
-      const secs = parseInt(durBtn?.dataset.secs || '120')
+      const secs = parseInt(durBtn?.dataset.secs || '120', 10)
       btn.disabled = true
       btn.textContent = '...'
       const result = await createPrediction(channelId, title, secs, outcomes)
@@ -28387,7 +28387,7 @@ function attachPredictionHandlers() {
 
   // Start countdown timers
   container.querySelectorAll('.hs-mc-pred-timer').forEach((el) => {
-    const endsAt = parseInt(el.dataset.ends)
+    const endsAt = parseInt(el.dataset.ends, 10)
     const update = () => {
       const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
       if (remaining <= 0) {
@@ -30259,7 +30259,7 @@ function optimisticPollVoteUpdate(pollSection, choiceId) {
   const choices = pollSection.querySelectorAll('.hs-mc-poll-choice')
   const metaEl = pollSection.querySelector('.hs-mc-poll-meta')
   const totalMatch = metaEl?.textContent?.match(/(\d+)/)
-  const oldTotal = totalMatch ? parseInt(totalMatch[1]) : 0
+  const oldTotal = totalMatch ? parseInt(totalMatch[1], 10) : 0
 
   // Reconstruct per-choice vote counts from percentages
   const entries = []
@@ -30268,7 +30268,7 @@ function optimisticPollVoteUpdate(pollSection, choiceId) {
     const nameEl = choice.querySelector('.hs-mc-poll-choice-name')
     const voteBtn = choice.querySelector('.hs-mc-poll-vote-btn')
     const isTarget = voteBtn?.dataset?.choiceId === choiceId
-    const oldPct = pctEl ? parseInt(pctEl.textContent) : 0
+    const oldPct = pctEl ? parseInt(pctEl.textContent, 10) : 0
     let votes = oldTotal > 0 ? Math.round((oldPct / 100) * oldTotal) : 0
     if (isTarget) votes += 1
     entries.push({ choice, votes, pctEl, nameEl, voteBtn, isTarget })
@@ -30393,7 +30393,7 @@ function attachPollHandlers() {
         return
       }
       const durBtn = form.querySelector('.hs-mc-poll-create-dur-active')
-      const secs = parseInt(durBtn?.dataset.secs || '60')
+      const secs = parseInt(durBtn?.dataset.secs || '60', 10)
       btn.disabled = true
       btn.textContent = '...'
       const result = await createTwitchPoll(channelId, title, secs, choices)
@@ -30440,7 +30440,7 @@ function attachPollHandlers() {
 
   // Poll timers
   container.querySelectorAll('.hs-mc-poll-timer').forEach((el) => {
-    const endsAt = parseInt(el.dataset.ends)
+    const endsAt = parseInt(el.dataset.ends, 10)
     const update = () => {
       const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
       if (remaining <= 0) {
@@ -32583,7 +32583,7 @@ function listenForSocialEvents() {
       // Track home/feed unread regardless of feedLoaded — the user may
       // not have opened the feed tab yet, but we still want a red dot.
       const ts = msg.data.created_at ? new Date(msg.data.created_at).getTime() : Date.now()
-      if (!isNaN(ts) && msg.data.username !== 'Anonymous') {
+      if (!Number.isNaN(ts) && msg.data.username !== 'Anonymous') {
         noteSeenEvent('live', ts)
       }
       if (!feedLoaded) return
@@ -32620,7 +32620,7 @@ function listenForSocialEvents() {
         // Inline notification in chat (routed through toggle system)
         const f = msg.data
         const t = new Date(f.created_at).getTime()
-        if (!isNaN(t)) {
+        if (!Number.isNaN(t)) {
           const notifType = f.is_thread_op ? 'mop' : (f.is_op != null ? !!f.is_op : !f.reply_to) ? 'op' : 're'
           injectInlineNotif(notifType, {
             type: 'feed-post',
@@ -39464,7 +39464,8 @@ function handleInputKeydown(e) {
         // autoAddInputEmotes still requires the word in the sent text.
         if (e.key === 'Enter' && emojiAcState.query) {
           const q = emojiAcState.query
-          const exact = emojiAcState.matches.find((m) => m.name === q) ||
+          const exact =
+            emojiAcState.matches.find((m) => m.name === q) ||
             emojiAcState.matches.find((m) => m.name.toLowerCase() === q.toLowerCase())
           if (exact) trackCompletionForAutoAdd(exact)
         }
@@ -42836,7 +42837,7 @@ async function handleSlashCommand(text, input) {
         return true
       }
       const [, target, secStr, reason] = m
-      const sec = secStr ? Math.max(1, parseInt(secStr)) : 600
+      const sec = secStr ? Math.max(1, parseInt(secStr, 10)) : 600
       const r = await dispatchModAction({
         channel: modChannel,
         action: 'timeout',
@@ -42908,7 +42909,7 @@ async function handleSlashCommand(text, input) {
       showToast(t('mc_input_usage_nuke'), 'error')
       return true
     }
-    const windowSec = Math.min(NUKE_MAX_WINDOW, nm && nm[2] ? Math.max(1, parseInt(nm[2])) : 30)
+    const windowSec = Math.min(NUKE_MAX_WINDOW, nm && nm[2] ? Math.max(1, parseInt(nm[2], 10)) : 30)
     const since = Date.now() - windowSec * 1000
     const needle = term.toLowerCase()
     // Collect deletable matches from both platform buffers, newest dropped first
@@ -44679,12 +44680,8 @@ function renderProfileCardView() {
     } catch {}
   }
   avatar.src =
-    safeUrl(
-      data?.twitch_profile_pic ||
-      data?.kick_profile_pic ||
-      data?.profile_image_url ||
-      ytAvatar,
-    ) || 'https://heatsync.org/anon.webp'
+    safeUrl(data?.twitch_profile_pic || data?.kick_profile_pic || data?.profile_image_url || ytAvatar) ||
+    'https://heatsync.org/anon.webp'
   avatar.alt = ''
   avatar.referrerPolicy = 'no-referrer'
   idRow.appendChild(avatar)
@@ -44980,7 +44977,7 @@ function renderProfileCardView() {
     // acctage
     const dates = [data.twitch_created_at, data.kick_created_at]
       .filter(Boolean)
-      .filter((d) => !isNaN(new Date(d).getTime()))
+      .filter((d) => !Number.isNaN(new Date(d).getTime()))
     const oldest = dates.length ? dates.reduce((a, b) => (new Date(b) < new Date(a) ? b : a)) : null
     const age = typeof getAccountAge === 'function' ? getAccountAge(oldest) : null
     if (age) addRow('acctage', age, 'val-age')
@@ -45679,7 +45676,7 @@ function buildChatLogPermalink(r) {
   const channel = r.channel || activeChatLogs.channel
   if (!platform || !channel || !r.timestamp) return null
   const d = new Date(r.timestamp)
-  if (isNaN(d.getTime())) return null
+  if (Number.isNaN(d.getTime())) return null
   const ymd = d.toISOString().slice(0, 10)
   let url = `${HS_CL_PUBLIC_ORIGIN}/logs/${encodeURIComponent(platform)}/${encodeURIComponent(channel)}/${ymd}`
   if (r.message_id) url += `?m=${encodeURIComponent(r.message_id)}`
@@ -45853,7 +45850,7 @@ function exportChatLogs(format) {
       .reverse()
       .map((r) => {
         const d = r.timestamp ? new Date(r.timestamp) : null
-        const ts = d && !isNaN(d.getTime()) ? d.toISOString().replace('T', ' ').slice(0, 19) : ''
+        const ts = d && !Number.isNaN(d.getTime()) ? d.toISOString().replace('T', ' ').slice(0, 19) : ''
         const ch = r.channel ? `#${r.channel}` : ''
         return `[${ts}] ${ch} <${r.display_name || r.username}> ${r.message}`
       })
@@ -46050,7 +46047,7 @@ function renderChatLogRow(r) {
   ts.className = 'hs-cl-ts'
   if (r.timestamp) {
     const d = new Date(r.timestamp)
-    if (!isNaN(d.getTime())) {
+    if (!Number.isNaN(d.getTime())) {
       ts.textContent = d.toISOString().replace('T', ' ').slice(5, 16)
       ts.title = d.toLocaleString()
     }
@@ -58883,9 +58880,9 @@ const STORAGE_KEY = 'heatsync_multichat'
       // contain "stream", so explicit watchstreak check wins.
       const isWatchstreak = /watch[\s-]*streak/i.test(txt)
       const streakMatch = isWatchstreak ? txt.match(/(\d+)\s*stream/i) : null
-      const streakCount = streakMatch ? parseInt(streakMatch[1]) : 0
+      const streakCount = streakMatch ? parseInt(streakMatch[1], 10) : 0
       const monthMatch = !isWatchstreak ? txt.match(/(\d+)\s*month/i) : null
-      const months = monthMatch ? parseInt(monthMatch[1]) : 0
+      const months = monthMatch ? parseInt(monthMatch[1], 10) : 0
 
       if (isWatchstreak && streakCount) {
         if (_watchstreakAlreadySharedToday(ch)) {

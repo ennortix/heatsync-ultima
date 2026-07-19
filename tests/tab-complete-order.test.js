@@ -19,8 +19,8 @@
  */
 
 import { beforeEach, describe, expect, setSystemTime, test } from 'bun:test'
-import { readFileSync } from 'fs'
-import { join } from 'path'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 // ── carve compareAcMatches out of input.js ──────────────────────────────────
 const INPUT_SRC = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'input.js'), 'utf8')

@@ -6339,7 +6339,7 @@ async function handleSlashCommand(text, input) {
         return true
       }
       const [, target, secStr, reason] = m
-      const sec = secStr ? Math.max(1, parseInt(secStr)) : 600
+      const sec = secStr ? Math.max(1, parseInt(secStr, 10)) : 600
       const r = await dispatchModAction({
         channel: modChannel,
         action: 'timeout',
@@ -6411,7 +6411,7 @@ async function handleSlashCommand(text, input) {
       showToast(t('mc_input_usage_nuke'), 'error')
       return true
     }
-    const windowSec = Math.min(NUKE_MAX_WINDOW, nm && nm[2] ? Math.max(1, parseInt(nm[2])) : 30)
+    const windowSec = Math.min(NUKE_MAX_WINDOW, nm && nm[2] ? Math.max(1, parseInt(nm[2], 10)) : 30)
     const since = Date.now() - windowSec * 1000
     const needle = term.toLowerCase()
     // Collect deletable matches from both platform buffers, newest dropped first

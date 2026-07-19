@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
-import { existsSync, readFileSync } from 'fs'
-import { join } from 'path'
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 const ROOT = new URL('..', import.meta.url).pathname
 const DIST_CHROME = join(ROOT, 'dist', 'chrome')

@@ -3046,7 +3046,7 @@
           const wrap = evt.target.closest('.heatsync-emote-wrap')
           if (!wrap) return
           const idx = parseInt(wrap.dataset.index, 10)
-          if (isNaN(idx)) return
+          if (Number.isNaN(idx)) return
 
           // Determine which emote list this index refers to
           let e
@@ -3087,7 +3087,7 @@
           const wrap = evt.target.closest('.heatsync-emote-wrap')
           if (!wrap) return
           const idx = parseInt(wrap.dataset.index, 10)
-          if (isNaN(idx)) return
+          if (Number.isNaN(idx)) return
 
           let e
           if (idx < _virtualRecentCount) {
@@ -3372,7 +3372,7 @@
         return
       }
 
-      clearTimeout(parseInt(btn.dataset.confirmTimer || '0'))
+      clearTimeout(parseInt(btn.dataset.confirmTimer || '0', 10))
       btn.classList.remove('confirming')
       btn.classList.add('applying')
       btn.disabled = true
@@ -3559,7 +3559,7 @@
         return
       }
 
-      clearTimeout(parseInt(btn.dataset.confirmTimer || '0'))
+      clearTimeout(parseInt(btn.dataset.confirmTimer || '0', 10))
       btn.classList.remove('confirming')
       btn.classList.add('restoring')
       btn.disabled = true
@@ -3570,7 +3570,7 @@
         btn.classList.add('restored')
         btn.textContent = 'restored'
         // Remove from local cache so it disappears from list
-        const id = parseInt(btn.dataset.emoteId)
+        const id = parseInt(btn.dataset.emoteId, 10)
         removedEmotesCache = removedEmotesCache.filter((x) => x.id !== id)
         const countEl = document.getElementById('count-history')
         if (countEl) countEl.textContent = String(removedEmotesCache.length)
@@ -3768,7 +3768,7 @@
         const row = evt.target.closest('.hs-discover-item')
         if (!row) return
         const idx = parseInt(row.dataset.idx, 10)
-        if (isNaN(idx)) return
+        if (Number.isNaN(idx)) return
         const e = items[idx]
         if (!e) return
         showContextMenu(evt, e, 'discover')
@@ -3778,7 +3778,7 @@
         const row = evt.target.closest('.hs-discover-item')
         if (!row) return
         const idx = parseInt(row.dataset.idx, 10)
-        if (isNaN(idx)) return
+        if (Number.isNaN(idx)) return
         const e = items[idx]
         if (!e) return
         // Blocked result: left-click unblocks and restores it, mirroring the grid.
@@ -4467,7 +4467,7 @@
           const fromSlot = emote.slot ?? inventoryEmotesCache.find((e) => e.hash === hash)?.slot
           confirmBtn.addEventListener('click', async () => {
             const toSlot = parseInt(input.value, 10)
-            if (isNaN(toSlot) || fromSlot == null) {
+            if (Number.isNaN(toSlot) || fromSlot == null) {
               dismissContextMenu()
               return
             }

@@ -20,7 +20,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { readFileSync } from 'fs'
+import { readFileSync } from 'node:fs'
 
 // ── Harness: load the IIFE into a fresh isolated context each test ─────────────
 

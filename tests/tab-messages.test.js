@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
-import { readFileSync } from 'fs'
-import { join } from 'path'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 // selectTabSources (src/multichat/tab-messages.js). No import/export — it's
 // concatenated into the multichat bundle as a global; loaded here via

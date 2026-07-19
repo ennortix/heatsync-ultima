@@ -29,7 +29,7 @@
  */
 
 import { describe, expect, test } from 'bun:test'
-import { readFileSync } from 'fs'
+import { readFileSync } from 'node:fs'
 
 const BG_SRC = readFileSync(new URL('../chrome/background.js', import.meta.url), 'utf8')
 

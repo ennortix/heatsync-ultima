@@ -1072,7 +1072,7 @@ function renderProfileCardView() {
     // acctage
     const dates = [data.twitch_created_at, data.kick_created_at]
       .filter(Boolean)
-      .filter((d) => !isNaN(new Date(d).getTime()))
+      .filter((d) => !Number.isNaN(new Date(d).getTime()))
     const oldest = dates.length ? dates.reduce((a, b) => (new Date(b) < new Date(a) ? b : a)) : null
     const age = typeof getAccountAge === 'function' ? getAccountAge(oldest) : null
     if (age) addRow('acctage', age, 'val-age')

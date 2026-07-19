@@ -6,7 +6,7 @@ function parsePoints(str) {
   if (!str) return 0
   str = str.trim().toLowerCase()
   const m = str.match(/^(\d+(?:\.\d+)?)\s*(k|m)?$/)
-  if (!m) return parseInt(str) || 0
+  if (!m) return parseInt(str, 10) || 0
   const num = parseFloat(m[1])
   if (m[2] === 'k') return Math.floor(num * 1000)
   if (m[2] === 'm') return Math.floor(num * 1000000)
@@ -792,7 +792,7 @@ function attachRewardHandlers() {
           const result = await redeemChannelReward(
             card.dataset.channelId,
             card.dataset.rewardId,
-            parseInt(card.dataset.cost),
+            parseInt(card.dataset.cost, 10),
             card.dataset.title,
             text,
           )
@@ -820,7 +820,7 @@ function attachRewardHandlers() {
       const result = await redeemChannelReward(
         card.dataset.channelId,
         card.dataset.rewardId,
-        parseInt(card.dataset.cost),
+        parseInt(card.dataset.cost, 10),
         card.dataset.title,
       )
       if (result.error) {
@@ -841,7 +841,7 @@ function attachRewardHandlers() {
 
   // Cooldown timers
   container.querySelectorAll('.hs-mc-reward-reason[data-cooldown-ends]').forEach((el) => {
-    const endsAt = parseInt(el.dataset.cooldownEnds)
+    const endsAt = parseInt(el.dataset.cooldownEnds, 10)
     const iv = cleanup.setIntervalIfVisible(() => {
       if (!el.isConnected) {
         cleanup.clearInterval(iv)
@@ -881,7 +881,7 @@ function optimisticBetUpdate(container, outcomeId, points) {
     const voterMatch = text.match(/(\d+)\s*bettor/)
     const betMatch = text.match(/your bet:\s*([\d,.]+[KMB]?)/i)
     const currentPts = ptsMatch ? parsePoints(ptsMatch[1]) : 0
-    const currentVoters = voterMatch ? parseInt(voterMatch[1]) : 0
+    const currentVoters = voterMatch ? parseInt(voterMatch[1], 10) : 0
     const existingBet = betMatch ? parsePoints(betMatch[1]) : 0
 
     const newPts = currentPts + points
@@ -955,7 +955,7 @@ function attachPredictionHandlers() {
       if (!eventId) return
       btn.disabled = true
       btn.textContent = '...'
-      const betPoints = parseInt(btn.dataset.points)
+      const betPoints = parseInt(btn.dataset.points, 10)
       const result = await placePredictionBet(eventId, btn.dataset.outcome, betPoints)
       if (result.error) {
         btn.textContent = predErrorMsg(result.error)
@@ -1206,7 +1206,7 @@ function attachPredictionHandlers() {
         return
       }
       const durBtn = form.querySelector('.hs-mc-pred-create-dur-active')
-      const secs = parseInt(durBtn?.dataset.secs || '120')
+      const secs = parseInt(durBtn?.dataset.secs || '120', 10)
       btn.disabled = true
       btn.textContent = '...'
       const result = await createPrediction(channelId, title, secs, outcomes)
@@ -1246,7 +1246,7 @@ function attachPredictionHandlers() {
 
   // Start countdown timers
   container.querySelectorAll('.hs-mc-pred-timer').forEach((el) => {
-    const endsAt = parseInt(el.dataset.ends)
+    const endsAt = parseInt(el.dataset.ends, 10)
     const update = () => {
       const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
       if (remaining <= 0) {
@@ -3118,7 +3118,7 @@ function optimisticPollVoteUpdate(pollSection, choiceId) {
   const choices = pollSection.querySelectorAll('.hs-mc-poll-choice')
   const metaEl = pollSection.querySelector('.hs-mc-poll-meta')
   const totalMatch = metaEl?.textContent?.match(/(\d+)/)
-  const oldTotal = totalMatch ? parseInt(totalMatch[1]) : 0
+  const oldTotal = totalMatch ? parseInt(totalMatch[1], 10) : 0
 
   // Reconstruct per-choice vote counts from percentages
   const entries = []
@@ -3127,7 +3127,7 @@ function optimisticPollVoteUpdate(pollSection, choiceId) {
     const nameEl = choice.querySelector('.hs-mc-poll-choice-name')
     const voteBtn = choice.querySelector('.hs-mc-poll-vote-btn')
     const isTarget = voteBtn?.dataset?.choiceId === choiceId
-    const oldPct = pctEl ? parseInt(pctEl.textContent) : 0
+    const oldPct = pctEl ? parseInt(pctEl.textContent, 10) : 0
     let votes = oldTotal > 0 ? Math.round((oldPct / 100) * oldTotal) : 0
     if (isTarget) votes += 1
     entries.push({ choice, votes, pctEl, nameEl, voteBtn, isTarget })
@@ -3252,7 +3252,7 @@ function attachPollHandlers() {
         return
       }
       const durBtn = form.querySelector('.hs-mc-poll-create-dur-active')
-      const secs = parseInt(durBtn?.dataset.secs || '60')
+      const secs = parseInt(durBtn?.dataset.secs || '60', 10)
       btn.disabled = true
       btn.textContent = '...'
       const result = await createTwitchPoll(channelId, title, secs, choices)
@@ -3299,7 +3299,7 @@ function attachPollHandlers() {
 
   // Poll timers
   container.querySelectorAll('.hs-mc-poll-timer').forEach((el) => {
-    const endsAt = parseInt(el.dataset.ends)
+    const endsAt = parseInt(el.dataset.ends, 10)
     const update = () => {
       const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
       if (remaining <= 0) {

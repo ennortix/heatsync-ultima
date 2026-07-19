@@ -1805,7 +1805,7 @@ function handleRemoveSuccess(emoteName) {
       const count = sec.querySelector('.hs-mc-picker-section-count')
       if (count) {
         const n = parseInt(count.textContent, 10)
-        if (!isNaN(n) && n > 0) count.textContent = String(n - 1)
+        if (!Number.isNaN(n) && n > 0) count.textContent = String(n - 1)
       }
     }
   } catch {}

@@ -31,7 +31,7 @@ function buildChatLogPermalink(r) {
   const channel = r.channel || activeChatLogs.channel
   if (!platform || !channel || !r.timestamp) return null
   const d = new Date(r.timestamp)
-  if (isNaN(d.getTime())) return null
+  if (Number.isNaN(d.getTime())) return null
   const ymd = d.toISOString().slice(0, 10)
   let url = `${HS_CL_PUBLIC_ORIGIN}/logs/${encodeURIComponent(platform)}/${encodeURIComponent(channel)}/${ymd}`
   if (r.message_id) url += `?m=${encodeURIComponent(r.message_id)}`
@@ -205,7 +205,7 @@ function exportChatLogs(format) {
       .reverse()
       .map((r) => {
         const d = r.timestamp ? new Date(r.timestamp) : null
-        const ts = d && !isNaN(d.getTime()) ? d.toISOString().replace('T', ' ').slice(0, 19) : ''
+        const ts = d && !Number.isNaN(d.getTime()) ? d.toISOString().replace('T', ' ').slice(0, 19) : ''
         const ch = r.channel ? `#${r.channel}` : ''
         return `[${ts}] ${ch} <${r.display_name || r.username}> ${r.message}`
       })
@@ -402,7 +402,7 @@ function renderChatLogRow(r) {
   ts.className = 'hs-cl-ts'
   if (r.timestamp) {
     const d = new Date(r.timestamp)
-    if (!isNaN(d.getTime())) {
+    if (!Number.isNaN(d.getTime())) {
       ts.textContent = d.toISOString().replace('T', ' ').slice(5, 16)
       ts.title = d.toLocaleString()
     }

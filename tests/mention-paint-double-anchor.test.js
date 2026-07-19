@@ -43,8 +43,8 @@
  */
 
 import { describe, expect, test } from 'bun:test'
-import { readFileSync } from 'fs'
-import { join } from 'path'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import * as mods from '../src/lib/modifiers.js'
 import { userKey } from '../src/lib/user-key.js'
 import { escapeHtml } from '../src/lib/utils.js'

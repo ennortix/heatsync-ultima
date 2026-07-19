@@ -732,7 +732,7 @@ function listenForSocialEvents() {
       // Track home/feed unread regardless of feedLoaded — the user may
       // not have opened the feed tab yet, but we still want a red dot.
       const ts = msg.data.created_at ? new Date(msg.data.created_at).getTime() : Date.now()
-      if (!isNaN(ts) && msg.data.username !== 'Anonymous') {
+      if (!Number.isNaN(ts) && msg.data.username !== 'Anonymous') {
         noteSeenEvent('live', ts)
       }
       if (!feedLoaded) return
@@ -769,7 +769,7 @@ function listenForSocialEvents() {
         // Inline notification in chat (routed through toggle system)
         const f = msg.data
         const t = new Date(f.created_at).getTime()
-        if (!isNaN(t)) {
+        if (!Number.isNaN(t)) {
           const notifType = f.is_thread_op ? 'mop' : (f.is_op != null ? !!f.is_op : !f.reply_to) ? 'op' : 're'
           injectInlineNotif(notifType, {
             type: 'feed-post',

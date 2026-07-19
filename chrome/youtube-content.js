@@ -826,9 +826,9 @@
     if (!color || color === 'rgba(0, 0, 0, 0)') return '#ffffff'
     const m = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/)
     if (!m) return '#ffffff'
-    const r = parseInt(m[1]),
-      g = parseInt(m[2]),
-      b = parseInt(m[3])
+    const r = parseInt(m[1], 10),
+      g = parseInt(m[2], 10),
+      b = parseInt(m[3], 10)
     if (r > 200 && g > 200 && b > 200) return '#ffffff'
     return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)
   }

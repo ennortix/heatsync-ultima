@@ -1854,7 +1854,7 @@ function validateSettingValue(def, v) {
     }
     case 'range': {
       const range = /** @type {{min:number,max:number,step:number}} */ (def.options)
-      return typeof v === 'number' && isFinite(v) && !!range && v >= range.min && v <= range.max
+      return typeof v === 'number' && Number.isFinite(v) && !!range && v >= range.min && v <= range.max
     }
     case 'text':
       return typeof v === 'string' && v.length <= (def.maxLen || 4096)
@@ -1919,7 +1919,7 @@ function coerceSettingValue(def, v) {
     case 'range': {
       const range = /** @type {{min:number,max:number,step:number}} */ (def.options)
       var n = typeof v === 'number' ? v : parseFloat(v)
-      if (!isFinite(n) || !range) return undefined
+      if (!Number.isFinite(n) || !range) return undefined
       return Math.min(range.max, Math.max(range.min, n))
     }
     case 'text': {

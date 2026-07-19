@@ -861,7 +861,7 @@ function formatCompact(n) {
 function getAccountAge(dateStr) {
   if (!dateStr) return null
   const d = new Date(dateStr)
-  if (isNaN(d.getTime())) return null
+  if (Number.isNaN(d.getTime())) return null
   const now = new Date()
   const y = now.getFullYear() - d.getFullYear()
   const m = now.getMonth() - d.getMonth()

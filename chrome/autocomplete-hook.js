@@ -1835,8 +1835,6 @@
         // TAB CYCLING: If we recently inserted an emote and have multiple matches,
         // cycle through them even if Twitch's dropdown is closed
         if (e.key === 'Tab' && !e.shiftKey) {
-          const now = Date.now()
-          const isRecentEnough = now - cycleState.lastTime < 2000
           let hasMultipleMatches = cycleState.matches.length > 1
 
           // Check if Twitch's dropdown is NOT visible (we need to handle cycling ourselves)

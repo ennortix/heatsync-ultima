@@ -3963,7 +3963,7 @@ function ensure7TVConnection() {
         } else if (message.op === 5) {
           const subType = message.d?.data?.type
           const subId = message.d?.data?.condition?.object_id
-          log(' 7TV EventAPI: Subscription acknowledged for', subId?.slice(0, 12))
+          log(' 7TV EventAPI: Subscription acknowledged:', subType, 'for', subId?.slice(0, 12))
         }
       } catch (err) {
         console.error('[heatsync] 7TV EventAPI: Parse error:', err)

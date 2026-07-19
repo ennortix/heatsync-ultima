@@ -104,14 +104,48 @@ describe('replaceSenderEmotes', () => {
 })
 
 describe('dropEmoteFromAllSenders', () => {
-  test('strips the name from every cached set', () => {
+  test('tombstones the name in every cached set (entry kept, removedAt stamped)', () => {
     mergeSenderEmotes('twitch:1', { Gone: E(), Stays: E() })
     mergeSenderEmotes('kick:bob', { Gone: E() })
     expect(dropEmoteFromAllSenders('Gone')).toBe(true)
-    expect(senderEmoteSets.get('twitch:1').has('Gone')).toBe(false)
-    expect(senderEmoteSets.get('twitch:1').has('Stays')).toBe(true)
-    expect(senderEmoteSets.get('kick:bob').has('Gone')).toBe(false)
+    // Interval semantics: the entry survives with removedAt so already-owned
+    // history keeps rendering; _sGate blocks it for messages after the stamp.
+    expect(senderEmoteSets.get('twitch:1').get('Gone').removedAt).toBeGreaterThan(0)
+    expect(senderEmoteSets.get('twitch:1').get('Stays').removedAt).toBeUndefined()
+    expect(senderEmoteSets.get('kick:bob').get('Gone').removedAt).toBeGreaterThan(0)
+    // Already-tombstoned entries report no change (keeps the original stamp)
     expect(dropEmoteFromAllSenders('Gone')).toBe(false)
+  })
+
+  test('refetch after tombstone restores the entry (innocent-sender recovery)', () => {
+    mergeSenderEmotes('twitch:1', { Shared: E() })
+    dropEmoteFromAllSenders('Shared')
+    expect(senderEmoteSets.get('twitch:1').get('Shared').removedAt).toBeGreaterThan(0)
+    // Fresh authoritative data for this sender still contains the name —
+    // the merge clears the tombstone so their emote renders again.
+    mergeSenderEmotes('twitch:1', { Shared: E() })
+    expect(senderEmoteSets.get('twitch:1').get('Shared').removedAt).toBeUndefined()
+  })
+})
+
+describe('inventory-interval carry', () => {
+  test('replace keeps a stamped (addedAt) entry as a tombstone instead of deleting', () => {
+    replaceSenderEmotes('twitch:1', { Owned: { ...E(), addedAt: 1000 }, Provider: E() })
+    const r = replaceSenderEmotes('twitch:1', {})
+    expect(r).toEqual({ changed: true, dropped: true })
+    // Stamped heatsync entry → tombstoned (history stays rendered)
+    expect(senderEmoteSets.get('twitch:1').get('Owned').removedAt).toBeGreaterThan(0)
+    // Unstamped provider entry → old delete semantics
+    expect(senderEmoteSets.get('twitch:1').has('Provider')).toBe(false)
+  })
+
+  test('re-collect keeps the EARLIEST addedAt so old rows never un-render', () => {
+    mergeSenderEmotes('twitch:1', { Back: { ...E(), addedAt: 1000 } })
+    dropEmoteFromAllSenders('Back')
+    mergeSenderEmotes('twitch:1', { Back: { ...E(), addedAt: 99999 } })
+    const e = senderEmoteSets.get('twitch:1').get('Back')
+    expect(e.addedAt).toBe(1000)
+    expect(e.removedAt).toBeUndefined()
   })
 })
 

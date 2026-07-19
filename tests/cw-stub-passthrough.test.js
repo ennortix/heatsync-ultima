@@ -29,9 +29,11 @@ function sliceBetween(startMarker, endMarker) {
 }
 
 const loopSrc = sliceBetween('const hsEmotes = hs?.emotes || []', '// Only cache when the result is trustworthy')
+// Real added_at normalizer — the loop stamps addedAt via it (module-level in BG)
+const helperSrc = sliceBetween('function emoteAddedAtMs', '\nfunction fetchEmoteInventory')
 
 // (hs, collected) → collected after the heatsync-set merge loop
-const runHsLoop = new Function('hs', 'collected', `${loopSrc}\nreturn collected`)
+const runHsLoop = new Function('hs', 'collected', `${helperSrc}\n${loopSrc}\nreturn collected`)
 
 const URL = 'https://cdn.heatsync.org/uploads/abc.webp'
 

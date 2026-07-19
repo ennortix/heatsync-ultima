@@ -1565,6 +1565,23 @@ async function getAuthCookie() {
 }
 
 // Fetch user's emote inventory via HTTP
+// Normalize a server added_at (ISO string / epoch ms) to epoch ms, 0 = unknown.
+// Unknown fails OPEN at render (the emote draws ungated), so a bad parse can
+// never blank emotes — it only loses the inventory-time freeze for that entry.
+// Values without a timezone are treated as UTC (server clock); values in the
+// future beyond 10min are clock-skew garbage → unknown.
+function emoteAddedAtMs(v) {
+  if (!v) return 0
+  let t
+  if (typeof v === 'number') t = v
+  else {
+    const s = String(v).trim().replace(' ', 'T')
+    t = Date.parse(/[zZ]$|[+-]\d\d:?\d\d$/.test(s) ? s : `${s}Z`)
+  }
+  if (!Number.isFinite(t) || t <= 0 || t > Date.now() + 600000) return 0
+  return t
+}
+
 function fetchEmoteInventory() {
   // Skip if fetched within 10s (WS events already deliver fresh data)
   if (Date.now() - lastInventoryFetch < 10000) {
@@ -1641,6 +1658,9 @@ function fetchEmoteInventory() {
         usage_count: emote.usage_count,
         zero_width: !!emote.zero_width, // 7TV overlay flag — drives stacking in chat
         nsfw: !!emote.nsfw, // v1.6 — cyan-dashed border + tooltip suffix
+        // Inventory-time stamp (epoch ms) — own messages older than this stay
+        // text at render (a collect never retro-imagifies your own history)
+        addedAt: emoteAddedAtMs(emote.added_at),
         // Server CW annotation (own inventory is never filtered) — chat hides
         // own flagged emotes at render when the owner's toggles say so.
         cw_cats: Array.isArray(emote.cw_cats) && emote.cw_cats.length ? emote.cw_cats : undefined,
@@ -6635,6 +6655,7 @@ async function addToInventory(emoteName, emoteHash, emoteUrl, zeroWidth = false)
       hash: data.hash || emoteHash,
       url: emoteUrl,
       slot: data.slot,
+      addedAt: Date.now(),
     }
 
     // Check if already in your set (by hash) to avoid duplicates
@@ -9571,6 +9592,11 @@ async function handleMessage(message, sender, sendResponse) {
             collected[name] = {
               url: u,
               source: src,
+              // Inventory-time stamp (epoch ms) — processEmotes gates rendering
+              // to messages sent after the sender actually owned the emote, so
+              // a fresh collect never retro-imagifies their older messages.
+              // heatsync entries only; 7TV/BTTV sets have no ownership time.
+              addedAt: emoteAddedAtMs(e.added_at),
               // 2-state model: every pasteable shared emote is just 'global'.
               // processEmotes still upgrades to 'owned' if the viewer has the
               // name in their inventory; otherwise it renders identically to

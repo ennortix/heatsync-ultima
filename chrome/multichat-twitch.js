@@ -22983,6 +22983,7 @@ function showEmotePicker(tab = null) {
               source: remote.provider || '7tv',
               state: 'owned',
               zeroWidth: !!remote.zeroWidth,
+              addedAt: Date.now(),
             })
           }
           // Roll back the optimistic slot if the server add didn't take (e.g.
@@ -23903,6 +23904,7 @@ async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, targetEl, z
         hash: serverHash,
         slot: response.slot,
         zeroWidth: !!zeroWidth,
+        addedAt: Date.now(),
       })
       if (emoteCache.has(emoteName)) {
         const cached = emoteCache.get(emoteName)
@@ -24079,6 +24081,12 @@ const SENDER_EMOTE_LRU_MAX = 500
 // loading them paints wrong emotes for a fetch round-trip on every boot.
 // Bump to discard incompatible persisted data once; sets rebuild fresh.
 const SENDER_EMOTE_SETS_VERSION = 2
+// Clock-drift pad for the inventory-time render gate (_sGate): a message's
+// platform timestamp (tmi-sent-ts / kick / yt) and the server's added_at come
+// from different clocks. Without the pad, collect-then-send-within-seconds
+// could gate the sender's OWN first use off. Retro-flips this is meant to stop
+// are minutes-to-days old, so 2min of slack costs nothing.
+const EMOTE_ADDED_SKEW_MS = 120000
 let _senderEmotePersistTimer = null
 let _senderEmoteDirty = false
 
@@ -24113,6 +24121,19 @@ function _scheduleSenderEmotePersist() {
   }, 4000)
 }
 
+// Keep the EARLIEST known ownership start when a fresh fetch updates an entry.
+// A re-collected emote gets a NEW server added_at; taking it verbatim would
+// gate off (retro-textify) rows rendered under the original interval —
+// "rendered forever" wins, so the earliest start is preserved. The fresh data
+// carries no removedAt (the sender owns it NOW), which correctly clears any
+// tombstone left by a broadcast removal.
+function _carryEmoteInterval(prev, data) {
+  if (prev?.addedAt && data?.addedAt && prev.addedAt < data.addedAt) {
+    return { ...data, addedAt: prev.addedAt }
+  }
+  return data
+}
+
 // Merge a sender's fetched set, UPDATING entries whose url/state/source changed
 // (a re-fetch picks up emotes the sender added AND state/label corrections). Names
 // absent from a fetch are kept — an empty/partial fetch never wipes known emotes.
@@ -24136,8 +24157,15 @@ function mergeSenderEmotes(senderKey, nameToEmote) {
   if (nameToEmote) {
     for (const [name, data] of Object.entries(nameToEmote)) {
       const prev = inner.get(name)
-      if (!prev || prev.url !== data.url || prev.state !== data.state || prev.source !== data.source) {
-        inner.set(name, data)
+      if (
+        !prev ||
+        prev.url !== data.url ||
+        prev.state !== data.state ||
+        prev.source !== data.source ||
+        prev.addedAt !== data.addedAt ||
+        prev.removedAt !== data.removedAt
+      ) {
+        inner.set(name, _carryEmoteInterval(prev, data))
         changed = true
       }
     }
@@ -24153,17 +24181,25 @@ function getSenderEmotes(senderKey) {
   return senderKey ? senderEmoteSets.get(senderKey) : undefined
 }
 
-// Drop an emote NAME from every cached sender set. Called when a WS
+// Tombstone an emote NAME in every cached sender set. Called when a WS
 // emote:removed broadcast arrives — the actor's user_emote_set on the server
-// dropped the name, but cached entries here would otherwise render the name
-// as an image for up to a session (LRU lifetime). Match by name is fine: a
-// sender can only have one emote per name, so dropping by name targets the
-// right entry without needing the actor's twitch ID.
+// dropped the name. Stamping removedAt (instead of deleting) closes the
+// ownership interval: rows sent BEFORE the removal keep rendering forever
+// (_sGate), rows sent after stay text. Match by name is fine: a sender can
+// only have one emote per name, so tombstoning by name targets the right
+// entry without needing the actor's twitch ID. Innocent senders who own a
+// same-named emote get tombstoned too — the freshness bust in the broadcast
+// handler refetches them and the fresh entry (no removedAt) clears it.
 function dropEmoteFromAllSenders(emoteName) {
   if (!emoteName) return false
   let changed = false
+  const now = Date.now()
   for (const [, set] of senderEmoteSets) {
-    if (set?.delete?.(emoteName)) changed = true
+    const e = set?.get?.(emoteName)
+    if (e && !e.removedAt) {
+      e.removedAt = now
+      changed = true
+    }
   }
   if (changed) {
     _senderEmoteDirty = true
@@ -24213,10 +24249,23 @@ function replaceSenderEmotes(senderKey, nameToEmote) {
   }
   let changed = false
   let dropped = false
-  // Drop stale names
+  // Names absent from the authoritative fetch: entries with an inventory
+  // stamp (addedAt) were CONFIRMED owned earlier, so close their interval
+  // with a tombstone instead of deleting — rows rendered while owned keep
+  // rendering forever (_sGate), future rows fall to text. Unstamped entries
+  // (7TV/BTTV set churn, pre-stamp caches) keep the old delete semantics.
+  // Existing tombstones pass through untouched. `dropped` stays true either
+  // way — callers use it to trigger the immediate re-render, and the gate
+  // decides per-row from there.
   for (const name of [...inner.keys()]) {
     if (!(name in fresh)) {
-      inner.delete(name)
+      const prev = inner.get(name)
+      if (prev?.removedAt) continue
+      if (prev?.addedAt) {
+        prev.removedAt = Date.now()
+      } else {
+        inner.delete(name)
+      }
       changed = true
       dropped = true
     }
@@ -24245,9 +24294,11 @@ function replaceSenderEmotes(senderKey, nameToEmote) {
       prev.url !== data.url ||
       prev.state !== data.state ||
       prev.source !== data.source ||
-      prev.cw !== data.cw
+      prev.cw !== data.cw ||
+      prev.addedAt !== data.addedAt ||
+      prev.removedAt !== data.removedAt
     ) {
-      inner.set(name, data)
+      inner.set(name, _carryEmoteInterval(prev, data))
       changed = true
     }
   }
@@ -24698,6 +24749,8 @@ async function loadEmotes() {
             subscription: !!e.subscription,
             slot: e.slot,
             nsfw: !!e.nsfw,
+            // BG-normalized epoch ms (emoteAddedAtMs) — inventory-time render gate
+            addedAt: e.addedAt || 0,
             // server CW annotation — own msgs hide these at render when the
             // owner's own viewer_show_* toggles say so (picker unaffected)
             cwCats: Array.isArray(e.cw_cats) && e.cw_cats.length ? e.cw_cats : null,
@@ -25083,6 +25136,22 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
     if (typeof msgTime !== 'number' || !entry.removedAt) return entry // unknown time → preserve old behavior
     return msgTime < entry.removedAt ? entry : null
   }
+  // Inventory-time gate for per-sender sets (and own inventory): a heatsync
+  // emote renders only in messages sent while the sender actually owned it —
+  // addedAt ≤ msgTime < removedAt. History is frozen at send-time truth: a
+  // fresh collect doesn't retro-imagify older messages, and an uncollect
+  // doesn't retro-textify rows that were legitimately rendered (tombstoned
+  // entries keep their interval, see dropEmoteFromAllSenders). Entries with
+  // no stamps (7TV/BTTV personal sets, pre-stamp caches) and messages with
+  // no timestamp render ungated. The skew pad absorbs server-vs-platform
+  // clock drift on the collect→send fast path.
+  const _sGate = (entry) => {
+    if (!entry || typeof msgTime !== 'number') return entry || null
+    if (entry.addedAt && msgTime < entry.addedAt - EMOTE_ADDED_SKEW_MS) return null
+    if (entry.removedAt && msgTime >= entry.removedAt) return null
+    return entry
+  }
+  const _sGet = (name) => _sGate(senderEmotes?.get(name))
 
   // Kick emote splits gated by indexOf — Kick text is <5% of overall msg volume;
   // skipping 3 replaces on Twitch/YT messages saves allocations per message.
@@ -25266,7 +25335,7 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
     const endsWithZero = word.endsWith('0') && word.length > 1
     emote =
       (channel && channelEmoteCaches[channel]?.get(word)) ||
-      senderEmotes?.get(word) ||
+      _sGet(word) ||
       extraCache?.get(word) ||
       emoteCache.get(word) ||
       _rfGate(_rf?.get(word))
@@ -25291,7 +25360,7 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
       const baseName = word.slice(0, -1)
       emote =
         (channel && channelEmoteCaches[channel]?.get(baseName)) ||
-        senderEmotes?.get(baseName) ||
+        _sGet(baseName) ||
         extraCache?.get(baseName) ||
         emoteCache.get(baseName) ||
         _rfGate(_rf?.get(baseName))
@@ -25311,7 +25380,7 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
           const baseGuess = word.slice(0, word.length - suf.length)
           const candidate =
             (channel && channelEmoteCaches[channel]?.get(baseGuess)) ||
-            senderEmotes?.get(baseGuess) ||
+            _sGet(baseGuess) ||
             extraCache?.get(baseGuess) ||
             emoteCache.get(baseGuess)
           if (candidate) {
@@ -25329,7 +25398,7 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
           const baseGuess = inlineColor[1]
           const candidate =
             (channel && channelEmoteCaches[channel]?.get(baseGuess)) ||
-            senderEmotes?.get(baseGuess) ||
+            _sGet(baseGuess) ||
             extraCache?.get(baseGuess) ||
             emoteCache.get(baseGuess)
           if (candidate) {
@@ -38562,6 +38631,7 @@ function initInput() {
               url: emoteUrl,
               source: source || 'heatsync',
               state: state === 'unadded' ? 'owned' : state,
+              addedAt: Date.now(),
             })
           }
           showInputBar()
@@ -43429,7 +43499,13 @@ function autoAddInputEmotes(text) {
     // text — text has no wrapper, so a late add can't retro-fix it. Mirrors the
     // picker's optimistic add (emotes.js). addEmoteToInventory then persists it.
     if (typeof viewerPersonalEmotes !== 'undefined' && !viewerPersonalEmotes.has(word)) {
-      viewerPersonalEmotes.set(word, { url: rec.url, source: rec.source, state: 'owned', zeroWidth: !!rec.zeroWidth })
+      viewerPersonalEmotes.set(word, {
+        url: rec.url,
+        source: rec.source,
+        state: 'owned',
+        zeroWidth: !!rec.zeroWidth,
+        addedAt: Date.now(),
+      })
     }
     if (typeof addEmoteToInventory === 'function') {
       // Roll back the optimistic own-set entry if the server add fails (offline,
@@ -64995,6 +65071,8 @@ const STORAGE_KEY = 'heatsync_multichat'
                 hash: e.hash,
                 slot: e.slot,
                 zeroWidth: !!(e.zero_width ?? e.zeroWidth ?? zwFromAny),
+                // BG-normalized epoch ms — inventory-time render gate
+                addedAt: e.addedAt || 0,
                 // server CW annotation — own msgs hide these at render when
                 // the owner's own viewer_show_* toggles say so
                 cwCats: Array.isArray(e.cw_cats) && e.cw_cats.length ? e.cw_cats : null,
@@ -65210,10 +65288,11 @@ const STORAGE_KEY = 'heatsync_multichat'
       }
 
       // A different user removed an emote from their set. Background already
-      // dropped __senderEmoteCache; mirror in the panel's persisted
-      // senderEmoteSets so we stop imagifying their now-gone name. Re-render
-      // matching messages so the wrappers become raw text (or fall through to
-      // channel/global pool, if present).
+      // dropped __senderEmoteCache; tombstone the panel's persisted
+      // senderEmoteSets (dropEmoteFromAllSenders stamps removedAt) so FUTURE
+      // messages stop imagifying the name while already-owned history keeps
+      // its render (_sGate interval). Re-render matching messages so each row
+      // settles on its interval-correct form.
       if (msg.type === 'emote_removed_broadcast' && msg.emoteName) {
         // Precise path (new servers): strip the name from exactly the pushed
         // sender's keys — no collateral, no global freshness bust.

@@ -1827,6 +1827,7 @@ function initInput() {
               url: emoteUrl,
               source: source || 'heatsync',
               state: state === 'unadded' ? 'owned' : state,
+              addedAt: Date.now(),
             })
           }
           showInputBar()
@@ -6694,7 +6695,13 @@ function autoAddInputEmotes(text) {
     // text — text has no wrapper, so a late add can't retro-fix it. Mirrors the
     // picker's optimistic add (emotes.js). addEmoteToInventory then persists it.
     if (typeof viewerPersonalEmotes !== 'undefined' && !viewerPersonalEmotes.has(word)) {
-      viewerPersonalEmotes.set(word, { url: rec.url, source: rec.source, state: 'owned', zeroWidth: !!rec.zeroWidth })
+      viewerPersonalEmotes.set(word, {
+        url: rec.url,
+        source: rec.source,
+        state: 'owned',
+        zeroWidth: !!rec.zeroWidth,
+        addedAt: Date.now(),
+      })
     }
     if (typeof addEmoteToInventory === 'function') {
       // Roll back the optimistic own-set entry if the server add fails (offline,

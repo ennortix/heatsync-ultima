@@ -11341,6 +11341,8 @@
                 hash: e.hash,
                 slot: e.slot,
                 zeroWidth: !!(e.zero_width ?? e.zeroWidth ?? zwFromAny),
+                // BG-normalized epoch ms — inventory-time render gate
+                addedAt: e.addedAt || 0,
                 // server CW annotation — own msgs hide these at render when
                 // the owner's own viewer_show_* toggles say so
                 cwCats: Array.isArray(e.cw_cats) && e.cw_cats.length ? e.cw_cats : null,
@@ -11556,10 +11558,11 @@
       }
 
       // A different user removed an emote from their set. Background already
-      // dropped __senderEmoteCache; mirror in the panel's persisted
-      // senderEmoteSets so we stop imagifying their now-gone name. Re-render
-      // matching messages so the wrappers become raw text (or fall through to
-      // channel/global pool, if present).
+      // dropped __senderEmoteCache; tombstone the panel's persisted
+      // senderEmoteSets (dropEmoteFromAllSenders stamps removedAt) so FUTURE
+      // messages stop imagifying the name while already-owned history keeps
+      // its render (_sGate interval). Re-render matching messages so each row
+      // settles on its interval-correct form.
       if (msg.type === 'emote_removed_broadcast' && msg.emoteName) {
         // Precise path (new servers): strip the name from exactly the pushed
         // sender's keys — no collateral, no global freshness bust.

@@ -176,7 +176,9 @@
   // Fallback only — see _flush.
   function _writeDirect(batch) {
     try {
-      const storage = chrome?.storage?.local
+      // `any`: @types/chrome dropped the callback overloads, but callback style
+      // stays — it's the one form both chrome and firefox's chrome.* accept.
+      const storage = /** @type {any} */ (chrome?.storage?.local)
       if (!storage) return
       storage.get(STORAGE_KEY, (cur) => {
         try {

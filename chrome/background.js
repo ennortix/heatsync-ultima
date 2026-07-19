@@ -448,7 +448,15 @@ ensureAlarm('hs-yt-bridge-sweep', { periodInMinutes: 5 })
 // async is safe here: unlike onMessage, alarms ignore the return value
 browser.alarms?.onAlarm?.addListener(async (alarm) => {
   if (alarm.name === 'keepalive') {
-    // Just existing is enough to keep the worker alive
+    // Just existing is enough to keep the worker alive. Also rides this 30s
+    // tick for the yt innertube fallback tap's check — it has no timer of its
+    // own (a bare setInterval would die with the service worker; this alarm
+    // survives eviction and wakes it).
+    try {
+      ytTapCheck()
+    } catch (e) {
+      log(' ytTapCheck failed:', e?.message)
+    }
   } else if (alarm.name === 'refresh-global-emotes') {
     fetchGlobalEmotes().catch((err) =>
       console.warn('[heatsync-ext] fetchGlobalEmotes fetch failed:', err && err.message),
@@ -5624,78 +5632,7 @@ function handleWSMessage(msg) {
         break
 
       case 'youtube:chat':
-        // Relay YouTube chat messages to all Twitch/Kick tabs
-        if (msg.messages && Array.isArray(msg.messages) && msg.messages.length > 0) {
-          // Union of server-echoed channelId and every local binding — the
-          // server's per-socket map is single-valued, so its echo alone would
-          // miss a second binding to the same stream.
-          const bound = new Set(ytChannelsFor(msg.videoId))
-          if (msg.channelId) {
-            bound.add(msg.channelId)
-            if (msg.videoId) setYtVideoChannel(msg.videoId, msg.channelId)
-          }
-          // Pending-subscribe attribution is ambiguous when multiple subscribes are
-          // in flight (server may resolve them in any order). Only attribute when
-          // exactly one is pending — otherwise fall through to 'global' and let
-          // the eventual youtube:status event correct the mapping. This trades a
-          // brief routing miss for the much worse cross-channel chat leak that
-          // happens when LIFO pop guesses wrong.
-          if (!bound.size && msg.videoId && pendingYtSubscribes.length === 1) {
-            const pend = pendingYtSubscribes.shift()
-            bound.add(pend.channelId)
-            setYtVideoChannel(msg.videoId, pend.channelId)
-          }
-          // A stale fallback binding (persisted by an older build) alongside a
-          // real one would fan every message out twice.
-          if (bound.size > 1) bound.delete(YT_FALLBACK_CHANNEL)
-          const channelIds = bound.size ? [...bound] : [YT_FALLBACK_CHANNEL]
-
-          // Use real ytMsg.timestamp for both replay and live. Mellen's
-          // ordering rule: every msg lands at its true chronological position
-          // via fairMerge's full sort. live YT msgs may appear slightly above
-          // the most-recent twitch msg if YT's timestamp is older — that's
-          // chronologically correct, not a bug. Backfill ensures hard-refresh
-          // accuracy: msgs from 30 min ago slot into the chat at 30 min ago.
-          const sorted = msg.messages.slice().sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0))
-          const isReplay = !!msg.replay
-          const buildPayload = (ytMsg, channelId) => ({
-            type: 'youtube_chat_message',
-            videoId: msg.videoId,
-            channelId,
-            id: ytMsg.id || undefined, // innertube id — end-to-end yt dedup key
-            user: ytMsg.user,
-            text: ytMsg.text,
-            color: ytMsg.color || '#ff0000',
-            time: ytMsg.timestamp || Date.now(),
-            platform: 'youtube',
-            emotes: ytMsg.emotes || [],
-            msgType: ytMsg.type,
-            amount: ytMsg.amount || '',
-            scColor: ytMsg.scColor || '',
-            sticker: ytMsg.sticker || null,
-            avatar: ytMsg.avatar || undefined,
-            badges: ytMsg.badges || undefined,
-            systemMsg: ytMsg.systemMsg || undefined,
-            // author's UC… channel id — yt_<id> paint/identity lookups. NEVER
-            // put this in userId (twitch-space only, see paints.js ID-SPACE
-            // SAFETY) — it rides its own field.
-            authorChannelId: ytMsg.authorChannelId || undefined,
-            source: 'server',
-            replay: isReplay,
-          })
-          // Bulk dispatch. content-script's social.js routes:
-          //   replay → ingestReplayYtMsg (bulk-buffer + 1 microtask render)
-          //   live   → enqueueYtForPacing (per-channel 60-400ms cadence)
-          for (const ytMsg of sorted) {
-            for (const channelId of channelIds) {
-              const payload = buildPayload(ytMsg, channelId)
-              try {
-                bgYtIngest(payload)
-              } catch {}
-              broadcastToTabs(payload)
-            }
-          }
-        }
+        handleYoutubeChatBatch(msg)
         break
 
       case 'youtube:status': {
@@ -5719,9 +5656,11 @@ function handleWSMessage(msg) {
         if (msg.status === 'connected') {
           activeYoutubeVideoId = msg.videoId
           if (msg.videoId) for (const cid of channelIds) setYtVideoChannel(msg.videoId, cid)
+          if (msg.videoId) ytTapMarkWanted(msg.videoId)
         } else if (msg.status === 'ended') {
           if (activeYoutubeVideoId === msg.videoId) activeYoutubeVideoId = null
           deleteYtVideoChannel(msg.videoId)
+          if (msg.videoId) ytTapUnmarkWanted(msg.videoId)
         } else if (msg.status === 'error') {
           // Transient errors (rate limit, single failed fetch) shouldn't kill routing —
           // the poller usually recovers and resumes broadcasting. Keeping the mapping
@@ -6415,6 +6354,90 @@ function handleWSMessage(msg) {
   }
 }
 
+// Relay a batch of YouTube chat messages to every Twitch/Kick/YT tab.
+// Extracted out of handleWSMessage's 'youtube:chat' case so the yt innertube
+// fallback tap (see ~12060) can feed it too — fromTap:true batches use the
+// EXACT same routing/dedup/broadcast path a server-relay batch would.
+// !fromTap && msg.videoId stamps _ytTapLastDelivery: a real primary just
+// delivered, so the tap's silence clock resets. Tap-fed batches must NOT
+// stamp — that would be the tap feeding its own "primary is healthy" signal
+// and it would never stand down.
+function handleYoutubeChatBatch(msg, { fromTap = false } = {}) {
+  if (!fromTap && msg.videoId) _ytTapLastDelivery.set(msg.videoId, Date.now())
+  // Relay YouTube chat messages to all Twitch/Kick tabs
+  if (msg.messages && Array.isArray(msg.messages) && msg.messages.length > 0) {
+    // Union of server-echoed channelId and every local binding — the
+    // server's per-socket map is single-valued, so its echo alone would
+    // miss a second binding to the same stream.
+    const bound = new Set(ytChannelsFor(msg.videoId))
+    if (msg.channelId) {
+      bound.add(msg.channelId)
+      if (msg.videoId) setYtVideoChannel(msg.videoId, msg.channelId)
+    }
+    // Pending-subscribe attribution is ambiguous when multiple subscribes are
+    // in flight (server may resolve them in any order). Only attribute when
+    // exactly one is pending — otherwise fall through to 'global' and let
+    // the eventual youtube:status event correct the mapping. This trades a
+    // brief routing miss for the much worse cross-channel chat leak that
+    // happens when LIFO pop guesses wrong.
+    if (!bound.size && msg.videoId && pendingYtSubscribes.length === 1) {
+      const pend = pendingYtSubscribes.shift()
+      bound.add(pend.channelId)
+      setYtVideoChannel(msg.videoId, pend.channelId)
+    }
+    // A stale fallback binding (persisted by an older build) alongside a
+    // real one would fan every message out twice.
+    if (bound.size > 1) bound.delete(YT_FALLBACK_CHANNEL)
+    const channelIds = bound.size ? [...bound] : [YT_FALLBACK_CHANNEL]
+
+    // Use real ytMsg.timestamp for both replay and live. Mellen's
+    // ordering rule: every msg lands at its true chronological position
+    // via fairMerge's full sort. live YT msgs may appear slightly above
+    // the most-recent twitch msg if YT's timestamp is older — that's
+    // chronologically correct, not a bug. Backfill ensures hard-refresh
+    // accuracy: msgs from 30 min ago slot into the chat at 30 min ago.
+    const sorted = msg.messages.slice().sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0))
+    const isReplay = !!msg.replay
+    const buildPayload = (ytMsg, channelId) => ({
+      type: 'youtube_chat_message',
+      videoId: msg.videoId,
+      channelId,
+      id: ytMsg.id || undefined, // innertube id — end-to-end yt dedup key
+      user: ytMsg.user,
+      text: ytMsg.text,
+      color: ytMsg.color || '#ff0000',
+      time: ytMsg.timestamp || Date.now(),
+      platform: 'youtube',
+      emotes: ytMsg.emotes || [],
+      msgType: ytMsg.type,
+      amount: ytMsg.amount || '',
+      scColor: ytMsg.scColor || '',
+      sticker: ytMsg.sticker || null,
+      avatar: ytMsg.avatar || undefined,
+      badges: ytMsg.badges || undefined,
+      systemMsg: ytMsg.systemMsg || undefined,
+      // author's UC… channel id — yt_<id> paint/identity lookups. NEVER
+      // put this in userId (twitch-space only, see paints.js ID-SPACE
+      // SAFETY) — it rides its own field.
+      authorChannelId: ytMsg.authorChannelId || undefined,
+      source: 'server',
+      replay: isReplay,
+    })
+    // Bulk dispatch. content-script's social.js routes:
+    //   replay → ingestReplayYtMsg (bulk-buffer + 1 microtask render)
+    //   live   → enqueueYtForPacing (per-channel 60-400ms cadence)
+    for (const ytMsg of sorted) {
+      for (const channelId of channelIds) {
+        const payload = buildPayload(ytMsg, channelId)
+        try {
+          bgYtIngest(payload)
+        } catch {}
+        broadcastToTabs(payload)
+      }
+    }
+  }
+}
+
 // Reconnect with exponential backoff
 function scheduleReconnect() {
   if (hsWsIdleClosed) return // Deliberate idle close — a returning tab reconnects
@@ -7091,6 +7114,24 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   }
 
+  if (message.type === 'dbg_yt_tap') {
+    // Read-only fallback-tap state snapshot — same rationale as dbg_kick_tap.
+    try {
+      sendResponse({
+        enabled: _ytTapSubsystemOn,
+        checkIntervalMs: YT_TAP_CHECK_MS,
+        wanted: [..._ytTapWantedAt.entries()],
+        lastDelivery: [..._ytTapLastDelivery.entries()],
+        cooldowns: [..._ytTapCooldownUntil.entries()],
+        active: [..._ytTapPollers.keys()],
+        stats: globalThis.__hsYtTapStats,
+      })
+    } catch (e) {
+      sendResponse({ error: e?.message || 'unknown' })
+    }
+    return true
+  }
+
   // Chatroom id for a kick slug — used by the page-side fallback pusher
   // connection (kick-native-tap.js) so it can subscribe chatrooms.<id>.v2
   // without its own kick API round-trip when BG already knows the answer.
@@ -7207,6 +7248,9 @@ async function handleMessage(message, sender, sendResponse) {
   // relay is healthy.
   if (message.type === 'youtube_chat_message' && !message.source) {
     const vId = message.videoId
+    // DOM tap is the second primary — its deliveries count the same as the
+    // server relay for the innertube fallback tap's silence clock.
+    if (vId) _ytTapLastDelivery.set(vId, Date.now())
     const senderTabId = sender?.tab?.id
     let mapped = ytChannelsFor(vId)
     if (!mapped.length && vId && vId === activeYoutubeVideoId) mapped = ['__live_yt_auto__']
@@ -7669,8 +7713,10 @@ async function handleMessage(message, sender, sendResponse) {
     if (url && /^https:\/\/(www\.)?youtube\.com\//i.test(url)) {
       // Extract videoId from URL for routing (always, even if socket is down)
       const vidMatch = url.match(/[?&]v=([^&]+)/) || url.match(/\/live\/([^?&/]+)/) || url.match(/youtu\.be\/([^?&]+)/)
-      if (vidMatch) setYtVideoChannel(vidMatch[1], channelId)
-      else {
+      if (vidMatch) {
+        setYtVideoChannel(vidMatch[1], channelId)
+        ytTapMarkWanted(vidMatch[1])
+      } else {
         // No videoId in URL — server resolves it. Track for status-fallback attribution.
         pendingYtSubscribes.push({ channelId, url, ts: Date.now() })
         if (pendingYtSubscribes.length > 20) pendingYtSubscribes.shift()
@@ -7728,10 +7774,12 @@ async function handleMessage(message, sender, sendResponse) {
     }
     if (videoId) {
       deleteYtVideoChannel(videoId, channelId)
-      // Only tear down the server poller when no other channel is still bound
-      // to this video — the same stream can back multiple bindings.
-      if (!ytVideoToChannel.has(videoId) && isSocketOpen()) {
-        wsSend({ type: 'youtube:unsubscribe', videoId })
+      // Only tear down the server poller (and the tap's wantedness) when no
+      // other channel is still bound to this video — the same stream can
+      // back multiple bindings.
+      if (!ytVideoToChannel.has(videoId)) {
+        ytTapUnmarkWanted(videoId)
+        if (isSocketOpen()) wsSend({ type: 'youtube:unsubscribe', videoId })
       }
       if (activeYoutubeVideoId === videoId) activeYoutubeVideoId = null
     }
@@ -12052,6 +12100,573 @@ async function bgYtReplayToTab(tabId, channelId) {
       browser.tabs.sendMessage(tabId, ytReplayMessageFor(channelId, m)).catch(() => {})
     }
   } catch {}
+}
+
+// ─── YouTube innertube fallback tap ──────────────────────────────────────────
+// Last line of yt chat resilience. Two primaries already cover live chat: the
+// heatsync server's innertube poller (relayed over WS as 'youtube:chat') and
+// the DOM tap (youtube-content.js scraping the live_chat iframe, relayed as
+// 'youtube_chat_message'). Both can go dark independently — a server poller
+// crash, or simply no youtube.com tab open (multichat watching a channel from
+// a twitch/kick tab only). main.js's per-channel watchdog already escalates
+// re-subscribe → unsubscribe+resubscribe → BG WS reconnect at a 180s silence
+// threshold (src/multichat/main.js ~13633); if NONE of that revives the
+// channel within YT_TAP_SILENCE_MS, this tap opens its own on-demand
+// innertube poller straight from the service worker — no page, no iframe,
+// just a bootstrap fetch + POST poll loop porting
+// heatsync/server/services/youtube-chat.ts. It stands down the instant a
+// primary delivers again. One poller at a time (YT_TAP_MAX_POLLERS) — this is
+// a last-resort backstop, not a third standing transport.
+const YT_TAP_SILENCE_MS = 300000 // 5 min — after the 180s watchdog escalation exhausts itself
+const YT_TAP_CHECK_MS = 30000 // rides the keepalive alarm (30s is chrome.alarms' minimum period)
+const YT_TAP_POLL_MS = 6000
+const YT_TAP_FETCH_TIMEOUT_MS = 10000
+const YT_TAP_MAX_ERRORS = 5
+const YT_TAP_COOLDOWN_MS = 300000
+const YT_TAP_MAX_POLLERS = 1
+const YT_TAP_WANTED_TTL_MS = 900000 // 15 min
+
+// videoId → ms of last message delivered by a PRIMARY (server relay or DOM
+// tap). Tap-fed batches (handleYoutubeChatBatch fromTap:true) never stamp
+// this — self-feeding would make the tap look like a perpetually-healthy
+// primary and it would never stand down.
+const _ytTapLastDelivery = new Map()
+// videoId → ms a tab last subscribed to it. TTL'd (see ytTapWantedExpired)
+// rather than cleared strictly on unsubscribe, so a brief resubscribe gap
+// (nav, reload) doesn't masquerade as a fresh video needing a fresh silence
+// window. NEVER seeded from the persisted yt_video_to_channel storage restore
+// (~9748) — that map survives across SW restarts for routing, but wantedness
+// must reflect an ACTUAL subscribe this session (stale-restore trap: a video
+// nobody re-subscribed to would otherwise look permanently "wanted").
+const _ytTapWantedAt = new Map()
+// videoId → { timer, continuation, apiKey, innertubeContext, seenIds, errorCount }
+const _ytTapPollers = new Map()
+// videoId → ms cooldown expires (post-close backoff before reopening)
+const _ytTapCooldownUntil = new Map()
+
+globalThis.__hsYtTapStats = {
+  ticks: 0,
+  gate: '',
+  opens: 0,
+  polls: 0,
+  msgs: 0,
+  replayMsgs: 0,
+  errors: 0,
+  lastStatus: 0,
+  lastPollLatencyMs: 0,
+  active: [],
+  cooldowns: 0,
+}
+
+// yt-innertube-tap subsystem toggle, mirrored into memory from storage.sync
+// ui_settings.subsystems — mirrors the read-boot + onChanged pattern
+// content.js uses for its own subsystem gates (content.js ~11738) so the 30s
+// check tick never blocks on an async storage read. Defaults ON (matches
+// settings-schema.js's subsystems default map).
+let _ytTapSubsystemOn = true
+browser.storage.sync
+  .get(['ui_settings'])
+  .then((d) => {
+    if (d?.ui_settings?.subsystems?.['yt-innertube-tap'] === false) _ytTapSubsystemOn = false
+  })
+  .catch(() => {})
+browser.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'sync' || !changes.ui_settings) return
+  const subs = changes.ui_settings.newValue?.subsystems
+  if (subs) _ytTapSubsystemOn = subs['yt-innertube-tap'] !== false
+})
+
+// ── wantedness ──────────────────────────────────────────────────────────────
+
+function ytTapMarkWanted(videoId) {
+  if (!videoId) return
+  // Seed on FIRST sighting only — activation needs an OBSERVED silence, not
+  // "no data since a boot we didn't watch".
+  if (!_ytTapLastDelivery.has(videoId)) _ytTapLastDelivery.set(videoId, Date.now())
+  _ytTapWantedAt.set(videoId, Date.now())
+}
+
+function ytTapUnmarkWanted(videoId) {
+  if (!videoId) return
+  _ytTapWantedAt.delete(videoId)
+  _ytTapLastDelivery.delete(videoId)
+  ytTapClose(videoId, 'unwanted')
+}
+
+// ── pure helpers (unit-tested) ────────────────────────────────────────────
+
+function ytTapShouldActivate(lastDeliveryMs, nowMs) {
+  return !lastDeliveryMs || nowMs - lastDeliveryMs >= YT_TAP_SILENCE_MS
+}
+
+function ytTapWantedExpired(wantedAtMs, nowMs) {
+  return !wantedAtMs || nowMs - wantedAtMs > YT_TAP_WANTED_TTL_MS
+}
+
+// Innertube ships two ytInitialData assignment forms across page variants.
+function ytTapExtractInitialData(html) {
+  const m = html.match(/window\["ytInitialData"\]\s*=\s*({.+?});/) || html.match(/var\s+ytInitialData\s*=\s*({.+?});/)
+  if (!m) return null
+  try {
+    return JSON.parse(m[1])
+  } catch {
+    return null
+  }
+}
+
+// Continuation token rides one of three shapes depending on chat state
+// (invalidation = normal live tick, timed = slow-mode-style throttle,
+// reload = the chat needs a hard resync). Port of youtube-chat.ts ~699-706.
+function ytTapExtractContinuation(continuations) {
+  if (!continuations?.length) return null
+  return (
+    continuations[0]?.invalidationContinuationData?.continuation ||
+    continuations[0]?.timedContinuationData?.continuation ||
+    continuations[0]?.reloadContinuationData?.continuation ||
+    null
+  )
+}
+
+// Mutates `seenIds` in place: adds a new id and returns true, or returns
+// false for a dup. Caps growth by evicting the oldest 500 once past 2000 —
+// Set iteration order is insertion order, so "oldest" is well-defined.
+function ytTapSeenIdIsNew(seenIds, msgId) {
+  if (!msgId) return true
+  if (seenIds.has(msgId)) return false
+  seenIds.add(msgId)
+  if (seenIds.size > 2000) {
+    const iter = seenIds.values()
+    for (let i = 0; i < 500; i++) iter.next()
+    const toKeep = new Set()
+    for (const v of iter) toKeep.add(v)
+    seenIds.clear()
+    for (const v of toKeep) seenIds.add(v)
+  }
+  return true
+}
+
+function ytTapText(node) {
+  if (!node) return ''
+  if (typeof node.simpleText === 'string') return node.simpleText
+  if (Array.isArray(node.runs)) return node.runs.map((r) => r.text || '').join('')
+  return ''
+}
+
+function ytTapTimestamp(r) {
+  return r?.timestampUsec ? Math.floor(Number.parseInt(r.timestampUsec, 10) / 1000) : Date.now()
+}
+
+// Flattens a run list into display text + an emotes array. Standard unicode
+// emoji ride as their real char (emojiId short, no slash) so clients render
+// them natively; yt-exclusive/member emoji are image-only (opaque UCxxx/yyy
+// ids) and fall back to a :shortcut:-style alt the emotes array replaces
+// with the image. Port of youtube-chat.ts parseRuns (~1002-1037).
+function ytTapParseRuns(runs) {
+  let text = ''
+  const emotes = []
+  if (!runs) return { text, emotes }
+  for (const run of runs) {
+    if (run.text) {
+      text += run.text
+      continue
+    }
+    if (!run.emoji) continue
+    const url = run.emoji?.image?.thumbnails?.[0]?.url || ''
+    const emojiId = run.emoji?.emojiId || ''
+    const isUnicode = !!emojiId && emojiId.length <= 8 && !emojiId.includes('/')
+    if (isUnicode) {
+      text += emojiId
+      continue
+    }
+    const rawAlt = run.emoji?.shortcuts?.[0] || run.emoji?.image?.accessibility?.accessibilityData?.label || ''
+    const alt = rawAlt.replace(/<[^>]*>/g, '').trim() || '😀'
+    if (url) {
+      emotes.push({ type: 'emoji', url, alt })
+      text += alt
+    }
+  }
+  return { text, emotes }
+}
+
+function ytTapParseTextMessage(r, videoId) {
+  const user = r.authorName?.simpleText || ''
+  if (!user) return null
+  const { text, emotes } = ytTapParseRuns(r.message?.runs)
+  if (!text.trim()) return null
+  return {
+    type: 'text',
+    user,
+    text,
+    emotes,
+    timestamp: ytTapTimestamp(r),
+    videoId,
+    authorChannelId: r.authorExternalChannelId || undefined,
+  }
+}
+
+function ytTapSuperChatColor(amount) {
+  if (amount >= 100) return '#e62117'
+  if (amount >= 50) return '#e91e63'
+  if (amount >= 20) return '#ff6d00'
+  if (amount >= 10) return '#ffd600'
+  if (amount >= 5) return '#00c853'
+  if (amount >= 2) return '#00bfa5'
+  return '#1565c0'
+}
+
+function ytTapParseSuperChat(r, videoId) {
+  const user = r.authorName?.simpleText || ''
+  if (!user) return null
+  const { text, emotes } = ytTapParseRuns(r.message?.runs)
+  const amount = r.purchaseAmountText?.simpleText || ''
+  const numMatch = amount.match(/([\d,.]+)/)
+  const num = numMatch ? Number.parseFloat(numMatch[1].replace(',', '')) : 0
+  return {
+    type: 'superchat',
+    user,
+    text: text || '',
+    emotes,
+    timestamp: ytTapTimestamp(r),
+    videoId,
+    amount,
+    color: ytTapSuperChatColor(num),
+    authorChannelId: r.authorExternalChannelId || undefined,
+  }
+}
+
+function ytTapParseSuperSticker(r, videoId) {
+  const user = r.authorName?.simpleText || ''
+  if (!user) return null
+  const amount = r.purchaseAmountText?.simpleText || ''
+  const stickerUrl = r.sticker?.thumbnails?.[0]?.url || ''
+  const stickerAlt = r.sticker?.accessibility?.accessibilityData?.label || 'sticker'
+  const numMatch = amount.match(/([\d,.]+)/)
+  const num = numMatch ? Number.parseFloat(numMatch[1].replace(',', '')) : 0
+  return {
+    type: 'supersticker',
+    user,
+    text: '',
+    emotes: [],
+    timestamp: ytTapTimestamp(r),
+    videoId,
+    amount,
+    color: ytTapSuperChatColor(num),
+    authorChannelId: r.authorExternalChannelId || undefined,
+    sticker: { url: stickerUrl, alt: stickerAlt },
+  }
+}
+
+function ytTapParseMembership(r, videoId) {
+  const user = r.authorName?.simpleText || ''
+  if (!user) return null
+  const milestone = ytTapText(r.headerPrimaryText)
+  const systemMsg = milestone ? `${user}: ${milestone}` : `${user} became a member`
+  const { text, emotes } = ytTapParseRuns(r.message?.runs)
+  return {
+    type: 'membership',
+    user,
+    text: text || '',
+    emotes,
+    timestamp: ytTapTimestamp(r),
+    videoId,
+    systemMsg,
+    authorChannelId: r.authorExternalChannelId || undefined,
+  }
+}
+
+function ytTapParseGiftPurchase(r, videoId) {
+  const h = r.header?.liveChatSponsorshipsHeaderRenderer
+  const user = h?.authorName?.simpleText || ''
+  if (!user) return null
+  const primary = ytTapText(h?.primaryText)
+  const lead = primary ? primary.charAt(0).toLowerCase() + primary.slice(1) : 'gifted memberships'
+  return {
+    type: 'giftpurchase',
+    user,
+    text: '',
+    emotes: [],
+    timestamp: ytTapTimestamp(r),
+    videoId,
+    systemMsg: `${user} ${lead}`,
+    authorChannelId: r.authorExternalChannelId || undefined,
+  }
+}
+
+function ytTapParseGiftRedemption(r, videoId) {
+  const user = r.authorName?.simpleText || ''
+  if (!user) return null
+  const detail = ytTapText(r.message) || 'was gifted a membership'
+  return {
+    type: 'giftredemption',
+    user,
+    text: '',
+    emotes: [],
+    timestamp: ytTapTimestamp(r),
+    videoId,
+    systemMsg: `${user} ${detail}`,
+    authorChannelId: r.authorExternalChannelId || undefined,
+  }
+}
+
+// Port of youtube-chat.ts parseActions (~869-959) — 6 renderer types, id
+// attached post-parse so every push shares one dedup-key code path. Mod
+// deletions (markChatItemAsDeletedAction / removeChatItemAction and their
+// by-author variants) are DELIBERATELY skipped: there is no ext ingest path
+// for a tap-sourced deletion (youtube_msg_deleted is DOM-tap-only, keyed off
+// a live DOM node this poller never touches) — accepted gap, not a bug.
+function ytTapParseActions(actions, videoId, seenIds) {
+  const messages = []
+  for (const action of actions) {
+    const item = action?.addChatItemAction?.item
+    if (!item) continue
+    const renderer =
+      item.liveChatTextMessageRenderer ||
+      item.liveChatPaidMessageRenderer ||
+      item.liveChatPaidStickerRenderer ||
+      item.liveChatMembershipItemRenderer ||
+      item.liveChatSponsorshipsGiftPurchaseAnnouncementRenderer ||
+      item.liveChatSponsorshipsGiftRedemptionAnnouncementRenderer
+    if (!renderer) continue
+    const msgId = renderer.id || renderer.timestampUsec || ''
+    if (seenIds && msgId && !ytTapSeenIdIsNew(seenIds, msgId)) continue
+    const pushWithId = (msg) => {
+      if (!msg) return
+      if (msgId) msg.id = String(msgId)
+      messages.push(msg)
+    }
+    if (item.liveChatTextMessageRenderer) pushWithId(ytTapParseTextMessage(item.liveChatTextMessageRenderer, videoId))
+    if (item.liveChatPaidMessageRenderer) pushWithId(ytTapParseSuperChat(item.liveChatPaidMessageRenderer, videoId))
+    if (item.liveChatPaidStickerRenderer) pushWithId(ytTapParseSuperSticker(item.liveChatPaidStickerRenderer, videoId))
+    if (item.liveChatMembershipItemRenderer)
+      pushWithId(ytTapParseMembership(item.liveChatMembershipItemRenderer, videoId))
+    if (item.liveChatSponsorshipsGiftPurchaseAnnouncementRenderer)
+      pushWithId(ytTapParseGiftPurchase(item.liveChatSponsorshipsGiftPurchaseAnnouncementRenderer, videoId))
+    if (item.liveChatSponsorshipsGiftRedemptionAnnouncementRenderer)
+      pushWithId(ytTapParseGiftRedemption(item.liveChatSponsorshipsGiftRedemptionAnnouncementRenderer, videoId))
+  }
+  return messages
+}
+
+// Public innertube web-client key baked into every youtube.com page — not a
+// secret, just client identification. Fallback only: the live_chat page's
+// own INNERTUBE_API_KEY (extracted below) is used whenever present.
+const YT_TAP_FALLBACK_API_KEY = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8'
+const YT_TAP_DEFAULT_CONTEXT = { client: { clientName: 'WEB', clientVersion: '2.20240101.00.00', hl: 'en', gl: 'US' } }
+
+// Port of youtube-chat.ts fetchInitialChat (~673-741), trimmed to what the
+// tap needs (no channel/title/owner extraction — the ext already knows the
+// channel via ytChannelsFor; archiving is server-only).
+function ytTapParseBootstrap(html, videoId) {
+  const ytData = ytTapExtractInitialData(html)
+  if (!ytData) return null
+  const continuations =
+    ytData?.continuationContents?.liveChatContinuation?.continuations ||
+    ytData?.contents?.liveChatRenderer?.continuations
+  const continuation = ytTapExtractContinuation(continuations)
+  if (!continuation) return null
+  const keyMatch = html.match(/"INNERTUBE_API_KEY"\s*:\s*"([^"]+)"/)
+  const apiKey = keyMatch?.[1] || YT_TAP_FALLBACK_API_KEY
+  let innertubeContext = YT_TAP_DEFAULT_CONTEXT
+  const ctxMatch = html.match(/"INNERTUBE_CONTEXT"\s*:\s*({.+?})\s*,\s*"/)
+  if (ctxMatch) {
+    try {
+      innertubeContext = JSON.parse(ctxMatch[1])
+    } catch {}
+  }
+  const actions =
+    ytData?.continuationContents?.liveChatContinuation?.actions || ytData?.contents?.liveChatRenderer?.actions || []
+  const messages = ytTapParseActions(actions, videoId)
+  return { continuation, apiKey, innertubeContext, messages }
+}
+
+// ── poller lifecycle ────────────────────────────────────────────────────────
+
+async function ytTapFetchText(url, init) {
+  const resp = await fetch(url, { ...init, signal: AbortSignal.timeout(YT_TAP_FETCH_TIMEOUT_MS) })
+  if (!resp.ok) return null
+  return resp.text()
+}
+
+function ytTapSchedulePoll(entry) {
+  if (_ytTapPollers.get(entry.videoId) !== entry) return
+  entry.timer = setTimeout(() => ytTapPoll(entry), YT_TAP_POLL_MS)
+}
+
+async function ytTapPoll(entry) {
+  const stats = globalThis.__hsYtTapStats
+  if (_ytTapPollers.get(entry.videoId) !== entry) return // closed while scheduled
+  stats.polls++
+  const pollStart = Date.now()
+  const onErrorTick = () => {
+    entry.errorCount++
+    stats.errors++
+    if (entry.errorCount > YT_TAP_MAX_ERRORS) {
+      ytTapClose(entry.videoId, 'max-errors')
+      _ytTapCooldownUntil.set(entry.videoId, Date.now() + YT_TAP_COOLDOWN_MS)
+      stats.cooldowns++
+      return
+    }
+    ytTapSchedulePoll(entry)
+  }
+  try {
+    const resp = await fetch(`https://www.youtube.com/youtubei/v1/live_chat/get_live_chat?key=${entry.apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ context: entry.innertubeContext, continuation: entry.continuation }),
+      signal: AbortSignal.timeout(YT_TAP_FETCH_TIMEOUT_MS),
+    })
+    if (_ytTapPollers.get(entry.videoId) !== entry) return // closed mid-fetch
+    stats.lastStatus = resp.status
+    stats.lastPollLatencyMs = Date.now() - pollStart
+    if (!resp.ok) {
+      onErrorTick()
+      return
+    }
+    const data = await resp.json().catch(() => null)
+    if (_ytTapPollers.get(entry.videoId) !== entry) return
+    entry.errorCount = 0
+    const continuations = data?.continuationContents?.liveChatContinuation?.continuations
+    if (!continuations?.length) {
+      // Stream ended. Close + cooldown, but do NOT emit youtube:status
+      // 'ended' — that signal belongs to the primaries (server relay /
+      // watchdog); the tap only ever reacts to silence, never declares a
+      // stream over.
+      ytTapClose(entry.videoId, 'ended')
+      _ytTapCooldownUntil.set(entry.videoId, Date.now() + YT_TAP_COOLDOWN_MS)
+      stats.cooldowns++
+      return
+    }
+    const newCont = ytTapExtractContinuation(continuations)
+    if (newCont) entry.continuation = newCont // never persisted — memory-only
+    const actions = data?.continuationContents?.liveChatContinuation?.actions || []
+    const messages = ytTapParseActions(actions, entry.videoId, entry.seenIds)
+    if (messages.length) {
+      stats.msgs += messages.length
+      handleYoutubeChatBatch(
+        { type: 'youtube:chat', videoId: entry.videoId, messages, replay: false },
+        { fromTap: true },
+      )
+    }
+    ytTapSchedulePoll(entry)
+  } catch (e) {
+    if (_ytTapPollers.get(entry.videoId) !== entry) return
+    if (e?.name === 'AbortError' || e?.name === 'TimeoutError') {
+      // Timeout — reschedule without counting as an error (transient).
+      ytTapSchedulePoll(entry)
+      return
+    }
+    onErrorTick()
+  }
+}
+
+async function ytTapOpen(videoId) {
+  if (_ytTapPollers.has(videoId) || _ytTapPollers.size >= YT_TAP_MAX_POLLERS) return
+  const stats = globalThis.__hsYtTapStats
+  const entry = {
+    videoId,
+    timer: null,
+    continuation: null,
+    apiKey: null,
+    innertubeContext: null,
+    seenIds: new Set(),
+    errorCount: 0,
+  }
+  _ytTapPollers.set(videoId, entry) // reserve the slot before the async gap
+  stats.opens++
+  stats.active = [..._ytTapPollers.keys()]
+  try {
+    const html = await ytTapFetchText(`https://www.youtube.com/live_chat?v=${encodeURIComponent(videoId)}`)
+    if (_ytTapPollers.get(videoId) !== entry) return // closed mid-fetch (toggle-off, unwanted, etc.)
+    const boot = html && ytTapParseBootstrap(html, videoId)
+    if (!boot) {
+      _ytTapPollers.delete(videoId)
+      stats.active = [..._ytTapPollers.keys()]
+      _ytTapCooldownUntil.set(videoId, Date.now() + YT_TAP_COOLDOWN_MS)
+      stats.cooldowns++
+      return
+    }
+    entry.continuation = boot.continuation
+    entry.apiKey = boot.apiKey
+    entry.innertubeContext = boot.innertubeContext
+    if (boot.messages.length) {
+      stats.replayMsgs += boot.messages.length
+      // Gap-fill path: replay:true so the surface's replay pipeline (bulk
+      // buffer + one render) takes these, not the live drip pacer — the
+      // pacer rewrites arrival times, which would smear a burst of
+      // already-real timestamps across several seconds for no reason.
+      handleYoutubeChatBatch(
+        { type: 'youtube:chat', videoId, messages: boot.messages, replay: true },
+        { fromTap: true },
+      )
+    }
+    ytTapSchedulePoll(entry)
+  } catch {
+    if (_ytTapPollers.get(videoId) === entry) {
+      _ytTapPollers.delete(videoId)
+      stats.active = [..._ytTapPollers.keys()]
+    }
+    _ytTapCooldownUntil.set(videoId, Date.now() + YT_TAP_COOLDOWN_MS)
+    stats.cooldowns++
+  }
+}
+
+function ytTapClose(videoId, reason) {
+  const entry = _ytTapPollers.get(videoId)
+  if (!entry) return
+  if (entry.timer) clearTimeout(entry.timer)
+  _ytTapPollers.delete(videoId)
+  const stats = globalThis.__hsYtTapStats
+  stats.active = [..._ytTapPollers.keys()]
+  stats.gate = `closed:${videoId}:${reason}`
+}
+
+// ── check tick (rides the 'keepalive' alarm, ~30s) ──────────────────────────
+
+function ytTapCheck() {
+  const stats = globalThis.__hsYtTapStats
+  stats.ticks++
+  if (!_ytTapSubsystemOn) {
+    stats.gate = 'toggle-off'
+    for (const vid of [..._ytTapPollers.keys()]) ytTapClose(vid, 'toggle-off')
+    return
+  }
+  const now = Date.now()
+  for (const [vid, at] of [..._ytTapWantedAt]) {
+    if (ytTapWantedExpired(at, now)) {
+      _ytTapWantedAt.delete(vid)
+      _ytTapLastDelivery.delete(vid)
+      ytTapClose(vid, 'wanted-expired')
+    }
+  }
+  // Candidates: wanted AND still bound to a real channel (ytChannelsFor is
+  // the same routing table youtube:chat itself resolves against).
+  const candidates = [..._ytTapWantedAt.keys()].filter((vid) => ytChannelsFor(vid).length > 0)
+  const candidateSet = new Set(candidates)
+  for (const vid of [..._ytTapPollers.keys()]) {
+    if (!candidateSet.has(vid)) {
+      ytTapClose(vid, 'unbound')
+      continue
+    }
+    if (!ytTapShouldActivate(_ytTapLastDelivery.get(vid), now)) ytTapClose(vid, 'primary-recovered')
+  }
+  if (_ytTapPollers.size >= YT_TAP_MAX_POLLERS) {
+    stats.gate = `active:${[..._ytTapPollers.keys()].join(',')}`
+    return
+  }
+  let best = null
+  for (const vid of candidates) {
+    if (_ytTapPollers.has(vid)) continue
+    if ((_ytTapCooldownUntil.get(vid) || 0) > now) continue
+    if (!ytTapShouldActivate(_ytTapLastDelivery.get(vid), now)) continue
+    const wantedAt = _ytTapWantedAt.get(vid) || 0
+    if (!best || wantedAt > best.wantedAt) best = { vid, wantedAt }
+  }
+  if (best) {
+    stats.gate = `opening:${best.vid}`
+    ytTapOpen(best.vid)
+  } else {
+    stats.gate = candidates.length ? 'primary-healthy' : 'no-candidates'
+  }
 }
 
 // ─── Kick chat Pusher tap (client-side, anonymous) ──────────────────────────

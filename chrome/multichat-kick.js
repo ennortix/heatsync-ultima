@@ -3256,6 +3256,7 @@ const SETTINGS = [
       'right-click-block': true,
       'native-takeover': true,
       'kick-native-tap': true,
+      'yt-innertube-tap': true,
       'automod-queue': true,
     },
     options: [
@@ -3378,6 +3379,14 @@ const SETTINGS = [
         applies: 'live',
         labelKey: 'mc_settings_sub_kick_native_tap',
         tipKey: 'mc_settings_sub_kick_native_tap_desc',
+      },
+      {
+        value: 'yt-innertube-tap',
+        default: true,
+        color: '#ff0000',
+        applies: 'live',
+        labelKey: 'mc_settings_sub_yt_innertube_tap',
+        tipKey: 'mc_settings_sub_yt_innertube_tap_desc',
       },
       {
         value: 'automod-queue',
@@ -3521,6 +3530,7 @@ const SETTINGS_PRESETS = [
         'right-click-block': true,
         'native-takeover': true,
         'kick-native-tap': true,
+        'yt-innertube-tap': true,
         'automod-queue': true,
       },
     },
@@ -3573,6 +3583,7 @@ const SETTINGS_PRESETS = [
         'right-click-block': true,
         'native-takeover': true,
         'kick-native-tap': true,
+        'yt-innertube-tap': true,
         'automod-queue': true,
       },
     },

@@ -1471,6 +1471,12 @@
   "mc_settings_sub_kick_native_tap_desc": {
     "message": "reads the current kick page's own chat stream as a backup. inert while the normal transports are healthy — only kicks in if they go quiet."
   },
+  "mc_settings_sub_yt_innertube_tap": {
+    "message": "yt fallback tap"
+  },
+  "mc_settings_sub_yt_innertube_tap_desc": {
+    "message": "polls youtube directly if both normal feeds go silent for 5 minutes — a last-resort backstop, not a replacement transport."
+  },
   "mc_settings_sub_automod_queue": {
     "message": "automod hold queue"
   },

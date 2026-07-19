@@ -1,4 +1,18 @@
-# heatsync punch list — 2026-07-19 (rev 5, post-1.7.29)
+# heatsync punch list — 2026-07-19 (rev 6, post-1.7.29)
+
+rev 6 (daylight session): soak watch FIRED and got fixed — nightly 03:30
+snapshot's 28M-row chat_archive scan starved the flush ~15min (spill
+valve engaged 03:30-03:44, ~110k rows, all replayed, dir empty). snapshot
+now reads ingest-time rollups (archive_day_counts sum + flush-fed redis
+chatter HLL with coverage tripwire; exact scan survives as loud fallback)
+— site fe5faa3f. the 23:59-00:46 spill window was the supervised w27
+offload (known, lossless). yt innertube fallback tap LANDED (ext 6f22ab7):
+the parked wip branch turned out to be a complete sw-side implementation
+(memory undersold it — impl lives in chrome/background.js), 44 unit tests,
+cherry-picked + built clean. unused-var triage DONE: 295 warnings → 2 real
+(dead tab-cycle recency check removed; 7tv sub-ack log completed). best-of
+SEO pages (play #3) verified LIVE in prod. chrome eyeball of the new build
+skipped — chrome closed on heatpc; queued behind next chrome session.
 
 rev 5 (overnight autonomous session): lint gate GREEN (pre-push unblocked;
 correctness tier fixed, style tier deliberately skipped). cross-platform
@@ -85,6 +99,12 @@ BUT: active data loss (below). load 10 on 4 cores, 310Mi free.
 
 ## watches (no code until they fire)
 
+- snapshot rollup fix — tomorrow 03:30 UTC must log "chat stats from
+  rollups" with ZERO spill lines. first night post-deploy falls back to
+  the exact scan by design (HLL only covers from deploy time — coverage
+  tripwire correctly rejects it); night 2 is the real proof.
+- yt innertube tap — first organic firing during a yt transport outage
+  (dbg_yt_tap snapshot / __hsYtTapStats in sw console).
 - automod organic e2e — 2 watches live (own channel + nl_kripp); next real
   hold completes it.
 - scroll-smear recurrence — will-change fix holding; escalation ladder in
@@ -107,7 +127,9 @@ BUT: active data loss (below). load 10 on 4 cores, 310Mi free.
   primary nav, native navigation, all 33 locales keyed. e2e verified in
   prod chrome (renders, clicks through to /plus).
 - capture-posture design call (opt-out default + erase-rate tripwire rec).
-- native-tap resilience fallback kick/yt — #1 audit remainder, own session.
+- ~~native-tap resilience fallback kick/yt~~ — DONE: kick shipped earlier;
+  yt innertube tap landed rev 6 (ext 6f22ab7). WATCH: first organic firing
+  (dbg_yt_tap / __hsYtTapStats in sw console during a yt transport outage).
 - ~~cross-platform follow bugs~~ — CLOSED 07-19: bug1 was pre-fixed, bug2's
   privacy call settled (redaction kept + toast), bug3 got the queued toast.
   BONUS: secondary-handle lookup privacy gate (site 63752f5f) — see memory

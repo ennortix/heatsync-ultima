@@ -114,8 +114,6 @@ BUT: active data loss (below). load 10 on 4 cores, 310Mi free.
 
 ## mellen-gated (blocked on human)
 
-- **google oauth secret rotation** — STILL NOT ROTATED (leaked 07-05).
-  cloud console + /opt/heatsync/app/.env + restart.
 - kick picker channel-tab eyeball on a real kick page tab.
 - chrome restart → verify hw video decode restored (chrome://gpu).
 - play-approval execution on google email (playbook ready: banner,

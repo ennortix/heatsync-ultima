@@ -7480,6 +7480,21 @@ const HsNotifs = (() => {
     // 'toast' below.
     if (notif.type.clickToDismiss) {
       wrapper.addEventListener('click', () => dismiss(notif.id))
+    } else if (notif.type.layer === 'toast-stack') {
+      // Toast-stack CSS shows a pointer cursor on the whole toast — honor it:
+      // body click fires the primary action (relink/retry/open), or dismisses
+      // when the type has none. Action buttons stopPropagation in _renderInto,
+      // so ✕ never double-fires. Other layers keep their explicit-button-only
+      // behavior (statusbar callouts may carry side-effectful primaries).
+      wrapper.addEventListener('click', () => {
+        const primary = notif.type.actions?.primary
+        if (!primary) return dismiss(notif.id)
+        let result
+        try {
+          result = primary.onClick?.(notif.data, () => dismiss(notif.id))
+        } catch (_) {}
+        if (result === true) dismiss(notif.id)
+      })
     }
     // Right-click dismiss — global UX convention: every popup/indicator
     // accepts right-click to clear without firing any action.
@@ -9233,8 +9248,18 @@ function injectStyles() {
     }
     .hs-notif-action:hover { background: #fff; color: #000; }
     .hs-notif-action:focus-visible { outline: 1px solid #fff; outline-offset: -2px; }
-    .hs-notif-action-primary { color: #fff; font-weight: 700; }
-    .hs-notif-action-primary:hover { background: #fff; color: #000; }
+    /* Primary reads as an actual button — bordered square chip inset from
+       the segment strip, so it can't be mistaken for label text. */
+    .hs-notif-action-primary {
+      color: #fff;
+      font-weight: 700;
+      border: 1px solid #efeff1;
+      align-self: center;
+      padding: 4px 10px;
+      margin: 0 8px;
+    }
+    .hs-notif-action-primary:hover,
+    .hs-notif-action-primary:active { background: #fff; color: #000; border-color: #fff; }
     .hs-notif-action-dismiss { padding: 0 10px; font-size: 14px; color: #848494; }
     .hs-notif-action-dismiss:hover { background: #ff4040; color: #000; }
 
@@ -9275,6 +9300,14 @@ function injectStyles() {
     .hs-notif-layer-toast-stack > .hs-notif:hover .hs-notif-toast-text::before {
       color: #000 !important;
     }
+    /* Keep action buttons readable on the inverted row (white text/border on
+       white bg otherwise disappears). Their own :hover still wins after. */
+    .hs-notif-layer-toast-stack > .hs-notif:hover .hs-notif-action {
+      color: #000;
+      border-color: #000;
+    }
+    .hs-notif-layer-toast-stack > .hs-notif:hover .hs-notif-action:hover { background: #000; color: #fff; }
+    .hs-notif-layer-toast-stack > .hs-notif:hover .hs-notif-action-dismiss:hover { background: #ff4040; color: #000; }
 
     /* === Statusbar — a status/toast line that sits just under the search/filter
        bar (status, errors + loading belong below the filter input, never above

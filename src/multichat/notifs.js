@@ -188,6 +188,21 @@ const HsNotifs = (() => {
     // 'toast' below.
     if (notif.type.clickToDismiss) {
       wrapper.addEventListener('click', () => dismiss(notif.id))
+    } else if (notif.type.layer === 'toast-stack') {
+      // Toast-stack CSS shows a pointer cursor on the whole toast — honor it:
+      // body click fires the primary action (relink/retry/open), or dismisses
+      // when the type has none. Action buttons stopPropagation in _renderInto,
+      // so ✕ never double-fires. Other layers keep their explicit-button-only
+      // behavior (statusbar callouts may carry side-effectful primaries).
+      wrapper.addEventListener('click', () => {
+        const primary = notif.type.actions?.primary
+        if (!primary) return dismiss(notif.id)
+        let result
+        try {
+          result = primary.onClick?.(notif.data, () => dismiss(notif.id))
+        } catch (_) {}
+        if (result === true) dismiss(notif.id)
+      })
     }
     // Right-click dismiss — global UX convention: every popup/indicator
     // accepts right-click to clear without firing any action.

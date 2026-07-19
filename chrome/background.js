@@ -3414,6 +3414,27 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
       clearTimeout(coalesceTimer)
       coalesceTimer = null
     }
+    // Per-provider stale salvage — a transient provider failure during a
+    // REFRESH must not strip that provider's emotes from the consolidated
+    // set: an idle tab never re-joins, so the ~60s backdated retry only
+    // fires on the next manual join and the loss sticks — the recurring
+    // "emotes turned to text mid-session" report (7tv.io latency spikes past
+    // the fetch timeout are the usual trigger). Stale beats missing, per
+    // provider — same philosophy as the whole-fetch fallback in the catch
+    // below. Third-party entries carry `source`; heatsync entries don't.
+    if (isRefresh) {
+      const SALVAGE = { bttv: 'bttv', ffz: 'ffz', sevenTV: '7tv', twitch: 'twitch', kick: 'kick' }
+      for (const [slot, src] of Object.entries(SALVAGE)) {
+        if (failed[slot] && slots[slot].length === 0) {
+          slots[slot] = prevCached.filter((e) => e && e.source === src)
+          if (slots[slot].length) log(` ♻️ ${src} refetch failed — keeping ${slots[slot].length} stale entries`)
+        }
+      }
+      if (!heatsyncResult?.ok && heatsyncEmotes.length === 0) {
+        heatsyncEmotes = prevCached.filter((e) => e && !e.source)
+        if (heatsyncEmotes.length) log(` ♻️ heatsync refetch failed — keeping ${heatsyncEmotes.length} stale entries`)
+      }
+    }
     const sevenTVEmotes = slots.sevenTV
     const sevenTVSetId = sevenTVResult?.setId || null
     const bttvEmotes = slots.bttv

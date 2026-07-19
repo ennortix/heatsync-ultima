@@ -250,6 +250,13 @@ async function propagateFollow(follow, target) {
       // Surface 2fa requirement — user has to satisfy it on twitch.tv
       if (r?.error === '2fa_required' && typeof showToast === 'function') {
         showToast(t(verb === 'follow' ? 'mc_crossfollow_2fa_follow' : 'mc_crossfollow_2fa_unfollow'), 'info')
+      } else if (r?.queueable && typeof showToast === 'function') {
+        // Queued (no twitch.tv tab to relay through) — say so instead of the
+        // silent enqueue; drains ~2.5s after the next twitch.tv visit.
+        showToast(
+          t(verb === 'follow' ? 'mc_crossfollow_twitch_queued_follow' : 'mc_crossfollow_twitch_queued_unfollow'),
+          'info',
+        )
       }
     }
   }

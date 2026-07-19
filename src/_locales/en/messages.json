@@ -1573,6 +1573,12 @@
   "mc_crossfollow_kick_queued_unfollow": {
     "message": "kick unfollow queued — will sync when you log in to kick.com"
   },
+  "mc_crossfollow_twitch_queued_follow": {
+    "message": "twitch follow queued — will sync next time you open twitch.tv"
+  },
+  "mc_crossfollow_twitch_queued_unfollow": {
+    "message": "twitch unfollow queued — will sync next time you open twitch.tv"
+  },
   "mc_emote_add_error": {
     "message": "error adding: $NAME$",
     "placeholders": {

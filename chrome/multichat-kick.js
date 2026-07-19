@@ -9198,7 +9198,10 @@ function injectStyles() {
       background: #0a0a0d;
       color: #efeff1;
       font: 12px/1.35 ui-monospace, 'JetBrains Mono', 'Cascadia Mono', 'SF Mono', Menlo, Consolas, 'Courier New', monospace;
-      container-type: inline-size;
+      /* container-type lives on the statusbar layer's notifs only (06-…css).
+         On a shrink-to-fit layer (toast-stack) inline-size containment zeroes
+         the content's width contribution — every toast collapsed to the 180px
+         min-width and char-wrapped into a tower. */
       border: 1px solid #2a2a2e;
       border-left: 3px solid var(--hs-notif-accent, #555);
       box-shadow: 0 6px 16px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.03) inset;
@@ -9358,6 +9361,10 @@ function injectStyles() {
       animation: hs-notif-fade-in 140ms ease both;
       transform-origin: center;
       cursor: pointer;
+      /* Progressive-collapse @container queries below key off this. Safe here:
+         the statusbar row gives the notif a definite width, so containment
+         can't collapse it (unlike the shrink-to-fit toast-stack layer). */
+      container-type: inline-size;
     }
     .hs-notif-layer-statusbar .hs-notif-body {
       display: block;

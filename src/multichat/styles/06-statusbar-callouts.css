@@ -47,6 +47,10 @@
       animation: hs-notif-fade-in 140ms ease both;
       transform-origin: center;
       cursor: pointer;
+      /* Progressive-collapse @container queries below key off this. Safe here:
+         the statusbar row gives the notif a definite width, so containment
+         can't collapse it (unlike the shrink-to-fit toast-stack layer). */
+      container-type: inline-size;
     }
     .hs-notif-layer-statusbar .hs-notif-body {
       display: block;

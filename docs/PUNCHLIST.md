@@ -1,4 +1,18 @@
-# heatsync punch list — 2026-07-18 (rev 4, post-1.7.29)
+# heatsync punch list — 2026-07-19 (rev 5, post-1.7.29)
+
+rev 5 (overnight autonomous session): lint gate GREEN (pre-push unblocked;
+correctness tier fixed, style tier deliberately skipped). cross-platform
+follow bugs CLOSED — and the dig found a real privacy hole: secondary-handle
+profile lookups leaked private twitch↔kick linkage via row identity; gated
+server-side with regression tests (site 63752f5f). chatter-rollup had a
+silent-gap bug — 07-16/07-17 failed during the io incident and 07-16 fell
+out of the fixed d-1/d-2 retry window forever; job now sweeps all pending
+days (site 5d8a057a, heals on deploy + tonight's 09:30). emotes-as-text
+mid-session root-caused: 7tv latency spikes past the fetch timeout at ttl
+refetch stripped the 7tv slot from the consolidated set; refresh now
+salvages failed providers' stale entries (ext c156254). /heapstats verified
+admin-gated 401 externally — stale observation, closed. kick-reap drained
+to 0 orphans, passes in seconds. best-of SEO pages (play #3) in flight.
 
 rev 4 (late night): the three prod blockers from rev 3 are all shipped —
 offload rewrite (banked resume + archive-volume staging + best-effort io +
@@ -47,8 +61,8 @@ BUT: active data loss (below). load 10 on 4 cores, 310Mi free.
   again (lossless now, but find the cause).
 - ~~bulk multi-row INSERT in flushRows~~ — shipped earlier same day
   (chunk-tx VALUES, async commit); regression tests green.
-- **/heapstats refused** during check — endpoint 404s externally; verify
-  intended exposure (admin/local?) or delist.
+- ~~/heapstats refused~~ — verified 07-19: 401 externally (adminRequired,
+  fail-closed) — the 404 was a pre-deploy build; intended exposure, closed.
 
 ## P0 — extension
 
@@ -94,10 +108,17 @@ BUT: active data loss (below). load 10 on 4 cores, 310Mi free.
   prod chrome (renders, clicks through to /plus).
 - capture-posture design call (opt-out default + erase-rate tripwire rec).
 - native-tap resilience fallback kick/yt — #1 audit remainder, own session.
-- cross-platform follow bugs (07-05, 3 named, unfixed).
+- ~~cross-platform follow bugs~~ — CLOSED 07-19: bug1 was pre-fixed, bug2's
+  privacy call settled (redaction kept + toast), bug3 got the queued toast.
+  BONUS: secondary-handle lookup privacy gate (site 63752f5f) — see memory
+  `project_cross_platform_follow_bugs_2026_07_05` for the linkage-oracle trap.
 - opera gx — send wollip the bisect steps.
 - yt-only persona send e2e (needs unlinked test account).
-- lint-debt sweep — daylight session, ~100 files, recipe in memory.
+- ~~lint-debt sweep~~ — DONE 07-19: gate GREEN (was 2 format errors);
+  parseInt-radix/Number.isNaN/isFinite/node:-protocol fixed (a27fcaa).
+  DELIBERATE SKIP: 729 useTemplate + 244 optionalChain + 73 literalKeys
+  style warnings — churn without runtime value, conflict risk; they don't
+  fail the gate. 299 unused-var warnings triaged separately for real bugs.
 
 ## growth track — world domination (GATED on prod green)
 

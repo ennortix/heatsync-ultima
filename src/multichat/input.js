@@ -953,12 +953,10 @@ function renderSendTargetChips() {
     { key: 'kick', label: 'K' },
     { key: 'youtube', label: 'Y' },
   ]
-  // 'send:' label — pairs with the tab strip's 'show:' filter group so the
-  // two T K Y clusters can't be mistaken for each other.
-  const lbl = document.createElement('span')
-  lbl.className = 'hs-mc-group-label'
-  lbl.textContent = 'send:'
-  group.appendChild(lbl)
+  // No text label — composer width is precious (side-tab layouts). The twin
+  // T K Y clusters are told apart by style + place: send chips are FILLED
+  // and sit at the composer; the view filter is OUTLINE and lives in the
+  // tab strip. Tooltips carry the words.
   for (const p of meta) {
     if (!linked[p.key]) continue
     const on = resolved[p.key]

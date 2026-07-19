@@ -12843,21 +12843,23 @@ img.hs-fx-zero { margin-left: -4px; }
       align-items: center;
       justify-content: center;
     }
-    /* ON state — saturated platform color, matches platform identity */
-    .hs-mc-pf-btn.hs-mc-pf-twitch { border-color: #9146ff !important; background: #9146ff !important; color: #fff !important; }
-    .hs-mc-pf-btn.hs-mc-pf-kick { border-color: #53fc18 !important; background: #53fc18 !important; color: #000 !important; }
+    /* ON state — OUTLINE: platform-colored border + letter on transparent.
+       Deliberately distinct from the composer's FILLED send chips — outline
+       = what you SEE, fill = where you SEND. This styling split (plus
+       location) is what disambiguates the twin T K Y clusters now that the
+       'show:'/'send:' text labels are gone. */
+    .hs-mc-pf-btn.hs-mc-pf-twitch { border-color: #9146ff !important; background: transparent !important; color: #9146ff !important; }
+    .hs-mc-pf-btn.hs-mc-pf-kick { border-color: #53fc18 !important; background: transparent !important; color: #53fc18 !important; }
     .hs-mc-pf-btn.hs-mc-pf-youtube {
       border-color: #ff0000 !important;
-      background: #ff0000 !important;
-      color: #fff !important;
+      background: transparent !important;
+      color: #ff0000 !important;
     }
-    /* OFF state — black bg with white text + dim border. The disabled
-       cue is the loss of the saturated brand bg (purple/green/red),
-       not text dimming — keeping the letter at #fff makes it readable
-       against any dark backdrop bleeding through. */
+    /* OFF state — dim border + dim letter; the cue is losing the platform
+       color entirely. */
     .hs-mc-pf-btn.off {
-      background: #000 !important;
-      color: #fff !important;
+      background: transparent !important;
+      color: #555 !important;
       border-color: #333 !important;
     }
     .hs-mc-pf-btn:hover { background: #fff !important; color: #000 !important; border-color: #fff !important; }
@@ -12870,36 +12872,30 @@ img.hs-fx-zero { margin-left: -4px; }
     /* Composer send-target chips — one small pill per linked platform,
        shown only when the active channel tab has >1 linked platform (see
        renderSendTargetChips, input.js). Sits between the input and the
-       emote button; same colors/interaction as .hs-mc-pf-btn so "send to"
-       state reads consistently with the view-side filter chips. */
+       emote button. FILLED when on — deliberately distinct from the
+       OUTLINE view-filter buttons in the tab strip (fill = where you
+       SEND, outline = what you SEE). */
     #hs-mc-sendtargets {
       display: flex;
       flex: 0 0 auto;
       align-items: center;
       gap: 2px;
-      margin: 0 4px;
+      /* margin-left auto: no-op inline (input flex:1 absorbs slack), but
+         right-aligns the chips+emote cluster if the bar ever wraps. */
+      margin: 0 4px 0 auto;
     }
     #hs-mc-sendtargets:empty { display: none; margin: 0; }
-    /* 'show:' / 'send:' group labels — disambiguate the twin T K Y clusters */
-    .hs-mc-group-label {
-      color: #777;
-      font-size: 13px;
-      line-height: 1;
-      align-self: center;
-      margin-right: 1px;
-      user-select: none;
-    }
     .hs-mc-st-btn {
       background: transparent;
       border: 1px solid;
       font-size: 13px;
       font-weight: 700;
-      padding: 3px 6px;
+      padding: 3px 4px;
       cursor: pointer;
       font-family: inherit;
       line-height: 1;
       box-sizing: border-box;
-      min-width: 16px;
+      min-width: 14px;
       text-align: center;
     }
     .hs-mc-st-btn.hs-mc-st-twitch { border-color: #9146ff !important; background: #9146ff !important; color: #fff !important; }
@@ -17320,14 +17316,21 @@ img.hs-fx-zero { margin-left: -4px; }
       align-items: center !important;
       box-sizing: border-box !important;
     }
+    /* 120px floor: without it min-width:0 let the fixed-width send chips +
+       emote button crush the input to nothing in side-tab layouts (bar loses
+       90px to the tab column). Below the floor the bar wraps (flex-wrap)
+       instead of shrinking the input further. */
     #hs-mc-input-wrap {
       flex: 1 1 0 !important;
-      min-width: 0 !important;
+      min-width: 120px !important;
       overflow: hidden !important;
     }
     #hs-mc-input {
       min-width: 0 !important;
       width: 100% !important;
+    }
+    #hs-mc-inputbar > #hs-mc-input {
+      min-width: 120px !important;
     }
     #hs-mc-emote-btn {
       flex: 0 0 auto !important;
@@ -37576,12 +37579,10 @@ function renderSendTargetChips() {
     { key: 'kick', label: 'K' },
     { key: 'youtube', label: 'Y' },
   ]
-  // 'send:' label — pairs with the tab strip's 'show:' filter group so the
-  // two T K Y clusters can't be mistaken for each other.
-  const lbl = document.createElement('span')
-  lbl.className = 'hs-mc-group-label'
-  lbl.textContent = 'send:'
-  group.appendChild(lbl)
+  // No text label — composer width is precious (side-tab layouts). The twin
+  // T K Y clusters are told apart by style + place: send chips are FILLED
+  // and sit at the composer; the view filter is OUTLINE and lives in the
+  // tab strip. Tooltips carry the words.
   for (const p of meta) {
     if (!linked[p.key]) continue
     const on = resolved[p.key]
@@ -58048,13 +58049,9 @@ const STORAGE_KEY = 'heatsync_multichat'
       { key: 'youtube', label: 'Y', show: hasYt },
     ]
 
-    // 'show:' / 'send:' labels disambiguate the two T K Y groups — filter
-    // (here) vs send targets (composer) — which are otherwise identical.
-    const lbl = document.createElement('span')
-    lbl.className = 'hs-mc-group-label'
-    lbl.textContent = 'show:'
-    group.appendChild(lbl)
-
+    // No text label — the twin T K Y clusters are told apart by style +
+    // place: this view filter is OUTLINE and lives in the tab strip; send
+    // chips are FILLED and sit at the composer. Tooltips carry the words.
     for (const p of meta) {
       if (!p.show) continue
       const btn = document.createElement('button')

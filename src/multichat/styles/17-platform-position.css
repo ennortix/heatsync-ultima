@@ -1115,14 +1115,21 @@
       align-items: center !important;
       box-sizing: border-box !important;
     }
+    /* 120px floor: without it min-width:0 let the fixed-width send chips +
+       emote button crush the input to nothing in side-tab layouts (bar loses
+       90px to the tab column). Below the floor the bar wraps (flex-wrap)
+       instead of shrinking the input further. */
     #hs-mc-input-wrap {
       flex: 1 1 0 !important;
-      min-width: 0 !important;
+      min-width: 120px !important;
       overflow: hidden !important;
     }
     #hs-mc-input {
       min-width: 0 !important;
       width: 100% !important;
+    }
+    #hs-mc-inputbar > #hs-mc-input {
+      min-width: 120px !important;
     }
     #hs-mc-emote-btn {
       flex: 0 0 auto !important;

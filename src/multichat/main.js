@@ -1257,6 +1257,20 @@
     }
     if (typeof channelYtMessages !== 'undefined') channelYtMessages.forEach(patchBuf)
     if (typeof mentionsBuffer !== 'undefined') patchBuf(mentionsBuffer)
+    // Also invalidate the LIVE DOM rows directly, via their `_hsMsg` back-ref.
+    // A drawn row can outlive the buffer these patchBuf() walks reach: a twitch
+    // SPA nav (channel → /directory) reinits chat state, orphaning already-drawn
+    // rows — their backing message is gone from the current irc/kick/yt buffers,
+    // so buffer-only invalidation never clears their cache and they stay frozen
+    // at whatever they last rendered (raw text if the sender-set was cold then),
+    // forever, even as fresh messages from the same sender render fine. Clearing
+    // through the DOM back-ref is the only path that reaches those orphans.
+    const _msgsElUp = document.getElementById('hs-mc-messages')
+    if (_msgsElUp) {
+      for (const div of _msgsElUp.querySelectorAll('.hs-mc-msg[data-msg-key]')) {
+        if (matches(div._hsMsg)) div._hsMsg._renderedHtml = null
+      }
+    }
 
     // Debounced re-render of active tab. Reset timer on every new batch so
     // the eventual render sees the FINAL invalidation set, not a partial mid-
@@ -1267,9 +1281,18 @@
     _upgradeRenderTimer = cleanup.setTimeout(() => {
       _upgradeRenderTimer = null
       _pendingUpgradeKeys.clear()
-      // Skip re-render entirely if user has scrolled up — they're reading
-      // older messages and don't want their viewport snapping. The emotes
-      // upgrade lazily on next scroll-to-bottom or tab switch.
+      // In-place reprocess ALWAYS runs — it swaps emote HTML on the live DOM
+      // rows via `_hsMsg` (the invalidated ones recompute, unchanged ones skip)
+      // without touching scroll, so it's safe while scrolled up AND it reaches
+      // orphaned rows the buffer-driven renderMessages() below never rebuilds.
+      if (typeof reprocessEmoteTextInPlace === 'function') {
+        try {
+          reprocessEmoteTextInPlace()
+        } catch {}
+      }
+      // Full re-render picks up buffered-but-not-yet-drawn rows, but snaps the
+      // viewport — skip it while the user is scrolled up reading history (those
+      // rows upgrade lazily on the next scroll-to-bottom / tab switch).
       if (isScrolledUp) return
       if (typeof renderMessages === 'function' && typeof currentTab !== 'undefined') {
         try {

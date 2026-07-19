@@ -239,16 +239,12 @@
   // Track insertion state to prevent autocomplete pollution (7TV-style approach)
   // After inserting an emote, Twitch re-reads input and may trigger autocomplete with emote name
   const recentlyInserted = new Set() // Track recently inserted emote names (capped at 100)
-  let lastInsertedEmote = null // Name of last inserted emote
   let insertionCount = 0 // Incrementing counter to track unique insertions
-  let lastUserInput = '' // Track actual user typing to detect real input vs pollution
 
   // Clean up tracking sets on page teardown
   acSignal.addEventListener('abort', () => {
     recentlyInserted.clear()
-    lastInsertedEmote = null
     insertionCount = 0
-    lastUserInput = ''
   })
 
   // Emoji shortcodes for :name: autocomplete (Discord/Slack style)
@@ -1294,8 +1290,6 @@
             'total, first:',
             results[0]?.replacement || results[0]?.emote?.token,
           )
-          // Track that dropdown is visible with results (for insertReplacement check)
-          lastDropdownVisibleTime = Date.now()
         }
         return results
       }
@@ -1336,9 +1330,6 @@
     lastCycledEmote: null, // Name of emote we just cycled to (to detect suffix pollution)
     searchTerm: '', // Original search term (cleaned)
   }
-
-  // Track when dropdown was last visible (for insertReplacement check)
-  let lastDropdownVisibleTime = 0
 
   // (lastEnterPressTime removed — Enter is never intercepted by this module;
   // the send-flush below only OBSERVES Enter, it never prevents/stops it.)
@@ -1765,7 +1756,6 @@
     _frecSessionBumped = matchedEmote.name
     // Remote 7TV catalog hit — register for auto-add-on-send (flushed on Enter)
     trackRemoteCompletion(matchedEmote)
-    lastInsertedEmote = matchedEmote.name
     insertionCount++
 
     // Limit set size to prevent memory leaks (keep last 10)

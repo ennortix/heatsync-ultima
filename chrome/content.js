@@ -8040,13 +8040,6 @@
       '.hs-mc-user', // multichat usernames
     ].join(', ')
 
-    // XSS helpers — all user data goes through esc() before insertion
-    function esc(str) {
-      const d = document.createElement('div')
-      d.textContent = str
-      return d.innerHTML
-    }
-
     // safeUrl is provided by the auto-bundled lib (src/lib/utils.js) at an
     // enclosing scope — it adds zero-width/control-char stripping (_INVISIBLE_RE)
     // this file's old local copy lacked. Do NOT re-add a local one: it would
@@ -9854,6 +9847,7 @@
         matched++
       }
     })
+    if (matched > 0) log(` ✅ Reapplied cosmetic badges to ${matched} messages`)
   }
 
   // Fetch BTTV/FFZ/Chatterino badge maps from background.
@@ -11478,6 +11472,9 @@
                 })
                 .catch((err) => {
                   if (!extensionContextValid) return
+                  // A real (non-teardown) failure must not vanish silently —
+                  // sibling handlers on this path log/toast (see ~10807).
+                  warn(' ⚠️ Emote broadcast error:', err)
                 })
             }
           })

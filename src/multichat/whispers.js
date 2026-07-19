@@ -586,9 +586,9 @@ function renderWhispersTab() {
     const tsHtml = ts ? `<span class="hs-mc-ts">${ts}</span>` : ''
     const platColor = m.platform === 'twitch' ? '#9146ff' : '#808080'
     const platTag = m.platform === 'twitch' ? 'T' : 'H'
-    const arrow = m.self ? '\u2192' : '\u2190'
 
-    // Show sender -> recipient for both directions
+    // Show sender -> recipient for both directions (the links below swap by
+    // m.self, so the separator itself is direction-free on purpose)
     const target = whisperUsers.get(m.key)
     const me = currentUsername || 'you'
     const myColor = sanitizeColor(selfWhisperColor || '#fff')

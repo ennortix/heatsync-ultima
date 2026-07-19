@@ -4068,7 +4068,7 @@
     if (!results.length) {
       const empty = document.createElement('div')
       empty.className = 'hs-mc-search-empty'
-      empty.textContent = 'no results'
+      empty.textContent = query ? `no results for "${query}"` : 'no results'
       msgsEl.appendChild(empty)
       return
     }

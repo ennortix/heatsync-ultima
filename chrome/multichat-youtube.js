@@ -31802,7 +31802,6 @@ let activeThread = null // { id, op, replies[] } — when set, feed shows thread
 let replyState = null // { msgId, user, channel } when replying to a message
 let hsAuthToken = null // Heatsync auth state (loaded from storage)
 let hsCurrentUsername = null // Heatsync username (loaded from storage user_info)
-let hsCurrentUserId = null // Heatsync numeric user id (for reaction matching)
 
 // Load + watch heatsync username for own-post detection (edit/delete UI)
 async function loadHsUsername() {
@@ -31810,7 +31809,6 @@ async function loadHsUsername() {
     const data = await api.storage.local.get('user_info')
     const ui = data?.user_info
     hsCurrentUsername = ui?.username?.toLowerCase() || null
-    hsCurrentUserId = ui?.id ? String(ui.id) : null
     // Cross-platform mention aliases: any name across Twitch/Kick/YT counts as
     // a mention of the user, even if the chat is on a different platform.
     // ui.username (heatsync core name) is always included so bare-name mentions
@@ -31826,7 +31824,6 @@ async function loadHsUsername() {
     primeSelfHsCosmetics(ui)
   } catch (e) {
     hsCurrentUsername = null
-    hsCurrentUserId = null
   }
 }
 function isOwnFeedPost(m) {
@@ -31967,7 +31964,6 @@ async function loadHsAuth() {
       if (changes.user_info) {
         const ui = changes.user_info.newValue
         hsCurrentUsername = ui?.username?.toLowerCase() || null
-        hsCurrentUserId = ui?.id ? String(ui.id) : null
         mentionAliases = new Set()
         if (ui?.username) mentionAliases.add(ui.username.toLowerCase())
         if (ui?.kick_username) mentionAliases.add(ui.kick_username.toLowerCase())
@@ -35552,9 +35548,9 @@ function renderWhispersTab() {
     const tsHtml = ts ? `<span class="hs-mc-ts">${ts}</span>` : ''
     const platColor = m.platform === 'twitch' ? '#9146ff' : '#808080'
     const platTag = m.platform === 'twitch' ? 'T' : 'H'
-    const arrow = m.self ? '\u2192' : '\u2190'
 
-    // Show sender -> recipient for both directions
+    // Show sender -> recipient for both directions (the links below swap by
+    // m.self, so the separator itself is direction-free on purpose)
     const target = whisperUsers.get(m.key)
     const me = currentUsername || 'you'
     const myColor = sanitizeColor(selfWhisperColor || '#fff')
@@ -50535,11 +50531,6 @@ function _renderFilterRuleRow(r) {
   var val = r.match && r.match.value ? escapeHtml(String(r.match.value)) : ''
   var aLabel = r.action === 'hide' ? 'hide' : 'hl'
   var aColor = r.action === 'highlight' && r.color ? escapeHtml(r.color) : ''
-  var swatch = aColor
-    ? '<span style="display:inline-block;width:10px;height:10px;background:' +
-      aColor +
-      ';border:1px solid #444;vertical-align:middle;margin-left:2px"></span>'
-    : ''
   var scopeLabel = r.scope && r.scope !== 'all' ? escapeHtml(String(r.scope)) : 'all'
   var id = escapeHtml(String(r.id))
   return (
@@ -57114,7 +57105,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     if (!results.length) {
       const empty = document.createElement('div')
       empty.className = 'hs-mc-search-empty'
-      empty.textContent = 'no results'
+      empty.textContent = query ? `no results for "${query}"` : 'no results'
       msgsEl.appendChild(empty)
       return
     }

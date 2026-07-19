@@ -656,11 +656,6 @@ function _renderFilterRuleRow(r) {
   var val = r.match && r.match.value ? escapeHtml(String(r.match.value)) : ''
   var aLabel = r.action === 'hide' ? 'hide' : 'hl'
   var aColor = r.action === 'highlight' && r.color ? escapeHtml(r.color) : ''
-  var swatch = aColor
-    ? '<span style="display:inline-block;width:10px;height:10px;background:' +
-      aColor +
-      ';border:1px solid #444;vertical-align:middle;margin-left:2px"></span>'
-    : ''
   var scopeLabel = r.scope && r.scope !== 'all' ? escapeHtml(String(r.scope)) : 'all'
   var id = escapeHtml(String(r.id))
   return (

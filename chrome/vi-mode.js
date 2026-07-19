@@ -1059,7 +1059,7 @@
         pushUndo(el)
         // Apply the same diff: find what was at beforeCursor, replace with the change
         const currentText = getText(el)
-        const { beforeText, afterText, beforeCursor: bc } = lastEdit
+        const { beforeText, afterText } = lastEdit
         // Compute the inserted text (what was added in the edit)
         // Simple diff: find common prefix/suffix between before and after
         let prefixLen = 0

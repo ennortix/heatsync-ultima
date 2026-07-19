@@ -909,7 +909,6 @@ async function _maybeTriggerCrossFollowDrain(tabId) {
 browser.tabs.onRemoved.addListener((tabId) => {
   _drainAttempted.delete(tabId)
 })
-let current7TVEmoteSetId = null // Track current 7TV emote set ID for EventAPI
 const seventvEmoteSetIds = new Map() // channelName → 7TV emote set ID
 let blockedEmotes = new Set()
 let localBlockedEmotes = new Set() // Local blocks for anonymous users
@@ -2251,7 +2250,7 @@ async function fetchUserInfo() {
 
     const userInfo = {
       // Identity ids — the paint/colour/tenure lookups are keyed by them
-      // (primeSelfHsCosmetics), and social.js's hsCurrentUserId reads .id.
+      // (primeSelfHsCosmetics).
       id: user.id != null ? String(user.id) : '',
       twitch_id: user.twitch_id != null ? String(user.twitch_id) : '',
       kick_id: user.kick_id != null ? String(user.kick_id) : '',
@@ -3513,7 +3512,6 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
     // Store 7TV set ID per channel and subscribe on shared EventAPI connection
     if (sevenTVSetId) {
       seventvEmoteSetIds.set(key, sevenTVSetId)
-      current7TVEmoteSetId = sevenTVSetId
       subscribe7TVEmoteSet(sevenTVSetId)
       start7TVPolling()
       // Persist so all channels survive service worker restart
@@ -4464,7 +4462,6 @@ async function poll7TVEmoteSet() {
       if (emoteSet.id !== knownSetId) {
         log(' 7TV Poll: Emote set ID changed for', channelName, ':', knownSetId, '→', emoteSet.id)
         seventvEmoteSetIds.set(key, emoteSet.id)
-        if (channelName === getActiveChannelOwner()) current7TVEmoteSetId = emoteSet.id
         subscribe7TVEmoteSet(emoteSet.id)
       }
 

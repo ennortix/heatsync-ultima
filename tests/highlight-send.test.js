@@ -139,30 +139,28 @@ describe('sendHighlightedTwitchMessage', () => {
     expect(await send('1', 'hi', null, null)).toEqual({ error: 'INSUFFICIENT_BITS' })
   })
 
-  test('proxy throw → raw fetch fallback still delivers', async () => {
-    let fetched = false
+  test('mutation is sent through the MAIN-world proxy as a rawQuery (integrity)', async () => {
+    let opts
     const send = makeSender({
-      gqlProxy: async () => {
-        throw new Error('no hash')
-      },
-      fetchImpl: async () => {
-        fetched = true
-        return { ok: true, json: async () => ({ data: { sendHighlightedChatMessage: { balance: 400, error: null } } }) }
+      gqlProxy: async (op, vars, o) => {
+        opts = o
+        return { data: { sendHighlightedChatMessage: { balance: 1, error: null } } }
       },
     })
-    const r = await send('1', 'hi', null, null)
-    expect(fetched).toBe(true)
-    expect(r).toEqual({ ok: true, balance: 400 })
+    await send('1', 'hi', null, null)
+    // rawQuery must be present and start with `mutation` so the MAIN-world
+    // injector mints Client-Integrity — a bare isolated fetch fails integrity.
+    expect(opts?.rawQuery).toBeTruthy()
+    expect(/^\s*mutation\b/i.test(opts.rawQuery)).toBe(true)
   })
 
-  test('raw fetch HTTP error → {error HTTP nnn}', async () => {
+  test('proxy error surfaces as {error} (no integrity-blind fallback)', async () => {
     const send = makeSender({
       gqlProxy: async () => {
-        throw new Error('boom')
+        throw new Error('failed integrity check')
       },
-      fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }),
     })
-    expect(await send('1', 'hi', null, null)).toEqual({ error: 'HTTP 503' })
+    expect(await send('1', 'hi', null, null)).toEqual({ error: 'failed integrity check' })
   })
 
   test('kill switch (disabled includes highlight_send) refuses without spending', async () => {

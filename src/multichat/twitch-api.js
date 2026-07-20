@@ -2825,33 +2825,18 @@ async function sendHighlightedTwitchMessage(channelId, message, nonce, replyPare
     if (err) return { error: err.code || 'highlight failed' }
     return { ok: true, balance: payload?.balance ?? null }
   }
+  // MUST go through the MAIN-world proxy: mutations require a Client-Integrity
+  // token, which only the MAIN-world injector can mint (it also auto-refreshes +
+  // retries once on integrity failure). A direct isolated-world fetch has no
+  // integrity → "failed integrity check". Twitch's own client never fires this
+  // op, so no persisted-query hash is captured; we send the full mutation as a
+  // rawQuery (the proxy detects the leading `mutation` and mints integrity).
+  const RAW_QUERY = `mutation SendHighlightedChatMessage($input: SendHighlightedChatMessageInput!) {
+    sendHighlightedChatMessage(input: $input) { balance error { code } }
+  }`
   try {
-    // Proxy first — reuses the captured persisted-query hash + Client-Integrity.
-    try {
-      const data = await gqlProxy('SendHighlightedChatMessage', { input })
-      return readResult(Array.isArray(data) ? data[0] : data)
-    } catch (proxyErr) {
-      console.warn('[hs] highlight gql proxy failed, raw fallback:', proxyErr?.message || proxyErr)
-      const resp = await fetch(TWITCH_GQL, {
-        method: 'POST',
-        headers: {
-          'Client-Id': TWITCH_CLIENT_ID,
-          'Content-Type': 'application/json',
-          Authorization: `OAuth ${token}`,
-        },
-        body: JSON.stringify({
-          query: `mutation($input: SendHighlightedChatMessageInput!) {
-            sendHighlightedChatMessage(input: $input) {
-              balance
-              error { code }
-            }
-          }`,
-          variables: { input },
-        }),
-      })
-      if (!resp.ok) return { error: `HTTP ${resp.status}` }
-      return readResult(await resp.json())
-    }
+    const data = await gqlProxy('SendHighlightedChatMessage', { input }, { rawQuery: RAW_QUERY })
+    return readResult(Array.isArray(data) ? data[0] : data)
   } catch (e) {
     return { error: e.message }
   }

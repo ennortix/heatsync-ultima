@@ -30457,14 +30457,45 @@ function _isHighlightSendKilled() {
   }
 }
 
+// The highlight power-up's Bits cost is per-channel and can move with surge
+// pricing, so it must be read live and passed in the input (SendHighlightedChat-
+// MessageInput.cost is required — omitting it fails with "Variable cost").
+// Path confirmed from the live client: user.channel.communityPointsSettings
+// .automaticRewards[] where type === 'SEND_HIGHLIGHTED_MESSAGE'. Cached briefly
+// so a burst of highlights doesn't re-query per send.
+const _highlightCostCache = new Map() // channelId -> { cost, ts }
+async function fetchHighlightCost(channelId) {
+  if (!channelId) return null
+  const cached = _highlightCostCache.get(String(channelId))
+  if (cached && Date.now() - cached.ts < 60000) return cached.cost
+  try {
+    const data = await twitchGql(
+      `{ user(id: "${String(channelId).replace(/[^0-9]/g, '')}") { channel { communityPointsSettings { automaticRewards { type cost } } } } }`,
+    )
+    const rewards = data?.data?.user?.channel?.communityPointsSettings?.automaticRewards || []
+    const hl = rewards.find((r) => r && /HIGHLIGHT/.test(r.type || ''))
+    const cost = typeof hl?.cost === 'number' ? hl.cost : null
+    if (cost != null) {
+      if (_highlightCostCache.size > 100) _highlightCostCache.clear()
+      _highlightCostCache.set(String(channelId), { cost, ts: Date.now() })
+    }
+    return cost
+  } catch {
+    return null
+  }
+}
+
 async function sendHighlightedTwitchMessage(channelId, message, nonce, replyParentId) {
   if (_isHighlightSendKilled()) return { error: 'highlight disabled by server' }
   const token = getTwitchAuthToken()
   if (!token) return { error: 'not logged in' }
   if (!channelId) return { error: 'channel not resolved' }
+  const cost = await fetchHighlightCost(channelId)
+  if (cost == null) return { error: 'highlight unavailable on this channel' }
   const input = {
     channelID: String(channelId),
     message,
+    cost,
     nonce: nonce || crypto.randomUUID(),
     transactionID: crypto.randomUUID(),
   }

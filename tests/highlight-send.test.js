@@ -30,22 +30,32 @@ const body = slice('function _isHighlightSendKilled(', '// Best-effort Bits bala
 
 // Build a runnable factory. Deps are injected as params so each test controls
 // the environment (proxy result, token, health flags) without globals leaking.
-function makeSender({ health = null, token = 'tok', gqlProxy, fetchImpl } = {}) {
+// Default cost-lookup response: the highlight power-up costs 100 bits.
+const costReply = (cost = 100) => ({
+  data: {
+    user: { channel: { communityPointsSettings: { automaticRewards: [{ type: 'SEND_HIGHLIGHTED_MESSAGE', cost }] } } },
+  },
+})
+
+function makeSender({ health = null, token = 'tok', gqlProxy, fetchImpl, twitchGql } = {}) {
   const factory = new Function(
     'window',
     'getTwitchAuthToken',
     'gqlProxy',
+    'twitchGql',
     'fetch',
     'crypto',
     'console',
+    'Date',
     'TWITCH_GQL',
     'TWITCH_CLIENT_ID',
-    `${body}\nreturn sendHighlightedTwitchMessage`,
+    `${body}\nreturn { sendHighlightedTwitchMessage, fetchHighlightCost }`,
   )
-  return factory(
+  const api = factory(
     { __hsHealth: health },
     () => token,
     gqlProxy || (async () => ({ data: { sendHighlightedChatMessage: { balance: 500, error: null } } })),
+    twitchGql || (async () => costReply(100)),
     fetchImpl ||
       (async () => ({
         ok: true,
@@ -53,9 +63,11 @@ function makeSender({ health = null, token = 'tok', gqlProxy, fetchImpl } = {}) 
       })),
     { randomUUID: () => 'uuid-fixed' },
     { warn() {} },
+    Date,
     'https://gql.twitch.tv/gql',
     'kimne78kx3ncx6brgo4mv6wki5h1ko',
   )
+  return api.sendHighlightedTwitchMessage
 }
 
 describe('sendHighlightedTwitchMessage', () => {
@@ -72,11 +84,38 @@ describe('sendHighlightedTwitchMessage', () => {
     expect(captured.op).toBe('SendHighlightedChatMessage')
     expect(captured.vars.input.channelID).toBe('12345')
     expect(captured.vars.input.message).toBe('hello world')
+    // cost (required by SendHighlightedChatMessageInput) is fetched + injected
+    expect(captured.vars.input.cost).toBe(100)
     // nonce + transactionID are always populated (dedup + idempotency)
     expect(captured.vars.input.nonce).toBeTruthy()
     expect(captured.vars.input.transactionID).toBeTruthy()
     // no reply → no replyParentMessageID key
     expect('replyParentMessageID' in captured.vars.input).toBe(false)
+  })
+
+  test('cost is read live from the channel power-up (surge-aware) and passed', async () => {
+    let captured
+    const send = makeSender({
+      twitchGql: async () => costReply(250), // channel with a 250-bit highlight
+      gqlProxy: async (op, vars) => (
+        (captured = vars), { data: { sendHighlightedChatMessage: { balance: 9, error: null } } }
+      ),
+    })
+    await send('42', 'hi', null, null)
+    expect(captured.input.cost).toBe(250)
+  })
+
+  test('channel with no highlight power-up → refuses before any spend', async () => {
+    let proxyCalled = false
+    const send = makeSender({
+      twitchGql: async () => ({ data: { user: { channel: { communityPointsSettings: { automaticRewards: [] } } } } }),
+      gqlProxy: async () => {
+        proxyCalled = true
+        return {}
+      },
+    })
+    expect(await send('42', 'hi', null, null)).toEqual({ error: 'highlight unavailable on this channel' })
+    expect(proxyCalled).toBe(false)
   })
 
   test('reply id is threaded into the input', async () => {

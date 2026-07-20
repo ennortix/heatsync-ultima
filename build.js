@@ -144,6 +144,40 @@ function checkMultichatCleanupBinding() {
       `build: multichat calls cleanup.${[...missing].join('/')}() but bootstrap's cleanup doesn't define it`,
     )
   }
+  checkBootstrapOrphanedRenames(mcDir, bootstrap)
+}
+
+// Companion guard, generalized: bootstrap.js declares the multichat block's
+// shared singletons (cleanup, hsSched, log, …). A lint autofix that prefixes
+// one with `_` (biome's unused/shadow rules did this to cleanup + hsSched + log
+// on 2026-07-19) leaves every consumer referencing the OLD bare name — which
+// either throws ReferenceError at load or silently resolves to a same-named
+// src/lib export with different behavior. Neither is caught by syntax checks.
+// Rule: if bootstrap declares `_foo` at top level and any other multichat
+// module still references bare `foo`, the rename orphaned its callers.
+function checkBootstrapOrphanedRenames(mcDir, bootstrap) {
+  const underscored = new Set()
+  for (const m of bootstrap.matchAll(/^(?:const|let|var|function|class)\s+_([A-Za-z0-9$][A-Za-z0-9_$]*)/gm)) {
+    underscored.add(m[1])
+  }
+  if (!underscored.size) return
+  const orphans = []
+  for (const file of MULTICHAT_MODULES.concat(['main.js', 'twitch-host.js', 'kick-host.js', 'youtube-host.js'])) {
+    if (file === 'bootstrap.js') continue
+    const p = join(mcDir, file)
+    if (!existsSync(p)) continue
+    const src = readFileSync(p, 'utf8')
+    for (const name of underscored) {
+      // bare `name.` / `name(` usage, not preceded by `.` or `_`
+      const re = new RegExp(`(?<![.\\w$])${name}\\s*[.(]`)
+      if (re.test(src)) orphans.push(`${name} (used in ${file}, but bootstrap declares _${name})`)
+    }
+  }
+  if (orphans.length) {
+    throw new Error(
+      `build: bootstrap.js rename orphaned its callers — a lint autofix likely added the underscore:\n  ${orphans.join('\n  ')}`,
+    )
+  }
 }
 
 function checkScopeCollisions() {

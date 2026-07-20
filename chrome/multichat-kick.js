@@ -5809,7 +5809,7 @@ function buildPlusTenureToken(since) {
 // Bootstrap - lifecycle controller, cleanup utilities, debug log
 
 const MC_DEBUG = false
-function _log(...args) {
+function log(...args) {
   if (MC_DEBUG) console.log(LOG_PREFIX, ...args)
 }
 
@@ -6677,7 +6677,7 @@ function _hsPerfWrap(fn, ms, kind) {
 // panel. Identical contract to content.js side: budget-yield chunking, pause
 // while user is actively scrolling, scheduler.postTask priority. Keeps a
 // 5-channel hydration from holding the main thread > ~4ms per slice.
-const _hsSched = (() => {
+const hsSched = (() => {
   let _scrollIdle = true
   let _scrollIdleTimer = null
   const markBusy = () => {

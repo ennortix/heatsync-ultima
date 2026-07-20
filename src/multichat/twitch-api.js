@@ -2748,6 +2748,99 @@ async function redeemChannelReward(channelId, rewardId, cost, title, textInput) 
   }
 }
 
+// ═══ Highlight My Message (Bits power-up) ═══
+// Twitch retired the channel-points "Highlight My Message" reward and replaced
+// it with a Bits power-up. The send is a single GQL mutation that posts the
+// message AND applies the highlight, deducting the power-up's Bits cost from
+// the user's balance. Op shape reconstructed from the live web client's
+// operation document: mutation SendHighlightedChatMessage($input:
+// SendHighlightedChatMessageInput!) { sendHighlightedChatMessage(input) {
+// balance error { code } } }. Input mirrors the normal send (channelID,
+// message, nonce, replyParentMessageID) plus a client transactionID, same as
+// redeemChannelReward. The highlighted message still echoes back through the
+// normal IRC read socket, so the composer's pending-send tracker confirms
+// delivery exactly like a plain send — we must NOT also PRIVMSG it (dupe).
+//
+// This spends the USER's own Bits (which they pre-purchased) on the platform's
+// own feature — the same category as our existing prediction-betting and
+// points-redemption. It is server-kill-switchable via __hsHealth.disabled
+// containing 'highlight_send' so a hash/schema break can be neutralized
+// without an extension update.
+function _isHighlightSendKilled() {
+  try {
+    const h = (typeof window !== 'undefined' && window.__hsHealth) || null
+    return !!(h && (h.kill || (Array.isArray(h.disabled) && h.disabled.includes('highlight_send'))))
+  } catch {
+    return false
+  }
+}
+
+async function sendHighlightedTwitchMessage(channelId, message, nonce, replyParentId) {
+  if (_isHighlightSendKilled()) return { error: 'highlight disabled by server' }
+  const token = getTwitchAuthToken()
+  if (!token) return { error: 'not logged in' }
+  if (!channelId) return { error: 'channel not resolved' }
+  const input = {
+    channelID: String(channelId),
+    message,
+    nonce: nonce || crypto.randomUUID(),
+    transactionID: crypto.randomUUID(),
+  }
+  if (replyParentId) input.replyParentMessageID = replyParentId
+  const readResult = (d) => {
+    if (d?.errors?.length) return { error: d.errors[0].message }
+    const payload = d?.data?.sendHighlightedChatMessage
+    const err = payload?.error
+    if (err) return { error: err.code || 'highlight failed' }
+    return { ok: true, balance: payload?.balance ?? null }
+  }
+  try {
+    // Proxy first — reuses the captured persisted-query hash + Client-Integrity.
+    try {
+      const data = await gqlProxy('SendHighlightedChatMessage', { input })
+      return readResult(Array.isArray(data) ? data[0] : data)
+    } catch (proxyErr) {
+      console.warn('[hs] highlight gql proxy failed, raw fallback:', proxyErr?.message || proxyErr)
+      const resp = await fetch(TWITCH_GQL, {
+        method: 'POST',
+        headers: {
+          'Client-Id': TWITCH_CLIENT_ID,
+          'Content-Type': 'application/json',
+          Authorization: `OAuth ${token}`,
+        },
+        body: JSON.stringify({
+          query: `mutation($input: SendHighlightedChatMessageInput!) {
+            sendHighlightedChatMessage(input: $input) {
+              balance
+              error { code }
+            }
+          }`,
+          variables: { input },
+        }),
+      })
+      if (!resp.ok) return { error: `HTTP ${resp.status}` }
+      return readResult(await resp.json())
+    }
+  } catch (e) {
+    return { error: e.message }
+  }
+}
+
+// Best-effort Bits balance for the composer's highlight affordance. Read-only;
+// null on any failure (the button still works — the send surfaces a real error
+// if the balance is short).
+async function fetchTwitchBitsBalance() {
+  const token = getTwitchAuthToken()
+  if (!token) return null
+  try {
+    const data = await twitchGql('{ currentUser { bitsBalance } }')
+    const bal = data?.data?.currentUser?.bitsBalance
+    return typeof bal === 'number' ? bal : null
+  } catch {
+    return null
+  }
+}
+
 async function claimCommunityPoints(claimId, channelId, channelLogin) {
   const token = getTwitchAuthToken()
   if (!token) return false

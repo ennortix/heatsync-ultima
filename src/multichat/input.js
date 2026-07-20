@@ -854,6 +854,7 @@ const SLASH_COMMANDS = [
   { cmd: 'status', args: '[channel]', desc: 'show chat modes + stream info' },
   { cmd: 'help', args: '', desc: 'list commands' },
   { cmd: 'me', args: '<action>', desc: 'twitch/kick action message' },
+  { cmd: 'highlight', args: '<msg>', desc: 'highlight your message (twitch bits power-up)' },
   { cmd: 'ban', args: '<user>', desc: 'twitch/kick ban (mod)' },
   { cmd: 'timeout', args: '<user> [secs]', desc: 'twitch/kick timeout (mod)' },
   { cmd: 'unban', args: '<user>', desc: 'twitch/kick unban (mod)' },
@@ -6144,6 +6145,7 @@ const SLASH_ALIASES = {
   // sending them as text now silently no-ops, which is what caused multichat's
   // pre-fix /unban to do nothing. Aliases map all common shorthands to the
   // canonical command.
+  hl: 'highlight',
   b: 'ban',
   to: 'timeout',
   untimeout: 'unban',
@@ -6695,6 +6697,52 @@ async function handleSlashCommand(text, input) {
     return true
   }
 
+  if (cmd === 'highlight') {
+    // Highlight My Message — twitch Bits power-up. Posts the message AND
+    // applies the highlight in one GQL mutation, spending the user's own Bits
+    // (same category as our prediction-betting / points-redemption). Twitch-only
+    // (kick/youtube have no equivalent); the highlighted message echoes back
+    // through the normal IRC read socket, so we do NOT also PRIVMSG it.
+    const twitchLogin = _twitchModName || (currentTab === 'live' ? getLiveChannel() : null) || getActiveTwitchChannel()
+    if (!twitchLogin) {
+      showToast(t('mc_input_highlight_needs_twitch') || '/highlight needs a twitch channel tab', 'error')
+      return true
+    }
+    const message = rest.trim()
+    if (!message) {
+      showToast(t('mc_input_usage_highlight') || '/highlight <message>', 'error')
+      return true
+    }
+    if (!getTwitchAuthToken()) {
+      showToast(t('mc_input_highlight_login') || 'log into twitch.tv first', 'error')
+      return true
+    }
+    const channelId = await resolveTwitchChannelId(twitchLogin)
+    if (!channelId) {
+      showToast(t('mc_input_highlight_no_channel') || 'could not resolve channel', 'error')
+      return true
+    }
+    const replyParentId = replyState?.msgId || null
+    const r = await sendHighlightedTwitchMessage(channelId, message, null, replyParentId)
+    if (r?.ok) {
+      clearInput(input)
+      if (typeof replyState !== 'undefined' && replyState) clearReplyState()
+      if (typeof r.balance === 'number') {
+        showToast(
+          t('mc_input_highlight_sent', [formatPoints(r.balance)]) || `highlighted · ${r.balance} bits left`,
+          'success',
+        )
+      }
+      armComposerStickyFocus(input)
+    } else {
+      showToast(
+        t('mc_input_highlight_failed', [r?.error || 'unknown']) || `highlight failed: ${r?.error || 'unknown'}`,
+        'error',
+      )
+    }
+    return true
+  }
+
   if (
     cmd === 'announce' ||
     cmd === 'announceblue' ||
@@ -6900,6 +6948,7 @@ const SLASH_HELP_LINES = [
   '/unique                — unique-chat/r9k ("/unique off")',
   '',
   '/announce <msg>        — announcement (blue/green/orange/purple variants)',
+  '/highlight <msg>       — highlight your message (twitch bits power-up, /hl)',
   '/testnotices           — render every event type locally (dev)',
   '',
   '/me /color and chat pass through to twitch & kick.',

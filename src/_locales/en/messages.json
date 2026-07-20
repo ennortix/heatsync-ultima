@@ -1948,6 +1948,34 @@
   "mc_input_usage_op": {
     "message": "usage: /op <text>"
   },
+  "mc_input_highlight_needs_twitch": {
+    "message": "/highlight needs a twitch channel tab"
+  },
+  "mc_input_usage_highlight": {
+    "message": "/highlight <message>"
+  },
+  "mc_input_highlight_login": {
+    "message": "log into twitch.tv first"
+  },
+  "mc_input_highlight_no_channel": {
+    "message": "could not resolve channel"
+  },
+  "mc_input_highlight_sent": {
+    "message": "highlighted · $BALANCE$ bits left",
+    "placeholders": {
+      "balance": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_highlight_failed": {
+    "message": "highlight failed: $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
   "mc_input_usage_r": {
     "message": "usage: /r <message>"
   },

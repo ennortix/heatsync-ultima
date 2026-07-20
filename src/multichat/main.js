@@ -1346,6 +1346,48 @@
       }
     })
   }
+  // Identity switched on heatsync.org (login, logout, account switch). Every
+  // render decision that depends on WHO YOU ARE just went stale in this tab:
+  // honest-wysiwyg judges your own messages against hsSenderKeys, and
+  // viewerPersonalEmotes still holds the PREVIOUS account's set. Nothing
+  // invalidated either, so a tab left open across a switch kept painting your
+  // own emotes as plain text until it was manually reloaded. Switching is rare
+  // and the repaint is cheap, so invalidate everything rather than reason about
+  // which rows care. The repaint waits on loadEmotes(), which also gives
+  // social.js's storage listener time to install the new hsSenderKeys.
+  function repaintForIdentityChange() {
+    const patchBuf = (buf) => {
+      if (!buf || typeof buf[Symbol.iterator] !== 'function') return
+      for (const m of buf) {
+        if (m) m._renderedHtml = null
+      }
+    }
+    if (typeof irc !== 'undefined' && irc?.channels) {
+      for (const ch of irc.channels.keys()) patchBuf(irc.getMessages(ch))
+    }
+    if (typeof kickChat !== 'undefined' && kickChat?.channels) {
+      for (const ch of kickChat.channels.keys()) patchBuf(kickChat.getMessages(ch))
+    }
+    if (typeof channelYtMessages !== 'undefined') channelYtMessages.forEach(patchBuf)
+    if (typeof mentionsBuffer !== 'undefined') patchBuf(mentionsBuffer)
+    // Drawn rows outlive their buffer after an SPA nav — reach them through the
+    // _hsMsg back-ref or they stay frozen forever (see upgradeMessagesForSenders).
+    const _msgsElId = document.getElementById('hs-mc-messages')
+    if (_msgsElId) {
+      for (const div of _msgsElId.querySelectorAll('.hs-mc-msg')) {
+        if (div._hsMsg) div._hsMsg._renderedHtml = null
+      }
+    }
+    const _repaint = () => {
+      try {
+        renderMessages(currentTab)
+      } catch (_) {}
+    }
+    Promise.resolve(typeof loadEmotes === 'function' ? loadEmotes() : null)
+      .then(_repaint)
+      .catch(_repaint)
+  }
+
   function upgradeMessagesForSenders(senderKeys, opts) {
     if (!senderKeys?.length) return
     for (const k of senderKeys) _pendingUpgradeKeys.add(k)
@@ -11966,6 +12008,16 @@
           compileFilterRules(Array.isArray(rules) ? rules : [])
           renderMessages(currentTab)
           if (currentTab === 'settings') renderSettingsTab()
+        }
+      }
+
+      // Identity switch — compare the fields render decisions actually read, so
+      // an unrelated user_info refresh (avatar, heat) doesn't force a repaint.
+      if (changes.user_info) {
+        const _identityOf = (v) => `${JSON.stringify(v?.sender_keys ?? null)}|${v?.username ?? ''}`
+        if (_identityOf(changes.user_info.oldValue) !== _identityOf(changes.user_info.newValue)) {
+          log('identity changed — repainting rows for the new account')
+          repaintForIdentityChange()
         }
       }
 

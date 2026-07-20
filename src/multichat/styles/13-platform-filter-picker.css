@@ -59,12 +59,12 @@
        = what you SEE, fill = where you SEND. This styling split (plus
        location) is what disambiguates the twin T K Y clusters now that the
        'show:'/'send:' text labels are gone. */
-    .hs-mc-pf-btn.hs-mc-pf-twitch { border-color: #9146ff !important; background: transparent !important; color: #9146ff !important; }
-    .hs-mc-pf-btn.hs-mc-pf-kick { border-color: #53fc18 !important; background: transparent !important; color: #53fc18 !important; }
+    .hs-mc-pf-btn.hs-mc-pf-twitch { border-color: var(--hs-plat-twitch) !important; background: transparent !important; color: var(--hs-plat-twitch) !important; }
+    .hs-mc-pf-btn.hs-mc-pf-kick { border-color: var(--hs-plat-kick) !important; background: transparent !important; color: var(--hs-plat-kick) !important; }
     .hs-mc-pf-btn.hs-mc-pf-youtube {
-      border-color: #ff0000 !important;
+      border-color: var(--hs-plat-youtube) !important;
       background: transparent !important;
-      color: #ff0000 !important;
+      color: var(--hs-plat-youtube) !important;
     }
     /* OFF state — dim border + dim letter; the cue is losing the platform
        color entirely. */
@@ -109,9 +109,9 @@
       min-width: 14px;
       text-align: center;
     }
-    .hs-mc-st-btn.hs-mc-st-twitch { border-color: #9146ff !important; background: #9146ff !important; color: #fff !important; }
-    .hs-mc-st-btn.hs-mc-st-kick { border-color: #53fc18 !important; background: #53fc18 !important; color: #000 !important; }
-    .hs-mc-st-btn.hs-mc-st-youtube { border-color: #ff0000 !important; background: #ff0000 !important; color: #fff !important; }
+    .hs-mc-st-btn.hs-mc-st-twitch { border-color: var(--hs-plat-twitch) !important; background: var(--hs-plat-twitch) !important; color: #fff !important; }
+    .hs-mc-st-btn.hs-mc-st-kick { border-color: var(--hs-plat-kick) !important; background: var(--hs-plat-kick) !important; color: #000 !important; }
+    .hs-mc-st-btn.hs-mc-st-youtube { border-color: var(--hs-plat-youtube) !important; background: var(--hs-plat-youtube) !important; color: #fff !important; }
     .hs-mc-st-btn.off {
       background: #000 !important;
       color: #fff !important;
@@ -342,11 +342,11 @@
     .hs-mc-src-chip[data-src="7tv"]  { color: #29d8f6; border-color: rgba(41,216,246,0.5); }
     .hs-mc-src-chip[data-src="bttv"] { color: #d50014; border-color: rgba(213,0,20,0.5); }
     .hs-mc-src-chip[data-src="ffz"]  { color: #0086c8; border-color: rgba(0,134,200,0.5); }
-    .hs-mc-src-chip[data-src="hs"]   { color: #ff8700; border-color: rgba(255,135,0,0.5); }
+    .hs-mc-src-chip[data-src="hs"]   { color: var(--hs-plat-hs); border-color: rgba(255,135,0,0.5); }
     .hs-mc-src-chip.active[data-src="7tv"]  { background: #29d8f6; color: #000; border-color: #29d8f6; }
     .hs-mc-src-chip.active[data-src="bttv"] { background: #d50014; color: #fff; border-color: #d50014; }
     .hs-mc-src-chip.active[data-src="ffz"]  { background: #0086c8; color: #fff; border-color: #0086c8; }
-    .hs-mc-src-chip.active[data-src="hs"]   { background: #ff8700; color: #000; border-color: #ff8700; }
+    .hs-mc-src-chip.active[data-src="hs"]   { background: var(--hs-plat-hs); color: #000; border-color: var(--hs-plat-hs); }
     .hs-mc-src-chip:hover { background: #fff !important; color: #000 !important; border-color: #fff !important; }
     /* Exact-match filter chip — orange (HeatSync) accent, distinct from the
        brand-colored provider chips. Same square metrics. */

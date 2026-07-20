@@ -621,8 +621,8 @@
       }
 
       .heatsync-settings-cog.hs-flash-err {
-        border-color: #e53935;
-        color: #e53935;
+        border-color: #ff0000;
+        color: #ff0000;
         background: none;
       }
 
@@ -935,8 +935,8 @@
       }
 
       .heatsync-add-all-btn.added {
-        border-color: #00cc66;
-        color: #00cc66;
+        border-color: #00ff00;
+        color: #00ff00;
       }
 
       .heatsync-add-all-btn:disabled {
@@ -953,7 +953,7 @@
       }
 
       .heatsync-login-msg a {
-        color: #9147ff;
+        color: #9146ff;
         text-decoration: none;
       }
 
@@ -1079,14 +1079,14 @@
         cursor: wait;
       }
       .heatsync-set-apply-btn.applied {
-        background: #00cc66;
+        background: #00ff00;
         color: #000;
-        border-color: #00cc66;
+        border-color: #00ff00;
       }
       .heatsync-set-apply-btn.failed {
-        background: #ff4444;
+        background: #ff0000;
         color: #fff;
-        border-color: #ff4444;
+        border-color: #ff0000;
       }
 
       /* Removed emotes history list */
@@ -1167,14 +1167,14 @@
         cursor: wait;
       }
       .heatsync-restore-btn.restored {
-        background: #00cc66;
+        background: #00ff00;
         color: #000;
-        border-color: #00cc66;
+        border-color: #00ff00;
       }
       .heatsync-restore-btn.failed {
-        background: #ff4444;
+        background: #ff0000;
         color: #fff;
-        border-color: #ff4444;
+        border-color: #ff0000;
       }
 
       .heatsync-loading {
@@ -1376,7 +1376,7 @@
       .heatsync-toggle {
         width: 16px;
         height: 16px;
-        background: #cc0000;
+        background: #ff0000;
         border: none;
         border-radius: 0;
         cursor: pointer;
@@ -1386,7 +1386,7 @@
       }
 
       .heatsync-toggle.active {
-        background: #00dd00;
+        background: #00ff00;
       }
 
       /* Emote hover preview tooltip */
@@ -1437,13 +1437,13 @@
         gap: 8px;
         padding: 4px 10px;
         background: rgba(145, 71, 255, 0.15);
-        border-bottom: 1px solid #9147ff;
+        border-bottom: 1px solid #9146ff;
         color: #bf94ff;
         font-size: 13px;
       }
 
       .heatsync-auth-banner a {
-        color: #9147ff;
+        color: #9146ff;
         font-weight: 600;
         text-decoration: none;
       }
@@ -1473,7 +1473,7 @@
       .heatsync-error-msg {
         font-size: 13px;
         margin-bottom: 16px;
-        color: #ff6b6b;
+        color: #ff0000;
       }
 
       .heatsync-retry-btn {
@@ -1500,7 +1500,7 @@
         padding: 2px 6px;
         background: rgba(255, 204, 0, 0.2);
         border-radius: 0;
-        color: #ffcc00;
+        color: #ffd700;
         font-size: 10px;
         margin-left: 8px;
       }
@@ -1520,9 +1520,9 @@
         border-radius: 50%;
       }
 
-      .heatsync-status-dot.connected { background: #00cc66; }
-      .heatsync-status-dot.disconnected { background: #ffcc00; }
-      .heatsync-status-dot.error { background: #ff4444; }
+      .heatsync-status-dot.connected { background: #00ff00; }
+      .heatsync-status-dot.disconnected { background: #ffd700; }
+      .heatsync-status-dot.error { background: #ff0000; }
 
       /* Disabled add buttons when not logged in */
       .heatsync-add-all-btn.disabled {
@@ -1714,7 +1714,7 @@
         line-height: 1.4;
       }
       .hs-discover-add-btn:hover { background: #fff; color: #000; }
-      .hs-discover-add-btn.added { border-color: #00cc66; color: #00cc66; background: none; cursor: default; }
+      .hs-discover-add-btn.added { border-color: #00ff00; color: #00ff00; background: none; cursor: default; }
       .hs-discover-add-btn:disabled { opacity: 0.4; cursor: wait; }
       .hs-discover-hint {
         font-size: 10px;
@@ -2652,8 +2652,8 @@
       }
       const fail = (msg) => {
         btn.textContent = msg || 'failed'
-        btn.style.borderColor = '#ff4444'
-        btn.style.color = '#ff4444'
+        btn.style.borderColor = '#ff0000'
+        btn.style.color = '#ff0000'
         setTimeout(reset, 2000)
       }
       try {
@@ -2668,8 +2668,8 @@
         if (resp && resp.ok !== false) {
           const n = resp.data?.imported ?? resp.imported ?? resp.data?.count ?? '?'
           btn.textContent = `imported ${n}`
-          btn.style.borderColor = '#00cc66'
-          btn.style.color = '#00cc66'
+          btn.style.borderColor = '#00ff00'
+          btn.style.color = '#00ff00'
           await loadInventoryEmotes()
           fetchHistoryStatus()
           if (onSuccess) onSuccess(n)
@@ -4127,7 +4127,7 @@
           const toast = document.createElement('div')
           toast.textContent = t('common_extension_updated')
           toast.style.cssText =
-            'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#f44;color:#fff;padding:8px 16px;border-radius:0;z-index:99999;font-size:14px;'
+            'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#ff0000;color:#fff;padding:8px 16px;border-radius:0;z-index:99999;font-size:14px;'
           document.body.appendChild(toast)
           setTimeout(() => toast.remove(), 5000)
         }
@@ -4310,7 +4310,7 @@
                 const toast = document.createElement('div')
                 toast.textContent = t('common_extension_updated')
                 toast.style.cssText =
-                  'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#f44;color:#fff;padding:8px 16px;border-radius:0;z-index:99999;font-size:14px;'
+                  'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#ff0000;color:#fff;padding:8px 16px;border-radius:0;z-index:99999;font-size:14px;'
                 document.body.appendChild(toast)
                 setTimeout(() => toast.remove(), 5000)
               }
@@ -4353,7 +4353,7 @@
               const toast = document.createElement('div')
               toast.textContent = t('common_extension_updated')
               toast.style.cssText =
-                'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#f44;color:#fff;padding:8px 16px;border-radius:0;z-index:99999;font-size:14px;'
+                'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#ff0000;color:#fff;padding:8px 16px;border-radius:0;z-index:99999;font-size:14px;'
               document.body.appendChild(toast)
               setTimeout(() => toast.remove(), 5000)
             }

@@ -407,7 +407,7 @@ function refreshEmoteTooltip(emoteName, newState) {
   // (red). No orange middle tier exists anymore, so the live-resync that
   // used to chase unadded→owned ladder transitions collapses to a single
   // blocked-vs-not check.
-  const hl = newState === 'blocked' ? '#ff0000' : '#fff'
+  const hl = newState === 'blocked' ? 'var(--hs-danger)' : '#fff'
   document.body.style.setProperty('--hs-highlight-color', hl)
 }
 
@@ -512,7 +512,7 @@ function setupEmoteTooltipHandlers() {
       if (stack) {
         effectiveState = stack.querySelector('.hs-mc-emote-wrapper.hs-state-blocked') ? 'blocked' : 'normal'
       }
-      const sourceColor = effectiveState === 'blocked' ? '#ff0000' : '#fff'
+      const sourceColor = effectiveState === 'blocked' ? 'var(--hs-danger)' : '#fff'
       document.body.style.setProperty('--hs-highlight-color', sourceColor)
       queryEmoteWrappers(emoteName).forEach((w) => {
         w.classList.add('hs-emote-highlight')

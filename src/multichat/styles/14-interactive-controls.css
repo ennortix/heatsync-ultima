@@ -133,7 +133,7 @@
       background: rgba(255,255,255,0.04);
       border-radius: 0;
       padding: 8px 10px;
-      border-left: 3px solid var(--oc, #387aff);
+      border-left: 3px solid var(--oc, var(--hs-info));
     }
     .hs-mc-pred-outcome-head {
       display: flex;
@@ -149,7 +149,7 @@
     .hs-mc-pred-outcome-pct {
       font-size: 13px;
       font-weight: 700;
-      color: var(--oc, #387aff);
+      color: var(--oc, var(--hs-info));
       font-variant-numeric: tabular-nums;
     }
     .hs-mc-pred-bar-track {
@@ -161,7 +161,7 @@
     }
     .hs-mc-pred-bar-fill {
       height: 100%;
-      background: var(--oc, #387aff);
+      background: var(--oc, var(--hs-info));
       border-radius: 0;
     }
     .hs-mc-pred-outcome-stats {
@@ -263,7 +263,7 @@
     }
     .hs-mc-pred-status-resolved {
       background: rgba(0,200,100,0.15);
-      color: #00c864;
+      color: var(--hs-ok);
     }
     .hs-mc-pred-status-canceled {
       background: rgba(255,255,255,0.08);
@@ -297,12 +297,12 @@
     }
     .hs-mc-pred-result-won {
       background: rgba(0,200,100,0.12);
-      color: #00e070;
+      color: var(--hs-ok);
       border: 1px solid rgba(0,200,100,0.3);
     }
     .hs-mc-pred-result-lost {
       background: rgba(255,60,60,0.08);
-      color: #ff5050;
+      color: var(--hs-danger);
       border: 1px solid rgba(255,60,60,0.2);
     }
     .hs-mc-pred-result-refund {
@@ -320,7 +320,7 @@
 
     /* Outcome states */
     .hs-mc-pred-outcome-won {
-      border-left-color: #00c864;
+      border-left-color: var(--hs-ok);
       background: rgba(0,200,100,0.08);
     }
     .hs-mc-pred-outcome-lost {
@@ -332,7 +332,7 @@
     .hs-mc-pred-winner-badge {
       font-size: 13px;
       padding: 1px 5px;
-      background: #00c864;
+      background: var(--hs-ok);
       color: #000;
       font-weight: 700;
       text-transform: uppercase;
@@ -566,7 +566,7 @@
     .hs-mc-poll-choice-pct {
       font-size: 13px;
       font-weight: 700;
-      color: #9147ff;
+      color: var(--hs-plat-twitch);
       font-variant-numeric: tabular-nums;
       flex-shrink: 0;
       margin-left: 8px;
@@ -738,7 +738,7 @@
     .hs-mc-status-loading { font-size: 13px; color: #999; }
     .hs-mc-status-title { font-size: 13px; font-weight: 600; color: #fff; }
     .hs-mc-status-sub { font-size: 13px; margin-top: 2px; }
-    .hs-mc-status-sub.live { color: #59ff8a; }
+    .hs-mc-status-sub.live { color: var(--hs-ok); }
     .hs-mc-status-sub.off  { color: #999; }
     .hs-mc-status-streamtitle { font-size: 13px; color: #fff; margin-top: 6px; }
     .hs-mc-status-meta { font-size: 13px; color: #999; margin-top: 2px; }
@@ -751,7 +751,7 @@
     .hs-mc-status-modes { margin-top: 4px; }
     .hs-mc-status-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 13px; }
     .hs-mc-status-key { color: #ccc; }
-    .hs-mc-status-val.on  { color: #59ff8a; }
+    .hs-mc-status-val.on  { color: var(--hs-ok); }
     .hs-mc-status-val.off { color: #aaa; }
     .hs-mc-status-note { font-size: 13px; color: #aaa; margin-top: 4px; }
 
@@ -795,7 +795,7 @@
       gap: 8px;
       padding: 6px 8px;
       background: rgba(255,255,255,0.04);
-      border-left: 2px solid var(--rc, #9147ff);
+      border-left: 2px solid var(--rc, var(--hs-plat-twitch));
       cursor: pointer;
       transition: none;
     }
@@ -855,10 +855,10 @@
       outline: none;
     }
     .hs-mc-reward-input:focus {
-      border-color: #9147ff;
+      border-color: var(--hs-plat-twitch);
     }
     .hs-mc-reward-submit {
-      background: #9147ff;
+      background: var(--hs-plat-twitch);
       border: none;
       color: #fff;
       font-size: 13px;
@@ -924,11 +924,11 @@
       border-radius: 0;
     }
     .hs-mc-color-hex:focus {
-      border-color: #9147ff;
+      border-color: var(--hs-plat-twitch);
       outline: none;
     }
     .hs-mc-color-apply {
-      background: #9147ff;
+      background: var(--hs-plat-twitch);
       border: none;
       color: #fff;
       font-size: 13px;
@@ -1119,7 +1119,7 @@
     .hs-mc-toggle-pill {
       width: 16px;
       height: 16px;
-      background: #cc0000;
+      background: var(--hs-danger-dim);
       border: none;
       border-radius: 0;
       cursor: pointer;
@@ -1128,7 +1128,7 @@
       flex-shrink: 0;
     }
     .hs-mc-toggle-pill.active {
-      background: #00dd00;
+      background: var(--hs-ok);
     }
     .hs-mc-toggle-knob {
       display: none;

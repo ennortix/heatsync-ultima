@@ -829,7 +829,7 @@ function renderProfileCardView() {
     a.href = `https://twitch.tv/${encodeURIComponent(linkedTwitch)}`
     a.target = '_blank'
     a.rel = 'noopener noreferrer'
-    a.style.cssText = 'color:#9146ff;font-weight:700;text-decoration:none;'
+    a.style.cssText = 'color:var(--hs-plat-twitch);font-weight:700;text-decoration:none;'
     a.textContent = '@' + linkedTwitch
     xref.appendChild(a)
     xref.appendChild(document.createTextNode(' on twitch'))
@@ -871,7 +871,7 @@ function renderProfileCardView() {
           a.href = href
           a.target = '_blank'
           a.rel = 'noopener noreferrer'
-          a.style.cssText = 'color:#53fc18;text-decoration:none;'
+          a.style.cssText = 'color:var(--hs-plat-kick);text-decoration:none;'
           a.textContent = label
           soc.appendChild(a)
         }

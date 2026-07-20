@@ -2932,7 +2932,7 @@
       }
 
       mkItem('edit', '#fff', () => showEditChannelForm(tabId))
-      mkItem('remove', '#ff4444', () => removeChannel(tabId))
+      mkItem('remove', 'var(--hs-danger)', () => removeChannel(tabId))
 
       // Append then clamp to viewport so it doesn't overflow off-screen
       document.body.appendChild(menu)
@@ -6792,7 +6792,7 @@
       div.style.borderLeftColor = borderColor
       const tsVal = timestampsEnabled ? formatTimeFromTs(m.time) : ''
       const tsSpan = tsVal ? `<span class="hs-mc-ts">${tsVal}</span>` : ''
-      const tagColor = typeDef?.color || '#ff0000'
+      const tagColor = typeDef?.color || 'var(--hs-danger)'
       const tagLabel = isThreadOp || isOp ? '[OP]' : '[RE]'
       const typeTag = `<span class="hs-feed-tag" style="color:${tagColor};font-size:13px;margin-right:3px">${tagLabel}</span>`
       const shortId = (m.base36_id || '').replace(/^0+/, '') || '0'
@@ -6853,7 +6853,7 @@
       const label = `<span style="color:${labelColor};font-size:13px;font-weight:700;margin-right:3px">${labelText}</span>`
       const platBadge =
         m.platform === 'twitch'
-          ? '<span style="color:#9146ff;font-size:13px;font-weight:700;margin-right:3px">[T]</span>'
+          ? '<span style="color:var(--hs-plat-twitch);font-size:13px;font-weight:700;margin-right:3px">[T]</span>'
           : '<span style="color:#fff;font-size:13px;font-weight:700;margin-right:3px">[HS]</span>'
       const dmPaint = m.platform === 'twitch' ? userPaintStyle(m.userId, (m.user || '').toLowerCase(), 'twitch') : ''
       const userName = `<span style="${dmPaint || `color:${sanitizeColor(m.color)};font-weight:600`}">${escapeHtml(m.user)}</span>`
@@ -9853,7 +9853,7 @@
 
       // Red dot — all channels in picker are confirmed live
       const dot = document.createElement('span')
-      dot.style.cssText = `display:inline-block;width:6px;height:6px;border-radius:50%;background:#f00;margin-right:6px;vertical-align:middle`
+      dot.style.cssText = `display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--hs-danger);margin-right:6px;vertical-align:middle`
       item.appendChild(dot)
       item.appendChild(document.createTextNode(ch.name))
 

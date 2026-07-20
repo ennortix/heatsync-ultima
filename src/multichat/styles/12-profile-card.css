@@ -121,7 +121,7 @@
       font-size: 16px; font-weight: 700; color: #fff;
       display: flex; align-items: center; gap: 6px; line-height: 18px;
     }
-    .hs-pcard-livedot { color: #ff5050; font-size: 9px; }
+    .hs-pcard-livedot { color: var(--hs-ok); font-size: 9px; }
     /* Filled-style platform pills — mirror #hs-user-tooltip .hs-pc-platform
        so the click-card identity row looks identical to the hover tooltip. */
     .hs-pcard-pill {
@@ -131,10 +131,10 @@
       line-height: 16px;
     }
     .hs-pcard-pill:hover { background: #fff !important; color: #000 !important; border-color: #000; }
-    .hs-pcard-pill-twitch { background: #9146ff; color: #fff; }
-    .hs-pcard-pill-kick { background: #53fc18; color: #000; }
-    .hs-pcard-pill-youtube { background: #ff0000; color: #fff; }
-    .hs-pcard-pill-live { color: #ff5050; }
+    .hs-pcard-pill-twitch { background: var(--hs-plat-twitch); color: #fff; }
+    .hs-pcard-pill-kick { background: var(--hs-plat-kick); color: #000; }
+    .hs-pcard-pill-youtube { background: var(--hs-plat-youtube); color: #fff; }
+    .hs-pcard-pill-live { color: var(--hs-ok); }
     .hs-pcard-bio {
       color: #aaa; font-size: 13px; line-height: 18px;
       white-space: pre-wrap; word-break: break-word;
@@ -142,7 +142,7 @@
     }
     .hs-pcard-bio-mention { color: #fff; cursor: pointer; }
     .hs-pcard-bio-mention:hover { text-decoration: underline; }
-    .hs-pcard-bio-tag { color: #ff00ff; text-decoration: none; }
+    .hs-pcard-bio-tag { color: var(--hs-thread); text-decoration: none; }
     .hs-pcard-bio-tag:hover { text-decoration: underline; }
     /* Property sheet — 2-col zebra list. The pcard surface uses system-sans
        by default (see body.hs-font-bitmap .hs-pcard counter-rule near top
@@ -169,24 +169,24 @@
     /* ANSI 256-mapped semantic colors. Each row's value carries meaning via hue:
        identity = brand, time = yellow, tier = amber/silver, power = red,
        relationship direction = cool (outflow) / warm (inflow) / saturated (mutual). */
-    .hs-pcard-sheet .val-age { color: #ffff00; }       /* xterm 226 — time */
-    .hs-pcard-sheet .val-partner { color: #ffaf00; }    /* xterm 214 — premium */
+    .hs-pcard-sheet .val-age { color: var(--hs-warn); }       /* xterm 226 — time */
+    .hs-pcard-sheet .val-partner { color: var(--hs-gold); }    /* xterm 214 — premium */
     .hs-pcard-sheet .val-affiliate { color: #bcbcbc; }  /* xterm 250 — entry */
-    .hs-pcard-sheet .val-ttv { color: #9146ff; }        /* twitch brand */
-    .hs-pcard-sheet .val-kick { color: #53fc18; }       /* kick brand */
-    .hs-pcard-sheet .val-yt { color: #ff0000; }         /* xterm 196 — yt brand */
+    .hs-pcard-sheet .val-ttv { color: var(--hs-plat-twitch); }        /* twitch brand */
+    .hs-pcard-sheet .val-kick { color: var(--hs-plat-kick); }       /* kick brand */
+    .hs-pcard-sheet .val-yt { color: var(--hs-plat-youtube); }         /* xterm 196 — yt brand */
     .hs-pcard-sheet .val-admin { color: #ff0000; }      /* xterm 196 — power */
     .hs-pcard-sheet .val-staff { color: #fff; }      /* xterm 208 — hs orange */
     .hs-pcard-sheet .val-heat { color: #ff0000; }       /* xterm 196 — fire */
     .hs-pcard-sheet .val-followers { color: #0087ff; }  /* xterm 33 — popularity */
-    .hs-pcard-sheet .val-you-follow { color: #00ffff; } /* xterm 51 — outflow */
+    .hs-pcard-sheet .val-you-follow { color: var(--hs-reply); } /* xterm 51 — outflow */
     .hs-pcard-sheet .val-you-sub { color: #875fff; }    /* xterm 99 — paid outflow */
-    .hs-pcard-sheet .val-they-follow { color: #ff00ff; }/* xterm 201 — inflow */
+    .hs-pcard-sheet .val-they-follow { color: var(--hs-thread); }/* xterm 201 — inflow */
     .hs-pcard-sheet .val-they-sub { color: #ff5fff; }   /* xterm 207 — paid inflow */
-    .hs-pcard-sheet .val-mutual { color: #00ff00; }     /* xterm 46 — handshake */
-    .hs-pcard-sheet .val-mutual-sub { color: #ffd700; } /* xterm 220 — premium handshake */
+    .hs-pcard-sheet .val-mutual { color: var(--hs-ok); }     /* xterm 46 — handshake */
+    .hs-pcard-sheet .val-mutual-sub { color: var(--hs-gold); } /* xterm 220 — premium handshake */
     .hs-pcard-sheet .val-ch { color: #fff; }         /* xterm 208 — channel context */
-    .hs-pcard-sheet .hs-pc-live { color: #ff0000; font-weight: 700; }
+    .hs-pcard-sheet .hs-pc-live { color: var(--hs-ok); font-weight: 700; }
     /* Inside the sheet: digits inherit cozette from the sheet (bitmap-crisp),
        degree symbol falls back to ui-monospace (vector AA, has clean °). */
     .hs-pcard-sheet .hs-heat-num { font-family: inherit; }
@@ -235,9 +235,9 @@
        identity-row pills above share .hs-pcard-pill-* classes for color but
        want the filled tooltip look; the inline message-history badge stays
        plain so 12 stacked rows don't read as a wall of purple. */
-    .hs-pcard-msg-plat.hs-pcard-pill-twitch { background: transparent; color: #9146ff; border: none; }
-    .hs-pcard-msg-plat.hs-pcard-pill-kick { background: transparent; color: #53fc18; border: none; }
-    .hs-pcard-msg-plat.hs-pcard-pill-youtube { background: transparent; color: #ff5050; border: none; }
+    .hs-pcard-msg-plat.hs-pcard-pill-twitch { background: transparent; color: var(--hs-plat-twitch); border: none; }
+    .hs-pcard-msg-plat.hs-pcard-pill-kick { background: transparent; color: var(--hs-plat-kick); border: none; }
+    .hs-pcard-msg-plat.hs-pcard-pill-youtube { background: transparent; color: var(--hs-plat-youtube); border: none; }
     .hs-pcard-msg-text {
       color: #fff; word-break: break-word; overflow-wrap: anywhere; flex: 1;
     }
@@ -294,6 +294,6 @@
     .hs-pcard-mod-btn:last-child { border-right-width: 1px; }
     .hs-pcard-mod-btn:hover:not(:disabled) { background: #fff; color: #000; border-color: #fff; }
     .hs-pcard-mod-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-    .hs-pcard-mod-btn-danger { color: #ff5050; border-color: #5a1414; }
-    .hs-pcard-mod-btn-danger:hover:not(:disabled) { background: #ff5050; color: #000; border-color: #ff5050; }
+    .hs-pcard-mod-btn-danger { color: var(--hs-danger); border-color: #5a1414; }
+    .hs-pcard-mod-btn-danger:hover:not(:disabled) { background: var(--hs-danger); color: #000; border-color: var(--hs-danger); }
 

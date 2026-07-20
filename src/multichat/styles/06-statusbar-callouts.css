@@ -159,7 +159,7 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      color: #ffa040;
+      color: var(--hs-brand);
       font-weight: 600;
     }
     @container (max-width: 240px) {

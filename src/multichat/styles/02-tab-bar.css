@@ -79,19 +79,19 @@
       background: #fff !important;
       color: #000 !important;
     }
-    /* Mentions — red when unseen. #ff3333 reads brighter on dark bg + matches
-       heatsync.org chat-tile so the surfaces are visually identical. */
+    /* Mentions — mention-yellow when unseen, matches heatsync.org chat-tile
+       mention color so the surfaces are visually identical. */
     .hs-mc-tab.has-mentions {
-      color: #ff3333 !important;
+      color: var(--hs-mention) !important;
     }
     .hs-mc-tab.has-mentions:not(.active):hover {
       background: #fff !important;
-      color: #ff3333 !important;
+      color: var(--hs-mention) !important;
     }
     /* Whispers — cyan when unseen. A DM is personal: the generic has-new
        white state was easy to miss ("whispers should be more obvious"). */
     .hs-mc-tab.has-whispers {
-      color: #00ffff !important;
+      color: var(--hs-reply) !important;
     }
     .hs-mc-tab.has-whispers:not(.active):hover {
       background: #fff !important;
@@ -121,7 +121,7 @@
     /* Stream event — yellow tab text (game switch) */
     .hs-mc-tab.has-stream-event {
       background: #000 !important;
-      color: #ffff00 !important;
+      color: var(--hs-warn) !important;
       border-color: #808080 !important;
     }
     .hs-mc-tab.has-stream-event:not(.active):hover {
@@ -303,13 +303,13 @@
       opacity: 0.45;
     }
     .hs-whisper-pending .hs-whisper-status {
-      color: #ffaf00;
+      color: var(--hs-gold);
     }
     .hs-whisper-failed {
-      background: rgba(255, 0, 0, 0.10);
+      background: var(--hs-danger-tint);
     }
     .hs-whisper-failed .hs-whisper-status {
-      color: #ff5555;
+      color: var(--hs-danger);
       font-weight: 700;
     }
     .hs-whisper-retry {
@@ -338,7 +338,7 @@
       display: inline-block;
       padding: 0 4px;
       margin-right: 3px;
-      background: #9146ff;
+      background: var(--hs-plat-twitch);
       color: #fff;
       font-size: 13px;
       font-weight: 700;
@@ -395,7 +395,7 @@
        visually "near-black with a hue suggestion" so saturated event text reads
        at full contrast while the 3px stripe carries type identification. */
     .hs-mc-stream-event {
-      --evt: #ffff00;
+      --evt: var(--hs-warn);
       padding: 2px 4px 2px 8px;
       font-size: 13px;
       line-height: 18px;
@@ -408,22 +408,22 @@
     .hs-mc-stream-event .hs-mc-user { text-decoration: none; font-weight: bold; }
     .hs-mc-stream-event .hs-mc-user:hover { text-decoration: underline; }
     .hs-mc-stream-event .hs-evt-game { color: #fff; font-style: normal; }
-    .hs-mc-stream-event.event-update  { --evt: #ffff00; }
-    .hs-mc-stream-event.event-online  { --evt: #ff4444; }
+    .hs-mc-stream-event.event-update  { --evt: var(--hs-warn); }
+    .hs-mc-stream-event.event-online  { --evt: var(--hs-danger); }
     .hs-mc-stream-event.event-online .hs-evt-game { color: #fff; }
     .hs-mc-stream-event.event-offline { --evt: #888888; }
-    .hs-mc-stream-event.event-raid    { --evt: #9146ff; }
-    .hs-mc-stream-event.event-hype    { --evt: #00ffff; }
-    .hs-mc-stream-event.event-sub     { --evt: #00ff7f; }
+    .hs-mc-stream-event.event-raid    { --evt: var(--hs-plat-twitch); }
+    .hs-mc-stream-event.event-hype    { --evt: var(--hs-reply); }
+    .hs-mc-stream-event.event-sub     { --evt: var(--hs-ok); }
     .hs-mc-stream-event.event-redeem  { --evt: #00bfff; }
     .hs-mc-stream-event.event-emote   { --evt: #29d391; }
-    .hs-mc-stream-event.event-pred    { --evt: #ffaa00; }
-    .hs-mc-stream-event.event-poll    { --evt: #5f87ff; }
+    .hs-mc-stream-event.event-pred    { --evt: var(--hs-gold); }
+    .hs-mc-stream-event.event-poll    { --evt: var(--hs-info); }
     .hs-mc-stream-event.event-follow  { opacity: 0.8; }
     /* YouTube event banners — superchat/sticker default to the amount-tier gold;
        m.scColor (inline style, set in main.js) overrides with the real per-message
        tier color from YouTube's own renderer when present. */
-    .hs-mc-stream-event.event-yt-superchat    { --evt: #ffca28; }
+    .hs-mc-stream-event.event-yt-superchat    { --evt: var(--hs-gold); }
     .hs-mc-stream-event.event-yt-supersticker { --evt: #ff8a65; }
     .hs-mc-stream-event.event-yt-membership   { --evt: #2ba640; }
     .hs-mc-stream-event.event-yt-milestone    { --evt: #00e5ff; }
@@ -432,20 +432,20 @@
     .hs-mc-feed-inline {
       padding: 2px 8px;
       font-size: 13px;
-      border-left: 3px solid #ff0000;
+      border-left: 3px solid var(--hs-danger);
       border-bottom: 1px solid #000;
       color: #fff;
     }
     .hs-mc-feed-inline .hs-mc-ts { margin-right: 4px; }
     .hs-mc-feed-inline .hs-feed-body { color: #fff; }
     .hs-mc-feed-inline .hs-feed-thread-link {
-      color: #ffff00; text-decoration: none; font-size: 13px; margin-right: 4px;
+      color: var(--hs-mention); text-decoration: none; font-size: 13px; margin-right: 4px;
     }
     .hs-mc-feed-inline .hs-feed-thread-link:hover { text-decoration: underline; }
     .hs-mc-moment-perma { color: #808080; margin-left: 4px; text-decoration: none; }
     .hs-mc-moment-perma:hover { background: #fff; color: #000; }
     .hs-mc-dm-inline {
-      border-left-color: #ffff00;
+      border-left-color: var(--hs-mention);
     }
     /* Live dot — red indicator, composes with any state. Inset 3px from edge
        so it never lands on or past the border during bold-active layout
@@ -460,13 +460,13 @@
       right: 4px;
       width: 8px;
       height: 8px;
-      background: #f00;
+      background: var(--hs-ok);
       border-radius: 50%;
       pointer-events: none;
       z-index: 1;
     }
     .hs-mc-tab.active[data-live="true"]::after {
-      background: #cc0000;
+      background: var(--hs-ok-dim);
     }
     /* YT: position:fixed children already stop at clientWidth (left edge of
        the body scrollbar), so no extra gutter is needed — keep tabs flush to

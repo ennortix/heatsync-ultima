@@ -41,7 +41,7 @@
       cursor: pointer !important;
     }
     .hs-feed-thread-link {
-      color: #ffff00;
+      color: var(--hs-mention);
       font-size: 13px;
       font-weight: 700;
       margin-right: 3px;
@@ -66,10 +66,10 @@
       color: #ff0000;
     }
     .hs-feed-tag-mop {
-      color: #ff00ff;
+      color: var(--hs-thread);
     }
     .hs-feed-tag-re {
-      color: #00ffff;
+      color: var(--hs-reply);
     }
     .hs-mc-feed-reply-chip {
       position: absolute;
@@ -126,7 +126,7 @@
       font-family: ui-monospace, SFMono-Regular, monospace;
     }
     .hs-post-link {
-      color: #ffff00;
+      color: var(--hs-mention);
       font-weight: 700;
       cursor: pointer;
     }
@@ -134,7 +134,7 @@
       text-decoration: underline;
     }
     .hs-post-highlight {
-      outline: 2px solid #ff8700;
+      outline: 2px solid var(--hs-brand);
       outline-offset: -2px;
     }
     .hs-thread-op {
@@ -154,7 +154,7 @@
       font-size: 13px;
     }
     .hs-thread-reply.is-thread-op {
-      border-left: 2px solid #ff00ff;
+      border-left: 2px solid var(--hs-thread);
       margin-left: -2px;
       padding-left: 10px;
     }
@@ -429,7 +429,7 @@
       border-radius: 0;
     }
     .hs-hashtag {
-      color: #ff00ff;
+      color: var(--hs-thread);
       text-decoration: none;
       cursor: pointer;
     }
@@ -783,8 +783,8 @@
       display: inline-block;
       padding: 1px 7px;
       background: transparent;
-      border: 1px solid #ff00ff;
-      color: #ff00ff;
+      border: 1px solid var(--hs-thread);
+      color: var(--hs-thread);
       font-size: 13px;
       text-decoration: none;
       cursor: pointer;
@@ -806,7 +806,7 @@
     }
     .hs-discover-profile-row:hover { background: #fff; color: #000; }
     .hs-discover-profile-row:hover * { color: #000 !important; }
-    .hs-discover-profile-row.hs-discover-row-live { border-left-color: #ff3030; }
+    .hs-discover-profile-row.hs-discover-row-live { border-left-color: var(--hs-ok); }
     .hs-discover-rank {
       color: #aaa;
       font-size: 13px;
@@ -820,7 +820,7 @@
     .hs-discover-live-dot {
       width: 7px; height: 7px;
       border-radius: 50%;
-      background: #ff3030;
+      background: var(--hs-ok);
       flex-shrink: 0;
     }
     .hs-discover-live-spacer { width: 7px; flex-shrink: 0; }
@@ -856,14 +856,14 @@
     }
     .hs-discover-platforms .hs-plat:hover { background: #fff !important; color: #000 !important; }
     .hs-discover-platforms .hs-plat-live { font-weight: 900; }
-    .hs-discover-platforms .hs-plat-t { color: #9146ff; }
-    .hs-discover-platforms .hs-plat-k { color: #53fc18; }
-    .hs-discover-platforms .hs-plat-yt { color: #ff0000; }
+    .hs-discover-platforms .hs-plat-t { color: var(--hs-plat-twitch); }
+    .hs-discover-platforms .hs-plat-k { color: var(--hs-plat-kick); }
+    .hs-discover-platforms .hs-plat-yt { color: var(--hs-plat-youtube); }
     .hs-discover-platforms .hs-plat-h { color: #fff; }
     /* Post platform letters use same colors */
-    .hs-discover-post-plat.hs-plat-t { color: #9146ff; }
-    .hs-discover-post-plat.hs-plat-k { color: #53fc18; }
-    .hs-discover-post-plat.hs-plat-yt { color: #ff0000; }
+    .hs-discover-post-plat.hs-plat-t { color: var(--hs-plat-twitch); }
+    .hs-discover-post-plat.hs-plat-k { color: var(--hs-plat-kick); }
+    .hs-discover-post-plat.hs-plat-yt { color: var(--hs-plat-youtube); }
     .hs-discover-post-plat.hs-plat-h { color: #fff; }
     .hs-discover-bar {
       flex: 1;
@@ -879,7 +879,7 @@
       background: #fff;
     }
     .hs-discover-row-live .hs-discover-bar > i {
-      background: #ff3030;
+      background: var(--hs-ok);
     }
     /* Heat number — color/glow comes from inline style via discoverHeatStyle (canonical tiers) */
     .hs-discover-heat {
@@ -892,7 +892,7 @@
     }
     .hs-discover-viewers {
       font-size: 13px;
-      color: #ff5050;
+      color: var(--hs-danger);
       font-variant-numeric: tabular-nums;
       font-family: ui-monospace, SFMono-Regular, monospace;
       flex-shrink: 0;
@@ -934,18 +934,18 @@
       color: #000;
     }
     .hs-discover-chip-btn.hs-chip-plat-t.hs-active {
-      background: #9146ff;
-      border-color: #9146ff;
+      background: var(--hs-plat-twitch);
+      border-color: var(--hs-plat-twitch);
       color: #fff;
     }
     .hs-discover-chip-btn.hs-chip-plat-k.hs-active {
-      background: #53fc18;
-      border-color: #53fc18;
+      background: var(--hs-plat-kick);
+      border-color: var(--hs-plat-kick);
       color: #000;
     }
     .hs-discover-chip-btn.hs-chip-plat-yt.hs-active {
-      background: #ff0000;
-      border-color: #ff0000;
+      background: var(--hs-plat-youtube);
+      border-color: var(--hs-plat-youtube);
       color: #fff;
     }
     .hs-discover-chip-btn:hover,
@@ -960,12 +960,12 @@
 
     /* Section colour variants — distinct accent borders + headers per widget */
     .hs-discover-section-live {
-      border-color: rgba(255,48,48,0.35);
+      border-color: rgba(0,255,0,0.35);
     }
     .hs-discover-section-live > .hs-discover-heading {
-      background: rgba(255,48,48,0.10);
-      border-bottom-color: rgba(255,48,48,0.35);
-      color: #ff5050;
+      background: var(--hs-ok-tint);
+      border-bottom-color: rgba(0,255,0,0.35);
+      color: var(--hs-ok);
     }
     .hs-discover-section-posts {
       border-color: rgba(255,255,255,0.3);
@@ -987,7 +987,7 @@
     }
     .hs-discover-section-tags > .hs-discover-heading {
       background: rgba(255,0,255,0.08);
-      color: #ff00ff;
+      color: var(--hs-thread);
       border-bottom-color: rgba(255,0,255,0.35);
     }
 
@@ -1128,8 +1128,8 @@
     .hs-modlog-time { color: #808080; font-variant-numeric: tabular-nums; }
     .hs-modlog-channel { color: #fff; font-weight: 600; }
     .hs-modlog-body { color: #ddd; word-break: break-word; }
-    .hs-modlog-ban .hs-modlog-body { color: #ff5f5f; }
-    .hs-modlog-timeout .hs-modlog-body { color: #ffd75f; }
+    .hs-modlog-ban .hs-modlog-body { color: var(--hs-danger); }
+    .hs-modlog-timeout .hs-modlog-body { color: var(--hs-gold); }
     .hs-modlog-unban .hs-modlog-body,
-    .hs-modlog-untimeout .hs-modlog-body { color: #5fd75f; }
+    .hs-modlog-untimeout .hs-modlog-body { color: var(--hs-ok); }
     .hs-modlog-delete .hs-modlog-body { color: #9e9e9e; }

@@ -1718,7 +1718,7 @@
     white-space: nowrap !important;
   }
   .hs-pc-role.admin { background: #ff0000 !important; color: #fff !important; border: 1px solid #000 !important; }
-  .hs-pc-role.staff { background: #ff8800 !important; color: #000 !important; border: 1px solid #000 !important; }
+  .hs-pc-role.staff { background: #ff8700 !important; color: #000 !important; border: 1px solid #000 !important; }
   .hs-pc-role.partner { background: #000 !important; color: #fff !important; border: 1px solid #fff !important; }
   .hs-pc-role.affiliate { background: #404040 !important; color: #fff !important; border: 1px solid #fff !important; }
   .hs-pc-role.sub-status { background: #9146ff !important; color: #fff !important; border: 1px solid #6b30d4 !important; }
@@ -1792,7 +1792,7 @@
     white-space: nowrap !important;
   }
   .hs-pc-following {
-    background: #0099ff !important;
+    background: #5f87ff !important;
     color: #fff !important;
     padding: 2px 4px !important;
     border-radius: 0 !important;
@@ -2784,9 +2784,9 @@
   }
   .hs-ctx-menu .hs-em-item:hover { background: #fff; color: #000; }
   .hs-ctx-menu .hs-em-item:hover .hs-em-kbd { background: #000; color: #fff; border-color: #000; }
-  .hs-ctx-menu .hs-em-item.hs-em-danger { color: #ff5959; }
+  .hs-ctx-menu .hs-em-item.hs-em-danger { color: #ff0000; }
   .hs-ctx-menu .hs-em-item.hs-em-danger:hover { background: #fff; color: #000; }
-  .hs-ctx-menu .hs-em-item.hs-em-good { color: #59ff8a; }
+  .hs-ctx-menu .hs-em-item.hs-em-good { color: #00ff00; }
   .hs-ctx-menu .hs-em-item.hs-em-good:hover { background: #fff; color: #000; }
   .hs-ctx-menu .hs-em-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .hs-ctx-menu .hs-em-kbd {
@@ -8908,8 +8908,8 @@
           } catch (_e) {
             clipBtn.textContent = 'clip'
             clipBtn.disabled = false
-            clipBtn.style.borderColor = '#ff4040'
-            clipBtn.style.color = '#ff4040'
+            clipBtn.style.borderColor = '#ff0000'
+            clipBtn.style.color = '#ff0000'
             cleanup.setTimeout(() => {
               clipBtn.style.borderColor = ''
               clipBtn.style.color = ''
@@ -11017,7 +11017,7 @@
 
       const hint = document.createElement('div')
       hint.id = 'heatsync-tab-hint'
-      hint.style.cssText = 'color: #9147ff; font-size: 10px; margin-left: 4px;'
+      hint.style.cssText = 'color: #9146ff; font-size: 10px; margin-left: 4px;'
 
       preview.appendChild(counter)
       preview.appendChild(img)

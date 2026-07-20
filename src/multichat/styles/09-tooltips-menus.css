@@ -42,7 +42,7 @@
       position: fixed;
       z-index: 2147483647 !important;
       background: #000; color: #fff;
-      border: 1px solid #ff8700;
+      border: 1px solid var(--hs-gold);
       padding: 0; width: 300px;
       box-shadow: 0 6px 32px rgba(0,0,0,0.75);
       font-family: var(--hs-mc-font, 'CozetteVector', 'Courier New', monospace);
@@ -61,7 +61,7 @@
       font-family: inherit; font-size: 13px; line-height: 1.4; outline: none;
     }
     .hs-note-editor-ta::placeholder { color: #555; }
-    .hs-note-editor-ta:focus { box-shadow: inset 0 0 0 1px #ff8700; }
+    .hs-note-editor-ta:focus { box-shadow: inset 0 0 0 1px var(--hs-gold); }
     .hs-note-editor-foot {
       display: flex; align-items: center; justify-content: space-between;
       padding: 4px 10px; background: #050505; border-top: 1px solid #1a1a1a;
@@ -71,7 +71,7 @@
       background: transparent; color: #808080; border: 1px solid #333;
       padding: 2px 8px; cursor: pointer; font-family: inherit; font-size: 13px;
     }
-    .hs-note-editor-del:hover { background: #ff5050; color: #000; border-color: #ff5050; }
+    .hs-note-editor-del:hover { background: var(--hs-danger); color: #000; border-color: var(--hs-danger); }
     .hs-mc-ctx .hs-mc-em-header {
       padding: 4px 10px; font-size: 13px; color: #555;
       background: #050505;
@@ -83,9 +83,9 @@
     }
     .hs-mc-ctx .hs-mc-em-item:hover { background: #fff; color: #000; }
     .hs-mc-ctx .hs-mc-em-item:hover .hs-mc-em-kbd { background: #000; color: #fff; border-color: #000; }
-    .hs-mc-ctx .hs-mc-em-item.hs-mc-em-danger { color: #ff5959; }
-    .hs-mc-ctx .hs-mc-em-item.hs-mc-em-danger:hover { background: #ff2020; color: #fff; }
-    .hs-mc-ctx .hs-mc-em-item.hs-mc-em-good { color: #59ff8a; }
+    .hs-mc-ctx .hs-mc-em-item.hs-mc-em-danger { color: var(--hs-danger); }
+    .hs-mc-ctx .hs-mc-em-item.hs-mc-em-danger:hover { background: var(--hs-danger); color: #fff; }
+    .hs-mc-ctx .hs-mc-em-item.hs-mc-em-good { color: var(--hs-ok); }
     .hs-mc-ctx .hs-mc-em-item.hs-mc-em-good:hover { background: #fff; color: #000; }
     .hs-mc-ctx .hs-mc-em-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .hs-mc-ctx .hs-mc-em-kbd {
@@ -214,11 +214,11 @@
       line-height: 16px !important;
     }
     #hs-user-tooltip .hs-pc-platform.twitch {
-      background: #9146ff;
+      background: var(--hs-plat-twitch);
       color: #fff;
     }
     #hs-user-tooltip .hs-pc-platform.kick {
-      background: #53fc18;
+      background: var(--hs-plat-kick);
       color: #000;
     }
     #hs-user-tooltip .hs-pc-name {
@@ -248,7 +248,7 @@
     }
     #hs-user-tooltip .hs-pc-role.admin { background: #ff0000; color: #fff; }
     #hs-user-tooltip .hs-pc-role.staff { background: #ff8800; color: #000; }
-    #hs-user-tooltip .hs-pc-role.partner { background: #ffaa00; color: #000; }
+    #hs-user-tooltip .hs-pc-role.partner { background: var(--hs-gold); color: #000; }
     #hs-user-tooltip .hs-pc-role.affiliate { background: transparent; color: #fff; }
     #hs-user-tooltip .hs-pc-age {
       padding: 2px 4px;
@@ -272,7 +272,7 @@
     }
     #hs-user-tooltip .hs-pc-bio-mention { color: #fff; cursor: pointer; }
     #hs-user-tooltip .hs-pc-bio-mention:hover { text-decoration: underline; }
-    #hs-user-tooltip .hs-pc-bio-tag { color: #ff00ff; text-decoration: none; }
+    #hs-user-tooltip .hs-pc-bio-tag { color: var(--hs-thread); text-decoration: none; }
     #hs-user-tooltip .hs-pc-bio-tag:hover { text-decoration: underline; }
     #hs-user-tooltip .hs-pc-stats {
       display: flex;
@@ -323,7 +323,7 @@
     #hs-user-tooltip .hs-pc-rel-badge.mutual { background: #00aaaa; color: #fff; }
     #hs-user-tooltip .hs-pc-rel-badge.supporter { background: #fff; color: #000; }
     #hs-user-tooltip .hs-pc-rel-badge.following { background: #0099ff; color: #fff; }
-    #hs-user-tooltip .hs-pc-rel-badge.subbed { background: #9146ff; color: #fff; }
+    #hs-user-tooltip .hs-pc-rel-badge.subbed { background: var(--hs-plat-twitch); color: #fff; }
     #hs-user-tooltip .hs-pc-rel-badge.mutual-follow { background: #000; color: #fff; border: 1px solid #00aaaa; }
     #hs-user-tooltip .hs-pc-rel-badge.mutual-sub { background: #000; color: #fff; border: 1px solid #fff; }
     /* Property sheet — mirrors .hs-pcard-sheet. Tooltip already inherits
@@ -346,24 +346,24 @@
     #hs-user-tooltip .hs-pc-sheet dd:nth-of-type(even) { background: #1f1f1f; }
     /* Mirror of .hs-pcard-sheet ANSI semantic palette — see comment in
        the pcard sheet block for the full reasoning. */
-    #hs-user-tooltip .hs-pc-sheet .val-age { color: #ffff00; }
-    #hs-user-tooltip .hs-pc-sheet .val-partner { color: #ffaf00; }
+    #hs-user-tooltip .hs-pc-sheet .val-age { color: var(--hs-warn); }
+    #hs-user-tooltip .hs-pc-sheet .val-partner { color: var(--hs-gold); }
     #hs-user-tooltip .hs-pc-sheet .val-affiliate { color: #bcbcbc; }
-    #hs-user-tooltip .hs-pc-sheet .val-ttv { color: #9146ff; }
-    #hs-user-tooltip .hs-pc-sheet .val-kick { color: #53fc18; }
-    #hs-user-tooltip .hs-pc-sheet .val-yt { color: #ff0000; }
+    #hs-user-tooltip .hs-pc-sheet .val-ttv { color: var(--hs-plat-twitch); }
+    #hs-user-tooltip .hs-pc-sheet .val-kick { color: var(--hs-plat-kick); }
+    #hs-user-tooltip .hs-pc-sheet .val-yt { color: var(--hs-plat-youtube); }
     #hs-user-tooltip .hs-pc-sheet .val-admin { color: #ff0000; }
     #hs-user-tooltip .hs-pc-sheet .val-staff { color: #fff; }
     #hs-user-tooltip .hs-pc-sheet .val-heat { color: #ff0000; }
     #hs-user-tooltip .hs-pc-sheet .val-followers { color: #0087ff; }
-    #hs-user-tooltip .hs-pc-sheet .val-you-follow { color: #00ffff; }
+    #hs-user-tooltip .hs-pc-sheet .val-you-follow { color: var(--hs-reply); }
     #hs-user-tooltip .hs-pc-sheet .val-you-sub { color: #875fff; }
-    #hs-user-tooltip .hs-pc-sheet .val-they-follow { color: #ff00ff; }
+    #hs-user-tooltip .hs-pc-sheet .val-they-follow { color: var(--hs-thread); }
     #hs-user-tooltip .hs-pc-sheet .val-they-sub { color: #ff5fff; }
-    #hs-user-tooltip .hs-pc-sheet .val-mutual { color: #00ff00; }
-    #hs-user-tooltip .hs-pc-sheet .val-mutual-sub { color: #ffd700; }
+    #hs-user-tooltip .hs-pc-sheet .val-mutual { color: var(--hs-ok); }
+    #hs-user-tooltip .hs-pc-sheet .val-mutual-sub { color: var(--hs-gold); }
     #hs-user-tooltip .hs-pc-sheet .val-ch { color: #fff; }
-    #hs-user-tooltip .hs-pc-sheet .hs-pc-live { color: #ff0000; font-weight: 700; }
+    #hs-user-tooltip .hs-pc-sheet .hs-pc-live { color: var(--hs-ok); font-weight: 700; }
     /* Heat number inside the sheet: digits inherit Cozette (already crisp
        on this tooltip surface), ° gets vector fallback for a clean glyph. */
     #hs-user-tooltip .hs-pc-sheet .hs-heat-n { font-family: inherit; }

@@ -98,49 +98,49 @@ function renderQuickLinks() {
       show: isBroadcaster,
       items: [
         {
-          accent: '#9147ff',
+          accent: HS_PLAT_COLORS.twitch,
           icon: ICONS.dashboard,
           label: 'creator dashboard',
           url: (c) => `https://dashboard.twitch.tv/u/${c}/home`,
           opts: 'width=1200,height=800',
         },
         {
-          accent: '#9147ff',
+          accent: HS_PLAT_COLORS.twitch,
           icon: ICONS.video,
           label: 'stream manager',
           url: (c) => `https://dashboard.twitch.tv/u/${c}/stream-manager`,
           opts: 'width=1200,height=800',
         },
         {
-          accent: '#9147ff',
+          accent: HS_PLAT_COLORS.twitch,
           icon: ICONS.settings,
           label: 'moderation settings (automod, blocked terms)',
           url: (c) => `https://dashboard.twitch.tv/u/${c}/settings/moderation`,
           opts: 'width=1000,height=750',
         },
         {
-          accent: '#9147ff',
+          accent: HS_PLAT_COLORS.twitch,
           icon: ICONS.settings,
           label: 'channel settings',
           url: (c) => `https://dashboard.twitch.tv/u/${c}/settings/channel`,
           opts: 'width=1000,height=750',
         },
         {
-          accent: '#9147ff',
+          accent: HS_PLAT_COLORS.twitch,
           icon: ICONS.people,
           label: 'community (mods, vips, follows)',
           url: (c) => `https://dashboard.twitch.tv/u/${c}/community`,
           opts: 'width=1000,height=750',
         },
         {
-          accent: '#9147ff',
+          accent: HS_PLAT_COLORS.twitch,
           icon: ICONS.cash,
           label: 'monetization',
           url: (c) => `https://dashboard.twitch.tv/u/${c}/monetization`,
           opts: 'width=1000,height=750',
         },
         {
-          accent: '#9147ff',
+          accent: HS_PLAT_COLORS.twitch,
           icon: ICONS.chart,
           label: 'analytics',
           url: (c) => `https://dashboard.twitch.tv/u/${c}/analytics/stream-summary`,
@@ -269,7 +269,7 @@ function makeCoinSvg(size) {
   svg.setAttribute('viewBox', '0 0 20 20')
   svg.style.verticalAlign = '-2px'
   const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-  path.setAttribute('fill', '#ffbf00')
+  path.style.fill = 'var(--hs-gold)'
   path.setAttribute('d', 'M10 6a4 4 0 100 8 4 4 0 000-8zm0-4a8 8 0 110 16 8 8 0 010-16z')
   svg.appendChild(path)
   return svg
@@ -670,7 +670,7 @@ function renderRewards(rewards, balance, channelId) {
     svg.setAttribute('viewBox', '0 0 20 20')
     svg.style.verticalAlign = '-1px'
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-    path.setAttribute('fill', '#ffbf00')
+    path.style.fill = 'var(--hs-gold)'
     path.setAttribute('d', 'M10 6a4 4 0 100 8 4 4 0 000-8zm0-4a8 8 0 110 16 8 8 0 010-16z')
     svg.appendChild(path)
     bal.appendChild(svg)
@@ -702,7 +702,7 @@ function renderRewards(rewards, balance, channelId) {
     card.dataset.channelId = channelId
     if (reward.isUserInputRequired) card.dataset.textRequired = '1'
     if (reward.prompt) card.dataset.prompt = reward.prompt
-    card.style.setProperty('--rc', reward.backgroundColor || '#9147ff')
+    card.style.setProperty('--rc', reward.backgroundColor || '#9146ff')
 
     const imgUrl = reward.image?.url || reward.defaultImage?.url || ''
     if (imgUrl) {
@@ -729,7 +729,7 @@ function renderRewards(rewards, balance, channelId) {
     costSvg.setAttribute('viewBox', '0 0 20 20')
     costSvg.style.verticalAlign = '-1px'
     const costPath = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-    costPath.setAttribute('fill', '#ffbf00')
+    costPath.style.fill = 'var(--hs-gold)'
     costPath.setAttribute('d', 'M10 6a4 4 0 100 8 4 4 0 000-8zm0-4a8 8 0 110 16 8 8 0 010-16z')
     costSvg.appendChild(costPath)
     costEl.appendChild(costSvg)
@@ -2082,7 +2082,7 @@ const BADGE_STYLES = {
   admin: { label: 'ADMIN', bg: '#faaf19', fg: '#000' },
   staff: { label: 'STAFF', bg: '#faaf19', fg: '#000' },
   global_mod: { label: 'GMOD', bg: '#00ad03', fg: '#fff' },
-  partner: { label: '✓', bg: '#9147ff', fg: '#fff' },
+  partner: { label: '✓', bg: '#9146ff', fg: '#fff' },
   'bits-leader': { label: 'BITS', bg: '#ffd700', fg: '#000' },
   'sub-gifter': { label: 'GIFT', bg: '#8205b4', fg: '#fff' },
   artist: { label: 'ART', bg: '#ff6b35', fg: '#fff' },

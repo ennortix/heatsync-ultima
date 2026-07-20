@@ -53,7 +53,7 @@ function _renderAddChannelForm(msgsEl) {
 
   // Error message (between inputs and buttons)
   const errEl = document.createElement('div')
-  errEl.style.cssText = 'font-size:13px;color:#ff0000;display:none;'
+  errEl.style.cssText = 'font-size:13px;color:var(--hs-danger);display:none;'
   errEl.setAttribute('role', 'alert')
   wrapper.appendChild(errEl)
 
@@ -252,7 +252,7 @@ function _renderAddChannelForm(msgsEl) {
     const liveLabels = res.liveOn?.length
       ? ` · live on ${res.liveOn.map((p) => (p === 'twitch' ? 't' : p === 'kick' ? 'k' : p)).join(',')}`
       : ''
-    linkStatus.style.color = '#53fc18'
+    linkStatus.style.color = 'var(--hs-plat-kick)'
     linkStatus.textContent = `✓ matched ${id.heatsync || name} on heatsync — linked: ${linkedLabels.join(',') || 'none'}${liveLabels}${platforms.length ? ` · autofilled: ${platforms.join(',')}` : ''}`
   }
 
@@ -506,7 +506,7 @@ function _showEditChannelForm(tabId) {
   wrapper.appendChild(yt.row)
 
   const errEl = document.createElement('div')
-  errEl.style.cssText = 'font-size:13px;color:#ff0000;display:none;'
+  errEl.style.cssText = 'font-size:13px;color:var(--hs-danger);display:none;'
   errEl.setAttribute('role', 'alert')
   wrapper.appendChild(errEl)
 

@@ -197,7 +197,7 @@
     .hs-mc-chat-banner-badge {
       font-size: 13px;
       font-weight: 700;
-      color: #ff5050;
+      color: var(--hs-danger);
       text-transform: uppercase;
       letter-spacing: 0.5px;
       flex-shrink: 0;
@@ -212,7 +212,7 @@
       display: none;
       align-items: center;
       gap: 4px;
-      background: #ff8700;
+      background: var(--hs-brand);
       color: #000;
       border: none;
       border-radius: 0;

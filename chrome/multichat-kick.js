@@ -8444,19 +8444,19 @@ function injectStyles() {
       background: #fff !important;
       color: #000 !important;
     }
-    /* Mentions — red when unseen. #ff3333 reads brighter on dark bg + matches
-       heatsync.org chat-tile so the surfaces are visually identical. */
+    /* Mentions — mention-yellow when unseen, matches heatsync.org chat-tile
+       mention color so the surfaces are visually identical. */
     .hs-mc-tab.has-mentions {
-      color: #ff3333 !important;
+      color: var(--hs-mention) !important;
     }
     .hs-mc-tab.has-mentions:not(.active):hover {
       background: #fff !important;
-      color: #ff3333 !important;
+      color: var(--hs-mention) !important;
     }
     /* Whispers — cyan when unseen. A DM is personal: the generic has-new
        white state was easy to miss ("whispers should be more obvious"). */
     .hs-mc-tab.has-whispers {
-      color: #00ffff !important;
+      color: var(--hs-reply) !important;
     }
     .hs-mc-tab.has-whispers:not(.active):hover {
       background: #fff !important;
@@ -8486,7 +8486,7 @@ function injectStyles() {
     /* Stream event — yellow tab text (game switch) */
     .hs-mc-tab.has-stream-event {
       background: #000 !important;
-      color: #ffff00 !important;
+      color: var(--hs-warn) !important;
       border-color: #808080 !important;
     }
     .hs-mc-tab.has-stream-event:not(.active):hover {
@@ -8668,13 +8668,13 @@ function injectStyles() {
       opacity: 0.45;
     }
     .hs-whisper-pending .hs-whisper-status {
-      color: #ffaf00;
+      color: var(--hs-gold);
     }
     .hs-whisper-failed {
-      background: rgba(255, 0, 0, 0.10);
+      background: var(--hs-danger-tint);
     }
     .hs-whisper-failed .hs-whisper-status {
-      color: #ff5555;
+      color: var(--hs-danger);
       font-weight: 700;
     }
     .hs-whisper-retry {
@@ -8703,7 +8703,7 @@ function injectStyles() {
       display: inline-block;
       padding: 0 4px;
       margin-right: 3px;
-      background: #9146ff;
+      background: var(--hs-plat-twitch);
       color: #fff;
       font-size: 13px;
       font-weight: 700;
@@ -8760,7 +8760,7 @@ function injectStyles() {
        visually "near-black with a hue suggestion" so saturated event text reads
        at full contrast while the 3px stripe carries type identification. */
     .hs-mc-stream-event {
-      --evt: #ffff00;
+      --evt: var(--hs-warn);
       padding: 2px 4px 2px 8px;
       font-size: 13px;
       line-height: 18px;
@@ -8773,22 +8773,22 @@ function injectStyles() {
     .hs-mc-stream-event .hs-mc-user { text-decoration: none; font-weight: bold; }
     .hs-mc-stream-event .hs-mc-user:hover { text-decoration: underline; }
     .hs-mc-stream-event .hs-evt-game { color: #fff; font-style: normal; }
-    .hs-mc-stream-event.event-update  { --evt: #ffff00; }
-    .hs-mc-stream-event.event-online  { --evt: #ff4444; }
+    .hs-mc-stream-event.event-update  { --evt: var(--hs-warn); }
+    .hs-mc-stream-event.event-online  { --evt: var(--hs-danger); }
     .hs-mc-stream-event.event-online .hs-evt-game { color: #fff; }
     .hs-mc-stream-event.event-offline { --evt: #888888; }
-    .hs-mc-stream-event.event-raid    { --evt: #9146ff; }
-    .hs-mc-stream-event.event-hype    { --evt: #00ffff; }
-    .hs-mc-stream-event.event-sub     { --evt: #00ff7f; }
+    .hs-mc-stream-event.event-raid    { --evt: var(--hs-plat-twitch); }
+    .hs-mc-stream-event.event-hype    { --evt: var(--hs-reply); }
+    .hs-mc-stream-event.event-sub     { --evt: var(--hs-ok); }
     .hs-mc-stream-event.event-redeem  { --evt: #00bfff; }
     .hs-mc-stream-event.event-emote   { --evt: #29d391; }
-    .hs-mc-stream-event.event-pred    { --evt: #ffaa00; }
-    .hs-mc-stream-event.event-poll    { --evt: #5f87ff; }
+    .hs-mc-stream-event.event-pred    { --evt: var(--hs-gold); }
+    .hs-mc-stream-event.event-poll    { --evt: var(--hs-info); }
     .hs-mc-stream-event.event-follow  { opacity: 0.8; }
     /* YouTube event banners — superchat/sticker default to the amount-tier gold;
        m.scColor (inline style, set in main.js) overrides with the real per-message
        tier color from YouTube's own renderer when present. */
-    .hs-mc-stream-event.event-yt-superchat    { --evt: #ffca28; }
+    .hs-mc-stream-event.event-yt-superchat    { --evt: var(--hs-gold); }
     .hs-mc-stream-event.event-yt-supersticker { --evt: #ff8a65; }
     .hs-mc-stream-event.event-yt-membership   { --evt: #2ba640; }
     .hs-mc-stream-event.event-yt-milestone    { --evt: #00e5ff; }
@@ -8797,20 +8797,20 @@ function injectStyles() {
     .hs-mc-feed-inline {
       padding: 2px 8px;
       font-size: 13px;
-      border-left: 3px solid #ff0000;
+      border-left: 3px solid var(--hs-danger);
       border-bottom: 1px solid #000;
       color: #fff;
     }
     .hs-mc-feed-inline .hs-mc-ts { margin-right: 4px; }
     .hs-mc-feed-inline .hs-feed-body { color: #fff; }
     .hs-mc-feed-inline .hs-feed-thread-link {
-      color: #ffff00; text-decoration: none; font-size: 13px; margin-right: 4px;
+      color: var(--hs-mention); text-decoration: none; font-size: 13px; margin-right: 4px;
     }
     .hs-mc-feed-inline .hs-feed-thread-link:hover { text-decoration: underline; }
     .hs-mc-moment-perma { color: #808080; margin-left: 4px; text-decoration: none; }
     .hs-mc-moment-perma:hover { background: #fff; color: #000; }
     .hs-mc-dm-inline {
-      border-left-color: #ffff00;
+      border-left-color: var(--hs-mention);
     }
     /* Live dot — red indicator, composes with any state. Inset 3px from edge
        so it never lands on or past the border during bold-active layout
@@ -8825,13 +8825,13 @@ function injectStyles() {
       right: 4px;
       width: 8px;
       height: 8px;
-      background: #f00;
+      background: var(--hs-ok);
       border-radius: 50%;
       pointer-events: none;
       z-index: 1;
     }
     .hs-mc-tab.active[data-live="true"]::after {
-      background: #cc0000;
+      background: var(--hs-ok-dim);
     }
     /* YT: position:fixed children already stop at clientWidth (left edge of
        the body scrollbar), so no extra gutter is needed — keep tabs flush to
@@ -9053,7 +9053,7 @@ function injectStyles() {
     .hs-mc-chat-banner-badge {
       font-size: 13px;
       font-weight: 700;
-      color: #ff5050;
+      color: var(--hs-danger);
       text-transform: uppercase;
       letter-spacing: 0.5px;
       flex-shrink: 0;
@@ -9068,7 +9068,7 @@ function injectStyles() {
       display: none;
       align-items: center;
       gap: 4px;
-      background: #ff8700;
+      background: var(--hs-brand);
       color: #000;
       border: none;
       border-radius: 0;
@@ -9444,7 +9444,7 @@ function injectStyles() {
     .hs-notif-action-primary:hover,
     .hs-notif-action-primary:active { background: #fff; color: #000; border-color: #fff; }
     .hs-notif-action-dismiss { padding: 0 10px; font-size: 14px; color: #848494; }
-    .hs-notif-action-dismiss:hover { background: #ff4040; color: #000; }
+    .hs-notif-action-dismiss:hover { background: var(--hs-danger); color: #000; }
 
     /* Toast-stack — every notif on this layer gets the toast aesthetic:
        icon prefix, level accent, click-to-dismiss cursor. Applies to the
@@ -9466,18 +9466,18 @@ function injectStyles() {
       text-align: center;
       flex: 0 0 auto;
     }
-    .hs-notif-toast-text.hs-notif-toast-success { --hs-notif-icon: '✓'; --hs-notif-accent: #00d65a; color: #c0f5d4; }
-    .hs-notif-toast-text.hs-notif-toast-error   { --hs-notif-icon: '✕'; --hs-notif-accent: #ff4f4d; color: #ffd0cf; }
-    .hs-notif-toast-text.hs-notif-toast-warn    { --hs-notif-icon: '!'; --hs-notif-accent: #ffff00; color: #ffffb8; }
-    .hs-notif-toast-text.hs-notif-toast-info    { --hs-notif-icon: 'i'; --hs-notif-accent: #6aa0ff; color: #d0ddff; }
-    .hs-notif-toast-text.hs-notif-toast-mention { --hs-notif-icon: '@'; --hs-notif-accent: #ff00ff; color: #ffd0ff; }
+    .hs-notif-toast-text.hs-notif-toast-success { --hs-notif-icon: '✓'; --hs-notif-accent: var(--hs-ok); color: #efeff1; }
+    .hs-notif-toast-text.hs-notif-toast-error   { --hs-notif-icon: '✕'; --hs-notif-accent: var(--hs-danger); color: #efeff1; }
+    .hs-notif-toast-text.hs-notif-toast-warn    { --hs-notif-icon: '!'; --hs-notif-accent: var(--hs-warn); color: #efeff1; }
+    .hs-notif-toast-text.hs-notif-toast-info    { --hs-notif-icon: 'i'; --hs-notif-accent: var(--hs-info); color: #efeff1; }
+    .hs-notif-toast-text.hs-notif-toast-mention { --hs-notif-icon: '@'; --hs-notif-accent: var(--hs-mention); color: #efeff1; }
     /* Wrapper accent strip mirrors the text level (CSS custom property
        cascades from the inner span up via :has). */
-    .hs-notif:has(.hs-notif-toast-success) { --hs-notif-accent: #00d65a; }
-    .hs-notif:has(.hs-notif-toast-error)   { --hs-notif-accent: #ff4f4d; }
-    .hs-notif:has(.hs-notif-toast-warn)    { --hs-notif-accent: #ffff00; }
-    .hs-notif:has(.hs-notif-toast-info)    { --hs-notif-accent: #6aa0ff; }
-    .hs-notif:has(.hs-notif-toast-mention) { --hs-notif-accent: #ff00ff; }
+    .hs-notif:has(.hs-notif-toast-success) { --hs-notif-accent: var(--hs-ok); }
+    .hs-notif:has(.hs-notif-toast-error)   { --hs-notif-accent: var(--hs-danger); }
+    .hs-notif:has(.hs-notif-toast-warn)    { --hs-notif-accent: var(--hs-warn); }
+    .hs-notif:has(.hs-notif-toast-info)    { --hs-notif-accent: var(--hs-info); }
+    .hs-notif:has(.hs-notif-toast-mention) { --hs-notif-accent: var(--hs-mention); }
     .hs-notif-layer-toast-stack > .hs-notif:hover { background: #fff; }
     .hs-notif-layer-toast-stack > .hs-notif:hover .hs-notif-toast-text,
     .hs-notif-layer-toast-stack > .hs-notif:hover .hs-notif-toast-text::before {
@@ -9490,7 +9490,7 @@ function injectStyles() {
       border-color: #000;
     }
     .hs-notif-layer-toast-stack > .hs-notif:hover .hs-notif-action:hover { background: #000; color: #fff; }
-    .hs-notif-layer-toast-stack > .hs-notif:hover .hs-notif-action-dismiss:hover { background: #ff4040; color: #000; }
+    .hs-notif-layer-toast-stack > .hs-notif:hover .hs-notif-action-dismiss:hover { background: var(--hs-danger); color: #000; }
 
     /* === Statusbar — a status/toast line just under the search/filter bar.
        ABSOLUTE overlay strip, never in flow: an appearing/vanishing toast must
@@ -9653,7 +9653,7 @@ function injectStyles() {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      color: #ffa040;
+      color: var(--hs-brand);
       font-weight: 600;
     }
     @container (max-width: 240px) {
@@ -10168,8 +10168,10 @@ function injectStyles() {
        so the referenced post keeps its brighter highlight instead of blending
        into a zebra band. */
     .hs-feed-postlink-preview-row.hs-feed-postlink-preview-linked {
-      background: #3a2600 !important;
-      border-left: 2px solid #ff8700 !important;
+      /* linked target = attention/yellow family; #555500 is one olive step
+         brighter than the #2e2e08 stack rows so the row still pops */
+      background: #555500 !important;
+      border-left: 2px solid var(--hs-mention) !important;
     }
     /* Brief flash on the message that the overflow chip scrolled to */
     .hs-mc-msg.hs-mc-thread-flash {
@@ -10264,7 +10266,7 @@ function injectStyles() {
     .hs-mc-msg.hs-mc-row-selected {
       background: #fff !important;
       color: #000 !important;
-      box-shadow: inset 2px 0 0 #ff8700;
+      box-shadow: inset 2px 0 0 var(--hs-reply-dim);
     }
     .hs-mc-msg.hs-mc-row-selected .hs-mc-user,
     .hs-mc-msg.hs-mc-row-selected .hs-mc-system-text,
@@ -10284,8 +10286,8 @@ function injectStyles() {
       cursor: default;
     }
     /* Bottom action bar — floats over #hs-mc-messages like #hs-mc-new-msgs,
-       brand-orange bg (the one non-monochrome accent per the mod palette),
-       square, zero motion. */
+       reverse-video (selection mode = white bg / black text, same treatment
+       as selected rows), square, zero motion. */
     #hs-mc-bulk-bar {
       position: absolute;
       left: 0;
@@ -10296,7 +10298,7 @@ function injectStyles() {
       align-items: center;
       gap: 6px;
       padding: 6px 8px;
-      background: #ff8700;
+      background: #fff;
       color: #000;
       font: 13px/18px 'CozetteVector', monospace;
       border-top: 1px solid #000;
@@ -10320,7 +10322,7 @@ function injectStyles() {
       color: #000;
     }
     #hs-mc-bulk-bar button[data-bulk='ban'] {
-      border-color: #ff0000;
+      border-color: var(--hs-danger);
       color: #ff5f5f;
     }
     #hs-mc-bulk-bar button[data-bulk='ban']:hover {
@@ -10375,7 +10377,7 @@ function injectStyles() {
       display: none !important;
     }
     .hs-mc-msg.hs-mc-system {
-      border-left: 3px solid #9147ff;
+      border-left: 3px solid var(--hs-plat-twitch);
       padding-left: 8px;
       background: rgba(145, 71, 255, 0.08);
     }
@@ -10400,62 +10402,62 @@ function injectStyles() {
        magenta(13)=raid/gift/mention/first-msg-ever (special event),
        cyan(14)=stream-hype/milestone (action-needed).
        #fff reserved for brand chrome only (buttons, frames, drag bars). */
-    .hs-mc-msg.hs-mc-notice-ban       { border-left-color: #ff0000 !important; background: rgba(255, 0, 0, 0.12) !important; }
-    .hs-mc-msg.hs-mc-notice-ban       .hs-mc-system-text { color: #ff4040; font-weight: 600; }
+    .hs-mc-msg.hs-mc-notice-ban       { border-left-color: var(--hs-danger) !important; background: var(--hs-danger-tint) !important; }
+    .hs-mc-msg.hs-mc-notice-ban       .hs-mc-system-text { color: var(--hs-danger); font-weight: 600; }
     .hs-mc-msg.hs-mc-notice-timeout   { border-left-color: #008000 !important; background: rgba(0, 128, 0, 0.10) !important; }
     .hs-mc-msg.hs-mc-notice-timeout   .hs-mc-system-text { color: #00cc44; }
-    .hs-mc-msg.hs-mc-notice-unban     { border-left-color: #00ff00 !important; background: rgba(0, 255, 0, 0.12) !important; }
-    .hs-mc-msg.hs-mc-notice-unban     .hs-mc-system-text { color: #00ff00; font-weight: 600; }
+    .hs-mc-msg.hs-mc-notice-unban     { border-left-color: var(--hs-ok) !important; background: var(--hs-ok-tint) !important; }
+    .hs-mc-msg.hs-mc-notice-unban     .hs-mc-system-text { color: var(--hs-ok); font-weight: 600; }
     .hs-mc-msg.hs-mc-notice-untimeout { border-left-color: #008000 !important; background: rgba(0, 128, 0, 0.10) !important; }
     .hs-mc-msg.hs-mc-notice-untimeout .hs-mc-system-text { color: #00cc44; }
     /* Role grants (blue mod / pink VIP) */
-    .hs-mc-msg.hs-mc-notice-mod-add     { border-left-color: #4080ff !important; background: rgba(64, 128, 255, 0.12) !important; }
-    .hs-mc-msg.hs-mc-notice-mod-add     .hs-mc-system-text { color: #4080ff; font-weight: 600; }
+    .hs-mc-msg.hs-mc-notice-mod-add     { border-left-color: var(--hs-info) !important; background: rgba(64, 128, 255, 0.12) !important; }
+    .hs-mc-msg.hs-mc-notice-mod-add     .hs-mc-system-text { color: var(--hs-info); font-weight: 600; }
     .hs-mc-msg.hs-mc-notice-mod-remove  { border-left-color: #c0c0c0 !important; background: rgba(192, 192, 192, 0.06) !important; }
     .hs-mc-msg.hs-mc-notice-mod-remove  .hs-mc-system-text { color: #c0c0c0; }
-    .hs-mc-msg.hs-mc-notice-vip-add     { border-left-color: #ff00ff !important; background: rgba(255, 0, 255, 0.12) !important; }
-    .hs-mc-msg.hs-mc-notice-vip-add     .hs-mc-system-text { color: #ff44ff; font-weight: 600; }
+    .hs-mc-msg.hs-mc-notice-vip-add     { border-left-color: var(--hs-thread) !important; background: var(--hs-thread-tint) !important; }
+    .hs-mc-msg.hs-mc-notice-vip-add     .hs-mc-system-text { color: var(--hs-thread); font-weight: 600; }
     .hs-mc-msg.hs-mc-notice-vip-remove  { border-left-color: #c0c0c0 !important; background: rgba(192, 192, 192, 0.06) !important; }
     .hs-mc-msg.hs-mc-notice-vip-remove  .hs-mc-system-text { color: #c0c0c0; }
     /* Single message delete = dark red (less severe than ban) */
-    .hs-mc-msg.hs-mc-notice-delete    { border-left-color: #800000 !important; background: rgba(128, 0, 0, 0.10) !important; }
+    .hs-mc-msg.hs-mc-notice-delete    { border-left-color: var(--hs-danger-dim) !important; background: rgba(128, 0, 0, 0.10) !important; }
     .hs-mc-msg.hs-mc-notice-delete    .hs-mc-system-text { color: #ff8080; }
     /* Room mode change = aqua */
-    .hs-mc-msg.hs-mc-notice-mode      { border-left-color: #00ffff !important; background: rgba(0, 255, 255, 0.10) !important; }
-    .hs-mc-msg.hs-mc-notice-mode      .hs-mc-system-text { color: #00ffff; font-weight: 600; }
+    .hs-mc-msg.hs-mc-notice-mode      { border-left-color: var(--hs-reply) !important; background: var(--hs-reply-tint) !important; }
+    .hs-mc-msg.hs-mc-notice-mode      .hs-mc-system-text { color: var(--hs-reply); font-weight: 600; }
     /* Sub events (Twitch convention = purple, gifts = brighter magenta variant) */
     .hs-mc-msg.hs-mc-notice-sub       { border-left-color: #9146ff !important; background: rgba(145, 70, 255, 0.12) !important; }
     .hs-mc-msg.hs-mc-notice-sub       .hs-mc-system-text { color: #b87aff; font-weight: 600; }
     .hs-mc-msg.hs-mc-notice-gift      { border-left-color: #cc44ff !important; background: rgba(204, 68, 255, 0.16) !important; }
     .hs-mc-msg.hs-mc-notice-gift      .hs-mc-system-text { color: #cc44ff; font-weight: 600; }
     /* Raid = magenta (ANSI 13) — special event family */
-    .hs-mc-msg.hs-mc-notice-raid      { border-left-color: #ff00ff !important; background: rgba(255, 0, 255, 0.14) !important; }
-    .hs-mc-msg.hs-mc-notice-raid      .hs-mc-system-text { color: #ff00ff; font-weight: 700; }
+    .hs-mc-msg.hs-mc-notice-raid      { border-left-color: var(--hs-thread) !important; background: var(--hs-thread-tint) !important; }
+    .hs-mc-msg.hs-mc-notice-raid      .hs-mc-system-text { color: var(--hs-thread); font-weight: 700; }
     /* Announcement = pure yellow (broadcaster speaking) */
-    .hs-mc-msg.hs-mc-notice-announce  { border-left-color: #ffff00 !important; background: rgba(255, 255, 0, 0.10) !important; }
-    .hs-mc-msg.hs-mc-notice-announce  .hs-mc-system-text { color: #ffff00; font-weight: 600; }
+    .hs-mc-msg.hs-mc-notice-announce  { border-left-color: var(--hs-warn) !important; background: var(--hs-warn-tint) !important; }
+    .hs-mc-msg.hs-mc-notice-announce  .hs-mc-system-text { color: var(--hs-warn); font-weight: 600; }
     /* Bits = gold/amber (distinct from raid orange and announce yellow) */
-    .hs-mc-msg.hs-mc-notice-bits      { border-left-color: #ffaa00 !important; background: rgba(255, 170, 0, 0.10) !important; }
-    .hs-mc-msg.hs-mc-notice-bits      .hs-mc-system-text { color: #ffd700; font-weight: 600; }
+    .hs-mc-msg.hs-mc-notice-bits      { border-left-color: var(--hs-gold) !important; background: rgba(255, 170, 0, 0.10) !important; }
+    .hs-mc-msg.hs-mc-notice-bits      .hs-mc-system-text { color: var(--hs-gold); font-weight: 600; }
     /* viewermilestone (sub anniversary, etc.) = teal */
-    .hs-mc-msg.hs-mc-notice-milestone { border-left-color: #008080 !important; background: rgba(0, 128, 128, 0.12) !important; }
-    .hs-mc-msg.hs-mc-notice-milestone .hs-mc-system-text { color: #00ffff; font-weight: 600; }
+    .hs-mc-msg.hs-mc-notice-milestone { border-left-color: var(--hs-reply-dim) !important; background: rgba(0, 128, 128, 0.12) !important; }
+    .hs-mc-msg.hs-mc-notice-milestone .hs-mc-system-text { color: var(--hs-reply); font-weight: 600; }
     /* Watch-streak = brand orange — engagement heat, distinct from raid magenta */
-    .hs-mc-msg.hs-mc-notice-watchstreak { border-left-color: #ff7f00 !important; background: rgba(255, 127, 0, 0.12) !important; }
-    .hs-mc-msg.hs-mc-notice-watchstreak .hs-mc-system-text { color: #ffa040; font-weight: 600; }
-    /* Mod-anniversary = bright sky-blue (mod-family palette, brighter than
-       grant-mod #4080ff so it reads as a celebration, not a routine grant) */
-    .hs-mc-msg.hs-mc-notice-mod-anniversary { border-left-color: #1ec5ff !important; background: rgba(30, 197, 255, 0.14) !important; }
-    .hs-mc-msg.hs-mc-notice-mod-anniversary .hs-mc-system-text { color: #5fd3ff; font-weight: 700; }
+    .hs-mc-msg.hs-mc-notice-watchstreak { border-left-color: var(--hs-brand) !important; background: rgba(255, 127, 0, 0.12) !important; }
+    .hs-mc-msg.hs-mc-notice-watchstreak .hs-mc-system-text { color: var(--hs-brand); font-weight: 600; }
+    /* Mod-anniversary = gold (authority family — a celebration of mod status,
+       distinct from the routine info-blue grant-mod notice) */
+    .hs-mc-msg.hs-mc-notice-mod-anniversary { border-left-color: var(--hs-gold) !important; background: var(--hs-gold-tint) !important; }
+    .hs-mc-msg.hs-mc-notice-mod-anniversary .hs-mc-system-text { color: var(--hs-gold); font-weight: 700; }
     /* Errors / rejections = dim maroon */
-    .hs-mc-msg.hs-mc-notice-error     { border-left-color: #800000 !important; background: rgba(128, 0, 0, 0.06) !important; }
+    .hs-mc-msg.hs-mc-notice-error     { border-left-color: var(--hs-danger-dim) !important; background: rgba(128, 0, 0, 0.06) !important; }
     .hs-mc-msg.hs-mc-notice-error     .hs-mc-system-text { color: #ff8080; }
     /* First-time chatter (Twitch first-msg=1) = Twitch magenta-purple */
     .hs-mc-msg.hs-mc-first-msg { border-left: 3px solid #bd5fff; padding-left: 8px; background: rgba(189, 95, 255, 0.12); }
     /* n/N search-match cursor (live-tab filter) — HeatSync orange left-accent,
        no animation, wins over notice-type coloring (same specificity, later
        in source order) so the current match is always identifiable. */
-    .hs-mc-msg.hs-mc-search-current { border-left: 2px solid #ff8700 !important; background: rgba(255, 135, 0, 0.12) !important; }
+    .hs-mc-msg.hs-mc-search-current { border-left: 2px solid var(--hs-mention) !important; background: var(--hs-warn-tint) !important; }
     /* Cleared (timed out / banned / msg deleted) — Twitch-native dim + strikethrough.
        Username and badges stay visible so the reader can see who got hit; the body
        text and emotes get faded with a strikethrough. */
@@ -10470,14 +10472,14 @@ function injectStyles() {
        carries a mutable status + button pair instead of static system text. */
     .hs-mc-msg.hs-mc-automod {
       display: block;
-      border-left: 3px solid #ffd700;
-      background: rgba(255, 215, 0, 0.08);
+      border-left: 3px solid var(--hs-gold);
+      background: var(--hs-gold-tint);
       padding: 4px 8px;
     }
     .hs-mc-msg.hs-mc-automod.hs-mc-automod-resolved { opacity: 0.6; }
     .hs-mc-automod-badge {
       display: inline-block;
-      background: #ffd700;
+      background: var(--hs-gold);
       color: #000;
       font-weight: 700;
       font-size: 13px;
@@ -10487,9 +10489,9 @@ function injectStyles() {
     }
     .hs-mc-automod-chip {
       display: inline-block;
-      color: #ffd700;
+      color: var(--hs-gold);
       font-size: 13px;
-      border: 1px solid #ffd700;
+      border: 1px solid var(--hs-gold);
       padding: 0 4px;
     }
     .hs-mc-automod-body {
@@ -10503,7 +10505,7 @@ function injectStyles() {
     .hs-mc-automod-btn {
       background: #000;
       color: #fff;
-      border: 1px solid #ffd700;
+      border: 1px solid var(--hs-gold);
       font: 13px/18px 'CozetteVector', monospace;
       padding: 1px 8px;
       cursor: pointer;
@@ -10511,26 +10513,26 @@ function injectStyles() {
     }
     .hs-mc-automod-btn:hover,
     .hs-mc-automod-btn:active { background: #fff; color: #000; }
-    .hs-mc-automod-status { font-size: 13px; color: #ffd700; }
-    .hs-mc-automod-status.hs-mc-automod-err { color: #ff4040; }
+    .hs-mc-automod-status { font-size: 13px; color: var(--hs-gold); }
+    .hs-mc-automod-status.hs-mc-automod-err { color: var(--hs-danger); }
     .hs-mc-msg.hs-mc-redeemed {
       background: rgba(145, 71, 255, 0.15);
-      border-left: 3px solid #9147ff;
+      border-left: 3px solid var(--hs-plat-twitch);
       padding-left: 8px;
     }
     .hs-mc-msg.hs-mc-highlighted {
-      background: rgba(255, 215, 0, 0.1);
-      border-left: 3px solid #ffd700;
+      background: var(--hs-gold-tint);
+      border-left: 3px solid var(--hs-gold);
       padding-left: 8px;
     }
     .hs-mc-redeem-label {
-      color: #9147ff;
+      color: var(--hs-plat-twitch);
       font-size: 13px;
       font-style: normal;
       font-weight: 600;
     }
     .hs-mc-highlight-label {
-      color: #ffd700;
+      color: var(--hs-gold);
       font-size: 13px;
       font-style: normal;
       font-weight: 600;
@@ -10586,13 +10588,13 @@ function injectStyles() {
       -webkit-text-fill-color: #999 !important;
     }
     .hs-mc-msg.hs-first-msg {
-      /* first-message glow — brand orange bar + a subtle inset orange glow (was a
-         flat yellow bar; the setting is called "glow", so it now actually glows). */
-      box-shadow: inset 2px 0 0 #ff8700, inset 0 0 10px -2px rgba(255, 135, 0, 0.35);
+      /* first-message glow — thread/event magenta bar + a subtle inset glow
+         (the setting is called "glow", so it actually glows). */
+      box-shadow: inset 2px 0 0 var(--hs-thread), inset 0 0 10px -2px rgba(255, 0, 255, 0.30);
     }
     .hs-mc-msg.hs-kw-match {
       background: rgba(255, 255, 0, 0.14);
-      box-shadow: inset 0 0 0 1px #ffff00;
+      box-shadow: inset 0 0 0 1px var(--hs-mention);
     }
     /* Returning chatter — back after a long absence (twitch returning-chatter tag).
        Monochrome by intent: a low-key gray bar (familiar, seen before). */
@@ -10656,9 +10658,9 @@ function injectStyles() {
       font-weight: 700;
       vertical-align: middle;
     }
-    .hs-mc-platform-badge.hs-mc-pb-twitch { color: #9146ff; }
-    .hs-mc-platform-badge.hs-mc-pb-kick { color: #53fc18; }
-    .hs-mc-platform-badge.hs-mc-pb-yt { color: #ff0000; }
+    .hs-mc-platform-badge.hs-mc-pb-twitch { color: var(--hs-plat-twitch); }
+    .hs-mc-platform-badge.hs-mc-pb-kick { color: var(--hs-plat-kick); }
+    .hs-mc-platform-badge.hs-mc-pb-yt { color: var(--hs-plat-youtube); }
     .hs-mc-badge {
       display: inline-block;
       /* Single font setting drives family + size (see .hs-mc-platform-badge). */
@@ -10850,13 +10852,13 @@ function injectStyles() {
       gap: 6px;
       padding: 4px 8px;
       font-size: 13px;
-      color: #ff0000;
+      color: var(--hs-danger);
       background: #000;
-      border: 1px solid #ff0000;
+      border: 1px solid var(--hs-danger);
       border-radius: 0;
     }
-    #hs-mc-idwarn a { color: #ff0000; text-decoration: underline; }
-    #hs-mc-idwarn b { color: #ff4040; font-weight: 600; }
+    #hs-mc-idwarn a { color: var(--hs-danger); text-decoration: underline; }
+    #hs-mc-idwarn b { color: var(--hs-danger); font-weight: 600; }
     #hs-mc-idwarn button {
       flex: none;
       width: 18px;
@@ -10864,9 +10866,9 @@ function injectStyles() {
       padding: 0;
       font-size: 13px;
       line-height: 1;
-      color: #ff0000;
+      color: var(--hs-danger);
       background: #000;
-      border: 1px solid #ff0000;
+      border: 1px solid var(--hs-danger);
       border-radius: 0;
       cursor: pointer;
     }
@@ -10916,7 +10918,7 @@ function injectStyles() {
       position: fixed;
       z-index: 2147483647 !important;
       background: #000; color: #fff;
-      border: 1px solid #ff8700;
+      border: 1px solid var(--hs-gold);
       padding: 0; width: 300px;
       box-shadow: 0 6px 32px rgba(0,0,0,0.75);
       font-family: var(--hs-mc-font, 'CozetteVector', 'Courier New', monospace);
@@ -10935,7 +10937,7 @@ function injectStyles() {
       font-family: inherit; font-size: 13px; line-height: 1.4; outline: none;
     }
     .hs-note-editor-ta::placeholder { color: #555; }
-    .hs-note-editor-ta:focus { box-shadow: inset 0 0 0 1px #ff8700; }
+    .hs-note-editor-ta:focus { box-shadow: inset 0 0 0 1px var(--hs-gold); }
     .hs-note-editor-foot {
       display: flex; align-items: center; justify-content: space-between;
       padding: 4px 10px; background: #050505; border-top: 1px solid #1a1a1a;
@@ -10945,7 +10947,7 @@ function injectStyles() {
       background: transparent; color: #808080; border: 1px solid #333;
       padding: 2px 8px; cursor: pointer; font-family: inherit; font-size: 13px;
     }
-    .hs-note-editor-del:hover { background: #ff5050; color: #000; border-color: #ff5050; }
+    .hs-note-editor-del:hover { background: var(--hs-danger); color: #000; border-color: var(--hs-danger); }
     .hs-mc-ctx .hs-mc-em-header {
       padding: 4px 10px; font-size: 13px; color: #555;
       background: #050505;
@@ -10957,9 +10959,9 @@ function injectStyles() {
     }
     .hs-mc-ctx .hs-mc-em-item:hover { background: #fff; color: #000; }
     .hs-mc-ctx .hs-mc-em-item:hover .hs-mc-em-kbd { background: #000; color: #fff; border-color: #000; }
-    .hs-mc-ctx .hs-mc-em-item.hs-mc-em-danger { color: #ff5959; }
-    .hs-mc-ctx .hs-mc-em-item.hs-mc-em-danger:hover { background: #ff2020; color: #fff; }
-    .hs-mc-ctx .hs-mc-em-item.hs-mc-em-good { color: #59ff8a; }
+    .hs-mc-ctx .hs-mc-em-item.hs-mc-em-danger { color: var(--hs-danger); }
+    .hs-mc-ctx .hs-mc-em-item.hs-mc-em-danger:hover { background: var(--hs-danger); color: #fff; }
+    .hs-mc-ctx .hs-mc-em-item.hs-mc-em-good { color: var(--hs-ok); }
     .hs-mc-ctx .hs-mc-em-item.hs-mc-em-good:hover { background: #fff; color: #000; }
     .hs-mc-ctx .hs-mc-em-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .hs-mc-ctx .hs-mc-em-kbd {
@@ -11088,11 +11090,11 @@ function injectStyles() {
       line-height: 16px !important;
     }
     #hs-user-tooltip .hs-pc-platform.twitch {
-      background: #9146ff;
+      background: var(--hs-plat-twitch);
       color: #fff;
     }
     #hs-user-tooltip .hs-pc-platform.kick {
-      background: #53fc18;
+      background: var(--hs-plat-kick);
       color: #000;
     }
     #hs-user-tooltip .hs-pc-name {
@@ -11122,7 +11124,7 @@ function injectStyles() {
     }
     #hs-user-tooltip .hs-pc-role.admin { background: #ff0000; color: #fff; }
     #hs-user-tooltip .hs-pc-role.staff { background: #ff8800; color: #000; }
-    #hs-user-tooltip .hs-pc-role.partner { background: #ffaa00; color: #000; }
+    #hs-user-tooltip .hs-pc-role.partner { background: var(--hs-gold); color: #000; }
     #hs-user-tooltip .hs-pc-role.affiliate { background: transparent; color: #fff; }
     #hs-user-tooltip .hs-pc-age {
       padding: 2px 4px;
@@ -11146,7 +11148,7 @@ function injectStyles() {
     }
     #hs-user-tooltip .hs-pc-bio-mention { color: #fff; cursor: pointer; }
     #hs-user-tooltip .hs-pc-bio-mention:hover { text-decoration: underline; }
-    #hs-user-tooltip .hs-pc-bio-tag { color: #ff00ff; text-decoration: none; }
+    #hs-user-tooltip .hs-pc-bio-tag { color: var(--hs-thread); text-decoration: none; }
     #hs-user-tooltip .hs-pc-bio-tag:hover { text-decoration: underline; }
     #hs-user-tooltip .hs-pc-stats {
       display: flex;
@@ -11197,7 +11199,7 @@ function injectStyles() {
     #hs-user-tooltip .hs-pc-rel-badge.mutual { background: #00aaaa; color: #fff; }
     #hs-user-tooltip .hs-pc-rel-badge.supporter { background: #fff; color: #000; }
     #hs-user-tooltip .hs-pc-rel-badge.following { background: #0099ff; color: #fff; }
-    #hs-user-tooltip .hs-pc-rel-badge.subbed { background: #9146ff; color: #fff; }
+    #hs-user-tooltip .hs-pc-rel-badge.subbed { background: var(--hs-plat-twitch); color: #fff; }
     #hs-user-tooltip .hs-pc-rel-badge.mutual-follow { background: #000; color: #fff; border: 1px solid #00aaaa; }
     #hs-user-tooltip .hs-pc-rel-badge.mutual-sub { background: #000; color: #fff; border: 1px solid #fff; }
     /* Property sheet — mirrors .hs-pcard-sheet. Tooltip already inherits
@@ -11220,24 +11222,24 @@ function injectStyles() {
     #hs-user-tooltip .hs-pc-sheet dd:nth-of-type(even) { background: #1f1f1f; }
     /* Mirror of .hs-pcard-sheet ANSI semantic palette — see comment in
        the pcard sheet block for the full reasoning. */
-    #hs-user-tooltip .hs-pc-sheet .val-age { color: #ffff00; }
-    #hs-user-tooltip .hs-pc-sheet .val-partner { color: #ffaf00; }
+    #hs-user-tooltip .hs-pc-sheet .val-age { color: var(--hs-warn); }
+    #hs-user-tooltip .hs-pc-sheet .val-partner { color: var(--hs-gold); }
     #hs-user-tooltip .hs-pc-sheet .val-affiliate { color: #bcbcbc; }
-    #hs-user-tooltip .hs-pc-sheet .val-ttv { color: #9146ff; }
-    #hs-user-tooltip .hs-pc-sheet .val-kick { color: #53fc18; }
-    #hs-user-tooltip .hs-pc-sheet .val-yt { color: #ff0000; }
+    #hs-user-tooltip .hs-pc-sheet .val-ttv { color: var(--hs-plat-twitch); }
+    #hs-user-tooltip .hs-pc-sheet .val-kick { color: var(--hs-plat-kick); }
+    #hs-user-tooltip .hs-pc-sheet .val-yt { color: var(--hs-plat-youtube); }
     #hs-user-tooltip .hs-pc-sheet .val-admin { color: #ff0000; }
     #hs-user-tooltip .hs-pc-sheet .val-staff { color: #fff; }
     #hs-user-tooltip .hs-pc-sheet .val-heat { color: #ff0000; }
     #hs-user-tooltip .hs-pc-sheet .val-followers { color: #0087ff; }
-    #hs-user-tooltip .hs-pc-sheet .val-you-follow { color: #00ffff; }
+    #hs-user-tooltip .hs-pc-sheet .val-you-follow { color: var(--hs-reply); }
     #hs-user-tooltip .hs-pc-sheet .val-you-sub { color: #875fff; }
-    #hs-user-tooltip .hs-pc-sheet .val-they-follow { color: #ff00ff; }
+    #hs-user-tooltip .hs-pc-sheet .val-they-follow { color: var(--hs-thread); }
     #hs-user-tooltip .hs-pc-sheet .val-they-sub { color: #ff5fff; }
-    #hs-user-tooltip .hs-pc-sheet .val-mutual { color: #00ff00; }
-    #hs-user-tooltip .hs-pc-sheet .val-mutual-sub { color: #ffd700; }
+    #hs-user-tooltip .hs-pc-sheet .val-mutual { color: var(--hs-ok); }
+    #hs-user-tooltip .hs-pc-sheet .val-mutual-sub { color: var(--hs-gold); }
     #hs-user-tooltip .hs-pc-sheet .val-ch { color: #fff; }
-    #hs-user-tooltip .hs-pc-sheet .hs-pc-live { color: #ff0000; font-weight: 700; }
+    #hs-user-tooltip .hs-pc-sheet .hs-pc-live { color: var(--hs-ok); font-weight: 700; }
     /* Heat number inside the sheet: digits inherit Cozette (already crisp
        on this tooltip surface), ° gets vector fallback for a clean glyph. */
     #hs-user-tooltip .hs-pc-sheet .hs-heat-n { font-family: inherit; }
@@ -11768,7 +11770,7 @@ function injectStyles() {
       border-color: #fff;
     }
     .hs-mc-emote-wrapper.hs-state-blocked.hs-emote-highlight::before {
-      background: #ff0000;
+      background: var(--hs-danger);
       border: none;
     }
 
@@ -11834,8 +11836,8 @@ function injectStyles() {
 
     /* Flash animations */
     @keyframes hs-flash-paste { 0% { box-shadow: 0 0 12px 4px #fff; } 100% { box-shadow: none; } }
-    @keyframes hs-flash-add { 0% { box-shadow: 0 0 12px 4px #00ff00; } 100% { box-shadow: none; } }
-    @keyframes hs-flash-block { 0% { box-shadow: 0 0 12px 4px #ff0000; } 100% { box-shadow: none; } }
+    @keyframes hs-flash-add { 0% { box-shadow: 0 0 12px 4px var(--hs-ok); } 100% { box-shadow: none; } }
+    @keyframes hs-flash-block { 0% { box-shadow: 0 0 12px 4px var(--hs-danger); } 100% { box-shadow: none; } }
     @keyframes hs-flash-unblock { 0% { box-shadow: 0 0 12px 4px #ff8700; } 100% { box-shadow: none; } }
     @keyframes hs-flash-remove { 0% { box-shadow: 0 0 12px 4px #fff; } 100% { box-shadow: none; } }
     .hs-flash-paste { animation: hs-flash-paste 0.4s ease-out; }
@@ -11947,15 +11949,15 @@ function injectStyles() {
     #hs-emote-tooltip .tooltip-source.global,
     #hs-emote-tooltip .tooltip-source.channel { background: #fff; color: #000; }
     #hs-emote-tooltip .tooltip-source.sub { background: #9146ff; color: #fff; }
-    #hs-emote-tooltip .tooltip-source.blocked { background: #ff0000; color: #fff; }
+    #hs-emote-tooltip .tooltip-source.blocked { background: var(--hs-danger); color: #fff; }
     /* Per-provider source label colors (override .global/.channel) */
     #hs-emote-tooltip .tooltip-source.src-7tv { background: #29d8f6; color: #000; }
     #hs-emote-tooltip .tooltip-source.src-bttv { background: #d50014; color: #fff; }
     #hs-emote-tooltip .tooltip-source.src-ffz { background: #0086c8; color: #fff; }
-    #hs-emote-tooltip .tooltip-source.src-twitch { background: #9146ff; color: #fff; }
-    #hs-emote-tooltip .tooltip-source.src-kick { background: #53fc18; color: #000; }
+    #hs-emote-tooltip .tooltip-source.src-twitch { background: var(--hs-plat-twitch); color: #fff; }
+    #hs-emote-tooltip .tooltip-source.src-kick { background: var(--hs-plat-kick); color: #000; }
     #hs-emote-tooltip .tooltip-source.src-heatsync,
-    #hs-emote-tooltip .tooltip-source.src-hs { background: #ff8700; color: #000; }
+    #hs-emote-tooltip .tooltip-source.src-hs { background: var(--hs-plat-hs); color: #000; }
 
     /* Max z-index + showLinkTooltip re-appends to body — beats reply-stack overlay. */
     #hs-link-tooltip {
@@ -12124,35 +12126,35 @@ img.hs-fx-zero { margin-left: -4px; }
     /* Resub-share mode — purple border on the whole inputbar so the user
        knows their next message becomes the resub celebration body. */
     #hs-mc-inputbar.hs-mc-resub-share {
-      box-shadow: 0 0 0 2px #9147ff inset, 0 0 8px rgba(145,71,255,0.4);
+      box-shadow: 0 0 0 2px var(--hs-plat-twitch) inset, 0 0 8px rgba(145,71,255,0.4);
       background: rgba(145,71,255,0.08);
     }
     #hs-mc-input.hs-mc-resub-share,
     #hs-mc-input.hs-mc-resub-share:focus {
-      border-color: #9147ff !important;
+      border-color: var(--hs-plat-twitch) !important;
       background: #140d22 !important;
     }
     #hs-mc-input.hs-mc-resub-share::placeholder,
     #hs-mc-input.hs-mc-resub-share[contenteditable]:empty::before,
     #hs-mc-input.hs-mc-resub-share[contenteditable]:has(br:only-child)::before {
-      color: #9147ff !important;
+      color: var(--hs-plat-twitch) !important;
       font-weight: 600 !important;
     }
     /* Watch-streak share mode — orange glow signals heat/streak, distinct
        from resub purple. Same input mechanism, different brand color. */
     #hs-mc-inputbar.hs-mc-watchstreak-share {
-      box-shadow: 0 0 0 2px #ff7f00 inset, 0 0 8px rgba(255,127,0,0.4);
+      box-shadow: 0 0 0 2px var(--hs-brand) inset, 0 0 8px rgba(255,127,0,0.4);
       background: rgba(255,127,0,0.08);
     }
     #hs-mc-input.hs-mc-watchstreak-share,
     #hs-mc-input.hs-mc-watchstreak-share:focus {
-      border-color: #ff7f00 !important;
+      border-color: var(--hs-brand) !important;
       background: #1a1206 !important;
     }
     #hs-mc-input.hs-mc-watchstreak-share::placeholder,
     #hs-mc-input.hs-mc-watchstreak-share[contenteditable]:empty::before,
     #hs-mc-input.hs-mc-watchstreak-share[contenteditable]:has(br:only-child)::before {
-      color: #ff7f00 !important;
+      color: var(--hs-brand) !important;
       font-weight: 600 !important;
     }
     /* Contenteditable placeholder. Browsers leave a stray BR after focus/blur
@@ -12377,10 +12379,10 @@ img.hs-fx-zero { margin-left: -4px; }
       border: 1px solid transparent;
     }
     #hs-mc-input-highlight .hl-safe { color: #fff; }
-    #hs-mc-input-highlight .hl-over { color: #ff4444; }
+    #hs-mc-input-highlight .hl-over { color: var(--hs-danger); }
     #hs-mc-send {
       padding: 8px 12px;
-      background: #9147ff;
+      background: var(--hs-plat-twitch);
       color: #fff;
       border: none;
       border-radius: 0;
@@ -12737,7 +12739,7 @@ img.hs-fx-zero { margin-left: -4px; }
       font-size: 16px; font-weight: 700; color: #fff;
       display: flex; align-items: center; gap: 6px; line-height: 18px;
     }
-    .hs-pcard-livedot { color: #ff5050; font-size: 9px; }
+    .hs-pcard-livedot { color: var(--hs-ok); font-size: 9px; }
     /* Filled-style platform pills — mirror #hs-user-tooltip .hs-pc-platform
        so the click-card identity row looks identical to the hover tooltip. */
     .hs-pcard-pill {
@@ -12747,10 +12749,10 @@ img.hs-fx-zero { margin-left: -4px; }
       line-height: 16px;
     }
     .hs-pcard-pill:hover { background: #fff !important; color: #000 !important; border-color: #000; }
-    .hs-pcard-pill-twitch { background: #9146ff; color: #fff; }
-    .hs-pcard-pill-kick { background: #53fc18; color: #000; }
-    .hs-pcard-pill-youtube { background: #ff0000; color: #fff; }
-    .hs-pcard-pill-live { color: #ff5050; }
+    .hs-pcard-pill-twitch { background: var(--hs-plat-twitch); color: #fff; }
+    .hs-pcard-pill-kick { background: var(--hs-plat-kick); color: #000; }
+    .hs-pcard-pill-youtube { background: var(--hs-plat-youtube); color: #fff; }
+    .hs-pcard-pill-live { color: var(--hs-ok); }
     .hs-pcard-bio {
       color: #aaa; font-size: 13px; line-height: 18px;
       white-space: pre-wrap; word-break: break-word;
@@ -12758,7 +12760,7 @@ img.hs-fx-zero { margin-left: -4px; }
     }
     .hs-pcard-bio-mention { color: #fff; cursor: pointer; }
     .hs-pcard-bio-mention:hover { text-decoration: underline; }
-    .hs-pcard-bio-tag { color: #ff00ff; text-decoration: none; }
+    .hs-pcard-bio-tag { color: var(--hs-thread); text-decoration: none; }
     .hs-pcard-bio-tag:hover { text-decoration: underline; }
     /* Property sheet — 2-col zebra list. The pcard surface uses system-sans
        by default (see body.hs-font-bitmap .hs-pcard counter-rule near top
@@ -12785,24 +12787,24 @@ img.hs-fx-zero { margin-left: -4px; }
     /* ANSI 256-mapped semantic colors. Each row's value carries meaning via hue:
        identity = brand, time = yellow, tier = amber/silver, power = red,
        relationship direction = cool (outflow) / warm (inflow) / saturated (mutual). */
-    .hs-pcard-sheet .val-age { color: #ffff00; }       /* xterm 226 — time */
-    .hs-pcard-sheet .val-partner { color: #ffaf00; }    /* xterm 214 — premium */
+    .hs-pcard-sheet .val-age { color: var(--hs-warn); }       /* xterm 226 — time */
+    .hs-pcard-sheet .val-partner { color: var(--hs-gold); }    /* xterm 214 — premium */
     .hs-pcard-sheet .val-affiliate { color: #bcbcbc; }  /* xterm 250 — entry */
-    .hs-pcard-sheet .val-ttv { color: #9146ff; }        /* twitch brand */
-    .hs-pcard-sheet .val-kick { color: #53fc18; }       /* kick brand */
-    .hs-pcard-sheet .val-yt { color: #ff0000; }         /* xterm 196 — yt brand */
+    .hs-pcard-sheet .val-ttv { color: var(--hs-plat-twitch); }        /* twitch brand */
+    .hs-pcard-sheet .val-kick { color: var(--hs-plat-kick); }       /* kick brand */
+    .hs-pcard-sheet .val-yt { color: var(--hs-plat-youtube); }         /* xterm 196 — yt brand */
     .hs-pcard-sheet .val-admin { color: #ff0000; }      /* xterm 196 — power */
     .hs-pcard-sheet .val-staff { color: #fff; }      /* xterm 208 — hs orange */
     .hs-pcard-sheet .val-heat { color: #ff0000; }       /* xterm 196 — fire */
     .hs-pcard-sheet .val-followers { color: #0087ff; }  /* xterm 33 — popularity */
-    .hs-pcard-sheet .val-you-follow { color: #00ffff; } /* xterm 51 — outflow */
+    .hs-pcard-sheet .val-you-follow { color: var(--hs-reply); } /* xterm 51 — outflow */
     .hs-pcard-sheet .val-you-sub { color: #875fff; }    /* xterm 99 — paid outflow */
-    .hs-pcard-sheet .val-they-follow { color: #ff00ff; }/* xterm 201 — inflow */
+    .hs-pcard-sheet .val-they-follow { color: var(--hs-thread); }/* xterm 201 — inflow */
     .hs-pcard-sheet .val-they-sub { color: #ff5fff; }   /* xterm 207 — paid inflow */
-    .hs-pcard-sheet .val-mutual { color: #00ff00; }     /* xterm 46 — handshake */
-    .hs-pcard-sheet .val-mutual-sub { color: #ffd700; } /* xterm 220 — premium handshake */
+    .hs-pcard-sheet .val-mutual { color: var(--hs-ok); }     /* xterm 46 — handshake */
+    .hs-pcard-sheet .val-mutual-sub { color: var(--hs-gold); } /* xterm 220 — premium handshake */
     .hs-pcard-sheet .val-ch { color: #fff; }         /* xterm 208 — channel context */
-    .hs-pcard-sheet .hs-pc-live { color: #ff0000; font-weight: 700; }
+    .hs-pcard-sheet .hs-pc-live { color: var(--hs-ok); font-weight: 700; }
     /* Inside the sheet: digits inherit cozette from the sheet (bitmap-crisp),
        degree symbol falls back to ui-monospace (vector AA, has clean °). */
     .hs-pcard-sheet .hs-heat-num { font-family: inherit; }
@@ -12851,9 +12853,9 @@ img.hs-fx-zero { margin-left: -4px; }
        identity-row pills above share .hs-pcard-pill-* classes for color but
        want the filled tooltip look; the inline message-history badge stays
        plain so 12 stacked rows don't read as a wall of purple. */
-    .hs-pcard-msg-plat.hs-pcard-pill-twitch { background: transparent; color: #9146ff; border: none; }
-    .hs-pcard-msg-plat.hs-pcard-pill-kick { background: transparent; color: #53fc18; border: none; }
-    .hs-pcard-msg-plat.hs-pcard-pill-youtube { background: transparent; color: #ff5050; border: none; }
+    .hs-pcard-msg-plat.hs-pcard-pill-twitch { background: transparent; color: var(--hs-plat-twitch); border: none; }
+    .hs-pcard-msg-plat.hs-pcard-pill-kick { background: transparent; color: var(--hs-plat-kick); border: none; }
+    .hs-pcard-msg-plat.hs-pcard-pill-youtube { background: transparent; color: var(--hs-plat-youtube); border: none; }
     .hs-pcard-msg-text {
       color: #fff; word-break: break-word; overflow-wrap: anywhere; flex: 1;
     }
@@ -12910,8 +12912,8 @@ img.hs-fx-zero { margin-left: -4px; }
     .hs-pcard-mod-btn:last-child { border-right-width: 1px; }
     .hs-pcard-mod-btn:hover:not(:disabled) { background: #fff; color: #000; border-color: #fff; }
     .hs-pcard-mod-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-    .hs-pcard-mod-btn-danger { color: #ff5050; border-color: #5a1414; }
-    .hs-pcard-mod-btn-danger:hover:not(:disabled) { background: #ff5050; color: #000; border-color: #ff5050; }
+    .hs-pcard-mod-btn-danger { color: var(--hs-danger); border-color: #5a1414; }
+    .hs-pcard-mod-btn-danger:hover:not(:disabled) { background: var(--hs-danger); color: #000; border-color: var(--hs-danger); }
 
     /* Per-tab platform filter toggles (T/K/Y). Sits AFTER the util cluster
        (DOM order). Horizontal mode: tight content-sized strip on far right.
@@ -12974,12 +12976,12 @@ img.hs-fx-zero { margin-left: -4px; }
        = what you SEE, fill = where you SEND. This styling split (plus
        location) is what disambiguates the twin T K Y clusters now that the
        'show:'/'send:' text labels are gone. */
-    .hs-mc-pf-btn.hs-mc-pf-twitch { border-color: #9146ff !important; background: transparent !important; color: #9146ff !important; }
-    .hs-mc-pf-btn.hs-mc-pf-kick { border-color: #53fc18 !important; background: transparent !important; color: #53fc18 !important; }
+    .hs-mc-pf-btn.hs-mc-pf-twitch { border-color: var(--hs-plat-twitch) !important; background: transparent !important; color: var(--hs-plat-twitch) !important; }
+    .hs-mc-pf-btn.hs-mc-pf-kick { border-color: var(--hs-plat-kick) !important; background: transparent !important; color: var(--hs-plat-kick) !important; }
     .hs-mc-pf-btn.hs-mc-pf-youtube {
-      border-color: #ff0000 !important;
+      border-color: var(--hs-plat-youtube) !important;
       background: transparent !important;
-      color: #ff0000 !important;
+      color: var(--hs-plat-youtube) !important;
     }
     /* OFF state — dim border + dim letter; the cue is losing the platform
        color entirely. */
@@ -13024,9 +13026,9 @@ img.hs-fx-zero { margin-left: -4px; }
       min-width: 14px;
       text-align: center;
     }
-    .hs-mc-st-btn.hs-mc-st-twitch { border-color: #9146ff !important; background: #9146ff !important; color: #fff !important; }
-    .hs-mc-st-btn.hs-mc-st-kick { border-color: #53fc18 !important; background: #53fc18 !important; color: #000 !important; }
-    .hs-mc-st-btn.hs-mc-st-youtube { border-color: #ff0000 !important; background: #ff0000 !important; color: #fff !important; }
+    .hs-mc-st-btn.hs-mc-st-twitch { border-color: var(--hs-plat-twitch) !important; background: var(--hs-plat-twitch) !important; color: #fff !important; }
+    .hs-mc-st-btn.hs-mc-st-kick { border-color: var(--hs-plat-kick) !important; background: var(--hs-plat-kick) !important; color: #000 !important; }
+    .hs-mc-st-btn.hs-mc-st-youtube { border-color: var(--hs-plat-youtube) !important; background: var(--hs-plat-youtube) !important; color: #fff !important; }
     .hs-mc-st-btn.off {
       background: #000 !important;
       color: #fff !important;
@@ -13257,11 +13259,11 @@ img.hs-fx-zero { margin-left: -4px; }
     .hs-mc-src-chip[data-src="7tv"]  { color: #29d8f6; border-color: rgba(41,216,246,0.5); }
     .hs-mc-src-chip[data-src="bttv"] { color: #d50014; border-color: rgba(213,0,20,0.5); }
     .hs-mc-src-chip[data-src="ffz"]  { color: #0086c8; border-color: rgba(0,134,200,0.5); }
-    .hs-mc-src-chip[data-src="hs"]   { color: #ff8700; border-color: rgba(255,135,0,0.5); }
+    .hs-mc-src-chip[data-src="hs"]   { color: var(--hs-plat-hs); border-color: rgba(255,135,0,0.5); }
     .hs-mc-src-chip.active[data-src="7tv"]  { background: #29d8f6; color: #000; border-color: #29d8f6; }
     .hs-mc-src-chip.active[data-src="bttv"] { background: #d50014; color: #fff; border-color: #d50014; }
     .hs-mc-src-chip.active[data-src="ffz"]  { background: #0086c8; color: #fff; border-color: #0086c8; }
-    .hs-mc-src-chip.active[data-src="hs"]   { background: #ff8700; color: #000; border-color: #ff8700; }
+    .hs-mc-src-chip.active[data-src="hs"]   { background: var(--hs-plat-hs); color: #000; border-color: var(--hs-plat-hs); }
     .hs-mc-src-chip:hover { background: #fff !important; color: #000 !important; border-color: #fff !important; }
     /* Exact-match filter chip — orange (HeatSync) accent, distinct from the
        brand-colored provider chips. Same square metrics. */
@@ -13487,7 +13489,7 @@ img.hs-fx-zero { margin-left: -4px; }
       background: rgba(255,255,255,0.04);
       border-radius: 0;
       padding: 8px 10px;
-      border-left: 3px solid var(--oc, #387aff);
+      border-left: 3px solid var(--oc, var(--hs-info));
     }
     .hs-mc-pred-outcome-head {
       display: flex;
@@ -13503,7 +13505,7 @@ img.hs-fx-zero { margin-left: -4px; }
     .hs-mc-pred-outcome-pct {
       font-size: 13px;
       font-weight: 700;
-      color: var(--oc, #387aff);
+      color: var(--oc, var(--hs-info));
       font-variant-numeric: tabular-nums;
     }
     .hs-mc-pred-bar-track {
@@ -13515,7 +13517,7 @@ img.hs-fx-zero { margin-left: -4px; }
     }
     .hs-mc-pred-bar-fill {
       height: 100%;
-      background: var(--oc, #387aff);
+      background: var(--oc, var(--hs-info));
       border-radius: 0;
     }
     .hs-mc-pred-outcome-stats {
@@ -13617,7 +13619,7 @@ img.hs-fx-zero { margin-left: -4px; }
     }
     .hs-mc-pred-status-resolved {
       background: rgba(0,200,100,0.15);
-      color: #00c864;
+      color: var(--hs-ok);
     }
     .hs-mc-pred-status-canceled {
       background: rgba(255,255,255,0.08);
@@ -13651,12 +13653,12 @@ img.hs-fx-zero { margin-left: -4px; }
     }
     .hs-mc-pred-result-won {
       background: rgba(0,200,100,0.12);
-      color: #00e070;
+      color: var(--hs-ok);
       border: 1px solid rgba(0,200,100,0.3);
     }
     .hs-mc-pred-result-lost {
       background: rgba(255,60,60,0.08);
-      color: #ff5050;
+      color: var(--hs-danger);
       border: 1px solid rgba(255,60,60,0.2);
     }
     .hs-mc-pred-result-refund {
@@ -13674,7 +13676,7 @@ img.hs-fx-zero { margin-left: -4px; }
 
     /* Outcome states */
     .hs-mc-pred-outcome-won {
-      border-left-color: #00c864;
+      border-left-color: var(--hs-ok);
       background: rgba(0,200,100,0.08);
     }
     .hs-mc-pred-outcome-lost {
@@ -13686,7 +13688,7 @@ img.hs-fx-zero { margin-left: -4px; }
     .hs-mc-pred-winner-badge {
       font-size: 13px;
       padding: 1px 5px;
-      background: #00c864;
+      background: var(--hs-ok);
       color: #000;
       font-weight: 700;
       text-transform: uppercase;
@@ -13920,7 +13922,7 @@ img.hs-fx-zero { margin-left: -4px; }
     .hs-mc-poll-choice-pct {
       font-size: 13px;
       font-weight: 700;
-      color: #9147ff;
+      color: var(--hs-plat-twitch);
       font-variant-numeric: tabular-nums;
       flex-shrink: 0;
       margin-left: 8px;
@@ -14092,7 +14094,7 @@ img.hs-fx-zero { margin-left: -4px; }
     .hs-mc-status-loading { font-size: 13px; color: #999; }
     .hs-mc-status-title { font-size: 13px; font-weight: 600; color: #fff; }
     .hs-mc-status-sub { font-size: 13px; margin-top: 2px; }
-    .hs-mc-status-sub.live { color: #59ff8a; }
+    .hs-mc-status-sub.live { color: var(--hs-ok); }
     .hs-mc-status-sub.off  { color: #999; }
     .hs-mc-status-streamtitle { font-size: 13px; color: #fff; margin-top: 6px; }
     .hs-mc-status-meta { font-size: 13px; color: #999; margin-top: 2px; }
@@ -14105,7 +14107,7 @@ img.hs-fx-zero { margin-left: -4px; }
     .hs-mc-status-modes { margin-top: 4px; }
     .hs-mc-status-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 13px; }
     .hs-mc-status-key { color: #ccc; }
-    .hs-mc-status-val.on  { color: #59ff8a; }
+    .hs-mc-status-val.on  { color: var(--hs-ok); }
     .hs-mc-status-val.off { color: #aaa; }
     .hs-mc-status-note { font-size: 13px; color: #aaa; margin-top: 4px; }
 
@@ -14149,7 +14151,7 @@ img.hs-fx-zero { margin-left: -4px; }
       gap: 8px;
       padding: 6px 8px;
       background: rgba(255,255,255,0.04);
-      border-left: 2px solid var(--rc, #9147ff);
+      border-left: 2px solid var(--rc, var(--hs-plat-twitch));
       cursor: pointer;
       transition: none;
     }
@@ -14209,10 +14211,10 @@ img.hs-fx-zero { margin-left: -4px; }
       outline: none;
     }
     .hs-mc-reward-input:focus {
-      border-color: #9147ff;
+      border-color: var(--hs-plat-twitch);
     }
     .hs-mc-reward-submit {
-      background: #9147ff;
+      background: var(--hs-plat-twitch);
       border: none;
       color: #fff;
       font-size: 13px;
@@ -14278,11 +14280,11 @@ img.hs-fx-zero { margin-left: -4px; }
       border-radius: 0;
     }
     .hs-mc-color-hex:focus {
-      border-color: #9147ff;
+      border-color: var(--hs-plat-twitch);
       outline: none;
     }
     .hs-mc-color-apply {
-      background: #9147ff;
+      background: var(--hs-plat-twitch);
       border: none;
       color: #fff;
       font-size: 13px;
@@ -14473,7 +14475,7 @@ img.hs-fx-zero { margin-left: -4px; }
     .hs-mc-toggle-pill {
       width: 16px;
       height: 16px;
-      background: #cc0000;
+      background: var(--hs-danger-dim);
       border: none;
       border-radius: 0;
       cursor: pointer;
@@ -14482,7 +14484,7 @@ img.hs-fx-zero { margin-left: -4px; }
       flex-shrink: 0;
     }
     .hs-mc-toggle-pill.active {
-      background: #00dd00;
+      background: var(--hs-ok);
     }
     .hs-mc-toggle-knob {
       display: none;
@@ -15233,7 +15235,7 @@ img.hs-fx-zero { margin-left: -4px; }
       cursor: pointer !important;
     }
     .hs-feed-thread-link {
-      color: #ffff00;
+      color: var(--hs-mention);
       font-size: 13px;
       font-weight: 700;
       margin-right: 3px;
@@ -15258,10 +15260,10 @@ img.hs-fx-zero { margin-left: -4px; }
       color: #ff0000;
     }
     .hs-feed-tag-mop {
-      color: #ff00ff;
+      color: var(--hs-thread);
     }
     .hs-feed-tag-re {
-      color: #00ffff;
+      color: var(--hs-reply);
     }
     .hs-mc-feed-reply-chip {
       position: absolute;
@@ -15318,7 +15320,7 @@ img.hs-fx-zero { margin-left: -4px; }
       font-family: ui-monospace, SFMono-Regular, monospace;
     }
     .hs-post-link {
-      color: #ffff00;
+      color: var(--hs-mention);
       font-weight: 700;
       cursor: pointer;
     }
@@ -15326,7 +15328,7 @@ img.hs-fx-zero { margin-left: -4px; }
       text-decoration: underline;
     }
     .hs-post-highlight {
-      outline: 2px solid #ff8700;
+      outline: 2px solid var(--hs-brand);
       outline-offset: -2px;
     }
     .hs-thread-op {
@@ -15346,7 +15348,7 @@ img.hs-fx-zero { margin-left: -4px; }
       font-size: 13px;
     }
     .hs-thread-reply.is-thread-op {
-      border-left: 2px solid #ff00ff;
+      border-left: 2px solid var(--hs-thread);
       margin-left: -2px;
       padding-left: 10px;
     }
@@ -15621,7 +15623,7 @@ img.hs-fx-zero { margin-left: -4px; }
       border-radius: 0;
     }
     .hs-hashtag {
-      color: #ff00ff;
+      color: var(--hs-thread);
       text-decoration: none;
       cursor: pointer;
     }
@@ -15975,8 +15977,8 @@ img.hs-fx-zero { margin-left: -4px; }
       display: inline-block;
       padding: 1px 7px;
       background: transparent;
-      border: 1px solid #ff00ff;
-      color: #ff00ff;
+      border: 1px solid var(--hs-thread);
+      color: var(--hs-thread);
       font-size: 13px;
       text-decoration: none;
       cursor: pointer;
@@ -15998,7 +16000,7 @@ img.hs-fx-zero { margin-left: -4px; }
     }
     .hs-discover-profile-row:hover { background: #fff; color: #000; }
     .hs-discover-profile-row:hover * { color: #000 !important; }
-    .hs-discover-profile-row.hs-discover-row-live { border-left-color: #ff3030; }
+    .hs-discover-profile-row.hs-discover-row-live { border-left-color: var(--hs-ok); }
     .hs-discover-rank {
       color: #aaa;
       font-size: 13px;
@@ -16012,7 +16014,7 @@ img.hs-fx-zero { margin-left: -4px; }
     .hs-discover-live-dot {
       width: 7px; height: 7px;
       border-radius: 50%;
-      background: #ff3030;
+      background: var(--hs-ok);
       flex-shrink: 0;
     }
     .hs-discover-live-spacer { width: 7px; flex-shrink: 0; }
@@ -16048,14 +16050,14 @@ img.hs-fx-zero { margin-left: -4px; }
     }
     .hs-discover-platforms .hs-plat:hover { background: #fff !important; color: #000 !important; }
     .hs-discover-platforms .hs-plat-live { font-weight: 900; }
-    .hs-discover-platforms .hs-plat-t { color: #9146ff; }
-    .hs-discover-platforms .hs-plat-k { color: #53fc18; }
-    .hs-discover-platforms .hs-plat-yt { color: #ff0000; }
+    .hs-discover-platforms .hs-plat-t { color: var(--hs-plat-twitch); }
+    .hs-discover-platforms .hs-plat-k { color: var(--hs-plat-kick); }
+    .hs-discover-platforms .hs-plat-yt { color: var(--hs-plat-youtube); }
     .hs-discover-platforms .hs-plat-h { color: #fff; }
     /* Post platform letters use same colors */
-    .hs-discover-post-plat.hs-plat-t { color: #9146ff; }
-    .hs-discover-post-plat.hs-plat-k { color: #53fc18; }
-    .hs-discover-post-plat.hs-plat-yt { color: #ff0000; }
+    .hs-discover-post-plat.hs-plat-t { color: var(--hs-plat-twitch); }
+    .hs-discover-post-plat.hs-plat-k { color: var(--hs-plat-kick); }
+    .hs-discover-post-plat.hs-plat-yt { color: var(--hs-plat-youtube); }
     .hs-discover-post-plat.hs-plat-h { color: #fff; }
     .hs-discover-bar {
       flex: 1;
@@ -16071,7 +16073,7 @@ img.hs-fx-zero { margin-left: -4px; }
       background: #fff;
     }
     .hs-discover-row-live .hs-discover-bar > i {
-      background: #ff3030;
+      background: var(--hs-ok);
     }
     /* Heat number — color/glow comes from inline style via discoverHeatStyle (canonical tiers) */
     .hs-discover-heat {
@@ -16084,7 +16086,7 @@ img.hs-fx-zero { margin-left: -4px; }
     }
     .hs-discover-viewers {
       font-size: 13px;
-      color: #ff5050;
+      color: var(--hs-danger);
       font-variant-numeric: tabular-nums;
       font-family: ui-monospace, SFMono-Regular, monospace;
       flex-shrink: 0;
@@ -16126,18 +16128,18 @@ img.hs-fx-zero { margin-left: -4px; }
       color: #000;
     }
     .hs-discover-chip-btn.hs-chip-plat-t.hs-active {
-      background: #9146ff;
-      border-color: #9146ff;
+      background: var(--hs-plat-twitch);
+      border-color: var(--hs-plat-twitch);
       color: #fff;
     }
     .hs-discover-chip-btn.hs-chip-plat-k.hs-active {
-      background: #53fc18;
-      border-color: #53fc18;
+      background: var(--hs-plat-kick);
+      border-color: var(--hs-plat-kick);
       color: #000;
     }
     .hs-discover-chip-btn.hs-chip-plat-yt.hs-active {
-      background: #ff0000;
-      border-color: #ff0000;
+      background: var(--hs-plat-youtube);
+      border-color: var(--hs-plat-youtube);
       color: #fff;
     }
     .hs-discover-chip-btn:hover,
@@ -16152,12 +16154,12 @@ img.hs-fx-zero { margin-left: -4px; }
 
     /* Section colour variants — distinct accent borders + headers per widget */
     .hs-discover-section-live {
-      border-color: rgba(255,48,48,0.35);
+      border-color: rgba(0,255,0,0.35);
     }
     .hs-discover-section-live > .hs-discover-heading {
-      background: rgba(255,48,48,0.10);
-      border-bottom-color: rgba(255,48,48,0.35);
-      color: #ff5050;
+      background: var(--hs-ok-tint);
+      border-bottom-color: rgba(0,255,0,0.35);
+      color: var(--hs-ok);
     }
     .hs-discover-section-posts {
       border-color: rgba(255,255,255,0.3);
@@ -16179,7 +16181,7 @@ img.hs-fx-zero { margin-left: -4px; }
     }
     .hs-discover-section-tags > .hs-discover-heading {
       background: rgba(255,0,255,0.08);
-      color: #ff00ff;
+      color: var(--hs-thread);
       border-bottom-color: rgba(255,0,255,0.35);
     }
 
@@ -16320,10 +16322,10 @@ img.hs-fx-zero { margin-left: -4px; }
     .hs-modlog-time { color: #808080; font-variant-numeric: tabular-nums; }
     .hs-modlog-channel { color: #fff; font-weight: 600; }
     .hs-modlog-body { color: #ddd; word-break: break-word; }
-    .hs-modlog-ban .hs-modlog-body { color: #ff5f5f; }
-    .hs-modlog-timeout .hs-modlog-body { color: #ffd75f; }
+    .hs-modlog-ban .hs-modlog-body { color: var(--hs-danger); }
+    .hs-modlog-timeout .hs-modlog-body { color: var(--hs-gold); }
     .hs-modlog-unban .hs-modlog-body,
-    .hs-modlog-untimeout .hs-modlog-body { color: #5fd75f; }
+    .hs-modlog-untimeout .hs-modlog-body { color: var(--hs-ok); }
     .hs-modlog-delete .hs-modlog-body { color: #9e9e9e; }
 
     /* ---- YOUTUBE NATIVE CHAT HIDING ----
@@ -21024,7 +21026,8 @@ class KickChat {
           user: message.username || 'anonymous',
           text: message.message || '',
           systemMsg: `${message.username || 'Anonymous'} gifted ${message.amount} KICKs${message.giftName ? ' (' + message.giftName + ')' : ''}!`,
-          color: '#ffd600',
+          // feeds sanitizeColor()/COLOR_RE downstream (main.js) — must stay literal hex, no var(). Canonical gold.
+          color: '#ffd700',
           badges: '',
           channel,
           time: Date.now(),
@@ -21048,6 +21051,7 @@ class KickChat {
           user: message.username || 'system',
           text: '',
           systemMsg: message.message || '',
+          // feeds sanitizeColor()/COLOR_RE downstream (main.js) — must stay literal hex, no var(). Already canonical kick green.
           color: '#53fc18',
           badges: '',
           channel,
@@ -26121,7 +26125,7 @@ function refreshEmoteTooltip(emoteName, newState) {
   // (red). No orange middle tier exists anymore, so the live-resync that
   // used to chase unadded→owned ladder transitions collapses to a single
   // blocked-vs-not check.
-  const hl = newState === 'blocked' ? '#ff0000' : '#fff'
+  const hl = newState === 'blocked' ? 'var(--hs-danger)' : '#fff'
   document.body.style.setProperty('--hs-highlight-color', hl)
 }
 
@@ -26226,7 +26230,7 @@ function setupEmoteTooltipHandlers() {
       if (stack) {
         effectiveState = stack.querySelector('.hs-mc-emote-wrapper.hs-state-blocked') ? 'blocked' : 'normal'
       }
-      const sourceColor = effectiveState === 'blocked' ? '#ff0000' : '#fff'
+      const sourceColor = effectiveState === 'blocked' ? 'var(--hs-danger)' : '#fff'
       document.body.style.setProperty('--hs-highlight-color', sourceColor)
       queryEmoteWrappers(emoteName).forEach((w) => {
         w.classList.add('hs-emote-highlight')
@@ -27567,49 +27571,49 @@ function renderQuickLinks() {
       show: isBroadcaster,
       items: [
         {
-          accent: '#9147ff',
+          accent: HS_PLAT_COLORS.twitch,
           icon: ICONS.dashboard,
           label: 'creator dashboard',
           url: (c) => `https://dashboard.twitch.tv/u/${c}/home`,
           opts: 'width=1200,height=800',
         },
         {
-          accent: '#9147ff',
+          accent: HS_PLAT_COLORS.twitch,
           icon: ICONS.video,
           label: 'stream manager',
           url: (c) => `https://dashboard.twitch.tv/u/${c}/stream-manager`,
           opts: 'width=1200,height=800',
         },
         {
-          accent: '#9147ff',
+          accent: HS_PLAT_COLORS.twitch,
           icon: ICONS.settings,
           label: 'moderation settings (automod, blocked terms)',
           url: (c) => `https://dashboard.twitch.tv/u/${c}/settings/moderation`,
           opts: 'width=1000,height=750',
         },
         {
-          accent: '#9147ff',
+          accent: HS_PLAT_COLORS.twitch,
           icon: ICONS.settings,
           label: 'channel settings',
           url: (c) => `https://dashboard.twitch.tv/u/${c}/settings/channel`,
           opts: 'width=1000,height=750',
         },
         {
-          accent: '#9147ff',
+          accent: HS_PLAT_COLORS.twitch,
           icon: ICONS.people,
           label: 'community (mods, vips, follows)',
           url: (c) => `https://dashboard.twitch.tv/u/${c}/community`,
           opts: 'width=1000,height=750',
         },
         {
-          accent: '#9147ff',
+          accent: HS_PLAT_COLORS.twitch,
           icon: ICONS.cash,
           label: 'monetization',
           url: (c) => `https://dashboard.twitch.tv/u/${c}/monetization`,
           opts: 'width=1000,height=750',
         },
         {
-          accent: '#9147ff',
+          accent: HS_PLAT_COLORS.twitch,
           icon: ICONS.chart,
           label: 'analytics',
           url: (c) => `https://dashboard.twitch.tv/u/${c}/analytics/stream-summary`,
@@ -27738,7 +27742,7 @@ function makeCoinSvg(size) {
   svg.setAttribute('viewBox', '0 0 20 20')
   svg.style.verticalAlign = '-2px'
   const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-  path.setAttribute('fill', '#ffbf00')
+  path.style.fill = 'var(--hs-gold)'
   path.setAttribute('d', 'M10 6a4 4 0 100 8 4 4 0 000-8zm0-4a8 8 0 110 16 8 8 0 010-16z')
   svg.appendChild(path)
   return svg
@@ -28139,7 +28143,7 @@ function renderRewards(rewards, balance, channelId) {
     svg.setAttribute('viewBox', '0 0 20 20')
     svg.style.verticalAlign = '-1px'
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-    path.setAttribute('fill', '#ffbf00')
+    path.style.fill = 'var(--hs-gold)'
     path.setAttribute('d', 'M10 6a4 4 0 100 8 4 4 0 000-8zm0-4a8 8 0 110 16 8 8 0 010-16z')
     svg.appendChild(path)
     bal.appendChild(svg)
@@ -28171,7 +28175,7 @@ function renderRewards(rewards, balance, channelId) {
     card.dataset.channelId = channelId
     if (reward.isUserInputRequired) card.dataset.textRequired = '1'
     if (reward.prompt) card.dataset.prompt = reward.prompt
-    card.style.setProperty('--rc', reward.backgroundColor || '#9147ff')
+    card.style.setProperty('--rc', reward.backgroundColor || '#9146ff')
 
     const imgUrl = reward.image?.url || reward.defaultImage?.url || ''
     if (imgUrl) {
@@ -28198,7 +28202,7 @@ function renderRewards(rewards, balance, channelId) {
     costSvg.setAttribute('viewBox', '0 0 20 20')
     costSvg.style.verticalAlign = '-1px'
     const costPath = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-    costPath.setAttribute('fill', '#ffbf00')
+    costPath.style.fill = 'var(--hs-gold)'
     costPath.setAttribute('d', 'M10 6a4 4 0 100 8 4 4 0 000-8zm0-4a8 8 0 110 16 8 8 0 010-16z')
     costSvg.appendChild(costPath)
     costEl.appendChild(costSvg)
@@ -29551,7 +29555,7 @@ const BADGE_STYLES = {
   admin: { label: 'ADMIN', bg: '#faaf19', fg: '#000' },
   staff: { label: 'STAFF', bg: '#faaf19', fg: '#000' },
   global_mod: { label: 'GMOD', bg: '#00ad03', fg: '#fff' },
-  partner: { label: '✓', bg: '#9147ff', fg: '#fff' },
+  partner: { label: '✓', bg: '#9146ff', fg: '#fff' },
   'bits-leader': { label: 'BITS', bg: '#ffd700', fg: '#000' },
   'sub-gifter': { label: 'GIFT', bg: '#8205b4', fg: '#fff' },
   artist: { label: 'ART', bg: '#ff6b35', fg: '#fff' },
@@ -32273,6 +32277,7 @@ function formatHeat(heat) {
   return String(heat)
 }
 
+// pinned warm/orange by doctrine — heat FX ramp, not a semantic var
 function getHeatNumberStyle(heat, isReply) {
   let fontSize, color, textShadow, animation
   if (isReply) {
@@ -32312,6 +32317,7 @@ function getHeatNumberStyle(heat, isReply) {
   return style
 }
 
+// pinned warm/orange by doctrine — heat FX ramp, not a semantic var
 function getHeatDisplay(heat) {
   if (!heat || heat <= 0) return null
   let border = '#444',
@@ -32426,7 +32432,7 @@ function showFeedEditUI(div, msg) {
   cancelBtn.style.cssText =
     'background:#000;color:#fff;border:1px solid #808080;padding:4px 8px;font-family:inherit;font-size:13px;cursor:pointer;'
   const errEl = document.createElement('div')
-  errEl.style.cssText = 'font-size:13px;color:#ff4444;margin-top:2px;'
+  errEl.style.cssText = 'font-size:13px;color:var(--hs-danger);margin-top:2px;'
   form.append(ta, saveBtn, cancelBtn)
   body.style.display = 'none'
   body.parentNode.insertBefore(form, body.nextSibling)
@@ -32744,6 +32750,7 @@ function dispatchYtStreamEvent(targetChannelId, msg) {
     channel: targetChannelId,
     time: msg.time || now,
     platform: 'youtube',
+    // feeds sanitizeColor()/COLOR_RE downstream — must stay literal hex, no var()
     color: msg.color || '#ff0000',
     scColor: msg.scColor || undefined,
   }
@@ -33144,6 +33151,7 @@ function listenForSocialEvents() {
         id: msg.id || undefined,
         user: msg.user,
         text: msg.text,
+        // feeds sanitizeColor()/COLOR_RE downstream — must stay literal hex, no var()
         color: msg.color || '#ff0000',
         channel: ytChannelHint || 'youtube',
         // Cache key for channel-emote lookup when channel itself isn't one
@@ -33410,7 +33418,7 @@ function listenForSocialEvents() {
               // Always prefix with "youtube:" — without it, error text looks
               // like it's about whatever stream the user is watching, not
               // the YouTube subscription that actually failed.
-              upsertNotice(`youtube: ${errText || 'connection error'}`, '#ff4444')
+              upsertNotice(`youtube: ${errText || 'connection error'}`, 'var(--hs-danger)')
             }
           }
         }
@@ -33772,7 +33780,7 @@ function buildFeedMessageDiv(m, opUsername) {
   const inThread = !!opUsername
   const linkId = escapeHtml(m.base36_id || '')
   const threadLink = inThread
-    ? `<span class="hs-feed-thread-link hs-quote-insert" data-quote-id="${escapeHtml(shortId)}" data-id="${linkId}" style="color:#ffff00;cursor:pointer">${escapeHtml(shortId)}</span>`
+    ? `<span class="hs-feed-thread-link hs-quote-insert" data-quote-id="${escapeHtml(shortId)}" data-id="${linkId}" style="color:var(--hs-mention);cursor:pointer">${escapeHtml(shortId)}</span>`
     : `<span class="hs-feed-thread-link hs-thread-toggle" data-id="${linkId}" style="cursor:pointer">&gt;&gt;${escapeHtml(shortId)}</span>`
 
   // Post type tag: [OP] red = original post, [OP] magenta = OP replying in own thread, [RE] = reply
@@ -34424,7 +34432,7 @@ async function postFeedMessage(text, { topLevel = false } = {}) {
     if (currentTab === 'feed') renderFeed()
     return true
   } else {
-    input.style.borderColor = '#f44'
+    input.style.borderColor = 'var(--hs-danger)'
     const errMsg =
       resp.status === 401
         ? t('mc_social_log_in_first')
@@ -34531,6 +34539,7 @@ function formatDiscoverCount(n) {
 // but with fixed (small) size so discover rows stay dense.
 // Tiers: 0 → #444, 1-10 → #888, 10-30 → #888, 30-50 → #aaa, 50-100 → #ccc,
 //        100-500 → #eee, 500+ → #fff with breathe animation
+// pinned warm/orange by doctrine — heat FX ramp, not a semantic var
 function discoverHeatStyle(heat) {
   let color = '#444',
     textShadow = '',
@@ -36116,7 +36125,7 @@ function renderWhispersTab() {
 
     const ts = formatTimeFromTs(m.time)
     const tsHtml = ts ? `<span class="hs-mc-ts">${ts}</span>` : ''
-    const platColor = m.platform === 'twitch' ? '#9146ff' : '#808080'
+    const platColor = m.platform === 'twitch' ? 'var(--hs-plat-twitch)' : '#808080'
     const platTag = m.platform === 'twitch' ? 'T' : 'H'
 
     // Show sender -> recipient for both directions (the links below swap by
@@ -36875,8 +36884,8 @@ function attachInputEmoteErrorRecovery(img) {
 // Brief red flash on input to indicate message can't be sent from this tab
 function flashInputError(input) {
   if (!input) return
-  input.style.background = '#400000'
-  input.style.borderColor = '#ff0000'
+  input.style.background = 'var(--hs-danger-dim)'
+  input.style.borderColor = 'var(--hs-danger)'
   setTimeout(() => {
     input.style.background = ''
     input.style.borderColor = ''
@@ -42355,20 +42364,21 @@ function placeCaretAfter(node, offset = 0) {
 // (heatsync only), so you can feel how deep / how niche the current pick is.
 function emoteCycleMeta(m) {
   if (!m) return { cat: '', vis: null }
-  if (m.type === 'user' || m.type === 'user-bare') return { cat: 'chatter', vis: { t: 'everyone', c: '#5fd75f' } }
-  if (m.type === 'emoji') return { cat: 'emoji', vis: { t: 'everyone', c: '#5fd75f' } }
-  if (m.remote) return { cat: '7tv search', vis: { t: 'heatsync only', c: '#ff8700' } }
+  if (m.type === 'user' || m.type === 'user-bare')
+    return { cat: 'chatter', vis: { t: 'everyone', c: 'var(--hs-ok)' } }
+  if (m.type === 'emoji') return { cat: 'emoji', vis: { t: 'everyone', c: 'var(--hs-ok)' } }
+  if (m.remote) return { cat: '7tv search', vis: { t: 'heatsync only', c: 'var(--hs-brand)' } }
   const tier = m.tier ?? 2
   const cat = tier === 0 ? 'channel' : tier === 1 ? 'your set' : 'global'
-  if (m.source === 'twitch') return { cat, vis: { t: 'all twitch', c: '#5fd75f' } }
+  if (m.source === 'twitch') return { cat, vis: { t: 'all twitch', c: 'var(--hs-ok)' } }
   // Kick-native channel/sub emotes are platform-native too — every Kick viewer
   // sees them, no extension needed.
-  if (m.source === 'kick') return { cat, vis: { t: 'all kick', c: '#5fd75f' } }
+  if (m.source === 'kick') return { cat, vis: { t: 'all kick', c: 'var(--hs-ok)' } }
   // Your personal set (tier 1) or a heatsync-hosted emote: others only see it via
   // heatsync's sender-set merge — non-heatsync viewers get plain text.
-  if (tier === 1 || m.source === 'heatsync') return { cat, vis: { t: 'heatsync only', c: '#ff8700' } }
+  if (tier === 1 || m.source === 'heatsync') return { cat, vis: { t: 'heatsync only', c: 'var(--hs-brand)' } }
   // Third-party emote active in the channel/global set — provider-ext users see it.
-  return { cat, vis: { t: `${m.source || 'ext'} users`, c: '#ffd75f' } }
+  return { cat, vis: { t: `${m.source || 'ext'} users`, c: 'var(--hs-gold)' } }
 }
 
 function showCycleTooltip() {
@@ -42407,7 +42417,7 @@ function showCycleTooltip() {
   // Surface the live catalog fetch so you know when a 7tv search is firing.
   if (acState.remotePending) {
     tt.appendChild(dot())
-    tt.appendChild(mkSpan('searching 7tv…', 'color:#ffd75f;'))
+    tt.appendChild(mkSpan('searching 7tv…', 'color:var(--hs-gold);'))
   }
   tt.style.display = 'block'
 }
@@ -44005,7 +44015,7 @@ async function sendMessage() {
           // Most common: not logged into Twitch IRC (no auth-token cookie) AND
           // not on Kick. Persistent notif (markPendingFailed) replaces the
           // 2.5s placeholder flash users physically couldn't read in time.
-          input.style.borderColor = '#f44'
+          input.style.borderColor = 'var(--hs-danger)'
           setTimeout(() => {
             input.style.borderColor = ''
             updateInputPlaceholder()
@@ -44040,7 +44050,7 @@ async function sendMessage() {
           // input.placeholder flash was too fast to read. Reason carries the
           // dominant platform's error so the retry notif tells the user what
           // actually went wrong (auth/connect/queue/kick-login).
-          input.style.borderColor = '#f44'
+          input.style.borderColor = 'var(--hs-danger)'
           setTimeout(() => {
             input.style.borderColor = ''
             updateInputPlaceholder()
@@ -44063,7 +44073,7 @@ async function sendMessage() {
         // A leg rejected (context invalidation, throw) rather than returning an
         // error string — without this the pending '•' hangs forever.
         log('dual-send rejected: ' + ((err && err.message) || err))
-        input.style.borderColor = '#f44'
+        input.style.borderColor = 'var(--hs-danger)'
         setTimeout(() => {
           input.style.borderColor = ''
           updateInputPlaceholder()
@@ -44125,14 +44135,14 @@ async function sendMessage() {
     .then((result) => {
       if (result === true) {
         if (wsState !== 'OPEN') {
-          input.style.borderColor = '#ff0'
+          input.style.borderColor = 'var(--hs-warn)'
           setTimeout(() => {
             input.style.borderColor = ''
           }, 1500)
         }
         // success-from-socket only; echo confirmation handled by pending tracker
       } else {
-        input.style.borderColor = '#f44'
+        input.style.borderColor = 'var(--hs-danger)'
         setTimeout(() => {
           input.style.borderColor = ''
           updateInputPlaceholder()
@@ -44147,7 +44157,7 @@ async function sendMessage() {
     })
     .catch((err) => {
       log('twitch send rejected: ' + ((err && err.message) || err))
-      input.style.borderColor = '#f44'
+      input.style.borderColor = 'var(--hs-danger)'
       setTimeout(() => {
         input.style.borderColor = ''
         updateInputPlaceholder()
@@ -44204,7 +44214,7 @@ function showUploadStatus(msg, isError) {
   if (msg) {
     if (bar) {
       bar.textContent = msg
-      bar.style.color = isError ? '#ff4444' : '#fff'
+      bar.style.color = isError ? 'var(--hs-danger)' : '#fff'
       bar.style.display = 'block'
       return
     }
@@ -45203,7 +45213,7 @@ function renderProfileCardView() {
     a.href = `https://twitch.tv/${encodeURIComponent(linkedTwitch)}`
     a.target = '_blank'
     a.rel = 'noopener noreferrer'
-    a.style.cssText = 'color:#9146ff;font-weight:700;text-decoration:none;'
+    a.style.cssText = 'color:var(--hs-plat-twitch);font-weight:700;text-decoration:none;'
     a.textContent = '@' + linkedTwitch
     xref.appendChild(a)
     xref.appendChild(document.createTextNode(' on twitch'))
@@ -45245,7 +45255,7 @@ function renderProfileCardView() {
           a.href = href
           a.target = '_blank'
           a.rel = 'noopener noreferrer'
-          a.style.cssText = 'color:#53fc18;text-decoration:none;'
+          a.style.cssText = 'color:var(--hs-plat-kick);text-decoration:none;'
           a.textContent = label
           soc.appendChild(a)
         }
@@ -52510,7 +52520,7 @@ function _renderAddChannelForm(msgsEl) {
 
   // Error message (between inputs and buttons)
   const errEl = document.createElement('div')
-  errEl.style.cssText = 'font-size:13px;color:#ff0000;display:none;'
+  errEl.style.cssText = 'font-size:13px;color:var(--hs-danger);display:none;'
   errEl.setAttribute('role', 'alert')
   wrapper.appendChild(errEl)
 
@@ -52709,7 +52719,7 @@ function _renderAddChannelForm(msgsEl) {
     const liveLabels = res.liveOn?.length
       ? ` · live on ${res.liveOn.map((p) => (p === 'twitch' ? 't' : p === 'kick' ? 'k' : p)).join(',')}`
       : ''
-    linkStatus.style.color = '#53fc18'
+    linkStatus.style.color = 'var(--hs-plat-kick)'
     linkStatus.textContent = `✓ matched ${id.heatsync || name} on heatsync — linked: ${linkedLabels.join(',') || 'none'}${liveLabels}${platforms.length ? ` · autofilled: ${platforms.join(',')}` : ''}`
   }
 
@@ -52963,7 +52973,7 @@ function _showEditChannelForm(tabId) {
   wrapper.appendChild(yt.row)
 
   const errEl = document.createElement('div')
-  errEl.style.cssText = 'font-size:13px;color:#ff0000;display:none;'
+  errEl.style.cssText = 'font-size:13px;color:var(--hs-danger);display:none;'
   errEl.setAttribute('role', 'alert')
   wrapper.appendChild(errEl)
 
@@ -56728,7 +56738,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       }
 
       mkItem('edit', '#fff', () => showEditChannelForm(tabId))
-      mkItem('remove', '#ff4444', () => removeChannel(tabId))
+      mkItem('remove', 'var(--hs-danger)', () => removeChannel(tabId))
 
       // Append then clamp to viewport so it doesn't overflow off-screen
       document.body.appendChild(menu)
@@ -60588,7 +60598,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       div.style.borderLeftColor = borderColor
       const tsVal = timestampsEnabled ? formatTimeFromTs(m.time) : ''
       const tsSpan = tsVal ? `<span class="hs-mc-ts">${tsVal}</span>` : ''
-      const tagColor = typeDef?.color || '#ff0000'
+      const tagColor = typeDef?.color || 'var(--hs-danger)'
       const tagLabel = isThreadOp || isOp ? '[OP]' : '[RE]'
       const typeTag = `<span class="hs-feed-tag" style="color:${tagColor};font-size:13px;margin-right:3px">${tagLabel}</span>`
       const shortId = (m.base36_id || '').replace(/^0+/, '') || '0'
@@ -60649,7 +60659,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       const label = `<span style="color:${labelColor};font-size:13px;font-weight:700;margin-right:3px">${labelText}</span>`
       const platBadge =
         m.platform === 'twitch'
-          ? '<span style="color:#9146ff;font-size:13px;font-weight:700;margin-right:3px">[T]</span>'
+          ? '<span style="color:var(--hs-plat-twitch);font-size:13px;font-weight:700;margin-right:3px">[T]</span>'
           : '<span style="color:#fff;font-size:13px;font-weight:700;margin-right:3px">[HS]</span>'
       const dmPaint = m.platform === 'twitch' ? userPaintStyle(m.userId, (m.user || '').toLowerCase(), 'twitch') : ''
       const userName = `<span style="${dmPaint || `color:${sanitizeColor(m.color)};font-weight:600`}">${escapeHtml(m.user)}</span>`
@@ -63649,7 +63659,7 @@ const STORAGE_KEY = 'heatsync_multichat'
 
       // Red dot — all channels in picker are confirmed live
       const dot = document.createElement('span')
-      dot.style.cssText = `display:inline-block;width:6px;height:6px;border-radius:50%;background:#f00;margin-right:6px;vertical-align:middle`
+      dot.style.cssText = `display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--hs-danger);margin-right:6px;vertical-align:middle`
       item.appendChild(dot)
       item.appendChild(document.createTextNode(ch.name))
 

@@ -200,8 +200,10 @@
        so the referenced post keeps its brighter highlight instead of blending
        into a zebra band. */
     .hs-feed-postlink-preview-row.hs-feed-postlink-preview-linked {
-      background: #3a2600 !important;
-      border-left: 2px solid #ff8700 !important;
+      /* linked target = attention/yellow family; #555500 is one olive step
+         brighter than the #2e2e08 stack rows so the row still pops */
+      background: #555500 !important;
+      border-left: 2px solid var(--hs-mention) !important;
     }
     /* Brief flash on the message that the overflow chip scrolled to */
     .hs-mc-msg.hs-mc-thread-flash {
@@ -296,7 +298,7 @@
     .hs-mc-msg.hs-mc-row-selected {
       background: #fff !important;
       color: #000 !important;
-      box-shadow: inset 2px 0 0 #ff8700;
+      box-shadow: inset 2px 0 0 var(--hs-reply-dim);
     }
     .hs-mc-msg.hs-mc-row-selected .hs-mc-user,
     .hs-mc-msg.hs-mc-row-selected .hs-mc-system-text,
@@ -316,8 +318,8 @@
       cursor: default;
     }
     /* Bottom action bar — floats over #hs-mc-messages like #hs-mc-new-msgs,
-       brand-orange bg (the one non-monochrome accent per the mod palette),
-       square, zero motion. */
+       reverse-video (selection mode = white bg / black text, same treatment
+       as selected rows), square, zero motion. */
     #hs-mc-bulk-bar {
       position: absolute;
       left: 0;
@@ -328,7 +330,7 @@
       align-items: center;
       gap: 6px;
       padding: 6px 8px;
-      background: #ff8700;
+      background: #fff;
       color: #000;
       font: 13px/18px 'CozetteVector', monospace;
       border-top: 1px solid #000;
@@ -352,7 +354,7 @@
       color: #000;
     }
     #hs-mc-bulk-bar button[data-bulk='ban'] {
-      border-color: #ff0000;
+      border-color: var(--hs-danger);
       color: #ff5f5f;
     }
     #hs-mc-bulk-bar button[data-bulk='ban']:hover {
@@ -407,7 +409,7 @@
       display: none !important;
     }
     .hs-mc-msg.hs-mc-system {
-      border-left: 3px solid #9147ff;
+      border-left: 3px solid var(--hs-plat-twitch);
       padding-left: 8px;
       background: rgba(145, 71, 255, 0.08);
     }
@@ -432,62 +434,62 @@
        magenta(13)=raid/gift/mention/first-msg-ever (special event),
        cyan(14)=stream-hype/milestone (action-needed).
        #fff reserved for brand chrome only (buttons, frames, drag bars). */
-    .hs-mc-msg.hs-mc-notice-ban       { border-left-color: #ff0000 !important; background: rgba(255, 0, 0, 0.12) !important; }
-    .hs-mc-msg.hs-mc-notice-ban       .hs-mc-system-text { color: #ff4040; font-weight: 600; }
+    .hs-mc-msg.hs-mc-notice-ban       { border-left-color: var(--hs-danger) !important; background: var(--hs-danger-tint) !important; }
+    .hs-mc-msg.hs-mc-notice-ban       .hs-mc-system-text { color: var(--hs-danger); font-weight: 600; }
     .hs-mc-msg.hs-mc-notice-timeout   { border-left-color: #008000 !important; background: rgba(0, 128, 0, 0.10) !important; }
     .hs-mc-msg.hs-mc-notice-timeout   .hs-mc-system-text { color: #00cc44; }
-    .hs-mc-msg.hs-mc-notice-unban     { border-left-color: #00ff00 !important; background: rgba(0, 255, 0, 0.12) !important; }
-    .hs-mc-msg.hs-mc-notice-unban     .hs-mc-system-text { color: #00ff00; font-weight: 600; }
+    .hs-mc-msg.hs-mc-notice-unban     { border-left-color: var(--hs-ok) !important; background: var(--hs-ok-tint) !important; }
+    .hs-mc-msg.hs-mc-notice-unban     .hs-mc-system-text { color: var(--hs-ok); font-weight: 600; }
     .hs-mc-msg.hs-mc-notice-untimeout { border-left-color: #008000 !important; background: rgba(0, 128, 0, 0.10) !important; }
     .hs-mc-msg.hs-mc-notice-untimeout .hs-mc-system-text { color: #00cc44; }
     /* Role grants (blue mod / pink VIP) */
-    .hs-mc-msg.hs-mc-notice-mod-add     { border-left-color: #4080ff !important; background: rgba(64, 128, 255, 0.12) !important; }
-    .hs-mc-msg.hs-mc-notice-mod-add     .hs-mc-system-text { color: #4080ff; font-weight: 600; }
+    .hs-mc-msg.hs-mc-notice-mod-add     { border-left-color: var(--hs-info) !important; background: rgba(64, 128, 255, 0.12) !important; }
+    .hs-mc-msg.hs-mc-notice-mod-add     .hs-mc-system-text { color: var(--hs-info); font-weight: 600; }
     .hs-mc-msg.hs-mc-notice-mod-remove  { border-left-color: #c0c0c0 !important; background: rgba(192, 192, 192, 0.06) !important; }
     .hs-mc-msg.hs-mc-notice-mod-remove  .hs-mc-system-text { color: #c0c0c0; }
-    .hs-mc-msg.hs-mc-notice-vip-add     { border-left-color: #ff00ff !important; background: rgba(255, 0, 255, 0.12) !important; }
-    .hs-mc-msg.hs-mc-notice-vip-add     .hs-mc-system-text { color: #ff44ff; font-weight: 600; }
+    .hs-mc-msg.hs-mc-notice-vip-add     { border-left-color: var(--hs-thread) !important; background: var(--hs-thread-tint) !important; }
+    .hs-mc-msg.hs-mc-notice-vip-add     .hs-mc-system-text { color: var(--hs-thread); font-weight: 600; }
     .hs-mc-msg.hs-mc-notice-vip-remove  { border-left-color: #c0c0c0 !important; background: rgba(192, 192, 192, 0.06) !important; }
     .hs-mc-msg.hs-mc-notice-vip-remove  .hs-mc-system-text { color: #c0c0c0; }
     /* Single message delete = dark red (less severe than ban) */
-    .hs-mc-msg.hs-mc-notice-delete    { border-left-color: #800000 !important; background: rgba(128, 0, 0, 0.10) !important; }
+    .hs-mc-msg.hs-mc-notice-delete    { border-left-color: var(--hs-danger-dim) !important; background: rgba(128, 0, 0, 0.10) !important; }
     .hs-mc-msg.hs-mc-notice-delete    .hs-mc-system-text { color: #ff8080; }
     /* Room mode change = aqua */
-    .hs-mc-msg.hs-mc-notice-mode      { border-left-color: #00ffff !important; background: rgba(0, 255, 255, 0.10) !important; }
-    .hs-mc-msg.hs-mc-notice-mode      .hs-mc-system-text { color: #00ffff; font-weight: 600; }
+    .hs-mc-msg.hs-mc-notice-mode      { border-left-color: var(--hs-reply) !important; background: var(--hs-reply-tint) !important; }
+    .hs-mc-msg.hs-mc-notice-mode      .hs-mc-system-text { color: var(--hs-reply); font-weight: 600; }
     /* Sub events (Twitch convention = purple, gifts = brighter magenta variant) */
     .hs-mc-msg.hs-mc-notice-sub       { border-left-color: #9146ff !important; background: rgba(145, 70, 255, 0.12) !important; }
     .hs-mc-msg.hs-mc-notice-sub       .hs-mc-system-text { color: #b87aff; font-weight: 600; }
     .hs-mc-msg.hs-mc-notice-gift      { border-left-color: #cc44ff !important; background: rgba(204, 68, 255, 0.16) !important; }
     .hs-mc-msg.hs-mc-notice-gift      .hs-mc-system-text { color: #cc44ff; font-weight: 600; }
     /* Raid = magenta (ANSI 13) — special event family */
-    .hs-mc-msg.hs-mc-notice-raid      { border-left-color: #ff00ff !important; background: rgba(255, 0, 255, 0.14) !important; }
-    .hs-mc-msg.hs-mc-notice-raid      .hs-mc-system-text { color: #ff00ff; font-weight: 700; }
+    .hs-mc-msg.hs-mc-notice-raid      { border-left-color: var(--hs-thread) !important; background: var(--hs-thread-tint) !important; }
+    .hs-mc-msg.hs-mc-notice-raid      .hs-mc-system-text { color: var(--hs-thread); font-weight: 700; }
     /* Announcement = pure yellow (broadcaster speaking) */
-    .hs-mc-msg.hs-mc-notice-announce  { border-left-color: #ffff00 !important; background: rgba(255, 255, 0, 0.10) !important; }
-    .hs-mc-msg.hs-mc-notice-announce  .hs-mc-system-text { color: #ffff00; font-weight: 600; }
+    .hs-mc-msg.hs-mc-notice-announce  { border-left-color: var(--hs-warn) !important; background: var(--hs-warn-tint) !important; }
+    .hs-mc-msg.hs-mc-notice-announce  .hs-mc-system-text { color: var(--hs-warn); font-weight: 600; }
     /* Bits = gold/amber (distinct from raid orange and announce yellow) */
-    .hs-mc-msg.hs-mc-notice-bits      { border-left-color: #ffaa00 !important; background: rgba(255, 170, 0, 0.10) !important; }
-    .hs-mc-msg.hs-mc-notice-bits      .hs-mc-system-text { color: #ffd700; font-weight: 600; }
+    .hs-mc-msg.hs-mc-notice-bits      { border-left-color: var(--hs-gold) !important; background: rgba(255, 170, 0, 0.10) !important; }
+    .hs-mc-msg.hs-mc-notice-bits      .hs-mc-system-text { color: var(--hs-gold); font-weight: 600; }
     /* viewermilestone (sub anniversary, etc.) = teal */
-    .hs-mc-msg.hs-mc-notice-milestone { border-left-color: #008080 !important; background: rgba(0, 128, 128, 0.12) !important; }
-    .hs-mc-msg.hs-mc-notice-milestone .hs-mc-system-text { color: #00ffff; font-weight: 600; }
+    .hs-mc-msg.hs-mc-notice-milestone { border-left-color: var(--hs-reply-dim) !important; background: rgba(0, 128, 128, 0.12) !important; }
+    .hs-mc-msg.hs-mc-notice-milestone .hs-mc-system-text { color: var(--hs-reply); font-weight: 600; }
     /* Watch-streak = brand orange — engagement heat, distinct from raid magenta */
-    .hs-mc-msg.hs-mc-notice-watchstreak { border-left-color: #ff7f00 !important; background: rgba(255, 127, 0, 0.12) !important; }
-    .hs-mc-msg.hs-mc-notice-watchstreak .hs-mc-system-text { color: #ffa040; font-weight: 600; }
-    /* Mod-anniversary = bright sky-blue (mod-family palette, brighter than
-       grant-mod #4080ff so it reads as a celebration, not a routine grant) */
-    .hs-mc-msg.hs-mc-notice-mod-anniversary { border-left-color: #1ec5ff !important; background: rgba(30, 197, 255, 0.14) !important; }
-    .hs-mc-msg.hs-mc-notice-mod-anniversary .hs-mc-system-text { color: #5fd3ff; font-weight: 700; }
+    .hs-mc-msg.hs-mc-notice-watchstreak { border-left-color: var(--hs-brand) !important; background: rgba(255, 127, 0, 0.12) !important; }
+    .hs-mc-msg.hs-mc-notice-watchstreak .hs-mc-system-text { color: var(--hs-brand); font-weight: 600; }
+    /* Mod-anniversary = gold (authority family — a celebration of mod status,
+       distinct from the routine info-blue grant-mod notice) */
+    .hs-mc-msg.hs-mc-notice-mod-anniversary { border-left-color: var(--hs-gold) !important; background: var(--hs-gold-tint) !important; }
+    .hs-mc-msg.hs-mc-notice-mod-anniversary .hs-mc-system-text { color: var(--hs-gold); font-weight: 700; }
     /* Errors / rejections = dim maroon */
-    .hs-mc-msg.hs-mc-notice-error     { border-left-color: #800000 !important; background: rgba(128, 0, 0, 0.06) !important; }
+    .hs-mc-msg.hs-mc-notice-error     { border-left-color: var(--hs-danger-dim) !important; background: rgba(128, 0, 0, 0.06) !important; }
     .hs-mc-msg.hs-mc-notice-error     .hs-mc-system-text { color: #ff8080; }
     /* First-time chatter (Twitch first-msg=1) = Twitch magenta-purple */
     .hs-mc-msg.hs-mc-first-msg { border-left: 3px solid #bd5fff; padding-left: 8px; background: rgba(189, 95, 255, 0.12); }
     /* n/N search-match cursor (live-tab filter) — HeatSync orange left-accent,
        no animation, wins over notice-type coloring (same specificity, later
        in source order) so the current match is always identifiable. */
-    .hs-mc-msg.hs-mc-search-current { border-left: 2px solid #ff8700 !important; background: rgba(255, 135, 0, 0.12) !important; }
+    .hs-mc-msg.hs-mc-search-current { border-left: 2px solid var(--hs-mention) !important; background: var(--hs-warn-tint) !important; }
     /* Cleared (timed out / banned / msg deleted) — Twitch-native dim + strikethrough.
        Username and badges stay visible so the reader can see who got hit; the body
        text and emotes get faded with a strikethrough. */
@@ -502,14 +504,14 @@
        carries a mutable status + button pair instead of static system text. */
     .hs-mc-msg.hs-mc-automod {
       display: block;
-      border-left: 3px solid #ffd700;
-      background: rgba(255, 215, 0, 0.08);
+      border-left: 3px solid var(--hs-gold);
+      background: var(--hs-gold-tint);
       padding: 4px 8px;
     }
     .hs-mc-msg.hs-mc-automod.hs-mc-automod-resolved { opacity: 0.6; }
     .hs-mc-automod-badge {
       display: inline-block;
-      background: #ffd700;
+      background: var(--hs-gold);
       color: #000;
       font-weight: 700;
       font-size: 13px;
@@ -519,9 +521,9 @@
     }
     .hs-mc-automod-chip {
       display: inline-block;
-      color: #ffd700;
+      color: var(--hs-gold);
       font-size: 13px;
-      border: 1px solid #ffd700;
+      border: 1px solid var(--hs-gold);
       padding: 0 4px;
     }
     .hs-mc-automod-body {
@@ -535,7 +537,7 @@
     .hs-mc-automod-btn {
       background: #000;
       color: #fff;
-      border: 1px solid #ffd700;
+      border: 1px solid var(--hs-gold);
       font: 13px/18px 'CozetteVector', monospace;
       padding: 1px 8px;
       cursor: pointer;
@@ -543,26 +545,26 @@
     }
     .hs-mc-automod-btn:hover,
     .hs-mc-automod-btn:active { background: #fff; color: #000; }
-    .hs-mc-automod-status { font-size: 13px; color: #ffd700; }
-    .hs-mc-automod-status.hs-mc-automod-err { color: #ff4040; }
+    .hs-mc-automod-status { font-size: 13px; color: var(--hs-gold); }
+    .hs-mc-automod-status.hs-mc-automod-err { color: var(--hs-danger); }
     .hs-mc-msg.hs-mc-redeemed {
       background: rgba(145, 71, 255, 0.15);
-      border-left: 3px solid #9147ff;
+      border-left: 3px solid var(--hs-plat-twitch);
       padding-left: 8px;
     }
     .hs-mc-msg.hs-mc-highlighted {
-      background: rgba(255, 215, 0, 0.1);
-      border-left: 3px solid #ffd700;
+      background: var(--hs-gold-tint);
+      border-left: 3px solid var(--hs-gold);
       padding-left: 8px;
     }
     .hs-mc-redeem-label {
-      color: #9147ff;
+      color: var(--hs-plat-twitch);
       font-size: 13px;
       font-style: normal;
       font-weight: 600;
     }
     .hs-mc-highlight-label {
-      color: #ffd700;
+      color: var(--hs-gold);
       font-size: 13px;
       font-style: normal;
       font-weight: 600;
@@ -618,13 +620,13 @@
       -webkit-text-fill-color: #999 !important;
     }
     .hs-mc-msg.hs-first-msg {
-      /* first-message glow — brand orange bar + a subtle inset orange glow (was a
-         flat yellow bar; the setting is called "glow", so it now actually glows). */
-      box-shadow: inset 2px 0 0 #ff8700, inset 0 0 10px -2px rgba(255, 135, 0, 0.35);
+      /* first-message glow — thread/event magenta bar + a subtle inset glow
+         (the setting is called "glow", so it actually glows). */
+      box-shadow: inset 2px 0 0 var(--hs-thread), inset 0 0 10px -2px rgba(255, 0, 255, 0.30);
     }
     .hs-mc-msg.hs-kw-match {
       background: rgba(255, 255, 0, 0.14);
-      box-shadow: inset 0 0 0 1px #ffff00;
+      box-shadow: inset 0 0 0 1px var(--hs-mention);
     }
     /* Returning chatter — back after a long absence (twitch returning-chatter tag).
        Monochrome by intent: a low-key gray bar (familiar, seen before). */
@@ -688,9 +690,9 @@
       font-weight: 700;
       vertical-align: middle;
     }
-    .hs-mc-platform-badge.hs-mc-pb-twitch { color: #9146ff; }
-    .hs-mc-platform-badge.hs-mc-pb-kick { color: #53fc18; }
-    .hs-mc-platform-badge.hs-mc-pb-yt { color: #ff0000; }
+    .hs-mc-platform-badge.hs-mc-pb-twitch { color: var(--hs-plat-twitch); }
+    .hs-mc-platform-badge.hs-mc-pb-kick { color: var(--hs-plat-kick); }
+    .hs-mc-platform-badge.hs-mc-pb-yt { color: var(--hs-plat-youtube); }
     .hs-mc-badge {
       display: inline-block;
       /* Single font setting drives family + size (see .hs-mc-platform-badge). */
@@ -882,13 +884,13 @@
       gap: 6px;
       padding: 4px 8px;
       font-size: 13px;
-      color: #ff0000;
+      color: var(--hs-danger);
       background: #000;
-      border: 1px solid #ff0000;
+      border: 1px solid var(--hs-danger);
       border-radius: 0;
     }
-    #hs-mc-idwarn a { color: #ff0000; text-decoration: underline; }
-    #hs-mc-idwarn b { color: #ff4040; font-weight: 600; }
+    #hs-mc-idwarn a { color: var(--hs-danger); text-decoration: underline; }
+    #hs-mc-idwarn b { color: var(--hs-danger); font-weight: 600; }
     #hs-mc-idwarn button {
       flex: none;
       width: 18px;
@@ -896,9 +898,9 @@
       padding: 0;
       font-size: 13px;
       line-height: 1;
-      color: #ff0000;
+      color: var(--hs-danger);
       background: #000;
-      border: 1px solid #ff0000;
+      border: 1px solid var(--hs-danger);
       border-radius: 0;
       cursor: pointer;
     }

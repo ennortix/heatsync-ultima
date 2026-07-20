@@ -1156,7 +1156,8 @@ class KickChat {
           user: message.username || 'anonymous',
           text: message.message || '',
           systemMsg: `${message.username || 'Anonymous'} gifted ${message.amount} KICKs${message.giftName ? ' (' + message.giftName + ')' : ''}!`,
-          color: '#ffd600',
+          // feeds sanitizeColor()/COLOR_RE downstream (main.js) — must stay literal hex, no var(). Canonical gold.
+          color: '#ffd700',
           badges: '',
           channel,
           time: Date.now(),
@@ -1180,6 +1181,7 @@ class KickChat {
           user: message.username || 'system',
           text: '',
           systemMsg: message.message || '',
+          // feeds sanitizeColor()/COLOR_RE downstream (main.js) — must stay literal hex, no var(). Already canonical kick green.
           color: '#53fc18',
           badges: '',
           channel,

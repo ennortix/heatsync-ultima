@@ -92,6 +92,7 @@ function formatHeat(heat) {
   return String(heat)
 }
 
+// pinned warm/orange by doctrine — heat FX ramp, not a semantic var
 function getHeatNumberStyle(heat, isReply) {
   let fontSize, color, textShadow, animation
   if (isReply) {
@@ -131,6 +132,7 @@ function getHeatNumberStyle(heat, isReply) {
   return style
 }
 
+// pinned warm/orange by doctrine — heat FX ramp, not a semantic var
 function getHeatDisplay(heat) {
   if (!heat || heat <= 0) return null
   let border = '#444',
@@ -245,7 +247,7 @@ function showFeedEditUI(div, msg) {
   cancelBtn.style.cssText =
     'background:#000;color:#fff;border:1px solid #808080;padding:4px 8px;font-family:inherit;font-size:13px;cursor:pointer;'
   const errEl = document.createElement('div')
-  errEl.style.cssText = 'font-size:13px;color:#ff4444;margin-top:2px;'
+  errEl.style.cssText = 'font-size:13px;color:var(--hs-danger);margin-top:2px;'
   form.append(ta, saveBtn, cancelBtn)
   body.style.display = 'none'
   body.parentNode.insertBefore(form, body.nextSibling)
@@ -563,6 +565,7 @@ function dispatchYtStreamEvent(targetChannelId, msg) {
     channel: targetChannelId,
     time: msg.time || now,
     platform: 'youtube',
+    // feeds sanitizeColor()/COLOR_RE downstream — must stay literal hex, no var()
     color: msg.color || '#ff0000',
     scColor: msg.scColor || undefined,
   }
@@ -963,6 +966,7 @@ function listenForSocialEvents() {
         id: msg.id || undefined,
         user: msg.user,
         text: msg.text,
+        // feeds sanitizeColor()/COLOR_RE downstream — must stay literal hex, no var()
         color: msg.color || '#ff0000',
         channel: ytChannelHint || 'youtube',
         // Cache key for channel-emote lookup when channel itself isn't one
@@ -1229,7 +1233,7 @@ function listenForSocialEvents() {
               // Always prefix with "youtube:" — without it, error text looks
               // like it's about whatever stream the user is watching, not
               // the YouTube subscription that actually failed.
-              upsertNotice(`youtube: ${errText || 'connection error'}`, '#ff4444')
+              upsertNotice(`youtube: ${errText || 'connection error'}`, 'var(--hs-danger)')
             }
           }
         }
@@ -1591,7 +1595,7 @@ function buildFeedMessageDiv(m, opUsername) {
   const inThread = !!opUsername
   const linkId = escapeHtml(m.base36_id || '')
   const threadLink = inThread
-    ? `<span class="hs-feed-thread-link hs-quote-insert" data-quote-id="${escapeHtml(shortId)}" data-id="${linkId}" style="color:#ffff00;cursor:pointer">${escapeHtml(shortId)}</span>`
+    ? `<span class="hs-feed-thread-link hs-quote-insert" data-quote-id="${escapeHtml(shortId)}" data-id="${linkId}" style="color:var(--hs-mention);cursor:pointer">${escapeHtml(shortId)}</span>`
     : `<span class="hs-feed-thread-link hs-thread-toggle" data-id="${linkId}" style="cursor:pointer">&gt;&gt;${escapeHtml(shortId)}</span>`
 
   // Post type tag: [OP] red = original post, [OP] magenta = OP replying in own thread, [RE] = reply
@@ -2243,7 +2247,7 @@ async function postFeedMessage(text, { topLevel = false } = {}) {
     if (currentTab === 'feed') renderFeed()
     return true
   } else {
-    input.style.borderColor = '#f44'
+    input.style.borderColor = 'var(--hs-danger)'
     const errMsg =
       resp.status === 401
         ? t('mc_social_log_in_first')
@@ -2350,6 +2354,7 @@ function formatDiscoverCount(n) {
 // but with fixed (small) size so discover rows stay dense.
 // Tiers: 0 → #444, 1-10 → #888, 10-30 → #888, 30-50 → #aaa, 50-100 → #ccc,
 //        100-500 → #eee, 500+ → #fff with breathe animation
+// pinned warm/orange by doctrine — heat FX ramp, not a semantic var
 function discoverHeatStyle(heat) {
   let color = '#444',
     textShadow = '',

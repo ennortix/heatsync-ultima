@@ -584,7 +584,7 @@ function renderWhispersTab() {
 
     const ts = formatTimeFromTs(m.time)
     const tsHtml = ts ? `<span class="hs-mc-ts">${ts}</span>` : ''
-    const platColor = m.platform === 'twitch' ? '#9146ff' : '#808080'
+    const platColor = m.platform === 'twitch' ? 'var(--hs-plat-twitch)' : '#808080'
     const platTag = m.platform === 'twitch' ? 'T' : 'H'
 
     // Show sender -> recipient for both directions (the links below swap by

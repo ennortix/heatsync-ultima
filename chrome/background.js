@@ -4781,7 +4781,7 @@ function recomputeBadge() {
   const notifs = unreadNotifCount || 0
   if (live > 0) {
     badgeApi.setBadgeText({ text: String(live) }).catch(() => {})
-    badgeApi.setBadgeBackgroundColor({ color: '#ff3030' }).catch(() => {})
+    badgeApi.setBadgeBackgroundColor({ color: '#ff0000' }).catch(() => {}) // doctrine: --hs-danger
   } else if (notifs > 0) {
     badgeApi.setBadgeText({ text: String(notifs) }).catch(() => {})
     badgeApi.setBadgeBackgroundColor({ color: '#555' }).catch(() => {})
@@ -7575,7 +7575,7 @@ async function handleMessage(message, sender, sendResponse) {
           handle({
             bannerUrl: banner,
             offlineUrl: null,
-            accent: '#ff0033',
+            accent: '#ff0000', // doctrine: --hs-plat-youtube
             profileUrl: avatar,
             sourcePlatform: 'youtube',
           })

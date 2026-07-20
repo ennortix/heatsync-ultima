@@ -31,8 +31,8 @@ function attachInputEmoteErrorRecovery(img) {
 // Brief red flash on input to indicate message can't be sent from this tab
 function flashInputError(input) {
   if (!input) return
-  input.style.background = '#400000'
-  input.style.borderColor = '#ff0000'
+  input.style.background = 'var(--hs-danger-dim)'
+  input.style.borderColor = 'var(--hs-danger)'
   setTimeout(() => {
     input.style.background = ''
     input.style.borderColor = ''
@@ -5511,20 +5511,21 @@ function placeCaretAfter(node, offset = 0) {
 // (heatsync only), so you can feel how deep / how niche the current pick is.
 function emoteCycleMeta(m) {
   if (!m) return { cat: '', vis: null }
-  if (m.type === 'user' || m.type === 'user-bare') return { cat: 'chatter', vis: { t: 'everyone', c: '#5fd75f' } }
-  if (m.type === 'emoji') return { cat: 'emoji', vis: { t: 'everyone', c: '#5fd75f' } }
-  if (m.remote) return { cat: '7tv search', vis: { t: 'heatsync only', c: '#ff8700' } }
+  if (m.type === 'user' || m.type === 'user-bare')
+    return { cat: 'chatter', vis: { t: 'everyone', c: 'var(--hs-ok)' } }
+  if (m.type === 'emoji') return { cat: 'emoji', vis: { t: 'everyone', c: 'var(--hs-ok)' } }
+  if (m.remote) return { cat: '7tv search', vis: { t: 'heatsync only', c: 'var(--hs-brand)' } }
   const tier = m.tier ?? 2
   const cat = tier === 0 ? 'channel' : tier === 1 ? 'your set' : 'global'
-  if (m.source === 'twitch') return { cat, vis: { t: 'all twitch', c: '#5fd75f' } }
+  if (m.source === 'twitch') return { cat, vis: { t: 'all twitch', c: 'var(--hs-ok)' } }
   // Kick-native channel/sub emotes are platform-native too — every Kick viewer
   // sees them, no extension needed.
-  if (m.source === 'kick') return { cat, vis: { t: 'all kick', c: '#5fd75f' } }
+  if (m.source === 'kick') return { cat, vis: { t: 'all kick', c: 'var(--hs-ok)' } }
   // Your personal set (tier 1) or a heatsync-hosted emote: others only see it via
   // heatsync's sender-set merge — non-heatsync viewers get plain text.
-  if (tier === 1 || m.source === 'heatsync') return { cat, vis: { t: 'heatsync only', c: '#ff8700' } }
+  if (tier === 1 || m.source === 'heatsync') return { cat, vis: { t: 'heatsync only', c: 'var(--hs-brand)' } }
   // Third-party emote active in the channel/global set — provider-ext users see it.
-  return { cat, vis: { t: `${m.source || 'ext'} users`, c: '#ffd75f' } }
+  return { cat, vis: { t: `${m.source || 'ext'} users`, c: 'var(--hs-gold)' } }
 }
 
 function showCycleTooltip() {
@@ -5563,7 +5564,7 @@ function showCycleTooltip() {
   // Surface the live catalog fetch so you know when a 7tv search is firing.
   if (acState.remotePending) {
     tt.appendChild(dot())
-    tt.appendChild(mkSpan('searching 7tv…', 'color:#ffd75f;'))
+    tt.appendChild(mkSpan('searching 7tv…', 'color:var(--hs-gold);'))
   }
   tt.style.display = 'block'
 }
@@ -7161,7 +7162,7 @@ async function sendMessage() {
           // Most common: not logged into Twitch IRC (no auth-token cookie) AND
           // not on Kick. Persistent notif (markPendingFailed) replaces the
           // 2.5s placeholder flash users physically couldn't read in time.
-          input.style.borderColor = '#f44'
+          input.style.borderColor = 'var(--hs-danger)'
           setTimeout(() => {
             input.style.borderColor = ''
             updateInputPlaceholder()
@@ -7196,7 +7197,7 @@ async function sendMessage() {
           // input.placeholder flash was too fast to read. Reason carries the
           // dominant platform's error so the retry notif tells the user what
           // actually went wrong (auth/connect/queue/kick-login).
-          input.style.borderColor = '#f44'
+          input.style.borderColor = 'var(--hs-danger)'
           setTimeout(() => {
             input.style.borderColor = ''
             updateInputPlaceholder()
@@ -7219,7 +7220,7 @@ async function sendMessage() {
         // A leg rejected (context invalidation, throw) rather than returning an
         // error string — without this the pending '•' hangs forever.
         log('dual-send rejected: ' + ((err && err.message) || err))
-        input.style.borderColor = '#f44'
+        input.style.borderColor = 'var(--hs-danger)'
         setTimeout(() => {
           input.style.borderColor = ''
           updateInputPlaceholder()
@@ -7281,14 +7282,14 @@ async function sendMessage() {
     .then((result) => {
       if (result === true) {
         if (wsState !== 'OPEN') {
-          input.style.borderColor = '#ff0'
+          input.style.borderColor = 'var(--hs-warn)'
           setTimeout(() => {
             input.style.borderColor = ''
           }, 1500)
         }
         // success-from-socket only; echo confirmation handled by pending tracker
       } else {
-        input.style.borderColor = '#f44'
+        input.style.borderColor = 'var(--hs-danger)'
         setTimeout(() => {
           input.style.borderColor = ''
           updateInputPlaceholder()
@@ -7303,7 +7304,7 @@ async function sendMessage() {
     })
     .catch((err) => {
       log('twitch send rejected: ' + ((err && err.message) || err))
-      input.style.borderColor = '#f44'
+      input.style.borderColor = 'var(--hs-danger)'
       setTimeout(() => {
         input.style.borderColor = ''
         updateInputPlaceholder()
@@ -7360,7 +7361,7 @@ function showUploadStatus(msg, isError) {
   if (msg) {
     if (bar) {
       bar.textContent = msg
-      bar.style.color = isError ? '#ff4444' : '#fff'
+      bar.style.color = isError ? 'var(--hs-danger)' : '#fff'
       bar.style.display = 'block'
       return
     }

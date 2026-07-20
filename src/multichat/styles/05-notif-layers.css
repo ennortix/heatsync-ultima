@@ -136,7 +136,7 @@
     .hs-notif-action-primary:hover,
     .hs-notif-action-primary:active { background: #fff; color: #000; border-color: #fff; }
     .hs-notif-action-dismiss { padding: 0 10px; font-size: 14px; color: #848494; }
-    .hs-notif-action-dismiss:hover { background: #ff4040; color: #000; }
+    .hs-notif-action-dismiss:hover { background: var(--hs-danger); color: #000; }
 
     /* Toast-stack — every notif on this layer gets the toast aesthetic:
        icon prefix, level accent, click-to-dismiss cursor. Applies to the
@@ -158,18 +158,18 @@
       text-align: center;
       flex: 0 0 auto;
     }
-    .hs-notif-toast-text.hs-notif-toast-success { --hs-notif-icon: '✓'; --hs-notif-accent: #00d65a; color: #c0f5d4; }
-    .hs-notif-toast-text.hs-notif-toast-error   { --hs-notif-icon: '✕'; --hs-notif-accent: #ff4f4d; color: #ffd0cf; }
-    .hs-notif-toast-text.hs-notif-toast-warn    { --hs-notif-icon: '!'; --hs-notif-accent: #ffff00; color: #ffffb8; }
-    .hs-notif-toast-text.hs-notif-toast-info    { --hs-notif-icon: 'i'; --hs-notif-accent: #6aa0ff; color: #d0ddff; }
-    .hs-notif-toast-text.hs-notif-toast-mention { --hs-notif-icon: '@'; --hs-notif-accent: #ff00ff; color: #ffd0ff; }
+    .hs-notif-toast-text.hs-notif-toast-success { --hs-notif-icon: '✓'; --hs-notif-accent: var(--hs-ok); color: #efeff1; }
+    .hs-notif-toast-text.hs-notif-toast-error   { --hs-notif-icon: '✕'; --hs-notif-accent: var(--hs-danger); color: #efeff1; }
+    .hs-notif-toast-text.hs-notif-toast-warn    { --hs-notif-icon: '!'; --hs-notif-accent: var(--hs-warn); color: #efeff1; }
+    .hs-notif-toast-text.hs-notif-toast-info    { --hs-notif-icon: 'i'; --hs-notif-accent: var(--hs-info); color: #efeff1; }
+    .hs-notif-toast-text.hs-notif-toast-mention { --hs-notif-icon: '@'; --hs-notif-accent: var(--hs-mention); color: #efeff1; }
     /* Wrapper accent strip mirrors the text level (CSS custom property
        cascades from the inner span up via :has). */
-    .hs-notif:has(.hs-notif-toast-success) { --hs-notif-accent: #00d65a; }
-    .hs-notif:has(.hs-notif-toast-error)   { --hs-notif-accent: #ff4f4d; }
-    .hs-notif:has(.hs-notif-toast-warn)    { --hs-notif-accent: #ffff00; }
-    .hs-notif:has(.hs-notif-toast-info)    { --hs-notif-accent: #6aa0ff; }
-    .hs-notif:has(.hs-notif-toast-mention) { --hs-notif-accent: #ff00ff; }
+    .hs-notif:has(.hs-notif-toast-success) { --hs-notif-accent: var(--hs-ok); }
+    .hs-notif:has(.hs-notif-toast-error)   { --hs-notif-accent: var(--hs-danger); }
+    .hs-notif:has(.hs-notif-toast-warn)    { --hs-notif-accent: var(--hs-warn); }
+    .hs-notif:has(.hs-notif-toast-info)    { --hs-notif-accent: var(--hs-info); }
+    .hs-notif:has(.hs-notif-toast-mention) { --hs-notif-accent: var(--hs-mention); }
     .hs-notif-layer-toast-stack > .hs-notif:hover { background: #fff; }
     .hs-notif-layer-toast-stack > .hs-notif:hover .hs-notif-toast-text,
     .hs-notif-layer-toast-stack > .hs-notif:hover .hs-notif-toast-text::before {
@@ -182,5 +182,5 @@
       border-color: #000;
     }
     .hs-notif-layer-toast-stack > .hs-notif:hover .hs-notif-action:hover { background: #000; color: #fff; }
-    .hs-notif-layer-toast-stack > .hs-notif:hover .hs-notif-action-dismiss:hover { background: #ff4040; color: #000; }
+    .hs-notif-layer-toast-stack > .hs-notif:hover .hs-notif-action-dismiss:hover { background: var(--hs-danger); color: #000; }
 

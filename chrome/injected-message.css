@@ -1,4 +1,8 @@
 /* OP Message Injection Styles */
+/* Standalone stylesheet injected into host page DOM — no guarantee :root
+   custom props (styles/00-palette.css) are in scope here, so hexes stay
+   literal. Pinned to the color doctrine for reference: red (#ff0000) =
+   danger/OP-highlight, mirrors var(--hs-danger) in styles/00-palette.css. */
 
 /* Base injected message styles */
 .heatsync-injected-message {

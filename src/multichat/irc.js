@@ -132,6 +132,14 @@ function parseIrcLine(raw, channel) {
         msg.rewardId = tags['custom-reward-id']
       }
       if (tags['msg-id'] === 'highlighted-message') msg.isHighlighted = true
+      if (tags['msg-id'] === 'user-intro') msg.userIntro = true
+      // Power-ups (paid): gigantified emote + message effects (animation-id
+      // names the effect, e.g. rainbow-eclipse / simmer / cosmic-abyss)
+      if (tags['msg-id'] === 'gigantified-emote-message') msg.gigantified = true
+      if (tags['msg-id'] === 'animated-message') msg.animationId = tags['animation-id'] || 'effect'
+      // Shared chat: source-room-id differing from room-id = partner-channel origin
+      if (tags['source-room-id'] && tags['room-id'] && tags['source-room-id'] !== tags['room-id'])
+        msg.sharedChat = true
       if (tags['first-msg'] === '1') msg.isFirstMsg = true
       if (tags['returning-chatter'] === '1') msg.isReturningChatter = true
       // Raider: a first-time chatter arriving inside the window opened by a raid
@@ -200,6 +208,12 @@ function parseIrcLine(raw, channel) {
         bitsTier,
         streakCount,
         twitchEmotes: twitchEmotes || undefined,
+        // shared-chat wrapper: real event type rides in source-msg-id
+        sourceMsgId: tags['source-msg-id'] || undefined,
+        sharedChat:
+          tags['source-room-id'] && tags['room-id'] && tags['source-room-id'] !== tags['room-id']
+            ? true
+            : undefined,
         id: tags.id || '',
       }
     }
@@ -524,7 +538,7 @@ class IRC {
       buf.push(msg)
       // Relay PRIVMSGs to server archive (ON CONFLICT DO NOTHING dedupes across
       // multiple viewers). Skip replays from BG history merge.
-      if (!msg.type && !msg.isHistory && msg.user && msg.text && msg.id) {
+      if (!msg.type && !msg.isHistory && !msg.isSynthetic && msg.user && msg.text && msg.id) {
         try {
           chrome.runtime
             .sendMessage({

@@ -491,6 +491,46 @@
     /* Watch-streak = brand orange — engagement heat, distinct from raid magenta */
     .hs-mc-msg.hs-mc-notice-watchstreak { border-left-color: var(--hs-brand) !important; background: rgba(255, 127, 0, 0.12) !important; }
     .hs-mc-msg.hs-mc-notice-watchstreak .hs-mc-system-text { color: var(--hs-brand); font-weight: 600; }
+    /* Charity donation = gold (generosity family, same as bits/gifts) */
+    .hs-mc-msg.hs-mc-notice-charity { border-left-color: var(--hs-gold) !important; background: var(--hs-gold-tint) !important; }
+    .hs-mc-msg.hs-mc-notice-charity .hs-mc-system-text { color: var(--hs-gold); font-weight: 600; }
+    /* Pinned-message notice = gold (pin is a mod act, matches pinned-row gold) */
+    .hs-mc-msg.hs-mc-notice-pin { border-left-color: var(--hs-gold) !important; background: var(--hs-gold-tint) !important; }
+    .hs-mc-msg.hs-mc-notice-pin .hs-mc-system-text { color: var(--hs-gold); font-weight: 700; }
+    /* "new to chat" intro (msg-id=user-intro, + legacy ritual usernotice) =
+       thread/event magenta with a chip — a person arriving is a community moment */
+    .hs-mc-msg.hs-mc-user-intro { border-left: 3px solid var(--hs-thread) !important; background: var(--hs-thread-tint); }
+    .hs-mc-msg.hs-mc-user-intro::before {
+      content: 'new here';
+      color: #000;
+      background: var(--hs-thread);
+      font-weight: 700;
+      padding: 0 4px;
+      margin-right: 6px;
+    }
+    /* Power-up: gigantified emote — the last emote renders big (mirrors twitch) */
+    .hs-mc-msg.hs-mc-gigantified .hs-mc-text .hs-mc-emote-wrapper:last-of-type img {
+      height: 56px !important;
+      width: auto !important;
+    }
+    /* Power-up: message effect — static fx chip naming the effect. Zero motion
+       by design: the paid effect is represented, never animated. */
+    .hs-mc-msg.hs-mc-animated { border-left: 3px solid var(--hs-thread-dim) !important; }
+    .hs-mc-msg.hs-mc-animated::before {
+      content: 'fx:' attr(data-hs-anim);
+      color: var(--hs-thread);
+      border: 1px solid var(--hs-thread-dim);
+      padding: 0 4px;
+      margin-right: 6px;
+    }
+    /* Shared-chat session: partner-channel origin chip */
+    .hs-mc-msg.hs-mc-shared::before {
+      content: 'shared';
+      color: var(--hs-reply);
+      border: 1px solid var(--hs-reply-dim);
+      padding: 0 4px;
+      margin-right: 6px;
+    }
     /* Mod-anniversary = gold (authority family — a celebration of mod status,
        distinct from the routine info-blue grant-mod notice) */
     .hs-mc-msg.hs-mc-notice-mod-anniversary { border-left-color: var(--hs-gold) !important; background: var(--hs-gold-tint) !important; }

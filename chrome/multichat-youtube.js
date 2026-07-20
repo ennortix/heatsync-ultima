@@ -10131,6 +10131,46 @@ function injectStyles() {
     /* Watch-streak = brand orange — engagement heat, distinct from raid magenta */
     .hs-mc-msg.hs-mc-notice-watchstreak { border-left-color: var(--hs-brand) !important; background: rgba(255, 127, 0, 0.12) !important; }
     .hs-mc-msg.hs-mc-notice-watchstreak .hs-mc-system-text { color: var(--hs-brand); font-weight: 600; }
+    /* Charity donation = gold (generosity family, same as bits/gifts) */
+    .hs-mc-msg.hs-mc-notice-charity { border-left-color: var(--hs-gold) !important; background: var(--hs-gold-tint) !important; }
+    .hs-mc-msg.hs-mc-notice-charity .hs-mc-system-text { color: var(--hs-gold); font-weight: 600; }
+    /* Pinned-message notice = gold (pin is a mod act, matches pinned-row gold) */
+    .hs-mc-msg.hs-mc-notice-pin { border-left-color: var(--hs-gold) !important; background: var(--hs-gold-tint) !important; }
+    .hs-mc-msg.hs-mc-notice-pin .hs-mc-system-text { color: var(--hs-gold); font-weight: 700; }
+    /* "new to chat" intro (msg-id=user-intro, + legacy ritual usernotice) =
+       thread/event magenta with a chip — a person arriving is a community moment */
+    .hs-mc-msg.hs-mc-user-intro { border-left: 3px solid var(--hs-thread) !important; background: var(--hs-thread-tint); }
+    .hs-mc-msg.hs-mc-user-intro::before {
+      content: 'new here';
+      color: #000;
+      background: var(--hs-thread);
+      font-weight: 700;
+      padding: 0 4px;
+      margin-right: 6px;
+    }
+    /* Power-up: gigantified emote — the last emote renders big (mirrors twitch) */
+    .hs-mc-msg.hs-mc-gigantified .hs-mc-text .hs-mc-emote-wrapper:last-of-type img {
+      height: 56px !important;
+      width: auto !important;
+    }
+    /* Power-up: message effect — static fx chip naming the effect. Zero motion
+       by design: the paid effect is represented, never animated. */
+    .hs-mc-msg.hs-mc-animated { border-left: 3px solid var(--hs-thread-dim) !important; }
+    .hs-mc-msg.hs-mc-animated::before {
+      content: 'fx:' attr(data-hs-anim);
+      color: var(--hs-thread);
+      border: 1px solid var(--hs-thread-dim);
+      padding: 0 4px;
+      margin-right: 6px;
+    }
+    /* Shared-chat session: partner-channel origin chip */
+    .hs-mc-msg.hs-mc-shared::before {
+      content: 'shared';
+      color: var(--hs-reply);
+      border: 1px solid var(--hs-reply-dim);
+      padding: 0 4px;
+      margin-right: 6px;
+    }
     /* Mod-anniversary = gold (authority family — a celebration of mod status,
        distinct from the routine info-blue grant-mod notice) */
     .hs-mc-msg.hs-mc-notice-mod-anniversary { border-left-color: var(--hs-gold) !important; background: var(--hs-gold-tint) !important; }
@@ -19688,6 +19728,14 @@ function parseIrcLine(raw, channel) {
         msg.rewardId = tags['custom-reward-id']
       }
       if (tags['msg-id'] === 'highlighted-message') msg.isHighlighted = true
+      if (tags['msg-id'] === 'user-intro') msg.userIntro = true
+      // Power-ups (paid): gigantified emote + message effects (animation-id
+      // names the effect, e.g. rainbow-eclipse / simmer / cosmic-abyss)
+      if (tags['msg-id'] === 'gigantified-emote-message') msg.gigantified = true
+      if (tags['msg-id'] === 'animated-message') msg.animationId = tags['animation-id'] || 'effect'
+      // Shared chat: source-room-id differing from room-id = partner-channel origin
+      if (tags['source-room-id'] && tags['room-id'] && tags['source-room-id'] !== tags['room-id'])
+        msg.sharedChat = true
       if (tags['first-msg'] === '1') msg.isFirstMsg = true
       if (tags['returning-chatter'] === '1') msg.isReturningChatter = true
       // Raider: a first-time chatter arriving inside the window opened by a raid
@@ -19756,6 +19804,12 @@ function parseIrcLine(raw, channel) {
         bitsTier,
         streakCount,
         twitchEmotes: twitchEmotes || undefined,
+        // shared-chat wrapper: real event type rides in source-msg-id
+        sourceMsgId: tags['source-msg-id'] || undefined,
+        sharedChat:
+          tags['source-room-id'] && tags['room-id'] && tags['source-room-id'] !== tags['room-id']
+            ? true
+            : undefined,
         id: tags.id || '',
       }
     }
@@ -20080,7 +20134,7 @@ class IRC {
       buf.push(msg)
       // Relay PRIVMSGs to server archive (ON CONFLICT DO NOTHING dedupes across
       // multiple viewers). Skip replays from BG history merge.
-      if (!msg.type && !msg.isHistory && msg.user && msg.text && msg.id) {
+      if (!msg.type && !msg.isHistory && !msg.isSynthetic && msg.user && msg.text && msg.id) {
         try {
           chrome.runtime
             .sendMessage({
@@ -43033,6 +43087,81 @@ async function handleSlashCommand(text, input) {
     }
   }
 
+  if (cmd === 'testnotices') {
+    // Local-only showcase: one synthetic row per supported twitch event type,
+    // fed through the REAL pipeline (irc._handleMsg → classifier → renderer).
+    // isSynthetic gates the archive relay; nothing leaves the machine.
+    // _handleMsg drops channels that aren't JOINed in irc.channels — target
+    // the current tab if joined, else the first joined channel.
+    let ch = modChannel && irc?.channels?.has?.(modChannel) ? modChannel : null
+    if (!ch) {
+      try {
+        ch = irc?.channels?.keys?.().next?.().value || null
+      } catch (_) {}
+    }
+    if (!ch) {
+      showToast('/testnotices: no joined twitch channel', 'error')
+      return true
+    }
+    const now = Date.now()
+    let i = 0
+    const base = () => ({ channel: ch, time: now + i, isSynthetic: true, id: `hs-test-${now}-${i++}`, color: '#fff', badges: '' })
+    const un = (msgId, systemMsg, extra) => ({ ...base(), type: 'usernotice', msgId, user: 'testuser', text: '', systemMsg, ...extra })
+    const no = (noticeType, systemMsg) => ({ ...base(), type: 'notice', noticeType, systemMsg })
+    const pm = (text, extra) => ({ ...base(), user: 'testuser', login: 'testuser', userId: '0', text, ...extra })
+    const kappa = { Kappa: 'https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/2.0' }
+    const rows = [
+      un('sub', 'testuser subscribed at Tier 1.'),
+      un('resub', 'testuser subscribed at Tier 1. They’ve been here 14 months!', { subMonths: 14, text: 'love this place' }),
+      un('subgift', 'testuser gifted a Tier 1 sub to somebody!', { recipient: 'somebody' }),
+      un('submysterygift', 'testuser is gifting 5 Tier 1 subs to the community!', { giftCount: 5 }),
+      un('giftpaidupgrade', 'testuser is continuing the gift sub they got!'),
+      un('primepaidupgrade', 'testuser converted from a Prime sub to a Tier 1 sub!'),
+      un('extendsub', 'testuser extended their Tier 1 sub through next month!'),
+      un('standardpayforward', 'testuser is paying forward the gift they got!'),
+      un('communitypayforward', 'testuser is paying forward the gift they got to the community!'),
+      un('rewardgift', 'testuser’s cheer shared rewards with the chat!'),
+      un('raid', '12 raiders from testraider have joined!', { raidFrom: 'testraider', raidViewers: 12 }),
+      un('unraid', 'the raid has been cancelled.'),
+      un('announcement', '', { text: 'big announcement text' }),
+      un('bitsbadgetier', 'bits badge tier notification', { bitsTier: 1000 }),
+      un('watchstreak', 'testuser watched 5 consecutive streams and sparked a watch streak!', { streakCount: 5 }),
+      un('viewermilestone', 'testuser reached a viewer milestone!'),
+      un('mod-anniversary', 'testuser is celebrating 6 months as a mod!'),
+      un('charitydonation', 'testuser donated $5 to Save the Kripps!'),
+      un('ritual', 'testuser is new here — say hello!'),
+      un('resub', 'shared-chat resub from the partner channel', { msgId: 'sharedchatnotice', sourceMsgId: 'resub', sharedChat: true }),
+      no('slow_on', 'this room is now in slow mode.'),
+      no('ban_success', 'baduser was permanently banned'),
+      no('timeout_success', 'baduser was timed out for 600s'),
+      no('unban_success', 'baduser is no longer banned'),
+      no('delete_message_success', 'message deleted'),
+      no('mod_success', 'gooduser is now a moderator'),
+      no('vip_success', 'gooduser is now a VIP'),
+      no('pin', 'pinned testuser: check the discord for scrims'),
+      no('msg_banned', 'you cannot send messages here (error family)'),
+      pm('plain message baseline'),
+      pm('waves at everyone', { isAction: true }),
+      pm('cheer100 great play', { bits: 100 }),
+      pm('used points to highlight this', { isHighlighted: true }),
+      pm('redeemed a custom reward', { redeemed: true, rewardId: 'hs-test-reward' }),
+      pm('first message ever in this channel', { isFirstMsg: true }),
+      pm('back after a long break', { isReturningChatter: true }),
+      pm('hi i’m new to chat', { userIntro: true }),
+      pm('gigantified Kappa', { gigantified: true, twitchEmotes: kappa }),
+      pm('paid message effect', { animationId: 'rainbow-eclipse' }),
+      pm('hello from the partner channel', { sharedChat: true }),
+    ]
+    for (const r of rows) {
+      try {
+        irc?._handleMsg?.(r)
+      } catch (_) {}
+    }
+    showToast(`injected ${rows.length} test rows into #${ch} (local only)`, 'success')
+    clearInput(input)
+    return true
+  }
+
   if (cmd === 'announce' || cmd === 'announceblue' || cmd === 'announcegreen' || cmd === 'announceorange' || cmd === 'announcepurple') {
     if (!modChannel) {
       showToast(t('mc_input_mod_needs_channel_tab', [cmd]) || `/${cmd} needs a channel tab`, 'error')
@@ -43232,6 +43361,7 @@ const SLASH_HELP_LINES = [
   '/unique                — unique-chat/r9k ("/unique off")',
   '',
   '/announce <msg>        — announcement (blue/green/orange/purple variants)',
+  '/testnotices           — render every event type locally (dev)',
   '',
   '/me /color and chat pass through to twitch & kick.',
   '/mod /vip /raid /clear are not yet wired —',
@@ -60434,17 +60564,6 @@ const STORAGE_KEY = 'heatsync_multichat'
       return div
     }
 
-    // Guard against messages with no user (malformed IRC / system messages)
-    if (!m.user) {
-      if (m.text || m.systemMsg) {
-        const div = document.createElement('div')
-        div.className = 'hs-mc-msg hs-mc-system'
-        div.textContent = m.systemMsg || m.text || ''
-        return div
-      }
-      return null
-    }
-
     const showChannel = tabId === 'mentions'
     const isSuperChat = m.platform === 'youtube' && (m.msgType === 'superchat' || m.msgType === 'supersticker')
     const isMembership =
@@ -60455,8 +60574,10 @@ const STORAGE_KEY = 'heatsync_multichat'
     // (unban, ban, mod-add, mode-change, sub, raid, etc.) can have its own color/icon
     const noticeKind = (() => {
       if (m.type !== 'notice' && m.type !== 'usernotice') return ''
-      const id = m.noticeType || m.msgId || ''
+      let id = m.noticeType || m.msgId || ''
       if (!id) return ''
+      // shared-chat wrapper: the real event type rides in source-msg-id
+      if (id === 'sharedchatnotice' && m.sourceMsgId) id = m.sourceMsgId
       // group related msg-ids into a single semantic class
       if (id === 'unban_success') return 'hs-mc-notice-unban'
       if (id === 'untimeout_success') return 'hs-mc-notice-untimeout'
@@ -60482,7 +60603,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         id === 'r9k_off'
       )
         return 'hs-mc-notice-mode'
-      if (id === 'sub' || id === 'resub') return 'hs-mc-notice-sub'
+      if (id === 'sub' || id === 'resub' || id === 'primepaidupgrade' || id === 'extendsub') return 'hs-mc-notice-sub'
       // Kick event names — heatsync server passes Kick-side strings through;
       // normalize to the same CSS classes Twitch sub/gift events use so the
       // sub-purple border, gift-bubble pink, etc. render identically.
@@ -60499,6 +60620,9 @@ const STORAGE_KEY = 'heatsync_multichat'
         id === 'submysterygift' ||
         id === 'giftpaidupgrade' ||
         id === 'anongiftpaidupgrade' ||
+        id === 'rewardgift' ||
+        id === 'standardpayforward' ||
+        id === 'communitypayforward' ||
         id === 'gift_subscription' ||
         id === 'gifted_subscriptions' ||
         id === 'channel.subscription.gifts'
@@ -60518,6 +60642,11 @@ const STORAGE_KEY = 'heatsync_multichat'
       // shape as sub anniversary; render with mod-add's blue family so the
       // moderator-celebration thread reads consistently.
       if (id === 'mod-anniversary' || id === 'mod_anniversary') return 'hs-mc-notice-mod-anniversary'
+      if (id === 'charitydonation' || id === 'charity_donation') return 'hs-mc-notice-charity'
+      // ritual = twitch's legacy new-chatter usernotice; render with the
+      // user-intro treatment (same "new here" semantics)
+      if (id === 'ritual' || id === 'new_chatter') return 'hs-mc-user-intro'
+      if (id === 'pin') return 'hs-mc-notice-pin'
       if (
         id === 'msg_banned' ||
         id === 'msg_timedout' ||
@@ -60528,6 +60657,23 @@ const STORAGE_KEY = 'heatsync_multichat'
         return 'hs-mc-notice-error'
       return ''
     })()
+    // Guard against messages with no user (malformed IRC / system messages).
+    // Sits BELOW the classifier on purpose: user-less NOTICEs (mode changes,
+    // msg_banned errors, pin lines) still get their semantic notice color —
+    // the old early-return rendered them all as bare grey system rows.
+    if (!m.user) {
+      if (m.text || m.systemMsg) {
+        const div = document.createElement('div')
+        div.className = `hs-mc-msg hs-mc-system ${noticeKind}`.trim()
+        // .hs-mc-system-text span so the per-kind text-color rules apply
+        const span = document.createElement('span')
+        span.className = 'hs-mc-system-text'
+        span.textContent = m.systemMsg || m.text || ''
+        div.appendChild(span)
+        return div
+      }
+      return null
+    }
     const cls =
       tabId === 'mentions'
         ? 'hs-mc-msg mention'
@@ -60785,6 +60931,17 @@ const STORAGE_KEY = 'heatsync_multichat'
     }
     // Returning chatter — chatted before, back after a long absence (twitch tag).
     if (m.isReturningChatter) div.classList.add('is-returning')
+    // "new to chat" intro message (twitch msg-id=user-intro)
+    if (m.userIntro) div.classList.add('hs-mc-user-intro')
+    // Power-ups: gigantified emote (last emote renders big) + message effect
+    // (static fx chip — no motion by design; the effect NAME is the info)
+    if (m.gigantified) div.classList.add('hs-mc-gigantified')
+    if (m.animationId) {
+      div.classList.add('hs-mc-animated')
+      div.dataset.hsAnim = String(m.animationId).slice(0, 32)
+    }
+    // Shared-chat session: message originated in the partner channel
+    if (m.sharedChat) div.classList.add('hs-mc-shared')
     // Raider — a first message arriving in the window after a raid into this channel.
     if (m.isRaider) div.classList.add('is-raider')
     // Cleared by mod (timeout/ban/delete) — Twitch-native dim + strikethrough on offending content
@@ -67072,6 +67229,27 @@ const STORAGE_KEY = 'heatsync_multichat'
             redeemTitleMap.set(data.rewardId, { title: data.title, cost: data.cost })
             if (redeemTitleMap.size > 200) redeemTitleMap.delete(redeemTitleMap.keys().next().value)
           }
+        } else if (eventType === 'pin' || eventType === 'unpin') {
+          // pinned-chat pubsub — was tapped but dropped on the floor. Render as
+          // a gold notice line through the usernotice path (pin = a mod act).
+          // early-inject-main.js forwards { message: <text string>, sender, id }
+          const pinText = String(typeof data?.message === 'string' ? data.message : (data?.text ?? '')).slice(0, 200)
+          const pinBy = String(data?.sender ?? '')
+          try {
+            irc?._handleMsg?.({
+              type: 'notice',
+              noticeType: 'pin',
+              systemMsg:
+                eventType === 'pin'
+                  ? `pinned${pinBy ? ' ' + pinBy + ':' : ':'} ${pinText}`.trim()
+                  : 'message unpinned',
+              channel,
+              time: Date.now(),
+              isSynthetic: true,
+              id: `hs-pin-${channel}-${eventType}-${Date.now()}`,
+            })
+          } catch (_) {}
+          return
         } else if (eventType === 'prediction-start') {
           toggleKey = 'pred'
           eventClass = 'event-pred'

@@ -6478,6 +6478,81 @@ async function handleSlashCommand(text, input) {
     }
   }
 
+  if (cmd === 'testnotices') {
+    // Local-only showcase: one synthetic row per supported twitch event type,
+    // fed through the REAL pipeline (irc._handleMsg → classifier → renderer).
+    // isSynthetic gates the archive relay; nothing leaves the machine.
+    // _handleMsg drops channels that aren't JOINed in irc.channels — target
+    // the current tab if joined, else the first joined channel.
+    let ch = modChannel && irc?.channels?.has?.(modChannel) ? modChannel : null
+    if (!ch) {
+      try {
+        ch = irc?.channels?.keys?.().next?.().value || null
+      } catch (_) {}
+    }
+    if (!ch) {
+      showToast('/testnotices: no joined twitch channel', 'error')
+      return true
+    }
+    const now = Date.now()
+    let i = 0
+    const base = () => ({ channel: ch, time: now + i, isSynthetic: true, id: `hs-test-${now}-${i++}`, color: '#fff', badges: '' })
+    const un = (msgId, systemMsg, extra) => ({ ...base(), type: 'usernotice', msgId, user: 'testuser', text: '', systemMsg, ...extra })
+    const no = (noticeType, systemMsg) => ({ ...base(), type: 'notice', noticeType, systemMsg })
+    const pm = (text, extra) => ({ ...base(), user: 'testuser', login: 'testuser', userId: '0', text, ...extra })
+    const kappa = { Kappa: 'https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/2.0' }
+    const rows = [
+      un('sub', 'testuser subscribed at Tier 1.'),
+      un('resub', 'testuser subscribed at Tier 1. They’ve been here 14 months!', { subMonths: 14, text: 'love this place' }),
+      un('subgift', 'testuser gifted a Tier 1 sub to somebody!', { recipient: 'somebody' }),
+      un('submysterygift', 'testuser is gifting 5 Tier 1 subs to the community!', { giftCount: 5 }),
+      un('giftpaidupgrade', 'testuser is continuing the gift sub they got!'),
+      un('primepaidupgrade', 'testuser converted from a Prime sub to a Tier 1 sub!'),
+      un('extendsub', 'testuser extended their Tier 1 sub through next month!'),
+      un('standardpayforward', 'testuser is paying forward the gift they got!'),
+      un('communitypayforward', 'testuser is paying forward the gift they got to the community!'),
+      un('rewardgift', 'testuser’s cheer shared rewards with the chat!'),
+      un('raid', '12 raiders from testraider have joined!', { raidFrom: 'testraider', raidViewers: 12 }),
+      un('unraid', 'the raid has been cancelled.'),
+      un('announcement', '', { text: 'big announcement text' }),
+      un('bitsbadgetier', 'bits badge tier notification', { bitsTier: 1000 }),
+      un('watchstreak', 'testuser watched 5 consecutive streams and sparked a watch streak!', { streakCount: 5 }),
+      un('viewermilestone', 'testuser reached a viewer milestone!'),
+      un('mod-anniversary', 'testuser is celebrating 6 months as a mod!'),
+      un('charitydonation', 'testuser donated $5 to Save the Kripps!'),
+      un('ritual', 'testuser is new here — say hello!'),
+      un('resub', 'shared-chat resub from the partner channel', { msgId: 'sharedchatnotice', sourceMsgId: 'resub', sharedChat: true }),
+      no('slow_on', 'this room is now in slow mode.'),
+      no('ban_success', 'baduser was permanently banned'),
+      no('timeout_success', 'baduser was timed out for 600s'),
+      no('unban_success', 'baduser is no longer banned'),
+      no('delete_message_success', 'message deleted'),
+      no('mod_success', 'gooduser is now a moderator'),
+      no('vip_success', 'gooduser is now a VIP'),
+      no('pin', 'pinned testuser: check the discord for scrims'),
+      no('msg_banned', 'you cannot send messages here (error family)'),
+      pm('plain message baseline'),
+      pm('waves at everyone', { isAction: true }),
+      pm('cheer100 great play', { bits: 100 }),
+      pm('used points to highlight this', { isHighlighted: true }),
+      pm('redeemed a custom reward', { redeemed: true, rewardId: 'hs-test-reward' }),
+      pm('first message ever in this channel', { isFirstMsg: true }),
+      pm('back after a long break', { isReturningChatter: true }),
+      pm('hi i’m new to chat', { userIntro: true }),
+      pm('gigantified Kappa', { gigantified: true, twitchEmotes: kappa }),
+      pm('paid message effect', { animationId: 'rainbow-eclipse' }),
+      pm('hello from the partner channel', { sharedChat: true }),
+    ]
+    for (const r of rows) {
+      try {
+        irc?._handleMsg?.(r)
+      } catch (_) {}
+    }
+    showToast(`injected ${rows.length} test rows into #${ch} (local only)`, 'success')
+    clearInput(input)
+    return true
+  }
+
   if (cmd === 'announce' || cmd === 'announceblue' || cmd === 'announcegreen' || cmd === 'announceorange' || cmd === 'announcepurple') {
     if (!modChannel) {
       showToast(t('mc_input_mod_needs_channel_tab', [cmd]) || `/${cmd} needs a channel tab`, 'error')
@@ -6677,6 +6752,7 @@ const SLASH_HELP_LINES = [
   '/unique                — unique-chat/r9k ("/unique off")',
   '',
   '/announce <msg>        — announcement (blue/green/orange/purple variants)',
+  '/testnotices           — render every event type locally (dev)',
   '',
   '/me /color and chat pass through to twitch & kick.',
   '/mod /vip /raid /clear are not yet wired —',

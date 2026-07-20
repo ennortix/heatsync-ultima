@@ -6970,17 +6970,6 @@
       return div
     }
 
-    // Guard against messages with no user (malformed IRC / system messages)
-    if (!m.user) {
-      if (m.text || m.systemMsg) {
-        const div = document.createElement('div')
-        div.className = 'hs-mc-msg hs-mc-system'
-        div.textContent = m.systemMsg || m.text || ''
-        return div
-      }
-      return null
-    }
-
     const showChannel = tabId === 'mentions'
     const isSuperChat = m.platform === 'youtube' && (m.msgType === 'superchat' || m.msgType === 'supersticker')
     const isMembership =
@@ -6991,8 +6980,10 @@
     // (unban, ban, mod-add, mode-change, sub, raid, etc.) can have its own color/icon
     const noticeKind = (() => {
       if (m.type !== 'notice' && m.type !== 'usernotice') return ''
-      const id = m.noticeType || m.msgId || ''
+      let id = m.noticeType || m.msgId || ''
       if (!id) return ''
+      // shared-chat wrapper: the real event type rides in source-msg-id
+      if (id === 'sharedchatnotice' && m.sourceMsgId) id = m.sourceMsgId
       // group related msg-ids into a single semantic class
       if (id === 'unban_success') return 'hs-mc-notice-unban'
       if (id === 'untimeout_success') return 'hs-mc-notice-untimeout'
@@ -7018,7 +7009,7 @@
         id === 'r9k_off'
       )
         return 'hs-mc-notice-mode'
-      if (id === 'sub' || id === 'resub') return 'hs-mc-notice-sub'
+      if (id === 'sub' || id === 'resub' || id === 'primepaidupgrade' || id === 'extendsub') return 'hs-mc-notice-sub'
       // Kick event names — heatsync server passes Kick-side strings through;
       // normalize to the same CSS classes Twitch sub/gift events use so the
       // sub-purple border, gift-bubble pink, etc. render identically.
@@ -7035,6 +7026,9 @@
         id === 'submysterygift' ||
         id === 'giftpaidupgrade' ||
         id === 'anongiftpaidupgrade' ||
+        id === 'rewardgift' ||
+        id === 'standardpayforward' ||
+        id === 'communitypayforward' ||
         id === 'gift_subscription' ||
         id === 'gifted_subscriptions' ||
         id === 'channel.subscription.gifts'
@@ -7054,6 +7048,11 @@
       // shape as sub anniversary; render with mod-add's blue family so the
       // moderator-celebration thread reads consistently.
       if (id === 'mod-anniversary' || id === 'mod_anniversary') return 'hs-mc-notice-mod-anniversary'
+      if (id === 'charitydonation' || id === 'charity_donation') return 'hs-mc-notice-charity'
+      // ritual = twitch's legacy new-chatter usernotice; render with the
+      // user-intro treatment (same "new here" semantics)
+      if (id === 'ritual' || id === 'new_chatter') return 'hs-mc-user-intro'
+      if (id === 'pin') return 'hs-mc-notice-pin'
       if (
         id === 'msg_banned' ||
         id === 'msg_timedout' ||
@@ -7064,6 +7063,23 @@
         return 'hs-mc-notice-error'
       return ''
     })()
+    // Guard against messages with no user (malformed IRC / system messages).
+    // Sits BELOW the classifier on purpose: user-less NOTICEs (mode changes,
+    // msg_banned errors, pin lines) still get their semantic notice color —
+    // the old early-return rendered them all as bare grey system rows.
+    if (!m.user) {
+      if (m.text || m.systemMsg) {
+        const div = document.createElement('div')
+        div.className = `hs-mc-msg hs-mc-system ${noticeKind}`.trim()
+        // .hs-mc-system-text span so the per-kind text-color rules apply
+        const span = document.createElement('span')
+        span.className = 'hs-mc-system-text'
+        span.textContent = m.systemMsg || m.text || ''
+        div.appendChild(span)
+        return div
+      }
+      return null
+    }
     const cls =
       tabId === 'mentions'
         ? 'hs-mc-msg mention'
@@ -7321,6 +7337,17 @@
     }
     // Returning chatter — chatted before, back after a long absence (twitch tag).
     if (m.isReturningChatter) div.classList.add('is-returning')
+    // "new to chat" intro message (twitch msg-id=user-intro)
+    if (m.userIntro) div.classList.add('hs-mc-user-intro')
+    // Power-ups: gigantified emote (last emote renders big) + message effect
+    // (static fx chip — no motion by design; the effect NAME is the info)
+    if (m.gigantified) div.classList.add('hs-mc-gigantified')
+    if (m.animationId) {
+      div.classList.add('hs-mc-animated')
+      div.dataset.hsAnim = String(m.animationId).slice(0, 32)
+    }
+    // Shared-chat session: message originated in the partner channel
+    if (m.sharedChat) div.classList.add('hs-mc-shared')
     // Raider — a first message arriving in the window after a raid into this channel.
     if (m.isRaider) div.classList.add('is-raider')
     // Cleared by mod (timeout/ban/delete) — Twitch-native dim + strikethrough on offending content
@@ -13608,6 +13635,27 @@
             redeemTitleMap.set(data.rewardId, { title: data.title, cost: data.cost })
             if (redeemTitleMap.size > 200) redeemTitleMap.delete(redeemTitleMap.keys().next().value)
           }
+        } else if (eventType === 'pin' || eventType === 'unpin') {
+          // pinned-chat pubsub — was tapped but dropped on the floor. Render as
+          // a gold notice line through the usernotice path (pin = a mod act).
+          // early-inject-main.js forwards { message: <text string>, sender, id }
+          const pinText = String(typeof data?.message === 'string' ? data.message : (data?.text ?? '')).slice(0, 200)
+          const pinBy = String(data?.sender ?? '')
+          try {
+            irc?._handleMsg?.({
+              type: 'notice',
+              noticeType: 'pin',
+              systemMsg:
+                eventType === 'pin'
+                  ? `pinned${pinBy ? ' ' + pinBy + ':' : ':'} ${pinText}`.trim()
+                  : 'message unpinned',
+              channel,
+              time: Date.now(),
+              isSynthetic: true,
+              id: `hs-pin-${channel}-${eventType}-${Date.now()}`,
+            })
+          } catch (_) {}
+          return
         } else if (eventType === 'prediction-start') {
           toggleKey = 'pred'
           eventClass = 'event-pred'

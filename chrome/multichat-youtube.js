@@ -30032,6 +30032,99 @@ async function redeemChannelReward(channelId, rewardId, cost, title, textInput) 
   }
 }
 
+// ═══ Highlight My Message (Bits power-up) ═══
+// Twitch retired the channel-points "Highlight My Message" reward and replaced
+// it with a Bits power-up. The send is a single GQL mutation that posts the
+// message AND applies the highlight, deducting the power-up's Bits cost from
+// the user's balance. Op shape reconstructed from the live web client's
+// operation document: mutation SendHighlightedChatMessage($input:
+// SendHighlightedChatMessageInput!) { sendHighlightedChatMessage(input) {
+// balance error { code } } }. Input mirrors the normal send (channelID,
+// message, nonce, replyParentMessageID) plus a client transactionID, same as
+// redeemChannelReward. The highlighted message still echoes back through the
+// normal IRC read socket, so the composer's pending-send tracker confirms
+// delivery exactly like a plain send — we must NOT also PRIVMSG it (dupe).
+//
+// This spends the USER's own Bits (which they pre-purchased) on the platform's
+// own feature — the same category as our existing prediction-betting and
+// points-redemption. It is server-kill-switchable via __hsHealth.disabled
+// containing 'highlight_send' so a hash/schema break can be neutralized
+// without an extension update.
+function _isHighlightSendKilled() {
+  try {
+    const h = (typeof window !== 'undefined' && window.__hsHealth) || null
+    return !!(h && (h.kill || (Array.isArray(h.disabled) && h.disabled.includes('highlight_send'))))
+  } catch {
+    return false
+  }
+}
+
+async function sendHighlightedTwitchMessage(channelId, message, nonce, replyParentId) {
+  if (_isHighlightSendKilled()) return { error: 'highlight disabled by server' }
+  const token = getTwitchAuthToken()
+  if (!token) return { error: 'not logged in' }
+  if (!channelId) return { error: 'channel not resolved' }
+  const input = {
+    channelID: String(channelId),
+    message,
+    nonce: nonce || crypto.randomUUID(),
+    transactionID: crypto.randomUUID(),
+  }
+  if (replyParentId) input.replyParentMessageID = replyParentId
+  const readResult = (d) => {
+    if (d?.errors?.length) return { error: d.errors[0].message }
+    const payload = d?.data?.sendHighlightedChatMessage
+    const err = payload?.error
+    if (err) return { error: err.code || 'highlight failed' }
+    return { ok: true, balance: payload?.balance ?? null }
+  }
+  try {
+    // Proxy first — reuses the captured persisted-query hash + Client-Integrity.
+    try {
+      const data = await gqlProxy('SendHighlightedChatMessage', { input })
+      return readResult(Array.isArray(data) ? data[0] : data)
+    } catch (proxyErr) {
+      console.warn('[hs] highlight gql proxy failed, raw fallback:', proxyErr?.message || proxyErr)
+      const resp = await fetch(TWITCH_GQL, {
+        method: 'POST',
+        headers: {
+          'Client-Id': TWITCH_CLIENT_ID,
+          'Content-Type': 'application/json',
+          Authorization: `OAuth ${token}`,
+        },
+        body: JSON.stringify({
+          query: `mutation($input: SendHighlightedChatMessageInput!) {
+            sendHighlightedChatMessage(input: $input) {
+              balance
+              error { code }
+            }
+          }`,
+          variables: { input },
+        }),
+      })
+      if (!resp.ok) return { error: `HTTP ${resp.status}` }
+      return readResult(await resp.json())
+    }
+  } catch (e) {
+    return { error: e.message }
+  }
+}
+
+// Best-effort Bits balance for the composer's highlight affordance. Read-only;
+// null on any failure (the button still works — the send surfaces a real error
+// if the balance is short).
+async function fetchTwitchBitsBalance() {
+  const token = getTwitchAuthToken()
+  if (!token) return null
+  try {
+    const data = await twitchGql('{ currentUser { bitsBalance } }')
+    const bal = data?.data?.currentUser?.bitsBalance
+    return typeof bal === 'number' ? bal : null
+  } catch {
+    return null
+  }
+}
+
 async function claimCommunityPoints(claimId, channelId, channelLogin) {
   const token = getTwitchAuthToken()
   if (!token) return false
@@ -37567,6 +37660,7 @@ const SLASH_COMMANDS = [
   { cmd: 'status', args: '[channel]', desc: 'show chat modes + stream info' },
   { cmd: 'help', args: '', desc: 'list commands' },
   { cmd: 'me', args: '<action>', desc: 'twitch/kick action message' },
+  { cmd: 'highlight', args: '<msg>', desc: 'highlight your message (twitch bits power-up)' },
   { cmd: 'ban', args: '<user>', desc: 'twitch/kick ban (mod)' },
   { cmd: 'timeout', args: '<user> [secs]', desc: 'twitch/kick timeout (mod)' },
   { cmd: 'unban', args: '<user>', desc: 'twitch/kick unban (mod)' },
@@ -42857,6 +42951,7 @@ const SLASH_ALIASES = {
   // sending them as text now silently no-ops, which is what caused multichat's
   // pre-fix /unban to do nothing. Aliases map all common shorthands to the
   // canonical command.
+  hl: 'highlight',
   b: 'ban',
   to: 'timeout',
   untimeout: 'unban',
@@ -43408,6 +43503,52 @@ async function handleSlashCommand(text, input) {
     return true
   }
 
+  if (cmd === 'highlight') {
+    // Highlight My Message — twitch Bits power-up. Posts the message AND
+    // applies the highlight in one GQL mutation, spending the user's own Bits
+    // (same category as our prediction-betting / points-redemption). Twitch-only
+    // (kick/youtube have no equivalent); the highlighted message echoes back
+    // through the normal IRC read socket, so we do NOT also PRIVMSG it.
+    const twitchLogin = _twitchModName || (currentTab === 'live' ? getLiveChannel() : null) || getActiveTwitchChannel()
+    if (!twitchLogin) {
+      showToast(t('mc_input_highlight_needs_twitch') || '/highlight needs a twitch channel tab', 'error')
+      return true
+    }
+    const message = rest.trim()
+    if (!message) {
+      showToast(t('mc_input_usage_highlight') || '/highlight <message>', 'error')
+      return true
+    }
+    if (!getTwitchAuthToken()) {
+      showToast(t('mc_input_highlight_login') || 'log into twitch.tv first', 'error')
+      return true
+    }
+    const channelId = await resolveTwitchChannelId(twitchLogin)
+    if (!channelId) {
+      showToast(t('mc_input_highlight_no_channel') || 'could not resolve channel', 'error')
+      return true
+    }
+    const replyParentId = replyState?.msgId || null
+    const r = await sendHighlightedTwitchMessage(channelId, message, null, replyParentId)
+    if (r?.ok) {
+      clearInput(input)
+      if (typeof replyState !== 'undefined' && replyState) clearReplyState()
+      if (typeof r.balance === 'number') {
+        showToast(
+          t('mc_input_highlight_sent', [formatPoints(r.balance)]) || `highlighted · ${r.balance} bits left`,
+          'success',
+        )
+      }
+      armComposerStickyFocus(input)
+    } else {
+      showToast(
+        t('mc_input_highlight_failed', [r?.error || 'unknown']) || `highlight failed: ${r?.error || 'unknown'}`,
+        'error',
+      )
+    }
+    return true
+  }
+
   if (
     cmd === 'announce' ||
     cmd === 'announceblue' ||
@@ -43613,6 +43754,7 @@ const SLASH_HELP_LINES = [
   '/unique                — unique-chat/r9k ("/unique off")',
   '',
   '/announce <msg>        — announcement (blue/green/orange/purple variants)',
+  '/highlight <msg>       — highlight your message (twitch bits power-up, /hl)',
   '/testnotices           — render every event type locally (dev)',
   '',
   '/me /color and chat pass through to twitch & kick.',

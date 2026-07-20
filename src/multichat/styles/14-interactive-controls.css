@@ -738,7 +738,7 @@
     .hs-mc-status-loading { font-size: 13px; color: #999; }
     .hs-mc-status-title { font-size: 13px; font-weight: 600; color: #fff; }
     .hs-mc-status-sub { font-size: 13px; margin-top: 2px; }
-    .hs-mc-status-sub.live { color: var(--hs-ok); }
+    .hs-mc-status-sub.live { color: var(--hs-live); }
     .hs-mc-status-sub.off  { color: #999; }
     .hs-mc-status-streamtitle { font-size: 13px; color: #fff; margin-top: 6px; }
     .hs-mc-status-meta { font-size: 13px; color: #999; margin-top: 2px; }

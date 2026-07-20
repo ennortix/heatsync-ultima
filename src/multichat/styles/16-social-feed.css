@@ -806,7 +806,7 @@
     }
     .hs-discover-profile-row:hover { background: #fff; color: #000; }
     .hs-discover-profile-row:hover * { color: #000 !important; }
-    .hs-discover-profile-row.hs-discover-row-live { border-left-color: var(--hs-ok); }
+    .hs-discover-profile-row.hs-discover-row-live { border-left-color: var(--hs-live); }
     .hs-discover-rank {
       color: #aaa;
       font-size: 13px;
@@ -820,7 +820,7 @@
     .hs-discover-live-dot {
       width: 7px; height: 7px;
       border-radius: 50%;
-      background: var(--hs-ok);
+      background: var(--hs-live);
       flex-shrink: 0;
     }
     .hs-discover-live-spacer { width: 7px; flex-shrink: 0; }
@@ -879,7 +879,7 @@
       background: #fff;
     }
     .hs-discover-row-live .hs-discover-bar > i {
-      background: var(--hs-ok);
+      background: var(--hs-live);
     }
     /* Heat number — color/glow comes from inline style via discoverHeatStyle (canonical tiers) */
     .hs-discover-heat {
@@ -960,12 +960,12 @@
 
     /* Section colour variants — distinct accent borders + headers per widget */
     .hs-discover-section-live {
-      border-color: rgba(0,255,0,0.35);
+      border-color: rgba(255,0,0,0.35);
     }
     .hs-discover-section-live > .hs-discover-heading {
-      background: var(--hs-ok-tint);
-      border-bottom-color: rgba(0,255,0,0.35);
-      color: var(--hs-ok);
+      background: var(--hs-live-tint);
+      border-bottom-color: rgba(255,0,0,0.35);
+      color: var(--hs-live);
     }
     .hs-discover-section-posts {
       border-color: rgba(255,255,255,0.3);

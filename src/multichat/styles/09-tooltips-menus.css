@@ -363,7 +363,7 @@
     #hs-user-tooltip .hs-pc-sheet .val-mutual { color: var(--hs-ok); }
     #hs-user-tooltip .hs-pc-sheet .val-mutual-sub { color: var(--hs-gold); }
     #hs-user-tooltip .hs-pc-sheet .val-ch { color: #fff; }
-    #hs-user-tooltip .hs-pc-sheet .hs-pc-live { color: var(--hs-ok); font-weight: 700; }
+    #hs-user-tooltip .hs-pc-sheet .hs-pc-live { color: var(--hs-live); font-weight: 700; }
     /* Heat number inside the sheet: digits inherit Cozette (already crisp
        on this tooltip surface), ° gets vector fallback for a clean glyph. */
     #hs-user-tooltip .hs-pc-sheet .hs-heat-n { font-family: inherit; }

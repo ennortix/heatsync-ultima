@@ -409,7 +409,7 @@
     .hs-mc-stream-event .hs-mc-user:hover { text-decoration: underline; }
     .hs-mc-stream-event .hs-evt-game { color: #fff; font-style: normal; }
     .hs-mc-stream-event.event-update  { --evt: var(--hs-warn); }
-    .hs-mc-stream-event.event-online  { --evt: var(--hs-danger); }
+    .hs-mc-stream-event.event-online  { --evt: var(--hs-live); }
     .hs-mc-stream-event.event-online .hs-evt-game { color: #fff; }
     .hs-mc-stream-event.event-offline { --evt: #888888; }
     .hs-mc-stream-event.event-raid    { --evt: var(--hs-plat-twitch); }
@@ -460,13 +460,13 @@
       right: 4px;
       width: 8px;
       height: 8px;
-      background: var(--hs-ok);
+      background: var(--hs-live);
       border-radius: 50%;
       pointer-events: none;
       z-index: 1;
     }
     .hs-mc-tab.active[data-live="true"]::after {
-      background: var(--hs-ok-dim);
+      background: var(--hs-live-dim);
     }
     /* YT: position:fixed children already stop at clientWidth (left edge of
        the body scrollbar), so no extra gutter is needed — keep tabs flush to

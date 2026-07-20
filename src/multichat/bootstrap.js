@@ -66,12 +66,17 @@ mcSignal.addEventListener('abort', () => {
     } catch (_e) {}
   }
   _trackedNodes.length = 0
-  if (irc) {
-    irc.destroy()
-  }
-  if (kickChat) {
-    kickChat.destroy()
-  }
+  // typeof guards, not bare truth tests: teardown can fire BEFORE irc.js /
+  // main.js evaluate (ctx-death watchdog aborts mid-bundle-eval on an
+  // extension reload), and a bare `irc` read is a TDZ ReferenceError that
+  // kills the rest of this function — leaving the auth-irc + whisper sockets
+  // open, which is the exact leak the block below exists to prevent.
+  try {
+    if (typeof irc !== 'undefined' && irc) irc.destroy()
+  } catch (_e) {}
+  try {
+    if (typeof kickChat !== 'undefined' && kickChat) kickChat.destroy()
+  } catch (_e) {}
   cleanupAuthIrc(true)
   // Mirror auth-irc teardown for the EventSub whisper socket — without this its
   // WS stays open with a live reconnect timer after an extension reload, leaking
@@ -945,7 +950,13 @@ const _hsSched = (() => {
   }
 })()
 
-const _cleanup = {
+// NOTE: the name `cleanup` is load-bearing and INTENTIONALLY shadows
+// src/lib/cleanup.js's `const cleanup = window.heatsyncCleanup` inside the
+// multichat block (see build.js SCOPE_COLLISION_ALLOWLIST). The lib object has
+// no addListener/setIntervalIfVisible/persistInterval — renaming this binding
+// silently reroutes 15 multichat call sites to the lib object and throws
+// "cleanup.addListener is not a function" at module load. Do not rename.
+const cleanup = {
   setInterval(fn, ms) {
     const id = setInterval(_hsPerfWrap(fn, ms, 'interval'), ms)
     _timers.intervals.push(id)

@@ -5874,12 +5874,17 @@ mcSignal.addEventListener('abort', () => {
     } catch (_e) {}
   }
   _trackedNodes.length = 0
-  if (irc) {
-    irc.destroy()
-  }
-  if (kickChat) {
-    kickChat.destroy()
-  }
+  // typeof guards, not bare truth tests: teardown can fire BEFORE irc.js /
+  // main.js evaluate (ctx-death watchdog aborts mid-bundle-eval on an
+  // extension reload), and a bare `irc` read is a TDZ ReferenceError that
+  // kills the rest of this function — leaving the auth-irc + whisper sockets
+  // open, which is the exact leak the block below exists to prevent.
+  try {
+    if (typeof irc !== 'undefined' && irc) irc.destroy()
+  } catch (_e) {}
+  try {
+    if (typeof kickChat !== 'undefined' && kickChat) kickChat.destroy()
+  } catch (_e) {}
   cleanupAuthIrc(true)
   // Mirror auth-irc teardown for the EventSub whisper socket — without this its
   // WS stays open with a live reconnect timer after an extension reload, leaking
@@ -6753,7 +6758,13 @@ const _hsSched = (() => {
   }
 })()
 
-const _cleanup = {
+// NOTE: the name `cleanup` is load-bearing and INTENTIONALLY shadows
+// src/lib/cleanup.js's `const cleanup = window.heatsyncCleanup` inside the
+// multichat block (see build.js SCOPE_COLLISION_ALLOWLIST). The lib object has
+// no addListener/setIntervalIfVisible/persistInterval — renaming this binding
+// silently reroutes 15 multichat call sites to the lib object and throws
+// "cleanup.addListener is not a function" at module load. Do not rename.
+const cleanup = {
   setInterval(fn, ms) {
     const id = setInterval(_hsPerfWrap(fn, ms, 'interval'), ms)
     _timers.intervals.push(id)
@@ -8244,7 +8255,14 @@ function injectStyles() {
       --hs-heat: #ff8700;
       --hs-mention: #ffff00;  /* 226 — @-mentions, unseen-mention, search hit */
       --hs-warn: #ffff00;     /*       warn toasts, announce, NSFW */
-      --hs-ok: #00ff00;       /* 46  — success, live, online, toggle-on */
+      --hs-ok: #00ff00;       /* 46  — success, online, toggle-on, unban */
+      /* LIVE IS RED — deliberate doctrine exception. Every streaming platform
+         (twitch/yt/kick) uses a red live dot; a green one reads as "online"
+         or "healthy", not "broadcasting right now". Semantically separate
+         from --hs-danger so the two can diverge later. */
+      --hs-live: #ff0000;
+      --hs-live-dim: #800000;
+      --hs-live-tint: rgba(255, 0, 0, 0.10);
       --hs-danger: #ff0000;   /* 196 — error, ban, delete, destructive */
       --hs-reply: #00ffff;    /* 51  — reply borders, quotes, whispers, mode */
       --hs-thread: #ff00ff;   /* 201 — OP/thread accents, raid/hype events */
@@ -8774,7 +8792,7 @@ function injectStyles() {
     .hs-mc-stream-event .hs-mc-user:hover { text-decoration: underline; }
     .hs-mc-stream-event .hs-evt-game { color: #fff; font-style: normal; }
     .hs-mc-stream-event.event-update  { --evt: var(--hs-warn); }
-    .hs-mc-stream-event.event-online  { --evt: var(--hs-danger); }
+    .hs-mc-stream-event.event-online  { --evt: var(--hs-live); }
     .hs-mc-stream-event.event-online .hs-evt-game { color: #fff; }
     .hs-mc-stream-event.event-offline { --evt: #888888; }
     .hs-mc-stream-event.event-raid    { --evt: var(--hs-plat-twitch); }
@@ -8825,13 +8843,13 @@ function injectStyles() {
       right: 4px;
       width: 8px;
       height: 8px;
-      background: var(--hs-ok);
+      background: var(--hs-live);
       border-radius: 50%;
       pointer-events: none;
       z-index: 1;
     }
     .hs-mc-tab.active[data-live="true"]::after {
-      background: var(--hs-ok-dim);
+      background: var(--hs-live-dim);
     }
     /* YT: position:fixed children already stop at clientWidth (left edge of
        the body scrollbar), so no extra gutter is needed — keep tabs flush to
@@ -11295,7 +11313,7 @@ function injectStyles() {
     #hs-user-tooltip .hs-pc-sheet .val-mutual { color: var(--hs-ok); }
     #hs-user-tooltip .hs-pc-sheet .val-mutual-sub { color: var(--hs-gold); }
     #hs-user-tooltip .hs-pc-sheet .val-ch { color: #fff; }
-    #hs-user-tooltip .hs-pc-sheet .hs-pc-live { color: var(--hs-ok); font-weight: 700; }
+    #hs-user-tooltip .hs-pc-sheet .hs-pc-live { color: var(--hs-live); font-weight: 700; }
     /* Heat number inside the sheet: digits inherit Cozette (already crisp
        on this tooltip surface), ° gets vector fallback for a clean glyph. */
     #hs-user-tooltip .hs-pc-sheet .hs-heat-n { font-family: inherit; }
@@ -12795,7 +12813,7 @@ img.hs-fx-zero { margin-left: -4px; }
       font-size: 16px; font-weight: 700; color: #fff;
       display: flex; align-items: center; gap: 6px; line-height: 18px;
     }
-    .hs-pcard-livedot { color: var(--hs-ok); font-size: 9px; }
+    .hs-pcard-livedot { color: var(--hs-live); font-size: 9px; }
     /* Filled-style platform pills — mirror #hs-user-tooltip .hs-pc-platform
        so the click-card identity row looks identical to the hover tooltip. */
     .hs-pcard-pill {
@@ -12808,7 +12826,7 @@ img.hs-fx-zero { margin-left: -4px; }
     .hs-pcard-pill-twitch { background: var(--hs-plat-twitch); color: #fff; }
     .hs-pcard-pill-kick { background: var(--hs-plat-kick); color: #000; }
     .hs-pcard-pill-youtube { background: var(--hs-plat-youtube); color: #fff; }
-    .hs-pcard-pill-live { color: var(--hs-ok); }
+    .hs-pcard-pill-live { color: var(--hs-live); }
     .hs-pcard-bio {
       color: #aaa; font-size: 13px; line-height: 18px;
       white-space: pre-wrap; word-break: break-word;
@@ -12860,7 +12878,7 @@ img.hs-fx-zero { margin-left: -4px; }
     .hs-pcard-sheet .val-mutual { color: var(--hs-ok); }     /* xterm 46 — handshake */
     .hs-pcard-sheet .val-mutual-sub { color: var(--hs-gold); } /* xterm 220 — premium handshake */
     .hs-pcard-sheet .val-ch { color: #fff; }         /* xterm 208 — channel context */
-    .hs-pcard-sheet .hs-pc-live { color: var(--hs-ok); font-weight: 700; }
+    .hs-pcard-sheet .hs-pc-live { color: var(--hs-live); font-weight: 700; }
     /* Inside the sheet: digits inherit cozette from the sheet (bitmap-crisp),
        degree symbol falls back to ui-monospace (vector AA, has clean °). */
     .hs-pcard-sheet .hs-heat-num { font-family: inherit; }
@@ -14150,7 +14168,7 @@ img.hs-fx-zero { margin-left: -4px; }
     .hs-mc-status-loading { font-size: 13px; color: #999; }
     .hs-mc-status-title { font-size: 13px; font-weight: 600; color: #fff; }
     .hs-mc-status-sub { font-size: 13px; margin-top: 2px; }
-    .hs-mc-status-sub.live { color: var(--hs-ok); }
+    .hs-mc-status-sub.live { color: var(--hs-live); }
     .hs-mc-status-sub.off  { color: #999; }
     .hs-mc-status-streamtitle { font-size: 13px; color: #fff; margin-top: 6px; }
     .hs-mc-status-meta { font-size: 13px; color: #999; margin-top: 2px; }
@@ -16056,7 +16074,7 @@ img.hs-fx-zero { margin-left: -4px; }
     }
     .hs-discover-profile-row:hover { background: #fff; color: #000; }
     .hs-discover-profile-row:hover * { color: #000 !important; }
-    .hs-discover-profile-row.hs-discover-row-live { border-left-color: var(--hs-ok); }
+    .hs-discover-profile-row.hs-discover-row-live { border-left-color: var(--hs-live); }
     .hs-discover-rank {
       color: #aaa;
       font-size: 13px;
@@ -16070,7 +16088,7 @@ img.hs-fx-zero { margin-left: -4px; }
     .hs-discover-live-dot {
       width: 7px; height: 7px;
       border-radius: 50%;
-      background: var(--hs-ok);
+      background: var(--hs-live);
       flex-shrink: 0;
     }
     .hs-discover-live-spacer { width: 7px; flex-shrink: 0; }
@@ -16129,7 +16147,7 @@ img.hs-fx-zero { margin-left: -4px; }
       background: #fff;
     }
     .hs-discover-row-live .hs-discover-bar > i {
-      background: var(--hs-ok);
+      background: var(--hs-live);
     }
     /* Heat number — color/glow comes from inline style via discoverHeatStyle (canonical tiers) */
     .hs-discover-heat {
@@ -16210,12 +16228,12 @@ img.hs-fx-zero { margin-left: -4px; }
 
     /* Section colour variants — distinct accent borders + headers per widget */
     .hs-discover-section-live {
-      border-color: rgba(0,255,0,0.35);
+      border-color: rgba(255,0,0,0.35);
     }
     .hs-discover-section-live > .hs-discover-heading {
-      background: var(--hs-ok-tint);
-      border-bottom-color: rgba(0,255,0,0.35);
-      color: var(--hs-ok);
+      background: var(--hs-live-tint);
+      border-bottom-color: rgba(255,0,0,0.35);
+      color: var(--hs-live);
     }
     .hs-discover-section-posts {
       border-color: rgba(255,255,255,0.3);

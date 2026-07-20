@@ -121,7 +121,7 @@
       font-size: 16px; font-weight: 700; color: #fff;
       display: flex; align-items: center; gap: 6px; line-height: 18px;
     }
-    .hs-pcard-livedot { color: var(--hs-ok); font-size: 9px; }
+    .hs-pcard-livedot { color: var(--hs-live); font-size: 9px; }
     /* Filled-style platform pills — mirror #hs-user-tooltip .hs-pc-platform
        so the click-card identity row looks identical to the hover tooltip. */
     .hs-pcard-pill {
@@ -134,7 +134,7 @@
     .hs-pcard-pill-twitch { background: var(--hs-plat-twitch); color: #fff; }
     .hs-pcard-pill-kick { background: var(--hs-plat-kick); color: #000; }
     .hs-pcard-pill-youtube { background: var(--hs-plat-youtube); color: #fff; }
-    .hs-pcard-pill-live { color: var(--hs-ok); }
+    .hs-pcard-pill-live { color: var(--hs-live); }
     .hs-pcard-bio {
       color: #aaa; font-size: 13px; line-height: 18px;
       white-space: pre-wrap; word-break: break-word;
@@ -186,7 +186,7 @@
     .hs-pcard-sheet .val-mutual { color: var(--hs-ok); }     /* xterm 46 — handshake */
     .hs-pcard-sheet .val-mutual-sub { color: var(--hs-gold); } /* xterm 220 — premium handshake */
     .hs-pcard-sheet .val-ch { color: #fff; }         /* xterm 208 — channel context */
-    .hs-pcard-sheet .hs-pc-live { color: var(--hs-ok); font-weight: 700; }
+    .hs-pcard-sheet .hs-pc-live { color: var(--hs-live); font-weight: 700; }
     /* Inside the sheet: digits inherit cozette from the sheet (bitmap-crisp),
        degree symbol falls back to ui-monospace (vector AA, has clean °). */
     .hs-pcard-sheet .hs-heat-num { font-family: inherit; }

@@ -112,6 +112,40 @@ function checkManifestParity() {
 //            that legally shadows it — intentional.
 const SCOPE_COLLISION_ALLOWLIST = new Set(['log', 'cleanup'])
 
+// Guard: multichat's `cleanup` is a DELIBERATE shadow of src/lib/cleanup.js's
+// export. The lib object lacks addListener/setIntervalIfVisible/persistInterval,
+// so if bootstrap.js's binding is ever renamed (a biome/lint "unused shadow"
+// autofix did exactly this on 2026-07-19), every multichat call site silently
+// retargets the lib object and throws at module load — chat dead, no build error.
+// Assert the binding exists and covers every method multichat actually calls.
+function checkMultichatCleanupBinding() {
+  const mcDir = join(__dirname, 'src', 'multichat')
+  const bootstrap = readFileSync(join(mcDir, 'bootstrap.js'), 'utf8')
+  if (!/^const cleanup = \{/m.test(bootstrap)) {
+    throw new Error(
+      'build: src/multichat/bootstrap.js must declare top-level `const cleanup = {` — it shadows\n' +
+        '       src/lib/cleanup.js (which has no addListener). Renaming it breaks multichat at load.',
+    )
+  }
+  // Methods the bootstrap object defines (shorthand `name(...)  {` at 2-space indent)
+  const defined = new Set()
+  const body = bootstrap.slice(bootstrap.search(/^const cleanup = \{/m))
+  for (const m of body.matchAll(/^ {2}(?:get )?([A-Za-z0-9_$]+)\s*\(/gm)) defined.add(m[1])
+  const missing = new Set()
+  for (const file of MULTICHAT_MODULES.concat(['main.js', 'twitch-host.js', 'kick-host.js', 'youtube-host.js'])) {
+    const p = join(mcDir, file)
+    if (!existsSync(p)) continue
+    for (const m of readFileSync(p, 'utf8').matchAll(/\bcleanup\.([A-Za-z0-9_$]+)\s*\(/g)) {
+      if (!defined.has(m[1])) missing.add(m[1])
+    }
+  }
+  if (missing.size) {
+    throw new Error(
+      `build: multichat calls cleanup.${[...missing].join('/')}() but bootstrap's cleanup doesn't define it`,
+    )
+  }
+}
+
 function checkScopeCollisions() {
   const LIB_FILES = [
     'error-reporter.js',
@@ -1069,6 +1103,7 @@ console.log('Pre-build checks:')
 checkVersionSync()
 checkManifestParity()
 checkScopeCollisions()
+checkMultichatCleanupBinding()
 checkErrorReporterParity()
 checkUiSyncBlocklistParity()
 checkUserKeyParity()

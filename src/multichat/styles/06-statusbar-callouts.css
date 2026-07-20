@@ -1,10 +1,15 @@
-    /* === Statusbar — a status/toast line that sits just under the search/filter
-       bar (status, errors + loading belong below the filter input, never above
-       it where they'd shove it down on reload). ZERO footprint when idle
-       (collapses out of flow entirely); becomes a single 1-line bar only while a
-       toast is showing, then auto-dismisses (~2s). In-flow (not absolute). */
+    /* === Statusbar — a status/toast line just under the search/filter bar.
+       ABSOLUTE overlay strip, never in flow: an appearing/vanishing toast must
+       not resize the messages column (chat rows never move — core invariant).
+       It paints OVER the oldest visible rows for the toast's ~2s instead.
+       --hs-layer-statusbar-top (HsNotifs geometry, overlay-relative) offsets
+       it below the search bar when that's open; 0 otherwise. */
     #hs-mc-statusbar {
-      flex: 0 0 auto;
+      position: absolute;
+      top: var(--hs-layer-statusbar-top, 0px);
+      left: 0;
+      right: 0;
+      z-index: 25;
       display: flex;
       align-items: stretch;
       min-height: 0;

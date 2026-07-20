@@ -1186,11 +1186,28 @@ function initInput() {
       cleanup.setTimeout(reassertComposerFocus, 0)
     }
     // Hide input bar after blur if empty (delay to allow click-to-emote-picker)
-    // Skip if window lost focus — prevents hiding when switching apps
+    // Skip if window lost focus — prevents hiding when switching apps; the
+    // window-focus reconciler below re-attempts once the user comes back.
     setTimeout(() => {
       if (document.hasFocus()) hideInputBar()
     }, 200)
   })
+
+  // Auto-hide reconciler: the blur path above deliberately skips while the
+  // window is unfocused (alt-tab), which used to strand an empty bar until
+  // some later blur ("auto-hide only works sometimes"). Re-attempt on window
+  // focus — hideInputBar's own guards (content, composer focus, picker,
+  // reply, rapid-fire retry) make this a safe no-op in every other state.
+  if (!_onceGuardsInput.autoHideFocusReconciler) {
+    _onceGuardsInput.autoHideFocusReconciler = true
+    window.addEventListener(
+      'focus',
+      () => {
+        setTimeout(() => hideInputBar(), 200)
+      },
+      { signal: mcSignal },
+    )
+  }
   sendBtn?.addEventListener('click', sendMessage)
 
   // Set up drag-drop handlers for media upload

@@ -447,6 +447,16 @@ const HsNotifs = (() => {
     stack: 'replace',
     maxVisible: 1,
     external: true,
+    // The bar is absolutely positioned OVER the top of the messages area
+    // (06-statusbar-callouts.css) so appearing/vanishing toasts can never
+    // resize the messages column — chat rows must not move on a status line.
+    // Only offset needed: sit below the search bar when that's open. The
+    // value is overlay-relative (the bar's offset parent), unlike the
+    // viewport-based geometry of the floating layers.
+    geometry: () => {
+      const sb = document.getElementById('hs-mc-search-bar')
+      return { top: sb && sb.classList.contains('visible') ? sb.offsetHeight : 0 }
+    },
   })
 
   // === STANDARD TYPES ===

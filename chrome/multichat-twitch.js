@@ -7505,6 +7505,16 @@ const HsNotifs = (() => {
     stack: 'replace',
     maxVisible: 1,
     external: true,
+    // The bar is absolutely positioned OVER the top of the messages area
+    // (06-statusbar-callouts.css) so appearing/vanishing toasts can never
+    // resize the messages column — chat rows must not move on a status line.
+    // Only offset needed: sit below the search bar when that's open. The
+    // value is overlay-relative (the bar's offset parent), unlike the
+    // viewport-based geometry of the floating layers.
+    geometry: () => {
+      const sb = document.getElementById('hs-mc-search-bar')
+      return { top: sb && sb.classList.contains('visible') ? sb.offsetHeight : 0 }
+    },
   })
 
   // === STANDARD TYPES ===
@@ -9089,13 +9099,18 @@ function injectStyles() {
     .hs-notif-layer-toast-stack > .hs-notif:hover .hs-notif-action:hover { background: #000; color: #fff; }
     .hs-notif-layer-toast-stack > .hs-notif:hover .hs-notif-action-dismiss:hover { background: #ff4040; color: #000; }
 
-    /* === Statusbar — a status/toast line that sits just under the search/filter
-       bar (status, errors + loading belong below the filter input, never above
-       it where they'd shove it down on reload). ZERO footprint when idle
-       (collapses out of flow entirely); becomes a single 1-line bar only while a
-       toast is showing, then auto-dismisses (~2s). In-flow (not absolute). */
+    /* === Statusbar — a status/toast line just under the search/filter bar.
+       ABSOLUTE overlay strip, never in flow: an appearing/vanishing toast must
+       not resize the messages column (chat rows never move — core invariant).
+       It paints OVER the oldest visible rows for the toast's ~2s instead.
+       --hs-layer-statusbar-top (HsNotifs geometry, overlay-relative) offsets
+       it below the search bar when that's open; 0 otherwise. */
     #hs-mc-statusbar {
-      flex: 0 0 auto;
+      position: absolute;
+      top: var(--hs-layer-statusbar-top, 0px);
+      left: 0;
+      right: 0;
+      z-index: 25;
       display: flex;
       align-items: stretch;
       min-height: 0;
@@ -37990,11 +38005,28 @@ function initInput() {
       cleanup.setTimeout(reassertComposerFocus, 0)
     }
     // Hide input bar after blur if empty (delay to allow click-to-emote-picker)
-    // Skip if window lost focus — prevents hiding when switching apps
+    // Skip if window lost focus — prevents hiding when switching apps; the
+    // window-focus reconciler below re-attempts once the user comes back.
     setTimeout(() => {
       if (document.hasFocus()) hideInputBar()
     }, 200)
   })
+
+  // Auto-hide reconciler: the blur path above deliberately skips while the
+  // window is unfocused (alt-tab), which used to strand an empty bar until
+  // some later blur ("auto-hide only works sometimes"). Re-attempt on window
+  // focus — hideInputBar's own guards (content, composer focus, picker,
+  // reply, rapid-fire retry) make this a safe no-op in every other state.
+  if (!_onceGuardsInput.autoHideFocusReconciler) {
+    _onceGuardsInput.autoHideFocusReconciler = true
+    window.addEventListener(
+      'focus',
+      () => {
+        setTimeout(() => hideInputBar(), 200)
+      },
+      { signal: mcSignal },
+    )
+  }
   sendBtn?.addEventListener('click', sendMessage)
 
   // Set up drag-drop handlers for media upload
@@ -56825,7 +56857,8 @@ const STORAGE_KEY = 'heatsync_multichat'
   // Works WITH vi mode: input-vi only acts while the composer is focused (and
   // types the first printable key into an empty composer even in normal mode),
   // so a hidden composer never eats keys — the type-to-reveal handler wins.
-  const canAutoHideInput = () => autoHideInput && !isYtPopout && performance.now() >= _keepComposerOpenUntil
+  const autoHideEligible = () => autoHideInput && !isYtPopout
+  const canAutoHideInput = () => autoHideEligible() && performance.now() >= _keepComposerOpenUntil
 
   // First-time chatter highlight — orange edge on first message from a user this session (default on)
   let firstChatterGlow = true
@@ -56925,18 +56958,37 @@ const STORAGE_KEY = 'heatsync_multichat'
     _updateMcLayout?.()
   }
 
+  let _autoHideRetryTimer = null
   function hideInputBar() {
-    if (!canAutoHideInput()) return
+    if (!autoHideEligible()) return
     if (!inputBarVisible) return
     const input = document.getElementById('hs-mc-input')
     const hasText = input ? (input.value || input.textContent || '').trim().length > 0 : false
     const hasContent = hasText || (input && input.querySelector('img, span.hs-mc-emoji'))
     if (hasContent) return
+    // Never yank the bar out from under a focused composer (rapid-fire send
+    // flow, or the user just cleared their draft) — its blur re-attempts the
+    // hide once focus actually leaves.
+    if (input && document.activeElement === input) return
     // Don't hide while emote picker is open
     const picker = document.getElementById('hs-mc-emote-picker')
     if (picker?.classList.contains('visible')) return
     // Don't hide while reply is active
     if (replyState) return
+    // Rapid-fire window (keepComposerOpen): don't SWALLOW the hide — blur's
+    // attempt is one-shot, so a hide dropped here used to leave the empty bar
+    // stuck until some later blur ("auto-hide only works sometimes"). Retry
+    // once the window expires; every guard above re-runs then.
+    const wait = _keepComposerOpenUntil - performance.now()
+    if (wait > 0) {
+      if (!_autoHideRetryTimer) {
+        _autoHideRetryTimer = cleanup.setTimeout(() => {
+          _autoHideRetryTimer = null
+          hideInputBar()
+        }, wait + 50)
+      }
+      return
+    }
     inputBarVisible = false
     const bar = document.getElementById('hs-mc-inputbar')
     if (bar) bar.classList.add('hs-hidden')
@@ -59668,7 +59720,11 @@ const STORAGE_KEY = 'heatsync_multichat'
       // the rows above the composer). Signature covers every input the
       // positioning + HsNotifs geometry read.
       const _containerEl = document.getElementById('hs-mc-container')
-      const _sig = `${tabPosition}|${tw}|${th}|${ih}|${_containerEl ? _containerEl.offsetHeight : 0}|${[...getActiveViewedChannels()].join(',')}`
+      // Search-bar visibility feeds the statusbar layer's top offset — include
+      // it in the signature or a mentions↔chat tab hop with identical channel
+      // sets would skip the recompute and leave the toast strip misanchored.
+      const _searchVis = document.getElementById('hs-mc-search-bar')?.classList.contains('visible') ? 1 : 0
+      const _sig = `${tabPosition}|${tw}|${th}|${ih}|${_searchVis}|${_containerEl ? _containerEl.offsetHeight : 0}|${[...getActiveViewedChannels()].join(',')}`
       if (_sig === _lastMcLayoutSig) return
       _lastMcLayoutSig = _sig
 
@@ -59937,7 +59993,10 @@ const STORAGE_KEY = 'heatsync_multichat'
       if (id === 'add' || id === 'settings' || id === 'discover' || id === 'pinned' || id === 'modlog') {
         inputBarElement.classList.add('hs-hidden')
         inputBarVisible = false
-      } else if (canAutoHideInput() && !pickerOpen) {
+      } else if (autoHideEligible() && !pickerOpen) {
+        // Eligibility WITHOUT the keepComposerOpen time window: a tab switch
+        // isn't the rapid-fire send flow, and force-showing here during the
+        // window left an empty bar stuck (nothing re-hides until a later blur).
         const input = document.getElementById('hs-mc-input')
         const hasContent =
           input &&

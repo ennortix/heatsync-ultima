@@ -26,6 +26,10 @@ globalThis.HS_MOD_C_HEX_RE = /^c!#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
 globalThis.currentTab = 'chan-a'
 globalThis.getCurrentChannel = () => 'chan-a'
 globalThis.getLiveChannel = () => 'chan-a'
+// main.js bundle-global read on processEmotes' raw-text path — without it the
+// file only passes when another test file happens to have defined it first
+// (each test file must be independently runnable).
+globalThis.linksEnabled = false
 
 const { processEmotes } = await import('../src/multichat/emotes.js')
 
@@ -33,8 +37,7 @@ const SKEW = 120000 // EMOTE_ADDED_SKEW_MS
 const T = 1700000000000 // arbitrary fixed epoch ms
 const URL = 'https://cdn.heatsync.org/uploads/akdj.webp'
 
-const sender = (extra = {}) =>
-  new Map([['AKDJvibe', { url: URL, source: 'heatsync', state: 'global', ...extra }]])
+const sender = (extra = {}) => new Map([['AKDJvibe', { url: URL, source: 'heatsync', state: 'global', ...extra }]])
 
 const rendered = (out) => out.includes('<img')
 

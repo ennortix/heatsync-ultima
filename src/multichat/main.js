@@ -3095,7 +3095,8 @@
   // Works WITH vi mode: input-vi only acts while the composer is focused (and
   // types the first printable key into an empty composer even in normal mode),
   // so a hidden composer never eats keys — the type-to-reveal handler wins.
-  const canAutoHideInput = () => autoHideInput && !isYtPopout && performance.now() >= _keepComposerOpenUntil
+  const autoHideEligible = () => autoHideInput && !isYtPopout
+  const canAutoHideInput = () => autoHideEligible() && performance.now() >= _keepComposerOpenUntil
 
   // First-time chatter highlight — orange edge on first message from a user this session (default on)
   let firstChatterGlow = true
@@ -3195,18 +3196,37 @@
     _updateMcLayout?.()
   }
 
+  let _autoHideRetryTimer = null
   function hideInputBar() {
-    if (!canAutoHideInput()) return
+    if (!autoHideEligible()) return
     if (!inputBarVisible) return
     const input = document.getElementById('hs-mc-input')
     const hasText = input ? (input.value || input.textContent || '').trim().length > 0 : false
     const hasContent = hasText || (input && input.querySelector('img, span.hs-mc-emoji'))
     if (hasContent) return
+    // Never yank the bar out from under a focused composer (rapid-fire send
+    // flow, or the user just cleared their draft) — its blur re-attempts the
+    // hide once focus actually leaves.
+    if (input && document.activeElement === input) return
     // Don't hide while emote picker is open
     const picker = document.getElementById('hs-mc-emote-picker')
     if (picker?.classList.contains('visible')) return
     // Don't hide while reply is active
     if (replyState) return
+    // Rapid-fire window (keepComposerOpen): don't SWALLOW the hide — blur's
+    // attempt is one-shot, so a hide dropped here used to leave the empty bar
+    // stuck until some later blur ("auto-hide only works sometimes"). Retry
+    // once the window expires; every guard above re-runs then.
+    const wait = _keepComposerOpenUntil - performance.now()
+    if (wait > 0) {
+      if (!_autoHideRetryTimer) {
+        _autoHideRetryTimer = cleanup.setTimeout(() => {
+          _autoHideRetryTimer = null
+          hideInputBar()
+        }, wait + 50)
+      }
+      return
+    }
     inputBarVisible = false
     const bar = document.getElementById('hs-mc-inputbar')
     if (bar) bar.classList.add('hs-hidden')
@@ -5938,7 +5958,11 @@
       // the rows above the composer). Signature covers every input the
       // positioning + HsNotifs geometry read.
       const _containerEl = document.getElementById('hs-mc-container')
-      const _sig = `${tabPosition}|${tw}|${th}|${ih}|${_containerEl ? _containerEl.offsetHeight : 0}|${[...getActiveViewedChannels()].join(',')}`
+      // Search-bar visibility feeds the statusbar layer's top offset — include
+      // it in the signature or a mentions↔chat tab hop with identical channel
+      // sets would skip the recompute and leave the toast strip misanchored.
+      const _searchVis = document.getElementById('hs-mc-search-bar')?.classList.contains('visible') ? 1 : 0
+      const _sig = `${tabPosition}|${tw}|${th}|${ih}|${_searchVis}|${_containerEl ? _containerEl.offsetHeight : 0}|${[...getActiveViewedChannels()].join(',')}`
       if (_sig === _lastMcLayoutSig) return
       _lastMcLayoutSig = _sig
 
@@ -6207,7 +6231,10 @@
       if (id === 'add' || id === 'settings' || id === 'discover' || id === 'pinned' || id === 'modlog') {
         inputBarElement.classList.add('hs-hidden')
         inputBarVisible = false
-      } else if (canAutoHideInput() && !pickerOpen) {
+      } else if (autoHideEligible() && !pickerOpen) {
+        // Eligibility WITHOUT the keepComposerOpen time window: a tab switch
+        // isn't the rapid-fire send flow, and force-showing here during the
+        // window left an empty bar stuck (nothing re-hides until a later blur).
         const input = document.getElementById('hs-mc-input')
         const hasContent =
           input &&

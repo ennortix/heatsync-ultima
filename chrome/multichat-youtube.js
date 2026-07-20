@@ -21295,6 +21295,23 @@ function handleAuthIrcMessage(event) {
       const msgId = parseNoticeMsgId(line)
       if (msgId && TWITCH_SEND_REJECT_NOTICES.has(msgId)) {
         if (typeof showToast === 'function') showToast(t(TWITCH_SEND_REJECT_NOTICES.get(msgId)), 'error')
+        // ALSO a persistent inline red row in that channel's chat — the toast
+        // alone lasts ~2s, and a rejected send otherwise leaves no trace: the
+        // message simply "never appears" (mellen lost a night to exactly this
+        // with an automod/duplicate-eaten send). Feed the REAL notice line
+        // through the shared parser + pipeline (same path /testnotices raw
+        // uses) so it renders, scrolls, and persists like any system row.
+        // isSynthetic keeps it out of the archive relay. Site already renders
+        // send rejections inline — this is the ext half of that parity.
+        try {
+          if (typeof irc !== 'undefined' && irc && typeof parseIrcLine === 'function') {
+            const parsed = parseIrcLine(line)
+            if (parsed) {
+              parsed.isSynthetic = true
+              irc._handleMsg?.(parsed)
+            }
+          }
+        } catch (_) {}
         // Drop pending-send tracker entries for the rejected channel so the
         // user doesn't get a second "no echo from platform" toast 20s later
         // on top of the specific reason toast above.

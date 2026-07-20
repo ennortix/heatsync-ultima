@@ -144,38 +144,66 @@ function checkMultichatCleanupBinding() {
       `build: multichat calls cleanup.${[...missing].join('/')}() but bootstrap's cleanup doesn't define it`,
     )
   }
-  checkBootstrapOrphanedRenames(mcDir, bootstrap)
+  checkMultichatOrphanedRenames(mcDir)
 }
 
-// Companion guard, generalized: bootstrap.js declares the multichat block's
-// shared singletons (cleanup, hsSched, log, …). A lint autofix that prefixes
-// one with `_` (biome's unused/shadow rules did this to cleanup + hsSched + log
-// on 2026-07-19) leaves every consumer referencing the OLD bare name — which
-// either throws ReferenceError at load or silently resolves to a same-named
-// src/lib export with different behavior. Neither is caught by syntax checks.
-// Rule: if bootstrap declares `_foo` at top level and any other multichat
-// module still references bare `foo`, the rename orphaned its callers.
-function checkBootstrapOrphanedRenames(mcDir, bootstrap) {
-  const underscored = new Set()
-  for (const m of bootstrap.matchAll(/^(?:const|let|var|function|class)\s+_([A-Za-z0-9$][A-Za-z0-9_$]*)/gm)) {
-    underscored.add(m[1])
+// Companion guard, whole-directory: EVERY multichat file shares one flat
+// bundle scope (build.js concatenates them all — see MULTICHAT_MODULES), so
+// a top-level function in irc.js/auth-irc.js/main.js/etc. is just as
+// cross-file-callable as one in bootstrap.js. A lint autofix that prefixes an
+// "unused-looking" declaration with `_` (biome did this to bootstrap's
+// cleanup/hsSched/log on 2026-07-19, AND separately to auth-irc.js's
+// sendIrcMessage — a real prod outage: /announce, and likely every twitch
+// text send, silently no-op'd with zero visible error) leaves every OTHER
+// file's caller referencing the now-dead bare name — a hard ReferenceError at
+// call time that syntax checks and tests never catch. Rule: if file A
+// declares `_foo` at top level and file B (any file) still references bare
+// `foo`, the rename orphaned its callers.
+function checkMultichatOrphanedRenames(mcDir) {
+  const files = MULTICHAT_MODULES.concat(['main.js', 'twitch-host.js', 'kick-host.js', 'youtube-host.js']).filter((f) =>
+    existsSync(join(mcDir, f)),
+  )
+  const sources = new Map(files.map((f) => [f, readFileSync(join(mcDir, f), 'utf8')]))
+  // name -> declaring file, for every top-level `_foo` declaration
+  const underscoredBy = new Map()
+  for (const [file, src] of sources) {
+    for (const m of src.matchAll(
+      /^(?:export\s+)?(?:async\s+)?(?:const|let|var|function|class)\s+_([A-Za-z0-9$][A-Za-z0-9_$]*)/gm,
+    )) {
+      if (!underscoredBy.has(m[1])) underscoredBy.set(m[1], file)
+    }
   }
-  if (!underscored.size) return
+  if (!underscoredBy.size) return
+  // Any declaration (const/let/var/function, ANY indentation — covers local
+  // vars and nested functions too) of the bare name ANYWHERE in the
+  // directory means a bare usage could legitimately resolve to THAT binding
+  // instead of the underscored one (a same-file local var/nested fn, or an
+  // unrelated same-named top-level export elsewhere) — not proof of an
+  // orphan. Two real false positives hit this exact shape: a
+  // `const modRow = document.createElement(...)` local var in one file
+  // colliding by name with an unrelated `_modRow` function in another, and a
+  // legitimately separate public `removeEmoteFromInventory` wrapping its own
+  // private `_removeEmoteFromInventory` helper in the same file.
+  const bareDeclaredAnywhere = new Set()
+  for (const [, src] of sources) {
+    for (const m of src.matchAll(
+      /^\s*(?:export\s+)?(?:async\s+)?(?:const|let|var|function|class)\s+([A-Za-z0-9$][A-Za-z0-9_$]*)/gm,
+    )) {
+      bareDeclaredAnywhere.add(m[1])
+    }
+  }
   const orphans = []
-  for (const file of MULTICHAT_MODULES.concat(['main.js', 'twitch-host.js', 'kick-host.js', 'youtube-host.js'])) {
-    if (file === 'bootstrap.js') continue
-    const p = join(mcDir, file)
-    if (!existsSync(p)) continue
-    const src = readFileSync(p, 'utf8')
-    for (const name of underscored) {
-      // bare `name.` / `name(` usage, not preceded by `.` or `_`
-      const re = new RegExp(`(?<![.\\w$])${name}\\s*[.(]`)
-      if (re.test(src)) orphans.push(`${name} (used in ${file}, but bootstrap declares _${name})`)
+  for (const [name, declFile] of underscoredBy) {
+    if (bareDeclaredAnywhere.has(name)) continue
+    const usageRe = new RegExp(`(?<![.\\w$])${name}\\s*[.(]`)
+    for (const [file, src] of sources) {
+      if (file === declFile) continue
+      if (usageRe.test(src)) orphans.push(`${name} (used bare in ${file}, but ${declFile} declares _${name})`)
     }
   }
   if (orphans.length) {
     throw new Error(
-      `build: bootstrap.js rename orphaned its callers — a lint autofix likely added the underscore:\n  ${orphans.join('\n  ')}`,
+      `build: a lint autofix orphaned callers by underscoring a shared declaration:\n  ${orphans.join('\n  ')}`,
     )
   }
 }

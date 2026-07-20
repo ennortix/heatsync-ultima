@@ -37517,6 +37517,9 @@ const SLASH_COMMANDS = [
   { cmd: 'timeout', args: '<user> [secs]', desc: 'twitch/kick timeout (mod)' },
   { cmd: 'unban', args: '<user>', desc: 'twitch/kick unban (mod)' },
   { cmd: 'untimeout', args: '<user>', desc: 'twitch/kick untimeout (mod)' },
+  { cmd: 'delete', args: '<msg-id>', desc: 'delete one message (mod)' },
+  { cmd: 'nuke', args: '<term> [secs]', desc: 'bulk-delete matching messages (mod)' },
+  { cmd: 'announce', args: '<msg>', desc: 'twitch announcement (mod, +blue/green/orange/purple)' },
   { cmd: 'color', args: '<hex|name>', desc: 'twitch chat color' },
   { cmd: 'mod', args: '<user>', desc: 'promote mod (broadcaster)' },
   { cmd: 'vip', args: '<user>', desc: 'add vip (broadcaster)' },
@@ -39651,6 +39654,24 @@ function handleInputKeydown(e) {
   // Stop propagation so platform shortcuts (Kick theater "t", etc.) don't fire
   e.stopPropagation()
 
+  // The whole body is wrapped: an exception thrown by ANY autocomplete-intercept
+  // branch below (slash/emoji/mention) would otherwise abort this function
+  // mid-flight and silently eat the keystroke — Enter looks like it does
+  // nothing at all, no toast, no error visible anywhere (2026-07-20: exactly
+  // this symptom hit live, root cause never conclusively pinned down). Never
+  // let a completion-popup edge case swallow a real send.
+  try {
+    return handleInputKeydownInner(e, input)
+  } catch (err) {
+    log('handleInputKeydown error, falling back to plain send:', err?.message || err)
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      sendMessage()
+    }
+  }
+}
+
+function handleInputKeydownInner(e, input) {
   // Slash dropdown navigation — intercept before emoji/tab/enter
   if (slashAcState.active) {
     if (e.key === 'ArrowDown') {

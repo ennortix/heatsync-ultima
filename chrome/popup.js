@@ -4,7 +4,7 @@
   // HTML text as the en fallback (a missing key never blanks the UI). Dynamic
   // strings (errors/detected) use t() with the same || english guard below.
   const i18n = typeof browser !== 'undefined' && browser.i18n ? browser.i18n : chrome.i18n
-  const t = (k, subs) => (i18n && i18n.getMessage ? i18n.getMessage(k, subs) : '') || ''
+  const t = (k, subs) => (i18n?.getMessage ? i18n.getMessage(k, subs) : '') || ''
   for (const el of document.querySelectorAll('[data-i18n]')) {
     const m = t(el.dataset.i18n)
     if (m) el.textContent = m
@@ -74,11 +74,11 @@
   function buildUrl(p) {
     if (p.platform === 'youtube') {
       return p.isHandle
-        ? 'https://www.youtube.com/@' + p.channel + '/live'
-        : 'https://www.youtube.com/live_chat?v=' + p.channel + '&is_popout=1'
+        ? `https://www.youtube.com/@${p.channel}/live`
+        : `https://www.youtube.com/live_chat?v=${p.channel}&is_popout=1`
     }
-    if (p.platform === 'kick') return 'https://kick.com/popout/' + p.channel + '/chat'
-    return 'https://www.twitch.tv/popout/' + p.channel + '/chat'
+    if (p.platform === 'kick') return `https://kick.com/popout/${p.channel}/chat`
+    return `https://www.twitch.tv/popout/${p.channel}/chat`
   }
 
   async function openPopoutWindow(url) {
@@ -117,14 +117,14 @@
     if (!p || !channel) return
     detected.appendChild(document.createTextNode(t('popup_detected_prefix') || 'on '))
     const b = document.createElement('b')
-    b.textContent = p + '/' + channel
+    b.textContent = `${p}/${channel}`
     detected.appendChild(b)
   }
 
   function autofillFromActiveTab() {
     chrome.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
       const tab = tabs[0]
-      if (!tab || !tab.url) return
+      if (!tab?.url) return
       try {
         const url = new URL(tab.url)
         const host = url.hostname.replace(/^www\./, '')
@@ -164,7 +164,7 @@
           if (handle) {
             input.value = handle[1].toLowerCase()
             ytIsHandle = true
-            setDetected('youtube', '@' + handle[1].toLowerCase())
+            setDetected('youtube', `@${handle[1].toLowerCase()}`)
           } else {
             const vid = url.searchParams.get('v')
             const live = url.pathname.match(/^\/live\/([^/?]+)/)
@@ -222,7 +222,7 @@
   function refreshErrorCount() {
     chrome.storage.local.get('hs_errors', (cur) => {
       const arr = Array.isArray(cur?.hs_errors) ? cur.hs_errors : []
-      linkErrors.textContent = t('popup_errors_count', [String(arr.length)]) || 'errors (' + arr.length + ')'
+      linkErrors.textContent = t('popup_errors_count', [String(arr.length)]) || `errors (${arr.length})`
     })
   }
   async function copyErrors() {
@@ -242,7 +242,7 @@
     const payload = { ver, ua, diag, count: arr.length, errors: arr }
     try {
       await navigator.clipboard.writeText(JSON.stringify(payload, null, 2))
-      linkErrors.textContent = t('popup_copied', [String(arr.length)]) || 'copied ' + arr.length
+      linkErrors.textContent = t('popup_copied', [String(arr.length)]) || `copied ${arr.length}`
     } catch {
       linkErrors.textContent = t('popup_copy_failed') || 'copy failed'
     }

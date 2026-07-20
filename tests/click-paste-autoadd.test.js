@@ -32,12 +32,7 @@ function build({ senderSets = new Map(), renderOrder = () => null, sameAsset = (
     'zeroWidthForSameAsset',
     '_hsEmoteAssetId',
     `${INPUT_SRC.slice(start, end)}; return { recentRemoteCompletions, registerClickPasteForAutoAdd }`,
-  )(
-    renderOrder,
-    senderSets,
-    sameAsset,
-    (url) => ASSET_ID_RE.exec(url || '')?.[1] || null,
-  )
+  )(renderOrder, senderSets, sameAsset, (url) => ASSET_ID_RE.exec(url || '')?.[1] || null)
   return fns
 }
 
@@ -70,9 +65,7 @@ describe('click-paste registers for auto-add-on-send', () => {
   })
 
   test('tombstoned (removed) literal name0 does not count as live', () => {
-    const senderSets = new Map([
-      ['twitch:1', new Map([['giga0', { url: URL_7TV, source: '7tv', removedAt: 123 }]])],
-    ])
+    const senderSets = new Map([['twitch:1', new Map([['giga0', { url: URL_7TV, source: '7tv', removedAt: 123 }]])]])
     const { recentRemoteCompletions, registerClickPasteForAutoAdd } = build({ senderSets })
     registerClickPasteForAutoAdd('giga0', URL_7TV, '7tv')
     expect(recentRemoteCompletions.size).toBe(0)

@@ -175,7 +175,7 @@ function hsModPeelChain(word) {
 
 function hsModClassify(word, opts) {
   if (!word) return { kind: 'plain' }
-  const allowPrefix = opts && opts.allowPrefix
+  const allowPrefix = opts?.allowPrefix
   const exact = HS_MOD_TOKENS[word]
   if (exact) return { kind: 'modifier', mods: [exact], hue: null, words: [word] }
   const cm = word.match(HS_MOD_C_HEX_RE)
@@ -232,7 +232,7 @@ function hsModComposeAnimClasses(mods) {
 }
 
 function hsModRead(el) {
-  if (!el || !el.dataset) return { mods: [], hue: null, words: [] }
+  if (!el?.dataset) return { mods: [], hue: null, words: [] }
   return {
     mods: el.dataset.hsMods ? el.dataset.hsMods.split(',').filter(Boolean) : [],
     hue: el.dataset.hsHue != null && el.dataset.hsHue !== '' ? Number(el.dataset.hsHue) : null,
@@ -249,7 +249,7 @@ function hsModTransformStr(sx, sy, rotate) {
 
 function hsModApplyToImg(img, addMods, addHue, addWords, opts) {
   if (!img) return
-  const additive = !opts || opts.additive !== false
+  const additive = opts?.additive !== false
   const cur = hsModRead(img)
   const finalMods = additive ? cur.mods.concat(addMods || []) : addMods || []
   const finalWords = additive ? cur.words.concat(addWords || []) : addWords || []
@@ -303,13 +303,13 @@ function hsModBuildStyleAttr(mods, hue) {
 // the string-render path, which can't carry an inline style-only animation).
 function hsModAnimClassAttr(mods) {
   const classes = hsModComposeAnimClasses(mods)
-  return classes.length ? ' ' + classes.join(' ') : ''
+  return classes.length ? ` ${classes.join(' ')}` : ''
 }
 
 // Used by multichat string-render to attach modifier styles to emote wrappers.
 function hsModInjectWrapperStyle(html, styleStr) {
   if (!styleStr) return html
-  return html.replace(/^(<span[^>]*?)(\sstyle="([^"]*)")?(>)/, (m, p1, _full, existing, gt) => {
+  return html.replace(/^(<span[^>]*?)(\sstyle="([^"]*)")?(>)/, (_m, p1, _full, existing, gt) => {
     if (existing) return `${p1} style="${existing};${styleStr}"${gt}`
     return `${p1} style="${styleStr}"${gt}`
   })
@@ -320,7 +320,7 @@ function hsModInjectWrapperStyle(html, styleStr) {
 function hsModWordsFromState(mods, hue) {
   const out = []
   for (const m of mods || []) {
-    out.push(HS_MOD_CLASS_TO_TOKEN[m] || '?' + m)
+    out.push(HS_MOD_CLASS_TO_TOKEN[m] || `?${m}`)
   }
   if (hue != null) {
     const h = ((hue % 360) + 360) % 360
@@ -363,7 +363,7 @@ function hsModWordsFromState(mods, hue) {
             .padStart(2, '0'),
         )
         .join('')
-    out.push('c!' + hex)
+    out.push(`c!${hex}`)
   }
   return out
 }

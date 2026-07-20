@@ -199,7 +199,7 @@
     try {
       const apollo = window.__APOLLO_STATE__ || window.__APOLLO_CLIENT__?.cache?.extract?.()
       if (apollo) {
-        for (const [key, val] of Object.entries(apollo)) {
+        for (const [_key, val] of Object.entries(apollo)) {
           // Apollo cache keys often look like "User:12345" or "Channel:12345"
           if (val?.login?.toLowerCase?.() === slug && val?.id) {
             setChannelId(String(val.id), slug)
@@ -338,8 +338,7 @@
     const url = typeof input === 'string' ? input : input?.url
     // Anon mode: drop presence/activity GQL calls so Twitch stops broadcasting "online"
     if (
-      url &&
-      url.includes('gql.twitch.tv') &&
+      url?.includes('gql.twitch.tv') &&
       init?.method === 'POST' &&
       document.documentElement.classList.contains('hs-anon-chat')
     ) {
@@ -357,7 +356,7 @@
         }
       } catch {}
     }
-    if (url && url.includes('gql.twitch.tv') && init?.method === 'POST') {
+    if (url?.includes('gql.twitch.tv') && init?.method === 'POST') {
       // Capture headers
       try {
         const hdrs = init.headers
@@ -372,13 +371,13 @@
           const cid = get('Client-Id') || get('Client-ID')
           if (cid) gql.clientId = cid
           const auth = get('Authorization')
-          if (auth && auth.startsWith('OAuth ')) {
+          if (auth?.startsWith('OAuth ')) {
             gql.authToken = auth.slice(6)
             // Trigger one-time self-identification once auth is available.
             ensureSelfIdentified()
           }
         }
-      } catch (e) {}
+      } catch (_e) {}
 
       // Capture operation hashes from request body
       try {
@@ -393,7 +392,7 @@
             }
           }
         }
-      } catch (e) {}
+      } catch (_e) {}
 
       // Intercept response to cache data
       const promise = origFetch.apply(this, arguments)
@@ -450,7 +449,7 @@
     }
 
     // Capture integrity token from Twitch's own /integrity calls
-    if (url && url.includes('gql.twitch.tv/integrity')) {
+    if (url?.includes('gql.twitch.tv/integrity')) {
       const promise = origFetch.apply(this, arguments)
       promise
         .then((resp) => {
@@ -531,7 +530,7 @@
           headers: {
             'Content-Type': 'application/json',
             'Client-Id': cid,
-            Authorization: 'OAuth ' + token,
+            Authorization: `OAuth ${token}`,
             'X-Device-Id': getDeviceId(),
           },
           body: '{}',
@@ -561,7 +560,7 @@
     if (gql.clientId) hdrs['Client-Id'] = gql.clientId
     else hdrs['Client-Id'] = 'kimne78kx3ncx6brgo4mv6wki5h1ko'
     const token = getAuthToken()
-    if (token) hdrs['Authorization'] = 'OAuth ' + token
+    if (token) hdrs.Authorization = `OAuth ${token}`
     if (gql.integrity) hdrs['Client-Integrity'] = gql.integrity
     hdrs['X-Device-Id'] = getDeviceId()
     return hdrs
@@ -912,11 +911,11 @@
               }
               if (doc) break
             }
-            log('apollo-mutate[' + searchTerm + ']: doc=' + !!doc)
+            log(`apollo-mutate[${searchTerm}]: doc=${!!doc}`)
 
             if (doc) {
               const result = await apolloClient.mutate({ mutation: doc, variables })
-              log('apollo-mutate[' + searchTerm + ']: result=' + JSON.stringify(result?.data).slice(0, 200))
+              log(`apollo-mutate[${searchTerm}]: result=${JSON.stringify(result?.data).slice(0, 200)}`)
               if (resultField) {
                 const field = result?.data?.[resultField]
                 const err = field?.error
@@ -930,7 +929,7 @@
 
           respond({ error: 'apollo client or webpack module not found' })
         } catch (err) {
-          log('apollo-mutate: exception=' + err.message)
+          log(`apollo-mutate: exception=${err.message}`)
           respond({ error: err.message })
         }
       })()
@@ -982,9 +981,9 @@
       // Reads (points/context) stay unlimited so legit channel-load bursts never
       // throttle; everything else mutates and spends the user's token.
       const GQL_READ_OPS = new Set(['CommunityPointsContext', 'ChannelPointsContext'])
-      const gqlOps = req.batch ? req.batch.map((o) => o && o.operation) : [req.operation]
+      const gqlOps = req.batch ? req.batch.map((o) => o?.operation) : [req.operation]
       if (!gqlOps.length || !gqlOps.every((op) => ALLOWED_GQL_OPS.includes(op))) {
-        log('heatsync-gql-request: operation not allowed — ' + gqlOps.join(','))
+        log(`heatsync-gql-request: operation not allowed — ${gqlOps.join(',')}`)
         window.postMessage(
           { type: 'heatsync-gql-response', id: req.id, error: 'operation not allowed' },
           location.origin,
@@ -996,7 +995,7 @@
       // world) can therefore replay a mutation at most _gqlMutateRate.max / window.
       const isMutatingGql = gqlOps.some((op) => !GQL_READ_OPS.has(op))
       if (isMutatingGql && !_proxyAllowed(_gqlMutateRate)) {
-        log('heatsync-gql-request: rate limit exceeded — ' + gqlOps.join(','))
+        log(`heatsync-gql-request: rate limit exceeded — ${gqlOps.join(',')}`)
         window.postMessage({ type: 'heatsync-gql-response', id: req.id, error: 'rate limit exceeded' }, location.origin)
         return
       }
@@ -1012,7 +1011,7 @@
               {
                 type: 'heatsync-gql-response',
                 id: req.id,
-                error: 'hash not available for ' + req.operation,
+                error: `hash not available for ${req.operation}`,
               },
               location.origin,
             )
@@ -1111,7 +1110,7 @@
       const fixed = fixUrl(value)
       if (fixed) {
         this.dataset.heatsyncFixed = 'true'
-        const fixedValue = name === 'srcset' ? fixed + ' 1x' : fixed
+        const fixedValue = name === 'srcset' ? `${fixed} 1x` : fixed
         return origSetAttr.call(this, name, fixedValue)
       }
     }
@@ -1130,7 +1129,7 @@
         const fixed = fixUrl(value)
         if (fixed) {
           this.dataset.heatsyncFixed = 'true'
-          return srcsetDesc.set.call(this, fixed + ' 1x')
+          return srcsetDesc.set.call(this, `${fixed} 1x`)
         }
         return srcsetDesc.set.call(this, value)
       },

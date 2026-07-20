@@ -88,7 +88,7 @@
       ...(data.globalEmotes || []).map((e) => ({ e, tier: 2 })),
     ]
     for (const { e, tier } of sources) {
-      if (!e || !e.name) continue
+      if (!e?.name) continue
       if (blocked.has(e.hash)) continue
       if (seen.has(e.name)) continue
       seen.add(e.name)
@@ -322,7 +322,7 @@
     container.textContent = ''
     results.forEach((r, i) => {
       const item = document.createElement('div')
-      item.className = 'hs-ac-item' + (i === 0 ? ' selected' : '')
+      item.className = `hs-ac-item${i === 0 ? ' selected' : ''}`
       item.dataset.idx = i
 
       const emojiSpan = document.createElement('span')
@@ -331,7 +331,7 @@
 
       const nameSpan = document.createElement('span')
       nameSpan.className = 'hs-ac-name'
-      nameSpan.textContent = ':' + r.name + ':'
+      nameSpan.textContent = `:${r.name}:`
 
       item.appendChild(emojiSpan)
       item.appendChild(nameSpan)
@@ -364,7 +364,7 @@
     container.textContent = ''
     results.forEach((r, i) => {
       const item = document.createElement('div')
-      item.className = 'hs-ac-item' + (i === 0 ? ' selected' : '')
+      item.className = `hs-ac-item${i === 0 ? ' selected' : ''}`
       item.dataset.idx = i
 
       if (r.url && /^https:\/\//.test(r.url)) {
@@ -389,7 +389,7 @@
 
       const vis = hsVisTag(r)
       const visSpan = document.createElement('span')
-      visSpan.className = 'hs-ac-vis ' + vis.cls
+      visSpan.className = `hs-ac-vis ${vis.cls}`
       visSpan.textContent = vis.t
       item.appendChild(visSpan)
 
@@ -404,10 +404,10 @@
 
   function positionAboveInput(el, input) {
     const rect = input.getBoundingClientRect()
-    el.style.left = rect.left + 'px'
-    el.style.bottom = window.innerHeight - rect.top + 4 + 'px'
+    el.style.left = `${rect.left}px`
+    el.style.bottom = `${window.innerHeight - rect.top + 4}px`
     el.style.top = 'auto'
-    el.style.minWidth = Math.min(rect.width, 280) + 'px'
+    el.style.minWidth = `${Math.min(rect.width, 280)}px`
   }
 
   function showDropdown(input, results) {
@@ -482,7 +482,7 @@
     for (let i = 0; i < deleteCount; i++) {
       sel.modify('extend', 'backward', 'character')
     }
-    document.execCommand('insertText', false, match.emoji + ' ')
+    document.execCommand('insertText', false, `${match.emoji} `)
     hideDropdown()
     log('inserted', match.name, match.emoji)
   }
@@ -516,13 +516,13 @@
     // so restore it here on insert. Not an emote usage, so no MRU bump.
     if (match.isMention) {
       // textContent-safe: usernames are alphanumeric + underscore
-      document.execCommand('insertText', false, '@' + match.name + ' ')
+      document.execCommand('insertText', false, `@${match.name} `)
       hideEmoteDropdown()
       log('inserted mention', match.name)
       return
     }
     // textContent-safe: emote names are alphanumeric + limited punctuation
-    document.execCommand('insertText', false, match.name + ' ')
+    document.execCommand('insertText', false, `${match.name} `)
     hideEmoteDropdown()
     // chatter rows aren't emote usage — keep usernames out of the shared signal
     if (!match.isChatter) recordRecentEmoteMru(match.name)
@@ -639,8 +639,8 @@
           for (let i = 0; i < deleteCount; i++) {
             sel.modify('extend', 'backward', 'character')
           }
-          document.execCommand('insertText', false, emoji + ' ')
-          log('auto-converted :' + closingMatch[1] + ': →', emoji)
+          document.execCommand('insertText', false, `${emoji} `)
+          log(`auto-converted :${closingMatch[1]}: →`, emoji)
           hideAll()
           return
         }
@@ -704,7 +704,7 @@
             const rc = typeof window.heatsyncGetRecentChatters === 'function' ? window.heatsyncGetRecentChatters() : []
             const chatters = []
             for (const c of rc) {
-              if (c.l && c.l.startsWith(ql)) chatters.push({ name: c.name, url: null, isChatter: true })
+              if (c.l?.startsWith(ql)) chatters.push({ name: c.name, url: null, isChatter: true })
             }
             if (chatters.length) results = chatters.concat(results)
           } catch (_) {}

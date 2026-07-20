@@ -117,7 +117,7 @@
   ].join(', ')
 
   // Combined selector for stackAdjacentOverlayEmotes (heatsync + native, single querySelectorAll)
-  const COMBINED_EMOTE_SELECTOR = '.heatsync-emote-wrapper, ' + NATIVE_EMOTE_SELECTORS
+  const COMBINED_EMOTE_SELECTOR = `.heatsync-emote-wrapper, ${NATIVE_EMOTE_SELECTORS}`
 
   // Re-injection guard. background.js re-executes content.js on extension
   // update/reload (manifest content scripts don't auto re-inject). Without this,
@@ -439,7 +439,7 @@
             () => {
               try {
                 r(fn())
-              } catch (e) {
+              } catch (_e) {
                 r()
               }
             },
@@ -451,7 +451,7 @@
         setTimeout(() => {
           try {
             r(fn())
-          } catch (e) {
+          } catch (_e) {
             r()
           }
         }, 0),
@@ -489,7 +489,7 @@
   })()
 
   // React fiber walking — use shared-utils if available, inline fallback
-  const getFiber =
+  const _getFiber =
     window.HS?.getFiber ||
     ((el) => {
       if (!el) return null
@@ -532,7 +532,7 @@
   let hsEmoteSize = 1
   const HS_EMOTE_BASE_PX = 28
   function applyEmoteSize() {
-    document.documentElement.style.setProperty('--hs-emote-height', HS_EMOTE_BASE_PX * hsEmoteSize + 'px')
+    document.documentElement.style.setProperty('--hs-emote-height', `${HS_EMOTE_BASE_PX * hsEmoteSize}px`)
   }
 
   // Unicode emoji size (1x/2x/4x) — mirrors multichat's hs_emoji_size.
@@ -737,7 +737,7 @@
     }
     const escaped = list.map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
     try {
-      _keywordRegex = new RegExp('\\b(' + escaped.join('|') + ')\\b', 'i')
+      _keywordRegex = new RegExp(`\\b(${escaped.join('|')})\\b`, 'i')
     } catch {
       _keywordRegex = null
     }
@@ -868,12 +868,12 @@
 
     const el = document.createElement('div')
     el.id = 'hs-user-color-picker'
-    el.style.left = Math.min(x, window.innerWidth - 240) + 'px'
-    el.style.top = Math.min(y, window.innerHeight - 200) + 'px'
+    el.style.left = `${Math.min(x, window.innerWidth - 240)}px`
+    el.style.top = `${Math.min(y, window.innerHeight - 200)}px`
 
     const header = document.createElement('div')
     header.className = 'hs-ucp-header'
-    header.textContent = 'color for ' + username
+    header.textContent = `color for ${username}`
     el.appendChild(header)
 
     const swatches = document.createElement('div')
@@ -993,7 +993,7 @@
       const total = choices.reduce((s, c) => s + (c.totalVotes || c.votes || 0), 0) || 1
       const rows = choices.map((c) => ({
         label: (c.title || c.text || '').slice(0, 32),
-        value: (((c.totalVotes || c.votes || 0) / total) * 100).toFixed(0) + '%',
+        value: `${(((c.totalVotes || c.votes || 0) / total) * 100).toFixed(0)}%`,
       }))
       renderEventChip({ kind: 'poll', title: (event.title || '').slice(0, 64), rows })
       return
@@ -1003,7 +1003,7 @@
     const totalPts = outcomes.reduce((s, o) => s + (o.totalPoints || 0), 0) || 1
     const rows = outcomes.map((o) => ({
       label: (o.title || '').slice(0, 32),
-      value: (((o.totalPoints || 0) / totalPts) * 100).toFixed(0) + '%',
+      value: `${(((o.totalPoints || 0) / totalPts) * 100).toFixed(0)}%`,
     }))
     renderEventChip({ kind: 'prediction', title: (event.title || '').slice(0, 64), rows })
   }
@@ -1070,7 +1070,7 @@
       const img = span.querySelector('img')
       if (!img) continue
       const { mods, hue, modTextElements } = _hsCollectModsAfterSpan(span)
-      const key = mods.join(',') + '|' + (hue == null ? '' : hue)
+      const key = `${mods.join(',')}|${hue == null ? '' : hue}`
       if (span.dataset.hsModCache === key) continue
       span.dataset.hsModCache = key
 
@@ -1244,7 +1244,7 @@
         if (probe.querySelector?.('.hs-input-mod-chip')) break
         probe = probe.previousSibling
       }
-      if (!probe || probe.nodeType !== 1) return
+      if (probe?.nodeType !== 1) return
       const chip = probe.classList?.contains('hs-input-mod-chip') ? probe : probe.querySelector?.('.hs-input-mod-chip')
       if (!chip) return
       // Found a chip — also find the preceding emote span to delete with it
@@ -1319,8 +1319,8 @@
     const flipY = y + mh + 8 > vh
     const left = flipX ? Math.max(4, x - mw) : Math.min(x, vw - mw - 4)
     const top = flipY ? Math.max(4, y - mh) : Math.min(y, vh - mh - 4)
-    el.style.left = left + 'px'
-    el.style.top = top + 'px'
+    el.style.left = `${left}px`
+    el.style.top = `${top}px`
     if (flipX) el.classList.add('hs-em-flip-x')
     if (flipY) el.classList.add('hs-em-flip-y')
     el.style.visibility = ''
@@ -2855,13 +2855,13 @@
     if (!src) return []
     if (src.includes('7tv'))
       return ['4x', '3x', '2x'].map((s) =>
-        src.replace(/\/[1-4]x(\.\w+)?(\?.*)?$/i, (m, ext, q) => '/' + s + (ext || '') + (q || '')),
+        src.replace(/\/[1-4]x(\.\w+)?(\?.*)?$/i, (_m, ext, q) => `/${s}${ext || ''}${q || ''}`),
       )
     if (src.includes('frankerfacez'))
-      return ['4', '2'].map((s) => src.replace(/\/[1-4](\?.*)?$/, (m, q) => '/' + s + (q || '')))
+      return ['4', '2'].map((s) => src.replace(/\/[1-4](\?.*)?$/, (_m, q) => `/${s}${q || ''}`))
     // Twitch native badges (sub/bits/mod/vip) — URLs end in /1, /2, /3 (max 3, no 4x)
     if (src.includes('jtvnw'))
-      return ['3', '2'].map((s) => src.replace(/\/[1-3](\?.*)?$/, (m, q) => '/' + s + (q || '')))
+      return ['3', '2'].map((s) => src.replace(/\/[1-3](\?.*)?$/, (_m, q) => `/${s}${q || ''}`))
     return []
   }
 
@@ -2931,8 +2931,8 @@
     }
     if (topPx < pad) topPx = pad
     if (topPx + ttH > window.innerHeight - pad) topPx = window.innerHeight - ttH - pad
-    tooltip.style.left = leftPx + 'px'
-    tooltip.style.top = topPx + 'px'
+    tooltip.style.left = `${leftPx}px`
+    tooltip.style.top = `${topPx}px`
     tooltip.style.transform = 'none'
   }
 
@@ -3418,7 +3418,7 @@
       } else if (settings.debugLogging === false) {
         localStorage.removeItem('heatsync_debug')
       }
-    } catch (e) {}
+    } catch (_e) {}
   }
   // Load and apply UI settings on startup
   ;(async function loadUiSettings() {
@@ -3797,7 +3797,7 @@
         const myPlatform = window.location.hostname.includes('kick.com') ? 'kick' : 'twitch'
         const myEmotes =
           myChannel && stored.channel_emotes_map
-            ? stored.channel_emotes_map[myPlatform + '/' + myChannel] || stored.channel_emotes_map[myChannel] || []
+            ? stored.channel_emotes_map[`${myPlatform}/${myChannel}`] || stored.channel_emotes_map[myChannel] || []
             : []
         channelEmotes = myEmotes.map((e) => ({
           ...e,
@@ -4174,13 +4174,13 @@
           const myChannel = getPageChannel()
           const emoteOwner = (message.channelOwner || '').toLowerCase()
           if (myChannel && emoteOwner && emoteOwner !== myChannel) {
-            log(' Ignoring channel emotes for', emoteOwner, '(this tab is', myChannel + ')')
+            log(' Ignoring channel emotes for', emoteOwner, '(this tab is', `${myChannel})`)
             break
           }
           if (message.platform) {
             const myPlatform = window.location.hostname.includes('kick.com') ? 'kick' : 'twitch'
             if (message.platform !== myPlatform) {
-              log(' Ignoring channel emotes for platform', message.platform, '(this tab is', myPlatform + ')')
+              log(' Ignoring channel emotes for platform', message.platform, '(this tab is', `${myPlatform})`)
               break
             }
           }
@@ -4297,7 +4297,7 @@
                 delete el.dataset.staleActor
                 delete el.dataset.staleAt
               })
-            } catch (e) {}
+            } catch (_e) {}
           }
           break
 
@@ -4330,7 +4330,7 @@
                 if (message.actor) el.dataset.staleActor = message.actor
                 el.dataset.staleAt = String(Date.now())
               })
-            } catch (e) {}
+            } catch (_e) {}
           }
           break
 
@@ -4472,7 +4472,7 @@
 
   // Kick send relay — only active on kick.com tabs
   // Separate listener because it needs async sendResponse (return true)
-  function _onMessageKickRelay(message, sender, sendResponse) {
+  function _onMessageKickRelay(message, _sender, sendResponse) {
     if (message.type !== 'kick_send_relay') return
     // Reply-shaped when the caller carries a parent ref (kick's own client
     // payload shape: type 'reply' + original_message/original_sender metadata).
@@ -4521,7 +4521,7 @@
 
   // Kick mod relay — ban / timeout / unban / delete-message.
   // Runs on kick.com tab so X-XSRF-TOKEN + session cookies are same-origin.
-  function _onMessageKickModRelay(message, sender, sendResponse) {
+  function _onMessageKickModRelay(message, _sender, sendResponse) {
     if (message.type !== 'kick_mod_relay') return
     const xsrf = decodeURIComponent(message.xsrfToken || '')
     const baseHeaders = {
@@ -4657,7 +4657,7 @@
 
     // Pass 2: Process messages (now username coloring will work for all known chatters)
     // Filter by generation: messages from older generations need reprocessing
-    const unprocessed = messageArray.filter((msg) => msg.dataset.heatsyncGeneration != gen)
+    const unprocessed = messageArray.filter((msg) => msg.dataset.heatsyncGeneration !== gen)
     if (unprocessed.length === 0) return
 
     // Process visible tail first (bottom = on-screen). Both halves go through
@@ -4755,7 +4755,7 @@
           savedAt: Date.now(),
         }),
       )
-    } catch (e) {
+    } catch (_e) {
       // localStorage full — evict oldest channel caches
       try {
         const keys = []
@@ -4827,7 +4827,7 @@
         existingTexts.add(dedupKey)
 
         const div = document.createElement('div')
-        div.className = 'chat-line__message heatsync-cached' + (msg.timedOut ? ' hs-timed-out' : '')
+        div.className = `chat-line__message heatsync-cached${msg.timedOut ? ' hs-timed-out' : ''}`
         div.setAttribute('data-heatsync-cached', 'true')
         if (msg.id) div.setAttribute('data-msg-id', msg.id)
         // Restore twitch user id so cosmetics pipeline picks up these messages
@@ -5391,7 +5391,7 @@
           return cachedUsername
         }
       }
-    } catch (e) {
+    } catch (_e) {
       // JSON parse might fail
     }
 
@@ -5406,7 +5406,7 @@
           return cachedUsername
         }
       }
-    } catch (e) {
+    } catch (_e) {
       // localStorage access might fail
     }
 
@@ -5465,7 +5465,7 @@
           return cachedUsername
         }
       }
-    } catch (e) {
+    } catch (_e) {
       // Cookie access might fail
     }
 
@@ -5537,7 +5537,7 @@
     }
     // Cache mention regex — only rebuild when username changes
     if (currentUser !== _mentionUser) {
-      _mentionRegex = new RegExp('\\b' + currentUser.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i')
+      _mentionRegex = new RegExp(`\\b${currentUser.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
       _mentionUser = currentUser
     }
 
@@ -5579,7 +5579,7 @@
         messageElement.querySelectorAll('.text-fragment, [data-a-target="chat-message-text"], span.font-normal')
       for (const frag of textFragments) {
         const fragText = frag.textContent.toLowerCase()
-        if (_mentionRegex && _mentionRegex.test(fragText)) {
+        if (_mentionRegex?.test(fragText)) {
           shouldHighlight = true
           break
         }
@@ -5683,7 +5683,7 @@
         if (!hasMatch) continue
         try {
           tn.replaceWith(...newNodes)
-        } catch (e) {
+        } catch (_e) {
           // Silently skip on React conflict
         }
       }
@@ -6031,7 +6031,7 @@
     // Snapshot — replaceWith mutates the live childNodes list mid-iteration.
     for (const node of Array.from(leaf.childNodes)) {
       if (node.nodeType === 3) {
-        if (!node.nodeValue || !node.nodeValue.trim()) continue
+        if (!node.nodeValue?.trim()) continue
         const span = document.createElement('span')
         span.className = 'hs-textfrag'
         span.textContent = node.nodeValue
@@ -6048,8 +6048,8 @@
 
   // Process individual message for emote replacement
   function processMessage(messageElement) {
-    if (!messageElement || !messageElement.isConnected) return
-    if (messageElement.dataset.heatsyncGeneration == emoteGeneration) return
+    if (!messageElement?.isConnected) return
+    if (messageElement.dataset.heatsyncGeneration === emoteGeneration) return
 
     messageElement.dataset.heatsyncGeneration = emoteGeneration
 
@@ -6255,17 +6255,14 @@
       allEmotes = {
         get(name) {
           return (
-            (userBroadcasts && userBroadcasts.get(name)) ||
-            (cachedChannelEmotes && cachedChannelEmotes.get(name)) ||
-            (senderSet && senderSet.get(name)) ||
-            baseMap.get(name)
+            userBroadcasts?.get(name) || cachedChannelEmotes?.get(name) || senderSet?.get(name) || baseMap.get(name)
           )
         },
         has(name) {
           return (
-            !!(userBroadcasts && userBroadcasts.has(name)) ||
-            !!(cachedChannelEmotes && cachedChannelEmotes.has(name)) ||
-            !!(senderSet && senderSet.has(name)) ||
+            !!userBroadcasts?.has(name) ||
+            !!cachedChannelEmotes?.has(name) ||
+            !!senderSet?.has(name) ||
             baseMap.has(name)
           )
         },
@@ -6345,9 +6342,9 @@
     // If emote name ends with "0" and the base name (without "0") exists as an
     // emote. ONLY when the literal "name0" is NOT itself a real emote — a channel
     // emote actually named "lerolero0" is standalone, not the "lerolero" overlay.
-    if (emoteName.endsWith('0') && emoteName.length > 1 && !(allEmotes && allEmotes.has(emoteName))) {
+    if (emoteName.endsWith('0') && emoteName.length > 1 && !allEmotes?.has(emoteName)) {
       const baseName = emoteName.slice(0, -1)
-      if (allEmotes && allEmotes.has(baseName)) {
+      if (allEmotes?.has(baseName)) {
         return true
       }
     }
@@ -6401,7 +6398,7 @@
       // Find base: check if previous emote is in a stack, otherwise use it directly as base
       const existingStack = prevElement.closest('.heatsync-emote-stack')
       const baseElement = existingStack ? null : prevElement
-      const targetStack = existingStack || null
+      const _targetStack = existingStack || null
 
       // Check adjacency - only whitespace should separate them
       const checkElement = existingStack || prevElement
@@ -6601,7 +6598,7 @@
 
       // Create wrapper and move image into it
       const wrapper = document.createElement('span')
-      wrapper.className = `heatsync-emote-wrapper ${overlayClass}` + (isHeatsyncCdn ? ' heatsync-own-emote' : '')
+      wrapper.className = `heatsync-emote-wrapper ${overlayClass}${isHeatsyncCdn ? ' heatsync-own-emote' : ''}`
       wrapper.dataset.emoteName = emote.name
       wrapper.dataset.emoteHash = emote.hash || ''
       wrapper.dataset.inInventory = String(inInventory)
@@ -6650,7 +6647,7 @@
   // then apply transform/filter to each base. Modifiers in a group ALWAYS target
   // the base (skipping overlays), and chain multiplicatively (w! w! = 4x wide).
   function applyModifiersAcrossMessage(messageElement) {
-    if (!messageElement || !messageElement.isConnected) return
+    if (!messageElement?.isConnected) return
     // Modifiers can only ever attach to an emote; a message with no emote
     // candidates (wrapper or emote-CDN img — mirrors the timeline filter
     // below; badge imgs live on /badges paths and don't match) is a
@@ -6742,7 +6739,7 @@
         }
       }
       if (filter.trim()) targetImg.style.setProperty('filter', filter, 'important')
-      if (el.classList) for (const m of new Set(currentMods)) el.classList.add('heatsync-mod-' + m)
+      if (el.classList) for (const m of new Set(currentMods)) el.classList.add(`heatsync-mod-${m}`)
     }
     for (let i = 0; i < timeline.length; i++) {
       const item = timeline[i]
@@ -7037,7 +7034,7 @@
       let css = 'display: inline-block; vertical-align: middle; position: relative; z-index: 1;'
       // FFZ-style modifiers: w!/h!/l!/c! etc. — transform + hue filter on the span
       // itself (emoji has no <img>, so both go on the element directly).
-      if ((modifiers && modifiers.length) || modColorHue != null) {
+      if (modifiers?.length || modColorHue != null) {
         const { sx, sy } = hsModComposeTransform(modifiers)
         if (sx !== 1 || sy !== 1) {
           css += `transform: scale(${sx}, ${sy}) !important; transform-origin: center !important;`
@@ -7174,12 +7171,12 @@
 
     const overlayWrapperClass = isOverlay ? ' heatsync-overlay' : ''
     // FFZ-style modifier multiset (chain: w! w! → 4x wide)
-    const modList = modifiers && modifiers.length ? modifiers.slice() : null
+    const modList = modifiers?.length ? modifiers.slice() : null
     // CSS classes use deduped names (one each is enough for state CSS)
     const modClass = modList
       ? ' ' +
         Array.from(new Set(modList))
-          .map((m) => 'heatsync-mod-' + m)
+          .map((m) => `heatsync-mod-${m}`)
           .join(' ')
       : ''
 
@@ -7255,7 +7252,7 @@
     // Filters (cursed animation, hue tint) stay on img — wrapper-level transform
     // handles scale/flip so the green ::before indicator scales with the emote.
     let modFilter = ''
-    if (modList && modList.includes('cursed')) modFilter += ' hue-rotate(0deg)' // anchor; CSS animation overrides
+    if (modList?.includes('cursed')) modFilter += ' hue-rotate(0deg)' // anchor; CSS animation overrides
     if (modColorHue != null) modFilter += ` hue-rotate(${modColorHue}deg) saturate(1.6)`
     const filterStyle = modFilter.trim() ? `filter:${modFilter} !important;` : ''
     img.style.cssText = `display: block !important; width: auto !important; height: ${isOverlay ? 'auto' : 'var(--hs-emote-height, 28px)'} !important; max-width: none !important; max-height: none !important; ${blocked ? 'opacity: 0;' : ''} cursor: pointer; ${filterStyle}`
@@ -7268,10 +7265,10 @@
       img.onload = function () {
         const nw = this.naturalWidth,
           nh = this.naturalHeight
-        this.style.setProperty('width', nw + 'px', 'important')
-        this.style.setProperty('height', nh + 'px', 'important')
-        this.style.setProperty('min-width', nw + 'px', 'important')
-        this.style.setProperty('min-height', nh + 'px', 'important')
+        this.style.setProperty('width', `${nw}px`, 'important')
+        this.style.setProperty('height', `${nh}px`, 'important')
+        this.style.setProperty('min-width', `${nw}px`, 'important')
+        this.style.setProperty('min-height', `${nh}px`, 'important')
       }
     }
     img.className = cssClasses.join(' ')
@@ -7314,10 +7311,10 @@
           alt.onload = function () {
             const nw = this.naturalWidth,
               nh = this.naturalHeight
-            this.style.setProperty('width', nw + 'px', 'important')
-            this.style.setProperty('height', nh + 'px', 'important')
-            this.style.setProperty('min-width', nw + 'px', 'important')
-            this.style.setProperty('min-height', nh + 'px', 'important')
+            this.style.setProperty('width', `${nw}px`, 'important')
+            this.style.setProperty('height', `${nh}px`, 'important')
+            this.style.setProperty('min-width', `${nw}px`, 'important')
+            this.style.setProperty('min-height', `${nh}px`, 'important')
           }
         }
         hsArmEmoteRetry(alt)
@@ -7583,7 +7580,7 @@
   // active one — moving it to be first child so wrapper.querySelector('img') still
   // returns the visible emote (tooltips, hover preview, etc. read it that way).
   function pickActiveVariant(wrapper) {
-    if (!wrapper || wrapper.dataset.hasVariants !== '1') return
+    if (wrapper?.dataset.hasVariants !== '1') return
     const imgs = Array.from(wrapper.querySelectorAll(':scope > img.heatsync-emote'))
     if (imgs.length <= 1) return
 
@@ -7719,7 +7716,7 @@
             : effectiveState === 'global'
               ? 'emote-overlay-global'
               : 'emote-overlay-unadded'
-      if (wrapper && wrapper.classList.contains(targetWrapperClass)) return
+      if (wrapper?.classList.contains(targetWrapperClass)) return
 
       // Remove all state classes
       img.classList.remove('emote-blocked', 'emote-in-set')
@@ -7751,8 +7748,8 @@
               const w = wrapper.offsetWidth,
                 h = wrapper.offsetHeight
               if (w && h) {
-                wrapper.style.setProperty('--hs-emote-width', w + 'px')
-                wrapper.style.setProperty('--hs-emote-height', h + 'px')
+                wrapper.style.setProperty('--hs-emote-width', `${w}px`)
+                wrapper.style.setProperty('--hs-emote-height', `${h}px`)
               }
             }
           }
@@ -7769,8 +7766,6 @@
           if (wrapper) wrapper.classList.add('emote-overlay-global')
           if (img.style.opacity) img.style.removeProperty('opacity')
           break
-
-        case 'neutral':
         default:
           if (wrapper) wrapper.classList.add('emote-overlay-unadded')
           if (img.style.opacity) img.style.removeProperty('opacity')
@@ -7826,7 +7821,7 @@
         const stackedWrappers = stack.querySelectorAll('.heatsync-emote-wrapper')
         stackedWrappers.forEach((w) => {
           const wImg = w.querySelector('img')
-          const wName = w.dataset.emoteName || (wImg && wImg.alt) || ''
+          const wName = w.dataset.emoteName || wImg?.alt || ''
           const wSrc = wImg ? wImg.src : ''
           if (wSrc) {
             const bw = wImg?.offsetWidth || 28,
@@ -7837,7 +7832,7 @@
         })
       } else {
         const img = wrapper.querySelector('img')
-        const emoteName = wrapper.dataset.emoteName || (img && img.alt) || ''
+        const emoteName = wrapper.dataset.emoteName || img?.alt || ''
         const src = img ? img.src : ''
         if (src) {
           const bw = img?.offsetWidth || 28,
@@ -8010,7 +8005,7 @@
     window._hsPreviewKill = (e) => {
       if (!currentWrapper) return
       const target = e.target
-      if (!target || !target.closest) return
+      if (!target?.closest) return
       if (target.closest('.heatsync-emote-wrapper') || target.closest('.heatsync-emote-preview')) return
       hidePreview()
     }
@@ -8046,8 +8041,8 @@
     // shadow the hardened version and silently miss future lib hardening.
 
     function formatNum(n) {
-      if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M'
-      if (n >= 1000) return (n / 1000).toFixed(1) + 'K'
+      if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`
+      if (n >= 1000) return `${(n / 1000).toFixed(1)}K`
       return String(n)
     }
 
@@ -8065,9 +8060,9 @@
     function formatRelTime(dateStr) {
       if (!dateStr) return ''
       const d = Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000)
-      if (d > 365) return ' ' + Math.floor(d / 365) + 'y'
-      if (d > 30) return ' ' + Math.floor(d / 30) + 'mo'
-      if (d > 0) return ' ' + d + 'd'
+      if (d > 365) return ` ${Math.floor(d / 365)}y`
+      if (d > 30) return ` ${Math.floor(d / 30)}mo`
+      if (d > 0) return ` ${d}d`
       return ''
     }
 
@@ -8278,7 +8273,7 @@
             })
             // Card may have been closed during the fetch — bail before mutating a detached node
             if (!subStatusSpan.isConnected) return
-            if (result && result.subscribed) {
+            if (result?.subscribed) {
               const tier = result.tier ? Math.round(Number(result.tier) / 1000) : 1
               subStatusSpan.textContent = tier > 1 ? `subbed T${tier}` : 'subbed'
               subStatusSpan.style.display = ''
@@ -8547,8 +8542,8 @@
       if (y + rect.height > window.innerHeight - 10) y = window.innerHeight - rect.height - 10
       if (x < 10) x = 10
       if (y < 10) y = 10
-      card.style.left = x + 'px'
-      card.style.top = y + 'px'
+      card.style.left = `${x}px`
+      card.style.top = `${y}px`
     }
 
     // Find the chat container to host the takeover panel.
@@ -8660,7 +8655,7 @@
     }
 
     // Build the expanded mod-actions section
-    function buildModSection(username, channelLogin, isMod) {
+    function buildModSection(username, _channelLogin, isMod) {
       const section = document.createElement('div')
       section.className = 'hs-pc-section'
 
@@ -8709,7 +8704,7 @@
       ]
       for (const { action, label, danger } of hardActions) {
         const b = document.createElement('button')
-        b.className = 'hs-pc-btn' + (danger ? ' danger' : '')
+        b.className = `hs-pc-btn${danger ? ' danger' : ''}`
         b.textContent = label
         b.dataset.action = action
         b.dataset.user = username
@@ -8754,7 +8749,7 @@
     }
 
     // Build message history shell (filled async)
-    function buildHistorySection(username) {
+    function buildHistorySection(_username) {
       const section = document.createElement('div')
       section.className = 'hs-pc-section hs-pc-history-section'
       section.style.cssText =
@@ -8795,7 +8790,7 @@
       count.textContent = String(messages.length)
       for (const m of messages) {
         const row = document.createElement('div')
-        row.className = 'hs-pc-history-msg' + (m.system ? ' system' : '')
+        row.className = `hs-pc-history-msg${m.system ? ' system' : ''}`
         const time = document.createElement('span')
         time.className = 'hs-pc-history-time'
         time.textContent = formatChatTime(m.time)
@@ -8829,13 +8824,13 @@
 
       // Follow/unfollow on HeatSync — skip own card and cards with no profile id
       const currentUser = getCurrentUsername()
-      const profileId = profile && profile.id
+      const profileId = profile?.id
       const isSelf = currentUser && username && currentUser.toLowerCase() === username.toLowerCase()
       if (profileId && !isSelf) {
         // Server uses youFollow on /api/profile responses; isFollowing on some other endpoints. Accept either.
         let following = !!(profile.relationship && (profile.relationship.youFollow ?? profile.relationship.isFollowing))
         const followBtn = document.createElement('button')
-        followBtn.className = 'hs-pc-btn hs-pc-follow-btn' + (following ? ' hs-pc-following' : '')
+        followBtn.className = `hs-pc-btn hs-pc-follow-btn${following ? ' hs-pc-following' : ''}`
         followBtn.textContent = following ? 'unfollow' : 'follow'
         followBtn.addEventListener('click', async () => {
           if (followBtn.disabled) return
@@ -9095,8 +9090,8 @@
               if (dragRaf) return
               dragRaf = requestAnimationFrame(() => {
                 dragRaf = null
-                cardEl.style.left = me.clientX - dragX + 'px'
-                cardEl.style.top = me.clientY - dragY + 'px'
+                cardEl.style.left = `${me.clientX - dragX}px`
+                cardEl.style.top = `${me.clientY - dragY}px`
               })
             }
             const onUp = () => {
@@ -9273,7 +9268,7 @@
               } else if (kickLive && !fresh.kick_is_live) {
                 kickLive.remove()
               }
-            } catch (err) {
+            } catch (_err) {
               // Silently ignore poll failures
             }
           }, 10000)
@@ -9302,7 +9297,7 @@
             return
           }
           const actionBtn = e.target.closest('.hs-pc-action, .hs-pc-btn')
-          if (actionBtn && actionBtn.dataset.action && actionBtn.dataset.user) {
+          if (actionBtn?.dataset.action && actionBtn.dataset.user) {
             const opts = {}
             if (actionBtn.dataset.duration) opts.duration = parseInt(actionBtn.dataset.duration, 10)
             handleAction(actionBtn.dataset.action, actionBtn.dataset.user, opts)
@@ -9508,8 +9503,8 @@
       files.find((f) => f.name?.endsWith('.webp')) || files.find((f) => f.name?.endsWith('.avif')) || files[0]
     if (!file) return ''
     const base = badge.host.url || ''
-    const fullBase = base.startsWith('//') ? 'https:' + base : base
-    return (fullBase.endsWith('/') ? fullBase : fullBase + '/') + file.name
+    const fullBase = base.startsWith('//') ? `https:${base}` : base
+    return (fullBase.endsWith('/') ? fullBase : `${fullBase}/`) + file.name
   }
 
   // Apply BTTV/FFZ badges and 7TV paints/badges to a message element
@@ -9892,7 +9887,7 @@
 
   function restoreDeletedMessage(bodyEl, msgId) {
     const entry = originalMessageBodies.get(msgId)
-    if (!entry || !entry.nodes) return
+    if (!entry?.nodes) return
     // Clone the snapshot so the restore is repeatable (e.g. re-render). Strip
     // executable/resource nodes defensively even though Twitch's chat DOM never
     // contains them.
@@ -10167,7 +10162,7 @@
     }
     const addItem = (label, fn, { danger = false, good = false } = {}) => {
       const it = document.createElement('div')
-      it.className = 'hs-em-item' + (danger ? ' hs-em-danger' : '') + (good ? ' hs-em-good' : '')
+      it.className = `hs-em-item${danger ? ' hs-em-danger' : ''}${good ? ' hs-em-good' : ''}`
       const lab = document.createElement('span')
       lab.className = 'hs-em-label'
       lab.textContent = label
@@ -10399,7 +10394,7 @@
             if (!cosmeticsEnabled || isKick) return
             if (mutation.attributeName !== 'data-user-id') return
             const el = mutation.target
-            if (!el || !el.classList?.contains('chat-line__message')) return
+            if (!el?.classList?.contains('chat-line__message')) return
             const userId = el.getAttribute('data-user-id')
             if (!userId) return
             if (el.dataset.hsCosmeticUserId === userId) return
@@ -10432,7 +10427,7 @@
                 if (!node.dataset.heatsyncUsernamesColored) newColoringMessages.push(node)
               }
               // Check if it has chat-line__message inside
-              else if (node.querySelector && node.querySelector('.chat-line__message')) {
+              else if (node.querySelector?.('.chat-line__message')) {
                 node.querySelectorAll('.chat-line__message').forEach((msg) => pushToQueue(msg))
                 // Username-coloring fallback: collect uncolored inner messages
                 for (const msg of node.querySelectorAll(
@@ -10591,7 +10586,7 @@
                 // highlightMentions off had no effect (dead toggle).
                 if (_uiPrefs.highlightMentions) highlightUserMentions(msg)
                 colorUsernameMentions(msg)
-                if (msg.dataset.heatsyncGeneration != emoteGeneration) {
+                if (msg.dataset.heatsyncGeneration !== emoteGeneration) {
                   stackAdjacentOverlayEmotes(msg, allEmotes)
                 }
               }
@@ -11158,7 +11153,7 @@
     const wordToReplace = tabCompleteState.lastInserted || tabCompleteState.originalWord || ''
 
     const replaceLen = wordToReplace.length
-    const textToInsert = emoteName + ' '
+    const textToInsert = `${emoteName} `
 
     if (element.isContentEditable) {
       // Kick: contenteditable div.editor-input
@@ -11464,7 +11459,7 @@
                 emoteHash: emote.hash,
               })
                 .then((response) => {
-                  if (response && response.success) {
+                  if (response?.success) {
                     log(' ✅ Emote broadcast sent successfully')
                   } else {
                     warn(' ⚠️ Emote broadcast FAILED:', response)

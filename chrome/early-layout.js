@@ -24,7 +24,7 @@
   // saveChatWidth + saveChatHeight). All keys optional; fall back to defaults.
   function readLS(key, def) {
     try {
-      const v = localStorage.getItem('hs_layout_' + key)
+      const v = localStorage.getItem(`hs_layout_${key}`)
       if (v == null) return def
       try {
         return JSON.parse(v)
@@ -207,9 +207,9 @@ ${
   function applyBodyClasses() {
     const body = document.body
     if (!body) return false
-    body.classList.add('hs-platform-' + platform)
-    body.classList.add('hs-tabs-' + tabPosition)
-    body.classList.add('hs-chat-' + chatPosition)
+    body.classList.add(`hs-platform-${platform}`)
+    body.classList.add(`hs-tabs-${tabPosition}`)
+    body.classList.add(`hs-chat-${chatPosition}`)
     if (isPopout) body.classList.add('hs-popout')
     // YT boot state must be RIGHT from the first frame: the layout CSS
     // reserves the panel column via :not(.hs-offline), and YT measures its

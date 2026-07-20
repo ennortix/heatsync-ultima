@@ -107,7 +107,7 @@ function handleAuthIrcMessage(event) {
     if (!line) continue
     if (line.startsWith('PING')) {
       try {
-        authState.ws.send(line.replace('PING', 'PONG') + '\r\n')
+        authState.ws.send(`${line.replace('PING', 'PONG')}\r\n`)
       } catch {}
       continue
     }
@@ -227,7 +227,7 @@ async function connectAuthIrc(token, nick) {
         for (const l of event.data.split('\r\n')) {
           if (l.startsWith('PING'))
             try {
-              ws.send(l.replace('PING', 'PONG') + '\r\n')
+              ws.send(`${l.replace('PING', 'PONG')}\r\n`)
             } catch {}
         }
       }
@@ -322,14 +322,14 @@ async function drainSendQueue() {
       const qPrefix = replyParentId ? `@reply-parent-msg-id=${replyParentId} ` : ''
       authState.ws.send(`${qPrefix}PRIVMSG #${channel} :${text}\r\n`)
       authState.sendQueue.shift()
-      log('Drained queued msg to #' + channel)
+      log(`Drained queued msg to #${channel}`)
     } catch {
       break // leave at queue head, retry next drain
     }
   }
 }
 
-async function sendIrcMessage(channel, text, token, replyParentId, overrideNick) {
+async function _sendIrcMessage(channel, text, token, replyParentId, overrideNick) {
   const nick = overrideNick || currentUsername || getCurrentUsername()
   if (!nick) return 'no_user'
   channel = channel.toLowerCase()

@@ -1936,9 +1936,9 @@ function coerceSettingValue(def, v) {
       return !!v
     case 'enum': {
       const opts = /** @type {SettingOption[]} */ (def.options)
-      if (opts && opts.some((o) => o.value === v)) return v
+      if (opts?.some((o) => o.value === v)) return v
       // tolerate string/number mismatch ('2' vs 2) from DOM datasets
-      var loose = opts && opts.find((o) => String(o.value) === String(v))
+      var loose = opts?.find((o) => String(o.value) === String(v))
       return loose ? loose.value : undefined
     }
     case 'range': {
@@ -1986,73 +1986,73 @@ function lintSettings(syncBlocklist) {
   var syncDefaults = {}
   for (var i = 0; i < SETTINGS.length; i++) {
     var def = SETTINGS[i]
-    if (seen.has(def.key)) problems.push('duplicate key: ' + def.key)
+    if (seen.has(def.key)) problems.push(`duplicate key: ${def.key}`)
     seen.add(def.key)
     if (def.alias) {
-      if (aliases.has(def.alias)) problems.push('duplicate alias: ' + def.alias)
+      if (aliases.has(def.alias)) problems.push(`duplicate alias: ${def.alias}`)
       aliases.add(def.alias)
     }
-    if (!validateSettingValue(def, def.default)) problems.push('default fails validate: ' + def.key)
-    if (!['sync', 'local', 'local-mirror'].includes(def.scope)) problems.push('bad scope: ' + def.key)
+    if (!validateSettingValue(def, def.default)) problems.push(`default fails validate: ${def.key}`)
+    if (!['sync', 'local', 'local-mirror'].includes(def.scope)) problems.push(`bad scope: ${def.key}`)
     if (def.scope === 'sync' && syncBlocklist && syncBlocklist.has(def.key)) {
-      problems.push('sync-scoped key is in UI_SYNC_BLOCKLIST: ' + def.key)
+      problems.push(`sync-scoped key is in UI_SYNC_BLOCKLIST: ${def.key}`)
     }
     if (def.scope === 'local-mirror') {
-      if (!def.mirrorKey) problems.push('local-mirror without mirrorKey: ' + def.key)
+      if (!def.mirrorKey) problems.push(`local-mirror without mirrorKey: ${def.key}`)
       if (syncBlocklist && !syncBlocklist.has(def.key)) {
-        problems.push('local-mirror key missing from UI_SYNC_BLOCKLIST: ' + def.key)
+        problems.push(`local-mirror key missing from UI_SYNC_BLOCKLIST: ${def.key}`)
       }
     }
     if (def.scope === 'local' && !/^(hs|viewer)_/.test(def.key)) {
-      problems.push('local key outside hs_/viewer_ namespace (breaks export/import): ' + def.key)
+      problems.push(`local key outside hs_/viewer_ namespace (breaks export/import): ${def.key}`)
     }
-    if (!def.label && !def.labelKey) problems.push('no label: ' + def.key)
+    if (!def.label && !def.labelKey) problems.push(`no label: ${def.key}`)
     if (def.type === 'boolmap') {
       var boolmapOpts = /** @type {SettingOption[]} */ (def.options)
       var optVals = boolmapOpts ? boolmapOpts.map((o) => o.value) : []
       var defKeys = Object.keys(def.default)
       if (optVals.length !== defKeys.length || !optVals.every((k) => defKeys.indexOf(k) !== -1)) {
-        problems.push('boolmap default/options key mismatch: ' + def.key)
+        problems.push(`boolmap default/options key mismatch: ${def.key}`)
       }
       if (boolmapOpts)
         boolmapOpts.forEach((o) => {
           if (def.default[o.value] !== o.default)
-            problems.push('boolmap per-option default disagrees with default map: ' + def.key + '.' + o.value)
+            problems.push(`boolmap per-option default disagrees with default map: ${def.key}.${o.value}`)
         })
     }
     if (def.cw && (!def.cw.stateKey || !def.cw.serverBody || !def.cw.noun)) {
-      problems.push('cw sub-shape incomplete: ' + def.key)
+      problems.push(`cw sub-shape incomplete: ${def.key}`)
     }
     if (def.dependsOn) {
       const depKey = def.dependsOn.key
-      if (!SETTINGS.some((d) => d.key === depKey)) problems.push('dependsOn unknown key: ' + def.key)
+      if (!SETTINGS.some((d) => d.key === depKey)) problems.push(`dependsOn unknown key: ${def.key}`)
     }
     if (def.scope === 'sync') syncDefaults[def.key] = def.default
   }
   // 8 KB sync quota headroom — defaults must leave room for user values
   var size = JSON.stringify(syncDefaults).length
-  if (size > 7000) problems.push('sync defaults too large: ' + size + ' bytes')
+  if (size > 7000) problems.push(`sync defaults too large: ${size} bytes`)
   // preset diffs must reference real keys with valid values
   var presetIds = new Set()
   for (var p = 0; p < SETTINGS_PRESETS.length; p++) {
     var preset = SETTINGS_PRESETS[p]
-    if (presetIds.has(preset.id)) problems.push('duplicate preset id: ' + preset.id)
+    if (presetIds.has(preset.id)) problems.push(`duplicate preset id: ${preset.id}`)
     presetIds.add(preset.id)
     for (var dk in preset.diff) {
       var target = SETTINGS.find((d) => d.key === dk)
       if (!target) {
-        problems.push('preset ' + preset.id + ' references unknown key: ' + dk)
+        problems.push(`preset ${preset.id} references unknown key: ${dk}`)
         continue
       }
       if (!validateSettingValue(target, preset.diff[dk])) {
-        problems.push('preset ' + preset.id + ' has invalid value for: ' + dk)
+        problems.push(`preset ${preset.id} has invalid value for: ${dk}`)
       }
       // boolmap diffs must carry every option key — coerce merges partial
       // maps over defaults, silently reverting user-toggled missing keys
       if (target.type === 'boolmap') {
         for (var bk in target.default) {
           if (!(bk in preset.diff[dk])) {
-            problems.push('preset ' + preset.id + ' boolmap diff missing key: ' + dk + '.' + bk)
+            problems.push(`preset ${preset.id} boolmap diff missing key: ${dk}.${bk}`)
           }
         }
       }

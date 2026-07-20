@@ -33,7 +33,7 @@
   const HS_EMOTE_BASE_PX = 28
   function applyEmoteSize(size) {
     const n = parseFloat(size) || 1
-    document.documentElement.style.setProperty('--hs-emote-height', HS_EMOTE_BASE_PX * n + 'px')
+    document.documentElement.style.setProperty('--hs-emote-height', `${HS_EMOTE_BASE_PX * n}px`)
   }
 
   // ─── Emote Inventory ─────────────────────────────────────────────────────────
@@ -321,8 +321,8 @@
       files.find((f) => f.name?.endsWith('.webp')) || files.find((f) => f.name?.endsWith('.avif')) || files[0]
     if (!file) return ''
     const base = badge.host.url || ''
-    const fullBase = base.startsWith('//') ? 'https:' + base : base
-    return (fullBase.endsWith('/') ? fullBase : fullBase + '/') + file.name
+    const fullBase = base.startsWith('//') ? `https:${base}` : base
+    return (fullBase.endsWith('/') ? fullBase : `${fullBase}/`) + file.name
   }
 
   function applyPaintToElement(el, paint) {
@@ -381,7 +381,7 @@
     // Guard: this is called after async cosmetics fetch (~1-2s); the message
     // node may have been recycled by YouTube's chat virtualizer or the page
     // may have torn down. Avoid mutating detached DOM.
-    if (!node || !node.isConnected) return
+    if (!node?.isConnected) return
     const cosmetic = ytCosmeticsCache.get(username)
     if (!cosmetic) return
 
@@ -830,7 +830,7 @@
       g = parseInt(m[2], 10),
       b = parseInt(m[3], 10)
     if (r > 200 && g > 200 && b > 200) return '#ffffff'
-    return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)
+    return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`
   }
 
   function extractAvatar(el) {
@@ -898,7 +898,7 @@
     let messageEl = null
     for (const sel of ['#message', '#header-subtext', '#header-primary-text', '#primary-text']) {
       const e = el.querySelector(sel)
-      if (e && e.textContent && e.textContent.trim()) {
+      if (e?.textContent?.trim()) {
         messageEl = e
         break
       }
@@ -1291,7 +1291,7 @@
     autocompleteEl.textContent = ''
     matches.forEach((emote, i) => {
       const item = document.createElement('div')
-      item.className = 'hs-yt-ac-item' + (i === 0 ? ' selected' : '')
+      item.className = `hs-yt-ac-item${i === 0 ? ' selected' : ''}`
       item.dataset.index = String(i)
 
       if (!emote.isChatter) {
@@ -1308,7 +1308,7 @@
 
       const vis = hsVisTag(emote)
       const visSpan = document.createElement('span')
-      visSpan.className = 'hs-yt-ac-vis ' + vis.cls
+      visSpan.className = `hs-yt-ac-vis ${vis.cls}`
       visSpan.textContent = vis.t
       item.appendChild(visSpan)
 
@@ -1352,7 +1352,7 @@
 
     const before = text.substring(0, wordStart)
     const after = text.substring(offset)
-    node.textContent = before + emoteName + ' ' + after
+    node.textContent = `${before + emoteName} ${after}`
 
     const newOffset = wordStart + emoteName.length + 1
     range.setStart(node, newOffset)
@@ -1417,7 +1417,7 @@
     'contextmenu',
     (e) => {
       const img = e.target
-      if (!img || img.nodeName !== 'IMG' || !img.classList.contains('heatsync-emote-yt')) return
+      if (img?.nodeName !== 'IMG' || !img.classList.contains('heatsync-emote-yt')) return
       e.preventDefault()
       e.stopImmediatePropagation()
       const emoteName = img.alt || img.title || ''
@@ -1432,7 +1432,7 @@
           img.style.opacity = ''
           showYtToast('Block failed')
         } else {
-          showYtToast('Blocked: ' + escapeHtml(emote.name))
+          showYtToast(`Blocked: ${escapeHtml(emote.name)}`)
         }
       })
     },
@@ -1462,7 +1462,7 @@
       sel.addRange(range)
     }
 
-    const textNode = document.createTextNode(emoteName + ' ')
+    const textNode = document.createTextNode(`${emoteName} `)
     range.deleteContents()
     range.insertNode(textNode)
     range.setStartAfter(textNode)
@@ -1470,7 +1470,7 @@
     sel.removeAllRanges()
     sel.addRange(range)
 
-    input.dispatchEvent(new InputEvent('input', { bubbles: true, data: emoteName + ' ', inputType: 'insertText' }))
+    input.dispatchEvent(new InputEvent('input', { bubbles: true, data: `${emoteName} `, inputType: 'insertText' }))
   }
 
   // ─── Send Relay ───────────────────────────────────────────────────────────────
@@ -1495,7 +1495,7 @@
     // mode, members-only, follower age gates) — the restricted renderer carries
     // the human reason. Surface it instead of a generic failure (lofigirl case:
     // logged-in non-subscriber gets NO input, send died as an opaque toast).
-    if (!inputRenderer || !inputRenderer.querySelector('div#input[contenteditable]')) {
+    if (!inputRenderer?.querySelector('div#input[contenteditable]')) {
       const restricted = document.querySelector('yt-live-chat-restricted-participation-renderer')
       const reason = restricted?.querySelector('#message, yt-formatted-string')?.textContent?.trim()
       if (reason) return { ok: false, error: 'chat_restricted', reason }
@@ -1626,7 +1626,7 @@
   async function _ytSapisidHash() {
     const ck = document.cookie
     const get = (n) => {
-      const m = ck.match(new RegExp('(?:^|; )' + n + '=([^;]+)'))
+      const m = ck.match(new RegExp(`(?:^|; )${n}=([^;]+)`))
       return m ? m[1] : null
     }
     const sapisid = get('SAPISID') || get('__Secure-3PAPISID') || get('__Secure-1PAPISID')
@@ -1664,7 +1664,7 @@
     return items
       .map((it) => {
         const m = it.menuServiceItemRenderer
-        return (m?.icon?.iconType || '?') + ':' + ytItemText(m) + (ytItemModEndpoint(m) ? ':MOD' : '')
+        return `${m?.icon?.iconType || '?'}:${ytItemText(m)}${ytItemModEndpoint(m) ? ':MOD' : ''}`
       })
       .join(' | ')
   }
@@ -1690,7 +1690,7 @@
       if (!fireEp) {
         // Not a mod (no moderate items at all) vs. mod but this verb didn't map
         // (YT changed text/icon) — both fail loud; the log reveals ground truth.
-        log('yt mod: no "' + action + '" item (sawMod=' + sawMod + '); menu=' + _ytMenuDebug(items))
+        log(`yt mod: no "${action}" item (sawMod=${sawMod}); menu=${_ytMenuDebug(items)}`)
         return { ok: false, error: sawMod ? 'action_unmapped' : 'not_moderator' }
       }
 
@@ -1729,7 +1729,7 @@
       const isMod = ytHasModItems(items)
       // Ground-truth diagnostic: reveals YT's real item text/icons so the verb
       // mapping can be corrected if YT ever diverges. (log() is debug-gated.)
-      log('yt mod probe: isMod=' + isMod + ' menu=' + _ytMenuDebug(items))
+      log(`yt mod probe: isMod=${isMod} menu=${_ytMenuDebug(items)}`)
       chrome.storage.local.set({ hs_yt_mod_status: { isMod, ts: Date.now() } }, () => void chrome.runtime.lastError)
     } catch {
       _ytModProbed = false // let a later message retry

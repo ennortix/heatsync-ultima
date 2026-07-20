@@ -175,7 +175,7 @@ function findComponent(startEl, predicate, maxDepth = 50) {
       if (inst && predicate(inst, fiber)) {
         return { instance: inst, fiber }
       }
-    } catch (e) {}
+    } catch (_e) {}
     fiber = fiber.return
     depth++
   }
@@ -272,7 +272,7 @@ function boostReadability(hex, minRelL = 0.25) {
     Math.round(x * 255)
       .toString(16)
       .padStart(2, '0')
-  return '#' + toByte(rr) + toByte(gg) + toByte(bb)
+  return `#${toByte(rr)}${toByte(gg)}${toByte(bb)}`
 }
 
 function log(...args) {

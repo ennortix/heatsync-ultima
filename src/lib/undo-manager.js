@@ -72,7 +72,7 @@ export class UndoManager {
           return
         }
         img.dataset.hsRetried = '1'
-        const bust = img.src + (img.src.includes('?') ? '&' : '?') + 'r=' + Date.now()
+        const bust = `${img.src + (img.src.includes('?') ? '&' : '?')}r=${Date.now()}`
         img.src = bust
       })
     }
@@ -80,7 +80,7 @@ export class UndoManager {
 
   _getCharOffset() {
     const sel = window.getSelection()
-    if (!sel || !sel.rangeCount) return 0
+    if (!sel?.rangeCount) return 0
     const range = sel.getRangeAt(0)
     if (!this.input.contains(range.startContainer)) return 0
     let offset = 0

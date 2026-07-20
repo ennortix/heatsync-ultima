@@ -1,7 +1,7 @@
 // Bootstrap - lifecycle controller, cleanup utilities, debug log
 
 const MC_DEBUG = false
-function log(...args) {
+function _log(...args) {
   if (MC_DEBUG) console.log(LOG_PREFIX, ...args)
 }
 
@@ -57,13 +57,13 @@ mcSignal.addEventListener('abort', () => {
   for (const { target, fn } of _trackedListeners) {
     try {
       target.removeListener(fn)
-    } catch (e) {}
+    } catch (_e) {}
   }
   _trackedListeners.length = 0
   for (const n of _trackedNodes) {
     try {
       n.remove()
-    } catch (e) {}
+    } catch (_e) {}
   }
   _trackedNodes.length = 0
   if (irc) {
@@ -157,7 +157,7 @@ function _hsBuildDbg() {
         out[ch] = { count: buf?.getAll?.()?.length ?? 0 }
       }
     } catch (e) {
-      return 'err: ' + e?.message
+      return `err: ${e?.message}`
     }
     return out
   }
@@ -168,7 +168,7 @@ function _hsBuildDbg() {
       const hits = entries.filter(([, v]) => v != null).length
       return { size: kickNameResolved.size, hits, sample: entries.slice(0, 10) }
     } catch (e) {
-      return 'err: ' + e?.message
+      return `err: ${e?.message}`
     }
   })()
   const kickPending = (() => {
@@ -176,7 +176,7 @@ function _hsBuildDbg() {
       if (typeof kickNameLookupPending === 'undefined') return 'no kickNameLookupPending'
       return { pending: kickNameLookupPending.size, sample: [...kickNameLookupPending].slice(0, 10) }
     } catch (e) {
-      return 'err: ' + e?.message
+      return `err: ${e?.message}`
     }
   })()
   return {
@@ -209,7 +209,7 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
       try {
         document.documentElement.dataset.hsDbg = JSON.stringify(_hsBuildDbg())
       } catch (e) {
-        document.documentElement.dataset.hsDbg = 'err:' + (e?.message || 'unknown')
+        document.documentElement.dataset.hsDbg = `err:${e?.message || 'unknown'}`
       }
     },
     { capture: true, signal: mcSignal },
@@ -254,7 +254,7 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
           mapTotal: twitchBadgeUrls.size,
         })
       } catch (err) {
-        document.documentElement.dataset.hsDbgTwitchBadgesLookup = 'err:' + (err?.message || 'unknown')
+        document.documentElement.dataset.hsDbgTwitchBadgesLookup = `err:${err?.message || 'unknown'}`
       }
     },
     { capture: true, signal: mcSignal },
@@ -279,7 +279,7 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
           sample,
         })
       } catch (e) {
-        document.documentElement.dataset.hsDbgTwitchBadges = 'err:' + (e?.message || 'unknown')
+        document.documentElement.dataset.hsDbgTwitchBadges = `err:${e?.message || 'unknown'}`
       }
     },
     { capture: true, signal: mcSignal },
@@ -353,7 +353,7 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
             sendMessage()
           } catch (sendErr) {
             document.documentElement.dataset.hsDbgTestSend = JSON.stringify({
-              err: 'sendMessage threw: ' + sendErr?.message,
+              err: `sendMessage threw: ${sendErr?.message}`,
             })
             return
           }
@@ -392,7 +392,7 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
           const resp = await chrome.runtime.sendMessage({ type: 'dbg_kick_tap' })
           document.documentElement.dataset.hsDbgKickTap = JSON.stringify(resp)
         } catch (e) {
-          document.documentElement.dataset.hsDbgKickTap = 'err:' + (e?.message || 'unknown')
+          document.documentElement.dataset.hsDbgKickTap = `err:${e?.message || 'unknown'}`
         }
       })()
     },
@@ -456,7 +456,7 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
         }
         document.documentElement.dataset.hsDbgAuthIrc = JSON.stringify(out)
       } catch (e) {
-        document.documentElement.dataset.hsDbgAuthIrc = 'err:' + (e?.message || 'unknown')
+        document.documentElement.dataset.hsDbgAuthIrc = `err:${e?.message || 'unknown'}`
       }
     },
     { capture: true, signal: mcSignal },
@@ -479,7 +479,7 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
           inflight,
         })
       } catch (e) {
-        document.documentElement.dataset.hsDbgKickBadgeUrls = 'err:' + (e?.message || 'unknown')
+        document.documentElement.dataset.hsDbgKickBadgeUrls = `err:${e?.message || 'unknown'}`
       }
     },
     { capture: true, signal: mcSignal },
@@ -505,7 +505,7 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
         }
         document.documentElement.dataset.hsDbgKickBadges = JSON.stringify(out)
       } catch (e) {
-        document.documentElement.dataset.hsDbgKickBadges = 'err:' + (e?.message || 'unknown')
+        document.documentElement.dataset.hsDbgKickBadges = `err:${e?.message || 'unknown'}`
       }
     },
     { capture: true, signal: mcSignal },
@@ -535,7 +535,7 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
           blockedAll: blockedAll?.slice(-20),
         })
       } catch (err) {
-        document.documentElement.dataset.hsDbgAlias = 'err:' + (err?.message || 'unknown')
+        document.documentElement.dataset.hsDbgAlias = `err:${err?.message || 'unknown'}`
       }
     },
     { capture: true, signal: mcSignal },
@@ -566,7 +566,7 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
         }
         document.documentElement.dataset.hsDbg3 = JSON.stringify(out)
       } catch (err) {
-        document.documentElement.dataset.hsDbg3 = 'err:' + (err?.message || 'unknown')
+        document.documentElement.dataset.hsDbg3 = `err:${err?.message || 'unknown'}`
       }
     },
     { capture: true, signal: mcSignal },
@@ -633,7 +633,7 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
         }
         document.documentElement.dataset.hsDbgEmotes = JSON.stringify(out)
       } catch (err) {
-        document.documentElement.dataset.hsDbgEmotes = 'err:' + (err?.message || 'unknown')
+        document.documentElement.dataset.hsDbgEmotes = `err:${err?.message || 'unknown'}`
       }
     },
     { capture: true, signal: mcSignal },
@@ -680,7 +680,7 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
         }
         document.documentElement.dataset.hsDbgDeep = JSON.stringify(out)
       } catch (err) {
-        document.documentElement.dataset.hsDbgDeep = 'err:' + (err?.message || 'unknown')
+        document.documentElement.dataset.hsDbgDeep = `err:${err?.message || 'unknown'}`
       }
     },
     { capture: true, signal: mcSignal },
@@ -718,7 +718,7 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
           sample,
         })
       } catch (err) {
-        document.documentElement.dataset.hsDbg2 = 'err:' + (err?.message || 'unknown')
+        document.documentElement.dataset.hsDbg2 = `err:${err?.message || 'unknown'}`
       }
     },
     { capture: true, signal: mcSignal },
@@ -852,7 +852,7 @@ function _hsPerfWrap(fn, ms, kind) {
             n.id = 'hs-perf-log'
             document.documentElement.appendChild(n)
           }
-          n.textContent += JSON.stringify({ kind, dur: Math.round(d), at: Math.round(t), src }) + '\n'
+          n.textContent += `${JSON.stringify({ kind, dur: Math.round(d), at: Math.round(t), src })}\n`
           if (n.textContent.length > 40000) n.textContent = n.textContent.slice(-20000)
         } catch {}
       }
@@ -864,7 +864,7 @@ function _hsPerfWrap(fn, ms, kind) {
 // panel. Identical contract to content.js side: budget-yield chunking, pause
 // while user is actively scrolling, scheduler.postTask priority. Keeps a
 // 5-channel hydration from holding the main thread > ~4ms per slice.
-const hsSched = (() => {
+const _hsSched = (() => {
   let _scrollIdle = true
   let _scrollIdleTimer = null
   const markBusy = () => {
@@ -903,7 +903,7 @@ const hsSched = (() => {
           () => {
             try {
               r(fn())
-            } catch (e) {
+            } catch (_e) {
               r()
             }
           },
@@ -915,7 +915,7 @@ const hsSched = (() => {
       setTimeout(() => {
         try {
           r(fn())
-        } catch (e) {
+        } catch (_e) {
           r()
         }
       }, 0),
@@ -927,7 +927,7 @@ const hsSched = (() => {
       if (respectScroll && !_scrollIdle) await untilIdle()
       try {
         await fn(items[i], i)
-      } catch (e) {}
+      } catch (_e) {}
       if (performance.now() - t0 > budgetMs) {
         await _yield()
         t0 = performance.now()
@@ -945,7 +945,7 @@ const hsSched = (() => {
   }
 })()
 
-const cleanup = {
+const _cleanup = {
   setInterval(fn, ms) {
     const id = setInterval(_hsPerfWrap(fn, ms, 'interval'), ms)
     _timers.intervals.push(id)
@@ -1003,7 +1003,7 @@ const cleanup = {
     if (!obs) return
     try {
       obs.disconnect()
-    } catch (e) {}
+    } catch (_e) {}
     const i = _timers.observers.indexOf(obs)
     if (i !== -1) _timers.observers.splice(i, 1)
   },

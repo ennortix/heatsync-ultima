@@ -172,8 +172,8 @@
     }
 
     const rect = emote.getBoundingClientRect()
-    tooltip.style.left = rect.left + rect.width / 2 + 'px'
-    tooltip.style.top = rect.top - 8 + 'px'
+    tooltip.style.left = `${rect.left + rect.width / 2}px`
+    tooltip.style.top = `${rect.top - 8}px`
     tooltip.classList.add('active')
   }
 
@@ -265,7 +265,7 @@
   async function loadFollowedUsers() {
     try {
       const response = await chrome.runtime.sendMessage({ type: 'get_followed_users' })
-      if (response && response.users) {
+      if (response?.users) {
         followedUsers = new Set(response.users)
         log(' Loaded followed users:', followedUsers.size)
       }

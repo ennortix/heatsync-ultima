@@ -1167,7 +1167,7 @@ function findComponent(startEl, predicate, maxDepth = 50) {
       if (inst && predicate(inst, fiber)) {
         return { instance: inst, fiber }
       }
-    } catch (e) {}
+    } catch (_e) {}
     fiber = fiber.return
     depth++
   }
@@ -1264,7 +1264,7 @@ function boostReadability(hex, minRelL = 0.25) {
     Math.round(x * 255)
       .toString(16)
       .padStart(2, '0')
-  return '#' + toByte(rr) + toByte(gg) + toByte(bb)
+  return `#${toByte(rr)}${toByte(gg)}${toByte(bb)}`
 }
 
 function log(...args) {
@@ -3736,9 +3736,9 @@ function coerceSettingValue(def, v) {
       return !!v
     case 'enum': {
       const opts = /** @type {SettingOption[]} */ (def.options)
-      if (opts && opts.some((o) => o.value === v)) return v
+      if (opts?.some((o) => o.value === v)) return v
       // tolerate string/number mismatch ('2' vs 2) from DOM datasets
-      var loose = opts && opts.find((o) => String(o.value) === String(v))
+      var loose = opts?.find((o) => String(o.value) === String(v))
       return loose ? loose.value : undefined
     }
     case 'range': {
@@ -3786,73 +3786,73 @@ function lintSettings(syncBlocklist) {
   var syncDefaults = {}
   for (var i = 0; i < SETTINGS.length; i++) {
     var def = SETTINGS[i]
-    if (seen.has(def.key)) problems.push('duplicate key: ' + def.key)
+    if (seen.has(def.key)) problems.push(`duplicate key: ${def.key}`)
     seen.add(def.key)
     if (def.alias) {
-      if (aliases.has(def.alias)) problems.push('duplicate alias: ' + def.alias)
+      if (aliases.has(def.alias)) problems.push(`duplicate alias: ${def.alias}`)
       aliases.add(def.alias)
     }
-    if (!validateSettingValue(def, def.default)) problems.push('default fails validate: ' + def.key)
-    if (!['sync', 'local', 'local-mirror'].includes(def.scope)) problems.push('bad scope: ' + def.key)
+    if (!validateSettingValue(def, def.default)) problems.push(`default fails validate: ${def.key}`)
+    if (!['sync', 'local', 'local-mirror'].includes(def.scope)) problems.push(`bad scope: ${def.key}`)
     if (def.scope === 'sync' && syncBlocklist && syncBlocklist.has(def.key)) {
-      problems.push('sync-scoped key is in UI_SYNC_BLOCKLIST: ' + def.key)
+      problems.push(`sync-scoped key is in UI_SYNC_BLOCKLIST: ${def.key}`)
     }
     if (def.scope === 'local-mirror') {
-      if (!def.mirrorKey) problems.push('local-mirror without mirrorKey: ' + def.key)
+      if (!def.mirrorKey) problems.push(`local-mirror without mirrorKey: ${def.key}`)
       if (syncBlocklist && !syncBlocklist.has(def.key)) {
-        problems.push('local-mirror key missing from UI_SYNC_BLOCKLIST: ' + def.key)
+        problems.push(`local-mirror key missing from UI_SYNC_BLOCKLIST: ${def.key}`)
       }
     }
     if (def.scope === 'local' && !/^(hs|viewer)_/.test(def.key)) {
-      problems.push('local key outside hs_/viewer_ namespace (breaks export/import): ' + def.key)
+      problems.push(`local key outside hs_/viewer_ namespace (breaks export/import): ${def.key}`)
     }
-    if (!def.label && !def.labelKey) problems.push('no label: ' + def.key)
+    if (!def.label && !def.labelKey) problems.push(`no label: ${def.key}`)
     if (def.type === 'boolmap') {
       var boolmapOpts = /** @type {SettingOption[]} */ (def.options)
       var optVals = boolmapOpts ? boolmapOpts.map((o) => o.value) : []
       var defKeys = Object.keys(def.default)
       if (optVals.length !== defKeys.length || !optVals.every((k) => defKeys.indexOf(k) !== -1)) {
-        problems.push('boolmap default/options key mismatch: ' + def.key)
+        problems.push(`boolmap default/options key mismatch: ${def.key}`)
       }
       if (boolmapOpts)
         boolmapOpts.forEach((o) => {
           if (def.default[o.value] !== o.default)
-            problems.push('boolmap per-option default disagrees with default map: ' + def.key + '.' + o.value)
+            problems.push(`boolmap per-option default disagrees with default map: ${def.key}.${o.value}`)
         })
     }
     if (def.cw && (!def.cw.stateKey || !def.cw.serverBody || !def.cw.noun)) {
-      problems.push('cw sub-shape incomplete: ' + def.key)
+      problems.push(`cw sub-shape incomplete: ${def.key}`)
     }
     if (def.dependsOn) {
       const depKey = def.dependsOn.key
-      if (!SETTINGS.some((d) => d.key === depKey)) problems.push('dependsOn unknown key: ' + def.key)
+      if (!SETTINGS.some((d) => d.key === depKey)) problems.push(`dependsOn unknown key: ${def.key}`)
     }
     if (def.scope === 'sync') syncDefaults[def.key] = def.default
   }
   // 8 KB sync quota headroom — defaults must leave room for user values
   var size = JSON.stringify(syncDefaults).length
-  if (size > 7000) problems.push('sync defaults too large: ' + size + ' bytes')
+  if (size > 7000) problems.push(`sync defaults too large: ${size} bytes`)
   // preset diffs must reference real keys with valid values
   var presetIds = new Set()
   for (var p = 0; p < SETTINGS_PRESETS.length; p++) {
     var preset = SETTINGS_PRESETS[p]
-    if (presetIds.has(preset.id)) problems.push('duplicate preset id: ' + preset.id)
+    if (presetIds.has(preset.id)) problems.push(`duplicate preset id: ${preset.id}`)
     presetIds.add(preset.id)
     for (var dk in preset.diff) {
       var target = SETTINGS.find((d) => d.key === dk)
       if (!target) {
-        problems.push('preset ' + preset.id + ' references unknown key: ' + dk)
+        problems.push(`preset ${preset.id} references unknown key: ${dk}`)
         continue
       }
       if (!validateSettingValue(target, preset.diff[dk])) {
-        problems.push('preset ' + preset.id + ' has invalid value for: ' + dk)
+        problems.push(`preset ${preset.id} has invalid value for: ${dk}`)
       }
       // boolmap diffs must carry every option key — coerce merges partial
       // maps over defaults, silently reverting user-toggled missing keys
       if (target.type === 'boolmap') {
         for (var bk in target.default) {
           if (!(bk in preset.diff[dk])) {
-            problems.push('preset ' + preset.id + ' boolmap diff missing key: ' + dk + '.' + bk)
+            problems.push(`preset ${preset.id} boolmap diff missing key: ${dk}.${bk}`)
           }
         }
       }
@@ -4515,7 +4515,7 @@ function hsModPeelChain(word) {
 
 function hsModClassify(word, opts) {
   if (!word) return { kind: 'plain' }
-  const allowPrefix = opts && opts.allowPrefix
+  const allowPrefix = opts?.allowPrefix
   const exact = HS_MOD_TOKENS[word]
   if (exact) return { kind: 'modifier', mods: [exact], hue: null, words: [word] }
   const cm = word.match(HS_MOD_C_HEX_RE)
@@ -4572,7 +4572,7 @@ function hsModComposeAnimClasses(mods) {
 }
 
 function hsModRead(el) {
-  if (!el || !el.dataset) return { mods: [], hue: null, words: [] }
+  if (!el?.dataset) return { mods: [], hue: null, words: [] }
   return {
     mods: el.dataset.hsMods ? el.dataset.hsMods.split(',').filter(Boolean) : [],
     hue: el.dataset.hsHue != null && el.dataset.hsHue !== '' ? Number(el.dataset.hsHue) : null,
@@ -4589,7 +4589,7 @@ function hsModTransformStr(sx, sy, rotate) {
 
 function hsModApplyToImg(img, addMods, addHue, addWords, opts) {
   if (!img) return
-  const additive = !opts || opts.additive !== false
+  const additive = opts?.additive !== false
   const cur = hsModRead(img)
   const finalMods = additive ? cur.mods.concat(addMods || []) : addMods || []
   const finalWords = additive ? cur.words.concat(addWords || []) : addWords || []
@@ -4643,13 +4643,13 @@ function hsModBuildStyleAttr(mods, hue) {
 // the string-render path, which can't carry an inline style-only animation).
 function hsModAnimClassAttr(mods) {
   const classes = hsModComposeAnimClasses(mods)
-  return classes.length ? ' ' + classes.join(' ') : ''
+  return classes.length ? ` ${classes.join(' ')}` : ''
 }
 
 // Used by multichat string-render to attach modifier styles to emote wrappers.
 function hsModInjectWrapperStyle(html, styleStr) {
   if (!styleStr) return html
-  return html.replace(/^(<span[^>]*?)(\sstyle="([^"]*)")?(>)/, (m, p1, _full, existing, gt) => {
+  return html.replace(/^(<span[^>]*?)(\sstyle="([^"]*)")?(>)/, (_m, p1, _full, existing, gt) => {
     if (existing) return `${p1} style="${existing};${styleStr}"${gt}`
     return `${p1} style="${styleStr}"${gt}`
   })
@@ -4660,7 +4660,7 @@ function hsModInjectWrapperStyle(html, styleStr) {
 function hsModWordsFromState(mods, hue) {
   const out = []
   for (const m of mods || []) {
-    out.push(HS_MOD_CLASS_TO_TOKEN[m] || '?' + m)
+    out.push(HS_MOD_CLASS_TO_TOKEN[m] || `?${m}`)
   }
   if (hue != null) {
     const h = ((hue % 360) + 360) % 360
@@ -4703,7 +4703,7 @@ function hsModWordsFromState(mods, hue) {
             .padStart(2, '0'),
         )
         .join('')
-    out.push('c!' + hex)
+    out.push(`c!${hex}`)
   }
   return out
 }
@@ -4785,7 +4785,7 @@ class UndoManager {
           return
         }
         img.dataset.hsRetried = '1'
-        const bust = img.src + (img.src.includes('?') ? '&' : '?') + 'r=' + Date.now()
+        const bust = `${img.src + (img.src.includes('?') ? '&' : '?')}r=${Date.now()}`
         img.src = bust
       })
     }
@@ -4793,7 +4793,7 @@ class UndoManager {
 
   _getCharOffset() {
     const sel = window.getSelection()
-    if (!sel || !sel.rangeCount) return 0
+    if (!sel?.rangeCount) return 0
     const range = sel.getRangeAt(0)
     if (!this.input.contains(range.startContainer)) return 0
     let offset = 0
@@ -5809,7 +5809,7 @@ function buildPlusTenureToken(since) {
 // Bootstrap - lifecycle controller, cleanup utilities, debug log
 
 const MC_DEBUG = false
-function log(...args) {
+function _log(...args) {
   if (MC_DEBUG) console.log(LOG_PREFIX, ...args)
 }
 
@@ -5865,13 +5865,13 @@ mcSignal.addEventListener('abort', () => {
   for (const { target, fn } of _trackedListeners) {
     try {
       target.removeListener(fn)
-    } catch (e) {}
+    } catch (_e) {}
   }
   _trackedListeners.length = 0
   for (const n of _trackedNodes) {
     try {
       n.remove()
-    } catch (e) {}
+    } catch (_e) {}
   }
   _trackedNodes.length = 0
   if (irc) {
@@ -5965,7 +5965,7 @@ function _hsBuildDbg() {
         out[ch] = { count: buf?.getAll?.()?.length ?? 0 }
       }
     } catch (e) {
-      return 'err: ' + e?.message
+      return `err: ${e?.message}`
     }
     return out
   }
@@ -5976,7 +5976,7 @@ function _hsBuildDbg() {
       const hits = entries.filter(([, v]) => v != null).length
       return { size: kickNameResolved.size, hits, sample: entries.slice(0, 10) }
     } catch (e) {
-      return 'err: ' + e?.message
+      return `err: ${e?.message}`
     }
   })()
   const kickPending = (() => {
@@ -5984,7 +5984,7 @@ function _hsBuildDbg() {
       if (typeof kickNameLookupPending === 'undefined') return 'no kickNameLookupPending'
       return { pending: kickNameLookupPending.size, sample: [...kickNameLookupPending].slice(0, 10) }
     } catch (e) {
-      return 'err: ' + e?.message
+      return `err: ${e?.message}`
     }
   })()
   return {
@@ -6017,7 +6017,7 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
       try {
         document.documentElement.dataset.hsDbg = JSON.stringify(_hsBuildDbg())
       } catch (e) {
-        document.documentElement.dataset.hsDbg = 'err:' + (e?.message || 'unknown')
+        document.documentElement.dataset.hsDbg = `err:${e?.message || 'unknown'}`
       }
     },
     { capture: true, signal: mcSignal },
@@ -6062,7 +6062,7 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
           mapTotal: twitchBadgeUrls.size,
         })
       } catch (err) {
-        document.documentElement.dataset.hsDbgTwitchBadgesLookup = 'err:' + (err?.message || 'unknown')
+        document.documentElement.dataset.hsDbgTwitchBadgesLookup = `err:${err?.message || 'unknown'}`
       }
     },
     { capture: true, signal: mcSignal },
@@ -6087,7 +6087,7 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
           sample,
         })
       } catch (e) {
-        document.documentElement.dataset.hsDbgTwitchBadges = 'err:' + (e?.message || 'unknown')
+        document.documentElement.dataset.hsDbgTwitchBadges = `err:${e?.message || 'unknown'}`
       }
     },
     { capture: true, signal: mcSignal },
@@ -6161,7 +6161,7 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
             sendMessage()
           } catch (sendErr) {
             document.documentElement.dataset.hsDbgTestSend = JSON.stringify({
-              err: 'sendMessage threw: ' + sendErr?.message,
+              err: `sendMessage threw: ${sendErr?.message}`,
             })
             return
           }
@@ -6200,7 +6200,7 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
           const resp = await chrome.runtime.sendMessage({ type: 'dbg_kick_tap' })
           document.documentElement.dataset.hsDbgKickTap = JSON.stringify(resp)
         } catch (e) {
-          document.documentElement.dataset.hsDbgKickTap = 'err:' + (e?.message || 'unknown')
+          document.documentElement.dataset.hsDbgKickTap = `err:${e?.message || 'unknown'}`
         }
       })()
     },
@@ -6264,7 +6264,7 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
         }
         document.documentElement.dataset.hsDbgAuthIrc = JSON.stringify(out)
       } catch (e) {
-        document.documentElement.dataset.hsDbgAuthIrc = 'err:' + (e?.message || 'unknown')
+        document.documentElement.dataset.hsDbgAuthIrc = `err:${e?.message || 'unknown'}`
       }
     },
     { capture: true, signal: mcSignal },
@@ -6287,7 +6287,7 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
           inflight,
         })
       } catch (e) {
-        document.documentElement.dataset.hsDbgKickBadgeUrls = 'err:' + (e?.message || 'unknown')
+        document.documentElement.dataset.hsDbgKickBadgeUrls = `err:${e?.message || 'unknown'}`
       }
     },
     { capture: true, signal: mcSignal },
@@ -6313,7 +6313,7 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
         }
         document.documentElement.dataset.hsDbgKickBadges = JSON.stringify(out)
       } catch (e) {
-        document.documentElement.dataset.hsDbgKickBadges = 'err:' + (e?.message || 'unknown')
+        document.documentElement.dataset.hsDbgKickBadges = `err:${e?.message || 'unknown'}`
       }
     },
     { capture: true, signal: mcSignal },
@@ -6343,7 +6343,7 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
           blockedAll: blockedAll?.slice(-20),
         })
       } catch (err) {
-        document.documentElement.dataset.hsDbgAlias = 'err:' + (err?.message || 'unknown')
+        document.documentElement.dataset.hsDbgAlias = `err:${err?.message || 'unknown'}`
       }
     },
     { capture: true, signal: mcSignal },
@@ -6374,7 +6374,7 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
         }
         document.documentElement.dataset.hsDbg3 = JSON.stringify(out)
       } catch (err) {
-        document.documentElement.dataset.hsDbg3 = 'err:' + (err?.message || 'unknown')
+        document.documentElement.dataset.hsDbg3 = `err:${err?.message || 'unknown'}`
       }
     },
     { capture: true, signal: mcSignal },
@@ -6441,7 +6441,7 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
         }
         document.documentElement.dataset.hsDbgEmotes = JSON.stringify(out)
       } catch (err) {
-        document.documentElement.dataset.hsDbgEmotes = 'err:' + (err?.message || 'unknown')
+        document.documentElement.dataset.hsDbgEmotes = `err:${err?.message || 'unknown'}`
       }
     },
     { capture: true, signal: mcSignal },
@@ -6488,7 +6488,7 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
         }
         document.documentElement.dataset.hsDbgDeep = JSON.stringify(out)
       } catch (err) {
-        document.documentElement.dataset.hsDbgDeep = 'err:' + (err?.message || 'unknown')
+        document.documentElement.dataset.hsDbgDeep = `err:${err?.message || 'unknown'}`
       }
     },
     { capture: true, signal: mcSignal },
@@ -6526,7 +6526,7 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
           sample,
         })
       } catch (err) {
-        document.documentElement.dataset.hsDbg2 = 'err:' + (err?.message || 'unknown')
+        document.documentElement.dataset.hsDbg2 = `err:${err?.message || 'unknown'}`
       }
     },
     { capture: true, signal: mcSignal },
@@ -6660,7 +6660,7 @@ function _hsPerfWrap(fn, ms, kind) {
             n.id = 'hs-perf-log'
             document.documentElement.appendChild(n)
           }
-          n.textContent += JSON.stringify({ kind, dur: Math.round(d), at: Math.round(t), src }) + '\n'
+          n.textContent += `${JSON.stringify({ kind, dur: Math.round(d), at: Math.round(t), src })}\n`
           if (n.textContent.length > 40000) n.textContent = n.textContent.slice(-20000)
         } catch {}
       }
@@ -6672,7 +6672,7 @@ function _hsPerfWrap(fn, ms, kind) {
 // panel. Identical contract to content.js side: budget-yield chunking, pause
 // while user is actively scrolling, scheduler.postTask priority. Keeps a
 // 5-channel hydration from holding the main thread > ~4ms per slice.
-const hsSched = (() => {
+const _hsSched = (() => {
   let _scrollIdle = true
   let _scrollIdleTimer = null
   const markBusy = () => {
@@ -6711,7 +6711,7 @@ const hsSched = (() => {
           () => {
             try {
               r(fn())
-            } catch (e) {
+            } catch (_e) {
               r()
             }
           },
@@ -6723,7 +6723,7 @@ const hsSched = (() => {
       setTimeout(() => {
         try {
           r(fn())
-        } catch (e) {
+        } catch (_e) {
           r()
         }
       }, 0),
@@ -6735,7 +6735,7 @@ const hsSched = (() => {
       if (respectScroll && !_scrollIdle) await untilIdle()
       try {
         await fn(items[i], i)
-      } catch (e) {}
+      } catch (_e) {}
       if (performance.now() - t0 > budgetMs) {
         await _yield()
         t0 = performance.now()
@@ -6753,7 +6753,7 @@ const hsSched = (() => {
   }
 })()
 
-const cleanup = {
+const _cleanup = {
   setInterval(fn, ms) {
     const id = setInterval(_hsPerfWrap(fn, ms, 'interval'), ms)
     _timers.intervals.push(id)
@@ -6811,7 +6811,7 @@ const cleanup = {
     if (!obs) return
     try {
       obs.disconnect()
-    } catch (e) {}
+    } catch (_e) {}
     const i = _timers.observers.indexOf(obs)
     if (i !== -1) _timers.observers.splice(i, 1)
   },
@@ -18853,7 +18853,7 @@ function escapeRegexLiteral(p) {
 // worst case); a linear/safe pattern finishes in microseconds. Synchronous,
 // dependency-free, CSP-safe — runs only on settings change (cold path).
 const REDOS_PROBES = ['a'.repeat(28), '0'.repeat(28), 'ab'.repeat(14), 'a1'.repeat(14), ' '.repeat(28)].map(
-  (s) => s + ' !',
+  (s) => `${s} !`,
 )
 function tripsCatastrophicBacktracking(re) {
   try {
@@ -18902,7 +18902,7 @@ function compileAutomod(rawSettings) {
       console.warn('[heatsync] automod pattern degraded to literal match (catastrophic-backtracking guard)')
       escAll()
     }
-  } catch (e) {
+  } catch (_e) {
     // A surviving pattern is still invalid — escape everything to literal.
     escAll()
   }
@@ -18911,7 +18911,7 @@ function compileAutomod(rawSettings) {
 function shouldAutomod(text) {
   if (!text) return false
   const t = text.length > 256 ? text.slice(0, 256) : text
-  if (automodCompiled && automodCompiled.test(t)) return true
+  if (automodCompiled?.test(t)) return true
   if (automodAllCaps && text.length > 10) {
     const letters = text.replace(/[^A-Za-z]/g, '')
     if (letters.length >= 8) {
@@ -21462,7 +21462,7 @@ function handleAuthIrcMessage(event) {
     if (!line) continue
     if (line.startsWith('PING')) {
       try {
-        authState.ws.send(line.replace('PING', 'PONG') + '\r\n')
+        authState.ws.send(`${line.replace('PING', 'PONG')}\r\n`)
       } catch {}
       continue
     }
@@ -21582,7 +21582,7 @@ async function connectAuthIrc(token, nick) {
         for (const l of event.data.split('\r\n')) {
           if (l.startsWith('PING'))
             try {
-              ws.send(l.replace('PING', 'PONG') + '\r\n')
+              ws.send(`${l.replace('PING', 'PONG')}\r\n`)
             } catch {}
         }
       }
@@ -21677,14 +21677,14 @@ async function drainSendQueue() {
       const qPrefix = replyParentId ? `@reply-parent-msg-id=${replyParentId} ` : ''
       authState.ws.send(`${qPrefix}PRIVMSG #${channel} :${text}\r\n`)
       authState.sendQueue.shift()
-      log('Drained queued msg to #' + channel)
+      log(`Drained queued msg to #${channel}`)
     } catch {
       break // leave at queue head, retry next drain
     }
   }
 }
 
-async function sendIrcMessage(channel, text, token, replyParentId, overrideNick) {
+async function _sendIrcMessage(channel, text, token, replyParentId, overrideNick) {
   const nick = overrideNick || currentUsername || getCurrentUsername()
   if (!nick) return 'no_user'
   channel = channel.toLowerCase()
@@ -52436,7 +52436,7 @@ function renderSettingsTab() {
 // and getLivePlatformNames/save+loadLivePlatformMap (read by the render engine
 // and init, not just this UI) stay in main.js.
 
-function renderAddChannelForm(msgsEl) {
+function _renderAddChannelForm(msgsEl) {
   _clearMessageIndices()
   msgsEl.textContent = ''
   const wrapper = document.createElement('div')
@@ -52571,7 +52571,7 @@ function renderAddChannelForm(msgsEl) {
       return
     }
 
-    const id = twitchVal || kickVal || 'yt-' + Date.now()
+    const id = twitchVal || kickVal || `yt-${Date.now()}`
     const reserved = ['live', 'feed', 'mentions', 'whispers', 'discover', 'pinned', 'modlog', 'add', 'settings']
     if (reserved.includes(id)) {
       showErr(t('mc_reserved_name'))
@@ -52701,7 +52701,7 @@ function renderAddChannelForm(msgsEl) {
   cleanup.raf(() => twitch.input.focus())
 }
 
-function removeChannel(tabId) {
+function _removeChannel(tabId) {
   const ch = getChannelById(tabId)
   config.channels = config.channels.filter((c) => c.id !== tabId)
   saveConfig()
@@ -52718,7 +52718,7 @@ function removeChannel(tabId) {
   if (kickName) subTenureMap.delete(kickName.toLowerCase())
 
   // Unsubscribe per-channel YouTube (pass URL as fallback if videoId not yet received)
-  if (ch && ch.youtube) {
+  if (ch?.youtube) {
     const link = youtubeLinks.get(tabId)
     chrome.runtime
       .sendMessage({
@@ -52740,7 +52740,7 @@ function removeChannel(tabId) {
   }
 
   // Drop per-tab platform filter state so it can't leak across channel adds/removes
-  if (platformFilters && platformFilters[tabId]) {
+  if (platformFilters?.[tabId]) {
     delete platformFilters[tabId]
     saveUiSetting('platformFilters', platformFilters)
   }
@@ -52768,7 +52768,7 @@ function applyLivePlatformOverrides() {
   renderMessages(currentTab)
 }
 
-function showEditLivePlatforms() {
+function _showEditLivePlatforms() {
   const urlCh = getCurrentChannel()?.toLowerCase()
   if (!urlCh) return
   editingChannel = true
@@ -52891,7 +52891,7 @@ function showEditLivePlatforms() {
   twitch.input.focus()
 }
 
-function showEditChannelForm(tabId) {
+function _showEditChannelForm(tabId) {
   const ch = getChannelById(tabId)
   if (!ch) return
   editingChannel = true
@@ -53065,7 +53065,7 @@ function showEditChannelForm(tabId) {
         clearYtPace(tabId)
         chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytVal, channelId: newId }).catch(() => {})
       }
-      if (platformFilters && platformFilters[tabId]) {
+      if (platformFilters?.[tabId]) {
         platformFilters[newId] = platformFilters[tabId]
         delete platformFilters[tabId]
         saveUiSetting('platformFilters', platformFilters)

@@ -4,7 +4,7 @@
 // and getLivePlatformNames/save+loadLivePlatformMap (read by the render engine
 // and init, not just this UI) stay in main.js.
 
-function renderAddChannelForm(msgsEl) {
+function _renderAddChannelForm(msgsEl) {
   _clearMessageIndices()
   msgsEl.textContent = ''
   const wrapper = document.createElement('div')
@@ -139,7 +139,7 @@ function renderAddChannelForm(msgsEl) {
       return
     }
 
-    const id = twitchVal || kickVal || 'yt-' + Date.now()
+    const id = twitchVal || kickVal || `yt-${Date.now()}`
     const reserved = ['live', 'feed', 'mentions', 'whispers', 'discover', 'pinned', 'modlog', 'add', 'settings']
     if (reserved.includes(id)) {
       showErr(t('mc_reserved_name'))
@@ -269,7 +269,7 @@ function renderAddChannelForm(msgsEl) {
   cleanup.raf(() => twitch.input.focus())
 }
 
-function removeChannel(tabId) {
+function _removeChannel(tabId) {
   const ch = getChannelById(tabId)
   config.channels = config.channels.filter((c) => c.id !== tabId)
   saveConfig()
@@ -286,7 +286,7 @@ function removeChannel(tabId) {
   if (kickName) subTenureMap.delete(kickName.toLowerCase())
 
   // Unsubscribe per-channel YouTube (pass URL as fallback if videoId not yet received)
-  if (ch && ch.youtube) {
+  if (ch?.youtube) {
     const link = youtubeLinks.get(tabId)
     chrome.runtime
       .sendMessage({
@@ -308,7 +308,7 @@ function removeChannel(tabId) {
   }
 
   // Drop per-tab platform filter state so it can't leak across channel adds/removes
-  if (platformFilters && platformFilters[tabId]) {
+  if (platformFilters?.[tabId]) {
     delete platformFilters[tabId]
     saveUiSetting('platformFilters', platformFilters)
   }
@@ -336,7 +336,7 @@ function applyLivePlatformOverrides() {
   renderMessages(currentTab)
 }
 
-function showEditLivePlatforms() {
+function _showEditLivePlatforms() {
   const urlCh = getCurrentChannel()?.toLowerCase()
   if (!urlCh) return
   editingChannel = true
@@ -459,7 +459,7 @@ function showEditLivePlatforms() {
   twitch.input.focus()
 }
 
-function showEditChannelForm(tabId) {
+function _showEditChannelForm(tabId) {
   const ch = getChannelById(tabId)
   if (!ch) return
   editingChannel = true
@@ -633,7 +633,7 @@ function showEditChannelForm(tabId) {
         clearYtPace(tabId)
         chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytVal, channelId: newId }).catch(() => {})
       }
-      if (platformFilters && platformFilters[tabId]) {
+      if (platformFilters?.[tabId]) {
         platformFilters[newId] = platformFilters[tabId]
         delete platformFilters[tabId]
         saveUiSetting('platformFilters', platformFilters)

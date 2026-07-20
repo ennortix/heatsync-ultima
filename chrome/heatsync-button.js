@@ -48,7 +48,7 @@
 
     const BUTTON_ID = 'heatsync-chat-button'
     const PANEL_ID = 'heatsync-panel'
-    const API_URL = 'https://heatsync.org'
+    const _API_URL = 'https://heatsync.org'
 
     // bidi direction for the user's locale — resolved per-mount so manual locale override applies
     function HS_BTN_DIR() {
@@ -140,7 +140,7 @@
       history: false,
       discover: false,
     }
-    const isOffline = false
+    const _isOffline = false
     const usingCachedData = {
       channel: false,
       global: false,
@@ -1793,14 +1793,14 @@
           'display: none !important; visibility: hidden !important; height: 0 !important; width: 0 !important; margin: 0 !important; padding: 0 !important;'
 
         // Hide emote picker button (we have our own fire button)
-        rules.push('[data-a-target="emote-picker-button"] { ' + nuke + ' }')
+        rules.push(`[data-a-target="emote-picker-button"] { ${nuke} }`)
 
         // Hide chat pause button (useless)
-        rules.push('[data-a-target="chat-pause-button"] { ' + nuke + ' }')
+        rules.push(`[data-a-target="chat-pause-button"] { ${nuke} }`)
 
         // Hide the entire second row of buttons below input (waste of space)
-        rules.push('.chat-input__buttons-container { ' + nuke + ' }')
-        rules.push('[data-a-target="chat-input-buttons-container"] { ' + nuke + ' }')
+        rules.push(`.chat-input__buttons-container { ${nuke} }`)
+        rules.push(`[data-a-target="chat-input-buttons-container"] { ${nuke} }`)
 
         // Make the input buttons container inline and compact
         rules.push('.chat-input { padding: 4px 0 !important; }')
@@ -2132,11 +2132,11 @@
         panel.style.bottom = 'auto'
         panel.style.top = '100%'
         panel.style.marginBottom = '0'
-        panel.style.marginTop = GAP + 'px'
+        panel.style.marginTop = `${GAP}px`
       } else {
         panel.style.bottom = '100%'
         panel.style.top = 'auto'
-        panel.style.marginBottom = GAP + 'px'
+        panel.style.marginBottom = `${GAP}px`
         panel.style.marginTop = '0'
       }
       // Fill the available vertical space — no fixed cap, so a tall window gets a
@@ -2146,7 +2146,7 @@
       // Set HEIGHT (not just max-height) so the panel actually fills the space and
       // the grid (flex:1) expands to show emotes. With height:auto the panel shrank
       // to its chrome and the grid collapsed to ~16px (no emotes visible).
-      const sized = Math.max(220, avail) + 'px'
+      const sized = `${Math.max(220, avail)}px`
       panel.style.height = sized
       panel.style.maxHeight = sized
     }
@@ -2446,7 +2446,7 @@
           // uses the shared search bar to drive server-side emote search.
           if (['sets', 'history'].includes(currentTab)) {
             const si = panel.querySelector('#heatsync-search')
-            if (si && si.value) {
+            if (si?.value) {
               si.value = ''
               searchQuery = ''
             }
@@ -2575,7 +2575,7 @@
 
       // Fix relative URLs from heatsync API
       if (url.startsWith('/')) {
-        url = 'https://heatsync.org' + url
+        url = `https://heatsync.org${url}`
       }
 
       // Map size to resolution multiplier
@@ -2617,7 +2617,7 @@
     }
 
     // Render the emote grid based on current tab and search
-    const renderBatchTimeout = null
+    const _renderBatchTimeout = null
 
     // Check if emote is in user's inventory
     function isInInventory(emote) {
@@ -2677,7 +2677,7 @@
         } else {
           fail(resp?.error)
         }
-      } catch (err) {
+      } catch (_err) {
         fail()
       }
     }
@@ -2719,7 +2719,7 @@
       // teleported to the top mid-scroll because clearing the grid shrinks its
       // scrollHeight to ~0 and the browser clamps scrollTop to 0. User-initiated
       // re-renders (tab switch, search) pass no opts so scroll resets normally.
-      const preserveScroll = !!(opts && opts.preserveScroll)
+      const preserveScroll = !!opts?.preserveScroll
       const savedScrollTop = preserveScroll ? grid.scrollTop : 0
 
       // Check login state
@@ -2893,15 +2893,15 @@
       grid._hsImgObserver = imgObserver
       function observeImg(wrap) {
         const img = wrap.querySelector('img')
-        if (img && img.dataset.src) imgObserver.observe(img)
+        if (img?.dataset.src) imgObserver.observe(img)
       }
 
       // Create emote element — no click/contextmenu listeners (delegated on grid)
       function createEmoteElement(e, index) {
         const wrap = document.createElement('div')
         const providerClass = getProviderClass(e.provider)
-        const inInventory = isInInventory(e)
-        const isGlobal = currentTab === 'global'
+        const _inInventory = isInInventory(e)
+        const _isGlobal = currentTab === 'global'
 
         wrap.className = `heatsync-emote-wrap ${providerClass}`
         wrap.style.minWidth = '32px'
@@ -2989,7 +2989,7 @@
         })
 
         wrap.addEventListener('mouseleave', () => {
-          if (previewTooltip && previewTooltip.parentNode) {
+          if (previewTooltip?.parentNode) {
             previewTooltip.remove()
             previewTooltip = null
           }
@@ -3417,7 +3417,7 @@
         loadErrors.sets = null
         const countEl = document.getElementById('count-sets')
         if (countEl) countEl.textContent = String(savedSetsCache.length)
-      } catch (err) {
+      } catch (_err) {
         loadErrors.sets = 'failed to load sets'
         savedSetsCache = []
       }
@@ -3608,7 +3608,7 @@
         loadErrors.history = null
         const countEl = document.getElementById('count-history')
         if (countEl) countEl.textContent = String(removedEmotesCache.length)
-      } catch (err) {
+      } catch (_err) {
         loadErrors.history = 'failed to load history'
         removedEmotesCache = []
       }
@@ -3633,12 +3633,12 @@
     // when 'here' is on; provider results (7tv/bttv/ffz) are interleaved by their
     // native popularity ranking from the provider API. Dedupes by name across
     // sources so the same emote doesn't appear twice.
-    function renderSearchResults(grid, isLoggedIn) {
+    function renderSearchResults(grid, _isLoggedIn) {
       while (grid.firstChild) grid.removeChild(grid.firstChild)
 
       const q = searchQuery
       const seen = new Set()
-      const keyOf = (e) => e.hash || '_n_' + (e.name || '').toLowerCase()
+      const keyOf = (e) => e.hash || `_n_${(e.name || '').toLowerCase()}`
       const localMatches = []
 
       // Local matches (channel + global + mine) always included — they're what
@@ -3898,14 +3898,13 @@
       })
       if (!resp.ok) throw new Error(`7tv ${resp.status}`)
       const data = await resp.json()
-      const items =
-        (data && data.data && data.data.emotes && data.data.emotes.search && data.data.emotes.search.items) || []
+      const items = data?.data?.emotes?.search?.items || []
       return items.map((e) => ({
         name: e.defaultName,
         url: `https://cdn.7tv.app/emote/${e.id}/4x.webp`,
         provider: '7tv',
         id: e.id,
-        animated: !!(e.flags && e.flags.animated),
+        animated: !!e.flags?.animated,
       }))
     }
 
@@ -4048,42 +4047,38 @@
 
     // Silent add to inventory (no UI feedback, used for click-to-use)
     async function addEmoteToInventorySilent(emote) {
-      try {
-        const token = await getAuthToken()
-        if (!token) return
-        // Absolutize relative urls like '/uploads/...' that the server returns
-        // for own-hosted emotes — import endpoint expects fully-qualified URLs.
-        const rawUrl = emote.url || emote.pickerUrl || ''
-        const url = rawUrl.startsWith('/') ? `https://heatsync.org${rawUrl}` : rawUrl
+      const token = await getAuthToken()
+      if (!token) return
+      // Absolutize relative urls like '/uploads/...' that the server returns
+      // for own-hosted emotes — import endpoint expects fully-qualified URLs.
+      const rawUrl = emote.url || emote.pickerUrl || ''
+      const url = rawUrl.startsWith('/') ? `https://heatsync.org${rawUrl}` : rawUrl
 
-        const resp = await HS.apiFetch('/api/user/emotes/import', {
-          method: 'POST',
-          auth: true,
-          body: {
-            emotes: [
-              {
-                name: emote.name,
-                url,
-                provider: emote.provider || 'imported',
-                id: emote.id || emote.hash || '',
-              },
-            ],
-            source: `picker:click`,
-          },
-        })
+      const resp = await HS.apiFetch('/api/user/emotes/import', {
+        method: 'POST',
+        auth: true,
+        body: {
+          emotes: [
+            {
+              name: emote.name,
+              url,
+              provider: emote.provider || 'imported',
+              id: emote.id || emote.hash || '',
+            },
+          ],
+          source: `picker:click`,
+        },
+      })
 
-        // Surface server-side failures so callers can show 'failed' UI instead of
-        // misleading 'added'. apiFetch returns the raw JSON; ok:false means error.
-        if (resp && resp.ok === false) {
-          throw new Error(resp.error || 'import failed')
-        }
-
-        // Refresh inventory
-        await loadInventoryEmotes()
-        fetchHistoryStatus()
-      } catch (err) {
-        throw err
+      // Surface server-side failures so callers can show 'failed' UI instead of
+      // misleading 'added'. apiFetch returns the raw JSON; ok:false means error.
+      if (resp && resp.ok === false) {
+        throw new Error(resp.error || 'import failed')
       }
+
+      // Refresh inventory
+      await loadInventoryEmotes()
+      fetchHistoryStatus()
     }
 
     // Update tab counts
@@ -4111,7 +4106,7 @@
           hash: hash,
         })
 
-        if (!result || !result.success) {
+        if (!result?.success) {
           throw new Error(result?.error || 'Block failed')
         }
 
@@ -4596,8 +4591,8 @@
       let y = evt.clientY
       if (x + rect.width > window.innerWidth) x = window.innerWidth - rect.width - 4
       if (y + rect.height > window.innerHeight) y = window.innerHeight - rect.height - 4
-      menu.style.left = x + 'px'
-      menu.style.top = y + 'px'
+      menu.style.left = `${x}px`
+      menu.style.top = `${y}px`
     }
 
     // Dismiss on click-outside or Escape (gated on menu existing)
@@ -4839,7 +4834,7 @@
         usingCachedData.mine = false
         if (inventoryEmotesCache.length > 0) setCachedEmotes('inventory', inventoryEmotesCache)
         updateTabCounts()
-      } catch (err) {
+      } catch (_err) {
         // Don't wipe cached data on transient failure
         if (!inventoryEmotesCache.length) {
           rebuildInventoryIndex()
@@ -4889,7 +4884,7 @@
         updateTabCounts()
         // persist to IndexedDB so next open is instant
         if (fresh.length > 0) setCachedEmotes(cacheKey, fresh)
-      } catch (err) {
+      } catch (_err) {
         if (!stale) {
           channelEmotesCache = []
           loadErrors.channel = 'failed to load channel emotes'
@@ -4929,7 +4924,7 @@
         log(' Updated', globalEmotesCache.length, 'global emotes (background cache)')
         updateTabCounts()
         if (fresh.length > 0) setCachedEmotes(cacheKey, fresh)
-      } catch (err) {
+      } catch (_err) {
         if (!stale) {
           globalEmotesCache = []
           loadErrors.global = 'failed to load global emotes'
@@ -4970,10 +4965,10 @@
         chatInput.focus()
         if (currentText.trim() === '') {
           document.execCommand('selectAll')
-          document.execCommand('insertText', false, emoteName + ' ')
+          document.execCommand('insertText', false, `${emoteName} `)
         } else {
           const needsSpace = !currentText.endsWith(' ')
-          document.execCommand('insertText', false, (needsSpace ? ' ' : '') + emoteName + ' ')
+          document.execCommand('insertText', false, `${(needsSpace ? ' ' : '') + emoteName} `)
         }
       }
 
@@ -4997,7 +4992,7 @@
       // on its items (block / remove from set / rename) must not close the picker.
       // The item handler dismisses the menu before this fires, so _ctxMenu is
       // already null; match the (now-detached) target by class instead.
-      if (e.target.closest && e.target.closest('.hs-emote-ctx')) return
+      if (e.target.closest?.('.hs-emote-ctx')) return
       if (panel && !panel.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
         closePanel()
       }
@@ -5085,7 +5080,7 @@
 
         // Preloading disabled (ORB blocks, browser handles natively)
         emotesPreloaded = true
-      } catch (err) {}
+      } catch (_err) {}
 
       preloadingInProgress = false
     }

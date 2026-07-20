@@ -40,3 +40,22 @@ describe('integrity capture stamps an expiry', () => {
     expect(SRC).toContain('gql.integrityExp && Date.now() < gql.integrityExp')
   })
 })
+
+describe('integrity binding context is captured + replayed', () => {
+  test('fetch hook captures device-id, session-id, client-version', () => {
+    const i = SRC.indexOf("const integ = get('Client-Integrity')")
+    const block = SRC.slice(i, i + 1400)
+    expect(block).toContain('gql.deviceId = dev')
+    expect(block).toContain('gql.sessionId = sess')
+    expect(block).toContain('gql.clientVersion = ver')
+  })
+
+  test('buildGqlHeaders replays captured device-id + session-id + version', () => {
+    const i = SRC.indexOf('function buildGqlHeaders(')
+    const block = SRC.slice(i, i + 1200)
+    // The token is bound to twitch's real device-id — replay it, not our fallback.
+    expect(block).toContain('gql.deviceId || getDeviceId()')
+    expect(block).toContain("hdrs['Client-Session-Id'] = gql.sessionId")
+    expect(block).toContain("hdrs['Client-Version'] = gql.clientVersion")
+  })
+})

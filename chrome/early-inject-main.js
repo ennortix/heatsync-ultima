@@ -256,6 +256,15 @@
       FollowButton_UnfollowUser: 'f7dae976ebf41c755ae2d758546bfd176b4eeb856656098bb40e0a672ca0d880',
     },
     integrity: null, // Client-Integrity token
+    // The integrity token is BOUND to the exact device-id + session-id + client
+    // version twitch minted it with. Replaying the token with a different
+    // X-Device-Id (our local_storage_device_id does NOT match twitch's actual
+    // one) or without Client-Session-Id/Client-Version → "failed integrity
+    // check" on every mutation. Capture twitch's real values and replay them as
+    // a coherent set alongside the token (see the fetch hook + buildGqlHeaders).
+    deviceId: null, // twitch's actual X-Device-Id (NOT local_storage_device_id)
+    sessionId: null, // Client-Session-Id
+    clientVersion: null, // Client-Version
     clientId: null, // Client-Id
     authToken: null, // OAuth token
     userId: null, // Logged-in user's twitch ID (resolved via currentUser GQL)
@@ -381,6 +390,13 @@
           }
           const cid = get('Client-Id') || get('Client-ID')
           if (cid) gql.clientId = cid
+          // Capture the token's binding context so we can replay it intact.
+          const dev = get('X-Device-Id') || get('X-Device-ID')
+          if (dev) gql.deviceId = dev
+          const sess = get('Client-Session-Id')
+          if (sess) gql.sessionId = sess
+          const ver = get('Client-Version')
+          if (ver) gql.clientVersion = ver
           const auth = get('Authorization')
           if (auth?.startsWith('OAuth ')) {
             gql.authToken = auth.slice(6)
@@ -550,7 +566,7 @@
             'Content-Type': 'application/json',
             'Client-Id': cid,
             Authorization: `OAuth ${token}`,
-            'X-Device-Id': getDeviceId(),
+            'X-Device-Id': gql.deviceId || getDeviceId(),
           },
           body: '{}',
         })
@@ -581,7 +597,13 @@
     const token = getAuthToken()
     if (token) hdrs.Authorization = `OAuth ${token}`
     if (gql.integrity) hdrs['Client-Integrity'] = gql.integrity
-    hdrs['X-Device-Id'] = getDeviceId()
+    // Replay the token's FULL binding context. The captured device-id is
+    // twitch's real one (our local_storage_device_id fallback does NOT match it,
+    // which alone fails integrity); session-id + version complete the binding.
+    // Fall back to getDeviceId() only before the first capture.
+    hdrs['X-Device-Id'] = gql.deviceId || getDeviceId()
+    if (gql.sessionId) hdrs['Client-Session-Id'] = gql.sessionId
+    if (gql.clientVersion) hdrs['Client-Version'] = gql.clientVersion
     return hdrs
   }
 

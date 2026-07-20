@@ -549,6 +549,59 @@ browser.alarms?.onAlarm?.addListener(async (alarm) => {
   }
 })
 
+// ── Edge-block circuit breaker (heatsync.org only) ──────────────────────────
+// When Cloudflare rate-limits an IP (429 / error 1015), every heatsync API
+// call from this extension is doomed for the ban window — but the retries
+// still COUNT toward the rate rule, so a hot-retrying client re-trips it
+// forever and the ban self-sustains (observed live 2026-07-20: sender-emote
+// batch + auth checks kept a household banned through three back-to-back
+// windows). There is no single fetch funnel in this file — dozens of raw
+// fetch sites — so the breaker wraps the service worker's global fetch for
+// heatsync.org hosts ONLY. While open, calls fail fast with a synthetic 429
+// (no network, nothing fed to the edge counter): every caller already
+// handles !res.ok, and the edge would have returned 429 anyway, so callers
+// can't tell the difference — except the ban actually gets to expire.
+// Window doubles on consecutive blocks (20s → 5min cap) and any successful
+// heatsync response resets the streak. State is SW-lifetime only: a SW
+// restart forgetting the cooldown just means one real request re-probes.
+const _hsEdge = { blockedUntil: 0, streak: 0 }
+const HS_EDGE_BASE_COOLDOWN_MS = 20_000
+const HS_EDGE_MAX_COOLDOWN_MS = 300_000
+function _hsEdgeHost(input) {
+  try {
+    const u = typeof input === 'string' ? input : input?.url
+    if (!u) return null
+    return new URL(u).hostname
+  } catch (_) {
+    return null
+  }
+}
+function _hsIsHeatsyncHost(h) {
+  return h === 'heatsync.org' || h === 'www.heatsync.org'
+}
+;(() => {
+  const realFetch = self.fetch.bind(self)
+  self.fetch = async (input, init) => {
+    const host = _hsEdgeHost(input)
+    if (!_hsIsHeatsyncHost(host)) return realFetch(input, init)
+    if (Date.now() < _hsEdge.blockedUntil) {
+      return new Response(null, { status: 429, statusText: 'hs-edge-cooldown' })
+    }
+    const res = await realFetch(input, init)
+    if (res.status === 429) {
+      _hsEdge.streak = Math.min(_hsEdge.streak + 1, 5)
+      const wait = Math.min(HS_EDGE_BASE_COOLDOWN_MS * 2 ** (_hsEdge.streak - 1), HS_EDGE_MAX_COOLDOWN_MS)
+      _hsEdge.blockedUntil = Date.now() + wait
+      log(`edge 429 — cooling heatsync API calls for ${Math.round(wait / 1000)}s (streak ${_hsEdge.streak})`)
+    } else if (res.status < 500) {
+      // Any non-blocked answer proves the edge is serving us again.
+      _hsEdge.streak = 0
+      _hsEdge.blockedUntil = 0
+    }
+    return res
+  }
+})()
+
 // Link preview via heatsync.org server proxy (avoids CORS)
 const LINK_PREVIEW_API = 'https://heatsync.org/api/link-preview'
 

@@ -13646,9 +13646,7 @@
               type: 'notice',
               noticeType: 'pin',
               systemMsg:
-                eventType === 'pin'
-                  ? `pinned${pinBy ? ' ' + pinBy + ':' : ':'} ${pinText}`.trim()
-                  : 'message unpinned',
+                eventType === 'pin' ? `pinned${pinBy ? ' ' + pinBy + ':' : ':'} ${pinText}`.trim() : 'message unpinned',
               channel,
               time: Date.now(),
               isSynthetic: true,

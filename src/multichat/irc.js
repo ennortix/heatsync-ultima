@@ -138,8 +138,7 @@ function parseIrcLine(raw, channel) {
       if (tags['msg-id'] === 'gigantified-emote-message') msg.gigantified = true
       if (tags['msg-id'] === 'animated-message') msg.animationId = tags['animation-id'] || 'effect'
       // Shared chat: source-room-id differing from room-id = partner-channel origin
-      if (tags['source-room-id'] && tags['room-id'] && tags['source-room-id'] !== tags['room-id'])
-        msg.sharedChat = true
+      if (tags['source-room-id'] && tags['room-id'] && tags['source-room-id'] !== tags['room-id']) msg.sharedChat = true
       if (tags['first-msg'] === '1') msg.isFirstMsg = true
       if (tags['returning-chatter'] === '1') msg.isReturningChatter = true
       // Raider: a first-time chatter arriving inside the window opened by a raid
@@ -211,9 +210,7 @@ function parseIrcLine(raw, channel) {
         // shared-chat wrapper: real event type rides in source-msg-id
         sourceMsgId: tags['source-msg-id'] || undefined,
         sharedChat:
-          tags['source-room-id'] && tags['room-id'] && tags['source-room-id'] !== tags['room-id']
-            ? true
-            : undefined,
+          tags['source-room-id'] && tags['room-id'] && tags['source-room-id'] !== tags['room-id'] ? true : undefined,
         id: tags.id || '',
       }
     }

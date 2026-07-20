@@ -19736,8 +19736,7 @@ function parseIrcLine(raw, channel) {
       if (tags['msg-id'] === 'gigantified-emote-message') msg.gigantified = true
       if (tags['msg-id'] === 'animated-message') msg.animationId = tags['animation-id'] || 'effect'
       // Shared chat: source-room-id differing from room-id = partner-channel origin
-      if (tags['source-room-id'] && tags['room-id'] && tags['source-room-id'] !== tags['room-id'])
-        msg.sharedChat = true
+      if (tags['source-room-id'] && tags['room-id'] && tags['source-room-id'] !== tags['room-id']) msg.sharedChat = true
       if (tags['first-msg'] === '1') msg.isFirstMsg = true
       if (tags['returning-chatter'] === '1') msg.isReturningChatter = true
       // Raider: a first-time chatter arriving inside the window opened by a raid
@@ -19809,9 +19808,7 @@ function parseIrcLine(raw, channel) {
         // shared-chat wrapper: real event type rides in source-msg-id
         sourceMsgId: tags['source-msg-id'] || undefined,
         sharedChat:
-          tags['source-room-id'] && tags['room-id'] && tags['source-room-id'] !== tags['room-id']
-            ? true
-            : undefined,
+          tags['source-room-id'] && tags['room-id'] && tags['source-room-id'] !== tags['room-id'] ? true : undefined,
         id: tags.id || '',
       }
     }
@@ -42520,8 +42517,7 @@ function placeCaretAfter(node, offset = 0) {
 // (heatsync only), so you can feel how deep / how niche the current pick is.
 function emoteCycleMeta(m) {
   if (!m) return { cat: '', vis: null }
-  if (m.type === 'user' || m.type === 'user-bare')
-    return { cat: 'chatter', vis: { t: 'everyone', c: 'var(--hs-ok)' } }
+  if (m.type === 'user' || m.type === 'user-bare') return { cat: 'chatter', vis: { t: 'everyone', c: 'var(--hs-ok)' } }
   if (m.type === 'emoji') return { cat: 'emoji', vis: { t: 'everyone', c: 'var(--hs-ok)' } }
   if (m.remote) return { cat: '7tv search', vis: { t: 'heatsync only', c: 'var(--hs-brand)' } }
   const tier = m.tier ?? 2
@@ -43511,18 +43507,55 @@ async function handleSlashCommand(text, input) {
       const U = () => `hs-raw-${TS}-${ri++}`
       const P = (tags, login, text) =>
         `@${tags};id=${U()};tmi-sent-ts=${TS} :${login}!${login}@${login}.tmi.twitch.tv PRIVMSG #${ch} :${text}`
-      const UN = (tags, text) => `@${tags};id=${U()};tmi-sent-ts=${TS} :tmi.twitch.tv USERNOTICE #${ch}${text ? ' :' + text : ''}`
+      const UN = (tags, text) =>
+        `@${tags};id=${U()};tmi-sent-ts=${TS} :tmi.twitch.tv USERNOTICE #${ch}${text ? ' :' + text : ''}`
       const L = [
-        P('badges=;color=#00FF7F;display-name=SharedGuy;room-id=111;source-room-id=222;source-id=x;user-id=901', 'sharedguy', 'raw shared-chat message from partner channel'),
-        UN('badges=;color=;display-name=PartnerSub;login=partnersub;msg-id=sharedchatnotice;source-msg-id=resub;room-id=111;source-room-id=222;msg-param-cumulative-months=3;msg-param-sub-plan=1000;system-msg=PartnerSub\\ssubscribed\\sat\\sTier\\s1\\s(shared);user-id=902', 'raw shared resub'),
-        P('badges=;color=#FF0000;display-name=GigaGuy;msg-id=gigantified-emote-message;emotes=25:16-20;room-id=111;user-id=903', 'gigaguy', 'raw gigantified Kappa'),
-        P('badges=;color=#5F87FF;display-name=FxGuy;msg-id=animated-message;animation-id=rainbow-eclipse;room-id=111;user-id=904', 'fxguy', 'raw message effect'),
-        P('badges=;color=#00FFFF;display-name=NewGuy;msg-id=user-intro;room-id=111;user-id=905', 'newguy', 'raw hi im new to chat'),
-        P('badges=;color=#FFD700;display-name=FirstGuy;first-msg=1;room-id=111;user-id=906', 'firstguy', 'raw first message ever'),
-        P('badges=;color=#FF00FF;display-name=HighGuy;msg-id=highlighted-message;room-id=111;user-id=907', 'highguy', 'raw highlighted redeem'),
-        UN('badges=;color=;display-name=CharityGuy;login=charityguy;msg-id=charitydonation;system-msg=CharityGuy\\sdonated\\s$10\\sto\\sSave\\sthe\\sKripps!;user-id=908', ''),
-        UN('badges=;color=;display-name=PrimeGuy;login=primeguy;msg-id=primepaidupgrade;system-msg=PrimeGuy\\sconverted\\sfrom\\sPrime\\sto\\sTier\\s1!;user-id=909', ''),
-        UN('badges=;color=;display-name=FwdGuy;login=fwdguy;msg-id=standardpayforward;system-msg=FwdGuy\\sis\\spaying\\sforward\\stheir\\sgift!;user-id=910', ''),
+        P(
+          'badges=;color=#00FF7F;display-name=SharedGuy;room-id=111;source-room-id=222;source-id=x;user-id=901',
+          'sharedguy',
+          'raw shared-chat message from partner channel',
+        ),
+        UN(
+          'badges=;color=;display-name=PartnerSub;login=partnersub;msg-id=sharedchatnotice;source-msg-id=resub;room-id=111;source-room-id=222;msg-param-cumulative-months=3;msg-param-sub-plan=1000;system-msg=PartnerSub\\ssubscribed\\sat\\sTier\\s1\\s(shared);user-id=902',
+          'raw shared resub',
+        ),
+        P(
+          'badges=;color=#FF0000;display-name=GigaGuy;msg-id=gigantified-emote-message;emotes=25:16-20;room-id=111;user-id=903',
+          'gigaguy',
+          'raw gigantified Kappa',
+        ),
+        P(
+          'badges=;color=#5F87FF;display-name=FxGuy;msg-id=animated-message;animation-id=rainbow-eclipse;room-id=111;user-id=904',
+          'fxguy',
+          'raw message effect',
+        ),
+        P(
+          'badges=;color=#00FFFF;display-name=NewGuy;msg-id=user-intro;room-id=111;user-id=905',
+          'newguy',
+          'raw hi im new to chat',
+        ),
+        P(
+          'badges=;color=#FFD700;display-name=FirstGuy;first-msg=1;room-id=111;user-id=906',
+          'firstguy',
+          'raw first message ever',
+        ),
+        P(
+          'badges=;color=#FF00FF;display-name=HighGuy;msg-id=highlighted-message;room-id=111;user-id=907',
+          'highguy',
+          'raw highlighted redeem',
+        ),
+        UN(
+          'badges=;color=;display-name=CharityGuy;login=charityguy;msg-id=charitydonation;system-msg=CharityGuy\\sdonated\\s$10\\sto\\sSave\\sthe\\sKripps!;user-id=908',
+          '',
+        ),
+        UN(
+          'badges=;color=;display-name=PrimeGuy;login=primeguy;msg-id=primepaidupgrade;system-msg=PrimeGuy\\sconverted\\sfrom\\sPrime\\sto\\sTier\\s1!;user-id=909',
+          '',
+        ),
+        UN(
+          'badges=;color=;display-name=FwdGuy;login=fwdguy;msg-id=standardpayforward;system-msg=FwdGuy\\sis\\spaying\\sforward\\stheir\\sgift!;user-id=910',
+          '',
+        ),
       ]
       let ok = 0
       for (const rawLine of L) {
@@ -43541,14 +43574,32 @@ async function handleSlashCommand(text, input) {
     }
     const now = Date.now()
     let i = 0
-    const base = () => ({ channel: ch, time: now + i, isSynthetic: true, id: `hs-test-${now}-${i++}`, color: '#fff', badges: '' })
-    const un = (msgId, systemMsg, extra) => ({ ...base(), type: 'usernotice', msgId, user: 'testuser', text: '', systemMsg, ...extra })
+    const base = () => ({
+      channel: ch,
+      time: now + i,
+      isSynthetic: true,
+      id: `hs-test-${now}-${i++}`,
+      color: '#fff',
+      badges: '',
+    })
+    const un = (msgId, systemMsg, extra) => ({
+      ...base(),
+      type: 'usernotice',
+      msgId,
+      user: 'testuser',
+      text: '',
+      systemMsg,
+      ...extra,
+    })
     const no = (noticeType, systemMsg) => ({ ...base(), type: 'notice', noticeType, systemMsg })
     const pm = (text, extra) => ({ ...base(), user: 'testuser', login: 'testuser', userId: '0', text, ...extra })
     const kappa = { Kappa: 'https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/2.0' }
     const rows = [
       un('sub', 'testuser subscribed at Tier 1.'),
-      un('resub', 'testuser subscribed at Tier 1. They’ve been here 14 months!', { subMonths: 14, text: 'love this place' }),
+      un('resub', 'testuser subscribed at Tier 1. They’ve been here 14 months!', {
+        subMonths: 14,
+        text: 'love this place',
+      }),
       un('subgift', 'testuser gifted a Tier 1 sub to somebody!', { recipient: 'somebody' }),
       un('submysterygift', 'testuser is gifting 5 Tier 1 subs to the community!', { giftCount: 5 }),
       un('giftpaidupgrade', 'testuser is continuing the gift sub they got!'),
@@ -43566,7 +43617,11 @@ async function handleSlashCommand(text, input) {
       un('mod-anniversary', 'testuser is celebrating 6 months as a mod!'),
       un('charitydonation', 'testuser donated $5 to Save the Kripps!'),
       un('ritual', 'testuser is new here — say hello!'),
-      un('resub', 'shared-chat resub from the partner channel', { msgId: 'sharedchatnotice', sourceMsgId: 'resub', sharedChat: true }),
+      un('resub', 'shared-chat resub from the partner channel', {
+        msgId: 'sharedchatnotice',
+        sourceMsgId: 'resub',
+        sharedChat: true,
+      }),
       no('slow_on', 'this room is now in slow mode.'),
       no('ban_success', 'baduser was permanently banned'),
       no('timeout_success', 'baduser was timed out for 600s'),
@@ -43598,7 +43653,13 @@ async function handleSlashCommand(text, input) {
     return true
   }
 
-  if (cmd === 'announce' || cmd === 'announceblue' || cmd === 'announcegreen' || cmd === 'announceorange' || cmd === 'announcepurple') {
+  if (
+    cmd === 'announce' ||
+    cmd === 'announceblue' ||
+    cmd === 'announcegreen' ||
+    cmd === 'announceorange' ||
+    cmd === 'announcepurple'
+  ) {
     if (!modChannel) {
       showToast(t('mc_input_mod_needs_channel_tab', [cmd]) || `/${cmd} needs a channel tab`, 'error')
       return true
@@ -67809,9 +67870,7 @@ const STORAGE_KEY = 'heatsync_multichat'
               type: 'notice',
               noticeType: 'pin',
               systemMsg:
-                eventType === 'pin'
-                  ? `pinned${pinBy ? ' ' + pinBy + ':' : ':'} ${pinText}`.trim()
-                  : 'message unpinned',
+                eventType === 'pin' ? `pinned${pinBy ? ' ' + pinBy + ':' : ':'} ${pinText}`.trim() : 'message unpinned',
               channel,
               time: Date.now(),
               isSynthetic: true,

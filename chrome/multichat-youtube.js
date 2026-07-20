@@ -36996,6 +36996,47 @@ function trackCompletionForAutoAdd(match) {
   }
 }
 
+// Register a CLICK-pasted chat-row/picker emote for auto-add-on-send. The
+// 2-state design promises "click pastes, auto-add commits the slot at send" —
+// but only Tab-complete/dropdown paths registered, so clicking an emote you
+// don't own (e.g. another sender's personal emote rendered in a row) pasted a
+// chip that rendered locally via the optimistic viewerPersonalEmotes seed yet
+// committed NOTHING at send: image for you, raw text for every other viewer.
+function registerClickPasteForAutoAdd(emoteName, emoteUrl, source) {
+  if (!emoteName || !emoteUrl) return
+  // Trailing-0 with no literal entry anywhere = synthetic "name0" overlay of
+  // the base emote — registering it would auto-add a bogus literal name0
+  // emote server-side (same guard as trackCompletionForAutoAdd._synthOverlay).
+  if (emoteName.length > 1 && emoteName.endsWith('0')) {
+    const literal =
+      (typeof lookupEmoteRenderOrder === 'function' && lookupEmoteRenderOrder(emoteName)) ||
+      (typeof senderEmoteSets !== 'undefined' &&
+        [...senderEmoteSets.values()].some((m) => {
+          const e = m.get(emoteName)
+          return e && !e.removedAt
+        }))
+    if (!literal) return
+  }
+  // Zero-width recovery: viewer caches strip the flag on owned copies
+  // (identity-checked), and a sender-set overlay emote isn't in viewer caches
+  // at all — sweep sender sets by asset id so the add inherits the flag
+  // (losing it renders a stacked overlay as a standalone base after auto-add).
+  let zw = typeof zeroWidthForSameAsset === 'function' && zeroWidthForSameAsset(emoteName, emoteUrl)
+  if (!zw && typeof senderEmoteSets !== 'undefined' && typeof _hsEmoteAssetId === 'function') {
+    const aid = _hsEmoteAssetId(emoteUrl)
+    if (aid) {
+      for (const m of senderEmoteSets.values()) {
+        const e = m.get(emoteName)
+        if (e?.zeroWidth && _hsEmoteAssetId(e.url) === aid) {
+          zw = true
+          break
+        }
+      }
+    }
+  }
+  trackCompletionForAutoAdd({ type: 'emote', name: emoteName, url: emoteUrl, source, zeroWidth: !!zw })
+}
+
 // Native twitch chat parity: autocomplete-hook.js (MAIN world) relays remote
 // 7TV completions the user actually SENT through native chat. That world has
 // no nonce access (same constraint as content.js's heatsync-native-emotes
@@ -38202,6 +38243,11 @@ function initInput() {
               const url = w.dataset.emoteUrl || w.querySelector('img')?.src || ''
               const source = w.dataset.source || 'heatsync'
               addEmoteToInventory(name, url, source, w)
+            } else {
+              // global/channel/owned stack members follow the same
+              // auto-add-on-send contract as the single-emote click path.
+              const url = w.dataset.emoteUrl || w.querySelector('img')?.src || ''
+              registerClickPasteForAutoAdd(w.dataset.emoteName, url, w.dataset.source || 'unknown')
             }
           }
           showInputBar()
@@ -38301,6 +38347,9 @@ function initInput() {
               addedAt: Date.now(),
             })
           }
+          // Commit the slot at send (2-state contract) — without this the
+          // optimistic seed above renders the chip for the clicker only.
+          registerClickPasteForAutoAdd(emoteName, emoteUrl, source)
           showInputBar()
           pasteEmoteToInput(emoteName, modWords)
           const input = document.getElementById('hs-mc-input')

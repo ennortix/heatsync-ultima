@@ -141,7 +141,7 @@
   // Use FFZ's exact format for preview creation
   // Format: __FFZ__setId::emoteId__FFZ__ where setId must be numeric for Twitch validation
   const HEATSYNC_SET_ID = '999999' // Fake FFZ set ID (high number to avoid collision)
-  const HEATSYNC_PREFIX = '__FFZ__' + HEATSYNC_SET_ID + '::'
+  const HEATSYNC_PREFIX = `__FFZ__${HEATSYNC_SET_ID}::`
   const HEATSYNC_SUFFIX = '__FFZ__'
 
   // Shared usage signal with the multichat picker/tab-complete (emotes.js) —
@@ -316,11 +316,11 @@
             if (inputEl) inputEl.focus()
           } else {
             log(' ❌ Slate insertion failed, falling back to clipboard')
-            navigator.clipboard.writeText(emote.name + ' ').catch(() => {})
+            navigator.clipboard.writeText(`${emote.name} `).catch(() => {})
           }
         } else {
           log(' ❌ No chat input found, copying to clipboard')
-          navigator.clipboard.writeText(emote.name + ' ').catch(() => {})
+          navigator.clipboard.writeText(`${emote.name} `).catch(() => {})
         }
       }
     },
@@ -493,7 +493,7 @@
     }
 
     log(' ✅ Image src + srcset interceptors installed')
-  } catch (e) {
+  } catch (_e) {
     // Firefox MV2: prototype overrides fail on Xray wrappers — emote URL fixing
     // relies on early-inject-main.js in MAIN world instead (Chrome-only feature)
     log(' ⚠️ Image src interceptors skipped (isolated world)')
@@ -507,11 +507,11 @@
   // A MutationObserver scoped to the chat input fixes any __FFZ__ src/srcset on
   // whatever element appears, whenever it appears (verified: once fixed it sticks).
   function fixEmoteImgEl(img) {
-    if (!img || img.tagName !== 'IMG') return
+    if (img?.tagName !== 'IMG') return
     const ss = img.getAttribute('srcset')
-    if (ss && ss.includes(HEATSYNC_PREFIX)) img.setAttribute('srcset', fixHeatsyncSrcset(ss) || '')
+    if (ss?.includes(HEATSYNC_PREFIX)) img.setAttribute('srcset', fixHeatsyncSrcset(ss) || '')
     const sc = img.getAttribute('src')
-    if (sc && sc.includes(HEATSYNC_PREFIX)) {
+    if (sc?.includes(HEATSYNC_PREFIX)) {
       const f = fixHeatsyncUrl(sc)
       if (f) img.setAttribute('src', f)
     }
@@ -785,7 +785,7 @@
         }
       }
       return emotes
-    } catch (e) {
+    } catch (_e) {
       return []
     }
   }
@@ -858,7 +858,7 @@
     const out = emotes.map((emote) => {
       let url = emote.url
       if (url && (url.startsWith('/uploads/') || url.startsWith('/emotes/'))) {
-        url = 'https://heatsync.org' + url
+        url = `https://heatsync.org${url}`
       }
       return {
         __typename: 'Emote',
@@ -1163,12 +1163,12 @@
                 log(' 📊 Our URL:', emote.url)
                 // Try different paths to srcSet AND src (both needed for display)
                 if (elem.props?.children?.props) {
-                  elem.props.children.props.srcSet = emote.url + ' 1x, ' + emote.url + ' 2x'
+                  elem.props.children.props.srcSet = `${emote.url} 1x, ${emote.url} 2x`
                   elem.props.children.props.src = emote.url // Also set src for fallback
                   log(' ✅ Set srcSet+src on children.props')
                 }
                 if (elem.props?.srcSet !== undefined) {
-                  elem.props.srcSet = emote.url + ' 1x, ' + emote.url + ' 2x'
+                  elem.props.srcSet = `${emote.url} 1x, ${emote.url} 2x`
                   elem.props.src = emote.url
                   log(' ✅ Set srcSet+src on props directly')
                 }
@@ -1184,7 +1184,7 @@
 
           const emoteId = emote.native ? emote.hash : HEATSYNC_PREFIX + emote.hash + HEATSYNC_SUFFIX
           const setId = emote.native ? 'TwitchEmotes' : 'HeatSyncEmotes'
-          let srcSet = emote.url + ' 1x, ' + emote.url + ' 2x'
+          let srcSet = `${emote.url} 1x, ${emote.url} 2x`
           if (emote.native) {
             const base = `https://static-cdn.jtvnw.net/emoticons/v2/${emote.hash}`
             srcSet = `${base}/default/dark/1.0 1x, ${base}/default/dark/2.0 2x`
@@ -1312,7 +1312,7 @@
           clearTimeout(_exportDebounce)
           _exportDebounce = cleanup.setTimeout(exportNativeEmotes, 500)
         }
-      } catch (e) {}
+      } catch (_e) {}
       if (orig) orig.call(this, prevProps, ...args)
     }
     inst._heatsync_cdu_hooked = true
@@ -1370,12 +1370,12 @@
   // Track preloaded emote names (Image() preloading disabled — ORB blocks in content scripts)
   const preloadedImages = new Map()
   const MAX_PRELOADED = 500
-  function preloadEmoteImages(emotes) {
+  function _preloadEmoteImages(emotes) {
     for (const emote of emotes) {
       if (!emote.url || preloadedImages.has(emote.name)) continue
       let url = emote.url
       if (url.startsWith('/uploads/') || url.startsWith('/emotes/')) {
-        url = 'https://heatsync.org' + url
+        url = `https://heatsync.org${url}`
       }
       preloadedImages.set(emote.name, { src: url })
     }
@@ -1453,7 +1453,7 @@
     const dot = () => mk(' · ', 'color:#555;')
     cycleTooltip.replaceChildren()
     cycleTooltip.appendChild(mk(`${index}/${total}`, 'color:#888;'))
-    cycleTooltip.appendChild(mk(' ' + label, 'color:#fff;'))
+    cycleTooltip.appendChild(mk(` ${label}`, 'color:#fff;'))
     if (meta.cat) {
       cycleTooltip.appendChild(dot())
       cycleTooltip.appendChild(mk(meta.cat, 'color:#9e9e9e;'))
@@ -1499,7 +1499,7 @@
     // Normalize URL - convert relative paths to absolute
     let emoteUrl = matchedEmote.url
     if (emoteUrl && (emoteUrl.startsWith('/uploads/') || emoteUrl.startsWith('/emotes/'))) {
-      emoteUrl = 'https://heatsync.org' + emoteUrl
+      emoteUrl = `https://heatsync.org${emoteUrl}`
     }
 
     // Native Twitch emotes use real emote ID and CDN URLs
@@ -1658,7 +1658,7 @@
           for (let i = 0; i < deleteLen; i++) {
             slateEditor.deleteBackward('character')
           }
-          log(' 🗑️ Deleted text emote for cycling:', prevEmote, '(' + deleteLen + ' chars)')
+          log(' 🗑️ Deleted text emote for cycling:', prevEmote, `(${deleteLen} chars)`)
         }
       }
     } else {
@@ -1730,7 +1730,7 @@
       }
     } else {
       // Insert emote name as text only (text mode) - include space in text
-      const textToInsert = addSpace ? matchedEmote.name + ' ' : matchedEmote.name
+      const textToInsert = addSpace ? `${matchedEmote.name} ` : matchedEmote.name
       log(' [autocomplete-hook] TEXT MODE - Inserting text:', textToInsert)
 
       slateEditor.insertText(textToInsert)
@@ -1930,7 +1930,7 @@
               for (const [name, emoji] of EMOJI_ENTRIES) {
                 if (name.startsWith(emojiSearch)) {
                   matches.push({
-                    name: ':' + name + ':',
+                    name: `:${name}:`,
                     nameLower: name,
                     isEmoji: true,
                     emoji,
@@ -1940,7 +1940,7 @@
                   n++
                 } else if (name.includes(emojiSearch)) {
                   matches.push({
-                    name: ':' + name + ':',
+                    name: `:${name}:`,
                     nameLower: name,
                     isEmoji: true,
                     emoji,
@@ -1996,7 +1996,7 @@
             if (!emojiSearch && !currentSearch.startsWith('@')) {
               const recentChatters = []
               for (const c of getRecentChattersFromBridge()) {
-                if (c.l && c.l.startsWith(emoteSearch)) {
+                if (c.l?.startsWith(emoteSearch)) {
                   recentChatters.push({ name: c.name, nameLower: c.l, isUser: true })
                 }
               }
@@ -2020,7 +2020,7 @@
             if (!emojiSearch && cycleFinal.length <= 1) {
               fetch7tvCycleMatches(currentSearch)
             }
-            log(' 🔄 Rebuilt', cycleState.matches.length, 'matches for "' + currentSearch + '"')
+            log(' 🔄 Rebuilt', cycleState.matches.length, `matches for "${currentSearch}"`)
           }
 
           // Allow cycling if:
@@ -2342,7 +2342,7 @@
         // Debug: log all clicks to see structure
         const target = e.target
         const parent = target.parentElement
-        const grandparent = parent?.parentElement
+        const _grandparent = parent?.parentElement
 
         // CRITICAL: Ignore clicks inside heatsync panel (import button, settings, etc)
         if (target.closest('#heatsync-panel') || target.closest('.heatsync-panel')) {
@@ -2414,7 +2414,7 @@
           const src = img.src || img.srcset || ''
           if (src.includes('betterttv') || src.includes('7tv') || src.includes('frankerfacez')) {
             log(' 🔍 Click on BTTV/7TV/FFZ img:', {
-              target: target.tagName + '.' + target.className?.split(' ')[0],
+              target: `${target.tagName}.${target.className?.split(' ')[0]}`,
               inAutocomplete: !!autocomplete,
               imgSrc: src.substring(0, 60),
             })
@@ -2663,7 +2663,7 @@
           const srcsetNeedsFix = srcset.includes('jtvnw.net')
           if (img.dataset.heatsyncFixed && !srcsetNeedsFix) continue
 
-          const checkStr = src + ' ' + srcset
+          const checkStr = `${src} ${srcset}`
 
           if (checkStr.includes('__FFZ__999999::')) {
             const match = checkStr.match(/__FFZ__999999::([a-zA-Z0-9]+)__FFZ__/)
@@ -2671,7 +2671,7 @@
               const emote = emoteByHash.get(match[1])
               if (emote) {
                 img.src = emote.url
-                img.srcset = emote.url + ' 1x'
+                img.srcset = `${emote.url} 1x`
                 img.dataset.heatsyncFixed = 'true'
               }
             }
@@ -2683,7 +2683,7 @@
               const emote = emoteByHash.get(match[1])
               if (emote) {
                 img.src = emote.url
-                img.srcset = emote.url + ' 1x'
+                img.srcset = `${emote.url} 1x`
                 img.dataset.heatsyncFixed = 'true'
               }
             }
@@ -2693,7 +2693,7 @@
             srcsetNeedsFix &&
             (src.includes('betterttv.net') || src.includes('7tv.app') || src.includes('frankerfacez'))
           ) {
-            img.srcset = src + ' 1x'
+            img.srcset = `${src} 1x`
             img.dataset.heatsyncFixed = 'true'
           }
         }
@@ -2759,7 +2759,7 @@
 
     const src = img.src || ''
     const srcset = img.srcset || ''
-    const checkStr = src + ' ' + srcset
+    const checkStr = `${src} ${srcset}`
     const emotes = getHeatsyncEmotes()
 
     // Check for pending preview from click handler (FFZ-style)
@@ -2770,7 +2770,7 @@
       if (isInInput) {
         log(' 🎯 Found pending preview img, fixing:', pending.name)
         img.src = pending.url
-        img.srcset = pending.url + ' 1x'
+        img.srcset = `${pending.url} 1x`
         img.dataset.heatsyncFixed = 'true'
         img.style.height = '28px'
         img.style.width = 'auto'
@@ -2789,7 +2789,7 @@
         if (emote) {
           log(' 🖼️ Fixing emote image:', emote.name, 'hash:', hash, 'from:', src ? 'src' : 'srcset')
           img.src = emote.url
-          img.srcset = emote.url + ' 1x'
+          img.srcset = `${emote.url} 1x`
           img.dataset.heatsyncFixed = 'true'
 
           // Preserve aspect ratio with consistent height (match input line-height to prevent box expansion)
@@ -2845,7 +2845,7 @@
                 if (isWide) {
                   currentSpan.dataset.heatsyncWide = 'true'
                 }
-                log(' 📐 Set span width:', width + 'px')
+                log(' 📐 Set span width:', `${width}px`)
               }
             }
           }
@@ -2867,7 +2867,7 @@
       if (emote) {
         log(' 🖼️ Fixing emote by alt:', emote.name)
         img.src = emote.url
-        img.srcset = emote.url + ' 1x'
+        img.srcset = `${emote.url} 1x`
         img.dataset.heatsyncFixed = 'true'
 
         // Same wide emote fix
@@ -2920,7 +2920,7 @@
               if (isWide) {
                 currentSpan.dataset.heatsyncWide = 'true'
               }
-              log(' 📐 Set span width (alt):', width + 'px')
+              log(' 📐 Set span width (alt):', `${width}px`)
             }
           }
         }
@@ -2962,7 +2962,7 @@
       const settings = getExtensionSettings()
       // If WYSIWYG is OFF, skip ALL emote normalization (Twitch + ours)
       if (settings.emoteWysiwyg === false) {
-        const [node, path] = entry
+        const [node, _path] = entry
         // Block normalization of text nodes - prevents ALL emote conversions
         if (node.text) {
           return
@@ -3011,8 +3011,8 @@
                   const point = { path: selection.anchor.path, offset: deleteFrom }
                   slateEditor.select({ anchor: point, focus: selection.anchor })
                   slateEditor.deleteFragment()
-                  originalInsertText.call(slateEditor, emoji + ' ')
-                  log('🎯 Auto-converted :' + shortcode + ': → ' + emoji)
+                  originalInsertText.call(slateEditor, `${emoji} `)
+                  log(`🎯 Auto-converted :${shortcode}: → ${emoji}`)
                   return
                 }
               }
@@ -3075,7 +3075,7 @@
     initAttempts++
     init()
     if (!chatInputInst && initAttempts < 10) {
-      cleanup.setTimeout(tryInit, 1000, 'autocomplete-retry-' + initAttempts)
+      cleanup.setTimeout(tryInit, 1000, `autocomplete-retry-${initAttempts}`)
     }
   }
   cleanup.setTimeout(tryInit, 1000, 'autocomplete-initial')

@@ -3196,6 +3196,20 @@
     _updateMcLayout?.()
   }
 
+  // vi-mode (chrome/vi-mode.js, same isolated world) reports "normal mode
+  // settled on an empty composer" — the keyboard-first "done here" signal.
+  // A keyboard-only flow never blurs on its own, so without this the empty
+  // bar could never auto-hide (the focused-composer guard blocked forever).
+  // Blur first so that guard passes, and zero the rapid-fire/sticky windows —
+  // an explicit Escape outranks post-send stickiness.
+  window.__hsViComposerEmpty = (el) => {
+    if (el?.id !== 'hs-mc-input' || !autoHideEligible()) return
+    _keepComposerOpenUntil = 0
+    _composerStickyUntil = 0
+    el.blur()
+    hideInputBar()
+  }
+
   let _autoHideRetryTimer = null
   function hideInputBar() {
     if (!autoHideEligible()) return

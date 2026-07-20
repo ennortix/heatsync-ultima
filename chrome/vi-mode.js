@@ -505,6 +505,19 @@
       setCursorPos(el, cursor)
     }
     updateVisual()
+    // Settled empty in normal mode (Escape on empty, dd/x to empty, undo) =
+    // "done here" — hand multichat the auto-hide signal a keyboard-only flow
+    // can never produce (no blur ever comes). Change-operators (cc/s/S) never
+    // land here: mode is already 'insert' when their syncCursor runs. The
+    // hook no-ops when auto-hide is off or the element isn't the composer.
+    if (enabled && mode === 'normal' && len === 0) {
+      window.__hsViComposerEmpty?.(el)
+      // The hook may have auto-hidden + blurred the composer. Detach NOW —
+      // waiting for the 150ms focusout timer leaves a window where the next
+      // printable hits vi's hidden-composer fallback instead of multichat's
+      // type-to-reveal (which focuses and types into a visible composer).
+      if (document.activeElement !== el) detach()
+    }
   }
 
   // --- Cheatsheet ---

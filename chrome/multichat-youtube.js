@@ -39701,6 +39701,9 @@ function handleInputKeydown(e) {
   }
 
   // Any other key resets autocomplete cycling (ignore modifier keys)
+  // (remember whether Escape just closed the cycle — that Escape is spent,
+  // it must not also dismiss the composer below)
+  const acWasActive = acState.active
   if (acState.active && !['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) {
     hideAutocomplete()
   }
@@ -39717,6 +39720,17 @@ function handleInputKeydown(e) {
     if (replyState) {
       clearReplyState()
       hideInputBar() // explicit cancel — ok to re-hide an empty composer
+    } else if (!acWasActive && autoHideEligible() && !getInputText().trim()) {
+      // Keyboard-first dismiss: with nothing to close and nothing typed,
+      // Escape on the empty composer means "done here". Blur so the
+      // focused-composer guard passes and hide NOW — no other blur is ever
+      // coming in a keyboard-only flow. Zero the rapid-fire/sticky windows:
+      // an explicit Escape outranks post-send stickiness. (With vi mode on,
+      // vi owns this Escape and its normal-mode hook does the same.)
+      _composerStickyUntil = 0
+      _keepComposerOpenUntil = 0
+      input.blur()
+      hideInputBar()
     }
     hideAutocomplete()
     return
@@ -56456,6 +56470,20 @@ const STORAGE_KEY = 'heatsync_multichat'
     // ResizeObserver doesn't fire on display:none → :flex; recompute anchors
     // so the docked Twitch callout follows the inputbar.
     _updateMcLayout?.()
+  }
+
+  // vi-mode (chrome/vi-mode.js, same isolated world) reports "normal mode
+  // settled on an empty composer" — the keyboard-first "done here" signal.
+  // A keyboard-only flow never blurs on its own, so without this the empty
+  // bar could never auto-hide (the focused-composer guard blocked forever).
+  // Blur first so that guard passes, and zero the rapid-fire/sticky windows —
+  // an explicit Escape outranks post-send stickiness.
+  window.__hsViComposerEmpty = (el) => {
+    if (el?.id !== 'hs-mc-input' || !autoHideEligible()) return
+    _keepComposerOpenUntil = 0
+    _composerStickyUntil = 0
+    el.blur()
+    hideInputBar()
   }
 
   let _autoHideRetryTimer = null

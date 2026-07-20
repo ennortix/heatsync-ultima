@@ -17737,12 +17737,28 @@ async function loadSeenState() {
         if (typeof data.latestAt[k] === 'number') latestAt[k] = data.latestAt[k]
       }
     }
+    // …and the CLEARED marks. _saveSeenLocal persists seenAt alongside
+    // latestAt, but this only ever restored latestAt — so every reload resumed
+    // with seenAt at 0 while latestAt came back at real event times, and
+    // hasUnseen() (latestAt > seenAt) relit mentions/whispers/following no
+    // matter how many times they'd been cleared. Anonymous users never reach
+    // the GET below, so this cache is their ONLY record of what they've read.
+    if (data?.seenAt) {
+      for (const k of SEEN_SURFACES) {
+        if (typeof data.seenAt[k] === 'number') seenAt[k] = data.seenAt[k]
+      }
+    }
   } catch (e) {
     warn('seen-state local load failed:', e?.message)
   }
 
-  // Anonymous users have no server state — local-only is fine.
-  if (typeof hsAuthToken !== 'undefined' && !hsAuthToken) {
+  // Anonymous users have no server state — local-only is fine. Bail only on a
+  // KNOWN anonymous (=== false): hsAuthToken starts null ("not resolved yet")
+  // and loadHsAuth() is fire-and-forget, so a plain falsy check let a logged-in
+  // user lose that race and take this path — skipping the cross-device sync for
+  // the whole session, since _seenLoaded then blocks any retry. An unresolved
+  // token falls through instead; the GET simply 401s for a real anonymous.
+  if (typeof hsAuthToken !== 'undefined' && hsAuthToken === false) {
     _seenLoaded = true
     refreshSeenBadges()
     return

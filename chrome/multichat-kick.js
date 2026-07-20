@@ -40395,7 +40395,7 @@ function handleInputKeydownInner(e, input) {
     const _slashTabM = _slashTabText.match(/^\/([a-z?]*)$/i)
     if (_slashTabM) {
       const _slashTabQ = _slashTabM[1].toLowerCase()
-      const _slashTabMatches = SLASH_COMMANDS.filter((c) => c.cmd.startsWith(_slashTabQ))
+      const _slashTabMatches = matchSlashCommands(_slashTabQ)
       if (_slashTabMatches.length > 0) {
         insertSlashCommand(_slashTabMatches[0])
         return
@@ -43206,6 +43206,28 @@ function clearInput(input) {
   cleanup.setTimeout(() => hideInputBar(), 0)
 }
 
+// Match a "/<partial>" query against both canonical command names AND aliases,
+// so "/hl" completes to /highlight, "/to" to /timeout, etc. Alias hits resolve
+// to their canonical command (insertSlashCommand inserts the real name). Without
+// this, typing a documented alias + Tab silently did nothing (only cmd names
+// matched) — reported live for /hl. Canonical matches rank first, then aliases.
+function matchSlashCommands(q) {
+  const byCmd = SLASH_COMMANDS.filter((c) => c.cmd.startsWith(q))
+  if (!q) return byCmd
+  const seen = new Set(byCmd.map((c) => c.cmd))
+  const viaAlias = []
+  for (const [alias, target] of Object.entries(SLASH_ALIASES)) {
+    if (typeof target !== 'string') continue // null = explicit pass-through
+    if (!alias.startsWith(q) || seen.has(target)) continue
+    const c = SLASH_COMMANDS.find((x) => x.cmd === target)
+    if (c) {
+      viaAlias.push(c)
+      seen.add(target)
+    }
+  }
+  return [...byCmd, ...viaAlias]
+}
+
 function checkSlashAutocomplete() {
   const text = (typeof getInputText === 'function' ? getInputText() : '') || ''
   const m = text.match(/^\/([a-z?]*)$/i)
@@ -43214,7 +43236,7 @@ function checkSlashAutocomplete() {
     return
   }
   const q = m[1].toLowerCase()
-  const matches = SLASH_COMMANDS.filter((c) => c.cmd.startsWith(q)).slice(0, 8)
+  const matches = matchSlashCommands(q).slice(0, 8)
   if (matches.length === 0) {
     hideSlashDropdown()
     return

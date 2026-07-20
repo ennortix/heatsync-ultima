@@ -40204,6 +40204,25 @@ function handleInputKeydownInner(e, input) {
   if (e.key === 'Tab') {
     e.preventDefault()
 
+    // Slash commands take absolute priority over emote-completion — typing a
+    // partial command must NEVER let Tab fall through to inserting an
+    // unrelated emote (2026-07-20 live incident: Tab on "/announce" inserted
+    // a random channel emote instead of completing the command — the
+    // dropdown-driven slashAcState.active gate above wasn't reliably true for
+    // every registered command, root cause never conclusively pinned down).
+    // Independent, direct lookup here so slash Tab-complete can't regress to
+    // emote insertion again regardless of that dropdown's internal state.
+    const _slashTabText = getInputText()
+    const _slashTabM = _slashTabText.match(/^\/([a-z?]*)$/i)
+    if (_slashTabM) {
+      const _slashTabQ = _slashTabM[1].toLowerCase()
+      const _slashTabMatches = SLASH_COMMANDS.filter((c) => c.cmd.startsWith(_slashTabQ))
+      if (_slashTabMatches.length > 0) {
+        insertSlashCommand(_slashTabMatches[0])
+        return
+      }
+    }
+
     // A Tab-cycle only makes sense while the caret still sits on the
     // completion it's refining. The caret can move WITHOUT the keydown/input
     // teardown ever firing (mouse click, programmatic focus reassert) —

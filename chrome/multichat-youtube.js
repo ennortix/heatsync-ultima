@@ -11510,7 +11510,7 @@ function injectStyles() {
     @keyframes hs-flash-paste { 0% { box-shadow: 0 0 12px 4px #fff; } 100% { box-shadow: none; } }
     @keyframes hs-flash-add { 0% { box-shadow: 0 0 12px 4px var(--hs-ok); } 100% { box-shadow: none; } }
     @keyframes hs-flash-block { 0% { box-shadow: 0 0 12px 4px var(--hs-danger); } 100% { box-shadow: none; } }
-    @keyframes hs-flash-unblock { 0% { box-shadow: 0 0 12px 4px #ff8700; } 100% { box-shadow: none; } }
+    @keyframes hs-flash-unblock { 0% { box-shadow: 0 0 12px 4px var(--hs-ok); } 100% { box-shadow: none; } }
     @keyframes hs-flash-remove { 0% { box-shadow: 0 0 12px 4px #fff; } 100% { box-shadow: none; } }
     .hs-flash-paste { animation: hs-flash-paste 0.4s ease-out; }
     .hs-flash-add { animation: hs-flash-add 0.4s ease-out; }

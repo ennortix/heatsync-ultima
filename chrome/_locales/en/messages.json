@@ -1976,6 +1976,14 @@
       }
     }
   },
+  "mc_input_command_failed": {
+    "message": "command failed: $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
   "mc_input_usage_r": {
     "message": "usage: /r <message>"
   },

@@ -43945,7 +43945,16 @@ async function handleSlashCommand(text, input) {
     // (same category as our prediction-betting / points-redemption). Twitch-only
     // (kick/youtube have no equivalent); the highlighted message echoes back
     // through the normal IRC read socket, so we do NOT also PRIVMSG it.
-    const twitchLogin = _twitchModName || (currentTab === 'live' ? getLiveChannel() : null) || getActiveTwitchChannel()
+    // Resolve the twitch channel to highlight in, using ONLY helpers in scope
+    // here. getLiveChannel is block-scoped to main.js — reach it through the
+    // typeof guard the rest of input.js uses; an unguarded call (or the
+    // getActiveTwitchChannel wrapper, which itself calls getLiveChannel on
+    // live/feed/aggregate tabs) throws a ReferenceError that silently kills
+    // this async handler → "no toast, no send".
+    let twitchLogin = _modCh?.twitch || null
+    if (!twitchLogin && currentTab === 'live' && typeof getLiveChannel === 'function') twitchLogin = getLiveChannel()
+    // Twitch-only channel tab: the tab id itself is the twitch login.
+    if (!twitchLogin && modChannel && modChannel !== 'live' && !_modCh) twitchLogin = modChannel
     if (!twitchLogin) {
       showToast(t('mc_input_highlight_needs_twitch') || '/highlight needs a twitch channel tab', 'error')
       return true
@@ -44437,7 +44446,21 @@ async function sendMessage() {
   //   string -> rewrite outgoing text and continue normal send
   //   else   -> not ours, pass raw text through to platform
   if (text.startsWith('/')) {
-    const result = await handleSlashCommand(text, input)
+    // A throw inside any command handler must never silently swallow the send
+    // (an unguarded ReferenceError once made /highlight fail with no toast, no
+    // send). Surface it and stop — passing the raw "/cmd" through to the
+    // platform as literal text would be worse.
+    let result
+    try {
+      result = await handleSlashCommand(text, input)
+    } catch (e) {
+      console.error('[hs] slash command threw:', e?.message || e)
+      showToast(
+        t('mc_input_command_failed', [e?.message || 'error']) || `command failed: ${e?.message || 'error'}`,
+        'error',
+      )
+      return
+    }
     if (result === true) return
     if (typeof result === 'string') text = result
   }

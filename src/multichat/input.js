@@ -1159,10 +1159,12 @@ function initInput() {
     },
     { passive: true },
   )
-  input.addEventListener('input', () => {
+  input.addEventListener('input', (e) => {
     const hasText = (input.value || input.textContent || '').trim().length > 0
     if (hasText) showInputBar()
-    else hideInputBar()
+    // mid-IME-composition empties are transient — hiding would blur and kill
+    // the composition (the old focused-composer guard used to absorb these)
+    else if (!e.isComposing) hideInputBar()
   })
   // A mouse click is the one caret move that fires neither keydown nor input,
   // so the Tab-cycle teardown in those handlers never runs. Finalize the cycle
@@ -5941,6 +5943,12 @@ function clearInput(input) {
   else input.value = ''
   pendingMessage = ''
   updateCharCount()
+  // programmatic clears fire no input event — queue the auto-hide here.
+  // Deferred a tick because several send paths arm the rapid-fire window
+  // AFTER clearing; a synchronous hide would land before keepComposerOpen
+  // and yank the composer mid-send. Once armed, the retry timer hides the
+  // idle empty bar when stickiness expires; bare clears hide next tick.
+  cleanup.setTimeout(() => hideInputBar(), 0)
 }
 
 function checkSlashAutocomplete() {

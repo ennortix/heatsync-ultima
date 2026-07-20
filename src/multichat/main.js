@@ -3218,10 +3218,11 @@
     const hasText = input ? (input.value || input.textContent || '').trim().length > 0 : false
     const hasContent = hasText || (input && input.querySelector('img, span.hs-mc-emoji'))
     if (hasContent) return
-    // Never yank the bar out from under a focused composer (rapid-fire send
-    // flow, or the user just cleared their draft) — its blur re-attempts the
-    // hide once focus actually leaves.
-    if (input && document.activeElement === input) return
+    // vi change-operators (cc/s/S/C, c+motion) empty the composer for one
+    // synchronous beat before re-entering insert — never hide on that
+    // transient empty. (Focus alone is NOT a keep signal: empty = hidden,
+    // instantly; the rapid-fire send flow is covered by keepComposerOpen.)
+    if (window.__hsViChanging?.()) return
     // Don't hide while emote picker is open
     const picker = document.getElementById('hs-mc-emote-picker')
     if (picker?.classList.contains('visible')) return

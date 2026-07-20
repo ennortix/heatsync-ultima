@@ -36,6 +36,22 @@
   let lastEdit = null // { keys: [], beforeText, beforeCursor } for . repeat
   let recording = null // in-progress edit recording
   let activeEl = null
+  let changing = false // inside a c-family delete (cc/s/S/C/c+motion) — the
+  // transient empty must not trigger multichat's hide-on-empty (insert mode
+  // follows immediately). Read via window.__hsViChanging below.
+
+  // multichat's hideInputBar consults this before hiding an empty composer
+  window.__hsViChanging = () => changing
+
+  // Run the delete phase of a change command with hide-on-empty suppressed.
+  function changeDelete(fn) {
+    changing = true
+    try {
+      fn()
+    } finally {
+      changing = false
+    }
+  }
 
   // --- DOM helpers ---
 
@@ -662,7 +678,7 @@
       }
       case 'c':
         pushUndo(el)
-        deleteText(el, start, end)
+        changeDelete(() => deleteText(el, start, end))
         cursor = start
         enterInsert(el, start)
         break
@@ -857,7 +873,7 @@
           case 'c':
             pushUndo(el)
             register = getText(el)
-            replaceAll(el, '')
+            changeDelete(() => replaceAll(el, ''))
             cursor = 0
             enterInsert(el, 0)
             break
@@ -908,21 +924,21 @@
         if (cursor < len) {
           const dc = Math.min(n, len - cursor)
           register = isCE(el) ? getTextSlice(el, cursor, cursor + dc) : text.slice(cursor, cursor + dc)
-          deleteText(el, cursor, cursor + dc)
+          changeDelete(() => deleteText(el, cursor, cursor + dc))
         }
         enterInsert(el, cursor)
         return
       case 'S':
         pushUndo(el)
         register = getText(el)
-        replaceAll(el, '')
+        changeDelete(() => replaceAll(el, ''))
         enterInsert(el, 0)
         return
       case 'C':
         pushUndo(el)
         if (cursor < len) {
           register = isCE(el) ? getTextSlice(el, cursor, len) : text.slice(cursor)
-          deleteText(el, cursor, len)
+          changeDelete(() => deleteText(el, cursor, len))
         }
         enterInsert(el, cursor)
         return

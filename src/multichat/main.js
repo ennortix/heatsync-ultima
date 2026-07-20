@@ -6642,9 +6642,8 @@
     _dropAllTabCaches()
   }
 
-  // Static platform→accent map — hoisted out of buildMessageDiv so it isn't
-  // reallocated for every chat row rendered.
-  const PLAT_COLORS = { twitch: '#9146ff', kick: '#53fc18', yt: '#ff0000', heatsync: '#ff8700' }
+  // Platform→accent map lives in palette.js (HS_PLAT_COLORS).
+  const PLAT_COLORS = HS_PLAT_COLORS
 
   // Pure builder for the inline feed-post quote row's username anchor (hoisted
   // out of buildMessageDiv, same reasoning as PLAT_COLORS above). Mirrors the

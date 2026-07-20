@@ -1615,9 +1615,8 @@ function buildFeedMessageDiv(m, opUsername) {
   // Platform badge: [T]/[K]/[Y] (hidden for anonymous)
   const platLabel =
     m.platform === 'kick' ? '[K]' : m.platform === 'youtube' ? '[Y]' : m.platform === 'twitch' ? '[T]' : ''
-  const platColors = { twitch: '#9146ff', kick: '#53fc18', youtube: '#ff0000' }
   const platBadge = platLabel
-    ? `<span class="hs-feed-tag" style="color:${platColors[m.platform]}">${platLabel}</span>`
+    ? `<span class="hs-feed-tag" style="color:${HS_PLAT_COLORS[m.platform]}">${platLabel}</span>`
     : ''
 
   const timeHtml = window._hsTimestampsEnabled !== false ? `<span class="hs-feed-time">${escapeHtml(time)}</span>` : ''

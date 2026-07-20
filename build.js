@@ -516,6 +516,7 @@ function readLib() {
 // Read multichat module files (only bundled into multichat-<platform>.js)
 const MULTICHAT_MODULES = [
   'bootstrap.js',
+  'palette.js',
   'kick-native-tap.js',
   'send-targets.js',
   'tab-messages.js',

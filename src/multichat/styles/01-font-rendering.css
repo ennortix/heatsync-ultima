@@ -5,7 +5,6 @@
     :root {
       --hs-resize-thickness: 4px;
       --hs-resize-grab: 4px;
-      --hs-link: #5f87ff;
     }
     /* Bundled bitmap fonts — URLs replaced via chrome.runtime.getURL after
        template evaluation (woff2 lives in chrome/fonts/, exposed via

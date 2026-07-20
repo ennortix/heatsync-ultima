@@ -6840,6 +6840,22 @@ const _cleanup = {
 }
 
 
+// --- multichat/palette.js ---
+// Palette — the one JS-side platform→accent map. CSS-side doctrine lives in
+// styles/00-palette.css; anything a JS-built inline style needs should use
+// `var(--hs-*)` rather than a hex from here. Values frozen; scope rule:
+// platform hexes render ONLY next to a platform glyph/label ([T]/[K]/[Y]
+// tags, dots, source chips), never as free-standing semantic color.
+// Both `yt` and `youtube` keys exist — callers disagree on the spelling.
+const HS_PLAT_COLORS = {
+  twitch: '#9146ff',
+  kick: '#53fc18',
+  yt: '#ff0000',
+  youtube: '#ff0000',
+  heatsync: '#ff8700',
+}
+
+
 // --- multichat/send-targets.js ---
 // send-targets.js — pure helpers deciding which linked platforms a chat
 // message should be sent to for a given multichat channel config.
@@ -7885,13 +7901,62 @@ function injectStyles() {
   const style = document.createElement('style')
   style.id = 'hs-mc-styles'
   const css = `
+    /* Color doctrine — one source of truth for every semantic color.
+       Bright ANSI = accents (text/icons/borders/≤3px strips); dim ANSI +
+       low-alpha tints = fills; hover/active = reverse-video (#fff bg /
+       #000 text); orange is scarce and means "HeatSync itself".
+       Vocabulary mirrors heatsync.org css/core/variables.css (bare names
+       there, --hs- prefix here for host-page namespace safety):
+       brand · heat · mention · warn · ok · danger · reply · thread ·
+       link · info · gold · plat-*. Platform hexes appear ONLY next to a
+       platform glyph/label — never as free-standing semantic color. */
+    :root {
+      /* bright */
+      --hs-brand: #ff8700;    /* 208 — logo, heat, focus, admin, hs chip */
+      --hs-heat: #ff8700;
+      --hs-mention: #ffff00;  /* 226 — @-mentions, unseen-mention, search hit */
+      --hs-warn: #ffff00;     /*       warn toasts, announce, NSFW */
+      --hs-ok: #00ff00;       /* 46  — success, live, online, toggle-on */
+      --hs-danger: #ff0000;   /* 196 — error, ban, delete, destructive */
+      --hs-reply: #00ffff;    /* 51  — reply borders, quotes, whispers, mode */
+      --hs-thread: #ff00ff;   /* 201 — OP/thread accents, raid/hype events */
+      --hs-link: #5f87ff;     /* 69  — hyperlinks */
+      --hs-info: #5f87ff;     /*       info toasts, polls, mod-grant */
+      --hs-gold: #ffd700;     /* 220 — mod/VIP, automod, bits, pinned, premium */
+      /* dim — fills, muted borders, low-urgency strips */
+      --hs-danger-dim: #800000;
+      --hs-ok-dim: #008000;
+      --hs-warn-dim: #808000;
+      --hs-info-dim: #000080;
+      --hs-thread-dim: #800080;
+      --hs-reply-dim: #008080;
+      /* tints — row backgrounds; never a bright hue as a large solid bg */
+      --hs-danger-tint: rgba(255, 0, 0, 0.10);
+      --hs-ok-tint: rgba(0, 255, 0, 0.10);
+      --hs-warn-tint: rgba(255, 255, 0, 0.10);
+      --hs-info-tint: rgba(95, 135, 255, 0.12);
+      --hs-thread-tint: rgba(255, 0, 255, 0.12);
+      --hs-reply-tint: rgba(0, 255, 255, 0.10);
+      --hs-gold-tint: rgba(255, 215, 0, 0.10);
+      --hs-warn-bg: #2e2e08;  /* solid — avoids alpha-stacking artifacts */
+      /* platform — values frozen; scope: adjacent to a platform glyph only */
+      --hs-plat-twitch: #9146ff;
+      --hs-plat-kick: #53fc18;
+      --hs-plat-youtube: #ff0000;
+      --hs-plat-hs: #ff8700;
+      /* structural */
+      --hs-fg: #fff;
+      --hs-bg: #000;
+      --hs-muted: #aaa;
+      --hs-border: #808080;
+    }
+
     /* Resize-bar tokens — one source of truth for every orange drag-bar.
        4px visible line; ::before extends the grab zone by --hs-resize-grab
        per side. Mirrors heatsync.org's --resize-thickness / --resize-grab. */
     :root {
       --hs-resize-thickness: 4px;
       --hs-resize-grab: 4px;
-      --hs-link: #5f87ff;
     }
     /* Bundled bitmap fonts — URLs replaced via chrome.runtime.getURL after
        template evaluation (woff2 lives in chrome/fonts/, exposed via
@@ -33770,9 +33835,8 @@ function buildFeedMessageDiv(m, opUsername) {
   // Platform badge: [T]/[K]/[Y] (hidden for anonymous)
   const platLabel =
     m.platform === 'kick' ? '[K]' : m.platform === 'youtube' ? '[Y]' : m.platform === 'twitch' ? '[T]' : ''
-  const platColors = { twitch: '#9146ff', kick: '#53fc18', youtube: '#ff0000' }
   const platBadge = platLabel
-    ? `<span class="hs-feed-tag" style="color:${platColors[m.platform]}">${platLabel}</span>`
+    ? `<span class="hs-feed-tag" style="color:${HS_PLAT_COLORS[m.platform]}">${platLabel}</span>`
     : ''
 
   const timeHtml = window._hsTimestampsEnabled !== false ? `<span class="hs-feed-time">${escapeHtml(time)}</span>` : ''
@@ -60475,9 +60539,8 @@ const STORAGE_KEY = 'heatsync_multichat'
     _dropAllTabCaches()
   }
 
-  // Static platform→accent map — hoisted out of buildMessageDiv so it isn't
-  // reallocated for every chat row rendered.
-  const PLAT_COLORS = { twitch: '#9146ff', kick: '#53fc18', yt: '#ff0000', heatsync: '#ff8700' }
+  // Platform→accent map lives in palette.js (HS_PLAT_COLORS).
+  const PLAT_COLORS = HS_PLAT_COLORS
 
   // Pure builder for the inline feed-post quote row's username anchor (hoisted
   // out of buildMessageDiv, same reasoning as PLAT_COLORS above). Mirrors the

@@ -574,7 +574,7 @@
         {
           type: 'heatsync-gql-response',
           id: req.id,
-          error: 'no hash for ' + req.operation,
+          error: `no hash for ${req.operation}`,
         },
         location.origin,
       )

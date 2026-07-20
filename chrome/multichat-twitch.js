@@ -10106,8 +10106,22 @@ function injectStyles() {
     .hs-mc-msg.hs-mc-notice-raid      { border-left-color: var(--hs-thread) !important; background: var(--hs-thread-tint) !important; }
     .hs-mc-msg.hs-mc-notice-raid      .hs-mc-system-text { color: var(--hs-thread); font-weight: 700; }
     /* Announcement = pure yellow (broadcaster speaking) */
-    .hs-mc-msg.hs-mc-notice-announce  { border-left-color: var(--hs-warn) !important; background: var(--hs-warn-tint) !important; }
-    .hs-mc-msg.hs-mc-notice-announce  .hs-mc-system-text { color: var(--hs-warn); font-weight: 600; }
+    /* Announce = the loudest notice: full yellow frame + solid olive bg +
+       "announce" chip. Every other notice keeps tint + left-border only. */
+    .hs-mc-msg.hs-mc-notice-announce  {
+      border: 1px solid var(--hs-warn) !important;
+      border-left-width: 3px !important;
+      background: var(--hs-warn-bg) !important;
+    }
+    .hs-mc-msg.hs-mc-notice-announce::before {
+      content: 'announce';
+      color: #000;
+      background: var(--hs-warn);
+      font-weight: 700;
+      padding: 0 4px;
+      margin-right: 6px;
+    }
+    .hs-mc-msg.hs-mc-notice-announce  .hs-mc-system-text { color: var(--hs-warn); font-weight: 700; }
     /* Bits = gold/amber (distinct from raid orange and announce yellow) */
     .hs-mc-msg.hs-mc-notice-bits      { border-left-color: var(--hs-gold) !important; background: rgba(255, 170, 0, 0.10) !important; }
     .hs-mc-msg.hs-mc-notice-bits      .hs-mc-system-text { color: var(--hs-gold); font-weight: 600; }
@@ -21203,9 +21217,28 @@ function _tapToMsg(m, channel) {
   return msg
 }
 
+// Announcements (and some usernotices) mount as a WRAPPER node whose
+// descendant is the chat-line__message — the strict class check on the added
+// node itself silently dropped them from the tap (starved-IRC viewers never
+// saw announcements at all). Detection is defensive against twitch build
+// drift: wrapper class/test-selector, or a fiber-level marker.
+function _tapIsAnnouncement(rowEl, mined) {
+  try {
+    const hint = String(mined?.msgId || mined?.messageType || '')
+    if (/announce/i.test(hint)) return true
+    if (rowEl.closest('[class*="announcement" i], [data-test-selector*="announcement" i]')) return true
+  } catch (_) {}
+  return false
+}
+
 function _tapHandleRow(rowEl) {
   if (!rowEl || rowEl.nodeType !== 1) return
-  if (!rowEl.classList?.contains('chat-line__message')) return
+  if (!rowEl.classList?.contains('chat-line__message')) {
+    // wrapper node (announcement container etc.) — recurse into the real row
+    const inner = rowEl.querySelector?.('.chat-line__message')
+    if (inner) _tapHandleRow(inner)
+    return
+  }
   // channel resolved at MINE time — twitch SPA navs change the page channel
   // without re-running init; a stale _tapChannel would file (and archive!)
   // messages under the previous channel
@@ -21229,6 +21262,13 @@ function _tapHandleRow(rowEl) {
   }
   const msg = _tapToMsg(mined, ch)
   if (!msg) return
+  if (_tapIsAnnouncement(rowEl, mined)) {
+    // tag so main.js classifies hs-mc-notice-announce — same shape irc.js
+    // emits for USERNOTICE msg-id=announcement (systemMsg empty renders
+    // "user: text" inside the announce-styled row)
+    msg.type = 'usernotice'
+    msg.msgId = 'announcement'
+  }
   _tapStats.mined++
   try {
     irc?._handleMsg?.(msg)
@@ -31447,6 +31487,22 @@ async function unbanTwitchUser(channelLogin, targetLogin) {
     'unbanUserFromChatRoom',
     'mutation($input: UnbanUserFromChatRoomInput!) { unbanUserFromChatRoom(input: $input) { error { code } } }',
     { input: { channelID, bannedUserLogin } },
+  )
+}
+
+// /announce — GQL mutation (same op the twitch web client fires). Announcement
+// echoes back as USERNOTICE msg-id=announcement, so no local synth needed.
+// color: PRIMARY | BLUE | GREEN | ORANGE | PURPLE.
+async function announceTwitchChat(channelLogin, message, color) {
+  const channelID = await resolveTwitchChannelId(channelLogin)
+  if (!channelID) return { error: 'channel not found' }
+  const text = (message || '').trim()
+  if (!text) return { error: 'no message' }
+  return _modActionMutation(
+    'SendAnnouncementMessage',
+    'sendAnnouncementMessage',
+    'mutation($input: SendAnnouncementMessageInput!) { sendAnnouncementMessage(input: $input) { error { code } } }',
+    { input: { channelID, message: text, color: color || 'PRIMARY' } },
   )
 }
 
@@ -43370,6 +43426,31 @@ async function handleSlashCommand(text, input) {
     }
   }
 
+  if (cmd === 'announce' || cmd === 'announceblue' || cmd === 'announcegreen' || cmd === 'announceorange' || cmd === 'announcepurple') {
+    if (!modChannel) {
+      showToast(t('mc_input_mod_needs_channel_tab', [cmd]) || `/${cmd} needs a channel tab`, 'error')
+      return true
+    }
+    if (!_twitchModName) {
+      showToast(t('mc_input_announce_twitch_only') || '/announce is twitch-only', 'error')
+      return true
+    }
+    if (!(await _twitchModAuthOk())) return true
+    const message = rest.trim()
+    if (!message) {
+      showToast(t('mc_input_usage_announce') || '/announce <message>', 'error')
+      return true
+    }
+    const color = cmd === 'announce' ? 'PRIMARY' : cmd.slice('announce'.length).toUpperCase()
+    const r = await announceTwitchChat(_twitchModName, message, color)
+    if (r?.ok) {
+      clearInput(input)
+    } else {
+      showToast(`announce failed: ${r?.error || 'unknown error'}`, 'error')
+    }
+    return true
+  }
+
   if (cmd === 'delete') {
     if (!modChannel) {
       showToast(t('mc_input_delete_needs_channel_tab'), 'error')
@@ -43543,8 +43624,10 @@ const SLASH_HELP_LINES = [
   '/subscribers           — subs-only ("/subscribers off")',
   '/unique                — unique-chat/r9k ("/unique off")',
   '',
+  '/announce <msg>        — announcement (blue/green/orange/purple variants)',
+  '',
   '/me /color and chat pass through to twitch & kick.',
-  '/mod /vip /raid /clear /announce are not yet wired —',
+  '/mod /vip /raid /clear are not yet wired —',
   'use twitch native chat or mod panel.',
 ]
 

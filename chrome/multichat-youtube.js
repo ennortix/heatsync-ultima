@@ -10106,8 +10106,22 @@ function injectStyles() {
     .hs-mc-msg.hs-mc-notice-raid      { border-left-color: var(--hs-thread) !important; background: var(--hs-thread-tint) !important; }
     .hs-mc-msg.hs-mc-notice-raid      .hs-mc-system-text { color: var(--hs-thread); font-weight: 700; }
     /* Announcement = pure yellow (broadcaster speaking) */
-    .hs-mc-msg.hs-mc-notice-announce  { border-left-color: var(--hs-warn) !important; background: var(--hs-warn-tint) !important; }
-    .hs-mc-msg.hs-mc-notice-announce  .hs-mc-system-text { color: var(--hs-warn); font-weight: 600; }
+    /* Announce = the loudest notice: full yellow frame + solid olive bg +
+       "announce" chip. Every other notice keeps tint + left-border only. */
+    .hs-mc-msg.hs-mc-notice-announce  {
+      border: 1px solid var(--hs-warn) !important;
+      border-left-width: 3px !important;
+      background: var(--hs-warn-bg) !important;
+    }
+    .hs-mc-msg.hs-mc-notice-announce::before {
+      content: 'announce';
+      color: #000;
+      background: var(--hs-warn);
+      font-weight: 700;
+      padding: 0 4px;
+      margin-right: 6px;
+    }
+    .hs-mc-msg.hs-mc-notice-announce  .hs-mc-system-text { color: var(--hs-warn); font-weight: 700; }
     /* Bits = gold/amber (distinct from raid orange and announce yellow) */
     .hs-mc-msg.hs-mc-notice-bits      { border-left-color: var(--hs-gold) !important; background: rgba(255, 170, 0, 0.10) !important; }
     .hs-mc-msg.hs-mc-notice-bits      .hs-mc-system-text { color: var(--hs-gold); font-weight: 600; }
@@ -31083,6 +31097,22 @@ async function unbanTwitchUser(channelLogin, targetLogin) {
   )
 }
 
+// /announce — GQL mutation (same op the twitch web client fires). Announcement
+// echoes back as USERNOTICE msg-id=announcement, so no local synth needed.
+// color: PRIMARY | BLUE | GREEN | ORANGE | PURPLE.
+async function announceTwitchChat(channelLogin, message, color) {
+  const channelID = await resolveTwitchChannelId(channelLogin)
+  if (!channelID) return { error: 'channel not found' }
+  const text = (message || '').trim()
+  if (!text) return { error: 'no message' }
+  return _modActionMutation(
+    'SendAnnouncementMessage',
+    'sendAnnouncementMessage',
+    'mutation($input: SendAnnouncementMessageInput!) { sendAnnouncementMessage(input: $input) { error { code } } }',
+    { input: { channelID, message: text, color: color || 'PRIMARY' } },
+  )
+}
+
 async function deleteTwitchMessage(channelLogin, messageID) {
   const channelID = await resolveTwitchChannelId(channelLogin)
   if (!channelID) return { error: 'channel not found' }
@@ -43003,6 +43033,31 @@ async function handleSlashCommand(text, input) {
     }
   }
 
+  if (cmd === 'announce' || cmd === 'announceblue' || cmd === 'announcegreen' || cmd === 'announceorange' || cmd === 'announcepurple') {
+    if (!modChannel) {
+      showToast(t('mc_input_mod_needs_channel_tab', [cmd]) || `/${cmd} needs a channel tab`, 'error')
+      return true
+    }
+    if (!_twitchModName) {
+      showToast(t('mc_input_announce_twitch_only') || '/announce is twitch-only', 'error')
+      return true
+    }
+    if (!(await _twitchModAuthOk())) return true
+    const message = rest.trim()
+    if (!message) {
+      showToast(t('mc_input_usage_announce') || '/announce <message>', 'error')
+      return true
+    }
+    const color = cmd === 'announce' ? 'PRIMARY' : cmd.slice('announce'.length).toUpperCase()
+    const r = await announceTwitchChat(_twitchModName, message, color)
+    if (r?.ok) {
+      clearInput(input)
+    } else {
+      showToast(`announce failed: ${r?.error || 'unknown error'}`, 'error')
+    }
+    return true
+  }
+
   if (cmd === 'delete') {
     if (!modChannel) {
       showToast(t('mc_input_delete_needs_channel_tab'), 'error')
@@ -43176,8 +43231,10 @@ const SLASH_HELP_LINES = [
   '/subscribers           — subs-only ("/subscribers off")',
   '/unique                — unique-chat/r9k ("/unique off")',
   '',
+  '/announce <msg>        — announcement (blue/green/orange/purple variants)',
+  '',
   '/me /color and chat pass through to twitch & kick.',
-  '/mod /vip /raid /clear /announce are not yet wired —',
+  '/mod /vip /raid /clear are not yet wired —',
   'use twitch native chat or mod panel.',
 ]
 

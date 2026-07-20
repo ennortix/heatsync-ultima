@@ -3938,6 +3938,22 @@ async function unbanTwitchUser(channelLogin, targetLogin) {
   )
 }
 
+// /announce — GQL mutation (same op the twitch web client fires). Announcement
+// echoes back as USERNOTICE msg-id=announcement, so no local synth needed.
+// color: PRIMARY | BLUE | GREEN | ORANGE | PURPLE.
+async function announceTwitchChat(channelLogin, message, color) {
+  const channelID = await resolveTwitchChannelId(channelLogin)
+  if (!channelID) return { error: 'channel not found' }
+  const text = (message || '').trim()
+  if (!text) return { error: 'no message' }
+  return _modActionMutation(
+    'SendAnnouncementMessage',
+    'sendAnnouncementMessage',
+    'mutation($input: SendAnnouncementMessageInput!) { sendAnnouncementMessage(input: $input) { error { code } } }',
+    { input: { channelID, message: text, color: color || 'PRIMARY' } },
+  )
+}
+
 async function deleteTwitchMessage(channelLogin, messageID) {
   const channelID = await resolveTwitchChannelId(channelLogin)
   if (!channelID) return { error: 'channel not found' }

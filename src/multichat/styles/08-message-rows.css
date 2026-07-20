@@ -466,8 +466,22 @@
     .hs-mc-msg.hs-mc-notice-raid      { border-left-color: var(--hs-thread) !important; background: var(--hs-thread-tint) !important; }
     .hs-mc-msg.hs-mc-notice-raid      .hs-mc-system-text { color: var(--hs-thread); font-weight: 700; }
     /* Announcement = pure yellow (broadcaster speaking) */
-    .hs-mc-msg.hs-mc-notice-announce  { border-left-color: var(--hs-warn) !important; background: var(--hs-warn-tint) !important; }
-    .hs-mc-msg.hs-mc-notice-announce  .hs-mc-system-text { color: var(--hs-warn); font-weight: 600; }
+    /* Announce = the loudest notice: full yellow frame + solid olive bg +
+       "announce" chip. Every other notice keeps tint + left-border only. */
+    .hs-mc-msg.hs-mc-notice-announce  {
+      border: 1px solid var(--hs-warn) !important;
+      border-left-width: 3px !important;
+      background: var(--hs-warn-bg) !important;
+    }
+    .hs-mc-msg.hs-mc-notice-announce::before {
+      content: 'announce';
+      color: #000;
+      background: var(--hs-warn);
+      font-weight: 700;
+      padding: 0 4px;
+      margin-right: 6px;
+    }
+    .hs-mc-msg.hs-mc-notice-announce  .hs-mc-system-text { color: var(--hs-warn); font-weight: 700; }
     /* Bits = gold/amber (distinct from raid orange and announce yellow) */
     .hs-mc-msg.hs-mc-notice-bits      { border-left-color: var(--hs-gold) !important; background: rgba(255, 170, 0, 0.10) !important; }
     .hs-mc-msg.hs-mc-notice-bits      .hs-mc-system-text { color: var(--hs-gold); font-weight: 600; }

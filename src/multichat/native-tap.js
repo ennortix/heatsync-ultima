@@ -146,9 +146,28 @@ function _tapToMsg(m, channel) {
   return msg
 }
 
+// Announcements (and some usernotices) mount as a WRAPPER node whose
+// descendant is the chat-line__message — the strict class check on the added
+// node itself silently dropped them from the tap (starved-IRC viewers never
+// saw announcements at all). Detection is defensive against twitch build
+// drift: wrapper class/test-selector, or a fiber-level marker.
+function _tapIsAnnouncement(rowEl, mined) {
+  try {
+    const hint = String(mined?.msgId || mined?.messageType || '')
+    if (/announce/i.test(hint)) return true
+    if (rowEl.closest('[class*="announcement" i], [data-test-selector*="announcement" i]')) return true
+  } catch (_) {}
+  return false
+}
+
 function _tapHandleRow(rowEl) {
   if (!rowEl || rowEl.nodeType !== 1) return
-  if (!rowEl.classList?.contains('chat-line__message')) return
+  if (!rowEl.classList?.contains('chat-line__message')) {
+    // wrapper node (announcement container etc.) — recurse into the real row
+    const inner = rowEl.querySelector?.('.chat-line__message')
+    if (inner) _tapHandleRow(inner)
+    return
+  }
   // channel resolved at MINE time — twitch SPA navs change the page channel
   // without re-running init; a stale _tapChannel would file (and archive!)
   // messages under the previous channel
@@ -172,6 +191,13 @@ function _tapHandleRow(rowEl) {
   }
   const msg = _tapToMsg(mined, ch)
   if (!msg) return
+  if (_tapIsAnnouncement(rowEl, mined)) {
+    // tag so main.js classifies hs-mc-notice-announce — same shape irc.js
+    // emits for USERNOTICE msg-id=announcement (systemMsg empty renders
+    // "user: text" inside the announce-styled row)
+    msg.type = 'usernotice'
+    msg.msgId = 'announcement'
+  }
   _tapStats.mined++
   try {
     irc?._handleMsg?.(msg)

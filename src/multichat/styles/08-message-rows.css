@@ -872,3 +872,35 @@
       color: #000;
       background: #fff;
     }
+
+    /* identity-mismatch warning — emotes won't render for others (see
+       warnIdentityMismatch in main.js). terse inline red, square, no motion. */
+    #hs-mc-idwarn {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      padding: 4px 8px;
+      font-size: 13px;
+      color: #ff0000;
+      background: #000;
+      border: 1px solid #ff0000;
+      border-radius: 0;
+    }
+    #hs-mc-idwarn a { color: #ff0000; text-decoration: underline; }
+    #hs-mc-idwarn b { color: #ff4040; font-weight: 600; }
+    #hs-mc-idwarn button {
+      flex: none;
+      width: 18px;
+      height: 18px;
+      padding: 0;
+      font-size: 13px;
+      line-height: 1;
+      color: #ff0000;
+      background: #000;
+      border: 1px solid #ff0000;
+      border-radius: 0;
+      cursor: pointer;
+    }
+    #hs-mc-idwarn button:hover,
+    #hs-mc-idwarn button:active { color: #000; background: #fff; border-color: #fff; }

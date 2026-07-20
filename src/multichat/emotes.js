@@ -2343,6 +2343,23 @@ function dropEmoteFromAllSenders(emoteName) {
   return changed
 }
 
+// Precise sibling: drop a name from ONLY the given sender keys (a live push
+// carries the exact keys the sender resolves as). No innocent same-named
+// emote on another sender gets stripped, so no compensating global
+// freshness-bust is needed afterward.
+function dropEmoteFromSenders(senderKeys, emoteName) {
+  if (!emoteName || !Array.isArray(senderKeys)) return false
+  let changed = false
+  for (const key of senderKeys) {
+    if (senderEmoteSets.get(key)?.delete?.(emoteName)) changed = true
+  }
+  if (changed) {
+    _senderEmoteDirty = true
+    _scheduleSenderEmotePersist()
+  }
+  return changed
+}
+
 // Replace a sender's set with an AUTHORITATIVE fresh fetch — drops any
 // cached names absent from the new data. Use ONLY when the response is
 // known good (HTTP 200, not a transient error). mergeSenderEmotes is the
@@ -2992,7 +3009,7 @@ cleanup.persistInterval(cleanup.setIntervalIfVisible(scanDomForEmotes, 10000))
 
 // Process text and replace emote codes with images.
 // Supports 7TV zero-width (overlay) emotes that stack on base emotes.
-// Resolution priority (perma sender model): senderEmotes > channel > extraCache (native twitch IRC) > emoteCache (globals)
+// Resolution priority (perma sender model): channel > senderEmotes > extraCache (native twitch IRC) > emoteCache (globals) — see the lookup order below (~line 3440); channel is authoritative in its own room
 // - extraCache: optional Map<name, emoteData> for per-message Twitch IRC tag emotes
 // - senderEmotes: optional Map<name, emoteData> — sender's personal set frozen at first sight.
 //   For viewer's own outgoing messages, caller passes viewerPersonalEmotes here.

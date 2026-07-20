@@ -1223,6 +1223,23 @@ function absUrl(url) {
   return url.startsWith('/') ? API_URL + url : url
 }
 
+// senderKeys off a WS emote push — server-originated but bound anyway: plain
+// platform:id strings, capped, or null when absent/invalid (null = legacy path).
+function sanitizeSenderKeys(v) {
+  if (!Array.isArray(v) || !v.length) return null
+  const out = v.filter((k) => typeof k === 'string' && k.length > 0 && k.length < 200 && k.includes(':')).slice(0, 30)
+  return out.length ? out : null
+}
+
+// emote-ver cache-bust token: short opaque string, never interpolated as code.
+function sanitizeVer(v) {
+  return v == null
+    ? undefined
+    : String(v)
+        .replace(/[^0-9a-zA-Z_-]/g, '')
+        .slice(0, 32) || undefined
+}
+
 // Track intervals for cleanup (memory leak prevention)
 const activeIntervals = new Set()
 function trackInterval(id) {
@@ -2263,6 +2280,13 @@ async function fetchUserInfo() {
       avatar_url: user.twitch_profile_pic || user.kick_profile_pic || user.profile_image_url || '',
       heat: user.heat || 0,
       color: user.color || '',
+      // Every batch key this HS account resolves as (server-computed). The
+      // panel compares the identity it's chatting under against this list —
+      // a miss means "your emotes can't render for anyone else here".
+      sender_keys: Array.isArray(user.sender_keys)
+        ? user.sender_keys.filter((k) => typeof k === 'string').slice(0, 10)
+        : null,
+      youtube_verified: !!user.youtube_verified,
     }
     pendingUserInfoToPersist = userInfo
     currentUsername = userInfo.username
@@ -5150,6 +5174,13 @@ async function connectWebSocket() {
         }
         reconnectAttempts = 0
         wsState = WS_STATE.CONNECTED
+        // Missed-push convergence: emote pushes that fired while this socket
+        // was down (>60s gap) are gone — nuke the sender cache and tell panels
+        // to invalidate, so viewers converge at reconnect instead of at TTL.
+        if (lastWsDataReceived && Date.now() - lastWsDataReceived > 60000) {
+          if (globalThis.__senderEmoteCache) globalThis.__senderEmoteCache.clear()
+          broadcastToTabs({ type: 'emote_added_broadcast', username: '' })
+        }
         // Reset zombie-detection timestamp; otherwise a stale lastWsDataReceived
         // from before the disconnect makes the first heartbeat (90s later) trip
         // the 2min idle threshold and immediately kill the fresh socket.
@@ -5431,15 +5462,20 @@ function handleWSMessage(msg) {
           log(' 🗑️ EMOTE REMOVED FROM YOUR INVENTORY:', msg.name, 'slot:', msg.slot)
           scheduleInventoryRefresh()
         } else if (msg.username) {
-          // Broadcast from other user. Invalidate the cached sender_emote_set
-          // for that user — without this, their /api/users/emotes/batch entry
-          // stays cached (5min TTL) and OTHER tabs keep rendering the removed
-          // emote in their messages.
+          // Broadcast from other user. New servers send senderKeys (the exact
+          // batch keys this sender resolves as) + ver (emote-ver cache-bust) —
+          // invalidate precisely. Legacy shape (no senderKeys): scrub by name
+          // across every cached set.
           log(' 🗑️ EMOTE REMOVED BROADCAST:', msg)
-          if (globalThis.__senderEmoteCache && msg.emoteName) {
-            for (const [k, hit] of globalThis.__senderEmoteCache) {
-              if (hit?.emotes && msg.emoteName in hit.emotes) {
-                delete hit.emotes[msg.emoteName]
+          const rmKeys = sanitizeSenderKeys(msg.senderKeys)
+          if (globalThis.__senderEmoteCache) {
+            if (rmKeys) {
+              for (const k of rmKeys) globalThis.__senderEmoteCache.delete(k)
+            } else if (msg.emoteName) {
+              for (const [k, hit] of globalThis.__senderEmoteCache) {
+                if (hit?.emotes && msg.emoteName in hit.emotes) {
+                  delete hit.emotes[msg.emoteName]
+                }
               }
             }
           }
@@ -5447,6 +5483,7 @@ function handleWSMessage(msg) {
             type: 'emote_removed_broadcast',
             username: msg.username,
             emoteName: msg.emoteName,
+            ...(rmKeys ? { senderKeys: rmKeys, ver: sanitizeVer(msg.ver) } : {}),
           })
         }
         break
@@ -5455,24 +5492,25 @@ function handleWSMessage(msg) {
         // Two shapes:
         //  - Personal add (msg.slot present): server saved YOUR own add, refresh
         //    inventory. (User-side broadcast on own add via website upload.)
-        //  - Broadcast (msg.username present): a DIFFERENT user added an emote.
-        //    Mirror of emote:removed broadcast. Invalidate cached sender sets so
-        //    other viewers' panels refetch and pick up the new emote without
-        //    waiting for the 5-min senderEmoteFetchedAt TTL.
+        //  - Broadcast (msg.username present): a DIFFERENT user's set changed
+        //    (single add carries emoteName/emoteData; bulk set change carries
+        //    neither). New servers send senderKeys + ver for precise
+        //    invalidation; legacy shape nukes the whole cache.
         if (msg.slot !== undefined) {
           log(' ✅ EMOTE ADDED TO INVENTORY:', msg.name, 'slot:', msg.slot)
           scheduleInventoryRefresh()
         } else if (msg.username) {
           log(' ➕ EMOTE ADDED BROADCAST:', msg)
-          // Drop any cached entries so the next get_sender_emotes returns fresh
-          // server data (which will now include the new emote).
+          const addKeys = sanitizeSenderKeys(msg.senderKeys)
           if (globalThis.__senderEmoteCache) {
-            globalThis.__senderEmoteCache.clear()
+            if (addKeys) for (const k of addKeys) globalThis.__senderEmoteCache.delete(k)
+            else globalThis.__senderEmoteCache.clear()
           }
           broadcastToTabs({
             type: 'emote_added_broadcast',
             username: msg.username,
             emoteName: msg.emoteName,
+            ...(addKeys ? { senderKeys: addKeys, ver: sanitizeVer(msg.ver) } : {}),
           })
         }
         break
@@ -6607,7 +6645,10 @@ async function addToInventory(emoteName, emoteHash, emoteUrl, zeroWidth = false)
       emoteInventory = currentInventory
     }
 
-    // Broadcast success to tabs
+    // Broadcast success to tabs. senderKeys (from the server response) lets
+    // the panel check the identity it's chatting under against the account
+    // that actually received the emote — a miss means nobody else can render
+    // it and the panel warns instead of lying with a local-only image.
     broadcastToTabs({
       type: 'emote_added',
       emoteName: emoteName,
@@ -6615,6 +6656,7 @@ async function addToInventory(emoteName, emoteHash, emoteUrl, zeroWidth = false)
       url: emoteUrl,
       slot: data.slot,
       alreadyExists: data.alreadyExists,
+      ...(Array.isArray(data.senderKeys) ? { senderKeys: data.senderKeys.slice(0, 10) } : {}),
     })
 
     // Also update storage for persistence
@@ -9340,8 +9382,13 @@ async function handleMessage(message, sender, sendResponse) {
       if (_missKeys.length) {
         // Send platform-prefixed keys (e.g. twitch:12345, kick:username) so the server
         // can resolve all platforms. Response is keyed by the same prefixed strings.
+        // v (from a live push's emote-ver) busts the CF edge: TTL refetches keep
+        // the shared cacheable URL, push refetches hit a URL the edge never saw.
+        const bust = sanitizeVer(message.v)
         const hb = await fetchWithTimeout(
-          withNsfwParam(`${API_URL}/api/users/emotes/batch?ids=${_missKeys.map(encodeURIComponent).join(',')}`),
+          withNsfwParam(
+            `${API_URL}/api/users/emotes/batch?ids=${_missKeys.map(encodeURIComponent).join(',')}${bust ? `&v=${bust}` : ''}`,
+          ),
           { credentials: 'omit', noBackoff: true },
         )
           .then((r) => (r.ok ? r.json() : null))

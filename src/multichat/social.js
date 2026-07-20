@@ -185,6 +185,10 @@ let activeThread = null // { id, op, replies[] } — when set, feed shows thread
 let replyState = null // { msgId, user, channel } when replying to a message
 let hsAuthToken = null // Heatsync auth state (loaded from storage)
 let hsCurrentUsername = null // Heatsync username (loaded from storage user_info)
+// Batch keys the signed-in HS account resolves as (server-computed, from
+// /api/auth/me via user_info). null = unknown (old server / logged out) —
+// consumers must fail open. [] = account has no resolvable platform identity.
+let hsSenderKeys = null
 
 // Load + watch heatsync username for own-post detection (edit/delete UI)
 async function loadHsUsername() {
@@ -192,6 +196,7 @@ async function loadHsUsername() {
     const data = await api.storage.local.get('user_info')
     const ui = data?.user_info
     hsCurrentUsername = ui?.username?.toLowerCase() || null
+    hsSenderKeys = Array.isArray(ui?.sender_keys) ? ui.sender_keys : null
     // Cross-platform mention aliases: any name across Twitch/Kick/YT counts as
     // a mention of the user, even if the chat is on a different platform.
     // ui.username (heatsync core name) is always included so bare-name mentions
@@ -207,6 +212,7 @@ async function loadHsUsername() {
     primeSelfHsCosmetics(ui)
   } catch (e) {
     hsCurrentUsername = null
+    hsSenderKeys = null
   }
 }
 function isOwnFeedPost(m) {
@@ -347,6 +353,7 @@ async function loadHsAuth() {
       if (changes.user_info) {
         const ui = changes.user_info.newValue
         hsCurrentUsername = ui?.username?.toLowerCase() || null
+        hsSenderKeys = Array.isArray(ui?.sender_keys) ? ui.sender_keys : null
         mentionAliases = new Set()
         if (ui?.username) mentionAliases.add(ui.username.toLowerCase())
         if (ui?.kick_username) mentionAliases.add(ui.kick_username.toLowerCase())

@@ -10760,6 +10760,38 @@ function injectStyles() {
       color: #000;
       background: #fff;
     }
+
+    /* identity-mismatch warning — emotes won't render for others (see
+       warnIdentityMismatch in main.js). terse inline red, square, no motion. */
+    #hs-mc-idwarn {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      padding: 4px 8px;
+      font-size: 13px;
+      color: #ff0000;
+      background: #000;
+      border: 1px solid #ff0000;
+      border-radius: 0;
+    }
+    #hs-mc-idwarn a { color: #ff0000; text-decoration: underline; }
+    #hs-mc-idwarn b { color: #ff4040; font-weight: 600; }
+    #hs-mc-idwarn button {
+      flex: none;
+      width: 18px;
+      height: 18px;
+      padding: 0;
+      font-size: 13px;
+      line-height: 1;
+      color: #ff0000;
+      background: #000;
+      border: 1px solid #ff0000;
+      border-radius: 0;
+      cursor: pointer;
+    }
+    #hs-mc-idwarn button:hover,
+    #hs-mc-idwarn button:active { color: #000; background: #fff; border-color: #fff; }
     /* Username hover tooltip - profile preview */
     /* Body-appended popovers — pull font from :root vars so they render in
        Cozette/user-chosen face instead of inheriting Twitch's Inter. .hs-pcard
@@ -24101,6 +24133,23 @@ function dropEmoteFromAllSenders(emoteName) {
   return changed
 }
 
+// Precise sibling: drop a name from ONLY the given sender keys (a live push
+// carries the exact keys the sender resolves as). No innocent same-named
+// emote on another sender gets stripped, so no compensating global
+// freshness-bust is needed afterward.
+function dropEmoteFromSenders(senderKeys, emoteName) {
+  if (!emoteName || !Array.isArray(senderKeys)) return false
+  let changed = false
+  for (const key of senderKeys) {
+    if (senderEmoteSets.get(key)?.delete?.(emoteName)) changed = true
+  }
+  if (changed) {
+    _senderEmoteDirty = true
+    _scheduleSenderEmotePersist()
+  }
+  return changed
+}
+
 // Replace a sender's set with an AUTHORITATIVE fresh fetch — drops any
 // cached names absent from the new data. Use ONLY when the response is
 // known good (HTTP 200, not a transient error). mergeSenderEmotes is the
@@ -24750,7 +24799,7 @@ cleanup.persistInterval(cleanup.setIntervalIfVisible(scanDomForEmotes, 10000))
 
 // Process text and replace emote codes with images.
 // Supports 7TV zero-width (overlay) emotes that stack on base emotes.
-// Resolution priority (perma sender model): senderEmotes > channel > extraCache (native twitch IRC) > emoteCache (globals)
+// Resolution priority (perma sender model): channel > senderEmotes > extraCache (native twitch IRC) > emoteCache (globals) — see the lookup order below (~line 3440); channel is authoritative in its own room
 // - extraCache: optional Map<name, emoteData> for per-message Twitch IRC tag emotes
 // - senderEmotes: optional Map<name, emoteData> — sender's personal set frozen at first sight.
 //   For viewer's own outgoing messages, caller passes viewerPersonalEmotes here.
@@ -32168,6 +32217,10 @@ let activeThread = null // { id, op, replies[] } — when set, feed shows thread
 let replyState = null // { msgId, user, channel } when replying to a message
 let hsAuthToken = null // Heatsync auth state (loaded from storage)
 let hsCurrentUsername = null // Heatsync username (loaded from storage user_info)
+// Batch keys the signed-in HS account resolves as (server-computed, from
+// /api/auth/me via user_info). null = unknown (old server / logged out) —
+// consumers must fail open. [] = account has no resolvable platform identity.
+let hsSenderKeys = null
 
 // Load + watch heatsync username for own-post detection (edit/delete UI)
 async function loadHsUsername() {
@@ -32175,6 +32228,7 @@ async function loadHsUsername() {
     const data = await api.storage.local.get('user_info')
     const ui = data?.user_info
     hsCurrentUsername = ui?.username?.toLowerCase() || null
+    hsSenderKeys = Array.isArray(ui?.sender_keys) ? ui.sender_keys : null
     // Cross-platform mention aliases: any name across Twitch/Kick/YT counts as
     // a mention of the user, even if the chat is on a different platform.
     // ui.username (heatsync core name) is always included so bare-name mentions
@@ -32190,6 +32244,7 @@ async function loadHsUsername() {
     primeSelfHsCosmetics(ui)
   } catch (e) {
     hsCurrentUsername = null
+    hsSenderKeys = null
   }
 }
 function isOwnFeedPost(m) {
@@ -32330,6 +32385,7 @@ async function loadHsAuth() {
       if (changes.user_info) {
         const ui = changes.user_info.newValue
         hsCurrentUsername = ui?.username?.toLowerCase() || null
+        hsSenderKeys = Array.isArray(ui?.sender_keys) ? ui.sender_keys : null
         mentionAliases = new Set()
         if (ui?.username) mentionAliases.add(ui.username.toLowerCase())
         if (ui?.kick_username) mentionAliases.add(ui.kick_username.toLowerCase())
@@ -54588,10 +54644,16 @@ const STORAGE_KEY = 'heatsync_multichat'
   // entry is older than this; the empty in-memory map after a reload means every
   // sender is re-validated once per session (picks up adds made since last visit).
   const senderEmoteFetchedAt = new Map() // senderKey -> ts
-  // 2min (was 5min): a sender who ADDS a personal emote mid-session left viewers
-  // who'd already cached their set rendering it as text for up to the TTL. There
-  // is no live-WS push for sender-emote adds (only channel emotes get one), so
-  // this window is the propagation floor — halved it. batch fetch is cheap.
+  // senderKey -> emote-ver from the last live push. Consumed (and cleared) by
+  // the next flush containing that key: the ver rides the batch fetch as &v=
+  // so the CF edge can't serve the pre-push cached set. Bounded implicitly —
+  // entries are deleted at flush; a key that never flushes is re-set on the
+  // next push for that sender.
+  const senderEmoteBustVer = new Map()
+  // 2min: the MISSED-PUSH fallback floor. The primary path is the server's
+  // global emote:added/removed push (senderKeys + ver) which invalidates and
+  // refetches immediately; this TTL only bounds staleness when that push was
+  // missed (socket down, reconnect gap). batch fetch is cheap.
   const SENDER_EMOTE_REFETCH_MS = 2 * 60 * 1000
   const SENDER_EMOTE_NEGATIVE_REFETCH_MS = 90 * 1000
   // Keep this freshness map bounded to the SAME cap as the backing emote store
@@ -54712,11 +54774,51 @@ const STORAGE_KEY = 'heatsync_multichat'
     }
   }
 
+  // Identity-mismatch warning: the signed-in HS account can't be resolved from
+  // the identity the user is chatting under, so their HS emotes render for
+  // nobody else. Terse inline banner above the composer, once per senderKey per
+  // session, dismissible for good per (account, key) via ui_settings-style
+  // storage. Never fires when hsSenderKeys is unknown (old server/logged out).
+  const _identityWarned = new Set()
+  function warnIdentityMismatch(senderKey) {
+    if (!senderKey || _identityWarned.has(senderKey)) return
+    _identityWarned.add(senderKey)
+    const dismissKey = `hs_idwarn_${hsCurrentUsername || ''}_${senderKey}`
+    api.storage.local
+      .get(dismissKey)
+      .then((d) => {
+        if (d?.[dismissKey]) return
+        const bar = document.getElementById('hs-mc-inputbar')
+        if (!bar || document.getElementById('hs-mc-idwarn')) return
+        const el = document.createElement('div')
+        el.id = 'hs-mc-idwarn'
+        const acct = hsCurrentUsername || 'unknown'
+        const ident = senderKey.replace(':', ' ')
+        el.innerHTML = `<span>your emotes won't render for others here — heatsync acct <b>${escapeHtml(acct)}</b>, chatting as <b>${escapeHtml(ident)}</b> — <a href="https://heatsync.org/settings" target="_blank" rel="noopener">link accounts</a></span><button id="hs-mc-idwarn-x" title="dismiss">×</button>`
+        bar.parentNode.insertBefore(el, bar)
+        el.querySelector('#hs-mc-idwarn-x')?.addEventListener('click', () => {
+          el.remove()
+          api.storage.local.set({ [dismissKey]: true })
+        })
+      })
+      .catch(() => {})
+  }
+
   function flushSenderEmoteBatch() {
     if (!senderEmotePending.size) return
     const batch = [...senderEmotePending].slice(0, SENDER_EMOTE_BATCH)
     batch.forEach((k) => senderEmotePending.delete(k))
-    safeSendMessage({ type: 'get_sender_emotes', senderKeys: batch })
+    // Any push-supplied ver for a key in this batch rides along as the edge
+    // cache-bust; multiple keys' vers join into one opaque token.
+    let bust = null
+    for (const k of batch) {
+      const v = senderEmoteBustVer.get(k)
+      if (v != null) {
+        bust = bust == null ? String(v) : `${bust}-${v}`
+        senderEmoteBustVer.delete(k)
+      }
+    }
+    safeSendMessage({ type: 'get_sender_emotes', senderKeys: batch, ...(bust ? { v: bust.slice(0, 32) } : {}) })
       .then((resp) => {
         const emotes = resp?.emotes || {}
         const errored = new Set(resp?.errored || [])
@@ -59887,7 +59989,18 @@ const STORAGE_KEY = 'heatsync_multichat'
     let senderEmotes = null
     const senderKey = resolveSenderEmoteKey(m)
     if (isOwn) {
-      senderEmotes = viewerPersonalEmotes
+      // Honest wysiwyg: the local owned set is only truthful when the identity
+      // this message was sent under resolves to the signed-in HS account —
+      // otherwise render exactly what other viewers get (usually plain text)
+      // and warn, instead of showing the sender an emote nobody else sees.
+      // hsSenderKeys null (old server / logged out) fails open to old behavior.
+      if (senderKey && Array.isArray(hsSenderKeys) && !hsSenderKeys.includes(senderKey)) {
+        senderEmotes = getSenderEmotes(senderKey)
+        queueSenderEmoteFetch(senderKey, m)
+        warnIdentityMismatch(senderKey)
+      } else {
+        senderEmotes = viewerPersonalEmotes
+      }
     } else if (senderKey) {
       senderEmotes = getSenderEmotes(senderKey)
       queueSenderEmoteFetch(senderKey, m)
@@ -64940,37 +65053,58 @@ const STORAGE_KEY = 'heatsync_multichat'
         if (had) renderMessages(currentTab, { bypassScrollPause: true })
       }
 
-      // A different user added an emote to their set. Drop the freshness
-      // stamp on every cached sender so the next render of any of their
-      // messages triggers a refetch, picking up the new emote without
-      // waiting for the 5-min senderEmoteFetchedAt TTL. We don't know which
-      // sender key this user maps to (msg.username != twitch_id), so we
+      // A different user's emote set changed. New servers send senderKeys —
+      // invalidate + refetch exactly that sender (v-busted past the CF edge);
+      // the flush path's upgradeMessagesForSenders re-renders their rows.
+      // Legacy shape (no senderKeys, incl. the reconnect-convergence nudge):
       // bust everyone — next render of any message refreshes.
       if (msg.type === 'emote_added_broadcast') {
         try {
-          if (typeof senderEmoteFetchedAt !== 'undefined') senderEmoteFetchedAt.clear()
-          // Freshness alone only helps FUTURE renders — if chat is quiet,
-          // nothing re-renders and the already-painted rows stay text.
-          // Actively re-queue the senders of recent buffered rows (same
-          // buffers the removal path walks); the flush path's
-          // upgradeMessagesForSenders() re-renders whatever changed.
-          const requeue = (buf) => {
-            if (!buf) return
-            const arr = Array.isArray(buf) ? buf : typeof buf.values === 'function' ? [...buf.values()] : null
-            if (!arr) return
-            let queued = 0
-            for (let i = arr.length - 1; i >= 0 && queued < 60; i--, queued++) {
-              const m = arr[i]
-              const key = m && typeof resolveSenderEmoteKey === 'function' ? resolveSenderEmoteKey(m) : null
-              if (key) queueSenderEmoteFetch(key, m)
+          if (Array.isArray(msg.senderKeys) && msg.senderKeys.length) {
+            for (const key of msg.senderKeys.slice(0, 30)) {
+              if (typeof key !== 'string' || !key) continue
+              senderEmoteFetchedAt.delete(key)
+              senderEmoteVerified.delete(key)
+              if (msg.ver != null) senderEmoteBustVer.set(key, msg.ver)
+              // Only refetch senders we actually hold — a key never seen in
+              // this panel has no rows to fix and would be pure fetch noise.
+              if (typeof senderEmoteSets !== 'undefined' && senderEmoteSets.has(key)) {
+                senderEmotePending.add(key)
+              }
             }
+            if (senderEmotePending.size) {
+              if (senderEmoteTimer) {
+                cleanup.clearTimeout(senderEmoteTimer)
+                senderEmoteTimer = null
+                senderEmoteTimerUrgent = false
+              }
+              flushSenderEmoteBatch()
+            }
+          } else {
+            if (typeof senderEmoteFetchedAt !== 'undefined') senderEmoteFetchedAt.clear()
+            // Freshness alone only helps FUTURE renders — if chat is quiet,
+            // nothing re-renders and the already-painted rows stay text.
+            // Actively re-queue the senders of recent buffered rows (same
+            // buffers the removal path walks); the flush path's
+            // upgradeMessagesForSenders() re-renders whatever changed.
+            const requeue = (buf) => {
+              if (!buf) return
+              const arr = Array.isArray(buf) ? buf : typeof buf.values === 'function' ? [...buf.values()] : null
+              if (!arr) return
+              let queued = 0
+              for (let i = arr.length - 1; i >= 0 && queued < 60; i--, queued++) {
+                const m = arr[i]
+                const key = m && typeof resolveSenderEmoteKey === 'function' ? resolveSenderEmoteKey(m) : null
+                if (key) queueSenderEmoteFetch(key, m)
+              }
+            }
+            try {
+              for (const ch of irc?.channels?.keys?.() || []) requeue(irc.getMessages(ch))
+            } catch (_) {}
+            try {
+              for (const ch of kickChat?.channels?.keys?.() || []) requeue(kickChat.getMessages(ch))
+            } catch (_) {}
           }
-          try {
-            for (const ch of irc?.channels?.keys?.() || []) requeue(irc.getMessages(ch))
-          } catch (_) {}
-          try {
-            for (const ch of kickChat?.channels?.keys?.() || []) requeue(kickChat.getMessages(ch))
-          } catch (_) {}
         } catch (_) {}
       }
 
@@ -64980,14 +65114,27 @@ const STORAGE_KEY = 'heatsync_multichat'
       // matching messages so the wrappers become raw text (or fall through to
       // channel/global pool, if present).
       if (msg.type === 'emote_removed_broadcast' && msg.emoteName) {
-        const changed = typeof dropEmoteFromAllSenders === 'function' ? dropEmoteFromAllSenders(msg.emoteName) : false
+        // Precise path (new servers): strip the name from exactly the pushed
+        // sender's keys — no collateral, no global freshness bust.
+        const precise = Array.isArray(msg.senderKeys) && msg.senderKeys.length > 0
+        const changed = precise
+          ? typeof dropEmoteFromSenders === 'function' &&
+            dropEmoteFromSenders(msg.senderKeys.slice(0, 30), msg.emoteName)
+          : typeof dropEmoteFromAllSenders === 'function' && dropEmoteFromAllSenders(msg.emoteName)
+        if (precise) {
+          for (const key of msg.senderKeys.slice(0, 30)) {
+            if (typeof key === 'string' && key) {
+              senderEmoteFetchedAt.delete(key)
+              if (msg.ver != null) senderEmoteBustVer.set(key, msg.ver)
+            }
+          }
+        }
         if (changed) {
           try {
-            // dropEmoteFromAllSenders strips by NAME from every cached set —
-            // an innocent sender who owns a same-named emote just lost it too.
-            // Bust freshness so their next render refetches and restores it
-            // (mirrors the add path above).
-            if (typeof senderEmoteFetchedAt !== 'undefined') senderEmoteFetchedAt.clear()
+            // Legacy path strips by NAME from every cached set — an innocent
+            // sender who owns a same-named emote just lost it too. Bust
+            // freshness so their next render refetches and restores it.
+            if (!precise && typeof senderEmoteFetchedAt !== 'undefined') senderEmoteFetchedAt.clear()
             const inv = (buf) => {
               if (!buf) return
               const arr = typeof buf.forEach === 'function' && !Array.isArray(buf) ? null : buf

@@ -295,12 +295,17 @@
 
   // Lite mode removed — the overlay always boots now.
 
-  // Inventory slot count — personal emotes only (filter out subscription:true)
+  // Inventory slot count — personal emotes only (filter out subscription:true).
+  // Also names the signed-in account: a stale/mismatched HS session is
+  // invisible otherwise, and emotes added under the wrong account silently
+  // render for nobody (the singuleroleroty failure).
   ;(async () => {
     const invEl = document.getElementById('inv-line')
     if (!invEl) return
     try {
-      const data = await new Promise((r) => chrome.storage.local.get(['auth_token_encrypted', 'emote_inventory'], r))
+      const data = await new Promise((r) =>
+        chrome.storage.local.get(['auth_token_encrypted', 'emote_inventory', 'user_info'], r),
+      )
       const signedIn = !!data.auth_token_encrypted
       const arr = Array.isArray(data.emote_inventory) ? data.emote_inventory : []
       const personalCount = arr.filter((e) => !e.subscription).length
@@ -311,6 +316,12 @@
         s.textContent = '5,000 emote slots'
         invEl.appendChild(s)
         return
+      }
+      if (data.user_info?.username) {
+        const who = document.createElement('div')
+        who.className = 'inv-label'
+        who.textContent = `signed in as ${data.user_info.username}`
+        invEl.appendChild(who)
       }
       const c = document.createElement('span')
       c.className = 'inv-count'

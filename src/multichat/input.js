@@ -6454,7 +6454,15 @@ async function handleSlashCommand(text, input) {
   // side's error then surfaces in the combined toast).
   const _twitchModAuthOk = async () => {
     if (!_twitchModName || _kickModSlug) return true
-    const { token } = await getTwitchAuthTokenAsync()
+    // Hard ceiling: getTwitchAuthTokenAsync's background-SW fallback
+    // (chrome.runtime.sendMessage) has no built-in timeout — if the SW
+    // exists but its handler never calls sendResponse, this hangs forever
+    // and every mod command downstream reads to the user as "Enter does
+    // nothing" with zero feedback (2026-07-20 live incident). Race it.
+    const { token } = await Promise.race([
+      getTwitchAuthTokenAsync(),
+      new Promise((resolve) => setTimeout(() => resolve({ token: null }), 5000)),
+    ])
     if (token) return true
     try {
       HsNotifs.emit('twitch-auth-required', { text: t('mc_input_not_logged_in') || 'log into twitch.tv to chat' })

@@ -779,6 +779,11 @@
         // Prediction terms-of-service accept (first-ever prediction per account)
         // — also missed; without it the predictions tab wedged on the ToS step.
         'AcceptPredictionTerms',
+        // /announce — same missed-allowlist-entry bug as the mod actions above
+        // (2026-07-20: silently broke every announce send, always burning the
+        // full apolloMutate timeout before falling to a raw fetch that then
+        // failed Twitch's integrity check anyway).
+        'SendAnnouncementMessage',
       ]
       if (e.data.searchTerm && !ALLOWED_MUTATIONS.includes(e.data.searchTerm)) {
         log('heatsync-apollo-mutate: rejected — searchTerm not in allowlist:', e.data.searchTerm)

@@ -3697,6 +3697,18 @@ async function lookupFollowage(username, channelLogin) {
 const _twChannelIdCache = new Map() // login(lc) → { id, ts }
 
 async function resolveTwitchChannelId(channelLogin) {
+  return Promise.race([
+    _resolveTwitchChannelIdInner(channelLogin),
+    // Hard ceiling: the second fallback below is a raw chrome.runtime.sendMessage
+    // (no built-in timeout) — if the background SW's handler exists but never
+    // calls sendResponse, this hangs forever and blocks every mod command that
+    // needs a channel id (2026-07-20 live incident: /announce read as "Enter
+    // does nothing" with zero feedback because this never resolved).
+    new Promise((resolve) => setTimeout(() => resolve(null), 6000)),
+  ])
+}
+
+async function _resolveTwitchChannelIdInner(channelLogin) {
   const lc = (channelLogin || '')
     .toLowerCase()
     .replace(/^@/, '')
@@ -3750,7 +3762,7 @@ function _isMutationsKilled() {
   }
 }
 
-async function _modActionMutation(searchTerm, resultField, rawQuery, variables) {
+async function _modActionMutationInner(searchTerm, resultField, rawQuery, variables) {
   if (_isMutationsKilled()) return { error: 'mod actions disabled by server' }
   // Off-Twitch (Kick/YouTube pages): relay through a twitch.tv tab — Apollo +
   // Client-Integrity only exist in Twitch's page context. The relay runs this
@@ -3772,11 +3784,29 @@ async function _modActionMutation(searchTerm, resultField, rawQuery, variables) 
     const data = await gqlMutation(rawQuery, variables)
     if (data?.errors?.length) return { error: data.errors[0].message || `${resultField} failed` }
     const err = data?.data?.[resultField]?.error
-    if (err) return { error: err.code || `${resultField} failed` }
+    // error is a {code} object for most mod mutations, but a bare enum for
+    // some (SendAnnouncementMessageError) — handle both shapes.
+    if (err) return { error: (typeof err === 'string' ? err : err.code) || `${resultField} failed` }
     return { ok: true }
   } catch (e) {
     return { error: apolloResult.error || e.message }
   }
+}
+
+// Hard ceiling on top of the inner fallback chain's own timeouts (apolloMutate
+// 8s → gqlMutation's direct-fetch 8s → its gqlProxy fallback 4s = 20s
+// theoretical worst case, and that's assuming every layer's OWN timeout fires
+// cleanly). 2026-07-20: every mod command (ban/timeout/unban/delete/nuke/
+// announce) shares this function, and a live hang here reads to the user as
+// "Enter does nothing" with zero feedback — no toast, no clear, no error —
+// because nothing upstream ever gets a value to act on. This is the
+// bulletproof backstop: no mod action can silently hang past 12s again,
+// whatever the inner cause turns out to be.
+function _modActionMutation(searchTerm, resultField, rawQuery, variables) {
+  return Promise.race([
+    _modActionMutationInner(searchTerm, resultField, rawQuery, variables),
+    new Promise((resolve) => setTimeout(() => resolve({ error: 'mod action timed out — try again' }), 12000)),
+  ])
 }
 
 // Twitch-tab-only: respond to relay requests from off-Twitch pages.
@@ -3949,7 +3979,10 @@ async function announceTwitchChat(channelLogin, message, color) {
   return _modActionMutation(
     'SendAnnouncementMessage',
     'sendAnnouncementMessage',
-    'mutation($input: SendAnnouncementMessageInput!) { sendAnnouncementMessage(input: $input) { error { code } } }',
+    // SendAnnouncementMessageError is a bare enum, unlike the {code} object
+    // shape every other mod mutation's error type uses — confirmed live via
+    // the GQL server's own schema-validation error (2026-07-20).
+    'mutation($input: SendAnnouncementMessageInput!) { sendAnnouncementMessage(input: $input) { error } }',
     { input: { channelID, message: text, color: color || 'PRIMARY' } },
   )
 }

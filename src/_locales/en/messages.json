@@ -73,7 +73,7 @@
     "message": "heatsync"
   },
   "welcome_tagline": {
-    "message": "any 7tv, bttv or ffz emote — in every chat. 5000 in your set, free."
+    "message": "any 7tv, bttv or ffz emote — in every chat. 5000-slot inventory, free."
   },
   "welcome_cta": {
     "message": "open a stream → try it"
@@ -121,7 +121,7 @@
     "message": "global"
   },
   "btn_tab_mine": {
-    "message": "set"
+    "message": "inventory"
   },
   "btn_tab_emoji": {
     "message": "emoji"
@@ -151,10 +151,10 @@
     "message": "unblock emote"
   },
   "btn_ctx_remove_inventory": {
-    "message": "remove from set"
+    "message": "remove from inventory"
   },
   "btn_ctx_add_inventory": {
-    "message": "add to set"
+    "message": "add to inventory"
   },
   "btn_ctx_copy_name": {
     "message": "copy emote name"
@@ -482,7 +482,7 @@
     "message": "partial links"
   },
   "mc_settings_partial_links_desc": {
-    "message": "also linkify partial and defanged links \u2014 bare watch?v= youtube refs and \"site (dot) com\" style domains chats use to dodge link filters."
+    "message": "also linkify partial and defanged links — bare watch?v= youtube refs and \"site (dot) com\" style domains chats use to dodge link filters."
   },
   "mc_settings_link_previews": {
     "message": "link previews"
@@ -923,7 +923,7 @@
     "message": "your emotes, in every chat"
   },
   "mc_emote_cold_start_sub": {
-    "message": "pull every 7tv, bttv & ffz emote from $CHANNEL$ into your set — one click, renders in every chat.",
+    "message": "pull every 7tv, bttv & ffz emote from $CHANNEL$ into your inventory — one click, renders in every chat.",
     "placeholders": {
       "channel": {
         "content": "$1"
@@ -959,7 +959,7 @@
     "message": "exact"
   },
   "mc_emote_in_set": {
-    "message": "set"
+    "message": "inventory"
   },
   "mc_emote_blocked": {
     "message": "blocked (click to unblock)"
@@ -2049,10 +2049,14 @@
     "message": "message could not be sent — it is still shown in your celebration row"
   },
   "mc_main_emote_add_failed": {
-    "message": "$EMOTE$ wasn't saved to your set — $REASON$",
+    "message": "$EMOTE$ wasn't saved to your inventory — $REASON$",
     "placeholders": {
-      "emote": { "content": "$1" },
-      "reason": { "content": "$2" }
+      "emote": {
+        "content": "$1"
+      },
+      "reason": {
+        "content": "$2"
+      }
     }
   },
   "mc_main_mute_save_failed": {

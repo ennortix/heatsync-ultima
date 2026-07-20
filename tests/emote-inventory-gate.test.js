@@ -80,3 +80,38 @@ describe('inventory-time render gate', () => {
     }
   })
 })
+
+// Inventory attribution: emotes resolved via a heatsync inventory (sender's
+// or own) carry data-inv="1" so the tooltip labels them "inventory" instead
+// of the asset's original provider. Channel/global hits stay unstamped —
+// those genuinely render via their provider for every viewer.
+describe('inventory provenance stamp (data-inv)', () => {
+  test('sender-inventory hit stamps data-inv on wrapper and img', () => {
+    const out = processEmotes('AKDJvibe', 'chan-x', null, sender({ addedAt: T }), T + 5000)
+    expect(out.match(/data-inv="1"/g)?.length).toBe(2)
+  })
+
+  test('global-pool hit has no data-inv', async () => {
+    const { emoteCache } = await import('../src/multichat/emotes.js')
+    emoteCache.set('AKDJvibe', { url: URL, source: '7tv', state: 'global' })
+    try {
+      const out = processEmotes('AKDJvibe', 'chan-x', null, null, T)
+      expect(rendered(out)).toBe(true)
+      expect(out).not.toContain('data-inv')
+    } finally {
+      emoteCache.delete('AKDJvibe')
+    }
+  })
+
+  test('channel hit wins over sender inventory and has no data-inv', async () => {
+    const { channelEmoteCaches } = await import('../src/multichat/emotes.js')
+    channelEmoteCaches['chan-x'] = new Map([['AKDJvibe', { url: URL, source: '7tv', state: 'channel' }]])
+    try {
+      const out = processEmotes('AKDJvibe', 'chan-x', null, sender({ addedAt: T }), T + 5000)
+      expect(rendered(out)).toBe(true)
+      expect(out).not.toContain('data-inv')
+    } finally {
+      delete channelEmoteCaches['chan-x']
+    }
+  })
+})

@@ -47,7 +47,10 @@ const renderEmoteHtml = new Function(
   '_hsEmoteOversize',
   'window',
   'getSetting',
-  `${helperSrc}\n${branchSrc}\nreturn imgHtmlRaw`,
+  // emoteFromInv is declared upstream of the carved slice in processEmotes
+  // (provenance flag for data-inv); default false here — attribution has its
+  // own coverage in emote-inventory-gate.test.js.
+  `let emoteFromInv = false\n${helperSrc}\n${branchSrc}\nreturn imgHtmlRaw`,
 )
 
 function render(word, emote, overrides = {}) {

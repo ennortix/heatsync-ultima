@@ -22513,7 +22513,7 @@ function getHighResUrl(url) {
 // across every section instead of sitting in one.
 const SECTION_ORDER = ['set', '7tv', 'bttv', 'ffz', 'twitch', 'kick', 'heatsync']
 const SECTION_LABELS = {
-  set: 'Set',
+  set: 'inventory',
   '7tv': '7TV',
   bttv: 'BTTV',
   ffz: 'FFZ',
@@ -25315,6 +25315,22 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
     return entry
   }
   const _sGet = (name) => _sGate(senderEmotes?.get(name))
+  // Provenance-aware resolve: channel > sender inventory > native > global >
+  // removed-inventory fallback. `inv` marks hits that render BECAUSE of a
+  // heatsync inventory (the sender's, or the viewer's own) — the tooltip
+  // attributes those to the inventory instead of the emote's original
+  // provider, which the viewer may have no relationship with (same emote
+  // labeled "set" on own rows but "7TV" on the sender's).
+  const _lookup = (name) => {
+    let e = channel ? channelEmoteCaches[channel]?.get(name) : null
+    if (e) return { e, inv: false }
+    e = _sGet(name)
+    if (e) return { e, inv: true }
+    e = extraCache?.get(name) || emoteCache.get(name)
+    if (e) return { e, inv: false }
+    e = _rfGate(_rf?.get(name))
+    return e ? { e, inv: true } : null
+  }
 
   // Kick emote splits gated by indexOf — Kick text is <5% of overall msg volume;
   // skipping 3 replaces on Twitch/YT messages saves allocations per message.
@@ -25428,12 +25444,11 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
     if (kickEmoteMatch) {
       const [, emoteId, emoteName] = kickEmoteMatch
       const kickUrl = `https://files.kick.com/emotes/${emoteId}/fullsize`
-      const cached =
-        (channel && channelEmoteCaches[channel]?.get(emoteName)) ||
-        senderEmotes?.get(emoteName) ||
-        extraCache?.get(emoteName) ||
-        emoteCache.get(emoteName) ||
-        _rfGate(_rf?.get(emoteName))
+      // _lookup applies the inventory-time gate here too (sender path was
+      // previously ungated on kick tokens — an oversight vs the twitch path).
+      const _kickHit = _lookup(emoteName)
+      const cached = _kickHit?.e
+      const cachedInv = !!_kickHit?.inv
       const useCachedUrl = !!(cached?.url && !/^https?:\/\/files\.kick\.com\//i.test(cached.url))
       const finalUrl = useCachedUrl ? cached.url : kickUrl
       const provider = cached?.source || 'kick'
@@ -25457,7 +25472,9 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
       const wAttr = _boxW ? ` style="width:${_boxW}px"` : ''
       const _os = useCachedUrl ? _hsEmoteOversize(cached) : 0
       const osAttr = _os ? ` style="--hs-os:${_os}"` : ''
-      const imgHtmlRaw = `<span class="hs-mc-emote-wrapper hs-state-${state}${nsfwClass}" data-emote-name="${safeName}" data-emote-url="${safeUrlAttr}" data-state="${state}" data-source="${safeProvider}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}${wAttr}><img src="${safeSrc}" alt="${safeName}" title="${titleAttr}" class="hs-mc-emote hs-emote-${state}"${osAttr} data-emote-name="${safeName}" data-state="${state}" data-source="${safeProvider}"${ownerAttr} loading="lazy" decoding="async"></span>`
+      // Only inventory-attributed when the inventory URL actually renders.
+      const invAttr = cachedInv && useCachedUrl ? ' data-inv="1"' : ''
+      const imgHtmlRaw = `<span class="hs-mc-emote-wrapper hs-state-${state}${nsfwClass}" data-emote-name="${safeName}" data-emote-url="${safeUrlAttr}" data-state="${state}" data-source="${safeProvider}"${ownerAttr}${invAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}${wAttr}><img src="${safeSrc}" alt="${safeName}" title="${titleAttr}" class="hs-mc-emote hs-emote-${state}"${osAttr} data-emote-name="${safeName}" data-state="${state}" data-source="${safeProvider}"${ownerAttr}${invAttr} loading="lazy" decoding="async"></span>`
       if (isOverlay && pendingStack) {
         const itemMods = pendingMods.slice()
         const itemHue = pendingHue
@@ -25493,15 +25510,15 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
     // others') still fills every name the channel doesn't carry — sovereignty
     // intact. Without this, others' messages diverged from the viewer's own.
     let emote = null
+    let emoteFromInv = false
     let isOverlayEmote = false
     let overlayBaseName = null
     const endsWithZero = word.endsWith('0') && word.length > 1
-    emote =
-      (channel && channelEmoteCaches[channel]?.get(word)) ||
-      _sGet(word) ||
-      extraCache?.get(word) ||
-      emoteCache.get(word) ||
-      _rfGate(_rf?.get(word))
+    const _hit = _lookup(word)
+    if (_hit) {
+      emote = _hit.e
+      emoteFromInv = _hit.inv
+    }
     // blockedEmoteFallback last + ungated (block is viewer-wide, all senders):
     // resolves a blocked emote to its real url+dims so it renders the dashed box
     // at the emote's true rectangle via the normal path, instead of the square
@@ -25521,12 +25538,11 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
     } else if (endsWithZero) {
       // No literal "name0" emote — strip the 0 and overlay the base.
       const baseName = word.slice(0, -1)
-      emote =
-        (channel && channelEmoteCaches[channel]?.get(baseName)) ||
-        _sGet(baseName) ||
-        extraCache?.get(baseName) ||
-        emoteCache.get(baseName) ||
-        _rfGate(_rf?.get(baseName))
+      const _baseHit = _lookup(baseName)
+      if (_baseHit) {
+        emote = _baseHit.e
+        emoteFromInv = _baseHit.inv
+      }
       if (emote) {
         isOverlayEmote = true
         overlayBaseName = baseName
@@ -25541,14 +25557,11 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
       for (const suf of HS_INLINE_MOD_SUFFIXES) {
         if (word.endsWith(suf) && word.length > suf.length + 1) {
           const baseGuess = word.slice(0, word.length - suf.length)
-          const candidate =
-            (channel && channelEmoteCaches[channel]?.get(baseGuess)) ||
-            _sGet(baseGuess) ||
-            extraCache?.get(baseGuess) ||
-            emoteCache.get(baseGuess)
-          if (candidate) {
-            emote = candidate
-            isOverlayEmote = !!candidate.zeroWidth
+          const candHit = _lookup(baseGuess)
+          if (candHit) {
+            emote = candHit.e
+            emoteFromInv = candHit.inv
+            isOverlayEmote = !!emote.zeroWidth
             _hsInlineModSuffix = HS_MC_MODS[suf] || null
             break
           }
@@ -25559,14 +25572,11 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
         const inlineColor = word.match(/^(.+?)(c!#?[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?)$/)
         if (inlineColor) {
           const baseGuess = inlineColor[1]
-          const candidate =
-            (channel && channelEmoteCaches[channel]?.get(baseGuess)) ||
-            _sGet(baseGuess) ||
-            extraCache?.get(baseGuess) ||
-            emoteCache.get(baseGuess)
-          if (candidate) {
-            emote = candidate
-            isOverlayEmote = !!candidate.zeroWidth
+          const candHit = _lookup(baseGuess)
+          if (candHit) {
+            emote = candHit.e
+            emoteFromInv = candHit.inv
+            isOverlayEmote = !!emote.zeroWidth
             const m = inlineColor[2].match(HS_MC_C_RE)
             if (m) _hsInlineModSuffix = { hue: _hsMcHexToHue(m[1]) }
           }
@@ -25629,6 +25639,8 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
       const wAttr = _boxW ? ` style="width:${_boxW}px"` : ''
       const _os = _hsEmoteOversize(emote)
       const osAttr = _os ? ` style="--hs-os:${_os}"` : ''
+      // Inventory provenance for the hover tooltip — see _lookup above.
+      const invAttr = emoteFromInv ? ' data-inv="1"' : ''
       // cw stub — server replaced a filter-hidden emote with {name, cw}. No
       // img (there is no url); a labeled dashed-cyan box marks the spot so
       // the message reads as "emote hidden here", not silently as raw text.
@@ -25639,7 +25651,7 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
       const cwCat = _cwRaw ? escapeHtml(_cwRaw) : ''
       const imgHtmlRaw = cwCat
         ? `<span class="hs-mc-emote-wrapper hs-mc-emote-cw" data-emote-name="${displayName}" data-cw="${cwCat}" data-state="cw" title="${displayName}">${cwCat}</span>`
-        : `<span class="hs-mc-emote-wrapper hs-state-${state}${staleClass}${nsfwClass}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}${staleAttr}${wAttr}><img src="${staticSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}"${osAttr} data-emote-name="${displayName}" data-state="${state}" data-source="${source}"${ownerAttr} loading="lazy" decoding="async"></span>`
+        : `<span class="hs-mc-emote-wrapper hs-state-${state}${staleClass}${nsfwClass}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${ownerAttr}${invAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}${staleAttr}${wAttr}><img src="${staticSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}"${osAttr} data-emote-name="${displayName}" data-state="${state}" data-source="${source}"${ownerAttr}${invAttr} loading="lazy" decoding="async"></span>`
 
       // Build the new item — inline-glued suffix mod attaches to THIS emote
       // (e.g. "RainTimew!" → wide RainTime, not wide whatever-was-base).
@@ -26130,11 +26142,19 @@ function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg, own
   // Show state with source for globals. 2-state model: 'unadded' is no
   // longer a user-facing tier (click pastes, doesn't add — auto-add fires
   // at send time silently), so fall it through to the source-label branch.
+  // data-inv marks emotes that render via a heatsync inventory (the sender's
+  // or the viewer's own — stamped by processEmotes' _lookup); those get the
+  // inventory label instead of the asset's original provider, so the same
+  // emote never reads "inventory" on your rows but "7TV" on the sender's.
+  const wrapper = (hoveredImg || e.target)?.closest?.('.hs-mc-emote-wrapper')
+  const fromInv = wrapper?.dataset.inv === '1' || hoveredImg?.dataset?.inv === '1'
   let label
   if (state === 'owned') {
     label = t('mc_emote_in_set')
   } else if (state === 'blocked') {
     label = t('mc_emote_blocked')
+  } else if (fromInv) {
+    label = t('mc_emote_in_set')
   } else {
     // Global / channel / sub - show source with appropriate scope
     const sourceLabels = {
@@ -26155,7 +26175,6 @@ function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg, own
   }
   // Stale-emote ghost hint: append "· removed by @actor" if the hovered
   // wrapper carries data-stale-actor (set by main.js channel_emote_removed).
-  const wrapper = (hoveredImg || e.target)?.closest?.('.hs-mc-emote-wrapper')
   const staleActor = wrapper?.dataset.staleActor || ''
   const isStale = wrapper?.classList.contains('hs-state-stale')
   if (isStale) {
@@ -26171,9 +26190,11 @@ function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg, own
   if (isNsfw) label = `${label} · NSFW`
   stateEl.textContent = label
   const srcClass =
-    (state === 'global' || state === 'channel' || state === 'sub') && source
-      ? ' src-' + source.toLowerCase().replace(/[^a-z0-9]/g, '')
-      : ''
+    fromInv && state !== 'owned' && state !== 'blocked'
+      ? ' src-heatsync'
+      : (state === 'global' || state === 'channel' || state === 'sub') && source
+        ? ' src-' + source.toLowerCase().replace(/[^a-z0-9]/g, '')
+        : ''
   stateEl.className =
     'tooltip-source ' + (state || 'global') + srcClass + (isStale ? ' stale' : '') + (isNsfw ? ' nsfw' : '')
 
@@ -42542,7 +42563,7 @@ function emoteCycleMeta(m) {
   if (m.type === 'emoji') return { cat: 'emoji', vis: { t: 'everyone', c: 'var(--hs-ok)' } }
   if (m.remote) return { cat: '7tv search', vis: { t: 'heatsync only', c: 'var(--hs-brand)' } }
   const tier = m.tier ?? 2
-  const cat = tier === 0 ? 'channel' : tier === 1 ? 'your set' : 'global'
+  const cat = tier === 0 ? 'channel' : tier === 1 ? 'your inventory' : 'global'
   if (m.source === 'twitch') return { cat, vis: { t: 'all twitch', c: 'var(--hs-ok)' } }
   // Kick-native channel/sub emotes are platform-native too — every Kick viewer
   // sees them, no extension needed.

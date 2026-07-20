@@ -294,11 +294,19 @@ function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg, own
   // Show state with source for globals. 2-state model: 'unadded' is no
   // longer a user-facing tier (click pastes, doesn't add — auto-add fires
   // at send time silently), so fall it through to the source-label branch.
+  // data-inv marks emotes that render via a heatsync inventory (the sender's
+  // or the viewer's own — stamped by processEmotes' _lookup); those get the
+  // inventory label instead of the asset's original provider, so the same
+  // emote never reads "inventory" on your rows but "7TV" on the sender's.
+  const wrapper = (hoveredImg || e.target)?.closest?.('.hs-mc-emote-wrapper')
+  const fromInv = wrapper?.dataset.inv === '1' || hoveredImg?.dataset?.inv === '1'
   let label
   if (state === 'owned') {
     label = t('mc_emote_in_set')
   } else if (state === 'blocked') {
     label = t('mc_emote_blocked')
+  } else if (fromInv) {
+    label = t('mc_emote_in_set')
   } else {
     // Global / channel / sub - show source with appropriate scope
     const sourceLabels = {
@@ -319,7 +327,6 @@ function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg, own
   }
   // Stale-emote ghost hint: append "· removed by @actor" if the hovered
   // wrapper carries data-stale-actor (set by main.js channel_emote_removed).
-  const wrapper = (hoveredImg || e.target)?.closest?.('.hs-mc-emote-wrapper')
   const staleActor = wrapper?.dataset.staleActor || ''
   const isStale = wrapper?.classList.contains('hs-state-stale')
   if (isStale) {
@@ -335,9 +342,11 @@ function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg, own
   if (isNsfw) label = `${label} · NSFW`
   stateEl.textContent = label
   const srcClass =
-    (state === 'global' || state === 'channel' || state === 'sub') && source
-      ? ' src-' + source.toLowerCase().replace(/[^a-z0-9]/g, '')
-      : ''
+    fromInv && state !== 'owned' && state !== 'blocked'
+      ? ' src-heatsync'
+      : (state === 'global' || state === 'channel' || state === 'sub') && source
+        ? ' src-' + source.toLowerCase().replace(/[^a-z0-9]/g, '')
+        : ''
   stateEl.className =
     'tooltip-source ' + (state || 'global') + srcClass + (isStale ? ' stale' : '') + (isNsfw ? ' nsfw' : '')
 

@@ -5555,7 +5555,7 @@ function emoteCycleMeta(m) {
   if (m.type === 'emoji') return { cat: 'emoji', vis: { t: 'everyone', c: 'var(--hs-ok)' } }
   if (m.remote) return { cat: '7tv search', vis: { t: 'heatsync only', c: 'var(--hs-brand)' } }
   const tier = m.tier ?? 2
-  const cat = tier === 0 ? 'channel' : tier === 1 ? 'your set' : 'global'
+  const cat = tier === 0 ? 'channel' : tier === 1 ? 'your inventory' : 'global'
   if (m.source === 'twitch') return { cat, vis: { t: 'all twitch', c: 'var(--hs-ok)' } }
   // Kick-native channel/sub emotes are platform-native too — every Kick viewer
   // sees them, no extension needed.

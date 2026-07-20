@@ -4263,7 +4263,7 @@
         subEl.appendChild(tag)
       }
       const stateTxt = document.createElement('span')
-      stateTxt.textContent = isBlocked ? 'blocked' : inInv ? 'in set' : 'not in set'
+      stateTxt.textContent = isBlocked ? 'blocked' : inInv ? 'in inventory' : 'not in inventory'
       subEl.appendChild(stateTxt)
       meta.appendChild(nameEl)
       meta.appendChild(subEl)

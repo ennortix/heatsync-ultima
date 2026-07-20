@@ -367,7 +367,18 @@
             return null
           }
           const integ = get('Client-Integrity')
-          if (integ) gql.integrity = integ
+          if (integ) {
+            // Twitch's OWN gql requests carry a proof-of-work-backed (Kasada)
+            // integrity token — the only kind gql actually accepts for
+            // mutations. Reuse it and stamp a freshness window so fetchIntegrity
+            // PREFERS it over minting our own (a plain /integrity POST with no
+            // KPSDK headers yields a token twitch rejects → "failed integrity
+            // check" on /announce, /highlight, every mutation). Twitch fires gql
+            // constantly, so the capture refreshes well inside this window.
+            gql.integrity = integ
+            gql.integrityTs = Date.now()
+            gql.integrityExp = Date.now() + 5 * 60 * 1000
+          }
           const cid = get('Client-Id') || get('Client-ID')
           if (cid) gql.clientId = cid
           const auth = get('Authorization')
@@ -459,8 +470,16 @@
             .json()
             .then((data) => {
               if (data.token) {
+                // Twitch's own /integrity response — a valid KPSDK-backed token.
+                // Stamp its real expiry so fetchIntegrity reuses it instead of
+                // minting our own (which twitch rejects). See the header-capture
+                // note above.
                 gql.integrity = data.token
                 gql.integrityTs = Date.now()
+                gql.integrityExp =
+                  typeof data.expiration === 'number' && data.expiration > Date.now()
+                    ? data.expiration
+                    : Date.now() + 5 * 60 * 1000
               }
             })
             .catch(() => {})

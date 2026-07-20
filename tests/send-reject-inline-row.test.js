@@ -90,3 +90,19 @@ describe('wiring half — the auth-irc NOTICE branch feeds the pipeline', () => 
     }
   })
 })
+
+describe('biome-rename orphan pins — cross-file bare calls must keep their defs', () => {
+  // The unused-vars autofix renames "unused" defs to _name; bundle concat
+  // blinds it to cross-file callers, so the bare call throws at runtime
+  // (sendIrcMessage broke SENDING entirely; the channel-mgmt four broke the
+  // add/edit/remove channel UI). Pin the load-bearing bare names.
+  const CHAN_SRC = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'channel-mgmt.js'), 'utf8')
+  test('sendIrcMessage keeps its bare name', () => {
+    expect(AUTH_SRC).toMatch(/async function sendIrcMessage\(/)
+  })
+  test('channel-mgmt UI entry points keep their bare names', () => {
+    for (const fn of ['renderAddChannelForm', 'removeChannel', 'showEditLivePlatforms', 'showEditChannelForm']) {
+      expect(CHAN_SRC).toMatch(new RegExp(`function ${fn}\\(`))
+    }
+  })
+})

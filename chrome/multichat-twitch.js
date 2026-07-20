@@ -21902,7 +21902,7 @@ async function drainSendQueue() {
   }
 }
 
-async function _sendIrcMessage(channel, text, token, replyParentId, overrideNick) {
+async function sendIrcMessage(channel, text, token, replyParentId, overrideNick) {
   const nick = overrideNick || currentUsername || getCurrentUsername()
   if (!nick) return 'no_user'
   channel = channel.toLowerCase()
@@ -52878,7 +52878,7 @@ function renderSettingsTab() {
 // and getLivePlatformNames/save+loadLivePlatformMap (read by the render engine
 // and init, not just this UI) stay in main.js.
 
-function _renderAddChannelForm(msgsEl) {
+function renderAddChannelForm(msgsEl) {
   _clearMessageIndices()
   msgsEl.textContent = ''
   const wrapper = document.createElement('div')
@@ -53143,7 +53143,7 @@ function _renderAddChannelForm(msgsEl) {
   cleanup.raf(() => twitch.input.focus())
 }
 
-function _removeChannel(tabId) {
+function removeChannel(tabId) {
   const ch = getChannelById(tabId)
   config.channels = config.channels.filter((c) => c.id !== tabId)
   saveConfig()
@@ -53210,7 +53210,7 @@ function applyLivePlatformOverrides() {
   renderMessages(currentTab)
 }
 
-function _showEditLivePlatforms() {
+function showEditLivePlatforms() {
   const urlCh = getCurrentChannel()?.toLowerCase()
   if (!urlCh) return
   editingChannel = true
@@ -53333,7 +53333,7 @@ function _showEditLivePlatforms() {
   twitch.input.focus()
 }
 
-function _showEditChannelForm(tabId) {
+function showEditChannelForm(tabId) {
   const ch = getChannelById(tabId)
   if (!ch) return
   editingChannel = true

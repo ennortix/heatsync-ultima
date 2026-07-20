@@ -346,7 +346,7 @@ async function drainSendQueue() {
   }
 }
 
-async function _sendIrcMessage(channel, text, token, replyParentId, overrideNick) {
+async function sendIrcMessage(channel, text, token, replyParentId, overrideNick) {
   const nick = overrideNick || currentUsername || getCurrentUsername()
   if (!nick) return 'no_user'
   channel = channel.toLowerCase()

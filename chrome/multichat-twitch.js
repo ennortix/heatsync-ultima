@@ -10148,9 +10148,11 @@ function injectStyles() {
       padding: 0 4px;
       margin-right: 6px;
     }
-    /* Power-up: gigantified emote — the last emote renders big (mirrors twitch) */
+    /* Power-up: gigantified emote — the last emote renders big (mirrors twitch).
+       max-height too: 10-emotes.css caps img height via --hs-emote-size. */
     .hs-mc-msg.hs-mc-gigantified .hs-mc-text .hs-mc-emote-wrapper:last-of-type img {
       height: 56px !important;
+      max-height: 56px !important;
       width: auto !important;
     }
     /* Power-up: message effect — static fx chip naming the effect. Zero motion
@@ -21266,6 +21268,11 @@ function _tapToMsg(m, channel) {
   }
   if (Object.keys(emotes).length) msg.twitchEmotes = emotes
   if (m.messageType === 1 || m.isAction) msg.isAction = true
+  // shared-chat provenance (fiber + intercept relay both carry room ids;
+  // names drift across twitch builds — check both casings)
+  const roomID = m.roomID ?? m.roomId
+  const srcRoomID = m.sourceRoomID ?? m.sourceRoomId
+  if (roomID != null && srcRoomID != null && String(roomID) !== String(srcRoomID)) msg.sharedChat = true
   const subMatch = badgeStr.match(/subscriber\/(\d+)/)
   if (subMatch) msg.subMonths = parseInt(subMatch[1], 10)
   return msg
@@ -43494,6 +43501,42 @@ async function handleSlashCommand(text, input) {
     }
     if (!ch) {
       showToast('/testnotices: no joined twitch channel', 'error')
+      return true
+    }
+    if (rest.trim() === 'raw') {
+      // Raw-parse mode: authentic raw IRC lines through parseIrcLine — proves
+      // the PARSE layer (tag reads), not just classifier+render. Local only.
+      const TS = Date.now()
+      let ri = 0
+      const U = () => `hs-raw-${TS}-${ri++}`
+      const P = (tags, login, text) =>
+        `@${tags};id=${U()};tmi-sent-ts=${TS} :${login}!${login}@${login}.tmi.twitch.tv PRIVMSG #${ch} :${text}`
+      const UN = (tags, text) => `@${tags};id=${U()};tmi-sent-ts=${TS} :tmi.twitch.tv USERNOTICE #${ch}${text ? ' :' + text : ''}`
+      const L = [
+        P('badges=;color=#00FF7F;display-name=SharedGuy;room-id=111;source-room-id=222;source-id=x;user-id=901', 'sharedguy', 'raw shared-chat message from partner channel'),
+        UN('badges=;color=;display-name=PartnerSub;login=partnersub;msg-id=sharedchatnotice;source-msg-id=resub;room-id=111;source-room-id=222;msg-param-cumulative-months=3;msg-param-sub-plan=1000;system-msg=PartnerSub\\ssubscribed\\sat\\sTier\\s1\\s(shared);user-id=902', 'raw shared resub'),
+        P('badges=;color=#FF0000;display-name=GigaGuy;msg-id=gigantified-emote-message;emotes=25:16-20;room-id=111;user-id=903', 'gigaguy', 'raw gigantified Kappa'),
+        P('badges=;color=#5F87FF;display-name=FxGuy;msg-id=animated-message;animation-id=rainbow-eclipse;room-id=111;user-id=904', 'fxguy', 'raw message effect'),
+        P('badges=;color=#00FFFF;display-name=NewGuy;msg-id=user-intro;room-id=111;user-id=905', 'newguy', 'raw hi im new to chat'),
+        P('badges=;color=#FFD700;display-name=FirstGuy;first-msg=1;room-id=111;user-id=906', 'firstguy', 'raw first message ever'),
+        P('badges=;color=#FF00FF;display-name=HighGuy;msg-id=highlighted-message;room-id=111;user-id=907', 'highguy', 'raw highlighted redeem'),
+        UN('badges=;color=;display-name=CharityGuy;login=charityguy;msg-id=charitydonation;system-msg=CharityGuy\\sdonated\\s$10\\sto\\sSave\\sthe\\sKripps!;user-id=908', ''),
+        UN('badges=;color=;display-name=PrimeGuy;login=primeguy;msg-id=primepaidupgrade;system-msg=PrimeGuy\\sconverted\\sfrom\\sPrime\\sto\\sTier\\s1!;user-id=909', ''),
+        UN('badges=;color=;display-name=FwdGuy;login=fwdguy;msg-id=standardpayforward;system-msg=FwdGuy\\sis\\spaying\\sforward\\stheir\\sgift!;user-id=910', ''),
+      ]
+      let ok = 0
+      for (const rawLine of L) {
+        try {
+          const m = parseIrcLine(rawLine)
+          if (m) {
+            m.isSynthetic = true // never relay raw-test rows to the archive
+            irc?._handleMsg?.(m)
+            ok++
+          }
+        } catch (_) {}
+      }
+      showToast(`raw-parsed ${ok}/${L.length} lines into #${ch} (local only)`, ok === L.length ? 'success' : 'error')
+      clearInput(input)
       return true
     }
     const now = Date.now()

@@ -110,6 +110,11 @@
       messageType: m.messageType,
       isAction: !!m.isAction,
       messageBody: typeof m.messageBody === 'string' ? m.messageBody : undefined,
+      // shared-chat provenance — partner-channel messages carry a source room
+      // that differs from the current room (field names drift; pass both)
+      roomID: m.roomID != null ? String(m.roomID) : m.roomId != null ? String(m.roomId) : undefined,
+      sourceRoomID:
+        m.sourceRoomID != null ? String(m.sourceRoomID) : m.sourceRoomId != null ? String(m.sourceRoomId) : undefined,
       badges,
       messageParts: parts,
       user: {

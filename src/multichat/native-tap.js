@@ -141,6 +141,11 @@ function _tapToMsg(m, channel) {
   }
   if (Object.keys(emotes).length) msg.twitchEmotes = emotes
   if (m.messageType === 1 || m.isAction) msg.isAction = true
+  // shared-chat provenance (fiber + intercept relay both carry room ids;
+  // names drift across twitch builds — check both casings)
+  const roomID = m.roomID ?? m.roomId
+  const srcRoomID = m.sourceRoomID ?? m.sourceRoomId
+  if (roomID != null && srcRoomID != null && String(roomID) !== String(srcRoomID)) msg.sharedChat = true
   const subMatch = badgeStr.match(/subscriber\/(\d+)/)
   if (subMatch) msg.subMonths = parseInt(subMatch[1], 10)
   return msg

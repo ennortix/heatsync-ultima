@@ -508,9 +508,11 @@
       padding: 0 4px;
       margin-right: 6px;
     }
-    /* Power-up: gigantified emote — the last emote renders big (mirrors twitch) */
+    /* Power-up: gigantified emote — the last emote renders big (mirrors twitch).
+       max-height too: 10-emotes.css caps img height via --hs-emote-size. */
     .hs-mc-msg.hs-mc-gigantified .hs-mc-text .hs-mc-emote-wrapper:last-of-type img {
       height: 56px !important;
+      max-height: 56px !important;
       width: auto !important;
     }
     /* Power-up: message effect — static fx chip naming the effect. Zero motion

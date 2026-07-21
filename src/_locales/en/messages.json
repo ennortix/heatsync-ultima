@@ -1638,6 +1638,12 @@
       }
     }
   },
+  "mc_emote_block_failed": {
+    "message": "couldn’t block — try again"
+  },
+  "mc_emote_unblock_failed": {
+    "message": "couldn’t unblock — try again"
+  },
   "mc_emote_block_sync_failed": {
     "message": "block not saved to your account — will differ on other devices"
   },

@@ -1837,7 +1837,11 @@ function blockAllEmotesInStack(stack) {
   stack.setAttribute('title', 'expand')
 }
 
-function blockEmote(emoteName, clickedUrl, clickedSource) {
+// opts.skipSync: don't hit the API (used when this call IS the rollback of a
+// failed unblock — reversing it must not fire another server write).
+// opts.silent: suppress the success toast (a rollback speaks through the error
+// toast at the failure site, not a second "blocked" line).
+function blockEmote(emoteName, clickedUrl, clickedSource, opts) {
   if (!emoteName) return
 
   // Capture url/source BEFORE the deletes below strip the emote from caches —
@@ -1868,8 +1872,14 @@ function blockEmote(emoteName, clickedUrl, clickedSource) {
   const hash = emoteHashes.get(emoteName) || (capturedUrl ? btoa(capturedUrl).slice(0, 32) : emoteName)
   blockedEmoteHashes.add(hash)
 
-  // Sync to heatsync.org API via background.js (it handles storage)
-  syncBlockToAPI(emoteName, true)
+  // Sync to heatsync.org API via background.js (it handles storage). The
+  // success/failure toast now lives INSIDE syncBlockToAPI — the DOM update
+  // above is optimistic, and a confirmed server rejection rolls it back there
+  // rather than leaving a "blocked ✓" the next inventory refetch silently
+  // undoes. Pass the captured url/source so a failed-unblock rollback can
+  // restore the real image.
+  if (!opts?.skipSync)
+    syncBlockToAPI(emoteName, true, { url: capturedUrl, source: _be?.source || clickedSource, silent: opts?.silent })
 
   // Instant DOM update - CSS visibility:hidden hides the img, no src swap needed
   queryEmoteWrappers(emoteName).forEach((w) => {
@@ -1905,7 +1915,10 @@ function blockEmote(emoteName, clickedUrl, clickedSource) {
   applyInputEmoteBlockState(emoteName, true)
 
   refreshEmoteTooltip(emoteName, 'blocked')
-  showToast(t('mc_emote_blocked', [emoteName]), 'success')
+  // Success toast fires from syncBlockToAPI on confirmation (or immediately for
+  // the logged-out local path). skipSync means there's no confirmation coming,
+  // so a non-silent skipSync still owes a toast; silent (rollback) owes none.
+  if (opts?.skipSync && !opts?.silent) showToast(t('mc_emote_blocked', [emoteName]), 'success')
   flashAllEmotes(emoteName, 'hs-flash-block')
   // Surgical: only re-key messages that reference this emote (no epoch bump →
   // no whole-chat rebuild flash). Live DOM already updated in-place above.
@@ -1935,7 +1948,7 @@ function refreshEmoteWrappersState(emoteName) {
   })
 }
 
-function unblockEmote(emoteName) {
+function unblockEmote(emoteName, opts) {
   if (!emoteName) return
 
   // Update local tracking
@@ -1949,8 +1962,12 @@ function unblockEmote(emoteName) {
   const _bfEmote = blockedEmoteFallback.get(emoteName)
   if (blockedEmoteFallback.delete(emoteName)) persistBlockedFallback()
 
-  // Sync to heatsync.org API via background.js
-  syncBlockToAPI(emoteName, false)
+  // Sync to heatsync.org API via background.js. Toast + optimistic-rollback
+  // live in syncBlockToAPI (see blockEmote). Carry the fallback url/source so a
+  // failed-block rollback (i.e. this unblock reversing a block) is redundant,
+  // but a failed UNBLOCK rollback re-blocks and needs them.
+  if (!opts?.skipSync)
+    syncBlockToAPI(emoteName, false, { url: _bfEmote?.url || '', source: _bfEmote?.source, silent: opts?.silent })
 
   // Instant DOM update - restore images. After refresh the emote is in no live
   // cache, so lookupEmote misses — fall back to the persisted block url.
@@ -2006,7 +2023,7 @@ function unblockEmote(emoteName) {
   applyInputEmoteBlockState(emoteName, false)
 
   refreshEmoteTooltip(emoteName, newState)
-  showToast(t('mc_emote_unblocked', [emoteName]), 'success')
+  if (opts?.skipSync && !opts?.silent) showToast(t('mc_emote_unblocked', [emoteName]), 'success')
   flashAllEmotes(emoteName, 'hs-flash-unblock')
   if (typeof invalidateRenderedForEmotes === 'function') invalidateRenderedForEmotes(emoteName)
 }
@@ -2125,27 +2142,45 @@ async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, targetEl, z
   return _added
 }
 
-// Sync block/unblock to heatsync.org API via background script
-async function syncBlockToAPI(emoteName, block) {
+// Sync block/unblock to heatsync.org API via background script, then RECONCILE.
+// The background handler reports an HTTP failure by RESOLVING with
+// {success:false} (not rejecting), so the old fire-and-forget `.catch()` never
+// saw it: a 500 / rate-limit / expired-token block showed "blocked ✓", silently
+// wasn't persisted, and reverted on the next inventory refetch with no signal.
+// Now we await the outcome and, on a confirmed failure, roll the optimistic
+// local change back (reverse op, skipSync so it doesn't re-write the server)
+// and say so. On success we finally emit the toast the UI used to fire blind.
+async function syncBlockToAPI(emoteName, block, ctx) {
+  const silent = !!ctx?.silent
+  let resp
   try {
     // Background script expects message.hash - use emoteHashes (most complete mapping)
     const hash =
       emoteHashes.get(emoteName) ||
       (lookupEmote(emoteName)?.url ? btoa(lookupEmote(emoteName).url).slice(0, 32) : emoteName)
-    chrome.runtime
-      .sendMessage({
-        type: block ? 'block_emote' : 'unblock_emote',
-        hash: hash,
-        emoteName: emoteName,
-      })
-      .catch((e) => {
-        log('block sync failed:', e?.message || e)
-        showToast(t(block ? 'mc_emote_block_sync_failed' : 'mc_emote_unblock_sync_failed'), 'error')
-      })
-    log('Synced', block ? 'block' : 'unblock', emoteName, '(hash:', hash.substring(0, 8) + '...) to API')
+    resp = await chrome.runtime.sendMessage({
+      type: block ? 'block_emote' : 'unblock_emote',
+      hash: hash,
+      emoteName: emoteName,
+    })
   } catch (e) {
-    log('API sync error:', e)
+    // A rejected sendMessage is almost always "extension context invalidated"
+    // (reload/update) — treat it as a confirmed failure so we don't leave a
+    // lie on screen, same as a {success:false} body.
+    resp = { success: false, error: e?.message || 'context' }
   }
+  if (resp && resp.success === false) {
+    log('block sync rejected:', resp.error)
+    // Roll back the optimistic local change. This is a rollback of a rollback-
+    // free op, so pass skipSync (don't re-hit the server) + silent (the error
+    // toast below is the only message this failure gets).
+    if (block) unblockEmote(emoteName, { skipSync: true, silent: true })
+    else blockEmote(emoteName, ctx?.url, ctx?.source, { skipSync: true, silent: true })
+    if (!silent) showToast(t(block ? 'mc_emote_block_failed' : 'mc_emote_unblock_failed'), 'error')
+    return
+  }
+  // Confirmed (or logged-out local success). Emit the success toast now.
+  if (!silent) showToast(t(block ? 'mc_emote_blocked' : 'mc_emote_unblocked', [emoteName]), 'success')
 }
 
 // Emote cache (loaded from storage)

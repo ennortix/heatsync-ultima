@@ -30682,6 +30682,29 @@ async function fetchHighlightCost(channelId) {
   }
 }
 
+// Highlight sends spend REAL Bits, and Twitch's `transactionID` is the bits
+// idempotency key — the same id can land twice and Twitch charges once. The old
+// code minted a fresh one every call, so a client-side timeout that surfaced
+// "highlight failed" invited a resend that Twitch saw as a brand-new purchase →
+// double charge for one highlight. Cache (nonce, transactionID) by message
+// content so a manual resend of the same text reuses the same transaction and
+// physically cannot double-spend. The entry is dropped on confirmed success, so
+// a deliberate identical highlight later still gets a fresh charge.
+const _highlightTxns = new Map()
+const HIGHLIGHT_TXN_TTL_MS = 5 * 60 * 1000
+function _highlightTxnFor(channelId, message, replyParentId) {
+  const key = `${channelId}|${replyParentId || ''}|${message}`
+  const now = Date.now()
+  if (_highlightTxns.size > 200) {
+    for (const [k, v] of _highlightTxns) if (now - v.ts > HIGHLIGHT_TXN_TTL_MS) _highlightTxns.delete(k)
+  }
+  const hit = _highlightTxns.get(key)
+  if (hit && now - hit.ts < HIGHLIGHT_TXN_TTL_MS) return { key, ...hit }
+  const fresh = { nonce: crypto.randomUUID(), transactionID: crypto.randomUUID(), ts: now }
+  _highlightTxns.set(key, fresh)
+  return { key, ...fresh }
+}
+
 async function sendHighlightedTwitchMessage(channelId, message, nonce, replyParentId) {
   if (_isHighlightSendKilled()) return { error: 'highlight disabled by server' }
   const token = getTwitchAuthToken()
@@ -30689,12 +30712,15 @@ async function sendHighlightedTwitchMessage(channelId, message, nonce, replyPare
   if (!channelId) return { error: 'channel not resolved' }
   const cost = await fetchHighlightCost(channelId)
   if (cost == null) return { error: 'highlight unavailable on this channel' }
+  // Reuse a recent transaction for the same message so a resend is idempotent
+  // at Twitch's bits layer. An explicit nonce (caller-supplied) still wins.
+  const txn = _highlightTxnFor(channelId, message, replyParentId)
   const input = {
     channelID: String(channelId),
     message,
     cost,
-    nonce: nonce || crypto.randomUUID(),
-    transactionID: crypto.randomUUID(),
+    nonce: nonce || txn.nonce,
+    transactionID: txn.transactionID,
   }
   if (replyParentId) input.replyParentMessageID = replyParentId
   const readResult = (d) => {
@@ -30715,9 +30741,20 @@ async function sendHighlightedTwitchMessage(channelId, message, nonce, replyPare
   }`
   try {
     const data = await gqlProxy('SendHighlightedChatMessage', { input }, { rawQuery: RAW_QUERY })
-    return readResult(Array.isArray(data) ? data[0] : data)
+    const res = readResult(Array.isArray(data) ? data[0] : data)
+    // Confirmed one way or the other: a structured response means Twitch
+    // processed the mutation (charged + posted, or rejected before charging).
+    // Either way this transaction is spent — drop it so a later deliberate
+    // resend of the same text starts a fresh charge instead of being deduped.
+    _highlightTxns.delete(txn.key)
+    return res
   } catch (e) {
-    return { error: e.message }
+    // A throw is a CLIENT-side timeout/integrity/abort — we never heard back,
+    // so the charge may or may not have happened. Keep the transaction cached
+    // (untouched) so a resend reuses it and Twitch dedupes; tell the caller this
+    // is unconfirmed, NOT a clean failure, so it doesn't frame a resend as a
+    // repair the way an insufficient-bits error would.
+    return { error: e.message, unconfirmed: true }
   }
 }
 
@@ -31684,16 +31721,27 @@ async function lookupFollowage(username, channelLogin) {
 
 const _twChannelIdCache = new Map() // login(lc) → { id, ts }
 
-async function resolveTwitchChannelId(channelLogin) {
+// Returns { id, transient }. `id` is the numeric channel id or null; `transient`
+// is true when null means "couldn't reach Twitch" (GQL/relay threw, or the hard
+// ceiling fired) rather than "no such channel". Mod actions MUST split these —
+// telling a mod "channel not found" on a 4s network blip stops them acting on a
+// channel that plainly exists (the /dm-resolve bug's twin, one layer over).
+async function resolveTwitchChannelIdEx(channelLogin) {
   return Promise.race([
     _resolveTwitchChannelIdInner(channelLogin),
     // Hard ceiling: the second fallback below is a raw chrome.runtime.sendMessage
     // (no built-in timeout) — if the background SW's handler exists but never
     // calls sendResponse, this hangs forever and blocks every mod command that
     // needs a channel id (2026-07-20 live incident: /announce read as "Enter
-    // does nothing" with zero feedback because this never resolved).
-    new Promise((resolve) => setTimeout(() => resolve(null), 6000)),
+    // does nothing" with zero feedback because this never resolved). A ceiling
+    // hit is transient by definition — the resolve never completed.
+    new Promise((resolve) => setTimeout(() => resolve({ id: null, transient: true }), 6000)),
   ])
+}
+
+// Back-compat: value consumers that only want the id string (or null).
+async function resolveTwitchChannelId(channelLogin) {
+  return (await resolveTwitchChannelIdEx(channelLogin)).id
 }
 
 async function _resolveTwitchChannelIdInner(channelLogin) {
@@ -31701,9 +31749,9 @@ async function _resolveTwitchChannelIdInner(channelLogin) {
     .toLowerCase()
     .replace(/^@/, '')
     .replace(/[^a-z0-9_]/g, '')
-  if (!lc) return null
+  if (!lc) return { id: null, transient: false } // empty/garbage login — not a lookup that can succeed
   const cached = _twChannelIdCache.get(lc)
-  if (cached && Date.now() - cached.ts < 3600000) return cached.id
+  if (cached && Date.now() - cached.ts < 3600000) return { id: cached.id, transient: false }
   // Bound the cache — every distinct channel modded in a session adds an entry;
   // without a cap it grows unbounded over a long-lived tab. Evict oldest-inserted.
   const _cacheChannelId = (id) => {
@@ -31716,14 +31764,21 @@ async function _resolveTwitchChannelIdInner(channelLogin) {
   // First-party first: Twitch GQL (relayed through a twitch.tv tab when
   // off-Twitch). heatsync.org/api/resolve is our own first-party fallback for
   // the rare case GQL is unreachable — no third-party call in this path.
+  let transient = false
+  let sawCleanNull = false
   try {
     const data = await gqlProxy(null, null, { rawQuery: `{ user(login: "${lc}") { id } }` })
     const id = data?.data?.user?.id || (Array.isArray(data) ? data[0]?.data?.user?.id : null)
     if (id) {
       _cacheChannelId(id)
-      return id
+      return { id, transient: false }
     }
-  } catch (_) {}
+    // GQL answered with no user → a real "no such login". Still try the relay,
+    // but remember this was a definitive miss, not a network fault.
+    sawCleanNull = true
+  } catch (_) {
+    transient = true // proxy timeout / integrity / abort — we never got an answer
+  }
   try {
     // Relay via the background SW — a direct heatsync.org fetch from this
     // ISOLATED content-script context gets 503'd by the CF edge bot-check
@@ -31732,10 +31787,15 @@ async function _resolveTwitchChannelIdInner(channelLogin) {
     const id = resp?.id
     if (id && /^\d+$/.test(String(id))) {
       _cacheChannelId(String(id))
-      return String(id)
+      return { id: String(id), transient: false }
     }
-  } catch (_) {}
-  return null
+    // Relay came back empty. If GQL also gave a clean null, both sources agree
+    // the login doesn't exist → definitive. Otherwise (GQL threw, relay empty)
+    // we still never got a real answer → transient.
+  } catch (_) {
+    transient = true
+  }
+  return { id: null, transient: transient && !sawCleanNull }
 }
 
 // Server kill-switch — refuses every mod mutation when the 'mutations' feature
@@ -31918,8 +31978,8 @@ async function followTwitchUserById(targetID, follow = true, disableNotification
 }
 
 async function banTwitchUser(channelLogin, targetLogin, reason) {
-  const channelID = await resolveTwitchChannelId(channelLogin)
-  if (!channelID) return { error: 'channel not found' }
+  const { id: channelID, transient } = await resolveTwitchChannelIdEx(channelLogin)
+  if (!channelID) return { error: transient ? 'twitch unreachable — try again' : 'channel not found', transient }
   const bannedUserLogin = (targetLogin || '').toLowerCase().replace(/^@/, '')
   if (!bannedUserLogin) return { error: 'no target user' }
   return _modActionMutation(
@@ -31931,8 +31991,8 @@ async function banTwitchUser(channelLogin, targetLogin, reason) {
 }
 
 async function timeoutTwitchUser(channelLogin, targetLogin, durationSec, reason) {
-  const channelID = await resolveTwitchChannelId(channelLogin)
-  if (!channelID) return { error: 'channel not found' }
+  const { id: channelID, transient } = await resolveTwitchChannelIdEx(channelLogin)
+  if (!channelID) return { error: transient ? 'twitch unreachable — try again' : 'channel not found', transient }
   const bannedUserLogin = (targetLogin || '').toLowerCase().replace(/^@/, '')
   if (!bannedUserLogin) return { error: 'no target user' }
   return _modActionMutation(
@@ -31944,8 +32004,8 @@ async function timeoutTwitchUser(channelLogin, targetLogin, durationSec, reason)
 }
 
 async function unbanTwitchUser(channelLogin, targetLogin) {
-  const channelID = await resolveTwitchChannelId(channelLogin)
-  if (!channelID) return { error: 'channel not found' }
+  const { id: channelID, transient } = await resolveTwitchChannelIdEx(channelLogin)
+  if (!channelID) return { error: transient ? 'twitch unreachable — try again' : 'channel not found', transient }
   const bannedUserLogin = (targetLogin || '').toLowerCase().replace(/^@/, '')
   if (!bannedUserLogin) return { error: 'no target user' }
   return _modActionMutation(
@@ -31960,8 +32020,8 @@ async function unbanTwitchUser(channelLogin, targetLogin) {
 // echoes back as USERNOTICE msg-id=announcement, so no local synth needed.
 // color: PRIMARY | BLUE | GREEN | ORANGE | PURPLE.
 async function announceTwitchChat(channelLogin, message, color) {
-  const channelID = await resolveTwitchChannelId(channelLogin)
-  if (!channelID) return { error: 'channel not found' }
+  const { id: channelID, transient } = await resolveTwitchChannelIdEx(channelLogin)
+  if (!channelID) return { error: transient ? 'twitch unreachable — try again' : 'channel not found', transient }
   const text = (message || '').trim()
   if (!text) return { error: 'no message' }
   return _modActionMutation(
@@ -31976,8 +32036,8 @@ async function announceTwitchChat(channelLogin, message, color) {
 }
 
 async function deleteTwitchMessage(channelLogin, messageID) {
-  const channelID = await resolveTwitchChannelId(channelLogin)
-  if (!channelID) return { error: 'channel not found' }
+  const { id: channelID, transient } = await resolveTwitchChannelIdEx(channelLogin)
+  if (!channelID) return { error: transient ? 'twitch unreachable — try again' : 'channel not found', transient }
   if (!messageID) return { error: 'no message id' }
   return _modActionMutation(
     'Chat_DeleteChatMessage',
@@ -44313,9 +44373,14 @@ async function handleSlashCommand(text, input) {
       showToast(t('mc_input_highlight_login') || 'log into twitch.tv first', 'error')
       return true
     }
-    const channelId = await resolveTwitchChannelId(twitchLogin)
+    const { id: channelId, transient: chTransient } = await resolveTwitchChannelIdEx(twitchLogin)
     if (!channelId) {
-      showToast(t('mc_input_highlight_no_channel') || 'could not resolve channel', 'error')
+      showToast(
+        chTransient
+          ? t('mc_input_twitch_unreachable') || 'twitch unreachable — try again'
+          : t('mc_input_highlight_no_channel') || 'could not resolve channel',
+        'error',
+      )
       return true
     }
     const replyParentId = replyState?.msgId || null
@@ -44329,6 +44394,17 @@ async function handleSlashCommand(text, input) {
           'success',
         )
       }
+      armComposerStickyFocus(input)
+    } else if (r?.unconfirmed) {
+      // A client-side timeout — the highlight may already have posted and
+      // charged. Do NOT clear the input (so a resend is one keystroke away) and
+      // do NOT call it a failure. The transaction is idempotent at Twitch's bits
+      // layer (sendHighlightedTwitchMessage caches transactionID), so a resend
+      // of the same text charges once no matter what — say so.
+      showToast(
+        t('mc_input_highlight_unconfirmed') || 'highlight didn’t confirm — resend is safe, bits charge once',
+        'warn',
+      )
       armComposerStickyFocus(input)
     } else {
       showToast(

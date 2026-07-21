@@ -3842,16 +3842,27 @@ async function lookupFollowage(username, channelLogin) {
 
 const _twChannelIdCache = new Map() // login(lc) → { id, ts }
 
-async function resolveTwitchChannelId(channelLogin) {
+// Returns { id, transient }. `id` is the numeric channel id or null; `transient`
+// is true when null means "couldn't reach Twitch" (GQL/relay threw, or the hard
+// ceiling fired) rather than "no such channel". Mod actions MUST split these —
+// telling a mod "channel not found" on a 4s network blip stops them acting on a
+// channel that plainly exists (the /dm-resolve bug's twin, one layer over).
+async function resolveTwitchChannelIdEx(channelLogin) {
   return Promise.race([
     _resolveTwitchChannelIdInner(channelLogin),
     // Hard ceiling: the second fallback below is a raw chrome.runtime.sendMessage
     // (no built-in timeout) — if the background SW's handler exists but never
     // calls sendResponse, this hangs forever and blocks every mod command that
     // needs a channel id (2026-07-20 live incident: /announce read as "Enter
-    // does nothing" with zero feedback because this never resolved).
-    new Promise((resolve) => setTimeout(() => resolve(null), 6000)),
+    // does nothing" with zero feedback because this never resolved). A ceiling
+    // hit is transient by definition — the resolve never completed.
+    new Promise((resolve) => setTimeout(() => resolve({ id: null, transient: true }), 6000)),
   ])
+}
+
+// Back-compat: value consumers that only want the id string (or null).
+async function resolveTwitchChannelId(channelLogin) {
+  return (await resolveTwitchChannelIdEx(channelLogin)).id
 }
 
 async function _resolveTwitchChannelIdInner(channelLogin) {
@@ -3859,9 +3870,9 @@ async function _resolveTwitchChannelIdInner(channelLogin) {
     .toLowerCase()
     .replace(/^@/, '')
     .replace(/[^a-z0-9_]/g, '')
-  if (!lc) return null
+  if (!lc) return { id: null, transient: false } // empty/garbage login — not a lookup that can succeed
   const cached = _twChannelIdCache.get(lc)
-  if (cached && Date.now() - cached.ts < 3600000) return cached.id
+  if (cached && Date.now() - cached.ts < 3600000) return { id: cached.id, transient: false }
   // Bound the cache — every distinct channel modded in a session adds an entry;
   // without a cap it grows unbounded over a long-lived tab. Evict oldest-inserted.
   const _cacheChannelId = (id) => {
@@ -3874,14 +3885,21 @@ async function _resolveTwitchChannelIdInner(channelLogin) {
   // First-party first: Twitch GQL (relayed through a twitch.tv tab when
   // off-Twitch). heatsync.org/api/resolve is our own first-party fallback for
   // the rare case GQL is unreachable — no third-party call in this path.
+  let transient = false
+  let sawCleanNull = false
   try {
     const data = await gqlProxy(null, null, { rawQuery: `{ user(login: "${lc}") { id } }` })
     const id = data?.data?.user?.id || (Array.isArray(data) ? data[0]?.data?.user?.id : null)
     if (id) {
       _cacheChannelId(id)
-      return id
+      return { id, transient: false }
     }
-  } catch (_) {}
+    // GQL answered with no user → a real "no such login". Still try the relay,
+    // but remember this was a definitive miss, not a network fault.
+    sawCleanNull = true
+  } catch (_) {
+    transient = true // proxy timeout / integrity / abort — we never got an answer
+  }
   try {
     // Relay via the background SW — a direct heatsync.org fetch from this
     // ISOLATED content-script context gets 503'd by the CF edge bot-check
@@ -3890,10 +3908,15 @@ async function _resolveTwitchChannelIdInner(channelLogin) {
     const id = resp?.id
     if (id && /^\d+$/.test(String(id))) {
       _cacheChannelId(String(id))
-      return String(id)
+      return { id: String(id), transient: false }
     }
-  } catch (_) {}
-  return null
+    // Relay came back empty. If GQL also gave a clean null, both sources agree
+    // the login doesn't exist → definitive. Otherwise (GQL threw, relay empty)
+    // we still never got a real answer → transient.
+  } catch (_) {
+    transient = true
+  }
+  return { id: null, transient: transient && !sawCleanNull }
 }
 
 // Server kill-switch — refuses every mod mutation when the 'mutations' feature
@@ -4076,8 +4099,8 @@ async function followTwitchUserById(targetID, follow = true, disableNotification
 }
 
 async function banTwitchUser(channelLogin, targetLogin, reason) {
-  const channelID = await resolveTwitchChannelId(channelLogin)
-  if (!channelID) return { error: 'channel not found' }
+  const { id: channelID, transient } = await resolveTwitchChannelIdEx(channelLogin)
+  if (!channelID) return { error: transient ? 'twitch unreachable — try again' : 'channel not found', transient }
   const bannedUserLogin = (targetLogin || '').toLowerCase().replace(/^@/, '')
   if (!bannedUserLogin) return { error: 'no target user' }
   return _modActionMutation(
@@ -4089,8 +4112,8 @@ async function banTwitchUser(channelLogin, targetLogin, reason) {
 }
 
 async function timeoutTwitchUser(channelLogin, targetLogin, durationSec, reason) {
-  const channelID = await resolveTwitchChannelId(channelLogin)
-  if (!channelID) return { error: 'channel not found' }
+  const { id: channelID, transient } = await resolveTwitchChannelIdEx(channelLogin)
+  if (!channelID) return { error: transient ? 'twitch unreachable — try again' : 'channel not found', transient }
   const bannedUserLogin = (targetLogin || '').toLowerCase().replace(/^@/, '')
   if (!bannedUserLogin) return { error: 'no target user' }
   return _modActionMutation(
@@ -4102,8 +4125,8 @@ async function timeoutTwitchUser(channelLogin, targetLogin, durationSec, reason)
 }
 
 async function unbanTwitchUser(channelLogin, targetLogin) {
-  const channelID = await resolveTwitchChannelId(channelLogin)
-  if (!channelID) return { error: 'channel not found' }
+  const { id: channelID, transient } = await resolveTwitchChannelIdEx(channelLogin)
+  if (!channelID) return { error: transient ? 'twitch unreachable — try again' : 'channel not found', transient }
   const bannedUserLogin = (targetLogin || '').toLowerCase().replace(/^@/, '')
   if (!bannedUserLogin) return { error: 'no target user' }
   return _modActionMutation(
@@ -4118,8 +4141,8 @@ async function unbanTwitchUser(channelLogin, targetLogin) {
 // echoes back as USERNOTICE msg-id=announcement, so no local synth needed.
 // color: PRIMARY | BLUE | GREEN | ORANGE | PURPLE.
 async function announceTwitchChat(channelLogin, message, color) {
-  const channelID = await resolveTwitchChannelId(channelLogin)
-  if (!channelID) return { error: 'channel not found' }
+  const { id: channelID, transient } = await resolveTwitchChannelIdEx(channelLogin)
+  if (!channelID) return { error: transient ? 'twitch unreachable — try again' : 'channel not found', transient }
   const text = (message || '').trim()
   if (!text) return { error: 'no message' }
   return _modActionMutation(
@@ -4134,8 +4157,8 @@ async function announceTwitchChat(channelLogin, message, color) {
 }
 
 async function deleteTwitchMessage(channelLogin, messageID) {
-  const channelID = await resolveTwitchChannelId(channelLogin)
-  if (!channelID) return { error: 'channel not found' }
+  const { id: channelID, transient } = await resolveTwitchChannelIdEx(channelLogin)
+  if (!channelID) return { error: transient ? 'twitch unreachable — try again' : 'channel not found', transient }
   if (!messageID) return { error: 'no message id' }
   return _modActionMutation(
     'Chat_DeleteChatMessage',

@@ -6832,9 +6832,14 @@ async function handleSlashCommand(text, input) {
       showToast(t('mc_input_highlight_login') || 'log into twitch.tv first', 'error')
       return true
     }
-    const channelId = await resolveTwitchChannelId(twitchLogin)
+    const { id: channelId, transient: chTransient } = await resolveTwitchChannelIdEx(twitchLogin)
     if (!channelId) {
-      showToast(t('mc_input_highlight_no_channel') || 'could not resolve channel', 'error')
+      showToast(
+        chTransient
+          ? t('mc_input_twitch_unreachable') || 'twitch unreachable — try again'
+          : t('mc_input_highlight_no_channel') || 'could not resolve channel',
+        'error',
+      )
       return true
     }
     const replyParentId = replyState?.msgId || null

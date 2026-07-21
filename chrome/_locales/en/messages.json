@@ -1969,6 +1969,9 @@
   "mc_input_highlight_login": {
     "message": "log into twitch.tv first"
   },
+  "mc_input_twitch_unreachable": {
+    "message": "twitch unreachable — try again"
+  },
   "mc_input_highlight_no_channel": {
     "message": "could not resolve channel"
   },
@@ -1979,6 +1982,9 @@
         "content": "$1"
       }
     }
+  },
+  "mc_input_highlight_unconfirmed": {
+    "message": "highlight didn’t confirm — resend is safe, bits charge once"
   },
   "mc_input_highlight_failed": {
     "message": "highlight failed: $REASON$",

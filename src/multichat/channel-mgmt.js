@@ -158,6 +158,14 @@ function renderAddChannelForm(msgsEl) {
       showErr(t('mc_kick_exists'))
       return
     }
+    // youtube had no duplicate guard while twitch and kick both did — and its
+    // generated `yt-<ts>` id is unique every time, so the id check above can
+    // never catch it. Adding the same channel twice gave two tabs fed by one
+    // subscription.
+    if (ytVal && config.channels.some((c) => c.youtube === ytVal)) {
+      showErr(t('mc_channel_exists'))
+      return
+    }
 
     const channel = { id, twitch: twitchVal, kick: kickVal, youtube: ytVal }
     config.channels.push(channel)

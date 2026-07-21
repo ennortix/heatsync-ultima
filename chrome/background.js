@@ -7360,6 +7360,20 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   }
 
+  // videoId → @handle, for naming a tab that was added by pasting a watch URL.
+  // Thin wrapper over the same cached oEmbed lookup the subscribe path uses.
+  if (message.type === 'yt_channel_handle') {
+    const vid = String(message.videoId || '')
+    if (!/^[\w-]{11}$/.test(vid)) {
+      sendResponse({ handle: null })
+      return true
+    }
+    getYtChannelHandle(vid)
+      .then((handle) => sendResponse({ handle: handle || null }))
+      .catch(() => sendResponse({ handle: null }))
+    return true
+  }
+
   if (message.type === 'dbg_yt_tap') {
     // Read-only fallback-tap state snapshot — same rationale as dbg_kick_tap.
     try {

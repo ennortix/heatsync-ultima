@@ -4790,6 +4790,26 @@
     _autoClaimPoller = null
   }
 
+  // One-shot per videoId: ask BG to turn a bare videoId into the channel's
+  // @handle (oEmbed, cached there) so a watch-URL tab gets a real name. Both
+  // outcomes are recorded — a video that can't resolve (private, deleted,
+  // rate-limited) must not re-fetch on every tab repaint.
+  const _ytLabelTried = new Set()
+  function resolveYtTabLabel(chId, videoId) {
+    if (!videoId || _ytLabelTried.has(videoId)) return
+    _ytLabelTried.add(videoId)
+    safeSendMessage({ type: 'yt_channel_handle', videoId })
+      .then((r) => {
+        const handle = r?.handle
+        if (!handle) return
+        const prev = youtubeLinks.get(chId) || {}
+        if (prev.channelName === handle) return
+        youtubeLinks.set(chId, { ...prev, channelName: handle })
+        updateTabBar()
+      })
+      .catch(() => {})
+  }
+
   function updateTabBar() {
     if (!tabBarElement) return
 
@@ -4829,7 +4849,20 @@
         if (linked?.channelName) label = linked.channelName
         else if (m) label = m[1]
         else if (!looksAuto) label = ch.id
-        else label = ch.youtube.replace(/^https?:\/\/(www\.)?youtube\.com\//, '').replace(/\/.*$/, '')
+        else {
+          // Adding a channel by pasting a /watch?v= link lands here: no
+          // @handle in the URL, and channelName only ever gets filled by a
+          // youtube_status for a stream that's actually connected — so an
+          // offline one kept this fallback forever and the tab read
+          // "watch?v=VGe-dpUmnos". Resolve the handle off the videoId once
+          // (BG already does this via oEmbed for the subscribe path) and
+          // repaint. Until it lands, show the video id alone rather than the
+          // URL guts.
+          const vid = ch.youtube.match(/[?&]v=([\w-]{11})|\/live\/([\w-]{11})/)
+          const videoId = vid ? vid[1] || vid[2] : ''
+          label = videoId || ch.youtube.replace(/^https?:\/\/(www\.)?youtube\.com\//, '').replace(/\/.*$/, '')
+          if (videoId) resolveYtTabLabel(ch.id, videoId)
+        }
       }
       tab.textContent = label
       // Restore live dot from cached liveChannelSet (survives tab recreate).

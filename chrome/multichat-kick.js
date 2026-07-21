@@ -43488,23 +43488,33 @@ async function handleSlashCommand(text, input) {
 
   if (cmd === 'w') {
     const match = rest.match(/^@?(\S+)\s+(.+)$/)
-    if (!match) {
-      showToast(t('mc_input_usage_w'))
+    if (match) {
+      await sendSlashWhisper('twitch', match[1], match[2], input)
       return true
     }
-    const [, username, msg] = match
-    await sendSlashWhisper('twitch', username, msg, input)
+    // Bare "/w <user>" (no message) → open the conversation instead of hinting.
+    const bare = rest.trim().replace(/^@/, '')
+    if (bare && !/\s/.test(bare)) {
+      await openWhisperConversation('twitch', bare, input)
+      return true
+    }
+    showToast(t('mc_input_usage_w'))
     return true
   }
 
   if (cmd === 'dm') {
     const match = rest.match(/^@?(\S+)\s+(.+)$/)
-    if (!match) {
-      showToast(t('mc_input_usage_dm'))
+    if (match) {
+      await sendSlashWhisper('heatsync', match[1], match[2], input)
       return true
     }
-    const [, username, msg] = match
-    await sendSlashWhisper('heatsync', username, msg, input)
+    // Bare "/dm <user>" (no message) → open the conversation instead of hinting.
+    const bare = rest.trim().replace(/^@/, '')
+    if (bare && !/\s/.test(bare)) {
+      await openWhisperConversation('heatsync', bare, input)
+      return true
+    }
+    showToast(t('mc_input_usage_dm'))
     return true
   }
 
@@ -44276,45 +44286,55 @@ async function showChatStatusPanel(channel) {
   setTimeout(() => wrap?.remove(), 20000)
 }
 
-async function sendSlashWhisper(platform, username, text, input) {
+// Resolve a username → whisper key, registering the user in whisperUsers so the
+// timeline/placeholder can name+paint them. Returns the key, or null after
+// surfacing the right error toast. Shared by the send (/w /dm) and open paths.
+async function resolveWhisperTarget(platform, username) {
   const lowerUser = username.toLowerCase()
-  let key
-
   if (platform === 'twitch') {
-    key = `twitch:${lowerUser}`
+    const key = `twitch:${lowerUser}`
     if (!whisperUsers.has(key)) {
-      // Resolve username → Twitch ID via the canonical first-party resolver
-      // (Twitch GQL; heatsync.org/api/resolve as its own internal last-resort fallback).
+      // Canonical first-party resolver (Twitch GQL; heatsync.org/api/resolve as
+      // its own internal last-resort fallback).
       let body
       try {
         body = await resolveTwitchChannelId(lowerUser)
       } catch (e) {
         showToast(t('mc_whisper_resolve_failed'), 'error')
-        return
+        return null
       }
       if (!body) {
         showToast(t('mc_whisper_user_not_found', [username]), 'error')
-        return
+        return null
       }
       whisperUsersSet(key, { platform: 'twitch', userId: body, displayName: username, color: '#fff' })
     }
-  } else {
-    // HeatSync DM — resolve username → user_id via profile API
-    const profileResp = await apiFetch(`/api/profile/${encodeURIComponent(lowerUser)}`)
-    if (!profileResp.ok || !profileResp.data?.profile?.user_id) {
-      showToast(t('mc_whisper_hs_not_found', [username]), 'error')
-      return
-    }
-    const userId = profileResp.data.profile.user_id
-    key = `hs:${userId}`
-    whisperUsersSet(key, {
-      platform: 'heatsync',
-      userId,
-      displayName: profileResp.data.profile.display_name || username,
-      color: profileResp.data.profile.user_color || '#fff',
-    })
+    return key
   }
+  // HeatSync DM — resolve username → user id via profile API. The endpoint
+  // returns profile.id (+ display_name/color); the old checks read
+  // profile.user_id / user_color, which don't exist, so resolve ALWAYS failed
+  // and every /dm silently no-op'd. Read the real field names.
+  const profileResp = await apiFetch(`/api/profile/${encodeURIComponent(lowerUser)}`)
+  const prof = profileResp?.data?.profile
+  if (!profileResp.ok || !prof?.id) {
+    showToast(t('mc_whisper_hs_not_found', [username]), 'error')
+    return null
+  }
+  const userId = String(prof.id)
+  const key = `hs:${userId}`
+  whisperUsersSet(key, {
+    platform: 'heatsync',
+    userId,
+    displayName: prof.display_name || username,
+    color: prof.color || '#fff',
+  })
+  return key
+}
 
+async function sendSlashWhisper(platform, username, text, input) {
+  const key = await resolveWhisperTarget(platform, username)
+  if (!key) return
   // Containment: a quick /w or /dm from a channel must NOT yank the view to the
   // whispers tab. Send in place, toast to confirm, keep the composer focused for
   // rapid-fire. Only on failure surface the whispers tab, where the failed
@@ -44323,6 +44343,23 @@ async function sendSlashWhisper(platform, username, text, input) {
   clearInput(input)
   if (ok) showToast(t('mc_whisper_sent', [username]), 'success')
   else if (currentTab !== 'whispers') switchTab('whispers')
+  armComposerStickyFocus(input)
+}
+
+// Bare "/w <user>" / "/dm <user>" with no message: resolve + open that
+// conversation in the whispers tab and point /r at it, instead of silently
+// flashing a usage hint (the "nothing happened" trap). The placeholder then
+// reads "/r to reply to <user>", so the next step is obvious.
+async function openWhisperConversation(platform, username, input) {
+  const key = await resolveWhisperTarget(platform, username)
+  if (!key) return
+  lastWhisperKey = key
+  clearInput(input)
+  if (currentTab !== 'whispers') switchTab('whispers')
+  updateInputPlaceholder()
+  try {
+    input?.focus()
+  } catch (_) {}
   armComposerStickyFocus(input)
 }
 

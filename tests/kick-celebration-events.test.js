@@ -252,3 +252,94 @@ describe('kick send timeout is unconfirmed, never retried', () => {
     expect(NOTIFS).not.toMatch(/kick_unconfirmed: '[^']*failed/)
   })
 })
+
+// KICKs — kick's paid gift currency. Rides `channel_<channelId>`, NOT the
+// chatroom channel, and the channel id is a different number from the chatroom
+// id, so the tap never saw one and KICKs only rendered for the handful of
+// channels the server webhook covers. Payload captured live 2026-07-21.
+describe('_kpHandleKicksEvent', () => {
+  function makeKicks() {
+    return new Function(`
+      const _kpEventStats = { subs: 0, gifts: 0, pins: 0, kicks: 0, dropped: 0 }
+      const sent = []
+      function broadcastToTabs(m) { sent.push(m) }
+      function _kpSlugForChannelId(id) { return String(id) === '1286990' ? 'chessbrah' : null }
+      ${extractFn(BG, '_kpEventParse')}
+      ${extractFn(BG, '_kpHandleKicksEvent')}
+      return { _kpHandleKicksEvent, sent, stats: _kpEventStats }
+    `)()
+  }
+  const LIVE = {
+    gift_transaction_id: '33fa75e2-d436-4da6-994b-843e9ab9f580',
+    message: '',
+    sender: { id: 86009526, username: 'EACreations', username_color: '#00F1FF' },
+    gift: { gift_id: 'skull_emoji', name: 'Skull Emoji', amount: 50, type: 'BASIC', tier: 'BASIC' },
+    created_at: '2026-07-21T21:31:24.055153734Z',
+  }
+  const chanFrame = (data, channel = 'channel_1286990') => ({ channel, data: JSON.stringify(data) })
+
+  test('the real captured payload maps to the relay shape', () => {
+    const bg = makeKicks()
+    bg._kpHandleKicksEvent(chanFrame(LIVE))
+    expect(bg.sent[0]).toEqual({
+      type: 'kick_kicks_event',
+      channel: 'chessbrah',
+      username: 'EACreations',
+      amount: 50,
+      giftName: 'Skull Emoji',
+      message: '',
+    })
+  })
+
+  test('an accompanying message rides along', () => {
+    const bg = makeKicks()
+    bg._kpHandleKicksEvent(chanFrame({ ...LIVE, message: 'pog' }))
+    expect(bg.sent[0].message).toBe('pog')
+  })
+
+  test('an unknown sender is anonymous, not dropped', () => {
+    const bg = makeKicks()
+    bg._kpHandleKicksEvent(chanFrame({ ...LIVE, sender: null }))
+    expect(bg.sent[0].username).toBe('anonymous')
+  })
+
+  test('a gift with no amount is dropped, never "gifted 0 KICKs"', () => {
+    const bg = makeKicks()
+    bg._kpHandleKicksEvent(chanFrame({ ...LIVE, gift: { name: 'Mystery' } }))
+    expect(bg.sent).toHaveLength(0)
+    expect(bg.stats.dropped).toBe(1)
+  })
+
+  // The dot form is a different, real pusher channel carrying a duplicate of
+  // the sub event — it must not be mistaken for the underscore one.
+  test('the dot-form channel name is not accepted', () => {
+    const bg = makeKicks()
+    bg._kpHandleKicksEvent(chanFrame(LIVE, 'channel.1286990'))
+    expect(bg.sent).toHaveLength(0)
+  })
+
+  test('an unknown channel id is ignored', () => {
+    const bg = makeKicks()
+    bg._kpHandleKicksEvent(chanFrame(LIVE, 'channel_999'))
+    expect(bg.sent).toHaveLength(0)
+  })
+})
+
+describe('channel-scoped subscription plumbing', () => {
+  test('join subscribes the channel-scoped pusher channel too', () => {
+    expect(BG).toContain('_kpSubscribeChannelScoped(channelId)')
+  })
+  test('leave unsubscribes it', () => {
+    expect(BG).toContain('_kpUnsubscribeChannelScoped(leftChannelId)')
+  })
+  // A reconnect that re-asserts only the chatroom subs would silently lose
+  // KICKs for the rest of the session.
+  test('reconnect re-asserts both subscription sets', () => {
+    const reconnect = BG.slice(BG.indexOf('_kpConnected = true'), BG.indexOf('_kpConnected = true') + 700)
+    expect(reconnect).toContain('_kpSubscribe(id)')
+    expect(reconnect).toContain('_kpSubscribeChannelScoped(id)')
+  })
+  test('the channel id is captured from the resolve that already runs', () => {
+    expect(BG).toContain('_kpChannelIdCache.set(slug, j.id)')
+  })
+})

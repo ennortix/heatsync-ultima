@@ -2427,6 +2427,27 @@
   "mc_yt_send_login": {
     "message": "log into youtube to send"
   },
+  "mc_yt_mod_action_unmapped": {
+    "message": "youtube has no such action for that message"
+  },
+  "mc_yt_mod_message_not_found": {
+    "message": "that message is no longer on screen"
+  },
+  "mc_yt_mod_no_context_menu": {
+    "message": "youtube didn’t offer mod actions on that message"
+  },
+  "mc_yt_mod_no_message": {
+    "message": "no message selected"
+  },
+  "mc_yt_mod_not_moderator": {
+    "message": "you’re not a moderator of this stream"
+  },
+  "mc_yt_mod_not_signed_in": {
+    "message": "log into youtube to moderate"
+  },
+  "mc_yt_mod_rejected": {
+    "message": "youtube rejected the action"
+  },
   "mc_yt_send_not_confirmed": {
     "message": "youtube didn’t confirm the send"
   },

@@ -12959,6 +12959,10 @@ let _kpLastData = 0
 let _kpConnectingAt = 0
 const _kpChannels = new Map() // slug -> chatroomId (currently subscribed)
 const _kpChatroomCache = new Map() // slug -> chatroomId (resolved)
+// slug -> kick CHANNEL id (a different number from the chatroom id). Kept
+// separately because only some events ride the channel-scoped Pusher channel.
+const _kpChannelIdCache = new Map()
+const _kpSubbedChannelIds = new Map() // slug -> channelId (currently subscribed)
 // Per-source delivery counters — the tap and the server relay fail silently
 // (resolve miss, unmatched chatroom, dead socket); counters make "which source
 // delivered the last message for this slug" answerable from a live probe.
@@ -12978,6 +12982,14 @@ async function _kpResolveChatroomId(slug) {
     if (!r.ok) return null
     const j = await r.json()
     const id = j?.chatroom?.id
+    // The CHANNEL id is a different number from the chatroom id, and the same
+    // response carries both. KICKs ride `channel_<channelId>`, not the chatroom
+    // channel — captured live 2026-07-21 — so grab it here rather than paying a
+    // second round-trip later.
+    if (j?.id != null) {
+      if (_kpChannelIdCache.size >= 200) _kpChannelIdCache.delete(_kpChannelIdCache.keys().next().value)
+      _kpChannelIdCache.set(slug, j.id)
+    }
     if (id) {
       if (_kpChatroomCache.size >= 200) _kpChatroomCache.delete(_kpChatroomCache.keys().next().value)
       _kpChatroomCache.set(slug, id)
@@ -12995,6 +13007,27 @@ function _kpSubscribe(chatroomId) {
       )
     } catch {}
   }
+}
+// Second subscription per joined channel, for the events kick does NOT put on
+// the chatroom channel — KICKs gifts land on `channel_<channelId>` (underscore;
+// `channel.<id>` with a dot is a real but different channel carrying a
+// duplicate of the sub event we already read). One extra frame on the socket we
+// already hold, no extra connection.
+function _kpSubscribeChannelScoped(channelId) {
+  if (channelId == null || !_kpConnected || !_kpWs) return
+  try {
+    _kpWs.send(JSON.stringify({ event: 'pusher:subscribe', data: { auth: '', channel: `channel_${channelId}` } }))
+  } catch {}
+}
+function _kpUnsubscribeChannelScoped(channelId) {
+  if (channelId == null || !_kpConnected || !_kpWs) return
+  try {
+    _kpWs.send(JSON.stringify({ event: 'pusher:unsubscribe', data: { channel: `channel_${channelId}` } }))
+  } catch {}
+}
+function _kpSlugForChannelId(channelId) {
+  for (const [slug, id] of _kpSubbedChannelIds) if (String(id) === String(channelId)) return slug
+  return null
 }
 function _kpUnsubscribe(chatroomId) {
   if (_kpConnected && _kpWs) {
@@ -13047,6 +13080,7 @@ function _kpConnect() {
       // retry at 1s forever.
       _kpReconnectMs = 1000
       for (const id of _kpChannels.values()) _kpSubscribe(id) // (re)assert all subs
+      for (const id of _kpSubbedChannelIds.values()) _kpSubscribeChannelScoped(id)
     } else if (d.event === 'pusher:ping') {
       try {
         ws.send(JSON.stringify({ event: 'pusher:pong', data: {} }))
@@ -13059,6 +13093,8 @@ function _kpConnect() {
       _kpHandleModEvent(d, 'ban')
     } else if (typeof d.event === 'string' && d.event.includes('UserUnbannedEvent')) {
       _kpHandleModEvent(d, 'unban')
+    } else if (d.event === 'KicksGifted') {
+      _kpHandleKicksEvent(d)
     } else if (typeof d.event === 'string' && d.event.includes('PinnedMessageCreatedEvent')) {
       _kpHandlePinEvent(d, true)
     } else if (typeof d.event === 'string' && d.event.includes('PinnedMessageDeletedEvent')) {
@@ -13347,7 +13383,7 @@ function _kpHandleModEvent(d, kind) {
 // match the relay's exactly (server kick-stream-webhooks handleSubscription*)
 // so the overlay has one render path, and irc.js dedups source-blind when a
 // channel happens to have both transports.
-const _kpEventStats = { subs: 0, gifts: 0, pins: 0, dropped: 0 }
+const _kpEventStats = { subs: 0, gifts: 0, pins: 0, kicks: 0, dropped: 0 }
 function _kpEventParse(d) {
   try {
     return typeof d.data === 'string' ? JSON.parse(d.data) : d.data
@@ -13450,6 +13486,39 @@ function _kpHandlePinEvent(d, pinned) {
   })
 }
 
+// KICKs — kick's paid gift currency, their answer to bits. The overlay has
+// rendered these since the server webhook relay shipped, but the webhook only
+// fires for channels whose broadcaster authorised the heatsync kick app, and
+// the event does not ride the chatroom channel at all, so the tap never saw
+// one. Live payload (2026-07-21, channel_<id>):
+//   { gift_transaction_id, message, sender:{username,...},
+//     gift:{gift_id, name, amount, type, tier, ...}, created_at }
+// Broadcast shape matches the relay's exactly (server kick-stream-webhooks
+// handleKicksGifted); irc.js dedups source-blind when both transports deliver.
+function _kpHandleKicksEvent(d) {
+  const ev = _kpEventParse(d)
+  if (!ev) return
+  const m = /^channel_(\d+)$/.exec(d.channel || '')
+  const slug = m ? _kpSlugForChannelId(m[1]) : null
+  if (!slug) return
+  const amount = Math.max(0, Number(ev.gift?.amount) || 0)
+  if (!amount) {
+    // A gift we can't price would render as "gifted 0 KICKs" — drop it and
+    // count it instead, so a shape change shows up in dbg_kick_tap.
+    _kpEventStats.dropped++
+    return
+  }
+  _kpEventStats.kicks++
+  broadcastToTabs({
+    type: 'kick_kicks_event',
+    channel: slug,
+    username: ev.sender?.username || 'anonymous',
+    amount,
+    giftName: ev.gift?.name || '',
+    message: typeof ev.message === 'string' ? ev.message : '',
+  })
+}
+
 async function kickPusherJoin(slug) {
   if (!KICK_PUSHER_TAP) return
   slug = (slug || '').toLowerCase()
@@ -13463,6 +13532,12 @@ async function kickPusherJoin(slug) {
   _kpChannels.set(slug, chatroomId)
   _kpConnect()
   _kpSubscribe(chatroomId)
+  // _kpResolveChatroomId stashed the channel id from the same response.
+  const channelId = _kpChannelIdCache.get(slug)
+  if (channelId != null) {
+    _kpSubbedChannelIds.set(slug, channelId)
+    _kpSubscribeChannelScoped(channelId)
+  }
   // Fire-and-forget real-history backfill — the _kpChannels.has() guard above
   // means this line only runs on a genuinely fresh join, not every reconnect.
   bgKickFetchRecentArchive(slug).catch(() => {})
@@ -13475,6 +13550,11 @@ function kickPusherLeave(slug) {
   _kpUnsubscribe(chatroomId)
   _kpChannels.delete(slug)
   _kpModes.delete(slug)
+  const leftChannelId = _kpSubbedChannelIds.get(slug)
+  if (leftChannelId != null) {
+    _kpUnsubscribeChannelScoped(leftChannelId)
+    _kpSubbedChannelIds.delete(slug)
+  }
   if (!_kpChannels.size) {
     // Kill any pending reconnect too — otherwise it opens a
     // zero-subscription socket after the last channel leaves.

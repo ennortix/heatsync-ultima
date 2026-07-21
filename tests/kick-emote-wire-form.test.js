@@ -89,3 +89,42 @@ describe('wiring', () => {
     expect(INPUT).toContain('const twitchText = meMatch ? `\\x01ACTION ${restText}\\x01` : text')
   })
 })
+
+// Rewriting kick emotes on send means the echo comes back in a form that no
+// longer equals what we tracked. An echo that fails to match renders a second
+// copy AND never confirms the pending send (20s "did not confirm" notif), so
+// the comparators have to collapse tokens before comparing.
+describe('echo matching survives the rewrite', () => {
+  const mk = () =>
+    new Function(`
+      ${extractFn(INPUT, '_unkickEmotes')}
+      ${extractFn(INPUT, '_echoTextMatches')}
+      return { _unkickEmotes, _echoTextMatches }
+    `)()
+
+  test('tracked bare words match the tokenised echo', () => {
+    const { _echoTextMatches } = mk()
+    expect(_echoTextMatches({ text: 'hello KEKW' }, 'hello [emote:37226:KEKW]')).toBe(true)
+  })
+
+  test('identical text still matches', () => {
+    const { _echoTextMatches } = mk()
+    expect(_echoTextMatches({ text: 'plain words' }, 'plain words')).toBe(true)
+  })
+
+  test('a different message still does not match', () => {
+    const { _echoTextMatches } = mk()
+    expect(_echoTextMatches({ text: 'hello KEKW' }, 'hello LULW')).toBe(false)
+  })
+
+  test('reply echoes keep their @prefix tolerance alongside tokens', () => {
+    const { _echoTextMatches } = mk()
+    expect(_echoTextMatches({ text: 'hi KEKW', reply: true }, '@someone hi [emote:37226:KEKW]')).toBe(true)
+  })
+
+  test('token-free strings are returned untouched', () => {
+    const { _unkickEmotes } = mk()
+    expect(_unkickEmotes('nothing here')).toBe('nothing here')
+    expect(_unkickEmotes(null)).toBe('')
+  })
+})

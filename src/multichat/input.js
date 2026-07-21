@@ -7595,7 +7595,10 @@ async function sendMessage() {
         }
       }
     }
-    const kickPromise = sendKickMessage(slug, restText, kickReply)
+    // Kick-native emotes need their [emote:id:name] wire form — see
+    // kickifyEmoteText. Only the kick leg gets rewritten; twitchText/ytText
+    // below still carry the bare words.
+    const kickPromise = sendKickMessage(slug, kickifyEmoteText(restText), kickReply)
     const twitchPromise = sendToTwitch
       ? getTwitchAuthTokenAsync().then(({ token: tok, username: twitchNick }) =>
           sendIrcMessage(twitchName, twitchText, tok, replyParentId, twitchNick),

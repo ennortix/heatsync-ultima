@@ -24452,6 +24452,31 @@ function lookupEmote(name) {
     blockedEmoteFallback.get(name)
   )
 }
+// Kick-native emotes only exist on the wire as [emote:<id>:<name>]. Sending
+// the bare name posts literal text to every kick client — and our own renderer
+// paints bare names, so in-panel it looked right while nobody else saw the
+// emote at all. Proven on 2026-07-21: a pool emote sent from the composer
+// archived as the plain word, no emote ref. Rewrite kick-source words on the
+// way out; twitch and youtube keep the bare word (their wire formats differ).
+const KICK_EMOTE_ID_RE = /files\.kick\.com\/emotes\/(\d+)\//
+const KICK_MAX_MESSAGE = 500
+function kickifyEmoteText(text) {
+  if (!text || typeof text !== 'string') return text
+  const out = text.replace(/\S+/g, (word) => {
+    // Never touch a token the user (or kick's own composer) already wrote.
+    if (word.startsWith('[emote:')) return word
+    const e = typeof lookupEmoteRenderOrder === 'function' ? lookupEmoteRenderOrder(word) : null
+    if (!e || e.source !== 'kick' || !e.url) return word
+    const m = KICK_EMOTE_ID_RE.exec(e.url)
+    return m ? `[emote:${m[1]}:${word}]` : word
+  })
+  // Tokens are far longer than the names they replace. If expanding pushed a
+  // message that would have fit over kick's limit, send the words — a
+  // delivered message without emote images beats a rejected one.
+  if (out.length > KICK_MAX_MESSAGE && text.length <= KICK_MAX_MESSAGE) return text
+  return out
+}
+
 // In-set lookup: only emotes the viewer actually owns (heatsync inventory +
 // their native Twitch subs). Excludes channel/global/3rd-party pools — those
 // are words a viewer never deliberately added (e.g. a channel's lowercase
@@ -44693,7 +44718,10 @@ async function sendMessage() {
         }
       }
     }
-    const kickPromise = sendKickMessage(slug, restText, kickReply)
+    // Kick-native emotes need their [emote:id:name] wire form — see
+    // kickifyEmoteText. Only the kick leg gets rewritten; twitchText/ytText
+    // below still carry the bare words.
+    const kickPromise = sendKickMessage(slug, kickifyEmoteText(restText), kickReply)
     const twitchPromise = sendToTwitch
       ? getTwitchAuthTokenAsync().then(({ token: tok, username: twitchNick }) =>
           sendIrcMessage(twitchName, twitchText, tok, replyParentId, twitchNick),

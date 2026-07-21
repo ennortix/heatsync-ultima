@@ -21886,9 +21886,11 @@ async function sendKickMessage(kickSlug, text, reply = null) {
   if (!channelId) return 'no_channel'
   let lastErr = 'send_failed'
   let replyRef = reply
+  // Mutable: an INVALID_EMOTE rejection rewrites this to the de-tokenized form.
+  let body = text
   for (let attempt = 0; attempt <= KICK_SEND_RETRY_BACKOFF_MS.length; attempt++) {
     try {
-      const resp = await _kickSendOnce(channelId, text, replyRef)
+      const resp = await _kickSendOnce(channelId, body, replyRef)
       if (resp?.ok) return true
       const err = resp?.error || 'send_failed'
       lastErr = err
@@ -21897,6 +21899,18 @@ async function sendKickMessage(kickSlug, text, reply = null) {
       if (replyRef && /^4\d\d:/.test(err)) {
         replyRef = null
         attempt-- // the flat resend shouldn't consume a retry slot
+        continue
+      }
+      // Kick VALIDATES emote tokens and 400s the WHOLE message on a bad one
+      // (INVALID_EMOTE_ERROR, confirmed live 2026-07-21). Our outgoing rewrite
+      // (kickifyEmoteText) can hand kick an id that has since been removed,
+      // gated behind a sub, or belongs to another channel — and then a message
+      // that used to send as plain words wouldn't send at all, which is
+      // strictly worse than not rendering an emote. Strip the tokens back to
+      // bare names and deliver.
+      if (/INVALID_EMOTE/i.test(err) && /\[emote:\d+:/.test(body)) {
+        body = typeof _unkickEmotes === 'function' ? _unkickEmotes(body) : body.replace(/\[emote:\d+:([^\]]+)\]/g, '$1')
+        attempt-- // the de-tokenized resend shouldn't consume a retry slot
         continue
       }
       // Unresolved, not failed — see KICK_SEND_TIMEOUT_MS. Never auto-retried.

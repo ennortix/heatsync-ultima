@@ -128,3 +128,63 @@ describe('echo matching survives the rewrite', () => {
     expect(_unkickEmotes(null)).toBe('')
   })
 })
+
+// Kick VALIDATES emote tokens server-side and 400s the WHOLE message on a bad
+// one — INVALID_EMOTE_ERROR, confirmed live 2026-07-21 (a made-up id 400s, the
+// real id 3753119 for asmonSmash returns 200 with the token intact). So the
+// outgoing rewrite can turn a message that used to send as plain words into one
+// that doesn't send at all — strictly worse. It must degrade, not fail.
+describe('INVALID_EMOTE degrades to plain words', () => {
+  const SEND = readFileSync(join(ROOT, 'src', 'multichat', 'kick-send.js'), 'utf8')
+
+  function makeSender(responses) {
+    const seen = []
+    const fatal = SEND.split('\n').find((l) => l.startsWith('const KICK_FATAL_SEND_ERRORS'))
+    const backoff = SEND.split('\n').find((l) => l.startsWith('const KICK_SEND_RETRY_BACKOFF_MS'))
+    const fn = new Function(
+      'seen',
+      'responses',
+      `${fatal}
+       ${backoff}
+       const _unkickEmotes = (s) => String(s).replace(/\\[emote:\\d+:([^\\]]+)\\]/g, '$1')
+       const resolveKickChannelId = async () => 84407
+       const _kickSendOnce = async (id, body, reply) => { seen.push({ body, reply }); return responses.shift() }
+       const log = () => {}
+       async ${extractFn(SEND, 'sendKickMessage')}
+       return sendKickMessage`,
+    )(seen, responses)
+    return { fn, seen }
+  }
+
+  test('a rejected emote is stripped and the message still delivers', async () => {
+    const { fn, seen } = makeSender([{ ok: false, error: '400: {"message":"INVALID_EMOTE_ERROR"}' }, { ok: true }])
+    expect(await fn('mellen', 'hi [emote:999:Ghost] there')).toBe(true)
+    expect(seen).toHaveLength(2)
+    expect(seen[0].body).toBe('hi [emote:999:Ghost] there')
+    // the resend carries the bare name — message delivered, just no image
+    expect(seen[1].body).toBe('hi Ghost there')
+  })
+
+  test('the de-tokenized resend does not consume a retry slot', async () => {
+    const { fn, seen } = makeSender([
+      { ok: false, error: '400: INVALID_EMOTE_ERROR' },
+      { ok: false, error: '500: server' },
+      { ok: false, error: '500: server' },
+      { ok: true },
+    ])
+    expect(await fn('mellen', 'x [emote:1:A]')).toBe(true)
+    expect(seen).toHaveLength(4)
+  })
+
+  test('a message with no tokens is not looped on INVALID_EMOTE', async () => {
+    // nothing to strip — must fall through to normal retry, never spin
+    const { fn, seen } = makeSender([{ ok: false, error: '400: INVALID_EMOTE_ERROR' }, { ok: true }])
+    expect(await fn('mellen', 'plain words')).toBe(true)
+    expect(seen[1].body).toBe('plain words')
+  })
+
+  test('other 4xx errors are untouched by the emote path', async () => {
+    const { fn } = makeSender([{ ok: false, error: 'kick_not_logged_in' }])
+    expect(await fn('mellen', 'hi [emote:1:A]')).toBe('kick_not_logged_in')
+  })
+})

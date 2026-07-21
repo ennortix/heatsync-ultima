@@ -4490,13 +4490,18 @@
       body: JSON.stringify(message.body || {}),
       signal: AbortSignal.timeout(10000),
     })
-      .then((r) => {
-        if (r.ok) sendResponse({ ok: true })
-        else
-          r.text()
-            .then((t) => sendResponse({ ok: false, error: `${r.status}: ${t.slice(0, 160)}` }))
-            .catch(() => sendResponse({ ok: false, error: `${r.status}` }))
-      })
+      .then((r) =>
+        r.text().then((t) => {
+          let row = null
+          try {
+            row = JSON.parse(t)
+          } catch {}
+          // The PUT echoes the authoritative chatroom row — hand it back so the
+          // caller can confirm without a second (cached, stale) read.
+          if (r.ok) sendResponse({ ok: true, row })
+          else sendResponse({ ok: false, error: `${r.status}: ${t.slice(0, 160)}` })
+        }),
+      )
       .catch((e) => sendResponse({ ok: false, error: e.message }))
     return true // async sendResponse
   }

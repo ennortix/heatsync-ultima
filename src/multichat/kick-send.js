@@ -111,14 +111,21 @@ async function sendKickMessage(kickSlug, text, reply = null) {
 
 // ─── Kick chat modes ────────────────────────────────────────────────────────
 // PUT /api/v1/chatrooms/<chatroomId>, relayed through a kick.com tab (kick's
-// mutations need that tab's cookies + XSRF + bearer). Both halves were found
-// read-only on 2026-07-21: a GET on the route answers 405 "Supported methods:
-// PUT", and GET /api/v2/channels/<slug>/chatroom returns the live mode state.
+// mutations need that tab's cookies + XSRF + bearer).
 //
-// The body mirrors that read shape (laravel resource symmetry). Since a wrong
-// shape could be accepted-and-ignored, every set is CONFIRMED by reading the
-// chatroom back — we only report success when kick actually changed. Same
-// contract as twitch's setTwitchChatMode.
+// Everything here was proven against the live API on 2026-07-21, and two of the
+// first guesses were WRONG — worth writing down so nobody re-derives them:
+//   · the body is FLAT BOOLEANS, not the nested shape the GET returns. Sending
+//     {slow_mode:{enabled:true,...}} 422s with
+//     "This field must be true or false [slow mode]."
+//   · GET /api/v2/channels/<slug>/chatroom is CACHED — it still reported
+//     enabled:false while the row was already true. Useless as a confirmation
+//     oracle. The PUT's OWN response body returns the authoritative row, so
+//     that is what we verify against (and it costs no extra request).
+//   · the slow-mode interval could not be set through this route under any
+//     field name tried (message_interval / slow_mode_interval / interval, as
+//     number and string — the row came back 0 every time). So kick gets the
+//     mode toggled at kick's own interval; only twitch honours an exact N.
 const KICK_CHAT_MODE_KEYS = {
   slow: 'slow_mode',
   followers: 'followers_mode',
@@ -126,72 +133,56 @@ const KICK_CHAT_MODE_KEYS = {
   emoteonly: 'emotes_mode',
 }
 
-// mode → the body kick expects. slow carries seconds, followers minutes.
+// mode + value → the flat body kick accepts. Everything is a boolean toggle;
+// twitch's -1 "off" encoding collapses to false, and any non-negative duration
+// means "on" (kick picks the interval itself — see the note above).
 function kickChatModeBody(mode, value) {
   const key = KICK_CHAT_MODE_KEYS[mode]
   if (!key) return null
-  if (mode === 'slow') {
-    const secs = Math.max(0, Number(value) || 0)
-    return { [key]: secs > 0 ? { enabled: true, message_interval: secs } : { enabled: false, message_interval: 0 } }
-  }
-  if (mode === 'followers') {
-    // twitch encodes "off" as -1; kick wants enabled:false. 0 minutes = on with
-    // no age gate, which kick expresses as enabled:true + min_duration 0.
-    const mins = Number(value)
-    return {
-      [key]: mins < 0 ? { enabled: false, min_duration: 0 } : { enabled: true, min_duration: Math.max(0, mins) },
-    }
-  }
-  return { [key]: { enabled: !!value } }
+  let on
+  if (mode === 'followers' || mode === 'slow') on = Number(value) >= (mode === 'followers' ? 0 : 1)
+  else on = !!value
+  const body = { [key]: on }
+  // Sent for slow because kick's own client includes it; kick currently ignores
+  // it, and the verifier below deliberately does NOT assert on it.
+  if (mode === 'slow') body.message_interval = on ? Math.max(1, Number(value) || 1) : 0
+  return body
 }
 
-// Read the live modes back. Public endpoint, no auth — the confirmation oracle.
-async function readKickChatModes(slug) {
-  try {
-    const r = await fetch(`https://kick.com/api/v2/channels/${encodeURIComponent(slug)}/chatroom`, {
-      headers: { accept: 'application/json' },
-    })
-    if (!r.ok) return null
-    return await r.json()
-  } catch {
-    return null
-  }
-}
-
-function kickChatModeMatches(mode, value, state) {
+// The PUT response row is the source of truth. Only the mode flag is asserted —
+// message_interval is knowingly not honoured by this route, so demanding it
+// would fail every /slow that actually worked.
+function kickChatModeMatches(mode, value, row) {
   const key = KICK_CHAT_MODE_KEYS[mode]
-  const node = state?.[key]
-  if (!node || typeof node !== 'object') return false
-  if (mode === 'slow') {
-    const secs = Math.max(0, Number(value) || 0)
-    return secs > 0 ? !!node.enabled && Number(node.message_interval) === secs : !node.enabled
-  }
-  if (mode === 'followers') {
-    const mins = Number(value)
-    return mins < 0 ? !node.enabled : !!node.enabled && Number(node.min_duration) === Math.max(0, mins)
-  }
-  return !!node.enabled === !!value
+  if (!row || typeof row !== 'object' || !(key in row)) return false
+  const want = kickChatModeBody(mode, value)[key]
+  return !!row[key] === !!want
 }
 
 async function setKickChatMode(slug, mode, value) {
   const body = kickChatModeBody(mode, value)
   if (!body) return { ok: false, error: 'kick has no such chat mode' }
-  // BG resolves + caches the chatroom id (kick_chatroom_id); the public
-  // chatroom read is the fallback so a cold SW can't block a mod action.
+  // BG resolves + caches the chatroom id; the public chatroom read is the
+  // fallback so a cold SW can't block a mod action.
   let chatroomId = null
   try {
     chatroomId = (await safeSendMessage({ type: 'kick_chatroom_id', slug }))?.id || null
   } catch {}
-  if (!chatroomId) chatroomId = (await readKickChatModes(slug))?.id || null
+  if (!chatroomId) {
+    try {
+      const r = await fetch(`https://kick.com/api/v2/channels/${encodeURIComponent(slug)}/chatroom`, {
+        headers: { accept: 'application/json' },
+      })
+      if (r.ok) chatroomId = (await r.json())?.id || null
+    } catch {}
+  }
   if (!chatroomId) return { ok: false, error: 'kick chatroom not found' }
   const resp = await safeSendMessage({ type: 'kick_set_chat_mode', chatroomId, body })
   if (!resp?.ok) return { ok: false, error: resp?.error || 'kick_set_failed' }
-  // Confirm — a PUT kick accepted but ignored must never read as success.
-  for (let attempt = 0; attempt < 2; attempt++) {
-    if (attempt) await new Promise((r) => setTimeout(r, 400))
-    const state = await readKickChatModes(slug)
-    if (!state) continue
-    if (kickChatModeMatches(mode, value, state)) return { ok: true }
+  // Confirm against the row kick echoed back. A 200 alone proves nothing — the
+  // 422 that caught the nested-body guess returned no change at all.
+  if (!kickChatModeMatches(mode, value, resp.row)) {
+    return { ok: false, error: 'kick did not apply it (mod rights?)' }
   }
-  return { ok: false, error: 'kick did not apply it (mod rights?)' }
+  return { ok: true }
 }

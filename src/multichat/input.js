@@ -7001,13 +7001,9 @@ async function handleSlashCommand(text, input) {
   // duration modes take an optional arg (/followers 30, /slow 10). Kick has no
   // chat-mode write API wired yet → clear message, never a silent no-op.
   if (CHAT_MODES[cmd]) {
-    // Only followers-only is wired (twitch GQL SetFollowersOnlyModeSetting). The
-    // other modes (slow/emote/subs/unique) need their own captured GQL mutations
-    // — Helix /chat/settings 404s for the web client, so don't pretend they work.
-    if (cmd !== 'followers') {
-      showToast(t('mc_input_mode_not_wired', [cmd]), 'error')
-      return true
-    }
+    // All five modes now go through the one GQL mutation twitch actually has
+    // (updateChatSettings) and are verified by reading the mode back — see
+    // setTwitchChatMode. Kick has no chat-mode write API wired yet.
     // Target the twitch channel you're moderating: a real channel tab's twitch
     // login, else the twitch channel you're currently viewing (so it works from
     // the live/aggregate tab too, where currentTab='live' is not a channel).
@@ -7017,32 +7013,40 @@ async function handleSlashCommand(text, input) {
       showToast(t('mc_input_followers_twitch_only'), 'error')
       return true
     }
+    const spec = CHAT_MODES[cmd]
     const arg = rest.trim().toLowerCase()
     const off = arg === 'off'
-    let minutes
-    if (off) minutes = -1
-    else if (!arg)
-      minutes = 0 // any follower
-    else {
-      minutes = _parseModeDuration(arg, 'min')
-      if (minutes == null) {
-        showToast(t('mc_input_usage_followers'), 'error')
+    // Duration modes carry a number; the boolean modes are a plain on/off.
+    // followers encodes off as -1 (0 means "any follower, no age gate"), slow
+    // encodes off as 0 — both read back as null, which the verifier accepts.
+    let value
+    if (!spec.dur) {
+      value = !off
+    } else if (off) {
+      value = cmd === 'followers' ? -1 : 0
+    } else if (!arg) {
+      value = cmd === 'followers' ? 0 : spec.unit === 'sec' ? 30 : 0
+    } else {
+      value = _parseModeDuration(arg, spec.unit)
+      if (value == null) {
+        showToast(t('mc_input_usage_mode', [cmd]), 'error')
         return true
       }
     }
-    const resp = await setTwitchFollowersMode(twitchTarget, minutes)
+    const resp = await setTwitchChatMode(twitchTarget, cmd, value)
     if (resp.ok) {
+      const label = spec.label
       showToast(
         off
-          ? t('mc_input_followers_off')
-          : minutes
-            ? t('mc_input_followers_on_mins', [String(minutes)])
-            : t('mc_input_followers_on'),
+          ? t('mc_input_mode_off', [label])
+          : spec.dur && value
+            ? t('mc_input_mode_on_dur', [label, String(value) + (spec.unit === 'sec' ? 's' : 'm')])
+            : t('mc_input_mode_on', [label]),
         'success',
       )
       clearInput(input)
     } else {
-      showToast(t('mc_input_followers_failed', [resp.error]), 'error')
+      showToast(t('mc_input_mode_failed', [spec.label, resp.error]), 'error')
     }
     return true
   }

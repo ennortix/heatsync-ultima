@@ -28227,23 +28227,101 @@ function renderQuickLinks() {
   return wrap
 }
 
-// Set twitch followers-only mode via GQL (SetFollowersOnlyModeSetting). The web
-// client can't call Helix /chat/settings (404), so we use the same GQL persisted
-// mutation twitch.tv itself fires. minutes: -1 = off, 0 = any follower, N = N min.
-async function setTwitchFollowersMode(channelLogin, minutes) {
-  const channelID = await resolveTwitchChannelId(channelLogin)
-  if (!channelID) return { ok: false, error: 'channel not found' }
+// ─── Twitch chat modes ──────────────────────────────────────────────────────
+// The web client can't call Helix /chat/settings (404). Every mode goes through
+// ONE GQL mutation — `updateChatSettings(input: UpdateChatSettingsInput!)`.
+// (`SetFollowersOnlyModeSetting` is only a client-side OPERATION name for a
+// persisted document; there is no such field on Mutation. Schema-probed
+// 2026-07-21: `updateChatSettings` exists, its input type is
+// `UpdateChatSettingsInput!`, and `channelID` is a required String!.)
+//
+// ⚠ Twitch's GQL silently ACCEPTS unknown input fields — a typo'd field name
+// returns success and changes nothing. That makes a blind "mutation didn't
+// error, report success" fatally dishonest here. So every set is verified by
+// reading the mode back and comparing; we only claim success when the channel
+// actually changed. Wrong field name ⇒ honest failure, never a false success.
+const TWITCH_CHAT_MODE_FIELDS = {
+  // input field name ← mirrors the ChatSettings read type (verified live).
+  // followersOnlyDurationMinutes is additionally proven by the long-shipped
+  // followers-only path.
+  followers: 'followersOnlyDurationMinutes',
+  slow: 'slowModeDurationSeconds',
+  emoteonly: 'isEmoteOnlyModeEnabled',
+  subscribers: 'isSubscribersOnlyModeEnabled',
+  unique: 'isUniqueChatModeEnabled',
+}
+
+// Live chat-mode state. Verified against twitch's schema 2026-07-21:
+// user.chatSettings — off reads back as null for the duration modes.
+async function readTwitchChatSettings(channelLogin) {
+  const lc = String(channelLogin || '')
+    .toLowerCase()
+    .replace(/^@/, '')
+    .replace(/[^a-z0-9_]/g, '')
+  if (!lc) return null
   try {
-    const res = await gqlPersistedMutation('SetFollowersOnlyModeSetting', {
-      input: { channelID: String(channelID), followersOnlyDurationMinutes: minutes },
-    })
+    const data = await twitchGql(
+      `{ user(login: "${lc}") { chatSettings { slowModeDurationSeconds followersOnlyDurationMinutes isEmoteOnlyModeEnabled isSubscribersOnlyModeEnabled isUniqueChatModeEnabled } } }`,
+    )
+    return data?.data?.user?.chatSettings || null
+  } catch {
+    return null
+  }
+}
+
+// Did the channel land on what we asked for? Duration modes report "off" as
+// null, so -1/0 (our off encodings) must accept null as a match.
+function _twitchChatModeMatches(mode, want, got) {
+  // The null checks are load-bearing: Number(null) is 0, so a lazy numeric
+  // compare would read "mode is OFF" as proof that `/followers` (0 = any
+  // follower, i.e. mode ON) applied — a false success in the exact case this
+  // verification exists to catch.
+  if (mode === 'followers') {
+    if (want < 0) return got == null
+    return got != null && Number(got) === Number(want)
+  }
+  if (mode === 'slow') {
+    if (want <= 0) return got == null || Number(got) === 0
+    return got != null && Number(got) === Number(want)
+  }
+  return !!got === !!want
+}
+
+// mode: followers|slow|emoteonly|subscribers|unique
+// value: followers −1=off, 0=any follower, N=minutes · slow 0=off, N=seconds ·
+//        booleans for the rest.
+async function setTwitchChatMode(channelLogin, mode, value) {
+  const field = TWITCH_CHAT_MODE_FIELDS[mode]
+  if (!field) return { ok: false, error: 'unknown chat mode' }
+  const { id: channelID, transient } = await resolveTwitchChannelIdEx(channelLogin)
+  if (!channelID) return { ok: false, error: transient ? 'twitch unreachable — try again' : 'channel not found' }
+  try {
+    const res = await gqlMutation(
+      'mutation($input: UpdateChatSettingsInput!) { updateChatSettings(input: $input) { __typename } }',
+      { input: { channelID: String(channelID), [field]: value } },
+    )
     const err = res?.errors?.[0]?.message || res?.data?.errors?.[0]?.message
     if (err) return { ok: false, error: err }
-    if (!res?.data?.updateChatSettings) return { ok: false, error: 'no permission (need mod/broadcaster)' }
-    return { ok: true }
   } catch (e) {
     return { ok: false, error: e?.message || 'failed' }
   }
+  // Read back — the ONLY thing that proves the change took. One retry covers
+  // read-after-write lag before we call it a failure.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt) await new Promise((r) => setTimeout(r, 400))
+    const after = await readTwitchChatSettings(channelLogin)
+    if (!after) continue
+    if (_twitchChatModeMatches(mode, value, after[field])) return { ok: true }
+  }
+  // Reached twitch, no error, and nothing changed: either we lack mod rights
+  // (twitch answers some refusals without an error body) or the field name
+  // drifted. Never report this as success.
+  return { ok: false, error: 'twitch did not apply it (mod rights?)' }
+}
+
+// Back-compat wrapper — followers-only was the one mode already wired.
+async function setTwitchFollowersMode(channelLogin, minutes) {
+  return setTwitchChatMode(channelLogin, 'followers', minutes)
 }
 
 function makeCoinSvg(size) {
@@ -44653,13 +44731,9 @@ async function handleSlashCommand(text, input) {
   // duration modes take an optional arg (/followers 30, /slow 10). Kick has no
   // chat-mode write API wired yet → clear message, never a silent no-op.
   if (CHAT_MODES[cmd]) {
-    // Only followers-only is wired (twitch GQL SetFollowersOnlyModeSetting). The
-    // other modes (slow/emote/subs/unique) need their own captured GQL mutations
-    // — Helix /chat/settings 404s for the web client, so don't pretend they work.
-    if (cmd !== 'followers') {
-      showToast(t('mc_input_mode_not_wired', [cmd]), 'error')
-      return true
-    }
+    // All five modes now go through the one GQL mutation twitch actually has
+    // (updateChatSettings) and are verified by reading the mode back — see
+    // setTwitchChatMode. Kick has no chat-mode write API wired yet.
     // Target the twitch channel you're moderating: a real channel tab's twitch
     // login, else the twitch channel you're currently viewing (so it works from
     // the live/aggregate tab too, where currentTab='live' is not a channel).
@@ -44669,32 +44743,40 @@ async function handleSlashCommand(text, input) {
       showToast(t('mc_input_followers_twitch_only'), 'error')
       return true
     }
+    const spec = CHAT_MODES[cmd]
     const arg = rest.trim().toLowerCase()
     const off = arg === 'off'
-    let minutes
-    if (off) minutes = -1
-    else if (!arg)
-      minutes = 0 // any follower
-    else {
-      minutes = _parseModeDuration(arg, 'min')
-      if (minutes == null) {
-        showToast(t('mc_input_usage_followers'), 'error')
+    // Duration modes carry a number; the boolean modes are a plain on/off.
+    // followers encodes off as -1 (0 means "any follower, no age gate"), slow
+    // encodes off as 0 — both read back as null, which the verifier accepts.
+    let value
+    if (!spec.dur) {
+      value = !off
+    } else if (off) {
+      value = cmd === 'followers' ? -1 : 0
+    } else if (!arg) {
+      value = cmd === 'followers' ? 0 : spec.unit === 'sec' ? 30 : 0
+    } else {
+      value = _parseModeDuration(arg, spec.unit)
+      if (value == null) {
+        showToast(t('mc_input_usage_mode', [cmd]), 'error')
         return true
       }
     }
-    const resp = await setTwitchFollowersMode(twitchTarget, minutes)
+    const resp = await setTwitchChatMode(twitchTarget, cmd, value)
     if (resp.ok) {
+      const label = spec.label
       showToast(
         off
-          ? t('mc_input_followers_off')
-          : minutes
-            ? t('mc_input_followers_on_mins', [String(minutes)])
-            : t('mc_input_followers_on'),
+          ? t('mc_input_mode_off', [label])
+          : spec.dur && value
+            ? t('mc_input_mode_on_dur', [label, String(value) + (spec.unit === 'sec' ? 's' : 'm')])
+            : t('mc_input_mode_on', [label]),
         'success',
       )
       clearInput(input)
     } else {
-      showToast(t('mc_input_followers_failed', [resp.error]), 'error')
+      showToast(t('mc_input_mode_failed', [spec.label, resp.error]), 'error')
     }
     return true
   }

@@ -2009,6 +2009,52 @@
   "mc_input_twitch_unreachable": {
     "message": "twitch unreachable — try again"
   },
+  "mc_input_mode_on": {
+    "message": "$LABEL$ on",
+    "placeholders": {
+      "label": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_mode_off": {
+    "message": "$LABEL$ off",
+    "placeholders": {
+      "label": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_mode_on_dur": {
+    "message": "$LABEL$ on ($DETAIL$)",
+    "placeholders": {
+      "label": {
+        "content": "$1"
+      },
+      "detail": {
+        "content": "$2"
+      }
+    }
+  },
+  "mc_input_mode_failed": {
+    "message": "$LABEL$ failed: $DETAIL$",
+    "placeholders": {
+      "label": {
+        "content": "$1"
+      },
+      "detail": {
+        "content": "$2"
+      }
+    }
+  },
+  "mc_input_usage_mode": {
+    "message": "usage: /$LABEL$ [duration|off]",
+    "placeholders": {
+      "label": {
+        "content": "$1"
+      }
+    }
+  },
   "mc_input_highlight_no_channel": {
     "message": "could not resolve channel"
   },

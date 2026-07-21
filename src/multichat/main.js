@@ -6803,6 +6803,22 @@
         '$1<span class="hs-evt-game">$2</span>',
       )
       div.innerHTML = `${tsSpan}${platBadge}${userLink} ${actionHtml}`
+      // The whole row is a shortcut to that channel's page. Clicks that land on
+      // the username (or any link/emote) are left alone so the existing
+      // profile-card / context-menu behaviour still wins there — only the empty
+      // parts of the row open the stream. data-hs-clickable opts it into the
+      // universal white-bg/black-text hover, same as the inline DM rows.
+      // YT events are skipped: a display name gives no reliable channel URL, so
+      // a guessed twitch.tv link would be worse than not being clickable.
+      if (!isYtEvent && ch) {
+        div.dataset.hsClickable = ''
+        div.style.cursor = 'pointer'
+        div.title = `open ${ch} on twitch`
+        div.addEventListener('click', (e) => {
+          if (e.target.closest('a, .hs-mc-user, .hs-mc-emote')) return
+          window.open(`https://twitch.tv/${encodeURIComponent(ch)}`, '_blank', 'noopener,noreferrer')
+        })
+      }
       // Async fetch color if not cached — Twitch profile lookup only; YT color
       // already came from m.color above.
       if (!isYtEvent && !userColor && chLc) {
@@ -6923,6 +6939,11 @@
         )
       // All values already sanitized via escapeHtml/processEmotes — safe innerHTML (existing pattern)
       div.innerHTML = `${tsSpan}${label}${platBadge}${dirPair}: ${m._renderedHtml}`
+      // Clickable rows must obey the universal hover invert like every other
+      // control. role="button" isn't an option — the row contains anchors
+      // (@mentions), so it'd nest interactive-in-interactive; the data attribute
+      // opts it into the same single rule.
+      div.dataset.hsClickable = ''
       div.style.cursor = 'pointer'
       div.addEventListener('click', (e) => {
         if (e.target.closest('a, .hs-mc-emote')) return
@@ -6948,6 +6969,9 @@
           ? ` <a class="hs-mc-moment-perma" href="https://heatsync.org/moment/${m.momentId}" target="_blank" rel="noopener" title="permalink — click to open, shift-click to paste into chat">¶</a>`
           : ''
       div.innerHTML = `${tsSpan}${label}<span style="color:#c0c0c0">${escapeHtml(m.text || '')}</span>${perma}`
+      // Same deal as the inline DM row: clickable, contains an anchor (¶ perma),
+      // so it opts into the universal hover via the attribute, not role.
+      div.dataset.hsClickable = ''
       div.style.cursor = 'pointer'
       const ch = m.momentChannel
       const plat = m.momentPlatform || 'twitch'

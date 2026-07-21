@@ -22,16 +22,27 @@
        UNIVERSAL HOVER — every interactive element inside the extension
        inverts to white-bg/black-text on hover and keyboard focus.
        Single rule, no per-class allowlist, descendants inherit.
-       Same primitive as heatsync.org, scoped to .hs-mc-container so the
-       host site's own buttons aren't touched.
+       [data-hs-clickable] covers rows that ARE clickable but can't take
+       role="button" — an inline DM/whisper row wires its own click handler and
+       contains anchors (@mentions, permalinks), so role="button" would nest
+       interactive-in-interactive. The attribute keeps this ONE rule rather than
+       growing a per-class allowlist.
+       Same primitive as heatsync.org, scoped to the panel so the host site's
+       own buttons aren't touched.
+       NOTE: this was written as '.hs-mc-container' (a CLASS) but the panel only
+       ever has the ID — nothing in the ext adds that class, so this entire rule
+       matched ZERO elements and the "universal" hover never actually ran. The
+       controls that do invert (tabs, util buttons) each carry their own explicit
+       hover rule, which is exactly the per-class allowlist this was meant to
+       replace, and is why it went unnoticed. Targets #hs-mc-container now.
        ============================================ */
-    .hs-mc-container :where(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [onclick]):not(:disabled):not([aria-disabled="true"]):hover,
-    .hs-mc-container :where(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [onclick]):not(:disabled):not([aria-disabled="true"]):focus-visible {
+    #hs-mc-container :where(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [onclick], [data-hs-clickable]):not(:disabled):not([aria-disabled="true"]):hover,
+    #hs-mc-container :where(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [onclick], [data-hs-clickable]):not(:disabled):not([aria-disabled="true"]):focus-visible {
       background: #fff !important;
       color: #000 !important;
     }
-    .hs-mc-container :where(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [onclick]):not(:disabled):not([aria-disabled="true"]):hover *,
-    .hs-mc-container :where(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [onclick]):not(:disabled):not([aria-disabled="true"]):focus-visible * {
+    #hs-mc-container :where(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [onclick], [data-hs-clickable]):not(:disabled):not([aria-disabled="true"]):hover *,
+    #hs-mc-container :where(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [onclick], [data-hs-clickable]):not(:disabled):not([aria-disabled="true"]):focus-visible * {
       color: #000 !important;
       fill: #000 !important;
       stroke: #000 !important;

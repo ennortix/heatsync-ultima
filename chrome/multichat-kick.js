@@ -16469,16 +16469,27 @@ img.hs-fx-zero { margin-left: -4px; }
        UNIVERSAL HOVER — every interactive element inside the extension
        inverts to white-bg/black-text on hover and keyboard focus.
        Single rule, no per-class allowlist, descendants inherit.
-       Same primitive as heatsync.org, scoped to .hs-mc-container so the
-       host site's own buttons aren't touched.
+       [data-hs-clickable] covers rows that ARE clickable but can't take
+       role="button" — an inline DM/whisper row wires its own click handler and
+       contains anchors (@mentions, permalinks), so role="button" would nest
+       interactive-in-interactive. The attribute keeps this ONE rule rather than
+       growing a per-class allowlist.
+       Same primitive as heatsync.org, scoped to the panel so the host site's
+       own buttons aren't touched.
+       NOTE: this was written as '.hs-mc-container' (a CLASS) but the panel only
+       ever has the ID — nothing in the ext adds that class, so this entire rule
+       matched ZERO elements and the "universal" hover never actually ran. The
+       controls that do invert (tabs, util buttons) each carry their own explicit
+       hover rule, which is exactly the per-class allowlist this was meant to
+       replace, and is why it went unnoticed. Targets #hs-mc-container now.
        ============================================ */
-    .hs-mc-container :where(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [onclick]):not(:disabled):not([aria-disabled="true"]):hover,
-    .hs-mc-container :where(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [onclick]):not(:disabled):not([aria-disabled="true"]):focus-visible {
+    #hs-mc-container :where(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [onclick], [data-hs-clickable]):not(:disabled):not([aria-disabled="true"]):hover,
+    #hs-mc-container :where(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [onclick], [data-hs-clickable]):not(:disabled):not([aria-disabled="true"]):focus-visible {
       background: #fff !important;
       color: #000 !important;
     }
-    .hs-mc-container :where(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [onclick]):not(:disabled):not([aria-disabled="true"]):hover *,
-    .hs-mc-container :where(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [onclick]):not(:disabled):not([aria-disabled="true"]):focus-visible * {
+    #hs-mc-container :where(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [onclick], [data-hs-clickable]):not(:disabled):not([aria-disabled="true"]):hover *,
+    #hs-mc-container :where(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [onclick], [data-hs-clickable]):not(:disabled):not([aria-disabled="true"]):focus-visible * {
       color: #000 !important;
       fill: #000 !important;
       stroke: #000 !important;
@@ -61530,6 +61541,22 @@ const STORAGE_KEY = 'heatsync_multichat'
         '$1<span class="hs-evt-game">$2</span>',
       )
       div.innerHTML = `${tsSpan}${platBadge}${userLink} ${actionHtml}`
+      // The whole row is a shortcut to that channel's page. Clicks that land on
+      // the username (or any link/emote) are left alone so the existing
+      // profile-card / context-menu behaviour still wins there — only the empty
+      // parts of the row open the stream. data-hs-clickable opts it into the
+      // universal white-bg/black-text hover, same as the inline DM rows.
+      // YT events are skipped: a display name gives no reliable channel URL, so
+      // a guessed twitch.tv link would be worse than not being clickable.
+      if (!isYtEvent && ch) {
+        div.dataset.hsClickable = ''
+        div.style.cursor = 'pointer'
+        div.title = `open ${ch} on twitch`
+        div.addEventListener('click', (e) => {
+          if (e.target.closest('a, .hs-mc-user, .hs-mc-emote')) return
+          window.open(`https://twitch.tv/${encodeURIComponent(ch)}`, '_blank', 'noopener,noreferrer')
+        })
+      }
       // Async fetch color if not cached — Twitch profile lookup only; YT color
       // already came from m.color above.
       if (!isYtEvent && !userColor && chLc) {
@@ -61650,6 +61677,11 @@ const STORAGE_KEY = 'heatsync_multichat'
         )
       // All values already sanitized via escapeHtml/processEmotes — safe innerHTML (existing pattern)
       div.innerHTML = `${tsSpan}${label}${platBadge}${dirPair}: ${m._renderedHtml}`
+      // Clickable rows must obey the universal hover invert like every other
+      // control. role="button" isn't an option — the row contains anchors
+      // (@mentions), so it'd nest interactive-in-interactive; the data attribute
+      // opts it into the same single rule.
+      div.dataset.hsClickable = ''
       div.style.cursor = 'pointer'
       div.addEventListener('click', (e) => {
         if (e.target.closest('a, .hs-mc-emote')) return
@@ -61675,6 +61707,9 @@ const STORAGE_KEY = 'heatsync_multichat'
           ? ` <a class="hs-mc-moment-perma" href="https://heatsync.org/moment/${m.momentId}" target="_blank" rel="noopener" title="permalink — click to open, shift-click to paste into chat">¶</a>`
           : ''
       div.innerHTML = `${tsSpan}${label}<span style="color:#c0c0c0">${escapeHtml(m.text || '')}</span>${perma}`
+      // Same deal as the inline DM row: clickable, contains an anchor (¶ perma),
+      // so it opts into the universal hover via the attribute, not role.
+      div.dataset.hsClickable = ''
       div.style.cursor = 'pointer'
       const ch = m.momentChannel
       const plat = m.momentPlatform || 'twitch'

@@ -178,3 +178,46 @@ describe('notice id mapping', () => {
     expect(Object.keys(KICK_SUB_NOTICE_ID).sort()).toEqual(['gift', 'new', 'renewal'])
   })
 })
+
+describe('_kpHandlePinEvent', () => {
+  function makePin() {
+    return new Function(`
+      const _kpEventStats = { subs: 0, gifts: 0, pins: 0, dropped: 0 }
+      const sent = []
+      function broadcastToTabs(m) { sent.push(m) }
+      function _kpSlugForChatroom(id) { return id === 1279951 ? 'chessbrah' : null }
+      ${extractFn(BG, '_kpEventParse')}
+      ${extractFn(BG, '_kpEventSlug')}
+      ${extractFn(BG, '_kpPinPlainText')}
+      ${extractFn(BG, '_kpHandlePinEvent')}
+      return { _kpHandlePinEvent, _kpPinPlainText, sent, stats: _kpEventStats }
+    `)()
+  }
+
+  test('a pin carries sender and text', () => {
+    const bg = makePin()
+    bg._kpHandlePinEvent(frame({ message: { content: 'SPAM = BAN', sender: { username: 'Roi667' } } }), true)
+    expect(bg.sent[0]).toMatchObject({ type: 'kick_pin_event', channel: 'chessbrah', pinned: true, sender: 'Roi667' })
+    expect(bg.sent[0].text).toBe('SPAM = BAN')
+  })
+
+  // Live payload from kick: "SPAM = BAN [emote:37230:POLICE]". systemMsg is a
+  // plain-text surface, so the raw token would have shipped as-is.
+  test('kick emote tokens collapse to the emote name', () => {
+    const bg = makePin()
+    expect(bg._kpPinPlainText('SPAM = BAN [emote:37230:POLICE]')).toBe('SPAM = BAN POLICE')
+  })
+
+  test('an unpin needs no text', () => {
+    const bg = makePin()
+    bg._kpHandlePinEvent(frame({}), false)
+    expect(bg.sent[0]).toMatchObject({ pinned: false, channel: 'chessbrah' })
+  })
+
+  test('an empty pin is dropped, not rendered as "pinned:"', () => {
+    const bg = makePin()
+    bg._kpHandlePinEvent(frame({ message: { content: '' } }), true)
+    expect(bg.sent).toHaveLength(0)
+    expect(bg.stats.dropped).toBe(1)
+  })
+})

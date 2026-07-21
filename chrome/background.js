@@ -13045,6 +13045,10 @@ function _kpConnect() {
       _kpHandleModEvent(d, 'ban')
     } else if (typeof d.event === 'string' && d.event.includes('UserUnbannedEvent')) {
       _kpHandleModEvent(d, 'unban')
+    } else if (typeof d.event === 'string' && d.event.includes('PinnedMessageCreatedEvent')) {
+      _kpHandlePinEvent(d, true)
+    } else if (typeof d.event === 'string' && d.event.includes('PinnedMessageDeletedEvent')) {
+      _kpHandlePinEvent(d, false)
     } else if (typeof d.event === 'string' && d.event.includes('GiftedSubscriptionsEvent')) {
       // Checked before SubscriptionEvent: kick's gift event name does not
       // contain "SubscriptionEvent", but ordering it first keeps the pair
@@ -13329,7 +13333,7 @@ function _kpHandleModEvent(d, kind) {
 // match the relay's exactly (server kick-stream-webhooks handleSubscription*)
 // so the overlay has one render path, and irc.js dedups source-blind when a
 // channel happens to have both transports.
-const _kpEventStats = { subs: 0, gifts: 0, dropped: 0 }
+const _kpEventStats = { subs: 0, gifts: 0, pins: 0, dropped: 0 }
 function _kpEventParse(d) {
   try {
     return typeof d.data === 'string' ? JSON.parse(d.data) : d.data
@@ -13393,6 +13397,42 @@ function _kpHandleGiftSubEvent(d) {
     gifter,
     giftees,
     message: `${gifter} gifted ${count} sub${count !== 1 ? 's' : ''}!`,
+  })
+}
+
+// Pinned messages — twitch's pubsub pin has rendered as a gold notice line
+// since the event-coverage pass; kick broadcasts the same thing on the chatroom
+// channel and it was going in the bin. Kick wraps native emotes as
+// [emote:ID:name]; the systemMsg surface is plain text (emote parsing happens
+// in the message-text pipeline), so the token collapses to the emote's name
+// rather than shipping the raw literal into a notice line.
+function _kpPinPlainText(s) {
+  return String(s || '')
+    .replace(/\[emote:\d+:([^\]]+)\]/g, '$1')
+    .slice(0, 200)
+    .trim()
+}
+function _kpHandlePinEvent(d, pinned) {
+  const ev = _kpEventParse(d)
+  const slug = ev && _kpEventSlug(d)
+  if (!slug) return
+  if (!pinned) {
+    _kpEventStats.pins++
+    broadcastToTabs({ type: 'kick_pin_event', channel: slug, pinned: false })
+    return
+  }
+  const text = _kpPinPlainText(ev.message?.content)
+  if (!text) {
+    _kpEventStats.dropped++
+    return
+  }
+  _kpEventStats.pins++
+  broadcastToTabs({
+    type: 'kick_pin_event',
+    channel: slug,
+    pinned: true,
+    sender: ev.message?.sender?.username || '',
+    text,
   })
 }
 

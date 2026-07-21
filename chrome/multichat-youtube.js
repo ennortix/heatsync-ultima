@@ -20940,6 +20940,33 @@ class KickChat {
         return
       }
 
+      // Kick pinned messages — same gold notice line twitch's pinned-chat
+      // pubsub renders (main.js noticeKind 'pin'), shaped like the mode_change
+      // branch above so it rides the shared usernotice path.
+      if (message.type === 'kick_pin_event' && message.channel) {
+        const channel = message.channel.toLowerCase()
+        if (!this.channels.has(channel)) return
+        const by = message.sender ? ` ${message.sender}:` : ':'
+        const msg = {
+          user: message.sender || 'system',
+          text: '',
+          systemMsg: message.pinned ? `pinned${by} ${message.text}`.trim() : 'message unpinned',
+          // feeds sanitizeColor()/COLOR_RE downstream (main.js) — literal hex only, no var().
+          color: '#ffd700',
+          badges: '',
+          channel,
+          time: Date.now(),
+          type: 'usernotice',
+          msgId: 'pin',
+          platform: 'kick',
+          id: `hs-kick-pin-${channel}-${message.pinned ? 1 : 0}-${Date.now()}`,
+        }
+        this.channels.get(channel).push(msg)
+        this.persistBuffer(channel)
+        this.emit('message', msg)
+        return
+      }
+
       // KICKs gifted events (Kick's equivalent of Twitch Bits)
       if (message.type === 'kick_kicks_event') {
         if (!kickCelebrationFresh(`k|${message.channel}|${message.username}|${message.amount}`)) return

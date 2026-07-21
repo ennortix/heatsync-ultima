@@ -37517,11 +37517,6 @@ function _pruneRecent(arr) {
   return arr.filter((e) => e && e.time >= cutoff)
 }
 
-// Twitch prepends "@<login> " to reply echoes server-side, so a reply's echo
-// text never equals the typed text. Entries flagged reply:true also match the
-// echo with one leading @token stripped. Scoped to reply entries only — a
-// non-reply entry never strips, so a stranger's "@you <same text>" can't get
-// eaten unless YOUR send was itself a reply within the dedup window.
 // Kick echoes a native emote back in its wire form, [emote:<id>:<name>], while
 // we track what the user typed. Since the composer now rewrites kick emotes on
 // the way out (kickifyEmoteText), the two forms differ by construction — and an
@@ -37533,6 +37528,11 @@ function _unkickEmotes(s) {
   const str = String(s ?? '')
   return str.indexOf('[emote:') === -1 ? str : str.replace(/\[emote:\d+:([^\]]+)\]/g, '$1')
 }
+// Twitch prepends "@<login> " to reply echoes server-side, so a reply's echo
+// text never equals the typed text. Entries flagged reply:true also match the
+// echo with one leading @token stripped. Scoped to reply entries only — a
+// non-reply entry never strips, so a stranger's "@you <same text>" can't get
+// eaten unless YOUR send was itself a reply within the dedup window.
 function _echoTextMatches(entry, msgText) {
   if (entry.text === msgText) return true
   const a = _unkickEmotes(entry.text)

@@ -989,6 +989,29 @@
       padding-right: 0 !important;
     }
 
+    /* In theatre Kick re-parents the controls bar to position:fixed with
+       left:0; right:340px — 340 being THEIR chat width, hard-coded. Fixed
+       resolves against the viewport, so every inset we put on <main> leaves
+       the bar spanning past the player and burying the rightmost buttons
+       (settings/theatre/fullscreen — the ones you need to get back out).
+       Re-point it at our panel edge instead. width:auto is load-bearing:
+       the bar also carries w-full (width:100%), and left+width over-constrain
+       the box so right is ignored until the width is released. */
+    body.hs-platform-kick.hs-mode-theatre .z-controls.w-full {
+      width: auto !important;
+      left: 0 !important;
+      right: 0 !important;
+    }
+    body.hs-platform-kick.hs-mode-theatre.hs-chat-right .z-controls.w-full {
+      right: var(--hs-chat-w, 340px) !important;
+    }
+    body.hs-platform-kick.hs-mode-theatre.hs-chat-left .z-controls.w-full {
+      left: var(--hs-chat-w, 340px) !important;
+    }
+    body.hs-platform-kick.hs-mode-theatre.hs-chat-bottom .z-controls.w-full {
+      bottom: var(--hs-chat-h, 35vh) !important;
+    }
+
     /* --- YOUTUBE: collapse #secondary; pad #primary ---
        Gated on  — on VODs (non-live), keep YT's native
        sidebar so recommended/related videos remain visible to the viewer. */

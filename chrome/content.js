@@ -5818,38 +5818,74 @@
 
               // Server stores blocks by hash only — skip emotes without a hash to
               // avoid corrupting state with name-keyed entries that won't sync.
-              if (allBlocked) {
-                emoteWrappers.forEach((wrapper) => {
-                  const hash = wrapper.dataset.emoteHash
-                  const name = wrapper.dataset.emoteName
-                  if (!hash) return // can't unblock server-side without a hash
+              // Reconcile every leg: the background reports an HTTP failure by
+              // RESOLVING {success:false}, so the old fire-and-forget sends left
+              // a "blocked: A, B, C" toast standing even when the server took
+              // none of them. Apply optimistically, await each, revert the ones
+              // that failed, and toast the truth.
+              const type = allBlocked ? 'unblock_emote' : 'block_emote'
+              const applied = []
+              emoteWrappers.forEach((wrapper) => {
+                const hash = wrapper.dataset.emoteHash
+                const name = wrapper.dataset.emoteName
+                if (!hash) return // server can't (un)block without a hash
+                if (allBlocked) {
                   blockedEmotes.delete(hash)
                   markLocalBlockToggle(hash, 'unblocked')
-                  const restoredState = globalNameSet.has(name) ? 'global' : 'neutral'
-                  updateEmoteState(hash, name, restoredState)
-                  safeSendMessage({ type: 'unblock_emote', hash })
-                  if (name) names.push(name)
-                })
-                blockAllBtn.textContent = '⊘'
-                blockAllBtn.title = t('btn_block_all')
-                showToast(t('content_toast_unblocked', [names.join(', ')]), 'success')
-              } else {
-                emoteWrappers.forEach((wrapper) => {
-                  const hash = wrapper.dataset.emoteHash
-                  const name = wrapper.dataset.emoteName
-                  if (!hash) return // server can't block without a hash
+                  updateEmoteState(hash, name, globalNameSet.has(name) ? 'global' : 'neutral')
+                } else {
                   blockedEmotes.add(hash)
                   markLocalBlockToggle(hash, 'blocked')
                   updateEmoteState(hash, name, 'blocked')
-                  safeSendMessage({ type: 'block_emote', hash })
-                  if (name) names.push(name)
-                })
-                blockAllBtn.textContent = '◉'
-                blockAllBtn.title = t('btn_show_all')
-                showToast(t('content_toast_blocked', [names.join(', ')]), 'info')
-              }
-
-              // block_emote messages above handle server sync; no direct storage write needed
+                }
+                if (name) names.push(name)
+                applied.push({ hash, name, wrapper })
+              })
+              blockAllBtn.textContent = allBlocked ? '⊘' : '◉'
+              blockAllBtn.title = allBlocked ? t('btn_block_all') : t('btn_show_all')
+              showToast(
+                t(allBlocked ? 'content_toast_unblocked' : 'content_toast_blocked', [names.join(', ')]),
+                allBlocked ? 'success' : 'info',
+              )
+              ;(async () => {
+                const results = await Promise.all(
+                  applied.map((a) =>
+                    safeSendMessage({ type, hash: a.hash })
+                      .then((r) => (r && r.success === false ? { ...a, ok: false } : { ...a, ok: true }))
+                      .catch(() => ({ ...a, ok: false })),
+                  ),
+                )
+                const failed = results.filter((r) => !r.ok)
+                if (!failed.length) return
+                // Revert the failed legs to their pre-click state so local state
+                // stops disagreeing with the server.
+                for (const f of failed) {
+                  if (allBlocked) {
+                    blockedEmotes.add(f.hash)
+                    markLocalBlockToggle(f.hash, 'blocked')
+                    updateEmoteState(f.hash, f.name, 'blocked')
+                  } else {
+                    blockedEmotes.delete(f.hash)
+                    markLocalBlockToggle(f.hash, 'unblocked')
+                    updateEmoteState(f.hash, f.name, globalNameSet.has(f.name) ? 'global' : 'neutral')
+                  }
+                }
+                // If every leg failed, the whole toggle didn't happen — put the
+                // button label back too.
+                if (failed.length === results.length) {
+                  blockAllBtn.textContent = allBlocked ? '◉' : '⊘'
+                  blockAllBtn.title = allBlocked ? t('btn_show_all') : t('btn_block_all')
+                }
+                showToast(
+                  t(allBlocked ? 'content_toast_unblock_failed' : 'content_toast_block_failed', [
+                    failed
+                      .map((f) => f.name)
+                      .filter(Boolean)
+                      .join(', '),
+                  ]),
+                  'error',
+                )
+              })()
             }
             return
           }

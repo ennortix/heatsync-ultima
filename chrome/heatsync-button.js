@@ -4122,6 +4122,7 @@
 
         updateTabCounts()
         renderEmoteGrid()
+        return true
       } catch (err) {
         if (err.message?.includes('Extension context invalidated')) {
           const toast = document.createElement('div')
@@ -4132,6 +4133,7 @@
           setTimeout(() => toast.remove(), 5000)
         }
         log('Failed to block emote:', err.message)
+        return false
       }
     }
 
@@ -4317,9 +4319,13 @@
               log('Unblock failed:', err.message)
             }
           } else {
-            blockEmote(emote)
-            _blockedHashSet.add(hash)
-            showPickerToast(t('btn_toast_blocked'))
+            // Was fire-and-forget: the "blocked" toast fired before the request
+            // even started, and blockEmote's own failure path only surfaced
+            // "context invalidated" — a 500 / rate-limit / expired token blocked
+            // nothing and said nothing. blockEmote now owns _blockedHashSet on
+            // success and returns whether it stuck; toast accordingly.
+            const ok = await blockEmote(emote)
+            showPickerToast(ok ? t('btn_toast_blocked') : t('btn_toast_block_failed'))
           }
         })
         menu.appendChild(blockBtn)

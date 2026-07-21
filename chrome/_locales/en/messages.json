@@ -165,6 +165,9 @@
   "btn_toast_unblocked": {
     "message": "unblocked"
   },
+  "btn_toast_block_failed": {
+    "message": "couldn’t block — try again"
+  },
   "btn_toast_blocked": {
     "message": "blocked"
   },
@@ -274,6 +277,22 @@
     "message": "failed to block: $ERROR$",
     "placeholders": {
       "error": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_block_failed": {
+    "message": "couldn’t block $NAME$ — try again",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_unblock_failed": {
+    "message": "couldn’t unblock $NAME$ — try again",
+    "placeholders": {
+      "name": {
         "content": "$1"
       }
     }

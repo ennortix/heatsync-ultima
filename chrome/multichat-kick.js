@@ -8712,12 +8712,14 @@ function injectStyles() {
       width: 12px;
       text-align: center;
       overflow: visible;
-      /* text-bottom, NEVER middle: middle anchors at baseline + xHeight/2, and
-         Cozette's 13px x-height halves to 3.546875px — a fractional baseline
-         that smears every adjacent bitmap glyph (this is what made the "you"
-         token blurry). text-bottom anchors to the font strut, so it's immune to
-         sibling box heights. Verified frac(y)=0 on the neighbouring text node. */
-      vertical-align: text-bottom;
+      /* An INTEGER px offset — never 'middle' (anchors at baseline + xHeight/2,
+         and Cozette's 13px x-height halves to 3.546875px = fractional baseline)
+         and not 'text-bottom' here either: text-bottom is right for tall emote
+         boxes, but against this 18px row it grew every whisper row to 25px.
+         A whole-pixel offset keeps the baseline on the grid AND leaves row
+         height untouched. Measured: row 22px (same as a plain row), frac(x)=0,
+         frac(y)=0 on the adjacent text node. */
+      vertical-align: -4px;
       margin: 0 5px;
     }
     .hs-whisper-you {

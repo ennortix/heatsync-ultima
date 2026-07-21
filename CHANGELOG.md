@@ -1,5 +1,23 @@
 # changelog
 
+## [1.7.31] — 2026-07-21
+
+### fixed
+- **/highlight could charge your bits twice.** a slow network made the send report "failed" while twitch had already taken the payment; sending again bought a second highlight. the purchase is now idempotent, and an unconfirmed send says so instead of inviting a resend.
+- **kick emotes you sent showed up as plain words to everyone else** — heatsync rendered them for you, so it looked fine from your side. they now go out in kick's own format, and a rejected emote falls back to text rather than dropping the whole message.
+- **mod actions blamed the wrong thing on a network blip** — ban/timeout/unban/delete/announce said "channel not found" for any hiccup, which reads as "this channel doesn't exist". transient failures now say to try again.
+- **blocking an emote said "blocked" before the server agreed.** a rejected block silently reverted later with no explanation; it now confirms, and rolls back with a reason if it fails. same fix on the picker and on block-all.
+- **raw message keys leaked into the ui** (e.g. `mc_input_send_channel` in the composer) whenever a value was still resolving.
+- youtube chat that never loads now says so instead of sitting blank, and youtube mod errors read as english rather than codes like `message_not_found`.
+- a youtube tab added from a video link no longer shows `watch?v=…` as its name; duplicate youtube channels are rejected like twitch and kick already were.
+- deleting your own post, following from a card, and mod-card actions no longer fail in silence.
+- kick: theatre mode is detected again (kick moved the flag) and the player controls no longer hide under the panel.
+- kick: a send that times out is reported as unconfirmed instead of being retried into a double post.
+
+### added
+- **chat modes from the composer** — `/slow` and `/followers` on twitch and kick, plus `/subscribers` and `/emoteonly` on kick. every change is confirmed against the channel afterwards, so a command only reports success when the mode really changed.
+- **kick subs, gift subs, pinned messages and KICKs gifts now appear** for every channel, not just the few covered by the server relay.
+
 ## [1.7.29] — 2026-07-18
 
 ### added

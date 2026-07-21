@@ -221,3 +221,34 @@ describe('_kpHandlePinEvent', () => {
     expect(bg.stats.dropped).toBe(1)
   })
 })
+
+// kick has no idempotency key on send, so an aborted POST that the server may
+// already have processed must never be auto-retried — that is a double post in
+// the user's chat, not a repair.
+describe('kick send timeout is unconfirmed, never retried', () => {
+  const SEND = readFileSync(join(ROOT, 'src', 'multichat', 'kick-send.js'), 'utf8')
+
+  test('a timeout returns kick_unconfirmed after exactly one attempt', async () => {
+    const counter = { n: 0 }
+    const fatalLine = SEND.split('\n').find((l) => l.startsWith('const KICK_FATAL_SEND_ERRORS'))
+    const backoffLine = SEND.split('\n').find((l) => l.startsWith('const KICK_SEND_RETRY_BACKOFF_MS'))
+    const sendKickMessage = new Function(
+      'counter',
+      `${fatalLine}
+       ${backoffLine}
+       const resolveKickChannelId = async () => 1
+       const _kickSendOnce = async () => { counter.n++; return { ok: false, error: 'timeout' } }
+       const log = () => {}
+       async ${extractFn(SEND, 'sendKickMessage')}
+       return sendKickMessage`,
+    )(counter)
+    expect(await sendKickMessage('chessbrah', 'hi')).toBe('kick_unconfirmed')
+    expect(counter.n).toBe(1)
+  })
+
+  test('the unconfirmed reason has honest copy wired in notifs', () => {
+    const NOTIFS = readFileSync(join(ROOT, 'src', 'multichat', 'notifs.js'), 'utf8')
+    expect(NOTIFS).toContain('kick_unconfirmed:')
+    expect(NOTIFS).not.toMatch(/kick_unconfirmed: '[^']*failed/)
+  })
+})

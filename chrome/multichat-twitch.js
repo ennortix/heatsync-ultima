@@ -7764,6 +7764,10 @@ const HsNotifs = (() => {
         kick_not_logged_in: 'kick not logged in',
         no_kick_tab: 'no kick tab open',
         no_channel: 'kick channel not found',
+        // Deliberately not worded as a failure: kick may well have posted it
+        // (see kick-send.js KICK_SEND_TIMEOUT_MS). "retry" here is an informed
+        // choice to send it a second time, not a repair.
+        kick_unconfirmed: 'kick did not confirm — it may have posted',
         'missing params': 'kick send rejected',
         no_youtube_tab: 'no youtube tab open',
         no_input: 'youtube chat still loading',
@@ -22177,10 +22181,16 @@ const KICK_CHANNEL_ID_CACHE_MAX = 200
 // Failures we never retry — they're user-actionable, not transient.
 const KICK_FATAL_SEND_ERRORS = new Set(['no_channel', 'no_kick_tab', 'kick_not_logged_in', 'missing params'])
 
-// MUST exceed the relay POST's own AbortSignal.timeout (10s in content.js
-// kick_send_relay). Kick's send API has no idempotency key, so a retry fired
-// while the first POST is still in flight double-posts. Waiting past the POST
-// abort guarantees the first attempt is dead before we retry (bulletproof).
+// Exceeds the relay POST's own AbortSignal.timeout (10s in content.js
+// kick_send_relay) so a timeout here means the POST is done waiting too.
+//
+// It does NOT mean the send didn't happen. Aborting only stops the client
+// listening for the response — if kick already accepted the POST and the
+// reply was merely slow, the message IS in chat. Kick's send API has no
+// idempotency key, so there is no way to retry without risking a double
+// post. This used to auto-retry on the claim that outwaiting the abort made
+// the first attempt "dead"; it doesn't, and the guarantee was fiction. A
+// timeout now returns unconfirmed and stops, and the user decides.
 const KICK_SEND_TIMEOUT_MS = 11000
 const KICK_SEND_RETRY_BACKOFF_MS = [750, 1500]
 
@@ -22239,6 +22249,8 @@ async function sendKickMessage(kickSlug, text, reply = null) {
         attempt-- // the flat resend shouldn't consume a retry slot
         continue
       }
+      // Unresolved, not failed — see KICK_SEND_TIMEOUT_MS. Never auto-retried.
+      if (err === 'timeout') return 'kick_unconfirmed'
       if (KICK_FATAL_SEND_ERRORS.has(err)) return err
       if (attempt < KICK_SEND_RETRY_BACKOFF_MS.length) {
         await new Promise((r) => setTimeout(r, KICK_SEND_RETRY_BACKOFF_MS[attempt]))

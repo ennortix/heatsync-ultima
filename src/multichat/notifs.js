@@ -679,6 +679,10 @@ const HsNotifs = (() => {
         kick_not_logged_in: 'kick not logged in',
         no_kick_tab: 'no kick tab open',
         no_channel: 'kick channel not found',
+        // Deliberately not worded as a failure: kick may well have posted it
+        // (see kick-send.js KICK_SEND_TIMEOUT_MS). "retry" here is an informed
+        // choice to send it a second time, not a repair.
+        kick_unconfirmed: 'kick did not confirm — it may have posted',
         'missing params': 'kick send rejected',
         no_youtube_tab: 'no youtube tab open',
         no_input: 'youtube chat still loading',

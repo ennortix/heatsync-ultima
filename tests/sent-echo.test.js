@@ -36,8 +36,9 @@ function carve(src, name) {
 
 function loadIsSentEcho() {
   const src = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'input.js'), 'utf8')
-  // isSentEcho calls _echoTextMatches (reply-prefix tolerance) — carve both.
-  const body = `${carve(src, '_echoTextMatches')}\n${carve(src, 'isSentEcho')}`
+  // isSentEcho calls _echoTextMatches (reply-prefix tolerance), which in turn
+  // calls _unkickEmotes (kick's [emote:id:name] wire form) — carve all three.
+  const body = `${carve(src, '_unkickEmotes')}\n${carve(src, '_echoTextMatches')}\n${carve(src, 'isSentEcho')}`
   // Bind the module-scoped state the function closes over.
   return (entries) =>
     new Function('_recentSentMessages', 'SENT_DEDUP_WINDOW', `${body}; return isSentEcho`)(entries, 10000)

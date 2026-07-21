@@ -37592,9 +37592,23 @@ function _pruneRecent(arr) {
 // echo with one leading @token stripped. Scoped to reply entries only — a
 // non-reply entry never strips, so a stranger's "@you <same text>" can't get
 // eaten unless YOUR send was itself a reply within the dedup window.
+// Kick echoes a native emote back in its wire form, [emote:<id>:<name>], while
+// we track what the user typed. Since the composer now rewrites kick emotes on
+// the way out (kickifyEmoteText), the two forms differ by construction — and an
+// echo that fails to match is an echo that renders a second time and never
+// confirms the pending send. Compare with the tokens collapsed to their names.
+// Guarded on the literal so the ~95% of traffic that carries no token pays
+// nothing.
+function _unkickEmotes(s) {
+  const str = String(s ?? '')
+  return str.indexOf('[emote:') === -1 ? str : str.replace(/\[emote:\d+:([^\]]+)\]/g, '$1')
+}
 function _echoTextMatches(entry, msgText) {
   if (entry.text === msgText) return true
-  return !!entry.reply && msgText.replace(/^@\S+\s+/, '') === entry.text
+  const a = _unkickEmotes(entry.text)
+  const b = _unkickEmotes(msgText)
+  if (a === b) return true
+  return !!entry.reply && b.replace(/^@\S+\s+/, '') === a
 }
 
 function trackSentMessage(text, hostOverride, synthId, echoes, reply) {
@@ -37904,7 +37918,7 @@ function findPendingByEchoText(text) {
     if (_echoTextMatches({ text: entry.text, reply: !!entry.replyParentId }, text)) return id
   }
   const norm = (s) =>
-    String(s)
+    _unkickEmotes(s)
       .replace(/[ \s]+/g, ' ')
       .trim()
   const wantN = norm(text)

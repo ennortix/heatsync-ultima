@@ -4470,6 +4470,39 @@
   chrome.runtime.onMessage.removeListener(_onMessageMain)
   chrome.runtime.onMessage.addListener(_onMessageMain)
 
+  // Kick chat-mode relay — PUT /api/v1/chatrooms/<id>. Route confirmed by kick
+  // itself: GET on it answers 405 "Supported methods: PUT". Body mirrors the
+  // shape GET /api/v2/channels/<slug>/chatroom returns (laravel resource
+  // symmetry), e.g. { slow_mode: { enabled: true, message_interval: 10 } }.
+  // Lives here for the same reason the send relay does: kick's mutations need
+  // the tab's own cookies alongside the XSRF + bearer pair.
+  function _onMessageKickChatMode(message, _sender, sendResponse) {
+    if (message.type !== 'kick_chatmode_relay') return
+    const headers = {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': decodeURIComponent(message.xsrfToken),
+    }
+    if (message.sessionToken) headers.Authorization = `Bearer ${decodeURIComponent(message.sessionToken)}`
+    fetch(`https://kick.com/api/v1/chatrooms/${encodeURIComponent(message.chatroomId)}`, {
+      method: 'PUT',
+      headers,
+      credentials: 'include',
+      body: JSON.stringify(message.body || {}),
+      signal: AbortSignal.timeout(10000),
+    })
+      .then((r) => {
+        if (r.ok) sendResponse({ ok: true })
+        else
+          r.text()
+            .then((t) => sendResponse({ ok: false, error: `${r.status}: ${t.slice(0, 160)}` }))
+            .catch(() => sendResponse({ ok: false, error: `${r.status}` }))
+      })
+      .catch((e) => sendResponse({ ok: false, error: e.message }))
+    return true // async sendResponse
+  }
+  chrome.runtime.onMessage.removeListener(_onMessageKickChatMode)
+  chrome.runtime.onMessage.addListener(_onMessageKickChatMode)
+
   // Kick send relay — only active on kick.com tabs
   // Separate listener because it needs async sendResponse (return true)
   function _onMessageKickRelay(message, _sender, sendResponse) {

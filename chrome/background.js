@@ -2782,6 +2782,35 @@ async function sendKickMessageViaTab(channelId, content, reply = null) {
   return { ok: false, error: lastError }
 }
 
+// Kick chat modes — PUT /api/v1/chatrooms/<chatroomId>. Route discovered
+// read-only: a GET on it answers 405 "Supported methods: PUT". Same auth shape
+// as sendKickMessageViaTab (XSRF cookie + Bearer session_token), same reason it
+// must run inside a kick.com tab.
+async function setKickChatModeViaTab(chatroomId, body) {
+  if (!chatroomId || !body) return { ok: false, error: 'missing params' }
+  const cookie = await browser.cookies.get({ url: 'https://kick.com', name: 'XSRF-TOKEN' })
+  if (!cookie?.value) return { ok: false, error: 'kick_not_logged_in' }
+  const session = await browser.cookies.get({ url: 'https://kick.com', name: 'session_token' })
+  const tabs = await browser.tabs.query({ url: '*://*.kick.com/*' })
+  if (!tabs || tabs.length === 0) return { ok: false, error: 'no_kick_tab' }
+  let lastError = 'no response from tab'
+  for (const tab of rankKickRelayTabs(tabs)) {
+    try {
+      const result = await browser.tabs.sendMessage(tab.id, {
+        type: 'kick_chatmode_relay',
+        chatroomId,
+        body,
+        xsrfToken: cookie.value,
+        sessionToken: session?.value || '',
+      })
+      if (result) return result
+    } catch (e) {
+      lastError = e?.message || 'tab relay failed'
+    }
+  }
+  return { ok: false, error: lastError }
+}
+
 const kickChatroomIdCache = new Map()
 const kickUsernameToIdCache = new Map()
 
@@ -8702,6 +8731,16 @@ async function handleMessage(message, sender, sendResponse) {
         sendResponse(await sendKickMessageViaTab(message.channelId, message.content, message.reply))
       } catch (e) {
         log('kick_send_message error:', e.message)
+        sendResponse({ ok: false, error: e.message })
+      }
+    })()
+    return true
+  } else if (message.type === 'kick_set_chat_mode') {
+    ;(async () => {
+      try {
+        sendResponse(await setKickChatModeViaTab(message.chatroomId, message.body))
+      } catch (e) {
+        log('kick_set_chat_mode error:', e.message)
         sendResponse({ ok: false, error: e.message })
       }
     })()

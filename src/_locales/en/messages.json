@@ -2009,6 +2009,14 @@
   "mc_input_twitch_unreachable": {
     "message": "twitch unreachable — try again"
   },
+  "mc_input_mode_kick_unsupported": {
+    "message": "kick has no $LABEL$ mode",
+    "placeholders": {
+      "label": {
+        "content": "$1"
+      }
+    }
+  },
   "mc_input_mode_on": {
     "message": "$LABEL$ on",
     "placeholders": {

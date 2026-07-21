@@ -6276,6 +6276,9 @@ const CHAT_MODES = {
   unique: { field: 'unique_chat_mode', label: 'unique-chat' },
 }
 
+// Kick supports four of the five (no unique-chat/r9k equivalent).
+const KICK_MODE_CMDS = new Set(['slow', 'followers', 'subscribers', 'emoteonly'])
+
 // Parse a chat-mode duration arg into the unit Twitch expects.
 // minutes: bare number = minutes; m/h/d/w suffixes; s rounds up to a minute.
 // seconds: bare number = seconds. Returns null on malformed input.
@@ -7009,8 +7012,14 @@ async function handleSlashCommand(text, input) {
     // the live/aggregate tab too, where currentTab='live' is not a channel).
     const twitchTarget =
       _modCh?.twitch || (hostPlatform === 'twitch' ? (getCurrentChannel() || '').toLowerCase().replace(/^#/, '') : null)
-    if (!twitchTarget) {
+    const _kickSide = _modCh?.kick || (hostPlatform === 'kick' ? (getCurrentChannel() || '').toLowerCase() : null)
+    if (!twitchTarget && !_kickSide) {
       showToast(t('mc_input_followers_twitch_only'), 'error')
+      return true
+    }
+    if (!twitchTarget && _kickSide && !KICK_MODE_CMDS.has(cmd)) {
+      // kick has no unique-chat equivalent — say so instead of silently no-oping
+      showToast(t('mc_input_mode_kick_unsupported', [cmd]), 'error')
       return true
     }
     const spec = CHAT_MODES[cmd]
@@ -7033,8 +7042,27 @@ async function handleSlashCommand(text, input) {
         return true
       }
     }
-    const resp = await setTwitchChatMode(twitchTarget, cmd, value)
-    if (resp.ok) {
+    // Kick leg: same command, kick's own PUT, when the tab has a kick side and
+    // kick actually has that mode (no unique-chat on kick).
+    const kickTarget = _modCh?.kick || (hostPlatform === 'kick' ? (getCurrentChannel() || '').toLowerCase() : null)
+    const kickPromise =
+      kickTarget && typeof setKickChatMode === 'function' && KICK_MODE_CMDS.has(cmd)
+        ? setKickChatMode(kickTarget, cmd, value)
+        : Promise.resolve(null)
+    const [resp, kickResp] = await Promise.all([
+      twitchTarget ? setTwitchChatMode(twitchTarget, cmd, value) : Promise.resolve(null),
+      kickPromise,
+    ])
+    if (kickResp && !kickResp.ok && !resp?.ok) {
+      showToast(t('mc_input_mode_failed', [spec.label, kickResp.error]), 'error')
+      return true
+    }
+    if (!resp && kickResp?.ok) {
+      showToast(off ? t('mc_input_mode_off', [spec.label]) : t('mc_input_mode_on', [spec.label]), 'success')
+      clearInput(input)
+      return true
+    }
+    if (resp?.ok) {
       const label = spec.label
       showToast(
         off

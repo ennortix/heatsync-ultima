@@ -22230,6 +22230,93 @@ async function sendKickMessage(kickSlug, text, reply = null) {
   return lastErr
 }
 
+// ─── Kick chat modes ────────────────────────────────────────────────────────
+// PUT /api/v1/chatrooms/<chatroomId>, relayed through a kick.com tab (kick's
+// mutations need that tab's cookies + XSRF + bearer). Both halves were found
+// read-only on 2026-07-21: a GET on the route answers 405 "Supported methods:
+// PUT", and GET /api/v2/channels/<slug>/chatroom returns the live mode state.
+//
+// The body mirrors that read shape (laravel resource symmetry). Since a wrong
+// shape could be accepted-and-ignored, every set is CONFIRMED by reading the
+// chatroom back — we only report success when kick actually changed. Same
+// contract as twitch's setTwitchChatMode.
+const KICK_CHAT_MODE_KEYS = {
+  slow: 'slow_mode',
+  followers: 'followers_mode',
+  subscribers: 'subscribers_mode',
+  emoteonly: 'emotes_mode',
+}
+
+// mode → the body kick expects. slow carries seconds, followers minutes.
+function kickChatModeBody(mode, value) {
+  const key = KICK_CHAT_MODE_KEYS[mode]
+  if (!key) return null
+  if (mode === 'slow') {
+    const secs = Math.max(0, Number(value) || 0)
+    return { [key]: secs > 0 ? { enabled: true, message_interval: secs } : { enabled: false, message_interval: 0 } }
+  }
+  if (mode === 'followers') {
+    // twitch encodes "off" as -1; kick wants enabled:false. 0 minutes = on with
+    // no age gate, which kick expresses as enabled:true + min_duration 0.
+    const mins = Number(value)
+    return {
+      [key]: mins < 0 ? { enabled: false, min_duration: 0 } : { enabled: true, min_duration: Math.max(0, mins) },
+    }
+  }
+  return { [key]: { enabled: !!value } }
+}
+
+// Read the live modes back. Public endpoint, no auth — the confirmation oracle.
+async function readKickChatModes(slug) {
+  try {
+    const r = await fetch(`https://kick.com/api/v2/channels/${encodeURIComponent(slug)}/chatroom`, {
+      headers: { accept: 'application/json' },
+    })
+    if (!r.ok) return null
+    return await r.json()
+  } catch {
+    return null
+  }
+}
+
+function kickChatModeMatches(mode, value, state) {
+  const key = KICK_CHAT_MODE_KEYS[mode]
+  const node = state?.[key]
+  if (!node || typeof node !== 'object') return false
+  if (mode === 'slow') {
+    const secs = Math.max(0, Number(value) || 0)
+    return secs > 0 ? !!node.enabled && Number(node.message_interval) === secs : !node.enabled
+  }
+  if (mode === 'followers') {
+    const mins = Number(value)
+    return mins < 0 ? !node.enabled : !!node.enabled && Number(node.min_duration) === Math.max(0, mins)
+  }
+  return !!node.enabled === !!value
+}
+
+async function setKickChatMode(slug, mode, value) {
+  const body = kickChatModeBody(mode, value)
+  if (!body) return { ok: false, error: 'kick has no such chat mode' }
+  // BG resolves + caches the chatroom id (kick_chatroom_id); the public
+  // chatroom read is the fallback so a cold SW can't block a mod action.
+  let chatroomId = null
+  try {
+    chatroomId = (await safeSendMessage({ type: 'kick_chatroom_id', slug }))?.id || null
+  } catch {}
+  if (!chatroomId) chatroomId = (await readKickChatModes(slug))?.id || null
+  if (!chatroomId) return { ok: false, error: 'kick chatroom not found' }
+  const resp = await safeSendMessage({ type: 'kick_set_chat_mode', chatroomId, body })
+  if (!resp?.ok) return { ok: false, error: resp?.error || 'kick_set_failed' }
+  // Confirm — a PUT kick accepted but ignored must never read as success.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt) await new Promise((r) => setTimeout(r, 400))
+    const state = await readKickChatModes(slug)
+    if (!state) continue
+    if (kickChatModeMatches(mode, value, state)) return { ok: true }
+  }
+  return { ok: false, error: 'kick did not apply it (mod rights?)' }
+}
+
 
 // --- multichat/emotes.js ---
 // Emotes - cache, lookup, processing, picker, block/inventory
@@ -43936,6 +44023,9 @@ const CHAT_MODES = {
   unique: { field: 'unique_chat_mode', label: 'unique-chat' },
 }
 
+// Kick supports four of the five (no unique-chat/r9k equivalent).
+const KICK_MODE_CMDS = new Set(['slow', 'followers', 'subscribers', 'emoteonly'])
+
 // Parse a chat-mode duration arg into the unit Twitch expects.
 // minutes: bare number = minutes; m/h/d/w suffixes; s rounds up to a minute.
 // seconds: bare number = seconds. Returns null on malformed input.
@@ -44669,8 +44759,14 @@ async function handleSlashCommand(text, input) {
     // the live/aggregate tab too, where currentTab='live' is not a channel).
     const twitchTarget =
       _modCh?.twitch || (hostPlatform === 'twitch' ? (getCurrentChannel() || '').toLowerCase().replace(/^#/, '') : null)
-    if (!twitchTarget) {
+    const _kickSide = _modCh?.kick || (hostPlatform === 'kick' ? (getCurrentChannel() || '').toLowerCase() : null)
+    if (!twitchTarget && !_kickSide) {
       showToast(t('mc_input_followers_twitch_only'), 'error')
+      return true
+    }
+    if (!twitchTarget && _kickSide && !KICK_MODE_CMDS.has(cmd)) {
+      // kick has no unique-chat equivalent — say so instead of silently no-oping
+      showToast(t('mc_input_mode_kick_unsupported', [cmd]), 'error')
       return true
     }
     const spec = CHAT_MODES[cmd]
@@ -44693,8 +44789,27 @@ async function handleSlashCommand(text, input) {
         return true
       }
     }
-    const resp = await setTwitchChatMode(twitchTarget, cmd, value)
-    if (resp.ok) {
+    // Kick leg: same command, kick's own PUT, when the tab has a kick side and
+    // kick actually has that mode (no unique-chat on kick).
+    const kickTarget = _modCh?.kick || (hostPlatform === 'kick' ? (getCurrentChannel() || '').toLowerCase() : null)
+    const kickPromise =
+      kickTarget && typeof setKickChatMode === 'function' && KICK_MODE_CMDS.has(cmd)
+        ? setKickChatMode(kickTarget, cmd, value)
+        : Promise.resolve(null)
+    const [resp, kickResp] = await Promise.all([
+      twitchTarget ? setTwitchChatMode(twitchTarget, cmd, value) : Promise.resolve(null),
+      kickPromise,
+    ])
+    if (kickResp && !kickResp.ok && !resp?.ok) {
+      showToast(t('mc_input_mode_failed', [spec.label, kickResp.error]), 'error')
+      return true
+    }
+    if (!resp && kickResp?.ok) {
+      showToast(off ? t('mc_input_mode_off', [spec.label]) : t('mc_input_mode_on', [spec.label]), 'success')
+      clearInput(input)
+      return true
+    }
+    if (resp?.ok) {
       const label = spec.label
       showToast(
         off

@@ -17240,6 +17240,17 @@ img.hs-fx-zero { margin-left: -4px; }
       --ytd-watch-flexy-non-player-height: calc(56px + 12px + 92px + var(--hs-chat-h, 35vh)) !important;
       --ytd-watch-flexy-min-player-height: 200px !important;
     }
+    /* chat-left/right: the user drives the video size by dragging the chat width,
+       so honor that ALL THE WAY DOWN — drop YT's ~360px min-player-height floor so
+       the video can shrink toward nothing and the metadata (collapsed under it via
+       _hsSetYtBelowTop) rides all the way to the top. Applies in theatre too (no
+       :not([theater])) since that's the dominant side-chat layout. max-player-height
+       still caps the top end, and the default (wide) layout never hits the floor,
+       so this only unlocks the extreme-shrink range the user asked for. */
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([fullscreen]),
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([fullscreen]) {
+      --ytd-watch-flexy-min-player-height: 0px !important;
+    }
     /* Belt-and-braces: cap player container too, in case YT's JS doesn't
        re-read the var on every chat-height change. */
     body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy:not([theater]):not([fullscreen]) #player-container,
@@ -43988,8 +43999,18 @@ async function resolveWhisperTarget(platform, username) {
   // profile.user_id / user_color, which don't exist, so resolve ALWAYS failed
   // and every /dm silently no-op'd. Read the real field names.
   const profileResp = await apiFetch(`/api/profile/${encodeURIComponent(lowerUser)}`)
+  // A failed REQUEST is NOT "this user doesn't exist". apiFetch returns
+  // {ok:false, error:'context invalidated'} while the service worker restarts —
+  // exactly what happens for a few seconds after an extension reload — and the
+  // old guard reported that as "heatsync user X not found", which sent us
+  // chasing a phantom resolve bug. Only a real 404 (or a 200 carrying no id)
+  // means the user is actually missing; anything else is a transient failure.
+  if (!profileResp?.ok && profileResp?.status !== 404) {
+    showToast(t('mc_whisper_hs_unreachable'), 'error')
+    return null
+  }
   const prof = profileResp?.data?.profile
-  if (!profileResp.ok || !prof?.id) {
+  if (!prof?.id) {
     showToast(t('mc_whisper_hs_not_found', [username]), 'error')
     return null
   }
@@ -54126,25 +54147,49 @@ function setupYouTubeResizeHandle() {
 let _hsYtBelowRO = null,
   _hsYtBelowEl = null,
   _hsYtBelowPoll = null
-function _hsSetYtBelowTop() {
-  // Panel hidden (non-live, no opt-in) → don't pin #below; the CSS reflow rule
-  // is gated on :not(.hs-offline) anyway, but clear the var to be tidy.
-  if (document.body.classList.contains('hs-offline')) {
-    document.documentElement.style.removeProperty('--hs-yt-below-top')
-    return
+// Clear any inline height we forced onto the full-bleed containers so YT's own
+// layout takes back over (leaving theatre, hiding the panel, fullscreen).
+function _hsClearYtFullBleed() {
+  for (const sel of ['#full-bleed-container', '#player-full-bleed-container']) {
+    const el = document.querySelector(sel)
+    if (el && el.style.height) el.style.removeProperty('height')
   }
-  if (chatPosition !== 'left' && chatPosition !== 'right') {
+}
+function _hsSetYtBelowTop() {
+  // Panel hidden (non-live, no opt-in) or non-side chat → hand layout back to YT.
+  if (document.body.classList.contains('hs-offline') || (chatPosition !== 'left' && chatPosition !== 'right')) {
     document.documentElement.style.removeProperty('--hs-yt-below-top')
+    _hsClearYtFullBleed()
     return
   }
   const flexy = document.querySelector('ytd-watch-flexy')
-  if (flexy && (flexy.hasAttribute('theater') || flexy.hasAttribute('fullscreen'))) {
+  if (flexy && flexy.hasAttribute('fullscreen')) {
     document.documentElement.style.removeProperty('--hs-yt-below-top')
+    _hsClearYtFullBleed()
     return
   }
   const mp = document.querySelector('#movie_player') || document.querySelector('.html5-video-player')
   const b = mp && mp.getBoundingClientRect()
-  if (b && b.height > 0) document.documentElement.style.setProperty('--hs-yt-below-top', Math.round(b.bottom) + 'px')
+  if (!b || b.height <= 0) return
+  // THEATRE + side chat: YT keeps #full-bleed-container at the full-WIDTH 16:9
+  // height while the real player is height-capped smaller, and the #below reflow
+  // rule is :not([theater]) — so #below (static) drops below the reserved band,
+  // a fat black gap under the video (only chat-left/top/bottom had a theatre fix,
+  // never chat-right). Collapse the container to the real player height so the
+  // metadata flows right under the video. The ResizeObserver + move-poll re-run
+  // this whenever the player resizes, so it stays in sync.
+  if (flexy && flexy.hasAttribute('theater')) {
+    document.documentElement.style.removeProperty('--hs-yt-below-top')
+    const h = Math.round(b.height) + 'px'
+    for (const sel of ['#full-bleed-container', '#player-full-bleed-container']) {
+      const el = document.querySelector(sel)
+      if (el && el.style.height !== h) el.style.height = h
+    }
+    return
+  }
+  // Non-theatre: CSS pins #below position:fixed at this var; no container surgery.
+  _hsClearYtFullBleed()
+  document.documentElement.style.setProperty('--hs-yt-below-top', Math.round(b.bottom) + 'px')
 }
 // YT shifts the player's POSITION without changing its SIZE — theater masthead
 // hide-on-scroll, description/comments panel expand-collapse, native miniplayer

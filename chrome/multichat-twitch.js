@@ -17240,6 +17240,17 @@ img.hs-fx-zero { margin-left: -4px; }
       --ytd-watch-flexy-non-player-height: calc(56px + 12px + 92px + var(--hs-chat-h, 35vh)) !important;
       --ytd-watch-flexy-min-player-height: 200px !important;
     }
+    /* chat-left/right: the user drives the video size by dragging the chat width,
+       so honor that ALL THE WAY DOWN — drop YT's ~360px min-player-height floor so
+       the video can shrink toward nothing and the metadata (collapsed under it via
+       _hsSetYtBelowTop) rides all the way to the top. Applies in theatre too (no
+       :not([theater])) since that's the dominant side-chat layout. max-player-height
+       still caps the top end, and the default (wide) layout never hits the floor,
+       so this only unlocks the extreme-shrink range the user asked for. */
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([fullscreen]),
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([fullscreen]) {
+      --ytd-watch-flexy-min-player-height: 0px !important;
+    }
     /* Belt-and-braces: cap player container too, in case YT's JS doesn't
        re-read the var on every chat-height change. */
     body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy:not([theater]):not([fullscreen]) #player-container,
@@ -44386,8 +44397,18 @@ async function resolveWhisperTarget(platform, username) {
   // profile.user_id / user_color, which don't exist, so resolve ALWAYS failed
   // and every /dm silently no-op'd. Read the real field names.
   const profileResp = await apiFetch(`/api/profile/${encodeURIComponent(lowerUser)}`)
+  // A failed REQUEST is NOT "this user doesn't exist". apiFetch returns
+  // {ok:false, error:'context invalidated'} while the service worker restarts —
+  // exactly what happens for a few seconds after an extension reload — and the
+  // old guard reported that as "heatsync user X not found", which sent us
+  // chasing a phantom resolve bug. Only a real 404 (or a 200 carrying no id)
+  // means the user is actually missing; anything else is a transient failure.
+  if (!profileResp?.ok && profileResp?.status !== 404) {
+    showToast(t('mc_whisper_hs_unreachable'), 'error')
+    return null
+  }
   const prof = profileResp?.data?.profile
-  if (!profileResp.ok || !prof?.id) {
+  if (!prof?.id) {
     showToast(t('mc_whisper_hs_not_found', [username]), 'error')
     return null
   }

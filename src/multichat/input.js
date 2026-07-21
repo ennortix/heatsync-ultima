@@ -7125,8 +7125,18 @@ async function resolveWhisperTarget(platform, username) {
   // profile.user_id / user_color, which don't exist, so resolve ALWAYS failed
   // and every /dm silently no-op'd. Read the real field names.
   const profileResp = await apiFetch(`/api/profile/${encodeURIComponent(lowerUser)}`)
+  // A failed REQUEST is NOT "this user doesn't exist". apiFetch returns
+  // {ok:false, error:'context invalidated'} while the service worker restarts —
+  // exactly what happens for a few seconds after an extension reload — and the
+  // old guard reported that as "heatsync user X not found", which sent us
+  // chasing a phantom resolve bug. Only a real 404 (or a 200 carrying no id)
+  // means the user is actually missing; anything else is a transient failure.
+  if (!profileResp?.ok && profileResp?.status !== 404) {
+    showToast(t('mc_whisper_hs_unreachable'), 'error')
+    return null
+  }
   const prof = profileResp?.data?.profile
-  if (!profileResp.ok || !prof?.id) {
+  if (!prof?.id) {
     showToast(t('mc_whisper_hs_not_found', [username]), 'error')
     return null
   }

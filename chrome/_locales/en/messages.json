@@ -880,6 +880,9 @@
   "mc_whisper_resolve_failed": {
     "message": "failed to resolve twitch user"
   },
+  "mc_whisper_hs_unreachable": {
+    "message": "couldn't reach heatsync — try again"
+  },
   "mc_whisper_hs_not_found": {
     "message": "heatsync user \"$USER$\" not found",
     "placeholders": {

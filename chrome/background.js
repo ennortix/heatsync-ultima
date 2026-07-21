@@ -445,8 +445,127 @@ ensureAlarm('hs-7tv-watchdog', { periodInMinutes: 2 })
 ensureAlarm('hs-health-poll', { delayInMinutes: 0.25 + Math.random() * 0.5, periodInMinutes: 5 })
 // Reap idle yt send-bridge tabs (see sweepYtBridgeTabs).
 ensureAlarm('hs-yt-bridge-sweep', { periodInMinutes: 5 })
+// Kick follow mirror — hourly, matching the server's twitch resync latch. See
+// syncKickFollows(): Kick is the one platform the SERVER can never sync, so the
+// mirror has to run here. Jittered so 30k clients don't sync on the same tick.
+ensureAlarm('hs-kick-follow-sync', { delayInMinutes: 2 + Math.random() * 3, periodInMinutes: 60 })
+// ============================================================
+// KICK FOLLOW MIRROR
+// ============================================================
+// heatsync's follow graph mirrors your platform follows, but Kick can ONLY be
+// read from a browser: the official api.kick.com has NO followed-channels
+// endpoint (no scope for one either), and kick.com/api/v2 403s from any server
+// — cloudflare fingerprints non-browser clients, verified from prod itself. The
+// session_token that unlocks it lives in the user's cookie jar and is not an
+// OAuth token our server could ever hold. So unlike twitch (server-side sync),
+// the Kick half of the mirror has to run here in the service worker.
+//
+// Additive only: we never auto-UNfollow on heatsync when someone unfollows on
+// Kick. The twitch importer can safely diff because it owns every
+// source='twitch_import' row; here we'd risk deleting follows the user made by
+// hand, so a removal needs its own explicit design.
+const KICK_FOLLOW_SYNCED_KEY = 'hs_kick_followed_synced'
+const KICK_FOLLOW_MAX_PAGES = 40
+const KICK_FOLLOW_MAX_NEW_PER_RUN = 50
+
+// GET /api/v2/channels/followed — paginated {nextCursor, channels[]}. Needs
+// `Authorization: Bearer <session_token>`; cookies alone return 401 (which is
+// why this endpoint reads as nonexistent unless you send the bearer).
+async function kickFollowedSlugs(token) {
+  const slugs = []
+  let cursor = 0
+  for (let page = 0; page < KICK_FOLLOW_MAX_PAGES; page++) {
+    let data = null
+    try {
+      const res = await fetchWithTimeout(
+        `https://kick.com/api/v2/channels/followed?cursor=${encodeURIComponent(cursor)}`,
+        { headers: { Accept: 'application/json', Authorization: `Bearer ${token}` }, credentials: 'include' },
+      )
+      if (!res.ok) break
+      data = await res.json()
+    } catch {
+      break
+    }
+    const chans = Array.isArray(data?.channels) ? data.channels : []
+    if (!chans.length) break
+    for (const c of chans) if (c?.channel_slug) slugs.push(String(c.channel_slug))
+    if (data.nextCursor == null) break
+    cursor = data.nextCursor
+  }
+  return slugs
+}
+
+// The followed payload carries only channel_slug/user_username — no numeric id —
+// but heatsync's kick shadow ids are kick_<kick USER id> (same shape the
+// profile-card synth path builds). The channel record is the only source.
+async function kickUserIdForSlug(slug) {
+  try {
+    const res = await fetchWithTimeout(`https://kick.com/api/v2/channels/${encodeURIComponent(slug)}`, {
+      headers: { Accept: 'application/json' },
+    })
+    if (!res.ok) return null
+    const d = await res.json()
+    const id = d?.user_id ?? d?.user?.id
+    return id != null && /^\d+$/.test(String(id)) ? String(id) : null
+  } catch {
+    return null
+  }
+}
+
+async function syncKickFollows() {
+  try {
+    const session = await browser.cookies.get({ url: 'https://kick.com', name: 'session_token' })
+    const token = session?.value ? decodeURIComponent(session.value) : null
+    if (!token) return // not logged into kick — nothing to mirror
+    const hsToken = authToken || (await getAuthCookie())
+    if (!hsToken) return // not logged into heatsync — nowhere to mirror to
+
+    const slugs = await kickFollowedSlugs(token)
+    if (!slugs.length) return
+
+    const store = await browser.storage.local.get(KICK_FOLLOW_SYNCED_KEY)
+    const already = new Set(Array.isArray(store?.[KICK_FOLLOW_SYNCED_KEY]) ? store[KICK_FOLLOW_SYNCED_KEY] : [])
+    const fresh = slugs.filter((s) => !already.has(s)).slice(0, KICK_FOLLOW_MAX_NEW_PER_RUN)
+    if (!fresh.length) return
+
+    let pushed = 0
+    for (const slug of fresh) {
+      const kickId = await kickUserIdForSlug(slug)
+      if (!kickId) continue
+      try {
+        // ?kickUsername= is the hint ensureKickShadowUser needs to materialize a
+        // shadow account (it verifies the pair server-side before grafting).
+        const res = await fetchWithTimeout(
+          `${API_URL}/api/follow/kick_${kickId}?kickUsername=${encodeURIComponent(slug)}`,
+          { method: 'POST', headers: { Authorization: `Bearer ${hsToken}` } },
+        )
+        // Already-following comes back as a conflict — still "synced", so mark it
+        // and stop retrying it every hour.
+        if (res.ok || res.status === 409) {
+          already.add(slug)
+          pushed++
+        }
+      } catch {}
+      await new Promise((r) => setTimeout(r, 250)) // gentle on both APIs
+    }
+    if (pushed) {
+      await browser.storage.local.set({ [KICK_FOLLOW_SYNCED_KEY]: [...already].slice(-2000) })
+      log(` [kick-follow-mirror] mirrored ${pushed} kick follow(s) into heatsync`)
+      // Same refresh the 'refresh-followed-users' alarm runs, so the new follows
+      // show up in the feed filter / live notifications without waiting 5min.
+      fetchFollowedUsers().catch(() => {})
+    }
+  } catch (e) {
+    log(' [kick-follow-mirror] failed:', e?.message)
+  }
+}
+
 // async is safe here: unlike onMessage, alarms ignore the return value
 browser.alarms?.onAlarm?.addListener(async (alarm) => {
+  if (alarm.name === 'hs-kick-follow-sync') {
+    await syncKickFollows()
+    return
+  }
   if (alarm.name === 'keepalive') {
     // Just existing is enough to keep the worker alive. Also rides this 30s
     // tick for the yt innertube fallback tap's check — it has no timer of its

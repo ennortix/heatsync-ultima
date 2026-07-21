@@ -1151,6 +1151,17 @@
       --ytd-watch-flexy-non-player-height: calc(56px + 12px + 92px + var(--hs-chat-h, 35vh)) !important;
       --ytd-watch-flexy-min-player-height: 200px !important;
     }
+    /* chat-left/right: the user drives the video size by dragging the chat width,
+       so honor that ALL THE WAY DOWN — drop YT's ~360px min-player-height floor so
+       the video can shrink toward nothing and the metadata (collapsed under it via
+       _hsSetYtBelowTop) rides all the way to the top. Applies in theatre too (no
+       :not([theater])) since that's the dominant side-chat layout. max-player-height
+       still caps the top end, and the default (wide) layout never hits the floor,
+       so this only unlocks the extreme-shrink range the user asked for. */
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([fullscreen]),
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([fullscreen]) {
+      --ytd-watch-flexy-min-player-height: 0px !important;
+    }
     /* Belt-and-braces: cap player container too, in case YT's JS doesn't
        re-read the var on every chat-height change. */
     body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy:not([theater]):not([fullscreen]) #player-container,

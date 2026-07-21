@@ -4192,21 +4192,39 @@ function _i18nApplyPlaceholders(messageObj, substitutions) {
   return message
 }
 
+// chrome.i18n.getMessage returns '' — not the message — when ANY substitution is
+// null/undefined or a non-string. The old `|| key` then rendered the raw key
+// straight into the UI ("mc_input_send_channel" sitting in the composer, seen
+// live 2026-07-21). One caller passing an unresolved value could do that to any
+// of the 600+ strings, so the coercion belongs here, not at each call site.
+function _i18nSubs(substitutions) {
+  if (substitutions == null) return undefined
+  const arr = Array.isArray(substitutions) ? substitutions : [substitutions]
+  return arr.map((s) => (s == null ? '' : String(s)))
+}
+
 function t(key, substitutions) {
   if (!key) return ''
+  const subs = _i18nSubs(substitutions)
   if (key.startsWith('@@')) {
     try {
-      return rawApi?.i18n?.getMessage(key, substitutions) || key
+      return rawApi?.i18n?.getMessage(key, subs) || key
     } catch {
       return key
     }
   }
   if (_i18nOverride && _i18nOverride[key]) {
-    const out = _i18nApplyPlaceholders(_i18nOverride[key], substitutions)
+    const out = _i18nApplyPlaceholders(_i18nOverride[key], subs)
     if (out) return out
   }
   try {
-    return rawApi?.i18n?.getMessage(key, substitutions) || key
+    const msg = rawApi?.i18n?.getMessage(key, subs)
+    if (msg) return msg
+    // Still empty with sanitized subs ⇒ the substitution COUNT is wrong for this
+    // message. Retry bare: a template with a visible $PLACEHOLDER$ is ugly, but
+    // it's real copy — a raw key is a bug leaking onto the user's screen.
+    const bare = subs ? rawApi?.i18n?.getMessage(key) : ''
+    return bare || key
   } catch {
     return key
   }
@@ -40453,7 +40471,10 @@ function updateInputPlaceholder() {
       ch?.kick ||
       ch?.youtube?.replace(/^https?:\/\/(www\.)?youtube\.com\/@?/, '').replace(/\/.*/, '') ||
       ch?.id
-    placeholder = t('mc_input_send_channel', [chanName])
+    // chanName can come back undefined for a half-built channel entry (all four
+    // fallbacks empty). The no-channel copy is the honest thing to show then —
+    // t() no longer leaks the raw key either way, but don't render "send to #".
+    placeholder = chanName ? t('mc_input_send_channel', [chanName]) : t('mc_input_no_channel')
   }
 
   if (wysiwygEnabled) {

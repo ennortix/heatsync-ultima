@@ -3034,7 +3034,10 @@ function updateInputPlaceholder() {
       ch?.kick ||
       ch?.youtube?.replace(/^https?:\/\/(www\.)?youtube\.com\/@?/, '').replace(/\/.*/, '') ||
       ch?.id
-    placeholder = t('mc_input_send_channel', [chanName])
+    // chanName can come back undefined for a half-built channel entry (all four
+    // fallbacks empty). The no-channel copy is the honest thing to show then —
+    // t() no longer leaks the raw key either way, but don't render "send to #".
+    placeholder = chanName ? t('mc_input_send_channel', [chanName]) : t('mc_input_no_channel')
   }
 
   if (wysiwygEnabled) {

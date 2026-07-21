@@ -1980,6 +1980,9 @@
       }
     }
   },
+  "mc_input_highlight_unconfirmed": {
+    "message": "highlight didn’t confirm — resend is safe, bits charge once"
+  },
   "mc_input_highlight_failed": {
     "message": "highlight failed: $REASON$",
     "placeholders": {

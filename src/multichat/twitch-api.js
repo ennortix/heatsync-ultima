@@ -2803,6 +2803,29 @@ async function fetchHighlightCost(channelId) {
   }
 }
 
+// Highlight sends spend REAL Bits, and Twitch's `transactionID` is the bits
+// idempotency key — the same id can land twice and Twitch charges once. The old
+// code minted a fresh one every call, so a client-side timeout that surfaced
+// "highlight failed" invited a resend that Twitch saw as a brand-new purchase →
+// double charge for one highlight. Cache (nonce, transactionID) by message
+// content so a manual resend of the same text reuses the same transaction and
+// physically cannot double-spend. The entry is dropped on confirmed success, so
+// a deliberate identical highlight later still gets a fresh charge.
+const _highlightTxns = new Map()
+const HIGHLIGHT_TXN_TTL_MS = 5 * 60 * 1000
+function _highlightTxnFor(channelId, message, replyParentId) {
+  const key = `${channelId}|${replyParentId || ''}|${message}`
+  const now = Date.now()
+  if (_highlightTxns.size > 200) {
+    for (const [k, v] of _highlightTxns) if (now - v.ts > HIGHLIGHT_TXN_TTL_MS) _highlightTxns.delete(k)
+  }
+  const hit = _highlightTxns.get(key)
+  if (hit && now - hit.ts < HIGHLIGHT_TXN_TTL_MS) return { key, ...hit }
+  const fresh = { nonce: crypto.randomUUID(), transactionID: crypto.randomUUID(), ts: now }
+  _highlightTxns.set(key, fresh)
+  return { key, ...fresh }
+}
+
 async function sendHighlightedTwitchMessage(channelId, message, nonce, replyParentId) {
   if (_isHighlightSendKilled()) return { error: 'highlight disabled by server' }
   const token = getTwitchAuthToken()
@@ -2810,12 +2833,15 @@ async function sendHighlightedTwitchMessage(channelId, message, nonce, replyPare
   if (!channelId) return { error: 'channel not resolved' }
   const cost = await fetchHighlightCost(channelId)
   if (cost == null) return { error: 'highlight unavailable on this channel' }
+  // Reuse a recent transaction for the same message so a resend is idempotent
+  // at Twitch's bits layer. An explicit nonce (caller-supplied) still wins.
+  const txn = _highlightTxnFor(channelId, message, replyParentId)
   const input = {
     channelID: String(channelId),
     message,
     cost,
-    nonce: nonce || crypto.randomUUID(),
-    transactionID: crypto.randomUUID(),
+    nonce: nonce || txn.nonce,
+    transactionID: txn.transactionID,
   }
   if (replyParentId) input.replyParentMessageID = replyParentId
   const readResult = (d) => {
@@ -2836,9 +2862,20 @@ async function sendHighlightedTwitchMessage(channelId, message, nonce, replyPare
   }`
   try {
     const data = await gqlProxy('SendHighlightedChatMessage', { input }, { rawQuery: RAW_QUERY })
-    return readResult(Array.isArray(data) ? data[0] : data)
+    const res = readResult(Array.isArray(data) ? data[0] : data)
+    // Confirmed one way or the other: a structured response means Twitch
+    // processed the mutation (charged + posted, or rejected before charging).
+    // Either way this transaction is spent — drop it so a later deliberate
+    // resend of the same text starts a fresh charge instead of being deduped.
+    _highlightTxns.delete(txn.key)
+    return res
   } catch (e) {
-    return { error: e.message }
+    // A throw is a CLIENT-side timeout/integrity/abort — we never heard back,
+    // so the charge may or may not have happened. Keep the transaction cached
+    // (untouched) so a resend reuses it and Twitch dedupes; tell the caller this
+    // is unconfirmed, NOT a clean failure, so it doesn't frame a resend as a
+    // repair the way an insufficient-bits error would.
+    return { error: e.message, unconfirmed: true }
   }
 }
 

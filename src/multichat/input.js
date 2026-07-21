@@ -6849,6 +6849,17 @@ async function handleSlashCommand(text, input) {
         )
       }
       armComposerStickyFocus(input)
+    } else if (r?.unconfirmed) {
+      // A client-side timeout — the highlight may already have posted and
+      // charged. Do NOT clear the input (so a resend is one keystroke away) and
+      // do NOT call it a failure. The transaction is idempotent at Twitch's bits
+      // layer (sendHighlightedTwitchMessage caches transactionID), so a resend
+      // of the same text charges once no matter what — say so.
+      showToast(
+        t('mc_input_highlight_unconfirmed') || 'highlight didn’t confirm — resend is safe, bits charge once',
+        'warn',
+      )
+      armComposerStickyFocus(input)
     } else {
       showToast(
         t('mc_input_highlight_failed', [r?.error || 'unknown']) || `highlight failed: ${r?.error || 'unknown'}`,

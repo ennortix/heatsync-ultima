@@ -303,11 +303,26 @@
        OWN sends the hardest to read — removed; direction is the signal now.) */
     .hs-whisper-msg.hs-whisper-out { border-left: 3px solid var(--hs-brand); }
     .hs-whisper-msg.hs-whisper-in { border-left: 3px solid var(--hs-reply); }
+    /* The arrow is a SYMBOL, not text — pull it out of the bitmap font stack so
+       it can scale crisply. Cozette only renders sharp at its native grid, so
+       sizing this up while inheriting the panel font would just smear it (see
+       the bitmap-smear trap). A scalable mono face + line-height:1 keeps the row
+       height pinned at 18px, so it reads bigger without costing any density. */
     .hs-whisper-arrow {
-      font-size: 15px;
+      font-family: ui-monospace, "DejaVu Sans Mono", "Liberation Mono", monospace;
+      font-size: 19px;
       font-weight: 700;
-      margin: 0 4px;
-      vertical-align: -1px;
+      /* Pin the box to the row's own line-height. A 19px glyph in an auto-height
+         inline box grew the line box by 1px, so whisper rows sat a pixel taller
+         than every other row — uniform row height is the whole point of the
+         density grid. Fixed height + middle alignment lets the glyph render at
+         full size (overflow is visible) without touching layout. */
+      display: inline-block;
+      height: 18px;
+      line-height: 18px;
+      overflow: visible;
+      vertical-align: middle;
+      margin: 0 5px;
     }
     .hs-whisper-you {
       color: #bbb;

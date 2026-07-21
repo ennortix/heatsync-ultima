@@ -297,6 +297,15 @@
       }
     }
   },
+  "content_toast_follow_failed": {
+    "message": "couldn’t follow — try again"
+  },
+  "content_toast_unfollow_failed": {
+    "message": "couldn’t unfollow — try again"
+  },
+  "content_toast_no_chat_input": {
+    "message": "open twitch chat to use mod actions"
+  },
   "content_toast_blocked": {
     "message": "blocked $NAME$",
     "placeholders": {

@@ -8889,6 +8889,13 @@
             const msg = (e?.message || '').toLowerCase()
             if (msg.includes('already following') || msg.includes('not following')) {
               following = targetFollowing
+            } else {
+              // Every other failure (network, 401, 500, rate-limit) used to be
+              // swallowed with no toast and no log: the button snapped back to
+              // its old label, so a real failure was indistinguishable from
+              // "the click did nothing".
+              log('follow toggle failed:', e?.message || e)
+              showToast(t(targetFollowing ? 'content_toast_follow_failed' : 'content_toast_unfollow_failed'), 'error')
             }
           }
           if (followBtn.isConnected) {
@@ -8996,10 +9003,19 @@
     }
 
     // Inject chat command into Twitch input
+    // Mod-card actions drive Twitch's own chat input. Both bail-outs used to be
+    // silent: clicking "ban" with an invalidated context or no chat input on
+    // screen typed nothing, closed nothing, and said nothing.
     function injectChatCommand(command) {
-      if (!extensionContextValid) return
+      if (!extensionContextValid) {
+        showToast(t('common_extension_updated'), 'warning')
+        return
+      }
       const chatInput = document.querySelector('[data-a-target="chat-input"]')
-      if (!chatInput) return
+      if (!chatInput) {
+        showToast(t('content_toast_no_chat_input'), 'error')
+        return
+      }
 
       chatInput.focus()
       // Clear existing text and insert command without touching clipboard

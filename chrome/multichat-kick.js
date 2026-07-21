@@ -40191,10 +40191,14 @@ function updateInputPlaceholder() {
         resolvedName: (typeof youtubeLinks !== 'undefined' && youtubeLinks.get('__live_yt_auto__')?.channelName) || '',
       })
     }
-    placeholder = channel ? t('mc_input_send_channel', [channel]) : t('mc_input_send_message')
+    // No resolvable channel (e.g. /directory, /settings — the panel still streams
+    // your configured tabs, but the live tab has nothing selected). Saying "send a
+    // message..." promises a send that can't happen: Enter just flashes red. Name
+    // the actual state instead.
+    placeholder = channel ? t('mc_input_send_channel', [channel]) : t('mc_input_no_channel')
   } else if (currentTab === 'mentions') {
     const channel = getCurrentChannel()
-    placeholder = channel ? t('mc_input_send_channel', [channel]) : t('mc_input_send_message')
+    placeholder = channel ? t('mc_input_send_channel', [channel]) : t('mc_input_no_channel')
   } else if (currentTab === 'whispers') {
     // armed target names the placeholder and must not flip when an incoming
     // whisper retargets lastWhisperKey out from under it
@@ -44581,7 +44585,11 @@ async function sendMessage() {
   }
 
   if (!targetChannel) {
+    // A bare red flash doesn't say WHY — on a no-channel page (/directory,
+    // /settings) there's simply nothing selected to send to. Say so, and keep
+    // the text in the box so the user doesn't lose what they typed.
     flashInputError(input)
+    showToast(t('mc_input_no_channel'), 'error')
     return
   }
 

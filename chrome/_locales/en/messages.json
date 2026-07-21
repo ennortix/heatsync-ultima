@@ -883,6 +883,9 @@
   "mc_whisper_hs_unreachable": {
     "message": "couldn't reach heatsync — try again"
   },
+  "mc_input_no_channel": {
+    "message": "no channel — pick a tab above"
+  },
   "mc_whisper_hs_not_found": {
     "message": "heatsync user \"$USER$\" not found",
     "placeholders": {

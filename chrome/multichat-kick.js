@@ -36293,9 +36293,25 @@ async function sendTwitchWhisper(toUserId, message) {
       showToast(t('mc_whisper_login'), 'error')
       return { ok: false, error: 'no twitch session', errorKind: 'auth' }
     }
+    // The GQL fallback failed too — but if the PROXY already told us why
+    // (twitch OAuth missing user:manage:whispers), that's the only error the
+    // user can act on. Surfacing the fallback's internals instead
+    // ("apollo client or webpack module not found") buried the fix behind a
+    // dead-end retry: the off-twitch branch above gets this right, on-twitch
+    // skipped straight past it. Prefer the actionable reason + relink CTA.
+    if (needsRelink) {
+      const emsg = respError || t('mc_whisper_not_enabled')
+      showToast(emsg, 'error')
+      return { ok: false, error: emsg, errorKind: 'relink' }
+    }
     showToast(t('mc_whisper_failed', [direct.error || t('mc_common_unknown')]), 'error')
     return { ok: false, error: direct.error || 'unknown' }
   } catch (e) {
+    if (needsRelink) {
+      const emsg = respError || t('mc_whisper_not_enabled')
+      showToast(emsg, 'error')
+      return { ok: false, error: emsg, errorKind: 'relink' }
+    }
     showToast(t('mc_whisper_failed', [e.message]), 'error')
     return { ok: false, error: e.message }
   }

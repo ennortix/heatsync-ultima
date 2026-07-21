@@ -320,8 +320,23 @@
       display: inline-block;
       height: 18px;
       line-height: 18px;
+      /* INTEGER width is mandatory, not cosmetic. This glyph comes from a
+         scalable font, so its natural advance is fractional (measured 11.4531px)
+         — which put every glyph AFTER the arrow on a half-pixel X and smeared it
+         (the "you" in "mellen9 → you"). Bitmap text can't survive subpixel
+         positioning. Ceil to a whole pixel and centre the glyph inside it; with
+         integer margins the whole run stays on the pixel grid. */
+      width: 12px;
+      text-align: center;
       overflow: visible;
-      vertical-align: middle;
+      /* An INTEGER px offset — never `middle` (anchors at baseline + xHeight/2,
+         and Cozette's 13px x-height halves to 3.546875px = fractional baseline)
+         and not `text-bottom` here either: text-bottom is right for tall emote
+         boxes, but against this 18px row it grew every whisper row to 25px.
+         A whole-pixel offset keeps the baseline on the grid AND leaves row
+         height untouched. Measured: row 22px (same as a plain row), frac(x)=0,
+         frac(y)=0 on the adjacent text node. */
+      vertical-align: -4px;
       margin: 0 5px;
     }
     .hs-whisper-you {

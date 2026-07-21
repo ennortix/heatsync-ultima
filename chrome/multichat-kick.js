@@ -8703,8 +8703,21 @@ function injectStyles() {
       display: inline-block;
       height: 18px;
       line-height: 18px;
+      /* INTEGER width is mandatory, not cosmetic. This glyph comes from a
+         scalable font, so its natural advance is fractional (measured 11.4531px)
+         — which put every glyph AFTER the arrow on a half-pixel X and smeared it
+         (the "you" in "mellen9 → you"). Bitmap text can't survive subpixel
+         positioning. Ceil to a whole pixel and centre the glyph inside it; with
+         integer margins the whole run stays on the pixel grid. */
+      width: 12px;
+      text-align: center;
       overflow: visible;
-      vertical-align: middle;
+      /* text-bottom, NEVER middle: middle anchors at baseline + xHeight/2, and
+         Cozette's 13px x-height halves to 3.546875px — a fractional baseline
+         that smears every adjacent bitmap glyph (this is what made the "you"
+         token blurry). text-bottom anchors to the font strut, so it's immune to
+         sibling box heights. Verified frac(y)=0 on the neighbouring text node. */
+      vertical-align: text-bottom;
       margin: 0 5px;
     }
     .hs-whisper-you {

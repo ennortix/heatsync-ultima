@@ -5,7 +5,7 @@
 // test. Caught mc_emote_blocked (tooltip copy, zero placeholders) being called
 // with an emote name from two toast sites.
 import { describe, expect, test } from 'bun:test'
-import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
 const ROOT = join(import.meta.dir, '..')

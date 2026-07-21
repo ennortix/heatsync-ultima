@@ -65370,8 +65370,14 @@ const STORAGE_KEY = 'heatsync_multichat'
     if (hostPlatform === 'yt') {
       next = !!document.querySelector('ytd-watch-flexy[theater], ytd-watch-flexy[fullscreen]')
     } else if (isKick) {
-      const m = document.querySelector('main[data-theatre-mode-container]')
-      next = m?.dataset.theatre === 'true' || !!document.querySelector('main[data-theatre="true"]')
+      // Kick MOVED the theatre flag off <main>: it now lives on a wrapper
+      // div.group/main that CONTAINS main (a direct child of body), and <main>
+      // only keeps a static data-theatre-mode-container marker. Both old checks
+      // were pinned to the main tag, so theatre silently stopped being detected
+      // — hs-mode-theatre never applied, and every theatre layout rule (which is
+      // what keeps the panel off the player) went dead. Don't pin it to a tag,
+      // just find the flag wherever Kick puts it next.
+      next = !!document.querySelector('[data-theatre="true"]')
     } else {
       next = !!document.querySelector('.right-column--theatre, .video-player--theatre')
     }
@@ -65420,8 +65426,10 @@ const STORAGE_KEY = 'heatsync_multichat'
       const flexy = document.querySelector('ytd-watch-flexy:not([hidden])')
       if (flexy) targets.push(flexy)
     } else if (isKick) {
-      const main = document.querySelector('main')
-      if (main) targets.push(main)
+      // Must watch the BODY, not main: the theatre flag sits on an ANCESTOR of
+      // main, and subtree:true only ever sees descendants — observing main could
+      // never fire on the toggle. The class pre-filter below keeps this cheap.
+      targets.push(document.body)
     } else {
       // Twitch: theatre class lands on .right-column AND inside the player.
       // Watch the body — most-specific reliable observation point covers SPA navs.

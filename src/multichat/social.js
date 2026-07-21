@@ -313,7 +313,13 @@ async function deleteFeedPost(msg) {
     if (div) div.remove()
     const idx = feedMessages.findIndex((m) => m.base36_id === msg.base36_id)
     if (idx >= 0) feedMessages.splice(idx, 1)
+    return
   }
+  // Delete was the one mutation in this file with no failure branch: an expired
+  // session / 403 / 500 left the post sitting there and said nothing, so the
+  // user assumed the click missed and clicked again. apiFetch never throws (it
+  // returns {ok:false}), so a .catch() here would be dead code — check the flag.
+  showToast(resp?.data?.error || resp?.error || t('mc_feed_delete_failed'), 'error')
 }
 
 // ============================================

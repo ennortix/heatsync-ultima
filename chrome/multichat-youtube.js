@@ -32829,7 +32829,13 @@ async function deleteFeedPost(msg) {
     if (div) div.remove()
     const idx = feedMessages.findIndex((m) => m.base36_id === msg.base36_id)
     if (idx >= 0) feedMessages.splice(idx, 1)
+    return
   }
+  // Delete was the one mutation in this file with no failure branch: an expired
+  // session / 403 / 500 left the post sitting there and said nothing, so the
+  // user assumed the click missed and clicked again. apiFetch never throws (it
+  // returns {ok:false}), so a .catch() here would be dead code — check the flag.
+  showToast(resp?.data?.error || resp?.error || t('mc_feed_delete_failed'), 'error')
 }
 
 // ============================================
@@ -45501,7 +45507,11 @@ async function openProfileCard(username, platform) {
     renderProfileCardView()
   } catch {
     if (!activeProfileCard) return
-    activeProfileCard.data = { error: true, username }
+    // A THROW is a transport failure (network blip, timeout, 5xx) — not proof
+    // the person has no heatsync account. Both used to collapse to the same
+    // {error:true}, so a registered user hit by a hiccup was shown the
+    // "no profile" card with follow and block greyed out until manual reload.
+    activeProfileCard.data = { error: true, transient: true, username }
     renderProfileCardView()
   }
 }
@@ -46255,6 +46265,20 @@ function renderProfileCardView() {
   } else if (data.error) {
     // No heatsync profile — still surface the platform identity row so the
     // card has at least one useful link (channel url) instead of a dead end.
+    // data.transient means we never got an answer: say so and offer a retry
+    // instead of asserting they have no account.
+    if (data.transient) {
+      const retry = document.createElement('button')
+      retry.className = 'hs-pcard-action'
+      retry.textContent = 'couldn’t load — retry'
+      retry.addEventListener('click', () => {
+        if (!activeProfileCard) return
+        // Re-open from scratch: openProfileCard re-runs the fetch and its cache
+        // check (the failed attempt was never cached, so this really retries).
+        openProfileCard(username, activeProfileCard.platform)
+      })
+      statsSec.appendChild(retry)
+    }
     const plat = activeProfileCard.platform
     const sheet = document.createElement('dl')
     sheet.className = 'hs-pcard-sheet'

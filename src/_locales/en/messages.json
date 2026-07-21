@@ -1001,6 +1001,9 @@
   "mc_emote_in_set": {
     "message": "inventory"
   },
+  "mc_feed_delete_failed": {
+    "message": "couldn’t delete — try again"
+  },
   "mc_emote_blocked": {
     "message": "blocked (click to unblock)"
   },

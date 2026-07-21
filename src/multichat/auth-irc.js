@@ -57,6 +57,18 @@ const authState = {
   sendQueue: [], // Capped at 50 — drop oldest if full
 }
 const MAX_SEND_QUEUE = 50
+
+// Push onto the reconnect queue, reporting whether it ACTUALLY landed. At the cap
+// the old code skipped the push but the caller still returned 'queued' — telling
+// the user their message was saved for reconnect right after throwing it away.
+// Callers now distinguish 'queued' (will fire on reconnect) from 'queue_full'
+// (gone), so a dropped send surfaces as a real failure with a retry instead of a
+// false yellow cue.
+function queueForReconnect(channel, text, replyParentId) {
+  if (authState.sendQueue.length >= MAX_SEND_QUEUE) return false
+  authState.sendQueue.push({ channel, text, replyParentId })
+  return true
+}
 // Expose for devtools inspection — useful when "send disappears with no error"
 // is reported, lets you see if the WS is dead / token missing / queued forever.
 try {
@@ -359,13 +371,12 @@ async function sendIrcMessage(channel, text, token, replyParentId, overrideNick)
         if (result === 'auth_failed') return 'auth_failed'
         if (!result) {
           if (attempt < 2) continue
-          if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text, replyParentId })
+          const queuedA = queueForReconnect(channel, text, replyParentId)
           scheduleReconnect([channel])
-          log('Queued message for reconnect')
-          // Return 'queued' so the caller can show a yellow "queued" cue
-          // instead of treating it as a clean success — message will fire
-          // when (if) the WS reconnects, not now.
-          return 'queued'
+          log(queuedA ? 'Queued message for reconnect' : 'Send queue FULL — message dropped')
+          // 'queued' = yellow cue; it fires when (if) the WS reconnects, not now.
+          // 'queue_full' = the message was discarded, so never call it queued.
+          return queuedA ? 'queued' : 'queue_full'
         }
       }
       if (!authState.joined.has(channel)) {
@@ -374,9 +385,10 @@ async function sendIrcMessage(channel, text, token, replyParentId, overrideNick)
         // than PRIVMSG into a never-joined channel (twitch drops it silently).
         if (!joined) {
           if (attempt < 2) continue
-          if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text, replyParentId })
-          if (typeof showToast === 'function') showToast(t('mc_irc_join_queued', [channel]), 'error')
-          return 'queued'
+          const queuedB = queueForReconnect(channel, text, replyParentId)
+          if (typeof showToast === 'function')
+            showToast(queuedB ? t('mc_irc_join_queued', [channel]) : t('mc_irc_queue_full'), 'error')
+          return queuedB ? 'queued' : 'queue_full'
         }
       }
       if (!authIrcAlive()) {
@@ -384,9 +396,9 @@ async function sendIrcMessage(channel, text, token, replyParentId, overrideNick)
           cleanupAuthIrc()
           continue
         }
-        if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text, replyParentId })
+        const queuedC = queueForReconnect(channel, text, replyParentId)
         scheduleReconnect([channel])
-        return 'queued'
+        return queuedC ? 'queued' : 'queue_full'
       }
       authState.ws.send(`${prefix}PRIVMSG #${channel} :${text}\r\n`)
       if (MC_DEBUG)
@@ -402,9 +414,9 @@ async function sendIrcMessage(channel, text, token, replyParentId, overrideNick)
       log('Send error attempt', attempt, ':', e.message || e)
       cleanupAuthIrc()
       if (attempt === 2) {
-        if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text, replyParentId })
+        const queuedD = queueForReconnect(channel, text, replyParentId)
         scheduleReconnect([channel])
-        return 'queued'
+        return queuedD ? 'queued' : 'queue_full'
       }
     }
   }

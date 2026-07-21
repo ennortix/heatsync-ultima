@@ -125,10 +125,14 @@ async function fetchChatLogsPage() {
   if (!activeChatLogs || activeChatLogs !== state) return
   state.loading = false
   if (!resp?.ok || !resp.data) {
-    state.exhausted = true
+    // Do NOT latch `exhausted` on a FAILED request — fetchChatLogsPage
+    // early-returns on it, so a single blip would permanently end the archive
+    // with no way to retry. Flag the error; the next load-more can try again.
+    state.loadError = true
     renderChatLogsView()
     return
   }
+  state.loadError = false
   const incoming = resp.data.results || []
   // results are newest-first; append to bottom of list since we're loading older
   state.rows.push(...incoming)
@@ -181,10 +185,14 @@ async function searchChatLogs(query) {
   if (!activeChatLogs || activeChatLogs !== state) return
   state.loading = false
   if (!resp?.ok || !resp.data) {
-    state.exhausted = true
+    // Clear the previous query's rows too — leaving them on screen relabels
+    // them as results for THIS query. And don't latch exhausted on a failure.
+    state.rows = []
+    state.loadError = true
     renderChatLogsView()
     return
   }
+  state.loadError = false
   state.rows = resp.data.results || []
   state.cursor = null
   state.exhausted = true
@@ -345,7 +353,11 @@ function renderChatLogsView() {
   if (rows.length === 0 && !loading) {
     const empty = document.createElement('div')
     empty.className = 'hs-cl-empty'
-    if (activeChatLogs.backfillPending) {
+    if (activeChatLogs.loadError) {
+      // A failed request is not an empty archive — saying "no matches" for a
+      // request that never succeeded is the same lie as the rest of this sweep.
+      empty.textContent = "couldn't load the archive — search or scroll again to retry"
+    } else if (activeChatLogs.backfillPending) {
       const src = activeChatLogs.platform === 'kick' ? 'kick archive' : 'logs.ivr.fi'
       empty.textContent = `fetching historical logs from ${src}… try refresh in ~30s`
     } else {

@@ -518,7 +518,16 @@ function renderWhispersTab() {
     whisperDmsLoaded = true
     apiFetch('/api/dm')
       .then((resp) => {
-        if (!resp.ok || !Array.isArray(resp.data)) return
+        if (!resp.ok || !Array.isArray(resp.data)) {
+          // Clear the latch so the next render retries. apiFetch RESOLVES
+          // {ok:false} on failure (it never throws), so the .catch below never
+          // runs for this path — without this reset a single failed fetch (a
+          // sleeping MV3 service worker is routine) pins whisperDmsLoaded=true
+          // and the tab renders "loading…" forever, hiding every DM for the
+          // rest of the page session.
+          whisperDmsLoaded = false
+          return
+        }
         for (const dm of resp.data) {
           const key = `hs:${dm.other_user_id}`
           whisperUsersSet(key, {

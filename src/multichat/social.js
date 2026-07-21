@@ -322,18 +322,24 @@ async function deleteFeedPost(msg) {
 
 // API proxy — routes through background.js to bypass CORS + attach auth
 async function apiFetch(path, opts = {}) {
-  try {
-    const resp = await api.runtime.sendMessage({
-      type: 'api_fetch',
-      path,
-      method: opts.method || 'GET',
-      auth: opts.auth !== false,
-      body: opts.body,
-    })
-    return resp || { ok: false, error: 'no response' }
-  } catch (e) {
-    return { ok: false, error: 'context invalidated' }
-  }
+  // Route through safeSendMessage, NOT a bare runtime.sendMessage. An MV3 service
+  // worker that has gone to sleep rejects with "Receiving end does not exist" —
+  // that's RECOVERABLE (the message itself wakes it), and safeSendMessage retries
+  // on a [100,500,2000]ms ladder for exactly this. The old bare call collapsed
+  // every rejection into 'context invalidated', so the first user action after a
+  // BG restart silently no-op'd, and callers reported a transient wake as a
+  // terminal failure — that's what made /dm say "heatsync user not found" when
+  // the SW was merely restarting. ~40 call sites (follow, whispers, emotes,
+  // seen-state, chat-logs, profile-card) inherit the retry from here.
+  // safeSendMessage never throws; it returns {ok:false,error} instead.
+  const resp = await safeSendMessage({
+    type: 'api_fetch',
+    path,
+    method: opts.method || 'GET',
+    auth: opts.auth !== false,
+    body: opts.body,
+  })
+  return resp || { ok: false, error: 'no response' }
 }
 
 // Load heatsync auth state from storage
@@ -2330,12 +2336,16 @@ async function fetchDiscover() {
       .sort((a, b) => (b.heat || 0) - (a.heat || 0))
       .slice(0, 8)
 
-    discoverLoaded = true
+    // Latch ONLY when a fetch actually succeeded. Setting this on failure made
+    // an outage indistinguishable from a genuinely empty Discover AND blocked
+    // any retry for the rest of the session — a launch-day user on a cold
+    // service worker saw a dead, empty product with no way back.
+    discoverLoaded = tagsResp.ok || profilesResp.ok
   } catch (e) {
     discoverTags = []
     discoverProfiles = []
     discoverPosts = []
-    discoverLoaded = true
+    discoverLoaded = false
   } finally {
     discoverLoading = false
     if (currentTab === 'discover') renderDiscoverTab()
@@ -2963,10 +2973,12 @@ async function fetchPinned() {
     // Server returns { messages: [...] }; api_fetch proxy wraps as { ok, data: { messages } }
     const data = resp.ok ? resp.data || resp : {}
     pinnedMessages = Array.isArray(data) ? data : data.messages || []
-    pinnedLoaded = true
+    // Only latch on success — a failed fetch used to render the literal "no
+    // pinned messages" and never retry.
+    pinnedLoaded = resp.ok
   } catch (e) {
     pinnedMessages = []
-    pinnedLoaded = true
+    pinnedLoaded = false
   } finally {
     pinnedLoading = false
     if (currentTab === 'pinned') renderPinnedTab()

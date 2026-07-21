@@ -21240,6 +21240,18 @@ const authState = {
   sendQueue: [], // Capped at 50 — drop oldest if full
 }
 const MAX_SEND_QUEUE = 50
+
+// Push onto the reconnect queue, reporting whether it ACTUALLY landed. At the cap
+// the old code skipped the push but the caller still returned 'queued' — telling
+// the user their message was saved for reconnect right after throwing it away.
+// Callers now distinguish 'queued' (will fire on reconnect) from 'queue_full'
+// (gone), so a dropped send surfaces as a real failure with a retry instead of a
+// false yellow cue.
+function queueForReconnect(channel, text, replyParentId) {
+  if (authState.sendQueue.length >= MAX_SEND_QUEUE) return false
+  authState.sendQueue.push({ channel, text, replyParentId })
+  return true
+}
 // Expose for devtools inspection — useful when "send disappears with no error"
 // is reported, lets you see if the WS is dead / token missing / queued forever.
 try {
@@ -21542,13 +21554,12 @@ async function sendIrcMessage(channel, text, token, replyParentId, overrideNick)
         if (result === 'auth_failed') return 'auth_failed'
         if (!result) {
           if (attempt < 2) continue
-          if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text, replyParentId })
+          const queuedA = queueForReconnect(channel, text, replyParentId)
           scheduleReconnect([channel])
-          log('Queued message for reconnect')
-          // Return 'queued' so the caller can show a yellow "queued" cue
-          // instead of treating it as a clean success — message will fire
-          // when (if) the WS reconnects, not now.
-          return 'queued'
+          log(queuedA ? 'Queued message for reconnect' : 'Send queue FULL — message dropped')
+          // 'queued' = yellow cue; it fires when (if) the WS reconnects, not now.
+          // 'queue_full' = the message was discarded, so never call it queued.
+          return queuedA ? 'queued' : 'queue_full'
         }
       }
       if (!authState.joined.has(channel)) {
@@ -21557,9 +21568,10 @@ async function sendIrcMessage(channel, text, token, replyParentId, overrideNick)
         // than PRIVMSG into a never-joined channel (twitch drops it silently).
         if (!joined) {
           if (attempt < 2) continue
-          if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text, replyParentId })
-          if (typeof showToast === 'function') showToast(t('mc_irc_join_queued', [channel]), 'error')
-          return 'queued'
+          const queuedB = queueForReconnect(channel, text, replyParentId)
+          if (typeof showToast === 'function')
+            showToast(queuedB ? t('mc_irc_join_queued', [channel]) : t('mc_irc_queue_full'), 'error')
+          return queuedB ? 'queued' : 'queue_full'
         }
       }
       if (!authIrcAlive()) {
@@ -21567,9 +21579,9 @@ async function sendIrcMessage(channel, text, token, replyParentId, overrideNick)
           cleanupAuthIrc()
           continue
         }
-        if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text, replyParentId })
+        const queuedC = queueForReconnect(channel, text, replyParentId)
         scheduleReconnect([channel])
-        return 'queued'
+        return queuedC ? 'queued' : 'queue_full'
       }
       authState.ws.send(`${prefix}PRIVMSG #${channel} :${text}\r\n`)
       if (MC_DEBUG)
@@ -21585,9 +21597,9 @@ async function sendIrcMessage(channel, text, token, replyParentId, overrideNick)
       log('Send error attempt', attempt, ':', e.message || e)
       cleanupAuthIrc()
       if (attempt === 2) {
-        if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text, replyParentId })
+        const queuedD = queueForReconnect(channel, text, replyParentId)
         scheduleReconnect([channel])
-        return 'queued'
+        return queuedD ? 'queued' : 'queue_full'
       }
     }
   }
@@ -32501,18 +32513,24 @@ async function deleteFeedPost(msg) {
 
 // API proxy — routes through background.js to bypass CORS + attach auth
 async function apiFetch(path, opts = {}) {
-  try {
-    const resp = await api.runtime.sendMessage({
-      type: 'api_fetch',
-      path,
-      method: opts.method || 'GET',
-      auth: opts.auth !== false,
-      body: opts.body,
-    })
-    return resp || { ok: false, error: 'no response' }
-  } catch (e) {
-    return { ok: false, error: 'context invalidated' }
-  }
+  // Route through safeSendMessage, NOT a bare runtime.sendMessage. An MV3 service
+  // worker that has gone to sleep rejects with "Receiving end does not exist" —
+  // that's RECOVERABLE (the message itself wakes it), and safeSendMessage retries
+  // on a [100,500,2000]ms ladder for exactly this. The old bare call collapsed
+  // every rejection into 'context invalidated', so the first user action after a
+  // BG restart silently no-op'd, and callers reported a transient wake as a
+  // terminal failure — that's what made /dm say "heatsync user not found" when
+  // the SW was merely restarting. ~40 call sites (follow, whispers, emotes,
+  // seen-state, chat-logs, profile-card) inherit the retry from here.
+  // safeSendMessage never throws; it returns {ok:false,error} instead.
+  const resp = await safeSendMessage({
+    type: 'api_fetch',
+    path,
+    method: opts.method || 'GET',
+    auth: opts.auth !== false,
+    body: opts.body,
+  })
+  return resp || { ok: false, error: 'no response' }
 }
 
 // Load heatsync auth state from storage
@@ -34509,12 +34527,16 @@ async function fetchDiscover() {
       .sort((a, b) => (b.heat || 0) - (a.heat || 0))
       .slice(0, 8)
 
-    discoverLoaded = true
+    // Latch ONLY when a fetch actually succeeded. Setting this on failure made
+    // an outage indistinguishable from a genuinely empty Discover AND blocked
+    // any retry for the rest of the session — a launch-day user on a cold
+    // service worker saw a dead, empty product with no way back.
+    discoverLoaded = tagsResp.ok || profilesResp.ok
   } catch (e) {
     discoverTags = []
     discoverProfiles = []
     discoverPosts = []
-    discoverLoaded = true
+    discoverLoaded = false
   } finally {
     discoverLoading = false
     if (currentTab === 'discover') renderDiscoverTab()
@@ -35142,10 +35164,12 @@ async function fetchPinned() {
     // Server returns { messages: [...] }; api_fetch proxy wraps as { ok, data: { messages } }
     const data = resp.ok ? resp.data || resp : {}
     pinnedMessages = Array.isArray(data) ? data : data.messages || []
-    pinnedLoaded = true
+    // Only latch on success — a failed fetch used to render the literal "no
+    // pinned messages" and never retry.
+    pinnedLoaded = resp.ok
   } catch (e) {
     pinnedMessages = []
-    pinnedLoaded = true
+    pinnedLoaded = false
   } finally {
     pinnedLoading = false
     if (currentTab === 'pinned') renderPinnedTab()
@@ -36053,7 +36077,16 @@ function renderWhispersTab() {
     whisperDmsLoaded = true
     apiFetch('/api/dm')
       .then((resp) => {
-        if (!resp.ok || !Array.isArray(resp.data)) return
+        if (!resp.ok || !Array.isArray(resp.data)) {
+          // Clear the latch so the next render retries. apiFetch RESOLVES
+          // {ok:false} on failure (it never throws), so the .catch below never
+          // runs for this path — without this reset a single failed fetch (a
+          // sleeping MV3 service worker is routine) pins whisperDmsLoaded=true
+          // and the tab renders "loading…" forever, hiding every DM for the
+          // rest of the page session.
+          whisperDmsLoaded = false
+          return
+        }
         for (const dm of resp.data) {
           const key = `hs:${dm.other_user_id}`
           whisperUsersSet(key, {
@@ -39869,8 +39902,10 @@ function updateInputPlaceholder() {
     // the actual state instead.
     placeholder = channel ? t('mc_input_send_channel', [channel]) : t('mc_input_no_channel')
   } else if (currentTab === 'mentions') {
-    const channel = getCurrentChannel()
-    placeholder = channel ? t('mc_input_send_channel', [channel]) : t('mc_input_no_channel')
+    // Mentions aggregates across channels, so sendMessage refuses every plain
+    // send here — promising "send to #channel" was a lie regardless of whether
+    // a channel resolved.
+    placeholder = t('mc_input_mentions_readonly')
   } else if (currentTab === 'whispers') {
     // armed target names the placeholder and must not flip when an incoming
     // whisper retargets lastWhisperKey out from under it
@@ -44230,7 +44265,11 @@ async function sendMessage() {
 
   // Whispers/mentions: still require slash commands
   if (currentTab === 'whispers' || currentTab === 'mentions') {
+    // Both refuse a plain send by design — whispers need /r to name a target,
+    // mentions span channels so there's no single destination. The bare flash
+    // never said which, so it read as "the send broke".
     flashInputError(input)
+    showToast(currentTab === 'mentions' ? t('mc_input_mentions_readonly') : t('mc_whisper_hint'), 'error')
     return
   }
 
@@ -46738,10 +46777,14 @@ async function fetchChatLogsPage() {
   if (!activeChatLogs || activeChatLogs !== state) return
   state.loading = false
   if (!resp?.ok || !resp.data) {
-    state.exhausted = true
+    // Do NOT latch `exhausted` on a FAILED request — fetchChatLogsPage
+    // early-returns on it, so a single blip would permanently end the archive
+    // with no way to retry. Flag the error; the next load-more can try again.
+    state.loadError = true
     renderChatLogsView()
     return
   }
+  state.loadError = false
   const incoming = resp.data.results || []
   // results are newest-first; append to bottom of list since we're loading older
   state.rows.push(...incoming)
@@ -46794,10 +46837,14 @@ async function searchChatLogs(query) {
   if (!activeChatLogs || activeChatLogs !== state) return
   state.loading = false
   if (!resp?.ok || !resp.data) {
-    state.exhausted = true
+    // Clear the previous query's rows too — leaving them on screen relabels
+    // them as results for THIS query. And don't latch exhausted on a failure.
+    state.rows = []
+    state.loadError = true
     renderChatLogsView()
     return
   }
+  state.loadError = false
   state.rows = resp.data.results || []
   state.cursor = null
   state.exhausted = true
@@ -46958,7 +47005,11 @@ function renderChatLogsView() {
   if (rows.length === 0 && !loading) {
     const empty = document.createElement('div')
     empty.className = 'hs-cl-empty'
-    if (activeChatLogs.backfillPending) {
+    if (activeChatLogs.loadError) {
+      // A failed request is not an empty archive — saying "no matches" for a
+      // request that never succeeded is the same lie as the rest of this sweep.
+      empty.textContent = "couldn't load the archive — search or scroll again to retry"
+    } else if (activeChatLogs.backfillPending) {
       const src = activeChatLogs.platform === 'kick' ? 'kick archive' : 'logs.ivr.fi'
       empty.textContent = `fetching historical logs from ${src}… try refresh in ~30s`
     } else {

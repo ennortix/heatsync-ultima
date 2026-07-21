@@ -2995,8 +2995,10 @@ function updateInputPlaceholder() {
     // the actual state instead.
     placeholder = channel ? t('mc_input_send_channel', [channel]) : t('mc_input_no_channel')
   } else if (currentTab === 'mentions') {
-    const channel = getCurrentChannel()
-    placeholder = channel ? t('mc_input_send_channel', [channel]) : t('mc_input_no_channel')
+    // Mentions aggregates across channels, so sendMessage refuses every plain
+    // send here — promising "send to #channel" was a lie regardless of whether
+    // a channel resolved.
+    placeholder = t('mc_input_mentions_readonly')
   } else if (currentTab === 'whispers') {
     // armed target names the placeholder and must not flip when an incoming
     // whisper retargets lastWhisperKey out from under it
@@ -7356,7 +7358,11 @@ async function sendMessage() {
 
   // Whispers/mentions: still require slash commands
   if (currentTab === 'whispers' || currentTab === 'mentions') {
+    // Both refuse a plain send by design — whispers need /r to name a target,
+    // mentions span channels so there's no single destination. The bare flash
+    // never said which, so it read as "the send broke".
     flashInputError(input)
+    showToast(currentTab === 'mentions' ? t('mc_input_mentions_readonly') : t('mc_whisper_hint'), 'error')
     return
   }
 

@@ -883,6 +883,12 @@
   "mc_whisper_hs_unreachable": {
     "message": "couldn't reach heatsync — try again"
   },
+  "mc_irc_queue_full": {
+    "message": "send queue full — message not saved"
+  },
+  "mc_input_mentions_readonly": {
+    "message": "mentions — switch to a channel tab to send"
+  },
   "mc_input_no_channel": {
     "message": "no channel — pick a tab above"
   },

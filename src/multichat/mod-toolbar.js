@@ -656,8 +656,14 @@ function showModResultToast(label, target, r) {
       return
     }
     const only = tResp || kResp || r?.yResp
+    // yt codes get their own copy (youtubeModErrorMessage); twitch/kick errors
+    // are already human-readable strings from their APIs.
     const errText =
-      only?.error === 'not_moderator' ? t('mc_modtoolbar_not_youtube_mod') : only?.error || t('mc_common_unknown')
+      only && only === r?.yResp
+        ? youtubeModErrorMessage(only?.error)
+        : only?.error === 'not_moderator'
+          ? t('mc_modtoolbar_not_youtube_mod')
+          : only?.error || t('mc_common_unknown')
     showToast(
       only?.ok
         ? t('mc_modtoolbar_result_single_ok', [label, target])

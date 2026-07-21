@@ -143,3 +143,33 @@ function youtubeSendErrorMessage(err) {
       return t('mc_yt_send_failed')
   }
 }
+
+/**
+ * Same job as youtubeSendErrorMessage, for the mod verbs. Only 'not_moderator'
+ * had copy — every other code from youtube-content.js's handleYtModAction
+ * reached the toast raw, so a mod would read "delete failed: message_not_found".
+ * @param {string} err code from the yt mod relay
+ * @returns {string}
+ */
+function youtubeModErrorMessage(err) {
+  switch (err) {
+    case 'not_moderator':
+      return t('mc_yt_mod_not_moderator')
+    case 'message_not_found':
+      return t('mc_yt_mod_message_not_found')
+    case 'no_context_menu':
+      return t('mc_yt_mod_no_context_menu')
+    case 'action_unmapped':
+      return t('mc_yt_mod_action_unmapped')
+    case 'yt_rejected':
+      return t('mc_yt_mod_rejected')
+    case 'not_signed_in':
+      return t('mc_yt_mod_not_signed_in')
+    case 'no_message':
+      return t('mc_yt_mod_no_message')
+    default:
+      // An unknown code still beats nothing — pass it through rather than
+      // flattening every future yt error into one useless sentence.
+      return err ? String(err) : t('mc_common_unknown')
+  }
+}

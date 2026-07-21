@@ -2129,13 +2129,18 @@ async function _ctxMod(action, channel, platform, target, msgId, durationSec, la
   }
   const r = await dispatchModAction({ channel, platform, action, target, durationSec, msgId })
   if (action === 'delete') {
-    const derr = (r?.tResp || r?.kResp || r?.yResp)?.error
+    const dresp = r?.tResp || r?.kResp || r?.yResp
+    // yt's codes are machine strings — "delete failed: message_not_found" is
+    // what a mod used to read. Route them through the yt copy map; twitch and
+    // kick already hand back human-readable errors.
+    const derr =
+      dresp && dresp === r?.yResp
+        ? youtubeModErrorMessage(dresp.error)
+        : dresp?.error === 'not_moderator'
+          ? t('mc_modtoolbar_not_youtube_mod')
+          : dresp?.error || t('mc_common_unknown')
     showToast(
-      r?.anyOk
-        ? t('mc_profile_deleted_message')
-        : t('mc_input_delete_failed', [
-            derr === 'not_moderator' ? t('mc_modtoolbar_not_youtube_mod') : derr || t('mc_common_unknown'),
-          ]),
+      r?.anyOk ? t('mc_profile_deleted_message') : t('mc_input_delete_failed', [derr]),
       r?.anyOk ? 'success' : 'error',
     )
   } else {
@@ -7627,7 +7632,10 @@ async function sendMessage() {
       sendYoutubeMessage(ytText, ytVideoId)
         .then((result) => {
           if (result !== true && result !== 'no_youtube_tab') {
-            showToast(t('mc_yt_send_failed'), 'error')
+            // The mirror leg used to flatten every reason into "youtube send
+            // failed" while the yt-only path surfaced the real one — same
+            // failure, two different truths depending on which leg you were on.
+            showToast(youtubeSendErrorMessage(result), 'error')
           }
         })
         .catch(() => showToast(t('mc_yt_send_failed'), 'error'))

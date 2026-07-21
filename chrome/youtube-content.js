@@ -1430,9 +1430,9 @@
         if (result?.success === false) {
           blockedEmotes.delete(emote.hash)
           img.style.opacity = ''
-          showYtToast('Block failed')
+          showYtToast('block failed')
         } else {
-          showYtToast(`Blocked: ${escapeHtml(emote.name)}`)
+          showYtToast(`blocked: ${escapeHtml(emote.name)}`)
         }
       })
     },
@@ -1828,6 +1828,18 @@
       if (!signal.aborted) cleanup.setTimeout(setupAutocomplete, 500)
     } catch (err) {
       log('init failed:', err.message)
+      // waitForContainer rejecting means YouTube's chat list never mounted —
+      // chat disabled or members-gated, a replay-only page, or YT moved the
+      // markup. Every native surface (emote images, cosmetics, the mod probe)
+      // then silently never turns on, which from the outside is identical to a
+      // quiet channel. This script only runs on /live_chat*, so there is no
+      // ordinary page where the timeout is expected and toasting is noise.
+      // 'aborted' is our own teardown on nav/pagehide, not a failure.
+      if (!signal.aborted && err?.message !== 'aborted') {
+        try {
+          showYtToast('heatsync could not attach to this chat')
+        } catch (_) {}
+      }
     }
   }
 

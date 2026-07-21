@@ -5011,7 +5011,15 @@ async function fetchServerMutes() {
       credentials: 'include',
       signal: AbortSignal.timeout(8000),
     })
-    if (!res.ok) return // 401 = not logged in, skip silently
+    if (!res.ok) {
+      // fetch does NOT throw on an HTTP error, so the catch below never sees a
+      // 5xx — and this runs off the WS 'authenticated' event, so we ARE logged
+      // in and a 401 here is a token blip, not "logged out". Leaving the latch
+      // set meant server mutes silently never synced again for the whole
+      // session (not even on reconnect). Clear it so the next auth retries.
+      _serverMutesFetched = false
+      return
+    }
     const data = await res.json()
     const list = Array.isArray(data) ? data : Array.isArray(data?.mutes) ? data.mutes : null
     if (!list) return
@@ -5049,7 +5057,14 @@ async function fetchServerBlocks() {
       credentials: 'include',
       signal: AbortSignal.timeout(8000),
     })
-    if (!res.ok) return // 401 = not logged in, skip silently
+    if (!res.ok) {
+      // Same as fetchServerMutes: an HTTP error doesn't throw, so the catch
+      // can't reset this. Blocks are safety-relevant — a silently un-synced
+      // block list means a blocked user's messages reappear in chat with no
+      // signal at all. Always allow the next auth to retry.
+      _serverBlocksFetched = false
+      return
+    }
     const data = await res.json()
     const list = Array.isArray(data?.blocked_users) ? data.blocked_users : null
     if (!list) return

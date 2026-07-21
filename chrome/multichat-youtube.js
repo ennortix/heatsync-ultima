@@ -17789,17 +17789,24 @@ async function loadSeenState() {
     return
   }
 
+  let _seenSynced = false
   try {
     const resp = await apiFetch('/api/user/seen-state')
     if (resp?.ok && resp.data) {
       for (const k of SEEN_SURFACES) {
         if (typeof resp.data[k] === 'number') seenAt[k] = resp.data[k]
       }
+      _seenSynced = true
     }
   } catch (e) {
     warn('seen-state GET failed:', e?.message)
   }
-  _seenLoaded = true
+  // Only mark loaded when the server state actually arrived. Nothing reads this
+  // flag today, but it was set even on a failed GET — so the moment anyone adds
+  // the obvious `if (_seenLoaded) return` guard, a transient failure would
+  // silently block the retry for the whole session (exactly what the comment
+  // above warns about for the anonymous race).
+  _seenLoaded = _seenSynced
   refreshSeenBadges()
 }
 

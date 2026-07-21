@@ -7349,6 +7349,10 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
           baselines: _kpModeStats.baselines,
           lastError: _kpModeStats.lastError,
         },
+        // Celebration events off the tap. `dropped` non-zero means kick is
+        // shipping a payload shape we don't parse — the one failure mode that
+        // would otherwise look identical to "nobody subscribed".
+        events: { ..._kpEventStats },
       })
     } catch (e) {
       sendResponse({ error: e?.message || 'unknown' })
@@ -13041,6 +13045,13 @@ function _kpConnect() {
       _kpHandleModEvent(d, 'ban')
     } else if (typeof d.event === 'string' && d.event.includes('UserUnbannedEvent')) {
       _kpHandleModEvent(d, 'unban')
+    } else if (typeof d.event === 'string' && d.event.includes('GiftedSubscriptionsEvent')) {
+      // Checked before SubscriptionEvent: kick's gift event name does not
+      // contain "SubscriptionEvent", but ordering it first keeps the pair
+      // obvious if kick ever renames one into a superstring of the other.
+      _kpHandleGiftSubEvent(d)
+    } else if (typeof d.event === 'string' && d.event.includes('SubscriptionEvent')) {
+      _kpHandleSubEvent(d)
     } else if (typeof d.event === 'string' && d.event.includes('ChatroomUpdatedEvent')) {
       // Async (storage.session baseline load) — a rejection here is otherwise
       // an invisible unhandled promise in the SW; pin it for dbg_kick_tap.
@@ -13311,6 +13322,80 @@ function _kpHandleModEvent(d, kind) {
     broadcastToTabs({ type: 'kick_moderation', action: 'unban', channel: slug, targetUser })
   }
 }
+// Kick's chatroom Pusher channel carries the celebration events too — subs and
+// gift subs. The server webhook relay already renders both, but a webhook only
+// fires for channels whose broadcaster authorised the heatsync kick app, which
+// is a handful; the tap sees them for EVERY joined channel. Broadcast shapes
+// match the relay's exactly (server kick-stream-webhooks handleSubscription*)
+// so the overlay has one render path, and irc.js dedups source-blind when a
+// channel happens to have both transports.
+const _kpEventStats = { subs: 0, gifts: 0, dropped: 0 }
+function _kpEventParse(d) {
+  try {
+    return typeof d.data === 'string' ? JSON.parse(d.data) : d.data
+  } catch {
+    return null
+  }
+}
+// Accepts the v1 chatroom channel as well as v2 — we only subscribe to v2
+// today, but kick has moved events between the two before and a frame that
+// arrives on v1 should resolve rather than land in the unmatched bucket.
+function _kpEventSlug(d) {
+  const m = /chatrooms\.(\d+)(?:\.v2)?$/.exec(d.channel || '')
+  return m ? _kpSlugForChatroom(Number(m[1])) : null
+}
+
+function _kpHandleSubEvent(d) {
+  const ev = _kpEventParse(d)
+  const slug = ev && _kpEventSlug(d)
+  if (!slug) return
+  const username = ev.username || ev.user?.username || ''
+  if (!username) {
+    _kpEventStats.dropped++
+    return
+  }
+  const months = Math.max(1, Number(ev.months) || 1)
+  const isResub = months > 1
+  _kpEventStats.subs++
+  broadcastToTabs({
+    type: 'kick_sub_event',
+    channel: slug,
+    eventType: isResub ? 'renewal' : 'new',
+    username,
+    months,
+    message: isResub ? `${username} resubscribed for ${months} months!` : `${username} subscribed!`,
+  })
+}
+
+function _kpHandleGiftSubEvent(d) {
+  const ev = _kpEventParse(d)
+  const slug = ev && _kpEventSlug(d)
+  if (!slug) return
+  const gifter = ev.gifter_username || ev.gifter?.username || 'anonymous'
+  const names = ev.gifted_usernames || ev.usernames || ev.giftees
+  const giftees = Array.isArray(names)
+    ? names.map((g) => (typeof g === 'string' ? g : g?.username)).filter(Boolean)
+    : []
+  // Count from the giftee list, never from a field we haven't seen — a gift
+  // event we can't size is worth dropping (and counting) rather than
+  // announcing "gifted 0 subs".
+  const count = giftees.length
+  if (!count) {
+    _kpEventStats.dropped++
+    return
+  }
+  _kpEventStats.gifts++
+  broadcastToTabs({
+    type: 'kick_sub_event',
+    channel: slug,
+    eventType: 'gift',
+    username: gifter,
+    gifter,
+    giftees,
+    message: `${gifter} gifted ${count} sub${count !== 1 ? 's' : ''}!`,
+  })
+}
+
 async function kickPusherJoin(slug) {
   if (!KICK_PUSHER_TAP) return
   slug = (slug || '').toLowerCase()

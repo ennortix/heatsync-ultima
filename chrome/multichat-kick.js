@@ -20090,6 +20090,33 @@ function scanExistingMentions() {
 const _raidWindows = new Map()
 const RAID_WINDOW_MS = 90 * 1000
 
+// Kick sub/gift/KICKs celebrations reach us on TWO independent transports —
+// the server's official webhook relay and BG's Pusher tap — and a channel can
+// have both. Neither payload carries a stable event id to dedup on, so the key
+// is the content itself inside a short window. Collapsing a genuine second
+// identical gift within 30s costs one line; letting every celebration render
+// twice costs trust in every line.
+const KICK_CELEBRATION_DEDUP_MS = 30000
+const _kickCelebrationSeen = new Map()
+function kickCelebrationFresh(key) {
+  const now = Date.now()
+  if (_kickCelebrationSeen.size > 200) {
+    for (const [k, t] of _kickCelebrationSeen) if (now - t > KICK_CELEBRATION_DEDUP_MS) _kickCelebrationSeen.delete(k)
+  }
+  const prev = _kickCelebrationSeen.get(key)
+  if (prev && now - prev < KICK_CELEBRATION_DEDUP_MS) return false
+  _kickCelebrationSeen.set(key, now)
+  return true
+}
+
+// Short relay/tap event names → the notice ids main.js's noticeKind() actually
+// styles (it was written against the server's webhook event strings).
+const KICK_SUB_NOTICE_ID = {
+  new: 'channel.subscription.new',
+  renewal: 'channel.subscription.renewal',
+  gift: 'channel.subscription.gifts',
+}
+
 function parseTags(tagStr) {
   const tags = {}
   for (const part of tagStr.split(';')) {
@@ -21243,6 +21270,7 @@ class KickChat {
 
       // KICKs gifted events (Kick's equivalent of Twitch Bits)
       if (message.type === 'kick_kicks_event') {
+        if (!kickCelebrationFresh(`k|${message.channel}|${message.username}|${message.amount}`)) return
         const channel = message.channel?.toLowerCase()
         this._touchChannel(channel)
         if (!channel || !this.channels.has(channel)) return
@@ -21268,6 +21296,12 @@ class KickChat {
 
       // Kick subscription events (new sub, resub, gift subs)
       if (message.type === 'kick_sub_event') {
+        if (
+          !kickCelebrationFresh(
+            `s|${message.channel}|${message.eventType}|${message.username}|${message.months || 0}|${(message.giftees || []).length}`,
+          )
+        )
+          return
         const channel = message.channel?.toLowerCase()
         this._touchChannel(channel)
         if (!channel || !this.channels.has(channel)) return
@@ -21281,7 +21315,11 @@ class KickChat {
           channel,
           time: Date.now(),
           type: 'usernotice',
-          msgId: message.eventType || '',
+          // main.js's noticeKind() styles kick subs off the server's webhook
+          // event names, but the relay hands us the short form — so every kick
+          // sub notice rendered with no sub/gift treatment at all. Normalize
+          // here, the one place both transports pass through.
+          msgId: KICK_SUB_NOTICE_ID[message.eventType] || message.eventType || '',
           platform: 'kick',
           id: '',
         }

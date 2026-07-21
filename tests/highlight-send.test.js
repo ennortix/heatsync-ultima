@@ -154,13 +154,16 @@ describe('sendHighlightedTwitchMessage', () => {
     expect(/^\s*mutation\b/i.test(opts.rawQuery)).toBe(true)
   })
 
-  test('proxy error surfaces as {error} (no integrity-blind fallback)', async () => {
+  test('proxy error surfaces as unconfirmed {error} (no integrity-blind fallback)', async () => {
     const send = makeSender({
       gqlProxy: async () => {
         throw new Error('failed integrity check')
       },
     })
-    expect(await send('1', 'hi', null, null)).toEqual({ error: 'failed integrity check' })
+    // A throw is client-side (timeout/integrity/abort) — we never heard back, so
+    // it's unconfirmed, NOT a clean failure. The unconfirmed flag is what keeps
+    // the composer from framing a resend as a repair (bits are idempotent).
+    expect(await send('1', 'hi', null, null)).toEqual({ error: 'failed integrity check', unconfirmed: true })
   })
 
   test('kill switch (disabled includes highlight_send) refuses without spending', async () => {

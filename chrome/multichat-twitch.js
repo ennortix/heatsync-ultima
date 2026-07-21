@@ -16195,6 +16195,23 @@ img.hs-fx-zero { margin-left: -4px; }
       display: none !important;
     }
 
+    /* YOUTUBE FULLSCREEN — hide the panel outright.
+       On twitch, fullscreen promotes #root to the top layer, so a body-mounted
+       panel is simply never painted and no rule is needed. YouTube instead
+       expands the player in-page and marks ytd-watch-flexy[fullscreen] while the
+       document keeps rendering normal body content — so our position:fixed panel
+       sat on top of the fullscreen video. Key off YT's own attribute rather than
+       :fullscreen: when YT fullscreens the document element, that element is an
+       ANCESTOR of body, so body:has(:fullscreen) would never match it. Hiding the
+       container covers the tab bar, overlay, inputbar and emote picker (all its
+       children); the resize handle is a sibling, so it's listed too. */
+    body.hs-platform-yt:has(ytd-watch-flexy[fullscreen]) #hs-mc-container,
+    body.hs-platform-yt:has(ytd-watch-flexy[fullscreen]) #hs-yt-resize-handle,
+    body.hs-platform-yt:has(:fullscreen) #hs-mc-container,
+    body.hs-platform-yt:has(:fullscreen) #hs-yt-resize-handle {
+      display: none !important;
+    }
+
     /* --- chat container: fixed-position at chosen edge.
        chat-right also uses position:fixed (instead of YT's natural flex
        layout) so small-viewport responsive breakpoints don't push chat
@@ -17079,6 +17096,16 @@ img.hs-fx-zero { margin-left: -4px; }
     body.hs-platform-kick.hs-mode-theatre.hs-chat-left main {
       margin-left: var(--hs-chat-w, 340px) !important;
       padding-left: 0 !important;
+    }
+    /* chat-right was MISSING here — and it's the default position. Without it,
+       theatre let the player fill the whole viewport while the panel stayed
+       pinned to the right edge ON TOP of it, burying the player controls
+       (including the exit-theatre button), so theatre became a trap you
+       couldn't leave. Same omission the YT theatre rules had: written for
+       left/top/bottom, never for right. */
+    body.hs-platform-kick.hs-mode-theatre.hs-chat-right main {
+      margin-right: var(--hs-chat-w, 340px) !important;
+      padding-right: 0 !important;
     }
 
     /* --- YOUTUBE: collapse #secondary; pad #primary ---

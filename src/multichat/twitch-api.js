@@ -257,28 +257,28 @@ function renderQuickLinks() {
 // reading the mode back and comparing; we only claim success when the channel
 // actually changed. Wrong field name ⇒ honest failure, never a false success.
 // read  = the field on user.chatSettings used to CONFIRM the change.
-// write = the field name(s) to send in UpdateChatSettingsInput.
+// write = the field name to send in UpdateChatSettingsInput, or null when we
+//         have no proven way to set that mode on twitch.
 //
-// They are NOT always the same. The duration modes are proven live
-// (followersOnlyDurationMinutes long-shipped; slowModeDurationSeconds verified
-// 2026-07-21 by /slow 5 landing on a real channel). The BOOLEAN modes are not:
-// sending the read-type name (isEmoteOnlyModeEnabled) changed nothing, so
-// twitch's input uses a different spelling for them.
+// Only the DURATION modes are proven: followersOnlyDurationMinutes (long
+// shipped) and slowModeDurationSeconds (verified live 2026-07-21 — /slow 5
+// landed on a real channel and /slow off cleared it).
 //
-// Twitch's GQL silently IGNORES unknown input fields (proven — a deliberately
-// bogus field returns no error), so sending BOTH spellings is free: the wrong
-// one is discarded server-side and the right one applies. That turns a name we
-// can't introspect into one we don't have to guess. The read-back below still
-// gates success, so this can never manufacture a false positive.
+// The three BOOLEAN modes are deliberately NOT wired for twitch. Both the
+// read-type spelling and the un-prefixed variant were sent and changed nothing,
+// twitch's GQL exposes no other chat-mode mutation (probed), it silently
+// accepts unknown input fields so the name can't be discovered by probing, and
+// twitch's own chat-settings menu no longer offers emote-only / subs-only /
+// unique-chat as controls — so there is no client request left to copy. Rather
+// than ship three commands that fail while blaming the user's mod rights, they
+// report plainly that twitch doesn't take them. Kick still sets emote-only and
+// subs-only, and that path is proven.
 const TWITCH_CHAT_MODE_SPEC = {
-  followers: { read: 'followersOnlyDurationMinutes', write: ['followersOnlyDurationMinutes'] },
-  slow: { read: 'slowModeDurationSeconds', write: ['slowModeDurationSeconds'] },
-  emoteonly: { read: 'isEmoteOnlyModeEnabled', write: ['isEmoteOnlyModeEnabled', 'emoteOnlyModeEnabled'] },
-  subscribers: {
-    read: 'isSubscribersOnlyModeEnabled',
-    write: ['isSubscribersOnlyModeEnabled', 'subscribersOnlyModeEnabled'],
-  },
-  unique: { read: 'isUniqueChatModeEnabled', write: ['isUniqueChatModeEnabled', 'uniqueChatModeEnabled'] },
+  followers: { read: 'followersOnlyDurationMinutes', write: 'followersOnlyDurationMinutes' },
+  slow: { read: 'slowModeDurationSeconds', write: 'slowModeDurationSeconds' },
+  emoteonly: { read: 'isEmoteOnlyModeEnabled', write: null },
+  subscribers: { read: 'isSubscribersOnlyModeEnabled', write: null },
+  unique: { read: 'isUniqueChatModeEnabled', write: null },
 }
 
 // Live chat-mode state. Verified against twitch's schema 2026-07-21:
@@ -323,11 +323,12 @@ function _twitchChatModeMatches(mode, want, got) {
 async function setTwitchChatMode(channelLogin, mode, value) {
   const spec = TWITCH_CHAT_MODE_SPEC[mode]
   if (!spec) return { ok: false, error: 'unknown chat mode' }
+  // Honest refusal beats a mod action that quietly does nothing.
+  if (!spec.write) return { ok: false, unsupported: true, error: 'twitch has no api for this mode' }
   const { id: channelID, transient } = await resolveTwitchChannelIdEx(channelLogin)
   if (!channelID) return { ok: false, error: transient ? 'twitch unreachable — try again' : 'channel not found' }
   try {
-    const input = { channelID: String(channelID) }
-    for (const f of spec.write) input[f] = value
+    const input = { channelID: String(channelID), [spec.write]: value }
     const res = await gqlMutation(
       'mutation($input: UpdateChatSettingsInput!) { updateChatSettings(input: $input) { __typename } }',
       { input },

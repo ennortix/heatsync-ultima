@@ -7056,6 +7056,17 @@ async function handleSlashCommand(text, input) {
       twitchTarget ? setTwitchChatMode(twitchTarget, cmd, value) : Promise.resolve(null),
       kickPromise,
     ])
+    // Twitch can't do the boolean modes (see TWITCH_CHAT_MODE_SPEC). If kick
+    // handled it, that's a real success — don't surface twitch's refusal.
+    if (resp?.unsupported && kickResp?.ok) {
+      showToast(off ? t('mc_input_mode_off', [spec.label]) : t('mc_input_mode_on', [spec.label]), 'success')
+      clearInput(input)
+      return true
+    }
+    if (resp?.unsupported && !kickResp?.ok) {
+      showToast(t('mc_input_mode_twitch_unsupported', [cmd]), 'error')
+      return true
+    }
     if (kickResp && !kickResp.ok && !resp?.ok) {
       showToast(t('mc_input_mode_failed', [spec.label, kickResp.error]), 'error')
       return true

@@ -74,28 +74,34 @@ describe('mutation shape', () => {
   test('resolve failures keep the transient distinction', () => {
     expect(fn).toContain('twitch unreachable — try again')
   })
-  test('all five modes are specced with read + write fields', () => {
+  test('only the proven duration modes are writable on twitch', () => {
     const src = API.slice(
       API.indexOf('const TWITCH_CHAT_MODE_SPEC'),
       API.indexOf('\n}', API.indexOf('const TWITCH_CHAT_MODE_SPEC')) + 2,
     )
     const map = new Function(`${src}\nreturn TWITCH_CHAT_MODE_SPEC`)()
     expect(Object.keys(map).sort()).toEqual(['emoteonly', 'followers', 'slow', 'subscribers', 'unique'])
-    for (const [k, v] of Object.entries(map)) {
-      expect(v.read, k).toBeTruthy()
-      expect(Array.isArray(v.write) && v.write.length > 0, k).toBe(true)
-    }
-    // Proven-live duration modes send exactly one field; the boolean modes send
-    // both spellings because twitch's input name differs from its read name and
-    // unknown input fields are silently ignored.
-    expect(map.slow.write).toEqual(['slowModeDurationSeconds'])
-    expect(map.followers.write).toEqual(['followersOnlyDurationMinutes'])
+    // proven live
+    expect(map.slow.write).toBe('slowModeDurationSeconds')
+    expect(map.followers.write).toBe('followersOnlyDurationMinutes')
+    // deliberately not wired — twitch changed nothing for either spelling and
+    // its own UI no longer exposes these, so we refuse instead of pretending
     for (const m of ['emoteonly', 'subscribers', 'unique']) {
-      expect(map[m].write.length, m).toBe(2)
-      // read name must be among them, plus the un-prefixed variant
-      expect(map[m].write, m).toContain(map[m].read)
-      expect(map[m].write, m).toContain(map[m].read.replace(/^is/, '').replace(/^./, (c) => c.toLowerCase()))
+      expect(map[m].write, m).toBeNull()
+      expect(map[m].read, m).toBeTruthy() // still readable for /status
     }
+  })
+
+  test('an unsupported mode refuses up front and never mutates', () => {
+    const fn = extractFn(API, 'setTwitchChatMode')
+    expect(fn).toContain('if (!spec.write) return { ok: false, unsupported: true')
+    // the refusal must come before the mutation call
+    expect(fn.indexOf('!spec.write')).toBeLessThan(fn.indexOf('gqlMutation'))
+  })
+
+  test('kick success wins over a twitch refusal', () => {
+    expect(INPUT).toContain('resp?.unsupported && kickResp?.ok')
+    expect(INPUT).toContain('mc_input_mode_twitch_unsupported')
   })
 
   test('confirmation reads the read-type field, not a write field', () => {

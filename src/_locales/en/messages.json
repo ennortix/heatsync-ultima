@@ -1004,6 +1004,14 @@
   "mc_feed_delete_failed": {
     "message": "couldn’t delete — try again"
   },
+  "mc_emote_blocked_toast": {
+    "message": "blocked: $NAME$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
   "mc_emote_blocked": {
     "message": "blocked (click to unblock)"
   },

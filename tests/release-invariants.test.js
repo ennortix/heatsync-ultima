@@ -57,7 +57,9 @@ describe('emote block rollback cannot recurse', () => {
     for (const name of ['blockEmote', 'unblockEmote']) {
       const start = EMOTES.indexOf(`function ${name}(`)
       const body = EMOTES.slice(start, EMOTES.indexOf('\nfunction ', start + 10))
-      const toastLine = body.split('\n').find((l) => /showToast\(t\('mc_emote_(un)?blocked'/.test(l))
+      const toastLine = body
+        .split('\n')
+        .find((l) => /showToast\(t\((?:block \? )?'mc_emote_(blocked_toast|unblocked)'/.test(l))
       expect(toastLine, name).toBeTruthy()
       expect(toastLine, name).toContain('skipSync')
     }

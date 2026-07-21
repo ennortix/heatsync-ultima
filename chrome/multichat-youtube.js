@@ -23934,7 +23934,7 @@ function blockEmote(emoteName, clickedUrl, clickedSource, opts) {
   // Success toast fires from syncBlockToAPI on confirmation (or immediately for
   // the logged-out local path). skipSync means there's no confirmation coming,
   // so a non-silent skipSync still owes a toast; silent (rollback) owes none.
-  if (opts?.skipSync && !opts?.silent) showToast(t('mc_emote_blocked', [emoteName]), 'success')
+  if (opts?.skipSync && !opts?.silent) showToast(t('mc_emote_blocked_toast', [emoteName]), 'success')
   flashAllEmotes(emoteName, 'hs-flash-block')
   // Surgical: only re-key messages that reference this emote (no epoch bump →
   // no whole-chat rebuild flash). Live DOM already updated in-place above.
@@ -24196,7 +24196,7 @@ async function syncBlockToAPI(emoteName, block, ctx) {
     return
   }
   // Confirmed (or logged-out local success). Emit the success toast now.
-  if (!silent) showToast(t(block ? 'mc_emote_blocked' : 'mc_emote_unblocked', [emoteName]), 'success')
+  if (!silent) showToast(t(block ? 'mc_emote_blocked_toast' : 'mc_emote_unblocked', [emoteName]), 'success')
 }
 
 // Emote cache (loaded from storage)

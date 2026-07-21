@@ -47,7 +47,7 @@ describe('block success path', () => {
   test('a confirmed block shows the success toast, no rollback', async () => {
     const c = await run({ block: true, resp: { success: true } })
     expect(c.rollback).toBeNull()
-    expect(c.toasts).toEqual([{ msg: 'mc_emote_blocked', kind: 'success' }])
+    expect(c.toasts).toEqual([{ msg: 'mc_emote_blocked_toast', kind: 'success' }])
   })
 
   test('logged-out local success still toasts', async () => {
@@ -93,7 +93,7 @@ describe('optimistic UI wiring', () => {
   test('blockEmote no longer toasts inline except on skipSync', () => {
     const fn = extractFn(EMOTES, 'blockEmote')
     // the only success-toast in blockEmote is guarded by skipSync
-    const toastLines = fn.split('\n').filter((l) => l.includes("mc_emote_blocked'"))
+    const toastLines = fn.split('\n').filter((l) => l.includes("mc_emote_blocked_toast'"))
     expect(toastLines.length).toBe(1)
     expect(toastLines[0]).toContain('skipSync')
   })

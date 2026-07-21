@@ -6883,22 +6883,32 @@
     // Inline DM/whisper notification
     if (m.type === 'inline-dm') {
       const div = document.createElement('div')
-      div.className = 'hs-mc-feed-inline hs-mc-dm-inline'
-      const borderColor = m.inlineNotifBorderColor || INLINE_NOTIF_TYPES.dm.borderColor
-      div.style.borderLeftColor = borderColor
+      // Direction color-codes the whole row so an inbound/outbound whisper is
+      // unmistakable at a glance: cyan (--hs-reply, the whisper accent) = came
+      // IN to you, orange (--hs-brand, self) = went OUT from you. Border, label
+      // and the big arrow all share it.
+      div.className = `hs-mc-feed-inline hs-mc-dm-inline ${m.outgoing ? 'hs-whisper-out' : 'hs-whisper-in'}`
+      const dirColor = m.outgoing ? 'var(--hs-brand)' : 'var(--hs-reply)'
+      div.style.borderLeftColor = dirColor
       const tsVal = timestampsEnabled ? formatTimeFromTs(m.time) : ''
       const tsSpan = tsVal ? `<span class="hs-mc-ts">${tsVal}</span>` : ''
-      const labelColor = m.inlineNotifColor || INLINE_NOTIF_TYPES.dm.color
       // twitch = whisper, heatsync = native DM — distinct labels so the row
       // says what it actually is (both used to render [DM], which was wrong)
       const labelText = m.platform === 'twitch' ? '[whisper]' : '[DM]'
-      const label = `<span style="color:${labelColor};font-size:13px;font-weight:700;margin-right:3px">${labelText}</span>`
+      const label = `<span style="color:${dirColor};font-size:13px;font-weight:700;margin-right:4px">${labelText}</span>`
       const platBadge =
         m.platform === 'twitch'
           ? '<span style="color:var(--hs-plat-twitch);font-size:13px;font-weight:700;margin-right:3px">[T]</span>'
           : '<span style="color:#fff;font-size:13px;font-weight:700;margin-right:3px">[HS]</span>'
       const dmPaint = m.platform === 'twitch' ? userPaintStyle(m.userId, (m.user || '').toLowerCase(), 'twitch') : ''
-      const userName = `<span style="${dmPaint || `color:${sanitizeColor(m.color)};font-weight:600`}">${escapeHtml(m.user)}</span>`
+      // Always render the pair "who → who" (sender → recipient). m.user is the
+      // OTHER party in both directions (recipient on outgoing, sender on
+      // incoming), so the arrow flows away from you on sends, toward you on
+      // receives — the same mental model as a chat client's whisper split.
+      const otherName = `<span style="${dmPaint || `color:${sanitizeColor(m.color)};font-weight:600`}">${escapeHtml(m.user)}</span>`
+      const youTok = '<span class="hs-whisper-you">you</span>'
+      const arrow = `<span class="hs-whisper-arrow" style="color:${dirColor}">→</span>`
+      const dirPair = m.outgoing ? `${youTok}${arrow}${otherName}` : `${otherName}${arrow}${youTok}`
       // All values sanitized — safe innerHTML
       // @mentions in the DM body paint like anywhere else a person is named —
       // route through highlightMentionsInHtml (skipMentions=true avoids the
@@ -6912,7 +6922,7 @@
           ),
         )
       // All values already sanitized via escapeHtml/processEmotes — safe innerHTML (existing pattern)
-      div.innerHTML = `${tsSpan}${label}${platBadge}${userName}: ${m._renderedHtml}`
+      div.innerHTML = `${tsSpan}${label}${platBadge}${dirPair}: ${m._renderedHtml}`
       div.style.cursor = 'pointer'
       div.addEventListener('click', (e) => {
         if (e.target.closest('a, .hs-mc-emote')) return
@@ -13315,6 +13325,13 @@
           // IRC origin — badges are Twitch namespace regardless of [K] retag.
           msg.badgePlatform = 'twitch'
           msg.platform = sentHost === 'yt' ? 'youtube' : sentHost
+          // Restore the reply bar on our own echo when the winning transport
+          // dropped the reply-parent tags (see rememberOwnReply). sentHost hit
+          // already proves this is our ext send, so no stranger can be stamped.
+          if (!msg.replyTo) {
+            const _ownReply = typeof peekOwnReply === 'function' ? peekOwnReply(msg.text) : null
+            if (_ownReply?.user) msg.replyTo = _ownReply
+          }
         }
       }
       // Automod + filter rules: drop messages matching filter. Own msgs exempt.

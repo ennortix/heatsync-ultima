@@ -204,6 +204,34 @@ function peekSentHost(msgText) {
   return null
 }
 
+// Own-reply echo bar. A reply we send is echoed back by whichever read transport
+// wins the race — the BG anon IRC socket or the native page tap — and only ONE
+// of them reliably carries reply-parent-* tags on our own message, so the bar
+// (m.replyTo) rendered intermittently: present when the tagged copy won, absent
+// when the untagged one did (dominant in popout mode). Capture the parent
+// context at send time and stamp it back onto our own echo when it arrives
+// bare, making the bar transport-independent. Keyed by echo text (reply echoes
+// carry twitch's "@login " prefix, matched via _echoTextMatches), 10s window.
+let _recentOwnReplies = []
+function rememberOwnReply(text, replyTo) {
+  if (!text || !replyTo?.user) return
+  _recentOwnReplies.push({ text, replyTo, time: Date.now() })
+  const cutoff = Date.now() - SENT_DEDUP_WINDOW
+  _recentOwnReplies = _recentOwnReplies.filter((e) => e.time >= cutoff)
+}
+function peekOwnReply(echoText) {
+  if (!echoText || !_recentOwnReplies.length) return null
+  const cutoff = Date.now() - SENT_DEDUP_WINDOW
+  for (let i = _recentOwnReplies.length - 1; i >= 0; i--) {
+    const e = _recentOwnReplies[i]
+    if (e.time < cutoff) continue
+    // reply:true so _echoTextMatches also strips the leading "@login " twitch
+    // prepends onto reply echoes (mirrors isSentEcho/peekSentHost).
+    if (_echoTextMatches({ text: e.text, reply: true }, echoText)) return e.replyTo
+  }
+  return null
+}
+
 // ============================================
 // PENDING-SEND TRACKER — round-trip confirmation
 // ============================================
@@ -4618,6 +4646,49 @@ function _isBlockedAnyPlat(name) {
   )
 }
 
+// Merged autocomplete emote source: channel pools (tier 0) over the viewer's
+// set (tier 1) over globals (tier 2) — channel written LAST so a name owned AND
+// defined by the channel resolves to the channel image. findEmoteMatches runs
+// on EVERY debounced keystroke-word (bare-word inline suggest), and rebuilding
+// this merge — allocating two Maps across thousands of emotes each call — was
+// the dominant typing-lag cost on emote-heavy channels. Memoize it, keyed by a
+// cheap signature: active tab + the sizes of every source map. Any add/remove,
+// tab switch, or pool (re)hydration moves a size or the tab and busts the
+// cache; the only miss is a same-count in-place url swap, which leaves a stale
+// thumbnail (never a wrong insertion — names stay authoritative) until the next
+// size change.
+let _acMergeCache = null // { sig, acEmotes, tierByName }
+function _getMergedAcEmotes() {
+  // activeTabEmotePools resolves the tab's twitch/kick slot names + yt handle —
+  // pools are keyed by fetched owner name, and the raw tab id is NOT a pool key
+  // on merged-identity/yt tabs (the kripparrian-vs-nl_kripp trap; see emotes.js).
+  const acPools =
+    typeof activeTabEmotePools === 'function'
+      ? activeTabEmotePools()
+      : [channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()]].filter(Boolean)
+  let poolsSig = ''
+  for (const p of acPools) poolsSig += (p?.size || 0) + ','
+  const sig = `${currentTab}|${emoteCache.size}|${viewerPersonalEmotes.size}|${poolsSig}`
+  if (_acMergeCache && _acMergeCache.sig === sig) return _acMergeCache
+  const acEmotes = new Map()
+  const tierByName = new Map()
+  for (const [k, v] of emoteCache) {
+    acEmotes.set(k, v)
+    tierByName.set(k, 2)
+  }
+  for (const [k, v] of viewerPersonalEmotes) {
+    acEmotes.set(k, v)
+    tierByName.set(k, 1)
+  }
+  for (const acChCache of acPools)
+    for (const [k, v] of acChCache) {
+      acEmotes.set(k, v)
+      tierByName.set(k, 0)
+    }
+  _acMergeCache = { sig, acEmotes, tierByName }
+  return _acMergeCache
+}
+
 function findEmoteMatches(search) {
   const matches = []
 
@@ -4679,29 +4750,7 @@ function findEmoteMatches(search) {
   // CHANNEL image — that's what actually renders in this channel. Channel-first is
   // the user-chosen order (reverses the older own-first call).
   if (!isUserSearch) {
-    const tierByName = new Map()
-    const acEmotes = new Map()
-    for (const [k, v] of emoteCache) {
-      acEmotes.set(k, v)
-      tierByName.set(k, 2)
-    }
-    for (const [k, v] of viewerPersonalEmotes) {
-      acEmotes.set(k, v)
-      tierByName.set(k, 1)
-    }
-    // activeTabEmotePools resolves the tab's twitch/kick slot names + yt
-    // handle — pools are keyed by fetched owner name, and the raw tab id is
-    // NOT a pool key on merged-identity/yt tabs (the kripparrian-vs-nl_kripp
-    // trap; see emotes.js activeTabEmotePools).
-    const acPools =
-      typeof activeTabEmotePools === 'function'
-        ? activeTabEmotePools()
-        : [channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()]].filter(Boolean)
-    for (const acChCache of acPools)
-      for (const [k, v] of acChCache) {
-        acEmotes.set(k, v)
-        tierByName.set(k, 0)
-      }
+    const { acEmotes, tierByName } = _getMergedAcEmotes()
     for (const [name, emote] of acEmotes) {
       // Only tab-complete heatsync emotes you own (can't send emotes not in your set)
       if (emote.source === 'heatsync' && emote.state !== 'owned') continue
@@ -7418,6 +7467,25 @@ async function sendMessage() {
   // clearReplyState() wipes replyState below; Twitch/Kick keep carrying the
   // real replyParentId and never see this text.
   const replyAuthor = replyState?.user || null
+  // Stash the parent context for the own-echo reply bar (see peekOwnReply).
+  // Resolve parent text/userId from the twitch buffer best-effort — a miss
+  // still yields a correct bar from the author name alone. Must run BEFORE
+  // clearReplyState() wipes replyState.
+  if (replyParentId && sendToTwitch) {
+    let _parent = null
+    try {
+      _parent = irc?.channels
+        ?.get((twitchName || '').toLowerCase())
+        ?.getAll?.()
+        .find((m) => m?.id === replyParentId)
+    } catch (_) {}
+    rememberOwnReply(twitchText, {
+      user: replyAuthor || _parent?.user || '',
+      text: _parent?.text || '',
+      id: replyParentId,
+      userId: _parent?.userId || '',
+    })
+  }
   // Degraded reply text for the YouTube leg only — see ytReplyText
   // (send-targets.js). Twitch/Kick below always send restText/twitchText.
   const ytText = ytReplyText(restText, replyAuthor)

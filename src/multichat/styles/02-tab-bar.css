@@ -296,8 +296,22 @@
       color: #000 !important;
       border-color: #fff !important;
     }
-    .hs-whisper-self {
-      opacity: 0.7;
+    /* Direction color-coding — an in/out whisper must be unmistakable. cyan
+       (--hs-reply, whisper accent) = came IN to you; orange (--hs-brand, self)
+       = went OUT from you. Left border scans down the column; the arrow + label
+       repeat it inline. (Self rows used to dim to 0.7 opacity, which made your
+       OWN sends the hardest to read — removed; direction is the signal now.) */
+    .hs-whisper-msg.hs-whisper-out { border-left: 3px solid var(--hs-brand); }
+    .hs-whisper-msg.hs-whisper-in { border-left: 3px solid var(--hs-reply); }
+    .hs-whisper-arrow {
+      font-size: 15px;
+      font-weight: 700;
+      margin: 0 4px;
+      vertical-align: -1px;
+    }
+    .hs-whisper-you {
+      color: #bbb;
+      font-weight: 700;
     }
     .hs-whisper-pending {
       opacity: 0.45;

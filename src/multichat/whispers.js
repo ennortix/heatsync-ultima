@@ -432,7 +432,23 @@ async function sendWhisperMessage(key, text) {
   trimWhisperTimeline()
   lastWhisperKey = key
 
+  // Outgoing whispers get no server echo, so the only way the sender sees their
+  // own message off the whispers tab is an inline row — mirror the incoming
+  // path's else-branch (line 244/289). Without this a /r from a channel tab
+  // stored the message silently and the user couldn't tell anything sent.
+  // outgoing:true flips the render to "→ recipient" (see main.js inline-dm).
   if (currentTab === 'whispers') renderWhispersTab()
+  else
+    injectInlineNotif('dm', {
+      type: 'inline-dm',
+      outgoing: true,
+      user: userInfo.displayName || key,
+      userId: userInfo.userId,
+      text,
+      color: userInfo.color,
+      time: msg.time,
+      platform: userInfo.platform,
+    })
   whisperSaveDebounced()
 
   let ok = false
@@ -575,7 +591,12 @@ function renderWhispersTab() {
 
   for (const m of toRender) {
     const div = document.createElement('div')
-    let cls = m.self ? 'hs-mc-msg hs-whisper-self hs-whisper-msg' : 'hs-mc-msg hs-whisper-msg'
+    // Direction class drives the color-coded left border + arrow: out = orange
+    // (self/brand), in = cyan (--hs-reply whisper accent). hs-whisper-self kept
+    // for existing hooks (no longer dims — direction is the signal now).
+    let cls = m.self
+      ? 'hs-mc-msg hs-whisper-msg hs-whisper-self hs-whisper-out'
+      : 'hs-mc-msg hs-whisper-msg hs-whisper-in'
     if (m.status === 'pending') cls += ' hs-whisper-pending'
     else if (m.status === 'failed') cls += ' hs-whisper-failed'
     div.className = cls
@@ -590,8 +611,6 @@ function renderWhispersTab() {
     // Show sender -> recipient for both directions (the links below swap by
     // m.self, so the separator itself is direction-free on purpose)
     const target = whisperUsers.get(m.key)
-    const me = currentUsername || 'you'
-    const myColor = sanitizeColor(selfWhisperColor || '#fff')
     const them = target?.displayName || m.user || m.key
     const theirColor = target ? sanitizeColor(target.color) : sanitizeColor(m.color)
     const theirUsername = (target?.displayName || m.user || '').toLowerCase()
@@ -620,9 +639,15 @@ function renderWhispersTab() {
       return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="${cls}" data-username="${safeUser}"${splitAttr} style="${style}">${inner}</a>`
     }
 
+    // Self side is a plain "you" token (matches the inline-dm row) — in a mixed
+    // inbox "you → tidolar" / "tidolar → you" reads direction instantly, and the
+    // orange/cyan border + arrow reinforce it. The OTHER party keeps their
+    // painted, clickable link.
     const themUid = target?.userId || ''
-    const senderLink = m.self ? userLink(me, myColor, me, '') : userLink(them, theirColor, theirUsername, themUid)
-    const recipientLink = m.self ? userLink(them, theirColor, theirUsername, themUid) : userLink(me, myColor, me, '')
+    const youTok = '<span class="hs-whisper-you">you</span>'
+    const themLink = userLink(them, theirColor, theirUsername, themUid)
+    const senderLink = m.self ? youTok : themLink
+    const recipientLink = m.self ? themLink : youTok
 
     let statusHtml = ''
     if (m.status === 'pending') {
@@ -657,7 +682,9 @@ function renderWhispersTab() {
     // remember the command ("I keep forgetting to type /r"). Keyed per row:
     // replying to an older conversation retargets lastWhisperKey to it.
     const replyBtn = `<button class="hs-mc-reply-btn hs-whisper-reply" data-wkey="${escapeHtml(m.key)}" title="reply (${escapeHtml(them)})">↩</button>`
-    div.innerHTML = `${tsHtml}<span style="color:${platColor};font-size:13px;font-weight:700">[${platTag}]</span> ${senderLink} <span style="color:#808080">-&gt;</span> ${recipientLink}: ${whisperBody}${statusHtml}${replyBtn}`
+    const dirColor = m.self ? 'var(--hs-brand)' : 'var(--hs-reply)'
+    const arrow = `<span class="hs-whisper-arrow" style="color:${dirColor}">→</span>`
+    div.innerHTML = `${tsHtml}<span style="color:${platColor};font-size:13px;font-weight:700">[${platTag}]</span> ${senderLink} ${arrow} ${recipientLink}: ${whisperBody}${statusHtml}${replyBtn}`
     frag.appendChild(div)
   }
 

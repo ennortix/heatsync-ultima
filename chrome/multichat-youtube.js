@@ -8351,8 +8351,22 @@ function injectStyles() {
       color: #000 !important;
       border-color: #fff !important;
     }
-    .hs-whisper-self {
-      opacity: 0.7;
+    /* Direction color-coding — an in/out whisper must be unmistakable. cyan
+       (--hs-reply, whisper accent) = came IN to you; orange (--hs-brand, self)
+       = went OUT from you. Left border scans down the column; the arrow + label
+       repeat it inline. (Self rows used to dim to 0.7 opacity, which made your
+       OWN sends the hardest to read — removed; direction is the signal now.) */
+    .hs-whisper-msg.hs-whisper-out { border-left: 3px solid var(--hs-brand); }
+    .hs-whisper-msg.hs-whisper-in { border-left: 3px solid var(--hs-reply); }
+    .hs-whisper-arrow {
+      font-size: 15px;
+      font-weight: 700;
+      margin: 0 4px;
+      vertical-align: -1px;
+    }
+    .hs-whisper-you {
+      color: #bbb;
+      font-weight: 700;
     }
     .hs-whisper-pending {
       opacity: 0.45;
@@ -35942,7 +35956,23 @@ async function sendWhisperMessage(key, text) {
   trimWhisperTimeline()
   lastWhisperKey = key
 
+  // Outgoing whispers get no server echo, so the only way the sender sees their
+  // own message off the whispers tab is an inline row — mirror the incoming
+  // path's else-branch (line 244/289). Without this a /r from a channel tab
+  // stored the message silently and the user couldn't tell anything sent.
+  // outgoing:true flips the render to "→ recipient" (see main.js inline-dm).
   if (currentTab === 'whispers') renderWhispersTab()
+  else
+    injectInlineNotif('dm', {
+      type: 'inline-dm',
+      outgoing: true,
+      user: userInfo.displayName || key,
+      userId: userInfo.userId,
+      text,
+      color: userInfo.color,
+      time: msg.time,
+      platform: userInfo.platform,
+    })
   whisperSaveDebounced()
 
   let ok = false
@@ -36085,7 +36115,12 @@ function renderWhispersTab() {
 
   for (const m of toRender) {
     const div = document.createElement('div')
-    let cls = m.self ? 'hs-mc-msg hs-whisper-self hs-whisper-msg' : 'hs-mc-msg hs-whisper-msg'
+    // Direction class drives the color-coded left border + arrow: out = orange
+    // (self/brand), in = cyan (--hs-reply whisper accent). hs-whisper-self kept
+    // for existing hooks (no longer dims — direction is the signal now).
+    let cls = m.self
+      ? 'hs-mc-msg hs-whisper-msg hs-whisper-self hs-whisper-out'
+      : 'hs-mc-msg hs-whisper-msg hs-whisper-in'
     if (m.status === 'pending') cls += ' hs-whisper-pending'
     else if (m.status === 'failed') cls += ' hs-whisper-failed'
     div.className = cls
@@ -36100,8 +36135,6 @@ function renderWhispersTab() {
     // Show sender -> recipient for both directions (the links below swap by
     // m.self, so the separator itself is direction-free on purpose)
     const target = whisperUsers.get(m.key)
-    const me = currentUsername || 'you'
-    const myColor = sanitizeColor(selfWhisperColor || '#fff')
     const them = target?.displayName || m.user || m.key
     const theirColor = target ? sanitizeColor(target.color) : sanitizeColor(m.color)
     const theirUsername = (target?.displayName || m.user || '').toLowerCase()
@@ -36130,9 +36163,15 @@ function renderWhispersTab() {
       return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="${cls}" data-username="${safeUser}"${splitAttr} style="${style}">${inner}</a>`
     }
 
+    // Self side is a plain "you" token (matches the inline-dm row) — in a mixed
+    // inbox "you → tidolar" / "tidolar → you" reads direction instantly, and the
+    // orange/cyan border + arrow reinforce it. The OTHER party keeps their
+    // painted, clickable link.
     const themUid = target?.userId || ''
-    const senderLink = m.self ? userLink(me, myColor, me, '') : userLink(them, theirColor, theirUsername, themUid)
-    const recipientLink = m.self ? userLink(them, theirColor, theirUsername, themUid) : userLink(me, myColor, me, '')
+    const youTok = '<span class="hs-whisper-you">you</span>'
+    const themLink = userLink(them, theirColor, theirUsername, themUid)
+    const senderLink = m.self ? youTok : themLink
+    const recipientLink = m.self ? themLink : youTok
 
     let statusHtml = ''
     if (m.status === 'pending') {
@@ -36167,7 +36206,9 @@ function renderWhispersTab() {
     // remember the command ("I keep forgetting to type /r"). Keyed per row:
     // replying to an older conversation retargets lastWhisperKey to it.
     const replyBtn = `<button class="hs-mc-reply-btn hs-whisper-reply" data-wkey="${escapeHtml(m.key)}" title="reply (${escapeHtml(them)})">↩</button>`
-    div.innerHTML = `${tsHtml}<span style="color:${platColor};font-size:13px;font-weight:700">[${platTag}]</span> ${senderLink} <span style="color:#808080">-&gt;</span> ${recipientLink}: ${whisperBody}${statusHtml}${replyBtn}`
+    const dirColor = m.self ? 'var(--hs-brand)' : 'var(--hs-reply)'
+    const arrow = `<span class="hs-whisper-arrow" style="color:${dirColor}">→</span>`
+    div.innerHTML = `${tsHtml}<span style="color:${platColor};font-size:13px;font-weight:700">[${platTag}]</span> ${senderLink} ${arrow} ${recipientLink}: ${whisperBody}${statusHtml}${replyBtn}`
     frag.appendChild(div)
   }
 
@@ -37022,6 +37063,34 @@ function peekSentHost(msgText) {
     // search before a valid newer match (mirrors isSentEcho). Array is capped.
     if (entry.time < cutoff) continue
     if (_echoTextMatches(entry, msgText)) return entry.host || null
+  }
+  return null
+}
+
+// Own-reply echo bar. A reply we send is echoed back by whichever read transport
+// wins the race — the BG anon IRC socket or the native page tap — and only ONE
+// of them reliably carries reply-parent-* tags on our own message, so the bar
+// (m.replyTo) rendered intermittently: present when the tagged copy won, absent
+// when the untagged one did (dominant in popout mode). Capture the parent
+// context at send time and stamp it back onto our own echo when it arrives
+// bare, making the bar transport-independent. Keyed by echo text (reply echoes
+// carry twitch's "@login " prefix, matched via _echoTextMatches), 10s window.
+let _recentOwnReplies = []
+function rememberOwnReply(text, replyTo) {
+  if (!text || !replyTo?.user) return
+  _recentOwnReplies.push({ text, replyTo, time: Date.now() })
+  const cutoff = Date.now() - SENT_DEDUP_WINDOW
+  _recentOwnReplies = _recentOwnReplies.filter((e) => e.time >= cutoff)
+}
+function peekOwnReply(echoText) {
+  if (!echoText || !_recentOwnReplies.length) return null
+  const cutoff = Date.now() - SENT_DEDUP_WINDOW
+  for (let i = _recentOwnReplies.length - 1; i >= 0; i--) {
+    const e = _recentOwnReplies[i]
+    if (e.time < cutoff) continue
+    // reply:true so _echoTextMatches also strips the leading "@login " twitch
+    // prepends onto reply echoes (mirrors isSentEcho/peekSentHost).
+    if (_echoTextMatches({ text: e.text, reply: true }, echoText)) return e.replyTo
   }
   return null
 }
@@ -41440,6 +41509,49 @@ function _isBlockedAnyPlat(name) {
   )
 }
 
+// Merged autocomplete emote source: channel pools (tier 0) over the viewer's
+// set (tier 1) over globals (tier 2) — channel written LAST so a name owned AND
+// defined by the channel resolves to the channel image. findEmoteMatches runs
+// on EVERY debounced keystroke-word (bare-word inline suggest), and rebuilding
+// this merge — allocating two Maps across thousands of emotes each call — was
+// the dominant typing-lag cost on emote-heavy channels. Memoize it, keyed by a
+// cheap signature: active tab + the sizes of every source map. Any add/remove,
+// tab switch, or pool (re)hydration moves a size or the tab and busts the
+// cache; the only miss is a same-count in-place url swap, which leaves a stale
+// thumbnail (never a wrong insertion — names stay authoritative) until the next
+// size change.
+let _acMergeCache = null // { sig, acEmotes, tierByName }
+function _getMergedAcEmotes() {
+  // activeTabEmotePools resolves the tab's twitch/kick slot names + yt handle —
+  // pools are keyed by fetched owner name, and the raw tab id is NOT a pool key
+  // on merged-identity/yt tabs (the kripparrian-vs-nl_kripp trap; see emotes.js).
+  const acPools =
+    typeof activeTabEmotePools === 'function'
+      ? activeTabEmotePools()
+      : [channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()]].filter(Boolean)
+  let poolsSig = ''
+  for (const p of acPools) poolsSig += (p?.size || 0) + ','
+  const sig = `${currentTab}|${emoteCache.size}|${viewerPersonalEmotes.size}|${poolsSig}`
+  if (_acMergeCache && _acMergeCache.sig === sig) return _acMergeCache
+  const acEmotes = new Map()
+  const tierByName = new Map()
+  for (const [k, v] of emoteCache) {
+    acEmotes.set(k, v)
+    tierByName.set(k, 2)
+  }
+  for (const [k, v] of viewerPersonalEmotes) {
+    acEmotes.set(k, v)
+    tierByName.set(k, 1)
+  }
+  for (const acChCache of acPools)
+    for (const [k, v] of acChCache) {
+      acEmotes.set(k, v)
+      tierByName.set(k, 0)
+    }
+  _acMergeCache = { sig, acEmotes, tierByName }
+  return _acMergeCache
+}
+
 function findEmoteMatches(search) {
   const matches = []
 
@@ -41501,29 +41613,7 @@ function findEmoteMatches(search) {
   // CHANNEL image — that's what actually renders in this channel. Channel-first is
   // the user-chosen order (reverses the older own-first call).
   if (!isUserSearch) {
-    const tierByName = new Map()
-    const acEmotes = new Map()
-    for (const [k, v] of emoteCache) {
-      acEmotes.set(k, v)
-      tierByName.set(k, 2)
-    }
-    for (const [k, v] of viewerPersonalEmotes) {
-      acEmotes.set(k, v)
-      tierByName.set(k, 1)
-    }
-    // activeTabEmotePools resolves the tab's twitch/kick slot names + yt
-    // handle — pools are keyed by fetched owner name, and the raw tab id is
-    // NOT a pool key on merged-identity/yt tabs (the kripparrian-vs-nl_kripp
-    // trap; see emotes.js activeTabEmotePools).
-    const acPools =
-      typeof activeTabEmotePools === 'function'
-        ? activeTabEmotePools()
-        : [channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()]].filter(Boolean)
-    for (const acChCache of acPools)
-      for (const [k, v] of acChCache) {
-        acEmotes.set(k, v)
-        tierByName.set(k, 0)
-      }
+    const { acEmotes, tierByName } = _getMergedAcEmotes()
     for (const [name, emote] of acEmotes) {
       // Only tab-complete heatsync emotes you own (can't send emotes not in your set)
       if (emote.source === 'heatsync' && emote.state !== 'owned') continue
@@ -44240,6 +44330,25 @@ async function sendMessage() {
   // clearReplyState() wipes replyState below; Twitch/Kick keep carrying the
   // real replyParentId and never see this text.
   const replyAuthor = replyState?.user || null
+  // Stash the parent context for the own-echo reply bar (see peekOwnReply).
+  // Resolve parent text/userId from the twitch buffer best-effort — a miss
+  // still yields a correct bar from the author name alone. Must run BEFORE
+  // clearReplyState() wipes replyState.
+  if (replyParentId && sendToTwitch) {
+    let _parent = null
+    try {
+      _parent = irc?.channels
+        ?.get((twitchName || '').toLowerCase())
+        ?.getAll?.()
+        .find((m) => m?.id === replyParentId)
+    } catch (_) {}
+    rememberOwnReply(twitchText, {
+      user: replyAuthor || _parent?.user || '',
+      text: _parent?.text || '',
+      id: replyParentId,
+      userId: _parent?.userId || '',
+    })
+  }
   // Degraded reply text for the YouTube leg only — see ytReplyText
   // (send-targets.js). Twitch/Kick below always send restText/twitchText.
   const ytText = ytReplyText(restText, replyAuthor)
@@ -60932,22 +61041,32 @@ const STORAGE_KEY = 'heatsync_multichat'
     // Inline DM/whisper notification
     if (m.type === 'inline-dm') {
       const div = document.createElement('div')
-      div.className = 'hs-mc-feed-inline hs-mc-dm-inline'
-      const borderColor = m.inlineNotifBorderColor || INLINE_NOTIF_TYPES.dm.borderColor
-      div.style.borderLeftColor = borderColor
+      // Direction color-codes the whole row so an inbound/outbound whisper is
+      // unmistakable at a glance: cyan (--hs-reply, the whisper accent) = came
+      // IN to you, orange (--hs-brand, self) = went OUT from you. Border, label
+      // and the big arrow all share it.
+      div.className = `hs-mc-feed-inline hs-mc-dm-inline ${m.outgoing ? 'hs-whisper-out' : 'hs-whisper-in'}`
+      const dirColor = m.outgoing ? 'var(--hs-brand)' : 'var(--hs-reply)'
+      div.style.borderLeftColor = dirColor
       const tsVal = timestampsEnabled ? formatTimeFromTs(m.time) : ''
       const tsSpan = tsVal ? `<span class="hs-mc-ts">${tsVal}</span>` : ''
-      const labelColor = m.inlineNotifColor || INLINE_NOTIF_TYPES.dm.color
       // twitch = whisper, heatsync = native DM — distinct labels so the row
       // says what it actually is (both used to render [DM], which was wrong)
       const labelText = m.platform === 'twitch' ? '[whisper]' : '[DM]'
-      const label = `<span style="color:${labelColor};font-size:13px;font-weight:700;margin-right:3px">${labelText}</span>`
+      const label = `<span style="color:${dirColor};font-size:13px;font-weight:700;margin-right:4px">${labelText}</span>`
       const platBadge =
         m.platform === 'twitch'
           ? '<span style="color:var(--hs-plat-twitch);font-size:13px;font-weight:700;margin-right:3px">[T]</span>'
           : '<span style="color:#fff;font-size:13px;font-weight:700;margin-right:3px">[HS]</span>'
       const dmPaint = m.platform === 'twitch' ? userPaintStyle(m.userId, (m.user || '').toLowerCase(), 'twitch') : ''
-      const userName = `<span style="${dmPaint || `color:${sanitizeColor(m.color)};font-weight:600`}">${escapeHtml(m.user)}</span>`
+      // Always render the pair "who → who" (sender → recipient). m.user is the
+      // OTHER party in both directions (recipient on outgoing, sender on
+      // incoming), so the arrow flows away from you on sends, toward you on
+      // receives — the same mental model as a chat client's whisper split.
+      const otherName = `<span style="${dmPaint || `color:${sanitizeColor(m.color)};font-weight:600`}">${escapeHtml(m.user)}</span>`
+      const youTok = '<span class="hs-whisper-you">you</span>'
+      const arrow = `<span class="hs-whisper-arrow" style="color:${dirColor}">→</span>`
+      const dirPair = m.outgoing ? `${youTok}${arrow}${otherName}` : `${otherName}${arrow}${youTok}`
       // All values sanitized — safe innerHTML
       // @mentions in the DM body paint like anywhere else a person is named —
       // route through highlightMentionsInHtml (skipMentions=true avoids the
@@ -60961,7 +61080,7 @@ const STORAGE_KEY = 'heatsync_multichat'
           ),
         )
       // All values already sanitized via escapeHtml/processEmotes — safe innerHTML (existing pattern)
-      div.innerHTML = `${tsSpan}${label}${platBadge}${userName}: ${m._renderedHtml}`
+      div.innerHTML = `${tsSpan}${label}${platBadge}${dirPair}: ${m._renderedHtml}`
       div.style.cursor = 'pointer'
       div.addEventListener('click', (e) => {
         if (e.target.closest('a, .hs-mc-emote')) return
@@ -67364,6 +67483,13 @@ const STORAGE_KEY = 'heatsync_multichat'
           // IRC origin — badges are Twitch namespace regardless of [K] retag.
           msg.badgePlatform = 'twitch'
           msg.platform = sentHost === 'yt' ? 'youtube' : sentHost
+          // Restore the reply bar on our own echo when the winning transport
+          // dropped the reply-parent tags (see rememberOwnReply). sentHost hit
+          // already proves this is our ext send, so no stranger can be stamped.
+          if (!msg.replyTo) {
+            const _ownReply = typeof peekOwnReply === 'function' ? peekOwnReply(msg.text) : null
+            if (_ownReply?.user) msg.replyTo = _ownReply
+          }
         }
       }
       // Automod + filter rules: drop messages matching filter. Own msgs exempt.

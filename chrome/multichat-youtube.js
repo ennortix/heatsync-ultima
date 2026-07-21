@@ -27952,15 +27952,29 @@ function renderQuickLinks() {
 // error, report success" fatally dishonest here. So every set is verified by
 // reading the mode back and comparing; we only claim success when the channel
 // actually changed. Wrong field name ⇒ honest failure, never a false success.
-const TWITCH_CHAT_MODE_FIELDS = {
-  // input field name ← mirrors the ChatSettings read type (verified live).
-  // followersOnlyDurationMinutes is additionally proven by the long-shipped
-  // followers-only path.
-  followers: 'followersOnlyDurationMinutes',
-  slow: 'slowModeDurationSeconds',
-  emoteonly: 'isEmoteOnlyModeEnabled',
-  subscribers: 'isSubscribersOnlyModeEnabled',
-  unique: 'isUniqueChatModeEnabled',
+// read  = the field on user.chatSettings used to CONFIRM the change.
+// write = the field name(s) to send in UpdateChatSettingsInput.
+//
+// They are NOT always the same. The duration modes are proven live
+// (followersOnlyDurationMinutes long-shipped; slowModeDurationSeconds verified
+// 2026-07-21 by /slow 5 landing on a real channel). The BOOLEAN modes are not:
+// sending the read-type name (isEmoteOnlyModeEnabled) changed nothing, so
+// twitch's input uses a different spelling for them.
+//
+// Twitch's GQL silently IGNORES unknown input fields (proven — a deliberately
+// bogus field returns no error), so sending BOTH spellings is free: the wrong
+// one is discarded server-side and the right one applies. That turns a name we
+// can't introspect into one we don't have to guess. The read-back below still
+// gates success, so this can never manufacture a false positive.
+const TWITCH_CHAT_MODE_SPEC = {
+  followers: { read: 'followersOnlyDurationMinutes', write: ['followersOnlyDurationMinutes'] },
+  slow: { read: 'slowModeDurationSeconds', write: ['slowModeDurationSeconds'] },
+  emoteonly: { read: 'isEmoteOnlyModeEnabled', write: ['isEmoteOnlyModeEnabled', 'emoteOnlyModeEnabled'] },
+  subscribers: {
+    read: 'isSubscribersOnlyModeEnabled',
+    write: ['isSubscribersOnlyModeEnabled', 'subscribersOnlyModeEnabled'],
+  },
+  unique: { read: 'isUniqueChatModeEnabled', write: ['isUniqueChatModeEnabled', 'uniqueChatModeEnabled'] },
 }
 
 // Live chat-mode state. Verified against twitch's schema 2026-07-21:
@@ -28003,14 +28017,16 @@ function _twitchChatModeMatches(mode, want, got) {
 // value: followers −1=off, 0=any follower, N=minutes · slow 0=off, N=seconds ·
 //        booleans for the rest.
 async function setTwitchChatMode(channelLogin, mode, value) {
-  const field = TWITCH_CHAT_MODE_FIELDS[mode]
-  if (!field) return { ok: false, error: 'unknown chat mode' }
+  const spec = TWITCH_CHAT_MODE_SPEC[mode]
+  if (!spec) return { ok: false, error: 'unknown chat mode' }
   const { id: channelID, transient } = await resolveTwitchChannelIdEx(channelLogin)
   if (!channelID) return { ok: false, error: transient ? 'twitch unreachable — try again' : 'channel not found' }
   try {
+    const input = { channelID: String(channelID) }
+    for (const f of spec.write) input[f] = value
     const res = await gqlMutation(
       'mutation($input: UpdateChatSettingsInput!) { updateChatSettings(input: $input) { __typename } }',
-      { input: { channelID: String(channelID), [field]: value } },
+      { input },
     )
     const err = res?.errors?.[0]?.message || res?.data?.errors?.[0]?.message
     if (err) return { ok: false, error: err }
@@ -28023,7 +28039,7 @@ async function setTwitchChatMode(channelLogin, mode, value) {
     if (attempt) await new Promise((r) => setTimeout(r, 400))
     const after = await readTwitchChatSettings(channelLogin)
     if (!after) continue
-    if (_twitchChatModeMatches(mode, value, after[field])) return { ok: true }
+    if (_twitchChatModeMatches(mode, value, after[spec.read])) return { ok: true }
   }
   // Reached twitch, no error, and nothing changed: either we lack mod rights
   // (twitch answers some refusals without an error body) or the field name

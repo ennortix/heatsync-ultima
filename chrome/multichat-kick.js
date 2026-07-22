@@ -68271,11 +68271,10 @@ const STORAGE_KEY = 'heatsync_multichat'
       // categories, search, following, settings — so the panel survives
       // SPA nav. body-mount fallback in getOrCreateHsContainer when
       // #channel-chatroom is absent.
-      // /popout/<slug>/chat is a pop-out window (that's the url our own popout
-      // button opens) — same fill-window layout twitch and yt get. Without
-      // this the panel mounted docked at 340px inside a 400px window, and the
-      // kick body-mount branch below reads hs-popout expecting it to be set.
-      isPopout = /^\/popout\/[a-zA-Z0-9_-]+\/chat/.test(location.pathname)
+      // NOTE: /popout/<slug>/chat never sets isPopout, but that's not the whole
+      // story — the panel does not mount there at all (verified live 2026-07-21:
+      // hs-mc-styles injects, hs-mc-container never appears), so the fill-window
+      // flag would have nothing to act on. Fix the mount first.
     } else {
       // Twitch: persistent overlay across every URL — directory, settings,
       // videos, etc. all keep the panel mounted. getOrCreateHsContainer

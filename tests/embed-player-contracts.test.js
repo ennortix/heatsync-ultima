@@ -28,11 +28,7 @@ function slice(start, end) {
 const tableSrc = slice('const _AUDIO_PROVIDERS = [', '\nfunction _audioProviderFor')
 // frameUrl calls the bundle's sanitizeEmbedId/safeUrl — stub them with the
 // same contract (pass through what the real ones accept).
-const PROVIDERS = new Function(
-  'sanitizeEmbedId',
-  'safeUrl',
-  `${tableSrc}\nreturn _AUDIO_PROVIDERS`,
-)(
+const PROVIDERS = new Function('sanitizeEmbedId', 'safeUrl', `${tableSrc}\nreturn _AUDIO_PROVIDERS`)(
   (id) => (/^[\w-]+$/.test(String(id || '')) ? id : ''),
   (u) => String(u || ''),
 )

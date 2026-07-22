@@ -959,9 +959,7 @@ function chatEmbedToggle(url, card) {
   _hsAudioStop()
   // Video mounts over its own card inside the scroller; audio has nothing to
   // look at, so it goes to a 0×0 host on the overlay and just plays.
-  const parent = provider.video
-    ? document.getElementById('hs-mc-messages')
-    : document.getElementById('hs-mc-overlay')
+  const parent = provider.video ? document.getElementById('hs-mc-messages') : document.getElementById('hs-mc-overlay')
   if (!parent) return false
   const host = document.createElement('div')
   host.id = provider.video ? 'hs-mc-embed-player' : 'hs-mc-audio-host'

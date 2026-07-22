@@ -32,7 +32,10 @@
 
   // attr → read it off the bound data, or null when it isn't there (yet).
   const FIELDS = [
-    ['data-hs-author-id', (d) => (/^UC[\w-]{20,}$/i.test(d.authorExternalChannelId || '') ? d.authorExternalChannelId : null)],
+    [
+      'data-hs-author-id',
+      (d) => (/^UC[\w-]{20,}$/i.test(d.authorExternalChannelId || '') ? d.authorExternalChannelId : null),
+    ],
     ['data-hs-ctx-params', (d) => d.contextMenuEndpoint?.liveChatItemContextMenuEndpoint?.params || null],
   ]
   // Polymer usually binds within a frame; a single 80ms retry used to be the

@@ -757,14 +757,14 @@
       if (!_proxyAllowed(_mutateRate)) {
         log('heatsync-apollo-mutate: rate limit exceeded')
         window.postMessage(
-          { type: 'heatsync-apollo-mutate-error', error: 'rate limit exceeded', requestId: e.data.requestId },
+          { type: 'heatsync-apollo-mutate-response', id: e.data.id, data: { error: 'rate limit exceeded' } },
           location.origin,
         )
         return
       }
       if (e.data.rawQuery) {
         window.postMessage(
-          { type: 'heatsync-apollo-mutate-error', error: 'raw queries not allowed', requestId: e.data.requestId },
+          { type: 'heatsync-apollo-mutate-response', id: e.data.id, data: { error: 'raw queries not allowed' } },
           location.origin,
         )
         return
@@ -810,7 +810,7 @@
       if (e.data.searchTerm && !ALLOWED_MUTATIONS.includes(e.data.searchTerm)) {
         log('heatsync-apollo-mutate: rejected — searchTerm not in allowlist:', e.data.searchTerm)
         window.postMessage(
-          { type: 'heatsync-apollo-mutate-error', error: 'mutation not allowed', requestId: e.data.requestId },
+          { type: 'heatsync-apollo-mutate-response', id: e.data.id, data: { error: 'mutation not allowed' } },
           location.origin,
         )
         return

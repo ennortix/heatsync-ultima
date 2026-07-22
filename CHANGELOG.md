@@ -1,5 +1,18 @@
 # changelog
 
+## [1.7.33] — 2026-07-22
+
+### added
+- **audio and video links play right in the chat row** — no panel, no leaving the page. anything with real controls gets pause and volume where you'd expect them, and the play mark sits on the artwork instead of beside it.
+
+### fixed
+- **youtube moderation was unreachable** — the controls existed but nothing could get to them.
+- **links that chat actually posts now linkify** — the host-less forms (`heatsync.org/x`, bare `www.`) were being left as plain text.
+- the hashtag, mention and thread-reference passes could break a link they ran over.
+- twitch commands that no longer exist are refused instead of being chatted out as plain text.
+- the wheel is no longer hijacked on youtube shorts and hover-preview players.
+- kick pop-out chat fills its window instead of docking to a 340px column.
+
 ## [1.7.32] — 2026-07-21
 
 ### fixed

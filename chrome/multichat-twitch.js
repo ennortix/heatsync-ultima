@@ -8758,6 +8758,10 @@ function injectStyles() {
       flex: 1;
       overflow-y: auto;
       overflow-x: hidden;
+      /* containing block for the in-place embed player, which is a child of
+         this scroller (never of a row — rows are rebuilt on every batch) and
+         is positioned in content coordinates so it scrolls along for free. */
+      position: relative;
       /* Bottom keeps a little extra so the last message clears the inputbar's
          top border and descenders aren't clipped against it. Sides/top tight
          for density — banner margin below must mirror these or it misaligns. */
@@ -10659,6 +10663,20 @@ function injectStyles() {
     .hs-mc-media.hs-mc-playable:hover .hs-feed-embed-rich-author,
     .hs-mc-media.hs-mc-playable:hover .hs-feed-embed-pending-label {
       color: #000;
+    }
+    /* in-place video: sits over its own card, inside the scroller but never
+       inside a row, so it survives every repaint and scrolls natively. */
+    #hs-mc-embed-player {
+      position: absolute;
+      z-index: 3;
+      background: #000;
+      border: 1px solid #808080;
+    }
+    #hs-mc-embed-player iframe {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border: 0;
     }
     /* 0×0 host for in-place audio — outside #hs-mc-messages so a chat repaint
        can't kill the track, invisible because there is nothing to look at. */
@@ -33410,18 +33428,67 @@ function chatUrlPlayable(url) {
 //
 // Which is only possible because spotify accepts a play command with no user
 // gesture inside the frame — probed live, see the provider table below.
-const _AUDIO_ONLY_RE = /(open\.spotify\.com\/(?:track|album|playlist|episode|show)\/|soundcloud\.com\/[\w-]+\/[\w-]+)/i
-
-function chatUrlAudioOnly(url) {
-  return _AUDIO_ONLY_RE.test(url || '')
-}
-
 // Per-provider postMessage contracts. Every one of these was verified live by
 // READ-BACK where the provider allows it (set the value, ask for it again) —
 // the same rule the chat-mode writes follow: never claim success because a
 // message didn't throw. `volume: false` is spotify telling the truth — its
 // embed has no volume control and no command that sets one.
 const _AUDIO_PROVIDERS = [
+  {
+    id: 'youtube',
+    test: /youtu\.be\/|youtube\.com\/(watch\?v=|shorts\/)/i,
+    origin: 'https://www.youtube-nocookie.com',
+    video: true,
+    volume: true,
+    frameUrl: (u) => {
+      const id = sanitizeEmbedId((String(u).match(/(?:youtu\.be\/|v=|shorts\/)([\w-]{11})/) || [])[1] || '')
+      return id
+        ? `https://www.youtube-nocookie.com/embed/${id}?enablejsapi=1&modestbranding=1&playsinline=1&rel=0&autoplay=1`
+        : ''
+    },
+    // youtube answers nothing until it's been told someone is listening; the
+    // handshake is what turns onReady on, and commands before it are dropped.
+    hello: { event: 'listening', id: 1, channel: 'widget' },
+    ready: (d) => d?.event === 'onReady' || d?.event === 'initialDelivery',
+    json: true,
+    play: { event: 'command', func: 'playVideo', args: [] },
+    pause: { event: 'command', func: 'pauseVideo', args: [] },
+    setVolume: (v) => ({ event: 'command', func: 'setVolume', args: [Math.round(v * 100)] }),
+  },
+  {
+    id: 'vimeo',
+    test: /vimeo\.com\/\d/i,
+    origin: 'https://player.vimeo.com',
+    video: true,
+    volume: true,
+    frameUrl: (u) => {
+      const id = sanitizeEmbedId((String(u).match(/vimeo\.com\/(\d+)/) || [])[1] || '')
+      return id ? `https://player.vimeo.com/video/${id}?autoplay=1` : ''
+    },
+    ready: (d) => d?.event === 'ready',
+    play: { method: 'play' },
+    pause: { method: 'pause' },
+    setVolume: (v) => ({ method: 'setVolume', value: v }),
+  },
+  {
+    id: 'streamable',
+    test: /streamable\.com\/\w/i,
+    origin: 'https://streamable.com',
+    video: true,
+    volume: true,
+    frameUrl: (u) => {
+      const id = sanitizeEmbedId((String(u).match(/streamable\.com\/(?:e\/)?(\w+)/) || [])[1] || '')
+      return id ? `https://streamable.com/e/${id}?autoplay=1` : ''
+    },
+    // streamable speaks the generic player.js protocol, so every message
+    // carries its context stamp and volume is 0-100.
+    json: true,
+    stamp: { context: 'player.js', version: '0.0.11' },
+    ready: (d) => d?.context === 'player.js' && d?.event === 'ready',
+    play: { method: 'play' },
+    pause: { method: 'pause' },
+    setVolume: (v) => ({ method: 'setVolume', value: Math.round(v * 100) }),
+  },
   {
     id: 'spotify',
     test: /open\.spotify\.com/i,
@@ -33491,10 +33558,13 @@ function setEmbedVolume(v) {
 let _hsAudio = null
 
 function _hsAudioSend(msg) {
-  if (!_hsAudio?.frame?.contentWindow) return
-  // youtube-style players want a JSON string; the two audio ones take either.
+  const p = _hsAudio?.provider
+  if (!p || !_hsAudio.frame?.contentWindow) return
+  // youtube and player.js want a JSON string; the rest take either. The stamp
+  // is player.js's required envelope, merged in rather than repeated per verb.
+  const body = p.stamp ? Object.assign({}, p.stamp, msg) : msg
   try {
-    _hsAudio.frame.contentWindow.postMessage(msg, _hsAudio.provider.origin)
+    _hsAudio.frame.contentWindow.postMessage(p.json ? JSON.stringify(body) : body, p.origin)
   } catch (_) {}
 }
 
@@ -33510,15 +33580,42 @@ function markNowPlaying(root) {
 function _hsAudioStop() {
   if (!_hsAudio) return
   _hsAudioSend(_hsAudio.provider.pause)
+  try {
+    _hsAudio.ro?.disconnect()
+  } catch (_) {}
   _hsAudio.frame?.remove()
   _hsAudio = null
   document.getElementById('hs-mc-audio-host')?.remove()
   markNowPlaying(document)
 }
 
-// Toggle playback for an audio-only card. Returns false when the url isn't
-// one we can drive, so the caller can fall back to the dock.
-function chatAudioToggle(url) {
+// Park the live player exactly over its card. The player is a child of the
+// SCROLLER, never of a row: rows are rebuilt on every batch and would take the
+// iframe down with them, but a scroller child in content coordinates scrolls
+// with the chat natively — no per-frame javascript, so it can't lag behind or
+// judder. Only real layout changes move it, which is what the observer is for.
+function _hsPlacePlayer() {
+  const a = _hsAudio
+  if (!a?.host || !a.card) return
+  const scroller = document.getElementById('hs-mc-messages')
+  if (!scroller || !a.card.isConnected) {
+    // The anchor row aged out of the DOM cap. Orphan audio you can't reach a
+    // stop button for is worse than silence.
+    _hsAudioStop()
+    return
+  }
+  const cr = a.card.getBoundingClientRect()
+  const sr = scroller.getBoundingClientRect()
+  const width = Math.max(80, Math.round(cr.width))
+  a.host.style.top = `${Math.round(cr.top - sr.top + scroller.scrollTop)}px`
+  a.host.style.left = `${Math.round(cr.left - sr.left)}px`
+  a.host.style.width = `${width}px`
+  a.host.style.height = a.provider.video ? `${Math.round((width * 9) / 16)}px` : `${Math.round(cr.height)}px`
+}
+
+// Toggle playback for a card, in place. Returns false when the url isn't one
+// we can drive, so the caller can fall back to the dock.
+function chatEmbedToggle(url, card) {
   const provider = _audioProviderFor(url)
   if (!provider) return false
   if (_hsAudio && _hsAudio.url === url) {
@@ -33530,18 +33627,49 @@ function chatAudioToggle(url) {
   const src = provider.frameUrl(url)
   if (!src) return false
   _hsAudioStop()
-  const overlay = document.getElementById('hs-mc-overlay')
-  if (!overlay) return false
+  // Video mounts over its own card inside the scroller; audio has nothing to
+  // look at, so it goes to a 0×0 host on the overlay and just plays.
+  const parent = provider.video
+    ? document.getElementById('hs-mc-messages')
+    : document.getElementById('hs-mc-overlay')
+  if (!parent) return false
   const host = document.createElement('div')
-  host.id = 'hs-mc-audio-host'
-  host.setAttribute('aria-hidden', 'true')
+  host.id = provider.video ? 'hs-mc-embed-player' : 'hs-mc-audio-host'
+  if (!provider.video) host.setAttribute('aria-hidden', 'true')
   const frame = document.createElement('iframe')
   frame.src = src
   frame.setAttribute('sandbox', EMBED_SANDBOX)
-  frame.setAttribute('allow', 'autoplay; encrypted-media')
+  frame.setAttribute('allow', 'autoplay; encrypted-media; fullscreen; picture-in-picture')
   host.appendChild(frame)
-  overlay.appendChild(host)
-  _hsAudio = { url, provider, frame, ready: false, playing: true }
+  parent.appendChild(host)
+  _hsAudio = { url, provider, frame, host, card: provider.video ? card || null : null, ready: false, playing: true }
+  if (provider.video) {
+    _hsPlacePlayer()
+    // Layout, not scroll: the player and its card scroll together for free, so
+    // the only thing that can separate them is the chat relaying out.
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => _hsPlacePlayer())
+      try {
+        ro.observe(parent)
+        if (card) ro.observe(card)
+      } catch (_) {}
+      _hsAudio.ro = ro
+      cleanup.trackObserver(ro)
+    }
+  }
+  // youtube is the one provider that stays silent until greeted, and the greet
+  // only lands once its player script is up — so knock until it answers rather
+  // than guessing a delay. Capped: a frame that never replies isn't going to.
+  if (provider.hello) {
+    let knocks = 0
+    const t = cleanup.setInterval(() => {
+      if (!_hsAudio || _hsAudio.url !== url || _hsAudio.ready || ++knocks > 20) {
+        cleanup.clearInterval(t)
+        return
+      }
+      _hsAudioSend(provider.hello)
+    }, 400)
+  }
   markNowPlaying(document)
   return true
 }
@@ -33563,6 +33691,7 @@ window.addEventListener(
     }
     if (_hsAudio.ready || !_hsAudio.provider.ready(data)) return
     _hsAudio.ready = true
+    if (_hsAudio.provider.video) _hsPlacePlayer()
     const setVol = _hsAudio.provider.setVolume
     if (setVol) _hsAudioSend(setVol(embedVolume()))
     if (_hsAudio.playing) _hsAudioSend(_hsAudio.provider.play)
@@ -33614,8 +33743,10 @@ document.addEventListener(
     if (!url || !chatUrlPlayable(url)) return
     // ENTIRE card plays — meta strip included (a 90%-meta compact card whose
     // meta linked out instead of playing read as "play is broken").
-    // Audio-only providers never open the dock — the card IS the player.
-    if (chatUrlAudioOnly(url) && chatAudioToggle(url)) {
+    // Everything we can drive plays in place — the card IS the player. The
+    // dock is only the fallback for providers with no control protocol at all
+    // (twitch clips, tiktok: both stayed silent to every probe).
+    if (chatEmbedToggle(url, wrap)) {
       e.preventDefault()
       e.stopPropagation()
       return

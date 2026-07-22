@@ -66,6 +66,10 @@
       flex: 1;
       overflow-y: auto;
       overflow-x: hidden;
+      /* containing block for the in-place embed player, which is a child of
+         this scroller (never of a row — rows are rebuilt on every batch) and
+         is positioned in content coordinates so it scrolls along for free. */
+      position: relative;
       /* Bottom keeps a little extra so the last message clears the inputbar's
          top border and descenders aren't clipped against it. Sides/top tight
          for density — banner margin below must mirror these or it misaligns. */

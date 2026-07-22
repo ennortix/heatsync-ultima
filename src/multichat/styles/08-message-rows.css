@@ -856,6 +856,20 @@
     .hs-mc-media.hs-mc-playable:hover .hs-feed-embed-pending-label {
       color: #000;
     }
+    /* in-place video: sits over its own card, inside the scroller but never
+       inside a row, so it survives every repaint and scrolls natively. */
+    #hs-mc-embed-player {
+      position: absolute;
+      z-index: 3;
+      background: #000;
+      border: 1px solid #808080;
+    }
+    #hs-mc-embed-player iframe {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border: 0;
+    }
     /* 0×0 host for in-place audio — outside #hs-mc-messages so a chat repaint
        can't kill the track, invisible because there is nothing to look at. */
     #hs-mc-audio-host {

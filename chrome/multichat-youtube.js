@@ -62809,10 +62809,16 @@ const STORAGE_KEY = 'heatsync_multichat'
         })
       })
     }
-    // Reply button for threading (Twitch/Kick — YT has no native thread id,
-    // so we'd render an @-mention reply, but the YT message renderer reuses
-    // videoId as id which collides across messages; suppress on YT for now).
-    if (m.id && m.platform !== 'youtube') {
+    // Row identity for reply + mod actions. YT was excluded here back when a yt
+    // message's only id was the videoId (shared by every message in the stream,
+    // so it collided) — it isn't anymore: both the DOM tap and the server relay
+    // now carry youtube's own per-message innertube id (social.js ytMsg.id), and
+    // an id-less message still fails the `m.id` test below. Excluding youtube
+    // left its rows with no dataset at all, which silently disabled BOTH the
+    // @-mention reply (send-targets ytReplyText) and every yt mod action: the
+    // ctx menu reads dataset.msgPlatform, so a yt row read as twitch with an
+    // empty channel and the whole mod block was skipped.
+    if (m.id) {
       div.dataset.msgId = m.id
       div.dataset.msgUser = m.user
       // True login for mod actions + notice dedup. Twitch display-name ≠ login

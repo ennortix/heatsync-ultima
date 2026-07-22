@@ -1674,14 +1674,15 @@
     try {
       const cfg = _ytModConfig()
       if (!cfg) return { ok: false, error: 'no_config' }
-      const rows = [
-        ...document.querySelectorAll(
-          'yt-live-chat-text-message-renderer, yt-live-chat-paid-message-renderer, yt-live-chat-membership-item-renderer',
-        ),
-      ]
-      const row = rows.find((r) => r.data?.id === msgId)
+      // YT sets the renderer element's id to the chat-item id (verified live:
+      // el.id === el.data.id), and that's the same id the tap reports upstream,
+      // so the row is a direct id lookup. Both this and the menu token come off
+      // DOM attributes, never `el.data` — `.data` is a page-world Polymer
+      // property and reads as undefined here (see chrome/yt-data-bridge.js,
+      // which mirrors both across the world boundary for exactly this reason).
+      const row = msgId ? document.getElementById(msgId) : null
       if (!row) return { ok: false, error: 'message_not_found' }
-      const menuParams = row.data?.contextMenuEndpoint?.liveChatItemContextMenuEndpoint?.params
+      const menuParams = row.getAttribute('data-hs-ctx-params')
       if (!menuParams) return { ok: false, error: 'no_context_menu' }
 
       const menu = await _ytInnertube('/youtubei/v1/live_chat/get_item_context_menu', cfg, menuParams)
@@ -1718,11 +1719,10 @@
     try {
       const cfg = _ytModConfig()
       if (!cfg) return
-      const row = [...document.querySelectorAll('yt-live-chat-text-message-renderer')].find(
-        (r) => r.data?.contextMenuEndpoint?.liveChatItemContextMenuEndpoint?.params,
-      )
-      const params = row?.data?.contextMenuEndpoint?.liveChatItemContextMenuEndpoint?.params
-      if (!params) return // no message yet — try again on the next batch
+      // Attribute, not `el.data` — same world-boundary reason as handleYtModAction.
+      const row = document.querySelector('yt-live-chat-text-message-renderer[data-hs-ctx-params]')
+      const params = row?.getAttribute('data-hs-ctx-params')
+      if (!params) return // no stamped message yet — try again on the next batch
       _ytModProbed = true
       const menu = await _ytInnertube('/youtubei/v1/live_chat/get_item_context_menu', cfg, params)
       const items = menu?.liveChatItemContextMenuSupportedRenderers?.menuRenderer?.items || []

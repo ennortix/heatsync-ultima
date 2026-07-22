@@ -745,25 +745,6 @@
       return
     }
 
-    // Content script requesting cached GQL data
-    if (e.data?.type === 'heatsync-gql-get-cache' && _hsNonce && e.data.nonce === _hsNonce) {
-      const ops = e.data.operations || []
-      const result = {}
-      for (const op of ops) {
-        if (gql.cache[op]) result[op] = gql.cache[op]
-      }
-      window.postMessage(
-        {
-          type: 'heatsync-gql-cache-response',
-          id: e.data.id,
-          data: result,
-          hashes: Object.keys(gql.hashes),
-        },
-        location.origin,
-      )
-      return
-    }
-
     // ═══ Apollo mutation proxy ═══
     // Generic handler: find Twitch's Apollo client + webpack mutation document,
     // call client.mutate() with full auth/integrity context.

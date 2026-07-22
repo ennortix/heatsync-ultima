@@ -1374,10 +1374,6 @@
       if (event.source !== window) return
       if (event.origin !== window.location.origin) return
 
-      if (event.data?.type === 'heatsync-notifs-viewed') {
-        safeSendMessage({ type: 'notifs_viewed' })
-      }
-
       if (event.data?.type === 'heatsync-settings-changed' && event.data.settings) {
         const expected = window.HS?.getMainWorldNonce?.()
         if (!expected || event.data.nonce !== expected) return

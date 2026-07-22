@@ -6332,35 +6332,6 @@ function handleWSMessage(msg) {
         break
       }
 
-      case 'user:muted': {
-        // Server confirmed mute — update local state and broadcast to all tabs
-        const muteUser = msg.username?.toLowerCase()
-        if (muteUser) {
-          const rawExp = msg.expiresAt || msg.expires_at
-          const expiresAt = rawExp ? new Date(rawExp).getTime() : null
-          mutedUsers.set(muteUser, expiresAt)
-          persistMutedUsers()
-          broadcastToTabs({ type: 'user_muted', username: muteUser, expiresAt })
-          log(
-            ' Server muted user:',
-            muteUser,
-            expiresAt ? `(expires ${new Date(expiresAt).toISOString()})` : '(permanent)',
-          )
-        }
-        break
-      }
-
-      case 'user:unmuted': {
-        const unmuteUser = msg.username?.toLowerCase()
-        if (unmuteUser) {
-          mutedUsers.delete(unmuteUser)
-          persistMutedUsers()
-          broadcastToTabs({ type: 'user_unmuted', username: unmuteUser })
-          log(' Server unmuted user:', unmuteUser)
-        }
-        break
-      }
-
       // Server-synced mute list — fired when the user mutes/unmutes on heatsync.org
       // (REST /api/mutes) which broadcasts these WS events to all of the user's sockets.
       case 'mute:added': {
@@ -6419,25 +6390,6 @@ function handleWSMessage(msg) {
           if (patchKeys.length > 0 || overflowKeys.length > 0) {
             broadcastToTabs({ type: 'ui_state_update', state: cleanPatch })
           }
-        }
-        break
-      }
-
-      case 'settings:delete': {
-        const delKey = typeof msg.key === 'string' ? msg.key : null
-        if (delKey && delKey.length > 0 && delKey.length <= 64) {
-          log(' settings:delete received:', delKey)
-          const mirrorKey = UI_SYNC_BLOCKLIST.has(delKey) ? OVERFLOW_MIRROR_KEYS[delKey] : null
-          if (mirrorKey) {
-            browser.storage.local.remove(mirrorKey).catch(() => {})
-          } else {
-            uiSettingsRmw((ui) => {
-              const copy = sanitizeUiSettings(ui)
-              delete copy[delKey]
-              return copy
-            })
-          }
-          broadcastToTabs({ type: 'settings_key_deleted', key: delKey })
         }
         break
       }
@@ -6517,50 +6469,6 @@ function handleWSMessage(msg) {
 
       // EventSub fan-out — server pushes channel events subscribed via eventsub:subscribe.
       // Translate into the same stream_event shape the existing renderers expect.
-      case 'eventsub:event': {
-        const evName = String(msg.eventName || '')
-        const channelId = String(msg.channelId || '')
-        const payload = msg.payload && typeof msg.payload === 'object' ? msg.payload : {}
-        // Map EventSub event names to the stream_event eventType strings used by main.js
-        const typeMap = {
-          'channel.update': 'stream:update',
-          'stream.online': 'stream:online',
-          'stream.offline': 'stream:offline',
-          'channel.channel_points_custom_reward_redemption.add': 'stream:redeem',
-          'channel.raid': 'stream:raid',
-          'channel.hype_train.begin': 'stream:hype-start',
-          'channel.hype_train.end': 'stream:hype-end',
-          'channel.subscription.gift': 'stream:sub-gift',
-          'channel.subscribe': 'stream:sub',
-          'channel.follow': 'stream:follow',
-        }
-        const eventType = typeMap[evName]
-        if (!eventType) break
-        // Build stream_event broadcast — mirrors what stream:raid etc. handlers do
-        const evt = {
-          type: 'stream_event',
-          eventType,
-          channel: String(
-            payload.broadcaster_user_login || payload.to_broadcaster_user_login || channelId || '',
-          ).toLowerCase(),
-          platform: 'twitch',
-          game: String(payload.category_name || payload.game_name || ''),
-          title: String(payload.title || ''),
-          prevGame: String(payload.category_name || ''),
-          prevTitle: String(payload.title || ''),
-          user: String(payload.user_login || payload.from_broadcaster_user_login || ''),
-          target: String(payload.to_broadcaster_user_login || ''),
-          viewers: Number(payload.viewers || 0) || 0,
-          level: Number(payload.level || 0) || 0,
-          count: Number(payload.total || 0) || 0,
-          title2: String(payload.reward?.title || ''),
-          cost: Number(payload.reward?.cost || 0) || 0,
-        }
-        if (eventType === 'stream:redeem') evt.title = evt.title2
-        broadcastToTabs(evt)
-        log(' eventsub:event dispatched:', eventType, evt.channel)
-        break
-      }
 
       // AutoMod hold-queue — server pushes a held message for a channel this
       // user moderates (EventSub AutoMod + Helix, server-side). Trim/coerce
@@ -7403,24 +7311,6 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   }
 
-  if (message.type === 'dbg_yt_tap') {
-    // Read-only fallback-tap state snapshot — same rationale as dbg_kick_tap.
-    try {
-      sendResponse({
-        enabled: _ytTapSubsystemOn,
-        checkIntervalMs: YT_TAP_CHECK_MS,
-        wanted: [..._ytTapWantedAt.entries()],
-        lastDelivery: [..._ytTapLastDelivery.entries()],
-        cooldowns: [..._ytTapCooldownUntil.entries()],
-        active: [..._ytTapPollers.keys()],
-        stats: globalThis.__hsYtTapStats,
-      })
-    } catch (e) {
-      sendResponse({ error: e?.message || 'unknown' })
-    }
-    return true
-  }
-
   // Chatroom id for a kick slug — used by the page-side fallback pusher
   // connection (kick-native-tap.js) so it can subscribe chatrooms.<id>.v2
   // without its own kick API round-trip when BG already knows the answer.
@@ -7504,28 +7394,6 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 })
 
 async function handleMessage(message, sender, sendResponse) {
-  // Clear all heatsync message history and stream events
-  if (message.type === 'clear_history') {
-    browser.storage.local
-      .get(null)
-      .then((all) => {
-        const keys = Object.keys(all).filter((k) => k === 'hs_stream_events' || k.startsWith('hs_irc_'))
-        if (keys.length > 0) {
-          browser.storage.local
-            .remove(keys)
-            .then(() => {
-              log('Cleared', keys.length, 'history keys')
-              sendResponse({ ok: true, cleared: keys.length })
-            })
-            .catch((e) => sendResponse({ ok: false, error: e.message }))
-        } else {
-          sendResponse({ ok: true, cleared: 0 })
-        }
-      })
-      .catch((e) => sendResponse({ ok: false, error: e.message }))
-    return true
-  }
-
   // YouTube chat relay — forward native-tap copies to every multichat host.
   // youtube-content.js scrapes the YT live_chat iframe and sends `channelId: videoId`.
   // Remap to the real extension channelId so the receiving tab can route — otherwise
@@ -8311,8 +8179,6 @@ async function handleMessage(message, sender, sendResponse) {
     syncUnmuteToServer(message.username).catch((err) => log(' syncUnmuteToServer failed:', err?.message))
     log(' Unmuted user:', message.username)
     sendResponse({ ok: true })
-  } else if (message.type === 'get_muted_users') {
-    sendResponse({ users: Array.from(mutedUsers.keys()) })
   } else if (message.type === 'block_user') {
     blockedUsers.add(message.username)
     persistBlockedUsers()
@@ -8384,18 +8250,6 @@ async function handleMessage(message, sender, sendResponse) {
     // reflect the change immediately.
     fetchFollowedUsers().catch(() => {})
     sendResponse({ ok: true })
-    return true
-  } else if (message.type === 'refresh_live_followed') {
-    // Force a fresh poll (e.g., user manually pulls to refresh)
-    if (typeof pollFollowedLive === 'function') {
-      pollFollowedLive()
-        .then(() => {
-          sendResponse({ snapshot: _liveFollowedSnapshot, count: _liveFollowedCount })
-        })
-        .catch(() => sendResponse({ snapshot: [], count: 0 }))
-    } else {
-      sendResponse({ snapshot: [], count: 0 })
-    }
     return true
   } else if (message.type === 'join_channel') {
     // Content script detected channel change — wait for init so cached channel emotes are available
@@ -8569,26 +8423,6 @@ async function handleMessage(message, sender, sendResponse) {
         fetchUserInfo(),
         fetchViewerSettings(),
       ])
-      sendResponse({ success: true })
-    })()
-    return true
-  } else if (message.type === 'clear_blocked') {
-    // Clear all blocked emotes (both server-synced and local)
-    blockedEmotes.clear()
-    localBlockedEmotes.clear()
-    browser.storage.local.set({ blocked_emotes: [], local_blocked_emotes: [] })
-    broadcastToTabs({ type: 'blocked_update', blocked: [] })
-    ;(async () => {
-      const token = await getAuthCookie()
-      if (token) {
-        fetchWithTimeout(`${API_URL}/api/user/emotes/blocks/clear`, {
-          method: 'POST',
-          credentials: 'omit', // Bearer-only → CSRF-exempt (cookie would trigger CSRF)
-          headers: { Authorization: `Bearer ${token}` },
-        })
-          .then((r) => r.body?.cancel())
-          .catch((err) => log(' Clear blocked emotes failed:', err?.message))
-      }
       sendResponse({ success: true })
     })()
     return true
@@ -11897,15 +11731,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     })()
     return true
   }
-  if (message.type === 'bg_irc_status') {
-    sendResponse({
-      ok: true,
-      connected: BG_IRC.ws?.readyState === WebSocket.OPEN,
-      channels: Array.from(BG_IRC.channels.keys()),
-      bufferSizes: Object.fromEntries([...BG_IRC.channels].map(([k, v]) => [k, v.size])),
-    })
-    return true
-  }
   return false
 })
 
@@ -13684,19 +13509,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       try {
         if (!BG_KICK.storageRestored) await bgKickRestoreFromStorage()
         const buf = BG_KICK.channels.get(ch)
-        sendResponse({ ok: true, msgs: buf ? buf.getAll() : [] })
-      } catch (e) {
-        sendResponse({ ok: false, error: e?.message || String(e), msgs: [] })
-      }
-    })()
-    return true
-  }
-  if (message.type === 'bg_yt_history') {
-    const channelId = message.channelId || ''
-    ;(async () => {
-      try {
-        if (!BG_YT.storageRestored) await bgYtRestoreFromStorage()
-        const buf = BG_YT.channels.get(channelId)
         sendResponse({ ok: true, msgs: buf ? buf.getAll() : [] })
       } catch (e) {
         sendResponse({ ok: false, error: e?.message || String(e), msgs: [] })

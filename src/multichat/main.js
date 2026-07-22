@@ -10306,11 +10306,19 @@
   // live on scrollWheelVolumeEnabled (audit-toggle rule: read at event time,
   // not just at listener-setup time) — off behaves exactly like the
   // listener isn't there (native page scroll).
+  // yt is `#movie_player` ONLY — deliberately NOT `.html5-video-player`, which
+  // also matches `#shorts-player` and the home-feed hover-preview player. On
+  // both of those the wheel is the PAGE's own control (advance the reel, scroll
+  // the feed), so preventDefault there wedges youtube: the short can't be
+  // scrolled past, and muting/unmuting the <video> directly desyncs shorts'
+  // own per-reel audio state, leaving the previous short audible under the next.
   const HS_PLAYER_SELECTOR = {
     twitch: '.video-player',
     kick: '.channel-root__player, #injected-channel-player',
-    yt: '#movie_player, .html5-video-player',
+    yt: '#movie_player',
   }
+  // Shorts still gets volume — behind shift, which the reel itself doesn't use.
+  const HS_MODIFIER_PLAYER_SELECTOR = { yt: '#shorts-player' }
   let _hsVolOsdEl = null
   let _hsVolOsdHideTimer = null
   function _hsShowVolumeOsd(playerEl, video) {
@@ -10331,7 +10339,8 @@
   }
   function setupScrollWheelVolume() {
     const sel = HS_PLAYER_SELECTOR[hostPlatform]
-    if (!sel) return
+    const modSel = HS_MODIFIER_PLAYER_SELECTOR[hostPlatform]
+    if (!sel && !modSel) return
     document.addEventListener(
       'wheel',
       (e) => {
@@ -10339,9 +10348,15 @@
         // Never hijack scroll over HeatSync's own UI — every floating HS
         // surface (panel, picker, ctx menu, banners) uses an hs- prefixed id.
         if (e.target.closest && e.target.closest('[id^="hs-"]')) return
-        const playerEl = e.target.closest(sel)
+        let playerEl = sel ? e.target.closest(sel) : null
+        // Shift-only players (yt shorts): plain wheel stays the page's.
+        if (!playerEl && modSel && e.shiftKey) playerEl = e.target.closest(modSel)
         if (!playerEl) return
-        const video = playerEl.querySelector('video') || document.querySelector('video')
+        // Scoped lookup only — the old document-wide fallback grabbed an
+        // arbitrary <video> on multi-player pages. Fall back only when the
+        // page has exactly one, where "arbitrary" can't be wrong.
+        const all = document.querySelectorAll('video')
+        const video = playerEl.querySelector('video') || (all.length === 1 ? all[0] : null)
         if (!video) return
         e.preventDefault()
         const next = resolveVolumeWheelStep({ volume: video.volume, muted: video.muted }, e.deltaY)

@@ -1765,51 +1765,103 @@
     safeSendMessage({ type: 'yt_ensure_channel_emotes', videoId })
 
     try {
-      const container = await waitForContainer()
+      let container = await waitForContainer()
       log('found chat container')
 
-      // Process existing messages
-      for (const child of container.children) {
-        cleanup.raf(() => processNode(child))
-      }
+      // Observers bind to a single #items node. YT can swap the chat list in
+      // place — replay-chat toggle, membership-gate flip, or its own chat
+      // reload — without a document reload, orphaning that node. The old
+      // observers then watch a detached element that never fires again, so
+      // ingest and deletion detection go silently dead for the rest of the
+      // session. attach() (re)binds to the current node; a liveness poll below
+      // re-attaches on a swap.
+      let liveObservers = []
+      const attach = (el, processExisting) => {
+        // untrackObserver (not bare disconnect) so re-attaches don't grow
+        // cleanup's tracked-observer set unbounded across repeated swaps.
+        for (const o of liveObservers) cleanup.untrackObserver(o)
+        liveObservers = []
 
-      // Watch for new messages
-      const observer = new MutationObserver((mutations) => {
-        for (const mut of mutations) {
-          for (const node of mut.addedNodes) {
-            if (node.nodeType !== Node.ELEMENT_NODE) continue
-            cleanup.raf(() => processNode(node))
+        // Only seed from existing children on the first attach. On a re-attach
+        // the new list may redisplay messages we already ingested (e.g. a
+        // live→replay flip), and re-processing them would double-post; missing
+        // a few in-flight rows during a rare mode switch is the safer trade.
+        if (processExisting) {
+          for (const child of el.children) {
+            cleanup.raf(() => processNode(child))
           }
         }
-      })
 
-      cleanup.trackObserver(observer)
-      observer.observe(container, { childList: true })
-
-      // Detect moderator deletions: YT either swaps in a deleted-message-renderer
-      // or stamps `is-deleted` / clears #message text on the original renderer.
-      const deletionObserver = new MutationObserver((mutations) => {
-        for (const mut of mutations) {
-          // Renderer replaced with deleted variant
-          for (const node of mut.addedNodes) {
-            if (node.nodeType !== Node.ELEMENT_NODE) continue
-            if (node.tagName === 'YT-LIVE-CHAT-DELETED-MESSAGE-RENDERER') {
-              broadcastDeletion(node, 'deleted')
+        // Watch for new messages
+        const observer = new MutationObserver((mutations) => {
+          for (const mut of mutations) {
+            for (const node of mut.addedNodes) {
+              if (node.nodeType !== Node.ELEMENT_NODE) continue
+              cleanup.raf(() => processNode(node))
             }
           }
-          // Existing renderer mutated
-          if (mut.type === 'attributes' && mut.attributeName === 'is-deleted') {
-            broadcastDeletion(mut.target, mut.target.getAttribute('is-deleted') || 'deleted')
+        })
+        cleanup.trackObserver(observer)
+        observer.observe(el, { childList: true })
+
+        // Detect moderator deletions: YT either swaps in a deleted-message-renderer
+        // or stamps `is-deleted` / clears #message text on the original renderer.
+        const deletionObserver = new MutationObserver((mutations) => {
+          for (const mut of mutations) {
+            // Renderer replaced with deleted variant
+            for (const node of mut.addedNodes) {
+              if (node.nodeType !== Node.ELEMENT_NODE) continue
+              if (node.tagName === 'YT-LIVE-CHAT-DELETED-MESSAGE-RENDERER') {
+                broadcastDeletion(node, 'deleted')
+              }
+            }
+            // Existing renderer mutated
+            if (mut.type === 'attributes' && mut.attributeName === 'is-deleted') {
+              broadcastDeletion(mut.target, mut.target.getAttribute('is-deleted') || 'deleted')
+            }
           }
+        })
+        cleanup.trackObserver(deletionObserver)
+        deletionObserver.observe(el, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ['is-deleted'],
+        })
+
+        liveObservers = [observer, deletionObserver]
+      }
+
+      attach(container, true)
+
+      // Self-heal: poll the node's liveness rather than watch a stable ancestor
+      // subtree — on a busy chat that would fire our callback on every message
+      // (needless work on low-RAM hardware). One isConnected check every few
+      // seconds costs nothing and re-attaches within the poll interval.
+      let reattaching = false
+      const reattachIfSwapped = () => {
+        if (signal.aborted) return
+        // waitForContainer can pend up to 15s; the poll keeps firing meanwhile,
+        // so guard against stacking concurrent waits on the same dead node.
+        if (!container.isConnected && !reattaching) {
+          reattaching = true
+          log('chat container swapped — re-attaching observers')
+          waitForContainer()
+            .then((el) => {
+              if (signal.aborted) return
+              container = el
+              attach(container, false)
+            })
+            .catch((err) => {
+              if (!signal.aborted && err?.message !== 'aborted') log('re-attach failed:', err.message)
+            })
+            .finally(() => {
+              reattaching = false
+            })
         }
-      })
-      cleanup.trackObserver(deletionObserver)
-      deletionObserver.observe(container, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        attributeFilter: ['is-deleted'],
-      })
+        if (!signal.aborted) cleanup.setTimeout(reattachIfSwapped, 5000)
+      }
+      cleanup.setTimeout(reattachIfSwapped, 5000)
 
       // bfcache: only abort on real unloads — a persisted page may be
       // restored with this same closure, and the AbortController is

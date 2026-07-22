@@ -13,9 +13,11 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { escapeHtml } from '../src/lib/utils.js'
+import { escapeHtml, outsideTags } from '../src/lib/utils.js'
 
 globalThis.escapeHtml = escapeHtml
+// these transforms skip whole <a>…</a> spans via the shared helper
+globalThis.outsideTags = outsideTags
 
 const MAIN_SRC = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'main.js'), 'utf8')
 

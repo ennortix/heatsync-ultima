@@ -1786,6 +1786,7 @@ const utils = {
   // Links
   linkifyPartialLinks,
   defangedToHost,
+  outsideTags,
 
   // React
   getFiber,
@@ -15207,6 +15208,16 @@ img.hs-fx-zero { margin-left: -4px; }
     }
 
     /* Popout mode - full width (respects tab bar position) */
+    /* The container first: everything below is positioned INSIDE it, so
+       widening the overlay alone did nothing while the container kept its
+       docked width and a host-header top offset. A popout window has no host
+       chrome to leave room for — chat is the whole window. */
+    .hs-popout #hs-mc-container {
+      inset: 0 !important;
+      width: auto !important;
+      height: auto !important;
+      max-width: none !important;
+    }
     .hs-popout #hs-mc-overlay {
       left: 0 !important;
       right: 0 !important;
@@ -64038,66 +64049,64 @@ const STORAGE_KEY = 'heatsync_multichat'
     // twitch mention renders uid-less (unpaintable).
     platform = platform || 'twitch'
     if (!html || (!html.includes('@') && knownColors.size === 0)) return html
-    const parts = html.split(/(<[^>]+>)/)
-    for (let i = 0; i < parts.length; i += 2) {
-      const seg = parts[i]
-      if (!seg) continue
-      parts[i] = seg.replace(
-        /(^|[\s.,!?;:()[\]"'])(@?)([A-Za-z0-9_]{3,25})(?=$|[\s.,!?;:()[\]"'])/g,
-        (m, lead, at, name) => {
-          const lower = name.toLowerCase()
-          const known = knownColors.has(lower)
-          if (!at && !known) return m
-          // @mentions resolve a color even for users we haven't seen (async);
-          // bare known names already have one in knownColors.
-          const color = at ? mentionColor(lower) : sanitizeColor(knownColors.get(lower) || '#fff')
-          const safeName = escapeHtml(name)
-          const safeLower = escapeHtml(lower)
-          // Platform-scoped lookup — a twitch and kick chatter sharing this
-          // lowercase name must never trade 7TV paints/cosmetics. Falls back
-          // to the async-resolved uid cache (survives when knownUserIds was
-          // never seeded this session — e.g. page reload restored the color
-          // cache but the user hasn't chatted yet).
-          const uid =
-            knownUserIds.get(userKey(lower, platform)) ||
-            (platform === 'twitch' && typeof _hsUserIdCache !== 'undefined' ? _hsUserIdCache.get(lower) || '' : '')
-          // No uid yet: fire the profile resolve for its uid side-effect even
-          // when the COLOR is already cached — mentionColor short-circuits on
-          // known colors and would otherwise never fetch the uid, leaving
-          // this mention unpaintable forever. Deduped via _mentionColorPending.
-          if (!uid && platform === 'twitch') resolveMentionColor(lower)
-          let style = `color:${color}`
-          let uidAttr = ''
-          let mentionCls = 'hs-mc-user hs-mc-mention'
-          let splitAttr = ''
-          let inner = `${at}${safeName}`
-          if (uid) {
-            uidAttr = ` data-uid="${escapeHtml(uid)}"`
-            if (!mcUserCosmetics.has(uid)) queueMcCosmeticsLookup(uid)
-            // HeatSync paint wins over 7TV — same precedence rule as the
-            // sender username / reply-context bar.
-            const hsPaint = hsPaintRender(uid, `${at}${name}`)
-            if (hsPaint) {
-              mentionCls += ` ${hsPaint.cls}`
-              splitAttr = hsPaint.splitAttr
-              inner = hsPaint.html
-              // Mount stamp instead of a color decl — phase-locks this copy
-              // to the same wall-clock frame as every other copy of the paint.
-              style = `--hsp-t:${paintPhaseNow()};`
-            } else {
-              const paint = getMcPaintStyle(uid)
-              if (paint) style = paint
-            }
+    // Skips whole <a>…</a> spans, not just tags — a bare word or @handle inside
+    // an already-linkified url must not be re-wrapped, or the nested <a> splits
+    // the link (see highlightHashtagsInHtml for the same bug, reported live).
+    return outsideTags(
+      html,
+      /(^|[\s.,!?;:()[\]"'])(@?)([A-Za-z0-9_]{3,25})(?=$|[\s.,!?;:()[\]"'])/g,
+      (m, lead, at, name) => {
+        const lower = name.toLowerCase()
+        const known = knownColors.has(lower)
+        if (!at && !known) return m
+        // @mentions resolve a color even for users we haven't seen (async);
+        // bare known names already have one in knownColors.
+        const color = at ? mentionColor(lower) : sanitizeColor(knownColors.get(lower) || '#fff')
+        const safeName = escapeHtml(name)
+        const safeLower = escapeHtml(lower)
+        // Platform-scoped lookup — a twitch and kick chatter sharing this
+        // lowercase name must never trade 7TV paints/cosmetics. Falls back
+        // to the async-resolved uid cache (survives when knownUserIds was
+        // never seeded this session — e.g. page reload restored the color
+        // cache but the user hasn't chatted yet).
+        const uid =
+          knownUserIds.get(userKey(lower, platform)) ||
+          (platform === 'twitch' && typeof _hsUserIdCache !== 'undefined' ? _hsUserIdCache.get(lower) || '' : '')
+        // No uid yet: fire the profile resolve for its uid side-effect even
+        // when the COLOR is already cached — mentionColor short-circuits on
+        // known colors and would otherwise never fetch the uid, leaving
+        // this mention unpaintable forever. Deduped via _mentionColorPending.
+        if (!uid && platform === 'twitch') resolveMentionColor(lower)
+        let style = `color:${color}`
+        let uidAttr = ''
+        let mentionCls = 'hs-mc-user hs-mc-mention'
+        let splitAttr = ''
+        let inner = `${at}${safeName}`
+        if (uid) {
+          uidAttr = ` data-uid="${escapeHtml(uid)}"`
+          if (!mcUserCosmetics.has(uid)) queueMcCosmeticsLookup(uid)
+          // HeatSync paint wins over 7TV — same precedence rule as the
+          // sender username / reply-context bar.
+          const hsPaint = hsPaintRender(uid, `${at}${name}`)
+          if (hsPaint) {
+            mentionCls += ` ${hsPaint.cls}`
+            splitAttr = hsPaint.splitAttr
+            inner = hsPaint.html
+            // Mount stamp instead of a color decl — phase-locks this copy
+            // to the same wall-clock frame as every other copy of the paint.
+            style = `--hsp-t:${paintPhaseNow()};`
+          } else {
+            const paint = getMcPaintStyle(uid)
+            if (paint) style = paint
           }
-          // No plus-tenure "+" on an inline @mention: the token is a
-          // sender-identity mark (shown beside the sender before the colon),
-          // not part of a name typed inside message content. The sender's own
-          // name and the reply-context header still carry it.
-          return `${lead}<a href="https://heatsync.org/user/${encodeURIComponent(lower)}" target="_blank" rel="noopener noreferrer" class="${mentionCls}" data-username="${safeLower}"${uidAttr}${splitAttr} style="${style}">${inner}</a>`
-        },
-      )
-    }
-    return parts.join('')
+        }
+        // No plus-tenure "+" on an inline @mention: the token is a
+        // sender-identity mark (shown beside the sender before the colon),
+        // not part of a name typed inside message content. The sender's own
+        // name and the reply-context header still carry it.
+        return `${lead}<a href="https://heatsync.org/user/${encodeURIComponent(lower)}" target="_blank" rel="noopener noreferrer" class="${mentionCls}" data-username="${safeLower}"${uidAttr}${splitAttr} style="${style}">${inner}</a>`
+      },
+    )
   }
 
   // DOM-node twin of highlightHashtagsInHtml for surfaces that build via text
@@ -64134,18 +64143,17 @@ const STORAGE_KEY = 'heatsync_multichat'
   // are consistent on every surface. Splits on tags so attrs/img/<a> aren't touched.
   function highlightHashtagsInHtml(html) {
     if (!html || !html.includes('#')) return html
-    const parts = html.split(/(<[^>]+>)/)
-    for (let i = 0; i < parts.length; i += 2) {
-      const seg = parts[i]
-      if (!seg || !seg.includes('#')) continue
-      // (?<!&) — seg is already escaped, so a #tag inside an HTML entity
-      // (&#x27; → #x27, &#39; → #39) must NOT match, else an apostrophe renders
-      // as a bogus magenta tag.
-      parts[i] = seg.replace(/(?<!&)#([a-zA-Z][a-zA-Z0-9_]{1,29})\b/g, (m, tag) => {
-        return `<a href="https://heatsync.org/tags/${encodeURIComponent(tag)}" target="_blank" rel="noopener noreferrer" class="hs-hashtag" data-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</a>`
-      })
-    }
-    return parts.join('')
+    // outsideTags skips whole <a>…</a> spans, not just tags. A url fragment
+    // like ".../2026-07-22?m=…#mb812bf1a-46d8-…" is tag-shaped, and wrapping it
+    // put an <a> inside an <a> — invalid html5, so the browser closes the outer
+    // link at that point: the fragment rendered magenta and the rest of the url
+    // fell out of the link entirely as plain text.
+    // (?<!&) — seg is already escaped, so a #tag inside an HTML entity
+    // (&#x27; → #x27, &#39; → #39) must NOT match, else an apostrophe renders
+    // as a bogus magenta tag.
+    return outsideTags(html, /(?<!&)#([a-zA-Z][a-zA-Z0-9_]{1,29})\b/g, (m, tag) => {
+      return `<a href="https://heatsync.org/tags/${encodeURIComponent(tag)}" target="_blank" rel="noopener noreferrer" class="hs-hashtag" data-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</a>`
+    })
   }
 
   // Yellow >>id HeatSync thread references in chat — same regex, id format, span
@@ -64158,17 +64166,12 @@ const STORAGE_KEY = 'heatsync_multichat'
     // Gate on the doubled forms — text is HTML-escaped here so a typed ">>" is
     // "&gt;&gt;" (no bare ">"); also accept raw ">>" belt-and-suspenders.
     if (!html || (!html.includes('&gt;&gt;') && !html.includes('>>'))) return html
-    const parts = html.split(/(<[^>]+>)/)
-    for (let i = 0; i < parts.length; i += 2) {
-      const seg = parts[i]
-      if (!seg || (!seg.includes('&gt;&gt;') && !seg.includes('>>'))) continue
-      parts[i] = seg.replace(/(?:&gt;&gt;|>>)(\w{1,6})/g, (m, id) => {
-        const paddedId = id.padStart(6, '0')
-        const displayId = id.replace(/^0+/, '') || '0'
-        return `<span class="hs-post-link" data-id="${escapeHtml(paddedId)}" style="cursor:pointer">&gt;&gt;${escapeHtml(displayId)}</span>`
-      })
-    }
-    return parts.join('')
+    // Anchor-aware for the same reason as the two passes above.
+    return outsideTags(html, /(?:&gt;&gt;|>>)(\w{1,6})/g, (m, id) => {
+      const paddedId = id.padStart(6, '0')
+      const displayId = id.replace(/^0+/, '') || '0'
+      return `<span class="hs-post-link" data-id="${escapeHtml(paddedId)}" style="cursor:pointer">&gt;&gt;${escapeHtml(displayId)}</span>`
+    })
   }
 
   // Scroll helper — reused by both renderMessages and appendMessage
@@ -68897,10 +68900,12 @@ const STORAGE_KEY = 'heatsync_multichat'
       // categories, search, following, settings — so the panel survives
       // SPA nav. body-mount fallback in getOrCreateHsContainer when
       // #channel-chatroom is absent.
-      // NOTE: /popout/<slug>/chat never sets isPopout, but that's not the whole
-      // story — the panel does not mount there at all (verified live 2026-07-21:
-      // hs-mc-styles injects, hs-mc-container never appears), so the fill-window
-      // flag would have nothing to act on. Fix the mount first.
+      // /popout/<slug>/chat is a pop-out window — the url our own popout button
+      // opens — and gets the same fill-window layout twitch and yt already get.
+      // Without this the panel mounted at its docked 376px inside a ~400px
+      // popout window, and the kick body-mount branch below reads hs-popout
+      // expecting it to be set.
+      isPopout = /^\/popout\/[a-zA-Z0-9_-]+\/chat/.test(location.pathname)
     } else {
       // Twitch: persistent overlay across every URL — directory, settings,
       // videos, etc. all keep the panel mounted. getOrCreateHsContainer

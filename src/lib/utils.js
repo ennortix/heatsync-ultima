@@ -794,6 +794,7 @@ const utils = {
   // Links
   linkifyPartialLinks,
   defangedToHost,
+  outsideTags,
 
   // React
   getFiber,
@@ -873,6 +874,7 @@ export {
   LARGE_KEY_SYNC_MAX,
   log,
   OVERFLOW_MIRROR_KEYS,
+  outsideTags,
   parseYtGiftCount,
   resolveEmoteProviderWinner,
   resolveVolumeWheelStep,

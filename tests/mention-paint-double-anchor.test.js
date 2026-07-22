@@ -47,9 +47,11 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import * as mods from '../src/lib/modifiers.js'
 import { userKey } from '../src/lib/user-key.js'
-import { escapeHtml } from '../src/lib/utils.js'
+import { escapeHtml, outsideTags } from '../src/lib/utils.js'
 
 globalThis.escapeHtml = escapeHtml
+// these transforms skip whole <a>…</a> spans via the shared helper
+globalThis.outsideTags = outsideTags
 // emotes.js's tokenizer (and its module-level scanDomForEmotes scheduler)
 // reference a handful of main.js-scope globals as free variables (same
 // pattern as tests/emote-precedence.test.js) — must be set BEFORE import
@@ -136,12 +138,19 @@ function resetGlobals() {
 const NESTED_ANCHOR_RE = /<a\b[^>]*>(?:(?!<\/a>)[\s\S])*?<a\b/
 
 describe('processEmotes + highlightMentionsInHtml double-render (blank painted username bug)', () => {
-  test('RED (documents the historical bug): calling processEmotes WITHOUT skipMentions before highlightMentionsInHtml nests anchors', () => {
+  // Was a RED test asserting the historical defect still reproduced through the
+  // old call shape. It doesn't any more: highlightMentionsInHtml now skips whole
+  // <a>…</a> spans (the same fix that stopped a url's "#fragment" being eaten by
+  // the hashtag pass), so an already-anchored mention is left alone and nesting
+  // is impossible from EITHER direction. skipMentions is still the right call
+  // — one anchor author, no wasted pass — this is just defence in depth.
+  test('an already-anchored mention is never re-wrapped, even via the old call shape', () => {
     resetGlobals()
     const passOne = processEmotes(escapeHtml('@mellen'), 'chan-a', null, null, null) // old call shape — skipMentions defaults false
     expect(passOne).toContain('<a ') // sanity: processEmotes really did wrap it
     const final = highlightMentionsInHtml(passOne, 'twitch')
-    expect(final).toMatch(NESTED_ANCHOR_RE)
+    expect(final).not.toMatch(NESTED_ANCHOR_RE)
+    expect(final).toBe(passOne) // untouched — the anchor span is skipped whole
   })
 
   test('GREEN (the fix): skipMentions=true means processEmotes never wraps @mentions, so highlightMentionsInHtml is the only anchor author and nesting is impossible', () => {

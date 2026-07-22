@@ -12787,17 +12787,27 @@ img.hs-fx-zero { margin-left: -4px; }
     #hs-mc-platfilter {
       display: flex;
       flex: 0 0 auto;
-      gap: 0;
-      align-items: stretch;
-      margin-left: -1px;
+      /* Each button owns a COMPLETE box, same as the composer send chips.
+         This used to be a segmented control (gap:0, margin-left:-1px,
+         align-items:stretch) so neighbours shared one border line — which
+         reads as T and K missing their right edge, and stretch merged the
+         top edge into the row above. Two clusters of the same control now
+         look the same in both places. */
+      gap: 2px;
+      align-items: center;
+      margin-left: 0;
     }
     #hs-mc-platfilter:empty { display: none; margin: 0; }
-    /* Inside platfilter: T/K/Y buttons each share the cluster width */
+    /* Inside platfilter (horizontal strip): fixed 18x18, same box as the
+       composer send chips. These used to divide the cluster width with
+       flex:1 1 0, which lands the buttons on fractional x (measured .66/.33)
+       — and bitmap text on a sub-pixel x is exactly what smears. Vertical
+       (side-tab) mode below still fills the column on purpose. */
     #hs-mc-platfilter .hs-mc-pf-btn {
-      flex: 1 1 0 !important;
-      width: auto !important;
+      flex: 0 0 18px !important;
+      width: 18px !important;
       min-width: 18px !important;
-      max-width: none !important;
+      max-width: 18px !important;
     }
     /* Vertical mode: platfilter spans full column width, buttons share row */
     .hs-tabs-right #hs-mc-platfilter,
@@ -12805,7 +12815,7 @@ img.hs-fx-zero { margin-left: -4px; }
       display: flex;
       flex-direction: row;
       flex-wrap: nowrap;
-      gap: 0;
+      gap: 2px;
       width: 100%;
       box-sizing: border-box;
       margin-left: 0;
@@ -12826,7 +12836,11 @@ img.hs-fx-zero { margin-left: -4px; }
       color: #fff;
       font-size: 13px;
       font-weight: 700;
-      padding: 0;
+      /* Explicit height: with align-items:center the button no longer takes
+         its height from the row, so it needs its own. 18px matches the
+         whisper-row grid and the vertical-mode override below. */
+      height: 18px;
+      padding: 0 4px;
       cursor: pointer;
       font-family: inherit;
       line-height: 1;
@@ -12886,12 +12900,21 @@ img.hs-fx-zero { margin-left: -4px; }
       border: 1px solid;
       font-size: 13px;
       font-weight: 700;
-      padding: 3px 4px;
+      /* INTEGER 18x18, identical to the tab-strip filter buttons. Padding-sized
+         boxes measured 17.81px wide and landed the glyphs on fractional x —
+         which is exactly what makes a bitmap font smear (same trap as the
+         whisper arrow's integer-width note). Fixed box, centred glyph, whole
+         pixels. */
+      width: 18px;
+      height: 18px;
+      padding: 0;
       cursor: pointer;
       font-family: inherit;
       line-height: 1;
       box-sizing: border-box;
-      min-width: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       text-align: center;
     }
     /* ON state — OUTLINE, identical to the tab-strip filter buttons. These

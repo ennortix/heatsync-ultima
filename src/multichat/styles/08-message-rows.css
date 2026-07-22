@@ -820,7 +820,55 @@
     /* ---- click-to-play chat players (feed-embed.js chat click-to-play) ---- */
     /* chat column is tall + narrow — everything embed stays SMALL and dense.  */
     .hs-mc-media.hs-mc-playable {
+      position: relative;
       cursor: pointer;
+      padding-left: 14px;
+    }
+    /* the transport glyph IS the card's left edge — a pseudo-element, so it
+       survives every repaint without the row builders knowing about it. */
+    .hs-mc-media.hs-mc-playable::before {
+      content: '>';
+      position: absolute;
+      left: 2px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 13px;
+      line-height: 13px;
+      color: #ff8700;
+      pointer-events: none;
+    }
+    .hs-mc-media.hs-mc-playable.hs-playing::before {
+      content: '||';
+      letter-spacing: -1px;
+    }
+    /* white plate on hover AND active, same as every other hs surface. Only
+       our own chrome can follow — an iframe's interior is cross-origin. */
+    .hs-mc-media.hs-mc-playable:hover,
+    .hs-mc-media.hs-mc-playable:active {
+      background: #fff;
+      color: #000;
+    }
+    .hs-mc-media.hs-mc-playable:hover::before,
+    .hs-mc-media.hs-mc-playable:active::before,
+    .hs-mc-media.hs-mc-playable:hover .hs-feed-embed-rich-platform,
+    .hs-mc-media.hs-mc-playable:hover .hs-feed-embed-rich-title,
+    .hs-mc-media.hs-mc-playable:hover .hs-feed-embed-rich-author,
+    .hs-mc-media.hs-mc-playable:hover .hs-feed-embed-pending-label {
+      color: #000;
+    }
+    /* 0×0 host for in-place audio — outside #hs-mc-messages so a chat repaint
+       can't kill the track, invisible because there is nothing to look at. */
+    #hs-mc-audio-host {
+      position: absolute;
+      width: 0;
+      height: 0;
+      overflow: hidden;
+      border: 0;
+    }
+    #hs-mc-audio-host iframe {
+      width: 320px;
+      height: 80px;
+      border: 0;
     }
     /* rich/audio cards: slim horizontal strip — 36px art, one-line meta */
     .hs-mc-media .hs-feed-embed-rich-card {

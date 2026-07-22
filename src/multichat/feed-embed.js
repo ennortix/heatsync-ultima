@@ -657,6 +657,9 @@ function attachFeedFallbacks(root) {
       { once: true },
     )
   })
+  // The row carrying the ▸/❚❚ was just rebuilt — re-derive the glyph from the
+  // module's now-playing state (the DOM can't remember it across a repaint).
+  markNowPlaying(root)
   // Inline <video> (direct chat media) — a dead source must hide, not leave a
   // broken player. <video> 'error' doesn't bubble, so wire it directly here.
   root.querySelectorAll('video[data-fb="hide"]').forEach((video) => {
@@ -686,6 +689,176 @@ const _CHAT_PLAYER_RE =
 function chatUrlPlayable(url) {
   return _CHAT_PLAYER_RE.test(url || '')
 }
+
+// ── IN-PLACE AUDIO ─────────────────────────────────────────────────────────
+// Audio plays in the row; video docks. You can't watch a hidden iframe, but
+// you never needed to LOOK at a spotify track — so for audio-only providers
+// the card itself is the player (press it, it plays, no panel slides in) and
+// the iframe goes to a 0×0 host. That host still lives OUTSIDE
+// #hs-mc-messages for the same reason the dock does: chat full-repaints on
+// every batch, and an iframe inside the repaint zone dies mid-track.
+//
+// Which is only possible because spotify accepts a play command with no user
+// gesture inside the frame — probed live, see the provider table below.
+const _AUDIO_ONLY_RE = /(open\.spotify\.com\/(?:track|album|playlist|episode|show)\/|soundcloud\.com\/[\w-]+\/[\w-]+)/i
+
+function chatUrlAudioOnly(url) {
+  return _AUDIO_ONLY_RE.test(url || '')
+}
+
+// Per-provider postMessage contracts. Every one of these was verified live by
+// READ-BACK where the provider allows it (set the value, ask for it again) —
+// the same rule the chat-mode writes follow: never claim success because a
+// message didn't throw. `volume: false` is spotify telling the truth — its
+// embed has no volume control and no command that sets one.
+const _AUDIO_PROVIDERS = [
+  {
+    id: 'spotify',
+    test: /open\.spotify\.com/i,
+    origin: 'https://open.spotify.com',
+    volume: false,
+    frameUrl: (u) => {
+      const m = String(u).split('spotify.com/')[1] || ''
+      const [kind, rawId] = m.split('/')
+      const id = sanitizeEmbedId((rawId || '').split('?')[0])
+      const k = (kind || '').replace(/[^a-z]/g, '')
+      return k && id ? `https://open.spotify.com/embed/${k}/${id}` : ''
+    },
+    ready: (d) => d?.type === 'ready',
+    play: { command: 'play' },
+    pause: { command: 'pause' },
+  },
+  {
+    id: 'soundcloud',
+    test: /soundcloud\.com/i,
+    origin: 'https://w.soundcloud.com',
+    volume: true,
+    frameUrl: (u) => {
+      const safe = safeUrl(u)
+      return safe ? `https://w.soundcloud.com/player/?url=${encodeURIComponent(safe)}` : ''
+    },
+    ready: (d) => d?.method === 'ready',
+    play: { method: 'play' },
+    pause: { method: 'pause' },
+    setVolume: (v) => ({ method: 'setVolume', value: Math.round(v * 100) }),
+  },
+]
+
+function _audioProviderFor(url) {
+  return _AUDIO_PROVIDERS.find((p) => p.test.test(url || '')) || null
+}
+
+// One volume for every embed HeatSync drives, remembered across tracks and
+// sessions. Providers that can't take a volume (spotify) simply never ask for
+// it — the value is still the truth for the ones that can.
+let _embedVolume = 0.5
+try {
+  chrome.storage.local.get('hs_embed_volume', (v) => {
+    void chrome.runtime.lastError
+    const n = Number(v?.hs_embed_volume)
+    if (Number.isFinite(n) && n >= 0 && n <= 1) _embedVolume = n
+  })
+} catch (_) {}
+
+function embedVolume() {
+  return _embedVolume
+}
+
+function setEmbedVolume(v) {
+  const n = Math.min(1, Math.max(0, Number(v) || 0))
+  _embedVolume = n
+  try {
+    chrome.storage.local.set({ hs_embed_volume: n }, () => void chrome.runtime.lastError)
+  } catch (_) {}
+  const setVol = _hsAudio?.provider?.setVolume
+  if (setVol && _hsAudio.ready) _hsAudioSend(setVol(n))
+  return n
+}
+
+// { url, provider, frame, ready, playing } — module state, never DOM state:
+// the row carrying the ▸/❚❚ is destroyed and rebuilt on every repaint, so the
+// glyph has to be re-derived (see markNowPlaying) rather than remembered.
+let _hsAudio = null
+
+function _hsAudioSend(msg) {
+  if (!_hsAudio?.frame?.contentWindow) return
+  // youtube-style players want a JSON string; the two audio ones take either.
+  try {
+    _hsAudio.frame.contentWindow.postMessage(msg, _hsAudio.provider.origin)
+  } catch (_) {}
+}
+
+function markNowPlaying(root) {
+  if (!root?.querySelectorAll) return
+  for (const el of root.querySelectorAll('.hs-mc-media.hs-mc-playable')) {
+    const url = el.dataset.resolveUrl || (el.tagName === 'A' ? el.href : '')
+    const on = !!_hsAudio && _hsAudio.playing && url === _hsAudio.url
+    el.classList.toggle('hs-playing', on)
+  }
+}
+
+function _hsAudioStop() {
+  if (!_hsAudio) return
+  _hsAudioSend(_hsAudio.provider.pause)
+  _hsAudio.frame?.remove()
+  _hsAudio = null
+  document.getElementById('hs-mc-audio-host')?.remove()
+  markNowPlaying(document)
+}
+
+// Toggle playback for an audio-only card. Returns false when the url isn't
+// one we can drive, so the caller can fall back to the dock.
+function chatAudioToggle(url) {
+  const provider = _audioProviderFor(url)
+  if (!provider) return false
+  if (_hsAudio && _hsAudio.url === url) {
+    _hsAudio.playing = !_hsAudio.playing
+    _hsAudioSend(_hsAudio.playing ? provider.play : provider.pause)
+    markNowPlaying(document)
+    return true
+  }
+  const src = provider.frameUrl(url)
+  if (!src) return false
+  _hsAudioStop()
+  const overlay = document.getElementById('hs-mc-overlay')
+  if (!overlay) return false
+  const host = document.createElement('div')
+  host.id = 'hs-mc-audio-host'
+  host.setAttribute('aria-hidden', 'true')
+  const frame = document.createElement('iframe')
+  frame.src = src
+  frame.setAttribute('sandbox', EMBED_SANDBOX)
+  frame.setAttribute('allow', 'autoplay; encrypted-media')
+  host.appendChild(frame)
+  overlay.appendChild(host)
+  _hsAudio = { url, provider, frame, ready: false, playing: true }
+  markNowPlaying(document)
+  return true
+}
+
+// Providers announce themselves when the frame is ready; commands sent before
+// that are dropped on the floor, so play waits for the announcement.
+window.addEventListener(
+  'message',
+  (e) => {
+    if (!_hsAudio || e.source !== _hsAudio.frame?.contentWindow) return
+    if (e.origin !== _hsAudio.provider.origin) return
+    let data = e.data
+    if (typeof data === 'string') {
+      try {
+        data = JSON.parse(data)
+      } catch (_) {
+        return
+      }
+    }
+    if (_hsAudio.ready || !_hsAudio.provider.ready(data)) return
+    _hsAudio.ready = true
+    const setVol = _hsAudio.provider.setVolume
+    if (setVol) _hsAudioSend(setVol(embedVolume()))
+    if (_hsAudio.playing) _hsAudioSend(_hsAudio.provider.play)
+  },
+  { signal: mcSignal },
+)
 
 function _hsPlayerDockClose() {
   document.getElementById('hs-mc-player-dock')?.remove()
@@ -731,6 +904,12 @@ document.addEventListener(
     if (!url || !chatUrlPlayable(url)) return
     // ENTIRE card plays — meta strip included (a 90%-meta compact card whose
     // meta linked out instead of playing read as "play is broken").
+    // Audio-only providers never open the dock — the card IS the player.
+    if (chatUrlAudioOnly(url) && chatAudioToggle(url)) {
+      e.preventDefault()
+      e.stopPropagation()
+      return
+    }
     const label = wrap.querySelector('.hs-feed-embed-rich-title')?.textContent || wrap.dataset.resolvePlatform || url
     if (_hsPlayerDockOpen(url, label)) {
       e.preventDefault()

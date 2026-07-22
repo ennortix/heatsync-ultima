@@ -1037,10 +1037,15 @@ function renderSendTargetChips() {
     { key: 'kick', label: 'K' },
     { key: 'youtube', label: 'Y' },
   ]
-  // No text label — composer width is precious (side-tab layouts). The twin
-  // T K Y clusters are told apart by style + place: send chips are FILLED
-  // and sit at the composer; the view filter is OUTLINE and lives in the
-  // tab strip. Tooltips carry the words.
+  // No text label — composer width is precious (side-tab layouts). Both T K Y
+  // clusters now share ONE style (outline); they're told apart by place and
+  // by this one-glyph marker: → means "where it goes". Tooltips carry the
+  // words.
+  const arrow = document.createElement('span')
+  arrow.className = 'hs-mc-st-arrow'
+  arrow.textContent = '\u2192'
+  arrow.title = 'send targets'
+  group.appendChild(arrow)
   for (const p of meta) {
     if (!linked[p.key]) continue
     const on = resolved[p.key]

@@ -13172,8 +13172,10 @@ img.hs-fx-zero { margin-left: -4px; }
       color: #555 !important;
       border-color: #333 !important;
     }
-    .hs-mc-pf-btn:hover { background: #fff !important; color: #000 !important; border-color: #fff !important; }
-    .hs-mc-pf-btn.off:hover {
+    .hs-mc-pf-btn:hover,
+    .hs-mc-pf-btn:active { background: #fff !important; color: #000 !important; border-color: #fff !important; }
+    .hs-mc-pf-btn.off:hover,
+    .hs-mc-pf-btn.off:active {
       background: #fff !important;
       color: #000 !important;
       border-color: #fff !important;
@@ -13208,16 +13210,35 @@ img.hs-fx-zero { margin-left: -4px; }
       min-width: 14px;
       text-align: center;
     }
-    .hs-mc-st-btn.hs-mc-st-twitch { border-color: var(--hs-plat-twitch) !important; background: var(--hs-plat-twitch) !important; color: #fff !important; }
-    .hs-mc-st-btn.hs-mc-st-kick { border-color: var(--hs-plat-kick) !important; background: var(--hs-plat-kick) !important; color: #000 !important; }
-    .hs-mc-st-btn.hs-mc-st-youtube { border-color: var(--hs-plat-youtube) !important; background: var(--hs-plat-youtube) !important; color: #fff !important; }
+    /* ON state — OUTLINE, identical to the tab-strip filter buttons. These
+       two T K Y clusters used to be styled differently on purpose (fill =
+       send, outline = see), but two visual languages for one control shape
+       reads as inconsistency, not as meaning. A solid platform block is also
+       the loudest thing in a dense terminal UI, and a filled red youtube
+       chip reads as an error state rather than a platform. Colored glyph on
+       black is the house treatment; the clusters are told apart by WHERE
+       they sit plus the → marker on the send cluster. */
+    .hs-mc-st-btn.hs-mc-st-twitch { border-color: var(--hs-plat-twitch) !important; background: transparent !important; color: var(--hs-plat-twitch) !important; }
+    .hs-mc-st-btn.hs-mc-st-kick { border-color: var(--hs-plat-kick) !important; background: transparent !important; color: var(--hs-plat-kick) !important; }
+    .hs-mc-st-btn.hs-mc-st-youtube { border-color: var(--hs-plat-youtube) !important; background: transparent !important; color: var(--hs-plat-youtube) !important; }
     .hs-mc-st-btn.off {
-      background: #000 !important;
-      color: #fff !important;
+      background: transparent !important;
+      color: #555 !important;
       border-color: #333 !important;
     }
-    .hs-mc-st-btn:hover { background: #fff !important; color: #000 !important; border-color: #fff !important; }
-    .hs-mc-st-btn.off:hover {
+    /* The send cluster's "where it goes" marker. Not a button — a one-glyph
+       label, dim so it never competes with the letters. */
+    .hs-mc-st-arrow {
+      color: #666;
+      font-size: 13px;
+      line-height: 1;
+      align-self: center;
+      user-select: none;
+    }
+    .hs-mc-st-btn:hover,
+    .hs-mc-st-btn:active { background: #fff !important; color: #000 !important; border-color: #fff !important; }
+    .hs-mc-st-btn.off:hover,
+    .hs-mc-st-btn.off:active {
       background: #fff !important;
       color: #000 !important;
       border-color: #fff !important;
@@ -38914,10 +38935,15 @@ function renderSendTargetChips() {
     { key: 'kick', label: 'K' },
     { key: 'youtube', label: 'Y' },
   ]
-  // No text label — composer width is precious (side-tab layouts). The twin
-  // T K Y clusters are told apart by style + place: send chips are FILLED
-  // and sit at the composer; the view filter is OUTLINE and lives in the
-  // tab strip. Tooltips carry the words.
+  // No text label — composer width is precious (side-tab layouts). Both T K Y
+  // clusters now share ONE style (outline); they're told apart by place and
+  // by this one-glyph marker: → means "where it goes". Tooltips carry the
+  // words.
+  const arrow = document.createElement('span')
+  arrow.className = 'hs-mc-st-arrow'
+  arrow.textContent = '\u2192'
+  arrow.title = 'send targets'
+  group.appendChild(arrow)
   for (const p of meta) {
     if (!linked[p.key]) continue
     const on = resolved[p.key]

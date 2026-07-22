@@ -43,6 +43,92 @@ describe('linkifyPartialLinks — youtube watch refs', () => {
   test('rejects wrong-length ids', () => {
     expect(linkifyPartialLinks('watch?v=short')).toBe('watch?v=short')
   })
+
+  test('trailing params ride along, escaped & stays escaped', () => {
+    expect(linkifyPartialLinks('watch?v=l9i0hDNBdZM&amp;t=30s')).toBe(
+      A('https://www.youtube.com/watch?v=l9i0hDNBdZM&amp;t=30s', 'watch?v=l9i0hDNBdZM&amp;t=30s'),
+    )
+  })
+})
+
+describe('linkifyPartialLinks — bare youtube path fragments', () => {
+  test("mellen's case: shorts/<id>", () => {
+    expect(linkifyPartialLinks('lol shorts/e2B1_DNpsV4')).toBe(
+      `lol ${A('https://www.youtube.com/shorts/e2B1_DNpsV4', 'shorts/e2B1_DNpsV4')}`,
+    )
+  })
+
+  test('live / embed / legacy v keep their own path', () => {
+    expect(linkifyPartialLinks('live/e2B1_DNpsV4')).toContain('href="https://www.youtube.com/live/e2B1_DNpsV4"')
+    expect(linkifyPartialLinks('embed/e2B1_DNpsV4')).toContain('href="https://www.youtube.com/embed/e2B1_DNpsV4"')
+    expect(linkifyPartialLinks('v/e2B1_DNpsV4')).toContain('href="https://www.youtube.com/watch?v=e2B1_DNpsV4"')
+  })
+
+  test('leading slash form works and is kept in display text', () => {
+    expect(linkifyPartialLinks('/shorts/e2B1_DNpsV4')).toBe(
+      A('https://www.youtube.com/shorts/e2B1_DNpsV4', '/shorts/e2B1_DNpsV4'),
+    )
+  })
+
+  test('inside a real url it stays for the normal linkifier', () => {
+    const url = 'youtube.com/shorts/e2B1_DNpsV4'
+    expect(linkifyPartialLinks(url)).toBe(url)
+  })
+
+  test('prose and wrong-length ids stay text', () => {
+    expect(linkifyPartialLinks('wearing shorts/pants today')).toBe('wearing shorts/pants today')
+    expect(linkifyPartialLinks('live/nope')).toBe('live/nope')
+  })
+
+  test('playlist and channel ids', () => {
+    expect(linkifyPartialLinks('playlist?list=PLl9i0hDNBdZMxx')).toContain(
+      'href="https://www.youtube.com/playlist?list=PLl9i0hDNBdZMxx"',
+    )
+    expect(linkifyPartialLinks('channel/UCl9i0hDNBdZMxxxxxxxxxx')).toContain(
+      'href="https://www.youtube.com/channel/UCl9i0hDNBdZMxxxxxxxxxx"',
+    )
+  })
+
+  test('@handles are left to the mention pass', () => {
+    expect(linkifyPartialLinks('@someverylonghandle')).toBe('@someverylonghandle')
+  })
+})
+
+describe('linkifyPartialLinks — reddit refs', () => {
+  test('r/ and u/ and /user/', () => {
+    expect(linkifyPartialLinks('see r/place')).toBe(`see ${A('https://www.reddit.com/r/place', 'r/place')}`)
+    expect(linkifyPartialLinks('u/spez')).toBe(A('https://www.reddit.com/user/spez', 'u/spez'))
+    expect(linkifyPartialLinks('/user/spez')).toBe(A('https://www.reddit.com/user/spez', '/user/spez'))
+  })
+
+  test('chat slashisms stay text', () => {
+    expect(linkifyPartialLinks('w/e 24/7 and/or')).toBe('w/e 24/7 and/or')
+  })
+
+  test('does not fire inside a reddit url', () => {
+    expect(linkifyPartialLinks('reddit.com/r/place')).toBe('reddit.com/r/place')
+  })
+})
+
+describe('linkifyPartialLinks — bare hosts with no path', () => {
+  test('common tlds link', () => {
+    expect(linkifyPartialLinks('go to heatsync.org')).toBe(`go to ${A('https://heatsync.org', 'heatsync.org')}`)
+    expect(linkifyPartialLinks('7tv.app')).toBe(A('https://7tv.app', '7tv.app'))
+  })
+
+  test('run-on chat prose does not become a link', () => {
+    expect(linkifyPartialLinks('lol.im dead')).toBe('lol.im dead')
+    expect(linkifyPartialLinks('wait.what')).toBe('wait.what')
+    expect(linkifyPartialLinks('nice.jpg')).toBe('nice.jpg')
+  })
+
+  test('emails are not hosts', () => {
+    expect(linkifyPartialLinks('mail me at x@heatsync.org')).toBe('mail me at x@heatsync.org')
+  })
+
+  test('with-path form is left to the normal linkifier', () => {
+    expect(linkifyPartialLinks('heatsync.org/emotes')).toBe('heatsync.org/emotes')
+  })
 })
 
 describe('linkifyPartialLinks — defanged domains', () => {

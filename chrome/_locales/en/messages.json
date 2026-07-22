@@ -2025,6 +2025,14 @@
       }
     }
   },
+  "mc_input_cmd_twitch_removed": {
+    "message": "twitch removed /$CMD$ from chat — use its own mod tools",
+    "placeholders": {
+      "cmd": {
+        "content": "$1"
+      }
+    }
+  },
   "mc_input_mode_kick_unsupported": {
     "message": "kick has no $LABEL$ mode",
     "placeholders": {

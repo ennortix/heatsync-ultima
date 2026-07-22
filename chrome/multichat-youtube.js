@@ -38044,6 +38044,27 @@ function makeSynthId() {
 // fall through handleSlashCommand (unwired) and get sent raw; the NOTICE is the
 // real ack (success or rejection, surfaced by auth-irc). /me is NOT here — it
 // echoes as a CTCP ACTION.
+// Twitch chat commands that no longer exist over IRC (deprecated Feb 2023 —
+// the same deprecation that broke /ban /timeout /unban /delete, which got real
+// GQL handlers; these never did). Without a handler they fall through to a
+// plain send and the broadcaster's own moderation command goes out as message
+// text, so handleSlashCommand refuses them on twitch instead. They're also
+// advertised nowhere now — this set only catches muscle memory. Wiring them
+// for real means discovering each mutation and reading the result back, the
+// way setTwitchChatMode does.
+const DEAD_TWITCH_CHAT_COMMANDS = new Set([
+  'clear',
+  'color',
+  'mod',
+  'unmod',
+  'vip',
+  'unvip',
+  'raid',
+  'unraid',
+  'commercial',
+  'marker',
+])
+
 const NON_ECHOING_CHAT_COMMANDS = new Set([
   'followers',
   'followersoff',
@@ -38664,12 +38685,7 @@ const SLASH_COMMANDS = [
   { cmd: 'delete', args: '<msg-id>', desc: 'delete one message (mod)' },
   { cmd: 'nuke', args: '<term> [secs]', desc: 'bulk-delete matching messages (mod)' },
   { cmd: 'announce', args: '<msg>', desc: 'twitch announcement (mod, +blue/green/orange/purple)' },
-  { cmd: 'color', args: '<hex|name>', desc: 'twitch chat color' },
-  { cmd: 'mod', args: '<user>', desc: 'promote mod (broadcaster)' },
-  { cmd: 'vip', args: '<user>', desc: 'add vip (broadcaster)' },
-  { cmd: 'raid', args: '<channel>', desc: 'twitch raid (broadcaster)' },
   { cmd: 'slow', args: '[secs|off]', desc: 'slow mode (twitch mod)' },
-  { cmd: 'clear', args: '', desc: 'clear chat (mod)' },
   { cmd: 'followers', args: '[mins|off]', desc: 'followers-only (twitch mod)' },
   { cmd: 'emoteonly', args: '[off]', desc: 'emote-only mode (twitch mod)' },
   { cmd: 'subscribers', args: '[off]', desc: 'subs-only mode (twitch mod)' },
@@ -44864,6 +44880,18 @@ async function handleSlashCommand(text, input) {
     return true
   }
 
+  // Twitch deprecated chat commands over IRC in Feb 2023 (same deprecation
+  // that broke /ban /timeout /unban /delete — those got real GQL handlers, the
+  // rest of the list never did). With no handler they fall through to a plain
+  // send, so the broadcaster's own moderation command goes out over the wire
+  // as message text. Refuse loudly instead. Twitch only: kick is a different
+  // chat server and nothing here proves its commands are dead too, so a
+  // kick-side tab keeps its existing passthrough.
+  if (DEAD_TWITCH_CHAT_COMMANDS.has(cmd) && (_modCh?.twitch || (!_modCh && hostPlatform === 'twitch'))) {
+    showToast(t('mc_input_cmd_twitch_removed', [cmd]) || `twitch removed /${cmd} from chat`, 'error')
+    return true
+  }
+
   return false
 }
 
@@ -44899,9 +44927,9 @@ const SLASH_HELP_LINES = [
   '/highlight <msg>       — highlight your message (twitch bits power-up, /hl)',
   '/testnotices           — render every event type locally (dev)',
   '',
-  '/me /color and chat pass through to twitch & kick.',
-  '/mod /vip /raid /clear are not yet wired —',
-  'use twitch native chat or mod panel.',
+  '/me and chat pass through to twitch & kick.',
+  '/clear /color /mod /vip /raid are not wired —',
+  'twitch dropped them from chat. use its own mod tools.',
 ]
 
 function showSlashHelp() {
@@ -67861,6 +67889,11 @@ const STORAGE_KEY = 'heatsync_multichat'
       // categories, search, following, settings — so the panel survives
       // SPA nav. body-mount fallback in getOrCreateHsContainer when
       // #channel-chatroom is absent.
+      // /popout/<slug>/chat is a pop-out window (that's the url our own popout
+      // button opens) — same fill-window layout twitch and yt get. Without
+      // this the panel mounted docked at 340px inside a 400px window, and the
+      // kick body-mount branch below reads hs-popout expecting it to be set.
+      isPopout = /^\/popout\/[a-zA-Z0-9_-]+\/chat/.test(location.pathname)
     } else {
       // Twitch: persistent overlay across every URL — directory, settings,
       // videos, etc. all keep the panel mounted. getOrCreateHsContainer

@@ -12579,6 +12579,10 @@
       // categories, search, following, settings — so the panel survives
       // SPA nav. body-mount fallback in getOrCreateHsContainer when
       // #channel-chatroom is absent.
+      // NOTE: /popout/<slug>/chat never sets isPopout, but that's not the whole
+      // story — the panel does not mount there at all (verified live 2026-07-21:
+      // hs-mc-styles injects, hs-mc-container never appears), so the fill-window
+      // flag would have nothing to act on. Fix the mount first.
     } else {
       // Twitch: persistent overlay across every URL — directory, settings,
       // videos, etc. all keep the panel mounted. getOrCreateHsContainer

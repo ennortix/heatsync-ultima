@@ -1684,7 +1684,37 @@ function identityYtLiveUrl(res) {
 // can linkify prose like "the dot com era" — that's the price of "get all of
 // them"; the toggle is the escape hatch.
 
-const PARTIAL_YT_RE = /(?<![\w/.=-])watch\?v=([A-Za-z0-9_-]{11})(?![A-Za-z0-9_-])/g
+// Host-less path fragments: chat drops the domain constantly ("shorts/e2B1_DNpsV4",
+// "watch?v=…", "r/place"). The 11-char youtube id shape is what keeps prose like
+// "shorts/summer" out; reddit names carry their own length+charset rules. Every
+// lookbehind blocks a preceding `/` or word char so the fragment inside a real
+// url ("youtube.com/shorts/…") is left to the normal linkifier.
+const YT_ID = String.raw`[A-Za-z0-9_-]{11}`
+// Trailing query/params ride along (`watch?v=ID&t=30s`). `&` arrives as `&amp;`
+// — input is pre-escaped html — and stays escaped in the href, where it decodes.
+const YT_QS = String.raw`(?:(?:&amp;|[?&])[A-Za-z0-9_=%.+-]+)*`
+const PARTIAL_YT_RE = new RegExp(
+  String.raw`(?<![\w/.=-])\/?(watch\?v=|shorts\/|live\/|embed\/|v\/)(${YT_ID})(${YT_QS})(?![A-Za-z0-9_-])`,
+  'g',
+)
+// No `@handle` here on purpose: "@name" is a chat mention on every platform we
+// render, and guessing youtube for it would hijack the mention anchor.
+const PARTIAL_YT_LIST_RE = /(?<![\w/.=-])\/?(playlist\?list=|channel\/UC)([A-Za-z0-9_-]{12,})(?![A-Za-z0-9_-])/g
+// reddit's own limits: 3-21 chars, letters/digits/underscore (leading dash never
+// valid), which is why "w/e" and "24/7" can't reach this.
+const PARTIAL_REDDIT_RE = /(?<![\w/.-])\/?(r|u|user)\/([A-Za-z0-9][A-Za-z0-9_]{2,20})(?![\w/-])/g
+// Bare host with NO path — "go to heatsync.org". LINK_RE already covers the
+// with-path form, so only this one is missing, and only this one is dangerous:
+// chat runs sentences together ("lol.im dead"), so an open TLD rule would
+// linkify prose. A curated list is the guard, and the ambiguous two-letter
+// English-word ccTLDs (im/me/is/it/at/in/to/us/be/no/so/do/by) are deliberately
+// absent — those still link when a path makes the intent unambiguous.
+const COMMON_TLDS =
+  'com|net|org|io|gg|tv|dev|app|xyz|info|online|shop|club|wiki|news|blog|art|fm|ai|co|uk|de|fr|jp|nl|se|pl|ru|br|ca|au|eu'
+const BARE_HOST_RE = new RegExp(
+  String.raw`(?<![\w.@/-])((?:[a-z0-9][a-z0-9-]*\.)+(?:${COMMON_TLDS}))(?![\w.\-/])`,
+  'gi',
+)
 // separator between defanged labels: (dot) [dot] {dot} (.) [.] {.} — spaces
 // optional inside/around brackets — or the bare spaced word "dot".
 const DEFANG_SEP_SRC = String.raw`(?:\s*[([{]\s*(?:dot|\.)\s*[)\]}]\s*|\s+dot\s+)`
@@ -1703,24 +1733,44 @@ function defangedToHost(core) {
   return labels.join('.').toLowerCase()
 }
 
-function linkifyPartialLinks(html) {
-  // Odd indices = whole <a> spans or single tags — never transformed.
+const anchor = (href, text) =>
+  `<a href="${href}" target="_blank" rel="noopener noreferrer" class="hs-mc-link">${text}</a>`
+
+// Run one replace over TEXT ONLY: odd indices are whole <a> spans or single
+// tags and are never transformed. Re-split per pass so a pass never scans the
+// markup an earlier pass just emitted — that's what keeps anchors from nesting.
+function outsideTags(html, re, fn) {
   const parts = String(html).split(/(<a\s[^>]*>.*?<\/a>|<[^>]+>)/gis)
-  for (let i = 0; i < parts.length; i += 2) {
-    parts[i] = parts[i]
-      .replace(
-        PARTIAL_YT_RE,
-        (m0, id) =>
-          `<a href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener noreferrer" class="hs-mc-link">${m0}</a>`,
-      )
-      .replace(DEFANG_RE, (m0, scheme, core, path) => {
-        const host = defangedToHost(core)
-        if (!host) return m0
-        const proto = scheme ? scheme.toLowerCase().replace(/^hxx/, 'htt') : 'https://'
-        return `<a href="${proto}${host}${path || ''}" target="_blank" rel="noopener noreferrer" class="hs-mc-link">${m0}</a>`
-      })
-  }
+  for (let i = 0; i < parts.length; i += 2) parts[i] = parts[i].replace(re, fn)
   return parts.join('')
+}
+
+// Where a bare youtube fragment points. `v/` is the legacy watch alias.
+const YT_FRAGMENT_PATH = {
+  'watch?v=': (id, qs) => `watch?v=${id}${qs}`,
+  'v/': (id, qs) => `watch?v=${id}${qs}`,
+  'shorts/': (id, qs) => `shorts/${id}${qs}`,
+  'live/': (id, qs) => `live/${id}${qs}`,
+  'embed/': (id, qs) => `embed/${id}${qs}`,
+}
+
+function linkifyPartialLinks(html) {
+  let out = outsideTags(html, PARTIAL_YT_RE, (m0, kind, id, qs) =>
+    anchor(`https://www.youtube.com/${YT_FRAGMENT_PATH[kind.toLowerCase()](id, qs || '')}`, m0),
+  )
+  out = outsideTags(out, PARTIAL_YT_LIST_RE, (m0, kind, id) =>
+    anchor(`https://www.youtube.com/${kind.startsWith('playlist') ? `playlist?list=${id}` : `channel/UC${id}`}`, m0),
+  )
+  out = outsideTags(out, PARTIAL_REDDIT_RE, (m0, kind, name) =>
+    anchor(`https://www.reddit.com/${kind === 'r' ? 'r' : 'user'}/${name}`, m0),
+  )
+  out = outsideTags(out, DEFANG_RE, (m0, scheme, core, path) => {
+    const host = defangedToHost(core)
+    if (!host) return m0
+    const proto = scheme ? scheme.toLowerCase().replace(/^hxx/, 'htt') : 'https://'
+    return anchor(`${proto}${host}${path || ''}`, m0)
+  })
+  return outsideTags(out, BARE_HOST_RE, (m0) => anchor(`https://${m0.toLowerCase()}`, m0))
 }
 
 const utils = {
@@ -65920,11 +65970,19 @@ const STORAGE_KEY = 'heatsync_multichat'
   // live on scrollWheelVolumeEnabled (audit-toggle rule: read at event time,
   // not just at listener-setup time) — off behaves exactly like the
   // listener isn't there (native page scroll).
+  // yt is `#movie_player` ONLY — deliberately NOT `.html5-video-player`, which
+  // also matches `#shorts-player` and the home-feed hover-preview player. On
+  // both of those the wheel is the PAGE's own control (advance the reel, scroll
+  // the feed), so preventDefault there wedges youtube: the short can't be
+  // scrolled past, and muting/unmuting the <video> directly desyncs shorts'
+  // own per-reel audio state, leaving the previous short audible under the next.
   const HS_PLAYER_SELECTOR = {
     twitch: '.video-player',
     kick: '.channel-root__player, #injected-channel-player',
-    yt: '#movie_player, .html5-video-player',
+    yt: '#movie_player',
   }
+  // Shorts still gets volume — behind shift, which the reel itself doesn't use.
+  const HS_MODIFIER_PLAYER_SELECTOR = { yt: '#shorts-player' }
   let _hsVolOsdEl = null
   let _hsVolOsdHideTimer = null
   function _hsShowVolumeOsd(playerEl, video) {
@@ -65945,7 +66003,8 @@ const STORAGE_KEY = 'heatsync_multichat'
   }
   function setupScrollWheelVolume() {
     const sel = HS_PLAYER_SELECTOR[hostPlatform]
-    if (!sel) return
+    const modSel = HS_MODIFIER_PLAYER_SELECTOR[hostPlatform]
+    if (!sel && !modSel) return
     document.addEventListener(
       'wheel',
       (e) => {
@@ -65953,9 +66012,15 @@ const STORAGE_KEY = 'heatsync_multichat'
         // Never hijack scroll over HeatSync's own UI — every floating HS
         // surface (panel, picker, ctx menu, banners) uses an hs- prefixed id.
         if (e.target.closest && e.target.closest('[id^="hs-"]')) return
-        const playerEl = e.target.closest(sel)
+        let playerEl = sel ? e.target.closest(sel) : null
+        // Shift-only players (yt shorts): plain wheel stays the page's.
+        if (!playerEl && modSel && e.shiftKey) playerEl = e.target.closest(modSel)
         if (!playerEl) return
-        const video = playerEl.querySelector('video') || document.querySelector('video')
+        // Scoped lookup only — the old document-wide fallback grabbed an
+        // arbitrary <video> on multi-player pages. Fall back only when the
+        // page has exactly one, where "arbitrary" can't be wrong.
+        const all = document.querySelectorAll('video')
+        const video = playerEl.querySelector('video') || (all.length === 1 ? all[0] : null)
         if (!video) return
         e.preventDefault()
         const next = resolveVolumeWheelStep({ volume: video.volume, muted: video.muted }, e.deltaY)

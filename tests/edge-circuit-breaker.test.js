@@ -70,7 +70,12 @@ describe('open circuit', () => {
     expect(waits[0]).toBeGreaterThanOrEqual(20_000)
     expect(waits[1]).toBeGreaterThanOrEqual(40_000)
     expect(Math.max(...waits)).toBeLessThanOrEqual(300_000 + 50)
-    expect(waits[6]).toBe(waits[5]) // capped, no runaway
+    // capped, no runaway: both windows sit at the cap and stop doubling.
+    // measured wait = cap + (internal Date.now() − t0), a sub-ms clock drift ≥ 0,
+    // so assert "both at the cap" rather than exact equality (which is racy).
+    expect(waits[5]).toBeGreaterThanOrEqual(300_000)
+    expect(waits[6]).toBeGreaterThanOrEqual(300_000)
+    expect(Math.abs(waits[6] - waits[5])).toBeLessThanOrEqual(2)
   })
 })
 

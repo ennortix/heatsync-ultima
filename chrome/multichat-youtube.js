@@ -45292,12 +45292,13 @@ async function handleSlashCommand(text, input) {
 
   // ─── Chat modes (mod) ─── followers/slow/emoteonly/subscribers/unique.
   // Twitch via Helix /chat/settings (setTwitchChatMode). `/<mode> off` disables;
-  // duration modes take an optional arg (/followers 30, /slow 10). Kick has no
-  // chat-mode write API wired yet → clear message, never a silent no-op.
+  // duration modes take an optional arg (/followers 30, /slow 10). Kick writes
+  // via setKickChatMode (PUT /chatrooms/<id>), read-back verified below.
   if (CHAT_MODES[cmd]) {
     // All five modes now go through the one GQL mutation twitch actually has
     // (updateChatSettings) and are verified by reading the mode back — see
-    // setTwitchChatMode. Kick has no chat-mode write API wired yet.
+    // setTwitchChatMode. Kick rides its own PUT (no unique-chat there, and kick
+    // ignores an exact slow interval) — see setKickChatMode.
     // Target the twitch channel you're moderating: a real channel tab's twitch
     // login, else the twitch channel you're currently viewing (so it works from
     // the live/aggregate tab too, where currentTab='live' is not a channel).

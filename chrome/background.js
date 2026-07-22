@@ -7572,6 +7572,12 @@ async function handleMessage(message, sender, sendResponse) {
       }
       sendResponse(data)
     }
+    // A network blip / timeout / 5xx / 429 is NOT proof the channel has no
+    // banner. Caching null here would blank the banner for 12h (CHANNEL_BANNER_TTL)
+    // with no retry — same negative-cache-poisoning the cosmetics + sender-emote
+    // fetches below explicitly guard against. Respond null (no banner this time)
+    // but leave the cache empty so the next hover retries.
+    const handleTransient = () => sendResponse(null)
     if (platform === 'twitch') {
       // Public GQL — kimne client id is the same one twitch.tv uses, no token
       // required for read-only profile fields.
@@ -7586,8 +7592,15 @@ async function handleMessage(message, sender, sendResponse) {
         },
         5000,
       )
-        .then((r) => (r.ok ? r.json() : null))
-        .then((json) => {
+        .then(async (r) => {
+          if (!r.ok) {
+            // 404 = definitively no such channel (safe to cache the negative);
+            // 5xx / 429 / anything else = transient, must not poison the cache.
+            if (r.status === 404) handle(null)
+            else handleTransient()
+            return
+          }
+          const json = await r.json()
           const u = json?.data?.user
           if (!u) {
             handle(null)
@@ -7601,7 +7614,7 @@ async function handleMessage(message, sender, sendResponse) {
             sourcePlatform: 'twitch',
           })
         })
-        .catch(() => handle(null))
+        .catch(() => handleTransient())
       return true
     }
     if (platform === 'kick') {
@@ -7614,8 +7627,13 @@ async function handleMessage(message, sender, sendResponse) {
         },
         5000,
       )
-        .then((r) => (r.ok ? r.json() : null))
-        .then((j) => {
+        .then(async (r) => {
+          if (!r.ok) {
+            if (r.status === 404) handle(null)
+            else handleTransient()
+            return
+          }
+          const j = await r.json()
           if (!j) {
             handle(null)
             return
@@ -7630,7 +7648,7 @@ async function handleMessage(message, sender, sendResponse) {
             sourcePlatform: 'kick',
           })
         })
-        .catch(() => handle(null))
+        .catch(() => handleTransient())
       return true
     }
     if (platform === 'youtube') {
@@ -7646,8 +7664,13 @@ async function handleMessage(message, sender, sendResponse) {
         },
         8000,
       )
-        .then((r) => (r.ok ? r.text() : null))
-        .then((html) => {
+        .then(async (r) => {
+          if (!r.ok) {
+            if (r.status === 404) handle(null)
+            else handleTransient()
+            return
+          }
+          const html = await r.text()
           if (!html) {
             handle(null)
             return
@@ -7682,7 +7705,7 @@ async function handleMessage(message, sender, sendResponse) {
             sourcePlatform: 'youtube',
           })
         })
-        .catch(() => handle(null))
+        .catch(() => handleTransient())
       return true
     }
     sendResponse(null)

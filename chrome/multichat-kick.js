@@ -15543,16 +15543,6 @@ img.hs-fx-zero { margin-left: -4px; }
     }
 
     /* Popout mode - full width (respects tab bar position) */
-    /* The container first: everything below is positioned INSIDE it, so
-       widening the overlay alone did nothing while the container kept its
-       docked width and a host-header top offset. A popout window has no host
-       chrome to leave room for — chat is the whole window. */
-    .hs-popout #hs-mc-container {
-      inset: 0 !important;
-      width: auto !important;
-      height: auto !important;
-      max-width: none !important;
-    }
     .hs-popout #hs-mc-overlay {
       left: 0 !important;
       right: 0 !important;
@@ -16136,8 +16126,13 @@ img.hs-fx-zero { margin-left: -4px; }
     .hs-native-hidden#channel-chatroom {
       display: none !important;
     }
-    /* Container becomes the fixed side panel when native is hidden */
-    .hs-native-hidden#channel-chatroom ~ #hs-mc-container {
+    /* Container becomes the fixed side panel when native is hidden.
+       :not(.hs-popout) — this selector is (2,1,0) and outranks the popout
+       fill-window rule at (1,1,1), so in a kick pop-out window it pinned the
+       panel to the docked 340px column and left kick's 60px top-nav gap above
+       it, in a window that has no top nav. A pop-out has no side panel: chat is
+       the whole window. Same specificity trap the collapse rule below documents. */
+    body:not(.hs-popout) .hs-native-hidden#channel-chatroom ~ #hs-mc-container {
       position: fixed !important;
       right: 0 !important;
       /* clear Kick's fixed 60px top nav so the panel doesn't bury search + login/profile */

@@ -23517,10 +23517,7 @@ function createInputEmoteImg(emoteName) {
   // horizontal fault chat rows fix via the load listener on #hs-mc-messages,
   // which never covered the composer. Hook the chip directly (it's created in
   // code) and cover the already-cached case, where load never fires.
-  if (typeof hsSnapEmoteBox === 'function') {
-    img.addEventListener('load', () => hsSnapEmoteBox(img), { once: true })
-    if (img.complete && img.naturalWidth) hsSnapEmoteBox(img)
-  }
+  if (typeof hsAttachInputEmoteSnap === 'function') hsAttachInputEmoteSnap(img)
   return img
 }
 
@@ -25245,6 +25242,20 @@ function _hsMcApplyMods(html, mods, hue) {
 const _hsEmoteBoxW = new Map() // chat url -> integer px (ceil of natural box width)
 const _hsSnapQueue = new Set()
 let _hsSnapScheduled = false
+// Attach the integer-width snap to a composer chip. Every chip-creation site
+// must call this: a chip with a fractional width puts every character typed
+// AFTER it on a fractional x, and the bitmap font smears. Measured live on a
+// 51x32 emote at 28px height — box 44.625px, following text at x-fraction
+// 0.625; pinned to 45px, the text returns to 0.
+// There are FOUR creation paths (paste, typing-imagify, and two emote-cycling
+// ones) and hooking only one is exactly how this shipped half-fixed.
+function hsAttachInputEmoteSnap(img) {
+  if (!img || typeof hsSnapEmoteBox !== 'function') return
+  img.addEventListener('load', () => hsSnapEmoteBox(img), { once: true })
+  // A cached image fires no load event — that path stayed blurry without this.
+  if (img.complete && img.naturalWidth) hsSnapEmoteBox(img)
+}
+
 function hsSnapEmoteBox(img) {
   // Input-composer chips are bare IMGs with no wrapper/stack, but they sit
   // inline with typed text and so contribute the same fractional advance that
@@ -41062,6 +41073,9 @@ function buildInputEmoteImg(emote) {
   img.className = 'hs-input-emote'
   img.draggable = false
   if (typeof attachInputEmoteErrorRecovery === 'function') attachInputEmoteErrorRecovery(img)
+  // Integer-width snap — without it every character typed after this chip lands
+  // on a fractional x and the bitmap font smears. This is the TYPING path.
+  if (typeof hsAttachInputEmoteSnap === 'function') hsAttachInputEmoteSnap(img)
   return img
 }
 
@@ -42829,6 +42843,7 @@ function insertCompletionWysiwyg(match) {
       img.className = 'hs-input-emote hs-cycling-emote'
       img.draggable = false
       attachInputEmoteErrorRecovery(img)
+      if (typeof hsAttachInputEmoteSnap === 'function') hsAttachInputEmoteSnap(img)
       _applyInputBlock(img)
       existingText.replaceWith(img)
       const space = img.nextSibling
@@ -42872,6 +42887,7 @@ function insertCompletionWysiwyg(match) {
       img.className = 'hs-input-emote hs-cycling-emote'
       img.draggable = false
       attachInputEmoteErrorRecovery(img)
+      if (typeof hsAttachInputEmoteSnap === 'function') hsAttachInputEmoteSnap(img)
       _applyInputBlock(img)
       existingUser.replaceWith(img)
       const space = img.nextSibling
@@ -43003,6 +43019,7 @@ function insertCompletionWysiwyg(match) {
     img.className = 'hs-input-emote hs-cycling-emote'
     img.draggable = false
     attachInputEmoteErrorRecovery(img)
+    if (typeof hsAttachInputEmoteSnap === 'function') hsAttachInputEmoteSnap(img)
     _applyInputBlock(img)
     // Zero-width / overlay: stack onto preceding emote so the input preview
     // matches how chat will render the same word sequence.

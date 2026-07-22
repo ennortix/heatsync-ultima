@@ -3580,6 +3580,9 @@ function buildInputEmoteImg(emote) {
   img.className = 'hs-input-emote'
   img.draggable = false
   if (typeof attachInputEmoteErrorRecovery === 'function') attachInputEmoteErrorRecovery(img)
+  // Integer-width snap — without it every character typed after this chip lands
+  // on a fractional x and the bitmap font smears. This is the TYPING path.
+  if (typeof hsAttachInputEmoteSnap === 'function') hsAttachInputEmoteSnap(img)
   return img
 }
 
@@ -5347,6 +5350,7 @@ function insertCompletionWysiwyg(match) {
       img.className = 'hs-input-emote hs-cycling-emote'
       img.draggable = false
       attachInputEmoteErrorRecovery(img)
+      if (typeof hsAttachInputEmoteSnap === 'function') hsAttachInputEmoteSnap(img)
       _applyInputBlock(img)
       existingText.replaceWith(img)
       const space = img.nextSibling
@@ -5390,6 +5394,7 @@ function insertCompletionWysiwyg(match) {
       img.className = 'hs-input-emote hs-cycling-emote'
       img.draggable = false
       attachInputEmoteErrorRecovery(img)
+      if (typeof hsAttachInputEmoteSnap === 'function') hsAttachInputEmoteSnap(img)
       _applyInputBlock(img)
       existingUser.replaceWith(img)
       const space = img.nextSibling
@@ -5521,6 +5526,7 @@ function insertCompletionWysiwyg(match) {
     img.className = 'hs-input-emote hs-cycling-emote'
     img.draggable = false
     attachInputEmoteErrorRecovery(img)
+    if (typeof hsAttachInputEmoteSnap === 'function') hsAttachInputEmoteSnap(img)
     _applyInputBlock(img)
     // Zero-width / overlay: stack onto preceding emote so the input preview
     // matches how chat will render the same word sequence.

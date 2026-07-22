@@ -41,15 +41,37 @@ describe('vertical: the chip must not sit on a half-pixel baseline', () => {
 })
 
 describe('horizontal: the chip must occupy a whole number of pixels', () => {
-  test('chips are snapped on load AND when already cached', () => {
+  const INPUT = readFileSync(join(ROOT, 'src', 'multichat', 'input.js'), 'utf8')
+
+  test('the shared helper snaps on load AND when already cached', () => {
     const fn = EMOTES.slice(
-      EMOTES.indexOf('function createInputEmoteImg'),
-      EMOTES.indexOf('\n}', EMOTES.indexOf('function createInputEmoteImg')),
+      EMOTES.indexOf('function hsAttachInputEmoteSnap'),
+      EMOTES.indexOf('\n}', EMOTES.indexOf('function hsAttachInputEmoteSnap')),
     )
     expect(fn).toContain("addEventListener('load'")
     expect(fn).toContain('hsSnapEmoteBox(img)')
-    // a cached image fires no load event — that path smeared until covered
+    // a cached image fires no load event — that path stayed blurry until covered
     expect(fn).toMatch(/img\.complete && img\.naturalWidth/)
+  })
+
+  // Hooking ONE path is exactly how this shipped half-fixed: the typing path
+  // (buildInputEmoteImg) was missed, so typed emotes still smeared while
+  // pasted ones came out crisp.
+  test('EVERY chip-creation site attaches the snap', () => {
+    for (const [label, src, fnName] of [
+      ['emotes.js createInputEmoteImg', EMOTES, 'createInputEmoteImg'],
+      ['input.js buildInputEmoteImg', INPUT, 'buildInputEmoteImg'],
+    ]) {
+      const start = src.indexOf(`function ${fnName}`)
+      const body = src.slice(start, src.indexOf('\n}', start))
+      expect(body, label).toContain('hsAttachInputEmoteSnap')
+    }
+    // the two emote-cycling creators are inline, not in named functions
+    expect((INPUT.match(/hs-input-emote hs-cycling-emote/g) || []).length).toBe(3)
+    // 4 call sites in input.js: the typing path + THREE cycling creators.
+    // This count is the drift guard — it already caught a 4th site that a
+    // whitespace-sensitive edit had missed.
+    expect((INPUT.match(/hsAttachInputEmoteSnap\(img\)/g) || []).length).toBe(4)
   })
 
   test('the snapper accepts a bare input chip', () => {

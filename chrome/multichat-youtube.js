@@ -12033,7 +12033,12 @@ img.hs-fx-zero { margin-left: -4px; }
       height: var(--hs-emote-size, 32px);
       width: auto;
       max-width: 192px;
-      vertical-align: middle;
+      /* NOT middle: middle anchors at baseline + xHeight/2, and Cozette's 13px
+         x-height is fractional (half = 3.546875px), which puts every adjacent
+         glyph on a half-pixel baseline and smears the bitmap font. text-bottom
+         anchors to the font strut, immune to sibling heights — the same fix the
+         chat rows already carry for .hs-mc-emote-wrapper. */
+      vertical-align: text-bottom;
       margin: 0 2px;
       object-fit: contain;
       cursor: pointer;
@@ -23506,6 +23511,16 @@ function createInputEmoteImg(emoteName) {
   // If the emote was already blocked before this paste, apply the dashed
   // state from creation so the user never sees the live image flash.
   if (blockedEmoteNames.has(emoteName)) markInputEmoteBlocked(img, true)
+  // Snap the chip to an integer width once decoded. A non-square emote scaled
+  // to the row height lands on a fractional width, so every character typed
+  // AFTER it starts at a fractional x and the bitmap font smears — the same
+  // horizontal fault chat rows fix via the load listener on #hs-mc-messages,
+  // which never covered the composer. Hook the chip directly (it's created in
+  // code) and cover the already-cached case, where load never fires.
+  if (typeof hsSnapEmoteBox === 'function') {
+    img.addEventListener('load', () => hsSnapEmoteBox(img), { once: true })
+    if (img.complete && img.naturalWidth) hsSnapEmoteBox(img)
+  }
   return img
 }
 
@@ -25231,7 +25246,11 @@ const _hsEmoteBoxW = new Map() // chat url -> integer px (ceil of natural box wi
 const _hsSnapQueue = new Set()
 let _hsSnapScheduled = false
 function hsSnapEmoteBox(img) {
-  if (!img || !img.classList || !img.classList.contains('hs-mc-emote')) return
+  // Input-composer chips are bare IMGs with no wrapper/stack, but they sit
+  // inline with typed text and so contribute the same fractional advance that
+  // smeared post-emote text in chat rows.
+  if (!img || !img.classList) return
+  if (!img.classList.contains('hs-mc-emote') && !img.classList.contains('hs-input-emote')) return
   _hsSnapQueue.add(img)
   if (_hsSnapScheduled) return
   _hsSnapScheduled = true
@@ -25242,7 +25261,11 @@ function hsSnapEmoteBox(img) {
       // Round the OUTERMOST emote box — the overlay stack when present, else
       // the bare wrapper. That box contributes the inline advance the
       // following text starts after.
-      const box = im.closest('.hs-mc-emote-stack') || im.closest('.hs-mc-emote-wrapper')
+      // Bare input chip: the IMG itself is the outermost box.
+      const box =
+        im.closest('.hs-mc-emote-stack') ||
+        im.closest('.hs-mc-emote-wrapper') ||
+        (im.classList.contains('hs-input-emote') ? im : null)
       if (box && box.isConnected) items.push({ box, im })
     }
     _hsSnapQueue.clear()

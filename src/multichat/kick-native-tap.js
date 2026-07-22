@@ -277,7 +277,14 @@ function initKickNativeTap() {
   initKickFallbackSocket()
 
   window.addEventListener('message', (e) => {
-    if (e.source !== window || !e.data || typeof e.data !== 'object') return
+    // Origin check, not just source: the MAIN-world tap posts with
+    // location.origin as targetOrigin, so anything arriving from another
+    // origin is forged. Without this, any script running on kick.com (a
+    // malicious ad, an XSS) could inject chat lines — and ban/unban frames,
+    // which render as real mod actions. The twitch tap has always checked
+    // both (src/multichat/native-tap.js); kick only checked source.
+    if (e.source !== window || e.origin !== location.origin) return
+    if (!e.data || typeof e.data !== 'object') return
     const t = e.data.type
     if (t === 'heatsync-nav') {
       boundChatroom = null

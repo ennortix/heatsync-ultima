@@ -8416,8 +8416,21 @@ async function handleMessage(message, sender, sendResponse) {
     }
     log(' 📺 Content script requesting channel join:', safePlatform, '/', safeChannel, 'id:', message.channelId)
     ;(async () => {
-      if (initPromise) await initPromise
-      joinChannel(safePlatform, safeChannel, message.channelId, sender.tab?.id)
+      // sendResponse must run on every path: if initPromise rejects (WS
+      // constructor throw, 10s connect timeout, offline) the rejection used
+      // to escape this IIFE and the message port just hung, leaving the
+      // caller's callback waiting forever. joinChannel is intentionally not
+      // awaited, but it IS async — catch it too so a failed join doesn't
+      // surface as an unhandled rejection.
+      try {
+        if (initPromise) await initPromise
+      } catch (e) {
+        log(' 📺 join_channel: init failed, joining anyway:', e?.message || e)
+      }
+      try {
+        const p = joinChannel(safePlatform, safeChannel, message.channelId, sender.tab?.id)
+        if (p && typeof p.catch === 'function') p.catch(() => {})
+      } catch (_) {}
       sendResponse({ received: true })
     })()
     return true // Keep channel open for async response

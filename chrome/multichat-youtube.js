@@ -10630,34 +10630,41 @@ function injectStyles() {
     .hs-mc-media.hs-mc-playable {
       position: relative;
       cursor: pointer;
-      padding-left: 14px;
     }
-    /* the transport glyph IS the card's left edge — a pseudo-element, so it
-       survives every repaint without the row builders knowing about it. */
-    .hs-mc-media.hs-mc-playable::before {
-      content: '>';
+    /* The play mark sits ON the artwork, like the youtube thumbnail card two
+       rules down — one language for both, and no glyph loose in a gutter where
+       the white hover plate leaves it stranded. Still a pseudo-element, so it
+       survives every repaint without the row builders knowing about it.
+       Excluded: the yt-thumb card (already has its own centred mark) and the
+       pending card (no artwork yet to sit on). */
+    .hs-mc-media.hs-mc-playable:not(.hs-feed-embed-yt-thumb):not(.hs-feed-embed-pending)::before {
+      content: '▶';
       position: absolute;
-      left: 2px;
+      /* centre of the 36px thumb: 4px card padding + half of 36. */
+      left: 22px;
       top: 50%;
-      transform: translateY(-50%);
-      font-size: 13px;
-      line-height: 13px;
-      color: #ff8700;
+      transform: translate(-50%, -50%);
+      font-size: 15px;
+      line-height: 15px;
+      color: #fff;
+      text-shadow: 0 0 4px #000;
       pointer-events: none;
     }
-    .hs-mc-media.hs-mc-playable.hs-playing::before {
-      content: '||';
+    .hs-mc-media.hs-mc-playable.hs-playing:not(.hs-feed-embed-yt-thumb):not(.hs-feed-embed-pending)::before {
+      content: '❚❚';
+      font-size: 11px;
       letter-spacing: -1px;
     }
+    /* The yt card needs no play/pause flip: when it plays, the video mounts
+       over the card and hides the mark anyway. */
     /* white plate on hover AND active, same as every other hs surface. Only
-       our own chrome can follow — an iframe's interior is cross-origin. */
+       our own chrome can follow — an iframe's interior is cross-origin. The
+       play mark is over artwork, not the plate, so it keeps its own contrast. */
     .hs-mc-media.hs-mc-playable:hover,
     .hs-mc-media.hs-mc-playable:active {
       background: #fff;
       color: #000;
     }
-    .hs-mc-media.hs-mc-playable:hover::before,
-    .hs-mc-media.hs-mc-playable:active::before,
     .hs-mc-media.hs-mc-playable:hover .hs-feed-embed-rich-platform,
     .hs-mc-media.hs-mc-playable:hover .hs-feed-embed-rich-title,
     .hs-mc-media.hs-mc-playable:hover .hs-feed-embed-rich-author,
@@ -10749,10 +10756,6 @@ function injectStyles() {
       background: #ff8700;
       border: 0;
       border-radius: 0;
-    }
-    .hs-mc-transport-vol:disabled {
-      cursor: not-allowed;
-      opacity: 0.4;
     }
     /* 0×0 host for in-place audio — outside #hs-mc-messages so a chat repaint
        can't kill the track, invisible because there is nothing to look at. */
@@ -33259,20 +33262,22 @@ function _hsTransportEl(provider) {
   pause.className = 'hs-mc-transport-toggle'
   pause.textContent = '||'
   pause.title = 'pause'
-  const vol = document.createElement('input')
-  vol.type = 'range'
-  vol.className = 'hs-mc-transport-vol'
-  vol.min = '0'
-  vol.max = '100'
-  vol.step = '1'
-  vol.value = String(Math.round(embedVolume() * 100))
-  if (!provider.volume) {
-    vol.disabled = true
-    vol.title = `${provider.id} has no volume control`
-  } else {
+  bar.appendChild(pause)
+  // No slider at all for a provider that can't take one. A greyed-out control
+  // is still a control the eye has to read and dismiss; spotify's embed simply
+  // has no volume, and the honest UI for that is nothing, not a dead widget.
+  if (provider.volume) {
+    const vol = document.createElement('input')
+    vol.type = 'range'
+    vol.className = 'hs-mc-transport-vol'
+    vol.min = '0'
+    vol.max = '100'
+    vol.step = '1'
+    vol.value = String(Math.round(embedVolume() * 100))
     vol.title = 'volume'
+    vol.addEventListener('input', () => setEmbedVolume(Number(vol.value) / 100))
+    bar.appendChild(vol)
   }
-  bar.append(pause, vol)
   // The card underneath is one big play/pause target — a drag on the slider
   // must not read as a press on the card.
   for (const ev of ['click', 'pointerdown', 'mousedown']) {
@@ -33283,7 +33288,6 @@ function _hsTransportEl(provider) {
     e.stopPropagation()
     if (_hsAudio) chatEmbedToggle(_hsAudio.url)
   })
-  vol.addEventListener('input', () => setEmbedVolume(Number(vol.value) / 100))
   return bar
 }
 

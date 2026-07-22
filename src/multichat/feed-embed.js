@@ -853,20 +853,22 @@ function _hsTransportEl(provider) {
   pause.className = 'hs-mc-transport-toggle'
   pause.textContent = '||'
   pause.title = 'pause'
-  const vol = document.createElement('input')
-  vol.type = 'range'
-  vol.className = 'hs-mc-transport-vol'
-  vol.min = '0'
-  vol.max = '100'
-  vol.step = '1'
-  vol.value = String(Math.round(embedVolume() * 100))
-  if (!provider.volume) {
-    vol.disabled = true
-    vol.title = `${provider.id} has no volume control`
-  } else {
+  bar.appendChild(pause)
+  // No slider at all for a provider that can't take one. A greyed-out control
+  // is still a control the eye has to read and dismiss; spotify's embed simply
+  // has no volume, and the honest UI for that is nothing, not a dead widget.
+  if (provider.volume) {
+    const vol = document.createElement('input')
+    vol.type = 'range'
+    vol.className = 'hs-mc-transport-vol'
+    vol.min = '0'
+    vol.max = '100'
+    vol.step = '1'
+    vol.value = String(Math.round(embedVolume() * 100))
     vol.title = 'volume'
+    vol.addEventListener('input', () => setEmbedVolume(Number(vol.value) / 100))
+    bar.appendChild(vol)
   }
-  bar.append(pause, vol)
   // The card underneath is one big play/pause target — a drag on the slider
   // must not read as a press on the card.
   for (const ev of ['click', 'pointerdown', 'mousedown']) {
@@ -877,7 +879,6 @@ function _hsTransportEl(provider) {
     e.stopPropagation()
     if (_hsAudio) chatEmbedToggle(_hsAudio.url)
   })
-  vol.addEventListener('input', () => setEmbedVolume(Number(vol.value) / 100))
   return bar
 }
 

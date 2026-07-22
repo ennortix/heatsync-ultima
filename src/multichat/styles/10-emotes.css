@@ -726,3 +726,22 @@ img.hs-fx-leave { animation: hs-fx-leave 3s linear infinite; }
 img.hs-fx-zero { margin-left: -4px; }
 
 @media (prefers-reduced-motion: reduce) { img[class*="hs-fx-"] { animation: none !important; } }
+
+    /* Composition tooltip — base + overlays + ordered effects. Colours are set
+       inline per piece (provider brand / c!#hex tint); these rules only carry
+       weight and spacing so the pieces stay legible at 13px bitmap. */
+    #hs-emote-tooltip .tooltip-piece {
+      white-space: nowrap;
+    }
+    #hs-emote-tooltip .tooltip-base {
+      font-weight: 700;
+    }
+    #hs-emote-tooltip .tooltip-join {
+      color: #6a6a6a;
+    }
+    /* Effects read as a distinct class of thing from emote names — slightly
+       dimmer weight so the composition scans base-first. */
+    #hs-emote-tooltip .tooltip-mod {
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }

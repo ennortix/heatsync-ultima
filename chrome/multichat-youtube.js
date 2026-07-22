@@ -11927,6 +11927,25 @@ img.hs-fx-leave { animation: hs-fx-leave 3s linear infinite; }
 img.hs-fx-zero { margin-left: -4px; }
 
 @media (prefers-reduced-motion: reduce) { img[class*="hs-fx-"] { animation: none !important; } }
+
+    /* Composition tooltip — base + overlays + ordered effects. Colours are set
+       inline per piece (provider brand / c!#hex tint); these rules only carry
+       weight and spacing so the pieces stay legible at 13px bitmap. */
+    #hs-emote-tooltip .tooltip-piece {
+      white-space: nowrap;
+    }
+    #hs-emote-tooltip .tooltip-base {
+      font-weight: 700;
+    }
+    #hs-emote-tooltip .tooltip-join {
+      color: #6a6a6a;
+    }
+    /* Effects read as a distinct class of thing from emote names — slightly
+       dimmer weight so the composition scans base-first. */
+    #hs-emote-tooltip .tooltip-mod {
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
     /* Input styles (used in #hs-mc-inputbar) */
     #hs-mc-input {
       flex: 1;
@@ -25203,12 +25222,23 @@ function _hsMcHexToHue(h) {
 }
 function _hsMcApplyMods(html, mods, hue) {
   if ((!mods || !mods.length) && hue == null) return html
+  // Stamp the ORDERED effect list on the wrapper so the hover tooltip can show
+  // what was applied and in what sequence. Only the composed transform/filter
+  // survives otherwise, which can't be read back into "wide, then cursed".
+  // Tokens come from HS_MOD_CLASS_TO_TOKEN, so a synonym (ffzW vs w!) displays
+  // as its canonical spelling — the EFFECT and its order are always exact.
+  let modsAttr = ''
+  try {
+    const words = hsModWordsFromState(mods || [], hue)
+    if (words.length) modsAttr = ` data-hs-mods="${escapeHtml(words.join(' '))}"`
+  } catch {}
   const imgFilter = hsModComposeFilter(mods, hue)
   const hasImg = /<img(\s|>)/.test(html)
   // Emoji spans have no <img> — fold the filter into the wrapper span style
   // (transform + margins always go on the wrapper anyway).
   const wrapperStyle = hsModBuildStyleAttr(mods, null) + (!hasImg && imgFilter ? `filter:${imgFilter} !important;` : '')
   let out = html
+  if (modsAttr) out = out.replace(/^(<span\b)/, `$1${modsAttr}`)
   if (wrapperStyle) out = hsModInjectWrapperStyle(out, wrapperStyle)
   if (imgFilter && hasImg) {
     out = out.replace(/<img(\s)/, `<img style="filter:${imgFilter} !important;"$1`)
@@ -26252,6 +26282,66 @@ function buildStackPreview(box, stackEmotes) {
   })
 }
 
+// ─── Composition line ────────────────────────────────────────────────────────
+// A stacked/modified emote is a recipe, and the tooltip used to show only a
+// flat "A + B + C" of names with no indication of which modifiers were applied,
+// in what order, or which provider each piece came from. Render the whole
+// composition instead, colour-coded, base → overlays → effects in order.
+//
+// Provider is inferred from the token SHAPE: "ffz*" is FrankerFaceZ, anything
+// ending in "!" is BetterTTV. Brand colours match the source chips already used
+// elsewhere in this tooltip.
+const HS_TT_PROVIDER_COLOR = { '7tv': '#29d8f6', bttv: '#d50014', ffz: '#0086c8', twitch: '#9147ff', kick: '#53fc18' }
+
+function hsTtModProvider(tok) {
+  if (/^ffz/i.test(tok)) return 'ffz'
+  if (tok.endsWith('!') || /^c!#/i.test(tok)) return 'bttv'
+  return null
+}
+
+/** One coloured chip. `dim` renders the connector glyphs, not a value. */
+function hsTtChip(text, color, cls) {
+  const el = document.createElement('span')
+  el.className = 'tooltip-piece' + (cls ? ' ' + cls : '')
+  if (color) el.style.color = color
+  el.textContent = text
+  return el
+}
+
+/**
+ * Build "BASE + OVERLAY + OVERLAY  ·  w! c!" into nameEl.
+ * `pieces` = [{name, source}] in stack order; `mods` = ordered token strings.
+ */
+function hsTtRenderComposition(nameEl, pieces, mods) {
+  nameEl.replaceChildren()
+  const MAX = 8
+  const shown = pieces.slice(0, MAX)
+  shown.forEach((p, i) => {
+    if (i) nameEl.appendChild(hsTtChip(' + ', null, 'tooltip-join'))
+    nameEl.appendChild(hsTtChip(p.name, HS_TT_PROVIDER_COLOR[p.source] || null, i ? 'tooltip-overlay' : 'tooltip-base'))
+  })
+  if (pieces.length > MAX) nameEl.appendChild(hsTtChip(` +${pieces.length - MAX} more`, null, 'tooltip-join'))
+  if (mods && mods.length) {
+    // Effects are ordered — "w! c!" reads left-to-right as applied.
+    nameEl.appendChild(hsTtChip('  ·  ', null, 'tooltip-join'))
+    mods.forEach((m, i) => {
+      if (i) nameEl.appendChild(hsTtChip(' ', null, 'tooltip-join'))
+      const prov = hsTtModProvider(m)
+      const chip = hsTtChip(m, HS_TT_PROVIDER_COLOR[prov] || '#c8c8c8', 'tooltip-mod')
+      // c!#rrggbb tints — show the actual colour as the chip's own colour.
+      const hex = m.match(/^c!#?([0-9a-fA-F]{6}|[0-9a-fA-F]{3})$/)
+      if (hex) chip.style.color = '#' + hex[1]
+      nameEl.appendChild(chip)
+    })
+  }
+}
+
+/** Ordered effect tokens stamped on a wrapper by _hsMcApplyMods. */
+function hsTtModsOf(el) {
+  const raw = el?.dataset?.hsMods || el?.closest?.('[data-hs-mods]')?.dataset?.hsMods || ''
+  return raw ? raw.split(/\s+/).filter(Boolean) : []
+}
+
 function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg, owner) {
   const tooltip = ensureEmoteTooltip()
   // Re-append to body so DOM order tiebreaks above other max-int siblings
@@ -26275,14 +26365,18 @@ function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg, own
     // would otherwise join into a 500-char label that blows the tooltip past the
     // viewport — the composite IMAGE already shows every overlay, so the label
     // only needs to identify them: cap to the first few + a "+N more" tail.
-    const names = [...stackEmotes.children]
-      .map((w) => w.dataset?.emoteName || w.querySelector('img')?.alt || '')
-      .filter(Boolean)
-    const MAX_TOOLTIP_NAMES = 8
-    nameEl.textContent =
-      names.length > MAX_TOOLTIP_NAMES
-        ? names.slice(0, MAX_TOOLTIP_NAMES).join(' + ') + ` +${names.length - MAX_TOOLTIP_NAMES} more`
-        : names.join(' + ') || emoteName
+    // Every piece of the nest, colour-coded by provider, plus the ordered
+    // effect list gathered from each piece's data-hs-mods.
+    const pieces = [...stackEmotes.children]
+      .map((w) => ({
+        name: w.dataset?.emoteName || w.querySelector('img')?.alt || '',
+        source: w.dataset?.source || w.querySelector('img')?.dataset?.source || '',
+      }))
+      .filter((p) => p.name)
+    const stackMods = []
+    for (const w of stackEmotes.children) for (const m of hsTtModsOf(w)) stackMods.push(m)
+    if (pieces.length) hsTtRenderComposition(nameEl, pieces, stackMods)
+    else nameEl.textContent = emoteName
   } else {
     stackBox.style.display = 'none'
     stackBox.replaceChildren()
@@ -26324,7 +26418,11 @@ function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg, own
         hiRes.src = hiResUrl
       }
     }
-    nameEl.textContent = emoteName
+    // A lone emote can still carry effects ("Kappa w! c!") — show them in the
+    // order applied, same colour coding as the stack path.
+    const soloMods = hsTtModsOf(hoveredImg)
+    if (soloMods.length) hsTtRenderComposition(nameEl, [{ name: emoteName, source }], soloMods)
+    else nameEl.textContent = emoteName
   }
 
   // Show state with source for globals. 2-state model: 'unadded' is no

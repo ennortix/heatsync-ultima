@@ -3161,12 +3161,23 @@ function _hsMcHexToHue(h) {
 }
 function _hsMcApplyMods(html, mods, hue) {
   if ((!mods || !mods.length) && hue == null) return html
+  // Stamp the ORDERED effect list on the wrapper so the hover tooltip can show
+  // what was applied and in what sequence. Only the composed transform/filter
+  // survives otherwise, which can't be read back into "wide, then cursed".
+  // Tokens come from HS_MOD_CLASS_TO_TOKEN, so a synonym (ffzW vs w!) displays
+  // as its canonical spelling — the EFFECT and its order are always exact.
+  let modsAttr = ''
+  try {
+    const words = hsModWordsFromState(mods || [], hue)
+    if (words.length) modsAttr = ` data-hs-mods="${escapeHtml(words.join(' '))}"`
+  } catch {}
   const imgFilter = hsModComposeFilter(mods, hue)
   const hasImg = /<img(\s|>)/.test(html)
   // Emoji spans have no <img> — fold the filter into the wrapper span style
   // (transform + margins always go on the wrapper anyway).
   const wrapperStyle = hsModBuildStyleAttr(mods, null) + (!hasImg && imgFilter ? `filter:${imgFilter} !important;` : '')
   let out = html
+  if (modsAttr) out = out.replace(/^(<span\b)/, `$1${modsAttr}`)
   if (wrapperStyle) out = hsModInjectWrapperStyle(out, wrapperStyle)
   if (imgFilter && hasImg) {
     out = out.replace(/<img(\s)/, `<img style="filter:${imgFilter} !important;"$1`)

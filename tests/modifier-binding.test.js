@@ -68,3 +68,28 @@ describe('lookahead skips modifiers but not plain words', () => {
     expect(REGION).toMatch(/hasKickEmote && .*emote:/)
   })
 })
+
+// Chaining ("w!h!ffzX") is a heatsync-ism — no provider parses it — so it has
+// no canonical direction of its own. Following the word's FIRST token keeps one
+// rule for the whole feature instead of a special case nobody will remember.
+describe('chained modifier words follow their first token', () => {
+  const CHAIN = SRC.slice(SRC.indexOf('Peel chained modifier word'), SRC.indexOf('Kick emote format:'))
+
+  test('direction comes from the same _modForward rule as single tokens', () => {
+    expect(CHAIN).toContain('_modForward(word)')
+  })
+  test('a bttv-led chain can bind forward', () => {
+    expect(CHAIN).toContain('chainFwd && _emoteComesNext')
+    expect(CHAIN).toContain('pendingMods.push(m)')
+  })
+  test('an ffz-led chain still binds backward', () => {
+    expect(CHAIN).toContain('_lastItem()')
+  })
+  test('a chain with an emote on neither side stays literal text', () => {
+    // the peel is only attempted when SOME emote exists either way
+    expect(CHAIN).toContain('_lastItem() || _emoteComesNext(_wIdx + 1) ? hsModPeelChain(word) : null')
+  })
+  test('a forward chain carries its hue too, not just the effects', () => {
+    expect(CHAIN).toContain('pendingHue = _hsPeel.hue')
+  })
+})

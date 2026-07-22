@@ -25644,12 +25644,22 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
         continue
       }
     }
-    // Peel chained modifier word (e.g. "w!h!ffzX" or "w!c!#888h!")
-    const _hsPeel = _lastItem() ? hsModPeelChain(word) : null
+    // Peel chained modifier word (e.g. "w!h!ffzX" or "w!c!#888h!"). Chaining is
+    // a heatsync-ism — no provider parses it — so direction follows the word's
+    // FIRST token, matching what the user led with and keeping the rule
+    // identical to the single-token case above.
+    const _hsPeel = _lastItem() || _emoteComesNext(_wIdx + 1) ? hsModPeelChain(word) : null
     if (_hsPeel) {
-      const last = _lastItem()
-      for (const m of _hsPeel.mods) last.mods.push(m)
-      if (_hsPeel.hue != null) last.hue = _hsPeel.hue
+      const chainFwd = _modForward(word)
+      const target = chainFwd && _emoteComesNext(_wIdx + 1) ? null : _lastItem()
+      if (target) {
+        for (const m of _hsPeel.mods) target.mods.push(m)
+        if (_hsPeel.hue != null) target.hue = _hsPeel.hue
+      } else {
+        // forward: ride pendingMods onto the emote that follows
+        for (const m of _hsPeel.mods) pendingMods.push(m)
+        if (_hsPeel.hue != null) pendingHue = _hsPeel.hue
+      }
       pendingWhitespace = ''
       continue
     }

@@ -870,6 +870,82 @@
       height: 100%;
       border: 0;
     }
+    /* transport: pause + volume. On the player for video, on the card for
+       audio. 18px like every other hs control strip. */
+    .hs-mc-transport {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      height: 18px;
+      padding: 0 4px;
+      background: #000;
+    }
+    #hs-mc-embed-player .hs-mc-transport {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      border-top: 1px solid #808080;
+    }
+    .hs-mc-media.hs-mc-playable > .hs-mc-transport {
+      margin-top: 2px;
+    }
+    .hs-mc-transport-toggle {
+      flex: none;
+      width: 18px;
+      height: 16px;
+      margin: 0;
+      padding: 0;
+      font: inherit;
+      font-size: 13px;
+      line-height: 14px;
+      letter-spacing: -1px;
+      text-align: center;
+      color: #ff8700;
+      background: #000;
+      border: 1px solid #808080;
+      border-radius: 0;
+      cursor: pointer;
+    }
+    .hs-mc-transport-toggle:hover,
+    .hs-mc-transport-toggle:active {
+      color: #000;
+      background: #fff;
+    }
+    /* square slider, no thumb rounding anywhere — terminal, not material */
+    .hs-mc-transport-vol {
+      flex: 1;
+      min-width: 40px;
+      max-width: 120px;
+      height: 10px;
+      margin: 0;
+      appearance: none;
+      -webkit-appearance: none;
+      background: #303030;
+      border: 1px solid #808080;
+      border-radius: 0;
+      cursor: pointer;
+    }
+    .hs-mc-transport-vol::-webkit-slider-thumb {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 6px;
+      height: 8px;
+      background: #ff8700;
+      border: 0;
+      border-radius: 0;
+    }
+    .hs-mc-transport-vol::-moz-range-thumb {
+      width: 6px;
+      height: 8px;
+      background: #ff8700;
+      border: 0;
+      border-radius: 0;
+    }
+    .hs-mc-transport-vol:disabled {
+      cursor: not-allowed;
+      opacity: 0.4;
+    }
     /* 0×0 host for in-place audio — outside #hs-mc-messages so a chat repaint
        can't kill the track, invisible because there is nothing to look at. */
     #hs-mc-audio-host {

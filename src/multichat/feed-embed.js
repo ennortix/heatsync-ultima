@@ -840,17 +840,67 @@ function _hsAudioSend(msg) {
   } catch (_) {}
 }
 
+// The transport: pause + volume, on whichever surface is actually visible —
+// the player for video, the card itself for audio (whose iframe is hidden and
+// has nothing to hang controls off). One builder, two homes.
+// A provider that can't take a volume gets a disabled slider saying so, rather
+// than a live-looking control that does nothing.
+function _hsTransportEl(provider) {
+  const bar = document.createElement('div')
+  bar.className = 'hs-mc-transport'
+  const pause = document.createElement('button')
+  pause.type = 'button'
+  pause.className = 'hs-mc-transport-toggle'
+  pause.textContent = '||'
+  pause.title = 'pause'
+  const vol = document.createElement('input')
+  vol.type = 'range'
+  vol.className = 'hs-mc-transport-vol'
+  vol.min = '0'
+  vol.max = '100'
+  vol.step = '1'
+  vol.value = String(Math.round(embedVolume() * 100))
+  if (!provider.volume) {
+    vol.disabled = true
+    vol.title = `${provider.id} has no volume control`
+  } else {
+    vol.title = 'volume'
+  }
+  bar.append(pause, vol)
+  // The card underneath is one big play/pause target — a drag on the slider
+  // must not read as a press on the card.
+  for (const ev of ['click', 'pointerdown', 'mousedown']) {
+    bar.addEventListener(ev, (e) => e.stopPropagation())
+  }
+  pause.addEventListener('click', (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (_hsAudio) chatEmbedToggle(_hsAudio.url)
+  })
+  vol.addEventListener('input', () => setEmbedVolume(Number(vol.value) / 100))
+  return bar
+}
+
 function markNowPlaying(root) {
   if (!root?.querySelectorAll) return
   for (const el of root.querySelectorAll('.hs-mc-media.hs-mc-playable')) {
     const url = el.dataset.resolveUrl || (el.tagName === 'A' ? el.href : '')
     const on = !!_hsAudio && _hsAudio.playing && url === _hsAudio.url
     el.classList.toggle('hs-playing', on)
+    // Audio's transport rides the card. It has to be re-attached rather than
+    // remembered: this row was just rebuilt from scratch.
+    const existing = el.querySelector(':scope > .hs-mc-transport')
+    if (on && !_hsAudio.provider.video) {
+      if (!existing) el.appendChild(_hsTransportEl(_hsAudio.provider))
+    } else if (existing) {
+      existing.remove()
+    }
   }
 }
 
 function _hsAudioStop() {
   if (!_hsAudio) return
+  cleanup.clearTimeout(_hsAudio.idleTimer)
   _hsAudioSend(_hsAudio.provider.pause)
   try {
     _hsAudio.ro?.disconnect()
@@ -893,6 +943,14 @@ function chatEmbedToggle(url, card) {
   if (_hsAudio && _hsAudio.url === url) {
     _hsAudio.playing = !_hsAudio.playing
     _hsAudioSend(_hsAudio.playing ? provider.play : provider.pause)
+    // A paused frame is kept so resume is instant, but not forever — this runs
+    // on passively-cooled hardware and an idle provider iframe still costs.
+    cleanup.clearTimeout(_hsAudio.idleTimer)
+    if (!_hsAudio.playing) {
+      _hsAudio.idleTimer = cleanup.setTimeout(() => {
+        if (_hsAudio && !_hsAudio.playing) _hsAudioStop()
+      }, 90000)
+    }
     markNowPlaying(document)
     return true
   }
@@ -913,6 +971,7 @@ function chatEmbedToggle(url, card) {
   frame.setAttribute('sandbox', EMBED_SANDBOX)
   frame.setAttribute('allow', 'autoplay; encrypted-media; fullscreen; picture-in-picture')
   host.appendChild(frame)
+  if (provider.video) host.appendChild(_hsTransportEl(provider))
   parent.appendChild(host)
   _hsAudio = { url, provider, frame, host, card: provider.video ? card || null : null, ready: false, playing: true }
   if (provider.video) {

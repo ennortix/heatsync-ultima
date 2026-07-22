@@ -1,5 +1,17 @@
 # changelog
 
+## [1.7.32] — 2026-07-21
+
+### fixed
+- **kick: any script running on kick.com could forge chat messages and mod actions** through the extension's page bridge. it now verifies the sender.
+- **text typed after an emote was blurry instead of bitmap-crisp.** a non-square emote scaled to row height has a fractional width, so every character after it landed off the pixel grid — measured at 0.625px out. all four ways a chip can enter the composer now snap it to a whole pixel.
+- **emote modifiers went the wrong way for betterttv.** bttv puts the modifier BEFORE the emote (`c! Kappa`) and ffz puts it AFTER (`Kappa ffzX`) — we applied everything backwards, so a bttv user's `c! Kappa` showed a stray `c!` and an unmodified emote. each token now binds the way its own provider binds it, and the "wrong" order still works when there's no ambiguity.
+- push notification unsubscribe used the wrong http method and always failed.
+- raw message keys (`mc_input_send_channel`) could leak into the ui when a value was still resolving.
+
+### added
+- **hovering a stacked or modified emote now shows the whole recipe** — base, every overlay, and the modifiers in the order they were applied, each coloured by the provider it came from.
+
 ## [1.7.31] — 2026-07-21
 
 ### fixed

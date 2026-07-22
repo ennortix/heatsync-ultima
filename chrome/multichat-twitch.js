@@ -25920,6 +25920,32 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
       continue
     }
 
+    // ── Modifier binding ────────────────────────────────────────────────
+    // BTTV and FFZ disagree, verified against both providers' own APIs/docs:
+    //   BTTV (c! w! h! v! z! l! r! p! s!) modifies the FOLLOWING emote
+    //   FFZ  (ffzX ffzW ffzY ffzCursed …) modifies the PRECEDING emote
+    //   7TV  zero-width overlays also attach to the PRECEDING emote
+    // So each token binds in ITS OWN provider's canonical direction FIRST. The
+    // opposite direction is only a fallback for when the canonical side has no
+    // emote — that ordering matters: if the fallback could win, then
+    // "Kappa c! Keepo" would modify Kappa for us and Keepo for every BTTV
+    // user, and multi-emote runs are exactly where interop breaks visibly.
+    // A token with an emote on NEITHER side stays literal text (never
+    // swallowed — that regression is why the orphan guard exists below).
+    const _modForward = (w) => w.endsWith('!') // BTTV token shape; ffz* are backward
+    // Is there an emote ahead before any plain word? Skips intervening
+    // modifiers so "c! ffzX Kappa" lands both on Kappa.
+    const _emoteComesNext = (from) => {
+      for (let j = from; j < words.length; j++) {
+        const w = words[j]
+        if (WS_RE.test(w)) continue
+        if (HS_MC_MODS[w] || HS_MC_C_RE.test(w)) continue
+        if (hasKickEmote && /^\[emote:\d+:[^\]]+\]$/.test(w)) return true
+        return !!_lookup(w)?.e
+      }
+      return false
+    }
+
     // FFZ semantic: modifier attaches to the IMMEDIATELY PRECEDING emote.
     // Kappa RainTime w! → wide RainTime (not Kappa).
     // FFZ modifiers attach to the IMMEDIATELY PRECEDING emote. If there's no
@@ -25931,16 +25957,39 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
     // repeated, every ffzW eaten. So each modifier branch only consumes the token
     // when _lastItem() exists; otherwise it falls through to the text path below.
     const modKind = HS_MC_MODS[word]
-    if (modKind && _lastItem()) {
-      _lastItem().mods.push(modKind)
-      pendingWhitespace = ''
-      continue
+    if (modKind) {
+      const fwd = _modForward(word)
+      // canonical direction first, opposite as fallback, else fall through to text
+      if (fwd && _emoteComesNext(_wIdx + 1)) {
+        pendingMods.push(modKind)
+        pendingWhitespace = ''
+        continue
+      }
+      if (_lastItem()) {
+        _lastItem().mods.push(modKind)
+        pendingWhitespace = ''
+        continue
+      }
+      if (!fwd && _emoteComesNext(_wIdx + 1)) {
+        pendingMods.push(modKind)
+        pendingWhitespace = ''
+        continue
+      }
     }
     const cMatchTok = word.match(HS_MC_C_RE)
-    if (cMatchTok && _lastItem()) {
-      _lastItem().hue = _hsMcHexToHue(cMatchTok[1])
-      pendingWhitespace = ''
-      continue
+    if (cMatchTok) {
+      // c!#hex is a BTTV-shaped token — forward first, same as its siblings.
+      const hueVal = _hsMcHexToHue(cMatchTok[1])
+      if (_emoteComesNext(_wIdx + 1)) {
+        pendingHue = hueVal
+        pendingWhitespace = ''
+        continue
+      }
+      if (_lastItem()) {
+        _lastItem().hue = hueVal
+        pendingWhitespace = ''
+        continue
+      }
     }
     // Peel chained modifier word (e.g. "w!h!ffzX" or "w!c!#888h!")
     const _hsPeel = _lastItem() ? hsModPeelChain(word) : null

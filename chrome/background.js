@@ -10508,14 +10508,18 @@ async function unsubscribeFromPush(token) {
     const endpoint = sub.endpoint
     await sub.unsubscribe()
     if (token) {
+      // DELETE, not POST — the server only ever registered DELETE, so this
+      // 404'd every time and the swallowed error hid it. The push_subscriptions
+      // row then survived until a later send hit the dead endpoint and
+      // self-pruned it, costing one guaranteed failed push per stale row.
       await fetchWithTimeout(`${API_URL}/api/push/unsubscribe`, {
-        method: 'POST',
+        method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ endpoint }),
-      }).catch((err) => log(' push unsubscribe POST failed:', err?.message))
+      }).catch((err) => log(' push unsubscribe failed:', err?.message))
     }
     log(' Push subscription removed')
   } catch (err) {

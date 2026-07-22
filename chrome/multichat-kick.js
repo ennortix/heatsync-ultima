@@ -55582,7 +55582,11 @@ const STORAGE_KEY = 'heatsync_multichat'
     }
   })
 
-  // Muted users (right-click to hide) — loaded async from chrome.storage.local
+  // Muted users (right-click to hide) — hydrated at boot from the
+  // background-synced `muted_users` key (see PHASE 2), NOT from the
+  // heatsync_mc_muted write below, which nothing reads. Do not "fix" that by
+  // reading it back: unmutes routed straight to background (settings-ui.js)
+  // never update it, so a stale entry would silently resurrect a mute.
   const mutedUsers = new Set()
   // Single persist path for the mute list — every toggle site routes here so
   // a storage failure (quota, mid-reload context death) surfaces as a toast
@@ -68096,7 +68100,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     migrateUiSettingsOnce()
     pruneChatHistoryOnce()
     const _uiPrime = cachedUiSettings()
-    const _localPrime = chrome.storage.local.get([STORAGE_KEY, 'user_info', 'muted_users', 'heatsync_mc_muted'])
+    const _localPrime = chrome.storage.local.get([STORAGE_KEY, 'user_info', 'muted_users'])
     await loadConfig()
     if (!config.enabled) return
     // Lite / emotes-only mode is fully removed — overlay always boots.
@@ -68114,15 +68118,6 @@ const STORAGE_KEY = 'heatsync_multichat'
           const u = (typeof entry === 'string' ? entry : entry.username)?.toLowerCase()
           const exp = typeof entry === 'string' ? null : entry.expiresAt
           if (u && (!exp || exp > now)) mutedUsers.add(u)
-        }
-      }
-      // Right-click mutes persisted by persistMcMuted(). Nothing ever read
-      // this key, so every local mute was silently lost on reload — the set
-      // was only ever rehydrated from the background-synced `muted_users`.
-      if (Array.isArray(local.heatsync_mc_muted)) {
-        for (const entry of local.heatsync_mc_muted) {
-          const u = String(entry || '').toLowerCase()
-          if (u) mutedUsers.add(u)
         }
       }
     } catch {}

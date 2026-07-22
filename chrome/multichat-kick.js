@@ -13246,11 +13246,27 @@ img.hs-fx-zero { margin-left: -4px; }
       border-color: #333 !important;
     }
     /* The send cluster's "where it goes" marker. Not a button — a one-glyph
-       label, dim so it never competes with the letters. */
+       label, dim so it never competes with the letters.
+
+       Sized and boxed exactly like .hs-whisper-arrow (02-tab-bar.css): pulled
+       OUT of the Cozette stack into a scalable mono face, because Cozette is
+       a bitmap font and only renders sharp at its native grid — scaling it up
+       just smears. The box is pinned to an integer height/width so a
+       fractional glyph advance can't push the chips next to it onto a
+       half-pixel and smear THEM (the same trap that hit "you" after the
+       whisper arrow). Flex handles the vertical centring here, so no
+       vertical-align hack is needed. */
     .hs-mc-st-arrow {
       color: #666;
-      font-size: 13px;
-      line-height: 1;
+      font-family: ui-monospace, "DejaVu Sans Mono", "Liberation Mono", monospace;
+      font-size: 19px;
+      font-weight: 700;
+      display: inline-block;
+      height: 18px;
+      line-height: 18px;
+      width: 12px;
+      text-align: center;
+      overflow: visible;
       align-self: center;
       user-select: none;
     }

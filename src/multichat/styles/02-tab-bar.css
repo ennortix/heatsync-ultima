@@ -79,14 +79,18 @@
       background: #fff !important;
       color: #000 !important;
     }
-    /* Mentions — mention-yellow when unseen, matches heatsync.org chat-tile
-       mention color so the surfaces are visually identical. */
+    /* Mentions — RED (danger). A mention pings YOU personally, so on the tab it
+       must outrank and read apart from the yellow stream-event / warn state
+       (game-switch is also --hs-warn yellow — a mention was indistinguishable
+       from a channel just changing games). The inline chat-tile mention stays
+       mention-yellow; a tab highlight is an attention signal, not body text, so
+       red is the right register here. */
     .hs-mc-tab.has-mentions {
-      color: var(--hs-mention) !important;
+      color: var(--hs-danger) !important;
     }
     .hs-mc-tab.has-mentions:not(.active):hover {
       background: #fff !important;
-      color: var(--hs-mention) !important;
+      color: var(--hs-danger) !important;
     }
     /* Whispers — cyan when unseen. A DM is personal: the generic has-new
        white state was easy to miss ("whispers should be more obvious"). */

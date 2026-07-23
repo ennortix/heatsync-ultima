@@ -482,6 +482,10 @@ class IRC {
       if (typeof viewerBadgesPerChannel !== 'undefined') {
         const badges = msg.badges instanceof Set ? msg.badges : new Set(Array.isArray(msg.badges) ? msg.badges : [])
         viewerBadgesPerChannel.set(msg.channel, badges)
+        if (viewerBadgesPerChannel.size > 300) {
+          const k0 = viewerBadgesPerChannel.keys().next().value
+          viewerBadgesPerChannel.delete(k0)
+        }
       }
       // rawBadges carries the full tag string with tier suffixes — feed it
       // into the per-channel own-badges cache so synthetic resub/watchstreak

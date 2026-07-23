@@ -1101,6 +1101,18 @@
   // entries are deleted at flush; a key that never flushes is re-set on the
   // next push for that sender.
   const senderEmoteBustVer = new Map()
+  // Bounded the same way markSenderEmoteFetched bounds senderEmoteFetchedAt
+  // below: "deleted at flush" only holds for keys we actually hold/refetch —
+  // a sender key pushed while we don't hold their set (never added to
+  // senderEmotePending, see emote_added_broadcast below) never flushes and
+  // sat in this map forever, one entry per distinct sender seen all session.
+  function setSenderEmoteBustVer(key, ver) {
+    senderEmoteBustVer.delete(key)
+    senderEmoteBustVer.set(key, ver)
+    if (senderEmoteBustVer.size > SENDER_EMOTE_LRU_MAX) {
+      senderEmoteBustVer.delete(senderEmoteBustVer.keys().next().value)
+    }
+  }
   // 2min: the MISSED-PUSH fallback floor. The primary path is the server's
   // global emote:added/removed push (senderKeys + ver) which invalidates and
   // refetches immediately; this TTL only bounds staleness when that push was
@@ -11651,7 +11663,7 @@
               if (typeof key !== 'string' || !key) continue
               senderEmoteFetchedAt.delete(key)
               senderEmoteVerified.delete(key)
-              if (msg.ver != null) senderEmoteBustVer.set(key, msg.ver)
+              if (msg.ver != null) setSenderEmoteBustVer(key, msg.ver)
               // Only refetch senders we actually hold — a key never seen in
               // this panel has no rows to fix and would be pure fetch noise.
               if (typeof senderEmoteSets !== 'undefined' && senderEmoteSets.has(key)) {
@@ -11712,7 +11724,7 @@
           for (const key of msg.senderKeys.slice(0, 30)) {
             if (typeof key === 'string' && key) {
               senderEmoteFetchedAt.delete(key)
-              if (msg.ver != null) senderEmoteBustVer.set(key, msg.ver)
+              if (msg.ver != null) setSenderEmoteBustVer(key, msg.ver)
             }
           }
         }

@@ -2147,6 +2147,20 @@
     "message": "removed VIP from $USER$",
     "placeholders": { "user": { "content": "$1" } }
   },
+  "mc_input_usage_mod": {
+    "message": "/mod <user>"
+  },
+  "mc_input_usage_unmod": {
+    "message": "/unmod <user>"
+  },
+  "mc_input_mod_done": {
+    "message": "modded $USER$",
+    "placeholders": { "user": { "content": "$1" } }
+  },
+  "mc_input_unmod_done": {
+    "message": "unmodded $USER$",
+    "placeholders": { "user": { "content": "$1" } }
+  },
   "mc_input_mode_twitch_unsupported": {
     "message": "twitch has no api for $LABEL$ — kick only",
     "placeholders": {

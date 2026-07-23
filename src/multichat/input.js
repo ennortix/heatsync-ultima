@@ -301,7 +301,7 @@ function makeSynthId() {
 // Twitch killed these as IRC chat commands (Feb 2023); refused rather than sent
 // as literal text. vip/unvip left OFF this list — they're now wired via GQL
 // (VIPUser/UnVIPUser), so they must reach their handler instead of being refused.
-const DEAD_TWITCH_CHAT_COMMANDS = new Set(['clear', 'color', 'mod', 'unmod', 'raid', 'unraid', 'commercial', 'marker'])
+const DEAD_TWITCH_CHAT_COMMANDS = new Set(['clear', 'color', 'raid', 'unraid', 'commercial', 'marker'])
 
 const NON_ECHOING_CHAT_COMMANDS = new Set([
   'followers',
@@ -957,6 +957,8 @@ const SLASH_COMMANDS = [
   { cmd: 'tab', args: '<name>', desc: 'switch tab (live/feed/mentions/whispers/settings or a channel)' },
   { cmd: 'vip', args: '<user>', desc: 'VIP a user (twitch broadcaster)' },
   { cmd: 'unvip', args: '<user>', desc: 'remove a user VIP (twitch broadcaster)' },
+  { cmd: 'mod', args: '<user>', desc: 'mod a user (twitch broadcaster)' },
+  { cmd: 'unmod', args: '<user>', desc: 'unmod a user (twitch broadcaster)' },
 ]
 const slashAcState = { active: false, matches: [], index: 0 }
 
@@ -7292,14 +7294,22 @@ async function handleSlashCommand(text, input) {
     return true
   }
 
-  // ── /vip /unvip (twitch broadcaster) ────────────────────────────────────
-  // Op names + input shapes captured live from twitch's Roles Manager. Rides
-  // the proven mod-action path (Apollo+integrity → persisted-hash fallback).
-  if (cmd === 'vip' || cmd === 'unvip') {
-    const add = cmd === 'vip'
+  // ── /vip /unvip /mod /unmod (twitch broadcaster) ────────────────────────
+  // Op names + input shapes captured live from twitch's Roles Manager. Ride the
+  // proven mod-action path (Apollo+integrity → persisted-hash fallback).
+  if (cmd === 'vip' || cmd === 'unvip' || cmd === 'mod' || cmd === 'unmod') {
+    const add = cmd === 'vip' || cmd === 'mod'
+    const isVip = cmd === 'vip' || cmd === 'unvip'
     const user = rest.trim().replace(/^@/, '').toLowerCase()
     if (!user || /\s/.test(user)) {
-      showToast(t(add ? 'mc_input_usage_vip' : 'mc_input_usage_unvip') || `/${cmd} <user>`, 'error')
+      const usageKey = isVip
+        ? add
+          ? 'mc_input_usage_vip'
+          : 'mc_input_usage_unvip'
+        : add
+          ? 'mc_input_usage_mod'
+          : 'mc_input_usage_unmod'
+      showToast(t(usageKey) || `/${cmd} <user>`, 'error')
       return true
     }
     let twitchLogin = _modCh?.twitch || null
@@ -7323,9 +7333,16 @@ async function handleSlashCommand(text, input) {
       )
       return true
     }
-    const r = await vipTwitchUser(channelId, user, add)
+    const r = isVip ? await vipTwitchUser(channelId, user, add) : await modTwitchUser(channelId, user, add)
     if (r?.ok) {
-      showToast(t(add ? 'mc_input_vip_done' : 'mc_input_unvip_done', [user]) || `${cmd}: ${user}`, 'success')
+      const doneKey = isVip
+        ? add
+          ? 'mc_input_vip_done'
+          : 'mc_input_unvip_done'
+        : add
+          ? 'mc_input_mod_done'
+          : 'mc_input_unmod_done'
+      showToast(t(doneKey, [user]) || `${cmd}: ${user}`, 'success')
       clearInput(input)
     } else {
       showToast(`${cmd} failed: ${r?.error || 'unknown'} (broadcaster only)`, 'error')
@@ -7584,6 +7601,8 @@ const SLASH_HELP_LINES = [
   '/nuke <term> [secs]    — delete recent msgs matching term (default 30s)',
   '/vip <user>            — VIP a user (twitch broadcaster)',
   '/unvip <user>          — remove a user VIP (twitch broadcaster)',
+  '/mod <user>            — mod a user (twitch broadcaster)',
+  '/unmod <user>          — unmod a user (twitch broadcaster)',
   '',
   'chat modes (twitch, mod):',
   '/followers [mins]      — followers-only ("/followers off")',
@@ -7597,7 +7616,7 @@ const SLASH_HELP_LINES = [
   '/testnotices           — render every event type locally (dev)',
   '',
   '/me and chat pass through to twitch & kick.',
-  '/clear /color /mod /raid are not wired —',
+  '/clear /color /raid /commercial /marker not wired —',
   'twitch dropped them from chat. use its own mod tools.',
 ]
 

@@ -811,6 +811,8 @@
         // the user's own broadcaster status gates the real effect server-side.
         'VIPUser',
         'UnVIPUser',
+        'ModUser',
+        'UnmodUser',
       ]
       if (e.data.searchTerm && !ALLOWED_MUTATIONS.includes(e.data.searchTerm)) {
         log('heatsync-apollo-mutate: rejected — searchTerm not in allowlist:', e.data.searchTerm)

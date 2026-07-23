@@ -2643,6 +2643,10 @@ const TWITCH_HASHES = {
   // VIPUser input {channelID, granteeLogin}; UnVIPUser input {channelID, revokeeLogin}.
   VIPUser: 'e8c397f1ed8b1fdbaa201eedac92dd189ecfb2d828985ec159d4ae77f9920170',
   UnVIPUser: '2ce4fcdf6667d013aa1f820010e699d1d4abdda55e26539ecf4efba8aff2d661',
+  // mod / unmod — captured live from twitch's Roles Manager 2026-07-22.
+  // Both take input {channelID, targetLogin}.
+  ModUser: '46da4ec4229593fe4b1bce911c75625c299638e228262ff621f80d5067695a8a',
+  UnmodUser: '1ed42ccb3bc3a6e79f51e954a2df233827f94491fbbb9bd05b22b1aaaf219b8b',
 }
 
 // Route mutation through MAIN world proxy (has integrity token) with direct fetch fallback
@@ -4101,6 +4105,19 @@ async function vipTwitchUser(channelId, login, add) {
   const op = add ? 'VIPUser' : 'UnVIPUser'
   const resultField = add ? 'vipUser' : 'unvipUser'
   const input = add ? { channelID: channelId, granteeLogin: login } : { channelID: channelId, revokeeLogin: login }
+  const rawQuery = `mutation ${op}($input: ${op}Input!) { ${resultField}(input: $input) { error { code } } }`
+  return _modActionMutation(op, resultField, rawQuery, { input })
+}
+
+// mod / unmod a user. Op names + shapes captured live from twitch's Roles
+// Manager (ModUser / UnmodUser, both input {channelID, targetLogin}); persisted
+// hashes in TWITCH_HASHES. Broadcaster-only — rides the same _modActionMutation
+// path as vip/ban/timeout.
+async function modTwitchUser(channelId, login, add) {
+  if (!channelId || !login) return { error: 'missing channel or user' }
+  const op = add ? 'ModUser' : 'UnmodUser'
+  const resultField = add ? 'modUser' : 'unmodUser'
+  const input = { channelID: channelId, targetLogin: login }
   const rawQuery = `mutation ${op}($input: ${op}Input!) { ${resultField}(input: $input) { error { code } } }`
   return _modActionMutation(op, resultField, rawQuery, { input })
 }

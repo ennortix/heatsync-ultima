@@ -8986,7 +8986,16 @@ async function handleMessage(message, sender, sendResponse) {
           // collapses native chat, which unloads the iframe youtube-content.js
           // lives in, so there is no receiver. With a concrete videoId, fall
           // back to a bridge tab instead of failing the send.
-          const canBridge = videoId && /^[a-zA-Z0-9_-]{11}$/.test(videoId) && targetTabId !== ytBridgeTabs.get(videoId)
+          //
+          // But ONLY when the first attempt provably never reached a content
+          // script ("receiving end does not exist"). A "message port closed"
+          // means the frame received the relay and died mid-send — the click
+          // (and the post) may already have happened, so re-driving a bridge tab
+          // through the same inject-and-click would double-post. Report that
+          // ambiguous case as a failure rather than silently sending twice.
+          const noReceiver = /Receiving end does not exist|Could not establish connection/i.test(relayErr.message || '')
+          const canBridge =
+            noReceiver && videoId && /^[a-zA-Z0-9_-]{11}$/.test(videoId) && targetTabId !== ytBridgeTabs.get(videoId)
           if (!canBridge) throw relayErr
           const bridge = await ensureYoutubeBridgeTab(videoId)
           if (!bridge.tabId || bridge.error) {
@@ -9229,7 +9238,11 @@ async function handleMessage(message, sender, sendResponse) {
               const userResp = await fetchWithTimeout(`https://kick.com/api/v1/users/${encodeURIComponent(username)}`)
               if (!userResp.ok) {
                 userResp.body?.cancel?.()
-                setUserCosmetic(cacheKey, null)
+                // Only a 404 is proof the user has no cosmetics — cache that.
+                // A 429/5xx is transient; caching it blanks real paints/badges
+                // for COSMETICS_NEGATIVE_TTL. Matches get_user_cosmetics / yt /
+                // fetch_paints, which all skip the cache on non-404 failures.
+                if (userResp.status === 404) setUserCosmetic(cacheKey, null)
                 result[username] = null
                 return
               }
@@ -9590,7 +9603,10 @@ async function handleMessage(message, sender, sendResponse) {
             stvP = stv7tvInflight.get(sevenTvPath)
             if (!stvP) {
               stvP = fetchWithTimeout(`https://7tv.io/v3/users/${sevenTvPath}`)
-                .then((r) => (r.ok ? r.json() : null))
+                // 404 = user genuinely has no 7TV set (cache the empty); a 5xx /
+                // 429 must NOT read as empty — that caches the sender's real
+                // emotes away as raw text for the negative TTL. Flag it errored.
+                .then((r) => (r.ok ? r.json() : r.status === 404 ? null : SENDER_FETCH_ERR))
                 .catch(() => SENDER_FETCH_ERR)
               stv7tvInflight.set(sevenTvPath, stvP)
               stvP.finally(() => stv7tvInflight.delete(sevenTvPath))
@@ -9602,7 +9618,9 @@ async function handleMessage(message, sender, sendResponse) {
             bttvP = bttvInflight.get(id)
             if (!bttvP) {
               bttvP = fetchWithTimeout(`https://api.betterttv.net/3/cached/users/twitch/${id}`)
-                .then((r) => (r.ok ? r.json() : null))
+                // 404 = no BTTV user (empty); 5xx/429 = transient, flag errored
+                // so it isn't cached as "no emotes". See the 7TV leg above.
+                .then((r) => (r.ok ? r.json() : r.status === 404 ? null : SENDER_FETCH_ERR))
                 .catch(() => SENDER_FETCH_ERR)
               bttvInflight.set(id, bttvP)
               bttvP.finally(() => bttvInflight.delete(id))

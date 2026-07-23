@@ -302,11 +302,28 @@
 
       // Handle emote insertion requests from content.js (e.g., clicking emotes in stacks)
       if (e.data?.type === 'heatsync-insert-emote' && e.data.name) {
-        log(' 📨 Received insert-emote request:', e.data.name)
+        // source===window && origin===location.origin only proves same-page —
+        // ANY script on twitch.tv can forge this (no nonce reaches this MAIN
+        // world). Mirror the strict payload validation content.js applies to the
+        // sibling heatsync-native-emotes message: without it a malicious page
+        // could stamp arbitrary text into the user's draft and force a fetch to
+        // an attacker url (rendered as the emote's <img> src). Reject a bad name;
+        // drop a bad url (degrade to a name-only insert) rather than break.
+        const INSERT_NAME_RE = /^[A-Za-z0-9_:\-()]+$/
+        // heatsync own/uploaded emotes are absolutized to cdn.heatsync.org
+        // (server rewrites /uploads/* → CDN origin) — must allow it or every
+        // self-hosted emote insert loses its image. Same omission bg fixed once.
+        const INSERT_CDN_RE =
+          /^https:\/\/(static-cdn\.jtvnw\.net\/emoticons|cdn\.7tv\.app|cdn\.betterttv\.net|cdn\.frankerfacez\.com|(?:cdn\.)?heatsync\.org)\//
+        const name = String(e.data.name)
+        if (name.length < 1 || name.length > 64 || !INSERT_NAME_RE.test(name)) return
+        const rawUrl = typeof e.data.url === 'string' ? e.data.url : ''
+        const rawHash = typeof e.data.hash === 'string' && /^[\w-]{1,100}$/.test(e.data.hash) ? e.data.hash : ''
+        log(' 📨 Received insert-emote request:', name)
         const emote = {
-          name: e.data.name,
-          hash: e.data.hash || e.data.name,
-          url: e.data.url || '',
+          name,
+          hash: rawHash || name,
+          url: rawUrl.length <= 300 && INSERT_CDN_RE.test(rawUrl) ? rawUrl : '',
         }
         const inst = chatInputInstance || findChatInput()
         if (inst && typeof insertEmoteViaSlate === 'function') {

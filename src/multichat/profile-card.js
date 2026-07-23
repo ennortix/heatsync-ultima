@@ -1280,8 +1280,13 @@ async function pcApplyBanner(card, chain) {
   // alongside the banner so unregistered kick chatters get a real face.
   if (banner.profileUrl) {
     const avatar = root.querySelector('.hs-pcard-avatar')
-    if (avatar && (avatar.src || '').includes('anon.webp')) {
-      avatar.src = banner.profileUrl
+    // safeUrl-gate like every other avatar path (tooltips.js/social.js/main.js):
+    // profileUrl is Kick v2 profile_pic / YT og:image, neither URL-validated by
+    // the BG, so a javascript:/data: value must not reach img.src. On reject,
+    // leave the anon placeholder rather than blank it.
+    const safe = safeUrl(banner.profileUrl)
+    if (avatar && safe && (avatar.src || '').includes('anon.webp')) {
+      avatar.src = safe
     }
   }
   if (banner.accent) {

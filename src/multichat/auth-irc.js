@@ -349,7 +349,10 @@ async function drainSendQueue() {
     }
     try {
       const qPrefix = replyParentId ? `@reply-parent-msg-id=${replyParentId} ` : ''
-      authState.ws.send(`${qPrefix}PRIVMSG #${channel} :${text}\r\n`)
+      // Strip CR/LF: they terminate an IRC line, so a newline in text would let
+      // it inject a second command onto the wire. The composer's serializer
+      // currently never emits them, but guard structurally at the wire boundary.
+      authState.ws.send(`${qPrefix}PRIVMSG #${channel} :${String(text).replace(/[\r\n]/g, ' ')}\r\n`)
       authState.sendQueue.shift()
       log(`Drained queued msg to #${channel}`)
     } catch {
@@ -400,7 +403,9 @@ async function sendIrcMessage(channel, text, token, replyParentId, overrideNick)
         scheduleReconnect([channel])
         return queuedC ? 'queued' : 'queue_full'
       }
-      authState.ws.send(`${prefix}PRIVMSG #${channel} :${text}\r\n`)
+      // Strip CR/LF at the wire boundary — a newline in text would inject a
+      // second IRC command (see the queue-drain send above).
+      authState.ws.send(`${prefix}PRIVMSG #${channel} :${String(text).replace(/[\r\n]/g, ' ')}\r\n`)
       if (MC_DEBUG)
         console.warn(
           '[HS] IRC SEND →',

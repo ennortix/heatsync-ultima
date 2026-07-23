@@ -39591,6 +39591,7 @@ const SLASH_COMMANDS = [
   { cmd: 'delnote', args: '<user>', desc: 'remove your note on a user' },
   { cmd: 'block', args: '<user>', desc: 'toggle block for a user' },
   { cmd: 'set', args: '<setting> <value>', desc: 'change a setting (e.g. /set zebra off, /set fontsize 15)' },
+  { cmd: 'tab', args: '<name>', desc: 'switch tab (live/feed/mentions/whispers/settings or a channel)' },
 ]
 const slashAcState = { active: false, matches: [], index: 0 }
 
@@ -45889,6 +45890,40 @@ async function handleSlashCommand(text, input) {
       else if (def.type === 'range' && def.options) hint = ` · ${def.options.min}-${def.options.max}`
       showToast(`${t('mc_input_set_invalid', [def.key]) || `invalid value for ${def.key}`}${hint}`, 'error')
     }
+    return true
+  }
+
+  // ── /tab — switch tab from the composer ─────────────────────────────────
+  // Only ever switches to a real special tab or a configured channel (matched
+  // by id or any platform login), never a bare switchTab(id) that could blank
+  // the view on an unknown id.
+  if (cmd === 'tab') {
+    const q = rest.trim().toLowerCase().replace(/^#/, '')
+    if (!q) {
+      showToast(t('mc_input_usage_tab') || '/tab <live|feed|mentions|whispers|settings|channel>', 'error')
+      return true
+    }
+    const SPECIAL = ['live', 'feed', 'mentions', 'whispers', 'discover', 'pinned', 'modlog', 'add', 'settings']
+    let target = null
+    if (SPECIAL.includes(q)) {
+      target = q
+    } else if (typeof config !== 'undefined' && config.channels) {
+      const ch = config.channels.find(
+        (c) =>
+          c.id === q || c.twitch?.toLowerCase() === q || c.kick?.toLowerCase() === q || c.youtube?.toLowerCase() === q,
+      )
+      if (ch) target = ch.id
+    }
+    if (!target) {
+      showToast(t('mc_input_tab_unknown', [q]) || `no tab: ${q}`, 'error')
+      return true
+    }
+    if (typeof switchTab !== 'function') {
+      showToast(t('mc_input_tab_unavailable') || 'tabs unavailable', 'error')
+      return true
+    }
+    switchTab(target)
+    clearInput(input)
     return true
   }
 

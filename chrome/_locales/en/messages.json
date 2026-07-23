@@ -2123,6 +2123,16 @@
     "message": "invalid value for $KEY$",
     "placeholders": { "key": { "content": "$1" } }
   },
+  "mc_input_usage_tab": {
+    "message": "/tab <live|feed|mentions|whispers|settings|channel>"
+  },
+  "mc_input_tab_unavailable": {
+    "message": "tabs unavailable"
+  },
+  "mc_input_tab_unknown": {
+    "message": "no tab: $NAME$",
+    "placeholders": { "name": { "content": "$1" } }
+  },
   "mc_input_mode_twitch_unsupported": {
     "message": "twitch has no api for $LABEL$ — kick only",
     "placeholders": {

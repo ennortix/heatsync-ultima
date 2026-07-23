@@ -2101,6 +2101,28 @@
     "message": "no note for $USER$",
     "placeholders": { "user": { "content": "$1" } }
   },
+  "mc_input_usage_set": {
+    "message": "/set <setting> <value>"
+  },
+  "mc_input_set_complex": {
+    "message": "change that one in the settings panel"
+  },
+  "mc_input_set_unknown": {
+    "message": "unknown setting: $KEY$",
+    "placeholders": { "key": { "content": "$1" } }
+  },
+  "mc_input_set_bool": {
+    "message": "use on/off for $KEY$",
+    "placeholders": { "key": { "content": "$1" } }
+  },
+  "mc_input_set_done": {
+    "message": "$KEY$ = $VAL$",
+    "placeholders": { "key": { "content": "$1" }, "val": { "content": "$2" } }
+  },
+  "mc_input_set_invalid": {
+    "message": "invalid value for $KEY$",
+    "placeholders": { "key": { "content": "$1" } }
+  },
   "mc_input_mode_twitch_unsupported": {
     "message": "twitch has no api for $LABEL$ — kick only",
     "placeholders": {

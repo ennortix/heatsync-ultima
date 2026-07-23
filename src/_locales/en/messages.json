@@ -2133,6 +2133,20 @@
     "message": "no tab: $NAME$",
     "placeholders": { "name": { "content": "$1" } }
   },
+  "mc_input_usage_vip": {
+    "message": "/vip <user>"
+  },
+  "mc_input_usage_unvip": {
+    "message": "/unvip <user>"
+  },
+  "mc_input_vip_done": {
+    "message": "VIP’d $USER$",
+    "placeholders": { "user": { "content": "$1" } }
+  },
+  "mc_input_unvip_done": {
+    "message": "removed VIP from $USER$",
+    "placeholders": { "user": { "content": "$1" } }
+  },
   "mc_input_mode_twitch_unsupported": {
     "message": "twitch has no api for $LABEL$ — kick only",
     "placeholders": {

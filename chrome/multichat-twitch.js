@@ -31201,6 +31201,10 @@ const TWITCH_HASHES = {
   // (404), so chat modes go through this GQL persisted mutation. Captured from
   // twitch.tv. followersOnlyDurationMinutes: -1=off, 0=any follower, N=minutes.
   SetFollowersOnlyModeSetting: '0ee2e448691c84b4be72bcd1ae6c51fcf512414fe372e502fe67d3c7eaf8da31',
+  // VIP / unVIP — captured live from twitch's Roles Manager 2026-07-22.
+  // VIPUser input {channelID, granteeLogin}; UnVIPUser input {channelID, revokeeLogin}.
+  VIPUser: 'e8c397f1ed8b1fdbaa201eedac92dd189ecfb2d828985ec159d4ae77f9920170',
+  UnVIPUser: '2ce4fcdf6667d013aa1f820010e699d1d4abdda55e26539ecf4efba8aff2d661',
 }
 
 // Route mutation through MAIN world proxy (has integrity token) with direct fetch fallback
@@ -32614,7 +32618,13 @@ async function _modActionMutationInner(searchTerm, resultField, rawQuery, variab
   const apolloResult = await apolloMutate({ searchTerm, variables, resultField, rawQuery })
   if (apolloResult.ok) return { ok: true }
   try {
-    const data = await gqlMutation(rawQuery, variables)
+    // Prefer the persisted-hash path when we have one (VIP/unVIP, etc.) — raw
+    // queries are dead for mutations, so gqlMutation(rawQuery) only works for
+    // the ops whose Document Apollo already found. gqlPersistedMutation returns
+    // the same {data,errors} shape, so the parsing below is unchanged.
+    const data = TWITCH_HASHES[searchTerm]
+      ? await gqlPersistedMutation(searchTerm, variables)
+      : await gqlMutation(rawQuery, variables)
     if (data?.errors?.length) return { error: data.errors[0].message || `${resultField} failed` }
     const err = data?.data?.[resultField]?.error
     // error is a {code} object for most mod mutations, but a bare enum for
@@ -32640,6 +32650,21 @@ function _modActionMutation(searchTerm, resultField, rawQuery, variables) {
     _modActionMutationInner(searchTerm, resultField, rawQuery, variables),
     new Promise((resolve) => setTimeout(() => resolve({ error: 'mod action timed out — try again' }), 12000)),
   ])
+}
+
+// VIP / unVIP a user. Op names + input shapes captured live from twitch's Roles
+// Manager (VIPUser {channelID, granteeLogin}; UnVIPUser {channelID,
+// revokeeLogin}); persisted hashes seeded in TWITCH_HASHES. Broadcaster-only —
+// twitch gates it server-side; we surface the error. Rides the same
+// _modActionMutation path as ban/timeout (Apollo+integrity → persisted-hash
+// fallback → off-twitch relay → 12s timeout).
+async function vipTwitchUser(channelId, login, add) {
+  if (!channelId || !login) return { error: 'missing channel or user' }
+  const op = add ? 'VIPUser' : 'UnVIPUser'
+  const resultField = add ? 'vipUser' : 'unvipUser'
+  const input = add ? { channelID: channelId, granteeLogin: login } : { channelID: channelId, revokeeLogin: login }
+  const rawQuery = `mutation ${op}($input: ${op}Input!) { ${resultField}(input: $input) { error { code } } }`
+  return _modActionMutation(op, resultField, rawQuery, { input })
 }
 
 // Twitch-tab-only: respond to relay requests from off-Twitch pages.
@@ -38980,18 +39005,10 @@ function makeSynthId() {
 // advertised nowhere now — this set only catches muscle memory. Wiring them
 // for real means discovering each mutation and reading the result back, the
 // way setTwitchChatMode does.
-const DEAD_TWITCH_CHAT_COMMANDS = new Set([
-  'clear',
-  'color',
-  'mod',
-  'unmod',
-  'vip',
-  'unvip',
-  'raid',
-  'unraid',
-  'commercial',
-  'marker',
-])
+// Twitch killed these as IRC chat commands (Feb 2023); refused rather than sent
+// as literal text. vip/unvip left OFF this list — they're now wired via GQL
+// (VIPUser/UnVIPUser), so they must reach their handler instead of being refused.
+const DEAD_TWITCH_CHAT_COMMANDS = new Set(['clear', 'color', 'mod', 'unmod', 'raid', 'unraid', 'commercial', 'marker'])
 
 const NON_ECHOING_CHAT_COMMANDS = new Set([
   'followers',
@@ -39645,6 +39662,8 @@ const SLASH_COMMANDS = [
   { cmd: 'block', args: '<user>', desc: 'toggle block for a user' },
   { cmd: 'set', args: '<setting> <value>', desc: 'change a setting (e.g. /set zebra off, /set fontsize 15)' },
   { cmd: 'tab', args: '<name>', desc: 'switch tab (live/feed/mentions/whispers/settings or a channel)' },
+  { cmd: 'vip', args: '<user>', desc: 'VIP a user (twitch broadcaster)' },
+  { cmd: 'unvip', args: '<user>', desc: 'remove a user VIP (twitch broadcaster)' },
 ]
 const slashAcState = { active: false, matches: [], index: 0 }
 
@@ -45980,6 +45999,47 @@ async function handleSlashCommand(text, input) {
     return true
   }
 
+  // ── /vip /unvip (twitch broadcaster) ────────────────────────────────────
+  // Op names + input shapes captured live from twitch's Roles Manager. Rides
+  // the proven mod-action path (Apollo+integrity → persisted-hash fallback).
+  if (cmd === 'vip' || cmd === 'unvip') {
+    const add = cmd === 'vip'
+    const user = rest.trim().replace(/^@/, '').toLowerCase()
+    if (!user || /\s/.test(user)) {
+      showToast(t(add ? 'mc_input_usage_vip' : 'mc_input_usage_unvip') || `/${cmd} <user>`, 'error')
+      return true
+    }
+    let twitchLogin = _modCh?.twitch || null
+    if (!twitchLogin && currentTab === 'live' && typeof getLiveChannel === 'function') twitchLogin = getLiveChannel()
+    if (!twitchLogin && modChannel && modChannel !== 'live' && !_modCh) twitchLogin = modChannel
+    if (!twitchLogin) {
+      showToast(t('mc_input_pp_needs_twitch') || 'this needs a twitch channel tab', 'error')
+      return true
+    }
+    if (!getTwitchAuthToken()) {
+      showToast(t('mc_input_pp_login') || 'log into twitch.tv first', 'error')
+      return true
+    }
+    const { id: channelId, transient } = await resolveTwitchChannelIdEx(twitchLogin)
+    if (!channelId) {
+      showToast(
+        transient
+          ? t('mc_input_twitch_unreachable') || 'twitch unreachable — try again'
+          : t('mc_input_pp_no_channel') || 'could not resolve channel',
+        'error',
+      )
+      return true
+    }
+    const r = await vipTwitchUser(channelId, user, add)
+    if (r?.ok) {
+      showToast(t(add ? 'mc_input_vip_done' : 'mc_input_unvip_done', [user]) || `${cmd}: ${user}`, 'success')
+      clearInput(input)
+    } else {
+      showToast(`${cmd} failed: ${r?.error || 'unknown'} (broadcaster only)`, 'error')
+    }
+    return true
+  }
+
   if (
     cmd === 'announce' ||
     cmd === 'announceblue' ||
@@ -46229,6 +46289,8 @@ const SLASH_HELP_LINES = [
   '/unban <user>          — unban or end timeout',
   '/delete <msg-id>       — delete one message',
   '/nuke <term> [secs]    — delete recent msgs matching term (default 30s)',
+  '/vip <user>            — VIP a user (twitch broadcaster)',
+  '/unvip <user>          — remove a user VIP (twitch broadcaster)',
   '',
   'chat modes (twitch, mod):',
   '/followers [mins]      — followers-only ("/followers off")',
@@ -46242,7 +46304,7 @@ const SLASH_HELP_LINES = [
   '/testnotices           — render every event type locally (dev)',
   '',
   '/me and chat pass through to twitch & kick.',
-  '/clear /color /mod /vip /raid are not wired —',
+  '/clear /color /mod /raid are not wired —',
   'twitch dropped them from chat. use its own mod tools.',
 ]
 

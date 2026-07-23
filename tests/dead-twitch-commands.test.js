@@ -1,7 +1,8 @@
 /**
  * Twitch killed chat commands over IRC in Feb 2023. /ban /timeout /unban
- * /delete got real GQL handlers; /clear /color /mod /unmod /vip /unvip /raid
- * /unraid /commercial /marker never did — and with no handler they fell
+ * /delete got real GQL handlers, and /vip /unvip joined them 2026-07-22
+ * (VIPUser/UnVIPUser, op shapes captured live). /clear /color /mod /unmod /raid
+ * /unraid /commercial /marker still have none — and with no handler they fell
  * through to a plain send, putting the broadcaster's own moderation command
  * on the wire as message text.
  *
@@ -34,8 +35,12 @@ const { DEAD_TWITCH_CHAT_COMMANDS, SLASH_COMMANDS } = new Function(
 
 describe('dead twitch chat commands', () => {
   test('the whole deprecated set is covered', () => {
-    for (const cmd of ['clear', 'color', 'mod', 'unmod', 'vip', 'unvip', 'raid', 'unraid', 'commercial', 'marker']) {
+    for (const cmd of ['clear', 'color', 'mod', 'unmod', 'raid', 'unraid', 'commercial', 'marker']) {
       expect(DEAD_TWITCH_CHAT_COMMANDS.has(cmd)).toBe(true)
+    }
+    // vip/unvip are NOT dead anymore — implemented via GQL 2026-07-22.
+    for (const cmd of ['vip', 'unvip']) {
+      expect(DEAD_TWITCH_CHAT_COMMANDS.has(cmd)).toBe(false)
     }
   })
 
@@ -46,7 +51,7 @@ describe('dead twitch chat commands', () => {
 
   test('commands that DO work are still advertised', () => {
     const names = SLASH_COMMANDS.map((c) => c.cmd)
-    for (const cmd of ['ban', 'timeout', 'unban', 'delete', 'announce', 'slow', 'followers']) {
+    for (const cmd of ['ban', 'timeout', 'unban', 'delete', 'announce', 'slow', 'followers', 'vip', 'unvip']) {
       expect(names).toContain(cmd)
     }
   })

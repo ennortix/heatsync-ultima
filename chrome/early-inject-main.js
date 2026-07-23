@@ -806,6 +806,11 @@
         // full apolloMutate timeout before falling to a raw fetch that then
         // failed Twitch's integrity check anyway).
         'SendAnnouncementMessage',
+        // VIP / unVIP — broadcaster role management (op names captured live from
+        // twitch's Roles Manager). Same risk class as the other mod actions:
+        // the user's own broadcaster status gates the real effect server-side.
+        'VIPUser',
+        'UnVIPUser',
       ]
       if (e.data.searchTerm && !ALLOWED_MUTATIONS.includes(e.data.searchTerm)) {
         log('heatsync-apollo-mutate: rejected — searchTerm not in allowlist:', e.data.searchTerm)

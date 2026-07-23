@@ -298,18 +298,10 @@ function makeSynthId() {
 // advertised nowhere now — this set only catches muscle memory. Wiring them
 // for real means discovering each mutation and reading the result back, the
 // way setTwitchChatMode does.
-const DEAD_TWITCH_CHAT_COMMANDS = new Set([
-  'clear',
-  'color',
-  'mod',
-  'unmod',
-  'vip',
-  'unvip',
-  'raid',
-  'unraid',
-  'commercial',
-  'marker',
-])
+// Twitch killed these as IRC chat commands (Feb 2023); refused rather than sent
+// as literal text. vip/unvip left OFF this list — they're now wired via GQL
+// (VIPUser/UnVIPUser), so they must reach their handler instead of being refused.
+const DEAD_TWITCH_CHAT_COMMANDS = new Set(['clear', 'color', 'mod', 'unmod', 'raid', 'unraid', 'commercial', 'marker'])
 
 const NON_ECHOING_CHAT_COMMANDS = new Set([
   'followers',
@@ -963,6 +955,8 @@ const SLASH_COMMANDS = [
   { cmd: 'block', args: '<user>', desc: 'toggle block for a user' },
   { cmd: 'set', args: '<setting> <value>', desc: 'change a setting (e.g. /set zebra off, /set fontsize 15)' },
   { cmd: 'tab', args: '<name>', desc: 'switch tab (live/feed/mentions/whispers/settings or a channel)' },
+  { cmd: 'vip', args: '<user>', desc: 'VIP a user (twitch broadcaster)' },
+  { cmd: 'unvip', args: '<user>', desc: 'remove a user VIP (twitch broadcaster)' },
 ]
 const slashAcState = { active: false, matches: [], index: 0 }
 
@@ -7298,6 +7292,47 @@ async function handleSlashCommand(text, input) {
     return true
   }
 
+  // ── /vip /unvip (twitch broadcaster) ────────────────────────────────────
+  // Op names + input shapes captured live from twitch's Roles Manager. Rides
+  // the proven mod-action path (Apollo+integrity → persisted-hash fallback).
+  if (cmd === 'vip' || cmd === 'unvip') {
+    const add = cmd === 'vip'
+    const user = rest.trim().replace(/^@/, '').toLowerCase()
+    if (!user || /\s/.test(user)) {
+      showToast(t(add ? 'mc_input_usage_vip' : 'mc_input_usage_unvip') || `/${cmd} <user>`, 'error')
+      return true
+    }
+    let twitchLogin = _modCh?.twitch || null
+    if (!twitchLogin && currentTab === 'live' && typeof getLiveChannel === 'function') twitchLogin = getLiveChannel()
+    if (!twitchLogin && modChannel && modChannel !== 'live' && !_modCh) twitchLogin = modChannel
+    if (!twitchLogin) {
+      showToast(t('mc_input_pp_needs_twitch') || 'this needs a twitch channel tab', 'error')
+      return true
+    }
+    if (!getTwitchAuthToken()) {
+      showToast(t('mc_input_pp_login') || 'log into twitch.tv first', 'error')
+      return true
+    }
+    const { id: channelId, transient } = await resolveTwitchChannelIdEx(twitchLogin)
+    if (!channelId) {
+      showToast(
+        transient
+          ? t('mc_input_twitch_unreachable') || 'twitch unreachable — try again'
+          : t('mc_input_pp_no_channel') || 'could not resolve channel',
+        'error',
+      )
+      return true
+    }
+    const r = await vipTwitchUser(channelId, user, add)
+    if (r?.ok) {
+      showToast(t(add ? 'mc_input_vip_done' : 'mc_input_unvip_done', [user]) || `${cmd}: ${user}`, 'success')
+      clearInput(input)
+    } else {
+      showToast(`${cmd} failed: ${r?.error || 'unknown'} (broadcaster only)`, 'error')
+    }
+    return true
+  }
+
   if (
     cmd === 'announce' ||
     cmd === 'announceblue' ||
@@ -7547,6 +7582,8 @@ const SLASH_HELP_LINES = [
   '/unban <user>          — unban or end timeout',
   '/delete <msg-id>       — delete one message',
   '/nuke <term> [secs]    — delete recent msgs matching term (default 30s)',
+  '/vip <user>            — VIP a user (twitch broadcaster)',
+  '/unvip <user>          — remove a user VIP (twitch broadcaster)',
   '',
   'chat modes (twitch, mod):',
   '/followers [mins]      — followers-only ("/followers off")',
@@ -7560,7 +7597,7 @@ const SLASH_HELP_LINES = [
   '/testnotices           — render every event type locally (dev)',
   '',
   '/me and chat pass through to twitch & kick.',
-  '/clear /color /mod /vip /raid are not wired —',
+  '/clear /color /mod /raid are not wired —',
   'twitch dropped them from chat. use its own mod tools.',
 ]
 

@@ -2639,6 +2639,10 @@ const TWITCH_HASHES = {
   // (404), so chat modes go through this GQL persisted mutation. Captured from
   // twitch.tv. followersOnlyDurationMinutes: -1=off, 0=any follower, N=minutes.
   SetFollowersOnlyModeSetting: '0ee2e448691c84b4be72bcd1ae6c51fcf512414fe372e502fe67d3c7eaf8da31',
+  // VIP / unVIP — captured live from twitch's Roles Manager 2026-07-22.
+  // VIPUser input {channelID, granteeLogin}; UnVIPUser input {channelID, revokeeLogin}.
+  VIPUser: 'e8c397f1ed8b1fdbaa201eedac92dd189ecfb2d828985ec159d4ae77f9920170',
+  UnVIPUser: '2ce4fcdf6667d013aa1f820010e699d1d4abdda55e26539ecf4efba8aff2d661',
 }
 
 // Route mutation through MAIN world proxy (has integrity token) with direct fetch fallback
@@ -4052,7 +4056,13 @@ async function _modActionMutationInner(searchTerm, resultField, rawQuery, variab
   const apolloResult = await apolloMutate({ searchTerm, variables, resultField, rawQuery })
   if (apolloResult.ok) return { ok: true }
   try {
-    const data = await gqlMutation(rawQuery, variables)
+    // Prefer the persisted-hash path when we have one (VIP/unVIP, etc.) — raw
+    // queries are dead for mutations, so gqlMutation(rawQuery) only works for
+    // the ops whose Document Apollo already found. gqlPersistedMutation returns
+    // the same {data,errors} shape, so the parsing below is unchanged.
+    const data = TWITCH_HASHES[searchTerm]
+      ? await gqlPersistedMutation(searchTerm, variables)
+      : await gqlMutation(rawQuery, variables)
     if (data?.errors?.length) return { error: data.errors[0].message || `${resultField} failed` }
     const err = data?.data?.[resultField]?.error
     // error is a {code} object for most mod mutations, but a bare enum for
@@ -4078,6 +4088,21 @@ function _modActionMutation(searchTerm, resultField, rawQuery, variables) {
     _modActionMutationInner(searchTerm, resultField, rawQuery, variables),
     new Promise((resolve) => setTimeout(() => resolve({ error: 'mod action timed out — try again' }), 12000)),
   ])
+}
+
+// VIP / unVIP a user. Op names + input shapes captured live from twitch's Roles
+// Manager (VIPUser {channelID, granteeLogin}; UnVIPUser {channelID,
+// revokeeLogin}); persisted hashes seeded in TWITCH_HASHES. Broadcaster-only —
+// twitch gates it server-side; we surface the error. Rides the same
+// _modActionMutation path as ban/timeout (Apollo+integrity → persisted-hash
+// fallback → off-twitch relay → 12s timeout).
+async function vipTwitchUser(channelId, login, add) {
+  if (!channelId || !login) return { error: 'missing channel or user' }
+  const op = add ? 'VIPUser' : 'UnVIPUser'
+  const resultField = add ? 'vipUser' : 'unvipUser'
+  const input = add ? { channelID: channelId, granteeLogin: login } : { channelID: channelId, revokeeLogin: login }
+  const rawQuery = `mutation ${op}($input: ${op}Input!) { ${resultField}(input: $input) { error { code } } }`
+  return _modActionMutation(op, resultField, rawQuery, { input })
 }
 
 // Twitch-tab-only: respond to relay requests from off-Twitch pages.

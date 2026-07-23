@@ -840,7 +840,17 @@
     '#000000',
   ]
   let _ucpEl = null
+  let _ucpOffClick = null // outside-click listener — removed on EVERY close path
+  let _ucpAttachTimer = null // pending deferred-attach; cancelled if we close first
   function closeUserColorPicker() {
+    if (_ucpAttachTimer) {
+      clearTimeout(_ucpAttachTimer)
+      _ucpAttachTimer = null
+    }
+    if (_ucpOffClick) {
+      document.removeEventListener('mousedown', _ucpOffClick, true)
+      _ucpOffClick = null
+    }
     if (_ucpEl) {
       _ucpEl.remove()
       _ucpEl = null
@@ -928,12 +938,18 @@
     document.body.appendChild(el)
     _ucpEl = el
 
-    setTimeout(() => {
+    // Deferred one tick so the click that opened the picker doesn't immediately
+    // trip the outside-click handler. closeUserColorPicker owns removal (via
+    // _ucpOffClick) AND cancels this pending attach (via _ucpAttachTimer), so a
+    // reopen before the tick fires can't strand off1 as a permanent document
+    // listener — the bug this whole path guards against.
+    _ucpAttachTimer = setTimeout(() => {
+      _ucpAttachTimer = null
       const off = (ev) => {
         if (!_ucpEl || _ucpEl.contains(ev.target)) return
         closeUserColorPicker()
-        document.removeEventListener('mousedown', off, true)
       }
+      _ucpOffClick = off
       document.addEventListener('mousedown', off, true)
     }, 0)
   }
@@ -4545,7 +4561,13 @@
             .then((t) => sendResponse({ ok: false, error: `${r.status}: ${t}` }))
             .catch(() => sendResponse({ ok: false, error: `${r.status}` }))
       })
-      .catch((e) => sendResponse({ ok: false, error: e.message }))
+      // A 10s AbortSignal.timeout beats kick-send.js's own 11s sentinel, so the
+      // abort — not the sentinel — is what sendKickMessage sees. Normalize it to
+      // the literal 'timeout' so it hits the no-auto-retry path (the POST may
+      // already be live in chat; retrying would double-post). Other errors keep
+      // their message — a connection failure means the POST never landed, so a
+      // retry is safe there.
+      .catch((e) => sendResponse({ ok: false, error: e.name === 'TimeoutError' ? 'timeout' : e.message }))
     return true // async sendResponse
   }
   if (window.location.hostname.includes('kick.com')) {
@@ -5778,6 +5800,11 @@
       }
     })
     obs.observe(stack, { attributes: true, attributeFilter: ['class'] })
+    // Track it: if twitch prunes this locked row from chat before the user
+    // closes it, unlockStack never runs and the observer would keep the
+    // detached subtree alive for the whole session. Tracked, teardown
+    // disconnects it instead.
+    cleanup.trackObserver(obs)
     stack._hsLockObserver = obs
   }
   function unlockStack(stack) {
@@ -5786,6 +5813,7 @@
     stack.classList.remove('expanded')
     if (stack._hsLockObserver) {
       stack._hsLockObserver.disconnect()
+      cleanup.untrackObserver(stack._hsLockObserver)
       stack._hsLockObserver = null
     }
   }
@@ -5934,7 +5962,7 @@
               e.preventDefault()
               e.stopPropagation()
               const wrappers = stack.querySelectorAll('.heatsync-emote-wrapper')
-              const addedNames = []
+              const addPromises = []
               wrappers.forEach((wrapper) => {
                 const hash = wrapper.dataset.emoteHash || ''
                 const emoteName = wrapper.dataset.emoteName
@@ -5947,21 +5975,29 @@
                 const isGlobalEmote = wrapper.classList.contains('emote-overlay-global') || globalNameSet.has(emoteName)
                 // Add to inventory: only own heatsync emotes (have hash, not third-party global)
                 if (!inInv && hash && !isGlobalEmote) {
-                  safeSendMessage({
-                    type: 'add_to_inventory',
-                    emoteName,
-                    emoteHash: hash,
-                    emoteUrl,
-                  })
-                    .then((result) => {
-                      if (result?.success) {
-                        inventoryHashSet.add(result.hash || hash)
-                        inventoryNameSet.add(emoteName)
-                        updateEmoteState(hash, emoteName, 'added')
-                      }
+                  // Resolve to the name only if it actually persisted — the old
+                  // code pushed the name synchronously and toasted "added" before
+                  // the write resolved, so a {success:false} (rate limit, expired
+                  // token, dup slot) or reject claimed a save that never happened,
+                  // then reverted on the next inventory poll with no explanation.
+                  addPromises.push(
+                    safeSendMessage({
+                      type: 'add_to_inventory',
+                      emoteName,
+                      emoteHash: hash,
+                      emoteUrl,
                     })
-                    .catch(() => {})
-                  addedNames.push(emoteName)
+                      .then((result) => {
+                        if (result?.success) {
+                          inventoryHashSet.add(result.hash || hash)
+                          inventoryNameSet.add(emoteName)
+                          updateEmoteState(hash, emoteName, 'added')
+                          return emoteName
+                        }
+                        return null
+                      })
+                      .catch(() => null),
+                  )
                 }
                 // Insert into chat input via MAIN-world hook (handles Slate editor)
                 window.postMessage(
@@ -5974,8 +6010,11 @@
                   location.origin,
                 )
               })
-              if (addedNames.length) {
-                showToast(`added: ${addedNames.join(', ')}`, 'success')
+              if (addPromises.length) {
+                Promise.all(addPromises).then((names) => {
+                  const added = names.filter(Boolean)
+                  if (added.length) showToast(`added: ${added.join(', ')}`, 'success')
+                })
               }
             } else {
               // Expanded stack — absorb ALL clicks to prevent Twitch React re-render
@@ -5996,6 +6035,8 @@
                       markLocalBlockToggle(hash, 'unblocked')
                       updateEmoteState(hash, emoteName, 'neutral')
                       showToast(t('content_toast_unblocked', [emoteName]), 'success')
+                    } else {
+                      showToast(t('content_toast_unblock_failed', [emoteName]), 'error')
                     }
                   })
                 } else {

@@ -262,6 +262,12 @@ function peekOwnReply(echoText) {
 // fails, mid-rejoin races leave no NOTICE, no error, just gone — and that
 // guarantee only holds if we wait for every platform we sent to.
 const pendingSends = new Map()
+// Cap on retained sends. In-flight 'pending' entries clear on their echo (or
+// their 20s timer); 'failed' entries linger for the retry notif and have no
+// cleanup on toast dismiss/expiry, so they'd accumulate — each holding the
+// message text — over a long session. markPendingFailed evicts the oldest
+// FAILED entries beyond this, never touching in-flight ones.
+const PENDING_SENDS_MAX = 50
 // 20s: 12s was firing false positives when SW briefly suspended/restarted
 // during the echo window. Real BG-restart cycles can take 5-15s before the
 // anon socket rejoins and starts receiving PRIVMSGs again. 20s catches those
@@ -507,6 +513,20 @@ function markPendingFailed(synthId, reason) {
       platforms: [...entry.awaiting],
     })
   } catch (_) {}
+  // Bound retention: dismissing/expiring the retry toast has no cleanup hook,
+  // so never-retried failures would pile up holding message text. Evict the
+  // oldest FAILED entries beyond the cap (kept only for retry) — recent ones a
+  // user might still retry stay, and in-flight 'pending' entries are untouched.
+  if (pendingSends.size > PENDING_SENDS_MAX) {
+    for (const [id, e] of pendingSends) {
+      if (id === synthId || e.state !== 'failed') continue
+      pendingSends.delete(id)
+      try {
+        HsNotifs.dismissByKey('send-pending', `send-pending:${id}`)
+      } catch (_) {}
+      if (pendingSends.size <= PENDING_SENDS_MAX) break
+    }
+  }
 }
 
 // Clear pending sends to a channel WITHOUT firing the no_echo toast — used
@@ -5774,8 +5794,23 @@ function hideAutocomplete() {
 // getTriggerContext is the only DOM-cursor logic (wysiwyg vs plain-text) —
 // everything mode-specific lives there once instead of twice.
 
+// Precompiled per (triggerChar,minLen) combo — the 3 call sites below are the
+// only ones that exist, so building fresh RegExps per keystroke was pure waste.
+const _hsTriggerContextRe = {
+  emojiColon: /:([a-z0-9_]{2,})$/i,
+  bareWord: /(?:^|\s)([a-z0-9_]{3,})$/i,
+  mention: /@([a-z0-9_]{0,})$/i,
+}
+
 function getTriggerContext(input, triggerChar, minLen) {
-  const re = new RegExp(triggerChar + '([a-z0-9_]{' + minLen + ',})$', 'i')
+  const re =
+    triggerChar === ':' && minLen === 2
+      ? _hsTriggerContextRe.emojiColon
+      : triggerChar === '(?:^|\\s)' && minLen === 3
+        ? _hsTriggerContextRe.bareWord
+        : triggerChar === '@' && minLen === 0
+          ? _hsTriggerContextRe.mention
+          : new RegExp(triggerChar + '([a-z0-9_]{' + minLen + ',})$', 'i')
   if (wysiwygEnabled) {
     const sel = window.getSelection()
     if (!sel?.rangeCount) return null

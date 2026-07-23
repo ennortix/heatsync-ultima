@@ -534,6 +534,13 @@
     // insertions below only add known-CDN <img> tags.
     let result = String(text == null ? '' : text)
 
+    // Defense-in-depth: the server is a trust boundary — a MITM or a
+    // sanitizer-bypass could deliver a raw `<img onerror=…>` into this innerHTML
+    // sink. Neutralize any BARE `<` (properly-escaped content has none, so this
+    // is a no-op there; it does NOT touch `&`, so `&amp;`/`&lt;3` stay intact).
+    // Mirrors renderFeedContent in social.js, which guards the same data.
+    result = result.replace(/</g, '&lt;')
+
     // Handle &lt;3 (escaped <3)
     result = result.replace(
       /&lt;3/g,

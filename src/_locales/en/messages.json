@@ -2020,6 +2020,87 @@
   "mc_input_twitch_unreachable": {
     "message": "twitch unreachable — try again"
   },
+  "mc_input_pp_needs_twitch": {
+    "message": "this needs a twitch channel tab"
+  },
+  "mc_input_pp_login": {
+    "message": "log into twitch.tv first"
+  },
+  "mc_input_pp_no_channel": {
+    "message": "could not resolve channel"
+  },
+  "mc_input_usage_poll": {
+    "message": "/poll question | choice1 | choice2 [| … up to 5] [| secs]"
+  },
+  "mc_input_usage_prediction": {
+    "message": "/prediction title | outcome1 | outcome2 [| … up to 10] [| secs]"
+  },
+  "mc_input_poll_created": {
+    "message": "poll created"
+  },
+  "mc_input_prediction_created": {
+    "message": "prediction started"
+  },
+  "mc_input_poll_ended": {
+    "message": "poll ended"
+  },
+  "mc_input_no_active_poll": {
+    "message": "no active poll"
+  },
+  "mc_input_no_active_pred": {
+    "message": "no active prediction"
+  },
+  "mc_input_usage_vote": {
+    "message": "/vote <n>"
+  },
+  "mc_input_usage_bet": {
+    "message": "/bet <n> <points>"
+  },
+  "mc_input_usage_resolvepred": {
+    "message": "/resolvepred <n>"
+  },
+  "mc_input_pred_locked": {
+    "message": "prediction locked"
+  },
+  "mc_input_pred_canceled": {
+    "message": "prediction canceled"
+  },
+  "mc_input_voted": {
+    "message": "voted: $CHOICE$",
+    "placeholders": { "choice": { "content": "$1" } }
+  },
+  "mc_input_bet_placed": {
+    "message": "bet $POINTS$ on $OUTCOME$",
+    "placeholders": { "points": { "content": "$1" }, "outcome": { "content": "$2" } }
+  },
+  "mc_input_pred_resolved": {
+    "message": "resolved: $OUTCOME$",
+    "placeholders": { "outcome": { "content": "$1" } }
+  },
+  "mc_input_usage_note": {
+    "message": "/note <user> <text>"
+  },
+  "mc_input_usage_delnote": {
+    "message": "/delnote <user>"
+  },
+  "mc_input_usage_block": {
+    "message": "/block <user> — toggles block"
+  },
+  "mc_input_note_failed": {
+    "message": "could not save note"
+  },
+  "mc_input_note_saved": {
+    "message": "note saved for $USER$",
+    "placeholders": { "user": { "content": "$1" } }
+  },
+  "mc_input_note_deleted": {
+    "message": "note removed for $USER$",
+    "placeholders": { "user": { "content": "$1" } }
+  },
+  "mc_input_note_none": {
+    "message": "no note for $USER$",
+    "placeholders": { "user": { "content": "$1" } }
+  },
   "mc_input_mode_twitch_unsupported": {
     "message": "twitch has no api for $LABEL$ — kick only",
     "placeholders": {

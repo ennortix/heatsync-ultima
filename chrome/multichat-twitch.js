@@ -39632,6 +39632,17 @@ const SLASH_COMMANDS = [
   { cmd: 'emoteonly', args: '[off]', desc: 'emote-only mode (twitch mod)' },
   { cmd: 'subscribers', args: '[off]', desc: 'subs-only mode (twitch mod)' },
   { cmd: 'unique', args: '[off]', desc: 'unique-chat/r9k (twitch mod)' },
+  { cmd: 'poll', args: '<q> | <a> | <b> [| …] [| secs]', desc: 'create a poll (twitch broadcaster)' },
+  { cmd: 'endpoll', args: '', desc: 'end the active poll (twitch broadcaster)' },
+  { cmd: 'vote', args: '<n>', desc: 'vote for choice n in the active poll (twitch)' },
+  { cmd: 'prediction', args: '<title> | <a> | <b> [| …] [| secs]', desc: 'start a prediction (twitch broadcaster)' },
+  { cmd: 'bet', args: '<n> <points>', desc: 'bet points on prediction outcome n (twitch)' },
+  { cmd: 'lockpred', args: '', desc: 'lock the active prediction (twitch broadcaster)' },
+  { cmd: 'resolvepred', args: '<n>', desc: 'resolve the prediction to outcome n (twitch broadcaster)' },
+  { cmd: 'cancelpred', args: '', desc: 'cancel the active prediction (twitch broadcaster)' },
+  { cmd: 'note', args: '<user> <text>', desc: 'save a private note on a user' },
+  { cmd: 'delnote', args: '<user>', desc: 'remove your note on a user' },
+  { cmd: 'block', args: '<user>', desc: 'toggle block for a user' },
 ]
 const slashAcState = { active: false, matches: [], index: 0 }
 
@@ -44996,6 +45007,8 @@ const SLASH_ALIASES = {
   del: 'delete',
   lc: 'lclear',
   '?': 'help',
+  pred: 'prediction',
+  predict: 'prediction',
   // chat-mode aliases → canonical mode command (see CHAT_MODES)
   followersonly: 'followers',
   followeronly: 'followers',
@@ -45621,6 +45634,267 @@ async function handleSlashCommand(text, input) {
         'error',
       )
     }
+    return true
+  }
+
+  // ── poll / prediction commands (twitch) ─────────────────────────────────
+  // Drive the same functions the predictions/polls panel uses. create / lock /
+  // resolve / cancel / endpoll are broadcaster-only (twitch gates them
+  // server-side; we surface the error). vote / bet are viewer actions. All
+  // twitch-only. modChannel/_modCh/currentTab are resolved above (see /highlight).
+  if (['poll', 'prediction', 'vote', 'bet', 'endpoll', 'lockpred', 'cancelpred', 'resolvepred'].includes(cmd)) {
+    const _ppLogin = () => {
+      let login = _modCh?.twitch || null
+      if (!login && currentTab === 'live' && typeof getLiveChannel === 'function') login = getLiveChannel()
+      if (!login && modChannel && modChannel !== 'live' && !_modCh) login = modChannel
+      return login
+    }
+    // Resolve the twitch channel + require login; toast + null on failure.
+    const _ppGate = () => {
+      const login = _ppLogin()
+      if (!login) {
+        showToast(t('mc_input_pp_needs_twitch') || 'this needs a twitch channel tab', 'error')
+        return null
+      }
+      if (!getTwitchAuthToken()) {
+        showToast(t('mc_input_pp_login') || 'log into twitch.tv first', 'error')
+        return null
+      }
+      return login
+    }
+    // "a | b | c | 60" → {title, items:[…], secs}. A trailing pure-number
+    // segment is the duration, but only when a title + ≥2 items already precede
+    // it (so a numeric last choice/outcome isn't mistaken for a duration).
+    const _ppParse = (raw, defSecs, minSecs, maxSecs) => {
+      const segs = raw
+        .split('|')
+        .map((s) => s.trim())
+        .filter(Boolean)
+      let secs = defSecs
+      if (segs.length >= 4 && /^\d+$/.test(segs[segs.length - 1])) {
+        secs = Math.max(minSecs, Math.min(maxSecs, parseInt(segs.pop(), 10)))
+      }
+      return { title: segs.shift() || '', items: segs, secs }
+    }
+    // Live poll / prediction — fetch on demand if the panel was never opened, so
+    // /vote and /bet work standalone.
+    const _ppActivePoll = async (login) => {
+      if (_lastPollData?.choices?.length) return _lastPollData
+      const pr = await fetchPoll(login).catch(() => null)
+      const poll = pr?.poll || null
+      if (poll) _lastPollData = poll
+      return poll
+    }
+    const _ppActivePred = async (login) => {
+      if (_lastPredResult?.prediction?.outcomes?.length) return _lastPredResult.prediction
+      const r = await fetchPrediction(login).catch(() => null)
+      if (r) _lastPredResult = r
+      return r?.prediction || null
+    }
+
+    if (cmd === 'poll' || cmd === 'prediction') {
+      const login = _ppGate()
+      if (!login) return true
+      const isPoll = cmd === 'poll'
+      const { title, items, secs } = _ppParse(rest, 120, isPoll ? 15 : 30, 1800)
+      const maxItems = isPoll ? 5 : 10
+      if (!title || items.length < 2 || items.length > maxItems) {
+        showToast(
+          isPoll
+            ? t('mc_input_usage_poll') || '/poll question | choice1 | choice2 [| … up to 5] [| secs]'
+            : t('mc_input_usage_prediction') || '/prediction title | outcome1 | outcome2 [| … up to 10] [| secs]',
+          'error',
+        )
+        return true
+      }
+      const { id: channelId, transient } = await resolveTwitchChannelIdEx(login)
+      if (!channelId) {
+        showToast(
+          transient
+            ? t('mc_input_twitch_unreachable') || 'twitch unreachable — try again'
+            : t('mc_input_pp_no_channel') || 'could not resolve channel',
+          'error',
+        )
+        return true
+      }
+      const r = isPoll
+        ? await createTwitchPoll(channelId, title, secs, items)
+        : await createPrediction(channelId, title, secs, items)
+      if (r?.ok) {
+        showToast(
+          isPoll
+            ? t('mc_input_poll_created') || 'poll created'
+            : t('mc_input_prediction_created') || 'prediction started',
+          'success',
+        )
+        clearInput(input)
+      } else {
+        showToast(`${isPoll ? 'poll' : 'prediction'} failed: ${r?.error || 'unknown'} (broadcaster only)`, 'error')
+      }
+      return true
+    }
+
+    if (cmd === 'endpoll') {
+      const login = _ppGate()
+      if (!login) return true
+      const poll = await _ppActivePoll(login)
+      if (!poll) {
+        showToast(t('mc_input_no_active_poll') || 'no active poll', 'error')
+        return true
+      }
+      const r = await endTwitchPoll(poll.id)
+      showToast(
+        r?.ok
+          ? t('mc_input_poll_ended') || 'poll ended'
+          : `end poll failed: ${r?.error || 'unknown'} (broadcaster only)`,
+        r?.ok ? 'success' : 'error',
+      )
+      if (r?.ok) clearInput(input)
+      return true
+    }
+
+    if (cmd === 'vote') {
+      const login = _ppGate()
+      if (!login) return true
+      const poll = await _ppActivePoll(login)
+      if (!poll) {
+        showToast(t('mc_input_no_active_poll') || 'no active poll', 'error')
+        return true
+      }
+      const n = parseInt(rest.trim(), 10)
+      if (!Number.isInteger(n) || n < 1 || n > poll.choices.length) {
+        const opts = poll.choices.map((c, i) => `${i + 1}=${c.title}`).join('  ')
+        showToast(`${t('mc_input_usage_vote') || '/vote <n>'} · ${opts}`, 'error')
+        return true
+      }
+      const choice = poll.choices[n - 1]
+      const r = await votePoll(poll.id, choice.id)
+      showToast(
+        r?.ok
+          ? t('mc_input_voted', [choice.title]) || `voted: ${choice.title}`
+          : `vote failed: ${r?.error || 'unknown'}`,
+        r?.ok ? 'success' : 'error',
+      )
+      if (r?.ok) clearInput(input)
+      return true
+    }
+
+    if (cmd === 'bet') {
+      const login = _ppGate()
+      if (!login) return true
+      const pred = await _ppActivePred(login)
+      if (!pred) {
+        showToast(t('mc_input_no_active_pred') || 'no active prediction', 'error')
+        return true
+      }
+      const m = rest.trim().match(/^(\d+)\s+(\d+)$/)
+      const n = m ? parseInt(m[1], 10) : NaN
+      const points = m ? parseInt(m[2], 10) : NaN
+      if (!Number.isInteger(n) || n < 1 || n > pred.outcomes.length || !Number.isInteger(points) || points < 1) {
+        const opts = pred.outcomes.map((o, i) => `${i + 1}=${o.title}`).join('  ')
+        showToast(`${t('mc_input_usage_bet') || '/bet <n> <points>'} · ${opts}`, 'error')
+        return true
+      }
+      const outcome = pred.outcomes[n - 1]
+      const r = await placePredictionBet(pred.id, outcome.id, points)
+      showToast(
+        r?.ok
+          ? t('mc_input_bet_placed', [String(points), outcome.title]) || `bet ${points} on ${outcome.title}`
+          : `bet failed: ${r?.error || 'unknown'}`,
+        r?.ok ? 'success' : 'error',
+      )
+      if (r?.ok) clearInput(input)
+      return true
+    }
+
+    if (cmd === 'lockpred' || cmd === 'cancelpred' || cmd === 'resolvepred') {
+      const login = _ppGate()
+      if (!login) return true
+      const pred = await _ppActivePred(login)
+      if (!pred) {
+        showToast(t('mc_input_no_active_pred') || 'no active prediction', 'error')
+        return true
+      }
+      let r
+      let okMsg
+      if (cmd === 'lockpred') {
+        r = await lockPrediction(pred.id)
+        okMsg = t('mc_input_pred_locked') || 'prediction locked'
+      } else if (cmd === 'cancelpred') {
+        r = await cancelPrediction(pred.id)
+        okMsg = t('mc_input_pred_canceled') || 'prediction canceled'
+      } else {
+        const n = parseInt(rest.trim(), 10)
+        if (!Number.isInteger(n) || n < 1 || n > pred.outcomes.length) {
+          const opts = pred.outcomes.map((o, i) => `${i + 1}=${o.title}`).join('  ')
+          showToast(`${t('mc_input_usage_resolvepred') || '/resolvepred <n>'} · ${opts}`, 'error')
+          return true
+        }
+        const outcome = pred.outcomes[n - 1]
+        r = await resolvePrediction(pred.id, outcome.id)
+        okMsg = t('mc_input_pred_resolved', [outcome.title]) || `resolved: ${outcome.title}`
+      }
+      showToast(r?.ok ? okMsg : `failed: ${r?.error || 'unknown'} (broadcaster only)`, r?.ok ? 'success' : 'error')
+      if (r?.ok) clearInput(input)
+      return true
+    }
+  }
+
+  // ── user notes + block ──────────────────────────────────────────────────
+  // Local, no rights. Notes are alias-canonical across linked accounts, keyed
+  // on the current host platform. /block toggles (account-level for registered
+  // users, local hide otherwise) and the underlying flow shows its own toast.
+  if (cmd === 'note' || cmd === 'delnote') {
+    const m = rest.match(/^@?(\S+)(?:\s+([\s\S]+))?$/)
+    const user = m?.[1]
+    if (!user) {
+      showToast(
+        cmd === 'note'
+          ? t('mc_input_usage_note') || '/note <user> <text>'
+          : t('mc_input_usage_delnote') || '/delnote <user>',
+        'error',
+      )
+      return true
+    }
+    const plat = hostPlatform || 'twitch'
+    if (cmd === 'delnote') {
+      const ok = await hsNoteDelete(user, plat)
+      showToast(
+        ok
+          ? t('mc_input_note_deleted', [user]) || `note removed for ${user}`
+          : t('mc_input_note_none', [user]) || `no note for ${user}`,
+        ok ? 'success' : 'error',
+      )
+      if (ok) clearInput(input)
+      return true
+    }
+    const noteText = (m?.[2] || '').trim()
+    if (!noteText) {
+      showToast(t('mc_input_usage_note') || '/note <user> <text>', 'error')
+      return true
+    }
+    const rec = await hsNoteSave(user, plat, noteText)
+    showToast(
+      rec
+        ? t('mc_input_note_saved', [user]) || `note saved for ${user}`
+        : t('mc_input_note_failed') || 'could not save note',
+      rec ? 'success' : 'error',
+    )
+    if (rec) clearInput(input)
+    return true
+  }
+
+  if (cmd === 'block') {
+    const user = rest.trim().replace(/^@/, '')
+    if (!user || /\s/.test(user)) {
+      showToast(t('mc_input_usage_block') || '/block <user> — toggles block', 'error')
+      return true
+    }
+    // hsBlockFromMenu resolves the identity and toggles; pcToggleBlock /
+    // _toggleMcBlock inside it show their own success/error toast, so don't add
+    // a second one here.
+    await hsBlockFromMenu(user, hostPlatform || 'twitch')
+    clearInput(input)
     return true
   }
 

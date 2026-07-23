@@ -66,7 +66,7 @@ function pinTwitchPersistentPlayer() {
     _ttvPpLastSeen = pp
     if (_ttvPpStyleObserver) {
       try {
-        _ttvPpStyleObserver.disconnect()
+        cleanup.untrackObserver(_ttvPpStyleObserver)
       } catch (_) {}
       _ttvPpStyleObserver = null
     }
@@ -111,7 +111,7 @@ function watchTwitchPersistentPlayer() {
   const armDetachWatch = () => {
     if (_ttvPpDetachObs) {
       try {
-        _ttvPpDetachObs.disconnect()
+        cleanup.untrackObserver(_ttvPpDetachObs)
       } catch (_) {}
       _ttvPpDetachObs = null
     }
@@ -124,7 +124,7 @@ function watchTwitchPersistentPlayer() {
     _ttvPpDetachObs = new MutationObserver(() => {
       if (pp && pp.isConnected) return
       try {
-        _ttvPpDetachObs.disconnect()
+        cleanup.untrackObserver(_ttvPpDetachObs)
       } catch (_) {}
       _ttvPpDetachObs = null
       _ttvPpLastSeen = null
@@ -136,13 +136,13 @@ function watchTwitchPersistentPlayer() {
   function armBodyWatch() {
     if (_ttvPpObserver) {
       try {
-        _ttvPpObserver.disconnect()
+        cleanup.untrackObserver(_ttvPpObserver)
       } catch (_) {}
     }
     _ttvPpObserver = new MutationObserver(() => {
       if (_ttvPpLastSeen && _ttvPpLastSeen.isConnected) {
         try {
-          _ttvPpObserver.disconnect()
+          cleanup.untrackObserver(_ttvPpObserver)
         } catch (_) {}
         armDetachWatch()
         return
@@ -153,7 +153,7 @@ function watchTwitchPersistentPlayer() {
         pinTwitchPersistentPlayer()
         if (_ttvPpLastSeen?.isConnected) {
           try {
-            _ttvPpObserver.disconnect()
+            cleanup.untrackObserver(_ttvPpObserver)
           } catch (_) {}
           armDetachWatch()
         }

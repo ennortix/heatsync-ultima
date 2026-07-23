@@ -41,7 +41,7 @@ function watchYtFlexyMount() {
   if (document.querySelector('ytd-watch-flexy:not([hidden])')) return // already there
   _ytFlexyMountObs = new MutationObserver(() => {
     if (!document.querySelector('ytd-watch-flexy:not([hidden])')) return
-    _ytFlexyMountObs.disconnect()
+    cleanup.untrackObserver(_ytFlexyMountObs)
     _ytFlexyMountObs = null
     try {
       applyChatPosition()
@@ -308,7 +308,7 @@ function _hsEnsureYtBelowObserver(_tries) {
     return
   }
   if (_hsYtBelowEl !== mp) {
-    if (_hsYtBelowRO) _hsYtBelowRO.disconnect()
+    if (_hsYtBelowRO) cleanup.untrackObserver(_hsYtBelowRO)
     _hsYtBelowEl = mp
     _hsYtBelowRO = new ResizeObserver(_hsSetYtBelowTop)
     _hsYtBelowRO.observe(mp)

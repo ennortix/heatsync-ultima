@@ -3120,8 +3120,10 @@
                 })
                 .catch((err) => log('Unblock failed:', err.message))
             } else {
-              blockEmote(e)
-              showPickerToast(t('btn_toast_blocked'))
+              // blockEmote returns whether it stuck; toast the truth (a 500 /
+              // rate-limit / expired token blocks nothing) — matches the ctx-menu
+              // block path. Was fire-and-forget with an unconditional 'blocked'.
+              blockEmote(e).then((ok) => showPickerToast(t(ok ? 'btn_toast_blocked' : 'btn_toast_block_failed')))
             }
             return
           }
@@ -4345,7 +4347,19 @@
         removeBtn.addEventListener('click', async () => {
           dismissContextMenu()
           try {
-            await chrome.runtime.sendMessage({ type: 'remove_from_inventory', emoteHash: hash, emoteName: emote.name })
+            // removeFromInventory RESOLVES {success:false} on "not logged in",
+            // "not in your set", "no slot" or an HTTP failure — it doesn't throw,
+            // so the old bare await claimed "removed" and pruned the local cache
+            // even when the server kept the emote. Gate both on real success.
+            const result = await chrome.runtime.sendMessage({
+              type: 'remove_from_inventory',
+              emoteHash: hash,
+              emoteName: emote.name,
+            })
+            if (!result?.success) {
+              showPickerToast(result?.error || t('btn_toast_remove_failed'))
+              return
+            }
             showPickerToast(t('btn_toast_removed'))
             if (tab === 'mine') {
               inventoryEmotesCache = inventoryEmotesCache.filter((e) => e.name !== emote.name)

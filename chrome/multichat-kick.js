@@ -7167,7 +7167,17 @@ function initKickFallbackSocket() {
     }
   }
 
-  setInterval(() => {
+  const fbInterval = setInterval(() => {
+    // On an extension reload/update this old content-script context keeps
+    // running, but its install-once flag blocks the fresh injection from
+    // re-arming — so without this the stale interval polls a dead closure
+    // forever. chrome.runtime.id goes undefined once the context is
+    // invalidated; clear ourselves then.
+    if (!chrome?.runtime?.id) {
+      clearInterval(fbInterval)
+      close()
+      return
+    }
     stats.fbTicks = (stats.fbTicks || 0) + 1
     if (typeof isEnabled === 'function' && !isEnabled('kick-native-tap')) {
       stats.fbGate = 'toggle-off'

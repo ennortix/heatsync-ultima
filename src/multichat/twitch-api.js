@@ -1461,6 +1461,13 @@ function _startBannerTimer(el, endsAt) {
 function updateChatBanners(predResult, pollData) {
   const msgsEl = document.getElementById('hs-mc-messages')
   if (!msgsEl) return
+  // The banner is an absolute overlay hosted OUTSIDE the scroller (a sibling
+  // under #hs-mc-overlay), so appearing/vanishing predictions/polls/hype never
+  // reflow chat — it paints OVER the top rows the way #hs-mc-statusbar does.
+  // Prepending into the scroller (the old behaviour) reserved layout space and
+  // shoved every message row down on each start/end. See 03-overlay-container.
+  const bannerHost = msgsEl.parentNode
+  if (!bannerHost) return // detached mid-teardown; nothing to host the overlay
   const t = typeof hermesToggles !== 'undefined' ? hermesToggles : {}
 
   const pred = predResult?.prediction
@@ -1479,7 +1486,7 @@ function updateChatBanners(predResult, pollData) {
   if (fp === _bannerFingerprint) return
   _bannerFingerprint = fp
 
-  const old = msgsEl.querySelector('.hs-mc-chat-banner')
+  const old = bannerHost.querySelector('.hs-mc-chat-banner')
   clearBannerTimers()
 
   if (!hasPred && !hasPoll && !hasHype) {
@@ -1585,7 +1592,7 @@ function updateChatBanners(predResult, pollData) {
     banner.appendChild(row)
   }
 
-  if (!old) msgsEl.prepend(banner)
+  if (!old) bannerHost.insertBefore(banner, msgsEl)
 }
 
 // Called from main.js hermes event handler

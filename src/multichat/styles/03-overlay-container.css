@@ -72,7 +72,8 @@
       position: relative;
       /* Bottom keeps a little extra so the last message clears the inputbar's
          top border and descenders aren't clipped against it. Sides/top tight
-         for density — banner margin below must mirror these or it misaligns. */
+         for density. (The pred/poll/hype banner is now an absolute overlay
+         sibling, not an in-flow child, so no margin mirroring is needed here.) */
       padding: 6px 6px 6px 6px;
       font-size: var(--hs-chat-font, 13px) !important;
       line-height: 18px !important;
@@ -128,17 +129,23 @@
       contain: layout style;
     }
 
-    /* Chat overlay banners (predictions + polls at top of messages) */
+    /* Chat overlay banners (predictions + polls + hype at top of messages).
+       ABSOLUTE overlay, out of flow — a sibling of #hs-mc-messages under
+       #hs-mc-overlay, NOT a scroller child. An appearing/vanishing banner must
+       never resize the messages column (chat rows never move — core invariant);
+       it paints OVER the oldest visible rows instead, exactly like
+       #hs-mc-statusbar. top mirrors the statusbar's search-bar-aware offset.
+       z-index 24 sits just under the statusbar (25) so a transient toast wins
+       the shared strip for its ~2s; above chat internals otherwise. */
     .hs-mc-chat-banner {
-      position: sticky;
-      top: 0;
-      z-index: 10;
+      position: absolute;
+      top: var(--hs-layer-statusbar-top, 0px);
+      left: 0;
+      right: 0;
+      z-index: 24;
       display: flex;
       flex-direction: column;
       gap: 2px;
-      /* mirrors #hs-mc-messages top/side padding (6px) so the banner bleeds
-         flush to the scroll-box edges; bottom keeps a 6px gap to first msg. */
-      margin: -6px -6px 6px -6px;
       padding: 0;
     }
     .hs-mc-chat-banner-item {

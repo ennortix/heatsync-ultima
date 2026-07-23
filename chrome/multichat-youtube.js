@@ -8765,7 +8765,8 @@ function injectStyles() {
       position: relative;
       /* Bottom keeps a little extra so the last message clears the inputbar's
          top border and descenders aren't clipped against it. Sides/top tight
-         for density — banner margin below must mirror these or it misaligns. */
+         for density. (The pred/poll/hype banner is now an absolute overlay
+         sibling, not an in-flow child, so no margin mirroring is needed here.) */
       padding: 6px 6px 6px 6px;
       font-size: var(--hs-chat-font, 13px) !important;
       line-height: 18px !important;
@@ -8821,17 +8822,23 @@ function injectStyles() {
       contain: layout style;
     }
 
-    /* Chat overlay banners (predictions + polls at top of messages) */
+    /* Chat overlay banners (predictions + polls + hype at top of messages).
+       ABSOLUTE overlay, out of flow — a sibling of #hs-mc-messages under
+       #hs-mc-overlay, NOT a scroller child. An appearing/vanishing banner must
+       never resize the messages column (chat rows never move — core invariant);
+       it paints OVER the oldest visible rows instead, exactly like
+       #hs-mc-statusbar. top mirrors the statusbar's search-bar-aware offset.
+       z-index 24 sits just under the statusbar (25) so a transient toast wins
+       the shared strip for its ~2s; above chat internals otherwise. */
     .hs-mc-chat-banner {
-      position: sticky;
-      top: 0;
-      z-index: 10;
+      position: absolute;
+      top: var(--hs-layer-statusbar-top, 0px);
+      left: 0;
+      right: 0;
+      z-index: 24;
       display: flex;
       flex-direction: column;
       gap: 2px;
-      /* mirrors #hs-mc-messages top/side padding (6px) so the banner bleeds
-         flush to the scroll-box edges; bottom keeps a 6px gap to first msg. */
-      margin: -6px -6px 6px -6px;
       padding: 0;
     }
     .hs-mc-chat-banner-item {
@@ -20574,6 +20581,10 @@ class IRC {
       if (typeof viewerBadgesPerChannel !== 'undefined') {
         const badges = msg.badges instanceof Set ? msg.badges : new Set(Array.isArray(msg.badges) ? msg.badges : [])
         viewerBadgesPerChannel.set(msg.channel, badges)
+        if (viewerBadgesPerChannel.size > 300) {
+          const k0 = viewerBadgesPerChannel.keys().next().value
+          viewerBadgesPerChannel.delete(k0)
+        }
       }
       // rawBadges carries the full tag string with tier suffixes — feed it
       // into the per-channel own-badges cache so synthetic resub/watchstreak
@@ -29609,6 +29620,13 @@ function _startBannerTimer(el, endsAt) {
 function updateChatBanners(predResult, pollData) {
   const msgsEl = document.getElementById('hs-mc-messages')
   if (!msgsEl) return
+  // The banner is an absolute overlay hosted OUTSIDE the scroller (a sibling
+  // under #hs-mc-overlay), so appearing/vanishing predictions/polls/hype never
+  // reflow chat — it paints OVER the top rows the way #hs-mc-statusbar does.
+  // Prepending into the scroller (the old behaviour) reserved layout space and
+  // shoved every message row down on each start/end. See 03-overlay-container.
+  const bannerHost = msgsEl.parentNode
+  if (!bannerHost) return // detached mid-teardown; nothing to host the overlay
   const t = typeof hermesToggles !== 'undefined' ? hermesToggles : {}
 
   const pred = predResult?.prediction
@@ -29627,7 +29645,7 @@ function updateChatBanners(predResult, pollData) {
   if (fp === _bannerFingerprint) return
   _bannerFingerprint = fp
 
-  const old = msgsEl.querySelector('.hs-mc-chat-banner')
+  const old = bannerHost.querySelector('.hs-mc-chat-banner')
   clearBannerTimers()
 
   if (!hasPred && !hasPoll && !hasHype) {
@@ -29733,7 +29751,7 @@ function updateChatBanners(predResult, pollData) {
     banner.appendChild(row)
   }
 
-  if (!old) msgsEl.prepend(banner)
+  if (!old) bannerHost.insertBefore(banner, msgsEl)
 }
 
 // Called from main.js hermes event handler
@@ -38523,6 +38541,12 @@ function peekOwnReply(echoText) {
 // fails, mid-rejoin races leave no NOTICE, no error, just gone — and that
 // guarantee only holds if we wait for every platform we sent to.
 const pendingSends = new Map()
+// Cap on retained sends. In-flight 'pending' entries clear on their echo (or
+// their 20s timer); 'failed' entries linger for the retry notif and have no
+// cleanup on toast dismiss/expiry, so they'd accumulate — each holding the
+// message text — over a long session. markPendingFailed evicts the oldest
+// FAILED entries beyond this, never touching in-flight ones.
+const PENDING_SENDS_MAX = 50
 // 20s: 12s was firing false positives when SW briefly suspended/restarted
 // during the echo window. Real BG-restart cycles can take 5-15s before the
 // anon socket rejoins and starts receiving PRIVMSGs again. 20s catches those
@@ -38768,6 +38792,20 @@ function markPendingFailed(synthId, reason) {
       platforms: [...entry.awaiting],
     })
   } catch (_) {}
+  // Bound retention: dismissing/expiring the retry toast has no cleanup hook,
+  // so never-retried failures would pile up holding message text. Evict the
+  // oldest FAILED entries beyond the cap (kept only for retry) — recent ones a
+  // user might still retry stay, and in-flight 'pending' entries are untouched.
+  if (pendingSends.size > PENDING_SENDS_MAX) {
+    for (const [id, e] of pendingSends) {
+      if (id === synthId || e.state !== 'failed') continue
+      pendingSends.delete(id)
+      try {
+        HsNotifs.dismissByKey('send-pending', `send-pending:${id}`)
+      } catch (_) {}
+      if (pendingSends.size <= PENDING_SENDS_MAX) break
+    }
+  }
 }
 
 // Clear pending sends to a channel WITHOUT firing the no_echo toast — used
@@ -44035,8 +44073,23 @@ function hideAutocomplete() {
 // getTriggerContext is the only DOM-cursor logic (wysiwyg vs plain-text) —
 // everything mode-specific lives there once instead of twice.
 
+// Precompiled per (triggerChar,minLen) combo — the 3 call sites below are the
+// only ones that exist, so building fresh RegExps per keystroke was pure waste.
+const _hsTriggerContextRe = {
+  emojiColon: /:([a-z0-9_]{2,})$/i,
+  bareWord: /(?:^|\s)([a-z0-9_]{3,})$/i,
+  mention: /@([a-z0-9_]{0,})$/i,
+}
+
 function getTriggerContext(input, triggerChar, minLen) {
-  const re = new RegExp(triggerChar + '([a-z0-9_]{' + minLen + ',})$', 'i')
+  const re =
+    triggerChar === ':' && minLen === 2
+      ? _hsTriggerContextRe.emojiColon
+      : triggerChar === '(?:^|\\s)' && minLen === 3
+        ? _hsTriggerContextRe.bareWord
+        : triggerChar === '@' && minLen === 0
+          ? _hsTriggerContextRe.mention
+          : new RegExp(triggerChar + '([a-z0-9_]{' + minLen + ',})$', 'i')
   if (wysiwygEnabled) {
     const sel = window.getSelection()
     if (!sel?.rangeCount) return null
@@ -55538,7 +55591,7 @@ function watchYtFlexyMount() {
   if (document.querySelector('ytd-watch-flexy:not([hidden])')) return // already there
   _ytFlexyMountObs = new MutationObserver(() => {
     if (!document.querySelector('ytd-watch-flexy:not([hidden])')) return
-    _ytFlexyMountObs.disconnect()
+    cleanup.untrackObserver(_ytFlexyMountObs)
     _ytFlexyMountObs = null
     try {
       applyChatPosition()
@@ -55805,7 +55858,7 @@ function _hsEnsureYtBelowObserver(_tries) {
     return
   }
   if (_hsYtBelowEl !== mp) {
-    if (_hsYtBelowRO) _hsYtBelowRO.disconnect()
+    if (_hsYtBelowRO) cleanup.untrackObserver(_hsYtBelowRO)
     _hsYtBelowEl = mp
     _hsYtBelowRO = new ResizeObserver(_hsSetYtBelowTop)
     _hsYtBelowRO.observe(mp)
@@ -56913,6 +56966,18 @@ const STORAGE_KEY = 'heatsync_multichat'
   // entries are deleted at flush; a key that never flushes is re-set on the
   // next push for that sender.
   const senderEmoteBustVer = new Map()
+  // Bounded the same way markSenderEmoteFetched bounds senderEmoteFetchedAt
+  // below: "deleted at flush" only holds for keys we actually hold/refetch —
+  // a sender key pushed while we don't hold their set (never added to
+  // senderEmotePending, see emote_added_broadcast below) never flushes and
+  // sat in this map forever, one entry per distinct sender seen all session.
+  function setSenderEmoteBustVer(key, ver) {
+    senderEmoteBustVer.delete(key)
+    senderEmoteBustVer.set(key, ver)
+    if (senderEmoteBustVer.size > SENDER_EMOTE_LRU_MAX) {
+      senderEmoteBustVer.delete(senderEmoteBustVer.keys().next().value)
+    }
+  }
   // 2min: the MISSED-PUSH fallback floor. The primary path is the server's
   // global emote:added/removed push (senderKeys + ver) which invalidates and
   // refetches immediately; this TTL only bounds staleness when that push was
@@ -67463,7 +67528,7 @@ const STORAGE_KEY = 'heatsync_multichat'
               if (typeof key !== 'string' || !key) continue
               senderEmoteFetchedAt.delete(key)
               senderEmoteVerified.delete(key)
-              if (msg.ver != null) senderEmoteBustVer.set(key, msg.ver)
+              if (msg.ver != null) setSenderEmoteBustVer(key, msg.ver)
               // Only refetch senders we actually hold — a key never seen in
               // this panel has no rows to fix and would be pure fetch noise.
               if (typeof senderEmoteSets !== 'undefined' && senderEmoteSets.has(key)) {
@@ -67524,7 +67589,7 @@ const STORAGE_KEY = 'heatsync_multichat'
           for (const key of msg.senderKeys.slice(0, 30)) {
             if (typeof key === 'string' && key) {
               senderEmoteFetchedAt.delete(key)
-              if (msg.ver != null) senderEmoteBustVer.set(key, msg.ver)
+              if (msg.ver != null) setSenderEmoteBustVer(key, msg.ver)
             }
           }
         }

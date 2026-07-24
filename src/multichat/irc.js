@@ -1010,6 +1010,11 @@ class KickChat {
           }
         : null,
     }
+    // Server-enriched third-party emote refs (name→{url,provider,zeroWidth}) —
+    // the sender's inventory emotes resolved server-side, so they render without
+    // a per-sender fetch. Absent on native-tap payloads (server-only). See
+    // emote-enrich.ts.
+    if (d.hsEmotes && typeof d.hsEmotes === 'object') msg.hsEmotes = d.hsEmotes
     if (fromNativeTap) msg.fromNativeTap = true
     this.channels.get(channel).push(msg)
     if (msg.user) {

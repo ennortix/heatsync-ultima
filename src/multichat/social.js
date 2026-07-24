@@ -998,6 +998,9 @@ function listenForSocialEvents() {
         // as kick's kickNamePaintUid path: NEVER via queueMcCosmeticsLookup
         // (twitch-space only) — queued directly below.
         hsPaintUid: /^UC[A-Za-z0-9_-]{22}$/.test(msg.authorChannelId || '') ? `yt_${msg.authorChannelId}` : undefined,
+        // Server-enriched third-party emote refs — render sender inventory
+        // emotes without a per-sender fetch. Server-fed only. See emote-enrich.ts.
+        hsEmotes: msg.hsEmotes || undefined,
       }
       if (ytMsg.hsPaintUid && typeof queuePaintLookup === 'function') queuePaintLookup(ytMsg.hsPaintUid)
 

@@ -2199,6 +2199,27 @@ const inventoryEmotes = new Set() // Names of emotes in user's inventory
 // Viewer's personal set — separated from emoteCache so it does NOT bleed into
 // OTHER users' rendered messages. Used as senderEmotes only when sender == viewer.
 const viewerPersonalEmotes = new Map() // Map<name, emoteData>
+// Emotes the viewer click-pasted from OTHER users' messages this session. NEVER
+// rolled back (unlike the viewerPersonalEmotes optimistic seed): if the
+// auto-add-on-send POST fails — offline, rate-limit, recycled SW, or composing
+// from a kick/yt surface with an unreadable heatsync cookie — that seed is
+// deleted and the own echo would textify with no fallback (the exact logged-out
+// symptom). This map is the durable fallback: own-message render consults it so
+// a click-pasted emote ALWAYS renders in your own echo. Keyed by ESCAPED name
+// (matches processEmotes' escaped-token lookups). Own-messages only — never
+// applied to other senders' rendering.
+const clickPastedRefs = new Map() // Map<escapedName, {url, source, state, zeroWidth}>
+const CLICK_PASTED_REFS_MAX = 300
+function registerClickPastedRef(name, url, source, zeroWidth) {
+  if (!name || !url || !/^https?:/i.test(url)) return
+  const key = escapeHtml(name)
+  clickPastedRefs.set(key, { url, source: source || 'heatsync', state: 'global', zeroWidth: !!zeroWidth })
+  while (clickPastedRefs.size > CLICK_PASTED_REFS_MAX) {
+    const oldest = clickPastedRefs.keys().next().value
+    if (oldest === undefined) break
+    clickPastedRefs.delete(oldest)
+  }
+}
 // Render fallback for emotes the viewer REMOVED from their set. Removing purges
 // the emote from inventory/caches, so after a refresh the viewer's own past
 // messages that used it would resolve to nothing and render as raw text. This
@@ -3394,8 +3415,9 @@ function hsOwnCwHiddenCat(emote) {
   return ''
 }
 
-function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMentions = false) {
-  if (emoteCache.size === 0 && !channelEmoteCaches[channel] && !extraCache?.size && !senderEmotes?.size) return text
+function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMentions = false, msgRefs = null) {
+  if (emoteCache.size === 0 && !channelEmoteCaches[channel] && !extraCache?.size && !senderEmotes?.size && !msgRefs?.size)
+    return text
   // Removed-emote render fallback applies ONLY to the viewer's own messages
   // (main.js passes viewerPersonalEmotes by reference for isOwn). Keeps removed
   // heatsync emotes drawing in the viewer's history without leaking into others.
@@ -3432,6 +3454,12 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
   const _lookup = (name) => {
     let e = channel ? channelEmoteCaches[channel]?.get(name) : null
     if (e) return { e, inv: false }
+    // Server-enriched per-message refs: the sender's inventory emote actually
+    // used in THIS message, resolved authoritatively server-side. Wins over the
+    // lazily-fetched sender set (which may be stale/unfetched) but yields to the
+    // channel's own set above. Ungated by _sGate — it's current by construction.
+    e = msgRefs?.get(name)
+    if (e) return { e, inv: true }
     e = _sGet(name)
     if (e) return { e, inv: true }
     e = extraCache?.get(name) || emoteCache.get(name)

@@ -21469,6 +21469,11 @@ class KickChat {
           }
         : null,
     }
+    // Server-enriched third-party emote refs (name→{url,provider,zeroWidth}) —
+    // the sender's inventory emotes resolved server-side, so they render without
+    // a per-sender fetch. Absent on native-tap payloads (server-only). See
+    // emote-enrich.ts.
+    if (d.hsEmotes && typeof d.hsEmotes === 'object') msg.hsEmotes = d.hsEmotes
     if (fromNativeTap) msg.fromNativeTap = true
     this.channels.get(channel).push(msg)
     if (msg.user) {
@@ -24876,6 +24881,27 @@ const inventoryEmotes = new Set() // Names of emotes in user's inventory
 // Viewer's personal set — separated from emoteCache so it does NOT bleed into
 // OTHER users' rendered messages. Used as senderEmotes only when sender == viewer.
 const viewerPersonalEmotes = new Map() // Map<name, emoteData>
+// Emotes the viewer click-pasted from OTHER users' messages this session. NEVER
+// rolled back (unlike the viewerPersonalEmotes optimistic seed): if the
+// auto-add-on-send POST fails — offline, rate-limit, recycled SW, or composing
+// from a kick/yt surface with an unreadable heatsync cookie — that seed is
+// deleted and the own echo would textify with no fallback (the exact logged-out
+// symptom). This map is the durable fallback: own-message render consults it so
+// a click-pasted emote ALWAYS renders in your own echo. Keyed by ESCAPED name
+// (matches processEmotes' escaped-token lookups). Own-messages only — never
+// applied to other senders' rendering.
+const clickPastedRefs = new Map() // Map<escapedName, {url, source, state, zeroWidth}>
+const CLICK_PASTED_REFS_MAX = 300
+function registerClickPastedRef(name, url, source, zeroWidth) {
+  if (!name || !url || !/^https?:/i.test(url)) return
+  const key = escapeHtml(name)
+  clickPastedRefs.set(key, { url, source: source || 'heatsync', state: 'global', zeroWidth: !!zeroWidth })
+  while (clickPastedRefs.size > CLICK_PASTED_REFS_MAX) {
+    const oldest = clickPastedRefs.keys().next().value
+    if (oldest === undefined) break
+    clickPastedRefs.delete(oldest)
+  }
+}
 // Render fallback for emotes the viewer REMOVED from their set. Removing purges
 // the emote from inventory/caches, so after a refresh the viewer's own past
 // messages that used it would resolve to nothing and render as raw text. This
@@ -26071,8 +26097,9 @@ function hsOwnCwHiddenCat(emote) {
   return ''
 }
 
-function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMentions = false) {
-  if (emoteCache.size === 0 && !channelEmoteCaches[channel] && !extraCache?.size && !senderEmotes?.size) return text
+function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMentions = false, msgRefs = null) {
+  if (emoteCache.size === 0 && !channelEmoteCaches[channel] && !extraCache?.size && !senderEmotes?.size && !msgRefs?.size)
+    return text
   // Removed-emote render fallback applies ONLY to the viewer's own messages
   // (main.js passes viewerPersonalEmotes by reference for isOwn). Keeps removed
   // heatsync emotes drawing in the viewer's history without leaking into others.
@@ -26109,6 +26136,12 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
   const _lookup = (name) => {
     let e = channel ? channelEmoteCaches[channel]?.get(name) : null
     if (e) return { e, inv: false }
+    // Server-enriched per-message refs: the sender's inventory emote actually
+    // used in THIS message, resolved authoritatively server-side. Wins over the
+    // lazily-fetched sender set (which may be stale/unfetched) but yields to the
+    // channel's own set above. Ungated by _sGate — it's current by construction.
+    e = msgRefs?.get(name)
+    if (e) return { e, inv: true }
     e = _sGet(name)
     if (e) return { e, inv: true }
     e = extraCache?.get(name) || emoteCache.get(name)
@@ -34946,6 +34979,9 @@ function listenForSocialEvents() {
         // as kick's kickNamePaintUid path: NEVER via queueMcCosmeticsLookup
         // (twitch-space only) — queued directly below.
         hsPaintUid: /^UC[A-Za-z0-9_-]{22}$/.test(msg.authorChannelId || '') ? `yt_${msg.authorChannelId}` : undefined,
+        // Server-enriched third-party emote refs — render sender inventory
+        // emotes without a per-sender fetch. Server-fed only. See emote-enrich.ts.
+        hsEmotes: msg.hsEmotes || undefined,
       }
       if (ytMsg.hsPaintUid && typeof queuePaintLookup === 'function') queuePaintLookup(ytMsg.hsPaintUid)
 
@@ -40572,11 +40608,14 @@ function initInput() {
               if (!name || pendingEmoteOps.has(name)) continue
               const url = w.dataset.emoteUrl || w.querySelector('img')?.src || ''
               const source = w.dataset.source || 'heatsync'
+              if (typeof registerClickPastedRef === 'function') registerClickPastedRef(name, url, source)
               addEmoteToInventory(name, url, source, w)
             } else {
               // global/channel/owned stack members follow the same
               // auto-add-on-send contract as the single-emote click path.
               const url = w.dataset.emoteUrl || w.querySelector('img')?.src || ''
+              if (typeof registerClickPastedRef === 'function')
+                registerClickPastedRef(w.dataset.emoteName, url, w.dataset.source || 'unknown')
               registerClickPasteForAutoAdd(w.dataset.emoteName, url, w.dataset.source || 'unknown')
             }
           }
@@ -40677,6 +40716,10 @@ function initInput() {
               addedAt: Date.now(),
             })
           }
+          // Durable own-echo fallback: record the ref so a failed auto-add-on-send
+          // (offline / rate-limit / recycled SW / unreadable cookie) never leaves
+          // your own echo as raw text. Never rolled back. See clickPastedRefs.
+          if (typeof registerClickPastedRef === 'function') registerClickPastedRef(emoteName, emoteUrl, source)
           // Commit the slot at send (2-state contract) — without this the
           // optimistic seed above renders the chip for the clicker only.
           registerClickPasteForAutoAdd(emoteName, emoteUrl, source)
@@ -63266,6 +63309,32 @@ const STORAGE_KEY = 'heatsync_multichat'
     // m.emoteChannel: explicit channel-emote cache key for messages whose
     // channel is display-only (yt-only config channels + yt auto-live key by
     // config id / videoId, not a twitch/kick name). See social.js ytEmoteKey.
+    // Server-enriched third-party refs (name→{url,provider,zeroWidth}) for THIS
+    // message. Keyed by ESCAPED name so it matches processEmotes' per-word
+    // lookups against escapeHtml(m.text) (mirrors twitchExtra above). Renders
+    // the sender's inventory emotes without any per-sender fetch.
+    let hsMsgRefs = null
+    if (m.hsEmotes && typeof m.hsEmotes === 'object') {
+      for (const name in m.hsEmotes) {
+        const r = m.hsEmotes[name]
+        if (!r || !r.url) continue
+        ;(hsMsgRefs ||= new Map()).set(escapeHtml(name), {
+          url: r.url,
+          source: r.provider || 'heatsync',
+          state: 'global',
+          zeroWidth: !!r.zeroWidth,
+        })
+      }
+    }
+    // Own messages: fall back to click-pasted refs (never rolled back) so an
+    // emote you pasted from someone else's message renders in your echo even if
+    // the auto-add-on-send commit failed. Own-only — clickPastedRefs is keyed by
+    // escaped name and carries {url,source,state,zeroWidth} already.
+    if (isOwn && typeof clickPastedRefs !== 'undefined' && clickPastedRefs.size) {
+      for (const [k, v] of clickPastedRefs) {
+        if (!(hsMsgRefs ||= new Map()).has(k)) hsMsgRefs.set(k, v)
+      }
+    }
     let processedText = processEmotes(
       escapeHtml(m.text),
       m.emoteChannel || m.channel,
@@ -63273,6 +63342,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       senderEmotes,
       m.time,
       true,
+      hsMsgRefs,
     )
     if (m.emotes && m.emotes.length > 0) {
       processedText = processYtEmotes(processedText, m.emotes, true)
@@ -68046,6 +68116,42 @@ const STORAGE_KEY = 'heatsync_multichat'
     _insertPanelCallout(banner)
   }
 
+  // Persistent one-click login nudge — shown when someone tries to collect/use an
+  // emote while signed out of heatsync. Their emotes render for nobody and vanish
+  // on refresh until they log in; a transient toast never conveys that, so people
+  // conclude the ext is broken. Square, terminal, dead-simple: one button to
+  // login. Auto-dismisses on successful login (auth_changed) and on any
+  // successful add (emote_added). Idempotent.
+  function showEmoteLoginNudge() {
+    const container = document.getElementById('hs-mc-container')
+    if (!container) return
+    const id = 'hs-mc-emote-login-nudge'
+    if (document.getElementById(id)) return
+    const banner = document.createElement('div')
+    banner.id = id
+    banner.className = 'hs-mc-auth-banner'
+    banner.style.cssText =
+      'background:#fff;color:#000;font:600 11px/1.4 monospace;padding:6px 10px;text-align:center;display:flex;align-items:center;justify-content:center;gap:8px;'
+    const text = document.createElement('span')
+    text.textContent = 'log in to heatsync so your emotes work for everyone'
+    const link = document.createElement('a')
+    link.href = 'https://heatsync.org/login'
+    link.target = '_blank'
+    link.rel = 'noopener'
+    link.textContent = 'log in'
+    // nowrap so the link never splits across lines when the panel is narrow
+    link.style.cssText = 'color:#000;text-decoration:underline;font-weight:700;cursor:pointer;white-space:nowrap;'
+    const dismiss = document.createElement('span')
+    dismiss.textContent = '×'
+    dismiss.style.cssText = 'cursor:pointer;font-weight:700;padding:0 4px;margin-left:4px;'
+    dismiss.addEventListener('click', () => banner.remove())
+    banner.append(text, link, dismiss)
+    _insertPanelCallout(banner)
+  }
+  function dismissEmoteLoginNudge() {
+    document.getElementById('hs-mc-emote-login-nudge')?.remove()
+  }
+
   function listenForSettingsChanges() {
     if (_onceGuardsMain.settingsListener) return
     _onceGuardsMain.settingsListener = true
@@ -68071,7 +68177,15 @@ const STORAGE_KEY = 'heatsync_multichat'
         // surface: the emote kept rendering locally from the session index and
         // vanished on refresh with no server row (the o7 bug). Fail loud.
         try {
-          showToast(t('mc_main_emote_add_failed', [msg.emoteName || 'emote', msg.error || 'server error']), 'error')
+          if (msg.notLoggedIn) {
+            // The dominant cause of "emotes don't work / the ext sucks": the user
+            // isn't signed into heatsync, so their added emotes render for nobody
+            // and vanish on refresh. A disappearing toast doesn't fix the
+            // confusion — show a persistent, one-click login nudge instead.
+            showEmoteLoginNudge()
+          } else {
+            showToast(t('mc_main_emote_add_failed', [msg.emoteName || 'emote', msg.error || 'server error']), 'error')
+          }
         } catch (e) {}
       }
       if (msg.type === 'api_status') {
@@ -68079,9 +68193,31 @@ const STORAGE_KEY = 'heatsync_multichat'
           showApiStatusBanner(msg.source, msg.state)
         } catch (e) {}
       }
+      // Server-enriched emote refs for a twitch message the native tap already
+      // delivered (which lacks them). Merge onto the row by id and re-render it
+      // in place so the sender's emotes resolve without a per-sender fetch.
+      if (msg.type === 'bg_irc_enrich' && msg.id && msg.hsEmotes) {
+        try {
+          const ech = (msg.channel || '').toLowerCase()
+          const rows = typeof irc !== 'undefined' && irc?.getMessages ? irc.getMessages(ech) : null
+          if (rows) {
+            for (const m of rows) {
+              if (m && m.id === msg.id) {
+                if (!m.hsEmotes) {
+                  m.hsEmotes = msg.hsEmotes
+                  m._renderedHtml = null
+                  if (typeof queueImmediateReprocess === 'function') queueImmediateReprocess()
+                }
+                break
+              }
+            }
+          }
+        } catch (e) {}
+      }
       if (msg.type === 'auth_changed') {
         try {
           showAuthLoginBanner(!!msg.loggedIn)
+          if (msg.loggedIn) dismissEmoteLoginNudge()
         } catch (e) {}
       }
       if (msg.type === 'cosmetics_update') {

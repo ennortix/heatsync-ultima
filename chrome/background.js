@@ -6010,6 +6010,24 @@ function handleWSMessage(msg) {
                 bgIrcPersistChannel(ch)
               }
               bgIrcBroadcast({ type: 'bg_irc_msg', msg: ext })
+            } else if (ext.hsEmotes && ext.id) {
+              // Deduped: the native IRC tap already delivered this id (won the
+              // race), but this server copy carries server-enriched emote refs
+              // the native copy lacked. Patch the buffered row (history) and tell
+              // the panel to merge them + re-render just that row. Additive and
+              // safe — no-ops entirely on channels the server never fans out.
+              try {
+                const buf = BG_IRC.channels.get(ch)
+                if (buf?.getAll) {
+                  for (const m of buf.getAll()) {
+                    if (m && m.id === ext.id) {
+                      if (!m.hsEmotes) m.hsEmotes = ext.hsEmotes
+                      break
+                    }
+                  }
+                }
+              } catch {}
+              bgIrcBroadcast({ type: 'bg_irc_enrich', channel: ch, id: ext.id, hsEmotes: ext.hsEmotes })
             }
           }
         } catch (e) {
@@ -6594,6 +6612,10 @@ function handleYoutubeChatBatch(msg, { fromTap = false } = {}) {
       // put this in userId (twitch-space only, see paints.js ID-SPACE
       // SAFETY) — it rides its own field.
       authorChannelId: ytMsg.authorChannelId || undefined,
+      // Server-enriched third-party emote refs (name→{url,provider,zeroWidth}) —
+      // sender inventory resolved server-side; renders without a per-sender
+      // fetch. Server-fed only (absent on the innertube fallback tap).
+      hsEmotes: ytMsg.hsEmotes || undefined,
       source: 'server',
       replay: isReplay,
     })
@@ -6728,6 +6750,9 @@ async function addToInventory(emoteName, emoteHash, emoteUrl, zeroWidth = false)
         type: 'emote_add_failed',
         emoteName,
         error: 'Not logged in - visit heatsync.org to log in',
+        // Distinct flag so the panel shows a one-click login nudge instead of a
+        // transient error toast — the #1 reason emotes "don't work" for people.
+        notLoggedIn: true,
       })
       return { success: false, error: 'Not logged in' }
     }
@@ -11463,6 +11488,10 @@ function bgIrcRecordToExt(rec, channelHint) {
       }
       if (Object.keys(twitchEmotes).length > 0) msg.twitchEmotes = twitchEmotes
     }
+    // Server-enriched third-party emote refs (name→{url,provider,zeroWidth}) —
+    // authoritative per-message set the sender actually used, so the panel
+    // renders them without fetching the sender's set. See emote-enrich.ts.
+    if (rec.hsEmotes && typeof rec.hsEmotes === 'object') msg.hsEmotes = rec.hsEmotes
     if (rec.bits && rec.bits > 0) msg.bits = rec.bits
     if (rec.isHighlighted) msg.isHighlighted = true
     if (rec.isFirstMsg) msg.isFirstMsg = true

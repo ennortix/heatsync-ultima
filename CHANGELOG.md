@@ -1,5 +1,14 @@
 # changelog
 
+## [1.7.37] — 2026-07-24
+
+### added
+- **everyone sees each other's emotes instantly** — the emotes someone uses now ride along with their message, so they render for you the moment it lands instead of after a delay (or as plain text). works across twitch, kick, and youtube.
+
+### fixed
+- **not logged in? we tell you now** — using an emote while signed out of heatsync used to silently fail and look broken. you get a clear one-tap "log in" prompt instead.
+- clicking someone else's emote to reuse it always renders in your own message now, even if it hadn't saved to your set yet.
+
 ## [1.7.33] — 2026-07-22
 
 ### added

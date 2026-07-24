@@ -6530,6 +6530,32 @@
     // m.emoteChannel: explicit channel-emote cache key for messages whose
     // channel is display-only (yt-only config channels + yt auto-live key by
     // config id / videoId, not a twitch/kick name). See social.js ytEmoteKey.
+    // Server-enriched third-party refs (name→{url,provider,zeroWidth}) for THIS
+    // message. Keyed by ESCAPED name so it matches processEmotes' per-word
+    // lookups against escapeHtml(m.text) (mirrors twitchExtra above). Renders
+    // the sender's inventory emotes without any per-sender fetch.
+    let hsMsgRefs = null
+    if (m.hsEmotes && typeof m.hsEmotes === 'object') {
+      for (const name in m.hsEmotes) {
+        const r = m.hsEmotes[name]
+        if (!r || !r.url) continue
+        ;(hsMsgRefs ||= new Map()).set(escapeHtml(name), {
+          url: r.url,
+          source: r.provider || 'heatsync',
+          state: 'global',
+          zeroWidth: !!r.zeroWidth,
+        })
+      }
+    }
+    // Own messages: fall back to click-pasted refs (never rolled back) so an
+    // emote you pasted from someone else's message renders in your echo even if
+    // the auto-add-on-send commit failed. Own-only — clickPastedRefs is keyed by
+    // escaped name and carries {url,source,state,zeroWidth} already.
+    if (isOwn && typeof clickPastedRefs !== 'undefined' && clickPastedRefs.size) {
+      for (const [k, v] of clickPastedRefs) {
+        if (!(hsMsgRefs ||= new Map()).has(k)) hsMsgRefs.set(k, v)
+      }
+    }
     let processedText = processEmotes(
       escapeHtml(m.text),
       m.emoteChannel || m.channel,
@@ -6537,6 +6563,7 @@
       senderEmotes,
       m.time,
       true,
+      hsMsgRefs,
     )
     if (m.emotes && m.emotes.length > 0) {
       processedText = processYtEmotes(processedText, m.emotes, true)
@@ -11310,6 +11337,42 @@
     _insertPanelCallout(banner)
   }
 
+  // Persistent one-click login nudge — shown when someone tries to collect/use an
+  // emote while signed out of heatsync. Their emotes render for nobody and vanish
+  // on refresh until they log in; a transient toast never conveys that, so people
+  // conclude the ext is broken. Square, terminal, dead-simple: one button to
+  // login. Auto-dismisses on successful login (auth_changed) and on any
+  // successful add (emote_added). Idempotent.
+  function showEmoteLoginNudge() {
+    const container = document.getElementById('hs-mc-container')
+    if (!container) return
+    const id = 'hs-mc-emote-login-nudge'
+    if (document.getElementById(id)) return
+    const banner = document.createElement('div')
+    banner.id = id
+    banner.className = 'hs-mc-auth-banner'
+    banner.style.cssText =
+      'background:#fff;color:#000;font:600 11px/1.4 monospace;padding:6px 10px;text-align:center;display:flex;align-items:center;justify-content:center;gap:8px;'
+    const text = document.createElement('span')
+    text.textContent = 'log in to heatsync so your emotes work for everyone'
+    const link = document.createElement('a')
+    link.href = 'https://heatsync.org/login'
+    link.target = '_blank'
+    link.rel = 'noopener'
+    link.textContent = 'log in'
+    // nowrap so the link never splits across lines when the panel is narrow
+    link.style.cssText = 'color:#000;text-decoration:underline;font-weight:700;cursor:pointer;white-space:nowrap;'
+    const dismiss = document.createElement('span')
+    dismiss.textContent = '×'
+    dismiss.style.cssText = 'cursor:pointer;font-weight:700;padding:0 4px;margin-left:4px;'
+    dismiss.addEventListener('click', () => banner.remove())
+    banner.append(text, link, dismiss)
+    _insertPanelCallout(banner)
+  }
+  function dismissEmoteLoginNudge() {
+    document.getElementById('hs-mc-emote-login-nudge')?.remove()
+  }
+
   function listenForSettingsChanges() {
     if (_onceGuardsMain.settingsListener) return
     _onceGuardsMain.settingsListener = true
@@ -11335,7 +11398,15 @@
         // surface: the emote kept rendering locally from the session index and
         // vanished on refresh with no server row (the o7 bug). Fail loud.
         try {
-          showToast(t('mc_main_emote_add_failed', [msg.emoteName || 'emote', msg.error || 'server error']), 'error')
+          if (msg.notLoggedIn) {
+            // The dominant cause of "emotes don't work / the ext sucks": the user
+            // isn't signed into heatsync, so their added emotes render for nobody
+            // and vanish on refresh. A disappearing toast doesn't fix the
+            // confusion — show a persistent, one-click login nudge instead.
+            showEmoteLoginNudge()
+          } else {
+            showToast(t('mc_main_emote_add_failed', [msg.emoteName || 'emote', msg.error || 'server error']), 'error')
+          }
         } catch (e) {}
       }
       if (msg.type === 'api_status') {
@@ -11343,9 +11414,31 @@
           showApiStatusBanner(msg.source, msg.state)
         } catch (e) {}
       }
+      // Server-enriched emote refs for a twitch message the native tap already
+      // delivered (which lacks them). Merge onto the row by id and re-render it
+      // in place so the sender's emotes resolve without a per-sender fetch.
+      if (msg.type === 'bg_irc_enrich' && msg.id && msg.hsEmotes) {
+        try {
+          const ech = (msg.channel || '').toLowerCase()
+          const rows = typeof irc !== 'undefined' && irc?.getMessages ? irc.getMessages(ech) : null
+          if (rows) {
+            for (const m of rows) {
+              if (m && m.id === msg.id) {
+                if (!m.hsEmotes) {
+                  m.hsEmotes = msg.hsEmotes
+                  m._renderedHtml = null
+                  if (typeof queueImmediateReprocess === 'function') queueImmediateReprocess()
+                }
+                break
+              }
+            }
+          }
+        } catch (e) {}
+      }
       if (msg.type === 'auth_changed') {
         try {
           showAuthLoginBanner(!!msg.loggedIn)
+          if (msg.loggedIn) dismissEmoteLoginNudge()
         } catch (e) {}
       }
       if (msg.type === 'cosmetics_update') {

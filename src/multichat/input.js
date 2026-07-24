@@ -1886,11 +1886,14 @@ function initInput() {
               if (!name || pendingEmoteOps.has(name)) continue
               const url = w.dataset.emoteUrl || w.querySelector('img')?.src || ''
               const source = w.dataset.source || 'heatsync'
+              if (typeof registerClickPastedRef === 'function') registerClickPastedRef(name, url, source)
               addEmoteToInventory(name, url, source, w)
             } else {
               // global/channel/owned stack members follow the same
               // auto-add-on-send contract as the single-emote click path.
               const url = w.dataset.emoteUrl || w.querySelector('img')?.src || ''
+              if (typeof registerClickPastedRef === 'function')
+                registerClickPastedRef(w.dataset.emoteName, url, w.dataset.source || 'unknown')
               registerClickPasteForAutoAdd(w.dataset.emoteName, url, w.dataset.source || 'unknown')
             }
           }
@@ -1991,6 +1994,10 @@ function initInput() {
               addedAt: Date.now(),
             })
           }
+          // Durable own-echo fallback: record the ref so a failed auto-add-on-send
+          // (offline / rate-limit / recycled SW / unreadable cookie) never leaves
+          // your own echo as raw text. Never rolled back. See clickPastedRefs.
+          if (typeof registerClickPastedRef === 'function') registerClickPastedRef(emoteName, emoteUrl, source)
           // Commit the slot at send (2-state contract) — without this the
           // optimistic seed above renders the chip for the clicker only.
           registerClickPasteForAutoAdd(emoteName, emoteUrl, source)

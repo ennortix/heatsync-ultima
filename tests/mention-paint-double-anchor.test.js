@@ -201,7 +201,7 @@ describe('computeMessageText call-site guard — structural invariant', () => {
     // Whitespace-insensitive: the formatter may wrap this call across lines.
     const flat = MAIN_SRC.replace(/\s+/g, ' ')
     const marker =
-      'let processedText = processEmotes( escapeHtml(m.text), m.emoteChannel || m.channel, twitchExtra, senderEmotes, m.time, true, )'
+      'let processedText = processEmotes( escapeHtml(m.text), m.emoteChannel || m.channel, twitchExtra, senderEmotes, m.time, true, hsMsgRefs, )'
     expect(flat.includes(marker) || flat.includes(marker.replace('( ', '(').replace(', )', ')'))).toBe(true)
   })
 

@@ -9394,9 +9394,14 @@
     const twitchAll = []
     const kickAll = []
     for (const ch of config.channels) {
+      // Query BOTH platforms independently. A dual-platform tab (same person on
+      // twitch AND kick) must be checked on kick too — the old `else if (kick)`
+      // only ran for kick-ONLY tabs, so a streamer live on kick but not twitch
+      // got queried on helix (offline) and never on kick, showing no live dot.
+      // Kick-only and legacy twitch-id-only paths are unchanged.
       if (ch.twitch) twitchAll.push(ch.twitch)
-      else if (ch.kick) kickAll.push(ch.kick)
-      else if (ch.id && !ch.youtube) twitchAll.push(ch.id) // legacy twitch-id-only entries
+      if (ch.kick) kickAll.push(ch.kick)
+      if (!ch.twitch && !ch.kick && ch.id && !ch.youtube) twitchAll.push(ch.id) // legacy twitch-id-only entries
     }
     const urlCh = getCurrentChannel()
     if (urlCh) {

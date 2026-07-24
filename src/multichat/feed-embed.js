@@ -20,6 +20,39 @@ function attr(s) {
   return escapeHtml(s)
 }
 
+// Hosts the extension's img-src CSP already allows — served directly. Any OTHER
+// http(s) image host (safebooru, i.ytimg, giphy, arbitrary og:images) would be
+// CSP-blocked in-ext, so route it through our origin image proxy, which also
+// hides the viewer's IP from the third-party host (a privacy win over hotlinking
+// — and why we proxy rather than widen img-src to `https:`, which would let any
+// post beacon the viewer via tracking-pixel images). Non-http inputs (data:,
+// blob:, '') and parse failures pass through untouched. Keep this host set in
+// sync with img-src in src/manifests/{chrome,firefox}.json.
+const HS_IMG_DIRECT_HOSTS = new Set([
+  'static-cdn.jtvnw.net',
+  'cdn.7tv.app',
+  'cdn.betterttv.net',
+  'cdn.frankerfacez.com',
+  'files.kick.com',
+  'heatsync.org',
+  'cdn.heatsync.org',
+  'i.imgur.com',
+  'd3aqoihi2n8ty8.cloudfront.net',
+])
+function hsProxyImg(url) {
+  if (!url || typeof url !== 'string') return url || ''
+  let host
+  try {
+    const u = new URL(url)
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return url // data:/blob: — leave
+    host = u.hostname
+  } catch {
+    return url
+  }
+  if (HS_IMG_DIRECT_HOSTS.has(host)) return url
+  return `https://heatsync.org/api/img?url=${encodeURIComponent(url)}`
+}
+
 function ytEmbed(videoId) {
   const id = sanitizeEmbedId(videoId)
   if (!id) return ''
@@ -28,7 +61,7 @@ function ytEmbed(videoId) {
   // that opens the video in a new tab.
   if (/(^|\.)youtube\.com$/i.test(location.hostname)) {
     return `<a href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener" class="hs-feed-embed-yt-thumb">
-      <img src="https://i.ytimg.com/vi/${id}/hqdefault.jpg" alt="" loading="lazy" data-fb="hide">
+      <img src="${hsProxyImg(`https://i.ytimg.com/vi/${id}/hqdefault.jpg`)}" alt="" loading="lazy" data-fb="hide">
       <span class="hs-feed-embed-yt-play">▶</span>
     </a>`
   }
@@ -299,7 +332,7 @@ function parseFeedEmbed(url) {
     const safe = safeUrl(cleanUrl)
     if (!safe) return ''
     return `<div class="hs-feed-media-direct">
-      <img src="${attr(safe)}" alt="" data-fb="deleted">
+      <img src="${attr(hsProxyImg(safe))}" alt="" data-fb="deleted">
     </div>`
   }
   if (/\.(mp4|webm|mov)(\?.*)?$/i.test(cleanUrl)) {
@@ -378,7 +411,7 @@ function chatEmbedForUrl(rawUrl) {
   if (!safe) return ''
   // Direct image / gif → inline, lazy, error-guarded (data-fb hides on 404/blocked).
   if (/\.(jpg|jpeg|png|gif|webp|avif)(\?.*)?$/i.test(cleanUrl)) {
-    return `<div class="hs-mc-media"><img src="${attr(safe)}" alt="" loading="lazy" decoding="async" data-fb="hide"></div>`
+    return `<div class="hs-mc-media"><img src="${attr(hsProxyImg(safe))}" alt="" loading="lazy" decoding="async" data-fb="hide"></div>`
   }
   // Direct video → inline, preload=none (no bytes until play — critical at chat volume).
   if (/\.(mp4|webm|mov)(\?.*)?$/i.test(cleanUrl)) {
@@ -394,7 +427,7 @@ function chatEmbedForUrl(rawUrl) {
     const id = sanitizeEmbedId(ytId)
     if (id)
       return `<a href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener" class="hs-mc-media hs-mc-playable hs-feed-embed-yt-thumb">
-      <img src="https://i.ytimg.com/vi/${id}/mqdefault.jpg" alt="" loading="lazy" decoding="async" data-fb="hide">
+      <img src="${hsProxyImg(`https://i.ytimg.com/vi/${id}/mqdefault.jpg`)}" alt="" loading="lazy" decoding="async" data-fb="hide">
       <span class="hs-feed-embed-yt-play">▶</span>
     </a>`
   }
@@ -438,7 +471,7 @@ function buildFeedMediaHtml(m) {
         if (med.type === 'video') {
           return `<video controls muted preload="metadata" src="${attr(url)}" class="hs-feed-media-item"></video>`
         }
-        return `<img src="${attr(url)}" alt="" class="hs-feed-media-item">`
+        return `<img src="${attr(hsProxyImg(url))}" alt="" class="hs-feed-media-item">`
       })
       .filter(Boolean)
       .join('')
@@ -468,7 +501,7 @@ function buildFeedMediaHtml(m) {
     }
 
     if (isImage) {
-      return `<div class="hs-feed-media"><img src="${attr(safe)}" alt="" class="hs-feed-media-img"></div>`
+      return `<div class="hs-feed-media"><img src="${attr(hsProxyImg(safe))}" alt="" class="hs-feed-media-img"></div>`
     }
 
     return ''
@@ -516,13 +549,18 @@ function _buildFeedResolvedHtml(ph, data) {
   const safeUrlStr = attr(url)
   const safeTitle = attr(data.title || '')
   const safeAuthor = attr(data.author || '')
-  const safeThumb = attr(safeUrl(data.thumbnail || ''))
+  // Thumbnails only ever feed <img>/<video poster> (both images) → proxy always.
+  // mediaUrl is an <img> for type:image but a <video src> for type:video — proxy
+  // the image use (safeMediaImg), leave the video src direct (the image proxy
+  // rejects non-image content-types; external video is a separate, rarer case).
+  const safeThumb = attr(hsProxyImg(safeUrl(data.thumbnail || '')))
   const safeMedia = attr(safeUrl(data.mediaUrl || ''))
+  const safeMediaImg = attr(hsProxyImg(safeUrl(data.mediaUrl || '')))
   const safePlat = attr(platform)
 
   if (data.type === 'image' && data.mediaUrl) {
     return `<a href="${safeUrlStr}" target="_blank" rel="noopener" class="hs-feed-embed-rich-imglink">
-      <img src="${safeMedia}" alt="${safeTitle}" class="hs-feed-embed-rich-image" data-fb="deleted-span">
+      <img src="${safeMediaImg}" alt="${safeTitle}" class="hs-feed-embed-rich-image" data-fb="deleted-span">
     </a>`
   }
   if (data.type === 'video' && data.mediaUrl) {

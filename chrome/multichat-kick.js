@@ -13361,6 +13361,17 @@ img.hs-fx-zero { margin-left: -4px; }
       min-width: 18px !important;
       max-width: 18px !important;
     }
+    /* Keep every T/K/Y a COMPLETE colored box in the dissolved horizontal layout.
+       In top/bottom tabs #hs-mc-platfilter becomes display:contents (02-tab-bar),
+       which drops this container's gap and re-exposes the util cluster's
+       margin:-1px — that collapses adjacent platform-colored borders into one
+       shared line, so T/K read as missing their right edge (grey util buttons
+       hide it; colored ones can't). Pin a real right-gap on the button itself so
+       the separation survives the dropped container gap. */
+    body.hs-tabs-top #hs-mc-platfilter .hs-mc-pf-btn,
+    body.hs-tabs-bottom #hs-mc-platfilter .hs-mc-pf-btn {
+      margin: 0 2px 0 0 !important;
+    }
     /* Vertical mode: platfilter spans full column width, buttons share row */
     .hs-tabs-right #hs-mc-platfilter,
     .hs-tabs-left #hs-mc-platfilter {
@@ -66119,9 +66130,14 @@ const STORAGE_KEY = 'heatsync_multichat'
     const twitchAll = []
     const kickAll = []
     for (const ch of config.channels) {
+      // Query BOTH platforms independently. A dual-platform tab (same person on
+      // twitch AND kick) must be checked on kick too — the old `else if (kick)`
+      // only ran for kick-ONLY tabs, so a streamer live on kick but not twitch
+      // got queried on helix (offline) and never on kick, showing no live dot.
+      // Kick-only and legacy twitch-id-only paths are unchanged.
       if (ch.twitch) twitchAll.push(ch.twitch)
-      else if (ch.kick) kickAll.push(ch.kick)
-      else if (ch.id && !ch.youtube) twitchAll.push(ch.id) // legacy twitch-id-only entries
+      if (ch.kick) kickAll.push(ch.kick)
+      if (!ch.twitch && !ch.kick && ch.id && !ch.youtube) twitchAll.push(ch.id) // legacy twitch-id-only entries
     }
     const urlCh = getCurrentChannel()
     if (urlCh) {

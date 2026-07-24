@@ -418,6 +418,12 @@ function chatEmbedForUrl(rawUrl) {
 // Handles direct uploads (image/video), multi-image (media[]), and content-extracted embeds.
 function buildFeedMediaHtml(m) {
   if (!m) return ''
+  // Media URLs come back origin-relative (/uploads/...). The ext renders
+  // cross-origin (twitch/kick/yt), so a relative src silently 404s AND safeUrl()
+  // throws on a relative URL → the image is dropped entirely. Absolutize here —
+  // the single render chokepoint for feed, thread, and /logs — so no insert path
+  // can leak a relative URL. Idempotent: absolute URLs pass through untouched.
+  if (typeof _absolutizeThreadMedia === 'function') _absolutizeThreadMedia(m)
   const isReply = !!m.reply_to
   const mediaUrl = m.media_url
   const mediaType = m.media_type

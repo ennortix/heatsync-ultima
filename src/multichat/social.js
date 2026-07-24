@@ -184,6 +184,11 @@ function pushActivityEvent(evt) {
   if (activityEvents.length > ACTIVITY_EVENTS_MAX) activityEvents.splice(0, activityEvents.length - ACTIVITY_EVENTS_MAX)
 }
 let activeThread = null // { id, op, replies[] } — when set, feed shows thread view
+// Tab to return to when the thread's back button is hit. Captured at open time
+// from the tab the user was on BEFORE the forced switchTab('feed') (channel tabs
+// open threads via that switch). null → return to the feed. Consumed once by the
+// back handler in main.js. A dedicated slot (not prevTab, which settings clobbers).
+let threadReturnTab = null
 let replyState = null // { msgId, user, channel } when replying to a message
 let hsAuthToken = null // Heatsync auth state (loaded from storage)
 let hsCurrentUsername = null // Heatsync username (loaded from storage user_info)
@@ -1711,6 +1716,7 @@ function buildFeedMessageDiv(m, opUsername) {
       // Find the target in feedMessages to determine its thread
       const target = feedMessages.find((f) => f.base36_id === targetId)
       const threadId = target ? target.reply_to || target.base36_id : targetId
+      if (!activeThread) threadReturnTab = null // opened from the feed → back to feed
       openThread(threadId, targetId)
     })
   })
@@ -1879,7 +1885,16 @@ function renderFeedContent(content, emoteRefs) {
       const cacheKey = escaped
       let re = _feedEmoteRegexCache.get(cacheKey)
       if (!re) {
-        re = new RegExp(`\\b${escaped.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g')
+        // Match the emote name as a whole WHITESPACE-DELIMITED token, not via
+        // `\b`: emote names routinely contain non-word chars (`fern(sousounofrieren)`,
+        // `non-web_source`), and `\b` fails around `(`/`)` so a parenthesized name
+        // never matched — it rendered as plain text. `(?<!\S)…(?!\S)` binds to
+        // spaces/string-ends instead, and won't imagify a name embedded inside a
+        // larger token (e.g. `meme` inside `frierenstuckinamimic(meme)`).
+        // Also accept an optional trailing `(source)` disambiguation qualifier so
+        // a bare-name ref key still matches the alias-qualified body the site emits.
+        const body = escaped.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        re = new RegExp(`(?<!\\S)${body}(?:\\([^)\\s]*\\))?(?!\\S)`, 'g')
         _feedEmoteRegexCache.set(cacheKey, re)
         if (_feedEmoteRegexCache.size > 500) _feedEmoteRegexCache.delete(_feedEmoteRegexCache.keys().next().value)
       }
@@ -1898,11 +1913,19 @@ function renderFeedContent(content, emoteRefs) {
         if (i % 2 === 1) return part // inside an HTML tag — skip
         return part.replace(/\S+/g, (word) => {
           if (refNames && refNames.has(word)) return word // already rendered above
+          // Site emits alias-qualified names (`fern(sousounofrieren)`) to
+          // disambiguate collisions — the emote itself is the bare `fern`. Look up
+          // the bare form when the qualified token misses.
+          const bare = word.replace(/\([^)\s]*\)$/, '')
+          if (refNames && bare !== word && refNames.has(bare)) return word // handled by emote_refs pass
           // Blocked emote dropped from caches — still box it, don't leak the name.
-          if (typeof blockedEmoteNames !== 'undefined' && blockedEmoteNames.has(word)) {
+          if (
+            typeof blockedEmoteNames !== 'undefined' &&
+            (blockedEmoteNames.has(word) || blockedEmoteNames.has(bare))
+          ) {
             return renderFeedEmote(word, '', 'heatsync', '')
           }
-          const em = lookupEmote(word)
+          const em = lookupEmote(word) || (bare !== word ? lookupEmote(bare) : null)
           if (!em || !em.url || !/^https:\/\//.test(em.url)) return word
           return renderFeedEmote(word, em.url, em.source, em.hash)
         })
@@ -1942,9 +1965,11 @@ function formatTimeFromTs(ts) {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-// /api/thread media URLs are origin-relative (/uploads/...) — the ext renders
-// cross-origin, so a relative src silently 404s against twitch.tv/kick.com.
-// Prefix in place; absolute URLs pass through untouched.
+// Feed + thread media URLs are origin-relative (/uploads/...) — the ext renders
+// cross-origin, so a relative src silently 404s against twitch.tv/kick.com AND
+// safeUrl() throws on relative URLs (dropping the image). Prefix in place;
+// absolute URLs pass through untouched. Called from buildFeedMediaHtml (the
+// render chokepoint) so every surface — feed, thread, /logs — is covered.
 function _absolutizeThreadMedia(m) {
   if (!m) return
   for (const k of ['media_url', 'thumbnail_url']) {
@@ -2074,6 +2099,7 @@ function toggleThread(msgId, highlightId) {
   if (activeThread && activeThread.id === msgId && !highlightId) {
     closeThread()
   } else {
+    if (!activeThread) threadReturnTab = null // opened from a feed row → back to feed
     openThread(msgId, highlightId)
   }
 }

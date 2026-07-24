@@ -6142,9 +6142,19 @@
     // Tab switch closes profile card without re-rendering (we'll render the tab below)
     if (typeof activeProfileCard !== 'undefined' && activeProfileCard) activeProfileCard = null
 
-    // Clicking feed tab while in thread view → go back to feed, don't switch tabs
+    // Clicking feed tab (relabeled "back") while in thread view → close the
+    // thread. If we entered from a channel tab, return THERE, not the feed —
+    // switchTab(rt) with currentTab still 'feed' also runs the thread-cleanup
+    // block below (nulls activeThread, resets the feed tab label). Otherwise
+    // just close and stay on the feed.
     if (id === 'feed' && currentTab === 'feed' && activeThread) {
-      closeThread()
+      if (threadReturnTab && threadReturnTab !== 'feed') {
+        const rt = threadReturnTab
+        threadReturnTab = null
+        switchTab(rt)
+      } else {
+        closeThread()
+      }
       return
     }
 
@@ -6874,8 +6884,14 @@
           return
         }
         if (e.target.closest('a, .hs-mc-emote, .hs-mc-link')) return
+        // Remember where we came from so thread "back" returns here, not the feed.
+        threadReturnTab = currentTab === 'feed' ? null : currentTab
         switchTab('feed')
-        openThread(m.reply_to || m.base36_id)
+        // A reply row displays >>its-own-id but its thread is the PARENT — open
+        // the parent and highlight the clicked reply, else clicking a reply
+        // silently dumps you on the parent OP (looked like "wrong post"). Mirrors
+        // the feed-tab row handler (social.js buildFeedMessageDiv).
+        openThread(m.reply_to || m.base36_id, m.reply_to ? m.base36_id : null)
       })
       return div
     }
@@ -7506,6 +7522,8 @@
           if (!targetId) return
           const target = feedMessages.find((f) => f.base36_id === targetId)
           const threadId = target ? target.reply_to || target.base36_id : targetId
+          // Remember where we came from so thread "back" returns here, not the feed.
+          threadReturnTab = currentTab === 'feed' ? null : currentTab
           switchTab('feed')
           openThread(threadId, targetId)
         })

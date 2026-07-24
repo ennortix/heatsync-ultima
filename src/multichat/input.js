@@ -1048,6 +1048,8 @@ function createInputBar() {
   bar.innerHTML = `
     ${inputHtml}
     <span id="hs-mc-sendtargets"></span>
+    <input type="file" id="hs-mc-attach-input" accept="image/*,video/*" hidden>
+    <button id="hs-mc-attach-btn" type="button" title="${t('mc_input_attach')}" aria-label="${t('mc_input_attach')}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18"></rect><circle cx="8.5" cy="8.5" r="1.6" fill="currentColor" stroke="none"></circle><path d="M21 15l-5-5L4 21"></path></svg></button>
     <button id="hs-mc-emote-btn"><img src="${iconUrl}" data-src="${iconUrl}" data-src-black="${iconBlackUrl}" alt="hs"></button>
   `
 
@@ -1394,6 +1396,32 @@ function initInput() {
 
   // Initialize character counter
   updateCharCount()
+
+  // Attach button → hidden file picker → existing upload pipeline (same as
+  // paste/drop: uploads then inserts the URL into the composer, which
+  // postFeedMessage/sendMessage pick up as media). Clone-rewire guard mirrors
+  // the emote-btn block below (sheds dead listeners from a stale ext context).
+  let attachBtn = document.getElementById('hs-mc-attach-btn')
+  if (attachBtn && attachBtn._hsInitialized && attachBtn._hsInitialized !== MC_WIRE_CTX) {
+    const fresh = attachBtn.cloneNode(true)
+    attachBtn.replaceWith(fresh)
+    attachBtn = fresh
+  }
+  if (attachBtn && !attachBtn._hsInitialized) {
+    attachBtn._hsInitialized = MC_WIRE_CTX
+    const fileInput = document.getElementById('hs-mc-attach-input')
+    attachBtn.addEventListener('click', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      fileInput?.click()
+    })
+    fileInput?.addEventListener('change', () => {
+      const file = fileInput.files?.[0]
+      // Reset first so picking the SAME file twice re-fires change.
+      fileInput.value = ''
+      if (file) handleMediaUpload(file)
+    })
+  }
 
   // Emote picker button (includes twitch features in tabs)
   let emoteBtn = document.getElementById('hs-mc-emote-btn')

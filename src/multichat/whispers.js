@@ -748,7 +748,11 @@ function renderWhispersTab() {
       // 'already following' is the server's no-op answer, not a failure — the
       // gate wants BOTH directions, so the missing half may be theirs. Retry
       // either way and let the send report what's still missing.
-      const followed = resp?.ok || String(resp?.error || '').toLowerCase().includes('already following')
+      const followed =
+        resp?.ok ||
+        String(resp?.error || '')
+          .toLowerCase()
+          .includes('already following')
       if (!followed) {
         el.dataset.busy = ''
         showToast(t('mc_profile_follow_failed', [resp?.error || t('mc_common_unknown')]), 'error')

@@ -80,6 +80,7 @@
  * @property {string} [tipKey] i18n key for tip
  * @property {'pill'|'select'|'sizebtns'|'range'|'text'|'textarea'|'custom'} [control]
  * @property {SettingOption[]|{min:number,max:number,step:number}} [options]
+ * @property {boolean} [basic] show in the default (basic) settings view
  * @property {string} [alias] extra search keywords
  * @property {{key:string,equals?:*}} [dependsOn]
  * @property {string} [runtimeVar] legacy module var bridged in main.js

@@ -1931,6 +1931,7 @@ if (typeof window !== 'undefined') {
  * @property {string} [tipKey] i18n key for tip
  * @property {'pill'|'select'|'sizebtns'|'range'|'text'|'textarea'|'custom'} [control]
  * @property {SettingOption[]|{min:number,max:number,step:number}} [options]
+ * @property {boolean} [basic] show in the default (basic) settings view
  * @property {string} [alias] extra search keywords
  * @property {{key:string,equals?:*}} [dependsOn]
  * @property {string} [runtimeVar] legacy module var bridged in main.js
@@ -38218,7 +38219,11 @@ function renderWhispersTab() {
       // 'already following' is the server's no-op answer, not a failure — the
       // gate wants BOTH directions, so the missing half may be theirs. Retry
       // either way and let the send report what's still missing.
-      const followed = resp?.ok || String(resp?.error || '').toLowerCase().includes('already following')
+      const followed =
+        resp?.ok ||
+        String(resp?.error || '')
+          .toLowerCase()
+          .includes('already following')
       if (!followed) {
         el.dataset.busy = ''
         showToast(t('mc_profile_follow_failed', [resp?.error || t('mc_common_unknown')]), 'error')
@@ -55336,7 +55341,9 @@ function renderSettingsTab() {
     countLabel +
     '</span>' +
     '<button class="hs-mc-set-scope-btn" title="' +
-    (_setShowAll ? 'showing every setting — click for the basics only' : 'showing the basics — click for every setting') +
+    (_setShowAll
+      ? 'showing every setting — click for the basics only'
+      : 'showing the basics — click for every setting') +
     '">' +
     (_setShowAll ? 'all' : 'basic') +
     '</button>' +

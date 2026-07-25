@@ -1645,7 +1645,9 @@ function renderSettingsTab() {
     countLabel +
     '</span>' +
     '<button class="hs-mc-set-scope-btn" title="' +
-    (_setShowAll ? 'showing every setting — click for the basics only' : 'showing the basics — click for every setting') +
+    (_setShowAll
+      ? 'showing every setting — click for the basics only'
+      : 'showing the basics — click for every setting') +
     '">' +
     (_setShowAll ? 'all' : 'basic') +
     '</button>' +

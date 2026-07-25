@@ -25784,7 +25784,13 @@ function hsOwnCwHiddenCat(emote) {
 }
 
 function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMentions = false, msgRefs = null) {
-  if (emoteCache.size === 0 && !channelEmoteCaches[channel] && !extraCache?.size && !senderEmotes?.size && !msgRefs?.size)
+  if (
+    emoteCache.size === 0 &&
+    !channelEmoteCaches[channel] &&
+    !extraCache?.size &&
+    !senderEmotes?.size &&
+    !msgRefs?.size
+  )
     return text
   // Removed-emote render fallback applies ONLY to the viewer's own messages
   // (main.js passes viewerPersonalEmotes by reference for isOwn). Keeps removed

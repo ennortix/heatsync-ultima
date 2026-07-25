@@ -923,6 +923,12 @@
   "mc_input_no_channel": {
     "message": "no channel — pick a tab above"
   },
+  "mc_whisper_follow_to_dm": {
+    "message": "follow $USER$ to dm them — follow + send",
+    "placeholders": {
+      "user": { "content": "$1" }
+    }
+  },
   "mc_whisper_hs_not_found": {
     "message": "heatsync user \"$USER$\" not found",
     "placeholders": {

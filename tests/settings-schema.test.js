@@ -187,3 +187,24 @@ test('lint: flags a sync key on the blocklist', () => {
   const bad = new Set([...UI_SYNC_BLOCKLIST, 'zebra'])
   expect(lintSettings(bad).some((p) => p.includes('UI_SYNC_BLOCKLIST'))).toBe(true)
 })
+
+// ── basic view ───────────────────────────────────────────────────────────────
+// The settings pane opens on `basic: true` rows only (settings-ui.js
+// _regSections). These invariants are what keep that view usable: enough rows
+// to be worth opening, few enough to not be the wall it replaced, spread
+// across the tabs so no tab opens empty, and never a row that's hidden behind
+// a parent toggle the basic view doesn't show.
+test('basic view: a real but small set, spread across categories', () => {
+  const basic = SETTINGS.filter((d) => d.basic)
+  expect(basic.length).toBeGreaterThanOrEqual(8)
+  expect(basic.length).toBeLessThanOrEqual(20)
+  expect(new Set(basic.map((d) => d.category)).size).toBeGreaterThanOrEqual(4)
+})
+
+test('basic rows are renderable and never gated behind another setting', () => {
+  for (const def of SETTINGS.filter((d) => d.basic)) {
+    expect(def.control).toBeTruthy()
+    expect(def.dependsOn).toBeUndefined()
+    expect(def.labelKey || def.label).toBeTruthy()
+  }
+})

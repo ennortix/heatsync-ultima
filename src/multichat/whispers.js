@@ -482,6 +482,10 @@ async function sendWhisperMessage(key, text) {
       ok = !!resp.ok
       errMsg = resp.error || (ok ? '' : 'unknown error')
       if (!ok && resp?.status === 401) errorKind = 'auth'
+      // DMs need a follow in BOTH directions. Being told that with no way to
+      // act on it is a dead end — the row grows a follow button that follows
+      // them and re-sends. Keyed on the server's code, never its prose.
+      else if (!ok && resp?.code === 'mutual_follow_required') errorKind = 'follow'
     }
   } catch (e) {
     ok = false
@@ -685,6 +689,12 @@ function renderWhispersTab() {
         // logged-out→logged-in transition; this happens while already
         // authed) — keep manual retry available alongside the re-link link
         statusHtml = ` <a href="https://heatsync.org/api/auth/login?scopes=whispers&return_to=%2Fhome%2Fhot" target="_blank" rel="noopener noreferrer" class="hs-whisper-status hs-whisper-relogin" title="${errSafe} — click to grant the twitch whisper permission on heatsync">⚠ enable twitch whispers — re-link</a> <span class="hs-whisper-status hs-whisper-retry" title="click to retry" data-retry="${idSafe}">retry</span>`
+      } else if (m.errorKind === 'follow') {
+        // hs: keys carry the recipient's heatsync id — the only thing the
+        // follow call needs. Non-hs keys can never reach this branch (the
+        // code only comes from /api/dm), so there's no id to miss.
+        const followIdSafe = escapeHtml(m.key?.startsWith('hs:') ? m.key.slice(3) : '')
+        statusHtml = ` <span class="hs-whisper-status hs-whisper-follow" title="${errSafe} — click to follow ${escapeHtml(them)} and send" data-follow="${followIdSafe}" data-retry="${idSafe}">⚠ ${escapeHtml(t('mc_whisper_follow_to_dm', [them]))}</span>`
       } else if (m.errorKind === 'auth') {
         statusHtml = ` <a href="https://heatsync.org/api/auth/login?return_to=%2Fhome%2Fhot" target="_blank" rel="noopener noreferrer" class="hs-whisper-status hs-whisper-relogin" title="${errSafe} — click to log in on heatsync">⚠ log in on heatsync to send</a>`
       } else {
@@ -722,6 +732,30 @@ function renderWhispersTab() {
       e.stopPropagation()
       const id = el.getAttribute('data-retry')
       if (id) retryWhisperSend(id)
+    })
+  })
+
+  msgsEl.querySelectorAll('.hs-whisper-follow').forEach((el) => {
+    el.addEventListener('click', async (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      if (el.dataset.busy) return
+      const userId = el.getAttribute('data-follow')
+      const sendId = el.getAttribute('data-retry')
+      if (!userId) return
+      el.dataset.busy = '1'
+      const resp = await apiFetch(`/api/follow/${encodeURIComponent(userId)}`, { method: 'POST', auth: true })
+      // 'already following' is the server's no-op answer, not a failure — the
+      // gate wants BOTH directions, so the missing half may be theirs. Retry
+      // either way and let the send report what's still missing.
+      const followed = resp?.ok || String(resp?.error || '').toLowerCase().includes('already following')
+      if (!followed) {
+        el.dataset.busy = ''
+        showToast(t('mc_profile_follow_failed', [resp?.error || t('mc_common_unknown')]), 'error')
+        return
+      }
+      safeSendMessage({ type: 'refresh_followed_users' })
+      if (sendId) retryWhisperSend(sendId)
     })
   })
 

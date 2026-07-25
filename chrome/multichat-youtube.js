@@ -1879,6 +1879,8 @@ if (typeof window !== 'undefined') {
 //   control    'pill' | 'select' | 'sizebtns' | 'range' | 'text' | 'textarea' | 'custom'
 //   options    [{value,label|labelKey}] for enum/multiselect;
 //              {min,max,step} for range
+//   basic      true → row shows in the default "basic" settings view. Absent =
+//              only under "all". Search always covers every row regardless.
 //   alias      extra search keywords (originally the legacy data-setting
 //              attribute names) — fed into the settings search haystack
 //   dependsOn  {key, equals?} — row hidden unless the named setting matches
@@ -1997,6 +1999,7 @@ const SETTINGS = [
   },
   {
     key: 'fontSize',
+    basic: true, // day-one row — shows in the default (basic) settings view
     type: 'range',
     default: 13,
     scope: 'sync',
@@ -2014,6 +2017,7 @@ const SETTINGS = [
   // ── display / display ─────────────────────────────────────────────────
   {
     key: 'hs_emote_size',
+    basic: true, // day-one row — shows in the default (basic) settings view
     type: 'enum',
     default: 1,
     scope: 'local',
@@ -2054,6 +2058,7 @@ const SETTINGS = [
   },
   {
     key: 'timestamps',
+    basic: true, // day-one row — shows in the default (basic) settings view
     type: 'bool',
     default: false,
     scope: 'sync',
@@ -2085,6 +2090,7 @@ const SETTINGS = [
   },
   {
     key: 'avatars',
+    basic: true, // day-one row — shows in the default (basic) settings view
     type: 'bool',
     default: false,
     scope: 'sync',
@@ -2194,6 +2200,7 @@ const SETTINGS = [
   },
   {
     key: 'chatPosition',
+    basic: true, // day-one row — shows in the default (basic) settings view
     type: 'enum',
     default: 'right',
     scope: 'sync',
@@ -2246,6 +2253,7 @@ const SETTINGS = [
   // ── display / density ─────────────────────────────────────────────────
   {
     key: 'messageDensity',
+    basic: true, // day-one row — shows in the default (basic) settings view
     type: 'enum',
     default: 'compact',
     scope: 'sync',
@@ -2439,6 +2447,7 @@ const SETTINGS = [
     // a prefix-match preview of the Tab-cycle list above the input. Passive
     // (Enter still sends, Tab still cycles) until arrow-navigated.
     key: 'inlineEmoteSuggest',
+    basic: true, // day-one row — shows in the default (basic) settings view
     type: 'bool',
     default: true,
     scope: 'sync',
@@ -2497,6 +2506,7 @@ const SETTINGS = [
   // ── chat / messages ───────────────────────────────────────────────────
   {
     key: 'linksEnabled',
+    basic: true, // day-one row — shows in the default (basic) settings view
     type: 'bool',
     default: true,
     scope: 'sync',
@@ -2538,6 +2548,7 @@ const SETTINGS = [
   },
   {
     key: 'mediaEmbedsEnabled',
+    basic: true, // day-one row — shows in the default (basic) settings view
     type: 'bool',
     default: true,
     scope: 'sync',
@@ -2820,6 +2831,7 @@ const SETTINGS = [
   // ── notifs / on @mention ──────────────────────────────────────────────
   {
     key: 'hs_notifications',
+    basic: true, // day-one row — shows in the default (basic) settings view
     type: 'bool',
     default: false,
     scope: 'local',
@@ -2843,6 +2855,7 @@ const SETTINGS = [
   },
   {
     key: 'mentionSoundVolume',
+    basic: true, // day-one row — shows in the default (basic) settings view
     type: 'range',
     default: 0.3,
     scope: 'sync',
@@ -3066,6 +3079,7 @@ const SETTINGS = [
   // retroactively. Mentions/unread state still counts hidden messages.
   {
     key: 'hideBots',
+    basic: true, // day-one row — shows in the default (basic) settings view
     type: 'bool',
     default: false,
     scope: 'sync',
@@ -3330,6 +3344,7 @@ const SETTINGS = [
   // re-inits i18n live; full UI re-labels on reload (reloadApply chip).
   {
     key: 'hs_ui_locale',
+    basic: true, // day-one row — shows in the default (basic) settings view
     type: 'enum',
     default: '',
     scope: 'local',
@@ -14697,6 +14712,7 @@ img.hs-fx-zero { margin-left: -4px; }
       font-size: 13px;
       flex-shrink: 0;
     }
+    .hs-mc-set-scope-btn,
     .hs-mc-set-presets-btn {
       background: #000;
       color: #fff;
@@ -14707,6 +14723,7 @@ img.hs-fx-zero { margin-left: -4px; }
       cursor: pointer;
       flex-shrink: 0;
     }
+    .hs-mc-set-scope-btn:hover,
     .hs-mc-set-presets-btn:hover {
       background: #fff;
       color: #000;
@@ -37537,6 +37554,10 @@ async function sendWhisperMessage(key, text) {
       ok = !!resp.ok
       errMsg = resp.error || (ok ? '' : 'unknown error')
       if (!ok && resp?.status === 401) errorKind = 'auth'
+      // DMs need a follow in BOTH directions. Being told that with no way to
+      // act on it is a dead end — the row grows a follow button that follows
+      // them and re-sends. Keyed on the server's code, never its prose.
+      else if (!ok && resp?.code === 'mutual_follow_required') errorKind = 'follow'
     }
   } catch (e) {
     ok = false
@@ -37740,6 +37761,12 @@ function renderWhispersTab() {
         // logged-out→logged-in transition; this happens while already
         // authed) — keep manual retry available alongside the re-link link
         statusHtml = ` <a href="https://heatsync.org/api/auth/login?scopes=whispers&return_to=%2Fhome%2Fhot" target="_blank" rel="noopener noreferrer" class="hs-whisper-status hs-whisper-relogin" title="${errSafe} — click to grant the twitch whisper permission on heatsync">⚠ enable twitch whispers — re-link</a> <span class="hs-whisper-status hs-whisper-retry" title="click to retry" data-retry="${idSafe}">retry</span>`
+      } else if (m.errorKind === 'follow') {
+        // hs: keys carry the recipient's heatsync id — the only thing the
+        // follow call needs. Non-hs keys can never reach this branch (the
+        // code only comes from /api/dm), so there's no id to miss.
+        const followIdSafe = escapeHtml(m.key?.startsWith('hs:') ? m.key.slice(3) : '')
+        statusHtml = ` <span class="hs-whisper-status hs-whisper-follow" title="${errSafe} — click to follow ${escapeHtml(them)} and send" data-follow="${followIdSafe}" data-retry="${idSafe}">⚠ ${escapeHtml(t('mc_whisper_follow_to_dm', [them]))}</span>`
       } else if (m.errorKind === 'auth') {
         statusHtml = ` <a href="https://heatsync.org/api/auth/login?return_to=%2Fhome%2Fhot" target="_blank" rel="noopener noreferrer" class="hs-whisper-status hs-whisper-relogin" title="${errSafe} — click to log in on heatsync">⚠ log in on heatsync to send</a>`
       } else {
@@ -37777,6 +37804,30 @@ function renderWhispersTab() {
       e.stopPropagation()
       const id = el.getAttribute('data-retry')
       if (id) retryWhisperSend(id)
+    })
+  })
+
+  msgsEl.querySelectorAll('.hs-whisper-follow').forEach((el) => {
+    el.addEventListener('click', async (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      if (el.dataset.busy) return
+      const userId = el.getAttribute('data-follow')
+      const sendId = el.getAttribute('data-retry')
+      if (!userId) return
+      el.dataset.busy = '1'
+      const resp = await apiFetch(`/api/follow/${encodeURIComponent(userId)}`, { method: 'POST', auth: true })
+      // 'already following' is the server's no-op answer, not a failure — the
+      // gate wants BOTH directions, so the missing half may be theirs. Retry
+      // either way and let the send report what's still missing.
+      const followed = resp?.ok || String(resp?.error || '').toLowerCase().includes('already following')
+      if (!followed) {
+        el.dataset.busy = ''
+        showToast(t('mc_profile_follow_failed', [resp?.error || t('mc_common_unknown')]), 'error')
+        return
+      }
+      safeSendMessage({ type: 'refresh_followed_users' })
+      if (sendId) retryWhisperSend(sendId)
     })
   })
 
@@ -53303,11 +53354,28 @@ const _setCollapsed = new Set() // '<category>|<section title>'
 let _setFocusRow = null // data-set-row id of keyboard focus
 let _setPaneCtx = '' // pane identity for scroll preservation
 let _setHelpOpen = false // '?' keybinding overlay
+// Opening ~90 settings at once is the single loudest thing a new user meets
+// ("very confusing and a lot to learn" — first external tester, 2026-07-25).
+// The catalog stays whole; the default VIEW is the dozen rows that actually
+// change day one, with everything else one click away. Per-device UI state,
+// not a synced setting — it's a view preference, and it must never travel to
+// a device where someone already expanded it.
+let _setShowAll = false
 ;(function _loadCollapsedSections() {
   try {
-    chrome.storage.local.get('hs_set_collapsed', (d) => {
+    chrome.storage.local.get(['hs_set_collapsed', 'hs_set_show_all'], (d) => {
       if (Array.isArray(d?.hs_set_collapsed)) {
         for (const id of d.hs_set_collapsed) _setCollapsed.add(String(id))
+      }
+      if (d?.hs_set_show_all) {
+        _setShowAll = true
+        // Storage reads land after the first paint on a warm tab — repaint so
+        // an expanded view doesn't silently collapse back to basic.
+        if (typeof _settingsSubtab !== 'undefined' && document.querySelector('.hs-mc-settings-panel')) {
+          try {
+            renderSettingsTab()
+          } catch (_) {}
+        }
       }
     })
   } catch (_) {}
@@ -53315,6 +53383,11 @@ let _setHelpOpen = false // '?' keybinding overlay
 function _saveCollapsedSections() {
   try {
     chrome.storage.local.set({ hs_set_collapsed: [..._setCollapsed] })
+  } catch (_) {}
+}
+function _saveShowAll() {
+  try {
+    chrome.storage.local.set({ hs_set_show_all: _setShowAll })
   } catch (_) {}
 }
 
@@ -53641,6 +53714,10 @@ function _regSections(cat, only) {
   var byTitle = new Map()
   for (const def of SETTINGS) {
     if (def.category !== cat || !_depSatisfied(def)) continue
+    // Basic view: only the day-one rows. Search always searches EVERYTHING
+    // (_renderSearchResults has its own path) — hiding a setting from a
+    // search for its own name would be the bad kind of simple.
+    if (!_setShowAll && !def.basic) continue
     var title = _setSectionTitle(def)
     if (only && only.indexOf(def.section) === -1) continue
     var s = byTitle.get(title)
@@ -54132,7 +54209,27 @@ function _renderPageDefaultsRow(cat) {
   )
 }
 
+// Basic view must never look like the whole product — a pane that quietly
+// drops two-thirds of its rows reads as "that setting is gone". Say what's
+// hidden and where it went, every pane, every time.
+function _basicHint(cat) {
+  if (_setShowAll) return ''
+  var hidden = SETTINGS.filter((d) => d.category === cat && !d.basic && _depSatisfied(d)).length
+  if (!hidden) return ''
+  return (
+    '<div class="hs-mc-set-keyhint" data-set-scope-hint="1">' +
+    hidden +
+    ' more setting' +
+    (hidden === 1 ? '' : 's') +
+    ' here — <button class="hs-mc-set-scope-btn hs-mc-set-scope-inline">show all</button></div>'
+  )
+}
+
 function _renderCategoryPane(cat) {
+  return _renderCategoryPaneInner(cat) + _basicHint(cat)
+}
+
+function _renderCategoryPaneInner(cat) {
   if (cat === 'mod') return _renderPageDefaultsRow(cat) + _regSections(cat)
   if (cat === 'filters') {
     // 'rules' section is custom-rendered; exclude it from auto-sections
@@ -54840,6 +54937,11 @@ function renderSettingsTab() {
     '<span class="hs-mc-set-search-count">' +
     countLabel +
     '</span>' +
+    '<button class="hs-mc-set-scope-btn" title="' +
+    (_setShowAll ? 'showing every setting — click for the basics only' : 'showing the basics — click for every setting') +
+    '">' +
+    (_setShowAll ? 'all' : 'basic') +
+    '</button>' +
     '<button class="hs-mc-set-presets-btn">presets</button>' +
     '<button class="hs-mc-set-help-btn" title="keybindings">?</button>' +
     '</div>' +
@@ -54918,6 +55020,15 @@ function renderSettingsTab() {
       renderSettingsTab()
       var tgt = [...msgsEl.querySelectorAll('[data-set-fold]')].find((el2) => el2.dataset.setFold === jump[1])
       if (tgt) tgt.scrollIntoView({ block: 'start' })
+      return
+    }
+
+    // basic ⇄ all
+    var scopeBtn = e.target.closest('.hs-mc-set-scope-btn')
+    if (scopeBtn) {
+      _setShowAll = !_setShowAll
+      _saveShowAll()
+      renderSettingsTab()
       return
     }
 

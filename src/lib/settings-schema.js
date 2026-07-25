@@ -28,6 +28,8 @@
 //   control    'pill' | 'select' | 'sizebtns' | 'range' | 'text' | 'textarea' | 'custom'
 //   options    [{value,label|labelKey}] for enum/multiselect;
 //              {min,max,step} for range
+//   basic      true → row shows in the default "basic" settings view. Absent =
+//              only under "all". Search always covers every row regardless.
 //   alias      extra search keywords (originally the legacy data-setting
 //              attribute names) — fed into the settings search haystack
 //   dependsOn  {key, equals?} — row hidden unless the named setting matches
@@ -146,6 +148,7 @@ const SETTINGS = [
   },
   {
     key: 'fontSize',
+    basic: true, // day-one row — shows in the default (basic) settings view
     type: 'range',
     default: 13,
     scope: 'sync',
@@ -163,6 +166,7 @@ const SETTINGS = [
   // ── display / display ─────────────────────────────────────────────────
   {
     key: 'hs_emote_size',
+    basic: true, // day-one row — shows in the default (basic) settings view
     type: 'enum',
     default: 1,
     scope: 'local',
@@ -203,6 +207,7 @@ const SETTINGS = [
   },
   {
     key: 'timestamps',
+    basic: true, // day-one row — shows in the default (basic) settings view
     type: 'bool',
     default: false,
     scope: 'sync',
@@ -234,6 +239,7 @@ const SETTINGS = [
   },
   {
     key: 'avatars',
+    basic: true, // day-one row — shows in the default (basic) settings view
     type: 'bool',
     default: false,
     scope: 'sync',
@@ -343,6 +349,7 @@ const SETTINGS = [
   },
   {
     key: 'chatPosition',
+    basic: true, // day-one row — shows in the default (basic) settings view
     type: 'enum',
     default: 'right',
     scope: 'sync',
@@ -395,6 +402,7 @@ const SETTINGS = [
   // ── display / density ─────────────────────────────────────────────────
   {
     key: 'messageDensity',
+    basic: true, // day-one row — shows in the default (basic) settings view
     type: 'enum',
     default: 'compact',
     scope: 'sync',
@@ -588,6 +596,7 @@ const SETTINGS = [
     // a prefix-match preview of the Tab-cycle list above the input. Passive
     // (Enter still sends, Tab still cycles) until arrow-navigated.
     key: 'inlineEmoteSuggest',
+    basic: true, // day-one row — shows in the default (basic) settings view
     type: 'bool',
     default: true,
     scope: 'sync',
@@ -646,6 +655,7 @@ const SETTINGS = [
   // ── chat / messages ───────────────────────────────────────────────────
   {
     key: 'linksEnabled',
+    basic: true, // day-one row — shows in the default (basic) settings view
     type: 'bool',
     default: true,
     scope: 'sync',
@@ -687,6 +697,7 @@ const SETTINGS = [
   },
   {
     key: 'mediaEmbedsEnabled',
+    basic: true, // day-one row — shows in the default (basic) settings view
     type: 'bool',
     default: true,
     scope: 'sync',
@@ -969,6 +980,7 @@ const SETTINGS = [
   // ── notifs / on @mention ──────────────────────────────────────────────
   {
     key: 'hs_notifications',
+    basic: true, // day-one row — shows in the default (basic) settings view
     type: 'bool',
     default: false,
     scope: 'local',
@@ -992,6 +1004,7 @@ const SETTINGS = [
   },
   {
     key: 'mentionSoundVolume',
+    basic: true, // day-one row — shows in the default (basic) settings view
     type: 'range',
     default: 0.3,
     scope: 'sync',
@@ -1215,6 +1228,7 @@ const SETTINGS = [
   // retroactively. Mentions/unread state still counts hidden messages.
   {
     key: 'hideBots',
+    basic: true, // day-one row — shows in the default (basic) settings view
     type: 'bool',
     default: false,
     scope: 'sync',
@@ -1479,6 +1493,7 @@ const SETTINGS = [
   // re-inits i18n live; full UI re-labels on reload (reloadApply chip).
   {
     key: 'hs_ui_locale',
+    basic: true, // day-one row — shows in the default (basic) settings view
     type: 'enum',
     default: '',
     scope: 'local',

@@ -1,9 +1,9 @@
 {
   "manifest_name": {
-    "message": "heatsync"
+    "message": "heatsync — Twitch, Kick + YouTube dans un seul chat"
   },
   "manifest_description": {
-    "message": "Tes emotes dans tout chat Twitch, Kick ou YouTube — gratuit, jusqu’à 5000 slots. Plus 7TV/BTTV/FFZ + multichat multiplateforme"
+    "message": "Un panneau pour le chat en direct Twitch, Kick + YouTube. Plus un inventaire gratuit de 5000 emotes qui vous suit sur chaque chaîne"
   },
   "common_loading": {
     "message": "chargement..."

@@ -1,9 +1,9 @@
 {
   "manifest_name": {
-    "message": "heatsync"
+    "message": "heatsync — 트위치, 킥, 유튜브를 한 채팅으로"
   },
   "manifest_description": {
-    "message": "Twitch, Kick, YouTube 어떤 채팅에서도 내 이모트 — 무료, 최대 5000슬롯. 게다가 7TV/BTTV/FFZ + 크로스플랫폼 멀티챗"
+    "message": "트위치, 킥, 유튜브 라이브 채팅을 한 패널에서. 게다가 어느 채널에서나 함께하는 5000칸 무료 이모트 인벤토리"
   },
   "common_loading": {
     "message": "로딩 중..."

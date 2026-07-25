@@ -1,9 +1,9 @@
 {
   "manifest_name": {
-    "message": "heatsync"
+    "message": "heatsync — twitch, kick + youtube in one chat"
   },
   "manifest_description": {
-    "message": "your emotes in twitch, kick + youtube chat — no sub, no streamer setup. free, up to 5,000 slots. one-click 7tv/bttv/ffz import"
+    "message": "one panel for twitch, kick + youtube live chat. plus a free 5,000-slot emote inventory that follows you into any channel"
   },
   "common_loading": {
     "message": "loading..."
@@ -2079,15 +2079,30 @@
   },
   "mc_input_voted": {
     "message": "voted: $CHOICE$",
-    "placeholders": { "choice": { "content": "$1" } }
+    "placeholders": {
+      "choice": {
+        "content": "$1"
+      }
+    }
   },
   "mc_input_bet_placed": {
     "message": "bet $POINTS$ on $OUTCOME$",
-    "placeholders": { "points": { "content": "$1" }, "outcome": { "content": "$2" } }
+    "placeholders": {
+      "points": {
+        "content": "$1"
+      },
+      "outcome": {
+        "content": "$2"
+      }
+    }
   },
   "mc_input_pred_resolved": {
     "message": "resolved: $OUTCOME$",
-    "placeholders": { "outcome": { "content": "$1" } }
+    "placeholders": {
+      "outcome": {
+        "content": "$1"
+      }
+    }
   },
   "mc_input_usage_note": {
     "message": "/note <user> <text>"
@@ -2103,15 +2118,27 @@
   },
   "mc_input_note_saved": {
     "message": "note saved for $USER$",
-    "placeholders": { "user": { "content": "$1" } }
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
   },
   "mc_input_note_deleted": {
     "message": "note removed for $USER$",
-    "placeholders": { "user": { "content": "$1" } }
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
   },
   "mc_input_note_none": {
     "message": "no note for $USER$",
-    "placeholders": { "user": { "content": "$1" } }
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
   },
   "mc_input_usage_set": {
     "message": "/set <setting> <value>"
@@ -2121,19 +2148,38 @@
   },
   "mc_input_set_unknown": {
     "message": "unknown setting: $KEY$",
-    "placeholders": { "key": { "content": "$1" } }
+    "placeholders": {
+      "key": {
+        "content": "$1"
+      }
+    }
   },
   "mc_input_set_bool": {
     "message": "use on/off for $KEY$",
-    "placeholders": { "key": { "content": "$1" } }
+    "placeholders": {
+      "key": {
+        "content": "$1"
+      }
+    }
   },
   "mc_input_set_done": {
     "message": "$KEY$ = $VAL$",
-    "placeholders": { "key": { "content": "$1" }, "val": { "content": "$2" } }
+    "placeholders": {
+      "key": {
+        "content": "$1"
+      },
+      "val": {
+        "content": "$2"
+      }
+    }
   },
   "mc_input_set_invalid": {
     "message": "invalid value for $KEY$",
-    "placeholders": { "key": { "content": "$1" } }
+    "placeholders": {
+      "key": {
+        "content": "$1"
+      }
+    }
   },
   "mc_input_usage_tab": {
     "message": "/tab <live|feed|mentions|whispers|settings|channel>"
@@ -2143,7 +2189,11 @@
   },
   "mc_input_tab_unknown": {
     "message": "no tab: $NAME$",
-    "placeholders": { "name": { "content": "$1" } }
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
   },
   "mc_input_usage_vip": {
     "message": "/vip <user>"
@@ -2153,11 +2203,19 @@
   },
   "mc_input_vip_done": {
     "message": "VIP’d $USER$",
-    "placeholders": { "user": { "content": "$1" } }
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
   },
   "mc_input_unvip_done": {
     "message": "removed VIP from $USER$",
-    "placeholders": { "user": { "content": "$1" } }
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
   },
   "mc_input_usage_mod": {
     "message": "/mod <user>"
@@ -2167,11 +2225,19 @@
   },
   "mc_input_mod_done": {
     "message": "modded $USER$",
-    "placeholders": { "user": { "content": "$1" } }
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
   },
   "mc_input_unmod_done": {
     "message": "unmodded $USER$",
-    "placeholders": { "user": { "content": "$1" } }
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
   },
   "mc_input_mode_twitch_unsupported": {
     "message": "twitch has no api for $LABEL$ — kick only",

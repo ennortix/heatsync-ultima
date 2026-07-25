@@ -1,9 +1,9 @@
 {
   "manifest_name": {
-    "message": "heatsync"
+    "message": "heatsync — Twitch, Kick + YouTube ในแชทเดียว"
   },
   "manifest_description": {
-    "message": "อีโมตของคุณในแชท Twitch, Kick หรือ YouTube ใดก็ได้ — ฟรี สูงสุด 5000 ช่อง พร้อม 7TV/BTTV/FFZ + มัลติแชทข้ามแพลตฟอร์ม"
+    "message": "แผงเดียวสำหรับแชทสดของ Twitch, Kick + YouTube พร้อมคลังอิโมทฟรี 5000 ช่องที่ติดตามคุณไปทุกช่อง"
   },
   "common_loading": {
     "message": "กำลังโหลด..."

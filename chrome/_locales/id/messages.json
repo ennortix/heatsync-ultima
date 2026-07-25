@@ -1,9 +1,9 @@
 {
   "manifest_name": {
-    "message": "heatsync"
+    "message": "heatsync — Twitch, Kick + YouTube dalam satu chat"
   },
   "manifest_description": {
-    "message": "Emote-mu di chat Twitch, Kick, atau YouTube mana pun — gratis, hingga 5000 slot. Plus 7TV/BTTV/FFZ + multichat lintas platform"
+    "message": "Satu panel untuk live chat Twitch, Kick + YouTube. Plus inventaris 5000 emote gratis yang ikut denganmu ke channel mana pun"
   },
   "common_loading": {
     "message": "memuat..."

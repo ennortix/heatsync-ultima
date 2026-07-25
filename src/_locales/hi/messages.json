@@ -1,9 +1,9 @@
 {
   "manifest_name": {
-    "message": "heatsync"
+    "message": "heatsync — Twitch, Kick + YouTube एक ही चैट में"
   },
   "manifest_description": {
-    "message": "किसी भी Twitch, Kick या YouTube चैट में आपके इमोट — मुफ़्त, 5000 स्लॉट तक। साथ ही 7TV/BTTV/FFZ + क्रॉस-प्लेटफ़ॉर्म मल्टीचैट"
+    "message": "Twitch, Kick + YouTube के लाइव चैट के लिए एक पैनल। साथ में 5000 इमोट का मुफ़्त संग्रह जो हर चैनल में आपके साथ चलता है"
   },
   "common_loading": {
     "message": "लोड हो रहा है..."

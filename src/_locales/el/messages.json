@@ -1,9 +1,9 @@
 {
   "manifest_name": {
-    "message": "heatsync"
+    "message": "heatsync — Twitch, Kick + YouTube σε ένα chat"
   },
   "manifest_description": {
-    "message": "Τα emotes σου σε κάθε chat Twitch, Kick ή YouTube — δωρεάν, έως 5000 θέσεις. Συν 7TV/BTTV/FFZ + multichat πολλών πλατφορμών"
+    "message": "Ένα πάνελ για το ζωντανό chat σε Twitch, Kick + YouTube. Επιπλέον, δωρεάν αποθήκη 5000 emote που σε ακολουθεί σε κάθε κανάλι"
   },
   "common_loading": {
     "message": "φόρτωση..."

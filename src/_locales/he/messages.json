@@ -1,9 +1,9 @@
 {
   "manifest_name": {
-    "message": "heatsync"
+    "message": "heatsync — טוויץ׳, קיק + יוטיוב בצ׳אט אחד"
   },
   "manifest_description": {
-    "message": "ה-emotes שלך בכל צ’אט של Twitch, Kick או YouTube — חינם, עד 5000 משבצות. בנוסף 7TV/BTTV/FFZ + מולטי-צ’אט חוצה פלטפורמות"
+    "message": "פאנל אחד לצ׳אט החי של טוויץ׳, קיק + יוטיוב. בנוסף מלאי חינמי של 5000 אימוטים שמלווה אותך בכל ערוץ"
   },
   "common_loading": {
     "message": "טוען..."

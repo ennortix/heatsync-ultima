@@ -6,37 +6,46 @@ Paste-ready copy + the per-store gotchas. Keep in sync with `chrome/_locales/en/
 Competitive claims (slots, size, platform gaps vs 7tv/bttv/ffz) come from
 [POSITIONING.md](./POSITIONING.md) — verified facts only, recheck externals before use.
 
-## Name (localized — `manifest_name`)
+## Positioning rule (2026-07-25) — multichat leads, always
+Store search is keyword-driven off name + short description. "heatsync" alone matches nothing
+anyone types. Every listing field now carries `twitch`, `kick`, `youtube`, `chat`.
+
+Multichat leads because it is the only claim that pays off **with zero coordination** — one
+user alone gets the full value on install. Portable emotes are real but partly social: an
+emote only you can see is worth less than one the room sees, so it cannot carry the headline.
+Multichat is also the one thing 7tv's extension does not do at all (see POSITIONING.md).
+
+**Never market permissions, code quality, or security.** We lose that comparison on the only
+surface a user sees — see POSITIONING.md "permission surface". Trust copy stays a footer line.
+
+## Name (localized — `manifest_name`, all 34 locales, CWS max 75)
+Toolbar/UI name stays bare `heatsync` via manifest `short_name` in both MV3 + MV2 — the long
+name is store-facing only.
 ```
-heatsync — your emotes in every chat
+heatsync — twitch, kick + youtube in one chat
 ```
 
-## Short description (localized — `manifest_description`, 118 chars)
+## Short description (localized — `manifest_description`, 120 chars)
 Used as the Chrome Web Store short description (CWS limit 132 — this fits) and the
-Firefox add-on manifest description. **Current en value, leave it:**
+Firefox add-on manifest description. **Current en value:**
 ```
-your emotes in any twitch, kick or youtube chat — free, up to 5000 slots. plus 7tv/bttv/ffz + cross-platform multichat
+one panel for twitch, kick + youtube live chat. plus a free 5,000-slot emote inventory that follows you into any channel
 ```
-> Note: "in any twitch, kick or youtube chat" — native emote rendering is twitch+kick;
-> youtube emotes render in the overlay tab. Defensible, and 1.6.8 shipped similar copy
-> past AMO review. Leave as-is.
 
-## AMO Summary (dashboard, ≤250 — refined 2026-07-11, paste-ready)
-Leads with the wedge (viewer-owned emotes, no sub / no streamer setup — the thing every
-competitor gates or charges for), then the two supports: multichat + trust.
+## AMO Summary (dashboard, ≤250 — 224 chars, paste-ready)
 ```
-your emotes in any twitch, kick or youtube chat — no sub, no streamer setup. 5,000 free slots, one-click 7tv/bttv/ffz import, cross-platform multichat in one panel. open source, no trackers.
+twitch, kick + youtube live chat in one tabbed panel — per-channel tabs, mentions, whispers, no account needed to read. plus your own emotes in any channel: 5,000 free slots, one-click 7tv/bttv/ffz import. free, open source.
 ```
 
 ## AMO / CWS Description (long — timeless; identical for both stores. refined 2026-07-11, paste-ready)
 No versions, sizes, or dates in copy — only claims that hold across releases
 (5,000 comes from `src/lib/config.js`, stable). Verified against POSITIONING.md.
 ```
-your own emotes in any twitch or kick chat — no sub, no streamer setup. a personal 5,000-slot inventory that follows you into every channel, plus twitch, kick + youtube live chat in one panel. free.
-
-• emote sovereignty — upload or import any emote (7tv, bttv, ffz, or your own) into a free 5,000-slot inventory. tab-complete a name and send — it renders in twitch + kick native chat and the overlay, any channel. one click imports a whole channel's emotes.
+twitch, kick + youtube live chat in one panel — read every stream you follow and reply into any of them without alt-tabbing. nobody else has to install anything. plus your own emotes in any channel: 5,000 free slots, no sub, no streamer setup. free.
 
 • cross-platform multichat — twitch, kick + youtube live chat in one tabbed panel: per-channel tabs, mentions, twitch whispers, resizable + dockable to any edge. no account needed to read.
+
+• your emotes, any channel — upload or import any emote (7tv, bttv, ffz, or your own) into a free 5,000-slot inventory. tab-complete a name and send — it renders in twitch + kick native chat and the overlay, any channel. one click imports a whole channel's emotes.
 
 • 7tv / bttv / ffz — emotes, paints + badges render automatically, channel and global. runs alongside those extensions — this adds the portable emotes and cross-platform chat they don't do.
 
@@ -44,9 +53,7 @@ your own emotes in any twitch or kick chat — no sub, no streamer setup. a pers
 
 • moderation + profiles — hover mod toolbar (ban/timeout/unban/delete), client-side automod, mute or block that carries a user across twitch and kick, profile cards with a searchable chat-log archive, one-click twitch clips.
 
-• light + private — vanilla js, zero runtime deps, capped buffers hold memory steady over 8-hour sessions. no trackers, no analytics, no third-party telemetry; emotes + settings sync through heatsync's own servers only.
-
-free · open source (MIT) · your emotes stay yours
+free · open source (MIT) · no trackers, no analytics · your emotes stay yours
 ```
 
 ## Tags / categories
@@ -65,12 +72,15 @@ chat, streaming, twitch, kick, youtube, emotes, 7tv
   every tag on the *unlisted* channel, and AMO version numbers are unique across channels —
   1.7.22 (signed unlisted) can never become the listed version. To refresh the listing,
   submit the NEXT version as *listed* via devhub BEFORE tagging it, or rework release.yml.
-- **Locale drift (RESOLVED 2026-06-23):** all 33 non-en `manifest_description` strings
-  realigned to the wedge-first (emote-first) framing, matching en. Each verified ≤132 chars,
-  valid JSON, brand tokens present (Twitch/Kick/YouTube/7TV/BTTV/FFZ/5000), build passes.
+- **Repositioned multichat-first (2026-07-25):** all 34 locales' `manifest_name` +
+  `manifest_description` rewritten to lead with multichat (was emote-first). Each verified
+  ≤132 chars (name ≤75), valid JSON, brand tokens present (Twitch/Kick/YouTube/5000).
   Machine-authored from each locale's existing vocabulary — a native spot-check on the
   non-Latin scripts (ar, he, hi, th) before the tag is prudent but not blocking.
-  `manifest_name` is intentionally bare "heatsync" in non-en (toolbar name) — left as-is.
+  `manifest_name` is no longer bare "heatsync": store search reads the name field, and the
+  toolbar/UI name is already pinned to "heatsync" by `short_name` in both MV3 and MV2, so the
+  long name costs nothing in-product. Supersedes the 2026-06-23 "leave it bare" call.
+  Non-en AMO/CWS dashboard summaries still carry the old emote-first framing — en only.
 - AMO listed version is behind: submit **current release** (1.7.21 as of 2026-07-11; listing was on 1.6.8).
 
 ## Pre-release / pre-submit checklist

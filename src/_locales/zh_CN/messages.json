@@ -1,9 +1,9 @@
 {
   "manifest_name": {
-    "message": "heatsync"
+    "message": "heatsync — Twitch、Kick、YouTube 聚合聊天"
   },
   "manifest_description": {
-    "message": "在任意 Twitch、Kick、YouTube 聊天中使用你的表情 — 免费，最多 5000 个槽位。还有 7TV/BTTV/FFZ + 跨平台多路聊天"
+    "message": "一个面板同时看 Twitch、Kick、YouTube 直播聊天。另有 5000 个免费表情位，随你进入任何频道"
   },
   "common_loading": {
     "message": "加载中..."

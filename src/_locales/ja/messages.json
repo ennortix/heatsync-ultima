@@ -1,9 +1,9 @@
 {
   "manifest_name": {
-    "message": "heatsync"
+    "message": "heatsync — Twitch・Kick・YouTube をひとつのチャットに"
   },
   "manifest_description": {
-    "message": "Twitch・Kick・YouTubeのどのチャットでも自分のエモート — 無料、最大5000スロット。さらに7TV/BTTV/FFZ＋クロスプラットフォームのマルチチャット"
+    "message": "Twitch・Kick・YouTube のライブチャットをひとつのパネルに。さらに、どのチャンネルでも使える5000枠の無料エモートインベントリ"
   },
   "common_loading": {
     "message": "読み込み中..."

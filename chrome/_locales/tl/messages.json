@@ -1,9 +1,9 @@
 {
   "manifest_name": {
-    "message": "heatsync"
+    "message": "heatsync — Twitch, Kick + YouTube sa isang chat"
   },
   "manifest_description": {
-    "message": "Ang emotes mo sa kahit anong Twitch, Kick o YouTube chat — libre, hanggang 5000 slots. Plus 7TV/BTTV/FFZ + cross-platform multichat"
+    "message": "Isang panel para sa live chat ng Twitch, Kick + YouTube. Plus libreng 5000-slot na emote inventory na kasama mo sa bawat channel"
   },
   "common_loading": {
     "message": "naglo-load..."

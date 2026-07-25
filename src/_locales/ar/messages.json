@@ -1,9 +1,9 @@
 {
   "manifest_name": {
-    "message": "heatsync"
+    "message": "heatsync — تويتش وكيك ويوتيوب في دردشة واحدة"
   },
   "manifest_description": {
-    "message": "إيموتس الخاصة بك في أي دردشة Twitch أو Kick أو YouTube — مجانًا، حتى 5000 خانة. بالإضافة إلى 7TV/BTTV/FFZ + دردشة متعددة عبر المنصات"
+    "message": "لوحة واحدة لدردشة تويتش وكيك ويوتيوب المباشرة. بالإضافة إلى مخزون مجاني من 5000 إيموت يرافقك في أي قناة"
   },
   "common_loading": {
     "message": "جارٍ التحميل..."

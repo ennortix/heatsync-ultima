@@ -1,9 +1,9 @@
 {
   "manifest_name": {
-    "message": "heatsync"
+    "message": "heatsync — Twitch, Kick + YouTube egy chatben"
   },
   "manifest_description": {
-    "message": "Saját emote-jaid bármely Twitch, Kick vagy YouTube chatben — ingyen, akár 5000 hely. Plusz 7TV/BTTV/FFZ + többplatformos multichat"
+    "message": "Egy panel a Twitch, Kick + YouTube élő chathez. Ráadásul ingyenes, 5000 helyes emote-tár, ami minden csatornára veled tart"
   },
   "common_loading": {
     "message": "betöltés..."

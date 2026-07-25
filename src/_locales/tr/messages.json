@@ -1,9 +1,9 @@
 {
   "manifest_name": {
-    "message": "heatsync"
+    "message": "heatsync — Twitch, Kick + YouTube tek sohbette"
   },
   "manifest_description": {
-    "message": "Emote’ların her Twitch, Kick veya YouTube sohbetinde — ücretsiz, 5000 slota kadar. Ayrıca 7TV/BTTV/FFZ + çapraz platform multichat"
+    "message": "Twitch, Kick + YouTube canlı sohbeti için tek panel. Ayrıca her kanalda yanınızda olan 5000 kişilik ücretsiz emote envanteri"
   },
   "common_loading": {
     "message": "yükleniyor..."

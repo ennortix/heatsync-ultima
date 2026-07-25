@@ -1,9 +1,9 @@
 {
   "manifest_name": {
-    "message": "heatsync"
+    "message": "heatsync — Twitch, Kick + YouTube yhdessä chatissa"
   },
   "manifest_description": {
-    "message": "Omat emotet kaikissa Twitch-, Kick- ja YouTube-chateissa — ilmainen, jopa 5000 slottia. Plus 7TV/BTTV/FFZ + monialustainen multichat"
+    "message": "Yksi paneeli Twitchin, Kickin + YouTuben live-chattiin. Lisäksi ilmainen 5000 emoten varasto, joka seuraa sinua joka kanavalle"
   },
   "common_loading": {
     "message": "ladataan..."

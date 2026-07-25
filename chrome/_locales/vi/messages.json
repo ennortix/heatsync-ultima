@@ -1,9 +1,9 @@
 {
   "manifest_name": {
-    "message": "heatsync"
+    "message": "heatsync — Twitch, Kick + YouTube trong một chat"
   },
   "manifest_description": {
-    "message": "Emote của bạn trong mọi chat Twitch, Kick hoặc YouTube — miễn phí, tối đa 5000 slot. Cùng 7TV/BTTV/FFZ + multichat đa nền tảng"
+    "message": "Một bảng cho chat trực tiếp của Twitch, Kick + YouTube. Kèm kho 5000 emote miễn phí đi theo bạn vào mọi kênh"
   },
   "common_loading": {
     "message": "đang tải..."

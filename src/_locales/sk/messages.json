@@ -1,9 +1,9 @@
 {
   "manifest_name": {
-    "message": "heatsync"
+    "message": "heatsync — Twitch, Kick + YouTube v jednom chate"
   },
   "manifest_description": {
-    "message": "Tvoje emotky v akomkoľvek chate Twitch, Kick a YouTube — zadarmo, až 5000 slotov. Plus 7TV/BTTV/FFZ + multiplatformový multichat"
+    "message": "Jeden panel pre živý chat Twitch, Kick + YouTube. K tomu bezplatný inventár na 5000 emotov, ktorý vás sprevádza každým kanálom"
   },
   "common_loading": {
     "message": "načítavam..."

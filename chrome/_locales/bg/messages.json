@@ -1,9 +1,9 @@
 {
   "manifest_name": {
-    "message": "heatsync"
+    "message": "heatsync — Twitch, Kick + YouTube в един чат"
   },
   "manifest_description": {
-    "message": "Твоите емоути във всеки чат на Twitch, Kick или YouTube — безплатно, до 5000 слота. Плюс 7TV/BTTV/FFZ + мултичат на много платформи"
+    "message": "Един панел за живия чат на Twitch, Kick + YouTube. Плюс безплатен инвентар с 5000 емотикона, който те следва във всеки канал"
   },
   "common_loading": {
     "message": "зарежда се..."

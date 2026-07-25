@@ -4756,7 +4756,10 @@ function _getMergedAcEmotes() {
       : [channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()]].filter(Boolean)
   let poolsSig = ''
   for (const p of acPools) poolsSig += (p?.size || 0) + ','
-  const sig = `${currentTab}|${emoteCache.size}|${viewerPersonalEmotes.size}|${poolsSig}`
+  // The toggle rides in the signature: flipping it has to invalidate the memo,
+  // otherwise suggestions keep serving the old pool until the next emote load.
+  const acInventory = getSetting('suggestInventoryEmotes') !== false
+  const sig = `${currentTab}|${emoteCache.size}|${viewerPersonalEmotes.size}|${poolsSig}|${acInventory ? 1 : 0}`
   if (_acMergeCache && _acMergeCache.sig === sig) return _acMergeCache
   const acEmotes = new Map()
   const tierByName = new Map()
@@ -4764,10 +4767,14 @@ function _getMergedAcEmotes() {
     acEmotes.set(k, v)
     tierByName.set(k, 2)
   }
-  for (const [k, v] of viewerPersonalEmotes) {
-    acEmotes.set(k, v)
-    tierByName.set(k, 1)
-  }
+  // Off: names that exist ONLY in your inventory stop being offered. Names the
+  // channel or a global pool also defines still complete — those are real words
+  // in this chat regardless of what you collected.
+  if (acInventory)
+    for (const [k, v] of viewerPersonalEmotes) {
+      acEmotes.set(k, v)
+      tierByName.set(k, 1)
+    }
   for (const acChCache of acPools)
     for (const [k, v] of acChCache) {
       acEmotes.set(k, v)

@@ -30,6 +30,10 @@ globalThis.getLiveChannel = () => 'chan-a'
 // file only passes when another test file happens to have defined it first
 // (each test file must be independently runnable).
 globalThis.linksEnabled = false
+// processEmotes reads the render toggle through the settings bundle-global.
+// Mutable so the opt-out case below can flip it; undefined = schema default.
+let _settings = {}
+globalThis.getSetting = (k) => _settings[k]
 
 const { processEmotes } = await import('../src/multichat/emotes.js')
 
@@ -78,6 +82,38 @@ describe('inventory-time render gate', () => {
     } finally {
       emoteCache.delete('AKDJvibe')
     }
+  })
+})
+
+// Opt-out: renderInventoryEmotes=false leaves every inventory-resolved name as
+// the plain word, while channel/global pools keep rendering — turning it off
+// must not desync this client from what the rest of the platform sees.
+describe('renderInventoryEmotes opt-out', () => {
+  test('off: an owned, in-window inventory emote stays plain text', () => {
+    _settings = { renderInventoryEmotes: false }
+    try {
+      const out = processEmotes('AKDJvibe', 'chan-x', null, sender({ addedAt: T }), T + 5000)
+      expect(rendered(out)).toBe(false)
+      expect(out).toContain('AKDJvibe')
+    } finally {
+      _settings = {}
+    }
+  })
+
+  test('off: channel and global emotes still render', async () => {
+    const { emoteCache } = await import('../src/multichat/emotes.js')
+    _settings = { renderInventoryEmotes: false }
+    emoteCache.set('GlobalVibe', { url: URL, source: '7tv', state: 'global' })
+    try {
+      expect(rendered(processEmotes('GlobalVibe', 'chan-x', null, sender({ addedAt: T }), T + 5000))).toBe(true)
+    } finally {
+      emoteCache.delete('GlobalVibe')
+      _settings = {}
+    }
+  })
+
+  test('on (default) is unchanged', () => {
+    expect(rendered(processEmotes('AKDJvibe', 'chan-x', null, sender({ addedAt: T }), T + 5000))).toBe(true)
   })
 })
 

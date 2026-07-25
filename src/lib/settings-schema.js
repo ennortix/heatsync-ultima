@@ -554,6 +554,22 @@ const SETTINGS = [
     ],
   },
   {
+    // Inventory emotes (yours and every other sender's) render as images.
+    // Off = the plain word, exactly as it went over the wire. Channel/global
+    // pools are unaffected — those render for the whole platform anyway.
+    key: 'renderInventoryEmotes',
+    type: 'bool',
+    default: true,
+    scope: 'sync',
+    category: 'display',
+    section: 'cosmetics',
+    labelKey: 'mc_settings_render_inventory_emotes',
+    tipKey: 'mc_settings_render_inventory_emotes_desc',
+    control: 'pill',
+    alias: 'personal inventory emotes render',
+    rerender: true,
+  },
+  {
     key: 'hs_show_pronouns',
     type: 'bool',
     default: true,
@@ -581,6 +597,21 @@ const SETTINGS = [
     tipKey: 'mc_settings_inline_emote_suggest_desc',
     control: 'pill',
     runtimeVar: 'inlineSuggestEnabled',
+  },
+  {
+    // Whether your inventory feeds tab-complete / inline suggestions. Off, a
+    // name that lives only in your inventory stops being offered; names the
+    // channel or globals also define still complete.
+    key: 'suggestInventoryEmotes',
+    type: 'bool',
+    default: true,
+    scope: 'sync',
+    category: 'chat',
+    section: 'input',
+    labelKey: 'mc_settings_suggest_inventory_emotes',
+    tipKey: 'mc_settings_suggest_inventory_emotes_desc',
+    control: 'pill',
+    alias: 'personal inventory emotes tab complete autocomplete',
   },
   {
     key: 'wysiwygEnabled',

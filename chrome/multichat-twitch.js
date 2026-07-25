@@ -2405,6 +2405,22 @@ const SETTINGS = [
     ],
   },
   {
+    // Inventory emotes (yours and every other sender's) render as images.
+    // Off = the plain word, exactly as it went over the wire. Channel/global
+    // pools are unaffected — those render for the whole platform anyway.
+    key: 'renderInventoryEmotes',
+    type: 'bool',
+    default: true,
+    scope: 'sync',
+    category: 'display',
+    section: 'cosmetics',
+    labelKey: 'mc_settings_render_inventory_emotes',
+    tipKey: 'mc_settings_render_inventory_emotes_desc',
+    control: 'pill',
+    alias: 'personal inventory emotes render',
+    rerender: true,
+  },
+  {
     key: 'hs_show_pronouns',
     type: 'bool',
     default: true,
@@ -2432,6 +2448,21 @@ const SETTINGS = [
     tipKey: 'mc_settings_inline_emote_suggest_desc',
     control: 'pill',
     runtimeVar: 'inlineSuggestEnabled',
+  },
+  {
+    // Whether your inventory feeds tab-complete / inline suggestions. Off, a
+    // name that lives only in your inventory stops being offered; names the
+    // channel or globals also define still complete.
+    key: 'suggestInventoryEmotes',
+    type: 'bool',
+    default: true,
+    scope: 'sync',
+    category: 'chat',
+    section: 'input',
+    labelKey: 'mc_settings_suggest_inventory_emotes',
+    tipKey: 'mc_settings_suggest_inventory_emotes_desc',
+    control: 'pill',
+    alias: 'personal inventory emotes tab complete autocomplete',
   },
   {
     key: 'wysiwygEnabled',
@@ -26158,7 +26189,12 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
   // heatsync emotes drawing in the viewer's history without leaking into others.
   // Gated additionally by msgTime: fallback applies only to messages that
   // pre-date the removal — newly-sent posts after remove stay raw.
-  const _rf = senderEmotes === viewerPersonalEmotes ? removedEmoteFallback : null
+  // Inventory renders are opt-out: off, every inventory-resolved name stays
+  // plain text (yours and every other sender's). Channel/global/native pools
+  // are untouched — those render for everyone on the platform anyway, so
+  // silencing them here would just desync this client from what was sent.
+  const _invRender = getSetting('renderInventoryEmotes') !== false
+  const _rf = _invRender && senderEmotes === viewerPersonalEmotes ? removedEmoteFallback : null
   const _rfGate = (entry) => {
     if (!entry) return null
     if (typeof msgTime !== 'number' || !entry.removedAt) return entry // unknown time → preserve old behavior
@@ -26179,7 +26215,7 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
     if (entry.removedAt && msgTime >= entry.removedAt) return null
     return entry
   }
-  const _sGet = (name) => _sGate(senderEmotes?.get(name))
+  const _sGet = (name) => (_invRender ? _sGate(senderEmotes?.get(name)) : null)
   // Provenance-aware resolve: channel > sender inventory > native > global >
   // removed-inventory fallback. `inv` marks hits that render BECAUSE of a
   // heatsync inventory (the sender's, or the viewer's own) — the tooltip
@@ -43531,7 +43567,10 @@ function _getMergedAcEmotes() {
       : [channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()]].filter(Boolean)
   let poolsSig = ''
   for (const p of acPools) poolsSig += (p?.size || 0) + ','
-  const sig = `${currentTab}|${emoteCache.size}|${viewerPersonalEmotes.size}|${poolsSig}`
+  // The toggle rides in the signature: flipping it has to invalidate the memo,
+  // otherwise suggestions keep serving the old pool until the next emote load.
+  const acInventory = getSetting('suggestInventoryEmotes') !== false
+  const sig = `${currentTab}|${emoteCache.size}|${viewerPersonalEmotes.size}|${poolsSig}|${acInventory ? 1 : 0}`
   if (_acMergeCache && _acMergeCache.sig === sig) return _acMergeCache
   const acEmotes = new Map()
   const tierByName = new Map()
@@ -43539,10 +43578,14 @@ function _getMergedAcEmotes() {
     acEmotes.set(k, v)
     tierByName.set(k, 2)
   }
-  for (const [k, v] of viewerPersonalEmotes) {
-    acEmotes.set(k, v)
-    tierByName.set(k, 1)
-  }
+  // Off: names that exist ONLY in your inventory stop being offered. Names the
+  // channel or a global pool also defines still complete — those are real words
+  // in this chat regardless of what you collected.
+  if (acInventory)
+    for (const [k, v] of viewerPersonalEmotes) {
+      acEmotes.set(k, v)
+      tierByName.set(k, 1)
+    }
   for (const acChCache of acPools)
     for (const [k, v] of acChCache) {
       acEmotes.set(k, v)

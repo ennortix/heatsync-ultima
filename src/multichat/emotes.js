@@ -3423,7 +3423,12 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
   // heatsync emotes drawing in the viewer's history without leaking into others.
   // Gated additionally by msgTime: fallback applies only to messages that
   // pre-date the removal — newly-sent posts after remove stay raw.
-  const _rf = senderEmotes === viewerPersonalEmotes ? removedEmoteFallback : null
+  // Inventory renders are opt-out: off, every inventory-resolved name stays
+  // plain text (yours and every other sender's). Channel/global/native pools
+  // are untouched — those render for everyone on the platform anyway, so
+  // silencing them here would just desync this client from what was sent.
+  const _invRender = getSetting('renderInventoryEmotes') !== false
+  const _rf = _invRender && senderEmotes === viewerPersonalEmotes ? removedEmoteFallback : null
   const _rfGate = (entry) => {
     if (!entry) return null
     if (typeof msgTime !== 'number' || !entry.removedAt) return entry // unknown time → preserve old behavior
@@ -3444,7 +3449,7 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
     if (entry.removedAt && msgTime >= entry.removedAt) return null
     return entry
   }
-  const _sGet = (name) => _sGate(senderEmotes?.get(name))
+  const _sGet = (name) => (_invRender ? _sGate(senderEmotes?.get(name)) : null)
   // Provenance-aware resolve: channel > sender inventory > native > global >
   // removed-inventory fallback. `inv` marks hits that render BECAUSE of a
   // heatsync inventory (the sender's, or the viewer's own) — the tooltip

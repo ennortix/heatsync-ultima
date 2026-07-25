@@ -1144,6 +1144,18 @@
   "mc_settings_emote_provider_priority_desc": {
     "message": "when 7tv/bttv/ffz have an emote with the same name, this provider wins"
   },
+  "mc_settings_render_inventory_emotes": {
+    "message": "render inventory emotes"
+  },
+  "mc_settings_render_inventory_emotes_desc": {
+    "message": "draw emotes that come from a heatsync inventory — yours or another chatter's. off shows the plain word instead. channel and global emotes are unaffected"
+  },
+  "mc_settings_suggest_inventory_emotes": {
+    "message": "suggest inventory emotes"
+  },
+  "mc_settings_suggest_inventory_emotes_desc": {
+    "message": "offer your inventory in tab-complete and typing suggestions. off leaves only channel and global emotes"
+  },
   "mc_settings_inline_emote_suggest": {
     "message": "emote suggestions while typing"
   },

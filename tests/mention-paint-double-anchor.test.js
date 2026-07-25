@@ -63,6 +63,8 @@ globalThis.currentTab = 'chan-a'
 globalThis.getCurrentChannel = () => 'chan-a'
 globalThis.getLiveChannel = () => 'chan-a'
 globalThis.linksEnabled = false
+// processEmotes reads the inventory-render toggle; undefined = schema default (on)
+globalThis.getSetting = () => undefined
 globalThis.knownColors = new Map()
 globalThis.sanitizeColor = (c) => c || '#fff'
 globalThis.mentionColor = () => '#fff' // shared stub — both processEmotes' fallback branch and highlightMentionsInHtml call this

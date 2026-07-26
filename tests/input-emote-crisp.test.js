@@ -54,24 +54,24 @@ describe('horizontal: the chip must occupy a whole number of pixels', () => {
     expect(fn).toMatch(/img\.complete && img\.naturalWidth/)
   })
 
-  // Hooking ONE path is exactly how this shipped half-fixed: the typing path
-  // (buildInputEmoteImg) was missed, so typed emotes still smeared while
-  // pasted ones came out crisp.
+  // Hooking ONE path is exactly how this shipped half-fixed: a chip creator
+  // that skips the snap smears while the others come out crisp. createInputEmoteImg
+  // is now the SINGLE named builder — the recall/imagify path routes through it
+  // too (buildInputEmoteImg, a snap-less duplicate that also stamped "undefined"
+  // chips from pool entries with no .name field, was deleted).
   test('EVERY chip-creation site attaches the snap', () => {
-    for (const [label, src, fnName] of [
-      ['emotes.js createInputEmoteImg', EMOTES, 'createInputEmoteImg'],
-      ['input.js buildInputEmoteImg', INPUT, 'buildInputEmoteImg'],
-    ]) {
+    for (const [label, src, fnName] of [['emotes.js createInputEmoteImg', EMOTES, 'createInputEmoteImg']]) {
       const start = src.indexOf(`function ${fnName}`)
       const body = src.slice(start, src.indexOf('\n}', start))
       expect(body, label).toContain('hsAttachInputEmoteSnap')
     }
-    // the two emote-cycling creators are inline, not in named functions
+    // the emote-cycling creators are inline, not in named functions
     expect((INPUT.match(/hs-input-emote hs-cycling-emote/g) || []).length).toBe(3)
-    // 4 call sites in input.js: the typing path + THREE cycling creators.
-    // This count is the drift guard — it already caught a 4th site that a
-    // whitespace-sensitive edit had missed.
-    expect((INPUT.match(/hsAttachInputEmoteSnap\(img\)/g) || []).length).toBe(4)
+    // 3 call sites in input.js: the THREE cycling creators. The typing/recall
+    // path no longer has its own builder here — it shares createInputEmoteImg.
+    // This count is the drift guard — it already caught a site a whitespace-
+    // sensitive edit had missed.
+    expect((INPUT.match(/hsAttachInputEmoteSnap\(img\)/g) || []).length).toBe(3)
   })
 
   test('the snapper accepts a bare input chip', () => {

@@ -14,6 +14,18 @@
   const { signal } = lifecycle
   window.addEventListener('pagehide', () => lifecycle.abort(), { once: true })
 
+  // Re-injection guard. Firefox re-injects content scripts into already-open
+  // tabs on extension reload/AMO update WITHOUT a page unload, so the previous
+  // context's window-level keydown listener (below) survives — no pagehide
+  // ever fires to abort it. Two live instances each keep their own `mode`,
+  // so one keypress runs twice (e.g. `k` dispatches ArrowUp AND types). Abort
+  // the prior instance the moment this one loads: exactly one vi context owns
+  // the keyboard at a time. Mirrors multichat's MC_WIRE_CTX takeover.
+  try {
+    window.__hsViLifecycle?.abort()
+  } catch (_) {}
+  window.__hsViLifecycle = lifecycle
+
   // Chat input selectors
   const INPUT_SELECTORS = [
     '[data-a-target="chat-input"]', // Twitch (contenteditable)

@@ -10551,6 +10551,18 @@ function injectStyles() {
       background: rgba(255, 255, 0, 0.14);
       box-shadow: inset 0 0 0 1px var(--hs-mention);
     }
+    /* Mention red wins over keyword-yellow when a row is both — "you got pinged"
+       is the stronger signal. Later + higher specificity guarantees the override
+       regardless of source order; drops the keyword's yellow inset border too. */
+    .hs-mc-msg.mention.hs-kw-match,
+    .hs-feed-msg.mention.hs-kw-match {
+      background: #5c1212;
+      box-shadow: none;
+    }
+    .hs-mc-msg.mention.hs-kw-match.hs-mc-zebra,
+    .hs-feed-msg.mention.hs-kw-match.hs-mc-zebra {
+      background: #380b0b;
+    }
     /* Returning chatter — back after a long absence (twitch returning-chatter tag).
        Monochrome by intent: a low-key gray bar (familiar, seen before). */
     .hs-mc-msg.is-returning {
@@ -42277,25 +42289,8 @@ function deflectAdjacentChip(node, wordStart) {
   return true
 }
 
-// Scan for any two adjacent chips with no real content between them and
-// unwrap both back to plain text in place. `acceptWhitespace` widens the
-// definition of "no content" to include whitespace-only nodes — used on
-// deletion events so a single backspace can collapse a 2-char nbsp+space
-// gap (which Tab insertion + user-typed space leaves between chips).
-function buildInputEmoteImg(emote) {
-  const img = document.createElement('img')
-  img.src = emote.url
-  img.alt = emote.name
-  img.dataset.emoteName = emote.name
-  img.className = 'hs-input-emote'
-  img.draggable = false
-  if (typeof attachInputEmoteErrorRecovery === 'function') attachInputEmoteErrorRecovery(img)
-  // Integer-width snap — without it every character typed after this chip lands
-  // on a fractional x and the bitmap font smears. This is the TYPING path.
-  if (typeof hsAttachInputEmoteSnap === 'function') hsAttachInputEmoteSnap(img)
-  return img
-}
-
+// Re-imagify whitespace-bounded emote names inside a plain text node — the
+// recall/paste/undo path that turns a serialized wire string back into chips.
 function imagifyValidWordsInTextNode(textNode) {
   if (!textNode || textNode.nodeType !== Node.TEXT_NODE) return false
   if (typeof lookupEmoteWithOverlay !== 'function') return false
@@ -42317,10 +42312,9 @@ function imagifyValidWordsInTextNode(textNode) {
       replacements.push(document.createTextNode(part))
       continue
     }
-    // Blocked emotes must stay plain text here too — buildInputEmoteImg (below)
-    // skips the blockedEmoteNames check that createInputEmoteImg applies, so
-    // without this a blocked emote reaching a text node (paste/undo/unwrap)
-    // would silently render as a live chip, defeating the block.
+    // Blocked emotes must stay plain text here — keep them out of the chip
+    // builder so a blocked emote reaching a text node (paste/undo/recall/
+    // unwrap) can't render as a live image and defeat the block.
     if (typeof blockedEmoteNames !== 'undefined' && blockedEmoteNames.has(part)) {
       replacements.push(document.createTextNode(part))
       continue
@@ -42333,7 +42327,16 @@ function imagifyValidWordsInTextNode(textNode) {
       replacements.push(document.createTextNode(part))
       continue
     }
-    replacements.push(buildInputEmoteImg(resolved.emote))
+    // Build via the shared createInputEmoteImg — it stamps alt/dataset.emoteName
+    // from the TYPED WORD (pool entries key on the name and don't carry a .name
+    // field, so reading emote.name here produced "undefined" chips on recall),
+    // and applies res-url + state + overlay parity with the type/paste path.
+    const chip = typeof createInputEmoteImg === 'function' ? createInputEmoteImg(part) : null
+    if (!chip) {
+      replacements.push(document.createTextNode(part))
+      continue
+    }
+    replacements.push(chip)
     didChange = true
   }
   if (!didChange) return false

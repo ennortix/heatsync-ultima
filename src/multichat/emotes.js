@@ -2693,9 +2693,12 @@ function lookupEmoteRenderOrder(name) {
 // inline. The channel/global caches fetch the flag straight from 7TV, so
 // consult them to recover it.
 function zeroWidthFromAnyCache(name) {
-  if (emoteCache.get(name)?.zeroWidth) return true
+  // Caches are keyed by RAW names; callers may pass an HTML-escaped chat token
+  // (`&gt;:3`). Unescape so specials resolve. Identity for names without `&`.
+  const raw = name.indexOf('&') === -1 ? name : unescapeHtml(name)
+  if (emoteCache.get(raw)?.zeroWidth) return true
   for (const m of Object.values(channelEmoteCaches)) {
-    if (m && typeof m.get === 'function' && m.get(name)?.zeroWidth) return true
+    if (m && typeof m.get === 'function' && m.get(raw)?.zeroWidth) return true
   }
   return false
 }
@@ -3463,7 +3466,15 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
   // provider, which the viewer may have no relationship with (same emote
   // labeled "set" on own rows but "7TV" on the sender's).
   const _lookup = (name) => {
-    let e = channel ? channelEmoteCaches[channel]?.get(name) : null
+    // `name` is an HTML-escaped token: main.js runs escapeHtml(m.text) before
+    // processEmotes, so a name with HTML specials arrives escaped (`>:3` →
+    // `&gt;:3`, `<3` → `&lt;3`). The channel/sender/global/removed caches are
+    // keyed by RAW emote names, so we must unescape before those lookups or
+    // the emote renders as plain text. extraCache (twitchExtra) is keyed by
+    // the escaped name to match this token directly. escapeHtml is identity
+    // for names without specials, so raw === name on the hot path (no `&`).
+    const raw = name.indexOf('&') === -1 ? name : unescapeHtml(name)
+    let e = channel ? channelEmoteCaches[channel]?.get(raw) : null
     if (e) return { e, inv: false }
     // Server-enriched per-message refs: the sender's inventory emote actually
     // used in THIS message, resolved authoritatively server-side. Wins over the
@@ -3471,11 +3482,11 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
     // channel's own set above. Ungated by _sGate — it's current by construction.
     e = msgRefs?.get(name)
     if (e) return { e, inv: true }
-    e = _sGet(name)
+    e = _sGet(raw)
     if (e) return { e, inv: true }
-    e = extraCache?.get(name) || emoteCache.get(name)
+    e = extraCache?.get(name) || emoteCache.get(raw)
     if (e) return { e, inv: false }
-    e = _rfGate(_rf?.get(name))
+    e = _rfGate(_rf?.get(raw))
     return e ? { e, inv: true } : null
   }
 
@@ -3731,7 +3742,9 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
     // 1×1-placeholder branch below. Only when a real url is stored (url-less
     // blocks — name-as-hash — still fall through to the square box).
     if (!emote) {
-      const _bf = blockedEmoteFallback.get(word)
+      // blockedEmoteFallback is keyed by RAW names (picker/server side); the
+      // escaped `word` misses for specials (`>:3`) — try the raw form too.
+      const _bf = blockedEmoteFallback.get(word) || blockedEmoteFallback.get(unescapeHtml(word))
       if (_bf?.url) emote = _bf
     }
     if (emote) {

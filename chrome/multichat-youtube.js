@@ -12537,6 +12537,32 @@ img.hs-fx-zero { margin-left: -4px; }
       background: #fff;
     }
 
+    /* Attach button — same 28px square as the heatsync button; monochrome image
+       glyph via currentColor so hover inverts to black-on-white like everything else. */
+    #hs-mc-attach-btn {
+      padding: 2px;
+      width: 28px;
+      height: 28px;
+      background: #000;
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: none;
+    }
+    #hs-mc-attach-btn svg {
+      width: 20px;
+      height: 20px;
+      display: block;
+    }
+    #hs-mc-attach-btn:hover {
+      background: #fff;
+      color: #000;
+    }
+
     /* ── Twitch tab sub-tabs (square icon row at top) ─────────────────────── */
     .hs-mc-tw-subtabs {
       display: flex;
@@ -25079,9 +25105,12 @@ function lookupEmoteRenderOrder(name) {
 // inline. The channel/global caches fetch the flag straight from 7TV, so
 // consult them to recover it.
 function zeroWidthFromAnyCache(name) {
-  if (emoteCache.get(name)?.zeroWidth) return true
+  // Caches are keyed by RAW names; callers may pass an HTML-escaped chat token
+  // (`&gt;:3`). Unescape so specials resolve. Identity for names without `&`.
+  const raw = name.indexOf('&') === -1 ? name : unescapeHtml(name)
+  if (emoteCache.get(raw)?.zeroWidth) return true
   for (const m of Object.values(channelEmoteCaches)) {
-    if (m && typeof m.get === 'function' && m.get(name)?.zeroWidth) return true
+    if (m && typeof m.get === 'function' && m.get(raw)?.zeroWidth) return true
   }
   return false
 }
@@ -25849,7 +25878,15 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
   // provider, which the viewer may have no relationship with (same emote
   // labeled "set" on own rows but "7TV" on the sender's).
   const _lookup = (name) => {
-    let e = channel ? channelEmoteCaches[channel]?.get(name) : null
+    // `name` is an HTML-escaped token: main.js runs escapeHtml(m.text) before
+    // processEmotes, so a name with HTML specials arrives escaped (`>:3` →
+    // `&gt;:3`, `<3` → `&lt;3`). The channel/sender/global/removed caches are
+    // keyed by RAW emote names, so we must unescape before those lookups or
+    // the emote renders as plain text. extraCache (twitchExtra) is keyed by
+    // the escaped name to match this token directly. escapeHtml is identity
+    // for names without specials, so raw === name on the hot path (no `&`).
+    const raw = name.indexOf('&') === -1 ? name : unescapeHtml(name)
+    let e = channel ? channelEmoteCaches[channel]?.get(raw) : null
     if (e) return { e, inv: false }
     // Server-enriched per-message refs: the sender's inventory emote actually
     // used in THIS message, resolved authoritatively server-side. Wins over the
@@ -25857,11 +25894,11 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
     // channel's own set above. Ungated by _sGate — it's current by construction.
     e = msgRefs?.get(name)
     if (e) return { e, inv: true }
-    e = _sGet(name)
+    e = _sGet(raw)
     if (e) return { e, inv: true }
-    e = extraCache?.get(name) || emoteCache.get(name)
+    e = extraCache?.get(name) || emoteCache.get(raw)
     if (e) return { e, inv: false }
-    e = _rfGate(_rf?.get(name))
+    e = _rfGate(_rf?.get(raw))
     return e ? { e, inv: true } : null
   }
 
@@ -26117,7 +26154,9 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
     // 1×1-placeholder branch below. Only when a real url is stored (url-less
     // blocks — name-as-hash — still fall through to the square box).
     if (!emote) {
-      const _bf = blockedEmoteFallback.get(word)
+      // blockedEmoteFallback is keyed by RAW names (picker/server side); the
+      // escaped `word` misses for specials (`>:3`) — try the raw form too.
+      const _bf = blockedEmoteFallback.get(word) || blockedEmoteFallback.get(unescapeHtml(word))
       if (_bf?.url) emote = _bf
     }
     if (emote) {
@@ -32608,6 +32647,39 @@ function attr(s) {
   return escapeHtml(s)
 }
 
+// Hosts the extension's img-src CSP already allows — served directly. Any OTHER
+// http(s) image host (safebooru, i.ytimg, giphy, arbitrary og:images) would be
+// CSP-blocked in-ext, so route it through our origin image proxy, which also
+// hides the viewer's IP from the third-party host (a privacy win over hotlinking
+// — and why we proxy rather than widen img-src to `https:`, which would let any
+// post beacon the viewer via tracking-pixel images). Non-http inputs (data:,
+// blob:, '') and parse failures pass through untouched. Keep this host set in
+// sync with img-src in src/manifests/{chrome,firefox}.json.
+const HS_IMG_DIRECT_HOSTS = new Set([
+  'static-cdn.jtvnw.net',
+  'cdn.7tv.app',
+  'cdn.betterttv.net',
+  'cdn.frankerfacez.com',
+  'files.kick.com',
+  'heatsync.org',
+  'cdn.heatsync.org',
+  'i.imgur.com',
+  'd3aqoihi2n8ty8.cloudfront.net',
+])
+function hsProxyImg(url) {
+  if (!url || typeof url !== 'string') return url || ''
+  let host
+  try {
+    const u = new URL(url)
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return url // data:/blob: — leave
+    host = u.hostname
+  } catch {
+    return url
+  }
+  if (HS_IMG_DIRECT_HOSTS.has(host)) return url
+  return `https://heatsync.org/api/img?url=${encodeURIComponent(url)}`
+}
+
 function ytEmbed(videoId) {
   const id = sanitizeEmbedId(videoId)
   if (!id) return ''
@@ -32616,7 +32688,7 @@ function ytEmbed(videoId) {
   // that opens the video in a new tab.
   if (/(^|\.)youtube\.com$/i.test(location.hostname)) {
     return `<a href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener" class="hs-feed-embed-yt-thumb">
-      <img src="https://i.ytimg.com/vi/${id}/hqdefault.jpg" alt="" loading="lazy" data-fb="hide">
+      <img src="${hsProxyImg(`https://i.ytimg.com/vi/${id}/hqdefault.jpg`)}" alt="" loading="lazy" data-fb="hide">
       <span class="hs-feed-embed-yt-play">▶</span>
     </a>`
   }
@@ -32887,7 +32959,7 @@ function parseFeedEmbed(url) {
     const safe = safeUrl(cleanUrl)
     if (!safe) return ''
     return `<div class="hs-feed-media-direct">
-      <img src="${attr(safe)}" alt="" data-fb="deleted">
+      <img src="${attr(hsProxyImg(safe))}" alt="" data-fb="deleted">
     </div>`
   }
   if (/\.(mp4|webm|mov)(\?.*)?$/i.test(cleanUrl)) {
@@ -32966,7 +33038,7 @@ function chatEmbedForUrl(rawUrl) {
   if (!safe) return ''
   // Direct image / gif → inline, lazy, error-guarded (data-fb hides on 404/blocked).
   if (/\.(jpg|jpeg|png|gif|webp|avif)(\?.*)?$/i.test(cleanUrl)) {
-    return `<div class="hs-mc-media"><img src="${attr(safe)}" alt="" loading="lazy" decoding="async" data-fb="hide"></div>`
+    return `<div class="hs-mc-media"><img src="${attr(hsProxyImg(safe))}" alt="" loading="lazy" decoding="async" data-fb="hide"></div>`
   }
   // Direct video → inline, preload=none (no bytes until play — critical at chat volume).
   if (/\.(mp4|webm|mov)(\?.*)?$/i.test(cleanUrl)) {
@@ -32982,7 +33054,7 @@ function chatEmbedForUrl(rawUrl) {
     const id = sanitizeEmbedId(ytId)
     if (id)
       return `<a href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener" class="hs-mc-media hs-mc-playable hs-feed-embed-yt-thumb">
-      <img src="https://i.ytimg.com/vi/${id}/mqdefault.jpg" alt="" loading="lazy" decoding="async" data-fb="hide">
+      <img src="${hsProxyImg(`https://i.ytimg.com/vi/${id}/mqdefault.jpg`)}" alt="" loading="lazy" decoding="async" data-fb="hide">
       <span class="hs-feed-embed-yt-play">▶</span>
     </a>`
   }
@@ -33006,6 +33078,12 @@ function chatEmbedForUrl(rawUrl) {
 // Handles direct uploads (image/video), multi-image (media[]), and content-extracted embeds.
 function buildFeedMediaHtml(m) {
   if (!m) return ''
+  // Media URLs come back origin-relative (/uploads/...). The ext renders
+  // cross-origin (twitch/kick/yt), so a relative src silently 404s AND safeUrl()
+  // throws on a relative URL → the image is dropped entirely. Absolutize here —
+  // the single render chokepoint for feed, thread, and /logs — so no insert path
+  // can leak a relative URL. Idempotent: absolute URLs pass through untouched.
+  if (typeof _absolutizeThreadMedia === 'function') _absolutizeThreadMedia(m)
   const isReply = !!m.reply_to
   const mediaUrl = m.media_url
   const mediaType = m.media_type
@@ -33020,7 +33098,7 @@ function buildFeedMediaHtml(m) {
         if (med.type === 'video') {
           return `<video controls muted preload="metadata" src="${attr(url)}" class="hs-feed-media-item"></video>`
         }
-        return `<img src="${attr(url)}" alt="" class="hs-feed-media-item">`
+        return `<img src="${attr(hsProxyImg(url))}" alt="" class="hs-feed-media-item">`
       })
       .filter(Boolean)
       .join('')
@@ -33050,7 +33128,7 @@ function buildFeedMediaHtml(m) {
     }
 
     if (isImage) {
-      return `<div class="hs-feed-media"><img src="${attr(safe)}" alt="" class="hs-feed-media-img"></div>`
+      return `<div class="hs-feed-media"><img src="${attr(hsProxyImg(safe))}" alt="" class="hs-feed-media-img"></div>`
     }
 
     return ''
@@ -33098,13 +33176,18 @@ function _buildFeedResolvedHtml(ph, data) {
   const safeUrlStr = attr(url)
   const safeTitle = attr(data.title || '')
   const safeAuthor = attr(data.author || '')
-  const safeThumb = attr(safeUrl(data.thumbnail || ''))
+  // Thumbnails only ever feed <img>/<video poster> (both images) → proxy always.
+  // mediaUrl is an <img> for type:image but a <video src> for type:video — proxy
+  // the image use (safeMediaImg), leave the video src direct (the image proxy
+  // rejects non-image content-types; external video is a separate, rarer case).
+  const safeThumb = attr(hsProxyImg(safeUrl(data.thumbnail || '')))
   const safeMedia = attr(safeUrl(data.mediaUrl || ''))
+  const safeMediaImg = attr(hsProxyImg(safeUrl(data.mediaUrl || '')))
   const safePlat = attr(platform)
 
   if (data.type === 'image' && data.mediaUrl) {
     return `<a href="${safeUrlStr}" target="_blank" rel="noopener" class="hs-feed-embed-rich-imglink">
-      <img src="${safeMedia}" alt="${safeTitle}" class="hs-feed-embed-rich-image" data-fb="deleted-span">
+      <img src="${safeMediaImg}" alt="${safeTitle}" class="hs-feed-embed-rich-image" data-fb="deleted-span">
     </a>`
   }
   if (data.type === 'video' && data.mediaUrl) {
@@ -33880,6 +33963,11 @@ function pushActivityEvent(evt) {
   if (activityEvents.length > ACTIVITY_EVENTS_MAX) activityEvents.splice(0, activityEvents.length - ACTIVITY_EVENTS_MAX)
 }
 let activeThread = null // { id, op, replies[] } — when set, feed shows thread view
+// Tab to return to when the thread's back button is hit. Captured at open time
+// from the tab the user was on BEFORE the forced switchTab('feed') (channel tabs
+// open threads via that switch). null → return to the feed. Consumed once by the
+// back handler in main.js. A dedicated slot (not prevTab, which settings clobbers).
+let threadReturnTab = null
 let replyState = null // { msgId, user, channel } when replying to a message
 let hsAuthToken = null // Heatsync auth state (loaded from storage)
 let hsCurrentUsername = null // Heatsync username (loaded from storage user_info)
@@ -35410,6 +35498,7 @@ function buildFeedMessageDiv(m, opUsername) {
       // Find the target in feedMessages to determine its thread
       const target = feedMessages.find((f) => f.base36_id === targetId)
       const threadId = target ? target.reply_to || target.base36_id : targetId
+      if (!activeThread) threadReturnTab = null // opened from the feed → back to feed
       openThread(threadId, targetId)
     })
   })
@@ -35578,7 +35667,16 @@ function renderFeedContent(content, emoteRefs) {
       const cacheKey = escaped
       let re = _feedEmoteRegexCache.get(cacheKey)
       if (!re) {
-        re = new RegExp(`\\b${escaped.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g')
+        // Match the emote name as a whole WHITESPACE-DELIMITED token, not via
+        // `\b`: emote names routinely contain non-word chars (`fern(sousounofrieren)`,
+        // `non-web_source`), and `\b` fails around `(`/`)` so a parenthesized name
+        // never matched — it rendered as plain text. `(?<!\S)…(?!\S)` binds to
+        // spaces/string-ends instead, and won't imagify a name embedded inside a
+        // larger token (e.g. `meme` inside `frierenstuckinamimic(meme)`).
+        // Also accept an optional trailing `(source)` disambiguation qualifier so
+        // a bare-name ref key still matches the alias-qualified body the site emits.
+        const body = escaped.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        re = new RegExp(`(?<!\\S)${body}(?:\\([^)\\s]*\\))?(?!\\S)`, 'g')
         _feedEmoteRegexCache.set(cacheKey, re)
         if (_feedEmoteRegexCache.size > 500) _feedEmoteRegexCache.delete(_feedEmoteRegexCache.keys().next().value)
       }
@@ -35597,11 +35695,19 @@ function renderFeedContent(content, emoteRefs) {
         if (i % 2 === 1) return part // inside an HTML tag — skip
         return part.replace(/\S+/g, (word) => {
           if (refNames && refNames.has(word)) return word // already rendered above
+          // Site emits alias-qualified names (`fern(sousounofrieren)`) to
+          // disambiguate collisions — the emote itself is the bare `fern`. Look up
+          // the bare form when the qualified token misses.
+          const bare = word.replace(/\([^)\s]*\)$/, '')
+          if (refNames && bare !== word && refNames.has(bare)) return word // handled by emote_refs pass
           // Blocked emote dropped from caches — still box it, don't leak the name.
-          if (typeof blockedEmoteNames !== 'undefined' && blockedEmoteNames.has(word)) {
+          if (
+            typeof blockedEmoteNames !== 'undefined' &&
+            (blockedEmoteNames.has(word) || blockedEmoteNames.has(bare))
+          ) {
             return renderFeedEmote(word, '', 'heatsync', '')
           }
-          const em = lookupEmote(word)
+          const em = lookupEmote(word) || (bare !== word ? lookupEmote(bare) : null)
           if (!em || !em.url || !/^https:\/\//.test(em.url)) return word
           return renderFeedEmote(word, em.url, em.source, em.hash)
         })
@@ -35641,9 +35747,11 @@ function formatTimeFromTs(ts) {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-// /api/thread media URLs are origin-relative (/uploads/...) — the ext renders
-// cross-origin, so a relative src silently 404s against twitch.tv/kick.com.
-// Prefix in place; absolute URLs pass through untouched.
+// Feed + thread media URLs are origin-relative (/uploads/...) — the ext renders
+// cross-origin, so a relative src silently 404s against twitch.tv/kick.com AND
+// safeUrl() throws on relative URLs (dropping the image). Prefix in place;
+// absolute URLs pass through untouched. Called from buildFeedMediaHtml (the
+// render chokepoint) so every surface — feed, thread, /logs — is covered.
 function _absolutizeThreadMedia(m) {
   if (!m) return
   for (const k of ['media_url', 'thumbnail_url']) {
@@ -35773,6 +35881,7 @@ function toggleThread(msgId, highlightId) {
   if (activeThread && activeThread.id === msgId && !highlightId) {
     closeThread()
   } else {
+    if (!activeThread) threadReturnTab = null // opened from a feed row → back to feed
     openThread(msgId, highlightId)
   }
 }
@@ -39428,6 +39537,8 @@ const SLASH_COMMANDS = [
   { cmd: 'note', args: '<user> <text>', desc: 'save a private note on a user' },
   { cmd: 'delnote', args: '<user>', desc: 'remove your note on a user' },
   { cmd: 'block', args: '<user>', desc: 'toggle block for a user' },
+  { cmd: 'hide', args: '<user>', desc: 'hide a user in THIS tab only (ephemeral)' },
+  { cmd: 'unhide', args: '<user>', desc: 'unhide a user in this tab' },
   { cmd: 'set', args: '<setting> <value>', desc: 'change a setting (e.g. /set zebra off, /set fontsize 15)' },
   { cmd: 'tab', args: '<name>', desc: 'switch tab (live/feed/mentions/whispers/settings or a channel)' },
   { cmd: 'vip', args: '<user>', desc: 'VIP a user (twitch broadcaster)' },
@@ -39523,6 +39634,8 @@ function createInputBar() {
   bar.innerHTML = `
     ${inputHtml}
     <span id="hs-mc-sendtargets"></span>
+    <input type="file" id="hs-mc-attach-input" accept="image/*,video/*" hidden>
+    <button id="hs-mc-attach-btn" type="button" title="${t('mc_input_attach')}" aria-label="${t('mc_input_attach')}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18"></rect><circle cx="8.5" cy="8.5" r="1.6" fill="currentColor" stroke="none"></circle><path d="M21 15l-5-5L4 21"></path></svg></button>
     <button id="hs-mc-emote-btn"><img src="${iconUrl}" data-src="${iconUrl}" data-src-black="${iconBlackUrl}" alt="hs"></button>
   `
 
@@ -39869,6 +39982,32 @@ function initInput() {
 
   // Initialize character counter
   updateCharCount()
+
+  // Attach button → hidden file picker → existing upload pipeline (same as
+  // paste/drop: uploads then inserts the URL into the composer, which
+  // postFeedMessage/sendMessage pick up as media). Clone-rewire guard mirrors
+  // the emote-btn block below (sheds dead listeners from a stale ext context).
+  let attachBtn = document.getElementById('hs-mc-attach-btn')
+  if (attachBtn && attachBtn._hsInitialized && attachBtn._hsInitialized !== MC_WIRE_CTX) {
+    const fresh = attachBtn.cloneNode(true)
+    attachBtn.replaceWith(fresh)
+    attachBtn = fresh
+  }
+  if (attachBtn && !attachBtn._hsInitialized) {
+    attachBtn._hsInitialized = MC_WIRE_CTX
+    const fileInput = document.getElementById('hs-mc-attach-input')
+    attachBtn.addEventListener('click', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      fileInput?.click()
+    })
+    fileInput?.addEventListener('change', () => {
+      const file = fileInput.files?.[0]
+      // Reset first so picking the SAME file twice re-fires change.
+      fileInput.value = ''
+      if (file) handleMediaUpload(file)
+    })
+  }
 
   // Emote picker button (includes twitch features in tabs)
   let emoteBtn = document.getElementById('hs-mc-emote-btn')
@@ -40709,6 +40848,13 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
       fn: () => hsBlockFromMenu(username, platform),
     },
     { label: isMuted ? 'unmute' : 'mute (24h)', danger: !isMuted, fn: () => _toggleMcMute(username, platform) },
+    {
+      label:
+        typeof isUserHiddenInTab === 'function' && isUserHiddenInTab(username, platform, currentTab)
+          ? 'unhide in tab'
+          : 'hide in tab',
+      fn: () => _tabHide(username, platform, 'toggle'),
+    },
     'sep',
     {
       label: 'copy name',
@@ -41087,6 +41233,38 @@ async function _toggleMcBlock(username, platform) {
   // buildMessageDiv filters blocked users, so a full re-render hides/restores them.
   // bypassScrollPause so a block applied while scrolled up takes effect now
   // instead of silently waiting until the reader returns to the bottom.
+  renderMessages(currentTab, { bypassScrollPause: true })
+}
+
+// Per-tab hide toggle — like _toggleMcBlock but writes an EPHEMERAL, tab-scoped
+// set (perTabHidden) with NO safeSendMessage fan-out and NO persistence, so it
+// never leaks to other tabs/surfaces. mode: 'toggle' (right-click) | 'hide' | 'unhide'.
+async function _tabHide(username, platform, mode = 'toggle') {
+  const tab = currentTab
+  if (!username || !tab) return
+  const aliasKeys = await expandUserAliasKeys(username, platform)
+  const isHidden = typeof isUserHiddenInTab === 'function' && isUserHiddenInTab(username, platform, tab)
+  const shouldHide = mode === 'toggle' ? !isHidden : mode === 'hide'
+  let set = perTabHidden.get(tab)
+  if (shouldHide) {
+    if (!set) {
+      set = new Set()
+      perTabHidden.set(tab, set)
+    }
+    for (const k of aliasKeys) set.add(k)
+    showToast(t('mc_input_tab_hidden', [username]), 'success')
+  } else {
+    if (set) {
+      for (const k of aliasKeys) set.delete(k)
+      // Clear any legacy bare entry too, so unhide always lands.
+      const bare = String(username == null ? '' : username)
+        .toLowerCase()
+        .replace(/^@/, '')
+      if (bare) set.delete(bare)
+      if (set.size === 0) perTabHidden.delete(tab)
+    }
+    showToast(t('mc_input_tab_unhidden', [username]), 'success')
+  }
   renderMessages(currentTab, { bypassScrollPause: true })
 }
 
@@ -45699,6 +45877,18 @@ async function handleSlashCommand(text, input) {
     // _toggleMcBlock inside it show their own success/error toast, so don't add
     // a second one here.
     await hsBlockFromMenu(user, hostPlatform || 'twitch')
+    clearInput(input)
+    return true
+  }
+
+  // ── /hide, /unhide — per-tab, ephemeral (see _tabHide) ──────────────────
+  if (cmd === 'hide' || cmd === 'unhide') {
+    const user = rest.trim().replace(/^@/, '')
+    if (!user || /\s/.test(user)) {
+      showToast(`/${cmd} <user> — ${cmd === 'hide' ? 'hides' : 'unhides'} in this tab`, 'error')
+      return true
+    }
+    await _tabHide(user, hostPlatform || 'twitch', cmd)
     clearInput(input)
     return true
   }
@@ -56788,6 +56978,14 @@ const STORAGE_KEY = 'heatsync_multichat'
   // Synced with background's block_user/unblock_user (shared with content.js).
   const blockedUsers = new Set()
 
+  // Per-tab hide (/hide, right-click → "hide in this tab") — fully hides a user's
+  // rows in ONE tab only. Deliberately EPHEMERAL and LOCAL: Map<tabId, Set<userKey>>,
+  // never persisted, never fanned out via safeSendMessage — so a tab-scoped hide
+  // can't leak into other tabs, the popout, or another surface the way blocked/
+  // muted (which sync globally) do. Cleared on reload. Distinct from block (which
+  // is account-level + global) and mute (which strips content but keeps the row).
+  const perTabHidden = new Map()
+
   // ─── User-key aliasing ─── When a Kick chatter has a 7TV-linked Twitch
   // handle (kickNameToTwitchUsername populated by the cosmetics pipeline),
   // mute/block actions fan out to BOTH names. So one mute on a Kick chatter
@@ -56858,6 +57056,15 @@ const STORAGE_KEY = 'heatsync_multichat'
   function isUserBlocked(username, platform) {
     if (!username || blockedUsers.size === 0) return false
     return userSetMatches(blockedUsers, username, platform, getUserAliasKeys(username, platform))
+  }
+
+  // Per-tab hide predicate — hot path, so short-circuit before allocating alias
+  // keys when this tab has no hidden users. Same alias-matching as block/mute.
+  function isUserHiddenInTab(username, platform, tabId) {
+    if (!username || !tabId) return false
+    const set = perTabHidden.get(tabId)
+    if (!set || set.size === 0) return false
+    return userSetMatches(set, username, platform, getUserAliasKeys(username, platform))
   }
 
   // Content-warning filters live entirely in the settings registry (schema
@@ -62696,9 +62903,19 @@ const STORAGE_KEY = 'heatsync_multichat'
     // Tab switch closes profile card without re-rendering (we'll render the tab below)
     if (typeof activeProfileCard !== 'undefined' && activeProfileCard) activeProfileCard = null
 
-    // Clicking feed tab while in thread view → go back to feed, don't switch tabs
+    // Clicking feed tab (relabeled "back") while in thread view → close the
+    // thread. If we entered from a channel tab, return THERE, not the feed —
+    // switchTab(rt) with currentTab still 'feed' also runs the thread-cleanup
+    // block below (nulls activeThread, resets the feed tab label). Otherwise
+    // just close and stay on the feed.
     if (id === 'feed' && currentTab === 'feed' && activeThread) {
-      closeThread()
+      if (threadReturnTab && threadReturnTab !== 'feed') {
+        const rt = threadReturnTab
+        threadReturnTab = null
+        switchTab(rt)
+      } else {
+        closeThread()
+      }
       return
     }
 
@@ -63283,6 +63500,10 @@ const STORAGE_KEY = 'heatsync_multichat'
     // sub events leave actor null, so their banners still render.
     if (m.user && isUserBlocked(m.user, m.platform)) return null
     if (m.actor && isUserBlocked(m.actor, m.platform)) return null
+    // Per-tab hide (/hide) — fully drop this user's rows, but only when building
+    // for the tab they were hidden in (tabId), never globally.
+    if (m.user && isUserHiddenInTab(m.user, m.platform, tabId)) return null
+    if (m.actor && isUserHiddenInTab(m.actor, m.platform, tabId)) return null
     // Stream event — render as magenta inline notification.
     // Render-time gate: skip if the corresponding hermes toggle is off
     // (buffer can hold events saved before a toggle flipped). Mirrors the
@@ -63455,8 +63676,14 @@ const STORAGE_KEY = 'heatsync_multichat'
           return
         }
         if (e.target.closest('a, .hs-mc-emote, .hs-mc-link')) return
+        // Remember where we came from so thread "back" returns here, not the feed.
+        threadReturnTab = currentTab === 'feed' ? null : currentTab
         switchTab('feed')
-        openThread(m.reply_to || m.base36_id)
+        // A reply row displays >>its-own-id but its thread is the PARENT — open
+        // the parent and highlight the clicked reply, else clicking a reply
+        // silently dumps you on the parent OP (looked like "wrong post"). Mirrors
+        // the feed-tab row handler (social.js buildFeedMessageDiv).
+        openThread(m.reply_to || m.base36_id, m.reply_to ? m.base36_id : null)
       })
       return div
     }
@@ -64087,6 +64314,8 @@ const STORAGE_KEY = 'heatsync_multichat'
           if (!targetId) return
           const target = feedMessages.find((f) => f.base36_id === targetId)
           const threadId = target ? target.reply_to || target.base36_id : targetId
+          // Remember where we came from so thread "back" returns here, not the feed.
+          threadReturnTab = currentTab === 'feed' ? null : currentTab
           switchTab('feed')
           openThread(threadId, targetId)
         })

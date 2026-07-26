@@ -819,6 +819,17 @@
   "mc_input_send_message": {
     "message": "send a message..."
   },
+  "mc_input_attach": {
+    "message": "attach image or video"
+  },
+  "mc_input_tab_hidden": {
+    "message": "hidden in this tab: $USER$",
+    "placeholders": { "user": { "content": "$1" } }
+  },
+  "mc_input_tab_unhidden": {
+    "message": "unhidden in this tab: $USER$",
+    "placeholders": { "user": { "content": "$1" } }
+  },
   "mc_input_post_heatsync": {
     "message": "post to heatsync..."
   },

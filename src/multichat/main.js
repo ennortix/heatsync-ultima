@@ -234,6 +234,14 @@
   // Synced with background's block_user/unblock_user (shared with content.js).
   const blockedUsers = new Set()
 
+  // Per-tab hide (/hide, right-click → "hide in this tab") — fully hides a user's
+  // rows in ONE tab only. Deliberately EPHEMERAL and LOCAL: Map<tabId, Set<userKey>>,
+  // never persisted, never fanned out via safeSendMessage — so a tab-scoped hide
+  // can't leak into other tabs, the popout, or another surface the way blocked/
+  // muted (which sync globally) do. Cleared on reload. Distinct from block (which
+  // is account-level + global) and mute (which strips content but keeps the row).
+  const perTabHidden = new Map()
+
   // ─── User-key aliasing ─── When a Kick chatter has a 7TV-linked Twitch
   // handle (kickNameToTwitchUsername populated by the cosmetics pipeline),
   // mute/block actions fan out to BOTH names. So one mute on a Kick chatter
@@ -304,6 +312,15 @@
   function isUserBlocked(username, platform) {
     if (!username || blockedUsers.size === 0) return false
     return userSetMatches(blockedUsers, username, platform, getUserAliasKeys(username, platform))
+  }
+
+  // Per-tab hide predicate — hot path, so short-circuit before allocating alias
+  // keys when this tab has no hidden users. Same alias-matching as block/mute.
+  function isUserHiddenInTab(username, platform, tabId) {
+    if (!username || !tabId) return false
+    const set = perTabHidden.get(tabId)
+    if (!set || set.size === 0) return false
+    return userSetMatches(set, username, platform, getUserAliasKeys(username, platform))
   }
 
   // Content-warning filters live entirely in the settings registry (schema
@@ -6142,9 +6159,19 @@
     // Tab switch closes profile card without re-rendering (we'll render the tab below)
     if (typeof activeProfileCard !== 'undefined' && activeProfileCard) activeProfileCard = null
 
-    // Clicking feed tab while in thread view → go back to feed, don't switch tabs
+    // Clicking feed tab (relabeled "back") while in thread view → close the
+    // thread. If we entered from a channel tab, return THERE, not the feed —
+    // switchTab(rt) with currentTab still 'feed' also runs the thread-cleanup
+    // block below (nulls activeThread, resets the feed tab label). Otherwise
+    // just close and stay on the feed.
     if (id === 'feed' && currentTab === 'feed' && activeThread) {
-      closeThread()
+      if (threadReturnTab && threadReturnTab !== 'feed') {
+        const rt = threadReturnTab
+        threadReturnTab = null
+        switchTab(rt)
+      } else {
+        closeThread()
+      }
       return
     }
 
@@ -6729,6 +6756,10 @@
     // sub events leave actor null, so their banners still render.
     if (m.user && isUserBlocked(m.user, m.platform)) return null
     if (m.actor && isUserBlocked(m.actor, m.platform)) return null
+    // Per-tab hide (/hide) — fully drop this user's rows, but only when building
+    // for the tab they were hidden in (tabId), never globally.
+    if (m.user && isUserHiddenInTab(m.user, m.platform, tabId)) return null
+    if (m.actor && isUserHiddenInTab(m.actor, m.platform, tabId)) return null
     // Stream event — render as magenta inline notification.
     // Render-time gate: skip if the corresponding hermes toggle is off
     // (buffer can hold events saved before a toggle flipped). Mirrors the
@@ -6901,8 +6932,14 @@
           return
         }
         if (e.target.closest('a, .hs-mc-emote, .hs-mc-link')) return
+        // Remember where we came from so thread "back" returns here, not the feed.
+        threadReturnTab = currentTab === 'feed' ? null : currentTab
         switchTab('feed')
-        openThread(m.reply_to || m.base36_id)
+        // A reply row displays >>its-own-id but its thread is the PARENT — open
+        // the parent and highlight the clicked reply, else clicking a reply
+        // silently dumps you on the parent OP (looked like "wrong post"). Mirrors
+        // the feed-tab row handler (social.js buildFeedMessageDiv).
+        openThread(m.reply_to || m.base36_id, m.reply_to ? m.base36_id : null)
       })
       return div
     }
@@ -7533,6 +7570,8 @@
           if (!targetId) return
           const target = feedMessages.find((f) => f.base36_id === targetId)
           const threadId = target ? target.reply_to || target.base36_id : targetId
+          // Remember where we came from so thread "back" returns here, not the feed.
+          threadReturnTab = currentTab === 'feed' ? null : currentTab
           switchTab('feed')
           openThread(threadId, targetId)
         })

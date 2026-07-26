@@ -953,6 +953,8 @@ const SLASH_COMMANDS = [
   { cmd: 'note', args: '<user> <text>', desc: 'save a private note on a user' },
   { cmd: 'delnote', args: '<user>', desc: 'remove your note on a user' },
   { cmd: 'block', args: '<user>', desc: 'toggle block for a user' },
+  { cmd: 'hide', args: '<user>', desc: 'hide a user in THIS tab only (ephemeral)' },
+  { cmd: 'unhide', args: '<user>', desc: 'unhide a user in this tab' },
   { cmd: 'set', args: '<setting> <value>', desc: 'change a setting (e.g. /set zebra off, /set fontsize 15)' },
   { cmd: 'tab', args: '<name>', desc: 'switch tab (live/feed/mentions/whispers/settings or a channel)' },
   { cmd: 'vip', args: '<user>', desc: 'VIP a user (twitch broadcaster)' },
@@ -1048,6 +1050,8 @@ function createInputBar() {
   bar.innerHTML = `
     ${inputHtml}
     <span id="hs-mc-sendtargets"></span>
+    <input type="file" id="hs-mc-attach-input" accept="image/*,video/*" hidden>
+    <button id="hs-mc-attach-btn" type="button" title="${t('mc_input_attach')}" aria-label="${t('mc_input_attach')}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18"></rect><circle cx="8.5" cy="8.5" r="1.6" fill="currentColor" stroke="none"></circle><path d="M21 15l-5-5L4 21"></path></svg></button>
     <button id="hs-mc-emote-btn"><img src="${iconUrl}" data-src="${iconUrl}" data-src-black="${iconBlackUrl}" alt="hs"></button>
   `
 
@@ -1394,6 +1398,32 @@ function initInput() {
 
   // Initialize character counter
   updateCharCount()
+
+  // Attach button → hidden file picker → existing upload pipeline (same as
+  // paste/drop: uploads then inserts the URL into the composer, which
+  // postFeedMessage/sendMessage pick up as media). Clone-rewire guard mirrors
+  // the emote-btn block below (sheds dead listeners from a stale ext context).
+  let attachBtn = document.getElementById('hs-mc-attach-btn')
+  if (attachBtn && attachBtn._hsInitialized && attachBtn._hsInitialized !== MC_WIRE_CTX) {
+    const fresh = attachBtn.cloneNode(true)
+    attachBtn.replaceWith(fresh)
+    attachBtn = fresh
+  }
+  if (attachBtn && !attachBtn._hsInitialized) {
+    attachBtn._hsInitialized = MC_WIRE_CTX
+    const fileInput = document.getElementById('hs-mc-attach-input')
+    attachBtn.addEventListener('click', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      fileInput?.click()
+    })
+    fileInput?.addEventListener('change', () => {
+      const file = fileInput.files?.[0]
+      // Reset first so picking the SAME file twice re-fires change.
+      fileInput.value = ''
+      if (file) handleMediaUpload(file)
+    })
+  }
 
   // Emote picker button (includes twitch features in tabs)
   let emoteBtn = document.getElementById('hs-mc-emote-btn')
@@ -2234,6 +2264,13 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
       fn: () => hsBlockFromMenu(username, platform),
     },
     { label: isMuted ? 'unmute' : 'mute (24h)', danger: !isMuted, fn: () => _toggleMcMute(username, platform) },
+    {
+      label:
+        typeof isUserHiddenInTab === 'function' && isUserHiddenInTab(username, platform, currentTab)
+          ? 'unhide in tab'
+          : 'hide in tab',
+      fn: () => _tabHide(username, platform, 'toggle'),
+    },
     'sep',
     {
       label: 'copy name',
@@ -2612,6 +2649,38 @@ async function _toggleMcBlock(username, platform) {
   // buildMessageDiv filters blocked users, so a full re-render hides/restores them.
   // bypassScrollPause so a block applied while scrolled up takes effect now
   // instead of silently waiting until the reader returns to the bottom.
+  renderMessages(currentTab, { bypassScrollPause: true })
+}
+
+// Per-tab hide toggle — like _toggleMcBlock but writes an EPHEMERAL, tab-scoped
+// set (perTabHidden) with NO safeSendMessage fan-out and NO persistence, so it
+// never leaks to other tabs/surfaces. mode: 'toggle' (right-click) | 'hide' | 'unhide'.
+async function _tabHide(username, platform, mode = 'toggle') {
+  const tab = currentTab
+  if (!username || !tab) return
+  const aliasKeys = await expandUserAliasKeys(username, platform)
+  const isHidden = typeof isUserHiddenInTab === 'function' && isUserHiddenInTab(username, platform, tab)
+  const shouldHide = mode === 'toggle' ? !isHidden : mode === 'hide'
+  let set = perTabHidden.get(tab)
+  if (shouldHide) {
+    if (!set) {
+      set = new Set()
+      perTabHidden.set(tab, set)
+    }
+    for (const k of aliasKeys) set.add(k)
+    showToast(t('mc_input_tab_hidden', [username]), 'success')
+  } else {
+    if (set) {
+      for (const k of aliasKeys) set.delete(k)
+      // Clear any legacy bare entry too, so unhide always lands.
+      const bare = String(username == null ? '' : username)
+        .toLowerCase()
+        .replace(/^@/, '')
+      if (bare) set.delete(bare)
+      if (set.size === 0) perTabHidden.delete(tab)
+    }
+    showToast(t('mc_input_tab_unhidden', [username]), 'success')
+  }
   renderMessages(currentTab, { bypassScrollPause: true })
 }
 
@@ -7224,6 +7293,18 @@ async function handleSlashCommand(text, input) {
     // _toggleMcBlock inside it show their own success/error toast, so don't add
     // a second one here.
     await hsBlockFromMenu(user, hostPlatform || 'twitch')
+    clearInput(input)
+    return true
+  }
+
+  // ── /hide, /unhide — per-tab, ephemeral (see _tabHide) ──────────────────
+  if (cmd === 'hide' || cmd === 'unhide') {
+    const user = rest.trim().replace(/^@/, '')
+    if (!user || /\s/.test(user)) {
+      showToast(`/${cmd} <user> — ${cmd === 'hide' ? 'hides' : 'unhides'} in this tab`, 'error')
+      return true
+    }
+    await _tabHide(user, hostPlatform || 'twitch', cmd)
     clearInput(input)
     return true
   }

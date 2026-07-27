@@ -1069,8 +1069,12 @@
       // spoofed url-map (page JS can post one — MAIN-world nonce is observable, see
       // the init-nonce note) could plant tracking-pixel URLs. Allowlist emote CDNs
       // only; drop anything else. Defends the sink regardless of nonce reachability.
+      // Mirrors background.js EMOTE_CDN_PATTERN — cdn.heatsync.org/heatsync.org
+      // and files.kick.com must be present or self-hosted + kick emotes silently
+      // fail to patch native img.src through this path (the same omission that
+      // once dropped every uploaded emote from the inventory).
       const EMOTE_CDN_RE =
-        /^https:\/\/(static-cdn\.jtvnw\.net\/emoticons|cdn\.7tv\.app|cdn\.betterttv\.net|cdn\.frankerfacez\.com)\//
+        /^https:\/\/(static-cdn\.jtvnw\.net\/emoticons|cdn\.(7tv\.app|betterttv\.net|frankerfacez\.com|heatsync\.org)|heatsync\.org|files\.kick\.com)\//
       for (const [k, v] of Object.entries(e.data.urlMap)) {
         if (typeof v === 'string' && EMOTE_CDN_RE.test(v)) window.__heatsyncEmoteUrls[k] = v
       }

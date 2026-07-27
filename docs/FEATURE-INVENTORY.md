@@ -8,7 +8,7 @@
 
 ## what it is
 
-viewer emote sovereignty: a 5000-slot personal emote inventory (uploaded on
+viewer emote sovereignty: a 5,000-slot personal emote inventory (uploaded on
 heatsync.org) that renders in native twitch/kick/youtube chat — no streamer
 approval, no sub required — plus a unified multichat overlay that aggregates
 all three platforms. ~82k loc, zero runtime deps (esbuild is the only build
@@ -43,7 +43,7 @@ verified present in code on 2026-06-13:
 
 ## feature inventory (grouped)
 
-**emotes** — 5000-slot server-side inventory; tab-complete + wysiwyg in native
+**emotes** — 5,000-slot server-side inventory; tab-complete + wysiwyg in native
 twitch/kick/yt inputs; auto-add-on-send (ext only); zero-width/overlay stacking;
 picker button beside native input (virtual-scroll grid, recent row, 7tv/bttv/ffz
 search); per-emote right-click block (menu/instant/off); content-warning

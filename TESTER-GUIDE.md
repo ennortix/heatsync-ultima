@@ -43,7 +43,7 @@ minification: esbuild minify runs automatically when `--package` (or `--deploy`)
 
 1. go to https://heatsync.org
 2. login with twitch or kick
-3. add some emotes to your set (or use the defaults)
+3. add some emotes to your inventory (or use the defaults)
 
 ---
 
@@ -52,7 +52,7 @@ minification: esbuild minify runs automatically when `--package` (or `--deploy`)
 open twitch.tv, kick.com, or a youtube live stream and try these:
 
 ### basic functionality
-- [ ] emotes from your set appear in chat when you type them
+- [ ] emotes from your inventory appear in chat when you type them
 - [ ] other heatsync users' emotes appear in chat
 - [ ] emotes render as images (not just text)
 

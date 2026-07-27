@@ -73,7 +73,7 @@
     "message": "heatsync"
   },
   "welcome_tagline": {
-    "message": "any 7tv, bttv or ffz emote — in every chat. 5000-slot inventory, free."
+    "message": "any 7tv, bttv or ffz emote — in every chat. 5,000-slot inventory, free."
   },
   "welcome_cta": {
     "message": "open a stream → try it"
@@ -1067,7 +1067,7 @@
     "message": "emoji size"
   },
   "mc_settings_emoji_size_desc": {
-    "message": "emoji size -- 1x native, 2x (default)/4x scale unicode emoji"
+    "message": "emoji size — 1x native, 2x (default)/4x scale unicode emoji"
   },
   "mc_settings_timestamp_format": {
     "message": "timestamp format"
@@ -1322,7 +1322,7 @@
     "message": "filter regex"
   },
   "mc_settings_automod_regex_desc": {
-    "message": "one pattern per line, case-insensitive -- matching messages get hidden"
+    "message": "one pattern per line, case-insensitive — matching messages get hidden"
   },
   "mc_settings_automod_regex_placeholder": {
     "message": "bit\\.ly\nfree\\s+v[\\-]?bucks"

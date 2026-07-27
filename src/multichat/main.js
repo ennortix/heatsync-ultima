@@ -538,6 +538,7 @@
   // reconciled against the buffer on restore.
   // ============================================
   const _tabCache = new Map() // tabId → { frag, msgKeyIndex, uidIndex, mentionIndex }
+  const _TAB_CACHE_MAX = 4 // LRU cap — each entry can hold up to 1500 detached rows
   try {
     document.documentElement.dataset.hsTabCacheV1 = '1'
   } catch {}
@@ -600,6 +601,13 @@
     for (const [k, v] of _uidIndex) uidIndex.set(k, new Set(v))
     const mentionIndex = new Map()
     for (const [k, v] of _mentionIndex) mentionIndex.set(k, new Set(v))
+    // Re-set (delete then set) moves tabId to the MRU end of iteration order —
+    // a Map re-assigning an EXISTING key does not reorder it. LRU-evict past
+    // the cap: each entry holds a DocumentFragment of up to 1500 detached rows
+    // plus cloned index Maps, so an unbounded number of snapshotted-and-never-
+    // revisited tabs (many channels switched through in one session) would
+    // otherwise grow this without limit.
+    _tabCache.delete(tabId)
     _tabCache.set(tabId, {
       frag,
       msgKeyIndex,
@@ -612,6 +620,7 @@
       isScrolledUp,
       newMessageCount,
     })
+    if (_tabCache.size > _TAB_CACHE_MAX) _tabCache.delete(_tabCache.keys().next().value)
     _msgKeyIndex.clear()
     _uidIndex.clear()
     _mentionIndex.clear()

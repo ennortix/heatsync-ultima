@@ -15,7 +15,12 @@
  */
 function escapeHtml(str) {
   if (str == null) return ''
-  return String(str)
+  const s = typeof str === 'string' ? str : String(str)
+  // Hot path: processEmotes calls this 6-8x per rendered emote, and most
+  // chat text has no HTML specials at all — skip the 5 chained .replace()
+  // passes (each a full-string scan) when there's nothing to escape.
+  if (!/[&<>"']/.test(s)) return s
+  return s
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -32,7 +37,11 @@ function escapeHtml(str) {
  */
 function unescapeHtml(str) {
   if (str == null) return ''
-  return String(str)
+  const s = typeof str === 'string' ? str : String(str)
+  // Every entity escapeHtml produces starts with '&' — no '&' means nothing
+  // to unescape, skip the 5 chained .replace() passes.
+  if (s.indexOf('&') === -1) return s
+  return s
     .replace(/&#x27;/g, "'")
     .replace(/&quot;/g, '"')
     .replace(/&gt;/g, '>')

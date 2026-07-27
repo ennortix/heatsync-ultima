@@ -26,7 +26,7 @@ function sliceBetween(startMarker, endMarker) {
   return SRC.slice(s, e)
 }
 
-const branchSrc = sliceBetween('const rawWord = unescapeHtml(word)', '// Build the new item')
+const branchSrc = sliceBetween("const rawWord = word.indexOf('&')", '// Build the new item')
 // Real own-toggle helper (HS_CW_SETTING_BY_CAT + hsOwnCwHiddenCat), so the
 // own-cwCats path is tested against production logic, not a stub.
 const helperSrc = sliceBetween('const HS_CW_SETTING_BY_CAT', 'function processEmotes(')

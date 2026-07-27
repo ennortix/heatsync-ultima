@@ -2744,7 +2744,13 @@ function zeroWidthFromAnyCache(name) {
   // (`&gt;:3`). Unescape so specials resolve. Identity for names without `&`.
   const raw = name.indexOf('&') === -1 ? name : unescapeHtml(name)
   if (emoteCache.get(raw)?.zeroWidth) return true
-  for (const m of Object.values(channelEmoteCaches)) {
+  // for-in over the live object instead of Object.values() — this runs once
+  // per rendered emote whose own zeroWidth flag is falsy (nearly all of
+  // them), and a fresh array allocation on every call was pure per-render
+  // churn. for-in reads channelEmoteCaches directly (no snapshot to go
+  // stale), so a newly-loaded channel cache is always seen immediately.
+  for (const k in channelEmoteCaches) {
+    const m = channelEmoteCaches[k]
     if (m && typeof m.get === 'function' && m.get(raw)?.zeroWidth) return true
   }
   return false
@@ -2772,7 +2778,8 @@ function zeroWidthForSameAsset(name, url) {
   // search, absent from the current channel's caches) still recovers.
   if (check(viewerPersonalEmotes.get(name))) return true
   if (check(emoteCache.get(name))) return true
-  for (const m of Object.values(channelEmoteCaches)) {
+  for (const k in channelEmoteCaches) {
+    const m = channelEmoteCaches[k]
     if (m && typeof m.get === 'function' && check(m.get(name))) return true
   }
   return false
@@ -3316,6 +3323,7 @@ function _hsMcApplyMods(html, mods, hue) {
 const _hsEmoteBoxW = new Map() // chat url -> integer px (ceil of natural box width)
 const _hsSnapQueue = new Set()
 let _hsSnapScheduled = false
+const HS_SNAP_QUEUE_CAP = 200
 // Attach the integer-width snap to a composer chip. Every chip-creation site
 // must call this: a chip with a fractional width puts every character typed
 // AFTER it on a fractional x, and the bitmap font smears. Measured live on a
@@ -3336,7 +3344,21 @@ function hsSnapEmoteBox(img) {
   // smeared post-emote text in chat rows.
   if (!img?.classList) return
   if (!img.classList.contains('hs-mc-emote') && !img.classList.contains('hs-input-emote')) return
+  // A hidden tab has no layout to fix — enqueuing here would leak every emote
+  // img appended for the whole backgrounded stream (rAF never fires while
+  // hidden, so _hsSnapScheduled latches true), then drain in ONE frame of N
+  // offsetWidth reads on refocus ("came back to the tab and it froze"). The
+  // visibilitychange handler below re-snaps whatever's mounted on return.
+  if (document.hidden) return
   _hsSnapQueue.add(img)
+  // Belt-and-suspenders cap: some backgrounding paths (OS tab discard, devtools
+  // throttling) don't flip document.hidden. Drop the oldest rather than grow
+  // unbounded — a dropped img self-heals on its next sighting (re-render, or
+  // the visibilitychange re-snap).
+  if (_hsSnapQueue.size > HS_SNAP_QUEUE_CAP) {
+    const oldest = _hsSnapQueue.values().next().value
+    _hsSnapQueue.delete(oldest)
+  }
   if (_hsSnapScheduled) return
   _hsSnapScheduled = true
   cleanup.raf(() => {
@@ -3431,6 +3453,29 @@ function hsSnapEmoteBox(img) {
         // emote URLs; without eviction this Map grows unbounded for the tab's life.
         if (_hsEmoteBoxW.size > 2000) _hsEmoteBoxW.delete(_hsEmoteBoxW.keys().next().value)
       }
+    }
+  })
+}
+// hsSnapEmoteBox skips enqueuing entirely while hidden (no layout to fix), so
+// nothing accumulates during a backgrounded stream — but that also means any
+// emote img appended while hidden never gets snapped. Re-arm on hide (a
+// scheduled-but-never-fired rAF would otherwise latch _hsSnapScheduled true
+// forever, silently no-oping every enqueue attempt after return — see the
+// project invariant that document.hidden freezes render) and re-snap every
+// emote currently mounted once the tab is visible again.
+// Guarded: this file is also `import`ed directly by unit tests running under
+// bun (no DOM, no window) that stub only the specific cleanup methods each
+// test exercises — skip registration there rather than requiring every such
+// test to also stub addEventListener.
+if (typeof document !== 'undefined' && typeof cleanup?.addEventListener === 'function') {
+  cleanup.addEventListener(document, 'visibilitychange', () => {
+    if (document.hidden) {
+      _hsSnapQueue.clear()
+      _hsSnapScheduled = false
+      return
+    }
+    for (const im of document.querySelectorAll('img.hs-mc-emote, img.hs-input-emote')) {
+      if (im.isConnected) hsSnapEmoteBox(im)
     }
   })
 }
@@ -3751,7 +3796,9 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
       const isOverlay = !!cached?.zeroWidth || (cached && zeroWidthFromAnyCache(emoteName))
       // emoteName is extracted from escaped text — check raw form against the
       // raw-keyed blocked/inventory stores and escape from raw (no double).
-      const rawEmoteName = unescapeHtml(emoteName)
+      // Guard: escapeHtml is identity for names without specials, so skip the
+      // unescape when there's nothing to undo (runs once per Kick emote token).
+      const rawEmoteName = emoteName.indexOf('&') === -1 ? emoteName : unescapeHtml(emoteName)
       // hash check catches the same asset re-listed under a different alias —
       // the kick numeric id IS the stored hash (background.js hash: String(e.id)).
       const isBlocked =
@@ -3838,7 +3885,11 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
     if (!emote) {
       // blockedEmoteFallback is keyed by RAW names (picker/server side); the
       // escaped `word` misses for specials (`>:3`) — try the raw form too.
-      const _bf = blockedEmoteFallback.get(word) || blockedEmoteFallback.get(unescapeHtml(word))
+      // Guard the unescape call: this runs for EVERY non-emote word (the
+      // common case), and word.indexOf('&') === -1 (no specials) means the
+      // raw form is identical — skip the redundant unescape + second .get.
+      const _bf =
+        blockedEmoteFallback.get(word) || (word.indexOf('&') !== -1 && blockedEmoteFallback.get(unescapeHtml(word)))
       if (_bf?.url) emote = _bf
     }
     if (emote) {
@@ -3904,7 +3955,9 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
       // `word` is an already-escaped token (&lt;3 for <3). Blocked/inventory
       // stores hold RAW names (picker/server side), so check the raw form too
       // — and escape from raw so attrs aren't double-escaped (&amp;lt;3 alt).
-      const rawWord = unescapeHtml(word)
+      // Guard: skip the unescape when word has no specials (the common case,
+      // runs per resolved emote) — the raw form would just equal word.
+      const rawWord = word.indexOf('&') === -1 ? word : unescapeHtml(word)
       // trailing-0 overlay resolved from the BASE name — a block on the base
       // must hide the overlay too ("name0" itself is never in the block set)
       // hash check catches the same underlying asset re-listed under a
@@ -3914,7 +3967,8 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
         blockedEmoteNames.has(word) ||
         blockedEmoteNames.has(rawWord) ||
         (overlayBaseName !== null &&
-          (blockedEmoteNames.has(overlayBaseName) || blockedEmoteNames.has(unescapeHtml(overlayBaseName)))) ||
+          (blockedEmoteNames.has(overlayBaseName) ||
+            (overlayBaseName.indexOf('&') !== -1 && blockedEmoteNames.has(unescapeHtml(overlayBaseName))))) ||
         (emote.hash && blockedEmoteHashes.has(String(emote.hash)))
       let state = isBlocked ? 'blocked' : emote.state || 'global'
       // Upgrade 'unadded' → 'owned' when the viewer actually has this name

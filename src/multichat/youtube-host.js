@@ -317,6 +317,9 @@ function _hsEnsureYtBelowObserver(_tries) {
   // ResizeObserver only fires on SIZE changes — but YT shifts the player's
   // POSITION without resizing it. The poll catches those pure moves and re-runs
   // the full layout recompute (which also republishes --hs-yt-below-top).
-  if (!_hsYtBelowPoll) _hsYtBelowPoll = cleanup.setInterval(_hsCheckYtPlayerMoved, 500)
+  // setIntervalIfVisible: a hidden tab has nothing painted to reposition —
+  // twice-a-second querySelector + getBoundingClientRect forever in the
+  // background is pure wasted work on low-end hardware.
+  if (!_hsYtBelowPoll) _hsYtBelowPoll = cleanup.setIntervalIfVisible(_hsCheckYtPlayerMoved, 500)
   _hsSetYtBelowTop()
 }

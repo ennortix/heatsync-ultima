@@ -192,7 +192,7 @@
       body: opts.body,
       auth: opts.auth,
     })
-    if (!resp || !resp.ok) {
+    if (!resp?.ok) {
       const err = new Error(resp?.error || `API error ${resp?.status}`)
       err.status = resp?.status
       throw err

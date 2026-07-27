@@ -21097,8 +21097,21 @@ class IRC extends ChatClient {
     const sendJoin = (attempt) => {
       safeSendMessage({ type: 'bg_irc_join', channel: ch }).then((r) => {
         if (r && r.ok !== false) return
-        if (attempt >= 3 || !this.channels.has(ch)) {
-          log('BG join failed for', ch)
+        if (!this.channels.has(ch)) {
+          // Channel was removed (tab closed) during the retry backoff — not
+          // our failure to report, nothing left to clean up.
+          log('BG join failed for', ch, '(already removed)')
+          return
+        }
+        if (attempt >= 3) {
+          log('BG join failed for', ch, '- giving up after', attempt + 1, 'attempts')
+          // channels.set() above blocks join()'s re-entry guard forever —
+          // without this a failed join permanently empties the tab until the
+          // user manually refreshes. Delete so a later join(ch) can retry.
+          this.channels.delete(ch)
+          try {
+            showToast(t('mc_irc_join_failed', [ch]), 'error')
+          } catch (_) {}
           return
         }
         setTimeout(() => sendJoin(attempt + 1), 2000 * (attempt + 1))
@@ -39951,7 +39964,7 @@ function createInputBar() {
     <span id="hs-mc-sendtargets"></span>
     <input type="file" id="hs-mc-attach-input" accept="image/*,video/*" hidden>
     <button id="hs-mc-attach-btn" type="button" title="${t('mc_input_attach')}" aria-label="${t('mc_input_attach')}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18"></rect><circle cx="8.5" cy="8.5" r="1.6" fill="currentColor" stroke="none"></circle><path d="M21 15l-5-5L4 21"></path></svg></button>
-    <button id="hs-mc-emote-btn"><img src="${iconUrl}" data-src="${iconUrl}" data-src-black="${iconBlackUrl}" alt="hs"></button>
+    <button id="hs-mc-emote-btn" title="${t('mc_input_emote_picker')}" aria-label="${t('mc_input_emote_picker')}"><img src="${iconUrl}" data-src="${iconUrl}" data-src-black="${iconBlackUrl}" alt="hs"></button>
   `
 
   // Initialize input after DOM insertion. Icon hover-swap lives in initInput's
@@ -57383,6 +57396,19 @@ const STORAGE_KEY = 'heatsync_multichat'
     }
   })
 
+  // Shared fail-loud path for user-intent storage writes — an added channel,
+  // a mute, a block. A swallowed failure here means the action LOOKS saved
+  // (the in-memory state + UI already reflect it) and is silently gone on
+  // reload. console.warn alone doesn't cut it — the error reporter only
+  // hooks console.error. Every write below this shape routes through here
+  // instead of duplicating the try/catch/toast.
+  function reportStorageWriteFailure(what, err, toastKey) {
+    console.error(`[heatsync-mc] ${what} storage write failed:`, err)
+    try {
+      showToast(t(toastKey), 'error')
+    } catch (_) {}
+  }
+
   // Muted users (right-click to hide) — hydrated at boot from the
   // background-synced `muted_users` key (see PHASE 2), NOT from the
   // heatsync_mc_muted write below, which nothing reads. Do not "fix" that by
@@ -57395,15 +57421,11 @@ const STORAGE_KEY = 'heatsync_multichat'
   // already fired. Mirrors the ui_settings save path's fail-loud convention.
   function persistMcMuted() {
     try {
-      chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] }).catch(() => {
-        try {
-          showToast(t('mc_main_mute_save_failed'), 'error')
-        } catch (_) {}
-      })
-    } catch (_) {
-      try {
-        showToast(t('mc_main_mute_save_failed'), 'error')
-      } catch (_) {}
+      chrome.storage.local
+        .set({ heatsync_mc_muted: [...mutedUsers] })
+        .catch((e) => reportStorageWriteFailure('mute list', e, 'mc_main_mute_save_failed'))
+    } catch (e) {
+      reportStorageWriteFailure('mute list', e, 'mc_main_mute_save_failed')
     }
   }
   // Blocked users (right-click → block) — fully hidden, not just stripped like mute.
@@ -60019,12 +60041,12 @@ const STORAGE_KEY = 'heatsync_multichat'
     // Static hardcoded buttons — all in one wrapping flow, no user input
     container.innerHTML = `
       <div class="hs-mc-tabs-scroll">
-        <button class="hs-mc-tab active" data-tab="feed">${t('mc_tab_feed')}</button>
+        <button class="hs-mc-tab" data-tab="feed">${t('mc_tab_feed')}</button>
         <button class="hs-mc-tab" data-tab="whispers">${t('mc_tab_whispers')}</button>
         <button class="hs-mc-tab" data-tab="mentions">${t('mc_tab_mentions')}</button>
         <button class="hs-mc-tab" data-tab="pinned">${t('mc_tab_pinned')}</button>
         <button class="hs-mc-tab" data-tab="modlog">${t('mc_tab_modlog')}</button>
-        <button class="hs-mc-tab" data-tab="live">${t('mc_tab_live')}</button>
+        <button class="hs-mc-tab active" data-tab="live">${t('mc_tab_live')}</button>
         <button class="hs-mc-tab" data-tab="add">+</button>
       </div>
       <div class="hs-mc-right-cluster">
@@ -60273,9 +60295,49 @@ const STORAGE_KEY = 'heatsync_multichat'
 
   // User-hidable tabs — persisted in ui_settings.hiddenTabs (auto-syncs cross-device)
   const HIDABLE_TABS = ['feed', 'whispers', 'mentions', 'pinned', 'modlog']
-  // Default hidden — empty for new users until they enable in settings (saved/pinned tab)
-  const DEFAULT_HIDDEN_TABS = ['pinned']
-  let hiddenTabs = new Set(DEFAULT_HIDDEN_TABS)
+  // Real steady-state default stays 'pinned' only (see hiddenTabs registry entry
+  // in settings-schema.js) — this wider set is the fresh-install-only target:
+  // feed/whispers/mentions/modlog are empty or login-walled for a signed-out
+  // first-run user, so applyFreshInstallHiddenTabs() pushes new installs here
+  // once, and revealFreshInstallTabsOnce() un-hides them on first login.
+  const DEFAULT_HIDDEN_TABS = ['pinned', 'feed', 'whispers', 'mentions', 'modlog']
+  let hiddenTabs = new Set(['pinned'])
+
+  // One-time fresh-install tab hiding: background.js stamps hs_fresh_install_hidden_tabs
+  // on chrome.runtime.onInstalled(reason:'install') only — never on update, so
+  // existing users who never touched the Tabs setting are untouched. Consumes
+  // the flag immediately so this can never re-fire, and only applies if the
+  // user hasn't already customized hiddenTabs (never fights a manual choice).
+  async function applyFreshInstallHiddenTabs() {
+    try {
+      const { hs_fresh_install_hidden_tabs } = await chrome.storage.local.get('hs_fresh_install_hidden_tabs')
+      if (!hs_fresh_install_hidden_tabs) return
+      chrome.storage.local.remove('hs_fresh_install_hidden_tabs').catch(() => {})
+      const cur = getSetting('hiddenTabs')
+      if (Array.isArray(cur) && cur.length === 1 && cur[0] === 'pinned') {
+        setSetting('hiddenTabs', DEFAULT_HIDDEN_TABS)
+        saveUiSetting('hiddenTabsRevealPending', true)
+      }
+    } catch (_) {}
+  }
+  // Reveals the fresh-install-hidden tabs on first successful heatsync login.
+  // One-shot (guard flag consumed on first call) and only reveals if the user
+  // hasn't since customized hiddenTabs themselves — otherwise leaves their
+  // choice alone. Called both from the auth_changed broadcast and the
+  // get_auth_state boot probe (covers "already logged in before install finished").
+  async function revealFreshInstallTabsOnce() {
+    try {
+      const { ui_settings } = await chrome.storage.sync.get('ui_settings')
+      if (!ui_settings?.hiddenTabsRevealPending) return
+      saveUiSetting('hiddenTabsRevealPending', false)
+      const cur = getSetting('hiddenTabs')
+      const stillDefault =
+        Array.isArray(cur) &&
+        cur.length === DEFAULT_HIDDEN_TABS.length &&
+        DEFAULT_HIDDEN_TABS.every((id) => cur.includes(id))
+      if (stillDefault) setSetting('hiddenTabs', ['pinned'])
+    } catch (_) {}
+  }
 
   // Timestamps on messages (default off)
   let timestampsEnabled = false
@@ -67466,7 +67528,9 @@ const STORAGE_KEY = 'heatsync_multichat'
         data: { type: 'multichat:sync', channels: (config.channels || []).filter((c) => !c?.ephemeral) },
       })
     } catch (e) {
-      console.warn('saveConfig failed:', e)
+      // A swallowed failure here looks like a saved channel — it isn't. See
+      // reportStorageWriteFailure above.
+      reportStorageWriteFailure('channel config', e, 'mc_main_config_save_failed')
     }
   }
 
@@ -68767,7 +68831,10 @@ const STORAGE_KEY = 'heatsync_multichat'
       if (msg.type === 'auth_changed') {
         try {
           showAuthLoginBanner(!!msg.loggedIn)
-          if (msg.loggedIn) dismissEmoteLoginNudge()
+          if (msg.loggedIn) {
+            dismissEmoteLoginNudge()
+            revealFreshInstallTabsOnce()
+          }
         } catch (_) {}
       }
       if (msg.type === 'cosmetics_update') {
@@ -70002,6 +70069,23 @@ const STORAGE_KEY = 'heatsync_multichat'
     return isYtPopout || (onStreamPage && !hasChannelTabs) ? 'live' : _savedActiveTab || 'live'
   }
 
+  // PHASE -1 kill-switch aborts init before any panel/HsNotifs infra exists,
+  // so they used to bail behind log() — a no-op at MC_DEBUG=false — leaving
+  // an install at permanent zero UI with nothing telling the user why.
+  // Self-contained: no dependency on anything init() would normally set up.
+  function showKillSwitchBanner(reason, msg) {
+    try {
+      if (document.getElementById('hs-mc-killswitch-banner')) return
+      const banner = document.createElement('div')
+      banner.id = 'hs-mc-killswitch-banner'
+      banner.style.cssText =
+        'position:fixed;top:0;left:0;right:0;z-index:2147483647;background:#ff8700;color:#000;' +
+        'font:600 12px/1.4 monospace;padding:6px 10px;text-align:center;'
+      banner.textContent = msg ? `heatsync: ${reason} — ${msg}` : `heatsync: ${reason}`
+      ;(document.body || document.documentElement).appendChild(banner)
+    } catch (_) {}
+  }
+
   async function init() {
     // BG-created send-bridge tab (#hs-bridge on the live_chat url): stay
     // completely silent. Booting the multichat here rebound the single
@@ -70069,15 +70153,18 @@ const STORAGE_KEY = 'heatsync_multichat'
     }
     if (_hsHealth?.kill) {
       log('kill-switch active, aborting init')
+      showKillSwitchBanner('disabled by heatsync (kill-switch active)', _hsHealth?.msg)
       return
     }
     if (Array.isArray(_hsHealth?.disabled) && _hsHealth.disabled.includes('multichat')) {
       log('multichat disabled by server health flag')
+      showKillSwitchBanner('multichat disabled by heatsync', _hsHealth?.msg)
       return
     }
     const _curVer = chrome.runtime.getManifest?.().version || '0.0.0'
     if (_hsHealth?.ext_hard_min && _hsSemverLt(_curVer, _hsHealth.ext_hard_min)) {
       log('extension below ext_hard_min', _curVer, '<', _hsHealth.ext_hard_min)
+      showKillSwitchBanner(`extension update required (v${_hsHealth.ext_hard_min}+)`, _hsHealth?.msg)
       return
     }
     if (_hsHealth?.ext_min && _hsSemverLt(_curVer, _hsHealth.ext_min)) {
@@ -70223,6 +70310,10 @@ const STORAGE_KEY = 'heatsync_multichat'
         })
         .catch(() => {})
     }
+    // Fresh-install-only: hide feed/whispers/mentions/modlog until first login
+    // (see applyFreshInstallHiddenTabs above). Must land before the tab bar's
+    // first real paint, so it runs right after settings hydration.
+    await applyFreshInstallHiddenTabs()
     // Init done — drop the cache so subsequent reads see fresh data.
     invalidateUiSettingsCache()
     // Freeze the subsystem gates for the rest of init — a mid-init storage
@@ -70300,6 +70391,9 @@ const STORAGE_KEY = 'heatsync_multichat'
         if (chrome.runtime.lastError || !resp) return
         try {
           showAuthLoginBanner(!!resp.loggedIn)
+          // Covers a fresh install where the heatsync cookie was already valid
+          // (auth_changed won't fire again — that's a one-shot cookie event).
+          if (resp.loggedIn) revealFreshInstallTabsOnce()
         } catch {}
       })
     } catch {}

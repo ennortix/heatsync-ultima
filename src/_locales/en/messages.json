@@ -78,6 +78,9 @@
   "welcome_cta": {
     "message": "open a stream → try it"
   },
+  "welcome_cta_fallback": {
+    "message": "open any twitch stream"
+  },
   "welcome_next_label": {
     "message": "what happens when you click"
   },
@@ -822,6 +825,9 @@
   "mc_input_attach": {
     "message": "attach image or video"
   },
+  "mc_input_emote_picker": {
+    "message": "emote picker"
+  },
   "mc_input_tab_hidden": {
     "message": "hidden in this tab: $USER$",
     "placeholders": {
@@ -965,6 +971,14 @@
     "message": "message from $USER$ deleted",
     "placeholders": {
       "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_irc_join_failed": {
+    "message": "couldn't join $CHANNEL$ — reopen the tab to retry",
+    "placeholders": {
+      "channel": {
         "content": "$1"
       }
     }
@@ -2484,6 +2498,9 @@
         "content": "$2"
       }
     }
+  },
+  "mc_main_config_save_failed": {
+    "message": "channel not saved — storage error"
   },
   "mc_main_mute_save_failed": {
     "message": "mute list not saved — storage error"

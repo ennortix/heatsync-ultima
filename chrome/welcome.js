@@ -19,22 +19,28 @@ function t(k) {
 
 // Deep-link the CTA to the hottest live twitch/kick channel instead of the
 // twitch front page — click → busy chat → emotes render → wow, no browsing
-// step in between. Fail-safe: any error keeps the default twitch.tv href.
+// step in between. Fail path: /api/live/top failing or coming back empty
+// used to silently keep the default href (twitch.tv's front page) while the
+// copy still implied a specific stream was picked — reinstating the exact
+// "browse for a stream" step this CTA exists to remove. Swap to honest copy
+// instead so the CTA never over-promises.
 ;(async () => {
+  const cta = document.querySelector('.cta[data-when="out"]')
   try {
     const res = await fetch('https://heatsync.org/api/live/top?limit=10')
-    if (!res.ok) return
+    if (!res.ok) throw new Error('live/top not ok')
     const { streams } = await res.json()
     const s = (streams || []).find(
       (x) => (x?.platform === 'twitch' || x?.platform === 'kick') && /^[a-zA-Z0-9_]{2,32}$/.test(x?.username || ''),
     )
-    if (!s) return
-    const cta = document.querySelector('.cta[data-when="out"]')
+    if (!s) throw new Error('no live streams')
     if (!cta) return
     cta.href = s.platform === 'kick' ? `https://kick.com/${s.username}` : `https://www.twitch.tv/${s.username}`
     const label = t('welcome_cta_live')
     cta.textContent = `${label === 'welcome_cta_live' ? 'watch live' : label} → ${s.username}`
-  } catch {}
+  } catch {
+    if (cta) cta.textContent = t('welcome_cta_fallback')
+  }
 })()
 
 // Live success state: the moment oauth completes (in the tab we open), the

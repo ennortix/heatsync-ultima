@@ -764,10 +764,23 @@ async function fetchHealth() {
     await browser.storage.local.set({ hs_health: sane, hs_health_at: Date.now() })
   } catch {}
 }
+// A cached kill/disabled/ext_hard_min flag is meant to survive a SW restart,
+// not outlive the server that set it. If heatsync.org has been unreachable
+// (or fetchHealth just never won a race) for a full day, a bad or
+// deploy-time-cached value would otherwise brick every install to zero UI
+// forever, even after the server recovered — the kill-switch never re-fetches
+// once it thinks it's dead. Age it out and fail open; ext_min/msg (soft,
+// non-destructive) ride along untouched.
+const HEALTH_MAX_AGE_MS = 24 * 60 * 60 * 1000
 async function getCachedHealth() {
   try {
-    const { hs_health } = await browser.storage.local.get('hs_health')
-    return hs_health || HEALTH_DEFAULT
+    const { hs_health, hs_health_at } = await browser.storage.local.get(['hs_health', 'hs_health_at'])
+    if (!hs_health) return HEALTH_DEFAULT
+    const stale = typeof hs_health_at !== 'number' || Date.now() - hs_health_at > HEALTH_MAX_AGE_MS
+    if (stale && (hs_health.kill || hs_health.disabled?.length || hs_health.ext_hard_min)) {
+      return { ...hs_health, kill: false, disabled: [], ext_hard_min: null }
+    }
+    return hs_health
   } catch {
     return HEALTH_DEFAULT
   }
@@ -780,8 +793,9 @@ browser.runtime.onInstalled.addListener((details) => {
   log(' 📦 onInstalled - extension installed/updated', details.reason)
   // Spread the herd: when 30k Chrome clients auto-update around the same
   // hour, every SW will wake and try to connect /ws at once. Delay each
-  // client's first connect by a random 0–60s.
-  pendingStartupJitterMs = Math.random() * 60000
+  // client's first connect by a random 0–60s. Skip on fresh install — that's
+  // one human waiting on a blank panel, not a thundering herd.
+  pendingStartupJitterMs = details.reason === 'install' ? 0 : Math.random() * 60000
   browser.storage.session?.set({ startup_jitter_at: Date.now() + pendingStartupJitterMs }).catch(() => {})
   // Clear any stale intervals from previous version
   activeIntervals.forEach((id) => clearInterval(id))
@@ -795,6 +809,11 @@ browser.runtime.onInstalled.addListener((details) => {
     channelEmotesFetchedAt = {}
     browser.storage.local.remove('channel_emotes_map').catch(() => {})
     browser.storage.local.remove('channel_emotes_fetched_at').catch(() => {})
+    // Tells multichat's first init to hide feed/whispers/mentions/modlog —
+    // empty/login-walled for a signed-out first-run user — until first login.
+    // Only stamped here (reason:'install'), never on update, so existing
+    // users who never touched the Tabs setting are never affected.
+    browser.storage.local.set({ hs_fresh_install_hidden_tabs: true }).catch(() => {})
   }
   // Don't re-inject content scripts on update. Soft-reinjection of 1.5MB of
   // bundled JS on top of a live React-mounted Twitch DOM was blanking the

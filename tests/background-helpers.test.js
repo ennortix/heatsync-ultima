@@ -1000,3 +1000,92 @@ describe('EMOTE_CDN allowlist parity across worlds', () => {
     }
   })
 })
+
+// ── getCachedHealth — 24h staleness ages out kill/disabled/ext_hard_min ──────
+//
+// A bad or deploy-time-cached kill-switch value must not brick an install
+// forever once the server that set it has moved on. Extracted with its
+// HEALTH_DEFAULT/HEALTH_MAX_AGE_MS deps so the aging math runs against the
+// real thresholds, not a hand-copied guess.
+
+const healthSrc = sliceBetween('const HEALTH_URL =', 'async function fetchHealth()')
+const healthCacheSrc = sliceBetween('const HEALTH_MAX_AGE_MS =', 'async function getCachedHealth()')
+// extractFn's `function ${name}(` marker matches mid-string inside "async
+// function ..." and drops the `async` keyword — put it back, or the
+// extracted body's `await` throws a syntax error outside an async function.
+const getCachedHealthSrc = `async ${extractFn('getCachedHealth')}`
+// Real threshold, not a hand-copied guess — used bare (not HEALTH_MAX_AGE_MS)
+// so test bodies never read off an unconstructed harness (TDZ).
+const HEALTH_MAX_AGE_MS = new Function(`${extractConstLine('HEALTH_MAX_AGE_MS')}\nreturn HEALTH_MAX_AGE_MS`)()
+
+function makeHealthHarness(stored) {
+  const browser = { storage: { local: { get: async () => stored } } }
+  return new Function(
+    'browser',
+    `${healthSrc}\n${healthCacheSrc}\n${getCachedHealthSrc}\nreturn { getCachedHealth, HEALTH_DEFAULT, HEALTH_MAX_AGE_MS }`,
+  )(browser)
+}
+
+describe('getCachedHealth — stale kill-switch fails open', () => {
+  test('no cached record → HEALTH_DEFAULT (fail open)', async () => {
+    const h = makeHealthHarness({})
+    expect(await h.getCachedHealth()).toEqual(h.HEALTH_DEFAULT)
+  })
+  test('fresh kill:true is honored', async () => {
+    const h = makeHealthHarness({
+      hs_health: { v: 1, kill: true, disabled: [], ext_hard_min: null, ext_min: '0.0.0', msg: 'down' },
+      hs_health_at: Date.now(),
+    })
+    const health = await h.getCachedHealth()
+    expect(health.kill).toBe(true)
+    expect(health.msg).toBe('down')
+  })
+  test('kill:true older than 24h is ignored — fails open', async () => {
+    const h = makeHealthHarness({
+      hs_health: { v: 1, kill: true, disabled: [], ext_hard_min: null, ext_min: '0.0.0', msg: 'down' },
+      hs_health_at: Date.now() - HEALTH_MAX_AGE_MS - 1000,
+    })
+    const health = await h.getCachedHealth()
+    expect(health.kill).toBe(false)
+  })
+  test('disabled:[...] older than 24h is cleared', async () => {
+    const h = makeHealthHarness({
+      hs_health: { v: 1, kill: false, disabled: ['multichat'], ext_hard_min: null, ext_min: '0.0.0', msg: null },
+      hs_health_at: Date.now() - HEALTH_MAX_AGE_MS - 1000,
+    })
+    const health = await h.getCachedHealth()
+    expect(health.disabled).toEqual([])
+  })
+  test('ext_hard_min older than 24h is cleared', async () => {
+    const h = makeHealthHarness({
+      hs_health: { v: 1, kill: false, disabled: [], ext_hard_min: '9.9.9', ext_min: '0.0.0', msg: null },
+      hs_health_at: Date.now() - HEALTH_MAX_AGE_MS - 1000,
+    })
+    const health = await h.getCachedHealth()
+    expect(health.ext_hard_min).toBeNull()
+  })
+  test('missing hs_health_at on an otherwise-killed record is treated as stale — fails open', async () => {
+    const h = makeHealthHarness({
+      hs_health: { v: 1, kill: true, disabled: [], ext_hard_min: null, ext_min: '0.0.0', msg: null },
+    })
+    const health = await h.getCachedHealth()
+    expect(health.kill).toBe(false)
+  })
+  test('stale record still keeps non-destructive ext_min/msg', async () => {
+    const h = makeHealthHarness({
+      hs_health: { v: 1, kill: true, disabled: [], ext_hard_min: null, ext_min: '2.0.0', msg: 'update please' },
+      hs_health_at: Date.now() - HEALTH_MAX_AGE_MS - 1000,
+    })
+    const health = await h.getCachedHealth()
+    expect(health.ext_min).toBe('2.0.0')
+    expect(health.msg).toBe('update please')
+  })
+  test('fresh, non-killed record passes through untouched', async () => {
+    const stored = {
+      hs_health: { v: 1, kill: false, disabled: [], ext_hard_min: null, ext_min: '1.2.3', msg: null },
+      hs_health_at: Date.now() - 1000,
+    }
+    const h = makeHealthHarness(stored)
+    expect(await h.getCachedHealth()).toEqual(stored.hs_health)
+  })
+})

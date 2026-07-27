@@ -768,8 +768,21 @@ class IRC extends ChatClient {
     const sendJoin = (attempt) => {
       safeSendMessage({ type: 'bg_irc_join', channel: ch }).then((r) => {
         if (r && r.ok !== false) return
-        if (attempt >= 3 || !this.channels.has(ch)) {
-          log('BG join failed for', ch)
+        if (!this.channels.has(ch)) {
+          // Channel was removed (tab closed) during the retry backoff — not
+          // our failure to report, nothing left to clean up.
+          log('BG join failed for', ch, '(already removed)')
+          return
+        }
+        if (attempt >= 3) {
+          log('BG join failed for', ch, '- giving up after', attempt + 1, 'attempts')
+          // channels.set() above blocks join()'s re-entry guard forever —
+          // without this a failed join permanently empties the tab until the
+          // user manually refreshes. Delete so a later join(ch) can retry.
+          this.channels.delete(ch)
+          try {
+            showToast(t('mc_irc_join_failed', [ch]), 'error')
+          } catch (_) {}
           return
         }
         setTimeout(() => sendJoin(attempt + 1), 2000 * (attempt + 1))

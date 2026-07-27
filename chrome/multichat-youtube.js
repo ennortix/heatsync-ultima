@@ -67611,6 +67611,11 @@ const STORAGE_KEY = 'heatsync_multichat'
       })
     }
     cleanup.trackObserver(_theatreObserver)
+    // Deadman: the observer's attributeFilter + class-substring pre-filter are
+    // guesses about how the platform flags theatre — kick has already moved
+    // the flag once (v1.7.31) and a miss fails silent. A slow poll bounds the
+    // damage of any future filter miss to 5s instead of forever.
+    cleanup.setIntervalIfVisible(() => detectTheatreMode(), 5000)
   }
 
   function applyChatPosition() {

@@ -777,6 +777,12 @@
         height: 24px;
         width: auto;
       }
+      .hs-yt-ac-emoji {
+        font-size: 16px;
+        width: 20px;
+        text-align: center;
+        flex-shrink: 0;
+      }
       .hs-yt-ac-vis { margin-left: auto; flex-shrink: 0; padding-left: 8px; }
       .hs-yt-ac-vis.v-all { color: #5fd75f; }
       .hs-yt-ac-vis.v-ext { color: #ffd75f; }
@@ -1120,18 +1126,48 @@
     ytRecentChatters.set(lower, { dn: display, t: Date.now() })
     while (ytRecentChatters.size > 600) ytRecentChatters.delete(ytRecentChatters.keys().next().value)
   }
-  function ytRecentChatterMatches(prefix) {
-    const ql = prefix.toLowerCase()
-    if (!ql || ql.startsWith('@')) return []
+  // Shared newest-first, time-windowed scan over ytRecentChatters — both the
+  // bare-word lead and '@'-mention completion read the same harvested set.
+  function matchRecentChatters(ql, extra) {
     const entries = [...ytRecentChatters.entries()]
     const floor = Date.now() - 10 * 60 * 1000 // last 10 REAL minutes, not relative to newest
     const out = []
     for (let k = entries.length - 1; k >= 0; k--) {
       const [l, v] = entries[k]
       if (v.t && v.t < floor) break
-      if (l.startsWith(ql)) out.push({ name: v.dn, isChatter: true })
+      if (l.startsWith(ql)) out.push({ name: v.dn, isChatter: true, ...extra })
     }
     return out
+  }
+  function ytRecentChatterMatches(prefix) {
+    const ql = prefix.toLowerCase()
+    if (!ql || ql.startsWith('@')) return []
+    return matchRecentChatters(ql)
+  }
+  // '@'-prefixed mention completion — same harvested chatters, '@' stripped
+  // for the match and restored on insert (see completeEmote's isMention branch).
+  function ytMentionMatches(query) {
+    const ql = query.toLowerCase()
+    if (!ql) return []
+    return matchRecentChatters(ql, { isMention: true })
+  }
+
+  // Emoji shortcode (':prefix') completion — same EMOJI_DATA global emoji-data.iso.js
+  // defines for the Kick hook (chrome/kick-autocomplete-hook.js), loaded earlier in
+  // this frame per the manifest so it's already a global by the time this runs.
+  const EMOJI_ENTRIES = typeof EMOJI_DATA !== 'undefined' ? EMOJI_DATA : []
+  function searchYtEmoji(query) {
+    if (!query || !EMOJI_ENTRIES.length) return []
+    const q = query.toLowerCase()
+    const exact = [],
+      prefix = [],
+      contains = []
+    for (const e of EMOJI_ENTRIES) {
+      if (e.name === q) exact.push(e)
+      else if (e.name.startsWith(q)) prefix.push(e)
+      else if (e.name.includes(q)) contains.push(e)
+    }
+    return [...exact, ...prefix, ...contains].slice(0, 8).map((e) => ({ name: e.name, emoji: e.emoji, isEmoji: true }))
   }
 
   let _setupAutocompleteRetryTimer = null
@@ -1173,6 +1209,21 @@
       () => {
         const word = getWordAtCaret(input)
         if (word && word.length >= 2) {
+          // '@' and ':' are dedicated modes — neither can prefix an emote name,
+          // so route them before the bare-word chatter+emote path (parity with
+          // kick-autocomplete-hook.js's activeMode split).
+          if (word[0] === '@') {
+            const mentionMatches = ytMentionMatches(word.slice(1))
+            if (mentionMatches.length > 0) showAutocomplete(mentionMatches, input)
+            else hideAutocomplete()
+            return
+          }
+          if (word[0] === ':') {
+            const emojiMatches = searchYtEmoji(word.slice(1))
+            if (emojiMatches.length > 0) showAutocomplete(emojiMatches, input)
+            else hideAutocomplete()
+            return
+          }
           // Recent chatters lead, then emotes. Shows even when no emotes are
           // loaded yet, so a name prefix still completes.
           const chatters = ytRecentChatterMatches(word)
@@ -1196,7 +1247,7 @@
           e.preventDefault()
           e.stopPropagation()
           const selected = acItems[acSelectedIndex >= 0 ? acSelectedIndex : 0]
-          if (selected) completeEmote(input, selected.name)
+          if (selected) completeEmote(input, selected)
           hideAutocomplete()
         } else if (e.key === 'ArrowDown') {
           e.preventDefault()
@@ -1273,7 +1324,7 @@
   // (needs that ext) → orange heatsync only. Unknown source falls back to the
   // neutral category so it never asserts a wrong visibility.
   function hsVisTag(e) {
-    if (e.isChatter) return { t: 'everyone', cls: 'v-all' }
+    if (e.isChatter || e.isEmoji) return { t: 'everyone', cls: 'v-all' }
     const tier = e._ytTier ?? 2
     const src = (e.source || '').toLowerCase()
     if (src === 'twitch' || src === 'youtube') return { t: src, cls: 'v-all' }
@@ -1294,7 +1345,12 @@
       item.className = `hs-yt-ac-item${i === 0 ? ' selected' : ''}`
       item.dataset.index = String(i)
 
-      if (!emote.isChatter) {
+      if (emote.isEmoji) {
+        const emojiSpan = document.createElement('span')
+        emojiSpan.className = 'hs-yt-ac-emoji'
+        emojiSpan.textContent = emote.emoji
+        item.appendChild(emojiSpan)
+      } else if (!emote.isChatter) {
         const img = document.createElement('img')
         img.src = emote.url
         img.alt = emote.name
@@ -1303,7 +1359,7 @@
       }
 
       const span = document.createElement('span')
-      span.textContent = emote.name
+      span.textContent = emote.isEmoji ? `:${emote.name}:` : emote.name
       item.appendChild(span)
 
       const vis = hsVisTag(emote)
@@ -1314,7 +1370,7 @@
 
       item.addEventListener('mousedown', (ev) => {
         ev.preventDefault()
-        completeEmote(input, emote.name)
+        completeEmote(input, emote)
         hideAutocomplete()
       })
 
@@ -1338,12 +1394,18 @@
     items.forEach((el, i) => el.classList.toggle('selected', i === acSelectedIndex))
   }
 
-  function completeEmote(input, emoteName) {
+  // item: the acItems entry — a heatsync emote, or an {isChatter}/{isEmoji} row.
+  // Mentions restore the '@' stripped for matching; emoji insert the unicode
+  // char, not the shortcode text. Only genuine emote picks feed the shared
+  // recent-emotes MRU — chatter names and emoji shortcodes aren't emote usage.
+  function completeEmote(input, item) {
     const sel = window.getSelection()
     if (!sel.rangeCount) return
     const range = sel.getRangeAt(0)
     const node = range.startContainer
     if (node.nodeType !== Node.TEXT_NODE) return
+
+    const insertValue = item.isMention ? `@${item.name}` : item.isEmoji ? item.emoji : item.name
 
     const text = node.textContent
     const offset = range.startOffset
@@ -1352,16 +1414,16 @@
 
     const before = text.substring(0, wordStart)
     const after = text.substring(offset)
-    node.textContent = `${before + emoteName} ${after}`
+    node.textContent = `${before + insertValue} ${after}`
 
-    const newOffset = wordStart + emoteName.length + 1
+    const newOffset = wordStart + insertValue.length + 1
     range.setStart(node, newOffset)
     range.setEnd(node, newOffset)
     sel.removeAllRanges()
     sel.addRange(range)
 
     input.dispatchEvent(new Event('input', { bubbles: true }))
-    recordRecentEmoteMru(emoteName)
+    if (!item.isChatter && !item.isEmoji) recordRecentEmoteMru(item.name)
   }
 
   // Shared MRU with the multichat picker ('hs-mc-recent-emotes', same origin) —

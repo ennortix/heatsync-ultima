@@ -124,17 +124,9 @@
     .hs-pcard-livedot { color: var(--hs-live); font-size: 9px; }
     /* Filled-style platform pills — mirror #hs-user-tooltip .hs-pc-platform
        so the click-card identity row looks identical to the hover tooltip. */
-    .hs-pcard-pill {
-      padding: 1px 2px; border: 1px solid #000; text-decoration: none;
-      font-weight: 900; letter-spacing: 0.2px; white-space: nowrap;
-      display: inline-flex; align-items: center; gap: 3px;
-      line-height: 16px;
-    }
-    .hs-pcard-pill:hover { background: #fff !important; color: #000 !important; border-color: #000; }
     .hs-pcard-pill-twitch { background: var(--hs-plat-twitch); color: #fff; }
     .hs-pcard-pill-kick { background: var(--hs-plat-kick); color: #000; }
     .hs-pcard-pill-youtube { background: var(--hs-plat-youtube); color: #fff; }
-    .hs-pcard-pill-live { color: var(--hs-live); }
     .hs-pcard-bio {
       color: #aaa; font-size: 13px; line-height: 18px;
       white-space: pre-wrap; word-break: break-word;
@@ -175,6 +167,7 @@
     .hs-pcard-sheet .val-ttv { color: var(--hs-plat-twitch); }        /* twitch brand */
     .hs-pcard-sheet .val-kick { color: var(--hs-plat-kick); }       /* kick brand */
     .hs-pcard-sheet .val-yt { color: var(--hs-plat-youtube); }         /* xterm 196 — yt brand */
+    .hs-pcard-sheet .val-hs { color: #ff8700; }         /* xterm 208 — heatsync brand */
     .hs-pcard-sheet .val-admin { color: #ff0000; }      /* xterm 196 — power */
     .hs-pcard-sheet .val-staff { color: #fff; }      /* xterm 208 — hs orange */
     .hs-pcard-sheet .val-heat { color: #ff0000; }       /* xterm 196 — fire */

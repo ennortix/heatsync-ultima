@@ -12908,17 +12908,9 @@ img.hs-fx-zero { margin-left: -4px; }
     .hs-pcard-livedot { color: var(--hs-live); font-size: 9px; }
     /* Filled-style platform pills — mirror #hs-user-tooltip .hs-pc-platform
        so the click-card identity row looks identical to the hover tooltip. */
-    .hs-pcard-pill {
-      padding: 1px 2px; border: 1px solid #000; text-decoration: none;
-      font-weight: 900; letter-spacing: 0.2px; white-space: nowrap;
-      display: inline-flex; align-items: center; gap: 3px;
-      line-height: 16px;
-    }
-    .hs-pcard-pill:hover { background: #fff !important; color: #000 !important; border-color: #000; }
     .hs-pcard-pill-twitch { background: var(--hs-plat-twitch); color: #fff; }
     .hs-pcard-pill-kick { background: var(--hs-plat-kick); color: #000; }
     .hs-pcard-pill-youtube { background: var(--hs-plat-youtube); color: #fff; }
-    .hs-pcard-pill-live { color: var(--hs-live); }
     .hs-pcard-bio {
       color: #aaa; font-size: 13px; line-height: 18px;
       white-space: pre-wrap; word-break: break-word;
@@ -12959,6 +12951,7 @@ img.hs-fx-zero { margin-left: -4px; }
     .hs-pcard-sheet .val-ttv { color: var(--hs-plat-twitch); }        /* twitch brand */
     .hs-pcard-sheet .val-kick { color: var(--hs-plat-kick); }       /* kick brand */
     .hs-pcard-sheet .val-yt { color: var(--hs-plat-youtube); }         /* xterm 196 — yt brand */
+    .hs-pcard-sheet .val-hs { color: #ff8700; }         /* xterm 208 — heatsync brand */
     .hs-pcard-sheet .val-admin { color: #ff0000; }      /* xterm 196 — power */
     .hs-pcard-sheet .val-staff { color: #fff; }      /* xterm 208 — hs orange */
     .hs-pcard-sheet .val-heat { color: #ff0000; }       /* xterm 196 — fire */
@@ -20612,13 +20605,52 @@ class CircularBuffer {
 // ============================================
 // TWITCH IRC CLIENT (READ-ONLY)
 // ============================================
-class IRC {
+// Shared base for the two chat transports (IRC, KickChat). Holds the surface
+// they duplicate verbatim: per-channel CircularBuffer map, listener registry,
+// and the O(1)/copy accessors main.js consumes. Transport wiring, dedup, and
+// persistence stay in the subclasses — they genuinely differ.
+class ChatClient {
+  constructor(logTag) {
+    this._logTag = logTag
+    this.channels = new Map() // channel -> CircularBuffer
+    this.handlers = new Map()
+    this._destroyed = false
+  }
+
+  getMessages(ch) {
+    return this.channels.get(ch?.toLowerCase())?.getAll() || []
+  }
+
+  // O(1) message count — "any messages?" hot-path callers must not
+  // materialize ~6000-element buffer copies per live message (Kripp scale).
+  getCount(ch) {
+    return this.channels.get(ch?.toLowerCase())?.size || 0
+  }
+
+  on(e, fn) {
+    if (!this.handlers.has(e)) this.handlers.set(e, new Set())
+    this.handlers.get(e).add(fn)
+  }
+
+  emit(e, d) {
+    this.handlers.get(e)?.forEach((fn) => {
+      try {
+        fn(d)
+      } catch (err) {
+        console.error(`[${this._logTag}] handler err:`, err)
+      }
+    })
+  }
+}
+
+class IRC extends ChatClient {
   // SW-owned mode: BG SW owns the WebSocket. This class is a thin client —
   // it joins/parts via runtime messages, mirrors per-channel buffers locally
   // so existing main.js code can keep using `irc.channels.get(ch).getAll()`
   // synchronously, and forwards live events from BG to local listeners.
   // Authenticated send still flows through auth-irc.js (per-tab, OAuth).
   constructor() {
+    super('heatsync-irc')
     // Message-id dedupe — live messages can now arrive from BOTH the BG IRC
     // relay and the native-chat tap; history merges seed it so replays never
     // double-render. FIFO-capped.
@@ -20627,15 +20659,12 @@ class IRC {
     // per-channel last NON-TAP live delivery — the native tap defers to IRC
     // when this is fresh (IRC copies carry replies/bits/highlight richness)
     this._lastLiveAt = new Map()
-    this.channels = new Map() // ch -> CircularBuffer (local mirror)
     // O(1) mod-notice dedup indices — keyed by "ch:targetLc" and "ch:targetMsgId"
     // respectively. Each stores the first-wins notice object so time-window and
     // _supersededByUnban checks can be done without scanning the full buffer.
     // Capped at 500 entries (FIFO eviction) so they can't grow unbounded.
     this._modNoticeIndex = new Map()
     this._deleteNoticeIndex = new Map()
-    this.handlers = new Map()
-    this._destroyed = false
     this._listener = (message) => {
       if (this._destroyed || !message || typeof message !== 'object') return
       if (message.type === 'bg_irc_msg') {
@@ -21032,31 +21061,7 @@ class IRC {
     } catch {}
   }
 
-  getMessages(ch) {
-    return this.channels.get(ch?.toLowerCase())?.getAll() || []
-  }
-
-  // O(1) message count — isMultiPlatformTab only needs "any messages?" on the
-  // per-message hot path; getMessages().length materialized ~6000-element
-  // arrays per live message at Kripp scale (busy 3000-cap buffers).
-  getCount(ch) {
-    return this.channels.get(ch?.toLowerCase())?.size || 0
-  }
-
-  on(e, fn) {
-    if (!this.handlers.has(e)) this.handlers.set(e, new Set())
-    this.handlers.get(e).add(fn)
-  }
-
-  emit(e, d) {
-    this.handlers.get(e)?.forEach((fn) => {
-      try {
-        fn(d)
-      } catch (err) {
-        console.error('[heatsync-irc] handler err:', err)
-      }
-    })
-  }
+  // getMessages/getCount/on/emit inherited from ChatClient
 
   destroy() {
     this._destroyed = true
@@ -21072,11 +21077,9 @@ class IRC {
 // ============================================
 // KICK CHAT CLIENT (VIA HEATSYNC WEBHOOK)
 // ============================================
-class KickChat {
+class KickChat extends ChatClient {
   constructor() {
-    this.channels = new Map() // kickUsername → CircularBuffer
-    this.handlers = new Map()
-    this._destroyed = false
+    super('heatsync-kick')
     this._listener = null
     this._persistTimers = {}
     this._PERSIST_MAX = 1500
@@ -21779,29 +21782,7 @@ class KickChat {
     log('Kick parted', kickUsername)
   }
 
-  getMessages(kickUsername) {
-    return this.channels.get(kickUsername?.toLowerCase())?.getAll() || []
-  }
-
-  // O(1) count — see IRC.getCount (hot-path buffer-copy avoidance).
-  getCount(kickUsername) {
-    return this.channels.get(kickUsername?.toLowerCase())?.size || 0
-  }
-
-  on(e, fn) {
-    if (!this.handlers.has(e)) this.handlers.set(e, new Set())
-    this.handlers.get(e).add(fn)
-  }
-
-  emit(e, d) {
-    this.handlers.get(e)?.forEach((fn) => {
-      try {
-        fn(d)
-      } catch (err) {
-        console.error('[heatsync-kick] handler err:', err)
-      }
-    })
-  }
+  // getMessages/getCount/on/emit inherited from ChatClient
 }
 
 
@@ -47794,36 +47775,6 @@ function pcMakeSection(title) {
   return sec
 }
 
-function pcMakePill(plat, name, isLive) {
-  const pill = document.createElement('a')
-  pill.className = `hs-pcard-pill hs-pcard-pill-${plat}`
-  pill.target = '_blank'
-  pill.rel = 'noopener noreferrer'
-  if (plat === 'twitch') pill.href = `https://twitch.tv/${encodeURIComponent(name)}`
-  else if (plat === 'kick') pill.href = `https://kick.com/${encodeURIComponent(name)}`
-  else if (plat === 'youtube') pill.href = `https://youtube.com/@${encodeURIComponent(name)}`
-  else if (plat === 'heatsync') pill.href = `https://heatsync.org/user/${encodeURIComponent(name)}`
-  const label = plat === 'twitch' ? 'ttv' : plat === 'kick' ? 'kick' : plat === 'youtube' ? 'yt' : 'hs'
-  pill.textContent = `${label}:${name}`
-  if (isLive) {
-    const dot = document.createElement('span')
-    dot.className = 'hs-pcard-pill-live'
-    dot.textContent = '●'
-    pill.prepend(dot)
-  }
-  // Don't intercept these clicks — they should follow the link in a new tab
-  pill.dataset.pcardPill = '1'
-  // Hotkey: t/k/y/h jumps to the matching platform pill. Click() opens the
-  // href in a new tab (target=_blank). Set as .hs-pcard-action so the
-  // shared keydown handler at the bottom of this file picks it up.
-  const keyMap = { twitch: 't', kick: 'k', youtube: 'y', heatsync: 'h' }
-  if (keyMap[plat]) {
-    pill.classList.add('hs-pcard-action')
-    pill.dataset.pcKey = keyMap[plat]
-  }
-  return pill
-}
-
 // Top-of-card mod actions — left-click username on a chatter in a channel you
 // mod surfaces delete/timeout/ban right at the top, replacing the bulky inline
 // hover toolbar on every row. Returns null when not applicable so callers can
@@ -48305,11 +48256,20 @@ function renderProfileCardView() {
     // (e.g. to get their notification, or because twitch's anti-bot
     // blocks programmatic propagation), they click here to open the
     // channel page and click the native follow button.
-    const mkLink = (href, label, liveVc) => {
+    const mkLink = (href, label, liveVc, pcKey) => {
       const a = document.createElement('a')
       a.href = href
+      a.target = '_blank' // never navigate the multichat host page away
+      a.rel = 'noopener noreferrer'
       a.textContent = label
       a.dataset.pcardPill = '1' // bypasses overlay click interception
+      // Hotkey: t/k/y/h jumps here — the shared keydown handler at the bottom
+      // of this file clicks .hs-pcard-action[data-pc-key] (pill-era contract;
+      // the dl rows lost it in the property-sheet refactor).
+      if (pcKey) {
+        a.classList.add('hs-pcard-action')
+        a.dataset.pcKey = pcKey
+      }
       if (typeof liveVc === 'number') a.appendChild(liveDot(liveVc))
       return a
     }
@@ -48323,6 +48283,7 @@ function renderProfileCardView() {
           `https://twitch.tv/${encodeURIComponent(twU)}`,
           twU,
           (ls.twitch ?? data.twitch_is_live) ? data.twitch_viewer_count || 0 : undefined,
+          't',
         ),
         'val-ttv',
       )
@@ -48334,6 +48295,7 @@ function renderProfileCardView() {
           `https://kick.com/${encodeURIComponent(kiU)}`,
           kiU,
           (ls.kick ?? data.kick_is_live) ? data.kick_viewer_count || 0 : undefined,
+          'k',
         ),
         'val-kick',
       )
@@ -48345,12 +48307,14 @@ function renderProfileCardView() {
         : `https://youtube.com/channel/${encodeURIComponent(data.youtube_channel_id)}`
       addRow(
         'yt',
-        mkLink(ytHref, ytName, (ls.youtube ?? data.youtube_is_live) ? data.youtube_viewer_count || 0 : undefined),
+        mkLink(ytHref, ytName, (ls.youtube ?? data.youtube_is_live) ? data.youtube_viewer_count || 0 : undefined, 'y'),
         'val-yt',
       )
     } else if (activeProfileCard.platform === 'yt' || activeProfileCard.platform === 'youtube') {
-      addRow('yt', mkLink(`https://youtube.com/@${encodeURIComponent(username)}`, username), 'val-yt')
+      addRow('yt', mkLink(`https://youtube.com/@${encodeURIComponent(username)}`, username, undefined, 'y'), 'val-yt')
     }
+    // heatsync profile — always present ('h' hotkey; pill-era parity)
+    addRow('hs', mkLink(`https://heatsync.org/user/${encodeURIComponent(username)}`, username, undefined, 'h'), 'val-hs')
 
     // acctage
     const dates = [data.twitch_created_at, data.kick_created_at]

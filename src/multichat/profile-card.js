@@ -529,36 +529,6 @@ function pcMakeSection(title) {
   return sec
 }
 
-function pcMakePill(plat, name, isLive) {
-  const pill = document.createElement('a')
-  pill.className = `hs-pcard-pill hs-pcard-pill-${plat}`
-  pill.target = '_blank'
-  pill.rel = 'noopener noreferrer'
-  if (plat === 'twitch') pill.href = `https://twitch.tv/${encodeURIComponent(name)}`
-  else if (plat === 'kick') pill.href = `https://kick.com/${encodeURIComponent(name)}`
-  else if (plat === 'youtube') pill.href = `https://youtube.com/@${encodeURIComponent(name)}`
-  else if (plat === 'heatsync') pill.href = `https://heatsync.org/user/${encodeURIComponent(name)}`
-  const label = plat === 'twitch' ? 'ttv' : plat === 'kick' ? 'kick' : plat === 'youtube' ? 'yt' : 'hs'
-  pill.textContent = `${label}:${name}`
-  if (isLive) {
-    const dot = document.createElement('span')
-    dot.className = 'hs-pcard-pill-live'
-    dot.textContent = '●'
-    pill.prepend(dot)
-  }
-  // Don't intercept these clicks — they should follow the link in a new tab
-  pill.dataset.pcardPill = '1'
-  // Hotkey: t/k/y/h jumps to the matching platform pill. Click() opens the
-  // href in a new tab (target=_blank). Set as .hs-pcard-action so the
-  // shared keydown handler at the bottom of this file picks it up.
-  const keyMap = { twitch: 't', kick: 'k', youtube: 'y', heatsync: 'h' }
-  if (keyMap[plat]) {
-    pill.classList.add('hs-pcard-action')
-    pill.dataset.pcKey = keyMap[plat]
-  }
-  return pill
-}
-
 // Top-of-card mod actions — left-click username on a chatter in a channel you
 // mod surfaces delete/timeout/ban right at the top, replacing the bulky inline
 // hover toolbar on every row. Returns null when not applicable so callers can
@@ -1040,11 +1010,20 @@ function renderProfileCardView() {
     // (e.g. to get their notification, or because twitch's anti-bot
     // blocks programmatic propagation), they click here to open the
     // channel page and click the native follow button.
-    const mkLink = (href, label, liveVc) => {
+    const mkLink = (href, label, liveVc, pcKey) => {
       const a = document.createElement('a')
       a.href = href
+      a.target = '_blank' // never navigate the multichat host page away
+      a.rel = 'noopener noreferrer'
       a.textContent = label
       a.dataset.pcardPill = '1' // bypasses overlay click interception
+      // Hotkey: t/k/y/h jumps here — the shared keydown handler at the bottom
+      // of this file clicks .hs-pcard-action[data-pc-key] (pill-era contract;
+      // the dl rows lost it in the property-sheet refactor).
+      if (pcKey) {
+        a.classList.add('hs-pcard-action')
+        a.dataset.pcKey = pcKey
+      }
       if (typeof liveVc === 'number') a.appendChild(liveDot(liveVc))
       return a
     }
@@ -1058,6 +1037,7 @@ function renderProfileCardView() {
           `https://twitch.tv/${encodeURIComponent(twU)}`,
           twU,
           (ls.twitch ?? data.twitch_is_live) ? data.twitch_viewer_count || 0 : undefined,
+          't',
         ),
         'val-ttv',
       )
@@ -1069,6 +1049,7 @@ function renderProfileCardView() {
           `https://kick.com/${encodeURIComponent(kiU)}`,
           kiU,
           (ls.kick ?? data.kick_is_live) ? data.kick_viewer_count || 0 : undefined,
+          'k',
         ),
         'val-kick',
       )
@@ -1080,12 +1061,14 @@ function renderProfileCardView() {
         : `https://youtube.com/channel/${encodeURIComponent(data.youtube_channel_id)}`
       addRow(
         'yt',
-        mkLink(ytHref, ytName, (ls.youtube ?? data.youtube_is_live) ? data.youtube_viewer_count || 0 : undefined),
+        mkLink(ytHref, ytName, (ls.youtube ?? data.youtube_is_live) ? data.youtube_viewer_count || 0 : undefined, 'y'),
         'val-yt',
       )
     } else if (activeProfileCard.platform === 'yt' || activeProfileCard.platform === 'youtube') {
-      addRow('yt', mkLink(`https://youtube.com/@${encodeURIComponent(username)}`, username), 'val-yt')
+      addRow('yt', mkLink(`https://youtube.com/@${encodeURIComponent(username)}`, username, undefined, 'y'), 'val-yt')
     }
+    // heatsync profile — always present ('h' hotkey; pill-era parity)
+    addRow('hs', mkLink(`https://heatsync.org/user/${encodeURIComponent(username)}`, username, undefined, 'h'), 'val-hs')
 
     // acctage
     const dates = [data.twitch_created_at, data.kick_created_at]

@@ -16736,6 +16736,18 @@ img.hs-fx-zero { margin-left: -4px; }
       display: none !important;
     }
 
+    /* SHORTS — no panel, no squeeze. ytd-shorts pages never set hs-yt-watch
+       (they don't render ytd-watch-flexy), so the generic non-watch squeeze
+       rules used to fire there and shrank the shorts UI with nothing
+       compensating; the fixed panel also overlapped shorts' right-rail
+       action buttons. Shorts is a vertical clip feed — chat has no home
+       there. The squeeze rules carry :not(.hs-yt-shorts) gates; this hides
+       the panel itself. */
+    body.hs-platform-yt.hs-yt-shorts #hs-mc-container,
+    body.hs-platform-yt.hs-yt-shorts #hs-yt-resize-handle {
+      display: none !important;
+    }
+
     /* --- chat container: fixed-position at chosen edge.
        chat-right also uses position:fixed (instead of YT's natural flex
        layout) so small-viewport responsive breakpoints don't push chat
@@ -17144,14 +17156,14 @@ img.hs-fx-zero { margin-left: -4px; }
        width auto-fit, so the masthead shrinks INTO the visible strip.
        Applies to every YT page: home, search, channel, VOD, live —
        the multichat panel is always there, masthead must always make room. */
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right #masthead-container,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-masthead {
+    body.hs-platform-yt:not(.hs-offline):not(.hs-yt-shorts).hs-chat-right #masthead-container,
+    body.hs-platform-yt:not(.hs-offline):not(.hs-yt-shorts).hs-chat-right ytd-masthead {
       left: 0 !important;
       right: calc(var(--hs-chat-w, 340px) + 5px) !important;
       width: auto !important;
     }
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left #masthead-container,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-masthead {
+    body.hs-platform-yt:not(.hs-offline):not(.hs-yt-shorts).hs-chat-left #masthead-container,
+    body.hs-platform-yt:not(.hs-offline):not(.hs-yt-shorts).hs-chat-left ytd-masthead {
       left: calc(var(--hs-chat-w, 340px) + 5px) !important;
       right: 0 !important;
       width: auto !important;
@@ -17179,36 +17191,36 @@ img.hs-fx-zero { margin-left: -4px; }
        and ai-companion buttons (non-essential, eat 40px each), then let
        #center flex-shrink so the search input keeps a usable width. The
        burger + logo (#start) and sign-in icons (#end) stay full-size. */
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-masthead #voice-search-button,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-masthead #ai-companion-button,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-masthead #voice-search-button,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-masthead #ai-companion-button {
+    body.hs-platform-yt:not(.hs-offline):not(.hs-yt-shorts).hs-chat-right ytd-masthead #voice-search-button,
+    body.hs-platform-yt:not(.hs-offline):not(.hs-yt-shorts).hs-chat-right ytd-masthead #ai-companion-button,
+    body.hs-platform-yt:not(.hs-offline):not(.hs-yt-shorts).hs-chat-left ytd-masthead #voice-search-button,
+    body.hs-platform-yt:not(.hs-offline):not(.hs-yt-shorts).hs-chat-left ytd-masthead #ai-companion-button {
       display: none !important;
     }
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-masthead #center,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-masthead #center {
+    body.hs-platform-yt:not(.hs-offline):not(.hs-yt-shorts).hs-chat-right ytd-masthead #center,
+    body.hs-platform-yt:not(.hs-offline):not(.hs-yt-shorts).hs-chat-left ytd-masthead #center {
       flex: 1 1 auto !important;
       min-width: 0 !important;
     }
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-masthead ytd-searchbox,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-masthead yt-searchbox,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-masthead ytd-searchbox,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-masthead yt-searchbox {
+    body.hs-platform-yt:not(.hs-offline):not(.hs-yt-shorts).hs-chat-right ytd-masthead ytd-searchbox,
+    body.hs-platform-yt:not(.hs-offline):not(.hs-yt-shorts).hs-chat-right ytd-masthead yt-searchbox,
+    body.hs-platform-yt:not(.hs-offline):not(.hs-yt-shorts).hs-chat-left ytd-masthead ytd-searchbox,
+    body.hs-platform-yt:not(.hs-offline):not(.hs-yt-shorts).hs-chat-left ytd-masthead yt-searchbox {
       width: 100% !important;
       min-width: 0 !important;
       flex: 1 1 auto !important;
       margin-left: 0 !important;
       box-sizing: border-box !important;
     }
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-masthead #search-form,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-masthead #search-form {
+    body.hs-platform-yt:not(.hs-offline):not(.hs-yt-shorts).hs-chat-right ytd-masthead #search-form,
+    body.hs-platform-yt:not(.hs-offline):not(.hs-yt-shorts).hs-chat-left ytd-masthead #search-form {
       min-width: 0 !important;
       flex: 1 1 auto !important;
     }
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-masthead #start,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-masthead #end,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-masthead #start,
-    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-masthead #end {
+    body.hs-platform-yt:not(.hs-offline):not(.hs-yt-shorts).hs-chat-right ytd-masthead #start,
+    body.hs-platform-yt:not(.hs-offline):not(.hs-yt-shorts).hs-chat-right ytd-masthead #end,
+    body.hs-platform-yt:not(.hs-offline):not(.hs-yt-shorts).hs-chat-left ytd-masthead #start,
+    body.hs-platform-yt:not(.hs-offline):not(.hs-yt-shorts).hs-chat-left ytd-masthead #end {
       flex: 0 0 auto !important;
     }
 
@@ -17230,14 +17242,14 @@ img.hs-fx-zero { margin-left: -4px; }
        chat panel is position:fixed and respects the inner viewport that
        excludes the scrollbar, so 100vw caps were 15px too wide.
        The chat-side padding is the orange resize bar's gutter. */
-    body.hs-platform-yt:not(.hs-yt-watch):not(.hs-offline).hs-chat-right ytd-app {
+    body.hs-platform-yt:not(.hs-yt-watch):not(.hs-offline):not(.hs-yt-shorts).hs-chat-right ytd-app {
       width: calc(100% - var(--hs-chat-w, 340px)) !important;
       max-width: calc(100% - var(--hs-chat-w, 340px)) !important;
       padding-right: var(--hs-resize-thickness) !important;
       box-sizing: border-box !important;
       overflow-x: hidden !important;
     }
-    body.hs-platform-yt:not(.hs-yt-watch):not(.hs-offline).hs-chat-left ytd-app {
+    body.hs-platform-yt:not(.hs-yt-watch):not(.hs-offline):not(.hs-yt-shorts).hs-chat-left ytd-app {
       width: calc(100% - var(--hs-chat-w, 340px)) !important;
       max-width: calc(100% - var(--hs-chat-w, 340px)) !important;
       margin-left: var(--hs-chat-w, 340px) !important;
@@ -17245,7 +17257,7 @@ img.hs-fx-zero { margin-left: -4px; }
       box-sizing: border-box !important;
       overflow-x: hidden !important;
     }
-    body.hs-platform-yt:not(.hs-yt-watch):not(.hs-offline).hs-chat-top ytd-app {
+    body.hs-platform-yt:not(.hs-yt-watch):not(.hs-offline):not(.hs-yt-shorts).hs-chat-top ytd-app {
       height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
       max-height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
       margin-top: var(--hs-chat-h, 35vh) !important;
@@ -17253,7 +17265,7 @@ img.hs-fx-zero { margin-left: -4px; }
       box-sizing: border-box !important;
       overflow-y: auto !important;
     }
-    body.hs-platform-yt:not(.hs-yt-watch):not(.hs-offline).hs-chat-bottom ytd-app {
+    body.hs-platform-yt:not(.hs-yt-watch):not(.hs-offline):not(.hs-yt-shorts).hs-chat-bottom ytd-app {
       height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
       max-height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
       padding-bottom: 5px !important;
@@ -17328,20 +17340,22 @@ img.hs-fx-zero { margin-left: -4px; }
       margin: 0 !important;
     }
 
-    /* Shorts: out across the board. Aspect ratio breaks grid uniformity,
-       vertical-only feed doesn't fit the streamer-centric HeatSync UX. */
-    body.hs-platform-yt ytd-rich-section-renderer:has(ytd-rich-shelf-renderer[is-shorts]),
-    body.hs-platform-yt ytd-rich-section-renderer:has([is-shorts]),
-    body.hs-platform-yt ytd-rich-section-renderer:has(grid-shelf-view-model),
-    body.hs-platform-yt ytd-rich-shelf-renderer[is-shorts],
-    body.hs-platform-yt ytd-reel-shelf-renderer,
-    body.hs-platform-yt grid-shelf-view-model,
-    body.hs-platform-yt ytd-rich-item-renderer:has(ytd-shorts),
-    body.hs-platform-yt ytd-mini-guide-entry-renderer[aria-label="Shorts"],
-    body.hs-platform-yt ytd-guide-entry-renderer:has(a[title="Shorts"]),
-    body.hs-platform-yt ytd-pivot-bar-item-renderer:has(a[title="Shorts"]),
-    body.hs-platform-yt a[href="/shorts"],
-    body.hs-platform-yt a[href^="/shorts/"][role="tab"] {
+    /* Shorts shelf: hidden only while the HeatSync takeover UI is active
+       (hs-yt-nonlive-chat). Aspect ratio breaks grid uniformity and the
+       vertical-only feed doesn't fit the streamer-centric HeatSync UX —
+       but users who opted OUT of non-live chat keep their youtube intact. */
+    body.hs-platform-yt.hs-yt-nonlive-chat ytd-rich-section-renderer:has(ytd-rich-shelf-renderer[is-shorts]),
+    body.hs-platform-yt.hs-yt-nonlive-chat ytd-rich-section-renderer:has([is-shorts]),
+    body.hs-platform-yt.hs-yt-nonlive-chat ytd-rich-section-renderer:has(grid-shelf-view-model),
+    body.hs-platform-yt.hs-yt-nonlive-chat ytd-rich-shelf-renderer[is-shorts],
+    body.hs-platform-yt.hs-yt-nonlive-chat ytd-reel-shelf-renderer,
+    body.hs-platform-yt.hs-yt-nonlive-chat grid-shelf-view-model,
+    body.hs-platform-yt.hs-yt-nonlive-chat ytd-rich-item-renderer:has(ytd-shorts),
+    body.hs-platform-yt.hs-yt-nonlive-chat ytd-mini-guide-entry-renderer[aria-label="Shorts"],
+    body.hs-platform-yt.hs-yt-nonlive-chat ytd-guide-entry-renderer:has(a[title="Shorts"]),
+    body.hs-platform-yt.hs-yt-nonlive-chat ytd-pivot-bar-item-renderer:has(a[title="Shorts"]),
+    body.hs-platform-yt.hs-yt-nonlive-chat a[href="/shorts"],
+    body.hs-platform-yt.hs-yt-nonlive-chat a[href^="/shorts/"][role="tab"] {
       display: none !important;
     }
 
@@ -17653,6 +17667,33 @@ img.hs-fx-zero { margin-left: -4px; }
     }
     body.hs-platform-kick.hs-mode-theatre.hs-chat-bottom .z-controls.w-full {
       bottom: var(--hs-chat-h, 35vh) !important;
+    }
+
+    /* KICK FULLSCREEN — previously unhandled (twitch and youtube each needed
+       their own fix for this same browser quirk). Our margin/padding insets on
+       <main> carry !important, which outranks the UA's fullscreen margin reset —
+       so a fullscreened <main> (or ancestor) stayed inset by the chat width
+       with a dead gap at the edge. Zero every inset while anything is
+       fullscreen, and hide the body-mounted panel for the ancestor-fullscreen
+       case (element-level fullscreen never paints it anyway). Dock classes
+       keep specificity level with the theatre rules above; source order wins. */
+    body.hs-platform-kick.hs-chat-right:has(:fullscreen) main,
+    body.hs-platform-kick.hs-chat-left:has(:fullscreen) main,
+    body.hs-platform-kick.hs-chat-top:has(:fullscreen) main,
+    body.hs-platform-kick.hs-chat-bottom:has(:fullscreen) main {
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+    body.hs-platform-kick.hs-chat-right:has(:fullscreen) .z-controls.w-full,
+    body.hs-platform-kick.hs-chat-left:has(:fullscreen) .z-controls.w-full,
+    body.hs-platform-kick.hs-chat-top:has(:fullscreen) .z-controls.w-full,
+    body.hs-platform-kick.hs-chat-bottom:has(:fullscreen) .z-controls.w-full {
+      left: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+    }
+    body.hs-platform-kick:has(:fullscreen) #hs-mc-container {
+      display: none !important;
     }
 
     /* --- YOUTUBE: collapse #secondary; pad #primary ---
@@ -45365,6 +45406,56 @@ async function handleSlashCommand(text, input) {
   // Dual-platform dispatch + per-platform notice injection + combined toast all
   // live in the shared backbone (main.js dispatchModAction / showModResultToast).
 
+  // YouTube leg for typed mod commands. YT moderation is message-scoped (the
+  // relay drives YT's own message menu), so a typed "/ban name" resolves the
+  // target's newest buffered YT message. Exact name match only — fuzzy
+  // matching could moderate the wrong person.
+  const _ytModMsgFor = (target) => {
+    if (!_modCh?.youtube || typeof channelYtMessages === 'undefined') return null
+    const tgt = String(target || '')
+      .replace(/^@/, '')
+      .toLowerCase()
+    if (!tgt) return null
+    const buf = channelYtMessages.get(modChannel) || []
+    for (let i = buf.length - 1; i >= 0; i--) {
+      const m = buf[i]
+      if (
+        m?.id &&
+        String(m?.user || '')
+          .replace(/^@/, '')
+          .toLowerCase() === tgt
+      )
+        return m
+    }
+    return null
+  }
+  // skipConfirm: true when a twitch/kick fanout already ran (its confirm
+  // dialog covered this action); false on YT-only tabs so the ban-confirm
+  // gate still applies.
+  const _ytModLeg = async (action, target, label, skipConfirm) => {
+    if (!_modCh?.youtube) return null
+    const m = _ytModMsgFor(target)
+    if (!m) {
+      const tgtName = String(target || '').replace(/^@/, '')
+      showToast(
+        t('mc_input_yt_mod_no_recent_msg', [tgtName]) ||
+          `youtube: no recent message from ${tgtName} — use the message menu`,
+        'error',
+      )
+      return null
+    }
+    const y = await dispatchModAction({
+      channel: modChannel,
+      platform: 'youtube',
+      action,
+      target,
+      msgId: m.id,
+      skipConfirm,
+    })
+    showModResultToast(label, target, y)
+    return y
+  }
+
   // Logged-out Twitch on a twitch-only tab: dispatch would die deep in the GQL
   // channel-id resolve and surface a misleading "<action> failed: channel not
   // found" toast. Root cause is unauthenticated, not a missing channel — show
@@ -45394,11 +45485,12 @@ async function handleSlashCommand(text, input) {
       showToast(t('mc_input_mod_needs_channel_tab', [cmd]), 'error')
       return true
     }
-    if (!_twitchModName && !_kickModSlug) {
+    const _hasTk = !!(_twitchModName || _kickModSlug)
+    if (!_hasTk && !_modCh?.youtube) {
       showToast(t('mc_input_mod_needs_platform_channel', [cmd]), 'error')
       return true
     }
-    if (!(await _twitchModAuthOk())) return true
+    if (_hasTk && !(await _twitchModAuthOk())) return true
     if (cmd === 'ban') {
       const m = rest.match(/^@?(\S+)(?:\s+(.+))?$/)
       if (!m) {
@@ -45406,9 +45498,13 @@ async function handleSlashCommand(text, input) {
         return true
       }
       const [, target, reason] = m
-      const r = await dispatchModAction({ channel: modChannel, action: 'ban', target, reason, fanout: true })
-      showModResultToast(t('mc_mod_label_banned'), target, r)
-      if (r?.anyOk) clearInput(input)
+      const r = _hasTk
+        ? await dispatchModAction({ channel: modChannel, action: 'ban', target, reason, fanout: true })
+        : null
+      if (r) showModResultToast(t('mc_mod_label_banned'), target, r)
+      if (r?.cancelled) return true
+      const y = await _ytModLeg('ban', target, t('mc_mod_label_banned'), !!r)
+      if (r?.anyOk || y?.anyOk) clearInput(input)
       return true
     }
     if (cmd === 'timeout') {
@@ -45419,16 +45515,19 @@ async function handleSlashCommand(text, input) {
       }
       const [, target, secStr, reason] = m
       const sec = secStr ? Math.max(1, parseInt(secStr, 10)) : 600
-      const r = await dispatchModAction({
-        channel: modChannel,
-        action: 'timeout',
-        target,
-        durationSec: sec,
-        reason,
-        fanout: true,
-      })
-      showModResultToast(t('mc_mod_label_timed_out', [String(sec)]), target, r)
-      if (r?.anyOk) clearInput(input)
+      const r = _hasTk
+        ? await dispatchModAction({
+            channel: modChannel,
+            action: 'timeout',
+            target,
+            durationSec: sec,
+            reason,
+            fanout: true,
+          })
+        : null
+      if (r) showModResultToast(t('mc_mod_label_timed_out', [String(sec)]), target, r)
+      const y = await _ytModLeg('timeout', target, t('mc_mod_label_timed_out', [String(sec)]), !!r)
+      if (r?.anyOk || y?.anyOk) clearInput(input)
       return true
     }
     if (cmd === 'unban') {
@@ -45437,9 +45536,10 @@ async function handleSlashCommand(text, input) {
         showToast(t('mc_input_usage_unban'), 'error')
         return true
       }
-      const r = await dispatchModAction({ channel: modChannel, action: 'unban', target, fanout: true })
-      showModResultToast(t('mc_mod_label_unbanned'), target, r)
-      if (r?.anyOk) clearInput(input)
+      const r = _hasTk ? await dispatchModAction({ channel: modChannel, action: 'unban', target, fanout: true }) : null
+      if (r) showModResultToast(t('mc_mod_label_unbanned'), target, r)
+      const y = await _ytModLeg('unban', target, t('mc_mod_label_unbanned'), !!r)
+      if (r?.anyOk || y?.anyOk) clearInput(input)
       return true
     }
   }
@@ -69402,6 +69502,13 @@ const STORAGE_KEY = 'heatsync_multichat'
         // attr off-watch — only count it as a watch page when visible.
         const onWatch = !!document.querySelector('ytd-watch-flexy:not([hidden])')
         document.body.classList.toggle('hs-yt-watch', onWatch)
+        // Shorts pages render via ytd-shorts (never ytd-watch-flexy), so
+        // without this class the generic non-watch squeeze rules fired there
+        // and shrank the shorts UI with no compensation. Shorts gets neither
+        // squeeze nor panel (17-platform-position.css gates on it).
+        const onShorts =
+          location.pathname.startsWith('/shorts/') || !!document.querySelector('ytd-shorts:not([hidden])')
+        document.body.classList.toggle('hs-yt-shorts', onShorts)
         // CONFIRMED live only (resolved live src, messages flowing, or src
         // still empty after a grace window) — the destructive actions below
         // must never fire on the inconclusive empty-src window: collapsing

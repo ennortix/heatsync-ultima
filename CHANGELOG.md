@@ -1,5 +1,15 @@
 # changelog
 
+## [1.7.38] — 2026-07-27
+
+### added
+- **typed mod commands work on youtube now** — /ban, /timeout, and /unban reach youtube chats (they were right-click-menu only before). targets the person's most recent message; if they haven't spoken recently you get a clear pointer to the message menu instead of a silent no-op.
+- **vi-mode in youtube's own chat box** — the vim editing layer now covers youtube's native input, matching twitch and kick.
+
+### fixed
+- **fullscreen on kick no longer leaves a dead gap** — the chat panel's page inset is fully released while anything is fullscreen, same treatment twitch and youtube already had.
+- **youtube shorts left alone** — shorts pages no longer get squeezed by the chat panel (they have no live chat and the panel overlapped the like/comment buttons). the shorts shelf on your home feed is also only hidden when heatsync's non-live chat takeover is on — opt out and your youtube stays untouched.
+
 ## [1.7.37] — 2026-07-24
 
 ### added

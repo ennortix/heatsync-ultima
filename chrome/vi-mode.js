@@ -31,6 +31,7 @@
     '[data-a-target="chat-input"]', // Twitch (contenteditable)
     'div.editor-input', // Kick (contenteditable)
     '.chat-input textarea', // Kick fallback
+    'yt-live-chat-text-input-field-renderer div#input[contenteditable]', // YouTube
     '#hs-mc-input', // Multichat
   ]
 

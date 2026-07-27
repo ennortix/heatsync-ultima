@@ -12597,6 +12597,13 @@
         // attr off-watch — only count it as a watch page when visible.
         const onWatch = !!document.querySelector('ytd-watch-flexy:not([hidden])')
         document.body.classList.toggle('hs-yt-watch', onWatch)
+        // Shorts pages render via ytd-shorts (never ytd-watch-flexy), so
+        // without this class the generic non-watch squeeze rules fired there
+        // and shrank the shorts UI with no compensation. Shorts gets neither
+        // squeeze nor panel (17-platform-position.css gates on it).
+        const onShorts =
+          location.pathname.startsWith('/shorts/') || !!document.querySelector('ytd-shorts:not([hidden])')
+        document.body.classList.toggle('hs-yt-shorts', onShorts)
         // CONFIRMED live only (resolved live src, messages flowing, or src
         // still empty after a grace window) — the destructive actions below
         // must never fire on the inconclusive empty-src window: collapsing

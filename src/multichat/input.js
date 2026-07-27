@@ -6709,6 +6709,56 @@ async function handleSlashCommand(text, input) {
   // Dual-platform dispatch + per-platform notice injection + combined toast all
   // live in the shared backbone (main.js dispatchModAction / showModResultToast).
 
+  // YouTube leg for typed mod commands. YT moderation is message-scoped (the
+  // relay drives YT's own message menu), so a typed "/ban name" resolves the
+  // target's newest buffered YT message. Exact name match only — fuzzy
+  // matching could moderate the wrong person.
+  const _ytModMsgFor = (target) => {
+    if (!_modCh?.youtube || typeof channelYtMessages === 'undefined') return null
+    const tgt = String(target || '')
+      .replace(/^@/, '')
+      .toLowerCase()
+    if (!tgt) return null
+    const buf = channelYtMessages.get(modChannel) || []
+    for (let i = buf.length - 1; i >= 0; i--) {
+      const m = buf[i]
+      if (
+        m?.id &&
+        String(m?.user || '')
+          .replace(/^@/, '')
+          .toLowerCase() === tgt
+      )
+        return m
+    }
+    return null
+  }
+  // skipConfirm: true when a twitch/kick fanout already ran (its confirm
+  // dialog covered this action); false on YT-only tabs so the ban-confirm
+  // gate still applies.
+  const _ytModLeg = async (action, target, label, skipConfirm) => {
+    if (!_modCh?.youtube) return null
+    const m = _ytModMsgFor(target)
+    if (!m) {
+      const tgtName = String(target || '').replace(/^@/, '')
+      showToast(
+        t('mc_input_yt_mod_no_recent_msg', [tgtName]) ||
+          `youtube: no recent message from ${tgtName} — use the message menu`,
+        'error',
+      )
+      return null
+    }
+    const y = await dispatchModAction({
+      channel: modChannel,
+      platform: 'youtube',
+      action,
+      target,
+      msgId: m.id,
+      skipConfirm,
+    })
+    showModResultToast(label, target, y)
+    return y
+  }
+
   // Logged-out Twitch on a twitch-only tab: dispatch would die deep in the GQL
   // channel-id resolve and surface a misleading "<action> failed: channel not
   // found" toast. Root cause is unauthenticated, not a missing channel — show
@@ -6738,11 +6788,12 @@ async function handleSlashCommand(text, input) {
       showToast(t('mc_input_mod_needs_channel_tab', [cmd]), 'error')
       return true
     }
-    if (!_twitchModName && !_kickModSlug) {
+    const _hasTk = !!(_twitchModName || _kickModSlug)
+    if (!_hasTk && !_modCh?.youtube) {
       showToast(t('mc_input_mod_needs_platform_channel', [cmd]), 'error')
       return true
     }
-    if (!(await _twitchModAuthOk())) return true
+    if (_hasTk && !(await _twitchModAuthOk())) return true
     if (cmd === 'ban') {
       const m = rest.match(/^@?(\S+)(?:\s+(.+))?$/)
       if (!m) {
@@ -6750,9 +6801,13 @@ async function handleSlashCommand(text, input) {
         return true
       }
       const [, target, reason] = m
-      const r = await dispatchModAction({ channel: modChannel, action: 'ban', target, reason, fanout: true })
-      showModResultToast(t('mc_mod_label_banned'), target, r)
-      if (r?.anyOk) clearInput(input)
+      const r = _hasTk
+        ? await dispatchModAction({ channel: modChannel, action: 'ban', target, reason, fanout: true })
+        : null
+      if (r) showModResultToast(t('mc_mod_label_banned'), target, r)
+      if (r?.cancelled) return true
+      const y = await _ytModLeg('ban', target, t('mc_mod_label_banned'), !!r)
+      if (r?.anyOk || y?.anyOk) clearInput(input)
       return true
     }
     if (cmd === 'timeout') {
@@ -6763,16 +6818,19 @@ async function handleSlashCommand(text, input) {
       }
       const [, target, secStr, reason] = m
       const sec = secStr ? Math.max(1, parseInt(secStr, 10)) : 600
-      const r = await dispatchModAction({
-        channel: modChannel,
-        action: 'timeout',
-        target,
-        durationSec: sec,
-        reason,
-        fanout: true,
-      })
-      showModResultToast(t('mc_mod_label_timed_out', [String(sec)]), target, r)
-      if (r?.anyOk) clearInput(input)
+      const r = _hasTk
+        ? await dispatchModAction({
+            channel: modChannel,
+            action: 'timeout',
+            target,
+            durationSec: sec,
+            reason,
+            fanout: true,
+          })
+        : null
+      if (r) showModResultToast(t('mc_mod_label_timed_out', [String(sec)]), target, r)
+      const y = await _ytModLeg('timeout', target, t('mc_mod_label_timed_out', [String(sec)]), !!r)
+      if (r?.anyOk || y?.anyOk) clearInput(input)
       return true
     }
     if (cmd === 'unban') {
@@ -6781,9 +6839,10 @@ async function handleSlashCommand(text, input) {
         showToast(t('mc_input_usage_unban'), 'error')
         return true
       }
-      const r = await dispatchModAction({ channel: modChannel, action: 'unban', target, fanout: true })
-      showModResultToast(t('mc_mod_label_unbanned'), target, r)
-      if (r?.anyOk) clearInput(input)
+      const r = _hasTk ? await dispatchModAction({ channel: modChannel, action: 'unban', target, fanout: true }) : null
+      if (r) showModResultToast(t('mc_mod_label_unbanned'), target, r)
+      const y = await _ytModLeg('unban', target, t('mc_mod_label_unbanned'), !!r)
+      if (r?.anyOk || y?.anyOk) clearInput(input)
       return true
     }
   }

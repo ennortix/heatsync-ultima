@@ -1848,9 +1848,17 @@
     }
   },
   "mc_input_mod_needs_platform_channel": {
-    "message": "/$CMD$ needs a twitch or kick channel",
+    "message": "/$CMD$ needs a twitch, kick, or youtube channel",
     "placeholders": {
       "cmd": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_yt_mod_no_recent_msg": {
+    "message": "youtube: no recent message from $TARGET$ — use the message menu",
+    "placeholders": {
+      "target": {
         "content": "$1"
       }
     }

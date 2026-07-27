@@ -403,13 +403,52 @@ class CircularBuffer {
 // ============================================
 // TWITCH IRC CLIENT (READ-ONLY)
 // ============================================
-class IRC {
+// Shared base for the two chat transports (IRC, KickChat). Holds the surface
+// they duplicate verbatim: per-channel CircularBuffer map, listener registry,
+// and the O(1)/copy accessors main.js consumes. Transport wiring, dedup, and
+// persistence stay in the subclasses — they genuinely differ.
+class ChatClient {
+  constructor(logTag) {
+    this._logTag = logTag
+    this.channels = new Map() // channel -> CircularBuffer
+    this.handlers = new Map()
+    this._destroyed = false
+  }
+
+  getMessages(ch) {
+    return this.channels.get(ch?.toLowerCase())?.getAll() || []
+  }
+
+  // O(1) message count — "any messages?" hot-path callers must not
+  // materialize ~6000-element buffer copies per live message (Kripp scale).
+  getCount(ch) {
+    return this.channels.get(ch?.toLowerCase())?.size || 0
+  }
+
+  on(e, fn) {
+    if (!this.handlers.has(e)) this.handlers.set(e, new Set())
+    this.handlers.get(e).add(fn)
+  }
+
+  emit(e, d) {
+    this.handlers.get(e)?.forEach((fn) => {
+      try {
+        fn(d)
+      } catch (err) {
+        console.error(`[${this._logTag}] handler err:`, err)
+      }
+    })
+  }
+}
+
+class IRC extends ChatClient {
   // SW-owned mode: BG SW owns the WebSocket. This class is a thin client —
   // it joins/parts via runtime messages, mirrors per-channel buffers locally
   // so existing main.js code can keep using `irc.channels.get(ch).getAll()`
   // synchronously, and forwards live events from BG to local listeners.
   // Authenticated send still flows through auth-irc.js (per-tab, OAuth).
   constructor() {
+    super('heatsync-irc')
     // Message-id dedupe — live messages can now arrive from BOTH the BG IRC
     // relay and the native-chat tap; history merges seed it so replays never
     // double-render. FIFO-capped.
@@ -418,15 +457,12 @@ class IRC {
     // per-channel last NON-TAP live delivery — the native tap defers to IRC
     // when this is fresh (IRC copies carry replies/bits/highlight richness)
     this._lastLiveAt = new Map()
-    this.channels = new Map() // ch -> CircularBuffer (local mirror)
     // O(1) mod-notice dedup indices — keyed by "ch:targetLc" and "ch:targetMsgId"
     // respectively. Each stores the first-wins notice object so time-window and
     // _supersededByUnban checks can be done without scanning the full buffer.
     // Capped at 500 entries (FIFO eviction) so they can't grow unbounded.
     this._modNoticeIndex = new Map()
     this._deleteNoticeIndex = new Map()
-    this.handlers = new Map()
-    this._destroyed = false
     this._listener = (message) => {
       if (this._destroyed || !message || typeof message !== 'object') return
       if (message.type === 'bg_irc_msg') {
@@ -823,31 +859,7 @@ class IRC {
     } catch {}
   }
 
-  getMessages(ch) {
-    return this.channels.get(ch?.toLowerCase())?.getAll() || []
-  }
-
-  // O(1) message count — isMultiPlatformTab only needs "any messages?" on the
-  // per-message hot path; getMessages().length materialized ~6000-element
-  // arrays per live message at Kripp scale (busy 3000-cap buffers).
-  getCount(ch) {
-    return this.channels.get(ch?.toLowerCase())?.size || 0
-  }
-
-  on(e, fn) {
-    if (!this.handlers.has(e)) this.handlers.set(e, new Set())
-    this.handlers.get(e).add(fn)
-  }
-
-  emit(e, d) {
-    this.handlers.get(e)?.forEach((fn) => {
-      try {
-        fn(d)
-      } catch (err) {
-        console.error('[heatsync-irc] handler err:', err)
-      }
-    })
-  }
+  // getMessages/getCount/on/emit inherited from ChatClient
 
   destroy() {
     this._destroyed = true
@@ -863,11 +875,9 @@ class IRC {
 // ============================================
 // KICK CHAT CLIENT (VIA HEATSYNC WEBHOOK)
 // ============================================
-class KickChat {
+class KickChat extends ChatClient {
   constructor() {
-    this.channels = new Map() // kickUsername → CircularBuffer
-    this.handlers = new Map()
-    this._destroyed = false
+    super('heatsync-kick')
     this._listener = null
     this._persistTimers = {}
     this._PERSIST_MAX = 1500
@@ -1570,29 +1580,7 @@ class KickChat {
     log('Kick parted', kickUsername)
   }
 
-  getMessages(kickUsername) {
-    return this.channels.get(kickUsername?.toLowerCase())?.getAll() || []
-  }
-
-  // O(1) count — see IRC.getCount (hot-path buffer-copy avoidance).
-  getCount(kickUsername) {
-    return this.channels.get(kickUsername?.toLowerCase())?.size || 0
-  }
-
-  on(e, fn) {
-    if (!this.handlers.has(e)) this.handlers.set(e, new Set())
-    this.handlers.get(e).add(fn)
-  }
-
-  emit(e, d) {
-    this.handlers.get(e)?.forEach((fn) => {
-      try {
-        fn(d)
-      } catch (err) {
-        console.error('[heatsync-kick] handler err:', err)
-      }
-    })
-  }
+  // getMessages/getCount/on/emit inherited from ChatClient
 }
 
 export { CircularBuffer, parseIrcLine, parseTags, parseTwitchEmotesTag }

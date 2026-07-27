@@ -350,7 +350,7 @@ async function sendTwitchWhisper(toUserId, message) {
       body: { toUserId, message },
     })
     if (serverResp?.ok) return { ok: true }
-  } catch (e) {
+  } catch (_) {
     serverThrew = true
   }
 

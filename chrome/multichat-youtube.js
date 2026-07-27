@@ -830,7 +830,7 @@ if (typeof window !== 'undefined') {
     if (!observer) return
     try {
       observer.disconnect()
-    } catch (e) {}
+    } catch (_) {}
     _observers.delete(observer)
   }
 
@@ -883,7 +883,7 @@ if (typeof window !== 'undefined') {
     _observers.forEach((obs) => {
       try {
         obs.disconnect()
-      } catch (e) {}
+      } catch (_) {}
     })
     _observers.clear()
 
@@ -894,7 +894,7 @@ if (typeof window !== 'undefined') {
       const l = _listeners[i]
       try {
         l.target.removeEventListener(l.event, l.handler, l.options)
-      } catch (e) {}
+      } catch (_) {}
     }
     _listeners.length = 0
   }
@@ -4210,7 +4210,7 @@ const tabs = {
         return await rawApi.tabs.sendMessage(tabId, message)
       }
       return promisify(rawApi.tabs.sendMessage.bind(rawApi.tabs))(tabId, message)
-    } catch (err) {
+    } catch (_) {
       // Tab may have closed
       return null
     }
@@ -4230,7 +4230,7 @@ const tabs = {
 function isContextValid() {
   try {
     return !!rawApi?.runtime?.id
-  } catch (e) {
+  } catch (_) {
     return false
   }
 }
@@ -20530,7 +20530,7 @@ function parseIrcLine(raw, channel) {
     }
 
     return null
-  } catch (e) {
+  } catch (_) {
     return null
   }
 }
@@ -23222,7 +23222,7 @@ async function hsMcImportChannelEmotes(btn, channel) {
         btn.disabled = false
       }, 2000)
     }
-  } catch (e) {
+  } catch (_) {
     btn.textContent = t('mc_emote_cold_start_failed')
     showToast(t('mc_emote_cold_start_failed'), 'error')
     setTimeout(() => {
@@ -24166,7 +24166,7 @@ async function _removeEmoteFromInventory(emoteName, targetEl) {
     } else {
       showToast(response?.error || t('mc_emote_remove_failed', [emoteName]), 'error')
     }
-  } catch (e) {
+  } catch (_) {
     showToast(t('mc_emote_remove_error', [emoteName]), 'error')
   }
 }
@@ -24426,7 +24426,7 @@ function unblockEmote(emoteName, opts) {
 // lookup across mcRemoteEmoteIndex + zeroWidthFromAnyCache so all callers
 // (picker, chat-row click, auto-add-on-send, chip-paste) inherit the flag
 // without each having to plumb it through their own state.
-async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, targetEl, zeroWidth, silent) {
+async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, _targetEl, zeroWidth, silent) {
   if (!emoteName) return false
   if (zeroWidth == null) {
     const remote = mcRemoteEmoteIndex.get(emoteName)
@@ -25256,7 +25256,7 @@ function _buildChannelEmoteCache(ch, emotes, platform) {
       }
       if (sm.size === 0) sreg.delete((ch || '').toLowerCase())
     }
-  } catch (e) {}
+  } catch (_) {}
   const keys = Object.keys(channelEmoteCaches)
   if (keys.length > 20) {
     for (const old of keys.slice(0, keys.length - 20)) {
@@ -26223,7 +26223,7 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
             if (meta.at) staleAttr += ` data-stale-at="${meta.at}"`
           }
         }
-      } catch (e) {}
+      } catch (_) {}
       const nsfwClass = emote.nsfw ? ' hs-state-nsfw' : ''
       const _boxW = _hsEmoteBoxW.get(rawChatUrl)
       const wAttr = _boxW ? ` style="width:${_boxW}px"` : ''
@@ -26483,12 +26483,12 @@ function hiResBadgeCandidates(src) {
   if (!src) return []
   if (src.includes('7tv'))
     return ['4x', '3x', '2x'].map((s) =>
-      src.replace(/\/[1-4]x(\.\w+)?(\?.*)?$/i, (m, ext, q) => `/${s}${ext || ''}${q || ''}`),
+      src.replace(/\/[1-4]x(\.\w+)?(\?.*)?$/i, (_m, ext, q) => `/${s}${ext || ''}${q || ''}`),
     )
   if (src.includes('frankerfacez'))
-    return ['4', '2'].map((s) => src.replace(/\/[1-4](\?.*)?$/, (m, q) => `/${s}${q || ''}`))
+    return ['4', '2'].map((s) => src.replace(/\/[1-4](\?.*)?$/, (_m, q) => `/${s}${q || ''}`))
   // Twitch native badges (sub/bits/mod/vip) — URLs end in /1, /2, /3 (max 3, no 4x)
-  if (src.includes('jtvnw')) return ['3', '2'].map((s) => src.replace(/\/[1-3](\?.*)?$/, (m, q) => `/${s}${q || ''}`))
+  if (src.includes('jtvnw')) return ['3', '2'].map((s) => src.replace(/\/[1-3](\?.*)?$/, (_m, q) => `/${s}${q || ''}`))
   return []
 }
 
@@ -29765,7 +29765,7 @@ function updateChatBanners(predResult, pollData) {
   banner.className = 'hs-mc-chat-banner'
   banner.innerHTML = ''
 
-  const goToTwitch = (e) => {
+  const goToTwitch = (_e) => {
     const twitchTab = document.querySelector('[data-tab="live"]')
     if (twitchTab) twitchTab.click()
   }
@@ -30969,7 +30969,7 @@ async function gqlPersistedMutation(operationName, variables) {
   }
 }
 
-async function placePredictionBet(eventId, outcomeId, points, transactionId) {
+async function placePredictionBet(eventId, outcomeId, points, _transactionId) {
   const token = getTwitchAuthToken()
   if (!token) return { error: 'not logged in' }
   try {
@@ -31271,7 +31271,7 @@ async function fetchTwitchBitsBalance() {
   }
 }
 
-async function claimCommunityPoints(claimId, channelId, channelLogin) {
+async function claimCommunityPoints(claimId, channelId, _channelLogin) {
   const token = getTwitchAuthToken()
   if (!token) return false
   let claimed = false
@@ -32036,7 +32036,7 @@ async function fetchKickChannelBadges(slug) {
       // forced a full rebuild.
       if (typeof updateNativeBadgesInPlace === 'function') updateNativeBadgesInPlace(slug)
     }
-  } catch (e) {
+  } catch (_) {
     if (kickBadgesFailedAt.size >= BADGES_FAILED_MAX) {
       kickBadgesFailedAt.delete(kickBadgesFailedAt.keys().next().value)
     }
@@ -32700,7 +32700,7 @@ function tenorEmbed(gifId) {
   </div>`
 }
 
-function twitterEmbed(tweetId, url) {
+function twitterEmbed(tweetId, _url) {
   const id = sanitizeEmbedId(tweetId)
   if (!id) return ''
   // platform.twitter.com/embed/Tweet.html renders the tweet in an iframe with no
@@ -32728,7 +32728,7 @@ function imgurEmbed(imgurId) {
   </div>`
 }
 
-function tiktokEmbed(videoId, url) {
+function tiktokEmbed(videoId, _url) {
   const id = sanitizeEmbedId(videoId)
   if (!id) return ''
   return `<div class="hs-feed-embed-container hs-feed-embed-tiktok">
@@ -33900,7 +33900,7 @@ async function loadHsUsername() {
     // Your own paint/tenure/colour jump the cosmetics queue and your picked
     // colour seeds now — otherwise your name waits behind the whole channel.
     primeSelfHsCosmetics(ui)
-  } catch (e) {
+  } catch (_) {
     hsCurrentUsername = null
     hsSenderKeys = null
   }
@@ -34042,7 +34042,7 @@ async function loadHsAuth() {
     const data = await api.storage.local.get(['auth_token_encrypted', 'auth_token'])
     hsAuthToken = !!(data.auth_token_encrypted || data.auth_token)
     log('Heatsync auth:', hsAuthToken ? 'logged in' : 'anonymous')
-  } catch (e) {
+  } catch (_) {
     hsAuthToken = false
   }
   loadHsUsername()
@@ -35111,7 +35111,7 @@ function _renderFeedEmptyCard() {
         importBtn.disabled = false
         importBtn.textContent = (r?.error || r?.data?.error || 'try again').slice(0, 40)
       }
-    } catch (e) {
+    } catch (_) {
       importBtn.disabled = false
       importBtn.textContent = 'try again'
     }
@@ -35521,7 +35521,7 @@ function renderFeedContent(content, emoteRefs) {
     html = parts.map((part, i) => (i % 2 === 1 ? part : formatText(part))).join('')
   }
   // Parse >>id post-links (like website does)
-  html = html.replace(/(?:&gt;&gt;|>>)(\w{1,6})/g, (match, id) => {
+  html = html.replace(/(?:&gt;&gt;|>>)(\w{1,6})/g, (_match, id) => {
     const paddedId = id.padStart(6, '0')
     const displayId = id.replace(/^0+/, '') || '0'
     return `<span class="hs-post-link" data-id="${paddedId}" style="cursor:pointer">&gt;&gt;${displayId}</span>`
@@ -35534,7 +35534,7 @@ function renderFeedContent(content, emoteRefs) {
     html = parts
       .map((part, i) => {
         if (i % 2 === 1) return part
-        return part.replace(/@([\w]{1,25})\b/g, (m, name) => {
+        return part.replace(/@([\w]{1,25})\b/g, (_m, name) => {
           const lower = name.toLowerCase()
           const isSelf = hsCurrentUsername === lower
           const cls = isSelf ? 'hs-mention self' : 'hs-mention'
@@ -35551,7 +35551,7 @@ function renderFeedContent(content, emoteRefs) {
       .map((part, i) => {
         if (i % 2 === 1) return part
         // (?<!&) — part is already escaped; don't tag #x27 inside &#x27; etc.
-        return part.replace(/(?<!&)#([a-zA-Z][a-zA-Z0-9_]{1,29})\b/g, (m, tag) => {
+        return part.replace(/(?<!&)#([a-zA-Z][a-zA-Z0-9_]{1,29})\b/g, (_m, tag) => {
           return `<a href="https://heatsync.org/tags/${encodeURIComponent(tag)}" target="_blank" rel="noopener noreferrer" class="hs-hashtag" data-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</a>`
         })
       })
@@ -36038,7 +36038,7 @@ async function fetchDiscover() {
     // any retry for the rest of the session — a launch-day user on a cold
     // service worker saw a dead, empty product with no way back.
     discoverLoaded = tagsResp.ok || profilesResp.ok
-  } catch (e) {
+  } catch (_) {
     discoverTags = []
     discoverProfiles = []
     discoverPosts = []
@@ -36535,7 +36535,7 @@ function renderDiscoverTab() {
                 } else {
                   a.textContent = (r?.error || r?.data?.error || 'failed').slice(0, 30)
                 }
-              } catch (err) {
+              } catch (_) {
                 a.textContent = 'failed'
               }
             })
@@ -36673,7 +36673,7 @@ async function fetchPinned() {
     // Only latch on success — a failed fetch used to render the literal "no
     // pinned messages" and never retry.
     pinnedLoaded = resp.ok
-  } catch (e) {
+  } catch (_) {
     pinnedMessages = []
     pinnedLoaded = false
   } finally {
@@ -37415,7 +37415,7 @@ async function sendTwitchWhisper(toUserId, message) {
       body: { toUserId, message },
     })
     if (serverResp?.ok) return { ok: true }
-  } catch (e) {
+  } catch (_) {
     serverThrew = true
   }
 
@@ -42276,7 +42276,7 @@ function unwrapStuckChips(inputEl, acceptWhitespace) {
   return changed
 }
 
-function handleInputChange(e) {
+function handleInputChange(_e) {
   // Defensive: pull any stray text nodes out of .hs-input-stack spans.
   // Stacks are inline-grid with overlay imgs at grid-area 1/1; a text node
   // inside auto-places in a new row and renders BELOW the emote. If the
@@ -42628,7 +42628,7 @@ function handleInputChange(e) {
 //   (3) typed-out "centipede0" text word → emote overlay
 //   (4) typed-out ":smile:0" text word → emoji overlay (if it never span-converted)
 // Returns true if it consumed the word.
-function tryOverlayOnZero(input) {
+function tryOverlayOnZero(_input) {
   const sel = window.getSelection()
   if (!sel?.rangeCount || !sel.isCollapsed) return false
   const range = sel.getRangeAt(0)
@@ -46136,7 +46136,7 @@ async function showChatStatusPanel(channel) {
   let panel
   try {
     panel = await buildChatStatusPanel(channel)
-  } catch (e) {
+  } catch (_) {
     panel = null
   }
   if (!document.body.contains(wrap)) return
@@ -46163,7 +46163,7 @@ async function resolveWhisperTarget(platform, username) {
       let body
       try {
         body = await resolveTwitchChannelId(lowerUser)
-      } catch (e) {
+      } catch (_) {
         showToast(t('mc_whisper_resolve_failed'), 'error')
         return null
       }
@@ -49899,7 +49899,7 @@ async function flushHsPaintBatch() {
     if (resp?.paints && typeof resp.paints === 'object') paints = resp.paints
     if (resp?.colors && typeof resp.colors === 'object') colors = resp.colors
     if (resp?.plus && typeof resp.plus === 'object') plus = resp.plus
-  } catch (e) {
+  } catch (_) {
     paints = null
   }
 
@@ -53954,8 +53954,6 @@ var FR_TYPE_LABELS = {
   msgtype: 'type',
   expr: 'expr',
 }
-var FR_SCOPE_BTN =
-  'background:#000;color:#808080;border:1px solid #444;padding:1px 5px;font-size:13px;cursor:pointer;font-family:inherit;line-height:1.4'
 var FR_BTN =
   'background:#000;color:#fff;border:1px solid #808080;padding:1px 6px;font-size:13px;cursor:pointer;font-family:inherit;line-height:1.4'
 var FR_SEL = 'background:#000;color:#fff;border:1px solid #808080;padding:1px 3px;font-size:13px;font-family:inherit'
@@ -54105,7 +54103,7 @@ function _renderFilterRulesGroup() {
   )
 }
 
-function _handleFilterRuleAction(el, panelRoot) {
+function _handleFilterRuleAction(el, _panelRoot) {
   var action = el.dataset.frAction
   var id = el.dataset.frId
   var rules = _getRawFilterRules()
@@ -54408,7 +54406,7 @@ async function _loadCrashLog() {
             '\n',
         )
         .join('\n')
-  } catch (err) {
+  } catch (_) {
     pre.textContent = '(unable to read log)'
   }
 }
@@ -56779,7 +56777,7 @@ const STORAGE_KEY = 'heatsync_multichat'
   // also silences them when they post on Twitch, and vice-versa. Unmute
   // mirrors. mentionAliases (mentions.js) covers the inverse for YOUR own
   // identity already.
-  function getUserAliases(username, platform) {
+  function getUserAliases(username, _platform) {
     const u = String(username || '').toLowerCase()
     if (!u) return []
     const out = [u]
@@ -57231,7 +57229,6 @@ const STORAGE_KEY = 'heatsync_multichat'
   const PERSIST_DEBOUNCE_MS = 1500
   const PERSIST_MAX_MENTIONS = 500 // matches MAX_BUFFER so restore fills the live buffer
   const PERSIST_MAX_YT = 500
-  const PERSIST_SYNC_MAX = 100
   const _persistMentionsState = { timer: null, dirty: false }
   const _persistYtTimers = new Map() // channelId -> timer
   const _persistYtDirty = new Set() // channelIds with unflushed messages
@@ -57615,7 +57612,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         }
         if (m.size) reg.set(ch, m)
       }
-    } catch (e) {}
+    } catch (_) {}
   }
 
   // Survives hard refresh because emotes.js loadSenderEmoteSets() runs at boot before render.
@@ -57723,7 +57720,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     return m.userId ? `twitch:${m.userId}` : null
   }
 
-  function queueSenderEmoteFetch(senderKey, m) {
+  function queueSenderEmoteFetch(senderKey, _m) {
     if (!senderKey) return
     if (senderEmotePending.has(senderKey)) return
     // Re-fetch when stale (or never validated this session) so emotes a sender
@@ -58631,7 +58628,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     fonts: () => {
       applyFontSettings(getSetting('fontFamily'), getSetting('fontSize'), getSetting('customFontName'))
     },
-    emoteSize: (v, def, onLoad) => {
+    emoteSize: (_v, _def, onLoad) => {
       applyEmoteSize()
       if (onLoad) return
       // URLs encode size — picker DOM is now stale
@@ -58667,7 +58664,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     },
     // rendered html is cached per message — a src change needs a cache
     // flush before the re-render or old animated imgs survive the toggle
-    emoteAnimation: (v, def, onLoad) => {
+    emoteAnimation: (_v, _def, onLoad) => {
       if (onLoad) return
       clearRenderedHtmlCache()
       renderMessages(currentTab)
@@ -58681,7 +58678,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     tabPosition: () => {
       applyTabsPosition()
     },
-    chatPosition: (v, def, onLoad, isRemote) => {
+    chatPosition: (v, _def, _onLoad, isRemote) => {
       applyChatPosition()
       // visible positions become the hide-toggle restore point (mirrors
       // toggleChatHidden's previous-tracking). remote changes update the
@@ -60735,7 +60732,7 @@ const STORAGE_KEY = 'heatsync_multichat'
               searchSpinner.classList.remove('visible')
               const results = resp?.data?.results || resp?.results || []
               renderSearchResults(msgsEl, results, q)
-            } catch (e) {
+            } catch (_) {
               searchSpinner.classList.remove('visible')
             }
           }, 250)
@@ -62745,7 +62742,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         // liveChannel override is popout-scoped — persisting it from regular
         // pages was how a stale pick haunted every future boot
         if (document.body.classList.contains('hs-popout')) saveUiSetting('liveChannel', liveChannel)
-      } catch (e) {
+      } catch (_) {
         /* context invalidated */
       }
     }
@@ -64401,7 +64398,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     // (?<!&) — seg is already escaped, so a #tag inside an HTML entity
     // (&#x27; → #x27, &#39; → #39) must NOT match, else an apostrophe renders
     // as a bogus magenta tag.
-    return outsideTags(html, /(?<!&)#([a-zA-Z][a-zA-Z0-9_]{1,29})\b/g, (m, tag) => {
+    return outsideTags(html, /(?<!&)#([a-zA-Z][a-zA-Z0-9_]{1,29})\b/g, (_m, tag) => {
       return `<a href="https://heatsync.org/tags/${encodeURIComponent(tag)}" target="_blank" rel="noopener noreferrer" class="hs-hashtag" data-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</a>`
     })
   }
@@ -64417,7 +64414,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     // "&gt;&gt;" (no bare ">"); also accept raw ">>" belt-and-suspenders.
     if (!html || (!html.includes('&gt;&gt;') && !html.includes('>>'))) return html
     // Anchor-aware for the same reason as the two passes above.
-    return outsideTags(html, /(?:&gt;&gt;|>>)(\w{1,6})/g, (m, id) => {
+    return outsideTags(html, /(?:&gt;&gt;|>>)(\w{1,6})/g, (_m, id) => {
       const paddedId = id.padStart(6, '0')
       const displayId = id.replace(/^0+/, '') || '0'
       return `<span class="hs-post-link" data-id="${escapeHtml(paddedId)}" style="cursor:pointer">&gt;&gt;${escapeHtml(displayId)}</span>`
@@ -66033,7 +66030,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       if (!liveChannel && urlCh && !liveSet.has(urlCh.toLowerCase()) && liveSet.size > 0) {
         // Don't auto-override — user can pick via the menu
       }
-    } catch (e) {
+    } catch (_) {
       // Network error — re-apply last known good snapshot so stale dots
       // don't persist past their truth window.
       applyLiveDotsFromCache()
@@ -66250,7 +66247,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     try {
       const resp = await chrome.runtime.sendMessage({ type: 'get_watching_channels' })
       return resp?.channels || []
-    } catch (e) {
+    } catch (_) {
       return []
     }
   }
@@ -66438,7 +66435,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         })
         if (resp?.live) twitchLive = new Set(resp.live.map((c) => c.toLowerCase()))
         if (resp?.kickLive) kickLive = new Set(resp.kickLive.map((c) => c.toLowerCase()))
-      } catch (e) {
+      } catch (_) {
         /* use cached liveChannelSet */
       }
     }
@@ -66559,7 +66556,7 @@ const STORAGE_KEY = 'heatsync_multichat'
           return name.toLowerCase()
         }
       }
-    } catch (e) {}
+    } catch (_) {}
 
     // Method 2: localStorage user object
     try {
@@ -66568,7 +66565,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         const data = JSON.parse(twilight)
         if (data?.displayName) return data.displayName.toLowerCase()
       }
-    } catch (e) {}
+    } catch (_) {}
 
     // Method 3: Twitch 'name' cookie (works in popout chat)
     try {
@@ -66583,7 +66580,7 @@ const STORAGE_KEY = 'heatsync_multichat'
           }
         }
       }
-    } catch (e) {}
+    } catch (_) {}
 
     // Kick — DOM selectors keep getting stripped (current redesign moved login to
     // an unlabeled person-icon button with no /profile link). Cross-platform
@@ -66666,7 +66663,7 @@ const STORAGE_KEY = 'heatsync_multichat'
           })
         }
       }
-    } catch (e) {}
+    } catch (_) {}
   }
 
   let _skipNextConfigSync = false
@@ -66736,7 +66733,7 @@ const STORAGE_KEY = 'heatsync_multichat'
           liveChannel = urlCh
         }
       }
-    } catch (e) {
+    } catch (_) {
       _savedActiveTab = 'live'
     }
   }
@@ -67941,12 +67938,12 @@ const STORAGE_KEY = 'heatsync_multichat'
           } else {
             showToast(t('mc_main_emote_add_failed', [msg.emoteName || 'emote', msg.error || 'server error']), 'error')
           }
-        } catch (e) {}
+        } catch (_) {}
       }
       if (msg.type === 'api_status') {
         try {
           showApiStatusBanner(msg.source, msg.state)
-        } catch (e) {}
+        } catch (_) {}
       }
       // Server-enriched emote refs for a twitch message the native tap already
       // delivered (which lacks them). Merge onto the row by id and re-render it
@@ -67967,13 +67964,13 @@ const STORAGE_KEY = 'heatsync_multichat'
               }
             }
           }
-        } catch (e) {}
+        } catch (_) {}
       }
       if (msg.type === 'auth_changed') {
         try {
           showAuthLoginBanner(!!msg.loggedIn)
           if (msg.loggedIn) dismissEmoteLoginNudge()
-        } catch (e) {}
+        } catch (_) {}
       }
       if (msg.type === 'cosmetics_update') {
         const bttv = Object.entries(msg.bttvBadges || {})
@@ -68448,7 +68445,7 @@ const STORAGE_KEY = 'heatsync_multichat'
               if (entries.length) out[ch] = entries.slice(-100)
             }
             chrome.storage.local.set({ hs_stale_emotes_v1: out }).catch(() => {})
-          } catch (e) {}
+          } catch (_) {}
         }
         const _patchDom = (emoteName, mode, meta) => {
           try {
@@ -68473,7 +68470,7 @@ const STORAGE_KEY = 'heatsync_multichat'
                 }
               }
             }
-          } catch (e) {}
+          } catch (_) {}
         }
         if (msg.type === 'channel_emote_removed' && msg.emoteName) {
           _ensureChannel(channel).set(msg.emoteName, {
@@ -68536,7 +68533,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         }
         try {
           pushActivityEvent(evt)
-        } catch (e) {}
+        } catch (_) {}
         const activeTab = currentTab
         if (activeTab === 'live') {
           if (isLiveChannelMessage({ channel })) {
@@ -70170,7 +70167,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         } else if (msg.eventType === 'stream:online') {
           try {
             streamStats.delete((channel || '').toLowerCase())
-          } catch (e) {}
+          } catch (_) {}
           if (!hermesToggles?.online) return
           // Same gate as the follow_stream_event listener: if the authoritative
           // poll snapshot already has this channel live, the WS "went live" is
@@ -70205,7 +70202,7 @@ const STORAGE_KEY = 'heatsync_multichat'
           sessionWentLiveSeen.delete(channel) // genuine re-go-live can resurface
           try {
             renderStreamSummary(channel)
-          } catch (e) {}
+          } catch (_) {}
           if (!hermesToggles?.offline) return
           text = `[${channel}] \u25C6 went offline`
           eventClass = 'event-offline'

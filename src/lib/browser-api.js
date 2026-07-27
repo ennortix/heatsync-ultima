@@ -241,7 +241,7 @@ const tabs = {
         return await rawApi.tabs.sendMessage(tabId, message)
       }
       return promisify(rawApi.tabs.sendMessage.bind(rawApi.tabs))(tabId, message)
-    } catch (err) {
+    } catch (_) {
       // Tab may have closed
       return null
     }
@@ -261,7 +261,7 @@ const tabs = {
 function isContextValid() {
   try {
     return !!rawApi?.runtime?.id
-  } catch (e) {
+  } catch (_) {
     return false
   }
 }

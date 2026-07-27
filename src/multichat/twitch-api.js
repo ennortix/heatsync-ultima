@@ -1496,7 +1496,7 @@ function updateChatBanners(predResult, pollData) {
   banner.className = 'hs-mc-chat-banner'
   banner.innerHTML = ''
 
-  const goToTwitch = (e) => {
+  const goToTwitch = (_e) => {
     const twitchTab = document.querySelector('[data-tab="live"]')
     if (twitchTab) twitchTab.click()
   }
@@ -2700,7 +2700,7 @@ async function gqlPersistedMutation(operationName, variables) {
   }
 }
 
-async function placePredictionBet(eventId, outcomeId, points, transactionId) {
+async function placePredictionBet(eventId, outcomeId, points, _transactionId) {
   const token = getTwitchAuthToken()
   if (!token) return { error: 'not logged in' }
   try {
@@ -3002,7 +3002,7 @@ async function fetchTwitchBitsBalance() {
   }
 }
 
-async function claimCommunityPoints(claimId, channelId, channelLogin) {
+async function claimCommunityPoints(claimId, channelId, _channelLogin) {
   const token = getTwitchAuthToken()
   if (!token) return false
   let claimed = false
@@ -3767,7 +3767,7 @@ async function fetchKickChannelBadges(slug) {
       // forced a full rebuild.
       if (typeof updateNativeBadgesInPlace === 'function') updateNativeBadgesInPlace(slug)
     }
-  } catch (e) {
+  } catch (_) {
     if (kickBadgesFailedAt.size >= BADGES_FAILED_MAX) {
       kickBadgesFailedAt.delete(kickBadgesFailedAt.keys().next().value)
     }

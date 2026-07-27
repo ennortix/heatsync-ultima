@@ -124,7 +124,7 @@
     if (!observer) return
     try {
       observer.disconnect()
-    } catch (e) {}
+    } catch (_) {}
     _observers.delete(observer)
   }
 
@@ -177,7 +177,7 @@
     _observers.forEach((obs) => {
       try {
         obs.disconnect()
-      } catch (e) {}
+      } catch (_) {}
     })
     _observers.clear()
 
@@ -188,7 +188,7 @@
       const l = _listeners[i]
       try {
         l.target.removeEventListener(l.event, l.handler, l.options)
-      } catch (e) {}
+      } catch (_) {}
     }
     _listeners.length = 0
   }

@@ -240,7 +240,7 @@
   // also silences them when they post on Twitch, and vice-versa. Unmute
   // mirrors. mentionAliases (mentions.js) covers the inverse for YOUR own
   // identity already.
-  function getUserAliases(username, platform) {
+  function getUserAliases(username, _platform) {
     const u = String(username || '').toLowerCase()
     if (!u) return []
     const out = [u]
@@ -692,7 +692,6 @@
   const PERSIST_DEBOUNCE_MS = 1500
   const PERSIST_MAX_MENTIONS = 500 // matches MAX_BUFFER so restore fills the live buffer
   const PERSIST_MAX_YT = 500
-  const PERSIST_SYNC_MAX = 100
   const _persistMentionsState = { timer: null, dirty: false }
   const _persistYtTimers = new Map() // channelId -> timer
   const _persistYtDirty = new Set() // channelIds with unflushed messages
@@ -1076,7 +1075,7 @@
         }
         if (m.size) reg.set(ch, m)
       }
-    } catch (e) {}
+    } catch (_) {}
   }
 
   // Survives hard refresh because emotes.js loadSenderEmoteSets() runs at boot before render.
@@ -1184,7 +1183,7 @@
     return m.userId ? `twitch:${m.userId}` : null
   }
 
-  function queueSenderEmoteFetch(senderKey, m) {
+  function queueSenderEmoteFetch(senderKey, _m) {
     if (!senderKey) return
     if (senderEmotePending.has(senderKey)) return
     // Re-fetch when stale (or never validated this session) so emotes a sender
@@ -2092,7 +2091,7 @@
     fonts: () => {
       applyFontSettings(getSetting('fontFamily'), getSetting('fontSize'), getSetting('customFontName'))
     },
-    emoteSize: (v, def, onLoad) => {
+    emoteSize: (_v, _def, onLoad) => {
       applyEmoteSize()
       if (onLoad) return
       // URLs encode size — picker DOM is now stale
@@ -2128,7 +2127,7 @@
     },
     // rendered html is cached per message — a src change needs a cache
     // flush before the re-render or old animated imgs survive the toggle
-    emoteAnimation: (v, def, onLoad) => {
+    emoteAnimation: (_v, _def, onLoad) => {
       if (onLoad) return
       clearRenderedHtmlCache()
       renderMessages(currentTab)
@@ -2142,7 +2141,7 @@
     tabPosition: () => {
       applyTabsPosition()
     },
-    chatPosition: (v, def, onLoad, isRemote) => {
+    chatPosition: (v, _def, _onLoad, isRemote) => {
       applyChatPosition()
       // visible positions become the hide-toggle restore point (mirrors
       // toggleChatHidden's previous-tracking). remote changes update the
@@ -4196,7 +4195,7 @@
               searchSpinner.classList.remove('visible')
               const results = resp?.data?.results || resp?.results || []
               renderSearchResults(msgsEl, results, q)
-            } catch (e) {
+            } catch (_) {
               searchSpinner.classList.remove('visible')
             }
           }, 250)
@@ -6206,7 +6205,7 @@
         // liveChannel override is popout-scoped — persisting it from regular
         // pages was how a stale pick haunted every future boot
         if (document.body.classList.contains('hs-popout')) saveUiSetting('liveChannel', liveChannel)
-      } catch (e) {
+      } catch (_) {
         /* context invalidated */
       }
     }
@@ -7862,7 +7861,7 @@
     // (?<!&) — seg is already escaped, so a #tag inside an HTML entity
     // (&#x27; → #x27, &#39; → #39) must NOT match, else an apostrophe renders
     // as a bogus magenta tag.
-    return outsideTags(html, /(?<!&)#([a-zA-Z][a-zA-Z0-9_]{1,29})\b/g, (m, tag) => {
+    return outsideTags(html, /(?<!&)#([a-zA-Z][a-zA-Z0-9_]{1,29})\b/g, (_m, tag) => {
       return `<a href="https://heatsync.org/tags/${encodeURIComponent(tag)}" target="_blank" rel="noopener noreferrer" class="hs-hashtag" data-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</a>`
     })
   }
@@ -7878,7 +7877,7 @@
     // "&gt;&gt;" (no bare ">"); also accept raw ">>" belt-and-suspenders.
     if (!html || (!html.includes('&gt;&gt;') && !html.includes('>>'))) return html
     // Anchor-aware for the same reason as the two passes above.
-    return outsideTags(html, /(?:&gt;&gt;|>>)(\w{1,6})/g, (m, id) => {
+    return outsideTags(html, /(?:&gt;&gt;|>>)(\w{1,6})/g, (_m, id) => {
       const paddedId = id.padStart(6, '0')
       const displayId = id.replace(/^0+/, '') || '0'
       return `<span class="hs-post-link" data-id="${escapeHtml(paddedId)}" style="cursor:pointer">&gt;&gt;${escapeHtml(displayId)}</span>`
@@ -9494,7 +9493,7 @@
       if (!liveChannel && urlCh && !liveSet.has(urlCh.toLowerCase()) && liveSet.size > 0) {
         // Don't auto-override — user can pick via the menu
       }
-    } catch (e) {
+    } catch (_) {
       // Network error — re-apply last known good snapshot so stale dots
       // don't persist past their truth window.
       applyLiveDotsFromCache()
@@ -9711,7 +9710,7 @@
     try {
       const resp = await chrome.runtime.sendMessage({ type: 'get_watching_channels' })
       return resp?.channels || []
-    } catch (e) {
+    } catch (_) {
       return []
     }
   }
@@ -9899,7 +9898,7 @@
         })
         if (resp?.live) twitchLive = new Set(resp.live.map((c) => c.toLowerCase()))
         if (resp?.kickLive) kickLive = new Set(resp.kickLive.map((c) => c.toLowerCase()))
-      } catch (e) {
+      } catch (_) {
         /* use cached liveChannelSet */
       }
     }
@@ -10020,7 +10019,7 @@
           return name.toLowerCase()
         }
       }
-    } catch (e) {}
+    } catch (_) {}
 
     // Method 2: localStorage user object
     try {
@@ -10029,7 +10028,7 @@
         const data = JSON.parse(twilight)
         if (data?.displayName) return data.displayName.toLowerCase()
       }
-    } catch (e) {}
+    } catch (_) {}
 
     // Method 3: Twitch 'name' cookie (works in popout chat)
     try {
@@ -10044,7 +10043,7 @@
           }
         }
       }
-    } catch (e) {}
+    } catch (_) {}
 
     // Kick — DOM selectors keep getting stripped (current redesign moved login to
     // an unlabeled person-icon button with no /profile link). Cross-platform
@@ -10127,7 +10126,7 @@
           })
         }
       }
-    } catch (e) {}
+    } catch (_) {}
   }
 
   let _skipNextConfigSync = false
@@ -10197,7 +10196,7 @@
           liveChannel = urlCh
         }
       }
-    } catch (e) {
+    } catch (_) {
       _savedActiveTab = 'live'
     }
   }
@@ -11402,12 +11401,12 @@
           } else {
             showToast(t('mc_main_emote_add_failed', [msg.emoteName || 'emote', msg.error || 'server error']), 'error')
           }
-        } catch (e) {}
+        } catch (_) {}
       }
       if (msg.type === 'api_status') {
         try {
           showApiStatusBanner(msg.source, msg.state)
-        } catch (e) {}
+        } catch (_) {}
       }
       // Server-enriched emote refs for a twitch message the native tap already
       // delivered (which lacks them). Merge onto the row by id and re-render it
@@ -11428,13 +11427,13 @@
               }
             }
           }
-        } catch (e) {}
+        } catch (_) {}
       }
       if (msg.type === 'auth_changed') {
         try {
           showAuthLoginBanner(!!msg.loggedIn)
           if (msg.loggedIn) dismissEmoteLoginNudge()
-        } catch (e) {}
+        } catch (_) {}
       }
       if (msg.type === 'cosmetics_update') {
         const bttv = Object.entries(msg.bttvBadges || {})
@@ -11909,7 +11908,7 @@
               if (entries.length) out[ch] = entries.slice(-100)
             }
             chrome.storage.local.set({ hs_stale_emotes_v1: out }).catch(() => {})
-          } catch (e) {}
+          } catch (_) {}
         }
         const _patchDom = (emoteName, mode, meta) => {
           try {
@@ -11934,7 +11933,7 @@
                 }
               }
             }
-          } catch (e) {}
+          } catch (_) {}
         }
         if (msg.type === 'channel_emote_removed' && msg.emoteName) {
           _ensureChannel(channel).set(msg.emoteName, {
@@ -11997,7 +11996,7 @@
         }
         try {
           pushActivityEvent(evt)
-        } catch (e) {}
+        } catch (_) {}
         const activeTab = currentTab
         if (activeTab === 'live') {
           if (isLiveChannelMessage({ channel })) {
@@ -13631,7 +13630,7 @@
         } else if (msg.eventType === 'stream:online') {
           try {
             streamStats.delete((channel || '').toLowerCase())
-          } catch (e) {}
+          } catch (_) {}
           if (!hermesToggles?.online) return
           // Same gate as the follow_stream_event listener: if the authoritative
           // poll snapshot already has this channel live, the WS "went live" is
@@ -13666,7 +13665,7 @@
           sessionWentLiveSeen.delete(channel) // genuine re-go-live can resurface
           try {
             renderStreamSummary(channel)
-          } catch (e) {}
+          } catch (_) {}
           if (!hermesToggles?.offline) return
           text = `[${channel}] \u25C6 went offline`
           eventClass = 'event-offline'

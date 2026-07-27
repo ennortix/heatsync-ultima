@@ -367,7 +367,7 @@ function parseIrcLine(raw, channel) {
     }
 
     return null
-  } catch (e) {
+  } catch (_) {
     return null
   }
 }

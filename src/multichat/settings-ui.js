@@ -666,8 +666,6 @@ var FR_TYPE_LABELS = {
   msgtype: 'type',
   expr: 'expr',
 }
-var FR_SCOPE_BTN =
-  'background:#000;color:#808080;border:1px solid #444;padding:1px 5px;font-size:13px;cursor:pointer;font-family:inherit;line-height:1.4'
 var FR_BTN =
   'background:#000;color:#fff;border:1px solid #808080;padding:1px 6px;font-size:13px;cursor:pointer;font-family:inherit;line-height:1.4'
 var FR_SEL = 'background:#000;color:#fff;border:1px solid #808080;padding:1px 3px;font-size:13px;font-family:inherit'
@@ -817,7 +815,7 @@ function _renderFilterRulesGroup() {
   )
 }
 
-function _handleFilterRuleAction(el, panelRoot) {
+function _handleFilterRuleAction(el, _panelRoot) {
   var action = el.dataset.frAction
   var id = el.dataset.frId
   var rules = _getRawFilterRules()
@@ -1120,7 +1118,7 @@ async function _loadCrashLog() {
             '\n',
         )
         .join('\n')
-  } catch (err) {
+  } catch (_) {
     pre.textContent = '(unable to read log)'
   }
 }

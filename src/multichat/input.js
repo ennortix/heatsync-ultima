@@ -3809,7 +3809,7 @@ function unwrapStuckChips(inputEl, acceptWhitespace) {
   return changed
 }
 
-function handleInputChange(e) {
+function handleInputChange(_e) {
   // Defensive: pull any stray text nodes out of .hs-input-stack spans.
   // Stacks are inline-grid with overlay imgs at grid-area 1/1; a text node
   // inside auto-places in a new row and renders BELOW the emote. If the
@@ -4161,7 +4161,7 @@ function handleInputChange(e) {
 //   (3) typed-out "centipede0" text word → emote overlay
 //   (4) typed-out ":smile:0" text word → emoji overlay (if it never span-converted)
 // Returns true if it consumed the word.
-function tryOverlayOnZero(input) {
+function tryOverlayOnZero(_input) {
   const sel = window.getSelection()
   if (!sel?.rangeCount || !sel.isCollapsed) return false
   const range = sel.getRangeAt(0)
@@ -7669,7 +7669,7 @@ async function showChatStatusPanel(channel) {
   let panel
   try {
     panel = await buildChatStatusPanel(channel)
-  } catch (e) {
+  } catch (_) {
     panel = null
   }
   if (!document.body.contains(wrap)) return
@@ -7696,7 +7696,7 @@ async function resolveWhisperTarget(platform, username) {
       let body
       try {
         body = await resolveTwitchChannelId(lowerUser)
-      } catch (e) {
+      } catch (_) {
         showToast(t('mc_whisper_resolve_failed'), 'error')
         return null
       }

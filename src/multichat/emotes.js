@@ -836,7 +836,7 @@ async function hsMcImportChannelEmotes(btn, channel) {
         btn.disabled = false
       }, 2000)
     }
-  } catch (e) {
+  } catch (_) {
     btn.textContent = t('mc_emote_cold_start_failed')
     showToast(t('mc_emote_cold_start_failed'), 'error')
     setTimeout(() => {
@@ -1780,7 +1780,7 @@ async function _removeEmoteFromInventory(emoteName, targetEl) {
     } else {
       showToast(response?.error || t('mc_emote_remove_failed', [emoteName]), 'error')
     }
-  } catch (e) {
+  } catch (_) {
     showToast(t('mc_emote_remove_error', [emoteName]), 'error')
   }
 }
@@ -2040,7 +2040,7 @@ function unblockEmote(emoteName, opts) {
 // lookup across mcRemoteEmoteIndex + zeroWidthFromAnyCache so all callers
 // (picker, chat-row click, auto-add-on-send, chip-paste) inherit the flag
 // without each having to plumb it through their own state.
-async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, targetEl, zeroWidth, silent) {
+async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, _targetEl, zeroWidth, silent) {
   if (!emoteName) return false
   if (zeroWidth == null) {
     const remote = mcRemoteEmoteIndex.get(emoteName)
@@ -2870,7 +2870,7 @@ function _buildChannelEmoteCache(ch, emotes, platform) {
       }
       if (sm.size === 0) sreg.delete((ch || '').toLowerCase())
     }
-  } catch (e) {}
+  } catch (_) {}
   const keys = Object.keys(channelEmoteCaches)
   if (keys.length > 20) {
     for (const old of keys.slice(0, keys.length - 20)) {
@@ -3837,7 +3837,7 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
             if (meta.at) staleAttr += ` data-stale-at="${meta.at}"`
           }
         }
-      } catch (e) {}
+      } catch (_) {}
       const nsfwClass = emote.nsfw ? ' hs-state-nsfw' : ''
       const _boxW = _hsEmoteBoxW.get(rawChatUrl)
       const wAttr = _boxW ? ` style="width:${_boxW}px"` : ''

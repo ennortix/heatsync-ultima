@@ -45,12 +45,12 @@ function hiResBadgeCandidates(src) {
   if (!src) return []
   if (src.includes('7tv'))
     return ['4x', '3x', '2x'].map((s) =>
-      src.replace(/\/[1-4]x(\.\w+)?(\?.*)?$/i, (m, ext, q) => `/${s}${ext || ''}${q || ''}`),
+      src.replace(/\/[1-4]x(\.\w+)?(\?.*)?$/i, (_m, ext, q) => `/${s}${ext || ''}${q || ''}`),
     )
   if (src.includes('frankerfacez'))
-    return ['4', '2'].map((s) => src.replace(/\/[1-4](\?.*)?$/, (m, q) => `/${s}${q || ''}`))
+    return ['4', '2'].map((s) => src.replace(/\/[1-4](\?.*)?$/, (_m, q) => `/${s}${q || ''}`))
   // Twitch native badges (sub/bits/mod/vip) — URLs end in /1, /2, /3 (max 3, no 4x)
-  if (src.includes('jtvnw')) return ['3', '2'].map((s) => src.replace(/\/[1-3](\?.*)?$/, (m, q) => `/${s}${q || ''}`))
+  if (src.includes('jtvnw')) return ['3', '2'].map((s) => src.replace(/\/[1-3](\?.*)?$/, (_m, q) => `/${s}${q || ''}`))
   return []
 }
 

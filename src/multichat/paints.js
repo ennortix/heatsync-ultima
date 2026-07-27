@@ -468,7 +468,7 @@ async function flushHsPaintBatch() {
     if (resp?.paints && typeof resp.paints === 'object') paints = resp.paints
     if (resp?.colors && typeof resp.colors === 'object') colors = resp.colors
     if (resp?.plus && typeof resp.plus === 'object') plus = resp.plus
-  } catch (e) {
+  } catch (_) {
     paints = null
   }
 

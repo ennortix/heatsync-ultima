@@ -212,7 +212,7 @@ async function loadHsUsername() {
     // Your own paint/tenure/colour jump the cosmetics queue and your picked
     // colour seeds now — otherwise your name waits behind the whole channel.
     primeSelfHsCosmetics(ui)
-  } catch (e) {
+  } catch (_) {
     hsCurrentUsername = null
     hsSenderKeys = null
   }
@@ -354,7 +354,7 @@ async function loadHsAuth() {
     const data = await api.storage.local.get(['auth_token_encrypted', 'auth_token'])
     hsAuthToken = !!(data.auth_token_encrypted || data.auth_token)
     log('Heatsync auth:', hsAuthToken ? 'logged in' : 'anonymous')
-  } catch (e) {
+  } catch (_) {
     hsAuthToken = false
   }
   loadHsUsername()
@@ -1423,7 +1423,7 @@ function _renderFeedEmptyCard() {
         importBtn.disabled = false
         importBtn.textContent = (r?.error || r?.data?.error || 'try again').slice(0, 40)
       }
-    } catch (e) {
+    } catch (_) {
       importBtn.disabled = false
       importBtn.textContent = 'try again'
     }
@@ -1833,7 +1833,7 @@ function renderFeedContent(content, emoteRefs) {
     html = parts.map((part, i) => (i % 2 === 1 ? part : formatText(part))).join('')
   }
   // Parse >>id post-links (like website does)
-  html = html.replace(/(?:&gt;&gt;|>>)(\w{1,6})/g, (match, id) => {
+  html = html.replace(/(?:&gt;&gt;|>>)(\w{1,6})/g, (_match, id) => {
     const paddedId = id.padStart(6, '0')
     const displayId = id.replace(/^0+/, '') || '0'
     return `<span class="hs-post-link" data-id="${paddedId}" style="cursor:pointer">&gt;&gt;${displayId}</span>`
@@ -1846,7 +1846,7 @@ function renderFeedContent(content, emoteRefs) {
     html = parts
       .map((part, i) => {
         if (i % 2 === 1) return part
-        return part.replace(/@([\w]{1,25})\b/g, (m, name) => {
+        return part.replace(/@([\w]{1,25})\b/g, (_m, name) => {
           const lower = name.toLowerCase()
           const isSelf = hsCurrentUsername === lower
           const cls = isSelf ? 'hs-mention self' : 'hs-mention'
@@ -1863,7 +1863,7 @@ function renderFeedContent(content, emoteRefs) {
       .map((part, i) => {
         if (i % 2 === 1) return part
         // (?<!&) — part is already escaped; don't tag #x27 inside &#x27; etc.
-        return part.replace(/(?<!&)#([a-zA-Z][a-zA-Z0-9_]{1,29})\b/g, (m, tag) => {
+        return part.replace(/(?<!&)#([a-zA-Z][a-zA-Z0-9_]{1,29})\b/g, (_m, tag) => {
           return `<a href="https://heatsync.org/tags/${encodeURIComponent(tag)}" target="_blank" rel="noopener noreferrer" class="hs-hashtag" data-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</a>`
         })
       })
@@ -2350,7 +2350,7 @@ async function fetchDiscover() {
     // any retry for the rest of the session — a launch-day user on a cold
     // service worker saw a dead, empty product with no way back.
     discoverLoaded = tagsResp.ok || profilesResp.ok
-  } catch (e) {
+  } catch (_) {
     discoverTags = []
     discoverProfiles = []
     discoverPosts = []
@@ -2847,7 +2847,7 @@ function renderDiscoverTab() {
                 } else {
                   a.textContent = (r?.error || r?.data?.error || 'failed').slice(0, 30)
                 }
-              } catch (err) {
+              } catch (_) {
                 a.textContent = 'failed'
               }
             })
@@ -2985,7 +2985,7 @@ async function fetchPinned() {
     // Only latch on success — a failed fetch used to render the literal "no
     // pinned messages" and never retry.
     pinnedLoaded = resp.ok
-  } catch (e) {
+  } catch (_) {
     pinnedMessages = []
     pinnedLoaded = false
   } finally {

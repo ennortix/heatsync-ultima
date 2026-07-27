@@ -120,7 +120,7 @@ function tenorEmbed(gifId) {
   </div>`
 }
 
-function twitterEmbed(tweetId, url) {
+function twitterEmbed(tweetId, _url) {
   const id = sanitizeEmbedId(tweetId)
   if (!id) return ''
   // platform.twitter.com/embed/Tweet.html renders the tweet in an iframe with no
@@ -148,7 +148,7 @@ function imgurEmbed(imgurId) {
   </div>`
 }
 
-function tiktokEmbed(videoId, url) {
+function tiktokEmbed(videoId, _url) {
   const id = sanitizeEmbedId(videoId)
   if (!id) return ''
   return `<div class="hs-feed-embed-container hs-feed-embed-tiktok">

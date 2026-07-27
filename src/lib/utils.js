@@ -697,10 +697,10 @@ function identityYtLiveUrl(res) {
 // "shorts/summer" out; reddit names carry their own length+charset rules. Every
 // lookbehind blocks a preceding `/` or word char so the fragment inside a real
 // url ("youtube.com/shorts/…") is left to the normal linkifier.
-const YT_ID = String.raw`[A-Za-z0-9_-]{11}`
+const YT_ID = `[A-Za-z0-9_-]{11}`
 // Trailing query/params ride along (`watch?v=ID&t=30s`). `&` arrives as `&amp;`
 // — input is pre-escaped html — and stays escaped in the href, where it decodes.
-const YT_QS = String.raw`(?:(?:&amp;|[?&])[A-Za-z0-9_=%.+-]+)*`
+const YT_QS = `(?:(?:&amp;|[?&])[A-Za-z0-9_=%.+-]+)*`
 const PARTIAL_YT_RE = new RegExp(
   String.raw`(?<![\w/.=-])\/?(watch\?v=|shorts\/|live\/|embed\/|v\/)(${YT_ID})(${YT_QS})(?![A-Za-z0-9_-])`,
   'g',

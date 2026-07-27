@@ -4710,7 +4710,11 @@
       const seen = new Set()
       const channels = (config.channels || [])
         .map((c) => (c.twitch || '').toLowerCase().trim())
-        .filter((ch) => ch && !seen.has(ch) && (seen.add(ch), true))
+        .filter((ch) => {
+          if (!ch || seen.has(ch)) return false
+          seen.add(ch)
+          return true
+        })
       for (let i = 0; i < channels.length; i++) {
         if (!autoClaimPoints) break
         const ch = channels[i]

@@ -837,14 +837,14 @@ function _hsPerfWrap(fn, ms, kind) {
       break
     }
   } catch {}
-  return function () {
+  return function (...args) {
     // localStorage gate so the tracer is togglable from the page world too —
     // the isolated world's window.__hsPerfTrace is unreachable from devtools'
     // default context and from automation.
-    if (!window.__hsPerfTrace && !localStorage.getItem('hs_perf_trace')) return fn.apply(this, arguments)
+    if (!window.__hsPerfTrace && !localStorage.getItem('hs_perf_trace')) return fn.apply(this, args)
     const t = performance.now()
     try {
-      return fn.apply(this, arguments)
+      return fn.apply(this, args)
     } finally {
       const d = performance.now() - t
       if (d > 50) {

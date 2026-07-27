@@ -766,11 +766,11 @@ if (typeof window !== 'undefined') {
         if (!src) src = (lines[3] || lines[2] || '').trim().slice(0, 120)
       } catch {}
     }
-    return function () {
-      if (!window.__hsPerfTrace) return fn.apply(this, arguments)
+    return function (...args) {
+      if (!window.__hsPerfTrace) return fn.apply(this, args)
       const t = performance.now()
       try {
-        return fn.apply(this, arguments)
+        return fn.apply(this, args)
       } finally {
         const d = performance.now() - t
         if (d > 50) {
@@ -1695,10 +1695,10 @@ function identityYtLiveUrl(res) {
 // "shorts/summer" out; reddit names carry their own length+charset rules. Every
 // lookbehind blocks a preceding `/` or word char so the fragment inside a real
 // url ("youtube.com/shorts/…") is left to the normal linkifier.
-const YT_ID = String.raw`[A-Za-z0-9_-]{11}`
+const YT_ID = `[A-Za-z0-9_-]{11}`
 // Trailing query/params ride along (`watch?v=ID&t=30s`). `&` arrives as `&amp;`
 // — input is pre-escaped html — and stays escaped in the href, where it decodes.
-const YT_QS = String.raw`(?:(?:&amp;|[?&])[A-Za-z0-9_=%.+-]+)*`
+const YT_QS = `(?:(?:&amp;|[?&])[A-Za-z0-9_=%.+-]+)*`
 const PARTIAL_YT_RE = new RegExp(
   String.raw`(?<![\w/.=-])\/?(watch\?v=|shorts\/|live\/|embed\/|v\/)(${YT_ID})(${YT_QS})(?![A-Za-z0-9_-])`,
   'g',
@@ -6767,14 +6767,14 @@ function _hsPerfWrap(fn, ms, kind) {
       break
     }
   } catch {}
-  return function () {
+  return function (...args) {
     // localStorage gate so the tracer is togglable from the page world too —
     // the isolated world's window.__hsPerfTrace is unreachable from devtools'
     // default context and from automation.
-    if (!window.__hsPerfTrace && !localStorage.getItem('hs_perf_trace')) return fn.apply(this, arguments)
+    if (!window.__hsPerfTrace && !localStorage.getItem('hs_perf_trace')) return fn.apply(this, args)
     const t = performance.now()
     try {
-      return fn.apply(this, arguments)
+      return fn.apply(this, args)
     } finally {
       const d = performance.now() - t
       if (d > 50) {
@@ -19114,7 +19114,7 @@ function _frCompileOne(rule) {
       // by default. RegExp compiled once; never touches user-supplied raw regex.
       const esc = _frEscapeLiteral(val)
       try {
-        c.re = new RegExp(`(?:^|[\\s,!?.:;\'"])${esc}(?=$|[\\s,!?.:;\'"])`, flags)
+        c.re = new RegExp(`(?:^|[\\s,!?.:;'"])${esc}(?=$|[\\s,!?.:;'"])`, flags)
       } catch {
         c.re = null
       }
@@ -61679,7 +61679,11 @@ const STORAGE_KEY = 'heatsync_multichat'
       const seen = new Set()
       const channels = (config.channels || [])
         .map((c) => (c.twitch || '').toLowerCase().trim())
-        .filter((ch) => ch && !seen.has(ch) && (seen.add(ch), true))
+        .filter((ch) => {
+          if (!ch || seen.has(ch)) return false
+          seen.add(ch)
+          return true
+        })
       for (let i = 0; i < channels.length; i++) {
         if (!autoClaimPoints) break
         const ch = channels[i]

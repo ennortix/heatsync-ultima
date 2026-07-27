@@ -60,11 +60,11 @@
         if (!src) src = (lines[3] || lines[2] || '').trim().slice(0, 120)
       } catch {}
     }
-    return function () {
-      if (!window.__hsPerfTrace) return fn.apply(this, arguments)
+    return function (...args) {
+      if (!window.__hsPerfTrace) return fn.apply(this, args)
       const t = performance.now()
       try {
-        return fn.apply(this, arguments)
+        return fn.apply(this, args)
       } finally {
         const d = performance.now() - t
         if (d > 50) {

@@ -330,7 +330,7 @@ function _frCompileOne(rule) {
       // by default. RegExp compiled once; never touches user-supplied raw regex.
       const esc = _frEscapeLiteral(val)
       try {
-        c.re = new RegExp(`(?:^|[\\s,!?.:;\'"])${esc}(?=$|[\\s,!?.:;\'"])`, flags)
+        c.re = new RegExp(`(?:^|[\\s,!?.:;'"])${esc}(?=$|[\\s,!?.:;'"])`, flags)
       } catch {
         c.re = null
       }

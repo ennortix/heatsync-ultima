@@ -67016,17 +67016,54 @@ const STORAGE_KEY = 'heatsync_multichat'
   }
 
   let _skipNextConfigSync = false
+  // Snapshot of what we last wrote, so the cross-tab union below can tell
+  // "another tab added this" from "we deliberately removed this".
+  let _lastPersistedChannelKeys = null
+  // Serializes saveConfig bodies — two rapid saves must not interleave their
+  // read-then-write halves (the same lost-update the union above prevents
+  // cross-tab, but within one tab). Mirrors the ui_settings write mutex.
+  let _saveConfigChain = Promise.resolve()
 
-  async function saveConfig() {
+  function saveConfig() {
     _channelLookup = null
     // Notify any open UI (profile card, etc.) that channel list may have changed
     try {
       document.dispatchEvent(new CustomEvent('hs-channels-changed'))
     } catch {}
+    _saveConfigChain = _saveConfigChain.then(_saveConfigNow, _saveConfigNow)
+    return _saveConfigChain
+  }
+
+  async function _saveConfigNow() {
     try {
       _skipNextConfigSync = true
       // ephemeral auto-tabs (open browser streams) never persist
       const persistable = { ...config, channels: (config.channels || []).filter((c) => !c?.ephemeral) }
+      // Union the channel list with what's in storage before writing. A blind
+      // full-object set makes two tabs (twitch + kick, the normal setup) race:
+      // whoever writes last wins, and the loser's just-added channel is both
+      // dropped from storage AND parted locally when the onChanged diff sees
+      // it missing. Reconcile on channelKey identity, ours winning on shape.
+      try {
+        const stored = (await chrome.storage.local.get(STORAGE_KEY))?.[STORAGE_KEY]
+        const theirs = Array.isArray(stored?.channels) ? stored.channels : null
+        if (theirs?.length) {
+          const key = (c) => `${c?.platform || 'twitch'}:${(c?.id || c?.twitch || c?.name || '').toLowerCase()}`
+          const mine = new Set(persistable.channels.map(key))
+          // A channel we deliberately removed this session must stay removed —
+          // only adopt entries that appeared after our last known snapshot.
+          const removed = _lastPersistedChannelKeys
+          for (const c of theirs) {
+            const k = key(c)
+            if (!mine.has(k) && !removed?.has(k)) persistable.channels.push(c)
+          }
+        }
+      } catch {}
+      _lastPersistedChannelKeys = new Set(
+        persistable.channels.map(
+          (c) => `${c?.platform || 'twitch'}:${(c?.id || c?.twitch || c?.name || '').toLowerCase()}`,
+        ),
+      )
       await chrome.storage.local.set({ [STORAGE_KEY]: persistable })
       // Sync to server for cross-device sync
       safeSendMessage({

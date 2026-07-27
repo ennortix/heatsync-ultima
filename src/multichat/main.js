@@ -745,19 +745,34 @@
     }
   }
 
+  function _writeMentionsNow() {
+    try {
+      if (!chrome?.runtime?.id) return
+      const msgs = mentionsBuffer.slice(-PERSIST_MAX_MENTIONS).map(_serializePersistMsg)
+      const p = chrome.storage.local.set({ hs_mentions_v2: { msgs, ts: Date.now() } })
+      if (p && typeof p.catch === 'function') p.catch(() => {})
+    } catch {}
+  }
+
   function persistMentions() {
     _persistMentionsState.dirty = true
     if (_persistMentionsState.timer) return
     _persistMentionsState.timer = cleanup.setTimeout(() => {
       _persistMentionsState.timer = null
       _persistMentionsState.dirty = false
-      try {
-        if (!chrome?.runtime?.id) return
-        const msgs = mentionsBuffer.slice(-PERSIST_MAX_MENTIONS).map(_serializePersistMsg)
-        const p = chrome.storage.local.set({ hs_mentions_v2: { msgs, ts: Date.now() } })
-        if (p && typeof p.catch === 'function') p.catch(() => {})
-      } catch {}
+      _writeMentionsNow()
     }, PERSIST_DEBOUNCE_MS)
+  }
+
+  function _writeYtNow(channelId) {
+    try {
+      if (!chrome?.runtime?.id) return
+      const buf = channelYtMessages.get(channelId)
+      if (!buf) return
+      const msgs = buf.slice(-PERSIST_MAX_YT).map(_serializePersistMsg)
+      const p = chrome.storage.local.set({ [`hs_yt_${channelId}`]: { msgs, ts: Date.now() } })
+      if (p && typeof p.catch === 'function') p.catch(() => {})
+    } catch {}
   }
 
   function persistYt(channelId) {
@@ -769,14 +784,7 @@
       cleanup.setTimeout(() => {
         _persistYtTimers.delete(channelId)
         _persistYtDirty.delete(channelId)
-        try {
-          if (!chrome?.runtime?.id) return
-          const buf = channelYtMessages.get(channelId)
-          if (!buf) return
-          const msgs = buf.slice(-PERSIST_MAX_YT).map(_serializePersistMsg)
-          const p = chrome.storage.local.set({ [`hs_yt_${channelId}`]: { msgs, ts: Date.now() } })
-          if (p && typeof p.catch === 'function') p.catch(() => {})
-        } catch {}
+        _writeYtNow(channelId)
       }, PERSIST_DEBOUNCE_MS),
     )
   }
@@ -806,6 +814,24 @@
       // HeatSync user data to host-page scripts and co-resident extensions.
       if (_persistTabSeenTimer) {
         localStorage.setItem('hs_tab_seen_sync', JSON.stringify({ data: { ...tabSeenAt }, ts: Date.now() }))
+      }
+    } catch {}
+    // Drain pending mention/YT debounces the way KickChat._flushPendingSync
+    // drains kick buffers: a storage.local.set DISPATCHED during pagehide
+    // survives the unload, so this closes the 1.5s debounce gap without
+    // writing HeatSync data to the host page's localStorage.
+    try {
+      if (_persistMentionsState.timer) {
+        cleanup.clearTimeout(_persistMentionsState.timer)
+        _persistMentionsState.timer = null
+        _persistMentionsState.dirty = false
+        _writeMentionsNow()
+      }
+      for (const [channelId, t] of [..._persistYtTimers]) {
+        cleanup.clearTimeout(t)
+        _persistYtTimers.delete(channelId)
+        _persistYtDirty.delete(channelId)
+        _writeYtNow(channelId)
       }
     } catch {}
   }

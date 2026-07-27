@@ -6,7 +6,9 @@ positioning: lead with **multichat** — twitch, kick and youtube live chat in o
 - **first-contact reliability** — GREEN (multichat/irc/emote rendering/8h memory all intact). one live smoke test before posting.
 - **positioning / right-crowd** — applied to repo (store listing, README, this file). still must publish the updated CWS listing in the dev dashboard.
 - **frictionless first 60s** — empty-state CTA wired; welcome.html CTA-demotion + auto-seed still pending.
-- **survives a spike** — low risk by design (extension talks to twitch/kick IRC directly; a spike of installs that don't sign in never touches heatsync.org).
+- **survives a spike** — the old note here ("low risk by design, installs never touch heatsync.org") was wrong about where the load lands. The spike is the *link clicks*, not the installs: every shared /logs, /thread and /moment url is an SSR page on our origin, and reddit's crawler walks them all. That surface hung for a full day before the 07-27 audit caught it (day-list stampede, fixed in 7f63524a). Re-check before posting: `/logs/:plat/:chan/:date` on a busy channel under 2s, per-channel sitemaps returning real urls, and no query pile-up (`SELECT count(*) FROM pg_stat_activity WHERE state='active'` well under 100).
+- **shareable links look right** — post one of each url type (/logs, /thread, /moment) into a throwaway discord + reddit draft and confirm the unfurl card shows the real title/description/image, not the generic heatsync card.
+- **content filters hold** — the emote corpus rescan must be finished (unscanned rows ≈ 0); an unscanned emote renders as clean, and a flagged emote's unscanned same-name twin renders too.
 
 ## launch sequence
 1. **dry-run first** — post the build-story in a smaller, tooling-friendly sub (r/Twitch_Startup ~120k, or r/streaming) to test the message + catch any bug. one day.

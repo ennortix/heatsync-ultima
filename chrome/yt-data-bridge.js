@@ -37,6 +37,12 @@
       (d) => (/^UC[\w-]{20,}$/i.test(d.authorExternalChannelId || '') ? d.authorExternalChannelId : null),
     ],
     ['data-hs-ctx-params', (d) => d.contextMenuEndpoint?.liveChatItemContextMenuEndpoint?.params || null],
+    // YouTube's own send time (microseconds since epoch) — the DOM-scrape tap
+    // (youtube-content.js extractMessage/processNode) otherwise has no way to
+    // read the renderer's real timestampUsec and falls back to Date.now(),
+    // unlike the innertube-JSON tap (background.js ytTapTimestamp) and the
+    // server relay, which both already preserve it.
+    ['data-hs-timestamp', (d) => (/^\d+$/.test(String(d.timestampUsec || '')) ? String(d.timestampUsec) : null)],
   ]
   // Polymer usually binds within a frame; a single 80ms retry used to be the
   // whole budget, so a slow bind left a row permanently unstamped (and, for

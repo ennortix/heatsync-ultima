@@ -393,6 +393,47 @@ class CircularBuffer {
     // Concat instead of spread — avoids 2 temporary arrays
     return this.buf.slice(this.head).concat(this.buf.slice(0, this.head))
   }
+  // Newest `n` items only (fewer if size < n) — O(n) instead of getAll()'s
+  // O(size) (up to `cap`, 3000 on the twitch/kick buffers). The render path
+  // never needs more than its DOM cap + scrollback window, so callers that
+  // only paint the tail should use this instead of getAll().
+  tail(n) {
+    const count = Math.min(n, this.size)
+    if (count === 0) return []
+    const out = new Array(count)
+    let idx = (this.head - 1 + this.cap) % this.cap
+    for (let i = count - 1; i >= 0; i--) {
+      out[i] = this.buf[idx]
+      idx = (idx - 1 + this.cap) % this.cap
+    }
+    return out
+  }
+  // Ordered-insert counterpart to push() — keeps the ring non-decreasing by
+  // ordOf (see src/lib/utils.js) instead of blindly appending. Fast path
+  // (item is newest-or-tied, the overwhelming common case) is push()'s exact
+  // O(1). The rare out-of-order arrival (backfill/replay/native-tap race)
+  // rebuilds the ring from a sorted-array splice; if the item is older than
+  // everything AND the ring is already full, it's dropped outright — the
+  // ring would evict it right back out anyway, so this is a no-op, not a loss.
+  insertOrdered(item, getOrd = ordOf) {
+    if (this.size === 0) {
+      this.push(item)
+      return
+    }
+    const lastIdx = (this.head - 1 + this.cap) % this.cap
+    if (getOrd(this.buf[lastIdx]) <= getOrd(item)) {
+      this.push(item)
+      return
+    }
+    const all = this.getAll()
+    const idx = findOrdInsertIndex(all, getOrd(item), getOrd)
+    if (idx === 0 && all.length >= this.cap) return // older than the oldest kept slot
+    all.splice(idx, 0, item)
+    if (all.length > this.cap) all.shift()
+    this.head = 0
+    this.size = 0
+    for (const m of all) this.push(m)
+  }
   clear() {
     this.buf = new Array(this.cap)
     this.head = 0
@@ -417,6 +458,14 @@ class ChatClient {
 
   getMessages(ch) {
     return this.channels.get(ch?.toLowerCase())?.getAll() || []
+  }
+
+  // Bounded copy of just the newest `n` messages — see CircularBuffer.tail().
+  // Render call sites that only ever paint a tail window should use this
+  // instead of getMessages()/getAll() (which copy the whole buffer, up to
+  // `cap`, every call).
+  getTail(ch, n) {
+    return this.channels.get(ch?.toLowerCase())?.tail(n) || []
   }
 
   // O(1) message count — "any messages?" hot-path callers must not
@@ -599,7 +648,11 @@ class IRC extends ChatClient {
           this._deleteNoticeIndex.delete(this._deleteNoticeIndex.keys().next().value)
         this._deleteNoticeIndex.set(idxKey, msg)
       }
-      buf.push(msg)
+      // Ordered insert, not blind push — a BG history merge or native-tap
+      // copy can race a live PRIVMSG and land here with an OLDER tmi-sent-ts,
+      // which would otherwise silently break the buffer's sortedness that
+      // fairMerge/mergeSortedRuns (main.js) depend on.
+      buf.insertOrdered(msg)
       // Relay PRIVMSGs to server archive (ON CONFLICT DO NOTHING dedupes across
       // multiple viewers). Skip replays from BG history merge.
       if (!msg.type && !msg.isHistory && !msg.isSynthetic && msg.user && msg.text && msg.id) {
@@ -1039,7 +1092,11 @@ class KickChat extends ChatClient {
     // emote-enrich.ts.
     if (d.hsEmotes && typeof d.hsEmotes === 'object') msg.hsEmotes = d.hsEmotes
     if (fromNativeTap) msg.fromNativeTap = true
-    this.channels.get(channel).push(msg)
+    // Ordered insert — the server webhook relay, the BG Pusher tap, and the
+    // native tap can each deliver the same window's messages with a
+    // slightly different arrival order; insertOrdered keeps the buffer
+    // sorted by real timestamp instead of raw arrival.
+    this.channels.get(channel).insertOrdered(msg)
     if (msg.user) {
       addUsername(msg.user)
       setKnownColor(msg.user.toLowerCase(), msg.color, msg.userId, 'kick')

@@ -962,7 +962,12 @@
           }
           ingest(v.msgs)
           ingest(syncMsgs)
-          buf.sort((a, b) => (a.time || 0) - (b.time || 0))
+          // ordOf, not raw time — a persisted live-paced row carries its own
+          // `ord` (the paced-commit clock), which is what fairMerge/
+          // mergeSortedRuns actually sort on. Sorting by raw time here would
+          // restore the buffer in a different order than it was ever
+          // rendered in, breaking the sortedness invariant those rely on.
+          buf.sort((a, b) => ordOf(a) - ordOf(b))
           if (buf.length > PERSIST_MAX_YT) buf.splice(0, buf.length - PERSIST_MAX_YT)
         }
         if (staleYtIds.length) {
@@ -2659,7 +2664,13 @@
           const existing = buffer.getAll()
           const isDupe = existing.some((m) => m.type === 'stream-event' && m.text === evt.text)
           if (!isDupe) {
-            buffer.push(evt)
+            // insertOrdered, not push: unlike the realtime stream-event
+            // dispatchers (which always stamp time: Date.now()), evt.time
+            // here is the event's REAL historical time (persisted storage /
+            // reload replay) — it can legitimately be older than whatever
+            // live messages already reached this buffer before boot restore
+            // finished, so a blind push would break buffer sortedness.
+            buffer.insertOrdered(evt)
             added++
           }
         }
@@ -2675,7 +2686,7 @@
             const existing = liveBuffer.getAll()
             const isDupe = existing.some((m) => m.type === 'stream-event' && m.text === evt.text)
             if (!isDupe) {
-              liveBuffer.push(evt)
+              liveBuffer.insertOrdered(evt)
               added++
             }
           }
@@ -8444,10 +8455,10 @@
     if (active.length === 1) {
       const s = active[0]
       // ALWAYS return a copy — the follow-event merge below splices into the
-      // returned array in place. IRC/Kick getMessages already copy, but YT
-      // sources are the raw channelYtMessages arrays; returning one by ref let
-      // the splice permanently insert "X went live" events into that buffer,
-      // which persistYt then serialized as fake chat history.
+      // returned array in place. IRC/Kick getMessages/getTail already copy,
+      // but YT sources are the raw channelYtMessages arrays; returning one by
+      // ref let the splice permanently insert "X went live" events into that
+      // buffer, which persistYt then serialized as fake chat history.
       return s.length <= limit ? s.slice() : s.slice(-limit)
     }
 
@@ -8458,7 +8469,11 @@
     // channel with sparse recent traffic, or sources timestamps far apart)
     // let chronological order rule so older historical msgs from a sparse
     // source don't get amputated by a too-small slice(-250).
-    const maxTimes = active.map((s) => s[s.length - 1]?.time || 0)
+    // ordOf (not raw .time): a live-paced YT source's newest msg may carry a
+    // true send time far behind its display ord — coLive must read the SAME
+    // key everything else sorts/merges on, or a paced YT source could look
+    // "not co-live" by wall-clock time while rendering interleaved as if it were.
+    const maxTimes = active.map((s) => ordOf(s[s.length - 1]) || 0)
     const newestMax = Math.max(...maxTimes)
     const oldestMax = Math.min(...maxTimes)
     const CO_LIVE_WINDOW_MS = 10 * 60 * 1000
@@ -8466,7 +8481,6 @@
     const coLive = newestMax - oldestMax < CO_LIVE_WINDOW_MS && newestMax > Date.now() - RECENT_THRESHOLD_MS
 
     if (coLive) {
-      const pool = []
       // Anti-drown WITHOUT retroactive eviction. The old proportional cap
       // (ceil(limit/active.length)) re-sliced every source whenever active
       // count changed — so the moment a quiet platform (e.g. YouTube) started
@@ -8476,32 +8490,50 @@
       // trickle), then fill the rest of the budget by pure global recency.
       // A new source going live now only costs its own floor (~40), filled by
       // its own fresh messages — no chunk of another platform disappears.
-      const seen = new Set()
       const FLOOR = Math.min(40, Math.floor(limit / (active.length + 1)))
-      for (const s of active)
-        for (const m of s.slice(-FLOOR)) {
-          if (!seen.has(m)) {
-            seen.add(m)
-            pool.push(m)
-          }
-        }
+      // Each source is already ord-sorted (invariant #1), so its tail slice
+      // is too — floorRuns are k already-sorted runs, disjoint by
+      // construction (each drawn from a different source array).
+      const floorRuns = active.map((s) => s.slice(-FLOOR))
+      const seen = new Set()
+      for (const run of floorRuns) for (const m of run) seen.add(m)
       // rest = each source's non-floor tail (a sorted run) → k-way merge, not sort.
       const rest = mergeSortedRuns(active.map((s) => s.filter((m) => !seen.has(m))))
-      const room = Math.max(0, limit - pool.length)
-      for (const m of rest.slice(-room)) {
-        seen.add(m)
-        pool.push(m)
-      }
-      // pool is floor-interleaved + a sorted tail → one stable sort to finalise.
-      // (The stableMsgId tie-break keeps tied timestamps deterministic across
-      // renders; without it the insert-only diff would duplicate flipped pairs.)
-      pool.sort(byTimeStable)
+      const floorPoolSize = floorRuns.reduce((n, r) => n + r.length, 0)
+      const room = Math.max(0, limit - floorPoolSize)
+      // rest is itself sorted, so its newest-`room` suffix is too.
+      const restTail = room > 0 ? rest.slice(-room) : []
+      // floorRuns + restTail are all disjoint, individually-sorted runs —
+      // ONE more k-way merge finishes the job with no full-array sort.
+      // (mergeSortedRuns' run-index tie-break keeps tied ords deterministic
+      // across renders; the old pool.sort(byTimeStable) did the same via
+      // stableMsgId — without a deterministic tiebreak the insert-only diff
+      // would duplicate flipped pairs.)
+      const pool = mergeSortedRuns([...floorRuns, restTail])
+      if (typeof __HS_DEV_BUILD__ !== 'undefined' && __HS_DEV_BUILD__)
+        _assertSortedByOrd(pool, 'fairMerge co-live pool')
       return pool.slice(-limit)
     }
     // Non-co-live: each source is already chronological, so merge the sorted
     // tails directly — no full re-sort of the merged buffer this frame.
     const merged = mergeSortedRuns(active.map((s) => s.slice(-limit)))
+    if (typeof __HS_DEV_BUILD__ !== 'undefined' && __HS_DEV_BUILD__)
+      _assertSortedByOrd(merged, 'fairMerge non-co-live merge')
     return merged.length <= limit ? merged : merged.slice(-limit)
+  }
+  // DEV-only correctness net for the merge paths above: mergeSortedRuns is
+  // only a valid substitute for pool.sort() when every input run truly IS
+  // sorted by ord (invariant #1 — every buffer stays sorted via insertOrdered/
+  // sortedInsert). Folds away entirely in packaged builds (__HS_DEV_BUILD__ →
+  // false, dead-code eliminated) — a violation here would otherwise surface
+  // as a silent, hard-to-repro row-ordering glitch instead of a loud error.
+  function _assertSortedByOrd(arr, label) {
+    for (let i = 1; i < arr.length; i++) {
+      if (ordOf(arr[i]) < ordOf(arr[i - 1])) {
+        console.error(`[heatsync-ext] ${label}: not sorted at index ${i}`, arr[i - 1], arr[i])
+        return
+      }
+    }
   }
   function stableMsgId(m) {
     // Memoize on the message object — id/base36_id/user/time/text are immutable
@@ -8512,7 +8544,7 @@
     return m._sid ?? (m._sid = m.id || m.base36_id || `${m.user || ''}:${m.time || ''}:${(m.text || '').slice(0, 32)}`)
   }
   function byTimeStable(a, b) {
-    const dt = (a.time || 0) - (b.time || 0)
+    const dt = ordOf(a) - ordOf(b)
     if (dt !== 0) return dt
     const ka = stableMsgId(a),
       kb = stableMsgId(b)
@@ -8936,17 +8968,20 @@
       // Ensure channels are joined + history loaded
       if (twitchCh && irc && !irc.channels.has(twitchCh.toLowerCase())) irc.join(twitchCh)
       if (kickCh && kickChat && !kickChat.channels.has(kickCh.toLowerCase())) kickChat.join(kickCh)
-      const ircMsgs = twitchCh ? irc?.getMessages(twitchCh) || [] : []
-      let kickMsgs = kickCh ? kickChat?.getMessages(kickCh) || [] : []
+      // getTail (not getMessages/getAll): the render only ever shows the
+      // newest SCROLLBACK_MAX rows (the hard DOM ceiling below), so there's
+      // no reason to copy the full 3000-cap buffer every render.
+      const ircMsgs = twitchCh ? irc?.getTail(twitchCh, SCROLLBACK_MAX) || [] : []
+      let kickMsgs = kickCh ? kickChat?.getTail(kickCh, SCROLLBACK_MAX) || [] : []
       if (!kickMsgs.length && curCh) {
         // Check if any config entry links current channel to a Kick channel
         const linked = config.channels.find((ch) => ch.twitch === curCh && ch.kick)
-        if (linked) kickMsgs = kickChat?.getMessages(linked.kick) || []
+        if (linked) kickMsgs = kickChat?.getTail(linked.kick, SCROLLBACK_MAX) || []
       }
       // On Kick, also pull messages from the URL channel (may differ from live override)
       if (!kickMsgs.length && hostPlatform === 'kick') {
         const urlCh = getCurrentChannel()
-        if (urlCh && urlCh !== curCh) kickMsgs = kickChat?.getMessages(urlCh) || []
+        if (urlCh && urlCh !== curCh) kickMsgs = kickChat?.getTail(urlCh, SCROLLBACK_MAX) || []
       }
       // YouTube messages for live tab: auto-discovered or linked via config
       let ytMsgs = channelYtMessages.get('__live_yt_auto__') || []
@@ -8962,8 +8997,8 @@
       const ch = getChannelById(id)
       const twitchName = ch?.twitch
       const kickName = ch?.kick
-      const ircMsgs = twitchName ? irc?.getMessages(twitchName) || [] : []
-      const kickMsgs = kickName ? kickChat?.getMessages(kickName) || [] : []
+      const ircMsgs = twitchName ? irc?.getTail(twitchName, SCROLLBACK_MAX) || [] : []
+      const kickMsgs = kickName ? kickChat?.getTail(kickName, SCROLLBACK_MAX) || [] : []
       // YouTube ONLY from this channel's own explicit link. The global
       // __live_yt_auto__ bucket (the host page's auto-discovered YT, bound to
       // whatever stream is focused) must NOT merge into a per-channel tab — that
@@ -9279,7 +9314,14 @@
     const existingByKey = _rmExistingByKey
     existingByKey.clear()
     const detachedExtras = []
-    for (const c of [...msgsEl.children]) {
+    // Walk the LIVE HTMLCollection in place instead of materializing
+    // [...msgsEl.children] (up to DOM_RENDER_CAP+scrollback nodes, every
+    // render). Safe because we only ever advance `i` when the current child
+    // is KEPT: removing children[i] slides the next child into that same
+    // index, so re-checking index i next iteration is correct — nothing is
+    // skipped, and nothing here reorders a kept node.
+    for (let i = 0; i < msgsEl.children.length; ) {
+      const c = msgsEl.children[i]
       if (c.dataset?.hsYtStatus && c.dataset?.hsYtStatusTab === String(id)) {
         detachedExtras.push(c)
         c.remove() // yt-status pins aren't tracked in indices
@@ -9290,13 +9332,15 @@
         if (existingByKey.has(k)) {
           _unindexMessageDiv(c) // pre-existing dupe — drop the second copy
           c.remove()
-        } else {
-          existingByKey.set(k, c)
+          continue
         }
+        existingByKey.set(k, c)
       } else {
         _unindexMessageDiv(c)
         c.remove()
+        continue
       }
+      i++
     }
 
     // Bulletproof sticky-bottom: if the user hasn't scrolled up via input,

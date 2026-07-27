@@ -177,11 +177,20 @@ let _feedVirtualScrollHandler = null
 
 // Stream events injected inline into per-channel buffers (no dedicated tab)
 const activityEvents = []
+// Dedupe index mirroring activityEvents' `.text` values — every mutation of
+// activityEvents happens through pushActivityEvent, so this never drifts.
+// Was a `.some()` linear scan (up to 500 compares per event); a busy multi-
+// channel session can push dozens of events per minute.
+const _activityEventTexts = new Set()
 const ACTIVITY_EVENTS_MAX = 500
 function pushActivityEvent(evt) {
-  if (activityEvents.some((m) => m.text === evt.text)) return
+  if (_activityEventTexts.has(evt.text)) return
   activityEvents.push(evt)
-  if (activityEvents.length > ACTIVITY_EVENTS_MAX) activityEvents.splice(0, activityEvents.length - ACTIVITY_EVENTS_MAX)
+  _activityEventTexts.add(evt.text)
+  if (activityEvents.length > ACTIVITY_EVENTS_MAX) {
+    const dropped = activityEvents.splice(0, activityEvents.length - ACTIVITY_EVENTS_MAX)
+    for (const d of dropped) _activityEventTexts.delete(d.text)
+  }
 }
 let activeThread = null // { id, op, replies[] } — when set, feed shows thread view
 // Tab to return to when the thread's back button is hit. Captured at open time
@@ -413,22 +422,23 @@ async function loadHsAuth() {
   }
 }
 
-// Replay (backfill) handler — push to buffer, coalesce render across the
-// burst with a microtask debounce. fairMerge sorts by msg.time so each
-// replay msg lands at its real chronological position; we just need ONE
-// final render after the burst settles. Tab indicator only updates if user
-// isn't viewing this tab.
+// Replay (backfill) handler — ordered-insert into the buffer, coalesce
+// render across the burst with a microtask debounce. A replay row has no
+// `ord` (see ordOf in src/lib/utils.js), so fairMerge/mergeSortedRuns sort
+// it on its real `time` — each replay msg lands at its true chronological
+// position; we just need ONE final render after the burst settles. Tab
+// indicator only updates if user isn't viewing this tab.
 const _replayRenderPending = new Set() // tabIds awaiting coalesced render
 // Sidecar dedup index. O(1) lookup vs the previous O(n) buf.some() scan over
 // up to 1550 entries per replay msg — replay bursts at reconnect can be huge.
 const _replayDedupKeys = new Map() // channelId -> Set<dupKey>
-// Id sidecar alongside the content keys. Content keys alone can't catch a
-// replay of a message this surface already caught live: enqueueYtForPacing
-// REWRITES live msgs' time to the emit clock, while archive/relay replay rows
-// keep the real timestamp — same message, different 1s bucket, key miss.
+// Id sidecar alongside the content keys. commitPacedYtMsg no longer rewrites
+// a live msg's `time` (only its display-order `ord`), so the content key a
+// later replay computes from the same real timestamp now matches — but the
+// id index stays as the faster, exact-match-first check, and as the backstop
+// for the id-less-row edge case the content key alone can't cover reliably.
 // Platform ids are stable across both sources (the server serves message_id
-// since c81d5cd0), so id equality is the reliable net; content keys remain
-// for id-less rows.
+// since c81d5cd0).
 const _replayDedupIds = new Map() // channelId -> Set<platform msg id>
 // Cap distinct channels tracked. Both maps are keyed by channelId and rebuild
 // lazily from the live buffer on next ingest (see the `if (!dedup)` / `if (!ids)`
@@ -477,16 +487,21 @@ function ingestReplayYtMsg(targetChannelId, ytMsg) {
   if (dedup.has(dupKey)) return
   dedup.add(dupKey)
   if (ytMsg.id) ids.add(String(ytMsg.id))
-  buf.push(ytMsg)
+  // ytMsg.ord is unset here — ordOf falls back to ytMsg.time, which IS the
+  // real YouTube send timestamp for a replay/backfill row (never rewritten,
+  // unlike the live pacer's commit — see commitPacedYtMsg). Ordered insert
+  // (not push) because backfill can legitimately land older than the buffer
+  // tail (a live msg arrived first, then its own backfill window catches up).
+  sortedInsert(buf, ytMsg)
   if (ytMsg.user) {
     try {
       addUsername(ytMsg.user)
     } catch {}
   }
   if (buf.length > MAX_BUFFER + 50) {
-    // Sort by time before truncating so we keep the most recent across
-    // backfill + live, not just newest-arrived.
-    buf.sort((a, b) => (a.time || 0) - (b.time || 0))
+    // sortedInsert (here + commitPacedYtMsg, the only two writers of this
+    // buffer) keeps it sorted by ord at all times, so a plain front-trim
+    // keeps the newest MAX_BUFFER entries — no re-sort needed.
     buf.splice(0, buf.length - MAX_BUFFER)
     // Rebuild dedup sets from surviving entries (splice dropped some).
     dedup.clear()
@@ -605,39 +620,49 @@ function dispatchYtStreamEvent(targetChannelId, msg) {
   }
 }
 
-// Buffer-push + visible render for ONE paced (live) YT message. Critical:
-// overwrite ytMsg.time = Date.now() AT THE MOMENT OF EMIT (not at WS arrival).
-// Without this, every msg in a 5-sec poll batch shares the same arrival ms
-// and the full chronological sort lumps them adjacent, then the next twitch
-// msg slots in below — visible as a YT clump in the bottom of chat.
-// With per-emit Date.now(), each YT msg's time naturally interleaves with
-// the live twitch ms-arrivals that happen between pacer drains.
+// Buffer-insert + visible render for ONE paced (live) YT message. Critical:
+// stamp ytMsg.ord = Date.now() AT THE MOMENT OF EMIT (not at WS arrival) —
+// WITHOUT touching ytMsg.time, which stays YouTube's true send timestamp for
+// the whole life of the object (set once from the wire payload). Without a
+// fresh ord, every msg in a 5-sec poll batch would share the same real
+// timestamp and the chrono sort would lump them adjacent, then the next
+// twitch msg slots in below — visible as a YT clump at the bottom of chat.
+// With per-emit ord, each YT msg's DISPLAY position naturally interleaves
+// with the live twitch arrivals that happen between pacer drains, while
+// `time` stays available for anything that needs the real send time
+// (dedup, analytics, a future "show real timestamps" toggle).
 function commitPacedYtMsg(targetChannelId, ytMsg) {
   // Monotonic per-channel commit clock — two msgs draining in the same ms
-  // would otherwise share (user, time, text-prefix) and produce identical
+  // would otherwise share (user, ord, text-prefix) and produce identical
   // stableMsgIds, which the render-diff treats as one key and the dup-set
   // dedup throws away the second display. +1 each collision keeps the key
   // unique while still slotting close to real-time in the chrono sort.
   const lastEmit = _ytPaceLastEmit.get(targetChannelId)
   const now = Date.now()
-  ytMsg.time = lastEmit?.time && now <= lastEmit.time ? lastEmit.time + 1 : now
+  ytMsg.ord = lastEmit?.time && now <= lastEmit.time ? lastEmit.time + 1 : now
   if (!channelYtMessages.has(targetChannelId)) channelYtMessages.set(targetChannelId, [])
   const buf = channelYtMessages.get(targetChannelId)
-  buf.push(ytMsg)
+  // Ordered insert on `ord` (the paced-commit clock above), not `time` — see
+  // ordOf/sortedInsert in src/lib/utils.js. Practically always the tail
+  // (ord is monotonic per channel), but a cross-channel or replay-splice
+  // race is still handled correctly instead of silently unsorting the buffer.
+  sortedInsert(buf, ytMsg)
   if (ytMsg.user) {
     try {
       addUsername(ytMsg.user)
     } catch {}
   }
   // Keep the replay-dedup indexes aligned with the buffer so a later replay
-  // msg doesn't get re-inserted as if the live one were missing. The id index
-  // is the one that actually matches here — this path just rewrote msg.time,
-  // so the content key a future replay row computes will never equal ours.
+  // msg doesn't get re-inserted as if the live one were missing. `time` was
+  // never rewritten, so the content key a future replay row computes now
+  // DOES match this one — the id index below still exists as a backstop.
   const dedup = _replayDedupKeys.get(targetChannelId)
   if (dedup) dedup.add(_ytDupKey(ytMsg))
   const liveIds = _replayDedupIds.get(targetChannelId)
   if (liveIds && ytMsg.id) liveIds.add(String(ytMsg.id))
   if (buf.length > MAX_BUFFER + 50) {
+    // sortedInsert keeps the buffer sorted by ord at all times, so a plain
+    // front-trim keeps the newest MAX_BUFFER entries — no re-sort needed.
     buf.splice(0, buf.length - MAX_BUFFER)
     if (dedup) {
       dedup.clear()
@@ -677,10 +702,10 @@ function drainYtPaceQueue(targetChannelId) {
   const q = _ytPaceQueue.get(targetChannelId)
   if (!q?.length) return
   const ytMsg = q.shift()
-  // Snapshot original YT timestamp BEFORE commit overwrites it. Used as
-  // the msgTime delta basis for the next drain so paceDelayFor sees the
-  // real chat cadence between consecutive msgs, not the rewritten
-  // commit-time Date.now()s.
+  // ytMsg.time is YouTube's real send timestamp — commitPacedYtMsg no longer
+  // rewrites it (only ytMsg.ord, the display-order clock). Used as the
+  // msgTime delta basis for the next drain so paceDelayFor sees the real
+  // chat cadence between consecutive msgs, not the paced commit-time clock.
   const realPostMs = ytMsg.time
   commitPacedYtMsg(targetChannelId, ytMsg)
   _ytPaceLastEmit.set(targetChannelId, { time: Date.now(), msgTime: realPostMs })

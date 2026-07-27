@@ -884,6 +884,19 @@
     return typeof id === 'string' && /^UC[\w-]{20,}$/i.test(id) ? id : null
   }
 
+  // Same cross-world bridge pattern as extractAuthorChannelId, for the
+  // renderer's real send time (YouTube's timestampUsec, microseconds since
+  // epoch). Without this the DOM-scrape tap stamped every message with
+  // Date.now() at SCRAPE time, not send time — unlike the innertube-JSON tap
+  // (background.js ytTapTimestamp) and the server relay, which both already
+  // use the real timestamp. Falls back to null (caller uses Date.now()) if
+  // the bridge hasn't stamped it yet (Polymer binds a frame or two late).
+  function extractTimestampMs(el) {
+    const usec = el.data?.timestampUsec || el.getAttribute('data-hs-timestamp')
+    const n = Number.parseInt(usec, 10)
+    return Number.isFinite(n) && n > 0 ? Math.floor(n / 1000) : null
+  }
+
   // Paint stamp + fetch for one row — shared by the immediate path (bridge
   // already stamped the author id) and the late retry (Polymer bound after us).
   function stampYtHsPaint(node, ucid) {
@@ -1058,7 +1071,9 @@
       text: msg.text,
       msgType,
       color: msg.color,
-      time: Date.now(),
+      // Real send time when yt-data-bridge got there in time; Date.now() (scrape
+      // time, not send time) is a last-resort fallback, not the normal case.
+      time: extractTimestampMs(node) ?? Date.now(),
       platform: 'youtube',
       emotes: msg.emotes.length > 0 ? msg.emotes : undefined,
       avatar: msg.avatar || undefined,

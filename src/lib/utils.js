@@ -840,6 +840,55 @@ function linkifyPartialLinks(html) {
   return outsideTags(out, BARE_HOST_RE, (m0) => anchor(`https://${m0.toLowerCase()}`, m0))
 }
 
+// ============================================
+// CROSS-PLATFORM MESSAGE ORDERING
+// ============================================
+// Every per-platform chat buffer (twitch, kick, youtube) is kept sorted
+// non-decreasing by ORD — a display-order value that's usually just the
+// message's real `time`, but diverges for paced-live YouTube (see
+// commitPacedYtMsg in social.js: it stamps `ord` with the paced-commit
+// value so live YT still lands at the visual "now", while `time` stays
+// YouTube's true send timestamp). `ord` is absent on twitch/kick messages
+// and on old persisted buffers written before this field existed — ordOf's
+// fallback to `time` makes both cases equivalent to "ord === time".
+
+/** The value every sort/merge/insert in the multichat overlay orders by. */
+function ordOf(m) {
+  return m?.ord ?? m?.time ?? 0
+}
+
+// Index of the first element whose ordOf is > `ord` — i.e. where `ord`
+// belongs to keep `arr` non-decreasing (stable: ties land AFTER existing
+// equal-ord entries, so equal-ord inserts preserve arrival order).
+function findOrdInsertIndex(arr, ord, getOrd = ordOf) {
+  let lo = 0
+  let hi = arr.length
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (getOrd(arr[mid]) <= ord) lo = mid + 1
+    else hi = mid
+  }
+  return lo
+}
+
+// Insert `item` into `arr` (assumed already non-decreasing by `getOrd`)
+// keeping that invariant. O(1) append for the overwhelming common case (in-
+// order arrival, same as a blind push); falls back to a binary-search +
+// splice only when `item` is OLDER than the current tail — a backfill/
+// replay/native-tap race that would otherwise silently break the sortedness
+// mergeSortedRuns (main.js) depends on. Returns the index it landed at.
+function sortedInsert(arr, item, getOrd = ordOf) {
+  const ord = getOrd(item)
+  const n = arr.length
+  if (n === 0 || getOrd(arr[n - 1]) <= ord) {
+    arr.push(item)
+    return n
+  }
+  const idx = findOrdInsertIndex(arr, ord, getOrd)
+  arr.splice(idx, 0, item)
+  return idx
+}
+
 const utils = {
   // XSS
   escapeHtml,
@@ -902,6 +951,11 @@ const utils = {
   stepVolume,
   resolveVolumeWheelStep,
 
+  // Cross-platform message ordering
+  ordOf,
+  findOrdInsertIndex,
+  sortedInsert,
+
   // Storage hygiene
   sanitizeUiSettings,
   UI_SYNC_BLOCKLIST,
@@ -930,6 +984,7 @@ export {
   escapeHtml,
   estimateSettingSize,
   findComponent,
+  findOrdInsertIndex,
   getFiber,
   identityYtLiveUrl,
   isLargeKeySyncEligible,
@@ -937,6 +992,7 @@ export {
   LARGE_KEY_SYNC_MAX,
   log,
   OVERFLOW_MIRROR_KEYS,
+  ordOf,
   outsideTags,
   parseYtGiftCount,
   qsArray,
@@ -946,6 +1002,7 @@ export {
   resolveYtLiveLabel,
   safeUrl,
   sanitizeUiSettings,
+  sortedInsert,
   stepVolume,
   throttle,
   truncateSafe,

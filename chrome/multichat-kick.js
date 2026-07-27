@@ -1861,6 +1861,55 @@ function linkifyPartialLinks(html) {
   return outsideTags(out, BARE_HOST_RE, (m0) => anchor(`https://${m0.toLowerCase()}`, m0))
 }
 
+// ============================================
+// CROSS-PLATFORM MESSAGE ORDERING
+// ============================================
+// Every per-platform chat buffer (twitch, kick, youtube) is kept sorted
+// non-decreasing by ORD — a display-order value that's usually just the
+// message's real `time`, but diverges for paced-live YouTube (see
+// commitPacedYtMsg in social.js: it stamps `ord` with the paced-commit
+// value so live YT still lands at the visual "now", while `time` stays
+// YouTube's true send timestamp). `ord` is absent on twitch/kick messages
+// and on old persisted buffers written before this field existed — ordOf's
+// fallback to `time` makes both cases equivalent to "ord === time".
+
+/** The value every sort/merge/insert in the multichat overlay orders by. */
+function ordOf(m) {
+  return m?.ord ?? m?.time ?? 0
+}
+
+// Index of the first element whose ordOf is > `ord` — i.e. where `ord`
+// belongs to keep `arr` non-decreasing (stable: ties land AFTER existing
+// equal-ord entries, so equal-ord inserts preserve arrival order).
+function findOrdInsertIndex(arr, ord, getOrd = ordOf) {
+  let lo = 0
+  let hi = arr.length
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (getOrd(arr[mid]) <= ord) lo = mid + 1
+    else hi = mid
+  }
+  return lo
+}
+
+// Insert `item` into `arr` (assumed already non-decreasing by `getOrd`)
+// keeping that invariant. O(1) append for the overwhelming common case (in-
+// order arrival, same as a blind push); falls back to a binary-search +
+// splice only when `item` is OLDER than the current tail — a backfill/
+// replay/native-tap race that would otherwise silently break the sortedness
+// mergeSortedRuns (main.js) depends on. Returns the index it landed at.
+function sortedInsert(arr, item, getOrd = ordOf) {
+  const ord = getOrd(item)
+  const n = arr.length
+  if (n === 0 || getOrd(arr[n - 1]) <= ord) {
+    arr.push(item)
+    return n
+  }
+  const idx = findOrdInsertIndex(arr, ord, getOrd)
+  arr.splice(idx, 0, item)
+  return idx
+}
+
 const utils = {
   // XSS
   escapeHtml,
@@ -1922,6 +1971,11 @@ const utils = {
   // Scroll-wheel volume
   stepVolume,
   resolveVolumeWheelStep,
+
+  // Cross-platform message ordering
+  ordOf,
+  findOrdInsertIndex,
+  sortedInsert,
 
   // Storage hygiene
   sanitizeUiSettings,
@@ -21067,6 +21121,47 @@ class CircularBuffer {
     // Concat instead of spread — avoids 2 temporary arrays
     return this.buf.slice(this.head).concat(this.buf.slice(0, this.head))
   }
+  // Newest `n` items only (fewer if size < n) — O(n) instead of getAll()'s
+  // O(size) (up to `cap`, 3000 on the twitch/kick buffers). The render path
+  // never needs more than its DOM cap + scrollback window, so callers that
+  // only paint the tail should use this instead of getAll().
+  tail(n) {
+    const count = Math.min(n, this.size)
+    if (count === 0) return []
+    const out = new Array(count)
+    let idx = (this.head - 1 + this.cap) % this.cap
+    for (let i = count - 1; i >= 0; i--) {
+      out[i] = this.buf[idx]
+      idx = (idx - 1 + this.cap) % this.cap
+    }
+    return out
+  }
+  // Ordered-insert counterpart to push() — keeps the ring non-decreasing by
+  // ordOf (see src/lib/utils.js) instead of blindly appending. Fast path
+  // (item is newest-or-tied, the overwhelming common case) is push()'s exact
+  // O(1). The rare out-of-order arrival (backfill/replay/native-tap race)
+  // rebuilds the ring from a sorted-array splice; if the item is older than
+  // everything AND the ring is already full, it's dropped outright — the
+  // ring would evict it right back out anyway, so this is a no-op, not a loss.
+  insertOrdered(item, getOrd = ordOf) {
+    if (this.size === 0) {
+      this.push(item)
+      return
+    }
+    const lastIdx = (this.head - 1 + this.cap) % this.cap
+    if (getOrd(this.buf[lastIdx]) <= getOrd(item)) {
+      this.push(item)
+      return
+    }
+    const all = this.getAll()
+    const idx = findOrdInsertIndex(all, getOrd(item), getOrd)
+    if (idx === 0 && all.length >= this.cap) return // older than the oldest kept slot
+    all.splice(idx, 0, item)
+    if (all.length > this.cap) all.shift()
+    this.head = 0
+    this.size = 0
+    for (const m of all) this.push(m)
+  }
   clear() {
     this.buf = new Array(this.cap)
     this.head = 0
@@ -21091,6 +21186,14 @@ class ChatClient {
 
   getMessages(ch) {
     return this.channels.get(ch?.toLowerCase())?.getAll() || []
+  }
+
+  // Bounded copy of just the newest `n` messages — see CircularBuffer.tail().
+  // Render call sites that only ever paint a tail window should use this
+  // instead of getMessages()/getAll() (which copy the whole buffer, up to
+  // `cap`, every call).
+  getTail(ch, n) {
+    return this.channels.get(ch?.toLowerCase())?.tail(n) || []
   }
 
   // O(1) message count — "any messages?" hot-path callers must not
@@ -21273,7 +21376,11 @@ class IRC extends ChatClient {
           this._deleteNoticeIndex.delete(this._deleteNoticeIndex.keys().next().value)
         this._deleteNoticeIndex.set(idxKey, msg)
       }
-      buf.push(msg)
+      // Ordered insert, not blind push — a BG history merge or native-tap
+      // copy can race a live PRIVMSG and land here with an OLDER tmi-sent-ts,
+      // which would otherwise silently break the buffer's sortedness that
+      // fairMerge/mergeSortedRuns (main.js) depend on.
+      buf.insertOrdered(msg)
       // Relay PRIVMSGs to server archive (ON CONFLICT DO NOTHING dedupes across
       // multiple viewers). Skip replays from BG history merge.
       if (!msg.type && !msg.isHistory && !msg.isSynthetic && msg.user && msg.text && msg.id) {
@@ -21713,7 +21820,11 @@ class KickChat extends ChatClient {
     // emote-enrich.ts.
     if (d.hsEmotes && typeof d.hsEmotes === 'object') msg.hsEmotes = d.hsEmotes
     if (fromNativeTap) msg.fromNativeTap = true
-    this.channels.get(channel).push(msg)
+    // Ordered insert — the server webhook relay, the BG Pusher tap, and the
+    // native tap can each deliver the same window's messages with a
+    // slightly different arrival order; insertOrdered keeps the buffer
+    // sorted by real timestamp instead of raw arrival.
+    this.channels.get(channel).insertOrdered(msg)
     if (msg.user) {
       addUsername(msg.user)
       setKnownColor(msg.user.toLowerCase(), msg.color, msg.userId, 'kick')
@@ -34599,11 +34710,20 @@ let _feedVirtualScrollHandler = null
 
 // Stream events injected inline into per-channel buffers (no dedicated tab)
 const activityEvents = []
+// Dedupe index mirroring activityEvents' `.text` values — every mutation of
+// activityEvents happens through pushActivityEvent, so this never drifts.
+// Was a `.some()` linear scan (up to 500 compares per event); a busy multi-
+// channel session can push dozens of events per minute.
+const _activityEventTexts = new Set()
 const ACTIVITY_EVENTS_MAX = 500
 function pushActivityEvent(evt) {
-  if (activityEvents.some((m) => m.text === evt.text)) return
+  if (_activityEventTexts.has(evt.text)) return
   activityEvents.push(evt)
-  if (activityEvents.length > ACTIVITY_EVENTS_MAX) activityEvents.splice(0, activityEvents.length - ACTIVITY_EVENTS_MAX)
+  _activityEventTexts.add(evt.text)
+  if (activityEvents.length > ACTIVITY_EVENTS_MAX) {
+    const dropped = activityEvents.splice(0, activityEvents.length - ACTIVITY_EVENTS_MAX)
+    for (const d of dropped) _activityEventTexts.delete(d.text)
+  }
 }
 let activeThread = null // { id, op, replies[] } — when set, feed shows thread view
 // Tab to return to when the thread's back button is hit. Captured at open time
@@ -34835,22 +34955,23 @@ async function loadHsAuth() {
   }
 }
 
-// Replay (backfill) handler — push to buffer, coalesce render across the
-// burst with a microtask debounce. fairMerge sorts by msg.time so each
-// replay msg lands at its real chronological position; we just need ONE
-// final render after the burst settles. Tab indicator only updates if user
-// isn't viewing this tab.
+// Replay (backfill) handler — ordered-insert into the buffer, coalesce
+// render across the burst with a microtask debounce. A replay row has no
+// `ord` (see ordOf in src/lib/utils.js), so fairMerge/mergeSortedRuns sort
+// it on its real `time` — each replay msg lands at its true chronological
+// position; we just need ONE final render after the burst settles. Tab
+// indicator only updates if user isn't viewing this tab.
 const _replayRenderPending = new Set() // tabIds awaiting coalesced render
 // Sidecar dedup index. O(1) lookup vs the previous O(n) buf.some() scan over
 // up to 1550 entries per replay msg — replay bursts at reconnect can be huge.
 const _replayDedupKeys = new Map() // channelId -> Set<dupKey>
-// Id sidecar alongside the content keys. Content keys alone can't catch a
-// replay of a message this surface already caught live: enqueueYtForPacing
-// REWRITES live msgs' time to the emit clock, while archive/relay replay rows
-// keep the real timestamp — same message, different 1s bucket, key miss.
+// Id sidecar alongside the content keys. commitPacedYtMsg no longer rewrites
+// a live msg's `time` (only its display-order `ord`), so the content key a
+// later replay computes from the same real timestamp now matches — but the
+// id index stays as the faster, exact-match-first check, and as the backstop
+// for the id-less-row edge case the content key alone can't cover reliably.
 // Platform ids are stable across both sources (the server serves message_id
-// since c81d5cd0), so id equality is the reliable net; content keys remain
-// for id-less rows.
+// since c81d5cd0).
 const _replayDedupIds = new Map() // channelId -> Set<platform msg id>
 // Cap distinct channels tracked. Both maps are keyed by channelId and rebuild
 // lazily from the live buffer on next ingest (see the `if (!dedup)` / `if (!ids)`
@@ -34899,16 +35020,21 @@ function ingestReplayYtMsg(targetChannelId, ytMsg) {
   if (dedup.has(dupKey)) return
   dedup.add(dupKey)
   if (ytMsg.id) ids.add(String(ytMsg.id))
-  buf.push(ytMsg)
+  // ytMsg.ord is unset here — ordOf falls back to ytMsg.time, which IS the
+  // real YouTube send timestamp for a replay/backfill row (never rewritten,
+  // unlike the live pacer's commit — see commitPacedYtMsg). Ordered insert
+  // (not push) because backfill can legitimately land older than the buffer
+  // tail (a live msg arrived first, then its own backfill window catches up).
+  sortedInsert(buf, ytMsg)
   if (ytMsg.user) {
     try {
       addUsername(ytMsg.user)
     } catch {}
   }
   if (buf.length > MAX_BUFFER + 50) {
-    // Sort by time before truncating so we keep the most recent across
-    // backfill + live, not just newest-arrived.
-    buf.sort((a, b) => (a.time || 0) - (b.time || 0))
+    // sortedInsert (here + commitPacedYtMsg, the only two writers of this
+    // buffer) keeps it sorted by ord at all times, so a plain front-trim
+    // keeps the newest MAX_BUFFER entries — no re-sort needed.
     buf.splice(0, buf.length - MAX_BUFFER)
     // Rebuild dedup sets from surviving entries (splice dropped some).
     dedup.clear()
@@ -35027,39 +35153,49 @@ function dispatchYtStreamEvent(targetChannelId, msg) {
   }
 }
 
-// Buffer-push + visible render for ONE paced (live) YT message. Critical:
-// overwrite ytMsg.time = Date.now() AT THE MOMENT OF EMIT (not at WS arrival).
-// Without this, every msg in a 5-sec poll batch shares the same arrival ms
-// and the full chronological sort lumps them adjacent, then the next twitch
-// msg slots in below — visible as a YT clump in the bottom of chat.
-// With per-emit Date.now(), each YT msg's time naturally interleaves with
-// the live twitch ms-arrivals that happen between pacer drains.
+// Buffer-insert + visible render for ONE paced (live) YT message. Critical:
+// stamp ytMsg.ord = Date.now() AT THE MOMENT OF EMIT (not at WS arrival) —
+// WITHOUT touching ytMsg.time, which stays YouTube's true send timestamp for
+// the whole life of the object (set once from the wire payload). Without a
+// fresh ord, every msg in a 5-sec poll batch would share the same real
+// timestamp and the chrono sort would lump them adjacent, then the next
+// twitch msg slots in below — visible as a YT clump at the bottom of chat.
+// With per-emit ord, each YT msg's DISPLAY position naturally interleaves
+// with the live twitch arrivals that happen between pacer drains, while
+// `time` stays available for anything that needs the real send time
+// (dedup, analytics, a future "show real timestamps" toggle).
 function commitPacedYtMsg(targetChannelId, ytMsg) {
   // Monotonic per-channel commit clock — two msgs draining in the same ms
-  // would otherwise share (user, time, text-prefix) and produce identical
+  // would otherwise share (user, ord, text-prefix) and produce identical
   // stableMsgIds, which the render-diff treats as one key and the dup-set
   // dedup throws away the second display. +1 each collision keeps the key
   // unique while still slotting close to real-time in the chrono sort.
   const lastEmit = _ytPaceLastEmit.get(targetChannelId)
   const now = Date.now()
-  ytMsg.time = lastEmit?.time && now <= lastEmit.time ? lastEmit.time + 1 : now
+  ytMsg.ord = lastEmit?.time && now <= lastEmit.time ? lastEmit.time + 1 : now
   if (!channelYtMessages.has(targetChannelId)) channelYtMessages.set(targetChannelId, [])
   const buf = channelYtMessages.get(targetChannelId)
-  buf.push(ytMsg)
+  // Ordered insert on `ord` (the paced-commit clock above), not `time` — see
+  // ordOf/sortedInsert in src/lib/utils.js. Practically always the tail
+  // (ord is monotonic per channel), but a cross-channel or replay-splice
+  // race is still handled correctly instead of silently unsorting the buffer.
+  sortedInsert(buf, ytMsg)
   if (ytMsg.user) {
     try {
       addUsername(ytMsg.user)
     } catch {}
   }
   // Keep the replay-dedup indexes aligned with the buffer so a later replay
-  // msg doesn't get re-inserted as if the live one were missing. The id index
-  // is the one that actually matches here — this path just rewrote msg.time,
-  // so the content key a future replay row computes will never equal ours.
+  // msg doesn't get re-inserted as if the live one were missing. `time` was
+  // never rewritten, so the content key a future replay row computes now
+  // DOES match this one — the id index below still exists as a backstop.
   const dedup = _replayDedupKeys.get(targetChannelId)
   if (dedup) dedup.add(_ytDupKey(ytMsg))
   const liveIds = _replayDedupIds.get(targetChannelId)
   if (liveIds && ytMsg.id) liveIds.add(String(ytMsg.id))
   if (buf.length > MAX_BUFFER + 50) {
+    // sortedInsert keeps the buffer sorted by ord at all times, so a plain
+    // front-trim keeps the newest MAX_BUFFER entries — no re-sort needed.
     buf.splice(0, buf.length - MAX_BUFFER)
     if (dedup) {
       dedup.clear()
@@ -35099,10 +35235,10 @@ function drainYtPaceQueue(targetChannelId) {
   const q = _ytPaceQueue.get(targetChannelId)
   if (!q?.length) return
   const ytMsg = q.shift()
-  // Snapshot original YT timestamp BEFORE commit overwrites it. Used as
-  // the msgTime delta basis for the next drain so paceDelayFor sees the
-  // real chat cadence between consecutive msgs, not the rewritten
-  // commit-time Date.now()s.
+  // ytMsg.time is YouTube's real send timestamp — commitPacedYtMsg no longer
+  // rewrites it (only ytMsg.ord, the display-order clock). Used as the
+  // msgTime delta basis for the next drain so paceDelayFor sees the real
+  // chat cadence between consecutive msgs, not the paced commit-time clock.
   const realPostMs = ytMsg.time
   commitPacedYtMsg(targetChannelId, ytMsg)
   _ytPaceLastEmit.set(targetChannelId, { time: Date.now(), msgTime: realPostMs })
@@ -58540,7 +58676,12 @@ const STORAGE_KEY = 'heatsync_multichat'
           }
           ingest(v.msgs)
           ingest(syncMsgs)
-          buf.sort((a, b) => (a.time || 0) - (b.time || 0))
+          // ordOf, not raw time — a persisted live-paced row carries its own
+          // `ord` (the paced-commit clock), which is what fairMerge/
+          // mergeSortedRuns actually sort on. Sorting by raw time here would
+          // restore the buffer in a different order than it was ever
+          // rendered in, breaking the sortedness invariant those rely on.
+          buf.sort((a, b) => ordOf(a) - ordOf(b))
           if (buf.length > PERSIST_MAX_YT) buf.splice(0, buf.length - PERSIST_MAX_YT)
         }
         if (staleYtIds.length) {
@@ -60237,7 +60378,13 @@ const STORAGE_KEY = 'heatsync_multichat'
           const existing = buffer.getAll()
           const isDupe = existing.some((m) => m.type === 'stream-event' && m.text === evt.text)
           if (!isDupe) {
-            buffer.push(evt)
+            // insertOrdered, not push: unlike the realtime stream-event
+            // dispatchers (which always stamp time: Date.now()), evt.time
+            // here is the event's REAL historical time (persisted storage /
+            // reload replay) — it can legitimately be older than whatever
+            // live messages already reached this buffer before boot restore
+            // finished, so a blind push would break buffer sortedness.
+            buffer.insertOrdered(evt)
             added++
           }
         }
@@ -60253,7 +60400,7 @@ const STORAGE_KEY = 'heatsync_multichat'
             const existing = liveBuffer.getAll()
             const isDupe = existing.some((m) => m.type === 'stream-event' && m.text === evt.text)
             if (!isDupe) {
-              liveBuffer.push(evt)
+              liveBuffer.insertOrdered(evt)
               added++
             }
           }
@@ -66022,10 +66169,10 @@ const STORAGE_KEY = 'heatsync_multichat'
     if (active.length === 1) {
       const s = active[0]
       // ALWAYS return a copy — the follow-event merge below splices into the
-      // returned array in place. IRC/Kick getMessages already copy, but YT
-      // sources are the raw channelYtMessages arrays; returning one by ref let
-      // the splice permanently insert "X went live" events into that buffer,
-      // which persistYt then serialized as fake chat history.
+      // returned array in place. IRC/Kick getMessages/getTail already copy,
+      // but YT sources are the raw channelYtMessages arrays; returning one by
+      // ref let the splice permanently insert "X went live" events into that
+      // buffer, which persistYt then serialized as fake chat history.
       return s.length <= limit ? s.slice() : s.slice(-limit)
     }
 
@@ -66036,7 +66183,11 @@ const STORAGE_KEY = 'heatsync_multichat'
     // channel with sparse recent traffic, or sources timestamps far apart)
     // let chronological order rule so older historical msgs from a sparse
     // source don't get amputated by a too-small slice(-250).
-    const maxTimes = active.map((s) => s[s.length - 1]?.time || 0)
+    // ordOf (not raw .time): a live-paced YT source's newest msg may carry a
+    // true send time far behind its display ord — coLive must read the SAME
+    // key everything else sorts/merges on, or a paced YT source could look
+    // "not co-live" by wall-clock time while rendering interleaved as if it were.
+    const maxTimes = active.map((s) => ordOf(s[s.length - 1]) || 0)
     const newestMax = Math.max(...maxTimes)
     const oldestMax = Math.min(...maxTimes)
     const CO_LIVE_WINDOW_MS = 10 * 60 * 1000
@@ -66044,7 +66195,6 @@ const STORAGE_KEY = 'heatsync_multichat'
     const coLive = newestMax - oldestMax < CO_LIVE_WINDOW_MS && newestMax > Date.now() - RECENT_THRESHOLD_MS
 
     if (coLive) {
-      const pool = []
       // Anti-drown WITHOUT retroactive eviction. The old proportional cap
       // (ceil(limit/active.length)) re-sliced every source whenever active
       // count changed — so the moment a quiet platform (e.g. YouTube) started
@@ -66054,32 +66204,50 @@ const STORAGE_KEY = 'heatsync_multichat'
       // trickle), then fill the rest of the budget by pure global recency.
       // A new source going live now only costs its own floor (~40), filled by
       // its own fresh messages — no chunk of another platform disappears.
-      const seen = new Set()
       const FLOOR = Math.min(40, Math.floor(limit / (active.length + 1)))
-      for (const s of active)
-        for (const m of s.slice(-FLOOR)) {
-          if (!seen.has(m)) {
-            seen.add(m)
-            pool.push(m)
-          }
-        }
+      // Each source is already ord-sorted (invariant #1), so its tail slice
+      // is too — floorRuns are k already-sorted runs, disjoint by
+      // construction (each drawn from a different source array).
+      const floorRuns = active.map((s) => s.slice(-FLOOR))
+      const seen = new Set()
+      for (const run of floorRuns) for (const m of run) seen.add(m)
       // rest = each source's non-floor tail (a sorted run) → k-way merge, not sort.
       const rest = mergeSortedRuns(active.map((s) => s.filter((m) => !seen.has(m))))
-      const room = Math.max(0, limit - pool.length)
-      for (const m of rest.slice(-room)) {
-        seen.add(m)
-        pool.push(m)
-      }
-      // pool is floor-interleaved + a sorted tail → one stable sort to finalise.
-      // (The stableMsgId tie-break keeps tied timestamps deterministic across
-      // renders; without it the insert-only diff would duplicate flipped pairs.)
-      pool.sort(byTimeStable)
+      const floorPoolSize = floorRuns.reduce((n, r) => n + r.length, 0)
+      const room = Math.max(0, limit - floorPoolSize)
+      // rest is itself sorted, so its newest-`room` suffix is too.
+      const restTail = room > 0 ? rest.slice(-room) : []
+      // floorRuns + restTail are all disjoint, individually-sorted runs —
+      // ONE more k-way merge finishes the job with no full-array sort.
+      // (mergeSortedRuns' run-index tie-break keeps tied ords deterministic
+      // across renders; the old pool.sort(byTimeStable) did the same via
+      // stableMsgId — without a deterministic tiebreak the insert-only diff
+      // would duplicate flipped pairs.)
+      const pool = mergeSortedRuns([...floorRuns, restTail])
+      if (typeof __HS_DEV_BUILD__ !== 'undefined' && __HS_DEV_BUILD__)
+        _assertSortedByOrd(pool, 'fairMerge co-live pool')
       return pool.slice(-limit)
     }
     // Non-co-live: each source is already chronological, so merge the sorted
     // tails directly — no full re-sort of the merged buffer this frame.
     const merged = mergeSortedRuns(active.map((s) => s.slice(-limit)))
+    if (typeof __HS_DEV_BUILD__ !== 'undefined' && __HS_DEV_BUILD__)
+      _assertSortedByOrd(merged, 'fairMerge non-co-live merge')
     return merged.length <= limit ? merged : merged.slice(-limit)
+  }
+  // DEV-only correctness net for the merge paths above: mergeSortedRuns is
+  // only a valid substitute for pool.sort() when every input run truly IS
+  // sorted by ord (invariant #1 — every buffer stays sorted via insertOrdered/
+  // sortedInsert). Folds away entirely in packaged builds (__HS_DEV_BUILD__ →
+  // false, dead-code eliminated) — a violation here would otherwise surface
+  // as a silent, hard-to-repro row-ordering glitch instead of a loud error.
+  function _assertSortedByOrd(arr, label) {
+    for (let i = 1; i < arr.length; i++) {
+      if (ordOf(arr[i]) < ordOf(arr[i - 1])) {
+        console.error(`[heatsync-ext] ${label}: not sorted at index ${i}`, arr[i - 1], arr[i])
+        return
+      }
+    }
   }
   function stableMsgId(m) {
     // Memoize on the message object — id/base36_id/user/time/text are immutable
@@ -66090,7 +66258,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     return m._sid ?? (m._sid = m.id || m.base36_id || `${m.user || ''}:${m.time || ''}:${(m.text || '').slice(0, 32)}`)
   }
   function byTimeStable(a, b) {
-    const dt = (a.time || 0) - (b.time || 0)
+    const dt = ordOf(a) - ordOf(b)
     if (dt !== 0) return dt
     const ka = stableMsgId(a),
       kb = stableMsgId(b)
@@ -66514,17 +66682,20 @@ const STORAGE_KEY = 'heatsync_multichat'
       // Ensure channels are joined + history loaded
       if (twitchCh && irc && !irc.channels.has(twitchCh.toLowerCase())) irc.join(twitchCh)
       if (kickCh && kickChat && !kickChat.channels.has(kickCh.toLowerCase())) kickChat.join(kickCh)
-      const ircMsgs = twitchCh ? irc?.getMessages(twitchCh) || [] : []
-      let kickMsgs = kickCh ? kickChat?.getMessages(kickCh) || [] : []
+      // getTail (not getMessages/getAll): the render only ever shows the
+      // newest SCROLLBACK_MAX rows (the hard DOM ceiling below), so there's
+      // no reason to copy the full 3000-cap buffer every render.
+      const ircMsgs = twitchCh ? irc?.getTail(twitchCh, SCROLLBACK_MAX) || [] : []
+      let kickMsgs = kickCh ? kickChat?.getTail(kickCh, SCROLLBACK_MAX) || [] : []
       if (!kickMsgs.length && curCh) {
         // Check if any config entry links current channel to a Kick channel
         const linked = config.channels.find((ch) => ch.twitch === curCh && ch.kick)
-        if (linked) kickMsgs = kickChat?.getMessages(linked.kick) || []
+        if (linked) kickMsgs = kickChat?.getTail(linked.kick, SCROLLBACK_MAX) || []
       }
       // On Kick, also pull messages from the URL channel (may differ from live override)
       if (!kickMsgs.length && hostPlatform === 'kick') {
         const urlCh = getCurrentChannel()
-        if (urlCh && urlCh !== curCh) kickMsgs = kickChat?.getMessages(urlCh) || []
+        if (urlCh && urlCh !== curCh) kickMsgs = kickChat?.getTail(urlCh, SCROLLBACK_MAX) || []
       }
       // YouTube messages for live tab: auto-discovered or linked via config
       let ytMsgs = channelYtMessages.get('__live_yt_auto__') || []
@@ -66540,8 +66711,8 @@ const STORAGE_KEY = 'heatsync_multichat'
       const ch = getChannelById(id)
       const twitchName = ch?.twitch
       const kickName = ch?.kick
-      const ircMsgs = twitchName ? irc?.getMessages(twitchName) || [] : []
-      const kickMsgs = kickName ? kickChat?.getMessages(kickName) || [] : []
+      const ircMsgs = twitchName ? irc?.getTail(twitchName, SCROLLBACK_MAX) || [] : []
+      const kickMsgs = kickName ? kickChat?.getTail(kickName, SCROLLBACK_MAX) || [] : []
       // YouTube ONLY from this channel's own explicit link. The global
       // __live_yt_auto__ bucket (the host page's auto-discovered YT, bound to
       // whatever stream is focused) must NOT merge into a per-channel tab — that
@@ -66857,7 +67028,14 @@ const STORAGE_KEY = 'heatsync_multichat'
     const existingByKey = _rmExistingByKey
     existingByKey.clear()
     const detachedExtras = []
-    for (const c of [...msgsEl.children]) {
+    // Walk the LIVE HTMLCollection in place instead of materializing
+    // [...msgsEl.children] (up to DOM_RENDER_CAP+scrollback nodes, every
+    // render). Safe because we only ever advance `i` when the current child
+    // is KEPT: removing children[i] slides the next child into that same
+    // index, so re-checking index i next iteration is correct — nothing is
+    // skipped, and nothing here reorders a kept node.
+    for (let i = 0; i < msgsEl.children.length; ) {
+      const c = msgsEl.children[i]
       if (c.dataset?.hsYtStatus && c.dataset?.hsYtStatusTab === String(id)) {
         detachedExtras.push(c)
         c.remove() // yt-status pins aren't tracked in indices
@@ -66868,13 +67046,15 @@ const STORAGE_KEY = 'heatsync_multichat'
         if (existingByKey.has(k)) {
           _unindexMessageDiv(c) // pre-existing dupe — drop the second copy
           c.remove()
-        } else {
-          existingByKey.set(k, c)
+          continue
         }
+        existingByKey.set(k, c)
       } else {
         _unindexMessageDiv(c)
         c.remove()
+        continue
       }
+      i++
     }
 
     // Bulletproof sticky-bottom: if the user hasn't scrolled up via input,

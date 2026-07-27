@@ -23411,7 +23411,10 @@ function pickerCacheKey() {
   // (emotes ↔ twitch) just toggles display, no rebuild needed.
   const ch = currentTab || getCurrentChannel() || '_'
   const chSize = channelEmoteCaches[ch]?.size || channelEmoteCaches[getCurrentChannel()]?.size || 0
-  return `${ch}|${emoteSize}|${emoteCache.size}|${chSize}`
+  // _blockedRev: a cross-device block/unblock (applyBlockedHashDelta) changes
+  // no size here — without it a rebuild triggered by an unrelated key change
+  // would be the only thing correcting a stale cached picker DOM.
+  return `${ch}|${emoteSize}|${emoteCache.size}|${chSize}|${_blockedRev}`
 }
 
 function markPickerDirty() {
@@ -23826,6 +23829,12 @@ function adjustOverlayForPicker(open) {
 // blockedEmoteNames = Set of names (derived via hashToName lookup, for processEmotes)
 let blockedEmoteHashes = new Set()
 const blockedEmoteNames = new Set()
+// Monotonic counter bumped whenever a name-resolvable block/unblock lands via
+// applyBlockedHashDelta (cross-device push) — folded into pickerCacheKey so a
+// picker rebuild triggered by an unrelated cache-key change (channel switch,
+// emote count) doesn't serve pre-delta picker DOM. Local blockEmote/
+// unblockEmote already patch picker wraps in place, so they don't need this.
+let _blockedRev = 0
 
 function rebuildBlockedNames() {
   blockedEmoteNames.clear()
@@ -23905,6 +23914,16 @@ function applyBlockedHashDelta(newHashesArr) {
         img.dataset.state = 'blocked'
       }
     })
+    // Cross-device block also has to reach the picker grid — mirrors
+    // blockEmote's picker patch (the local-block path); without this a
+    // WS-pushed block from another device leaves the picker tile pasteable.
+    try {
+      document.querySelectorAll(`.hs-mc-picker-emote-wrap[data-name="${CSS.escape(name)}"]`).forEach((w) => {
+        w.classList.add('blocked')
+        const img = w.querySelector('img')
+        if (img) img.dataset.state = 'blocked'
+      })
+    } catch {}
     applyInputEmoteBlockState(name, true)
   }
 
@@ -23955,8 +23974,18 @@ function applyBlockedHashDelta(newHashesArr) {
         img.dataset.state = newState
       }
     })
+    // Cross-device unblock — mirrors unblockEmote's picker patch.
+    try {
+      document.querySelectorAll(`.hs-mc-picker-emote-wrap[data-name="${CSS.escape(name)}"]`).forEach((w) => {
+        w.classList.remove('blocked')
+        const img = w.querySelector('img')
+        if (img) img.dataset.state = newState
+      })
+    } catch {}
     applyInputEmoteBlockState(name, false)
   }
+
+  if (changedNames.length) _blockedRev++
 
   // Cached _renderedHtml on buffered messages bakes in `hs-state-blocked` from
   // the moment the message was first processed. Without invalidation, any later
@@ -70067,6 +70096,23 @@ const STORAGE_KEY = 'heatsync_multichat'
     // (Plain Promise.all let a single throwing/hanging settings-loader kill
     // everything after it — including badge loading.) Cap each at 5s + swallow
     // rejections so the panel always finishes booting.
+    // Keep raw handles on the two blocked-emote-relevant loads (not just the
+    // raced/timed-out copies below) — a cold service worker can outlast the 5s
+    // cap, and the first render (persisted buffers, shortly after this phase)
+    // would then bake blocked emotes' real images into m._renderedHtml with
+    // nothing to ever repaint them. rebuildBlockedNames() runs inside both, so
+    // whichever lands last leaves blockedEmoteNames correct.
+    let _blockedHydrated = false
+    const _blockedEmotesP = loadBlockedEmotes()
+    const _emotesP = loadEmotes()
+    Promise.all([_blockedEmotesP, _emotesP]).then(
+      () => {
+        _blockedHydrated = true
+      },
+      () => {
+        _blockedHydrated = true
+      },
+    )
     await Promise.allSettled(
       [
         _uiPrime, // already in flight; just await here to ensure it landed
@@ -70076,12 +70122,32 @@ const STORAGE_KEY = 'heatsync_multichat'
         loadLivePlatformMap(),
         loadAllSettings(),
         loadPlatformFilters(),
-        loadBlockedEmotes(),
-        loadEmotes(),
+        _blockedEmotesP,
+        _emotesP,
         loadSenderEmoteSets(),
         loadStaleEmotes(),
       ].map((p) => Promise.race([Promise.resolve(p).catch(() => {}), new Promise((r) => setTimeout(r, 5000))])),
     )
+    // Boot race: loadBlockedEmotes/loadEmotes timed out above (still pending)
+    // — the imminent first render will paint with a stale/empty blocked set.
+    // Attach a late repaint that fires whenever they actually land: invalidate
+    // the frozen _renderedHtml for the (now-known) blocked names and repaint
+    // via the same scrolled-up-safe path other blocked-state changes use.
+    if (!_blockedHydrated) {
+      Promise.all([_blockedEmotesP, _emotesP])
+        .then(() => {
+          if (!blockedEmoteNames.size) return
+          if (typeof invalidateRenderedForEmotes === 'function') {
+            invalidateRenderedForEmotes([...blockedEmoteNames])
+          }
+          if (!isScrolledUp && typeof renderMessages === 'function' && typeof currentTab !== 'undefined') {
+            try {
+              renderMessages(currentTab)
+            } catch {}
+          }
+        })
+        .catch(() => {})
+    }
     // Init done — drop the cache so subsequent reads see fresh data.
     invalidateUiSettingsCache()
     // Freeze the subsystem gates for the rest of init — a mid-init storage

@@ -12986,6 +12986,23 @@
     // (Plain Promise.all let a single throwing/hanging settings-loader kill
     // everything after it — including badge loading.) Cap each at 5s + swallow
     // rejections so the panel always finishes booting.
+    // Keep raw handles on the two blocked-emote-relevant loads (not just the
+    // raced/timed-out copies below) — a cold service worker can outlast the 5s
+    // cap, and the first render (persisted buffers, shortly after this phase)
+    // would then bake blocked emotes' real images into m._renderedHtml with
+    // nothing to ever repaint them. rebuildBlockedNames() runs inside both, so
+    // whichever lands last leaves blockedEmoteNames correct.
+    let _blockedHydrated = false
+    const _blockedEmotesP = loadBlockedEmotes()
+    const _emotesP = loadEmotes()
+    Promise.all([_blockedEmotesP, _emotesP]).then(
+      () => {
+        _blockedHydrated = true
+      },
+      () => {
+        _blockedHydrated = true
+      },
+    )
     await Promise.allSettled(
       [
         _uiPrime, // already in flight; just await here to ensure it landed
@@ -12995,12 +13012,32 @@
         loadLivePlatformMap(),
         loadAllSettings(),
         loadPlatformFilters(),
-        loadBlockedEmotes(),
-        loadEmotes(),
+        _blockedEmotesP,
+        _emotesP,
         loadSenderEmoteSets(),
         loadStaleEmotes(),
       ].map((p) => Promise.race([Promise.resolve(p).catch(() => {}), new Promise((r) => setTimeout(r, 5000))])),
     )
+    // Boot race: loadBlockedEmotes/loadEmotes timed out above (still pending)
+    // — the imminent first render will paint with a stale/empty blocked set.
+    // Attach a late repaint that fires whenever they actually land: invalidate
+    // the frozen _renderedHtml for the (now-known) blocked names and repaint
+    // via the same scrolled-up-safe path other blocked-state changes use.
+    if (!_blockedHydrated) {
+      Promise.all([_blockedEmotesP, _emotesP])
+        .then(() => {
+          if (!blockedEmoteNames.size) return
+          if (typeof invalidateRenderedForEmotes === 'function') {
+            invalidateRenderedForEmotes([...blockedEmoteNames])
+          }
+          if (!isScrolledUp && typeof renderMessages === 'function' && typeof currentTab !== 'undefined') {
+            try {
+              renderMessages(currentTab)
+            } catch {}
+          }
+        })
+        .catch(() => {})
+    }
     // Init done — drop the cache so subsequent reads see fresh data.
     invalidateUiSettingsCache()
     // Freeze the subsystem gates for the rest of init — a mid-init storage

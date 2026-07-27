@@ -880,7 +880,10 @@ function pickerCacheKey() {
   // (emotes ↔ twitch) just toggles display, no rebuild needed.
   const ch = currentTab || getCurrentChannel() || '_'
   const chSize = channelEmoteCaches[ch]?.size || channelEmoteCaches[getCurrentChannel()]?.size || 0
-  return `${ch}|${emoteSize}|${emoteCache.size}|${chSize}`
+  // _blockedRev: a cross-device block/unblock (applyBlockedHashDelta) changes
+  // no size here — without it a rebuild triggered by an unrelated key change
+  // would be the only thing correcting a stale cached picker DOM.
+  return `${ch}|${emoteSize}|${emoteCache.size}|${chSize}|${_blockedRev}`
 }
 
 function markPickerDirty() {
@@ -1295,6 +1298,12 @@ function adjustOverlayForPicker(open) {
 // blockedEmoteNames = Set of names (derived via hashToName lookup, for processEmotes)
 let blockedEmoteHashes = new Set()
 const blockedEmoteNames = new Set()
+// Monotonic counter bumped whenever a name-resolvable block/unblock lands via
+// applyBlockedHashDelta (cross-device push) — folded into pickerCacheKey so a
+// picker rebuild triggered by an unrelated cache-key change (channel switch,
+// emote count) doesn't serve pre-delta picker DOM. Local blockEmote/
+// unblockEmote already patch picker wraps in place, so they don't need this.
+let _blockedRev = 0
 
 function rebuildBlockedNames() {
   blockedEmoteNames.clear()
@@ -1374,6 +1383,16 @@ function applyBlockedHashDelta(newHashesArr) {
         img.dataset.state = 'blocked'
       }
     })
+    // Cross-device block also has to reach the picker grid — mirrors
+    // blockEmote's picker patch (the local-block path); without this a
+    // WS-pushed block from another device leaves the picker tile pasteable.
+    try {
+      document.querySelectorAll(`.hs-mc-picker-emote-wrap[data-name="${CSS.escape(name)}"]`).forEach((w) => {
+        w.classList.add('blocked')
+        const img = w.querySelector('img')
+        if (img) img.dataset.state = 'blocked'
+      })
+    } catch {}
     applyInputEmoteBlockState(name, true)
   }
 
@@ -1424,8 +1443,18 @@ function applyBlockedHashDelta(newHashesArr) {
         img.dataset.state = newState
       }
     })
+    // Cross-device unblock — mirrors unblockEmote's picker patch.
+    try {
+      document.querySelectorAll(`.hs-mc-picker-emote-wrap[data-name="${CSS.escape(name)}"]`).forEach((w) => {
+        w.classList.remove('blocked')
+        const img = w.querySelector('img')
+        if (img) img.dataset.state = newState
+      })
+    } catch {}
     applyInputEmoteBlockState(name, false)
   }
+
+  if (changedNames.length) _blockedRev++
 
   // Cached _renderedHtml on buffered messages bakes in `hs-state-blocked` from
   // the moment the message was first processed. Without invalidation, any later

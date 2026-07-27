@@ -2351,7 +2351,15 @@
     const bridge = _bridgeFor(def)
     if (bridge) bridge.set(v)
     if (def.scope === 'local') {
-      chrome.storage.local.set({ [key]: v }).catch(() => {})
+      // Failure must be LOUD: the in-memory cache + UI already flipped, so a
+      // silently-dropped write means the setting reverts on next load with
+      // zero warning (NSFW filters + mute keywords live on this path).
+      chrome.storage.local.set({ [key]: v }).catch(() => {
+        try {
+          showToast(t('mc_main_settings_save_failed'), 'error')
+        } catch {}
+        warn('setSetting: local write failed for', key)
+      })
     } else {
       // sync + local-mirror both route through saveUiSetting — it owns the
       // debounce, UI_SYNC_BLOCKLIST split, quota guard, and ws sync patch

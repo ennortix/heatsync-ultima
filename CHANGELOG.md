@@ -1,5 +1,24 @@
 # changelog
 
+## [1.7.39] — 2026-07-27
+
+### fixed
+- **blocked emotes stay blocked** — hovering one no longer previewed the real image at 4x, tab-cycling no longer flashed it back into view, and typing a modifier onto the end of the name (`Emotew!`, `EmoteffzX`) no longer slipped past the block. blocks now match on the emote's id too, so the same emote re-listed under a different name in another channel is still blocked.
+- **content filters reach every surface** — the feed, thread view, kick's native emote form, the chat-logs panel, and the emote autocomplete all honor your hidden-content settings now; they previously only applied in chat.
+- **7tv's own sexual-content flag is respected** — it was fetched and then dropped before render.
+- **blocked emotes on kick's native chat** — they were unblockable there.
+
+### changed
+- fresh installs connect immediately instead of waiting out an anti-thundering-herd delay meant for auto-updates.
+- a new install starts on the live tab, with feed/whispers/mentions/modlog hidden until you sign in.
+- a version gate or kill switch now says so on screen instead of silently doing nothing, and stops applying after 24h so a bad value can't brick an install.
+- a twitch channel that fails to join can be retried instead of staying permanently empty, and tells you.
+- channel-list save failures surface instead of silently reverting on reload.
+
+### performance
+- chat no longer accumulates emote layout work while the tab is in the background — that queue could grow all stream and then stall the frame when you came back.
+- cheaper per-message text handling on the hot render path.
+
 ## [1.7.38] — 2026-07-27
 
 ### added

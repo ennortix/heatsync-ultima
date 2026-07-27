@@ -1678,21 +1678,21 @@
   // tab-bar pop. Two rAFs before the fade guarantee the overlay has
   // actually painted before the swap starts (rAF 1 = post-style commit,
   // rAF 2 = post-paint).
-  let _prepaintTornDown = false
   function tearDownPrepaint() {
     const html = document.documentElement
     const container = document.getElementById('hs-mc-container')
-    const firstRun = !_prepaintTornDown
-    _prepaintTornDown = true
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         // Always (re)apply on every call — container can be recreated on
         // SPA navigation, and a fresh element won't carry the class.
         if (container) container.classList.add('hs-mc-shown')
-        if (!firstRun) return
-        if (html.classList.contains('hs-prepaint-active')) {
-          html.classList.add('hs-prepaint-fade')
-        }
+        // Clear whatever prepaint is currently up, not just the first one:
+        // early-layout re-arms on SPA navigation into a chat page (booting on
+        // /directory and clicking a stream), so a later mount must be able to
+        // fade its bar out too. Without this the re-armed bar sat until the
+        // 4s self-destruct. No-ops when nothing is armed.
+        if (!html.classList.contains('hs-prepaint-active')) return
+        html.classList.add('hs-prepaint-fade')
         setTimeout(() => {
           html.classList.remove('hs-prepaint-active')
           html.classList.remove('hs-prepaint-fade')
@@ -6209,7 +6209,7 @@
     }
     // Always reveal container — when overlay is reclaimed (SPA persist /
     // re-mount), the visible-gated branch above is skipped and the
-    // container would stay at opacity:0. Idempotent via _prepaintTornDown.
+    // container would stay at opacity:0. Idempotent — no-ops when no prepaint.
     tearDownPrepaint()
 
     // Ensure resize handle exists on left edge of chat panel

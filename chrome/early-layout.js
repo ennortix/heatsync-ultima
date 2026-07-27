@@ -266,9 +266,54 @@ ${
   // Self-destruct safety: if main.js never tears down (extension disabled
   // mid-load, content script error, network kill), drop everything after 4s
   // so the user isn't stuck staring at a black bar hiding their chat.
-  setTimeout(() => {
+  let selfDestruct = null
+  function armSelfDestruct() {
+    clearTimeout(selfDestruct)
+    selfDestruct = setTimeout(disarmPrepaint, 4000)
+  }
+  function disarmPrepaint() {
+    clearTimeout(selfDestruct)
     document.documentElement.classList.remove('hs-prepaint-active')
     document.documentElement.classList.remove('hs-prepaint-fade')
     document.getElementById('hs-early-layout')?.remove()
-  }, 4000)
+  }
+  armSelfDestruct()
+
+  // SPA re-arm. document_start fires once per real page load, so a session
+  // that boots on a NON-chat page (refresh on /directory, then click a
+  // stream) gets no prepaint for the channel it navigates into — and by then
+  // the <style> above has already been removed by the self-destruct. The
+  // result is the gap this whole file exists to prevent: nothing holds the
+  // chat column, so the player lays out full-width and visibly snaps ~3-6s
+  // later when the overlay finally mounts.
+  //
+  // Re-arm off the existing MAIN-world nav broadcast (early-inject-main.js
+  // postMessages 'heatsync-nav' on pushState/replaceState/popstate) rather
+  // than polling location — no new timer, no cost on pages that never move.
+  // Only when the overlay isn't already PRESENTING: the container survives SPA
+  // transitions and exists (zero-width) even on /directory, so "does the
+  // element exist" is the wrong test — it's true in exactly the broken case
+  // and the re-arm would never fire. Width is the honest signal: >0 means a
+  // real panel is on screen and prepainting would black out chat the user is
+  // reading; 0 (or absent) means nothing holds the column yet.
+  // Origin-checked, not source-checked: this runs in the ISOLATED world and the
+  // nav ping is posted from the MAIN world, so `e.source === window` is not
+  // reliably true across that boundary (it silently never matched). Every other
+  // heatsync-nav listener matches on type alone for the same reason. Arming a
+  // prepaint carries no privilege, so origin + type is the right bar.
+  window.addEventListener('message', (e) => {
+    if (e.origin !== location.origin || e.data?.type !== 'heatsync-nav') return
+    if (!isChatPage()) return
+    const mounted = document.getElementById('hs-mc-container')
+    if (mounted && mounted.getBoundingClientRect().width > 0) return
+    if (document.documentElement.classList.contains('hs-prepaint-active')) return
+    document.documentElement.classList.add('hs-prepaint-active')
+    if (!document.getElementById('hs-early-layout')) {
+      const s = document.createElement('style')
+      s.id = 'hs-early-layout'
+      s.textContent = css
+      ;(document.head || document.documentElement).appendChild(s)
+    }
+    armSelfDestruct()
+  })
 })()

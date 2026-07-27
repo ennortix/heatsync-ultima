@@ -1,5 +1,79 @@
 import { expect, test } from 'bun:test'
-import { escapeHtml } from '../src/lib/utils.js'
+import { escapeHtml, qsArray, qsaArray } from '../src/lib/utils.js'
+
+// ── qsArray / qsaArray ───────────────────────────────────────────────────────
+// Fallback-array selector helpers (src/lib/utils.js) backing
+// CONFIG.SELECTORS.KICK_CHAT_CONTAINER / KICK_IDENTITY. No DOM in this test
+// environment (bun:test has no `document`), so exercise against a minimal
+// mock root implementing querySelector/querySelectorAll — always pass an
+// explicit root so qsArray's `root = document` default is never evaluated.
+
+function mockRoot(matches) {
+  // matches: Map<selector, element|elements[]>
+  return {
+    querySelector: (sel) => matches.get(sel) ?? null,
+    querySelectorAll: (sel) => matches.get(sel) ?? [],
+  }
+}
+
+test('qsArray: string selector passes through to querySelector', () => {
+  const el = { tag: 'primary' }
+  const root = mockRoot(new Map([['.primary', el]]))
+  expect(qsArray('.primary', root)).toBe(el)
+})
+
+test('qsArray: array tries each selector in order until one matches', () => {
+  const el = { tag: 'fallback-2' }
+  const root = mockRoot(new Map([['.fallback-2', el]]))
+  expect(qsArray(['.primary', '.fallback-1', '.fallback-2'], root)).toBe(el)
+})
+
+test('qsArray: array returns first match, not last, when multiple hit', () => {
+  const first = { tag: 'first' }
+  const second = { tag: 'second' }
+  const root = mockRoot(
+    new Map([
+      ['.a', first],
+      ['.b', second],
+    ]),
+  )
+  expect(qsArray(['.a', '.b'], root)).toBe(first)
+})
+
+test('qsArray: array returns null when nothing matches', () => {
+  const root = mockRoot(new Map())
+  expect(qsArray(['.a', '.b'], root)).toBeNull()
+})
+
+test('qsArray: null root returns null instead of throwing', () => {
+  expect(qsArray('.a', null)).toBeNull()
+})
+
+test('qsArray: non-string/non-array selectors returns null', () => {
+  const root = mockRoot(new Map())
+  expect(qsArray(123, root)).toBeNull()
+})
+
+test('qsaArray: string selector passes through to querySelectorAll', () => {
+  const els = [{ tag: 'a' }, { tag: 'b' }]
+  const root = mockRoot(new Map([['.items', els]]))
+  expect(qsaArray('.items', root)).toBe(els)
+})
+
+test('qsaArray: array returns results of first selector with any matches', () => {
+  const els = [{ tag: 'x' }]
+  const root = mockRoot(new Map([['.fallback', els]]))
+  expect(qsaArray(['.primary', '.fallback'], root)).toBe(els)
+})
+
+test('qsaArray: array returns empty array when nothing matches', () => {
+  const root = mockRoot(new Map())
+  expect(qsaArray(['.a', '.b'], root)).toEqual([])
+})
+
+test('qsaArray: null root returns empty array instead of throwing', () => {
+  expect(qsaArray('.a', null)).toEqual([])
+})
 
 // ── escapeHtml ────────────────────────────────────────────────────────────────
 

@@ -93,6 +93,56 @@ function createElement(tag, text, className) {
 }
 
 // ============================================
+// FALLBACK-ARRAY SELECTOR HELPERS
+// ============================================
+// Twitch/Kick rotate obfuscated CSS classes on release. CONFIG.SELECTORS
+// entries that are prone to drift store an ARRAY of selector strings
+// (primary/most-current first, then progressively more defensive
+// fallbacks) instead of one hardcoded literal. qsArray/qsaArray try each
+// entry in order and return the first that matches — a DOM break becomes
+// a one-line fallback addition in config.js instead of a hotfix. A bare
+// string is still accepted (including existing comma-separated CSS
+// selector lists) and passed straight through for backward compatibility.
+
+/**
+ * querySelector that accepts either a single CSS selector string or an
+ * ordered array of fallback selector strings.
+ * @param {string|string[]} selectors
+ * @param {ParentNode} [root]
+ * @returns {Element|null}
+ */
+function qsArray(selectors, root = document) {
+  if (!root) return null
+  if (typeof selectors === 'string') return root.querySelector(selectors)
+  if (!Array.isArray(selectors)) return null
+  for (const sel of selectors) {
+    const el = root.querySelector(sel)
+    if (el) return el
+  }
+  return null
+}
+
+/**
+ * querySelectorAll that accepts either a single CSS selector string or an
+ * ordered array of fallback selector strings. Returns the results of the
+ * FIRST selector in the array that matches anything (fallbacks are for
+ * whole markup revisions, not for merging results across selectors).
+ * @param {string|string[]} selectors
+ * @param {ParentNode} [root]
+ * @returns {NodeListOf<Element>|Element[]}
+ */
+function qsaArray(selectors, root = document) {
+  if (!root) return []
+  if (typeof selectors === 'string') return root.querySelectorAll(selectors)
+  if (!Array.isArray(selectors)) return []
+  for (const sel of selectors) {
+    const els = root.querySelectorAll(sel)
+    if (els.length) return els
+  }
+  return []
+}
+
+// ============================================
 // STRING HELPERS
 // ============================================
 
@@ -788,6 +838,10 @@ const utils = {
   safeUrl,
   createElement,
 
+  // Fallback-array selectors
+  qsArray,
+  qsaArray,
+
   // Strings
   truncateSafe,
 
@@ -876,6 +930,8 @@ export {
   OVERFLOW_MIRROR_KEYS,
   outsideTags,
   parseYtGiftCount,
+  qsArray,
+  qsaArray,
   resolveEmoteProviderWinner,
   resolveVolumeWheelStep,
   resolveYtLiveLabel,

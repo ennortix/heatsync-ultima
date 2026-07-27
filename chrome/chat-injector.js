@@ -317,13 +317,15 @@
     const selectors = window.heatsyncPlatform.getPlatformSelectors()
     if (!selectors) return
 
-    const container = document.querySelector(selectors.container)
+    // selectors.container may be a single CSS selector string or a fallback
+    // array (Kick) — qsArray (src/lib/utils.js) handles both.
+    const container = qsArray(selectors.container)
     if (!container) {
       if (!_containerMissingWarned) {
         _containerMissingWarned = true
         console.error(
           '[heatsync] chat-injector: container selector matched nothing (' +
-            selectors.container +
+            [].concat(selectors.container).join(', ') +
             ') — OP message injection is silently disabled for this page load',
         )
       }

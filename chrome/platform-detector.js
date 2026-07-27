@@ -4,6 +4,43 @@
   const log = DEBUG ? console.log.bind(console, '[heatsync-platform]') : () => {}
   log(' Platform detector loaded')
 
+  // mirrors src/lib/utils.js qsArray — kept local because this file is a
+  // standalone copy-as-is content script (build.js COPY_FILES) with no
+  // access to the bundled lib scope. Accepts a single CSS selector string
+  // or an ordered array of fallback selectors, trying each until one hits.
+  function qsArray(selectors, root = document) {
+    if (!root) return null
+    if (typeof selectors === 'string') return root.querySelector(selectors)
+    if (!Array.isArray(selectors)) return null
+    for (const sel of selectors) {
+      const el = root.querySelector(sel)
+      if (el) return el
+    }
+    return null
+  }
+
+  // mirrors src/lib/config.js SELECTORS.KICK_CHAT_CONTAINER — single source
+  // of truth is config.js; this copy must stay in sync (see that file's
+  // comment for the fallback-order rationale).
+  const KICK_CHAT_CONTAINER = [
+    '#chatroom-messages .no-scrollbar',
+    '#chatroom-messages',
+    '#channel-chatroom',
+    '#channel-chatroom [class*="messages"]',
+    '[class*="chat-messages-container"]',
+  ]
+
+  // mirrors src/lib/config.js SELECTORS.KICK_IDENTITY
+  const KICK_IDENTITY = [
+    '.chat-identity-name',
+    '[class*="chat-identity"] span',
+    '[class*="chat-identity"]',
+    '[class*="chat-author"]',
+    'button.inline.font-bold',
+    '[class*="chat-entry-username"]',
+    '[class*="chat-message-identity"] button',
+  ]
+
   /**
    * Detect which platform the user is on
    * @returns {string|null} 'twitch' | 'kick' | null
@@ -39,10 +76,9 @@
       }
     } else if (platform === 'kick') {
       return {
-        container: '#chatroom-messages .no-scrollbar',
-        containerFallback: '#chatroom-messages',
+        container: KICK_CHAT_CONTAINER,
         message: '[data-index], [data-chat-entry], #chatroom-messages .no-scrollbar > div > div',
-        username: 'button.inline.font-bold, [class*="chat-entry-username"], [class*="chat-message-identity"] button',
+        username: KICK_IDENTITY,
         messageText: 'span.font-normal, [class*="chat-entry-content"], [class*="chat-message"] > span',
         messageContainer: '[data-index], [data-chat-entry], #chatroom-messages .no-scrollbar > div > div',
       }
@@ -72,16 +108,12 @@
     return new Promise((resolve, reject) => {
       let elapsed = 0
       const check = () => {
-        const container =
-          document.querySelector(selectors.container) ||
-          (selectors.containerFallback ? document.querySelector(selectors.containerFallback) : null)
+        const container = qsArray(selectors.container)
         if (container && container.offsetHeight > 0) {
           resolve(container)
         } else if (elapsed >= 15000) {
           // Accept hidden container as fallback (Kick may show it later)
-          const hidden =
-            document.querySelector(selectors.container) ||
-            (selectors.containerFallback ? document.querySelector(selectors.containerFallback) : null)
+          const hidden = qsArray(selectors.container)
           if (hidden) resolve(hidden)
           else reject(new Error('Chat container not found after 15s'))
         } else {

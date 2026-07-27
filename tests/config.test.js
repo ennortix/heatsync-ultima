@@ -173,13 +173,39 @@ describe('config: SELECTORS', () => {
     'YT_CHAT_INPUT',
   ]
 
+  // Selector-drift-prone keys store a fallback ARRAY (tried in order via
+  // qsArray/qsaArray, src/lib/utils.js) instead of one hardcoded string.
+  const arraySelectorKeys = new Set(['KICK_CHAT_CONTAINER'])
+
   for (const key of requiredSelectorKeys) {
+    if (arraySelectorKeys.has(key)) {
+      test(`SELECTORS.${key} is a non-empty array of non-empty strings`, () => {
+        const val = CONFIG.SELECTORS[key]
+        expect(Array.isArray(val), `${key} should be an array`).toBe(true)
+        expect(val.length, `${key} should not be empty`).toBeGreaterThan(0)
+        for (const sel of val) {
+          expect(typeof sel, `${key} entries should be strings`).toBe('string')
+          expect(sel.length, `${key} entries should not be empty`).toBeGreaterThan(0)
+        }
+      })
+      continue
+    }
     test(`SELECTORS.${key} is a non-empty string`, () => {
       const val = CONFIG.SELECTORS[key]
       expect(typeof val, `${key} should be string`).toBe('string')
       expect(val.length, `${key} should not be empty`).toBeGreaterThan(0)
     })
   }
+
+  test('SELECTORS.KICK_IDENTITY is a non-empty array of non-empty strings', () => {
+    const val = CONFIG.SELECTORS.KICK_IDENTITY
+    expect(Array.isArray(val)).toBe(true)
+    expect(val.length).toBeGreaterThan(0)
+    for (const sel of val) {
+      expect(typeof sel).toBe('string')
+      expect(sel.length).toBeGreaterThan(0)
+    }
+  })
 
   test('TWITCH_CHAT_INPUT contains [data-a-target]', () => {
     // This selector is documented in CLAUDE.md — a regression here breaks input

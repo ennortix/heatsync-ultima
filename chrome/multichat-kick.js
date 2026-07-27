@@ -581,16 +581,39 @@ const CONFIG = {
     TWITCH_CHANNEL_LEADERBOARD: '[class*="channel-leaderboard"]',
     TWITCH_MARQUEE: '[class*="marquee-animation"]',
 
-    // Kick chat containers — querySelector accepts CSV; first match wins so
-    // primary selector is canonical and rest are defensive fallbacks against
-    // Kick redesigns. Adding alternates is cheaper than reactive hot-fixes.
-    KICK_CHAT_CONTAINER:
-      '#chatroom-messages, #channel-chatroom [class*="messages"], [class*="chat-messages-container"]',
+    // Kick chat containers — fallback ARRAY consumed via qsArray/qsaArray
+    // (src/lib/utils.js): tries each entry in order, first match wins.
+    // Order preserves the priority already live in chrome/content.js's
+    // findChatContainer() cascade (inner scrollable div, then the message
+    // list root, then the outer room) with config.js's class-based
+    // defensive fallbacks appended after — a strict superset, never a
+    // narrower match than either prior form. Unifies 3 forms that had
+    // drifted across config.js/platform-detector.js/content.js (2026-07-26).
+    KICK_CHAT_CONTAINER: [
+      '#chatroom-messages .no-scrollbar',
+      '#chatroom-messages',
+      '#channel-chatroom',
+      '#channel-chatroom [class*="messages"]',
+      '[class*="chat-messages-container"]',
+    ],
     KICK_CHAT_CONTAINER_INNER:
       '#chatroom-messages .no-scrollbar, #chatroom-messages [class*="scroll"], [class*="chat-messages-container"] [class*="scroll"]',
     KICK_CHAT_ROOM: '#channel-chatroom, [class*="chat-room"], [class*="chatroom"]',
     KICK_CHAT_MESSAGES: '[data-index], [class*="chat-entry"]',
-    KICK_IDENTITY: '.chat-identity-name, [class*="chat-identity"], [class*="chat-author"]',
+    // Kick username/identity element — same fallback-array treatment,
+    // most-current-first: content.js's kickChatIdentity form (2026-06-09),
+    // then this key's own prior CSV form (2026-05-25), then
+    // platform-detector.js's form (2026-04-01). Unions all 3 divergent
+    // forms found in the same audit as KICK_CHAT_CONTAINER above.
+    KICK_IDENTITY: [
+      '.chat-identity-name',
+      '[class*="chat-identity"] span',
+      '[class*="chat-identity"]',
+      '[class*="chat-author"]',
+      'button.inline.font-bold',
+      '[class*="chat-entry-username"]',
+      '[class*="chat-message-identity"] button',
+    ],
 
     // Native emote selectors (combined via COMBINED_EMOTE_SELECTOR in content.js)
     NATIVE_EMOTE_IMG: 'img[data-a-target="emote-name"]',
@@ -1088,6 +1111,56 @@ function createElement(tag, text, className) {
   if (text) el.textContent = text
   if (className) el.className = className
   return el
+}
+
+// ============================================
+// FALLBACK-ARRAY SELECTOR HELPERS
+// ============================================
+// Twitch/Kick rotate obfuscated CSS classes on release. CONFIG.SELECTORS
+// entries that are prone to drift store an ARRAY of selector strings
+// (primary/most-current first, then progressively more defensive
+// fallbacks) instead of one hardcoded literal. qsArray/qsaArray try each
+// entry in order and return the first that matches — a DOM break becomes
+// a one-line fallback addition in config.js instead of a hotfix. A bare
+// string is still accepted (including existing comma-separated CSS
+// selector lists) and passed straight through for backward compatibility.
+
+/**
+ * querySelector that accepts either a single CSS selector string or an
+ * ordered array of fallback selector strings.
+ * @param {string|string[]} selectors
+ * @param {ParentNode} [root]
+ * @returns {Element|null}
+ */
+function qsArray(selectors, root = document) {
+  if (!root) return null
+  if (typeof selectors === 'string') return root.querySelector(selectors)
+  if (!Array.isArray(selectors)) return null
+  for (const sel of selectors) {
+    const el = root.querySelector(sel)
+    if (el) return el
+  }
+  return null
+}
+
+/**
+ * querySelectorAll that accepts either a single CSS selector string or an
+ * ordered array of fallback selector strings. Returns the results of the
+ * FIRST selector in the array that matches anything (fallbacks are for
+ * whole markup revisions, not for merging results across selectors).
+ * @param {string|string[]} selectors
+ * @param {ParentNode} [root]
+ * @returns {NodeListOf<Element>|Element[]}
+ */
+function qsaArray(selectors, root = document) {
+  if (!root) return []
+  if (typeof selectors === 'string') return root.querySelectorAll(selectors)
+  if (!Array.isArray(selectors)) return []
+  for (const sel of selectors) {
+    const els = root.querySelectorAll(sel)
+    if (els.length) return els
+  }
+  return []
 }
 
 // ============================================
@@ -1785,6 +1858,10 @@ const utils = {
   unescapeHtml,
   safeUrl,
   createElement,
+
+  // Fallback-array selectors
+  qsArray,
+  qsaArray,
 
   // Strings
   truncateSafe,

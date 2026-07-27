@@ -30,6 +30,7 @@ globalThis.currentTab = 'chan-a'
 globalThis.getCurrentChannel = () => 'chan-a'
 globalThis.getLiveChannel = () => 'chan-a'
 globalThis.linksEnabled = false
+globalThis.getSetting = () => undefined
 
 const { processEmotes, emoteCache, channelEmoteCaches } = await import('../src/multichat/emotes.js')
 

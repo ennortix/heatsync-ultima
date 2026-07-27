@@ -1792,8 +1792,16 @@ const _feedEmoteRegexCache = new Map()
 // right-click block/unblock works (queryEmoteWrappers matches
 // .hs-mc-emote-wrapper[data-emote-name], findEmoteTarget reads data-state).
 // Bare <img> rendered the emote but left it un-blockable — toast fired, image stayed.
-function renderFeedEmote(name, url, source, hash) {
+function renderFeedEmote(name, url, source, hash, cwCat) {
   const dn = escapeHtml(name)
+  // CW-hidden wins over everything else, same as chat (emotes.js ~3879
+  // emote.cw / hsOwnCwHiddenCat): a filter-flagged emote must never render as
+  // an <img> in feed/thread just because it slipped past the blocked check.
+  // No url either way, so paint the same dashed-cyan labeled box chat uses.
+  if (cwCat) {
+    const cw = escapeHtml(cwCat)
+    return `<span class="hs-mc-emote-wrapper hs-mc-emote-cw" data-emote-name="${dn}" data-cw="${cw}" data-state="cw" title="${dn}">${cw}</span>`
+  }
   // Blocked → dashed box (transparent px), never the real image. Matches chat's
   // blocked branch so the block actually hides the emote on re-render.
   if (typeof blockedEmoteNames !== 'undefined' && blockedEmoteNames.has(name)) {
@@ -1882,8 +1890,18 @@ function renderFeedContent(content, emoteRefs) {
   // emote_refs can be { name: url } or { name: { url, hash, name, provider } }
   if (emoteRefs && typeof emoteRefs === 'object') {
     for (const [name, val] of Object.entries(emoteRefs)) {
+      // Server-enriched refs may carry a cw stub (`cw`, string category, no
+      // url) or an own-inventory `cw_cats` array gated by the owner's own
+      // viewer_show_* toggles — same two shapes background.js's
+      // get_sender_emotes stub + emotes.js's hsOwnCwHiddenCat handle for chat.
+      // Shim the snake_case field into hsOwnCwHiddenCat's expected cwCats.
+      const cwCat =
+        typeof val === 'object' && val
+          ? (typeof val.cw === 'string' && val.cw) ||
+            (typeof hsOwnCwHiddenCat === 'function' ? hsOwnCwHiddenCat({ cwCats: val.cw_cats }) : '')
+          : ''
       const url = safeUrl(typeof val === 'string' ? val : val?.url)
-      if (!url) continue
+      if (!url && !cwCat) continue
       const source = typeof val === 'object' ? val?.provider || 'heatsync' : 'heatsync'
       const hash = typeof val === 'object' ? val?.hash : ''
       const escaped = escapeHtml(name)
@@ -1903,7 +1921,7 @@ function renderFeedContent(content, emoteRefs) {
         _feedEmoteRegexCache.set(cacheKey, re)
         if (_feedEmoteRegexCache.size > 500) _feedEmoteRegexCache.delete(_feedEmoteRegexCache.keys().next().value)
       }
-      html = html.replace(re, renderFeedEmote(name, url, source, hash))
+      html = html.replace(re, renderFeedEmote(name, url, source, hash, cwCat))
     }
   }
 
@@ -1931,6 +1949,13 @@ function renderFeedContent(content, emoteRefs) {
             return renderFeedEmote(word, '', 'heatsync', '')
           }
           const em = lookupEmote(word) || (bare !== word ? lookupEmote(bare) : null)
+          // Own-inventory cwCats gate (viewer_show_* toggles) — lookupEmote's
+          // first hit is viewerPersonalEmotes, which carries cwCats the same
+          // way processEmotes' hsOwnCwHiddenCat check does for chat.
+          if (em) {
+            const cwCat = typeof hsOwnCwHiddenCat === 'function' ? hsOwnCwHiddenCat(em) : ''
+            if (cwCat) return renderFeedEmote(word, '', em.source || 'heatsync', em.hash || '', cwCat)
+          }
           if (!em?.url || !/^https:\/\//.test(em.url)) return word
           return renderFeedEmote(word, em.url, em.source, em.hash)
         })

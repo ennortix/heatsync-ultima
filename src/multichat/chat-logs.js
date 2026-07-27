@@ -513,6 +513,41 @@ function clEmoteImg(host, src, alt) {
   host.appendChild(img)
 }
 
+// Name/hash-based block gate — same blockedEmoteNames/blockedEmoteHashes sets
+// chat and feed check (emotes.js loads before this module in the bundle).
+// Fail open on neither set existing yet (never blocked before boot finishes)
+// since that mirrors every other blocked-check callsite's `typeof !== undefined` guard.
+function clEmoteBlocked(name, idOrHash) {
+  if (typeof blockedEmoteNames !== 'undefined' && name && blockedEmoteNames.has(name)) return true
+  if (typeof blockedEmoteHashes !== 'undefined' && idOrHash && blockedEmoteHashes.has(String(idOrHash))) return true
+  return false
+}
+
+// Emote CDN allowlist for the twitch name→url map (shape B, below) — that
+// shape's url is a server-relayed string with NO protocol/host check before
+// this fix. Fail closed: only these hosts over https ever become an <img src>;
+// anything else renders as plain text instead of hotlinking (or worse)
+// unverified origins. Keep in sync with the emote-serving subset of
+// HS_IMG_DIRECT_HOSTS (feed-embed.js) and manifest img-src.
+const CL_EMOTE_HOSTS = new Set([
+  'static-cdn.jtvnw.net',
+  'cdn.7tv.app',
+  'cdn.betterttv.net',
+  'cdn.frankerfacez.com',
+  'files.kick.com',
+  'heatsync.org',
+  'cdn.heatsync.org',
+])
+function clEmoteUrlAllowed(url) {
+  if (typeof url !== 'string' || !url) return false
+  try {
+    const u = new URL(url)
+    return u.protocol === 'https:' && CL_EMOTE_HOSTS.has(u.hostname)
+  } catch {
+    return false
+  }
+}
+
 function appendChatLogBody(host, r) {
   const text = String(r.message || '')
   const refs = r.emote_refs || null
@@ -537,10 +572,12 @@ function appendChatLogBody(host, r) {
         if (span.s < cursor) continue
         if (span.s > cursor) appendTextWithHashtags(host, text.slice(cursor, span.s))
         const slice = text.slice(span.s, span.e + 1)
-        const src = clEmoteCdnUrl(r.platform, span.emote_id)
         const altMatch = slice.match(/^\[emote:[^:]+:([^\]]+)\]$/)
-        if (src) clEmoteImg(host, src, altMatch ? altMatch[1] : slice)
-        else host.appendChild(document.createTextNode(slice))
+        const altName = altMatch ? altMatch[1] : slice
+        const src = clEmoteCdnUrl(r.platform, span.emote_id)
+        // blocked → plain name, never the real image (matches chat/feed)
+        if (src && !clEmoteBlocked(altName, span.emote_id)) clEmoteImg(host, src, altName)
+        else host.appendChild(document.createTextNode(src ? altName : slice))
         cursor = span.e + 1
       }
       if (cursor < text.length) appendTextWithHashtags(host, text.slice(cursor))
@@ -556,7 +593,10 @@ function appendChatLogBody(host, r) {
   }
   const parts = text.split(/(\s+)/)
   for (const part of parts) {
-    if (twitchEmotes[part]) clEmoteImg(host, twitchEmotes[part], part)
+    const emoteUrl = twitchEmotes[part]
+    // blocked, OR the url fails the CDN allowlist (untrusted host) → plain
+    // text; never set an unvalidated string straight into img.src.
+    if (emoteUrl && !clEmoteBlocked(part) && clEmoteUrlAllowed(emoteUrl)) clEmoteImg(host, emoteUrl, part)
     else appendTextWithHashtags(host, part)
   }
 }

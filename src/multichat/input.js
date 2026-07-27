@@ -809,6 +809,9 @@ async function fetchRemoteEmoteMatches(search) {
       // requiring a literal prefix dropped the suffix-named families users
       // actually mean. Drop only fuzzy hits that don't contain the query.
       if (!lower.includes(searchLower)) continue
+      // A blocked name must never surface from the remote catalog either —
+      // same leak as the local pool, just a different source.
+      if (typeof _hsAcEmoteBlocked === 'function' && _hsAcEmoteBlocked(it.name, null)) continue
       have.add(lower)
       const src = it.provider || '7tv'
       add.push({
@@ -4846,6 +4849,25 @@ function _getMergedAcEmotes() {
   return _acMergeCache
 }
 
+// Shared exclusion check for the autocomplete pool (dropdown + tab-cycle +
+// remote catalog) — a blocked OR viewer-hidden-nsfw emote must never paint
+// its real image in a suggestion, so it's filtered from the match POOL itself
+// rather than only at insert time. Checks the name both raw and HTML-escaped
+// (mirrors the rawWord/word double-check in emotes.js's render path) plus the
+// emote's hash, so the same asset re-listed under a different alias is
+// caught too. hsChannelNsfwHidden covers channel 7tv sets whose sexual flag
+// is unfiltered (see emotes.js _buildChannelEmoteCache).
+function _hsAcEmoteBlocked(name, emote) {
+  if (!name) return false
+  if (typeof hsChannelNsfwHidden === 'function' && hsChannelNsfwHidden(emote)) return true
+  if (typeof blockedEmoteNames === 'undefined') return false
+  if (blockedEmoteNames.has(name)) return true
+  if (typeof unescapeHtml === 'function' && blockedEmoteNames.has(unescapeHtml(name))) return true
+  if (typeof blockedEmoteHashes !== 'undefined' && emote?.hash && blockedEmoteHashes.has(String(emote.hash)))
+    return true
+  return false
+}
+
 function findEmoteMatches(search) {
   const matches = []
 
@@ -4911,6 +4933,11 @@ function findEmoteMatches(search) {
     for (const [name, emote] of acEmotes) {
       // Only tab-complete heatsync emotes you own (can't send emotes not in your set)
       if (emote.source === 'heatsync' && emote.state !== 'owned') continue
+      // Blocked emotes never surface as an autocomplete suggestion — the
+      // dropdown/tab-cycle preview paints entry.url unguarded (showEmojiDropdown),
+      // so a blocked name/hash has to be excluded from the pool itself, not
+      // just at insert time. Hash catches the same asset under a re-listed alias.
+      if (_hsAcEmoteBlocked(name, emote)) continue
       const sub = !!emote.subscription
       const tier = tierByName.get(name) ?? 2
       if (name.toLowerCase().startsWith(searchLower)) {
@@ -4954,6 +4981,8 @@ function findEmoteMatches(search) {
       const seen = new Set(matches.filter((m) => m.type === 'emote').map((m) => m.name.toLowerCase()))
       for (const [name, emote] of acEmotes) {
         if (emote.source === 'heatsync' && emote.state !== 'owned') continue
+        // A block on the base name must hide the synthesized "name0" overlay too.
+        if (_hsAcEmoteBlocked(name, emote)) continue
         const nl = name.toLowerCase()
         const overlayName = `${name}0`
         if (seen.has(overlayName.toLowerCase())) continue

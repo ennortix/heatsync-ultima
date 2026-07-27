@@ -6601,12 +6601,27 @@
     if (m.hsEmotes && typeof m.hsEmotes === 'object') {
       for (const name in m.hsEmotes) {
         const r = m.hsEmotes[name]
-        if (!r?.url) continue
+        if (!r) continue
+        // cw stub — server hid a filter-flagged emote for THIS viewer and sent
+        // {name, cw} with no url (mirrors background.js's get_sender_emotes
+        // stub handling, see cw-stub-passthrough.test.js). `!r.url` alone used
+        // to drop these entirely, so the name fell through to the next lookup
+        // tier (sender/global cache) and rendered the REAL image — exactly the
+        // leak the server-side cw filter exists to stop. Keep the stub so
+        // processEmotes' emote.cw check (emotes.js ~3879) paints the
+        // dashed-cyan placeholder instead of nothing.
+        const isStub = !r.url && typeof r.cw === 'string' && r.cw
+        if (!r.url && !isStub) continue
         ;(hsMsgRefs ||= new Map()).set(escapeHtml(name), {
-          url: r.url,
+          url: r.url || '',
           source: r.provider || 'heatsync',
-          state: 'global',
+          state: isStub ? 'cw' : 'global',
           zeroWidth: !!r.zeroWidth,
+          cw: isStub ? r.cw : null,
+          // own-inventory cw annotation — camelCase to match hsOwnCwHiddenCat's
+          // reader (emotes.js); the server sends cw_cats snake_case.
+          cwCats: Array.isArray(r.cw_cats) && r.cw_cats.length ? r.cw_cats : null,
+          nsfw: !!r.nsfw,
         })
       }
     }

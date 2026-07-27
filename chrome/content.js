@@ -1516,10 +1516,11 @@
     cursor: pointer !important;
   }
 
-  /* Locally name-blocked emotes — kept in flow but visually muted so the
-     user can still right-click to unblock; hiding would strip that surface. */
+  /* Locally name-blocked emotes — fully hidden but kept in flow (not display:none)
+     so the element stays right-clickable for unblock; a dim/grayscale image was
+     still legible for gore/NSFW content, which defeats the point of blocking. */
   img[data-hs-name-blocked] {
-    opacity: 0.15 !important;
+    opacity: 0 !important;
     filter: grayscale(1) !important;
     cursor: pointer !important;
   }
@@ -6426,9 +6427,11 @@
     // so replaceChildren() doesn't wipe out the colored spans
     colorUsernameMentions(messageElement, textElements)
 
-    // Apply local name-blocks to native Twitch emotes in this message
+    // Apply local name-blocks to native Twitch/Kick emotes in this message
     if (localBlockedEmoteNames.size > 0) {
-      const imgs = messageElement.querySelectorAll('img[src*="static-cdn.jtvnw.net/emoticons"]')
+      const imgs = messageElement.querySelectorAll(
+        'img[src*="static-cdn.jtvnw.net/emoticons"], img[src*="files.kick.com/emotes/"]',
+      )
       for (const im of imgs) {
         if (im.alt && localBlockedEmoteNames.has(im.alt)) {
           im.setAttribute('data-hs-name-blocked', '1')
@@ -7545,9 +7548,9 @@
       'emote-click',
     )
 
-    // Right-click on native Twitch emotes (sub/follower/bits) — these never get
-    // wrapped, so no hash exists for server-side block. Instant local-block-by-name
-    // toggle (persisted to chrome.storage.local).
+    // Right-click on native Twitch/Kick emotes (sub/follower/bits, Kick channel
+    // emotes) — these never get wrapped, so no hash exists for server-side block.
+    // Instant local-block-by-name toggle (persisted to chrome.storage.local).
     cleanup.addEventListener(
       document,
       'contextmenu',
@@ -7558,8 +7561,12 @@
         if (img.closest('.heatsync-emote-stack')) return
 
         const src = img.src || ''
-        const isNativeTwitchEmote = src.includes('static-cdn.jtvnw.net/emoticons')
-        if (!isNativeTwitchEmote) return
+        const nativeCdnFrag = src.includes('static-cdn.jtvnw.net/emoticons')
+          ? 'static-cdn.jtvnw.net/emoticons'
+          : src.includes('files.kick.com/emotes/')
+            ? 'files.kick.com/emotes/'
+            : null
+        if (!nativeCdnFrag) return
 
         const name = img.alt
         if (!name) return
@@ -7568,7 +7575,7 @@
         e.stopPropagation()
 
         const escName = window.CSS && CSS.escape ? CSS.escape(name) : name.replace(/"/g, '\\"')
-        const sel = `img[alt="${escName}"][src*="static-cdn.jtvnw.net/emoticons"]`
+        const sel = `img[alt="${escName}"][src*="${nativeCdnFrag}"]`
         if (localBlockedEmoteNames.has(name)) {
           localBlockedEmoteNames.delete(name)
           document.querySelectorAll(sel).forEach((el) => el.removeAttribute('data-hs-name-blocked'))
@@ -7931,7 +7938,11 @@
       if (stack) {
         const stackedWrappers = stack.querySelectorAll('.heatsync-emote-wrapper')
         stackedWrappers.forEach((w) => {
+          // Blocked emotes are hidden in chat via CSS only — never repaint
+          // their asset in the hover preview.
+          if (w.classList.contains('emote-overlay-blocked')) return
           const wImg = w.querySelector('img')
+          if (wImg?.hasAttribute('data-hs-name-blocked')) return
           const wName = w.dataset.emoteName || wImg?.alt || ''
           const wSrc = wImg ? wImg.src : ''
           if (wSrc) {
@@ -7943,8 +7954,9 @@
         })
       } else {
         const img = wrapper.querySelector('img')
+        const blocked = wrapper.classList.contains('emote-overlay-blocked') || img?.hasAttribute('data-hs-name-blocked')
         const emoteName = wrapper.dataset.emoteName || img?.alt || ''
-        const src = img ? img.src : ''
+        const src = blocked ? '' : img ? img.src : ''
         if (src) {
           const bw = img?.offsetWidth || 28,
             bh = img?.offsetHeight || 28

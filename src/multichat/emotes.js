@@ -1496,7 +1496,18 @@ function createInputEmoteImg(emoteName) {
   if (typeof attachInputEmoteErrorRecovery === 'function') attachInputEmoteErrorRecovery(img)
   // If the emote was already blocked before this paste, apply the dashed
   // state from creation so the user never sees the live image flash.
-  if (blockedEmoteNames.has(emoteName)) markInputEmoteBlocked(img, true)
+  // "name0" resolving to a blocked base ("TriHard0" -> blocked "TriHard") must
+  // also render blocked — only when there's no literal "name0" emote of its
+  // own (mirrors _synthOverlay in findEmoteMatches/_applyInputBlock, input.js).
+  // Hash check catches the same asset re-listed under a different alias.
+  const _chipBlockedByBase =
+    isOverlay &&
+    emoteName.length > 1 &&
+    emoteName.endsWith('0') &&
+    !lookupEmoteRenderOrder(emoteName) &&
+    blockedEmoteNames.has(emoteName.slice(0, -1))
+  const _chipBlockedByHash = !!(emote.hash && blockedEmoteHashes.has(String(emote.hash)))
+  if (blockedEmoteNames.has(emoteName) || _chipBlockedByBase || _chipBlockedByHash) markInputEmoteBlocked(img, true)
   // Snap the chip to an integer width once decoded. A non-square emote scaled
   // to the row height lands on a fractional width, so every character typed
   // AFTER it starts at a fractional x and the bitmap font smears — the same
@@ -2857,7 +2868,20 @@ function _buildChannelEmoteCache(ch, emotes, platform) {
     const source = e.source || detectEmoteSource(e.url, '7tv')
     const state = inventoryEmotes.has(e.name) ? 'owned' : 'channel'
     _hsRegisterOversize(e)
-    const entry = { url: e.url, source, state, zeroWidth: !!e.zeroWidth, os: e.os, _plat: platform }
+    // Channel 7TV sets are fetched raw from 7tv.io (not the heatsync server's
+    // filtered /api/emotes), so they carry the 7TV flags bitmask instead of a
+    // pre-computed nsfw bool. Bit 16 (65536) = EmoteFlagsContentSexual — carry
+    // it through so render can hide it per the viewer's own setting (see
+    // hsChannelNsfwHidden in processEmotes).
+    const entry = {
+      url: e.url,
+      source,
+      state,
+      zeroWidth: !!e.zeroWidth,
+      os: e.os,
+      _plat: platform,
+      nsfw: !!(e.flags & 65536),
+    }
     // Same-name collision between two third-party providers (7tv/bttv/ffz):
     // emoteProviderPriority decides the winner instead of plain array-order
     // last-write-wins. Every other pairing (heatsync, twitch, kick, or a
@@ -3425,6 +3449,26 @@ function hsOwnCwHiddenCat(emote) {
   return ''
 }
 
+// Channel 7TV sets are fetched directly from 7tv.io (_buildChannelEmoteCache),
+// bypassing the heatsync server's content filter entirely — unlike the
+// server-served global/inventory pools, a channel-set sexual emote's `nsfw`
+// flag is unfiltered and has to be checked against the viewer's OWN setting
+// at render time. Server-filtered pools never reach here with nsfw:true while
+// the setting is off (the server already swapped those for a cw stub), so
+// this is a no-op for them — safe to apply unconditionally.
+function hsChannelNsfwHidden(emote) {
+  if (!emote?.nsfw) return false
+  return typeof getSetting === 'function' && getSetting('viewer_show_sexual') === false
+}
+
+// cw stub markup shared by every render branch that can hit a filter-hidden
+// emote (generic + kick [emote:id:name]) — no <img>, a labeled dashed box
+// marks the spot so the message reads as "emote hidden here". cwCat and
+// displayName must already be escapeHtml'd by the caller.
+function _hsCwBoxHtml(cwCat, displayName) {
+  return `<span class="hs-mc-emote-wrapper hs-mc-emote-cw" data-emote-name="${displayName}" data-cw="${cwCat}" data-state="cw" title="${displayName}">${cwCat}</span>`
+}
+
 function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMentions = false, msgRefs = null) {
   if (
     emoteCache.size === 0 &&
@@ -3679,7 +3723,12 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
       // emoteName is extracted from escaped text — check raw form against the
       // raw-keyed blocked/inventory stores and escape from raw (no double).
       const rawEmoteName = unescapeHtml(emoteName)
-      const isBlocked = blockedEmoteNames.has(emoteName) || blockedEmoteNames.has(rawEmoteName)
+      // hash check catches the same asset re-listed under a different alias —
+      // the kick numeric id IS the stored hash (background.js hash: String(e.id)).
+      const isBlocked =
+        blockedEmoteNames.has(emoteName) ||
+        blockedEmoteNames.has(rawEmoteName) ||
+        blockedEmoteHashes.has(String(emoteId))
       let state = isBlocked ? 'blocked' : cached?.state || 'channel'
       if (state === 'unadded' && (inventoryEmotes.has(emoteName) || inventoryEmotes.has(rawEmoteName))) state = 'owned'
       const safeName = escapeHtml(rawEmoteName)
@@ -3697,7 +3746,17 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
       const osAttr = _os ? ` style="--hs-os:${_os}"` : ''
       // Only inventory-attributed when the inventory URL actually renders.
       const invAttr = cachedInv && useCachedUrl ? ' data-inv="1"' : ''
-      const imgHtmlRaw = `<span class="hs-mc-emote-wrapper hs-state-${state}${nsfwClass}" data-emote-name="${safeName}" data-emote-url="${safeUrlAttr}" data-state="${state}" data-source="${safeProvider}"${ownerAttr}${invAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}${wAttr}><img src="${safeSrc}" alt="${safeName}" title="${titleAttr}" class="hs-mc-emote hs-emote-${state}"${osAttr} data-emote-name="${safeName}" data-state="${state}" data-source="${safeProvider}"${ownerAttr}${invAttr} loading="lazy" decoding="async"></span>`
+      // cw gate — mirror the generic branch: a resolved cached emote carrying
+      // a cw category (server stub or the viewer's own hidden-category toggle)
+      // renders the dashed placeholder box, never the image.
+      const _kickCwRaw =
+        (cached && typeof cached.cw === 'string' && cached.cw) ||
+        hsOwnCwHiddenCat(cached) ||
+        (hsChannelNsfwHidden(cached) ? 'sexual' : '')
+      const kickCwCat = _kickCwRaw ? escapeHtml(_kickCwRaw) : ''
+      const imgHtmlRaw = kickCwCat
+        ? _hsCwBoxHtml(kickCwCat, safeName)
+        : `<span class="hs-mc-emote-wrapper hs-state-${state}${nsfwClass}" data-emote-name="${safeName}" data-emote-url="${safeUrlAttr}" data-state="${state}" data-source="${safeProvider}"${ownerAttr}${invAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}${wAttr}><img src="${safeSrc}" alt="${safeName}" title="${titleAttr}" class="hs-mc-emote hs-emote-${state}"${osAttr} data-emote-name="${safeName}" data-state="${state}" data-source="${safeProvider}"${ownerAttr}${invAttr} loading="lazy" decoding="async"></span>`
       if (isOverlay && pendingStack) {
         const itemMods = pendingMods.slice()
         const itemHue = pendingHue
@@ -3788,6 +3847,9 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
             emoteFromInv = candHit.inv
             isOverlayEmote = !!emote.zeroWidth
             _hsInlineModSuffix = HS_MC_MODS[suf] || null
+            // resolved from the peeled base — a block on the base must hide
+            // "Basew!" too, same as the trailing-0 overlay path
+            overlayBaseName = baseGuess
             break
           }
         }
@@ -3802,6 +3864,7 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
             emote = candHit.e
             emoteFromInv = candHit.inv
             isOverlayEmote = !!emote.zeroWidth
+            overlayBaseName = baseGuess
             const m = inlineColor[2].match(HS_MC_C_RE)
             if (m) _hsInlineModSuffix = { hue: _hsMcHexToHue(m[1]) }
           }
@@ -3815,11 +3878,15 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
       const rawWord = unescapeHtml(word)
       // trailing-0 overlay resolved from the BASE name — a block on the base
       // must hide the overlay too ("name0" itself is never in the block set)
+      // hash check catches the same underlying asset re-listed under a
+      // different alias (7tv per-set alias, kick re-list) — name-only checks
+      // miss that case entirely.
       const isBlocked =
         blockedEmoteNames.has(word) ||
         blockedEmoteNames.has(rawWord) ||
         (overlayBaseName !== null &&
-          (blockedEmoteNames.has(overlayBaseName) || blockedEmoteNames.has(unescapeHtml(overlayBaseName))))
+          (blockedEmoteNames.has(overlayBaseName) || blockedEmoteNames.has(unescapeHtml(overlayBaseName)))) ||
+        (emote.hash && blockedEmoteHashes.has(String(emote.hash)))
       let state = isBlocked ? 'blocked' : emote.state || 'global'
       // Upgrade 'unadded' → 'owned' when the viewer actually has this name
       // in their inventory. Visually identical under 2-state, but downstream
@@ -3872,10 +3939,15 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
       // Own-inventory entries are never stubbed (server annotates cwCats
       // instead) — honor the OWNER's own toggles at render so their own
       // posted emotes hide too. Picker/composer keep the real image.
-      const _cwRaw = (typeof emote.cw === 'string' && emote.cw) || hsOwnCwHiddenCat(emote)
+      // hsChannelNsfwHidden covers channel 7tv sets, which fetch straight from
+      // 7tv.io and carry an unfiltered nsfw flag (see _buildChannelEmoteCache).
+      const _cwRaw =
+        (typeof emote.cw === 'string' && emote.cw) ||
+        hsOwnCwHiddenCat(emote) ||
+        (hsChannelNsfwHidden(emote) ? 'sexual' : '')
       const cwCat = _cwRaw ? escapeHtml(_cwRaw) : ''
       const imgHtmlRaw = cwCat
-        ? `<span class="hs-mc-emote-wrapper hs-mc-emote-cw" data-emote-name="${displayName}" data-cw="${cwCat}" data-state="cw" title="${displayName}">${cwCat}</span>`
+        ? _hsCwBoxHtml(cwCat, displayName)
         : `<span class="hs-mc-emote-wrapper hs-state-${state}${staleClass}${nsfwClass}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${ownerAttr}${invAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}${staleAttr}${wAttr}><img src="${staticSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}"${osAttr} data-emote-name="${displayName}" data-state="${state}" data-source="${source}"${ownerAttr}${invAttr} loading="lazy" decoding="async"></span>`
 
       // Build the new item — inline-glued suffix mod attaches to THIS emote

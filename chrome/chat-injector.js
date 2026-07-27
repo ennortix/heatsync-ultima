@@ -156,6 +156,8 @@
    * Show emote tooltip with high-res preview
    */
   function showEmoteTooltip(emote, _event) {
+    // Never preview a blocked emote's asset — chat hides it via CSS only.
+    if (emote.closest?.('.emote-overlay-blocked') || emote.hasAttribute?.('data-hs-name-blocked')) return
     let tooltip = document.getElementById('heatsync-emote-tooltip')
     if (!tooltip) {
       tooltip = document.createElement('div')

@@ -4000,7 +4000,7 @@ function fetchGlobalEmotes() {
     try {
       log(' Fetching global emotes from', `${API_URL}/api/emotes`)
       // Try server API first (has all providers cached)
-      const response = await fetchWithTimeout(`${API_URL}/api/emotes`)
+      const response = await fetchWithTimeout(withNsfwParam(`${API_URL}/api/emotes`))
       log(' Global emotes response:', response.status, response.ok)
       if (response.ok) {
         const data = await response.json()

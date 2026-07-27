@@ -165,7 +165,13 @@ function buildStackPreview(box, stackEmotes) {
   const clone = stackEmotes.cloneNode(true)
   const imgs = [...clone.querySelectorAll('img')]
   imgs.forEach((im, i) => {
-    // Blocked overlays render a transparent px with the real url in dataset.
+    // Blocked pieces stay hidden in the preview too — recovering hsOrigSrc or
+    // hi-res-upgrading them would repaint an asset the viewer blocked.
+    if (im.closest('.hs-state-blocked') || im.dataset.hsInputBlocked === '1') {
+      im.src = HS_TRANSPARENT_PX
+      im.style.setProperty('visibility', 'hidden', 'important')
+      return
+    }
     const orig = im.dataset.hsOrigSrc || im.src
     // Overlay emotes render at native intrinsic size (width:auto +
     // object-fit:none), so swapping their src to the 4x hi-res asset balloons
@@ -277,6 +283,10 @@ function hsTtModsOf(el) {
 }
 
 function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg, owner) {
+  // A blocked emote's real asset must never paint here — the 4x preview would
+  // defeat the chat-side hiding (and hsOrigSrc exists precisely to recover the
+  // hidden url). Name + "blocked" label still show; the image slot stays empty.
+  if (state === 'blocked') emoteUrl = HS_TRANSPARENT_PX
   const tooltip = ensureEmoteTooltip()
   // Re-append to body so DOM order tiebreaks above other max-int siblings
   // (reply-stack overlay sits at the same z-index).

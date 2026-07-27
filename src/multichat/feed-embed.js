@@ -153,7 +153,7 @@ function tenorEmbed(gifId) {
   </div>`
 }
 
-function twitterEmbed(tweetId, url) {
+function twitterEmbed(tweetId, _url) {
   const id = sanitizeEmbedId(tweetId)
   if (!id) return ''
   // platform.twitter.com/embed/Tweet.html renders the tweet in an iframe with no
@@ -181,7 +181,7 @@ function imgurEmbed(imgurId) {
   </div>`
 }
 
-function tiktokEmbed(videoId, url) {
+function tiktokEmbed(videoId, _url) {
   const id = sanitizeEmbedId(videoId)
   if (!id) return ''
   return `<div class="hs-feed-embed-container hs-feed-embed-tiktok">
@@ -212,7 +212,7 @@ function redditEmbed(url) {
   return `<div class="hs-feed-link-card">
     <a href="${attr(safe)}" target="_blank" rel="noopener" class="hs-feed-link-card-link">
       <span class="hs-feed-link-card-icon">[reddit]</span>
-      <span class="hs-feed-link-card-url">${attr(safe.length > 60 ? safe.slice(0, 60) + '...' : safe)}</span>
+      <span class="hs-feed-link-card-url">${attr(safe.length > 60 ? `${safe.slice(0, 60)}...` : safe)}</span>
     </a>
   </div>`
 }
@@ -223,7 +223,7 @@ function instagramEmbed(url) {
   return `<div class="hs-feed-link-card">
     <a href="${attr(safe)}" target="_blank" rel="noopener" class="hs-feed-link-card-link">
       <span class="hs-feed-link-card-icon">[ig]</span>
-      <span class="hs-feed-link-card-url">${attr(safe.length > 60 ? safe.slice(0, 60) + '...' : safe)}</span>
+      <span class="hs-feed-link-card-url">${attr(safe.length > 60 ? `${safe.slice(0, 60)}...` : safe)}</span>
     </a>
   </div>`
 }
@@ -618,7 +618,7 @@ function _buildFeedResolveFailedHtml(ph) {
       </div>
     </a>`
   }
-  const truncated = url.length > 60 ? url.slice(0, 60) + '…' : url
+  const truncated = url.length > 60 ? `${url.slice(0, 60)}…` : url
   return `<div class="hs-feed-link-card">
     <a href="${attr(url)}" target="_blank" rel="noopener" class="hs-feed-link-card-link">
       <span class="hs-feed-link-card-icon">[${attr(platform)}]</span>
@@ -639,7 +639,7 @@ function _swapPlaceholder(ph, html, resolvedClass) {
 }
 
 function resolvePendingFeedEmbeds(root) {
-  if (!root || !root.querySelectorAll) return
+  if (!root?.querySelectorAll) return
   const placeholders = root.querySelectorAll('.hs-feed-embed-pending[data-resolve-url]')
   if (!placeholders.length) return
   for (const ph of placeholders) {
@@ -671,7 +671,7 @@ function resolvePendingFeedEmbeds(root) {
 //   data-fb="deleted-span"  → swap node for <span class="hs-feed-media-deleted">image unavailable</span>
 //   data-fallback-anon      → swap src to /anon.webp (avatars)
 function attachFeedFallbacks(root) {
-  if (!root || !root.querySelectorAll) return
+  if (!root?.querySelectorAll) return
   root.querySelectorAll('img[data-fallback-anon]').forEach((img) => {
     img.addEventListener(
       'error',

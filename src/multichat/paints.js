@@ -202,7 +202,7 @@ function hsPaintsEnabled() {
 // ── stylesheet management ────────────────────────────────────────────────────
 
 function ensureHsPaintSheet() {
-  if (hsPaintSheetEl && hsPaintSheetEl.isConnected) return hsPaintSheetEl
+  if (hsPaintSheetEl?.isConnected) return hsPaintSheetEl
   hsPaintSheetEl = document.getElementById('hs-mc-paints')
   if (!hsPaintSheetEl) {
     hsPaintSheetEl = document.createElement('style')
@@ -251,7 +251,7 @@ let _hsPaintHoverEls = null
 let _hsPaintHoverTarget = null
 
 function _hsPaintHoverKey(el) {
-  const raw = (el.dataset && el.dataset.username) || el.textContent || ''
+  const raw = el.dataset?.username || el.textContent || ''
   return raw.trim().toLowerCase().replace(/^@/, '')
 }
 
@@ -354,7 +354,7 @@ function reinjectHsPaintSheet() {
 function getHsPaintClass(userId) {
   if (!hsPaintsEnabled()) return ''
   const entry = hsPaintCache.get(userId)
-  if (!entry || !entry.hash) return ''
+  if (!entry?.hash) return ''
   return `hsp-${entry.hash}`
 }
 
@@ -465,10 +465,10 @@ async function flushHsPaintBatch() {
   let plus = null
   try {
     const resp = await safeSendMessage({ type: 'fetch_paints', userIds: batch })
-    if (resp && resp.paints && typeof resp.paints === 'object') paints = resp.paints
-    if (resp && resp.colors && typeof resp.colors === 'object') colors = resp.colors
-    if (resp && resp.plus && typeof resp.plus === 'object') plus = resp.plus
-  } catch (e) {
+    if (resp?.paints && typeof resp.paints === 'object') paints = resp.paints
+    if (resp?.colors && typeof resp.colors === 'object') colors = resp.colors
+    if (resp?.plus && typeof resp.plus === 'object') plus = resp.plus
+  } catch (_) {
     paints = null
   }
 

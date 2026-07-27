@@ -51,7 +51,9 @@ const _trackedListeners = []
 mcSignal.addEventListener('abort', () => {
   _timers.intervals.forEach(clearInterval)
   _timers.timeouts.forEach(clearTimeout)
-  _timers.observers.forEach((o) => o.disconnect())
+  _timers.observers.forEach((o) => {
+    o.disconnect()
+  })
   _pendingRafs.forEach(cancelAnimationFrame)
   _pendingRafs.clear()
   for (const { target, fn } of _trackedListeners) {
@@ -835,14 +837,14 @@ function _hsPerfWrap(fn, ms, kind) {
       break
     }
   } catch {}
-  return function () {
+  return function (...args) {
     // localStorage gate so the tracer is togglable from the page world too —
     // the isolated world's window.__hsPerfTrace is unreachable from devtools'
     // default context and from automation.
-    if (!window.__hsPerfTrace && !localStorage.getItem('hs_perf_trace')) return fn.apply(this, arguments)
+    if (!window.__hsPerfTrace && !localStorage.getItem('hs_perf_trace')) return fn.apply(this, args)
     const t = performance.now()
     try {
-      return fn.apply(this, arguments)
+      return fn.apply(this, args)
     } finally {
       const d = performance.now() - t
       if (d > 50) {

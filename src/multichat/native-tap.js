@@ -41,7 +41,7 @@ function _tapMineMessage(rowEl) {
   }
   for (let i = 0; f && i < 30; i++, f = f.return) {
     const m = f.memoizedProps?.message
-    if (m && m.id && (m.user || m.message)) return m
+    if (m?.id && (m.user || m.message)) return m
   }
   return null
 }
@@ -80,11 +80,11 @@ function _tapToMsg(m, channel) {
           continue
         }
         if (typeof c.displayName === 'string') {
-          text += '@' + c.displayName
+          text += `@${c.displayName}`
           continue
         }
         if (typeof c.recipient === 'string') {
-          text += '@' + c.recipient
+          text += `@${c.recipient}`
           continue
         }
         if (typeof p.text === 'string') {
@@ -100,7 +100,7 @@ function _tapToMsg(m, channel) {
   let badgeStr = ''
   if (Array.isArray(badges)) {
     badgeStr = badges
-      .map((b) => (b && b.setID ? `${b.setID}/${b.version || '1'}` : ''))
+      .map((b) => (b?.setID ? `${b.setID}/${b.version || '1'}` : ''))
       .filter(Boolean)
       .join(',')
   } else if (badges && typeof badges === 'object') {
@@ -166,7 +166,7 @@ function _tapIsAnnouncement(rowEl, mined) {
 }
 
 function _tapHandleRow(rowEl) {
-  if (!rowEl || rowEl.nodeType !== 1) return
+  if (rowEl?.nodeType !== 1) return
   if (!rowEl.classList?.contains('chat-line__message')) {
     // wrapper node (announcement container etc.) — recurse into the real row
     const inner = rowEl.querySelector?.('.chat-line__message')
@@ -349,7 +349,7 @@ function _nsStart() {
     _nsRxBound = true
     cleanup.addEventListener(window, 'message', (e) => {
       const d = e.data
-      if (!d || d.__hsNativeMsg !== 1 || !d.m) return
+      if (d?.__hsNativeMsg !== 1 || !d.m) return
       _nsStats.rx++
       if (e.source !== window || e.origin !== location.origin) {
         _nsStats.dropOrigin++

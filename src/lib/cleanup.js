@@ -60,11 +60,11 @@
         if (!src) src = (lines[3] || lines[2] || '').trim().slice(0, 120)
       } catch {}
     }
-    return function () {
-      if (!window.__hsPerfTrace) return fn.apply(this, arguments)
+    return function (...args) {
+      if (!window.__hsPerfTrace) return fn.apply(this, args)
       const t = performance.now()
       try {
-        return fn.apply(this, arguments)
+        return fn.apply(this, args)
       } finally {
         const d = performance.now() - t
         if (d > 50) {
@@ -124,7 +124,7 @@
     if (!observer) return
     try {
       observer.disconnect()
-    } catch (e) {}
+    } catch (_) {}
     _observers.delete(observer)
   }
 
@@ -168,27 +168,33 @@
   // --- nuclear ---
 
   function _destroyAll() {
-    _intervals.forEach((id) => clearInterval(id))
+    _intervals.forEach((id) => {
+      clearInterval(id)
+    })
     _intervals.clear()
 
-    _timeouts.forEach((id) => clearTimeout(id))
+    _timeouts.forEach((id) => {
+      clearTimeout(id)
+    })
     _timeouts.clear()
 
     _observers.forEach((obs) => {
       try {
         obs.disconnect()
-      } catch (e) {}
+      } catch (_) {}
     })
     _observers.clear()
 
-    _rafs.forEach((id) => cancelAnimationFrame(id))
+    _rafs.forEach((id) => {
+      cancelAnimationFrame(id)
+    })
     _rafs.clear()
 
     for (let i = _listeners.length - 1; i >= 0; i--) {
       const l = _listeners[i]
       try {
         l.target.removeEventListener(l.event, l.handler, l.options)
-      } catch (e) {}
+      } catch (_) {}
     }
     _listeners.length = 0
   }

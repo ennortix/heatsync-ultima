@@ -41,7 +41,7 @@ async function eswFetchSelfUserId(token) {
   if (eswState.selfUserId) return eswState.selfUserId
   try {
     const resp = await fetch(ESW_HELIX_USERS, {
-      headers: { 'Client-Id': ESW_CLIENT_ID, Authorization: 'Bearer ' + token },
+      headers: { 'Client-Id': ESW_CLIENT_ID, Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(8000),
     })
     if (!resp.ok) {
@@ -67,7 +67,7 @@ async function eswSubscribeWhispers(token) {
       method: 'POST',
       headers: {
         'Client-Id': ESW_CLIENT_ID,
-        Authorization: 'Bearer ' + token,
+        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({

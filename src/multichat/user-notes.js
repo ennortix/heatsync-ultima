@@ -100,7 +100,7 @@ function _hsnLoad() {
       // 'hs_user_notes' (no _v1) is the retired profile-card-local store —
       // migrated below on first load, then removed.
       chrome.storage.local.get([HS_NOTES_KEY, 'hs_user_notes'], (d) => {
-        const raw = d && d[HS_NOTES_KEY]
+        const raw = d?.[HS_NOTES_KEY]
         if (raw && typeof raw === 'object') {
           if (raw.notes && typeof raw.notes === 'object') {
             for (const [k, v] of Object.entries(raw.notes)) {
@@ -115,7 +115,7 @@ function _hsnLoad() {
         // has been editing since the popover shipped); a legacy-only username
         // is adopted as its own canonical. The old key is removed ONLY after
         // the merged snapshot persists — a failed write must not lose notes.
-        const legacy = d && d.hs_user_notes
+        const legacy = d?.hs_user_notes
         if (legacy && typeof legacy === 'object') {
           let migrated = 0
           for (const [k, v] of Object.entries(legacy)) {
@@ -202,7 +202,7 @@ function hsNoteGet(username, platform) {
 /** Cheap boolean for indicators / menu labels. */
 function hsNoteHas(username, platform) {
   const n = hsNoteGet(username, platform)
-  return !!(n && n.text)
+  return !!n?.text
 }
 
 /** Create/update a note. Async so it can pull the fullest alias set. Empty text deletes. */
@@ -259,7 +259,7 @@ function hsNoteOpenEditor(username, platform, x, y, onSaved) {
 
   const head = document.createElement('div')
   head.className = 'hs-note-editor-head'
-  head.textContent = 'note · ' + String(username || '').toLowerCase()
+  head.textContent = `note · ${String(username || '').toLowerCase()}`
   box.appendChild(head)
 
   const ta = document.createElement('textarea')
@@ -295,8 +295,8 @@ function hsNoteOpenEditor(username, platform, x, y, onSaved) {
     vh = window.innerHeight
   const px = typeof x === 'number' ? x : Math.round(vw / 2 - bw / 2)
   const py = typeof y === 'number' ? y : Math.round(vh / 2 - bh / 2)
-  box.style.left = (px + bw + 8 > vw ? Math.max(4, px - bw) : Math.min(px, vw - bw - 4)) + 'px'
-  box.style.top = (py + bh + 8 > vh ? Math.max(4, py - bh) : Math.min(py, vh - bh - 4)) + 'px'
+  box.style.left = `${px + bw + 8 > vw ? Math.max(4, px - bw) : Math.min(px, vw - bw - 4)}px`
+  box.style.top = `${py + bh + 8 > vh ? Math.max(4, py - bh) : Math.min(py, vh - bh - 4)}px`
   box.style.visibility = ''
 
   let saveTimer = null

@@ -87,7 +87,7 @@ function formatHeat(heat) {
   if (heat >= 1000) {
     const k = heat / 1000
     const f = k.toFixed(1)
-    return f.endsWith('.0') ? f.slice(0, -2) + 'k' : f + 'k'
+    return f.endsWith('.0') ? `${f.slice(0, -2)}k` : `${f}k`
   }
   return String(heat)
 }
@@ -217,7 +217,7 @@ async function loadHsUsername() {
     // Your own paint/tenure/colour jump the cosmetics queue and your picked
     // colour seeds now — otherwise your name waits behind the whole channel.
     primeSelfHsCosmetics(ui)
-  } catch (e) {
+  } catch (_) {
     hsCurrentUsername = null
     hsSenderKeys = null
   }
@@ -359,7 +359,7 @@ async function loadHsAuth() {
     const data = await api.storage.local.get(['auth_token_encrypted', 'auth_token'])
     hsAuthToken = !!(data.auth_token_encrypted || data.auth_token)
     log('Heatsync auth:', hsAuthToken ? 'logged in' : 'anonymous')
-  } catch (e) {
+  } catch (_) {
     hsAuthToken = false
   }
   loadHsUsername()
@@ -664,7 +664,7 @@ function commitPacedYtMsg(targetChannelId, ytMsg) {
 // millisecond burst still drips perceptibly.
 function paceDelayFor(channelId, nextMsg) {
   const last = _ytPaceLastEmit.get(channelId)
-  if (!last || !last.msgTime || !nextMsg?.time) return YT_PACE_MIN_MS
+  if (!last?.msgTime || !nextMsg?.time) return YT_PACE_MIN_MS
   const realDelta = nextMsg.time - last.msgTime
   if (realDelta <= 0) return YT_PACE_MIN_MS
   return Math.max(YT_PACE_MIN_MS, Math.min(YT_PACE_MAX_MS, realDelta))
@@ -675,7 +675,7 @@ function paceDelayFor(channelId, nextMsg) {
 function drainYtPaceQueue(targetChannelId) {
   _ytPaceTimer.delete(targetChannelId)
   const q = _ytPaceQueue.get(targetChannelId)
-  if (!q || !q.length) return
+  if (!q?.length) return
   const ytMsg = q.shift()
   // Snapshot original YT timestamp BEFORE commit overwrites it. Used as
   // the msgTime delta basis for the next drain so paceDelayFor sees the
@@ -1116,7 +1116,9 @@ function listenForSocialEvents() {
           }
         }
       }
-      channelYtMessages.forEach((buf) => flagBuf(buf))
+      channelYtMessages.forEach((buf) => {
+        flagBuf(buf)
+      })
       flagBuf(mentionsBuffer)
     }
     if (msg.type === 'youtube_status') {
@@ -1263,7 +1265,7 @@ function listenForSocialEvents() {
       const uid = msg.data.base36_id
       const idx = feedMessages.findIndex((m) => m.base36_id === uid)
       if (idx >= 0) Object.assign(feedMessages[idx], msg.data)
-      if (activeThread && activeThread.op && activeThread.op.base36_id === uid) {
+      if (activeThread?.op && activeThread.op.base36_id === uid) {
         Object.assign(activeThread.op, msg.data)
       }
     }
@@ -1428,7 +1430,7 @@ function _renderFeedEmptyCard() {
         importBtn.disabled = false
         importBtn.textContent = (r?.error || r?.data?.error || 'try again').slice(0, 40)
       }
-    } catch (e) {
+    } catch (_) {
       importBtn.disabled = false
       importBtn.textContent = 'try again'
     }
@@ -1656,7 +1658,7 @@ function buildFeedMessageDiv(m, opUsername) {
   }
   const isReply = !!m.reply_to
   const heatStyle = hd ? getHeatNumberStyle(heat, isReply) : ''
-  const heatDeg = hd && hd.suffix ? '<span class="hs-heat-deg">°</span>' : ''
+  const heatDeg = hd?.suffix ? '<span class="hs-heat-deg">°</span>' : ''
   const heatSpan = hd
     ? `<span class="hs-feed-stat hs-feed-heat" style="${heatStyle}"><span class="hs-heat-n">${formatHeat(heat)}</span>${heatDeg}</span>`
     : ''
@@ -1824,7 +1826,7 @@ function renderFeedContent(content, emoteRefs) {
       // pre-escaped content) — re-escaping turned &amp; into &amp;amp; (broken
       // href param + visible &amp;). The regex excludes <"/space so it's
       // attribute-safe verbatim. Only add the protocol for a bare domain.
-      const url = /^https?:\/\//i.test(match) ? match : 'https://' + match
+      const url = /^https?:\/\//i.test(match) ? match : `https://${match}`
       return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="hs-mc-link">${match}</a>`
     })
     // Partial/defanged links ("watch?v=…", "heatsync (dot) org") — same
@@ -1839,7 +1841,7 @@ function renderFeedContent(content, emoteRefs) {
     html = parts.map((part, i) => (i % 2 === 1 ? part : formatText(part))).join('')
   }
   // Parse >>id post-links (like website does)
-  html = html.replace(/(?:&gt;&gt;|>>)(\w{1,6})/g, (match, id) => {
+  html = html.replace(/(?:&gt;&gt;|>>)(\w{1,6})/g, (_match, id) => {
     const paddedId = id.padStart(6, '0')
     const displayId = id.replace(/^0+/, '') || '0'
     return `<span class="hs-post-link" data-id="${paddedId}" style="cursor:pointer">&gt;&gt;${displayId}</span>`
@@ -1852,7 +1854,7 @@ function renderFeedContent(content, emoteRefs) {
     html = parts
       .map((part, i) => {
         if (i % 2 === 1) return part
-        return part.replace(/@([\w]{1,25})\b/g, (m, name) => {
+        return part.replace(/@([\w]{1,25})\b/g, (_m, name) => {
           const lower = name.toLowerCase()
           const isSelf = hsCurrentUsername === lower
           const cls = isSelf ? 'hs-mention self' : 'hs-mention'
@@ -1869,7 +1871,7 @@ function renderFeedContent(content, emoteRefs) {
       .map((part, i) => {
         if (i % 2 === 1) return part
         // (?<!&) — part is already escaped; don't tag #x27 inside &#x27; etc.
-        return part.replace(/(?<!&)#([a-zA-Z][a-zA-Z0-9_]{1,29})\b/g, (m, tag) => {
+        return part.replace(/(?<!&)#([a-zA-Z][a-zA-Z0-9_]{1,29})\b/g, (_m, tag) => {
           return `<a href="https://heatsync.org/tags/${encodeURIComponent(tag)}" target="_blank" rel="noopener noreferrer" class="hs-hashtag" data-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</a>`
         })
       })
@@ -1915,12 +1917,12 @@ function renderFeedContent(content, emoteRefs) {
       .map((part, i) => {
         if (i % 2 === 1) return part // inside an HTML tag — skip
         return part.replace(/\S+/g, (word) => {
-          if (refNames && refNames.has(word)) return word // already rendered above
+          if (refNames?.has(word)) return word // already rendered above
           // Site emits alias-qualified names (`fern(sousounofrieren)`) to
           // disambiguate collisions — the emote itself is the bare `fern`. Look up
           // the bare form when the qualified token misses.
           const bare = word.replace(/\([^)\s]*\)$/, '')
-          if (refNames && bare !== word && refNames.has(bare)) return word // handled by emote_refs pass
+          if (bare !== word && refNames?.has(bare)) return word // handled by emote_refs pass
           // Blocked emote dropped from caches — still box it, don't leak the name.
           if (
             typeof blockedEmoteNames !== 'undefined' &&
@@ -1929,7 +1931,7 @@ function renderFeedContent(content, emoteRefs) {
             return renderFeedEmote(word, '', 'heatsync', '')
           }
           const em = lookupEmote(word) || (bare !== word ? lookupEmote(bare) : null)
-          if (!em || !em.url || !/^https:\/\//.test(em.url)) return word
+          if (!em?.url || !/^https:\/\//.test(em.url)) return word
           return renderFeedEmote(word, em.url, em.source, em.hash)
         })
       })
@@ -2058,7 +2060,7 @@ function closeThread() {
 // has the same visual language as the rendered output.
 function _renderFeedReplyChip(thread) {
   document.getElementById('hs-mc-feed-reply-chip')?.remove()
-  if (!thread || !thread.id) return
+  if (!thread?.id) return
   const bar = document.getElementById('hs-mc-inputbar')
   if (!bar) return
 
@@ -2180,7 +2182,7 @@ function getActiveThreadCopyText() {
     const user = userEl?.textContent?.trim() || 'anonymous'
     const id = div.dataset?.msgId ? ` >>${div.dataset.msgId.replace(/^0+/, '') || '0'}` : ''
     const body = _extractFeedBodyText(div.querySelector('.hs-feed-body'))
-    lines.push(`${tag ? tag + ' ' : ''}${user}${id}: ${body}`)
+    lines.push(`${tag ? `${tag} ` : ''}${user}${id}: ${body}`)
   }
   return lines.join('\n')
 }
@@ -2367,7 +2369,7 @@ async function fetchDiscover() {
     // Posts: pull recent feed, client-sort by heat, take top by heat>0
     const rawPosts = postsResp?.ok ? postsResp.data?.messages || [] : []
     discoverPosts = rawPosts
-      .filter((m) => m && m.username && m.username !== 'Anonymous' && (m.heat || 0) > 0)
+      .filter((m) => m?.username && m.username !== 'Anonymous' && (m.heat || 0) > 0)
       .sort((a, b) => (b.heat || 0) - (a.heat || 0))
       .slice(0, 8)
 
@@ -2376,7 +2378,7 @@ async function fetchDiscover() {
     // any retry for the rest of the session — a launch-day user on a cold
     // service worker saw a dead, empty product with no way back.
     discoverLoaded = tagsResp.ok || profilesResp.ok
-  } catch (e) {
+  } catch (_) {
     discoverTags = []
     discoverProfiles = []
     discoverPosts = []
@@ -2390,8 +2392,8 @@ async function fetchDiscover() {
 
 // Compact number: 12345 -> "12.3k", 1200000 -> "1.2m"
 function formatDiscoverCount(n) {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'm'
-  if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, '') + 'k'
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}m`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, '')}k`
   return String(n)
 }
 
@@ -2430,7 +2432,7 @@ function applyDiscoverHeatRowEffects(row, heat) {
   const hd = getHeatDisplay(heat)
   if (!hd) return
   row.style.borderLeftColor = hd.border
-  row.style.borderLeftWidth = hd.borderWidth + 'px'
+  row.style.borderLeftWidth = `${hd.borderWidth}px`
   if (hd.bg) row.style.background = hd.bg
   if (hd.breathe) row.classList.add('hs-feed-heat-breathe')
 }
@@ -2550,7 +2552,7 @@ function renderDiscoverProfileRow(profile, username, rank, maxHeat, showRank = t
   bar.className = 'hs-discover-bar'
   const fill = document.createElement('i')
   const pct = maxHeat > 0 ? Math.max(2, Math.round((heat / maxHeat) * 100)) : 2
-  fill.style.width = pct + '%'
+  fill.style.width = `${pct}%`
   bar.appendChild(fill)
   row.appendChild(bar)
 
@@ -2598,7 +2600,7 @@ function renderDiscoverChipsBar() {
   function makeChip(label, value, currentValue, setter, extraClass) {
     const btn = document.createElement('button')
     btn.type = 'button'
-    btn.className = 'hs-discover-chip-btn' + (extraClass ? ' ' + extraClass : '')
+    btn.className = `hs-discover-chip-btn${extraClass ? ` ${extraClass}` : ''}`
     if (value === currentValue) btn.classList.add('hs-active')
     btn.textContent = label
     btn.addEventListener('click', (e) => {
@@ -2757,7 +2759,7 @@ function renderDiscoverPostRow(m) {
 
 function makeDiscoverSection(titleText, subtitleText, metaText, extraClass) {
   const section = document.createElement('section')
-  section.className = 'hs-discover-section' + (extraClass ? ' ' + extraClass : '')
+  section.className = `hs-discover-section${extraClass ? ` ${extraClass}` : ''}`
   const heading = document.createElement('div')
   heading.className = 'hs-discover-heading'
 
@@ -2873,7 +2875,7 @@ function renderDiscoverTab() {
                 } else {
                   a.textContent = (r?.error || r?.data?.error || 'failed').slice(0, 30)
                 }
-              } catch (err) {
+              } catch (_) {
                 a.textContent = 'failed'
               }
             })
@@ -3011,7 +3013,7 @@ async function fetchPinned() {
     // Only latch on success — a failed fetch used to render the literal "no
     // pinned messages" and never retry.
     pinnedLoaded = resp.ok
-  } catch (e) {
+  } catch (_) {
     pinnedMessages = []
     pinnedLoaded = false
   } finally {
@@ -3174,12 +3176,12 @@ async function _feedMsgFetch(id) {
   const mem = _feedMsgLookupMemory(id)
   if (mem) return mem
   if (_feedMsgFetchCache.has(id)) return _feedMsgFetchCache.get(id)
-  const p = apiFetch('/api/messages/' + encodeURIComponent(id))
+  const p = apiFetch(`/api/messages/${encodeURIComponent(id)}`)
     .then((r) => {
       // API returns the message directly in resp.data (not resp.data.message)
       if (!r.ok) return null
       const msg = r.data || null
-      return msg && msg.base36_id ? msg : null
+      return msg?.base36_id ? msg : null
     })
     .catch(() => null)
   _feedMsgFetchCache.set(id, p)
@@ -3194,7 +3196,7 @@ async function _feedMsgFetchReplies(id) {
   if (activeThread && activeThread.id === id && activeThread.replies?.length) {
     return activeThread.replies
   }
-  const r = await apiFetch('/api/messages/' + encodeURIComponent(id) + '/replies')
+  const r = await apiFetch(`/api/messages/${encodeURIComponent(id)}/replies`)
   return r.ok ? r.data?.replies || [] : []
 }
 
@@ -3221,7 +3223,7 @@ function setupFeedPostLinkHover() {
     el.addEventListener('mouseleave', (ev) => {
       // Only dismiss if not moving back into a post-link
       const to = ev.relatedTarget
-      if (to && to.closest && to.closest(LINK_SEL)) return
+      if (to?.closest?.(LINK_SEL)) return
       _hideOverlay()
     })
     return el
@@ -3249,7 +3251,7 @@ function setupFeedPostLinkHover() {
   document.body.addEventListener(
     'mouseover',
     (ev) => {
-      const link = ev.target.closest && ev.target.closest(LINK_SEL)
+      const link = ev.target.closest?.(LINK_SEL)
       if (!link) return
       // Must be inside the feed panel
       if (!link.closest('#hs-mc-messages')) return
@@ -3342,19 +3344,19 @@ function setupFeedPostLinkHover() {
 
           // Bottom of overlay aligns to top of link
           const bottomFromBase = layoutH - linkRect.top
-          overlay.style.bottom = bottomFromBase + 'px'
+          overlay.style.bottom = `${bottomFromBase}px`
           overlay.style.top = ''
 
           // Max height: everything above the link (minus a small margin)
           const availableAbove = Math.max(0, linkRect.top - 4)
-          overlay.style.maxHeight = availableAbove + 'px'
+          overlay.style.maxHeight = `${availableAbove}px`
 
           // Horizontal: align left to link, clamp to viewport
           const overlayW = overlay.getBoundingClientRect().width
           let left = linkRect.left
           if (left + overlayW > layoutW - 4) left = layoutW - overlayW - 4
           if (left < 4) left = 4
-          overlay.style.left = left + 'px'
+          overlay.style.left = `${left}px`
         }
 
         // Wait for images before final positioning (emotes, avatars)
@@ -3385,14 +3387,14 @@ function setupFeedPostLinkHover() {
   document.body.addEventListener(
     'mouseout',
     (ev) => {
-      const link = ev.target.closest && ev.target.closest(LINK_SEL)
+      const link = ev.target.closest?.(LINK_SEL)
       if (!link) return
       if (!link.closest('#hs-mc-messages')) return
       const to = ev.relatedTarget
       // Don't hide if moving into the overlay or another post-link
       const overlay = document.getElementById('hs-feed-postlink-preview')
-      if (overlay && overlay.contains(to)) return
-      if (to && to.closest && to.closest(LINK_SEL)) return
+      if (overlay?.contains(to)) return
+      if (to?.closest?.(LINK_SEL)) return
       _hideOverlay()
     },
     { signal: mcSignal },

@@ -20,7 +20,7 @@ function resolveSendTargets(sendTargets, linkedPlatforms) {
   const linked = ['twitch', 'kick', 'youtube'].filter((p) => !!linkedPlatforms?.[p])
   const out = { twitch: false, kick: false, youtube: false }
   for (const p of linked) {
-    out[p] = !sendTargets || sendTargets[p] !== false
+    out[p] = sendTargets?.[p] !== false
   }
   // Bulletproof: a corrupted/emptied config can't silently swallow every
   // send — fall back to "all linked" rather than a message that goes nowhere.

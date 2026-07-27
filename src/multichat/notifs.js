@@ -135,7 +135,7 @@ const HsNotifs = (() => {
         // remove on animation end. Falls back to immediate remove if the
         // animation event never fires (detached, reduced-motion, etc.).
         const el = n.el
-        if (el && el.isConnected) {
+        if (el?.isConnected) {
           el.classList.add('hs-notif-exiting')
           let removed = false
           const finishExit = () => {
@@ -355,7 +355,7 @@ const HsNotifs = (() => {
         for (const [k, v] of Object.entries(geom)) {
           const cssName = `--hs-layer-${name}-${k}`
           if (v == null) root.style.removeProperty(cssName)
-          else root.style.setProperty(cssName, typeof v === 'number' ? v + 'px' : v)
+          else root.style.setProperty(cssName, typeof v === 'number' ? `${v}px` : v)
         }
       }
     }
@@ -455,7 +455,7 @@ const HsNotifs = (() => {
     // viewport-based geometry of the floating layers.
     geometry: () => {
       const sb = document.getElementById('hs-mc-search-bar')
-      return { top: sb && sb.classList.contains('visible') ? sb.offsetHeight : 0 }
+      return { top: sb?.classList.contains('visible') ? sb.offsetHeight : 0 }
     },
   })
 

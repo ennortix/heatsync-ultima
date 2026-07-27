@@ -15,8 +15,8 @@ function parsePoints(str) {
 
 function formatPoints(n) {
   if (n == null) return '?'
-  if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M'
-  if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K'
+  if (n >= 1000000) return `${(n / 1000000).toFixed(1).replace(/\.0$/, '')}M`
+  if (n >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}K`
   return String(n)
 }
 
@@ -414,8 +414,7 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
   const winningId = pred.winningOutcome?.id || null
 
   const wrapper = document.createElement('div')
-  wrapper.className =
-    'hs-mc-prediction' + (isResolved ? ' hs-mc-pred-resolved' : '') + (isCanceled ? ' hs-mc-pred-canceled' : '')
+  wrapper.className = `hs-mc-prediction${isResolved ? ' hs-mc-pred-resolved' : ''}${isCanceled ? ' hs-mc-pred-canceled' : ''}`
   wrapper.dataset.eventId = pred.id
   if (channelId) wrapper.dataset.channelId = channelId
 
@@ -458,7 +457,7 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
     const bal = document.createElement('div')
     bal.className = 'hs-mc-pred-balance'
     bal.appendChild(makePointIcon(14, cpImage))
-    bal.appendChild(document.createTextNode(' ' + formatPoints(balance) + (cpName ? ' ' + cpName : '')))
+    bal.appendChild(document.createTextNode(` ${formatPoints(balance)}${cpName ? ` ${cpName}` : ''}`))
     wrapper.appendChild(bal)
   }
 
@@ -466,7 +465,7 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
   if (isResolved && userBet && winningId) {
     const won = userBet.outcomeId === winningId
     const banner = document.createElement('div')
-    banner.className = 'hs-mc-pred-result ' + (won ? 'hs-mc-pred-result-won' : 'hs-mc-pred-result-lost')
+    banner.className = `hs-mc-pred-result ${won ? 'hs-mc-pred-result-won' : 'hs-mc-pred-result-lost'}`
     if (won) {
       const winOutcome = pred.outcomes.find((o) => o.id === winningId)
       const pct = totalPoints > 0 && winOutcome ? winOutcome.totalPoints / totalPoints : 1
@@ -474,7 +473,7 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
       banner.appendChild(makePointIcon(18, cpImage))
       const amt = document.createElement('span')
       amt.className = 'hs-mc-pred-result-amount'
-      amt.textContent = ' +' + formatPoints(payout)
+      amt.textContent = ` +${formatPoints(payout)}`
       banner.appendChild(amt)
       const label = document.createElement('span')
       label.className = 'hs-mc-pred-result-label'
@@ -483,7 +482,7 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
     } else {
       const amt = document.createElement('span')
       amt.className = 'hs-mc-pred-result-amount'
-      amt.textContent = '-' + formatPoints(userBet.points)
+      amt.textContent = `-${formatPoints(userBet.points)}`
       banner.appendChild(amt)
       const label = document.createElement('span')
       label.className = 'hs-mc-pred-result-label'
@@ -497,18 +496,18 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
     banner.appendChild(makePointIcon(18, cpImage))
     const amt = document.createElement('span')
     amt.className = 'hs-mc-pred-result-amount'
-    amt.textContent = ' +' + formatPoints(userBet.points)
+    amt.textContent = ` +${formatPoints(userBet.points)}`
     banner.appendChild(amt)
     const label = document.createElement('span')
     label.className = 'hs-mc-pred-result-label'
-    label.textContent = ' ' + t('mc_pred_refunded')
+    label.textContent = ` ${t('mc_pred_refunded')}`
     banner.appendChild(label)
     wrapper.appendChild(banner)
   } else if (isResolved && !userBet) {
     const banner = document.createElement('div')
     banner.className = 'hs-mc-pred-result hs-mc-pred-result-neutral'
     const winOutcome = pred.outcomes.find((o) => o.id === winningId)
-    banner.textContent = winOutcome ? '\u2713 ' + winOutcome.title : t('mc_pred_ended')
+    banner.textContent = winOutcome ? `\u2713 ${winOutcome.title}` : t('mc_pred_ended')
     wrapper.appendChild(banner)
   }
 
@@ -549,7 +548,7 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
     }
     const pctSpan = document.createElement('span')
     pctSpan.className = 'hs-mc-pred-outcome-pct'
-    pctSpan.textContent = pct + '%'
+    pctSpan.textContent = `${pct}%`
     head.appendChild(titleSpan)
     head.appendChild(pctSpan)
     card.appendChild(head)
@@ -558,14 +557,14 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
     track.className = 'hs-mc-pred-bar-track'
     const fill = document.createElement('div')
     fill.className = 'hs-mc-pred-bar-fill'
-    fill.style.width = pct + '%'
+    fill.style.width = `${pct}%`
     track.appendChild(fill)
     card.appendChild(track)
 
     const stats = document.createElement('div')
     stats.className = 'hs-mc-pred-outcome-stats'
-    let statsText = formatPoints(points) + ' pts \u00b7 ' + userCount + ' bettor' + (userCount !== 1 ? 's' : '')
-    if (isBetOn) statsText += ' \u00b7 your bet: ' + formatPoints(userBet.points)
+    let statsText = `${formatPoints(points)} pts \u00b7 ${userCount} bettor${userCount !== 1 ? 's' : ''}`
+    if (isBetOn) statsText += ` \u00b7 your bet: ${formatPoints(userBet.points)}`
     stats.textContent = statsText
     card.appendChild(stats)
 
@@ -638,8 +637,7 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
     const notice = document.createElement('div')
     notice.className = 'hs-mc-pred-mod-notice'
     const betOutcome = pred.outcomes.find((o) => o.id === userBet.outcomeId)
-    notice.textContent =
-      'you bet ' + formatPoints(userBet.points) + ' on ' + (betOutcome?.title || '?') + ' \u2014 pick the actual winner'
+    notice.textContent = `you bet ${formatPoints(userBet.points)} on ${betOutcome?.title || '?'} \u2014 pick the actual winner`
     wrapper.appendChild(notice)
   }
 
@@ -682,7 +680,7 @@ function renderNoPrediction(balance, channelId, isMod, cpImage, cpName) {
     bal.className = 'hs-mc-pred-balance'
     bal.style.marginTop = '8px'
     bal.appendChild(makePointIcon(14, cpImage))
-    bal.appendChild(document.createTextNode(' ' + formatPoints(balance) + (cpName ? ' ' + cpName : '')))
+    bal.appendChild(document.createTextNode(` ${formatPoints(balance)}${cpName ? ` ${cpName}` : ''}`))
     wrap.appendChild(bal)
   }
 
@@ -726,10 +724,10 @@ function renderNoPrediction(balance, channelId, isMod, cpImage, cpName) {
   durRow.appendChild(durLabel)
   for (const secs of [30, 60, 120, 300, 600, 1800]) {
     const btn = document.createElement('button')
-    btn.className = 'hs-mc-pred-create-dur' + (secs === 120 ? ' hs-mc-pred-create-dur-active' : '')
+    btn.className = `hs-mc-pred-create-dur${secs === 120 ? ' hs-mc-pred-create-dur-active' : ''}`
     btn.dataset.secs = secs
     btn.tabIndex = -1
-    btn.textContent = secs < 60 ? secs + 's' : secs / 60 + 'm'
+    btn.textContent = secs < 60 ? `${secs}s` : `${secs / 60}m`
     durRow.appendChild(btn)
   }
   form.appendChild(durRow)
@@ -769,7 +767,7 @@ function renderRewards(rewards, balance, channelId) {
     path.setAttribute('d', 'M10 6a4 4 0 100 8 4 4 0 000-8zm0-4a8 8 0 110 16 8 8 0 010-16z')
     svg.appendChild(path)
     bal.appendChild(svg)
-    bal.appendChild(document.createTextNode(' ' + formatPoints(balance)))
+    bal.appendChild(document.createTextNode(` ${formatPoints(balance)}`))
     header.appendChild(bal)
   }
   section.appendChild(header)
@@ -790,7 +788,7 @@ function renderRewards(rewards, balance, channelId) {
     const onCooldown = reward.cooldownExpiresAt && new Date(reward.cooldownExpiresAt).getTime() > now
     const available = !reward.isPaused && reward.isInStock && !onCooldown
     const card = document.createElement('div')
-    card.className = 'hs-mc-reward-card' + (available ? '' : ' hs-mc-reward-unavailable')
+    card.className = `hs-mc-reward-card${available ? '' : ' hs-mc-reward-unavailable'}`
     card.dataset.rewardId = reward.id
     card.dataset.cost = reward.cost
     card.dataset.title = reward.title
@@ -828,7 +826,7 @@ function renderRewards(rewards, balance, channelId) {
     costPath.setAttribute('d', 'M10 6a4 4 0 100 8 4 4 0 000-8zm0-4a8 8 0 110 16 8 8 0 010-16z')
     costSvg.appendChild(costPath)
     costEl.appendChild(costSvg)
-    costEl.appendChild(document.createTextNode(' ' + formatPoints(reward.cost)))
+    costEl.appendChild(document.createTextNode(` ${formatPoints(reward.cost)}`))
     info.appendChild(costEl)
 
     if (!available) {
@@ -983,8 +981,8 @@ function optimisticBetUpdate(container, outcomeId, points) {
     const newVoters = existingBet ? currentVoters : currentVoters + 1
     const newBet = existingBet + points
 
-    let newText = formatPoints(newPts) + ' pts \u00b7 ' + newVoters + ' voter' + (newVoters !== 1 ? 's' : '')
-    newText += ' \u00b7 your bet: ' + formatPoints(newBet)
+    let newText = `${formatPoints(newPts)} pts \u00b7 ${newVoters} voter${newVoters !== 1 ? 's' : ''}`
+    newText += ` \u00b7 your bet: ${formatPoints(newBet)}`
     statsEl.textContent = newText
     card.classList.add('hs-mc-pred-outcome-yours')
   })
@@ -1011,16 +1009,16 @@ function optimisticBetUpdate(container, outcomeId, points) {
   outcomes.forEach((card, i) => {
     const pct = total > 0 ? Math.round((ptsArr[i] / total) * 100) : 0
     const pctEl = card.querySelector('.hs-mc-pred-outcome-pct')
-    if (pctEl) pctEl.textContent = pct + '%'
+    if (pctEl) pctEl.textContent = `${pct}%`
     const fill = card.querySelector('.hs-mc-pred-bar-fill')
-    if (fill) fill.style.width = pct + '%'
+    if (fill) fill.style.width = `${pct}%`
   })
 
   // Update balance
   const balEl = pred.querySelector('.hs-mc-pred-balance')
-  if (balEl && balEl.lastChild) {
+  if (balEl?.lastChild) {
     const currentBal = parsePoints(balEl.textContent.trim())
-    balEl.lastChild.textContent = ' ' + formatPoints(Math.max(0, currentBal - points))
+    balEl.lastChild.textContent = ` ${formatPoints(Math.max(0, currentBal - points))}`
   }
 }
 
@@ -1141,10 +1139,12 @@ function attachPredictionHandlers() {
         // Hide bet rows + lock button immediately, keep resolve/cancel
         const pred = btn.closest('.hs-mc-prediction') || container.querySelector('.hs-mc-prediction')
         if (pred) {
-          pred.querySelectorAll('.hs-mc-pred-bet-row').forEach((el) => el.remove())
+          pred.querySelectorAll('.hs-mc-pred-bet-row').forEach((el) => {
+            el.remove()
+          })
           pred.querySelector('.hs-mc-pred-lock-btn')?.remove()
         }
-        btn.textContent = '\u2713 ' + t('mc_pred_locked')
+        btn.textContent = `\u2713 ${t('mc_pred_locked')}`
         setTimeout(() => refreshPredictionSlot(), 2000)
       }
     })
@@ -1185,10 +1185,12 @@ function attachPredictionHandlers() {
             .querySelectorAll(
               '.hs-mc-pred-mod-row, .hs-mc-pred-mod-notice, .hs-mc-pred-bet-row, .hs-mc-pred-resolve-btn',
             )
-            .forEach((el) => el.remove())
+            .forEach((el) => {
+              el.remove()
+            })
           pred.classList.add('hs-mc-pred-resolved')
         }
-        btn.textContent = '\u2713 ' + t('mc_pred_ended')
+        btn.textContent = `\u2713 ${t('mc_pred_ended')}`
         setTimeout(() => refreshPredictionSlot(), 2000)
       }
     })
@@ -1223,10 +1225,12 @@ function attachPredictionHandlers() {
             .querySelectorAll(
               '.hs-mc-pred-mod-row, .hs-mc-pred-mod-notice, .hs-mc-pred-bet-row, .hs-mc-pred-resolve-btn',
             )
-            .forEach((el) => el.remove())
+            .forEach((el) => {
+              el.remove()
+            })
           pred.classList.add('hs-mc-pred-canceled')
         }
-        btn.textContent = '\u2713 ' + t('mc_pred_refunded')
+        btn.textContent = `\u2713 ${t('mc_pred_refunded')}`
         setTimeout(() => refreshPredictionSlot(), 2000)
       }
     })
@@ -1270,9 +1274,9 @@ function attachPredictionHandlers() {
   container.querySelectorAll('.hs-mc-pred-create-dur').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation()
-      container
-        .querySelectorAll('.hs-mc-pred-create-dur')
-        .forEach((b) => b.classList.remove('hs-mc-pred-create-dur-active'))
+      container.querySelectorAll('.hs-mc-pred-create-dur').forEach((b) => {
+        b.classList.remove('hs-mc-pred-create-dur-active')
+      })
       btn.classList.add('hs-mc-pred-create-dur-active')
     })
   })
@@ -1388,7 +1392,7 @@ function maybeBroadcastNewPrediction(channel, pred) {
   if (newId === prevId) return
   _broadcastedPredIds.set(ch, newId)
   if (!wasSeen) return
-  if (!pred || pred.status !== 'ACTIVE') return
+  if (pred?.status !== 'ACTIVE') return
   try {
     window.postMessage(
       {
@@ -1417,7 +1421,7 @@ function maybeBroadcastNewPoll(channel, pollData) {
   if (newId === prevId) return
   _broadcastedPollIds.set(ch, newId)
   if (!wasSeen) return
-  if (!pollData || pollData.status !== 'ACTIVE') return
+  if (pollData?.status !== 'ACTIVE') return
   try {
     window.postMessage(
       {
@@ -1432,7 +1436,9 @@ function maybeBroadcastNewPoll(channel, pollData) {
 }
 
 function clearBannerTimers() {
-  _bannerTimers.forEach((id) => cleanup.clearInterval(id))
+  _bannerTimers.forEach((id) => {
+    cleanup.clearInterval(id)
+  })
   _bannerTimers = []
 }
 
@@ -1445,7 +1451,7 @@ function _startBannerTimer(el, endsAt) {
     }
     const m = Math.floor(remaining / 60)
     const s = remaining % 60
-    el.textContent = m > 0 ? m + ':' + String(s).padStart(2, '0') : s + 's'
+    el.textContent = m > 0 ? `${m}:${String(s).padStart(2, '0')}` : `${s}s`
   }
   update()
   const iv = cleanup.setIntervalIfVisible(() => {
@@ -1478,9 +1484,9 @@ function updateChatBanners(predResult, pollData) {
   // Fingerprint to avoid unnecessary rebuilds (prevents flash on bet/refresh)
   const userBet = pred ? _userBets.get(pred.id) : null
   const fp = [
-    hasPred ? pred.id + ':' + pred.status + ':' + (userBet?.points || 0) : '',
-    hasPoll ? pollData.id + ':' + pollData.status : '',
-    hasHype ? 'hype:' + _hypeTrainActive.level : '',
+    hasPred ? `${pred.id}:${pred.status}:${userBet?.points || 0}` : '',
+    hasPoll ? `${pollData.id}:${pollData.status}` : '',
+    hasHype ? `hype:${_hypeTrainActive.level}` : '',
   ].join('|')
 
   if (fp === _bannerFingerprint) return
@@ -1498,7 +1504,7 @@ function updateChatBanners(predResult, pollData) {
   banner.className = 'hs-mc-chat-banner'
   banner.innerHTML = ''
 
-  const goToTwitch = (e) => {
+  const goToTwitch = (_e) => {
     const twitchTab = document.querySelector('[data-tab="live"]')
     if (twitchTab) twitchTab.click()
   }
@@ -1518,12 +1524,12 @@ function updateChatBanners(predResult, pollData) {
     const totalPts = pred.outcomes.reduce((s, o) => s + (o.totalPoints || 0), 0)
     const parts = pred.outcomes.map((o) => {
       const pct = totalPts > 0 ? Math.round((o.totalPoints / totalPts) * 100) : 0
-      return o.title + ' ' + pct + '%'
+      return `${o.title} ${pct}%`
     })
-    let text = pred.title + ' \u00b7 ' + parts.join(' vs ')
+    let text = `${pred.title} \u00b7 ${parts.join(' vs ')}`
     if (userBet) {
       const betOutcome = pred.outcomes.find((o) => o.id === userBet.outcomeId)
-      text += ' \u00b7 bet: ' + formatPoints(userBet.points) + (betOutcome ? ' ' + betOutcome.title : '')
+      text += ` \u00b7 bet: ${formatPoints(userBet.points)}${betOutcome ? ` ${betOutcome.title}` : ''}`
     }
     info.textContent = text
     row.appendChild(info)
@@ -1561,9 +1567,9 @@ function updateChatBanners(predResult, pollData) {
       pollData.choices?.slice(0, 4).map((c) => {
         const votes = c.votes?.totalCount || c.totalVotes || 0
         const pct = totalVotes > 0 ? Math.round((votes / totalVotes) * 100) : 0
-        return c.title + ' ' + pct + '%'
+        return `${c.title} ${pct}%`
       }) || []
-    info.textContent = pollData.title + (choiceParts.length ? ' \u00b7 ' + choiceParts.join(' vs ') : '')
+    info.textContent = pollData.title + (choiceParts.length ? ` \u00b7 ${choiceParts.join(' vs ')}` : '')
     row.appendChild(info)
 
     const timer = document.createElement('span')
@@ -1655,7 +1661,7 @@ function buildTwSubtabBar() {
   for (const it of items) {
     const btn = document.createElement('button')
     btn.type = 'button'
-    btn.className = 'hs-mc-tw-subtab' + (it.id === _hsTwSubtab ? ' active' : '')
+    btn.className = `hs-mc-tw-subtab${it.id === _hsTwSubtab ? ' active' : ''}`
     btn.dataset.twSubtab = it.id
     btn.title = it.label
     btn.setAttribute('aria-label', it.label)
@@ -2079,7 +2085,7 @@ async function buildChatStatusPanel(channel) {
 
   const title = document.createElement('div')
   title.className = 'hs-mc-status-title'
-  title.textContent = '#' + (u?.displayName || ch)
+  title.textContent = `#${u?.displayName || ch}`
   panel.appendChild(title)
 
   const sub = document.createElement('div')
@@ -2102,7 +2108,7 @@ async function buildChatStatusPanel(channel) {
   if (bs?.title) {
     const t = document.createElement('div')
     t.className = 'hs-mc-status-streamtitle'
-    t.textContent = '"' + bs.title + '"'
+    t.textContent = `"${bs.title}"`
     panel.appendChild(t)
   }
   const metaParts = []
@@ -2142,7 +2148,7 @@ async function buildChatStatusPanel(channel) {
       k.className = 'hs-mc-status-key'
       k.textContent = label
       const v = document.createElement('span')
-      v.className = 'hs-mc-status-val ' + (on ? 'on' : 'off')
+      v.className = `hs-mc-status-val ${on ? 'on' : 'off'}`
       v.textContent = on ? (detail ? `on (${detail})` : 'on') : 'off'
       row.appendChild(k)
       row.appendChild(v)
@@ -2390,14 +2396,14 @@ async function twitchGql(query, variables) {
       if (resp?.ok && resp.data) return resp.data
       throw new Error(resp?.error || 'twitch_gql bridge failed')
     } catch (e) {
-      throw new Error('GQL bridge failed: ' + e.message)
+      throw new Error(`GQL bridge failed: ${e.message}`)
     }
   }
   // Try direct fetch (works in Chrome MV3 content scripts with host_permissions)
   try {
     const token = getTwitchAuthToken()
     const hdrs = { 'Content-Type': 'application/json', 'Client-Id': 'kimne78kx3ncx6brgo4mv6wki5h1ko' }
-    if (token) hdrs['Authorization'] = 'OAuth ' + token
+    if (token) hdrs.Authorization = `OAuth ${token}`
     const body = variables ? { query, variables } : { query }
     const resp = await fetch('https://gql.twitch.tv/gql', {
       method: 'POST',
@@ -2405,7 +2411,7 @@ async function twitchGql(query, variables) {
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(8000),
     })
-    if (!resp.ok) throw new Error('GQL ' + resp.status)
+    if (!resp.ok) throw new Error(`GQL ${resp.status}`)
     return resp.json()
   } catch (directErr) {
     // Direct fetch failed (Firefox CORS) — fall back to MAIN world proxy
@@ -2415,7 +2421,7 @@ async function twitchGql(query, variables) {
       // Proxy wraps in { data } or returns raw — normalize
       return d?.data ? d : { data: d }
     } catch (proxyErr) {
-      throw new Error('GQL failed: direct=' + directErr.message + ' proxy=' + proxyErr.message)
+      throw new Error(`GQL failed: direct=${directErr.message} proxy=${proxyErr.message}`)
     }
   }
 }
@@ -2524,7 +2530,7 @@ async function predictionMutation(searchTerm, resultField, rawQuery, variables) 
   try {
     const data = await gqlMutation(rawQuery, variables)
     const err = data?.data?.[resultField]?.error
-    if (err) return { error: err.code || resultField + ' failed' }
+    if (err) return { error: err.code || `${resultField} failed` }
     return { ok: true }
   } catch (e) {
     return { error: apolloResult.error || e.message }
@@ -2676,7 +2682,7 @@ async function gqlPersistedMutation(operationName, variables) {
     )
   const token = getTwitchAuthToken()
   const hdrs = { 'Content-Type': 'application/json', 'Client-Id': 'kimne78kx3ncx6brgo4mv6wki5h1ko' }
-  if (token) hdrs['Authorization'] = 'OAuth ' + token
+  if (token) hdrs.Authorization = `OAuth ${token}`
   try {
     const resp = await fetch('https://gql.twitch.tv/gql', {
       method: 'POST',
@@ -2688,7 +2694,7 @@ async function gqlPersistedMutation(operationName, variables) {
       }),
       signal: AbortSignal.timeout(8000),
     })
-    if (!resp.ok) throw new Error('GQL ' + resp.status)
+    if (!resp.ok) throw new Error(`GQL ${resp.status}`)
     return resp.json()
   } catch (directErr) {
     // Firefox CORS fallback — route through MAIN world proxy with hash
@@ -2702,7 +2708,7 @@ async function gqlPersistedMutation(operationName, variables) {
   }
 }
 
-async function placePredictionBet(eventId, outcomeId, points, transactionId) {
+async function placePredictionBet(eventId, outcomeId, points, _transactionId) {
   const token = getTwitchAuthToken()
   if (!token) return { error: 'not logged in' }
   try {
@@ -3013,7 +3019,7 @@ async function claimCommunityPoints(claimId, channelId, channelLogin) {
         }),
         signal: AbortSignal.timeout(8000),
       })
-      if (!resp.ok) throw new Error('HTTP ' + resp.status)
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
     })
     claimed = true
   } catch (e) {
@@ -3111,7 +3117,7 @@ async function votePoll(pollId, choiceId) {
         headers: {
           'Client-Id': TWITCH_CLIENT_ID,
           'Content-Type': 'application/json',
-          Authorization: 'OAuth ' + token,
+          Authorization: `OAuth ${token}`,
         },
         body: JSON.stringify({
           query: 'mutation($input: VotePollInput!) { votePoll(input: $input) { error { code } } }',
@@ -3119,7 +3125,7 @@ async function votePoll(pollId, choiceId) {
         }),
         signal: AbortSignal.timeout(8000),
       })
-      if (!resp.ok) return { error: 'HTTP ' + resp.status }
+      if (!resp.ok) return { error: `HTTP ${resp.status}` }
       const data = await resp.json()
       if (data?.errors?.length) return { error: data.errors[0].message }
       const err = data?.data?.votePoll?.error
@@ -3135,8 +3141,7 @@ const POLL_FIELDS =
   'id title status durationSeconds remainingDurationMilliseconds startedAt choices { id title totalVoters } totalVoters'
 
 async function createTwitchPoll(channelId, title, durationSeconds, choices) {
-  const rawQuery =
-    'mutation($input: CreatePollInput!) { createPoll(input: $input) { poll { ' + POLL_FIELDS + ' } error { code } } }'
+  const rawQuery = `mutation($input: CreatePollInput!) { createPoll(input: $input) { poll { ${POLL_FIELDS} } error { code } } }`
   const variables = {
     input: { ownedBy: channelId, title, choices: choices.map((t) => ({ title: t })), durationSeconds },
   }
@@ -3147,7 +3152,7 @@ async function createTwitchPoll(channelId, title, durationSeconds, choices) {
     if (data?.errors?.length) return { error: data.errors[0].message || 'create poll failed' }
     const poll = result?.poll
     if (poll) {
-      _gqlDataCache['ActivePoll'] = { data: { user: { activePoll: poll, id: channelId } }, ts: Date.now() }
+      _gqlDataCache.ActivePoll = { data: { user: { activePoll: poll, id: channelId } }, ts: Date.now() }
       _savePollToStorage(poll, channelId)
     }
     return { ok: true, poll }
@@ -3157,15 +3162,14 @@ async function createTwitchPoll(channelId, title, durationSeconds, choices) {
 }
 
 async function endTwitchPoll(pollId) {
-  const rawQuery =
-    'mutation($input: TerminatePollInput!) { terminatePoll(input: $input) { poll { ' + POLL_FIELDS + ' } } }'
+  const rawQuery = `mutation($input: TerminatePollInput!) { terminatePoll(input: $input) { poll { ${POLL_FIELDS} } } }`
   const variables = { input: { pollID: pollId } }
   try {
     const data = await gqlMutation(rawQuery, variables)
     if (data?.errors?.length) return { error: data.errors[0].message || 'end poll failed' }
     const poll = data?.data?.terminatePoll?.poll
     if (poll) {
-      _gqlDataCache['ActivePoll'] = { data: { user: { activePoll: poll, id: _twitchChannelId } }, ts: Date.now() }
+      _gqlDataCache.ActivePoll = { data: { user: { activePoll: poll, id: _twitchChannelId } }, ts: Date.now() }
     }
     _clearPollFromStorage()
     return { ok: true }
@@ -3210,7 +3214,7 @@ function renderPoll(poll, channelId, isMod) {
   // Total votes
   const meta = document.createElement('div')
   meta.className = 'hs-mc-poll-meta'
-  meta.textContent = totalVotes + ' vote' + (totalVotes !== 1 ? 's' : '')
+  meta.textContent = `${totalVotes} vote${totalVotes !== 1 ? 's' : ''}`
   section.appendChild(meta)
 
   // Choices
@@ -3230,14 +3234,13 @@ function renderPoll(poll, channelId, isMod) {
     const isVoted = userVote === choice.id
 
     const row = document.createElement('div')
-    row.className =
-      'hs-mc-poll-choice' + (isTop ? ' hs-mc-poll-choice-top' : '') + (isVoted ? ' hs-mc-poll-choice-voted' : '')
+    row.className = `hs-mc-poll-choice${isTop ? ' hs-mc-poll-choice-top' : ''}${isVoted ? ' hs-mc-poll-choice-voted' : ''}`
 
     const track = document.createElement('div')
     track.className = 'hs-mc-poll-choice-track'
     const fill = document.createElement('div')
     fill.className = 'hs-mc-poll-choice-fill'
-    fill.style.width = pct + '%'
+    fill.style.width = `${pct}%`
     track.appendChild(fill)
 
     const label = document.createElement('div')
@@ -3256,7 +3259,7 @@ function renderPoll(poll, channelId, isMod) {
 
     const pctSpan = document.createElement('span')
     pctSpan.className = 'hs-mc-poll-choice-pct'
-    pctSpan.textContent = pct + '%'
+    pctSpan.textContent = `${pct}%`
     label.appendChild(pctSpan)
 
     track.appendChild(label)
@@ -3318,7 +3321,7 @@ function renderNoPoll(channelId, isMod) {
   for (let i = 0; i < 4; i++) {
     const opt = document.createElement('input')
     opt.className = 'hs-mc-poll-create-input hs-mc-poll-create-choice'
-    opt.placeholder = t('mc_poll_choice', [String(i + 1)]) + (i < 2 ? '' : ' (' + t('mc_poll_optional') + ')')
+    opt.placeholder = t('mc_poll_choice', [String(i + 1)]) + (i < 2 ? '' : ` (${t('mc_poll_optional')})`)
     opt.maxLength = 25
     form.appendChild(opt)
   }
@@ -3331,10 +3334,10 @@ function renderNoPoll(channelId, isMod) {
   durRow.appendChild(durLabel)
   for (const secs of [30, 60, 120, 300, 600, 1800]) {
     const btn = document.createElement('button')
-    btn.className = 'hs-mc-poll-create-dur' + (secs === 60 ? ' hs-mc-poll-create-dur-active' : '')
+    btn.className = `hs-mc-poll-create-dur${secs === 60 ? ' hs-mc-poll-create-dur-active' : ''}`
     btn.dataset.secs = secs
     btn.tabIndex = -1
-    btn.textContent = secs < 60 ? secs + 's' : secs / 60 + 'm'
+    btn.textContent = secs < 60 ? `${secs}s` : `${secs / 60}m`
     durRow.appendChild(btn)
   }
   form.appendChild(durRow)
@@ -3372,13 +3375,13 @@ function optimisticPollVoteUpdate(pollSection, choiceId) {
   }
 
   const total = entries.reduce((s, v) => s + v.votes, 0) || 1
-  if (metaEl) metaEl.textContent = total + ' vote' + (total !== 1 ? 's' : '')
+  if (metaEl) metaEl.textContent = `${total} vote${total !== 1 ? 's' : ''}`
 
   for (const { choice, votes, pctEl, nameEl, voteBtn, isTarget } of entries) {
     const pct = Math.round((votes / total) * 100)
-    if (pctEl) pctEl.textContent = pct + '%'
+    if (pctEl) pctEl.textContent = `${pct}%`
     const fill = choice.querySelector('.hs-mc-poll-choice-fill')
-    if (fill) fill.style.width = pct + '%'
+    if (fill) fill.style.width = `${pct}%`
     if (isTarget) {
       choice.classList.add('hs-mc-poll-choice-voted')
       if (nameEl && !nameEl.querySelector('.hs-mc-poll-voted-check')) {
@@ -3460,9 +3463,9 @@ function attachPollHandlers() {
   container.querySelectorAll('.hs-mc-poll-create-dur').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation()
-      container
-        .querySelectorAll('.hs-mc-poll-create-dur')
-        .forEach((b) => b.classList.remove('hs-mc-poll-create-dur-active'))
+      container.querySelectorAll('.hs-mc-poll-create-dur').forEach((b) => {
+        b.classList.remove('hs-mc-poll-create-dur-active')
+      })
       btn.classList.add('hs-mc-poll-create-dur-active')
     })
   })
@@ -3547,7 +3550,7 @@ function attachPollHandlers() {
       }
       const m = Math.floor(remaining / 60)
       const s = remaining % 60
-      el.textContent = m > 0 ? m + ':' + String(s).padStart(2, '0') : s + 's'
+      el.textContent = m > 0 ? `${m}:${String(s).padStart(2, '0')}` : `${s}s`
     }
     update()
     const iv = cleanup.setIntervalIfVisible(() => {
@@ -3620,14 +3623,14 @@ async function fetchChannelBadges(channelLogin) {
       if (room) {
         const modUrl = room.mod_urls?.['2'] || room.mod_urls?.['1'] || room.moderator_badge
         if (modUrl) {
-          const src = modUrl.startsWith('//') ? 'https:' + modUrl : modUrl
+          const src = modUrl.startsWith('//') ? `https:${modUrl}` : modUrl
           twitchBadgeUrls.set(`${channelLogin}:moderator/1`, src)
           ffzBadgeKeys.add(`${channelLogin}:moderator`)
           populated = true
         }
         const vipUrl = room.vip_badge?.['2'] || room.vip_badge?.['1']
         if (vipUrl) {
-          const src = vipUrl.startsWith('//') ? 'https:' + vipUrl : vipUrl
+          const src = vipUrl.startsWith('//') ? `https:${vipUrl}` : vipUrl
           twitchBadgeUrls.set(`${channelLogin}:vip/1`, src)
           ffzBadgeKeys.add(`${channelLogin}:vip`)
           populated = true
@@ -3724,23 +3727,23 @@ async function fetchKickChannelBadges(slug) {
     const monthsList = []
     for (const b of resp.badges) {
       if (Number.isFinite(b.months) && typeof b.src === 'string') {
-        kickBadgeUrls.set(slug + ':subscriber/' + b.months, b.src)
+        kickBadgeUrls.set(`${slug}:subscriber/${b.months}`, b.src)
         monthsList.push(b.months)
       }
     }
     if (monthsList.length) {
       monthsList.sort((a, b) => a - b)
-      kickChannelBadgeVersions.set(slug + ':subscriber', monthsList)
+      kickChannelBadgeVersions.set(`${slug}:subscriber`, monthsList)
       kickBadgesFetchedChannels.add(slug)
       kickBadgesFailedAt.delete(slug)
       if (kickBadgesFetchedChannels.size > 20) {
         const oldest = kickBadgesFetchedChannels.values().next().value
         kickBadgesFetchedChannels.delete(oldest)
-        const prefix = oldest + ':subscriber/'
+        const prefix = `${oldest}:subscriber/`
         for (const key of [...kickBadgeUrls.keys()]) {
           if (key.startsWith(prefix)) kickBadgeUrls.delete(key)
         }
-        kickChannelBadgeVersions.delete(oldest + ':subscriber')
+        kickChannelBadgeVersions.delete(`${oldest}:subscriber`)
       }
       // Patch rows for this channel in-place — same choke point the Twitch
       // fetchChannelBadges/fetchGlobalBadges paths already use. This one was
@@ -3752,7 +3755,7 @@ async function fetchKickChannelBadges(slug) {
       // forced a full rebuild.
       if (typeof updateNativeBadgesInPlace === 'function') updateNativeBadgesInPlace(slug)
     }
-  } catch (e) {
+  } catch (_) {
     if (kickBadgesFailedAt.size >= BADGES_FAILED_MAX) {
       kickBadgesFailedAt.delete(kickBadgesFailedAt.keys().next().value)
     }
@@ -3836,7 +3839,7 @@ function renderThirdPartyBadges(userId) {
   if (ffzList) {
     for (const b of ffzList) {
       const safeColor = /^#[0-9a-fA-F]{3,8}$/.test(b.color) ? b.color : ''
-      html += `<img class="hs-mc-badge-img hs-mc-ffz-badge" src="${escapeHtml(safeUrl(b.url) || '')}" alt="${escapeHtml(b.title)}" title="${escapeHtml(b.title)}" decoding="async" width="18" height="18" style="width:18px;height:18px;${safeColor ? 'background:' + safeColor + ';' : ''}">`
+      html += `<img class="hs-mc-badge-img hs-mc-ffz-badge" src="${escapeHtml(safeUrl(b.url) || '')}" alt="${escapeHtml(b.title)}" title="${escapeHtml(b.title)}" decoding="async" width="18" height="18" style="width:18px;height:18px;${safeColor ? `background:${safeColor};` : ''}">`
     }
   }
   const chat = getSetting('chatterinoBadges') ? mcChatterinoBadgeMap.get(userId) : null
@@ -3852,8 +3855,8 @@ function renderThirdPartyBadges(userId) {
       const base = cosmetic.badge.host?.url || ''
       // 7TV returns protocol-relative URLs (//cdn.7tv.app/...) — promote to https
       // before validation so safeUrl doesn't drop them.
-      const absBase = base.startsWith('//') ? 'https:' + base : base
-      const rawUrl = (absBase.endsWith('/') ? absBase : absBase + '/') + file.name
+      const absBase = base.startsWith('//') ? `https:${base}` : base
+      const rawUrl = (absBase.endsWith('/') ? absBase : `${absBase}/`) + file.name
       const url = safeUrl(rawUrl)
       if (url) {
         // Class includes hs-mc-7tv-badge so updateCosmeticsInPlace's dedup
@@ -4198,14 +4201,14 @@ async function _followMutation(targetID, follow, disableNotifications) {
       if (msg.includes('already') || msg.includes('not followed') || msg.includes('not following')) {
         return { ok: true, idempotent: true }
       }
-      return { error: d.errors[0].message || resultField + ' failed' }
+      return { error: d.errors[0].message || `${resultField} failed` }
     }
     const err = d?.data?.[resultField]?.error
     if (err) {
       const code = String(err.code || '')
       if (code === 'TARGET_ALREADY_FOLLOWED' || code === 'TARGET_NOT_FOLLOWED') return { ok: true, idempotent: true }
       if (code === 'TARGET_TWO_FACTOR_REQUIRED') return { error: '2fa_required' }
-      return { error: code || resultField + ' failed' }
+      return { error: code || `${resultField} failed` }
     }
     return { ok: true }
   } catch (e) {

@@ -56689,6 +56689,16 @@ function fullSpaReinit() {
   spaReinitializing = true
   _layoutWatcherStarted = false
 
+  // Every cached tab DOM belongs to the channel we're leaving. The soft-nav
+  // paths drop the live cache before switching, but they hand off to this
+  // fallback BEFORE reaching that call — without this, init()'s closing
+  // switchTab() splices the previous channel's rows into the new channel's
+  // freshly built list (and _cacheJustRestored tells the renderer to leave
+  // them alone), so two channels' chat render interleaved.
+  try {
+    _dropAllTabCaches()
+  } catch {}
+
   // Unsubscribe auto-YouTube from previous channel AND every per-channel
   // YT subscription so init() can cleanly re-subscribe each. Otherwise the
   // server sees duplicate youtube:subscribe events on every SPA navigation
@@ -57932,19 +57942,34 @@ const STORAGE_KEY = 'heatsync_multichat'
     }
   }
 
+  function _writeMentionsNow() {
+    try {
+      if (!chrome?.runtime?.id) return
+      const msgs = mentionsBuffer.slice(-PERSIST_MAX_MENTIONS).map(_serializePersistMsg)
+      const p = chrome.storage.local.set({ hs_mentions_v2: { msgs, ts: Date.now() } })
+      if (p && typeof p.catch === 'function') p.catch(() => {})
+    } catch {}
+  }
+
   function persistMentions() {
     _persistMentionsState.dirty = true
     if (_persistMentionsState.timer) return
     _persistMentionsState.timer = cleanup.setTimeout(() => {
       _persistMentionsState.timer = null
       _persistMentionsState.dirty = false
-      try {
-        if (!chrome?.runtime?.id) return
-        const msgs = mentionsBuffer.slice(-PERSIST_MAX_MENTIONS).map(_serializePersistMsg)
-        const p = chrome.storage.local.set({ hs_mentions_v2: { msgs, ts: Date.now() } })
-        if (p && typeof p.catch === 'function') p.catch(() => {})
-      } catch {}
+      _writeMentionsNow()
     }, PERSIST_DEBOUNCE_MS)
+  }
+
+  function _writeYtNow(channelId) {
+    try {
+      if (!chrome?.runtime?.id) return
+      const buf = channelYtMessages.get(channelId)
+      if (!buf) return
+      const msgs = buf.slice(-PERSIST_MAX_YT).map(_serializePersistMsg)
+      const p = chrome.storage.local.set({ [`hs_yt_${channelId}`]: { msgs, ts: Date.now() } })
+      if (p && typeof p.catch === 'function') p.catch(() => {})
+    } catch {}
   }
 
   function persistYt(channelId) {
@@ -57956,14 +57981,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       cleanup.setTimeout(() => {
         _persistYtTimers.delete(channelId)
         _persistYtDirty.delete(channelId)
-        try {
-          if (!chrome?.runtime?.id) return
-          const buf = channelYtMessages.get(channelId)
-          if (!buf) return
-          const msgs = buf.slice(-PERSIST_MAX_YT).map(_serializePersistMsg)
-          const p = chrome.storage.local.set({ [`hs_yt_${channelId}`]: { msgs, ts: Date.now() } })
-          if (p && typeof p.catch === 'function') p.catch(() => {})
-        } catch {}
+        _writeYtNow(channelId)
       }, PERSIST_DEBOUNCE_MS),
     )
   }
@@ -57993,6 +58011,24 @@ const STORAGE_KEY = 'heatsync_multichat'
       // HeatSync user data to host-page scripts and co-resident extensions.
       if (_persistTabSeenTimer) {
         localStorage.setItem('hs_tab_seen_sync', JSON.stringify({ data: { ...tabSeenAt }, ts: Date.now() }))
+      }
+    } catch {}
+    // Drain pending mention/YT debounces the way KickChat._flushPendingSync
+    // drains kick buffers: a storage.local.set DISPATCHED during pagehide
+    // survives the unload, so this closes the 1.5s debounce gap without
+    // writing HeatSync data to the host page's localStorage.
+    try {
+      if (_persistMentionsState.timer) {
+        cleanup.clearTimeout(_persistMentionsState.timer)
+        _persistMentionsState.timer = null
+        _persistMentionsState.dirty = false
+        _writeMentionsNow()
+      }
+      for (const [channelId, t] of [..._persistYtTimers]) {
+        cleanup.clearTimeout(t)
+        _persistYtTimers.delete(channelId)
+        _persistYtDirty.delete(channelId)
+        _writeYtNow(channelId)
       }
     } catch {}
   }
@@ -59512,7 +59548,15 @@ const STORAGE_KEY = 'heatsync_multichat'
     const bridge = _bridgeFor(def)
     if (bridge) bridge.set(v)
     if (def.scope === 'local') {
-      chrome.storage.local.set({ [key]: v }).catch(() => {})
+      // Failure must be LOUD: the in-memory cache + UI already flipped, so a
+      // silently-dropped write means the setting reverts on next load with
+      // zero warning (NSFW filters + mute keywords live on this path).
+      chrome.storage.local.set({ [key]: v }).catch(() => {
+        try {
+          showToast(t('mc_main_settings_save_failed'), 'error')
+        } catch {}
+        warn('setSetting: local write failed for', key)
+      })
     } else {
       // sync + local-mirror both route through saveUiSetting — it owns the
       // debounce, UI_SYNC_BLOCKLIST split, quota guard, and ws sync patch

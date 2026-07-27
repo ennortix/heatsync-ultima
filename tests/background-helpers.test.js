@@ -941,9 +941,7 @@ describe('fetchRecentArchiveRows', () => {
 
 // ── bgIrcSafeChannel (IRC protocol-line injection guard) ─────────────────────
 
-const { bgIrcSafeChannel } = new Function(
-  `${extractFn('bgIrcSafeChannel')}\nreturn { bgIrcSafeChannel }`,
-)()
+const { bgIrcSafeChannel } = new Function(`${extractFn('bgIrcSafeChannel')}\nreturn { bgIrcSafeChannel }`)()
 
 describe('bgIrcSafeChannel (JOIN/PART interpolate raw IRC lines)', () => {
   test('passes a normal twitch login through, lowercased', () => {

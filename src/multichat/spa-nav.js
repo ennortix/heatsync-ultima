@@ -161,6 +161,16 @@ function fullSpaReinit() {
   spaReinitializing = true
   _layoutWatcherStarted = false
 
+  // Every cached tab DOM belongs to the channel we're leaving. The soft-nav
+  // paths drop the live cache before switching, but they hand off to this
+  // fallback BEFORE reaching that call — without this, init()'s closing
+  // switchTab() splices the previous channel's rows into the new channel's
+  // freshly built list (and _cacheJustRestored tells the renderer to leave
+  // them alone), so two channels' chat render interleaved.
+  try {
+    _dropAllTabCaches()
+  } catch {}
+
   // Unsubscribe auto-YouTube from previous channel AND every per-channel
   // YT subscription so init() can cleanly re-subscribe each. Otherwise the
   // server sees duplicate youtube:subscribe events on every SPA navigation
